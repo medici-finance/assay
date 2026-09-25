@@ -1,7 +1,13 @@
 package deskkit
 
-// trustliveness.go — a read-only, fail-closed NOTICE surface that asks GitHub what it
-// currently says about a trusted login, WITHOUT touching TrustedAuthor's verdict.
+// trustliveness.go — a read-only, fail-closed NOTICE surface that asks a trusted login's
+// own forge what it currently says about that login, WITHOUT touching TrustedAuthor's
+// verdict. The classifier, the RosterIdentity/LivenessClass/LivenessFinding shapes and
+// RenderLivenessNotices are forge-agnostic and shared; the GitHub fetcher lives in this
+// file (HTTPAccountFetcher) and the GitLab fetcher in trustliveness_gitlab.go
+// (HTTPGitLabAccountFetcher, assay#1667) — see GitLabRosterIdentities below for the
+// GitLab identity source and cmd/deskroster/liveness.go for the forge-typed dispatch that
+// picks between them.
 //
 // trust.go's TrustedAuthor / TrustedHumanAuthor / Blessed compare a login (and, where
 // pinned, its numeric id) against the CONFIGURED roster — a pure string/id comparison that
@@ -145,13 +151,27 @@ type RosterIdentity struct {
 	PinnedID int64
 	// Source names which roster map this identity came from: "human", "bless", or "bot".
 	Source string
+	// Forge names which forge this identity lives on. The zero value ("") is read as
+	// ForgeGitHub — every identity RosterIdentities (below) enumerates IS GitHub-scoped, and
+	// every existing call site (including every literal in this package's own tests)
+	// predates this field, so leaving it unset must keep meaning exactly what it always
+	// meant. GitLabRosterIdentities is the one enumerator that sets it explicitly to
+	// ForgeGitLab. probeLogin and classifyLiveness are the two readers.
+	Forge ForgeKind
+}
+
+// isGitLab reports whether id is GitLab-scoped, treating the zero value as GitHub (see the
+// Forge field's doc comment above).
+func (id RosterIdentity) isGitLab() bool {
+	return id.Forge == ForgeGitLab
 }
 
 // RosterIdentities enumerates every GitHub-scoped identity worth checking: Config.Humans,
 // Config.Bless (when configured), and Config.Bots — nothing else. A GitLab identity lives
-// exclusively in Config.BotIdents/Config.Logins and is out of scope here (this surface is
-// GitHub-only; see forge_github.go's GetAccount and cmd/deskroster/liveness.go's explicit
-// non-GitHub-forge line), so reading only these three maps needs no forge filtering.
+// exclusively in Config.BotIdents (filtered to Forge == ForgeGitLab) and is out of scope
+// here — see GitLabRosterIdentities below, trustliveness_gitlab.go's account fetcher, and
+// cmd/deskroster/liveness.go's forge-typed dispatch — so reading only these three maps
+// needs no forge filtering.
 //
 // The order is deterministic (sorted within each source, humans then bless then bots) so
 // RenderLivenessNotices's output is stable across runs for a diff-friendly NOTICE stream.
@@ -164,11 +184,11 @@ func RosterIdentities(c Config) []RosterIdentity {
 	}
 	sort.Strings(humanLogins)
 	for _, login := range humanLogins {
-		out = append(out, RosterIdentity{Login: login, PinnedID: c.Humans[login], Source: "human"})
+		out = append(out, RosterIdentity{Login: login, PinnedID: c.Humans[login], Source: "human", Forge: ForgeGitHub})
 	}
 
 	if c.Bless.Login != "" {
-		out = append(out, RosterIdentity{Login: c.Bless.Login, PinnedID: c.Bless.ID, Source: "bless"})
+		out = append(out, RosterIdentity{Login: c.Bless.Login, PinnedID: c.Bless.ID, Source: "bless", Forge: ForgeGitHub})
 	}
 
 	botLogins := make([]string, 0, len(c.Bots))
@@ -177,9 +197,32 @@ func RosterIdentities(c Config) []RosterIdentity {
 	}
 	sort.Strings(botLogins)
 	for _, login := range botLogins {
-		out = append(out, RosterIdentity{Login: login, PinnedID: c.Bots[login], Source: "bot"})
+		out = append(out, RosterIdentity{Login: login, PinnedID: c.Bots[login], Source: "bot", Forge: ForgeGitHub})
 	}
 
+	return out
+}
+
+// GitLabRosterIdentities enumerates every GitLab-scoped identity worth checking:
+// Config.BotIdents entries whose Forge is ForgeGitLab — GitLab service accounts, the ONLY
+// identity class a GitLab roster carries. Config.Humans/Config.Bless are the GitHub human
+// roster (RosterIdentities above) and carry no forge tag of their own; Config.Bots is the
+// GitHub-slug-keyed flat view (rosterconfig.go: "Bots ... carries GITHUB entries only").
+// Neither belongs here, so BotIdents filtered to Forge == ForgeGitLab is the complete,
+// correct source — never Config.Bots, and never an unfiltered walk of Config.BotIdents
+// (which also carries the GitHub entries the GitHub path already checks).
+//
+// The result is sorted by login for the same diff-friendly, deterministic-order reason
+// RosterIdentities documents.
+func GitLabRosterIdentities(c Config) []RosterIdentity {
+	var out []RosterIdentity
+	for _, b := range c.BotIdents {
+		if b.Forge != ForgeGitLab {
+			continue
+		}
+		out = append(out, RosterIdentity{Login: b.Slug, PinnedID: b.ID, Source: "bot", Forge: ForgeGitLab})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Login < out[j].Login })
 	return out
 }
 
@@ -206,6 +249,14 @@ const (
 	// pinned id for it (PinnedID == 0), so identity continuity cannot be checked at all.
 	// Advisory: recommend pinning.
 	LivenessUnpinned LivenessClass = "unpinned"
+	// LivenessSuspended: the login resolves to the pinned id, but the forge reports the
+	// account in a non-active state — GitLab's "blocked" or "deactivated" (assay#1667).
+	// This class is a structural no-op on the GitHub path: Account.State stays "" on every
+	// GitHub-sourced read (forge_github.go's account read exposes no such field), so
+	// classifyLiveness never produces it there. Never coerced into LivenessAlive: a
+	// blocked/deactivated account still resolves and still carries the right id, but it is
+	// not a live trusted identity.
+	LivenessSuspended LivenessClass = "suspended"
 	// LivenessCouldNotCheck: the fetcher failed for any reason OTHER than a clean 404 —
 	// transport error, timeout, auth failure, malformed response. NEVER coerced into
 	// LivenessAlive, and never conflated with LivenessDeleted: a stuck-open bisector's
@@ -240,10 +291,12 @@ func CheckRosterLiveness(fetcher AccountFetcher, identities []RosterIdentity) []
 // /users/<slug> 404s for every App, GET /users/<slug>[bot] succeeds — so probing the bare
 // slug reported every trusted bot as LivenessDeleted (assay#1665).
 //
-// Every RosterIdentity RosterIdentities emits with Source == "bot" is GitHub-only by
-// construction (a GitLab bot identity lives exclusively in Config.BotIdents/Config.Logins,
-// never Config.Bots — see RosterIdentities' doc comment above), so the suffix is applied
-// unconditionally on Source == "bot" here, never forge-conditionally.
+// The suffix is GitHub-only (assay#1667): a GitLab service account has no decorated
+// rendering at all (forgeidentity.go's BotIdentity.PrimaryLogin — the username IS the
+// identity GitLab's API attributes things to), so GitLabRosterIdentities' entries must be
+// probed at their bare login, never suffixed. id.isGitLab() is what tells the two apart —
+// every RosterIdentities entry defaults to GitHub (the Forge field's zero value), every
+// GitLabRosterIdentities entry sets ForgeGitLab explicitly.
 //
 // This is the SAME normalization gap forge_github.go's GraphQL comment/PR-state readers
 // already guard against on the read side (forge_github.go ~line 1576: "A GraphQL Bot actor
@@ -255,7 +308,7 @@ func CheckRosterLiveness(fetcher AccountFetcher, identities []RosterIdentity) []
 // all. Human and Bless identities are untouched — the bug is bot-only, matching the issue's
 // "only the 13 bot entries were flagged" observation.
 func probeLogin(id RosterIdentity) string {
-	if id.Source == "bot" && !strings.HasSuffix(id.Login, "[bot]") {
+	if id.Source == "bot" && !id.isGitLab() && !strings.HasSuffix(id.Login, "[bot]") {
 		return id.Login + "[bot]"
 	}
 	return id.Login
@@ -306,6 +359,16 @@ func classifyLiveness(fetcher AccountFetcher, id RosterIdentity) LivenessFinding
 		}
 	}
 
+	if state := strings.ToLower(strings.TrimSpace(acct.State)); state != "" && state != "active" {
+		return LivenessFinding{
+			Identity: id,
+			Class:    LivenessSuspended,
+			Detail: fmt.Sprintf(
+				"login %q resolves to the pinned id %d, but its current forge-reported state is %q, not active — "+
+					"never reported as alive", probe, id.PinnedID, state),
+		}
+	}
+
 	if !strings.EqualFold(acct.Login, probe) {
 		return LivenessFinding{
 			Identity: id,
@@ -346,6 +409,10 @@ func RenderLivenessNotices(findings []LivenessFinding) []string {
 		case LivenessUnpinned:
 			lines = append(lines, fmt.Sprintf(
 				"NOTICE: unpinned — trusted %s login %q: %s",
+				f.Identity.Source, f.Identity.Login, f.Detail))
+		case LivenessSuspended:
+			lines = append(lines, fmt.Sprintf(
+				"NOTICE: SUSPENDED — trusted %s login %q is not active on its forge. %s",
 				f.Identity.Source, f.Identity.Login, f.Detail))
 		case LivenessCouldNotCheck:
 			lines = append(lines, fmt.Sprintf(

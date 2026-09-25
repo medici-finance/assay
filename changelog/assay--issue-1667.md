@@ -1,0 +1,2 @@
+### Added
+- `deskroster liveness` now checks GitLab-backed repos: it looks up each configured GitLab service-account identity with `GET /api/v4/users?username=<name>`, classifying a missing account DELETED, an id mismatch RECLAIMED, and a `blocked`/`deactivated` account SUSPENDED (never reported as alive) (#1667). Previously it printed a GitHub-only notice and checked zero identities on any non-GitHub repo.
