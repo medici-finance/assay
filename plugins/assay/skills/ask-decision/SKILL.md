@@ -63,11 +63,11 @@ for a single workable option.
 deskinbox walk --item 1 owner/repo [owner/repo ...]
 ```
 
-**Before asking, read where the system is stuck:**
-`bash <bundle>/scripts/assay-inbox.sh --flow` prints the pipeline stage by
-stage with the bottleneck named, so an item's Context can say what it is actually holding up —
-and so a question about a stage three steps downstream of the constraint can wait. (`--flow`
-is not yet ported to `deskinbox` — windows-port/15.)
+**Before asking, read where the system is stuck:** `deskinbox flow` prints the pipeline stage
+by stage with the bottleneck named, so an item's Context can say what it is actually holding
+up — and so a question about a stage three steps downstream of the constraint can wait. The
+flow model does not classify, so `deskinbox flow` and the oracle's `--flow` read the same; if
+`deskinbox` is not on `PATH`, fall back to `bash <bundle>/scripts/assay-inbox.sh --flow`.
 
 **Ordering rule: the item whose ruling unblocks the most in-flight work goes first; ties break
 by age, oldest first.** The script's mechanical order is urgency-then-age, which is the
@@ -240,11 +240,18 @@ Then present `k+1`.
 
 ## Rendering the queue as a page
 
-For decisions the driver wants to read away from a terminal (`--html` is not yet ported to
-`deskinbox` — windows-port/15; this still runs the bash oracle):
+For decisions the driver wants to read away from a terminal, render the page with the bash
+oracle, because its cards carry the screen's class line:
 
 ```
 bash <bundle>/scripts/assay-inbox.sh --html /path/to/inbox.html owner/repo
+```
+
+Where the oracle cannot run, `deskinbox html` writes the same page without the class line
+(the oracle's `--no-screen` page) — say so to the driver when handing it over:
+
+```
+deskinbox html /path/to/inbox.html owner/repo
 ```
 
 One self-contained file — inline CSS, no scripts, no external assets, the only links are the
