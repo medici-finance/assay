@@ -554,6 +554,12 @@ embedded in the binary, so a fleet on one pinned release is a fleet on one set o
 section is the DESK's bar — what a review must show before the desk acts on it, plus the
 house-specific detail a public, generic kit cannot carry.** Edit a clause here, check the kit.
 
+- **Prompt-audit (scoped) — on any PR touching a `SKILL.md`, a skill `references/*.md`, or a
+  `CLAUDE.md`.** Run the review kit's scoped prompt-audit clause (`review-prompt.md` §14)
+  against the changed lines, target model = the fleet's current default, and post High/Medium
+  findings only under a `Prompt-audit (scoped):` heading in the verdict. Clause 12's blocking
+  boundary governs — most findings are follow-ups, not blockers, unless the change deletes or
+  weakens a STOP/guard-refusal line.
 - **CI is the FIRST check; a red or missing rollup auto-BLOCKS .** The reviewer runs
   `gh pr checks <N> -R <slug>` before anything else. ANY check FAILURE — or a required check
   missing/never-run — is an automatic blocker → `--request-changes` with the failing job names and

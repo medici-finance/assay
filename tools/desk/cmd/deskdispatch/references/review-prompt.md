@@ -322,3 +322,32 @@ the finding identities survive an agent change.
   from advisory to blocking is recorded with changed impact or new evidence.
 - **A record missing its authenticated actor or head is could-not-check** — it clears
   nothing. Report it as itself; never round it up to a resolution.
+
+## 14. Scoped prompt-audit — on a PR that changes prompt text
+
+**Trigger.** This PR changes a `**/SKILL.md`, a skill `references/*.md`, or any `CLAUDE.md`.
+
+**Action.** Before recording your verdict, run Anthropic's prompt-audit procedure
+(`skills/claude-api/shared/prompt-audit.md` in `anthropics/skills`) scoped to the CHANGED LINES
+of those files only, target model = the fleet's current default model. Post High/Medium
+findings only, each with `file:line`, under a `Prompt-audit (scoped):` heading in your review —
+never a Low-confidence or `flag` item, and never a finding on a pre-existing line the diff did
+not touch.
+
+Apply the procedure's own keep list (context is never cruft; length alone is never cruft;
+fragile operations keep their exact scripts; trigger/description text may carry calibrated
+urgency; format-pinning examples stay; working redundancy is not cruft) plus this house
+resolution for dates and incident IDs: a ruling date attached to a rule (e.g. "(2026-08-24)")
+is kept — it is provenance — and never flagged for removal; incident narrative used to justify
+a rule (what went wrong, which PR, "measured on…") is `move`, capped at Medium confidence,
+never `remove` outright. A finding whose only evidence is "carries a date or incident ID" does
+not clear High.
+
+Clause 12's blocking boundary governs a prompt-audit finding exactly as it governs any other:
+it blocks only on one of the four bases there — most often safety-consequence, where the
+changed lines delete or weaken a STOP/guard-refusal line. A finding on a pre-existing line your
+scoped audit happens to notice, but the diff did not touch, is a follow-up, never a blocker.
+
+If a finding's location was already named by a prior fleet-wide prompt-audit baseline as a
+pending disposition (accepted, declined, or flagged against a broader pending rewrite), cite
+that baseline instead of re-opening it as a fresh finding under your own verdict.
