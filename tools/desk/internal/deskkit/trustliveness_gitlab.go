@@ -35,7 +35,32 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
+
+// gitlabAccountFetcherTimeout bounds one GetAccount call — this fetcher never blocks a
+// liveness run indefinitely on a slow or hung instance.
+const gitlabAccountFetcherTimeout = 15 * time.Second
+
+// gitlabAccountFetcherMaxBody bounds how much of a response body this fetcher will read — a
+// defensive cap (matching compositionsource.go's existing io.LimitReader pattern in this
+// package) never trusted to a hostile/misconfigured instance's Content-Length.
+const gitlabAccountFetcherMaxBody = 1 << 20 // 1 MiB
+
+// gitlabAccountFetcherDefaultClient is the production client HTTPGitLabAccountFetcher falls
+// back to when Client is unset — unlike http.DefaultClient, it REFUSES to follow a redirect
+// (pr1669-sec-F2). GetAccount sends the PRIVATE-TOKEN header, a custom header Go's net/http
+// does NOT strip on a cross-host redirect (only Authorization/Cookie-class headers are
+// stripped — the GitHub sibling, HTTPAccountFetcher, is safe because it sends Authorization).
+// A redirecting/misconfigured/hostile instance could otherwise receive the token.
+// CheckRedirect returning http.ErrUseLastResponse makes any 3xx response land in
+// GetAccount's existing non-2xx branch (could-not-check), never followed.
+var gitlabAccountFetcherDefaultClient = &http.Client{
+	Timeout: gitlabAccountFetcherTimeout,
+	CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
 
 // HTTPGitLabAccountFetcher implements AccountFetcher against a GitLab instance's REST v4
 // users endpoint. Same construction shape as HTTPAccountFetcher: BaseURL defaults to
@@ -61,7 +86,7 @@ func (f *HTTPGitLabAccountFetcher) client() *http.Client {
 	if f.Client != nil {
 		return f.Client
 	}
-	return http.DefaultClient
+	return gitlabAccountFetcherDefaultClient
 }
 
 // gitlabUserWire is the subset of GitLab's users-list payload this fetcher reads.
@@ -97,7 +122,7 @@ func (f *HTTPGitLabAccountFetcher) GetAccount(login string) (*Account, error) {
 		return nil, fmt.Errorf("GET %s returned HTTP %d", reqURL, resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, gitlabAccountFetcherMaxBody))
 	if err != nil {
 		return nil, err
 	}

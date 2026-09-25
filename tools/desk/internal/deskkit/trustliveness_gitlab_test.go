@@ -287,3 +287,216 @@ func TestProbeLoginNeverSuffixesGitLab(t *testing.T) {
 		t.Fatalf("probeLogin(GitLab bot) = %q, want the bare login unsuffixed", got)
 	}
 }
+
+// TestClassifyLivenessGitLabMissingStateIsCouldNotCheck is the CLASS GUARD for
+// pr1669-sec-F1: GitLab's users API always reports a `state` field, so a GitLab account
+// response carrying an EMPTY state is a partial/malformed read, never confirmation the
+// account is active. On the pre-fix code (classifyLiveness's state check reads
+// `state != "" && state != "active"`) an empty state falls through every branch and
+// classifies Alive — this is the negative control: an empty-state GitLab account must NEVER
+// classify Alive, and must classify could-not-check specifically (not some other class).
+func TestClassifyLivenessGitLabMissingStateIsCouldNotCheck(t *testing.T) {
+	identities := []RosterIdentity{
+		{Login: "desk-worker", PinnedID: 5001, Source: "bot", Forge: ForgeGitLab},
+	}
+	fetcher := &stubAccountFetcher{
+		accounts: map[string]*Account{
+			// id and login both match the pin; State is the zero value — exactly what a
+			// partial/malformed GitLab response (or a stub omitting the field) looks like on
+			// the wire.
+			"desk-worker": {Login: "desk-worker", ID: 5001, State: ""},
+		},
+	}
+	findings := CheckRosterLiveness(fetcher, identities)
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	if findings[0].Class == LivenessAlive {
+		t.Fatalf("a GitLab account with no state field classified Alive — the negative control this test exists for")
+	}
+	if findings[0].Class != LivenessCouldNotCheck {
+		t.Fatalf("GitLab account with no state field classified %q, want LivenessCouldNotCheck", findings[0].Class)
+	}
+}
+
+// TestClassifyLivenessGitHubEmptyStateStillAlive is the POSITIVE control paired with the
+// test above: GitHub's account read carries no state field at all (forge.go's Account.State
+// doc: "never defaulted to active", but also never SET for GitHub), so an empty state on a
+// GitHub identity must keep classifying Alive exactly as before — the sec-F1 fix is
+// GitLab-scoped only, per the finding's own instruction to leave the GitHub path unchanged.
+func TestClassifyLivenessGitHubEmptyStateStillAlive(t *testing.T) {
+	identities := []RosterIdentity{
+		{Login: "alive-human", PinnedID: 1001, Source: "human"}, // Forge zero value = GitHub
+	}
+	fetcher := &stubAccountFetcher{
+		accounts: map[string]*Account{
+			"alive-human": {Login: "alive-human", ID: 1001, State: ""},
+		},
+	}
+	findings := CheckRosterLiveness(fetcher, identities)
+	if findings[0].Class != LivenessAlive {
+		t.Fatalf("GitHub identity with empty (never-set) state classified %q, want LivenessAlive — "+
+			"the sec-F1 fix must not touch the GitHub path", findings[0].Class)
+	}
+}
+
+// TestClassifyLivenessGitLabUnpinnedBlockedReportsSuspended is the CLASS GUARD for
+// pr1669-F3: on the pre-fix code, classifyLiveness's `id.PinnedID == 0` branch returns
+// LivenessUnpinned BEFORE the state check ever runs, so an unpinned GitLab identity whose
+// account is blocked classifies unpinned (advisory) and the blocked state is never
+// surfaced. This is the negative control: an unpinned + blocked GitLab identity must NEVER
+// classify Unpinned, and must classify Suspended, with the state named in Detail.
+func TestClassifyLivenessGitLabUnpinnedBlockedReportsSuspended(t *testing.T) {
+	identities := []RosterIdentity{
+		{Login: "desk-unpinned", PinnedID: 0, Source: "bot", Forge: ForgeGitLab},
+	}
+	fetcher := &stubAccountFetcher{
+		accounts: map[string]*Account{
+			"desk-unpinned": {Login: "desk-unpinned", ID: 77, State: "blocked"},
+		},
+	}
+	findings := CheckRosterLiveness(fetcher, identities)
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	if findings[0].Class == LivenessUnpinned {
+		t.Fatalf("an unpinned GitLab identity whose account is blocked classified Unpinned — " +
+			"the negative control this test exists for; the blocked state was never surfaced")
+	}
+	if findings[0].Class != LivenessSuspended {
+		t.Fatalf("unpinned + blocked GitLab account classified %q, want LivenessSuspended", findings[0].Class)
+	}
+	if !strings.Contains(findings[0].Detail, "blocked") {
+		t.Fatalf("Detail %q does not name the blocked state", findings[0].Detail)
+	}
+}
+
+// TestClassifyLivenessGitLabEmptyResultDeletedNamesHiddenCaveat is the CLASS GUARD for
+// pr1669-F1: GitLab hides blocked/banned/ldap_blocked accounts from a non-admin token's user
+// search entirely (UsersFinder#base_scope / FORBIDDEN_SEARCH_STATES upstream) — a desk
+// forge credential (project/group/service-account token) IS a non-admin caller, so an empty
+// `GET /users?username=` result does not unambiguously mean "deleted"; it can equally mean
+// "hidden from this token". On the pre-fix code the DELETED Detail claims only "no longer
+// resolves to any GitHub/GitLab account", with no such caveat — this test requires the
+// caveat text to be present for a GitLab identity.
+func TestClassifyLivenessGitLabEmptyResultDeletedNamesHiddenCaveat(t *testing.T) {
+	identities := []RosterIdentity{
+		{Login: "ghost", PinnedID: 5004, Source: "bot", Forge: ForgeGitLab},
+	}
+	fetcher := &stubAccountFetcher{
+		errs: map[string]error{"ghost": ErrAccountNotFound},
+	}
+	findings := CheckRosterLiveness(fetcher, identities)
+	if findings[0].Class != LivenessDeleted {
+		t.Fatalf("not-found GitLab account classified %q, want LivenessDeleted", findings[0].Class)
+	}
+	detail := strings.ToLower(findings[0].Detail)
+	for _, want := range []string{"blocked", "hidden"} {
+		if !strings.Contains(detail, want) {
+			t.Fatalf("DELETED Detail %q does not name the non-admin-visibility caveat (missing %q) — "+
+				"an empty GitLab result can mean deleted OR hidden from this token, and the notice "+
+				"must say so, not claim unambiguous deletion", findings[0].Detail, want)
+		}
+	}
+}
+
+// TestRenderLivenessNoticesNamesGitLabForge is the CLASS GUARD for pr1669-F2/pr1669-sec-F3:
+// on the pre-fix code, four strings in trustliveness.go hard-coded "GitHub" and "(404)" on
+// what is now a forge-agnostic path, so a GitLab DELETED/RECLAIMED/could-not-check notice
+// named the wrong forge and a 404 that never happened. This asserts a GitLab-identity
+// DELETED and RECLAIMED notice both name GitLab, never GitHub, and never claim "(404)".
+func TestRenderLivenessNoticesNamesGitLabForge(t *testing.T) {
+	glID := RosterIdentity{Login: "svc2", PinnedID: 9, Source: "bot", Forge: ForgeGitLab}
+	findings := []LivenessFinding{
+		{Identity: glID, Class: LivenessDeleted, Detail: "d"},
+		{Identity: glID, Class: LivenessReclaimed, Detail: "d"},
+	}
+	lines := RenderLivenessNotices(findings)
+	if len(lines) != 2 {
+		t.Fatalf("got %d lines, want 2", len(lines))
+	}
+	for _, l := range lines {
+		if strings.Contains(l, "GitHub") {
+			t.Fatalf("GitLab identity notice names GitHub: %q", l)
+		}
+		if !strings.Contains(l, "GitLab") {
+			t.Fatalf("GitLab identity notice does not name GitLab: %q", l)
+		}
+		if strings.Contains(l, "(404)") {
+			t.Fatalf("GitLab identity notice claims a 404 that never happened: %q", l)
+		}
+	}
+}
+
+// TestClassifyLivenessGitLabDeletedDetailNamesGitLabNot404 mirrors the render test above at
+// the classifier's own Detail string (before RenderLivenessNotices wraps it), for the
+// DELETED and could-not-check branches inside classifyLiveness itself.
+func TestClassifyLivenessGitLabDeletedDetailNamesGitLabNot404(t *testing.T) {
+	identities := []RosterIdentity{
+		{Login: "ghost", PinnedID: 5004, Source: "bot", Forge: ForgeGitLab},
+	}
+	fetcher := &stubAccountFetcher{
+		errs: map[string]error{"ghost": ErrAccountNotFound},
+	}
+	findings := CheckRosterLiveness(fetcher, identities)
+	if strings.Contains(findings[0].Detail, "GitHub") {
+		t.Fatalf("GitLab DELETED Detail names GitHub: %q", findings[0].Detail)
+	}
+	if strings.Contains(findings[0].Detail, "(404)") {
+		t.Fatalf("GitLab DELETED Detail claims a 404 that never happened: %q", findings[0].Detail)
+	}
+
+	identities2 := []RosterIdentity{
+		{Login: "desk-worker", PinnedID: 5001, Source: "bot", Forge: ForgeGitLab},
+	}
+	fetcher2 := &stubAccountFetcher{
+		errs: map[string]error{"desk-worker": errors.New("500 internal server error")},
+	}
+	findings2 := CheckRosterLiveness(fetcher2, identities2)
+	if strings.Contains(findings2[0].Detail, "GitHub") {
+		t.Fatalf("GitLab could-not-check Detail names GitHub: %q", findings2[0].Detail)
+	}
+}
+
+// TestHTTPGitLabAccountFetcherDoesNotFollowRedirect is the CLASS GUARD for pr1669-sec-F2:
+// GetAccount sends PRIVATE-TOKEN through f.client(), which in production is
+// http.DefaultClient (GitLabForge is constructed with a nil Client). Go's default client
+// FOLLOWS 3xx responses and does NOT strip a custom PRIVATE-TOKEN header on a cross-host
+// redirect (unlike Authorization, which IS stripped — the GitHub sibling is safe because it
+// uses Authorization). A redirecting/misconfigured/hostile instance could otherwise receive
+// the token. This drives GetAccount with Client left nil (the production path) against a
+// primary server that 302s to a second server, and asserts (a) the second server never
+// receives the request at all, and (b) GetAccount returns a non-nil, non-ErrAccountNotFound
+// error — the redirect must be treated as could-not-check, never followed and never
+// misread as "not found".
+func TestHTTPGitLabAccountFetcherDoesNotFollowRedirect(t *testing.T) {
+	var secondServerHit bool
+	second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secondServerHit = true
+		if got := r.Header.Get("PRIVATE-TOKEN"); got != "" {
+			t.Errorf("PRIVATE-TOKEN reached the redirect target: %q", got)
+		}
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer second.Close()
+
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, second.URL+"/api/v4/users?username=desk-worker", http.StatusFound)
+	}))
+	defer first.Close()
+
+	// Client deliberately left nil so this exercises the SAME client() fallback production
+	// uses — a Client explicitly injected by a test (as every other test in this file does
+	// via srv.Client()) would not prove anything about the production default.
+	f := &HTTPGitLabAccountFetcher{Token: "tok", BaseURL: first.URL}
+	_, err := f.GetAccount("desk-worker")
+	if secondServerHit {
+		t.Fatal("the redirect target was reached — PRIVATE-TOKEN was forwarded across a cross-host redirect")
+	}
+	if err == nil {
+		t.Fatal("GetAccount followed a redirect silently and returned no error")
+	}
+	if err == ErrAccountNotFound {
+		t.Fatal("a redirect classified as ErrAccountNotFound — must be a distinct could-not-check-shaped error, never DELETED")
+	}
+}

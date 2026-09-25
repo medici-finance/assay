@@ -518,18 +518,31 @@ a different identity set per forge:
   whose entry is `gitlab:`-qualified — GitLab has no human/bless roster of its own, only
   service accounts (`GitLabRosterIdentities`, `trustliveness_gitlab.go`). It looks an
   identity up with GitLab's exact-match `GET /api/v4/users?username=<name>` and reads both
-  the returned numeric id and the account's `state`.
+  the returned numeric id and the account's `state`. GitLab's users API always reports a
+  `state` field on a matching entry; a response that does not is treated as a
+  partial/malformed read — **could-not-check**, never defaulted to active.
 
 The classes:
 
 - **deleted** — the login no longer resolves to any account (a GitHub 404, or an EMPTY
   GitLab users-list response — GitLab's endpoint never 404s on a no-match query, it returns
-  `200 []`).
+  `200 []`). On GitLab this is **not unambiguous**: GitLab hides `blocked`/`banned`/
+  `ldap_blocked` accounts from a non-admin token's user search entirely (GitLab's own
+  `UsersFinder#base_scope`/`FORBIDDEN_SEARCH_STATES`), and a desk forge credential
+  (project/group/service-account token) IS a non-admin caller — so an empty result means the
+  account was deleted, OR that it is blocked/banned/ldap_blocked and simply hidden from this
+  token. The DELETED notice for a GitLab identity says so; a GitHub 404 carries no such
+  caveat.
 - **reclaimed** — the login resolves, but to a DIFFERENT numeric id than the one pinned —
   one of the classes the check actually exists to catch.
-- **suspended** — the login resolves to the PINNED id, but the forge reports the account
-  `blocked` or `deactivated` (GitLab-only today — GitHub's account read exposes no such
-  field). Never reported as alive, even though the id and login both check out.
+- **suspended** — the login resolves, but the forge reports the account in any non-`active`
+  state (GitLab-only today — GitHub's account read exposes no such field). In practice this
+  fires for the GitLab states a non-admin token's user search does NOT hide —
+  `deactivated`, `blocked_pending_approval`, and similar — since `blocked`/`banned`/
+  `ldap_blocked` accounts are hidden entirely and classify **deleted** instead (see above).
+  Checked before identity-continuity (unpinned/reclaimed/renamed), so a non-active GitLab
+  account is reported suspended even when the identity is unpinned or its id has moved.
+  Never reported as alive.
 - **renamed** — the pinned id's canonical login changed (advisory).
 - **unpinned** — the login resolves, but the roster carries no id to compare against
   (advisory: pin one).

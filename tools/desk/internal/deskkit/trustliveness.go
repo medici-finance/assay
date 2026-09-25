@@ -60,10 +60,13 @@ import (
 	"strings"
 )
 
-// ErrAccountNotFound is the canonical signal that a login no longer resolves to any GitHub
-// account (a 404 from GET /users/{login}). It is a distinct KNOWN state — the account was
-// deleted, or the login is simply gone — never conflated with a transport failure: see
-// HTTPAccountFetcher.GetAccount and LivenessDeleted vs LivenessCouldNotCheck below.
+// ErrAccountNotFound is the canonical signal that a login no longer resolves to any account
+// on its forge (a 404 from GitHub's GET /users/{login}, or an EMPTY result from GitLab's
+// GET /users?username=). It is a distinct KNOWN state — the account was deleted, the login
+// is simply gone, OR (GitLab non-admin callers only, see classifyLiveness's DELETED Detail
+// for a GitLab identity) the account is blocked/banned/ldap_blocked and hidden from this
+// token — never conflated with a transport failure: see HTTPAccountFetcher.GetAccount,
+// HTTPGitLabAccountFetcher.GetAccount, and LivenessDeleted vs LivenessCouldNotCheck below.
 var ErrAccountNotFound = errors.New("forge account not found")
 
 // AccountFetcher is the minimal GitHub API surface the liveness check needs: one login in,
@@ -249,13 +252,17 @@ const (
 	// pinned id for it (PinnedID == 0), so identity continuity cannot be checked at all.
 	// Advisory: recommend pinning.
 	LivenessUnpinned LivenessClass = "unpinned"
-	// LivenessSuspended: the login resolves to the pinned id, but the forge reports the
-	// account in a non-active state — GitLab's "blocked" or "deactivated" (assay#1667).
-	// This class is a structural no-op on the GitHub path: Account.State stays "" on every
+	// LivenessSuspended: the account resolves, but the forge reports it in any non-"active"
+	// state — GitLab's "deactivated", "blocked_pending_approval", and so on (assay#1667). In
+	// practice this fires for the GitLab states a non-admin token's user search does NOT hide
+	// — "blocked"/"banned"/"ldap_blocked" are hidden entirely from that caller and surface as
+	// LivenessDeleted instead (pr1669-F1; see the DELETED Detail for a GitLab identity). This
+	// class is a structural no-op on the GitHub path: Account.State stays "" on every
 	// GitHub-sourced read (forge_github.go's account read exposes no such field), so
-	// classifyLiveness never produces it there. Never coerced into LivenessAlive: a
-	// blocked/deactivated account still resolves and still carries the right id, but it is
-	// not a live trusted identity.
+	// classifyLiveness never produces it there. Never coerced into LivenessAlive, and checked
+	// BEFORE identity-continuity (unpinned/reclaimed/renamed), so an unpinned or reclaimed
+	// GitLab identity's non-active state is still surfaced (pr1669-F3) — a non-active account
+	// still resolves and may still carry the right id, but it is not a live trusted identity.
 	LivenessSuspended LivenessClass = "suspended"
 	// LivenessCouldNotCheck: the fetcher failed for any reason OTHER than a clean 404 —
 	// transport error, timeout, auth failure, malformed response. NEVER coerced into
@@ -314,29 +321,98 @@ func probeLogin(id RosterIdentity) string {
 	return id.Login
 }
 
+// forgeDisplayName returns the human-readable forge name for a NOTICE/Detail string. The
+// zero value (unset Forge, meaning GitHub — see RosterIdentity.Forge's doc comment) and
+// ForgeGitHub both read "GitHub"; ForgeGitLab reads "GitLab"; anything else falls back to
+// the raw ForgeKind string rather than guessing (pr1669-F2/pr1669-sec-F3: four strings here
+// used to hard-code "GitHub" on what is now a forge-agnostic path).
+func forgeDisplayName(k ForgeKind) string {
+	switch k {
+	case ForgeGitLab:
+		return "GitLab"
+	case ForgeGitHub, "":
+		return "GitHub"
+	default:
+		return string(k)
+	}
+}
+
+// classifyAccountState checks acct.State BEFORE classifyLiveness's unpinned/reclaimed/
+// renamed branches, so a blocked/suspended account is reported as such even when the
+// identity carries no pinned id to compare against (pr1669-F3: on the pre-fix code the
+// PinnedID==0 branch ran first and swallowed the state entirely for an unpinned identity).
+//
+// GitLab's users API always reports a `state` field, so an EMPTY state on a GitLab response
+// is a partial/malformed read, never confirmation the account is active (pr1669-sec-F1) —
+// that classifies could-not-check. GitHub's account read carries no state field at all
+// (forge.go's Account.State doc: never defaulted to active, but also never SET for GitHub),
+// so an empty state on a GitHub identity is the ordinary, unremarkable case and this leaves
+// it to the existing branches below (matched=false) — the sec-F1 fix is GitLab-scoped only.
+func classifyAccountState(id RosterIdentity, probe string, acct *Account) (class LivenessClass, detail string, matched bool) {
+	state := strings.ToLower(strings.TrimSpace(acct.State))
+	switch {
+	case id.isGitLab() && state == "":
+		return LivenessCouldNotCheck, fmt.Sprintf(
+				"login %q resolved on GitLab with no state field in the response — GitLab's users "+
+					"API always reports one, so a missing state is treated as a partial/malformed "+
+					"read, never as confirmation the account is active", probe),
+			true
+	case id.isGitLab() && state != "active":
+		return LivenessSuspended, fmt.Sprintf(
+				"login %q resolves to id %d, but its current forge-reported state is %q, not active — "+
+					"never reported as alive", probe, acct.ID, state),
+			true
+	case !id.isGitLab() && state != "" && state != "active":
+		return LivenessSuspended, fmt.Sprintf(
+				"login %q resolves to id %d, but its current forge-reported state is %q, not active — "+
+					"never reported as alive", probe, acct.ID, state),
+			true
+	}
+	return "", "", false
+}
+
 // classifyLiveness runs the classification decision table for one identity. See the
-// LivenessClass constants above for what each outcome means. It probes GitHub at
-// probeLogin(id) (bot identities get the "[bot]" suffix — see probeLogin) but keeps
-// Identity.Login as the bare, roster-configured login throughout, so a caller/renderer always
-// sees the identity in the shape the roster itself uses.
+// LivenessClass constants above for what each outcome means. It probes the identity's forge
+// at probeLogin(id) (bot identities get the "[bot]" suffix on GitHub — see probeLogin) but
+// keeps Identity.Login as the bare, roster-configured login throughout, so a caller/renderer
+// always sees the identity in the shape the roster itself uses.
 func classifyLiveness(fetcher AccountFetcher, id RosterIdentity) LivenessFinding {
 	probe := probeLogin(id)
 	acct, err := fetcher.GetAccount(probe)
 	if err != nil {
 		if errors.Is(err, ErrAccountNotFound) {
+			detail := fmt.Sprintf(
+				"login %q no longer resolves to any %s account — it was pinned to id %d",
+				probe, forgeDisplayName(id.Forge), id.PinnedID)
+			if id.isGitLab() {
+				// pr1669-F1: GitLab hides blocked/banned/ldap_blocked accounts from a
+				// non-admin token's user search entirely (upstream GitLab's
+				// UsersFinder#base_scope / FORBIDDEN_SEARCH_STATES) — a desk forge
+				// credential (project/group/service-account token) IS a non-admin caller,
+				// so an empty result here does NOT unambiguously mean "deleted".
+				detail = fmt.Sprintf(
+					"login %q returned no matching GitLab account — it was pinned to id %d. "+
+						"GitLab hides blocked, banned, and ldap_blocked accounts from a "+
+						"non-admin token's user search entirely, so this means the account "+
+						"was deleted, OR that it is blocked/banned/ldap_blocked and simply "+
+						"hidden from this token — not distinguishable from this read alone",
+					probe, id.PinnedID)
+			}
 			return LivenessFinding{
 				Identity: id,
 				Class:    LivenessDeleted,
-				Detail: fmt.Sprintf(
-					"login %q no longer resolves to any GitHub account (404) — it was pinned to id %d",
-					probe, id.PinnedID),
+				Detail:   detail,
 			}
 		}
 		return LivenessFinding{
 			Identity: id,
 			Class:    LivenessCouldNotCheck,
-			Detail:   fmt.Sprintf("could not verify login %q against GitHub: %v", probe, err),
+			Detail:   fmt.Sprintf("could not verify login %q against %s: %v", probe, forgeDisplayName(id.Forge), err),
 		}
+	}
+
+	if class, detail, matched := classifyAccountState(id, probe, acct); matched {
+		return LivenessFinding{Identity: id, Class: class, Detail: detail}
 	}
 
 	if id.PinnedID == 0 {
@@ -356,16 +432,6 @@ func classifyLiveness(fetcher AccountFetcher, id RosterIdentity) LivenessFinding
 			Detail: fmt.Sprintf(
 				"login %q now resolves to id %d, not the pinned id %d — a DIFFERENT account now answers to this login",
 				probe, acct.ID, id.PinnedID),
-		}
-	}
-
-	if state := strings.ToLower(strings.TrimSpace(acct.State)); state != "" && state != "active" {
-		return LivenessFinding{
-			Identity: id,
-			Class:    LivenessSuspended,
-			Detail: fmt.Sprintf(
-				"login %q resolves to the pinned id %d, but its current forge-reported state is %q, not active — "+
-					"never reported as alive", probe, id.PinnedID, state),
 		}
 	}
 
@@ -396,12 +462,12 @@ func RenderLivenessNotices(findings []LivenessFinding) []string {
 			continue
 		case LivenessDeleted:
 			lines = append(lines, fmt.Sprintf(
-				"NOTICE: DELETED — trusted %s login %q no longer exists on GitHub. %s",
-				f.Identity.Source, f.Identity.Login, f.Detail))
+				"NOTICE: DELETED — trusted %s login %q no longer exists on %s. %s",
+				f.Identity.Source, f.Identity.Login, forgeDisplayName(f.Identity.Forge), f.Detail))
 		case LivenessReclaimed:
 			lines = append(lines, fmt.Sprintf(
-				"NOTICE: RECLAIMED — trusted %s login %q now points at a DIFFERENT GitHub account. %s",
-				f.Identity.Source, f.Identity.Login, f.Detail))
+				"NOTICE: RECLAIMED — trusted %s login %q now points at a DIFFERENT %s account. %s",
+				f.Identity.Source, f.Identity.Login, forgeDisplayName(f.Identity.Forge), f.Detail))
 		case LivenessRenamed:
 			lines = append(lines, fmt.Sprintf(
 				"NOTICE: renamed — trusted %s login %q: %s",
