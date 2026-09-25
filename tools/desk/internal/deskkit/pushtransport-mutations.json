@@ -64,8 +64,8 @@
     {
       "name": "deskwt add no longer runs the push-transport gate (every worktree it cuts inherits the SSH remote unchallenged)",
       "file": "cmd/deskwt/deskwt.go",
-      "old": "\tif terr := pushTransportGate(dir, \"add\"); terr != nil {\n\t\treturn terr\n\t}",
-      "new": "\t_ = pushTransportGate"
+      "old": "\t\tif terr := pushTransportGate(dir, \"add\"); terr != nil {\n\t\t\treturn terr\n\t\t}",
+      "new": "\t\t_ = pushTransportGate"
     }
   ]
 }

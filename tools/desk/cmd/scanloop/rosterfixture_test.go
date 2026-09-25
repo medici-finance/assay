@@ -89,6 +89,11 @@ func installFixtureRoster() (cleanup func(), err error) {
 }
 
 func TestMain(m *testing.M) {
+	// The test binary doubles as a fake `deskmonitor` for the arming-flow tests (arm_test.go): a
+	// copy of it named deskmonitor on PATH, started with this variable set, plays the poller.
+	if os.Getenv(fakeDeskmonitorEnv) == "1" {
+		os.Exit(fakeDeskmonitorMain())
+	}
 	cleanup, err := installFixtureRoster()
 	if err != nil {
 		panic("cannot install the test-fixture roster: " + err.Error())

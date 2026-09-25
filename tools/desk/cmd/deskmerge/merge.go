@@ -104,6 +104,16 @@ func cmdMerge(args []string, out io.Writer) error {
 			"refused: %s#%d — %s", deskkit.StripControl(o.repo), o.pr, t.rep.ProbeDetail))
 	}
 
+	// Where the push would land, as git resolves it FROM THE SCRATCH WORKTREE the push leaves
+	// from (#1623). resolveRepoRoot checked the fetch URL in the root checkout; the push reads
+	// pushurl / pushInsteadOf, and a linked worktree does not see the root's worktree-scoped
+	// config — so this is asked in the push's own directory, before the budget is charged and
+	// before the dry-run answers, so a rehearsal reports the same refusal the real run would.
+	if err := gatePushDestinations(t.wt.dir, o.repo); err != nil {
+		_ = auditNoop(o, p, t, "push-destination-refused")
+		return err
+	}
+
 	if o.dryRun {
 		fmt.Fprintf(out, "dry-run: would merge %s (%s) into %s#%d and push; nothing written\n",
 			short(t.rep.BaseSHA), p.BaseRefName, o.repo, o.pr)
@@ -316,6 +326,34 @@ func verifyTwoParent(t *trial, sha string, p prInfo) error {
 			"refused: parent 2 is %s but the fetched %s head was %s — the second parent must be the "+
 				"exact base commit this run measured against. Rolled back; nothing pushed.",
 			short(parents[1]), deskkit.StripControl(p.BaseRefName), short(t.rep.BaseSHA)))
+	}
+	return nil
+}
+
+// gatePushDestinations refuses (exit 5) unless `git push origin`, run in dir, would push to
+// exactly ONE destination and that destination names repo. git pushes to every value of a
+// multi-valued pushurl list, so one value naming the repo is not enough; and an insteadOf or
+// pushInsteadOf rule can send a push elsewhere while the configured value still names the
+// repo. A resolution git cannot perform is could-not-check (exit 6).
+func gatePushDestinations(dir, repo string) error {
+	dests, err := originURLs(dir, true)
+	if err != nil {
+		return deskkit.Unverifiable(
+			"could-not-check: cannot resolve where `git push origin` would push from the scratch worktree", err)
+	}
+	if len(dests) != 1 {
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: `git push origin` would push to %d destinations (%s) — git pushes to every "+
+				"remote.origin.pushurl value, and deskmerge pushes to exactly one. Set exactly one push URL "+
+				"naming %s. Nothing was committed or pushed",
+			len(dests), deskkit.StripControl(strings.Join(dests, ", ")), deskkit.StripControl(repo)))
+	}
+	if !originNames(dests[0], repo) {
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: `git push origin` would push to %s, which does not name %s (pushurl, insteadOf or "+
+				"pushInsteadOf resolve it elsewhere) — deskmerge will not push one project's merge to "+
+				"another's. Nothing was committed or pushed",
+			deskkit.StripControl(dests[0]), deskkit.StripControl(repo)))
 	}
 	return nil
 }
