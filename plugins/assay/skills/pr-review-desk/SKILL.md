@@ -1,6 +1,6 @@
 ---
 name: pr-review-desk
-description: Run the PR-review-loop role of the process desk — the standing review window that watches the open-PR queue across the desk's configured repo set (read at boot from `deskroster repos`; this skill carries no list, so it cannot drift from the write boundary the tools enforce), keeps a standing POOL of reviewer slots full (refill on completion, never wave-and-stop; independent reviews — correctness and security of one PR, and reviews of different PRs — run IN PARALLEL, never one after another) so every new/updated PR gets its reviewer(s) within one cadence tick at any age, drives the fix-to-re-review-to-ready cycle, and flips PRs ready-for-human via `deskflip`. Runs SILENT — anything needing a human is a filed GitHub issue (question / help wanted / needs-decision), never console narration; a detected monitor outage or stale board is itself a needs-human condition and is FILED, never silenced. Use when starting or resuming the dedicated review window, when asked to "run the review loop / watch the PR queue / review the PRs", or when the coordinator desk delegates the review half. Role window, no persona (Bob belongs to the-desk only); driver human:<name>; the human merges.
+description: Run the PR-review-loop role of the process desk — the standing review window that watches the open-PR queue across the desk's configured repo set. Use when starting or resuming the dedicated review window, when asked to "run the review loop / watch the PR queue / review the PRs", or when the coordinator desk delegates the review half. Keeps a standing pool of reviewer slots full (refill on completion, reviews run in parallel) so every new/updated PR gets reviewed within one cadence tick, drives the fix-to-re-review-to-ready cycle, and flips PRs ready-for-human via `deskflip`. Runs SILENT — anything needing a human is a filed GitHub issue, never console narration. Role window, no persona; driver human:<name>; the human merges.
 ---
 
 # PR-Review Desk
@@ -890,9 +890,12 @@ concluding anything about install state.
   driver still controls — a draft PR awaiting merge, a filed issue awaiting close, a flip CI or a
   human must still make?* **Yes → default-forward.** Author it, dispatch the worker, open the DRAFT
   PR, make the best-guess call, and NOTIFY — "proceeded on `<default>`; filed as `<repo>#<N>`;
-  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. The
-  `needs-decision` / `question` issue is still filed, naming the default taken, but the ITEM does
-  not park on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
+  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. Take
+  the reversible default, declare it with `deskpr create|edit --decided` (the `## Desk-decided` body
+  section plus the `desk-decided` label), and never ask first: the block is the notice the driver
+  reads at merge time, so a default declared there files NO `needs-decision` / `question` issue —
+  only a default no PR carries still files one, naming the default taken, and the ITEM never parks
+  on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
   the record, and corrected by the gate. **No → STOP and wait for the human.** A wrong guess that
   lands irreversibly or reaches outside the gate is caught by nobody declining a merge. That set is
   fixed, never judged case by case: merge, a ready-flip that is not this role's, any `main` push
