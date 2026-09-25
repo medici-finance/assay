@@ -192,6 +192,18 @@ its own unit test rather than leaving the SPOF note's claim unimplemented.
 **Witness table.** Written by `statusgen verifyrun --brief`, the Evidence write path; each Output
 cell is a digest of the row's output, not the output itself.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./internal/weight/ -count=1` | pass exit=0 | sha256:a87ff370ce4f | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/weight/ -run TestCountsFixture -count=1 -v` | pass exit=0 | sha256:25650e32d16a | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && awk 'BEGIN{print "package main"; print "import \"github.com/medici-finance/assay/tools/desk/internal/deskkit\""; for(i=0;i<50;i++) print "var _ = deskkit.Refused(\"weight mutation\")"}' > cmd/deskfile/zz_weight_mutation.go && go test ./internal/weight/ -run TestCeiling -count=1 -args -mode=blocking > /tmp/bl03-mut.out 2>&1; rc=$?; rm -f cmd/deskfile/zz_weight_mutation.go; test $rc -ne 0 && grep -c 'refusals: .* > ceiling' /tmp/bl03-mut.out` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 3a | `cd tools/desk && awk 'BEGIN{print "package main"; print "import \"github.com/medici-finance/assay/tools/desk/internal/deskkit\""; for(i=0;i<50;i++) print "var _ = deskkit.Refused(\"weight mutation\")"}' > cmd/deskfile/zz_weight_mutation.go && go test ./internal/weight/ -run TestCeiling -count=1 -v > /tmp/bl03-adv.out 2>&1; rc=$?; rm -f cmd/deskfile/zz_weight_mutation.go; test $rc -eq 0 && grep -c 'GROWTH-NOTICE refusals:' /tmp/bl03-adv.out` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 3b | `head -1 tools/desk/internal/weight/ceiling.txt` | pass exit=0 | sha256:280c55048373 | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v \| grep -cE 'weight: verbs=[0-9]+ flags=[0-9]+ refusals=[0-9]+ ruletext=[0-9]+ golines=[0-9]+$'` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v -args -rev=f7bde6bfa \| grep -cE 'weight: verbs=[0-9]+ flags=[0-9]+ refusals=[0-9]+ ruletext=[0-9]+ golines=[0-9]+$'` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v -args -root="$(mktemp -d)" \| grep -c 'ruletext=could-not-check'` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `v=$(for d in tools/desk/cmd/*/; do grep -lq '^package main' "$d"*.go 2>/dev/null && echo x; done \| wc -l \| tr -d ' '); cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v \| grep -c "weight: verbs=$v "` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+
 ## Review
 Gate: model (from frontmatter). The reviewer checks the fixture decoys actually exercise each
 exclusion. A counter that counts `_test.go` refusals would pass rows 1 and 4 and fail only
