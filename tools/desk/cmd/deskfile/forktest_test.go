@@ -5,8 +5,7 @@ import (
 	"testing"
 )
 
-// forktest_test.go — table tests for the pure `### Fork test` block parser (forktest.go,
-// attention-budget/13). No forge, no env, no CLI dispatch here; the integration behaviour
+// forktest_test.go — table tests for the pure `### Fork test` block parser (forktest.go). No forge, no env, no CLI dispatch here; the integration behaviour
 // (what `deskfile new` DOES with a parsed result) is forkgate_test.go.
 
 // validForkTestBlock is a well-formed, two-option block with `caught-by: nothing` — an
@@ -28,7 +27,7 @@ ruled-check: searched the tracker for "the same question" → no prior ruling fo
 // valid).
 const onlyOneWorkableOptionBlock = `### Fork test
 
-option: A — open the port | works-because: nothing else in the merged work can serve the request | consequence: the service becomes reachable
+option: A — open the port | works-because: nothing else in the landed work can serve the request | consequence: the service becomes reachable
 default: A
 caught-by: draft-pr — #401
 ruled-check: searched the tracker for the same routing question → no prior ruling on this port
@@ -192,5 +191,46 @@ func TestParseForkTestSectionEndsAtNextHeading(t *testing.T) {
 	r := parseForkTest(body)
 	if len(r.Options) != 2 {
 		t.Fatalf("len(Options) = %d, want 2 (the stray option: line under the NEXT heading must not be absorbed)", len(r.Options))
+	}
+}
+
+// TestParseForkTestDefaultAcceptsTrailingText — `default: A — keep the current default` (the
+// letter plus text, the same shape `option:` and `caught-by:` lines take) is a default
+// naming A, never "no `default:` line found".
+func TestParseForkTestDefaultAcceptsTrailingText(t *testing.T) {
+	body := strings.Replace(validForkTestBlock, "default: A\n", "default: A — keep the current default\n", 1)
+	r := parseForkTest(body)
+	if !r.Structural() {
+		t.Fatalf("Structural() = false, want true; errors: %v", r.Errors)
+	}
+	if r.Default != "A" {
+		t.Fatalf("Default = %q, want A", r.Default)
+	}
+}
+
+// TestParseForkTestMalformedDefaultIsNamedNotAbsent — a `default:` line whose value is not a
+// bare option letter is reported as malformed, not as missing.
+func TestParseForkTestMalformedDefaultIsNamedNotAbsent(t *testing.T) {
+	body := strings.Replace(validForkTestBlock, "default: A\n", "default: the first one\n", 1)
+	r := parseForkTest(body)
+	if r.Structural() {
+		t.Fatal("Structural() = true, want false (default names no option letter)")
+	}
+	joined := strings.Join(r.Errors, "\n")
+	if strings.Contains(joined, "no `default:` line found") {
+		t.Errorf("a present-but-malformed default is reported as absent: %v", r.Errors)
+	}
+}
+
+// TestParseForkTestDuplicateOptionLettersRefused — two `option:` lines with the same letter
+// are one option padded into two; the block is not structural and the duplicate is named.
+func TestParseForkTestDuplicateOptionLettersRefused(t *testing.T) {
+	body := strings.Replace(validForkTestBlock, "option: B —", "option: a —", 1)
+	r := parseForkTest(body)
+	if r.Structural() {
+		t.Fatalf("Structural() = true, want false (option letter A used twice); options: %+v", r.Options)
+	}
+	if !strings.Contains(strings.Join(r.Errors, "\n"), "duplicate") {
+		t.Errorf("errors do not name the duplicate letter: %v", r.Errors)
 	}
 }

@@ -307,9 +307,12 @@ issues landed three days later. That is why the two rules sit together.
    refuses it (exit 5) and names the three `--no-fork` re-routes
    (`brief-contradicts-artifact` | `wrong-repo` | `tool-false-positive`); use the one that fits
    instead of forcing a `needs-decision` filing over a question that never had a fork. Two workable
-   options plus a gate you still hold (a draft PR, a flip, an issue close) files on the NOTICE LANE
-   instead — `desk-decided`, off the queue, in the weekly digest with its veto date — unless the item
-   touches the fixed one-way list, which always reaches the human queue whichever option is picked.
+   options plus a gate you still hold (a draft PR, a flip, an issue close) MAY file on the NOTICE
+   LANE instead — `desk-decided`, off the queue, in the weekly digest with its veto date. The tool
+   admits it only on a positive R-3 reversible signal with no one-way term or one-way label, and
+   the same one-way check refuses `--no-fork`; the exact lists are in `tools/desk/README.md`. Any
+   item that is one-way to you stays on the human queue whatever the tool would admit — file it
+   `caught-by: nothing`.
    The decider is the human, and only a verified human account is honored. This is the SINGLE
    decision queue — the intake lane routes into it too, never a second one.
 5. **DUPLICATE — merge the evidence first, and this desk never closes it** (human:<name>, 2026-08-02).

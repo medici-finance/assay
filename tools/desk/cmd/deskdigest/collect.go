@@ -86,8 +86,8 @@ func (c *collection) Partial() bool {
 }
 
 // deskDecidedLabel marks a `deskfile new` filing that took the notice lane (R-3, via the
-// fork-test gate — attention-budget/13): two or more workable options, a gate the driver
-// still holds to catch a wrong guess, no one-way term present. It is applied by the TOOL,
+// fork-test gate): two or more workable options, a gate the driver still holds to catch a
+// wrong guess, a positive reversible signal and no one-way term. It is applied by the TOOL,
 // never by a caller `--label`, and this repo's label inventory does not carry it until
 // deskfile files the first one (deskkit's LabelChange ensure-exists path creates it on first
 // use, the same as deskflip/deskpost's mechanical labels).
@@ -358,7 +358,7 @@ type r3Decision struct {
 // author's marker counts — an untrusted comment claiming the desk decided something
 // would otherwise print in the digest as though the desk had.
 //
-// Two places carry the marker. `deskfile new`'s notice lane (attention-budget/13) writes it
+// Two places carry the marker. `deskfile new`'s notice lane writes it
 // straight into the ISSUE'S OWN BODY at filing time — the filing IS the desk's R-3 act, so
 // there is no separate comment to wait for, and the veto clock starts at the issue's own
 // CreatedAt. Every other R-3 decision (taken by hand, or by a desk annotating an

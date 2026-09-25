@@ -479,7 +479,10 @@ review history (a small-team conference talk on a capped adversarial review loop
 | `<file:line> — <one-line defect>` | `<claim>` — `<commit/PR-comment link>` | `<claim>` — `<review/PR-comment link>` |
 
 File via `deskfile new --raised-by reviewer`, label `needs-decision`, body = the packet table
-plus the PR link, then comment on the PR pointing at the filed issue
+plus the PR link plus the `### Fork test` block `deskfile new` requires of every
+`needs-decision` filing (grammar in `tools/desk/README.md`), with one `option:` per side and
+**`caught-by: nothing`** — the arbiter's call is the human's, so no gate catches a wrong guess
+and the packet never takes the notice lane — then comment on the PR pointing at the filed issue
 (`references/out-of-scope-filing.md`'s dual-track dedupe applies if a packet for this class is
 already open). `authorization-needed` stays on the PR — the packet is a human fork, not a flip,
 and does not touch ready-flip ownership, human merge, or the security carve-out.

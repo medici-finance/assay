@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// forktest.go — the `### Fork test` block a `needs-decision` filing must carry (brief
-// attention-budget/13): the options that can actually work, the default, the human-held
+// forktest.go — the `### Fork test` block a `needs-decision` filing must carry: the options that can actually work, the default, the human-held
 // gate that would catch a wrong guess on that default, and the search that showed the
 // question was not already ruled. Pure parser: no I/O, no clock, no network — deskfile's
 // `new` flow (deskfile.go) decides refuse / re-route / notice-lane / needs-decision from the
@@ -36,7 +37,14 @@ var anyHeadingRe = regexp.MustCompile(`^\s*#{1,6}(\s|$)`)
 // it is".
 var forkOptionLineRe = regexp.MustCompile(`(?i)^[ \t>*_-]*option:[ \t]*([A-Za-z0-9]+)[ \t]*[—–-][ \t]*(.*)$`)
 
-var forkDefaultLineRe = regexp.MustCompile(`(?i)^[ \t>*_-]*default:[ \t]*([A-Za-z0-9]+)[ \t]*$`)
+// forkDefaultAnyRe recognises a `default:` line whatever its value, so a malformed value is
+// reported as malformed, never as "no `default:` line found".
+var forkDefaultAnyRe = regexp.MustCompile(`(?i)^[ \t>*_-]*default:[ \t]*(.*)$`)
+
+// forkDefaultValueRe reads the option letter off a recognised default line's value: a bare
+// letter, optionally followed by " — <text>" (the same letter-dash-text shape `option:` and
+// `caught-by:` lines take), e.g. `default: A` or `default: A — keep the current default`.
+var forkDefaultValueRe = regexp.MustCompile(`^([A-Za-z0-9]+)[ \t]*(?:[—–-][ \t]*.*)?$`)
 
 // forkCaughtByAnyRe recognises a `caught-by:` line regardless of whether its value is one of
 // the closed set, so an invalid value is reported as "invalid", never silently as "absent".
@@ -58,7 +66,7 @@ const (
 	caughtByNothing    = "nothing"
 )
 
-// The three closed values --no-fork takes (facts, attention-budget/13).
+// The three closed values --no-fork takes.
 const (
 	noForkBriefContradicts  = "brief-contradicts-artifact"
 	noForkWrongRepo         = "wrong-repo"
@@ -72,18 +80,21 @@ const (
 // step first.
 const deskDecidedLabel = "desk-decided"
 
+// deskDecidedColor is the colour desk-decided is created with on first use (6 hex digits, no
+// "#", as every other ensure-exists caller passes one).
+const deskDecidedColor = "c5def5"
+
 // deskDecidedMarker is the SAME machine-readable marker deskdigest's r3MarkerRe reads
 // (cmd/deskdigest/collect.go) — one marker, two writers: a desk taking an R-3 decision by
 // hand posts it as a comment, and this notice lane writes it straight into the filed issue's
 // own body, because the filing IS the decision (no separate comment to wait for).
-const deskDecidedMarker = "<!-- desk-r3-decision v1 -->"
+const deskDecidedMarker = deskkit.DeskDecidedMarker
 
 // repoShapeRe matches an `owner/repo`-shaped token, the minimum content check for
 // --no-fork wrong-repo's "body must name the repo the work belongs in".
 var repoShapeRe = regexp.MustCompile(`\b[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*\b`)
 
-// briefIDShapeRe matches a `<stream>/<NN>`-shaped brief id (this house's convention, e.g.
-// "attention-budget/13") or the `assay:at:<stream>:<NN>` long form, the minimum content
+// briefIDShapeRe matches a `<stream>/<NN>`-shaped brief id (e.g. "example-stream/07") or the `assay:at:<stream>:<NN>` long form, the minimum content
 // check for --no-fork brief-contradicts-artifact's "body must name the brief id".
 var briefIDShapeRe = regexp.MustCompile(`\b[a-z][a-z0-9]*(?:-[a-z0-9]+)*/[0-9]+\b|\bassay:at:[a-z0-9-]+:[0-9]+\b`)
 
@@ -151,6 +162,23 @@ func (o forkOption) Counted() bool {
 	return strings.TrimSpace(o.WorksBecause) != "" && strings.TrimSpace(o.Consequence) != ""
 }
 
+// oneWayHay is the body the one-way / notice-lane checks read: the whole body EXCEPT any
+// `ruled-check:` line. That line is the grammar's record of the search for an existing
+// ruling, so its natural wording ("no prior ruling found") trips the R-3 `ruling` needle on
+// every filing whatever the item is about. Everything else — title, prose, every `option:`
+// line, `caught-by:` — is read.
+func oneWayHay(body string) string {
+	lines := strings.Split(body, "\n")
+	out := lines[:0:0]
+	for _, ln := range lines {
+		if forkRuledCheckLineRe.MatchString(ln) {
+			continue
+		}
+		out = append(out, ln)
+	}
+	return strings.Join(out, "\n")
+}
+
 // forkTestResult is everything parseForkTest read from a body. It is a REPORT, not a
 // verdict — deskfile's cmdNew decides refuse / re-route / notice-lane / needs-decision from
 // these fields; this type draws no conclusion of its own.
@@ -160,6 +188,10 @@ type forkTestResult struct {
 
 	HasDefault bool
 	Default    string // the letter, as written
+	// defaultRecognised is true when a `default:` line was found at all (valid or not);
+	// DefaultRaw is its raw value, for the malformed-value message.
+	defaultRecognised bool
+	DefaultRaw        string
 
 	HasCaughtBy        bool   // a caught-by: line with a value in the closed set
 	CaughtByRaw        string // the raw value, whether or not it was in the closed set (for messages)
@@ -218,7 +250,7 @@ func (r forkTestResult) Workable() bool {
 }
 
 // parseForkTest extracts the "### Fork test" section from body and validates its shape per
-// the facts in brief attention-budget/13. Pure: no I/O, no clock, no network.
+// the grammar in tools/desk/README.md. Pure: no I/O, no clock, no network.
 func parseForkTest(body string) forkTestResult {
 	var r forkTestResult
 	section, found := extractForkSection(body)
@@ -229,8 +261,15 @@ func parseForkTest(body string) forkTestResult {
 	}
 	r.Found = true
 
+	seenLetter := map[string]bool{}
+	var dupLetters []string
 	for _, ln := range strings.Split(section, "\n") {
 		if m := forkOptionLineRe.FindStringSubmatch(ln); m != nil {
+			if k := strings.ToLower(strings.TrimSpace(m[1])); seenLetter[k] {
+				dupLetters = append(dupLetters, strings.TrimSpace(m[1]))
+			} else {
+				seenLetter[k] = true
+			}
 			opt := forkOption{Letter: strings.TrimSpace(m[1])}
 			fields := strings.Split(m[2], "|")
 			opt.What = strings.TrimSpace(fields[0])
@@ -247,9 +286,13 @@ func parseForkTest(body string) forkTestResult {
 			r.Options = append(r.Options, opt)
 			continue
 		}
-		if m := forkDefaultLineRe.FindStringSubmatch(ln); m != nil {
-			r.HasDefault = true
-			r.Default = strings.TrimSpace(m[1])
+		if m := forkDefaultAnyRe.FindStringSubmatch(ln); m != nil {
+			r.defaultRecognised = true
+			r.DefaultRaw = strings.TrimSpace(m[1])
+			if vm := forkDefaultValueRe.FindStringSubmatch(r.DefaultRaw); vm != nil {
+				r.HasDefault = true
+				r.Default = vm[1]
+			}
 			continue
 		}
 		if m := forkCaughtByAnyRe.FindStringSubmatch(ln); m != nil {
@@ -274,8 +317,16 @@ func parseForkTest(body string) forkTestResult {
 	if len(r.Options) == 0 {
 		r.Errors = append(r.Errors, "no `option:` lines found (need at least two counted options)")
 	}
-	if !r.HasDefault {
+	for _, d := range dupLetters {
+		r.Errors = append(r.Errors, fmt.Sprintf(
+			"duplicate `option:` letter %q — each option needs its own letter; one option written twice is still one option", d))
+	}
+	switch {
+	case !r.defaultRecognised:
 		r.Errors = append(r.Errors, "no `default:` line found")
+	case !r.HasDefault:
+		r.Errors = append(r.Errors, fmt.Sprintf(
+			"`default:` value %q must open with a bare option letter (`default: A` or `default: A — <text>`)", r.DefaultRaw))
 	}
 	switch {
 	case !r.caughtByRecognised:
@@ -355,4 +406,18 @@ func forkTestRerouteMessage(r forkTestResult) string {
 			"text in a fence)\n"+
 			"Override with --force-new --reason only if a second workable option genuinely exists and "+
 			"the block under-counted it.", n)
+}
+
+// forkTestOneWayMessage renders the "fewer than two counted options" refusal for a ONE-WAY
+// item. Every --no-fork re-route files off the driver's queue, so none is offered: a one-way
+// item with one workable option is still the driver's call (typically an act only they can
+// take), and the only way forward is the audited --force-new --reason, which files it under
+// needs-decision.
+func forkTestOneWayMessage(r forkTestResult, hit deskkit.OneWayHit) string {
+	return fmt.Sprintf(
+		"refused: the `### Fork test` block counts %d workable option(s) — fewer than the two a "+
+			"decision needs — but this item is one-way (%s), so it is NOT re-routed off the driver's "+
+			"queue: no --no-fork re-route applies. If the one workable option is an act only the driver "+
+			"can take, file it as that ask; otherwise re-run with --force-new --reason \"<why>\", which "+
+			"files it under needs-decision, audited.", len(r.CountedOptions()), hit.String())
 }

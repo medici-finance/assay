@@ -2,13 +2,17 @@ package deskkit
 
 import "strings"
 
-// humanonlysignal.go — the ONE human-only keyword list R-3 classification consumes, shared
-// by deskdigest's classifier and deskfile's fork-test one-way override
-// (attention-budget/13). Before this file the list lived unexported in
-// cmd/deskdigest/classify.go; deskfile's `new` needed the SAME list — a filer must never be
-// able to talk a one-way item onto the notice lane by claiming a catching gate — and a copy
-// would drift the moment either side's list changed. Moved here so both consult exactly one
-// definition.
+// humanonlysignal.go — the R-3 keyword lists classification consumes, shared by deskdigest's
+// classifier and deskfile's fork-test notice-lane gate (noticelane.go). Before this file both
+// lists lived unexported in cmd/deskdigest/classify.go; deskfile's `new` needs the SAME lists
+// — the notice lane admits exactly the items the digest would classify reversible, and a copy
+// would drift the moment either side changed. Moved here so both consult one definition.
+//
+// These two lists are deskdigest's DISPLAY classifier, where a miss only means a row shows as
+// "unclassified" and the item keeps its label. deskfile's gate, where a miss would take an
+// item OFF the driver's queue, does not rely on HumanOnlySignals alone: it adds the broader
+// fail-closed OneWay check (noticelane.go) and admits the notice lane only on a POSITIVE
+// ReversibleSignals match.
 
 // Signal is one substring matcher plus the R-3 category it evidences. The needle is matched
 // case-insensitively; callers lower-case the haystack before calling FirstHumanOnlySignal (or
@@ -22,9 +26,12 @@ type Signal struct {
 // entry is a substring matched case-insensitively against title+body. The list is
 // deliberately BROADER than any "reversible" list: a false human-only costs one item staying
 // in a human's queue that could have left it, and a false reversible costs a decision taken
-// without them. Those are not the same mistake — see deskdigest's classify.go for the fuller
-// discussion of "human gate" vs bare "gate" (a 2026-08-13 measurement of 4/8 items
-// misclassified motivated the narrower phrase there; unchanged here).
+// without them. Those are not the same mistake. The mechanism entries carry "human gate" /
+// "gate question" / "gate: human", NOT a bare "gate": measured against the live queue on
+// 2026-08-13, the bare needle classified 4 of 8 items `mechanism` on incidental uses ("the
+// release guard gate") — a confident wrong REASON — so the narrower phrases are what ship.
+// (deskfile's fail-closed OneWayPatterns, where a miss costs more, add the unspaced
+// `gate:human` spelling; see noticelane.go.)
 var HumanOnlySignals = []Signal{
 	// irreversible
 	{"irreversible", "irreversible"},
@@ -94,4 +101,36 @@ func MatchesHumanOnlySignal(hay string) (*Signal, bool) {
 		return s, true
 	}
 	return nil, false
+}
+
+// ReversibleSignals are R-3's own four examples of a one-commit reversal and their immediate
+// neighbours. Nothing is added here on a hunch: the list stays close to the ruling's text
+// because widening it silently widens what the desk may decide without asking — and, since
+// deskfile's notice lane is admitted ONLY on a match here, what may leave the driver's queue.
+var ReversibleSignals = []Signal{
+	{"docs wording", "docs wording (R-3 example)"},
+	{"wording", "docs wording (R-3 example)"},
+	{"typo", "docs wording (R-3 example)"},
+	{"phrasing", "docs wording (R-3 example)"},
+	{"lint level", "lint level (R-3 example)"},
+	{"lint severity", "lint level (R-3 example)"},
+	{"notice or error", "lint level (R-3 example)"},
+	{"port-or-drop", "port-or-drop (R-3 example)"},
+	{"port or drop", "port-or-drop (R-3 example)"},
+	{"tool default", "tool default (R-3 example)"},
+	{"default value", "tool default (R-3 example)"},
+	{"flag default", "tool default (R-3 example)"},
+	{"rename the", "one-commit reversal (rename)"},
+	{"table column", "one-commit reversal (report layout)"},
+}
+
+// FirstReversibleSignal returns the first ReversibleSignals entry whose needle occurs in hay,
+// or nil. hay must already be lower-cased by the caller, as for FirstHumanOnlySignal.
+func FirstReversibleSignal(hay string) *Signal {
+	for i := range ReversibleSignals {
+		if strings.Contains(hay, ReversibleSignals[i].Needle) {
+			return &ReversibleSignals[i]
+		}
+	}
+	return nil
 }

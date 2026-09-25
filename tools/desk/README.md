@@ -2708,61 +2708,89 @@ credential is the filing identity and no App token is ever minted. Repo scope co
 `deskkit.IsAllowedRepo` — there is no second repo list, and a test parses the sources to
 prove it.
 
-### The `### Fork test` block — the decision filing gate (attention-budget/13)
+### The `### Fork test` block — the decision filing gate
 
-On 2026-09-17 the driver was asked to rule on three items that held no choice: a port-opening
-question where the merged work already showed only one option could work, and two
-"this brief spans two repos" routing notes filed as decisions — one of which held the brief
-that implements the fix blocked for three days. `deskfile new` accepted every one of them,
-because it checks the LABEL a filing carries, never the SHAPE of the question inside it. This
+A `needs-decision` label is a claim that the driver has a real choice to make. Without a
+check on the SHAPE of the question, `deskfile new` accepts items that hold no choice at all —
+a technical question whose only workable answer is already known, or a note that a piece of
+work belongs in a different repository — and each one costs the driver a decision slot. This
 gate makes the shape binding: a filing labelled `needs-decision` must carry a `### Fork test`
 section (any heading level) with these lines, in any order —
 
 ```
 option: <letter> — <what it is> | works-because: <why this can actually be carried out> | consequence: <what follows if chosen>
 option: <letter> — <what it is> | works-because: <...> | consequence: <...>
-default: <letter>
+default: <letter>            (or `default: <letter> — <text>`)
 caught-by: <draft-pr | flip | issue-close | nothing> — <which one, e.g. the PR number>
 ruled-check: <the search that was run> → <what it returned>
 ```
 
 An `option:` line with an empty `works-because` or `consequence` is not COUNTED — an option
 the filer believes cannot work is not written as an option; it belongs in the prose as a
-rejected alternative. `caught-by` is the human-held gate that would catch a wrong guess on the
-default (a draft PR awaiting merge, a flip CI still runs, an issue close still to happen, or
-`nothing`, meaning no gate catches it). `ruled-check` records the search for an existing ruling
-on the same question — the item's own thread and the tracker for the item id — so a filer
-cannot skip checking whether it was already decided. The arrow accepts `→` or `->`, and the
-dash before "what it is" accepts an em dash, en dash, or a plain hyphen.
+rejected alternative. Each option needs its own letter: two `option:` lines with the same
+letter (case-insensitive) are refused, since one option written twice is still one option.
+`default:` names a counted option by its bare letter, optionally followed by ` — <text>`; a
+value that does not open with a letter is reported as malformed, not as missing. `caught-by`
+is the human-held gate that would catch a wrong guess on the default (a draft PR awaiting
+merge, a flip CI still runs, an issue close still to happen, or `nothing`, meaning no gate
+catches it). `ruled-check` records the search for an existing ruling on the same question —
+the item's own thread and the tracker for the item id — so a filer cannot skip checking
+whether it was already decided. The arrow accepts `→` or `->`, and the dash before "what it
+is" accepts an em dash, en dash, or a plain hyphen.
 
-**Three outcomes, in this precedence:**
+**Outcomes, in this precedence:**
 
-1. **No block, an unparseable block, a missing line, or a `default` naming no counted
-   option** → **exit 5**, naming every problem found. `--force-new --reason` is the only
-   bypass, as for every refusal in this tool.
-2. **Fewer than two counted options** → **exit 5**, naming the three `--no-fork` re-routes
-   below. This is the row-2 shape: a genuinely single-option question is a work item, never a
-   decision.
-3. **Two or more counted options, `caught-by` not `nothing`, and no one-way term present** →
-   the **notice lane**: the filing goes out labelled `desk-decided` instead of
-   `needs-decision`, with a `## Desk-decided` block appended — the fixed heading, the SAME
-   `<!-- desk-r3-decision v1 -->` marker `deskdigest`'s R-3 veto surface already reads (see
-   "Classification (R-3)" above), then `decision:` (the default's text), `alternative:` (the
-   other counted options) and `cost:` (what the `caught-by` gate costs to reverse). The filer
-   proceeds on the default; the item never parks. `deskdigest`'s collected label set carries
-   `desk-decided` for exactly this reason — without it the notice would leave the digest's veto
-   surface invisible. Everything else (two-plus options with `caught-by: nothing`, or a
-   one-way term present) stays `needs-decision`, filed as before.
+1. **No block, an unparseable block, a missing or malformed line, a duplicate option letter,
+   or a `default` naming no counted option** → **exit 5**, naming every problem found.
+   `--force-new --reason` is the only bypass, as for every refusal in this tool; it files
+   the item under `needs-decision`.
+2. **Fewer than two counted options** → **exit 5**. For an item that is NOT one-way (below),
+   the refusal names the three `--no-fork` re-routes: a genuinely single-option question is a
+   work item, never a decision. For a ONE-WAY item the refusal names no re-route — every
+   `--no-fork` value files off the driver's queue — and offers only `--force-new --reason`,
+   which files it under `needs-decision`.
+3. **Two or more counted options and `caught-by: nothing`** → filed under `needs-decision`.
+4. **Two or more counted options, a `caught-by` gate, and the notice-lane test passes** →
+   the **notice lane**: the issue is labelled `desk-decided` and a `## Desk-decided` block is
+   appended — the fixed heading, the SAME `<!-- desk-r3-decision v1 -->` marker
+   `deskdigest`'s R-3 veto surface already reads (see "Classification (R-3)" above), then
+   `decision:` (the default's text), `alternative:` (the other counted options) and `cost:`
+   (the `caught-by` gate). The filer proceeds on the default; the item never parks.
+   Otherwise → filed under `needs-decision`.
 
-**The one-way override outranks the filer's claim.** If the title or body matches
-`deskkit.HumanOnlySignals` — the SAME list `deskdigest`'s R-3 classifier consults (moved to
-`internal/deskkit/humanonlysignal.go` so the two never drift against each other) — `caught-by`
-is ignored and the item is filed under `needs-decision` regardless of how many options it
-counts. A filer cannot talk a one-way item (a merge, a release, a security control, secrets,
-money, identity, anything published or sent outside) onto the notice lane.
+**The notice-lane test fails CLOSED** (`internal/deskkit/noticelane.go`,
+`deskkit.NoticeLaneVerdict`). An item is admitted only when ALL of these hold:
+
+- no caller label marks it one-way: `human-only`, `security`, `gate:human`;
+- no one-way term appears in the title or body — neither a `deskkit.HumanOnlySignals` needle
+  (the list `deskdigest`'s classifier uses) nor a `deskkit.OneWayPatterns` match. The
+  patterns are word-bounded and cover: merge; ready-flip; push to main and force-push;
+  tag/release/ship and version numbers; disabling, weakening, bypassing or loosening a
+  control, branch protection, rulesets, the leak sweep, guardrails; keys, signing, custody,
+  PII, passwords, certificates, rotation, encryption; money, funds, payment, vaults,
+  settlement, pricing, fees, refunds; identity, auth, login/sign-in, SSO/OAuth/OIDC/SAML,
+  realms, impersonation; delete, overwrite, wipe, purge, truncate, destroy, erase, drop of
+  durable data; public, publish, external, vendors, third parties, send, email, announce,
+  customers, partners, upload, export; infrastructure, deploy, prod, live, clusters, DNS,
+  databases, migrations, servers, runners; GitHub App permissions, `actions: write`,
+  read/write/admin access, grants, installations, admin, privilege, approval, self-review,
+  sign-off, ratification, veto, CODEOWNERS; and `gate:human` / `human gate` / `human-only` in
+  any spelling;
+- a POSITIVE R-3 reversible signal is present (`deskkit.ReversibleSignals`: docs wording,
+  typo, phrasing, lint level, port-or-drop, tool/flag default, default value, a rename, a
+  table column).
+
+An item that matches neither list stays on `needs-decision`: the absence of a one-way term is
+not evidence that an item is reversible. The one-way check reads the whole title and body
+except the `ruled-check:` line, whose wording is the grammar's own record of a search for a
+prior ruling (it would otherwise trip the `ruling` needle on every filing). The list is
+deliberately broad: a false one-way costs one item staying on the driver's queue; a miss
+costs a decision taken without them. A keyword list is still only a keyword list — review
+of the filing remains the layer above it, and the notice lane's own record (the digest's
+seven-day veto window) is the layer after it.
 
 **`--no-fork <brief-contradicts-artifact | wrong-repo | tool-false-positive>`** re-routes the
-row-2 refusal by filing the item WITHOUT the `needs-decision` label:
+fewer-than-two-options refusal by filing the item WITHOUT the `needs-decision` label:
 
 | value | title prefix | addressed | body must carry |
 |---|---|---|---|
@@ -2770,20 +2798,35 @@ row-2 refusal by filing the item WITHOUT the `needs-decision` label:
 | `wrong-repo` | `re-dispatch:` | `--to worker` (`--to` shares `--raised-by`'s roster vocabulary — the skill's own name `worker-desk` is never a valid role here) | an `owner/repo` token naming where the work belongs |
 | `tool-false-positive` | — | — (label `bug`) | the tool's refusal text in a fenced block |
 
-`--no-fork` and `--label needs-decision` are mutually exclusive: the whole point of the flag is
-filing off the queue this gate exists to protect. The title prefix and addressee for the first
-two are composed by the tool, not trusted to free text; the content requirement for each is
-checked against its shape (a repo token, a brief-id-shaped token plus a quoted path, a fenced
-block) rather than parsed for meaning — review still judges whether the content actually says
-what the shape requires.
+`--no-fork` refuses a one-way item (the same check as the notice lane's first two bullets):
+it is a route off the driver's queue, and a one-way item never takes one. `--no-fork` and
+`--label needs-decision` are mutually exclusive. The title prefix and addressee for the first
+two values are composed by the tool, not trusted to free text; the content requirement for
+each is checked against its shape (a repo token, a brief-id-shaped token plus a quoted path,
+a fenced block) rather than parsed for meaning — review still judges whether the content
+actually says what the shape requires.
 
-**The `desk-decided` label is minted on first use, not provisioned ahead of time.** Because the
-TOOL applies it — never a caller `--label`, which this tool refuses when missing from the repo
-— it goes through `deskkit`'s `LabelChange` ensure-exists path, the same one `deskflip` and
-`deskpost`'s mechanical labels use, so the label is created the first time a filing reaches the
-notice lane. A failed label write is reported as itself; the issue is still filed carrying its
-`## Desk-decided` block (the create happens before the label write), so the digest's veto
-surface never loses a decision to a label-API hiccup.
+**Label writes are add-first.** The issue is created, then ONE label write applies the
+caller's labels — `needs-decision` included — plus, on the notice lane, `desk-decided`; only
+after that write lands does a SECOND write take `needs-decision` off. A failure of the second
+write exits 6 with the issue carrying both labels, so it is still on the driver's queue (and
+`deskdigest` keeps it as a Queue row). A failure of the FIRST write exits 6 with the issue
+carrying no labels — the same unlabelled state any `deskfile new` filing is left in when its
+label write fails — and the exit code is the signal to re-label it by hand.
+`desk-decided` is created on first use through `deskkit`'s `LabelChange` ensure-exists path
+(the one `deskflip` and `deskpost`'s mechanical labels use), with its own colour and
+description; it is never a caller `--label`.
+
+**Audit.** Every `new` filing that reaches the gate records its route on the local audit
+line: `lane=desk-decided (<the reversible signal>)`, `lane=needs-decision (<why it stayed>)`,
+or `no-fork=<value>`.
+
+**In the digest.** `deskdigest` collects `desk-decided` alongside `needs-decision` and
+`human-only`, lists each notice once — in the desk-decisions section, with its veto date —
+and does not list a notice-only item as a Queue row. An item that carries `desk-decided` AND
+still carries `needs-decision` or `human-only` keeps its Queue row. The classifier strips the
+tool-written `## Desk-decided` block before matching, so a notice is never classified on the
+tool's own field names.
 
 ## deskclose — the issue-CLOSING gate (issue-flow brief 03)
 

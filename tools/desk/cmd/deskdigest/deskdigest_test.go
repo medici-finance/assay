@@ -568,7 +568,7 @@ func TestR3DecisionsAreReadNotWritten(t *testing.T) {
 	}
 }
 
-// TestDigestListsDeskDecidedNotice — Verify row 7 (attention-budget/13). `deskfile new`'s
+// TestDigestListsDeskDecidedNotice — Verify row 7. `deskfile new`'s
 // notice lane writes the shared `desk-r3-decision v1` marker straight into the FILED ISSUE'S
 // OWN BODY (no separate comment: the filing IS the desk's R-3 act), labelled desk-decided
 // rather than needs-decision. The digest must list it in the desk-decisions section with a
@@ -602,6 +602,78 @@ func TestDigestListsDeskDecidedNotice(t *testing.T) {
 	}
 	if !strings.Contains(rendered, wantVeto) {
 		t.Errorf("the desk-decisions section does not carry the veto date %s:\n%s", wantVeto, rendered)
+	}
+}
+
+// noticeBody is a notice-lane filing's body as `deskfile new` writes it: the filer's text,
+// then the tool-written `## Desk-decided` block with the shared marker and its `cost:` line.
+const noticeBody = "Flip the tool default for --sla-days.\n\n" +
+	"## Desk-decided\n\n" +
+	"<!-- desk-r3-decision v1 -->\n" +
+	"decision: keep the current default\n" +
+	"alternative: B — flip the default\n" +
+	"cost: draft-pr — #777\n"
+
+// TestDeskDecidedNoticeNotInQueue — a notice is OFF the driver's queue: it is listed once,
+// in the desk-decisions section with its veto date, and never as a Queue row "waiting on a
+// human" with "no default — blocks until answered". An item that ALSO still carries
+// needs-decision (the notice lane's remove write failed) stays in the Queue: it is still on
+// the driver's queue, and the digest must not hide it.
+func TestDeskDecidedNoticeNotInQueue(t *testing.T) {
+	notice := mkItem("flip the tool default for --sla-days", noticeBody, deskDecidedLabel)
+	c := &collection{Scope: []string{"example-org/tracker"}, Items: []*item{notice},
+		Repos: []repoRead{{Repo: "example-org/tracker", LabelSetRead: true, Items: 1}}}
+	d := build(c, signOff{State: signOffUnsigned}, fixedNow, "2026-W33")
+	if len(d.Rows) != 0 {
+		t.Errorf("queue rows = %d, want 0 — a desk-decided notice is not waiting on a human (row verdict: %+v)",
+			len(d.Rows), d.Rows[0].Verdict)
+	}
+	if len(d.Decisions) != 1 {
+		t.Errorf("decisions = %d, want 1", len(d.Decisions))
+	}
+
+	stuck := mkItem("flip the tool default for --sla-days", noticeBody, deskDecidedLabel, needsDecisionLabel)
+	c2 := &collection{Scope: []string{"example-org/tracker"}, Items: []*item{stuck},
+		Repos: []repoRead{{Repo: "example-org/tracker", LabelSetRead: true, Items: 1}}}
+	if d2 := build(c2, signOff{State: signOffUnsigned}, fixedNow, "2026-W33"); len(d2.Rows) != 1 {
+		t.Errorf("an item still labelled needs-decision has %d queue rows, want 1", len(d2.Rows))
+	}
+}
+
+// TestDeskDecidedBlockDoesNotFeedClassifier — the tool-written `## Desk-decided` block is
+// not the filer's text and must not classify the item: its `cost:` field name is an R-3
+// spend needle, and a notice classified human-only on the tool's own field name is a
+// confident wrong reason.
+func TestDeskDecidedBlockDoesNotFeedClassifier(t *testing.T) {
+	it := mkItem("flip the tool default for --sla-days", noticeBody, deskDecidedLabel, needsDecisionLabel)
+	v := classifyItem(it)
+	if v.Class == classHumanOnly {
+		t.Fatalf("classified %s (%s) on the tool-written block, want the filer's own text to decide", v.Class, v.Why)
+	}
+	if v.Class != classReversible {
+		t.Errorf("class = %s (%s), want reversible (the title names a tool default)", v.Class, v.Why)
+	}
+}
+
+// TestCollectReadsDeskDecidedLabel — Verify row 7's label-set half: collect() must read the
+// desk-decided label, or a notice filed off the queue never reaches the digest's veto
+// surface. Driven through the gh seam so dropping desk-decided from digestLabels goes red.
+func TestCollectReadsDeskDecidedLabel(t *testing.T) {
+	iss := oneIssue(21, "flip the tool default for --sla-days", noticeBody)
+	iss.Labels = []struct {
+		Name string `json:"name"`
+	}{{Name: deskDecidedLabel}}
+	g := &ghScript{
+		labels: []string{needsDecisionLabel, humanOnlyLabel, deskDecidedLabel},
+		issues: map[string][]ghIssue{deskDecidedLabel: {iss}},
+	}
+	g.install(t)
+	c := collect([]string{"example-org/tracker"})
+	if len(c.Items) != 1 {
+		t.Fatalf("collected %d items, want 1 — the desk-decided label was not read", len(c.Items))
+	}
+	if n := len(r3Decisions(c)); n != 1 {
+		t.Errorf("r3 decisions = %d, want 1 (the notice's body marker)", n)
 	}
 }
 

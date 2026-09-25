@@ -44,12 +44,27 @@ type digest struct {
 func build(c *collection, so signOff, now time.Time, week string) *digest {
 	d := &digest{Week: week, Now: now.UTC(), Coll: c, SignOff: so, Decisions: r3Decisions(c)}
 	for _, it := range c.Items {
+		// A desk-decided notice is OFF the driver's queue: it is listed once, in the
+		// desk-decisions section (renderDecisions) with its veto date, never as a Queue row
+		// "waiting on a human". An item that still carries needs-decision or human-only as
+		// well (the notice lane's remove write failed, or a human re-queued it) IS still on
+		// the queue and keeps its row.
+		if noticeOnly(it) {
+			continue
+		}
 		r := row{Item: it, Verdict: classifyItem(it), AgeDays: wholeDays(it.CreatedAt, now)}
 		r.Rec, r.HasRec = recommendation(it)
 		r.Def, r.HasDef = declaredDefault(it)
 		d.Rows = append(d.Rows, r)
 	}
 	return d
+}
+
+// noticeOnly reports whether an item is a desk-decided notice and nothing else: labelled
+// desk-decided, and neither needs-decision nor human-only.
+func noticeOnly(it *item) bool {
+	return hasLabel(it.Labels, deskDecidedLabel) && !hasLabel(it.Labels, needsDecisionLabel) &&
+		!hasLabel(it.Labels, humanOnlyLabel)
 }
 
 // Counts tallies the rows by class — the numbers the digest states about itself.

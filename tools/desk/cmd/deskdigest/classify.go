@@ -80,57 +80,19 @@ const humanOnlyLabel = "human-only"
 // needsDecisionLabel is the standing decision-queue label.
 const needsDecisionLabel = "needs-decision"
 
-// humanOnlySignals are R-3's human-only side: irreversible, mechanism, security, spend.
-// Each entry is a substring matched case-insensitively against title+body. The list is
-// deliberately BROADER than the reversible list: a false human-only costs one item staying
-// in the human's queue that could have left it, and a false reversible costs a decision
-// taken without them. Those are not the same mistake.
+// humanOnlySignals / reversibleSignals are R-3's two keyword lists: the human-only side
+// (irreversible, mechanism, security, spend) and R-3's own four examples of a one-commit
+// reversal. The human-only list is deliberately BROADER than the reversible list: a false
+// human-only costs one item staying in the human's queue that could have left it, and a false
+// reversible costs a decision taken without them. Those are not the same mistake.
 //
-// MOVED to deskkit.HumanOnlySignals (attention-budget/13): deskfile's fork-test one-way
-// override needs the SAME list — a filer must never be able to talk a one-way item onto the
-// notice lane by claiming a catching gate — and a copy here would drift from deskfile's the
-// moment either changed. classifyItem below now calls deskkit.FirstHumanOnlySignal directly;
-// see deskkit/humanonlysignal.go for the entries and the "human gate" vs bare "gate"
-// rationale (the 2026-08-13 measurement: the bare needle misclassified 4 of 8 live items on
-// incidental uses — "the release guard gate" — which is why the narrower phrase is what
-// ships).
-
-// reversibleSignals are R-3's own four examples of a one-commit reversal and their
-// immediate neighbours. Nothing is added here on a hunch: the list stays close to the
-// ruling's text because widening it silently widens what the desk may decide without
-// asking.
-var reversibleSignals = []signal{
-	{"docs wording", "docs wording (R-3 example)"},
-	{"wording", "docs wording (R-3 example)"},
-	{"typo", "docs wording (R-3 example)"},
-	{"phrasing", "docs wording (R-3 example)"},
-	{"lint level", "lint level (R-3 example)"},
-	{"lint severity", "lint level (R-3 example)"},
-	{"notice or error", "lint level (R-3 example)"},
-	{"port-or-drop", "port-or-drop (R-3 example)"},
-	{"port or drop", "port-or-drop (R-3 example)"},
-	{"tool default", "tool default (R-3 example)"},
-	{"default value", "tool default (R-3 example)"},
-	{"flag default", "tool default (R-3 example)"},
-	{"rename the", "one-commit reversal (rename)"},
-	{"table column", "one-commit reversal (report layout)"},
-}
-
-// signal is one matcher plus the R-3 category it evidences.
-type signal struct {
-	needle   string
-	category string
-}
-
-// firstSignal returns the first matching signal, or nil.
-func firstSignal(hay string, sigs []signal) *signal {
-	for i := range sigs {
-		if strings.Contains(hay, sigs[i].needle) {
-			return &sigs[i]
-		}
-	}
-	return nil
-}
+// Both MOVED to deskkit (HumanOnlySignals, ReversibleSignals): deskfile's fork-test notice
+// lane admits exactly the items this classifier would call reversible, so it needs the SAME
+// lists, and a copy here would drift from deskfile's the moment either changed. classifyItem
+// below calls deskkit.FirstHumanOnlySignal / FirstReversibleSignal directly; see
+// deskkit/humanonlysignal.go for the entries and the "human gate" vs bare "gate" rationale
+// (the 2026-08-13 measurement: the bare needle misclassified 4 of 8 live items on incidental
+// uses — "the release guard gate" — which is why the narrower phrase is what ships).
 
 // classifyItem applies the precedence chain. The order is load-bearing and is stated in
 // --help in the same order it is executed here.
@@ -191,12 +153,15 @@ func classifyItem(it *item) verdict {
 
 	// 4. R-3's OWN CRITERIA, conservatively. human-only is checked first: an item that is
 	//    both a docs-wording change and a security change is a security change.
-	hay := strings.ToLower(it.Title + "\n" + it.Body)
+	//    The tool-written `## Desk-decided` block is stripped first: it is deskfile's text, not
+	//    the filer's, and its `cost:` field name is itself a spend needle — reading it would
+	//    classify every notice human-only on the tool's own field name.
+	hay := strings.ToLower(it.Title + "\n" + deskkit.StripDeskDecidedBlock(it.Body))
 	if s := deskkit.FirstHumanOnlySignal(hay); s != nil {
 		return verdict{classHumanOnly, srcHeuristic, "R-3 " + s.Category + " signal (`" + s.Needle + "`)"}
 	}
-	if s := firstSignal(hay, reversibleSignals); s != nil {
-		return verdict{classReversible, srcHeuristic, "R-3 one-commit-reversal signal: " + s.category}
+	if s := deskkit.FirstReversibleSignal(hay); s != nil {
+		return verdict{classReversible, srcHeuristic, "R-3 one-commit-reversal signal: " + s.Category}
 	}
 
 	// 5. NO SIGNAL. This is the arm that would be a bug if it returned anything else.

@@ -34,7 +34,7 @@ error: could not reach the API server
 const bodyNoEvidence = "I believe the cluster is unreachable, but I did not run anything."
 
 // bodyNoEvidenceForLabel is bodyNoEvidence, plus a well-formed `### Fork test` block when
-// label is needs-decision — attention-budget/13's fork-test gate runs BEFORE the
+// label is needs-decision — the fork-test gate runs BEFORE the
 // blocker-evidence gate this file tests, so a needs-decision fixture with no fork-test block
 // would be refused for the WRONG reason (missing fork-test, not missing evidence). The block
 // here counts two options with `caught-by: nothing`, so it is otherwise an ordinary
@@ -83,7 +83,7 @@ func TestEscalationWithEvidenceFencePasses(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, "needs-decision"))
-	// + a well-formed fork-test block (attention-budget/13's gate runs before this one; see
+	// + a well-formed fork-test block (the fork-test gate runs before this one; see
 	// bodyNoEvidenceForLabel above for why a needs-decision fixture needs it too).
 	body := bodyFileWith(t, bodyWithEvidence+"\n\n"+validForkTestBlock)
 

@@ -7,8 +7,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// forkgate_test.go — integration tests for the fork-test gate on `deskfile new`
-// (attention-budget/13): what the CLI DOES with a parsed `### Fork test` block. The pure
+// forkgate_test.go — integration tests for the fork-test gate on `deskfile new`: what the CLI DOES with a parsed `### Fork test` block. The pure
 // parser itself is table-tested in forktest_test.go.
 
 // portOpeningQuestionBody is the fixture named in Verify row 2: a port-opening question
@@ -103,14 +102,16 @@ func TestNoForkWrongRepoFiledWithoutDecisionLabel(t *testing.T) {
 }
 
 // TestCaughtByFilesNoticeWithMarker — Verify row 4. Two counted options plus
-// `caught-by: draft-pr` files on the notice lane: label desk-decided (not needs-decision),
-// body carries the shared `desk-r3-decision v1` marker and a `decision:` line equal to the
-// default's text.
+// `caught-by: draft-pr`, a reversible item (the title names a tool default, an R-3 example)
+// with no one-way term, files on the notice lane: the issue ends up labelled desk-decided
+// (not needs-decision), and the body carries the shared `desk-r3-decision v1` marker and a
+// `decision:` line equal to the default's text. The label writes are add-first: desk-decided
+// lands alongside needs-decision, THEN needs-decision comes off.
 func TestCaughtByFilesNoticeWithMarker(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
-	body := bodyFileWith(t, "A reversible tool-default question.\n\n"+caughtByDraftPRBlock)
+	body := bodyFileWith(t, "A reversible tool-default question.\n\n"+noticeLaneBlock)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
 		"--title", "flip the tool default for --sla-days", "--body-file", body,
@@ -121,8 +122,12 @@ func TestCaughtByFilesNoticeWithMarker(t *testing.T) {
 	if curForge.filed == nil {
 		t.Fatal("the notice-lane filing was not filed")
 	}
+	if n := len(curForge.labelOps); n != 2 || len(curForge.labelOps[1].Remove) != 1 ||
+		!strings.EqualFold(curForge.labelOps[1].Remove[0], needsDecisionLabel) {
+		t.Errorf("label writes = %+v, want two: add (incl. desk-decided), then remove needs-decision", curForge.labelOps)
+	}
 	foundDecided, foundNeedsDecision := false, false
-	for _, l := range curForge.appliedLabel {
+	for _, l := range curForge.finalLabels() {
 		if strings.EqualFold(l, deskDecidedLabel) {
 			foundDecided = true
 		}
@@ -131,10 +136,10 @@ func TestCaughtByFilesNoticeWithMarker(t *testing.T) {
 		}
 	}
 	if !foundDecided {
-		t.Errorf("applied labels %v do not carry %q", curForge.appliedLabel, deskDecidedLabel)
+		t.Errorf("final labels %v do not carry %q", curForge.finalLabels(), deskDecidedLabel)
 	}
 	if foundNeedsDecision {
-		t.Errorf("applied labels %v still carry %q — the notice lane must remove it", curForge.appliedLabel, needsDecisionLabel)
+		t.Errorf("final labels %v still carry %q — the notice lane must remove it", curForge.finalLabels(), needsDecisionLabel)
 	}
 	if !strings.Contains(curForge.filed.Body, deskDecidedMarker) {
 		t.Errorf("filed body does not carry the shared marker %q:\n%s", deskDecidedMarker, curForge.filed.Body)
@@ -144,27 +149,14 @@ func TestCaughtByFilesNoticeWithMarker(t *testing.T) {
 	}
 }
 
-// caughtByDraftPRBlock is validForkTestBlock with `caught-by: draft-pr` in
-// place of `nothing` — two workable options, the driver still holds a catching gate (a draft
-// PR awaiting merge). Default is option A, "keep the current default".
-// The ruled-check result deliberately avoids the word "ruling" (a one-way signal in
-// deskkit.HumanOnlySignals, "mechanism") — TestOneWayTermOverridesCaughtBy below adds its
-// OWN, separate one-way term to this same fixture; this one must stay clean so
-// TestCaughtByFilesNoticeWithMarker actually reaches the notice lane.
-const caughtByDraftPRBlock = `### Fork test
-
-option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today
-option: B — flip the default | works-because: the merge gate catches a wrong flip before it ships | consequence: every caller sees the new default next release
-default: A
-caught-by: draft-pr — #777
-ruled-check: searched the tracker for "the same question" → nothing on record
-`
-
 // TestOneWayTermOverridesCaughtBy — Verify row 5 (the negative-path row for the notice
 // lane). Same fixture as row 4, plus a one-way term in the body ("security" — one of
 // deskkit.HumanOnlySignals, shared with deskdigest's classifier) → filed under
-// needs-decision regardless of the filer's caught-by claim: the lower layer (the fixed
-// one-way list) still catches when the upper layer (the filer's claim) is wrong.
+// needs-decision regardless of the filer's caught-by claim: the lower layer (the one-way
+// check) still catches when the upper layer (the filer's claim) is wrong. This row pins one
+// needle; TestNoticeLaneRefusesOneWayClasses (forkgate_oneway_test.go) pins every one-way
+// class the skills name, and TestNoticeLaneFailsClosedWithoutReversibleSignal pins that an
+// item neither list recognises stays on the queue too.
 func TestOneWayTermOverridesCaughtBy(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
@@ -173,7 +165,7 @@ func TestOneWayTermOverridesCaughtBy(t *testing.T) {
 	// SEPARATE `### Evidence` fence the blocker-evidence gate requires of every
 	// needs-decision filing, one-way or not.
 	body := bodyFileWith(t, "This filing also touches a security control on the ledger boundary.\n\n"+
-		bodyWithEvidence+"\n\n"+caughtByDraftPRBlock)
+		bodyWithEvidence+"\n\n"+noticeLaneBlock)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
 		"--title", "flip the tool default for --sla-days", "--body-file", body,
@@ -185,7 +177,7 @@ func TestOneWayTermOverridesCaughtBy(t *testing.T) {
 		t.Fatal("the one-way-term filing was not filed")
 	}
 	foundNeedsDecision, foundDecided := false, false
-	for _, l := range curForge.appliedLabel {
+	for _, l := range curForge.finalLabels() {
 		if strings.EqualFold(l, needsDecisionLabel) {
 			foundNeedsDecision = true
 		}
