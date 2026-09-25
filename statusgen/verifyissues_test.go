@@ -1092,6 +1092,284 @@ func TestVerifyPassHeldContradictionSameLineLaundering(t *testing.T) {
 	}
 }
 
+// TestVerifyPassHeldContradictionNegatedMentionIsNotADisposition pins the
+// fix for the false-positive class where heldOrCouldNotCheckRe fires on prose
+// that MERELY MENTIONS a held/could-not-check state without the line actually
+// carrying one — a bare substring/word-boundary match cannot tell "this row
+// IS held" from "this row is NOT held" or "there are ZERO held rows" apart,
+// because both contain the literal marker word.
+//
+// Two concrete shapes, both observed refusing genuinely clean Evidence:
+//   - "no could-not-check" — asserting the ABSENCE of a could-not-check row.
+//   - "0 HELD" — a zero-count summary, also a clean state.
+//
+// Each negative-control case must NOT contradict the PASS. The trailing
+// positive control proves the fix did not broaden into a false negative: a
+// genuine, un-routed, un-negated HELD row on its own line must still
+// contradict the PASS exactly as before.
+func TestVerifyPassHeldContradictionNegatedMentionIsNotADisposition(t *testing.T) {
+	cases := []struct {
+		name     string
+		evidence string
+		wantHeld bool
+	}{
+		{
+			name: "no could-not-check negates the mention",
+			evidence: "**VERIFY: PASS** — clean run, no could-not-check rows remain.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: false,
+		},
+		{
+			name: "0 HELD is a zero-count summary, not a disposition",
+			evidence: "**VERIFY: PASS** — summary: 0 HELD, 1 PASS.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: false,
+		},
+		{
+			name: "PASS ... no could-not-check, with arbitrary prose between",
+			evidence: "**VERIFY: PASS (1/1 rows)** — all rows executed; no could-not-check anywhere in this run.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: false,
+		},
+		{
+			// Positive control: a negated mention elsewhere in the Evidence
+			// must NOT blind the scan to a real, un-routed, un-negated HELD
+			// row on a different line — only the negated OCCURRENCE is
+			// excused, never the whole scan.
+			name: "negated summary line does not excuse a real HELD row elsewhere",
+			evidence: "**VERIFY: PASS** — summary: 0 HELD across the first table.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n" +
+				"| 2 | `go test ./integration/...` | — | HELD — no runner online | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+		{
+			// Positive control: an un-negated, un-routed HELD row alone must
+			// still contradict the PASS after the fix — the fix must not
+			// broaden into failing to catch a genuinely held row.
+			name: "genuine un-routed HELD row still contradicts the PASS",
+			evidence: "**VERIFY: PASS** — row 1 green.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n" +
+				"| 2 | `go test ./integration/...` | — | HELD — no runner online | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+		{
+			// Counter-example: a bare
+			// "0" that is NOT in a count position — here it is an exit code,
+			// not a count of held rows — must never excuse the HELD it
+			// happens to precede. "row 3 exit 0 HELD" is a REAL held row
+			// report; the exit code coincidentally reads "0" right before the
+			// marker. Wrongly excusing this is a false NEGATIVE: a
+			// verification gate silently passing something broken, which is
+			// worse than the original false-positive class this fix addresses.
+			name: "exit code 0 immediately before HELD is not a zero-count negation",
+			evidence: "**VERIFY: PASS** — row 1 green.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n" +
+				"| 2 | `go test ./integration/...` | — | row 3 exit 0 HELD for human diff-read | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+		{
+			// Counter-example: "row 0" is a row LABEL, not a
+			// count of held rows — "row 0 HELD" is a genuine held report for
+			// the row numbered 0.
+			name: "row label 0 immediately before HELD is not a zero-count negation",
+			evidence: "**VERIFY: PASS** — row 1 green.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n" +
+				"| 2 | `go test ./integration/...` | — | row 0 HELD | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+		{
+			// Counter-example: a version number ending in ".0"
+			// reads as a bare "0" token right before HELD, but it is a
+			// version, not a count.
+			name: "version number ending in .0 immediately before HELD is not a zero-count negation",
+			evidence: "**VERIFY: PASS** — row 1 green.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n" +
+				"| 2 | `go test ./integration/...` | — | row 3 on v1.0 HELD pending runner | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+		{
+			// Counter-example: same version-number shape, no
+			// leading "v".
+			name: "bare decimal ending in .0 immediately before HELD is not a zero-count negation",
+			evidence: "**VERIFY: PASS** — row 1 green.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n" +
+				"| 2 | `go test ./integration/...` | — | 2.0 HELD | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+		{
+			// Mixed same-line case: the leading "0" is a genuine count
+			// negating the HELD marker it sits directly in front of
+			// ("summary: 0 HELD"), but the trailing "1" is not a negation
+			// word/zero-count and must not excuse the could-not-check
+			// occurrence that follows it — that clause is reporting a REAL,
+			// non-zero could-not-check count.
+			name: "mixed line negates one marker but not the other",
+			evidence: "**VERIFY: PASS** — summary: 0 HELD, 1 could-not-check.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+		{
+			// Per-occurrence pin: a negated occurrence earlier ON
+			// THE SAME LINE must not excuse a second, genuine, un-negated
+			// occurrence of the SAME marker word later on that same line.
+			// This kills a line-level ("any negated mention anywhere on the
+			// line excuses the whole line") shortcut that a per-occurrence
+			// implementation must not take.
+			name: "negated could-not-check does not excuse a second could-not-check on the same line",
+			evidence: "**VERIFY: PASS** — no could-not-check rows except row 4: could-not-check.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+		{
+			// Per-occurrence pin: a zero-counted HELD occurrence
+			// earlier on the line must not excuse a second, genuine,
+			// un-negated HELD occurrence later on that same line.
+			name: "zero-counted HELD does not excuse a second HELD on the same line",
+			evidence: "**VERIFY: PASS** — summary: 0 HELD; row 4 HELD — no runner online.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			held, why := verifyPassHeldContradiction(c.evidence)
+			if held != c.wantHeld {
+				t.Errorf("verifyPassHeldContradiction(%q) held=%v why=%q, want held=%v", c.evidence, held, why, c.wantHeld)
+			}
+		})
+	}
+}
+
+// TestVerifyPassHeldContradictionNegationCuePosition pins WHERE a negation or
+// zero-count cue may sit and still excuse the HELD/could-not-check occurrence
+// right after it. A cue word or a "0" directly before the marker is not, by
+// itself, a negation: a labelled exit code ("exit: 0 HELD", "rc: 0 HELD"), an
+// answer to a question ("available? no HELD") or a field value ("green: no
+// HELD") put the same tokens in front of a LIVE hold. Each must-refuse line
+// below is a genuine hold that a PASS must not proceed over; each must-excuse
+// line is a clean count or negation that must not refuse. Every position
+// rule has at least one must-refuse line with NO hold reason, so deleting
+// that rule turns a case red rather than being masked by the reason check.
+func TestVerifyPassHeldContradictionNegationCuePosition(t *testing.T) {
+	const header = "**VERIFY: PASS** — row 1 green.\n\n"
+	cell := func(result string) string {
+		return header +
+			"| # | Command | Exit | Result | Date | Runner |\n" +
+			"|---|---------|------|--------|------|--------|\n" +
+			"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n" +
+			"| 3 | `go test ./integration/...` | — | " + result + " | 2026-07-10 | fixture-verifier |\n"
+	}
+	prose := func(line string) string { return header + line + "\n" }
+
+	cases := []struct {
+		name     string
+		evidence string
+		wantHeld bool
+	}{
+		// Must refuse: a labelled exit/status zero is not a held-row count.
+		{"colon-labelled exit code before HELD", prose("row 3 exit: 0 HELD"), true},
+		{"colon-labelled exit code with hold reason", cell("row 3 exit code: 0 HELD pending human read"), true},
+		{"rc label before HELD", prose("rc: 0 HELD"), true},
+		{"list of exit codes ending in 0 before HELD", prose("exit codes: 1, 0 HELD"), true},
+		{"parenthesised exit code before HELD", prose("row 3 (0 HELD)"), true},
+		// Must refuse: a "no" that answers a question or fills a field.
+		{"question answered no before HELD", prose("runner available? no HELD pending runner"), true},
+		{"field value no before HELD", cell("row 3 green: no HELD pending runner"), true},
+		{"field value not before HELD", prose("row 3: not HELD"), true},
+		{"assigned no before HELD", prose("runner=no HELD"), true},
+		{"table-cell no before HELD", prose("| 3 | no HELD |"), true},
+		// No hold reason on these, so only the position rule can refuse them.
+		{"question answered no, no hold reason", prose("runner available? no HELD"), true},
+		{"question answered no across a non-breaking space", prose("runner available? no HELD"), true},
+		{"question answered no across a zero-width space", prose("runner available?​no HELD"), true},
+		{"bold field label before no", prose("**row 3 green:** no HELD"), true},
+		{"bold question-style field label before no", prose("**Runner available:** no HELD"), true},
+		{"bold row label before not", prose("**row 3:** not HELD"), true},
+		{"hyphen before no", prose("row 3 green - no HELD"), true},
+		{"closing parenthesis before no", prose("(runner up) no HELD"), true},
+		{"non-zero is not a zero count", prose("exit codes: 0 clean / non-zero could-not-check"), true},
+		// Must refuse: an exit status spelled out, or a number that is not a
+		// verdict count, is not a count position.
+		{"exit status zero before HELD", prose("row 3 exit zero HELD"), true},
+		{"exit code zero before HELD", prose("row 3 exit code zero HELD"), true},
+		{"rc zero before HELD", prose("rc zero HELD"), true},
+		{"returned zero before HELD", prose("row 3 returned zero HELD"), true},
+		{"non-count item before zero", prose("row 3 exit, 0 HELD"), true},
+		{"non-count item closed by semicolon before zero", prose("step 2 exit; 0 HELD"), true},
+		// Must refuse: a negation followed by a hold reason contradicts itself.
+		{"dash-answered no with hold reason", prose("runner available — no HELD pending runner"), true},
+		{"zero count with hold reason", prose("0 HELD until the runner is back"), true},
+		{"zero count, comma, hold reason", prose("0 HELD, pending runner"), true},
+		{"zero count, parenthesised hold reason", prose("0 HELD (awaiting runner)"), true},
+		{"zero count, hyphen, hold reason", prose("0 HELD - awaiting runner"), true},
+		{"zero count, em dash, hold reason", prose("summary: 0 HELD — until the runner is back"), true},
+		{"negation, comma, hold reason", prose("row 3 is not HELD, pending runner"), true},
+		{"dash-answered no, comma, hold reason", prose("runner available — no HELD, pending runner"), true},
+		{"marker used as a label with a value", prose("0 HELD: human read owed"), true},
+		{"underscore-emphasised hold reason", prose("0 HELD _pending_ runner"), true},
+		{"double-underscore-emphasised hold reason", prose("0 HELD __pending__ runner"), true},
+		// Must refuse: struck text never joins a cue to a marker, and never
+		// stands in for what precedes a cue.
+		{"struck span between cue and marker", prose("row 3 not ~~yet green, still~~ HELD"), true},
+		{"struck span between count label and zero", prose("summary: ~~3~~0 HELD"), true},
+		{"struck span right before the cue", prose("row 3 ~~ok~~ no HELD"), true},
+
+		// Must excuse: genuine negations and zero counts.
+		{"not negates the marker in prose", prose("row 3 is not HELD; every row ran green."), false},
+		{"zero negates the marker", prose("zero could-not-check rows in this run."), false},
+		{"zero count at line start", prose("0 HELD, 7 PASS."), false},
+		{"zero count continuing a count list", prose("totals: 7 PASS, 0 HELD."), false},
+		{"zero count after a count label", prose("Count: 0 could-not-check."), false},
+		{"negation after a count label", prose("summary: no could-not-check rows."), false},
+		{"dash then negation, no hold reason", prose("all rows ran — no could-not-check."), false},
+		{"negation after a bold count label", prose("**Summary:** no could-not-check"), false},
+		{"zero count after a bold count label", prose("**Summary:** 0 HELD"), false},
+		{"negation after a list marker", prose("- no could-not-check rows"), false},
+		{"sentence-start negation", prose("every row passes. No HELD rows remain."), false},
+		{"linking word before zero", prose("certificate issued with zero could-not-check."), false},
+		{"linking word otherwise before no", prose("otherwise no could-not-check rows, no invented scope."), false},
+		{"semicolon before zero", prose("all rows green; zero could-not-check."), false},
+		{"arrow before no", prose("`go` present → no could-not-check."), false},
+		{"parenthesised negation", prose("every row ran (no could-not-check)."), false},
+		{"clause break then a non-breaking space before no", prose("all rows ran,\u00a0no could-not-check."), false},
+		{"zero count after a rows count, dash note", prose("**VERIFY: PASS (5/5 rows, 0 HELD — live cluster access was available)**"), false},
+		{"zero count after a fail count", prose("9/9 rows pass, 0 fail, 0 held."), false},
+		{"underscore-emphasised non-reason word stays excused", prose("0 HELD _runner_ idle"), false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			held, why := verifyPassHeldContradiction(c.evidence)
+			if held != c.wantHeld {
+				t.Errorf("verifyPassHeldContradiction(%q) held=%v why=%q, want held=%v", c.evidence, held, why, c.wantHeld)
+			}
+		})
+	}
+}
+
 // TestUnrunRowsText confirms unrunRowsText extracts UNRUN rows.
 func TestUnrunRowsText(t *testing.T) {
 	evidence := `| # | Command | Exit | Result | Date | Runner |
