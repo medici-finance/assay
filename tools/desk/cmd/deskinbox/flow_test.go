@@ -35,7 +35,7 @@ func withRunReader(t *testing.T, fn func(bin string, args []string) ([]byte, []b
 	t.Cleanup(func() { runReaderFn = prev })
 }
 
-func TestResolveCellsRootArgsWinOutright(t *testing.T) {
+func TestResolveCells_RootArgsWinOutright(t *testing.T) {
 	cells, err := resolveCells([]string{"../a", "../b"}, "/somewhere")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -72,7 +72,7 @@ func TestResolveCellsCellsTxt(t *testing.T) {
 	}
 }
 
-func TestResolveCellsFallsBackToDot(t *testing.T) {
+func TestResolveCells_FallsBackToDot(t *testing.T) {
 	dir := t.TempDir()
 	cells, err := resolveCells(nil, dir)
 	if err != nil {
@@ -83,7 +83,7 @@ func TestResolveCellsFallsBackToDot(t *testing.T) {
 	}
 }
 
-func TestCellNameForBasenameFallback(t *testing.T) {
+func TestCellNameFor_BasenameFallback(t *testing.T) {
 	dir := t.TempDir()
 	sub := filepath.Join(dir, "not-a-git-repo")
 	if err := os.MkdirAll(sub, 0o755); err != nil {
@@ -94,7 +94,7 @@ func TestCellNameForBasenameFallback(t *testing.T) {
 	}
 }
 
-func TestReadJSONNonZeroExitIsCouldNotCheck(t *testing.T) {
+func TestReadJSON_NonZeroExit_IsCouldNotCheck(t *testing.T) {
 	withRunReader(t, func(bin string, args []string) ([]byte, []byte, error) {
 		return nil, []byte("assay-config: routine banner\nflag provided but not defined: -bottleneck\n"),
 			&fakeExitError{code: 2}
@@ -121,7 +121,7 @@ func TestReadJSON_ExitZeroNonJSON_IsCouldNotCheck(t *testing.T) {
 	}
 }
 
-func TestReadJSONExitZeroValidJSONIsOK(t *testing.T) {
+func TestReadJSON_ExitZeroValidJSON_IsOK(t *testing.T) {
 	withRunReader(t, func(bin string, args []string) ([]byte, []byte, error) {
 		return []byte(`{"state":"measured","untriaged":3}`), nil, nil
 	})
@@ -144,7 +144,7 @@ type fakeExitError struct{ code int }
 
 func (e *fakeExitError) Error() string { return "exit status " + strconv.Itoa(e.code) }
 
-func TestRunFlowNoDiagnosticFallsBackToRealError(t *testing.T) {
+func TestRunFlow_NoDiagnostic_FallsBackToRealError(t *testing.T) {
 	withRunReader(t, func(bin string, args []string) ([]byte, []byte, error) {
 		return nil, nil, errors.New("boom")
 	})
@@ -202,7 +202,7 @@ func TestRunFlowEndToEnd(t *testing.T) {
 	}
 }
 
-func TestRunFlowInvalidSinceRefused(t *testing.T) {
+func TestRunFlow_InvalidSince_Refused(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	rc := run([]string{"flow", "--since", "not-a-date"}, &stdout, &stderr, time.Now())
 	if rc != 5 {
@@ -213,7 +213,7 @@ func TestRunFlowInvalidSinceRefused(t *testing.T) {
 	}
 }
 
-func TestRunFlowHTMLWritesSelfContainedFile(t *testing.T) {
+func TestRunFlowHTML_WritesSelfContainedFile(t *testing.T) {
 	withLookPath(t, map[string]string{"statusgen": "/fake/statusgen", "deskboard": "/fake/deskboard"})
 	withRunReader(t, func(bin string, args []string) ([]byte, []byte, error) {
 		switch {
@@ -250,7 +250,7 @@ func TestRunFlowHTMLWritesSelfContainedFile(t *testing.T) {
 	}
 }
 
-func TestRunFlowReaderFailureIsUnverifiable(t *testing.T) {
+func TestRunFlow_ReaderFailure_IsUnverifiable(t *testing.T) {
 	withLookPath(t, map[string]string{"statusgen": "/fake/statusgen", "deskboard": "/fake/deskboard"})
 	withRunReader(t, func(bin string, args []string) ([]byte, []byte, error) {
 		return nil, []byte("flag provided but not defined: -bottleneck"), &fakeExitError{code: 2}

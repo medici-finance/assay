@@ -107,7 +107,7 @@ func TestRunRepoFailureIsUnverifiableNotSilent(t *testing.T) {
 	}
 }
 
-func TestRunHTMLModeUnknownFlagRefused(t *testing.T) {
+func TestRunHTMLMode_UnknownFlagRefused(t *testing.T) {
 	// `--html`/`--flow` as bare FLAGS (the oracle's own spelling) are no longer valid: both
 	// are ported as subcommands (`html OUT.html`, `flow`) instead — see testdata/spec.md's
 	// "CLI shape diverges from the oracle" note. A stray `--html`/`--flow` flag under table/

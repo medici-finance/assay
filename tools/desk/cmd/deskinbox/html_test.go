@@ -92,7 +92,7 @@ func TestRunHTMLEndToEnd(t *testing.T) {
 	}
 }
 
-func TestRunHTMLEmptyQueueStillWritesPage(t *testing.T) {
+func TestRunHTML_EmptyQueueStillWritesPage(t *testing.T) {
 	stubStatusgenDeskboard(t)
 	withForge(t, map[string]*fakeForge{
 		"example-org/example-repo": {issues: nil},
@@ -114,7 +114,7 @@ func TestRunHTMLEmptyQueueStillWritesPage(t *testing.T) {
 	}
 }
 
-func TestRunHTMLRepoFailureIsUnverifiableButFlowSectionUnaffected(t *testing.T) {
+func TestRunHTML_RepoFailure_IsUnverifiableButFlowSectionUnaffected(t *testing.T) {
 	stubStatusgenDeskboard(t)
 	withForge(t, map[string]*fakeForge{
 		"example-org/bad-repo": {err: deskkit.Unverifiable("simulated failure", nil)},
@@ -139,7 +139,7 @@ func TestRunHTMLRepoFailureIsUnverifiableButFlowSectionUnaffected(t *testing.T) 
 	}
 }
 
-func TestRunHTMLFlowReaderFailureNeverReddensExitCode(t *testing.T) {
+func TestRunHTML_FlowReaderFailure_NeverReddensExitCode(t *testing.T) {
 	// The oracle's own rule (assay-inbox.sh:112-118): a blind Flow section is reported in
 	// the summary, but the html MODE's exit code stays a statement about the DECISION queue.
 	withLookPath(t, map[string]string{"statusgen": "/fake/statusgen", "deskboard": "/fake/deskboard"})
