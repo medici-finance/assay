@@ -4,7 +4,7 @@ package main
 // (assay-inbox.sh:1356-1383): the whole decision queue as self-contained HTML cards in the
 // SAME five-part format walk.go renders (buildRendered, format.go — reused here exactly as
 // the oracle's own write_format_program is shared between --walk and --html, per
-// windows-port/13's testdata/spec.md), PLUS the Flow section (flowhtml.go), built over the
+// this directory's testdata/spec.md), PLUS the Flow section (flowhtml.go), built over the
 // current directory ('.') as a single cell.
 //
 // WHY THE FLOW SECTION READS '.', NOT THE REPO LIST. The decision page's repo list is a repo
@@ -24,23 +24,53 @@ import (
 
 // cardData is one rendered item's card input: the source item (repo/number/url/title/index/
 // total) plus its five-part rendering.
+//
+// Class/ClassEvidence are the oracle's screen annotation (`.class` / `.classEvidence` on its
+// per-item object): when Class is non-empty the card carries the oracle's `<p class="cls">`
+// line, exactly as write_html_program renders it. deskinbox does not classify yet, so runHTML
+// never sets them and its page is the oracle's `--html --no-screen` page; the render branch
+// is ported (and parity-tested against a classed fixture item) so that a classifier port
+// only has to supply the two strings.
 type cardData struct {
-	Item     item
-	Index    int // 1-based
-	Total    int
-	Rendered rendered
+	Item          item
+	Index         int // 1-based
+	Total         int
+	Rendered      rendered
+	Class         string
+	ClassEvidence string
+}
+
+// safeHref is the card link's scheme allow-list: an http(s) URL passes through (escaped by the
+// caller, as the oracle escapes it), anything else — a `javascript:`/`data:` scheme, a
+// relative or empty value — renders as `#`. The forge supplies Item.URL (its own issue URL,
+// query.go), not an issue author, so this never fires on real data and the page stays
+// byte-identical to the oracle's there; it closes the scheme case outright rather than
+// relying on where the value came from (a deliberate divergence, testdata/spec.md).
+func safeHref(u string) string {
+	l := strings.ToLower(u)
+	if strings.HasPrefix(l, "https://") || strings.HasPrefix(l, "http://") {
+		return u
+	}
+	return "#"
 }
 
 // cardLines is the oracle's per-item `<article class="card">` block (assay-inbox.sh:826-848).
 func cardLines(c cardData) []string {
 	lines := []string{
 		"<article class=\"card\">",
-		"<h2><a href=\"" + htmlEsc(c.Item.URL) + "\">" + htmlEsc(c.Item.Repo) + "#" + htmlEscInt(c.Item.Number) +
+		"<h2><a href=\"" + htmlEsc(safeHref(c.Item.URL)) + "\">" + htmlEsc(c.Item.Repo) + "#" + htmlEscInt(c.Item.Number) +
 			"</a> — question " + htmlEscInt(c.Index) + " of " + htmlEscInt(c.Total) + "</h2>",
 		"<p class=\"title\">" + htmlEsc(demd(cleanText(c.Item.Title))) + "</p>",
 	}
 	if c.Rendered.Unread {
 		lines = append(lines, "<p class=\"unread\">could-not-check: this item was not read</p>")
+	}
+	if c.Class != "" {
+		cls := "<p class=\"cls\">Class: " + htmlEsc(c.Class)
+		if c.ClassEvidence != "" {
+			cls += " — " + htmlEsc(c.ClassEvidence)
+		}
+		lines = append(lines, cls+"</p>")
 	}
 	lines = append(lines, "<h3>Context</h3>", "<ul>")
 	for _, ctx := range c.Rendered.Context {
@@ -140,12 +170,12 @@ func runHTML(stdout, stderr io.Writer, outPath string, repos []string, now time.
 	sgBin, sgErr := resolveFlowBin(statusgenBinEnv, "statusgen")
 	if sgErr != nil {
 		fmt.Fprintln(stderr, sgErr)
-		return deskkit.ExitUnverifiable
+		return deskkit.ExitCodeOf(sgErr)
 	}
 	dbBin, dbErr := resolveFlowBin(deskboardBinEnv, "deskboard")
 	if dbErr != nil {
 		fmt.Fprintln(stderr, dbErr)
-		return deskkit.ExitUnverifiable
+		return deskkit.ExitCodeOf(dbErr)
 	}
 	cell := cellSpec{Name: cellNameFor(cwd), Path: "."}
 	raw := collectFlow([]cellSpec{cell}, "", sgBin, dbBin, now.UTC().Format("2006-01-02T15:04:05Z"))
@@ -156,7 +186,7 @@ func runHTML(stdout, stderr io.Writer, outPath string, repos []string, now time.
 	// failure count AFTER build_flow runs, so an incomplete Flow section says so ON THE PAGE
 	// too, not only on the terminal.
 	page := buildDecisionPage(pageSummaryText(len(items), len(repos), failures, flowFailures), cards, flow)
-	if err := os.WriteFile(outPath, []byte(page), 0o644); err != nil {
+	if err := os.WriteFile(outPath, []byte(page), 0o600); err != nil {
 		fmt.Fprintf(stderr, "deskinbox: failed to write %s: %v\n", outPath, err)
 		return deskkit.ExitRefused
 	}

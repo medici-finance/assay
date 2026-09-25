@@ -380,6 +380,7 @@ ul.opts{list-style:none;padding-left:0}
 ul.opts li{margin:.3rem 0}
 span.rec{color:var(--recfg);background:var(--recbg);border-radius:999px;padding:.05rem .5rem;font-size:.72rem;font-weight:700;white-space:nowrap}
 p.unread{color:var(--accent);font-weight:600}
+p.cls{color:var(--muted);font-size:.82rem;margin:0 0 .8rem}
 p.empty{color:var(--muted)}
 section.flow-sec{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1.1rem 1.25rem;margin:2rem 0 1.25rem}
 section.flow-sec h2{font-size:1.15rem;margin:0 0 .2rem}

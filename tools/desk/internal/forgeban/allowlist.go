@@ -213,6 +213,15 @@ var UnresolvedArgv = []Allowance{
 		Reason: "runs the resolved statusgen binary with --gate-scores.",
 	},
 	{
+		Key: "cmd/deskinbox/flow.go::runReaderFn::<unresolved>",
+		Reason: "the flow model's reader seam: runs the statusgen or deskboard binary resolveFlowBin resolved " +
+			"(`statusgen --bottleneck/--intake-debt/--net-flow --json`, `deskboard throughput --json`). argv[0] is " +
+			"a variable because the oracle's ASSAY_STATUSGEN / ASSAY_DESKBOARD overrides may re-point it at a " +
+			"specific build; resolveFlowBin REFUSES any override (and any PATH resolution) whose base name, with a " +
+			"trailing .exe stripped, is not statusgen / deskboard respectively, so this site cannot be aimed at a " +
+			"forge CLI by an environment variable. Read-only readers; never a forge write.",
+	},
+	{
 		Key:    "cmd/deskpreflight/main.go::realOutput::<unresolved>",
 		Reason: "the preflight probe seam; the argv comes from deskkit's preflight probe table, not from a caller.",
 	},

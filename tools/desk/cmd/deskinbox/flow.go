@@ -55,16 +55,47 @@ const (
 // through runReaderFn instead, which needs no real binary either.
 var lookPathFn = exec.LookPath
 
-func resolveFlowBin(envVar, fallback string) (string, error) {
+// resolveFlowBin resolves the flow reader `want` ("statusgen" or "deskboard") from PATH, or
+// from the override variable envVar. The override may re-point WHICH build of the reader
+// runs (a pinned path, a sibling checkout's build), never WHAT runs: a value whose base name —
+// with a trailing `.exe` stripped, case-insensitively, for Windows — is not `want` is refused.
+// That bound is what makes runReaderFn's forge-surface ledger row
+// (internal/forgeban/allowlist.go, UnresolvedArgv) true rather than true-by-convention: the
+// exec site's argv[0] is always a statusgen or deskboard, never a forge CLI (`gh`, `glab`)
+// or any other binary an environment variable happens to name.
+func resolveFlowBin(envVar, want string) (string, error) {
 	bin := strings.TrimSpace(os.Getenv(envVar))
 	if bin == "" {
-		bin = fallback
+		bin = want
+	}
+	if base := flowBinBase(bin); base != want {
+		return "", deskkit.Refused(envVar + "=" + bin + " does not name " + want +
+			" (base name " + base + "); the override may point at a different " + want +
+			" build, never at a different binary")
 	}
 	path, err := lookPathFn(bin)
 	if err != nil {
 		return "", deskkit.Unverifiable(bin+" is not on PATH (set "+envVar+" to override)", err)
 	}
+	if base := flowBinBase(path); base != want {
+		// LookPath returns its input unchanged for a path-shaped name, but re-check what it
+		// resolved rather than assume it.
+		return "", deskkit.Refused(envVar + " resolved to " + path + ", which is not " + want)
+	}
 	return path, nil
+}
+
+// flowBinBase is a reader path's base name with a trailing `.exe` stripped
+// (case-insensitively), separator-agnostic so a Windows-style override is judged the same way
+// on every OS.
+func flowBinBase(p string) string {
+	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
+		p = p[i+1:]
+	}
+	if len(p) > 4 && strings.EqualFold(p[len(p)-4:], ".exe") {
+		p = p[:len(p)-4]
+	}
+	return p
 }
 
 // ---------------------------------------------------------------------- cell resolution --
@@ -158,7 +189,9 @@ func cellSHA(path string) string {
 // the interpretation logic (interpretFlow) and its parity test never need a real statusgen or
 // deskboard binary.
 var runReaderFn = func(bin string, args []string) (stdout, stderr []byte, err error) {
-	cmd := exec.Command(bin, args...) // bin is always resolveFlowBin's statusgen or deskboard result (Verify row 5)
+	// bin is always resolveFlowBin's result, which refuses any base name but statusgen/deskboard
+	// (Verify row 5; the forge-surface ledger row for this site states the same bound).
+	cmd := exec.Command(bin, args...) // statusgen or deskboard only
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
@@ -298,10 +331,15 @@ type rawDoc struct {
 
 // decodeInto parses raw into a fresh *T, returning nil (could-not-check, not a crash) on any
 // unmarshal failure — the same leniency the oracle's `jq -e .` + free-form field access
-// tolerates from a schema-drifted reader.
-func decodeInto[T any](raw []byte) *T {
+// tolerates from a schema-drifted reader. On failure it writes the decode error into *errOut
+// (and onto stderr, as readJSON does for a reader that failed outright), so the blind stage
+// carries WHY it is blind — a reader that exited 0 with JSON of the wrong shape — rather than
+// the generic "not read" / "stage not emitted" fallback.
+func decodeInto[T any](label string, raw []byte, errOut *string) *T {
 	var v T
 	if err := json.Unmarshal(raw, &v); err != nil {
+		*errOut = "reader output is JSON but not the expected shape: " + stripControl(err.Error())
+		fmt.Fprintf(os.Stderr, "deskinbox: FLOW READER %s: %s\n", label, *errOut)
 		return nil
 	}
 	return &v
@@ -316,14 +354,14 @@ func collectFlow(cells []cellSpec, since, statusgenBin, deskboardBin, asOf strin
 
 		if ok, errText, raw := readJSON("statusgen --bottleneck ("+c.Name+")", statusgenBin,
 			[]string{"--root", c.Path, "--bottleneck", "--json"}); ok {
-			cr.Bottleneck = decodeInto[bottleneckJSON](raw)
+			cr.Bottleneck = decodeInto[bottleneckJSON]("statusgen --bottleneck ("+c.Name+")", raw, &cr.BottleneckErr)
 		} else {
 			cr.BottleneckErr = errText
 		}
 
 		if ok, errText, raw := readJSON("statusgen --intake-debt ("+c.Name+")", statusgenBin,
 			[]string{"--root", c.Path, "--intake-debt", "--json"}); ok {
-			cr.Intake = decodeInto[intakeDebtJSON](raw)
+			cr.Intake = decodeInto[intakeDebtJSON]("statusgen --intake-debt ("+c.Name+")", raw, &cr.IntakeErr)
 		} else {
 			cr.IntakeErr = errText
 		}
@@ -333,7 +371,7 @@ func collectFlow(cells []cellSpec, since, statusgenBin, deskboardBin, asOf strin
 			nfArgs = append(nfArgs, "--since", since)
 		}
 		if ok, errText, raw := readJSON("statusgen --net-flow ("+c.Name+")", statusgenBin, nfArgs); ok {
-			cr.NetFlow = decodeInto[netFlowJSON](raw)
+			cr.NetFlow = decodeInto[netFlowJSON]("statusgen --net-flow ("+c.Name+")", raw, &cr.NetFlowErr)
 		} else {
 			cr.NetFlowErr = errText
 		}
@@ -342,7 +380,7 @@ func collectFlow(cells []cellSpec, since, statusgenBin, deskboardBin, asOf strin
 	}
 
 	if ok, errText, raw := readJSON("deskboard throughput", deskboardBin, []string{"throughput", "--json"}); ok {
-		doc.Throughput = decodeInto[throughputJSON](raw)
+		doc.Throughput = decodeInto[throughputJSON]("deskboard throughput", raw, &doc.ThroughputErr)
 	} else {
 		doc.ThroughputErr = errText
 	}
@@ -1056,12 +1094,12 @@ func runFlow(stdout, stderr io.Writer, rootArgs []string, since, htmlOut string,
 	sgBin, sgErr := resolveFlowBin(statusgenBinEnv, "statusgen")
 	if sgErr != nil {
 		fmt.Fprintln(stderr, sgErr)
-		return deskkit.ExitUnverifiable
+		return deskkit.ExitCodeOf(sgErr)
 	}
 	dbBin, dbErr := resolveFlowBin(deskboardBinEnv, "deskboard")
 	if dbErr != nil {
 		fmt.Fprintln(stderr, dbErr)
-		return deskkit.ExitUnverifiable
+		return deskkit.ExitCodeOf(dbErr)
 	}
 
 	raw := collectFlow(cells, since, sgBin, dbBin, now())
@@ -1070,7 +1108,7 @@ func runFlow(stdout, stderr io.Writer, rootArgs []string, since, htmlOut string,
 
 	if htmlOut != "" {
 		page := buildFlowOnlyPage(model)
-		if err := os.WriteFile(htmlOut, []byte(page), 0o644); err != nil {
+		if err := os.WriteFile(htmlOut, []byte(page), 0o600); err != nil {
 			fmt.Fprintf(stderr, "deskinbox: failed to write %s: %v\n", htmlOut, err)
 			return deskkit.ExitRefused
 		}

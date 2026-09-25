@@ -179,7 +179,8 @@ a number that does not describe them.
 ### If a reader is missing or too old
 
 `statusgen` and `deskboard` are looked up on `PATH` (override with `ASSAY_STATUSGEN` /
-`ASSAY_DESKBOARD`). A binary that predates one of these flags refuses it, and that refusal
+`ASSAY_DESKBOARD`; under `deskinbox` an override must still name a `statusgen` / `deskboard`
+binary — it picks which build runs, never a different program, and anything else is refused). A binary that predates one of these flags refuses it, and that refusal
 becomes a `could-not-check` stage carrying the binary's own message — for example
 `flag provided but not defined: -net-flow`. That is the expected reading against a pinned
 build older than the flag, and it is reported as itself rather than as an empty queue.

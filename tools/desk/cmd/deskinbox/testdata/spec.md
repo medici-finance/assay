@@ -28,16 +28,16 @@ calls), but the `make×4` claim specifically does not survive a direct check.
 
 | Mode | Invocation | Behaviour | This PR |
 |---|---|---|---|
-| table (default) | `deskinbox [owner/repo ...]` | one row per queue item, oldest-urgent-first | **ported** (windows-port/13) |
-| walk | `deskinbox walk [--item K] [owner/repo ...]` | ONE item in the five-part decision format (Header/Context/Options/Reply shape/Verification); prints item 1 by default | **ported** (windows-port/13) |
-| html | `deskinbox html OUT.html [owner/repo ...]` | the whole queue as self-contained HTML cards in the same five-part format, PLUS the flow section | **ported** (windows-port/15) |
-| flow | `deskinbox flow [--root PATH ...] [--since YYYY-MM-DD]` | the pipeline flow model as a terminal table | **ported** (windows-port/15) |
-| flow --html | `deskinbox flow --html OUT.html [--root PATH ...] [--since YYYY-MM-DD]` | the flow model as an inline-SVG stage diagram | **ported** (windows-port/15) |
+| table (default) | `deskinbox [owner/repo ...]` | one row per queue item, oldest-urgent-first | **ported** (table+walk port) |
+| walk | `deskinbox walk [--item K] [owner/repo ...]` | ONE item in the five-part decision format (Header/Context/Options/Reply shape/Verification); prints item 1 by default | **ported** (table+walk port) |
+| html | `deskinbox html OUT.html [owner/repo ...]` | the whole queue as self-contained HTML cards in the same five-part format, PLUS the flow section | **ported** (html+flow port) |
+| flow | `deskinbox flow [--root PATH ...] [--since YYYY-MM-DD]` | the pipeline flow model as a terminal table | **ported** (html+flow port) |
+| flow --html | `deskinbox flow --html OUT.html [--root PATH ...] [--since YYYY-MM-DD]` | the flow model as an inline-SVG stage diagram | **ported** (html+flow port) |
 
-windows-port/15 finishes the port: every mode the oracle offers now has a Go equivalent.
+The html+flow port finishes the port: every mode the oracle offers now has a Go equivalent.
 `plugins/assay/scripts/assay-inbox.sh` stays in the tree as the parity oracle the tests
 extract programs from — the Ground rules forbid deleting or editing it, and the two parity
-suites (`format_parity_test.go` from windows-port/13; `flow_parity_test.go`/
+suites (`format_parity_test.go` from the table+walk port; `flow_parity_test.go`/
 `html_parity_test.go` from this brief) depend on its heredocs staying put.
 
 **Why the split.** The dispatch brief pre-authorizes splitting an oversized port and
@@ -52,15 +52,15 @@ independently useful, independently testable increment — walk is the `ask-deci
 skill's actual entry point — where landing all five modes in one PR would have meant one
 untested giant diff.
 
-## Flags this PR implements (windows-port/13 + windows-port/15)
+## Flags this PR implements (the table+walk port + the html+flow port)
 
 - `--item K` (implies `walk`; 1-based; out of range is a refusal, never a silent empty)
 - `-h` / `--help`
 - `--version`
 - repo positional args, else `./.assay/repos.txt`, else the cwd's `origin` remote
-- `html OUT.html` (windows-port/15): the output path is a required POSITIONAL, not a
+- `html OUT.html` (the html+flow port): the output path is a required POSITIONAL, not a
   `--html` flag — see "CLI shape diverges from the oracle" below
-- `flow [--root PATH ...] [--since YYYY-MM-DD] [--html OUT.html]` (windows-port/15):
+- `flow [--root PATH ...] [--since YYYY-MM-DD] [--html OUT.html]` (the html+flow port):
   `--root` repeatable, `--since` validated `YYYY-MM-DD`, `--html` takes the diagram's
   output path
 
@@ -69,7 +69,7 @@ untested giant diff.
 The oracle spells these two renderings as flags on one invocation (`assay-inbox.sh --html
 OUT.html`, `assay-inbox.sh --flow --html OUT.html`). This port spells them as SUBCOMMANDS
 (`deskinbox html OUT.html`, `deskinbox flow --html OUT.html`), exactly the shape
-windows-port/13 already chose for `--walk` → `walk`. Reasons this stays a subcommand, not a
+the table+walk port already chose for `--walk` → `walk`. Reasons this stays a subcommand, not a
 flag, on this port specifically:
 
 - **`walk` already set the precedent.** A `deskinbox --walk` flag next to a `deskinbox html
@@ -161,7 +161,7 @@ flags. No flag is silently accepted and no-op'd.
    `Repo.Resolve("HEAD")`, never a `git` subprocess.** Verify row 5 scopes every
    `exec.Command` in this package to `statusgen`/`deskboard` — a `git` shell-out for the
    sha line would be the one unscoped site. `gitcore` is the same pure-Go path
-   `deskkit.RepoSlugForDir` (repos.go, windows-port/13) already uses for the origin-remote
+   `deskkit.RepoSlugForDir` (repos.go, the table+walk port) already uses for the origin-remote
    read; this is that same discipline applied to a HEAD lookup. A directory that is not a
    git checkout (or has no commits yet) reads `could-not-check` for its sha, exactly as the
    oracle's own `2>/dev/null || printf 'could-not-check'` fallback does.
@@ -181,6 +181,34 @@ flags. No flag is silently accepted and no-op'd.
    cell list is a statusgen-ROOT axis. Inventing a cell list from the repo args would
    claim a coverage no reader was given. `deskinbox flow --root ...` is the multi-cell
    form of the same model.
+9. **No screen: `deskinbox html` is the oracle's `--html --no-screen` page.** The oracle
+   classifies every queued item (already-ruled / no-fork / reversible-default / genuine —
+   "the screen") before rendering, and its `--html` cards each carry a
+   `<p class="cls">Class: …</p>` line. `deskinbox` does not classify yet (nor does its
+   table or `walk`), so `runHTML` never sets a card's `Class`, and its page is byte-identical
+   to the oracle's `--no-screen` page. The class line's RENDER branch and its `p.cls` CSS rule
+   are ported (`cardLines`, `pageStyleCSS`) and parity-tested against a classed fixture item,
+   so a classifier port only has to supply the two strings. Until then `assay:inbox` routes
+   `--html` to the oracle and uses `deskinbox html` only where the oracle cannot run.
+10. **The card link's scheme is allow-listed.** `safeHref` renders an http(s) `Item.URL`
+   unchanged and anything else as `#`. The oracle escapes the URL but does not check its
+   scheme. The value is the forge's own issue URL, never issue-author text, so real pages are
+   unchanged; this closes the `javascript:` case outright rather than relying on provenance.
+11. **Page files are written `0600`.** The decision page embeds issue bodies and comments
+   from every repo queried, private ones included. The oracle's `> "$HTML_OUT"` inherits the
+   umask (usually `0644`); both `deskinbox` writers create the file owner-only.
+12. **A reader that exits 0 with JSON of the wrong shape carries its decode error.** The
+   oracle's free-form jq field access reads what it can of a schema-drifted document; this
+   port's typed decode rejects the whole document instead. Either way the stage is
+   could-not-check (never `0`) and counts as a flow failure; `decodeInto` puts the decode
+   error on the blind stage (and on stderr) rather than the generic "stage not emitted" /
+   "not read".
+13. **`ASSAY_STATUSGEN` / `ASSAY_DESKBOARD` are bounded to their reader's name.** The oracle
+   runs whatever the variable names. `resolveFlowBin` refuses (exit `5`) an override — or a
+   PATH resolution — whose base name, with a trailing `.exe` stripped, is not `statusgen` /
+   `deskboard` respectively: the override picks WHICH build runs, never WHAT runs. That bound
+   is what the forge-surface ledger row for `runReaderFn`
+   (`internal/forgeban/allowlist.go`) states.
 
 ## Parity-testing approach
 
@@ -198,7 +226,7 @@ jq extraction does not reach: the repo-resolution order, the dedupe/rank/sort or
 the display-hygiene `clean`/truncate rules, and end-to-end exit-code/mode-dispatch
 behaviour — all against a fake `Forge` (no network).
 
-**windows-port/15 extends this with two more real-jq extractions, the same discipline:**
+**The html+flow port extends this with two more real-jq extractions, the same discipline:**
 
 - `flow_parity_test.go`'s `TestParityFlow` extracts `write_flow_program()` (the `JQFLOW`
   heredoc) verbatim and runs it through the system `jq` on three raw-envelope fixtures
@@ -219,6 +247,12 @@ behaviour — all against a fake `Forge` (no network).
   `html.EscapeString`, which spells the quote `&#34;`) and a flow-model fixture, comparing
   the ENTIRE rendered page — doctype, `<style>` block, cards, Flow section, SVG diagram,
   equivalent `<table>` — byte for byte against `buildDecisionPage`/`buildFlowOnlyPage`.
+  It runs over EVERY flow fixture, not one: the page has its own rendering branches for a
+  blind stage (could-not-check, never `0`), an n/a stage and an AT LEAST count, and only the
+  blind/partial fixtures reach them. The items fixture includes one classed item, pinning
+  the card's class line (divergence 9). `TestPageEscapesHostileInput` feeds an
+  attribute-breakout / `<script>` / `javascript:` payload through every body-derived card
+  field and every free-text flow field and asserts none of it reaches the page as markup.
   `TestSelfContainedPage` is a standing, forge-free check of Verify row 4's own assertion
   (no `url(`, `<script`, ` src=`) so a regression is caught by `go test` alone.
 - `flow_test.go` / `html_test.go` cover what the jq extractions do not: cell resolution

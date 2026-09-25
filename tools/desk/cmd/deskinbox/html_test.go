@@ -7,9 +7,11 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -90,6 +92,11 @@ func TestRunHTMLEndToEnd(t *testing.T) {
 			t.Errorf("decision page contains forbidden substring %q (Verify row 4)", forbidden)
 		}
 	}
+	if runtime.GOOS != "windows" {
+		if fi, err := os.Stat(out); err != nil || fi.Mode().Perm() != 0o600 {
+			t.Errorf("decision page must be written owner-only (0600): stat=%v err=%v", fi.Mode().Perm(), err)
+		}
+	}
 }
 
 func TestRunHTML_EmptyQueueStillWritesPage(t *testing.T) {
@@ -163,5 +170,100 @@ func TestRunHTML_FlowReaderFailure_NeverReddensExitCode(t *testing.T) {
 	page, _ := os.ReadFile(out)
 	if !strings.Contains(string(page), "the Flow section below is INCOMPLETE") {
 		t.Errorf("want the PAGE's own summary to name the incomplete Flow section too, got:\n%s", page)
+	}
+}
+
+// hostilePayload is an attribute-breakout + element-injection + scheme payload. Every place it
+// lands on the page must come out as inert text: no `<script`/`<img` element, no raw `"`
+// closing an attribute.
+const hostilePayload = `"><script>alert(1)</script><img src=x onerror=alert(2)>' javascript:x`
+
+// TestPageEscapesHostileInput feeds hostilePayload through every body-derived card field and
+// every free-text flow-model field buildDecisionPage/buildFlowOnlyPage render, and asserts the
+// page carries none of it as markup. The parity fixtures use benign text (one title with
+// `<`, `&` and `"`), so without this test an escaping regression in a field they do not
+// exercise would pass.
+func TestPageEscapesHostileInput(t *testing.T) {
+	var doc rawDoc
+	fx := flowFixtures()[1] // the blind fixture: its rows carry Blind/FlowBlind text to overwrite
+	if err := json.Unmarshal([]byte(fx.raw), &doc); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	m := interpretFlow(doc)
+	m.AsOf, m.Since, m.Advice, m.Note, m.Bottleneck = hostilePayload, hostilePayload, hostilePayload, hostilePayload, hostilePayload
+	m.Sources = []string{hostilePayload}
+	m.Blind = []string{hostilePayload}
+	for i := range m.Rows {
+		m.Rows[i].Cell, m.Rows[i].FlowBlind, m.Rows[i].CapacityNote = hostilePayload, hostilePayload, hostilePayload
+		for j := range m.Rows[i].Stages {
+			st := &m.Rows[i].Stages[j]
+			st.Blind, st.CountSource, st.QueueBlind, st.Dwell = hostilePayload, hostilePayload, hostilePayload, hostilePayload
+		}
+	}
+	cards := []cardData{{
+		Item:  item{Repo: hostilePayload, Number: 1, URL: "javascript:alert(3)", Title: hostilePayload},
+		Index: 1, Total: 1,
+		Rendered: rendered{
+			Context: []string{hostilePayload}, Options: []option{{Letter: hostilePayload, Text: hostilePayload, Recommended: true}},
+			OptionsStated: true, Reply: hostilePayload, Verification: hostilePayload,
+		},
+		Class: hostilePayload, ClassEvidence: hostilePayload,
+	}}
+	pages := map[string]string{
+		"decision page":  buildDecisionPage(hostilePayload, cards, m),
+		"flow-only page": buildFlowOnlyPage(m),
+	}
+	for name, page := range pages {
+		for _, bad := range []string{"<script", "<img", "onerror=alert(2)>", "x' javascript", "javascript:alert(3)"} {
+			if strings.Contains(page, bad) {
+				t.Errorf("%s: hostile input reached the page as markup — found %q", name, bad)
+			}
+		}
+	}
+	if !strings.Contains(pages["decision page"], `<a href="#">`) {
+		t.Error("a non-http(s) card URL must render as href=\"#\"")
+	}
+	if !strings.Contains(pages["decision page"], "&quot;&gt;&lt;script&gt;") {
+		t.Error("expected the payload to appear escaped as text (&quot;&gt;&lt;script&gt;)")
+	}
+}
+
+// TestSafeHref pins the scheme allow-list: http(s) pass through unchanged (so a real forge URL
+// renders exactly as the oracle renders it), every other scheme becomes "#".
+func TestSafeHref(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://example.invalid/issues/1": "https://example.invalid/issues/1",
+		"HTTP://example.invalid/x":         "HTTP://example.invalid/x",
+		"javascript:alert(1)":              "#",
+		" javascript:alert(1)":             "#",
+		"data:text/html,<b>":               "#",
+		"":                                 "#",
+		"/relative":                        "#",
+	} {
+		if got := safeHref(in); got != want {
+			t.Errorf("safeHref(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestPageFilesAreOwnerOnly: the decision page embeds issue bodies and comments from every
+// repo queried (private ones included), so both writers create it 0600, not world-readable.
+func TestPageFilesAreOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("could-not-check: POSIX mode bits are not meaningful on Windows")
+	}
+	stubStatusgenDeskboard(t)
+	dir := t.TempDir()
+	flowOut := filepath.Join(dir, "flow.html")
+	var stdout, stderr bytes.Buffer
+	if rc := run([]string{"flow", "--html", flowOut, "--root", "."}, &stdout, &stderr, time.Now()); rc != 0 {
+		t.Fatalf("flow --html: want exit 0, got %d; stderr=%s", rc, stderr.String())
+	}
+	fi, err := os.Stat(flowOut)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if perm := fi.Mode().Perm(); perm != 0o600 {
+		t.Errorf("flow page mode = %o, want 600", perm)
 	}
 }

@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 func withLookPath(t *testing.T, found map[string]string) {
@@ -272,4 +274,100 @@ func contains(hay []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+// TestResolveFlowBin_OverrideBoundToReaderName pins the bound that makes runReaderFn's
+// forge-surface ledger row true: ASSAY_STATUSGEN / ASSAY_DESKBOARD may re-point WHICH build
+// of the reader runs, never WHAT runs. A forge CLI (or any other binary) named by the
+// override is refused before anything is resolved or launched.
+func TestResolveFlowBin_OverrideBoundToReaderName(t *testing.T) {
+	withLookPath(t, map[string]string{
+		"statusgen":                     "/fake/statusgen",
+		"/opt/pinned/statusgen":         "/opt/pinned/statusgen",
+		`C:\tools\statusgen.EXE`:        `C:\tools\statusgen.EXE`,
+		"gh":                            "/usr/bin/gh",
+		"/usr/bin/gh":                   "/usr/bin/gh",
+		"/opt/pinned/statusgen-wrapper": "/opt/pinned/statusgen-wrapper",
+	})
+	for _, tc := range []struct {
+		override string
+		wantOK   bool
+	}{
+		{"", true},
+		{"/opt/pinned/statusgen", true},
+		{`C:\tools\statusgen.EXE`, true},
+		{"gh", false},
+		{"/usr/bin/gh", false},
+		{"/opt/pinned/statusgen-wrapper", false},
+	} {
+		t.Setenv(statusgenBinEnv, tc.override)
+		path, err := resolveFlowBin(statusgenBinEnv, "statusgen")
+		if tc.wantOK && err != nil {
+			t.Errorf("override %q: want accepted, got %v", tc.override, err)
+		}
+		if !tc.wantOK {
+			if err == nil {
+				t.Errorf("override %q: want refused, got path %q", tc.override, path)
+			} else if code := deskkit.ExitCodeOf(err); code != 5 {
+				t.Errorf("override %q: want refused (5), got exit %d (%v)", tc.override, code, err)
+			}
+		}
+	}
+}
+
+// TestRunFlow_ForgeCLIOverride_RefusedBeforeAnyLaunch: end to end, an override naming a forge
+// CLI refuses the run (exit 5) and the reader seam is never called.
+func TestRunFlow_ForgeCLIOverride_RefusedBeforeAnyLaunch(t *testing.T) {
+	withLookPath(t, map[string]string{"gh": "/usr/bin/gh", "deskboard": "/fake/deskboard"})
+	launched := false
+	withRunReader(t, func(bin string, args []string) ([]byte, []byte, error) {
+		launched = true
+		return nil, nil, errors.New("must not be reached")
+	})
+	t.Setenv(statusgenBinEnv, "gh")
+	var stdout, stderr bytes.Buffer
+	rc := run([]string{"flow", "--root", "."}, &stdout, &stderr, time.Now())
+	if rc != 5 {
+		t.Fatalf("want refused (5), got %d; stderr=%s", rc, stderr.String())
+	}
+	if launched {
+		t.Error("a refused override must launch nothing")
+	}
+	if !strings.Contains(stderr.String(), "does not name statusgen") {
+		t.Errorf("want the refusal to name the bound, got %q", stderr.String())
+	}
+}
+
+// TestCollectFlow_WrongShapeJSON_CarriesDecodeDiagnostic: a reader that exits 0 with valid
+// JSON of the wrong shape is still could-not-check (never zero), and the blind stage says
+// WHY — the decode error — instead of the generic "stage not emitted" / "not read".
+func TestCollectFlow_WrongShapeJSON_CarriesDecodeDiagnostic(t *testing.T) {
+	withRunReader(t, func(bin string, args []string) ([]byte, []byte, error) {
+		switch {
+		case contains(args, "--bottleneck"):
+			return []byte(`{"constraint":"todo","stages":"not-an-array"}`), nil, nil
+		case contains(args, "--intake-debt"):
+			return []byte(`{"state":"measured","untriaged":0}`), nil, nil
+		case contains(args, "--net-flow"):
+			return []byte(`{"state":"ok","streams":[]}`), nil, nil
+		case contains(args, "throughput"):
+			return []byte(`{"bottleneck":"","stagesRead":0,"stagesTotal":4,"advice":"x","stages":[]}`), nil, nil
+		}
+		return nil, nil, errors.New("unexpected reader invocation")
+	})
+	raw := collectFlow([]cellSpec{{Name: "c", Path: "."}}, "", "statusgen", "deskboard", "now")
+	if raw.Cells[0].Bottleneck != nil {
+		t.Fatal("wrong-shape JSON must not decode into a bottleneck doc")
+	}
+	if !strings.Contains(raw.Cells[0].BottleneckErr, "not the expected shape") {
+		t.Errorf("want the decode diagnostic carried on BottleneckErr, got %q", raw.Cells[0].BottleneckErr)
+	}
+	if countFlowFailures(raw) != 1 {
+		t.Errorf("want exactly the one wrong-shape reader counted as a failure, got %d", countFlowFailures(raw))
+	}
+	var buf bytes.Buffer
+	renderFlowText(&buf, interpretFlow(raw))
+	if text := buf.String(); !strings.Contains(text, "not the expected shape") {
+		t.Errorf("want the decode diagnostic on the rendered flow, got:\n%s", text)
+	}
 }

@@ -104,6 +104,11 @@ type jqHTMLItem struct {
 	Reply         string `json:"reply"`
 	Verification  string `json:"verification"`
 	Unread        bool   `json:"unread"`
+	// Class/ClassEvidence are the screen's per-item annotation (the oracle's `.class` /
+	// `.classEvidence`). omitempty keeps an unclassed item's JSON exactly the oracle's
+	// `--no-screen` shape (no key at all), which is what deskinbox's own page renders.
+	Class         string `json:"class,omitempty"`
+	ClassEvidence string `json:"classEvidence,omitempty"`
 }
 
 func htmlFixtureItems() []jqHTMLItem {
@@ -111,8 +116,8 @@ func htmlFixtureItems() []jqHTMLItem {
 		{
 			Repo: "example-org/example-repo", Number: 42,
 			URL: "https://example.invalid/issues/42", Title: "Example decision",
-			Index: 1, Total: 2,
-			Header:  "example-org/example-repo#42 — question 1 of 2",
+			Index: 1, Total: 3,
+			Header:  "example-org/example-repo#42 — question 1 of 3",
 			Context: []string{"The queue is stuck on X.", "blocked on the driver: carries needs-decision, urgent", "gate: needs-decision, urgent · age 3d · https://example.invalid/issues/42"},
 			Options: []struct {
 				Letter      string `json:"letter"`
@@ -121,13 +126,13 @@ func htmlFixtureItems() []jqHTMLItem {
 			}{{Letter: "A", Text: "Do the risky thing", Recommended: true}, {Letter: "B", Text: "Do the safe thing"}},
 			OptionsStated: true,
 			Reply:         "reply with one letter (A/B) — nothing else is needed.",
-			Verification:  "the desk records the ruling on example-org/example-repo#42 as a relayed decision, presents question 2 of 2.",
+			Verification:  "the desk records the ruling on example-org/example-repo#42 as a relayed decision, presents question 2 of 3.",
 		},
 		{
 			Repo: "example-org/example-repo", Number: 9,
 			URL: "https://example.invalid/issues/9", Title: "Unreadable <item> & \"quoted\"",
-			Index: 2, Total: 2,
-			Header:        "example-org/example-repo#9 — question 2 of 2",
+			Index: 2, Total: 3,
+			Header:        "example-org/example-repo#9 — question 2 of 3",
 			Context:       []string{"could-not-check: this issue's body and comments could not be read (detail fetch failed) — the item is UNREAD, not empty"},
 			OptionsStated: false,
 			Options: []struct {
@@ -136,8 +141,28 @@ func htmlFixtureItems() []jqHTMLItem {
 				Recommended bool   `json:"recommended"`
 			}{{Letter: "A", Text: "options not yet stated — desk to fill", Recommended: true}},
 			Reply:        "reply with the ruling in one line; the desk restates it as lettered options before acting.",
-			Verification: "the desk records the ruling on example-org/example-repo#9 as a relayed decision, reports the queue drained.",
+			Verification: "the desk records the ruling on example-org/example-repo#9 as a relayed decision, presents question 3 of 3.",
 			Unread:       true,
+		},
+		{
+			// A classed item: pins the card's `<p class="cls">` render branch (class AND its
+			// evidence, both escaped) against the oracle's own, so the page stays byte-identical
+			// once a classifier supplies the two strings.
+			Repo: "example-org/example-repo", Number: 7,
+			URL: "https://example.invalid/issues/7", Title: "Already answered",
+			Index: 3, Total: 3,
+			Header:  "example-org/example-repo#7 — question 3 of 3",
+			Context: []string{"The driver already ruled on this."},
+			Options: []struct {
+				Letter      string `json:"letter"`
+				Text        string `json:"text"`
+				Recommended bool   `json:"recommended"`
+			}{{Letter: "A", Text: "Keep it", Recommended: true}, {Letter: "B", Text: "Drop it"}},
+			OptionsStated: true,
+			Reply:         "reply with one letter (A/B) — nothing else is needed.",
+			Verification:  "the desk records the ruling on example-org/example-repo#7 as a relayed decision, reports the queue drained.",
+			Class:         "already-ruled",
+			ClassEvidence: "ruling <A> after the newest ask & \"quoted\"",
 		},
 	}
 }
@@ -147,9 +172,12 @@ func TestParityHTML(t *testing.T) {
 	program := extractJQHTMLProgram(t)
 	flowProgram := extractJQFLOWProgram(t)
 
-	for _, fx := range flowFixtures()[:1] { // one representative flow doc is enough here — the
-		// flow model itself is exhaustively parity-tested by TestParityFlow; this test's job
-		// is the PAGE assembly (cards + section wrapper), not a second pass over the model.
+	// EVERY flow fixture, not one representative: TestParityFlow proves the MODEL, but
+	// flowhtml.go has its own rendering branches for a blind stage (could-not-check, never
+	// 0), an n/a stage, and an AT LEAST partial count — only the blind/partial fixtures reach
+	// them, so iterating only the all-ok fixture would let a could-not-check→0 rendering
+	// regression pass (the drained-vs-unread confusion the flow model exists to prevent).
+	for _, fx := range flowFixtures() {
 		t.Run(fx.name, func(t *testing.T) {
 			dir := t.TempDir()
 			rawFile := filepath.Join(dir, "raw.json")
@@ -174,7 +202,7 @@ func TestParityHTML(t *testing.T) {
 				t.Fatalf("write items file: %v", err)
 			}
 
-			summary := "deskinbox: 2 item(s) across 1 repo(s)"
+			summary := "deskinbox: 3 item(s) across 1 repo(s)"
 			want := runOracleHTML(t, program, summary, false, modelFile, itemsFile)
 
 			var cards []cardData
@@ -190,6 +218,7 @@ func TestParityHTML(t *testing.T) {
 						Context: it.Context, Options: opts, OptionsStated: it.OptionsStated,
 						Reply: it.Reply, Verification: it.Verification, Unread: it.Unread,
 					},
+					Class: it.Class, ClassEvidence: it.ClassEvidence,
 				})
 			}
 			got := buildDecisionPage(summary, cards, model)
