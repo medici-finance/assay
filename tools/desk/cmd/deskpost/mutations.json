@@ -20,6 +20,18 @@
       "new": "\t\tcase deskkit.FloorRefuse:\n\t\t\t_ = fd"
     },
     {
+      "name": "disarm the desk-decided condition at the FIRST read on the FLIP path (a finding standing when the checks run is not refused there, #1694 — reddens TestReadyDeskDecidedCheckedAtFirstReadToo)",
+      "file": "cmd/deskpost/ready.go",
+      "old": "\t\tif reason := deskDecidedRefusal(pr, info, reviews, head); reason != \"\" {",
+      "new": "\t\tif reason := deskDecidedRefusal(pr, info, reviews, head); false && reason != \"\" {"
+    },
+    {
+      "name": "drop the desk-decided re-run on the TOCTOU re-read (a finding or label edit at the SAME head during the checks flips, #1694 — reddens TestReadyUndeclaredFindingPostedDuringChecksIsCaught)",
+      "file": "cmd/deskpost/ready.go",
+      "old": "\t\tif reason := deskDecidedRefusal(pr, info2, reviews2, head); reason != \"\" {",
+      "new": "\t\tif reason := deskDecidedRefusal(pr, info2, reviews2, head); false && reason != \"\" {"
+    },
+    {
       "name": "widen the verify-gate card carve-out from the LABEL to the AUTHOR (every github-actions[bot] issue becomes commentable, not just a sign-off card)",
       "file": "internal/deskkit/trust.go",
       "old": "\tfor _, l := range labels {\n\t\tif strings.EqualFold(strings.TrimSpace(l), VerifyGateLabel) {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false",

@@ -461,6 +461,24 @@ type prInfo struct {
 	// ignores them — so carrying them here does not change any existing gate.
 	MergedAt       string `json:"merged_at"`
 	MergeCommitSHA string `json:"merge_commit_sha"`
+	// Labels are the label NAMES on the PR, read in the SAME payload as Body so the
+	// desk-decided condition's two halves (label and block) come from one read and cannot
+	// disagree by timing (#1694).
+	Labels []prLabel `json:"labels"`
+}
+
+// prLabel is one entry of the REST PR payload's `labels` array.
+type prLabel struct {
+	Name string `json:"name"`
+}
+
+// labelNames flattens the PR's labels to their names.
+func (p *prInfo) labelNames() []string {
+	out := make([]string, 0, len(p.Labels))
+	for _, l := range p.Labels {
+		out = append(out, l.Name)
+	}
+	return out
 }
 
 type reviewInfo struct {
@@ -629,16 +647,6 @@ func (c *ghClient) getIssueTyped(n int, kind deskkit.TargetKind) (*issueInfo, er
 func isNotFound(err error) bool {
 	var ae *apiError
 	return errors.As(err, &ae) && ae.status == http.StatusNotFound
-}
-
-// getPRHead is the light re-read used for the head-pin (review) and the TOCTOU re-read
-// (ready) — it fetches only the current head SHA.
-func (c *ghClient) getPRHead(pr int) (string, error) {
-	p, err := c.getPR(pr)
-	if err != nil {
-		return "", err
-	}
-	return p.Head.SHA, nil
 }
 
 // commitInfo is the subset of GET /repos/{o}/{r}/commits/{sha} the non-author verdict
