@@ -74,7 +74,7 @@ facts:
   boundary is NOT a design-fit finding (spec §4.2 rule 1). Only a second owner of a meaning is.
 - **Tier.** The pr-review-desk skill keys tier to risk today (strong for risk-flagged items).
   This adds: weight growth → strong tier for the correctness lane.
-- **Calibration, and the landing state (D-A, proposed in spec §10; ratified by the merge that lands this stream).** The finding-class register
+- **Calibration, and the landing state (D-A, ratified by the driver on #1660; spec §10).** The finding-class register
   table gains `design-fit | advisory`. While advisory, the reviewer records the finding with
   its basis and reason and proceeds to the correctness pass; the ready-flip is not held on it.
   The promotion to `blocking` is a later, recorded decision keyed to the project's baseline

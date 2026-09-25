@@ -1,6 +1,6 @@
 # build-less-brittle: scoping document
 
-**Status:** routed — authored 2026-09-24 from a read-only review. Approval is the driver's own act: the merge of the pull request that lands this document stamps it (`spec/lifecycle-v1.md` §8.4). That same pull request lands briefs 01–13, whose `sources:` cite this path, so the document lands `routed`, not `approved` (§8.2). D-A and D-B are proposed in §10 and ratified by the same merge.
+**Status:** routed — authored 2026-09-24 from a read-only review. Approval is the driver's own act: the merge of the pull request that lands this document stamps it (`spec/lifecycle-v1.md` §8.4). That same pull request lands briefs 01–13, whose `sources:` cite this path, so the document lands `routed`, not `approved` (§8.2). D-A and D-B were ratified by the driver on #1660 ([ratification comment](https://github.com/medici-finance/assay/issues/1660#issuecomment-5826448154)); see §10.
 **Routes-to:** docs/streams/build-less-brittle/
 **Owner:** the methodology track (intake, worker, review and authoring procedure).
 **Pinned reads:** `origin/main` @ `f7bde6bfa` (2026-09-24 16:32 -0500).
@@ -175,7 +175,7 @@ Two rules keep this from becoming a delete-everything bias:
   1. *Right layer?* Does the change live in the owner the semantic index names?
   2. *Should it exist?* What would happen if the symptom were fixed by removal instead?
   3. *What does it replace?* Are `retires:` / `why-add:` true and sufficient?
-- **Blocking, and the landing state (D-A, proposed; §10).** A "no" is a finding with scope basis
+- **Blocking, and the landing state (D-A, ratified; §10).** A "no" is a finding with scope basis
   `design-fit`. It is a fifth row in the machine-checked review-scope table, and it needs a
   concrete reason tied to the semantic index or the ratchet. The class lands **advisory**:
   the finding is recorded and the correctness pass continues. Once promoted to `blocking`
@@ -191,7 +191,7 @@ Two rules keep this from becoming a delete-everything bias:
 - **Ratcheted:** verbs (`cmd/*` main packages), flag registrations (syntactic), refusal-
   constructor calls, rule-text lines (the desk-role, authoring and shepherd skills plus the
   dispatch kits). **Reported only:** production Go lines.
-- **Mode (D-A, proposed; §10).** `ceiling.txt` carries `# mode: advisory` at landing: growth past a
+- **Mode (D-A, ratified; §10).** `ceiling.txt` carries `# mode: advisory` at landing: growth past a
   ceiling is logged as `GROWTH-NOTICE` and the test passes. In `# mode: blocking` it
   **fails** when any ratcheted count exceeds its ceiling. The promotion is the recorded
   decision in §10. In either mode it **notices** slack when a count is below. Slack
@@ -505,7 +505,7 @@ over a module no investigation has marked for `redesign`.
 
 ## 10. Decisions for the driver
 
-- **D-A. Blocking from day one? — PROPOSED: no (ratified by the merge, below).** The weight ratchet (03) and the
+- **D-A. Blocking from day one? — RATIFIED: no (below).** The weight ratchet (03) and the
   `design-fit` check (06) start **advisory** (report only) for the first month. The promotion
   to blocking is a later, recorded decision keyed to the project's baseline
   measurements (§5.4): one decision issue, options `promote ratchet` /
@@ -513,19 +513,18 @@ over a module no investigation has marked for `redesign`.
   own login (§4.7), landed by PR as a one-line
   `ceiling.txt` mode edit and a one-cell register edit (§4.4, §4.5, §4.7). The recommended
   alternative (blocking from the merge) was not taken.
-- **D-B. Two-strikes: hard stop or fix-plus-note? — PROPOSED: hard stop (ratified by the merge, below).** The
+- **D-B. Two-strikes: hard stop or fix-plus-note? — RATIFIED: hard stop (below).** The
   `bleed` reply on the class issue is allowed only for production-down or security fixes
   (05). The alternative (the fix ships and the note is mandatory) was not taken.
 - **D-C. Approve this spec.** Decided by the driver's merge of the pull request that lands
   this document (§8.4 of `spec/lifecycle-v1.md`); the same pull request lands the stream README
   `active` and this header `routed`. No relayed ruling stands in for that merge.
 
-D-A and D-B were relayed to the authoring session on 2026-09-24 as the driver's answers. No
-record of either from the driver's own account exists on the forge, and a relayed answer does
-not by itself pass a human gate, so this document states both as **proposed**, and the
-affected briefs (03, 05, 06) say so. They are ratified the way D-C is: by the driver's own
-merge of the pull request that lands this document (§8.4 of `spec/lifecycle-v1.md`). Until
-that merge, neither binds. Briefs 11–13 were added in the same pass; they add no decision.
+D-A and D-B were relayed to the authoring session on 2026-09-24 as the driver's answers. A
+relayed answer does not by itself pass a human gate; the driver then ratified both from their
+own account on #1660 on 2026-09-25 ([ratification comment](https://github.com/medici-finance/assay/issues/1660#issuecomment-5826448154)), and that comment is the
+record this document and the affected briefs (03, 05, 06) cite. D-C stays open until the
+driver's merge. Briefs 11–13 were added in the same pass; they add no decision.
 
 ## 11. What state-of-the-art teams do about brittle code (the SOTA amendment)
 

@@ -130,13 +130,13 @@ scanner fix becomes the real head of the 04 → 05 chain.
 | 5 | 12 | 09, 10 and 11 merged |
 | 6 | 13 | 05, 09 and 12 merged; its rehearsal needs the driver's one `residue: default` reply |
 
-**Third-pass amendment (2026-09-24).** Briefs 11–13 were added, and two open decisions are
-proposed (spec §10): D-A, the ratchet and `design-fit` start advisory for a month and are
+**Third-pass amendment (2026-09-24).** Briefs 11–13 were added, and two open decisions were
+settled (spec §10): D-A, the ratchet and `design-fit` start advisory for a month and are
 promoted by a later recorded decision keyed to the project's baseline measurements (03, 06
 amended); D-B, two-strikes is a hard stop with `bleed` only for production-down or security
-fixes (05 amended). No record of either answer from the driver's own account exists on the
-forge, so neither is stated as ruled: both are ratified by the driver's merge of the pull
-request that lands this stream, the same act that approves the spec (D-C). The three briefs answer "what do we refactor
+fixes (05 amended). The driver ratified both from their own account on #1660
+([ratification comment](https://github.com/medici-finance/assay/issues/1660#issuecomment-5826448154), 2026-09-25). Approving the spec itself (D-C) is still the
+driver's merge of the pull request that lands this stream. The three briefs answer "what do we refactor
 against": briefs plus incidents are not sufficient; the answer is a tagged, ratcheted
 regression suite (11), an oracle assembled before any redesign (12), and one strong-tier
 session that runs the loop with one human residue (13).

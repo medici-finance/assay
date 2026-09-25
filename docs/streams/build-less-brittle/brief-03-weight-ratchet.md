@@ -78,7 +78,7 @@ facts:
   **not** verify the URL's author (that is review stage 06). It checks only that every raised
   ceiling carries a `# grow` line. Raised means above the value in `ceiling.txt` at the
   `-base` revision when one is given; otherwise the check is skipped and says so.
-- **Mode (D-A, proposed in spec §10; ratified by the merge that lands this stream).** `ceiling.txt` carries a first line `# mode: advisory`
+- **Mode (D-A, ratified by the driver on #1660; spec §10).** `ceiling.txt` carries a first line `# mode: advisory`
   at landing. In advisory mode `TestCeiling` (planned) logs `GROWTH-NOTICE <dim>: <count> >
   ceiling <n> (+<d>)` and passes; in `# mode: blocking` it fails with the message in Task
   step 4. The promotion to `blocking` is a later, recorded decision keyed to the adopting

@@ -67,7 +67,7 @@ facts:
   `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v -args -rev=<sha>`,
   run once at the merge-base and once at the head, plus `git diff --shortstat <merge-base>...HEAD`.
   In a repository without the counter, the section says `could-not-check (no weight counter)`.
-- The bleed exception (spec §10 D-B, **proposed; ratified by the merge that lands this stream**): two-strikes is a **hard stop**. A
+- The bleed exception (spec §10 D-B, **ratified by the driver on #1660**): two-strikes is a **hard stop**. A
   `bleed` reply by the driver on the class issue lets a production-down or security fix
   proceed, and nothing else does; the class stays `design-owed`. The kit text carries exactly
   that form.
