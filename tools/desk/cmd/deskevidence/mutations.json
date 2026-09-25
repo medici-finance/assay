@@ -48,6 +48,12 @@
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\tpreexistingNotice(stderr, targetRepoPath, remoteContent)",
       "new": "\t\t_ = remoteContent"
+    },
+    {
+      "name": "drop the row-scope rebase (a stale local README landing reverts every foreign row again — the whole class this guard exists to close)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\t\tcommitContent = rebased",
+      "new": "\t\t_ = rebased"
     }
   ]
 }

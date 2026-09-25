@@ -48,6 +48,7 @@ const usage = `deskevidence — commit Evidence rows as the verifier App (the ve
 USAGE:
   deskevidence <owner/repo> <branch> --evidence-file <repo-path> [--root <dir>]
                [--brief-path <repo-path>] [--append-only] [--allow-shrink]
+               [--row <NN> [--row <NN> ...]]
   deskevidence --version
 
 Commits the content of the local file at --evidence-file (a repo-relative path)
@@ -61,6 +62,16 @@ checkout's copy (#1709). The path committed to the branch stays the repo-relativ
 --append-only refuses a commit that would leave FEWER rows than the remote already holds
 (a shrink is almost always a stale-base/wrong-file mistake). It is auto-enabled for .jsonl
 sidecars; --allow-shrink overrides it when a row reduction is genuinely intended.
+
+When the target's REMOTE content carries a generated Briefs table (the marker-wrapped
+<!-- statusgen:briefs:begin/end --> region a stream README's regenerated table lives in),
+--row <NN> (repeatable) is REQUIRED and names which row(s) this landing may touch. The
+committed content is REBASED onto the remote: only the named rows' lines come from the
+local file — every other row, and everything outside the markers, comes from the remote
+unchanged, so a stale local copy can never revert an unrelated row. A local row that
+disagrees with the remote outside the named set is reported (never written) as
+"stale-local: row <NN> differed and was NOT written". A named row absent from either table
+is refused. A target with no such table is unaffected by any of this.
 
 When --brief-path is given, the evidence content (from --evidence-file) is appended
 to the brief file at --brief-path in the Evidence section, and THAT file is committed.

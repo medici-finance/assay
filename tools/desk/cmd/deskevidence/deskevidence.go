@@ -160,6 +160,13 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// anywhere in this tool to fall back to: an unmintable token refuses at the mint step
 	// above, dry-run or not.
 	dryRun := fs.Bool("dry-run", false, "print the commits-API landing plan without committing")
+	// --row (repeatable) names the brief-table row(s) a landing to a
+	// generated-table target may touch. Required whenever the target's REMOTE content
+	// carries the marker-wrapped Briefs table (rowscope.go); ignored (a no-op) for any other
+	// target, so this flag never changes behaviour for a target that carries no such table.
+	var rowFlags stringSliceFlag
+	fs.Var(&rowFlags, "row", "brief-table row number this landing may touch (repeatable); "+
+		"required when the target's remote content carries the generated-table markers")
 	if perr := fs.Parse(flagArgs); perr != nil {
 		return deskkit.Refused("bad flags: " + perr.Error())
 	}
@@ -313,6 +320,30 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		blockAlready = present
 	} else {
 		commitContent = localContent
+	}
+
+	// Row-scoped README landings. A direct-write target (never
+	// --brief-path — a brief file never carries the generated table) whose REMOTE content
+	// carries the marker-wrapped Briefs table may only have its NAMED rows changed by this
+	// landing: --row is required, and the committed content is rebased onto the remote so
+	// every other row — and everything outside the markers — comes from the remote
+	// unchanged, however stale the local copy is. Detected on the REMOTE fetch, never the
+	// local file, so a target with no such table today behaves exactly as before.
+	var rowScopeRows []string
+	if *briefPath == "" && remoteExists && hasTableMarkers(remoteContent) {
+		if len(rowFlags) == 0 {
+			return deskkit.Refused("refused: " + targetRepoPath +
+				" carries the generated-table markers — --row <NN> is required (repeatable) naming which row(s) this landing may touch")
+		}
+		rebased, staleForeign, rerr := rebaseNamedRows(remoteContent, commitContent, rowFlags)
+		if rerr != nil {
+			return rerr
+		}
+		for _, key := range staleForeign {
+			fmt.Fprintln(stderr, "stale-local: row "+key+" differed and was NOT written")
+		}
+		commitContent = rebased
+		rowScopeRows = append([]string(nil), rowFlags...)
 	}
 
 	// Block-level idempotency: a fresh Evidence block byte-equivalent (after normalising line
@@ -485,6 +516,18 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("", repoSlug)
 	if oerr != nil {
 		return oerr
+	}
+
+	// Row-scope write-op second layer (the #1709 two-layer shape): immediately before the
+	// commit, re-fetch the target fresh — independent of the read the rebase above was built
+	// on — and refuse if the content about to be written disagrees with that fresh read on
+	// any row it does not name. Placed after every other gate (including the rate-limit
+	// spend) so it is the LAST thing that can refuse, closest to the actual write, catching a
+	// table change that landed in the race window between the pre-check and here.
+	if len(rowScopeRows) > 0 {
+		if rserr := rowScopeWriteTimeCheck(fg, fr, targetRepoPath, branch, rowScopeRows, commitContent); rserr != nil {
+			return rserr
+		}
 	}
 
 	// Write the Evidence row through the resolved forge, as the verifier App.

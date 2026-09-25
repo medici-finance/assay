@@ -3363,6 +3363,35 @@ runner": a re-run on a different date or with a different runner is new evidence
 A partial re-run (a prefix of the standing block), a block differing by one character, and a
 superset that adds new rows are all new content and still land.
 
+**Row-scoped README landings (`--row`).** A whole-file Contents-API PUT
+has no notion of a table region: it commits whatever content it is handed, byte for byte. A
+stream README's generated Briefs table (the `<!-- statusgen:briefs:begin/end -->`
+marker-wrapped region `statusgen regen --readmes` maintains) is shared board state — every
+verify-desk landing that touches the README reads and writes the WHOLE file — so a landing
+built from an even slightly stale local copy silently reverted every OTHER row the copy had
+not yet seen. A board row that had just been corrected was put back to `todo` forty-nine
+seconds later by exactly this shape, independent of how careful the correction itself was.
+
+For a target whose **remote** content carries that marker-wrapped region, `--row <NN>`
+(repeatable) is now **required** and names which row(s) this landing may touch — absent, the
+landing refuses (exit 5) before any write. The committed content is then **rebased** onto the
+remote: only the named rows' lines come from the local file; every other row, the header, the
+separator, and every byte outside the markers come from the remote **unchanged**, so a stale
+local copy cannot revert anything it did not name. A row present in both tables but not
+named, whose local line differs from the remote's, does not block the landing — it is
+reported and left alone: `stale-local: row <NN> differed and was NOT written`. A named row
+absent from either table refuses (the table changed under the caller, or there is nothing to
+rebase in from). A target whose remote content carries no such region is unaffected by any of
+this — exactly today's whole-file behaviour, brief-path merges and `.jsonl` sidecars
+included.
+
+The guard is enforced **twice**, the same two-layer shape as the `--append-only` shrink guard
+above: the pre-check builds the rebase against the fetch already in hand, and the write op
+re-fetches the target **again**, independently, immediately before the commit, refusing if
+the content about to be written disagrees with that fresh read on any row it does not name —
+closing the race window between the pre-check and the actual write, where the table could
+have changed under the caller a second time. (`cmd/deskevidence/rowscope.go`.)
+
 ## deskgit — the narrow git verb (#1555 F-1)
 
 `cmd/deskgit` gives the desk loops the one git verb they legitimately need unprompted —
