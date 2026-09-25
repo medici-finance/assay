@@ -72,6 +72,33 @@ type fakeForge struct {
 	visibility      string
 	visibilityCalls int
 	visibilityRepo  deskkit.ForgeRepo
+
+	// readScript, when set for a path, serves that path's successive reads — every ReadFile
+	// AND WriteFile's own ExpectedSHA fetch, in call order — from successive entries (the last
+	// one repeats), each with a content-derived SHA: a file that changes between the reads a
+	// landing makes. Paths without a script are served from files with the fixed "sha-<path>".
+	readScript map[string][]string
+	readN      map[string]int
+	// expectedSHARefusals counts WriteFile calls refused by their ExpectedSHA precondition.
+	expectedSHARefusals int
+}
+
+// serveLocked answers one read of path (the caller holds f.mu): a scripted path advances its
+// script, any other path is served from files.
+func (f *fakeForge) serveLocked(path string) (content, sha string, ok bool) {
+	if script := f.readScript[path]; len(script) > 0 {
+		if f.readN == nil {
+			f.readN = map[string]int{}
+		}
+		n := f.readN[path]
+		f.readN[path] = n + 1
+		if n >= len(script) {
+			n = len(script) - 1
+		}
+		return script[n], "sha-" + path + "-" + deskkit.Sha256Hex([]byte(script[n]))[:12], true
+	}
+	c, ok := f.files[path]
+	return c, "sha-" + path, ok
 }
 
 // RepoVisibility answers the public-repo gate's live-visibility read from THIS fake — the
@@ -101,12 +128,12 @@ func (f *fakeForge) ReadFile(_ deskkit.ForgeRepo, in deskkit.ReadFileInput) (*de
 	defer f.mu.Unlock()
 	f.hits = append(f.hits, "GET "+in.File)
 	f.reads = append(f.reads, in)
-	c, ok := f.files[in.File]
+	c, sha, ok := f.serveLocked(in.File)
 	if !ok {
 		return nil, deskkit.Unverifiable("not found: "+in.File,
 			&deskkit.ForgeAPIError{Status: 404, Method: "GET", Path: in.File})
 	}
-	return &deskkit.FileContent{Content: []byte(c), SHA: "sha-" + in.File, Exists: true}, nil
+	return &deskkit.FileContent{Content: []byte(c), SHA: sha, Exists: true}, nil
 }
 
 func (f *fakeForge) WriteFile(_ deskkit.ForgeRepo, in deskkit.WriteFileInput) (*deskkit.WriteFileResult, error) {
@@ -122,6 +149,14 @@ func (f *fakeForge) WriteFile(_ deskkit.ForgeRepo, in deskkit.WriteFileInput) (*
 	if f.defaultBranch != "" && in.Branch == f.defaultBranch {
 		// The closed default branch: report the sentinel, record NO write.
 		return &deskkit.WriteFileResult{DefaultBranchNotWritable: true}, nil
+	}
+	if in.ExpectedSHA != "" {
+		// The backend's own pre-write fetch, then the conditional-write precondition — the
+		// shape both real backends implement (deskkit.WriteFileInput.ExpectedSHA).
+		if _, sha, ok := f.serveLocked(in.File); !ok || sha != in.ExpectedSHA {
+			f.expectedSHARefusals++
+			return nil, deskkit.Refused("fake: conditional write refused — " + in.File + " is no longer " + in.ExpectedSHA)
+		}
 	}
 	f.writes = append(f.writes, in)
 	f.putCalls++

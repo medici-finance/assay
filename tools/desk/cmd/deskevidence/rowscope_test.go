@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -189,7 +192,7 @@ func TestWriteOpRowScopeSecondLayer(t *testing.T) {
 		// but the write-time fetch above now reports row 02 at "verified" — a table change in
 		// the race window between the pre-check and the write.
 		staleCommit := exampleStreamReadme("# example-stream\n\n", map[string]string{"01": "verified", "02": "implemented"}, "\n")
-		err := rowScopeWriteTimeCheck(f, repo, target, "main", []string{"01"}, []byte(staleCommit))
+		_, err := rowScopeWriteTimeCheck(f, repo, target, "main", []string{"01"}, []byte(staleCommit))
 		if err == nil {
 			t.Fatal("expected the write op to refuse a foreign-row mismatch against its own fetch, got nil")
 		}
@@ -203,8 +206,12 @@ func TestWriteOpRowScopeSecondLayer(t *testing.T) {
 
 	t.Run("foreign rows agree with the fresh fetch — accepted", func(t *testing.T) {
 		agreeingCommit := exampleStreamReadme("# example-stream\n\n", map[string]string{"01": "verified", "02": "verified"}, "\n")
-		if err := rowScopeWriteTimeCheck(f, repo, target, "main", []string{"01"}, []byte(agreeingCommit)); err != nil {
+		sha, err := rowScopeWriteTimeCheck(f, repo, target, "main", []string{"01"}, []byte(agreeingCommit))
+		if err != nil {
 			t.Fatalf("expected the write op to accept matching foreign rows, got: %v", err)
+		}
+		if sha == "" {
+			t.Fatal("an accepted write-time check returned no content id for the write's ExpectedSHA precondition")
 		}
 	})
 }
@@ -226,5 +233,264 @@ func TestReadmeLandingRequiresRow(t *testing.T) {
 	}
 	if f.putCalls != 0 {
 		t.Fatalf("refusal still wrote %d time(s)", f.putCalls)
+	}
+}
+
+// --- Review round 1 (PR #1685): the guard's refusal branches, each pinned by a test that goes
+// red when the branch is removed (mutations.json carries each removal as a mutation). ---
+
+const exampleReadmePath = "docs/streams/example-stream/README.md"
+
+// landRow runs one row-scoped landing of local over remote, naming rows, and returns the exit
+// code — the run()-level shape every test below uses.
+func landRow(t *testing.T, f *fakeForge, remote, local string, rows ...string) int {
+	t.Helper()
+	f.setFile(exampleReadmePath, remote)
+	root := rootWithFile(t, exampleReadmePath, local)
+	args := []string{"example-org/tracker", "main", "--evidence-file", exampleReadmePath, "--root", root}
+	for _, r := range rows {
+		args = append(args, "--row", r)
+	}
+	return run(args)
+}
+
+// TestRowScopeMarkersMatchStatusgen pins tableMarkerBegin / tableMarkerEnd byte-for-byte to
+// statusgen's own constants, read from the repo tree (statusgen is a separate Go module, so the
+// literals cannot be imported). A drift would make every README look table-less; this test is
+// what makes that drift loud instead of silent.
+//
+// The source is found by walking up from the package directory to the checkout root (the first
+// ancestor holding .git). A checkout root without statusgen/readmetable.go FAILS — a moved file
+// must re-point this pin, never silently skip it. Only a tree with no checkout root at all — an
+// isolated copy of tools/desk, such as a `muhar -j >1` workspace — skips, since the statusgen
+// module is simply not in it; the full checkout and CI always run the pin.
+func TestRowScopeMarkersMatchStatusgen(t *testing.T) {
+	dir, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if _, serr := os.Stat(filepath.Join(dir, ".git")); serr == nil {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Skip("no checkout root above this package (an isolated copy of tools/desk) — statusgen's source is not in this tree")
+		}
+		dir = parent
+	}
+	src, err := os.ReadFile(filepath.Join(dir, "statusgen", "readmetable.go"))
+	if err != nil {
+		t.Fatalf("cannot read statusgen/readmetable.go under the checkout root %s: %v", dir, err)
+	}
+	for name, want := range map[string]string{"briefsMarkerBegin": tableMarkerBegin, "briefsMarkerEnd": tableMarkerEnd} {
+		m := regexp.MustCompile(`(?m)^\s*` + name + `\s*=\s*"([^"]*)"`).FindSubmatch(src)
+		if m == nil {
+			t.Fatalf("statusgen/readmetable.go no longer declares %s — re-point this pin", name)
+		}
+		if string(m[1]) != want {
+			t.Fatalf("marker drift: statusgen %s = %q, deskevidence has %q", name, m[1], want)
+		}
+	}
+}
+
+// A README carrying a marker literal whose region does not parse the way statusgen and this
+// tool agree on (here: the begin marker shares its line with prose) is REFUSED, never landed as
+// a whole-file write the guard does not see.
+func TestReadmeLandingMalformedMarkersFailClosed(t *testing.T) {
+	f, _ := setupFake(t)
+	remote := strings.Replace(
+		exampleStreamReadme("# example-stream\n\n", map[string]string{"01": "todo", "02": "implemented"}, "\n"),
+		tableMarkerBegin+"\n", "board: "+tableMarkerBegin+"\n", 1)
+	local := strings.Replace(remote, "| 02 | [Brief 02](brief-02.md) | 0 | S | implemented |", "| 02 | [Brief 02](brief-02.md) | 0 | S | todo |", 1)
+	if code := landRow(t, f, remote, local); code != deskkit.ExitRefused {
+		t.Fatalf("malformed-marker README exit = %d, want %d (refused)", code, deskkit.ExitRefused)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("malformed-marker README was written %d time(s)", f.putCalls)
+	}
+}
+
+// A non-README file that merely QUOTES the marker literals (a brief documenting them) is not a
+// statusgen table target and lands exactly as before.
+func TestNonReadmeQuotingMarkersUnaffected(t *testing.T) {
+	f, _ := setupFake(t)
+	target := "docs/streams/example-stream/brief-04.md"
+	remote := "# Brief\n\nmarkers: `" + tableMarkerBegin + "` / `" + tableMarkerEnd + "`\n"
+	f.setFile(target, remote)
+	root := rootWithFile(t, target, remote+"\n## Evidence\n| 1 | ok |\n")
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", target, "--root", root}); code != deskkit.ExitOK {
+		t.Fatalf("non-README quoting the markers exit = %d, want 0", code)
+	}
+	if f.putCalls != 1 {
+		t.Fatalf("expected 1 WriteFile, got %d", f.putCalls)
+	}
+}
+
+// F-rowscope-duplicate-key: a key that appears twice in either table makes "which row" a guess
+// — refused, nothing written, whichever side carries the duplicate.
+func TestReadmeLandingRefusesDuplicateKey(t *testing.T) {
+	dup := func(base string) string {
+		return strings.Replace(base, "| 04 | [Brief 04](brief-04.md) | 0 | S | implemented | — | — |\n",
+			"| 04 | [Brief 04](brief-04.md) | 0 | S | implemented | — | — |\n| 04 | [Other 04](other-04.md) | 0 | S | todo | — | — |\n", 1)
+	}
+	one := exampleStreamReadme("# example-stream\n\n", map[string]string{"04": "implemented"}, "\n")
+	landed := strings.Replace(one, "| implemented | — | — |", "| verified | 2026-09-25 | x |", 1)
+	for name, pair := range map[string][2]string{
+		"remote duplicate": {dup(one), landed},
+		"local duplicate":  {one, dup(one)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, errBuf := setupFake(t)
+			if code := landRow(t, f, pair[0], pair[1], "04"); code != deskkit.ExitRefused {
+				t.Fatalf("duplicate key exit = %d, want %d (stderr: %s)", code, deskkit.ExitRefused, errBuf.String())
+			}
+			if f.putCalls != 0 {
+				t.Fatalf("duplicate key still wrote %d time(s)", f.putCalls)
+			}
+			if !strings.Contains(errBuf.String(), "more than once") {
+				t.Fatalf("refusal does not name the duplicate: %s", errBuf.String())
+			}
+		})
+	}
+}
+
+// The pre-check layer ALONE refuses a remote duplicate key (the run()-level test above can also
+// be satisfied by the write-time layer, which re-parses the commit and sees the same duplicate —
+// so this pins the first layer independently of the second).
+func TestRebaseNamedRowsRefusesRemoteDuplicate(t *testing.T) {
+	one := exampleStreamReadme("# example-stream\n\n", map[string]string{"04": "implemented"}, "\n")
+	remote := strings.Replace(one, "| 04 | [Brief 04](brief-04.md) | 0 | S | implemented | — | — |\n",
+		"| 04 | [Brief 04](brief-04.md) | 0 | S | implemented | — | — |\n| 04 | [Other 04](other-04.md) | 0 | S | todo | — | — |\n", 1)
+	_, _, _, err := rebaseNamedRows([]byte(remote), []byte(one), []string{"04"})
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(fmt.Sprint(err), "remote table carries row key(s) 04 more than once") {
+		t.Fatalf("pre-check on a remote duplicate: want a refusal naming 04, got %v", err)
+	}
+}
+
+// Contract item 4, both sides: a named row absent from the remote table, or from the local
+// file, is refused — never indexed as line 0 (which would overwrite the README's first line).
+func TestReadmeLandingNamedRowAbsentRefused(t *testing.T) {
+	remote := exampleStreamReadme("# example-stream\n\n", map[string]string{"01": "todo"}, "\n")
+	withRow := exampleStreamReadme("# example-stream\n\n", map[string]string{"01": "todo", "04": "verified"}, "\n")
+	for name, pair := range map[string][2]string{
+		"absent from remote": {remote, withRow},
+		"absent from local":  {withRow, remote},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, errBuf := setupFake(t)
+			if code := landRow(t, f, pair[0], pair[1], "04"); code != deskkit.ExitRefused {
+				t.Fatalf("absent named row exit = %d, want %d (stderr: %s)", code, deskkit.ExitRefused, errBuf.String())
+			}
+			if f.putCalls != 0 {
+				t.Fatalf("absent named row still wrote %d time(s):\n%s", f.putCalls, f.putContent)
+			}
+			if !strings.Contains(errBuf.String(), "--row 04 names a row absent") {
+				t.Fatalf("refusal does not name the absent row: %s", errBuf.String())
+			}
+		})
+	}
+}
+
+// A-malformed-named-row / S2: a named local line with the wrong cell count, or a bare CR
+// mid-line, is refused rather than landed verbatim.
+func TestReadmeLandingMalformedNamedRowRefused(t *testing.T) {
+	remote := exampleStreamReadme("# example-stream\n\n", map[string]string{"04": "implemented"}, "\n")
+	row := "| 04 | [Brief 04](brief-04.md) | 0 | S | implemented | — | — |"
+	for name, bad := range map[string]string{
+		"short row":        "| 04 | verified |",
+		"mid-line CR":      "| 04 | [Brief 04](brief-04.md) | 0 | S | verified\r19 | done | x |",
+		"extra cell count": "| 04 | [Brief 04](brief-04.md) | 0 | S | verified | x | y | z |",
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, errBuf := setupFake(t)
+			if code := landRow(t, f, remote, strings.Replace(remote, row, bad, 1), "04"); code != deskkit.ExitRefused {
+				t.Fatalf("%s exit = %d, want %d (stderr: %s)", name, code, deskkit.ExitRefused, errBuf.String())
+			}
+			if f.putCalls != 0 {
+				t.Fatalf("%s still wrote:\n%s", name, f.putContent)
+			}
+		})
+	}
+}
+
+// A-named-row-whole-line: only the named row's LIFECYCLE cells land from local; its authoring
+// cells (title, wave, effort) stay the remote's, and the caller is told they differed.
+func TestReadmeLandingNamedRowAuthoringFromRemote(t *testing.T) {
+	f, errBuf := setupFake(t)
+	remote := exampleStreamReadme("# example-stream\n\n", map[string]string{"04": "implemented"}, "\n")
+	remote = strings.Replace(remote, "[Brief 04](brief-04.md) | 0 | S |", "[Renamed 04](brief-04.md) | 1 | M |", 1)
+	local := exampleStreamReadme("# example-stream\n\n", map[string]string{"04": "verified"}, "\n")
+	if code := landRow(t, f, remote, local, "04"); code != deskkit.ExitOK {
+		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, errBuf.String())
+	}
+	want := "| 04 | [Renamed 04](brief-04.md) | 1 | M | verified | — | — |"
+	if !strings.Contains(f.putContent, want) {
+		t.Fatalf("named row did not keep the remote's authoring cells, want line:\n%s\ngot:\n%s", want, f.putContent)
+	}
+	if !strings.Contains(errBuf.String(), "stale-local: row 04 authoring cell(s) differed and were NOT written") {
+		t.Fatalf("expected an authoring stale-local notice for row 04, stderr:\n%s", errBuf.String())
+	}
+}
+
+// F-rowscope-unpinned M1, at run() level: the table changes between the pre-check's read and
+// the write-time re-fetch. The write op's own layer — reached only through its call site in
+// cmdEvidence — refuses; nothing is written.
+func TestReadmeLandingRaceCaughtByWriteTimeLayer(t *testing.T) {
+	f, errBuf := setupFake(t)
+	atPrecheck := exampleStreamReadme("# example-stream\n\n", map[string]string{"01": "todo", "02": "implemented"}, "\n")
+	atWrite := exampleStreamReadme("# example-stream\n\n", map[string]string{"01": "todo", "02": "verified"}, "\n")
+	local := exampleStreamReadme("# example-stream\n\n", map[string]string{"01": "verified", "02": "implemented"}, "\n")
+	f.readScript = map[string][]string{exampleReadmePath: {atPrecheck, atWrite}}
+	root := rootWithFile(t, exampleReadmePath, local)
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", exampleReadmePath, "--root", root, "--row", "01"})
+	if code != deskkit.ExitRefused {
+		t.Fatalf("race exit = %d, want %d (stderr: %s)", code, deskkit.ExitRefused, errBuf.String())
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("race landing still wrote — row 02 reverted to implemented:\n%s", f.putContent)
+	}
+	if !strings.Contains(errBuf.String(), "foreign row(s) 02") {
+		t.Fatalf("refusal does not name row 02: %s", errBuf.String())
+	}
+}
+
+// F-rowscope-race-claim, at run() level: the table changes AFTER the write-time re-check, just
+// before the backend's own fetch. The write carries the re-check's content id as ExpectedSHA, so
+// the backend refuses instead of overwriting.
+func TestReadmeLandingRaceAfterRecheckRefusedByWrite(t *testing.T) {
+	f, errBuf := setupFake(t)
+	base := exampleStreamReadme("# example-stream\n\n", map[string]string{"01": "todo", "02": "implemented"}, "\n")
+	moved := exampleStreamReadme("# example-stream\n\n", map[string]string{"01": "todo", "02": "verified"}, "\n")
+	local := exampleStreamReadme("# example-stream\n\n", map[string]string{"01": "verified", "02": "implemented"}, "\n")
+	f.readScript = map[string][]string{exampleReadmePath: {base, base, moved}}
+	root := rootWithFile(t, exampleReadmePath, local)
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", exampleReadmePath, "--root", root, "--row", "01"})
+	if code != deskkit.ExitRefused {
+		t.Fatalf("post-recheck race exit = %d, want %d (stderr: %s)", code, deskkit.ExitRefused, errBuf.String())
+	}
+	if f.putCalls != 0 || f.expectedSHARefusals != 1 {
+		t.Fatalf("want the write refused by its ExpectedSHA precondition (puts=%d, refusals=%d)", f.putCalls, f.expectedSHARefusals)
+	}
+}
+
+// F-rowscope-unpinned M4 + A-prose-race: the write-time layer refuses a commit that carries a
+// foreign row the fresh fetch lacks, and a commit whose prose outside the table moved.
+func TestWriteOpRowScopeCommitOnlyRowAndProse(t *testing.T) {
+	repo := deskkit.ForgeRepo{Owner: "example-org", Name: "tracker"}
+	fresh := exampleStreamReadme("# example-stream\n\nPROSE\n\n", map[string]string{"01": "todo"}, "\n")
+	f := &fakeForge{}
+	f.setFile(exampleReadmePath, fresh)
+
+	extra := exampleStreamReadme("# example-stream\n\nPROSE\n\n", map[string]string{"01": "verified", "03": "todo"}, "\n")
+	_, err := rowScopeWriteTimeCheck(f, repo, exampleReadmePath, "main", []string{"01"}, []byte(extra))
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(fmt.Sprint(err), "foreign row(s) 03") {
+		t.Fatalf("commit-only foreign row 03: want a refusal naming 03, got %v", err)
+	}
+
+	prose := exampleStreamReadme("# example-stream\n\nSTALE PROSE\n\n", map[string]string{"01": "verified"}, "\n")
+	_, err = rowScopeWriteTimeCheck(f, repo, exampleReadmePath, "main", []string{"01"}, []byte(prose))
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(fmt.Sprint(err), "outside the named row") {
+		t.Fatalf("moved prose: want a refusal naming content outside the named row(s), got %v", err)
 	}
 }

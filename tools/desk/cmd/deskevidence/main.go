@@ -66,12 +66,17 @@ sidecars; --allow-shrink overrides it when a row reduction is genuinely intended
 When the target's REMOTE content carries a generated Briefs table (the marker-wrapped
 <!-- statusgen:briefs:begin/end --> region a stream README's regenerated table lives in),
 --row <NN> (repeatable) is REQUIRED and names which row(s) this landing may touch. The
-committed content is REBASED onto the remote: only the named rows' lines come from the
-local file — every other row, and everything outside the markers, comes from the remote
-unchanged, so a stale local copy can never revert an unrelated row. A local row that
-disagrees with the remote outside the named set is reported (never written) as
-"stale-local: row <NN> differed and was NOT written". A named row absent from either table
-is refused. A target with no such table is unaffected by any of this.
+committed content is REBASED onto the remote: only the named rows' lifecycle cells
+(Status / Verified / Reviewed) come from the local file — the named rows' authoring cells,
+every other row, and everything outside the markers come from the remote unchanged, so a
+stale local copy can never revert an unrelated row. A local row that disagrees with the
+remote outside the named set is reported (never written) as
+"stale-local: row <NN> differed and was NOT written". Refused: a named row absent from
+either table, a duplicated row key, a named row whose cell count differs from the header, a
+mid-line carriage return, and a stream README carrying a marker literal whose region does
+not parse. The write is conditional on the content re-fetched immediately before it, so a
+table change after that re-check is refused, not overwritten. A target with no such table
+is unaffected by any of this.
 
 When --brief-path is given, the evidence content (from --evidence-file) is appended
 to the brief file at --brief-path in the Evidence section, and THAT file is committed.

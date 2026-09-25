@@ -597,6 +597,36 @@ type WriteFileInput struct {
 	// Evidence-lane fallback needs no separate CreateRef op on the frozen interface. Empty
 	// means "write to Branch, which must already exist".
 	StartBranch string
+	// ExpectedSHA, when non-empty, makes the write CONDITIONAL on the file's current content id
+	// (the FileContent.SHA a caller's own ReadFile returned) being exactly this value. The
+	// backend refuses (Refused) when its own fetch reports a different id or no file at all, and
+	// its write then cites that same id as the forge's own precondition (GitHub's Contents-API
+	// `sha`, GitLab's `last_commit_id`), so a change landing after the backend's fetch is
+	// rejected by the forge itself. A caller that judged the content it is about to write
+	// against one specific read uses this so nothing that lands after that read can be
+	// overwritten unrefused. Empty means "no precondition beyond the backend's own fetch".
+	ExpectedSHA string
+}
+
+// expectedSHAPrecondition is the backend-neutral half of WriteFileInput.ExpectedSHA, run by
+// every backend right after its own pre-write fetch: nil when no precondition was asked for or
+// the fetched id matches it; Refused when the file is gone or is no longer the version the
+// caller judged against.
+func expectedSHAPrecondition(in WriteFileInput, exists bool, priorSHA string) error {
+	if in.ExpectedSHA == "" {
+		return nil
+	}
+	if !exists {
+		return Refused(fmt.Sprintf(
+			"refusing a conditional write to %s on %s: the file no longer exists (expected content id %s) — it changed under this write; re-fetch and retry",
+			in.File, in.Branch, in.ExpectedSHA))
+	}
+	if priorSHA != in.ExpectedSHA {
+		return Refused(fmt.Sprintf(
+			"refusing a conditional write to %s on %s: its content id is now %s, not the %s this write was judged against — it changed under this write; re-fetch and retry",
+			in.File, in.Branch, priorSHA, in.ExpectedSHA))
+	}
+	return nil
 }
 
 // WriteFileResult reports what a WriteFile actually did, so a caller can report the difference

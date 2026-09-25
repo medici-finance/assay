@@ -3905,6 +3905,11 @@ func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 	} else {
 		priorSHA, priorContent, exists = cur.SHA, cur.Content, true
 	}
+	// Conditional write (see WriteFileInput.ExpectedSHA): the update below cites priorSHA as
+	// `last_commit_id`, so once it equals ExpectedSHA a later change is GitLab's own refusal.
+	if err := expectedSHAPrecondition(in, exists, priorSHA); err != nil {
+		return nil, err
+	}
 
 	if in.AppendOnly {
 		res.PriorRows = forgeRowCount(priorContent)

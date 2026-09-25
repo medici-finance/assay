@@ -54,6 +54,78 @@
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\tcommitContent = rebased",
       "new": "\t\t_ = rebased"
+    },
+    {
+      "name": "unwire the row-scope write-op second layer at its only call site (a table change between the pre-check and the write is overwritten — the layer behind the single point of failure is gone)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\tif len(rowScopeRows) > 0 {",
+      "new": "\tif false && len(rowScopeRows) > 0 {"
+    },
+    {
+      "name": "drop the write's ExpectedSHA precondition (a table change after the write-time re-check is overwritten by the backend's own fetch-and-PUT — the race is narrowed, not closed)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\t\tExpectedSHA: rowScopeSHA,",
+      "new": "\t\tExpectedSHA: \"\","
+    },
+    {
+      "name": "drop the fail-closed malformed-marker refusal (a README whose marker drifted or shares a line lands as an unguarded whole-file write)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "remoteExists && rowScopeMalformed(targetRepoPath, remoteContent) {",
+      "new": "remoteExists && false && rowScopeMalformed(targetRepoPath, remoteContent) {"
+    },
+    {
+      "name": "drop the named-row-absent-from-remote refusal (contract item 4 — the missing key indexes line 0)",
+      "file": "cmd/deskevidence/rowscope.go",
+      "old": "\t\tif _, ok := rt.keyed[r]; !ok {",
+      "new": "\t\tif _, ok := rt.keyed[r]; false && !ok {"
+    },
+    {
+      "name": "drop the named-row-absent-from-local refusal (contract item 4 — local line 0 is spliced into the row)",
+      "file": "cmd/deskevidence/rowscope.go",
+      "old": "\t\tif _, ok := lt.keyed[r]; !ok {",
+      "new": "\t\tif _, ok := lt.keyed[r]; false && !ok {"
+    },
+    {
+      "name": "drop the commit-only foreign-key arm of the write-time diagnostic (a refusal no longer names the row the commit added)",
+      "file": "cmd/deskevidence/rowscope.go",
+      "old": "\t\tif _, ok := a.keyed[key]; !ok {",
+      "new": "\t\tif _, ok := a.keyed[key]; false && !ok {"
+    },
+    {
+      "name": "drop the remote duplicate-key refusal (last-wins keying clobbers a different brief's row)",
+      "file": "cmd/deskevidence/rowscope.go",
+      "old": "\tif len(rt.dups) > 0 {",
+      "new": "\tif false && len(rt.dups) > 0 {"
+    },
+    {
+      "name": "drop the local duplicate-key refusal (which local line lands becomes a guess)",
+      "file": "cmd/deskevidence/rowscope.go",
+      "old": "\tif len(lt.dups) > 0 {",
+      "new": "\tif false && len(lt.dups) > 0 {"
+    },
+    {
+      "name": "drop the named local row cell-count refusal (a truncated row lands and loses its lifecycle cells on the next regen)",
+      "file": "cmd/deskevidence/rowscope.go",
+      "old": "\t\tif len(ls) != len(rt.header) {",
+      "new": "\t\tif false && len(ls) != len(rt.header) {"
+    },
+    {
+      "name": "drop the mid-line carriage-return refusal (a named line renders as an extra row)",
+      "file": "cmd/deskevidence/rowscope.go",
+      "old": "\t\tif i := strings.IndexByte(lline, '\\r'); i >= 0 && i != len(lline)-1 {",
+      "new": "\t\tif i := strings.IndexByte(lline, '\\r'); false && i >= 0 && i != len(lline)-1 {"
+    },
+    {
+      "name": "land the named row's whole local line instead of its lifecycle cells (a stale local copy reverts the row's authoring cells)",
+      "file": "cmd/deskevidence/rowscope.go",
+      "old": "\t\tout[rt.keyed[r]] = nl",
+      "new": "\t\tout[rt.keyed[r]] = lline"
+    },
+    {
+      "name": "drop the write-time whole-content comparison (the second layer accepts any drift the fresh fetch shows)",
+      "file": "cmd/deskevidence/rowscope.go",
+      "old": "\tif !bytes.Equal(expected, commitContent) {",
+      "new": "\tif false && !bytes.Equal(expected, commitContent) {"
     }
   ]
 }

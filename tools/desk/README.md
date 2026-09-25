@@ -3461,22 +3461,39 @@ seconds later by exactly this shape, independent of how careful the correction i
 For a target whose **remote** content carries that marker-wrapped region, `--row <NN>`
 (repeatable) is now **required** and names which row(s) this landing may touch — absent, the
 landing refuses (exit 5) before any write. The committed content is then **rebased** onto the
-remote: only the named rows' lines come from the local file; every other row, the header, the
-separator, and every byte outside the markers come from the remote **unchanged**, so a stale
-local copy cannot revert anything it did not name. A row present in both tables but not
-named, whose local line differs from the remote's, does not block the landing — it is
-reported and left alone: `stale-local: row <NN> differed and was NOT written`. A named row
-absent from either table refuses (the table changed under the caller, or there is nothing to
-rebase in from). A target whose remote content carries no such region is unaffected by any of
-this — exactly today's whole-file behaviour, brief-path merges and `.jsonl` sidecars
-included.
+remote: only the named rows' **lifecycle cells** (the header's Status / Verified / Reviewed
+columns) come from the local file; the named rows' authoring cells, every other row, the
+header, the separator, and every byte outside the markers come from the remote **unchanged**,
+so a stale local copy cannot revert anything it did not name, nor a named row's title, wave or
+effort. A row present in both tables but not named, whose local line differs from the
+remote's, does not block the landing — it is reported and left alone: `stale-local: row <NN>
+differed and was NOT written`; a named row whose local authoring cells differ is reported the
+same way (`stale-local: row <NN> authoring cell(s) differed and were NOT written`).
+
+It refuses (exit 5), never guesses, when: a named row is absent from either table (the table
+changed under the caller, or there is nothing to rebase in from); either table carries a row
+key more than once; a named row's line on either side has a different cell count from the
+header; or a named local line carries a carriage return anywhere but its very end (it would
+render as an extra row). The region is located exactly as statusgen locates it — the first
+occurrence of each marker literal — and each marker must stand alone on its line; a stream
+`README.md` that carries either literal but does not parse that way is **refused**, not
+treated as table-less, so a drifted or mangled marker cannot silently disarm the guard.
+`TestRowScopeMarkersMatchStatusgen` pins the literals to `statusgen/readmetable.go`. A target
+whose remote content carries no marker at all — or a non-README file that merely quotes them —
+is unaffected by any of this: exactly today's whole-file behaviour, brief-path merges and
+`.jsonl` sidecars included.
 
 The guard is enforced **twice**, the same two-layer shape as the `--append-only` shrink guard
 above: the pre-check builds the rebase against the fetch already in hand, and the write op
-re-fetches the target **again**, independently, immediately before the commit, refusing if
-the content about to be written disagrees with that fresh read on any row it does not name —
-closing the race window between the pre-check and the actual write, where the table could
-have changed under the caller a second time. (`cmd/deskevidence/rowscope.go`.)
+re-fetches the target **again**, independently, immediately before the commit, refusing
+unless the content about to be written is exactly that fresh read with only the named rows'
+lifecycle cells changed. The fresh read's content id then rides into the write as
+`WriteFileInput.ExpectedSHA`: the backend refuses if its own pre-write fetch reports a
+different id, and cites that id as the forge's own conditional-write precondition (GitHub's
+Contents-API `sha`, GitLab's `last_commit_id`), so a table change landing after the re-check
+is rejected by the forge rather than overwritten. On a forge whose default branch takes no
+direct write (GitLab), the landing goes to a side branch and a draft change instead, where the
+merge itself surfaces any conflict. (`cmd/deskevidence/rowscope.go`.)
 
 ## deskgit — the narrow git verb (#1555 F-1)
 
