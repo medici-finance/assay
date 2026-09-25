@@ -384,7 +384,7 @@ var (
 	heldCuePrevWordRe = regexp.MustCompile(`(?i)\b(?:is|are|was|were|has|have|had|with|and|but|otherwise|means)$`)
 	// heldReasonAfterRe is a hold reason after the marker, past any run of
 	// whitespace, emphasis or clause punctuation.
-	heldReasonAfterRe = regexp.MustCompile(`(?i)^[\s\p{Z}*_,;:(–—-]*(?:pending|awaiting|waiting|until|because|blocked|due|for)\b`)
+	heldReasonAfterRe = regexp.MustCompile(`(?i)^[\s\p{Z}*_,;:(–—-]*(?:pending|awaiting|waiting|until|because|blocked|due|for)(?:\b|_)`)
 	// heldValueAfterRe is a colon right after the marker: the marker is a
 	// label whose value follows ("0 HELD: human read owed").
 	heldValueAfterRe = regexp.MustCompile(`^[\s\p{Z}*_]*:`)

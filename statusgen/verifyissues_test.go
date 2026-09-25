@@ -1330,6 +1330,8 @@ func TestVerifyPassHeldContradictionNegationCuePosition(t *testing.T) {
 		{"negation, comma, hold reason", prose("row 3 is not HELD, pending runner"), true},
 		{"dash-answered no, comma, hold reason", prose("runner available — no HELD, pending runner"), true},
 		{"marker used as a label with a value", prose("0 HELD: human read owed"), true},
+		{"underscore-emphasised hold reason", prose("0 HELD _pending_ runner"), true},
+		{"double-underscore-emphasised hold reason", prose("0 HELD __pending__ runner"), true},
 		// Must refuse: struck text never joins a cue to a marker, and never
 		// stands in for what precedes a cue.
 		{"struck span between cue and marker", prose("row 3 not ~~yet green, still~~ HELD"), true},
@@ -1356,6 +1358,7 @@ func TestVerifyPassHeldContradictionNegationCuePosition(t *testing.T) {
 		{"clause break then a non-breaking space before no", prose("all rows ran,\u00a0no could-not-check."), false},
 		{"zero count after a rows count, dash note", prose("**VERIFY: PASS (5/5 rows, 0 HELD — live cluster access was available)**"), false},
 		{"zero count after a fail count", prose("9/9 rows pass, 0 fail, 0 held."), false},
+		{"underscore-emphasised non-reason word stays excused", prose("0 HELD _runner_ idle"), false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

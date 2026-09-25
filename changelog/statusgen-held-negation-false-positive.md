@@ -14,7 +14,11 @@
   count label, or right after a verdict-count item ("7 PASS, 0 HELD"). An
   occurrence followed — past whitespace, emphasis, or "," ";" ":" "(" or a
   dash — by a hold-reason word ("pending", "awaiting", "until", "for", …), or
-  by a colon, is never excused. Residuals: a clause break or linking word
+  by a colon, is never excused. The reason word's own boundary accepts a
+  trailing underscore as well as a normal word boundary, so a markdown-
+  emphasised reason ("0 HELD _pending_", "0 HELD __pending__") is still
+  detected — underscore is a word character, so a bare `\b` would otherwise
+  miss it. Residuals: a clause break or linking word
   admits whatever precedes it ("runner available — no HELD" is excused), a
   hold reason that uses none of the reason words ("0 HELD — runner offline")
   is not detected, a hold-reason word that follows a sentence break ("."),
