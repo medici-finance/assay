@@ -42,20 +42,25 @@ the rule that a bare label is unanswerable without a comment saying what is need
 whom — is defined in the `intake-desk` and `the-desk` skills. **Point at it; do not restate
 it here.** This skill assumes the labels already mean what those skills say they mean.
 
-Read the queue with the inbox, which already sorts it. Prefer the `deskinbox` verb (Go,
-no `bash`/`jq` dependency, works on Windows — windows-port/13):
-
-```
-deskinbox walk --item 1 owner/repo [owner/repo ...]
-```
-
-If `deskinbox` is not on `PATH`, fall back to the bash oracle it was ported from — same
-ordering, same five-part format (`<bundle>` is the installed Assay bundle's own directory;
-each harness locates it its own way, and the expansion for yours is in
-`../../references/<harness>.md`; substitute it before running):
+Read the queue with the inbox, which already sorts it. Walk it with the bash oracle,
+because it is the renderer that runs **the screen** below (`<bundle>` is the installed Assay
+bundle's own directory; each harness locates it its own way, and the expansion for yours is
+in `../../references/<harness>.md`; substitute it before running):
 
 ```
 bash <bundle>/scripts/assay-inbox.sh --walk --item 1 owner/repo [owner/repo ...]
+```
+
+The Go `deskinbox walk` (no `bash`/`jq` dependency, works on Windows — windows-port/13) has
+the same ordering and the same five-part format but **does not classify yet**: it presents
+every item, and numbers `--item K` over the whole queue, where the oracle numbers genuine
+items only — so the same `K` can name a different item under the two renderers. Use it only
+where the oracle cannot run, and then the two floors at the end of this skill are **manual
+checks**: before putting each item, read its thread yourself for a ruling already given and
+for a single workable option.
+
+```
+deskinbox walk --item 1 owner/repo [owner/repo ...]
 ```
 
 **Before asking, read where the system is stuck:**
@@ -78,31 +83,42 @@ waiting downstream. So:
 
 ## The screen — four classes, and only one of them is asked
 
-Before any item reaches the format below, the inbox classifies it. `--walk` puts only
-**genuine** decisions to the driver; the other three classes are never asked, and never
-silently dropped — each is counted in a tail line under every question and listed in full
-by `--walk --screened`. Classes are tested in this order; the first that holds on
-POSITIVE evidence wins, otherwise the item is genuine — an item the tool cannot read or
-cannot classify (no known human-login list, say) is always genuine, because screening
-only ever happens on evidence, never on its absence.
+Before any item reaches the format below, the inbox's `--walk` (the bash oracle) classifies
+it. It puts only **genuine** decisions to the driver; the other three classes are never
+asked, and never silently dropped — each is counted in a tail line under every question and
+listed in full, with its evidence, by `--walk --screened`. Classes are tested in this order;
+the first that holds on POSITIVE evidence wins, otherwise the item is genuine. An item the
+tool cannot read or cannot classify is always genuine: screening only ever happens on
+evidence, never on its absence, and never on evidence written by someone the roster does not
+trust. With no roster configured, the walk prints a NOTICE naming the classes it could not
+enter.
 
-1. **already-ruled** — a comment from a known human login lands after the desk's own
-   relay ("Ruling relayed from the driver…") or after the point the options were put. A
-   desk relay ALONE is never a ruling — this is the exact mistake this screen exists to
-   catch. **Desk action:** relabel and close per the label vocabulary, citing the ruling
-   comment; never re-ask.
-2. **no-fork** — the Options section (or the fork-test block) parses to fewer than two
-   entries. One workable option is not a fork; it is a plan already picked. **Desk
-   action:** proceed or re-route, and notify — do not park it on this skill.
-3. **reversible-default** — the item carries a live `caught-by:`, a `default:`, and no
-   `class:` line and no one-way term: the desk has already proceeded behind a gate the
-   driver still holds a veto over. **Desk action:** proceed behind the gate; notify, and
-   let the veto stand.
+1. **already-ruled** — after the newest ask (the last comment by a roster App — a relay,
+   or the options put again — else the issue body's own Options), the **ratifying
+   identity** (the roster's `ASSAY_BLESS_LOGIN`; never any other human, however trusted) has
+   written, in its own hand and unedited, a ruling: its first line names one of the offered
+   options ("A", "Option B — …") or ratifies ("ratified"). A question, a refusal, or a
+   "hold" is not a ruling; a desk relay ALONE is never one — this is the exact mistake this
+   screen exists to catch. **Desk action:** read the cited comment yourself; when it is what
+   the tool says, record it, relabel per the label vocabulary and close citing that comment,
+   and never re-ask. When it is not, the item is genuine — ask it.
+2. **no-fork** — the issue was opened by a trusted author (a roster human or App) and its
+   Options section parses to exactly one entry — or, with no Options section, its fork-test
+   block carries exactly one `option:` line. One workable option is not a fork; it is a plan
+   already picked. **Desk action:** proceed or re-route, and notify — do not park it on this
+   skill.
+3. **reversible-default** — the issue was opened by a trusted author and carries a live
+   `caught-by:`, a `default:`, and no `class:` line and no one-way term: the desk has
+   already proceeded behind a gate the driver still holds a veto over. **Desk action:**
+   proceed behind the gate on the default the item names; notify, and let the veto stand.
 4. **genuine** — everything else. **Desk action:** ask, per the format below.
 
 The two floors at the end of this skill ("never ask a question twice", "never ask a
-question the desk can answer") are this screen, not a habit to remember by hand — the
-tool, not recall, is what tests classes 1–3 before anything is put to the driver.
+question the desk can answer") are made mechanical by this screen **on the oracle's walk
+only**. The screen narrows what reaches the driver; it does not replace reading — act on a
+screened class only after reading the evidence the tool cites. Where `deskinbox walk`
+renders instead, nothing classifies, and both floors stay manual checks done by hand before
+each question.
 
 ## The format — five parts for every GENUINE item
 
@@ -249,12 +265,14 @@ recorded on the issue as a relay.
   still waiting) and do not summarise it from memory.
 - **Never ask a question the desk can answer.** Anything resolvable by reading the repo, the
   CI log, or the spec is desk work, and putting it in this queue spends the driver's turn on
-  the desk's homework. The `no-fork` and `reversible-default` classes in "The screen" above are
-  this floor made mechanical — an item with one workable option, or already proceeding behind a
-  held gate, is desk work, not a question.
+  the desk's homework. On the oracle's walk, the `no-fork` and `reversible-default` classes in
+  "The screen" above are this floor made mechanical — an item with one workable option, or
+  already proceeding behind a held gate, is desk work, not a question. Under `deskinbox walk`
+  it is a check by hand.
 - **Never ask a question twice.** Before presenting an item, check whether a ruling is already
-  recorded on it. A re-asked decision reads as the desk not having listened. The `already-ruled`
-  class above is this floor made mechanical, not a check to remember by hand: it is what caught
-  the driver being asked to re-confirm a ruling already given, and being walked through a
-  settled design as "do it / drop it" — the incident that is this screen's whole reason for
-  existing. Trust the tool's classification over your own recall of the thread.
+  recorded on it. A re-asked decision reads as the desk not having listened. On the oracle's
+  walk, the `already-ruled` class above is this check made mechanical — it is what catches the
+  driver being asked to re-confirm a ruling already given. It is narrow on purpose (only the
+  ratifying identity's own unedited ruling after the newest ask), so an item it presents may
+  still carry a ruling in a shape it does not recognise: read the thread before asking. Under
+  `deskinbox walk`, which does not classify, this whole check is by hand.

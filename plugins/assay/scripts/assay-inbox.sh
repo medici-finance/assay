@@ -26,8 +26,10 @@
 # label. `--walk` is deliberately NON-interactive — it prints one item and exits, so the agent
 # holding the conversation owns the turn boundary and nothing here ever blocks on a tty.
 #
-# Read-only: shells `gh issue list` (and, in --walk/--html only, `gh issue view` for the body
-# and comments that Context/Options are derived from). Never writes to any issue.
+# Read-only: shells `gh issue list`, and `gh issue view` once per queued item for the author,
+# body and comments that Context/Options and the screen are derived from (the table, --walk
+# and --html all classify; `--no-screen` restores the old cost — no detail call in the
+# table, one in --walk). Never writes to any issue.
 # Terminal-agnostic — works with plain git + gh + any terminal.
 #
 # Repo resolution order:
@@ -96,14 +98,17 @@ Modes (the first three share one ordering and one format builder):
                     misjudges.
 
 The screen — --walk puts only GENUINE decisions to the driver. Every item is classified
-first (already-ruled by a human comment after the desk's own relay / no-fork one-option
-issue / reversible-default behind a still-held gate / genuine); only "genuine" is ever
-asked. The other three classes are never silently dropped: --walk prints one tail line
-of counts after every question ("screened: a already-ruled · b no-fork · c
-reversible-default — run with --screened to list them"), --screened lists them in full,
-and the table/--html renderings show every item's class and hide nothing. An item this
-tool cannot read, or cannot classify (e.g. no known human-login list), is always treated
-as genuine — screening only ever happens on POSITIVE evidence.
+first: already-ruled (the ratifying identity's own unedited ruling after the newest ask) /
+no-fork (a trusted author's one-option issue) / reversible-default (a trusted author's item
+already proceeding behind a still-held gate) / genuine; only "genuine" is ever asked. The
+other three classes are never silently dropped: --walk prints one tail line of counts after
+every question ("screened: a already-ruled · b no-fork · c reversible-default — run with
+--screened to list them"), --screened lists them in full, and the table/--html renderings
+show every item's class and hide nothing. An item this tool cannot read, or cannot classify
+(no roster: ASSAY_BLESS_LOGIN / ASSAY_TRUSTED_LOGINS / ASSAY_TRUSTED_BOT_SLUGS /
+ASSAY_HUMAN_LOGIN_MAP, from the environment or the owner-only
+${ASSAY_CONFIG_HOME:-~/.config/assay}/roster.env), is always treated as genuine — screening
+only ever happens on POSITIVE evidence from a trusted identity.
   --flow            print the pipeline FLOW model as a terminal table and exit: per stage,
                     the count now, the loop's own queue depth against its pool slots, the
                     ratio, the dwell, and the bottleneck. Fleet total always; one row block
@@ -291,30 +296,134 @@ cell_name_for() {
   basename "$(cd "$1" 2>/dev/null && pwd || printf '%s' "$1")"
 }
 
-# resolve_humans — the screen's KNOWN HUMAN LOGINS (attention-budget/15's "already-ruled"
-# class needs a human comment, never a bot/App one, to close a decision).
+# ------------------------------------------------------------- the screen's roster --
+# The screen (attention-budget/15) enters a class other than "genuine" only on POSITIVE
+# evidence, and what counts as evidence depends on WHO wrote it. It reads three sets:
 #
-# Source order: `ASSAY_HUMAN_LOGIN_MAP` (the desk tools' own env var, `name:login` pairs,
-# comma/semicolon/space/newline separated — the LOGIN, after the colon, is what is
-# compared against a comment's author), else `./.assay/humans.txt` (one login per line,
-# the same flat-file convention as `./.assay/repos.txt`). Neither present sets
-# HUMANS_KNOWN=0 — the caller then cannot enter the already-ruled class at all and prints
-# one NOTICE saying so, per the ground rule that screening only ever happens on POSITIVE
-# evidence.
-HUMANS_KNOWN=0
-HUMANS_JSON="[]"
-resolve_humans() {
-  if [[ -n "${ASSAY_HUMAN_LOGIN_MAP:-}" ]]; then
-    HUMANS_KNOWN=1
-    HUMANS_JSON=$(printf '%s' "$ASSAY_HUMAN_LOGIN_MAP" \
-      | tr ',;' '\n' \
-      | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' \
-      | sed -E 's/^[^:]*://' \
-      | jq -R -s 'split("\n") | map(select(length > 0))')
-  elif [[ -f "./.assay/humans.txt" ]]; then
-    HUMANS_KNOWN=1
-    HUMANS_JSON=$(grep -vE '^[[:space:]]*(#|$)' "./.assay/humans.txt" 2>/dev/null \
-      | jq -R -s 'split("\n") | map(select(length > 0))')
+#   RATIFIER  the ratifying identity (`ASSAY_BLESS_LOGIN`, one `login[:id]`) — the ONLY
+#             login whose own comment can put an item in `already-ruled`. Never every
+#             human in the map: ratification is the driver's act, in the driver's own
+#             identity, and a second human's "+1" is not it.
+#   TRUSTED   the authors whose ISSUE BODY is evidence for `no-fork` / `reversible-default`:
+#             the ratifier, `ASSAY_TRUSTED_LOGINS`, the logins of `ASSAY_HUMAN_LOGIN_MAP`,
+#             and the roster Apps of `ASSAY_TRUSTED_BOT_SLUGS` in the two forms an issue
+#             author renders as (`<slug>[bot]`, `app/<slug>`). Anyone can open an issue on a
+#             public repo, so an untrusted author's body text is never evidence. The body's
+#             EDITOR needs no separate check: only the author, or someone with write access
+#             to the repo, can edit an issue body, so a trusted author's body stays trusted.
+#   APPS      the roster App slugs. A comment by one of them is an "ask" (a relay, or the
+#             options put again) and moves the already-ruled anchor. `gh issue view` reports
+#             an App comment's author as the BARE slug (no `[bot]`), so the bare slug is
+#             accepted here too — safe, because the anchor can only narrow: a ruling still
+#             has to be the ratifier's own comment AFTER it.
+#
+# Source: each variable from the environment, else from the roster file the desk tools
+# read, ${ASSAY_CONFIG_HOME:-$HOME/.config/assay}/roster.env — and that file only when it
+# and its directory are owned by the invoking user and not group/world-writable (the rule
+# the Go roster reader applies). Nothing is read from the current directory: a checkout of
+# someone else's branch must never choose whose comment counts as a ruling. Lists split on
+# , ; space tab newline and compare lowercased, like the canonical parser; an entry that
+# does not parse is skipped, and a list with no valid entry is the same as an absent one.
+# Neither set known is could-not-classify, never "nothing to screen": the walk prints a
+# NOTICE naming exactly the classes that were switched off.
+RATIFIER=""
+TRUSTED_JSON="[]"
+APPS_JSON="[]"
+TRUSTED_KNOWN=0
+ROSTER_FILE="${ASSAY_CONFIG_HOME:-${HOME:-}/.config/assay}/roster.env"
+ROSTER_FILE_OK=0
+
+# roster_file_ok <path> — the owner-only rule. `find -H` follows a symlinked path given on
+# the command line (a linked config home is normal), so the mode tested is the target's.
+roster_file_ok() {
+  local f="$1" d
+  d=$(dirname "$f")
+  [[ -f "$f" && -O "$f" && -d "$d" && -O "$d" ]] || return 1
+  [[ -z "$(find -H "$f" "$d" -prune \( -perm -020 -o -perm -002 \) -print 2>/dev/null)" ]]
+}
+
+# roster_value <KEY> — the environment's value, else the roster file's (last KEY= line wins,
+# an `export ` prefix and surrounding quotes stripped, as the Go dotenv reader does).
+roster_value() {
+  local key="$1" v
+  v="${!key:-}"
+  if [[ -n "${v//[[:space:]]/}" ]]; then printf '%s' "$v"; return 0; fi
+  [[ "$ROSTER_FILE_OK" -eq 1 ]] || return 0
+  sed -nE "s/^[[:space:]]*(export[[:space:]]+)?${key}[[:space:]]*=[[:space:]]*//p" "$ROSTER_FILE" \
+    | tail -n 1 | sed -E "s/[[:space:]]+\$//; s/^[\"']//; s/[\"']\$//"
+}
+
+# split_list — one lowercased entry per line, split the way the canonical parser splits.
+# The appended newline matters: a value with no trailing newline would otherwise leave its
+# LAST entry unterminated, and `while read` silently drops an unterminated final line.
+split_list() { { cat; printf '\n'; } | tr ',;[:space:]' '\n' | tr '[:upper:]' '[:lower:]' | sed '/^$/d'; }
+
+looks_like_bot() { [[ "$1" == *"[bot]" || "$1" == app/* ]]; }
+
+resolve_roster() {
+  local raw entry login head rest
+  local -a trusted apps
+  trusted=()
+  apps=()
+  roster_file_ok "$ROSTER_FILE" && ROSTER_FILE_OK=1
+
+  # The ratifier is ONE identity; a value carrying a separator is refused outright, exactly
+  # as the Go reader refuses it — blessing the first entry of a list would silently grant
+  # the authority the variable exists to restrict.
+  raw=$(roster_value ASSAY_BLESS_LOGIN | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+  if [[ -n "$raw" && "$raw" != *[,\;[:space:]]* ]]; then
+    login=$(printf '%s' "${raw%%:*}" | sed 's/^@//' | tr '[:upper:]' '[:lower:]')
+    if [[ -n "$login" ]] && ! looks_like_bot "$login"; then
+      RATIFIER="$login"
+      trusted+=("$login")
+    fi
+  fi
+
+  while IFS= read -r entry; do
+    [[ "$entry" == *:* ]] || continue
+    login="${entry#*:}"
+    [[ -n "${entry%%:*}" && -n "$login" ]] || continue
+    looks_like_bot "$login" || trusted+=("$login")
+  done < <(roster_value ASSAY_HUMAN_LOGIN_MAP | split_list)
+
+  while IFS= read -r entry; do
+    login="${entry%%:*}"
+    login="${login#@}"
+    [[ -n "$login" ]] || continue
+    looks_like_bot "$login" || trusted+=("$login")
+  done < <(roster_value ASSAY_TRUSTED_LOGINS | split_list)
+
+  # [role=][forge:]slug[:id] — this tool reads GitHub only, so a gitlab: entry or an
+  # unrecognised forge contributes no login (the Go reader's fail-close for the same case).
+  while IFS= read -r entry; do
+    [[ "$entry" == *=* ]] && entry="${entry#*=}"
+    head="${entry%%:*}"
+    rest=""
+    [[ "$entry" == *:* ]] && rest="${entry#*:}"
+    if [[ "$head" == "github" ]]; then
+      entry="$rest"
+    elif [[ "$head" == "gitlab" ]]; then
+      continue
+    elif [[ "$rest" == *:* && ! "$head" =~ ^[0-9]+$ ]]; then
+      continue
+    fi
+    login="${entry%%:*}"
+    [[ -n "$login" && "$login" != *"[bot]" && "$login" != */* ]] || continue
+    apps+=("$login")
+    trusted+=("${login}[bot]" "app/${login}")
+  done < <(roster_value ASSAY_TRUSTED_BOT_SLUGS | split_list)
+
+  [[ ${#trusted[@]} -gt 0 ]] && TRUSTED_KNOWN=1
+  TRUSTED_JSON=$(printf '%s\n' ${trusted[@]+"${trusted[@]}"} | jq -R -s 'split("\n") | map(select(length > 0)) | unique')
+  APPS_JSON=$(printf '%s\n' ${apps[@]+"${apps[@]}"} | jq -R -s 'split("\n") | map(select(length > 0)) | unique')
+}
+
+# roster_notice — the one NOTICE line for a roster that switched classes off, or nothing.
+roster_notice() {
+  if [[ "$TRUSTED_KNOWN" -eq 0 ]]; then
+    printf '%s\n' "NOTICE: no roster configured (ASSAY_BLESS_LOGIN / ASSAY_TRUSTED_LOGINS / ASSAY_TRUSTED_BOT_SLUGS / ASSAY_HUMAN_LOGIN_MAP unset in the environment and in ${ROSTER_FILE}, or not parseable) — the screen can enter no class this run; every item is presented"
+  elif [[ -z "$RATIFIER" ]]; then
+    printf '%s\n' "NOTICE: no ratifying identity configured (ASSAY_BLESS_LOGIN) — already-ruled cannot be entered this run, so a ruled item is presented as genuine; no-fork and reversible-default still screen"
   fi
 }
 
@@ -513,16 +622,19 @@ def nonblank: map(select(test("[^[:space:]]")));
 def isheading: test("^[[:space:]]*#{1,6}[[:space:]]");
 def demd: gsub("\\*\\*"; "") | gsub("`"; "");
 
-# The screen's known-human-logins input travels through the ENVIRONMENT ($ENV), not
-# --argjson: this program is extracted verbatim and run standalone by
-# tools/desk/cmd/deskinbox's parity test (jq -s --argjson k … --argjson n … -f prog …,
-# with NO other args) — a new required --argjson would be a compile error there, on a
-# program that test never asked to change. Reading via $ENV means an invocation that
-# never sets these two variables (the parity test, or any older caller) degrades exactly
-# like "no known human list": already-ruled cannot be entered, nothing crashes.
-($ENV.ASSAY_INBOX_HUMANS_JSON // "[]") as $humansRaw
-| ($humansRaw | (try fromjson catch [])) as $humans
-| (($ENV.ASSAY_INBOX_HUMANS_KNOWN // "") == "1") as $humansKnown
+# The screen's roster input (resolve_roster: the ratifying identity, the trusted authors,
+# the roster App slugs) travels through the ENVIRONMENT ($ENV), not --argjson: this program
+# is extracted verbatim and run standalone by tools/desk/cmd/deskinbox's parity test
+# (jq -s --argjson k … --argjson n … -f prog …, with NO other args) — a new required
+# --argjson would be a compile error there, on a program that test never asked to change.
+# Reading via $ENV means an invocation that never sets these variables (the parity test, or
+# any older caller) degrades exactly like "no roster": no class can be entered, nothing
+# crashes.
+def loginlist: (try fromjson catch [])
+  | if type == "array" then map(select(type == "string") | ascii_downcase) else [] end;
+(($ENV.ASSAY_INBOX_RATIFIER // "") | ascii_downcase) as $ratifier
+| (($ENV.ASSAY_INBOX_TRUSTED_JSON // "[]") | loginlist) as $trusted
+| (($ENV.ASSAY_INBOX_APPS_JSON // "[]") | loginlist) as $apps
 
 | .[0] as $it
 | .[1] as $draw
@@ -618,39 +730,77 @@ def demd: gsub("\\*\\*"; "") | gsub("`"; "");
 # ------------------------------------------------------------- the screen (attention-budget/15) --
 # Four classes, tested in THIS order; the first that holds on POSITIVE evidence wins,
 # otherwise the item is genuine. An unread item is always genuine (rendered
-# could-not-check above already) — screening never fires on the absence of evidence.
-| (($it.labels // []) | map(.name | clean)) as $screenLabels
-# to_entries FIRST, so `.key` is the comment's ORIGINAL position in $cs — filtering before
-# entering would renumber the survivors and silently misplace the anchor.
-| (($cs | to_entries | map(select((.value.author.login // "") | test("\\[bot\\]$|desk"; "i")))
-       | last | .key) // -1) as $deskAnchorIdx
-| (def isHuman:
-     (. // "") as $l
-     | ($l != "")
-     and ((($humans // []) | index($l)) != null)
-     and (($l | test("\\[bot\\]$"; "i")) | not);
-   if ($humansKnown | not) then []
-   else ($cs | to_entries
-         | map(select(.key > $deskAnchorIdx))
-         | map(select(.value.author.login | isHuman)))
-   end) as $rulingEntries
-| (($rulingEntries | length) > 0) as $isRuled
-| (if $isRuled then ($rulingEntries[0].value) else null end) as $rulingComment
+# could-not-check above already) — screening never fires on the absence of evidence, and
+# never on evidence written by someone the roster does not trust.
 
-| (($bl | to_entries | map(select(.value | test("^[[:space:]]*#{1,6}[[:space:]]*Options?\\b"; "i"))) | length) > 0) as $hasOptionsHeading
-| ($hasOptionsHeading and (($opts | length) == 1)) as $optionsSingle
-| (($bl | nonblank | map(strip) | map(select(test("^option:"; "i"))) | length)) as $forkOptionCount
-| (($forkOptionCount > 0) and ($forkOptionCount < 2)) as $forkFewerThanTwo
-| ($optionsSingle or $forkFewerThanTwo) as $isNoFork
+# Who wrote the BODY. Only a trusted author's body is evidence for no-fork /
+# reversible-default (see resolve_roster for why the body's editor needs no second check).
+| ((($d.author.login // "") | ascii_downcase)) as $bodyAuthor
+| (($bodyAuthor != "") and ($trusted | any(. == $bodyAuthor))) as $bodyTrusted
 
-| (($bl | nonblank | map(strip | demd | clean) | map(select(test("^caught-by:"; "i"))) | .[0:1])) as $caughtByLines
-| ((($caughtByLines | length) > 0)
-   and (($caughtByLines[0] | sub("^caught-by:[[:space:]]*"; ""; "i")) as $v
-        | ($v | test("^nothing\\b"; "i")) | not)) as $hasCaughtByNonNothing
-| (($bl | nonblank | map(strip | demd | clean) | map(select(test("^default:"; "i"))) | length) > 0) as $hasDefaultLine
-| (($bl | nonblank | map(strip | demd | clean) | map(select(test("^class:"; "i"))) | length) == 0) as $noClassLine
+# --- 1. already-ruled ----------------------------------------------------------------------
+# The ANCHOR is the newest ask: the last comment by a roster App (a relay, or the options put
+# again), else — when no App ever commented — the body itself, and only if the body states
+# options. No anchor, no ruling. to_entries FIRST, so `.key` is the comment's ORIGINAL
+# position in $cs — filtering before entering would renumber the survivors and misplace it.
+| def isapp: ((. // "") | ascii_downcase) as $l
+    | ($apps | any(. as $s | $l == $s or $l == ($s + "[bot]") or $l == ("app/" + $s)));
+  (($cs | to_entries | map(select(.value.author.login | isapp)) | last | .key) // null) as $appAnchor
+| (if $appAnchor != null then $appAnchor elif $stated then -1 else null end) as $anchor
+# The letters a ruling may name: the body's own option letters AND the walk's re-lettering
+# (the recommended option is promoted to A), so either reading of "B" is recognised.
+| ((($oraw | map(.let | ascii_upcase)) + ($options | map(.letter))) | unique) as $offered
+# A ruling is POSITIVE content, and nothing else: its first line names one offered option
+# ("A", "B.", "Option C — …") or ratifies ("ratified", "I ratify", "approved"). A question,
+# a refusal or a hold ("?", no/not/hold/wait/…), or a comment edited after posting, is not
+# a ruling, whatever else it says.
+| def isruling:
+    ((.body // "") | lines | map(select(test("^[[:space:]]*<!--") | not))
+      | nonblank | map(strip | demd | clean)) as $ls
+    | ($ls | join(" ")) as $all
+    | ($ls[0] // "") as $first
+    | ([$first | capture("^(?:[Oo]ption[[:space:]]+)?(?<l>[A-D1-4])(?:$|[.)!:,]|[[:space:]]*[—–-])")]
+        | first | .l?) as $letter
+    | ((.includesCreatedEdit // false) == true) as $edited
+    | ($all | test("\\?")) as $asks
+    | ($all | test("\\b(?:no|not|don'?t|didn'?t|won'?t|hold|wait|later|undecided|unsure|pending)\\b|n't\\b"; "i")) as $negates
+    | (($edited or $asks or $negates) | not)
+      and ((($letter != null) and $stated and ($offered | any(. == $letter)))
+           or ($first | test("^(?:i[[:space:]]+)?(?:ratif(?:y|ied)|approved?)\\b"; "i")));
+  (if ($ratifier == "") or ($ratifier | test("\\[bot\\]$|^app/")) or ($anchor == null) then []
+   else ($cs | to_entries | map(select(.key > $anchor))
+         | map(select(((.value.author.login // "") | ascii_downcase) == $ratifier)))
+   end) as $ratifierAfter
+# The ratifier's LATEST word after the anchor decides: "A" followed by "actually, hold" is
+# not a ruling.
+| (($ratifierAfter | last | .value) // null) as $lastRatifier
+| (($lastRatifier != null) and ($lastRatifier | isruling)) as $isRuled
+| (if $isRuled then $lastRatifier else null end) as $rulingComment
+
+# --- 2. no-fork ----------------------------------------------------------------------------
+# An Options section that parses to ONE entry and holds no second list line, or — only when
+# there is NO Options section — a fork-test block with exactly one `option:` line. A stray
+# "Option:" prose line never overrides a parsed Options section.
+| (($bl | map(select(test("^[[:space:]]*#{1,6}[[:space:]]*Options?\\b"; "i"))) | length) > 0) as $hasOptionsHeading
+| ($osec | nonblank | map(strip)
+   | map(select(test("^(?:[-*+][[:space:]]|(?:\\*\\*)?[A-Za-z0-9][.)])"))) | length) as $osecListLines
+| ($hasOptionsHeading and (($opts | length) == 1) and ($osecListLines <= 1)) as $optionsSingle
+| ($bl | nonblank | map(strip | demd | clean) | map(select(test("^option:"; "i"))) | length) as $forkOptionCount
+| (($hasOptionsHeading | not) and ($forkOptionCount == 1)) as $forkSingle
+| ($bodyTrusted and ($optionsSingle or $forkSingle)) as $isNoFork
+
+# --- 3. reversible-default -----------------------------------------------------------------
+| ($bl | nonblank | map(strip | demd | clean)) as $blc
+| ($blc | map(select(test("^caught-by:"; "i"))) | .[0:1]) as $caughtByLines
+| ((($caughtByLines[0] // "") | sub("^caught-by:[[:space:]]*"; ""; "i") | .[0:60])) as $caughtByValue
+| ((($caughtByLines | length) > 0) and ($caughtByValue != "")
+   and (($caughtByValue | test("^nothing\\b"; "i")) | not)) as $hasCaughtByNonNothing
+| ($blc | map(select(test("^default:"; "i"))) | .[0:1]) as $defaultLines
+| ((($defaultLines[0] // "") | sub("^default:[[:space:]]*"; ""; "i") | .[0:60])) as $defaultValue
+| ((($defaultLines | length) > 0) and ($defaultValue != "")) as $hasDefaultLine
+| (($blc | map(select(test("^class:"; "i"))) | length) == 0) as $noClassLine
 | (($bl | join(" ") | test("\\b(one-way|irreversible)\\b"; "i")) | not) as $noOneWayTerm
-| ($hasCaughtByNonNothing and $hasDefaultLine and $noClassLine and $noOneWayTerm) as $isReversibleDefault
+| ($bodyTrusted and $hasCaughtByNonNothing and $hasDefaultLine and $noClassLine and $noOneWayTerm) as $isReversibleDefault
 
 | (if $blind then "genuine"
    elif $isRuled then "already-ruled"
@@ -659,12 +809,15 @@ def demd: gsub("\\*\\*"; "") | gsub("`"; "");
    else "genuine"
    end) as $class
 
+# The evidence line names what put the item there, from the item itself: the ruling
+# comment's date and author, the PARSED default and its gate — never a guessed letter.
 | (if $class == "already-ruled" then
-     "ruled — flag for relabel/close (" + (($rulingComment.createdAt // "date unknown")) + ")"
+     "ruled — flag for relabel/close (" + (($rulingComment.createdAt // "date unknown") | clean)
+     + ", by " + (($rulingComment.author.login // "?") | clean) + ")"
    elif $class == "no-fork" then
      "no fork — desk proceeds or re-routes"
    elif $class == "reversible-default" then
-     "proceeding on default " + (($options[0].letter) // "A") + "; veto by declining the gate"
+     "proceeding on default " + $defaultValue + "; veto by declining the gate (caught-by: " + $caughtByValue + ")"
    else ""
    end) as $classEvidence
 
@@ -692,16 +845,19 @@ def demd: gsub("\\*\\*"; "") | gsub("`"; "");
 JQFMT
 }
 
-# build_item <0-based index> — fetch the issue detail and append the rendered item to
-# $TMP_ITEMS. A detail fetch is a READ (`gh issue view`), the only extra call the two new
-# modes make; the table mode still costs exactly what it always did.
+# build_item <0-based index> — fetch the issue detail (author, body, comments) and append the
+# rendered item to $TMP_ITEMS. A detail fetch is a READ (`gh issue view`), one per item. The
+# screen needs every item READ to classify it, so every mode that classifies — the table,
+# --walk and --html — makes one such call per queued item; only `--no-screen` (table: none;
+# --walk: just the one item printed) and --flow skip them. A failed detail fetch leaves that
+# item unread (genuine, could-not-check) and makes the run exit 2, in the table too.
 build_item() {
   local idx="$1" repo number detail gh_status one merged
   repo=$(jq -r --argjson i "$idx" '.[$i].repo' "$TMP_SORTED")
   number=$(jq -r --argjson i "$idx" '.[$i].number' "$TMP_SORTED")
   jq --argjson i "$idx" '.[$i]' "$TMP_SORTED" > "$TMP_ONE"
 
-  if detail=$(gh issue view "$number" --repo "$repo" --json body,comments 2>"$TMP_ERR"); then
+  if detail=$(gh issue view "$number" --repo "$repo" --json author,body,comments 2>"$TMP_ERR"); then
     :
   else
     gh_status=$?
@@ -713,12 +869,14 @@ build_item() {
   [[ -z "$detail" ]] && detail='{"detailUnavailable":true}'
   printf '%s' "$detail" > "$TMP_DETAIL"
 
-  # The screen's inputs ride the ENVIRONMENT ($ASSAY_INBOX_HUMANS_JSON/_KNOWN), not a new
-  # --argjson: this exact invocation shape (jq -s --argjson k … --argjson n … -f prog
-  # itemfile detailfile) is what tools/desk/cmd/deskinbox's parity test replicates against
-  # the extracted program, and it does not pass either — see the program's own comment.
-  one=$(ASSAY_INBOX_HUMANS_JSON="$HUMANS_JSON" \
-        ASSAY_INBOX_HUMANS_KNOWN="$([[ "$HUMANS_KNOWN" -eq 1 ]] && echo 1 || echo 0)" \
+  # The screen's inputs ride the ENVIRONMENT ($ASSAY_INBOX_RATIFIER / _TRUSTED_JSON /
+  # _APPS_JSON), not a new --argjson: this exact invocation shape (jq -s --argjson k …
+  # --argjson n … -f prog itemfile detailfile) is what tools/desk/cmd/deskinbox's parity
+  # test replicates against the extracted program, and it passes none of them — see the
+  # program's own comment.
+  one=$(ASSAY_INBOX_RATIFIER="$RATIFIER" \
+        ASSAY_INBOX_TRUSTED_JSON="$TRUSTED_JSON" \
+        ASSAY_INBOX_APPS_JSON="$APPS_JSON" \
         jq -s --argjson k "$idx" --argjson n "$item_count" -f "$TMP_FMT" "$TMP_ONE" "$TMP_DETAIL")
   merged=$(jq -s '.[0] + [.[1]]' "$TMP_ITEMS" <(printf '%s' "$one"))
   printf '%s' "$merged" > "$TMP_ITEMS"
@@ -1036,8 +1194,10 @@ def flowsection($f):
         + "</a> — question " + (.index | esc) + " of " + (.total | esc) + "</h2>"),
       ("<p class=\"title\">" + (.title | esc) + "</p>"),
       (if .unread then "<p class=\"unread\">could-not-check: this item was not read</p>" else empty end),
-      ("<p class=\"cls\">Class: " + (.class | esc)
-        + (if .classEvidence != "" then " — " + (.classEvidence | esc) else "" end) + "</p>"),
+      (if .class then
+         "<p class=\"cls\">Class: " + (.class | esc)
+         + (if (.classEvidence // "") != "" then " — " + (.classEvidence | esc) else "" end) + "</p>"
+       else empty end),
       "<h3>Context</h3>",
       "<ul>",
       (.context[] | "<li>" + esc + "</li>"),
@@ -1544,7 +1704,7 @@ case "$MODE" in
       render_table
       finish
     else
-      resolve_humans
+      resolve_roster
       write_format_program
       echo "[]" > "$TMP_ITEMS"
       i=0
@@ -1584,7 +1744,7 @@ case "$MODE" in
       # The screen: every item must be READ to be classified, so --walk now builds the
       # whole queue (like --html always has) rather than lazily fetching just the one
       # item asked for — the cost the screen's correctness requires.
-      resolve_humans
+      resolve_roster
       write_format_program
       echo "[]" > "$TMP_ITEMS"
       i=0
@@ -1598,8 +1758,7 @@ case "$MODE" in
       reversible_n=$(jq '[.[] | select(.class == "reversible-default")] | length' "$TMP_ITEMS")
       genuine_n=$(jq '[.[] | select(.class == "genuine")] | length' "$TMP_ITEMS")
       tail_line="screened: ${already_ruled_n} already-ruled · ${no_fork_n} no-fork · ${reversible_n} reversible-default — run with --screened to list them"
-      notice_line=""
-      [[ "$HUMANS_KNOWN" -eq 0 ]] && notice_line="NOTICE: no known human login list (\$ASSAY_HUMAN_LOGIN_MAP unset, ./.assay/humans.txt absent) — already-ruled cannot be classified this run; every item is presented"
+      notice_line=$(roster_notice)
 
       if [[ "$WANT_SCREENED" -eq 1 ]]; then
         # A reporting mode, not a question — the header-on-line-1 convention only binds
@@ -1629,6 +1788,9 @@ case "$MODE" in
     ;;
 
   html)
+    # The page classifies with the SAME roster the walk uses, so the two cannot disagree
+    # about an item's class; --no-screen drops the class from every card, as before.
+    resolve_roster
     write_format_program
     write_html_program
     echo "[]" > "$TMP_ITEMS"
@@ -1637,6 +1799,10 @@ case "$MODE" in
       build_item "$i"
       i=$((i + 1))
     done
+    if [[ "$NO_SCREEN" -eq 1 ]]; then
+      jq 'map(del(.class, .classEvidence))' "$TMP_ITEMS" > "$TMP_CLASSFILE"
+      cat "$TMP_CLASSFILE" > "$TMP_ITEMS"
+    fi
     # The decision page carries the Flow section too: "which decision is next" and "where is
     # the system stuck" are the two halves of one hand-off, and a driver reading the page
     # should not have to open a second one to see whether the queue in front of them is the
