@@ -34,9 +34,9 @@ it on day one.
 | `reviewloop` | `plan` — pr-review-desk's BOARD REACTOR: classifies a `deskboard` sweep against an action table derived from deskboard's own ACTION constants, coalesces outward verbs on `(repo, pr, head, verb)`, and answers the #79 idle question in THREE states. Not a drain: it does not link `internal/loopengine`. `--records <thread.json>` additionally derives the PERSISTENT REVIEW-FINDING ledger for one PR (`review-finding/v1`; `deskkit.DeriveLedger`): outstanding findings, per-class rounds against the existing cap, the single arbiter packet, and every could-not-check — so finding IDs and round counts survive a replacement agent | read-only (spawns nothing, writes nothing, makes no GitHub call) | no |
 | `deskboot` | `<role>` — the adapter verb for a loop's BOOT seam: loop identity, worktree prune + lock, roster register, envelope preflight, token-mint proof, board summary. Fails closed with the step NAMED | local-only (delegates every step to the verb that owns it) | no |
 | `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, the `before_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (failure ⇒ exit 6, no prompt, claim released), roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
-| `deskflip` | `<N>` — the adapter verb for a loop's LAND seam: the ready-flip gate. Refuses unless the reviewer App approved AT HEAD, checks are green, the PR is mergeable, a risk-classed PR carries a security verdict at head, and the caller is the review role | outward write | no |
+| `deskflip` | `<N>` — the adapter verb for a loop's LAND seam: the ready-flip gate. Refuses unless the reviewer App approved AT HEAD, checks are green, the PR is mergeable, the `desk-decided` label and body block agree with no standing `Undeclared-desk-decision:` finding, a risk-classed PR carries a security verdict at head, and the caller is the review role | outward write | no |
 | `deskpost` | `review`, `comment`, `ready` — as the reviewer App | outward write | yes |
-| `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push); each takes `--check`, an OFFLINE gate run — every local check the write path runs, stopped before any token mint or connection | outward write | yes |
+| `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push); each takes `--check`, an OFFLINE gate run — every local check the write path runs, stopped before any token mint or connection; `--decided <file>` on `create`/`edit` declares a desk-taken reversible default as a `## Desk-decided` body section (decision:/alternative:/cost: triples) plus the `desk-decided` label — see "Desk-decided: the merge is the gate" below | outward write | yes |
 | `deskreply` | PR reply comment under the **worker** identity; `--workpad` upserts ONE marked progress comment per PR (find the worker's own newest unresolved comment carrying the workpad marker and edit it in place, or create the first one) instead of always posting a new reply — `--dry-run` (plain reply or `--workpad`) reports what would post without writing | outward write | yes |
 | `deskfile` | `new`, `attach`, `check` — the issue-filing gate (dedupe first) | outward write | yes |
 | `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` (the documented human-ruled BATCH lane) — the issue-CLOSING gate (a fetched human authorization or nothing); plus two identity+structure lanes that cite no artifact because they close nothing belonging to another party: `self-withdraw` (the authoring App's own draft, pinned by login AND bot id) and `verify-gate-refire` (the verifier session reopens + re-closes a closed `verify-gate` card) | outward write | yes |
@@ -55,6 +55,7 @@ it on day one.
 | `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); each takes `--dry-run` to report the hook plan without touching anything | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
+| `deskfleet` | `provision` — GitLab fleet bootstrap, the Go port of `tools/create-fleet-gitlab.sh`: seven role service accounts, memberships and PATs written owner-only to `gitlab-<role>.token` and read back through the deskkit custody check (inconclusive read-back = WARN; definite failure = stop; a partial run STOPS and REPORTS every minted token, every account created with no token and every could-not-check request, never revokes — the recorded custody ruling), then with `--project` the protected `main` / approvals / release tags / merge checks / labels; `--avatars-dir` has each new account set its own avatar (no default icon fetch; skipped and named without it), `--avatars-only` sets existing accounts' avatars; `labels` — the nine fleet labels on a GitHub repo or GitLab project from ONE table. `--dry-run` makes zero network calls; a real run refuses without `GITLAB_API_BASE` | outward write (bootstrap: reads no roster; the credential is a human-supplied file) | no |
 | `deskroster` | `set`, `drop`, `list`, `mine`, `width`, `repos`, `apps`, `preflight` | local-only, out-of-git (`preflight` mints a token and runs one read-only transport probe) | no |
 | `muhar` | `-spec <file>` mutation harness, `-j <n>` mutations in flight (isolated tree per worker), `-shard i/n` this invocation's slice of the spec (shards partition it; baseline + control run per shard) | local diagnostic (no `Guard`) | no |
 | `writeguard` | PreToolUse hook (F-34 isolation backstop) | hook | n/a |
@@ -523,6 +524,12 @@ lives in `Config.BotIdents`/`Config.Logins` and is untouched here), and printing
 An identity that is exactly alive produces no output — the same quiet-on-the-happy-path
 shape every other NOTICE in this codebase uses.
 
+A bot identity (`Config.Bots`, keyed on the App's bare slug) is probed at its
+`"<slug>[bot]"` REST rendering, never the bare slug — GitHub's `GET /users/{login}` only
+resolves a GitHub App's bot account under that suffixed form, so probing the bare slug 404s
+for every live App and misreports it as **deleted** (medici-finance/assay#1665). Human and
+Bless identities resolve directly at their configured login and are untouched by this.
+
 **What it does NOT do.** It never wires a finding into `TrustedAuthor`/`TrustedHumanAuthor`/
 `Blessed`/`ItemTrusted*`'s pass/fail return, never auto-revokes anything, posts no comment,
 files no issue, and mutates nothing on the forge. Who is trusted today is unchanged by
@@ -760,6 +767,92 @@ grep scan_override ~/.config/assay/audit.jsonl
 
 The scan's accuracy in both directions, the acceptance run behind these verbs, and the
 proof each refusal can fail, are the ship bar in `docs/desk-tools-gate-bar.md`.
+
+### Desk-decided: the merge is the gate (attention-budget/19)
+
+The driver holds merge on every pull request, so a desk that takes a REVERSIBLE default
+does not need a ruling first — the `default-forward-reversibility` guardrail already says
+so. What it needs is for the pull request to SAY, at merge time, that this is a choice the
+desk made rather than one the driver already ruled on. A one-line design patch put to the
+driver as a bare "do it / drop it" is the shape this closes: a draft PR that states what
+was chosen, what the alternative was, and what it costs to reverse would have been the
+whole conversation.
+
+**One term, one label, one marker.** The term is **desk-decided** — the counterpart of the
+existing `human-decided` label (which records a HUMAN act and is refused for every role;
+this one records a DESK act and is applied directly through `deskkit.LabelChange`, the
+same create-if-missing path `deskflip`'s queue-label swap and `deskpost`'s verdict labels
+already use). The machine marker is the existing `<!-- desk-r3-decision v1 -->` comment —
+the same one the weekly decision digest already reads on issue comments — reused verbatim
+on PR bodies rather than inventing a second word.
+
+**The block.** `deskpr create --decided <file>` / `deskpr edit --decided <file>` takes a
+file of numbered items, each carrying exactly three fields:
+
+```
+1. decision: <what the desk chose>
+   alternative: <the option not taken — a real one, or "none workable — <why>">
+   cost: <what reversing it costs the driver: "decline this PR", "one revert", or the
+     concrete cost>
+```
+
+The tool writes it into the PR body under the fixed `## Desk-decided` heading, with the
+marker on its own line, and applies the `desk-decided` label alongside it. `create`
+REFUSES (exit 5) an empty file, an item missing a field, or a body that already carries a
+**hand-written** `## Desk-decided` heading (a brand-new PR has no prior block of its own to
+replace — remove the hand-written one and use `--decided` instead). `edit` does not refuse
+on that shape: its replacement body is routinely a copy of the PR's own current body, so a
+prior `--decided` block already present is **replaced in place**, not duplicated. If the
+label write fails after the body has already landed, the tool reports that failure AS
+ITSELF (a non-zero exit naming the PR URL) rather than rolling it into, or masking it
+behind, the create/edit's own result — the block is the record, the label is only the
+at-a-glance view. On `edit` the re-review notice is posted BEFORE the label write, so a
+label failure never swallows it. The remedy is `deskpr edit --decided` with the PR's
+current body: an unchanged body is otherwise a no-op, but when `--decided` is given and the
+label is missing it applies the label (and nothing else — no body write, no notice).
+
+A PR that only carries out rulings already recorded elsewhere declares nothing: it passes
+no `--decided` and gets neither the label nor the block. The tool cannot tell "this needed
+no declaration" from "this should have declared one" by itself — that is the reviewer's
+call (below).
+
+**The ready-flip gate — mechanical about a FOUND decision, not about silence.**
+`deskflip`'s `desk-decided` condition (evaluated right after `checks-green`) is mechanical
+on two points: a `## Desk-decided` block, when present, must PARSE, and the `desk-decided`
+label and the block must AGREE — a label with no block, or a block with no label, refuses.
+What is NOT mechanical is whether a PR that declares nothing in fact took an undeclared
+desk decision; that is the reviewer's question, and the reviewer kit (`cmd/deskdispatch/
+references/review-prompt.md` §14) asks it on every review. A reviewer who judges that the
+diff took an undeclared reversible default names it in the verdict with the fixed line
+`Undeclared-desk-decision: <one line>`, and the flip refuses while that line stands at the
+CURRENT head — cleared by `deskpr edit --decided` and a fresh DECISIVE verdict (APPROVE or
+REQUEST_CHANGES) at the same head, in the same lane, that omits the line; no new commit
+required. The two review lanes are read separately, because the correctness and security
+verdicts are posted by the same reviewer App in parallel: a `Security-Review:` verdict never
+clears a correctness-lane finding (nor the reverse), and a COMMENTED note that is not a
+verdict clears nothing — so the answer never depends on which lane posted last. The
+head-stable re-gate re-runs this condition against its fresh read of the reviews, body and
+labels, so a finding posted during the checks is still seen. **Absence of a block, by
+itself, is NEVER a refusal** — that is the stricter alternative (option 2 of the driver's
+decision on #1677) and is not built without a ruling naming it specifically.
+
+A `## Desk-decided` heading inside a fenced code block is a quoted example, not a
+declaration: the section reader skips fenced regions, so a PR body that documents the
+format neither trips `create`'s hand-written-heading refusal nor `deskflip`'s label/block
+check.
+
+The reviewer kit also asks the converse question: a DECLARED item that falls inside the
+`default-forward-reversibility` guardrail's fixed human-gated set (merge, weakening a
+security control, identity/auth, money movement, durable-data deletion, anything leaving the
+repo) is itself a blocking finding — the label and block grant nothing, so a mislabelled
+one-way call is caught there or nowhere.
+
+**Interim practice, retired by this feature.** Before `--decided` existed, a desk-taken
+default was declared in one PR comment opening with the literal line `**Desk-decided**`
+followed by the same numbered decision/alternative/cost list — searchable
+(`in:comments "Desk-decided"`) but neither a label nor a body section, so it never showed
+in a PR listing. That comment form is retired now that the tool exists; a PR should carry
+the `## Desk-decided` body section and label instead.
 
 ## deskboard health — default-branch health (#295)
 
