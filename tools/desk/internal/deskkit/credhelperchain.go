@@ -111,8 +111,9 @@ func credTransportMatchesApp(dir, rawURL, appTokenPath string) (bool, string, er
 		return false, "", nerr
 	}
 	if entry != "" {
-		return false, entry + " for " + shown + "; git has curl answer the server's authentication challenge " +
-			"from netrc before any credential helper runs", nil
+		return false, entry + " for " + shown + "; at least one libcurl netrc reader git might link would have " +
+			"curl answer the server's authentication challenge from a matching token before any credential " +
+			"helper runs, and this scan does not track position closely enough to rule that out", nil
 	}
 
 	chain, err := applicableConfigValues(dir, "credential", "helper", rawURL)
@@ -479,89 +480,65 @@ func netrcEntryFor(host string) (string, error) {
 	return "", nil
 }
 
-// netrcMatch scans a netrc body for an entry that applies to host: `machine <host>` or
-// `default`. It follows curl's own netrc reader (lib/netrc.c, libcurl 8.x) on every path that
-// decides whether an entry matches, because a difference that swallows a keyword leaves stale
-// state that hides the real entry, and the check then reads green while curl answers the
-// server from netrc (review findings SR-1614-2 and SR-1614-3). The rules, each pinned against
-// real git and libcurl by TestCredChainNetrcMatchesCurl:
+// netrcMatch scans a netrc body for any TOKEN that equals host or the keyword `default`,
+// compared ASCII case-insensitively (strcasecompare) — the state-free scan the driver ruled
+// for on arbiter packet #1622
+// (https://github.com/medici-finance/assay/issues/1622#issuecomment-5837592241, "Ruling: 1").
 //
-//   - A line is read up to and including its newline. Blanks (space, tab) before a token are
-//     skipped, and a token that starts with `#` ends the line: the rest is a comment. A `#`
-//     inside a token is part of it.
+// Rounds 1 and 2 of this review (SR-1614-2, SR-1614-3) tried to lex netrc exactly like curl's
+// reader, fixing keyword case and then comment/macro/separator handling. Round 3 found that
+// the fixed model matches libcurl 8.10 and earlier exactly but still fails open on 8.11 and
+// every later release: libcurl has shipped three different netrc readers (the pre-8.11 state
+// machine round 1/2 modelled, the 8.11+ reader that drops whole-line comments as it loads the
+// file, and the 8.21+ grammar lexer), and git links whichever one the host's libcurl ships. A
+// fourth round of "lex like curl" would only move the gap to a different set of curl versions.
+//
+// A token-equality scan needs no model of any reader: every one of them answers an
+// authentication challenge for host, or falls back to a `default` entry, only when one of
+// those two words appears as ONE OF ITS TOKENS somewhere in the file — so scanning every
+// token, wherever it sits (inside a comment, a macro body, or a login/password/account value,
+// not only a position some reader treats as a keyword), covers every reader's fail-open case,
+// including a reader that does not exist yet. It cannot be reopened by the next curl rewrite,
+// which is the point of the ruling.
+//
+// Tokenizing (unchanged from the prior model, still pinned against real git and libcurl by
+// TestCredChainNetrcMatchesCurl):
+//
 //   - An unquoted token runs to the next whitespace byte of any kind (space, tab, newline,
-//     vertical tab, form feed, carriage return). It is EMPTY when it starts on one that is not
-//     a blank: `machine ` then a newline reads an empty host.
+//     vertical tab, form feed, carriage return).
 //   - A quoted token takes the escapes \n, \r and \t; any other escaped byte stands for itself.
 //     An unterminated quote makes curl refuse the file.
-//   - After every token, one byte is skipped: the whitespace that ended it, or the byte after a
-//     closing quote.
-//   - Keywords and the host compare ASCII case-insensitively (strcasecompare).
-//   - `macdef` starts a macro. The rest of its line is read in macro state, where an empty token
-//     ends the macro. Each following line is skipped until one whose FIRST byte is a newline or
-//     a carriage return; a line holding only blanks does not end it.
-//   - Outside a matched entry curl treats only macdef, machine and default as keywords. login,
-//     password and account are NOT keywords, so the token after one is itself read as a
-//     keyword (`login default` opens a default entry), and their values are never skipped.
 //
-// Only the states outside a matched entry are modelled, since a matched entry already reads
-// not-clean. A body curl refuses (an unterminated quote), or one holding a NUL byte, whose
-// reading curl's line reader does not make predictable, returns an error: could-not-check,
-// never clean. curl stops reading a file at an over-long line; reading on here can only find
-// more entries, so that difference can only redden the check.
+// A body curl refuses (an unterminated quote), or one holding a NUL byte, whose reading curl's
+// line reader does not make predictable, returns an error: could-not-check, never clean.
+//
+// Cost the ruling accepts: a netrc that mentions the host or `default` only as an unrelated
+// comment word, a word inside an unrelated macro body, or a login/password/account value now
+// reads red though no known curl reader would ever authenticate from it — the check no longer
+// tracks position, only token identity. The operator clears a false red by editing their netrc
+// so the word does not appear there (see the PR body's false-red table for concrete shapes).
 func netrcMatch(body, host string) (string, error) {
 	if strings.IndexByte(body, 0) >= 0 {
 		return "", errors.New("holds a NUL byte, which curl's netrc reader does not read predictably")
 	}
-	const (
-		stNothing = iota
-		stHostFound
-		stMacDef
-	)
-	state := stNothing
-	for _, line := range strings.SplitAfter(body, "\n") {
-		if line == "" {
-			continue
+	for i := 0; i < len(body); {
+		for i < len(body) && isNetrcSpace(body[i]) {
+			i++
 		}
-		if state == stMacDef {
-			if line[0] != '\n' && line[0] != '\r' {
-				continue
-			}
-			state = stNothing
+		if i >= len(body) {
+			break
 		}
-		for i := 0; i < len(line); {
-			for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
-				i++
-			}
-			if i >= len(line) || line[i] == '#' {
-				break
-			}
-			tok, end, ok := netrcToken(line, i)
-			if !ok {
-				return "", errors.New("has an unterminated quoted token, which makes curl refuse the file")
-			}
-			switch state {
-			case stNothing:
-				switch {
-				case asciiEqualFold(tok, "macdef"):
-					state = stMacDef
-				case asciiEqualFold(tok, "machine"):
-					state = stHostFound
-				case asciiEqualFold(tok, "default"):
-					return "a netrc `default` entry", nil
-				}
-			case stMacDef:
-				if tok == "" {
-					state = stNothing
-				}
-			case stHostFound:
-				if asciiEqualFold(tok, host) {
-					return "a netrc `machine " + host + "` entry", nil
-				}
-				state = stNothing
-			}
-			i = end + 1 // curl skips one byte after every token
+		tok, end, ok := netrcToken(body, i)
+		if !ok {
+			return "", errors.New("has an unterminated quoted token, which makes curl refuse the file")
 		}
+		switch {
+		case asciiEqualFold(tok, host):
+			return fmt.Sprintf("a netrc token %q that matches the push host, case-insensitively", tok), nil
+		case asciiEqualFold(tok, "default"):
+			return fmt.Sprintf("a netrc token %q that matches the keyword `default`, case-insensitively", tok), nil
+		}
+		i = end
 	}
 	return "", nil
 }

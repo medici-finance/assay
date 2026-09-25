@@ -313,10 +313,13 @@ func TestCredChainGitParity(t *testing.T) {
 			r.writeHome(".netrc", "MACHINE\ngithub.com\nlogin other\n", 0o600)
 			r.local("credential.helper", r.appHelper())
 		}, false, false, "netrc"},
-		{"netrc MACDEF body in upper case does not count", func(r *chainRepo) {
+		// Ruling 1 on #1622 (state-free scan) scans macro-body words too, so the host inside
+		// this macdef body now reddens the check -- a false red the ruling accepts (no known
+		// curl reader authenticates from a host that only appears inside a macro body).
+		{"netrc MACDEF body in upper case is a false red under the state-free scan", func(r *chainRepo) {
 			r.writeHome(".netrc", "MACDEF init\nmachine github.com login other\n\nmachine other.example.invalid login a\n", 0o600)
 			r.local("credential.helper", r.appHelper())
-		}, true, false, ""},
+		}, false, false, "netrc"},
 		// Outside a matched entry curl does not treat login/password/account as keywords, so
 		// the token after one is read as a keyword itself: `default` there opens a default
 		// entry and `machine <host>` a machine entry.
@@ -339,10 +342,11 @@ func TestCredChainGitParity(t *testing.T) {
 			r.writeHome(".netrc", "machine other.example.invalid login a\n", 0o600)
 			r.local("credential.helper", r.appHelper())
 		}, true, false, ""},
-		{"netrc machine inside a macdef body does not count", func(r *chainRepo) {
+		// Same false-red class: the host appears only inside a macdef body.
+		{"netrc machine inside a macdef body is a false red under the state-free scan", func(r *chainRepo) {
 			r.writeHome(".netrc", "macdef init\nmachine github.com\n\nmachine other.example.invalid login a\n", 0o600)
 			r.local("credential.helper", r.appHelper())
-		}, true, false, ""},
+		}, false, false, "netrc"},
 		{"unreadable netrc is could-not-check", func(r *chainRepo) {
 			if err := os.Mkdir(filepath.Join(r.home, ".netrc"), 0o700); err != nil {
 				r.t.Fatal(err)
@@ -497,11 +501,19 @@ type netrcLexCase struct {
 	want string // "red", "green", or "cnc" (could-not-check)
 }
 
-// netrcLexCases pin the netrc lexer to curl's (lib/netrc.c). Each red row is one that curl
-// answers from netrc and that a looser lexer read as no entry (SR-1614-2 round 2, SR-1614-3):
-// a keyword swallowed by stale state fails open. Each green row is one curl answers nothing for
-// (observed against git 2.55.0 with libcurl 8.7.1 on loopback); the check matches it rather than
-// reddening, since the parity target is curl's own reading.
+// netrcLexCases pins the netrc scan to the driver's ruling on arbiter packet #1622
+// (https://github.com/medici-finance/assay/issues/1622#issuecomment-5837592241, "Ruling: 1",
+// option 1: a state-free scan). Three rounds of trying to lex netrc exactly like ONE curl
+// reader (SR-1614-2, SR-1614-3) each fixed a gap against a different libcurl release without
+// converging, because libcurl has shipped three different netrc readers and git links whatever
+// one the host ships. Ruling 1 replaces "lex like curl" with: red whenever ANY token in the
+// file equals the host or `default`, ASCII case-insensitively, wherever that token sits —
+// inside a comment, a macro body, or a login/password/account value, not only a recognized
+// keyword position. Every row below that carries the host or `default` as a token, anywhere in
+// the body, is now red; the two `cnc` rows (an unreadable file, by curl's own admission) still
+// come first. Most of the former "green" rows are the state-free scan's accepted FALSE-RED
+// cost (see the block below and the PR body): no known curl reader would authenticate from
+// them, but the token appears in the file, so the scan cannot rule it out.
 var netrcLexCases = []netrcLexCase{
 	// '#' at the start of a token ends the line (SR-1614-3 a; SR-1614-2 rows A, B, C).
 	{"comment ending in machine above the entry is red", "# work machine\nmachine HOST login op\n", "red"},
@@ -530,14 +542,32 @@ var netrcLexCases = []netrcLexCase{
 	{"quoted host is red", "machine \"HOST\" login op\n", "red"},
 	{"entry on a last line with no newline is red", "machine HOST login op", "red"},
 
-	// Green: curl answers nothing for these, and neither does the check.
-	{"spaces-only line inside a macdef does not end it", "macdef m\n  \nmachine HOST login op\n", "green"},
-	{"form-feed line inside a macdef does not end it", "macdef m\n\f\nmachine HOST login op\n", "green"},
-	{"comment after a non-matching entry hides its words", "machine other.example.invalid # note machine\nHOST login op\n", "green"},
-	{"blank before the newline after machine is an empty host", "machine \nHOST login op\n", "green"},
-	{"hash inside a token is not a comment", "machine other.example.invalid#x\nHOST login op\n", "green"},
-	{"closing quote eats the next byte of a keyword", "\"a\"machine HOST login op\n", "green"},
-	{"machine default names a host, not a default entry", "machine default login op\n", "green"},
+	// FALSE-RED (Ruling 1's accepted cost): no curl reader we know of would authenticate from
+	// any of these — the host or `default` sits in a macro body, a hidden comment, or a value
+	// word, never in a position any known reader treats as a keyword — but the state-free scan
+	// does not track position, so the token's mere presence reddens it. Under the pre-ruling,
+	// position-aware model (round-3 head de0b13175) every one of these read GREEN; that is
+	// exactly the gap a 4th round of "lex like curl" would have chased into a different set of
+	// curl versions (see #1622). The operator's fix is to edit their netrc so the word does not
+	// appear, e.g. renaming the unrelated macro or rewording the comment.
+	{"spaces-only line inside a macdef is now a false red (host inside a macro body)",
+		"macdef m\n  \nmachine HOST login op\n", "red"},
+	{"form-feed line inside a macdef is now a false red (host inside a macro body)",
+		"macdef m\n\f\nmachine HOST login op\n", "red"},
+	{"comment after a non-matching entry is now a false red (host as a hidden comment word)",
+		"machine other.example.invalid # note machine\nHOST login op\n", "red"},
+	{"blank before the newline after machine is now a false red (host after an empty-host entry)",
+		"machine \nHOST login op\n", "red"},
+	{"hash inside a token is now a false red (host inside a hash-glued token)",
+		"machine other.example.invalid#x\nHOST login op\n", "red"},
+	{"closing quote eats the next byte of a keyword is now a false red (host survives the garbled keyword)",
+		"\"a\"machine HOST login op\n", "red"},
+	{"machine default is now a false red (`default` used as a value word, not the keyword)",
+		"machine default login op\n", "red"},
+
+	// A host or `default` genuinely absent from the file is still green: the scan reddens on
+	// token identity, not on netrc content in general.
+	{"unrelated host and no default keyword is green", "machine other.example.invalid login a password b\n", "green"},
 
 	// curl refuses the whole file; the check does not guess.
 	{"unterminated quote is could-not-check", "\"abc\nmachine HOST login op\n", "cnc"},
