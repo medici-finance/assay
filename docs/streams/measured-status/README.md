@@ -5,15 +5,16 @@ serves: assay
 status: active
 priority: P1
 track: platform
+spec: docs/streams/measured-status/README.md
 issues: []
 board: generated
 ---
 
 # measured-status Stream
 
-**Status:** approved — activated at the driver's direction (relayed by the desk on 2026-09-25); the
-merge of the pull request that flips this stream to `active` is the ratification. Its briefs are
-now admitted to the Next-up board at priority P1.
+**Status:** approved — the merge of the pull request that flips this stream to `active` is the
+ratification (lifecycle §8.4: `draft → approved` rides the PR that lands the ruling; approval is
+stamped at merge). Its briefs are now admitted to the Next-up board at priority P1.
 
 **Routes-to:** `docs/streams/measured-status/`
 
