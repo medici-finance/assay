@@ -152,6 +152,23 @@ the surfaces below, none of which brief 02's audit enumerated; assay#1435 is the
 **Unit 10 (brief 10, PR #1432)** is the container-based Verify witness; it is cited by 14 and
 unchanged here.
 
+**Units 16-17 make GitLab fleet work Go-only** (driver's ask, 2026-09-25: Windows adopters should
+never need bash for GitLab fleet work). Brief 08 kept `tools/create-fleet-gitlab.sh` as the Unix
+path and left its retirement "a separate decision". Since then #1635 added a bash PAT renewal
+(`tools/renew-fleet-gitlab-tokens.sh`) and moved the role table into a shared bash file
+(`tools/fleet-gitlab-roles.sh`), and brief 09 keeps Git-Bash/WSL as a labelled fallback (#1646).
+
+16. **`deskfleet renew` + the Go-owned fleet tables (brief 16).** Ports the renewal into the Go
+    verb under brief 08's custody model. Moves the role, label and project-settings tables into
+    one importable Go package, extends parity to the settings #1572 does not compare, and adds a
+    golden test that does not need the bash files. **gate: human** (it rotates live credentials).
+17. **Prove live, then retire the bash path (brief 17).** A human's native-Windows run of
+    provisioning and renewal against a real GitLab instance, recorded as class outcomes, and a
+    last parity check. Then the three scripts and their test suites are deleted, and every doc,
+    skill and message that names them is rewritten. A could-not-check live proof deletes nothing.
+    **gate: human** (adopter-facing removal, plus the live proof's credentials). Its
+    `## Human decision` covers the paid-tier `--tier ultimate` lane, which exists only in bash.
+
 **Out of scope:** rewriting the Go tools (already portable); a Windows container image; a
 WSL-only path presented as "Windows support" (WSL is Linux — the claim is *native* Windows,
 with WSL noted only as a fallback); publishing to any Windows package manager
@@ -185,6 +202,8 @@ it.
 | 13 | [assay-inbox.sh → a Go `deskinbox` verb — table + walk (the inbox engine's shared core; html + flow split to windows-port/15)](brief-13-inbox-verb-port.md) | 4 | M | implemented | — | — |
 | 14 | [The Windows CI leg proves the desk-role runtime paths — pollers, tick, inbox, hooks — and retires the bash oracles it can](brief-14-windows-leg-proves-desk-role-paths.md) | 6 | M | todo | — | — |
 | 15 | [deskinbox html + flow — the self-contained page renderer and the pipeline-flow model (split from windows-port/13)](brief-15-inbox-html-flow-port.md) | 5 | L | todo | — | — |
+| 16 | [deskfleet renew + the Go-owned fleet tables — port the GitLab PAT renewal, single-source the role table in Go](brief-16-deskfleet-renew-and-the-go-owned-fleet-tables.md) | 2 | L | todo | — | — |
+| 17 | [Go-only GitLab fleet — prove deskfleet live, then retire the bash fleet scripts and every doc that names them](brief-17-retire-the-bash-gitlab-fleet-scripts.md) | 5 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 Brief 04 implemented via PR #569 (the staged `ci/staged-workflows/windows-ci-leg.yml`) and
@@ -299,7 +318,14 @@ Wave 1: [01]←{00}, [08]←{00,02}
 Wave 2: [03]←{01,02}, [04]←{01,02}
 Wave 3: [05]←{02,03,04}, [06]←{03}, [07]←{03}
 Wave 4: [09]←{06,07,08}
+Wave 2 (Go-only fleet): [16]←{08}
+Wave 5 (Go-only fleet): [17]←{16,09}
 ```
+
+Go-only fleet chain: `08 → 16 → 17`, with 17 also gathering 09. 16's wave is 2 by dependency, but
+nothing in it is implementable until 08's implementation (PR #1572) merges. 17 is the only item in
+the stream that deletes adopter-facing tooling. It waits on 09 because it removes the Git-Bash/WSL
+fallback line that 09 writes.
 
 Critical path (first half): `00 → 01 → 03 → 05`. 02 runs parallel to 00 in wave 0 and feeds 03, 04,
 and 05. 04 runs parallel to 03 in wave 2 (both need the Windows binary from 01 and the triage from
@@ -325,8 +351,8 @@ risk answers are all `no` (nothing here touches funds, customers, regulators, or
 irreversible surface — everything is git-revertible tooling and docs); the `human` gate is a
 **design-commitment** gate, and the `gate-why` says so.
 
-**08 is `gate: human` for a different reason — a risk answer, not a design commitment.** It is the
-only brief in the stream that answers a risk question `yes`: `sensitive-data`, because it mints
+**08 is `gate: human` for a different reason — a risk answer, not a design commitment.** It was the
+first brief in the stream to answer a risk question `yes`: `sensitive-data`, because it mints
 seven live GitLab personal access tokens and persists each to a file every desk verb then reads.
 The gate is derived there, not chosen. What the human confirms is enumerated in its `gate-why` and
 decided in its `## Human decision` (`decision-trigger: creation`, so the decision issue is filed as
@@ -334,6 +360,13 @@ the brief lands): the PAT custody model on native Windows — NTFS has no equiva
 `chmod 0600` the existing shell script runs, and the repo's own `custodyacl.go` records that a
 normal file reads `0666` there — and what a partially-completed provisioning run does about
 credentials it has already minted.
+
+**16 and 17 are `gate: human` by derived risk answers.** 16: `sensitive-data` and `irreversible`
+are both yes, because a rotation revokes the previous live PAT the moment GitLab accepts it.
+17: `customer` is yes, because it deletes scripts adopters run and removes a fallback an adopter
+asked for, and `sensitive-data` is yes because its live proof mints real PATs. Both carry
+`decision-trigger: creation`. 16 decides whether operator-supplied role records may set token
+scopes. 17 decides the fate of the bash-only paid-tier lane.
 
 All other briefs — 00, 01, 02, 04, 05, 06, 07, 09 — answer the four risk questions `no` and gate
 `model`.

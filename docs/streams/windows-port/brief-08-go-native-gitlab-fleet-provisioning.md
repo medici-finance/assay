@@ -16,7 +16,7 @@ why: >-
   already enforces on Windows.
 wave: 1
 depends: ["windows-port/00", "windows-port/02"]
-unblocks: ["windows-port/09"]
+unblocks: ["windows-port/09", "windows-port/16"]
 effort: L
 gate: human
 gate-why: >-
