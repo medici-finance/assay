@@ -85,9 +85,19 @@ func (c *collection) Partial() bool {
 	return false
 }
 
-// digestLabels is the input label set: the standing decision queue plus the infra asks
-// only the human can perform.
-var digestLabels = []string{needsDecisionLabel, humanOnlyLabel}
+// deskDecidedLabel marks a `deskfile new` filing that took the notice lane (R-3, via the
+// fork-test gate): two or more workable options, a gate the driver still holds to catch a
+// wrong guess, a positive reversible signal and no one-way term. It is applied by the TOOL,
+// never by a caller `--label` (deskfile refuses one), and this repo's label inventory does not carry it until
+// deskfile files the first one (deskkit's LabelChange ensure-exists path creates it on first
+// use, the same as deskflip/deskpost's mechanical labels). deskkit's one DeskDecidedLabel.
+const deskDecidedLabel = deskkit.DeskDecidedLabel
+
+// digestLabels is the input label set: the standing decision queue, the infra asks only the
+// human can perform, and the notice-lane items the fork-test gate filed off the driver's
+// queue — desk-decided must be in this set or the veto surface (renderDecisions) never sees
+// the items whose 7-day window it exists to show.
+var digestLabels = []string{needsDecisionLabel, humanOnlyLabel, deskDecidedLabel}
 
 // collect reads every repo in scope. A repo that fails is RECORDED and the run
 // continues: one unreachable repo must not suppress the other four repos' items, and it
@@ -326,7 +336,11 @@ func splitRepo(repo string) (owner, name string, ok bool) {
 // is the desk's act, and RECORDING it in the weekly digest — with the veto deadline — is
 // this tool's. R-3 makes the digest the veto surface, so the surface must show every
 // decision it can find and must not be able to manufacture one.
-var r3MarkerRe = regexp.MustCompile(`(?is)<!--\s*desk-r3-decision v1\s*-->\s*(.*)`)
+//
+// The marker half is deskkit.DeskDecidedMarkerExpr, declared once in deskkit beside the
+// caller-body refusal deskfile applies (deskkit.HasDeskDecidedMarkerClaim, a strict superset
+// of it), so no spelling this reader accepts can be filed by a caller.
+var r3MarkerRe = regexp.MustCompile(`(?s)` + deskkit.DeskDecidedMarkerExpr + `\s*(.*)`)
 
 // r3DecisionRe pulls the decision sentence out of the marker comment.
 var r3DecisionRe = regexp.MustCompile(`(?im)^[ \t>*_-]*decision:[ \t]*(.+)$`)
@@ -347,9 +361,31 @@ type r3Decision struct {
 // r3Decisions scans the collected items for desk R-3 decision markers. Only a TRUSTED
 // author's marker counts — an untrusted comment claiming the desk decided something
 // would otherwise print in the digest as though the desk had.
+//
+// Two places carry the marker. `deskfile new`'s notice lane writes it
+// straight into the ISSUE'S OWN BODY at filing time — the filing IS the desk's R-3 act, so
+// there is no separate comment to wait for, and the veto clock starts at the issue's own
+// CreatedAt. Every other R-3 decision (taken by hand, or by a desk annotating an
+// already-filed item) writes it as a COMMENT, scanned below as before. Both paths require a
+// trusted author; an untrusted body cannot forge a desk decision any more than an untrusted
+// comment can.
 func r3Decisions(c *collection) []r3Decision {
 	var out []r3Decision
 	for _, it := range c.Items {
+		if deskkit.TrustedAuthorID(it.AuthorLogin, it.AuthorID) {
+			if m := r3MarkerRe.FindStringSubmatch(it.Body); m != nil {
+				dec := "(marker present, no `decision:` line)"
+				if d := r3DecisionRe.FindStringSubmatch(m[1]); d != nil {
+					dec = oneLine(d[1])
+				}
+				out = append(out, r3Decision{
+					Item:     it,
+					Decision: dec,
+					Taken:    it.CreatedAt,
+					VetoEnds: it.CreatedAt.AddDate(0, 0, vetoWindowDays),
+				})
+			}
+		}
 		if !it.CommentsRead {
 			continue // already reported as could-not-read; not silently absent
 		}

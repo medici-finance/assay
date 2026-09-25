@@ -2794,6 +2794,161 @@ credential is the filing identity and no App token is ever minted. Repo scope co
 `deskkit.IsAllowedRepo` — there is no second repo list, and a test parses the sources to
 prove it.
 
+### The `### Fork test` block — the decision filing gate
+
+A `needs-decision` label is a claim that the driver has a real choice to make. Without a
+check on the SHAPE of the question, `deskfile new` accepts items that hold no choice at all —
+a technical question whose only workable answer is already known, or a note that a piece of
+work belongs in a different repository — and each one costs the driver a decision slot. This
+gate makes the shape binding: a filing labelled `needs-decision` must carry a `### Fork test`
+section (any heading level) with these lines, in any order —
+
+```
+option: <letter> — <what it is> | works-because: <why this can actually be carried out> | consequence: <what follows if chosen>
+option: <letter> — <what it is> | works-because: <...> | consequence: <...>
+default: <letter>            (or `default: <letter> — <text>`)
+caught-by: <draft-pr | flip | issue-close | nothing> — <which one, e.g. the PR number>
+ruled-check: <the search that was run> → <what it returned>
+```
+
+An `option:` line with an empty `works-because` or `consequence` is not COUNTED — an option
+the filer believes cannot work is not written as an option; it belongs in the prose as a
+rejected alternative. Each option needs its own letter: two `option:` lines with the same
+letter (case-insensitive) are refused, since one option written twice is still one option.
+`default:` names a counted option by its bare letter, optionally followed by ` — <text>`; a
+value that does not open with a letter is reported as malformed, not as missing. `caught-by`
+is the human-held gate that would catch a wrong guess on the default (a draft PR awaiting
+merge, a flip CI still runs, an issue close still to happen, or `nothing`, meaning no gate
+catches it). `ruled-check` records the search for an existing ruling on the same question —
+the item's own thread and the tracker for the item id — so a filer cannot skip checking
+whether it was already decided. Name the search by its SUBJECT, e.g.
+`ruled-check: searched this item's thread and the tracker for "sla-days help text" → nothing on record`;
+that line reads clean. The line is read for one-way terms (below), so a line naming a
+driver-owned act — "searched closed needs-decision issues → nothing" matches the auto-close
+pattern — keeps the item on `needs-decision`: the safe direction, but a needless one. The arrow accepts `→` or `->`, and the dash before "what it
+is" accepts an em dash, en dash, or a plain hyphen.
+
+**Outcomes, in this precedence:**
+
+1. **No block, an unparseable block, a missing or malformed line, a duplicate option letter,
+   or a `default` naming no counted option** → **exit 5**, naming every problem found.
+   `--force-new --reason` is the only bypass, as for every refusal in this tool; it files
+   the item under `needs-decision`.
+2. **Fewer than two counted options** → **exit 5**. For an item that is NOT one-way (below),
+   the refusal names the three `--no-fork` re-routes: a genuinely single-option question is a
+   work item, never a decision. For a ONE-WAY item the refusal names no re-route — every
+   `--no-fork` value files off the driver's queue — and offers only `--force-new --reason`,
+   which files it under `needs-decision`.
+3. **Two or more counted options and `caught-by: nothing`** → filed under `needs-decision`.
+4. **Two or more counted options, a `caught-by` gate, and the notice-lane test passes** →
+   the **notice lane**: the issue is labelled `desk-decided` and a `## Desk-decided` block is
+   appended — the fixed heading, the SAME `<!-- desk-r3-decision v1 -->` marker
+   `deskdigest`'s R-3 veto surface already reads (see "Classification (R-3)" above), then
+   `decision:` (the default's text), `alternative:` (the other counted options) and `cost:`
+   (the `caught-by` gate). The filer proceeds on the default; the item never parks.
+   Otherwise → filed under `needs-decision`.
+
+**The notice-lane test fails CLOSED** (`internal/deskkit/noticelane.go`,
+`deskkit.NoticeLaneVerdict`). An item is admitted only when ALL of these hold:
+
+- no caller label marks it one-way: `human-only`, `security`, `gate:human`;
+- no one-way term appears in the title or body — neither a `deskkit.HumanOnlySignals` needle
+  (the list `deskdigest`'s classifier uses) nor a `deskkit.OneWayPatterns` match. The
+  patterns are word-bounded and cover: merge; ready-flip; push to main and force-push;
+  tag/release/ship and version numbers; disabling, weakening, bypassing or loosening a
+  control, branch protection, rulesets, the leak sweep, guardrails; keys, signing, custody,
+  PII, passwords, certificates, rotation, encryption; money, funds, payment, vaults,
+  settlement, pricing, fees, refunds; identity, auth, login/sign-in, SSO/OAuth/OIDC/SAML,
+  realms, impersonation; delete, overwrite, wipe, purge, truncate, destroy, erase, drop of
+  durable data; public, publish, external, vendors, third parties, send, email, announce,
+  customers, partners, upload, export; infrastructure, deploy, prod, live, clusters, DNS,
+  databases, migrations, servers, runners; GitHub App permissions, `actions: write`,
+  read/write/admin access, grants, installations, admin, privilege, approval, self-review,
+  sign-off, ratification, veto, CODEOWNERS; `gate:human` / `human gate` / `human-only` in
+  any spelling; a commit or write straight/directly to main and anything "without a PR" or
+  "without review"; taking a PR out of draft or from draft to ready; required reviewers and
+  dismissing reviews; 2FA/MFA/two-factor; `--no-verify`, hooks, unsigned commits and
+  signatures; the trust gate, trusted lists, the roster, "anyone" and "any commenter"; owners,
+  roles, maintainers, members; archiving, transferring, visibility, private, moving to
+  another org, renaming a repo or org; auto-closing, or closing `needs-decision` /
+  `human-only` items; charges, cards, credit, purchases, subscriptions, billing; and a
+  control-verb class — turn off, switch off, stop requiring, no longer require, skip, opt
+  out, remove, relax, waive, suppress, silence, "allow … without", drop … requirement —
+  within a few words of a control noun (check, scan, gate, guard, hook, review, requirement,
+  protection, lint, test, CI, verification, assertion, signing, policy, rule, control, alert),
+  in either order;
+- a POSITIVE, CONTENT-BEARING R-3 reversible signal is present (`deskkit.FirstNoticeLaneSignal`:
+  docs wording, typo, phrasing, lint level, port-or-drop, a table column). The SHAPE-only
+  needles in `deskkit.ReversibleSignals` — `tool default`, `default value`, `flag default`,
+  `rename the` (`deskkit.NoticeLaneShapeOnlyNeedles`) — never admit on their own: they name
+  the kind of change and nothing about what it governs ("tool default: build untrusted fork
+  heads in CI"), so as an admission signal they admitted every one-way act the keyword list
+  had not named. An item whose only reversible signal is one of them stays on
+  `needs-decision`. `deskdigest`'s display classifier still reads them.
+
+An item that matches neither list stays on `needs-decision`: the absence of a one-way term is
+not evidence that an item is reversible, and a reversible signal never outranks a one-way
+term: "the docs wording for the trust gate" is one-way, because what the wording is about is
+a control. The one-way check reads the whole title and body, the `ruled-check:` line
+included — that line is where a filer names the subject of the search. The one exemption is
+the `ruling` needle on that line alone, whose wording is the grammar's own record of a search
+for a prior ruling (it would otherwise trip on every filing); every other needle and pattern
+still reads it (`deskkit.OneWayExempting`). The reversible signal is never read from the
+`ruled-check:` line, so that line can keep a filing on the queue but never admit it. The list is
+deliberately broad: a false one-way costs one item staying on the driver's queue; a miss
+costs a decision taken without them. A keyword list is still only a keyword list — review
+of the filing remains the layer above it, and the notice lane's own record (the digest's
+seven-day veto window) is the layer after it.
+
+**`--no-fork <brief-contradicts-artifact | wrong-repo | tool-false-positive>`** re-routes the
+fewer-than-two-options refusal by filing the item WITHOUT the `needs-decision` label:
+
+| value | title prefix | addressed | body must carry |
+|---|---|---|---|
+| `brief-contradicts-artifact` | `amend brief:` | `--to desk` (the coordinator's authoring work) | the brief id it amends and, backtick-quoted, the artifact it contradicts |
+| `wrong-repo` | `re-dispatch:` | `--to worker` (`--to` shares `--raised-by`'s roster vocabulary — the skill's own name `worker-desk` is never a valid role here) | an `owner/repo` token naming where the work belongs |
+| `tool-false-positive` | — | — (label `bug`) | the tool's refusal text in a fenced block |
+
+`--no-fork` refuses a one-way item (the same check as the notice lane's first two bullets):
+it is a route off the driver's queue, and a one-way item never takes one. `--no-fork` and
+`--label needs-decision` are mutually exclusive. The title prefix and addressee for the first
+two values are composed by the tool, not trusted to free text; the content requirement for
+each is checked against its shape (a repo token, a brief-id-shaped token plus a quoted path,
+a fenced block) rather than parsed for meaning — review still judges whether the content
+actually says what the shape requires.
+
+**Label writes are add-first.** The issue is created, then ONE label write applies the
+caller's labels — `needs-decision` included — plus, on the notice lane, `desk-decided`; only
+after that write lands does a SECOND write take `needs-decision` off. A failure of the second
+write exits 6 with the issue carrying both labels, so it is still on the driver's queue (and
+`deskdigest` keeps it as a Queue row). A failure of the FIRST write exits 6 with the issue
+carrying no labels — the same unlabelled state any `deskfile new` filing is left in when its
+label write fails — and the exit code is the signal to re-label it by hand.
+`desk-decided` is created on first use through `deskkit`'s `LabelChange` ensure-exists path
+(the one `deskflip` and `deskpost`'s mechanical labels use), with the one colour and
+description `deskkit` declares for it (`deskpr --decided` creates it with the same spec on a
+PR). It is never a caller `--label`: `deskfile new --label desk-decided` is refused (exit 5),
+`--force-new` included, and so is a caller body that already carries the
+`<!-- desk-r3-decision v1 -->` marker in ANY spelling — any case, any whitespace inside the
+comment, any version (`deskkit.HasDeskDecidedMarkerClaim`, a strict superset of
+`deskkit.DeskDecidedMarkerRe`, the one pattern `deskdigest` reads the marker with). The marker
+in an issue body is the notice lane's record that the gate admitted the filing, and only the
+tool writes it.
+
+**Audit.** Every `new` filing that reaches the gate records its route on the local audit
+line: `lane=desk-decided (<the reversible signal>)`, `lane=needs-decision (<why it stayed>)`,
+or `no-fork=<value>`.
+
+**In the digest.** `deskdigest` collects `desk-decided` alongside `needs-decision` and
+`human-only`, lists each notice once — in the desk-decisions section, with its veto date —
+and does not list that notice as a Queue row. The Queue skips a `desk-decided` item ONLY when
+the desk-decisions section actually lists it (a trusted author's marker): a `desk-decided`
+label with no marker, or with a marker from an author off the roster, keeps its Queue row
+rather than vanishing from both sections. An item that carries `desk-decided` AND still
+carries `needs-decision` or `human-only` keeps its Queue row too. The classifier strips the
+tool-written `## Desk-decided` block before matching, so a notice is never classified on the
+tool's own field names.
+
 ## deskclose — the issue-CLOSING gate (issue-flow brief 03)
 
 `cmd/deskclose` is the counterpart to `deskfile`. Filing is cheap and closing was

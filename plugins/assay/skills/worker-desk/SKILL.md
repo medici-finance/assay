@@ -770,6 +770,19 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   data; and anything that leaves the repo — publishing to a public or external surface, sending
   content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
   either side of the test — the test never routes around one.
+- **A `needs-decision` filing must carry the `### Fork test` block `deskfile new` requires**
+  (grammar in `tools/desk/README.md` — not restated here): the options that can actually work, the
+  default, the gate that catches a wrong guess, and the search proving the question is not already
+  ruled. **An item with one workable option is not a decision** — the tool refuses it (exit 5) and
+  names the three `--no-fork` re-routes (`brief-contradicts-artifact` | `wrong-repo` |
+  `tool-false-positive`); use the one that fits rather than forcing the filing. Two workable options
+  plus a gate the driver still holds MAY file on the NOTICE LANE (`desk-decided`, off the driver's
+  queue, in the weekly digest with its veto date) instead of `needs-decision`. The tool admits it
+  only on a positive, content-bearing R-3 reversible signal (a tool default alone never admits)
+  with no one-way term or one-way label, and the same one-way check refuses `--no-fork` (exact
+  lists: `tools/desk/README.md`). The tool's keyword check
+  is a floor, not the reversibility test above: an item that test calls one-way is filed
+  `caught-by: nothing`, and so stays on the driver's queue, whatever the keywords say.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
   or comments.
 
