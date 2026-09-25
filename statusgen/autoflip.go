@@ -500,13 +500,22 @@ func autoFlipModel(root string, streams []*Stream, src modelFlipSource, rev revi
 			// Coverage refusal: NOT a could-not-check — the coverage rule ran
 			// (it is offline and always can) and it HELD, so this is a REFUSAL,
 			// reported exactly like any other decideModelFlip refusal, and it
-			// never reaches decideModelFlip's fetch.
+			// never reaches decideModelFlip's fetch. Absent-entry fails CLOSED
+			// (`!ok ||`, not `ok &&`, review finding A2): today the coverage map
+			// is built from the identical brief enumeration this loop walks, so
+			// `!ok` is unreachable, but a future divergence between the two
+			// walks must never silently fall through to the unchanged flip path.
 			covID := s.Name + "/" + num
-			if cvg, ok := coverage[covID]; ok && !cvg.Released {
+			cvg, ok := coverage[covID]
+			if !ok || !cvg.Released {
+				reason := coverageRefusalReason(cvg)
+				if !ok {
+					reason = fmt.Sprintf("coverage has no entry for %s — refusing rather than assuming released", covID)
+				}
 				results = append(results, modelFlipResult{
 					Brief:   bf.Brief,
 					Outcome: flipRefused,
-					Reason:  coverageRefusalReason(cvg),
+					Reason:  reason,
 				})
 				continue
 			}

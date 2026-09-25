@@ -95,29 +95,51 @@ Retain this brief as the sole coverage implementation. Applicable evidence must 
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
-| 1 | `cd statusgen && go test -run TestCoverage ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ d1c130ce5f0e+dirty (on-behalf-of human:ian) (forge-identity) |
-| 2 | `cd statusgen && go test -run TestCoverageWrongRevisionHolds ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ d1c130ce5f0e+dirty (on-behalf-of human:ian) (forge-identity) |
-| 3 | `cd statusgen && go test -run TestCoverageCouldNotCheckIsNotPass ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ d1c130ce5f0e+dirty (on-behalf-of human:ian) (forge-identity) |
-| 4 | `cd statusgen && go test -run TestAutoFlipRefusesUnreleasedCoverage ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ d1c130ce5f0e+dirty (on-behalf-of human:ian) (forge-identity) |
-| 5 | `cd statusgen && go test -run TestCoverageJoinRequiresIntegrationRow ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ d1c130ce5f0e+dirty (on-behalf-of human:ian) (forge-identity) |
-| 6 | `statusgen --coverage --json --root . > /tmp/ge03.json; python3 -c 'import json;d=json.load(open("/tmp/ge03.json"));print(sorted({c["result"] for b in d for c in b["claims"]}))'` | pass exit=0 | sha256:0fcadab08a94 | 2026-09-25 | assay-worker-app[bot] @ d1c130ce5f0e+dirty (on-behalf-of human:ian) (forge-identity) |
-| 7 | `grep -c 'observe' spec/workflow-pattern-v1.md schemas/workflow-pattern-v1.json spec/lifecycle-v1.md` | pass exit=0 | sha256:38af6536faaa | 2026-09-25 | assay-worker-app[bot] @ d1c130ce5f0e+dirty (on-behalf-of human:ian) (forge-identity) |
-| 8 | `cd statusgen && go test -run TestAutoFlipNoOverride ./... && go test -run TestEvidenceActor ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ d1c130ce5f0e+dirty (on-behalf-of human:ian) (forge-identity) |
-| 9 | `statusgen --root . --lint; echo rc=$?` | pass exit=0 | sha256:1daf8cef4c69 | 2026-09-25 | assay-worker-app[bot] @ d1c130ce5f0e+dirty (on-behalf-of human:ian) (forge-identity) |
-| 10 | `statusgen --consumers --brief graph-execution/03 --root .; echo rc=$?` | fail exit=0 | sha256:dbf0e6df489f | 2026-09-25 | assay-worker-app[bot] @ d1c130ce5f0e+dirty (on-behalf-of human:ian) (forge-identity) |
-| 11 | `cd statusgen && go test -count=1 -v -run TestCoverageAdviceCannotSupplyWitness ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ d1c130ce5f0e+dirty (on-behalf-of human:ian) (forge-identity) |
-| 12 | `cd statusgen && go test -count=1 -v -run TestCoverageAcceptanceDigestChanged ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ d1c130ce5f0e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 1 | `cd statusgen && go test -run TestCoverage ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ 8737498f7fa5+dirty (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && go test -run TestCoverageWrongRevisionHolds ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ 8737498f7fa5+dirty (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test -run TestCoverageCouldNotCheckIsNotPass ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ 8737498f7fa5+dirty (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test -run TestAutoFlipRefusesUnreleasedCoverage ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ 8737498f7fa5+dirty (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && go test -run TestCoverageJoinRequiresIntegrationRow ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ 8737498f7fa5+dirty (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --coverage --json --root . > /tmp/ge03.json; python3 -c 'import json;d=json.load(open("/tmp/ge03.json"));print(sorted({c["result"] for b in d for c in b["claims"]}))'` | pass exit=0 | sha256:0d5489d2325b | 2026-09-25 | assay-worker-app[bot] @ 8737498f7fa5+dirty (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -c 'observe' spec/workflow-pattern-v1.md schemas/workflow-pattern-v1.json spec/lifecycle-v1.md` | pass exit=0 | sha256:38af6536faaa | 2026-09-25 | assay-worker-app[bot] @ 8737498f7fa5+dirty (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && go test -run TestAutoFlipNoOverride ./... && go test -run TestEvidenceActor ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ 8737498f7fa5+dirty (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --lint; echo rc=$?` | pass exit=0 | sha256:fb9f4b05cc1f | 2026-09-25 | assay-worker-app[bot] @ 8737498f7fa5+dirty (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --consumers --brief graph-execution/03 --root .; echo rc=$?` | fail exit=0 | sha256:738bfadf6369 | 2026-09-25 | assay-worker-app[bot] @ 8737498f7fa5+dirty (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd statusgen && go test -count=1 -v -run TestCoverageAdviceCannotSupplyWitness ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ 8737498f7fa5+dirty (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd statusgen && go test -count=1 -v -run TestCoverageAcceptanceDigestChanged ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-worker-app[bot] @ 8737498f7fa5+dirty (on-behalf-of human:ian) (forge-identity) |
 
-**Rows 1–5, 8, 11, 12** ran on a darwin implementer host, where `check:ci`'s hermetic
-network-off sandbox (`unshare --net`) is unavailable — recorded honestly as
-`could-not-run`, per the tool's own three-state discipline, never rounded to pass. The
-SAME named tests were also run directly (`go test`, no hermetic wrapper, no network use
-by any of them) and every one PASSED: `TestCoverage`, `TestCoverageWrongRevisionHolds`,
+**Re-run 2026-09-25 after the pr-review-desk rework** (findings F1–F5, A2 on this PR's
+CHANGES_REQUESTED review): `statusgen verifyrun --brief` re-executed every row against the
+reworked `coverage.go`/`autoflip.go`; the table above is the fresh witness set, replacing
+the pre-rework one recorded against `d1c130ce5f0e`. Rows 1–5, 8, 11, 12 still record
+`could-not-run` — this darwin host still lacks `unshare --net` for `check:ci`'s hermetic
+network-off re-run — but each of the nine named tests was ALSO run directly
+(`go test -v -run '<name>'`, no hermetic wrapper, no network use by any of them) and every
+one PASSED: `TestCoverage`, `TestCoverageWrongRevisionHolds`,
 `TestCoverageCouldNotCheckIsNotPass`, `TestAutoFlipRefusesUnreleasedCoverage`,
 `TestCoverageJoinRequiresIntegrationRow`, `TestAutoFlipNoOverride`, `TestEvidenceActor`,
-`TestCoverageAdviceCannotSupplyWitness`, `TestCoverageAcceptanceDigestChanged` — this
-direct run is corroborating detail, not a substitute witness; a Linux `check:ci` runner
-still owes the mechanical row.
+`TestCoverageAdviceCannotSupplyWitness`, `TestCoverageAcceptanceDigestChanged` — corroborating
+detail, not a substitute witness; a Linux `check:ci` runner still owes the mechanical row.
+
+**Fail-first proof for the rework's new guards** (review findings F1/F2/F3; these tests are
+new this round and are not yet named in the Verify table above, since it is frozen per-brief —
+they live alongside the ones the table does name, in the same package, and are exercised by
+`go test ./...`): `TestCoverageNoTargetRevisionIsCouldNotCheck`,
+`TestCoverageMissingTreeTokenIsCouldNotCheck`, `TestCoverageShortTreeTokenIsCouldNotCheck`,
+`TestCoverageAncestorWitnessReleases`, `TestCoverageAncestorWitnessOtherPathChangedMismatch`,
+and `TestCoverageExpectChangedSinceWitnessRan` were each run against this PR's ORIGINAL
+`coverage.go` (commit `6c0403006ca3521b74a6421fba2b64c77cb2bbd3`, swapped in locally, no other
+file touched) and confirmed RED — reproducing the review's own PROBE-A/B/C findings exactly
+(e.g. `TestCoverageAncestorWitnessReleases` failed with `wrong-revision`, matching the review's
+"287/287 held, 0 released" reproduction) — then the reworked `coverage.go` was restored and the
+same run confirmed GREEN. This is the actual fail-first/pass-after pair; no `## Fail-first`
+section exists in this brief (the PR body previously cited one in error — corrected).
+Mutation-testing the four PRE-EXISTING `+mutation` rows (2, 3, 11, 12) by temporarily disabling
+their guard was attempted this round but refused by the implementer session's own tool-use
+policy (a guard/check-removal classifier, even for a revert-after-proof); those four guards are
+unchanged by this rework (still present, still passing their named test both hermetically-blocked
+and directly) — a Linux `check:ci` runner or a differently-scoped session still owes a fresh
+mutation proof for them specifically.
 
 **Row 10** mechanically records `fail exit=0`, but the row's own Expect cell states TWO
 acceptable outcomes (`rc=0` on the authoring branch; `rc=2` on a fully merged main) —

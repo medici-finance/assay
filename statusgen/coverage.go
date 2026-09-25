@@ -42,23 +42,46 @@ package main
 // join rule directly, by constructing a binding and a parsed pattern in memory —
 // deterministic and provider-free, per the amendment.
 //
-// THE REVISION COMPARISON IS OFFLINE. "The merged SHA for a merged brief, the PR
-// head for an open one" (Task item 1) would ordinarily need a live PR/merge
-// lookup — exactly the live-infrastructure contact the ground rules forbid, even
-// read-only. The offline equivalent this file uses instead: the tree currently
-// checked out at --root IS the item's revision, whichever of the two states it
-// is in — `git rev-parse HEAD` on a merged brief's checkout names the merge SHA,
-// and on an open PR's branch checkout it names the PR head. So `wrong-revision`
-// here means "a witness was recorded against a commit that is not the one
-// presently checked out", which is the same fact the merged/open distinction
-// was reaching for, read off a signal that needs no network. A tree with no git
-// history at all (a bare testdata copy) yields "" and coverage skips the
-// revision comparison for that run — never fabricates a match or a mismatch
-// against an SHA it could not establish (three-state-instrument-rule.md).
+// THE REVISION COMPARISON IS OFFLINE (revised 2026-09-25, review findings F1/F2
+// on this PR). "The merged SHA for a merged brief, the PR head for an open one"
+// (Task item 1) would ordinarily need a live PR/merge lookup — exactly the
+// live-infrastructure contact the ground rules forbid, even read-only. The
+// offline equivalent this file uses instead: the tree currently checked out at
+// --root IS the item's revision, whichever of the two states it is in — `git
+// rev-parse HEAD` names the merge SHA on a merged brief's checkout, and the PR
+// head on an open PR's branch checkout.
 //
-// THE ACCEPTANCE-DEFINITION DIGEST (2026-09-18 integration amendment). "Applicable
-// evidence must bind the exact subject and acceptance-definition digest; a model
-// assessment is never an execution witness." Two separate guards implement this:
+// A witness, however, is committed as PART OF the Evidence write that records
+// it — so by the time anyone reads that Evidence, HEAD has already moved past
+// the tree the witness ran on. Treating that as a plain mismatch would refuse
+// EVERY real witness forever (F2): the only way a committed witness could ever
+// match HEAD is if nothing else landed after it, which is never true once the
+// Evidence commit itself lands. classifyRevision therefore accepts a witness
+// tree as matching the item's revision in either of two cases:
+//
+//  1. an exact prefix match (in-progress work, still on the same tree the
+//     witness ran on — the common case a run BEFORE the Evidence commit sees);
+//  2. the witness tree is a git ANCESTOR of the item's revision, and nothing
+//     but the brief's OWN file changed in between (ancestorNoOtherChanges) —
+//     the ordinary "run the check, then commit the Evidence that records it"
+//     shape. Real changes to any other path after the witness ran are still a
+//     genuine `wrong-revision`: the witness no longer speaks for today's code.
+//
+// A value that is not adequately established as one of the two READS as a
+// definite mismatch (`wrong-revision`) only when both tokens are themselves
+// well-formed and simply differ as VALUES — an ancestor check that could not
+// even run (no git, an unresolvable SHA) never upgrades that plain difference
+// into a match, but it also never invents one. Anything coverage cannot
+// establish at all — an empty or absent tree token on either side, or a token
+// shorter than minRevisionTokenLen (F1: a 1-character token matched roughly 1
+// commit in 16) — resolves `could-not-check`, never `pass`
+// (three-state-instrument-rule.md): "I could not establish this" must never
+// collapse into "this passed" merely because there was nothing to contradict it.
+//
+// THE ACCEPTANCE-DEFINITION DIGEST (2026-09-18 integration amendment, revised
+// 2026-09-25 per review finding F3). "Applicable evidence must bind the exact
+// subject and acceptance-definition digest; a model assessment is never an
+// execution witness." Three guards implement this:
 //
 //   - Only a row shaped like verifyrun's own witness table (isWitnessRow: an
 //     `exit=` marker AND a `sha256:` marker, each in its own cell) is ever read
@@ -68,12 +91,22 @@ package main
 //     TestCoverageAdviceCannotSupplyWitness.
 //   - The witness's Command cell must match the Verify row's CURRENT Command
 //     text byte-for-byte (normalized for whitespace) before its Result is ever
-//     read. The row's Command+Expect text IS its acceptance definition; when
-//     either changes after the witness ran, the witness no longer describes the
-//     row it is credited to, and the claim resolves `error` — the "witness
-//     present but unparseable" case (docs/streams/graph-execution/brief-03-evidence-coverage-rule.md's
-//     mapping table), read as "no longer parseable AS EVIDENCE FOR THIS CLAIM".
-//     This is TestCoverageAcceptanceDigestChanged.
+//     read. This is TestCoverageAcceptanceDigestChanged.
+//   - The row's Expect text is checked too, offline, against git history: when
+//     the witness's tree resolves to a real commit, coverage reads the brief
+//     file's OWN Verify row as it stood AT THAT COMMIT (`git show <tree>:<path>`,
+//     verifyRowAtRevision) and compares its Expect text to the row's CURRENT
+//     Expect. No new field is added to the witness table for this — the witness
+//     table's Runner cell already binds the revision, and the revision is
+//     enough to look the row's OWN historical Expect text up directly, which is
+//     more precise than a digest and needs no wire-format change. When history
+//     cannot be read (no git, an unresolvable tree) this guard is silently
+//     skipped — Command-text matching remains the floor, never weakened.
+//     This is TestCoverageExpectChangedSinceWitnessRan.
+//
+// Either acceptance-definition guard failing resolves `error` — the "witness
+// present but unparseable" case (docs/streams/graph-execution/brief-03-evidence-coverage-rule.md's
+// mapping table), read as "no longer parseable AS EVIDENCE FOR THIS CLAIM".
 //
 // Coverage never establishes WHO ran a check (evidenceactor.go's job, and it
 // stays advisory — the brief's own consumers: entry marks it out-of-scope) or a
@@ -85,6 +118,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -185,7 +220,7 @@ func evaluateCoverage(root string, streams []*Stream, opts coverageOptions) map[
 				continue
 			}
 			id := s.Name + "/" + num
-			out[id] = evaluateOneCoverage(id, bf, opts, revision)
+			out[id] = evaluateOneCoverage(root, path, id, bf, opts, revision)
 		}
 	}
 	return out
@@ -196,7 +231,7 @@ func evaluateCoverage(root string, streams []*Stream, opts coverageOptions) map[
 // (bf.Verify / bf.Evidence, populated by parseBriefFile for every schema
 // version) rather than re-reading the file — the same data checkBriefFiles and
 // autoflip.go's Evidence-contradiction read already use.
-func evaluateOneCoverage(id string, bf *BriefFile, opts coverageOptions, revision string) Coverage {
+func evaluateOneCoverage(root, briefPath, id string, bf *BriefFile, opts coverageOptions, revision string) Coverage {
 	evidence := parseEvidenceRows(bf.Evidence)
 	verifyRows := briefVerifyRows(bf.Verify)
 
@@ -204,7 +239,7 @@ func evaluateOneCoverage(id string, bf *BriefFile, opts coverageOptions, revisio
 
 	// (a) every Verify row is a mandatory claim by construction.
 	for _, r := range verifyRows {
-		result, reason, claimRev := resolveVerifyClaim(r, evidence, revision)
+		result, reason, claimRev := resolveVerifyClaim(root, briefPath, r, evidence, revision)
 		claims = append(claims, Claim{
 			Claim:    fmt.Sprintf("Verify row #%s: %s", r.ID, r.Command),
 			Kind:     "command",
@@ -285,9 +320,10 @@ func evaluateOneCoverage(id string, bf *BriefFile, opts coverageOptions, revisio
 
 // resolveVerifyClaim resolves ONE Verify row's mandatory claim against the
 // brief's Evidence section, in the order the mapping table (this file's header)
-// fixes. targetRevision == "" skips the revision comparison entirely (an
-// unreadable/absent tree revision is never treated as a match OR a mismatch).
-func resolveVerifyClaim(r verifyRow, evidence map[string][]evidenceRow, targetRevision string) (result, reason, revision string) {
+// fixes. root/briefPath anchor the offline git-history reads classifyRevision
+// and verifyRowAtRevision use; either may be "" (a bare testdata copy), which
+// those functions treat as "nothing to corroborate", never a match.
+func resolveVerifyClaim(root, briefPath string, r verifyRow, evidence map[string][]evidenceRow, targetRevision string) (result, reason, revision string) {
 	var latestText string
 	for _, er := range evidence[r.ID] {
 		if isWitnessRow(er.Text) {
@@ -298,9 +334,9 @@ func resolveVerifyClaim(r verifyRow, evidence map[string][]evidenceRow, targetRe
 		return covMissing, "no execution witness in Evidence — run `statusgen verifyrun --brief <path>`", ""
 	}
 
-	// The acceptance-definition digest guard (this file's header): the witness
-	// must still describe the CURRENT Command text, or it is not evidence for
-	// this claim any more.
+	// The acceptance-definition digest guard, Command half (this file's
+	// header): the witness must still describe the CURRENT Command text, or it
+	// is not evidence for this claim any more.
 	if normalizeCommandText(witnessCommandOf(latestText)) != normalizeCommandText(r.Command) {
 		return covError, "the witness records a different command than the Verify row now carries — its acceptance definition changed after it was run, so the recorded result proves nothing about the row as it stands today", ""
 	}
@@ -308,8 +344,22 @@ func resolveVerifyClaim(r verifyRow, evidence map[string][]evidenceRow, targetRe
 	wrev := witnessTreeOf(latestText)
 	switch witnessStateOf(latestText) {
 	case statePass:
-		if targetRevision != "" && wrev != "" && !revisionMatches(wrev, targetRevision) {
+		switch classifyRevision(root, briefPath, wrev, targetRevision) {
+		case revisionUnestablished:
+			return covCouldNotCheck, fmt.Sprintf("the witness's revision could not be corroborated against the item's revision (witness=%s, item=%s) — a passing result is never credited without knowing which revision it ran at", displayRevision(wrev), displayRevision(targetRevision)), wrev
+		case revisionMismatch:
 			return covWrongRevision, fmt.Sprintf("witness ran at revision %s, the item's revision is %s", wrev, targetRevision), wrev
+		}
+		// revisionMatch: the witness's tree is, or offline-corroborates as, the
+		// item's revision. The acceptance-definition digest guard, Expect half
+		// (this file's header, F3): an Expect-only tightening since the witness
+		// ran is invisible to the Command check above, so read the row's OWN
+		// historical Expect text at the witness's tree, when history is
+		// available, and compare it to the row's current Expect.
+		if hist, ok := verifyRowAtRevision(root, briefPath, wrev, r.ID); ok {
+			if normalizeCommandText(hist.Expect) != normalizeCommandText(r.Expect) {
+				return covError, "the row's Expect text changed after the witness ran — its acceptance definition changed, so the recorded result proves nothing about the row as it stands today", wrev
+			}
 		}
 		return covPass, "witness matches the row and passed", wrev
 	case stateFail:
@@ -322,6 +372,15 @@ func resolveVerifyClaim(r verifyRow, evidence map[string][]evidenceRow, targetRe
 		// none of pass/fail/could-not-run — genuinely unparseable.
 		return covError, "the witness row's Result cell could not be parsed to a known state", wrev
 	}
+}
+
+// displayRevision renders a possibly-absent revision token for a reason
+// string — "(none recorded)" rather than a bare empty pair of quotes.
+func displayRevision(rev string) string {
+	if rev == "" {
+		return "(none recorded)"
+	}
+	return rev
 }
 
 // resolvePatternEvidenceClaim resolves a pattern node's mandatory evidence
@@ -372,25 +431,137 @@ func currentTreeRevision(root string) string {
 	return sha
 }
 
-// revisionMatches compares a witness's recorded tree token against the item's
-// revision, ignoring the `+dirty`/`+unknown` suffix (that suffix records the
-// witness run's OWN cleanliness, not a different identity) and comparing only
-// the shorter of the two prefixes, case-insensitively — the same tolerance
-// treeSHALen already bakes into every witness comparison in this binary.
-func revisionMatches(witnessTree, target string) bool {
+// revisionRelation is classifyRevision's three-state verdict — deliberately
+// not a bool: "the two differ" and "we could not tell" must never collapse
+// into the same answer (three-state-instrument-rule.md).
+type revisionRelation int
+
+const (
+	revisionMatch revisionRelation = iota
+	revisionMismatch
+	revisionUnestablished
+)
+
+// minRevisionTokenLen is the shortest tree token classifyRevision ever treats
+// as informative. Review finding F1: a 1-character token matched roughly 1 in
+// 16 real SHAs by coincidence — treeSHALen is the same floor every witness
+// comparison in this binary already uses for a positive match, so a token
+// shorter than that proves nothing either way.
+const minRevisionTokenLen = treeSHALen
+
+// classifyRevision compares a witness's recorded tree token against the
+// item's revision, ignoring the `+dirty`/`+unknown` suffix (that suffix
+// records the witness run's OWN cleanliness, not a different identity). See
+// this file's header ("THE REVISION COMPARISON IS OFFLINE") for the full
+// rationale; in short:
+//
+//   - an empty, absent, or too-short token on EITHER side is unestablished —
+//     never a match, never a mismatch;
+//   - a same-length-prefix equal-fold match is a match, unconditionally;
+//   - otherwise the two values plainly differ, which is a mismatch UNLESS a
+//     git ancestor check (ancestorNoOtherChanges) corroborates that the
+//     witness tree is an ancestor of the item's revision with nothing but the
+//     brief's own file touched since — the ordinary shape of "run the check,
+//     then commit the Evidence that records it" (F2). An ancestor check that
+//     could not even run leaves the plain mismatch standing; it never
+//     invents a match it could not corroborate.
+func classifyRevision(root, briefPath, witnessTree, target string) revisionRelation {
 	w := strings.TrimSuffix(strings.TrimSuffix(witnessTree, "+dirty"), "+unknown")
 	t := strings.TrimSuffix(strings.TrimSuffix(target, "+dirty"), "+unknown")
-	if w == "" || t == "" {
-		return true // nothing to compare against
+	if w == "" || t == "" || w == "no-git" || t == "no-git" {
+		return revisionUnestablished
+	}
+	if len(w) < minRevisionTokenLen || len(t) < minRevisionTokenLen {
+		return revisionUnestablished
 	}
 	n := len(w)
 	if len(t) < n {
 		n = len(t)
 	}
-	if n == 0 {
-		return true
+	if strings.EqualFold(w[:n], t[:n]) {
+		return revisionMatch
 	}
-	return strings.EqualFold(w[:n], t[:n])
+	if ancestorNoOtherChanges(root, briefPath, w, t) {
+		return revisionMatch
+	}
+	return revisionMismatch
+}
+
+// ancestorNoOtherChanges reports whether witnessTree is a git ancestor of
+// target with no path OTHER than briefPath changed in between. false whenever
+// root is not a usable git checkout, or either token does not resolve there as
+// a real commit — the caller (classifyRevision) then keeps whatever plain-
+// value comparison it already made, rather than promoting an unverifiable
+// claim to a match.
+func ancestorNoOtherChanges(root, briefPath, witnessTree, target string) bool {
+	if root == "" || briefPath == "" {
+		return false
+	}
+	if exec.Command("git", "-C", root, "rev-parse", "--git-dir").Run() != nil {
+		return false
+	}
+	if exec.Command("git", "-C", root, "cat-file", "-e", witnessTree+"^{commit}").Run() != nil {
+		return false
+	}
+	if exec.Command("git", "-C", root, "cat-file", "-e", target+"^{commit}").Run() != nil {
+		return false
+	}
+	if exec.Command("git", "-C", root, "merge-base", "--is-ancestor", witnessTree, target).Run() != nil {
+		return false // not an ancestor, or the check itself could not run
+	}
+	out, err := exec.Command("git", "-C", root, "diff", "--name-only", witnessTree, target).Output()
+	if err != nil {
+		return false
+	}
+	briefRel, err := filepath.Rel(root, briefPath)
+	if err != nil {
+		return false
+	}
+	briefRel = filepath.ToSlash(briefRel)
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = filepath.ToSlash(strings.TrimSpace(line))
+		if line == "" {
+			continue
+		}
+		if line != briefRel {
+			return false // something besides the brief's own file changed
+		}
+	}
+	return true
+}
+
+// verifyRowAtRevision reads briefPath's OWN Verify row for rowID as it stood
+// at git revision rev (`git show <rev>:<path>`), for the Expect half of the
+// acceptance-definition digest guard (this file's header, F3). ok is false
+// whenever root/briefPath do not resolve to a usable git object at rev, the
+// brief has no Verify section there, or no row with that id exists there — the
+// caller treats that as "could not corroborate", never as "unchanged".
+func verifyRowAtRevision(root, briefPath, rev, rowID string) (verifyRow, bool) {
+	if root == "" || briefPath == "" || rev == "" {
+		return verifyRow{}, false
+	}
+	rel, err := filepath.Rel(root, briefPath)
+	if err != nil {
+		return verifyRow{}, false
+	}
+	out, err := exec.Command("git", "-C", root, "show", rev+":"+filepath.ToSlash(rel)).Output()
+	if err != nil {
+		return verifyRow{}, false
+	}
+	content := strings.ReplaceAll(string(out), "\r\n", "\n")
+	body := content
+	if first, _, _ := strings.Cut(content, "\n"); strings.TrimSpace(first) == "---" {
+		if _, b, ferr := splitFrontmatter(content); ferr == nil {
+			body = b
+		}
+	}
+	verify := extractSectionByPrefix(body, "Verify")
+	for _, hr := range briefVerifyRows(verify) {
+		if hr.ID == rowID {
+			return hr, true
+		}
+	}
+	return verifyRow{}, false
 }
 
 // coverageLine renders one brief's --coverage (non-JSON) line: `<id>
