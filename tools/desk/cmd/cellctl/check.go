@@ -105,6 +105,14 @@ func cmdCheck(cell, cfgArg string) {
 				continue
 			}
 			k.chk(true, "role %s: provider=%s harness=%s model=%s effort=%s source=%s sha256=%s", role, route.Provider, route.Harness, route.Model, route.Effort, policySource, policy.SHA256)
+			// The same per-role preflight `up` runs before opening windows (credential, harness
+			// on PATH, Claude version floor, settings conflict scan) — a MISS here is a boot `up`
+			// would refuse.
+			if err := c.policyPreflight(route, policyConfigDir(c.Env, cfgArg)); err != nil {
+				k.chk(false, "model policy: %s — %s", role, err)
+			} else {
+				k.chk(true, "model policy: %s", role)
+			}
 			continue
 		}
 		rm := c.resolveRoleModel(role, c.Harness)

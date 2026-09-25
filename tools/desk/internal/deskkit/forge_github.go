@@ -125,6 +125,21 @@ type ForgeAPIError struct {
 	Method string
 	Path   string
 	Body   string
+	// Message is the forge's own answer text for a GitHub non-2xx, exactly as go-gh decodes it
+	// (the body's `message`, then each errors[] item on its own line; the status line when the
+	// body is not JSON) — the text gh prints after `HTTP <status>: `. It is carried out of band
+	// and NOT rendered by Error(), so every existing diagnostic is byte-identical.
+	Message string
+	// RateLimited is true when GhRateLimitSignature matches `HTTP <status>: <Message>` — the
+	// text gh prints on stderr for this answer, minus gh's request URL. That is the whole of
+	// what plugins/assay/scripts/{inbound,pr}-monitor.sh can see when their is_ratelimit decides
+	// to stop a cycle, so a stop-on-limit poller built on this flag decides every answer the way
+	// the scripts do (#1640 review F1). Nothing else feeds it: not a header (Retry-After and
+	// X-RateLimit-* never reach gh's stderr), not the status class on its own (a 5xx whose
+	// message names the limit matches, a 403 whose message does not, does not), not the request
+	// path. It does not change Error()'s text — it exists for IsForgeRateLimited, so a poller
+	// that trips a limit can stop the cycle instead of compounding it with the remaining reads.
+	RateLimited bool
 }
 
 func (e *ForgeAPIError) Error() string {
@@ -149,6 +164,35 @@ func IsForgeNotFound(err error) bool {
 func IsForgeForbidden(err error) bool {
 	var ae *ForgeAPIError
 	return errors.As(err, &ae) && ae.Status == http.StatusForbidden
+}
+
+// IsForgeRateLimited reports whether err is a forge rate-limit answer: a 429 from either
+// backend, or a GitHub answer whose text carries the scripts' signature (see
+// ForgeAPIError.RateLimited). It unwraps, so a ForgeAPIError nested in a DeskError is still
+// recognised. A plain 403 (a missing scope) is NOT a rate limit: treating it as one would stop
+// a poll cycle on a permissions fault that retrying never clears. Neither is a GitHub PRIMARY
+// quota-exhausted 403 ("API rate limit exceeded for …"), nor a 403 whose only rate-limit sign
+// is a Retry-After header — the oracle scripts cannot see a header and retain-and-continue on
+// both, never stop the cycle (#1640 review F1).
+func IsForgeRateLimited(err error) bool {
+	var ae *ForgeAPIError
+	return errors.As(err, &ae) && (ae.Status == http.StatusTooManyRequests || ae.RateLimited)
+}
+
+// GhRateLimitSignature is plugins/assay/scripts/{inbound,pr}-monitor.sh's is_ratelimit
+// pattern, verbatim: `grep -qiE 'secondary rate limit|(http )?429|too many requests'` over gh's
+// captured stderr. The optional `(http )?` group makes the second branch the bare digits 429
+// anywhere in the text — kept as-is, because matching it is what parity with the scripts means.
+var GhRateLimitSignature = regexp.MustCompile(`(?i)secondary rate limit|(http )?429|too many requests`)
+
+// ghHTTPErrorRateLimited decides a non-2xx go-gh HTTPError the way the oracle scripts decide the
+// same failure: GhRateLimitSignature over `HTTP <status>: <message>`, which is go-gh's own
+// HTTPError rendering — the text gh prints on stderr — minus the request URL gh appends (gh's
+// endpoint, never this request's path; see ForgeAPIError.RateLimited). The message already holds
+// every errors[] item on its own line, as gh prints them. Headers are never read: a Retry-After
+// the scripts cannot see must not stop a cycle they would have continued (#1640 review F1).
+func ghHTTPErrorRateLimited(he *ghapi.HTTPError) bool {
+	return GhRateLimitSignature.MatchString(fmt.Sprintf("HTTP %d: %s", he.StatusCode, he.Message))
 }
 
 // ErrForgeEmptyRepo is the canonical, backend-NEUTRAL signal that the forge has positively
@@ -211,7 +255,8 @@ func (g *GitHubForge) doJSONHeader(method, path string, in, out any) (http.Heade
 	if rerr != nil {
 		var he *ghapi.HTTPError
 		if errors.As(rerr, &he) {
-			return nil, &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path}
+			return nil, &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path,
+				Message: he.Message, RateLimited: ghHTTPErrorRateLimited(he)}
 		}
 		return nil, Unverifiable(fmt.Sprintf("%s %s failed", method, path), rerr)
 	}
@@ -848,6 +893,7 @@ func (g *GitHubForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 				Name string `json:"name"`
 			} `json:"labels"`
 			CreatedAt   string    `json:"created_at"`
+			UpdatedAt   string    `json:"updated_at"`
 			HTMLURL     string    `json:"html_url"`
 			PullRequest *struct{} `json:"pull_request"`
 		}
@@ -872,6 +918,7 @@ func (g *GitHubForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 				Author:    Account{Login: is.User.Login, ID: is.User.ID},
 				Labels:    labels,
 				CreatedAt: is.CreatedAt,
+				UpdatedAt: is.UpdatedAt,
 				URL:       is.HTMLURL,
 			})
 		}
@@ -1538,7 +1585,7 @@ func (g *GitHubForge) listCommentsPage(repo ForgeRepo, number int, kind TargetKi
 		res = append(res, Comment{
 			ID:         n.ID,
 			DatabaseID: n.DatabaseID,
-			Author:     Account{Login: login, ID: n.Author.DatabaseID},
+			Author:     Account{Login: login, ID: n.Author.DatabaseID, Type: n.Author.Typename},
 			Body:       n.Body,
 			Minimized:  n.IsMinimized,
 			CreatedAt:  n.CreatedAt,
@@ -1816,6 +1863,51 @@ func (g *GitHubForge) GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error)
 	}
 	rc := w.toRepoCommit()
 	return &rc, nil
+}
+
+// ListFileCommits reads ONE page of the commits reachable from ref that touched file, newest
+// first (`GET /repos/{o}/{r}/commits?sha=<ref>&path=<file>&per_page=<limit>`).
+func (g *GitHubForge) ListFileCommits(repo ForgeRepo, ref, file string, limit int) ([]RepoCommit, error) {
+	if limit <= 0 || limit > forgeFileCommitsMax {
+		return nil, Unverifiable(fmt.Sprintf("ListFileCommits needs a limit in [1, %d]", forgeFileCommitsMax), nil)
+	}
+	if strings.TrimSpace(ref) == "" || strings.TrimSpace(file) == "" {
+		return nil, Unverifiable("ListFileCommits needs a ref and a file for "+repo.Slug(), nil)
+	}
+	var chunk []ghCommitWire
+	path := fmt.Sprintf("/repos/%s/%s/commits?sha=%s&path=%s&per_page=%d", repo.Owner, repo.Name,
+		url.QueryEscape(ref), url.QueryEscape(file), limit)
+	if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+		return nil, err
+	}
+	out := make([]RepoCommit, 0, len(chunk))
+	for _, c := range chunk {
+		out = append(out, c.toRepoCommit())
+	}
+	return out, nil
+}
+
+// ListCommitChanges reads the PRs GitHub associates with one commit
+// (`GET /repos/{o}/{r}/commits/{sha}/pulls?per_page=100`), in any state, as their numbers.
+func (g *GitHubForge) ListCommitChanges(repo ForgeRepo, sha string) ([]int, error) {
+	if strings.TrimSpace(sha) == "" {
+		return nil, Unverifiable("ListCommitChanges needs a non-empty sha for "+repo.Slug(), nil)
+	}
+	var chunk []struct {
+		Number int `json:"number"`
+	}
+	path := fmt.Sprintf("/repos/%s/%s/commits/%s/pulls?per_page=%d", repo.Owner, repo.Name,
+		url.PathEscape(sha), forgeFileCommitsMax)
+	if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+		return nil, err
+	}
+	out := make([]int, 0, len(chunk))
+	for _, c := range chunk {
+		if c.Number > 0 {
+			out = append(out, c.Number)
+		}
+	}
+	return out, nil
 }
 
 // ghCompareWire is the compare-API read shape (only the fields consumed).

@@ -673,8 +673,8 @@ const principalAttributionCutoverDate = "2026-09-17"
 
 // principalAttributionProblems is multi-principal/01's lint half (Task item 4): an
 // App-authored Evidence row carries the on-behalf-of annotation verifyrun.go's row()
-// renders (`on-behalf-of human:<login>`, inside the Runner cell's trailing
-// parenthetical), or the row is flagged.
+// renders (`on-behalf-of human:<login-or-neutral-name>`, inside the Runner cell's
+// trailing parenthetical), or the row is flagged.
 //
 // TWO shapes. The unknown-principal shape is always a hard PROBLEM (an annotation that
 // names an unrecognised login was written by a stamping path and is simply wrong — no
@@ -728,10 +728,14 @@ func principalAttributionProblems(streams []*Stream) (problems, notices []string
 						continue
 					}
 					if cfg.Configured() {
-						if _, present := cfg.Humans[login]; !present {
+						// The principal is the login on a known-private repo and the roster's
+						// neutral name elsewhere (principal.go's visibility split), so either
+						// form is accepted — the name only through ASSAY_HUMAN_LOGIN_MAP, onto a
+						// login the roster recognises as human.
+						if !onBehalfOfPrincipalRecognised(cfg, login) {
 							add("%s: Evidence row #%s's on-behalf-of principal %q is not in this repo's "+
 								"roster human map — a principal must be a login the roster recognises as "+
-								"human", label, id, login)
+								"human, or the neutral name the human-login map carries for one", label, id, login)
 						}
 					}
 				}

@@ -95,7 +95,8 @@ Options:
 2. **Do not narrow yet** — say what is missing. The tools support both states for the whole
    waiting period, so nothing breaks while the answer is pending.
 
-Default if no answer: option 2.
+Default if no answer: none — blocks until answered. Absent a ruling, the reviewing identity is
+not narrowed on any real installation.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Leave commits per the task
