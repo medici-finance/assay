@@ -47,8 +47,7 @@ decisions, budgets, breakers, explicit stop-orders) are unchanged.
 ## Worktree hygiene
 
 Worktree sprawl is owned by `deskwt prune` — it runs at boot and under its own interval
-supervisor; no loop carries an hourly prune tick and nobody hand-deletes worktrees (the
-ENFILE incident, 2026-07-23: sprawl exhausted the system open-file table).
+supervisor; no loop carries an hourly prune tick and nobody hand-deletes worktrees.
 
 ## Driver-act runsheet entry
 
