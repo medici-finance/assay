@@ -33,6 +33,19 @@ error: could not reach the API server
 
 const bodyNoEvidence = "I believe the cluster is unreachable, but I did not run anything."
 
+// bodyNoEvidenceForLabel is bodyNoEvidence, plus a well-formed `### Fork test` block when
+// label is needs-decision — attention-budget/13's fork-test gate runs BEFORE the
+// blocker-evidence gate this file tests, so a needs-decision fixture with no fork-test block
+// would be refused for the WRONG reason (missing fork-test, not missing evidence). The block
+// here counts two options with `caught-by: nothing`, so it is otherwise an ordinary
+// needs-decision filing (no notice-lane relabel) and isolates the evidence assertion.
+func bodyNoEvidenceForLabel(label string) string {
+	if strings.EqualFold(label, needsDecisionLabel) {
+		return bodyNoEvidence + "\n\n" + validForkTestBlock
+	}
+	return bodyNoEvidence
+}
+
 // TestEscalationWithoutEvidenceRefused — Verify row 2 (negative path). Each of the three
 // escalation labels refuses an evidence-less body (exit 5) with a message naming `### Evidence`.
 func TestEscalationWithoutEvidenceRefused(t *testing.T) {
@@ -41,7 +54,7 @@ func TestEscalationWithoutEvidenceRefused(t *testing.T) {
 			calls := withEnv(t)
 			t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 			t.Setenv("FAKEGH_LABELS", labelsJSON(t, label))
-			body := bodyFileWith(t, bodyNoEvidence)
+			body := bodyFileWith(t, bodyNoEvidenceForLabel(label))
 
 			rc, out := runCapture([]string{"new", "-R", allowedRepo,
 				"--title", "a blocker on the settlement path", "--body-file", body,
@@ -70,7 +83,9 @@ func TestEscalationWithEvidenceFencePasses(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, "needs-decision"))
-	body := bodyFileWith(t, bodyWithEvidence)
+	// + a well-formed fork-test block (attention-budget/13's gate runs before this one; see
+	// bodyNoEvidenceForLabel above for why a needs-decision fixture needs it too).
+	body := bodyFileWith(t, bodyWithEvidence+"\n\n"+validForkTestBlock)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
 		"--title", "a blocker on the settlement path", "--body-file", body,

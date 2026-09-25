@@ -300,11 +300,18 @@ issues landed three days later. That is why the two rules sit together.
 4. **needs-decision.** An issue or brief that hits a human gate — but the reversibility test runs
    first: a REVERSIBLE fork is scoped on its best-guess default and rides Next-up NOW (the merge gate
    catches a wrong default), and its `needs-decision` issue is a NOTIFICATION naming the default, not
-   a park; only a genuinely one-way gate parks the item. File (or confirm) a
-   `needs-decision` issue per the **brief-06 template**: self-contained (Situation / Options 2–4
-   with pros-cons at the mm/12 trade-off bar / What-happens-on-each-answer / Links). The decider is
-   the human, and only a verified human account is honored. This is the SINGLE decision queue
-   — the intake lane routes into it too, never a second one.
+   a park; only a genuinely one-way gate parks the item. File (or confirm) a `needs-decision` issue
+   whose body carries the `### Fork test` block `deskfile new` requires — the grammar (the `option:` /
+   `default:` / `caught-by:` / `ruled-check:` lines) is defined ONCE, in `tools/desk/README.md`; this
+   skill does not restate it. **An item with one workable option is not a decision** — the tool
+   refuses it (exit 5) and names the three `--no-fork` re-routes
+   (`brief-contradicts-artifact` | `wrong-repo` | `tool-false-positive`); use the one that fits
+   instead of forcing a `needs-decision` filing over a question that never had a fork. Two workable
+   options plus a gate you still hold (a draft PR, a flip, an issue close) files on the NOTICE LANE
+   instead — `desk-decided`, off the queue, in the weekly digest with its veto date — unless the item
+   touches the fixed one-way list, which always reaches the human queue whichever option is picked.
+   The decider is the human, and only a verified human account is honored. This is the SINGLE
+   decision queue — the intake lane routes into it too, never a second one.
 5. **DUPLICATE — merge the evidence first, and this desk never closes it** (human:<name>, 2026-08-02).
    Spotting a duplicate is not authority to close one: it is a unilateral judgement that two reports
    are the same defect, and the loser's non-overlapping evidence dies with it (in the incident that

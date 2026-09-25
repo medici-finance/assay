@@ -54,15 +54,20 @@ const (
 	skillBugReceiptWindow = 30 * time.Minute
 )
 
+// needsDecisionLabel names the standing decision-queue label, restated once so the fork-test
+// gate (forktest.go, attention-budget/13) and the evidence gate below cannot drift on the
+// literal.
+const needsDecisionLabel = "needs-decision"
+
 // escalationLabels are the labels whose `new` filings MUST carry evidence: such a filing is
 // a blocker claim, and a blocker claim with nothing to quote is not a blocker claim. The gate
 // is the tool half of the two-layer blocker-evidence rule. `human-only` is deliberately NOT
 // here — it marks an ACT, not a claim (brief 05 of its tracking stream) — and the gate binds `new` only,
 // so `attach` observations (not fresh claims) are unaffected.
 var escalationLabels = map[string]bool{
-	"needs-decision": true,
-	"help wanted":    true,
-	"question":       true,
+	needsDecisionLabel: true,
+	"help wanted":      true,
+	"question":         true,
 }
 
 // escalationLabelIn returns the first label in labels that is an escalation label (matched
@@ -552,6 +557,19 @@ func (s *stringSlice) Set(v string) error {
 	return nil
 }
 
+// removeLabel returns labels with every case-insensitive match of want dropped. Used by the
+// fork-test notice lane to take needs-decision off a filing before desk-decided is applied
+// in its place (deskDecidedLabel is never a caller `--label`; see cmdNew).
+func removeLabel(labels []string, want string) []string {
+	out := make([]string, 0, len(labels))
+	for _, l := range labels {
+		if !strings.EqualFold(strings.TrimSpace(l), want) {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
 func newFlagSet(name string) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder)) // suppress flag's own output; we craft messages
@@ -595,6 +613,9 @@ func cmdNew(args []string) (err error) {
 		"rate is spent (escape hatch; requires --reason). Distinct from --force-new, which bypasses dedupe; "+
 		"--force-file does NOT weaken dedupe and does NOT reset the rate count (the filing is still audited and charged).")
 	reason := fs.String("reason", "", "stated reason for --force-new / --force-file (required with either)")
+	noFork := fs.String("no-fork", "", "re-routes a filing that turned out to have fewer than two workable options "+
+		"(the `deskfile new` fork-test gate's refusal names this flag): one of "+noForkBriefContradicts+" | "+
+		noForkWrongRepo+" | "+noForkToolFalsePositive+". Files WITHOUT the needs-decision label — attention-budget/13")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -647,6 +668,50 @@ func cmdNew(args []string) (err error) {
 	}
 	if !deskkit.IsAllowedRepo(*repo) {
 		return deskkit.Refused("refused: " + *repo + " is not in the desk-tools repo set")
+	}
+
+	// --no-fork re-routes a fork-test refusal (attention-budget/13): the filer re-runs a
+	// filing that had fewer than two workable options with exactly one of the three closed
+	// values, and the tool composes the shape each re-route requires — title prefix and
+	// addressee for the two that name one, content requirements for all three — rather than
+	// trusting free text to carry it. It NEVER coexists with --label needs-decision: the
+	// whole point of the flag is filing WITHOUT that label.
+	noForkVal := strings.TrimSpace(*noFork)
+	if noForkVal != "" {
+		switch noForkVal {
+		case noForkBriefContradicts, noForkWrongRepo, noForkToolFalsePositive:
+		default:
+			return deskkit.Refused("refused: --no-fork must be one of " + noForkBriefContradicts + " | " +
+				noForkWrongRepo + " | " + noForkToolFalsePositive + ", got " + noForkVal)
+		}
+		if hasLabel(labels, needsDecisionLabel) {
+			return deskkit.Refused("refused: --no-fork files WITHOUT the " + needsDecisionLabel +
+				" label — drop --label " + needsDecisionLabel)
+		}
+		var requiredPrefix, requiredTo string
+		switch noForkVal {
+		case noForkBriefContradicts:
+			requiredPrefix, requiredTo = "amend brief:", "desk"
+		case noForkWrongRepo:
+			// "worker" is the ROSTER's role name for the worker-desk window (the vocabulary
+			// --to shares with --raised-by, RaisedByRoles) — NOT the skill file name
+			// "worker-desk", which boundRole would refuse as unbound.
+			requiredPrefix, requiredTo = "re-dispatch:", "worker"
+		}
+		if requiredTo != "" {
+			if strings.TrimSpace(*toRole) != "" && !strings.EqualFold(strings.TrimSpace(*toRole), requiredTo) {
+				return deskkit.Refused(fmt.Sprintf(
+					"refused: --no-fork %s addresses the filing --to %s — drop --to or pass --to %s",
+					noForkVal, requiredTo, requiredTo))
+			}
+			*toRole = requiredTo
+		}
+		if requiredPrefix != "" && !strings.HasPrefix(strings.ToLower(strings.TrimSpace(*title)), strings.ToLower(requiredPrefix)) {
+			*title = requiredPrefix + " " + strings.TrimSpace(*title)
+		}
+		if noForkVal == noForkToolFalsePositive && !hasLabel(labels, "bug") {
+			labels = append(labels, "bug")
+		}
 	}
 	ac.repo = *repo
 	ac.title = *title
@@ -721,6 +786,70 @@ func cmdNew(args []string) (err error) {
 		}
 		body = b
 	}
+
+	// --no-fork content requirements (attention-budget/13): each re-route names what its
+	// body must carry, checked against the shape rather than trusting free text.
+	if noForkVal != "" {
+		switch noForkVal {
+		case noForkWrongRepo:
+			if !repoShapeRe.Match(body) {
+				return deskkit.Refused("refused: --no-fork wrong-repo requires the body to name the repo the " +
+					"work belongs in (an `owner/repo` token)")
+			}
+		case noForkBriefContradicts:
+			if !briefIDShapeRe.Match(body) {
+				return deskkit.Refused("refused: --no-fork brief-contradicts-artifact requires the body to name " +
+					"the brief id it amends (a `<stream>/<NN>` or `assay:at:<stream>:<NN>` token)")
+			}
+			if !artifactPathShapeRe.Match(body) {
+				return deskkit.Refused("refused: --no-fork brief-contradicts-artifact requires the body to name " +
+					"the artifact it contradicts (a backtick-quoted path with an extension)")
+			}
+		case noForkToolFalsePositive:
+			if !bodyHasFence(string(body)) {
+				return deskkit.Refused("refused: --no-fork tool-false-positive requires the body to carry the " +
+					"tool's refusal text in a fenced block")
+			}
+		}
+	}
+
+	// The fork-test gate (attention-budget/13): a filing labelled needs-decision must carry
+	// a well-formed `### Fork test` block naming the workable options, the default, the gate
+	// that catches a wrong guess, and the search that showed the question was not already
+	// ruled. Runs BEFORE dedupe, per the facts, and before the blocker-evidence gate below so
+	// the evidence requirement (an escalation-label property) sees the label set this gate
+	// may have just changed. --no-fork and this gate are mutually exclusive (enforced above:
+	// --no-fork refuses if --label needs-decision is also given), so a --no-fork filing never
+	// reaches this block. --force-new bypasses it as it bypasses dedupe and the evidence gate
+	// — the audited escape hatch every refusal in this tool shares.
+	deskDecidedApply := false
+	if !*forceNew && noForkVal == "" && hasLabel(labels, needsDecisionLabel) {
+		res := parseForkTest(string(body))
+		if !res.Structural() {
+			return deskkit.Refused(forkTestErrorMessage(res))
+		}
+		if !res.Workable() {
+			return deskkit.Refused(forkTestRerouteMessage(res))
+		}
+		def := res.DefaultOption() // non-nil: Structural() already proved it names a counted option
+		if res.CaughtByKind != caughtByNothing {
+			hay := strings.ToLower(*title + "\n" + string(body))
+			if _, oneWay := deskkit.MatchesHumanOnlySignal(hay); !oneWay {
+				// Notice lane (R-3): two-plus workable options, a gate the driver still
+				// holds, no one-way term. Swap needs-decision for desk-decided and append
+				// the shared marker block so the filing IS the desk's R-3 act — no separate
+				// comment for deskdigest to wait for.
+				labels = removeLabel(labels, needsDecisionLabel)
+				body = append(body, []byte(renderDeskDecidedBlock(*def, res.CountedOptions(), res.CaughtByKind, res.CaughtByDetail))...)
+				deskDecidedApply = true
+			}
+			// A one-way term outranks the filer's caught-by claim: stays needs-decision,
+			// filed as today.
+		}
+		// caught-by: nothing → no gate catches a wrong guess, so this is a genuine decision:
+		// stays needs-decision, filed as today.
+	}
+
 	if serr := deskkit.ScanSurface("issue body", body); serr != nil {
 		return serr
 	}
@@ -843,6 +972,15 @@ func cmdNew(args []string) (err error) {
 	}
 	if toApply != "" {
 		applyLabels = append(applyLabels, deskkit.LabelSpec{Name: toApply})
+	}
+	if deskDecidedApply {
+		// UNLIKE the user labels above, desk-decided is never pre-checked-and-refused: the
+		// tool applies it itself (attention-budget/13), so it goes through the SAME
+		// ensure-exists path deskflip/deskpost's mechanical labels use (ApplyLabels creates
+		// a missing label on first use) rather than requiring a human/admin label-create
+		// step before the first notice-lane filing can succeed.
+		applyLabels = append(applyLabels, deskkit.LabelSpec{Name: deskDecidedLabel,
+			Description: "filed on the R-3 notice lane — see the weekly decision digest for its veto date"})
 	}
 
 	// On-behalf-of trailer (multi-principal/01), appended to the filed body only — every

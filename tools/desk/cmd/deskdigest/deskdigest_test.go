@@ -568,6 +568,43 @@ func TestR3DecisionsAreReadNotWritten(t *testing.T) {
 	}
 }
 
+// TestDigestListsDeskDecidedNotice — Verify row 7 (attention-budget/13). `deskfile new`'s
+// notice lane writes the shared `desk-r3-decision v1` marker straight into the FILED ISSUE'S
+// OWN BODY (no separate comment: the filing IS the desk's R-3 act), labelled desk-decided
+// rather than needs-decision. The digest must list it in the desk-decisions section with a
+// veto date seven days after the issue's own CreatedAt — mkItem's trusted author models the
+// role App that filed it.
+func TestDigestListsDeskDecidedNotice(t *testing.T) {
+	body := "Flip the tool default for --sla-days.\n\n" +
+		"## Desk-decided\n\n" +
+		"<!-- desk-r3-decision v1 -->\n" +
+		"decision: keep the current default\n" +
+		"alternative: B — flip the default\n" +
+		"cost: draft-pr — #777\n"
+	it := mkItem("flip the tool default for --sla-days", body, deskDecidedLabel)
+	c := &collection{Scope: []string{"example-org/tracker"}, Items: []*item{it},
+		Repos: []repoRead{{Repo: "example-org/tracker", LabelSetRead: true, Items: 1}}}
+	d := build(c, signOff{State: signOffUnsigned}, fixedNow, "2026-W33")
+	if len(d.Decisions) != 1 {
+		t.Fatalf("decisions = %d, want 1 (the notice-lane body marker must count)", len(d.Decisions))
+	}
+	wantTaken := it.CreatedAt.Format("2006-01-02")
+	wantVeto := it.CreatedAt.AddDate(0, 0, vetoWindowDays).Format("2006-01-02")
+	if got := d.Decisions[0].Taken.Format("2006-01-02"); got != wantTaken {
+		t.Errorf("taken = %s, want %s (the issue's own CreatedAt)", got, wantTaken)
+	}
+	if got := d.Decisions[0].VetoEnds.Format("2006-01-02"); got != wantVeto {
+		t.Errorf("veto deadline = %s, want %s (taken + %d days)", got, wantVeto, vetoWindowDays)
+	}
+	rendered := d.Render()
+	if !strings.Contains(rendered, "keep the current default") {
+		t.Errorf("the desk-decisions section does not list the notice's decision:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, wantVeto) {
+		t.Errorf("the desk-decisions section does not carry the veto date %s:\n%s", wantVeto, rendered)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // the gh seam
 // ---------------------------------------------------------------------------

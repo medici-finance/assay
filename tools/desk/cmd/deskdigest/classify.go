@@ -85,60 +85,15 @@ const needsDecisionLabel = "needs-decision"
 // deliberately BROADER than the reversible list: a false human-only costs one item staying
 // in the human's queue that could have left it, and a false reversible costs a decision
 // taken without them. Those are not the same mistake.
-var humanOnlySignals = []signal{
-	// irreversible
-	{"irreversible", "irreversible"},
-	{"cannot be undone", "irreversible"},
-	{"one-way door", "irreversible"},
-	{"delete the", "irreversible"},
-	{"force-push", "irreversible"},
-	{"publish", "irreversible (publication is not recallable)"},
-	{"public repo", "irreversible (publication is not recallable)"},
-	{"make it public", "irreversible (publication is not recallable)"},
-	{"open source", "irreversible (publication is not recallable)"},
-	{"rewrite history", "irreversible"},
-	// mechanism
-	{"mechanism", "mechanism"},
-	{"who may", "mechanism (authority boundary)"},
-	{"authority", "mechanism (authority boundary)"},
-	{"delegat", "mechanism (authority boundary)"},
-	{"merge to main", "mechanism"},
-	{"auto-merge", "mechanism"},
-	{"ruling", "mechanism"},
-	// "human gate" / "gate question", NOT a bare "gate". Measured against the live queue on
-	// 2026-08-13, the bare needle classified 4 of 8 items `mechanism` on incidental uses
-	// ("the release guard gate", "the consumer-enumeration gate") — a confident wrong REASON
-	// attached to a defensible verdict, which is the shape that teaches a reader to stop
-	// trusting the Why column. Those items now land unclassified, which is what the engine
-	// actually knows about them, and unclassified is a request for a look rather than a
-	// claim.
-	{"human gate", "mechanism"},
-	{"gate question", "mechanism"},
-	{"gate: human", "mechanism"},
-	// security
-	{"security", "security"},
-	{"token", "security"},
-	{"credential", "security"},
-	{"secret", "security"},
-	{"permission", "security"},
-	{"sops", "security"},
-	{"private key", "security"},
-	{"rotation", "security"},
-	{"scope", "security"},
-	// spend
-	{"spend", "spend"},
-	{"cost", "spend"},
-	{"billing", "spend"},
-	{"licence", "spend"},
-	{"license", "spend"},
-	{"subscription", "spend"},
-	{"budget", "spend"},
-	// production blast radius — an irreversible-in-practice class
-	{"production", "irreversible in practice (production)"},
-	{"prod deploy", "irreversible in practice (production)"},
-	{"on-chain", "irreversible in practice (on-chain)"},
-	{"mainnet", "irreversible in practice (on-chain)"},
-}
+//
+// MOVED to deskkit.HumanOnlySignals (attention-budget/13): deskfile's fork-test one-way
+// override needs the SAME list — a filer must never be able to talk a one-way item onto the
+// notice lane by claiming a catching gate — and a copy here would drift from deskfile's the
+// moment either changed. classifyItem below now calls deskkit.FirstHumanOnlySignal directly;
+// see deskkit/humanonlysignal.go for the entries and the "human gate" vs bare "gate"
+// rationale (the 2026-08-13 measurement: the bare needle misclassified 4 of 8 live items on
+// incidental uses — "the release guard gate" — which is why the narrower phrase is what
+// ships).
 
 // reversibleSignals are R-3's own four examples of a one-commit reversal and their
 // immediate neighbours. Nothing is added here on a hunch: the list stays close to the
@@ -237,8 +192,8 @@ func classifyItem(it *item) verdict {
 	// 4. R-3's OWN CRITERIA, conservatively. human-only is checked first: an item that is
 	//    both a docs-wording change and a security change is a security change.
 	hay := strings.ToLower(it.Title + "\n" + it.Body)
-	if s := firstSignal(hay, humanOnlySignals); s != nil {
-		return verdict{classHumanOnly, srcHeuristic, "R-3 " + s.category + " signal (`" + s.needle + "`)"}
+	if s := deskkit.FirstHumanOnlySignal(hay); s != nil {
+		return verdict{classHumanOnly, srcHeuristic, "R-3 " + s.Category + " signal (`" + s.Needle + "`)"}
 	}
 	if s := firstSignal(hay, reversibleSignals); s != nil {
 		return verdict{classReversible, srcHeuristic, "R-3 one-commit-reversal signal: " + s.category}
