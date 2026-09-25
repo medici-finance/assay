@@ -66,18 +66,20 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (60 desk-actionable of 81 total — 81 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (62 desk-actionable of 83 total — 83 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (60)
+### Desk-actionable (62)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
+| build-less-brittle | 01 [exec:strong] | implemented | 8500 | 11 | — | — | — |
 | graph-execution | 02 [exec:strong] | implemented | 7500 | 11 | — | — | — |
+| build-less-brittle | 03 [exec:strong] | implemented | 6500 | 7 | — | — | — |
 | forge-neutral | 21 [exec:strong] | implemented | 6500 | 9 | — | — | — |
 | desktools-v2 | 01 | implemented | 5500 | 9 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
@@ -225,9 +227,9 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 ### build-less-brittle (13 open)
 
-- 01 Semantic-owner index in docs/contracts.md — one meaning, one home — todo (wave 0)
+- 01 Semantic-owner index in docs/contracts.md — one meaning, one home — implemented (wave 0)
 - 02 design-fit: in every new brief — owner, contract, retires, weight, why-add — todo (wave 1)
-- 03 Weight counter and CI ratchet (a Go test, not a verb) — todo (wave 0)
+- 03 Weight counter and CI ratchet (a Go test, not a verb) — implemented (wave 0)
 - 04 Intake files by error class; a recurring class triggers a design brief, not another point fix — todo (wave 2)
 - 05 Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight — todo (wave 3)
 - 06 Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision — todo (wave 2)
