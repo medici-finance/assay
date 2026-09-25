@@ -75,6 +75,26 @@ type BriefFile struct {
 	// A wrong TYPE is a parse error; a present-but-malformed shape is a hard
 	// PROBLEM in checkBriefFiles. NEVER a Next-up score input (F-09 scope note).
 	HomedIn string
+	// DeliverableRepo is the optional brief-v1 `deliverable_repo:` field
+	// (fleet-integrity/10, topology-contract.md requirement (a)) — an ALIAS
+	// (a docs/streams/graph-repos.yaml key) naming the repo this brief's
+	// deliverable lands in, when that differs from the repo the brief FILE
+	// lives in. "" when absent. A wrong TYPE is a parse error; the sibling-
+	// merge detector (siblingmerge.go) resolves the alias through the
+	// registry itself.
+	DeliverableRepo string
+	// TrackedIn is the optional brief-v1 `tracked-in:` list — `<alias>#<N>`
+	// refs naming a sibling ISSUE this brief is tracked by (fleet-integrity/10
+	// key k2, the withheld-identifier shape). nil when absent. A wrong TYPE
+	// (not a list of strings) is a parse error; the `§3.3` shape is checked
+	// semantically.
+	TrackedIn []string
+	// Delivery is the optional brief-v1 `delivery:` list of structured
+	// delivery claims (topology-contract.md requirement (f)) — see
+	// model.go's DeliveryClaim. nil when absent. Only the SHAPE (a list of
+	// mappings carrying in/covers/note) is parsed here; the full
+	// delivery-claim lint is a separate, not-yet-shipped follow-up.
+	Delivery []DeliveryClaim
 	// Measures is the optional brief-v1 `measures:` field — the name of the
 	// process queue this brief instruments. nil when absent (the neutral
 	// default: not an instrumentation brief), non-nil when present, including
@@ -733,6 +753,80 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 			bf.HomedIn = s
 		} else {
 			addBad("homed-in must be a string")
+		}
+	}
+	// deliverable_repo is an OPTIONAL but KNOWN key (fleet-integrity/10,
+	// topology-contract.md requirement (a)): the registry ALIAS the brief's
+	// deliverable lands under. Absence defaults to "" and is never flagged. A
+	// wrong TYPE is a parse error; alias resolution against
+	// docs/streams/graph-repos.yaml happens in siblingmerge.go, where the
+	// registry is in hand.
+	if v, ok := data["deliverable_repo"]; ok {
+		if s, ok := v.(string); ok {
+			bf.DeliverableRepo = s
+		} else {
+			addBad("deliverable_repo must be a string")
+		}
+	}
+	// tracked-in is an OPTIONAL but KNOWN key (fleet-integrity/10 key k2): a
+	// list of `<alias>#<N>` refs naming a sibling issue this brief is tracked
+	// by. Absence is the default (nil) and is never flagged. A wrong TYPE (not
+	// a list of strings) is a parse error; the §3.3 shape is left to the
+	// sibling-merge detector, which only ever reads a well-formed entry.
+	if v, ok := data["tracked-in"]; ok {
+		if list, err := stringList(v); err == nil {
+			bf.TrackedIn = list
+		} else {
+			addBad("tracked-in: %v", err)
+		}
+	}
+	// delivery is an OPTIONAL but KNOWN key (topology-contract.md requirement
+	// (f)): a list of structured delivery claims — {in, covers, note} — each
+	// naming a merged sibling PR and how much of the brief it covers. Absence
+	// is the default (nil) and is never flagged. Only SHAPE is parsed here (a
+	// list of mappings whose in/covers/note are strings, when present); the
+	// full delivery-claim lint (a legal `covers`, a required `note` on
+	// `partial`, registry-resolvable `in`) is a separate, not-yet-shipped
+	// follow-up per topology-contract.md (f) — this parser never rejects an
+	// entry it can read. A wrong TYPE (not a list of mappings) is a parse
+	// error.
+	if v, ok := data["delivery"]; ok {
+		list, ok := v.([]any)
+		if !ok {
+			addBad("delivery must be a list")
+		} else {
+			var claims []DeliveryClaim
+			for _, item := range list {
+				m, ok := item.(map[string]any)
+				if !ok {
+					addBad("delivery: each entry must be a mapping")
+					continue
+				}
+				var c DeliveryClaim
+				if in, ok := m["in"]; ok {
+					if s, ok := in.(string); ok {
+						c.In = s
+					} else {
+						addBad("delivery: in must be a string")
+					}
+				}
+				if cov, ok := m["covers"]; ok {
+					if s, ok := cov.(string); ok {
+						c.Covers = s
+					} else {
+						addBad("delivery: covers must be a string")
+					}
+				}
+				if note, ok := m["note"]; ok {
+					if s, ok := note.(string); ok {
+						c.Note = s
+					} else {
+						addBad("delivery: note must be a string")
+					}
+				}
+				claims = append(claims, c)
+			}
+			bf.Delivery = claims
 		}
 	}
 	// split-from is an OPTIONAL but KNOWN key (split-flag conservation): the
@@ -1548,6 +1642,16 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				if validHomedInShape(bf.HomedIn) {
 					row.HomedIn = bf.HomedIn
 				}
+				// deliverable_repo/tracked-in/delivery worm into the Brief row
+				// UNCONDITIONALLY (fleet-integrity/10) — the sibling-merge
+				// detector resolves deliverable_repo's alias and validates
+				// tracked-in's §3.3 shape itself, the same split HomedIn's own
+				// shape check keeps (validHomedInShape lives here because the
+				// board rendering reads it directly; alias/ref resolution needs
+				// the registry, which only siblingmerge.go has in hand).
+				row.DeliverableRepo = bf.DeliverableRepo
+				row.TrackedIn = bf.TrackedIn
+				row.Delivery = bf.Delivery
 				// measures worms into the Brief row for the drain-before-
 				// instrument eligibility gate. Wired UNCONDITIONALLY — unlike
 				// value/exec-tier/blocked-by, an invalid name is NOT dropped

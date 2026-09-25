@@ -201,6 +201,52 @@ resolution/usage failures remain exit 2. This check does not grandfather missing
 witnesses and does not replace `statusgen --lint`. `deskevidence` uses both before
 appending a new verified outcome receipt.
 
+### `phantoms` — the sibling-merge-unreconciled dedicated exit code
+
+A brief tracked on one repo's board can be delivered by a PR merged in a
+**sibling** repo (the convention where code briefs land via sibling PRs): the
+worker can write only there, so the home row never moves and Next-up keeps
+offering work that has already landed. `--lint`'s board-honesty detector
+(`boardhonesty.go`) surfaces this as its seventh phantom class,
+`sibling-merge-unreconciled` — but `--lint` never changes exit code for ANY
+board-honesty class (severity is NOTICE, deliberately, to avoid redding every
+unrelated PR against an already-drifted backlog). `statusgen phantoms` is the
+dedicated, narrow door for a CI row or a desk sweep that wants to go red on
+this one class without arming that against the whole board:
+
+```bash
+statusgen phantoms --root . --class sibling-merge-unreconciled
+```
+
+Exit `0` clean, `1` at least one checked-failed row (a change naming a `todo`
+or `in-progress` brief already merged in a sibling and nobody has recorded
+what it covered), `2` any could-not-check and no checked-failed (an absent,
+shallow, or unreadable sibling checkout, or an unresolvable `deliverable_repo:`
+alias). A finding is a **prompt to read the merged change Task by Task, never
+proof of delivery** — it never claims "implemented" or "delivered" and it
+never writes a lifecycle cell itself; two of the six real-world merges this
+class was built from turned out to be partial deliveries.
+
+A brief names its sibling via `homed-in: <owner>/<repo>`, `deliverable_repo:
+<alias>` (both resolved through `docs/streams/graph-repos.yaml`), or a
+`../<basename>/` path prefix matching a registered sibling's checkout
+basename — a brief declaring none of the three is simply out of scope for this
+class, not a could-not-check. The sibling checkout defaults to the
+sibling-checkout convention (a directory named after the repo, next to
+`--root`); `--sibling-root <owner>/<repo>=<path>` (repeatable) overrides it,
+and the same comma-separated `<owner>/<repo>=<path>` list is read from the
+`DESK_ROOTS` environment variable the desk tools already use. A structured
+`delivery:` claim in the brief's own frontmatter (`{in: "<alias>#<N>",
+covers: full|partial}`) acknowledges a specific merged PR: `covers: partial`
+releases the hold (the rest is real work), `covers: full` with the cell still
+`todo`/`in-progress` keeps the hold with a quieter "claimed delivered, cell
+not landed" NOTICE instead. A checked-failed `todo` row is additionally held
+out of Next-up (`MergedElsewhere`, the same shape `homed-in`'s
+`HomedElsewhere` already uses) and listed in STATUS.md's "Merged in a sibling
+repo — check before dispatch" section; an `in-progress` row is surfaced but
+never excluded — hiding what someone already holds is not the same as not
+handing it out.
+
 ## Multi-root (a board that spans repos)
 
 `--root` is **repeatable**. Give it more than once and statusgen emits **one
