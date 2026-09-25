@@ -880,7 +880,10 @@ func authorizedByVerifiedHuman(raw []byte) bool {
 	if !ok {
 		return false
 	}
-	for _, m := range humanStampRe.FindAllStringSubmatch(s, -1) {
+	// An on-behalf-of relay is attribution, never the human's own authorization. The
+	// online lane strips its marker, so it would pass there uncorroborated
+	// (withoutOnBehalfOfRelays).
+	for _, m := range humanStampRe.FindAllStringSubmatch(withoutOnBehalfOfRelays(s), -1) {
 		if _, ok := HumanLogin(m[1]); ok {
 			return true
 		}
@@ -916,7 +919,8 @@ func parkAuthorizedByVerifiedHuman(raw []byte) bool {
 	if !ok {
 		return false
 	}
-	for _, m := range humanStampRe.FindAllStringSubmatch(s, -1) {
+	// A relay never authorizes a park (withoutOnBehalfOfRelays).
+	for _, m := range humanStampRe.FindAllStringSubmatch(withoutOnBehalfOfRelays(s), -1) {
 		if _, ok := HumanLogin(m[1]); ok {
 			return true
 		}

@@ -123,13 +123,13 @@ func cmdDesk(cell string, args []string) {
 		cfg = resolveCfg(c.Env, cfgIn)
 	}
 
-	// The minimum-Claude-Code-version half of the oracle's policy_claude_preflight (the
-	// local/managed settings.json availableModels/modelOverrides conflict scan that same
-	// function also runs is NOT ported — see policy.go's header comment and the PR body).
-	if policyRes != nil && harness == "claude" {
-		if err := checkClaudeMinVersion(); err != nil {
-			die("%s", err)
-		}
+	// The oracle's policy_claude_preflight against the cell's checkout, BEFORE any worktree is
+	// cut (dry run included): the Claude Code version floor, then the user/project/managed
+	// settings scan that refuses an availableModels widening the policy or a local
+	// modelOverrides. deskLaunch re-runs it against the role worktree once that exists.
+	if err := claudePolicyPreflight(policyRes, cfg, c.Repo); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		die("model policy settings preflight failed")
 	}
 
 	if policyRes != nil {

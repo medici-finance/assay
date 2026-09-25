@@ -65,6 +65,12 @@ func (r ForgeRepo) Slug() string { return r.Owner + "/" + r.Name }
 type Account struct {
 	Login string
 	ID    int64
+	// Type is the forge's own actor kind where the read reports one ("User", "Bot",
+	// "Organization", "Mannequin" on GitHub's GraphQL comment read), and EMPTY where it does
+	// not. Empty is could-not-check, never "User". Consumer: cmd/deskautolane's enactment
+	// gate, which refuses a sign-off artifact whose author is not a User (freeze rule: fields,
+	// not methods — this lands with its call site).
+	Type string `json:",omitempty"`
 }
 
 // PullRequest is the subset of a change (GitHub pull request ↔ GitLab merge request) the
@@ -791,7 +797,8 @@ type ChangeList struct {
 // IssueSummary is one open issue in the bulk issue-board read: the fields the issue lane
 // classifies on. Author.Login is the RENDERED login (a bot carries its "<slug>[bot]" suffix)
 // and Author.ID the permanent numeric id the trust gate pins on. CreatedAt is the escalation
-// clock's baseline (the question was posed then). Consumer: cmd/issueboard's fetchOpenIssues.
+// clock's baseline (the question was posed then). Consumers: cmd/issueboard's fetchOpenIssues,
+// and cmd/deskmonitor's inbound poll (number + UpdatedAt, the keyset its per-repo baseline holds).
 // The read returns ISSUES only, never changes (PRs/MRs): a forge that serves both from one
 // number sequence (GitHub) filters the changes out, so the caller never has to.
 type IssueSummary struct {
@@ -800,6 +807,11 @@ type IssueSummary struct {
 	Author    Account
 	Labels    []string
 	CreatedAt string // RFC3339
+	// UpdatedAt is the issue's last-activity time (RFC3339, the forge's own `updated_at`): it
+	// moves on a new comment, which is how cmd/deskmonitor's inbound poll tells a resumed thread
+	// from a quiet one. omitempty keeps a summary whose forge reported none byte-identical in the
+	// forge golden corpus.
+	UpdatedAt string `json:",omitempty"`
 	// URL is the issue's human-facing page, EMPTY where the forge did not report one.
 	// Consumer: cmd/deskboard's cmdQueue, which prints the verify-gate issue's location in
 	// its JSON row. omitempty keeps a change that carries no URL byte-identical in the forge
@@ -822,6 +834,10 @@ type TrustPayload struct {
 	Events     []ContentEvent
 	Complete   bool
 }
+
+// forgeFileCommitsMax is the one-page ceiling of ListFileCommits (and the page size of
+// ListCommitChanges): both forges serve at most 100 entries per page.
+const forgeFileCommitsMax = 100
 
 // RepoCommit is one commit on a repository's default branch or at a ref: its sha, the
 // committed date, and the forge accounts the commit is ATTRIBUTED to. AuthorLogin/
@@ -1435,6 +1451,21 @@ type Forge interface {
 	// The account-login fields are a per-field could-not-check where the forge resolves no
 	// account (see RepoCommit). Consumer: cmd/deskboard's fetchHeadCommit (freeze rule).
 	GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error)
+	// ListFileCommits returns up to limit commits reachable from ref that touched file, newest
+	// first (GitHub `/repos/{o}/{r}/commits?sha=&path=` ↔ GitLab `/projects/:id/repository/
+	// commits?ref_name=&path=`): ONE page, limit in [1, 100]. A result of exactly limit
+	// commits may be truncated, and a caller that needs the file's whole history treats it
+	// so. Only the SHA is load-bearing for the consumer; a commit's own date is never a merge
+	// time. Consumer: cmd/deskautolane's enactment gate, which walks the rulings register's
+	// history to find the latest change to a ruling's text (freeze rule).
+	ListFileCommits(repo ForgeRepo, ref, file string, limit int) ([]RepoCommit, error)
+	// ListCommitChanges returns the numbers of the changes (PRs ↔ MRs) the forge associates with
+	// commit sha (GitHub `/repos/{o}/{r}/commits/{sha}/pulls` ↔ GitLab `/projects/:id/
+	// repository/commits/:sha/merge_requests`), in any state. An empty list is the ANSWER "no
+	// change is behind this commit". The caller reads each change with GetPullRequest for its
+	// merged state, merge time and base. Consumer: cmd/deskautolane's enactment gate, whose
+	// time check keys on the merging change's merge time, never a commit date (freeze rule).
+	ListCommitChanges(repo ForgeRepo, sha string) ([]int, error)
 	// CompareRefs compares two refs and returns the files that differ plus the divergence
 	// counts and the forge's own status word (see RefComparison). A forge that does not report
 	// the divergence status/counts in the shape GitHub's compare API does returns

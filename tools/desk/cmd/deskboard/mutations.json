@@ -78,6 +78,18 @@
       "file": "cmd/deskboard/nextup.go",
       "old": "\t\tif perr != nil {\n\t\t\treturn \"\", \"\", perr // fail-closed: a present-but-bad pin is never skipped\n\t\t}",
       "new": "\t\tif perr != nil {\n\t\t\tfound = false\n\t\t}"
+    },
+    {
+      "name": "body-edit class (board): assume an edit after the CR instead of the edit time the sweep read (an unedited body lifts SUSPECT-APPROVAL — reddens TestBodyEdit_BoardUneditedBodyStaysSuspect)",
+      "file": "cmd/deskboard/board.go",
+      "old": "\t\t\tBodyEditedAt: bodyEditedAt,",
+      "new": "\t\t\tBodyEditedAt: \"9999-01-01T00:00:00Z\","
+    },
+    {
+      "name": "body-edit class (board): wire a synthetic edit time into the sweep instead of the PR's lastEditedAt (reddens TestBodyEdit_BoardActionsEndToEnd/documented,_but_the_forge_records_no_edit_after_the_CR)",
+      "file": "cmd/deskboard/board.go",
+      "old": "applyBodyEditReverification(rs, reviews, p.HeadRefOid, p.Body, p.LastEditedAt)",
+      "new": "applyBodyEditReverification(rs, reviews, p.HeadRefOid, p.Body, \"9999-01-01T00:00:00Z\")"
     }
   ]
 }

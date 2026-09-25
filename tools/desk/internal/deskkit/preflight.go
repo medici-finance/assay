@@ -709,19 +709,24 @@ func gitlabColdCustodyProbe(role string) (string, error) {
 		return "", fmt.Errorf("gitlab token file not found: no %s on the App-credential search path (searched: %s)",
 			name, strings.Join(searched, ", "))
 	}
-	fi, serr := os.Stat(path)
+	target, fi, serr := LstatCustody(path, CustodySameDirLink)
 	if serr != nil {
+		if _, isLink := serr.(*CustodyLinkError); isLink {
+			return "", serr
+		}
 		return "", fmt.Errorf("could not stat gitlab token file at %s: %v", path, serr)
 	}
 	if !fi.Mode().IsRegular() {
-		return "", fmt.Errorf("gitlab custody at %s is not a regular file (mode %s); custody requires a 0600 regular file", path, fi.Mode())
+		return "", fmt.Errorf("gitlab custody at %s is not a regular file (mode %s); custody requires a 0600 regular file", target, fi.Mode())
 	}
-	if err := VerifyCustodyOwnerOnly(path, fi); err != nil {
+	// The owner-only check and the read both take the target LstatCustody judged, so a
+	// followed link's resolved file is what is checked and read on every platform.
+	if err := VerifyCustodyOwnerOnly(target, fi); err != nil {
 		return "", err
 	}
-	raw, rerr := os.ReadFile(path)
+	raw, rerr := os.ReadFile(target)
 	if rerr != nil {
-		return "", fmt.Errorf("could not read gitlab token file at %s: %v", path, rerr)
+		return "", fmt.Errorf("could not read gitlab token file at %s: %v", target, rerr)
 	}
 	if strings.TrimSpace(string(raw)) == "" {
 		return "", fmt.Errorf("the gitlab token file at %s is empty", path)

@@ -11,7 +11,9 @@ import "os"
 // the file's real owner SID and DACL through the same windowsFileACLModel adapter
 // the roster owner check uses (rosterowner_windows.go) and hands them to
 // evaluateCustodyACL, which accepts an owner-only ACL and refuses any foreign
-// write-capable principal or any permission it cannot establish.
+// read-capable or write-capable principal or any permission it cannot establish —
+// on Windows, a credential file must be readable and writable only by its owner,
+// matching the unix 0600 rule.
 //
 // fi is unused on Windows: ownership here is an ACL question read from path, not a
 // mode-bit question. The signature matches the unix variant so the callers are

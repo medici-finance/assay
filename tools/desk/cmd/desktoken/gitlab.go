@@ -546,8 +546,15 @@ func cmdGitLabRotate(role string, ac *auditCtx, rotate bool) error {
 			name, strings.Join(searched, ", "), provisioningDoc, deskkit.EnvConfigHome), nil)
 	}
 
-	fi, serr := os.Stat(path)
+	// Lstat, not Stat: the documented same-directory link (CUSTODY LAYOUT above) is followed;
+	// any other link at the custody path is refused rather than checked and read through.
+	// target is what the checks below judge and what is read: path itself, or the link's
+	// resolved file (on Windows the owner-only check reads the ACL from the path it is given).
+	target, fi, serr := deskkit.LstatCustody(path, deskkit.CustodySameDirLink)
 	if serr != nil {
+		if _, isLink := serr.(*deskkit.CustodyLinkError); isLink {
+			return deskkit.Unverifiable(serr.Error(), nil)
+		}
 		return deskkit.Unverifiable("cannot stat gitlab token file at "+path, serr)
 	}
 	// Non-file custody (a directory, a symlink target that is not a regular file, a socket)
@@ -555,13 +562,13 @@ func cmdGitLabRotate(role string, ac *auditCtx, rotate bool) error {
 	if !fi.Mode().IsRegular() {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"gitlab custody at %s is not a regular file (mode %s); token custody requires a 0600 regular "+
-				"file — re-provision the role's PAT there via a group owner", path, fi.Mode()), nil)
+				"file — re-provision the role's PAT there via a group owner", target, fi.Mode()), nil)
 	}
 	// Owner-only custody, behind the OS boundary (#667): a POSIX 0600 test on unix, the
 	// owner-only NTFS ACL evaluation on Windows, where os.FileMode's permission bits are
 	// synthetic (a normal file reads 0666) and a 0600 test would reject a correctly
 	// ACL-locked PAT — the same check the cold-mint probe and ForgeFor custody read use.
-	if err := deskkit.VerifyCustodyOwnerOnly(path, fi); err != nil {
+	if err := deskkit.VerifyCustodyOwnerOnly(target, fi); err != nil {
 		return deskkit.Unverifiable(err.Error(), nil)
 	}
 
@@ -575,7 +582,7 @@ func cmdGitLabRotate(role string, ac *auditCtx, rotate bool) error {
 		// The custody VALUE is read only to assert the credential is actually there — an
 		// empty file would otherwise hand back a path for a role that has no token. It is
 		// discarded immediately: like the rotating path, only the PATH is printed.
-		if _, cerr := readGitLabCustody(path); cerr != nil {
+		if _, cerr := readGitLabCustody(target); cerr != nil {
 			return cerr
 		}
 		fmt.Println(path)
@@ -594,7 +601,9 @@ func cmdGitLabRotate(role string, ac *auditCtx, rotate bool) error {
 	}
 	defer lock.release()
 
-	current, cerr := readGitLabCustody(path)
+	// Read the target the custody checks above judged; the write-back below re-resolves the
+	// link itself (gitlabCustodyWriteTarget) so the layout is preserved.
+	current, cerr := readGitLabCustody(target)
 	if cerr != nil {
 		return cerr
 	}

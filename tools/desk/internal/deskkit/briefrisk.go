@@ -145,6 +145,74 @@ func BriefRiskFromBody(repo, body string) BriefRisk {
 	return BriefRisk{OwningBrief: owning, Resolved: true, RiskClassed: classed, Reason: reason}
 }
 
+// AuthorsRiskFromBody parses body for an `Authors:` trailer and reports whether the diff's
+// changed files are NOT provably authoring-only for every entry the trailer names (#1339
+// review F1). `BriefRiskFromBody` never inspects `Authors:` — by design, that trailer asserts
+// no delivery, so the readers that treat `Brief:` as "this PR delivers the brief" must not
+// match it. `deskpr create`'s authoringTrailerGate is the writer-side half: it refuses to
+// CREATE an `Authors:` PR whose diff is not authoring-only for every listed id. This is the
+// BINDING half, read at flip time, so the ready-flip's security lane does not rest solely on
+// that client-side gate — a PR opened before the gate existed, or one whose body was edited
+// to add `Authors:` some other way, still gets checked against its actual diff here.
+//
+// This term does NOT consult the named brief's own gate/risk frontmatter the way
+// BriefRiskFromBody does for `Brief:` — what it checks is narrower and more direct: does the
+// diff actually back what `Authors:` claims? An `Authors:` trailer on a diff that is not
+// PROVABLY authoring-only for every listed id — including an empty/unreadable files list and
+// a rename whose pre-image `deskkit.BriefAuthoringOnly` judges directly from `files` — is
+// RISK-CLASSED and UNVERIFIABLE: fail closed, because an `Authors:` claim the diff does not
+// back is exactly the bypass this closes, and it is never treated as clean.
+//
+// TRAILER ABSENT makes no risk claim (the caller falls back to the other terms, same as
+// BriefRiskFromBody). A malformed trailer set that implicates `Authors:` (a mix, a duplicate,
+// or a value SplitAuthorsTrailer rejects) is the same "declared but cannot be identified"
+// fail-closed shape BriefRiskFromBody gives a malformed `Brief:`.
+func AuthorsRiskFromBody(body string, files []ChangedFile) BriefRisk {
+	trs, err := ParseTrailers([]byte(body))
+	if err != nil {
+		var mixed *ErrTrailerMixed
+		if errors.As(err, &mixed) && mixed.Has(TrailerAuthors) {
+			return unverifiableBrief("", "the PR body's trailer set is malformed ("+err.Error()+
+				") and an Authors: trailer is implicated — its authoring claim cannot be verified")
+		}
+		var dup *ErrTrailerDuplicate
+		if errors.As(err, &dup) && dup.Kind == TrailerAuthors {
+			return unverifiableBrief("", "the PR body carries a duplicate Authors: trailer — "+
+				"its authoring claim cannot be verified")
+		}
+		return BriefRisk{}
+	}
+	var val string
+	for _, t := range trs {
+		if t.Kind == TrailerAuthors {
+			val = t.Value
+			break
+		}
+	}
+	if val == "" {
+		// TRAILER ABSENT — no risk claim from this term.
+		return BriefRisk{}
+	}
+	ids, aerr := SplitAuthorsTrailer(val)
+	if aerr != nil {
+		return unverifiableBrief("", "the Authors: trailer "+strconv.Quote(val)+" does not parse ("+
+			aerr.Error()+") — its authoring claim cannot be verified")
+	}
+	owning := strings.Join(ids, ", ")
+	for _, id := range ids {
+		if !BriefAuthoringOnly(id, files) {
+			return BriefRisk{
+				RiskClassed:  true,
+				Unverifiable: true,
+				Reason: "the PR body carries `Authors: " + owning + "` but the diff is not provably " +
+					"authoring-only for " + id + " — unverifiable, fail closed (an Authors: claim the diff " +
+					"does not back is not clean)",
+			}
+		}
+	}
+	return BriefRisk{}
+}
+
 // unverifiableBrief builds the fail-closed result for a DECLARED brief whose gate/risk
 // answer could not be established. It is always risk-classed — you cannot prove an
 // unreadable brief is not gate:human/risk:yes — with a reason that names the failure and
@@ -159,12 +227,17 @@ func unverifiableBrief(owning, why string) BriefRisk {
 }
 
 // briefImplicatedInTrailerError reports whether a ParseTrailers error involves a Brief:
-// trailer (both-kinds present, or a duplicate Brief:). A duplicate Issue: with no Brief:
-// declares no brief and so is NOT implicated.
+// trailer (both-kinds present, a mix that includes Brief:, or a duplicate Brief:). A
+// duplicate Issue: or Authors: with no Brief: declares no delivered brief and so is NOT
+// implicated.
 func briefImplicatedInTrailerError(err error) bool {
 	var both *ErrTrailerBoth
 	if errors.As(err, &both) {
 		return true
+	}
+	var mixed *ErrTrailerMixed
+	if errors.As(err, &mixed) {
+		return mixed.Has(TrailerBrief)
 	}
 	var dup *ErrTrailerDuplicate
 	if errors.As(err, &dup) {

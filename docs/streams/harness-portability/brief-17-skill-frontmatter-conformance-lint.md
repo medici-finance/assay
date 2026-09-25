@@ -21,7 +21,7 @@ issues: []
 schema: brief-v2
 authored: 2026-09-23 by intake-desk authoring dispatch
 sources: ["freshness-checked 2026-09-23 @ e284ba9b8 — `tools/skillslint` at that SHA enforces a real YAML load, name==dir and a non-empty description (lint.go LintSkills), plus an advisory word-count NOTICE (hidden.go budgetThresholdSkillMd = 3000); no description length, name length/pattern, byte, line or bundle-budget bound exists. `skillslint --root ../..` exits 0 on the bundle at that SHA despite the two over-limit descriptions", "measured 2026-09-23 @ e284ba9b8 over plugins/assay/skills/*/SKILL.md (14 skills, YAML-loaded, Unicode code points): description chars install 1103, pr-review-desk 1187, all others <= 1002; bundle description total 10202; 12 of 14 bodies exceed 8000 bytes (11 exceed 8 KiB); 5 exceed 500 lines; 7 exceed 20000 bytes (~5000 tokens at 4 bytes/token)", "agentskills specification https://agentskills.io/specification read 2026-09-23: `name` 1-64 chars, lowercase a-z 0-9 and hyphens, no leading/trailing/consecutive hyphen, must match the parent directory; `description` 1-1024 chars; body `< 5000 tokens recommended`; `Keep your main SKILL.md under 500 lines`", "Codex skills docs https://learn.chatgpt.com/docs/build-skills read 2026-09-23: the initial skills list uses at most 2% of the model's context window, or 8,000 characters when the window is unknown; Codex shortens descriptions first, then may omit skills with a warning; the page says a selected skill's full SKILL.md is still read", "openai/codex @ 30fc6864cc1318121eca1843c217fe00ce1212f1 codex-rs/ext/skills/src/render.rs read 2026-09-23: MAX_CATALOG_SKILL_DESCRIPTION_CHARS = 1_024 (truncate_catalog_skill_description keeps 1021 chars + \"...\"), DEFAULT_SKILL_METADATA_CHAR_BUDGET = 8_000, SKILL_METADATA_CONTEXT_WINDOW_PERCENT = 2, APPROX_BYTES_PER_TOKEN = 4, MAX_SKILL_PROMPT_BYTES = 8_000 (truncate_main_prompt_contents)", "openai/codex @ 30fc6864 codex-rs/ext/skills/src/host_prompt.rs read 2026-09-23: load_skill_prompts truncates a body to MAX_SKILL_PROMPT_BYTES only when `is_agent_plugin_skill(skill)` — whether an `assay@assay` plugin install is classed that way is UNVERIFIED (Verify row 9)", "https://github.com/openai/codex/issues/13941 (closed): Codex CLI 0.111.0 refused a SKILL.md whose description exceeded 1024 characters — `invalid description: exceeds maximum length of 1024 characters`", "docs/research/codex-harness-capabilities.md line 77 @ e284ba9b8 already records `name` 1-64 / `description` 1-1024 as the Codex contract — documented, not enforced", ".github/workflows/ci.yml @ e284ba9b8: the `skillslint` job runs `cd tools/skillslint && go run . --root ../..`, so a new exit-1 rule inside skillslint gates PRs with no workflow edit"]
-consumers: ["tools/skillslint (conformance.go, conformance_test.go, main.go, README.md, testdata/conformance/**): follow-up harness-portability/17 (this brief; flips to fixed-here when the implementation lands the rule)", "plugins/assay/skills/install/SKILL.md description: follow-up harness-portability/17 (this brief; shortened to <= 1024 chars, trigger phrases first)", "plugins/assay/skills/pr-review-desk/SKILL.md description: follow-up harness-portability/17 (this brief; shortened to <= 1024 chars, trigger phrases first)", "every harness that loads the bundle's skill descriptions (Claude Code, Codex, Cursor): out-of-scope (they read the same YAML field unchanged; a shorter description is a strict subset of what they accept, and no generated packaging embeds per-skill descriptions)", ".github/workflows/ci.yml: out-of-scope (the existing `skillslint` job already runs the tool; the new rule rides it with no workflow edit)"]
+consumers: ["tools/skillslint (conformance.go, conformance_test.go, main.go, README.md, testdata/conformance/**): fixed-here (harness-portability/17 lands the conformance rule, its tests, fixtures and README section in this branch's diff)", "plugins/assay/skills/install/SKILL.md description: fixed-here (shortened to <= 1024 chars, trigger phrases first)", "plugins/assay/skills/pr-review-desk/SKILL.md description: fixed-here (shortened to <= 1024 chars, trigger phrases first)", "every harness that loads the bundle's skill descriptions (Claude Code, Codex, Cursor): out-of-scope (they read the same YAML field unchanged; a shorter description is a strict subset of what they accept, and no generated packaging embeds per-skill descriptions)", ".github/workflows/ci.yml: out-of-scope (the existing `skillslint` job already runs the tool; the new rule rides it with no workflow edit)"]
 exec-tier: strong
 exec-tier-why: >-
   (a): rewriting `pr-review-desk`'s and `install`'s descriptions is trigger-text judgement —
@@ -127,6 +127,31 @@ Pre-mortem → detection map:
      (command, exit code, output line(s) or hash, date, runner).
      "verified" requires this section filled by someone who did NOT implement.
      Row 9 needs a live Codex install; record BLOCKED with the reason if none exists. -->
+
+### Implementation-time run (implementer, sonnet-5-worker, 2026-09-24, darwin, non-hermetic)
+
+Recorded at `implemented`; per-brief-rule this is NOT the verified run — a non-implementer
+must re-run every row to flip verified.
+
+| # | Command | Exit | Output |
+|---|---------|------|--------|
+| 1 | `.../skillslint-hp17 --skills-dir testdata/conformance/desc-1025` | 1 | `skillslint: skill/SKILL.md: description is 1025 characters, over the 1024-character hard limit (...)` |
+| 2 | `.../skillslint-hp17 --skills-dir testdata/conformance/desc-1024-multibyte` | 0 | `SKILLSLINT: PASS — 1 skill file(s) under --skills-dir, structural + conformance checks clean` |
+| 3 | `.../skillslint-hp17 --skills-dir testdata/conformance/name-mismatch` | 1 | `skillslint: the-desk/SKILL.md: frontmatter name "not-the-desk" != directory "the-desk" — ...` |
+| 4 | `.../skillslint-hp17 --skills-dir testdata/conformance/name-pattern` | 1 | `skillslint: Bad--Name/SKILL.md: name "Bad--Name" does not match the agentskills name pattern ...` |
+| 5 | `.../skillslint-hp17 --skills-dir testdata/conformance/budget-over` | 0 | `SKILLSLINT: PASS — 9 skill file(s) ...`; `skillslint: NOTICE: bundle: 9 skill(s), summed description characters 8100 exceeds the 8000-character budget ...` |
+| 6 | `cd tools/skillslint && go run . --root ../..` (built binary) | 0 | `SKILLSLINT: PASS — 14 skill file(s) under ../.., ...`; no `install`/`pr-review-desk` description Issue in the FAIL lines; bundle NOTICE fires (9914 > 8000, expected/advisory) |
+| 7 | mutation: `git show e284ba9b8:plugins/assay/skills/install/SKILL.md` copied to a scratch `--skills-dir` tree | 1 | `skillslint: install/SKILL.md: description is 1103 characters, over the 1024-character hard limit (...)` — matches the brief's own pre-fix measurement exactly |
+| 8 | `cd tools/skillslint && go test ./... -count=1` | 0 | `ok  	github.com/medici-finance/assay/tools/skillslint	...` |
+| 9 | Live Codex probe | — | **BLOCKED (needs live Codex)** — no Codex CLI / `assay@assay` plugin install available in this environment |
+| 10 | `curl ... render.rs@30fc6864... \| grep -c ...` | 0 | `3` — all three cited Codex constants resolve at the pinned SHA |
+| 11 | `gh api .../check-runs?check_name=skillslint` | — | Not yet applicable: no merge has happened; run post-merge |
+| 12 | `statusgen --consumers --brief harness-portability/17 --root . --base $(git merge-base origin/main HEAD)` (built from this branch's `statusgen/`) | 0 | `summary: 3 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing` — the three brief-authored entries CORROBORATED (fixed-here), 0 DISPROVED |
+| 13 | `statusgen --lint --root .` (built from this branch's `statusgen/`) | 0 | `LINT: PASS`; 0 `PROBLEM` lines; none naming `harness-portability/17` |
+
+Pre-mortem/detection-map failure modes (byte-vs-rune, rule-never-fires-on-real-bundle,
+budget-wired-as-failure, empty-skills-dir) are each caught by the rows above (2, 7, 5)
+and by `TestLintSkillsDir_EmptyDirFailsClosed` (unit-level, exit-2 fail-closed path).
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table and

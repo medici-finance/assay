@@ -353,11 +353,20 @@ func dispatch(o dispatchOpts) error {
 	// using it, while the branch lane keeps the PR-resume base main introduced. The only
 	// difference between the arms is --detach vs --branch, which is the verifier's whole point:
 	// it reads merged main and touches no feature branch.
+	//
+	// --role names the DISPATCHED agent's role (plan.identityRole, resolved pre-claim), so
+	// deskwt stamps that role's commit identity AND replaces the transport the worktree would
+	// inherit from the shared checkout — an SSH origin, an operator's pushurl sentinel — with
+	// that role App's own worktree-scoped https transport and credential helper, refusing when
+	// git does not then resolve exactly that (#861). Without it the worktree fetched with the
+	// operator's SSH key and pushed to wherever the shared config pointed.
 	var wt runResult
 	if plan.detached {
-		wt = runCmd(o.root, "deskwt", "add", wtName, "--detach", "--base", worktreeBase(o, branch))
+		wt = runCmd(o.root, "deskwt", "add", wtName, "--detach", "--base", worktreeBase(o, branch),
+			"--role", plan.identityRole)
 	} else {
-		wt = runCmd(o.root, "deskwt", "add", wtName, "--branch", branch, "--base", worktreeBase(o, branch))
+		wt = runCmd(o.root, "deskwt", "add", wtName, "--branch", branch, "--base", worktreeBase(o, branch),
+			"--role", plan.identityRole)
 	}
 	if wt.err != nil {
 		// The durable claim was placed one step ago and this dispatch is now aborting, so

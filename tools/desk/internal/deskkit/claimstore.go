@@ -100,9 +100,11 @@ type ClaimStore interface {
 	// BranchExists reports whether the branch a holder names exists on the remote
 	// (branch-as-claim); verifiable=false is could-not-check.
 	BranchExists(branch string) (exists, verifiable bool)
-	// TransportCause reports "<where>: <error>" for the store's most recent transport
-	// failure, or "" when the last operation did not fail at the transport layer, so a
-	// fail-closed message can say where the store reached and why it failed.
+	// TransportCause reports "<where>: <error>" for the store's most recently recorded
+	// failure, or "" when none has been recorded, so a fail-closed message can say where the
+	// store reached and why it failed. The cause is usually a transport failure, but it may
+	// also be the server's own refusal of a write (a ClaimWriteRejected the server explained,
+	// such as a credential or policy refusal), so a rejected create with no holder can say why.
 	TransportCause() string
 }
 

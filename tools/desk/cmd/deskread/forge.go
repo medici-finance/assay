@@ -17,7 +17,7 @@ import (
 var (
 	// mintTokenFn is the per-repo token-lookup seam, swapped in tests for a stub returning a
 	// fake token. Production binds it to the shared resolver.
-	mintTokenFn = deskkit.RoleTokenForRepo
+	mintTokenFn = deskkit.GitHubRoleToken
 	// forgeAPIBase redirects the resolved GitHub backend's API host at an httptest server in
 	// tests; empty in production means the real host.
 	forgeAPIBase string

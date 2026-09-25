@@ -54,10 +54,17 @@ func TestLivenessCmdReportsFindingsForConfiguredIdentities(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "/shared-agent"):
 			// Reclaimed: different id than pinned (2002).
 			_, _ = w.Write([]byte(`{"id":424242,"login":"shared-agent"}`))
-		case strings.HasSuffix(r.URL.Path, "/assay-reviewer-app"):
-			// Deleted.
+		case strings.HasSuffix(r.URL.Path, "/assay-reviewer-app[bot]"):
+			// Deleted — but ONLY at the account's correct, [bot]-suffixed REST login
+			// (assay#1665: GitHub's REST /users/{login} never resolves a GitHub App under its
+			// bare slug — only under "<slug>[bot]" — so a real deletion 404s here, not at the
+			// bare-slug path below).
 			w.WriteHeader(http.StatusNotFound)
 		default:
+			// assay#1665's defect class: a bot identity must be probed at "<slug>[bot]",
+			// never the bare roster-configured slug. A request for the bare
+			// "/assay-reviewer-app" path (or anything else unexpected) falls through here and
+			// fails the test loudly, same as any other unexpected lookup path.
 			t.Errorf("unexpected liveness lookup path: %s", r.URL.Path)
 			w.WriteHeader(http.StatusInternalServerError)
 		}

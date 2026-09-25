@@ -114,6 +114,42 @@
       "file": "cmd/deskflip/flip.go",
       "old": "\t\t\t\"condition %s: cannot read the check rollups at %s (%s) — a rollup that could not be read is \"+\n\t\t\t\t\"could-not-check, and could-not-check is never green.\",\n\t\t\tcondChecksGreen, short(head), firstLine(err.Error())), err)",
       "new": "\t\t\t\"condition %s: cannot read the check rollups at %s (%s) — a rollup that could not be read is \"+\n\t\t\t\t\"could-not-check, and could-not-check is never green.\",\n\t\t\tcondReviewerApproved, short(head), firstLine(err.Error())), err)"
+    },
+    {
+      "name": "body-edit class: stop gating undeclared CRs once any CR claims the class (an ordinary / check-only / code CR at head clears — reddens TestBodyEdit_OrdinaryCRNotExempt, TestBodyEdit_CodeFindingCRStillStands)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\t\tif err := checkOnlyCRCleared(reviewerLogin, r, reviews, head, runsAtHead); err != nil {\n\t\t\t\treturn err\n\t\t\t}",
+      "new": "\t\t\t_ = checkOnlyCRCleared"
+    },
+    {
+      "name": "body-edit class: clear on a mere declaration (an undocumented re-approve clears — reddens TestBodyEdit_UndocumentedReApprove)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tif dec.Cleared {\n\t\treturn nil\n\t}",
+      "new": "\tif dec.Declared {\n\t\treturn nil\n\t}"
+    },
+    {
+      "name": "body-edit class: re-check against the FIRST body read (a body edited before the mutation clears — reddens TestBodyEdit_BodyEditedAgainBeforeMutation)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "liveBodyRead{Body: body2, EditedAt: bodyEditedAt}",
+      "new": "liveBodyRead{Body: body2[:0] + pr.Body, EditedAt: bodyEditedAt}"
+    },
+    {
+      "name": "body-edit class: let a security-marked APPROVE clear the body CR (with a plain correctness APPROVE beside it the PR flips — reddens TestBodyEdit_SecMarkedApprove_BesidePlainApprove)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\tif r.State != \"APPROVED\" || hasSecurityMarker(r.Body) {\n\t\t\tcontinue\n\t\t}\n\t\tapproves = append(approves, deskkit.BodyEditApprove{",
+      "new": "\t\tif r.State != \"APPROVED\" {\n\t\t\tcontinue\n\t\t}\n\t\tapproves = append(approves, deskkit.BodyEditApprove{"
+    },
+    {
+      "name": "body-edit class: never read the forge's body edit time, assume an edit (an unedited body with a slipped CR digest flips — reddens TestBodyEdit_UneditedBody_SlippedCRDigest, TestBodyEdit_EditTimeUnreadableRefuses)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\teditedAt := \"\"\n\tif live.EditedAt != nil {",
+      "new": "\teditedAt := \"9999-01-01T00:00:00Z\"\n\tif false && live.EditedAt != nil {"
+    },
+    {
+      "name": "body-edit class: read an unreadable body edit time as 'never edited' instead of could-not-check (reddens TestBodyEdit_EditTimeUnreadableRefuses)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "if editedAt, err = live.EditedAt(); err != nil {",
+      "new": "if editedAt, err = live.EditedAt(); err != nil && false {"
     }
   ]
 }

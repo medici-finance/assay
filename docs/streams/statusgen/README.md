@@ -38,6 +38,7 @@ findings-register state machine.
 | 11 | [DORA/insights hybrid — Apache DevLake for commodity metrics, our methodology metrics retained](brief-11-devlake-hybrid-metrics-split.md) | 1 | L | done | 2026-09-11 opus-4.8[1m]-verifier (assay 553dc2ae; rows 1-7 PASS, docs landed #574; 2026-09-01 FAIL superseded) | 2026-09-11 assay-reviewer-app[bot] (approved PR #860 @ 4e50f17e2722421e97f6880606baf6f8fadccc5e) |
 | 12 | [`homed-in: <owner/repo>` brief field — exclude a brief whose deliverable lives in another repo from THIS board's Next-up, keep its tracking row, carry the target repo](brief-12-homed-in-field.md) | 1 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #404 @ 894d5e5f73ce417aa49c55134d10db3dc3675cfb) |
 | 13 | [Cadenced roadmap artifacts — `--cadence weekly\|monthly` window computation reusing the roadmap renderer, a `theme:` render rule, config-driven priority order and brand](brief-13-cadenced-roadmap-artifacts.md) | 1 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #409 @ 3b022c17ea158700be8cfab679d1719c75afb7a4) |
+| 14 | [`--lint`: flag a Verify row whose `go test -run` selector can pass on "no tests to run" (vacuous-selector rule)](brief-14-vacuous-gotest-run-lint.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -46,12 +47,14 @@ self-improvement classifier extends the `--issues` infrastructure, so 02 leads 0
 statusgen/07 (brief-flow metrics) → statusgen/08 (composite AssayScore): the score rolls up
 the brief-flow metrics, so 07 leads 08. statusgen/13 (cadenced roadmap artifacts) reuses the
 landed `--roadmap` renderer over a computed window — independent, no new critical-path edge.
+statusgen/14 (the vacuous `go test -run` Verify-row rule, issue #1581 part 5) adds one
+advisory rule to the existing Verify-row lint — independent, no new critical-path edge.
 Every other brief is independent and self-contained.
 
 ## Dependency waves
 - **Wave 1** — statusgen/01, statusgen/02, statusgen/04, statusgen/05, statusgen/06,
-  statusgen/07, statusgen/09, statusgen/10, statusgen/11, statusgen/12, statusgen/13 (all
-  independent; parallelizable).
+  statusgen/07, statusgen/09, statusgen/10, statusgen/11, statusgen/12, statusgen/13,
+  statusgen/14 (all independent; parallelizable).
 - **Wave 2** — statusgen/03 (depends on statusgen/02), statusgen/08 (depends on statusgen/07).
 
 ## Conventions

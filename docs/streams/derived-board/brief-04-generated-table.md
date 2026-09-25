@@ -243,6 +243,53 @@ RISK-VALUE: N/A — enumeration over statusgen/readmetable.go + parse.go found n
 
 VERIFY: HELD — rows 1,2,3,4,7,8 PASS on shipped code (row 4 checked end-to-end this run); rows 5,6 FAIL on the documented BLOCKED-ON-HUMAN workflow-file half (schedule: trigger + read-only reconcile-job permissions in .github/workflows/assay-statusgen.yml — an App cannot push .github/workflows/**; the brief holds at implemented for exactly this). Board row stays implemented, Verified cell stays —; no flip. Activation wait tracked at #1175 (help wanted); not re-filed.
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 6/8 pass, 2 could-not-check, 0 fail (rows 1-4,7,8 PASS on shipped code; rows 5-6 could-not-check — the human-gated workflow-file half is still unlanded; shape unchanged since 2026-09-06) — 2026-09-23 claude-opus-4-8-verifier (verify-desk dispatch), merged main `39866201`
+
+Runner ≠ implementer. Isolated detached worktree off `origin/main` (HEAD == origin/main ==
+`39866201ce48acdce1f9b14d1cae38eb2b7eff38`). Offline envelope (`KUBECONFIG=/dev/null`), read-only,
+no PR/push/flip. `gate: model`, `risk: {regulatory: no, customer: no, irreversible: no,
+sensitive-data: no}` (risk-clear). statusgen built from source for rows 1-8; the execution witness
+(`statusgen verifyrun`) ran from the pinned shim v1.0.26.
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | cd statusgen && go test . -run ReadmeTable -count=1 -v | ok, named tests run | PASS — exit 0; ok 0.276s; 6 tests RUN + PASS, 0 SKIP (Render, RewriteAndIdempotent, MarkersMissing, HandEditProblem, DriftNotice, EscapesPipeInTitle) | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | cd statusgen && go run . regen --readmes --root .. --offline && git diff -U0 -- docs/streams/derived-board/README.md \| grep -v -E '^(@@\|\+\+\+\|---)' \| grep -v -E '^\|' \| wc -l | non-table changed lines = 0 | PASS — non-table diff-line count = 0 (README canonical on main). Brief's literal `--root .` roots at statusgen/ (no docs there = trivial no-op); corrected `--root ..` form run against the real repo | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | cd statusgen && go run . regen --readmes --root .. --offline && go run . regen --readmes --root .. --offline && git status --porcelain docs/streams \| wc -l | 0 | PASS — exit 0; porcelain 0 (idempotent). Brief's literal `--root .` roots at statusgen/; corrected `--root ..` form run from repo root against the real docs/streams | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | sed -i 's/^\| 01 \| \[brief-v2 spec/\| 01 \| [EDITED/' docs/streams/derived-board/README.md && cd statusgen && go run . --lint --root ..; echo rc=$?; git checkout -- ../docs/streams/derived-board/README.md | rc=1 naming hand-edit + derived-board | PASS — rc=1: "PROBLEM: derived-board README: hand edit to a generated table — row 01 authoring cells (title/wave/effort) differ from the brief frontmatter; regenerate with statusgen regen --readmes"; file restored, tree clean. Brief's literal BSD `sed -i ''` fails under this host's GNU sed 4.10 (dialect, not a guard block); corrected GNU form run, exercised the full lint path | 2026-09-23 | claude-opus-4-8-verifier |
+| 5 | python3 -c "import yaml;w=yaml.safe_load(open('.github/workflows/assay-statusgen.yml'));assert 'schedule' in w[True] or 'schedule' in w['on'];print('ok')" | schedule present | COULD-NOT-CHECK — the `.github/workflows/assay-statusgen.yml` `schedule:` trigger is the human-gated half not yet landed (an App cannot push `.github/workflows/**`); the parsed trigger block currently has only pull_request + push, so the assert cannot hold yet. Tracked at #1175 | 2026-09-23 | claude-opus-4-8-verifier |
+| 6 | grep -c -E -e 'pull-requests: read' -e 'issues: read' .github/workflows/assay-statusgen.yml | 2 | COULD-NOT-CHECK — the `pull-requests: read` / `issues: read` reconcile-job permissions are the same human-gated half not yet landed; the workflow's permissions blocks currently declare only contents: read/write (count 0). Tracked at #1175 | 2026-09-23 | claude-opus-4-8-verifier |
+| 7 | grep -c 'statusgen:briefs:begin' docs/streams/derived-board/README.md | 1 | PASS — exit 0; 1 (board: generated; the begin marker present in the README) | 2026-09-23 | claude-opus-4-8-verifier |
+| 8 | cd statusgen && go run . init --dry-run /tmp/adopter-x \| grep -c 'reconcile' | ≥ 1 | PASS — exit 0; 1 (scaffold parity landed in init.go) | 2026-09-23 | claude-opus-4-8-verifier |
+
+**Risk-bearing value — enumerate → rank → derive.** Literal constants this item's diff introduces
+or changes (merged main):
+- `briefsMarkerBegin = "<!-- statusgen:briefs:begin -->"` @ statusgen/readmetable.go:45
+- `briefsMarkerEnd = "<!-- statusgen:briefs:end -->"` @ statusgen/readmetable.go:46
+- `Board` opt-in value `"generated"` @ statusgen/parse.go:27
+- `[skip-status-regen]` loop-guard marker — regen commit message @ .github/workflows/assay-statusgen.yml:161, matched by the skip guards @ :92 and :194; scaffold parity @ statusgen/init.go:560 and :772
+
+Ranked by irreversibility: only `[skip-status-regen]` has systemic blast radius (a mismatch loops
+CI on every push to main); the markers and the `board:"generated"` opt-in are inert strings whose
+failure mode is a PROBLEM/NOTICE, not a loop or a mis-write.
+
+`RISK-VALUE: DERIVED — [skip-status-regen] loop-guard marker @ .github/workflows/assay-statusgen.yml:161 (writer) matched verbatim by the skip conditions @ :92 and :194, scaffold parity @ statusgen/init.go:560,772 — confirmed present, identical, and unchanged on merged main. It is right because the regen job commits with this exact marker and its own skip `if:` excludes any head commit carrying it, so the job cannot re-trigger on its own commit; a mismatched string would loop CI. Reversible string literal.`
+
+`RISK-VALUE: N/A — enumeration over statusgen/readmetable.go + parse.go found no other bound / threshold / tolerance / timeout / limit / authority binding; briefsMarkerBegin @ readmetable.go:45, briefsMarkerEnd @ :46 and board:"generated" @ parse.go:27 are inert marker/opt-in strings, fail-safe by construction (a board: generated README missing its markers is a hard error at readmetable.go:396 / lint PROBLEM at :430, never a silent no-op; absence of board: generated leaves the pre-existing hand-table path). The pull-requests: read / issues: read scopes named in the Deliverables are NOT on merged main (rows 5-6, unlanded half), so there is no value there to derive.`
+
+**VERIFY: BLOCKED — 6/8 pass, 2 could-not-check, 0 fail.** Rows 1,2,3,4,7,8 PASS on this brief's
+shipped code (row 4 checked end-to-end this run). Rows 5,6 are could-not-check because the
+`.github/workflows/assay-statusgen.yml` `schedule:` trigger + read-only reconcile-job permissions
+are the documented BLOCKED-ON-HUMAN half (an App cannot push `.github/workflows/**`; the brief holds
+at `implemented` for exactly this reason). A human-activation wait that has not happened, not a
+shipped-code defect — recorded as could-not-check (human-action), never as pass. Status stays
+`implemented`; no flip to `verified`.
+
+Rows 5-6 need the schedule trigger and read permissions added to the statusgen workflow, a human
+workflows-scope push tracked at #1175. Rows 2-4 carry Verify-table command defects, repaired above
+(brief's `--root .` roots at statusgen/; BSD `sed -i ''` under GNU sed).
+
+
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
 Reviewer question: can the scheduled job and the push-to-main job race on the same

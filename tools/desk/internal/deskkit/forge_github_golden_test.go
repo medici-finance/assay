@@ -103,6 +103,10 @@ type goldenServer struct {
 	workflowRuns       map[string]any
 	pendingDeployments []map[string]any
 	run                map[string]any
+	// fileCommits is the path-filtered commits LIST (ListFileCommits) and commitPulls the
+	// commit's associated-PRs LIST (ListCommitChanges).
+	fileCommits []map[string]any
+	commitPulls []map[string]any
 }
 
 var (
@@ -115,6 +119,8 @@ var (
 	gIssueRoot = regexp.MustCompile(`^/repos/[^/]+/[^/]+/issues$`)
 	gStatus    = regexp.MustCompile(`/commits/[^/]+/status$`)
 	gChecks    = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
+	gCommits   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/commits$`)
+	gCommitPRs = regexp.MustCompile(`^/repos/[^/]+/[^/]+/commits/[^/]+/pulls$`)
 	gReqChecks = regexp.MustCompile(`/branches/[^/]+/protection/required_status_checks$`)
 	gRepo      = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
 	gReactions = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
@@ -240,6 +246,10 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.status)
 	case r.Method == http.MethodGet && gChecks.MatchString(path):
 		enc(s.checks)
+	case r.Method == http.MethodGet && gCommits.MatchString(path):
+		enc(s.fileCommits)
+	case r.Method == http.MethodGet && gCommitPRs.MatchString(path):
+		enc(s.commitPulls)
 	case r.Method == http.MethodGet && gReqChecks.MatchString(path):
 		// A branch with no protection (or no required checks) answers 404 — the "nothing
 		// required" case, distinct from a served object. A case that wants the 404 sets it via
@@ -790,6 +800,30 @@ func TestForgeGithubGolden(t *testing.T) {
 				s.repoLabels = []map[string]any{{"name": "bug"}, {"name": "raised-by:worker"}}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.ListLabels(forgeTestRepo) },
+		},
+		{
+			// The auto-approve lane's register history: ONE path-filtered page at the named ref.
+			name: "list_file_commits",
+			setup: func(s *goldenServer) {
+				s.fileCommits = []map[string]any{
+					{"sha": "ccc333", "commit": map[string]any{"committer": map[string]any{"date": "2026-09-02T10:00:00Z"}}},
+					{"sha": "bbb222", "commit": map[string]any{"committer": map[string]any{"date": "2026-09-01T10:00:00Z"}}},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.ListFileCommits(forgeTestRepo, "main", "docs/rulings.md", 50)
+			},
+		},
+		{
+			// The PRs behind one commit, as numbers; the caller reads each for its merge time.
+			name: "list_commit_changes",
+			setup: func(s *goldenServer) {
+				s.commitPulls = []map[string]any{
+					{"number": 21, "state": "closed", "merged_at": "2026-09-01T11:00:00Z"},
+					{"number": 34, "state": "open", "merged_at": nil},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.ListCommitChanges(forgeTestRepo, "bbb222") },
 		},
 		{
 			name: "read_file",

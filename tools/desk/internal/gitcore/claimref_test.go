@@ -48,12 +48,15 @@ func TestPushRefUpdateCreateCASRejectsExisting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mint: %v", err)
 	}
-	res, err := PushRefUpdate(ctx, RefUpdate{URL: server, Ref: ref, Old: plumbing.ZeroHash, New: tagSHA, Objects: store})
+	res, reason, err := PushRefUpdateDetail(ctx, RefUpdate{URL: server, Ref: ref, Old: plumbing.ZeroHash, New: tagSHA, Objects: store})
 	if err != nil {
 		t.Fatalf("first create: %v", err)
 	}
 	if res != RefUpdateApplied {
 		t.Fatalf("first create result = %v, want Applied", res)
+	}
+	if reason != "" {
+		t.Fatalf("first create reason = %q, want \"\" (an applied push carries no refusal)", reason)
 	}
 
 	// A second create (old=zero) of the now-existing ref must be REJECTED server-side.
@@ -61,12 +64,17 @@ func TestPushRefUpdateCreateCASRejectsExisting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mint 2: %v", err)
 	}
-	res, err = PushRefUpdate(ctx, RefUpdate{URL: server, Ref: ref, Old: plumbing.ZeroHash, New: tag2, Objects: store2})
+	res, reason, err = PushRefUpdateDetail(ctx, RefUpdate{URL: server, Ref: ref, Old: plumbing.ZeroHash, New: tag2, Objects: store2})
 	if err != nil {
 		t.Fatalf("second create transport error (want a clean rejection, not an error): %v", err)
 	}
 	if res != RefUpdateRejected {
 		t.Fatalf("second create result = %v, want Rejected (the CAS create must lose against an existing ref)", res)
+	}
+	// The server's own report-status text must survive: it is what lets the caller tell a lost
+	// race from the server refusing the write for another cause (#1631).
+	if strings.TrimSpace(reason) == "" {
+		t.Fatalf("second create reason is empty; want the server's report-status refusal text")
 	}
 }
 
@@ -102,12 +110,15 @@ func TestPushRefUpdateStaleOldRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := PushRefUpdate(ctx, RefUpdate{URL: server, Ref: ref, Old: first, New: third, Objects: store3})
+	res, reason, err := PushRefUpdateDetail(ctx, RefUpdate{URL: server, Ref: ref, Old: first, New: third, Objects: store3})
 	if err != nil {
 		t.Fatalf("stale-old update transport error (want a clean rejection): %v", err)
 	}
 	if res != RefUpdateRejected {
 		t.Fatalf("stale-old update result = %v, want Rejected", res)
+	}
+	if strings.TrimSpace(reason) == "" {
+		t.Fatalf("stale-old update reason is empty; want the server's report-status refusal text")
 	}
 }
 

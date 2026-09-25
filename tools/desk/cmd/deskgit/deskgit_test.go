@@ -12,7 +12,7 @@ import (
 )
 
 // allowedSlug is in the allowed-repo set; deniedSlug is not. The test upstream is a bare repo
-// whose PATH ends in the slug, so the effective-URL gate (git ls-remote --get-url, which
+// whose PATH ends in the slug, so the effective-URL gate (git remote get-url --all origin, which
 // deskgit now uses per finding 3) resolves it to that owner/repo.
 const allowedSlug = "example-org/tracker"
 const deniedSlug = "someone/random-repo"
@@ -351,7 +351,7 @@ func TestFetch_RefusesRepoOutsideSet(t *testing.T) {
 // gate reverted to the configured string, this would proceed (the mutation).
 func TestFetch_EffectiveURLDrivesDecision(t *testing.T) {
 	work := newRepo(t, allowedSlug) // recorded origin resolves to the allowed slug
-	// Rewrite the EFFECTIVE URL (what ls-remote --get-url returns) to a denied slug.
+	// Rewrite the EFFECTIVE URL (what `git remote get-url` returns) to a denied slug.
 	recorded := mustGit(t, work, "config", "--get", "remote.origin.url")
 	denied := filepath.Join(t.TempDir(), filepath.FromSlash(deniedSlug)+".git")
 	mustGit(t, work, "config", "url."+denied+".insteadOf", recorded)

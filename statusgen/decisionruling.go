@@ -1,8 +1,8 @@
 package main
 
 // decisionruling.go — the RULING-LINK lane of `statusgen --corroborate` for
-// design-decision records (DR-<slug>.md under docs/streams/decisions/, schema
-// decision-v1, registers-v1 §7.5).
+// design-decision records (every record under docs/streams/decisions/, by
+// convention DR-<slug>.md; schema decision-v1, registers-v1 §7.5).
 //
 // The problem it closes. A record's `decided-by: "human:<name>"` stamp used to be
 // corroborated only against an approval by that human ON THE PR THAT ADDS THE
@@ -17,7 +17,7 @@ package main
 //	decided-by: "human:<name>"      # a real mapped name, OR the literal placeholder
 //	ruling: "https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<ID>"
 //
-// What this lane does, for every DR record the PR ADDS OR EDITS (any added line in
+// What this lane does, for every record the PR ADDS OR EDITS (any added line in
 // the record file — the same diff scope the rest of --corroborate keeps):
 //
 //   - `ruling:` present → resolve the comment through the forge REST API and PASS
@@ -134,7 +134,7 @@ const (
 // decisionRecordStamp is one DR record the PR touched, as read from the checkout.
 type decisionRecordStamp struct {
 	File      string   // repo-relative path, as it appears in stamp.File
-	ID        string   // DR-<slug>
+	ID        string   // the record's frontmatter id when it is a valid DR-<slug>; "" otherwise, so the ruling lane refuses (fail closed, record-not-named)
 	DecidedBy string   // raw decided-by value
 	Names     []string // real human names parsed from DecidedBy (lowercase); empty = placeholder
 	Ruling    string   // raw ruling: value ("" = absent)
@@ -238,6 +238,14 @@ func resolveRuling(c *ghClient, prRepo string, rec decisionRecordStamp, humanLog
 	if strings.TrimSpace(rec.Ruling) == "" {
 		out.Present = false
 		return out
+	}
+	// The ruling is bound to the record by its DR-<slug> id (condition 5, and the
+	// decision-gate marker of condition 6). A record with no valid frontmatter id
+	// has no id a comment could name, so condition 5 cannot hold: refuse under its
+	// reason before any forge contact, with a detail that says why. The register
+	// lint reports the same record offline.
+	if rec.ID == "" {
+		return refuse(rulingRecordNotNamed, "the record %s carries no valid DR-<slug> frontmatter id, so no ruling comment can name it — fix its id: (statusgen --lint reports it)", rec.File)
 	}
 	link, ok := parseRulingURL(rec.Ruling)
 	if !ok {
@@ -457,44 +465,41 @@ func normBriefNum(n string) string {
 
 // ---- disk / diff plumbing ------------------------------------------------------
 
-// isDecisionRecordPath reports whether a repo-relative path is a DR record in the
+// isDecisionRecordPath reports whether a repo-relative path is a record in the
 // DECISIONS register. Scoped to the register directory on purpose: a DR-shaped
 // file anywhere else is not a record this lane gates.
+//
+// The file set is exactly the one parseDecisionsDir reads: every .md directly under
+// the register directory except README.md, whatever its basename. The design gate
+// resolves a brief's design: by the record's frontmatter id, not by its file name, so
+// a record whose basename is not DR-shaped is still an approval the gate accepts. The
+// online lane must therefore re-read its decided-by too. Keying this lane on a
+// DR-shaped basename let such a record's decided-by pass the register lint while the
+// online lane never looked at it.
 func isDecisionRecordPath(path string) bool {
 	p := filepath.ToSlash(path)
 	if !strings.HasPrefix(p, "docs/streams/"+decisionsDirName+"/") {
 		return false
 	}
-	if strings.Contains(strings.TrimPrefix(p, "docs/streams/"+decisionsDirName+"/"), "/") {
+	base := strings.TrimPrefix(p, "docs/streams/"+decisionsDirName+"/")
+	if base == "" || strings.Contains(base, "/") {
 		return false
 	}
-	_, ok := decisionRecordID(p)
-	return ok
+	return strings.HasSuffix(base, ".md") && base != "README.md"
 }
 
-// decisionRecordsInDiff returns every DR record file the diff ADDS OR EDITS (at
-// least one added line), in first-seen order. A declared fixture corpus is skipped
+// decisionRecordsInDiff returns every decision record file (isDecisionRecordPath) the
+// diff ADDS OR EDITS (at least one added line), in first-seen order. A declared fixture corpus is skipped
 // exactly as stampsInDiff skips it.
 func decisionRecordsInDiff(root, diff string) []string {
 	var out []string
 	seen := map[string]bool{}
-	cur := ""
-	for _, line := range strings.Split(diff, "\n") {
-		t := strings.TrimRight(line, "\r")
-		if strings.HasPrefix(t, "diff --git ") {
-			if f := strings.Fields(t); len(f) >= 4 {
-				cur = strings.TrimPrefix(f[3], "b/")
-			}
-			continue
-		}
-		if strings.HasPrefix(t, "+++ ") {
-			cur = strings.TrimPrefix(t, "+++ b/")
-			continue
-		}
-		if !strings.HasPrefix(t, "+") || strings.HasPrefix(t, "+++") {
-			continue
-		}
-		if cur == "" || seen[cur] || !isDecisionRecordPath(cur) || isExcludedFixturePath(root, cur) {
+	// The one shared diff walker (addedDiffLines, corroboratescope.go) already skips
+	// a declared fixture corpus; a decision record is never a .patch file, so the
+	// walker's embedded-patch rule never touches this lane.
+	for _, al := range addedDiffLines(root, diff) {
+		cur := al.File
+		if cur == "" || seen[cur] || !isDecisionRecordPath(cur) {
 			continue
 		}
 		seen[cur] = true
@@ -505,9 +510,16 @@ func decisionRecordsInDiff(root, diff string) []string {
 
 // loadDecisionRecordStamp reads one DR record from the checkout. A read or parse
 // failure is carried in LoadErr (fail closed downstream), never dropped.
+//
+// The record's ID is its FRONTMATTER id, not its file name: that is the id the
+// design gate resolves a brief's design: by, the id the register lint validates, and
+// the id registers-v1 §7.5 condition 5 requires the ruling comment to name. The
+// register sets no file-name rule (§7.2), so a record's basename may be any name. An
+// id that is absent or not DR-<slug> leaves ID empty, and the ruling lane refuses it
+// (record-not-named, with a detail naming the missing id); the register lint reports
+// the same record.
 func loadDecisionRecordStamp(root, file string) decisionRecordStamp {
 	rec := decisionRecordStamp{File: file}
-	rec.ID, _ = decisionRecordID(file)
 	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
 	if err != nil {
 		rec.LoadErr = err.Error()
@@ -522,6 +534,9 @@ func loadDecisionRecordStamp(root, file string) decisionRecordStamp {
 	if uerr := yaml.Unmarshal([]byte(fm), &e); uerr != nil {
 		rec.LoadErr = uerr.Error()
 		return rec
+	}
+	if id := strings.TrimSpace(e.ID); decisionIDRe.MatchString(id) {
+		rec.ID = id
 	}
 	rec.DecidedBy = e.DecidedBy
 	rec.Ruling = e.Ruling
@@ -569,8 +584,12 @@ func addDecisionRecordStamps(stamps []stamp, recs []decisionRecordStamp) []stamp
 }
 
 // decisionCitingBriefs returns the "<stream>/<NN>" ids of every brief under
-// root/docs/streams (active or archived under done/) whose `design:` cites id.
+// root/docs/streams (active or archived under done/) whose `design:` cites id. An
+// empty id cites nothing: it would otherwise match every brief with no design:.
 func decisionCitingBriefs(root, id string) []string {
+	if strings.TrimSpace(id) == "" {
+		return nil
+	}
 	var out []string
 	for _, pat := range []string{
 		filepath.Join(root, "docs", "streams", "*", "brief-*.md"),

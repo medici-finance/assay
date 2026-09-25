@@ -9,6 +9,7 @@ code; the other three are gating.
 make skillslint                      # the check form (runs with --root ../..)
 make guardrail-sync                  # regenerate every guardrail copy
 cd tools/skillslint && go run . --root ../..
+cd tools/skillslint && go run . --skills-dir <dir>   # adopter reach: structural + conformance ONLY
 cd tools/skillslint && go test ./... -count=1
 ```
 
@@ -20,6 +21,7 @@ own directory (`cd tools/skillslint && go test ./...`), not from the repo root.
 | Check | Scope | Source |
 |---|---|---|
 | Skill-file structure | `plugins/assay/skills/*/SKILL.md` | `lint.go` |
+| Per-skill frontmatter conformance limits (hard) + soft body/bundle budgets (advisory) | `plugins/assay/skills/*/SKILL.md`, or `<dir>/*/SKILL.md` under `--skills-dir` | `conformance.go` |
 | Invisible-character / Trojan-Source (hard) + context-budget NOTICE (advisory) | the instruction surfaces (below) | `hidden.go` |
 | Unresolved house values | **every `*.md` under `plugins/`** | `housevalue.go` |
 | Shared-guardrail derive-or-diff | every declared guardrail copy | `guardrail.go` |
@@ -48,6 +50,54 @@ description: >-
 Keep the description text byte-identical and change only its quoting — it is
 adopter-facing trigger text the harness matches on, so rewording it to dodge the
 colon changes behaviour that the lint was never asking to change.
+
+### 1a. Per-skill frontmatter conformance limits
+
+The structural check above asks whether `name:` and `description:` are present
+and readable; it says nothing about their LENGTH or SHAPE. Two shipped skills
+(`install`, `pr-review-desk`) exceeded the 1024-character description limit
+both the [agentskills specification](https://agentskills.io/specification) and
+the Codex CLI enforce, and this lint reported PASS on both — the gap
+`harness-portability/17` closes.
+
+**Hard limits (exit 1):**
+
+| Limit | Bound | Source |
+|---|---|---|
+| `description` length | ≤ 1024 Unicode characters, counted with `utf8.RuneCountInString` (never bytes) | agentskills `description`; Codex `MAX_CATALOG_SKILL_DESCRIPTION_CHARS` truncates a description at 1021 chars + `"..."`; an older Codex CLI refuses to load the skill at all ([openai/codex#13941](https://github.com/openai/codex/issues/13941)) |
+| `name` length | ≤ 64 characters | agentskills `name` |
+| `name` pattern | `^[a-z0-9]+(-[a-z0-9]+)*$` | agentskills `name` (lowercase letters/digits, hyphen-separated, no leading/trailing/consecutive hyphen) |
+
+`name == directory` and the strict-YAML-load checks above are unchanged and are
+not duplicated here — this half only bounds the length/shape of values those
+checks already require to be present and readable.
+
+**Soft budgets (advisory NOTICE, stderr, never move the exit code):**
+
+| Budget | Bound | Source |
+|---|---|---|
+| Body size | > 8000 bytes | Codex truncates an agent-plugin skill body past `MAX_SKILL_PROMPT_BYTES` |
+| Body length | > 500 lines | agentskills: "keep your main SKILL.md under 500 lines" |
+| Body size (approx tokens) | > 5000 tokens, at 4 bytes/token (Codex's own `APPROX_BYTES_PER_TOKEN`) | agentskills: "< 5000 tokens recommended" |
+| Bundle description total | summed description characters across every linted skill > 8000 | Codex's skills-list budget when the model's context window is unknown (`DEFAULT_SKILL_METADATA_CHAR_BUDGET`) |
+
+**The budget ruling (recorded in `harness-portability/17`'s brief, reversible).**
+The bundle-wide budget is a NOTICE, not a failure: the 8000-character figure
+only applies when the context window is unknown — a known window instead gets
+2% of it in tokens, a much larger figure for any window Codex plausibly runs —
+and when it does bind, Codex degrades by shortening descriptions rather than
+refusing. Cutting trigger text from every skill to satisfy a fallback path
+would harm triggering on every harness for a soft, degrading limit. Only the
+per-skill HARD limits above — where a harness truncates or refuses one skill
+outright — gate the build.
+
+**Adopter reach — `--skills-dir <dir>`.** The structural check and this
+conformance half are the only two of skillslint's checks that generalize past
+this repo's own fixed `plugins/assay/skills/` layout (the house-value,
+hidden-character, guardrail and enforcement-block halves all check THIS repo's
+own tree). `--skills-dir <dir>` (repeatable) runs ONLY those two checks over
+`<dir>/*/SKILL.md` and exits 0/1/2 the same way `--root` does; zero matched
+files is exit 2, never a quiet pass.
 
 ### 2. Invisible-character / Trojan-Source lint + context-budget NOTICE
 
@@ -187,6 +237,20 @@ so the red arm cannot start passing for reasons that have nothing to do with the
 name. Both fixtures also carry the legitimate capitalised words
 (`Cursor's`, `GitHub's`, `Claude Code's`, `track B's`, `(R6, 2026-07-10)`) that
 must never be reported.
+
+`testdata/conformance/` holds the `--skills-dir` fixtures for the frontmatter
+conformance limits, each a directory of one or more `<name>/SKILL.md` skills:
+
+- `desc-1025/` — one skill, an ASCII description of 1025 characters. Must fail.
+- `desc-1024-multibyte/` — one skill, a 1024-character (≥ 2048-byte) description.
+  Must pass — characters, not bytes, are counted.
+- `name-mismatch/` — one skill whose `name:` does not equal its directory. Must
+  fail (the existing name==dir check, unrelated to conformance).
+- `name-pattern/` — one skill named `Bad--Name` (uppercase, consecutive hyphen).
+  Must fail the agentskills name pattern.
+- `budget-over/` — nine valid skills whose descriptions individually stay under
+  the 1024-character hard limit but sum past the 8000-character bundle budget.
+  Must pass (exit 0) with a bundle NOTICE — the budget is advisory.
 
 ## Not wired into a workflow
 

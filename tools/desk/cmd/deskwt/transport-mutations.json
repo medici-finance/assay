@@ -1,0 +1,71 @@
+{
+  "test": "go test ./cmd/deskwt/ ./cmd/deskdispatch/ -count=1 -timeout 300s -run 'TestAddRole|TestAddWith|TestAddSsh|TestAddSSH|TestWorktreeCreatePassesTheDispatchedRole'",
+  "control": {
+    "name": "CONTROL — drop the explicit :443 (a global `url.<ssh>.insteadOf = https://<host>/` rewrites the App URL straight back to SSH)",
+    "file": "cmd/deskwt/transport.go",
+    "old": "\thttpsURL := \"https://\" + host + \":443/\" + repo + \".git\"",
+    "new": "\thttpsURL := \"https://\" + host + \"/\" + repo + \".git\""
+  },
+  "mutations": [
+    {
+      "name": "write only the pushurl, leave remote.origin.url inherited (fetch keeps authenticating with the operator's SSH key)",
+      "file": "cmd/deskwt/transport.go",
+      "old": "\tfor _, key := range []string{\"remote.origin.pushurl\", \"remote.origin.url\"} {",
+      "new": "\tfor _, key := range []string{\"remote.origin.pushurl\"} {"
+    },
+    {
+      "name": "append the worktree-scoped URL without the empty-entry reset (the field shape: git keeps the shared SSH url first and the sentinel pushurl alongside)",
+      "file": "cmd/deskwt/transport.go",
+      "old": "\t\tif _, werr := runGit(target, \"config\", \"--worktree\", \"--replace-all\", key, \"\"); werr != nil {",
+      "new": "\t\tif _, werr := \"\", error(nil); werr != nil {"
+    },
+    {
+      "name": "trust the config write — skip the read-back of what git resolves (an insteadOf or an older git leaves the inherited transport in play, reported as success)",
+      "file": "cmd/deskwt/transport.go",
+      "old": "\t\tif len(got) != 1 || got[0] != httpsURL {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "wire the transport but no App credential helper (the https push then answers from whatever ambient credential the machine holds)",
+      "file": "cmd/deskwt/transport.go",
+      "old": "\tif werr := wireRoleCredential(target, role, repo, roleCredUser(role)); werr != nil {\n\t\treturn \"\", werr\n\t}\n\tfmt.Fprintln(os.Stderr, \"deskwt: worktree-scoped App transport",
+      "new": "\tfmt.Fprintln(os.Stderr, \"deskwt: worktree-scoped App transport"
+    },
+    {
+      "name": "use an SSH host alias as the https host (an https URL no client can reach)",
+      "file": "cmd/deskwt/transport.go",
+      "old": "\tif deskkit.IsSSHTransport(s) && !deskkit.IsWellKnownForgeHost(h) {",
+      "new": "\tif false && deskkit.IsSSHTransport(s) && !deskkit.IsWellKnownForgeHost(h) {"
+    },
+    {
+      "name": "let a local fetch url excuse an SSH pushurl",
+      "file": "cmd/deskwt/transport.go",
+      "old": "\t\t\tif deskkit.IsSSHTransport(u) {\n\t\t\t\treturn \"\", transportRefusal(",
+      "new": "\t\t\tif false {\n\t\t\t\treturn \"\", transportRefusal("
+    },
+    {
+      "name": "refuse but do not roll back (the role worktree is left on disk with the inherited transport)",
+      "file": "cmd/deskwt/deskwt.go",
+      "old": "\t\ttransportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)\n\t\tif terr != nil {\n\t\t\t_ = removeWorktreeDir(guard, dir, resolvePath(target))\n",
+      "new": "\t\ttransportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)\n\t\tif terr != nil {\n"
+    },
+    {
+      "name": "a --role add never wires the transport at all (the worktree inherits the shared checkout's)",
+      "file": "cmd/deskwt/deskwt.go",
+      "old": "\t\ttransportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)",
+      "new": "\t\ttransportDetail, terr := \"\", error(nil)"
+    },
+    {
+      "name": "deskdispatch cuts the verifier worktree without --role (the dispatch path never reaches the transport writer)",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\twt = runCmd(o.root, \"deskwt\", \"add\", wtName, \"--detach\", \"--base\", worktreeBase(o, branch),\n\t\t\t\"--role\", plan.identityRole)",
+      "new": "\t\twt = runCmd(o.root, \"deskwt\", \"add\", wtName, \"--detach\", \"--base\", worktreeBase(o, branch))"
+    },
+    {
+      "name": "deskdispatch cuts the worker worktree without --role",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\twt = runCmd(o.root, \"deskwt\", \"add\", wtName, \"--branch\", branch, \"--base\", worktreeBase(o, branch),\n\t\t\t\"--role\", plan.identityRole)",
+      "new": "\t\twt = runCmd(o.root, \"deskwt\", \"add\", wtName, \"--branch\", branch, \"--base\", worktreeBase(o, branch))"
+    }
+  ]
+}

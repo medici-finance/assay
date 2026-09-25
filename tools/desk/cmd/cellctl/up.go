@@ -176,10 +176,17 @@ func cmdUp(cell string, args []string) {
 		if persist {
 			die("up: --set with a model policy is ambiguous; edit the policy or provider defaults instead")
 		}
+		// Every selected role is resolved AND preflighted (credential, harness on PATH, Claude
+		// version floor, settings conflict scan) before any window opens, so one bad role never
+		// leaves half a cell running.
 		for _, role := range roles {
 			route, err := policy.Resolve(role, o.Provider, o.Model, o.Harness)
 			if err != nil {
 				die("%s", err)
+			}
+			if err := c.policyPreflight(route, cfg); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				die("up: policy preflight failed; no role windows launched")
 			}
 			fmt.Printf("[policy] role=%s provider=%s model=%s effort=%s source=%s sha256=%s\n", role, route.Provider, route.Model, route.Effort, policySource, policy.SHA256)
 		}

@@ -5,11 +5,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // This file ports the CELL_MODEL_POLICY semantics #1388 added to the shell oracle
@@ -20,8 +22,8 @@ import (
 // oracle behaviours this file does, and does not, carry over — some of the oracle's launch-time
 // mechanics (the live PreModelSwitch/PreToolUse Claude Code hook wiring, the local/managed
 // settings.json availableModels/modelOverrides conflict scan, and the `up`/`check` per-role
-// preflight loops) are NOT ported here; the schema, resolution, deny and effort-propagation
-// contract is.
+// preflight loops) were ported afterwards in policy_enforce.go (assay#1392); the schema,
+// resolution, deny and effort-propagation contract lives here.
 
 // policyTierNames is the fixed four-tier ladder every provider must pin exactly.
 var policyTierNames = []string{"top", "strong", "mid", "fast"}
@@ -177,11 +179,32 @@ func policyDenied(value string, banned []string) bool {
 // both resolvable). A single sha256 of the raw bytes is computed once and carried on the result
 // (docs/cellctl-model-policy.md "Inspect, launch and verify adoption": `show`/dry-run print it).
 func loadModelPolicy(path string) (*ModelPolicy, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := readPolicySource(path)
 	if err != nil {
 		return nil, policyFail("cannot read policy file %s: %v", path, err)
 	}
 	return parseModelPolicy(raw, path)
+}
+
+// readPolicySource reads a file that locates or carries the model policy, refusing anything that
+// is not a regular file. The open is non-blocking, so a FIFO (or a device) at a policy path
+// cannot block the caller; the model-policy hook takes these paths from its inherited
+// environment, and a hook that hangs is a hook Claude Code eventually skips. A missing file
+// still reports os.ErrNotExist, which the catalog lookup relies on.
+func readPolicySource(path string) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s: not a regular file (%s)", path, info.Mode().Type())
+	}
+	return io.ReadAll(f)
 }
 
 func parseModelPolicy(raw []byte, path string) (*ModelPolicy, error) {
@@ -391,8 +414,12 @@ type PolicyResolution struct {
 	Effort       string
 	Tier         string
 	PolicySHA256 string
-	ClaudeEnv    map[string]string
-	CodexArgs    []string
+	// Requested is the explicit --model/DESK_MODEL_OVERRIDE this resolution was made for ("" for
+	// the role's own tier). The runtime hook re-resolves with the SAME request, so the parent
+	// effort it checks a child against is the one the window actually launched with.
+	Requested string
+	ClaudeEnv map[string]string
+	CodexArgs []string
 
 	tiers  map[string]PolicyTier
 	banned []string
@@ -456,7 +483,7 @@ func (m *ModelPolicy) Resolve(role, providerOverride, requested, harnessOverride
 
 	res := &PolicyResolution{
 		Provider: provider, Harness: harness, Role: role, Model: model, Effort: effort,
-		Tier: tierName, PolicySHA256: m.SHA256, tiers: entry.Tiers, banned: m.Banned,
+		Tier: tierName, PolicySHA256: m.SHA256, Requested: requested, tiers: entry.Tiers, banned: m.Banned,
 	}
 	if harness == "claude" {
 		env := map[string]string{}
@@ -514,8 +541,8 @@ var semverRe = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)`)
 const claudeBinary = "claude"
 
 // checkClaudeMinVersion is the version half of the oracle's `policy_claude_preflight` — the
-// settings.json/managed-settings allowlist-conflict scan that function also runs is NOT ported
-// (see this file's header comment and the PR body). It shells out to `claude --version` (a
+// settings.json/managed-settings allowlist-conflict scan that function also runs is
+// scanClaudeSettingsConflicts in policy_enforce.go. It shells out to `claude --version` (a
 // local binary invocation, not a network call) and refuses below the floor above.
 func checkClaudeMinVersion() error {
 	out, err := exec.Command(claudeBinary, "--version").Output()

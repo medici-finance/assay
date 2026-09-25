@@ -45,7 +45,7 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 		"CompareRefs", "CreateDraftChange", "DeleteRef", "EditChange", "EditComment",
 		"FileIssue", "GetCommit", "GetIssue", "GetIssueTyped", "GetPullRequest",
 		"IssueContentEvents", "IssueReactions", "IssueTrustEvents", "ListChangedFiles",
-		"ListChanges", "ListComments",
+		"ListChanges", "ListComments", "ListCommitChanges", "ListFileCommits",
 		"ListCommentsTyped", "ListLabelEvents", "ListLabels", "ListOpenChanges",
 		"ListOpenIssues", "ListRecentCommits", "ListWorkflowFiles", "MarkReadyForReview",
 		"MatchingRefs",

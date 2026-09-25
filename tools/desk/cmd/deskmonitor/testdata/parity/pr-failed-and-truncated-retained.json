@@ -1,0 +1,124 @@
+{
+ "description": "Property B for PRs: a failed read and an at-limit read retain the baseline and go loud; a truncated seed establishes none; draining to zero is NOT degraded (a normal steady state) and reports closed.",
+ "kind": "pr",
+ "env": {
+  "PR_MONITOR_LIMIT": "2"
+ },
+ "repos": [
+  "example-org/tracker",
+  "example-org/agents"
+ ],
+ "cycles": [
+  {
+   "note": "tracker seeds; agents' seed truncated",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "a1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 7,
+       "headRefOid": "c1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      },
+      {
+       "number": 8,
+       "headRefOid": "c2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      },
+      {
+       "number": 9,
+       "headRefOid": "c3",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "tracker 404; agents still truncated",
+   "reads": {
+    "example-org/tracker": {
+     "status": 404,
+     "message": "Not Found"
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 7,
+       "headRefOid": "c1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      },
+      {
+       "number": 8,
+       "headRefOid": "c2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "tracker recovers at the limit",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "a1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      },
+      {
+       "number": 2,
+       "headRefOid": "b1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 7,
+       "headRefOid": "c1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "tracker drains to zero",
+   "reads": {
+    "example-org/tracker": {
+     "prs": []
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 7,
+       "headRefOid": "c9",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

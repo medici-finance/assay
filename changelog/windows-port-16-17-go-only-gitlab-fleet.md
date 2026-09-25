@@ -1,0 +1,2 @@
+### Added
+- Two new windows-port briefs plan Go-only GitLab fleet work, so Windows adopters no longer need bash. Brief 16 ports the GitLab PAT renewal into `deskfleet renew` and makes Go the single owner of the fleet's role, label and project-settings tables. Brief 17 first proves `deskfleet` against a real GitLab instance. It then retires `tools/create-fleet-gitlab.sh`, `tools/renew-fleet-gitlab-tokens.sh` and `tools/fleet-gitlab-roles.sh`, along with every doc that names them. Both briefs are human-gated.

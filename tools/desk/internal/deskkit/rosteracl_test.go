@@ -61,9 +61,11 @@ func TestEvaluateRosterACL(t *testing.T) {
 			wantSubstr: "write-capable Windows access",
 		},
 		{
+			// The roster rule is write-only (its unix twin refuses group/world-WRITABLE,
+			// not readable); the custody rule's read refusal must not leak into it.
 			name: "a foreign READ-only ACE is accepted",
 			mutate: func(m *rosterACLModel) {
-				m.Entries = append(m.Entries, rosterACE{SID: sidOther, Kind: rosterACEAllow, GrantsWrite: false})
+				m.Entries = append(m.Entries, rosterACE{SID: sidOther, Kind: rosterACEAllow, GrantsRead: true})
 			},
 			wantErr: false,
 		},

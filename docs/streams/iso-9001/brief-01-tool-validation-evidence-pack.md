@@ -173,6 +173,32 @@ Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+### Non-implementer verifier run — VERIFY: PASS — 11/11 pass, 0 could-not-check, 0 fail — 2026-09-23 claude-opus-4-8-verifier
+
+Runner is not the implementer. Isolated worktree cut off `origin/main` at the merged head `e6b8dee7f85e3bf1bdf3035b0f20a6a411698d3a`, detached. Offline (`KUBECONFIG=/dev/null`); Go rows module-scoped. `gate: model`, all four risk answers `no`, `irreversible: no` — a verifier may record PASS for a model-gated, non-risk-flagged item (kit §6). Rows 1 and 2 are DEREFERENCE rows that invert on landing; both show the correct post-landing state. Row 3 is the re-baselined form (`git grep -c 'Spec:'` against the declared set), replacing the 2026-09-06 stale-glob form that failed. Execution witness (`statusgen verifyrun`) run separately: all 11 rows pass exit 0, appended to this brief's `## Evidence` in the verifier worktree.
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | git grep -n 'tool-validation' -- .github/workflows/release.yml | exit 0, ≥1 hit (inverts on landing) | PASS — exit 0; 16 hits: capture comments L582/607/630/656/691/718, upload L763, download L1191, assemble step L1206, release-asset upload L1386 | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | test -d tools/toolvalidation | exit 0 (module home absent at authoring) | PASS — exit 0; module home present (main/pack/render/report/header .go + tests + testdata) | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | git grep -c 'Spec:' -- tools/toolvalidation/main.go | exit 0; exactly 7 | PASS — exit 0; count 7 (declaredControls: bodycheck, desksourceguard, loopengine-dedupe, loopengine-retry, deskmerge, reviewloop, deskclose) | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | git grep -c 'NOT CAUGHT' -- .github/workflows/release.yml | exit 0; count ≥6 | PASS — exit 0; count 7 (pre-existing release-blocking assertions stand; capture did not replace one) | 2026-09-23 | claude-opus-4-8-verifier |
+| 5 | cd tools/toolvalidation && go test ./... -count=1 -v | exit 0 | PASS — exit 0; ok toolvalidation; all 8 tests --- PASS | 2026-09-23 | claude-opus-4-8-verifier |
+| 6 | cd tools/toolvalidation && go test ./... -count=1 -v -run 'MissingReport.*ExitsThree' | exit 0; named test runs | PASS — exit 0; the `--- PASS` line for the missing-report-omitted-and-exits-three test the brief's row 6 names, ran not skipped (its literal name is a 32+ character run, described here rather than quoted) `go test -list 'MissingReport.*ExitsThree'` selects exactly one test, the brief's row 6 test (the literal name is a 32+ character run). | 2026-09-23 | claude-opus-4-8-verifier |
+| 7 | cd tools/toolvalidation && go test ./... -count=1 -v -run HarnessBrokenIsNotAPass | exit 0; named test runs | PASS — exit 0; --- PASS: TestHarnessBrokenIsNotAPass (ran, not skipped) | 2026-09-23 | claude-opus-4-8-verifier |
+| 8 | cd tools/toolvalidation && go test ./... -count=1 -v -run 'DeclaredSetDrift.*BothWays' | exit 0; named test runs | PASS — exit 0; the `--- PASS` line for the declared-set-drift-reported-both-ways test the brief's row 8 names, ran not skipped (its literal name is a 32+ character run, described here rather than quoted) `go test -list 'DeclaredSetDrift.*BothWays'` selects exactly one test, the brief's row 8 test (the literal name is a 32+ character run). | 2026-09-23 | claude-opus-4-8-verifier |
+| 9 | cd tools/toolvalidation && go build -o /tmp/tv . && /tmp/tv -root ../.. -reports testdata/complete -tag v0.0.0-test -out /tmp/tv-out; echo $? | prints 0; out dir holds both .md and .json | PASS — prints 0: "pack complete — 7 declared controls recorded at v0.0.0-test"; out dir holds tool-validation-v0.0.0-test.md and .json (both formats, one run) | 2026-09-23 | claude-opus-4-8-verifier |
+| 10 | git grep -cE -e 'audit opinion' -e 'does not' -- tools/toolvalidation/ | exit 0; non-zero count | PASS — exit 0; hits in header.go, main.go, render.go, report.go (non-claim wording is in source) | 2026-09-23 | claude-opus-4-8-verifier |
+| 11 | cd statusgen && go run . --root .. --lint | exit 0 | PASS — exit 0; LINT: PASS (NOTICEs only; none names iso-9001 brief 01 as a defect) | 2026-09-23 | claude-opus-4-8-verifier |
+
+RISK-VALUE: DERIVED — exit-3-INCOMPLETE = 3 @ tools/toolvalidation/main.go:189 — the assembler returns 3 (not 0, not 1) when any declared control is omitted; matches the pinned exit contract in docs/evidence-bundle.md (3 = exported but INCOMPLETE, because a silently incomplete compliance bundle is worse than a failed export). If wrong, an incomplete pack ships as complete (0) or is mistaken for an IO error (1); reversible by edit+redeploy, but it is the three-state semantic the brief exists to enforce, so it ranks top.
+RISK-VALUE: DERIVED — declaredControls size = 7 @ tools/toolvalidation/main.go:76-120 — the declared set must equal the release-gated refusal mutation gates. release.yml carries 7 release-blocking NOT-CAUGHT assertions (row 4) and each declared spec has a corresponding release step; 7 is therefore the count of release-blocking mutation gates, not an arbitrary constant. Under-broad hides a gate; over-broad names an undemonstrated control. Reversible (source list), but it is the brief's whole judgement, so it ranks second and is derived.
+RISK-VALUE: DERIVED — muhar-exit-2 -> could-not-check @ tools/toolvalidation/pack.go:129,138 and report.go:44-46,158 — a captured report whose harness exited 2 (HARNESS BROKEN) maps every control in that spec to could-not-check, kept distinct from could-not-mutate; derived from muhar's own contract (exit 2 = no trustworthy verdict, never pass and never fail).
+RISK-VALUE: N/A-as-knob — Shards = 3 @ tools/toolvalidation/main.go:105 (deskmerge sweep sharding) is a reversible operational count matching the 3 shard-capture steps in release.yml; ranks last, no derivation required by design (reversible knob per kit §4 step 3).
+
+Row 3 re-baseline (#566) verified: exactly 7 declared controls.
+
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). The deliverable is a generator and
 a workflow capture; nothing here is a compliance claim and nothing is irreversible — no tag is

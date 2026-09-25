@@ -380,6 +380,42 @@ prefix in `corroborate.go`, which teaches the `human:<name>` notation itself wit
 fictional personas. It is a named constant, reviewed on its own terms, and it
 needs no marker.
 
+### Quoted notation is not a claim (`--corroborate`)
+
+`--corroborate` reads the pull request's added lines as claims that a human
+acted. Some added lines only quote the notation, and it does not read them as
+claims (`corroboratescope.go`):
+
+- **The removed side of an embedded patch.** In a committed `.patch` or `.diff`
+  file, a line the patch deletes arrives as `+-…`. Neither the stamp scan nor
+  the citation scan reads a `-` line inside one of the patch's hunks. The
+  patch's added side, its context lines, and any text outside a hunk (such as a
+  `git format-patch` commit-message preamble) are still read.
+- **Stamp-shaped text on a surface no stamp reader parses.** This applies to the
+  stamp scan only. It skips **test** source files: a file whose extension is on
+  a closed list (`.go .sh .bash .zsh .ps1 .py .js .mjs .cjs .ts .rb .rs`) and
+  whose name follows a test-file convention (`x_test.go`, `x.test.sh`,
+  `x_test.py`, ...). It also skips YAML lines whose first non-blank character is
+  `#`: outside a block scalar that is a YAML comment, and inside one it is value
+  text, but statusgen never parses YAML for stamps. statusgen reads stamps only
+  from record files: Markdown boards, briefs, decision records and registers,
+  and JSONL ledgers. So a `human:<name>` in a test's fixture data is never a
+  sign-off. A non-test program or script is scanned as before, because it may be
+  the thing that writes a stamp into a record. The citation scan still reads all
+  of these files, because a ruling claim in a code comment is prose that a
+  reader may trust.
+
+Every rule is decided by the file's own name and format, never by a directory
+name, and each one fails closed. Any other extension, every non-test program or
+script, every YAML value line, and every Markdown line, bullets starting with
+`-` included, are scanned as before. Each
+skip is **visible**: the run ends with a
+`# quoted notation — NOT read as a claim` section that lists every stamp or
+citation a skipped line would have produced (`human:<name> in <file>
+NOT-A-CLAIM — <reason>`). All three `--corroborate` lanes read the diff through
+one walker (`walkAddedDiffLines`). `TestCorroborateDiffWalkersShareOneWalker`
+fails if another function in the package walks the diff with its own loop.
+
 ## Standalone layout
 
 The module lives **at `statusgen/`**, not at this repo's root. There is

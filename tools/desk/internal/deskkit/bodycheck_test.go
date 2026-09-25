@@ -637,7 +637,7 @@ func TestMidRunAcronymIdentifiers(t *testing.T) {
 // length, and nothing is a useful multiple of zero.
 func TestShortAcronymCostsAlmostNothing(t *testing.T) {
 	const trials = 2000000
-	// The absolute ceiling. The measured value at this seed is 7; the ceiling sits above it
+	// The absolute ceiling. The measured value at this seed is 8 (7 before #1642); the ceiling sits above it
 	// with room for an innocuous edit and far below the ~35 the blanket relaxation costs, so
 	// a real widening trips it and a rounding does not.
 	const ceiling = 20

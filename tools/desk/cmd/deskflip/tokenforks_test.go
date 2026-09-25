@@ -29,7 +29,7 @@ func TestFlipForksTokenMinterOncePerRun(t *testing.T) {
 
 	// The PRODUCTION binding, so both lookups run through the real path.
 	oldMint := mintTokenFn
-	mintTokenFn = deskkit.RoleTokenForRepo
+	mintTokenFn = deskkit.GitHubRoleToken
 	t.Cleanup(func() { mintTokenFn = oldMint })
 
 	tokenDir := t.TempDir()

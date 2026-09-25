@@ -416,7 +416,57 @@ const (
 	// anything else set is a refusal. Declared, not verified. Consumed by the claim-store
 	// resolver only. KEEP IN SYNC with statusgen's scanEnvClaimSingleHost.
 	EnvClaimSingleHost = "ASSAY_CLAIM_SINGLE_HOST"
+
+	// The AUTO-APPROVE LANE keys (autolane.go). CONSUMED here: parseConfig lands their raw
+	// values on cfg.AutoLaneRaw and ParseAutoLaneConfig validates them fail-closed. They are
+	// the operator's opt-in for a narrow lane in which the reviewer App may merge a class of
+	// PRs with no per-merge human act, so the loader holds them to the strictest reading this
+	// file has:
+	//
+	//	ABSENT IS CLOSED  all four unset is the shipped state and means the lane is CLOSED —
+	//	                  there is no default value for any of them that opens it. Any
+	//	                  subset set without the rest is a refusal, never a partial lane.
+	//	FAIL-CLOSED       a malformed value refuses the LANE (never the roster: the trust
+	//	                  surface is untouched by a bad lane key), and a refused lane
+	//	                  admits nothing, ejects nothing and merges nothing.
+	//	FILE-ONLY         the lane acts, so its keys are read from the config-home file and
+	//	                  never from the environment (they are deliberately absent from
+	//	                  readRawConfig's environment key list).
+	//
+	// EnvAutoApproveAreas is comma-separated `<owner>/<repo>:<glob>:<login>` entries — one
+	// glob per entry, the login naming the human who opted that area in.
+	// EnvAutoApproveEjectLine is the integer score line (a score ABOVE it ejects).
+	// EnvAutoApproveFPYFloor is the decimal first-pass-yield floor for the kill signal.
+	// EnvAutoApproveDailyCap is the integer per-repo, per-UTC-day lane merge cap.
+	// statusgen recognises all four and consumes none. KEEP IN SYNC with
+	// statusgen/rosterconfig.go's scanEnvAutoApprove* and the coupling vector.
+	EnvAutoApproveAreas     = "ASSAY_AUTOAPPROVE_AREAS"
+	EnvAutoApproveEjectLine = "ASSAY_AUTOAPPROVE_EJECT_LINE"
+	EnvAutoApproveFPYFloor  = "ASSAY_AUTOAPPROVE_FPY_FLOOR"
+	EnvAutoApproveDailyCap  = "ASSAY_AUTOAPPROVE_DAILY_CAP"
+
+	// EnvAutoApproveSignOffThread names the ONE thread (an issue or PR number in the rulings
+	// register's repo) the lane's acceptance comment must sit on. It is OPTIONAL in the loader's
+	// sense only: it is not one of the four keys whose partial presence refuses the lane, and
+	// absent it leaves the lane loaded — but the enactment gate then reads could-not-check, so
+	// an unset thread can never enact anything. A value that is set but is not a positive
+	// integer refuses the lane. Same FILE-ONLY reading as the four. statusgen recognises it and
+	// consumes nothing. KEEP IN SYNC with statusgen's scanEnvAutoApproveSignOffThread and the
+	// coupling vector.
+	EnvAutoApproveSignOffThread = "ASSAY_AUTOAPPROVE_SIGNOFF_THREAD"
 )
+
+// autoLaneKeys is the four auto-approve lane keys, in one place, so parseConfig's
+// pass-through and the lane's own parser cannot disagree about which keys are the lane's.
+func autoLaneKeys() []string {
+	return []string{EnvAutoApproveAreas, EnvAutoApproveEjectLine, EnvAutoApproveFPYFloor, EnvAutoApproveDailyCap}
+}
+
+// autoLaneRawKeys is every key parseConfig passes through to the lane parser raw: the four
+// required keys plus the sign-off thread.
+func autoLaneRawKeys() []string {
+	return append(autoLaneKeys(), EnvAutoApproveSignOffThread)
+}
 
 // knownRosterKeys is the ASSAY_-namespace roster SCHEMA these tools speak: every
 // key parseConfig recognises. It is a function rather than a literal inside
@@ -512,6 +562,10 @@ func knownRosterKeys() []string {
 		// claim store does not collapse the whole configuration on the unknown-ASSAY_-key
 		// refusal. statusgen recognises them too (the coupling vector binds the two).
 		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost,
+		// The auto-approve lane keys are CONSUMED here (autolane.go, through cfg.AutoLaneRaw).
+		// statusgen recognises them only.
+		EnvAutoApproveAreas, EnvAutoApproveEjectLine, EnvAutoApproveFPYFloor, EnvAutoApproveDailyCap,
+		EnvAutoApproveSignOffThread,
 	}
 }
 
@@ -687,6 +741,13 @@ type Config struct {
 	// keeps the desk's read surface and the scanner's write surface from drifting
 	// (ownedrepos_coupling_test.go) — one roster value, not two hand-synced lists.
 	ScanRepos []string
+
+	// AutoLaneRaw carries the RAW values of the auto-approve lane keys that were set
+	// (EnvAutoApprove*: the four required keys and the sign-off thread), exactly as the source gave them. parseConfig does not validate
+	// them — a malformed lane key must close the LANE, not the whole trust roster — and
+	// ParseAutoLaneConfig (autolane.go) is the one place they are read and judged. Nil or
+	// empty means every lane key is absent: the lane is CLOSED.
+	AutoLaneRaw map[string]string
 
 	// UnknownKeys are keys present in the source that this version does not
 	// recognise, sorted. They are ECHOED, never applied — but only for a key
@@ -1531,6 +1592,20 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	var runCredsIssue extAccumulator
 	cfg.RunCredentials = parseRunCredentials(vals[EnvRunCredentials], &runCredsIssue)
 	recordExt(&cfg, EnvRunCredentials, vals[EnvRunCredentials], runCredsIssue)
+
+	// --- auto-approve lane keys (ASSAY_AUTOAPPROVE_*) — passed through RAW. ---
+	// Deliberately NOT validated here: a malformed lane key must close the lane and nothing
+	// else, so it is ParseAutoLaneConfig (autolane.go) that judges these values, and every
+	// judgement it can reach fails closed. Copying only the keys that were SET keeps "absent"
+	// distinguishable from "set to an empty string" for that parser.
+	for _, k := range autoLaneRawKeys() {
+		if v, ok := vals[k]; ok {
+			if cfg.AutoLaneRaw == nil {
+				cfg.AutoLaneRaw = map[string]string{}
+			}
+			cfg.AutoLaneRaw[k] = v
+		}
+	}
 
 	// --- release home (ASSAY_RELEASE_REPO), an EXTENSION key (this brief) ---
 	// A SINGLE slug, never a list: a release tool that took the first entry of a
