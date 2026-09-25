@@ -1115,7 +1115,8 @@ rather than warning and continuing on a sha256 mismatch, but they signal it diff
 - The **bootstrap** throws a `REFUSED: …` error. It does this on a digest mismatch
   (`scripts/bootstrap-windows.ps1:108`) and on every manifest-resolve failure (`:52-96`). Under
   `powershell -File` that is a non-zero exit (not `5`), and nothing is placed.
-  `scripts/windows-bootstrap-hashcheck-smoke.ps1` asserts on that `REFUSED:` message.
+  `scripts/windows-bootstrap-hashcheck-smoke.ps1` asserts on that refusal's message text (for
+  example `sha256 mismatch`), not on the `REFUSED:` prefix.
 - **`deskinstall`** exits `5` (refused, nothing placed).
 
 #### The first `deskinstall` on a clean host — an open gap
@@ -1133,13 +1134,17 @@ file it places in `--dest`, and Windows does not let a running `.exe` overwrite 
   second command as `& $env:TEMP\deskinstall.exe --manifest …`. That run places the pinned,
   sha256-verified release build of the whole toolchain, `deskinstall.exe` included, into `--dest`,
   and that copy serves step 2.
-- **Without Go.** Download `desk-tools-windows-<arch>.tar.gz` for the pinned tag from the release
-  page. Compare `(Get-FileHash -Algorithm SHA256 <file>).Hash` against the `desk-tools:` block's
-  `windows-<arch>` line in `plugins/assay/paired-versions.yaml`, and stop on any difference.
-  Unpack it into a scratch directory with Windows' bundled `tar -xzf <file> -C <scratch>`, then
-  run step 1's second command as `& <scratch>\deskinstall.exe --manifest …`. This route brings
-  back the operator-compared digest that step 1 otherwise removes. That is why it is an interim
-  route, not the recommended one.
+- **Without Go.** Download the asset for the pinned tag from
+  `https://github.com/medici-finance/assay/releases/download/<tag>/desk-tools-windows-<arch>.tar.gz`,
+  where `<tag>` and the sha256 are the `desk-tools:` block's `windows-<arch>` line in
+  `plugins/assay/paired-versions.yaml`. Check the digest with a comparison that throws, rather
+  than by eye (`Get-FileHash` prints uppercase hex and the manifest pins lowercase; `-ne` ignores
+  case):
+  `if ((Get-FileHash -Algorithm SHA256 <file>).Hash -ne '<sha256 from the manifest>') { throw 'REFUSED: sha256 mismatch' }`.
+  Stop if it throws. Unpack it into a scratch directory with Windows' bundled
+  `tar -xzf <file> -C <scratch>`, then run step 1's second command as
+  `& <scratch>\deskinstall.exe --manifest …`. This route brings back the operator-copied digest
+  that step 1 otherwise removes. That is why it is an interim route, not the recommended one.
 
 Neither route runs in CI today. Both are read from the tree (the bootstrap script, the release
 workflow's asset list, and `deskinstall`'s own install code), not observed on a Windows host.
