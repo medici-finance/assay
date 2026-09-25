@@ -25,7 +25,6 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-09-25 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/18 | 2026-09-25 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/16 | 2026-09-25 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/7 | 2026-09-25 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-09-25 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/14 | 2026-09-25 |  |
 | [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/18 | 2026-09-25 |  |
@@ -39,6 +38,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-09-25 |
 | [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-09-25 |
 | [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-25 |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | 2/7 | 2026-09-25 |
 | [measured-status](docs/streams/measured-status/README.md) | P1 | 0/6 | 2026-09-25 |
 | [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-09-25 |
 
@@ -49,8 +49,6 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| build-less-brittle | 01 — Semantic-owner index in docs/contracts.md — one meaning, one home [exec:strong] | 0 | 7500 |
-| build-less-brittle | 03 — Weight counter and CI ratchet (a Go test, not a verb) [exec:strong] | 0 | 5500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
@@ -62,14 +60,14 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (61 desk-actionable of 80 total — 80 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (59 desk-actionable of 80 total — 80 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (61)
+### Desk-actionable (59)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -81,7 +79,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | graph-execution | 10 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | forge-neutral | 07 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 4000 | 6 | — | — | — |
-| iso-9001 | 01 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | desktools-v2 | 02 [exec:strong] | implemented | 3000 | 4 | — | — | — |
@@ -104,7 +101,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 19 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2000 | 2 | — | — | — |
-| iso-9001 | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | windows-port | 13 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 19 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -163,6 +159,13 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 15 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+
+### Parked stream (2)
+
+| Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
+|---|---|---|---|---|---|---|---|
+| iso-9001 | 01 [exec:strong] | implemented | 4000 | 6 | — | — | — |
+| iso-9001 | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 
 ## Age at the human gate
 
@@ -602,4 +605,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**23** streams (**18** active, **0** paused, **5** parked) · **88/287** briefs done · completed initiatives: see `docs/archive/`
+**23** streams (**17** active, **0** paused, **6** parked) · **88/287** briefs done · completed initiatives: see `docs/archive/`
