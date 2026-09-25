@@ -5,7 +5,7 @@ serves: assay
 status: active
 priority: P1
 track: platform
-issues: []
+issues: [1660]
 board: generated
 spec: docs/streams/build-less-brittle/spec.md
 ---
