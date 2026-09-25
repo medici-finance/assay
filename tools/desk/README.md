@@ -2860,16 +2860,32 @@ is" accepts an em dash, en dash, or a plain hyphen.
   customers, partners, upload, export; infrastructure, deploy, prod, live, clusters, DNS,
   databases, migrations, servers, runners; GitHub App permissions, `actions: write`,
   read/write/admin access, grants, installations, admin, privilege, approval, self-review,
-  sign-off, ratification, veto, CODEOWNERS; and `gate:human` / `human gate` / `human-only` in
-  any spelling;
+  sign-off, ratification, veto, CODEOWNERS; `gate:human` / `human gate` / `human-only` in
+  any spelling; a commit or write straight/directly to main and anything "without a PR" or
+  "without review"; taking a PR out of draft or from draft to ready; required reviewers and
+  dismissing reviews; 2FA/MFA/two-factor; `--no-verify`, hooks, unsigned commits and
+  signatures; the trust gate, trusted lists, the roster, "anyone" and "any commenter"; owners,
+  roles, maintainers, members; archiving, transferring, visibility, private, moving to
+  another org, renaming a repo or org; auto-closing, or closing `needs-decision` /
+  `human-only` items; charges, cards, credit, purchases, subscriptions, billing; and a
+  control-verb class — turn off, switch off, stop requiring, no longer require, skip, opt
+  out, remove, relax, waive, suppress, silence, "allow … without", drop … requirement —
+  within a few words of a control noun (check, scan, gate, guard, hook, review, requirement,
+  protection, lint, test, CI, verification, assertion, signing, policy, rule, control, alert),
+  in either order;
 - a POSITIVE R-3 reversible signal is present (`deskkit.ReversibleSignals`: docs wording,
   typo, phrasing, lint level, port-or-drop, tool/flag default, default value, a rename, a
   table column).
 
 An item that matches neither list stays on `needs-decision`: the absence of a one-way term is
-not evidence that an item is reversible. The one-way check reads the whole title and body
-except the `ruled-check:` line, whose wording is the grammar's own record of a search for a
-prior ruling (it would otherwise trip the `ruling` needle on every filing). The list is
+not evidence that an item is reversible, and a reversible signal never outranks a one-way
+term: "the tool default for the trust gate" is one-way, because what the default governs is
+a control. The one-way check reads the whole title and body, the `ruled-check:` line
+included — that line is where a filer names the subject of the search. The one exemption is
+the `ruling` needle on that line alone, whose wording is the grammar's own record of a search
+for a prior ruling (it would otherwise trip on every filing); every other needle and pattern
+still reads it (`deskkit.OneWayExempting`). The reversible signal is never read from the
+`ruled-check:` line, so that line can keep a filing on the queue but never admit it. The list is
 deliberately broad: a false one-way costs one item staying on the driver's queue; a miss
 costs a decision taken without them. A keyword list is still only a keyword list — review
 of the filing remains the layer above it, and the notice lane's own record (the digest's
@@ -2900,8 +2916,12 @@ write exits 6 with the issue carrying both labels, so it is still on the driver'
 carrying no labels — the same unlabelled state any `deskfile new` filing is left in when its
 label write fails — and the exit code is the signal to re-label it by hand.
 `desk-decided` is created on first use through `deskkit`'s `LabelChange` ensure-exists path
-(the one `deskflip` and `deskpost`'s mechanical labels use), with its own colour and
-description; it is never a caller `--label`.
+(the one `deskflip` and `deskpost`'s mechanical labels use), with the one colour and
+description `deskkit` declares for it (`deskpr --decided` creates it with the same spec on a
+PR). It is never a caller `--label`: `deskfile new --label desk-decided` is refused (exit 5),
+`--force-new` included, and so is a caller body that already carries the
+`<!-- desk-r3-decision v1 -->` marker — the marker in an issue body is the notice lane's
+record that the gate admitted the filing, and only the tool writes it.
 
 **Audit.** Every `new` filing that reaches the gate records its route on the local audit
 line: `lane=desk-decided (<the reversible signal>)`, `lane=needs-decision (<why it stayed>)`,
@@ -2909,8 +2929,11 @@ or `no-fork=<value>`.
 
 **In the digest.** `deskdigest` collects `desk-decided` alongside `needs-decision` and
 `human-only`, lists each notice once — in the desk-decisions section, with its veto date —
-and does not list a notice-only item as a Queue row. An item that carries `desk-decided` AND
-still carries `needs-decision` or `human-only` keeps its Queue row. The classifier strips the
+and does not list that notice as a Queue row. The Queue skips a `desk-decided` item ONLY when
+the desk-decisions section actually lists it (a trusted author's marker): a `desk-decided`
+label with no marker, or with a marker from an author off the roster, keeps its Queue row
+rather than vanishing from both sections. An item that carries `desk-decided` AND still
+carries `needs-decision` or `human-only` keeps its Queue row too. The classifier strips the
 tool-written `## Desk-decided` block before matching, so a notice is never classified on the
 tool's own field names.
 

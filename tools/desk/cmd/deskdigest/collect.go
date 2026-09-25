@@ -88,10 +88,10 @@ func (c *collection) Partial() bool {
 // deskDecidedLabel marks a `deskfile new` filing that took the notice lane (R-3, via the
 // fork-test gate): two or more workable options, a gate the driver still holds to catch a
 // wrong guess, a positive reversible signal and no one-way term. It is applied by the TOOL,
-// never by a caller `--label`, and this repo's label inventory does not carry it until
+// never by a caller `--label` (deskfile refuses one), and this repo's label inventory does not carry it until
 // deskfile files the first one (deskkit's LabelChange ensure-exists path creates it on first
-// use, the same as deskflip/deskpost's mechanical labels).
-const deskDecidedLabel = "desk-decided"
+// use, the same as deskflip/deskpost's mechanical labels). deskkit's one DeskDecidedLabel.
+const deskDecidedLabel = deskkit.DeskDecidedLabel
 
 // digestLabels is the input label set: the standing decision queue, the infra asks only the
 // human can perform, and the notice-lane items the fork-test gate filed off the driver's

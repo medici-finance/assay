@@ -12,13 +12,24 @@
   `deskkit.OneWayPatterns` match (merge, ready-flip, main push, tag/release, weakening a
   security control, secrets/keys/PII, money, identity/auth, deleting or overwriting data,
   sending or publishing outside, live infrastructure, App permissions, approval authority,
-  `gate:human`). The same one-way check refuses `--no-fork` and withholds the re-routes from
-  the fewer-than-two-options refusal, so no route the tool offers takes a one-way item off
-  the queue. `deskdigest` lists notice-lane items in its desk-decisions section with their
-  veto date, and no longer lists them as Queue rows.
+  `gate:human`, direct writes to main, draft-to-ready, required reviews, 2FA/MFA, hooks and
+  signatures, the trust gate and roster, owners and roles, archive/transfer/visibility,
+  auto-closing driver-owned items, charges, and turning a control off). A one-way term
+  outranks a reversible one, and the `ruled-check:` line is read for one-way terms (exempt
+  only from the `ruling` needle). The same one-way check refuses `--no-fork` and withholds
+  the re-routes from the fewer-than-two-options refusal. The patterns are a floor, not a
+  guarantee: review of the filing and the digest's veto window are the layers around them.
+  `deskdigest` lists notice-lane items in its desk-decisions section with their veto date,
+  and drops a `desk-decided` item from the Queue only when that section lists it.
+- `deskfile new` refuses a caller `--label desk-decided` and a caller body already carrying
+  the `desk-r3-decision v1` marker (`--force-new` included): only the notice lane writes
+  either.
 
 ### Changed
 - The R-3 human-only and reversible keyword lists moved from `cmd/deskdigest` into
   `internal/deskkit` (`HumanOnlySignals`, `ReversibleSignals`) so `deskfile`'s notice-lane
   gate and `deskdigest`'s classifier consult one definition; `deskdigest` no longer reads
   the tool-written `## Desk-decided` block when classifying.
+- The `desk-decided` label is created from one shared spec
+  (`deskkit.DeskDecidedLabelColor` / `DeskDecidedLabelDescription`) by both `deskpr` and
+  `deskfile`, whichever reaches a repo first.

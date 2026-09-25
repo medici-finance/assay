@@ -163,9 +163,18 @@ func TestOneWayTermOverridesCaughtBy(t *testing.T) {
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel))
 	// A one-way item stays on needs-decision, which is STILL a blocker claim: it needs the
 	// SEPARATE `### Evidence` fence the blocker-evidence gate requires of every
-	// needs-decision filing, one-way or not.
+	// needs-decision filing, one-way or not. neutralEvidence, NOT bodyWithEvidence: the
+	// latter's "cluster" is itself a live-infrastructure OneWayPattern, which would let this
+	// row pass with the HumanOnlySignals half of deskkit.OneWay disarmed. With it, the
+	// `security` needle is the ONLY one-way term in the filing.
+	//
+	// FAIL-FIRST (review finding cor-1688-C5): with deskkit.OneWay's HumanOnlySignals branch
+	// disarmed (`if s := ...; false && s != nil`), this row went red once switched to
+	// neutralEvidence:
+	//
+	//	forkgate_test.go: applied labels [needs-decision desk-decided] dropped needs-decision despite the one-way term
 	body := bodyFileWith(t, "This filing also touches a security control on the ledger boundary.\n\n"+
-		bodyWithEvidence+"\n\n"+noticeLaneBlock)
+		neutralEvidence+"\n\n"+noticeLaneBlock)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
 		"--title", "flip the tool default for --sla-days", "--body-file", body,

@@ -43,13 +43,21 @@ type digest struct {
 // build turns a collection into a digest. Pure apart from the clock it is handed.
 func build(c *collection, so signOff, now time.Time, week string) *digest {
 	d := &digest{Week: week, Now: now.UTC(), Coll: c, SignOff: so, Decisions: r3Decisions(c)}
+	listed := make(map[*item]bool, len(d.Decisions))
+	for _, dec := range d.Decisions {
+		listed[dec.Item] = true
+	}
 	for _, it := range c.Items {
 		// A desk-decided notice is OFF the driver's queue: it is listed once, in the
 		// desk-decisions section (renderDecisions) with its veto date, never as a Queue row
-		// "waiting on a human". An item that still carries needs-decision or human-only as
-		// well (the notice lane's remove write failed, or a human re-queued it) IS still on
-		// the queue and keeps its row.
-		if noticeOnly(it) {
+		// "waiting on a human". The skip FAILS CLOSED: only an item that section actually
+		// lists (a trusted author's desk-r3-decision marker) leaves the Queue. A desk-decided
+		// label with no marker (applied by hand) or with an untrusted one is not a
+		// tool-admitted notice, and keeps its Queue row rather than vanishing from both
+		// sections. An item that still carries needs-decision or human-only as well (the
+		// notice lane's remove write failed, or a human re-queued it) IS still on the queue
+		// and keeps its row too.
+		if noticeOnly(it) && listed[it] {
 			continue
 		}
 		r := row{Item: it, Verdict: classifyItem(it), AgeDays: wholeDays(it.CreatedAt, now)}

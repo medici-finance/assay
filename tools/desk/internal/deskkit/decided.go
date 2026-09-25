@@ -45,6 +45,15 @@ const DeskDecidedMarker = "<!-- desk-r3-decision v1 -->"
 // use — it is not part of desklabel's closed per-role vocabulary).
 const DeskDecidedLabel = "desk-decided"
 
+// DeskDecidedLabelColor and DeskDecidedLabelDescription are the ONE spec the desk-decided
+// label is created with on first use, by whichever writer reaches a repo first — deskpr on a
+// PR, or deskfile's notice lane on an issue. Two specs would make the label's look depend on
+// which tool happened to create it.
+const (
+	DeskDecidedLabelColor       = "5319e7"
+	DeskDecidedLabelDescription = "A desk took a reversible default here — see the item's Desk-decided block"
+)
+
 // DecidedItem is one declared desk decision: what was chosen, the alternative not taken,
 // and what reversing it costs the driver.
 type DecidedItem struct {

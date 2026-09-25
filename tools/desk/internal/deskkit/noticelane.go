@@ -2,6 +2,7 @@ package deskkit
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -13,6 +14,10 @@ import (
 //  1. a caller label that marks the item one-way (OneWayLabels) keeps it on the queue;
 //  2. any one-way term — HumanOnlySignals, or the broader OneWayPatterns below — keeps it;
 //  3. only then, a POSITIVE match on R-3's ReversibleSignals admits it.
+//
+// A reversible needle never outranks a one-way term: R-3's "tool default" names the SHAPE of
+// a change, and a tool default that governs a control ("the default for the trust gate") is
+// still one-way. That is why step 2 runs first and is broad.
 //
 // An item that matches nothing is NOT admitted: absence of a one-way term is not evidence
 // that the item is reversible, and a substring list that fails open would let every
@@ -73,7 +78,47 @@ var OneWayPatterns = []OneWayPattern{
 	owp(`\bgithub apps?\b|\bapps? permissions?\b|\bactions:\s*(write|read)\b|\b(read|write|admin) access\b|\bgrant\w*|\binstallations?\b|\badmins?\b|\bprivileg\w*|\bapprov\w*|\bself[- ]review\w*|\bsign[- ]?off\w*|\bratif\w*|\bveto\w*|\bcodeowners?\b`, "permission/approval", "App permissions or approval authority"),
 	// gate:human in every spelling
 	owp(`\bgate:\s*human\b|\bhuman[- ]gated?\b|\bhuman[- ]only\b`, "gate:human", "human gate"),
+
+	// Round 2 (security review at 834c4f8d5): phrasings of the classes above the first set
+	// missed. Each is a class the README names; the probes that found them are negative
+	// tests (TestNoticeLaneVerdictRefusesControlPhrasings, and deskfile's
+	// TestNoticeLaneRefusesReversibleSubjectOneWay).
+	//
+	// a direct write to main, or any change landing without a PR
+	owp(`\b(commit|write|land|push|merg)\w* (\w+ ){0,4}(straight|directly|direct) (to|on|onto|into) (main|master|the default branch)\b|\b(straight|directly|direct) (to|on|onto|into) (main|master|the default branch)\b|\bwithout (a |an |the |any )?(pr|prs|pull requests?|merge requests?|mrs?|reviews?)\b`, "direct to main", "main push"),
+	// a draft change taken to ready
+	owp(`\bout of draft\b|\bundraft\w*|\bdraft (to|->|→) ready\b|\bfrom draft\b`, "out of draft", "ready-flip authority"),
+	// review requirements and dismissal
+	owp(`\brequired[- _]?(approving[- _])?reviews?\w*|\breviews? required\b|\breviewers? required\b|\bdismiss\w*`, "required reviews", "App permissions or approval authority"),
+	// second factors
+	owp(`\b2fa\b|\bmfa\b|\btwo[- ]factor\b|\bmulti[- ]factor\b|\btotp\b|\bpasskeys?\b`, "2FA/MFA", "identity or auth"),
+	// hooks, --no-verify, commit signatures
+	owp(`\bno[- ]verify\b|\bhooks?\b|\bunsigned\b|\bsignatures?\b|\bgpg\b|\bsigned[- ]commits?\b|\bcommit signing\b`, "hooks/signatures", "security control"),
+	// the trust boundary: who the desk acts on
+	owp(`\btrust\w*|\brosters?\b|\bany(one|body)\b|\bany (commenter|author|user|login|account)s?\b|\bcommenters?\b|\ballow[- ]?lists?\b|\bdeny[- ]?lists?\b`, "trust boundary", "identity or auth"),
+	// org roles and ownership
+	owp(`\bowner\w*|\broles?\b|\bmaintainers?\b|\bcollaborators?\b|\bmembers?(hip)?\b|\bteams? (access|membership|permissions?)\b`, "owner/role", "App permissions or approval authority"),
+	// repository lifecycle: archive, transfer, visibility
+	owp(`\barchiv\w*|\btransfer\w*|\bvisib\w*|\bprivate\b|\b(other|another|different|new|separate|sibling) org(s|ani[sz]ations?)?\b|\borgani[sz]ations?\b|\bmov\w* (\w+ ){0,4}(under|to|into|between) (\w+ ){0,2}orgs?\b|\brenam\w* (the |this |a )?(repo|repository|org|organi[sz]ation)\b`, "archive/transfer/visibility", "deleting or overwriting durable data"),
+	// closing items the driver owns
+	owp(`\bauto[- ]?(clos|resolv)\w*|\bclos(e|es|ed|ing) (\w+ ){0,4}(needs-decision|human-only|gate)\b|\bneeds-decision (issues? )?(\w+ ){0,3}(clos\w*|older|stale|expir\w*)\b`, "auto-close", "human-only-close authority"),
+	// charges
+	owp(`\bcharg(e|es|ed|ing)\b|\bcards?\b|\bcredit\b|\bpurchas\w*|\bbuy(s|ing)?\b|\bbought\b|\bsubscri\w*|\bbilling\b`, "charge", "money or funds"),
+	// the control-verb class: turning a control off, near a control noun (either order)
+	owp(controlVerbExpr, "control off", "security control"),
 }
+
+// controlVerbExpr is the control-verb class: a verb that turns a control off ("turn off",
+// "switch off", "stop requiring", "no longer require", "skip", "opt out", "remove", "relax",
+// "waive", "drop … requirement", "allow … without") within a few words of a control noun
+// ("check", "scan", "gate", "guard", "hook", "review", "requirement", "protection", …), in
+// either order ("the scan was turned off"). `drop` is paired only with "requirement": the
+// R-3 example "port-or-drop" drops scripts, not controls.
+const controlNouns = `(checks?|scans?|scanners?|gates?|guards?|hooks?|reviews?|reviewers?|requirements?|protections?|lints?|linters?|tests?|ci|verification|verif(y|ies)|assertions?|signing|policy|policies|rules?|controls?|alerts?)`
+
+var controlVerbExpr = `\b(turn(s|ed|ing)? off|switch(es|ed|ing)? off|stop(s|ped|ping)? (requir|enforc|check|run)\w*|no longer (requir|enforc|check|run)\w*|skip\w*|opt(s|ed|ing)? out( of)?|remov\w*|relax\w*|waiv\w*|suppress\w*|silenc\w*|allow\w* (\S+ ){0,6}?without)\W+(\S+\W+){0,5}?` + controlNouns + `\b` +
+	`|\b` + controlNouns + `\W+(\S+\W+){0,4}?(turned off|switched off|skipped|waived|removed|relaxed|suppressed|dropped|no longer (required|enforced|run))\b` +
+	`|\bdrop\w* (the |a |an )?(\S+ ){0,3}?requirements?\b`
 
 // OneWayHit names why an item is one-way: the label, needle or pattern that matched, and
 // its class. The zero value means "no one-way signal found".
@@ -97,9 +142,26 @@ func OneWay(title, body string, labels []string) (OneWayHit, bool) {
 			}
 		}
 	}
-	hay := strings.ToLower(title + "\n" + body)
-	if s := FirstHumanOnlySignal(hay); s != nil {
-		return OneWayHit{Match: s.Needle, Category: s.Category}, true
+	return OneWayExempting(title + "\n" + body)
+}
+
+// OneWayExempting is OneWay's text half — a HumanOnlySignals needle or a OneWayPatterns match
+// anywhere in text — with the named HumanOnlySignals needles exempt. Every OneWayPatterns
+// entry and every other needle is still read. deskfile uses it for the fork-test block's
+// `ruled-check:` line: that line records the search for an existing ruling, so its natural
+// wording ("no prior ruling found") would trip the `ruling` needle on every filing — but it is
+// also where a filer names the SUBJECT of the search, so the line is read against everything
+// else (security review sec-1688-S1, round 2).
+func OneWayExempting(text string, exempt ...string) (OneWayHit, bool) {
+	hay := strings.ToLower(text)
+	for i := range HumanOnlySignals {
+		sig := &HumanOnlySignals[i]
+		if slices.Contains(exempt, sig.Needle) {
+			continue
+		}
+		if strings.Contains(hay, sig.Needle) {
+			return OneWayHit{Match: sig.Needle, Category: sig.Category}, true
+		}
 	}
 	for _, p := range OneWayPatterns {
 		if m := p.Re.FindString(hay); m != "" {

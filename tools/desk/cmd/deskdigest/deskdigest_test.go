@@ -1232,3 +1232,37 @@ func postedBody(t *testing.T, g *ghScript, verb string) string {
 	}
 	return b
 }
+
+// TestDeskDecidedWithoutTrustedMarkerStaysInQueue — the Queue skips a desk-decided item
+// ONLY when the desk-decisions section actually lists it. A desk-decided label with no
+// marker (applied by hand), or with a marker from an author off the roster, is not a
+// tool-admitted notice: it keeps its Queue row rather than vanishing from both sections
+// (review finding cor-1688-C4).
+//
+// FAIL-FIRST: at head 834c4f8d5 (noticeOnly skipped every desk-decided-only item):
+//
+//	--- FAIL: TestDeskDecidedWithoutTrustedMarkerStaysInQueue/no-marker
+//	    queue rows = 0, decisions = 0 — the item is in neither section
+//	--- FAIL: TestDeskDecidedWithoutTrustedMarkerStaysInQueue/untrusted-marker
+//	    queue rows = 0, decisions = 0 — the item is in neither section
+func TestDeskDecidedWithoutTrustedMarkerStaysInQueue(t *testing.T) {
+	noMarker := mkItem("flip the tool default for --sla-days", "Flip the tool default for --sla-days.", deskDecidedLabel)
+	untrusted := mkItem("flip the tool default for --sla-days", noticeBody, deskDecidedLabel)
+	untrusted.AuthorLogin, untrusted.AuthorID = "drive-by", 909090
+	for _, tc := range []struct {
+		name string
+		it   *item
+	}{{"no-marker", noMarker}, {"untrusted-marker", untrusted}} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &collection{Scope: []string{"example-org/tracker"}, Items: []*item{tc.it},
+				Repos: []repoRead{{Repo: "example-org/tracker", LabelSetRead: true, Items: 1}}}
+			d := build(c, signOff{State: signOffUnsigned}, fixedNow, "2026-W33")
+			if len(d.Decisions) != 0 {
+				t.Fatalf("decisions = %d, want 0 (no trusted marker)", len(d.Decisions))
+			}
+			if len(d.Rows) != 1 {
+				t.Errorf("queue rows = %d, decisions = %d — the item is in neither section", len(d.Rows), len(d.Decisions))
+			}
+		})
+	}
+}

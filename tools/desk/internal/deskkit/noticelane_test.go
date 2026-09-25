@@ -98,3 +98,115 @@ func TestStripDeskDecidedBlock(t *testing.T) {
 		t.Error("a section without the marker was stripped")
 	}
 }
+
+// TestOneWayReadsHumanOnlySignals — leads that ONLY the digest's HumanOnlySignals list
+// catches (no OneWayPatterns entry matches them) are still one-way. Pins the HumanOnlySignals
+// half of OneWay, which the class table above cannot: every lead there also matches a
+// pattern (review finding cor-1688-C5).
+//
+// FAIL-FIRST: with OneWay's HumanOnlySignals branch disarmed (`false && s != nil`):
+//
+//	--- FAIL: TestOneWayReadsHumanOnlySignals
+//	    OneWay("This change is irreversible.") = false, want true
+func TestOneWayReadsHumanOnlySignals(t *testing.T) {
+	for _, l := range []string{
+		"This change is irreversible.",
+		"It comes out of this quarter's budget.",
+		"This filing also touches a security control on the ledger boundary.",
+	} {
+		hay := strings.ToLower(l)
+		if FirstHumanOnlySignal(hay) == nil {
+			t.Fatalf("fixture: %q matches no HumanOnlySignals needle", l)
+		}
+		for _, p := range OneWayPatterns {
+			if m := p.Re.FindString(hay); m != "" {
+				t.Fatalf("fixture: %q also matches OneWayPattern %s (`%s`) — it cannot isolate the list", l, p.Name, m)
+			}
+		}
+		if _, ok := OneWay(l, "", nil); !ok {
+			t.Errorf("OneWay(%q) = false, want true", l)
+		}
+	}
+}
+
+// TestNoticeLaneVerdictRefusesControlPhrasings — the security review's round-2 probes
+// (head 834c4f8d5): a reversible R-3 subject paired with one-way wording the first pattern
+// set missed. Every one must stay with the human.
+//
+// FAIL-FIRST: at head 834c4f8d5 every case was admitted, e.g.:
+//
+//	--- FAIL: TestNoticeLaneVerdictRefusesControlPhrasings
+//	    NoticeLaneVerdict(..., "Turn off the 2FA requirement") admitted (reversible: tool default (R-3 example) (`tool default`)), want refused
+//	    NoticeLaneVerdict(..., "Charge the card on file") admitted (reversible: tool default (R-3 example) (`tool default`)), want refused
+func TestNoticeLaneVerdictRefusesControlPhrasings(t *testing.T) {
+	for _, body := range []string{
+		// the review's end-to-end titles
+		"Flip the tool default of the commit guard: allow commits straight to main without a PR?",
+		"Default value of --required-reviewers: 1 or 0?",
+		"Tool default for the ready step: let the desk take PRs out of draft itself?",
+		"Flag default for --no-verify on desk commits: on or off?",
+		"Tool default: stop requiring 2FA for bot accounts?",
+		"Tool default: auto-close needs-decision issues older than 30 days?",
+		"Rename the repository and move it under the other org?",
+		"Tool default for the trust gate: act on comments from any commenter?",
+		// the review's NoticeLaneVerdict-level probes
+		"Turn off the 2FA requirement",
+		"Drop the MFA requirement",
+		"Archive the repository",
+		"Change repo visibility so anyone can see it",
+		"Allow unsigned commits",
+		"Let the reviewer App dismiss stale reviews",
+		"Give the bot the org owner role",
+		"Turn off the scan in CI",
+		"Charge the card on file",
+		// the control-verb class beside other control nouns
+		"Switch off the pre-commit check",
+		"Skip the guard on bot commits",
+		"No longer require a review on docs-only changes",
+		"Opt out of the secret scan for fixtures",
+		"Allow the desk to land changes without the gate",
+		"Commit directly to main for doc fixes",
+		"Move the PR from draft to ready automatically",
+		"Add the bot to the roster",
+		"Make the repo private",
+		"Transfer the repo to a new owner",
+		"Two-factor for bot accounts: keep it or drop it?",
+		"Close the human-only issues after a month",
+	} {
+		if admit, why := NoticeLaneVerdict("the tool default for --sla-days", body, nil); admit {
+			t.Errorf("NoticeLaneVerdict(..., %q) admitted (%s), want refused", body, why)
+		}
+	}
+}
+
+// TestNoticeLaneVerdictStillAdmitsReversible — the widened set must not swallow R-3's own
+// reversible examples; a false one-way costs a queue item, but a set that refuses every
+// reversible item makes the lane dead.
+func TestNoticeLaneVerdictStillAdmitsReversible(t *testing.T) {
+	for _, title := range []string{
+		"flip the tool default for --sla-days",
+		"fix the docs wording in the README",
+		"lint level for the unrun check: notice or error?",
+		"rename the digest's Age column",
+		"flag default for --window: 7 or 14 days?",
+	} {
+		if admit, why := NoticeLaneVerdict(title, "", nil); !admit {
+			t.Errorf("NoticeLaneVerdict(%q) refused (%s), want admitted", title, why)
+		}
+	}
+}
+
+// TestOneWayExemptingRuling — OneWayExempting reads every one-way list EXCEPT the named
+// HumanOnlySignals needles: the ruled-check line's "no prior ruling found" is not one-way,
+// but a one-way subject on that same line still is.
+func TestOneWayExemptingRuling(t *testing.T) {
+	if hit, ok := OneWayExempting(`ruled-check: searched the tracker for "sla default" → no prior ruling found`, "ruling"); ok {
+		t.Errorf("exempt `ruling` still matched: %s", hit)
+	}
+	if _, ok := OneWayExempting("ruled-check: merge and tag the v1.2.0 release -> nothing", "ruling"); !ok {
+		t.Error("a one-way subject on the ruled-check line was not read")
+	}
+	if _, ok := OneWayExempting("ruled-check: this is irreversible -> nothing", "ruling"); !ok {
+		t.Error("a non-exempt HumanOnlySignals needle on the ruled-check line was not read")
+	}
+}

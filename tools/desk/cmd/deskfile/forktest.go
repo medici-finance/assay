@@ -74,20 +74,20 @@ const (
 )
 
 // deskDecidedLabel is the notice-lane label `deskfile new` applies itself (never a caller
-// `--label`, which the ordinary loop refuses when missing from the repo): it goes through
-// deskkit's LabelChange ensure-exists path, the same one deskflip/deskpost's mechanical
-// labels use, so it is created on first use rather than requiring a human/admin label-create
-// step first.
-const deskDecidedLabel = "desk-decided"
+// `--label` — cmdNew refuses one): it goes through deskkit's LabelChange ensure-exists path,
+// the same one deskflip/deskpost's mechanical labels and deskpr's --decided use, so it is
+// created on first use rather than requiring a human/admin label-create step first. It is
+// deskkit's one DeskDecidedLabel, created with deskkit's one colour and description.
+const deskDecidedLabel = deskkit.DeskDecidedLabel
 
-// deskDecidedColor is the colour desk-decided is created with on first use (6 hex digits, no
-// "#", as every other ensure-exists caller passes one).
-const deskDecidedColor = "c5def5"
+// deskDecidedColor is the colour desk-decided is created with on first use.
+const deskDecidedColor = deskkit.DeskDecidedLabelColor
 
 // deskDecidedMarker is the SAME machine-readable marker deskdigest's r3MarkerRe reads
-// (cmd/deskdigest/collect.go) — one marker, two writers: a desk taking an R-3 decision by
-// hand posts it as a comment, and this notice lane writes it straight into the filed issue's
-// own body, because the filing IS the decision (no separate comment to wait for).
+// (cmd/deskdigest/collect.go) and deskpr writes into a PR body — one marker, three writers:
+// a desk taking an R-3 decision by hand posts it as a comment, deskpr --decided writes it
+// into a PR body, and this notice lane writes it straight into the filed issue's own body,
+// because the filing IS the decision (no separate comment to wait for).
 const deskDecidedMarker = deskkit.DeskDecidedMarker
 
 // repoShapeRe matches an `owner/repo`-shaped token, the minimum content check for
@@ -162,21 +162,49 @@ func (o forkOption) Counted() bool {
 	return strings.TrimSpace(o.WorksBecause) != "" && strings.TrimSpace(o.Consequence) != ""
 }
 
-// oneWayHay is the body the one-way / notice-lane checks read: the whole body EXCEPT any
-// `ruled-check:` line. That line is the grammar's record of the search for an existing
-// ruling, so its natural wording ("no prior ruling found") trips the R-3 `ruling` needle on
-// every filing whatever the item is about. Everything else — title, prose, every `option:`
-// line, `caught-by:` — is read.
+// oneWayHay is the body EXCEPT any `ruled-check:` line, and ruledCheckLines is those lines.
+// The ruled-check line is the grammar's record of the search for an existing ruling, so its
+// natural wording ("no prior ruling found") trips the R-3 `ruling` needle on every filing
+// whatever the item is about — but it is ALSO where a filer names the subject of that search,
+// so it is never dropped from the one-way scan: filingOneWay reads it against every one-way
+// list except the `ruling` needle (security review sec-1688-S1, round 2). The reversible
+// half of the notice-lane verdict reads oneWayHay only, so the line can never ADMIT a filing.
 func oneWayHay(body string) string {
+	hay, _ := splitRuledCheck(body)
+	return hay
+}
+
+func splitRuledCheck(body string) (rest, ruledCheck string) {
 	lines := strings.Split(body, "\n")
 	out := lines[:0:0]
+	var rc []string
 	for _, ln := range lines {
 		if forkRuledCheckLineRe.MatchString(ln) {
+			rc = append(rc, ln)
 			continue
 		}
 		out = append(out, ln)
 	}
-	return strings.Join(out, "\n")
+	return strings.Join(out, "\n"), strings.Join(rc, "\n")
+}
+
+// rulingNeedle is the one HumanOnlySignals needle the ruled-check line is exempt from.
+const rulingNeedle = "ruling"
+
+// filingOneWay is the one-way check every off-queue route in `deskfile new` consults: the
+// title, the body and the caller labels through deskkit.OneWay, with the ruled-check line
+// read separately through deskkit.OneWayExempting(…, "ruling").
+func filingOneWay(title, body string, labels []string) (deskkit.OneWayHit, bool) {
+	rest, rc := splitRuledCheck(body)
+	if hit, ok := deskkit.OneWay(title, rest, labels); ok {
+		return hit, true
+	}
+	if rc != "" {
+		if hit, ok := deskkit.OneWayExempting(rc, rulingNeedle); ok {
+			return deskkit.OneWayHit{Match: hit.Match, Category: hit.Category + ", on the ruled-check line"}, true
+		}
+	}
+	return deskkit.OneWayHit{}, false
 }
 
 // forkTestResult is everything parseForkTest read from a body. It is a REPORT, not a
@@ -417,7 +445,8 @@ func forkTestOneWayMessage(r forkTestResult, hit deskkit.OneWayHit) string {
 	return fmt.Sprintf(
 		"refused: the `### Fork test` block counts %d workable option(s) — fewer than the two a "+
 			"decision needs — but this item is one-way (%s), so it is NOT re-routed off the driver's "+
-			"queue: no --no-fork re-route applies. If the one workable option is an act only the driver "+
-			"can take, file it as that ask; otherwise re-run with --force-new --reason \"<why>\", which "+
-			"files it under needs-decision, audited.", len(r.CountedOptions()), hit.String())
+			"queue: no --no-fork re-route applies. Whether the one workable option is an act only the "+
+			"driver can take or anything else, file it as that ask by re-running with --force-new "+
+			"--reason \"<why this has one option>\": that files it under needs-decision (on the driver's "+
+			"queue), audited, without the fork-test block.", len(r.CountedOptions()), hit.String())
 }

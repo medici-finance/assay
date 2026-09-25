@@ -677,6 +677,15 @@ func cmdNew(args []string) (err error) {
 	if !deskkit.IsAllowedRepo(*repo) {
 		return deskkit.Refused("refused: " + *repo + " is not in the desk-tools repo set")
 	}
+	// desk-decided is the notice lane's OWN label: the tool applies it after the fork-test
+	// gate admits a filing, never a caller. A caller --label desk-decided would put an item off
+	// the driver's queue without passing that gate at all, so it is refused — --force-new
+	// included, which bypasses dedupe and evidence, never this.
+	if hasLabel(labels, deskDecidedLabel) {
+		return deskkit.Refused("refused: --label " + deskDecidedLabel + " is applied by this tool itself, only to a " +
+			needsDecisionLabel + " filing its fork-test gate admits to the notice lane — never a caller label. File " +
+			"with --label " + needsDecisionLabel + " and a `### Fork test` block and the gate decides.")
+	}
 
 	// --no-fork re-routes a fork-test refusal: the filer re-runs a
 	// filing that had fewer than two workable options with exactly one of the three closed
@@ -794,6 +803,14 @@ func cmdNew(args []string) (err error) {
 		}
 		body = b
 	}
+	// The desk-r3-decision marker in a filed issue's body is the notice lane's record that the
+	// TOOL admitted the filing; deskdigest reads it as exactly that. A caller body already
+	// carrying it would forge that record, so it is refused (exit 5), --force-new included.
+	if strings.Contains(string(body), deskDecidedMarker) {
+		return deskkit.Refused("refused: the body carries the " + deskDecidedMarker + " marker, which only this " +
+			"tool writes (the notice lane's record that its gate admitted the filing). Remove it; a " +
+			needsDecisionLabel + " filing with a `### Fork test` block gets it from the gate if admitted.")
+	}
 
 	// --no-fork content requirements: each re-route names what its body must carry, checked
 	// against the shape rather than trusting free text. FIRST, the one-way check: every
@@ -802,7 +819,7 @@ func cmdNew(args []string) (err error) {
 	// steered off the driver's queue. The only way forward for it is a needs-decision filing.
 	if noForkVal != "" {
 		ac.lane = "no-fork=" + noForkVal
-		if hit, oneWay := deskkit.OneWay(*title, oneWayHay(string(body)), labels); oneWay {
+		if hit, oneWay := filingOneWay(*title, string(body), labels); oneWay {
 			return deskkit.Refused("refused: --no-fork files WITHOUT the " + needsDecisionLabel + " label, and this " +
 				"item is one-way — " + hit.String() + ". A one-way item stays on the driver's queue: file it " +
 				"with --label " + needsDecisionLabel + " (and a `### Fork test` block), or, if it genuinely has one " +
@@ -852,7 +869,7 @@ func cmdNew(args []string) (err error) {
 			return deskkit.Refused(forkTestErrorMessage(res))
 		}
 		if !res.Workable() {
-			if hit, oneWay := deskkit.OneWay(*title, oneWayHay(string(body)), labels); oneWay {
+			if hit, oneWay := filingOneWay(*title, string(body), labels); oneWay {
 				return deskkit.Refused(forkTestOneWayMessage(res, hit))
 			}
 			return deskkit.Refused(forkTestRerouteMessage(res))
@@ -863,6 +880,10 @@ func cmdNew(args []string) (err error) {
 			// No gate catches a wrong guess, so this is a genuine decision: stays
 			// needs-decision, filed as today.
 			ac.lane += " (caught-by: nothing)"
+		} else if hit, oneWay := filingOneWay(*title, string(body), labels); oneWay {
+			// One-way — including a one-way term on the ruled-check line, which
+			// NoticeLaneVerdict below never sees: stays needs-decision, filed as today.
+			ac.lane += " (one-way: " + hit.String() + ")"
 		} else if admit, why := deskkit.NoticeLaneVerdict(*title, oneWayHay(string(body)), labels); admit {
 			// Notice lane (R-3): two-plus workable options, a gate the driver still holds, a
 			// positive reversible signal and no one-way term. desk-decided is ADDED alongside
@@ -1017,7 +1038,7 @@ func cmdNew(args []string) (err error) {
 		// label-create step before the first notice-lane filing can succeed. needs-decision is
 		// still in applyLabels here: it comes off in a SECOND write, after this one lands.
 		applyLabels = append(applyLabels, deskkit.LabelSpec{Name: deskDecidedLabel, Color: deskDecidedColor,
-			Description: "filed on the R-3 notice lane — see the weekly decision digest for its veto date"})
+			Description: deskkit.DeskDecidedLabelDescription})
 	}
 
 	// On-behalf-of trailer (multi-principal/01), appended to the filed body only — every

@@ -61,6 +61,10 @@ var oneWayLeads = []struct{ name, lead string }{
 	{"delete-data", "Overwrite the stored ledger snapshot or keep both copies?"},
 	{"publication", "Is the publication of the design notes fine as drafted?"},
 	{"live-infra", "Deploy the new runner image to the live cluster now?"},
+	// HumanOnlySignals-only leads: no OneWayPatterns entry matches either, so they pin the
+	// digest-list half of deskkit.OneWay (review finding cor-1688-C5).
+	{"irreversible-only", "This change is irreversible."},
+	{"budget-only", "It comes out of this quarter's budget."},
 }
 
 // TestNoticeLaneRefusesOneWayClasses — each one-way class stays on needs-decision whatever
