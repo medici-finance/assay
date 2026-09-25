@@ -373,7 +373,12 @@ edit --decided <file>` on an existing PR): a file of `decision:`/`alternative:`/
 one item per numbered entry. The tool writes the `## Desk-decided` body section and applies
 the `desk-decided` label together; never write either by hand. A PR that only carries out
 rulings already recorded elsewhere — nothing reversible was decided here — passes no
-`--decided` and carries neither: do not declare a decision that was not yours to make.
+`--decided` and carries neither: do not declare a decision that was not yours to make. A
+default declared this way needs no separate `needs-decision` / `question` issue — the block
+is the notice the driver reads at merge time. Never declare a call inside the guardrail's
+fixed human-gated set (merge, weakening a security control, identity/auth, money movement,
+durable-data deletion, anything leaving the repo): that is not reversible whatever it is
+labelled, so it STOPs for the driver instead, and a reviewer blocks a PR that declares one.
 
 If a reviewer's verdict later names `Undeclared-desk-decision: <one line>` on this PR, that is
 a finding against YOU, not a note to dispute: reply against it by ID (clause 13, above) and

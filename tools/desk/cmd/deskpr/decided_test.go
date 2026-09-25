@@ -215,3 +215,92 @@ func TestCreateDecidedLabelFailureIsLoud(t *testing.T) {
 		t.Errorf("CreateDraftChange called %d time(s), want exactly 1 — the create must still have landed", curForge.createCalls)
 	}
 }
+
+// editDecidedFixture is the edit-side shape review finding F4 on this brief's PR is about: an
+// open PR whose CURRENT body already carries the tool's own block for oneDecidedItem, and a
+// --decided file with that same item.
+func editDecidedFixture(t *testing.T) (bodyPath, decidedPath string) {
+	t.Helper()
+	body := "the original body\nBrief: fixture/01\n\n" + deskkit.RenderDecidedBlock([]deskkit.DecidedItem{
+		{Decision: "ship the one-line patch", Alternative: "ask first", Cost: "one revert"},
+	})
+	t.Setenv("FAKEGH_LIST_HAS_PR", "1")
+	t.Setenv("FAKEGH_PR_BODY", body)
+	return writeTempFile(t, body), writeDecidedFile(t, oneDecidedItem)
+}
+
+// TestEditDecidedLabelFailureStillPostsNotice pins review finding F4's first half: when the
+// label write fails after an edit LANDED, the re-review notice — the only event a body edit
+// produces for the review loop — is still posted, and the failure is still loud (exit 6).
+//
+// FAIL-FIRST: the label failure returned before the notice, so no comment was posted.
+func TestEditDecidedLabelFailureStillPostsNotice(t *testing.T) {
+	work := newBaseFixture(t)
+	withEnv(t, work)
+	t.Setenv("FAKEGH_LIST_HAS_PR", "1")
+	t.Setenv("FAKEGH_PR_BODY", "the original body\nBrief: fixture/01\n")
+	bodyPath := writeTempFile(t, "the original body, corrected\nBrief: fixture/01\n")
+	decidedPath := writeDecidedFile(t, oneDecidedItem)
+	old := applyDeskDecidedLabel
+	applyDeskDecidedLabel = func(fg deskkit.Forge, fr deskkit.ForgeRepo, number int) error {
+		return deskkit.Unverifiable("HTTP 500", nil)
+	}
+	t.Cleanup(func() { applyDeskDecidedLabel = old })
+
+	rc := run([]string{"edit", "--body-file", bodyPath, "--decided", decidedPath})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("edit rc = %d, want %d (unverifiable — the edit landed, only the label failed)", rc, deskkit.ExitUnverifiable)
+	}
+	if curForge.edited == nil {
+		t.Fatal("no EditChange call was recorded — the edit itself must still land")
+	}
+	if len(curForge.comments) != 1 {
+		t.Fatalf("posted %d re-review notice(s), want exactly 1 — a failed label write must not swallow "+
+			"the only event that tells the review loop the body changed", len(curForge.comments))
+	}
+}
+
+// TestEditDecidedNoopReconcilesMissingLabel pins review finding F4's second half: the remedy
+// the label-failure message gives — re-run the same edit — must actually work. The body
+// already matches, so the edit itself is a no-op, but with --decided given and the label
+// missing, the no-op path applies the label rather than exiting 0 with the PR still
+// block-without-label (a shape deskflip refuses).
+//
+// FAIL-FIRST: the idempotency no-op returned before the label apply — ApplyLabels was never
+// called and the PR stayed block-without-label.
+func TestEditDecidedNoopReconcilesMissingLabel(t *testing.T) {
+	work := newBaseFixture(t)
+	withEnv(t, work)
+	bodyPath, decidedPath := editDecidedFixture(t)
+
+	rc := run([]string{"edit", "--body-file", bodyPath, "--decided", decidedPath})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("edit rc = %d, want 0", rc)
+	}
+	if curForge.edited != nil {
+		t.Errorf("an unchanged body was re-sent to EditChange: %+v", curForge.edited)
+	}
+	if len(curForge.labelChanges) != 1 {
+		t.Fatalf("ApplyLabels called %d time(s), want exactly 1 — the missing label must be reconciled", len(curForge.labelChanges))
+	}
+	if len(curForge.comments) != 0 {
+		t.Errorf("a label-only reconcile posted %d re-review notice(s), want 0 — the body did not change", len(curForge.comments))
+	}
+}
+
+// TestEditDecidedNoopWithLabelPresentStaysNoop is the negative control: body unchanged and the
+// label already present — a true no-op, no label write, no notice.
+func TestEditDecidedNoopWithLabelPresentStaysNoop(t *testing.T) {
+	work := newBaseFixture(t)
+	withEnv(t, work)
+	bodyPath, decidedPath := editDecidedFixture(t)
+	t.Setenv("FAKEGH_PR_LABELS", "some-other-label,"+deskkit.DeskDecidedLabel)
+
+	if rc := run([]string{"edit", "--body-file", bodyPath, "--decided", decidedPath}); rc != deskkit.ExitOK {
+		t.Fatalf("edit rc = %d, want 0", rc)
+	}
+	if len(curForge.labelChanges) != 0 || curForge.edited != nil || len(curForge.comments) != 0 {
+		t.Errorf("a true no-op wrote something: labels=%d edited=%v comments=%d",
+			len(curForge.labelChanges), curForge.edited != nil, len(curForge.comments))
+	}
+}

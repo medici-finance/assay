@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -149,6 +150,13 @@ func (f *envForge) GetPullRequest(repo deskkit.ForgeRepo, number int) (*deskkit.
 	if title == "" {
 		title = "fixture PR title"
 	}
+	// FAKEGH_PR_LABELS (comma-separated) is the label set the change currently carries — the
+	// attention-budget/19 `edit --decided` no-op path reconciles a missing desk-decided label
+	// against it. Unset serves no labels, byte-identical to this fake before the knob existed.
+	var labels []string
+	if l := os.Getenv("FAKEGH_PR_LABELS"); l != "" {
+		labels = strings.Split(l, ",")
+	}
 	return &deskkit.PullRequest{
 		Number:    number,
 		URL:       fmt.Sprintf("https://github.com/%s/pull/%d", repo.Slug(), number),
@@ -156,6 +164,7 @@ func (f *envForge) GetPullRequest(repo deskkit.ForgeRepo, number int) (*deskkit.
 		Body:      body,
 		Title:     title,
 		Mergeable: f.mergeable(),
+		Labels:    labels,
 	}, nil
 }
 

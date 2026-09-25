@@ -390,7 +390,7 @@ func flip(o flipOpts) error {
 	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(checks), short(head))
 
 	// --- desk-decided --------------------------------------------------------------
-	// Attention-budget/19, option A (the driver's ruling on assay#1677): refuse the flip
+	// Attention-budget/19, option A (the driver's ruling on #1677): refuse the flip
 	// ONLY on a FINDING — the reviewer's `Undeclared-desk-decision:` line at the current
 	// head, or the label/block disagreeing with each other. Absence of a block, by itself,
 	// is NEVER a refusal (Verify row 6) — this condition only ADDS a refusal path over the
@@ -429,7 +429,7 @@ func flip(o flipOpts) error {
 	// The ready mutation has no compare-and-swap, so the head is re-read HERE, after every
 	// condition above and immediately before the mutation. A head that moved means each
 	// verdict above was read against code that is no longer what would flip.
-	head2, body2, err := readHead(o, fg, fr)
+	head2, body2, labels2, err := readHead(o, fg, fr)
 	if err != nil {
 		return err
 	}
@@ -472,6 +472,15 @@ func flip(o flipOpts) error {
 		}
 	}
 	if err := checkSecurityVerdict(o, repo, pr, files, reviews2, reviewerLogin, head); err != nil {
+		return err
+	}
+	// desk-decided re-runs against the SAME re-read (review finding F2 on attention-budget/19's
+	// PR): an `Undeclared-desk-decision:` line posted at this head during the checks, or a body
+	// or label edited between the reads, is exactly the change this re-read exists to see.
+	pr2 := pr
+	pr2.Body = body2
+	pr2.Labels = labels2
+	if err := checkDeskDecided(o, pr2, reviews2, reviewerLogin, head); err != nil {
 		return err
 	}
 	o.say("%s OK: still %s, and the verdicts at that head are unchanged", condHeadStable, short(head))
@@ -1476,7 +1485,7 @@ func hasLabel(labels []labelInfo, want string) bool {
 }
 
 // checkDeskDecided is the desk-decided condition (attention-budget/19, option A — the
-// driver's ruling on assay#1677: refuse the flip ONLY on a finding). Two things are
+// driver's ruling on #1677: refuse the flip ONLY on a finding). Two things are
 // MECHANICAL, evaluated in this order:
 //
 //  1. the `## Desk-decided` block, when present, must PARSE — a malformed block (the marker
@@ -1515,30 +1524,64 @@ func checkDeskDecided(o flipOpts, pr prInfo, reviews []reviewInfo, reviewerLogin
 				"(it applies both together), or drop whichever one is stale.", condDeskDecided, o.pr, detail))
 	}
 
-	// The reviewer's finding, at the CURRENT head only: reviews arrive in ascending
-	// submitted order, so the LAST one from the bound reviewer at this exact head is the
-	// governing verdict — an edit that adds the block, followed by a fresh verdict that
-	// omits the line, clears a prior finding at the SAME head without needing a new commit.
-	var latestAtHead *reviewInfo
-	for i := range reviews {
-		r := &reviews[i]
-		if !deskkit.SameActor(r.User.Login, reviewerLogin) {
-			continue
-		}
-		if r.CommitID != head {
-			continue
-		}
-		latestAtHead = r
-	}
-	if latestAtHead != nil {
-		if lines := deskkit.UndeclaredDeskDecisionLines(latestAtHead.Body); len(lines) > 0 {
-			return deskkit.Refused(fmt.Sprintf(
-				"condition %s: %s's review at head %s names an undeclared desk decision: %q — declare it "+
-					"(`deskpr edit --decided`) before the flip.",
-				condDeskDecided, reviewerLogin, short(head), lines[0]))
-		}
+	// The reviewer's finding, at the CURRENT head only, reduced PER LANE (standingUndeclared
+	// finding): the correctness and security verdicts are posted by the SAME reviewer App, in
+	// parallel, so a verdict in one lane must never clear the other lane's finding.
+	if line, lane := standingUndeclaredFinding(reviews, reviewerLogin, head); line != "" {
+		return deskkit.Refused(fmt.Sprintf(
+			"condition %s: %s's %s review at head %s names an undeclared desk decision: %q — declare it "+
+				"(`deskpr edit --decided`), then a fresh %s verdict at this head that omits the line clears it.",
+			condDeskDecided, reviewerLogin, lane, short(head), line, lane))
 	}
 	return nil
+}
+
+// standingUndeclaredFinding reduces the reviewer App's `Undeclared-desk-decision:` lines at the
+// CURRENT head to the one that still STANDS, if any, and names the lane that raised it.
+//
+// PER LANE, because the correctness verdict and the security verdict are posted by the same
+// App (review findings SEC-1 / F1 on attention-budget/19's PR): a "last reviewer-App review at
+// head" reduction let a `Security-Review: pass` — a review that never looked at the question —
+// become the governing review and silently clear a correctness finding, so the answer depended
+// on which parallel lane happened to post last. The lanes are split exactly as
+// checkReviewerApproved splits them: a body carrying a security marker is the security lane,
+// every other body is the correctness lane.
+//
+// Within a lane, walked in ascending submitted order:
+//   - ANY review carrying the line RAISES (or re-raises) the finding — a BLOCK-direction
+//     marker is read in every state, fenced or not, so it cannot be hidden;
+//   - only a later DECISIVE verdict in the SAME lane that omits the line CLEARS it: in the
+//     correctness lane an APPROVED or CHANGES_REQUESTED review; in the security lane any
+//     review (every security-lane body is by definition a pass/fail verdict). A COMMENTED
+//     correctness-lane note that omits the line is not a fresh verdict and clears nothing.
+//
+// A finding in EITHER lane stands and refuses; the correctness lane is reported first.
+func standingUndeclaredFinding(reviews []reviewInfo, reviewerLogin, head string) (line, lane string) {
+	for _, security := range []bool{false, true} {
+		standing := ""
+		for _, r := range reviews {
+			if !deskkit.SameActor(r.User.Login, reviewerLogin) || r.CommitID != head {
+				continue
+			}
+			if hasSecurityMarker(r.Body) != security {
+				continue
+			}
+			if lines := deskkit.UndeclaredDeskDecisionLines(r.Body); len(lines) > 0 {
+				standing = lines[0]
+				continue
+			}
+			if security || r.State == "APPROVED" || r.State == "CHANGES_REQUESTED" {
+				standing = ""
+			}
+		}
+		if standing != "" {
+			if security {
+				return standing, "security"
+			}
+			return standing, "correctness"
+		}
+	}
+	return "", ""
 }
 
 func (o flipOpts) say(format string, args ...any) {
@@ -1959,15 +2002,19 @@ func readChangedFiles(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]fil
 	return out, nil
 }
 
-func readHead(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) (string, string, error) {
+func readHead(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) (string, string, []labelInfo, error) {
 	ch, err := fg.GetPullRequest(fr, o.pr)
 	if err != nil {
-		return "", "", deskkit.Unverifiable(fmt.Sprintf(
+		return "", "", nil, deskkit.Unverifiable(fmt.Sprintf(
 			"condition %s: cannot re-read PR #%d's head immediately before the flip (%s) — without the "+
 				"re-read there is no way to know the verified state is still current, so the flip does not "+
 				"happen.", condHeadStable, o.pr, firstLine(err.Error())), err)
 	}
-	return strings.TrimSpace(ch.HeadSHA), ch.Body, nil
+	labels := make([]labelInfo, 0, len(ch.Labels))
+	for _, l := range ch.Labels {
+		labels = append(labels, labelInfo{Name: l})
+	}
+	return strings.TrimSpace(ch.HeadSHA), ch.Body, labels, nil
 }
 
 // --- CI reduction ----------------------------------------------------------------

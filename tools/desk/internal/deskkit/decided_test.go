@@ -234,3 +234,49 @@ func TestUndeclaredDeskDecisionLines(t *testing.T) {
 		})
 	}
 }
+
+// TestDeskDecidedSectionIgnoresFencedExamples pins review advisory N1 on this brief's PR: a PR
+// body that QUOTES an example block — `## Desk-decided` on its own line inside a code fence —
+// is documentation, not a declaration. Read as a real block it made `create --decided` refuse
+// (a "hand-written heading") and deskflip refuse on a label/block mismatch or a malformed
+// block. The section reader skips fenced regions, as the verdict-marker readers do; a real
+// block after the fence is still found, and edit's in-place replace leaves the example alone.
+//
+// FAIL-FIRST: before findDeskDecidedSection tracked fences, every assertion below failed —
+// the fenced heading was found (found=true, malformed: no marker).
+func TestDeskDecidedSectionIgnoresFencedExamples(t *testing.T) {
+	example := "Intro.\n\n```markdown\n## Desk-decided\n1. decision: an example\n```\n\nMore text.\n"
+	if HasDeskDecidedHeading(example) {
+		t.Errorf("a fenced example heading was read as a real Desk-decided heading")
+	}
+	if _, found, err := ParseDeskDecidedBlockInBody(example); found || err != nil {
+		t.Errorf("fenced example: found=%v err=%v, want found=false err=nil", found, err)
+	}
+	tilde := strings.Replace(example, "```markdown", "~~~", 1)
+	tilde = strings.Replace(tilde, "```\n\nMore", "~~~\n\nMore", 1)
+	if HasDeskDecidedHeading(tilde) {
+		t.Errorf("a ~~~-fenced example heading was read as a real Desk-decided heading")
+	}
+
+	real := RenderDecidedBlock([]DecidedItem{{Decision: "d", Alternative: "a", Cost: "c"}})
+	both := example + "\n" + real
+	items, found, err := ParseDeskDecidedBlockInBody(both)
+	if !found || err != nil || len(items) != 1 || items[0].Decision != "d" {
+		t.Fatalf("real block after a fenced example: items=%v found=%v err=%v, want the one real item", items, found, err)
+	}
+
+	// A heading-shaped line inside a fence AFTER the real block does not end the section early.
+	trailing := real + "\n```\n# not a heading\n```\n"
+	if _, found, err := ParseDeskDecidedBlockInBody(trailing); !found || err != nil {
+		t.Errorf("real block followed by a fenced '#' line: found=%v err=%v, want found=true err=nil", found, err)
+	}
+
+	replaced := ReplaceOrAppendDeskDecidedBlock(both,
+		RenderDecidedBlock([]DecidedItem{{Decision: "new", Alternative: "a", Cost: "c"}}))
+	if !strings.Contains(replaced, "1. decision: an example") {
+		t.Errorf("the in-place replace rewrote the fenced example: %q", replaced)
+	}
+	if strings.Count(replaced, DeskDecidedHeading) != 2 || !strings.Contains(replaced, "1. decision: new") {
+		t.Errorf("the in-place replace did not replace exactly the real block: %q", replaced)
+	}
+}

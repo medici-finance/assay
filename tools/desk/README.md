@@ -806,7 +806,10 @@ prior `--decided` block already present is **replaced in place**, not duplicated
 label write fails after the body has already landed, the tool reports that failure AS
 ITSELF (a non-zero exit naming the PR URL) rather than rolling it into, or masking it
 behind, the create/edit's own result — the block is the record, the label is only the
-at-a-glance view.
+at-a-glance view. On `edit` the re-review notice is posted BEFORE the label write, so a
+label failure never swallows it. The remedy is `deskpr edit --decided` with the PR's
+current body: an unchanged body is otherwise a no-op, but when `--decided` is given and the
+label is missing it applies the label (and nothing else — no body write, no notice).
 
 A PR that only carries out rulings already recorded elsewhere declares nothing: it passes
 no `--decided` and gets neither the label nor the block. The tool cannot tell "this needed
@@ -822,10 +825,27 @@ desk decision; that is the reviewer's question, and the reviewer kit (`cmd/deskd
 references/review-prompt.md` §14) asks it on every review. A reviewer who judges that the
 diff took an undeclared reversible default names it in the verdict with the fixed line
 `Undeclared-desk-decision: <one line>`, and the flip refuses while that line stands at the
-CURRENT head — cleared by `deskpr edit --decided` and a fresh verdict at the same head that
-omits the line, no new commit required. **Absence of a block, by itself, is NEVER a
-refusal** — that is the stricter alternative (option 2 of the driver's decision on
-`assay#1677`) and is not built without a ruling naming it specifically.
+CURRENT head — cleared by `deskpr edit --decided` and a fresh DECISIVE verdict (APPROVE or
+REQUEST_CHANGES) at the same head, in the same lane, that omits the line; no new commit
+required. The two review lanes are read separately, because the correctness and security
+verdicts are posted by the same reviewer App in parallel: a `Security-Review:` verdict never
+clears a correctness-lane finding (nor the reverse), and a COMMENTED note that is not a
+verdict clears nothing — so the answer never depends on which lane posted last. The
+head-stable re-gate re-runs this condition against its fresh read of the reviews, body and
+labels, so a finding posted during the checks is still seen. **Absence of a block, by
+itself, is NEVER a refusal** — that is the stricter alternative (option 2 of the driver's
+decision on #1677) and is not built without a ruling naming it specifically.
+
+A `## Desk-decided` heading inside a fenced code block is a quoted example, not a
+declaration: the section reader skips fenced regions, so a PR body that documents the
+format neither trips `create`'s hand-written-heading refusal nor `deskflip`'s label/block
+check.
+
+The reviewer kit also asks the converse question: a DECLARED item that falls inside the
+`default-forward-reversibility` guardrail's fixed human-gated set (merge, weakening a
+security control, identity/auth, money movement, durable-data deletion, anything leaving the
+repo) is itself a blocking finding — the label and block grant nothing, so a mislabelled
+one-way call is caught there or nowhere.
 
 **Interim practice, retired by this feature.** Before `--decided` existed, a desk-taken
 default was declared in one PR comment opening with the literal line `**Desk-decided**`

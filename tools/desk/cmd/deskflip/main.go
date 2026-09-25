@@ -116,8 +116,11 @@ nothing is mutated:
   desk-decided      MECHANICAL: a Desk-decided body section, when present, must parse, and
                     the desk-decided label and the section must AGREE (one without the other
                     refuses). NOT mechanical, and read from the reviewer instead: the flip
-                    refuses while the reviewer's latest verdict AT THE CURRENT HEAD carries
-                    the fixed line "Undeclared-desk-decision: <one line>". Absence of a
+                    refuses while a reviewer review AT THE CURRENT HEAD carries the fixed
+                    line "Undeclared-desk-decision: <one line>" and no later decisive verdict
+                    IN THE SAME LANE omits it — a security verdict never clears a
+                    correctness finding, nor the reverse, and a COMMENTED note clears
+                    nothing. Re-run by head-stable against the re-read. Absence of a
                     section alone, with no such finding and no label/section mismatch, is
                     NEVER refused.
   mergeable         the PR is mergeable. A conflicting PR is not flippable, and its

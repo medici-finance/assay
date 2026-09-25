@@ -95,10 +95,17 @@ var applyDeskDecidedLabel = func(fg deskkit.Forge, fr deskkit.ForgeRepo, number 
 // create/edit, in the same shape edit.go's re-review-notice failure uses: the write that
 // mattered (the body carrying the block) already happened, so this reports the label
 // failure AS ITSELF rather than rolling it into, or masking it behind, the create/edit's own
-// result. The block is the record; the label is only the at-a-glance view.
-func deskDecidedLabelFailure(url string, cause error) error {
+// result. The block is the record; the label is only the at-a-glance view. landed says what
+// DID happen (the create/edit, and on edit whether the re-review notice went out), so the
+// caller reads both facts in one line.
+//
+// The remedy it names is one that WORKS (review finding F4): `deskpr edit --decided` with the
+// PR's current body is an unchanged-body no-op that still applies a missing label — a plain
+// re-run of `create` would instead find the PR already open.
+func deskDecidedLabelFailure(url, landed string, cause error) error {
 	return deskkit.Unverifiable(fmt.Sprintf(
-		"%s was written with its Desk-decided block, but the %s label could NOT be applied: %v — the "+
-			"block is the record; add the label by hand (or re-run this step) once the forge is reachable.",
-		url, deskkit.DeskDecidedLabel, cause), cause)
+		"%s: %s, but the %s label could NOT be applied: %v — the block is the record; add the label by "+
+			"hand, or once the forge is reachable run `deskpr edit --body-file <the PR's current body> "+
+			"--decided <the same file>` (an unchanged body is a no-op that still applies the missing label).",
+		url, landed, deskkit.DeskDecidedLabel, cause), cause)
 }

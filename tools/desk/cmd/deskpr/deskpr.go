@@ -406,7 +406,7 @@ func cmdCreate(args []string) (err error) {
 		// what it was before this flag existed).
 		if *decided != "" {
 			if lerr := applyDeskDecidedLabel(fg, fr, n); lerr != nil {
-				return deskDecidedLabelFailure(url, lerr)
+				return deskDecidedLabelFailure(url, "the PR was opened with its Desk-decided block", lerr)
 			}
 		}
 		// Post-create mergeable check (#770): a PR GitHub reports CONFLICTING gets zero

@@ -139,12 +139,30 @@ var headingLineRe = regexp.MustCompile(`^#{1,6}[ \t]`)
 // body. found=false means no such heading line exists at all (matched as a whole trimmed
 // line, so a heading that merely CONTAINS the text — "### Not Desk-decided really" — never
 // matches).
+//
+// Lines inside a fenced code block (``` or ~~~, the same delimiter test the verdict-marker
+// readers use) are never a heading in either role: a PR body that QUOTES an example block is
+// documentation, not a declaration, so a fenced `## Desk-decided` neither starts a section nor
+// a fenced `#` line ends one (review advisory N1 on attention-budget/19's PR). Skipping the
+// fence is safe in this direction: the block is a DECLARATION (a grant-shaped record), and
+// every refusal deskflip derives from it — malformed, or label/block disagreement — reads the
+// same real, unfenced section it always did.
 func findDeskDecidedSection(body string) (start, end int, found bool) {
 	lines := strings.SplitAfter(body, "\n")
 	pos := 0
 	headingStart := -1
+	inFence := false
 	for _, ln := range lines {
 		trimmed := strings.TrimRight(ln, "\n\r")
+		if isFenceDelimiter(trimmed) {
+			inFence = !inFence
+			pos += len(ln)
+			continue
+		}
+		if inFence {
+			pos += len(ln)
+			continue
+		}
 		if headingStart < 0 {
 			if strings.TrimSpace(trimmed) == DeskDecidedHeading {
 				headingStart = pos
