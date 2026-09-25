@@ -483,9 +483,16 @@ func RenderLivenessNotices(findings []LivenessFinding) []string {
 		case LivenessAlive:
 			continue
 		case LivenessDeleted:
+			// pr1669-F1 residual: on GitLab an empty result is deleted OR hidden from a
+			// non-admin token, so the prefix must not assert deletion ahead of the Detail's
+			// caveat — it says only that no matching account came back.
+			verb := "no longer exists on"
+			if f.Identity.isGitLab() {
+				verb = "returned no matching account on"
+			}
 			lines = append(lines, fmt.Sprintf(
-				"NOTICE: DELETED — trusted %s login %q no longer exists on %s. %s",
-				f.Identity.Source, f.Identity.Login, forgeDisplayName(f.Identity.Forge), f.Detail))
+				"NOTICE: DELETED — trusted %s login %q %s %s. %s",
+				f.Identity.Source, f.Identity.Login, verb, forgeDisplayName(f.Identity.Forge), f.Detail))
 		case LivenessReclaimed:
 			lines = append(lines, fmt.Sprintf(
 				"NOTICE: RECLAIMED — trusted %s login %q now points at a DIFFERENT %s account. %s",

@@ -535,15 +535,17 @@ The classes:
   token. The DELETED notice for a GitLab identity says so; a GitHub 404 carries no such
   caveat.
 - **reclaimed** — the login resolves, but to a DIFFERENT numeric id than the one pinned —
-  one of the classes the check actually exists to catch.
+  one of the classes the check actually exists to catch. Checked first (pinned identities
+  only), so it is reported whatever the new account's state is.
 - **suspended** — the login resolves, but the forge reports the account in any non-`active`
   state (GitLab-only today — GitHub's account read exposes no such field). In practice this
   fires for the GitLab states a non-admin token's user search does NOT hide —
   `deactivated`, `blocked_pending_approval`, and similar — since `blocked`/`banned`/
   `ldap_blocked` accounts are hidden entirely and classify **deleted** instead (see above).
-  Checked before identity-continuity (unpinned/reclaimed/renamed), so a non-active GitLab
-  account is reported suspended even when the identity is unpinned or its id has moved.
-  Never reported as alive.
+  Checked AFTER **reclaimed** and BEFORE **unpinned**/**renamed**: a non-active GitLab
+  account is reported suspended even when the identity is unpinned, but a pinned identity
+  whose id has moved is reported **reclaimed** whatever the new account's state. Never
+  reported as alive.
 - **renamed** — the pinned id's canonical login changed (advisory).
 - **unpinned** — the login resolves, but the roster carries no id to compare against
   (advisory: pin one).

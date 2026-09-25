@@ -428,6 +428,37 @@ func TestRenderLivenessNoticesNamesGitLabForge(t *testing.T) {
 	}
 }
 
+// TestRenderLivenessNoticesGitLabDeletedPrefixNotUnambiguous guards the pr1669-F1 advisory
+// residual: the classifier's GitLab DELETED Detail carries the hidden-account caveat, but the
+// renderer's own prefix used to assert "no longer exists on GitLab." ahead of it — the very
+// unambiguous-deletion claim the caveat then walks back. A GitLab DELETED notice's prefix
+// must say only that no matching account was returned; a GitHub one keeps its plain wording.
+func TestRenderLivenessNoticesGitLabDeletedPrefixNotUnambiguous(t *testing.T) {
+	gl := RenderLivenessNotices([]LivenessFinding{{
+		Identity: RosterIdentity{Login: "ghost", PinnedID: 5004, Source: "bot", Forge: ForgeGitLab},
+		Class:    LivenessDeleted,
+		Detail:   "d",
+	}})
+	if len(gl) != 1 {
+		t.Fatalf("got %d lines, want 1", len(gl))
+	}
+	if strings.Contains(gl[0], "no longer exists") {
+		t.Fatalf("GitLab DELETED notice prefix claims unambiguous deletion ahead of its "+
+			"hidden-account caveat: %q", gl[0])
+	}
+	if !strings.Contains(gl[0], "DELETED") || !strings.Contains(gl[0], "GitLab") {
+		t.Fatalf("GitLab DELETED notice lost its class or forge name: %q", gl[0])
+	}
+	gh := RenderLivenessNotices([]LivenessFinding{{
+		Identity: RosterIdentity{Login: "ghost", PinnedID: 5004, Source: "bot", Forge: ForgeGitHub},
+		Class:    LivenessDeleted,
+		Detail:   "d",
+	}})
+	if len(gh) != 1 || !strings.Contains(gh[0], "no longer exists on GitHub") {
+		t.Fatalf("GitHub DELETED notice wording changed: %q", gh)
+	}
+}
+
 // TestClassifyLivenessGitLabDeletedDetailNamesGitLabNot404 mirrors the render test above at
 // the classifier's own Detail string (before RenderLivenessNotices wraps it), for the
 // DELETED and could-not-check branches inside classifyLiveness itself.
