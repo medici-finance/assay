@@ -272,34 +272,44 @@ func runSync(root string) int {
 // hidden-character, guardrail or enforcement-block halves, which check THIS
 // repo's own fixed layout and do not apply to an adopter's directory.
 //
-// Zero skill files matched across every given directory is exit 2
-// (could-not-check, never a quiet pass) — the same fail-closed rule LintSkills
-// applies to the fixed plugins/assay/skills layout.
+// Every given directory is checked independently, and EVERY directory that
+// matches zero files is reported by name and forces exit 2 — regardless of
+// what any other directory in the same invocation found. A typo'd or moved
+// path in a multi-directory run must never be silently dropped from the
+// gate: README §1a promises "zero matched files is exit 2, never a quiet
+// pass", and that promise binds per directory, not just to the union of all
+// of them (#1663 SEC-1663-1 / F1).
 func runSkillsDirs(dirs []string) int {
 	var allIssues []Issue
 	totalChecked := 0
 	matchedAny := false
-	var lastErr error
+	anyUnmatched := false
 
 	for _, d := range dirs {
 		checked, issues, err := LintSkillsDir(d)
 		if err != nil {
-			lastErr = err
+			anyUnmatched = true
+			fmt.Fprintf(os.Stderr, "skillslint: %s: %v\n", d, err)
 			continue
 		}
 		matchedAny = true
 		totalChecked += checked
 		allIssues = append(allIssues, issues...)
 	}
-	if !matchedAny {
-		if lastErr != nil {
-			fmt.Fprintf(os.Stderr, "skillslint: %v\n", lastErr)
-		}
-		fmt.Fprintf(os.Stderr, "SKILLSLINT: COULD-NOT-CHECK — 0 skill file(s) matched under --skills-dir; a check that read nothing proved nothing\n")
-		return 2
-	}
 	for _, is := range allIssues {
 		fmt.Fprintf(os.Stderr, "skillslint: %s: %s\n", is.Path, is.Msg)
+	}
+	if anyUnmatched {
+		fmt.Fprintf(os.Stderr, "SKILLSLINT: COULD-NOT-CHECK — at least one --skills-dir matched zero skill files; a check that read nothing proved nothing for that directory, whatever the others found\n")
+		return 2
+	}
+	if !matchedAny {
+		// Unreachable given the loop above (anyUnmatched would be true, so
+		// !matchedAny already returned above), but kept as an explicit
+		// belt-and-braces fail-closed default rather than falling through to
+		// a PASS over zero directories.
+		fmt.Fprintf(os.Stderr, "SKILLSLINT: COULD-NOT-CHECK — 0 skill file(s) matched under --skills-dir; a check that read nothing proved nothing\n")
+		return 2
 	}
 	exit := 0
 	if len(allIssues) > 0 {
@@ -313,8 +323,10 @@ func runSkillsDirs(dirs []string) int {
 		cfChecked, cfNotices, cfErr := ConformanceNoticesDir(d)
 		if cfErr != nil {
 			// Already surfaced above via LintSkillsDir for this same directory
-			// when it matched nothing; a notice pass over an unreadable
-			// directory adds nothing further.
+			// when it matched nothing — and an unmatched directory anywhere in
+			// dirs already returned exit 2 above, so this branch only runs
+			// when every directory matched. Kept for defensive symmetry with
+			// LintSkillsDir's own error shape.
 			continue
 		}
 		for _, n := range cfNotices {

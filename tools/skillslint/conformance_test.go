@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -223,6 +225,60 @@ func TestLintSkillsDir_EmptyDirFailsClosed(t *testing.T) {
 	_, _, err := LintSkillsDir(dir)
 	if err == nil {
 		t.Fatal("an empty --skills-dir directory must be a structural error, not a pass")
+	}
+}
+
+// captureStdio redirects os.Stdout and os.Stderr for the duration of fn and
+// returns everything written to either, interleaved in write order. Used to
+// assert on runSkillsDirs' printed output, since it writes directly to the
+// process streams rather than returning them.
+func captureStdio(t *testing.T, fn func()) string {
+	t.Helper()
+	origOut, origErr := os.Stdout, os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stdout = w
+	os.Stderr = w
+	done := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		io.Copy(&buf, r)
+		done <- buf.String()
+	}()
+
+	fn()
+
+	w.Close()
+	os.Stdout, os.Stderr = origOut, origErr
+	return <-done
+}
+
+// TestRunSkillsDirs_MixedValidAndEmptyFailsClosed reproduces SEC-1663-1 /
+// F1 (#1663): a --skills-dir invocation naming several directories must
+// not silently drop one that matches zero files just because another
+// directory in the same run matched. Before the fix this printed
+// "SKILLSLINT: PASS" and exited 0, with the unmatched directory never named
+// anywhere in the output.
+func TestRunSkillsDirs_MixedValidAndEmptyFailsClosed(t *testing.T) {
+	validDir := t.TempDir()
+	writeDirSkill(t, validDir, "one", "---\nname: one\ndescription: A short description.\n---\n\nbody\n")
+	emptyDir := t.TempDir() // no <dir>/*/SKILL.md at all — the second, unmatched directory
+
+	var exit int
+	output := captureStdio(t, func() {
+		exit = runSkillsDirs([]string{validDir, emptyDir})
+	})
+
+	if exit != 2 {
+		t.Fatalf("exit = %d, want 2 (COULD-NOT-CHECK) — an unmatched directory must fail the whole run even when another directory matched; output:\n%s", exit, output)
+	}
+	if strings.Contains(output, "SKILLSLINT: PASS") {
+		t.Errorf("output reports PASS despite one directory matching zero files:\n%s", output)
+	}
+	if !strings.Contains(output, emptyDir) {
+		t.Errorf("output never names the unmatched directory %q — a typo'd path must not vanish silently:\n%s", emptyDir, output)
 	}
 }
 
