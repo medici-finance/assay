@@ -68,4 +68,4 @@ Do not install a runtime, launch agents, mutate live systems, publish a site or 
 
 ## Inspiration
 
-The narrative pattern was informed by [the Starjump walkthrough from Captain Code](https://captaincode.ai/) (inspected 2026-09-22): one continuing project, visible decisions, and seekable stages. These instructions are independently authored; no third-party demo code, assets, dialogue or performance figures are included. Use the pattern, not its branding or simulated evidence.
+The narrative pattern was informed by [the Starjump walkthrough from Captain Code](https://captaincode.ai/): one continuing project, visible decisions, and seekable stages. These instructions are independently authored; no third-party demo code, assets, dialogue or performance figures are included. Use the pattern, not any product's branding or simulated evidence.
