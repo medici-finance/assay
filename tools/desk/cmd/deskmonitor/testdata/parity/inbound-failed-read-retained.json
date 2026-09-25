@@ -1,0 +1,135 @@
+{
+ "description": "Property B (1/4): a read that FAILS retains the previous baseline and goes loud; the recovery cycle diffs against the real baseline, so the outage is absorbed \u2014 zero phantom INBOUND.",
+ "kind": "inbound",
+ "env": {},
+ "repos": [
+  "example-org/tracker",
+  "example-org/agents"
+ ],
+ "cycles": [
+  {
+   "note": "arm",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 3,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 11,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "tracker 404s; agents gains one",
+   "reads": {
+    "example-org/tracker": {
+     "status": 404,
+     "message": "Not Found"
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 11,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 12,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "tracker 502s",
+   "reads": {
+    "example-org/tracker": {
+     "status": 502,
+     "message": "Bad Gateway"
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 11,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 12,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "recovery with one genuinely new issue",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 3,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 4,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 11,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 12,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}
