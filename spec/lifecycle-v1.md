@@ -91,6 +91,23 @@ grandfathered to a NOTICE — the inherited corpus is not retroactively falsifie
 conforming implementation MUST NOT describe a POST-pin `verified`/`done` closure with
 no witness as adequately attested.
 
+**The evidence coverage condition (graph-execution/03).** `verified` additionally
+requires that the brief's evidence **coverage** be `released`: the set of mandatory
+claims — every Verify row, plus a bound workflow-pattern-v1 node's own
+`evidence[].mandatory: true` entries when one applies — each resolve `pass` at the
+item's revision (the merged SHA for a merged brief, the PR head for an open one). Any
+mandatory claim that is `missing`, `error`, `could-not-check`, `wrong-revision`, or an
+outright `fail` HOLDS coverage, and a conforming implementation MUST NOT promote
+`verified` (or the `verified`→`done` flip) while coverage is not released — this is a
+DEMOTION exactly like the stale-witness-version case above, read off a different
+signal. A pattern node MAY declare an `observe` evidence entry — a signal watched over
+a window after a change lands, filled from a named source; an unreadable source is
+`could-not-check`, never `pass`. A conforming implementation MUST NOT treat a model's
+own textual assessment of a row as an execution witness satisfying a mandatory claim,
+and MUST invalidate a witness whose bound Verify-row text has since changed (the claim
+resolves `error`, not `pass`) — a witness answers the question it was asked, not
+whatever the row now asks.
+
 ### 2.5 `done`
 
 The brief additionally carries the recorded review verdict. A `gate: human` brief

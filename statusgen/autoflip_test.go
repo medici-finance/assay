@@ -662,6 +662,68 @@ func TestAutoFlipNoReviewerMisconfig(t *testing.T) {
 	}
 }
 
+// TestAutoFlipRefusesUnreleasedCoverage — graph-execution/03 Task item 4 /
+// Verify row 4: a `verified` row with a live App approval at the merged head
+// (the SAME af/01 fixture TestAutoFlipAtHead proves flips) is NOT flipped when
+// its evidence coverage is not released, and the dry-run output names the
+// missing claim. The coverage refusal is also proven to short-circuit BEFORE
+// decideModelFlip's live fetch: PR 101's review state is never even read.
+func TestAutoFlipRefusesUnreleasedCoverage(t *testing.T) {
+	root, streams := loadAFStreams(t)
+
+	// Strip af/01's execution witness (added for the coverage precondition —
+	// see the fixture files themselves) back to "no Evidence witness at all",
+	// leaving everything else (the README `verified` row, the live App
+	// approval at the merged head) exactly as TestAutoFlipAtHead's green case.
+	p := filepath.Join(root, "docs", "streams", "af", "brief-01-model-approved-at-head.md")
+	orig, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const witnessRow = "| # | Command | Result | Output | Date | Runner |\n" +
+		"|---|---------|--------|--------|------|--------|\n" +
+		"| 1 | `go vet ./...` | pass exit=0 | sha256:abc123def456 | 2026-07-08 | fixture-verifier |"
+	mutated := strings.Replace(string(orig), witnessRow, "", 1)
+	if mutated == string(orig) {
+		t.Fatalf("mutation did not match any text in %s — the fixture has drifted from this test's expectation", p)
+	}
+	if err := os.WriteFile(p, []byte(mutated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	streams, _, err = loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	src := afSource()
+	results, err := autoFlipModel(root, streams, src, ghReviewer(afReviewer), afNow, true /* dry-run */)
+	if err != nil {
+		t.Fatalf("autoFlipModel: %v", err)
+	}
+
+	got := afResult(t, results, "af/01")
+	if got.Outcome != flipRefused {
+		t.Fatalf("af/01 with no execution witness: outcome = %v (%s), want flipRefused", got.Outcome, got.Reason)
+	}
+	if !strings.Contains(got.Reason, "missing") || !strings.Contains(got.Reason, "go vet") {
+		t.Errorf("the dry-run refusal must NAME the missing claim; got %q", got.Reason)
+	}
+
+	// A refusal never rewrites the row, dry-run or not.
+	row := afRow(t, afReadme(t, root), "01")
+	if !strings.Contains(row, "| verified |") {
+		t.Errorf("af/01 row must remain verified (not flipped) when coverage is unreleased:\n%s", row)
+	}
+
+	// The coverage refusal happens BEFORE decideModelFlip's live fetch — PR 101
+	// (af/01's merge PR) must never have been read.
+	for _, pr := range src.seen {
+		if pr == 101 {
+			t.Errorf("coverage refusal should short-circuit before any live PR review fetch, but PR 101 was fetched (seen=%v)", src.seen)
+		}
+	}
+}
+
 // TestAutoFlipStamp pins the stamp shape independently of a run.
 func TestAutoFlipStamp(t *testing.T) {
 	got := modelReviewedStamp(afNow, afReviewer, 101, afHeadSHA)

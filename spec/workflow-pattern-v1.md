@@ -62,10 +62,54 @@ be represented as one.
 | `role` | string | REQUIRED. Exactly one of `desk`, `reviewer`, `verifier`, `worker` — a `topology.yaml` `apps:` role name. A node names a role, never a login or an id: binding a role to an identity is the roster's job, not the pattern's. |
 | `inputs` | array of `{artifact, revision?}` | OPTIONAL. What the node needs before it runs. |
 | `outputs` | array of string | OPTIONAL. The durable artifacts the node produces, by name. |
-| `evidence` | array of `{kind, claim, mandatory?}` | OPTIONAL. The claims the node owes. `kind` MUST be one of `command`, `review`, `witness`, `observe`. Each `claim` MUST be stated in words a verifier can check — not "it works". |
+| `evidence` | array of `{kind, claim, mandatory?, signal?, band?, window?, source?}` | OPTIONAL. The claims the node owes. `kind` MUST be one of `command`, `review`, `witness`, `observe`. Each `claim` MUST be stated in words a verifier can check — not "it works". `signal`, `band`, `window` and `source` are meaningful ONLY for `kind: observe`; see §4.1.1. |
 | `effects` | array of `{kind, target}` | OPTIONAL. External-consequence actions the node performs. |
 | `budget` | `{attempts?}` | OPTIONAL. |
 | `outcomes` | `{wait?, fail?}` | OPTIONAL. Named non-success dispositions. |
+
+### 4.1.1 The `observe` evidence kind
+
+`observe` is the one evidence kind that is not resolved from an execution witness,
+a review object or a Verify row: it is a **signal watched over a window after a
+change lands** — the evidence class the other three kinds cannot express, because
+none of them observes anything past the moment the check ran. It carries four
+fields beyond the base `{kind, claim, mandatory}` shape, all OPTIONAL in the
+schema but load-bearing together once `kind: observe` is used:
+
+| Field | Meaning |
+|---|---|
+| `signal` | The named signal being watched (e.g. an error-rate metric, an alert name). |
+| `band` | The acceptable range/threshold the signal MUST stay within for the claim to resolve `pass` (e.g. "error rate < 1%"). |
+| `window` | How long after the change lands the signal is watched (e.g. `PT1H`, `24h`). |
+| `source` | Where the claim is filled FROM. A coverage rule (`docs/streams/graph-execution/brief-03-evidence-coverage-rule.md`) resolves this claim by reading `source`; an unreadable source resolves the claim to `could-not-check`, never `pass` — a claim this document cannot corroborate is never treated as satisfied. |
+
+**Declare `observe` only where a deploy exists.** A pattern node MUST NOT carry an
+`observe` evidence entry unless the work it governs actually deploys somewhere a
+signal can be watched. Where no deploy exists, the kind is **omitted entirely** —
+never recorded with `signal`/`band`/`window`/`source` present but empty, which
+would read as "declared and inapplicable" rather than "not applicable at all".
+Neither pattern this document's reference implementation ships
+(`spec/workflow-patterns/implementation-v1.yaml`, `spec/workflow-patterns/research-v1.yaml`)
+carries an `observe` entry, because neither pattern's own nodes assert a deploy —
+`implementation`'s `merge` node produces a merge commit, not a running deploy. The
+shape below is illustrative only, under a placeholder `example-org` deploy:
+
+```yaml
+  - id: deploy
+    kind: effect
+    role: worker
+    outputs: [live-change]
+    evidence:
+      - kind: observe
+        claim: "error rate stays within band for one hour after the example-org deploy lands"
+        mandatory: true
+        signal: error-rate
+        band: "< 1%"
+        window: PT1H
+        source: "example-org/monitoring#error-rate-dashboard"
+    effects:
+      - {kind: push, target: live-change}
+```
 
 ### 4.2 Normative rules (MUST)
 

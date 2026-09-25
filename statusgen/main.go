@@ -1522,7 +1522,7 @@ func main() {
 	staleIssueDays := flag.Int("stale-issue-days", defaultStaleIssueDays, "--issues/--lint: age in days past which an open issue trips the stale-issue alarm (default 7)")
 	teamLogins := flag.String("team-logins", "", "--issues/--self-improvement: extra comma-separated team/internal logins beyond the roster trusted logins + bots")
 	cynefinMode := flag.Bool("cynefin", false, "classify active work by Cynefin domain (clear/complicated/complex/chaotic): distribution, drift, and a Disorder list of untagged briefs; reuses --json / --weekly / --daily (does not read/write STATUS.md)")
-	doraJSON := flag.Bool("json", false, "machine-readable JSON output. Used with --issues / --autonomy / --ladder / --cynefin / --bottleneck / --intake-debt / --eligibility")
+	doraJSON := flag.Bool("json", false, "machine-readable JSON output. Used with --issues / --autonomy / --ladder / --cynefin / --bottleneck / --intake-debt / --eligibility / --coverage")
 	doraSeries := flag.Bool("series", false, "time series (per-period buckets) instead of a single aggregate. Used with --issues")
 	since := flag.String("since", "", "period start (YYYY-MM-DD) for --verif-backlog / --autonomy / --ladder / --issues")
 	weekly := flag.Bool("weekly", false, "bucket by ISO week (default) for --verif-backlog / --cynefin")
@@ -1632,6 +1632,7 @@ func main() {
 	// --require-claims.
 	nextUpMode := flag.Bool("next-up", false, "emit the DISPATCH queue as JSON: the claim-filtered, capped Next-up selection (todo/in-progress, unclaimed, eligible) plus the held-back decomposition (eligible/shown/heldByStreamCap/heldBySpan/claimsKnown). NOT --gate-scores, which is the awaiting-verification backlog")
 	eligibilityMode := flag.Bool("eligibility", false, "emit the eligibility evaluator's verdict for every brief (graph-execution/01): gates:/feathers:/depends: become gating, with a reason. One line per brief (`<id>  <verdict>  <holds…>`), or --json for the full {id,verdict,holds,notices} structure. Exit 0 on any verdict; exit 2 when the tree cannot be read. Offline by construction — a forge-backed gate reports could-not-check regardless of --forge")
+	coverageMode := flag.Bool("coverage", false, "emit the evidence coverage verdict for every brief (graph-execution/03): every mandatory claim (its own Verify rows, plus a bound pattern node's mandatory evidence) must resolve `pass` at the item's revision or the brief is `held`, with the first reason. One line per brief (`<id> released|held <n-claims> <reason>`), or --json for the full {brief,released,claims} structure. Exit 0 on any verdict; exit 2 when the tree cannot be read. Offline by construction, same discipline as --eligibility")
 	clusterPendingQueueMode := flag.Bool("cluster-pending-queue", false, "emit the pod verify runner's worklist as JSON (verdict-lane/07): the briefs code-verified but cluster-pending — status implemented, every declared `check:cluster` probe parked by the offline lane (a could-not-check marker in Evidence), no VERIFY:FAIL. Read-only, STATUS.md-free")
 	// Gate-effectiveness telemetry: override rate, catch
 	// rate, ceremonial-gate detection. Self-contained diagnostic sub-command,
@@ -1730,6 +1731,7 @@ func main() {
 			"--gate-scores":           *gateScoresMode,
 			"--next-up":               *nextUpMode,
 			"--eligibility":           *eligibilityMode,
+			"--coverage":              *coverageMode,
 			"--cluster-pending-queue": *clusterPendingQueueMode,
 			"--register-links":        *registerLinksFlag,
 			"--gate-telemetry":        *gateTelemetryMode,
@@ -2062,6 +2064,12 @@ func main() {
 	// construction — it never reads --forge.
 	if *eligibilityMode {
 		os.Exit(runEligibility(*root, *doraJSON))
+	}
+	// Coverage-rule emitter (graph-execution/03): self-contained, STATUS.md-free,
+	// same discipline as --eligibility. Offline by construction — the revision
+	// comparison reads the local tree's own HEAD, never a live PR/merge lookup.
+	if *coverageMode {
+		os.Exit(runCoverage(*root, *doraJSON))
 	}
 	// Cluster-pending queue (verdict-lane/07): self-contained JSON worklist for
 	// the pod verify runner — the briefs code-verified but cluster-pending. Same

@@ -251,6 +251,7 @@ const (
 	witnessCellCommand = 1
 	witnessCellResult  = 2
 	witnessCellOutput  = 3
+	witnessCellRunner  = 5
 	witnessCellCount   = 6
 )
 
@@ -308,6 +309,30 @@ func witnessCommandOf(text string) string {
 		return ""
 	}
 	return codeSpan(cells[witnessCellCommand])
+}
+
+// witnessTreeRe lifts the tree token that follows the Runner cell's ` @ `
+// marker (witness.row() writes `<runner> @ <tree>`, optionally followed by one
+// or more parenthetical qualifiers). It stops at the first space or `(` so a
+// trailing on-behalf-of/RunnerSource parenthetical is never swallowed into the
+// tree token.
+var witnessTreeRe = regexp.MustCompile(`@\s*([^\s(]+)`)
+
+// witnessTreeOf lifts the tree SHA (possibly `+dirty`/`+unknown`-suffixed, or
+// `no-git`) a witness row recorded — graph-execution/03's coverage rule reads
+// this to compare against the item's revision. Returns "" when the row is
+// malformed or carries no tree marker, which the caller treats as "nothing to
+// compare", never as a match.
+func witnessTreeOf(text string) string {
+	cells := witnessCells(text)
+	if cells == nil {
+		return ""
+	}
+	m := witnessTreeRe.FindStringSubmatch(cells[witnessCellRunner])
+	if m == nil {
+		return ""
+	}
+	return m[1]
 }
 
 // ---------------------------------------------------------------------------
@@ -1083,6 +1108,13 @@ type verifyRow struct {
 	// whole inherited corpus), cmd, or pwsh. runWitnesses dispatches the row to
 	// this shell; a shell unavailable on the runner's OS is could-not-run.
 	Shell string
+	// Obligations are the row's KNOWN `+`-prefixed obligation tokens
+	// (rowclass.go's splitRowClassCell / verifyRowCells.obligations) — mutation,
+	// flow, dereference, neighbour. graph-execution/03's coverage rule reads
+	// `flow` here for the pattern join's integration check (Task item 2): a
+	// `+flow` row is the one obligation token that proves a Verify row exercises
+	// the cross-component path, as opposed to a site-local check.
+	Obligations []string
 }
 
 func briefVerifyRows(verifySection string) []verifyRow {
@@ -1098,7 +1130,7 @@ func briefVerifyRows(verifySection string) []verifyRow {
 		if v := normalizeRowID(r.Num); v != "" {
 			id = v
 		}
-		rows = append(rows, verifyRow{ID: id, Command: cmd, Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell()})
+		rows = append(rows, verifyRow{ID: id, Command: cmd, Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell(), Obligations: r.obligations()})
 	})
 	return rows
 }

@@ -270,7 +270,8 @@ type patternNode struct {
 	Inputs            []string // inputs[].artifact, in document order
 	Outputs           []string
 	Effects           []patternEffect
-	HasReviewEvidence bool // true iff any evidence[] entry has kind: review
+	Evidence          []patternEvidence // graph-execution/03: the node's full evidence[] list, not just the review bit
+	HasReviewEvidence bool              // true iff any evidence[] entry has kind: review
 }
 
 type patternEffect struct {
@@ -278,9 +279,27 @@ type patternEffect struct {
 	Target string
 }
 
+// patternEvidence is one `nodes[].evidence[]` entry — a claim the node owes.
+// Kind is one of command | review | witness | observe (spec/workflow-pattern-v1.md
+// §4.1). Signal/Band/Window/Source are populated ONLY for kind: observe
+// (graph-execution/03 task 3) — the signal watched over a window after a change
+// lands, and the source the coverage rule fills the claim FROM. They are "" for
+// every other kind, by construction: a command/review/witness claim is resolved
+// against Verify rows and forge state, never against a monitored source.
+type patternEvidence struct {
+	Kind      string
+	Claim     string
+	Mandatory bool
+	Signal    string
+	Band      string
+	Window    string
+	Source    string
+}
+
 // patternDoc is the Go-side view of the whole document, resolved once so the
 // MUST-rule checks below never re-walk the raw map[string]any.
 type patternDoc struct {
+	Name      string // the `pattern:` field — the pattern's own name
 	Nodes     []patternNode
 	NodeByID  map[string]patternNode
 	Join      string
@@ -292,6 +311,9 @@ func parsePatternDoc(data map[string]any) (patternDoc, error) {
 	doc.NodeByID = map[string]patternNode{}
 	doc.RiskInput = map[string]bool{}
 
+	if name, ok := data["pattern"].(string); ok {
+		doc.Name = name
+	}
 	if join, ok := data["join"].(string); ok {
 		doc.Join = join
 	}
@@ -332,7 +354,16 @@ func parsePatternDoc(data map[string]any) (patternDoc, error) {
 		if rawEvidence, ok := nm["evidence"].([]any); ok {
 			for _, re := range rawEvidence {
 				if em, ok := re.(map[string]any); ok {
-					if k, _ := em["kind"].(string); k == "review" {
+					ev := patternEvidence{}
+					ev.Kind, _ = em["kind"].(string)
+					ev.Claim, _ = em["claim"].(string)
+					ev.Mandatory, _ = em["mandatory"].(bool)
+					ev.Signal, _ = em["signal"].(string)
+					ev.Band, _ = em["band"].(string)
+					ev.Window, _ = em["window"].(string)
+					ev.Source, _ = em["source"].(string)
+					n.Evidence = append(n.Evidence, ev)
+					if ev.Kind == "review" {
 						n.HasReviewEvidence = true
 					}
 				}
@@ -459,4 +490,48 @@ func findProducerOf(nodes []patternNode, artifact, selfID string) (patternNode, 
 		}
 	}
 	return patternNode{}, false
+}
+
+// loadPatternDocs reads every spec/workflow-patterns/*.yaml file under root and
+// returns the parsed documents keyed by their own `pattern:` name.
+//
+// graph-execution/03's coverage rule reuses this rather than re-implementing a
+// second YAML walk: the SAME parse `patterns --lint` already validates is what
+// coverage's pattern-mandatory-evidence union (Task item 1(b)) and join check
+// (Task item 2) read. A file this cannot parse is DROPPED from the map (not
+// panicked on) — `patterns --lint` is the authority on whether a pattern file is
+// well-formed; coverage's job is to compute claims for briefs bound to a NAMED
+// pattern, and a binding naming a pattern absent from this map resolves to "no
+// pattern" (fact (a) alone), never a crash. ok is false only when the directory
+// itself could not be read (fail-closed, matching runPatterns' own could-not-check
+// treatment of a missing/unreadable spec/workflow-patterns directory).
+func loadPatternDocs(root string) (map[string]patternDoc, bool) {
+	out := map[string]patternDoc{}
+	dir := filepath.Join(root, "spec", "workflow-patterns")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return out, false
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		var data map[string]any
+		if err := yaml.Unmarshal(raw, &data); err != nil || data == nil {
+			continue
+		}
+		if marker, _ := data["schema"].(string); marker != patternSchemaMarker {
+			continue
+		}
+		pat, err := parsePatternDoc(data)
+		if err != nil || pat.Name == "" {
+			continue
+		}
+		out[pat.Name] = pat
+	}
+	return out, true
 }
