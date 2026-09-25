@@ -1,0 +1,11 @@
+# mode: advisory
+# Ratchet for tools/desk's weight (build-less-brittle/03; spec.md §3 row 5, §4.5, §5.2).
+# Growing a line requires a "# grow <dimension> +<n> <url>" line directly above it, citing
+# the driver's `grow <PR#>` reply on the project's standing weight-growth decision issue.
+# golines is reported by `weight: ...` but never ratcheted — no line for it here.
+#
+# Landing values: the counter's own output at branch head (d1c130ce5f0e627381d3793743bcf871ac226825, 2026-09-25).
+verbs 66
+flags 368
+refusals 841
+ruletext 6183

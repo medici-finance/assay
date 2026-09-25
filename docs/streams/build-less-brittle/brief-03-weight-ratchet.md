@@ -148,8 +148,49 @@ monthly tightenings.
 <!-- appended at implementation time: one row per Verify item — (command, exit code,
      output line(s) or hash, date, runner). "verified" requires a NON-implementer. -->
 
+Implemented on branch `feat/build-less-brittle-03` at head `d1c130ce5f0e627381d3793743bcf871ac226825`.
+Deliverables: `tools/desk/internal/weight/weight.go` (new — `Count`, `Weight`, `Ceiling`/`ParseCeiling`,
+`Evaluate`/`DimensionResult`, `GrowthMessage`/`SlackMessage`/`PrintWeight`, `GrowthAnnotationAbove`),
+`tools/desk/internal/weight/weight_test.go` (new — `TestCountsFixture`, `TestCeilingRedOnGrowthFixture`,
+`TestCeiling`, `TestPrintWeight`, plus `TestGrowthAnnotationAbove` covering the "# grow" presence
+check the facts describe for a `-base` comparison; test-only flags `-root`/`-rev`/`-mode`/`-base`),
+`tools/desk/internal/weight/ceiling.txt` (new, `# mode: advisory`, landing values below),
+`tools/desk/internal/weight/testdata/tree/**` (new fixture: 2 verbs, 3 flags — one `…Var` form —,
+4 refusals — one per constructor, one qualified —, 10 rule-text lines, plus the three named decoys),
+`changelog/build-less-brittle-03.md` (new).
+
+**Landing values** (the counter's own output at this head): `weight: verbs=66 flags=368 refusals=841
+ruletext=6183 golines=156019` — written into `ceiling.txt` verbatim for the four ratcheted dimensions
+(golines is reported only). Cross-checked against the brief's own f7bde6bfa facts: re-running
+`TestPrintWeight -args -rev=f7bde6bfa` reports `verbs=65`, matching "65 `cmd/` directories exist at
+f7bde6bfa" exactly.
+
+**Fail-first.** This brief adds the check itself, so there is no prior red/green pair to restore; the
+required fail-first evidence is Verify row 3 below: with `ceiling.txt` unmodified and 50 extra
+`Refused(` calls planted, `TestCeiling -mode=blocking` exits non-zero and names `refusals: 891 >
+ceiling 841 (+50)`. Row 3a is the same mutation in the landing (advisory) mode, which logs the
+identical text prefixed `GROWTH-NOTICE` and exits zero — proving the D-A mode switch actually gates
+the outcome rather than being cosmetic.
+
+**Scope note.** The facts section's Growth-approval paragraph describes a `-base`-revision comparison
+that requires a "# grow <dim> +<n> <url>" line above any dimension raised since that revision. Task
+step 4 does not name a `-base` flag and no Verify row exercises it, so it is not part of this brief's
+completeness bar — but the SPOF note asserts it as this test's behavior, so `TestCeiling` implements
+it (skipped, and says so, when `-base` is omitted — true for every row below) and `weight.go` exposes
+the pure presence-check (`GrowthAnnotationAbove`) with its own unit test rather than leaving the
+SPOF note's claim unimplemented.
+
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./internal/weight/ -count=1` | exit 0 | `ok  	github.com/medici-finance/assay/tools/desk/internal/weight	0.781s` | 2026-09-25 | assay-worker-app[bot] |
+| 2 | `cd tools/desk && go test ./internal/weight/ -run TestCountsFixture -count=1 -v` | exit 0; `--- PASS: TestCountsFixture` | `verbs=2 flags=3 refusals=4 ruletext=10 golines=50`; `--- PASS: TestCountsFixture (0.00s)` | 2026-09-25 | assay-worker-app[bot] |
+| 3 | mutation row (50 planted `Refused(` calls), `-mode=blocking` | `rc=1`; `1` | `rc=1`; `grep -c 'refusals: .* > ceiling'` = `1`; message `refusals: 891 > ceiling 841 (+50). Reduce, or get the driver's \`grow <PR#>\` reply and raise the ceiling with a \`# grow\` line citing it.` | 2026-09-25 | assay-worker-app[bot] |
+| 3a | same mutation, landing (advisory) mode | `rc=0`; `1` | `rc=0`; `grep -c 'GROWTH-NOTICE refusals:'` = `1`; log line `GROWTH-NOTICE refusals: 891 > ceiling 841 (+50). …` | 2026-09-25 | assay-worker-app[bot] |
+| 3b | `head -1 tools/desk/internal/weight/ceiling.txt` | `# mode: advisory` | `# mode: advisory` | 2026-09-25 | assay-worker-app[bot] |
+| 4 | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v \| grep -cE '…golines=[0-9]+$'` | `1` | `1`; line `weight: verbs=66 flags=368 refusals=841 ruletext=6183 golines=156019` | 2026-09-25 | assay-worker-app[bot] |
+| 5 | same, `-args -rev=f7bde6bfa` | `1` | `1`; line `weight: verbs=65 flags=353 refusals=840 ruletext=6172 golines=153318` | 2026-09-25 | assay-worker-app[bot] |
+| 6 | same, `-args -root="$(mktemp -d)"` \| `grep -c 'ruletext=could-not-check'` | `1` | `1` | 2026-09-25 | assay-worker-app[bot] |
+| 7 | shell-independent verbs count vs. `weight: verbs=$v ` | `1` | shell `v=66`; `grep -c "weight: verbs=66 "` = `1` | 2026-09-25 | assay-worker-app[bot] |
 
 ## Review
 Gate: model (from frontmatter). The reviewer checks the fixture decoys actually exercise each
