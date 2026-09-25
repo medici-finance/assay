@@ -1404,7 +1404,7 @@ func TestForeignRepoRefused(t *testing.T) {
 // non-CI reason is not sent to the CI gate.
 func TestConditionListIsTheDocumentedContract(t *testing.T) {
 	want := []string{"caller-role", "app-token", "pr-open-draft", "mergeable", "reviewer-approved",
-		"checks-green", "model-floor", "security-verdict", "head-stable"}
+		"checks-green", "desk-decided", "model-floor", "security-verdict", "head-stable"}
 	if len(flipConditions) != len(want) {
 		t.Fatalf("flipConditions has %d entries, want %d", len(flipConditions), len(want))
 	}

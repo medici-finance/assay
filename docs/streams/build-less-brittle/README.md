@@ -3,7 +3,7 @@ stream: build-less-brittle
 repo: medici-finance/assay
 serves: assay
 status: active
-priority: P1
+priority: P0
 track: platform
 issues: [1660]
 board: generated
