@@ -25,6 +25,7 @@ const (
 	condChecksGreen      = "checks-green"
 	condMergeable        = "mergeable"
 	condSecurityVerdict  = "security-verdict"
+	condDeskDecided      = "desk-decided"
 	condHeadStable       = "head-stable"
 )
 
@@ -74,6 +75,13 @@ const (
 // one dropped being the paginated timeline. No condition was added, removed, weakened, or
 // made conditional, and no refusal's condition NAME changed — callers key on those names, and
 // a name that drifts breaks every one of them.
+//
+// desk-decided (attention-budget/19) is ADDITIVE to this measured ordering, not a
+// re-derivation of it: it sits right after checks-green per the brief's own ground rules
+// ("the new condition is additive and evaluated after the checks-green read"), reads only the
+// PR's own labels/body (already in hand from pr-open-draft) and the reviews already read for
+// reviewer-approved — no new paginated read — so it costs nothing extra ahead of model-floor
+// and security-verdict, the two conditions the cost ordering above exists to protect.
 var flipConditions = []string{
 	condCallerRole,
 	condAppToken,
@@ -81,6 +89,7 @@ var flipConditions = []string{
 	condMergeable,
 	condReviewerApproved,
 	condChecksGreen,
+	condDeskDecided,
 	condModelFloor,
 	condSecurityVerdict,
 	condHeadStable,
@@ -261,6 +270,10 @@ func flip(o flipOpts) error {
 	// once per flip, and both calls decide on the same set of runs. Built unconditionally: it
 	// costs nothing until a check-runs read actually happens inside it.
 	runsAtHead := checkRunsAtHeadReader(o, rollupAtHead, head)
+	// The body-edit exemption's "edited after the CR" clause is a FORGE fact — the PR body's
+	// own last-edited time — read only when a standing CR has declared that class, and read
+	// fresh on each call so the post-TOCTOU re-check sees an edit made in between.
+	bodyEditedAt := bodyEditedAtReader(fg, fr, o.pr)
 
 	// A forge that implements the merge-hold op set (the forge-gitlab merge-hold brief)
 	// answers this read with the marker thread's own state; one that does not (GitHub, whose
@@ -282,7 +295,7 @@ func flip(o flipOpts) error {
 		if err != nil {
 			return err
 		}
-		if err := checkReviewerApproved(reviewerLogin, reviews, head, o.pr, runsAtHead); err != nil {
+		if err := checkReviewerApproved(reviewerLogin, reviews, head, liveBodyRead{Body: pr.Body, EditedAt: bodyEditedAt}, o.pr, runsAtHead); err != nil {
 			return err
 		}
 		o.say("%s OK: %s APPROVED at %s", condReviewerApproved, reviewerLogin, short(head))
@@ -376,6 +389,17 @@ func flip(o flipOpts) error {
 	}
 	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(checks), short(head))
 
+	// --- desk-decided --------------------------------------------------------------
+	// Attention-budget/19, option A (the driver's ruling on #1677): refuse the flip
+	// ONLY on a FINDING — the reviewer's `Undeclared-desk-decision:` line at the current
+	// head, or the label/block disagreeing with each other. Absence of a block, by itself,
+	// is NEVER a refusal (Verify row 6) — this condition only ADDS a refusal path over the
+	// pre-existing eight; it narrows nothing an existing PR could already do.
+	if err := checkDeskDecided(o, pr, reviews, reviewerLogin, head); err != nil {
+		return err
+	}
+	o.say("%s OK: label/block agree and no reviewer finding stands at %s", condDeskDecided, short(head))
+
 	// --- model-floor -------------------------------------------------------------
 	// The authority-bearing-write floor: a ready-flip requires a strong-tier dispatch. It
 	// is read from the target PR's dispatcher-attested tier stamp (the applier-aware reader,
@@ -405,7 +429,7 @@ func flip(o flipOpts) error {
 	// The ready mutation has no compare-and-swap, so the head is re-read HERE, after every
 	// condition above and immediately before the mutation. A head that moved means each
 	// verdict above was read against code that is no longer what would flip.
-	head2, err := readHead(o, fg, fr)
+	head2, body2, labels2, err := readHead(o, fg, fr)
 	if err != nil {
 		return err
 	}
@@ -431,7 +455,10 @@ func flip(o flipOpts) error {
 		return err
 	}
 	if hold.State == deskkit.MergeHoldNotApplicable {
-		if err := checkReviewerApproved(reviewerLogin, reviews2, head, o.pr, runsAtHead); err != nil {
+		// body2 is the body as re-read here, not the first read's: the body-edit exemption
+		// binds the reviewer's documented re-read to the LIVE body, and a body edited between
+		// the two reads is exactly the change that re-read must see.
+		if err := checkReviewerApproved(reviewerLogin, reviews2, head, liveBodyRead{Body: body2, EditedAt: bodyEditedAt}, o.pr, runsAtHead); err != nil {
 			return err
 		}
 	} else {
@@ -445,6 +472,15 @@ func flip(o flipOpts) error {
 		}
 	}
 	if err := checkSecurityVerdict(o, repo, pr, files, reviews2, reviewerLogin, head); err != nil {
+		return err
+	}
+	// desk-decided re-runs against the SAME re-read (review finding F2 on attention-budget/19's
+	// PR): an `Undeclared-desk-decision:` line posted at this head during the checks, or a body
+	// or label edited between the reads, is exactly the change this re-read exists to see.
+	pr2 := pr
+	pr2.Body = body2
+	pr2.Labels = labels2
+	if err := checkDeskDecided(o, pr2, reviews2, reviewerLogin, head); err != nil {
 		return err
 	}
 	o.say("%s OK: still %s, and the verdicts at that head are unchanged", condHeadStable, short(head))
@@ -721,13 +757,18 @@ func readLabelEvents(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]desk
 //     this code" and "nobody has reviewed this" call for different actions, and collapsing
 //     them sends the operator after the wrong one.
 //
-// RULE 2 HAS EXACTLY ONE EXEMPTION, and it lives in this function rather than in a caller
+// RULE 2 HAS EXACTLY TWO EXEMPTIONS, and both live in this function rather than in a caller
 // so the grant and the refusal cannot drift apart: the CHECK-ONLY CR (see
-// checkOnlyCRCleared). runsAtHead supplies the check-run rollup at head that the exemption
-// needs; it is a FUNCTION, not a slice, because the read is a forge round-trip that the
-// overwhelmingly common path — no standing CR at all — must not pay for. It is called at
-// most once, only when a standing CR has already DECLARED itself check-only.
-func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head string, pr int,
+// checkOnlyCRCleared) and the DOCUMENTED BODY-EDIT RE-VERIFICATION (see bodyEditCRCleared).
+// A standing CR is routed by what it DECLARES — a `Blocked-On-Body:` line goes to the
+// body-edit decision, anything else to the check-only one, whose undeclared path is rule 2's
+// refusal verbatim. runsAtHead supplies the check-run rollup at head that the check-only
+// exemption needs; it is a FUNCTION, not a slice, because the read is a forge round-trip that
+// the overwhelmingly common path — no standing CR at all — must not pay for. It is called at
+// most once, only when a standing CR has already DECLARED itself check-only. live is the PR
+// body as read at this gate plus the reader for the forge's record of its last edit; only
+// the body-edit exemption consults it.
+func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head string, live liveBodyRead, pr int,
 	runsAtHead func() ([]deskkit.CheckRun, error)) error {
 	// Rule 2 first: a standing block at head is decisive whatever else is present.
 	for _, r := range reviews {
@@ -735,6 +776,12 @@ func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head stri
 			continue
 		}
 		if r.State == "CHANGES_REQUESTED" {
+			if deskkit.BodyEditDeclared(r.Body) {
+				if err := bodyEditCRCleared(reviewerLogin, r, reviews, head, live); err != nil {
+					return err
+				}
+				continue
+			}
 			if err := checkOnlyCRCleared(reviewerLogin, r, reviews, head, runsAtHead); err != nil {
 				return err
 			}
@@ -890,7 +937,7 @@ func standingCRRefusal(reviewerLogin, head, why string) error {
 	return deskkit.Refused(msg)
 }
 
-// checkOnlyCRCleared decides rule 2's ONE exemption for a single standing CHANGES_REQUESTED
+// checkOnlyCRCleared decides rule 2's CHECK-ONLY exemption for a single standing CHANGES_REQUESTED
 // at head: it returns nil when that CR has been legitimately cleared without a code push,
 // and the refusal otherwise.
 //
@@ -1020,6 +1067,91 @@ func checkOnlyCRCleared(reviewerLogin string, cr reviewInfo, reviews []reviewInf
 		check, short(head)))
 }
 
+// bodyEditCRCleared decides rule 2's SECOND exemption for a single standing
+// CHANGES_REQUESTED at head that declares `Blocked-On-Body:` — the documented body-edit
+// re-verification class. The decision itself is deskkit.EvaluateBodyEditReverification, shared
+// with deskboard so the advisory board and this gate cannot disagree about what the class is;
+// this function supplies only what the decision cannot get for itself:
+//
+//   - the candidate APPROVEs, filtered to the REVIEWER identity, APPROVED, at THIS head, and
+//     the correctness lane only (a security-marked body never acts in the correctness lane,
+//     and clearing a correctness block is acting in it — rule 1's reason); and
+//   - the LIVE PR body as read at this gate, against which the reviewer's documented re-read
+//     digest is verified rather than trusted; and
+//   - the FORGE's own record of when that body was last edited, which is what establishes
+//     "the body was edited after the CR". The CR's recorded digest is the reviewer's own
+//     value and is never checked against the body as it stood at the CR, so it only narrows;
+//     an edit time that could not be read is could-not-check, and one the forge does not
+//     report (never edited) refuses.
+//
+// CI green at head is NOT decided here: the APPROVE must cite it, but whether it is true is
+// condition checks-green's, which runs on every flip regardless — the ruling's "the flip gate
+// keeps its own mechanical check".
+func bodyEditCRCleared(reviewerLogin string, cr reviewInfo, reviews []reviewInfo, head string, live liveBodyRead) error {
+	var approves []deskkit.BodyEditApprove
+	for _, r := range reviews {
+		if !deskkit.SameActor(r.User.Login, reviewerLogin) || r.CommitID != head {
+			continue
+		}
+		if r.State != "APPROVED" || hasSecurityMarker(r.Body) {
+			continue
+		}
+		approves = append(approves, deskkit.BodyEditApprove{Body: r.Body, SubmittedAt: r.SubmittedAt})
+	}
+	editedAt := ""
+	if live.EditedAt != nil {
+		var err error
+		if editedAt, err = live.EditedAt(); err != nil {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: a standing CHANGES_REQUESTED at %s declares the body-edit re-verification class, "+
+					"but the PR body's last-edited time could not be read (%s) — whether the body was edited "+
+					"after the CR is then could-not-check, and could-not-check never clears a rejection.",
+				condReviewerApproved, short(head), firstLine(err.Error())), err)
+		}
+	}
+	dec := deskkit.EvaluateBodyEditReverification(deskkit.BodyEditInput{
+		CRBody:        cr.Body,
+		CRSubmittedAt: cr.SubmittedAt,
+		Head:          head,
+		Approves:      approves,
+		LiveBody:      live.Body,
+		BodyEditedAt:  editedAt,
+	})
+	if dec.Cleared {
+		return nil
+	}
+	return standingCRRefusal(reviewerLogin, head, "The CR declares the body-edit re-verification class, but "+
+		dec.Reason+".")
+}
+
+// liveBodyRead is the PR body as read at the reviewer-approved gate, plus a reader for the
+// forge's own record of when that body was last edited. The body-edit exemption needs both:
+// the body to verify the reviewer's re-read digest against, and the edit time to establish
+// that the body was edited after the CR at all. A nil EditedAt reads as "no edit reported",
+// which refuses the class.
+type liveBodyRead struct {
+	Body     string
+	EditedAt func() (string, error)
+}
+
+// bodyEditedAtReader returns a reader for the PR body's last-edited time as the FORGE records
+// it (GitHub's lastEditedAt, via the trust-events read), rendered RFC3339, or "" when the
+// forge reports no edit. It is NOT memoized: the pre-mutation re-check must see an edit made
+// after the first read, and the read only happens when a standing CR has declared the
+// body-edit class — the common path never pays for it.
+func bodyEditedAtReader(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int) func() (string, error) {
+	return func() (string, error) {
+		tp, err := fg.PRTrustEvents(fr, pr)
+		if err != nil {
+			return "", err
+		}
+		if tp == nil || tp.BodyEdited.IsZero() {
+			return "", nil
+		}
+		return tp.BodyEdited.UTC().Format(time.RFC3339), nil
+	}
+}
+
 // checkSecurityVerdict runs the security lane.
 //
 // TWO RULES, and the first is unconditional. An explicit `Security-Review: fail` is a
@@ -1097,13 +1229,31 @@ func checkSecurityVerdict(o flipOpts, repo string, pr prInfo, files []fileInfo, 
 		// early otherwise believes it saw the whole diff — pad the PR with enough files
 		// ahead of the risky one and the gate waives itself. A short read is UNVERIFIABLE,
 		// not clean. This branch STAYS after the paginated read lands: a forge that
-		// asserts more files than it will serve is still a diff nobody read in full.
+		// asserts more files than it will serve is still a diff nobody read in full. It
+		// guards BOTH of the diff-reading terms below it (Authors: and the risk-path
+		// trigger), since a short read could make either one falsely waive the gate.
 		if pr.ChangedFiles > 0 && len(files) < pr.ChangedFiles {
 			return deskkit.Unverifiable(fmt.Sprintf(
 				"condition %s: read %d changed files but the forge reports %d for PR #%d — the diff could not "+
 					"be read in full, so the risk-class determination is unverifiable.",
 				condSecurityVerdict, len(files), pr.ChangedFiles, o.pr), nil)
 		}
+		// Authors: is a distinct claim from Brief: — "this PR authors, and delivers none of,
+		// the named briefs" — so BriefRiskFromBody above never matches it (by design: no
+		// reader that keys on Brief: should treat an authoring PR as a delivery). But the
+		// claim itself needs checking, not just the trailer's shape: deskpr create's
+		// authoringTrailerGate is a client-side gate on the SAME diff-authoring-only test,
+		// and this is the binding half that does not trust it (#1339 review F1). An
+		// Authors: body whose (now-reconciled-complete) diff is not provably
+		// authoring-only for every listed id is risk-classed here, fail closed, so a
+		// bypassed or pre-existing writer gate cannot switch off the security lane for a
+		// brief this PR actually delivers.
+		if br := deskkit.AuthorsRiskFromBody(pr.Body, asChangedFiles(files)); br.RiskClassed {
+			riskClassed = true
+			reason = br.Reason
+		}
+	}
+	if !riskClassed {
 		paths := make([]string, 0, len(files))
 		for _, f := range files {
 			paths = append(paths, f.Path)
@@ -1334,6 +1484,106 @@ func hasLabel(labels []labelInfo, want string) bool {
 	return false
 }
 
+// checkDeskDecided is the desk-decided condition (attention-budget/19, option A — the
+// driver's ruling on #1677: refuse the flip ONLY on a finding). Two things are
+// MECHANICAL, evaluated in this order:
+//
+//  1. the `## Desk-decided` block, when present, must PARSE — a malformed block (the marker
+//     missing, an empty list, an item missing a field) refuses, since a block nobody can
+//     read is not a declaration;
+//  2. the desk-decided LABEL and the block must AGREE — a label with no block, or a block
+//     with no label, refuses, because either shape lets a human trust a signal (the label,
+//     glanced at) that the other surface (the block, actually read) contradicts.
+//
+// The one thing that is NOT mechanical — whether a PR that declares nothing in fact contains
+// an undeclared desk decision — is the REVIEWER's call: this reads the latest verdict from
+// the bound reviewer role AT THE CURRENT HEAD and refuses while it carries the fixed line
+// `Undeclared-desk-decision: <one line>`. Absence of a block, by itself, with no such finding
+// and no label/block disagreement, is NEVER refused (Verify row 6) — that is option 2 of the
+// human decision, not built without a ruling naming it.
+func checkDeskDecided(o flipOpts, pr prInfo, reviews []reviewInfo, reviewerLogin, head string) error {
+	labelled := hasLabel(pr.Labels, deskkit.DeskDecidedLabel)
+	_, blocked, perr := deskkit.ParseDeskDecidedBlockInBody(pr.Body)
+	if blocked && perr != nil {
+		return deskkit.Refused(fmt.Sprintf(
+			"condition %s: PR #%d's `%s` section does not parse: %v — fix the block "+
+				"(`deskpr edit --decided`) before the flip.",
+			condDeskDecided, o.pr, deskkit.DeskDecidedHeading, perr))
+	}
+	if labelled != blocked {
+		var detail string
+		if labelled {
+			detail = fmt.Sprintf("carries the %s label but its body has no `%s` section",
+				deskkit.DeskDecidedLabel, deskkit.DeskDecidedHeading)
+		} else {
+			detail = fmt.Sprintf("body carries a `%s` section but not the %s label",
+				deskkit.DeskDecidedHeading, deskkit.DeskDecidedLabel)
+		}
+		return deskkit.Refused(fmt.Sprintf(
+			"condition %s: PR #%d %s — the label and the block must agree. Re-run `deskpr edit --decided` "+
+				"(it applies both together), or drop whichever one is stale.", condDeskDecided, o.pr, detail))
+	}
+
+	// The reviewer's finding, at the CURRENT head only, reduced PER LANE (standingUndeclared
+	// finding): the correctness and security verdicts are posted by the SAME reviewer App, in
+	// parallel, so a verdict in one lane must never clear the other lane's finding.
+	if line, lane := standingUndeclaredFinding(reviews, reviewerLogin, head); line != "" {
+		return deskkit.Refused(fmt.Sprintf(
+			"condition %s: %s's %s review at head %s names an undeclared desk decision: %q — declare it "+
+				"(`deskpr edit --decided`), then a fresh %s verdict at this head that omits the line clears it.",
+			condDeskDecided, reviewerLogin, lane, short(head), line, lane))
+	}
+	return nil
+}
+
+// standingUndeclaredFinding reduces the reviewer App's `Undeclared-desk-decision:` lines at the
+// CURRENT head to the one that still STANDS, if any, and names the lane that raised it.
+//
+// PER LANE, because the correctness verdict and the security verdict are posted by the same
+// App (review findings SEC-1 / F1 on attention-budget/19's PR): a "last reviewer-App review at
+// head" reduction let a `Security-Review: pass` — a review that never looked at the question —
+// become the governing review and silently clear a correctness finding, so the answer depended
+// on which parallel lane happened to post last. The lanes are split exactly as
+// checkReviewerApproved splits them: a body carrying a security marker is the security lane,
+// every other body is the correctness lane.
+//
+// Within a lane, walked in ascending submitted order:
+//   - ANY review carrying the line RAISES (or re-raises) the finding — a BLOCK-direction
+//     marker is read in every state, fenced or not, so it cannot be hidden;
+//   - only a later DECISIVE verdict in the SAME lane that omits the line CLEARS it: in the
+//     correctness lane an APPROVED or CHANGES_REQUESTED review; in the security lane any
+//     review (every security-lane body is by definition a pass/fail verdict). A COMMENTED
+//     correctness-lane note that omits the line is not a fresh verdict and clears nothing.
+//
+// A finding in EITHER lane stands and refuses; the correctness lane is reported first.
+func standingUndeclaredFinding(reviews []reviewInfo, reviewerLogin, head string) (line, lane string) {
+	for _, security := range []bool{false, true} {
+		standing := ""
+		for _, r := range reviews {
+			if !deskkit.SameActor(r.User.Login, reviewerLogin) || r.CommitID != head {
+				continue
+			}
+			if hasSecurityMarker(r.Body) != security {
+				continue
+			}
+			if lines := deskkit.UndeclaredDeskDecisionLines(r.Body); len(lines) > 0 {
+				standing = lines[0]
+				continue
+			}
+			if security || r.State == "APPROVED" || r.State == "CHANGES_REQUESTED" {
+				standing = ""
+			}
+		}
+		if standing != "" {
+			if security {
+				return standing, "security"
+			}
+			return standing, "correctness"
+		}
+	}
+	return "", ""
+}
+
 func (o flipOpts) say(format string, args ...any) {
 	if o.quiet {
 		return
@@ -1406,6 +1656,26 @@ type prInfo struct {
 // fileInfo is one entry of the reconciled changed-file list.
 type fileInfo struct {
 	Path string
+	// Status and PreviousFilename mirror deskkit.ChangedFile — carried so the security lane
+	// can run deskkit.BriefAuthoringOnly against the same list (#1339 review F1, the Authors:
+	// self-check). RiskPathTriggered still reads Path alone against the DESTINATION path only
+	// (see readChangedFiles); these two fields are for the authoring-shape check exclusively.
+	Status           string
+	PreviousFilename string
+}
+
+// asChangedFiles converts the reconciled file list back to deskkit.ChangedFile, the shape
+// deskkit.BriefAuthoringOnly (and AuthorsRiskFromBody, which calls it per listed id) takes.
+func asChangedFiles(files []fileInfo) []deskkit.ChangedFile {
+	out := make([]deskkit.ChangedFile, 0, len(files))
+	for _, f := range files {
+		out = append(out, deskkit.ChangedFile{
+			Filename:         f.Path,
+			PreviousFilename: f.PreviousFilename,
+			Status:           f.Status,
+		})
+	}
+	return out
 }
 
 type labelInfo struct {
@@ -1727,20 +1997,24 @@ func readChangedFiles(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]fil
 	}
 	out := make([]fileInfo, 0, len(files))
 	for _, f := range files {
-		out = append(out, fileInfo{Path: f.Filename})
+		out = append(out, fileInfo{Path: f.Filename, Status: f.Status, PreviousFilename: f.PreviousFilename})
 	}
 	return out, nil
 }
 
-func readHead(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) (string, error) {
+func readHead(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) (string, string, []labelInfo, error) {
 	ch, err := fg.GetPullRequest(fr, o.pr)
 	if err != nil {
-		return "", deskkit.Unverifiable(fmt.Sprintf(
+		return "", "", nil, deskkit.Unverifiable(fmt.Sprintf(
 			"condition %s: cannot re-read PR #%d's head immediately before the flip (%s) — without the "+
 				"re-read there is no way to know the verified state is still current, so the flip does not "+
 				"happen.", condHeadStable, o.pr, firstLine(err.Error())), err)
 	}
-	return strings.TrimSpace(ch.HeadSHA), nil
+	labels := make([]labelInfo, 0, len(ch.Labels))
+	for _, l := range ch.Labels {
+		labels = append(labels, labelInfo{Name: l})
+	}
+	return strings.TrimSpace(ch.HeadSHA), ch.Body, labels, nil
 }
 
 // --- CI reduction ----------------------------------------------------------------
@@ -1768,12 +2042,12 @@ const (
 // insisted on a literal SUCCESS would have refused the exact case it was authorized for,
 // while checks-green called the same run green — two readers disagreeing about the same
 // fact, which is the defect class #408 closed for verdict markers.
+//
+// The set itself now lives in deskkit.ConclusionGreen, so the auto-approve lane's
+// ci-nonsuccess signal judges a run by this same implementation; this wrapper keeps the
+// name every caller and test in this package reads.
 func conclusionGreen(conclusion string) bool {
-	switch strings.ToUpper(strings.TrimSpace(conclusion)) {
-	case "SUCCESS", "NEUTRAL", "SKIPPED":
-		return true
-	}
-	return false
+	return deskkit.ConclusionGreen(conclusion)
 }
 
 // checkRunGreen reports whether one check RUN has finished and finished green. A run that has

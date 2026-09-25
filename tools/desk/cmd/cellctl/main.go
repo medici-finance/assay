@@ -51,6 +51,9 @@ func main() {
 	// environment supply the very scope line `check` exists to audit, so a cell whose roster file
 	// is missing or wider than its CELL_REPO_SLUG could pass its own check on inherited env vars.
 	// The cell home's file is the thing under audit, so it is the only admissible source.
+	// The model-policy hook's deadline starts before anything that can block, the roster echo
+	// below included (policy_enforce.go, armHookDeadline).
+	armHookDeadline(os.Args[1:])
 	deskkit.SetToolClass(deskkit.ClassForTool(false))
 	// P3: echo the effective roster once per run. A control surface that lives in settings rather
 	// than in a diff is visible only at RUN time; without the echo a NARROWING is invisible.
@@ -91,6 +94,10 @@ func run() (code int) {
 	switch verb {
 	case "providers":
 		cmdProviders(rest)
+	case "model-policy":
+		// The runtime hook a policy launch installs in Claude's --settings (policy_enforce.go);
+		// not an operator verb, so it is not in the usage text.
+		cmdModelPolicy(rest)
 	case "ls":
 		cmdLs()
 	case "check":

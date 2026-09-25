@@ -195,7 +195,7 @@ func cmdAcquire(id, owner, branch string) int {
 	ref, status := store.Read(id)
 	switch status {
 	case deskkit.ClaimReadFree:
-		errf("unverifiable: creating %s/%s was rejected but no claim exists", refPrefix, id)
+		errf("unverifiable: creating %s/%s was rejected but no claim exists%s", refPrefix, id, causeSuffix())
 		return exitUnverifiable
 	case deskkit.ClaimReadUnverifiable:
 		errf("unverifiable: creating %s/%s was rejected and the claim could not be read%s", refPrefix, id, causeSuffix())

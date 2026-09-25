@@ -29,7 +29,7 @@ var lookPath = exec.LookPath
 // App credential. Production binds it to the shared deskkit resolver, which shells out to the
 // token minter and reads the file it names. The model stamp does NOT use it: its credential
 // is read inside deskkit.ResolveForge, under the resolver's own custody hook.
-var mintTokenFn = deskkit.RoleTokenForRepo
+var mintTokenFn = deskkit.GitHubRoleToken
 
 // NO FORGE CLI. Every forge read and write this verb makes — the model stamp's label
 // reads and writes, the review-lane queue label — goes through the resolved deskkit.Forge

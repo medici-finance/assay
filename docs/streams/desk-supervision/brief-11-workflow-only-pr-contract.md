@@ -11,7 +11,7 @@ why: >-
   team would improvise mixed PRs and the guarantee evaporates.
 wave: 1
 depends: ["desk-supervision/10"]
-unblocks: ["desk-supervision/12"]
+unblocks: ["desk-supervision/12", "desk-supervision/23"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}

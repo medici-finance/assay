@@ -11,8 +11,9 @@ import (
 // authoring.go — keeping a briefs-AUTHORING PR from reading as the brief's DELIVERY.
 //
 // The phantom check (phantom.go) refuses a fresh worker dispatch whose brief already has an OPEN or
-// MERGED PR, matched on the PR body's `Brief:` trailer. A docs-only PR that WROTE the brief carries
-// that trailer too, so after it merged the brief could never be dispatched: every attempt was refused
+// MERGED PR, matched on the PR body's `Brief:` trailer. A docs-only PR that WROTE the brief carried
+// that trailer too (authoring PRs now carry `Authors:`, which no phantom reader matches — #1339; this
+// file keeps every already-merged `Brief:` authoring PR from blocking), so after it merged the brief could never be dispatched: every attempt was refused
 // as "already represented" by the PR that authored it. dropBriefAuthoringPRs runs between the PR-list
 // read and the phantom match, and removes each PR whose changed files show it only authored the brief
 // (deskkit.BriefAuthoringOnly). Everything else stays in the list and is matched as before.
@@ -79,21 +80,10 @@ func livePRFiles(repo string, number int) ([]deskkit.ChangedFile, error) {
 }
 
 // completePRFiles reads a change's file list and reconciles its length against the forge's own
-// changed-file count. ListChangedFiles is bounded (GitHub stops listing at 3000 files), and a short
-// walk that happened to show only docs could hide the code that makes the PR a delivery, so a list
-// that does not match the count is an error, never a partial answer.
+// changed-file count — deskkit.CompleteChangedFiles, the one completeness rule every authoring-
+// exemption caller shares (a short list that happened to show only docs could hide the code that
+// makes the PR a delivery, so a list that does not match the count is an error, never a partial
+// answer).
 func completePRFiles(fg deskkit.Forge, fr deskkit.ForgeRepo, number int) ([]deskkit.ChangedFile, error) {
-	pr, err := fg.GetPullRequest(fr, number)
-	if err != nil {
-		return nil, err
-	}
-	files, err := fg.ListChangedFiles(fr, number)
-	if err != nil {
-		return nil, err
-	}
-	if len(files) != pr.ChangedFiles {
-		return nil, fmt.Errorf("%s#%d lists %d changed files but the forge counts %d; the list is not "+
-			"provably complete", fr.Slug(), number, len(files), pr.ChangedFiles)
-	}
-	return files, nil
+	return deskkit.CompleteChangedFiles(fg, fr, number)
 }

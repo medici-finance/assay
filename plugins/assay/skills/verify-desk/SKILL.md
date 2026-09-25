@@ -24,6 +24,8 @@ hand-edits a board cell, and the board follows the witness.
 
 > The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
+> Procedure every desk role shares — the liveness contract, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
+
 **House rules live in the repo's own house-rules doc (`CLAUDE.md`)** — git/PR discipline, identity and
 posting, trust gate, filing and escalation, refresh-don't-remember, board hygiene, the console
 noise-floor pointer, and worktree-sprawl ownership (the `deskwt` prune supervisor). This skill points at
@@ -371,6 +373,22 @@ outward-write rate limit, the post-commit attribution check (author = the App's 
 audit line — so use it *because* it enforces those. A guard- or classifier-BLOCKED `git push` is a
 STOP-and-escalate; never route the same write through another tool to get past a block.
 
+**A PASS is a flip signal only when its own Evidence agrees.** A PASS whose Evidence still carries an
+un-deferred HELD/could-not-check line is not a flip signal. Clear every such line first, in one of two
+ways. **Run it, then strike the old line through:** a later run does not clear an earlier hold by
+itself, because the tooling does not infer that the new row supersedes the old one, so wrap the
+earlier HELD/could-not-check text in `~~…~~` and name the run that settled it (`~~could-not-check — no
+runner online~~ superseded by the 2026-07-10 run below`). **Or formally defer it:** route it to a named
+follow-up with a reference (`deferred to <stream>/<NN>` or `#N`). A bare "deferred", or a row left
+HELD, is neither. The read is lexical: the words HELD and could-not-check anywhere in unstruck,
+unquoted Evidence prose count, so do not use them for status wording such as a run heading. Land
+`implemented → verified` only once every such line is cleared. The tooling refuses the same
+contradiction downstream: the model autoflip, the verify-gate card, and `statusgen --close-verify`
+from `verified` as well as from `implemented`. On the `verified` close the row's own status is the pass
+claim, so a loosely worded PASS or no marker at all does not switch the read off, and a FAIL counts
+until a later strict `**VERIFY: PASS**` marker answers it. A flip over an open hold only parks the
+brief at `verified` with a refused close.
+
 **Land as each verdict arrives.** A PASS in hand and not on main within one landing cycle is a defect:
 the board shows phantom verification debt, other sessions re-report "stuck" briefs, and merged→verified
 lead time inflates by pure reporting latency. The Age column measures exactly that. Everything else this
@@ -621,9 +639,8 @@ human ruling re-derived from scratch each time.
   MUST comment what it needs and from whom when labeling; whoever answers removes the label with their response. A
   `question` that matures into a formal decision fork promotes to `needs-decision` with the pros/cons template.
   Labeled items are WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
-- **An escalation that is an ACT only the driver can perform** (not a decision) also gets a
-  `RUNSHEET.md` entry per the `human-runsheet` skill — the filed issue stays the escalation, the
-  runsheet is the exact command the driver runs.
+- **Driver-act runsheet entry** — an escalation that is an ACT only the driver can perform: see
+  [`../../references/desk-common.md`](../../references/desk-common.md) §Driver-act runsheet entry.
 - **File-and-exit, never block** (desk-hardening/13): after filing, the run does not hold — an open
   verify-gate wait is surfaced and the run moves past it. A loop that blocks in-run is undebuggable in a
   pod; its blocked state must be an at-rest filed issue anyone can inspect.
@@ -655,9 +672,12 @@ human ruling re-derived from scratch each time.
   driver still controls — a draft PR awaiting merge, a filed issue awaiting close, a flip CI or a
   human must still make?* **Yes → default-forward.** Author it, dispatch the worker, open the DRAFT
   PR, make the best-guess call, and NOTIFY — "proceeded on `<default>`; filed as `<repo>#<N>`;
-  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. The
-  `needs-decision` / `question` issue is still filed, naming the default taken, but the ITEM does
-  not park on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
+  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. Take
+  the reversible default, declare it with `deskpr create|edit --decided` (the `## Desk-decided` body
+  section plus the `desk-decided` label), and never ask first: the block is the notice the driver
+  reads at merge time, so a default declared there files NO `needs-decision` / `question` issue —
+  only a default no PR carries still files one, naming the default taken, and the ITEM never parks
+  on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
   the record, and corrected by the gate. **No → STOP and wait for the human.** A wrong guess that
   lands irreversibly or reaches outside the gate is caught by nobody declining a merge. That set is
   fixed, never judged case by case: merge, a ready-flip that is not this role's, any `main` push
@@ -742,21 +762,12 @@ recorded. It is never the sanctioned path.
 
 ## Liveness contract (binding)
 
-A standing liveness contract binds this window from boot: start the standing
-self-scheduled loop (`capability:durable-monitor` — best-effort, never the sole
-wake signal; the fixed-cadence board sweep is the real liveness backstop and the
-always-on observability service its durable home) BEFORE the first sweep and keep
-it ticking for the life of the window. **The fixed-cadence sweep is CREATED by Boot step 5 —
-`capability:cadence-tick`, armed before the first sweep — not assumed**: a window with no armed
-tick has no wake signal, and this contract is then unmet from boot, whatever the transcript's
-first round looks like. Every tick re-sweeps this desk's own queue fresh; every relay (a
-cross-session hand-over, on the lane) is acknowledged — `deskcomms ack` — or filed, never
-assumed delivered.
-The desk runs **default-forward** — never ask the driver what to work on next:
-a driver scope instruction narrows preference, not a cage — when the scoped
-batch drains, note the transition in the hand-off note and widen back to the
-standing queue. Checkpoints state their default and continue; standing down
-requires an empty standing queue after a fresh sweep PLUS a hand-off artifact
-on the driver surface, and a manual human kick that moves queued work is an
-incident to file on the project's methodology tracker. Hard gates (human-gated
-decisions, budgets, breakers, explicit stop-orders) are unchanged.
+A standing liveness contract binds this window from boot. Its text — the standing loop armed
+before the first sweep, the fresh re-sweep every tick, relay acknowledgement, default-forward, and
+when a window may stand down — is stated once for every desk role in
+[`../../references/desk-common.md`](../../references/desk-common.md) §Liveness contract; read it at
+boot, before the first sweep.
+
+**The fixed-cadence sweep is CREATED by Boot step 5 — `capability:cadence-tick`, armed before the
+first sweep — not assumed**: a window with no armed tick has no wake signal, and this contract is
+then unmet from boot, whatever the transcript's first round looks like.

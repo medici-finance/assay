@@ -539,6 +539,7 @@ it is an authoring convention only.
 | `ere-literal-pipe` | a `\|` inside a `grep -E` pattern is a literal pipe, not alternation, so the row matches almost nothing and passes blind | advisory |
 | `gnu-only` | a GNU-only shell construct that fails on the BSD/macOS userland a reviewer may run the row on | advisory |
 | `gorun-exit` | a `go run` in the Command cell flattens the program's exit code, so a non-zero result reads as success | advisory |
+| `gotest-run-vacuous` | a `go test -run` selector with no `--- PASS` assertion in the same command, so the row passes whether or not the named test exists, is built, or was ever renamed away (open briefs only; a closed brief's rows are summarised, not individually flagged) | advisory |
 | `grep-zero-count` | a `grep -c` whose pass bar is satisfied by a zero count measures nothing | advisory |
 | `moving-ref` | a diff base pinned to a moving ref (a branch name, not a SHA) makes the row's result drift under it | advisory |
 | `pattern-effect-exceeds-role` | a pattern node whose declared effect kind is not permitted for its role, per the role-to-effect-kind table in spec/workflow-pattern-v1.md §7 — a generated instance would carry a permission its role does not hold | fatal |
@@ -735,6 +736,16 @@ layer; the floor does not wait on one.)
    `superpowers:writing-plans` against that brief's Deliverables/DoD to produce a bite-sized TDD plan
    before touching code. That's a separate step, done at pickup time by whoever executes it — not
    part of authoring the brief.
+8. **Link the authoring PR with `Authors:`, never `Brief:`.** The PR that writes brief files
+   carries exactly one link line `Authors: <stream>/<NN>[, <stream>/<NN> …]` naming every brief it
+   adds (or `Issue: #<N>` when the authoring answers an issue). `Brief: <stream>/<NN>` means the
+   PR DELIVERS that brief: the dispatcher's phantom check, the planner and the derived board all
+   read it that way, so an authoring PR carrying it makes the brief it just wrote look delivered
+   the moment it merges, and the brief is never dispatched. `deskpr create` refuses a `Brief:`
+   line on a branch that only authors that brief and names the `Authors:` line to use, and refuses
+   an `Authors:` line unless the branch adds every listed brief's file and touches nothing but
+   board READMEs, brief files and changelog fragments. A PR that authors a brief AND delivers
+   work in the same change keeps `Brief:`.
 
 ## Conventions to inherit
 
@@ -754,5 +765,8 @@ layer; the floor does not wait on one.)
   human-legible highlight bullets, not a restatement of the Task; a genuinely non-notable brief says so
   in its `why:` and leaves the `changelog:skip` waiver to the desk or a human. Do NOT add a Verify row
   for it — the repo's CI changelog check IS that row.
+- **Short identifiers**: keep identifiers a brief asks for (test function names especially) under
+  32 characters, and in a PR body describe a long identifier rather than quote it: the desk secret
+  scan reads any 32+ character alphanumeric run as a possible secret.
 - If executing a brief surfaces a NEW non-obvious gotcha, fold it into the repo's instructions file
   (CLAUDE.md / AGENTS.md / etc.) so the next person doesn't rediscover it.

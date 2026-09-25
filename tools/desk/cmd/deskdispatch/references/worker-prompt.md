@@ -48,6 +48,10 @@ Closes/Refs, wrong diagnosis text, on a real PR. `mktemp` is collision-proof: it
 the file with `O_EXCL` and echoes the name that won, so no `$$`/date/session suffix can
 alias it, and the explicit template argument is portable across BSD and GNU `mktemp`.
 
+Keep new identifiers — test function names especially — under 32 characters, and in a PR
+body describe a long identifier rather than quoting it: the desk secret scan reads any 32+
+character alphanumeric run as a possible secret.
+
 Prefer it over a per-worktree path such as `"$(git rev-parse --show-toplevel)/.pr-body.md"`
 for two further reasons: that leaves an untracked file in every worker worktree that no
 `.gitignore` covers, so worktree pruning counts the tree dirty and never reclaims it; and
@@ -356,3 +360,28 @@ logic error nothing else can repeat — say so under that heading, with the reas
 the reviewer weighs, never a silent omission, and it is not available for a defect that
 reached a second site. This clause asks for a guard over ONE class; it does not ask for a
 standing regression suite, and a worker does not build one unasked.
+
+## 15. Declare a reversible desk-taken default
+
+The driver holds merge on every PR, so a REVERSIBLE default you take does not need a ruling
+first — the default-forward-reversibility guardrail already says so. What it needs is for the
+PR to SAY, at merge time, that this is a choice you made rather than one already ruled.
+
+When this item asked you to pick between reversible options with no prior ruling — the case
+the guardrail covers — declare the choice with `deskpr create --decided <file>` (or `deskpr
+edit --decided <file>` on an existing PR): a file of `decision:`/`alternative:`/`cost:` lines,
+one item per numbered entry. The tool writes the `## Desk-decided` body section and applies
+the `desk-decided` label together; never write either by hand. A PR that only carries out
+rulings already recorded elsewhere — nothing reversible was decided here — passes no
+`--decided` and carries neither: do not declare a decision that was not yours to make. A
+default declared this way needs no separate `needs-decision` / `question` issue — the block
+is the notice the driver reads at merge time. Never declare a call inside the guardrail's
+fixed human-gated set (merge, weakening a security control, identity/auth, money movement,
+durable-data deletion, anything leaving the repo): that is not reversible whatever it is
+labelled, so it STOPs for the driver instead, and a reviewer blocks a PR that declares one.
+
+If a reviewer's verdict later names `Undeclared-desk-decision: <one line>` on this PR, that is
+a finding against YOU, not a note to dispute: reply against it by ID (clause 13, above) and
+fix it with `deskpr edit --decided` — the same reply-then-fix discipline as any other finding.
+Disagree with the finding itself only through clause 8's escalate-durably rule, never by
+silently omitting the declaration.

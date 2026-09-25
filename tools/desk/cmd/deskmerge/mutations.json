@@ -150,6 +150,36 @@
       "file": "cmd/deskmerge/regen.go",
       "old": "\t\tif hit[m] {",
       "new": "\t\tif true || hit[m] {"
+    },
+    {
+      "name": "gate the fetch identity on the FIRST of a multi-valued origin url list (#1623: no single URL names the project)",
+      "file": "cmd/deskmerge/currency.go",
+      "old": "\tif len(urls) != 1 {\n\t\treturn \"\", deskkit.Refused(fmt.Sprintf(\n\t\t\t\"refused: %s's origin resolves to %d fetch URLs",
+      "new": "\tif false && len(urls) != 1 {\n\t\treturn \"\", deskkit.Refused(fmt.Sprintf(\n\t\t\t\"refused: %s's origin resolves to %d fetch URLs"
+    },
+    {
+      "name": "gate the fetch identity on the repository config file instead of git's resolution (#1623: a global insteadOf sends the fetch to another project)",
+      "file": "cmd/deskmerge/currency.go",
+      "old": "\turls, err := originURLs(abs, false)\n",
+      "new": "\turls, err := func() ([]string, error) {\n\t\tu, e := runCmdIn(abs, \"git\", \"config\", \"--local\", \"--get\", \"remote.origin.url\")\n\t\treturn []string{u}, e\n\t}()\n"
+    },
+    {
+      "name": "skip the push-destination gate (#1623: a pushurl sends the merge to another project)",
+      "file": "cmd/deskmerge/merge.go",
+      "old": "\tif err := gatePushDestinations(t.wt.dir, o.repo); err != nil {",
+      "new": "\tif err := gatePushDestinations(t.wt.dir, o.repo); false && err != nil {"
+    },
+    {
+      "name": "accept a push destination that names another project (#1623)",
+      "file": "cmd/deskmerge/merge.go",
+      "old": "\tif !originNames(dests[0], repo) {",
+      "new": "\tif false && !originNames(dests[0], repo) {"
+    },
+    {
+      "name": "accept a multi-valued push URL list when its first value names the project (#1623: git pushes to every value)",
+      "file": "cmd/deskmerge/merge.go",
+      "old": "\tif len(dests) != 1 {",
+      "new": "\tif false && len(dests) != 1 {"
     }
   ]
 }

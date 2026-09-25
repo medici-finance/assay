@@ -176,6 +176,10 @@ type witness struct {
 	// pilot to notice it. It is a derived compile-time token, never caller text.
 	RunnerSource string
 	Tree         string // short HEAD SHA, suffixed +dirty when the tree is modified
+	// Repo is the owner/name repo this row is written INTO — the brief's own stream's
+	// `repo:` frontmatter (witnessTargetRepo). It decides which form of the human the
+	// on-behalf-of annotation names; "" (not stated) takes the public form, fail-closed.
+	Repo string
 	// Note is console-only commentary (why could-not-run, which Expect
 	// constraints were undecidable). It is deliberately NOT written into the
 	// row: the row is a record, and free text in a record is where a caption
@@ -211,8 +215,9 @@ func (w witness) row() string {
 	// On-behalf-of annotation (multi-principal/01): rendered inside a parenthetical, same
 	// as RunnerSource just below, and for the same reason — runnerKey (verifiedrunneragree.go)
 	// drops everything from the FIRST "(" onward, so this never changes the runner-
-	// comparison key. "" (a human runner, or no resolvable principal) adds nothing.
-	if obo := onBehalfOfSuffix(w.Runner); obo != "" {
+	// comparison key. "" (a human runner, or no resolvable principal) adds nothing. The
+	// row's target repo decides the form of the human it names (principal.go).
+	if obo := onBehalfOfSuffix(w.Runner, w.Repo); obo != "" {
 		runnerCell += " (" + obo + ")"
 	}
 	if w.RunnerSource != "" {
@@ -1587,6 +1592,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	}
 
 	ws := runWitnesses(root, rows, runner, runnerSource, treeSHA(root), nowFunc().Format("2006-01-02"), *timeout, *ci)
+	target := witnessAnnotationRepo(witnessTargetRepo(path), witnessOriginRepo(root))
+	for i := range ws {
+		ws[i].Repo = target
+	}
 	table := witnessTable(ws)
 
 	worst := verifyrunExitPass
@@ -1641,6 +1650,80 @@ func runVerifyrunCheck(path, verify, evidence string, stdout *os.File) int {
 	fmt.Fprintf(stdout, "%s: %d pass, %d fail, %d could-not-run/missing (of %d Verify rows)\n",
 		path, counts[statePass], counts[stateFail], counts[stateCouldNotRun], len(findings))
 	return checkExitCode(findings)
+}
+
+// witnessTargetRepo names the repo a witness row for briefPath is written INTO: the
+// `repo:` frontmatter of the brief's own stream README (the declared data every other
+// repo attribution in statusgen reads — see rootRepo). "" when the README is missing,
+// unreadable, or states no well-formed repo — which the on-behalf-of annotation reads as
+// "not known-private" and so renders the neutral form (principal.go). A git remote is
+// deliberately NOT consulted as a fallback: a worktree's origin can name the checkout it
+// was cut from rather than the repo the brief lands in, and the only thing a wrong answer
+// here could do is select the login form on a public repo. The remote is consulted only
+// as a VETO on the login form (witnessAnnotationRepo).
+func witnessTargetRepo(briefPath string) string {
+	s, err := parseStreamREADME(filepath.Join(filepath.Dir(briefPath), "README.md"))
+	if err != nil || s == nil {
+		return ""
+	}
+	repo := strings.TrimSpace(s.Repo)
+	if !repoFrontmatterRe.MatchString(repo) {
+		return ""
+	}
+	return repo
+}
+
+// witnessAnnotationRepo decides which repo the witness annotation's form is chosen for.
+// declared is the brief's stream `repo:` frontmatter (witnessTargetRepo). origin is the
+// checkout's git remote, or "" when it cannot be read.
+//
+// The remote can only VETO the login form. It can never select it. When the frontmatter
+// states a `:private` repo and the checkout's origin resolves to a repo the roster does
+// NOT state is `:private`, the result is "" and the annotation takes the neutral form.
+// That covers a README that says `private` in a checkout of a public repo, for example a
+// stream moved between repos with its frontmatter left behind. rootRepo only catches a
+// conflict between sibling streams, so it misses a whole root that is misdeclared. In
+// every other case the frontmatter decides, unchanged. That includes a remote that
+// cannot be read or parsed. A wrong veto costs audit precision only: the neutral name
+// still maps back to the login through the roster.
+func witnessAnnotationRepo(declared, origin string) string {
+	if declared == "" || onBehalfOfPublicForm(declared) || origin == "" {
+		return declared
+	}
+	if onBehalfOfPublicForm(origin) {
+		return ""
+	}
+	return declared
+}
+
+// witnessOriginRepo reads the owner/name of root's `origin` remote for
+// witnessAnnotationRepo's veto. It returns "" when there is no remote or the URL does
+// not parse to owner/name.
+func witnessOriginRepo(root string) string {
+	out, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output()
+	if err != nil {
+		return ""
+	}
+	return originOwnerRepo(strings.TrimSpace(string(out)))
+}
+
+// originOwnerRepo extracts owner/name from a remote URL. It accepts the forms
+// ownerRepoFromURL reads (https with an optional port, scp-style `user@host:owner/name`)
+// and also the `ssh://[user@]host[:port]/owner/name` form, which ownerRepoFromURL
+// misreads. Anything that does not come out as a well-formed owner/name returns "".
+func originOwnerRepo(url string) string {
+	if rest, ok := strings.CutPrefix(url, "ssh://"); ok {
+		_, path, found := strings.Cut(rest, "/") // drop [user@]host[:port]
+		if !found {
+			return ""
+		}
+		url = "https://host/" + path
+	}
+	repo := ownerRepoFromURL(url)
+	if !repoFrontmatterRe.MatchString(repo) {
+		return ""
+	}
+	return repo
 }
 
 // repoRootFor resolves the repo root the commands should run in: the git

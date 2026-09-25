@@ -42,7 +42,7 @@ one desk entry inside `providers.anthropic.desks`:
 
 Changing `providers.anthropic.tiers.strong.model` updates every desk assigned to
 that tier that has not overridden that model in its cell. The seed pins the Opus
-alias to `claude-opus-4-8[1m]`. GLM's strong tier uses its full model and its mid
+alias to `claude-opus-5-5[1m]`. GLM's strong tier uses its full model and its mid
 and fast tiers use its flash model; Kimi's tiers use K3. These are editable
 operator defaults, not a promise of backend availability.
 

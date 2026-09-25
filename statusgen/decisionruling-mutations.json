@@ -144,6 +144,24 @@
       "file": "decisionruling.go",
       "old": "(start == 0 || !idChar(text[start-1]))",
       "new": "(start >= 0)"
+    },
+    {
+      "name": "ruling record id taken from the file name instead of the frontmatter id (a non-DR basename refused as record-not-named with an empty id)",
+      "file": "decisionruling.go",
+      "old": "if id := strings.TrimSpace(e.ID); decisionIDRe.MatchString(id) {\n\t\trec.ID = id\n\t}",
+      "new": "rec.ID, _ = decisionRecordID(file)"
+    },
+    {
+      "name": "no-valid-id refusal disabled (a record with no valid id is refused as if the comment failed to name an empty id)",
+      "file": "decisionruling.go",
+      "old": "if rec.ID == \"\" {\n\t\treturn refuse(rulingRecordNotNamed,",
+      "new": "if false {\n\t\treturn refuse(rulingRecordNotNamed,"
+    },
+    {
+      "name": "empty record id cites every brief with no design:",
+      "file": "decisionruling.go",
+      "old": "if strings.TrimSpace(id) == \"\" {\n\t\treturn nil\n\t}\n\tvar out []string",
+      "new": "var out []string"
     }
   ]
 }
