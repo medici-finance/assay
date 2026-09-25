@@ -346,6 +346,73 @@ Supersedes the 2026-09-16 pass on the open draft #1241. RISK-VALUE carries one N
 
 **Evidence correction (2026-09-24).** Row 13's Observed says one S2 sweep-exclusions test skips by design, but its recorded command runs without `-v`, so it prints only `ok` — not the skip line. The command that supports the claim is `cd tools/desk && go test -v ./internal/deskkit/ -run 'TestS2' -count=1`; re-run at the verified sha `2a5c230e` it prints `--- SKIP: TestS2SweepExclusionsAreLive (0.00s)` among the TestS2 results, followed by `ok github.com/medici-finance/assay/tools/desk/internal/deskkit`. No state, count or heading changes.
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 2/16 pass, 14 could-not-check, 0 fail — 2026-09-25 assay-verifier-app[bot]
+
+Runner is not the implementer. Run offline (`KUBECONFIG=/dev/null`) on darwin/arm64 against the
+merged tree `bb226e7d3ebb` (this PR's branch with main `89042b8f` merged in). The table below is
+the execution witness written by `statusgen verifyrun`, built from this tree. It is not
+hand-authored. Fourteen rows are `check:ci`, and verifyrun recorded each one as could-not-run
+because its network-off sandbox needs Linux `unshare --net` and this host is darwin (the same
+environment blocker as the 2026-09-23 run, tracked in #1491). Rows 5 and 16 (`check +mutation`)
+ran and passed. This run supersedes the 2026-09-16 PASS above, which predates the
+execution-witness gate. The board Status stays `implemented`.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestToolRunSaidSkipsPreambleAndCarriesTheToolsOwnMessage$' -count=1 && go test ./internal/deskkit/ -run '^TestToolRunFailShapeAndCarriedDetail$' -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestReportErrorOffIsByteIdentical$' -count=1 && go test ./internal/deskkit/ -run '^TestReportErrorOnPrintsChainCommandsAndTimings$' -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestScrubRedactsEveryTransportShape$' -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestTraceNeverPrintsACredential$' -count=1` | pass exit=0 | sha256:049edd052a39 | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestRefusedWithCauseStaysARefusal$' -count=1 && go test ./internal/deskkit/ -run '^TestTraceEnabledReadsTheEnvSpellings$' -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestClaimAcquireFailureNamesTheClaimToolsOwnMessage$' -count=1 && go test ./cmd/deskdispatch/ -run '^TestGitOutFailureCarriesGitStderr$' -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestWorktreeCreateFailureCarriesDeskwtStderrAndTheCommandLine$' -count=1 && go test ./cmd/deskdispatch/ -run '^TestTraceIsOffByDefaultAndOutputIsUnchanged$' -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestRunGitFailureCarriesStderrCommandAndExitStatus$' -count=1 && go test ./cmd/deskwt/ -run '^TestDeskwtTraceOffIsByteIdenticalAndOnCarriesTheCommand$' -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/desktoken/ -run '^TestTokenPathNoticeIsPrintedOnStderrNotStdout$' -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && go test ./cmd/deskfile/ -run '^TestDedupeSearchOutageNamesTheAPIStatus$' -count=1 && go test ./cmd/deskfile/ -run '^TestGhStderrStripsControlBytes$' -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd tools/desk && go test -timeout 300s ./internal/deskkit/... ./cmd/deskdispatch/... ./cmd/deskwt/... ./cmd/desktoken/... ./cmd/deskfile/... -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+| 13 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestS2' -count=1 && go test ./internal/deskkit/ -run 'TestCorpus' -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+| 14 | `cd tools/desk && gofmt -l internal/deskkit/trace.go internal/deskkit/runtool.go internal/deskkit/scrub.go internal/deskkit/exitcodes.go cmd/deskdispatch cmd/deskwt cmd/desktoken cmd/deskfile > /tmp/dt21-fmt.out; test ! -s /tmp/dt21-fmt.out` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+| 15 | `cd statusgen && go run . --root .. --lint; echo $?` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+| 16 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/trace-mutations.json` | pass exit=0 | sha256:76384c3d026e | 2026-09-25 | assay-verifier-app[bot] @ bb226e7d3ebb (on-behalf-of human:ian) (forge-identity) |
+
+Direct runs, recorded for information only; they do not replace the witness above. Same tree,
+darwin/arm64, offline, each Verify row's own command:
+
+- Rows 1–4, 6–10, 12–14: exit 0. Row 1 build and vet are silent. Rows 2–4, 6–10 and 13 print
+  `ok` for every package they name. Row 12 prints `ok` for all six packages (deskkit,
+  untrustcorpus, deskdispatch, deskwt, desktoken, deskfile). Row 14's gofmt list is empty.
+- Row 5: exit 0, `--- PASS: TestTraceNeverPrintsACredential`.
+- Row 11: exit 0, but both halves print `ok … [no tests to run]`. The row's literal test names
+  no longer exist in the deskfile package, so its exit 0 is vacuous and proves nothing (#1306;
+  lint flags the row `gotest-run-vacuous`). The renamed tests,
+  `TestDedupeSearchPropagatesTheForgeDiagnosis` and
+  `TestDedupeSearchControlBytesStrippedByBackend`, run directly: both `--- PASS`, exit 0. A
+  Linux witness of row 11 as written would record a pass it did not observe, so the row must be
+  re-pointed before any witness of it counts.
+- Row 15: exit 0, `LINT: PASS` on the final tree of this commit.
+- Row 16: exit 0, matching the witness pass.
+
+Security follow-up, re-checked at this tree: the error-composition path the security lane
+raised on this PR was fixed on main by #1443 (issue #1440). `FailVerbatim` now scrubs the
+caller's message, and the worktree-create step composes from the scrubbed `SaidAll()`. Both
+regression tests from that fix pass here: `TestFailVerbatimScrubsCallerComposedMessage` and
+`TestWorktreeCreateFailureScrubsDeskwtsSecretShapedStderr`, each `--- PASS`, exit 0. They are
+not in this brief's Verify table, and the SPOF row (5) still builds its error through `Fail`
+only. The table does not yet witness that path.
+
+RISK-VALUE (kit §4). Enumerated over the same scope as the 2026-09-23 run: trace.go, scrub.go,
+runtool.go and exitcodes.go in deskkit, plus the four verb retrofits. Every literal is
+unchanged at the line cited there. The #1443 delta adds a `Scrub(msg)` call and no literal.
+
+- RISK-VALUE: DERIVED — RefusedWithCause.Code = ExitRefused (5) @ tools/desk/internal/deskkit/exitcodes.go:158. A refusal that gains a cause must keep the code of `Refused` (exitcodes.go:144, ExitRefused = 5 at exitcodes.go:27). Softening it to 6 would make a fail-closed refusal read as retryable. Pinned by row 6 and by row 16's inverse mutation.
+- RISK-VALUE: NAMED, NOT DERIVED — reURLUserinfo @ scrub.go:31, reAuthHeader @ scrub.go:36, reSecretEnvAssign @ scrub.go:42. No test can show that a heuristic regex set covers every shape. Question #1616 is still open, and the security lane has since named two shapes these patterns miss. It must be answered before any flip.
+- Reversible knobs, ranked last: traceStepCap = 200 @ trace.go:54 (#1240), chain-depth guard 32 @ trace.go:199, redactedMarker @ scrub.go:49.
+
+**VERIFY: BLOCKED** — 2/16 pass, 14 could-not-check, 0 fail. Status stays `implemented`. To
+close it, three things are needed: a Linux (or in-container, #1491) witness of the 14
+`check:ci` rows, row 11 re-pointed (#1306), and an answer to #1616.
+
 
 ## Review
 
