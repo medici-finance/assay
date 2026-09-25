@@ -122,10 +122,10 @@ func NoticeLaneVerdict(title, body string, labels []string) (admit bool, why str
 	return false, "no R-3 reversible signal (fails closed: an item the lists cannot place stays with the human)"
 }
 
-// DeskDecidedMarker is the machine-readable marker a desk R-3 decision carries — the one
-// deskdigest's veto surface reads, written by hand in a comment or by deskfile's notice lane
-// into the filed issue's own body.
-const DeskDecidedMarker = "<!-- desk-r3-decision v1 -->"
+// DeskDecidedMarker (decided.go) is the machine-readable marker a desk R-3 decision carries
+// — the one deskdigest's veto surface reads, written by hand in a comment, by deskpr into a
+// PR body, or by deskfile's notice lane into the filed issue's own body. One const, declared
+// once, beside the block's shared parse/render.
 
 // deskDecidedHeadingRe matches the tool-written `## Desk-decided` heading, any level.
 var deskDecidedHeadingRe = regexp.MustCompile(`(?i)^\s*#{1,6}\s*Desk-decided\s*$`)
