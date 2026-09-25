@@ -26,8 +26,10 @@
 # label. `--walk` is deliberately NON-interactive — it prints one item and exits, so the agent
 # holding the conversation owns the turn boundary and nothing here ever blocks on a tty.
 #
-# Read-only: shells `gh issue list` (and, in --walk/--html only, `gh issue view` for the body
-# and comments that Context/Options are derived from). Never writes to any issue.
+# Read-only: shells `gh issue list`, and `gh issue view` once per queued item for the author,
+# body and comments that Context/Options and the screen are derived from (the table, --walk
+# and --html all classify; `--no-screen` restores the old cost — no detail call in the
+# table, one in --walk). Never writes to any issue.
 # Terminal-agnostic — works with plain git + gh + any terminal.
 #
 # Repo resolution order:
@@ -66,7 +68,7 @@ LIMIT="${ASSAY_INBOX_LIMIT:-500}"
 
 usage() {
   cat <<'EOF'
-Usage: assay-inbox.sh [--walk [--item K] | --html OUT.html] [owner/repo ...]
+Usage: assay-inbox.sh [--walk [--item K] [--screened] | --html OUT.html] [--no-screen] [owner/repo ...]
        assay-inbox.sh --flow [--html OUT.html] [--root PATH ...] [--since YYYY-MM-DD]
 
 Prints open issues across the given repos (or ./.assay/repos.txt, or the current repo's
@@ -74,15 +76,39 @@ origin remote) carrying any of the escalation-contract labels: urgent, needs-dec
 question, help wanted. Sorted urgency-then-age (most urgent, then oldest, first).
 
 Modes (the first three share one ordering and one format builder):
-  (none)            the terminal table — one row per item.
+  (none)            the terminal table — one row per item. Carries a `class` column
+                    (screen off with --no-screen) — see "The screen" below.
   --walk            print ONE item in the five-part decision format: Header / Context /
-                    Options / Reply shape / Verification. Prints item 1 and exits.
-  --item K          with --walk (and implying it): print item K instead of item 1.
-                    1-based; out of range is an error, never a silent empty.
+                    Options / Reply shape / Verification. Prints item 1 and exits. Only
+                    GENUINE items (see "The screen" below) are ever printed this way;
+                    "question k of n" counts genuine items only.
+  --item K          with --walk (and implying it): print the Kth GENUINE item instead of
+                    the first. 1-based; out of range is an error, never a silent empty.
+  --screened        with --walk: instead of one item, print the full list of items this
+                    run screened OUT — repo#number, class, and the evidence that put it
+                    there. Nothing is ever dropped; this is how the whole list is seen.
   --html OUT.html   write the whole queue to OUT.html as cards in that same format —
                     one self-contained file: inline CSS, no scripts, no external assets,
                     light/dark via prefers-color-scheme. The only URLs are the issue links.
-                    The page also carries the Flow section described below.
+                    The page also carries the Flow section described below. --html hides
+                    nothing — every item is a card, each one carrying its class.
+  --no-screen       turn the screen off: every item is presented (or listed) exactly as
+                    it was before the screen existed — no class column, no tail line, no
+                    --screened list. One flag back to the old behaviour if the screen
+                    misjudges.
+
+The screen — --walk puts only GENUINE decisions to the driver. Every item is classified
+first: already-ruled (the ratifying identity's own unedited ruling after the newest ask) /
+no-fork (a trusted author's one-option issue) / reversible-default (a trusted author's item
+already proceeding behind a still-held gate) / genuine; only "genuine" is ever asked. The
+other three classes are never silently dropped: --walk prints one tail line of counts after
+every question ("screened: a already-ruled · b no-fork · c reversible-default — run with
+--screened to list them"), --screened lists them in full, and the table/--html renderings
+show every item's class and hide nothing. An item this tool cannot read, or cannot classify
+(no roster: ASSAY_BLESS_LOGIN / ASSAY_TRUSTED_LOGINS / ASSAY_TRUSTED_BOT_SLUGS /
+ASSAY_HUMAN_LOGIN_MAP, from the environment or the owner-only
+${ASSAY_CONFIG_HOME:-~/.config/assay}/roster.env), is always treated as genuine — screening
+only ever happens on POSITIVE evidence from a trusted identity.
   --flow            print the pipeline FLOW model as a terminal table and exit: per stage,
                     the count now, the loop's own queue depth against its pool slots, the
                     ratio, the dwell, and the bottleneck. Fleet total always; one row block
@@ -128,6 +154,8 @@ HTML_OUT=""
 WANT_WALK=0
 WANT_HTML=0
 WANT_FLOW=0
+WANT_SCREENED=0
+NO_SCREEN=0
 FLOW_SINCE=""
 ROOT_ARGS=()
 ARGS=()
@@ -136,6 +164,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --walk) WANT_WALK=1; shift ;;
+    --screened) WANT_SCREENED=1; shift ;;
+    --no-screen) NO_SCREEN=1; shift ;;
     --flow) WANT_FLOW=1; shift ;;
     --item)
       [[ $# -ge 2 ]] || { echo "assay-inbox: --item needs a 1-based item number" >&2; exit 1; }
@@ -167,6 +197,16 @@ fi
 # section and the decision cards are two sections of one page.
 if [[ "$WANT_WALK" -eq 1 && "$WANT_FLOW" -eq 1 ]]; then
   echo "assay-inbox: --walk and --flow answer different questions; pass one, not both" >&2
+  exit 1
+fi
+# --screened is a --walk reporting mode (the screened-out list), not a standalone one — it
+# names what --walk hid, and only --walk hides anything.
+if [[ "$WANT_SCREENED" -eq 1 && "$WANT_WALK" -ne 1 ]]; then
+  echo "assay-inbox: --screened requires --walk" >&2
+  exit 1
+fi
+if [[ "$WANT_SCREENED" -eq 1 && "$NO_SCREEN" -eq 1 ]]; then
+  echo "assay-inbox: --screened and --no-screen contradict each other" >&2
   exit 1
 fi
 if [[ "$WANT_WALK" -eq 1 ]]; then MODE="walk"; fi
@@ -256,6 +296,137 @@ cell_name_for() {
   basename "$(cd "$1" 2>/dev/null && pwd || printf '%s' "$1")"
 }
 
+# ------------------------------------------------------------- the screen's roster --
+# The screen (attention-budget/15) enters a class other than "genuine" only on POSITIVE
+# evidence, and what counts as evidence depends on WHO wrote it. It reads three sets:
+#
+#   RATIFIER  the ratifying identity (`ASSAY_BLESS_LOGIN`, one `login[:id]`) — the ONLY
+#             login whose own comment can put an item in `already-ruled`. Never every
+#             human in the map: ratification is the driver's act, in the driver's own
+#             identity, and a second human's "+1" is not it.
+#   TRUSTED   the authors whose ISSUE BODY is evidence for `no-fork` / `reversible-default`:
+#             the ratifier, `ASSAY_TRUSTED_LOGINS`, the logins of `ASSAY_HUMAN_LOGIN_MAP`,
+#             and the roster Apps of `ASSAY_TRUSTED_BOT_SLUGS` in the two forms an issue
+#             author renders as (`<slug>[bot]`, `app/<slug>`). Anyone can open an issue on a
+#             public repo, so an untrusted author's body text is never evidence. The body's
+#             EDITOR needs no separate check: only the author, or someone with write access
+#             to the repo, can edit an issue body, so a trusted author's body stays trusted.
+#   APPS      the roster App slugs. A comment by one of them is an "ask" (a relay, or the
+#             options put again) and moves the already-ruled anchor. `gh issue view` reports
+#             an App comment's author as the BARE slug (no `[bot]`), so the bare slug is
+#             accepted here too — safe, because the anchor can only narrow: a ruling still
+#             has to be the ratifier's own comment AFTER it.
+#
+# Source: each variable from the environment, else from the roster file the desk tools
+# read, ${ASSAY_CONFIG_HOME:-$HOME/.config/assay}/roster.env — and that file only when it
+# and its directory are owned by the invoking user and not group/world-writable (the rule
+# the Go roster reader applies). Nothing is read from the current directory: a checkout of
+# someone else's branch must never choose whose comment counts as a ruling. Lists split on
+# , ; space tab newline and compare lowercased, like the canonical parser; an entry that
+# does not parse is skipped, and a list with no valid entry is the same as an absent one.
+# Neither set known is could-not-classify, never "nothing to screen": the walk prints a
+# NOTICE naming exactly the classes that were switched off.
+RATIFIER=""
+TRUSTED_JSON="[]"
+APPS_JSON="[]"
+TRUSTED_KNOWN=0
+ROSTER_FILE="${ASSAY_CONFIG_HOME:-${HOME:-}/.config/assay}/roster.env"
+ROSTER_FILE_OK=0
+
+# roster_file_ok <path> — the owner-only rule. `find -H` follows a symlinked path given on
+# the command line (a linked config home is normal), so the mode tested is the target's.
+roster_file_ok() {
+  local f="$1" d
+  d=$(dirname "$f")
+  [[ -f "$f" && -O "$f" && -d "$d" && -O "$d" ]] || return 1
+  [[ -z "$(find -H "$f" "$d" -prune \( -perm -020 -o -perm -002 \) -print 2>/dev/null)" ]]
+}
+
+# roster_value <KEY> — the environment's value, else the roster file's (last KEY= line wins,
+# an `export ` prefix and surrounding quotes stripped, as the Go dotenv reader does).
+roster_value() {
+  local key="$1" v
+  v="${!key:-}"
+  if [[ -n "${v//[[:space:]]/}" ]]; then printf '%s' "$v"; return 0; fi
+  [[ "$ROSTER_FILE_OK" -eq 1 ]] || return 0
+  sed -nE "s/^[[:space:]]*(export[[:space:]]+)?${key}[[:space:]]*=[[:space:]]*//p" "$ROSTER_FILE" \
+    | tail -n 1 | sed -E "s/[[:space:]]+\$//; s/^[\"']//; s/[\"']\$//"
+}
+
+# split_list — one lowercased entry per line, split the way the canonical parser splits.
+# The appended newline matters: a value with no trailing newline would otherwise leave its
+# LAST entry unterminated, and `while read` silently drops an unterminated final line.
+split_list() { { cat; printf '\n'; } | tr ',;[:space:]' '\n' | tr '[:upper:]' '[:lower:]' | sed '/^$/d'; }
+
+looks_like_bot() { [[ "$1" == *"[bot]" || "$1" == app/* ]]; }
+
+resolve_roster() {
+  local raw entry login head rest
+  local -a trusted apps
+  trusted=()
+  apps=()
+  roster_file_ok "$ROSTER_FILE" && ROSTER_FILE_OK=1
+
+  # The ratifier is ONE identity; a value carrying a separator is refused outright, exactly
+  # as the Go reader refuses it — blessing the first entry of a list would silently grant
+  # the authority the variable exists to restrict.
+  raw=$(roster_value ASSAY_BLESS_LOGIN | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+  if [[ -n "$raw" && "$raw" != *[,\;[:space:]]* ]]; then
+    login=$(printf '%s' "${raw%%:*}" | sed 's/^@//' | tr '[:upper:]' '[:lower:]')
+    if [[ -n "$login" ]] && ! looks_like_bot "$login"; then
+      RATIFIER="$login"
+      trusted+=("$login")
+    fi
+  fi
+
+  while IFS= read -r entry; do
+    [[ "$entry" == *:* ]] || continue
+    login="${entry#*:}"
+    [[ -n "${entry%%:*}" && -n "$login" ]] || continue
+    looks_like_bot "$login" || trusted+=("$login")
+  done < <(roster_value ASSAY_HUMAN_LOGIN_MAP | split_list)
+
+  while IFS= read -r entry; do
+    login="${entry%%:*}"
+    login="${login#@}"
+    [[ -n "$login" ]] || continue
+    looks_like_bot "$login" || trusted+=("$login")
+  done < <(roster_value ASSAY_TRUSTED_LOGINS | split_list)
+
+  # [role=][forge:]slug[:id] — this tool reads GitHub only, so a gitlab: entry or an
+  # unrecognised forge contributes no login (the Go reader's fail-close for the same case).
+  while IFS= read -r entry; do
+    [[ "$entry" == *=* ]] && entry="${entry#*=}"
+    head="${entry%%:*}"
+    rest=""
+    [[ "$entry" == *:* ]] && rest="${entry#*:}"
+    if [[ "$head" == "github" ]]; then
+      entry="$rest"
+    elif [[ "$head" == "gitlab" ]]; then
+      continue
+    elif [[ "$rest" == *:* && ! "$head" =~ ^[0-9]+$ ]]; then
+      continue
+    fi
+    login="${entry%%:*}"
+    [[ -n "$login" && "$login" != *"[bot]" && "$login" != */* ]] || continue
+    apps+=("$login")
+    trusted+=("${login}[bot]" "app/${login}")
+  done < <(roster_value ASSAY_TRUSTED_BOT_SLUGS | split_list)
+
+  [[ ${#trusted[@]} -gt 0 ]] && TRUSTED_KNOWN=1
+  TRUSTED_JSON=$(printf '%s\n' ${trusted[@]+"${trusted[@]}"} | jq -R -s 'split("\n") | map(select(length > 0)) | unique')
+  APPS_JSON=$(printf '%s\n' ${apps[@]+"${apps[@]}"} | jq -R -s 'split("\n") | map(select(length > 0)) | unique')
+}
+
+# roster_notice — the one NOTICE line for a roster that switched classes off, or nothing.
+roster_notice() {
+  if [[ "$TRUSTED_KNOWN" -eq 0 ]]; then
+    printf '%s\n' "NOTICE: no roster configured (ASSAY_BLESS_LOGIN / ASSAY_TRUSTED_LOGINS / ASSAY_TRUSTED_BOT_SLUGS / ASSAY_HUMAN_LOGIN_MAP unset in the environment and in ${ROSTER_FILE}, or not parseable) — the screen can enter no class this run; every item is presented"
+  elif [[ -z "$RATIFIER" ]]; then
+    printf '%s\n' "NOTICE: no ratifying identity configured (ASSAY_BLESS_LOGIN) — already-ruled cannot be entered this run, so a ruled item is presented as genuine; no-fork and reversible-default still screen"
+  fi
+}
+
 command -v gh >/dev/null 2>&1 || { echo "assay-inbox: gh CLI not found" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "assay-inbox: jq not found" >&2; exit 1; }
 
@@ -314,7 +485,8 @@ TMP_HTML=$(mktemp)
 TMP_RAW=$(mktemp)
 TMP_FLOW=$(mktemp)
 TMP_FLOWFMT=$(mktemp)
-trap 'rm -f "$TMP_JSON" "$TMP_ERR" "$TMP_TSV" "$TMP_SORTED" "$TMP_ITEMS" "$TMP_ONE" "$TMP_DETAIL" "$TMP_FMT" "$TMP_WALK" "$TMP_HTML" "$TMP_RAW" "$TMP_FLOW" "$TMP_FLOWFMT"' EXIT
+TMP_CLASSFILE=$(mktemp)
+trap 'rm -f "$TMP_JSON" "$TMP_ERR" "$TMP_TSV" "$TMP_SORTED" "$TMP_ITEMS" "$TMP_ONE" "$TMP_DETAIL" "$TMP_FMT" "$TMP_WALK" "$TMP_HTML" "$TMP_RAW" "$TMP_FLOW" "$TMP_FLOWFMT" "$TMP_CLASSFILE"' EXIT
 echo "[]" > "$TMP_JSON"
 echo "null" > "$TMP_FLOW"
 
@@ -395,7 +567,18 @@ jq -r '
 
 item_count=$(jq 'length' "$TMP_SORTED")
 
+# render_table [classfile] — the terminal table. With a classfile (one class string per
+# line, in the SAME order as $TMP_TSV — both are built off $TMP_SORTED, so the orders
+# cannot drift), a `class` column is inserted; --no-screen calls this with no classfile,
+# which is the table exactly as it rendered before the screen existed.
 render_table() {
+  local classfile="${1:-}"
+  local -a class_arr
+  class_arr=()
+  if [[ -n "$classfile" ]]; then
+    while IFS= read -r _cl; do class_arr+=("$_cl"); done < "$classfile"
+  fi
+  local idx=0
   # Read from a FILE, not a pipe: a `while read` on the right of `|` runs in a subshell, so
   # any count accumulated inside it would be lost.
   while IFS=$'\t' read -r rank labelnames repo number title createdat url; do
@@ -409,8 +592,14 @@ render_table() {
     fi
     marker="  "
     [[ "$rank" == "0" ]] && marker="**"
-    printf '%s %-14s %-45s %-8s %-60s %-5s %s\n' \
-      "$marker" "$labelnames" "$repo" "$number" "$title" "$age" "$url"
+    if [[ -n "$classfile" ]]; then
+      printf '%s %-14s %-45s %-8s %-60s %-5s %-18s %s\n' \
+        "$marker" "$labelnames" "$repo" "$number" "$title" "$age" "${class_arr[$idx]:-genuine}" "$url"
+    else
+      printf '%s %-14s %-45s %-8s %-60s %-5s %s\n' \
+        "$marker" "$labelnames" "$repo" "$number" "$title" "$age" "$url"
+    fi
+    idx=$((idx + 1))
   done < "$TMP_TSV"
 }
 
@@ -433,9 +622,27 @@ def nonblank: map(select(test("[^[:space:]]")));
 def isheading: test("^[[:space:]]*#{1,6}[[:space:]]");
 def demd: gsub("\\*\\*"; "") | gsub("`"; "");
 
-.[0] as $it
-| .[1] as $d
-| (($d.detailUnavailable // false) | if . then true else false end) as $blind
+# The screen's roster input (resolve_roster: the ratifying identity, the trusted authors,
+# the roster App slugs) travels through the ENVIRONMENT ($ENV), not --argjson: this program
+# is extracted verbatim and run standalone by tools/desk/cmd/deskinbox's parity test
+# (jq -s --argjson k … --argjson n … -f prog …, with NO other args) — a new required
+# --argjson would be a compile error there, on a program that test never asked to change.
+# Reading via $ENV means an invocation that never sets these variables (the parity test, or
+# any older caller) degrades exactly like "no roster": no class can be entered, nothing
+# crashes.
+def loginlist: (try fromjson catch [])
+  | if type == "array" then map(select(type == "string") | ascii_downcase) else [] end;
+(($ENV.ASSAY_INBOX_RATIFIER // "") | ascii_downcase) as $ratifier
+| (($ENV.ASSAY_INBOX_TRUSTED_JSON // "[]") | loginlist) as $trusted
+| (($ENV.ASSAY_INBOX_APPS_JSON // "[]") | loginlist) as $apps
+
+| .[0] as $it
+| .[1] as $draw
+# A detail fetch that "succeeded" but did not return an object (a stub, or a future gh
+# regression) must never crash the render — it is read exactly like a failed fetch: blind.
+| (($draw | type) != "object") as $shapeBlind
+| (if $shapeBlind then {} else $draw end) as $d
+| ($shapeBlind or ($d.detailUnavailable // false)) as $blind
 # HTML comments are the marker channel the desk tools write into issue bodies; they are not
 # prose for the driver, so they never become Context.
 | ((($d.body // "") | lines | map(select(test("^[[:space:]]*<!--") | not)))) as $bl
@@ -517,7 +724,102 @@ def demd: gsub("\\*\\*"; "") | gsub("`"; "");
    end) as $next
 | ("the desk records the ruling on " + $it.repo + "#" + ($it.number | tostring)
    + " as a relayed decision (never in the driver's voice), moves the escalation label per the"
-   + " vocabulary, re-reads the issue to confirm the label moved, then " + $next) as $verification
+   + " vocabulary, re-reads the issue to confirm the label moved, then ") as $verificationBase
+| ($verificationBase + $next) as $verification
+
+# ------------------------------------------------------------- the screen (attention-budget/15) --
+# Four classes, tested in THIS order; the first that holds on POSITIVE evidence wins,
+# otherwise the item is genuine. An unread item is always genuine (rendered
+# could-not-check above already) — screening never fires on the absence of evidence, and
+# never on evidence written by someone the roster does not trust.
+
+# Who wrote the BODY. Only a trusted author's body is evidence for no-fork /
+# reversible-default (see resolve_roster for why the body's editor needs no second check).
+| ((($d.author.login // "") | ascii_downcase)) as $bodyAuthor
+| (($bodyAuthor != "") and ($trusted | any(. == $bodyAuthor))) as $bodyTrusted
+
+# --- 1. already-ruled ----------------------------------------------------------------------
+# The ANCHOR is the newest ask: the last comment by a roster App (a relay, or the options put
+# again), else — when no App ever commented — the body itself, and only if the body states
+# options. No anchor, no ruling. to_entries FIRST, so `.key` is the comment's ORIGINAL
+# position in $cs — filtering before entering would renumber the survivors and misplace it.
+| def isapp: ((. // "") | ascii_downcase) as $l
+    | ($apps | any(. as $s | $l == $s or $l == ($s + "[bot]") or $l == ("app/" + $s)));
+  (($cs | to_entries | map(select(.value.author.login | isapp)) | last | .key) // null) as $appAnchor
+| (if $appAnchor != null then $appAnchor elif $stated then -1 else null end) as $anchor
+# The letters a ruling may name: the body's own option letters AND the walk's re-lettering
+# (the recommended option is promoted to A), so either reading of "B" is recognised.
+| ((($oraw | map(.let | ascii_upcase)) + ($options | map(.letter))) | unique) as $offered
+# A ruling is POSITIVE content, and nothing else: its first line names one offered option
+# ("A", "B.", "Option C — …") or ratifies ("ratified", "I ratify", "approved"). A question,
+# a refusal or a hold ("?", no/not/hold/wait/…), or a comment edited after posting, is not
+# a ruling, whatever else it says.
+| def isruling:
+    ((.body // "") | lines | map(select(test("^[[:space:]]*<!--") | not))
+      | nonblank | map(strip | demd | clean)) as $ls
+    | ($ls | join(" ")) as $all
+    | ($ls[0] // "") as $first
+    | ([$first | capture("^(?:[Oo]ption[[:space:]]+)?(?<l>[A-D1-4])(?:$|[.)!:,]|[[:space:]]*[—–-])")]
+        | first | .l?) as $letter
+    | ((.includesCreatedEdit // false) == true) as $edited
+    | ($all | test("\\?")) as $asks
+    | ($all | test("\\b(?:no|not|don'?t|didn'?t|won'?t|hold|wait|later|undecided|unsure|pending)\\b|n't\\b"; "i")) as $negates
+    | (($edited or $asks or $negates) | not)
+      and ((($letter != null) and $stated and ($offered | any(. == $letter)))
+           or ($first | test("^(?:i[[:space:]]+)?(?:ratif(?:y|ied)|approved?)\\b"; "i")));
+  (if ($ratifier == "") or ($ratifier | test("\\[bot\\]$|^app/")) or ($anchor == null) then []
+   else ($cs | to_entries | map(select(.key > $anchor))
+         | map(select(((.value.author.login // "") | ascii_downcase) == $ratifier)))
+   end) as $ratifierAfter
+# The ratifier's LATEST word after the anchor decides: "A" followed by "actually, hold" is
+# not a ruling.
+| (($ratifierAfter | last | .value) // null) as $lastRatifier
+| (($lastRatifier != null) and ($lastRatifier | isruling)) as $isRuled
+| (if $isRuled then $lastRatifier else null end) as $rulingComment
+
+# --- 2. no-fork ----------------------------------------------------------------------------
+# An Options section that parses to ONE entry and holds no second list line, or — only when
+# there is NO Options section — a fork-test block with exactly one `option:` line. A stray
+# "Option:" prose line never overrides a parsed Options section.
+| (($bl | map(select(test("^[[:space:]]*#{1,6}[[:space:]]*Options?\\b"; "i"))) | length) > 0) as $hasOptionsHeading
+| ($osec | nonblank | map(strip)
+   | map(select(test("^(?:[-*+][[:space:]]|(?:\\*\\*)?[A-Za-z0-9][.)])"))) | length) as $osecListLines
+| ($hasOptionsHeading and (($opts | length) == 1) and ($osecListLines <= 1)) as $optionsSingle
+| ($bl | nonblank | map(strip | demd | clean) | map(select(test("^option:"; "i"))) | length) as $forkOptionCount
+| (($hasOptionsHeading | not) and ($forkOptionCount == 1)) as $forkSingle
+| ($bodyTrusted and ($optionsSingle or $forkSingle)) as $isNoFork
+
+# --- 3. reversible-default -----------------------------------------------------------------
+| ($bl | nonblank | map(strip | demd | clean)) as $blc
+| ($blc | map(select(test("^caught-by:"; "i"))) | .[0:1]) as $caughtByLines
+| ((($caughtByLines[0] // "") | sub("^caught-by:[[:space:]]*"; ""; "i") | .[0:60])) as $caughtByValue
+| ((($caughtByLines | length) > 0) and ($caughtByValue != "")
+   and (($caughtByValue | test("^nothing\\b"; "i")) | not)) as $hasCaughtByNonNothing
+| ($blc | map(select(test("^default:"; "i"))) | .[0:1]) as $defaultLines
+| ((($defaultLines[0] // "") | sub("^default:[[:space:]]*"; ""; "i") | .[0:60])) as $defaultValue
+| ((($defaultLines | length) > 0) and ($defaultValue != "")) as $hasDefaultLine
+| (($blc | map(select(test("^class:"; "i"))) | length) == 0) as $noClassLine
+| (($bl | join(" ") | test("\\b(one-way|irreversible)\\b"; "i")) | not) as $noOneWayTerm
+| ($bodyTrusted and $hasCaughtByNonNothing and $hasDefaultLine and $noClassLine and $noOneWayTerm) as $isReversibleDefault
+
+| (if $blind then "genuine"
+   elif $isRuled then "already-ruled"
+   elif $isNoFork then "no-fork"
+   elif $isReversibleDefault then "reversible-default"
+   else "genuine"
+   end) as $class
+
+# The evidence line names what put the item there, from the item itself: the ruling
+# comment's date and author, the PARSED default and its gate — never a guessed letter.
+| (if $class == "already-ruled" then
+     "ruled — flag for relabel/close (" + (($rulingComment.createdAt // "date unknown") | clean)
+     + ", by " + (($rulingComment.author.login // "?") | clean) + ")"
+   elif $class == "no-fork" then
+     "no fork — desk proceeds or re-routes"
+   elif $class == "reversible-default" then
+     "proceeding on default " + $defaultValue + "; veto by declining the gate (caught-by: " + $caughtByValue + ")"
+   else ""
+   end) as $classEvidence
 
 | {
     repo: $it.repo,
@@ -534,22 +836,28 @@ def demd: gsub("\\*\\*"; "") | gsub("`"; "");
     options: $options,
     optionsStated: $stated,
     reply: $reply,
+    verificationBase: $verificationBase,
     verification: $verification,
-    unread: $blind
+    unread: $blind,
+    class: $class,
+    classEvidence: $classEvidence
   }
 JQFMT
 }
 
-# build_item <0-based index> — fetch the issue detail and append the rendered item to
-# $TMP_ITEMS. A detail fetch is a READ (`gh issue view`), the only extra call the two new
-# modes make; the table mode still costs exactly what it always did.
+# build_item <0-based index> — fetch the issue detail (author, body, comments) and append the
+# rendered item to $TMP_ITEMS. A detail fetch is a READ (`gh issue view`), one per item. The
+# screen needs every item READ to classify it, so every mode that classifies — the table,
+# --walk and --html — makes one such call per queued item; only `--no-screen` (table: none;
+# --walk: just the one item printed) and --flow skip them. A failed detail fetch leaves that
+# item unread (genuine, could-not-check) and makes the run exit 2, in the table too.
 build_item() {
   local idx="$1" repo number detail gh_status one merged
   repo=$(jq -r --argjson i "$idx" '.[$i].repo' "$TMP_SORTED")
   number=$(jq -r --argjson i "$idx" '.[$i].number' "$TMP_SORTED")
   jq --argjson i "$idx" '.[$i]' "$TMP_SORTED" > "$TMP_ONE"
 
-  if detail=$(gh issue view "$number" --repo "$repo" --json body,comments 2>"$TMP_ERR"); then
+  if detail=$(gh issue view "$number" --repo "$repo" --json author,body,comments 2>"$TMP_ERR"); then
     :
   else
     gh_status=$?
@@ -561,7 +869,15 @@ build_item() {
   [[ -z "$detail" ]] && detail='{"detailUnavailable":true}'
   printf '%s' "$detail" > "$TMP_DETAIL"
 
-  one=$(jq -s --argjson k "$idx" --argjson n "$item_count" -f "$TMP_FMT" "$TMP_ONE" "$TMP_DETAIL")
+  # The screen's inputs ride the ENVIRONMENT ($ASSAY_INBOX_RATIFIER / _TRUSTED_JSON /
+  # _APPS_JSON), not a new --argjson: this exact invocation shape (jq -s --argjson k …
+  # --argjson n … -f prog itemfile detailfile) is what tools/desk/cmd/deskinbox's parity
+  # test replicates against the extracted program, and it passes none of them — see the
+  # program's own comment.
+  one=$(ASSAY_INBOX_RATIFIER="$RATIFIER" \
+        ASSAY_INBOX_TRUSTED_JSON="$TRUSTED_JSON" \
+        ASSAY_INBOX_APPS_JSON="$APPS_JSON" \
+        jq -s --argjson k "$idx" --argjson n "$item_count" -f "$TMP_FMT" "$TMP_ONE" "$TMP_DETAIL")
   merged=$(jq -s '.[0] + [.[1]]' "$TMP_ITEMS" <(printf '%s' "$one"))
   printf '%s' "$merged" > "$TMP_ITEMS"
 }
@@ -585,6 +901,54 @@ render_walk() {
         "  " + .verification
       ] | .[]
   ' "$TMP_ITEMS"
+}
+
+# render_walk_genuine <k 1-based> <n genuine-total> — the screened walk's rendering: the
+# Kth GENUINE item in $TMP_ITEMS (built over the WHOLE queue), renumbered so "question k of
+# n" counts genuine items only, per the screen's own numbering rule. header/verification are
+# rebuilt from scratch here rather than reused from the per-item build, which numbered
+# against the FULL queue — .verificationBase (the sentence up to "... then ") is the seam
+# that lets this reuse the rest of that sentence without a fragile string edit.
+render_walk_genuine() {
+  local k="$1" n="$2"
+  jq -r --argjson k "$k" --argjson n "$n" '
+    [.[] | select(.class == "genuine")] as $g
+    | $g[$k - 1] as $item
+    | ($item.repo + "#" + ($item.number | tostring)
+       + " — question " + ($k | tostring) + " of " + ($n | tostring)) as $header
+    | (if $k < $n then "presents question " + (($k + 1) | tostring) + " of " + ($n | tostring) + "."
+       else "reports the queue drained."
+       end) as $next
+    | ($item.verificationBase + $next) as $verification
+    | [ $header,
+        "",
+        "Context",
+        ($item.context[] | "  - " + .),
+        "",
+        "Options",
+        ($item.options[] | "  " + .letter + ". " + .text
+                      + (if .recommended then "   [recommended]" else "" end)),
+        "",
+        "Reply shape",
+        "  " + $item.reply,
+        "",
+        "Verification",
+        "  " + $verification
+      ] | .[]
+  ' "$TMP_ITEMS"
+}
+
+# render_screened — the full list of items THIS run screened out (--walk --screened): one
+# line per item, repo#number / class / the evidence line that put it there. Never filters
+# by anything but class != genuine — nothing screened is ever left off this list.
+render_screened() {
+  jq -r '
+    .[] | select(.class != "genuine")
+    | (.repo + "#" + (.number | tostring)) as $ref
+    | [$ref, .class, .classEvidence] | @tsv
+  ' "$TMP_ITEMS" | while IFS=$'\t' read -r ref cls ev; do
+    printf '%-28s %-20s %s\n' "$ref" "$cls" "$ev"
+  done
 }
 
 # The page is ONE file with no dependencies: inline CSS, no <script>, no src=, no @import,
@@ -778,6 +1142,7 @@ def flowsection($f):
   "ul.opts li{margin:.3rem 0}",
   "span.rec{color:var(--recfg);background:var(--recbg);border-radius:999px;padding:.05rem .5rem;font-size:.72rem;font-weight:700;white-space:nowrap}",
   "p.unread{color:var(--accent);font-weight:600}",
+  "p.cls{color:var(--muted);font-size:.82rem;margin:0 0 .8rem}",
   "p.empty{color:var(--muted)}",
   "section.flow-sec{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1.1rem 1.25rem;margin:2rem 0 1.25rem}",
   "section.flow-sec h2{font-size:1.15rem;margin:0 0 .2rem}",
@@ -829,6 +1194,10 @@ def flowsection($f):
         + "</a> — question " + (.index | esc) + " of " + (.total | esc) + "</h2>"),
       ("<p class=\"title\">" + (.title | esc) + "</p>"),
       (if .unread then "<p class=\"unread\">could-not-check: this item was not read</p>" else empty end),
+      (if .class then
+         "<p class=\"cls\">Class: " + (.class | esc)
+         + (if (.classEvidence // "") != "" then " — " + (.classEvidence | esc) else "" end) + "</p>"
+       else empty end),
       "<h3>Context</h3>",
       "<ul>",
       (.context[] | "<li>" + esc + "</li>"),
@@ -1329,8 +1698,24 @@ build_flow() {
 
 case "$MODE" in
   table)
-    render_table
-    finish
+    if [[ "$NO_SCREEN" -eq 1 || "$item_count" -eq 0 ]]; then
+      # --no-screen: exactly today's table, no detail fetch, no class column. An empty
+      # queue needs no classification either — there is nothing to build.
+      render_table
+      finish
+    else
+      resolve_roster
+      write_format_program
+      echo "[]" > "$TMP_ITEMS"
+      i=0
+      while [[ "$i" -lt "$item_count" ]]; do
+        build_item "$i"
+        i=$((i + 1))
+      done
+      jq -r '.[].class' "$TMP_ITEMS" > "$TMP_CLASSFILE"
+      render_table "$TMP_CLASSFILE"
+      finish
+    fi
     ;;
 
   walk)
@@ -1341,19 +1726,71 @@ case "$MODE" in
       finish
       exit 0
     fi
-    if [[ "$WALK_ITEM" -gt "$item_count" ]]; then
-      echo "assay-inbox: --item ${WALK_ITEM} is out of range (the queue holds ${item_count} item(s))" >&2
-      exit 1
+
+    if [[ "$NO_SCREEN" -eq 1 ]]; then
+      # --no-screen: exactly today's --walk — one lazily-fetched item, numbered against
+      # the whole queue, no tail line, no classes.
+      if [[ "$WALK_ITEM" -gt "$item_count" ]]; then
+        echo "assay-inbox: --item ${WALK_ITEM} is out of range (the queue holds ${item_count} item(s))" >&2
+        exit 1
+      fi
+      write_format_program
+      echo "[]" > "$TMP_ITEMS"
+      build_item "$((WALK_ITEM - 1))"
+      render_walk
+      echo
+      finish
+    else
+      # The screen: every item must be READ to be classified, so --walk now builds the
+      # whole queue (like --html always has) rather than lazily fetching just the one
+      # item asked for — the cost the screen's correctness requires.
+      resolve_roster
+      write_format_program
+      echo "[]" > "$TMP_ITEMS"
+      i=0
+      while [[ "$i" -lt "$item_count" ]]; do
+        build_item "$i"
+        i=$((i + 1))
+      done
+
+      already_ruled_n=$(jq '[.[] | select(.class == "already-ruled")] | length' "$TMP_ITEMS")
+      no_fork_n=$(jq '[.[] | select(.class == "no-fork")] | length' "$TMP_ITEMS")
+      reversible_n=$(jq '[.[] | select(.class == "reversible-default")] | length' "$TMP_ITEMS")
+      genuine_n=$(jq '[.[] | select(.class == "genuine")] | length' "$TMP_ITEMS")
+      tail_line="screened: ${already_ruled_n} already-ruled · ${no_fork_n} no-fork · ${reversible_n} reversible-default — run with --screened to list them"
+      notice_line=$(roster_notice)
+
+      if [[ "$WANT_SCREENED" -eq 1 ]]; then
+        # A reporting mode, not a question — the header-on-line-1 convention only binds
+        # the one-item render below, so the NOTICE (if any) is safe to lead with here.
+        [[ -n "$notice_line" ]] && echo "$notice_line"
+        render_screened
+        finish
+      elif [[ "$genuine_n" -eq 0 ]]; then
+        [[ -n "$notice_line" ]] && echo "$notice_line"
+        echo "$tail_line"
+        finish
+      else
+        if [[ "$WALK_ITEM" -gt "$genuine_n" ]]; then
+          echo "assay-inbox: --item ${WALK_ITEM} is out of range (the queue holds ${genuine_n} genuine item(s))" >&2
+          exit 1
+        fi
+        # The header MUST stay on stdout's first line — the ask-decision skill (and W3's own
+        # ordering check) reads line 1 as "<repo>#<N> — question k of n". The NOTICE and tail
+        # are trailing information, never a preamble in front of it.
+        render_walk_genuine "$WALK_ITEM" "$genuine_n"
+        echo
+        [[ -n "$notice_line" ]] && echo "$notice_line"
+        echo "$tail_line"
+        finish
+      fi
     fi
-    write_format_program
-    echo "[]" > "$TMP_ITEMS"
-    build_item "$((WALK_ITEM - 1))"
-    render_walk
-    echo
-    finish
     ;;
 
   html)
+    # The page classifies with the SAME roster the walk uses, so the two cannot disagree
+    # about an item's class; --no-screen drops the class from every card, as before.
+    resolve_roster
     write_format_program
     write_html_program
     echo "[]" > "$TMP_ITEMS"
@@ -1362,6 +1799,10 @@ case "$MODE" in
       build_item "$i"
       i=$((i + 1))
     done
+    if [[ "$NO_SCREEN" -eq 1 ]]; then
+      jq 'map(del(.class, .classEvidence))' "$TMP_ITEMS" > "$TMP_CLASSFILE"
+      cat "$TMP_CLASSFILE" > "$TMP_ITEMS"
+    fi
     # The decision page carries the Flow section too: "which decision is next" and "where is
     # the system stuck" are the two halves of one hand-off, and a driver reading the page
     # should not have to open a second one to see whether the queue in front of them is the

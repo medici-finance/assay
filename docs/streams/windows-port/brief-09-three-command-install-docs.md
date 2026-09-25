@@ -15,7 +15,7 @@ why: >-
   overstates an unshipped one: the reader cannot act on it.
 wave: 4
 depends: ["windows-port/06", "windows-port/07", "windows-port/08"]
-unblocks: []
+unblocks: ["windows-port/17"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -183,9 +183,13 @@ second. NONE is not the answer here.
    `docs/adopting-assay-gitlab.md:200-201`, and replace the manual token-file link/copy at
    `adopting-assay-gitlab.md:176-198`, pointing both at `windows-port/08`'s verb as THE path. Keep
    running `tools/create-fleet-gitlab.sh` from Git-Bash or WSL as one clearly labelled fallback line
-   (requested on #1646), never as a prerequisite. Keep the Git-Bash prerequisite that remains
-   genuinely required — the Claude Code SessionStart hooks — and say plainly that it is the only
-   prerequisite left, and that Cursor does not need it.
+   (requested on #1646), never as a prerequisite. Keep the Git-Bash needs that remain genuinely
+   required, and name them plainly: the Claude Code SessionStart hooks, which Cursor does not
+   need; and GitLab **bulk PAT renewal** (`tools/renew-fleet-gitlab-tokens.sh`), which has no
+   native equivalent until `windows-port/16` ships `deskfleet renew`, since `deskfleet provision`
+   mints a PAT only for an account it creates in that run. Say that neither is needed to install
+   or to provision. (Amended in review on #1680: this task first called the hooks "the only
+   prerequisite left", which overlooked renewal.)
 7. **Point the `create-labels` PRIMITIVE at the forge-neutral path** from `windows-port/08`,
    keeping the nine `gh label create` lines as the GitHub-native equivalent.
 8. **Make one of the two Cursor accounts a pointer.** Choose which is authoritative, say why in the
@@ -206,8 +210,8 @@ second. NONE is not the answer here.
 | 6 | **DEREFERENCE the held arm64 row**: `grep -n 'if: false' .github/workflows/windows-ci-leg.yml` then confirm the doc describes `arm64-native-smoke` as HELD/BLOCKED and not as passing | the job's real state and the prose agree | `check +dereference` |
 | 7 | **DEREFERENCE the three commands against the shipped artifacts** — for each of the three commands the walkthrough now prints, run its `--help` (or, for the PowerShell one, read its `param(` block) and confirm every flag the doc shows EXISTS with that spelling: `cd tools/desk && go run ./cmd/deskinstall --help 2>&1 \| grep -c -e '--harness' -e '--forge' -e '--repo'` and `sed -n '/^param(/,/^)/p' scripts/bootstrap-windows.ps1` | every flag in the doc appears in the tool's own surface; no invented flag | `check +dereference` |
 | 8 | **DEREFERENCE the GitLab claims**: the doc's GitLab provisioning command exists as a built verb — `cd tools/desk && go build ./cmd/<verb>/ && go run ./cmd/<verb> --help 2>&1 \| head -5` | exit 0; the command named in the doc is the command that exists | `check +dereference` |
-| 9 | **The Git-Bash prerequisite that remains is exactly the hooks one**: `grep -n -i 'git-bash' docs/adopting-assay.md docs/adopting-assay-gitlab.md` | every surviving mention is about the Claude Code SessionStart hooks, except (a) the one line labelled as the GitLab provisioning fallback and (b) the numbered steps inside the Manual appendix (Task 4's manual route); none outside the appendix presents Git-Bash/WSL as a GitLab prerequisite | `check +dereference` |
-| 10 | **The manual appendix is complete** — `awk '/Manual appendix/,0' docs/adopting-assay.md \| grep -cE '^[0-9]+\.'` | `>= 15` — no step lost in the collapse | `check` |
+| 9 | **Git-Bash is never needed to install or to provision** (amended in review on #1680; the hooks are no longer the only surviving need). Failable core: `awk '/^### Manual appendix/,/^## 3a/{next} tolower($0) ~ /git-bash/ {print FILENAME":"FNR": "$0}' docs/adopting-assay.md docs/adopting-assay-gitlab.md \| grep -i -E 'install\|provision' \| grep -v -i -E 'not needed to install\|never as a prerequisite\|not a prerequisite\|no git-bash\|hooks\|after install: \*\*bulk pat renewal'; echo "rc=$?"`, then the full list: `grep -n -i 'git-bash' docs/adopting-assay.md docs/adopting-assay-gitlab.md` | core: `rc=1`, no line outside the Manual appendix presents Git-Bash/WSL as needed to install or to provision (mutation: appending `Git-Bash or WSL is required to provision the GitLab fleet.` to either doc prints that line and gives `rc=0`). Full list: every mention outside the Manual appendix is exactly one of (a) the Claude Code SessionStart hooks, including that Cursor does not need them; (b) a line labelling `tools/create-fleet-gitlab.sh` as the initial-provisioning fallback (#1646), never a prerequisite; (c) GitLab **bulk PAT renewal** via `tools/renew-fleet-gitlab-tokens.sh`, stated as needed only until `windows-port/16` ships `deskfleet renew`; (d) a statement that a path needs no Git-Bash/WSL. The numbered steps inside the Manual appendix (Task 4's manual route) are exempt | `check +dereference` |
+| 10 | **The manual appendix is complete**, counted inside the appendix only: `awk '/^### Manual appendix/,/^## 3a/' docs/adopting-assay.md \| grep -cE '^[0-9]+\.'` | `>= 15`, so no step was lost in the collapse (mutation: deleting any one appendix step drops the count to 14) | `check` |
 | 11 | **The duplicate Cursor account is now a pointer**: `grep -cE '^[0-9]+\. ' plugins/assay/references/cursor.md` compared against the same count in `docs/adopting-assay.md`'s Cursor section | exactly ONE of the two still enumerates the steps; the other links to it | `check +flow` |
 | 12 | **The board and the doc agree on brief 04** — `grep -E '^\| 04 ' docs/streams/windows-port/README.md` and the rewritten CI-proven section | both say the Windows CI leg is live/`done`; the skew the brief exists to fix is closed | `check +flow` |
 | 13 | Every cited path resolves (the independent second layer): `grep -ohE '\(\.?\.?/?[a-zA-Z0-9_./-]+\.(md\|yml\|ps1\|go)\)' docs/adopting-assay.md \| tr -d '()' \| sort -u \| while read p; do test -e "$p" \|\| test -e "docs/$p" \|\| echo "MISSING: $p"; done` | no `MISSING:` lines | `check:ci` |

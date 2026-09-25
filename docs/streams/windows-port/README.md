@@ -50,11 +50,13 @@ leg proves `statusgen --lint` exits 0 and a desk-verb smoke passes on Windows** 
 cannot be made native on Windows (a `bash`+`jq` SessionStart hook, say), the gap is
 **stated and triaged with a documented workaround**, never silently shipped broken.
 
-**The end state also has a USABILITY half, added by the driver's 2026-09-11 ask** (briefs 06-09).
-"Installable" is not the same claim as "installed in three commands", and the first was reached
-while the second was not: today an adopter on Windows, using Cursor as the harness and GitLab as
-the forge, follows roughly fifteen steps spread across PowerShell, Git-Bash/WSL and manual file
-copies. The target shape is the Claude Code marketplace path's equal:
+**The end state also has a USABILITY half, added by the driver's 2026-09-11 ask** (briefs 06-09,
+delivered). "Installable" is not the same claim as "installed in three commands" — the first was
+reached before the second. With briefs 06, 07 and 08 landed and brief 09 collapsing the adopter
+docs onto them, an adopter on Windows, using Cursor as the harness and GitLab as the forge, no
+longer has to follow the fifteen steps spread across PowerShell, Git-Bash/WSL and manual file
+copies as the *only* route — `docs/adopting-assay.md` § **Windows adopters** now documents this as
+the primary path:
 
 ```
 1.  powershell -File scripts/bootstrap-windows.ps1 -Tag vX.Y.Z
@@ -64,8 +66,17 @@ copies. The target shape is the Claude Code marketplace path's equal:
 
 No operator-supplied sha256 in (1) — it is resolved from the committed manifest, and the
 verify-or-refuse control is unchanged. No manual copy in (2) — Cursor's install mechanism IS file
-placement, so the tool does it. No Git-Bash prerequisite anywhere on the GitLab arm. The
-fifteen-step path survives as a complete manual appendix; it stops being the only route.
+placement, so the tool does it. No Git-Bash is needed to install or to provision the GitLab fleet
+(`deskfleet`, `windows-port/08`, a separate `gate: human` verb). Two items stay open, and the doc
+states both:
+- **Bulk PAT renewal still needs Git-Bash or WSL.** `tools/renew-fleet-gitlab-tokens.sh` is bash +
+  `glab` and has no native equivalent until `windows-port/16` ships `deskfleet renew`.
+- **Nothing in (1) places `deskinstall` itself on a clean host.** The bootstrap fetches only
+  `statusgen`, and `deskinstall` ships only inside the desk-tools tarball it downloads. Until #1693
+  closes that, the doc names two interim routes, so the sequence is three commands plus one step.
+
+The fifteen-step path survives complete, as a labelled manual appendix. It stops being the only
+route; it does not disappear.
 
 ## Scope — the ten units, and what each owns
 
@@ -152,6 +163,23 @@ the surfaces below, none of which brief 02's audit enumerated; assay#1435 is the
 **Unit 10 (brief 10, PR #1432)** is the container-based Verify witness; it is cited by 14 and
 unchanged here.
 
+**Units 16-17 make GitLab fleet work Go-only** (driver's ask, 2026-09-25: Windows adopters should
+never need bash for GitLab fleet work). Brief 08 kept `tools/create-fleet-gitlab.sh` as the Unix
+path and left its retirement "a separate decision". Since then #1635 added a bash PAT renewal
+(`tools/renew-fleet-gitlab-tokens.sh`) and moved the role table into a shared bash file
+(`tools/fleet-gitlab-roles.sh`), and brief 09 keeps Git-Bash/WSL as a labelled fallback (#1646).
+
+16. **`deskfleet renew` + the Go-owned fleet tables (brief 16).** Ports the renewal into the Go
+    verb under brief 08's custody model. Moves the role, label and project-settings tables into
+    one importable Go package, extends parity to the settings #1572 does not compare, and adds a
+    golden test that does not need the bash files. **gate: human** (it rotates live credentials).
+17. **Prove live, then retire the bash path (brief 17).** A human's native-Windows run of
+    provisioning and renewal against a real GitLab instance, recorded as class outcomes, and a
+    last parity check. Then the three scripts and their test suites are deleted, and every doc,
+    skill and message that names them is rewritten. A could-not-check live proof deletes nothing.
+    **gate: human** (adopter-facing removal, plus the live proof's credentials). Its
+    `## Human decision` covers the paid-tier `--tier ultimate` lane, which exists only in bash.
+
 **Out of scope:** rewriting the Go tools (already portable); a Windows container image; a
 WSL-only path presented as "Windows support" (WSL is Linux — the claim is *native* Windows,
 with WSL noted only as a fallback); publishing to any Windows package manager
@@ -177,14 +205,16 @@ it.
 | 05 | [Adoption-doc delta — the Windows adopter walkthrough](brief-05-adoption-doc-delta.md) | 3 | M | done | 2026-09-07 assay-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #593 @ 57ac2401e4a807da14aef81d3a288431b7a5f148) |
 | 06 | [Manifest-driven bootstrap — resolve tag + sha256 from the committed manifest, and write PATH](brief-06-manifest-driven-bootstrap.md) | 3 | M | done | 2026-09-15 assay-verifier (15/17 rows PASS + 1 satisfied-by-equivalent, 1 could-not-check apply-gated; risk-value DERIVED, independently re-derived sha256 against the real release asset) | 2026-09-15 assay-reviewer-app[bot] (approved PR #1140 @ 2feb7feff2cf267a7444369cff1305497b3a3f43) |
 | 07 | [deskinstall --harness cursor — place the skills/references tree and write the AGENTS.md bindings](brief-07-deskinstall-harness-cursor.md) | 3 | M | done | 2026-09-17 sonnet-5-verifier (16/16 PASS, fail-first + roster-dereference independently re-derived; risk-values DERIVED) | 2026-09-18 assay-reviewer-app[bot] (approved PR #1301 @ 2bd81462a7e030b265b429c3e8fe529fc4fcd8e3) |
-| 08 | [Go-native GitLab fleet provisioning — retire the bash+curl+jq script's Windows dependency](brief-08-go-native-gitlab-fleet-provisioning.md) | 1 | L | todo | — | — |
-| 09 | [Three-command Windows install — widen the install skill's scope, collapse the walkthrough, correct the CI skew](brief-09-three-command-install-docs.md) | 4 | M | todo | — | — |
+| 08 | [Go-native GitLab fleet provisioning — retire the bash+curl+jq script's Windows dependency](brief-08-go-native-gitlab-fleet-provisioning.md) | 1 | L | implemented | — | — |
+| 09 | [Three-command Windows install — widen the install skill's scope, collapse the walkthrough, correct the CI skew](brief-09-three-command-install-docs.md) | 4 | M | implemented | — | — |
 | 10 | [Verify in the harness container: the supported execution-witness runner on Windows](brief-10-verify-in-container.md) | 3 | M | implemented | — | — |
 | 11 | [Portable desk-role pollers — inbound + PR monitors and the tick emitter as Go verbs; scanloop arms a binary, not /bin/bash](brief-11-portable-desk-pollers.md) | 4 | L | implemented | — | — |
 | 12 | [De-POSIX the desk-role skill prose, and close the two needs-port constants the install brief left behind](brief-12-deposix-skill-prose-and-constants.md) | 4 | S | implemented | — | — |
 | 13 | [assay-inbox.sh → a Go `deskinbox` verb — table + walk (the inbox engine's shared core; html + flow split to windows-port/15)](brief-13-inbox-verb-port.md) | 4 | M | implemented | — | — |
 | 14 | [The Windows CI leg proves the desk-role runtime paths — pollers, tick, inbox, hooks — and retires the bash oracles it can](brief-14-windows-leg-proves-desk-role-paths.md) | 6 | M | todo | — | — |
 | 15 | [deskinbox html + flow — the self-contained page renderer and the pipeline-flow model (split from windows-port/13)](brief-15-inbox-html-flow-port.md) | 5 | L | todo | — | — |
+| 16 | [deskfleet renew + the Go-owned fleet tables — port the GitLab PAT renewal, single-source the role table in Go](brief-16-deskfleet-renew-and-the-go-owned-fleet-tables.md) | 2 | L | todo | — | — |
+| 17 | [Go-only GitLab fleet — prove deskfleet live, then retire the bash fleet scripts and every doc that names them](brief-17-retire-the-bash-gitlab-fleet-scripts.md) | 5 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 Brief 04 implemented via PR #569 (the staged `ci/staged-workflows/windows-ci-leg.yml`) and
@@ -299,7 +329,14 @@ Wave 1: [01]←{00}, [08]←{00,02}
 Wave 2: [03]←{01,02}, [04]←{01,02}
 Wave 3: [05]←{02,03,04}, [06]←{03}, [07]←{03}
 Wave 4: [09]←{06,07,08}
+Wave 2 (Go-only fleet): [16]←{08}
+Wave 5 (Go-only fleet): [17]←{16,09}
 ```
+
+Go-only fleet chain: `08 → 16 → 17`, with 17 also gathering 09. 16's wave is 2 by dependency, but
+nothing in it is implementable until 08's implementation (PR #1572) merges. 17 is the only item in
+the stream that deletes adopter-facing tooling. It waits on 09 because it removes the Git-Bash/WSL
+fallback line that 09 writes.
 
 Critical path (first half): `00 → 01 → 03 → 05`. 02 runs parallel to 00 in wave 0 and feeds 03, 04,
 and 05. 04 runs parallel to 03 in wave 2 (both need the Windows binary from 01 and the triage from
@@ -325,8 +362,8 @@ risk answers are all `no` (nothing here touches funds, customers, regulators, or
 irreversible surface — everything is git-revertible tooling and docs); the `human` gate is a
 **design-commitment** gate, and the `gate-why` says so.
 
-**08 is `gate: human` for a different reason — a risk answer, not a design commitment.** It is the
-only brief in the stream that answers a risk question `yes`: `sensitive-data`, because it mints
+**08 is `gate: human` for a different reason — a risk answer, not a design commitment.** It was the
+first brief in the stream to answer a risk question `yes`: `sensitive-data`, because it mints
 seven live GitLab personal access tokens and persists each to a file every desk verb then reads.
 The gate is derived there, not chosen. What the human confirms is enumerated in its `gate-why` and
 decided in its `## Human decision` (`decision-trigger: creation`, so the decision issue is filed as
@@ -334,6 +371,13 @@ the brief lands): the PAT custody model on native Windows — NTFS has no equiva
 `chmod 0600` the existing shell script runs, and the repo's own `custodyacl.go` records that a
 normal file reads `0666` there — and what a partially-completed provisioning run does about
 credentials it has already minted.
+
+**16 and 17 are `gate: human` by derived risk answers.** 16: `sensitive-data` and `irreversible`
+are both yes, because a rotation revokes the previous live PAT the moment GitLab accepts it.
+17: `customer` is yes, because it deletes scripts adopters run and removes a fallback an adopter
+asked for, and `sensitive-data` is yes because its live proof mints real PATs. Both carry
+`decision-trigger: creation`. 16 decides whether operator-supplied role records may set token
+scopes. 17 decides the fate of the bash-only paid-tier lane.
 
 All other briefs — 00, 01, 02, 04, 05, 06, 07, 09 — answer the four risk questions `no` and gate
 `model`.

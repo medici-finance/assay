@@ -119,6 +119,7 @@ var lintRuleRegistry = []LintRule{
 	{ruleShreddedCell, "a raw `|` in the Command cell is read as a table delimiter, truncating the command and shifting every later column", StatusAdvisory},
 	{ruleMovingRef, "a diff base pinned to a moving ref (a branch name, not a SHA) makes the row's result drift under it", StatusAdvisory},
 	{rulePortability, "a GNU-only shell construct that fails on the BSD/macOS userland a reviewer may run the row on", StatusAdvisory},
+	{ruleGoTestRunVacuous, "a `go test -run` selector with no `--- PASS` assertion in the same command, so the row passes whether or not the named test exists, is built, or was ever renamed away (open briefs only; a closed brief's rows are summarised, not individually flagged)", StatusAdvisory},
 
 	// consumers: routed-consumer lint (consumers.go). One class is fatal.
 	{"consumers-followup-missing-brief", "a `consumers: follow-up <stream>/<NN>` whose target is not a brief in any stream README — the routing claim is false", StatusFatal},
