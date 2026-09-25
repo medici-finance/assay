@@ -94,9 +94,15 @@ var (
 
 // graphRepos is the parsed docs/streams/graph-repos.yaml alias registry
 // (schema graph-repos-v1). Aliases map to their cell + (published) repo; an
-// entry whose repo is withheld carries Unpublished.
+// entry whose repo is withheld carries Unpublished. Self is the optional
+// `self:` key naming the alias that identifies the repo this very tree lives
+// in — "" when the registry omits it (the migration tooling in migrate.go
+// already treats it as optional, falling back to "the one published alias"
+// when it is absent; the sibling-merge detector in siblingmerge.go falls back
+// further, to the repo a stream's own `repo:` frontmatter declares).
 type graphRepos struct {
 	Cell    string
+	Self    string
 	Aliases map[string]graphRepoEntry
 }
 
@@ -124,6 +130,7 @@ func loadGraphRepos(root string) (*graphRepos, bool, error) {
 	var doc struct {
 		Schema string `yaml:"schema"`
 		Cell   string `yaml:"cell"`
+		Self   string `yaml:"self"`
 		Repos  map[string]struct {
 			Cell        string `yaml:"cell"`
 			Repo        string `yaml:"repo"`
@@ -139,7 +146,7 @@ func loadGraphRepos(root string) (*graphRepos, bool, error) {
 	if doc.Cell == "" {
 		return nil, false, fmt.Errorf("%s: cell must be non-empty", path)
 	}
-	reg := &graphRepos{Cell: doc.Cell, Aliases: map[string]graphRepoEntry{}}
+	reg := &graphRepos{Cell: doc.Cell, Self: doc.Self, Aliases: map[string]graphRepoEntry{}}
 	for alias, e := range doc.Repos {
 		reg.Aliases[alias] = graphRepoEntry{Cell: e.Cell, Repo: e.Repo, Unpublished: e.Unpublished}
 	}

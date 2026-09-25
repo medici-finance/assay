@@ -321,6 +321,21 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// hard-gated, and the git-derived class 1 reuses the same merge read.
 	// Declared source: statusgen/boardhonesty.go.
 	notices = append(notices, boardHonestyNotices(checkStreams, mergedPRs, mergedErr)...)
+	// Sibling-merge-unreconciled (siblingmerge.go): the
+	// SEVENTH board-honesty phantom class, wired right after class 1 like the
+	// package comment describes, but through its OWN driver rather than
+	// classifyPhantom — it needs a live read of ANOTHER repo's checkout,
+	// which none of the tree-only classes above carry. Runs over the FULL
+	// `streams` (not the scoped checkStreams above) because it also MUTATES
+	// each checked-failed TODO row's Brief.MergedInSibling for the Next-up
+	// eligibility exclusion (nextup.go) below, and nextUp() itself walks the
+	// full set — a scoped mutation here would leave an out-of-scope stream's
+	// row un-excluded on the very board that renders it. NOTICE-only,
+	// exactly like every other class in this file: never a PROBLEM, never an
+	// exit-code change here (severity comes from the eligibility exclusion
+	// and the dedicated `phantoms` verb instead).
+	siblingNotices, _, _ := siblingMergeCheck(streams, root, effectiveSiblingRootOverrides(siblingRootFlagValues))
+	notices = append(notices, siblingNotices...)
 	// Evidence-actor (desk-apps/07, F-verify-self-attest): a `verified`/`done`
 	// row is backed only when an ACCEPTED actor — the roster-bound verifier App or
 	// a roster-known human — committed at least one line of its `## Evidence`
@@ -1216,6 +1231,19 @@ func main() {
 		os.Exit(runShardcheck(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen phantoms` — positional subcommand (like `mergecheck` above,
+	// phantomscli.go) that gives the sibling-merge-
+	// unreconciled class a dedicated, exit-code-bearing verb: `--lint` never
+	// changes exit code for ANY board-honesty phantom class (severity NOTICE,
+	// deliberately — boardhonesty.go), so a CI row or a desk sweep that wants
+	// to go red on a checked-failed sibling merge without arming that against
+	// the whole board's --lint uses this instead. Intercepted before flag
+	// parsing for verifyrun's reason: it owns --root/--class/--sibling-root
+	// with its own meanings and reads no STATUS.md, exactly like --eligibility.
+	if len(os.Args) > 1 && os.Args[1] == "phantoms" {
+		os.Exit(runPhantoms(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen enforcement-status` — the emitter half of mistake-proofing/04.
 	// Prints the generated enforcement-status block (the lint's rules and each
 	// one's fatal/advisory/not-enforced status) to stdout, from the compiled-in
@@ -1388,7 +1416,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, enforcement-status, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, enforcement-status, phantoms, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}
@@ -1411,6 +1439,14 @@ func main() {
 	diffBaseFlag := flag.String("diff-base", "", "--lint only: make the lint DIFFERENTIAL against this base ref (e.g. refs/remotes/origin/main). Evaluates the register at the merge-base of HEAD and <ref> AND at the working tree, fires PROBLEM only for problems the diff INTRODUCES, and demotes pre-existing base-side problems to NOTICE; always prints a base-vs-diff summary line. Fails safe to a full-strength lint (nothing demoted) when the base cannot be resolved or materialised")
 	var budget budgetFlags
 	flag.Var(&budget, "budget", "word-budget check: relpath:maxwords (repeatable); overrides --lint's default of "+defaultBudgetSpec)
+	// --sibling-root (siblingmerge.go): overrides where a
+	// registered sibling's checkout lives on this machine, for the
+	// sibling-merge-unreconciled detector. Repeatable; also read from the
+	// SAME DESK_ROOTS environment variable the desk tools already use
+	// (effectiveSiblingRootOverrides). Without either, the default is the
+	// sibling-checkout convention eligibility.go already uses: a directory
+	// named after the repo's basename, next to --root.
+	flag.Var(&siblingRootFlagValues, "sibling-root", `sibling checkout override "<owner>/<repo>=<path>" for the sibling-merge-unreconciled detector (repeatable; also read from DESK_ROOTS)`)
 	recordMode := flag.Bool("record", false, "append brief status transitions to docs/streams/.history.jsonl (main CI only)")
 	verifyIssuesMode := flag.Bool("verify-issues", false, "emit JSON for newly-eligible verify-gate (gate:human + verified) briefs")
 	existingMarkers := flag.String("existing-markers", "", "file of already-existing verify-gate issue markers (one per line, or raw issue bodies)")
