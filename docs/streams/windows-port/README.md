@@ -66,10 +66,17 @@ the primary path:
 
 No operator-supplied sha256 in (1) — it is resolved from the committed manifest, and the
 verify-or-refuse control is unchanged. No manual copy in (2) — Cursor's install mechanism IS file
-placement, so the tool does it. No Git-Bash prerequisite anywhere on the GitLab arm (GitLab fleet
-provisioning is `deskfleet`, `windows-port/08`, a separate `gate: human` verb). The fifteen-step
-path survives complete, as a labelled manual appendix — it stops being the only route, not a
-route that disappears.
+placement, so the tool does it. No Git-Bash is needed to install or to provision the GitLab fleet
+(`deskfleet`, `windows-port/08`, a separate `gate: human` verb). Two items stay open, and the doc
+states both:
+- **Bulk PAT renewal still needs Git-Bash or WSL.** `tools/renew-fleet-gitlab-tokens.sh` is bash +
+  `glab` and has no native equivalent until `windows-port/16` ships `deskfleet renew`.
+- **Nothing in (1) places `deskinstall` itself on a clean host.** The bootstrap fetches only
+  `statusgen`, and `deskinstall` ships only inside the desk-tools tarball it downloads. Until #1693
+  closes that, the doc names two interim routes, so the sequence is three commands plus one step.
+
+The fifteen-step path survives complete, as a labelled manual appendix. It stops being the only
+route; it does not disappear.
 
 ## Scope — the ten units, and what each owns
 

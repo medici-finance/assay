@@ -193,8 +193,12 @@ including Windows, with no bash/curl/jq: `deskfleet provision --group <path> --p
 --owner-token-file <file> [--project <path>]` — see [`adopting-assay.md`](adopting-assay.md) §
 **GitLab fleet provisioning**. It writes each minted token straight to `gitlab-<role>.token`, so
 the link/copy custody step below (§2's "Where the role-token store is") does not apply to it. The
-script below remains a supported, clearly-labelled fallback (#1646) — run from Git-Bash or WSL,
-never a Windows prerequisite.
+script below remains a supported, clearly-labelled fallback (#1646), run from Git-Bash or WSL. It is
+never a Windows prerequisite for provisioning. **Renewal is different:** §2g's
+`tools/renew-fleet-gitlab-tokens.sh` (bash + `glab`) has no native equivalent yet. `deskfleet` has
+no renew verb, and a re-run of `deskfleet provision` mints nothing for accounts that already exist.
+A Windows adopter therefore still runs renewal from Git-Bash or WSL until `windows-port/16` ships
+`deskfleet renew`.
 
 The script is idempotent bash + curl + jq, run by a human holding a **group-owner PAT**
 (supplied only via the `GITLAB_TOKEN` environment variable — never a flag, never
@@ -767,6 +771,9 @@ readable to release it.
 ## 2g. Renewing every role PAT at once — `tools/renew-fleet-gitlab-tokens.sh`
 
 The provisioner mints a PAT only for an account it creates in that run (§2 *Idempotency*). The
+same holds for the native `deskfleet provision`. **On Windows this script has no native
+equivalent yet.** It is bash + `glab`, so run it from Git-Bash or WSL. `windows-port/16` ports it as
+`deskfleet renew`. The
 renewal is the companion for accounts that already exist: one command rotates each configured
 role's live PAT, creates one only where the role has none, and replaces each
 `gitlab-<role>.token` in the role-token store. It reads the same role table as the provisioner
