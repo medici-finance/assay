@@ -113,6 +113,8 @@ additional Windows downloads under the existing pinned-hash contract, and landin
 change by hand.** Answer "go" and the work proceeds; answer "no" and the whole Windows effort
 stops here, because nothing downstream exists until the downloads do.
 
+Default if no answer: none — blocks until answered.
+
 ## Ground rules
 - NEVER git push / trigger workflows / run a release / run mutating infra commands. Commit only
   per the task instructions.

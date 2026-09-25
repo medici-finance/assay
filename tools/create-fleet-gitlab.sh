@@ -70,24 +70,23 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Role table (spec.md §2) — one line per Assay role this script provisions.
-# `promote` is deliberately absent: per spec §2 it usually has no GitLab
-# identity at all, so there is nothing here to create for it.
-#
-# role:access_level_name:access_level_num:csv_scopes
+# Role table (spec.md §2) — sourced from tools/fleet-gitlab-roles.sh, the ONE
+# copy shared with tools/renew-fleet-gitlab-tokens.sh, so the provisioner and
+# the renewal cannot drift on scopes or PAT names. It defines ROLE_TABLE
+# (role:access_level_name:access_level_num:csv_scopes) and the naming helpers
+# fleet_username / fleet_pat_name.
 # ---------------------------------------------------------------------------
-ROLE_TABLE='
-reviewer:developer:30:api
-worker:developer:30:api,write_repository
-verifier:developer:30:api,write_repository
-desk:developer:30:api
-issue-loop:reporter:20:api
-intake-loop:reporter:20:api
-board-writer:developer:30:api,write_repository
-'
+FLEET_ROLES_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-gitlab-roles.sh"
+if [ ! -f "$FLEET_ROLES_FILE" ]; then
+  echo "error: the shared fleet role table is missing: ${FLEET_ROLES_FILE}" >&2
+  exit 2
+fi
+# shellcheck source=fleet-gitlab-roles.sh
+# shellcheck disable=SC1091
+. "$FLEET_ROLES_FILE"
 
 GITLAB_URL="https://gitlab.com"
-PAT_EXPIRY_DAYS=7
+PAT_EXPIRY_DAYS="${FLEET_PAT_DAYS}"
 OUT_DIR=""
 GROUP=""
 PROJECT=""
@@ -487,7 +486,7 @@ CHECKLIST
 # could-not-check and surfaced in the summary — never a silent downgrade, and
 # never treated as "done".
 configure_ultimate() {
-  local reviewer_user="${PREFIX}-reviewer-bot"
+  local reviewer_user; reviewer_user="$(fleet_username "$PREFIX" reviewer)"
   local role_name="${PREFIX}-reviewer-role"
 
   if [ "$DRY_RUN" -eq 1 ]; then
@@ -613,7 +612,7 @@ if [ "$AVATARS_ONLY" -eq 1 ]; then
   echo "avatars-only: re-uploading avatars from the token files under ${OUT_DIR} — no accounts, tokens or project settings are touched"
   while IFS=: read -r role _ _ _; do
     [ -z "$role" ] && continue
-    username="${PREFIX}-${role}-bot"
+    username="$(fleet_username "$PREFIX" "$role")"
     upload_avatar "$role" "$username" "${OUT_DIR}/${username}.token"
   done <<EOF
 $ROLE_TABLE
@@ -650,7 +649,7 @@ BOARD_WRITER_ID=""
 echo "$ROLE_TABLE" | while IFS=: read -r role access_name access_num scopes; do
   [ -z "$role" ] && continue
 
-  username="${PREFIX}-${role}-bot"
+  username="$(fleet_username "$PREFIX" "$role")"
   display_name="Assay ${role} (fleet bot)"
 
   if [ "$DRY_RUN" -eq 1 ]; then
@@ -732,7 +731,7 @@ echo "$ROLE_TABLE" | while IFS=: read -r role access_name access_num scopes; do
   if [ "$created_now" -eq 1 ]; then
     expires_at=$(pat_expiry_date)
     scopes_json=$(printf '%s' "$scopes" | tr ',' '\n' | jq -R . | jq -s .)
-    body=$(jq -n --arg n "assay-${role}-fleet" --arg e "$expires_at" --argjson s "$scopes_json" \
+    body=$(jq -n --arg n "$(fleet_pat_name "$role")" --arg e "$expires_at" --argjson s "$scopes_json" \
       '{name: $n, scopes: $s, expires_at: $e}')
     gl_api POST "/groups/${GROUP_ID}/service_accounts/${user_id}/personal_access_tokens" "$body"
     if [ "$GL_LAST_STATUS" != "201" ]; then
@@ -756,7 +755,7 @@ echo "$ROLE_TABLE" | while IFS=: read -r role access_name access_num scopes; do
       upload_avatar "$role" "$username" "$token_file"
     fi
   else
-    echo "NOTICE: PAT minting skipped for ${username} (account pre-existing) — rotate via the group service-accounts rotate endpoint for a fresh credential, per spec.md §5"
+    echo "NOTICE: PAT minting skipped for ${username} (account pre-existing) — renew every role's PAT in one run with tools/renew-fleet-gitlab-tokens.sh, per spec.md §5"
     if [ "$AVATARS" -eq 1 ]; then
       if [ -s "${OUT_DIR}/${username}.token" ]; then
         upload_avatar "$role" "$username" "${OUT_DIR}/${username}.token"

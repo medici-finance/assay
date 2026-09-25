@@ -81,7 +81,7 @@ func cmdRun(args []string, stdout io.Writer) error {
 			return ParseMonitorOutput(string(raw)), nil
 		}
 	} else {
-		script, ferr := FindMonitorScript(o.root, o.monitor)
+		script, ferr := ResolvePoller(o.root, o.monitor)
 		if ferr != nil {
 			return ferr
 		}

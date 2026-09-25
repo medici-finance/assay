@@ -1200,13 +1200,31 @@ func checkSecurityVerdict(o flipOpts, repo string, pr prInfo, files []fileInfo, 
 		// early otherwise believes it saw the whole diff — pad the PR with enough files
 		// ahead of the risky one and the gate waives itself. A short read is UNVERIFIABLE,
 		// not clean. This branch STAYS after the paginated read lands: a forge that
-		// asserts more files than it will serve is still a diff nobody read in full.
+		// asserts more files than it will serve is still a diff nobody read in full. It
+		// guards BOTH of the diff-reading terms below it (Authors: and the risk-path
+		// trigger), since a short read could make either one falsely waive the gate.
 		if pr.ChangedFiles > 0 && len(files) < pr.ChangedFiles {
 			return deskkit.Unverifiable(fmt.Sprintf(
 				"condition %s: read %d changed files but the forge reports %d for PR #%d — the diff could not "+
 					"be read in full, so the risk-class determination is unverifiable.",
 				condSecurityVerdict, len(files), pr.ChangedFiles, o.pr), nil)
 		}
+		// Authors: is a distinct claim from Brief: — "this PR authors, and delivers none of,
+		// the named briefs" — so BriefRiskFromBody above never matches it (by design: no
+		// reader that keys on Brief: should treat an authoring PR as a delivery). But the
+		// claim itself needs checking, not just the trailer's shape: deskpr create's
+		// authoringTrailerGate is a client-side gate on the SAME diff-authoring-only test,
+		// and this is the binding half that does not trust it (#1339 review F1). An
+		// Authors: body whose (now-reconciled-complete) diff is not provably
+		// authoring-only for every listed id is risk-classed here, fail closed, so a
+		// bypassed or pre-existing writer gate cannot switch off the security lane for a
+		// brief this PR actually delivers.
+		if br := deskkit.AuthorsRiskFromBody(pr.Body, asChangedFiles(files)); br.RiskClassed {
+			riskClassed = true
+			reason = br.Reason
+		}
+	}
+	if !riskClassed {
 		paths := make([]string, 0, len(files))
 		for _, f := range files {
 			paths = append(paths, f.Path)
@@ -1509,6 +1527,26 @@ type prInfo struct {
 // fileInfo is one entry of the reconciled changed-file list.
 type fileInfo struct {
 	Path string
+	// Status and PreviousFilename mirror deskkit.ChangedFile — carried so the security lane
+	// can run deskkit.BriefAuthoringOnly against the same list (#1339 review F1, the Authors:
+	// self-check). RiskPathTriggered still reads Path alone against the DESTINATION path only
+	// (see readChangedFiles); these two fields are for the authoring-shape check exclusively.
+	Status           string
+	PreviousFilename string
+}
+
+// asChangedFiles converts the reconciled file list back to deskkit.ChangedFile, the shape
+// deskkit.BriefAuthoringOnly (and AuthorsRiskFromBody, which calls it per listed id) takes.
+func asChangedFiles(files []fileInfo) []deskkit.ChangedFile {
+	out := make([]deskkit.ChangedFile, 0, len(files))
+	for _, f := range files {
+		out = append(out, deskkit.ChangedFile{
+			Filename:         f.Path,
+			PreviousFilename: f.PreviousFilename,
+			Status:           f.Status,
+		})
+	}
+	return out
 }
 
 type labelInfo struct {
@@ -1830,7 +1868,7 @@ func readChangedFiles(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]fil
 	}
 	out := make([]fileInfo, 0, len(files))
 	for _, f := range files {
-		out = append(out, fileInfo{Path: f.Filename})
+		out = append(out, fileInfo{Path: f.Filename, Status: f.Status, PreviousFilename: f.PreviousFilename})
 	}
 	return out, nil
 }

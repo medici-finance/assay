@@ -334,7 +334,9 @@ nothing advances a cell but the witness its row names.
     delivers by exactly one trailer line in its body — `Brief: <stream>/<NN>` (the
     hierarchical forms of brief-v2 are accepted on read: `<stream>:<NN>`,
     `<repo>:<stream>:<NN>`, `<cell>:<repo>:<stream>:<NN>`; issue-only work with no brief
-    carries `Issue: #<N>` instead). No title parsing, no branch-name heuristics: a
+    carries `Issue: #<N>` instead, and a PR that only AUTHORS briefs carries
+    `Authors: <stream>/<NN>[, …]`, which names them without asserting delivery — `deskpr create`
+    refuses `Brief:` on a branch that only authors that brief). No title parsing, no branch-name heuristics: a
     derivation that cannot find the trailer finds nothing, and a merged PR with no
     trailer is a lint finding (NOTICE during backfill, PROBLEM after), never a guess. A
     trailer inside a fenced code block is documentation, not a link. There is

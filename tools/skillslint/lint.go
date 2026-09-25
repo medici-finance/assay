@@ -76,10 +76,19 @@ func LintSkills(root string) (checked int, issues []Issue, err error) {
 		return 0, nil, fmt.Errorf("no files match %s under %s — nothing to lint, which is never a pass", skillsGlob, root)
 	}
 	sort.Strings(matches)
+	checked, issues = lintSkillMatches(matches, root)
+	return checked, issues, nil
+}
 
+// lintSkillMatches is the per-file check body shared by LintSkills (the fixed
+// plugins/assay/skills layout) and LintSkillsDir (conformance.go's
+// --skills-dir adopter-reach path, an arbitrary directory of one subdirectory
+// per skill). matches must already be sorted; base is the directory each
+// Issue's Path is computed relative to.
+func lintSkillMatches(matches []string, base string) (checked int, issues []Issue) {
 	for _, abs := range matches {
 		checked++
-		rel, rerr := filepath.Rel(root, abs)
+		rel, rerr := filepath.Rel(base, abs)
 		if rerr != nil {
 			rel = abs
 		}
@@ -113,14 +122,28 @@ func LintSkills(root string) (checked int, issues []Issue, err error) {
 		case name != dir:
 			issues = append(issues, Issue{Path: rel, Msg: fmt.Sprintf("frontmatter name %q != directory %q — a skill must declare the id it is invoked under", name, dir)})
 		}
-		if _, descErr := frontmatterString(fields, "description"); descErr != nil {
+		// Conformance (hard, exit-code-bearing): the SHAPE of the name value —
+		// length and the agentskills grammar — independent of whether it
+		// equals dir, which is checked above and not duplicated here.
+		if nameErr == nil {
+			if msg := conformanceNameIssue(name); msg != "" {
+				issues = append(issues, Issue{Path: rel, Msg: msg})
+			}
+		}
+
+		desc, descErr := frontmatterString(fields, "description")
+		if descErr != nil {
 			issues = append(issues, Issue{Path: rel, Msg: descErr.Error()})
+		} else if msg := conformanceDescriptionIssue(desc); msg != "" {
+			// Conformance (hard, exit-code-bearing): the per-skill description
+			// length ceiling (harness-portability/17).
+			issues = append(issues, Issue{Path: rel, Msg: msg})
 		}
 		for _, bi := range bannedFramingIssues(string(raw)) {
 			issues = append(issues, Issue{Path: rel, Msg: bi})
 		}
 	}
-	return checked, issues, nil
+	return checked, issues
 }
 
 // bannedFramingWords are the retired overclaim terms: the App/gate is a

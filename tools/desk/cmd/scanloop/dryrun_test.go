@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -20,14 +21,14 @@ import (
 // so the pass has no inbound items and opens no network read.
 func stubPoller(t *testing.T) (script, sawDir, sawContent string) {
 	t.Helper()
-	if _, err := os.Stat("/bin/bash"); err != nil {
-		t.Skip("/bin/bash absent — execMonitor runs the poller through it")
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("no bash on PATH — execMonitor runs the poller through it")
 	}
 	dir := t.TempDir()
 	sawDir = filepath.Join(dir, "saw-dir")
 	sawContent = filepath.Join(dir, "saw-content")
 	script = filepath.Join(dir, "inbound-monitor.sh")
-	body := `#!/bin/bash
+	body := `#!/usr/bin/env bash
 set -eu
 d="${INBOUND_MONITOR_STATE_DIR:?}"
 printf '%s' "$d" > "$STUB_SAW_DIR"

@@ -1,0 +1,139 @@
+{
+ "description": "Parity case class (#1640 review F1 round 3): the oracle's is_ratelimit greps only gh's stderr for `secondary rate limit|(http )?429|too many requests`, so the verb decides on the same text — the forge's status line, message and errors[] items — and on nothing else. THE VERB'S OWN TEXT: gh's stderr never carries the repo slug or the request's host:port, so a `429` that appears only in the verb's own error text (here the repo name, which the verb's REST path and a transport error both quote) must never stop the cycle — neither for an HTTP failure nor for a connection that drops before any answer.",
+ "kind": "pr",
+ "env": {},
+ "repos": [
+  "example-org/tracker",
+  "example-org/app429",
+  "example-other/site"
+ ],
+ "cycles": [
+  {
+   "note": "arm",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "t1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/app429": {
+     "prs": [
+      {
+       "number": 7,
+       "headRefOid": "a1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "app429 answers a plain 500; the cycle goes on",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "t2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/app429": {
+     "status": 500,
+     "message": "Server Error"
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "app429 drops the connection; the cycle goes on",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "t3",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/app429": {
+     "dropped": true
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s3",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "recovery reports only what moved against retained baselines",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "t4",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/app429": {
+     "prs": [
+      {
+       "number": 7,
+       "headRefOid": "a2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s4",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

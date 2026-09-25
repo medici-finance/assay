@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -36,11 +37,29 @@ import (
 // cutover); when nil, cmdPlan leaves FanoutLoop.Represented unset and every row is offered as before.
 var representedPRs func(repo string) ([]deskkit.PRRef, error)
 
+// representedPRFiles reads one PR's COMPLETE changed-file list for the briefs-AUTHORING exemption
+// (#1339). NIL by default, like representedPRs: nil = no file transport, so no PR is set aside as
+// authoring and every representing PR counts as before. main() wires liveRepresentedPRFiles.
+var representedPRFiles func(repo string, number int) ([]deskkit.ChangedFile, error)
+
 // representedSourceFor is the FanoutLoop.Represented closure cmdPlan wires when representedPRs is
 // live: it reads the repo's open+merged PRs ONCE (representedPRs) and reduces them in memory to the
-// brief→RepresentedPR map — never one call per row. A transport error propagates as could-not-check,
-// which SelectQueue turns into the fresh-lane HOLD; a nil transport reduces to the empty map (inert).
-func representedSourceFor(repo string) func() (map[string]deskkit.RepresentedPR, error) {
+// brief→RepresentedPR map — never one list call per row. A transport error propagates as
+// could-not-check, which SelectQueue turns into the fresh-lane HOLD; a nil transport reduces to the
+// empty map (inert).
+//
+// THE AUTHORING EXEMPTION (#1339). A MERGED docs-only PR that only WROTE a brief used to carry that
+// brief's `Brief:` trailer, so the brief it authored read as landed-unreconciled and was never
+// offered — the same collision deskdispatch's phantom check had (its authoring.go). For each brief
+// that is a CANDIDATE this run (candidates: the plan's Next-up and awaiting-rework rows), every PR
+// naming it is checked in list order with deskkit.BriefAuthoringOnly, and the first PR that is not
+// authoring-only represents the brief; a brief whose only representing PRs are authoring PRs is not
+// represented at all. File reads are therefore bounded by the PRs naming a queued brief, never the
+// repo's whole merged history. A file list that cannot be read (or proven complete) keeps that PR as
+// the representing one — the pre-exemption answer, a row NOT dispatched — and says so on stderr:
+// could-not-check is never rounded to "authoring". nil candidates (or no file transport) applies no
+// exemption and reduces first-wins exactly as before.
+func representedSourceFor(repo string, candidates func() (map[string]bool, error)) func() (map[string]deskkit.RepresentedPR, error) {
 	return func() (map[string]deskkit.RepresentedPR, error) {
 		if representedPRs == nil {
 			return nil, nil
@@ -49,8 +68,68 @@ func representedSourceFor(repo string) func() (map[string]deskkit.RepresentedPR,
 		if err != nil {
 			return nil, err
 		}
-		return deskkit.RepresentedBriefPRs(prs), nil
+		if representedPRFiles == nil || candidates == nil {
+			return deskkit.RepresentedBriefPRs(prs), nil
+		}
+		cands, cerr := candidates()
+		if cerr != nil {
+			return nil, cerr
+		}
+		all := deskkit.RepresentingPRsByBrief(prs)
+		out := make(map[string]deskkit.RepresentedPR, len(all))
+		for id, list := range all {
+			if !cands[id] {
+				out[id] = list[0]
+				continue
+			}
+			if rp, ok := firstDeliveringPR(repo, id, list); ok {
+				out[id] = rp
+			}
+		}
+		return out, nil
 	}
+}
+
+// firstDeliveringPR returns the first PR in list that is not an authoring-only PR for briefID, and
+// false when every PR in list only authored it. An unreadable file list ends the walk on that PR,
+// which then represents the brief (the conservative answer, reported on stderr).
+func firstDeliveringPR(repo, briefID string, list []deskkit.RepresentedPR) (deskkit.RepresentedPR, bool) {
+	for _, rp := range list {
+		files, err := representedPRFiles(repo, rp.Number)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "fanoutloop: NOTICE — could not read %s#%d's changed files to tell whether it "+
+				"DELIVERED %s or only AUTHORED it (%v); counting it as the brief's representing PR, the answer "+
+				"before the authoring exemption (could-not-check, not a pass)\n", repo, rp.Number, briefID, err)
+			return rp, true
+		}
+		if deskkit.BriefAuthoringOnly(briefID, files) {
+			fmt.Fprintf(os.Stderr, "fanoutloop: NOTICE — %s#%d names %s in its `Brief:` trailer but only "+
+				"AUTHORED it (it adds the brief's file and touches only stream board READMEs, brief files and "+
+				"changelog fragments), so it does not represent the brief\n", repo, rp.Number, briefID)
+			continue
+		}
+		return rp, true
+	}
+	return deskkit.RepresentedPR{}, false
+}
+
+// candidateBriefIDs is the candidate set cmdPlan hands representedSourceFor: the lower-cased brief
+// ids of this run's Next-up and awaiting-rework rows — the only rows the represented map is consulted
+// for, so the only briefs whose representing PRs are worth a file read.
+func (f *FanoutLoop) candidateBriefIDs() (map[string]bool, error) {
+	out := map[string]bool{}
+	rows, err := f.boardSource()
+	if err != nil {
+		return nil, err
+	}
+	rework, err := f.reworkSource()
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range append(rows, rework...) {
+		out[strings.ToLower(r.Stream+"/"+r.Num)] = true
+	}
+	return out, nil
 }
 
 // resolveRepoForPlan resolves the owner/name `plan` reconciles against: an explicit --repo wins; else

@@ -18,9 +18,15 @@ gate-why: >-
   (the same reason brief 04 and brief 10 are human-gated): a maintainer lands the workflow hunk
   from the staged copy. `irreversible: yes` records the workflow-path rule as brief 04 did; the
   other three answers are honestly no — the leg reads no secret beyond the read-only token the
-  existing leg already uses. decision-trigger start: the exact staged-copy vs direct landing
-  question (the same tension brief 10 named) is best framed when the implementer has the leg.
-decision-trigger: start
+  existing leg already uses. decision-trigger spec (corrected from `start`, assay#1679 F1):
+  the exact staged-copy vs direct landing question (the same tension brief 10 named) is only
+  well-formed once the implementer has the leg, and the Task section's own step 4 has the
+  executor author `## Human decision` at pickup — that is `decision-trigger: spec`'s own
+  definition, not `start`'s (a `start`-trigger brief is filed by the dispatcher between
+  claim-acquire and worker launch, before any such authoring happens, which is exactly why the
+  original `start` value made `deskdispatch --gate-human` refuse this brief on a still-unauthored
+  placeholder section).
+decision-trigger: spec
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 issues: [1435]
 schema: brief-v2
@@ -60,9 +66,9 @@ facts:
 single-point-of-failure: the ONE control is the PATH-scrub assertion (without it a green leg could have used bash). Independent layer: 11/13's parity tests on a bash-less Go test run (`-tags nobash` or a runner without bash) — a different runner, different signal.
 
 ## Human decision
-<!-- decision-trigger: start — the executor authors this at pickup: the landing mechanism for
+<!-- decision-trigger: spec — the executor authors this at pickup: the landing mechanism for
      the workflow hunk (staged copy promoted by a maintainer vs direct), the same question
-     brief 10 raised; then files it via tools/decision-issue.sh ensure … --at start. -->
+     brief 10 raised; then files it via tools/decision-issue.sh ensure … --at spec. -->
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task

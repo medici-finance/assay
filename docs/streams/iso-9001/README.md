@@ -2,7 +2,7 @@
 stream: iso-9001
 repo: medici-finance/assay
 serves: assay
-status: active
+status: parked
 priority: P2
 track: platform
 issues: []
@@ -10,6 +10,11 @@ board: generated
 ---
 
 # iso-9001 Stream — make the artifacts an ISO 9001 adopter needs actually shippable
+
+**Parked** (2026-09-25, relayed by the desk at the driver's direction): shelved to
+free attention-budget for higher-priority work; briefs are kept as authored.
+Re-activate by flipping this README's `status:` back to `active` when priority
+allows.
 
 [`docs/iso9001-mapping.md`](../../iso9001-mapping.md) reads this repo's shipped artifacts
 against the ISO 9001 clause skeleton and says, per clause, what exists, whether it is

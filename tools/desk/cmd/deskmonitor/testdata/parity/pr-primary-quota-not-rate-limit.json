@@ -1,0 +1,111 @@
+{
+ "description": "A primary-quota 403 (\"API rate limit exceeded for installation ID …\", no Retry-After) is an ordinary failed read for the PR poller too — isRateLimited is shared with the inbound poller, and the oracle's is_ratelimit only matches secondary rate limit / 429 / too many requests (#1640 review F1).",
+ "kind": "pr",
+ "env": {},
+ "repos": [
+  "example-org/tracker",
+  "example-org/agents",
+  "example-other/site"
+ ],
+ "cycles": [
+  {
+   "note": "arm",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "a1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 7,
+       "headRefOid": "c1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "agents exhausts its primary quota; site is still read and reports its push",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "a1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "status": 403,
+     "message": "API rate limit exceeded for installation ID 1."
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "recovery reports only what moved against retained baselines",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "a2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 7,
+       "headRefOid": "c1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

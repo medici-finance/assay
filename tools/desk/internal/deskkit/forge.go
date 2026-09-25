@@ -797,7 +797,8 @@ type ChangeList struct {
 // IssueSummary is one open issue in the bulk issue-board read: the fields the issue lane
 // classifies on. Author.Login is the RENDERED login (a bot carries its "<slug>[bot]" suffix)
 // and Author.ID the permanent numeric id the trust gate pins on. CreatedAt is the escalation
-// clock's baseline (the question was posed then). Consumer: cmd/issueboard's fetchOpenIssues.
+// clock's baseline (the question was posed then). Consumers: cmd/issueboard's fetchOpenIssues,
+// and cmd/deskmonitor's inbound poll (number + UpdatedAt, the keyset its per-repo baseline holds).
 // The read returns ISSUES only, never changes (PRs/MRs): a forge that serves both from one
 // number sequence (GitHub) filters the changes out, so the caller never has to.
 type IssueSummary struct {
@@ -806,6 +807,11 @@ type IssueSummary struct {
 	Author    Account
 	Labels    []string
 	CreatedAt string // RFC3339
+	// UpdatedAt is the issue's last-activity time (RFC3339, the forge's own `updated_at`): it
+	// moves on a new comment, which is how cmd/deskmonitor's inbound poll tells a resumed thread
+	// from a quiet one. omitempty keeps a summary whose forge reported none byte-identical in the
+	// forge golden corpus.
+	UpdatedAt string `json:",omitempty"`
 	// URL is the issue's human-facing page, EMPTY where the forge did not report one.
 	// Consumer: cmd/deskboard's cmdQueue, which prints the verify-gate issue's location in
 	// its JSON row. omitempty keeps a change that carries no URL byte-identical in the forge

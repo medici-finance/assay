@@ -4,16 +4,14 @@ description: >-
   Turnkey installer for the Assay methodology — invoke it and it self-installs the whole project
   setup into the target repo. Use right after adding the plugin from the marketplace, when the ask
   is "install Assay here", "set Assay up in this repo", "run the turnkey install", "bootstrap the
-  board/desks", or a cold adopter's first boot. It DETECTS the target repo, acquires +
-  sha256-verifies a version-PINNED statusgen binary from the umbrella releases over plain HTTPS
-  (never floating/`latest`, no forge CLI needed — GitHub or GitLab), runs `statusgen init` for the
-  scaffold, wires CI + the main-guard, and PROVES the install
-  (`--lint` == 0, `--version` prints the pinned tag). It is idempotent and REFUSES-not-clobbers an
-  already-adopted repo, opens DRAFT PRs only, and escalates every never-autonomous step (reviewer
-  identity, repo/permission grants, merge/push/tag, private-repo CI auth) to a human. Unix-first
-  (mac/linux), with a native-Windows acquisition arm (PowerShell bootstrap + Go-native
-  `deskinstall`, same sha256-verify-or-refuse). For the step-by-step PRIMITIVE detail and the
-  scenario routing it delegates to the `adopt` skill + docs/adopting-assay.md.
+  board/desks", or a cold adopter's first boot. It detects the target repo, acquires +
+  sha256-verifies a version-pinned statusgen binary from the umbrella releases over plain HTTPS
+  (never floating/`latest`), runs `statusgen init`, wires CI + the main-guard, and proves the
+  install (`--lint` == 0, `--version` prints the pinned tag). It is idempotent, refuses rather than
+  clobbers an already-adopted repo, opens draft PRs only, and escalates every never-autonomous step
+  (reviewer identity, permission grants, merge/push/tag, private-repo CI auth) to a human.
+  Unix-first, with a native-Windows arm (PowerShell + `deskinstall`). Step-by-step detail and
+  scenario routing: the `adopt` skill + docs/adopting-assay.md.
 ---
 
 # Install Assay — turnkey installer

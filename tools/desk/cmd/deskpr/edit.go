@@ -18,8 +18,8 @@ package main
 // touch labels, reviewers or base. The git argv it never builds is the point: this file
 // runs no git command at all past preflight's reads.
 //
-// THE TRAILER IS NOT EDITABLE. The body's one link trailer (`Brief: <stream>/<NN>` or
-// `Issue: #<N>`) is the derived board's DATA EDGE from the PR to its work item. A verb
+// THE TRAILER IS NOT EDITABLE. The body's one link trailer (`Brief: <stream>/<NN>`,
+// `Authors: <stream>/<NN>[, …]` or `Issue: #<N>`) is the derived board's DATA EDGE from the PR to its work item. A verb
 // that can rewrite the body could otherwise silently re-point a merged-tomorrow PR at a
 // different brief, or drop the edge entirely, after every gate that checked it has run.
 // So: the replacement body must carry exactly one trailer (the same grammar `create`
@@ -60,7 +60,7 @@ func cmdEdit(args []string) (err error) {
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
-	check := fs.Bool("check", false, "run every LOCAL gate (flags, the secret scan, the replacement body's Brief:/Issue: trailer grammar, branch state) and stop BEFORE minting a token or opening any connection; the trailer-IMMUTABILITY compare and the self-containment scan's bare-#N hint both need the PR's CURRENT body from the forge and are reported not checked, by name")
+	check := fs.Bool("check", false, "run every LOCAL gate (flags, the secret scan, the replacement body's Brief:/Authors:/Issue: trailer grammar, branch state) and stop BEFORE minting a token or opening any connection; the trailer-IMMUTABILITY compare and the self-containment scan's bare-#N hint both need the PR's CURRENT body from the forge and are reported not checked, by name")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -137,7 +137,7 @@ func cmdEdit(args []string) (err error) {
 
 	// --check stops HERE, before the token mint and before any forge call. Every gate
 	// above it is local: flags, the secret scan of the replacement body/title, the
-	// replacement body's own Brief:/Issue: trailer grammar (requireTrailer), and branch
+	// replacement body's own Brief:/Authors:/Issue: trailer grammar (requireTrailer), and branch
 	// state (preflight). edit pushes no git command, so there is no push-transport gate
 	// to run. Two things this verb checks are NOT decided here, because both need the
 	// PR's CURRENT body/number from the forge: trailer-IMMUTABILITY (the replacement
@@ -295,7 +295,7 @@ func cmdEdit(args []string) (err error) {
 }
 
 // trailerLink renders a body's single link trailer in one comparable form —
-// `Brief: <value>` or `Issue: #<n>` — and reports whether the body carries one at all.
+// `Brief: <value>`, `Authors: <value>` or `Issue: #<n>` — and reports whether the body carries one at all.
 //
 // It is deliberately TOTAL where requireTrailer refuses: a body with no trailer, a
 // multiplicity error, or the machine-written scan-carrier marker all come back
@@ -311,8 +311,11 @@ func trailerLink(body []byte) (string, bool) {
 	if err != nil || len(trs) == 0 {
 		return "", false
 	}
-	if trs[0].Kind == deskkit.TrailerIssue {
+	switch trs[0].Kind {
+	case deskkit.TrailerIssue:
 		return "Issue: #" + trs[0].Value, true
+	case deskkit.TrailerAuthors:
+		return "Authors: " + trs[0].Value, true
 	}
 	return "Brief: " + trs[0].Value, true
 }

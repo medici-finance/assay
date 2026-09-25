@@ -1069,6 +1069,7 @@ func (g *GitLabForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 				Title:     iss.Title,
 				Labels:    append([]string(nil), iss.Labels...),
 				CreatedAt: gitlabTime(iss.CreatedAt),
+				UpdatedAt: gitlabTime(iss.UpdatedAt),
 				URL:       iss.WebURL,
 			}
 			if iss.Author != nil {
