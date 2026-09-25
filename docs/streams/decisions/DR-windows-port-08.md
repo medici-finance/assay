@@ -3,7 +3,7 @@ id: DR-windows-port-08
 date: "2026-09-23"
 title: "Fleet-token custody at write time: create restricted, verify, WARN on an inconclusive read-back; a partial provisioning run stops and reports, never auto-revokes"
 consequence: major
-decided-by: "human:ian"
+decided-by: "human:<name>"
 ruling: "https://github.com/medici-finance/assay/issues/1500#issuecomment-5821024879"
 alternatives:
   - "Option 1 — create restricted, verify, and REFUSE the whole run when the read-back cannot establish owner-only access (the brief's recommendation) — ruled out by the driver's ruling on issue 892 (option 2): an operator on a filesystem that cannot report its access list (a network share, a synchronised folder, some container mounts) would be unable to provision at all, with a refusal rather than a workaround."
@@ -33,6 +33,10 @@ relay:
   reads `report`: a run that fails partway through, having already minted some credentials,
   stops and reports exactly which credentials exist so an operator revokes them by hand; the
   tool never attempts revocation itself.
+
+The record's `ruling:` link above cites a further comment on #1500, posted 2026-09-24T19:44:19Z,
+that restates the same `report` answer and names this record (`report — DR-windows-port-08`) so
+the design-approval gate's corroboration check can resolve it; it does not change the ruling.
 
 This record transcribes both rulings into the register for the lifecycle's design-approval gate
 (`spec/lifecycle-v1.md` §4.4); it does not mint a new decision — the human acts were the
