@@ -4279,8 +4279,15 @@ pass straight through and the `claim-acquire OK` line names which one ran. The c
 runs as the DISPATCHING role, never on the ambient `gh` login: `deskdispatch` mints (or
 reuses) that role's App token through the same seam its model-stamp step uses and hands it
 over in the tool's own shape — `--token-file <0600 path>` for `deskclaim-ref`, `GH_TOKEN` in
-the child's environment for the script — printing neither; an exported `GH_TOKEN` wins and
-nothing is minted; a mint refusal is exit 6 with no claim attempted. The decision script
+the child's environment for the script — printing neither. An exported `GH_TOKEN` wins and
+nothing is minted ONLY when it is verified to BE the dispatching role's App (#1631): on GitHub,
+one `viewer` read — sent only to the host the role's own credential would go to, and refused
+unsent for a repo whose origin is not github.com — must return the role's App login and, when
+the roster pins it, its bot user id; on GitLab, it must equal the role's PAT custody file. Any
+other identity (a human login, another role's App) is ignored with a NOTICE, dropped from the
+process, and the role token minted instead; an identity that cannot be read is exit 6, and a
+role the roster binds no App to is exit 5, both with no claim attempted. A mint refusal is exit
+6 with no claim attempted. The decision script
 shells out to the forge CLI itself, so a rule keyed on a child literally named `gh` never
 covered it (#1146): it is handed the SAME credential from that one resolution, as `GH_TOKEN`
 (plus `GITLAB_TOKEN` on a GitLab-served repo) in its environment, and the `decision-gate OK`
