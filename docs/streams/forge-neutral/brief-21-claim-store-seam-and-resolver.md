@@ -164,6 +164,66 @@ Default if no answer: none — blocks until answered.
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+### Verification — 2026-09-25 (assay-verifier-app[bot] @ 89042b8fcc7e (claude-opus-5-5[1m]) (on-behalf-of human:ian) (forge-identity))
+
+Execution witness — statusgen verifyrun, appended verbatim:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -c -F '**Status:** approved' docs/streams/forge-neutral/reviewer-write-boundary.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestResolveClaimStore' -count=1 -timeout 120s -v` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestResolveClaimStoreNeverFallsBack' -count=1 -timeout 120s` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 4 | `mutations.json` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestClaimStoreConformance' -count=1 -timeout 300s` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskdispatch/ -run 'TestDispatchRefusesBeforeWorktreeOnStoreRefusal' -count=1 -timeout 120s` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./cmd/deskclaim-ref/ -count=1 -timeout 300s` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./internal/forgeban/ -count=1 -timeout 300s` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go build -o /tmp/deskclaim-ref-fn21 ./cmd/deskclaim-ref && /tmp/deskclaim-ref-fn21 --help` | pass exit=0 | sha256:76d6f6357bd3 | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 10 | `(cd statusgen && go build -o /tmp/statusgen-fn21 .) && /tmp/statusgen-fn21 --root . --consumers --brief forge-neutral/21` | fail exit=2 | sha256:44b9349a51e0 | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+
+#### Direct runs and risk-value review — 2026-09-25 (assay-verifier-app[bot] @ 89042b8fcc7e (claude-opus-5-5[1m]) (on-behalf-of human:ian) (forge-identity))
+
+The execution witness above could not execute the check:ci rows 2–8 on this darwin host (no
+network-off sandbox). The same commands were executed directly on the host at 89042b8fcc7e,
+NOT hermetically (network available, Go module proxy disabled with GOPROXY=off, GOWORK=off).
+These rows are supplementary evidence; the hermetic re-execution of rows 2–8 on a Linux runner
+is still owed and is what the witness rows record.
+
+| # | Command | Expected | Observed (exit + key line) | Date / runner |
+|---|---------|----------|----------------------------|---------------|
+| 2 | go test ./internal/deskkit/ -run 'TestResolveClaimStore' -count=1 -timeout 120s -v (in tools/desk) | exit 0; unset → legacy + NOTICE; forge-ref explicit refused; unknown refused; file/service refused naming the shipping release | exit 0 — `--- PASS: TestResolveClaimStore`, 13/13 subtests PASS incl. unset_key_resolves_to_the_legacy_forge-ref_store_with_the_removal_NOTICE, forge-ref_set_explicitly_is_refused_printing_file_and_service, an_unknown_value_is_refused_printing_file_and_service, file_and_service_are_valid_but_refused_naming_the_release_that_ships_them, no_exported_symbol_and_no_flag_accepts_a_store_choice | 2026-09-25 assay-verifier-app[bot] (claude-opus-5-5[1m]), host, non-hermetic |
+| 3 | go test ./internal/deskkit/ -run 'TestResolveClaimStoreNeverFallsBack' -count=1 -timeout 120s | exit 0 | exit 0 — ok .../tools/desk/internal/deskkit; 4/4 subtests PASS (file/service not shipped; file/service shipped but precondition fails) | 2026-09-25 assay-verifier-app[bot] (claude-opus-5-5[1m]), host, non-hermetic |
+| 4 | mutation claimstore-unmet-precondition-falls-through (mutations.json old→new applied by hand, 1 match), then row 3 | row 3 goes RED | exit 1 — `--- FAIL: TestResolveClaimStoreNeverFallsBack`, all 4 subtests FAIL, FAIL .../tools/desk/internal/deskkit; source restored byte-for-byte afterwards and row 3 re-ran exit 0 (`ok`) | 2026-09-25 assay-verifier-app[bot] (claude-opus-5-5[1m]), host, non-hermetic |
+| 5 | go test ./internal/deskkit/ -run 'TestClaimStoreConformance' -count=1 -timeout 300s | exit 0 | exit 0 — `ok`; forge-ref (in-memory double): 8/8 conformance cases PASS | 2026-09-25 assay-verifier-app[bot] (claude-opus-5-5[1m]), host, non-hermetic |
+| 6 | go test ./cmd/deskdispatch/ -run 'TestDispatchRefusesBeforeWorktreeOnStoreRefusal' -count=1 -timeout 120s | exit 0 | exit 0 — ok .../tools/desk/cmd/deskdispatch; 5/5 subtests PASS | 2026-09-25 assay-verifier-app[bot] (claude-opus-5-5[1m]), host, non-hermetic |
+| 7 | go test ./cmd/deskclaim-ref/ -count=1 -timeout 300s | exit 0 | exit 0 — ok .../tools/desk/cmd/deskclaim-ref | 2026-09-25 assay-verifier-app[bot] (claude-opus-5-5[1m]), host, non-hermetic |
+| 8 | go test ./internal/forgeban/ -count=1 -timeout 300s | exit 0 | exit 0 — ok .../tools/desk/internal/forgeban | 2026-09-25 assay-verifier-app[bot] (claude-opus-5-5[1m]), host, non-hermetic |
+| 9 | deskclaim-ref --help compared with the tools/desk README claim-store section | every key, both values and the NOTICE line verbatim | exit 0 — ASSAY_CLAIM_STORE, ASSAY_CLAIM_DIR, ASSAY_CLAIM_SINGLE_HOST, `file`, `service` all present; the README NOTICE line matches the help output verbatim (fixed-string match count 1) | 2026-09-25 assay-verifier-app[bot] (claude-opus-5-5[1m]) |
+| 10 | statusgen --root . --consumers --brief assay:assay:forge-neutral:21 --base 17e884ab0b0c at the squash merge 5aa382100ef9 (#1562) | exit 0 | exit 0 — `summary: 4 corroborated, 0 disproved, 3 unchecked`; the 3 UNCHECKED are the follow-up / out-of-scope entries (forge-neutral/22, forge-neutral/32, the legacy dispatch-claim script). The witness row 10 exit 2 is statusgen's COULD-NOT-CHECK on merged main ("not in the diff against 89042b8f…"), a limitation of running the consumers gate after merge, not a disproved claim | 2026-09-25 assay-verifier-app[bot] (claude-opus-5-5[1m]) |
+
+**Side finding (brief prose only).** The brief's Context facts say "Exit codes: 5 refused, 6
+unverifiable". The implementation makes every resolver refusal exit 6, which is what the spec
+states ("Every refusal is exit 6", reviewer-write-boundary §5), what DR-forge-neutral-21 records,
+and what Verify row 3 expects. The code follows the spec; the brief's facts line is stale.
+
+**Risk-bearing values** — enumerated over the diff 17e884ab..5aa382100 (non-test Go sources and
+the tools/desk README), ranked by irreversibility. The item is `irreversible: no`,
+`sensitive-data: yes` (claim custody).
+
+- RISK-VALUE: DERIVED — ClaimStoreFile = "file", ClaimStoreService = "service" (forge-ref excluded from the valid set) @ tools/desk/internal/deskkit/claimstore.go:115-117 — the spec §5 key table names exactly two valid values and makes an explicit forge-ref a refusal, as ruled in DR-forge-neutral-21 (option 1).
+- RISK-VALUE: DERIVED — NeedsForgeCredential = true (legacy forge-ref resolution) @ tools/desk/internal/deskkit/claimstore.go:268 — forge-ref claims are refs written on the forge, so that store needs repository write (spec access table: reviewer under the legacy resolution = write); it is the only resolution that mints a credential for the claim.
+- RISK-VALUE: DERIVED — ExitUnverifiable = 6 @ tools/desk/internal/deskkit/exitcodes.go:31 (existing constant, bound to every resolver refusal at claimstore.go:245-257) — the spec states "Every refusal is exit 6".
+- RISK-VALUE: DERIVED — ASSAY_CLAIM_SINGLE_HOST accepted value "yes" @ tools/desk/internal/deskkit/rosterconfig.go:1806 — the spec makes it an operator declaration whose only value is `yes`; strict parsing refuses any other value.
+- RISK-VALUE: NAMED, NOT DERIVED — ClaimStoreLegacyRemovalRelease = "N+1" @ tools/desk/internal/deskkit/claimstore.go:126 — this is a placeholder, not a release. The concrete value can only be set when release N is cut, and nothing outside the README, rosterconfig.go:1745 and a test references the constant, so no release guard enforces its replacement.
+- Ranked last, no derivation required (reversible; the file store is not shipped yet): default claims directory "dispatch-claims" @ tools/desk/internal/deskkit/claimstore.go:358, matching the spec's stated default.
+
+**Open question for the human (sign-off).** RISK-VALUE: NAMED, NOT DERIVED — ClaimStoreLegacyRemovalRelease = "N+1" @ tools/desk/internal/deskkit/claimstore.go:126: what sets this constant at the release-N cut, and should the release tooling refuse a cut while it still reads "N+1"? Without that, the removal NOTICE could ship naming a non-release.
+
+VERIFY: PASS (local tier, evidence only). Rows 1 and 9 pass under the witness; rows 2–8 pass on
+direct host execution with the mutation going red as designed; row 10 corroborates at the merge
+diff. The witness's check:ci rows 2–8 still need hermetic re-execution. Gate human: the status
+stays `implemented`; sign-off is the human's.
+
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`; claim custody and credential selection). Reviewer records
 verdict + date in the stream README table.
