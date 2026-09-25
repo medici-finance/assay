@@ -4,8 +4,10 @@
 # the driver's `grow <PR#>` reply on the project's standing weight-growth decision issue.
 # golines is reported by `weight: ...` but never ratcheted — no line for it here.
 #
-# Landing values: the counter's own output at branch head (d1c130ce5f0e627381d3793743bcf871ac226825, 2026-09-25).
+# Landing values: the counter's own output over this branch's tree after merging main at
+# 8ad26beab (merge commit 659681c42, 2026-09-25). This file is not itself counted, so the
+# values hold for the commit that carries them.
 verbs 66
-flags 368
-refusals 841
-ruletext 6183
+flags 370
+refusals 848
+ruletext 6295

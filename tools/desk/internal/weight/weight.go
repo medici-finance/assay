@@ -41,6 +41,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"io/fs"
 	"path"
 	"sort"
@@ -60,6 +61,11 @@ type Weight struct {
 	RuleText              int
 	RuleTextCouldNotCheck bool
 	RuleTextReason        string
+	// RuleTextListIncomplete is set with RuleTextCouldNotCheck when the plugin tree IS
+	// present but a listed skill body cannot be read: a rename the fixed list below was
+	// not updated for, not a tools/desk-only checkout. TestCeiling fails on it in blocking
+	// mode, so a rename cannot silently drop ruletext out of the ratchet.
+	RuleTextListIncomplete bool
 }
 
 // RatchetedDimensions is every dimension ceiling.txt enforces, in the order Evaluate and
@@ -103,6 +109,42 @@ var ruleTextFiles = []string{
 // itself the unit a new reference file joins, and the dimension exists to measure
 // everything dispatched from it.
 const ruleTextReferencesDir = "tools/desk/cmd/deskdispatch/references"
+
+// ruleTextPluginDir is the plugin tree whose absence (a tools/desk-only checkout) is the
+// three-state rule's could-not-check case.
+const ruleTextPluginDir = "plugins/assay/skills"
+
+// maxCountedFileBytes caps every read the counter makes. The largest counted file in the
+// tree is well under 1 MiB; the cap exists so a counted path pointed at something endless
+// fails closed instead of growing until the runner runs out of memory.
+const maxCountedFileBytes = 16 << 20
+
+// readRegular reads p only if it is a regular file (not a symlink, device or pipe) and no
+// larger than maxCountedFileBytes. os.DirFS follows symlinked files, so without the Lstat
+// a counted path could read a file from outside the tree being measured. A refusal is an
+// error, so Count fails closed rather than counting or skipping the file.
+func readRegular(fsys fs.FS, p string) ([]byte, error) {
+	info, err := fs.Lstat(fsys, p)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", p, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("reading %s: not a regular file (mode %s); the counter never follows links", p, info.Mode().Type())
+	}
+	f, err := fsys.Open(p)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", p, err)
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxCountedFileBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", p, err)
+	}
+	if len(data) > maxCountedFileBytes {
+		return nil, fmt.Errorf("reading %s: larger than the %d-byte cap", p, maxCountedFileBytes)
+	}
+	return data, nil
+}
 
 // verbsRoot and refusalsRoot bound the verbs/flags and refusals scans respectively.
 // flags shares verbsRoot: both are cmd/**-scoped per the brief's dimension definitions.
@@ -151,6 +193,14 @@ func Count(fsys fs.FS) (Weight, error) {
 	w.RuleText = ruleText
 	w.RuleTextCouldNotCheck = !ok
 	w.RuleTextReason = reason
+	// countRuleText's only could-not-check return that is NOT a broken list is the
+	// absent-plugin-tree one; every other ok=false means the tree is there but the
+	// dimension's inputs are not all readable.
+	if !ok {
+		if _, statErr := fs.Stat(fsys, ruleTextPluginDir); statErr == nil {
+			w.RuleTextListIncomplete = true
+		}
+	}
 
 	return w, nil
 }
@@ -236,9 +286,9 @@ func countVerbs(fsys fs.FS) (int, error) {
 // packageNameOf reads only the package clause of a Go source file — the cheapest parse
 // that can answer "is this package main".
 func packageNameOf(fsys fs.FS, p string) (string, error) {
-	src, err := fs.ReadFile(fsys, p)
+	src, err := readRegular(fsys, p)
 	if err != nil {
-		return "", fmt.Errorf("reading %s: %w", p, err)
+		return "", err
 	}
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, p, src, parser.PackageClauseOnly)
@@ -369,12 +419,11 @@ func countGoLines(fsys fs.FS) (int, error) {
 }
 
 func countNonBlankLines(fsys fs.FS, p string) (int, error) {
-	f, err := fsys.Open(p)
+	src, err := readRegular(fsys, p)
 	if err != nil {
-		return 0, fmt.Errorf("opening %s: %w", p, err)
+		return 0, err
 	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(bytes.NewReader(src))
 	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	n := 0
 	for sc.Scan() {
@@ -393,7 +442,7 @@ func countNonBlankLines(fsys fs.FS, p string) (int, error) {
 // directory. Three-state: when plugins/assay/skills is absent, it returns ok=false with a
 // reason, never a silent 0.
 func countRuleText(fsys fs.FS) (n int, ok bool, reason string, err error) {
-	if _, statErr := fs.Stat(fsys, "plugins/assay/skills"); statErr != nil {
+	if _, statErr := fs.Stat(fsys, ruleTextPluginDir); statErr != nil {
 		return 0, false, "plugins/assay/skills not found under this root (a tools/desk-only checkout carries no plugin tree)", nil
 	}
 	refFiles, err := referenceMarkdownFiles(fsys)
@@ -409,9 +458,15 @@ func countRuleText(fsys fs.FS) (n int, ok bool, reason string, err error) {
 
 	total := 0
 	for _, p := range all {
-		data, rerr := fs.ReadFile(fsys, p)
+		if _, statErr := fs.Lstat(fsys, p); statErr != nil {
+			// The plugin tree is present but a listed body is not: a rename the fixed
+			// list was not updated for. Still could-not-check (never a silent 0), but
+			// flagged so TestCeiling can tell it from an absent tree.
+			return 0, false, fmt.Sprintf("reading %s: %v", p, statErr), nil
+		}
+		data, rerr := readRegular(fsys, p)
 		if rerr != nil {
-			return 0, false, fmt.Sprintf("reading %s: %v", p, rerr), nil
+			return 0, false, "", rerr
 		}
 		total += bytes.Count(data, []byte("\n"))
 		// A file with content after its last newline (no trailing newline) still has
@@ -440,9 +495,9 @@ func referenceMarkdownFiles(fsys fs.FS) ([]string, error) {
 }
 
 func parseFile(fsys fs.FS, fset *token.FileSet, p string) (*ast.File, error) {
-	src, err := fs.ReadFile(fsys, p)
+	src, err := readRegular(fsys, p)
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", p, err)
+		return nil, err
 	}
 	f, err := parser.ParseFile(fset, p, src, 0)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/medici-finance/assay/tools/desk/internal/weight"
 )
@@ -103,6 +104,64 @@ func TestCeilingRedOnGrowthFixture(t *testing.T) {
 	}
 }
 
+// TestCountRefusesSymlinkedFile: a counted file that is a symlink is refused, never
+// followed. os.DirFS follows a symlinked file, so without this a tree could count a file
+// from outside itself (or point a counted path at an endless device). Security review
+// finding S4 on #1672 observed `verbs=1 refusals=2` from an out-of-tree main.go.
+func TestCountRefusesSymlinkedFile(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "outside.go")
+	if err := os.WriteFile(outside, []byte("package main\n\nvar _ = Refused(\"x\")\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	cmdDir := filepath.Join(root, "tools", "desk", "cmd", "evil")
+	if err := os.MkdirAll(cmdDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(cmdDir, "main.go")); err != nil {
+		t.Skipf("symlinks unavailable here: %v", err)
+	}
+	w, err := weight.Count(os.DirFS(root))
+	if err == nil {
+		t.Fatalf("Count followed a symlinked file out of the tree: verbs=%d refusals=%d, want an error", w.Verbs, w.Refusals)
+	}
+	if !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("Count error = %v, want it to name the non-regular file", err)
+	}
+}
+
+// TestRuleTextListIncomplete separates the two could-not-check causes: an absent plugin
+// tree (a tools/desk-only checkout, the brief's three-state case) and a present plugin
+// tree missing one listed skill body (a rename the fixed list was not updated for).
+// TestCeiling treats the second as a failure in blocking mode, so a rename cannot
+// silently drop the whole ruletext dimension out of the ratchet.
+func TestRuleTextListIncomplete(t *testing.T) {
+	absent := fstest.MapFS{
+		"tools/desk/cmd/deskdispatch/references/a.md": {Data: []byte("x\n")},
+	}
+	w, err := weight.Count(absent)
+	if err != nil {
+		t.Fatalf("Count(absent plugin tree): %v", err)
+	}
+	if !w.RuleTextCouldNotCheck || w.RuleTextListIncomplete {
+		t.Errorf("absent plugin tree: couldNotCheck=%v listIncomplete=%v, want true/false",
+			w.RuleTextCouldNotCheck, w.RuleTextListIncomplete)
+	}
+
+	partial := fstest.MapFS{
+		"tools/desk/cmd/deskdispatch/references/a.md": {Data: []byte("x\n")},
+		"plugins/assay/skills/the-desk/SKILL.md":      {Data: []byte("x\n")},
+	}
+	w, err = weight.Count(partial)
+	if err != nil {
+		t.Fatalf("Count(partial plugin tree): %v", err)
+	}
+	if !w.RuleTextCouldNotCheck || !w.RuleTextListIncomplete {
+		t.Errorf("present plugin tree missing listed bodies: couldNotCheck=%v listIncomplete=%v, want true/true",
+			w.RuleTextCouldNotCheck, w.RuleTextListIncomplete)
+	}
+}
+
 // TestGrowthAnnotationAbove is a pure unit test of the "# grow" presence check the
 // Growth-approval facts describe (spec §4.5): the ONE thing this brief's ceiling check
 // verifies when comparing against a -base revision (the URL's author is review stage 06's
@@ -182,9 +241,16 @@ func TestCeiling(t *testing.T) {
 	}
 
 	for _, dim := range weight.RatchetedDimensions {
-		dim := dim
 		t.Run(dim, func(t *testing.T) {
 			if dim == "ruletext" && w.RuleTextCouldNotCheck {
+				// A present plugin tree missing a listed body is a stale list, not the
+				// three-state absent-tree case. Blocking mode fails on it so a rename
+				// cannot drop ruletext out of the ratchet behind a SKIP that a
+				// non-verbose `go test ./...` never prints; advisory mode keeps D-A's
+				// never-red landing behaviour and skips with the reason.
+				if w.RuleTextListIncomplete && mode == "blocking" {
+					t.Fatalf("ruletext list incomplete (plugin tree present): %s. Update the listed skill bodies in weight.go to match the tree.", w.RuleTextReason)
+				}
 				t.Skipf("could-not-check ruletext: %s", w.RuleTextReason)
 			}
 			r, ok := resultByDim[dim]
@@ -312,7 +378,10 @@ func archiveAt(t *testing.T, repoRoot, rev string) string {
 		if terr != nil {
 			t.Fatalf("git archive %s: reading tar stream: %v", rev, terr)
 		}
-		target := filepath.Join(dir, filepath.FromSlash(hdr.Name)) //nolint:gosec // rev is operator-supplied, archive is this repo's own history
+		if !filepath.IsLocal(filepath.FromSlash(hdr.Name)) {
+			t.Fatalf("git archive %s: entry %q escapes the extraction directory", rev, hdr.Name)
+		}
+		target := filepath.Join(dir, filepath.FromSlash(hdr.Name)) //nolint:gosec // contained: IsLocal checked above
 		switch hdr.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, 0o755); err != nil { //nolint:gosec
