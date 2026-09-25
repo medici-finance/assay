@@ -139,8 +139,9 @@ file, and promotion needs a workflow-scoped human credential. Two human acts are
    change should travel through THAT path (a single workflow-only PR the workflow App authors), and
    this staged addition may itself be reduced to a pointer by that brief.
 
-Default if no answer: the leg stays staged and the digest stays a placeholder — the launcher refuses
-(fail-closed), so nothing runs an un-pinned image in the meantime. Status stays `implemented`.
+Default if no answer: none — blocks until answered. The leg stays staged and the digest stays a
+placeholder — the launcher refuses (fail-closed), so nothing runs an un-pinned image in the
+meantime. Status stays `implemented`.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. You may ADD the staged workflow
