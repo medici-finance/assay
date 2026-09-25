@@ -187,6 +187,19 @@ a GitLab deployment has no PEMs to install.
 
 ## 2. Provisioning script — `tools/create-fleet-gitlab.sh`
 
+**On Windows, prefer `deskfleet provision` instead — this section is the fallback.**
+`windows-port/08` ships a native Go verb that does the same provisioning natively on every OS,
+including Windows, with no bash/curl/jq: `deskfleet provision --group <path> --prefix <name>
+--owner-token-file <file> [--project <path>]` — see [`adopting-assay.md`](adopting-assay.md) §
+**GitLab fleet provisioning**. It writes each minted token straight to `gitlab-<role>.token`, so
+the link/copy custody step below (§2's "Where the role-token store is") does not apply to it. The
+script below remains a supported, clearly-labelled fallback (#1646), run from Git-Bash or WSL. It is
+never a Windows prerequisite for provisioning. **Renewal is different:** §2g's
+`tools/renew-fleet-gitlab-tokens.sh` (bash + `glab`) has no native equivalent yet. `deskfleet` has
+no renew verb, and a re-run of `deskfleet provision` mints nothing for accounts that already exist.
+A Windows adopter therefore still runs renewal from Git-Bash or WSL until `windows-port/16` ships
+`deskfleet renew`.
+
 The script is idempotent bash + curl + jq, run by a human holding a **group-owner PAT**
 (supplied only via the `GITLAB_TOKEN` environment variable — never a flag, never
 committed, never stored by the script). It creates the seven service accounts above,
@@ -265,8 +278,9 @@ holds an invalidated one, so on that layout never copy the provisioned file back
 `gitlab-<role>.token` — doing so installs a dead credential, and the next desk verb fails `401`
 on its first API read. Prefer the link on any platform that has one. (#1112)
 
-The script itself is **bash + curl + jq**. On native Windows run it from Git-Bash or WSL,
-not from PowerShell.
+The script itself is **bash + curl + jq** — a labelled **fallback** (#1646), not the Windows
+path (see **`deskfleet provision`** at the top of this section). If you do run it on native
+Windows, run it from Git-Bash or WSL, never from PowerShell.
 
 **`GITLAB_API_BASE` — required before the next boot, and it is not a `roster.env` key.**
 Every GitLab-side token operation — the read-only custody check `deskboot` / `deskroster
@@ -757,6 +771,9 @@ readable to release it.
 ## 2g. Renewing every role PAT at once — `tools/renew-fleet-gitlab-tokens.sh`
 
 The provisioner mints a PAT only for an account it creates in that run (§2 *Idempotency*). The
+same holds for the native `deskfleet provision`. **On Windows this script has no native
+equivalent yet.** It is bash + `glab`, so run it from Git-Bash or WSL. `windows-port/16` ports it as
+`deskfleet renew`. The
 renewal is the companion for accounts that already exist: one command rotates each configured
 role's live PAT, creates one only where the role has none, and replaces each
 `gitlab-<role>.token` in the role-token store. It reads the same role table as the provisioner
