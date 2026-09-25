@@ -271,9 +271,7 @@ unreadable root in as an empty one.
   root count when every stream identity is unique (one STATUS.md per root, exit 0) and never merges
   boards, so N roots buys generation convenience, not coverage. Where two or more roots declare a
   stream of the same name the collision is **quarantined per root**: the colliding roots are skipped
-  with loud STALE/PROBLEM lines while every non-colliding root still generates. The earlier "the
-  combined two-root form exits 1 and writes NOTHING" line mis-transcribed the collision case onto the
-  two-root form and is **withdrawn** (audit §8 correction 2). `statusgen init`
+  with loud STALE/PROBLEM lines while every non-colliding root still generates. `statusgen init`
   scaffolds every repo with the same `stream: example` identity, so init'd roots collide by
   construction — that, not root count, is what to check when a board goes missing.
 
@@ -512,8 +510,7 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **Cheap implementers run below the floor, but authority-bearing writes do not**: a review verdict and a ready-flip enforce a model-capability floor keyed on the dispatcher's attested tier, so a dispatch ATTESTED below the strong tier is refused those writes even though it may implement freely — delegate downward, and escalate a verdict or flip to a strong-tier session rather than route around the refusal. A `dispatched-tier:any` stamp is not such an attestation (`any` is the brief's "no tier demanded"), so it proceeds with a NOTICE; nor is a stamp whose dispatch claim has since been RELEASED — a dead cycle's stamp ages out and the PR reads unstamped, rather than being refused harder than an unstamped one. **The unstamped/NOTICE path is RISK-CONDITIONAL for a review verdict (ruling 3):** on a risk-classed PR (every public-repo PR, or a diff touching a security path) a security-review-bearing verdict must carry a trustable strong-tier attestation, so an UNSTAMPED verdict there REFUSES; the NOTICE-proceed holds only for an unstamped NON-risk PR. The convention to escalate still stands.
 - **Serialize out-of-repo items** — no worktree isolation, no branch-as-claim: at most ONE in
   flight across all streams, the declaration is the claim, so check in-flight PRs for overlaps first.
-- **Placeholders stay dispatchable** (ruling 2, 2026-08-24) — and the shipped `fanoutloop plan`
-  includes them, so skill and binary now agree.
+- **Placeholders are dispatchable** (ruling 2, 2026-08-24); `fanoutloop plan` includes them.
 
 ## Cockpit-aware worktree creation — additive, chosen by `ASSAY_COCKPIT` or detected on PATH, never required
 
@@ -846,8 +843,7 @@ worker-desk's own.
 - **Why not a ~60-second poll.** The sweep this desk mandates costs roughly three reads per scanned
   repo per tick — about 48 at the current scan width, 60–90 with the pre-resume guards and a regen
   pass. At ~60s that is thousands of reads an hour, most of a GitHub App installation's hourly read
-  allowance before a single write; at 30 minutes it is ~96–150, a low single-digit percentage. The
-  earlier "~60s idle-poll" wording is retired for that reason.
+  allowance before a single write; at 30 minutes it is ~96–150, a low single-digit percentage.
 - **Harness degradation, in one line.** Where `capability:durable-monitor` is unavailable (its
   reference row reads `degrades` — no confirmed durable cross-turn wake, as on the Codex and Cursor
   bindings), the desk falls back to the event-driven + fixed-cadence board sweep at the same 30-minute
