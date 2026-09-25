@@ -28,7 +28,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/7 | 2026-09-25 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-09-25 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/14 | 2026-09-25 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/16 | 2026-09-25 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/18 | 2026-09-25 |  |
 
 ## Parked
 
@@ -92,6 +92,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-go-git | 02 | implemented | 2500 | 3 | — | 2026-09-11 opus-5[1m]-verifier | — |
 | forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | graph-execution | 07 [exec:strong] | implemented | 2500 | 1 | — | — | — |
+| windows-port | 08 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | contributor-trust | 04 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
@@ -109,7 +110,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 19 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| windows-port | 08 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 12 | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -140,10 +140,10 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | forge-neutral | 01 [exec:strong] | implemented | 8500 | 13 | — | — | — |
+| windows-port | 01 | implemented | 5500 | 9 | — | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | harness-portability | 03 | implemented | 5000 | 8 | — | — | — |
-| windows-port | 01 | implemented | 5000 | 8 | — | — | — |
-| windows-port | 03 [exec:strong] | implemented | 3000 | 4 | — | — | — |
+| windows-port | 03 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 
@@ -152,7 +152,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | — | — |
-| windows-port | 00 | implemented | 6000 | 10 | — | — | — |
+| windows-port | 00 | implemented | 7000 | 12 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 4500 | 7 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 3000 | 4 | — | — | — |
@@ -445,7 +445,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 09 Opt-in statusgen telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
 - 14 `--lint`: flag a Verify row whose `go test -run` selector can pass on "no tests to run" (vacuous-selector rule) — todo (wave 1)
 
-### windows-port (11 open)
+### windows-port (13 open)
 
 - 00 Build-tag split for the unix-only syscall sites in statusgen and desk-tools — implemented (wave 0)
 - 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — implemented (wave 1)
@@ -458,6 +458,8 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 13 assay-inbox.sh → a Go `deskinbox` verb — table + walk (the inbox engine's shared core; html + flow split to windows-port/15) — implemented (wave 4)
 - 14 The Windows CI leg proves the desk-role runtime paths — pollers, tick, inbox, hooks — and retires the bash oracles it can — todo (wave 6)
 - 15 deskinbox html + flow — the self-contained page renderer and the pipeline-flow model (split from windows-port/13) — todo (wave 5)
+- 16 deskfleet renew + the Go-owned fleet tables — port the GitLab PAT renewal, single-source the role table in Go — todo (wave 2)
+- 17 Go-only GitLab fleet — prove deskfleet live, then retire the bash fleet scripts and every doc that names them — todo (wave 5)
 
 ## Done briefs
 
@@ -600,4 +602,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**23** streams (**18** active, **0** paused, **5** parked) · **88/285** briefs done · completed initiatives: see `docs/archive/`
+**23** streams (**18** active, **0** paused, **5** parked) · **88/287** briefs done · completed initiatives: see `docs/archive/`
