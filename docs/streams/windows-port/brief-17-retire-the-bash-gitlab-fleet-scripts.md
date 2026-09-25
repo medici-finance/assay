@@ -46,6 +46,7 @@ sources:
   - "reference sweep, 2026-09-25 @ 798c88868 — `git grep -l -e create-fleet-gitlab -e fleet-gitlab-roles -e renew-fleet-gitlab-tokens` outside CHANGELOG.md, changelog/ and docs/streams/: docs/adopting-assay-gitlab.md (:12,:121,:188-228,:410-432,:757-800,:861), docs/adopting-assay.md (:259,:827,:894,:909,:1095-1097), plugins/assay/skills/adopt/SKILL.md (:51,:54), plugins/assay/skills/install/SKILL.md (:51,:86,:88), tools/desk/internal/deskkit/forge_gitlab.go (:1997-2001), plus the five tools/*fleet* files themselves"
   - "PR #1572 (windows-port/08 implementation, open draft at authoring): tools/desk/cmd/deskfleet/tables_parity_test.go reads the bash sources and SKIPS as could-not-check when tools/create-fleet-gitlab.sh is absent — after deletion that is a silent skip unless removed"
   - "freshness-checked 2026-09-25 @ 798c88868 (origin/main): all five tools/*fleet*.sh files present; no deskfleet on main; windows-port/08, /09 and /16 all todo"
+  - "post-review freshness recheck 2026-09-25 @ 0fa823227 (origin/main): PR #1572 (windows-port/08's implementation) MERGED (merge commit 6ced25a97e9a7ad47b2a287fe1c37b7a31a821be); all five tools/*fleet*.sh files still present (this brief, not #1572, retires them); windows-port/09 and /16 remain todo"
 consumers:
   - "tools/create-fleet-gitlab.sh: follow-up windows-port/17 (this brief; deleted)"
   - "tools/create-fleet-gitlab_test.sh: follow-up windows-port/17 (this brief; deleted)"
@@ -88,10 +89,11 @@ files:
 - **do NOT** edit `CHANGELOG.md` or anything under `docs/streams/`. Those are records.
 
 facts:
-- **Prerequisite state (2026-09-25).** windows-port/08 (provisioning: PR #1572, open and unmerged
-  at authoring), windows-port/16 (renewal plus the Go-owned tables) and windows-port/09 (the doc
-  collapse that adds the labelled fallback line) are all `todo`. This brief needs all three
-  merged. The fallback line it removes is written by 09.
+- **Prerequisite state (2026-09-25).** windows-port/08's implementation (PR #1572, open and
+  unmerged at authoring) **MERGED to main 2026-09-25** at `6ced25a97e9a7ad47b2a287fe1c37b7a31a821be`.
+  windows-port/16 (renewal plus the Go-owned tables) and windows-port/09 (the doc collapse that
+  adds the labelled fallback line) remain `todo`. This brief needs all three merged, and only
+  windows-port/08's landing is satisfied so far. The fallback line it removes is written by 09.
 - **What the Go verb deliberately does differently.** These are not parity gaps, and the runbook
   rewrite must describe them. `--gitlab-url` becomes `GITLAB_API_BASE` (no default host). The
   owner credential comes from `--owner-token-file`, not `GITLAB_TOKEN`. Token files land as
@@ -175,7 +177,8 @@ needs a human's decision.
 2. **Live proof (human, row 1).** From a native Windows shell (PowerShell, not Git-Bash/WSL),
    against a disposable top-level group on a real GitLab instance: `deskfleet provision --dry-run`,
    then the real run with `--project`, then `deskfleet renew --dry-run`, then the real renewal, then
-   one role's `desktoken --forge gitlab` read. Revoke the minted tokens afterwards. Record the
+   one role's `desktoken --forge gitlab --no-rotate` read (`--no-rotate`, because the bare form
+   rotates the PAT rather than reading it). Revoke the minted tokens afterwards. Record the
    class outcomes in the PR body under `## Live proof` BEFORE the deletion commit.
 3. **Parity at the pre-deletion commit (row 2).** Record the commit SHA in the PR body.
 4. **Delete** the five files. In the same commit, remove the `…MatchesBash` tests and their
@@ -190,8 +193,8 @@ needs a human's decision.
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | **LIVE proof, by a human in their own identity** (Task 2): provision dry-run then real, renew dry-run then real, one role's `desktoken --forge gitlab` read, all from native Windows PowerShell | recorded as classes only: dry-run enumeration equals the actions taken; 7/7 accounts created or present; 7/7 token files written with custody verdict owner-only; 9/9 labels; `main` protection, tags, approvals and merge checks read back as intended; 7/7 rotated (or each skip named by role); the `desktoken` read succeeded; OS class `windows/amd64` native; tier class free, premium or ultimate. **could-not-check ⇒ rows 4-9 do not run and nothing is deleted** | `gate:human +flow` |
-| 2 | **Parity at the pre-deletion commit** (the SHA named in the PR body): `cd tools/desk && go test ./cmd/deskfleet/ -run 'MatchesBash' -count=1 -v > parity.out; s=$?; ! grep -q -- '--- SKIP' parity.out && test $s -eq 0` | exit 0; roles, access levels, scopes, labels, PAT days, `main` protection, tags, approvals and merge checks each PASS, none skipped | `check +dereference` |
+| 1 | **LIVE proof, by a human in their own identity** (Task 2): provision dry-run then real, renew dry-run then real, one role's `desktoken --forge gitlab --no-rotate` read, all from native Windows PowerShell | recorded as classes only: dry-run enumeration equals the actions taken; 7/7 accounts created or present; 7/7 token files written with custody verdict owner-only; 9/9 labels; `main` protection, tags, approvals and merge checks read back as intended; 7/7 rotated (or each skip named by role); the `desktoken` read succeeded; OS class `windows/amd64` native; tier class free, premium or ultimate. **could-not-check ⇒ rows 4-9 do not run and nothing is deleted** | `gate:human +flow` |
+| 2 | **Parity at the pre-deletion commit** (the SHA named in the PR body): `cd tools/desk && go test ./cmd/deskfleet/ -run 'MatchesBash' -count=1 -v > parity.out; s=$?; for t in TestRoleTableMatchesBash TestLabelTableMatchesBash TestPATDaysDefaultMatchesBash TestMainProtectionMatchesBash TestProtectedTagsMatchesBash TestApprovalsMatchesBash TestMergeChecksMatchesBash; do grep -q -- "--- PASS: $t (" parity.out \|\| exit 1; done; ! grep -q -- '--- SKIP' parity.out && test $s -eq 0` | exit 0; each of the seven named tests (roles, access levels/scopes, labels, PAT days, `main` protection, tags, approvals and merge checks) shows PASS, none skipped | `check +dereference` |
 | 3 | **Fail-first: the guard that remains catches a missing role.** On the final head, delete one row (e.g. `board-writer`) from the Go role table, then run `cd tools/desk && go test ./cmd/deskfleet/ ./internal/... -run 'TestFleetTablesGolden' -count=1` | observed FAILING on the mutation (paste under `## Fail-first` in the PR body); exit 0 once the mutation is reverted | `check +mutation` |
 | 4 | **The five files are gone:** `test ! -e tools/create-fleet-gitlab.sh && test ! -e tools/create-fleet-gitlab_test.sh && test ! -e tools/renew-fleet-gitlab-tokens.sh && test ! -e tools/renew-fleet-gitlab-tokens_test.sh && test ! -e tools/fleet-gitlab-roles.sh` | exit 0 | `check` |
 | 5 | **No bash-comparing test is left to skip:** `git grep -n -e MatchesBash -e requireBashSources -- tools/desk; test $? -eq 1` | exit 0 (nothing found) | `check` |
