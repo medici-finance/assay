@@ -1,0 +1,3 @@
+### Fixed
+- `statusgen --auto-flip-model`'s PR resolver no longer accepts a bulk brief-migration/reformat PR (a docs/streams/**-only diff, or one carrying 3+ `Brief:`/`Authors:` trailers) as a brief's delivering PR; it keeps walking older commits for the brief's genuine delivering PR instead (#1691).
+- Added a regression test pinning that the `model-autoflip` workflow's header comment must not overclaim that every could-not-check candidate fails the job — only a fixable misconfiguration does; a structurally-unresolvable one stays a non-fatal NOTICE, matching the binary's actual (and already tested) exit policy. The comment itself still needs a maintainer's hand to land, since it lives under `.github/workflows/` (#1691).
