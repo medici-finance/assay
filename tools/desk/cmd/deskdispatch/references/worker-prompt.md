@@ -48,6 +48,10 @@ Closes/Refs, wrong diagnosis text, on a real PR. `mktemp` is collision-proof: it
 the file with `O_EXCL` and echoes the name that won, so no `$$`/date/session suffix can
 alias it, and the explicit template argument is portable across BSD and GNU `mktemp`.
 
+Keep new identifiers — test function names especially — under 32 characters, and in a PR
+body describe a long identifier rather than quoting it: the desk secret scan reads any 32+
+character alphanumeric run as a possible secret.
+
 Prefer it over a per-worktree path such as `"$(git rev-parse --show-toplevel)/.pr-body.md"`
 for two further reasons: that leaves an untracked file in every worker worktree that no
 `.gitignore` covers, so worktree pruning counts the tree dirty and never reclaims it; and

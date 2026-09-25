@@ -15,7 +15,7 @@ why: >-
   overstates an unshipped one: the reader cannot act on it.
 wave: 4
 depends: ["windows-port/06", "windows-port/07", "windows-port/08"]
-unblocks: []
+unblocks: ["windows-port/17"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
