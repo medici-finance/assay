@@ -13,18 +13,89 @@ import (
 
 // ---- fixture plumbing --------------------------------------------------------------
 
-// loadAFStreams copies the auto-flip fixture tree into a temp root and loads it.
+// loadAFStreams copies the auto-flip fixture tree into a temp root and loads
+// it.
+//
+// The tree is then made a REAL git repo and committed: autoFlipModel's
+// coverage precondition (graph-execution/03) resolves "the item's revision"
+// from `git rev-parse HEAD` at root (currentTreeRevision), and since review
+// finding F1's fix, an unestablished item revision resolves `could-not-check`
+// rather than defaulting to `pass` — a bare (non-git) testdata copy would now
+// hold every af/* fixture on the coverage precondition before autoFlipModel's
+// OWN logic (the thing every other test here actually exercises) is ever
+// reached. Once committed, every rewritten witness row's Runner cell is
+// stamped with the resulting HEAD as its `@ <tree>` token (stampAFWitnessTrees)
+// so the coverage precondition resolves `pass`, exactly the shape a real
+// verifyrun witness recorded against this same tree would carry.
 func loadAFStreams(t *testing.T) (string, []*Stream) {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/autoflip")); err != nil {
 		t.Fatal(err)
 	}
+	runGit(t, root, "init", "-q")
+	runGit(t, root, "config", "user.email", "fixture@example.com")
+	runGit(t, root, "config", "user.name", "fixture")
+	runGit(t, root, "config", "commit.gpgsign", "false")
+	runGit(t, root, "add", "-A")
+	runGit(t, root, "commit", "-q", "-m", "fixture: af tree")
+	stampAFWitnessTrees(t, root)
 	streams, _, err := loadStreams(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return root, streams
+}
+
+// stampAFWitnessTrees patches every af/*.md witness row shaped like
+// verifyrun's witness table (the six rewritten fixtures, brief-0{1,2,4,5,6,7})
+// to carry the `@ <tree>` token matching root's just-committed HEAD. This is a
+// working-tree-only edit (never committed): parseBriefFile reads straight off
+// disk regardless of git status, and currentTreeRevision(root) still reports
+// the commit made just before this call, so the two compare exactly equal —
+// the in-progress-work shape classifyRevision's exact-match branch covers.
+func stampAFWitnessTrees(t *testing.T, root string) {
+	t.Helper()
+	tree := currentTreeRevision(root)
+	if tree == "" {
+		t.Fatal("stampAFWitnessTrees: currentTreeRevision resolved empty after git init+commit")
+	}
+	dir := filepath.Join(root, "docs", "streams", "af")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const oldSuffix = "sha256:abc123def456 | 2026-07-08 | fixture-verifier |"
+	newSuffix := "sha256:abc123def456 | 2026-07-08 | fixture-verifier @ " + tree + " |"
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		p := filepath.Join(dir, e.Name())
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		patched := strings.ReplaceAll(string(b), oldSuffix, newSuffix)
+		if patched == string(b) {
+			continue // this fixture carries no witness row in the rewritten shape (e.g. af/03)
+		}
+		if err := os.WriteFile(p, []byte(patched), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// afWitnessTree returns the `@ <tree>` token stampAFWitnessTrees stamped onto
+// root's af fixtures — TestAutoFlipRefusesUnreleasedCoverage needs it to build
+// the exact row text it strips back out.
+func afWitnessTree(t *testing.T, root string) string {
+	t.Helper()
+	tree := currentTreeRevision(root)
+	if tree == "" {
+		t.Fatal("afWitnessTree: currentTreeRevision resolved empty")
+	}
+	return tree
 }
 
 // afReadme returns the fixture stream README after a run.
@@ -1103,6 +1174,68 @@ func TestAutoFlipNoReviewerMisconfig(t *testing.T) {
 	}
 	if code := reportAutoFlipModel(io.Discard, io.Discard, results, "", false); code != 1 {
 		t.Errorf("no reviewer App bound must be fatal, got %d", code)
+	}
+}
+
+// TestAutoFlipRefusesUnreleasedCoverage — graph-execution/03 Task item 4 /
+// Verify row 4: a `verified` row with a live App approval at the merged head
+// (the SAME af/01 fixture TestAutoFlipAtHead proves flips) is NOT flipped when
+// its evidence coverage is not released, and the dry-run output names the
+// missing claim. The coverage refusal is also proven to short-circuit BEFORE
+// decideModelFlip's live fetch: PR 101's review state is never even read.
+func TestAutoFlipRefusesUnreleasedCoverage(t *testing.T) {
+	root, streams := loadAFStreams(t)
+
+	// Strip af/01's execution witness (added for the coverage precondition —
+	// see the fixture files themselves) back to "no Evidence witness at all",
+	// leaving everything else (the README `verified` row, the live App
+	// approval at the merged head) exactly as TestAutoFlipAtHead's green case.
+	p := filepath.Join(root, "docs", "streams", "af", "brief-01-model-approved-at-head.md")
+	orig, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	witnessRow := "| # | Command | Result | Output | Date | Runner |\n" +
+		"|---|---------|--------|--------|------|--------|\n" +
+		"| 1 | `go vet ./...` | pass exit=0 | sha256:abc123def456 | 2026-07-08 | fixture-verifier @ " + afWitnessTree(t, root) + " |"
+	mutated := strings.Replace(string(orig), witnessRow, "", 1)
+	if mutated == string(orig) {
+		t.Fatalf("mutation did not match any text in %s — the fixture has drifted from this test's expectation", p)
+	}
+	if err := os.WriteFile(p, []byte(mutated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	streams, _, err = loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	src := afSource()
+	results, err := autoFlipModel(root, streams, src, ghReviewer(afReviewer), afNow, true /* dry-run */)
+	if err != nil {
+		t.Fatalf("autoFlipModel: %v", err)
+	}
+
+	got := afResult(t, results, "af/01")
+	if got.Outcome != flipRefused {
+		t.Fatalf("af/01 with no execution witness: outcome = %v (%s), want flipRefused", got.Outcome, got.Reason)
+	}
+	if !strings.Contains(got.Reason, "missing") || !strings.Contains(got.Reason, "go vet") {
+		t.Errorf("the dry-run refusal must NAME the missing claim; got %q", got.Reason)
+	}
+
+	// A refusal never rewrites the row, dry-run or not.
+	row := afRow(t, afReadme(t, root), "01")
+	if !strings.Contains(row, "| verified |") {
+		t.Errorf("af/01 row must remain verified (not flipped) when coverage is unreleased:\n%s", row)
+	}
+
+	// The coverage refusal happens BEFORE decideModelFlip's live fetch — PR 101
+	// (af/01's merge PR) must never have been read.
+	for _, pr := range src.seen {
+		if pr == 101 {
+			t.Errorf("coverage refusal should short-circuit before any live PR review fetch, but PR 101 was fetched (seen=%v)", src.seen)
+		}
 	}
 }
 

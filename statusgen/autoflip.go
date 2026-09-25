@@ -40,15 +40,32 @@ package main
 // that was already rendered.
 //
 // WHAT THE FLIP DEPENDS ON, AND WHAT IT DOES NOT RE-CHECK.
-// The precondition is exactly two facts: the README row currently reads
-// `verified`, and the merge PR carries an APPROVED review OBJECT from the
-// roster's `reviewer=` App reporting itself at that PR's merged head. Nothing
-// else is consulted.
+// The precondition is exactly three facts: the README row currently reads
+// `verified`; the brief's evidence COVERAGE is `released` (graph-execution/03,
+// coverage.go) — every mandatory claim resolves `pass` at the item's revision;
+// and the merge PR carries an APPROVED review OBJECT from the roster's
+// `reviewer=` App reporting itself at that PR's merged head. Nothing else is
+// consulted.
 //
-// In particular the flip does NOT re-check the `verified` stamp it promotes.
-// It does not ask who ran the Verify table, whether that identity differs from
-// the implementer, or whether the Evidence names a real run. That matters
-// concretely rather than theoretically: a corpus sweep on 2026-08-13 measured
+// THE COVERAGE PRECONDITION (graph-execution/03) IS THE ONE PLACE THE
+// `verified` STAMP THIS FLIP PROMOTES IS RE-CHECKED. Every other sentence in
+// this header describing what the flip does NOT re-check about `verified`
+// predates that brief and is otherwise still true: this flip still does not ask
+// who ran the Verify table, whether that identity differs from the
+// implementer, or whether the Evidence names a real run — evidenceactor.go's
+// attribution stays advisory, unchanged by this brief (it is explicitly
+// out-of-scope there). What changed is narrower and specific: the flip now
+// refuses — reported, never silent, and the dry-run prints the claim(s) — when
+// coverage computes `released: false` for the brief, i.e. when a mandatory
+// claim is missing, errored, could-not-check, wrong-revision, or an outright
+// fail. That is a DETERMINISTIC, offline re-check of the record the `verified`
+// cell rests on, not a re-litigation of who wrote it.
+//
+// What the flip still does NOT re-check, even after graph-execution/03: WHO ran
+// the Verify table, or whether that identity differs from the implementer —
+// coverage establishes THAT every mandatory claim resolved `pass`, never WHO
+// produced the witness behind it. That gap matters concretely rather than
+// theoretically: a corpus sweep on 2026-08-13 measured
 // 141 README rows at `verified`/`done` and flagged 92 of them (65%) as resting
 // on text the implementing identity wrote about itself, with 1 more of
 // unresolved identity — the standing `F-verify-self-attest` finding.
@@ -688,6 +705,15 @@ func decideGitLabFlip(res modelFlipResult, pr int, st prReviewState, rev reviewe
 func autoFlipModel(root string, streams []*Stream, src modelFlipSource, rev reviewerIdentity, now time.Time, dryRun bool) ([]modelFlipResult, error) {
 	var results []modelFlipResult
 
+	// The coverage precondition (graph-execution/03): computed ONCE for the
+	// whole run, offline, before any candidate's live fetch (CommitsTouching /
+	// MergedPRForCommit / ReviewState). This is the ONE place the `verified`
+	// stamp autoFlipModel promotes is re-checked (see this file's header) — a
+	// brief whose mandatory claims are not ALL `released` never reaches
+	// decideModelFlip's network calls at all, cheapest check first, same as the
+	// verifyPassHeldContradiction pre-check decideModelFlip already applies.
+	coverage := evaluateCoverage(root, streams, coverageOptions{})
+
 	for _, s := range streams {
 		// Per-stream, so one README is read once and written once even when
 		// several of its rows flip in the same run.
@@ -713,6 +739,29 @@ func autoFlipModel(root string, streams []*Stream, src modelFlipSource, rev revi
 			}
 			row := findRow(s, num)
 			if row == nil || row.Status != "verified" {
+				continue
+			}
+
+			// Coverage refusal: NOT a could-not-check — the coverage rule ran
+			// (it is offline and always can) and it HELD, so this is a REFUSAL,
+			// reported exactly like any other decideModelFlip refusal, and it
+			// never reaches decideModelFlip's fetch. Absent-entry fails CLOSED
+			// (`!ok ||`, not `ok &&`, review finding A2): today the coverage map
+			// is built from the identical brief enumeration this loop walks, so
+			// `!ok` is unreachable, but a future divergence between the two
+			// walks must never silently fall through to the unchanged flip path.
+			covID := s.Name + "/" + num
+			cvg, ok := coverage[covID]
+			if !ok || !cvg.Released {
+				reason := coverageRefusalReason(cvg)
+				if !ok {
+					reason = fmt.Sprintf("coverage has no entry for %s — refusing rather than assuming released", covID)
+				}
+				results = append(results, modelFlipResult{
+					Brief:   bf.Brief,
+					Outcome: flipRefused,
+					Reason:  reason,
+				})
 				continue
 			}
 
