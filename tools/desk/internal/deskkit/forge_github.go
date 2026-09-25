@@ -2457,6 +2457,14 @@ func (g *GitHubForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 		priorSHA, priorContent, exists = cur.SHA, cur.Content, true
 	}
 
+	// Conditional write (see WriteFileInput.ExpectedSHA): refuse when the file is no longer the
+	// blob the caller judged against. The PUT below then cites priorSHA — equal to ExpectedSHA
+	// here — so a change landing after this fetch is a 409 from the Contents API, not an
+	// overwrite.
+	if err := expectedSHAPrecondition(in, exists, priorSHA); err != nil {
+		return nil, err
+	}
+
 	if in.AppendOnly {
 		res.PriorRows = forgeRowCount(priorContent)
 		res.Rows = forgeRowCount(in.Content)
