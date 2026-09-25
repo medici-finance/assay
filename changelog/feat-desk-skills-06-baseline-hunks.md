@@ -1,11 +1,10 @@
 ### Fixed
 
-- `desk-shell.md` §"Authenticated transport": collapsed the manual credential-helper recipe to
-  naming `deskgit fetch --as <role>` / `deskgit push --as <role>`, per the block's own
-  self-deletion trigger (desk-tools/08 shipped 2026-09-17).
+- `desk-shell.md` §"Authenticated transport": replaced the manual credential-helper recipe with
+  the two verbs that retired it, `deskgit fetch` and `deskgit push` in their role-bound
+  `--as <role>` form, and a pointer to `tools/desk/README.md` for their flags and exit codes;
+  these verbs have no raw fallback.
 - `skills/README.md`: dropped the stale hardcoded `v0.1.0` heading pin (actual `plugin.json`
   version has moved on).
-- `system-demo/SKILL.md` §"Inspiration": dropped a dated third-party inspection citation,
-  keeping the standing rule.
-- `desk-common.md` §"Worktree hygiene": dropped a past-tense incident narrative, keeping the
-  standing rule.
+- `system-demo/SKILL.md` §"Inspiration": dropped the unmaintained inspection date from the
+  credited source, keeping the credit and the standing rule.
