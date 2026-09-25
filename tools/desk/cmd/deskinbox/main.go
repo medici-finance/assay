@@ -1,22 +1,25 @@
 // deskinbox — the Go port of assay-inbox.sh, the `assay:inbox` skill's
 // engine: open issues across the configured repos carrying an escalation-contract label
-// (urgent / needs-decision / question / help wanted), sorted urgency-then-age.
+// (urgent / needs-decision / question / help wanted), sorted urgency-then-age — PLUS the
+// pipeline flow model (`flow`), a different question ("how is the system performing")
+// derived from other desk binaries rather than a forge read.
 //
-// THIS PORT'S SCOPE (split from the authoring brief — see testdata/spec.md for the full
-// contract and the reason for the split). Two of the oracle's five renderings are
-// implemented here, byte-parity tested against the oracle's own jq program:
+// ALL FIVE of the oracle's renderings are ported here, byte-parity tested against the
+// oracle's own jq programs (format_parity_test.go, flow_parity_test.go, html_parity_test.go):
 //
-//	(none)   the terminal table — one row per item.
-//	walk     ONE item in the five-part decision format (Header/Context/Options/Reply
-//	         shape/Verification) — the `ask-decision` skill's entry point.
+//	(none)          the terminal table — one row per item.
+//	walk            ONE item in the five-part decision format (Header/Context/Options/Reply
+//	                shape/Verification) — the `ask-decision` skill's entry point.
+//	html OUT.html   the whole queue as self-contained HTML cards in that same format, plus
+//	                the Flow section.
+//	flow            the pipeline flow model as a terminal table.
+//	flow --html O   the same model as a self-contained inline-SVG stage-diagram page.
 //
-// --html, --flow and --flow --html are NOT yet ported (a follow-up brief); passing them
-// here is refused with a message naming the oracle as the fallback, never a silent
-// no-op or a guessed rendering.
-//
-// No shell-outs: every read reaches the forge through deskkit.ForgeFor (forge.go) or a
-// small package-local GitHub REST reader for comment bodies (detail.go) — this package
-// forks no subprocess and shells to no external interpreter (Verify row 4).
+// No shell-outs to a forge: every issue/detail read reaches it through deskkit.ForgeFor
+// (forge.go) or a small package-local GitHub REST reader for comment bodies (detail.go).
+// `flow`'s readers are the ONE exception (flow.go's file header): they run OTHER DESK
+// BINARIES (statusgen, deskboard), not a forge, so every exec.Command site in this package
+// names one of those two (Verify row 5) — everything else forks no subprocess.
 package main
 
 import (
@@ -30,7 +33,7 @@ import (
 
 const usage = `deskinbox — open issues across the configured repos carrying an
 escalation-contract label (urgent, needs-decision, question, help wanted),
-sorted urgency-then-age.
+sorted urgency-then-age — plus the pipeline flow model (how is the system performing).
 
 usage:
   deskinbox [owner/repo ...]              the terminal table — one row per item.
@@ -38,18 +41,26 @@ usage:
                                            print ONE item in the five-part decision
                                            format (Header/Context/Options/Reply shape/
                                            Verification). Prints item 1 and exits.
+  deskinbox html OUT.html [owner/repo ...]
+                                           write the whole queue to OUT.html as cards in
+                                           that same format, plus the Flow section.
+  deskinbox flow [--root PATH ...] [--since YYYY-MM-DD]
+                                           the pipeline flow model as a terminal table.
+  deskinbox flow --html OUT.html [--root PATH ...] [--since YYYY-MM-DD]
+                                           the same model as a self-contained inline-SVG
+                                           stage-diagram page.
   deskinbox --version                     source SHA / build time.
   deskinbox -h | --help                   this text.
 
-Repo resolution order (no repo args): ./.assay/repos.txt, else the current repo's
-origin remote.
+Repo resolution order (no repo args; table/walk/html): ./.assay/repos.txt, else the
+current repo's origin remote.
 
-NOT YET PORTED in this Go verb (a follow-up brief covers it): --html and --flow.
-Use the bash oracle for those: bash plugins/assay/scripts/assay-inbox.sh --html OUT.html
-/ --flow.
+Cell resolution order (flow): --root PATH (repeatable), else ./.assay/cells.txt, else
+the current directory.
 
-Exit codes: 0 every query succeeded · 5 refused (bad arguments) · 6 unverifiable
-(at least one repo's read failed — the printed output, if any, is PARTIAL).
+Exit codes: 0 every query/reader succeeded · 5 refused (bad arguments) · 6 unverifiable
+(at least one read failed — the printed output, if any, is PARTIAL; in html mode a blind
+Flow section alone does not redden the exit — see plugins/assay/commands/inbox.md).
 `
 
 func main() {
@@ -80,11 +91,28 @@ func run(args []string, stdout, stderr io.Writer, now time.Time) int {
 	mode := "table"
 	walkItem := 1
 	var repoArgs []string
+	var htmlOut string
 
 	i := 0
-	if len(args) > 0 && args[0] == "walk" {
-		mode = "walk"
-		i = 1
+	if len(args) > 0 {
+		switch args[0] {
+		case "walk":
+			mode = "walk"
+			i = 1
+		case "html":
+			mode = "html"
+			i = 1
+			if i >= len(args) || (len(args[i]) > 0 && args[i][0] == '-' && args[i] != "-h" && args[i] != "--help") {
+				fmt.Fprintln(stderr, "deskinbox: html needs an output path")
+				return deskkit.ExitRefused
+			}
+			if i < len(args) && args[i] != "-h" && args[i] != "--help" {
+				htmlOut = args[i]
+				i++
+			}
+		case "flow":
+			return runFlowCommand(stdout, stderr, args[1:], now)
+		}
 	}
 	for ; i < len(args); i++ {
 		a := args[i]
@@ -107,11 +135,6 @@ func run(args []string, stdout, stderr io.Writer, now time.Time) int {
 			i++
 		case a == "--walk":
 			mode = "walk"
-		case a == "--html" || a == "--flow" || a == "--root" || a == "--since":
-			fmt.Fprintf(stderr,
-				"deskinbox: %s is not yet ported (a follow-up brief covers it) — use "+
-					"`bash plugins/assay/scripts/assay-inbox.sh %s ...` instead\n", a, a)
-			return deskkit.ExitRefused
 		case len(a) > 0 && a[0] == '-':
 			fmt.Fprintf(stderr, "deskinbox: unknown option %q\n", a)
 			fmt.Fprint(stderr, usage)
@@ -139,9 +162,63 @@ func run(args []string, stdout, stderr io.Writer, now time.Time) int {
 	switch mode {
 	case "walk":
 		return runWalk(stdout, stderr, repos, walkItem, now)
+	case "html":
+		return runHTML(stdout, stderr, htmlOut, repos, now)
 	default:
 		return runTable(stdout, stderr, repos, now)
 	}
+}
+
+// runFlowCommand parses `deskinbox flow`'s own flags (--root, repeatable; --since; --html)
+// and dispatches to runFlow (flow.go). It is a separate parse from table/walk/html's because
+// flow reads CELLS (a statusgen-root axis), never REPOS — mixing the two flag grammars in one
+// loop is how a --root meant for flow would silently do nothing under table/walk, or vice
+// versa.
+func runFlowCommand(stdout, stderr io.Writer, args []string, now time.Time) int {
+	var rootArgs []string
+	var since, htmlOut string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-h" || a == "--help":
+			fmt.Fprint(stdout, usage)
+			return deskkit.ExitOK
+		case a == "--root":
+			if i+1 >= len(args) {
+				fmt.Fprintln(stderr, "deskinbox: --root needs a path")
+				return deskkit.ExitRefused
+			}
+			rootArgs = append(rootArgs, args[i+1])
+			i++
+		case a == "--since":
+			if i+1 >= len(args) {
+				fmt.Fprintln(stderr, "deskinbox: --since needs a YYYY-MM-DD date")
+				return deskkit.ExitRefused
+			}
+			since = args[i+1]
+			i++
+		case a == "--html":
+			if i+1 >= len(args) {
+				fmt.Fprintln(stderr, "deskinbox: --html needs an output path")
+				return deskkit.ExitRefused
+			}
+			htmlOut = args[i+1]
+			i++
+		case len(a) > 0 && a[0] == '-':
+			fmt.Fprintf(stderr, "deskinbox: unknown option %q\n", a)
+			fmt.Fprint(stderr, usage)
+			return deskkit.ExitRefused
+		default:
+			// A bare positional under `flow` names no repo or cell (flow resolves cells from
+			// --root/./.assay/cells.txt/"." only) — accepted and ignored, matching the
+			// oracle's own ARGS accumulator, which likewise never feeds `--flow`'s cell
+			// resolution (assay-inbox.sh:265-292; testdata/spec.md records this divergence
+			// point as intentional parity, not an oversight).
+		}
+	}
+	return runFlow(stdout, stderr, rootArgs, since, htmlOut, func() string {
+		return now.UTC().Format("2006-01-02T15:04:05Z")
+	})
 }
 
 func parsePositiveInt(s string) (int, error) {
