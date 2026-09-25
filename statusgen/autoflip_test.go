@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -76,6 +77,20 @@ const (
 	afIntHeadSHA  = "5555555555555555555555555555555555555555" // merged head of PR 107 (approval here)
 	afIntMergeSHA = "6666666666666666666666666666666666666666" // the merge commit of PR 107
 	afIntMidSHA   = "7777777777777777777777777777777777777777" // the intermediate commit that touched brief-07
+
+	// B1 fixtures: a bulk brief-migration/reformat PR shaped like the motivating
+	// case — a docs/streams/**-only diff, ten Brief: trailers — must never be
+	// accepted as a brief's delivering PR even though it merges and carries an
+	// App approval at its head.
+	afBulkMigSHA     = "8888888888888888888888888888888888888888" // the ONLY commit touching af/08; resolves to PR 108
+	afBulkMigHeadSHA = "9999999999999999999999999999999999999999" // merged head of PR 108 (the migration), App-approved
+	// af/09: the NEWEST commit touching it resolves to the same migration PR
+	// 108; an OLDER commit resolves to a genuine single-brief delivery PR 109.
+	// The refusal of 108 must not be a dead end — the resolver keeps walking and
+	// finds 109, exactly the shape of a brief a migration touched after its real
+	// delivery had already landed.
+	afRealDeliverySHA     = "aaaa111111111111111111111111111111111111" // the older commit touching af/09; resolves to PR 109
+	afRealDeliveryHeadSHA = "bbbb222222222222222222222222222222222222" // merged head of PR 109, App-approved
 )
 
 const afReviewer = "rev-app[bot]"
@@ -104,9 +119,43 @@ type fakeFlipSource struct {
 	// falls back to the direct prs map.
 	assoc     map[string][]ghCommitPR
 	prCommits map[int][]string
+	// shapes is the diff/body shape bulkMigrationReason judges, keyed by PR
+	// number. A PR absent here defaults to an ordinary single-brief shape (one
+	// non-docs/streams file, one trailer) so existing fixtures need no shape of
+	// their own — only the bulk-migration fixtures set one explicitly.
+	shapes map[int]prShape
 	// seen records every PR whose review state was fetched, so a test can prove
 	// the model path never even LOOKED at a gate:human brief.
 	seen []int
+	// shapesSeen records every PR whose shape was fetched.
+	shapesSeen []int
+	// shapeErrs makes PRShape fail for a PR (e.g. a truncated file list).
+	shapeErrs map[int]error
+}
+
+// ordinarySingleBriefShape is the default prShape a fixture PR without an
+// explicit entry gets: a real delivery PR's shape (one code file, one Brief:
+// trailer) — never migration-shaped. The fixture convention is that PR 1NN
+// delivers brief af/NN (PR 101 -> af/01, PR 107 -> af/07), so the default's one
+// Brief: trailer names that brief and the pre-B1 fixtures need no shape of their
+// own.
+func ordinarySingleBriefShape(pr int) prShape {
+	return prShape{
+		Files:         []string{"internal/example/example.go"},
+		BriefTrailers: 1,
+		Briefs:        []string{fmt.Sprintf("af/%02d", pr-100)},
+	}
+}
+
+func (f *fakeFlipSource) PRShape(repo string, pr int) (prShape, error) {
+	f.shapesSeen = append(f.shapesSeen, pr)
+	if err, ok := f.shapeErrs[pr]; ok {
+		return prShape{}, err
+	}
+	if s, ok := f.shapes[pr]; ok {
+		return s, nil
+	}
+	return ordinarySingleBriefShape(pr), nil
 }
 
 func (f *fakeFlipSource) CommitsTouching(root, relPath string, limit int) ([]string, error) {
@@ -155,6 +204,10 @@ func afSource() *fakeFlipSource {
 			"brief-04-model-no-approval.md":         {"aaa0000000000000000000000000000000000004"},
 			"brief-06-model-no-pr.md":               {"aaa0000000000000000000000000000000000006"},
 			"brief-07-model-intermediate-commit.md": {afIntMidSHA},
+			"brief-08-model-bulk-migration-only.md": {afBulkMigSHA},
+			// Newest first: the migration commit is checked (and refused) before
+			// the resolver walks back to the older, real delivery commit.
+			"brief-09-model-migration-then-real-pr.md": {afBulkMigSHA, afRealDeliverySHA},
 		},
 		prs: map[string]int{
 			"aaa0000000000000000000000000000000000001": 101,
@@ -164,6 +217,8 @@ func afSource() *fakeFlipSource {
 			// ...0006 deliberately absent: no merged PR resolves.
 			// afIntMidSHA deliberately absent here: it must resolve through the
 			// REAL resolver (assoc/prCommits), not this direct short-circuit.
+			afBulkMigSHA:      108,
+			afRealDeliverySHA: 109,
 		},
 		// af/07's brief commit is an intermediate (non-head, non-merge) commit of
 		// PR 107. The direct prs map does NOT carry it, so it can only resolve if
@@ -192,6 +247,39 @@ func afSource() *fakeFlipSource {
 			107: {Merged: true, HeadSHA: afIntHeadSHA, Reviews: []ghReview{
 				{Author: ghAuthor{Login: afReviewer}, State: "APPROVED", CommitOID: afIntHeadSHA, Id: "PRR_int"},
 			}},
+			// PR 108 (af/08, af/09): the bulk brief-migration PR. It is merged AND
+			// App-approved at its head — on the pre-B1 resolver this alone was
+			// enough to flip a brief. B1 still reads this review state (every
+			// candidate the walk reaches must be approved at its own head), then
+			// walks past the PR on its shape.
+			108: {Merged: true, HeadSHA: afBulkMigHeadSHA, Reviews: []ghReview{
+				{Author: ghAuthor{Login: afReviewer}, State: "APPROVED", CommitOID: afBulkMigHeadSHA, Id: "PRR_bulkmig"},
+			}},
+			// PR 109 (af/09 only): the genuine, older single-brief delivery PR.
+			109: {Merged: true, HeadSHA: afRealDeliveryHeadSHA, Reviews: []ghReview{
+				{Author: ghAuthor{Login: afReviewer}, State: "APPROVED", CommitOID: afRealDeliveryHeadSHA, Id: "PRR_real"},
+			}},
+		},
+		shapes: map[int]prShape{
+			// Shaped like the motivating migration: docs/streams/**-only diff, ten
+			// Brief:/Authors: trailers — a bulk migration, not a delivering PR.
+			108: {
+				Files: []string{
+					"docs/streams/security-hardening/brief-01.md",
+					"docs/streams/security-hardening/brief-02.md",
+					"docs/streams/other-stream/brief-03.md",
+				},
+				BriefTrailers: 10,
+				Briefs:        []string{"security-hardening/01", "security-hardening/02", "other-stream/03"},
+			},
+			// An ordinary single-brief delivery PR: touches real code plus its own
+			// Verify fixture, one Brief: trailer. Explicit here (rather than relying
+			// on the fake's default) so the fixture reads standalone.
+			109: {
+				Files:         []string{"internal/security/hardening.go", "internal/security/hardening_test.go"},
+				BriefTrailers: 1,
+				Briefs:        []string{"af/09"},
+			},
 		},
 		errs: map[int]error{},
 	}
@@ -590,6 +678,362 @@ func TestAutoFlipIntermediateCommitFlips(t *testing.T) {
 		if !strings.Contains(row, want) {
 			t.Errorf("af/07 Reviewed stamp is missing %q:\n%s", want, row)
 		}
+	}
+}
+
+// ---- B1: bulk brief-migration PR refusal ------------------------------------------
+
+// TestAutoFlipRefusesBulkMigrationPR is the fail-first proof for B1: a PR shaped
+// like the motivating migration (docs/streams/**-only diff, ten Brief:/Authors:
+// trailers) is merged and carries an App APPROVED review at its own head —
+// before this fix that was sufficient to flip the brief, wrongly crediting the
+// migration as its delivering PR. It must now be REFUSED as a candidate; with no
+// other PR in the commit window, the brief stays verified as a could-not-check,
+// never a flip.
+func TestAutoFlipRefusesBulkMigrationPR(t *testing.T) {
+	root, streams := loadAFStreams(t)
+	src := afSource()
+
+	results, err := autoFlipModel(root, streams, src, ghReviewer(afReviewer), afNow, false)
+	if err != nil {
+		t.Fatalf("autoFlipModel: %v", err)
+	}
+
+	got := afResult(t, results, "af/08")
+	if got.Outcome == flipDone {
+		t.Fatalf("af/08's only candidate PR is bulk-migration-shaped — must never flip, got flipDone (%s)", got.Reason)
+	}
+	if !strings.Contains(got.Reason, "108") {
+		t.Errorf("the refusal reason must name the refused candidate PR #108; got %q", got.Reason)
+	}
+	row := afRow(t, afReadme(t, root), "08")
+	if !strings.Contains(row, "| verified |") {
+		t.Errorf("af/08 must stay verified:\n%s", row)
+	}
+	if strings.Contains(row, afReviewer) {
+		t.Errorf("af/08 must not be stamped from a refused migration PR:\n%s", row)
+	}
+	// Walking past a candidate never skips ITS approval check (S-F1): PR 108's
+	// review state must have been read before its shape was judged.
+	fetched := false
+	for _, pr := range src.seen {
+		if pr == 108 {
+			fetched = true
+		}
+	}
+	if !fetched {
+		t.Error("PR 108's review state was never fetched — a walked-past candidate must still carry the App approval at its own merged head")
+	}
+}
+
+// TestAutoFlipSkipsMigrationFindsRealDeliveryPR proves the refusal is not a dead
+// end and does not over-tighten: af/09's newest commit resolves to the SAME
+// bulk-migration PR 108, but an older commit in the same window resolves to a
+// genuine single-brief delivery PR (109) — real code touched, one Brief:
+// trailer, App-approved at its own head. The resolver must skip 108 and flip
+// citing 109, the real delivering PR.
+func TestAutoFlipSkipsMigrationFindsRealDeliveryPR(t *testing.T) {
+	root, streams := loadAFStreams(t)
+	src := afSource()
+
+	results, err := autoFlipModel(root, streams, src, ghReviewer(afReviewer), afNow, false)
+	if err != nil {
+		t.Fatalf("autoFlipModel: %v", err)
+	}
+
+	got := afResult(t, results, "af/09")
+	if got.Outcome != flipDone {
+		t.Fatalf("af/09 outcome = %v (%s), want flipDone via the real delivery PR 109", got.Outcome, got.Reason)
+	}
+	if got.PR != 109 || got.SHA != afRealDeliveryHeadSHA {
+		t.Fatalf("af/09 recorded PR/SHA = %d/%s, want 109/%s — the migration PR 108 must never be credited",
+			got.PR, got.SHA, afRealDeliveryHeadSHA)
+	}
+	row := afRow(t, afReadme(t, root), "09")
+	if !strings.Contains(row, "| done |") {
+		t.Errorf("af/09 row was not flipped to done:\n%s", row)
+	}
+	if !strings.Contains(row, "#109") {
+		t.Errorf("af/09's Reviewed stamp must cite PR #109 (the real delivery), not #108 (the migration):\n%s", row)
+	}
+	if strings.Contains(row, "#108") {
+		t.Errorf("af/09's Reviewed stamp must never cite the migration PR #108:\n%s", row)
+	}
+}
+
+// TestBulkMigrationReasonShape unit-tests the shape rule directly, independent
+// of the resolver plumbing: docs/streams/**-only diffs and high trailer counts
+// are refused; an ordinary single-brief delivery shape (and one that names a
+// couple of closely related briefs) is not.
+func TestBulkMigrationReasonShape(t *testing.T) {
+	cases := []struct {
+		name   string
+		shape  prShape
+		refuse bool
+	}{
+		{"docs-only many files", prShape{Files: []string{
+			"docs/streams/a/brief-01.md", "docs/streams/a/README.md", "docs/streams/b/brief-02.md",
+		}, BriefTrailers: 0}, true},
+		{"high trailer count, no files", prShape{Files: nil, BriefTrailers: 10}, true},
+		{"high trailer count with code files", prShape{
+			Files:         []string{"internal/foo/foo.go"},
+			BriefTrailers: 5,
+		}, true},
+		{"real delivery: code + one trailer", prShape{
+			Files:         []string{"internal/foo/foo.go", "internal/foo/foo_test.go"},
+			BriefTrailers: 1,
+		}, false},
+		{"boundary: code + exactly three trailers is refused", prShape{
+			Files:         []string{"internal/foo/foo.go"},
+			BriefTrailers: 3,
+		}, true},
+		{"small stack: code + two trailers", prShape{
+			Files:         []string{"internal/foo/foo.go"},
+			BriefTrailers: 2,
+		}, false},
+		{"docs file alongside real code is NOT migration-shaped", prShape{
+			Files:         []string{"internal/foo/foo.go", "docs/streams/a/brief-01.md"},
+			BriefTrailers: 1,
+		}, false},
+		{"empty shape (no files read) is not refused on files alone", prShape{
+			Files: nil, BriefTrailers: 0,
+		}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := bulkMigrationReason(c.shape)
+			if c.refuse && got == "" {
+				t.Errorf("shape %+v should be refused as bulk-migration-shaped, got no reason", c.shape)
+			}
+			if !c.refuse && got != "" {
+				t.Errorf("shape %+v should NOT be refused, got reason %q", c.shape, got)
+			}
+		})
+	}
+}
+
+// ---- B1 review round: approval-first walk, trailer attribution, full file list ----
+
+// walkSource builds a fake in which one brief file ("brief-50-walk.md") is
+// touched by the given candidate PRs, newest first — commit i resolves to
+// prs[i]. states and shapes are taken as given; an absent state is a fake error.
+func walkSource(prs []int, states map[int]prReviewState, shapes map[int]prShape) *fakeFlipSource {
+	f := &fakeFlipSource{
+		commits: map[string][]string{},
+		prs:     map[string]int{},
+		states:  states,
+		shapes:  shapes,
+		errs:    map[int]error{},
+	}
+	for i, n := range prs {
+		sha := fmt.Sprintf("%040x", 0xc0de00+i)
+		f.commits["brief-50-walk.md"] = append(f.commits["brief-50-walk.md"], sha)
+		f.prs[sha] = n
+	}
+	return f
+}
+
+// decideWalk runs decideModelFlip for the synthetic brief af/50 over src.
+func decideWalk(t *testing.T, src *fakeFlipSource) modelFlipResult {
+	t.Helper()
+	root, streams := loadAFStreams(t)
+	s := streams[0]
+	return decideModelFlip(root, s, filepath.Join(s.Dir, "brief-50-walk.md"), "af/50", "", src, ghReviewer(afReviewer))
+}
+
+// approvedAt is a merged PR state with the reviewer App APPROVED at head.
+func approvedAt(head string) prReviewState {
+	return prReviewState{Merged: true, HeadSHA: head, Reviews: []ghReview{
+		{Author: ghAuthor{Login: afReviewer}, State: "APPROVED", CommitOID: head},
+	}}
+}
+
+// migration736Shape is shaped like this repo's own brief-v2 flag-day migration:
+// mostly docs/streams files plus a CI patch, a changelog fragment and an upgrade
+// note, and ONE Brief: trailer naming a different brief. Neither shape signal
+// fires on it — only the trailer attribution catches it.
+var migration736Shape = prShape{
+	Files: []string{
+		".github/assay-statusgen.reconcile.patch",
+		"changelog/flagday-brief-v2.md",
+		"docs/UPGRADING.txt",
+		"docs/streams/af/brief-50-walk.md",
+		"docs/streams/other/brief-01.md",
+		"docs/streams/other/brief-02.md",
+	},
+	BriefTrailers: 1,
+	Briefs:        []string{"derived-board/07"},
+}
+
+// realDelivery50 is af/50's genuine delivering PR shape.
+var realDelivery50 = prShape{Files: []string{"internal/walk/walk.go"}, BriefTrailers: 1, Briefs: []string{"af/50"}}
+
+// TestAutoFlipWalkPastStillRequiresApproval is the fail-first proof for S-F1:
+// the NEWEST PR touching the brief is docs-only (walk-past-shaped) and carries
+// NO reviewer-App approval; an OLDER PR is the real, approved delivery. On main
+// the newest PR was the candidate and its missing approval refused the flip.
+// Walking past it must not change that — the brief must be refused, naming the
+// unapproved PR, never flipped citing the older one.
+func TestAutoFlipWalkPastStillRequiresApproval(t *testing.T) {
+	src := walkSource([]int{150, 151},
+		map[int]prReviewState{
+			150: {Merged: true, HeadSHA: afNoAppSHA, Reviews: []ghReview{
+				{Author: ghAuthor{Login: "some-human"}, State: "APPROVED", CommitOID: afNoAppSHA},
+			}},
+			151: approvedAt(afRealDeliveryHeadSHA),
+		},
+		map[int]prShape{
+			150: {Files: []string{"docs/streams/af/brief-50-walk.md"}, BriefTrailers: 1, Briefs: []string{"af/50"}},
+			151: realDelivery50,
+		})
+	got := decideWalk(t, src)
+	if got.Outcome == flipDone {
+		t.Fatalf("an unapproved newer PR (#150) must block the flip even when it is walk-past-shaped; got flipDone citing #%d", got.PR)
+	}
+	if got.Outcome != flipRefused || got.PR != 150 {
+		t.Errorf("want the refusal main gives for the unapproved #150; got outcome %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+	}
+}
+
+// TestAutoFlipWalkPastBodyTrailerStillRequiresApproval is the same guard for the
+// trailer signal: an unapproved newer PR whose (post-merge editable) body names
+// another brief must still block the flip.
+func TestAutoFlipWalkPastBodyTrailerStillRequiresApproval(t *testing.T) {
+	src := walkSource([]int{152, 151},
+		map[int]prReviewState{
+			152: {Merged: true, HeadSHA: afNoAppSHA},
+			151: approvedAt(afRealDeliveryHeadSHA),
+		},
+		map[int]prShape{
+			152: {Files: []string{"internal/x/x.go"}, BriefTrailers: 1, Briefs: []string{"other/01"}},
+			151: realDelivery50,
+		})
+	if got := decideWalk(t, src); got.Outcome == flipDone || got.PR != 152 {
+		t.Fatalf("an unapproved newer PR (#152) must block the flip whatever its body says; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+	}
+}
+
+// TestAutoFlipWalksPastMigrationNamingAnotherBrief is the fail-first proof for
+// F1: a #736-shaped migration (mixed files, one Brief: trailer naming a
+// DIFFERENT brief, App-approved) is the newest candidate. It must be walked
+// past and the older, real delivery PR credited.
+func TestAutoFlipWalksPastMigrationNamingAnotherBrief(t *testing.T) {
+	src := walkSource([]int{160, 161},
+		map[int]prReviewState{
+			160: approvedAt(afBulkMigHeadSHA),
+			161: approvedAt(afRealDeliveryHeadSHA),
+		},
+		map[int]prShape{160: migration736Shape, 161: realDelivery50})
+	got := decideWalk(t, src)
+	if got.Outcome != flipDone || got.PR != 161 || got.SHA != afRealDeliveryHeadSHA {
+		t.Fatalf("want flipDone crediting #161 @ %s; got %v PR #%d @ %s (%s)", afRealDeliveryHeadSHA, got.Outcome, got.PR, got.SHA, got.Reason)
+	}
+}
+
+// TestAutoFlipMigrationAloneNeverFlips: with only the #736-shaped migration in
+// the window there is no delivering PR — could-not-check, naming the walk.
+func TestAutoFlipMigrationAloneNeverFlips(t *testing.T) {
+	src := walkSource([]int{160},
+		map[int]prReviewState{160: approvedAt(afBulkMigHeadSHA)},
+		map[int]prShape{160: migration736Shape})
+	got := decideWalk(t, src)
+	if got.Outcome != flipUnchecked {
+		t.Fatalf("a window holding only another brief's PR must be could-not-check; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+	}
+	if !strings.Contains(got.Reason, "#160") || !strings.Contains(got.Reason, "derived-board/07") {
+		t.Errorf("reason must name the walked-past #160 and the brief it names; got %q", got.Reason)
+	}
+}
+
+// TestAutoFlipUnattributableIsCouldNotCheck: an approved PR with no Brief:
+// trailer (an Issue:-only PR), or with two, is not credited on a guess.
+func TestAutoFlipUnattributableIsCouldNotCheck(t *testing.T) {
+	for name, shape := range map[string]prShape{
+		"no Brief: trailer":   {Files: []string{"internal/x/x.go"}},
+		"two Brief: trailers": {Files: []string{"internal/x/x.go"}, BriefTrailers: 2, Briefs: []string{"af/50", "af/51"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			src := walkSource([]int{170, 151},
+				map[int]prReviewState{170: approvedAt(afHeadSHA), 151: approvedAt(afRealDeliveryHeadSHA)},
+				map[int]prShape{170: shape, 151: realDelivery50})
+			got := decideWalk(t, src)
+			if got.Outcome != flipUnchecked || got.PR != 170 {
+				t.Fatalf("want could-not-check at #170; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+			}
+		})
+	}
+}
+
+// TestAutoFlipShapeReadErrorIsCouldNotCheck: a PRShape error (e.g. a truncated
+// file list) is could-not-check, never a walk-past.
+func TestAutoFlipShapeReadErrorIsCouldNotCheck(t *testing.T) {
+	src := walkSource([]int{180, 151},
+		map[int]prReviewState{180: approvedAt(afHeadSHA), 151: approvedAt(afRealDeliveryHeadSHA)},
+		map[int]prShape{151: realDelivery50})
+	src.shapeErrs = map[int]error{180: errors.New("PR #180 reports 168 changed files but 100 were listed")}
+	if got := decideWalk(t, src); got.Outcome != flipUnchecked || got.PR != 180 {
+		t.Fatalf("want could-not-check at #180; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+	}
+}
+
+// TestShapeFromListingRefusesTruncation is the fail-first proof for S-F2: a file
+// list shorter than the PR's own changed_files count (gh's 100-entry cap on a
+// 168-file PR) must be an error, never judged as the whole diff.
+func TestShapeFromListingRefusesTruncation(t *testing.T) {
+	files := make([]string, 100)
+	for i := range files {
+		files[i] = fmt.Sprintf("docs/streams/s/brief-%03d.md", i)
+	}
+	if _, err := shapeFromListing(736, "", 168, files); err == nil {
+		t.Fatal("a 100-entry list for a 168-file PR must be refused as truncated")
+	}
+	shape, err := shapeFromListing(1, "Brief: af/50\n", 100, files)
+	if err != nil {
+		t.Fatalf("a complete list must be accepted: %v", err)
+	}
+	if len(shape.Files) != 100 || len(shape.Briefs) != 1 || shape.Briefs[0] != "af/50" {
+		t.Errorf("shape = %d files, briefs %v", len(shape.Files), shape.Briefs)
+	}
+}
+
+// TestParseBriefLikeTrailers pins the trailer read: fence-aware, Authors:
+// counted but never an attribution, every accepted Brief: form canonicalized.
+func TestParseBriefLikeTrailers(t *testing.T) {
+	body := "Intro.\n\n```\nBrief: fenced/01\n```\n\nAuthors: a/01, a/02\nBrief: assay:assay:Derived-Board:07.\r\n"
+	n, briefs := parseBriefLikeTrailers(body)
+	if n != 2 {
+		t.Errorf("count = %d, want 2 (fenced trailer skipped, Authors: counted)", n)
+	}
+	if len(briefs) != 1 || briefs[0] != "derived-board/07" {
+		t.Errorf("briefs = %v, want [derived-board/07]", briefs)
+	}
+}
+
+// TestAttributeCandidate unit-tests the attribution rule, including a brief-v2
+// hierarchical brief id matched against the short trailer form.
+func TestAttributeCandidate(t *testing.T) {
+	code := []string{"internal/x/x.go"}
+	cases := []struct {
+		name  string
+		shape prShape
+		brief string
+		want  candidateVerdict
+	}{
+		{"single trailer naming this brief", prShape{Files: code, BriefTrailers: 1, Briefs: []string{"af/50"}}, "af/50", candidateCredit},
+		{"v2 brief id vs short trailer", prShape{Files: code, BriefTrailers: 1, Briefs: []string{"derived-board/02"}}, "assay:assay:derived-board:02", candidateCredit},
+		{"trailer names another brief", prShape{Files: code, BriefTrailers: 1, Briefs: []string{"af/51"}}, "af/50", candidateWalkPast},
+		{"#736 shape", migration736Shape, "af/50", candidateWalkPast},
+		{"docs-only naming this brief (Verify PR)", prShape{Files: []string{"docs/streams/af/README.md"}, BriefTrailers: 1, Briefs: []string{"af/50"}}, "af/50", candidateWalkPast},
+		{"Authors:-only authoring PR", prShape{Files: code, BriefTrailers: 1}, "af/50", candidateWalkPast},
+		{"no trailer at all", prShape{Files: code}, "af/50", candidateUnattributable},
+		{"two trailers incl. this brief", prShape{Files: code, BriefTrailers: 2, Briefs: []string{"af/50", "af/51"}}, "af/50", candidateUnattributable},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got, why := attributeCandidate(c.shape, c.brief); got != c.want {
+				t.Errorf("attributeCandidate = %v (%s), want %v", got, why, c.want)
+			}
+		})
 	}
 }
 
