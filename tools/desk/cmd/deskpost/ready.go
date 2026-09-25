@@ -25,7 +25,10 @@ import (
 //	(e) if the PR is risk-classed — repo visibility (a PUBLIC repo always is, the public-repo risk rule)
 //	    or the repo's path triggers — an App review at the CURRENT head carries the
 //	    literal `Security-Review: pass` line (#216)
-//	TOCTOU: re-read the head immediately before the flip; if it moved, refuse
+//	(f) desk-decided (attention-budget/19, #1694): the SAME condition deskflip enforces —
+//	    deskkit.DeskDecidedRefusal, one shared implementation
+//	TOCTOU: re-read the PR immediately before the flip; if the head moved, refuse; and
+//	    re-run (f) against the re-read body, labels and reviews
 func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 	repo := owner + "/" + name
 
@@ -249,22 +252,48 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 			}
 		}
 
-		// TOCTOU: re-read the head immediately before the flip. If it moved since the
+		// (f) desk-decided (attention-budget/19, #1694). deskflip refuses a PR whose
+		// Desk-decided block does not parse, whose desk-decided label and block disagree, or
+		// that carries a standing reviewer `Undeclared-desk-decision:` finding at head. This
+		// verb performs the identical markPullRequestReadyForReview mutation, so it must clear
+		// the identical condition — the same "both flip verbs MUST clear the same floor"
+		// invariant the model floor above states. It is the ONE shared implementation
+		// (deskkit.DeskDecidedRefusal), not a port, so the two verbs cannot drift apart. The
+		// body and labels come from the getPR read above and the reviews from gate (b)'s
+		// read; either read failing has already returned could-not-check, so this is never
+		// evaluated on an unread label or block.
+		if reason := deskDecidedRefusal(pr, info, reviews, head); reason != "" {
+			return refused("ready", repo, pr, head, reason)
+		}
+
+		// TOCTOU: re-read the PR immediately before the flip. If the head moved since the
 		// checks above, refuse — the verified state is stale (GitHub's ready mutation has
 		// no compare-and-swap).
-		head2, err := client.getPRHead(pr)
+		info2, err := client.getPR(pr)
 		if err != nil {
 			return fromReadErr("ready", repo, pr, head, err)
 		}
+		head2 := info2.Head.SHA
 		if head2 != head {
 			return refused("ready", repo, pr, head,
 				"head moved during checks ("+short(head)+" -> "+short(head2)+") — no flip; re-run against the new head")
+		}
+		// A stable head is not a stable desk-decided answer: an `Undeclared-desk-decision:`
+		// finding posted at this same head during the checks, or a label/body edit between the
+		// reads, moves no head. (f) is re-run against a fresh read of both, exactly as
+		// deskflip's head-stable re-gate re-runs it (review finding F2 on attention-budget/19).
+		reviews2, err := client.listReviews(pr)
+		if err != nil {
+			return fromReadErr("ready", repo, pr, head, err)
+		}
+		if reason := deskDecidedRefusal(pr, info2, reviews2, head); reason != "" {
+			return refused("ready", repo, pr, head, reason)
 		}
 
 		if opts.dryRun {
 			return dryRun("ready", repo, pr, head,
 				"DRY RUN: every ready precondition holds at "+short(head)+" (open+draft, trusted author, "+
-					"App APPROVED at head, CI green, security-review gate satisfied, head stable) — "+
+					"App APPROVED at head, CI green, security-review gate satisfied, desk-decided clear, head stable) — "+
 					"stopped before markPullRequestReadyForReview")
 		}
 		if err := client.markReadyForReview(info.NodeID); err != nil {
@@ -272,6 +301,19 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		}
 		return done("ready", repo, pr, head, "", "flipped PR #"+fmt.Sprint(pr)+" ready-for-human at "+short(head))
 	})
+}
+
+// deskDecidedRefusal lifts this verb's PR and review shapes into the shared desk-decided
+// condition (deskkit.DeskDecidedRefusal) and returns its refusal reason, or "" when the
+// condition holds. The reviewer identity is the bound reviewer role's login — the same
+// identity gate (b) reads verdicts from; gate (b) has already refused when that role is
+// unbound, so an empty login never reaches here as "no finding can stand".
+func deskDecidedRefusal(pr int, info *prInfo, reviews []reviewInfo, head string) string {
+	rs := make([]deskkit.DeskDecidedReview, 0, len(reviews))
+	for _, r := range reviews {
+		rs = append(rs, deskkit.DeskDecidedReview{Login: r.User.Login, State: r.State, CommitID: r.CommitID, Body: r.Body})
+	}
+	return deskkit.DeskDecidedRefusal(pr, info.labelNames(), info.Body, rs, reviewerBotDisplay(), head)
 }
 
 // ciReadErr wraps a failed CI rollup read so the refusal names the precondition that was
