@@ -15,15 +15,15 @@
     },
     {
       "name": "stop the changed-files walk after page one (the #208 defect, restated as a mutation)",
-      "file": "cmd/deskflip/flip.go",
-      "old": "\t\tfor _, f := range page {\n\t\t\tout = append(out, fileInfo{Path: f.Filename})\n\t\t}\n\t}\n\treturn out, nil",
-      "new": "\t\tfor _, f := range page {\n\t\t\tout = append(out, fileInfo{Path: f.Filename})\n\t\t}\n\t\tbreak\n\t}\n\treturn out, nil"
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\tif len(chunk) < forgeFilePerPage {\n\t\t\tbreak\n\t\t}\n\t}\n\treturn all, nil\n}\n\nfunc (g *GitHubForge) ChecksAtHead(",
+      "new": "\t\tbreak\n\t}\n\treturn all, nil\n}\n\nfunc (g *GitHubForge) ChecksAtHead("
     },
     {
       "name": "stop asking the forge to paginate (one default-sized page becomes the whole diff)",
-      "file": "cmd/deskflip/flip.go",
-      "old": "\tr := runCmd(\"\", \"gh\", \"api\", \"--paginate\",\n\t\tfmt.Sprintf(\"repos/%s/pulls/%d/files?per_page=%d\", repo, o.pr, changedFilePerPage))",
-      "new": "\tr := runCmd(\"\", \"gh\", \"api\",\n\t\tfmt.Sprintf(\"repos/%s/pulls/%d/files?per_page=%d\", repo, o.pr, changedFilePerPage))"
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\tpath := fmt.Sprintf(\"/repos/%s/%s/pulls/%d/files?per_page=%d&page=%d\",\n\t\t\trepo.Owner, repo.Name, number, forgeFilePerPage, page)",
+      "new": "\t\tpath := fmt.Sprintf(\"/repos/%s/%s/pulls/%d/files?page=%d\",\n\t\t\trepo.Owner, repo.Name, number, page)"
     },
     {
       "name": "trust a short read (the fail-closed reconcile against the forge's own total is disarmed)",
@@ -40,14 +40,14 @@
     {
       "name": "let an unreadable changed-file list pass as an empty diff (could-not-check rounded to clean)",
       "file": "cmd/deskflip/flip.go",
-      "old": "\t\treturn nil, deskkit.Unverifiable(fmt.Sprintf(\n\t\t\t\"condition %s: cannot read PR #%d's changed files (%s) — a diff that could not be read is \"+\n\t\t\t\t\"could-not-check, and could-not-check is never a clean risk classification.\",\n\t\t\tcondSecurityVerdict, o.pr, firstLine(r.stderr)), r.err)",
+      "old": "\t\treturn nil, deskkit.Unverifiable(fmt.Sprintf(\n\t\t\t\"condition %s: cannot read PR #%d's changed files (%s) — a diff that could not be read is \"+\n\t\t\t\t\"could-not-check, and could-not-check is never a clean risk classification.\",\n\t\t\tcondSecurityVerdict, o.pr, firstLine(err.Error())), err)",
       "new": "\t\treturn nil, nil"
     },
     {
       "name": "stop reducing to the latest run per name (a superseded CANCELLED/QUEUED run jams the flip again — reddens TestSupersededRunDoesNotJamACleanFlip)",
       "file": "cmd/deskflip/flip.go",
-      "old": "\tchecks := latestPerRollupName(pr.StatusCheckRollup)",
-      "new": "\tchecks := pr.StatusCheckRollup"
+      "old": "\tchecks := latestPerRollupName(rollup)",
+      "new": "\tchecks := rollup"
     },
     {
       "name": "check-only CR (a): infer 'check-only' from PROSE when no declaration is present — the exact heuristic the authorization forbids (an ordinary CR that merely mentions the check becomes exempt — reddens TestProseIsNotADeclaration)",
@@ -150,6 +150,48 @@
       "file": "cmd/deskflip/flip.go",
       "old": "if editedAt, err = live.EditedAt(); err != nil {",
       "new": "if editedAt, err = live.EditedAt(); err != nil && false {"
+    },
+    {
+      "name": "desk-decided (attention-budget/19): disarm the malformed-block refusal (a Desk-decided section that fails to parse flips freely — reddens TestFlipRefusedOnMalformedDeskDecidedBlock)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tif blocked && perr != nil {\n\t\treturn deskkit.Refused(fmt.Sprintf(\n\t\t\t\"condition %s: PR #%d's `%s` section does not parse: %v — fix the block \"+",
+      "new": "\tif false && blocked && perr != nil {\n\t\treturn deskkit.Refused(fmt.Sprintf(\n\t\t\t\"condition %s: PR #%d's `%s` section does not parse: %v — fix the block \"+"
+    },
+    {
+      "name": "desk-decided (attention-budget/19): disarm the label/block agreement check (a mismatched label and block flip freely — reddens TestFlipLabelBlockMismatchRefused)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tif labelled != blocked {\n\t\tvar detail string",
+      "new": "\tif false && labelled != blocked {\n\t\tvar detail string"
+    },
+    {
+      "name": "desk-decided (attention-budget/19): disarm the reviewer's undeclared-desk-decision finding (a standing finding at head flips freely — reddens TestFlipRefusedOnUndeclaredDeskDecision)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tif line, lane := standingUndeclaredFinding(reviews, reviewerLogin, head); line != \"\" {",
+      "new": "\tif line, lane := standingUndeclaredFinding(reviews, reviewerLogin, head); false && line != \"\" {"
+    },
+    {
+      "name": "desk-decided (attention-budget/19): widen the refusal to bare ABSENCE of a block (option 2 of the human decision, not what was ruled — reddens TestFlipNoBlockNoFindingUnchanged)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tlabelled := hasLabel(pr.Labels, deskkit.DeskDecidedLabel)\n\t_, blocked, perr := deskkit.ParseDeskDecidedBlockInBody(pr.Body)",
+      "new": "\tlabelled := hasLabel(pr.Labels, deskkit.DeskDecidedLabel)\n\t_, blocked, perr := deskkit.ParseDeskDecidedBlockInBody(pr.Body)\n\tif !blocked {\n\t\treturn deskkit.Refused(fmt.Sprintf(\"condition %s: PR #%d carries no Desk-decided block\", condDeskDecided, o.pr))\n\t}"
+    },
+    {
+      "name": "desk-decided (attention-budget/19): drop the lane filter so a security verdict can clear a correctness finding (review SEC-1/F1 — reddens TestFlipUndeclaredFindingNotLaunderedBySecurityLane)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\t\tif hasSecurityMarker(r.Body) != security {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif lines := deskkit.UndeclaredDeskDecisionLines(r.Body); len(lines) > 0 {\n\t\t\t\tstanding = lines[0]\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif security || r.State == \"APPROVED\" || r.State == \"CHANGES_REQUESTED\" {",
+      "new": "\t\t\tif security {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif lines := deskkit.UndeclaredDeskDecisionLines(r.Body); len(lines) > 0 {\n\t\t\t\tstanding = lines[0]\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif hasSecurityMarker(r.Body) || r.State == \"APPROVED\" || r.State == \"CHANGES_REQUESTED\" {"
+    },
+    {
+      "name": "desk-decided (attention-budget/19): let a COMMENTED correctness note clear a finding (reddens TestFlipUndeclaredFindingClearedAtSameHead)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\t\tif security || r.State == \"APPROVED\" || r.State == \"CHANGES_REQUESTED\" {",
+      "new": "\t\t\tif true || r.State == \"APPROVED\" || r.State == \"CHANGES_REQUESTED\" {"
+    },
+    {
+      "name": "desk-decided (attention-budget/19): drop the head-stable re-gate's desk-decided re-run (review F2 — reddens TestFlipUndeclaredFindingPostedDuringChecksIsCaught)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tif err := checkDeskDecided(o, pr2, reviews2, reviewerLogin, head); err != nil {",
+      "new": "\tif err := checkDeskDecided(o, pr2, reviews2, reviewerLogin, head); false && err != nil {"
     }
   ]
 }
