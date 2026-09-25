@@ -42,7 +42,7 @@ sources:
   - "docs/adopting-assay-gitlab.md:200-201 — 'The script itself is bash + curl + jq. On native Windows run it from Git-Bash or WSL, not from PowerShell.'"
   - "docs/adopting-assay.md:904-906 — the Windows prerequisites list Git-Bash/WSL for GitLab fleet provisioning explicitly: 'Native PowerShell cannot run it.'"
   - "tools/create-fleet-gitlab.sh:1-60 — the script's own header: seven service accounts, memberships, PATs, avatars, protected branch, approvals, protected tags, merge gates, labels; the REST v4 endpoint list is enumerated once at lines 37-55"
-  - "tools/create-fleet-gitlab.sh:79-87 (ROLE_TABLE) — the seven roles and their access levels/scopes: reviewer/worker/verifier/desk (developer:30), issue-loop/intake-loop (reporter:20), board-writer (developer:30); scopes api or api,write_repository"
+  - "tools/fleet-gitlab-roles.sh:25-33 (ROLE_TABLE) — the seven roles and their access levels/scopes: reviewer/worker/verifier/desk (developer:30), issue-loop/intake-loop (reporter:20), board-writer (developer:30); scopes api or api,write_repository; tools/create-fleet-gitlab.sh:79-84 sources this shared file"
   - "tools/create-fleet-gitlab.sh:746-750 — the custody write today: `( umask 077; printf '%s' \"$token\" > \"$token_file\" )` then `chmod 0600`, then a path-only echo ('path printed, value never echoed')"
   - "tools/create-fleet-gitlab.sh:311,333,403 — the token is passed to curl through a 0600 `curl -K` config file minted under `umask 077`, NEVER on the command line or in the environment"
   - "tools/create-fleet-gitlab.sh:67-68,205,270-272 — the --dry-run contract: 'NEVER hits live infrastructure unless invoked without --dry-run and with GITLAB_TOKEN set; --dry-run makes zero network calls'"
@@ -93,8 +93,9 @@ files:
   `plugins/assay/skills/install/SKILL.md` — `windows-port/09` owns the doc collapse.
 
 facts:
-- **The seven roles, their access levels and their scopes** are a table in the script
-  (`tools/create-fleet-gitlab.sh:79-87`), not prose: `reviewer:developer:30:api`,
+- **The seven roles, their access levels and their scopes** are a table in the shared role
+  file (`tools/fleet-gitlab-roles.sh:25-33`), which `tools/create-fleet-gitlab.sh:79-84`
+  sources, not prose: `reviewer:developer:30:api`,
   `worker:developer:30:api,write_repository`, `verifier:developer:30:api,write_repository`,
   `desk:developer:30:api`, `issue-loop:reporter:20:api`, `intake-loop:reporter:20:api`,
   `board-writer:developer:30:api,write_repository`. The port carries the table across unchanged;
@@ -306,7 +307,7 @@ guessed; guessing bakes in exactly the decision this gate exists to make.
 | 12 | **`main` is never left unprotected across a failure** — `-run 'TestFleetProtectedBranchNeverUnprotected'`: a stub that refuses the POST half of a delete+post | exit 0; the rule the tool read is re-applied, and the stub records `main` as protected at every observation point | `check +mutation` |
 | 13 | **One label table, two forges** — `-run 'TestLabelsForgeParity'` | exit 0; the GitHub and GitLab backends are driven from the SAME table, and the test asserts the emitted set on each forge contains `review-request`, all six `raised-by:*` stamps, and the `authorization-needed`/`approval-needed` pair | `check +flow` |
 | 14 | **Label creation is idempotent** — `-run 'TestLabelsIdempotent'`: a stub reporting the label already exists | exit 0; a no-op, not an error, and the run still exits 0 | `check` |
-| 15 | **Dereference the ported role table against its source** (catches a well-formed table with a widened scope): `sed -n '/^ROLE_TABLE=/,/^'"'"'$/p' tools/create-fleet-gitlab.sh \| grep -E '^[a-z-]+:' \| sort` and compare, field for field, against the table the row-4 enumeration printed | the two agree exactly on role, access level and scope for all seven rows — no scope added, none dropped | `gate:model +dereference` |
+| 15 | **Dereference the ported role table against its source** (catches a well-formed table with a widened scope): `sed -n '/^ROLE_TABLE=/,/^'"'"'$/p' tools/fleet-gitlab-roles.sh \| grep -E '^[a-z-]+:' \| sort` and compare, field for field, against the table the row-4 enumeration printed | the two agree exactly on role, access level and scope for all seven rows — no scope added, none dropped | `gate:model +dereference` |
 | 16 | **Dereference the endpoint set against its source**: compare the paths the stub server observed across rows 3-14 against the enumerated list at `tools/create-fleet-gitlab.sh:37-55` | every observed path is in the enumerated list; any path outside it is a new REST surface the reviewer must weigh | `gate:model +dereference` |
 | 17 | **A live provisioning run against a real GitLab group** — a human, in their own identity, with `--dry-run` first and then for real | the dry run's enumeration matches what the real run did; the seven token files exist with owner-only access; `desktoken --forge gitlab <role>` reads one successfully. **BLOCKED for any agent** — this contacts live infrastructure; it is the human gate's own row | `gate:human` |
 | 18 | Consumers routing corroborated by the diff (run on the implementer's branch): `statusgen --root . --consumers windows-port/08; echo $?` | `0` | `check` |
