@@ -10,8 +10,9 @@ description: >-
   install (`--lint` == 0, `--version` prints the pinned tag). It is idempotent, refuses rather than
   clobbers an already-adopted repo, opens draft PRs only, and escalates every never-autonomous step
   (reviewer identity, permission grants, merge/push/tag, private-repo CI auth) to a human.
-  Unix-first, with a native-Windows arm (PowerShell + `deskinstall`). Step-by-step detail and
-  scenario routing: the `adopt` skill + docs/adopting-assay.md.
+  Unix-first, with a native-Windows arm over acquisition, Cursor placement
+  (`deskinstall --harness`), and GitLab provisioning (`deskfleet`). Detail: `adopt` +
+  docs/adopting-assay.md.
 ---
 
 # Install Assay — turnkey installer
@@ -21,13 +22,15 @@ scenario and holds the PRIMITIVEs and human-gates so a human or agent can hand-w
 `assay:install` is the *installer*: invoke it and it self-installs the whole project setup, driving
 each step itself and stopping only at the never-autonomous escalation points.
 
-The orchestration logic here is **Claude-Code-driven, OS-agnostic and forge-neutral**. The single
-OS-specific piece is the statusgen *binary acquisition* in step 2 — Unix (mac/linux) via a plain
-HTTPS fetch verified against the pin file (`scripts/assay-install.sh acquire`, shipped in this
-plugin), and a native-Windows arm via the PowerShell bootstrap + Go-native `deskinstall` (see
-**Scope**). Everything else runs identically on every platform, and on GitHub or GitLab — the
-per-forge differences are named in **Per-forge prerequisites** and **CORE primitives per forge**
-below.
+The orchestration logic here is **Claude-Code-driven and forge-neutral**. Windows has **three**
+OS-specific arms, not one — the statusgen *binary acquisition* in step 2 (Unix via a plain HTTPS
+fetch verified against the pin file, `scripts/assay-install.sh acquire`, shipped in this plugin;
+native Windows via the PowerShell bootstrap + Go-native `deskinstall`), the **Cursor harness
+placement** (`deskinstall --harness cursor --forge <github|gitlab> --repo <path>`, native on every
+OS), and, on GitLab, **fleet provisioning** (`deskfleet provision` / `deskfleet labels`, native Go
+on every OS including Windows — no Git-Bash/WSL needed). See **Scope** for the full breakdown.
+Everything else runs identically on every platform, and on GitHub or GitLab — the per-forge
+differences are named in **Per-forge prerequisites** and **CORE primitives per forge** below.
 
 This skill does **not** fork the install steps. It DELEGATES the PRIMITIVE detail — exact commands,
 per-step Verify, the failure modes — to **`assay:adopt`** and the full runbook at
@@ -350,27 +353,44 @@ reviewer identity, and the human-merge gate each fire once (the `adopt` runbook'
 
 ## Scope
 
-**Unix-first (mac/linux), with a real native-Windows arm.** The statusgen binary acquisition in
-step 2 is the only OS-specific arm. It is implemented for mac and linux as a plain HTTPS fetch
-verified against the pin file (`assay-install.sh acquire` — `curl`, plus `sha256sum`,
-`shasum` or `openssl`; no forge CLI), and there is now a **native-Windows path** that slots in
-beside the Unix one without reshaping the flow. Forge is not an axis here: the same arm serves a
-GitHub and a GitLab adopter, because the release assets are fetched from their public release home
-whatever forge the target lives on.
+**Unix-first (mac/linux), with a real native-Windows arm across the whole install — not
+acquisition alone.** Windows has **three** OS-specific arms:
 
-**Windows is supported — the acquisition arm is real, not deferred.** On a native Windows host,
-step 2 acquires the pinned `statusgen-windows-<arch>.exe` (and `desk-tools-windows-<arch>.tar.gz`)
-via a PowerShell first-install bootstrap (`scripts/bootstrap-windows.ps1`) plus the Go-native
-`deskinstall` command, keeping the same **sha256-verify-or-refuse** control the Unix path uses
-(a hash mismatch is a hard refuse — exit 5 — never a warn-and-continue). Two honesty caveats remain
-and are stated in the runbook, not hidden: the harness's session-start resident-rules injection
-channel (harness-portability/05; the mechanism your harness uses is named in
-`../../references/<harness>.md`) needs a documented `bash`+`jq`
-workaround (install Git-Bash, or WSL for local dev only — WSL is a fallback, not the native claim),
-and the **native `windows/arm64` smoke is BLOCKED** pending an arm64 Windows runner (the arm64
-asset still ships cross-compiled + checksummed). The full step-by-step Windows guide — install
-command, `.assay-versions` pins, CI-proven status, and the documented-workaround surfaces — lives in
-`docs/adopting-assay.md` § **Windows adopters**.
+1. **Binary acquisition** (step 2). Unix (mac/linux) via a plain HTTPS fetch verified against the
+   pin file (`assay-install.sh acquire` — `curl`, plus `sha256sum`, `shasum` or `openssl`; no forge
+   CLI); native Windows via a PowerShell first-install bootstrap (`scripts/bootstrap-windows.ps1`)
+   plus the Go-native `deskinstall` (mode 1: `--manifest <paired-versions.yaml> --dest <dir>`),
+   keeping the same **sha256-verify-or-refuse** control the Unix path uses — a hash mismatch is a
+   hard refuse (exit 5), never a warn-and-continue.
+2. **Cursor harness placement** (step 5). `deskinstall --harness cursor --forge <github|gitlab>
+   --repo <path>` (mode 2) places the skills/references tree and writes the `AGENTS.md` bindings
+   in one idempotent command, native on every OS including Windows — Cursor's install mechanism
+   *is* file placement, so this is the arm that replaces the old five-step manual copy. `--check`
+   reports drift without writing.
+3. **GitLab fleet provisioning** (forge-scoped). `deskfleet provision` mints the seven role
+   service accounts, their PATs, and `gitlab-<role>.token` files directly under the owner-only ACL
+   custody the toolchain already enforces on read — no `ln -s`/copy step and no Git-Bash/WSL —
+   and `deskfleet labels` creates the forge-neutral label set (GitHub or GitLab). Both are native
+   Go, on every OS including Windows.
+
+Forge is not an axis for arms 1 and 2 — the same acquisition and harness-placement arm serves a
+GitHub and a GitLab adopter, because the release assets are fetched from their public release home
+whatever forge the target lives on, and `--forge` on `deskinstall --harness` only selects the
+`AGENTS.md` bindings vocabulary. Arm 3 is GitLab-only by construction (GitHub has no service-account
+fleet to provision); `deskfleet labels` alone runs on either forge.
+
+**Windows is supported across all three arms — none is deferred.** On a native Windows host, step 2
+acquires the pinned `statusgen-windows-<arch>.exe` (and `desk-tools-windows-<arch>.tar.gz`) exactly
+as above; step 5 places the Cursor tree with the same `deskinstall --harness` command as any other
+OS; GitLab fleet provisioning runs the same `deskfleet` binary with no bash/curl/jq dependency. Two
+honesty caveats remain and are stated in the runbook, not hidden: the harness's session-start
+resident-rules injection channel (harness-portability/05; the mechanism your harness uses is named
+in `../../references/<harness>.md`) needs a documented `bash`+`jq`
+workaround (install Git-Bash, or WSL for local dev only — WSL is a fallback, not the native claim;
+Cursor does not need it), and the **native `windows/arm64` smoke is BLOCKED** pending an arm64
+Windows runner (the arm64 asset still ships cross-compiled + checksummed). The full step-by-step
+Windows guide — the three-command install, `.assay-versions` pins, CI-proven status, and the
+documented-workaround surfaces — lives in `docs/adopting-assay.md` § **Windows adopters**.
 
 ## Delegation
 - **`assay:adopt`** — the scenario router (green-field / existing-suite / carve-out) and the

@@ -187,6 +187,15 @@ a GitLab deployment has no PEMs to install.
 
 ## 2. Provisioning script — `tools/create-fleet-gitlab.sh`
 
+**On Windows, prefer `deskfleet provision` instead — this section is the fallback.**
+`windows-port/08` ships a native Go verb that does the same provisioning natively on every OS,
+including Windows, with no bash/curl/jq: `deskfleet provision --group <path> --prefix <name>
+--owner-token-file <file> [--project <path>]` — see [`adopting-assay.md`](adopting-assay.md) §
+**GitLab fleet provisioning**. It writes each minted token straight to `gitlab-<role>.token`, so
+the link/copy custody step below (§2's "Where the role-token store is") does not apply to it. The
+script below remains a supported, clearly-labelled fallback (#1646) — run from Git-Bash or WSL,
+never a Windows prerequisite.
+
 The script is idempotent bash + curl + jq, run by a human holding a **group-owner PAT**
 (supplied only via the `GITLAB_TOKEN` environment variable — never a flag, never
 committed, never stored by the script). It creates the seven service accounts above,
@@ -265,8 +274,9 @@ holds an invalidated one, so on that layout never copy the provisioned file back
 `gitlab-<role>.token` — doing so installs a dead credential, and the next desk verb fails `401`
 on its first API read. Prefer the link on any platform that has one. (#1112)
 
-The script itself is **bash + curl + jq**. On native Windows run it from Git-Bash or WSL,
-not from PowerShell.
+The script itself is **bash + curl + jq** — a labelled **fallback** (#1646), not the Windows
+path (see **`deskfleet provision`** at the top of this section). If you do run it on native
+Windows, run it from Git-Bash or WSL, never from PowerShell.
 
 **`GITLAB_API_BASE` — required before the next boot, and it is not a `roster.env` key.**
 Every GitLab-side token operation — the read-only custody check `deskboot` / `deskroster
