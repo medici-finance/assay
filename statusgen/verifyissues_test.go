@@ -1162,6 +1162,97 @@ func TestVerifyPassHeldContradictionNegatedMentionIsNotADisposition(t *testing.T
 				"| 2 | `go test ./integration/...` | — | HELD — no runner online | 2026-07-10 | fixture-verifier |\n",
 			wantHeld: true,
 		},
+		{
+			// Counter-example (pr#1681 review sec-1681-f1 / pr1681-F2): a bare
+			// "0" that is NOT in a count position — here it is an exit code,
+			// not a count of held rows — must never excuse the HELD it
+			// happens to precede. "row 3 exit 0 HELD" is a REAL held row
+			// report; the exit code coincidentally reads "0" right before the
+			// marker. Wrongly excusing this is a false NEGATIVE: a
+			// verification gate silently passing something broken, which is
+			// worse than the original false-positive class this PR fixed.
+			name: "exit code 0 immediately before HELD is not a zero-count negation",
+			evidence: "**VERIFY: PASS** — row 1 green.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n" +
+				"| 2 | `go test ./integration/...` | — | row 3 exit 0 HELD for human diff-read | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+		{
+			// Counter-example (sec-1681-f1): "row 0" is a row LABEL, not a
+			// count of held rows — "row 0 HELD" is a genuine held report for
+			// the row numbered 0.
+			name: "row label 0 immediately before HELD is not a zero-count negation",
+			evidence: "**VERIFY: PASS** — row 1 green.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n" +
+				"| 2 | `go test ./integration/...` | — | row 0 HELD | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+		{
+			// Counter-example (sec-1681-f1): a version number ending in ".0"
+			// reads as a bare "0" token right before HELD, but it is a
+			// version, not a count.
+			name: "version number ending in .0 immediately before HELD is not a zero-count negation",
+			evidence: "**VERIFY: PASS** — row 1 green.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n" +
+				"| 2 | `go test ./integration/...` | — | row 3 on v1.0 HELD pending runner | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+		{
+			// Counter-example (sec-1681-f1): same version-number shape, no
+			// leading "v".
+			name: "bare decimal ending in .0 immediately before HELD is not a zero-count negation",
+			evidence: "**VERIFY: PASS** — row 1 green.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n" +
+				"| 2 | `go test ./integration/...` | — | 2.0 HELD | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+		{
+			// Mixed same-line case: the leading "0" is a genuine count
+			// negating the HELD marker it sits directly in front of
+			// ("summary: 0 HELD"), but the trailing "1" is not a negation
+			// word/zero-count and must not excuse the could-not-check
+			// occurrence that follows it — that clause is reporting a REAL,
+			// non-zero could-not-check count.
+			name: "mixed line negates one marker but not the other",
+			evidence: "**VERIFY: PASS** — summary: 0 HELD, 1 could-not-check.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+		{
+			// Per-occurrence pin (pr1681-F1): a negated occurrence earlier ON
+			// THE SAME LINE must not excuse a second, genuine, un-negated
+			// occurrence of the SAME marker word later on that same line.
+			// This kills a line-level ("any negated mention anywhere on the
+			// line excuses the whole line") shortcut that a per-occurrence
+			// implementation must not take.
+			name: "negated could-not-check does not excuse a second could-not-check on the same line",
+			evidence: "**VERIFY: PASS** — no could-not-check rows except row 4: could-not-check.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+		{
+			// Per-occurrence pin (pr1681-F1): a zero-counted HELD occurrence
+			// earlier on the line must not excuse a second, genuine,
+			// un-negated HELD occurrence later on that same line.
+			name: "zero-counted HELD does not excuse a second HELD on the same line",
+			evidence: "**VERIFY: PASS** — summary: 0 HELD; row 4 HELD — no runner online.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

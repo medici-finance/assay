@@ -310,7 +310,24 @@ var heldOrCouldNotCheckRe = regexp.MustCompile(`(?i)\b(HELD|could-not-check)\b`)
 // asserting one. This is checked per OCCURRENCE (immediately before it, not
 // anywhere on the line) so a negated/zero-count mention on one line never
 // excuses a genuine, un-negated HELD/could-not-check occurrence elsewhere.
-var heldNegationRe = regexp.MustCompile(`(?i)\b(no|not|none|zero|0)\s+$`)
+//
+// The bare-digit "0" alternative is deliberately NOT a plain \b0\s+$ match:
+// a standalone zero can appear immediately before HELD/could-not-check for
+// reasons that have nothing to do with a held-row COUNT — an exit code
+// ("exit 0 HELD"), a row label ("row 0 HELD"), or a version/decimal number
+// ("v1.0 HELD", "2.0 HELD"). Wrongly excusing any of those is a false
+// NEGATIVE — a verification gate silently passing over a genuinely held row
+// — which is a more dangerous failure mode for a refusal gate than the
+// original false-positive class this regex exists to fix (assay#1681
+// review findings sec-1681-f1 / pr1681-F2). The digit alternative therefore
+// only matches "0" in an actual COUNT position: at the start of the
+// preceding text, or immediately after a list/summary separator (":", ",",
+// ";", "(") with only whitespace between the separator and the "0" — the
+// shape every observed false-positive phrase ("summary: 0 HELD",
+// "0 HELD, 1 PASS") actually has. A bare "0" reached by crossing a word
+// ("exit 0"), a row label ("row 0") or a decimal point ("v1.0", "2.0") does
+// not satisfy that separator requirement and so is never excused.
+var heldNegationRe = regexp.MustCompile(`(?i)\b(no|not|none|zero)\s+$|(?:^|[:,;(])\s*0\s+$`)
 
 // verifyPassHeldContradiction reports whether evidence both carries a strict
 // hasVerifyPass marker AND, on some line that is not a genuinely routed
