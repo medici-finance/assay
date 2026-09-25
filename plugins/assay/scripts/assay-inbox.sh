@@ -66,7 +66,7 @@ LIMIT="${ASSAY_INBOX_LIMIT:-500}"
 
 usage() {
   cat <<'EOF'
-Usage: assay-inbox.sh [--walk [--item K] | --html OUT.html] [owner/repo ...]
+Usage: assay-inbox.sh [--walk [--item K] [--screened] | --html OUT.html] [--no-screen] [owner/repo ...]
        assay-inbox.sh --flow [--html OUT.html] [--root PATH ...] [--since YYYY-MM-DD]
 
 Prints open issues across the given repos (or ./.assay/repos.txt, or the current repo's
@@ -74,15 +74,36 @@ origin remote) carrying any of the escalation-contract labels: urgent, needs-dec
 question, help wanted. Sorted urgency-then-age (most urgent, then oldest, first).
 
 Modes (the first three share one ordering and one format builder):
-  (none)            the terminal table — one row per item.
+  (none)            the terminal table — one row per item. Carries a `class` column
+                    (screen off with --no-screen) — see "The screen" below.
   --walk            print ONE item in the five-part decision format: Header / Context /
-                    Options / Reply shape / Verification. Prints item 1 and exits.
-  --item K          with --walk (and implying it): print item K instead of item 1.
-                    1-based; out of range is an error, never a silent empty.
+                    Options / Reply shape / Verification. Prints item 1 and exits. Only
+                    GENUINE items (see "The screen" below) are ever printed this way;
+                    "question k of n" counts genuine items only.
+  --item K          with --walk (and implying it): print the Kth GENUINE item instead of
+                    the first. 1-based; out of range is an error, never a silent empty.
+  --screened        with --walk: instead of one item, print the full list of items this
+                    run screened OUT — repo#number, class, and the evidence that put it
+                    there. Nothing is ever dropped; this is how the whole list is seen.
   --html OUT.html   write the whole queue to OUT.html as cards in that same format —
                     one self-contained file: inline CSS, no scripts, no external assets,
                     light/dark via prefers-color-scheme. The only URLs are the issue links.
-                    The page also carries the Flow section described below.
+                    The page also carries the Flow section described below. --html hides
+                    nothing — every item is a card, each one carrying its class.
+  --no-screen       turn the screen off: every item is presented (or listed) exactly as
+                    it was before the screen existed — no class column, no tail line, no
+                    --screened list. One flag back to the old behaviour if the screen
+                    misjudges.
+
+The screen — --walk puts only GENUINE decisions to the driver. Every item is classified
+first (already-ruled by a human comment after the desk's own relay / no-fork one-option
+issue / reversible-default behind a still-held gate / genuine); only "genuine" is ever
+asked. The other three classes are never silently dropped: --walk prints one tail line
+of counts after every question ("screened: a already-ruled · b no-fork · c
+reversible-default — run with --screened to list them"), --screened lists them in full,
+and the table/--html renderings show every item's class and hide nothing. An item this
+tool cannot read, or cannot classify (e.g. no known human-login list), is always treated
+as genuine — screening only ever happens on POSITIVE evidence.
   --flow            print the pipeline FLOW model as a terminal table and exit: per stage,
                     the count now, the loop's own queue depth against its pool slots, the
                     ratio, the dwell, and the bottleneck. Fleet total always; one row block
@@ -128,6 +149,8 @@ HTML_OUT=""
 WANT_WALK=0
 WANT_HTML=0
 WANT_FLOW=0
+WANT_SCREENED=0
+NO_SCREEN=0
 FLOW_SINCE=""
 ROOT_ARGS=()
 ARGS=()
@@ -136,6 +159,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --walk) WANT_WALK=1; shift ;;
+    --screened) WANT_SCREENED=1; shift ;;
+    --no-screen) NO_SCREEN=1; shift ;;
     --flow) WANT_FLOW=1; shift ;;
     --item)
       [[ $# -ge 2 ]] || { echo "assay-inbox: --item needs a 1-based item number" >&2; exit 1; }
@@ -167,6 +192,16 @@ fi
 # section and the decision cards are two sections of one page.
 if [[ "$WANT_WALK" -eq 1 && "$WANT_FLOW" -eq 1 ]]; then
   echo "assay-inbox: --walk and --flow answer different questions; pass one, not both" >&2
+  exit 1
+fi
+# --screened is a --walk reporting mode (the screened-out list), not a standalone one — it
+# names what --walk hid, and only --walk hides anything.
+if [[ "$WANT_SCREENED" -eq 1 && "$WANT_WALK" -ne 1 ]]; then
+  echo "assay-inbox: --screened requires --walk" >&2
+  exit 1
+fi
+if [[ "$WANT_SCREENED" -eq 1 && "$NO_SCREEN" -eq 1 ]]; then
+  echo "assay-inbox: --screened and --no-screen contradict each other" >&2
   exit 1
 fi
 if [[ "$WANT_WALK" -eq 1 ]]; then MODE="walk"; fi
@@ -256,6 +291,33 @@ cell_name_for() {
   basename "$(cd "$1" 2>/dev/null && pwd || printf '%s' "$1")"
 }
 
+# resolve_humans — the screen's KNOWN HUMAN LOGINS (attention-budget/15's "already-ruled"
+# class needs a human comment, never a bot/App one, to close a decision).
+#
+# Source order: `ASSAY_HUMAN_LOGIN_MAP` (the desk tools' own env var, `name:login` pairs,
+# comma/semicolon/space/newline separated — the LOGIN, after the colon, is what is
+# compared against a comment's author), else `./.assay/humans.txt` (one login per line,
+# the same flat-file convention as `./.assay/repos.txt`). Neither present sets
+# HUMANS_KNOWN=0 — the caller then cannot enter the already-ruled class at all and prints
+# one NOTICE saying so, per the ground rule that screening only ever happens on POSITIVE
+# evidence.
+HUMANS_KNOWN=0
+HUMANS_JSON="[]"
+resolve_humans() {
+  if [[ -n "${ASSAY_HUMAN_LOGIN_MAP:-}" ]]; then
+    HUMANS_KNOWN=1
+    HUMANS_JSON=$(printf '%s' "$ASSAY_HUMAN_LOGIN_MAP" \
+      | tr ',;' '\n' \
+      | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' \
+      | sed -E 's/^[^:]*://' \
+      | jq -R -s 'split("\n") | map(select(length > 0))')
+  elif [[ -f "./.assay/humans.txt" ]]; then
+    HUMANS_KNOWN=1
+    HUMANS_JSON=$(grep -vE '^[[:space:]]*(#|$)' "./.assay/humans.txt" 2>/dev/null \
+      | jq -R -s 'split("\n") | map(select(length > 0))')
+  fi
+}
+
 command -v gh >/dev/null 2>&1 || { echo "assay-inbox: gh CLI not found" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "assay-inbox: jq not found" >&2; exit 1; }
 
@@ -314,7 +376,8 @@ TMP_HTML=$(mktemp)
 TMP_RAW=$(mktemp)
 TMP_FLOW=$(mktemp)
 TMP_FLOWFMT=$(mktemp)
-trap 'rm -f "$TMP_JSON" "$TMP_ERR" "$TMP_TSV" "$TMP_SORTED" "$TMP_ITEMS" "$TMP_ONE" "$TMP_DETAIL" "$TMP_FMT" "$TMP_WALK" "$TMP_HTML" "$TMP_RAW" "$TMP_FLOW" "$TMP_FLOWFMT"' EXIT
+TMP_CLASSFILE=$(mktemp)
+trap 'rm -f "$TMP_JSON" "$TMP_ERR" "$TMP_TSV" "$TMP_SORTED" "$TMP_ITEMS" "$TMP_ONE" "$TMP_DETAIL" "$TMP_FMT" "$TMP_WALK" "$TMP_HTML" "$TMP_RAW" "$TMP_FLOW" "$TMP_FLOWFMT" "$TMP_CLASSFILE"' EXIT
 echo "[]" > "$TMP_JSON"
 echo "null" > "$TMP_FLOW"
 
@@ -395,7 +458,18 @@ jq -r '
 
 item_count=$(jq 'length' "$TMP_SORTED")
 
+# render_table [classfile] — the terminal table. With a classfile (one class string per
+# line, in the SAME order as $TMP_TSV — both are built off $TMP_SORTED, so the orders
+# cannot drift), a `class` column is inserted; --no-screen calls this with no classfile,
+# which is the table exactly as it rendered before the screen existed.
 render_table() {
+  local classfile="${1:-}"
+  local -a class_arr
+  class_arr=()
+  if [[ -n "$classfile" ]]; then
+    while IFS= read -r _cl; do class_arr+=("$_cl"); done < "$classfile"
+  fi
+  local idx=0
   # Read from a FILE, not a pipe: a `while read` on the right of `|` runs in a subshell, so
   # any count accumulated inside it would be lost.
   while IFS=$'\t' read -r rank labelnames repo number title createdat url; do
@@ -409,8 +483,14 @@ render_table() {
     fi
     marker="  "
     [[ "$rank" == "0" ]] && marker="**"
-    printf '%s %-14s %-45s %-8s %-60s %-5s %s\n' \
-      "$marker" "$labelnames" "$repo" "$number" "$title" "$age" "$url"
+    if [[ -n "$classfile" ]]; then
+      printf '%s %-14s %-45s %-8s %-60s %-5s %-18s %s\n' \
+        "$marker" "$labelnames" "$repo" "$number" "$title" "$age" "${class_arr[$idx]:-genuine}" "$url"
+    else
+      printf '%s %-14s %-45s %-8s %-60s %-5s %s\n' \
+        "$marker" "$labelnames" "$repo" "$number" "$title" "$age" "$url"
+    fi
+    idx=$((idx + 1))
   done < "$TMP_TSV"
 }
 
@@ -433,9 +513,24 @@ def nonblank: map(select(test("[^[:space:]]")));
 def isheading: test("^[[:space:]]*#{1,6}[[:space:]]");
 def demd: gsub("\\*\\*"; "") | gsub("`"; "");
 
-.[0] as $it
-| .[1] as $d
-| (($d.detailUnavailable // false) | if . then true else false end) as $blind
+# The screen's known-human-logins input travels through the ENVIRONMENT ($ENV), not
+# --argjson: this program is extracted verbatim and run standalone by
+# tools/desk/cmd/deskinbox's parity test (jq -s --argjson k … --argjson n … -f prog …,
+# with NO other args) — a new required --argjson would be a compile error there, on a
+# program that test never asked to change. Reading via $ENV means an invocation that
+# never sets these two variables (the parity test, or any older caller) degrades exactly
+# like "no known human list": already-ruled cannot be entered, nothing crashes.
+($ENV.ASSAY_INBOX_HUMANS_JSON // "[]") as $humansRaw
+| ($humansRaw | (try fromjson catch [])) as $humans
+| (($ENV.ASSAY_INBOX_HUMANS_KNOWN // "") == "1") as $humansKnown
+
+| .[0] as $it
+| .[1] as $draw
+# A detail fetch that "succeeded" but did not return an object (a stub, or a future gh
+# regression) must never crash the render — it is read exactly like a failed fetch: blind.
+| (($draw | type) != "object") as $shapeBlind
+| (if $shapeBlind then {} else $draw end) as $d
+| ($shapeBlind or ($d.detailUnavailable // false)) as $blind
 # HTML comments are the marker channel the desk tools write into issue bodies; they are not
 # prose for the driver, so they never become Context.
 | ((($d.body // "") | lines | map(select(test("^[[:space:]]*<!--") | not)))) as $bl
@@ -517,7 +612,61 @@ def demd: gsub("\\*\\*"; "") | gsub("`"; "");
    end) as $next
 | ("the desk records the ruling on " + $it.repo + "#" + ($it.number | tostring)
    + " as a relayed decision (never in the driver's voice), moves the escalation label per the"
-   + " vocabulary, re-reads the issue to confirm the label moved, then " + $next) as $verification
+   + " vocabulary, re-reads the issue to confirm the label moved, then ") as $verificationBase
+| ($verificationBase + $next) as $verification
+
+# ------------------------------------------------------------- the screen (attention-budget/15) --
+# Four classes, tested in THIS order; the first that holds on POSITIVE evidence wins,
+# otherwise the item is genuine. An unread item is always genuine (rendered
+# could-not-check above already) — screening never fires on the absence of evidence.
+| (($it.labels // []) | map(.name | clean)) as $screenLabels
+# to_entries FIRST, so `.key` is the comment's ORIGINAL position in $cs — filtering before
+# entering would renumber the survivors and silently misplace the anchor.
+| (($cs | to_entries | map(select((.value.author.login // "") | test("\\[bot\\]$|desk"; "i")))
+       | last | .key) // -1) as $deskAnchorIdx
+| (def isHuman:
+     (. // "") as $l
+     | ($l != "")
+     and ((($humans // []) | index($l)) != null)
+     and (($l | test("\\[bot\\]$"; "i")) | not);
+   if ($humansKnown | not) then []
+   else ($cs | to_entries
+         | map(select(.key > $deskAnchorIdx))
+         | map(select(.value.author.login | isHuman)))
+   end) as $rulingEntries
+| (($rulingEntries | length) > 0) as $isRuled
+| (if $isRuled then ($rulingEntries[0].value) else null end) as $rulingComment
+
+| (($bl | to_entries | map(select(.value | test("^[[:space:]]*#{1,6}[[:space:]]*Options?\\b"; "i"))) | length) > 0) as $hasOptionsHeading
+| ($hasOptionsHeading and (($opts | length) == 1)) as $optionsSingle
+| (($bl | nonblank | map(strip) | map(select(test("^option:"; "i"))) | length)) as $forkOptionCount
+| (($forkOptionCount > 0) and ($forkOptionCount < 2)) as $forkFewerThanTwo
+| ($optionsSingle or $forkFewerThanTwo) as $isNoFork
+
+| (($bl | nonblank | map(strip | demd | clean) | map(select(test("^caught-by:"; "i"))) | .[0:1])) as $caughtByLines
+| ((($caughtByLines | length) > 0)
+   and (($caughtByLines[0] | sub("^caught-by:[[:space:]]*"; ""; "i")) as $v
+        | ($v | test("^nothing\\b"; "i")) | not)) as $hasCaughtByNonNothing
+| (($bl | nonblank | map(strip | demd | clean) | map(select(test("^default:"; "i"))) | length) > 0) as $hasDefaultLine
+| (($bl | nonblank | map(strip | demd | clean) | map(select(test("^class:"; "i"))) | length) == 0) as $noClassLine
+| (($bl | join(" ") | test("\\b(one-way|irreversible)\\b"; "i")) | not) as $noOneWayTerm
+| ($hasCaughtByNonNothing and $hasDefaultLine and $noClassLine and $noOneWayTerm) as $isReversibleDefault
+
+| (if $blind then "genuine"
+   elif $isRuled then "already-ruled"
+   elif $isNoFork then "no-fork"
+   elif $isReversibleDefault then "reversible-default"
+   else "genuine"
+   end) as $class
+
+| (if $class == "already-ruled" then
+     "ruled — flag for relabel/close (" + (($rulingComment.createdAt // "date unknown")) + ")"
+   elif $class == "no-fork" then
+     "no fork — desk proceeds or re-routes"
+   elif $class == "reversible-default" then
+     "proceeding on default " + (($options[0].letter) // "A") + "; veto by declining the gate"
+   else ""
+   end) as $classEvidence
 
 | {
     repo: $it.repo,
@@ -534,8 +683,11 @@ def demd: gsub("\\*\\*"; "") | gsub("`"; "");
     options: $options,
     optionsStated: $stated,
     reply: $reply,
+    verificationBase: $verificationBase,
     verification: $verification,
-    unread: $blind
+    unread: $blind,
+    class: $class,
+    classEvidence: $classEvidence
   }
 JQFMT
 }
@@ -561,7 +713,13 @@ build_item() {
   [[ -z "$detail" ]] && detail='{"detailUnavailable":true}'
   printf '%s' "$detail" > "$TMP_DETAIL"
 
-  one=$(jq -s --argjson k "$idx" --argjson n "$item_count" -f "$TMP_FMT" "$TMP_ONE" "$TMP_DETAIL")
+  # The screen's inputs ride the ENVIRONMENT ($ASSAY_INBOX_HUMANS_JSON/_KNOWN), not a new
+  # --argjson: this exact invocation shape (jq -s --argjson k … --argjson n … -f prog
+  # itemfile detailfile) is what tools/desk/cmd/deskinbox's parity test replicates against
+  # the extracted program, and it does not pass either — see the program's own comment.
+  one=$(ASSAY_INBOX_HUMANS_JSON="$HUMANS_JSON" \
+        ASSAY_INBOX_HUMANS_KNOWN="$([[ "$HUMANS_KNOWN" -eq 1 ]] && echo 1 || echo 0)" \
+        jq -s --argjson k "$idx" --argjson n "$item_count" -f "$TMP_FMT" "$TMP_ONE" "$TMP_DETAIL")
   merged=$(jq -s '.[0] + [.[1]]' "$TMP_ITEMS" <(printf '%s' "$one"))
   printf '%s' "$merged" > "$TMP_ITEMS"
 }
@@ -585,6 +743,54 @@ render_walk() {
         "  " + .verification
       ] | .[]
   ' "$TMP_ITEMS"
+}
+
+# render_walk_genuine <k 1-based> <n genuine-total> — the screened walk's rendering: the
+# Kth GENUINE item in $TMP_ITEMS (built over the WHOLE queue), renumbered so "question k of
+# n" counts genuine items only, per the screen's own numbering rule. header/verification are
+# rebuilt from scratch here rather than reused from the per-item build, which numbered
+# against the FULL queue — .verificationBase (the sentence up to "... then ") is the seam
+# that lets this reuse the rest of that sentence without a fragile string edit.
+render_walk_genuine() {
+  local k="$1" n="$2"
+  jq -r --argjson k "$k" --argjson n "$n" '
+    [.[] | select(.class == "genuine")] as $g
+    | $g[$k - 1] as $item
+    | ($item.repo + "#" + ($item.number | tostring)
+       + " — question " + ($k | tostring) + " of " + ($n | tostring)) as $header
+    | (if $k < $n then "presents question " + (($k + 1) | tostring) + " of " + ($n | tostring) + "."
+       else "reports the queue drained."
+       end) as $next
+    | ($item.verificationBase + $next) as $verification
+    | [ $header,
+        "",
+        "Context",
+        ($item.context[] | "  - " + .),
+        "",
+        "Options",
+        ($item.options[] | "  " + .letter + ". " + .text
+                      + (if .recommended then "   [recommended]" else "" end)),
+        "",
+        "Reply shape",
+        "  " + $item.reply,
+        "",
+        "Verification",
+        "  " + $verification
+      ] | .[]
+  ' "$TMP_ITEMS"
+}
+
+# render_screened — the full list of items THIS run screened out (--walk --screened): one
+# line per item, repo#number / class / the evidence line that put it there. Never filters
+# by anything but class != genuine — nothing screened is ever left off this list.
+render_screened() {
+  jq -r '
+    .[] | select(.class != "genuine")
+    | (.repo + "#" + (.number | tostring)) as $ref
+    | [$ref, .class, .classEvidence] | @tsv
+  ' "$TMP_ITEMS" | while IFS=$'\t' read -r ref cls ev; do
+    printf '%-28s %-20s %s\n' "$ref" "$cls" "$ev"
+  done
 }
 
 # The page is ONE file with no dependencies: inline CSS, no <script>, no src=, no @import,
@@ -778,6 +984,7 @@ def flowsection($f):
   "ul.opts li{margin:.3rem 0}",
   "span.rec{color:var(--recfg);background:var(--recbg);border-radius:999px;padding:.05rem .5rem;font-size:.72rem;font-weight:700;white-space:nowrap}",
   "p.unread{color:var(--accent);font-weight:600}",
+  "p.cls{color:var(--muted);font-size:.82rem;margin:0 0 .8rem}",
   "p.empty{color:var(--muted)}",
   "section.flow-sec{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1.1rem 1.25rem;margin:2rem 0 1.25rem}",
   "section.flow-sec h2{font-size:1.15rem;margin:0 0 .2rem}",
@@ -829,6 +1036,8 @@ def flowsection($f):
         + "</a> — question " + (.index | esc) + " of " + (.total | esc) + "</h2>"),
       ("<p class=\"title\">" + (.title | esc) + "</p>"),
       (if .unread then "<p class=\"unread\">could-not-check: this item was not read</p>" else empty end),
+      ("<p class=\"cls\">Class: " + (.class | esc)
+        + (if .classEvidence != "" then " — " + (.classEvidence | esc) else "" end) + "</p>"),
       "<h3>Context</h3>",
       "<ul>",
       (.context[] | "<li>" + esc + "</li>"),
@@ -1329,8 +1538,24 @@ build_flow() {
 
 case "$MODE" in
   table)
-    render_table
-    finish
+    if [[ "$NO_SCREEN" -eq 1 || "$item_count" -eq 0 ]]; then
+      # --no-screen: exactly today's table, no detail fetch, no class column. An empty
+      # queue needs no classification either — there is nothing to build.
+      render_table
+      finish
+    else
+      resolve_humans
+      write_format_program
+      echo "[]" > "$TMP_ITEMS"
+      i=0
+      while [[ "$i" -lt "$item_count" ]]; do
+        build_item "$i"
+        i=$((i + 1))
+      done
+      jq -r '.[].class' "$TMP_ITEMS" > "$TMP_CLASSFILE"
+      render_table "$TMP_CLASSFILE"
+      finish
+    fi
     ;;
 
   walk)
@@ -1341,16 +1566,66 @@ case "$MODE" in
       finish
       exit 0
     fi
-    if [[ "$WALK_ITEM" -gt "$item_count" ]]; then
-      echo "assay-inbox: --item ${WALK_ITEM} is out of range (the queue holds ${item_count} item(s))" >&2
-      exit 1
+
+    if [[ "$NO_SCREEN" -eq 1 ]]; then
+      # --no-screen: exactly today's --walk — one lazily-fetched item, numbered against
+      # the whole queue, no tail line, no classes.
+      if [[ "$WALK_ITEM" -gt "$item_count" ]]; then
+        echo "assay-inbox: --item ${WALK_ITEM} is out of range (the queue holds ${item_count} item(s))" >&2
+        exit 1
+      fi
+      write_format_program
+      echo "[]" > "$TMP_ITEMS"
+      build_item "$((WALK_ITEM - 1))"
+      render_walk
+      echo
+      finish
+    else
+      # The screen: every item must be READ to be classified, so --walk now builds the
+      # whole queue (like --html always has) rather than lazily fetching just the one
+      # item asked for — the cost the screen's correctness requires.
+      resolve_humans
+      write_format_program
+      echo "[]" > "$TMP_ITEMS"
+      i=0
+      while [[ "$i" -lt "$item_count" ]]; do
+        build_item "$i"
+        i=$((i + 1))
+      done
+
+      already_ruled_n=$(jq '[.[] | select(.class == "already-ruled")] | length' "$TMP_ITEMS")
+      no_fork_n=$(jq '[.[] | select(.class == "no-fork")] | length' "$TMP_ITEMS")
+      reversible_n=$(jq '[.[] | select(.class == "reversible-default")] | length' "$TMP_ITEMS")
+      genuine_n=$(jq '[.[] | select(.class == "genuine")] | length' "$TMP_ITEMS")
+      tail_line="screened: ${already_ruled_n} already-ruled · ${no_fork_n} no-fork · ${reversible_n} reversible-default — run with --screened to list them"
+      notice_line=""
+      [[ "$HUMANS_KNOWN" -eq 0 ]] && notice_line="NOTICE: no known human login list (\$ASSAY_HUMAN_LOGIN_MAP unset, ./.assay/humans.txt absent) — already-ruled cannot be classified this run; every item is presented"
+
+      if [[ "$WANT_SCREENED" -eq 1 ]]; then
+        # A reporting mode, not a question — the header-on-line-1 convention only binds
+        # the one-item render below, so the NOTICE (if any) is safe to lead with here.
+        [[ -n "$notice_line" ]] && echo "$notice_line"
+        render_screened
+        finish
+      elif [[ "$genuine_n" -eq 0 ]]; then
+        [[ -n "$notice_line" ]] && echo "$notice_line"
+        echo "$tail_line"
+        finish
+      else
+        if [[ "$WALK_ITEM" -gt "$genuine_n" ]]; then
+          echo "assay-inbox: --item ${WALK_ITEM} is out of range (the queue holds ${genuine_n} genuine item(s))" >&2
+          exit 1
+        fi
+        # The header MUST stay on stdout's first line — the ask-decision skill (and W3's own
+        # ordering check) reads line 1 as "<repo>#<N> — question k of n". The NOTICE and tail
+        # are trailing information, never a preamble in front of it.
+        render_walk_genuine "$WALK_ITEM" "$genuine_n"
+        echo
+        [[ -n "$notice_line" ]] && echo "$notice_line"
+        echo "$tail_line"
+        finish
+      fi
     fi
-    write_format_program
-    echo "[]" > "$TMP_ITEMS"
-    build_item "$((WALK_ITEM - 1))"
-    render_walk
-    echo
-    finish
     ;;
 
   html)

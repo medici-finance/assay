@@ -581,6 +581,223 @@ check "$(grep -qF '<article' "$HTML" 2>/dev/null && echo 1 || echo 0)" \
   "the empty page renders no cards" "a card was rendered"
 
 # ============================================================================
+# The screen (attention-budget/15) — --walk classifies every item first and puts only
+# GENUINE decisions to the driver. Every case is a fixture-shaped `gh` stub, exactly like
+# the W-series above; ASSAY_HUMAN_LOGIN_MAP is exported/unset around each run rather than
+# threaded through run_case, since it is read straight from the environment.
+# ============================================================================
+
+# screen_gh <dir> <comments-json> <body> — one urgent item (#10), with the given comments
+# array and body. The single-item shape isolates ONE classification path per case.
+screen_gh() {
+  local dir="$1" comments="$2" body="$3"
+  mkdir -p "$dir"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'case "$*" in\n'
+    printf '  *"issue view"*) jq -nc --arg b %s --argjson c %s '"'"'{body:$b, comments:$c}'"'"' ;;\n' \
+      "$(printf '%q' "$body")" "$(printf '%q' "$comments")"
+    printf '  *"--label needs-decision"*) printf %s %s ;;\n' \
+      "$(printf '%q' '%s')" \
+      "$(printf '%q' '[{"number":10,"title":"screen fixture","labels":[{"name":"needs-decision"}],"createdAt":"2026-01-01T00:00:00Z","url":"https://example.test/o/r/issues/10"}]')"
+    printf '  *) printf %s %s ;;\n' "$(printf '%q' '%s')" "$(printf '%q' '[]')"
+    printf 'esac\n'
+  } > "$dir/gh"
+  chmod +x "$dir/gh"
+}
+
+BODY_2OPT='## Options
+
+A. keep it as-is
+B. change it
+'
+BODY_1OPT='## Options
+
+A. the only workable choice
+'
+BODY_NOOPT='Some prose with no Options heading and no fork-test block.'
+BODY_REVDEFAULT='caught-by: a live check, not nothing
+default: A
+'
+BODY_REVDEFAULT_CLASSED='caught-by: a live check, not nothing
+default: A
+class: reversible-default
+'
+RELAY_ONLY='[{"author":{"login":"assay-desk-app[bot]"},"createdAt":"2026-01-10T00:00:00Z","body":"Ruling relayed from the driver (2026-01-10). Chosen option: A. On-behalf-of: human:ian"}]'
+RELAY_THEN_HUMAN='[{"author":{"login":"assay-desk-app[bot]"},"createdAt":"2026-01-10T00:00:00Z","body":"Ruling relayed from the driver (2026-01-10). Chosen option: A. On-behalf-of: human:ian"},{"author":{"login":"ada"},"createdAt":"2026-01-11T00:00:00Z","body":"ratified"}]'
+
+# ---------------------------------------------------------------- SCR1 ------
+echo "SCR1 — screen-already-ruled: a relay then a human ratification is not presented"
+
+w="$TMPROOT/scr-already-ruled"
+screen_gh "$w" "$RELAY_THEN_HUMAN" "$BODY_2OPT"
+export ASSAY_HUMAN_LOGIN_MAP="alex:ada"
+run_case "$w" --walk o/r
+unset ASSAY_HUMAN_LOGIN_MAP
+# One consolidated check, named exactly "screen-already-ruled" and nothing else that
+# would match it: the Verify table greps the suite's own output for this exact name and
+# wants a count of 1.
+check "$([[ "$RC" -eq 0 ]] \
+        && ! printf '%s' "$OUT" | grep -Eq 'question [0-9]+ of' \
+        && contains "$OUT" "screened: 1 already-ruled" \
+        && echo 0 || echo 1)" \
+  "screen-already-ruled" \
+  "exit $RC; stdout was: ${OUT:-<empty>}; stderr: ${ERR:-<empty>}"
+
+# ---------------------------------------------------------------- SCR2 ------
+echo "SCR2 — screen-relay-only: a bare desk relay, with no human reply, is still PRESENTED"
+
+w="$TMPROOT/scr-relay-only"
+screen_gh "$w" "$RELAY_ONLY" "$BODY_2OPT"
+export ASSAY_HUMAN_LOGIN_MAP="alex:ada"
+run_case "$w" --walk o/r
+unset ASSAY_HUMAN_LOGIN_MAP
+check "$(printf '%s' "$OUT" | grep -Eq '^o/r#10 — question 1 of 1$' \
+        && contains "$OUT" "screened: 0 already-ruled" \
+        && echo 0 || echo 1)" \
+  "screen-relay-only" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR3 ------
+echo "SCR3 — screen-no-fork-one-option: an Options section of exactly one entry is no-fork"
+
+w="$TMPROOT/scr-no-fork"
+screen_gh "$w" "[]" "$BODY_1OPT"
+run_case "$w" --walk o/r
+check "$(printf '%s' "$OUT" | grep -Eq 'question [0-9]+ of' && echo 1 || echo 0)" \
+  "screen-no-fork-one-option: a one-option item is never presented as a question" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" "screened: 0 already-ruled · 1 no-fork" && echo 0 || echo 1)" \
+  "screen-no-fork-one-option: the tail counts it as no-fork" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR4 ------
+echo "SCR4 — screen-no-options-stated: no Options section is not positive evidence — stays genuine"
+
+w="$TMPROOT/scr-no-options"
+screen_gh "$w" "[]" "$BODY_NOOPT"
+run_case "$w" --walk o/r
+check "$(printf '%s' "$OUT" | grep -Eq '^o/r#10 — question 1 of 1$' && echo 0 || echo 1)" \
+  "screen-no-options-stated: an item with no Options heading at all is PRESENTED" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" "options not yet stated — desk to fill" && echo 0 || echo 1)" \
+  "screen-no-options-stated: the placeholder options line is unchanged" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR5 ------
+echo "SCR5 — screen-reversible-default: caught-by (not nothing) + default + no class: line"
+
+w="$TMPROOT/scr-revdefault"
+screen_gh "$w" "[]" "$BODY_REVDEFAULT"
+run_case "$w" --walk o/r
+check "$(printf '%s' "$OUT" | grep -Eq 'question [0-9]+ of' && echo 1 || echo 0)" \
+  "screen-reversible-default: a reversible-default item is never presented as a question" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" "1 reversible-default" && echo 0 || echo 1)" \
+  "screen-reversible-default: the tail counts it as reversible-default" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR6 ------
+echo "SCR6 — screen-class-named-is-genuine: a class: line disqualifies reversible-default"
+
+w="$TMPROOT/scr-classed"
+screen_gh "$w" "[]" "$BODY_REVDEFAULT_CLASSED"
+run_case "$w" --walk o/r
+check "$(printf '%s' "$OUT" | grep -Eq '^o/r#10 — question 1 of 1$' && echo 0 || echo 1)" \
+  "screen-class-named-is-genuine: a caught-by/default item carrying its own class: line is PRESENTED, not screened" \
+  "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR7 ------
+echo "SCR7 — screen-humans-unknown: with no known-human source, already-ruled cannot fire"
+
+w="$TMPROOT/scr-humans-unknown"
+screen_gh "$w" "$RELAY_THEN_HUMAN" "$BODY_2OPT"
+unset ASSAY_HUMAN_LOGIN_MAP
+run_case "$w" --walk o/r
+check "$(printf '%s' "$OUT" | grep -Eq '^o/r#10 — question 1 of 1$' \
+        && contains "$OUT" "NOTICE" \
+        && echo 0 || echo 1)" \
+  "screen-humans-unknown" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR8 ------
+echo "SCR8 — screen-unread-is-genuine: an item the screen cannot read stays genuine, presented"
+
+w="$TMPROOT/scr-unread"
+mkdir -p "$w"
+cat > "$w/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  *"issue view"*) echo 'HTTP 403: Resource not accessible' >&2; exit 1 ;;
+  *"--label needs-decision"*) printf '%s' '[{"number":11,"title":"unreadable","labels":[{"name":"needs-decision"}],"createdAt":"2026-01-01T00:00:00Z","url":"https://example.test/11"}]' ;;
+  *) printf '%s' '[]' ;;
+esac
+STUB
+chmod +x "$w/gh"
+run_case "$w" --walk o/r
+check "$(printf '%s' "$OUT" | grep -Eq '^o/r#11 — question 1 of 1$' && contains "$OUT" "could-not-check" && echo 0 || echo 1)" \
+  "screen-unread-is-genuine: an unread item is genuine — presented, and says could-not-check" \
+  "stdout was: ${OUT:-<empty>}"
+check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" \
+  "screen-unread-is-genuine: the failed detail fetch still reddens the run" "got $RC"
+
+# ---------------------------------------------------------------- SCR9 ------
+echo "SCR9 — screen-numbering: question k of n counts GENUINE items only"
+
+w="$TMPROOT/scr-numbering"
+mkdir -p "$w"
+cat > "$w/gh" <<NUMSTUB
+#!/usr/bin/env bash
+case "\$*" in
+  *"issue view"*)
+    case "\$*" in
+      *" 1 "*) jq -nc --argjson c '$RELAY_THEN_HUMAN' --arg b '$BODY_2OPT' '{body:\$b, comments:\$c}' ;;
+      *" 2 "*) jq -nc --arg b '$BODY_1OPT' '{body:\$b, comments:[]}' ;;
+      *" 3 "*) jq -nc --arg b '$BODY_NOOPT' '{body:\$b, comments:[]}' ;;
+      *)       jq -nc --arg b 'A second plain genuine item.' '{body:\$b, comments:[]}' ;;
+    esac
+    ;;
+  *"--label needs-decision"*)
+    printf '%s' '[{"number":1,"title":"ruled","labels":[{"name":"needs-decision"}],"createdAt":"2026-01-01T00:00:00Z","url":"https://example.test/1"},{"number":2,"title":"no fork","labels":[{"name":"needs-decision"}],"createdAt":"2026-01-02T00:00:00Z","url":"https://example.test/2"},{"number":3,"title":"genuine one","labels":[{"name":"needs-decision"}],"createdAt":"2026-01-03T00:00:00Z","url":"https://example.test/3"},{"number":4,"title":"genuine two","labels":[{"name":"needs-decision"}],"createdAt":"2026-01-04T00:00:00Z","url":"https://example.test/4"}]'
+    ;;
+  *) printf '%s' '[]' ;;
+esac
+NUMSTUB
+chmod +x "$w/gh"
+export ASSAY_HUMAN_LOGIN_MAP="alex:ada"
+run_case "$w" --walk --item 1 o/r
+first_header=$(printf '%s\n' "$OUT" | head -1)
+run_case "$w" --walk --item 2 o/r
+second_header=$(printf '%s\n' "$OUT" | head -1)
+run_case "$w" --walk --item 3 o/r
+third_rc="$RC"
+unset ASSAY_HUMAN_LOGIN_MAP
+check "$([[ "$first_header" == "o/r#3 — question 1 of 2" ]] && echo 0 || echo 1)" \
+  "screen-numbering: --item 1 is the first GENUINE item, numbered 1 of 2 (not 1 of 4)" \
+  "got: $first_header"
+check "$([[ "$second_header" == "o/r#4 — question 2 of 2" ]] && echo 0 || echo 1)" \
+  "screen-numbering: --item 2 is the second genuine item, numbered 2 of 2" "got: $second_header"
+check "$([[ "$third_rc" -eq 1 ]] && echo 0 || echo 1)" \
+  "screen-numbering: --item 3 is out of range against the GENUINE count (2), not the raw queue (4)" \
+  "got $third_rc"
+
+# ---------------------------------------------------------------- SCR10 -----
+echo "SCR10 — no-screen-flag: --no-screen is byte-identical to the pre-screen rendering"
+
+w="$TMPROOT/scr-no-screen"
+make_gh_walk "$w"
+export ASSAY_HUMAN_LOGIN_MAP="alex:ada"
+run_case "$w" --walk --item 1 o/r
+screened_out="$OUT"
+run_case "$w" --walk --no-screen --item 1 o/r
+legacy_out="$OUT"
+unset ASSAY_HUMAN_LOGIN_MAP
+# On this fixture nothing is actually screened out, so the ONLY difference screening
+# makes is the one inserted tail line — removing exactly that (it always starts
+# "screened:", a token that never otherwise appears in the format's own text) from the
+# screened output must reproduce the legacy one, byte for byte. One consolidated check,
+# named exactly "no-screen-flag" for the Verify table's grep -c 1.
+screened_minus_tail=$(printf '%s\n' "$screened_out" | grep -v '^screened:')
+check "$(! contains "$legacy_out" "screened:" \
+        && [[ "$screened_minus_tail" == "$legacy_out" ]] \
+        && echo 0 || echo 1)" \
+  "no-screen-flag" \
+  "legacy: ${legacy_out}
+screened-minus-tail: ${screened_minus_tail}"
+
+# ============================================================================
 # The FLOW model and its two renderings — `--flow` and `--flow --html` (issue #224
 # follow-up).
 #

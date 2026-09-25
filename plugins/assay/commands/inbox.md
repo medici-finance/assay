@@ -1,6 +1,6 @@
 ---
 description: What's waiting on you across your configured repos — needs-decision, question, help wanted, and urgent issues, sorted urgency-then-age. Add --walk to be asked one decision at a time, --html FILE to read them as a page, or --flow to see where the pipeline is stuck. Read-only, works from any terminal.
-argument-hint: "[--walk [--item K] | --html OUT.html | --flow [--html OUT.html]] [owner/repo ...]"
+argument-hint: "[--walk [--item K] [--screened] | --html OUT.html | --flow [--html OUT.html]] [--no-screen] [owner/repo ...]"
 ---
 
 # assay:inbox
@@ -40,7 +40,8 @@ walk and the page can never disagree about what is waiting or which item is firs
 |---|---|---|
 | *(none)* | The terminal table — one row per item. | `deskinbox` |
 | `--walk` | Prints **one** item in the five-part decision format: `<repo>#<N> — question k of n`, then **Context** (3–6 lines: what it is, why it is blocked on a human, what it unblocks, the evidence links), **Options** (lettered, recommended default first and labelled, at most four), **Reply shape** (what a one-word answer must contain), **Verification** (what the desk checks after the act, and what it moves to next). Prints item 1. | `deskinbox walk` |
-| `--item K` | With `--walk`, and implying it: print item **K** (1-based) instead of item 1. Out of range is an error — never a silent empty. | `deskinbox walk --item K` |
+| `--item K` | With `--walk`, and implying it: print the **K**th GENUINE item (1-based) instead of the first. Out of range (against the genuine count) is an error — never a silent empty. | `deskinbox walk --item K` |
+| `--screened` | With `--walk`: instead of one item, prints every item **the screen classified out** — repo#number, class, and the evidence — never a standalone mode. Only the bash oracle implements the screen today; `deskinbox` does not yet classify, so its table/`--walk` still show every item unclassified until it is ported. | `assay-inbox.sh --walk --screened` |
 | `--html OUT.html` | Writes the whole queue to `OUT.html` as cards in that same five-part format, followed by the **Flow** section below. One self-contained file: inline CSS, no scripts, no external assets, light/dark via `prefers-color-scheme`. The only URLs on the page are the issue links. No server. | `assay-inbox.sh --html` (not yet ported — windows-port/15) |
 | `--flow` | A different question — *how is the system performing*. Prints the pipeline flow model as a terminal table and exits. See "The Flow page" below. | `assay-inbox.sh --flow` (not yet ported — windows-port/15) |
 | `--flow --html OUT.html` | The same model as a left-to-right inline-SVG stage diagram, that section alone. | `assay-inbox.sh --flow --html` (not yet ported — windows-port/15) |
@@ -53,6 +54,13 @@ human at a prompt, and a CI job all use the same renderer.
 
 `--walk` and `--html` are alternative renderings; passing both is refused rather than silently
 resolved to one.
+
+**The screen.** `--walk` (bash oracle) classifies every item first and puts only a
+*genuine* decision to the driver — an already-ruled, no-fork, or reversible-default item is
+never asked, only counted in a tail line under the question (`--screened` lists them in
+full); see the [`assay:ask-decision`](../skills/ask-decision/SKILL.md) skill for the four
+classes and what the desk does with each. `--no-screen` turns it off, one flag back to
+showing every item exactly as before the screen existed.
 
 ### Where Context and Options come from
 
@@ -192,7 +200,9 @@ ordering exists to surface. Hitting the cap is reported, not swallowed.
 /assay:inbox                          # uses .assay/repos.txt, else origin
 /assay:inbox example-org/app example-org/service   # one or more repos
 /assay:inbox --walk                   # ask me about the first decision
-/assay:inbox --walk --item 3          # ask me about the third
+/assay:inbox --walk --item 3          # ask me about the third GENUINE decision
+/assay:inbox --walk --screened        # what did the screen classify out, and why?
+/assay:inbox --no-screen              # the screen misjudged — show everything, as before
 /assay:inbox --html ~/inbox.html      # write the whole queue as a page
 /assay:inbox --flow                   # where is the pipeline stuck?
 /assay:inbox --flow --root ../app --root ../service   # two cells, plus the fleet total
@@ -220,9 +230,12 @@ ordering exists to surface. Hitting the cap is reported, not swallowed.
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --walk --item 2 "owner/repo1"
    ```
 
-   **`--html` and `--flow`** still run the bash oracle (not yet ported — windows-port/15):
+   **`--html`, `--flow`, `--screened` and `--no-screen`** still run the bash oracle —
+   `deskinbox` does not yet classify an item (`--html`/`--flow`: windows-port/15; the screen
+   itself has no `deskinbox` port yet either):
    ```
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --html "$HOME/inbox.html" "owner/repo1"
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --walk --screened "owner/repo1"
    ```
    (`CLAUDE_PLUGIN_ROOT` resolves to this plugin's installed root; if unset, resolve the
    script relative to this command file's own `../scripts/assay-inbox.sh`.)

@@ -76,9 +76,38 @@ waiting downstream. So:
 - Never reorder to put the easy questions first. The queue is drained to unblock work, not to
   maximise the count of answers.
 
-## The format — five parts, every time
+## The screen — four classes, and only one of them is asked
 
-The script renders exactly this; when you compose an item by hand, compose the same shape.
+Before any item reaches the format below, the inbox classifies it. `--walk` puts only
+**genuine** decisions to the driver; the other three classes are never asked, and never
+silently dropped — each is counted in a tail line under every question and listed in full
+by `--walk --screened`. Classes are tested in this order; the first that holds on
+POSITIVE evidence wins, otherwise the item is genuine — an item the tool cannot read or
+cannot classify (no known human-login list, say) is always genuine, because screening
+only ever happens on evidence, never on its absence.
+
+1. **already-ruled** — a comment from a known human login lands after the desk's own
+   relay ("Ruling relayed from the driver…") or after the point the options were put. A
+   desk relay ALONE is never a ruling — this is the exact mistake this screen exists to
+   catch. **Desk action:** relabel and close per the label vocabulary, citing the ruling
+   comment; never re-ask.
+2. **no-fork** — the Options section (or the fork-test block) parses to fewer than two
+   entries. One workable option is not a fork; it is a plan already picked. **Desk
+   action:** proceed or re-route, and notify — do not park it on this skill.
+3. **reversible-default** — the item carries a live `caught-by:`, a `default:`, and no
+   `class:` line and no one-way term: the desk has already proceeded behind a gate the
+   driver still holds a veto over. **Desk action:** proceed behind the gate; notify, and
+   let the veto stand.
+4. **genuine** — everything else. **Desk action:** ask, per the format below.
+
+The two floors at the end of this skill ("never ask a question twice", "never ask a
+question the desk can answer") are this screen, not a habit to remember by hand — the
+tool, not recall, is what tests classes 1–3 before anything is put to the driver.
+
+## The format — five parts for every GENUINE item
+
+The script renders exactly this for every item it classifies genuine; when you compose
+an item by hand, compose the same shape.
 
 1. **Header** — `<repo>#<N> — question k of n`. The position is load-bearing: it tells the
    driver how long this will take, which is what makes it possible to say yes to starting.
@@ -91,7 +120,10 @@ The script renders exactly this; when you compose an item by hand, compose the s
 3. **Options** — lettered, **the recommended default FIRST and labelled "recommended"**, each
    with **its consequence in one clause**. Never more than four. A "do nothing" option only
    when doing nothing is genuinely viable — a fake option to look balanced wastes the turn.
-   An option with no stated consequence is not an option, it is a label.
+   An option with no stated consequence is not an option, it is a label. **An item with one
+   workable option is not asked** — the screen above classifies it `no-fork` before it ever
+   reaches this format; never pad a single real option with a second one just to fill the
+   list.
 4. **Reply shape** — exactly what the answer must contain: a letter, a name, "done", "merge
    it". **The driver should be able to answer in one word.** If your question cannot be
    answered in one word, it is two questions or an unfinished one.
@@ -147,7 +179,7 @@ the driver said — which is exactly the artifact a confidently-worded comment c
 Ratification is what makes the distinction visible on the issue itself, independent of how the
 relaying session worded anything: the issue carries the state, not the prose.
 
-The ratification relay comment has five parts, every time:
+The ratification relay comment has five parts, without exception:
 
 1. **The relay header.** Names the driver's answer as relayed, with the date it was given.
 2. **The disclaimer.** States explicitly that this comment is a relay RECORD and not itself the
@@ -217,6 +249,12 @@ recorded on the issue as a relay.
   still waiting) and do not summarise it from memory.
 - **Never ask a question the desk can answer.** Anything resolvable by reading the repo, the
   CI log, or the spec is desk work, and putting it in this queue spends the driver's turn on
-  the desk's homework.
+  the desk's homework. The `no-fork` and `reversible-default` classes in "The screen" above are
+  this floor made mechanical — an item with one workable option, or already proceeding behind a
+  held gate, is desk work, not a question.
 - **Never ask a question twice.** Before presenting an item, check whether a ruling is already
-  recorded on it. A re-asked decision reads as the desk not having listened.
+  recorded on it. A re-asked decision reads as the desk not having listened. The `already-ruled`
+  class above is this floor made mechanical, not a check to remember by hand: it is what caught
+  the driver being asked to re-confirm a ruling already given, and being walked through a
+  settled design as "do it / drop it" — the incident that is this screen's whole reason for
+  existing. Trust the tool's classification over your own recall of the thread.
