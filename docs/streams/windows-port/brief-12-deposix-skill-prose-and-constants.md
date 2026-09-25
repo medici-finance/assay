@@ -87,6 +87,50 @@ single-point-of-failure: for the prose half the control is the skillslint PARITY
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 7/11 pass, 4 could-not-check, 0 fail — 2026-09-23 claude-opus-4-8-verifier
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|-------------|---|
+| 1 | grep -n -e 'mktemp' -e '/tmp/' -e '~/.config' plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/pr-shepherd/SKILL.md plugins/assay/skills/worker-desk/SKILL.md \| grep -vc 'desk-shell.md' \|\| true | 0 — every surviving mention points at the mechanism section | PASS — exit 0; output `0`; no non-desk-shell hit in any of the three bodies | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | grep -c -e '## Scratch files' -e '## Config home' plugins/assay/references/desk-shell.md | 2 | PASS — exit 0; output `2` — both sections present | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | deskboard actions --help 2>&1 \| grep -c -- '--out' | >= 1 | PASS — exit 0; output `3`; help text documents --out at deskboard/main.go:211 (built from merged-main source). Note: the installed shim binary on PATH is stale and returns 0. | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | cd tools/desk && go test -count=1 -run 'TestHookInstallUnix' ./cmd/deskpushguard/ | PASS — writes pre-push with #!/bin/sh, no /opt literal | PASS — exit 0; `ok ...deskpushguard 0.386s` | 2026-09-23 | claude-opus-4-8-verifier |
+| 5 | cd tools/desk && GOOS=windows go test -count=1 -run 'TestHookInstallWindows' ./cmd/deskpushguard/ | PASS — writes the pre-push.cmd pair | COULD-NOT-CHECK — environment: a Windows PE test binary cannot exec on darwin (`exec format error`). The binary cross-compiles AND vets clean (GOOS=windows go test -c rc 0; go vet rc 0); designed to run on the Windows CI leg per the brief. Corroborated by rows 4 and 11, which pass and exercise the shared writeHooks path. | 2026-09-23 | claude-opus-4-8-verifier |
+| 6 | git grep -n '"/opt/desk-tools' HEAD -- 'tools/desk/**/*.go' \| grep -vc _test.go \|\| true | 1 — sole hit is cellctl's DESK_TOOLS_BIN default | PASS — exit 0; output `1`; the one hit is tools/desk/cmd/cellctl/cell.go:259 (the sanctioned out-of-scope survivor). deskrelease github.go carries /opt only in comments, no code literal | 2026-09-23 | claude-opus-4-8-verifier |
+| 7 | cd tools/skillslint && go test -count=1 -run 'TestPosixTokenRow' ./... | PASS (fail-first fixture) | PASS — exit 0; `ok ...skillslint 0.221s` | 2026-09-23 | claude-opus-4-8-verifier |
+| 8 | deskboard actions --out /tmp/a.json && reviewloop plan --actions /tmp/a.json --dry-run; echo rc=$? | rc=0 | COULD-NOT-CHECK — environment: the offline envelope forbids `deskboard actions` as a live composed run (it enumerates open PRs across the repo set = live GitHub). Both halves proven OFFLINE: deskboard actions unit tests pass (go test -run Action ./cmd/deskboard rc 0) and reviewloop plan --actions/--dry-run tests pass (go test -run Plan ./cmd/reviewloop rc 0). | 2026-09-23 | claude-opus-4-8-verifier |
+| 9 | statusgen --root . --consumers windows-port/12; echo $? | 0 | COULD-NOT-CHECK — merged tree; exit 0 but the instrument checked nothing: "no brief files in the diff against 50989dbc... — nothing to corroborate". On merged main the brief's own diff is empty, so no consumers entry was corroborated; the exit code alone does not meet "Consumers routing corroborated". Same condition as desk-supervision/13 row 10, contributor-trust/04 row 12 and graph-execution/07 row 8. Not a pass, not a fail. | 2026-09-23 | claude-opus-4-8-verifier |
+| 10 | statusgen --root . --lint | 0 PROBLEMs | COULD-NOT-CHECK — hermetic witness owed (darwin): the check:ci hermetic re-exec needs Linux unshare --net; host is darwin. Direct non-hermetic run: exit 0, `LINT: PASS`, PROBLEM count 0 (501 advisory NOTICEs, not gating). | 2026-09-23 | claude-opus-4-8-verifier |
+| 11 | cd tools/desk && go test -count=1 -run 'TestHookInstall.*AndForeignRefusal' ./cmd/deskpushguard/ | PASS — refuses foreign hook without --force, overwrites with --force | PASS — exit 0; `ok ...deskpushguard 0.355s` (green run 2026-09-23, claude-opus-4-8-verifier) (`go test -list 'TestHookInstall.*AndForeignRefusal'` selects exactly the one test this row names — the idempotent-and-foreign-refusal hook-install test.) MUTATION half, run 2026-09-25 at merge commit e7a314b8 (hookinstall.go md5 b00bdbb373c20c6271dceb310c961dec, byte-identical to 50989dbc): BASELINE exit 0 `ok`. MUTATION: in writeShimIfClear (hookinstall.go line 160) changed "if !force {" to "if false && !force {", so a foreign hook is silently clobbered; the same command (with -v) REDDENED, exit 1: "hookinstall_test.go:127: writeHooks over a foreign hook without --force should refuse, got no error". Restored with git checkout; md5 b00bdbb373c20c6271dceb310c961dec again (byte-identical), git status clean; re-run exit 0 `ok`. | 2026-09-25 | claude-opus-5-5-verifier |
+
+Rows observed passing: 7/11 (1,2,3,4,6,7,11). Could-not-check: 4 (5,8,9,10) — rows 5 and 8 are
+environment-limited (Windows exec on darwin; offline envelope) each corroborated by an executed
+offline proof, row 9 is the consumers instrument on merged main where the brief's diff is empty (it
+checked nothing), and row 10 is a check:ci hermetic re-exec that needs a Linux runner though its
+direct run passed; none observed failing. Row 11's mutation half is recorded: the foreign-hook
+refusal reddens when removed (mutation run 2026-09-25 by claude-opus-5-5-verifier).
+
+**Risk-bearing value (kit §4 — enumerate → rank → derive).**
+
+Enumerated every literal this item's diff introduces or changes:
+- `name = "desktoken"` (and `"desktoken.exe"` on Windows) @ tools/desk/cmd/deskrelease/github.go:70,72 — the binary filename `resolveDeskTokenPath` resolves (co-located dir then PATH). This REPLACES the removed `const deskTokenPath = "/opt/desk-tools/bin/desktoken"`.
+- `"/opt/desk-tools/bin"` @ tools/desk/cmd/cellctl/cell.go:259 — the DESK_TOOLS_BIN default. Out of scope, unchanged by this brief, sanctioned survivor of Verify row 6.
+- skillslint posix-token pattern `mktemp|/tmp/|~/.config` — advisory lint pattern literal.
+- desk-shell §Config home rule `os.UserConfigDir()/assay` — a path-resolution rule, not a numeric constant.
+
+Ranked by irreversibility: all four are reversible by edit + redeploy; none is an irreversible
+financial / settlement / authority-binding value. Item metadata: regulatory/customer/irreversible/
+sensitive-data all no, gate:model. Top-ranked is the desktoken resolution (maintainer-only release
+tool; fail-closed on miss, pinned by TestTokenMintFailureFailsClosed).
+
+RISK-VALUE: DERIVED — name = "desktoken" @ tools/desk/cmd/deskrelease/github.go:70 — the resolved
+binary is the identity-mint tool this repo ships under exactly that name; resolution is
+co-located-directory-then-PATH and fail-closed when neither yields it, so a wrong value cannot
+silently mint against the wrong binary and is reversible by edit + redeploy (irreversible=no). The
+other enumerated entries are reversible path / pattern / rule literals, none irreversible; N/A does
+not apply because enumeration was non-empty.
+
+
 ## Review
 Gate: **model**. Reviewer's questions: (1) is the prose diff a pure how-rename — same steps, same
 order? (2) does the unix hook still work from a linked worktree (core.hooksPath resolution)?

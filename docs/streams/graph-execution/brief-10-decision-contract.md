@@ -79,6 +79,27 @@ The flow row must call production contract code across the seam; isolated serial
 
 <!-- Independent verifier records command, exit, key output/digest, subject revision, environment and date. No implementation or execution evidence is asserted by this authoring change. -->
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 0/3 pass, 3 could-not-check, 0 fail — 2026-09-23 claude-opus-4-8-verifier
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|-------------|---|
+| 1 | cd tools/desk && GOWORK=off go test -count=1 -v -run '^TestDecisionAssessment' ./... | exit 0; PASS for the base decision-assessment test, no "[no tests to run]" for the owning package | COULD-NOT-CHECK — hermetic witness owed (darwin): the sanctioned check:ci network-off sandbox needs Linux unshare --net; host is darwin (re-executed network-off by design). Direct non-hermetic run: exit 0; `--- PASS: TestDecisionAssessment` (the unanchored prefix also matches, and the direct run also passed, the two sibling decision-assessment tests rows 2 and 3 name); owning deskkit package "ok ... 2.9s" with no "[no tests to run]". | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | cd tools/desk && GOWORK=off go test -count=1 -v -run '^TestDecisionAssessment.*MalformedDefaults' ./... | exit 0; PASS for the malformed-defaults negative test, no "[no tests to run]" for the owning package | COULD-NOT-CHECK — hermetic witness owed (darwin): check:ci network-off sandbox needs Linux unshare --net; host is darwin. Direct non-hermetic run: exit 0; the named --- PASS line for this row's test, with all 13 negative subtests passing (unknown label, unknown shadow label, NaN, infinite, out-of-range, invalid normalization, mismatched subject, stale input, mismatched schema, uncalibrated-carries-probability, abstained-carries-probabilities, budget overrun, inapplicable calibration). (`go test -list '^TestDecisionAssessment.*MalformedDefaults'` selects exactly the one test this row names — the malformed-defaults negative test.) | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | cd tools/desk && GOWORK=off go test -count=1 -v -run '^TestDecisionAssessment.*DecideJournal' ./... | exit 0; PASS for the decide-journal test, no "[no tests to run]" for the owning package | COULD-NOT-CHECK — hermetic witness owed (darwin): check:ci network-off sandbox needs Linux unshare --net; host is darwin. Direct non-hermetic run: exit 0; the named --- PASS line for this row's test, with all 4 flow subtests passing; the test calls real Question.Decide through the prediction advisor with a recording journal (well-formed advised+journalled; malformed -> default + error outcome; abstention -> default via vocabulary check; unjournallable advice discarded -> default). (`go test -list '^TestDecisionAssessment.*DecideJournal'` selects exactly the one test this row names — the decide-journal test.) | 2026-09-23 | claude-opus-4-8-verifier |
+
+RISK-VALUE enumeration (kit §4 — enumerate, rank by irreversibility, derive top-ranked). Literals introduced/changed by the diff, each a literal at file:line:
+
+- the prediction-normalization tolerance constant = 1e-6 @ tools/desk/internal/deskkit/decisionassessment.go:68 (the sum-to-1 rounding tolerance)
+- probability domain bounds 0 and 1 @ tools/desk/internal/deskkit/decisionassessment.go:165 (prob < 0 || prob > 1)
+- justification truncation length = 280 @ tools/desk/internal/deskkit/decisionassessment.go:258
+
+Rank: none is irreversible (all reversible by edit + redeploy; item risk metadata is all "no", irreversible: no). Top-ranked by consequence is the normalization tolerance (the one genuinely tuned threshold); the probability bounds are definitional; the truncation length is a reversible display knob (ranks last, no derivation needed).
+
+- RISK-VALUE: DERIVED — the prediction-normalization tolerance constant = 1e-6 @ tools/desk/internal/deskkit/decisionassessment.go:68 — this bounds |sum(calibrated probs) - 1|. Accumulated float64 rounding over a handful of O(1) terms is on the order of machine epsilon (~2.2e-16) times the term count, i.e. ~1e-15, so 1e-6 absorbs legitimate rounding by ~9 orders of magnitude while still rejecting a genuinely unnormalized distribution (the negative row uses sum 0.7). Fail-safe either way: too tight rejects valid predictions into the conservative default; too loose admits only negligibly-off distributions; reversible edit + redeploy.
+- RISK-VALUE: DERIVED — probability domain bounds 0 and 1 @ tools/desk/internal/deskkit/decisionassessment.go:165 — a probability is definitionally within [0,1]; the guard rejects any value outside that closed interval. First principles, no tuning.
+- RISK-VALUE: N/A for the truncation length 280 — a reversible display-only justification cap, an operational knob out of scope by design.
+
+
 ## Review
 
 Gate: model. Confirm scope, consumer routing, negative-path independence and exact-subject evidence; a confidence score cannot enlarge permission.

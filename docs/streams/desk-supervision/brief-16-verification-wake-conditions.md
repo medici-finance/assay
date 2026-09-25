@@ -92,6 +92,48 @@ Pre-mortem → detection: False suppression hides executable work: rows 2 and 3.
 
 Pending implementation and independent verification. No acceptance result claimed by authoring.
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 0/4 pass, 4 could-not-check, 0 fail — 2026-09-23 claude-opus-4-8-verifier
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|-------------|---|
+| 1 | cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run '^TestVerifyWakeUnchanged.*VisibleWait$' -v -count=1 | exit 0; named PASS; same failed input+blocker gives zero dispatches, one visible WAIT, incl. after restart | COULD-NOT-CHECK — hermetic witness owed (darwin): the check:ci network-off sandbox needs Linux unshare --net; host is darwin. Direct non-hermetic run: exit 0; the named --- PASS line for this row's test. (`go test -list '^TestVerifyWakeUnchanged.*VisibleWait$'` selects exactly the one test this row names — the unchanged-input-is-a-visible-wait test.) | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run '^TestVerifyWakeRelevantChange$' -v -count=1 | exit 0; named PASS; changed relevant file/Verify def/tool/completed action wakes work; unrelated commit does not | COULD-NOT-CHECK — hermetic witness owed (darwin): network-off sandbox needs Linux unshare --net; host is darwin. Direct non-hermetic run: exit 0; `--- PASS: TestVerifyWakeRelevantChange`. | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run '^TestVerifyWakeUnknownAndLegacy$' -v -count=1 | exit 0; named PASS; unreadable deps and legacy records distinct from empty/pass; no fabricated unchanged claim | COULD-NOT-CHECK — hermetic witness owed (darwin): network-off sandbox needs Linux unshare --net; host is darwin. Direct non-hermetic run: exit 0; `--- PASS: TestVerifyWakeUnknownAndLegacy`. | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run '^TestVerifyWakePartialRows$' -v -count=1 | exit 0; named PASS; one newly-runnable row executes without repeating held rows; no partial result closes the whole brief | COULD-NOT-CHECK — hermetic witness owed (darwin): network-off sandbox needs Linux unshare --net; host is darwin. Direct non-hermetic run: exit 0; `--- PASS: TestVerifyWakePartialRows` (dry-run repair-obligation records emitted, needs-assignment). | 2026-09-23 | claude-opus-4-8-verifier |
+
+Witness note: statusgen verifyrun --brief docs/streams/desk-supervision/brief-16-verification-wake-conditions.md
+returned could-not-run for all four check:ci rows on this darwin host (the network-off sandbox uses
+unshare --net, a Linux facility). Recorded verbatim as could-not-check per the three-state rule: not
+treated as a fail, not treated as a pass. verifyrun appended its witness table to the brief's ##
+Evidence section in the verifier worktree (left modified and uncommitted for the desk to read).
+
+RISK-VALUE: DERIVED — SchemaWakeV1 = "verify-wake-v1" @ tools/desk/internal/deskkit/verifywake.go:35 — the schema discriminator that separates a complete receipt from a legacy one; correct because it is a stable, unique tag and the validator treats its absence as legacy (r.Schema != SchemaWakeV1 -> unclassified), matching the brief contract "Legacy or incomplete receipts remain visibly unclassified". Reversible (edit + redeploy) and grants no completion authority.
+
+RISK-VALUE ENUMERATION (mechanical, step 1 — non-empty; every entry a literal at file:line):
+- SchemaWakeV1 = "verify-wake-v1" @ tools/desk/internal/deskkit/verifywake.go:35
+- BlockerImplementation = "implementation" @ tools/desk/internal/deskkit/verifywake.go:41
+- BlockerCheckDef = "check-definition" @ tools/desk/internal/deskkit/verifywake.go:42
+- BlockerHumanAction = "human-action" @ tools/desk/internal/deskkit/verifywake.go:43
+- BlockerEnvironment = "environment" @ tools/desk/internal/deskkit/verifywake.go:44
+- BlockerUnknown = "unknown" @ tools/desk/internal/deskkit/verifywake.go:45
+- WakeRelevantInputChanged = "relevant-input-changed" @ tools/desk/internal/deskkit/verifywake.go:51
+- WakeReferencedActionDone = "referenced-action-completed" @ tools/desk/internal/deskkit/verifywake.go:52
+- WakeDeadlineReached = "declared-deadline-reached" @ tools/desk/internal/deskkit/verifywake.go:53
+- WakeExplicitRecheck = "explicit-recheck-with-reason" @ tools/desk/internal/deskkit/verifywake.go:54
+- inputKeyTool = "tool" @ tools/desk/internal/deskkit/verifywake.go:348
+- inputKeyFilePrefix = "file:" @ tools/desk/internal/deskkit/verifywake.go:349
+
+RANK (by irreversibility): all entries are string vocabulary tags, not numeric thresholds, bounds,
+tolerances, ratios, timeouts, limits, or authority bindings. Every one is reversible by an edit and
+a redeploy, and by the brief's own SPOF note ("A scheduling receipt can never authorize completion or
+a write") none carries irreversible authority. The blocker-kind and wake-predicate vocabularies are
+copied verbatim from the brief's Interface contract (blocker kinds: implementation, check-definition,
+human-action, environment, unknown; wake predicates: relevant-input-changed,
+referenced-action-completed, declared-deadline-reached, explicit-recheck-with-reason), so each matches
+its spec source. No irreversible risk-bearing value exists in the enumerated scope. Item risk
+metadata is all "no", gate model, irreversible "no".
+
+
 ## Review
 
 Gate: model. Review the negative paths, migration compatibility and limits of enforcement. Any newly discovered need to alter authority is separate human-gated scope, not an implicit part of this brief.

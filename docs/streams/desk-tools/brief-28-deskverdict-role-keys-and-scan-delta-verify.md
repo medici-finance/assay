@@ -196,6 +196,42 @@ restored byte-identical — `git diff` clean afterward) — not merely described
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
+### Non-implementer verifier run — VERIFY: FAIL — 6/7 pass, 0 could-not-check, 1 fail — 2026-09-23 claude-opus-4-8-verifier
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|-------------|---|
+| 1 | `cd tools/desk && go test -run Verdict ./internal/deskkit/ && go test -run Canonical ./internal/deskkit/ && go test -run WrongKey ./internal/deskkit/ && go test -run Reflow ./internal/deskkit/ && go test -run DeriveAndParse ./internal/deskkit/ && go test -run PubkeyVarForRole ./internal/deskkit/ && go test -run Role ./internal/deskkit/` | exit 0 — pre-existing verdict tests plus the six new role tests | PASS — exit 0 — all seven chained package runs report ok (deskkit) | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | `cd tools/desk && go test ./cmd/deskverdict/... -v` | exit 0 — pre-existing CLI tests plus the seven new issue-loop/role CLI tests | PASS — exit 0 — ok; verbose shows all 16 CLI tests PASS incl. CLIIssueLoopRoundtrip, CLIRoleMismatchExit1, CLISignUnknownKeyExit5, CLIVerifyUnknownKeyExit6, CLIIssueLoopEnvVarBase64, CLISignIssueLoopPEMFromEnv, and the no-pubkey-configured issue-loop CLI test that exits 6 | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | `cd statusgen && go test -run ScanDelta . -v` | exit 0 — 14 tests (roundtrip + six negative fixtures + four sweep/gate/apply/flood/skip) | PASS — exit 0 — ok; verbose shows exactly 14 ScanDelta tests, all PASS (roundtrip-byte-identical, same-repo-refused, author-contradicted, author-unreadable-accepted, container-not-issue-loop, wrong-role, wrong-key, edited-body, no-pubkey, unsupported-class, plus 4 run-transcribe sweep tests) | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | `cd statusgen && go test -run TranscribeScan . && go test -run Verdict . && go test -run PubkeyVar .` | exit 0 — pre-existing same-repo R-7 lane + R-6 verdict-lane suites unaffected | PASS — exit 0 — all three package runs report ok (statusgen) | 2026-09-23 | claude-opus-4-8-verifier |
+| 5 | `test ! -e .github/verify && test -z "$(git ls-files "*.pem" "*.key" "*issue-loop-pubkey*")"` | exit 0 — no key material path of any kind in the tree | PASS — exit 0 — .github/verify absent; git ls-files for pem/key/issue-loop-pubkey returns empty | 2026-09-23 | claude-opus-4-8-verifier |
+| 6 | `cd tools/desk && gofmt -l cmd/deskverdict/ internal/deskkit/verdict.go internal/deskkit/verdict_test.go && cd ../statusgen && gofmt -l transcribescan.go transcribeverdict.go transcribeverdict_test.go transcribescandelta_test.go main.go` | exit 0, empty output (gofmt-clean) | FAIL — exit 1 — CHECK-DEFINITION DEFECT: the second cd targets ../statusgen relative to tools/desk (i.e. tools/statusgen) which does not exist; shell aborts with "no such file or directory: ../statusgen" before the second gofmt runs. Corrected to ../../statusgen the whole command is exit 0 with empty output (both gofmt -l calls report nothing). The deliverable is gofmt-clean; only the brief command path is wrong. verifyrun witness independently recorded this row as fail exit=1. | 2026-09-23 | claude-opus-4-8-verifier |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestRoleMismatch.*RefusedBeforeCrypto$' -count=1 -v` | exit 0 baseline; MUTATION (delete the declared-role check block in VerifyVerdictBodyForRole) must redden | PASS — BASELINE exit 0. MUTATION: deleted the "if declared := extractDeclaredRole(body); declared != wantRole { return VerdictRefused, ... }" block at verdict.go lines 453-455; test REDDENED (exit 1) with "role mismatch must be REFUSED even with a cryptographically valid signature, got 0 (verified: signature matches the canonical verdict payload)". Restored byte-identical; git status clean; re-run exit 0. The second trust layer (declaration, independent of crypto) genuinely reddens when removed. (`go test -list '^TestRoleMismatch.*RefusedBeforeCrypto$'` selects exactly the one test this row names — the role-mismatch-refused-before-crypto test.) | 2026-09-23 | claude-opus-4-8-verifier |
+
+RISK-VALUE (kit §4 — enumerate → rank → derive). FAIL-SAFE trigger fired: this diff introduces
+literals in a trust/signing primitive (authority bindings). Full enumeration of literals this
+brief introduces/changes or names in Deliverables:
+
+- role identifier issue-loop @ tools/desk/internal/deskkit/verdict.go:93 and statusgen/transcribescan.go:671 (scanDeltaWantRole)
+- role identifier verifier @ tools/desk/internal/deskkit/verdict.go:92
+- pubkey variable name ASSAY_ISSUE_LOOP_PUBKEY @ tools/desk/internal/deskkit/verdict.go:108 (IssueLoopPubkeyVar) and statusgen/transcribescan.go:667 (scanDeltaPubkeyVar)
+- verify-unknown-role exit code = 6, sign-unknown-role exit code = 5 (behavioural contract, tested)
+- crypto algorithm RS256 @ tools/desk/internal/deskkit/verdict.go:69 — PRE-EXISTING (verdict-lane/01), reused not changed
+- flood threshold = 25 @ statusgen/transcribescan.go:59 (transcribeFloodThreshold) — PRE-EXISTING R-7 cl.6 constant, only reused by this brief
+
+Ranked by irreversibility: NOTHING here is irreversible. Every literal is a string identifier
+or a reversible knob, and every wrong value fails CLOSED (refuse / could-not-check / red test),
+never a silent trust bypass — that fail-closed property is exactly what row 7's mutation proves.
+Top-ranked entries, derived:
+
+- RISK-VALUE: DERIVED — scanDeltaWantRole = "issue-loop" @ statusgen/transcribescan.go:671 (= VerdictRoleIssueLoop @ verdict.go:93) — right because it must equal the roster's existing role-binding key issue-loop (bound to the issue-loop App), which the code reads at transcribescan.go:774 via RoleBots["issue-loop"]; the brief's Context facts confirm that binding already exists. A different string would fail closed at container-author resolution, never silently accept.
+- RISK-VALUE: DERIVED — IssueLoopPubkeyVar = "ASSAY_ISSUE_LOOP_PUBKEY" @ verdict.go:108 (duplicated as scanDeltaPubkeyVar @ transcribescan.go:667) — right because the two independently-duplicated modules must name the SAME repo/Actions variable byte-for-byte; verified equal. A wrong or mismatched value leaves the pubkey unresolved and returns exit 6 could-not-check, fail-closed, never a bypass.
+- RISK-VALUE: DERIVED — verify-unknown-role exit code = 6 (could-not-check) @ deskverdict verify path (tested by CLIVerifyUnknownKeyExit6) — right by the repo's standing three-state rule: an unrecognized role must never round up to 0/pass; exit 6 is could-not-check, and the brief pins it explicitly ("never falls back to verifier").
+- flood threshold = 25 ranks LAST — a reversible operational limit, pre-existing, not introduced by this brief; no derivation required by design.
+
+Filed: #1536 (Verify row 6 path defect). The row-6 command-path defect is the one held row; every other row passed. Test names that `go test` never prints are described in prose above, not quoted.
+
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in
 the stream README table. Review note: confirm (a) every pre-existing verdict/scan/verify test

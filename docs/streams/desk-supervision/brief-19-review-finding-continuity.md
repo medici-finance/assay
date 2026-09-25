@@ -92,6 +92,23 @@ Pre-mortem → detection: Findings are reset with each agent/head: row 1. Worker
 
 Pending implementation and independent verification. No acceptance result claimed by authoring.
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 0/4 pass, 4 could-not-check, 0 fail — 2026-09-23 claude-opus-4-8-verifier
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run '^TestReviewFinding.*ContinuityAcrossHeads$' -v -count=1 | exit 0; named PASS; fixed finding retains ID+evidence, follow-up targets changed surface, no stale approval | COULD-NOT-CHECK — hermetic witness owed (darwin): check:ci needs Linux unshare --net; host is darwin. Direct non-hermetic go test: exit 0; the named `--- PASS` line for this row's test; `ok ...cmd/reviewloop` (`go test -list '^TestReviewFinding.*ContinuityAcrossHeads$'` selects exactly the one test this row names — the continuity-across-heads test.) | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run '^TestReviewFinding.*CannotSelfResolve$' -v -count=1 | exit 0; named PASS; worker self-resolution, wrong-head evidence and malformed legacy prose cannot clear a blocking finding | COULD-NOT-CHECK — hermetic witness owed (darwin): check:ci needs Linux unshare --net; host is darwin. Direct non-hermetic go test: exit 0; the named `--- PASS` line for this row's test, with sub-PASS worker-self-resolve, wrong-head-evidence, legacy-prose (`go test -list '^TestReviewFinding.*CannotSelfResolve$'` selects exactly the one test this row names — the cannot-self-resolve test.) | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run '^TestReviewFinding.*CapSurvivesRestart$' -v -count=1 | exit 0; named PASS; 3 rounds survive restart, next round emits one arbiter packet, dup sweeps do not refile, unrelated class separate, sibling sentences held | COULD-NOT-CHECK — hermetic witness owed (darwin): check:ci needs Linux unshare --net; host is darwin. Direct non-hermetic go test: exit 0; the named `--- PASS` line for this row's test; `ok ...cmd/reviewloop` (`go test -list '^TestReviewFinding.*CapSurvivesRestart$'` selects exactly the one test this row names — the cap-survives-restart test.) | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run '^TestReviewFinding.*SharedCIBlocker$' -v -count=1 | exit 0; named PASS; multiple PRs cite one shared repair without inventing multiple content defects; ready-flip still requires checks | COULD-NOT-CHECK — hermetic witness owed (darwin): check:ci needs Linux unshare --net; host is darwin. Direct non-hermetic go test: exit 0; the named `--- PASS` line for this row's test; `ok ...cmd/reviewloop` (`go test -list '^TestReviewFinding.*SharedCIBlocker$'` selects exactly the one test this row names — the shared-CI-blocker test.) | 2026-09-23 | claude-opus-4-8-verifier |
+
+Hermetic execution witness (statusgen verifyrun): all four check:ci rows returned could-not-run
+on this darwin host — the network-off sandbox uses Linux `unshare --net`. Recorded as
+could-not-check per the three-state rule (not a fail, not a pass); the direct-execution
+observations above are strong corroboration, not the required witness. A Linux runner is owed.
+
+RISK-VALUE: DERIVED — RoundCap = 3 @ tools/desk/internal/deskkit/reviewfinding.go:340 — the brief forbids introducing a second cap or changing the threshold; the value equals the existing documented rule "Default cap N = 3 full verdict->fix->re-review rounds" (plugins/assay/skills/pr-review-desk/SKILL.md:463). The constant makes that same existing threshold derivable so it survives agent replacement; it is not a new or second cap.
+
+
 ## Review
 
 Gate: model. Review the negative paths, migration compatibility and limits of enforcement. Any newly discovered need to alter authority is separate human-gated scope, not an implicit part of this brief.

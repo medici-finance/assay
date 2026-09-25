@@ -142,6 +142,37 @@ facts:
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 9/10 pass, 1 could-not-check, 0 fail — 2026-09-23 claude-opus-4-8-verifier
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | git grep -n 'authorized-by' -- .github/workflows/release.yml | exit 0 — field present (DEREFERENCE inverts the authoring-time absence) | PASS — exit=0; 2 matches at release.yml:1335 (comment) and :1342 (the python3 body emitting the labelled authorized-by line). Field present. | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | git grep -nF 'dispatched by $ACTOR' -- .github/workflows/release.yml | exit 0 — the existing actor interpolation still stands | PASS — exit=0; match at release.yml:211, the tag message reusing the single actor interpolation. Single actor source reused. | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | git grep -nF 'environment: release' -- .github/workflows/release.yml | exit 0 — gated environment untouched | PASS — exit=0; match at release.yml:790 (the gated release environment). Untouched. | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | cd tools/desk && go test ./internal/deskkit/ -count=1 -v -run 'TestReleaseAuthorizer.*StampedFromReleaseWorkflow' | exit 0 — source-coupling test passes | PASS — exit=0; ran with -v: the `--- PASS` line for the authorizer coupling test (0.00s). Test actually executed. (`go test -list 'TestReleaseAuthorizer.*StampedFromReleaseWorkflow'` selects exactly the one test this row names — the authorizer stamped-from-release-workflow coupling test.) | 2026-09-23 | claude-opus-4-8-verifier |
+| 5 | cd tools/desk && go test ./internal/deskkit/ -count=1 -v -run 'TestVersionStamped.*FromReleaseWorkflow' | exit 0 — the pre-existing neighbour stamp test still passes | COULD-NOT-CHECK — exit=0 but `--- SKIP`: the named test SKIPPED — "fixture ../../../../.github/workflows/release-desk.yml not present in this tree". The workflow file in this repo is release.yml; there is no release-desk.yml, so this test does not run. `ok deskkit` exit 0 records a skip, not a run — not a pass. Tracked in #1546. (`go test -list 'TestVersionStamped.*FromReleaseWorkflow'` selects exactly the one test this row names — the version-stamped-from-release-workflow neighbour test.) | 2026-09-23 | claude-opus-4-8-verifier |
+| 6 | cd tools/desk && go test ./internal/deskkit/ -count=1 -v -run 'TestReleaseAuthorizer.*StampMissingIsCaught' | exit 0 — mutation positive-control passes | PASS — exit=0; ran with -v: the `--- PASS` line for the missing-authorizer positive-control test (0.00s). Test actually executed. (`go test -list 'TestReleaseAuthorizer.*StampMissingIsCaught'` selects exactly the one test this row names — the stamp-missing-is-caught positive-control test.) | 2026-09-23 | claude-opus-4-8-verifier |
+| 7 | git grep -cE -e 'signature' -e 'attestation' -- .github/workflows/release.yml | exit 0; non-zero count | PASS — exit=0; count=2. The who-authorized-vs-who-built note is in the workflow source. | 2026-09-23 | claude-opus-4-8-verifier |
+| 8 | git grep -c 'NOT CAUGHT' -- .github/workflows/release.yml | exit 0; count at least 6 | PASS — exit=0; count=7 (>=6). The release-blocking mutation assertions are untouched. | 2026-09-23 | claude-opus-4-8-verifier |
+| 9 | cd tools/desk && go test ./internal/deskkit/ -count=1 | exit 0 — full kit suite passes | PASS — exit=0; `ok` deskkit (52.99s), no failures. NB: the suite includes the version-stamp test that skips (row 5); a skip does not fail the suite, so this row's exit-0 expectation holds, but the suite does NOT execute that neighbour guard. | 2026-09-23 | claude-opus-4-8-verifier |
+| 10 | cd statusgen && go run . --root .. --lint | exit 0 — tree lints clean | PASS — exit=0; final line `LINT: PASS`. Advisory NOTICEs name this brief, both advisory (lint exit 0): (a) `[risk-files-crossread]` prints on the clean merged tree — the brief answers all four risk questions "no" yet declares path `.github/workflows/release.yml`, which the classifier treats as a security-path trigger, so the hand-written risk answers are flagged for review; (b) `[verify-obligation]` prints when the brief is in the branch diff (it evaluates only a brief whose own file the branch changed, so on a clean checkout of the merged SHA only (a) prints) — the declared paths cross top-level directories, so a cross-component +flow Verify row is owed. Neither gates. | 2026-09-23 | claude-opus-4-8-verifier |
+
+RISK-VALUE (kit §4 — enumerate → rank → derive). The verifier trigger fired: the
+diff touches a risk-classed path (.github/workflows/release.yml, a security-path
+trigger — see row 10 NOTICE (a)). Enumeration over the diff scope (the `resolve`
+job authorizer output + the create-release body helper in
+.github/workflows/release.yml, and the source-coupling test in
+tools/desk/internal/deskkit/) found no numeric constant/threshold/tolerance/
+ratio/timeout/limit introduced or changed; the tag-format gate
+`^v[0-9]+\.[0-9]+\.[0-9]+$` and the "at least 6 NOT CAUGHT" count are pre-existing
+and not touched by this diff. The values this diff introduces are two
+authority-binding string literals:
+
+- RISK-VALUE: DERIVED — authorizer(dispatch-path) = "$ACTOR (dispatch actor)" @ .github/workflows/release.yml:216 — the brief requires reusing the single already-resolved actor source (github.actor, the same one the tag message interpolates) and naming it as the dispatch actor. The literal reuses $ACTOR and labels the path; correct. Reversible (release-body text is editable post-publish; the irreversible act — cutting the release — is out of this diff's scope, brief `irreversible: no`).
+- RISK-VALUE: DERIVED — authorizer(tag-push-path) = "not recorded (tag-push path: the tag pre-exists the run, so there is no dispatch actor)" @ .github/workflows/release.yml:239 — the brief requires an explicit not-recorded value on the tag-push path, never blank (a blank reads as "nobody", a stronger claim than the truth) and never the pushing token's identity. The literal is explicit, non-blank, and names no token identity; correct.
+
+Re-run after review: row 5 test skips (fixture points at a missing workflow file) and row 10 NOTICEs recorded. Only row 5 is filed, as #1546. Row 10's `[risk-files-crossread]` NOTICE is NOT filed and stays an open question for the stream owner: are this release-workflow brief's four "no" risk answers right, given it declares .github/workflows/release.yml?
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). The `irreversible: no` answer is
 the one to check first: it holds only because the deliverable is a workflow diff and no Verify

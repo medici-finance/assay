@@ -216,5 +216,47 @@ consume, not a defect here).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 10/11 pass, 1 could-not-check, 0 fail — 2026-09-23 claude-opus-4-8-verifier
+
+Run against merged origin/main 50989dbc58f2cd95276dc8fe27314d3a2e15e3f8 from an isolated
+detached worktree. Runner form as printed by statusgen verifyrun.
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|-------------|---|
+| 1 | cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'Vitals' -count=1 | exit 0; output contains ok | PASS — exit 0; ok github.com/.../tools/desk/internal/deskkit 0.449s | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TestMergeResourceVitals.*PreservesAcks' -v -count=1 | exit 0; --- PASS line | PASS — exit 0; the `--- PASS:` line for the brief's row 2 test (the merge-resource-vitals preserves-acks test); ok (`go test -list 'TestMergeResourceVitals.*PreservesAcks'` selects exactly the one test this row names — the merge-resource-vitals preserves-acks test.) | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TestUnsetVitalIsNullNotZero' -v -count=1 | exit 0; --- PASS line | PASS — exit 0; `--- PASS: TestUnsetVitalIsNullNotZero (0.00s)`; ok | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TestMeasuredZeroSubagents.*RoundTrips' -v -count=1 | exit 0; --- PASS line | PASS — exit 0; the `--- PASS:` line for the brief's row 4 test (measured-zero-subagents round-trips); ok (`go test -list 'TestMeasuredZeroSubagents.*RoundTrips'` selects exactly the one test this row names — the measured-zero-subagents round-trips test.) | 2026-09-23 | claude-opus-4-8-verifier |
+| 5 | cd tools/desk && GOWORK=off go build ./cmd/desksupervise && ./desksupervise status --json --now 2026-09-17T12:00:00Z --claims-fixture cmd/desksupervise/testdata/vitals.json --observations-fixture cmd/desksupervise/testdata/vitals-obs.json --beacons-fixture cmd/desksupervise/testdata/vitals-beacons.json \| python3 -c 'import json,sys; d=json.load(sys.stdin); r=d["claims"][0]["resource"]; print(r["context_pct_used"], r["subagents_spawned"], r["model"])' | exit 0; output is 60 0 example-model | PASS — exit 0; output: 60 0 example-model | 2026-09-23 | claude-opus-4-8-verifier |
+| 6 | cd tools/desk && ./desksupervise status --json --now 2026-09-17T12:00:00Z --claims-fixture cmd/desksupervise/testdata/vitals.json --observations-fixture cmd/desksupervise/testdata/vitals-obs.json --beacons-fixture cmd/desksupervise/testdata/no-beacon.json \| python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["claims"][0]["resource"]["tokens"])' | exit 0; output is could-not-check | PASS — exit 0; output: could-not-check | 2026-09-23 | claude-opus-4-8-verifier |
+| 7 | cd tools/desk && GOWORK=off go test ./cmd/desksupervise/ -run 'TestStatusJSONValidates.*AgainstSchema' -v -count=1 | exit 0; --- PASS line | PASS — exit 0; the `--- PASS:` line for the brief's row 7 test (status-JSON validates against schema); ok (`go test -list 'TestStatusJSONValidates.*AgainstSchema'` selects exactly the one test this row names — the status-JSON validates-against-schema test.) | 2026-09-23 | claude-opus-4-8-verifier |
+| 8 | python3 -c 'import json; s=json.load(open("schemas/desksupervise-status-v1.json")); item=s["properties"]["claims"]["items"]; assert "resource" in item["properties"], "no resource block"; assert "resource" in item["required"], "resource not required"; print("ok")' | exit 0; output is ok | PASS — exit 0; output: ok | 2026-09-23 | claude-opus-4-8-verifier |
+| 9 | grep -c 'could-not-check' schemas/desksupervise-status-v1.json | output is 1 or more | PASS — exit 0; output: 7 (satisfies "1 or more") | 2026-09-23 | claude-opus-4-8-verifier |
+| 10 | statusgen --root . --consumers --brief desk-supervision/13 | exit 0; output does not contain DISPROVED | COULD-NOT-CHECK — merged tree; as written exits 2: statusgen printed "COULD-NOT-CHECK: ... is not in the diff against <parent> ... no entry was corroborated and none was disproved" — output does NOT contain DISPROVED, but nothing was corroborated either. On merged main the brief's own diff is empty, so this consumers corroboration cannot execute (the row's own note: "run on the implementing branch"). Not a pass, not a fail. | 2026-09-23 | claude-opus-4-8-verifier |
+| 11 | cd tools/desk && GOWORK=off go test ./cmd/deskroster/ -run 'TestSetRefusesMulti.*SegmentSessionName' -v -count=1 | exit 0; --- PASS line | PASS — exit 0; the `--- PASS:` line for the brief's row 11 test (set refuses a multi-segment session name); ok (`go test -list 'TestSetRefusesMulti.*SegmentSessionName'` selects exactly the one test this row names — the set-refuses-multi-segment-session-name test.) | 2026-09-23 | claude-opus-4-8-verifier |
+
+Note on row 10: statusgen's execution-witness matcher also flags it fail (exit 2 vs expected 0);
+it is a could-not-check by statusgen's own design on merged main, not an observed failure.
+Note on row 9: the execution-witness matcher literal-matches "1" and so records a false fail,
+but the real observed output is 7, which satisfies the brief's expected "1 or more" — row 9 stands as PASS.
+
+RISK-VALUE: no irreversible risk-bearing literal. Enumeration over the whole d8552d943 diff
+(the change that implemented this item) found only reversible sentinels and one error-path
+exit code, none governing an irreversible act:
+- exit code 5 for a malformed `--session` name refusal @ tools/desk/cmd/deskroster/roster.go
+  — a reversible error-path code (part of the verb's standing 0/3/5/6 contract); ranks last.
+- the three-state sentinels: input `unknown` mapped to output string `could-not-check`, and
+  JSON `null` for an unset field @ tools/desk/cmd/deskroster/roster.go and
+  schemas/desksupervise-status-v1.json — reversible string/null markers; rank last.
+- context_pct_used documented range 0–100 (brief facts) is NOT enforced as a numeric bound in
+  the schema (field is a bare `number` @ schemas/desksupervise-status-v1.json:96), so there is
+  no `0`/`100` literal to derive; noted as a minor deviation, not a risk-bearing constant.
+This brief is risk:{all no}, irreversible:no; it is a status-REPORTING mechanism and introduces
+no threshold/tolerance/authority binding. The recycle THRESHOLD that would be risk-bearing
+lives in desk-supervision/14 (the consumer), explicitly out of scope here ("a knob for brief 14
+to consume, not a defect here"). The brief's own single-point-of-failure is the three-state
+discipline (a property, not a constant), enforced by rows 3, 4, 6.
+
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
