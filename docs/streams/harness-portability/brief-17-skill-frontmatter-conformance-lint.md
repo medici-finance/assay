@@ -153,6 +153,63 @@ Pre-mortem/detection-map failure modes (byte-vs-rune, rule-never-fires-on-real-b
 budget-wired-as-failure, empty-skills-dir) are each caught by the rows above (2, 7, 5)
 and by `TestLintSkillsDir_EmptyDirFailsClosed` (unit-level, exit-2 fail-closed path).
 
+### Verification — 2026-09-25 (assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian))
+
+Non-implementer run against merged main 7aa3835d7f33 (delivering commit aa1cc0e36, #1663), on
+darwin. The witness run and every Go build/test ran under a throwaway HOME; statusgen was built
+from this tree's statusgen/ and placed first on PATH, so rows 12 and 13 ran the in-tree binary.
+
+**Witness table.** Written by `statusgen verifyrun --brief`, verbatim; each Output cell is a digest
+of the row's output.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/skillslint && go build -o /tmp/skillslint-hp17 . && /tmp/skillslint-hp17 --skills-dir testdata/conformance/desc-1025` | pass exit=1 | sha256:e715cb5375c8 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/skillslint && go build -o /tmp/skillslint-hp17 . && /tmp/skillslint-hp17 --skills-dir testdata/conformance/desc-1024-multibyte` | pass exit=0 | sha256:9790e87ec8da | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/skillslint && go build -o /tmp/skillslint-hp17 . && /tmp/skillslint-hp17 --skills-dir testdata/conformance/name-mismatch` | pass exit=1 | sha256:ef7e6bebbab4 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/skillslint && go build -o /tmp/skillslint-hp17 . && /tmp/skillslint-hp17 --skills-dir testdata/conformance/name-pattern` | pass exit=1 | sha256:f4999d9c6952 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/skillslint && go build -o /tmp/skillslint-hp17 . && /tmp/skillslint-hp17 --skills-dir testdata/conformance/budget-over` | pass exit=0 | sha256:5c2fd9647504 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/skillslint && go build -o /tmp/skillslint-hp17 . && /tmp/skillslint-hp17 --root ../..` | pass exit=0 | sha256:09392504dddb | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(cd tools/skillslint && go build -o /tmp/skillslint-hp17 .) && rm -rf /tmp/hp17-mut && mkdir -p /tmp/hp17-mut/install && git show e284ba9b8:plugins/assay/skills/install/SKILL.md > /tmp/hp17-mut/install/SKILL.md && /tmp/skillslint-hp17 --skills-dir /tmp/hp17-mut` | pass exit=1 | sha256:589fe12cf3df | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/skillslint && go test ./... -count=1` | pass exit=0 | sha256:6ad323f042a7 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `assay@assay` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:91a3808c8252 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `curl -fsSL -o /tmp/hp17-render.rs https://raw.githubusercontent.com/openai/codex/30fc6864cc1318121eca1843c217fe00ce1212f1/codex-rs/ext/skills/src/render.rs && grep -c -e 'MAX_CATALOG_SKILL_DESCRIPTION_CHARS: usize = 1_024' -e 'MAX_SKILL_PROMPT_BYTES: usize = 8_000' -e 'DEFAULT_SKILL_METADATA_CHAR_BUDGET: usize = 8_000' /tmp/hp17-render.rs` | pass exit=0 | sha256:1121cfccd591 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `gh api 'repos/medici-finance/assay/commits/main/check-runs?check_name=skillslint' --jq '.check_runs[0].conclusion'` | fail exit=4 | sha256:69f5519080ea | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `statusgen --consumers --brief harness-portability/17 --root . --base "$(git merge-base origin/main HEAD)"` | fail exit=2 | sha256:294ada29b2c8 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `statusgen --lint --root .` | pass exit=0 | sha256:92a6edeaa415 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+
+**Hand-run rows.** The three witness rows that did not pass, run again directly (non-hermetic,
+real HOME) with the observed output. The other ten pass as witnessed; the witness run also
+confirmed row 6 prints `SKILLSLINT: PASS — 14 skill file(s)` with no description Issue, and the
+re-measured descriptions are install 1010 and pr-review-desk 735 characters.
+
+| # | Command | Expect | Observed | Date / runner |
+|---|---------|--------|----------|---------------|
+| 9 | `codex exec 'Use the pr-review-desk skill. Quote verbatim the LAST level-2 heading of its SKILL.md, and say whether you were told the skill was truncated.'` on Codex CLI 0.157.0 with the assay@assay plugin 1.0.28 installed, read-only sandbox | the last heading is quoted, or the truncation warning is reported | could-not-check: exit 0, and the reply quoted `## Liveness contract (binding)`, which is the correct last level-2 heading (line 965 of an 80434-byte body). The transcript shows how Codex got it, though: it ran cat and then rg on the plugin-cache SKILL.md from disk, and the "truncated" it reported was its own tool-output truncation. So the probe cannot tell whether the injected plugin body is cut at 8000 bytes (check-definition). The witness could-not-run happened because verifyrun took the Command cell's first code span, the plugin name, as the command | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 11 | `gh api 'repos/medici-finance/assay/commits/main/check-runs?check_name=skillslint' --jq '.check_runs[0].conclusion'`, using read-only ambient gh auth | prints success | pass: exit 0, printed `success`. The check run completed at 2026-09-25T21:59:19Z on head_sha 7aa3835d7f33, the SHA verified here. The witness exit 4 is gh's auth-required exit under the throwaway HOME, which is an environment issue, not a check result | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 12 | `statusgen --consumers --brief harness-portability/17 --root . --base "$(git merge-base origin/main HEAD)"` as written, on a clean merged-main tree | exit 0; no routing claim disproved | could-not-check: exit 2, `COULD-NOT-CHECK: assay:assay:harness-portability:17 is not in the diff against 7aa3835d7f33`. On merged main, HEAD is the merge-base, so this row can never check anything after merge (check-definition) | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+
+Supplementary to row 12, following the tool's own advice: the same command, run from a detached
+checkout of the delivering commit aa1cc0e36 with `--base be4380ce5` (its parent), exited 0 with
+`summary: 3 corroborated, 0 disproved, 2 unchecked`. The three fixed-here entries were
+corroborated, and the two out-of-scope entries are unchanged, as the brief says. This is recorded
+as supporting context only. It is not a replacement for row 12 as written.
+
+**Risk-bearing values.** The trigger does not fire: risk is all-no and present, the item is not
+irreversible, and no risk-classed path is touched. The enumeration was done anyway over the
+literals that tools/skillslint/conformance.go introduces at aa1cc0e36. All of them are reversible
+lint parameters (edit + release). They are ranked by how far a wrong value reaches, since the hard
+limits go red in every adopter's CI:
+
+- `RISK-VALUE: DERIVED — maxDescriptionChars = 1024 @ tools/skillslint/conformance.go:69 — equals Codex MAX_CATALOG_SKILL_DESCRIPTION_CHARS = 1_024 at the pinned render.rs (row 10). That file's truncate_catalog_skill_description tests char_indices().nth(1024), which counts Unicode scalar values, the same unit as utf8.RuneCountInString at conformance.go:106, and the boundary matches (n <= 1024 passes, conformance.go:107). The agentskills specification, read 2026-09-25, also says "Max 1024 characters"`
+- `RISK-VALUE: DERIVED — maxNameChars = 64 @ tools/skillslint/conformance.go:71 — the agentskills specification (read 2026-09-25) says name "Must be 1-64 characters"`
+- `RISK-VALUE: DERIVED — namePattern = ^[a-z0-9]+(-[a-z0-9]+)*$ @ tools/skillslint/conformance.go:76 — the agentskills specification lists "(a-z, 0-9) and hyphens", with no leading or trailing hyphen and no consecutive hyphens, which is exactly the language this pattern accepts. The same spec sentence also says "unicode lowercase alphanumeric". If that means non-ASCII lowercase letters are allowed, the lint is stricter than the spec: it fails closed, and an edit reverses it`
+- Ranked last and advisory only (they only produce a NOTICE and never change the exit code, so they need no derivation): bodyByteBudget = 8000 @ :83, bodyLineBudget = 500 @ :85, bodyTokenBudget = 5000 @ :88, approxBytesPerToken = 4 @ :92, bundleDescriptionBudget = 8000 @ :99. Row 10 confirmed the two 8000 figures against the pinned render.rs. The 500 and 5000 figures match the specification text.
+
+VERIFY: FAIL (blocked, not flippable). 11 of 13 rows pass. Rows 9 and 12 are could-not-check
+because of check-definition problems. No implementation defect was observed, and the status stays
+`implemented`.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table and
 answers: are the shortened descriptions' opening sentences still the trigger text a harness
