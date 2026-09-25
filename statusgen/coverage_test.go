@@ -43,6 +43,19 @@ func coverageEvidenceTable(rows ...string) string {
 // bodies, under dir/brief-<num>.md.
 func writeCoverageBrief(t *testing.T, dir, num, streamName, verifyBody, evidenceBody string) {
 	t.Helper()
+	writeCoverageBriefWithFiles(t, dir, num, streamName, "", verifyBody, evidenceBody)
+}
+
+// writeCoverageBriefWithFiles is writeCoverageBrief plus an optional `## Context`
+// `files:` line (filesLine is its inline value, e.g. "`src/impl.go`"; "" omits
+// the Context section entirely) — the declared scope a witness speaks for
+// (review finding F2, round 2).
+func writeCoverageBriefWithFiles(t *testing.T, dir, num, streamName, filesLine, verifyBody, evidenceBody string) {
+	t.Helper()
+	context := ""
+	if filesLine != "" {
+		context = "## Context\nfiles: " + filesLine + "\n\n"
+	}
 	content := fmt.Sprintf(`---
 brief: %s/%s
 title: coverage fixture
@@ -60,7 +73,7 @@ sources: ["fixture: graph-execution/03 coverage_test.go"]
 
 # Brief %s — coverage fixture
 
-## Verify
+%s## Verify
 %s
 
 ## Evidence
@@ -70,7 +83,7 @@ sources: ["fixture: graph-execution/03 coverage_test.go"]
 
 ## Review
 Gate: model.
-`, streamName, num, num, verifyBody, evidenceBody)
+`, streamName, num, num, context, verifyBody, evidenceBody)
 	if err := os.WriteFile(filepath.Join(dir, "brief-"+num+".md"), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -95,15 +108,17 @@ func mustCoverageStream(t *testing.T, name string) (*Stream, string) {
 func TestCoverage(t *testing.T) {
 	s, root := mustCoverageStream(t, "cov")
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
-	ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, "abc123def456"))
+	// The witness must be corroborable against real history (review finding F3,
+	// round 2: an unreadable historical row is could-not-check, never pass), so
+	// the brief's Verify row is committed first and the witness names that
+	// commit — the in-progress shape: HEAD is still the tree the check ran on,
+	// with only the Evidence write uncommitted on top.
+	writeCoverageBrief(t, s.Dir, "01", "cov", verify, "")
+	witnessTree := mustGitInit(t, root)
+	ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, witnessTree))
 	writeCoverageBrief(t, s.Dir, "01", "cov", verify, ev)
 
-	// root is deliberately non-git (mustCoverageStream), so the item's revision
-	// is supplied explicitly, matching the witness's own tree exactly — an
-	// unestablished target must never be conflated with "nothing to compare"
-	// (graph-execution/03 review finding F1); see TestCoverageNoTargetRevisionIsCouldNotCheck
-	// for that case on its own.
-	cov := evaluateCoverage(root, []*Stream{s}, coverageOptions{Revision: "abc123def456"})
+	cov := evaluateCoverage(root, []*Stream{s}, coverageOptions{})
 	c, ok := cov["cov/01"]
 	if !ok {
 		t.Fatalf("no coverage computed for cov/01 (got %+v)", cov)
@@ -227,20 +242,21 @@ func TestCoverageJoinRequiresIntegrationRow(t *testing.T) {
 			"verify": {ID: "verify", Kind: "check", Role: "verifier"},
 		},
 	}
+	// Each fixture root is git-backed with the Verify row committed and the
+	// witness naming that commit (see TestCoverage), so the only thing that can
+	// hold these briefs is the join rule itself — not F1's unestablished-revision
+	// handling nor F3's unreadable-history handling.
 	opts := coverageOptions{
 		Bindings: map[string]coverageBinding{"cov/01": {Pattern: "fixture-pattern", Node: "verify"}},
 		Patterns: map[string]patternDoc{"fixture-pattern": pat},
-		// root is non-git (mustCoverageStream); an explicit Revision matching
-		// both witnesses' own tree ("abc123def456") keeps this test about the
-		// join rule, not about F1's now-stricter unestablished-revision handling
-		// (see TestCoverageNoTargetRevisionIsCouldNotCheck for that).
-		Revision: "abc123def456",
 	}
 
 	// Site rows only (no +flow obligation) — held on integration-check.
 	s, root := mustCoverageStream(t, "cov")
 	verify := "| # | Class | Command | Expect |\n|---|-------|---------|--------|\n| 1 | check | `true` | exit 0 |"
-	ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, "abc123def456"))
+	writeCoverageBrief(t, s.Dir, "01", "cov", verify, "")
+	w1 := mustGitInit(t, root)
+	ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, w1))
 	writeCoverageBrief(t, s.Dir, "01", "cov", verify, ev)
 
 	cov := evaluateCoverage(root, []*Stream{s}, opts)
@@ -261,7 +277,9 @@ func TestCoverageJoinRequiresIntegrationRow(t *testing.T) {
 	// Add a +flow row — the join releases.
 	s2, root2 := mustCoverageStream(t, "cov")
 	verify2 := "| # | Class | Command | Expect |\n|---|-------|---------|--------|\n| 1 | check +flow | `true` | exit 0 |"
-	ev2 := coverageEvidenceTable(covWitnessRow("1", "true", statePass, "abc123def456"))
+	writeCoverageBrief(t, s2.Dir, "01", "cov", verify2, "")
+	w2 := mustGitInit(t, root2)
+	ev2 := coverageEvidenceTable(covWitnessRow("1", "true", statePass, w2))
 	writeCoverageBrief(t, s2.Dir, "01", "cov", verify2, ev2)
 
 	cov2 := evaluateCoverage(root2, []*Stream{s2}, opts)
@@ -424,12 +442,17 @@ func TestCoverageAncestorWitnessReleases(t *testing.T) {
 // side: when something BESIDES the brief's own file changed after the witness
 // ran, the witness no longer speaks for today's code, and coverage must still
 // report `wrong-revision` rather than crediting the ancestor relationship
-// alone.
+// alone. The brief declares no `files:` line, so the witness speaks for every
+// path outside the board's own bookkeeping (round-2 F2 scope rule) — a change
+// to an implementation path (src/, not docs/streams/** or STATUS.md) holds it.
 func TestCoverageAncestorWitnessOtherPathChangedMismatch(t *testing.T) {
 	s, root := mustCoverageStream(t, "cov")
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
 	writeCoverageBrief(t, s.Dir, "01", "cov", verify, "")
-	other := filepath.Join(root, "docs", "streams", "cov", "other.txt")
+	if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(root, "src", "other.txt")
 	if err := os.WriteFile(other, []byte("v1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -475,5 +498,187 @@ func TestCoverageExpectChangedSinceWitnessRan(t *testing.T) {
 	}
 	if len(c.Claims) != 1 || c.Claims[0].Result != covError {
 		t.Fatalf("want error (stale acceptance-definition digest), got %+v", c.Claims)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Round-2 review (head e43403dfd): F2 — the witness scope; F3 — the Expect
+// guard must never be skipped into a `pass`; S3/A5 — the declared `+dirty`
+// tolerance.
+// ---------------------------------------------------------------------------
+
+// mustWriteFile writes content to root/rel, creating parent directories.
+func mustWriteFile(t *testing.T, root, rel, content string) {
+	t.Helper()
+	p := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestCoverageDirtyWitnessExpectChangedIsError — round-2 F3(a) / security S1
+// (the review's PROBE-F): a witness recorded over an uncommitted tree carries
+// `@ <sha>+dirty`, the ordinary verifyrun shape. The Expect-history guard must
+// read the row at the witness's BASE commit (suffix stripped) and still catch
+// an Expect tightened after the run — never skip itself into a `pass`.
+func TestCoverageDirtyWitnessExpectChangedIsError(t *testing.T) {
+	s, root := mustCoverageStream(t, "cov")
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
+	writeCoverageBrief(t, s.Dir, "01", "cov", verify, "")
+	witnessTree := mustGitInit(t, root)
+
+	verifyTightened := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0; output contains READY |"
+	ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, witnessTree+"+dirty"))
+	writeCoverageBrief(t, s.Dir, "01", "cov", verifyTightened, ev)
+	mustGitCommitAll(t, root, "tighten Expect and record a +dirty witness")
+
+	c := evaluateCoverage(root, []*Stream{s}, coverageOptions{})["cov/01"]
+	if c.Released {
+		t.Fatalf("a +dirty witness must not skip the Expect guard into a release, got released: %+v", c)
+	}
+	if len(c.Claims) != 1 || c.Claims[0].Result != covError {
+		t.Fatalf("want error (stale acceptance-definition digest), got %+v", c.Claims)
+	}
+}
+
+// TestCoverageBriefAbsentAtWitnessTreeIsCouldNotCheck — round-2 F3(b) / security
+// S2 (PROBE-G): the brief did not exist at the witness's tree (first committed
+// together with its Evidence), so the row the witness answered cannot be read.
+// That is could-not-check — uncorroborated is never `pass`.
+func TestCoverageBriefAbsentAtWitnessTreeIsCouldNotCheck(t *testing.T) {
+	s, root := mustCoverageStream(t, "cov")
+	mustWriteFile(t, root, "src/impl.txt", "v1\n")
+	witnessTree := mustGitInit(t, root) // the brief is NOT in this tree
+
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0; output contains READY |"
+	ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, witnessTree))
+	writeCoverageBrief(t, s.Dir, "01", "cov", verify, ev)
+	mustGitCommitAll(t, root, "add the brief together with its Evidence")
+
+	c := evaluateCoverage(root, []*Stream{s}, coverageOptions{})["cov/01"]
+	if c.Released {
+		t.Fatalf("a witness whose Verify row cannot be read at its own tree must never release, got released: %+v", c)
+	}
+	if len(c.Claims) != 1 || c.Claims[0].Result != covCouldNotCheck {
+		t.Fatalf("want could-not-check, got %+v", c.Claims)
+	}
+}
+
+// TestCoverageRowAbsentAtWitnessTreeIsCouldNotCheck — round-2 F3(b): the brief
+// existed at the witness's tree, but the row id did not (it was added after).
+func TestCoverageRowAbsentAtWitnessTreeIsCouldNotCheck(t *testing.T) {
+	s, root := mustCoverageStream(t, "cov")
+	writeCoverageBrief(t, s.Dir, "01", "cov", "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |", "")
+	witnessTree := mustGitInit(t, root)
+
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |\n| 2 | `true` | exit 0 |"
+	ev := coverageEvidenceTable(
+		covWitnessRow("1", "true", statePass, witnessTree),
+		covWitnessRow("2", "true", statePass, witnessTree),
+	)
+	writeCoverageBrief(t, s.Dir, "01", "cov", verify, ev)
+	mustGitCommitAll(t, root, "add row 2 and record Evidence for both")
+
+	c := evaluateCoverage(root, []*Stream{s}, coverageOptions{})["cov/01"]
+	if c.Released {
+		t.Fatalf("row 2 did not exist at the witness's tree, so the brief must not release, got released: %+v", c)
+	}
+	got := map[string]string{}
+	for _, cl := range c.Claims {
+		got[cl.Claim] = cl.Result
+	}
+	if got["Verify row #1: true"] != covPass || got["Verify row #2: true"] != covCouldNotCheck {
+		t.Fatalf("want row 1 pass, row 2 could-not-check; got %+v", c.Claims)
+	}
+}
+
+// TestCoverageSiblingEvidenceAndStatusRegenStillRelease — round-2 F2 (PROBE-D
+// and PROBE-E): the model-lane flip runs at the main tip, and between the
+// witness tree and that tip a verify batch lands Evidence for SEVERAL briefs in
+// one commit and statusgen regenerates STATUS.md after every push. That board
+// bookkeeping is not something the witness speaks for; it must not turn a
+// witness into `wrong-revision`.
+func TestCoverageSiblingEvidenceAndStatusRegenStillRelease(t *testing.T) {
+	s, root := mustCoverageStream(t, "cov")
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
+	writeCoverageBrief(t, s.Dir, "01", "cov", verify, "")
+	writeCoverageBrief(t, s.Dir, "02", "cov", verify, "")
+	mustWriteFile(t, root, "STATUS.md", "board v1\n")
+	witnessTree := mustGitInit(t, root)
+
+	ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, witnessTree))
+	writeCoverageBrief(t, s.Dir, "01", "cov", verify, ev)
+	writeCoverageBrief(t, s.Dir, "02", "cov", verify, ev) // sibling brief's Evidence, same batch commit
+	mustWriteFile(t, root, "docs/streams/verify-outcomes.jsonl", "{}\n")
+	mustGitCommitAll(t, root, "verify batch: Evidence for 01 and 02")
+	mustWriteFile(t, root, "STATUS.md", "board v2\n")
+	mustGitCommitAll(t, root, "chore(status): regenerate")
+
+	cov := evaluateCoverage(root, []*Stream{s}, coverageOptions{})
+	for _, id := range []string{"cov/01", "cov/02"} {
+		c := cov[id]
+		if !c.Released || len(c.Claims) != 1 || c.Claims[0].Result != covPass {
+			t.Fatalf("%s: sibling Evidence plus a STATUS.md regen must not invalidate the witness, got %+v", id, c)
+		}
+	}
+}
+
+// TestCoverageDeclaredFilesScopeTheWitness — round-2 F2: when the brief
+// declares `files:`, those paths are what the witness speaks for. A change to
+// an undeclared implementation path after the witness ran releases; a change
+// to a declared path (including one under a declared directory) holds.
+func TestCoverageDeclaredFilesScopeTheWitness(t *testing.T) {
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
+	files := "`src/impl.go`, `src/pkg/` (planned)"
+	cases := []struct {
+		name    string
+		changed string
+		want    string
+	}{
+		{"undeclared path changed releases", "src/unrelated.go", covPass},
+		{"declared file changed holds", "src/impl.go", covWrongRevision},
+		{"path under a declared directory holds", "src/pkg/inner.go", covWrongRevision},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, root := mustCoverageStream(t, "cov")
+			writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", files, verify, "")
+			mustWriteFile(t, root, tc.changed, "v1\n")
+			witnessTree := mustGitInit(t, root)
+
+			ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, witnessTree))
+			writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", files, verify, ev)
+			mustWriteFile(t, root, tc.changed, "v2\n")
+			mustGitCommitAll(t, root, "record Evidence; change "+tc.changed)
+
+			c := evaluateCoverage(root, []*Stream{s}, coverageOptions{})["cov/01"]
+			if len(c.Claims) != 1 || c.Claims[0].Result != tc.want {
+				t.Fatalf("changed %s: want %s, got %+v", tc.changed, tc.want, c.Claims)
+			}
+		})
+	}
+}
+
+// TestCoverageDirtyWitnessToleranceIsDeclared pins the round-2 S3/A5 decision
+// (coverage.go header, "THE +dirty TOLERANCE"): a `+dirty` witness is compared
+// by its base commit, on both the exact and the ancestor path, and every other
+// guard still binds. This is a DELIBERATE, documented tolerance — if it is ever
+// narrowed, this test is the one to change, in the same commit as the spec.
+func TestCoverageDirtyWitnessToleranceIsDeclared(t *testing.T) {
+	s, root := mustCoverageStream(t, "cov")
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
+	writeCoverageBrief(t, s.Dir, "01", "cov", verify, "")
+	witnessTree := mustGitInit(t, root)
+
+	ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, witnessTree+"+dirty"))
+	writeCoverageBrief(t, s.Dir, "01", "cov", verify, ev)
+	mustGitCommitAll(t, root, "record a +dirty witness")
+
+	c := evaluateCoverage(root, []*Stream{s}, coverageOptions{})["cov/01"]
+	if !c.Released || len(c.Claims) != 1 || c.Claims[0].Result != covPass {
+		t.Fatalf("the declared +dirty tolerance: want pass at the base commit, got %+v", c)
 	}
 }

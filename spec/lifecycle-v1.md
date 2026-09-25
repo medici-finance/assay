@@ -95,7 +95,19 @@ no witness as adequately attested.
 requires that the brief's evidence **coverage** be `released`: the set of mandatory
 claims — every Verify row, plus a bound workflow-pattern-v1 node's own
 `evidence[].mandatory: true` entries when one applies — each resolve `pass` at the
-item's revision (the merged SHA for a merged brief, the PR head for an open one). Any
+item's revision. The item's revision is the tree the evaluation runs at, resolved offline
+(the checked-out `HEAD`): the PR head on an open PR's branch, and on the model-lane
+`verified`→`done` flip the main tip that flip runs at — generally LATER than the brief's
+merge SHA, not the merge SHA itself. A witness counts at the item's revision when its tree
+names that revision exactly, or names an ancestor of it with no path the witness speaks for
+changed in between. A witness speaks for the brief's declared `files:` paths when the brief
+declares them (a declared directory covers everything under it), else for every path
+outside the board's own bookkeeping (`docs/streams/**` and the generated `STATUS.md`),
+and never for the brief's own file, whose Verify rows are bound separately (below). A change
+to a path the witness speaks for, after it ran, is `wrong-revision`. A witness recorded
+over an uncommitted working tree (`+dirty`, or `+unknown`) is compared by its base commit;
+that tolerance is a declared residual of the witness-trust gap (the token cannot say what
+was dirty), not a guarantee the uncommitted edits landed. Any
 mandatory claim that is `missing`, `error`, `could-not-check`, `wrong-revision`, or an
 outright `fail` HOLDS coverage, and a conforming implementation MUST NOT promote
 `verified` (or the `verified`→`done` flip) while coverage is not released — this is a
@@ -106,7 +118,9 @@ a window after a change lands, filled from a named source; an unreadable source 
 own textual assessment of a row as an execution witness satisfying a mandatory claim,
 and MUST invalidate a witness whose bound Verify-row text has since changed (the claim
 resolves `error`, not `pass`) — a witness answers the question it was asked, not
-whatever the row now asks.
+whatever the row now asks. A witness whose bound Verify row cannot be read as it stood at
+the witness's revision (the brief, or that row, did not exist there) MUST resolve
+`could-not-check`, never `pass`.
 
 ### 2.5 `done`
 

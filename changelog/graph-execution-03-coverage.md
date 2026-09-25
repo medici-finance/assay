@@ -4,6 +4,10 @@
   workflow-pattern-v1 node) that node's mandatory evidence must each resolve `pass`
   at the item's revision before the brief is `released`; a missing, errored,
   could-not-check, wrong-revision, or failing claim holds it, with the reason.
+  A witness counts at the item's revision when it names that tree, or an ancestor
+  of it with no change since to the paths it speaks for (the brief's `files:`, else
+  everything outside `docs/streams/**` and `STATUS.md`); a witness whose Verify row
+  cannot be read at its own revision is `could-not-check`.
 - The `observe` evidence kind (`spec/workflow-pattern-v1.md`, `schemas/workflow-pattern-v1.json`):
   a signal watched over a window after a change lands, declared only where a deploy
   exists.
