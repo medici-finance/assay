@@ -158,28 +158,19 @@ Go path.
 
 ## Authenticated transport
 
-**Mechanism.** `deskgit fetch --as <role>` and `deskgit push --as <role>` read the role's
-token from its file and supply it to git through an ephemeral, host-scoped credential
-helper (`x-access-token` as the username, the token as the password), minted fresh per
-invocation — the token never reaches argv, a URL, stdout, or the audit line. `--as <role>`
-must equal the role this session's loop identity binds; a mismatch is refused before any
-token is read. Plain `deskgit fetch` (no `--as`) is unchanged — no identity check, no
-credential path.
+<!-- BEGIN authenticated transport -->
 
-**Signal.** Exit 5 (refused): a `--as` role that does not match the session's bound loop
-identity, an origin whose host is not exactly `github.com`, or a local-path origin under
-`--as`. Exit 6 (unverifiable): the effective origin URL could not be positively resolved.
+Fetch and push under a role's identity with `deskgit fetch` and `deskgit push`, each in its
+role-bound `--as <role>` form. Their flags, output, refusal texts and exit codes are
+documented in `tools/desk/README.md` §"Authenticated transport — `--as <role>` (fetch and
+push)", not in this file.
 
-**Correct form.**
+Never hand-roll the credential-helper recipe these verbs replace: they have no raw fallback,
+whatever they exit with. When one refuses or cannot verify a step, fix the cause it names if
+that cause is the session's own state (for example, check out a branch instead of working on a
+detached HEAD); otherwise stop and escalate.
 
-```
-deskgit fetch --as <role>     # authenticated refresh
-deskgit push --as <role>      # push the current branch, authenticated
-```
-
-Never hand-roll the credential-helper recipe these verbs replace. The full guarantee —
-token-never-touches-argv, the two-layer origin-URL host binding — is documented in
-`tools/desk/README.md` §"Authenticated transport — `--as <role>`", not restated here.
+<!-- END authenticated transport -->
 
 ## Which repositories a role can see
 
