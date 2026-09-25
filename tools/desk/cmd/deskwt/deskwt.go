@@ -369,6 +369,9 @@ func cmdAdd(args []string) (err error) {
 	branch := fs.String("branch", "", "new branch name for the worktree (default: the worktree name)")
 	detach := fs.Bool("detach", false, "check the base out as a DETACHED HEAD — no branch created or touched (the verifier shape)")
 	base := fs.String("base", "origin/main", "start-point ref for the new worktree")
+	role := fs.String("role", "", "stamp this desk role's App commit identity (token role or loop name) into the new "+
+		"worktree's own config; omitted, the new worktree's user.name/user.email are CLEARED so it can never inherit "+
+		"the shared checkout's identity")
 	dryRun := fs.Bool("dry-run", false, "print the lifecycle-hook plan (HOOK after_create: ...) and touch nothing")
 	// Usage puts <name> first, but Go's flag stops at the first positional;
 	// parse in a loop so flags may appear before OR after the name (a stray/unknown flag
@@ -403,6 +406,27 @@ func cmdAdd(args []string) (err error) {
 		return deskkit.Refused("refused: --base must be a plain ref (no leading dash, no '..')")
 	}
 
+	// Resolve the commit identity to STAMP now, BEFORE any worktree exists, so an unbound
+	// --role refuses fail-closed rather than leaving a half-provisioned worktree behind. When
+	// --role is omitted, botName/botEmail stay empty and the worktree's identity is CLEARED
+	// after creation instead (clearCommitIdentity) — the no-inherit floor: a worktree from a
+	// bare `deskwt add` must never silently commit under the shared checkout's identity. The
+	// role is folded from either vocabulary (token role or loop name) through the same
+	// resolveRoleKey role-init uses, and the identity through the same shared deskkit resolver.
+	var botName, botEmail, roleKey string
+	if strings.TrimSpace(*role) != "" {
+		key, ok := resolveRoleKey(*role)
+		if !ok {
+			return deskkit.Refused("refused: --role " + *role + " is not a desk role; must be one of: " + roleSpellings())
+		}
+		roleKey = key
+		n, e, ierr := deskkit.RoleWorktreeCommitIdentity(key)
+		if ierr != nil {
+			return ierr
+		}
+		botName, botEmail = n, e
+	}
+
 	// --dry-run: report the after_create hook plan and touch nothing (no claim, no worktree).
 	if *dryRun {
 		line, herr := deskkit.HookDryRunLine(deskkit.HookAfterCreate)
@@ -433,8 +457,16 @@ func cmdAdd(args []string) (err error) {
 	// so an SSH push URL here is an SSH push URL there — and a bot session pushing over SSH
 	// goes out under a human's key while its commits read as the App's. Refuse now, before
 	// the branch and the worktree exist, rather than after an agent has filled them.
-	if terr := pushTransportGate(dir, "add"); terr != nil {
-		return terr
+	//
+	// With --role the worktree does NOT inherit the transport: wireRoleTransport (below,
+	// transport.go) replaces it at worktree scope with the role App's https transport and
+	// REFUSES — rolling the worktree back — unless git then resolves exactly that URL for
+	// fetch and push — a stricter check than this gate's, on the transport the worktree will
+	// actually use rather than the one it would have inherited.
+	if roleKey == "" {
+		if terr := pushTransportGate(dir, "add"); terr != nil {
+			return terr
+		}
 	}
 
 	// --base must resolve to EXACTLY ONE ref. An ambiguous short name is could-not-check,
@@ -514,6 +546,36 @@ func cmdAdd(args []string) (err error) {
 		return deskkit.Unverifiable("git worktree add reported success but "+target+" is not in `git worktree list`", nil)
 	}
 
+	// IDENTITY, worktree-scoped (#1490). A new linked worktree reads user.name/user.email
+	// from the SHARED .git/config, so without this it commits under whatever identity the
+	// shared checkout carries. With --role it is STAMPED to that role's App identity; without
+	// --role it is CLEARED (shadowed with an empty worktree-scoped value), which fails a
+	// commit closed rather than letting it inherit an unrelated identity. Both write only the
+	// new worktree's own config (extensions.worktreeConfig), never the shared checkout's.
+	identityDetail := ""
+	if roleKey != "" {
+		if serr := setCommitIdentity(resolvePath(target), botName, botEmail); serr != nil {
+			_ = removeWorktreeDir(guard, dir, resolvePath(target))
+			return serr
+		}
+		identityDetail = "identity " + deskkit.RoleIdentityLabel(roleKey)
+		// TRANSPORT, worktree-scoped (#861): the role App's own https fetch+push URL and its
+		// credential helper, replacing whatever the shared checkout's origin carries. Refused
+		// and rolled back when git does not then resolve exactly that transport.
+		transportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)
+		if terr != nil {
+			_ = removeWorktreeDir(guard, dir, resolvePath(target))
+			return terr
+		}
+		identityDetail += "; " + transportDetail
+	} else {
+		if serr := clearCommitIdentity(resolvePath(target)); serr != nil {
+			_ = removeWorktreeDir(guard, dir, resolvePath(target))
+			return serr
+		}
+		identityDetail = "identity CLEARED (no --role; a commit here fails closed until an identity is set)"
+	}
+
 	// after_create — runs on a NEWLY created worktree only (we are past the never-clobber
 	// guard, so this is always a fresh path). FATAL failure class: a hook that fails ABORTS
 	// creation, so the just-made worktree is rolled back rather than left half-provisioned
@@ -527,13 +589,17 @@ func cmdAdd(args []string) (err error) {
 		return deskkit.Unverifiable("after_create hook failed; worktree "+target+" rolled back", herr)
 	}
 
-	ac.detail = "added " + target + " (branch " + br + " tracking " + *base + ")"
+	ac.detail = "added " + target + " (branch " + br + " tracking " + *base + "; " + identityDetail + ")"
 	if *detach {
-		ac.detail = "added " + target + " (detached HEAD at " + *base + ", no branch)"
+		ac.detail = "added " + target + " (detached HEAD at " + *base + ", no branch; " + identityDetail + ")"
 	}
 	if reclaimed != "" {
 		ac.detail += "; " + reclaimed
 	}
+	// The identity line goes to STDERR: stdout stays the bare worktree path, the machine
+	// contract deskdispatch and the launcher read as the home. A hand run still SEES which
+	// identity (or the cleared state) its new worktree carries.
+	fmt.Fprintln(os.Stderr, "deskwt: "+identityDetail+" at "+target)
 	fmt.Println(target)
 	return nil
 }
@@ -788,37 +854,11 @@ func repoOrEmpty(dir string) string {
 	return repo
 }
 
-// parseRepo extracts owner/name from an https, ssh, or scp-style git remote URL.
+// parseRepo extracts owner/name from a git remote URL in every shape git accepts, plus the
+// rewritten/hybrid forms an `insteadOf` config or a bad URL-composition bakes onto an ssh
+// host-alias remote (issue 1470). It is a thin wrapper over the single shared parser in
+// deskkit, so the ssh-alias/hybrid handling lives in exactly one place across deskwt,
+// deskpr, deskreply and preflight and the class cannot recur from a drifted copy.
 func parseRepo(raw string) (string, error) {
-	u := strings.TrimSpace(raw)
-	u = strings.TrimSuffix(u, ".git")
-	if i := strings.Index(u, "://"); i >= 0 {
-		rest := u[i+3:]
-		if at := strings.Index(rest, "@"); at >= 0 {
-			rest = rest[at+1:]
-		}
-		if slash := strings.Index(rest, "/"); slash >= 0 {
-			return normRepoPath(rest[slash+1:])
-		}
-		return "", fmt.Errorf("no path in url %q", raw)
-	}
-	if at := strings.Index(u, "@"); at >= 0 && strings.Contains(u, ":") {
-		// scp-like: [user@]host:owner/repo
-		colon := strings.Index(u, ":")
-		return normRepoPath(u[colon+1:])
-	}
-	return normRepoPath(u)
-}
-
-func normRepoPath(p string) (string, error) {
-	p = strings.Trim(p, "/")
-	parts := strings.Split(p, "/")
-	if len(parts) < 2 {
-		return "", fmt.Errorf("cannot parse owner/repo from %q", p)
-	}
-	owner, repo := parts[len(parts)-2], parts[len(parts)-1]
-	if owner == "" || repo == "" {
-		return "", fmt.Errorf("empty owner/repo in %q", p)
-	}
-	return owner + "/" + repo, nil
+	return deskkit.RemoteRepoSlug(raw)
 }

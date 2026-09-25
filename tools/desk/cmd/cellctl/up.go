@@ -18,10 +18,15 @@ type upOverrides struct {
 	Model    string
 	Harness  string
 	Provider string
+	// Cockpit is the cockpit `up` RESOLVED (never `auto`), threaded onto every window so each
+	// exports the same ASSAY_COCKPIT as the surface it was opened in — even when `up --cockpit`
+	// overrode cell.env for this run only.
+	Cockpit string
 }
 
 // roleCmd is the one command a role window runs, identical in every cockpit. Order is fixed
-// (--model, then --harness, then --provider) so a printed command is stable to grep against.
+// (--model, then --harness, then --provider, then --cockpit) so a printed command is stable to
+// grep against.
 func (c *Cell) roleCmd(role, cfg string, o upOverrides) string {
 	out := fmt.Sprintf("'%s' desk '%s' '%s'", selfPath(), c.Name, role)
 	if o.Model != "" {
@@ -32,6 +37,9 @@ func (c *Cell) roleCmd(role, cfg string, o upOverrides) string {
 	}
 	if o.Provider != "" {
 		out += " --provider '" + o.Provider + "'"
+	}
+	if o.Cockpit != "" {
+		out += " --cockpit '" + o.Cockpit + "'"
 	}
 	return out + " '" + cfg + "'"
 }
@@ -151,6 +159,7 @@ func cmdUp(cell string, args []string) {
 		die("%s", res.Err)
 	}
 	fmt.Printf("[cockpit] %s (%s)\n", res.Cockpit, res.Why)
+	o.Cockpit = res.Cockpit
 	if automate != "" && res.Cockpit != "orca" {
 		die("up: --automate is an orca-only shape (scheduled automations behind an exit-code precheck); the resolved cockpit is %s", res.Cockpit)
 	}
@@ -167,10 +176,17 @@ func cmdUp(cell string, args []string) {
 		if persist {
 			die("up: --set with a model policy is ambiguous; edit the policy or provider defaults instead")
 		}
+		// Every selected role is resolved AND preflighted (credential, harness on PATH, Claude
+		// version floor, settings conflict scan) before any window opens, so one bad role never
+		// leaves half a cell running.
 		for _, role := range roles {
 			route, err := policy.Resolve(role, o.Provider, o.Model, o.Harness)
 			if err != nil {
 				die("%s", err)
+			}
+			if err := c.policyPreflight(route, cfg); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				die("up: policy preflight failed; no role windows launched")
 			}
 			fmt.Printf("[policy] role=%s provider=%s model=%s effort=%s source=%s sha256=%s\n", role, route.Provider, route.Model, route.Effort, policySource, policy.SHA256)
 		}

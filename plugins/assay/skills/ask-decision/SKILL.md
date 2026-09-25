@@ -42,18 +42,32 @@ the rule that a bare label is unanswerable without a comment saying what is need
 whom — is defined in the `intake-desk` and `the-desk` skills. **Point at it; do not restate
 it here.** This skill assumes the labels already mean what those skills say they mean.
 
-Read the queue with the inbox, which already sorts it. `<bundle>` in the commands below is
-the installed Assay bundle's own directory — each harness locates it its own way, and the
-expansion for yours is in `../../references/<harness>.md`; substitute it before running.
+Read the queue with the inbox, which already sorts it. Walk it with the bash oracle,
+because it is the renderer that runs **the screen** below (`<bundle>` is the installed Assay
+bundle's own directory; each harness locates it its own way, and the expansion for yours is
+in `../../references/<harness>.md`; substitute it before running):
 
 ```
 bash <bundle>/scripts/assay-inbox.sh --walk --item 1 owner/repo [owner/repo ...]
 ```
 
+The Go `deskinbox walk` (no `bash`/`jq` dependency, works on Windows — windows-port/13) has
+the same ordering and the same five-part format but **does not classify yet**: it presents
+every item, and numbers `--item K` over the whole queue, where the oracle numbers genuine
+items only — so the same `K` can name a different item under the two renderers. Use it only
+where the oracle cannot run, and then the two floors at the end of this skill are **manual
+checks**: before putting each item, read its thread yourself for a ruling already given and
+for a single workable option.
+
+```
+deskinbox walk --item 1 owner/repo [owner/repo ...]
+```
+
 **Before asking, read where the system is stuck:**
 `bash <bundle>/scripts/assay-inbox.sh --flow` prints the pipeline stage by
 stage with the bottleneck named, so an item's Context can say what it is actually holding up —
-and so a question about a stage three steps downstream of the constraint can wait.
+and so a question about a stage three steps downstream of the constraint can wait. (`--flow`
+is not yet ported to `deskinbox` — windows-port/15.)
 
 **Ordering rule: the item whose ruling unblocks the most in-flight work goes first; ties break
 by age, oldest first.** The script's mechanical order is urgency-then-age, which is the
@@ -67,9 +81,49 @@ waiting downstream. So:
 - Never reorder to put the easy questions first. The queue is drained to unblock work, not to
   maximise the count of answers.
 
-## The format — five parts, every time
+## The screen — four classes, and only one of them is asked
 
-The script renders exactly this; when you compose an item by hand, compose the same shape.
+Before any item reaches the format below, the inbox's `--walk` (the bash oracle) classifies
+it. It puts only **genuine** decisions to the driver; the other three classes are never
+asked, and never silently dropped — each is counted in a tail line under every question and
+listed in full, with its evidence, by `--walk --screened`. Classes are tested in this order;
+the first that holds on POSITIVE evidence wins, otherwise the item is genuine. An item the
+tool cannot read or cannot classify is always genuine: screening only ever happens on
+evidence, never on its absence, and never on evidence written by someone the roster does not
+trust. With no roster configured, the walk prints a NOTICE naming the classes it could not
+enter.
+
+1. **already-ruled** — after the newest ask (the last comment by a roster App — a relay,
+   or the options put again — else the issue body's own Options), the **ratifying
+   identity** (the roster's `ASSAY_BLESS_LOGIN`; never any other human, however trusted) has
+   written, in its own hand and unedited, a ruling: its first line names one of the offered
+   options ("A", "Option B — …") or ratifies ("ratified"). A question, a refusal, or a
+   "hold" is not a ruling; a desk relay ALONE is never one — this is the exact mistake this
+   screen exists to catch. **Desk action:** read the cited comment yourself; when it is what
+   the tool says, record it, relabel per the label vocabulary and close citing that comment,
+   and never re-ask. When it is not, the item is genuine — ask it.
+2. **no-fork** — the issue was opened by a trusted author (a roster human or App) and its
+   Options section parses to exactly one entry — or, with no Options section, its fork-test
+   block carries exactly one `option:` line. One workable option is not a fork; it is a plan
+   already picked. **Desk action:** proceed or re-route, and notify — do not park it on this
+   skill.
+3. **reversible-default** — the issue was opened by a trusted author and carries a live
+   `caught-by:`, a `default:`, and no `class:` line and no one-way term: the desk has
+   already proceeded behind a gate the driver still holds a veto over. **Desk action:**
+   proceed behind the gate on the default the item names; notify, and let the veto stand.
+4. **genuine** — everything else. **Desk action:** ask, per the format below.
+
+The two floors at the end of this skill ("never ask a question twice", "never ask a
+question the desk can answer") are made mechanical by this screen **on the oracle's walk
+only**. The screen narrows what reaches the driver; it does not replace reading — act on a
+screened class only after reading the evidence the tool cites. Where `deskinbox walk`
+renders instead, nothing classifies, and both floors stay manual checks done by hand before
+each question.
+
+## The format — five parts for every GENUINE item
+
+The script renders exactly this for every item it classifies genuine; when you compose
+an item by hand, compose the same shape.
 
 1. **Header** — `<repo>#<N> — question k of n`. The position is load-bearing: it tells the
    driver how long this will take, which is what makes it possible to say yes to starting.
@@ -82,7 +136,10 @@ The script renders exactly this; when you compose an item by hand, compose the s
 3. **Options** — lettered, **the recommended default FIRST and labelled "recommended"**, each
    with **its consequence in one clause**. Never more than four. A "do nothing" option only
    when doing nothing is genuinely viable — a fake option to look balanced wastes the turn.
-   An option with no stated consequence is not an option, it is a label.
+   An option with no stated consequence is not an option, it is a label. **An item with one
+   workable option is not asked** — the screen above classifies it `no-fork` before it ever
+   reaches this format; never pad a single real option with a second one just to fill the
+   list.
 4. **Reply shape** — exactly what the answer must contain: a letter, a name, "done", "merge
    it". **The driver should be able to answer in one word.** If your question cannot be
    answered in one word, it is two questions or an unfinished one.
@@ -138,7 +195,7 @@ the driver said — which is exactly the artifact a confidently-worded comment c
 Ratification is what makes the distinction visible on the issue itself, independent of how the
 relaying session worded anything: the issue carries the state, not the prose.
 
-The ratification relay comment has five parts, every time:
+The ratification relay comment has five parts, without exception:
 
 1. **The relay header.** Names the driver's answer as relayed, with the date it was given.
 2. **The disclaimer.** States explicitly that this comment is a relay RECORD and not itself the
@@ -183,7 +240,8 @@ Then present `k+1`.
 
 ## Rendering the queue as a page
 
-For decisions the driver wants to read away from a terminal:
+For decisions the driver wants to read away from a terminal (`--html` is not yet ported to
+`deskinbox` — windows-port/15; this still runs the bash oracle):
 
 ```
 bash <bundle>/scripts/assay-inbox.sh --html /path/to/inbox.html owner/repo
@@ -207,6 +265,14 @@ recorded on the issue as a relay.
   still waiting) and do not summarise it from memory.
 - **Never ask a question the desk can answer.** Anything resolvable by reading the repo, the
   CI log, or the spec is desk work, and putting it in this queue spends the driver's turn on
-  the desk's homework.
+  the desk's homework. On the oracle's walk, the `no-fork` and `reversible-default` classes in
+  "The screen" above are this floor made mechanical — an item with one workable option, or
+  already proceeding behind a held gate, is desk work, not a question. Under `deskinbox walk`
+  it is a check by hand.
 - **Never ask a question twice.** Before presenting an item, check whether a ruling is already
-  recorded on it. A re-asked decision reads as the desk not having listened.
+  recorded on it. A re-asked decision reads as the desk not having listened. On the oracle's
+  walk, the `already-ruled` class above is this check made mechanical — it is what catches the
+  driver being asked to re-confirm a ruling already given. It is narrow on purpose (only the
+  ratifying identity's own unedited ruling after the newest ask), so an item it presents may
+  still carry a ruling in a shape it does not recognise: read the thread before asking. Under
+  `deskinbox walk`, which does not classify, this whole check is by hand.

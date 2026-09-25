@@ -1,13 +1,21 @@
 ---
 description: What's waiting on you across your configured repos — needs-decision, question, help wanted, and urgent issues, sorted urgency-then-age. Add --walk to be asked one decision at a time, --html FILE to read them as a page, or --flow to see where the pipeline is stuck. Read-only, works from any terminal.
-argument-hint: "[--walk [--item K] | --html OUT.html | --flow [--html OUT.html]] [owner/repo ...]"
+argument-hint: "[--walk [--item K] [--screened] | --html OUT.html | --flow [--html OUT.html]] [--no-screen] [owner/repo ...]"
 ---
 
 # assay:inbox
 
-The inbox: a **derived query**, not a stored roll-up or a service. This command
-shells `../scripts/assay-inbox.sh` — a plain `gh` + `jq` helper — across your configured
-repos and prints what's waiting on a human decision, most urgent (then oldest) first.
+The inbox: a **derived query**, not a stored roll-up or a service. It prints what's waiting
+on a human decision across your configured repos, most urgent (then oldest) first.
+
+**Implementation (windows-port/13).** The table (no flags) renders through the Go
+`deskinbox` verb (`tools/desk/cmd/deskinbox`) — no `bash`/`jq` dependency, and it works on
+Windows. `--walk`, `--html` and `--flow` shell `../scripts/assay-inbox.sh` — a plain `gh` +
+`jq` helper — because it is the only renderer that runs **the screen** (below): `deskinbox`
+does not classify yet, so `deskinbox walk` is the fallback only where the oracle cannot run,
+and there it presents every item unscreened (`--html`/`--flow` are pending their own port,
+windows-port/15). Both paths compute the SAME ordering and item format; what differs is that
+only the oracle classifies, and so only the oracle numbers `--item K` over GENUINE items.
 
 **Read-only.** It never writes to, comments on, or closes any issue. **Terminal-agnostic.**
 It is plain `git`/`gh` shell — it runs from any terminal.
@@ -30,14 +38,15 @@ carries. Each row prints label, repo, `#number`, title, age, and the issue URL.
 The ordering and the item format are computed ONCE and rendered three ways, so the table, the
 walk and the page can never disagree about what is waiting or which item is first.
 
-| Mode | What it does |
-|---|---|
-| *(none)* | The terminal table — one row per item. Unchanged; still one `gh issue list` per repo per label and nothing else. |
-| `--walk` | Prints **one** item in the five-part decision format: `<repo>#<N> — question k of n`, then **Context** (3–6 lines: what it is, why it is blocked on a human, what it unblocks, the evidence links), **Options** (lettered, recommended default first and labelled, at most four), **Reply shape** (what a one-word answer must contain), **Verification** (what the desk checks after the act, and what it moves to next). Prints item 1. |
-| `--item K` | With `--walk`, and implying it: print item **K** (1-based) instead of item 1. Out of range is an error — never a silent empty. |
-| `--html OUT.html` | Writes the whole queue to `OUT.html` as cards in that same five-part format, followed by the **Flow** section below. One self-contained file: inline CSS, no scripts, no external assets, light/dark via `prefers-color-scheme`. The only URLs on the page are the issue links. No server. |
-| `--flow` | A different question — *how is the system performing*. Prints the pipeline flow model as a terminal table and exits. See "The Flow page" below. |
-| `--flow --html OUT.html` | The same model as a left-to-right inline-SVG stage diagram, that section alone. |
+| Mode | What it does | Renderer |
+|---|---|---|
+| *(none)* | The terminal table — one row per item. The oracle's table adds a `class` column (it hides nothing); `deskinbox`'s has none. | `deskinbox` (or `assay-inbox.sh` for the class column) |
+| `--walk` | Prints **one** GENUINE item in the five-part decision format: `<repo>#<N> — question k of n`, then **Context** (3–6 lines: what it is, why it is blocked on a human, what it unblocks, the evidence links), **Options** (lettered, recommended default first and labelled, at most four), **Reply shape** (what a one-word answer must contain), **Verification** (what the desk checks after the act, and what it moves to next). Prints the first genuine item, then the screen's tail line. | `assay-inbox.sh --walk` (`deskinbox walk` only where the oracle cannot run — unscreened, every item) |
+| `--item K` | With `--walk`, and implying it: print the **K**th GENUINE item (1-based) instead of the first. Out of range (against the genuine count) is an error — never a silent empty. Under `deskinbox walk`, `K` counts the whole queue instead, so it can name a different item. | `assay-inbox.sh --walk --item K` |
+| `--screened` | With `--walk`: instead of one item, prints every item **the screen classified out** — repo#number, class, and the evidence — never a standalone mode. | `assay-inbox.sh --walk --screened` |
+| `--html OUT.html` | Writes the whole queue to `OUT.html` as cards in that same five-part format, followed by the **Flow** section below. One self-contained file: inline CSS, no scripts, no external assets, light/dark via `prefers-color-scheme`. The only URLs on the page are the issue links. No server. | `assay-inbox.sh --html` (not yet ported — windows-port/15) |
+| `--flow` | A different question — *how is the system performing*. Prints the pipeline flow model as a terminal table and exits. See "The Flow page" below. | `assay-inbox.sh --flow` (not yet ported — windows-port/15) |
+| `--flow --html OUT.html` | The same model as a left-to-right inline-SVG stage diagram, that section alone. | `assay-inbox.sh --flow --html` (not yet ported — windows-port/15) |
 
 `--walk` is **non-interactive by design**: it prints one item and exits, never prompts, never
 blocks on a tty. The turn-taking — ask one, wait, record the ruling, ask the next — belongs to
@@ -48,10 +57,27 @@ human at a prompt, and a CI job all use the same renderer.
 `--walk` and `--html` are alternative renderings; passing both is refused rather than silently
 resolved to one.
 
+**The screen.** `--walk` (bash oracle) classifies every item first and puts only a
+*genuine* decision to the driver — an already-ruled, no-fork, or reversible-default item is
+never asked, only counted in a tail line under the question (`--screened` lists them in
+full); see the [`assay:ask-decision`](../skills/ask-decision/SKILL.md) skill for the four
+classes and what the desk does with each. A class is entered only on evidence from a
+trusted identity: `already-ruled` needs the **ratifying identity's** own unedited ruling
+after the newest ask, and `no-fork` / `reversible-default` read the issue body only when its
+author is a trusted roster human or App. The roster is read from the environment
+(`ASSAY_BLESS_LOGIN`, `ASSAY_TRUSTED_LOGINS`, `ASSAY_TRUSTED_BOT_SLUGS`,
+`ASSAY_HUMAN_LOGIN_MAP`), else from the owner-only
+`${ASSAY_CONFIG_HOME:-~/.config/assay}/roster.env` the desk tools read — never from the
+current directory. With no roster, no class is entered and the walk prints a NOTICE saying
+which classes were switched off. `--no-screen` turns the screen off, one flag back to showing
+every item exactly as before the screen existed.
+
 ### Where Context and Options come from
 
-`--walk` and `--html` read each issue's **body and latest desk/bot comment** (one extra
-`gh issue view` per rendered item; the plain table still makes no such call) and lift:
+The oracle reads each issue's **author, body and comments** with one `gh issue view` per
+queued item — in the table, `--walk` and `--html` alike, because the screen must read an item
+to classify it (so a failed detail fetch makes any of them exit `2`). `--no-screen` restores
+the old cost: no such call in the table, one in `--walk`. From what it reads it lifts:
 
 - **Context** from a `## Context` / `## Situation` / `## Ask` / `## Summary` / `## Problem`
   section, else the body's opening prose — plus the escalation label it is blocked on, an
@@ -152,11 +178,15 @@ The run always ends with a summary line — `assay-inbox: N item(s) across M rep
 query fails (expired token, missing repo, rate limit), the helper prints `gh`'s own
 diagnostic to stderr, marks the summary `THIS INBOX IS INCOMPLETE`, and exits non-zero.
 
-| Exit | Meaning |
-|---|---|
-| `0` | every query succeeded — the output is complete |
-| `1` | precondition failure: `gh`/`jq` missing, no repos/cells resolvable, or bad arguments (unknown flag, non-numeric or out-of-range `--item`, `--walk` together with `--html` or with `--flow`, a malformed `--since`) |
-| `2` | one or more queries FAILED — the output is **partial**, see stderr. In `--walk`/`--html` this includes an issue whose body could not be read: it is rendered as `could-not-check`, never as an item with nothing to say. In `--flow`/`--flow --html` it includes any flow reader that could not be read |
+**`deskinbox` (table, `--walk`) uses the shared desk-tools exit-code taxonomy** — 0 ok,
+5 refused (bad arguments/preconditions), 6 unverifiable (a repo's read failed — output, if
+any, is partial). **`assay-inbox.sh` (`--html`, `--flow`) keeps its own, older taxonomy:**
+
+| Exit | Meaning | `deskinbox` (table/`--walk`) | `assay-inbox.sh` (`--html`/`--flow`) |
+|---|---|---|---|
+| ok | every query succeeded — the output is complete | `0` | `0` |
+| refused / precondition | `gh`/`jq` missing, no repos/cells resolvable, or bad arguments (unknown flag, non-numeric or out-of-range `--item`, `--walk` together with `--html` or with `--flow`, a malformed `--since`) | `5` | `1` |
+| partial | one or more queries FAILED — the output is **partial**, see stderr. In `--walk`/`--html` this includes an issue whose body could not be read: it is rendered as `could-not-check`, never as an item with nothing to say. In `--flow`/`--flow --html` it includes any flow reader that could not be read | `6` | `2` |
 
 A blind Flow section on the `--html` page does **not** redden that run. The exit code of the
 decision modes is a statement about the *decision queue* — a caller checking it is asking
@@ -182,7 +212,9 @@ ordering exists to surface. Hitting the cap is reported, not swallowed.
 /assay:inbox                          # uses .assay/repos.txt, else origin
 /assay:inbox example-org/app example-org/service   # one or more repos
 /assay:inbox --walk                   # ask me about the first decision
-/assay:inbox --walk --item 3          # ask me about the third
+/assay:inbox --walk --item 3          # ask me about the third GENUINE decision
+/assay:inbox --walk --screened        # what did the screen classify out, and why?
+/assay:inbox --no-screen              # the screen misjudged — show everything, as before
 /assay:inbox --html ~/inbox.html      # write the whole queue as a page
 /assay:inbox --flow                   # where is the pipeline stuck?
 /assay:inbox --flow --root ../app --root ../service   # two cells, plus the fleet total
@@ -195,23 +227,36 @@ ordering exists to surface. Hitting the cap is reported, not swallowed.
 2. Before running anything, check that every repo argument matches `owner/repo`
    (`[A-Za-z0-9._-]+/[A-Za-z0-9._-]+`). Refuse to run the command if any token does not
    match, and say why. Then pass each repo as its own separately-quoted argument — never a
-   bare unquoted `$ARGUMENTS` expansion:
+   bare unquoted `$ARGUMENTS` expansion.
+
+   **Table (no flags)** runs the `deskinbox` verb directly (it is a compiled binary, not a
+   script — no `bash` wrapper); if it is not on `PATH`, run the bash oracle instead and say
+   you are doing so:
    ```
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" "owner/repo1" "owner/repo2"
+   deskinbox "owner/repo1" "owner/repo2"
    ```
-   (`CLAUDE_PLUGIN_ROOT` resolves to this plugin's installed root; if unset, resolve the
-   script relative to this command file's own `../scripts/assay-inbox.sh`.)
-   Flags go ahead of the repo list and are passed as their own arguments:
+
+   **`--walk`/`--item K`, `--screened`, `--no-screen`, `--html` and `--flow`** run the bash
+   oracle — it is the only renderer with the screen (`deskinbox` does not classify yet;
+   `--html`/`--flow` are also pending windows-port/15):
    ```
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --walk --item 2 "owner/repo1"
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --walk --screened "owner/repo1"
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --html "$HOME/inbox.html" "owner/repo1"
    ```
-3. Print the helper's table output verbatim to the user — do not summarize away rows, do not
-   edit, close, or comment on any issue found. If the helper errors (missing `gh`/`jq` auth,
-   no repos resolvable), surface the error message as-is; do not guess at issue state.
-4. **Check the exit code.** A non-zero exit means the inbox you are looking at is incomplete
-   or absent — say so plainly and relay the stderr diagnostic. Never report "nothing is
-   waiting" on a non-zero exit; that is the failure mode this command exists to avoid.
+   Only where the oracle cannot run (no `bash`/`jq`), fall back to `deskinbox walk --item K`
+   and say so: it presents every item unscreened and numbers the whole queue, so the
+   `ask-decision` skill's two floors become manual checks for that walk.
+   (`CLAUDE_PLUGIN_ROOT` resolves to this plugin's installed root; if unset, resolve the
+   script relative to this command file's own `../scripts/assay-inbox.sh`.)
+3. Print the renderer's table output verbatim to the user — do not summarize away rows, do
+   not edit, close, or comment on any issue found. If it errors (missing auth, no repos
+   resolvable), surface the error message as-is; do not guess at issue state.
+4. **Check the exit code** — the meaning depends on which renderer ran (`deskinbox` vs the
+   bash oracle; see the exit-code table above). A non-zero exit means the inbox you are
+   looking at is incomplete or absent — say so plainly and relay the stderr diagnostic.
+   Never report "nothing is waiting" on a non-zero exit; that is the failure mode this
+   command exists to avoid.
 5. **In `--walk`, print the item and STOP.** Ask that one question and wait for the answer;
    do not run `--item 2` in the same turn, and do not act on the recommended default in place
    of an answer. When the answer comes back, record it on the issue as a **relay** and move

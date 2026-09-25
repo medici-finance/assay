@@ -65,6 +65,12 @@ func (r ForgeRepo) Slug() string { return r.Owner + "/" + r.Name }
 type Account struct {
 	Login string
 	ID    int64
+	// Type is the forge's own actor kind where the read reports one ("User", "Bot",
+	// "Organization", "Mannequin" on GitHub's GraphQL comment read), and EMPTY where it does
+	// not. Empty is could-not-check, never "User". Consumer: cmd/deskautolane's enactment
+	// gate, which refuses a sign-off artifact whose author is not a User (freeze rule: fields,
+	// not methods — this lands with its call site).
+	Type string `json:",omitempty"`
 }
 
 // PullRequest is the subset of a change (GitHub pull request ↔ GitLab merge request) the
@@ -791,7 +797,8 @@ type ChangeList struct {
 // IssueSummary is one open issue in the bulk issue-board read: the fields the issue lane
 // classifies on. Author.Login is the RENDERED login (a bot carries its "<slug>[bot]" suffix)
 // and Author.ID the permanent numeric id the trust gate pins on. CreatedAt is the escalation
-// clock's baseline (the question was posed then). Consumer: cmd/issueboard's fetchOpenIssues.
+// clock's baseline (the question was posed then). Consumers: cmd/issueboard's fetchOpenIssues,
+// and cmd/deskmonitor's inbound poll (number + UpdatedAt, the keyset its per-repo baseline holds).
 // The read returns ISSUES only, never changes (PRs/MRs): a forge that serves both from one
 // number sequence (GitHub) filters the changes out, so the caller never has to.
 type IssueSummary struct {
@@ -800,6 +807,11 @@ type IssueSummary struct {
 	Author    Account
 	Labels    []string
 	CreatedAt string // RFC3339
+	// UpdatedAt is the issue's last-activity time (RFC3339, the forge's own `updated_at`): it
+	// moves on a new comment, which is how cmd/deskmonitor's inbound poll tells a resumed thread
+	// from a quiet one. omitempty keeps a summary whose forge reported none byte-identical in the
+	// forge golden corpus.
+	UpdatedAt string `json:",omitempty"`
 	// URL is the issue's human-facing page, EMPTY where the forge did not report one.
 	// Consumer: cmd/deskboard's cmdQueue, which prints the verify-gate issue's location in
 	// its JSON row. omitempty keeps a change that carries no URL byte-identical in the forge
@@ -822,6 +834,10 @@ type TrustPayload struct {
 	Events     []ContentEvent
 	Complete   bool
 }
+
+// forgeFileCommitsMax is the one-page ceiling of ListFileCommits (and the page size of
+// ListCommitChanges): both forges serve at most 100 entries per page.
+const forgeFileCommitsMax = 100
 
 // RepoCommit is one commit on a repository's default branch or at a ref: its sha, the
 // committed date, and the forge accounts the commit is ATTRIBUTED to. AuthorLogin/
@@ -1103,6 +1119,158 @@ func ValidateHardeningReadKind(kind string) (HardeningReadKind, error) {
 		kind, strings.Join(HardeningReadKinds(), ", ")), nil)
 }
 
+// --- Run and gate-approval ops (RunWorkflow / ApproveGate / RunStatus) ---------------------
+//
+// These three ops start a CI run and clear a deployment gate on it. They were a human action
+// until forge-neutral brief 14. On GitHub, dispatching a workflow needs `Actions: write`, and
+// the same permission also cancels runs, deletes run logs and disables workflows repo-wide, so
+// no desk App is safely grantable it. Approving a pending deployment is a DIFFERENT permission
+// (`Deployments: write`) and is further limited to the environment's required reviewers, which
+// are users or teams — so under an App credential GitHub's ApproveGate is a could-not-check
+// (the forge reports the App may not approve; see GitHubForge.ApproveGate).
+// The ops therefore run ONLY under the per-repo run credential the roster binds
+// (ResolveRunCredential, runcredential.go) — never a desk role's App. Their one consumer is
+// cmd/deskrun (freeze rule: the ops land with that call site).
+//
+// `repository_dispatch` is deliberately NOT a trigger here: it fires with `contents: write`,
+// a scope most desk Apps already hold, which is a far wider "who can start a release"
+// surface than a roster-bound, single-purpose credential. No op in this seam posts to the
+// repository dispatches endpoint.
+
+// RunWorkflowInput is RunWorkflow's request.
+type RunWorkflowInput struct {
+	// Workflow names the workflow to run. On GitHub it is the workflow FILE name under
+	// .github/workflows (e.g. "release.yml") or its numeric id — a bare name, never a path.
+	// On GitLab a project has exactly one pipeline definition, so it is empty or the literal
+	// ".gitlab-ci.yml"; anything else is refused rather than silently ignored.
+	Workflow string
+	// Ref is the branch or tag the run executes on ("main", "v1.2.0").
+	Ref string
+	// Inputs are the workflow_dispatch inputs (GitHub) / pipeline variables (GitLab).
+	Inputs map[string]string
+	// Actor, when non-empty, is the login the forge records as the run's actor (a GitHub App
+	// renders as "<slug>[bot]"). GitHub's dispatch returns no run id, so the created run is
+	// resolved by a follow-up list read; the actor narrows that read. Empty means the read is
+	// narrowed by workflow, event, ref and the pre-dispatch time floor only — the ambiguity
+	// refusal still stands. GitLab returns the pipeline directly and does not read it.
+	Actor string
+}
+
+// RunRef is an OPAQUE handle on one run (a GitHub Actions workflow run ↔ a GitLab
+// pipeline). ID is the forge's own run/pipeline id, URL its human-facing page. A caller
+// never constructs or parses one; it passes back what RunWorkflow returned (or the id a
+// human read off the forge, which the backend validates as a bare id before any request).
+type RunRef struct {
+	ID  string
+	URL string `json:",omitempty"`
+}
+
+// GateShape names HOW a deployment gate is cleared. GitHub has one shape (a deployment
+// environment with required reviewers); GitLab has two with no unifying endpoint, and which
+// one a project uses is a property of that project's CI configuration — so the shape is
+// STATED by the caller (from the roster's run-credential binding), never inferred.
+type GateShape string
+
+const (
+	// GateShapeEnvironment is a protected/deployment environment approval: GitHub's
+	// pending_deployments, GitLab's protected-environment deployment approval.
+	GateShapeEnvironment GateShape = "environment"
+	// GateShapeManualJob is a GitLab `when: manual` job played on the pipeline. GitHub has
+	// no such shape and refuses it by name.
+	GateShapeManualJob GateShape = "manual-job"
+)
+
+// ParseGateShape validates a stated gate shape. Empty is returned as empty (the caller did
+// not state one); an unknown value is a could-not-check refusal naming the vocabulary.
+func ParseGateShape(s string) (GateShape, error) {
+	switch GateShape(strings.TrimSpace(s)) {
+	case "":
+		return "", nil
+	case GateShapeEnvironment:
+		return GateShapeEnvironment, nil
+	case GateShapeManualJob:
+		return GateShapeManualJob, nil
+	}
+	return "", Unverifiable(fmt.Sprintf("could-not-check: %q is not a gate shape — the shapes are %q and %q",
+		s, GateShapeEnvironment, GateShapeManualJob), nil)
+}
+
+// ApproveGateInput is ApproveGate's request: the gate's NAME (a GitHub environment name, a
+// GitLab environment name or manual job name) and its SHAPE.
+type ApproveGateInput struct {
+	Gate  string
+	Shape GateShape
+}
+
+// Forge-neutral run lifecycle vocabulary (RunState.Status).
+const (
+	RunStatusQueued     = "queued"
+	RunStatusInProgress = "in_progress"
+	RunStatusWaiting    = "waiting"
+	RunStatusCompleted  = "completed"
+)
+
+// RunState is a run's lifecycle in the forge-neutral vocabulary. Status is one of the
+// RunStatus* values; Conclusion is empty until Status is completed, then the forge's
+// outcome (success, failure, cancelled, skipped, and on GitHub its further values such as
+// timed_out or neutral).
+type RunState struct {
+	Status     string
+	Conclusion string `json:",omitempty"`
+	URL        string `json:",omitempty"`
+}
+
+// ValidateRunID checks a RunRef's id is a bare positive integer before it is interpolated
+// into any request path — the ValidateRefPath shape applied to a run id. A caller-supplied id
+// that is anything else is a could-not-check refusal with zero requests.
+func ValidateRunID(run RunRef) (int64, error) {
+	id := strings.TrimSpace(run.ID)
+	n, err := strconv.ParseInt(id, 10, 64)
+	if err != nil || n <= 0 || strconv.FormatInt(n, 10) != id {
+		return 0, Unverifiable(fmt.Sprintf("could-not-check: run id %q is not a bare positive integer — "+
+			"a run is addressed by the forge's own id, never a path", StripControl(run.ID)), nil)
+	}
+	return n, nil
+}
+
+// validateRunRef checks a run's branch/tag name. It accepts a short name ("main",
+// "release/1.2") or a fully qualified "refs/heads/…"/"refs/tags/…" and returns the SHORT
+// name. Every component passes the same checks ValidateRefPath applies, so a ref cannot
+// reshape the request it is placed into.
+func validateRunRef(ref string) (string, error) {
+	r := strings.TrimSpace(ref)
+	r = strings.TrimPrefix(r, "refs/heads/")
+	r = strings.TrimPrefix(r, "refs/tags/")
+	if r == "" {
+		return "", Unverifiable("could-not-check: a run needs a branch or tag to run on — the ref is empty", nil)
+	}
+	for _, p := range strings.Split(r, "/") {
+		if err := validateRefComponent(ref, p); err != nil {
+			return "", err
+		}
+	}
+	return r, nil
+}
+
+// validateRunInputs refuses an empty input/variable name. Values are free text.
+func validateRunInputs(in map[string]string) error {
+	for k := range in {
+		if strings.TrimSpace(k) == "" || strings.ContainsAny(k, " =[]\n\r\t") {
+			return Unverifiable(fmt.Sprintf("could-not-check: run input name %q is not a plain name", StripControl(k)), nil)
+		}
+	}
+	return nil
+}
+
+// validateGateName refuses an empty or control-bearing gate name before any request.
+func validateGateName(gate string) (string, error) {
+	g := strings.TrimSpace(gate)
+	if g == "" || StripControl(g) != g {
+		return "", Unverifiable(fmt.Sprintf("could-not-check: gate name %q is empty or not printable", StripControl(gate)), nil)
+	}
+	return g, nil
+}
+
 // Forge is the single seam every desk tool reaches a forge through. The method set is the
 // operations a shipping tool consumes (stream spec §6), reconciled against the stream's
 // per-tool inventory. It is FROZEN: an addition requires a consuming tool in the same
@@ -1283,6 +1451,21 @@ type Forge interface {
 	// The account-login fields are a per-field could-not-check where the forge resolves no
 	// account (see RepoCommit). Consumer: cmd/deskboard's fetchHeadCommit (freeze rule).
 	GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error)
+	// ListFileCommits returns up to limit commits reachable from ref that touched file, newest
+	// first (GitHub `/repos/{o}/{r}/commits?sha=&path=` ↔ GitLab `/projects/:id/repository/
+	// commits?ref_name=&path=`): ONE page, limit in [1, 100]. A result of exactly limit
+	// commits may be truncated, and a caller that needs the file's whole history treats it
+	// so. Only the SHA is load-bearing for the consumer; a commit's own date is never a merge
+	// time. Consumer: cmd/deskautolane's enactment gate, which walks the rulings register's
+	// history to find the latest change to a ruling's text (freeze rule).
+	ListFileCommits(repo ForgeRepo, ref, file string, limit int) ([]RepoCommit, error)
+	// ListCommitChanges returns the numbers of the changes (PRs ↔ MRs) the forge associates with
+	// commit sha (GitHub `/repos/{o}/{r}/commits/{sha}/pulls` ↔ GitLab `/projects/:id/
+	// repository/commits/:sha/merge_requests`), in any state. An empty list is the ANSWER "no
+	// change is behind this commit". The caller reads each change with GetPullRequest for its
+	// merged state, merge time and base. Consumer: cmd/deskautolane's enactment gate, whose
+	// time check keys on the merging change's merge time, never a commit date (freeze rule).
+	ListCommitChanges(repo ForgeRepo, sha string) ([]int, error)
 	// CompareRefs compares two refs and returns the files that differ plus the divergence
 	// counts and the forge's own status word (see RefComparison). A forge that does not report
 	// the divergence status/counts in the shape GitHub's compare API does returns
@@ -1323,11 +1506,30 @@ type Forge interface {
 	// ref API, so only the `heads/` namespace maps, via the Branches API — the same limit
 	// DeleteRef carries), never a guessed "absent".
 	//
-	// Consumer: cmd/deskpost's claimLiveness — the model-capability-floor stamp age-out reads
-	// whether a PR's dispatch claim ref (`heads/dispatch/<key>`, ClaimRefPath) is still held.
 	// Only a positive ABSENT ages a stamp out; every uncertain path is could-not-check, which
 	// changes nothing (freeze rule: this read lands with the call site that consumes it).
 	RefExists(repo ForgeRepo, ref string) (bool, error)
+	// MatchingRefs returns the FULLY-QUALIFIED ref paths present in repo whose path STARTS WITH
+	// refPrefix (the git prefix listing — GitHub `git/matching-refs/<ref>`). refPrefix is a ref
+	// path validated by ValidateRefPath before any request is built, so this op cannot address an
+	// arbitrary endpoint — the same bound RefExists carries. An EMPTY match is ([], nil), the
+	// ANSWER "no such refs", never a failure; every other non-2xx is a could-not-check error the
+	// caller must not read as "none".
+	//
+	// It exists because RefExists addresses ONE exact ref, but a caller sometimes needs a claim
+	// FAMILY: a PR's review-dispatch claims are `refs/dispatch/<short>--pr-<N>` plus, for each
+	// re-dispatch, `…--<suffix>` — and the suffix a later reader cannot know, so the family must
+	// be listed by prefix rather than probed by exact key.
+	//
+	// Consumer: cmd/deskpost's claimLiveness — the model-capability-floor stamp age-out for a
+	// review-lane authority write (a verdict or a ready-flip) reads whether ANY claim in the PR's
+	// review-dispatch family is still held, in the `refs/dispatch/*` namespace those claims are
+	// ACTUALLY acquired in today (DispatchClaimActiveRefsPrefix — the reader-side half of the
+	// issue-708 namespace divergence; the writer/acquire path is left untouched). A backend whose
+	// forge cannot prefix-list refs in that shape returns a could-not-check REFUSAL naming the gap
+	// (GitLab CE exposes no general ref listing — only the Branches API — so it cannot serve this),
+	// never a guessed empty result (freeze rule: this read lands with the call site that consumes it).
+	MatchingRefs(repo ForgeRepo, refPrefix string) ([]string, error)
 	// RepoHardeningRead reads ONE closed hardening-read kind's document(s) for repo (see
 	// HardeningReadKind) — the enumerated replacement for repohardenguard's former arbitrary
 	// `gh api <endpoint>` reads. kind is validated by ValidateHardeningReadKind BEFORE any
@@ -1442,6 +1644,30 @@ type Forge interface {
 	// to address an arbitrary endpoint. Deleting a ref that is already gone is reported as
 	// a not-found error the caller may treat as a no-op — the seam does not decide that.
 	DeleteRef(repo ForgeRepo, ref string) error
+
+	// --- Run and gate-approval (forge-neutral brief 14; consumer: cmd/deskrun) ---
+
+	// RunWorkflow starts one run of a workflow on a ref and returns the run it created.
+	// GitHub: `POST …/actions/workflows/{workflow}/dispatches` answers 204 with NO run id, so
+	// the backend resolves the created run by a follow-up list read narrowed by workflow,
+	// event, ref, actor and a time floor taken BEFORE the dispatch call. More than one run
+	// matching is a could-not-check REFUSAL naming the ambiguity — never a newest-first
+	// guess, because a caller that resolved the wrong run would then approve or read a run it
+	// did not start. GitLab: `POST /projects/:id/trigger/pipeline` authenticated by the
+	// PIPELINE TRIGGER TOKEN the backend holds (a credential that can start pipelines and
+	// nothing else) — the narrow default; the pipeline comes back in the response.
+	RunWorkflow(repo ForgeRepo, in RunWorkflowInput) (RunRef, error)
+	// ApproveGate clears ONE named deployment gate on a run. The gate is resolved against
+	// what the run is actually waiting on; a name matching none of it is a could-not-check
+	// REFUSAL naming the run and the gate, never an approval of whatever happened to be
+	// pending. GitHub: pending_deployments read, then approve that environment's id. GitLab:
+	// dispatches on the STATED shape — a manual job played, or a blocked protected-environment
+	// deployment approved — and never falls over to the other shape.
+	ApproveGate(repo ForgeRepo, run RunRef, in ApproveGateInput) error
+	// RunStatus reads one run's lifecycle in the forge-neutral vocabulary (RunState). GitHub:
+	// `GET …/actions/runs/{id}`; GitLab: `GET /projects/:id/pipelines/:id`. A state the
+	// mapping does not know is could-not-check, never rounded to a known one.
+	RunStatus(repo ForgeRepo, run RunRef) (*RunState, error)
 
 	// --- Identity / transport ---
 

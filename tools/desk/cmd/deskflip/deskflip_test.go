@@ -752,6 +752,74 @@ func TestNonRiskBriefDoesNotRequireASecurityPass(t *testing.T) {
 	}
 }
 
+// TestAuthorsTrailerOnNonAuthoringDiffRiskClasses is the fail-first proof of the deskflip
+// half of #1339 review F1: an `Authors:` PR whose diff is NOT provably authoring-only must
+// be risk-classed even on a repo not risk-classed on visibility and touching no compiled
+// trigger path — because `Authors:` switches off BriefRiskFromBody's Brief:-only read of the
+// owning brief's own gate/risk declaration, and the writer-side gate in `deskpr create` is
+// not the only thing standing between the diff and that claim (a PR opened before the gate
+// existed, or one whose body was edited another way, must still be caught here).
+func TestAuthorsTrailerOnNonAuthoringDiffRiskClasses(t *testing.T) {
+	// Without a security pass: greenFiles() ("README.md") is not an authoring path (it is
+	// not docs/streams/<stream>/README.md, a brief file, or a changelog fragment), so the
+	// diff is not authoring-only for example-stream/15 — REFUSED.
+	s := newStub()
+	s.pr.Body = "Authors two briefs, but this diff is not actually authoring-only.\n\nAuthors: example-stream/15\n"
+	s.files = greenFiles()
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("Authors: PR whose diff is not authoring-only, without a security pass, rc = %d, want %d",
+			rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("an Authors: PR on a non-authoring diff flipped with no security verdict: %v", m)
+	}
+
+	// The SAME PR WITH a Security-Review: pass at head flips — proving the term demands
+	// exactly a pass and does not simply brick every Authors: PR.
+	s2 := newStub()
+	s2.pr.Body = "Authors two briefs, but this diff is not actually authoring-only.\n\nAuthors: example-stream/15\n"
+	s2.files = greenFiles()
+	s2.install(t)
+	bot := reviewerBot(t)
+	pass := reviewInfo{State: "COMMENTED", CommitID: headSHA, Body: "Security-Review: pass",
+		SubmittedAt: "2026-01-01T00:01:00Z"}
+	pass.User.Login = bot
+	s2.reviews = append(approvalAtHead(t, headSHA), pass)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("Authors: PR on a non-authoring diff WITH a security pass rc = %d, want 0", rc)
+	}
+	if !s2.flipped() {
+		t.Error("an Authors: PR on a non-authoring diff with a security pass at head did not flip")
+	}
+}
+
+// TestAuthorsTrailerOnAuthoringDiffFlipsWithoutPass is the pass-path control for the
+// Authors: term: a real briefs-authoring PR (it adds the listed brief's file and touches only
+// its stream board README) on a private repo flips on the correctness review alone. It needs
+// the per-file status the forge serves: if readChangedFiles stopped carrying Status, the
+// added brief would read as modified, the diff would not be authoring-only, and this fails.
+func TestAuthorsTrailerOnAuthoringDiffFlipsWithoutPass(t *testing.T) {
+	brief := "docs/streams/example-stream/brief-15-new-thing.md"
+	s := newStub()
+	s.pr.Body = "Authors one brief.\n\nAuthors: example-stream/15\n"
+	s.files = []string{brief, "docs/streams/example-stream/README.md"}
+	s.fileStatus = map[string]string{brief: "added"}
+	s.pr.ChangedFiles = len(s.files)
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("authoring-only Authors: PR without a security pass rc = %d, want 0", rc)
+	}
+	if !s.flipped() {
+		t.Error("an authoring-only Authors: PR with a clean correctness review did not flip")
+	}
+}
+
 // A DECLARED brief (a `Brief:` trailer is present) that cannot be resolved or read is
 // UNVERIFIABLE, not clean — deskflip must REFUSE the flip on every such error path rather
 // than let it flip on the correctness review alone. Against the pre-fix code each of these
@@ -1336,7 +1404,7 @@ func TestForeignRepoRefused(t *testing.T) {
 // non-CI reason is not sent to the CI gate.
 func TestConditionListIsTheDocumentedContract(t *testing.T) {
 	want := []string{"caller-role", "app-token", "pr-open-draft", "mergeable", "reviewer-approved",
-		"checks-green", "model-floor", "security-verdict", "head-stable"}
+		"checks-green", "desk-decided", "model-floor", "security-verdict", "head-stable"}
 	if len(flipConditions) != len(want) {
 		t.Fatalf("flipConditions has %d entries, want %d", len(flipConditions), len(want))
 	}

@@ -78,6 +78,31 @@ func forgeFor(owner, name string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 // test can inject a token without shelling desktoken; production binds it to mintVerifierToken.
 var mintTokenFn = mintVerifierToken
 
+// publishIdentityGateFn is the seam for deskkit.PublishIdentityMatchesRole. setupFake stubs
+// it no-op (the test roots are not git repositories); the dedicated fail-first tests restore
+// the real gate. Production uses the real gate.
+var publishIdentityGateFn = deskkit.PublishIdentityMatchesRole
+
+// productionPublishIdentityGateFn records the production binding before any test replaces it,
+// so a gate quietly stubbed out in the shipped binary fails its seam-reality test loudly.
+var productionPublishIdentityGateFn = publishIdentityGateFn
+
+// publishIdentityGate refuses (exit 5) when a commit the verifier worktree would publish
+// against <base> is not authored AND committed by the verifier App's bound identity (#1490
+// lane B). deskevidence commits Evidence via the Contents API AS the verifier App, so its
+// own landing is correctly attributed; this gate is the defence-in-depth layer over the
+// worktree it reads and derives witness attribution FROM — the verifier worktree #1490
+// flags, whose stale `user.*` is the fault the whole class is about. deskevidence always
+// acts as the verifier, so the role is fixed.
+func publishIdentityGate(dir, base string) error {
+	if strings.TrimSpace(dir) == "" {
+		dir = "."
+	}
+	return publishIdentityGateFn(deskkit.PublishIdentityInput{
+		Dir: dir, Base: strings.TrimPrefix(base, "refs/heads/"), Role: "verifier",
+	})
+}
+
 // execCommand is the single seam through which deskevidence starts a child process — only
 // `desktoken` (the identity layer) reaches it. Tests replace it.
 var execCommand = exec.Command
@@ -126,18 +151,27 @@ func isVerifierBot(author string) bool {
 }
 
 // checkAttribution reads the git author the forge recorded on the Evidence write and decides
-// whether it carries the unforgeable verifier identity. Four states, ordered deliberately:
+// whether it carries the unforgeable verifier identity. States, ordered deliberately:
 //
 //   - the verifier role is UNBOUND → REFUSED (exit 6). Ordered first, because it is the only
 //     state in which this function does not know what the right answer looks like.
 //   - isVerifierBot(author)          → proven. nil.
-//   - author == ""                   → COULD NOT CHECK (warned, exit stays 0). GitLab's file
-//     write reports no author at all, so this is the ordinary answer on a GitLab landing, and
-//     a response-shape surprise on GitHub — either way not a verdict this tree may invent.
+//   - author == ""                   → the forge reported no author on the write. GitLab's file
+//     write reports none, so this is the ordinary answer on a GitLab landing. Before giving up,
+//     RESOLVE the landed commit's account ONLINE through the typed forge (resolveAuthorOnline,
+//     #1477): GetCommit maps the commit's author EMAIL to the committing account's USERNAME
+//     (GitLab: GET /users?search=), which is exactly the roster login the verifier binding
+//     carries — the field the commit's author_name (a DISPLAY name on GitLab) does NOT hold.
+//     Only a username the forge DID resolve decides (match → proven; a DIFFERENT one → WRONG);
+//     an unresolvable account or a read failure stays COULD NOT CHECK (warned, exit stays 0) —
+//     never rounded up to a pass and never a rejection this tree invents.
 //   - author is some OTHER login     → PROVEN WRONG (exit 6), naming what landed. The write is
 //     already on the remote (a Contents-API write is not a local commit), so this is a report
 //     rather than a prevention — which is why it must be loud.
-func checkAttribution(author string) (detail string, err error) {
+//
+// fg/fr/sha are the seam the online resolution uses; on GitHub author is always populated, so
+// the online path is never reached there and GitHub behaviour is unchanged.
+func checkAttribution(fg deskkit.Forge, fr deskkit.ForgeRepo, sha, author string) (detail string, err error) {
 	want, bound := deskkit.RoleAppLogin("verifier")
 	switch {
 	case !bound:
@@ -146,12 +180,45 @@ func checkAttribution(author string) (detail string, err error) {
 	case isVerifierBot(author):
 		return "author=" + want, nil
 	case author == "":
-		fmt.Fprintf(stderr, "deskevidence: WARNING: the forge reported no author on the Evidence write — "+
-			"could NOT verify it is attributed to %s\n", want)
+		if d, verr, resolved := resolveAuthorOnline(fg, fr, sha, want); resolved {
+			return d, verr
+		}
+		fmt.Fprintf(stderr, "deskevidence: WARNING: the forge reported no author on the Evidence write "+
+			"and the committing account could not be resolved online — could NOT verify it is attributed to %s\n", want)
 		return "attribution=could-not-check", nil
 	default:
 		return "attribution=WRONG (" + author + ")", deskkit.Unverifiable(
 			"the Evidence write landed attributed to "+author+", not "+want+
 				" — the Evidence row does NOT carry the verifier identity; check the verifier App custody binding", nil)
 	}
+}
+
+// resolveAuthorOnline is the ONLINE counterpart to statusgen's offline display-name fallback
+// (#1477): it turns the GitLab-landing could-not-check into a real attribution check by
+// resolving the LANDED commit's account to its USERNAME through the TYPED forge — never a forge
+// CLI (TestNoForgeCLIShellout). GetCommit maps the commit's author EMAIL to the committing
+// GitLab account's username (GET /users?search=), which is the roster login the verifier
+// binding carries; the commit's author_name is the account DISPLAY name, which is why the write
+// itself reported no usable author.
+//
+// It is fail-closed toward could-not-check and never toward a pass: resolved=false (the caller
+// then stays could-not-check) whenever there is no sha to resolve, the forge read fails (no
+// token, transport, permission), or the forge could not resolve the commit to an account
+// (empty AuthorLogin). Only a username the forge DID resolve is a verdict — equal to the
+// verifier login (case-insensitive) is PROVEN, a DIFFERENT resolved username is WRONG (exit 6),
+// the same disposition an OTHER login gets on the GitHub path.
+func resolveAuthorOnline(fg deskkit.Forge, fr deskkit.ForgeRepo, sha, want string) (detail string, err error, resolved bool) {
+	if fg == nil || strings.TrimSpace(sha) == "" {
+		return "", nil, false
+	}
+	c, cerr := fg.GetCommit(fr, sha)
+	if cerr != nil || c == nil || strings.TrimSpace(c.AuthorLogin) == "" {
+		return "", nil, false
+	}
+	if strings.EqualFold(c.AuthorLogin, want) {
+		return "author=" + want + " (resolved online: the landed commit's GitLab account username matches the verifier binding)", nil, true
+	}
+	return "attribution=WRONG (online-resolved " + c.AuthorLogin + ")", deskkit.Unverifiable(
+		"the Evidence write landed attributed online to "+c.AuthorLogin+", not "+want+
+			" — the Evidence row does NOT carry the verifier identity; check the verifier App custody binding", nil), true
 }

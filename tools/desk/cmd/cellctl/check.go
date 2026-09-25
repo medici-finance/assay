@@ -105,6 +105,14 @@ func cmdCheck(cell, cfgArg string) {
 				continue
 			}
 			k.chk(true, "role %s: provider=%s harness=%s model=%s effort=%s source=%s sha256=%s", role, route.Provider, route.Harness, route.Model, route.Effort, policySource, policy.SHA256)
+			// The same per-role preflight `up` runs before opening windows (credential, harness
+			// on PATH, Claude version floor, settings conflict scan) — a MISS here is a boot `up`
+			// would refuse.
+			if err := c.policyPreflight(route, policyConfigDir(c.Env, cfgArg)); err != nil {
+				k.chk(false, "model policy: %s — %s", role, err)
+			} else {
+				k.chk(true, "model policy: %s", role)
+			}
 			continue
 		}
 		rm := c.resolveRoleModel(role, c.Harness)
@@ -216,6 +224,16 @@ func cmdCheck(cell, cfgArg string) {
 	want, src := c.cockpitWant("")
 	if res := c.resolveCockpit(want, src); res.Err == "" {
 		fmt.Printf("  ok    cockpit: %s (%s)\n", res.Cockpit, res.Why)
+		// The same resolved value is what every role window exports as ASSAY_COCKPIT — the
+		// worker-desk worktree-create arm — so the row says which arm that is, not only which
+		// surface.
+		if c.Kind != "scrubbed" {
+			arm := res.Cockpit + " worktree create"
+			if res.Cockpit == "tmux" {
+				arm = "plain git worktree add, no cockpit CLI needed"
+			}
+			fmt.Printf("  ok    %s=%s exported into every role window (worker-desk worktree arm: %s)\n", envAssayCockpit, res.Cockpit, arm)
+		}
 	} else {
 		fmt.Printf("  MISS  cockpit: %s\n", res.Err)
 		k.ok = false

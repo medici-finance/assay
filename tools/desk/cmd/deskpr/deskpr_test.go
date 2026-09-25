@@ -423,6 +423,14 @@ func withEnv(t *testing.T, work string) *[][]string {
 	publicRepoGateFn = func(_ deskkit.RepoInfoFetcher, owner, repo string) error { return nil }
 	t.Cleanup(func() { publicRepoGateFn = oldGate })
 
+	// The publish-identity gate (#1490) is stubbed no-op here so the shared fixture — whose
+	// commits are authored under the generic `t@e.st` identity — does not trip it in every
+	// pre-existing create/update case. The dedicated fail-first tests in
+	// publishidentity_test.go restore the real gate and drive it against planted commits.
+	oldPubIdent := publishIdentityGateFn
+	publishIdentityGateFn = func(deskkit.PublishIdentityInput) error { return nil }
+	t.Cleanup(func() { publishIdentityGateFn = oldPubIdent })
+
 	// Since the write-verbs-C migration deskpr reaches the forge through forgeForFn, not `gh`.
 	// Install a recording fake driven by the same FAKEGH_* env the retired fake-gh binary read,
 	// so a test's env setup drives it unchanged; curForge is the handle for the assertions.
@@ -1617,6 +1625,10 @@ func TestParseRepo(t *testing.T) {
 		"https://github.com/example-org/agents":                   "example-org/agents",
 		"git@github.com:example-org/examples.git":                 "example-org/examples",
 		"ssh://git@github.com/example-org/example-reconciler.git": "example-org/example-reconciler",
+		// ssh HOST-ALIAS remote (issue 1470) and the hybrid an insteadOf/URL-composition
+		// bakes onto it — the RAW go-git value must parse to owner/repo either way.
+		"git@github-alias:example-org/example-repo.git":                    "example-org/example-repo",
+		"https://github.com/git@github-alias:example-org/example-repo.git": "example-org/example-repo",
 	}
 	for in, want := range cases {
 		got, err := parseRepo(in)

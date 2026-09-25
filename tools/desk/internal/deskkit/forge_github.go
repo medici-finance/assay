@@ -9,8 +9,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	ghapi "github.com/cli/go-gh/v2/pkg/api"
 )
@@ -49,6 +52,13 @@ type GitHubForge struct {
 	// rc caches the go-gh REST client built from Token/BaseURL. Lazily constructed by
 	// restClient so a bare struct literal (the golden test's construction shape) still works.
 	rc *ghapi.RESTClient
+
+	// now and sleep, when non-nil, override the clock and the wait RunWorkflow's run
+	// correlation reads (the pre-dispatch time floor and the bounded wait between list
+	// reads). They exist ONLY so a test pins the floor and drives the retry without real
+	// elapsed time; production leaves both nil (time.Now / time.Sleep).
+	now   func() time.Time
+	sleep func(time.Duration)
 }
 
 var _ Forge = (*GitHubForge)(nil)
@@ -115,6 +125,21 @@ type ForgeAPIError struct {
 	Method string
 	Path   string
 	Body   string
+	// Message is the forge's own answer text for a GitHub non-2xx, exactly as go-gh decodes it
+	// (the body's `message`, then each errors[] item on its own line; the status line when the
+	// body is not JSON) — the text gh prints after `HTTP <status>: `. It is carried out of band
+	// and NOT rendered by Error(), so every existing diagnostic is byte-identical.
+	Message string
+	// RateLimited is true when GhRateLimitSignature matches `HTTP <status>: <Message>` — the
+	// text gh prints on stderr for this answer, minus gh's request URL. That is the whole of
+	// what plugins/assay/scripts/{inbound,pr}-monitor.sh can see when their is_ratelimit decides
+	// to stop a cycle, so a stop-on-limit poller built on this flag decides every answer the way
+	// the scripts do (#1640 review F1). Nothing else feeds it: not a header (Retry-After and
+	// X-RateLimit-* never reach gh's stderr), not the status class on its own (a 5xx whose
+	// message names the limit matches, a 403 whose message does not, does not), not the request
+	// path. It does not change Error()'s text — it exists for IsForgeRateLimited, so a poller
+	// that trips a limit can stop the cycle instead of compounding it with the remaining reads.
+	RateLimited bool
 }
 
 func (e *ForgeAPIError) Error() string {
@@ -139,6 +164,35 @@ func IsForgeNotFound(err error) bool {
 func IsForgeForbidden(err error) bool {
 	var ae *ForgeAPIError
 	return errors.As(err, &ae) && ae.Status == http.StatusForbidden
+}
+
+// IsForgeRateLimited reports whether err is a forge rate-limit answer: a 429 from either
+// backend, or a GitHub answer whose text carries the scripts' signature (see
+// ForgeAPIError.RateLimited). It unwraps, so a ForgeAPIError nested in a DeskError is still
+// recognised. A plain 403 (a missing scope) is NOT a rate limit: treating it as one would stop
+// a poll cycle on a permissions fault that retrying never clears. Neither is a GitHub PRIMARY
+// quota-exhausted 403 ("API rate limit exceeded for …"), nor a 403 whose only rate-limit sign
+// is a Retry-After header — the oracle scripts cannot see a header and retain-and-continue on
+// both, never stop the cycle (#1640 review F1).
+func IsForgeRateLimited(err error) bool {
+	var ae *ForgeAPIError
+	return errors.As(err, &ae) && (ae.Status == http.StatusTooManyRequests || ae.RateLimited)
+}
+
+// GhRateLimitSignature is plugins/assay/scripts/{inbound,pr}-monitor.sh's is_ratelimit
+// pattern, verbatim: `grep -qiE 'secondary rate limit|(http )?429|too many requests'` over gh's
+// captured stderr. The optional `(http )?` group makes the second branch the bare digits 429
+// anywhere in the text — kept as-is, because matching it is what parity with the scripts means.
+var GhRateLimitSignature = regexp.MustCompile(`(?i)secondary rate limit|(http )?429|too many requests`)
+
+// ghHTTPErrorRateLimited decides a non-2xx go-gh HTTPError the way the oracle scripts decide the
+// same failure: GhRateLimitSignature over `HTTP <status>: <message>`, which is go-gh's own
+// HTTPError rendering — the text gh prints on stderr — minus the request URL gh appends (gh's
+// endpoint, never this request's path; see ForgeAPIError.RateLimited). The message already holds
+// every errors[] item on its own line, as gh prints them. Headers are never read: a Retry-After
+// the scripts cannot see must not stop a cycle they would have continued (#1640 review F1).
+func ghHTTPErrorRateLimited(he *ghapi.HTTPError) bool {
+	return GhRateLimitSignature.MatchString(fmt.Sprintf("HTTP %d: %s", he.StatusCode, he.Message))
 }
 
 // ErrForgeEmptyRepo is the canonical, backend-NEUTRAL signal that the forge has positively
@@ -201,7 +255,8 @@ func (g *GitHubForge) doJSONHeader(method, path string, in, out any) (http.Heade
 	if rerr != nil {
 		var he *ghapi.HTTPError
 		if errors.As(rerr, &he) {
-			return nil, &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path}
+			return nil, &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path,
+				Message: he.Message, RateLimited: ghHTTPErrorRateLimited(he)}
 		}
 		return nil, Unverifiable(fmt.Sprintf("%s %s failed", method, path), rerr)
 	}
@@ -838,6 +893,7 @@ func (g *GitHubForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 				Name string `json:"name"`
 			} `json:"labels"`
 			CreatedAt   string    `json:"created_at"`
+			UpdatedAt   string    `json:"updated_at"`
 			HTMLURL     string    `json:"html_url"`
 			PullRequest *struct{} `json:"pull_request"`
 		}
@@ -862,6 +918,7 @@ func (g *GitHubForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 				Author:    Account{Login: is.User.Login, ID: is.User.ID},
 				Labels:    labels,
 				CreatedAt: is.CreatedAt,
+				UpdatedAt: is.UpdatedAt,
 				URL:       is.HTMLURL,
 			})
 		}
@@ -1345,10 +1402,19 @@ const ghCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
 // `issue` and `pullRequest` as separate selections on a repository, so one query cannot
 // serve both; the node selection below is byte-identical to the pull-request one, so the
 // two reads produce the same Comment shape and nothing downstream has to know which ran.
-const ghIssueCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
+//
+// Unlike the change half, the issue half is WALKED: it carries a `pageInfo` and an `$after`
+// cursor and listCommentsGQL follows it to the end of the thread under forgeMaxEventPages.
+// An issue thread is read for its NEWEST answer (statusgen's un-block lane keys on the newest
+// blessing-authority comment, and GitLab's listNotes already walks every page), and the
+// newest comments are exactly the ones a first-100 read drops on a long thread — the defect
+// the `gh api --paginate` read this replaces was fixed for. A thread still advertising a next
+// page at the cap is could-not-check, never a silently truncated thread.
+const ghIssueCommentsQuery = `query($owner:String!, $name:String!, $number:Int!, $after:String) {
   repository(owner: $owner, name: $name) {
     issue(number: $number) {
-      comments(first: 100) {
+      comments(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
         nodes {
           id
           databaseId
@@ -1378,9 +1444,15 @@ type ghCommentNodeWire struct {
 	} `json:"author"`
 }
 
-// ghCommentsConnWire is the `comments` connection hanging off one noteable.
+// ghCommentsConnWire is the `comments` connection hanging off one noteable. PageInfo is
+// selected only by the ISSUE query (the change query does not ask for it, so it decodes to
+// the zero value — no next page — and the change read stays a single request).
 type ghCommentsConnWire struct {
 	Comments struct {
+		PageInfo struct {
+			HasNextPage bool   `json:"hasNextPage"`
+			EndCursor   string `json:"endCursor"`
+		} `json:"pageInfo"`
 		Nodes []ghCommentNodeWire `json:"nodes"`
 	} `json:"comments"`
 }
@@ -1404,16 +1476,69 @@ type ghCommentsRespWire struct {
 // listCommentsGQL runs the comments query for ONE kind and maps its nodes. It is the shared
 // body of ListComments (changes) and ListCommentsTyped (either kind); the request it emits
 // for a change is byte-identical to the one the golden corpus pins.
+//
+// An ISSUE thread is walked page by page (see ghIssueCommentsQuery); a change thread is the
+// single first-100 request the golden corpus pins.
 func (g *GitHubForge) listCommentsGQL(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error) {
+	if kind != TargetIssue {
+		return g.listCommentsPage(repo, number, kind, "", nil)
+	}
+	var res []Comment
+	after := ""
+	for page := 1; page <= forgeMaxEventPages; page++ {
+		var next pageCursor
+		chunk, err := g.listCommentsPage(repo, number, kind, after, &next)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, chunk...)
+		if !next.hasNext {
+			if res == nil {
+				res = []Comment{}
+			}
+			return res, nil
+		}
+		if next.cursor == "" {
+			// A next page is advertised with no cursor to advance on: the walk cannot move,
+			// so the thread's tail is unread. Refuse rather than loop the same page or hand
+			// back the head of the thread as if it were all of it.
+			return nil, Unverifiable(fmt.Sprintf(
+				"could-not-check: %s#%d advertises more comments but no cursor to read them with — "+
+					"refusing to report a partial issue thread as the whole thread", repo.Slug(), number), nil)
+		}
+		after = next.cursor
+	}
+	return nil, Unverifiable(fmt.Sprintf(
+		"could-not-check: %s#%d still reports more comments after %d pages of 100 — refusing to report a "+
+			"partial issue thread as the whole thread (its newest comments are the unread ones)",
+		repo.Slug(), number, forgeMaxEventPages), nil)
+}
+
+// pageCursor is one comments page's continuation: whether the forge advertised a further page
+// and the cursor to request it with.
+type pageCursor struct {
+	hasNext bool
+	cursor  string
+}
+
+// listCommentsPage runs ONE request of the comments query for one kind and maps its nodes.
+// after is the page cursor ("" for the first page, which is then sent with no `after`
+// variable at all, so the first request of an issue walk carries only the three coordinates);
+// next, when non-nil, receives the page's continuation.
+func (g *GitHubForge) listCommentsPage(repo ForgeRepo, number int, kind TargetKind, after string, next *pageCursor) ([]Comment, error) {
 	query := ghCommentsQuery
 	if kind == TargetIssue {
 		query = ghIssueCommentsQuery
 	}
+	vars := map[string]any{
+		"owner": repo.Owner, "name": repo.Name, "number": number,
+	}
+	if after != "" {
+		vars["after"] = after
+	}
 	in := map[string]any{
-		"query": query,
-		"variables": map[string]any{
-			"owner": repo.Owner, "name": repo.Name, "number": number,
-		},
+		"query":     query,
+		"variables": vars,
 	}
 	var out ghCommentsRespWire
 	if err := g.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
@@ -1441,6 +1566,10 @@ func (g *GitHubForge) listCommentsGQL(repo ForgeRepo, number int, kind TargetKin
 			"could-not-check: %s carries no %s at number %d, so its comment thread could not be read",
 			repo.Slug(), kindNoun(kind), number), nil)
 	}
+	if next != nil {
+		next.hasNext = conn.Comments.PageInfo.HasNextPage
+		next.cursor = conn.Comments.PageInfo.EndCursor
+	}
 	nodes := conn.Comments.Nodes
 	res := make([]Comment, 0, len(nodes))
 	for _, n := range nodes {
@@ -1456,7 +1585,7 @@ func (g *GitHubForge) listCommentsGQL(repo ForgeRepo, number int, kind TargetKin
 		res = append(res, Comment{
 			ID:         n.ID,
 			DatabaseID: n.DatabaseID,
-			Author:     Account{Login: login, ID: n.Author.DatabaseID},
+			Author:     Account{Login: login, ID: n.Author.DatabaseID, Type: n.Author.Typename},
 			Body:       n.Body,
 			Minimized:  n.IsMinimized,
 			CreatedAt:  n.CreatedAt,
@@ -1734,6 +1863,51 @@ func (g *GitHubForge) GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error)
 	}
 	rc := w.toRepoCommit()
 	return &rc, nil
+}
+
+// ListFileCommits reads ONE page of the commits reachable from ref that touched file, newest
+// first (`GET /repos/{o}/{r}/commits?sha=<ref>&path=<file>&per_page=<limit>`).
+func (g *GitHubForge) ListFileCommits(repo ForgeRepo, ref, file string, limit int) ([]RepoCommit, error) {
+	if limit <= 0 || limit > forgeFileCommitsMax {
+		return nil, Unverifiable(fmt.Sprintf("ListFileCommits needs a limit in [1, %d]", forgeFileCommitsMax), nil)
+	}
+	if strings.TrimSpace(ref) == "" || strings.TrimSpace(file) == "" {
+		return nil, Unverifiable("ListFileCommits needs a ref and a file for "+repo.Slug(), nil)
+	}
+	var chunk []ghCommitWire
+	path := fmt.Sprintf("/repos/%s/%s/commits?sha=%s&path=%s&per_page=%d", repo.Owner, repo.Name,
+		url.QueryEscape(ref), url.QueryEscape(file), limit)
+	if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+		return nil, err
+	}
+	out := make([]RepoCommit, 0, len(chunk))
+	for _, c := range chunk {
+		out = append(out, c.toRepoCommit())
+	}
+	return out, nil
+}
+
+// ListCommitChanges reads the PRs GitHub associates with one commit
+// (`GET /repos/{o}/{r}/commits/{sha}/pulls?per_page=100`), in any state, as their numbers.
+func (g *GitHubForge) ListCommitChanges(repo ForgeRepo, sha string) ([]int, error) {
+	if strings.TrimSpace(sha) == "" {
+		return nil, Unverifiable("ListCommitChanges needs a non-empty sha for "+repo.Slug(), nil)
+	}
+	var chunk []struct {
+		Number int `json:"number"`
+	}
+	path := fmt.Sprintf("/repos/%s/%s/commits/%s/pulls?per_page=%d", repo.Owner, repo.Name,
+		url.PathEscape(sha), forgeFileCommitsMax)
+	if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+		return nil, err
+	}
+	out := make([]int, 0, len(chunk))
+	for _, c := range chunk {
+		if c.Number > 0 {
+			out = append(out, c.Number)
+		}
+	}
+	return out, nil
 }
 
 // ghCompareWire is the compare-API read shape (only the fields consumed).
@@ -2073,6 +2247,40 @@ func (g *GitHubForge) RefExists(repo ForgeRepo, ref string) (bool, error) {
 	return true, nil
 }
 
+// MatchingRefs lists the refs whose path starts with refPrefix, via the matching-refs read
+// (`GET /repos/{o}/{r}/git/matching-refs/{ref}` — the endpoint that returns EVERY reference
+// beginning with the given path, distinct from the singular `git/ref/` RefExists targets).
+//
+// refPrefix is validated by ValidateRefPath first, so the one path-shaped argument can only
+// address refs inside the named repo. An empty match is the endpoint's own 200 `[]` (returned
+// as (nil, nil), the ANSWER "no such refs"); a 404 is likewise no-match, not a failure. Every
+// other non-2xx stays an error, so a 403 from a token that cannot see refs is never mistaken
+// for "no refs". The returned slice carries each match's FULLY-QUALIFIED ref (e.g.
+// "refs/dispatch/<key>"), verbatim from the `ref` field.
+func (g *GitHubForge) MatchingRefs(repo ForgeRepo, refPrefix string) ([]string, error) {
+	clean, err := ValidateRefPath(refPrefix)
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/repos/%s/%s/git/matching-refs/%s", repo.Owner, repo.Name, clean)
+	var refs []struct {
+		Ref string `json:"ref"`
+	}
+	if err := g.doJSON(http.MethodGet, path, nil, &refs); err != nil {
+		if IsForgeNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	out := make([]string, 0, len(refs))
+	for _, r := range refs {
+		if r.Ref != "" {
+			out = append(out, r.Ref)
+		}
+	}
+	return out, nil
+}
+
 // --- Repo-hardening reads (op 40) ---
 
 // hardeningGithubPaths maps every kind but `rulesets` (a two-hop, handled separately) to its
@@ -2300,4 +2508,275 @@ func (g *GitHubForge) PushTransportHint(repo ForgeRepo) PushTransport {
 		CredentialHelperHint: "supply the token via an inline credential.helper that reads the 0600 token " +
 			"file; never embed it in the remote URL",
 	}
+}
+
+// --- Run and gate-approval (forge-neutral brief 14) ---
+
+// ghRunCorrelationAttempts / ghRunCorrelationWait bound RunWorkflow's created-run lookup. The
+// dispatch endpoint answers before the run is listed, so the first list read can legitimately
+// come back empty; a small, fixed number of reads spaced a few seconds apart covers that lag
+// without becoming a poll loop. Exhausting them is a could-not-check naming the dispatch that
+// WAS accepted — never a guessed run.
+const (
+	ghRunCorrelationAttempts = 5
+	ghRunCorrelationWait     = 3 * time.Second
+)
+
+// ghRunApprovalComment is the fixed review comment GitHub's pending_deployments approval
+// requires. It is not caller-supplied, so the approval carries no free text a caller controls.
+const ghRunApprovalComment = "Approved by deskrun under the roster-bound run credential."
+
+// ghWorkflowFileRe is the shape of a workflow FILE name: one path segment ending .yml/.yaml.
+var ghWorkflowFileRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*\.ya?ml$`)
+
+// validateGitHubWorkflow accepts a workflow file name ("release.yml") or a numeric workflow
+// id, and refuses anything else BEFORE a request exists — the workflow is interpolated into a
+// path, so a separator or traversal would address a different endpoint.
+func validateGitHubWorkflow(w string) (string, error) {
+	w = strings.TrimSpace(w)
+	if ghWorkflowFileRe.MatchString(w) && !strings.Contains(w, "..") {
+		return w, nil
+	}
+	if n, err := strconv.ParseInt(w, 10, 64); err == nil && n > 0 && strconv.FormatInt(n, 10) == w {
+		return w, nil
+	}
+	return "", Unverifiable(fmt.Sprintf("could-not-check: workflow %q is neither a workflow file name "+
+		"(one segment ending .yml/.yaml) nor a numeric workflow id — refusing before any request", StripControl(w)), nil)
+}
+
+func (g *GitHubForge) clock() time.Time {
+	if g.now != nil {
+		return g.now()
+	}
+	return time.Now()
+}
+
+func (g *GitHubForge) wait(d time.Duration) {
+	if g.sleep != nil {
+		g.sleep(d)
+		return
+	}
+	time.Sleep(d)
+}
+
+// ghRunWire is the subset of a workflow run the correlation and status reads consume.
+type ghRunWire struct {
+	ID         int64     `json:"id"`
+	HTMLURL    string    `json:"html_url"`
+	Event      string    `json:"event"`
+	HeadBranch string    `json:"head_branch"`
+	Status     string    `json:"status"`
+	Conclusion *string   `json:"conclusion"`
+	CreatedAt  time.Time `json:"created_at"`
+	Actor      struct {
+		Login string `json:"login"`
+	} `json:"actor"`
+}
+
+// RunWorkflow dispatches a workflow (`POST /repos/{o}/{r}/actions/workflows/{wf}/dispatches`)
+// and resolves the run it created. The dispatch answers 204 with no body, so the run is found
+// by listing the workflow's runs (`GET …/actions/workflows/{wf}/runs`) narrowed to
+// event=workflow_dispatch, the ref, the actor (when the caller named one) and created-at at or
+// after a floor taken BEFORE the dispatch — never after, so a slow list read cannot miss the
+// very run it just created. Exactly one match is the answer; two or more is a could-not-check
+// REFUSAL naming them (two dispatches raced inside the window, and picking the newest would
+// hand the caller a run it may not have started).
+func (g *GitHubForge) RunWorkflow(repo ForgeRepo, in RunWorkflowInput) (RunRef, error) {
+	wf, err := validateGitHubWorkflow(in.Workflow)
+	if err != nil {
+		return RunRef{}, err
+	}
+	ref, err := validateRunRef(in.Ref)
+	if err != nil {
+		return RunRef{}, err
+	}
+	if err := validateRunInputs(in.Inputs); err != nil {
+		return RunRef{}, err
+	}
+	// Refuse an unminted token before the floor is even taken: nothing below may run without
+	// the explicitly minted credential (restClient's refusal, the backend layer).
+	if _, err := g.restClient(); err != nil {
+		return RunRef{}, err
+	}
+	floor := g.clock().UTC().Truncate(time.Second)
+	body := map[string]any{"ref": ref}
+	if len(in.Inputs) > 0 {
+		body["inputs"] = in.Inputs
+	}
+	dispatchPath := fmt.Sprintf("/repos/%s/%s/actions/workflows/%s/dispatches", repo.Owner, repo.Name, url.PathEscape(wf))
+	if err := g.doJSON(http.MethodPost, dispatchPath, body, nil); err != nil {
+		return RunRef{}, err
+	}
+
+	q := url.Values{}
+	q.Set("event", "workflow_dispatch")
+	q.Set("branch", ref)
+	q.Set("created", ">="+floor.Format(time.RFC3339))
+	q.Set("per_page", "100")
+	actor := strings.TrimSpace(in.Actor)
+	if actor != "" {
+		q.Set("actor", actor)
+	}
+	listPath := fmt.Sprintf("/repos/%s/%s/actions/workflows/%s/runs?%s", repo.Owner, repo.Name, url.PathEscape(wf), q.Encode())
+	for attempt := 0; attempt < ghRunCorrelationAttempts; attempt++ {
+		if attempt > 0 {
+			g.wait(ghRunCorrelationWait)
+		}
+		var page struct {
+			TotalCount   int         `json:"total_count"`
+			WorkflowRuns []ghRunWire `json:"workflow_runs"`
+		}
+		if lerr := g.doJSON(http.MethodGet, listPath, nil, &page); lerr != nil {
+			return RunRef{}, Unverifiable(fmt.Sprintf(
+				"could-not-check: the dispatch of %s on %s WAS accepted, but the follow-up read that resolves "+
+					"the created run failed — do not re-dispatch blindly; find the run in the repo's Actions tab",
+				wf, repo.Slug()), lerr)
+		}
+		var hits []ghRunWire
+		for _, r := range page.WorkflowRuns {
+			if r.Event != "workflow_dispatch" || r.HeadBranch != ref || r.CreatedAt.Before(floor) {
+				continue
+			}
+			if actor != "" && !strings.EqualFold(r.Actor.Login, actor) {
+				continue
+			}
+			hits = append(hits, r)
+		}
+		if len(hits) > 1 || page.TotalCount > len(page.WorkflowRuns) && len(hits) > 0 {
+			ids := make([]string, 0, len(hits))
+			for _, h := range hits {
+				ids = append(ids, strconv.FormatInt(h.ID, 10))
+			}
+			return RunRef{}, Unverifiable(fmt.Sprintf(
+				"could-not-check: ambiguous run correlation — the dispatch of %s on %s@%s WAS accepted, but %d runs "+
+					"(ids %s; the forge reports %d in the window) match the correlation key (workflow, "+
+					"event=workflow_dispatch, ref, actor %q, created at or after %s). Refusing to guess which one this "+
+					"dispatch created — a newest-first pick could hand back a run another caller started",
+				wf, repo.Slug(), ref, len(hits), strings.Join(ids, ", "), page.TotalCount, actor, floor.Format(time.RFC3339)), nil)
+		}
+		if len(hits) == 1 {
+			return RunRef{ID: strconv.FormatInt(hits[0].ID, 10), URL: hits[0].HTMLURL}, nil
+		}
+	}
+	return RunRef{}, Unverifiable(fmt.Sprintf(
+		"could-not-check: the dispatch of %s on %s@%s WAS accepted, but no run matching the correlation key "+
+			"(event=workflow_dispatch, ref, actor %q, created at or after %s) appeared after %d reads — do not "+
+			"re-dispatch blindly; find the run in the repo's Actions tab",
+		wf, repo.Slug(), ref, actor, floor.Format(time.RFC3339), ghRunCorrelationAttempts), nil)
+}
+
+// ghPendingDeploymentWire is one entry of a run's pending_deployments read.
+type ghPendingDeploymentWire struct {
+	Environment struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
+	} `json:"environment"`
+	CurrentUserCanApprove bool `json:"current_user_can_approve"`
+}
+
+// ApproveGate approves ONE pending deployment environment on a workflow run. GitHub's
+// approval takes environment IDS, not a name, so the run's pending deployments are read first
+// (`GET …/actions/runs/{id}/pending_deployments`) and the named gate is resolved against
+// them. A name matching none is a could-not-check REFUSAL naming the run and the gate — never
+// an approval of whichever environment happened to be pending — and a matched environment the
+// credential may not approve is refused before the write rather than left to fail at it.
+// Only then is `POST …/pending_deployments` sent, with that one id and state "approved".
+// GitHub has one gate shape; a GitLab-only shape is refused by name with zero requests.
+//
+// WHAT THIS MEANS UNDER AN APP CREDENTIAL. The approval endpoint needs the "Deployments: write"
+// permission (not "Actions: write", which covers the dispatch), and GitHub lets only an
+// environment's REQUIRED REVIEWERS approve — which are users or teams, never an App. So under
+// the release-runner App the forge answers current_user_can_approve=false for a
+// required-reviewer gate, and this op takes the could-not-check arm: `deskrun approve` on
+// GitHub is a documented could-not-check under the App credential (pinned by the
+// approve_gate_credential_cannot_approve golden). Whether that arm ships is the ratifying
+// human's decision on the brief's decision issue, not this code's.
+func (g *GitHubForge) ApproveGate(repo ForgeRepo, run RunRef, in ApproveGateInput) error {
+	id, err := ValidateRunID(run)
+	if err != nil {
+		return err
+	}
+	gate, err := validateGateName(in.Gate)
+	if err != nil {
+		return err
+	}
+	if in.Shape != "" && in.Shape != GateShapeEnvironment {
+		return Unverifiable(fmt.Sprintf("could-not-check: GitHub has no %q gate shape — a GitHub deployment gate is "+
+			"a %q (pending deployment) approval; refusing rather than approving something else", in.Shape, GateShapeEnvironment), nil)
+	}
+	path := fmt.Sprintf("/repos/%s/%s/actions/runs/%d/pending_deployments", repo.Owner, repo.Name, id)
+	var pending []ghPendingDeploymentWire
+	if err := g.doJSON(http.MethodGet, path, nil, &pending); err != nil {
+		return err
+	}
+	var match []ghPendingDeploymentWire
+	names := make([]string, 0, len(pending))
+	for _, p := range pending {
+		names = append(names, p.Environment.Name)
+		if p.Environment.Name == gate {
+			match = append(match, p)
+		}
+	}
+	if len(match) != 1 {
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: run %d on %s is not waiting on a gate named %q (it is waiting on: %s) — "+
+				"refusing to approve a different pending environment", id, repo.Slug(), gate, quotedList(names)), nil)
+	}
+	if !match[0].CurrentUserCanApprove {
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: run %d on %s is waiting on %q, but the forge reports this credential may not approve it — "+
+				"nothing was written. GitHub lets only an environment's required reviewers approve, and required reviewers "+
+				"are users or teams, so an App credential cannot pass this gate", id, repo.Slug(), gate), nil)
+	}
+	return g.doJSON(http.MethodPost, path, map[string]any{
+		"environment_ids": []int64{match[0].Environment.ID},
+		"state":           "approved",
+		"comment":         ghRunApprovalComment,
+	}, nil)
+}
+
+// RunStatus reads one workflow run (`GET /repos/{o}/{r}/actions/runs/{id}`) and maps its
+// status into the forge-neutral vocabulary. GitHub's queued/requested/pending all read as
+// queued; waiting (a deployment gate) stays waiting. A status the mapping does not know is
+// could-not-check rather than rounded to a known one.
+func (g *GitHubForge) RunStatus(repo ForgeRepo, run RunRef) (*RunState, error) {
+	id, err := ValidateRunID(run)
+	if err != nil {
+		return nil, err
+	}
+	var w ghRunWire
+	path := fmt.Sprintf("/repos/%s/%s/actions/runs/%d", repo.Owner, repo.Name, id)
+	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+		return nil, err
+	}
+	st := &RunState{URL: w.HTMLURL}
+	switch w.Status {
+	case "queued", "requested", "pending":
+		st.Status = RunStatusQueued
+	case "in_progress":
+		st.Status = RunStatusInProgress
+	case "waiting", "action_required":
+		st.Status = RunStatusWaiting
+	case "completed":
+		st.Status = RunStatusCompleted
+		if w.Conclusion != nil {
+			st.Conclusion = *w.Conclusion
+		}
+	default:
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: run %d on %s reports status %q, which this mapping "+
+			"does not know — not rounded to a known state", id, repo.Slug(), StripControl(w.Status)), nil)
+	}
+	return st, nil
+}
+
+// quotedList renders names for a refusal message; an empty list reads "nothing".
+func quotedList(names []string) string {
+	if len(names) == 0 {
+		return "nothing"
+	}
+	q := make([]string, len(names))
+	for i, n := range names {
+		q[i] = strconv.Quote(StripControl(n))
+	}
+	return strings.Join(q, ", ")
 }

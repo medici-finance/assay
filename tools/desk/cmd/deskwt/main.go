@@ -30,7 +30,7 @@ import (
 const usage = `deskwt — add, remove, or prune git worktrees, only under sanctioned prefixes.
 
 USAGE:
-  deskwt add <name> [--branch B | --detach] [--base origin/main]
+  deskwt add <name> [--branch B | --detach] [--base origin/main] [--role R]
   deskwt remove <path>
   deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks]
                [--reap-dead-sessions] [--lock-ttl <dur>] [--dry-run]
@@ -61,11 +61,33 @@ the identity lands in the NEW worktree's own config, and the one shared-config w
 enabling extensions.worktreeConfig (once, idempotent) so that scoping takes effect.
 --no-fetch cuts from the local origin/main as-is.
 
-add REFUSES an SSH PUSH REMOTE under a bot identity. A worktree inherits this checkout's
-remote, so an ssh:// or git@host:path PUSH url here is one in every worktree cut from it —
-and a session whose $DESK_LOOP resolves to a role App would push under whatever key this
-machine's agent holds, a human's, while its commits read as the App's. The refusal names the
-url and the one-line remedy. Fetch over SSH stays allowed (remote.origin.pushurl is what is
+add STAMPS or CLEARS the new worktree's commit identity so it never INHERITS the shared
+checkout's. With --role R (a token role or a loop name, folded the same way role-init folds
+it) the role's App commit identity — the bot USER id noreply address (#638), resolved through
+the SAME shared resolver role-init uses — is written to the new worktree's own config
+(extensions.worktreeConfig), and an unbound role is REFUSED (exit 5) before the worktree is
+created. WITHOUT --role the new worktree's user.name/user.email are CLEARED (set empty at
+worktree scope, which shadows the shared value — an --unset would fall through to it), so a
+commit there fails closed ("Author identity unknown") until an identity is set, rather than
+committing under an unrelated inherited identity. The shared checkout's config is never
+touched either way. The identity (or the cleared state) is echoed to stderr; stdout stays the
+bare worktree path.
+
+add --role GIVES the new worktree the role App's OWN TRANSPORT instead of the one it would
+inherit (an SSH origin, an operator's pushurl sentinel). At worktree scope it writes
+remote.origin.pushurl and remote.origin.url as an empty entry (git's list reset, git 2.46+)
+followed by https://<host>:443/<owner>/<name>.git — the explicit port keeps a global
+https-to-SSH insteadOf from rewriting it — plus the role App's host-scoped credential helper
+(the same one role-init writes). An SSH host alias is resolved to its real host with
+` + "`ssh -G`" + ` (no connection). It then reads back what git itself resolves for fetch and push, and
+REFUSES (exit 5), rolling the worktree back, unless both are exactly that one URL. An origin on
+git's local transport (a path) carries no key and is left as it is, unless it pushes over SSH.
+
+Without --role, add REFUSES an SSH PUSH REMOTE under a bot identity. A worktree inherits this
+checkout's remote, so an ssh:// or git@host:path PUSH url here is one in every worktree cut
+from it — and a session whose $DESK_LOOP resolves to a role App would push under whatever key
+this machine's agent holds, a human's, while its commits read as the App's. The refusal names
+the url and the one-line remedy. Fetch over SSH stays allowed (remote.origin.pushurl is what is
 read whenever it is set), and with $DESK_LOOP unset the gate is inert — a human pushes under
 their own key, which is what the SSH remote is for.
 

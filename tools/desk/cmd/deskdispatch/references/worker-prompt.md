@@ -48,6 +48,10 @@ Closes/Refs, wrong diagnosis text, on a real PR. `mktemp` is collision-proof: it
 the file with `O_EXCL` and echoes the name that won, so no `$$`/date/session suffix can
 alias it, and the explicit template argument is portable across BSD and GNU `mktemp`.
 
+Keep new identifiers — test function names especially — under 32 characters, and in a PR
+body describe a long identifier rather than quoting it: the desk secret scan reads any 32+
+character alphanumeric run as a possible secret.
+
 Prefer it over a per-worktree path such as `"$(git rev-parse --show-toplevel)/.pr-body.md"`
 for two further reasons: that leaves an untracked file in every worker worktree that no
 `.gitignore` covers, so worktree pruning counts the tree dirty and never reclaims it; and
@@ -311,3 +315,73 @@ replacement reviewer, so preserve it:
   arbitration cap.
 - **A verifier or reviewer failure is work to OWN**, retained through replacement, restart
   and merge until an independent pass clears it — never a report to acknowledge and drop.
+
+## 14. A bug fix closes the defect CLASS, not the one instance
+
+> When the item fixes a defect, the fix NAMES the defect CLASS and ADDS A CLASS GUARD — a
+> check that fails if ANY other site repeats the defect, not only the site that was
+> reported. A test of the reported instance alone is not the fix: it pins the one site that
+> already failed and says nothing about the next caller that makes the same mistake.
+
+A defect repaired at one call site comes back at another when the fix closed the instance
+and left the class open: a second caller reaches the same hazardous primitive by a
+different path, a test stub hides it, and the regression reads as a new bug. Fixing a
+reviewer's finding by its whole class is the same idea applied to a review; this clause
+applies it to the defect the item itself fixes. Three obligations:
+
+1. **Name the class.** In the PR body, under a `## Defect class` heading, state in one or
+   two lines the shape every instance shares — e.g. "a call to the hazardous primitive
+   `exampleRawToken()` from anywhere but the one wrapper, `exampleSafeToken()`, that checks
+   its input first" — not the one line that failed. When the item re-opens a defect an
+   earlier fix already closed, cite that earlier fix's issue or commit there too, so the
+   reviewer can see which guard failed to hold.
+2. **Add a guard over the class.** A check that enumerates every site the class can occur
+   at and fails on a new one. The model is an ALLOW-LIST structural test: it walks the
+   codebase for every caller of `exampleRawToken()`, compares them against a short committed
+   allow-list (`exampleSafeToken()` and nothing else), and fails naming any caller not on the
+   list — so the next site that repeats the defect is red in CI before it reaches review. A
+   lint rule, a type that makes the hazardous call unrepresentable, or a single choke point
+   the primitive can only be reached through are equally good guards. Keep the
+   reported-instance test beside it: that test pins the behaviour, the class guard pins the
+   absence. A guard whose own matcher could silently stop matching carries a positive
+   control — a committed fixture holding one planted instance the guard must flag — so a
+   broken guard fails instead of reporting clean.
+3. **Show the class guard failing against a PLANTED SECOND instance.** The fail-first rule,
+   applied to the class rather than the instance: add a deliberate repeat of the defect at a
+   site the fix does NOT touch (a new `exampleRawToken()` caller in a scratch file, or a
+   committed mutation entry that adds one), run the guard, quote the red naming that planted
+   site in the PR body under `## Fail-first`, then remove the plant. A guard shown red only
+   against the reported instance proves it sees that instance, which the instance test
+   already did.
+
+A PR that fixes a defect and carries no `## Defect class` section is INCOMPLETE, the same way
+one with no fail-first run is. When the defect has no mechanically checkable shape — a one-off
+logic error nothing else can repeat — say so under that heading, with the reason. That is a claim
+the reviewer weighs, never a silent omission, and it is not available for a defect that
+reached a second site. This clause asks for a guard over ONE class; it does not ask for a
+standing regression suite, and a worker does not build one unasked.
+
+## 15. Declare a reversible desk-taken default
+
+The driver holds merge on every PR, so a REVERSIBLE default you take does not need a ruling
+first — the default-forward-reversibility guardrail already says so. What it needs is for the
+PR to SAY, at merge time, that this is a choice you made rather than one already ruled.
+
+When this item asked you to pick between reversible options with no prior ruling — the case
+the guardrail covers — declare the choice with `deskpr create --decided <file>` (or `deskpr
+edit --decided <file>` on an existing PR): a file of `decision:`/`alternative:`/`cost:` lines,
+one item per numbered entry. The tool writes the `## Desk-decided` body section and applies
+the `desk-decided` label together; never write either by hand. A PR that only carries out
+rulings already recorded elsewhere — nothing reversible was decided here — passes no
+`--decided` and carries neither: do not declare a decision that was not yours to make. A
+default declared this way needs no separate `needs-decision` / `question` issue — the block
+is the notice the driver reads at merge time. Never declare a call inside the guardrail's
+fixed human-gated set (merge, weakening a security control, identity/auth, money movement,
+durable-data deletion, anything leaving the repo): that is not reversible whatever it is
+labelled, so it STOPs for the driver instead, and a reviewer blocks a PR that declares one.
+
+If a reviewer's verdict later names `Undeclared-desk-decision: <one line>` on this PR, that is
+a finding against YOU, not a note to dispute: reply against it by ID (clause 13, above) and
+fix it with `deskpr edit --decided` — the same reply-then-fix discipline as any other finding.
+Disagree with the finding itself only through clause 8's escalate-durably rule, never by
+silently omitting the declaration.

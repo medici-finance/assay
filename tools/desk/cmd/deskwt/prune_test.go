@@ -35,7 +35,15 @@ func addWorktree(t *testing.T, name string) string {
 	if rc := run([]string{"add", name}); rc != deskkit.ExitOK {
 		t.Fatalf("add %q rc = %d, want 0", name, rc)
 	}
-	return filepath.Join(tmpBaseDir, "tracker-"+name)
+	target := filepath.Join(tmpBaseDir, "tracker-"+name)
+	// `deskwt add` (no --role) now CLEARS the new worktree's commit identity — the #1490
+	// no-inherit floor, so a bare add can never commit under the shared checkout's identity.
+	// A test that then builds a commit shape must supply an identity of its own, exactly as a
+	// real worker does via `--role` / role-init; stamp a fixture one worktree-scoped (the
+	// extension is already on from the clear) so these prune/reap/remove fixtures still build.
+	mustGit(t, target, "config", "--worktree", "user.name", "Test")
+	mustGit(t, target, "config", "--worktree", "user.email", "t@e.st")
+	return target
 }
 
 // --- prune: merged+clean worktree is removed --------------------------------------

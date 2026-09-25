@@ -225,6 +225,22 @@ ASSAY_HUMAN_LOGIN_MAP=alex:ada
 ASSAY_REPO_FORGES=example-org/tracker=github,example-org/agents=github
 `
 
+// fixtureBotName / fixtureBotEmail are the identity the harness authors its fixture commits
+// under, and they MUST match the worker binding in fixtureRoster above
+// (worker=assay-worker-app:300000006). The pushing verbs now run a publish-identity gate
+// (deskkit.PublishIdentityMatchesRole) before any network write: it refuses (exit 5) any
+// commit in refs/remotes/origin/main..HEAD that is not authored AND committed by the session
+// role's bound bot identity — the GitHub bot-USER-id noreply address
+// `<id>+<slug>[bot]@users.noreply.github.com`, which is exactly what a correctly-provisioned
+// worktree carries (deskwt role-init / deskdispatch stamp it). A fixture commit authored under
+// a placeholder identity makes every mandated-workflow control row refuse at that gate instead
+// of reaching the remote — measuring the harness's own broken identity, not the verb. So the
+// harness models the provisioned worktree: its fixture commits carry the worker bot identity.
+const (
+	fixtureBotName  = "assay-worker-app[bot]"
+	fixtureBotEmail = "300000006+assay-worker-app[bot]@users.noreply.github.com"
+)
+
 func newFleetEnv(t *testing.T) *fleetEnv {
 	t.Helper()
 	root := t.TempDir()
@@ -300,8 +316,8 @@ func seedOrigin(t *testing.T, path, branch string) string {
 	run(t, path, "git", "init", "--bare", "--initial-branch=main", ".")
 	seed := t.TempDir()
 	run(t, seed, "git", "init", "--initial-branch=main", ".")
-	run(t, seed, "git", "config", "user.email", "harness@example.invalid")
-	run(t, seed, "git", "config", "user.name", "fleet harness")
+	run(t, seed, "git", "config", "user.email", fixtureBotEmail)
+	run(t, seed, "git", "config", "user.name", fixtureBotName)
 	write(t, filepath.Join(seed, "README.md"), "seed\n")
 	// example-stream/02: a real brief so `Brief: fixture/01` trailers in the harness
 	// bodies resolve under --root in every fixture worktree.
@@ -697,8 +713,11 @@ func run(t *testing.T, dir, name string, args ...string) string {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
-		"GIT_AUTHOR_NAME=fleet harness", "GIT_AUTHOR_EMAIL=harness@example.invalid",
-		"GIT_COMMITTER_NAME=fleet harness", "GIT_COMMITTER_EMAIL=harness@example.invalid",
+		// The fixture commits carry the worker bot identity a provisioned worktree stamps,
+		// so the publish-identity gate the pushing verbs run sees the role's own commits and
+		// the mandated-workflow control rows reach the remote (see fixtureBotEmail).
+		"GIT_AUTHOR_NAME="+fixtureBotName, "GIT_AUTHOR_EMAIL="+fixtureBotEmail,
+		"GIT_COMMITTER_NAME="+fixtureBotName, "GIT_COMMITTER_EMAIL="+fixtureBotEmail,
 		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
 	)
 	out, err := cmd.CombinedOutput()

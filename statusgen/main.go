@@ -114,6 +114,13 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	srcProblems, srcNotices := streamSourceLint(streams, root, changed)
 	problems = append(problems, srcProblems...)
 	notices = append(notices, srcNotices...)
+	// Instrument-liveness (the liveness balancing loop): a DARK statusgen flag — 0 consumers AND
+	// declared >30 days ago — is a retirement candidate. --lint NOTICEs each once; nothing
+	// is retired by the tool. Gated to lint mode so the daily write/regen never pays the
+	// audit's consumer-grep + git-log cost on every board build.
+	if mode == "lint" {
+		notices = append(notices, instrumentAuditDarkNotices(root)...)
+	}
 	// An UNREADABLE docs/archive/ is could-not-check, surfaced as a NOTICE rather
 	// than rounded to "no archived streams": edges into archived streams may then
 	// (correctly) report "unknown stream" until the directory reads cleanly.
@@ -218,6 +225,10 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	lifecycleProblems, lifecycleNotices := lifecycleLintChecks(root, streams)
 	problems = append(problems, lifecycleProblems...)
 	notices = append(notices, lifecycleNotices...)
+	// outcome-absent (spec/brief-v1.md §3.2): a brief authored after the outcome
+	// line's cutover that names neither a requirement id nor `none` is an advisory
+	// NOTICE. Scoped like checkBriefFiles (checkStreams); grandfathered by date.
+	notices = append(notices, outcomeAbsentNotices(checkStreams)...)
 
 	// derived-board/04: a hand edit to a board: generated stream README's
 	// marker-wrapped Briefs table (its authoring columns) is a PROBLEM, the same
@@ -1159,6 +1170,21 @@ func main() {
 		os.Exit(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen verifyclosure` — the READ-ONLY board question "does this tree
+	// present a lint-valid `verified` closure for one brief?" (verifyclosure.go).
+	// Unlike `verifyrun` it runs nothing and writes nothing; it reads the brief's
+	// board row (the Verified stamp) and its Evidence witnesses and answers with an
+	// exit code. It owns its own --brief/--root namespace, so — like the
+	// subcommands around it — it is intercepted before the parent flag parser.
+	//
+	// It is never part of `--lint`: the witness-absence half is already a `--lint`
+	// NOTICE (witnessNotices/witnessgate.go), and this command exists for the ONE
+	// caller that must decide BEFORE a write whether recording `outcome:verified`
+	// in the verify-outcomes sidecar is warranted (deskevidence's sidecar gate).
+	if len(os.Args) > 1 && os.Args[1] == "verifyclosure" {
+		os.Exit(runVerifyclosure(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen mergecheck` — the MERGE-TIME RE-CHECK (desk-hardening/05, #54).
 	// Re-asks "is this branch still correct?" against the TRIAL-MERGED tree rather
 	// than the branch's own, which is the only tree that can show a semantic merge
@@ -1362,7 +1388,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, enforcement-status, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, enforcement-status, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}
@@ -1379,6 +1405,8 @@ func main() {
 	lintMode := flag.Bool("lint", false, "run all checks without reading or writing STATUS.md (defaults --budget to "+defaultBudgetSpec+" unless overridden)")
 	forgeMode := flag.Bool("forge", false, "opt in to the forge-backed checks. WITHOUT it statusgen is OFFLINE: it starts no forge process and makes no network call, and every forge-backed check reports could-not-check as itself rather than reading green. WITH it those checks read through the desk-tools `deskread` verb on the forge seam. The default is offline because a check that quietly stopped looking is indistinguishable from one that looked and found nothing")
 	lintAuditMode := flag.Bool("lint-audit", false, "30-day check-firing audit (statusgen/01): sample daily commits, tally per-rule PROBLEM/NOTICE firings, flag COLD (0-firing, un-tested) rules as retirement candidates — read-only, advisory, never retires a rule")
+	instrumentAuditMode := flag.Bool("instrument-audit", false, "instrument-liveness audit: for every flag declared in statusgen/main.go, report the consumers found by grepping the roots (default: <root>/{.github/workflows,plugins/assay/skills,plugins/assay/scripts,Makefile,tools/desk/cmd}) — WIRED (>=1), COLD (0), or DARK (0 AND declared >30d ago). Read-only, advisory; --lint NOTICEs each DARK flag, nothing is retired. With --json emits {flags:[...]}. --roots overrides the grep roots")
+	instrumentRootsFlag := flag.String("roots", "", "--instrument-audit: comma-separated directories to grep for flag consumers (default: the day-one consumer surface under --root); a house root adds its own workflows/skills/tools")
 	allowEmptyRootFlag := flag.Bool("allow-empty-root", false, "allow a root whose docs/streams exists but resolves to 0 streams (default: hard PROBLEM, same class as a missing/unreadable docs/streams); with this flag it downgrades to a NOTICE, for a root that has genuinely adopted the methodology but has not authored a stream yet")
 	diffBaseFlag := flag.String("diff-base", "", "--lint only: make the lint DIFFERENTIAL against this base ref (e.g. refs/remotes/origin/main). Evaluates the register at the merge-base of HEAD and <ref> AND at the working tree, fires PROBLEM only for problems the diff INTRODUCES, and demotes pre-existing base-side problems to NOTICE; always prints a base-vs-diff summary line. Fails safe to a full-strength lint (nothing demoted) when the base cannot be resolved or materialised")
 	var budget budgetFlags
@@ -1690,6 +1718,7 @@ func main() {
 			"--review-rework":         *reviewReworkMode,
 			"--decision-latency":      *decisionLatencyMode,
 			"--net-flow":              *netFlowMode,
+			"--instrument-audit":      *instrumentAuditMode,
 			"--assayscore":            *assayScoreMode,
 			"--roadmap":               *roadmapMode,
 			"--bottleneck":            *bottleneckMode,
@@ -1816,11 +1845,12 @@ func main() {
 	// as the verify-gate modes. READ-only against GitHub — it lists issues and
 	// writes local placeholder files; it never creates or mutates an issue.
 	if *scanIssuesMode {
-		// #1223: the OPEN-issue read routes through the native forge (via the `deskread` verb),
-		// not a `gh issue list` shell-out — see defaultScanIssueLister. This is the read that
-		// 401'd on every rostered repo and the #628 multi-installation case. The bless and
-		// comment reads below still shell `gh` (see the audit note on #1223).
-		os.Exit(runScanIssues(*root, *scanDryRun, defaultScanIssueLister, issueCommentLister, ghIssueBlessChecker))
+		// #1223/#1255: ALL THREE forge reads route through the native forge (via the `deskread`
+		// verb), never a `gh` shell-out — the OPEN-issue list (defaultScanIssueLister, #1223),
+		// the un-block comment read and the trust-gate bless read (defaultScanCommentLister,
+		// defaultScanBlessChecker, #1255). A `gh` read left on this path 401s on every rostered
+		// repo under scanloop's replaced HOME.
+		os.Exit(runScanIssues(*root, *scanDryRun, defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker))
 	}
 	// Same-repo scan transcriber (scan-lane/01, R-7): self-contained,
 	// STATUS.md-free. The workflow's "run" step. INERT until the R-7 sign-off
@@ -2135,6 +2165,12 @@ func main() {
 	// rule itself and never gates CI.
 	if *lintAuditMode {
 		os.Exit(runLintAudit(*root))
+	}
+	// Instrument-audit (the liveness balancing loop) — read-only advisory sub-command: classify
+	// every declared statusgen flag WIRED/COLD/DARK by consumer grep, --json optional.
+	// Never retires a flag itself; --lint NOTICEs DARK flags.
+	if *instrumentAuditMode {
+		os.Exit(runInstrumentAudit(*root, splitInstrumentRoots(*instrumentRootsFlag), *doraJSON))
 	}
 
 	// Wire the run's forge reader. The default (set at forgeReaderForRun's

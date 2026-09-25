@@ -2,7 +2,7 @@
 stream: iso-9001
 repo: medici-finance/assay
 serves: assay
-status: active
+status: parked
 priority: P2
 track: platform
 issues: []
@@ -10,6 +10,11 @@ board: generated
 ---
 
 # iso-9001 Stream — make the artifacts an ISO 9001 adopter needs actually shippable
+
+**Parked** (2026-09-25, relayed by the desk at the driver's direction): shelved to
+free attention-budget for higher-priority work; briefs are kept as authored.
+Re-activate by flipping this README's `status:` back to `active` when priority
+allows.
 
 [`docs/iso9001-mapping.md`](../../iso9001-mapping.md) reads this repo's shipped artifacts
 against the ISO 9001 clause skeleton and says, per clause, what exists, whether it is
@@ -67,6 +72,7 @@ chain. Related, adjacent, cite both, never conflate them.
 | 04 | [Record the authorizing human in the release itself](brief-04-release-authorizer-traceability.md) | 1 | S | implemented | — | — |
 | 05 | [Records control and retention, stated once](brief-05-records-control-and-retention.md) | 1 | S | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #400 @ 90c19fd7a273835d01247292ad91f217a4ff9fe1) |
 | 06 | [The auditor one-pager — what Assay is and is not](brief-06-auditor-one-pager.md) | 2 | S | todo | — | — |
+| 07 | [Release by merge — the human merge is the cut and the authorizer](brief-07-release-by-merge.md) | 2 | M | blocked | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

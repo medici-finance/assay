@@ -51,7 +51,17 @@ reviewable artifact, not a run.
   POSIX shell-out). It runs NO mutating/forge verb. The native windows/arm64 smoke is held
   BLOCKED (`arm64-native-smoke`, `if: false`) pending a `windows-11-arm` runner and is never
   inferred from the amd64 result. A `workflow_dispatch` input `failfirst=true` runs the
-  fail-first demonstration (the leg must redden on a bogus verb).
+  fail-first demonstration (the leg must redden on a bogus verb). The staged copy also adds a
+  **Windows PowerShell 5.1 parse check** to `windows-smoke` (#1569, pending promotion): under
+  `shell: powershell` it runs `[System.Management.Automation.Language.Parser]::ParseFile` over
+  every tracked `*.ps1` (case-insensitive pathspec) and fails on any parse error, with a
+  `failfirst` twin that plants a BOM-less em dash and a PowerShell 7 `? :` ternary and
+  requires 5.1 to reject each. The PR-time half of the ENCODING class needs
+  no promotion: `TestPS1EncodingIs51Safe` in `tools/desk/internal/deskkit`
+  (run by `ci.yml`'s build-test job) fails any `*.ps1` carrying a byte above 0x7F without a
+  UTF-8 BOM. It is a byte scan, not a parser: any other 5.1-only parse error (a PowerShell 7
+  operator such as the `? :` ternary, for example) is caught only by this staged step, so
+  until it is promoted nothing gates that class.
 
   **Already live, like `evidence-automerge.yml` above** — this copy is kept as the reviewable
   edit surface for `.github/workflows/windows-ci-leg.yml`, no App may push a workflow-file
@@ -68,6 +78,39 @@ reviewable artifact, not a run.
   git commit -m "ci: promote windows-ci-leg.yml"
   git push
   ```
+
+- `release-on-merge.yml` — the "release by merge" merge-detector (iso-9001/07). **New,
+  pending promotion.** On `push: branches: [main]` it detects that the pushed commit is the
+  merge of a release PR (title `release: vX.Y.Z` + a `RELEASE: vX.Y.Z` body line, merged with
+  `merge_commit_sha` == the pushed commit), mints a release-cutter App token, and creates
+  `refs/tags/assay/vX.Y.Z` then `refs/tags/vX.Y.Z` at the merge commit via the git-data API. The
+  plain `vX.Y.Z` tag — created by an App installation token, a distinct identity — triggers
+  `release.yml`'s `push: tags: ['v*']` build; a GITHUB_TOKEN-created tag would NOT (GitHub's
+  recursion guard). This job's own GITHUB_TOKEN stays read-only. **Prerequisite (repo-admin
+  act):** a release-cutter GitHub App (contents:write; no workflows/actions/administration
+  write) with its key wired as the Actions secrets `RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY`
+  (a human may instead point these at the existing board-writer App's `BOARD_APP_*`). Promote it:
+  ```
+  git mv ci/staged-workflows/release-on-merge.yml .github/workflows/release-on-merge.yml
+  git commit -m "ci: activate release-on-merge.yml"
+  git push
+  ```
+- `release.yml` — a STAGED TWIN of the live `.github/workflows/release.yml`, carrying ONLY the
+  release-by-merge addition to the `resolve` job's tag-push path (iso-9001/07): it resolves the
+  authorizer from the merged release PR's `merged_by.login` and REFUSES to build a release for
+  any `v*` tag whose commit is not a merged release PR (title `release: vX.Y.Z` + `RELEASE:
+  vX.Y.Z`). Additive; no step reordered. Like `evidence-automerge.yml` above, no App may push a
+  `.github/workflows/*` change, so this is the reviewable edit surface; a maintainer re-promotes
+  by copying it over the live file in a maintainer-credentialled commit:
+  ```
+  cp ci/staged-workflows/release.yml .github/workflows/release.yml
+  git commit -m "ci: promote release.yml (release-by-merge tag-push authorizer)"
+  git push
+  ```
+  **Landing-mechanism caveat** applies exactly as for `windows-ci-leg.yml` below (see
+  `docs/streams/decisions/DR-workflow-app-landing.md` and desk-supervision/11-12): if the
+  workflow-App PR path has landed, prefer it over a verbatim hand-copy. Re-base this twin on the
+  live file at promotion time (three-way) so promoting only ADDS.
 
 ### `windows-ci-leg.yml` status
 

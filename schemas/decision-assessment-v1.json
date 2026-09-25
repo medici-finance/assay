@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/decision-assessment-v1.json",
+  "title": "decision-assessment-v1",
+  "description": "Machine-readable contract for the decision-assessment-v1 envelope (spec/decision-assessment-v1.md, graph-execution/10): a typed, calibrated alternative to deskkit.Decide's bounded enum consult, kept in three separate products never merged — assessmentRequest (the declared envelope), prediction (probabilistic advice) and policyResult (a deterministic record). This schema is DESCRIPTIVE of per-value shape only; the cross-field MUST rules (probabilities sum to 1 within tolerance, an uncalibrated label never carries a probability, digests must match, calibration must be applicable) live in spec/decision-assessment-v1.md §4.1 and are enforced by tools/desk/internal/deskkit/decisionassessment.go's ValidatePrediction, not expressible as a per-value schema constraint.",
+  "$defs": {
+    "assessmentRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject", "vocabulary"],
+      "properties": {
+        "subject": {
+          "description": "Stable identity of what is being assessed.",
+          "type": "string"
+        },
+        "inputDigest": {
+          "description": "A digest of the exact input content a prediction must match. Absent/empty = no input-digest check declared.",
+          "type": "string"
+        },
+        "schemaDigest": {
+          "description": "A digest of the question/schema shape a prediction must match. Absent/empty = no schema-digest check declared.",
+          "type": "string"
+        },
+        "vocabulary": {
+          "description": "The closed set of labels a prediction may name, in either labelProbabilities or shadowLabels.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "requiredCalibratorVersion": {
+          "description": "Absent/empty = no calibration-version check declared.",
+          "type": "string"
+        }
+      }
+    },
+    "budgetUsage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "limit": { "type": "integer", "minimum": 0 },
+        "used": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "prediction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject"],
+      "properties": {
+        "subject": {
+          "description": "MUST equal the request's subject (spec §4.1 rule 1).",
+          "type": "string"
+        },
+        "inputDigest": { "type": "string" },
+        "schemaDigest": { "type": "string" },
+        "labelProbabilities": {
+          "description": "Labels the provider's calibrator actually covers. Every key MUST be in the request's vocabulary and MUST NOT also appear in shadowLabels (spec §4.1 rules 3-5).",
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        },
+        "shadowLabels": {
+          "description": "Labels the provider produced WITHOUT calibration support — no synthesized probability (spec §4.1 rule 5).",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "abstained": {
+          "description": "An EXPLICIT no-usable-prediction. MUST be paired with an empty labelProbabilities (spec §4.1 rule 6).",
+          "type": "boolean"
+        },
+        "providerVersion": { "type": "string" },
+        "calibratorVersion": {
+          "description": "Checked against the request's requiredCalibratorVersion when declared (spec §4.1 rule 8).",
+          "type": "string"
+        },
+        "requestedBackend": { "type": "string" },
+        "actualBackend": { "type": "string" },
+        "budget": { "$ref": "#/$defs/budgetUsage" },
+        "evidenceRefs": {
+          "description": "References to evidence, never raw evidence content.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "generatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "policyResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject", "decision", "policyVersion", "reason"],
+      "properties": {
+        "subject": { "type": "string" },
+        "inputDigest": { "type": "string" },
+        "decision": {
+          "description": "A policy's own closed vocabulary; not this schema's concern to enumerate (graph-execution/13 defines the admission disposition vocabulary).",
+          "type": "string"
+        },
+        "policyVersion": { "type": "string" },
+        "reason": { "type": "string" },
+        "generatedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/assessmentRequest" },
+    { "$ref": "#/$defs/prediction" },
+    { "$ref": "#/$defs/policyResult" }
+  ]
+}

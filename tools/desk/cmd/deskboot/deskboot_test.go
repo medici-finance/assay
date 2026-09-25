@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +19,9 @@ import (
 type stub struct {
 	calls   [][]string
 	replies []reply
+	// onCall, when set, sees every argv as the child is constructed — while any file the
+	// argv names (a --body-file) still exists.
+	onCall func(argv []string)
 }
 
 type reply struct {
@@ -25,6 +29,7 @@ type reply struct {
 	stdout string
 	stderr string // emitted on the child's stderr; when set with fail, replaces the default stub-failure line
 	fail   bool
+	code   int // exit code when fail is set; 0 means 1
 }
 
 // install wires the stub and returns (home, root). root is a REAL directory: every child
@@ -45,13 +50,20 @@ func (s *stub) install(t *testing.T) (home, root string) {
 	execCommand = func(name string, args ...string) *exec.Cmd {
 		joined := name + " " + strings.Join(args, " ")
 		s.calls = append(s.calls, append([]string{name}, args...))
+		if s.onCall != nil {
+			s.onCall(append([]string{name}, args...))
+		}
 		for _, r := range s.replies {
 			if strings.Contains(joined, r.match) {
 				if r.fail {
-					if r.stderr != "" {
-						return exec.Command("/bin/sh", "-c", "cat >&2 <<'STUBEOF'\n"+r.stderr+"\nSTUBEOF\nexit 1")
+					code := r.code
+					if code == 0 {
+						code = 1
 					}
-					return exec.Command("/bin/sh", "-c", "echo stub-failure 1>&2; exit 1")
+					if r.stderr != "" {
+						return exec.Command("/bin/sh", "-c", fmt.Sprintf("cat >&2 <<'STUBEOF'\n%s\nSTUBEOF\nexit %d", r.stderr, code))
+					}
+					return exec.Command("/bin/sh", "-c", fmt.Sprintf("echo stub-failure 1>&2; exit %d", code))
 				}
 				return exec.Command("/bin/sh", "-c", "cat <<'STUBEOF'\n"+r.stdout+"\nSTUBEOF")
 			}
@@ -152,6 +164,198 @@ func TestRedPreflightStopsTheBootAndReadsNoBoard(t *testing.T) {
 	}
 	if s.ran("fetch --no-tags") {
 		t.Error("the board was fetched after a red preflight — nothing proceeds past a red envelope")
+	}
+}
+
+// countCalls returns how many recorded child processes contain ALL of the given fragments in
+// their joined argv — the alarm assertion needs "a deskfile new addressed to:desk", which is
+// three fragments at once.
+func (s *stub) countCalls(fragments ...string) int {
+	n := 0
+	for _, c := range s.calls {
+		joined := strings.Join(c, " ")
+		all := true
+		for _, f := range fragments {
+			if !strings.Contains(joined, f) {
+				all = false
+				break
+			}
+		}
+		if all {
+			n++
+		}
+	}
+	return n
+}
+
+// TestBootRedFilesOneAlarm is Verify row 5. A red preflight is ALARMED, not only printed:
+// deskboot files ONE `to:desk` issue quoting the red line, and it is deduped by a marker per
+// role per day, so a loop that boots-refuses-reboots on a supervisor interval does not re-file
+// the same envelope issue every tick.
+//
+// FAIL-FIRST: on the pre-brief code deskboot filed NOTHING on a red preflight (its step-5
+// comment said so explicitly), so the first assertion — exactly one `deskfile new --to desk`
+// after a red preflight — is zero on the unfixed tree. The fix is alarm.go plus the step-5
+// wiring; a reviewer removes the fileRedPreflightAlarm call to observe the red.
+func TestBootRedFilesOneAlarm(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t) // one HOME → one state dir → one marker across both boots
+	s.replies = append(happyStub(t, writeToken(t, home)),
+		reply{match: "deskroster preflight", fail: true})
+
+	// Boot 1: a red preflight stops the boot AND files exactly one to:desk alarm.
+	if rc := run([]string{"the-desk", "--root", root}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("red preflight rc = %d, want %d (unverifiable) — the alarm never changes the verdict", rc, deskkit.ExitUnverifiable)
+	}
+	if got := s.countCalls("deskfile", "new", "--to desk"); got != 1 {
+		t.Fatalf("first red preflight produced %d `deskfile new --to desk` payloads, want exactly 1", got)
+	}
+	// The alarm is raised BY the desk (its provenance), addressed TO the desk (its inbox).
+	if got := s.countCalls("deskfile", "new", "--raised-by desk"); got != 1 {
+		t.Fatalf("the alarm was not raised-by desk (got %d such calls, want 1)", got)
+	}
+
+	// Boot 2: same role, same day — the marker suppresses a second payload.
+	s.calls = nil
+	if rc := run([]string{"the-desk", "--root", root}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("second red preflight rc = %d, want %d (unverifiable)", rc, deskkit.ExitUnverifiable)
+	}
+	if got := s.countCalls("deskfile", "new"); got != 0 {
+		t.Fatalf("a SECOND red preflight the same day filed %d more alarms, want 0 — the marker must dedupe per role per day", got)
+	}
+}
+
+// alarmRedStderr is a red roster run whose details carry local specifics — an ambient login,
+// an absolute path, a credential-helper command — that the alarm must NOT publish.
+const alarmRedStderr = "assay-config: class=write source=config file /x/roster.env configured=true\n" +
+	"preflight role=desk RED 4/6 checked-clean · ambient-identity=checked-failed: the ambient gh login is " +
+	"mallory, a non-blessing login → fix: switch the interactive gh identity [#1527] · write-transport=" +
+	"could-not-check: credential helper !cat /home/someone/.config/app-token → fix: run it by hand"
+
+// redAlarmBoot boots the-desk against a red preflight with the given deskfile reply and
+// returns the captured stderr, the boot's rc, the alarm marker path and the boot root.
+func redAlarmBoot(t *testing.T, s *stub, deskfile reply) (stderr string, rc int, marker, root string) {
+	t.Helper()
+	home, root := s.install(t)
+	s.replies = append([]reply{deskfile}, append(happyStub(t, writeToken(t, home)),
+		reply{match: "deskroster preflight", fail: true, stderr: alarmRedStderr})...)
+	stderr = captureStderr(t, func() int {
+		rc = run([]string{"the-desk", "--root", root})
+		return rc
+	})
+	m, err := alarmMarkerPath("desk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return stderr, rc, m, root
+}
+
+// TestBootAlarmRefusedFilingIsNotReportedAsFiled is the F1 regression. deskfile refuses an
+// alarm with exit 5 for reasons OTHER than its title dedupe — the blocker-evidence gate, the
+// filing budget, an unbound role. Such a refusal filed nothing, so it must NOT write the
+// per-day marker (which would silence every retry until tomorrow), must NOT be reported as
+// "filed", and must surface as a warning. The next red boot must try again.
+//
+// FAIL-FIRST: the pre-fix alarm read ANY exit 5 as a dedupe hit — it wrote the marker,
+// returned filed=true, and the boot printed "filed a to:desk alarm"; every assertion below
+// is red against it.
+func TestBootAlarmRefusedFilingIsNotReportedAsFiled(t *testing.T) {
+	s := &stub{}
+	gate := reply{match: "deskfile new", fail: true, code: deskkit.ExitRefused,
+		stderr: "assay-config: class=write configured=true\ndeskfile: refused: a filing labelled \"help wanted\" " +
+			"is a blocker claim and must carry a `### Evidence` section"}
+	stderr, rc, marker, root := redAlarmBoot(t, s, gate)
+
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("red preflight rc = %d, want %d — the alarm never changes the verdict", rc, deskkit.ExitUnverifiable)
+	}
+	if s.countCalls("deskfile", "new") != 1 {
+		t.Fatalf("expected one alarm attempt, got %d", s.countCalls("deskfile", "new"))
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("a REFUSED alarm wrote the per-day marker — every retry today is now silenced with nothing filed")
+	}
+	if strings.Contains(stderr, "filed a to:desk alarm") || strings.Contains(stderr, "filed ONE") {
+		t.Fatalf("the boot claims an alarm was filed after deskfile REFUSED it:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "WARNING: could not file the red-preflight alarm") ||
+		!strings.Contains(stderr, "### Evidence") {
+		t.Fatalf("the refused filing was not surfaced as a warning quoting deskfile's refusal:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "could NOT file the to:desk alarm") {
+		t.Fatalf("the refusal text does not say the alarm was not filed:\n%s", stderr)
+	}
+
+	// No marker ⇒ the next red boot tries again.
+	s.calls = nil
+	if rc2 := run([]string{"the-desk", "--root", root}); rc2 != deskkit.ExitUnverifiable {
+		t.Fatalf("second red boot rc = %d", rc2)
+	}
+	if s.countCalls("deskfile", "new") != 1 {
+		t.Fatalf("after a refused alarm the next red boot made %d attempts, want 1 (retry)", s.countCalls("deskfile", "new"))
+	}
+}
+
+// TestBootAlarmDedupeRefusalWritesMarker: deskfile's TITLE-dedupe refusal — the one exit 5
+// that means an equivalent issue is already open — is the idempotent no-op. It writes the
+// marker and is reported as already open, never as a fresh filing and never as a failure.
+func TestBootAlarmDedupeRefusalWritesMarker(t *testing.T) {
+	s := &stub{}
+	dup := reply{match: "deskfile new", fail: true, code: deskkit.ExitRefused,
+		stderr: "deskfile: " + deskkit.DedupeRefusalPrefix + "42 \"deskboot: red operating-envelope preflight\" (score 0.97)"}
+	stderr, rc, marker, _ := redAlarmBoot(t, s, dup)
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("a dedupe hit did not write the marker: %v\n%s", err, stderr)
+	}
+	if strings.Contains(stderr, "WARNING: could not file") {
+		t.Fatalf("a dedupe hit was reported as a filing failure:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "already open") {
+		t.Fatalf("the refusal text does not say an equivalent alarm is already open:\n%s", stderr)
+	}
+}
+
+// TestBootAlarmBodyWithholdsDetails is the S2 regression: the alarm may be filed into a
+// PUBLIC repository, so its body carries each failing check's NAME and STATE only — never
+// the detail or remediation the roster printed (ambient login, local paths, helper command
+// lines). It also carries the `### Evidence` fence deskfile's gate requires.
+//
+// FAIL-FIRST: the pre-fix body quoted the roster's output verbatim, so "mallory" and the
+// absolute helper path were in the filed body.
+func TestBootAlarmBodyWithholdsDetails(t *testing.T) {
+	s := &stub{}
+	var body string
+	s.onCall = func(argv []string) {
+		for i, a := range argv {
+			if a == "--body-file" && i+1 < len(argv) {
+				b, err := os.ReadFile(argv[i+1])
+				if err != nil {
+					t.Errorf("cannot read the alarm body file: %v", err)
+				}
+				body = string(b)
+			}
+		}
+	}
+	_, _, _, root := redAlarmBoot(t, s, reply{match: "deskfile new", stdout: "https://example.invalid/issues/1"})
+	if body == "" {
+		t.Fatal("no alarm body was captured")
+	}
+	for _, want := range []string{"### Evidence", "```", "ambient-identity=checked-failed", "write-transport=could-not-check", "RED 4/6"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("alarm body lacks %q:\n%s", want, body)
+		}
+	}
+	for _, banned := range []string{"mallory", "/home/someone", "app-token", "fix:", "/x/roster.env", root} {
+		if strings.Contains(body, banned) {
+			t.Errorf("alarm body publishes local detail %q:\n%s", banned, body)
+		}
+	}
+	// Raised BY the booting role; for the-desk that is the desk.
+	if s.countCalls("deskfile", "new", "--raised-by desk", "--label help wanted") != 1 {
+		t.Errorf("the alarm argv is not raised-by the booting role with the escalation label: %v", s.calls)
 	}
 }
 
@@ -300,6 +504,9 @@ func TestAlreadyLockedWorktreeIsIdempotent(t *testing.T) {
 	execCommand = func(name string, args ...string) *exec.Cmd {
 		joined := name + " " + strings.Join(args, " ")
 		s.calls = append(s.calls, append([]string{name}, args...))
+		if s.onCall != nil {
+			s.onCall(append([]string{name}, args...))
+		}
 		if strings.Contains(joined, "worktree lock") {
 			return exec.Command("/bin/sh", "-c", `echo "fatal: already locked" 1>&2; exit 128`)
 		}

@@ -40,6 +40,11 @@ var validRoles = map[string]bool{
 	"intake-loop": true,
 	"cell-issues": true,
 	"auditor":     true,
+	// release-runner (forge-neutral brief 14) is the dedicated run credential deskrun starts
+	// workflow runs with — its own App on GitHub (dispatch needs Actions: write, which no
+	// desk role's App may carry; approving a required-reviewer gate is not possible for any
+	// App), a pipeline trigger token on GitLab. Like cell-issues it is selectable only by name, never a loop's default.
+	"release-runner": true,
 }
 
 const (
@@ -883,8 +888,10 @@ func cmdToken(args []string) (err error) {
 		}
 	}
 
-	// Reuse cached token if < 50 min old.
-	if fi, serr := os.Stat(tokenPath); serr == nil {
+	// Reuse cached token if < 50 min old. Lstat, not Stat: the cache is desktoken's own
+	// regular file, so a symlink here is refused — never handed out as the role's token, and
+	// never written through by the mint below.
+	if _, fi, serr := deskkit.LstatCustody(tokenPath, deskkit.CustodyNoLinks); serr == nil {
 		if fi.Mode().Perm() != 0o600 {
 			return deskkit.Unverifiable(
 				fmt.Sprintf("token cache at %s has permissions %o; must be 0600", tokenPath, fi.Mode().Perm()), nil)
@@ -905,6 +912,8 @@ func cmdToken(args []string) (err error) {
 			ac.suppress = true // no network call, no mint, nothing changed — no audit row
 			return nil
 		}
+	} else if _, isLink := serr.(*deskkit.CustodyLinkError); isLink {
+		return deskkit.Unverifiable(serr.Error(), nil)
 	} else if !os.IsNotExist(serr) {
 		return deskkit.Unverifiable("cannot stat token cache: "+tokenPath, serr)
 	}

@@ -1,0 +1,13 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/pipelines/9001"
+    }
+  ],
+  "result": {
+    "Status": "completed",
+    "Conclusion": "failure",
+    "URL": "https://gitlab.example/medici-finance/assay/-/pipelines/9001"
+  }
+}

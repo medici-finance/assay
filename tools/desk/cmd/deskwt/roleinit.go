@@ -35,8 +35,10 @@ import (
 //     security review — an unscoped helper hands the token to any host/protocol), so https
 //     fetch/push to the origin authenticate as the role and never fall through to a sibling
 //     role's leftover helper in shared config, while a foreign host or plaintext http gets
-//     nothing — followed by the role's own PREFLIGHT, run against the provisioned worktree, so a
-//     red envelope is found here and not at boot;
+//     nothing — the token FILE chosen by the forge serving the repo (#1573: a GitLab repo reads
+//     the role's provisioned PAT custody file and never the GitHub App minter) — followed by the
+//     role's own PREFLIGHT, run against the provisioned worktree, so a red envelope is found here
+//     and not at boot;
 //   - an ORIGIN identity guard: an existing target whose origin is a different repo is
 //     REFUSED, never re-pointed or reset (fail closed);
 //   - idempotency: a valid existing worktree is reused (noop), not clobbered or errored.
@@ -283,43 +285,23 @@ func cmdRoleInit(args []string) (err error) {
 		return perr
 	}
 
-	// The commit identity is derived from the roster entry's FORGE (the forge-qualified-identity
-	// brief), never a fixed shape, and never the GitHub noreply shape for a GitLab account
-	// (#677 — a GitHub-shaped email on a GitLab commit lands it under no GitLab identity).
-	var botName, botEmail string
+	// The commit identity is the ONE SHARED resolver every worktree-stamping tool uses
+	// (deskkit.RoleWorktreeCommitIdentity): it derives the GitHub-vs-GitLab shape from the
+	// role's forge-qualified roster entry — never a fixed shape, never the GitHub noreply
+	// shape for a GitLab account (#677) — and returns a typed Refused (exit 5) naming the
+	// roster key when the role has no derivable identity (#638). role-init, `deskwt add
+	// --role` and deskdispatch's worktree-create all resolve through it, so one role can
+	// never stamp three different identities.
+	botName, botEmail, ierr := deskkit.RoleWorktreeCommitIdentity(p.role)
+	if ierr != nil {
+		return ierr
+	}
 	// credUser is the username the inline credential helper answers with: GitHub App
-	// installation tokens authenticate as `x-access-token`; a GitLab PAT as `oauth2`.
+	// installation tokens authenticate as `x-access-token`; a GitLab PAT as `oauth2`. It is
+	// read from the SAME roster entry the identity was, so the two cannot disagree.
 	credUser := "x-access-token"
 	if ident, bound := deskkit.EffectiveConfig().RoleBotIdentity(p.role); bound && ident.Forge == deskkit.ForgeGitLab {
 		credUser = "oauth2"
-		// GitLab: the service-account commit email embeds a group id and per-account suffix the
-		// roster does not carry, so it is not CONSTRUCTIBLE. The established mechanism (#643) is
-		// the two-identity model — the worktree commits under the trusted session / implementer
-		// address the deployment lists in ASSAY_GITLAB_SESSION_EMAILS (the same allowlist the
-		// commit-identity preflight accepts; a deployment committing AS the service account lists
-		// that account's noreply address there). Read it from the trusted roster; refuse loudly
-		// rather than fall back to the GitHub shape when none is configured.
-		name, email, ok := deskkit.RoleGitLabCommitIdentity(p.role)
-		if !ok {
-			return deskkit.Refused("refused: role " + p.role + " is a GitLab identity (" + ident.Slug + "); its " +
-				"service-account commit email (service_account_group_<group-id>_<suffix>@noreply.<host>) embeds a " +
-				"group id and per-account suffix the roster does not carry, so it cannot be constructed — and it " +
-				"must NOT fall back to the GitHub noreply shape. Configure the trusted GitLab session / implementer " +
-				"commit address in " + deskkit.EnvGitLabSessionEmails + " (the two-identity mechanism; to commit AS " +
-				"the service account, list its provisioned noreply address there), in " + deskkit.ConfigHomePath())
-		}
-		botName, botEmail = name, email
-	} else {
-		// GitHub: the App commit identity comes from the roster, not a source literal — the bot
-		// USER id is deployment-specific. Refuse loudly rather than stamp an empty/unlinked identity.
-		name, email, ok := deskkit.RoleBotCommitIdentity(p.role)
-		if !ok {
-			return deskkit.Refused("refused: role " + p.role + " has no bot commit identity in the roster — " +
-				"pin it with a " + deskkit.EnvTrustedBotSlugs + " entry " + p.role +
-				"=<app-slug>:<bot-user-id> (the bot USER id, from `gh api /users/<app-slug>[bot]`) in " +
-				deskkit.ConfigHomePath())
-		}
-		botName, botEmail = name, email
 	}
 
 	dir, derr := roleRepoDir(p)
@@ -447,18 +429,34 @@ func cmdRoleInit(args []string) (err error) {
 	return roleInitPreflightRun(p, repo)
 }
 
-// roleTokenPath resolves the PATH of the role's cached App token for an account — minting it
-// when the cache is cold — through deskkit's one token resolver (the same one every desk verb's
-// forge reads use). It returns a path and never the token value. It is a package var ONLY as a
-// test seam: a fixture has no App credential to mint.
-var roleTokenPath = func(role, owner string) (string, error) {
-	_, path, err := deskkit.RoleTokenForOwner(role, owner)
-	return path, err
+// roleCredential is deskkit's forge-aware role-credential resolver (#1573): it resolves WHICH
+// forge serves the repo before any token is touched, then reads that forge's custody — GitLab:
+// the provisioned `gitlab-<role>.token` file, never minted or rotated, a missing/loose/empty file
+// REFUSED (exit 5) naming it with no fall-through to the GitHub App minter; GitHub: the GitHub App
+// token, minted or reused, and only for an origin whose host is exactly github.com — any other
+// origin host (a lookalike, a self-hosted instance, a forge nothing resolves) is REFUSED before
+// any mint rather than having a github.com token wired under it. role-init carries no forge
+// branch of its own. It is a package var ONLY as a test seam: a fixture has no
+// App credential to mint.
+var roleCredential = deskkit.ResolveRoleCredential
+
+// roleCredentialPath returns the PATH of the role's credential file for repo, as selected by the
+// forge that serves it. originURL is the TARGET worktree's own origin remote — not the process's
+// working directory — so a --repo-root provisioning resolves the repo it is actually wiring
+// (ASSAY_REPO_FORGES first, then that remote's host). Only the PATH is returned; the token value
+// is discarded here and never logged.
+func roleCredentialPath(role, repo, originURL string) (string, error) {
+	owner, name, _ := strings.Cut(repo, "/")
+	cred, err := roleCredential(role, deskkit.ForgeRepo{Owner: owner, Name: name}, originURL)
+	if err != nil {
+		return "", err
+	}
+	return cred.Path, nil
 }
 
 // roleInitPreflight runs the role's envelope preflight and returns its one-line refusal, or nil
 // when every check passes. Package var ONLY as a test seam; production is the real deskkit
-// preflight — the same five checks the desk boot runs.
+// preflight — the same six checks the desk boot runs.
 var roleInitPreflight = func(req deskkit.PreflightRequest) error { return req.Run().Err() }
 
 // roleInitPreflightRun is the LAST step of role-init (#1309 item 7): having wired the identity
@@ -518,38 +516,45 @@ func roleInitPreflightRun(p roleInitParams, repo string) error {
 // line — only its PATH does. Scoped via extensions.worktreeConfig (already on from
 // setCommitIdentity), so the primary checkout's config is never mutated.
 func wireRoleCredential(target, role, repo, username string) error {
-	owner := deskkit.OwnerOf(repo)
-	path, err := roleTokenPath(role, owner)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(path) == "" {
-		return deskkit.Unverifiable("the token minter returned no path for the "+role+" App token on "+owner, nil)
-	}
-	if strings.ContainsAny(path, "'\n") {
-		return deskkit.Refused("refused: token path " + path + " cannot be quoted into a credential helper")
-	}
-	// The scoping HOST is read from the worktree's own origin remote (effective URL, so an
-	// insteadOf rewrite is honoured) and parsed with the scp-aware deskkit parser rather than a
-	// hand-rolled split. A host we cannot resolve is could-not-check (exit 6): we refuse to
-	// install a credential helper we cannot scope, rather than fall back to the leaky unscoped key.
+	// The origin URL is read FIRST: it is the source of the scoping HOST (effective URL, so an
+	// insteadOf rewrite is honoured, parsed with the scp-aware deskkit parser rather than a
+	// hand-rolled split) and the fallback input to the forge resolution that picks which
+	// credential file to wire (#1573). An origin we cannot read is could-not-check (exit 6): we
+	// refuse to install a credential helper we cannot scope, rather than fall back to the leaky
+	// unscoped key.
 	originURL, oerr := runGit(target, "remote", "get-url", "origin")
 	if oerr != nil {
 		return deskkit.Unverifiable("cannot read the origin remote URL at "+target+" to scope the credential helper", oerr)
 	}
-	host, herr := deskkit.HostOfRemote(strings.TrimSpace(originURL))
+	originURL = strings.TrimSpace(originURL)
+	host, herr := deskkit.HostOfRemote(originURL)
 	if herr != nil || strings.TrimSpace(host) == "" {
 		// A hostless origin — a local filesystem path (a fixture, or a directory clone) — is
 		// served by git's local transport, which consults NO credential helper, so there is no
 		// https host to authenticate to and no token to wire. Skip (fail-safe): installing an
 		// unscoped helper "just in case" is exactly the leak this fix removes, so the absence of a
-		// host is a reason to wire NOTHING, never to fall back to the unscoped key. Still reset the
-		// worktree chain so a stale sibling helper cannot answer from shared config.
+		// host is a reason to wire NOTHING, never to fall back to the unscoped key. No credential
+		// is resolved either — nothing would carry it, and the forge-aware resolver refuses an
+		// origin with no host rather than mint for it. Still reset the worktree chain so a stale
+		// sibling helper cannot answer from shared config.
 		if _, rerr := runGit(target, "config", "--worktree", "--replace-all", "credential.helper", ""); rerr != nil {
 			return deskkit.Unverifiable("cannot reset the worktree-scoped credential helper chain at "+target, rerr)
 		}
 		fmt.Fprintln(os.Stderr, "deskwt: origin at "+target+" has no https host (local transport) — no role credential helper wired")
 		return nil
+	}
+	// The resolver sees the SAME origin the helper is scoped to, so it binds the GitHub App arm
+	// to that host: a non-github.com origin is refused before any mint (deskkit
+	// githubAppOriginHost) rather than having a github.com token wired under its host.
+	path, err := roleCredentialPath(role, repo, originURL)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(path) == "" {
+		return deskkit.Unverifiable("the credential resolver returned no token path for the "+role+" role on "+repo, nil)
+	}
+	if strings.ContainsAny(path, "'\n") {
+		return deskkit.Refused("refused: token path " + path + " cannot be quoted into a credential helper")
 	}
 	scopedKey := "credential.https://" + host + ".helper"
 	helper := "!f(){ echo username=" + username + "; echo \"password=$(cat '" + path + "')\"; }; f"
@@ -709,6 +714,31 @@ func setCommitIdentity(target, botName, botEmail string) error {
 	}
 	if _, err := runGit(target, "config", "--worktree", "user.email", botEmail); err != nil {
 		return deskkit.Unverifiable("cannot set worktree user.email at "+target, err)
+	}
+	return nil
+}
+
+// clearCommitIdentity SHADOWS the shared checkout's user.name/user.email with an EMPTY
+// worktree-scoped value (#1490), so a worktree created without a role can never inherit and
+// silently commit under the shared checkout's identity — the misattribution this closes.
+//
+// The value must be SET to empty at worktree scope, not `--unset`: git config precedence
+// resolves user.name from the highest scope that DEFINES it, so `--unset` at worktree scope
+// falls straight through to the shared .git/config value (the very identity we are refusing
+// to inherit). An empty worktree-scoped value is the highest scope AND defines the key, so it
+// wins — and git rejects a commit with an empty author identity ("Author identity unknown"),
+// which is the fail-closed outcome: a caller that meant to commit here must set an identity
+// first (`deskwt add --role`, `role-init`, or a per-commit `git -c user.*`). Scoped via
+// extensions.worktreeConfig so the shared checkout's config is never mutated.
+func clearCommitIdentity(target string) error {
+	if _, err := runGit(target, "config", "extensions.worktreeConfig", "true"); err != nil {
+		return deskkit.Unverifiable("cannot enable worktree-scoped config at "+target, err)
+	}
+	if _, err := runGit(target, "config", "--worktree", "user.name", ""); err != nil {
+		return deskkit.Unverifiable("cannot clear worktree user.name at "+target, err)
+	}
+	if _, err := runGit(target, "config", "--worktree", "user.email", ""); err != nil {
+		return deskkit.Unverifiable("cannot clear worktree user.email at "+target, err)
 	}
 	return nil
 }

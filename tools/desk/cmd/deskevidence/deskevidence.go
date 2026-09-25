@@ -254,6 +254,19 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			" resolves outside docs/streams/ — deskevidence only writes under that tree")
 	}
 
+	// PUBLISH-identity gate (#1490 lane B). deskevidence commits AS the verifier App via the
+	// Contents API, so the Evidence commit itself is correctly attributed — but the witness
+	// Runner attribution is derived from the verifier WORKTREE's identity, which is exactly
+	// the value #1490 saw come out wrong when a dispatch provisioned the worktree with a stale
+	// role. This refuses, before any network call, if the worktree the landing is authored
+	// from carries commits ahead of the target branch that are not the verifier's — a signal
+	// the worktree's identity cannot be trusted to derive attribution from. Local (git +
+	// roster); in the sanctioned post-merge verify flow the worktree sits at the target
+	// branch, so the range is empty and this is a clean no-op.
+	if ierr := publishIdentityGate(*root, branch); ierr != nil {
+		return ierr
+	}
+
 	// Mint the verifier App installation token and resolve the forge that serves this repo,
 	// under the verifier App's custody. The JWT→installation-token exchange moved OUT of this
 	// package to the identity layer (mintTokenFn → `desktoken verifier`); ForgeFor hands the
@@ -427,6 +440,18 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			targetRepoPath, len(introduced), lintRoot, strings.Join(introduced, "\n")))
 	}
 
+	// verified-sidecar acceptance gate (#1309 stuck-flip). When THIS landing appends one or
+	// more `"outcome":"verified"` rows to the verify-outcomes sidecar, refuse unless the landing
+	// tree presents a lint-valid `verified` closure for each such brief — the Verified stamp AND
+	// an execution witness — which statusgen's own board/witness read decides (verifyclosure).
+	// A sidecar that only advances Evidence while the brief's board stays `implemented` records a
+	// verified outcome the tree does not back; review then refuses that mismatch, so this refuses
+	// it at the source instead. Runs on the SAME lintRoot the PROBLEM-diff guard just used, and
+	// like it before the dry-run stop and the write budget. `verify-fail` rows are never gated.
+	if verr := gateVerifiedSidecarLanding(targetRepoPath, lintRoot, remoteContent, commitContent, remoteExists); verr != nil {
+		return verr
+	}
+
 	// --dry-run stops HERE — after every gate that can refuse a landing has already run
 	// (mint, forge resolution, remote read, merge, secret scan, public-repo gate, noop/shrink
 	// checks, statusgen PROBLEM-diff), before the write-rate-limit spend and the write itself.
@@ -484,8 +509,11 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	}
 
 	// Post-condition: the write that landed must carry the verifier App's identity. Checked
-	// against what the forge reported the write recorded, not the token we sent (#228).
-	attr, aerr := checkAttribution(res.Author)
+	// against what the forge reported the write recorded, not the token we sent (#228). On a
+	// forge that reports no author (GitLab), checkAttribution resolves the landed commit's
+	// account online via the typed forge (res.SHA); on GitHub the author is populated and no
+	// online read happens.
+	attr, aerr := checkAttribution(fg, fr, res.SHA, res.Author)
 	// Name the net row delta so a success line can no longer hide a replace or a deletion
 	// behind a "committed … success" (#1709).
 	added, removed := rowDelta(remoteContent, commitContent)
@@ -547,7 +575,18 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 		return perr
 	}
 
-	attr, aerr := checkAttribution(res.Author)
+	// On a forge that reports no author for the side-branch write (GitLab), resolve the landed
+	// commit's account ONLINE (#1477): fetch the side branch's head sha from the draft change
+	// just opened and hand it to checkAttribution, which maps it to the committing account's
+	// username via the typed forge. Only reached when the write carried no author — a populated
+	// author (GitHub) takes the ordinary path and issues no extra read.
+	headSHA := ""
+	if res.Author == "" && pr != nil {
+		if got, gerr := fg.GetPullRequest(fr, pr.Number); gerr == nil && got != nil {
+			headSHA = got.HeadSHA
+		}
+	}
+	attr, aerr := checkAttribution(fg, fr, headSHA, res.Author)
 	added, removed := rowDelta(remoteContent, content)
 	delta := fmt.Sprintf("+%d/-%d rows", added, removed)
 	loc := fmt.Sprintf("change #%d", pr.Number)

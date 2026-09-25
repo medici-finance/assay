@@ -21,7 +21,7 @@ why: >-
   The standing-window behaviour is untouched.
 wave: 3
 depends: []
-unblocks: []
+unblocks: ["desk-containers/12"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -418,6 +418,56 @@ Pre-mortem → detection map:
 | # | Exit | Key observed output | Date | Runner |
 |---|------|---------------------|------|--------|
 | — | — | not yet run — this brief is authored, not implemented | — | — |
+
+### Non-implementer verifier run — VERIFY: BLOCKED — 1/14 pass, 13 could-not-check, 0 fail — 2026-09-23 claude-opus-4-8-verifier
+
+Ran against merged origin/main 39866201ce48acdce1f9b14d1cae38eb2b7eff38 on darwin, offline
+(KUBECONFIG=/dev/null). Every row the brief's `## Verify` table classes `check:ci` (rows 1, 3,
+6, 8, 13, 14) is COULD-NOT-CHECK on this darwin desk: the hermetic `statusgen verifyrun` witness
+needs a Linux `unshare --net` sandbox, so the direct non-hermetic run is recorded supporting-only,
+never as a pass (#1491 is the `--in-container` witness path). Rows 2, 5 and 7 are `+mutation` rows
+whose reddening half was not exercised in this offline fixer pass, so they too are could-not-check.
+Rows 9-12 are ONLINE-LANE, offline-barred; row 14 is the sanctioned merged-tree could-not-check.
+Only row 4 (a plain offline `check`, delta assertion) is a clean pass.
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | cd tools/skillslint && go run . --root ../.. | exit 0 — all five verdict lines clean with the changed bodies and new reference in tree | COULD-NOT-CHECK — hermetic witness owed (darwin); direct run (supporting only): exit 0; SKILLSLINT/HIDDEN-CHARS/HOUSE-VALUES/GUARDRAILS/ENFORCEMENT-BLOCK all PASS; HOUSE-VALUES read 38 markdown files under plugins/, no proper name in a driver position | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | cd tools/skillslint && go run . --root ../.. | exit 0 — checked-clean with the tick-mode block compared at all FIVE sites, not zero | COULD-NOT-CHECK — the +mutation half was not exercised in this offline fixer pass: the clean run passed (GUARDRAILS: PASS, 32 guardrail copies byte-match; tick-mode block compared at all five sites) but the reddening (one word changed in ONE body's copy → GUARDRAILS: FAIL) was not run | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | cd tools/harnesslint && go run . --vocab ../../docs/streams/harness-portability/README.md bodies ../../plugins/assay/skills | exit 0 — checked-clean; no banned harness token, no capability outside the closed seven | COULD-NOT-CHECK — hermetic witness owed (darwin); direct run (supporting only): exit 0; checked-clean: bodies — no violations | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | cd tools/harnesslint && go run . --vocab ../../docs/streams/harness-portability/README.md bindings ../../plugins/assay/references | tick-contract.md prints skipped (declared non-matrix-reference) and contributes ZERO violations; mode exit stays 1 (a pre-existing unrelated red), assertion is the DELTA | PASS — exit 1 (pre-existing unrelated red; the assertion is the DELTA, met): tick-contract.md printed "skipped (declared non-matrix-reference)", zero violations from it; the one remaining violation is claude-code.md missing a system-demo degradation cell, which is pre-existing (absent already at the impl commit's parent) and untouched by this brief; delta attributable to this brief is +1 skip line, +0 violations | 2026-09-23 | claude-opus-4-8-verifier |
+| 5 | (manual row; no shell command) | five citations to ../../references/tick-contract.md, five resolving paths, zero grammar-line restatements | COULD-NOT-CHECK — manual citation check; the clean check passed (each body citations=1, path resolves, grammar-restatements=0) but the +mutation reddening (inlining the summary-line grammar into one body) was not exercised in this offline fixer pass | 2026-09-23 | claude-opus-4-8-verifier |
+| 6 | bash plugins/assay/scripts/tick-summary.test.sh | exit 0 — every named case passes hermetically (no network, no token) | COULD-NOT-CHECK — hermetic witness owed (darwin); direct run (supporting only): exit 0; 71 passed, 0 failed; suite runs offline and includes bash-3.2 portability + no-network/forge-tool cases | 2026-09-23 | claude-opus-4-8-verifier |
+| 7 | bash plugins/assay/scripts/tick-summary.test.sh --case rejects-zero-for-unknown && bash plugins/assay/scripts/tick-summary.test.sh --case rejects-unknown-outcome | exit 0 — a 0 where the count is unknown is REJECTED and an outcome outside the closed four is REJECTED | COULD-NOT-CHECK — the +mutation half was not exercised in this offline fixer pass: the clean run passed (rejects-zero-for-unknown: 2 passed; rejects-unknown-outcome: 3 passed) but the reddening (widening the checker to accept an out-of-set outcome or an unknown-count 0) was not run | 2026-09-23 | claude-opus-4-8-verifier |
+| 8 | git diff refs/remotes/origin/main -- plugins/assay/skills/ | exit 0 / empty — the Liveness-contract/loop/boot window of all five bodies is untouched | COULD-NOT-CHECK — hermetic witness owed (darwin); direct run (supporting only): the brief's literal `git diff refs/remotes/origin/main -- plugins/assay/skills/` is empty on the merged tree (HEAD == origin/main); the meaningful diff, run against the impl commit's parent, shows 130 insertions / 0 deletions across the five bodies (26 added lines each = the Tick mode section only), no Liveness-contract/loop/boot line changed | 2026-09-23 | claude-opus-4-8-verifier |
+| 9 | (manual row; no shell command) | ONLINE LANE — on a cell, one pr-review-desk tick pass against a forced-actionable queue under the image timeout: completes inside the deadline; last stdout line satisfies the grammar; outcome=ok, acted >= 1 | COULD-NOT-CHECK — offline-barred in this repo (no offline runner for a skill body: skillbench is a reducer over committed artifacts, the fleet harness exercises desk tools not skill prose); runs on a cell against the loop image, hand-off named | 2026-09-23 | claude-opus-4-8-verifier |
+| 10 | (manual row; no shell command) | ONLINE LANE — the row-9 transcript grepped for the arming of any durable wake, scheduled wake-up, cadence sleep and human prompt: zero hits | COULD-NOT-CHECK — offline-barred in this repo; requires the row-9 transcript from a cell run, hand-off named | 2026-09-23 | claude-opus-4-8-verifier |
+| 11 | (manual row; no shell command) | ONLINE LANE — row 9 repeated with ASSAY_TICK_DEADLINE=60: summary line printed strictly before 60 s; no new work dispatched inside reserve+one-unit; every dispatched subagent carried a deadline no later than the pass | COULD-NOT-CHECK — offline-barred in this repo; requires a cell run, hand-off named | 2026-09-23 | claude-opus-4-8-verifier |
+| 12 | (manual row; no shell command) | ONLINE LANE — row 9 repeated with, in turn: no trigger; --tick only; ASSAY_TICK=1 only; both; and ASSAY_TICK set to each of true, yes, 0, empty; first four tick, last four take the window path | COULD-NOT-CHECK — offline-barred in this repo; requires a cell run. The exact-match trigger rule is asserted offline at grammar level and in prose (tick-contract.md line 40), but its RUNTIME behavior needs a cell, hand-off named | 2026-09-23 | claude-opus-4-8-verifier |
+| 13 | statusgen --root . --lint; echo $? | 0 — LINT: PASS; the brief, board row, wave entry and frontmatter well-formed | COULD-NOT-CHECK — hermetic witness owed (darwin); direct run (supporting only): exit 0; LINT: PASS (statusgen v1.0.26). NOTICEs printed are for other streams (statusgen, windows-port witness debt; verified-runner-attribution on unrelated briefs), none names desk-containers/08 | 2026-09-23 | claude-opus-4-8-verifier |
+| 14 | statusgen --root . --consumers --brief assay:assay:desk-containers:08; echo $? | 0 — every deliverable routed follow-up desk-containers/08; exit 2 is could-not-check and reported as itself | COULD-NOT-CHECK — exit 2 on a fully merged tree, reported AS ITSELF: "assay:assay:desk-containers:08 is not in the diff against 39866201ce48..., so this run carries no evidence about its claims — no entry was corroborated and none was disproved." Exactly the sanctioned exit-2 on a fully merged tree that the row defines; not a pass, not a fail | 2026-09-23 | claude-opus-4-8-verifier |
+
+RISK-VALUE lines (kit section 4 — enumerate then rank then derive):
+
+Enumeration of every literal this diff introduces or changes:
+- R (exit reserve default) = 60 seconds @ plugins/assay/references/tick-contract.md:99
+- ASSAY_TICK exact-match trigger literal = "1" @ plugins/assay/references/tick-contract.md:40
+- closed outcome set = { ok, noop, refused, could-not-check } @ plugins/assay/references/tick-contract.md:123 (a definitional set, not a scalar)
+- budget breaker inequality D minus E less-than R plus W, and derived subagent deadline D minus E minus R @ plugins/assay/references/tick-contract.md:94-99 (formulae, no scalar of their own)
+- The deadline facts named in the brief (480 s tick / 540 s activeDeadlineSeconds / 1 h token) are explicitly NOT set by this change — the brief sets no number in any manifest — so they are out of scope operator values.
+
+Ranking by irreversibility: every enumerated entry is REVERSIBLE (edit-and-redeploy). The brief is
+irreversible:no, gate:model, all four risk answers no; the diff touches only docs and POSIX shell
+scripts (no risk-classed path) and changes no hard-pinned repo constraint. No irreversible entry
+exists, so nothing routes to the human gate on risk grounds.
+
+RISK-VALUE: DERIVED — R = 60 @ plugins/assay/references/tick-contract.md:99 — the exit reserve. Derived from its stated job: R covers only the exit path (print the one summary line, update the workpad or standing-note, release any claim this pass took). 60 s is a conservative fixed budget for three cheap local operations, sized so the exit completes before the outer OS timeout kills the process yet small enough not to starve the working budget (with D=480, working budget = 420 minus boot). It is a reversible operational default, not a hard-pinned constraint.
+RISK-VALUE: DERIVED — ASSAY_TICK exact-match literal = "1" @ plugins/assay/references/tick-contract.md:40 — the environment trigger value. Derived from the anti-silent-arming requirement: an EXACT string match to "1" (mirroring statusgen/telemetry.go telemetryArmed) so no inherited truthy value (true, yes, non-empty) can silently convert a live operator window into a one-pass run. "1" is the conventional armed value; reversible. Enforced offline at grammar level (row 7) and, at runtime, only by online-lane row 12 (could-not-check here).
+
+Every check:ci row is could-not-check (darwin hermetic witness owed, #1491); rows 2/5/7 mutation
+halves un-run; rows 9-12 are the online-lane behavioural proofs (run by a cell against the loop
+image), handed off; row 14 is the merged-tree could-not-check. Row 4 is the one clean offline pass.
+
 
 ## Review
 

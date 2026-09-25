@@ -44,6 +44,18 @@ package main
 // root. On Windows os.Getuid() is -1 (no POSIX uid); `--user` is omitted there and
 // Docker Desktop's filesystem sharing maps ownership to the host user itself.
 //
+// SAFE.DIRECTORY — TREES OWNED BY ANOTHER UID ACROSS THE MOUNT. On a Windows
+// Docker backend the checkout bind-mounted at /work lands root-owned while the
+// image USER is the unprivileged `desk`, so the inner git refuses the tree
+// (`detected dubious ownership`) and attribution fails before any Verify row
+// runs. The launcher fixes this WITHOUT widening the image's trust: it passes
+// three ephemeral git-config env vars (`GIT_CONFIG_COUNT=1`,
+// `GIT_CONFIG_KEY_0=safe.directory`, `GIT_CONFIG_VALUE_0=/work`) so the inner git
+// treats EXACTLY /work as safe — never a global `safe.directory=*`, which would
+// trust every tree the container ever sees. These are non-secret per-run config
+// values, so they ride as inline `-e KEY=VALUE`, not through the credential
+// env-file (whose contents the wrapper keeps opaque).
+//
 // BIND-MOUNT CAVEATS (windows-port/10 deliverable 2), documented so a reader of a
 // could-not-run row knows the cause:
 //   - NTFS MTIME IS COARSE. A bind-mounted tree carries the host filesystem's
@@ -174,6 +186,18 @@ func composeDockerArgs(inv containerInvocation) []string {
 	argv := []string{"run", "--rm"}
 	argv = append(argv, "-v", inv.root+":"+containerWorkDir)
 	argv = append(argv, "-w", containerWorkDir)
+	// Mark EXACTLY the bind-mounted /work tree safe for the inner git. On a
+	// Windows Docker backend the bind mount lands root-owned while the image USER
+	// is the unprivileged `desk`, so git otherwise refuses the tree
+	// (`detected dubious ownership`) and attribution fails. These three ephemeral
+	// GIT_CONFIG_* env vars set `safe.directory=/work` for the inner git only —
+	// scoped to the one mount, never a global `safe.directory=*` that would trust
+	// every tree the container sees. Passed as inline `-e KEY=VALUE` (not through
+	// the credential env-file, which is contents-opaque) precisely because these
+	// are non-secret, per-run config values.
+	argv = append(argv, "-e", "GIT_CONFIG_COUNT=1")
+	argv = append(argv, "-e", "GIT_CONFIG_KEY_0=safe.directory")
+	argv = append(argv, "-e", "GIT_CONFIG_VALUE_0="+containerWorkDir)
 	// --user maps container writes to the host user so the Evidence the container
 	// appends lands host-owned, not root-owned. Omitted when there is no POSIX
 	// uid (Windows: os.Getuid() == -1), where Docker Desktop maps ownership to the

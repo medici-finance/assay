@@ -251,3 +251,86 @@ func TestBriefRiskFromBody(t *testing.T) {
 		}
 	})
 }
+
+// TestAuthorsRiskFromBody is the fail-first proof of the deskflip half of #1339 review F1
+// (medici-finance/assay#1641): an `Authors:` trailer on a diff that is NOT provably
+// authoring-only for every listed id must risk-class the PR, fail closed, exactly as an
+// unresolvable `Brief:` does — this is what stops a PR that actually delivers a `gate:
+// human` / `risk: yes` brief's code from switching off the security lane by writing
+// `Authors:` instead of `Brief:`. This term deliberately does NOT read the named brief's own
+// frontmatter (unlike BriefRiskFromBody): it only checks whether the diff backs the claim.
+func TestAuthorsRiskFromBody(t *testing.T) {
+	authoring := []ChangedFile{
+		cfAdded("changelog/example-port-11-briefs.md"),
+		cfModified("docs/streams/example-port/README.md"),
+		cfAdded("docs/streams/example-port/brief-11-portable-pollers.md"),
+	}
+
+	t.Run("trailer absent makes no risk claim", func(t *testing.T) {
+		br := AuthorsRiskFromBody("Brief: example-port/11\n", []ChangedFile{cfModified("cmd/x/x.go")})
+		if br.RiskClassed {
+			t.Fatalf("a body with no Authors: trailer must make no risk claim; got %+v", br)
+		}
+	})
+
+	t.Run("diff IS authoring-only for the one listed id: no risk claim", func(t *testing.T) {
+		br := AuthorsRiskFromBody("Authors: example-port/11\n", authoring)
+		if br.RiskClassed {
+			t.Fatalf("a genuinely authoring-only diff must not be risk-classed; got %+v", br)
+		}
+	})
+
+	t.Run("diff touches a non-authoring path: risk-classed, fail closed", func(t *testing.T) {
+		files := append(append([]ChangedFile{}, authoring...), cfModified("cmd/x/x.go"))
+		br := AuthorsRiskFromBody("Authors: example-port/11\n", files)
+		if !br.RiskClassed || !br.Unverifiable {
+			t.Fatalf("an Authors: PR whose diff also touches code must be risk-classed, fail closed; got %+v", br)
+		}
+	})
+
+	t.Run("diff does not add one of the listed ids' own brief file: risk-classed", func(t *testing.T) {
+		// authors two ids but only added brief-11's file
+		br := AuthorsRiskFromBody("Authors: example-port/11, example-port/12\n", authoring)
+		if !br.RiskClassed || !br.Unverifiable {
+			t.Fatalf("an Authors: id whose own brief file the diff never adds must be risk-classed; got %+v", br)
+		}
+	})
+
+	t.Run("empty files list: risk-classed, fail closed", func(t *testing.T) {
+		br := AuthorsRiskFromBody("Authors: example-port/11\n", nil)
+		if !br.RiskClassed || !br.Unverifiable {
+			t.Fatalf("an Authors: claim against an empty file list must be risk-classed, fail closed; got %+v", br)
+		}
+	})
+
+	t.Run("a rename is not provably authoring-only: risk-classed", func(t *testing.T) {
+		files := append(append([]ChangedFile{}, authoring...),
+			ChangedFile{Filename: "docs/streams/example-port/brief-09-renamed.md",
+				PreviousFilename: "some/other/path.txt", Status: "renamed"})
+		br := AuthorsRiskFromBody("Authors: example-port/11\n", files)
+		if !br.RiskClassed || !br.Unverifiable {
+			t.Fatalf("a rename whose pre-image is not an authoring path must risk-class; got %+v", br)
+		}
+	})
+
+	t.Run("malformed Authors: value is unverifiable-risk", func(t *testing.T) {
+		br := AuthorsRiskFromBody("Authors: not-a-brief\n", authoring)
+		if !br.RiskClassed || !br.Unverifiable {
+			t.Fatalf("an unparseable Authors: value must be unverifiable-risk; got %+v", br)
+		}
+	})
+
+	t.Run("duplicate Authors trailer is unverifiable-risk", func(t *testing.T) {
+		br := AuthorsRiskFromBody("Authors: example-port/11\nAuthors: example-port/12\n", authoring)
+		if !br.RiskClassed || !br.Unverifiable {
+			t.Fatalf("a malformed (duplicate Authors) trailer set must be unverifiable-risk; got %+v", br)
+		}
+	})
+
+	t.Run("Authors mixed with Brief is unverifiable-risk", func(t *testing.T) {
+		br := AuthorsRiskFromBody("Brief: example-port/11\nAuthors: example-port/12\n", authoring)
+		if !br.RiskClassed || !br.Unverifiable {
+			t.Fatalf("a malformed (mixed) trailer set implicating Authors: must be unverifiable-risk; got %+v", br)
+		}
+	})
+}

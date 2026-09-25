@@ -40,7 +40,10 @@
 // steps minted their own role token and succeeded. Now the claim step mints (or reuses)
 // the dispatching role's token through the same seam the model stamp uses and passes it in
 // the tool's own shape; an explicit GH_TOKEN already in the environment wins; a mint
-// failure is the refusal, never a fall-back to whatever `gh` is logged in as.
+// failure is the refusal, never a fall-back to whatever `gh` is logged in as. The decision
+// gate's script shells out to the forge CLI too, so it is handed the SAME credential in
+// environment shape from that one resolution (issue 1146) — keyed on what the child does, not
+// on whether its name is literally `gh`.
 //
 // ON CONTENTION, NAME THE HOLDER — NEVER STEAL. A claim held by someone else exits 5 with
 // the existing holder printed. There is no inline steal: breaking a live claim is a
@@ -68,7 +71,7 @@ const usage = `deskdispatch — the per-item dispatch ceremony (engine seam: DIS
 USAGE:
   deskdispatch <item-key> [--tier strong|any] [--kit worker|worker-objective|review|verifier]
                [--repo OWNER/NAME] [--root DIR] [--claim-root DIR] [--model SLUG]
-               [--branch NAME] [--brief PATH] [--gate-human] [--pr N]
+               [--branch NAME] [--brief PATH] [--gate-human] [--pr N] [--rework]
                [--prompt-file FILE] [--quiet] [--dry-run] [--worktree PATH]
   deskdispatch --kits
   deskdispatch --version
@@ -103,14 +106,21 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
   2 worktree-create   ` + "`deskwt add`" + ` in the item's OWN repo root, off
                       refs/remotes/origin/main. Cross-repo is the default case, not the
                       exception: an item belongs to a repo, and a worker handed the wrong
-                      one recreates the work where nobody asked for it.
+                      one recreates the work where nobody asked for it. The new worktree is
+                      then STAMPED with the DISPATCHED agent's own role commit identity
+                      (worker/reviewer/verifier, per --kit) worktree-scoped, so it never
+                      inherits the dispatching desk's identity and misattributes Evidence
+                      Runner cells; a --kit whose role has no roster identity is refused
+                      pre-claim (exit 5). The OK line prints identity=<slug> <bot-user-id>.
   3 roster-register   ` + "`deskroster set`" + ` for the work entry when --pr is known; without
                       it the registration is the AGENT's first act after its PR opens, and
                       the exact command is emitted into the prompt.
   4 decision-gate     with --gate-human (or a --brief whose own metadata gates on a
                       human), runs the repo's tools/decision-issue.sh ensure so the human
                       has something concrete to decide. Idempotent by the script's own
-                      marker dedupe.
+                      marker dedupe. The script runs under the dispatching role's
+                      credential (GH_TOKEN in its environment, from the same resolution
+                      the claim uses), never the ambient login; with none it refuses.
   5 model-stamp       computes and validates the dispatcher's attestation labels
                       (dispatched-model:<slug>, dispatched-tier:<tier>) and applies them
                       when --pr is known. The stamp attests what the DISPATCHER launched;
@@ -136,6 +146,27 @@ between the item's write scopes (derived from --brief's Context 'files:' list) a
 holding an in-flight dispatch claim for the same root, as 'WRITE-OVERLAP: <item> ~ <in-flight> on
 <prefix>' lines on stderr. These are COORDINATION HINTS, NOT LOCKS: the dispatch always proceeds,
 the echo has no exit code, and overlap never blocks or delays the claim.
+
+CROSS-REPO (alias registry). An item may name the repo its deliverable lands in by ALIAS: the
+brief's ` + "`deliverable_repo: <alias>`" + ` or ` + "`homed-in: <owner>/<name>`" + ` frontmatter, or an
+` + "`<alias>:<stream>/<NN>`" + ` item-key prefix or the alias segment of the brief's own brief-v2 id (the
+alias the brief is TRACKED under). --brief is resolved ONCE (absolute, else under --root, else
+under --claim-root) and every reader uses that file; a --brief that resolves nowhere is refused.
+Every registry alias key, ` + "`repo:`" + ` value and ` + "`self:`" + ` is grammar-checked before use; a bad one
+is refused (exit 5). The alias resolves
+through the alias registry (graph-repos.yaml, schema graph-repos-v1) of the stream root at
+--claim-root (else --root), and nothing else. Before
+anything durable: no registry, or an alias reserved but unpublished there = exit 6; an alias the
+registry does not define = exit 5 naming it; a resolved repo that is not --repo or not --root's own
+origin = HARD FAIL exit 5 naming both repos — no claim, no worktree. The resolved repo is the claim
+repo and the token's repo; a cross-repo claim key carries the TRACKING alias; the prompt tells the
+worker to run ` + "`deskpr create --root <tracking checkout>`" + ` so its Brief: trailer resolves there.
+
+PHANTOM PRECONDITION. A fresh worker dispatch is reconciled against the deliverable repo's open and
+merged PRs by ` + "`Brief:`" + ` trailer BEFORE admission, the token mint and the claim. An OPEN PR refuses
+(resume it with --pr). A MERGED PR refuses as DELIVERED — unless --rework says the row awaits
+implementer rework, in which case the dispatch becomes a FOLLOW-UP on a new branch
+(feat/<item>-followup-<N>), never a resume of the merged branch.
 
 --kits lists the prompt kits this binary carries and exits 0.
 --dry-run runs no step: it prints the plan and the prompt that WOULD be emitted. The prompt
@@ -173,6 +204,9 @@ func main() {
 	// the nil default (the check stays inert unless a test wires its own recorded transport), while
 	// the real binary reads the repo's open+merged changes through the typed Forge seam.
 	listRepresentedPRs = liveRepresentedPRs
+	// ...and the per-PR file read that keeps a briefs-AUTHORING PR from counting as the brief's
+	// delivery (authoring.go).
+	listPRFiles = livePRFiles
 	os.Exit(run(os.Args[1:]))
 }
 

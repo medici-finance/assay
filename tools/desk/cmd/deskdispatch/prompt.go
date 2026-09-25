@@ -83,8 +83,12 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	verifier := verifierKit(o.kit)
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Assignment — %s\n\n", o.item)
-	fmt.Fprintf(&b, "- **Item key:** `%s`\n", o.item)
+	shownItem := o.item
+	if o.itemAlias != "" {
+		shownItem = o.itemAlias + ":" + o.item
+	}
+	fmt.Fprintf(&b, "# Assignment — %s\n\n", shownItem)
+	fmt.Fprintf(&b, "- **Item key:** `%s`\n", shownItem)
 	switch {
 	case review:
 		// A reviewer opens no PR, so the "the PR opens THERE" framing is not just noise here —
@@ -100,6 +104,11 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	default:
 		fmt.Fprintf(&b, "- **Target repo:** `%s` — the PR opens THERE, not anywhere else.\n", repo)
 	}
+	if plan.dl.crossRepo(o.root) {
+		fmt.Fprintf(&b, "- **Tracked in:** %s — the brief and its board row live there; the deliverable lands in `%s` "+
+			"(alias `%s`, resolved from %s through the alias registry). The tracking checkout is READ-ONLY for you.\n",
+			trackingLabel(plan.dl), repo, plan.dl.alias, plan.dl.source)
+	}
 	fmt.Fprintf(&b, "- **Checkout base:** `%s` — the `git -C` source your worktree is cut FROM. It is not your writable root.\n", base)
 	fmt.Fprintf(&b, "- **Your home worktree:** `%s` — every file operation stays under it.\n", home)
 	// The auto-cut worktree branch is the IMPLEMENTER's output surface. A reviewer produces
@@ -112,7 +121,14 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	}
 	fmt.Fprintf(&b, "- **Execution tier:** `%s`\n", o.tier)
 	if strings.TrimSpace(o.brief) != "" {
-		fmt.Fprintf(&b, "- **Specification:** `%s` — implement to its contract; do not expand scope.\n", o.brief)
+		spec := briefArg(o)
+		if spec == o.brief && filepath.IsAbs(spec) && plan.dl.crossRepo(o.root) {
+			// Found only in the tracking checkout — name it there, and say it is a READ source.
+			fmt.Fprintf(&b, "- **Specification:** `%s` (in the tracking checkout — READ-ONLY for you) — implement to "+
+				"its contract; do not expand scope.\n", spec)
+		} else {
+			fmt.Fprintf(&b, "- **Specification:** `%s` — implement to its contract; do not expand scope.\n", spec)
+		}
 	}
 	if plan.gateHuman {
 		b.WriteString("- **Human-gated item:** a decision issue is open for it. Do not pre-empt the decision; " +
@@ -167,6 +183,25 @@ func reviewKit(kit string) bool { return strings.EqualFold(strings.TrimSpace(kit
 // wholesale.
 func verifierKit(kit string) bool { return strings.EqualFold(strings.TrimSpace(kit), "verifier") }
 
+// kitRole maps a --kit value to the DESK ROLE whose App commit identity a worktree
+// dispatched on that kit must carry: worker and worker-objective → worker, review →
+// reviewer, verifier → verifier. It is the identity twin of stampRoleForKit (which names the
+// DISPATCHER's role for the model stamp); this names the DISPATCHED agent's role for the
+// worktree commit identity. ok=false only for a kit with no dispatched-agent role — the
+// vocabulary is closed and kitText has already refused an unknown kit upstream, so a false
+// here is a build defect, never a caller error.
+func kitRole(kit string) (role string, ok bool) {
+	switch strings.ToLower(strings.TrimSpace(kit)) {
+	case "worker", "worker-objective":
+		return "worker", true
+	case "review":
+		return "reviewer", true
+	case "verifier":
+		return "verifier", true
+	}
+	return "", false
+}
+
 // worktreeCreateHint returns the "commonest cause" sentence for a failed worktree-create
 // step, SELECTED BY KIT (#851) and, on the brief lane, BY WHAT DESKWT SAID (#1309 item 6).
 // The lanes fail for different reasons and the wrong hint misleads:
@@ -181,15 +216,39 @@ func verifierKit(kit string) bool { return strings.EqualFold(strings.TrimSpace(k
 //     all: the target DIRECTORY already exists ("never clobbered"). It shares the substring
 //     "already exists" with the branch messages, so it must be discriminated FIRST or it
 //     renders the DELIVERED hint and sends the operator PR-hunting over a stale local dir.
+//
 //   - The VERIFIER lane touches no feature branch at all (its worktree is cut detached off
 //     origin/main under its own name), so a branch collision cannot be its cause; the
 //     commonest one is its own stale target dir on the same session key.
+//
 //   - The REVIEW lane has no brief and no `feat/<id>` branch, so that hint points a reviewer
 //     at a PR that explains nothing. A review kit checks the PR head out as a DETACHED HEAD,
 //     so the commonest cause here is the EARLIER reviewer worktree for this PR still present
 //     on the lane key; it must be reclaimed (`deskwt remove <path>`, which now allows a
 //     detached HEAD whose commit is proven on the remote — #851) before a re-dispatch can
 //     create its own worktree.
+//
+//   - A FOURTH shape reaches the worker/verifier-less default lane and is not about a branch
+//     OR a directory: `deskwt add` resolves the checkout's own origin repo (currentRepo,
+//     called before any branch logic even runs) and that resolution can fail on its own —
+//     `cannot parse origin repo from <url>` (a scp-style or otherwise unsupported remote
+//     shape) or the inner `cannot parse owner/repo from "<path>"`. Before this fix that
+//     message fell through to the generic "branch already existing" sentence below (it names
+//     no branch and contains no "already exists" substring the earlier cases test for, but
+//     the OLD code applied that sentence unconditionally to everything the earlier cases did
+//     not catch) and sent the operator hunting for a nonexistent PR (issue 1470 lane B) —
+//     while the actual defect was the origin remote itself, which the branch/PR hint does
+//     not even mention. Matched by STRING only: deskwt's `currentRepo`/`parseRepo` failures
+//     are built with `deskkit.Unverifiable`, but so is one of the branch-collision shapes
+//     ("no worktree holds it, but its commits ahead of … could not be counted") a few lines
+//     above, so the exit code alone (both ExitUnverifiable) cannot tell the two apart and the
+//     message text is the only discriminator deskwt exposes for this pair.
+//
+//     Everything else that reaches this lane (an origin outside the allowed repo set, an
+//     ambiguous --base, the push-transport gate, …) names neither a branch nor a remote-parse
+//     failure, and now gets NO guessed cause at all — deskwt's own words, already appended
+//     verbatim by the caller, are the whole answer; inventing a branch story for a cause this
+//     function cannot identify is exactly the failure mode this fix closes.
 func worktreeCreateHint(kit, branch, deskwtSaid string) string {
 	switch {
 	case reviewKit(kit):
@@ -223,10 +282,35 @@ func worktreeCreateHint(kit, branch, deskwtSaid string) string {
 		strings.Contains(deskwtSaid, "checked out in NO worktree"):
 		return "The brief's branch " + branch + " already exists and no worktree holds it — the brief is DELIVERED " +
 			"(look for a merged or open PR before re-dispatching), not a transient tree fault."
+	// ORIGIN-REMOTE-PARSE class (issue 1470 lane B), tested BEFORE the generic "already
+	// exists" fallback below — checked FIRST because `deskwt add` resolves the checkout's own
+	// origin repo (currentRepo/parseRepo, tools/desk/cmd/deskwt/deskwt.go) before it ever
+	// reaches branch logic, and that failure names no branch at all. Matched by string only
+	// (comment above the func): deskwt's own exit code for this shape (Unverifiable) is not
+	// unique to it, so it cannot discriminate this case from the "commits ahead … could not
+	// be counted" branch-collision shape a few lines above, which shares the same code.
+	case strings.Contains(deskwtSaid, "cannot parse origin repo"),
+		strings.Contains(deskwtSaid, "cannot parse owner/repo"):
+		return "the checkout's origin remote could not be parsed — run `git -C <root> remote get-url origin` " +
+			"and see the deskwt README's supported remote shapes; the branch was NOT the cause."
+	// BRANCH-EXISTS class, kept as the ONLY remaining case that gets a guessed cause: deskwt's
+	// own message still names the branch shape ("already exists") even though it did not match
+	// any of the more specific patterns above. Scoping this to the substring — rather than
+	// applying it unconditionally to everything unmatched, as the prior code did — is what
+	// stops an unrelated failure (the remote-parse class above, or anything in the default
+	// case below) from being mis-told as a branch collision.
+	case strings.Contains(deskwtSaid, "already exists"):
+		return "For a fresh dispatch this is most often the brief's branch " + branch + " already existing " +
+			"— i.e. the brief is already delivered or in progress (look for a merged or open PR before " +
+			"re-dispatching), not a transient tree fault."
 	}
-	return "For a fresh dispatch this is most often the brief's branch " + branch + " already existing " +
-		"— i.e. the brief is already delivered or in progress (look for a merged or open PR before " +
-		"re-dispatching), not a transient tree fault."
+	// UNKNOWN class: matches neither a branch-shaped message nor the origin-remote-parse
+	// pattern above. Guessing a cause here is exactly the defect issue 1470 reported — no
+	// speculation: nothing was created (the worktree-create step is what failed), the claim
+	// state is already stated by the sentence right before this one, and deskwt's own words
+	// follow verbatim right after it.
+	return "no cause is guessed for this failure — it matches neither a known branch-collision nor an " +
+		"origin-remote-parse pattern; nothing was created."
 }
 
 // writeWorkerAssignment emits the IMPLEMENTER's action half: open the draft PR in the target
@@ -235,9 +319,29 @@ func worktreeCreateHint(kit, branch, deskwtSaid string) string {
 // needs; a reviewer, which produces a verdict and no branch, gets writeReviewAssignment. The
 // text here is byte-for-byte what every worker dispatch has always carried.
 func writeWorkerAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo string) {
+	if plan.followUpOf > 0 {
+		// The rework-after-merge shape: the brief's PR is already MERGED, so this is a FOLLOW-UP on
+		// a new branch — never a resume, and never a push to (or a re-cut of) the merged branch.
+		fmt.Fprintf(b, "## FOLLOW-UP — the original PR is already MERGED\n\n"+
+			"`%s` was delivered by `%s#%d`, which is MERGED. This dispatch is a FOLLOW-UP on the NEW branch `%s`, "+
+			"never a resume: do not push to, re-open, or re-create the merged PR's branch. Open a NEW draft PR that "+
+			"names #%d as the change it follows up, and fix only what the failed verdict found.\n\n",
+			briefIDFromItem(o.item), repo, plan.followUpOf, plan.branch, plan.followUpOf)
+	}
 	b.WriteString("## Open the draft PR in that repo\n\n")
 	fmt.Fprintf(b, "Run `deskpr create` from INSIDE your worktree, so the PR lands against `%s`'s own main. "+
 		"Stop at `implemented`: never set verified/done and never flip a PR ready.\n\n", repo)
+	if plan.dl.crossRepo(o.root) {
+		// CROSS-REPO: the PR lands HERE, but its `Brief:` trailer must resolve against the TRACKING
+		// repo's board, which this worktree does not carry — so deskpr is pointed at the tracking
+		// checkout with --root. That checkout is named as a READ source, never a place to work.
+		fmt.Fprintf(b, "CROSS-REPO delivery: this brief is tracked in %s, not in `%s`. Run `deskpr create --root %s` "+
+			"(still from INSIDE your worktree) so the `Brief:` trailer resolves against the tracking repo's board. "+
+			"That checkout is READ-ONLY for you — never write, commit or branch there — and this PR cannot flip the "+
+			"tracking repo's board row: say in the PR body that the home row is handed back separately, and that "+
+			"the brief's status is the minimum over its constituent PRs.\n\n",
+			trackingLabel(plan.dl), repo, plan.dl.trackingRoot)
+	}
 
 	// Every desk WRITE verb (`deskpr create`, `deskfile`, `deskreply`) refuses with
 	// $DESK_LOOP unset — the kill switch's per-loop `STOP.<loop>` flag has nothing to
@@ -271,6 +375,18 @@ func writeWorkerAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 		shortRepo(repo), o.item)
 	b.WriteString("Release the dispatch claim once your branch is pushed — branch-as-claim takes over:\n\n")
 	writeReleaseClaim(b, o, plan, repo)
+}
+
+// trackingLabel names the tracking repo for the prompt: its published owner/name when the registry
+// names it, else "the tracking repo (alias `<a>`)" — an unpublished repo is never spelled out.
+func trackingLabel(d deliverable) string {
+	switch {
+	case d.trackingRepo != "":
+		return "`" + d.trackingRepo + "`"
+	case d.homeAlias != "":
+		return "the tracking repo (alias `" + d.homeAlias + "`)"
+	}
+	return "the tracking repo"
 }
 
 // writeReviewAssignment emits the REVIEWER's action half. A reviewer is READ-ONLY: it opens

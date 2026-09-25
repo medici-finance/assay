@@ -54,7 +54,10 @@ func TestCloseItemGitHubStateReason(t *testing.T) {
 				return &deskkit.GitHubForge{Token: "test-token", BaseURL: srv.URL, Client: srv.Client()},
 					deskkit.ForgeRepo{Owner: "example-org", Name: "tracker"}, nil
 			}
-			if err := closeItem(testRepo, subjectIssue, tc.kind, tc.reason); err != nil {
+			// verifyClosed=false keeps this a pure PATCH-wire test: it asserts the state_reason
+			// the close SENDS, independent of the read-back the lanes layer on top (which has its
+			// own coverage in deskclose_closeverify_test.go).
+			if err := closeItem(testRepo, subjectIssue, tc.kind, tc.reason, false); err != nil {
 				t.Fatalf("close rejected: %v", err)
 			}
 			if len(bodies) != 1 {

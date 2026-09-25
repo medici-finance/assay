@@ -25,6 +25,8 @@ description: >-
 
 > The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
+> Procedure every desk role shares — the liveness contract, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
+
 The **intake-desk** is the generic front door of the process-desk pipeline — the first of the four
 desks (`intake-desk → worker-desk → pr-review-desk → verify-desk`). Where pr-review-desk watches
 work *leaving* the system (PRs → ready), this desk watches work *arriving* from **any** source:
@@ -113,9 +115,8 @@ an answer, never "a human raised it".
 
 ### Worktree hygiene
 
-Worktree sprawl is owned by `deskwt prune` — it runs at boot and under its own interval
-supervisor; no loop carries an hourly prune tick and nobody hand-deletes worktrees (the
-ENFILE incident, 2026-07-23: sprawl exhausted the system open-file table).
+Stated once in [`../../references/desk-common.md`](../../references/desk-common.md) §Worktree hygiene —
+who owns worktree sprawl, and why nobody hand-deletes a worktree.
 
 ### Console noise floor (issue-flow/10 deskquiet)
 
@@ -409,9 +410,8 @@ Stated once for every desk; this skill adds only what is its own above.
   when labelling; whoever answers removes the label with their response. A `question` that matures
   into a formal decision fork promotes to `needs-decision` (issue-loop/06). Labelled items are
   WAITING-ON-INPUT — they join the human/escalation queue, they are NOT orphans for the fanout sweep.
-- **An escalation that is an ACT only the driver can perform** (not a decision) also gets a
-  `RUNSHEET.md` entry per the `human-runsheet` skill — the filed issue stays the escalation, the
-  runsheet is the exact command the driver runs.
+- **Driver-act runsheet entry** — an escalation that is an ACT only the driver can perform: see
+  [`../../references/desk-common.md`](../../references/desk-common.md) §Driver-act runsheet entry.
 - **Insight-routing:** a systemic/process insight produced in passing MUST be filed as an issue in
   the shared methodology repo — `medici-finance/assay` by default, or the repo a house's own
   instructions file names for this — commentary is not a register. Repo-specific defects go to that
@@ -458,9 +458,12 @@ Stated once for every desk; this skill adds only what is its own above.
   driver still controls — a draft PR awaiting merge, a filed issue awaiting close, a flip CI or a
   human must still make?* **Yes → default-forward.** Author it, dispatch the worker, open the DRAFT
   PR, make the best-guess call, and NOTIFY — "proceeded on `<default>`; filed as `<repo>#<N>`;
-  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. The
-  `needs-decision` / `question` issue is still filed, naming the default taken, but the ITEM does
-  not park on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
+  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. Take
+  the reversible default, declare it with `deskpr create|edit --decided` (the `## Desk-decided` body
+  section plus the `desk-decided` label), and never ask first: the block is the notice the driver
+  reads at merge time, so a default declared there files NO `needs-decision` / `question` issue —
+  only a default no PR carries still files one, naming the default taken, and the ITEM never parks
+  on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
   the record, and corrected by the gate. **No → STOP and wait for the human.** A wrong guess that
   lands irreversibly or reaches outside the gate is caught by nobody declining a merge. That set is
   fixed, never judged case by case: merge, a ready-flip that is not this role's, any `main` push
@@ -527,18 +530,8 @@ recorded. It is never the sanctioned path.
 
 ## Liveness contract (binding)
 
-A standing liveness contract binds this window from boot: start the standing
-self-scheduled loop (`capability:durable-monitor` — best-effort, never the sole
-wake signal; the fixed-cadence board sweep is the real liveness backstop and the
-always-on observability service its durable home) BEFORE the first sweep and keep
-it ticking for the life of the window; every tick re-sweeps this desk's own queue fresh; every relay (a
-cross-session hand-over, on the lane) is acknowledged — `deskcomms ack` — or filed, never
-assumed delivered.
-The desk runs **default-forward** — never ask the driver what to work on next:
-a driver scope instruction narrows preference, not a cage — when the scoped
-batch drains, note the transition in the hand-off note and widen back to the
-standing queue. Checkpoints state their default and continue; standing down
-requires an empty standing queue after a fresh sweep PLUS a hand-off artifact
-on the driver surface, and a manual human kick that moves queued work is an
-incident to file on the project's methodology tracker. Hard gates (human-gated
-decisions, budgets, breakers, explicit stop-orders) are unchanged.
+A standing liveness contract binds this window from boot. Its text — the standing loop armed
+before the first sweep, the fresh re-sweep every tick, relay acknowledgement, default-forward, and
+when a window may stand down — is stated once for every desk role in
+[`../../references/desk-common.md`](../../references/desk-common.md) §Liveness contract; read it at
+boot, before the first sweep.

@@ -132,6 +132,42 @@ func TestVICComposeWin(t *testing.T) {
 	}
 }
 
+// TestVICComposeSafeDirectory pins the Windows-backend fix: the launcher marks
+// EXACTLY the bind-mounted /work tree safe for the inner git, so attribution
+// succeeds when Docker Desktop bind-mounts the checkout root-owned under the
+// unprivileged `desk` USER. It must never widen that trust to `*` (a global
+// safe.directory would trust every tree the container ever sees).
+func TestVICComposeSafeDirectory(t *testing.T) {
+	inv := containerInvocation{
+		pin:      testPin(),
+		root:     "/home/me/checkout",
+		briefRel: "b.md",
+		inner:    buildInnerCommand("b.md", false, false, false, ""),
+		uid:      1000, gid: 1000,
+	}
+	argv := composeDockerArgs(inv)
+	joined := strings.Join(argv, " ")
+
+	// The three ephemeral git-config env pairs that mark exactly /work safe.
+	if !argvHasPair(argv, "-e", "GIT_CONFIG_COUNT=1") {
+		t.Errorf("argv missing -e GIT_CONFIG_COUNT=1: %q", joined)
+	}
+	if !argvHasPair(argv, "-e", "GIT_CONFIG_KEY_0=safe.directory") {
+		t.Errorf("argv missing -e GIT_CONFIG_KEY_0=safe.directory: %q", joined)
+	}
+	if !argvHasPair(argv, "-e", "GIT_CONFIG_VALUE_0=/work") {
+		t.Errorf("argv missing -e GIT_CONFIG_VALUE_0=/work: %q", joined)
+	}
+	// Never wider than /work: a global `safe.directory=*` is refused.
+	if strings.Contains(joined, "safe.directory=*") || strings.Contains(joined, "GIT_CONFIG_VALUE_0=*") {
+		t.Errorf("safe.directory must be exactly /work, never a wildcard: %q", joined)
+	}
+	// The safe-directory value is precisely the bind-mount target, nothing else.
+	if !argvHasPair(argv, "-e", "GIT_CONFIG_VALUE_0="+containerWorkDir) {
+		t.Errorf("safe.directory value must equal the bind-mount target %q: %q", containerWorkDir, joined)
+	}
+}
+
 func TestVICComposeNoEnv(t *testing.T) {
 	inv := containerInvocation{
 		pin:      testPin(),

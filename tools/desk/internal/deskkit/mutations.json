@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestPRBodyDigest'",
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
     "file": "internal/deskkit/bodycheck.go",
@@ -282,6 +282,96 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\tprobeRef := in.Branch\n\tif in.StartBranch != \"\" {\n\t\tprobeRef = in.StartBranch\n\t}\n\tcur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: probeRef})",
       "new": "\tcur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: in.Branch})"
+    },
+    {
+      "name": "claimstore-unmet-precondition-falls-through",
+      "file": "internal/deskkit/claimstore.go",
+      "old": "\t\tres, rerr := resolveConfiguredClaimStore(repo, value, keys, prov)\n\t\tif rerr != nil {\n\t\t\treturn ClaimStoreResolution{}, rerr\n\t\t}",
+      "new": "\t\tres, rerr := resolveConfiguredClaimStore(repo, value, keys, prov)\n\t\tif rerr != nil {\n\t\t\treturn resolveLegacyClaimStore(repo, prov)\n\t\t}"
+    },
+    {
+      "name": "custody verdict: an uninterpretable DACL entry launders a determinable foreign writer into 'inconclusive' (DR-windows-port-08 relaxes ONLY the could-not-determine case — a definite violation must stay refused)",
+      "file": "internal/deskkit/custodyverdict.go",
+      "old": "\tif rerr := evaluateCustodyACL(path, readable); rerr != nil {",
+      "new": "\tif rerr := error(nil); rerr != nil {"
+    },
+    {
+      "name": "custody verdict: a foreign read-capable DACL entry passes the write-side read-back (TestClassifyCustodyModel's reader rows pin the refusal this PR inherits from evaluateCustodyACL)",
+      "file": "internal/deskkit/custodyacl.go",
+      "old": "\t\tif ace.GrantsRead {",
+      "new": "\t\tif false && ace.GrantsRead {"
+    },
+    {
+      "name": "custody verdict: the unix read-back stats through a link at the path (os.Stat for os.Lstat — a swapped-in link is reported verified for its target)",
+      "file": "internal/deskkit/custodyverdict_unix.go",
+      "old": "\tfi, err := os.Lstat(path)",
+      "new": "\tfi, err := os.Stat(path)"
+    },
+    {
+      "name": "body-edit class: trust the APPROVE's own finding id when the CR declared nothing (a different/undeclared class clears — reddens TestBodyEdit_NearMiss_UndeclaredCR)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\tif !d.Declared {\n\t\tdec.Reason = \"no `Blocked-On-Body:`",
+      "new": "\tif !d.Declared && len(in.Approves) > 0 {\n\t\td.FindingID = SoleVerdictMarkerValue(in.Approves[0].Body, resolvedBodyFinding, SkipFenced)\n\t\td.CRDigest = \"x\"\n\t} else if !d.Declared {\n\t\tdec.Reason = \"no `Blocked-On-Body:`"
+    },
+    {
+      "name": "body-edit class: accept a CR that co-declares another sole-blocker class (reddens TestBodyEdit_NearMiss_CoDeclaredWithAnotherClass)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\tif BlockedOnCheckName(crBody) != \"\" || ExternalPrereqOnlyDeclared(crBody) {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "body-edit class: accept a mixed CR carrying a code finding (reddens TestBodyEdit_NearMiss_MixedCRWithCodeFinding)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\t\t\tif strings.TrimSpace(f.ID) != d.FindingID || f.Blocker != BlockerCodeContent {",
+      "new": "\t\t\tif false {"
+    },
+    {
+      "name": "body-edit class: drop the live-body digest check (a stale re-read clears — reddens TestBodyEdit_NearMiss_LiveBodyChangedSinceReRead)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\tif dg != liveDigest {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "body-edit class: drop the edited-since-the-CR check (an unedited body clears — reddens TestBodyEdit_NearMiss_BodyNeverEdited)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\tif dg == d.CRDigest {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "body-edit class: accept CI-Green-At for another head (reddens TestBodyEdit_NearMiss_CIGreenAtAnotherHead)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\tif !strings.EqualFold(ci, head) {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "body-edit class: accept an APPROVE at the CR's own instant (reddens TestBodyEdit_NearMiss_ApproveNotAfterCR)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\t\tif perr != nil || !at.After(crAt) {",
+      "new": "\t\tif perr != nil || at.Before(crAt) {"
+    },
+    {
+      "name": "body-edit class: treat an absent forge edit time as an edit after the CR (an unedited body with a slipped CR digest clears — reddens TestBodyEdit_NearMiss_UneditedBody_SlippedCRDigest/forge_reports_no_edit)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\teditedRaw := strings.TrimSpace(in.BodyEditedAt)\n",
+      "new": "\teditedRaw := strings.TrimSpace(in.BodyEditedAt)\n\tif editedRaw == \"\" {\n\t\teditedRaw = \"9999-01-01T00:00:00Z\"\n\t}\n"
+    },
+    {
+      "name": "body-edit class: drop the forge edit-time-after-the-CR comparison (a body last edited before the CR clears on a slipped CR digest — reddens TestBodyEdit_NearMiss_UneditedBody_SlippedCRDigest/forge's_last_edit_is_before_the_CR)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\tif !editedAt.After(crAt) {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "body-edit class: accept a forge edit at the CR's own instant (reddens TestBodyEdit_NearMiss_UneditedBody_SlippedCRDigest/forge's_last_edit_is_at_the_CR's_own_instant)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\tif !editedAt.After(crAt) {",
+      "new": "\tif editedAt.Before(crAt) {"
+    },
+    {
+      "name": "body-edit class: admit a declared CR whose typed finding block is unreadable (reddens TestBodyEdit_NearMiss_UnreadableFindingBlock)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\t\td.Problem = \"the CR's typed finding block is unreadable (\" + err.Error() +\n\t\t\t\") — an unreadable declaration is could-not-check, never a clearance\"\n\t\treturn d",
+      "new": "\t\treturn d"
     }
   ],
   "_not_mutated": {

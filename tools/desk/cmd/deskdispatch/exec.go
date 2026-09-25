@@ -29,15 +29,16 @@ var lookPath = exec.LookPath
 // App credential. Production binds it to the shared deskkit resolver, which shells out to the
 // token minter and reads the file it names. The model stamp does NOT use it: its credential
 // is read inside deskkit.ResolveForge, under the resolver's own custody hook.
-var mintTokenFn = deskkit.RoleTokenForRepo
+var mintTokenFn = deskkit.GitHubRoleToken
 
 // NO FORGE CLI. Every forge read and write this verb makes — the model stamp's label
 // reads and writes, the review-lane queue label — goes through the resolved deskkit.Forge
 // under an explicitly minted role credential (deskkit.ResolveForge), never through `gh` or
-// `glab`. The children that DO flow through runCmd are the consumer claim/decision scripts,
-// deskwt, deskroster and git. The forge-CLI ban (internal/forgeban) reads this file's exec
-// site as an unresolved argv[0] and this package carries no permit row, so a `gh` reaching
-// this seam again is a red test, not a silent regression.
+// `glab`. The children that DO flow through runCmd/runCmdEnv are the consumer claim/decision
+// scripts, deskwt, deskroster and git — see runCmdEnv for which of them carry the credential.
+// The forge-CLI ban (internal/forgeban) reads this file's exec site as an unresolved argv[0]
+// and this package carries no permit row, so a `gh` reaching this seam again is a red test,
+// not a silent regression.
 //
 // WHY THERE IS NO AMBIENT FALLBACK. The only thing this verb writes to the forge is the
 // dispatch attestation — two labels whose whole value is WHO applied them. Both Forge
@@ -64,9 +65,26 @@ func runCmd(dir, name string, args ...string) runResult {
 
 // runCmdEnv is runCmd with an explicit child environment. env follows the os/exec contract:
 // nil inherits this process's environment, non-nil REPLACES it (so a caller that means to add
-// one variable passes append(os.Environ(), "K=V")). It exists for the claim child (issue
-// 1151), which the legacy claim script authenticates through GH_TOKEN in its environment;
-// every other call site passes nil through runCmd.
+// one variable passes append(os.Environ(), "K=V")).
+//
+// WHICH CHILDREN GET THE DISPATCHER'S CREDENTIAL (issues 1151, 1146). A rule keyed on the
+// child's NAME ("hand the token to `gh`") misses every script that shells out to the forge CLI
+// itself, and such a script then runs on whatever login is ambient. So the hand-over is keyed
+// on what the child DOES, and the inventory is closed:
+//
+//   - the claim tool (acquire / show / release, and the admission gate's calls) — a forge
+//     write: runCmdEnv with the claimAuth resolveClaimAuth built (--token-file for the Go
+//     binary, GH_TOKEN in the environment for the legacy script);
+//   - the decision gate's tools/decision-issue.sh — a forge write through the CLI:
+//     runCmdEnv with claimAuth.scriptEnv, the SAME resolution in environment shape;
+//   - git, deskwt and deskroster set — no forge-CLI call and no forge write (git talks only to
+//     the origin remote over its own transport; deskwt runs git; `deskroster set` writes the
+//     local roster file): runCmd, inheriting the environment.
+//
+// The before_run lifecycle hook is not a runCmd child: deskkit.RunHook starts operator-authored
+// config with every credential-shaped variable SCRUBBED from its environment by design, so it
+// never receives the dispatcher's token. A new child that writes to the forge joins the first
+// two rows, never the third.
 func runCmdEnv(dir string, env []string, name string, args ...string) runResult {
 	call := deskkit.ToolCall{Name: name, Args: args, Dir: dir, Env: env, Start: execCommand}
 	// The capture, the exit-status recovery and the preamble strip are the shared runner's

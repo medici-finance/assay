@@ -29,6 +29,12 @@ func (s *stub) install(t *testing.T) (home, root string) {
 	t.Helper()
 	home = t.TempDir()
 	root = t.TempDir()
+	// A real --brief must resolve now (resolveBrief refuses one that names no file), so the item
+	// checkout carries the `spec.md` the human-gate tests pass. It has no frontmatter: it gates on
+	// nothing by itself, so only an explicit --gate-human makes those items human-gated.
+	if err := os.WriteFile(filepath.Join(root, "spec.md"), []byte("# example spec\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("HOME", home)
 	plantFixtureRoster(t, home)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
@@ -43,6 +49,18 @@ func (s *stub) install(t *testing.T) (home, root string) {
 		s.calls = append(s.calls, append([]string{name}, args...))
 		for _, r := range s.replies {
 			if strings.Contains(joined, r.match) {
+				// The worktree-create step now STAMPS the agent's role commit identity into the
+				// new worktree (#1490), running `git config --worktree` with cwd = the home
+				// `deskwt add` reported. Those git calls flow through this same seam (default
+				// exit 0), but the shared runner sets cmd.Dir to that home, so the child cannot
+				// start unless the directory actually exists. A fake `deskwt add` reply names an
+				// absolute home; materialise it so the stamp's stubbed git config can run, the
+				// same way a real `deskwt add` would have created the worktree.
+				if strings.Contains(joined, "deskwt add") && r.code == 0 && filepath.IsAbs(strings.TrimSpace(r.stdout)) {
+					home := strings.TrimSpace(r.stdout)
+					_ = os.MkdirAll(home, 0o700)
+					t.Cleanup(func() { _ = os.RemoveAll(home) })
+				}
 				if r.code != 0 {
 					// A real desk tool's stderr is its config echo THEN its own message; a
 					// stub that emits one line cannot show a step report losing the second.

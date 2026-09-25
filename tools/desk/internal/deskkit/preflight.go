@@ -110,7 +110,7 @@ func (s CheckState) Green() bool { return s == CheckedClean }
 // without ever being miscounted as verified.
 func (s CheckState) Passing() bool { return s == CheckedClean || s == CheckedNotApplicable }
 
-// Check names of the five envelope checks. They are exported constants because
+// Check names of the six envelope checks. They are exported constants because
 // the summary line, the tests and the consumers all refer to the same names —
 // a check renamed in one place and not another is a check that silently stops
 // being reported on.
@@ -120,6 +120,7 @@ const (
 	CheckWriteTransport = "write-transport"
 	CheckCommitIdentity = "commit-identity"
 	CheckSiblings       = "sibling-checkouts"
+	CheckAmbientID      = "ambient-identity"
 )
 
 // Check is one envelope check's result.
@@ -333,7 +334,7 @@ type Landing struct {
 	Branch string
 }
 
-// PreflightProbes are the injectable edges of the five checks. A nil field is
+// PreflightProbes are the injectable edges of the six checks. A nil field is
 // filled with the real, environment-backed probe — tests supply their own so the
 // suite is hermetic (no network, no credentials, no git remote).
 type PreflightProbes struct {
@@ -380,6 +381,24 @@ type PreflightProbes struct {
 	SiblingRoots func() ([]RootConfig, error)
 	// DirExists reports whether a directory is present and readable.
 	DirExists func(path string) (bool, error)
+	// AmbientLogin returns the login the AMBIENT `gh` credential would post/push
+	// as — the identity a tool fall-through would silently use. It is the value
+	// `gh api user` (or `gh auth status`) reports, NOT a minted App token: the
+	// check exists to catch an ambient credential that is a bot slug or a
+	// non-blessing human. It returns "" with no error when there is no
+	// ambient identity at all (nothing to fall through to — safe), and an error
+	// when it could not look (gh absent / unreadable — could-not-check).
+	AmbientLogin func() (login string, err error)
+	// CredHelperMatchesApp reports whether every credential source git consults
+	// for the landing remote's push URL — the ordered helper chain across all
+	// config scopes, plus an embedded URL credential or an Authorization
+	// extraHeader, which git uses ahead of any helper — is the SAME minted App
+	// token the pass lands under (appTokenPath). When it is, the write-transport
+	// probe (check 3) and a real push from this envelope present the same
+	// credential; when any other source could answer first, the two can disagree
+	// and the check is red. detail names what was found. An error is
+	// could-not-check.
+	CredHelperMatchesApp func(l Landing, appTokenPath string) (matches bool, detail string, err error)
 }
 
 // SiblingReq is one sibling checkout a queued brief declares it needs, with the
@@ -412,7 +431,7 @@ type PreflightRequest struct {
 	Probes       PreflightProbes
 }
 
-// Preflight runs the five envelope checks for a role against the current
+// Preflight runs the six envelope checks for a role against the current
 // working tree and environment, in the order a pass would hit them.
 //
 // It is the ONE entry point desks call at boot:
@@ -425,7 +444,7 @@ func Preflight(role string) PreflightReport {
 	return PreflightRequest{Role: role, Root: "."}.Run()
 }
 
-// Run executes the five checks. It never returns an error: every failure mode is
+// Run executes the six checks. It never returns an error: every failure mode is
 // a Check with a state and a remediation, because an error return is the one
 // shape a caller can drop on the floor and still proceed.
 func (req PreflightRequest) Run() PreflightReport {
@@ -469,6 +488,7 @@ func (req PreflightRequest) Run() PreflightReport {
 		checkWriteTransport(p, l),
 		checkCommitIdentity(p, role, l.Dir),
 		checkSiblings(p, root, req.ClaimedBrief),
+		checkAmbientIdentity(p, l, tokenPath, forge),
 	)
 	return rep
 }
@@ -504,6 +524,12 @@ func (p PreflightProbes) withDefaults() PreflightProbes {
 	}
 	if p.DirExists == nil {
 		p.DirExists = dirExistsProbe
+	}
+	if p.AmbientLogin == nil {
+		p.AmbientLogin = ambientLoginProbe
+	}
+	if p.CredHelperMatchesApp == nil {
+		p.CredHelperMatchesApp = credHelperMatchesAppProbe
 	}
 	return p
 }
@@ -683,19 +709,24 @@ func gitlabColdCustodyProbe(role string) (string, error) {
 		return "", fmt.Errorf("gitlab token file not found: no %s on the App-credential search path (searched: %s)",
 			name, strings.Join(searched, ", "))
 	}
-	fi, serr := os.Stat(path)
+	target, fi, serr := LstatCustody(path, CustodySameDirLink)
 	if serr != nil {
+		if _, isLink := serr.(*CustodyLinkError); isLink {
+			return "", serr
+		}
 		return "", fmt.Errorf("could not stat gitlab token file at %s: %v", path, serr)
 	}
 	if !fi.Mode().IsRegular() {
-		return "", fmt.Errorf("gitlab custody at %s is not a regular file (mode %s); custody requires a 0600 regular file", path, fi.Mode())
+		return "", fmt.Errorf("gitlab custody at %s is not a regular file (mode %s); custody requires a 0600 regular file", target, fi.Mode())
 	}
-	if err := VerifyCustodyOwnerOnly(path, fi); err != nil {
+	// The owner-only check and the read both take the target LstatCustody judged, so a
+	// followed link's resolved file is what is checked and read on every platform.
+	if err := VerifyCustodyOwnerOnly(target, fi); err != nil {
 		return "", err
 	}
-	raw, rerr := os.ReadFile(path)
+	raw, rerr := os.ReadFile(target)
 	if rerr != nil {
-		return "", fmt.Errorf("could not read gitlab token file at %s: %v", path, rerr)
+		return "", fmt.Errorf("could not read gitlab token file at %s: %v", target, rerr)
 	}
 	if strings.TrimSpace(string(raw)) == "" {
 		return "", fmt.Errorf("the gitlab token file at %s is empty", path)
@@ -707,16 +738,15 @@ func gitlabColdCustodyProbe(role string) (string, error) {
 	return path, nil
 }
 
-// remoteSlugRe pulls owner/name out of a git remote URL in any of the shapes a
-// desk checkout uses (https, ssh, scp-style, and an ssh HOST ALIAS — the alias
-// form is the one a naive parser drops, and dropping it silently sends the mint
-// at the minter's default owner instead of the one the pass will land on).
-var remoteSlugRe = regexp.MustCompile(`(?:[:/])([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+?)(?:\.git)?$`)
-
-// deriveRepoSlug reads the landing remote's URL and extracts owner/name. It
-// returns "" when it cannot — an empty slug lets the minter apply its own
-// default, and the cold-mint check reports whatever that produces rather than
-// this function inventing a repo.
+// deriveRepoSlug reads the landing remote's URL as the RAW configured value (go-git's
+// RemoteURL, matching `git config --get remote.<name>.url` — no `insteadOf` expansion) and
+// extracts owner/name through the single shared parser (ParseRemoteRepo). That parser
+// handles every remote shape a desk checkout uses, including an ssh HOST ALIAS and the
+// rewritten/hybrid forms an `insteadOf` config bakes onto it (issue 1470) — the alias form
+// is the one a naive parser drops, and dropping it silently sends the mint at the minter's
+// default owner instead of the one the pass will land on. It returns "" when it cannot
+// resolve — an empty slug lets the minter apply its own default, and the cold-mint check
+// reports whatever that produces rather than this function inventing a repo.
 func deriveRepoSlug(dir, remote string) string {
 	repo, err := gitcore.Open(orDot(dir))
 	if err != nil {
@@ -726,11 +756,11 @@ func deriveRepoSlug(dir, remote string) string {
 	if err != nil {
 		return ""
 	}
-	m := remoteSlugRe.FindStringSubmatch(strings.TrimSpace(out))
-	if m == nil {
+	slug, err := RemoteRepoSlug(out)
+	if err != nil {
 		return ""
 	}
-	return m[1] + "/" + m[2]
+	return slug
 }
 
 // RepoSlugForDir resolves owner/name from a checkout's `origin` remote, the exported entry to
@@ -1441,6 +1471,178 @@ func dirExistsProbe(path string) (bool, error) {
 		return false, err
 	}
 	return fi.IsDir(), nil
+}
+
+// --- check 6: ambient identity ---------------------------------------------
+
+// checkAmbientIdentity proves the AMBIENT credential a tool fall-through would
+// reach is safe. It is the two layers ABOVE the per-tool refusal the write-verbs
+// migration delivered: the tools no longer fall through to an ambient credential,
+// but a wrong ambient login and a mis-pointed credential helper are still latent
+// in the envelope, and all three symptoms can fire together — an issue filed
+// under an ambient login while the tool stamps its raised-by role, a push refused
+// on the credential helper though the App token minted, and a claims read failing
+// on the same helper. This check closes the two halves the per-tool refusal
+// cannot see from inside one tool:
+//
+//   - IDENTITY. The ambient `gh` login must be the ONE human the roster names for
+//     rulings (ASSAY_BLESS_LOGIN). A bot/App slug is red — a fall-through under a
+//     bot identity misattributes and dodges the App-token mint. A NON-blessing
+//     human login is red — the observed case, where an unrelated account carried
+//     the write. No ambient identity at all is NOT red: there is nothing to fall
+//     through to.
+//   - TRANSPORT. Every credential source git consults for the landing remote's
+//     push URL — each helper in the ordered chain git builds across all config
+//     scopes, and any embedded URL credential or Authorization extraHeader it
+//     uses ahead of them — must be the SAME minted App token the pass lands
+//     under, so the write-transport probe (check 3) and a real push from this
+//     envelope present the same credential. A competing source that git would
+//     consult first is what the probe-green/push-red split is made of, and it
+//     reads red here rather than hiding behind the last-configured helper.
+//
+// It is forge-aware. The ambient-login half reads a GitHub `gh` identity, which a
+// GitLab-forge repo does not use, so on GitLab the check is not-applicable (it
+// does not redden a correctly provisioned GitLab envelope) — the same shape the
+// app-scopes check takes for the GitHub-only installation grant.
+func checkAmbientIdentity(p PreflightProbes, l Landing, tokenPath string, forge ForgeKind) Check {
+	const refs = "#1527"
+	if forge == ForgeGitLab {
+		return notApplicable(CheckAmbientID,
+			"gitlab credential: the ambient-identity check reads a GitHub `gh` login and matches the origin "+
+				"credential helper against a minted GitHub App token, neither of which a GitLab desk uses — the "+
+				"GitLab credential envelope is covered by the cold-mint custody check (PAT custody, read-only)",
+			"confirm out of band that the interactive git credential for this host is the operator's own, not a "+
+				"service account, and that the origin credential helper reads the provisioned GitLab PAT",
+			refs)
+	}
+
+	cfg := EffectiveConfig()
+	if strings.TrimSpace(cfg.Bless.Login) == "" {
+		return unchecked(CheckAmbientID,
+			"the roster names no blessing login, so the ambient identity cannot be judged",
+			"set "+EnvBlessLogin+"=<login>:<id> in "+ConfigHomePath()+
+				" — it is the one human login an ambient credential may safely carry", refs)
+	}
+	bless := strings.ToLower(strings.TrimSpace(cfg.Bless.Login))
+
+	login, err := p.AmbientLogin()
+	if err != nil {
+		return unchecked(CheckAmbientID, "could not read the ambient gh identity: "+oneLine(err.Error()),
+			"run `gh auth status` (or `gh api user`) by hand and confirm the ambient login is "+cfg.Bless.Login, refs)
+	}
+	got := strings.ToLower(strings.TrimSpace(login))
+	switch {
+	case got == "":
+		// No ambient identity at all: nothing for a tool to fall through TO on the
+		// identity axis. Safe — fall through to the transport half.
+	case isAmbientBot(cfg, got):
+		return failed(CheckAmbientID,
+			"the ambient gh login is "+got+", a bot/App slug — a tool fall-through would post as a bot and dodge the App-token mint",
+			"log the interactive gh identity out of the bot account and in as "+cfg.Bless.Login+
+				" (`gh auth login`), or unset GH_TOKEN so no bot credential is ambient", refs)
+	case got != bless:
+		return failed(CheckAmbientID,
+			"the ambient gh login is "+got+", a non-blessing login — the only human an ambient credential may carry is "+cfg.Bless.Login,
+			"switch the interactive gh identity to "+cfg.Bless.Login+" (`gh auth login`), or clear the ambient credential", refs)
+	}
+
+	// Transport half: every credential source git consults for the landing remote's
+	// push URL must be the minted App token, so the probe and a real push present
+	// the same credential.
+	if strings.TrimSpace(tokenPath) == "" {
+		return unchecked(CheckAmbientID,
+			"no App token was minted, so the credential helper cannot be matched against it",
+			"fix the "+CheckColdMint+" check first — the credential-helper match reads the minted token path", refs)
+	}
+	ok, detail, herr := p.CredHelperMatchesApp(l, tokenPath)
+	if herr != nil {
+		return unchecked(CheckAmbientID, "credential-helper resolution: "+oneLine(herr.Error()),
+			"list the helper chain by hand (`git -C "+orDot(l.Dir)+" config --show-origin --get-regexp "+
+				"'^credential\\.'` against `git -C "+orDot(l.Dir)+" remote get-url --push "+l.Remote+"`) and confirm "+
+				"every applicable helper reads the App token cache", refs)
+	}
+	if !ok {
+		return failed(CheckAmbientID,
+			"the credential helper chain (and any credential git presents ahead of it) for the "+l.Remote+
+				" push URL is not solely the minted App token ("+oneLine(detail)+
+				") — the write-transport probe and a real push could disagree, the probe-green/push-red split",
+			"reset the helper chain for the "+l.Remote+" URL with an empty credential.helper entry, then add only the "+
+				"desk's App-token helper after it; remove any embedded URL credential or Authorization extraHeader for it", refs)
+	}
+	blessed := "ambient gh login is the blessing human (" + cfg.Bless.Login + ")"
+	if got == "" {
+		blessed = "no ambient gh identity is set (nothing to fall through to)"
+	}
+	return clean(CheckAmbientID, blessed+" and every credential source git consults for the "+l.Remote+
+		" push URL is the minted App token", refs)
+}
+
+// isAmbientBot reports whether an ambient login renders as a bot/App account or
+// is a configured trusted-bot slug. Either is disqualifying: a fall-through under
+// a bot identity is exactly what the credential fence exists to stop. It reads
+// the SHAPE (looksLikeBot — the same predicate the blessing gate uses) and the
+// roster's own bot set, so a slug named without the `[bot]` suffix is caught too.
+func isAmbientBot(cfg Config, login string) bool {
+	if looksLikeBot(login) {
+		return true
+	}
+	slug := strings.TrimSuffix(login, "[bot]")
+	if _, ok := cfg.Bots[slug]; ok {
+		return true
+	}
+	if _, ok := cfg.BotIdents[slug]; ok {
+		return true
+	}
+	return false
+}
+
+// ambientLoginProbe reads the login the ambient `gh` credential would act as.
+//
+// It runs `gh api user` under the AMBIENT environment on purpose — the opposite
+// of the cold mint's scrubbed env — because the whole question is "what identity
+// would a tool fall-through silently use". An App token that 403s the
+// integrations-forbidden `/user` endpoint, or a `gh` that is not logged in, is
+// reported as an ERROR (could-not-check) rather than guessed. A `gh` that is on
+// PATH and answers with an empty login is "no ambient identity", not a failure.
+func ambientLoginProbe() (string, error) {
+	bin, err := exec.LookPath("gh")
+	if err != nil {
+		return "", fmt.Errorf("gh is not on PATH: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, bin, "api", "user", "-q", ".login").Output()
+	if err != nil {
+		var ee *exec.ExitError
+		if asExitError(err, &ee) {
+			return "", fmt.Errorf("gh api user failed: %s", oneLine(string(ee.Stderr)))
+		}
+		return "", fmt.Errorf("could not run gh api user: %v", oneLine(err.Error()))
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// credHelperMatchesAppProbe reports whether EVERY credential source git consults for the
+// landing remote's PUSH URL (the URL `git push` — and the write-transport probe's
+// `push --dry-run` — authenticate against) is the minted App token. The judgement is
+// credTransportMatchesApp (credhelperchain.go): the ordered helper chain across every config
+// scope, not the single last value --get-urlmatch returns. It is READ-ONLY: it never runs a
+// helper and never contacts the remote — a probe that authenticated would be the mutating
+// side effect this check exists to keep out of a boot.
+func credHelperMatchesAppProbe(l Landing, appTokenPath string) (bool, string, error) {
+	dir := orDot(l.Dir)
+	if _, err := exec.LookPath("git"); err != nil {
+		return false, "", fmt.Errorf("git is not on PATH")
+	}
+	remote := l.Remote
+	if strings.TrimSpace(remote) == "" {
+		remote = "origin"
+	}
+	pushURL, err := gitOut(dir, "remote", "get-url", "--push", remote)
+	if err != nil {
+		return false, "", fmt.Errorf("no remote named %s in %s", remote, dir)
+	}
+	return credTransportMatchesApp(dir, strings.TrimSpace(pushURL), appTokenPath)
 }
 
 // --- small shared helpers ---------------------------------------------------
