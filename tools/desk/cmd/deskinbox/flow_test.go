@@ -108,7 +108,7 @@ func TestReadJSONNonZeroExitIsCouldNotCheck(t *testing.T) {
 	}
 }
 
-func TestReadJSONExitZeroNonJSONIsCouldNotCheck(t *testing.T) {
+func TestReadJSON_ExitZeroNonJSON_IsCouldNotCheck(t *testing.T) {
 	withRunReader(t, func(bin string, args []string) ([]byte, []byte, error) {
 		return []byte("not json at all"), nil, nil
 	})
