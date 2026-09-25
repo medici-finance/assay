@@ -523,6 +523,12 @@ lives in `Config.BotIdents`/`Config.Logins` and is untouched here), and printing
 An identity that is exactly alive produces no output — the same quiet-on-the-happy-path
 shape every other NOTICE in this codebase uses.
 
+A bot identity (`Config.Bots`, keyed on the App's bare slug) is probed at its
+`"<slug>[bot]"` REST rendering, never the bare slug — GitHub's `GET /users/{login}` only
+resolves a GitHub App's bot account under that suffixed form, so probing the bare slug 404s
+for every live App and misreports it as **deleted** (medici-finance/assay#1665). Human and
+Bless identities resolve directly at their configured login and are untouched by this.
+
 **What it does NOT do.** It never wires a finding into `TrustedAuthor`/`TrustedHumanAuthor`/
 `Blessed`/`ItemTrusted*`'s pass/fail return, never auto-revokes anything, posts no comment,
 files no issue, and mutates nothing on the forge. Who is trusted today is unchanged by

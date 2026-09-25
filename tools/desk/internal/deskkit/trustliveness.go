@@ -231,10 +231,44 @@ func CheckRosterLiveness(fetcher AccountFetcher, identities []RosterIdentity) []
 	return findings
 }
 
+// probeLogin returns the login classifyLiveness sends to GetAccount for id — DEFECT CLASS:
+// a bot-login comparison/lookup that does not normalize the "[bot]" suffix between a
+// bare-slug source and a REST-shaped target. RosterIdentities enumerates bot identities from
+// Config.Bots, which is keyed on the App's BARE slug (rosterconfig.go: "Bots maps a
+// lowercased GitHub App slug to its BOT USER id"). GitHub's REST GET /users/{login} endpoint
+// only resolves a GitHub App's bot account under its "[bot]"-suffixed rendering — GET
+// /users/<slug> 404s for every App, GET /users/<slug>[bot] succeeds — so probing the bare
+// slug reported every trusted bot as LivenessDeleted (assay#1665).
+//
+// Every RosterIdentity RosterIdentities emits with Source == "bot" is GitHub-only by
+// construction (a GitLab bot identity lives exclusively in Config.BotIdents/Config.Logins,
+// never Config.Bots — see RosterIdentities' doc comment above), so the suffix is applied
+// unconditionally on Source == "bot" here, never forge-conditionally.
+//
+// This is the SAME normalization gap forge_github.go's GraphQL comment/PR-state readers
+// already guard against on the read side (forge_github.go ~line 1576: "A GraphQL Bot actor
+// carries the BARE slug as login; re-suffix it to '<slug>[bot]' so an identity comparison …
+// sees the same REST rendering it does elsewhere" — #747). That fix re-suffixes a
+// GraphQL-sourced bare login before comparing it against a REST-shaped expectation;
+// deskroster's liveness probe had the mirror-image gap on the WRITE/request side: it sent a
+// bare, roster-sourced slug to a REST endpoint that needs the "[bot]" suffix to resolve at
+// all. Human and Bless identities are untouched — the bug is bot-only, matching the issue's
+// "only the 13 bot entries were flagged" observation.
+func probeLogin(id RosterIdentity) string {
+	if id.Source == "bot" && !strings.HasSuffix(id.Login, "[bot]") {
+		return id.Login + "[bot]"
+	}
+	return id.Login
+}
+
 // classifyLiveness runs the classification decision table for one identity. See the
-// LivenessClass constants above for what each outcome means.
+// LivenessClass constants above for what each outcome means. It probes GitHub at
+// probeLogin(id) (bot identities get the "[bot]" suffix — see probeLogin) but keeps
+// Identity.Login as the bare, roster-configured login throughout, so a caller/renderer always
+// sees the identity in the shape the roster itself uses.
 func classifyLiveness(fetcher AccountFetcher, id RosterIdentity) LivenessFinding {
-	acct, err := fetcher.GetAccount(id.Login)
+	probe := probeLogin(id)
+	acct, err := fetcher.GetAccount(probe)
 	if err != nil {
 		if errors.Is(err, ErrAccountNotFound) {
 			return LivenessFinding{
@@ -242,13 +276,13 @@ func classifyLiveness(fetcher AccountFetcher, id RosterIdentity) LivenessFinding
 				Class:    LivenessDeleted,
 				Detail: fmt.Sprintf(
 					"login %q no longer resolves to any GitHub account (404) — it was pinned to id %d",
-					id.Login, id.PinnedID),
+					probe, id.PinnedID),
 			}
 		}
 		return LivenessFinding{
 			Identity: id,
 			Class:    LivenessCouldNotCheck,
-			Detail:   fmt.Sprintf("could not verify login %q against GitHub: %v", id.Login, err),
+			Detail:   fmt.Sprintf("could not verify login %q against GitHub: %v", probe, err),
 		}
 	}
 
@@ -258,7 +292,7 @@ func classifyLiveness(fetcher AccountFetcher, id RosterIdentity) LivenessFinding
 			Class:    LivenessUnpinned,
 			Detail: fmt.Sprintf(
 				"login %q currently resolves to id %d, but the roster pins no id for it — "+
-					"identity continuity cannot be checked", id.Login, acct.ID),
+					"identity continuity cannot be checked", probe, acct.ID),
 		}
 	}
 
@@ -268,17 +302,17 @@ func classifyLiveness(fetcher AccountFetcher, id RosterIdentity) LivenessFinding
 			Class:    LivenessReclaimed,
 			Detail: fmt.Sprintf(
 				"login %q now resolves to id %d, not the pinned id %d — a DIFFERENT account now answers to this login",
-				id.Login, acct.ID, id.PinnedID),
+				probe, acct.ID, id.PinnedID),
 		}
 	}
 
-	if !strings.EqualFold(acct.Login, id.Login) {
+	if !strings.EqualFold(acct.Login, probe) {
 		return LivenessFinding{
 			Identity: id,
 			Class:    LivenessRenamed,
 			Detail: fmt.Sprintf(
 				"id %d (configured as login %q) now has canonical login %q",
-				id.PinnedID, id.Login, acct.Login),
+				id.PinnedID, probe, acct.Login),
 		}
 	}
 
