@@ -2,7 +2,7 @@
 stream: measured-status
 repo: medici-finance/assay
 serves: assay
-status: parked
+status: active
 priority: P1
 track: platform
 issues: []
@@ -11,12 +11,11 @@ board: generated
 
 # measured-status Stream
 
-**Status:** proposed — this scoping doc is authored for review; the stream is `parked` (its
-briefs are recorded but not dispatchable) until a human ratifies it and flips `status:` to
-`active`. Parked is how a not-yet-approved stream is represented without reddening the
-stream-source lint (`active` is the only status that requires a priority and admits its briefs
-to the Next-up board; `parked` reserves the namespace and holds the work off the board, the
-same shape a `PROPOSED` design-decision record uses to reserve a gate it does not yet satisfy).
+**Status:** approved — activated at the driver's direction (relayed by the desk on 2026-09-25); the
+merge of the pull request that flips this stream to `active` is the ratification. Its briefs are
+now admitted to the Next-up board at priority P1.
+
+**Routes-to:** `docs/streams/measured-status/`
 
 ## The seam
 
