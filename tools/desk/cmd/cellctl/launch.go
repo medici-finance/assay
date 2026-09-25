@@ -87,6 +87,12 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		c.scrubbedDeskLaunch(role, harness, model, session, wt)
 		return
 	}
+	// The worktree now exists (created, or merged up to main), so its own .claude settings —
+	// and every parent directory's — are rechecked before the harness starts.
+	if err := claudePolicyPreflight(policyRes, cfg, wt); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		die("model policy settings preflight failed")
+	}
 	providerDisp := provider
 	if policyRes != nil {
 		providerDisp = policyRes.Provider
@@ -165,7 +171,15 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 				env = envSet(env, k, v)
 			}
 			env = envUnset(env, "MAX_THINKING_TOKENS")
-			argv = []string{"claude", "--effort", policyRes.Effort, "--name", session, "--model", model, "/assay:" + role}
+			// --settings is the RUNTIME half: an availableModels allowlist of the provider's
+			// pinned IDs plus the PreModelSwitch / PreToolUse(Agent|Task) hooks that call back
+			// into this binary, so neither a mid-session switch nor a child agent can reach a
+			// model the launch-time resolution would have refused.
+			settings, err := policyClaudeSettings(selfPath(), c.Dir, policyRes)
+			if err != nil {
+				die("model policy: cannot build --settings: %v", err)
+			}
+			argv = []string{"claude", "--effort", policyRes.Effort, "--settings", settings, "--name", session, "--model", model, "/assay:" + role}
 		}
 	}
 	runForeground(argv, env, wt)

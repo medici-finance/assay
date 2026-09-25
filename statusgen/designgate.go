@@ -197,8 +197,10 @@ func decisionRegisterProblems(root string) []string {
 		// decided-by is the human approval stamp — the design-approval authority
 		// (sdlc/05 `## Human decision`, item 3). It reuses the human:<name>
 		// vocabulary of the Verified/Reviewed cells so a model self-sign-off cannot
-		// stand in for it.
-		if !hasHumanReviewer(e.DecidedBy) {
+		// stand in for it. Every on-behalf-of relay is removed first
+		// (hasHumanAuthority): a relay records which human an App acted for and is
+		// never that human's approval, and the online stamp lane strips it.
+		if !hasHumanAuthority(e.DecidedBy) {
 			add(`%s: decided-by %q must name a human ("human:<name>") — a design decision on a risk-gated brief is a recorded human act, not a model self-sign-off`, p, e.DecidedBy)
 		}
 		// ruling: is optional, but when present it must be the ONE documented

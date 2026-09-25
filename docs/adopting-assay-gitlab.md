@@ -21,7 +21,9 @@ variables, the ci-config-project runbook, and token custody.
 4. **§2a runner, §2c `STATUSGEN_PUSH_TOKEN`, §2e `STATUSGEN_ROSTER_ENV`** — the human acts the
    scaffolded `.gitlab-ci.yml` needs before its first pipeline can prove anything.
 
-`glab` is an optional convenience CLI for a human's own reads; no step in either file requires it.
+`glab` is an optional convenience CLI for a human's own reads. No install step in either file
+requires it. The one tool here that drives `glab` is the later PAT renewal (§2g), a human-run
+operation that comes after the install.
 
 The accepted design this doc implements is
 [`docs/streams/forge-gitlab/spec.md`](streams/forge-gitlab/spec.md) — read it first if
@@ -139,6 +141,7 @@ token (PAT):
 | board-writer | service account | Developer (30) + allowed-to-push entry on protected `main` | `api`, `write_repository` | the ruleset-bypass analog |
 | auditor | service account | Reporter (20) for the `project` and `file` reads; **Maintainer (40)** for the protected-branches, protected-tags, approvals and push-rules reads — see §5a | `read_api` | GET-only hardening reads for `repohardenguard`; no write scope (the `read_api` scope is the forge-enforced read-only boundary whatever the role) |
 | cell-issues | not yet mapped on GitLab | — | — | GitHub-only "write-issues" identity today (a narrower, per-purpose issues-filing role, selectable only by name); no GitLab consumer is wired to it yet |
+| release-runner | **pipeline trigger token**, not a service account | — (a trigger token carries no project role) | none — it authenticates the trigger endpoint only | `deskrun` starts pipelines through `POST /projects/:id/trigger/pipeline` with it — the narrowest credential that can start a pipeline and nothing else. Custody is `gitlab-release-runner.token` (0600), read, never self-rotated: a trigger token has no self-rotate endpoint, so it is rotated in the project's CI/CD settings and re-provisioned. A trigger token cannot approve a gate or read a pipeline, so on GitLab `deskrun approve`/`status` report could-not-check under it. Bound per repo in `ASSAY_RUN_CREDENTIALS` with the gate shape the project uses (`release-runner+manual-job` or `release-runner+environment`) |
 | promote | usually **no identity at all** — see §3 | — | — | workflow promotion is a human-merged MR into the ci-config project, not a bot act |
 
 Attribution separation holds exactly as on GitHub: notes/approvals/commits carry the
@@ -221,7 +224,8 @@ checks group membership before adding it, and — deliberately — mints a PAT *
 an account it just created. Re-running against an existing account prints a NOTICE
 instead of silently minting a second live credential; get a fresh one via the group
 service-accounts rotate endpoint (`api/v4/groups/:id/service_accounts/:user_id/personal_access_tokens/:token_id/rotate`),
-which is what rotate-on-mint (§5) actually calls at operation time.
+which is what rotate-on-mint (§5) actually calls at operation time. To renew every
+role's PAT in one run, use `tools/renew-fleet-gitlab-tokens.sh` (§2g).
 
 **Token custody.** Every minted token is written to a `0600` file under `--out-dir`; the
 script prints the file's **path**, never the token value, on stdout or in argv. Move the
@@ -749,6 +753,107 @@ branches are missing from it. That hides work; it never hands the same brief to 
 sessions, which is the failure the claim read's own `--require-claims` flag exists to stop.
 Read the banner as *some backlog may be hidden*, and regenerate once the listing is
 readable to release it.
+
+## 2g. Renewing every role PAT at once — `tools/renew-fleet-gitlab-tokens.sh`
+
+The provisioner mints a PAT only for an account it creates in that run (§2 *Idempotency*). The
+renewal is the companion for accounts that already exist: one command rotates each configured
+role's live PAT, creates one only where the role has none, and replaces each
+`gitlab-<role>.token` in the role-token store. It reads the same role table as the provisioner
+(`tools/fleet-gitlab-roles.sh` — the one copy both scripts source), so the scopes, the
+`assay-<role>-fleet` PAT names and the `<prefix>-<role>-bot` usernames cannot drift between
+them.
+
+It drives `glab api`, logged in as an **Owner (access level 50) of the top-level group** named by
+`--group <top-level-group>`. That is the one authority model. The calls are the group
+service-account endpoints the provisioner already uses:
+`groups/:id/service_accounts/:user_id/personal_access_tokens` (list with `?state=active`,
+`…/:token_id/rotate`, create). The script never requires instance administrator and never probes
+for it: it makes no `application/settings` read and does not use `glab token … --user`, which is
+administrator-only and the wrong transport for this.
+
+Every deployment-specific value is an argument; nothing is built in. `--duration` defaults to
+the shared `FLEET_PAT_DAYS` in `tools/fleet-gitlab-roles.sh` (7 days — spec.md §5's "7 days
+RECOMMENDED" expiry backstop), so leaving it off keeps the backstop; passing a longer value
+widens it, which matters most on Free tier, where there is no group token-expiry policy to cap
+it independently (§Free-tier degradations above):
+
+```
+tools/renew-fleet-gitlab-tokens.sh --dry-run \
+  --hostname gitlab.example.com --group mygroup --prefix myorg \
+  --out-dir "$HOME/.config/assay"
+
+tools/renew-fleet-gitlab-tokens.sh \
+  --hostname gitlab.example.com --group mygroup --prefix myorg \
+  --out-dir "$HOME/.config/assay"
+```
+
+An installation that does not use the provisioner's naming describes each role explicitly with
+`--role ROLE=USERNAME:TOKEN_NAME:SCOPES[:FILE]`, repeated once per role. `SCOPES` is
+comma-separated, and `FILE` is a bare file name that defaults to `gitlab-<ROLE>.token`. Used
+with `--prefix`, a record replaces that role's table row, and a record for any other role (for
+example `auditor`) adds it. Run `--help` for the full reference.
+
+What one run does, in order:
+
+1. **Preflight, before any token changes.** The script checks the arguments, `glab` and `jq`,
+   the output directory (it must be writable) and each destination file. It also checks that
+   the active `glab` identity is an Owner of the group. It resolves each service account from
+   the group's own service-account listing and lists each role's active PATs, and each role gets one
+   of four outcomes: **rotate** (exactly one active PAT with that name, and it is not
+   protected — see below), **create** (none), **skip-in-use** (exactly one active PAT, but its
+   `last_used_at` falls inside the in-use window), or **refuse** (more than one active PAT; the
+   script will not guess which one is live, so revoke the extras). The script decides a listing
+   from its parsed JSON, never its byte count, and refuses an unreadable one instead of
+   treating it as "no match", which would otherwise create a second live credential. That
+   covers a listing with no JSON value at all (zero bytes, a bare newline, whitespace only), a
+   non-array, and a record missing its id, name, `active` flag or `last_used_at` key. A
+   multi-page listing is merged across pages. A literal `[]` is a real "no active PAT" and
+   leads to a create. Any preflight
+   problem aborts the run before any role is rotated. `--dry-run` runs this whole phase and
+   prints the plan (`would-rotate` / `would-create` / `would-skip-in-use` for each role), then
+   stops. It makes no mutating call and writes no file.
+2. **In-use protection.** Rotating a live PAT invalidates it immediately (see below), so a role
+   whose active PAT was used inside the in-use window is **skipped by default** and reported as
+   `skipped-in-use`, not rotated. Pass `--rotate-in-use` to rotate it anyway — do that only after
+   confirming nothing is still relying on that credential (stop the fleet's desk sessions first).
+   A PAT that has never been used (`last_used_at` is null) is never in-use, and a PAT last used
+   before the window (for example three days ago) is not in-use either. Both rotate normally.
+3. **Renewal, one role at a time.** `glab` writes the returned secret straight into a new
+   owner-only (`0600`) temp file in the destination's own directory. The secret never goes
+   through argv, an environment variable, a log line or the report. The file must hold exactly
+   one line that looks like a token. If it does not, the output is malformed: the script
+   deletes the temp file, keeps the old file, and stops. Otherwise it renames the temp file
+   onto the destination, which replaces the file atomically. If `gitlab-<role>.token` is a
+   symlink (§2's link layout), the rename lands on the link's target, so the link survives,
+   the same way `desktoken` handles it (§5). A link that resolves outside `--out-dir` is
+   refused during preflight.
+4. **The report** gives only the role, the destination path and the outcome for each role
+   (`rotated`, `created`, `skipped-in-use (…)`, `failed (…)`, `not-attempted`). It never
+   includes a secret, a username or a token id. The summary counts renewed roles and skipped
+   roles separately, and states the new expiry only for the renewed ones: a skipped role's
+   PAT keeps its previous expiry.
+
+**Exit status.** `0`: every selected role was renewed (with `--dry-run`, the plan passed
+preflight). `1`: a preflight refusal (nothing changed) or a role failed part-way. `2`: a usage
+error. `3`: the run finished, but at least one role was skipped as in-use and **not** renewed.
+The summary names those roles and prints the `--only <roles> --rotate-in-use` re-run for once
+nothing holds them. A run that skipped a role never exits `0`, so a fleet with one role left
+behind cannot look fully renewed.
+
+**A rotation invalidates the old credential immediately.** GitLab revokes a role's previous PAT
+as soon as it accepts the rotation. Any process still holding the old value then gets a `401`.
+Stop the fleet's desk sessions before you renew. `desktoken`'s per-role rotation lock applies
+only between `desktoken` calls, and this script does not take it.
+
+**The operation is not atomic across the fleet.** Each role's file swap is atomic. The fleet as
+a whole cannot be, because each role is a separate rotation on the forge. The run stops at the
+first role that fails. Roles before that one have been renewed, and roles after it have not
+been touched. The script then prints the `--only <role,...>` list that resumes the run: fix the
+cause and re-run the same command with that flag. A role that failed during its own rotation
+(a `glab` error or malformed output) may already have lost its old credential on the forge. The
+resume rotates that role's current active PAT again, or creates one if it has none, so it
+recovers without any hand work.
 
 ## 3. By-hand table — what the script does, if you'd rather read the REST calls
 

@@ -132,6 +132,11 @@ func phantomCheck(o dispatchOpts, repo string) (phantomFollowUp, error) {
 				"worker on a phantom row — nothing was claimed; retry.",
 			stepClaimAcquire, repo, briefID, err), err)
 	}
+	// A PR that only AUTHORED the brief is not its delivery (authoring.go). The drop runs BEFORE
+	// representingPRs so a --rework dispatch can never follow up an authoring PR.
+	if prs, err = dropBriefAuthoringPRs(repo, briefID, prs); err != nil {
+		return none, err
+	}
 	open, merged := representingPRs(briefID, prs)
 	if len(open) > 0 {
 		n := open[0]
@@ -152,12 +157,15 @@ func phantomCheck(o dispatchOpts, repo string) (phantomFollowUp, error) {
 		if o.rework {
 			return phantomFollowUp{pr: n}, nil
 		}
+		short := deskkit.RepoShortLabel(repo)
 		return none, deskkit.Refused(fmt.Sprintf(
-			"step %s: %s is already DELIVERED by MERGED %s#%d — matched on that PR's `Brief: %s` trailer, not "+
+			"step %s: %s is already DELIVERED by %s#%d (MERGED) — matched on that PR's `Brief: %s` trailer, not "+
 				"on a branch name. A merged PR cannot be resumed and its branch must never be re-cut. If the row "+
 				"awaits implementer REWORK (last verdict FAIL), re-dispatch with --rework: it becomes a FOLLOW-UP "+
-				"on a new branch. Otherwise the board row is stale — reconcile it; do not fresh-dispatch over it.",
-			stepClaimAcquire, briefID, repo, n, briefID))
+				"on a new branch. Otherwise any further fix is NOT this brief's rework: file it as a fresh issue "+
+				"and dispatch that issue's key (`%s--issue-<N>`, PR trailer `Issue: #<N>`) — never fresh-dispatch "+
+				"the brief key %s.",
+			stepClaimAcquire, briefID, repo, n, briefID, short, briefID))
 	}
 	return none, nil
 }

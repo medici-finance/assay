@@ -68,13 +68,64 @@ func TestPhantomCheckExcludesOnAMergedPR(t *testing.T) {
 }
 
 // A CLOSED-unmerged PR does NOT represent its brief: the work was abandoned, so the row is
-// dispatchable again.
+// dispatchable again — no refusal, and so no "resume"/"delivered" wording at all. This is the
+// CLOSED half of assay#1654's wording matrix: proving the closed-unmerged case stays silent is
+// what makes the open/merged wording split below exhaustive.
 func TestPhantomCheckIgnoresAClosedUnmergedPR(t *testing.T) {
 	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
 		return []deskkit.PRRef{{Number: 401, State: "CLOSED", Body: "Brief: example-a/00"}}, nil
 	})
 	if _, err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker"}, allowedRepo); err != nil {
 		t.Fatalf("a CLOSED-unmerged PR must NOT block a fresh dispatch (the work was abandoned): %v", err)
+	}
+}
+
+// TestPhantomCheckOpenPRMessageKeepsResumeWording is the OPEN half of assay#1654's wording
+// matrix: an OPEN matched PR keeps today's "resume it" advice unchanged — only the MERGED
+// message's wording changes.
+func TestPhantomCheckOpenPRMessageKeepsResumeWording(t *testing.T) {
+	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
+		return []deskkit.PRRef{{Number: 373, State: "OPEN", Body: "Brief: example-a/00"}}, nil
+	})
+	_, err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker"}, allowedRepo)
+	if err == nil {
+		t.Fatal("an OPEN representing PR must refuse a fresh dispatch")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "Resume the PR (--pr 373)") {
+		t.Errorf("an OPEN match must keep the resume-it wording: %v", err)
+	}
+	if strings.Contains(msg, "DELIVERED") || strings.Contains(msg, "issue's key") {
+		t.Errorf("an OPEN match must not carry the merged/delivered wording: %v", err)
+	}
+}
+
+// TestPhantomCheckMergedPRMessageSaysDeliveredWithIssueKey is assay#1654's fail-first proof for
+// the MERGED half: "Resume the PR (--pr N)" is wrong advice for a merged PR — there is nothing to
+// resume. The refusal must say the brief is already delivered by the merged PR, and that any
+// follow-up fix is dispatched under a fresh ISSUE key (`<repo>--issue-<N>`, trailer `Issue:
+// #<N>`), never re-dispatched under the brief key. The refusal itself (exit 5, still refused) is
+// unchanged — only the wording.
+func TestPhantomCheckMergedPRMessageSaysDeliveredWithIssueKey(t *testing.T) {
+	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
+		return []deskkit.PRRef{{Number: 1334, State: "MERGED", Body: "Brief: example-c/00"}}, nil
+	})
+	_, err := phantomCheck(dispatchOpts{item: "assay--example-c--00", kit: "worker"}, allowedRepo)
+	if err == nil {
+		t.Fatal("a MERGED representing PR must still refuse a fresh dispatch — behaviour is unchanged")
+	}
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
+		t.Fatalf("a MERGED phantom is a REFUSAL (exit 5), got exit %d: %v", deskkit.ExitCodeOf(err), err)
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "Resume the PR") {
+		t.Errorf("a MERGED PR cannot be resumed — the message must not say so: %v", err)
+	}
+	if !strings.Contains(msg, "DELIVERED by "+allowedRepo+"#1334 (MERGED)") {
+		t.Errorf("the message must say the brief is already delivered by the merged PR: %v", err)
+	}
+	if !strings.Contains(msg, "assay--issue-<N>") || !strings.Contains(msg, "Issue: #<N>") {
+		t.Errorf("the message must point a follow-up fix at a fresh issue key, not the brief key: %v", err)
 	}
 }
 

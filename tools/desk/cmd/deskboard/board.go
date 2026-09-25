@@ -697,6 +697,66 @@ type reviewState struct {
 	// surfaces the row as EXTERNAL-PREREQ-REVIEW and leaves the authoritative grant to the
 	// ready gate (deskpost/ready.go), so the two surfaces agree on what the row IS.
 	externalPrereqDeclared bool
+	// bodyEditReverified is true when a row reduceReviews marked suspectNoOp was LIFTED by
+	// applyBodyEditReverification: every standing CR at head declared the documented body-edit
+	// re-verification class and a later correctness APPROVE documents and verifies it against
+	// the live PR body (deskkit.EvaluateBodyEditReverification — the SAME decision deskflip's
+	// reviewer-approved gate runs). The row then reads approved at head and flows through the
+	// ordinary CI / mergeability / security arms; this flag only annotates its note.
+	bodyEditReverified bool
+}
+
+// applyBodyEditReverification applies the ruled documented body-edit re-verification class
+// to a reduction that suppressed a same-head APPROVE (suspectNoOp). It is a no-op on every
+// other shape, and on a declared external-prerequisite row (that class has its own surface).
+//
+// It mirrors deskflip's gate exactly rather than approximating it: EVERY reviewer CR at head
+// must be cleared by the shared decision (one undeclared or failing CR keeps the row
+// suppressed), the candidate APPROVEs are the reviewer's, at head, correctness lane only,
+// the digest is checked against the body THIS sweep read, and "edited after the CR" is
+// established from the forge's own lastEditedAt THIS sweep read (empty — GitLab, or never
+// edited — keeps the row suppressed). When it lifts, the effective
+// verdict becomes the governing same-head APPROVE — the ruling's "the same-head APPROVE
+// stands" — and CI green stays the board's own CI verdict, never the citation's.
+func applyBodyEditReverification(st reviewState, reviews []review, head, liveBody, bodyEditedAt string) reviewState {
+	if !st.atHead || !st.blocking || !st.suspectNoOp || st.externalPrereqDeclared {
+		return st
+	}
+	var crs []review
+	var approves []deskkit.BodyEditApprove
+	var lastApprove string
+	for _, r := range reviews {
+		if !isReviewerBot(r.User.Login) || !sameHead(r.CommitID, head) {
+			continue
+		}
+		switch r.State {
+		case "CHANGES_REQUESTED":
+			crs = append(crs, r)
+		case "APPROVED":
+			if classifySecurityBody(r.Body) != secNone {
+				continue
+			}
+			approves = append(approves, deskkit.BodyEditApprove{Body: r.Body, SubmittedAt: r.SubmittedAt})
+			lastApprove = r.SubmittedAt
+		}
+	}
+	if len(crs) == 0 || len(approves) == 0 {
+		return st
+	}
+	for _, cr := range crs {
+		dec := deskkit.EvaluateBodyEditReverification(deskkit.BodyEditInput{
+			CRBody: cr.Body, CRSubmittedAt: cr.SubmittedAt, Head: head, Approves: approves, LiveBody: liveBody,
+			BodyEditedAt: bodyEditedAt,
+		})
+		if !dec.Cleared {
+			return st
+		}
+	}
+	st.blocking, st.approved, st.suspectNoOp, st.bodyEditReverified = false, true, false, true
+	if t, err := time.Parse(time.RFC3339, lastApprove); err == nil {
+		st.lastReviewAt, st.approvedAt = t, t
+	}
+	return st
 }
 
 // sameHead reports whether a review's commit sha and the PR's head sha are the SAME
@@ -2057,6 +2117,7 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 			"established rather than failing the sweep", err))
 	} else {
 		rs = reduceReviews(reviews, p.HeadRefOid)
+		rs = applyBodyEditReverification(rs, reviews, p.HeadRefOid, p.Body, p.LastEditedAt)
 	}
 
 	// #1652: an empty rollup is ambiguous until probed. The probe runs ONLY on a truly
@@ -2206,6 +2267,10 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	in.riskReason = riskReason
 
 	action, note := classify(in)
+	if rs.bodyEditReverified {
+		note += " — same-head APPROVE accepted under the documented body-edit re-verification class " +
+			"(deskflip re-verifies it at the gate)"
+	}
 	if len(degradeReasons) > 0 {
 		// The row's RENDERED text carries the could-not-check reason(s) that produced the
 		// degrade, whether or not the classify() arm it landed on would otherwise have

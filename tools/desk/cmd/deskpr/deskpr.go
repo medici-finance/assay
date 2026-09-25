@@ -51,6 +51,7 @@ type gitFacts struct {
 	defaultRef    string // fully-qualified remote-tracking ref, e.g. "refs/remotes/origin/main" (unambiguous by construction, #840)
 	repo          string // owner/name
 	head          string // HEAD sha
+	originURL     string // origin's fetch URL as git resolves it (effectiveOriginURL)
 }
 
 // auditCtx accumulates the fields for the ONE audit line every invocation emits
@@ -138,7 +139,8 @@ func cmdCreate(args []string) (err error) {
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
-	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the Brief:/Issue: trailer, the secret scan, the public-repo self-containment scan, the push-transport gate, the publish-identity gate) and stop BEFORE minting a token or opening any connection — exit 0 only when every local gate passed; a category this cannot decide offline is reported, by name, as not checked")
+	decided := fs.String("decided", "", "path to a file declaring desk-taken decisions (decision:/alternative:/cost: triples, one item per numbered line) — writes the `## Desk-decided` block into the body and applies the desk-decided label; a PR that only transcribes recorded rulings passes none of this")
+	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the Brief:/Authors:/Issue: trailer, the secret scan, the public-repo self-containment scan, the push-transport gate, the publish-identity gate) and stop BEFORE minting a token or opening any connection — exit 0 only when every local gate passed; a category this cannot decide offline is reported, by name, as not checked")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -172,6 +174,14 @@ func cmdCreate(args []string) (err error) {
 	if berr != nil {
 		return berr
 	}
+	// --decided (attention-budget/19): fold the desk-decided block into the body BEFORE any
+	// scan or network call — an empty file or an item missing a field refuses here (exit 5),
+	// with no PR call made. See decided.go for why create refuses on a hand-written heading
+	// where edit instead replaces one in place.
+	body, dberr := injectDecidedBlock(body, *decided, "create")
+	if dberr != nil {
+		return dberr
+	}
 	if serr := deskkit.HandleScanRefusal(deskkit.ScanOverride{
 		Tool: "deskpr", Verb: "create", Reason: *scanOverride,
 		Surface: "PR body", Content: body,
@@ -196,6 +206,27 @@ func cmdCreate(args []string) (err error) {
 		return perr
 	}
 	ac.repo, ac.head = facts.repo, facts.head
+
+	// PUSH-destination gate (#1623): git's own resolved push URL list must be exactly one https
+	// URL naming facts.repo. It asks git where the push will actually go (pushurl from every
+	// scope, insteadOf / pushInsteadOf, multi-valued lists) and refuses anything else,
+	// fail-closed, naming each value's scope and a worktree-scoped remedy. It runs FIRST, so an
+	// SSH destination is refused here with that remedy; the transport gate below still runs for
+	// its https credential-helper NOTICE.
+	if derr := pushDestinationGate(facts.dir, "create", facts.repo, facts.originURL); derr != nil {
+		return derr
+	}
+
+	// #1339: a `Brief:` trailer on a branch that only AUTHORS the brief is refused before
+	// anything leaves the machine — it would make the brief read as delivered on merge. The
+	// mirror case (review F1 on #1641) is also refused here: an `Authors:` trailer on a
+	// branch whose diff is NOT provably authoring-only for every listed id, since `Authors:`
+	// switches off the security lane's brief-declared risk term for a `Brief:` PR. Local (git
+	// only), so it is part of --check. create only: update/edit act on an existing PR whose
+	// trailer is immutable, and refusing them would strand that PR.
+	if aerr := authoringTrailerGate(body, facts.dir, "refs/remotes/origin/"+*base); aerr != nil {
+		return aerr
+	}
 
 	// PUSH-transport custody gate (#861). An SSH push from a bot session goes out under
 	// whatever key this machine's agent holds — a human's — so the forge records the human
@@ -250,7 +281,7 @@ func cmdCreate(args []string) (err error) {
 
 	// --check stops HERE, before the token mint and before any forge call. Every gate
 	// above it is local: flags, the secret scan (title/branch/diff, plus the body scan
-	// earlier), the Brief:/Issue: trailer, branch state (preflight), the push-transport
+	// earlier), the Brief:/Authors:/Issue: trailer, branch state (preflight), the push-transport
 	// gate, and the public-repo self-containment scan (its bare-#N category already
 	// reports itself "not checked" on stderr via SelfContainOpts.Notices when no local
 	// hint is available — see selfcontain.go — so nothing here rounds that up to a pass).
@@ -333,7 +364,7 @@ func cmdCreate(args []string) (err error) {
 	}
 
 	// On-behalf-of trailer (multi-principal/01), appended to the body sent to the forge
-	// only — every gate above (the Brief:/Issue: trailer parse, the secret/self-contain
+	// only — every gate above (the Brief:/Authors:/Issue: trailer parse, the secret/self-contain
 	// scans) already ran against the caller-supplied body, so this cannot change what any
 	// of them saw.
 	prBody, oerr := deskkit.AppendOnBehalfOf(body, "", facts.repo)
@@ -368,6 +399,15 @@ func cmdCreate(args []string) (err error) {
 				"%s was created, but opening its merge-hold marker thread failed: %v — the change exists "+
 					"WITHOUT its server-side merge gate armed. Open one by hand (or re-run this step) before "+
 					"the PR is reviewed.", url, hErr), hErr)
+		}
+		// --decided (attention-budget/19): the block is already IN the body the create call
+		// just published — this only mirrors it as the at-a-glance label. A PR with no
+		// --decided applies no label at all (the transcribe-only shape stays byte-for-byte
+		// what it was before this flag existed).
+		if *decided != "" {
+			if lerr := applyDeskDecidedLabel(fg, fr, n); lerr != nil {
+				return deskDecidedLabelFailure(url, "the PR was opened with its Desk-decided block", lerr)
+			}
 		}
 		// Post-create mergeable check (#770): a PR GitHub reports CONFLICTING gets zero
 		// pull_request runs at its head — indistinguishable, on the audit line or any
@@ -459,7 +499,7 @@ func cmdUpdate(args []string) (err error) {
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
-	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the secret scan, the push-transport gate, the publish-identity gate) and stop BEFORE minting a token or opening any connection; the Brief:/Issue: trailer lives on the EXISTING PR's forge-held body and is reported not checked, by name, rather than skipped silently")
+	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the secret scan, the push-transport gate, the publish-identity gate) and stop BEFORE minting a token or opening any connection; the Brief:/Authors:/Issue: trailer lives on the EXISTING PR's forge-held body and is reported not checked, by name, rather than skipped silently")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -491,6 +531,16 @@ func cmdUpdate(args []string) (err error) {
 	}
 	ac.repo, ac.head = facts.repo, facts.head
 
+	// PUSH-destination gate (#1623): git's own resolved push URL list must be exactly one https
+	// URL naming facts.repo. It asks git where the push will actually go (pushurl from every
+	// scope, insteadOf / pushInsteadOf, multi-valued lists) and refuses anything else,
+	// fail-closed, naming each value's scope and a worktree-scoped remedy. It runs FIRST, so an
+	// SSH destination is refused here with that remedy; the transport gate below still runs for
+	// its https credential-helper NOTICE.
+	if derr := pushDestinationGate(facts.dir, "update", facts.repo, facts.originURL); derr != nil {
+		return derr
+	}
+
 	// PUSH-transport custody gate (#861) — same reason as create: this verb pushes.
 	if terr := pushTransportGate(facts.dir, "update"); terr != nil {
 		return terr
@@ -509,7 +559,7 @@ func cmdUpdate(args []string) (err error) {
 
 	// --check stops HERE, before the token mint and before any forge call. Every gate
 	// above it is local: flags, branch state (preflight), the push-transport gate, and
-	// the secret scan (branch name + diff). The Brief:/Issue: trailer check is NOT run:
+	// the secret scan (branch name + diff). The Brief:/Authors:/Issue: trailer check is NOT run:
 	// update pushes commits to an EXISTING PR and validates the trailer against that
 	// PR's CURRENT body, which lives on the forge — there is no local copy to check it
 	// against, so it is reported as not checked, by name, rather than silently skipped
@@ -518,7 +568,7 @@ func cmdUpdate(args []string) (err error) {
 		ac.successResult = deskkit.ResultDryRun
 		ac.detail = "check: every local gate passed"
 		fmt.Println("check: ok — every local gate passed; no connection opened, nothing pushed. " +
-			"Not checked (needs the forge, not run here): the Brief:/Issue: trailer on the existing " +
+			"Not checked (needs the forge, not run here): the Brief:/Authors:/Issue: trailer on the existing " +
 			"PR's current body, whether an open PR exists for this branch, the outward-write rate " +
 			"limit, and the public-repo authorization gate.")
 		return nil
@@ -644,9 +694,12 @@ func preflight(dir, base string) (*gitFacts, error) {
 		return nil, deskkit.Refused("refused: on the default branch (" + branch + ")")
 	}
 
-	originURL, oerr := gitRepo.RemoteURL("origin")
+	// Decide the repo on origin's URL AS GIT RESOLVES IT (#1623), never on go-git's read of the
+	// repository config file alone: the push below resolves origin itself (worktree and global
+	// scope, insteadOf), and a gate that reads something else can pass a repo git never uses.
+	originURL, oerr := effectiveOriginURL(dir)
 	if oerr != nil {
-		return nil, deskkit.Unverifiable("cannot read remote.origin.url", oerr)
+		return nil, oerr
 	}
 	repo, rerr := parseRepo(originURL)
 	if rerr != nil {
@@ -710,7 +763,7 @@ func preflight(dir, base string) (*gitFacts, error) {
 	head := headHash.String()
 	return &gitFacts{
 		dir: dir, branch: branch, defaultBranch: defaultBranch,
-		defaultRef: defaultRef, repo: repo, head: head,
+		defaultRef: defaultRef, repo: repo, head: head, originURL: originURL,
 	}, nil
 }
 
@@ -931,9 +984,10 @@ func parseRepo(raw string) (string, error) {
 }
 
 // requireTrailer enforces the example-stream/02 link grammar on a PR body: exactly one
-// `Brief: <stream>/<NN>` that resolves to a brief file under --root, or `Issue: #<N>` for
-// issue-only work. Absence, duplicates, both-kinds and non-resolving briefs are all
-// constraint refusals (exit 5). There is deliberately no bypass flag — a worker-typeable
+// `Brief: <stream>/<NN>` that resolves to a brief file under --root (the PR DELIVERS that
+// brief), `Authors: <stream>/<NN>[, …]` whose every entry resolves the same way (the PR only
+// AUTHORS those briefs — #1339), or `Issue: #<N>` for issue-only work. Absence, duplicates,
+// mixed kinds and non-resolving briefs are all constraint refusals (exit 5). There is deliberately no bypass flag — a worker-typeable
 // bypass makes the edge asserted again.
 //
 // The one exempt body is the machine-derived issue-loop scan carrier, recognised by the
@@ -966,6 +1020,7 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 	if len(trs) == 0 {
 		return 0, deskkit.SchemaRefusal("deskpr", "--check", "refused: PR body carries no trailer — add exactly one line "+
 			"`Brief: <stream>/<NN>` naming the brief this PR delivers (e.g. `Brief: example-stream/02`), "+
+			"`Authors: <stream>/<NN>[, …]` naming the brief(s) a briefs-authoring PR writes, "+
 			"or `Issue: #<N>` for issue-only work")
 	}
 	if trs[0].Kind == deskkit.TrailerIssue {
@@ -978,22 +1033,189 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 		}
 		return n, nil
 	}
-	stream, nn, ok := splitBriefTrailer(trs[0].Value)
-	if !ok {
-		return 0, deskkit.Refused(fmt.Sprintf("refused: trailer %q does not name a brief as <stream>/<NN> or <stream>:<NN>", trs[0].Value))
-	}
 	// A relative --root resolves against the WORK DIR (the getwd seam), never the
 	// process cwd — tests call cmdCreate directly with a bound getwd, and a glob
 	// against the real process cwd would silently miss the fixture.
 	if !filepath.IsAbs(root) {
 		root = filepath.Join(dir, root)
 	}
-	matches, _ := filepath.Glob(filepath.Join(root, "docs", "streams", stream, "brief-"+nn+"-*.md"))
-	if len(matches) == 0 {
-		return 0, deskkit.Refused(fmt.Sprintf("refused: `Brief: %s` does not resolve to a brief under --root: no %s found",
-			trs[0].Value, filepath.Join(root, "docs", "streams", stream, "brief-"+nn+"-*.md")))
+	if trs[0].Kind == deskkit.TrailerAuthors {
+		ids, aerr := deskkit.SplitAuthorsTrailer(trs[0].Value)
+		if aerr != nil {
+			return 0, deskkit.Refused("refused: " + aerr.Error())
+		}
+		for _, id := range ids {
+			stream, nn, _ := splitBriefTrailer(id)
+			if rerr := resolveBriefFile(root, "Authors", id, stream, nn); rerr != nil {
+				return 0, rerr
+			}
+		}
+		return 0, nil
+	}
+	stream, nn, ok := splitBriefTrailer(trs[0].Value)
+	if !ok {
+		return 0, deskkit.Refused(fmt.Sprintf("refused: trailer %q does not name a brief as <stream>/<NN> or <stream>:<NN>", trs[0].Value))
+	}
+	if rerr := resolveBriefFile(root, "Brief", trs[0].Value, stream, nn); rerr != nil {
+		return 0, rerr
 	}
 	return 0, nil
+}
+
+// resolveBriefFile refuses unless docs/streams/<stream>/brief-<NN>-*.md exists under root.
+// keyword and value name the trailer entry in the refusal, exactly as written.
+func resolveBriefFile(root, keyword, value, stream, nn string) error {
+	pattern := filepath.Join(root, "docs", "streams", stream, "brief-"+nn+"-*.md")
+	matches, _ := filepath.Glob(pattern)
+	if len(matches) == 0 {
+		return deskkit.Refused(fmt.Sprintf("refused: `%s: %s` does not resolve to a brief under --root: no %s found",
+			keyword, value, pattern))
+	}
+	return nil
+}
+
+// authoringTrailerGate refuses two mirror-image mismatches between a `Brief:`/`Authors:`
+// trailer and what the branch's diff actually is (#1339, hardened for review F1 on
+// medici-finance/assay#1641):
+//
+//   - `Brief:` on a branch whose diff only AUTHORS that brief. `Brief:` asserts delivery: the
+//     dispatcher's phantom check, the planner's reconciliation and the derived board all read
+//     it as "this PR delivers the brief", so a docs-only PR that merely wrote the brief file
+//     and carried `Brief:` made the brief read as delivered the moment it merged.
+//   - `Authors:` on a branch whose diff is NOT provably authoring-only for every listed id.
+//     `Authors:` asserts the opposite — "no delivery" — and nothing that reads `Brief:` as
+//     delivery matches it, INCLUDING the security lane's brief-declared risk term
+//     (deskkit.BriefRiskFromBody keys on Brief: only). A PR that actually delivers code or a
+//     document for a `gate: human` / `risk: yes` brief could therefore carry `Authors:` and
+//     switch that term off. deskflip's checkSecurityVerdict carries the binding half of this
+//     fix (deskkit.AuthorsRiskFromBody, read again at flip time so this client-side gate is
+//     not the only thing standing between the diff and the claim); this is the writer half,
+//     refusing before the mismatch ever leaves the machine.
+//
+// Both directions are judged by the SAME classification, deskkit.BriefAuthoringOnly — the
+// dispatcher applies it to already-merged PRs, so the writer and every reader agree on what
+// an authoring PR is. The branch's changed files come from the merge-base (baseRef to HEAD).
+// A rename's old path is not visible to this local diff read, so BriefAuthoringOnly cannot
+// prove authoring-only across one; the two directions treat that ONLY-WIDENING failure
+// oppositely, on purpose — `Brief:` is left alone (not provably authoring-only leaves the
+// existing "this is a delivery" answer standing), while `Authors:` is refused (not provably
+// authoring-only means the claim is not backed, so it is refused rather than trusted; #1339
+// review F1's "self-verifying" ask). `Issue:` bodies are never inspected by either direction.
+// There is no bypass flag: the remedy is to write the right trailer, which costs nothing.
+func authoringTrailerGate(body []byte, dir, baseRef string) error {
+	trs, err := deskkit.ParseTrailers(body)
+	if err != nil || len(trs) == 0 {
+		return nil
+	}
+	switch trs[0].Kind {
+	case deskkit.TrailerBrief:
+		return authoringTrailerGateBrief(trs[0].Value, dir, baseRef)
+	case deskkit.TrailerAuthors:
+		return authoringTrailerGateAuthors(trs[0].Value, dir, baseRef)
+	default:
+		return nil
+	}
+}
+
+// branchAuthoringFiles reads the branch's changed files (merge-base with baseRef to HEAD) in
+// the deskkit.ChangedFile shape deskkit.BriefAuthoringOnly takes. hadRename reports whether
+// the diff included a rename/copy, whose pre-image path this local git read does not surface
+// (git diff --name-status reports only the destination for an R/C entry without `-M`/`-C`
+// detection turned on here) — neither authoringTrailerGate direction can PROVE the authoring
+// shape across one, so the caller decides what "not provably authoring-only" means for its
+// trailer kind (see authoringTrailerGate's doc).
+func branchAuthoringFiles(dir, baseRef string) (files []deskkit.ChangedFile, hadRename bool, err error) {
+	repo, oerr := gitcore.Open(dir)
+	if oerr != nil {
+		return nil, false, oerr
+	}
+	mb, merr := repo.MergeBase(baseRef, "HEAD")
+	if merr != nil {
+		return nil, false, merr
+	}
+	changes, derr := repo.DiffNameStatus(strings.TrimSpace(mb), "HEAD")
+	if derr != nil {
+		return nil, false, derr
+	}
+	files = make([]deskkit.ChangedFile, 0, len(changes))
+	for _, c := range changes {
+		switch c.Status {
+		case "A":
+			files = append(files, deskkit.ChangedFile{Filename: c.Path, Status: "added"})
+		case "M":
+			files = append(files, deskkit.ChangedFile{Filename: c.Path, Status: "modified"})
+		case "D":
+			files = append(files, deskkit.ChangedFile{Filename: c.Path, Status: "removed"})
+		default:
+			hadRename = true
+		}
+	}
+	return files, hadRename, nil
+}
+
+// authoringTrailerGateBrief is the `Brief:` direction of authoringTrailerGate.
+func authoringTrailerGateBrief(value, dir, baseRef string) error {
+	id := deskkit.CanonicalBriefID(value)
+	if id == "" {
+		return nil
+	}
+	files, hadRename, rerr := branchAuthoringFiles(dir, baseRef)
+	if rerr != nil {
+		return deskkit.Unverifiable("cannot read the branch diff to check the Brief: trailer against it", rerr)
+	}
+	if hadRename {
+		return nil // not provably authoring-only: a rename's old path is not visible here
+	}
+	if !deskkit.BriefAuthoringOnly(id, files) {
+		return nil
+	}
+	return deskkit.Refused(fmt.Sprintf(
+		"refused: the body carries `Brief: %s`, but this branch only AUTHORS that brief — it adds the brief's "+
+			"file and touches nothing but stream board READMEs, brief files and changelog fragments. `Brief:` "+
+			"means the PR DELIVERS the brief, and every reader (the dispatcher's phantom check, the planner, the "+
+			"derived board) would then treat %s as delivered the moment this merges, so it could never be "+
+			"dispatched. Replace the line with `Authors: %s` (list every brief the PR writes, comma-separated), "+
+			"or `Issue: #<N>` if the authoring answers an issue.", value, id, id))
+}
+
+// authoringTrailerGateAuthors is the `Authors:` direction of authoringTrailerGate (#1339
+// review F1). It refuses unless the branch diff satisfies deskkit.BriefAuthoringOnly for
+// EVERY id the trailer lists — including refusing (not silently leaving alone) when the diff
+// carries a rename this local read cannot classify, since `Authors:` is refused whenever the
+// authoring shape is not PROVEN, not merely when it is disproven. A malformed/empty value is
+// left to the separate resolveBriefFile trailer-shape gate, which already refuses it.
+func authoringTrailerGateAuthors(value, dir, baseRef string) error {
+	ids, aerr := deskkit.SplitAuthorsTrailer(value)
+	if aerr != nil || len(ids) == 0 {
+		return nil
+	}
+	files, hadRename, rerr := branchAuthoringFiles(dir, baseRef)
+	if rerr != nil {
+		return deskkit.Unverifiable("cannot read the branch diff to check the Authors: trailer against it", rerr)
+	}
+	if hadRename {
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: the body carries `Authors: %s`, but this branch's diff includes a rename whose old path "+
+				"this local read cannot see, so the authoring shape cannot be proven. `Authors:` asserts the "+
+				"branch ONLY authors the named brief(s) — including the security lane's brief-declared risk term, "+
+				"which does not consult a Brief: this trailer replaces — so an unprovable diff is refused rather "+
+				"than trusted. Split the rename out of this branch, or use `Brief:`/`Issue:` if the branch "+
+				"delivers code or a document.", value))
+	}
+	for _, id := range ids {
+		if deskkit.BriefAuthoringOnly(id, files) {
+			continue
+		}
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: the body carries `Authors: %s`, but this branch's diff is not authoring-only for %s — it "+
+				"touches a path other than a stream board README, a brief file or a changelog fragment, or it "+
+				"does not ADD %s's own brief file. `Authors:` switches off the security lane's brief-declared "+
+				"risk term for %s (deskkit.BriefRiskFromBody reads `Brief:` only), so it is refused unless the "+
+				"diff provably authors only the listed brief(s). Use `Brief:` (singular) if this branch delivers "+
+				"%s's own content, drop %s from the list if this branch only modifies its brief file, or split the "+
+				"non-authoring change into its own PR.", value, id, id, id, id, id))
+	}
+	return nil
 }
 
 // splitBriefTrailer reduces the accepted trailer value forms to (stream, NN):

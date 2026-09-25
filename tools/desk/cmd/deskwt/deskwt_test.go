@@ -105,15 +105,15 @@ func withEnv(t *testing.T, work string) *[][]string {
 	// role-init's two envelope seams (#1309 item 7): a fixture has no App credential to mint
 	// and no forge to preflight against, so the minter hands back a fixture token FILE (its
 	// path, never a value on stdout) and the preflight is green unless a test says otherwise.
-	oldTok := roleTokenPath
-	roleTokenPath = func(role, owner string) (string, error) {
+	oldCred := roleCredential
+	roleCredential = func(role string, repo deskkit.ForgeRepo, originURL string) (deskkit.RoleCredential, error) {
 		p := filepath.Join(fixtureHome, role+"-token-fixture")
 		if err := os.WriteFile(p, []byte(fixtureTokenValue+"\n"), 0o600); err != nil {
-			return "", err
+			return deskkit.RoleCredential{}, err
 		}
-		return p, nil
+		return deskkit.RoleCredential{Token: fixtureTokenValue, Path: p}, nil
 	}
-	t.Cleanup(func() { roleTokenPath = oldTok })
+	t.Cleanup(func() { roleCredential = oldCred })
 	oldPf := roleInitPreflight
 	roleInitPreflight = func(deskkit.PreflightRequest) error { return nil }
 	t.Cleanup(func() { roleInitPreflight = oldPf })

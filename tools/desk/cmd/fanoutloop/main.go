@@ -56,6 +56,8 @@ func main() {
 	// wires its own recorded transport), while the real binary reconciles against the repo's
 	// open+merged changes read through the typed Forge seam.
 	representedPRs = liveRepresentedPRs
+	// The briefs-authoring exemption's file transport (#1339), wired beside it for the same reason.
+	representedPRFiles = liveRepresentedPRFiles
 	os.Exit(run(os.Args[1:]))
 }
 
@@ -122,7 +124,7 @@ func cmdPlan(args []string) error {
 	// before.
 	if representedPRs != nil {
 		if resolved, rerr := resolveRepoForPlan(*root, *repo); rerr == nil {
-			f.Represented = representedSourceFor(resolved)
+			f.Represented = representedSourceFor(resolved, f.candidateBriefIDs)
 		} else {
 			heldErr := rerr
 			f.Represented = func() (map[string]deskkit.RepresentedPR, error) { return nil, heldErr }
@@ -265,7 +267,8 @@ review-request dispatch tokens skipped), each item's tier, and the exact dispatc
 spawns nothing and writes nothing. The already-represented reconciliation (#1339) routes a fresh row
 whose brief already has a MERGED PR to the LANDED-UNRECONCILED listing (its board cell just never
 reconciled) and never dispatches it, routes one with an OPEN PR to the resume lane, and dispatches
-only unrepresented rows; a could-not-check read HOLDS the fresh lane (a 'FRESH LANE HELD:' line states
+only unrepresented rows. A PR that only AUTHORED the queued brief (a docs-only PR adding its brief
+file) is not its delivery and represents nothing; an Authors: trailer never represents a brief; a could-not-check read HOLDS the fresh lane (a 'FRESH LANE HELD:' line states
 why) rather than offering rows on an unverified forge. --repo names the repo to reconcile against; it
 defaults to the repo the configured roots map --root to, else the checkout's origin remote. That
 reconciliation's PR-list transport is DEFERRED (the closed forge surface ships no forge-CLI call; the
