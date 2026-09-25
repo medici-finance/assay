@@ -158,39 +158,28 @@ Go path.
 
 ## Authenticated transport
 
-<!-- BEGIN authenticated transport
-     This block exists to be DELETED. When desk-tools/08 lands (`deskgit push` and
-     `deskgit fetch`, authenticated transport from the role's token file), this whole block
-     collapses to naming those two verbs. It is bracketed by the BEGIN/END markers so that
-     retirement is a single edit, not a hunt across the file. -->
+**Mechanism.** `deskgit fetch --as <role>` and `deskgit push --as <role>` read the role's
+token from its file and supply it to git through an ephemeral, host-scoped credential
+helper (`x-access-token` as the username, the token as the password), minted fresh per
+invocation — the token never reaches argv, a URL, stdout, or the audit line. `--as <role>`
+must equal the role this session's loop identity binds; a mismatch is refused before any
+token is read. Plain `deskgit fetch` (no `--as`) is unchanged — no identity check, no
+credential path.
 
-**Mechanism.** The canonical fetch/push form reads the role's token from its **file** and
-presents it through a git credential helper as HTTP Basic auth — username `x-access-token`,
-the token as the password. A token embedded directly in the remote URL is refused. Use the
-explicit `:443` host form so a local URL rewrite (an `insteadOf` rule) does not silently
-re-point the remote. A `401` on push or fetch means one of two things: the token has a short
-TTL and has expired (re-mint it), or an OS keychain credential helper is shadowing the one you
-supplied (reset `credential.helper` to empty first, then supply yours).
-
-**Signal.** `401 Unauthorized` / `Authentication failed`; or a remote-URL rewrite sending the
-push to an unexpected host; or a refusal to accept a token embedded in the URL.
+**Signal.** Exit 5 (refused): a `--as` role that does not match the session's bound loop
+identity, an origin whose host is not exactly `github.com`, or a local-path origin under
+`--as`. Exit 6 (unverifiable): the effective origin URL could not be positively resolved.
 
 **Correct form.**
 
 ```
-TOK=$(cat "$ROLE_TOKEN_FILE")
-git -C /abs/worktree \
-  -c credential.helper='!f(){ echo username=x-access-token; echo "password=$TOK"; };f' \
-  push https://github.com:443/<owner>/<repo> HEAD:<branch>
-# On 401: either re-mint the short-TTL token, or clear a shadowing OS keychain helper first —
-#   git -C /abs/worktree -c credential.helper= -c credential.helper='!f(){ … };f' push …
+deskgit fetch --as <role>     # authenticated refresh
+deskgit push --as <role>      # push the current branch, authenticated
 ```
 
-When desk-tools/08 lands, this reduces to `deskgit push` for the push side and `deskgit fetch`
-for the fetch side (the latter selects the acting role through a role selector); the flags,
-output and refusal texts of those verbs belong to that brief, not to this file.
-
-<!-- END authenticated transport -->
+Never hand-roll the credential-helper recipe these verbs replace. The full guarantee —
+token-never-touches-argv, the two-layer origin-URL host binding — is documented in
+`tools/desk/README.md` §"Authenticated transport — `--as <role>`", not restated here.
 
 ## Which repositories a role can see
 
