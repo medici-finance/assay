@@ -62,16 +62,28 @@ func installFixtureRoster() (cleanup func(), err error) {
 	if err := os.WriteFile(filepath.Join(dir, "roster.env"), []byte(fixtureRoster), 0o600); err != nil {
 		return nil, err
 	}
-	prev, had := os.LookupEnv("HOME")
-	if err := os.Setenv("HOME", home); err != nil {
-		return nil, err
+	// Every platform's home variable, not only HOME: os.UserHomeDir reads %USERPROFILE% on
+	// Windows, so a HOME-only redirect there would leave the roster AND the state directory
+	// (the audit log) resolving to the operator's real home.
+	restore := map[string]*string{}
+	for _, k := range []string{"HOME", "USERPROFILE"} {
+		if v, ok := os.LookupEnv(k); ok {
+			restore[k] = &v
+		} else {
+			restore[k] = nil
+		}
+		if err := os.Setenv(k, home); err != nil {
+			return nil, err
+		}
 	}
 	ReloadConfig()
 	return func() {
-		if had {
-			_ = os.Setenv("HOME", prev)
-		} else {
-			_ = os.Unsetenv("HOME")
+		for k, v := range restore {
+			if v != nil {
+				_ = os.Setenv(k, *v)
+			} else {
+				_ = os.Unsetenv(k)
+			}
 		}
 		os.RemoveAll(home)
 		ReloadConfig()
@@ -79,12 +91,19 @@ func installFixtureRoster() (cleanup func(), err error) {
 }
 
 func TestMain(m *testing.M) {
+	// Resolve the operator's REAL state directory before anything redirects the home, and
+	// guard it for the whole run: a test that resolves it is refused and fails the binary.
+	uninstallGuard := installStateDirGuard()
 	cleanup, err := installFixtureRoster()
 	if err != nil {
 		panic("cannot install the test-fixture roster: " + err.Error())
 	}
 	code := m.Run()
 	cleanup()
+	uninstallGuard()
+	if reportStateDirHits(os.Stderr) && code == 0 {
+		code = 1
+	}
 	os.Exit(code)
 }
 

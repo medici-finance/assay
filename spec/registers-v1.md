@@ -448,6 +448,7 @@ date: "YYYY-MM-DD"
 title: "<one line: what was decided>"
 consequence: minor | major | critical    # the ordered axis required by section 3.5
 decided-by: "human:<name>"                # the design-approval authority
+ruling: "https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<ID>"   # OPTIONAL — section 7.5
 alternatives:
   - "<a path not taken> — <why it was ruled out>"
 accepted:
@@ -479,6 +480,9 @@ can rank its own backlog by blast radius:
   authority (`lifecycle-v1.md` §4.4). A record whose `decided-by` names no human MUST be
   flagged: a design decision on a risk-gated brief is a recorded human act, not a model
   self-sign-off.
+- `ruling` is OPTIONAL. When present it MUST be an issue-comment URL of exactly the form
+  `https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<ID>` (section 7.5); any
+  other shape MUST be flagged, naming the offending value.
 - `alternatives` MUST enumerate at least one path not taken. A record with no
   alternatives records an outcome, not a decision — enumerating the roads not taken, and
   why, is the register's reason for existing.
@@ -501,6 +505,79 @@ itself:
 - Prove the chosen design was correct. That the alternatives were weighed is recorded;
   whether the choice was right is the review gate's judgement, then the change's own
   validation (`docs/validation.md`) after it lands.
+- Prove what a ruling SAID. The section 7.5 corroboration proves who ruled and where — a
+  mapped human, in an unedited comment that names this record, on this record's decision
+  issue — not whether the comment approved or rejected. Whether the record faithfully
+  transcribes the ruling is the review gate's judgement; refusing an edited comment is
+  what keeps the text that judgement reads the text the human wrote. The decision-gate
+  marker in the issue body is read as it stands when the check runs, and the issue body
+  stays editable after the ruling — which is why the comment's own text must also name
+  the record (section 7.5, condition 5).
+
+### 7.5 The ruling link and its corroboration
+
+The human who approves a design rules on the record's **decision issue**, not on the pull
+request that adds the record. A record therefore MAY carry the ruling itself as a link:
+
+```
+decided-by: "human:<name>"
+ruling: "https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<ID>"
+```
+
+`decided-by` names either a real human (a name the adopter's human-login map resolves) or
+the literal placeholder `human:<name>` — the only option on a public repository, where a
+real name cannot be written. `ruling` is the URL of the human's ruling comment on the
+decision issue. This is the one grammar; no other link form is recognised.
+
+**Corroboration.** A conforming corroboration check, run on a pull request that adds or
+edits a record (any added line in the record file), MUST resolve the `ruling` comment
+through the forge and treat the stamp as corroborated ONLY when all of these hold:
+
+1. the link parses to the grammar above and names the record's own repository;
+2. the comment exists, sits on the issue the link names, and was not edited after it was
+   posted (its last-updated time equals its creation time);
+3. its author is not a bot account;
+4. its author's login maps, through the human-login map, to a human — and, when
+   `decided-by` names a real human, to that human;
+5. the comment's own text names the record by its `DR-<slug>` id, as a whole token (a
+   longer id that merely begins with it does not count);
+6. the issue is a decision issue for the same record: it carries the decision-gate marker
+   `<!-- decision-gate: <id> -->` naming the record's own `DR-<slug>`, or naming a brief
+   whose `design:` cites the record (as `<stream>/<NN>`, or a colon work-item id ending
+   `<repo>:<stream>:<NN>` that names the record's own repository).
+
+Conditions 2 and 5 together make the tie between the ruling and the record something the
+human wrote and nobody changed afterwards: the issue-body marker of condition 6 is still
+required, but it is editable after the ruling and so cannot bind the two alone. To correct
+a ruling, the human posts a new comment and the record links that one.
+
+A ruling corroborates exactly ONE name: the human who wrote the comment. When `decided-by`
+names several real humans and the record carries a `ruling` link, every name other than
+the comment author's MUST be reported as a problem (`wrong-author`) — one human's ruling
+never corroborates another's name. A record approved by several humans carries no `ruling`
+link, and each name is then corroborated by its own anchor.
+
+It MUST fail closed, with a named reason, on each way that can go wrong: `malformed-link`,
+`unresolvable-link` (the forge could not be read, or the comment's timestamps could not
+be — never rounded up to a pass), `deleted-comment`, `edited-comment`, `bot-author`,
+`wrong-author`, `record-not-named`, `unrelated-issue`, and `record-unreadable`. A `ruling`
+link that is present but fails MUST fail the stamp even when another anchor (an approval
+on the pull request) would have corroborated the name: the record would otherwise assert a
+provenance that is false.
+
+**The placeholder rule.** A stamp with neither a real name corroborated on the pull
+request nor a resolvable `ruling` link MUST be reported as a problem
+(`placeholder-unratified`). A placeholder is never looked up in the human-login map and
+never corroborated by a pull-request approval — it names nobody.
+
+**Rollout — diff-scoped, no cutover.** The check binds only records the pull request adds
+or edits; a record already merged is not re-gated until a pull request touches it, so
+adopting it reds nothing in flight and no date cutover is needed (contrast the whole-tree
+design-approval gate's `authored:` cutover, `lifecycle-v1.md` §4.4). The consequence is
+intended: a record still awaiting its ruling fails the check on the pull request that adds
+it, because until the ruling exists it is not an approved record. The offline linter's
+share is the `ruling` grammar alone (section 7.3); resolving the link needs the network and
+belongs to the corroboration check.
 
 ## 8. RETRO register (informative — not implemented)
 

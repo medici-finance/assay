@@ -1,6 +1,8 @@
 package main
 
-// checkonlycr_test.go — the ONE exemption to rule 2 (the standing-CHANGES_REQUESTED block).
+// checkonlycr_test.go — rule 2's CHECK-ONLY exemption (the standing-CHANGES_REQUESTED block).
+// It is one of rule 2's two exemptions in this gate; the other, the documented body-edit
+// re-verification class, is pinned in bodyeditcr_test.go.
 //
 // Rule 2 refuses an APPROVE posted at an unchanged head over a standing CR: nothing new
 // exists to verify. The exemption covers the one case that default had no path for — a CR

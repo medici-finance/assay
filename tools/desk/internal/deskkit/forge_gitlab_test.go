@@ -64,8 +64,10 @@ type glServer struct {
 	diffs      []map[string]any
 	commit     map[string]any
 	commits    []map[string]any
-	statuses   []map[string]any
-	jobs       []map[string]any
+	// commitMRs is the merge requests a commit is associated with (ListCommitChanges).
+	commitMRs []map[string]any
+	statuses  []map[string]any
+	jobs      []map[string]any
 	// pipelines is the project-pipelines LIST payload, served by SHA: an entry is returned only
 	// when its "sha" equals the request's ?sha=, so a fixture cannot answer for a head it does
 	// not belong to. Empty/absent → the instance ran no pipeline at that head.
@@ -164,6 +166,14 @@ type glServer struct {
 	// answers 403.
 	pushRule       any
 	pushRuleStatus int
+	// forge-neutral brief 14's run and gate-approval fixtures: triggerPipeline is the trigger
+	// endpoint's pipeline response (RunWorkflow), pipeline the single-pipeline read
+	// (RunStatus), and deployments the project deployments LIST (ApproveGate's environment
+	// shape). The manual-job shape reads the existing `jobs` fixture; the play and approval
+	// POSTs need no fixture.
+	triggerPipeline map[string]any
+	pipeline        map[string]any
+	deployments     []map[string]any
 	// forceStatus maps an escaped-path suffix to the HTTP status to return instead.
 	forceStatus map[string]int
 }
@@ -193,6 +203,7 @@ var (
 	lCommit       = regexp.MustCompile(`/repository/commits/[^/]+$`)
 	lCommitList   = regexp.MustCompile(`/repository/commits$`)
 	lCommitStatus = regexp.MustCompile(`/repository/commits/[^/]+/statuses$`)
+	lCommitMRs    = regexp.MustCompile(`/repository/commits/[^/]+/merge_requests$`)
 	lPipelineJobs = regexp.MustCompile(`/pipelines/[0-9]+/jobs$`)
 	// lPipelines is the project PIPELINES collection (ListOpenChanges' per-change head-pipeline
 	// read, addressed by ?sha=). It is anchored so it cannot also match lPipelineJobs' path.
@@ -215,6 +226,12 @@ var (
 	lProtBranches = regexp.MustCompile(`^/api/v4/projects/[^/]+/protected_branches$`)
 	lProtTags     = regexp.MustCompile(`^/api/v4/projects/[^/]+/protected_tags$`)
 	lPushRule     = regexp.MustCompile(`^/api/v4/projects/[^/]+/push_rule$`)
+	// forge-neutral brief 14's run and gate-approval routes.
+	lTrigger     = regexp.MustCompile(`^/api/v4/projects/[^/]+/trigger/pipeline$`)
+	lPipeline1   = regexp.MustCompile(`^/api/v4/projects/[^/]+/pipelines/[0-9]+$`)
+	lJobPlay     = regexp.MustCompile(`^/api/v4/projects/[^/]+/jobs/[0-9]+/play$`)
+	lDeployments = regexp.MustCompile(`^/api/v4/projects/[^/]+/deployments$`)
+	lDeployApprv = regexp.MustCompile(`^/api/v4/projects/[^/]+/deployments/[0-9]+/approval$`)
 )
 
 func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -431,12 +448,26 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.createIssue)
 	case r.Method == http.MethodGet && lCommitStatus.MatchString(path):
 		enc(s.statuses)
+	case r.Method == http.MethodGet && lCommitMRs.MatchString(path):
+		enc(s.commitMRs)
 	case r.Method == http.MethodGet && lCommitList.MatchString(path):
 		enc(s.commits)
 	case r.Method == http.MethodGet && lCommit.MatchString(path):
 		enc(s.commit)
 	case r.Method == http.MethodGet && lPipelineJobs.MatchString(path):
 		enc(s.jobs)
+	case r.Method == http.MethodPost && lTrigger.MatchString(path):
+		w.WriteHeader(http.StatusCreated)
+		enc(s.triggerPipeline)
+	case r.Method == http.MethodGet && lPipeline1.MatchString(path):
+		enc(s.pipeline)
+	case r.Method == http.MethodPost && lJobPlay.MatchString(path):
+		enc(map[string]any{"id": 71, "name": "deploy-production", "status": "pending"})
+	case r.Method == http.MethodGet && lDeployments.MatchString(path):
+		enc(s.deployments)
+	case r.Method == http.MethodPost && lDeployApprv.MatchString(path):
+		w.WriteHeader(http.StatusCreated)
+		enc(map[string]any{"status": "approved"})
 	case r.Method == http.MethodGet && lPipelines.MatchString(path):
 		// Served BY SHA, as the real endpoint is: only a pipeline stamped with the requested
 		// sha comes back, so a fixture can never answer for a head it does not belong to.
@@ -1922,6 +1953,28 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) { return f.ListRecentCommits(glRepo, 5) },
 		},
 		{
+			// The auto-approve lane's register history: ONE page, filtered by ref_name and path.
+			name: "list_file_commits", method: "ListFileCommits",
+			setup: func(s *glServer) {
+				s.commits = []map[string]any{
+					{"id": "ccc333", "committed_date": "2026-09-02T10:00:00Z"},
+					{"id": "bbb222", "committed_date": "2026-09-01T10:00:00Z"},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListFileCommits(glRepo, "main", "docs/rulings.md", 50) },
+		},
+		{
+			// The merge requests behind one commit, as IIDs (never the instance-wide id).
+			name: "list_commit_changes", method: "ListCommitChanges",
+			setup: func(s *glServer) {
+				s.commitMRs = []map[string]any{
+					{"id": 9021, "iid": 21, "state": "merged", "merged_at": "2026-09-01T11:00:00Z"},
+					{"id": 9034, "iid": 34, "state": "opened"},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListCommitChanges(glRepo, "bbb222") },
+		},
+		{
 			// GitLab trust-events brief. GetCommit resolves the author/committer login from the commit's
 			// git address: the users search yields CANDIDATES, and only an EXACT public/primary
 			// email match attributes. The author resolves off the list shape (public_email
@@ -2390,6 +2443,96 @@ func glCases() []glCase {
 			name: "required_status_checks_refuses_empty_branch", method: "RequiredStatusChecks",
 			setup: func(s *glServer) {},
 			run:   func(f *GitLabForge) (any, error) { return f.RequiredStatusChecks(glRepo, "") },
+		},
+		{
+			// forge-neutral brief 14 RunWorkflow: ONE trigger POST, the trigger token travelling in the
+			// request's own `token` field and every input as a pipeline variable. The pipeline
+			// comes back in the response, so there is no correlation read.
+			name: "run_workflow", method: "RunWorkflow",
+			setup: func(s *glServer) {
+				s.triggerPipeline = map[string]any{"id": 9001, "status": "created",
+					"web_url": "https://gitlab.example/medici-finance/assay/-/pipelines/9001"}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.RunWorkflow(glRepo, RunWorkflowInput{Ref: "main",
+					Inputs: map[string]string{"VERSION": "v1.2.3", "DRY_RUN": "true"}})
+			},
+		},
+		{
+			// A GitHub-shaped workflow file name is refused by name with ZERO requests — never a
+			// silent GitHub-shaped default on a GitLab project.
+			name: "run_workflow_refuses_github_workflow", method: "RunWorkflow",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				return f.RunWorkflow(glRepo, RunWorkflowInput{Workflow: "release.yml", Ref: "main"})
+			},
+		},
+		{
+			// Manual-job shape: the pipeline's manual jobs are read and the ONE named job played.
+			name: "approve_gate_manual_job", method: "ApproveGate",
+			setup: func(s *glServer) {
+				s.jobs = []map[string]any{
+					{"id": 70, "name": "deploy-staging", "status": "manual"},
+					{"id": 71, "name": "deploy-production", "status": "manual"},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.ApproveGate(glRepo, RunRef{ID: "9001"},
+					ApproveGateInput{Gate: "deploy-production", Shape: GateShapeManualJob})
+			},
+		},
+		{
+			// Environment shape: the blocked deployments to the named environment are read, the
+			// one on THIS pipeline is approved; a blocked deployment from another pipeline is not.
+			name: "approve_gate_environment", method: "ApproveGate",
+			setup: func(s *glServer) {
+				s.deployments = []map[string]any{
+					{"id": 300, "status": "blocked", "environment": map[string]any{"name": "production"},
+						"deployable": map[string]any{"pipeline": map[string]any{"id": 8000}}},
+					{"id": 301, "status": "blocked", "environment": map[string]any{"name": "production"},
+						"deployable": map[string]any{"pipeline": map[string]any{"id": 9001}}},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.ApproveGate(glRepo, RunRef{ID: "9001"},
+					ApproveGateInput{Gate: "production", Shape: GateShapeEnvironment})
+			},
+		},
+		{
+			// No declared shape: refused with ZERO requests rather than guessing one.
+			name: "approve_gate_refuses_undeclared_shape", method: "ApproveGate",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.ApproveGate(glRepo, RunRef{ID: "9001"}, ApproveGateInput{Gate: "production"})
+			},
+		},
+		{
+			// The declared manual-job shape finds no manual job of that name: refused after the
+			// read, and the other shape is NOT tried (no deployments read, no play).
+			name: "approve_gate_manual_job_unmatched", method: "ApproveGate",
+			setup: func(s *glServer) {
+				s.jobs = []map[string]any{{"id": 70, "name": "deploy-staging", "status": "manual"}}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.ApproveGate(glRepo, RunRef{ID: "9001"},
+					ApproveGateInput{Gate: "deploy-production", Shape: GateShapeManualJob})
+			},
+		},
+		{
+			name: "run_status", method: "RunStatus",
+			setup: func(s *glServer) {
+				s.pipeline = map[string]any{"id": 9001, "status": "manual",
+					"web_url": "https://gitlab.example/medici-finance/assay/-/pipelines/9001"}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RunStatus(glRepo, RunRef{ID: "9001"}) },
+		},
+		{
+			name: "run_status_failed", method: "RunStatus",
+			setup: func(s *glServer) {
+				s.pipeline = map[string]any{"id": 9001, "status": "failed",
+					"web_url": "https://gitlab.example/medici-finance/assay/-/pipelines/9001"}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RunStatus(glRepo, RunRef{ID: "9001"}) },
 		},
 	}
 }
@@ -3055,5 +3198,47 @@ func TestForgeGitlabNodeID(t *testing.T) {
 		if _, _, err := parseGitLabNodeID(bad); err == nil {
 			t.Errorf("parseGitLabNodeID(%q) accepted an id it did not mint", bad)
 		}
+	}
+}
+
+// TestAutoLaneSignOffThread_GitLabTypedNotesCapIsCouldNotCheck — a typed notes read
+// (ListCommentsTyped, either kind) on a thread that still advertises a next page at
+// gitlabMaxNotePage is could-not-check, never the first 2500 notes handed back as the whole
+// thread: the notes are oldest-first, so the unread ones are the NEWEST, and a consumer that
+// needs the newest end (deskautolane's supersede step) would fail open on a truncated list.
+// A thread that ends within the cap is still read whole. Fail-first: at 2178d6b the capped
+// read returned 25 notes and no error.
+func TestAutoLaneSignOffThread_GitLabTypedNotesCapIsCouldNotCheck(t *testing.T) {
+	serve := func(pages int) (*GitLabForge, *int) {
+		hits := 0
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits++
+			page := 1
+			if p := r.URL.Query().Get("page"); p != "" {
+				_, _ = fmt.Sscanf(p, "%d", &page)
+			}
+			if pages < 0 || page < pages {
+				w.Header().Set("X-Next-Page", fmt.Sprintf("%d", page+1))
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(glNotes(page, 1))
+		}))
+		t.Cleanup(srv.Close)
+		return &GitLabForge{Token: glTestToken, BaseURL: srv.URL, Client: srv.Client()}, &hits
+	}
+	for _, kind := range []TargetKind{TargetIssue, TargetChange} {
+		f, hits := serve(-1)
+		cs, err := f.ListCommentsTyped(glRepo, 7, kind)
+		if err == nil || ExitCodeOf(err) != ExitUnverifiable {
+			t.Fatalf("%s: an endless notes chain read %d notes, err %v — want could-not-check at the cap", kind, len(cs), err)
+		}
+		if *hits != gitlabMaxNotePage {
+			t.Fatalf("%s: %d requests, want the cap of %d", kind, *hits, gitlabMaxNotePage)
+		}
+	}
+	f, _ := serve(3)
+	cs, err := f.ListCommentsTyped(glRepo, 7, TargetIssue)
+	if err != nil || len(cs) != 3 {
+		t.Fatalf("a 3-page thread read %d notes, err %v — want all 3", len(cs), err)
 	}
 }

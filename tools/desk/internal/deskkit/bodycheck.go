@@ -15,6 +15,10 @@ import (
 var (
 	reGitHubToken = regexp.MustCompile(`(ghp_|github_pat_|ghs_|gho_)[A-Za-z0-9_]+`)
 	reAWSKeyID    = regexp.MustCompile(`AKIA[0-9A-Z]{16}`)
+	// reGitLabToken is a GitLab personal/project/group access token: the `glpat-` prefix
+	// and a 20+ char body (#1642). The body is under runThreshold, so the entropy loop
+	// never saw one; this arm is a TIGHTENING, not part of #1642's loosening.
+	reGitLabToken = regexp.MustCompile(`glpat-[0-9A-Za-z_-]{20,}`)
 	reJWT         = regexp.MustCompile(`eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`)
 	reBase64ish   = regexp.MustCompile(`[A-Za-z0-9+/=]{32,}`)
 	reLowerHex    = regexp.MustCompile(`^[0-9a-f]+$`)
@@ -207,6 +211,30 @@ const (
 	// cost on token material is bought back — see TestShortAcronymCostsAlmostNothing.
 	maxAcronymUnits = 1
 )
+
+// numeronyms are the closed list of letter-digit-letter abbreviations an identifier may
+// carry as ONE CamelCase word unit (#1642): `…Under|K8s|Is…`. The lone capital and the
+// short lowercase tail would otherwise each sink the run. A closed list, like
+// twoLetterWords, rather than a shape rule: a general "capital, digits, letter" unit is
+// common in random base62, an exact four-entry list is not.
+var numeronyms = []string{"K8s", "I18n", "L10n", "A11y"}
+
+// digestKeys are the closed list of env-var name TAILS isDigestKeyAssign will strip in
+// front of a git-SHA-shaped value (#1642). A closed list, not an ALL-CAPS shape rule: a
+// shape rule admits `TOKEN=<64 hex>`, and a 64-hex value is exactly what `openssl rand -hex
+// 32` prints, so the key is the only thing telling a digest from a credential (#1643 review).
+// `HEX` is not on the list: it names an encoding, not a digest, so it is admitted only
+// directly behind one of these (`…_DIGEST_HEX`, `…_SHA256_HEX`).
+var digestKeys = []string{"SHA", "SHA1", "SHA256", "DIGEST", "CHECKSUM", "COMMIT"}
+
+// credentialStems refuse the digest-key strip when any of them appears ANYWHERE in the
+// full env-var name, so `SIGNING_SECRET_SHA=` or `ENCRYPTION_KEY_DIGEST_HEX=` never pass on
+// their digest-looking tail. This is a second fence behind digestKeys, not a substitute:
+// a stem nobody listed still has to get past the closed tail list and the SHA-only value.
+var credentialStems = []string{
+	"SECRET", "TOKEN", "PASS", "PWD", "KEY", "AUTH", "CRED", "PRIV", "SESSION",
+	"COOKIE", "SIGN", "HMAC", "SALT", "API", "CERT", "BEARER", "JWT", "SEED",
+}
 
 // twoLetterWords are the two-letter units that count as WORDS in a CamelCase
 // decomposition even though they carry only one lowercase letter after the capital
@@ -412,6 +440,9 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 	case reGitHubToken.MatchString(s):
 		return RefusedFinding("refused: "+surface+" contains a GitHub token prefix (ghp_/github_pat_/ghs_/gho_)",
 			regexFinding("github-token", s, reGitHubToken))
+	case reGitLabToken.MatchString(s):
+		return RefusedFinding("refused: "+surface+" contains a GitLab access-token prefix (glpat-)",
+			regexFinding("gitlab-token", s, reGitLabToken))
 	case reAWSKeyID.MatchString(s):
 		return RefusedFinding("refused: "+surface+" contains an AWS access-key ID (AKIA…)",
 			regexFinding("aws-key-id", s, reAWSKeyID))
@@ -516,6 +547,9 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 		if isGitSHA(run) || isPathLike(run) || isIdentifierLike(run) || isAssignmentLike(run) || isAllEquals(run) {
 			continue
 		}
+		if isDigestKeyAssign(raw, loc[0], run) {
+			continue
+		}
 		// Rule 1 (doc-extension arm) and Rule 2. Both are NARROWER than the
 		// class they clear and each is bounded by a paired positive fixture that stays
 		// refused: isDocPathHexSegment admits a 32-hex doc-path FILENAME stem
@@ -563,8 +597,11 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 			"refused: %s contains a %d-char high-entropy run (possible secret); "+
 				"only git SHAs (40/64 lowercase hex), slash-separated paths built from "+
 				"word-shaped segments (optionally behind one leading '+' quantifier or "+
-				"diff marker), bare word-shaped identifiers, key=<path> shell "+
-				"assignments, all-'=' banner separators, a PGP key fingerprint (40 "+
+				"diff marker), bare word-shaped CamelCase identifiers (a 2-4 letter "+
+				"acronym, optionally plural like PRs, and the numeronyms K8s/I18n/L10n/A11y "+
+				"count as words), key=<sha|path|identifier> assignments whose key is short "+
+				"or word-shaped, a git SHA behind an ALL-CAPS digest key (…_SHA, …_DIGEST, "+
+				"…_DIGEST_HEX; never a credential-named variable), all-'=' banner separators, a PGP key fingerprint (40 "+
 				"uppercase hex after a pgp:/fp: field, or on a line that names it with "+
 				"fingerprint/fpr/pgp/gpg), a slash-list of short ALL-CAPS "+
 				"enum words, a 32-hex run behind a recognised Kubernetes object-kind "+
@@ -1409,6 +1446,49 @@ func isAssignmentLike(run string) bool {
 	return isGitSHA(val) || isPathLike(val) || isIdentifierLike(val)
 }
 
+// isDigestKeyAssign reports whether run, starting at offset start in raw, is the tail of
+// an ALL-CAPS digest assignment — `ARG BASE_DIGEST_HEX=<sha256>` reaches the loop as
+// `HEX=<sha256>`, because `_` is outside the run class (#1642). It is narrower than
+// isAssignmentLike on every axis, and each condition is load-bearing (#1643 review):
+//
+//  1. The VALUE must be a git SHA (40/64 lowercase hex) — never a path or an identifier.
+//  2. The key tail is on the closed digestKeys list, or is `HEX` directly behind one.
+//  3. The FULL env-var name, read back from raw across `_`, contains no credentialStems
+//     entry, so a credential-named variable is refused whatever its tail.
+func isDigestKeyAssign(raw string, start int, run string) bool {
+	eq := strings.IndexByte(run, '=')
+	if eq <= 0 || !isGitSHA(run[eq+1:]) {
+		return false
+	}
+	i := start
+	for i > 0 && isEnvNameByte(raw[i-1]) {
+		i--
+	}
+	name := raw[i:start] + run[:eq]
+	up := strings.ToUpper(name)
+	for _, stem := range credentialStems {
+		if strings.Contains(up, stem) {
+			return false
+		}
+	}
+	segs := strings.Split(name, "_")
+	tail := segs[len(segs)-1]
+	if tail == "HEX" && len(segs) >= 2 {
+		tail = segs[len(segs)-2]
+	}
+	for _, k := range digestKeys {
+		if tail == k {
+			return true
+		}
+	}
+	return false
+}
+
+// isEnvNameByte reports whether c can appear in an environment-variable name.
+func isEnvNameByte(c byte) bool {
+	return c == '_' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+}
+
 // looksLikeWords reports whether seg reads as human-written name material — what real
 // path, package and file-name segments are made of — rather than as opaque token
 // material. seg qualifies when it decomposes ENTIRELY into:
@@ -1488,6 +1568,14 @@ func wordDecomposition(seg string, allowShortAcronym bool) (ok bool, words int, 
 			}
 			i, words = j, words+1
 		case c >= 'A' && c <= 'Z':
+			// A closed-list numeronym (`K8s`, `I18n`) is one CamelCase word — identifier
+			// callers only, so path-segment accounting is unchanged (#1642).
+			if allowShortAcronym {
+				if l := numeronymAt(seg, i); l > 0 {
+					i, words, camel = i+l, words+1, true
+					continue
+				}
+			}
 			j := i + 1
 			for j < len(seg) && seg[j] >= 'a' && seg[j] <= 'z' {
 				j++
@@ -1603,7 +1691,8 @@ func startsCapitalLedWord(seg string, k int) bool {
 // each is load-bearing. The last three were added AFTER measuring: the rule without them
 // exempted 27 of 2,000,000 uniformly random 32-char base64 runs, which is the same order as
 // the blanket capital-plus-one-lowercase relaxation twoLetterWords was deliberately written
-// to stay an order of magnitude under. With all six the number is 7.
+// to stay an order of magnitude under. With all six the number is 7; #1642's plural `s`,
+// closing-unit budget and numeronym list move it to 8.
 //
 //   - SHORT: minAcronym to maxAcronym letters. A lone capital stays debris, and a 5+ letter
 //     ALL-CAPS stretch (a Slack webhook's `XXXX…`, an AWS key's 10-char `EXAMPLEKEY`, the
@@ -1622,9 +1711,10 @@ func startsCapitalLedWord(seg string, k int) bool {
 //   - AFTER A WORD: at least one word unit must already have been decomposed. Combined with
 //     the backward anchor this says the acronym is never the run's opening move, which is
 //     where random material's lucky caps runs most often fall.
-//   - BUDGETED: at most maxAcronymUnits per run. Random base64 needs several lucky caps runs
-//     to decompose at all; a real identifier needs one. This bound is where most of the
-//     measured cost above is bought back.
+//   - BUDGETED: at most maxAcronymUnits MID-RUN units per run, plus at most one unit that
+//     closes the run (#1642 — a run has one end, so that adds at most one). Random base64
+//     needs several lucky caps runs to decompose at all; a real identifier needs one or
+//     two. This bound is where most of the measured cost above is bought back.
 //
 // And, unchanged: everything outside the acronym must still decompose into word units under
 // the normal rules, and isIdentifierLike still requires words>=2 and a capital-led word — so
@@ -1634,9 +1724,6 @@ func startsCapitalLedWord(seg string, k int) bool {
 // TestShortAcronymCostsAlmostNothing, which runs the same 2,000,000-trial fixed-seed
 // comparison TestTwoLetterWordsCostAlmostNothing uses for the two-letter-word list.
 func shortAcronymUnit(seg string, i, wordsSoFar, acronymsSoFar int) (int, bool) {
-	if acronymsSoFar >= maxAcronymUnits {
-		return 0, false
-	}
 	if wordsSoFar < 1 || i < 1 || seg[i-1] < 'a' || seg[i-1] > 'z' {
 		return 0, false
 	}
@@ -1650,10 +1737,39 @@ func shortAcronymUnit(seg string, i, wordsSoFar, acronymsSoFar int) (int, bool) 
 	if n := k - i; n < minAcronym || n > maxAcronym {
 		return 0, false
 	}
-	if k == len(seg) || startsCamelWord(seg, k) {
+	// PLURAL (#1642): one lowercase `s` directly behind the acronym (`PRs`, `IDs`) is part
+	// of the unit, held to the same forward anchor as the acronym itself.
+	if k < len(seg) && seg[k] == 's' && (k+1 == len(seg) || startsCamelWord(seg, k+1)) {
+		k++
+	}
+	if k == len(seg) {
+		// CLOSING (#1642): an acronym that ends the run spends no budget (`…PRs|By…Every|PR`).
+		// Everything before it has already decomposed, and a run has exactly one end, so
+		// the per-run total is at most maxAcronymUnits mid-run units plus this one.
+		return k, true
+	}
+	if acronymsSoFar >= maxAcronymUnits {
+		return 0, false
+	}
+	if startsCamelWord(seg, k) {
 		return k, true
 	}
 	return 0, false
+}
+
+// numeronymAt returns the length of the closed-list numeronym starting at i, or 0. The
+// numeronym must end the run or be followed by a capital, so `K8s` is a word while `K8sx`
+// and `K8s9` are not — the unit never ends mid-token.
+func numeronymAt(seg string, i int) int {
+	for _, w := range numeronyms {
+		if strings.HasPrefix(seg[i:], w) {
+			e := i + len(w)
+			if e == len(seg) || (seg[e] >= 'A' && seg[e] <= 'Z') {
+				return len(w)
+			}
+		}
+	}
+	return 0
 }
 
 // startsCamelWord reports whether a CamelCase WORD UNIT begins at k — either a capital-led

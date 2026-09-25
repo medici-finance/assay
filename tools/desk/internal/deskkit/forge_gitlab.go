@@ -1069,6 +1069,7 @@ func (g *GitLabForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 				Title:     iss.Title,
 				Labels:    append([]string(nil), iss.Labels...),
 				CreatedAt: gitlabTime(iss.CreatedAt),
+				UpdatedAt: gitlabTime(iss.UpdatedAt),
 				URL:       iss.WebURL,
 			}
 			if iss.Author != nil {
@@ -1221,7 +1222,7 @@ func (g *GitLabForge) IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayloa
 // last-human-response it derives can only move EARLIER (toward escalate), never later — the
 // conservative direction the escalation contract requires, never "no escalation owed".
 func (g *GitLabForge) IssueContentEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
-	notes, err := g.listNotes(repo, number, TargetIssue)
+	notes, err := g.listNotes(repo, number, TargetIssue, false)
 	if err != nil {
 		return nil, err
 	}
@@ -2248,6 +2249,63 @@ func (g *GitLabForge) GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error)
 		AuthorLogin:    g.gitlabLoginForEmail(cl, c.AuthorEmail),
 		CommitterLogin: g.gitlabLoginForEmail(cl, c.CommitterEmail),
 	}, nil
+}
+
+// ListFileCommits reads ONE page of the commits reachable from ref that touched file, newest
+// first (`GET /projects/:id/repository/commits?ref_name=<ref>&path=<file>`). SHA and
+// committed_date map 1:1; no account is resolved (the consumer reads only the SHA).
+func (g *GitLabForge) ListFileCommits(repo ForgeRepo, ref, file string, limit int) ([]RepoCommit, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > forgeFileCommitsMax {
+		return nil, Unverifiable(fmt.Sprintf("ListFileCommits needs a limit in [1, %d]", forgeFileCommitsMax), nil)
+	}
+	if strings.TrimSpace(ref) == "" || strings.TrimSpace(file) == "" {
+		return nil, Unverifiable("ListFileCommits needs a ref and a file for "+repo.Slug(), nil)
+	}
+	path := fmt.Sprintf("/projects/%s/repository/commits", g.projectPath(repo))
+	commits, _, cerr := cl.Commits.ListCommits(repo.Slug(), &gitlab.ListCommitsOptions{
+		ListOptions: gitlab.ListOptions{PerPage: int64(limit), Page: 1},
+		RefName:     gitlab.Ptr(ref),
+		Path:        gitlab.Ptr(file),
+	})
+	if cerr != nil {
+		return nil, g.mapErr(http.MethodGet, path, cerr)
+	}
+	out := make([]RepoCommit, 0, len(commits))
+	for _, c := range commits {
+		if c == nil {
+			continue
+		}
+		out = append(out, RepoCommit{SHA: c.ID, CommittedDate: gitlabTime(c.CommittedDate)})
+	}
+	return out, nil
+}
+
+// ListCommitChanges reads the merge requests GitLab associates with one commit
+// (`GET /projects/:id/repository/commits/:sha/merge_requests`), in any state, as their IIDs.
+func (g *GitLabForge) ListCommitChanges(repo ForgeRepo, sha string) ([]int, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(sha) == "" {
+		return nil, Unverifiable("ListCommitChanges needs a non-empty sha for "+repo.Slug(), nil)
+	}
+	path := fmt.Sprintf("/projects/%s/repository/commits/%s/merge_requests", g.projectPath(repo), sha)
+	mrs, _, cerr := cl.Commits.ListMergeRequestsByCommit(repo.Slug(), sha)
+	if cerr != nil {
+		return nil, g.mapErr(http.MethodGet, path, cerr)
+	}
+	out := make([]int, 0, len(mrs))
+	for _, mr := range mrs {
+		if mr != nil && mr.IID > 0 {
+			out = append(out, int(mr.IID))
+		}
+	}
+	return out, nil
 }
 
 // gitlabEmailCandidates bounds the users search behind gitlabLoginForEmail to one page. The
@@ -3477,7 +3535,7 @@ func parseGitLabNoteID(id string) (ForgeRepo, int, int64, error) {
 // Comment.Minimized is false for every GitLab note, and that is EXACT rather than a default:
 // GitLab has no minimise/hide-comment feature, so on a GitLab instance no comment is hidden.
 func (g *GitLabForge) ListComments(repo ForgeRepo, number int) ([]Comment, error) {
-	return g.listNotes(repo, number, TargetChange)
+	return g.listNotes(repo, number, TargetChange, false)
 }
 
 // ListCommentsTyped reads the notes of the object of the STATED kind. GitLab keeps issue
@@ -3485,6 +3543,12 @@ func (g *GitLabForge) ListComments(repo ForgeRepo, number int) ([]Comment, error
 // the kind is what selects the endpoint: without it an issue's thread is read as the notes
 // of whichever merge request happens to share its number. An unknown kind is refused rather
 // than defaulted.
+//
+// The typed read is COMPLETE or could-not-check: a thread still advertising a next page at
+// gitlabMaxNotePage is refused rather than handed back as its oldest 2500 notes, the same
+// rule GitHub's typed issue read applies at its own cap. Its consumers key on the NEWEST
+// comments (deskautolane's supersede step, deskclose's authority reads), which are exactly
+// the ones a capped oldest-first walk drops.
 func (g *GitLabForge) ListCommentsTyped(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error) {
 	switch kind {
 	case TargetIssue, TargetChange:
@@ -3492,7 +3556,7 @@ func (g *GitLabForge) ListCommentsTyped(repo ForgeRepo, number int, kind TargetK
 		return nil, Refused(fmt.Sprintf("refused: ListCommentsTyped: unknown target kind %q for %s#%d",
 			string(kind), repo.Slug(), number))
 	}
-	return g.listNotes(repo, number, kind)
+	return g.listNotes(repo, number, kind, true)
 }
 
 // listNotes is the shared paginating body. The only thing the kind changes is WHICH notes
@@ -3503,7 +3567,11 @@ func (g *GitLabForge) ListCommentsTyped(repo ForgeRepo, number int, kind TargetK
 // the write side: the opaque id addresses merge-request notes (EditComment parses it back
 // into an MR coordinate), so handing one back for an issue note would route a later edit at
 // the wrong endpoint. The numeric DatabaseID is still reported, so the note is identifiable.
-func (g *GitLabForge) listNotes(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error) {
+//
+// complete selects what the page cap means. true (the typed read): a thread still advertising
+// a next page at the cap is could-not-check. false (ListComments, IssueContentEvents): the walk
+// stops at the cap and returns what it read, as those callers document.
+func (g *GitLabForge) listNotes(repo ForgeRepo, number int, kind TargetKind, complete bool) ([]Comment, error) {
 	cl, err := g.client()
 	if err != nil {
 		return nil, err
@@ -3558,8 +3626,14 @@ func (g *GitLabForge) listNotes(repo ForgeRepo, number int, kind TargetKind) ([]
 			out = append(out, c)
 		}
 		if resp == nil || resp.NextPage == 0 {
-			break
+			return out, nil
 		}
+	}
+	if complete {
+		return nil, Unverifiable(fmt.Sprintf(
+			"could-not-check: %s %s %d still reports more notes after %d pages of %d — refusing to report a "+
+				"partial thread as the whole thread (its newest notes are the unread ones)",
+			repo.Slug(), noteable, number, gitlabMaxNotePage, gitlabPerPage), nil)
 	}
 	return out, nil
 }
@@ -3908,4 +3982,222 @@ func (g *GitLabForge) PushTransportHint(repo ForgeRepo) PushTransport {
 		CredentialHelperHint: "supply the token via an inline credential.helper that reads the 0600 token " +
 			"file; never embed it in the remote URL",
 	}
+}
+
+// --- Run and gate-approval (forge-neutral brief 14) ---
+
+// gitlabPipelineDefinition is the one pipeline definition a GitLab project has. RunWorkflow
+// accepts it (or nothing) as the workflow name; a GitHub-shaped workflow file name is refused
+// by name rather than silently ignored — a caller that named "release.yml" believes it chose a
+// workflow, and a GitLab project has no such choice to honour.
+const gitlabPipelineDefinition = ".gitlab-ci.yml"
+
+// triggerClient is the client RunWorkflow's trigger call goes through. It carries NO
+// PRIVATE-TOKEN header: the pipeline trigger token authenticates as a `token` field of the
+// request itself, and presenting it as an access token too would both misuse it and have the
+// instance reject the call as an invalid access token. The same three construction choices
+// client() makes (no retries, no internal limiter, the injected HTTP client) apply, and an
+// empty token is refused here too — the trigger call never goes out anonymous.
+func (g *GitLabForge) triggerClient() (*gitlab.Client, error) {
+	if g.Token == "" {
+		return nil, Unverifiable("refusing to reach the GitLab forge without an explicitly minted token — "+
+			"this backend never falls back to an anonymous or ambient identity", nil)
+	}
+	opts := []gitlab.ClientOptionFunc{
+		gitlab.WithBaseURL(g.baseURL()),
+		gitlab.WithoutRetries(),
+		gitlab.WithCustomLimiter(gitlabNoLimiter{}),
+	}
+	if g.Client != nil {
+		opts = append(opts, gitlab.WithHTTPClient(g.Client))
+	}
+	cl, err := gitlab.NewAuthSourceClient(gitlab.Unauthenticated{}, opts...)
+	if err != nil {
+		return nil, Unverifiable("cannot build GitLab trigger client", err)
+	}
+	return cl, nil
+}
+
+// RunWorkflow starts a pipeline through the PIPELINE TRIGGER endpoint
+// (`POST /projects/:id/trigger/pipeline`), authenticated by the trigger token this backend
+// holds — a credential that can start pipelines and nothing else. That is the narrow default
+// the run-credential binding exists for. The broader `POST /projects/:id/pipeline` (a project
+// or user token that can also read and write issues, merge requests and repository content)
+// is the documented alternative for a deployment that needs project-scoped attribution; it is
+// NOT used here. Each input travels as a pipeline variable. The pipeline comes back in the
+// response, so no correlation read is needed.
+func (g *GitLabForge) RunWorkflow(repo ForgeRepo, in RunWorkflowInput) (RunRef, error) {
+	if wf := strings.TrimSpace(in.Workflow); wf != "" && wf != gitlabPipelineDefinition {
+		return RunRef{}, Unverifiable(fmt.Sprintf(
+			"could-not-check: GitLab has one pipeline definition per project (%s), so workflow %q cannot be "+
+				"selected — refusing rather than ignoring it; pass %q or nothing", gitlabPipelineDefinition,
+			StripControl(wf), gitlabPipelineDefinition), nil)
+	}
+	ref, err := validateRunRef(in.Ref)
+	if err != nil {
+		return RunRef{}, err
+	}
+	if err := validateRunInputs(in.Inputs); err != nil {
+		return RunRef{}, err
+	}
+	cl, err := g.triggerClient()
+	if err != nil {
+		return RunRef{}, err
+	}
+	opts := &gitlab.RunPipelineTriggerOptions{Ref: gitlab.Ptr(ref), Token: gitlab.Ptr(g.Token)}
+	if len(in.Inputs) > 0 {
+		opts.Variables = in.Inputs
+	}
+	path := fmt.Sprintf("/projects/%s/trigger/pipeline", g.projectPath(repo))
+	p, _, terr := cl.PipelineTriggers.RunPipelineTrigger(repo.Slug(), opts)
+	if terr != nil {
+		return RunRef{}, g.mapErr(http.MethodPost, path, terr)
+	}
+	if p == nil || p.ID <= 0 {
+		return RunRef{}, Unverifiable(fmt.Sprintf(
+			"could-not-check: the trigger on %s answered without a pipeline id — the pipeline it started (if any) "+
+				"cannot be named", repo.Slug()), nil)
+	}
+	return RunRef{ID: strconv.FormatInt(p.ID, 10), URL: p.WebURL}, nil
+}
+
+// ApproveGate clears one gate on a pipeline, dispatching on the STATED shape. GitLab has two
+// gating shapes and no endpoint that unifies them, and which one a project uses is a property
+// of its CI configuration — so an unstated shape is refused, and a stated shape whose read
+// finds nothing is refused too, never retried as the other shape.
+//
+//   - GateShapeManualJob: the pipeline's MANUAL jobs are read
+//     (`GET /projects/:id/pipelines/:id/jobs?scope[]=manual`) and the one named Gate is played
+//     (`POST /projects/:id/jobs/:job_id/play`).
+//   - GateShapeEnvironment: the project's BLOCKED deployments to the named environment are read
+//     (`GET /projects/:id/deployments?environment=…&status=blocked`), narrowed to this pipeline,
+//     and that one deployment is approved
+//     (`POST /projects/:id/deployments/:deployment_id/approval`, status approved). Deployment
+//     approvals are a Premium+ feature; a lower tier answers 403/404, which surfaces as the
+//     usual could-not-check.
+func (g *GitLabForge) ApproveGate(repo ForgeRepo, run RunRef, in ApproveGateInput) error {
+	pid, err := ValidateRunID(run)
+	if err != nil {
+		return err
+	}
+	gate, err := validateGateName(in.Gate)
+	if err != nil {
+		return err
+	}
+	switch in.Shape {
+	case GateShapeManualJob, GateShapeEnvironment:
+	case "":
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: GitLab has two gate shapes (%q, %q) and no endpoint that unifies them, and no shape "+
+				"was stated for %s — declare it in the run-credential binding; refusing to guess", GateShapeManualJob,
+			GateShapeEnvironment, repo.Slug()), nil)
+	default:
+		return Unverifiable(fmt.Sprintf("could-not-check: %q is not a GitLab gate shape", in.Shape), nil)
+	}
+	cl, err := g.client()
+	if err != nil {
+		return err
+	}
+	if in.Shape == GateShapeManualJob {
+		path := fmt.Sprintf("/projects/%s/pipelines/%d/jobs", g.projectPath(repo), pid)
+		jobs, _, lerr := cl.Jobs.ListPipelineJobs(repo.Slug(), pid, &gitlab.ListJobsOptions{
+			ListOptions: gitlab.ListOptions{PerPage: 100},
+			Scope:       &[]gitlab.BuildStateValue{gitlab.Manual},
+		})
+		if lerr != nil {
+			return g.mapErr(http.MethodGet, path, lerr)
+		}
+		var match []*gitlab.Job
+		names := make([]string, 0, len(jobs))
+		for _, j := range jobs {
+			if j == nil || j.Status != string(gitlab.Manual) {
+				continue
+			}
+			names = append(names, j.Name)
+			if j.Name == gate {
+				match = append(match, j)
+			}
+		}
+		if len(match) != 1 {
+			return Unverifiable(fmt.Sprintf(
+				"could-not-check: pipeline %d on %s has %d manual jobs named %q (its manual jobs: %s) — the declared "+
+					"%q shape does not match what the read finds; refusing, and not trying the other shape",
+				pid, repo.Slug(), len(match), gate, quotedList(names), GateShapeManualJob), nil)
+		}
+		playPath := fmt.Sprintf("/projects/%s/jobs/%d/play", g.projectPath(repo), match[0].ID)
+		_, _, perr := cl.Jobs.PlayJob(repo.Slug(), match[0].ID, nil)
+		return g.mapErr(http.MethodPost, playPath, perr)
+	}
+
+	path := fmt.Sprintf("/projects/%s/deployments", g.projectPath(repo))
+	deps, _, lerr := cl.Deployments.ListProjectDeployments(repo.Slug(), &gitlab.ListProjectDeploymentsOptions{
+		ListOptions: gitlab.ListOptions{PerPage: 100},
+		Environment: gitlab.Ptr(gate),
+		Status:      gitlab.Ptr("blocked"),
+	})
+	if lerr != nil {
+		return g.mapErr(http.MethodGet, path, lerr)
+	}
+	var match []*gitlab.Deployment
+	for _, d := range deps {
+		if d == nil || d.Deployable.Pipeline.ID != pid {
+			continue
+		}
+		if d.Environment != nil && d.Environment.Name != gate {
+			continue
+		}
+		match = append(match, d)
+	}
+	if len(match) != 1 {
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: pipeline %d on %s has %d blocked deployments to environment %q — the declared %q "+
+				"shape does not match what the read finds; refusing, and not trying the other shape",
+			pid, repo.Slug(), len(match), gate, GateShapeEnvironment), nil)
+	}
+	approvePath := fmt.Sprintf("/projects/%s/deployments/%d/approval", g.projectPath(repo), match[0].ID)
+	_, aerr := cl.Deployments.ApproveOrRejectProjectDeployment(repo.Slug(), match[0].ID,
+		&gitlab.ApproveOrRejectProjectDeploymentOptions{Status: gitlab.Ptr(gitlab.DeploymentApprovalStatusApproved)})
+	return g.mapErr(http.MethodPost, approvePath, aerr)
+}
+
+// RunStatus reads one pipeline (`GET /projects/:id/pipelines/:id`) and maps its status into
+// the forge-neutral vocabulary: the not-yet-started states read as queued, running as
+// in_progress, manual (a pipeline blocked on a manual job or an approval) as waiting, and the
+// terminal states as completed with a conclusion. A status the mapping does not know is
+// could-not-check.
+func (g *GitLabForge) RunStatus(repo ForgeRepo, run RunRef) (*RunState, error) {
+	pid, err := ValidateRunID(run)
+	if err != nil {
+		return nil, err
+	}
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/projects/%s/pipelines/%d", g.projectPath(repo), pid)
+	p, _, gerr := cl.Pipelines.GetPipeline(repo.Slug(), pid)
+	if gerr != nil {
+		return nil, g.mapErr(http.MethodGet, path, gerr)
+	}
+	st := &RunState{URL: p.WebURL}
+	switch p.Status {
+	case "created", "waiting_for_resource", "preparing", "pending", "scheduled":
+		st.Status = RunStatusQueued
+	case "running", "canceling":
+		st.Status = RunStatusInProgress
+	case "manual":
+		st.Status = RunStatusWaiting
+	case "success":
+		st.Status, st.Conclusion = RunStatusCompleted, "success"
+	case "failed":
+		st.Status, st.Conclusion = RunStatusCompleted, "failure"
+	case "canceled":
+		st.Status, st.Conclusion = RunStatusCompleted, "cancelled"
+	case "skipped":
+		st.Status, st.Conclusion = RunStatusCompleted, "skipped"
+	default:
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: pipeline %d on %s reports status %q, which this "+
+			"mapping does not know — not rounded to a known state", pid, repo.Slug(), StripControl(p.Status)), nil)
+	}
+	return st, nil
 }

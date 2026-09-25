@@ -5,7 +5,9 @@
 # tested against — never a mismatched or floating tool.
 #
 # Resolution: plugin version (plugins/assay/.claude-plugin/plugin.json) -> paired statusgen tag
-# (below) -> pinned, sha256-verified `gh release download` of that tag from the release home.
+# (below) -> pinned, sha256-verified plain-HTTPS fetch of that tag from the release home
+# (`scripts/assay-install.sh acquire` — no forge CLI; the digest compared is the pin, never a
+# value fetched from the release home).
 #
 # NEVER a floating/rolling tag. The tag is a plain repo-level semver tag; the per-platform
 # sha256 is harvested from that PUBLISHED release's checksums.txt (a local build lacks the release
@@ -23,7 +25,7 @@ schema: paired-versions-v1
 
 # LEFT side of the pairing: the plugin version this manifest is paired for.
 # Must match plugins/assay/.claude-plugin/plugin.json `version`.
-plugin: "1.0.27"
+plugin: "1.0.28"
 
 # RIGHT side: the statusgen release the plugin above is paired with.
 statusgen:

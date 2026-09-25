@@ -54,15 +54,29 @@ var dirOverride string
 // and treated as a STOP-ALL. Exported so deskboard can report it and tests can verify.
 var HeartbeatStaleDuration = 24 * time.Hour
 
+// stateDirGuard, when non-nil, vets every directory deskDir resolves and may refuse it.
+// It is a TEST HOOK only: this package's TestMain installs one that refuses the operator's
+// REAL state directory, so no test can append to the real audit log (or drop any other
+// state beside it) — the whole package is guarded, not each test remembering to call
+// setup (statedirguard_test.go). Like dirOverride it is deliberately NOT wired to any env
+// var or flag, and production never sets it: a nil hook leaves resolution unchanged.
+var stateDirGuard func(dir string) error
+
 func deskDir() (string, error) {
-	if dirOverride != "" {
-		return dirOverride, nil
+	dir := dirOverride
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		dir = filepath.Join(home, ".config", "assay")
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+	if stateDirGuard != nil {
+		if err := stateDirGuard(dir); err != nil {
+			return "", err
+		}
 	}
-	return filepath.Join(home, ".config", "assay"), nil
+	return dir, nil
 }
 
 // StateDir returns the desk-tools state directory (~/.config/assay), the same

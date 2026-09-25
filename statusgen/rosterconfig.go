@@ -356,6 +356,50 @@ const (
 	// deskkit/rosterconfig.go's EnvReviewerVendor / EnvVerifierVendor.
 	scanEnvReviewerVendor = "ASSAY_REVIEWER_VENDOR"
 	scanEnvVerifierVendor = "ASSAY_VERIFIER_VENDOR"
+
+	// scanEnvRunCredentials (ASSAY_RUN_CREDENTIALS) is a DESK-only roster value
+	// (forge-neutral brief 14): the per-repo run-credential binding cmd/deskrun reads to
+	// decide who may start a workflow run or clear a deployment gate — a
+	// `human:<name>` token (a deliberate refusal state) or the `release-runner`
+	// role. statusgen consumes it in no form — but the two readers share one
+	// ~/.config/assay/roster.env, and an unknown ASSAY_ key REFUSES the whole
+	// configuration, so it must be RECOGNISED here or a roster that binds a run
+	// credential collapses statusgen's whole trust configuration. Recognised, not
+	// applied. KEEP IN SYNC with deskkit/rosterconfig.go's EnvRunCredentials.
+	scanEnvRunCredentials = "ASSAY_RUN_CREDENTIALS"
+	// scanEnvClaimStore (ASSAY_CLAIM_STORE), scanEnvClaimDir (ASSAY_CLAIM_DIR) and
+	// scanEnvClaimSingleHost (ASSAY_CLAIM_SINGLE_HOST) are DESK-only roster values
+	// (the claim-store seam): where a cell keeps its dispatch claims, the file store's
+	// directory, and the single-host declaration. They are consumed by the desk
+	// tools' claim-store resolver (deskkit/claimstore.go) and never by statusgen —
+	// but the two readers share one ~/.config/assay/roster.env, and an unknown ASSAY_
+	// key REFUSES the whole configuration (parseConfig), so all three must be
+	// RECOGNISED here or a roster that configures a claim store collapses statusgen's
+	// whole trust configuration. Recognised, not applied. KEEP IN SYNC with
+	// deskkit/rosterconfig.go's EnvClaimStore / EnvClaimDir / EnvClaimSingleHost.
+	scanEnvClaimStore      = "ASSAY_CLAIM_STORE"
+	scanEnvClaimDir        = "ASSAY_CLAIM_DIR"
+	scanEnvClaimSingleHost = "ASSAY_CLAIM_SINGLE_HOST"
+
+	// scanEnvAutoApproveAreas / scanEnvAutoApproveEjectLine / scanEnvAutoApproveFPYFloor /
+	// scanEnvAutoApproveDailyCap (ASSAY_AUTOAPPROVE_*) are DESK-only roster values: the
+	// auto-approve lane's opt-in areas and its three numbers, consumed by the desk tools'
+	// lane config parser (deskkit/autolane.go) and never by statusgen — but the two readers
+	// share one ~/.config/assay/roster.env, and an unknown ASSAY_ key REFUSES the whole
+	// configuration (parseConfig), so all four must be RECOGNISED here or a roster that
+	// opts an area into the lane collapses statusgen's whole trust configuration.
+	// Recognised, not applied. KEEP IN SYNC with deskkit/rosterconfig.go's
+	// EnvAutoApproveAreas / EnvAutoApproveEjectLine / EnvAutoApproveFPYFloor /
+	// EnvAutoApproveDailyCap.
+	scanEnvAutoApproveAreas     = "ASSAY_AUTOAPPROVE_AREAS"
+	scanEnvAutoApproveEjectLine = "ASSAY_AUTOAPPROVE_EJECT_LINE"
+	scanEnvAutoApproveFPYFloor  = "ASSAY_AUTOAPPROVE_FPY_FLOOR"
+	scanEnvAutoApproveDailyCap  = "ASSAY_AUTOAPPROVE_DAILY_CAP"
+	// scanEnvAutoApproveSignOffThread (ASSAY_AUTOAPPROVE_SIGNOFF_THREAD) is the lane's fifth,
+	// optional key: the one thread its acceptance comment must sit on. Recognised, not
+	// applied, for the same reason as the four above. KEEP IN SYNC with deskkit's
+	// EnvAutoApproveSignOffThread.
+	scanEnvAutoApproveSignOffThread = "ASSAY_AUTOAPPROVE_SIGNOFF_THREAD"
 )
 
 // scanKnownRosterKeys is the ASSAY_-namespace roster SCHEMA this binary speaks:
@@ -404,6 +448,16 @@ func scanKnownRosterKeys() []string {
 		// cmd/deskcalibrate / a documented policy key, never by statusgen — but
 		// they share this roster.env, so statusgen must not fail closed on either.
 		scanEnvReviewerVendor, scanEnvVerifierVendor,
+		// DESK-only, recognised-not-applied (forge-neutral brief 14): cmd/deskrun's
+		// per-repo run-credential binding.
+		scanEnvRunCredentials,
+		// DESK-only, recognised-not-applied (the claim-store seam): the claim-store keys the
+		// desk tools' resolver consumes — see their declarations above.
+		scanEnvClaimStore, scanEnvClaimDir, scanEnvClaimSingleHost,
+		// DESK-only, recognised-not-applied (the auto-approve lane): the lane config keys the
+		// desk tools' lane parser consumes — see their declarations above.
+		scanEnvAutoApproveAreas, scanEnvAutoApproveEjectLine,
+		scanEnvAutoApproveFPYFloor, scanEnvAutoApproveDailyCap, scanEnvAutoApproveSignOffThread,
 	}
 }
 

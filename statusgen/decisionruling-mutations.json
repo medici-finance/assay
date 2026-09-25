@@ -1,0 +1,167 @@
+{
+  "test": "go test . -run 'Ruling' -count=1 -timeout 120s",
+  "control": {
+    "name": "CONTROL — decision-issue marker check disabled (comment on another record's decision issue)",
+    "file": "decisionruling.go",
+    "old": "if !issueRulesOnRecord(iss.Body, rec.ID, link.Repo, citingBriefs) {",
+    "new": "if false {"
+  },
+  "mutations": [
+    {
+      "name": "placeholder hole reopened: the ruling lane no longer decides DR stamps (placeholder falls to the name lookup)",
+      "file": "corroborate.go",
+      "old": "if o, ok := rulings[s.File]; (ok && o.appliesTo(s.Name)) || s.Name == decisionPlaceholderName {",
+      "new": "if o, ok := rulings[s.File]; false && ((ok && o.appliesTo(s.Name)) || s.Name == decisionPlaceholderName) {"
+    },
+    {
+      "name": "placeholder decided-by no longer made visible to the stamp lane",
+      "file": "decisionruling.go",
+      "old": "add(decisionPlaceholderName, r.File, line)",
+      "new": "_ = line"
+    },
+    {
+      "name": "malformed-link check disabled",
+      "file": "decisionruling.go",
+      "old": "if !ok {\n\t\treturn refuse(rulingMalformed,",
+      "new": "if false && !ok {\n\t\treturn refuse(rulingMalformed,"
+    },
+    {
+      "name": "same-repository check disabled (link into another repo)",
+      "file": "decisionruling.go",
+      "old": "if !strings.EqualFold(link.Repo, prRepo) {",
+      "new": "if false && !strings.EqualFold(link.Repo, prRepo) {"
+    },
+    {
+      "name": "unresolvable conflated with deleted (any HTTP error read as an observed deletion)",
+      "file": "decisionruling.go",
+      "old": "case status == http.StatusNotFound || status == http.StatusGone:",
+      "new": "case status >= 400:"
+    },
+    {
+      "name": "transport failure mislabelled as an observed deletion",
+      "file": "decisionruling.go",
+      "old": "return refuse(rulingUnresolvable, \"fetching comment",
+      "new": "return refuse(rulingDeleted, \"fetching comment"
+    },
+    {
+      "name": "deleted-comment branch disabled",
+      "file": "decisionruling.go",
+      "old": "case status == http.StatusNotFound || status == http.StatusGone:",
+      "new": "case false:"
+    },
+    {
+      "name": "bot-author check disabled",
+      "file": "decisionruling.go",
+      "old": "if strings.EqualFold(cm.User.Type, \"Bot\") || strings.HasSuffix(strings.ToLower(cm.User.Login), \"[bot]\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "wrong-author (unmapped login) check disabled",
+      "file": "decisionruling.go",
+      "old": "if name == \"\" {",
+      "new": "if false && name == \"\" {"
+    },
+    {
+      "name": "wrong-author (other mapped human) check disabled",
+      "file": "decisionruling.go",
+      "old": "if matched == \"\" {",
+      "new": "if false && matched == \"\" {"
+    },
+    {
+      "name": "comment-sits-on-linked-issue check disabled",
+      "file": "decisionruling.go",
+      "old": "if !strings.EqualFold(onRepo, link.Repo) || onNum != strconv.Itoa(link.Issue) {",
+      "new": "if false {"
+    },
+    {
+      "name": "pull-request-not-issue check disabled",
+      "file": "decisionruling.go",
+      "old": "if len(iss.PullRequest) > 0 && string(iss.PullRequest) != \"null\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "brief marker accepted without the brief citing the record",
+      "file": "decisionruling.go",
+      "old": "if bok && bs == stream && normBriefNum(bn) == normBriefNum(num) {",
+      "new": "if bok && bs == stream && (true || normBriefNum(bn) == normBriefNum(num)) {"
+    },
+    {
+      "name": "colon-form brief marker from another repository accepted",
+      "file": "decisionruling.go",
+      "old": "!strings.EqualFold(parts[len(parts)-3], repoName)",
+      "new": "false && !strings.EqualFold(parts[len(parts)-3], repoName)"
+    },
+    {
+      "name": "record-unreadable check disabled",
+      "file": "decisionruling.go",
+      "old": "if rec.LoadErr != \"\" {",
+      "new": "if false && rec.LoadErr != \"\" {"
+    },
+    {
+      "name": "a present-but-failing ruling link falls through to the PR anchors",
+      "file": "decisionruling.go",
+      "old": "if !o.Present {\n\t\treturn false",
+      "new": "if true {\n\t\treturn false"
+    },
+    {
+      "name": "offline lint stops checking the ruling: grammar",
+      "file": "designgate.go",
+      "old": "if _, ok := parseRulingURL(r); !ok {",
+      "new": "if _, ok := parseRulingURL(r); false && !ok {"
+    },
+    {
+      "name": "a ruling corroborates every decided-by name, not only its author's (co-signer passed on another human's comment)",
+      "file": "decisionruling.go",
+      "old": "if o.rulesFor(s.Name) {",
+      "new": "if true {"
+    },
+    {
+      "name": "edited-comment check disabled (a comment changed after posting still corroborates)",
+      "file": "decisionruling.go",
+      "old": "if !updated.Equal(created) {",
+      "new": "if false && !updated.Equal(created) {"
+    },
+    {
+      "name": "unreadable comment timestamps no longer a could-not-check",
+      "file": "decisionruling.go",
+      "old": "if cerr != nil || uerr != nil {",
+      "new": "if false && (cerr != nil || uerr != nil) {"
+    },
+    {
+      "name": "record-not-named check disabled (the comment need not name the record it rules on)",
+      "file": "decisionruling.go",
+      "old": "if !commentNamesRecord(cm.Body, rec.ID) {",
+      "new": "if false {"
+    },
+    {
+      "name": "record id matched without its trailing boundary (a longer id that starts with it counts)",
+      "file": "decisionruling.go",
+      "old": "(end == len(text) || !idChar(text[end]))",
+      "new": "(end >= 0)"
+    },
+    {
+      "name": "record id matched without its leading boundary (an id embedded after other id characters counts)",
+      "file": "decisionruling.go",
+      "old": "(start == 0 || !idChar(text[start-1]))",
+      "new": "(start >= 0)"
+    },
+    {
+      "name": "ruling record id taken from the file name instead of the frontmatter id (a non-DR basename refused as record-not-named with an empty id)",
+      "file": "decisionruling.go",
+      "old": "if id := strings.TrimSpace(e.ID); decisionIDRe.MatchString(id) {\n\t\trec.ID = id\n\t}",
+      "new": "rec.ID, _ = decisionRecordID(file)"
+    },
+    {
+      "name": "no-valid-id refusal disabled (a record with no valid id is refused as if the comment failed to name an empty id)",
+      "file": "decisionruling.go",
+      "old": "if rec.ID == \"\" {\n\t\treturn refuse(rulingRecordNotNamed,",
+      "new": "if false {\n\t\treturn refuse(rulingRecordNotNamed,"
+    },
+    {
+      "name": "empty record id cites every brief with no design:",
+      "file": "decisionruling.go",
+      "old": "if strings.TrimSpace(id) == \"\" {\n\t\treturn nil\n\t}\n\tvar out []string",
+      "new": "var out []string"
+    }
+  ]
+}

@@ -88,7 +88,7 @@ nothing is mutated:
                     which is a distinct answer from "no verdict". A CHANGES_REQUESTED at
                     the current head BLOCKS whatever came after it — an APPROVE at an
                     unchanged head re-verifies nothing.
-                    ONE EXEMPTION, the CHECK-ONLY CR. A standing CHANGES_REQUESTED is
+                    TWO EXEMPTIONS. (1) the CHECK-ONLY CR. A standing CHANGES_REQUESTED is
                     cleared without a code push only when ALL of: the CR body declares
                     "Blocked-On-Check: <check name>" as its sole finding; a later APPROVE
                     from the same reviewer at the same head cites "Cleared-Check-Run: <id>";
@@ -97,8 +97,32 @@ nothing is mutated:
                     Anything short of all five refuses exactly as before. Both lines are
                     read whole-line, emphasis-tolerant, and never from inside a fenced code
                     block; an ambiguous body (two lines disagreeing) reads as no claim.
+                    (2) the DOCUMENTED BODY-EDIT RE-VERIFICATION. A CR whose sole blocker
+                    is the PR body declares "Blocked-On-Body: <finding-id> <body-digest>";
+                    it clears only when a later same-head correctness APPROVE carries all of
+                    "Resolved-Body-Finding: <finding-id>" (the id the CR declared),
+                    "Body-Reread-Digest: <digest>" (EQUAL to the live body's digest read by
+                    this gate, and DIFFERENT from the CR's), and "CI-Green-At: <full head
+                    sha>"; AND the forge's own record of the body's last edit (lastEditedAt,
+                    read by this gate) is LATER than the CR — that, not the digests, is what
+                    establishes the edit; absent refuses, unreadable is could-not-check.
+                    A typed finding block on the CR
+                    naming any other blocking finding, a CR also declaring another class,
+                    or any clause short refuses. CI is still judged by checks-green. The
+                    digest is SHA-256 of the body with carriage returns removed and
+                    trailing newlines trimmed (shell recipe: tools/desk README).
   checks-green      every check at the head has completed successfully. A pending or
                     unreadable rollup is could-not-verify, never green.
+  desk-decided      MECHANICAL: a Desk-decided body section, when present, must parse, and
+                    the desk-decided label and the section must AGREE (one without the other
+                    refuses). NOT mechanical, and read from the reviewer instead: the flip
+                    refuses while a reviewer review AT THE CURRENT HEAD carries the fixed
+                    line "Undeclared-desk-decision: <one line>" and no later decisive verdict
+                    IN THE SAME LANE omits it — a security verdict never clears a
+                    correctness finding, nor the reverse, and a COMMENTED note clears
+                    nothing. Re-run by head-stable against the re-read. Absence of a
+                    section alone, with no such finding and no label/section mismatch, is
+                    NEVER refused.
   mergeable         the PR is mergeable. A conflicting PR is not flippable, and its
                     resolution is authored work that invalidates the approval anyway.
   security-verdict  on a RISK-CLASSED PR (a public repo is always one), an App review at

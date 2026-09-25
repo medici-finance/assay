@@ -71,7 +71,7 @@ const usage = `deskdispatch — the per-item dispatch ceremony (engine seam: DIS
 USAGE:
   deskdispatch <item-key> [--tier strong|any] [--kit worker|worker-objective|review|verifier]
                [--repo OWNER/NAME] [--root DIR] [--claim-root DIR] [--model SLUG]
-               [--branch NAME] [--brief PATH] [--gate-human] [--pr N]
+               [--branch NAME] [--brief PATH] [--gate-human] [--pr N] [--rework]
                [--prompt-file FILE] [--quiet] [--dry-run] [--worktree PATH]
   deskdispatch --kits
   deskdispatch --version
@@ -147,6 +147,27 @@ holding an in-flight dispatch claim for the same root, as 'WRITE-OVERLAP: <item>
 <prefix>' lines on stderr. These are COORDINATION HINTS, NOT LOCKS: the dispatch always proceeds,
 the echo has no exit code, and overlap never blocks or delays the claim.
 
+CROSS-REPO (alias registry). An item may name the repo its deliverable lands in by ALIAS: the
+brief's ` + "`deliverable_repo: <alias>`" + ` or ` + "`homed-in: <owner>/<name>`" + ` frontmatter, or an
+` + "`<alias>:<stream>/<NN>`" + ` item-key prefix or the alias segment of the brief's own brief-v2 id (the
+alias the brief is TRACKED under). --brief is resolved ONCE (absolute, else under --root, else
+under --claim-root) and every reader uses that file; a --brief that resolves nowhere is refused.
+Every registry alias key, ` + "`repo:`" + ` value and ` + "`self:`" + ` is grammar-checked before use; a bad one
+is refused (exit 5). The alias resolves
+through the alias registry (graph-repos.yaml, schema graph-repos-v1) of the stream root at
+--claim-root (else --root), and nothing else. Before
+anything durable: no registry, or an alias reserved but unpublished there = exit 6; an alias the
+registry does not define = exit 5 naming it; a resolved repo that is not --repo or not --root's own
+origin = HARD FAIL exit 5 naming both repos — no claim, no worktree. The resolved repo is the claim
+repo and the token's repo; a cross-repo claim key carries the TRACKING alias; the prompt tells the
+worker to run ` + "`deskpr create --root <tracking checkout>`" + ` so its Brief: trailer resolves there.
+
+PHANTOM PRECONDITION. A fresh worker dispatch is reconciled against the deliverable repo's open and
+merged PRs by ` + "`Brief:`" + ` trailer BEFORE admission, the token mint and the claim. An OPEN PR refuses
+(resume it with --pr). A MERGED PR refuses as DELIVERED — unless --rework says the row awaits
+implementer rework, in which case the dispatch becomes a FOLLOW-UP on a new branch
+(feat/<item>-followup-<N>), never a resume of the merged branch.
+
 --kits lists the prompt kits this binary carries and exits 0.
 --dry-run runs no step: it prints the plan and the prompt that WOULD be emitted. The prompt
 shows the agent's home worktree as a not-yet-known placeholder, because a real dispatch names
@@ -183,6 +204,9 @@ func main() {
 	// the nil default (the check stays inert unless a test wires its own recorded transport), while
 	// the real binary reads the repo's open+merged changes through the typed Forge seam.
 	listRepresentedPRs = liveRepresentedPRs
+	// ...and the per-PR file read that keeps a briefs-AUTHORING PR from counting as the brief's
+	// delivery (authoring.go).
+	listPRFiles = livePRFiles
 	os.Exit(run(os.Args[1:]))
 }
 
