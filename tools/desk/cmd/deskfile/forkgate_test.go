@@ -110,7 +110,7 @@ func TestCaughtByFilesNoticeWithMarker(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
-	body := bodyFileWith(t, "A reversible tool-default question.\n\n"+validForkTestBlockCaughtByDraftPR)
+	body := bodyFileWith(t, "A reversible tool-default question.\n\n"+caughtByDraftPRBlock)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
 		"--title", "flip the tool default for --sla-days", "--body-file", body,
@@ -144,14 +144,14 @@ func TestCaughtByFilesNoticeWithMarker(t *testing.T) {
 	}
 }
 
-// validForkTestBlockCaughtByDraftPR is validForkTestBlock with `caught-by: draft-pr` in
+// caughtByDraftPRBlock is validForkTestBlock with `caught-by: draft-pr` in
 // place of `nothing` — two workable options, the driver still holds a catching gate (a draft
 // PR awaiting merge). Default is option A, "keep the current default".
 // The ruled-check result deliberately avoids the word "ruling" (a one-way signal in
 // deskkit.HumanOnlySignals, "mechanism") — TestOneWayTermOverridesCaughtBy below adds its
 // OWN, separate one-way term to this same fixture; this one must stay clean so
 // TestCaughtByFilesNoticeWithMarker actually reaches the notice lane.
-const validForkTestBlockCaughtByDraftPR = `### Fork test
+const caughtByDraftPRBlock = `### Fork test
 
 option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today
 option: B — flip the default | works-because: the merge gate catches a wrong flip before it ships | consequence: every caller sees the new default next release
@@ -173,7 +173,7 @@ func TestOneWayTermOverridesCaughtBy(t *testing.T) {
 	// SEPARATE `### Evidence` fence the blocker-evidence gate requires of every
 	// needs-decision filing, one-way or not.
 	body := bodyFileWith(t, "This filing also touches a security control on the ledger boundary.\n\n"+
-		bodyWithEvidence+"\n\n"+validForkTestBlockCaughtByDraftPR)
+		bodyWithEvidence+"\n\n"+caughtByDraftPRBlock)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
 		"--title", "flip the tool default for --sla-days", "--body-file", body,
