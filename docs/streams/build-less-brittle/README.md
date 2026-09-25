@@ -89,7 +89,7 @@ this stream, which also lands briefs 01–13 citing it, so its header reads `**S
 ```
 
 **Longest chain:** `01 → 02 → 04 → 05 → 11 → 12 → 13` (seven briefs). Before the
-driver-ruled amendment it was `01 → 02 → 04 → 05` and, of equal length, `01 → 02 → 04 → 09`.
+third-pass amendment it was `01 → 02 → 04 → 05` and, of equal length, `01 → 02 → 04 → 09`.
 An adopting project's go-live needs 02 and 04–07 merged, then a release that embeds the
 amended kits; the three later briefs reach the installed binary at the release after that.
 
@@ -130,11 +130,13 @@ scanner fix becomes the real head of the 04 → 05 chain.
 | 5 | 12 | 09, 10 and 11 merged |
 | 6 | 13 | 05, 09 and 12 merged; its rehearsal needs the driver's one `residue: default` reply |
 
-**Driver-ruled amendment (2026-09-24, third pass).** Briefs 11–13 were added on the driver's
-instruction, and two open decisions were ruled: D-A, the ratchet and `design-fit` start
-advisory for a month and are promoted by a later recorded decision keyed to the project's
-baseline measurements (03, 06 amended); D-B, two-strikes is a hard stop with `bleed` only for
-production-down or security fixes (05 amended). The three briefs answer "what do we refactor
+**Third-pass amendment (2026-09-24).** Briefs 11–13 were added, and two open decisions are
+proposed (spec §10): D-A, the ratchet and `design-fit` start advisory for a month and are
+promoted by a later recorded decision keyed to the project's baseline measurements (03, 06
+amended); D-B, two-strikes is a hard stop with `bleed` only for production-down or security
+fixes (05 amended). No record of either answer from the driver's own account exists on the
+forge, so neither is stated as ruled: both are ratified by the driver's merge of the pull
+request that lands this stream, the same act that approves the spec (D-C). The three briefs answer "what do we refactor
 against": briefs plus incidents are not sufficient; the answer is a tagged, ratcheted
 regression suite (11), an oracle assembled before any redesign (12), and one strong-tier
 session that runs the loop with one human residue (13).
@@ -149,7 +151,14 @@ meaning, one implementation".
 ## Shared conventions
 
 - **Net ≤ 0 lines** for every skill or kit a brief edits. Each such brief carries a line-count
-  row at its authoring-time size.
+  row that compares the file at the brief's own change against the file just before it. The
+  counts quoted in `facts:` are for scale only; main moves, so no row caps at a typed number.
+- **Rows that compare against "before this brief" derive their base in the command, never
+  `HEAD~1`.** On merged main, the change is the oldest first-parent commit carrying
+  `Brief: build-less-brittle/NN` that touches anything outside `docs/streams/` and
+  `changelog/` (the implementing squash-merge, not the authoring or Evidence commit), and the
+  base is its parent. Before merge, the base is the merge-base with main and the tip is `HEAD`.
+  An empty range fails the row instead of passing it.
 - **Every brief carries its own `design-fit:` block.** The stream uses what it introduces.
 - **No new verb, flag, status token or workflow.** Reuse `deskfile attach`, labels, the `blocked`
   status and `go test`.
@@ -157,6 +166,8 @@ meaning, one implementation".
   second enforcement point at a different trust boundary is a layer.
 - **Human gates are one typed reply:** `grow <PR#>`, `retire <ids>; keep rest`, `bleed`,
   `keep`/`revert`, `promote …`/`hold`, `residue: default` (or `residue: keep …; drop rest`).
+  A reply counts only when its author, read from the forge, is the driver's own login (a
+  project value). A reply from any other login is quarantined and never acted on (spec §4.7).
 - **A test is tagged, and leaves with a reason.** `// regression: #<N>` above every fix's
   test; `Retires-test: <name> — <why>` on every deletion or rename; the ledger report is a
   rubric for the reviewer, never a gate.

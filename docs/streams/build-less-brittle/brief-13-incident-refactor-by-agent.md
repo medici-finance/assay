@@ -28,7 +28,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
 version: 1
-authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; driver-ruled amendment)"
+authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; third-pass amendment)"
 sources:
   - "docs/streams/build-less-brittle/spec.md §3 row 15, §4.13, §4.7 (no new gate), §8"
   - "docs/brittle-investigation-template.md (09) and docs/refactor-oracle-template.md (12): the two artifacts this run produces; docs/investigations/README.md (where they land)"
@@ -55,11 +55,15 @@ consumers:
 
 files:
 - `docs/incident-refactor-run.md` (planned): NEW. The runbook: trigger, the ordered reads, the outputs in order, the one-ask rule, the hard-gate exceptions, and the rehearsal record.
-- `docs/refactor-oracle-template.md` (planned): from build-less-brittle/12;: `## 6. Residue` (≤ 15 lines): the decision-issue body shape and the reply grammar.
+- `docs/refactor-oracle-template.md` (planned): from build-less-brittle/12: `## 6. Residue` (≤ 15 lines): the decision-issue body shape and the reply grammar.
 - `plugins/assay/skills/worker-desk/SKILL.md`: §"Un-briefed issues" (≤ 6 lines, offset).
-- `tools/desk/internal/testledger/ledger.go` (planned): from build-less-brittle/11;, `ledger_test.go` (planned): `Residue(oracle) []Row`, `DecisionBody(rows) string`, `TestResidueFixtures`, `TestDecisionBodyShape`.
+- `tools/desk/internal/testledger/ledger.go` (planned): from build-less-brittle/11, `ledger_test.go` (planned): `Residue(oracle) []Row`, `DecisionBody(rows) string`, `TestResidueFixtures` (planned), `TestDecisionBodyShape` (planned).
 - `tools/desk/internal/testledger/testdata/rehearsal/{complete,gap}/` (planned): NEW. A standalone Go module (its own `go.mod`, invisible to `./...`) with a brief, a DR and a class-issue snapshot; `complete/` has every behaviour sourced, `gap/` has one behaviour no record explains. The oracles the rehearsal produced are copied in as `oracle.md`.
 - `changelog/build-less-brittle-13.md` (planned)
+
+single-point-of-failure: `ResidueReply`'s author check (the driver's own login) is the ONE control
+that turns a `residue:` line into applied verdicts. Behind it: the refactor PR stays draft until
+answered, the design brief's own review, and the driver's own merge (spec §4.7).
 
 facts:
 - **Trigger and lane.** The three triggers converge on one object, a class issue labelled
@@ -92,8 +96,11 @@ facts:
      ask-decision shape: every unknown row as one question block with the agent's
      recommendation and a default first, options immutable at filing, one reply line.
      Reply grammar: `residue: default`, or `residue: keep <test…>; drop rest` (or the
-     inverse). On the reply the run (or the shepherd that resumes it) writes the verdicts
-     into §3 citing the reply URL, retires the `drop` tests with trailers, and pushes. Zero
+     inverse). The reply counts only when its author, read from the forge's comment record
+     and never from the text, is the driver's own login (a project value, spec §4.7); a
+     `residue:` line from any other login is quarantined, noted on the issue and never
+     applied. On the driver's reply the run (or the shepherd that resumes it) writes the
+     verdicts into §3 citing the reply URL, retires the `drop` tests with trailers, and pushes. Zero
      unknowns means zero issues filed. Never a second ask: an answer that raises a new
      unknown is a `could-not-resolve` line in §3 and the PR stays draft with that line, for
      the driver to see at the merge.
@@ -113,6 +120,12 @@ facts:
   `DecisionBody(rows)` renders the ask. Both are pure functions in the ledger package (11),
   so the rule "zero unknowns, zero asks; any unknowns, one ask" is a property of the file,
   not of the session's mood, and the fixtures below pin it.
+- **The reply's author is checked in code.** `ResidueReply(comments, driver)` returns the
+  first comment whose author login equals `driver` and whose body parses in the reply
+  grammar, and nothing for a `residue:` line from any other login. The run applies only what
+  it returns. `TestResidueReplyIgnoresNonDriver` (planned) pins it: a stranger's `residue: keep …`
+  ahead of the driver's `residue: default` yields the driver's reply, and a stranger's
+  reply alone yields none.
 - **The rehearsal, recorded.** The implementer runs the procedure twice, as real strong-tier
   dispatches, on the two synthetic incidents under `testdata/rehearsal/`: two class issues
   (labelled `error-class`, `design-owed`, titled `class: rehearsal-complete …` and `class:
@@ -128,7 +141,7 @@ facts:
   is bounded by 09's caps on the history read and by 12's surface definition; a module whose
   public surface exceeds 40 exported symbols is split by S- row before generation, and the
   runbook says so.
-- Line count at f7bde6bfa: worker-desk 868 (04, 09 and this brief share the cap).
+- Line count at f7bde6bfa (for scale; the net ≤ 0 row derives its own base): worker-desk 868 (04, 09 and this brief each offset their own lines).
 
 design-fit:
   owner: docs/incident-refactor-run.md (planned; a runbook beside the two templates it sequences)
@@ -156,9 +169,10 @@ design-fit:
    the default, the two options), the immutable-options line, the reply grammar.
 3. testledger: `Residue`, `DecisionBody`; fixtures `testdata/rehearsal/{complete,gap}/oracle.md`
    (copied from the rehearsal's outputs in step 6; until then, hand-authored and replaced);
-   `TestResidueFixtures` (0 and 1), `TestDecisionBodyShape` (exactly one `## Question` per
+   `TestResidueFixtures` (planned) (0 and 1), `TestDecisionBodyShape` (planned) (exactly one `## Question` per
    unknown, `Recommended:` and `Default:` present, `Options are immutable` present, the reply
-   grammar line present).
+   grammar line present); `ResidueReply(comments, driver)` and
+   `TestResidueReplyIgnoresNonDriver` (planned) (a non-driver `residue:` reply is never returned).
 4. worker-desk §"Un-briefed issues" (≤ 6 lines, offset): a `design-owed` class dispatches
    the incident-refactor run per the runbook; the deliverables in order; one ask at most.
 5. The two synthetic modules and their records under `testdata/rehearsal/`.
@@ -169,8 +183,8 @@ design-fit:
 
 ## Verify (executable — no prose-only DoD items)
 
-Rows run from the root of `medici-finance/assay`. Rows 1–3 pin the residue rule and the ask
-shape mechanically. Rows 4–7 are the rehearsal's dereference rows: (a) the complete record
+Rows run from the root of `medici-finance/assay`. Rows 1–3 pin the residue rule, the ask
+shape and the reply-author check mechanically. Rows 4–7 are the rehearsal's dereference rows: (a) the complete record
 ends in a draft refactor PR with zero human asks, (b) the gap record ends in exactly one
 typed decision. They read the PR and issue numbers from the runbook's rehearsal record
 (`rehearsal-complete-pr: <N>`, `rehearsal-gap-pr: <N>`, `rehearsal-gap-issue: <N>`, one per
@@ -178,17 +192,17 @@ line), which step 6 writes and the Evidence repeats. Rows 8–10 are wiring and 
 
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `cd tools/desk && { go test ./internal/testledger/ -run TestResidueFixtures -count=1 -v; go test ./internal/testledger/ -run TestDecisionBodyShape -count=1 -v; } \| grep -c -- '--- PASS'` | `2` |
+| 1 | `cd tools/desk && { go test ./internal/testledger/ -run TestResidueFixtures -count=1 -v; go test ./internal/testledger/ -run TestDecisionBodyShape -count=1 -v; go test ./internal/testledger/ -run TestResidueReplyIgnoresNonDriver -count=1 -v; } \| grep -c -e '^--- PASS: TestResidueFixtures ' -e '^--- PASS: TestDecisionBodyShape ' -e '^--- PASS: TestResidueReplyIgnoresNonDriver '` | `3` (each top-level test passes once; subtests are not counted; the third pins that a non-driver `residue:` reply is never applied) |
 | 2 | `cd tools/desk && go test ./internal/testledger/ -run TestResidueFixtures -count=1 -v \| grep -cE 'residue: complete=0 gap=1'` | `1` (the complete record has no unknown; the gap record has exactly one) |
 | 3 | `cd tools/desk && f=internal/testledger/testdata/rehearsal/complete/oracle.md && cp "$f" /tmp/bl13-o.bak && awk 'BEGIN{d=0} !d && / keep /{sub(/ keep /," unknown "); d=1} {print}' /tmp/bl13-o.bak > "$f" && go test ./internal/testledger/ -run TestResidueFixtures -count=1 > /tmp/bl13-mut.out 2>&1; rc=$?; cp /tmp/bl13-o.bak "$f"; test $rc -ne 0 && grep -c 'complete=1' /tmp/bl13-mut.out` | `1` (mutation: one verdict flipped to unknown in the complete fixture is one residue, and the fixture test says so) |
 | 4 | `n=$(grep -oE '^rehearsal-complete-pr: [0-9]+' docs/incident-refactor-run.md \| grep -oE '[0-9]+'); test -n "$n" && gh pr view "$n" -R medici-finance/assay --json state,body -q '"\(.state) \(.body \| test("## Oracle")) \(.body \| test(" keep "))"'` | `CLOSED true true` (the complete run produced a refactor PR with the triage table; it was closed, never merged) |
 | 5 | `n=$(grep -oE '^rehearsal-complete-pr: [0-9]+' docs/incident-refactor-run.md \| grep -oE '[0-9]+'); test -n "$n" && gh pr view "$n" -R medici-finance/assay --json labels -q '[.labels[].name] \| map(select(. == "question" or . == "help wanted" or . == "needs-decision")) \| length'; gh issue list -R medici-finance/assay --state all --label needs-decision --search 'rehearsal-complete in:body' --json number -q 'length'` | `0`, then `0` (zero human asks on the complete record, in the tracked vocabulary) |
 | 6 | `n=$(grep -oE '^rehearsal-gap-issue: [0-9]+' docs/incident-refactor-run.md \| grep -oE '[0-9]+'); gh issue list -R medici-finance/assay --state all --label needs-decision --search 'rehearsal-gap in:body' --json number -q 'length'; gh issue view "$n" -R medici-finance/assay --json body -q '.body' \| grep -c '^## Question'` | `1`, then `1` (exactly one decision issue with exactly one question for the gap record) |
-| 7 | `n=$(grep -oE '^rehearsal-gap-issue: [0-9]+' docs/incident-refactor-run.md \| grep -oE '[0-9]+'); p=$(grep -oE '^rehearsal-gap-pr: [0-9]+' docs/incident-refactor-run.md \| grep -oE '[0-9]+'); gh issue view "$n" -R medici-finance/assay --json comments -q '[.comments[].body \| select(startswith("residue: "))] \| length'; gh pr diff "$p" -R medici-finance/assay --name-only \| grep -c -- '-oracle.md'` | ≥ `1`, then `1` (the driver answered in the reply grammar; the gap PR carries its oracle) |
+| 7 | `n=$(grep -oE '^rehearsal-gap-issue: [0-9]+' docs/incident-refactor-run.md \| grep -oE '[0-9]+'); p=$(grep -oE '^rehearsal-gap-pr: [0-9]+' docs/incident-refactor-run.md \| grep -oE '[0-9]+'); test -n "$DRIVER_LOGIN" && gh issue view "$n" -R medici-finance/assay --json comments -q '[.comments[] \| select(.author.login == env.DRIVER_LOGIN and (.body \| startswith("residue: ")))] \| length'; gh pr diff "$p" -R medici-finance/assay --name-only \| grep -c -- '-oracle.md'` | ≥ `1`, then `1` (the driver's own login, exported as `DRIVER_LOGIN` from the project value, answered in the reply grammar; a `residue:` line from any other login is not counted; the gap PR carries its oracle) |
 | 8 | `grep -c -e '^## 6\. Residue' -e 'Options are immutable' -e 'residue: default' docs/refactor-oracle-template.md` | ≥ `3` |
-| 9 | `grep -c 'incident-refactor-run' plugins/assay/skills/worker-desk/SKILL.md && test "$(wc -l < plugins/assay/skills/worker-desk/SKILL.md)" -le 868 && echo NET-OK` | ≥ `1`, then `NET-OK` |
+| 9 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/13$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && grep -c 'incident-refactor-run' plugins/assay/skills/worker-desk/SKILL.md && test "$(git show "$tip:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" && echo NET-OK` | ≥ `1`, then `NET-OK` |
 | 10 | `for g in 'weaken' 'consumer-facing' 'trust boundary'; do grep -ci "$g" docs/incident-refactor-run.md; done \| grep -c '^[1-9]'` | `3` (the three hard gates are named; no fourth is introduced: `grep -c 'gate: human' docs/incident-refactor-run.md` is the reviewer's cross-check) |
-| 11 | `test "$(git diff --name-only HEAD~1 -- tools/desk/cmd \| grep -v _test.go \| wc -l \| tr -d ' ')" = 0 && ! git diff --name-only HEAD~1 \| grep -q '^tools/desk/internal/testledger/testdata/rehearsal/.*go.mod$' && echo NO-SHIPPED-CHANGE \|\| git diff --name-only HEAD~1 \| grep 'testdata/rehearsal' \| head -3` | `NO-SHIPPED-CHANGE`, or the rehearsal module's own files only (nothing shipped changed; the module is a fixture) |
+| 11 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/13$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git diff --name-only "$base" "$tip" -- tools/desk \| grep -v _test.go \| grep -v '^tools/desk/internal/testledger/' \| wc -l \| tr -d ' ')" = 0 && echo NO-SHIPPED-CHANGE` | `NO-SHIPPED-CHANGE` (outside the test-only ledger package and its `testdata/rehearsal/` fixture module, no non-test file under `tools/desk` changed; base derived, never `HEAD~1`) |
 | 12 | `statusgen --consumers --root . --brief build-less-brittle/13; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
 
 ## Evidence

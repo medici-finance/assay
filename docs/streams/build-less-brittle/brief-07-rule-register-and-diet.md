@@ -10,7 +10,7 @@ why: >-
   deletes a rule automatically.
 wave: 1
 depends: ["build-less-brittle/01", "build-less-brittle/03"]
-unblocks: ["build-less-brittle/06", "build-less-brittle/10"]
+unblocks: ["build-less-brittle/06", "build-less-brittle/10", "build-less-brittle/11"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -36,6 +36,11 @@ files:
 - `docs/contracts.md`: add `## Rule register` and `## Rule diet (monthly)` after brief 01's section.
 - `changelog/build-less-brittle-07.md` (planned)
 
+single-point-of-failure: the diet role's author check on the `retire …; keep rest` reply (the
+driver's own login, read from the forge) is the ONE control that starts a retirement. Behind it: a
+retirement is a design brief with its own review and the driver's merge, and a trust-boundary row
+also needs spec §4.2 rule 2's Verify row and worker kit §2's `gate: human` path (spec §4.7).
+
 facts:
 - **Row schema:** `id (R-<slug>) | rule (one line) | enforced at (path[:symbol]) | serves (S-<slug>) | owner (module or role) | invariant | justifying issue(s) | catch source | last reviewed`.
   The catch source is a named telemetry class, a test name that proves it can fire, or `none`.
@@ -56,8 +61,17 @@ facts:
   `zero-without-proof`. Zero catches is an **alarm, never a deletion**.
 - **One typed reply.** The monthly diet files ONE decision issue listing candidate rows. The
   options are fixed at filing; an edit supersedes the issue with a new one. The reply shape is
-  `retire R-a R-b; keep rest`, or `keep`. Default if unanswered: keep. A retirement becomes a
+  `retire R-a R-b; keep rest`, or `keep`, and it counts only from the driver's own login (a
+  project value), read from the forge, never from the text (spec §4.7). A reply from any other
+  login is quarantined and never acted on. Default if unanswered: keep. A retirement becomes a
   design brief (usually bundled per class), never an in-loop edit.
+- **Trust-boundary rows are seeded able to fire.** Several seed rows are security controls (the
+  high-entropy body scan, the model-capability floor, inherited-token precedence, same-head
+  re-approval, the forge-CLI ceiling). They fire rarely by design, so each is seeded with a named
+  test as its catch source and starts `proven-able-to-fire`, never `zero-without-proof`.
+  Retiring such a row is not only a design brief: it carries spec §4.2 rule 2 (name the layer
+  that still refuses the threat and prove it with the retired layer absent) and worker kit §2
+  (`gate: human`).
 - **Candidates:** `zero-without-proof`; a false-positive share above half of its recorded
   fires; orphans (no `S-` row); rules whose justifying issue is closed as not-planned.
 - New rules add a row in the same PR. Review stage 06 checks this.
@@ -85,9 +99,12 @@ design-fit:
 
 1. Add `## Rule register`: the row schema, the rule "a new rule adds a row in the same PR", and
    the seed rows. Each seed row cites a path verified at fresh main and a real public issue.
+   Each seed row that guards a trust boundary names a test that shows it firing as its catch
+   source.
 2. Add `## Rule diet (monthly)`: the three-state status, the candidate criteria, the single
    decision-issue shape with its immutable options and reply grammar, the keep default, and
-   "retirement is a design brief". State that the cadence and the running role are project
+   "retirement is a design brief", plus: a trust-boundary retirement also carries spec §4.2
+   rule 2 and worker kit §2 (`gate: human`). State that the cadence and the running role are project
    values the project layer names.
 3. Write the changelog fragment.
 
@@ -105,6 +122,7 @@ every row's links: the `S-` row it serves, its path, and its issue.
 | 5 | `out=$(sed -n '/^## Rule register$/,/^## Rule diet/p' docs/contracts.md \| grep -oE -e 'tools/desk/[A-Za-z0-9_./-]+\.go' -e 'tools/desk/[A-Za-z0-9_./-]+\.txt' -e 'statusgen/[A-Za-z0-9_./-]+\.go' \| sort -u \| while read p; do test -e "$p" \|\| echo "MISSING $p"; done); test -z "$out" && echo CLEAN \|\| echo "$out"` | `CLEAN` |
 | 6 | `sed -n '/^## Rule register$/,/^## Rule diet/p' docs/contracts.md \| grep -E '^[\|] *R-' \| grep -vqE '#[0-9]+' && echo UNJUSTIFIED \|\| echo ALL-JUSTIFIED` | `ALL-JUSTIFIED` (every row cites an issue; row 2 proves rows exist, so this cannot pass vacuously) |
 | 7 | `grep -cE '^[\|] *R-weight-ceiling ' docs/contracts.md` | `1` |
+| 8 | `d=$(sed -n '/^## Rule diet/,$p' docs/contracts.md); echo "$d" \| grep -c 'gate: human'; echo "$d" \| grep -c '§4.2 rule 2'` | two counts, each ≥ `1` (a trust-boundary retirement names both the proven remaining layer and the human gate) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,

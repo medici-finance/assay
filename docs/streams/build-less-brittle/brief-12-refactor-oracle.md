@@ -25,7 +25,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
 version: 1
-authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; driver-ruled amendment)"
+authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; third-pass amendment)"
 sources:
   - "docs/streams/build-less-brittle/spec.md §3 row 14, §4.12, §6 (the redesign soft link), §11"
   - "docs/streams/build-less-brittle/spec.md §11 (Fowler: refactor first, strangler seam, 'when it's easier to rewrite'; Ousterhout: complexity, deep modules; Metz: inline the wrong abstraction and re-extract; spec-first for agent code is practice guidance, not a result; Wang et al. ICSE 2026: 7.8% of 'solved' patches fail the developer suite, so passing generated tests overstate correctness)"
@@ -55,11 +55,11 @@ consumers:
 
 files:
 - `docs/refactor-oracle-template.md` (planned): NEW. The oracle's frontmatter, five sections, the triage-table grammar, the acceptance rule as five runnable rows, and a worked example over the fictional `cmd/example` module brief 09's template also uses.
-- `docs/brittle-investigation-template.md` (planned): from build-less-brittle/09;: `## Next act`, the `redesign` line (≤ 3 lines).
-- `docs/investigations/README.md` (planned): from build-less-brittle/09;: the oracle filename rule (≤ 2 lines).
+- `docs/brittle-investigation-template.md` (planned): from build-less-brittle/09: `## Next act`, the `redesign` line (≤ 3 lines).
+- `docs/investigations/README.md` (planned): from build-less-brittle/09: the oracle filename rule (≤ 2 lines).
 - `plugins/assay/skills/author-brief/SKILL.md`: one rule under the design-fit rule 9 (≤ 3 lines, offset).
 - `tools/desk/cmd/deskdispatch/references/review-prompt.md`: §"Design fit first" (≤ 2 lines, offset).
-- `tools/desk/internal/testledger/ledger.go` (planned): from build-less-brittle/11;, `ledger_test.go` (planned): the `// characterization:` tag and one report line (`characterization-untriaged`).
+- `tools/desk/internal/testledger/ledger.go` (planned): from build-less-brittle/11, `ledger_test.go` (planned): the `// characterization:` tag and one report line (`characterization-untriaged`).
 - `changelog/build-less-brittle-12.md` (planned)
 
 facts:
@@ -107,7 +107,7 @@ facts:
   an `unknown`. An `unknown` at landing is `NEEDS_CONTEXT` to the design brief's review:
   brief 13 says how the agent presents the residue and how the driver answers it in one
   reply; this brief only refuses to land over one.
-- **What the ledger adds.** `TestReportTestLedger` (11) gains one line,
+- **What the ledger adds.** `TestReportTestLedger` (planned) (11) gains one line,
   `characterization-untriaged: <pkg>.<Test> (<oracle-file> has no row for it)`, for a tagged
   characterization test the named oracle does not list. Same package, same never-fails rule.
 - **The redesign soft link.** A desk-tool redesign's parity harness (a fixed corpus chosen
@@ -119,7 +119,7 @@ facts:
   reconcile brief's `retires:` is its deletion bundle and its fix tests are 11's; an accept
   amends the record. A `redesign` without an oracle is a design brief the author-brief skill
   refuses to author.
-- Line counts at f7bde6bfa: author-brief 768 (02 also holds it ≤ 768), review-prompt.md 324.
+- Line counts at f7bde6bfa (for scale; the net ≤ 0 rows derive their own base): author-brief 768 (02 also edits it), review-prompt.md 324.
 
 design-fit:
   owner: docs/refactor-oracle-template.md (planned; a template beside 09's docs/brittle-investigation-template.md, also planned)
@@ -155,7 +155,7 @@ design-fit:
    acceptance rows into its Verify table; a `redesign` brief without one is not authored.
 5. Review kit §"Design fit first" (≤ 2 lines, offset): on a PR whose brief carries `oracle:`,
    read the oracle; the `## Oracle` triage table is a material claim (the existing basis).
-6. testledger: the `// characterization:` tag in `Tests`; the `characterization-untriaged`
+6. testledger: the `// characterization:` tag in `Tests` (planned); the `characterization-untriaged`
    line; a fixture case (one tagged test listed in the fixture oracle, one not).
 7. Changelog fragment.
 
@@ -170,15 +170,15 @@ wiring and net ≤ 0 rows.
 |---|---------|--------|
 | 1 | `grep -c -e '^## 1\. Intent$' -e '^## 2\. Failure modes$' -e '^## 3\. Current behaviour$' -e '^## 4\. Invariants$' -e '^## 5\. Acceptance$' docs/refactor-oracle-template.md` | `5` |
 | 2 | `sed -n '/^## 3\. Current behaviour/,/^## 4\./p' docs/refactor-oracle-template.md \| grep -E '^[\|] *Test[A-Za-z0-9_]+ *[\|]' \| awk -F'\|' '{gsub(/ /,"",$3); print $3}' \| sort -u \| tr '\n' ' '` | `drop keep unknown ` (the worked example's triage table uses all three verdicts and nothing else) |
-| 3 | `sed -n '/^## 5\. Acceptance/,$p' docs/refactor-oracle-template.md \| grep -cE '^[\|] *[1-5] *[\|] \x60'` | `5` (the acceptance rule is five runnable rows) |
+| 3 | `b=$(printf '\140'); sed -n '/^## 5\. Acceptance/,$p' docs/refactor-oracle-template.md \| grep -cE "^[\|] *[1-5] *[\|] $b"` | `5` (the acceptance rule is five runnable rows; the backtick comes from `printf '\140'` because ERE has no `\x60` escape and GNU and BSD grep disagree on it) |
 | 4 | `grep -c 'Retires-test: .*accident per oracle' docs/refactor-oracle-template.md && grep -c 'unknown' docs/refactor-oracle-template.md` | ≥ `1`, then ≥ `3` (a drop leaves with 11's trailer; unknown is named as the refusal) |
 | 5 | `cmd=$(sed -n '/^## 2\. Failure modes/,/^## 3\./p' docs/refactor-oracle-template.md \| grep -oE "git grep -n 'regression: [^']*' -- '\*_test.go'" \| head -1); n=$(git grep -h '^// regression: #' -- '*_test.go' \| grep -oE '#[0-9]+' \| head -1); test -n "$cmd" && eval "${cmd/<N>/${n#\#}}" \| grep -c 'regression:'` | ≥ `1` (the failure-mode read the template gives finds a real tagged test from 11's seeds) |
 | 6 | `sed -n '/^## 4\. Invariants/,/^## 5\./p' docs/refactor-oracle-template.md \| grep -c 'go test ./internal/arch/' && cd tools/desk && go test ./internal/arch/ -count=1` | ≥ `1`, then `ok` (the invariants command the template names exists and is green) |
 | 7 | `sed -n '/^## 1\. Intent/,/^## 2\./p' docs/refactor-oracle-template.md \| grep -c -e 'brittle-investigation-template' -e 'divergence:' && test -f docs/brittle-investigation-template.md && echo INVESTIGATION-EXISTS` | ≥ `1`, then `INVESTIGATION-EXISTS` (the intent part reads 09's file, which exists) |
 | 8 | `cd tools/desk && go test ./internal/testledger/ -run TestLedgerFixture -count=1 -v \| grep -c 'characterization-untriaged: .*TestFixtureUntriaged'` | `1` (a tagged characterization test the fixture oracle does not list is reported; the listed one is not) |
 | 9 | `grep -c 'oracle' docs/brittle-investigation-template.md && grep -c 'oracle.md' docs/investigations/README.md` | two counts, each ≥ `1` |
-| 10 | `grep -c 'oracle:' plugins/assay/skills/author-brief/SKILL.md && test "$(wc -l < plugins/assay/skills/author-brief/SKILL.md)" -le 768 && echo NET-OK` | ≥ `1`, then `NET-OK` |
-| 11 | `s=$(sed -n '/^## [0-9]*\. Design fit first/,/^## [0-9]*\. /p' tools/desk/cmd/deskdispatch/references/review-prompt.md); echo "$s" \| grep -c 'oracle' && test "$(wc -l < tools/desk/cmd/deskdispatch/references/review-prompt.md)" -le 324 && echo NET-OK` | ≥ `1`, then `NET-OK` |
+| 10 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/12$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && grep -c 'oracle:' plugins/assay/skills/author-brief/SKILL.md && test "$(git show "$tip:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" && echo NET-OK` | ≥ `1`, then `NET-OK` |
+| 11 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/12$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && s=$(sed -n '/^## [0-9]*\. Design fit first/,/^## [0-9]*\. /p' tools/desk/cmd/deskdispatch/references/review-prompt.md); echo "$s" \| grep -c 'oracle' && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" && echo NET-OK` | ≥ `1`, then `NET-OK` |
 | 12 | `statusgen --consumers --root . --brief build-less-brittle/12; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
 
 ## Evidence

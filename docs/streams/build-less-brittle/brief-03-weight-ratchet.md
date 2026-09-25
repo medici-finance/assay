@@ -40,6 +40,12 @@ files:
 - `tools/desk/internal/weight/testdata/tree/**` (planned): NEW. A fixture tree with known counts.
 - `changelog/build-less-brittle-03.md` (planned)
 
+single-point-of-failure: the review stage's check (06) that a `# grow` line cites a comment by the
+driver's own login is the ONE control on who may raise a ceiling; this test only checks that a
+raised ceiling carries a `# grow` line. Behind it: the driver's own merge of the PR that raises
+the ceiling, and the approved number written into the ceiling, so any later growth notices (or,
+once promoted, fails) again (spec §4.5, §4.7).
+
 facts:
 - **CI runs it for free.** `.github/workflows/ci.yml` runs `go test ./...` in `tools/desk` on
   every push and pull_request (lines 59–66 at f7bde6bfa). No workflow edit is needed. A
@@ -72,7 +78,7 @@ facts:
   **not** verify the URL's author (that is review stage 06). It checks only that every raised
   ceiling carries a `# grow` line. Raised means above the value in `ceiling.txt` at the
   `-base` revision when one is given; otherwise the check is skipped and says so.
-- **Mode (D-A, ruled 2026-09-24).** `ceiling.txt` carries a first line `# mode: advisory`
+- **Mode (D-A, proposed in spec §10; ratified by the merge that lands this stream).** `ceiling.txt` carries a first line `# mode: advisory`
   at landing. In advisory mode `TestCeiling` (planned) logs `GROWTH-NOTICE <dim>: <count> >
   ceiling <n> (+<d>)` and passes; in `# mode: blocking` it fails with the message in Task
   step 4. The promotion to `blocking` is a later, recorded decision keyed to the adopting

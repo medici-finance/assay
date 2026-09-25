@@ -13,7 +13,7 @@ why: >-
   compositions of shared building blocks, not unique logic that drifts.
 wave: 2
 depends: ["build-less-brittle/01", "build-less-brittle/07"]
-unblocks: []
+unblocks: ["build-less-brittle/12"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -43,7 +43,7 @@ consumers:
 
 files:
 - `tools/desk/internal/arch/arch.go` (planned): NEW. Import-graph reader (`go/parser`, `ImportsOnly`) and the three rules as pure functions.
-- `tools/desk/internal/arch/arch_test.go` (planned): NEW. `TestDependencyDirection`, `TestHubAllowList`, `TestOneImplementationPerMeaning`, `TestRulesFixture`, `TestMissingIndexIsCouldNotCheck`.
+- `tools/desk/internal/arch/arch_test.go` (planned): NEW. `TestDependencyDirection` (planned), `TestHubAllowList` (planned), `TestOneImplementationPerMeaning` (planned), `TestRulesFixture` (planned), `TestMissingIndexIsCouldNotCheck` (planned).
 - `tools/desk/internal/arch/hub-allow.txt` (planned): NEW. The internal packages `internal/deskkit` may import, one per line, with `# grow` lines as in 03.
 - `tools/desk/internal/arch/markers.txt` (planned): NEW. `<S-id> <ceiling>`: the ceiling on declared implementations per meaning.
 - `tools/desk/internal/arch/testdata/tree/**` (planned): NEW. A fixture module with one violation of each rule.
@@ -84,7 +84,7 @@ facts:
   at least; `S-eligibility`'s owner is in statusgen and gets its marker when statusgen is next
   touched). `markers.txt` ceilings equal the seeded counts, so the ratchet starts tight.
 - **Three-state.** In a consumer checkout of `tools/desk` alone, `docs/contracts.md` is absent:
-  `TestOneImplementationPerMeaning` skips with `could-not-check (no semantic index)`. Rules 1
+  `TestOneImplementationPerMeaning` (planned) skips with `could-not-check (no semantic index)`. Rules 1
   and 2 need only the Go tree and always run.
 - **CI:** `.github/workflows/ci.yml` runs `go test ./...` in `tools/desk` (03's fact). No
   workflow edit.
@@ -111,7 +111,7 @@ design-fit:
    `Direction(graph) []Violation`; `HubAllow(graph, allow []string) []Violation` (both
    directions); `Markers(fsys, index []SRow) ([]Marker, []Violation)`; `ParseIndex(r io.Reader)
    []SRow` over the `## Semantic owners` table (owner and duplicates columns).
-2. Fixture tree with one violation per rule plus a clean control; `TestRulesFixture` asserts
+2. Fixture tree with one violation per rule plus a clean control; `TestRulesFixture` (planned) asserts
    the exact violation set, with the decoys: a `_test.go` importing cmd (ignored), a marker in
    a listed duplicate (allowed), a `cmd/x/internal` import (allowed).
 3. The three real-tree tests, each failing with a message that names the file, the rule and
@@ -132,7 +132,7 @@ checks the register rows landed and serve an existing S- row.
 | # | Command | Expect |
 |---|---------|--------|
 | 1 | `cd tools/desk && go test ./internal/arch/ -count=1` | `ok` |
-| 2 | `cd tools/desk && go test ./internal/arch/ -run TestRulesFixture -count=1 -v \| grep -c -- '--- PASS'` | `1` |
+| 2 | `cd tools/desk && go test ./internal/arch/ -run TestRulesFixture -count=1 -v \| grep -c '^--- PASS: TestRulesFixture '` | `1` (the top-level test passes; subtests are not counted) |
 | 3 | `cd tools/desk && printf 'package deskkit\nimport _ "github.com/medici-finance/assay/tools/desk/cmd/deskfile"\n' > internal/deskkit/zz_arch_mutation.go && go test ./internal/arch/ -run TestDependencyDirection -count=1 > /tmp/bl10-m1.out 2>&1; rc=$?; rm -f internal/deskkit/zz_arch_mutation.go; test $rc -ne 0 && grep -c 'R-dep-direction' /tmp/bl10-m1.out` | `1` (an internal→cmd import is red and names the rule) |
 | 4 | `cd tools/desk && printf 'package deskkit\nimport _ "github.com/medici-finance/assay/tools/desk/internal/forgeban"\n' > internal/deskkit/zz_arch_mutation.go && go test ./internal/arch/ -run TestHubAllowList -count=1 > /tmp/bl10-m2.out 2>&1; rc=$?; rm -f internal/deskkit/zz_arch_mutation.go; test $rc -ne 0 && grep -c 'R-hub-allowlist' /tmp/bl10-m2.out` | `1` (an unlisted hub import is red) |
 | 5 | `cd tools/desk && printf 'package forgeban\n// semantic: S-claim\nfunc zzMutation() {}\n' > internal/forgeban/zz_arch_mutation.go && go test ./internal/arch/ -run TestOneImplementationPerMeaning -count=1 > /tmp/bl10-m3.out 2>&1; rc=$?; rm -f internal/forgeban/zz_arch_mutation.go; test $rc -ne 0 && grep -c 'implemented outside its owner' /tmp/bl10-m3.out` | `1` (a declared implementation outside the owner and its listed duplicates is red) |
@@ -140,7 +140,7 @@ checks the register rows landed and serve an existing S- row.
 | 7 | `cd tools/desk && d=$(mktemp -d) && cp -R . "$d/desk" && cd "$d/desk" && go test ./internal/arch/ -run TestOneImplementationPerMeaning -count=1 -v \| grep -c 'could-not-check (no semantic index)'` | `1` (a checkout without docs/contracts.md is could-not-check, never a pass) |
 | 8 | `for r in R-dep-direction R-hub-allowlist R-one-implementation; do grep -cE "^[\|] *$r .*S-semantic-index" docs/contracts.md; done \| grep -c '^1$'` | `3` |
 | 9 | `n=$(git grep -c '^// semantic: S-' -- 'tools/desk/**/*.go' \| awk -F: '{s+=$2} END{print s+0}'); test "$n" -ge 5 && echo "markers=$n"` | `markers=` ≥ 5 (the owners are declared, so rule 3 cannot pass vacuously) |
-| 10 | `cd tools/desk && test "$(git diff --name-only HEAD~1 -- cmd \| grep -v _test.go \| xargs -I{} sh -c 'git diff HEAD~1 -- {} \| grep -c "^[+-][^+-]" ' \| awk '{s+=$1} END{print s+0}')" -le "$(git diff --name-only HEAD~1 -- cmd \| grep -v _test.go \| wc -l \| tr -d ' ')" && echo MARKERS-ONLY` | `MARKERS-ONLY` (any shipped-source diff is at most one line per file: the marker comment) |
+| 10 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/10$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && n=$(git diff --numstat "$base" "$tip" -- tools/desk/cmd \| grep -v '_test.go$' \| awk '$1 > 1 \|\| $2 > 0' \| wc -l \| tr -d ' '); test "$n" = 0 && echo MARKERS-ONLY` | `MARKERS-ONLY` (each shipped `cmd` source file the brief touches gains at most one line, the marker comment, and loses none; base derived as in row 9 of brief 08, never `HEAD~1`) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,

@@ -11,7 +11,7 @@ why: >-
   the implementation wrong. Its output is a recommendation with a deletion bundle, not a patch.
 wave: 3
 depends: ["build-less-brittle/04", "build-less-brittle/08"]
-unblocks: []
+unblocks: ["build-less-brittle/12", "build-less-brittle/13"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -87,8 +87,8 @@ facts:
 - **Output shape** (frontmatter): `module`, `s-row`, `class-issue`, `mark-date`, `divergence`
   (one of three or `none`), `recommendation` (one of three or `clear`), `next-act` (a brief
   id, a DR id, or `clear`), `end-state` (one line), `tier: strong`, `date`.
-- Line count at f7bde6bfa: worker-desk 868 (04 also holds it ≤ 868; the two briefs share the
-  cap and each offsets its own lines).
+- Line count at f7bde6bfa (for scale; the net ≤ 0 row derives its own base): worker-desk 868 (04 edits the
+  same file; each brief offsets its own lines).
 
 design-fit:
   owner: docs/brittle-investigation-template.md (a template beside docs/brief-template.md)
@@ -110,7 +110,12 @@ design-fit:
    `## Intent`, `## What happened`, `## Divergence`, `## Options`, `## Recommendation`,
    `## Next act`; under each, the evidence it must cite and the read command. Include the
    three divergences and three recommendations verbatim, the `none`/`clear` outcome, the
-   NEEDS_CONTEXT rule, and a worked example over a fictional `cmd/example` module.
+   NEEDS_CONTEXT rule, and a worked example over a fictional `cmd/example` module. Placement
+   is fixed, because rows 1 and 5 read it: the file opens with ONE frontmatter block, and that
+   block is the worked example's, filled in (the key descriptions live in the body, not in a
+   second frontmatter block). Each of the six headings appears exactly once; under it comes
+   the instruction, then the worked example's text for that section. The example never
+   repeats a heading.
 2. `docs/investigations/README.md` (planned): three lines. What lands here, the filename rule, and that
    a file's `recommendation:` is what the mark table's `investigation` column links to.
 3. worker-desk §"Un-briefed issues" (≤ 3 lines, offset): a class issue labelled `brittle`
@@ -135,7 +140,7 @@ dereferences the command the template tells sessions to run, rows 7–8 are the 
 | 5 | `printf '%s\n' 'divergence: drifted' 'divergence: intent-changed' 'divergence: intent-right, implementation-wrong' 'divergence: none' 'recommendation: reconcile' 'recommendation: redesign' 'recommendation: accept' 'recommendation: clear' > /tmp/bl09-vocab.txt && awk '/^---$/{n++; next} n==1' docs/brittle-investigation-template.md \| grep -xF -f /tmp/bl09-vocab.txt \| cut -d: -f1 \| sort -u \| grep -c .` | `2` (the worked example's frontmatter carries both keys, each with a value from its closed vocabulary; a value outside it matches no line) |
 | 6 | `cmd=$(grep -oE 'git log --follow --reverse[^<]*<path>' docs/brittle-investigation-template.md \| head -1); test -n "$cmd" && eval "${cmd/<path>/tools/desk/internal/forgeban/allowlist.go}" \| head -1 \| grep -cE '^[0-9a-f]{40} '` | `1` (the intent-read command the template gives runs and yields an originating commit) |
 | 7 | `grep -c 'brittle-investigation-template' plugins/assay/skills/worker-desk/SKILL.md` | ≥ `1` |
-| 8 | `test "$(wc -l < plugins/assay/skills/worker-desk/SKILL.md)" -le 868 && echo NET-OK` | `NET-OK` |
+| 8 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/09$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 9 | `test -f docs/investigations/README.md && grep -c 'recommendation' docs/investigations/README.md` | ≥ `1` |
 | 10 | `statusgen --consumers --root . --brief build-less-brittle/09; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
 

@@ -10,7 +10,7 @@ why: >-
   tests, the Verify row that cited them kept passing with "no tests to run" (#1306). A tag that
   says what a test pins, a trailer that says why a tagged test leaves, and a report that lists
   every departure without one, make the regression suite ratchet instead of leak. The report
-  never blocks: it is a rubric for the reviewer, not a ruling (the driver's ruling, 2026-09-24).
+  never blocks: it is a rubric for the reviewer, not a ruling (spec §4.11; proposed, ratified by the merge that lands this stream).
 wave: 4
 depends: ["build-less-brittle/05", "build-less-brittle/06", "build-less-brittle/07"]
 unblocks: ["build-less-brittle/12"]
@@ -20,7 +20,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
 version: 1
-authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; driver-ruled amendment)"
+authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; third-pass amendment)"
 sources:
   - "docs/streams/build-less-brittle/spec.md §3 row 13, §4.11, §11"
   - "tools/desk/cmd/deskdispatch/references/worker-prompt.md §9 (fail-first evidence, line 175 at f7bde6bfa) and §14 (defect class, line 315); worker-prompt-objective.md carries §9 verbatim (line 247)"
@@ -54,7 +54,7 @@ files:
 - `tools/desk/cmd/deskdispatch/references/review-prompt.md`: §3, the three rubric questions for a reported line (≤ 4 lines, offset).
 - `plugins/assay/skills/pr-review-desk/SKILL.md`: the fail-first paragraph, the report command and the rubric pointer (≤ 2 lines, offset).
 - `tools/desk/internal/testledger/ledger.go` (planned): NEW. Pure functions: `Tests(fsys) []TestFunc` (name, package, tag, body hash) via `go/parser`; `Diff(base, head) Report` (deleted, renamed, added); `ParseTrailers(msgs) []Retirement`; `RowsNaming(fsys, name) []Row` over `docs/streams/**/brief-*.md`.
-- `tools/desk/internal/testledger/ledger_test.go` (planned): NEW. `TestLedgerFixture`, `TestTrailerGrammar`, `TestReportTestLedger` (test-only flags `-base`, `-head`: a revision via `git archive`, or a directory), `TestUnresolvableBaseIsCouldNotCheck`.
+- `tools/desk/internal/testledger/ledger_test.go` (planned): NEW. `TestLedgerFixture` (planned), `TestTrailerGrammar` (planned), `TestReportTestLedger` (planned) (test-only flags `-base`, `-head`: a revision via `git archive`, or a directory), `TestUnresolvableBaseIsCouldNotCheck` (planned).
 - `tools/desk/internal/testledger/testdata/{base,head}/**` (planned): NEW. Two fixture trees and a `log.txt` of commit messages.
 - `docs/contracts.md`: the tag convention (2 lines under "How a brief cites this") and one register row.
 - Seeded tags: ≥ 5 existing tests whose comment already names the issue they pin.
@@ -80,8 +80,8 @@ facts:
   2. One test can pin several incidents; a comment lists them, a name holds one.
   3. `go/parser` reads a doc comment the same way brief 10 reads `// semantic:` markers: one
      marker shape, one parser, no regexes over source.
-  4. The prefix's one advantage is a `-run 'TestRegression_'` selector for a count gate. The
-     driver declined the gate (a rubric, not a ruling), so the advantage does not apply.
+  4. The prefix's one advantage is a `-run 'TestRegression_'` selector for a count gate. This
+     stream declines the gate (a rubric, not a ruling; spec §4.11), so the advantage does not apply.
   The cost is stated: a comment is invisible in `go test -v` output. The report is where the
   tags are made visible, at review, which is where they are needed.
 - **The trailer.** A commit that deletes or renames a test function carries one trailer per
@@ -89,7 +89,7 @@ facts:
   <New>; <why>`. `git interpret-trailers --parse` reads it as-is (checked). A rename's trailer
   names the new name so the same PR re-points every Verify row that named the old one; the
   report lists those rows.
-- **The report, never a gate.** `TestReportTestLedger` logs, for the range `-base..-head`:
+- **The report, never a gate.** `TestReportTestLedger` (planned) logs, for the range `-base..-head`:
   `retired-untrailed: <pkg>.<Test> [regression #N] deleted in <commit>`,
   `renamed-untrailed: <pkg>.<Old> → <New> (body identical|same tag) in <commit>`, and
   `verify-rows-naming: <Old> → docs/streams/<s>/brief-<NN>.md:<row>`. It passes whatever it
@@ -116,16 +116,16 @@ facts:
   one. There is no default range.
 - **Three-state.** A `-base` that does not resolve, or a tree with no `_test.go`, is
   `could-not-check` with the reason; a tree with tests and nothing deleted reports `clean`.
-- Line counts at f7bde6bfa: worker-prompt.md 358, worker-prompt-objective.md 509,
+- Line counts at f7bde6bfa (for scale; the net ≤ 0 rows derive their own base): worker-prompt.md 358, worker-prompt-objective.md 509,
   review-prompt.md 324, pr-review-desk 968. Briefs 05 and 06 edit the same files earlier in
-  the chain; this brief holds the same caps and offsets its own lines.
+  the chain; each brief, this one included, offsets its own lines.
 
 design-fit:
   owner: tools/desk/internal/testledger (new; no existing owner reads test functions across two trees)
   contract: S-review-verdict (the rubric lands in the review kit; the register row R-retires-test serves it)
   retires: []
   weight: verbs 0, flags 0, refusals 0, rule-text lines ≤ 0 in each of the four files; one register row
-  why-add: n/a (no ratcheted growth); ~250 lines of pure parsing reported under golines. The alternative, #1581's count-can't-drop CI job, needs a workflow scope the worker App lacks and is the gate the driver declined.
+  why-add: n/a (no ratcheted growth); ~250 lines of pure parsing reported under golines. The alternative, #1581's count-can't-drop CI job, needs a workflow scope the worker App lacks and is the gate this stream declines (spec §4.11).
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating kubectl. Leave commits per the task instructions only.
@@ -138,20 +138,21 @@ design-fit:
 
 ## Task
 
-1. `ledger.go`: `Tests` over an `fs.FS` (every `*_test.go`; `func Test*`, `Fuzz*`, `Benchmark*`
+1. `ledger.go`: `Tests` (planned) over an `fs.FS` (every `*_test.go`; `func Test*`, `Fuzz*`, `Benchmark*`
    with package path, doc-comment tag, and a hash of the normalised body); `Diff` (deleted =
    in base not head; renamed = a deleted whose body hash or tag matches an added in the same
    package; added); `ParseTrailers` over `git log --format='%H%n%(trailers:key=Retires-test,valueonly)%n--'`
    text; `RowsNaming` over `docs/streams/**/brief-*.md` Verify tables (a `-run` selector or a
-   bare test name containing `<Old>`).
+   bare test name containing `<Old>`), run for every untrailed departure, deleted as well as
+   renamed.
 2. Fixture trees: base holds 6 tests (2 tagged); head deletes one tagged and one untagged,
    renames one (identical body) and one (same tag, changed body), keeps two, adds one; `log.txt`
-   carries one `Retires-test:` trailer covering exactly one of the deletions. `TestLedgerFixture`
+   carries one `Retires-test:` trailer covering exactly one of the deletions. `TestLedgerFixture` (planned)
    asserts the exact report: 1 `retired-untrailed` with bracket, 0 for the trailed one, 2
    `renamed-untrailed`, and the decoy (a non-test `func Test…` helper in a `.go` file) ignored.
-3. `TestReportTestLedger`: `-base`/`-head` as a revision (`git archive` into a temp dir, 03's
+3. `TestReportTestLedger` (planned): `-base`/`-head` as a revision (`git archive` into a temp dir, 03's
    pattern) or a directory; logs the lines above or `clean`; `t.Skip("could-not-check (…)")`
-   on an unresolvable revision. `TestTrailerGrammar` over the grammar in facts, including the
+   on an unresolvable revision. `TestTrailerGrammar` (planned) over the grammar in facts, including the
    rename form.
 4. Seed `// regression:` tags on ≥ 5 existing tests whose comment already names the issue
    (candidates: `statusgen/boardhonesty_test.go` `TestBoardHonestyDehousedRowScoped` → #1516;
@@ -164,7 +165,7 @@ design-fit:
    report against the merge-base with `-v`; the three questions; an unjustified departure is
    `test-evidence`. Skill (≤ 2 lines): the command and the pointer.
 6. `docs/contracts.md`: the tag convention beside 10's marker note; register row
-   `R-retires-test` (serves `S-review-verdict`; catch source `TestLedgerFixture`; justifying
+   `R-retires-test` (serves `S-review-verdict`; catch source `TestLedgerFixture` (planned); justifying
    issues #1306, #1581).
 7. Changelog fragment.
 
@@ -178,21 +179,21 @@ are net ≤ 0 rows.
 | # | Command | Expect |
 |---|---------|--------|
 | 1 | `cd tools/desk && go test ./internal/testledger/ -count=1` | `ok` |
-| 2 | `cd tools/desk && { go test ./internal/testledger/ -run TestLedgerFixture -count=1 -v; go test ./internal/testledger/ -run TestTrailerGrammar -count=1 -v; } \| grep -c -- '--- PASS'` | `2` |
+| 2 | `cd tools/desk && { go test ./internal/testledger/ -run TestLedgerFixture -count=1 -v; go test ./internal/testledger/ -run TestTrailerGrammar -count=1 -v; } \| grep -c -e '^--- PASS: TestLedgerFixture ' -e '^--- PASS: TestTrailerGrammar '` | `2` (each top-level test passes once; subtests are not counted) |
 | 3 | `d=$(mktemp -d) && cp -R . "$d/tree" && t=$(git grep -l '^// regression: #' -- '*_test.go' \| head -1) && n=$(grep -A1 '^// regression: #' "$t" \| grep -oE 'func (Test[A-Za-z0-9_]+)' \| head -1 \| cut -d' ' -f2) && rm "$d/tree/$t" && cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -count=1 -v -args -base="$(git rev-parse --show-toplevel)" -head="$d/tree" \| grep -c "retired-untrailed: .*$n \[regression"` | `1` (a planted deletion of a tagged test is reported with its tag; the file's other tests are reported too, without the bracket) |
 | 4 | `d=$(mktemp -d) && cp -R . "$d/tree" && t=$(git grep -l '^// regression: #' -- '*_test.go' \| head -1) && n=$(grep -A1 '^// regression: #' "$t" \| grep -oE 'func (Test[A-Za-z0-9_]+)' \| head -1 \| cut -d' ' -f2) && sed "s/func $n(/func ${n}Renamed(/" "$t" > "$d/tree/$t" && cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -count=1 -v -args -base="$(git rev-parse --show-toplevel)" -head="$d/tree" \| grep -c "renamed-untrailed: .*$n → ${n}Renamed"` | `1` (a planted rename with an identical body is reported as a rename, not a deletion plus an addition) |
 | 5 | `cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -count=1 -v -args -base=c16e2dc55~1 -head=c16e2dc55 \| grep -c 'retired-untrailed: .*TestRoleInitWiresWorktreeScopedCredentialHelper'` | `1` (dereference: a real untrailed deletion from the evidence window is reported) |
 | 6 | `cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -count=1 -v -args -base=7af5d2b6c~1 -head=7af5d2b6c \| grep -c 'retired-untrailed: .*TestClaimLivenessIsUnknown'` | `2` (both deletions in #1498's commit) |
 | 7 | `cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -count=1 -args -base=7af5d2b6c~1 -head=7af5d2b6c > /tmp/bl11-r7.out 2>&1; echo "exit=$?"` | `exit=0` (the report passes with two findings: it never blocks by itself) |
-| 8 | `cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -count=1 -v -args -base=b7a82c025~1 -head=b7a82c025 \| grep -c 'verify-rows-naming: TestDedupeSearchOutageNamesTheAPIStatus → docs/streams/desk-tools/brief-21'` | `1` (dereference: the #1306 rename names the Verify row that went vacuous) |
+| 8 | `cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -count=1 -v -args -base=b7a82c025~1 -head=b7a82c025 \| grep -c 'verify-rows-naming: TestDedupeSearchOutageNamesTheAPIStatus → docs/streams/desk-tools/brief-21'` | `1` (dereference: the #1306 rename names the Verify row that went vacuous. In b7a82c025 the old test's body also changed and no tags existed yet, so the ledger sees a deletion, not a rename: `RowsNaming` fires on every untrailed departure, deletions as well as renames, and this row depends on that) |
 | 9 | `cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -count=1 -v -args -base=deadbeefdeadbeef -head=HEAD \| grep -c 'could-not-check'` | `1` (an unresolvable base is could-not-check, never `clean`) |
 | 10 | `n=$(git grep -c '^// regression: #' -- '*_test.go' \| awk -F: '{s+=$2} END{print s+0}'); test "$n" -ge 5 && echo "tags=$n"` | `tags=` ≥ 5 (seeded, so rows 3–4 cannot pass vacuously) |
 | 11 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c 'regression: #' "$f"; done \| grep -c '^[1-9]'` | `2` (both kits carry the tag rule) |
 | 12 | `grep -c 'Retires-test' tools/desk/cmd/deskdispatch/references/review-prompt.md && grep -c 'testledger' plugins/assay/skills/pr-review-desk/SKILL.md` | two counts, each ≥ `1` |
-| 13 | `test "$(wc -l < tools/desk/cmd/deskdispatch/references/worker-prompt.md)" -le 358 && test "$(wc -l < tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md)" -le 509 && echo NET-OK` | `NET-OK` |
-| 14 | `test "$(wc -l < tools/desk/cmd/deskdispatch/references/review-prompt.md)" -le 324 && test "$(wc -l < plugins/assay/skills/pr-review-desk/SKILL.md)" -le 968 && echo NET-OK` | `NET-OK` |
+| 13 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/11$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/worker-prompt.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/worker-prompt.md" \| wc -l)" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
+| 14 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/11$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" && test "$(git show "$tip:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 15 | `grep -cE '^[\|] *R-retires-test .*S-review-verdict' docs/contracts.md && grep -c 'TestLedgerFixture' docs/contracts.md` | `1`, then ≥ `1` (registered, serving an existing S- row, with a catch source that can fire) |
-| 16 | `cd tools/desk && test "$(git diff --name-only HEAD~1 -- cmd \| grep -v _test.go \| grep -v '/references/' \| wc -l \| tr -d ' ')" = 0 && echo NO-CMD-CHANGE` | `NO-CMD-CHANGE` (no shipped verb or flag changed) |
+| 16 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/11$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git diff --name-only "$base" "$tip" -- tools/desk/cmd \| grep -v _test.go \| grep -v '/references/' \| wc -l \| tr -d ' ')" = 0 && echo NO-CMD-CHANGE` | `NO-CMD-CHANGE` (no shipped verb or flag changed; kit text under `references/` is the one allowed edit; base derived, never `HEAD~1`) |
 | 17 | `statusgen --consumers --root . --brief build-less-brittle/11; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
 
 ## Evidence
@@ -204,8 +205,8 @@ are net ≤ 0 rows.
 
 ## Review
 Gate: model (from frontmatter). The reviewer confirms the report has no failing path other
-than its fixtures (grep the package for `t.Fatal`/`t.Error` outside `TestLedgerFixture` and
-`TestTrailerGrammar`): a report that can block is a gate the driver did not rule. The reviewer
+than its fixtures (grep the package for `t.Fatal`/`t.Error` outside `TestLedgerFixture` (planned) and
+`TestTrailerGrammar` (planned)): a report that can block is a gate the driver did not rule. The reviewer
 also checks that the rename detector does not over-match (two different tests that happen to
 share a tag are two lines, not one rename) and that each seeded tag sits on the test that
 pins the cited issue, not on a neighbour in the same file.

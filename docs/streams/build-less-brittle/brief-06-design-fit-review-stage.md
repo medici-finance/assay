@@ -6,11 +6,12 @@ why: >-
   should exist at all. A correct patch in the wrong layer passes, and the next symptom gets the
   next patch. For any PR that adds weight (a verb, a flag, a refusal, rule text) or a new rule,
   the reviewer, at strong tier, first answers three design questions. A "wrong layer" answer
-  blocks the PR. The existing reversal-rate calibration demotes the finding class if reviewers
-  turn out to be imposing taste.
+  is a `design-fit` finding: advisory at landing, blocking only after a later recorded
+  promotion decision (D-A). The existing reversal-rate calibration then demotes the finding
+  class if reviewers turn out to be imposing taste.
 wave: 2
 depends: ["build-less-brittle/02", "build-less-brittle/03", "build-less-brittle/07"]
-unblocks: []
+unblocks: ["build-less-brittle/11"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -48,6 +49,11 @@ files:
 - `docs/contracts.md`: rule row `R-design-fit-basis`.
 - `changelog/build-less-brittle-06.md` (planned)
 
+single-point-of-failure: the reviewer's check that a `# grow` line's URL resolves to a comment by
+the driver's own login is the ONE control on ratchet growth. Behind it: the driver's own merge of
+the growth PR, and the CI ceiling, which forces every bump into the diff where review sees it
+(spec §4.7).
+
 facts:
 - `ScopeBases()` (reviewscope.go:83) is "the single source of truth the kit block and the case
   corpus are checked against". `TestReviewScopeKitMatchesModel` fails if the kit's
@@ -68,7 +74,7 @@ facts:
   boundary is NOT a design-fit finding (spec §4.2 rule 1). Only a second owner of a meaning is.
 - **Tier.** The pr-review-desk skill keys tier to risk today (strong for risk-flagged items).
   This adds: weight growth → strong tier for the correctness lane.
-- **Calibration, and the landing state (D-A, ruled 2026-09-24).** The finding-class register
+- **Calibration, and the landing state (D-A, proposed in spec §10; ratified by the merge that lands this stream).** The finding-class register
   table gains `design-fit | advisory`. While advisory, the reviewer records the finding with
   its basis and reason and proceeds to the correctness pass; the ready-flip is not held on it.
   The promotion to `blocking` is a later, recorded decision keyed to the project's baseline
@@ -81,7 +87,7 @@ facts:
   weight-growth decision issue, using `deskfile attach`. The driver replies `grow <N>`. The
   reviewer checks that the `# grow` line's URL resolves to a comment by the driver's login
   before approving. The project layer names the issue and the login.
-- Line counts at f7bde6bfa: review-prompt.md 324, pr-review-desk 968. Both net ≤ 0.
+- Line counts at f7bde6bfa (for scale; the net ≤ 0 rows derive their own base): review-prompt.md 324, pr-review-desk 968. Both net ≤ 0.
 - **Hotspot and fitness-function wiring (build-less-brittle/08, /10; SOTA amendment).** Two more
   triggers, one line each in the clause: (a) the diff touches a module carrying a `brittle`
   mark (`docs/contracts.md` §Brittle marks) — the stage runs even at zero weight delta, and
@@ -116,9 +122,11 @@ design-fit:
    Update tests that count bases.
 2. In `review-prompt.md`: add the row to the `reviewscope` block, and a clause "Design fit
    first" (≤ 14 lines) after clause 2 (CI first), carrying the trigger, the three questions,
-   the ownership-versus-enforcement boundary, and stop-on-block.
+   the ownership-versus-enforcement boundary, and the landing state: advisory (record the
+   finding and continue), with stop-on-block only once the class is promoted to `blocking`.
 3. In `plugins/assay/skills/pr-review-desk/SKILL.md`: weight growth → strong tier (1–2 lines beside the risk-keyed
-   rule); the register row `design-fit | blocking`; the growth-approval step (≤ 5 lines).
+   rule); the register row `design-fit | advisory` (D-A; the promotion to `blocking` is a
+   later one-cell edit); the growth-approval step (≤ 5 lines).
 4. Add `R-design-fit-basis` to the rule register (serves `S-review-verdict`).
 5. Offset lines, run the tests, and write the changelog fragment.
 
@@ -135,8 +143,8 @@ pin. Rows 7–8 are net ≤ 0 weight rows.
 | 4 | `grep -cE '^## [0-9]+\. Design fit first' tools/desk/cmd/deskdispatch/references/review-prompt.md` | `1` |
 | 5 | `grep -cE '^[\|] design-fit [\|] advisory [\|]' plugins/assay/skills/pr-review-desk/SKILL.md` | `1` (D-A: the class lands `advisory`; the promotion to `blocking` is a later recorded decision, a one-cell edit) |
 | 6 | `grep -cE '^[\|] *R-design-fit-basis .*S-review-verdict' docs/contracts.md` | `1` (the new rule is registered and serves an existing S- row) |
-| 7 | `test "$(wc -l < tools/desk/cmd/deskdispatch/references/review-prompt.md)" -le 324 && echo NET-OK` | `NET-OK` |
-| 8 | `test "$(wc -l < plugins/assay/skills/pr-review-desk/SKILL.md)" -le 968 && echo NET-OK` | `NET-OK` |
+| 7 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/06$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
+| 8 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/06$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 9 | `grep -c 'go test ./internal/weight/ -run TestPrintWeight' tools/desk/cmd/deskdispatch/references/review-prompt.md && test -f tools/desk/internal/weight/weight_test.go && echo COUNTER-EXISTS` | a count ≥ `1`, then `COUNTER-EXISTS` |
 | 10 | `statusgen --consumers --root . --brief build-less-brittle/06; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
 | 11 | `s=$(sed -n '/^## [0-9]*\. Design fit first/,/^## [0-9]*\. /p' tools/desk/cmd/deskdispatch/references/review-prompt.md); echo "$s" \| grep -c 'Brittle marks'; echo "$s" \| grep -c 'internal/arch'` | two counts, each ≥ `1` (a marked module and a red arch test both trigger the stage) |

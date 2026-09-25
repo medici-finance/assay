@@ -1,6 +1,6 @@
 # build-less-brittle: scoping document
 
-**Status:** routed — authored 2026-09-24 from a read-only review. Approval is the driver's own act: the merge of the pull request that lands this document stamps it (`spec/lifecycle-v1.md` §8.4). That same pull request lands briefs 01–13, whose `sources:` cite this path, so the document lands `routed`, not `approved` (§8.2). The D-A and D-B rulings are recorded in §10.
+**Status:** routed — authored 2026-09-24 from a read-only review. Approval is the driver's own act: the merge of the pull request that lands this document stamps it (`spec/lifecycle-v1.md` §8.4). That same pull request lands briefs 01–13, whose `sources:` cite this path, so the document lands `routed`, not `approved` (§8.2). D-A and D-B are proposed in §10 and ratified by the same merge.
 **Routes-to:** docs/streams/build-less-brittle/
 **Owner:** the methodology track (intake, worker, review and authoring procedure).
 **Pinned reads:** `origin/main` @ `f7bde6bfa` (2026-09-24 16:32 -0500).
@@ -68,12 +68,12 @@ rule (§5), not a proven cure.
 | # | Dynamic (hypothesis) | Change that targets it | Brief |
 |---|---|---|---|
 | D1 | The unit of work is the symptom. Intake files "X refused Y", and a worker fixes exactly that. | Intake files by error **class**. Symptoms attach to a class issue, and a class that recurs gets a **design brief**, not another point fix. | 04 |
-| D2 | Reviewers check that the diff is correct, not whether it is the right layer or should exist. | A **design-fit stage** runs before correctness review for any change that adds weight. "Wrong layer" is a blocking basis. | 06 |
+| D2 | Reviewers check that the diff is correct, not whether it is the right layer or should exist. | A **design-fit stage** runs before correctness review for any change that adds weight. "Wrong layer" is a `design-fit` finding: advisory at landing, blocking after a later recorded promotion (D-A). | 06 |
 | D3 | Additions feel safe and deletions feel risky. Fail-first and mutation tests pin every patch in place. | A **weight ratchet**, a `retires:` line in every brief, a defect-class clause that prefers removing the hazard over adding a guard, and retired tests that go with their retired refusal. | 02, 03, 05 |
 | D4 | Nobody owns the design. No contract exists for briefs to fit, so logic gets duplicated (readiness is computed seven ways). | A **semantic-owner index** (one owner per meaning) that briefs must cite, plus a **rule register** with a monthly rule diet. | 01, 07 |
 | D5 | Cheap models on repeated fix rounds leave residue. | Round-two work and design work run at **strong tier**. Mechanical fixes stay cheap, and only after the design-fit stage has passed. | 04, 05, 06 (folded; see §3) |
 | D6 | Nobody knows where the next fix will land, so attention is spread evenly over 161k lines while 2% of files take 28% of the changes. | A **hotspot ranking** from git history nominates, class history confirms, a `brittle` mark binds to an **investigation** of intent versus what happened, and three **fitness functions** hold the shape rules in CI. | 08, 09, 10 (SOTA amendment) |
-| D7 | A redesign is coded against recollection. The fix's test leaves silently (five deletions in a week, none explained), so the incident's pin is gone, and the brief that recorded the intent no longer matches the code (about 28 briefs marked done or implemented with no deliverable in the tree), so nobody can say what a refactor must preserve. | Regression tests become a **ratchet** (a tag, a `Retires-test:` trailer, a report review judges). Before any `redesign`, the worker assembles an **oracle**: intent, failure modes mapped to tests, characterization tests triaged intent-versus-accident, invariants, and an acceptance rule. One strong-tier session runs investigation, oracle and refactor itself, asking the driver one typed decision only for the residue. | 11, 12, 13 (driver-ruled, 2026-09-24) |
+| D7 | A redesign is coded against recollection. The fix's test leaves silently (five deletions in a week, none explained), so the incident's pin is gone, and the brief that recorded the intent no longer matches the code (about 28 briefs marked done or implemented with no deliverable in the tree), so nobody can say what a refactor must preserve. | Regression tests become a **ratchet** (a tag, a `Retires-test:` trailer, a report review judges). Before any `redesign`, the worker assembles an **oracle**: intent, failure modes mapped to tests, characterization tests triaged intent-versus-accident, invariants, and an acceptance rule. One strong-tier session runs investigation, oracle and refactor itself, asking the driver one typed decision only for the residue. | 11, 12, 13 (third-pass amendment, 2026-09-24) |
 
 ## 3. The proposed changes: kept, refined, cut, added
 
@@ -82,7 +82,7 @@ rule (§5), not a proven cure.
 | 1. Intake files by error class; ~3 instances trigger a design brief | **Kept, refined** | The class is a **mechanism**, not the review's 16 broad buckets ("tool self-hygiene" is not a design unit). A design brief is triggered by **3 counted instances or a 2nd merged fix** in the class, whichever comes first. The fix counter is proposal 3 at class level, so one record carries both counters. Only `confirmed-defect` and `false-positive` kinds count, deduped by incident group (the audit). Symptoms in a design-owed class are parked with the existing `blocked` status token, not closed. They close when the design PR merges. |
 | 2. Brief template gains a required Design fit section | **Kept, refined** | It is a `design-fit:` block in `## Context`, a sibling of the existing `consumers:` and `layering:` lines, not a new top-level section. It is required on every **new** brief. It has five keys: `owner`, `contract`, `retires`, `weight`, `why-add`. Requiring it everywhere avoids a trigger classifier (the diff-classifier chain is a warning). `n/a` is a legal value when the weight delta is zero. There is no lint yet: the grammar settles first, the same precedent as `consumers:`. |
 | 3. Worker two-strikes, plus net lines, flags and refusals in PR bodies | **Kept, refined** | "Same area" means **the same class issue**, not a file-path heuristic. On strike two the worker delivers a design note instead of a fix. There is one bleed exception (driver decision D-B in §10). The `## Weight` PR section is the counter's output at merge-base and head, not a hand count. The existing defect-class clause (worker kit 14, "add a class guard") is amended: remove the hazard or make it unrepresentable first, and treat a new guard as weight. |
-| 4. Design-review lane on the strongest model; "wrong layer" blocks | **Refined: a stage, not a lane** | A separate lane needs new selection code (lanes are code-keyed, `deskkit.LanesFor`) and doubles dispatch. Instead, the correctness reviewer answers the design-fit questions **first**. It is dispatched at strong tier when the weight delta is above zero, and it stops before the correctness pass when design-fit blocks. The block needs a scope basis, so a fifth basis, `design-fit`, is added to the machine-checked review-scope table. The new finding class enters the existing reversal-rate calibration. If reviewers mostly get overruled, it demotes to advisory by the rule that already exists. |
+| 4. Design-review lane on the strongest model; "wrong layer" blocks | **Refined: a stage, not a lane** | A separate lane needs new selection code (lanes are code-keyed, `deskkit.LanesFor`) and doubles dispatch. Instead, the correctness reviewer answers the design-fit questions **first**. It is dispatched at strong tier when the weight delta is above zero. At landing a design-fit "no" is recorded and the correctness pass continues. Once the class is promoted to blocking (D-A, §10), the reviewer stops before the correctness pass when design-fit blocks. The block needs a scope basis, so a fifth basis, `design-fit`, is added to the machine-checked review-scope table. The new finding class enters the existing reversal-rate calibration. If reviewers mostly get overruled, it demotes to advisory by the rule that already exists. |
 | 5. CI weight ratchet, standalone now, replaceable later | **Kept, refined** | It is a **Go test package** in `tools/desk`, not a verb and not a workflow. CI already runs `go test ./...` there, and a workflow change would need a scope the worker App lacks. It follows the precedent of the forge-CLI ratchet (`forgeban`). It ratchets verbs, flag registrations, refusal-constructor calls and rule-text lines. Production Go lines are reported, not ratcheted (the audit: lines are a secondary proxy). Workaround memories are **not** CI-countable: they are private, per-machine files, so the project layer measures them outside the tree (§5.4). |
 | 6. One living contracts document that briefs must cite | **Kept, merged with 7** | `docs/contracts.md` already exists for *seam* contracts (artifact + source gate + consumer run). A **semantic-owner index** goes into it, with one row per meaning. Each row names its owner module, its decision record, its known duplicate implementations and its enforcement points. A row is not called a "contract" until it has the doc's three parts, which keeps the existing definition honest. Changing a row means amending its decision record, never adding a local exception. |
 | 7. Rule register and monthly rule diet; zero catches alarms, never auto-deletes | **Kept, scoped** | The register lives in the same doc, and each rule cites the semantic row it enforces. It is seeded with the rules implicated in the nine chains plus every **new** rule. It is not a back-fill of every refusal: 845 rows would be a register nobody reads. The diet reports three states (could-not-check / proven-able-to-fire / zero-without-proof) and files **one** decision issue per month, answered in one typed reply. It never deletes automatically. |
@@ -94,9 +94,9 @@ rule (§5), not a proven cure.
 | 10. **Hotspot metric and the `brittle` mark** (SOTA amendment) | **Added** | The driver's proposal: code metrics past a threshold mark a part `brittle`. The literature (§11) says the metric that predicts where the next defect lands is change history, not static complexity, and that hotspots are a ranking, not a threshold. So the mark has two keys: the metric (churn × indentation complexity over 90 days, top 2% by score with ≥ 2 fix commits) **nominates**, and the class defect history (04) **confirms**. Temporal coupling is read, not keyed. The mark lands in `docs/contracts.md` and on the board as a findings entry, using what exists. It is never a CI gate: rankings are not pass/fail and hosted checkouts are shallow. Brief 08. |
 | 11. **Brittle investigation** (SOTA amendment) | **Added** | The driver's proposal: a strong-model tier investigates the original intent, the issues found, and how to reconcile the two. Kept, given a template with a closed vocabulary: which of three divergences holds (drifted / intent-changed / intent-right-implementation-wrong) and which of three acts follows (`reconcile` with a deletion bundle, `redesign` via a DR amendment and a design brief that prefers a strangler seam, `accept` by amending the record). `none`/`clear` is a legal outcome, so the investigation is not a patch generator. Every recommendation carries a verifiable end state. Brief 09. |
 | 12. **Architectural fitness functions** (SOTA amendment) | **Added** | Executable shape rules in the test suite CI already runs: dependency direction (internal never imports cmd; cmd never imports another cmd), the hub's import allow-list as a frozen-rule ratchet, and one declared implementation per registered meaning (a marker the semantic index checks). A separate desk-tool redesign's rule "no logic in main()" is not here; its intent, that new things compose shared building blocks rather than grow unique logic, is what rule 3 holds. Brief 10. |
-| 13. **Regression tests are a ratchet** (driver-ruled) | **Added** | Fail-first already exists (worker kit §9, review kit §3, the fail-first lane, the `test-evidence` finding class) and proves a test can fail on the day it lands. Nothing holds it afterwards: five test functions left the public tree in one week with no recorded reason, and a rename left a Verify row passing with "no tests to run" (#1306). Every fix's test now carries `// regression: #<N>` (a comment, not a `TestRegression_` prefix: names describe behaviour, a rename is the #1306 defect, one test can pin several incidents, and the prefix's only advantage is the count gate the driver declined). A deletion or rename carries `Retires-test: <name> — <why>`. A `go test` report lists every departure without one; review judges under the existing class. **It never blocks by itself: a rubric, not a ruling.** The mutation entry guards the fix at the PR that lands it; the tag guards the test afterwards. Brief 11. |
-| 14. **The refactor oracle** (driver-ruled) | **Added** | The driver's question: coding is cheap; what do we code AGAINST, and are briefs plus incidents enough? They are not: a brief records intent at authoring time and drifts (about 28 briefs marked done or implemented with no deliverable in the tree), an incident records what broke rather than what must hold, and a partially delivered brief is not the code. The literature's answer (Fowler: a harness; Feathers: characterization tests before change; Ousterhout: interfaces and invariants) becomes an oracle assembled before any `redesign`: (1) intent, from the investigation's reconciled reading; (2) failure modes, each mapped to its tagged test; (3) current behaviour, characterization tests generated over the public surface and **triaged** keep / drop / unknown, because generating is cheap and the triage is the judgement; (4) invariants, the contracts row and the fitness functions; (5) an acceptance rule: the refactor lands only when 1–4 hold and the triage table is in the PR body. A redesign's system-scale parity harness is the same idea, a soft link (§6). Brief 12. |
-| 15. **Incident-time refactor by an agent, one human residue** (driver-ruled) | **Added** | 09 and 12 as hand-offs leave the mark to go cold between sessions. One strong-tier session now runs the whole loop on a threshold class, a brittle mark or a two-strikes stop: reads the record (brief, DR, class history, git history mapped to issues, Verify tables and Evidence, mutation specs and tags, findings, research), rules (09), assembles the oracle with generated and triaged tests (12), and drafts the refactor as its own PR after the fix. Human contact is one typed decision, only for the `intent-changed?` residue the record cannot settle, with a recommendation and a default; `drifted` and `implementation-wrong` need no human beyond the merge. The only other contact is the three hard gates that already exist (weakening a control, a consumer-facing interface change, crossing a trust boundary). Verify proves a complete record ends with zero asks and a gapped one with exactly one. This is why 01, 04 and 11 come first: the record must be good enough to research. Brief 13. |
+| 13. **Regression tests are a ratchet** (third-pass amendment) | **Added** | Fail-first already exists (worker kit §9, review kit §3, the fail-first lane, the `test-evidence` finding class) and proves a test can fail on the day it lands. Nothing holds it afterwards: five test functions left the public tree in one week with no recorded reason, and a rename left a Verify row passing with "no tests to run" (#1306). Every fix's test now carries `// regression: #<N>` (a comment, not a `TestRegression_` prefix: names describe behaviour, a rename is the #1306 defect, one test can pin several incidents, and the prefix's only advantage is the count gate this stream declines, §4.11). A deletion or rename carries `Retires-test: <name> — <why>`. A `go test` report lists every departure without one; review judges under the existing class. **It never blocks by itself: a rubric, not a ruling.** The mutation entry guards the fix at the PR that lands it; the tag guards the test afterwards. Brief 11. |
+| 14. **The refactor oracle** (third-pass amendment) | **Added** | The driver's question: coding is cheap; what do we code AGAINST, and are briefs plus incidents enough? They are not: a brief records intent at authoring time and drifts (about 28 briefs marked done or implemented with no deliverable in the tree), an incident records what broke rather than what must hold, and a partially delivered brief is not the code. The literature's answer (Fowler: a harness; Feathers: characterization tests before change; Ousterhout: interfaces and invariants) becomes an oracle assembled before any `redesign`: (1) intent, from the investigation's reconciled reading; (2) failure modes, each mapped to its tagged test; (3) current behaviour, characterization tests generated over the public surface and **triaged** keep / drop / unknown, because generating is cheap and the triage is the judgement; (4) invariants, the contracts row and the fitness functions; (5) an acceptance rule: the refactor lands only when 1–4 hold and the triage table is in the PR body. A redesign's system-scale parity harness is the same idea, a soft link (§6). Brief 12. |
+| 15. **Incident-time refactor by an agent, one human residue** (third-pass amendment) | **Added** | 09 and 12 as hand-offs leave the mark to go cold between sessions. One strong-tier session now runs the whole loop on a threshold class, a brittle mark or a two-strikes stop: reads the record (brief, DR, class history, git history mapped to issues, Verify tables and Evidence, mutation specs and tags, findings, research), rules (09), assembles the oracle with generated and triaged tests (12), and drafts the refactor as its own PR after the fix. Human contact is one typed decision, only for the `intent-changed?` residue the record cannot settle, with a recommendation and a default; `drifted` and `implementation-wrong` need no human beyond the merge. The only other contact is the three hard gates that already exist (weakening a control, a consumer-facing interface change, crossing a trust boundary). Verify proves a complete record ends with zero asks and a gapped one with exactly one. This is why 01, 04 and 11 come first: the record must be good enough to research. Brief 13. |
 
 ## 4. Design
 
@@ -116,6 +116,11 @@ rule (§5), not a proven cure.
   lane at **strong** tier. Its deliverable is a design brief, not a code fix.
 - **Parking.** The symptom's placeholder takes the existing `blocked` status token with a
   pointer to the class issue. The design PR's `Closes` line closes the symptoms.
+- **Never parked: production-down or security.** A symptom with production-down or security
+  impact is not parked. It stays `todo`, so it reaches the worker, where two-strikes (§4.3)
+  applies and the `bleed` reply (D-B) is the only way past strike two. A symptom parked before
+  that impact was known is released the same way: the driver's `bleed` reply naming it sets
+  its placeholder back to `todo`. The class stays `design-owed` either way.
 - **Review recurrence.** The review desk's "recurrence-promotion" (a finding raised three times
   across PRs) currently promotes a guardrail. It is redirected to attach to, or open, a class
   issue. Promotion goes to design, not to a new guard.
@@ -170,7 +175,7 @@ Two rules keep this from becoming a delete-everything bias:
   1. *Right layer?* Does the change live in the owner the semantic index names?
   2. *Should it exist?* What would happen if the symptom were fixed by removal instead?
   3. *What does it replace?* Are `retires:` / `why-add:` true and sufficient?
-- **Blocking, and the landing state (D-A, ruled).** A "no" is a finding with scope basis
+- **Blocking, and the landing state (D-A, proposed; §10).** A "no" is a finding with scope basis
   `design-fit`. It is a fifth row in the machine-checked review-scope table, and it needs a
   concrete reason tied to the semantic index or the ratchet. The class lands **advisory**:
   the finding is recorded and the correctness pass continues. Once promoted to `blocking`
@@ -186,7 +191,7 @@ Two rules keep this from becoming a delete-everything bias:
 - **Ratcheted:** verbs (`cmd/*` main packages), flag registrations (syntactic), refusal-
   constructor calls, rule-text lines (the desk-role, authoring and shepherd skills plus the
   dispatch kits). **Reported only:** production Go lines.
-- **Mode (D-A, ruled).** `ceiling.txt` carries `# mode: advisory` at landing: growth past a
+- **Mode (D-A, proposed; §10).** `ceiling.txt` carries `# mode: advisory` at landing: growth past a
   ceiling is logged as `GROWTH-NOTICE` and the test passes. In `# mode: blocking` it
   **fails** when any ratcheted count exceeds its ceiling. The promotion is the recorded
   decision in §10. In either mode it **notices** slack when a count is below. Slack
@@ -211,8 +216,8 @@ Two rules keep this from becoming a delete-everything bias:
   Seeded with the chain-implicated rules. Every new rule adds a row in the same PR.
 - **Diet (monthly):** each row gets its three-state catch status. Rows that are
   `zero-without-proof`, high-false-positive or orphaned (serving no `S-` row) are listed in
-  **one** decision issue whose options are immutable at filing. The reply names rows and
-  verdicts, e.g. `retire R-a R-b; keep rest`. Default: keep. Retirement is a design brief,
+  **one** decision issue whose options are immutable at filing. The reply, from the driver's
+  own login (§4.7), names rows and verdicts, e.g. `retire R-a R-b; keep rest`. Default: keep. Retirement is a design brief,
   never an in-loop edit.
 
 ### 4.7 Human gates: one typed reply, no new machinery
@@ -226,10 +231,19 @@ Two rules keep this from becoming a delete-everything bias:
 | Promotion to blocking (D-A) | one decision issue, go-live + one month | `promote ratchet` / `promote design-fit` / `promote both` / `hold` | a one-line mode edit and a one-cell register edit, by PR; the reversal-rate demotion behind it |
 | Refactor residue (§4.13) | one decision issue per `redesign` whose oracle holds an `unknown` | `residue: default`, or `residue: keep <tests>; drop rest` | the refactor PR stays draft until answered; its design brief's review and the merge |
 
+**A typed reply counts only from the driver's own login.** The project layer names that
+login. Whoever acts on a reply reads its author from the forge, never from the reply's text,
+the way §4.5 checks `grow`: the review stage for `grow`, the worker for `bleed`, the diet's
+role for `retire`, the go-live and close-out briefs for `promote`/`hold` and `keep`/`revert`,
+and the incident-refactor run for `residue:`. A reply in the grammar from any other login is
+quarantined: it is noted on the issue and never acted on. On a public repository anyone can
+comment, so this author check is the single control in front of every gate above. The layer
+behind it is review plus the driver's own merge of the PR the reply produces.
+
 The SOTA amendment adds **no gate**. The brittle mark is made by the monthly pass on two
 recorded keys; the investigation's `redesign` outcome lands as a design brief through the
 existing authoring gate; a hub allow-list growth reuses the `grow <PR#>` reply. The
-driver-ruled briefs add the two typed replies above and nothing else: the ledger report (11)
+third-pass briefs (11–13) add the two typed replies above and nothing else: the ledger report (11)
 never blocks, the oracle's acceptance rule (12) is rows in a Verify table, and the
 agent-run refactor (13) asks once, in the `ask-decision` shape that already exists. Its
 hard-gate exceptions are the gates that already exist.
@@ -302,7 +316,7 @@ hard-gate exceptions are the gates that already exist.
   class issue are also legal). A comment, not a `TestRegression_` name prefix: names
   describe behaviour, a mass rename is the #1306 defect, one test may pin several incidents,
   `go/parser` reads it like 10's `// semantic:` marker, and the prefix's one advantage (a
-  `-run` selector for a count gate) is the gate the driver declined.
+  `-run` selector for a count gate) is a gate this stream declines.
 - **The trailer.** `Retires-test: <TestName> — <why>`; for a rename, `Retires-test: <Old> —
   renamed <New>; <why>`, so the same PR re-points every Verify row that named the old name.
 - **The report.** `tools/desk/internal/testledger`, a test package: over an explicit
@@ -420,7 +434,8 @@ and the project's resident rules-file lines (measured by the project layer). The
 - **Success:** M1 and M3 improve on baseline, M2 and all secondary counts are not above
   baseline except for `grow`-approved deltas, and C1–C4 hold. M5 is reported, not judged, at
   the first close-out: one 28-day window is too short to expect a cleared mark.
-- **Stop rule:** if any of C1–C4 fails, one decision issue asks `keep` or `revert`. `revert`
+- **Stop rule:** if any of C1–C4 fails, one decision issue asks `keep` or `revert`, answered
+  from the driver's own login (§4.7). `revert`
   demotes `design-fit` to advisory and switches the ratchet and arch tests to report-only.
   Nothing else is undone; marks and investigations are records and stay.
 - **Under D-A** the ratchet and `design-fit` land advisory, so a close-out that precedes the
@@ -461,7 +476,7 @@ shows them.
 |---|---|
 | Design-fit becomes reviewer taste and blocks good work | C1 + the existing reversal-rate demotion (06) |
 | Class issues become a second ceremony queue (the largest class today is ceremony) | classes are few (mechanism-level), attach is unbudgeted, one standing growth issue, C3 |
-| Two-strikes stalls a production-down fix | the `bleed` reply (D-B) |
+| Two-strikes stalls a production-down or security fix | intake never parks such a symptom (§4.1), and the driver's `bleed` reply (D-B, §4.7) lifts the worker's stop |
 | The ratchet collides across parallel PRs (the forgeban collision class) | fail on growth only; slack is noticed, not failed; conflicts only on real growth |
 | Workers game the counter by moving refusals into unmatched shapes | the review stage re-derives the delta and reads the diff; the counter's definitions are in the register and reviewable |
 | Deletions remove an independent security layer | §4.2 rule 2 + the existing security lane + defense-in-depth Verify rows |
@@ -483,31 +498,34 @@ in main()" rule. A lint for `design-fit:` (deferred until the grammar settles). 
 the register to every existing refusal. Automatic deletion of anything. A CI gate on the
 hotspot ranking. Ownership and bus-factor analysis (one contributor and a fleet of bots make
 the knowledge map degenerate here; revisit if a second human joins). A CI gate on the count
-of regression tests or on a vacuous `-run` selector (#1581's items 2 and 3): the driver ruled
-the ledger a rubric, not a ruling, and the selector lint is another stream's. Stub-coverage
+of regression tests or on a vacuous `-run` selector (#1581's items 2 and 3): this stream makes
+the ledger a rubric, not a ruling (§4.11), and the selector lint is another stream's. Stub-coverage
 rules and a re-fix metric (#1581 items 3–4) stay with their issue. Characterization tests
 over a module no investigation has marked for `redesign`.
 
 ## 10. Decisions for the driver
 
-- **D-A. Blocking from day one? — RULED 2026-09-24: no.** The weight ratchet (03) and the
+- **D-A. Blocking from day one? — PROPOSED: no (ratified by the merge, below).** The weight ratchet (03) and the
   `design-fit` check (06) start **advisory** (report only) for the first month. The promotion
   to blocking is a later, recorded decision keyed to the project's baseline
   measurements (§5.4): one decision issue, options `promote ratchet` /
-  `promote design-fit` / `promote both` / `hold`, default `hold`, landed by PR as a one-line
+  `promote design-fit` / `promote both` / `hold`, default `hold`, answered from the driver's
+  own login (§4.7), landed by PR as a one-line
   `ceiling.txt` mode edit and a one-cell register edit (§4.4, §4.5, §4.7). The recommended
   alternative (blocking from the merge) was not taken.
-- **D-B. Two-strikes: hard stop or fix-plus-note? — RULED 2026-09-24: hard stop.** The
+- **D-B. Two-strikes: hard stop or fix-plus-note? — PROPOSED: hard stop (ratified by the merge, below).** The
   `bleed` reply on the class issue is allowed only for production-down or security fixes
   (05). The alternative (the fix ships and the note is mandatory) was not taken.
 - **D-C. Approve this spec.** Decided by the driver's merge of the pull request that lands
   this document (§8.4 of `spec/lifecycle-v1.md`); the same pull request lands the stream README
   `active` and this header `routed`. No relayed ruling stands in for that merge.
 
-The D-A and D-B rulings were relayed by the desk on 2026-09-24 and are recorded in the
-affected briefs (03, 05, 06). Ratification is the driver's own login on the
-PR that lands this document; a relayed ruling does not by itself pass a human gate. Briefs
-11–13 were added on the driver's instruction the same day; they add no decision.
+D-A and D-B were relayed to the authoring session on 2026-09-24 as the driver's answers. No
+record of either from the driver's own account exists on the forge, and a relayed answer does
+not by itself pass a human gate, so this document states both as **proposed**, and the
+affected briefs (03, 05, 06) say so. They are ratified the way D-C is: by the driver's own
+merge of the pull request that lands this document (§8.4 of `spec/lifecycle-v1.md`). Until
+that merge, neither binds. Briefs 11–13 were added in the same pass; they add no decision.
 
 ## 11. What state-of-the-art teams do about brittle code (the SOTA amendment)
 

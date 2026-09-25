@@ -41,7 +41,7 @@ consumers:
 
 files:
 - `tools/desk/internal/hotspot/hotspot.go` (planned): NEW. Pure functions over a parsed `git log` stream and a file tree: churn, fix share, indentation complexity, score, temporal coupling.
-- `tools/desk/internal/hotspot/hotspot_test.go` (planned): NEW. `TestHotspotFixture`, `TestCouplingFixture`, `TestPrintHotspots` (test-only flags `-root`, `-since`, `-until`, `-top`), `TestShallowIsCouldNotCheck`.
+- `tools/desk/internal/hotspot/hotspot_test.go` (planned): NEW. `TestHotspotFixture` (planned), `TestCouplingFixture` (planned), `TestPrintHotspots` (planned) (test-only flags `-root`, `-since`, `-until`, `-top`), `TestShallowIsCouldNotCheck` (planned).
 - `tools/desk/internal/hotspot/testdata/log.txt` (planned): NEW. A captured `git log --name-only` fixture with hand-known counts.
 - `docs/contracts.md`: add `## Brittle marks` after the semantic-owner index (brief 01).
 - `docs/streams/findings/<date>-brittle-<module>.md`: one entry per mark, `id: F-brittle-<module>`, `resolved: false` until cleared.
@@ -99,11 +99,14 @@ facts:
   investigation | cleared`. (b) The board: a findings entry `F-brittle-<module>` with
   `affects:` naming the streams whose briefs touch the module. Findings entries already render
   under "Unresolved findings" and already feed the change-fail proxy in `doracli.go`, so no
-  statusgen change is needed. (c) The class issue gets the label `brittle` (a label, not a
+  statusgen change is needed. This repository has no `docs/streams/findings/` directory at
+  the pin: the loader reads `<root>/docs/streams/findings/` when it exists, and the first
+  mark's entry creates it (this brief marks nothing, so it adds no entry). Row 8 proves an
+  entry there lints; row 8a proves the loader reads it. (c) The class issue gets the label `brittle` (a label, not a
   status token). The mark is **cleared** when 09's recommendation has merged and the next pass
   no longer nominates the module; the findings entry flips `resolved: true` in that PR.
 - **Never a CI gate.** The report needs history; GitHub-hosted checkouts are shallow, and a
-  ranking is not a pass/fail. `TestPrintHotspots` is a report; on a shallow clone (`git
+  ranking is not a pass/fail. `TestPrintHotspots` (planned) is a report; on a shallow clone (`git
   rev-parse --is-shallow-repository` = true) it logs `could-not-check (shallow)` and skips.
   The ratchets live in 03 and 10.
 - **layering:** flat tool. One package with pure functions over a parsed log; the only `git`
@@ -132,13 +135,13 @@ design-fit:
 2. Fixture: `testdata/log.txt` with 12 commits over 6 files and a tree under `testdata/tree/`
    with hand-known indentation sums. Include decoys: a `_test.go` path, a merge commit touching
    40 files (excluded from coupling), a subject with "prefix" (must NOT match `fix`).
-   `TestHotspotFixture` asserts churn, fixes, complexity and rank for every file;
-   `TestCouplingFixture` asserts exactly the pairs that pass both filters.
-3. `TestPrintHotspots` logs, for `-root <dir>` (default the repo, via `git -C`), `-since`,
+   `TestHotspotFixture` (planned) asserts churn, fixes, complexity and rank for every file;
+   `TestCouplingFixture` (planned) asserts exactly the pairs that pass both filters.
+3. `TestPrintHotspots` (planned) logs, for `-root <dir>` (default the repo, via `git -C`), `-since`,
    `-until` and `-top N` (default 10), a header line stating the window and filters, one line
    per file `hotspot: rank=<n> score=<n> churn=<n> fixes=<n> complexity=<n> lines=<n>
    pct=<p> <path>`, and one line per pair `coupling: <a> <b> count=<n> ratio=<r>`.
-4. `TestShallowIsCouldNotCheck`: on a shallow clone the test skips with
+4. `TestShallowIsCouldNotCheck` (planned): on a shallow clone the test skips with
    `could-not-check (shallow)`; prove it against a `git clone --depth 1` of the repo into a
    temp dir.
 5. `docs/contracts.md`: add `## Brittle marks` with the two-key rule, the table (empty rows
@@ -151,19 +154,20 @@ design-fit:
 Rows run from the root of `medici-finance/assay`. Row 4 dereferences the counter against an
 independent shell count. Row 5 is the negative control for the `fix` proxy. Row 6 proves the
 three-state behaviour. Row 8 is the neighbour row: the findings loader still lints a
-`F-brittle-` entry shape.
+`F-brittle-` entry shape; row 8a is its negative control.
 
 | # | Command | Expect |
 |---|---------|--------|
 | 1 | `cd tools/desk && go test ./internal/hotspot/ -count=1` | `ok` |
 | 2 | `cd tools/desk && go test ./internal/hotspot/ -run TestHotspotFixture -count=1 -v > /tmp/bl08-r2.out && go test ./internal/hotspot/ -run TestCouplingFixture -count=1 -v >> /tmp/bl08-r2.out && grep -c -e '^--- PASS: TestHotspotFixture ' -e '^--- PASS: TestCouplingFixture ' /tmp/bl08-r2.out` | `2` (two single-pattern runs, chained; each top-level test passes once) |
 | 3 | `cd tools/desk && go test ./internal/hotspot/ -run TestPrintHotspots -count=1 -v -args -since=2026-06-26 -until=2026-09-24 -top=5 \| grep -cE '^ *hotspot_test.go:[0-9]+: hotspot: rank=[1-5] score=[0-9]+ churn=[0-9]+ fixes=[0-9]+ complexity=[0-9]+ lines=[0-9]+ pct=[0-9.]+ tools/desk/'` | `5` |
-| 4 | `top=$(cd tools/desk && go test ./internal/hotspot/ -run TestPrintHotspots -count=1 -v -args -since=2026-06-26 -until=2026-09-24 -top=1 \| grep -oE 'churn=[0-9]+ .* (tools/desk/[^ ]+)$' \| sed -E 's/churn=([0-9]+) .* (tools\/desk\/[^ ]+)$/\1 \2/'); c=${top%% *}; f=${top##* }; s=$(git log --first-parent --since=2026-06-26 --until=2026-09-24 --format=%H origin/main -- "$f" \| wc -l \| tr -d ' '); test "$c" = "$s" && echo MATCH \|\| echo "counter=$c shell=$s"` | `MATCH` (the top file's churn equals an independent first-parent count) |
+| 4 | `top=$(cd tools/desk && go test ./internal/hotspot/ -run TestPrintHotspots -count=1 -v -args -since=2026-06-26 -until=2026-09-24 -top=1 \| grep -oE 'churn=[0-9]+ .* (tools/desk/[^ ]+)$' \| sed -E 's/churn=([0-9]+) .* (tools\/desk\/[^ ]+)$/\1 \2/'); c=${top%% *}; f=${top##* }; s=$(git log --first-parent --since=2026-06-26 --until=2026-09-24 --format=%H refs/remotes/origin/main -- "$f" \| wc -l \| tr -d ' '); test "$c" = "$s" && echo MATCH \|\| echo "counter=$c shell=$s"` | `MATCH` (the top file's churn equals an independent first-parent count) |
 | 5 | `cd tools/desk && go test ./internal/hotspot/ -run TestHotspotFixture -count=1 -v \| grep -c 'prefix-decoy fixes=0'` | `1` (a subject containing "prefix" does not count as a fix) |
 | 6 | `d=$(mktemp -d) && git clone -q --depth 1 file://"$PWD" "$d/shallow" && cd tools/desk && go test ./internal/hotspot/ -run TestPrintHotspots -count=1 -v -args -root="$d/shallow" \| grep -c 'could-not-check (shallow)'` | `1` (a shallow clone is could-not-check, never an empty ranking) |
 | 7 | `grep -c '^## Brittle marks$' docs/contracts.md && sed -n '/^## Brittle marks/,$p' docs/contracts.md \| grep -c -e 'nominated' -e 'confirmed' -e 'watch' -e 'cleared'` | `1`, then ≥ `4` |
-| 8 | `cd statusgen && go build -o /tmp/bl08-statusgen . && cd .. && mkdir -p /tmp/bl08 && cp -R docs/streams /tmp/bl08/ && printf -- '---\nid: F-brittle-example\ndate: "2026-09-24"\ntitle: "brittle: example module"\naffects: []\nack: ""\nresolved: false\n---\nbody\n' > /tmp/bl08/streams/findings/2026-09-24-brittle-example.md && /tmp/bl08-statusgen --root /tmp/bl08 --lint; echo "exit=$?"` | `exit=0` (an `F-brittle-<module>` entry is a valid findings entry as the board loader stands; no statusgen change) |
-| 9 | `cd tools/desk && test "$(git diff --name-only HEAD~1 -- cmd \| grep -v _test.go \| wc -l \| tr -d ' ')" = 0 && echo NO-CMD-CHANGE` | `NO-CMD-CHANGE` (no shipped verb or flag changed; the package is test-only) |
+| 8 | `cd statusgen && go build -o /tmp/bl08-statusgen . && cd .. && rm -rf /tmp/bl08 && mkdir -p /tmp/bl08 && git archive HEAD \| tar -x -C /tmp/bl08 && mkdir -p /tmp/bl08/docs/streams/findings && printf -- '---\nid: F-brittle-example\ndate: "2026-09-24"\ntitle: "brittle: example module"\naffects: []\nack: ""\nresolved: false\n---\nbody\n' > /tmp/bl08/docs/streams/findings/2026-09-24-brittle-example.md && /tmp/bl08-statusgen --root /tmp/bl08 --lint; echo "exit=$?"` | `exit=0` (an `F-brittle-<module>` entry is a valid findings entry as the board loader stands; no statusgen change. The fixture is a full copy of the tree at `HEAD`, because the lint resolves every backticked path against its root, and it creates `docs/streams/findings/`, which this repository does not have yet) |
+| 8a | `test -x /tmp/bl08-statusgen && test -d /tmp/bl08/docs/streams/findings && printf 'no frontmatter\n' > /tmp/bl08/docs/streams/findings/2026-09-24-brittle-example.md && /tmp/bl08-statusgen --root /tmp/bl08 --lint 2>&1 \| grep -c 'parsing findings/2026-09-24-brittle-example.md'` | `1` (negative control, run after row 8: the loader does read that directory, so a malformed entry there is reported and row 8's `exit=0` is not vacuous) |
+| 9 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/08$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git diff --name-only "$base" "$tip" -- tools/desk/cmd \| grep -v _test.go \| wc -l \| tr -d ' ')" = 0 && echo NO-CMD-CHANGE` | `NO-CMD-CHANGE` (no shipped verb or flag changed; the package is test-only. The base is derived, never `HEAD~1`: on merged main it is the parent of the squash commit carrying `Brief: build-less-brittle/08`, before merge it is the merge-base) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,

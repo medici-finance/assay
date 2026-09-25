@@ -60,7 +60,7 @@ facts:
   refusal retire with it.
 - New `exec-tier` question (d): "Is this a design brief raised by an error-class trigger?"
   yes → `strong`.
-- Line counts at f7bde6bfa: author-brief SKILL.md 768, docs/brief-template.md 218. The
+- Line counts at f7bde6bfa (for scale; the net ≤ 0 rows derive their own base): author-brief SKILL.md 768, docs/brief-template.md 218. The
   checklist has 9 items. It must stay at single digits by merging an item, not appending
   (the skill's own rule).
 
@@ -104,7 +104,7 @@ shared-value trigger that reads Context text).
 | 3 | `grep -c -e '^ *owner:' -e '^ *contract:' -e '^ *retires:' -e '^ *weight:' -e '^ *why-add:' plugins/assay/skills/author-brief/SKILL.md` | ≥ `5` |
 | 4 | `grep -cE '^\[ \] [0-9]+\. ' plugins/assay/skills/author-brief/SKILL.md` | ≤ `9` (and ≥ `1`: the checklist still exists) |
 | 5 | `id=$(grep -oE 'contract: S-[a-z-]+' docs/brief-template.md \| head -1 \| cut -d' ' -f2); test -n "$id" && grep -cE "^[\|] *$id " docs/contracts.md` | `1` (the template's example cites a row that exists) |
-| 6 | `test "$(wc -l < plugins/assay/skills/author-brief/SKILL.md)" -le 768 && echo NET-OK` | `NET-OK` |
+| 6 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/02$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 7 | `grep -c 'Is this a design brief raised by an error-class trigger' plugins/assay/skills/author-brief/SKILL.md spec/brief-v1.md \| grep -cE ':[1-9][0-9]*$'` | `2` (question (d) landed in both the skill and the spec) |
 | 8 | `cd statusgen && go test -run TestSharedValueTriggerIsNarrow -count=1 .` | `ok` (neighbour: the consumers trigger still does not fire on ordinary Context lines such as the new block) |
 | 9 | `statusgen --consumers --root . --brief build-less-brittle/02; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |

@@ -56,7 +56,7 @@ facts:
 - The class issue schema, trigger and kinds are in spec §4.1. Only `confirmed-defect` and
   `false-positive` count, deduped by `incident-group`. That keeps mirrored reports, intended
   refusals and feature requests from triggering design work.
-- Line counts at f7bde6bfa: intake-desk 534, pr-review-desk 968, worker-desk 868.
+- Line counts at f7bde6bfa (for scale; the net ≤ 0 rows derive their own base): intake-desk 534, pr-review-desk 968, worker-desk 868.
 - **Hotspot wiring (build-less-brittle/08, added by the SOTA amendment).** Each attached instance
   also records `module: <S- owner path or cmd/<verb>>`, so the monthly brittle pass can join
   class history to the hotspot ranking without a second read. A class whose module carries a
@@ -93,10 +93,13 @@ design-fit:
    and a one-line evidence summary. No, and it is a machinery defect: record a `class:` line
    in the triage comment. Open a class issue only when a **second** symptom shares that
    mechanism. That keeps issue volume down: the budget makes `new` the scarce act.
-3. **The trigger** (≤ 6 lines). The class becomes `design-owed` at 3 counted instances or its 2nd
+3. **The trigger** (≤ 8 lines). The class becomes `design-owed` at 3 counted instances or its 2nd
    merged fix, whichever comes first. Label it `design-owed`. Set every symptom placeholder in
-   the class to `blocked` with the class issue number in its Notes. The design PR's `Closes`
-   line closes the symptoms. `intended-control` instances route to the refusal-text owner as a
+   the class to `blocked` with the class issue number in its Notes, except a symptom with
+   production-down or security impact: that one stays `todo`, so the worker's two-strikes
+   check and the `bleed` reply (spec §10 D-B) still reach it. A `bleed` reply by the driver's
+   own login (spec §4.7) naming a parked symptom sets it back to `todo`. The design PR's
+   `Closes` line closes the symptoms. `intended-control` instances route to the refusal-text owner as a
    UX/wording fix, never as design work. Every instance carries `module:`; a class in a
    `brittle`-marked module is design-owed at its first counted instance and its deliverable
    is the investigation (build-less-brittle/09) first.
@@ -109,8 +112,8 @@ design-fit:
 
 ## Verify (executable — no prose-only DoD items)
 
-Rows run from the root of `medici-finance/assay`. The skill text is prose: rows 1–4 gate
-presence, rows 5–6 dereference the mechanisms the text names, and rows 7–9 are the net ≤ 0
+Rows run from the root of `medici-finance/assay`. The skill text is prose: rows 1–4 and 12
+gate presence, rows 5–6 dereference the mechanisms the text names, and rows 7–9 are the net ≤ 0
 weight rows. Whether the procedure is followed is measured by the project's close-out (spec §5.4), not here.
 
 | # | Command | Expect |
@@ -121,11 +124,12 @@ weight rows. Whether the procedure is followed is measured by the project's clos
 | 4 | `s=$(sed -n '/Recurrence-promotion/,/^$/p' plugins/assay/skills/pr-review-desk/SKILL.md); echo "$s" \| grep -q 'error-class' && ! echo "$s" \| grep -qi 'guardrail-promotion' && echo REDIRECTED` | `REDIRECTED` (the paragraph routes to a class issue and no longer to a guardrail) |
 | 5 | `grep -c '^func cmdAttach' tools/desk/cmd/deskfile/deskfile.go` | `1` (the verb the skill names exists) |
 | 6 | `grep -c '"blocked": true' statusgen/checks.go` | `1` (the status token the skill uses is valid) |
-| 7 | `test "$(wc -l < plugins/assay/skills/intake-desk/SKILL.md)" -le 534 && echo NET-OK` | `NET-OK` |
-| 8 | `test "$(wc -l < plugins/assay/skills/pr-review-desk/SKILL.md)" -le 968 && echo NET-OK` | `NET-OK` |
-| 9 | `test "$(wc -l < plugins/assay/skills/worker-desk/SKILL.md)" -le 868 && echo NET-OK` | `NET-OK` |
+| 7 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/04$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/intake-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/intake-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
+| 8 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/04$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
+| 9 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/04$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 10 | `statusgen --consumers --root . --brief build-less-brittle/04; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
 | 11 | `grep -c -e 'module:' plugins/assay/skills/intake-desk/SKILL.md && grep -c -e 'brittle' plugins/assay/skills/intake-desk/SKILL.md` | two counts, each ≥ `1` (the hotspot wiring: instances name their module, and a marked module lowers the trigger to the first instance) |
+| 12 | `grep -c -e 'production-down' plugins/assay/skills/intake-desk/SKILL.md && grep -c -e 'bleed' plugins/assay/skills/intake-desk/SKILL.md` | two counts, each ≥ `1` (the parking carve-out: a production-down or security symptom is never parked, and the driver's `bleed` reply un-parks one) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,
@@ -136,6 +140,6 @@ weight rows. Whether the procedure is followed is measured by the project's clos
 |---|---------|--------|--------|------|--------|
 
 ## Review
-Gate: model (from frontmatter). Rows 7–9 cap line counts at their f7bde6bfa values. If another
-merged PR shrank a skill first, this brief's offset obligation is unchanged; the reviewer checks
-the diff's own numstat.
+Gate: model (from frontmatter). Rows 7–9 compare each skill at this brief's own change against
+the same file just before it (the base is derived in the row; see the README's shared
+conventions), so growth or shrinkage by other PRs on main never moves the bar.
