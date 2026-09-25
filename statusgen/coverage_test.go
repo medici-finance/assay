@@ -646,6 +646,11 @@ func TestCoverageDeclaredFilesScopeTheWitness(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s, root := mustCoverageStream(t, "cov")
 			writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", files, verify, "")
+			// Every declared entry names a real path at the witness tree — a
+			// declaration that resolves to nothing falls back to the
+			// conservative scope (round-3 F6), which is not what this test pins.
+			mustWriteFile(t, root, "src/impl.go", "v1\n")
+			mustWriteFile(t, root, "src/pkg/inner.go", "v1\n")
 			mustWriteFile(t, root, tc.changed, "v1\n")
 			witnessTree := mustGitInit(t, root)
 
@@ -680,5 +685,238 @@ func TestCoverageDirtyWitnessToleranceIsDeclared(t *testing.T) {
 	c := evaluateCoverage(root, []*Stream{s}, coverageOptions{})["cov/01"]
 	if !c.Released || len(c.Claims) != 1 || c.Claims[0].Result != covPass {
 		t.Fatalf("the declared +dirty tolerance: want pass at the base commit, got %+v", c)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Round-3 review (head 5980c2acb): F2 — the declared-`files:` branch must not
+// hold on the board bookkeeping verify and regen necessarily write; F6 (security
+// pr1682-S5) — the witness scope must never RELEASE after a path it speaks for
+// changed (renames, declarations that resolve to nothing, a `files:` line
+// narrowed after the run); A7 — the brief-own-file exemption is pinned.
+// ---------------------------------------------------------------------------
+
+// coverageScopeScenario runs the one shape every round-3 probe shares: write the
+// brief with filesAtW (plus whatever setup writes), commit that as the witness
+// tree W, then in ONE later commit record a passing witness at W, rewrite the
+// brief's `files:` line to filesAfter, and apply change. It returns the single
+// Verify-row claim coverage resolves at the new HEAD.
+func coverageScopeScenario(t *testing.T, filesAtW, filesAfter string, setup, change func(t *testing.T, root string)) Claim {
+	t.Helper()
+	s, root := mustCoverageStream(t, "cov")
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
+	writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", filesAtW, verify, "")
+	if setup != nil {
+		setup(t, root)
+	}
+	witnessTree := mustGitInit(t, root)
+
+	ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, witnessTree))
+	writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", filesAfter, verify, ev)
+	if change != nil {
+		change(t, root)
+	}
+	mustGitCommitAll(t, root, "record Evidence and apply the change")
+
+	c := evaluateCoverage(root, []*Stream{s}, coverageOptions{})["cov/01"]
+	if len(c.Claims) != 1 {
+		t.Fatalf("want exactly one claim, got %+v", c.Claims)
+	}
+	return c.Claims[0]
+}
+
+// writes returns a setup/change func that writes each rel=content pair.
+func writes(kv ...string) func(t *testing.T, root string) {
+	return func(t *testing.T, root string) {
+		t.Helper()
+		for i := 0; i+1 < len(kv); i += 2 {
+			mustWriteFile(t, root, kv[i], kv[i+1])
+		}
+	}
+}
+
+// TestCoverageDeclaredScopeExemptsVerifyBookkeeping — round-3 F2 (probes R1,
+// R2): a brief whose `files:` names its own stream README, STATUS.md, or the
+// whole docs/streams/ tree must not go `wrong-revision` forever when its own
+// verified flip, a sibling's Evidence, a verify-outcomes append or a STATUS.md
+// regen lands — those are the surfaces verify and regen necessarily write. Any
+// OTHER declared docs/streams/ artifact still holds.
+func TestCoverageDeclaredScopeExemptsVerifyBookkeeping(t *testing.T) {
+	readme := func(state string) string {
+		return "| # | Brief | Status |\n|---|---|---|\n| 01 | fixture | " + state + " |\n"
+	}
+	cases := []struct {
+		name   string
+		files  string
+		setup  func(t *testing.T, root string)
+		change func(t *testing.T, root string)
+		want   string
+	}{
+		{
+			"R1 declared stream README, own row flips to verified",
+			"`src/impl.go`, `docs/streams/cov/README.md`",
+			writes("src/impl.go", "v1\n", "docs/streams/cov/README.md", readme("implemented")),
+			writes("docs/streams/cov/README.md", readme("verified")),
+			covPass,
+		},
+		{
+			"R2 declared STATUS.md, regen lands",
+			"`src/impl.go`, `STATUS.md`",
+			writes("src/impl.go", "v1\n", "STATUS.md", "board v1\n"),
+			writes("STATUS.md", "board v2\n"),
+			covPass,
+		},
+		{
+			"whole docs/streams declared, sibling Evidence + verify-outcomes + README",
+			"`docs/streams/`, `src/impl.go`",
+			writes("src/impl.go", "v1\n", "docs/streams/cov/README.md", readme("implemented"), "docs/streams/other/brief-02.md", "sibling v1\n", "docs/streams/verify-outcomes.jsonl", "{}\n"),
+			writes("docs/streams/cov/README.md", readme("verified"), "docs/streams/other/brief-02.md", "sibling v2\n", "docs/streams/verify-outcomes.jsonl", "{}\n{}\n"),
+			covPass,
+		},
+		{
+			"declared non-README docs/streams artifact changed still holds",
+			"`src/impl.go`, `docs/streams/cov/ruleset-audit.md`",
+			writes("src/impl.go", "v1\n", "docs/streams/cov/ruleset-audit.md", "audit v1\n"),
+			writes("docs/streams/cov/ruleset-audit.md", "audit v2\n"),
+			covWrongRevision,
+		},
+		{
+			"whole docs/streams declared, a non-bookkeeping artifact under it changed holds",
+			"`docs/streams/`, `src/impl.go`",
+			writes("src/impl.go", "v1\n", "docs/streams/cov/ruleset-audit.md", "audit v1\n"),
+			writes("docs/streams/cov/ruleset-audit.md", "audit v2\n"),
+			covWrongRevision,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := coverageScopeScenario(t, tc.files, tc.files, tc.setup, tc.change)
+			if got.Result != tc.want {
+				t.Fatalf("want %s, got %+v", tc.want, got)
+			}
+		})
+	}
+}
+
+// TestCoverageWitnessScopeNeverFailsOpen — round-3 F6 / security pr1682-S5: every
+// shape the reviewers probed at 5980c2acb released a witness (Result pass) after
+// a path it speaks for changed. Each must now resolve `wrong-revision`: renames
+// are listed on both sides (`--no-renames`), a declaration with an entry that
+// resolves to no path (brace form, `.`, prose, a bare sibling name, a `**`
+// nesting glob) falls back to the conservative no-declaration scope instead of
+// speaking for nothing, and the scope is read from the brief at the witness's
+// base commit as well as now, so narrowing `files:` afterwards is visible.
+func TestCoverageWitnessScopeNeverFailsOpen(t *testing.T) {
+	gitMv := func(from, to string) func(t *testing.T, root string) {
+		return func(t *testing.T, root string) {
+			t.Helper()
+			if err := os.MkdirAll(filepath.Dir(filepath.Join(root, filepath.FromSlash(to))), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			runGit(t, root, "mv", from, to)
+		}
+	}
+	both := func(fs ...func(t *testing.T, root string)) func(t *testing.T, root string) {
+		return func(t *testing.T, root string) {
+			for _, f := range fs {
+				f(t, root)
+			}
+		}
+	}
+	impl := "package impl\n\nfunc A() int { return 1 }\n\nfunc B() int { return 2 }\n\nfunc C() int { return 3 }\n"
+	cases := []struct {
+		name               string
+		filesAtW, filesNow string
+		setup, change      func(t *testing.T, root string)
+	}{
+		{"S5a declared file renamed", "`src/impl.go`", "`src/impl.go`",
+			writes("src/impl.go", impl), gitMv("src/impl.go", "src/impl2.go")},
+		{"S5a' declared file renamed and edited", "`src/impl.go`", "`src/impl.go`",
+			writes("src/impl.go", impl), both(gitMv("src/impl.go", "src/impl2.go"), writes("src/impl2.go", impl+"\nfunc D() int { return 4 }\n"))},
+		{"S5b no files:, moved into docs/streams", "", "",
+			writes("src/impl.go", impl), gitMv("src/impl.go", "docs/streams/x/impl.go")},
+		{"S5c brace-form declaration", "`src/{impl.go,b.go}`", "`src/{impl.go,b.go}`",
+			writes("src/impl.go", "v1\n", "src/b.go", "v1\n"), writes("src/impl.go", "v2\n")},
+		{"S5d files: .", "`.`", "`.`",
+			writes("src/impl.go", "v1\n"), writes("src/impl.go", "v2\n")},
+		{"S5e files: n/a", "n/a", "n/a",
+			writes("src/impl.go", "v1\n"), writes("src/impl.go", "v2\n")},
+		{"S5f files: narrowed after the witness ran", "`src/impl.go`, `src/b.go`", "`src/impl.go`",
+			writes("src/impl.go", "v1\n", "src/b.go", "v1\n"), writes("src/b.go", "v2\n")},
+		{"S5f' files: added after a no-declaration witness", "", "`unrelated/x.go`",
+			writes("src/impl.go", "v1\n", "unrelated/x.go", "v1\n"), writes("src/impl.go", "v2\n")},
+		{"X1 bare sibling shorthand", "`src/impl.go`, `b.go`", "`src/impl.go`, `b.go`",
+			writes("src/impl.go", "v1\n", "src/b.go", "v1\n"), writes("src/b.go", "v2\n")},
+		{"X2 ** nesting glob", "`src/**`", "`src/**`",
+			writes("src/a/deep.go", "v1\n"), writes("src/a/deep.go", "v2\n")},
+		{"X3 mid-pattern ** that path.Match reads as one segment", "`src/**/*.go`", "`src/**/*.go`",
+			writes("src/a/x.go", "v1\n", "src/a/b/y.go", "v1\n"), writes("src/a/b/y.go", "v2\n")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := coverageScopeScenario(t, tc.filesAtW, tc.filesNow, tc.setup, tc.change)
+			if got.Result != covWrongRevision {
+				t.Fatalf("a change to a path the witness speaks for must hold as wrong-revision, got %+v", got)
+			}
+		})
+	}
+}
+
+// TestCoverageResolvableDeclarationsStillScope — the other side of F6: the
+// conservative fallback is for declarations that name NOTHING real. A
+// declaration whose every entry resolves keeps its narrow scope (a change
+// outside it releases), including a trailing `/**` directory glob and a
+// one-segment glob path.Match can express.
+func TestCoverageResolvableDeclarationsStillScope(t *testing.T) {
+	cases := []struct {
+		name  string
+		files string
+		setup func(t *testing.T, root string)
+	}{
+		{"trailing /** reads as the directory", "`src/**`", writes("src/a/deep.go", "v1\n", "lib/other.go", "v1\n")},
+		{"one-segment glob", "`src/*.go`", writes("src/impl.go", "v1\n", "lib/other.go", "v1\n")},
+		{"plain declared file", "`src/impl.go`", writes("src/impl.go", "v1\n", "lib/other.go", "v1\n")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := coverageScopeScenario(t, tc.files, tc.files, tc.setup, writes("lib/other.go", "v2\n"))
+			if got.Result != covPass {
+				t.Fatalf("a change outside a fully-resolving declaration must release, got %+v", got)
+			}
+		})
+	}
+	// ...and the same one-segment glob still HOLDS on a change it covers.
+	got := coverageScopeScenario(t, "`src/*.go`", "`src/*.go`", writes("src/impl.go", "v1\n"), writes("src/impl.go", "v2\n"))
+	if got.Result != covWrongRevision {
+		t.Fatalf("a change the glob covers must hold, got %+v", got)
+	}
+}
+
+// TestCoverageBriefOwnFileNeverInvalidates — round-3 A7: the brief's own file is
+// exempt from the witness scope (its Verify rows are bound by the Command and
+// Expect guards instead). The fixture stream lives OUTSIDE docs/streams/ so no
+// bookkeeping exemption also covers the brief's path — this test is the only
+// thing standing between that exemption and a mutation that removes it.
+func TestCoverageBriefOwnFileNeverInvalidates(t *testing.T) {
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
+	for _, files := range []string{"", "`plans/cov/brief-01.md`, `src/impl.go`"} {
+		t.Run("files="+files, func(t *testing.T) {
+			root := t.TempDir()
+			dir := filepath.Join(root, "plans", "cov")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			s := &Stream{Name: "cov", Dir: dir, Root: root}
+			mustWriteFile(t, root, "src/impl.go", "v1\n")
+			writeCoverageBriefWithFiles(t, dir, "01", "cov", files, verify, "")
+			witnessTree := mustGitInit(t, root)
+			ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, witnessTree))
+			writeCoverageBriefWithFiles(t, dir, "01", "cov", files, verify, ev)
+			mustGitCommitAll(t, root, "record Evidence (the brief's own file is the only change)")
+			c := evaluateCoverage(root, []*Stream{s}, coverageOptions{})["cov/01"]
+			if !c.Released || len(c.Claims) != 1 || c.Claims[0].Result != covPass {
+				t.Fatalf("a change to only the brief's own file must release, got %+v", c)
+			}
+		})
 	}
 }

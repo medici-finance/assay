@@ -63,24 +63,41 @@ package main
 //     witness ran on — the common case a run BEFORE the Evidence commit sees);
 //  2. the witness tree is a git ANCESTOR of the item's revision, and no path
 //     the witness SPEAKS FOR changed in between (ancestorNoOtherChanges,
-//     witnessScope.invalidatedBy). What a witness speaks for (round-2 F2):
+//     witnessScope.invalidatedBy). What a witness speaks for (round-2 F2,
+//     round-3 F2/F6):
 //     - the brief's declared `files:` paths when it declares them (a declared
-//       directory covers everything under it) — the brief's own statement of
-//       the surface its checks exercise;
-//     - absent a declaration, conservatively, every path OUTSIDE the board's
-//       bookkeeping surface — `docs/streams/**` (sibling briefs' Evidence in
+//       directory covers everything under it; a trailing `/**` reads as that
+//       directory; a one-segment glob matches a path or any parent of it) —
+//       the brief's own statement of the surface its checks exercise. The
+//       declaration is the UNION of the `files:` line now and as it stood at
+//       the witness's base commit, so narrowing it afterwards (in the brief's
+//       own, otherwise exempt, file) never shrinks the scope;
+//     - absent a declaration — or when ANY declared entry does not resolve to
+//       a real file at the witness's base commit or the item's revision (a
+//       brace form, `.`, prose such as `n/a`, a bare sibling name, a `**`
+//       inside a glob) — conservatively, every path OUTSIDE the board's
+//       bookkeeping surface: `docs/streams/**` (sibling briefs' Evidence in
 //       the same verify batch, READMEs, verify-outcome logs) and the
 //       regenerated `STATUS.md`, which move between ANY witness and the main
-//       tip and say nothing about the code a check ran against;
+//       tip and say nothing about the code a check ran against. An entry that
+//       names nothing would otherwise speak for nothing — less conservative
+//       than no declaration at all;
+//     - never the files verify and regen NECESSARILY write, even when
+//       declared: `STATUS.md`, `docs/streams/verify-outcomes*.jsonl`, a
+//       stream `README.md`, and brief files (isVerifyWrittenPath). Any OTHER
+//       declared `docs/streams/` artifact stays guarded;
 //     - never the brief's own file: its Verify rows are bound separately, by
 //       the Command and Expect guards below.
-//     A change to a path the witness speaks for after it ran is a genuine
+//     The changed paths are read with `git diff --no-renames`, so a rename or
+//     move reports its OLD path too, never only its destination. A change to
+//     a path the witness speaks for after it ran is a genuine
 //     `wrong-revision`: the witness no longer speaks for today's code. The
-//     residual this scope accepts, by design: a declared-`files:` brief's
-//     witness is not invalidated by a change OUTSIDE its declaration (a shared
-//     helper the declared files call, say) — the declaration is the contract,
-//     and an under-declared brief is fixed by declaring, not by this rule
-//     guessing at a dependency graph it cannot compute offline.
+//     residual this scope accepts, by design: a declared-`files:` brief whose
+//     every entry resolves is not invalidated by a change OUTSIDE its
+//     declaration (a shared helper the declared files call, say) — the
+//     declaration is the contract, and an under-declared brief is fixed by
+//     declaring, not by this rule guessing at a dependency graph it cannot
+//     compute offline.
 //
 // A value that is not adequately established as one of the two READS as a
 // definite mismatch (`wrong-revision`) only when both tokens are themselves
@@ -168,6 +185,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // Coverage result vocabulary — the six values Task item 1 fixes, and the
@@ -553,16 +571,23 @@ func classifyRevision(root string, scope witnessScope, witnessTree, target strin
 
 // witnessScope is what a brief's witnesses SPEAK FOR — the paths whose change
 // after the witness ran means the witness no longer describes the item
-// (round-2 F2). See this file's header ("THE REVISION COMPARISON IS OFFLINE").
+// (round-2 F2, round-3 F2/F6). See this file's header ("THE REVISION
+// COMPARISON IS OFFLINE").
 type witnessScope struct {
 	briefPath string   // absolute path of the brief file ("" = none)
 	briefRel  string   // briefPath relative to root, slash-separated
-	declared  []string // the brief's `files:` paths; nil = no declaration
+	declared  []string // the brief's `files:` entries (normalized); nil = no declaration
+	// conservative selects the no-declaration scope: every path outside the
+	// board's bookkeeping surface. It is set when the brief declares nothing
+	// and, by atBase, whenever a declaration cannot be trusted to name the
+	// surface (round-3 F6) — it only ever WIDENS the scope, never narrows it.
+	conservative bool
 }
 
-// newWitnessScope builds a brief's witnessScope from its parsed `files:` line
-// (BriefFile.DeclaredPaths). A missing/unparseable declaration leaves declared
-// nil, which selects the conservative fallback in invalidatedBy.
+// newWitnessScope builds a brief's witnessScope from its CURRENT parsed `files:`
+// line (BriefFile.DeclaredPaths). A missing/unparseable declaration leaves
+// declared nil and selects the conservative scope. This is only the current
+// half: ancestorNoOtherChanges widens it with atBase before reading a diff.
 func newWitnessScope(root, briefPath string, bf *BriefFile) witnessScope {
 	sc := witnessScope{briefPath: briefPath}
 	if root != "" && briefPath != "" {
@@ -571,14 +596,69 @@ func newWitnessScope(root, briefPath string, bf *BriefFile) witnessScope {
 		}
 	}
 	if bf != nil && bf.DeclaredPathsFound {
-		for _, d := range bf.DeclaredPaths {
-			d = strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(d)), "./")
-			if d != "" {
-				sc.declared = append(sc.declared, d)
-			}
+		sc.declared = appendDeclaredEntries(nil, bf.DeclaredPaths)
+	}
+	sc.conservative = sc.declared == nil
+	return sc
+}
+
+// appendDeclaredEntries normalizes and de-duplicates declared `files:` entries
+// onto dst: a leading `./` is dropped and a trailing `/**` reads as the
+// directory it names (`src/**` covers everything under src/, which is what the
+// author meant and what the prefix match below already implements).
+func appendDeclaredEntries(dst []string, entries []string) []string {
+	seen := map[string]bool{}
+	for _, d := range dst {
+		seen[d] = true
+	}
+	for _, d := range entries {
+		d = strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(d)), "./")
+		if strings.HasSuffix(d, "/**") && !strings.Contains(strings.TrimSuffix(d, "/**"), "**") {
+			d = strings.TrimSuffix(d, "**")
+		}
+		if d == "" || seen[d] {
+			continue
+		}
+		seen[d] = true
+		dst = append(dst, d)
+	}
+	return dst
+}
+
+// atBase returns the scope a witness whose BASE commit is base actually speaks
+// for, read against the item's revision target (round-3 F6):
+//
+//   - the union of the brief's `files:` declaration NOW and AS IT STOOD AT base
+//     (read from git history, the same way verifyRowAtRevision reads the Verify
+//     row), so a `files:` line narrowed after the witness ran — in the brief's
+//     own, otherwise exempt, file — can never shrink what the witness speaks
+//     for. A brief with no declaration at base, or one that cannot be read
+//     there, contributes the conservative scope;
+//   - the conservative scope as well whenever ANY declared entry does not
+//     resolve to a real path at base or at target (declaredEntryResolves): a
+//     brace form, `.`, prose such as `n/a`, a bare sibling name, a `**` in the
+//     middle of a glob. An entry that names nothing would otherwise speak for
+//     nothing, which is LESS conservative than no declaration at all.
+//
+// It only ever widens sc; the resolved declared entries still count on top of
+// the conservative scope (they keep a declared docs/streams artifact guarded).
+func (sc witnessScope) atBase(root, base, target string) witnessScope {
+	eff := sc
+	eff.declared = append([]string(nil), sc.declared...)
+	if body, ok := briefBodyAtRevision(root, sc.briefPath, base); !ok {
+		eff.conservative = true
+	} else if paths, found := extractContextDeclaredPaths(body); !found {
+		eff.conservative = true
+	} else {
+		eff.declared = appendDeclaredEntries(eff.declared, paths)
+	}
+	for _, d := range eff.declared {
+		if !declaredEntryResolves(root, d, base, target) {
+			eff.conservative = true
+			break
 		}
 	}
-	return sc
+	return eff
 }
 
 // isBoardBookkeepingPath reports whether a repo-relative path is the board's
@@ -586,9 +666,33 @@ func newWitnessScope(root, briefPath string, bf *BriefFile) witnessScope {
 // outcome logs, findings) and the generated STATUS.md. A verify batch lands
 // Evidence for several briefs in one commit, and statusgen regenerates
 // STATUS.md after every push, so this surface moves between ANY witness and
-// the main tip the model-lane flip runs at (review finding F2, round 2).
+// the main tip the model-lane flip runs at (review finding F2, round 2). It is
+// what the CONSERVATIVE scope leaves out.
 func isBoardBookkeepingPath(p string) bool {
 	return p == "STATUS.md" || strings.HasPrefix(p, "docs/streams/")
+}
+
+// isVerifyWrittenPath reports whether p is one of the files verify and regen
+// NECESSARILY write between a witness and the main tip — so no witness can
+// speak for it, even when a brief's `files:` names it (round-3 F2): the
+// generated STATUS.md, the verify-outcomes log and its rotation shards, a
+// stream's README (its status rows flip on every verified/done), and brief
+// files (a verify batch writes several briefs' Evidence in one commit). Any
+// OTHER docs/streams/ artifact a brief declares stays guarded.
+func isVerifyWrittenPath(p string) bool {
+	if p == "STATUS.md" {
+		return true
+	}
+	for _, pat := range []string{
+		"docs/streams/" + verifyOutcomesGlob,
+		"docs/streams/*/README.md",
+		"docs/streams/*/brief-*.md",
+	} {
+		if m, err := pathpkg.Match(pat, p); err == nil && m {
+			return true
+		}
+	}
+	return false
 }
 
 // invalidatedBy reports whether a change to repo-relative path p, after the
@@ -596,29 +700,126 @@ func isBoardBookkeepingPath(p string) bool {
 //
 //   - the brief's OWN file never does — its Verify rows are bound separately,
 //     by the Command and Expect guards (this file's header);
-//   - when the brief declares `files:`, exactly those paths do (a declared
-//     directory covers everything under it; a glob is matched as one) — the
-//     brief's own statement of the surface its checks exercise;
-//   - otherwise, conservatively, every path outside the board's bookkeeping
-//     surface (isBoardBookkeepingPath) does.
+//   - in the conservative scope, every path outside the board's bookkeeping
+//     surface (isBoardBookkeepingPath) does;
+//   - the files verify and regen necessarily write (isVerifyWrittenPath) never
+//     do, declared or not;
+//   - otherwise a declared entry does (declaredEntryMatches: a declared
+//     directory covers everything under it; a glob matches a path or any of
+//     its parent directories).
 func (sc witnessScope) invalidatedBy(p string) bool {
 	p = filepath.ToSlash(strings.TrimSpace(p))
 	if p == "" || p == sc.briefRel {
 		return false
 	}
-	if sc.declared == nil {
-		return !isBoardBookkeepingPath(p)
+	if sc.conservative && !isBoardBookkeepingPath(p) {
+		return true
+	}
+	if isVerifyWrittenPath(p) {
+		return false
 	}
 	for _, d := range sc.declared {
-		dd := strings.TrimSuffix(d, "/")
-		if p == dd || strings.HasPrefix(p, dd+"/") {
-			return true
-		}
-		if m, err := pathpkg.Match(d, p); err == nil && m {
+		if declaredEntryMatches(d, p) {
 			return true
 		}
 	}
 	return false
+}
+
+// declaredEntryMatches reports whether declared entry d covers repo-relative
+// path p: p is d, p is under d as a directory, or d (as a path.Match glob)
+// matches p or one of p's parent directories.
+func declaredEntryMatches(d, p string) bool {
+	dd := strings.TrimSuffix(d, "/")
+	if dd != "" && (p == dd || strings.HasPrefix(p, dd+"/")) {
+		return true
+	}
+	for q := p; q != "" && q != "." && q != "/"; q = pathpkg.Dir(q) {
+		if m, err := pathpkg.Match(d, q); err == nil && m {
+			return true
+		}
+	}
+	return false
+}
+
+// declaredEntrySupported reports whether d is an entry declaredEntryMatches can
+// actually express. `.`, an absolute or parent-relative path, brace syntax
+// (which path.Match lacks — and which the `files:` parser has already split at
+// its comma), a `**` that appendDeclaredEntries did not rewrite, and a
+// malformed glob are not: such an entry would silently match less than its
+// author meant.
+func declaredEntrySupported(d string) bool {
+	if d == "" || d == "." || strings.HasPrefix(d, "/") || d == ".." || strings.HasPrefix(d, "../") {
+		return false
+	}
+	if strings.ContainsAny(d, "{}") || strings.Contains(d, "**") {
+		return false
+	}
+	if _, err := pathpkg.Match(d, "x"); err != nil {
+		return false
+	}
+	return true
+}
+
+// declaredEntryResolves reports whether d is supported AND covers at least one
+// real file in the tree at base or at target — a declaration that names
+// nothing is not evidence of what the witness exercised.
+func declaredEntryResolves(root, d, base, target string) bool {
+	if !declaredEntrySupported(d) {
+		return false
+	}
+	for _, rev := range []string{base, target} {
+		for _, f := range treeFilesAt(root, rev) {
+			if declaredEntryMatches(d, f) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// treeFilesCache memoizes treeFilesAt per (root, commit): a commit's tree never
+// changes, and a --coverage run asks for the same few revisions once per brief.
+var (
+	treeFilesMu    sync.Mutex
+	treeFilesCache = map[string][]string{}
+)
+
+// treeFilesAt lists every file path in rev's tree (`git ls-tree -r -z`, so a
+// path with unusual bytes is never quoted into something no declaration
+// matches). nil when root or rev does not resolve — the caller then finds no
+// match, which widens the scope, never narrows it.
+func treeFilesAt(root, rev string) []string {
+	if root == "" || rev == "" {
+		return nil
+	}
+	key := root + "\x00" + rev
+	treeFilesMu.Lock()
+	files, ok := treeFilesCache[key]
+	treeFilesMu.Unlock()
+	if ok {
+		return files
+	}
+	out, err := exec.Command("git", "-C", root, "ls-tree", "-r", "-z", "--name-only", "--full-tree", "--end-of-options", rev).Output()
+	if err != nil {
+		return nil
+	}
+	files = splitNUL(out)
+	treeFilesMu.Lock()
+	treeFilesCache[key] = files
+	treeFilesMu.Unlock()
+	return files
+}
+
+// splitNUL splits git `-z` output into its non-empty entries.
+func splitNUL(out []byte) []string {
+	var parts []string
+	for _, f := range strings.Split(string(out), "\x00") {
+		if f != "" {
+			parts = append(parts, f)
+		}
+	}
+	return parts
 }
 
 // ancestorNoOtherChanges reports whether witnessTree is a git ancestor of
@@ -645,12 +846,17 @@ func ancestorNoOtherChanges(root string, scope witnessScope, witnessTree, target
 	if exec.Command("git", "-C", root, "merge-base", "--is-ancestor", "--end-of-options", witnessTree, target).Run() != nil {
 		return false // not an ancestor, or the check itself could not run
 	}
-	out, err := exec.Command("git", "-C", root, "diff", "--name-only", "--end-of-options", witnessTree, target, "--").Output()
+	// --no-renames (round-3 F6): with rename detection on, a rename or move
+	// prints only its DESTINATION, so a declared file renamed away — or code
+	// moved into docs/streams/ — never showed up as a change to its old path.
+	// -z keeps every path byte-exact (no core.quotePath quoting).
+	out, err := exec.Command("git", "-C", root, "diff", "--name-only", "--no-renames", "-z", "--end-of-options", witnessTree, target, "--").Output()
 	if err != nil {
 		return false
 	}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if scope.invalidatedBy(line) {
+	eff := scope.atBase(root, witnessTree, target)
+	for _, p := range splitNUL(out) {
+		if eff.invalidatedBy(p) {
 			return false // a path the witness speaks for changed since it ran
 		}
 	}
@@ -665,23 +871,9 @@ func ancestorNoOtherChanges(root string, scope witnessScope, witnessTree, target
 // rev, the brief has no Verify section there, or no row with that id exists
 // there — the caller resolves that could-not-check, never "unchanged".
 func verifyRowAtRevision(root, briefPath, rev, rowID string) (verifyRow, bool) {
-	if root == "" || briefPath == "" || rev == "" {
+	body, ok := briefBodyAtRevision(root, briefPath, rev)
+	if !ok {
 		return verifyRow{}, false
-	}
-	rel, err := filepath.Rel(root, briefPath)
-	if err != nil {
-		return verifyRow{}, false
-	}
-	out, err := exec.Command("git", "-C", root, "show", "--end-of-options", rev+":./"+filepath.ToSlash(rel)).Output()
-	if err != nil {
-		return verifyRow{}, false
-	}
-	content := strings.ReplaceAll(string(out), "\r\n", "\n")
-	body := content
-	if first, _, _ := strings.Cut(content, "\n"); strings.TrimSpace(first) == "---" {
-		if _, b, ferr := splitFrontmatter(content); ferr == nil {
-			body = b
-		}
 	}
 	verify := extractSectionByPrefix(body, "Verify")
 	for _, hr := range briefVerifyRows(verify) {
@@ -690,6 +882,32 @@ func verifyRowAtRevision(root, briefPath, rev, rowID string) (verifyRow, bool) {
 		}
 	}
 	return verifyRow{}, false
+}
+
+// briefBodyAtRevision reads briefPath's markdown body (frontmatter stripped)
+// as it stood at git revision rev (`git show <rev>:./<path>`). rev must be a
+// BASE revision (witnessBaseRevision). ok is false whenever root/briefPath do
+// not resolve to a usable git object at rev.
+func briefBodyAtRevision(root, briefPath, rev string) (string, bool) {
+	if root == "" || briefPath == "" || rev == "" {
+		return "", false
+	}
+	rel, err := filepath.Rel(root, briefPath)
+	if err != nil {
+		return "", false
+	}
+	out, err := exec.Command("git", "-C", root, "show", "--end-of-options", rev+":./"+filepath.ToSlash(rel)).Output()
+	if err != nil {
+		return "", false
+	}
+	content := strings.ReplaceAll(string(out), "\r\n", "\n")
+	body := content
+	if first, _, _ := strings.Cut(content, "\n"); strings.TrimSpace(first) == "---" {
+		if _, b, ferr := splitFrontmatter(content); ferr == nil {
+			body = b
+		}
+	}
+	return body, true
 }
 
 // coverageLine renders one brief's --coverage (non-JSON) line: `<id>

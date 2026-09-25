@@ -101,10 +101,19 @@ item's revision. The item's revision is the tree the evaluation runs at, resolve
 merge SHA, not the merge SHA itself. A witness counts at the item's revision when its tree
 names that revision exactly, or names an ancestor of it with no path the witness speaks for
 changed in between. A witness speaks for the brief's declared `files:` paths when the brief
-declares them (a declared directory covers everything under it), else for every path
-outside the board's own bookkeeping (`docs/streams/**` and the generated `STATUS.md`),
-and never for the brief's own file, whose Verify rows are bound separately (below). A change
-to a path the witness speaks for, after it ran, is `wrong-revision`. A witness recorded
+declares them (a declared directory covers everything under it), taken as the union of the
+declaration now and as it stood at the witness's commit, so narrowing `files:` after the
+run never shrinks it. When the brief declares nothing, or any declared entry does not
+resolve to a real path at the witness's commit or the item's revision (a brace form, `.`,
+prose, a bare sibling name, a `**` inside a glob), the witness instead speaks for every
+path outside the board's own bookkeeping (`docs/streams/**` and the generated
+`STATUS.md`) — an entry that names nothing never narrows the scope to nothing. It never
+speaks for the files verify and regeneration necessarily write — the generated
+`STATUS.md`, the verify-outcomes log, a stream `README.md`, and brief files — even when
+`files:` names them (any other declared `docs/streams/` artifact stays guarded), and never
+for the brief's own file, whose Verify rows are bound separately (below). Changed paths are
+compared with rename detection off, so a renamed or moved path counts as a change to its
+old path. A change to a path the witness speaks for, after it ran, is `wrong-revision`. A witness recorded
 over an uncommitted working tree (`+dirty`, or `+unknown`) is compared by its base commit;
 that tolerance is a declared residual of the witness-trust gap (the token cannot say what
 was dirty), not a guarantee the uncommitted edits landed. Any
