@@ -79,6 +79,11 @@ package main
 //     COULD-NOT-CHECK.
 //   - approvals whose `commit_id` does not match the merged head — REFUSED,
 //     with the caveat about that signal's strength recorded above.
+//   - candidate PRs shaped like a bulk brief-migration/reformat (a
+//     docs/streams/**-only diff, or an unusually large number of
+//     Brief:/Authors: trailers) — REFUSED as this brief's delivering PR even
+//     when merged and App-approved; the resolver keeps walking older commits
+//     for a genuine delivery PR instead (bulkMigrationReason).
 
 import (
 	"encoding/json"
@@ -88,6 +93,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -131,6 +137,11 @@ type modelFlipSource interface {
 	// INTRODUCED sha as one of its own branch commits (the merge-committed
 	// intermediate-commit case; see mergedPRForCommit). ok is false when none is.
 	MergedPRForCommit(repo, sha string) (int, bool, error)
+	// PRShape returns the diff/body shape of a candidate PR — its changed file
+	// paths and its Brief:/Authors: trailer count — the facts
+	// bulkMigrationReason judges to tell a genuine delivering PR from a bulk
+	// brief-migration/reformat PR.
+	PRShape(repo string, pr int) (prShape, error)
 	// ReviewState returns the PR's merge state, merged head and reviews.
 	ReviewState(repo string, pr int) (prReviewState, error)
 }
@@ -276,6 +287,101 @@ func noteBodyPinsSHA(body, headSHA string) bool {
 // this walks past them to the merge that landed the work.
 const commitScanDepth = 25
 
+// ---- bulk-migration PR refusal ----------------------------------------------------
+//
+// A brief file's own commit history can resolve a merged PR that never delivered
+// the brief's CONTENT at all — a fleet-wide reformat/migration PR that touched
+// the file only because it rewrote every brief file's frontmatter shape. The
+// motivating case: a downstream product repo's brief-v2 migration PR
+// bulk-reformatted ten `security-hardening` briefs' files in one PR, and
+// --auto-flip-model resolved THAT PR as each of the ten briefs' "delivering
+// PR", crediting the migration's reviewer approval as if it had reviewed each
+// brief's actual implementation.
+//
+// bulkMigrationReason names the PR's diff/body SHAPE — never its title, author
+// or any other freeform text a migration could plausibly omit — that marks it as
+// a bulk migration rather than a single brief's delivery:
+//
+//   - its diff touches ONLY docs/streams/** paths (a migration rewrites brief
+//     FILES; it does not also touch the code/config/tests a real delivery
+//     brief's Verify table exercises), or
+//   - its body carries an unusually large number of `Brief:`/`Authors:`
+//     trailer lines — the derived-board discipline's own signal that a PR is
+//     about MANY briefs, not implementing one.
+//
+// A refused candidate is not a dead end: decideModelFlip's caller keeps walking
+// OLDER commits past it, so a brief whose real delivering PR sits further back
+// in the same commitScanDepth window still resolves correctly (exactly the
+// shape of the ten migrated briefs, whose actual security-hardening work landed
+// in earlier, ordinary PRs before the migration touched their files).
+type prShape struct {
+	// Files is the PR's changed file paths, repo-relative, forward-slashed.
+	Files []string
+	// BriefTrailers is the count of `Brief:`/`Authors:` trailer lines in the PR
+	// body, outside fenced code blocks (the same fence-aware grammar prlink.go's
+	// ClassifyPRLink uses for the `Brief:` trailer alone).
+	BriefTrailers int
+}
+
+// bulkMigrationDocsPrefix is the path prefix a brief-migration/reformat PR's
+// entire diff stays inside. A PR with at least one file OUTSIDE this prefix
+// touched something a pure brief-file rewrite would not.
+const bulkMigrationDocsPrefix = "docs/streams/"
+
+// bulkMigrationTrailerThreshold is the fewest Brief:/Authors: trailers that
+// marks a PR as being about many briefs at once rather than one (or a small
+// stack of closely related ones). The motivating migration carried ten. Three
+// is chosen so an ordinary PR that legitimately names itself plus one or two
+// closely related briefs is never caught, while anything migration-shaped is.
+const bulkMigrationTrailerThreshold = 3
+
+// bulkMigrationReason reports why shape looks like a bulk brief-migration/
+// reformat PR rather than a single brief's delivering PR, or "" when it does
+// not. Either signal alone is sufficient; a migration PR need not trip both.
+func bulkMigrationReason(shape prShape) string {
+	if len(shape.Files) > 0 {
+		onlyDocsStreams := true
+		for _, f := range shape.Files {
+			if !strings.HasPrefix(filepath.ToSlash(f), bulkMigrationDocsPrefix) {
+				onlyDocsStreams = false
+				break
+			}
+		}
+		if onlyDocsStreams {
+			return fmt.Sprintf("its diff touches only %s paths (%d file(s)) — a brief-migration/reformat shape, not a delivering PR",
+				bulkMigrationDocsPrefix, len(shape.Files))
+		}
+	}
+	if shape.BriefTrailers >= bulkMigrationTrailerThreshold {
+		return fmt.Sprintf("its body carries %d Brief:/Authors: trailers — a bulk multi-brief shape, not a single delivering PR",
+			shape.BriefTrailers)
+	}
+	return ""
+}
+
+// briefLikeTrailerRe matches a `Brief:` or `Authors:` trailer line (deskkit's
+// trailer grammar: the key, a colon, then non-empty content on the same line).
+var briefLikeTrailerRe = regexp.MustCompile(`(?m)^[ \t]*(?:Brief|Authors):[ \t]*\S`)
+
+// countBriefLikeTrailers counts Brief:/Authors: trailer lines in a PR body,
+// skipping fenced code blocks — the same fence-aware grammar as prlink.go's
+// ClassifyPRLink, so a trailer shown as a documentation example inside a code
+// sample is never counted as a real one.
+func countBriefLikeTrailers(body string) int {
+	n := 0
+	inFence := false
+	for _, raw := range strings.Split(body, "\n") {
+		if rePRLinkFence.MatchString(raw) {
+			inFence = !inFence
+			continue
+		}
+		if !inFence && briefLikeTrailerRe.MatchString(raw) {
+			n++
+		}
+	}
+	return n
+}
+
 // ---- the decision ------------------------------------------------------------------
 
 // decideModelFlip judges ONE candidate brief. It never writes.
@@ -330,19 +436,45 @@ func decideModelFlip(root string, s *Stream, path string, briefID string, eviden
 	}
 
 	pr := 0
+	var refused []string
+	checked := map[int]bool{} // a commit's PR may repeat across commits; shape-check each candidate once
 	for _, sha := range commits {
 		n, ok, err := src.MergedPRForCommit(repo, sha)
 		if err != nil {
 			res.Reason = fmt.Sprintf("could not resolve commit %s to a pull request: %v", sha, err)
 			return res
 		}
-		if ok {
-			pr = n
-			break
+		if !ok {
+			continue
 		}
+		if checked[n] {
+			continue
+		}
+		checked[n] = true
+		shape, err := src.PRShape(repo, n)
+		if err != nil {
+			res.Reason = fmt.Sprintf("could not read the diff shape of PR #%d: %v", n, err)
+			return res
+		}
+		if why := bulkMigrationReason(shape); why != "" {
+			// REFUSED as a candidate, not accepted as this brief's delivering PR —
+			// but not a dead end either: keep walking older commits, since the
+			// brief's real delivering PR may sit further back in the same window
+			// (exactly the shape of a brief a migration touched after it was
+			// already delivered).
+			refused = append(refused, fmt.Sprintf("#%d (%s)", n, why))
+			continue
+		}
+		pr = n
+		break
 	}
 	if pr == 0 {
-		res.Reason = fmt.Sprintf("no merged pull request resolves from the last %d commits touching %s", commitScanDepth, filepath.ToSlash(rel))
+		if len(refused) > 0 {
+			res.Reason = fmt.Sprintf("no merged pull request resolves from the last %d commits touching %s that is not a bulk brief-migration/reformat PR — refused candidate(s): %s",
+				commitScanDepth, filepath.ToSlash(rel), strings.Join(refused, ", "))
+		} else {
+			res.Reason = fmt.Sprintf("no merged pull request resolves from the last %d commits touching %s", commitScanDepth, filepath.ToSlash(rel))
+		}
 		return res
 	}
 	res.PR = pr
@@ -643,6 +775,35 @@ func (ghModelFlipSource) prBranchCommits(repo string, n int) ([]string, error) {
 	return shas, nil
 }
 
+// ghPRShapeJSON is the `gh pr view --json body,files` shape PRShape reads.
+type ghPRShapeJSON struct {
+	Body  string `json:"body"`
+	Files []struct {
+		Path string `json:"path"`
+	} `json:"files"`
+}
+
+// PRShape reads a candidate PR's changed files and body — the facts
+// bulkMigrationReason judges — via a single `gh pr view` call (files caps
+// generously higher than gh's diff-rendering path, and a bulk migration's file
+// count is well within it).
+func (ghModelFlipSource) PRShape(repo string, pr int) (prShape, error) {
+	out, err := exec.Command("gh", "pr", "view", fmt.Sprintf("%d", pr),
+		"--repo", repo, "--json", "body,files").Output()
+	if err != nil {
+		return prShape{}, fmt.Errorf("gh pr view %d --json body,files: %w", pr, err)
+	}
+	var v ghPRShapeJSON
+	if err := json.Unmarshal(out, &v); err != nil {
+		return prShape{}, fmt.Errorf("unmarshal PR %d body/files: %w", pr, err)
+	}
+	files := make([]string, 0, len(v.Files))
+	for _, f := range v.Files {
+		files = append(files, f.Path)
+	}
+	return prShape{Files: files, BriefTrailers: countBriefLikeTrailers(v.Body)}, nil
+}
+
 // ghRESTReview is the REST reviews-endpoint shape. It is used instead of
 // `gh pr view --json reviews` for one reason: only this endpoint returns
 // `commit_id`, the sole per-review commit reference either transport offers.
@@ -758,6 +919,10 @@ func (gitlabModelFlipUnavailable) CommitsTouching(root, relPath string, limit in
 
 func (gitlabModelFlipUnavailable) MergedPRForCommit(repo, sha string) (int, bool, error) {
 	return 0, false, errGitLabFlipReadUnavailable
+}
+
+func (gitlabModelFlipUnavailable) PRShape(repo string, pr int) (prShape, error) {
+	return prShape{}, errGitLabFlipReadUnavailable
 }
 
 func (gitlabModelFlipUnavailable) ReviewState(repo string, pr int) (prReviewState, error) {

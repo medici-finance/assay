@@ -76,6 +76,20 @@ const (
 	afIntHeadSHA  = "5555555555555555555555555555555555555555" // merged head of PR 107 (approval here)
 	afIntMergeSHA = "6666666666666666666666666666666666666666" // the merge commit of PR 107
 	afIntMidSHA   = "7777777777777777777777777777777777777777" // the intermediate commit that touched brief-07
+
+	// B1 fixtures: a bulk brief-migration/reformat PR shaped like the motivating
+	// case — a docs/streams/**-only diff, ten Brief: trailers — must never be
+	// accepted as a brief's delivering PR even though it merges and carries an
+	// App approval at its head.
+	afBulkMigSHA     = "8888888888888888888888888888888888888888" // the ONLY commit touching af/08; resolves to PR 108
+	afBulkMigHeadSHA = "9999999999999999999999999999999999999999" // merged head of PR 108 (the migration), App-approved
+	// af/09: the NEWEST commit touching it resolves to the same migration PR
+	// 108; an OLDER commit resolves to a genuine single-brief delivery PR 109.
+	// The refusal of 108 must not be a dead end — the resolver keeps walking and
+	// finds 109, exactly the shape of a brief a migration touched after its real
+	// delivery had already landed.
+	afRealDeliverySHA     = "aaaa111111111111111111111111111111111111" // the older commit touching af/09; resolves to PR 109
+	afRealDeliveryHeadSHA = "bbbb222222222222222222222222222222222222" // merged head of PR 109, App-approved
 )
 
 const afReviewer = "rev-app[bot]"
@@ -104,9 +118,30 @@ type fakeFlipSource struct {
 	// falls back to the direct prs map.
 	assoc     map[string][]ghCommitPR
 	prCommits map[int][]string
+	// shapes is the diff/body shape bulkMigrationReason judges, keyed by PR
+	// number. A PR absent here defaults to an ordinary single-brief shape (one
+	// non-docs/streams file, one trailer) so existing fixtures need no shape of
+	// their own — only the bulk-migration fixtures set one explicitly.
+	shapes map[int]prShape
 	// seen records every PR whose review state was fetched, so a test can prove
 	// the model path never even LOOKED at a gate:human brief.
 	seen []int
+	// shapesSeen records every PR whose shape was fetched — proves the resolver
+	// checks shape BEFORE spending a review-state fetch on a refused candidate.
+	shapesSeen []int
+}
+
+// ordinarySingleBriefShape is the default prShape fixtures without an explicit
+// entry get: a real delivery PR's shape (one code file, one Brief: trailer) —
+// never migration-shaped, so it never trips bulkMigrationReason.
+var ordinarySingleBriefShape = prShape{Files: []string{"internal/example/example.go"}, BriefTrailers: 1}
+
+func (f *fakeFlipSource) PRShape(repo string, pr int) (prShape, error) {
+	f.shapesSeen = append(f.shapesSeen, pr)
+	if s, ok := f.shapes[pr]; ok {
+		return s, nil
+	}
+	return ordinarySingleBriefShape, nil
 }
 
 func (f *fakeFlipSource) CommitsTouching(root, relPath string, limit int) ([]string, error) {
@@ -155,6 +190,10 @@ func afSource() *fakeFlipSource {
 			"brief-04-model-no-approval.md":         {"aaa0000000000000000000000000000000000004"},
 			"brief-06-model-no-pr.md":               {"aaa0000000000000000000000000000000000006"},
 			"brief-07-model-intermediate-commit.md": {afIntMidSHA},
+			"brief-08-model-bulk-migration-only.md": {afBulkMigSHA},
+			// Newest first: the migration commit is checked (and refused) before
+			// the resolver walks back to the older, real delivery commit.
+			"brief-09-model-migration-then-real-pr.md": {afBulkMigSHA, afRealDeliverySHA},
 		},
 		prs: map[string]int{
 			"aaa0000000000000000000000000000000000001": 101,
@@ -164,6 +203,8 @@ func afSource() *fakeFlipSource {
 			// ...0006 deliberately absent: no merged PR resolves.
 			// afIntMidSHA deliberately absent here: it must resolve through the
 			// REAL resolver (assoc/prCommits), not this direct short-circuit.
+			afBulkMigSHA:      108,
+			afRealDeliverySHA: 109,
 		},
 		// af/07's brief commit is an intermediate (non-head, non-merge) commit of
 		// PR 107. The direct prs map does NOT carry it, so it can only resolve if
@@ -192,6 +233,36 @@ func afSource() *fakeFlipSource {
 			107: {Merged: true, HeadSHA: afIntHeadSHA, Reviews: []ghReview{
 				{Author: ghAuthor{Login: afReviewer}, State: "APPROVED", CommitOID: afIntHeadSHA, Id: "PRR_int"},
 			}},
+			// PR 108 (af/08, af/09): the bulk brief-migration PR. It is merged AND
+			// App-approved at its head — on the pre-B1 resolver this alone was
+			// enough to flip a brief; B1's shape check must refuse it before this
+			// review state is ever consulted (asserted via shapesSeen/seen below).
+			108: {Merged: true, HeadSHA: afBulkMigHeadSHA, Reviews: []ghReview{
+				{Author: ghAuthor{Login: afReviewer}, State: "APPROVED", CommitOID: afBulkMigHeadSHA, Id: "PRR_bulkmig"},
+			}},
+			// PR 109 (af/09 only): the genuine, older single-brief delivery PR.
+			109: {Merged: true, HeadSHA: afRealDeliveryHeadSHA, Reviews: []ghReview{
+				{Author: ghAuthor{Login: afReviewer}, State: "APPROVED", CommitOID: afRealDeliveryHeadSHA, Id: "PRR_real"},
+			}},
+		},
+		shapes: map[int]prShape{
+			// Shaped like the motivating migration: docs/streams/**-only diff, ten
+			// Brief:/Authors: trailers — a bulk migration, not a delivering PR.
+			108: {
+				Files: []string{
+					"docs/streams/security-hardening/brief-01.md",
+					"docs/streams/security-hardening/brief-02.md",
+					"docs/streams/other-stream/brief-03.md",
+				},
+				BriefTrailers: 10,
+			},
+			// An ordinary single-brief delivery PR: touches real code plus its own
+			// Verify fixture, one Brief: trailer. Explicit here (rather than relying
+			// on the fake's default) so the fixture reads standalone.
+			109: {
+				Files:         []string{"internal/security/hardening.go", "internal/security/hardening_test.go"},
+				BriefTrailers: 1,
+			},
 		},
 		errs: map[int]error{},
 	}
@@ -590,6 +661,129 @@ func TestAutoFlipIntermediateCommitFlips(t *testing.T) {
 		if !strings.Contains(row, want) {
 			t.Errorf("af/07 Reviewed stamp is missing %q:\n%s", want, row)
 		}
+	}
+}
+
+// ---- B1: bulk brief-migration PR refusal ------------------------------------------
+
+// TestAutoFlipRefusesBulkMigrationPR is the fail-first proof for B1: a PR shaped
+// like the motivating migration (docs/streams/**-only diff, ten Brief:/Authors:
+// trailers) is merged and carries an App APPROVED review at its own head —
+// before this fix that was sufficient to flip the brief, wrongly crediting the
+// migration as its delivering PR. It must now be REFUSED as a candidate; with no
+// other PR in the commit window, the brief stays verified as a could-not-check,
+// never a flip.
+func TestAutoFlipRefusesBulkMigrationPR(t *testing.T) {
+	root, streams := loadAFStreams(t)
+	src := afSource()
+
+	results, err := autoFlipModel(root, streams, src, ghReviewer(afReviewer), afNow, false)
+	if err != nil {
+		t.Fatalf("autoFlipModel: %v", err)
+	}
+
+	got := afResult(t, results, "af/08")
+	if got.Outcome == flipDone {
+		t.Fatalf("af/08's only candidate PR is bulk-migration-shaped — must never flip, got flipDone (%s)", got.Reason)
+	}
+	if !strings.Contains(got.Reason, "108") {
+		t.Errorf("the refusal reason must name the refused candidate PR #108; got %q", got.Reason)
+	}
+	row := afRow(t, afReadme(t, root), "08")
+	if !strings.Contains(row, "| verified |") {
+		t.Errorf("af/08 must stay verified:\n%s", row)
+	}
+	if strings.Contains(row, afReviewer) {
+		t.Errorf("af/08 must not be stamped from a refused migration PR:\n%s", row)
+	}
+	// The shape check must happen BEFORE any review-state fetch is spent on a
+	// refused candidate — PR 108's reviews are never even read.
+	for _, pr := range src.seen {
+		if pr == 108 {
+			t.Error("PR 108 is bulk-migration-shaped and must be refused by its DIFF SHAPE alone — its review state must never be fetched")
+		}
+	}
+}
+
+// TestAutoFlipSkipsMigrationFindsRealDeliveryPR proves the refusal is not a dead
+// end and does not over-tighten: af/09's newest commit resolves to the SAME
+// bulk-migration PR 108, but an older commit in the same window resolves to a
+// genuine single-brief delivery PR (109) — real code touched, one Brief:
+// trailer, App-approved at its own head. The resolver must skip 108 and flip
+// citing 109, the real delivering PR.
+func TestAutoFlipSkipsMigrationFindsRealDeliveryPR(t *testing.T) {
+	root, streams := loadAFStreams(t)
+	src := afSource()
+
+	results, err := autoFlipModel(root, streams, src, ghReviewer(afReviewer), afNow, false)
+	if err != nil {
+		t.Fatalf("autoFlipModel: %v", err)
+	}
+
+	got := afResult(t, results, "af/09")
+	if got.Outcome != flipDone {
+		t.Fatalf("af/09 outcome = %v (%s), want flipDone via the real delivery PR 109", got.Outcome, got.Reason)
+	}
+	if got.PR != 109 || got.SHA != afRealDeliveryHeadSHA {
+		t.Fatalf("af/09 recorded PR/SHA = %d/%s, want 109/%s — the migration PR 108 must never be credited",
+			got.PR, got.SHA, afRealDeliveryHeadSHA)
+	}
+	row := afRow(t, afReadme(t, root), "09")
+	if !strings.Contains(row, "| done |") {
+		t.Errorf("af/09 row was not flipped to done:\n%s", row)
+	}
+	if !strings.Contains(row, "#109") {
+		t.Errorf("af/09's Reviewed stamp must cite PR #109 (the real delivery), not #108 (the migration):\n%s", row)
+	}
+	if strings.Contains(row, "#108") {
+		t.Errorf("af/09's Reviewed stamp must never cite the migration PR #108:\n%s", row)
+	}
+}
+
+// TestBulkMigrationReasonShape unit-tests the shape rule directly, independent
+// of the resolver plumbing: docs/streams/**-only diffs and high trailer counts
+// are refused; an ordinary single-brief delivery shape (and one that names a
+// couple of closely related briefs) is not.
+func TestBulkMigrationReasonShape(t *testing.T) {
+	cases := []struct {
+		name   string
+		shape  prShape
+		refuse bool
+	}{
+		{"docs-only many files", prShape{Files: []string{
+			"docs/streams/a/brief-01.md", "docs/streams/a/README.md", "docs/streams/b/brief-02.md",
+		}, BriefTrailers: 0}, true},
+		{"high trailer count, no files", prShape{Files: nil, BriefTrailers: 10}, true},
+		{"high trailer count with code files", prShape{
+			Files:         []string{"internal/foo/foo.go"},
+			BriefTrailers: 5,
+		}, true},
+		{"real delivery: code + one trailer", prShape{
+			Files:         []string{"internal/foo/foo.go", "internal/foo/foo_test.go"},
+			BriefTrailers: 1,
+		}, false},
+		{"small stack: code + two trailers", prShape{
+			Files:         []string{"internal/foo/foo.go"},
+			BriefTrailers: 2,
+		}, false},
+		{"docs file alongside real code is NOT migration-shaped", prShape{
+			Files:         []string{"internal/foo/foo.go", "docs/streams/a/brief-01.md"},
+			BriefTrailers: 1,
+		}, false},
+		{"empty shape (no files read) is not refused on files alone", prShape{
+			Files: nil, BriefTrailers: 0,
+		}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := bulkMigrationReason(c.shape)
+			if c.refuse && got == "" {
+				t.Errorf("shape %+v should be refused as bulk-migration-shaped, got no reason", c.shape)
+			}
+			if !c.refuse && got != "" {
+				t.Errorf("shape %+v should NOT be refused, got reason %q", c.shape, got)
+			}
+		})
 	}
 }
 
