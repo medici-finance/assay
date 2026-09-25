@@ -295,39 +295,121 @@ var strikethroughRe = regexp.MustCompile(`~~[^~]*~~`)
 // **VERIFY: PASS** marker.
 var heldOrCouldNotCheckRe = regexp.MustCompile(`(?i)\b(HELD|could-not-check)\b`)
 
-// heldNegationRe matches a negation cue or zero-count immediately preceding a
-// HELD/could-not-check occurrence — "no HELD", "no could-not-check", "0
-// HELD", "zero could-not-check" — asserting the ABSENCE of the disposition,
-// not the disposition itself.
+// heldOrCouldNotCheckRe is a bare word-boundary match: on its own it cannot
+// tell "this row IS held" from "this row is NOT held" or "there are ZERO held
+// rows", because all three contain the marker word. Clean, fully-passing
+// Evidence routinely says the latter two — "VERIFY: PASS ... no
+// could-not-check", "summary: 0 HELD, 7 PASS" — and refusing it is a false
+// positive. heldOccurrenceNegated below excuses exactly those shapes.
 //
-// heldOrCouldNotCheckRe is a bare word-boundary match: it cannot on its own
-// tell "this row IS held" from "this row is NOT held" or "there are ZERO
-// held rows" apart, because both contain the literal marker word. Clean,
-// fully-passing Evidence routinely says so in exactly these words — "VERIFY:
-// PASS ... no could-not-check", "0 HELD" — and a naive substring match on the
-// marker word refused that legitimate flip/verify progress for the wrong
-// reason: the text is reporting the ABSENCE or COUNT of a held state, not
-// asserting one. This is checked per OCCURRENCE (immediately before it, not
-// anywhere on the line) so a negated/zero-count mention on one line never
-// excuses a genuine, un-negated HELD/could-not-check occurrence elsewhere.
+// It is a narrowing of a flip-refusal control, so every rule in it is written
+// to FAIL CLOSED: a wrongly excused occurrence is a false NEGATIVE — a PASS
+// proceeding over a genuinely held row — which is worse for a refusal gate
+// than the false positive it fixes. A cue word or a "0" directly in front of
+// the marker is therefore NOT enough on its own; what sits in front of the
+// cue, and what follows the marker, must also read as a count or a negation.
 //
-// The bare-digit "0" alternative is deliberately NOT a plain \b0\s+$ match:
-// a standalone zero can appear immediately before HELD/could-not-check for
-// reasons that have nothing to do with a held-row COUNT — an exit code
-// ("exit 0 HELD"), a row label ("row 0 HELD"), or a version/decimal number
-// ("v1.0 HELD", "2.0 HELD"). Wrongly excusing any of those is a false
-// NEGATIVE — a verification gate silently passing over a genuinely held row
-// — which is a more dangerous failure mode for a refusal gate than the
-// original false-positive class this regex exists to fix (assay#1681
-// review findings sec-1681-f1 / pr1681-F2). The digit alternative therefore
-// only matches "0" in an actual COUNT position: at the start of the
-// preceding text, or immediately after a list/summary separator (":", ",",
-// ";", "(") with only whitespace between the separator and the "0" — the
-// shape every observed false-positive phrase ("summary: 0 HELD",
-// "0 HELD, 1 PASS") actually has. A bare "0" reached by crossing a word
-// ("exit 0"), a row label ("row 0") or a decimal point ("v1.0", "2.0") does
-// not satisfy that separator requirement and so is never excused.
-var heldNegationRe = regexp.MustCompile(`(?i)\b(no|not|none|zero)\s+$|(?:^|[:,;(])\s*0\s+$`)
+//   - Word cue: "no", "not" or "zero", then only ASCII whitespace, then the
+//     marker. It does NOT excuse when the text before the cue ends in "?"
+//     (an answer: "available? no HELD"), "=" or "|" (a field or table-cell
+//     value: "runner=no HELD", "| no HELD |"), or ":" (a field value:
+//     "row 3 green: no HELD", "row 3: not HELD") — unless that colon closes
+//     a count label (heldCountLabelRe: "summary: no could-not-check").
+//   - Zero cue: a standalone "0", then only ASCII whitespace, then the marker.
+//     It excuses only in a COUNT position: at the start of the line, right
+//     after a count label and its colon ("summary: 0 HELD"), or right after
+//     ", " / "; " that closes another count item ("7 PASS, 0 HELD"). An exit
+//     code ("exit 0", "exit: 0", "rc: 0", "exit codes: 1, 0"), a row label
+//     ("row 0"), a decimal or version ("2.0", "v1.0") or a parenthesis
+//     ("(0 HELD)") is not a count position and never excuses.
+//   - Hold reason: an occurrence followed by a hold reason
+//     (heldReasonAfterRe: "HELD pending runner", "HELD until …", "HELD for
+//     human read") is refused even behind a valid cue — a negated or zero
+//     count that also gives a reason for holding contradicts itself.
+//   - Struck text: a struck-through span (`~~…~~`) removed between a cue and
+//     its marker is replaced by a sentinel for this check, so struck text can
+//     never join a cue to a marker ("not ~~yet green, still~~ HELD").
+//
+// Checked per OCCURRENCE (on the text immediately around it, not anywhere on
+// the line), so a negated or zero-counted mention never excuses a different,
+// genuine occurrence elsewhere on the same line or another line. Matching is
+// ASCII: a Unicode lookalike, a non-breaking space or markup between cue and
+// marker ("no **HELD**") does not match and so refuses.
+var (
+	heldWordCueRe = regexp.MustCompile(`(?i)\b(?:no|not|zero)[ \t]+$`)
+	heldZeroCueRe = regexp.MustCompile(`\b0[ \t]+$`)
+	// heldCountLabelRe is a count/summary label closed by a colon, as the
+	// text before a cue ends. Deliberately a short allowlist: an exit,
+	// status or result label is NOT a count label.
+	heldCountLabelRe = regexp.MustCompile(`(?i)\b(?:summary|totals?|counts?|tally):$`)
+	// heldCountItemRe is a prior count item closed by "," or ";" ("7 PASS,").
+	heldCountItemRe = regexp.MustCompile(`(?i)\b\d+[ \t]+[a-z][a-z-]*[,;]$`)
+	// heldReasonAfterRe is a hold reason directly after the marker.
+	heldReasonAfterRe = regexp.MustCompile(`(?i)^[ \t]*(?:pending|awaiting|until|because|blocked|due|for)\b`)
+)
+
+// struckSentinel stands in for a removed struck span in the negation lookback.
+const struckSentinel = "\x00"
+
+// heldOccurrenceNegated reports whether the HELD/could-not-check occurrence at
+// clean[h[0]:h[1]] is a negation or zero count rather than a live disposition,
+// under the rules on heldOrCouldNotCheckRe above. cuts are the offsets in
+// clean where struck spans were removed.
+func heldOccurrenceNegated(clean string, cuts []int, h []int) bool {
+	if heldReasonAfterRe.MatchString(clean[h[1]:]) {
+		return false
+	}
+	var b strings.Builder
+	prev := 0
+	for _, c := range cuts {
+		if c > h[0] {
+			break
+		}
+		b.WriteString(clean[prev:c])
+		b.WriteString(struckSentinel)
+		prev = c
+	}
+	b.WriteString(clean[prev:h[0]])
+	lookback := b.String()
+
+	if loc := heldWordCueRe.FindStringIndex(lookback); loc != nil {
+		before := strings.TrimRight(lookback[:loc[0]], " \t")
+		switch {
+		case before == "":
+			return true
+		case strings.HasSuffix(before, ":"):
+			return heldCountLabelRe.MatchString(before)
+		case strings.HasSuffix(before, "?"), strings.HasSuffix(before, "="),
+			strings.HasSuffix(before, "|"), strings.HasSuffix(before, struckSentinel):
+			return false
+		}
+		return true
+	}
+	if loc := heldZeroCueRe.FindStringIndex(lookback); loc != nil {
+		before := strings.TrimRight(lookback[:loc[0]], " \t")
+		return before == "" || heldCountLabelRe.MatchString(before) || heldCountItemRe.MatchString(before)
+	}
+	return false
+}
+
+// stripStruck removes struck-through spans from line, returning the cleaned
+// text and the offsets in it where a span was removed.
+func stripStruck(line string) (string, []int) {
+	locs := strikethroughRe.FindAllStringIndex(line, -1)
+	if locs == nil {
+		return line, nil
+	}
+	var b strings.Builder
+	cuts := make([]int, 0, len(locs))
+	prev := 0
+	for _, l := range locs {
+		b.WriteString(line[prev:l[0]])
+		cuts = append(cuts, b.Len())
+		prev = l[1]
+	}
+	b.WriteString(line[prev:])
+	return b.String(), cuts
+}
 
 // verifyPassHeldContradiction reports whether evidence both carries a strict
 // hasVerifyPass marker AND, on some line that is not a genuinely routed
@@ -368,7 +450,7 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 // unroutedHeldLine is verifyPassHeldContradiction's line scan WITHOUT the
 // strict-PASS precondition: it reports the first line that says HELD or
 // could-not-check on an occurrence not genuinely routed to a follow-up AND
-// not negated or zero-counted (heldNegationRe), under exactly the hygiene and
+// not negated or zero-counted (heldOccurrenceNegated), under exactly the hygiene and
 // routing rules documented on verifyPassHeldContradiction above (which is
 // this scan behind hasVerifyPass, unchanged). It exists for a caller whose
 // PASS claim is carried by something other than a strict marker —
@@ -386,7 +468,7 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		if inFence || strings.HasPrefix(trimmed, ">") {
 			continue
 		}
-		clean := strikethroughRe.ReplaceAllString(line, "")
+		clean, cuts := stripStruck(line)
 		heldLocs := heldOrCouldNotCheckRe.FindAllStringIndex(clean, -1)
 		if heldLocs == nil {
 			continue
@@ -417,14 +499,13 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		keywordLocs := routingKeywordRe.FindAllStringIndex(clean, -1)
 		refLocs := routingRefRe.FindAllStringIndex(clean, -1)
 		for _, h := range heldLocs {
-			// A negated or zero-counted occurrence ("no could-not-check", "0
-			// HELD") is not a live disposition at all — it is excused
-			// outright, the same as a routed one, without needing a routing
-			// keyword+reference. Checked against the text immediately BEFORE
-			// this specific occurrence only, so a negated mention never
-			// excuses a different, genuine occurrence elsewhere on the line
-			// or on another line.
-			if heldNegationRe.MatchString(clean[:h[0]]) {
+			// A negated or zero-counted occurrence ("no could-not-check",
+			// "summary: 0 HELD") is not a live disposition at all — it is
+			// excused outright, the same as a routed one, without needing a
+			// routing keyword+reference. Judged on this occurrence's own
+			// surroundings only (heldOccurrenceNegated), so a negated mention
+			// never excuses a different, genuine occurrence elsewhere.
+			if heldOccurrenceNegated(clean, cuts, h) {
 				continue
 			}
 			keywordAfter := false

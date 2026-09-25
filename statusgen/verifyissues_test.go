@@ -1163,14 +1163,14 @@ func TestVerifyPassHeldContradictionNegatedMentionIsNotADisposition(t *testing.T
 			wantHeld: true,
 		},
 		{
-			// Counter-example (pr#1681 review sec-1681-f1 / pr1681-F2): a bare
+			// Counter-example: a bare
 			// "0" that is NOT in a count position — here it is an exit code,
 			// not a count of held rows — must never excuse the HELD it
 			// happens to precede. "row 3 exit 0 HELD" is a REAL held row
 			// report; the exit code coincidentally reads "0" right before the
 			// marker. Wrongly excusing this is a false NEGATIVE: a
 			// verification gate silently passing something broken, which is
-			// worse than the original false-positive class this PR fixed.
+			// worse than the original false-positive class this fix addresses.
 			name: "exit code 0 immediately before HELD is not a zero-count negation",
 			evidence: "**VERIFY: PASS** — row 1 green.\n\n" +
 				"| # | Command | Exit | Result | Date | Runner |\n" +
@@ -1180,7 +1180,7 @@ func TestVerifyPassHeldContradictionNegatedMentionIsNotADisposition(t *testing.T
 			wantHeld: true,
 		},
 		{
-			// Counter-example (sec-1681-f1): "row 0" is a row LABEL, not a
+			// Counter-example: "row 0" is a row LABEL, not a
 			// count of held rows — "row 0 HELD" is a genuine held report for
 			// the row numbered 0.
 			name: "row label 0 immediately before HELD is not a zero-count negation",
@@ -1192,7 +1192,7 @@ func TestVerifyPassHeldContradictionNegatedMentionIsNotADisposition(t *testing.T
 			wantHeld: true,
 		},
 		{
-			// Counter-example (sec-1681-f1): a version number ending in ".0"
+			// Counter-example: a version number ending in ".0"
 			// reads as a bare "0" token right before HELD, but it is a
 			// version, not a count.
 			name: "version number ending in .0 immediately before HELD is not a zero-count negation",
@@ -1204,7 +1204,7 @@ func TestVerifyPassHeldContradictionNegatedMentionIsNotADisposition(t *testing.T
 			wantHeld: true,
 		},
 		{
-			// Counter-example (sec-1681-f1): same version-number shape, no
+			// Counter-example: same version-number shape, no
 			// leading "v".
 			name: "bare decimal ending in .0 immediately before HELD is not a zero-count negation",
 			evidence: "**VERIFY: PASS** — row 1 green.\n\n" +
@@ -1229,7 +1229,7 @@ func TestVerifyPassHeldContradictionNegatedMentionIsNotADisposition(t *testing.T
 			wantHeld: true,
 		},
 		{
-			// Per-occurrence pin (pr1681-F1): a negated occurrence earlier ON
+			// Per-occurrence pin: a negated occurrence earlier ON
 			// THE SAME LINE must not excuse a second, genuine, un-negated
 			// occurrence of the SAME marker word later on that same line.
 			// This kills a line-level ("any negated mention anywhere on the
@@ -1243,7 +1243,7 @@ func TestVerifyPassHeldContradictionNegatedMentionIsNotADisposition(t *testing.T
 			wantHeld: true,
 		},
 		{
-			// Per-occurrence pin (pr1681-F1): a zero-counted HELD occurrence
+			// Per-occurrence pin: a zero-counted HELD occurrence
 			// earlier on the line must not excuse a second, genuine,
 			// un-negated HELD occurrence later on that same line.
 			name: "zero-counted HELD does not excuse a second HELD on the same line",
@@ -1253,6 +1253,68 @@ func TestVerifyPassHeldContradictionNegatedMentionIsNotADisposition(t *testing.T
 				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n",
 			wantHeld: true,
 		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			held, why := verifyPassHeldContradiction(c.evidence)
+			if held != c.wantHeld {
+				t.Errorf("verifyPassHeldContradiction(%q) held=%v why=%q, want held=%v", c.evidence, held, why, c.wantHeld)
+			}
+		})
+	}
+}
+
+// TestVerifyPassHeldContradictionNegationCuePosition pins WHERE a negation or
+// zero-count cue may sit and still excuse the HELD/could-not-check occurrence
+// right after it. A cue word or a "0" directly before the marker is not, by
+// itself, a negation: a labelled exit code ("exit: 0 HELD", "rc: 0 HELD"), an
+// answer to a question ("available? no HELD") or a field value ("green: no
+// HELD") put the same tokens in front of a LIVE hold. Each must-refuse line
+// below is a genuine hold that a PASS must not proceed over; each must-excuse
+// line is a clean count or negation that must not refuse.
+func TestVerifyPassHeldContradictionNegationCuePosition(t *testing.T) {
+	const header = "**VERIFY: PASS** — row 1 green.\n\n"
+	cell := func(result string) string {
+		return header +
+			"| # | Command | Exit | Result | Date | Runner |\n" +
+			"|---|---------|------|--------|------|--------|\n" +
+			"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n" +
+			"| 3 | `go test ./integration/...` | — | " + result + " | 2026-07-10 | fixture-verifier |\n"
+	}
+	prose := func(line string) string { return header + line + "\n" }
+
+	cases := []struct {
+		name     string
+		evidence string
+		wantHeld bool
+	}{
+		// Must refuse: a labelled exit/status zero is not a held-row count.
+		{"colon-labelled exit code before HELD", prose("row 3 exit: 0 HELD"), true},
+		{"colon-labelled exit code with hold reason", cell("row 3 exit code: 0 HELD pending human read"), true},
+		{"rc label before HELD", prose("rc: 0 HELD"), true},
+		{"list of exit codes ending in 0 before HELD", prose("exit codes: 1, 0 HELD"), true},
+		{"parenthesised exit code before HELD", prose("row 3 (0 HELD)"), true},
+		// Must refuse: a "no" that answers a question or fills a field.
+		{"question answered no before HELD", prose("runner available? no HELD pending runner"), true},
+		{"field value no before HELD", cell("row 3 green: no HELD pending runner"), true},
+		{"field value not before HELD", prose("row 3: not HELD"), true},
+		{"assigned no before HELD", prose("runner=no HELD"), true},
+		{"table-cell no before HELD", prose("| 3 | no HELD |"), true},
+		// Must refuse: a negation followed by a hold reason contradicts itself.
+		{"dash-answered no with hold reason", prose("runner available — no HELD pending runner"), true},
+		{"zero count with hold reason", prose("0 HELD until the runner is back"), true},
+		// Must refuse: struck text never joins a cue to a marker.
+		{"struck span between cue and marker", prose("row 3 not ~~yet green, still~~ HELD"), true},
+		{"struck span between count label and zero", prose("summary: ~~3~~0 HELD"), true},
+
+		// Must excuse: genuine negations and zero counts.
+		{"not negates the marker in prose", prose("row 3 is not HELD; every row ran green."), false},
+		{"zero negates the marker", prose("zero could-not-check rows in this run."), false},
+		{"zero count at line start", prose("0 HELD, 7 PASS."), false},
+		{"zero count continuing a count list", prose("totals: 7 PASS, 0 HELD."), false},
+		{"zero count after a count label", prose("Count: 0 could-not-check."), false},
+		{"negation after a count label", prose("summary: no could-not-check rows."), false},
+		{"dash then negation, no hold reason", prose("all rows ran — no could-not-check."), false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
