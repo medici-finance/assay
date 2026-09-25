@@ -1092,6 +1092,87 @@ func TestVerifyPassHeldContradictionSameLineLaundering(t *testing.T) {
 	}
 }
 
+// TestVerifyPassHeldContradictionNegatedMentionIsNotADisposition pins the
+// fix for the false-positive class where heldOrCouldNotCheckRe fires on prose
+// that MERELY MENTIONS a held/could-not-check state without the line actually
+// carrying one — a bare substring/word-boundary match cannot tell "this row
+// IS held" from "this row is NOT held" or "there are ZERO held rows" apart,
+// because both contain the literal marker word.
+//
+// Two concrete shapes, both observed refusing genuinely clean Evidence:
+//   - "no could-not-check" — asserting the ABSENCE of a could-not-check row.
+//   - "0 HELD" — a zero-count summary, also a clean state.
+//
+// Each negative-control case must NOT contradict the PASS. The trailing
+// positive control proves the fix did not broaden into a false negative: a
+// genuine, un-routed, un-negated HELD row on its own line must still
+// contradict the PASS exactly as before.
+func TestVerifyPassHeldContradictionNegatedMentionIsNotADisposition(t *testing.T) {
+	cases := []struct {
+		name     string
+		evidence string
+		wantHeld bool
+	}{
+		{
+			name: "no could-not-check negates the mention",
+			evidence: "**VERIFY: PASS** — clean run, no could-not-check rows remain.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: false,
+		},
+		{
+			name: "0 HELD is a zero-count summary, not a disposition",
+			evidence: "**VERIFY: PASS** — summary: 0 HELD, 1 PASS.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: false,
+		},
+		{
+			name: "PASS ... no could-not-check, with arbitrary prose between",
+			evidence: "**VERIFY: PASS (1/1 rows)** — all rows executed; no could-not-check anywhere in this run.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: false,
+		},
+		{
+			// Positive control: a negated mention elsewhere in the Evidence
+			// must NOT blind the scan to a real, un-routed, un-negated HELD
+			// row on a different line — only the negated OCCURRENCE is
+			// excused, never the whole scan.
+			name: "negated summary line does not excuse a real HELD row elsewhere",
+			evidence: "**VERIFY: PASS** — summary: 0 HELD across the first table.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n" +
+				"| 2 | `go test ./integration/...` | — | HELD — no runner online | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+		{
+			// Positive control: an un-negated, un-routed HELD row alone must
+			// still contradict the PASS after the fix — the fix must not
+			// broaden into failing to catch a genuinely held row.
+			name: "genuine un-routed HELD row still contradicts the PASS",
+			evidence: "**VERIFY: PASS** — row 1 green.\n\n" +
+				"| # | Command | Exit | Result | Date | Runner |\n" +
+				"|---|---------|------|--------|------|--------|\n" +
+				"| 1 | `go test ./...` | 0 | ok | 2026-07-10 | fixture-verifier |\n" +
+				"| 2 | `go test ./integration/...` | — | HELD — no runner online | 2026-07-10 | fixture-verifier |\n",
+			wantHeld: true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			held, why := verifyPassHeldContradiction(c.evidence)
+			if held != c.wantHeld {
+				t.Errorf("verifyPassHeldContradiction(%q) held=%v why=%q, want held=%v", c.evidence, held, why, c.wantHeld)
+			}
+		})
+	}
+}
+
 // TestUnrunRowsText confirms unrunRowsText extracts UNRUN rows.
 func TestUnrunRowsText(t *testing.T) {
 	evidence := `| # | Command | Exit | Result | Date | Runner |

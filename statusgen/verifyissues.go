@@ -295,6 +295,23 @@ var strikethroughRe = regexp.MustCompile(`~~[^~]*~~`)
 // **VERIFY: PASS** marker.
 var heldOrCouldNotCheckRe = regexp.MustCompile(`(?i)\b(HELD|could-not-check)\b`)
 
+// heldNegationRe matches a negation cue or zero-count immediately preceding a
+// HELD/could-not-check occurrence — "no HELD", "no could-not-check", "0
+// HELD", "zero could-not-check" — asserting the ABSENCE of the disposition,
+// not the disposition itself.
+//
+// heldOrCouldNotCheckRe is a bare word-boundary match: it cannot on its own
+// tell "this row IS held" from "this row is NOT held" or "there are ZERO
+// held rows" apart, because both contain the literal marker word. Clean,
+// fully-passing Evidence routinely says so in exactly these words — "VERIFY:
+// PASS ... no could-not-check", "0 HELD" — and a naive substring match on the
+// marker word refused that legitimate flip/verify progress for the wrong
+// reason: the text is reporting the ABSENCE or COUNT of a held state, not
+// asserting one. This is checked per OCCURRENCE (immediately before it, not
+// anywhere on the line) so a negated/zero-count mention on one line never
+// excuses a genuine, un-negated HELD/could-not-check occurrence elsewhere.
+var heldNegationRe = regexp.MustCompile(`(?i)\b(no|not|none|zero|0)\s+$`)
+
 // verifyPassHeldContradiction reports whether evidence both carries a strict
 // hasVerifyPass marker AND, on some line that is not a genuinely routed
 // deferral, also says HELD or could-not-check. The first offending line is
@@ -333,13 +350,14 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 
 // unroutedHeldLine is verifyPassHeldContradiction's line scan WITHOUT the
 // strict-PASS precondition: it reports the first line that says HELD or
-// could-not-check on an occurrence not genuinely routed to a follow-up, under
-// exactly the hygiene and routing rules documented on
-// verifyPassHeldContradiction above (which is this scan behind hasVerifyPass,
-// unchanged). It exists for a caller whose PASS claim is carried by something
-// other than a strict marker — closeVerify's `verified` path, where the README
-// row itself already asserts the pass — so that caller's read cannot be
-// switched off by how (or whether) the marker was written.
+// could-not-check on an occurrence not genuinely routed to a follow-up AND
+// not negated or zero-counted (heldNegationRe), under exactly the hygiene and
+// routing rules documented on verifyPassHeldContradiction above (which is
+// this scan behind hasVerifyPass, unchanged). It exists for a caller whose
+// PASS claim is carried by something other than a strict marker —
+// closeVerify's `verified` path, where the README row itself already asserts
+// the pass — so that caller's read cannot be switched off by how (or
+// whether) the marker was written.
 func unroutedHeldLine(evidence string) (bool, string) {
 	inFence := false
 	for _, line := range strings.Split(evidence, "\n") {
@@ -382,6 +400,16 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		keywordLocs := routingKeywordRe.FindAllStringIndex(clean, -1)
 		refLocs := routingRefRe.FindAllStringIndex(clean, -1)
 		for _, h := range heldLocs {
+			// A negated or zero-counted occurrence ("no could-not-check", "0
+			// HELD") is not a live disposition at all — it is excused
+			// outright, the same as a routed one, without needing a routing
+			// keyword+reference. Checked against the text immediately BEFORE
+			// this specific occurrence only, so a negated mention never
+			// excuses a different, genuine occurrence elsewhere on the line
+			// or on another line.
+			if heldNegationRe.MatchString(clean[:h[0]]) {
+				continue
+			}
 			keywordAfter := false
 			for _, k := range keywordLocs {
 				if k[0] >= h[0] {
