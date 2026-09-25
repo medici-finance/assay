@@ -12,9 +12,12 @@
   label (bold or plain), struck text or any other word ("rc zero HELD"). A
   "0" cue excuses only in a count position: the line start, a list marker, a
   count label, or right after a verdict-count item ("7 PASS, 0 HELD"). An
-  occurrence followed — past spaces, emphasis or clause punctuation — by a
-  hold-reason word ("pending", "awaiting", "until", "for", …), or by a colon,
-  is never excused. Residuals: a clause break or linking word admits whatever
-  precedes it ("runner available — no HELD" is excused), a hold reason that
-  uses none of the reason words ("0 HELD — runner offline") is not detected,
-  and each physical line is judged on its own.
+  occurrence followed — past whitespace, emphasis, or "," ";" ":" "(" or a
+  dash — by a hold-reason word ("pending", "awaiting", "until", "for", …), or
+  by a colon, is never excused. Residuals: a clause break or linking word
+  admits whatever precedes it ("runner available — no HELD" is excused), a
+  hold reason that uses none of the reason words ("0 HELD — runner offline")
+  is not detected, a hold-reason word that follows a sentence break ("."),
+  "→" or ")" is not in the lookahead's skip set and so does not block the
+  excusal ("0 HELD. pending runner" is excused), and each physical line is
+  judged on its own.
