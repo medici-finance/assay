@@ -87,31 +87,36 @@ facts:
    and `mode: notice`. Measured below the baseline gives a NOTICE in `notice` mode and an Issue
    (exit 1) in `enforce` mode. `--routing-enforce` forces enforce mode for one run. A bundle skill
    with no fixture file is handled the same way. **Flip condition:** after the first umbrella release
-   tag whose release notes include this brief's changelog bullet, a follow-up PR changes `mode:` to
-   `enforce` and cites that tag. Never lower `rank1` to make a regression pass.
+   tag cut once the implementation's own changelog fragment,
+   `changelog/harness-portability-18-skill-description-routing-check.md` (planned) — Task 7's
+   fragment, never this brief's own `(spec)` fragment — is on `main`, a follow-up PR changes
+   `mode:` to `enforce` and cites that tag. Never lower `rank1` to make a regression pass.
 5. **Flags.** Under `--root` the check runs by default over the bundle and `routing/`. With 17's
    `--skills-dir`, the collision check runs over that directory. Routing runs only when
    `--routing-fixture <dir>` is also given (a directory holding `<skill>.yaml` + `baseline.yaml`).
    `--routing-report` prints the top-5 pairs and the per-skill table to stdout.
 6. Test fixtures under `testdata/routing/`: `collide/` (two skills `alpha-collide`, `beta-collide`
-   with near-identical descriptions) and a 3-skill `mini/` with fixture + baseline. Add a Go test
-   that swaps two real bundle descriptions in memory and asserts rank-1 drops below the baseline:
-   a NOTICE in notice mode, an Issue in enforce mode.
-7. README section (method, stoplist, thresholds, flip condition, prior-art credit) + changelog
+   with near-identical descriptions) and a 3-skill `mini/` with fixture + baseline (this fixture also
+   omits one skill's routing file, to exercise the missing-fixture-file path from Task 4). Add a Go
+   test named `TestRoutingSwapDropsBelowBaseline` that swaps two real bundle descriptions in memory
+   and asserts rank-1 drops below the baseline: a NOTICE in notice mode, an Issue in enforce mode.
+7. README section (method, stoplist, thresholds, flip condition, prior-art credit by URL) + changelog
    fragment with one `### Added` bullet.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
 | 1 | `cd tools/skillslint && go build -o /tmp/skillslint-hp18 . && /tmp/skillslint-hp18 --skills-dir testdata/routing/collide` | exit 0; stderr contains `NOTICE`, `alpha-collide` and `beta-collide` |
-| 2 | `cd tools/skillslint && go build -o /tmp/skillslint-hp18 . && /tmp/skillslint-hp18 --root ../.. --routing-report > /tmp/hp18-a.txt && /tmp/skillslint-hp18 --root ../.. --routing-report > /tmp/hp18-b.txt && cmp /tmp/hp18-a.txt /tmp/hp18-b.txt && grep -F 'rank-1 overall' /tmp/hp18-a.txt` | exit 0; the two reports are byte-identical; the printed rank-1 equals `rank1:` in the committed routing baseline.yaml |
+| 2 | `cd tools/skillslint && go build -o /tmp/skillslint-hp18 . && /tmp/skillslint-hp18 --root ../.. --routing-report > /tmp/hp18-a.txt && /tmp/skillslint-hp18 --root ../.. --routing-report > /tmp/hp18-b.txt && cmp /tmp/hp18-a.txt /tmp/hp18-b.txt && grep -F "rank-1 overall: $(sed -n 's/^rank1: //p' routing/baseline.yaml)" /tmp/hp18-a.txt` | exit 0; the two stdout captures are byte-identical; the `rank-1 overall:` line printed to stdout equals `rank1:` in the committed `routing/baseline.yaml` (planned) |
 | 3 | `rm -rf /tmp/hp18-swap && cp -R plugins/assay/skills /tmp/hp18-swap && mv /tmp/hp18-swap/worker-desk/SKILL.md /tmp/hp18-swap/w.md && mv /tmp/hp18-swap/verify-desk/SKILL.md /tmp/hp18-swap/worker-desk/SKILL.md && mv /tmp/hp18-swap/w.md /tmp/hp18-swap/verify-desk/SKILL.md && perl -pi -e 's/^name: verify-desk$/name: worker-desk/' /tmp/hp18-swap/worker-desk/SKILL.md && perl -pi -e 's/^name: worker-desk$/name: verify-desk/' /tmp/hp18-swap/verify-desk/SKILL.md && (cd tools/skillslint && go build -o /tmp/skillslint-hp18 .) && /tmp/skillslint-hp18 --skills-dir /tmp/hp18-swap --routing-fixture tools/skillslint/routing` | exit 0 (notice mode); stderr contains `NOTICE` and `below baseline` |
 | 4 | after row 3: `/tmp/skillslint-hp18 --skills-dir /tmp/hp18-swap --routing-fixture tools/skillslint/routing --routing-enforce` | exit 1 (mutation: swapped descriptions redden the ratchet in enforce mode) |
 | 5 | `cd tools/skillslint && go test ./... -count=1` | exit 0 |
-| 6 | `curl -fsSL -o /tmp/hp18-run-evals.js https://raw.githubusercontent.com/addyosmani/agent-skills/bcab6a1b8503100e8618c3b4e32cc78de43de769/scripts/run-evals.js && grep -c -e 'COLLISION_WARN = 0.5' -e 'COLLISION_ERROR = 0.75' -e "indexOf('--min-rank1')" /tmp/hp18-run-evals.js` | exit 0; prints `3` (the cited prior-art thresholds resolve at the pinned SHA) |
-| 7 | `find tools/skillslint -name '*.js'` | no output (nothing vendored from the prior art) |
-| 8 | `statusgen --consumers --brief harness-portability/18 --root . --base "$(git merge-base origin/main HEAD)"` | exit 0; no routing claim disproved |
-| 9 | `statusgen --lint --root .` (built from this repo's `statusgen/`) | exit 0; no PROBLEM line naming this brief |
+| 6 | `cd tools/skillslint && go test -run '^TestRoutingSwapDropsBelowBaseline$' -v -count=1 . > /tmp/hp18-t.txt && grep -F -- '--- PASS: TestRoutingSwapDropsBelowBaseline' /tmp/hp18-t.txt` | exit 0; the named test ran and passed (chained with `&&`, not piped, and the PASS line is grepped: `-run` on a missing name exits 0 with "no tests to run") |
+| 7 | `grep -c -i -e 'stoplist' -e 'threshold' -e 'flip condition' -e 'addyosmani/agent-skills' tools/skillslint/README.md; ls tools/skillslint/testdata/routing/mini/*.yaml \| wc -l` | first command prints >= 4 (README covers method, stoplist, thresholds, flip condition and prior-art credit by URL); second prints the `mini/` fixture count, one skill short of the full set (the missing-fixture-file path from Task 4 is exercised) |
+| 8 | `curl -fsSL -o /tmp/hp18-run-evals.js https://raw.githubusercontent.com/addyosmani/agent-skills/bcab6a1b8503100e8618c3b4e32cc78de43de769/scripts/run-evals.js && grep -c -e 'COLLISION_WARN = 0.5' -e 'COLLISION_ERROR = 0.75' -e "indexOf('--min-rank1')" /tmp/hp18-run-evals.js` | exit 0; prints `3` (the cited prior-art thresholds resolve at the pinned SHA) |
+| 9 | `find tools/skillslint -name '*.js'` | no output (nothing vendored from the prior art) |
+| 10 | `statusgen --consumers --brief harness-portability/18 --root . --base "$(git merge-base origin/main HEAD)"` | exit 0; no routing claim disproved |
+| 11 | `statusgen --lint --root .` (built from this repo's `statusgen/`) | exit 0; no PROBLEM line naming this brief |
 
 Pre-mortem → detection map:
 
@@ -121,7 +126,9 @@ Pre-mortem → detection map:
 | The ratchet never fires, or fires as exit 1 before the flip | rows 3, 4 |
 | Collision NOTICE never prints | row 1 |
 | Fixture prompts echo the descriptions' own trigger phrases, so accuracy is inflated | review-only — the reviewer samples fixtures for verbatim reuse of description text |
-| Prior-art thresholds misquoted | row 6 |
+| The Task 6 swap test (`TestRoutingSwapDropsBelowBaseline`) is left out entirely | row 6 (`-run` on a missing name still exits 0, so the row greps the `--- PASS:` line) |
+| Task 7's README section is thin, or the missing-fixture-file path from Task 4 is never exercised | row 7 |
+| Prior-art thresholds misquoted | row 8 |
 | Baseline recorded from a pre-17 tree | row 2 (printed value must equal the recorded one on the branch head, which includes 17) |
 
 ## Evidence
