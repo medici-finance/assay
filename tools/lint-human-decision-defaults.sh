@@ -35,6 +35,7 @@
 # Exit codes: 0 — clean (or no brief carries an authored, non-placeholder section).
 #             1 — at least one brief has an unparseable default; every offender is
 #                 printed, one per line, to stdout.
+#             2 — refused: ROOT/docs/streams does not exist.
 #
 # NOT wired into CI as a required check here — this run is the first pass against this
 # tree; wiring it in as a required gate is named as follow-up in the PR body rather than
@@ -63,7 +64,11 @@ decision_block() {
 
 # is_placeholder_section <block> — mirrors decision-issue.sh: a comment-only section, or a
 # single `Decision-trigger: spec` marker line with no Default line, is not yet an authored
-# decision and carries no default obligation.
+# decision and carries no default obligation. decision-issue.sh calls this ONLY when the
+# brief's own `decision-trigger` frontmatter is `spec` (its `if [ "$TRIGGER" = "spec" ]`
+# guard) — a `start`/`creation`/absent-trigger brief never gets the placeholder exemption at
+# all, so a comment-only section there is refused (non-empty, no parseable default). The
+# caller below reproduces that same trigger gate; do not call this unguarded (assay#1679 F1).
 is_placeholder_section() {
 	local residue
 	residue=$(printf '%s\n' "$1" | awk '
@@ -94,6 +99,15 @@ gate_human() {
 	[ "$gate" = "human" ]
 }
 
+# decision_trigger <file> — reads the frontmatter `decision-trigger:` scalar, defaulting to
+# `start` when absent — identical default to decision-issue.sh's `TRIGGER=${TRIGGER:-start}`.
+decision_trigger() {
+	local fm trig
+	fm=$(awk 'NR==1 && $0!="---"{exit} NR==1{next} /^---[[:space:]]*$/{exit} {print}' "$1")
+	trig=$(printf '%s\n' "$fm" | awk -F': *' '/^decision-trigger:/{v=$2; gsub(/^"|"$/,"",v); gsub(/[[:space:]]+$/,"",v); print v; exit}')
+	printf '%s\n' "${trig:-start}"
+}
+
 # has_parseable_default <block> — identical grammar to decision-issue.sh's R-3 gate.
 has_parseable_default() {
 	printf '%s\n' "$1" | grep -qE 'Default if no answer:.*after[[:space:]]+[0-9]{4}-[0-9]{2}-[0-9]{2}' && return 0
@@ -106,7 +120,13 @@ while IFS= read -r -d '' f; do
 	gate_human "$f" || continue
 	block=$(decision_block "$f")
 	[ -n "$block" ] || continue
-	is_placeholder_section "$block" && continue
+	# The placeholder exemption applies ONLY under decision-trigger: spec, matching
+	# decision-issue.sh's own `if [ "$TRIGGER" = "spec" ]` guard around
+	# is_placeholder_section — a start/creation-trigger brief gets no such exemption
+	# (assay#1679 F1).
+	if [ "$(decision_trigger "$f")" = "spec" ] && is_placeholder_section "$block"; then
+		continue
+	fi
 	if ! has_parseable_default "$block"; then
 		rel=${f#"$ROOT"/}
 		printf '%s: has a `## Human decision` section with no parseable default\n' "$rel"
