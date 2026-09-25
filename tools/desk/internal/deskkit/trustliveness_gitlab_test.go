@@ -500,3 +500,44 @@ func TestHTTPGitLabAccountFetcherDoesNotFollowRedirect(t *testing.T) {
 		t.Fatal("a redirect classified as ErrAccountNotFound — must be a distinct could-not-check-shaped error, never DELETED")
 	}
 }
+
+// TestClassifyLivenessGitLabReclaimedTakesPrecedenceOverState is the CLASS GUARD for
+// pr1669-F4: the pr1669-F3 fix moved classifyAccountState ahead of BOTH the unpinned branch
+// AND the acct.ID != PinnedID (reclaimed) branch, which is too broad — a pinned identity
+// whose live account now resolves to a DIFFERENT id (a genuine account reclaim/squat) must
+// classify LivenessReclaimed even when that different account's state is non-active, never
+// LivenessSuspended. Reported reproduction: identity pinned to id 5001, live account comes
+// back as {ID: 9999, State: "deactivated"} — the pre-fix code (state checked before
+// id-mismatch) reports Suspended and the notice never mentions the id changed, which is the
+// whole point of the Reclaimed class; a GitLab "deactivated" account reactivates when its
+// owner signs back in, so "reactivate our bot" would be the wrong response for someone
+// else's account. This asserts the result is Reclaimed, never Suspended, and that BOTH the
+// pinned id (5001) and the live, mismatched id (9999) appear in the Detail.
+func TestClassifyLivenessGitLabReclaimedTakesPrecedenceOverState(t *testing.T) {
+	identities := []RosterIdentity{
+		{Login: "desk-pinned", PinnedID: 5001, Source: "bot", Forge: ForgeGitLab},
+	}
+	fetcher := &stubAccountFetcher{
+		accounts: map[string]*Account{
+			"desk-pinned": {Login: "desk-pinned", ID: 9999, State: "deactivated"},
+		},
+	}
+	findings := CheckRosterLiveness(fetcher, identities)
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	if findings[0].Class == LivenessSuspended {
+		t.Fatalf("a pinned identity with an id-mismatched, non-active-state live account classified " +
+			"Suspended — the negative control this test exists for; the id change was swallowed")
+	}
+	if findings[0].Class != LivenessReclaimed {
+		t.Fatalf("id-mismatch + non-active state classified %q, want LivenessReclaimed", findings[0].Class)
+	}
+	detail := findings[0].Detail
+	if !strings.Contains(detail, "5001") {
+		t.Fatalf("Detail %q does not name the pinned id 5001", detail)
+	}
+	if !strings.Contains(detail, "9999") {
+		t.Fatalf("Detail %q does not name the mismatched live id 9999", detail)
+	}
+}

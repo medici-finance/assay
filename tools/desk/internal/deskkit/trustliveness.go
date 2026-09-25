@@ -260,9 +260,13 @@ const (
 	// class is a structural no-op on the GitHub path: Account.State stays "" on every
 	// GitHub-sourced read (forge_github.go's account read exposes no such field), so
 	// classifyLiveness never produces it there. Never coerced into LivenessAlive, and checked
-	// BEFORE identity-continuity (unpinned/reclaimed/renamed), so an unpinned or reclaimed
-	// GitLab identity's non-active state is still surfaced (pr1669-F3) — a non-active account
-	// still resolves and may still carry the right id, but it is not a live trusted identity.
+	// BEFORE unpinned/renamed (pr1669-F3), so an unpinned GitLab identity's non-active state
+	// is still surfaced — a non-active account still resolves and may still carry the right
+	// id, but it is not a live trusted identity. Checked AFTER id-mismatch/reclaimed
+	// (pr1669-F4): a pinned identity whose live account resolves to a DIFFERENT id is
+	// reported Reclaimed, never Suspended, even when that different account's state is
+	// non-active — see LivenessReclaimed's doc comment for why the id change must not be
+	// swallowed by a state finding.
 	LivenessSuspended LivenessClass = "suspended"
 	// LivenessCouldNotCheck: the fetcher failed for any reason OTHER than a clean 404 —
 	// transport error, timeout, auth failure, malformed response. NEVER coerced into
@@ -337,10 +341,14 @@ func forgeDisplayName(k ForgeKind) string {
 	}
 }
 
-// classifyAccountState checks acct.State BEFORE classifyLiveness's unpinned/reclaimed/
-// renamed branches, so a blocked/suspended account is reported as such even when the
-// identity carries no pinned id to compare against (pr1669-F3: on the pre-fix code the
-// PinnedID==0 branch ran first and swallowed the state entirely for an unpinned identity).
+// classifyAccountState checks acct.State BEFORE classifyLiveness's unpinned/renamed
+// branches, so a blocked/suspended account is reported as such even when the identity
+// carries no pinned id to compare against (pr1669-F3: on the pre-fix code the PinnedID==0
+// branch ran first and swallowed the state entirely for an unpinned identity). It runs
+// AFTER the id-mismatch/reclaimed check (pr1669-F4): a pinned identity whose live account
+// resolves to a DIFFERENT id is classified Reclaimed by the caller before this function is
+// even called, so a reclaimed identity's non-active state never reaches here — it is folded
+// into nothing, because the Reclaimed finding is what matters, not Suspended.
 //
 // GitLab's users API always reports a `state` field, so an EMPTY state on a GitLab response
 // is a partial/malformed read, never confirmation the account is active (pr1669-sec-F1) —
@@ -376,6 +384,12 @@ func classifyAccountState(id RosterIdentity, probe string, acct *Account) (class
 // at probeLogin(id) (bot identities get the "[bot]" suffix on GitHub — see probeLogin) but
 // keeps Identity.Login as the bare, roster-configured login throughout, so a caller/renderer
 // always sees the identity in the shape the roster itself uses.
+//
+// Decision order (after a successful fetch): id-mismatch/RECLAIMED, then account
+// state/SUSPENDED (or could-not-check on a missing GitLab state), then UNPINNED, then
+// RENAMED, then ALIVE. RECLAIMED runs first because it is identity continuity, not account
+// health — a different account answering to a pinned login is the finding, whatever that
+// different account's state happens to be (pr1669-F4).
 func classifyLiveness(fetcher AccountFetcher, id RosterIdentity) LivenessFinding {
 	probe := probeLogin(id)
 	acct, err := fetcher.GetAccount(probe)
@@ -411,6 +425,24 @@ func classifyLiveness(fetcher AccountFetcher, id RosterIdentity) LivenessFinding
 		}
 	}
 
+	// pr1669-F4: the id-mismatch (RECLAIMED) check runs BEFORE the state check — a pinned
+	// identity whose live account now resolves to a DIFFERENT id is a genuine account
+	// reclaim/squat, and that must be reported as such even when the new account's state is
+	// non-active; a state check pre-empting this would report e.g. Suspended and never
+	// mention that the id itself changed, which is the whole point of the Reclaimed class
+	// (see the type's doc comment). This check requires PinnedID != 0 — an unpinned identity
+	// has nothing to compare acct.ID against, so it falls through to the state check and then
+	// the Unpinned branch below, unchanged from before.
+	if id.PinnedID != 0 && acct.ID != id.PinnedID {
+		return LivenessFinding{
+			Identity: id,
+			Class:    LivenessReclaimed,
+			Detail: fmt.Sprintf(
+				"login %q now resolves to id %d, not the pinned id %d — a DIFFERENT account now answers to this login",
+				probe, acct.ID, id.PinnedID),
+		}
+	}
+
 	if class, detail, matched := classifyAccountState(id, probe, acct); matched {
 		return LivenessFinding{Identity: id, Class: class, Detail: detail}
 	}
@@ -422,16 +454,6 @@ func classifyLiveness(fetcher AccountFetcher, id RosterIdentity) LivenessFinding
 			Detail: fmt.Sprintf(
 				"login %q currently resolves to id %d, but the roster pins no id for it — "+
 					"identity continuity cannot be checked", probe, acct.ID),
-		}
-	}
-
-	if acct.ID != id.PinnedID {
-		return LivenessFinding{
-			Identity: id,
-			Class:    LivenessReclaimed,
-			Detail: fmt.Sprintf(
-				"login %q now resolves to id %d, not the pinned id %d — a DIFFERENT account now answers to this login",
-				probe, acct.ID, id.PinnedID),
 		}
 	}
 
