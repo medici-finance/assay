@@ -1107,7 +1107,7 @@ func runRoadmap(root, cadence string) int {
 	// the roadmap deck's Next-up panel would show a row the STATUS.md board holds
 	// back as "merged in a sibling" as dispatchable. Notices are discarded — the
 	// deck renders its own health/blocker prose, never board NOTICE text.
-	_, _, _ = siblingMergeCheck(streams, root, effectiveSiblingRootOverrides(siblingRootFlagValues))
+	_, _ = runSiblingMergeIfOptedIn(streams, root) // opt-in only: --sibling-merge or ASSAY_SIBLING_MERGE=1
 
 	// Compute Next-up (reuse nextUp from nextup.go without claim filtering).
 	// The zero ClaimView says so honestly, which also means a stream that

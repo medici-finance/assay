@@ -31,7 +31,7 @@ func runPhantoms(args []string, stdout, stderr io.Writer) int {
 	root := fs.String("root", ".", "repository root")
 	class := fs.String("class", "", "phantom class to check — only \"sibling-merge-unreconciled\" is a dedicated exit-code verb today")
 	var siblingRoots siblingRootFlags
-	fs.Var(&siblingRoots, "sibling-root", `sibling checkout override "<owner>/<repo>=<path>" (repeatable; also read from DESK_ROOTS)`)
+	fs.Var(&siblingRoots, "sibling-root", `sibling checkout "<owner>/<repo>=<path>" this verb may read (repeatable; also read from DESK_ROOTS); a sibling named by neither is could-not-check`)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -48,6 +48,9 @@ func runPhantoms(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
+	// Invoking this verb IS the opt-in, so it does not consult
+	// siblingMergeEnabled. It still reads only siblings the operator's map
+	// (DESK_ROOTS or --sibling-root) names.
 	overrides := effectiveSiblingRootOverrides(siblingRoots)
 	notices, checkedFailed, couldNotCheck := siblingMergeCheck(streams, *root, overrides)
 	for _, n := range notices {

@@ -50,10 +50,19 @@ package main
 // THREE-STATE, PER ROW PER SIBLING (item 4). checked-failed = a match (the
 // NOTICE names the sibling, the short sha, the subject, and which key
 // matched). checked-clean = the sibling's history was read and named nothing.
-// could-not-check = the sibling checkout is absent, not a git directory,
-// shallow, or an unresolvable `deliverable_repo:` alias (unregistered or
-// withheld) — reported ONCE PER SIBLING PER RUN, never per row, and never
-// rounded to "no phantom" for the rows that needed it.
+// could-not-check = the sibling is not in the operator's sibling-root map,
+// its checkout is absent, not a git directory, shallow, or an unresolvable
+// `deliverable_repo:` alias (unregistered, withheld, or an ill-shaped
+// registry `repo:` value) — reported ONCE PER SIBLING PER RUN, never per row,
+// and never rounded to "no phantom" for the rows that needed it.
+//
+// OPT-IN, OPERATOR-BOUNDED. On the default paths (--lint, the STATUS.md regen,
+// --next-up, --roadmap) the sibling read runs only with --sibling-merge or
+// ASSAY_SIBLING_MERGE=1 (siblingMergeEnabled); the `phantoms` verb is its own
+// opt-in. Either way only a sibling the OPERATOR's map (DESK_ROOTS or
+// --sibling-root) names is read: the scanned tree's registry can narrow that
+// set, never widen it, and a registry `repo:` value is validated as a strict
+// <owner>/<name> before any use (validSiblingRepo).
 //
 // SEVERITY. NOTICE in `--lint`, exactly like the other six classes
 // (boardhonesty.go) — never a PROBLEM, never an exit-code change there (item
@@ -90,6 +99,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // siblingMergeHistoryLimit bounds how far back a sibling's first-parent history
@@ -103,11 +113,114 @@ const siblingMergeHistoryLimit = mergedPRLimit
 // "where does each registered repo's checkout live on this machine"
 // (tools/desk/internal/deskkit/roots.go's DESK_ROOTS,
 // "<owner>/<repo>=<path>,..."). This detector reads the SAME variable — never a
-// second name — so a desk session that already exported it for deskboard/
-// verifyloop gets sibling-checkout resolution for free; statusgen is a
-// separate Go module from tools/desk (its own go.mod) so it cannot import
-// deskkit's parser, but it reads the identical format.
+// second name. Together with --sibling-root it is the OPERATOR's allowlist:
+// only a sibling named there is ever read (siblingRootPath). Because it is
+// routinely inherited from the environment, merely having it set does NOT
+// switch the read on for the default paths — that needs the explicit opt-in
+// (siblingMergeEnabled). statusgen is a separate Go module from tools/desk
+// (its own go.mod) so it cannot import deskkit's parser, but it reads the
+// identical format.
 const siblingRootsEnv = "DESK_ROOTS"
+
+// siblingMergeOptInEnv is the environment opt-in for the sibling read on the
+// default paths (--lint, the STATUS.md regen, --next-up, --roadmap). It is
+// compared EXACTLY to "1" — "true", "yes" or " 1" leave the read off — so an
+// ambiguous value can never switch on a read of other local checkouts.
+const siblingMergeOptInEnv = "ASSAY_SIBLING_MERGE"
+
+// siblingMergeFlagValue is the top-level --sibling-merge flag (wired in
+// main.go), the CLI half of the same opt-in. Package-level for the reason
+// siblingRootFlagValues is: run() takes no such parameter.
+var siblingMergeFlagValue bool
+
+// siblingMergeEnabled reports whether the operator opted in to the sibling
+// read on the default paths. OFF unless asked for: DESK_ROOTS is routinely
+// exported for the desk tools and inherited by every statusgen run, and
+// without this gate the scanned tree's own registry would decide which other
+// local repositories a plain --lint reads. The `statusgen phantoms --class
+// sibling-merge-unreconciled` verb does not consult this: invoking that verb
+// is itself the opt-in.
+func siblingMergeEnabled() bool {
+	return siblingMergeFlagValue || os.Getenv(siblingMergeOptInEnv) == "1"
+}
+
+// siblingRepoOwnerRe and siblingRepoNameRe are the strict shape a registry
+// `repo:` value must have before this detector uses it for anything: a
+// GitHub-style "<owner>/<name>" with only ASCII letters, digits, '-', '_' and
+// '.'. The owner must start with a letter or digit; the name may start with
+// '.' (".github" is a real repository name) but may never be exactly "." or
+// "..". No other character, so no path separator beyond the one '/', no
+// whitespace and no control character, can pass.
+var (
+	siblingRepoOwnerRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$`)
+	siblingRepoNameRe  = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,100}$`)
+)
+
+// validSiblingRepo reports whether repo is a well-formed "<owner>/<name>".
+// The registry is part of the scanned tree, not operator configuration, so
+// its `repo:` value is untrusted input: it is a lookup key into the
+// operator's sibling-root map, it lands in MergedInSibling (rendered into
+// STATUS.md) and it is printed in NOTICE lines. A value that fails this check
+// is skipped at every point of use (siblingTargetsForBrief, ownRepoFor) and
+// reported once by invalidSiblingRegistryNotices, by entry index only.
+func validSiblingRepo(repo string) bool {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || !siblingRepoOwnerRe.MatchString(owner) || !siblingRepoNameRe.MatchString(name) {
+		return false
+	}
+	return name != "." && name != ".."
+}
+
+// invalidSiblingRegistryNotices returns one plain NOTICE per published
+// registry entry whose `repo:` value fails validSiblingRepo. The entry is
+// named by its 1-based index in sorted alias order (the order every other
+// walk in this file uses), never by its alias or raw value: either could
+// carry a control character or a forged line.
+func invalidSiblingRegistryNotices(reg *graphRepos) []string {
+	if reg == nil {
+		return nil
+	}
+	aliases := make([]string, 0, len(reg.Aliases))
+	for alias := range reg.Aliases {
+		aliases = append(aliases, alias)
+	}
+	sort.Strings(aliases)
+	var out []string
+	for i, alias := range aliases {
+		entry := reg.Aliases[alias]
+		if entry.Unpublished || entry.Repo == "" || validSiblingRepo(entry.Repo) {
+			continue
+		}
+		out = append(out, fmt.Sprintf(
+			"sibling-merge-unreconciled skipped docs/streams/graph-repos.yaml registry entry #%d (sorted alias order): "+
+				"its repo: value is not a valid <owner>/<name> (letters, digits, '-', '_', '.'; no '.' or '..' segment, "+
+				"no control characters) — no sibling read is made for it.", i+1))
+	}
+	return out
+}
+
+// noticeSafe renders s for a single-line NOTICE: every control character and
+// every Unicode line or paragraph separator is replaced by a visible \uXXXX
+// escape, so no value interpolated into a NOTICE (a path, a git error, an
+// alias from a brief's frontmatter) can end the line and start a forged one.
+func noticeSafe(s string) string {
+	if strings.IndexFunc(s, isNoticeBreaking) < 0 {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		if isNoticeBreaking(r) {
+			fmt.Fprintf(&b, "\\u%04x", r)
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+func isNoticeBreaking(r rune) bool {
+	return unicode.IsControl(r) || r == '\u2028' || r == '\u2029'
+}
 
 // siblingTarget is one resolved sibling-repo target: a registry alias, its
 // published "<owner>/<repo>", and the checkout directory basename used for
@@ -145,12 +258,10 @@ var siblingRootFlagValues siblingRootFlags
 // parseSiblingRootSpecs parses a list of "<owner>/<repo>=<path>" entries (from
 // either --sibling-root's repeated flag values or a DESK_ROOTS-shaped
 // comma-separated environment string already split by the caller) into an
-// override map. Malformed entries are DROPPED rather than treated as a hard
-// error: this is best-effort local configuration for an advisory NOTICE
-// detector, not a security boundary, and a typo'd entry must not crash the
-// board build — the sibling it names simply falls back to the default
-// sibling-checkout path and, if that is also absent, reports could-not-check
-// by itself.
+// operator map. Malformed entries are DROPPED rather than treated as a hard
+// error: a typo'd entry must not crash the board build — the sibling it
+// meant to name is simply absent from the operator's map, so it is never
+// read and reports could-not-check by itself.
 func parseSiblingRootSpecs(specs []string) map[string]string {
 	out := map[string]string{}
 	for _, spec := range specs {
@@ -224,7 +335,7 @@ func basenameOf(ownerRepo string) string {
 // backstop in siblingMergeCheck is what catches that case instead.
 func ownRepoFor(reg *graphRepos, streams []*Stream) string {
 	if reg != nil && reg.Self != "" {
-		if entry, ok := reg.Aliases[reg.Self]; ok && !entry.Unpublished && entry.Repo != "" {
+		if entry, ok := reg.Aliases[reg.Self]; ok && !entry.Unpublished && validSiblingRepo(entry.Repo) {
 			return entry.Repo
 		}
 	}
@@ -267,6 +378,12 @@ func siblingTargetsForBrief(b Brief, rawBody string, reg *graphRepos, ownRepo st
 			if entry.Unpublished || entry.Repo == "" {
 				continue
 			}
+			if !validSiblingRepo(entry.Repo) {
+				// An ill-shaped repo: value is never a candidate: it would
+				// become a lookup key, a STATUS.md cell and NOTICE text.
+				// invalidSiblingRegistryNotices reports it once, by index.
+				continue
+			}
 			if ownRepo != "" && entry.Repo == ownRepo {
 				// The board's own repo is never its own sibling — see
 				// ownRepoFor's comment. Skip silently: this is not a
@@ -307,6 +424,9 @@ func siblingTargetsForBrief(b Brief, rawBody string, reg *graphRepos, ownRepo st
 			case entry.Unpublished || entry.Repo == "":
 				unresolved = append(unresolved, fmt.Sprintf(
 					"deliverable_repo: %s is unpublished — its target repo is not resolvable from this tree", b.DeliverableRepo))
+			case !validSiblingRepo(entry.Repo):
+				unresolved = append(unresolved, fmt.Sprintf(
+					"deliverable_repo: %s names a registry entry whose repo: value is not a valid <owner>/<name> — it is never read", b.DeliverableRepo))
 			case ownRepo != "" && entry.Repo == ownRepo:
 				// An explicit deliverable_repo: naming the board's own repo is
 				// the same non-sibling case as the homed-in/basename walk
@@ -320,19 +440,22 @@ func siblingTargetsForBrief(b Brief, rawBody string, reg *graphRepos, ownRepo st
 	return targets, unresolved
 }
 
-// siblingRootPath resolves the local checkout path for a target: an override
-// (flag/env, keyed by "<owner>/<repo>") wins; otherwise the sibling-checkout
-// convention eligibility.go's resolveCrossRepoBriefRef already uses — a
-// directory named after the basename, next to root.
-func siblingRootPath(root string, target siblingTarget, overrides map[string]string) string {
-	if p, ok := overrides[target.Repo]; ok && p != "" {
-		return p
+// siblingRootPath resolves the local checkout path for a target from the
+// OPERATOR's sibling-root map only (DESK_ROOTS and --sibling-root, keyed by
+// "<owner>/<repo>"). ok is false when the operator's map does not name the
+// target: that sibling is never read. The tree's registry decides which
+// siblings a brief CANDIDATES; only the operator's map decides which of those
+// may be read, so the registry can narrow the readable set but never widen
+// it. There is deliberately no fallback that derives a path from the
+// registry's own `repo:` value (the former "directory named after the
+// basename, next to root" convention): a tree-controlled string never becomes
+// a filesystem path here.
+func siblingRootPath(target siblingTarget, overrides map[string]string) (path string, ok bool) {
+	p, ok := overrides[target.Repo]
+	if !ok || p == "" {
+		return "", false
 	}
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		absRoot = root
-	}
-	return filepath.Join(filepath.Dir(absRoot), target.Basename)
+	return p, true
 }
 
 // pathIsRoot reports whether path resolves to this tree's own root — the
@@ -526,6 +649,104 @@ func deliveryAck(delivery []DeliveryClaim, alias string, pr int) (full, partial 
 	return full, partial
 }
 
+// siblingRowRef is one todo/in-progress row that needs a given sibling.
+type siblingRowRef struct {
+	stream *Stream
+	idx    int // index into stream.Briefs
+	id     string
+	body   string
+}
+
+// siblingRowSet is collectSiblingRows' result: every row grouped by the
+// sibling alias it needs (so each checkout is read ONCE regardless of how
+// many rows reference it), the resolved target per alias, and the deduped
+// could-not-check reasons from `deliverable_repo:` resolution.
+type siblingRowSet struct {
+	bySibling     map[string][]siblingRowRef
+	targetByAlias map[string]siblingTarget
+	unresolved    map[string]bool
+}
+
+// collectSiblingRows derives the sibling set for every todo/in-progress row
+// across streams, reading only this tree's own brief files — never another
+// checkout. siblingMergeCheck reads the siblings it names; the default-off
+// path (siblingMergeOffNotices) only counts them.
+func collectSiblingRows(streams []*Stream, reg *graphRepos, ownRepo string) siblingRowSet {
+	set := siblingRowSet{
+		bySibling:     map[string][]siblingRowRef{},
+		targetByAlias: map[string]siblingTarget{},
+		unresolved:    map[string]bool{},
+	}
+	for _, s := range streams {
+		pathByNum := map[string]string{}
+		for _, path := range briefFilePaths(s) {
+			if _, num, ok := expectedBriefID(path); ok {
+				pathByNum[num] = path
+			}
+		}
+		for i, b := range s.Briefs {
+			if b.Status != "todo" && b.Status != "in-progress" {
+				continue
+			}
+			body := ""
+			if path, ok := pathByNum[b.Num]; ok {
+				if raw, err := os.ReadFile(path); err == nil {
+					body = string(raw)
+				}
+				// An unreadable brief file here is silently skipped: boardhonesty.go's
+				// own could-not-check NOTICE for the same read already covers it, and
+				// duplicating it would double-report one root cause under two class
+				// names.
+			}
+			targets, unresolved := siblingTargetsForBrief(b, body, reg, ownRepo)
+			for _, u := range unresolved {
+				set.unresolved[u] = true
+			}
+			id := s.Name + "/" + b.Num
+			for _, t := range targets {
+				set.targetByAlias[t.Alias] = t
+				set.bySibling[t.Alias] = append(set.bySibling[t.Alias], siblingRowRef{stream: s, idx: i, id: id, body: body})
+			}
+		}
+	}
+	return set
+}
+
+// runSiblingMergeIfOptedIn is the ONE entry point the default paths (run()'s
+// --lint and STATUS.md regen, --next-up, --roadmap) use. With the opt-in
+// (siblingMergeEnabled) it runs siblingMergeCheck against the operator's
+// sibling-root map and reports ran=true; without it nothing outside this tree
+// is read, no row is mutated, and ran=false.
+func runSiblingMergeIfOptedIn(streams []*Stream, root string) (notices []string, ran bool) {
+	if !siblingMergeEnabled() {
+		return nil, false
+	}
+	notices, _, _ = siblingMergeCheck(streams, root, effectiveSiblingRootOverrides(siblingRootFlagValues))
+	return notices, true
+}
+
+// siblingMergeOffNotices is what --lint prints INSTEAD of the check when the
+// operator has not opted in: at most one line, and only when at least one
+// todo/in-progress row actually declares a sibling — so a skipped read is
+// never mistaken for a clean one, and a tree with no sibling declarations
+// stays silent. It reads only this tree's own files.
+func siblingMergeOffNotices(streams []*Stream, root string) []string {
+	reg, _, _ := loadGraphRepos(root)
+	set := collectSiblingRows(streams, reg, ownRepoFor(reg, streams))
+	rows := map[string]bool{}
+	for _, refs := range set.bySibling {
+		for _, r := range refs {
+			rows[r.id] = true
+		}
+	}
+	if len(rows) == 0 && len(set.unresolved) == 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"not-checked: sibling-merge-unreconciled is opt-in (--sibling-merge or %s=1) — %d todo/in-progress row(s) name a sibling repo "+
+			"and were not checked against its history; no conclusion is drawn.", siblingMergeOptInEnv, len(rows))}
+}
+
 // siblingMergeCheck is the DRIVER: for every todo/in-progress brief across
 // streams, it derives the sibling set (item 1), resolves and reads each
 // distinct sibling checkout ONCE (never once per row), matches k1/k2, applies
@@ -544,62 +765,21 @@ func deliveryAck(delivery []DeliveryClaim, alias string, pr int) (full, partial 
 // the same shape HomedIn already uses. An in-progress row is NEVER mutated
 // (item 6: surfaced, never excluded) even when it carries the same finding.
 func siblingMergeCheck(streams []*Stream, root string, overrides map[string]string) (notices []string, checkedFailed, couldNotCheck int) {
+	// Every NOTICE this driver returns passes through noticeSafe on the way
+	// out: whatever reaches a line (a sibling path, a git error, an alias from
+	// a brief's frontmatter) stays on that one line.
+	defer func() {
+		for i := range notices {
+			notices[i] = noticeSafe(notices[i])
+		}
+		sort.Strings(notices)
+	}()
+
 	reg, _, _ := loadGraphRepos(root)
 	ownRepo := ownRepoFor(reg, streams)
-
-	type rowRef struct {
-		stream *Stream
-		idx    int // index into stream.Briefs
-		id     string
-		body   string
-	}
-	// neededBySibling groups every row that needs a given (already-resolved)
-	// sibling target, so its checkout is read ONCE regardless of how many
-	// rows reference it.
-	neededBySibling := map[string][]rowRef{}
-	targetByAlias := map[string]siblingTarget{}
-	unresolvedReasons := map[string]bool{} // deduped could-not-check lines from deliverable_repo resolution
-
-	pathByNumFor := func(s *Stream) map[string]string {
-		m := map[string]string{}
-		for _, path := range briefFilePaths(s) {
-			if _, num, ok := expectedBriefID(path); ok {
-				m[num] = path
-			}
-		}
-		return m
-	}
-
-	for _, s := range streams {
-		pathByNum := pathByNumFor(s)
-		for i, b := range s.Briefs {
-			if b.Status != "todo" && b.Status != "in-progress" {
-				continue
-			}
-			body := ""
-			if path, ok := pathByNum[b.Num]; ok {
-				if raw, err := os.ReadFile(path); err == nil {
-					body = string(raw)
-				}
-				// An unreadable brief file here is silently skipped: boardhonesty.go's
-				// own could-not-check NOTICE for the same read already covers it, and
-				// duplicating it would double-report one root cause under two class
-				// names.
-			}
-			targets, unresolved := siblingTargetsForBrief(b, body, reg, ownRepo)
-			for _, u := range unresolved {
-				unresolvedReasons[u] = true
-			}
-			if len(targets) == 0 {
-				continue
-			}
-			id := s.Name + "/" + b.Num
-			for _, t := range targets {
-				targetByAlias[t.Alias] = t
-				neededBySibling[t.Alias] = append(neededBySibling[t.Alias], rowRef{stream: s, idx: i, id: id, body: body})
-			}
-		}
-	}
+	notices = append(notices, invalidSiblingRegistryNotices(reg)...)
+	needed := collectSiblingRows(streams, reg, ownRepo)
+	neededBySibling, targetByAlias, unresolvedReasons := needed.bySibling, needed.targetByAlias, needed.unresolved
 
 	for u := range unresolvedReasons {
 		notices = append(notices, fmt.Sprintf(
@@ -616,7 +796,15 @@ func siblingMergeCheck(streams []*Stream, root string, overrides map[string]stri
 	for _, alias := range aliases {
 		target := targetByAlias[alias]
 		rows := neededBySibling[alias]
-		path := siblingRootPath(root, target, overrides)
+		path, ok := siblingRootPath(target, overrides)
+		if !ok {
+			notices = append(notices, fmt.Sprintf(
+				"could-not-check: sibling-merge-unreconciled did not read %s's history — it is not in the operator's sibling-root map (%s or --sibling-root); "+
+					"the tree's registry alone never authorizes a read. No conclusion is drawn about whether work for this repo's briefs has already merged there.",
+				target.Repo, siblingRootsEnv))
+			couldNotCheck++
+			continue
+		}
 		if pathIsRoot(root, path) {
 			// Backstop for ownRepoFor's name-based exclusion: whatever the
 			// repo-name comparison concluded, if the resolved checkout path IS
@@ -698,6 +886,5 @@ func siblingMergeCheck(streams []*Stream, root string, overrides map[string]stri
 		}
 	}
 
-	sort.Strings(notices)
 	return notices, checkedFailed, couldNotCheck
 }

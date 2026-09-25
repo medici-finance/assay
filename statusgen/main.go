@@ -333,9 +333,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// row un-excluded on the very board that renders it. NOTICE-only,
 	// exactly like every other class in this file: never a PROBLEM, never an
 	// exit-code change here (severity comes from the eligibility exclusion
-	// and the dedicated `phantoms` verb instead).
-	siblingNotices, _, _ := siblingMergeCheck(streams, root, effectiveSiblingRootOverrides(siblingRootFlagValues))
-	notices = append(notices, siblingNotices...)
+	// and the dedicated `phantoms` verb instead). OPT-IN: without
+	// --sibling-merge or ASSAY_SIBLING_MERGE=1 no other checkout is read and
+	// at most one "not-checked" NOTICE says so (siblingMergeOffNotices).
+	if siblingNotices, ran := runSiblingMergeIfOptedIn(streams, root); ran {
+		notices = append(notices, siblingNotices...)
+	} else {
+		notices = append(notices, siblingMergeOffNotices(streams, root)...)
+	}
 	// Evidence-actor (desk-apps/07, F-verify-self-attest): a `verified`/`done`
 	// row is backed only when an ACCEPTED actor — the roster-bound verifier App or
 	// a roster-known human — committed at least one line of its `## Evidence`
@@ -1443,10 +1448,17 @@ func main() {
 	// registered sibling's checkout lives on this machine, for the
 	// sibling-merge-unreconciled detector. Repeatable; also read from the
 	// SAME DESK_ROOTS environment variable the desk tools already use
-	// (effectiveSiblingRootOverrides). Without either, the default is the
-	// sibling-checkout convention eligibility.go already uses: a directory
-	// named after the repo's basename, next to --root.
-	flag.Var(&siblingRootFlagValues, "sibling-root", `sibling checkout override "<owner>/<repo>=<path>" for the sibling-merge-unreconciled detector (repeatable; also read from DESK_ROOTS)`)
+	// (effectiveSiblingRootOverrides). The two together are the operator's
+	// allowlist: a sibling named by neither is never read (could-not-check),
+	// whatever the tree's registry says.
+	flag.Var(&siblingRootFlagValues, "sibling-root", `sibling checkout "<owner>/<repo>=<path>" the sibling-merge-unreconciled detector may read (repeatable; also read from DESK_ROOTS); only repos named here or in DESK_ROOTS are ever read`)
+	// --sibling-merge (siblingmerge.go): the opt-in for the sibling read on
+	// --lint, the STATUS.md regen, --next-up and --roadmap. Off by default,
+	// because DESK_ROOTS is routinely inherited from the environment and the
+	// scanned tree's registry would otherwise choose which other local
+	// checkouts get read. ASSAY_SIBLING_MERGE=1 (exactly "1") is the env form.
+	// `statusgen phantoms --class sibling-merge-unreconciled` needs neither.
+	flag.BoolVar(&siblingMergeFlagValue, "sibling-merge", false, "opt in to the sibling-merge-unreconciled sibling read on --lint, regen, --next-up and --roadmap (also ASSAY_SIBLING_MERGE=1); reads only repos named in DESK_ROOTS or --sibling-root")
 	recordMode := flag.Bool("record", false, "append brief status transitions to docs/streams/.history.jsonl (main CI only)")
 	verifyIssuesMode := flag.Bool("verify-issues", false, "emit JSON for newly-eligible verify-gate (gate:human + verified) briefs")
 	existingMarkers := flag.String("existing-markers", "", "file of already-existing verify-gate issue markers (one per line, or raw issue bodies)")

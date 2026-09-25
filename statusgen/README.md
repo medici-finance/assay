@@ -231,11 +231,29 @@ A brief names its sibling via `homed-in: <owner>/<repo>`, `deliverable_repo:
 <alias>` (both resolved through `docs/streams/graph-repos.yaml`), or a
 `../<basename>/` path prefix matching a registered sibling's checkout
 basename — a brief declaring none of the three is simply out of scope for this
-class, not a could-not-check. The sibling checkout defaults to the
-sibling-checkout convention (a directory named after the repo, next to
-`--root`); `--sibling-root <owner>/<repo>=<path>` (repeatable) overrides it,
-and the same comma-separated `<owner>/<repo>=<path>` list is read from the
-`DESK_ROOTS` environment variable the desk tools already use. A structured
+class, not a could-not-check.
+
+**The sibling read is opt-in on the default paths.** `--lint`, the STATUS.md
+regen, `--next-up` and `--roadmap` read no other checkout unless the operator
+passes `--sibling-merge` or sets `ASSAY_SIBLING_MERGE=1` (compared exactly to
+`1`; `true` or `yes` leave it off). Without the opt-in, `--lint` prints at
+most one `not-checked:` NOTICE when a `todo`/`in-progress` row names a
+sibling, so a skipped read is never mistaken for a clean one, and no row is
+held out of Next-up. `statusgen phantoms --class sibling-merge-unreconciled`
+needs no opt-in: running that verb is the opt-in.
+
+**Only siblings in the operator's map are ever read.** The map is
+`--sibling-root <owner>/<repo>=<path>` (repeatable) plus the same
+comma-separated `<owner>/<repo>=<path>` list in the `DESK_ROOTS` environment
+variable the desk tools already use; the flag wins on a collision. The
+tree's `graph-repos.yaml` can only narrow that set: a registered sibling the
+operator's map does not name is a could-not-check, never read, and there is
+no fallback path derived from the registry. A registry `repo:` value must be
+a strict `<owner>/<name>` (ASCII letters, digits, `-`, `_`, `.`; no `.` or
+`..` segment; no control characters) before it is used at all; an entry that
+fails is skipped with a NOTICE naming its index, never its value. Every
+NOTICE this class prints has control characters and line separators escaped,
+so it stays on one line. A structured
 `delivery:` claim in the brief's own frontmatter (`{in: "<alias>#<N>",
 covers: full|partial}`) acknowledges a specific merged PR: `covers: partial`
 releases the hold (the rest is real work), `covers: full` with the cell still

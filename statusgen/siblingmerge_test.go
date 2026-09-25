@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -111,6 +112,21 @@ func withSiblingRootOverride(t *testing.T, spec string) {
 	orig := siblingRootFlagValues
 	siblingRootFlagValues = siblingRootFlags{spec}
 	t.Cleanup(func() { siblingRootFlagValues = orig })
+}
+
+// withSiblingMergeOptIn turns on the --sibling-merge opt-in (the package-level
+// var main.go's flag.BoolVar feeds) for the duration of the test, and clears
+// DESK_ROOTS and ASSAY_SIBLING_MERGE so the operator map is exactly what the
+// test passes through withSiblingRootOverride. Every test that drives run()
+// or runNextUp and expects the sibling to be READ needs this: the read is off
+// by default on those paths.
+func withSiblingMergeOptIn(t *testing.T) {
+	t.Helper()
+	t.Setenv("DESK_ROOTS", "")
+	t.Setenv("ASSAY_SIBLING_MERGE", "")
+	orig := siblingMergeFlagValue
+	siblingMergeFlagValue = true
+	t.Cleanup(func() { siblingMergeFlagValue = orig })
 }
 
 // --- Verify row 1 -----------------------------------------------------------
@@ -234,6 +250,7 @@ func TestSiblingMergeNeverProblem(t *testing.T) {
 	root := siblingBriefTree(t, "deliverable_repo: ex\n")
 	sib := newSiblingGitRepo(t)
 	commitEmpty(t, sib, "feat: ship it (example-stream/02) (#42)")
+	withSiblingMergeOptIn(t)
 	withSiblingRootOverride(t, "example-org/example-sibling="+sib)
 
 	var code int
@@ -245,7 +262,7 @@ func TestSiblingMergeNeverProblem(t *testing.T) {
 	if strings.Contains(stderr, "PROBLEM:") {
 		t.Errorf("sibling-merge-unreconciled must never be a PROBLEM; stderr:\n%s", stderr)
 	}
-	if !strings.Contains(stderr, phantomSiblingMergeUnreconciled) {
+	if !strings.Contains(stderr, "NON-DISPATCHABLE ("+phantomSiblingMergeUnreconciled+")") {
 		t.Errorf("expected the finding to surface as a NOTICE; stderr:\n%s", stderr)
 	}
 
@@ -477,6 +494,7 @@ func TestSiblingMergeIsPromptNotProof(t *testing.T) {
 	briefPath := filepath.Join(fullRoot, "docs", "streams", "example-stream", "brief-02-x.md")
 	beforeReadme, _ := os.ReadFile(readmePath)
 	beforeBrief, _ := os.ReadFile(briefPath)
+	withSiblingMergeOptIn(t)
 	withSiblingRootOverride(t, "example-org/example-sibling="+sib)
 	_ = run(fullRoot, "lint", nil, nil, "")
 	afterReadme, _ := os.ReadFile(readmePath)
@@ -688,6 +706,7 @@ func TestNextUpJSONHonorsSiblingMergeHold(t *testing.T) {
 	root := siblingBriefTree(t, "deliverable_repo: ex\n") // one todo brief: example-stream/02
 	sib := newSiblingGitRepo(t)
 	commitEmpty(t, sib, "feat: ship it (example-stream/02) (#42)")
+	withSiblingMergeOptIn(t)
 	withSiblingRootOverride(t, "example-org/example-sibling="+sib)
 
 	out := captureStdout(t, func() {
@@ -705,4 +724,284 @@ func TestNextUpJSONHonorsSiblingMergeHold(t *testing.T) {
 			t.Errorf("example-stream/02 is checked-failed sibling-merge-unreconciled and must be ABSENT from --next-up JSON (same hold STATUS.md renders), got rows: %+v", view.Rows)
 		}
 	}
+}
+
+// --- Review finding S1: the registry repo: value is validated before use ----
+
+// siblingMergeNoticesAreSingleLine fails the test when any NOTICE carries a
+// line break of any kind — a tree-controlled value that reaches a NOTICE raw
+// could otherwise start a forged output line of its own.
+func siblingMergeNoticesAreSingleLine(t *testing.T, notices []string) {
+	t.Helper()
+	for _, n := range notices {
+		if strings.ContainsAny(n, "\n\r\u2028\u2029") {
+			t.Errorf("a NOTICE must stay on one line; got %q", n)
+		}
+	}
+}
+
+// TestSiblingMergeRegistryRepoTraversalRejected pins S1: a registry repo:
+// value carrying a ".." segment must never become a checkout path (nor a
+// lookup key into the operator's sibling-root map). The fixture puts a real
+// git repo, whose history names the brief, exactly where "anyone/.." would
+// resolve to under the old basename-next-to-root convention — reading it
+// would hold the row on a directory outside every configured root.
+func TestSiblingMergeRegistryRepoTraversalRejected(t *testing.T) {
+	registry := "schema: graph-repos-v1\ncell: test\nrepos:\n" +
+		"  ex: {cell: test, repo: \"anyone/..\"}\n"
+	outside := newSiblingGitRepo(t)
+	commitEmpty(t, outside, "feat: ship it (example-stream/02) (#42)")
+	root := filepath.Join(outside, "x", "board")
+	streamsDir := filepath.Join(root, "docs", "streams")
+	if err := os.MkdirAll(streamsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(streamsDir, "graph-repos.yaml"), []byte(registry), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, tc := range map[string]struct {
+		brief     Brief
+		overrides map[string]string
+	}{
+		"deliverable_repo, no operator entry": {Brief{Num: "02", Status: "todo", DeliverableRepo: "ex"}, nil},
+		"homed-in, no operator entry":         {Brief{Num: "02", Status: "todo", HomedIn: "anyone/.."}, nil},
+		"deliverable_repo, operator map names the raw value": {
+			Brief{Num: "02", Status: "todo", DeliverableRepo: "ex"},
+			map[string]string{"anyone/..": outside},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := &Stream{Name: "example-stream", Status: "active", Briefs: []Brief{tc.brief}}
+			notices, failed, _ := siblingMergeCheck([]*Stream{s}, root, tc.overrides)
+			if failed != 0 || s.Briefs[0].MergedInSibling != "" {
+				t.Fatalf("a repo: value with a '..' segment must never be read; failed=%d held=%q notices=%v",
+					failed, s.Briefs[0].MergedInSibling, notices)
+			}
+			joined := strings.Join(notices, "\n")
+			if strings.Contains(joined, "anyone/..") {
+				t.Errorf("the NOTICE must never echo the invalid raw value; got:\n%s", joined)
+			}
+			if !strings.Contains(joined, "registry entry #1") {
+				t.Errorf("the invalid entry must be named by its index; got:\n%s", joined)
+			}
+			siblingMergeNoticesAreSingleLine(t, notices)
+		})
+	}
+}
+
+// TestSiblingMergeControlCharsNeverReachNotice pins S1's output half: a
+// registry repo: value or a brief's deliverable_repo: alias carrying a
+// newline or carriage return must never break the single-line NOTICE format.
+func TestSiblingMergeControlCharsNeverReachNotice(t *testing.T) {
+	for name, repo := range map[string]string{
+		"newline":         `example-org/bad\nNOTICE: forged`,
+		"carriage return": `example-org/bad\rNOTICE: forged`,
+	} {
+		t.Run("registry repo: "+name, func(t *testing.T) {
+			registry := "schema: graph-repos-v1\ncell: test\nrepos:\n" +
+				"  ex: {cell: test, repo: \"" + repo + "\"}\n"
+			root := writeSiblingRegistry(t, registry)
+			s := &Stream{Name: "example-stream", Status: "active", Briefs: []Brief{
+				{Num: "02", Status: "todo", DeliverableRepo: "ex"},
+			}}
+			notices, _, _ := siblingMergeCheck([]*Stream{s}, root, nil)
+			siblingMergeNoticesAreSingleLine(t, notices)
+			joined := strings.Join(notices, "\n")
+			if strings.Contains(joined, "forged") {
+				t.Errorf("the NOTICE must never echo the invalid raw value; got:\n%s", joined)
+			}
+			if !strings.Contains(joined, "registry entry #1") {
+				t.Errorf("the invalid entry must be named by its index; got:\n%s", joined)
+			}
+		})
+	}
+
+	t.Run("deliverable_repo alias with a newline", func(t *testing.T) {
+		root := writeSiblingRegistry(t, siblingExampleRegistry)
+		s := &Stream{Name: "example-stream", Status: "active", Briefs: []Brief{
+			{Num: "02", Status: "todo", DeliverableRepo: "nope\nNOTICE: forged"},
+		}}
+		notices, _, cnc := siblingMergeCheck([]*Stream{s}, root, nil)
+		if cnc != 1 {
+			t.Fatalf("an unresolvable deliverable_repo: is still one could-not-check; cnc=%d notices=%v", cnc, notices)
+		}
+		siblingMergeNoticesAreSingleLine(t, notices)
+	})
+}
+
+// --- Review finding S2: the sibling read is opt-in ------------------------
+
+// siblingOptInEnv is the opt-in environment variable, spelled out here as a
+// literal so these tests pin the documented name, not a code constant.
+const siblingOptInEnv = "ASSAY_SIBLING_MERGE"
+
+// TestSiblingMergeOffByDefault pins S2: with DESK_ROOTS inherited from the
+// environment and naming a sibling whose history DOES name the brief, --lint,
+// the STATUS.md regen and --next-up must not read that sibling unless the
+// operator opted in.
+func TestSiblingMergeOffByDefault(t *testing.T) {
+	sib := newSiblingGitRepo(t)
+	commitEmpty(t, sib, "feat: ship it (example-stream/02) (#42)")
+	t.Setenv("DESK_ROOTS", "example-org/example-sibling="+sib)
+	t.Setenv(siblingOptInEnv, "")
+
+	t.Run("lint", func(t *testing.T) {
+		root := siblingBriefTree(t, "deliverable_repo: ex\n")
+		stderr := captureStderr(t, func() { _ = run(root, "lint", nil, nil, "") })
+		if strings.Contains(stderr, "NON-DISPATCHABLE ("+phantomSiblingMergeUnreconciled+")") {
+			t.Errorf("--lint must not read a sibling without the opt-in; stderr:\n%s", stderr)
+		}
+	})
+
+	t.Run("regen", func(t *testing.T) {
+		root := siblingBriefTree(t, "deliverable_repo: ex\n")
+		if code := run(root, "write", nil, nil, ""); code != 0 {
+			t.Fatalf("write exited %d", code)
+		}
+		out, err := os.ReadFile(filepath.Join(root, "STATUS.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(out), "Merged in a sibling repo") {
+			t.Errorf("the regen must not read a sibling without the opt-in; STATUS.md:\n%s", out)
+		}
+	})
+
+	t.Run("next-up", func(t *testing.T) {
+		root := siblingBriefTree(t, "deliverable_repo: ex\n")
+		out := captureStdout(t, func() {
+			if code := runNextUp(root); code != 0 {
+				t.Fatalf("runNextUp returned non-zero exit %d", code)
+			}
+		})
+		var view dispatchView
+		if err := json.Unmarshal([]byte(out), &view); err != nil {
+			t.Fatalf("--next-up did not emit valid JSON: %v", err)
+		}
+		found := false
+		for _, r := range view.Rows {
+			if r.Brief == "example-stream/02" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("without the opt-in the row must stay in --next-up; rows: %+v", view.Rows)
+		}
+	})
+}
+
+// TestSiblingMergeOptInEnvIsExact pins the env opt-in's comparison: only the
+// exact value "1" enables the sibling read.
+func TestSiblingMergeOptInEnvIsExact(t *testing.T) {
+	sib := newSiblingGitRepo(t)
+	commitEmpty(t, sib, "feat: ship it (example-stream/02) (#42)")
+	t.Setenv("DESK_ROOTS", "example-org/example-sibling="+sib)
+
+	for value, want := range map[string]bool{"1": true, "true": false, "yes": false, " 1": false, "0": false} {
+		t.Run(strconv.Quote(value), func(t *testing.T) {
+			t.Setenv(siblingOptInEnv, value)
+			root := siblingBriefTree(t, "deliverable_repo: ex\n")
+			stderr := captureStderr(t, func() { _ = run(root, "lint", nil, nil, "") })
+			got := strings.Contains(stderr, "NON-DISPATCHABLE ("+phantomSiblingMergeUnreconciled+")")
+			if got != want {
+				t.Errorf("%s=%q: sibling read = %v, want %v; stderr:\n%s", siblingOptInEnv, value, got, want, stderr)
+			}
+		})
+	}
+}
+
+// TestSiblingMergeRegistryCannotWiden pins S2's allowlist rule: a sibling the
+// tree's registry names is read ONLY when the operator's map (DESK_ROOTS or
+// --sibling-root) also names it. A real checkout sitting at the old
+// basename-next-to-root default path must not be read on the registry's
+// say-so alone — that is a could-not-check, never a checked result.
+func TestSiblingMergeRegistryCannotWiden(t *testing.T) {
+	root := siblingBriefTree(t, "deliverable_repo: ex\n")
+	sib := filepath.Join(filepath.Dir(root), "example-sibling")
+	if err := os.MkdirAll(sib, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitInit(t, sib, "Sibling Bot", "sibling-bot@example.com")
+	commitEmpty(t, sib, "feat: ship it (example-stream/02) (#42)")
+
+	for name, deskRoots := range map[string]string{
+		"no operator map":                 "",
+		"operator map names another repo": "example-org/something-else=" + sib,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("DESK_ROOTS", deskRoots)
+			var out, errOut bytes.Buffer
+			code := runPhantoms([]string{"--root", root, "--class", phantomSiblingMergeUnreconciled}, &out, &errOut)
+			if code != 2 {
+				t.Fatalf("a sibling absent from the operator map must be could-not-check (exit 2), got %d; stdout=%s stderr=%s",
+					code, out.String(), errOut.String())
+			}
+		})
+	}
+}
+
+// TestValidSiblingRepoShape pins the strict <owner>/<name> shape a registry
+// repo: value must have before this detector uses it.
+func TestValidSiblingRepoShape(t *testing.T) {
+	for repo, want := range map[string]bool{
+		"example-org/example-sibling": true,
+		"example-org/.github":         true,
+		"Org_1/repo.name-2":           true,
+		"anyone/..":                   false,
+		"anyone/.":                    false,
+		"../example-sibling":          false,
+		"./example-sibling":           false,
+		"example-org/a/b":             false,
+		"example-org":                 false,
+		"/example-sibling":            false,
+		"example-org/":                false,
+		"-org/repo":                   false,
+		"example-org/bad\nname":       false,
+		"example-org/bad\rname":       false,
+		"example-org/bad name":        false,
+		"example-org/bad\\name":       false,
+		"example-org/bad\u2028name":   false,
+	} {
+		if got := validSiblingRepo(repo); got != want {
+			t.Errorf("validSiblingRepo(%q) = %v, want %v", repo, got, want)
+		}
+	}
+}
+
+// TestNoticeSafeEscapesLineBreaks pins noticeSafe: every control character
+// and Unicode line/paragraph separator becomes a visible escape.
+func TestNoticeSafeEscapesLineBreaks(t *testing.T) {
+	got := noticeSafe("a\nb\rc\u2028d\te")
+	if want := "a\\u000ab\\u000dc\\u2028d\\u0009e"; got != want {
+		t.Errorf("noticeSafe = %q, want %q", got, want)
+	}
+	if got := noticeSafe("plain — text"); got != "plain — text" {
+		t.Errorf("noticeSafe must leave printable text alone; got %q", got)
+	}
+}
+
+// TestSiblingMergeOffNoticeNamesSkippedRead pins the default-off output: with
+// no opt-in, --lint prints ONE "not-checked" line when a row names a sibling
+// (a skipped read is never shown as a clean one), and nothing at all when no
+// row names one.
+func TestSiblingMergeOffNoticeNamesSkippedRead(t *testing.T) {
+	t.Setenv("DESK_ROOTS", "")
+	t.Setenv(siblingOptInEnv, "")
+
+	t.Run("a row names a sibling", func(t *testing.T) {
+		root := siblingBriefTree(t, "deliverable_repo: ex\n")
+		stderr := captureStderr(t, func() { _ = run(root, "lint", nil, nil, "") })
+		if n := strings.Count(stderr, "not-checked: sibling-merge-unreconciled is opt-in"); n != 1 {
+			t.Errorf("want exactly one not-checked line, got %d; stderr:\n%s", n, stderr)
+		}
+	})
+
+	t.Run("no row names a sibling", func(t *testing.T) {
+		root := siblingBriefTree(t, "")
+		stderr := captureStderr(t, func() { _ = run(root, "lint", nil, nil, "") })
+		if strings.Contains(stderr, phantomSiblingMergeUnreconciled) {
+			t.Errorf("a tree with no sibling declarations must stay silent; stderr:\n%s", stderr)
+		}
+	})
 }
