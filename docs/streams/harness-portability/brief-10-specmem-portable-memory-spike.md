@@ -94,5 +94,21 @@ RISK-VALUE: N/A — enumeration over this item's diff/deliverables on this repo 
 
 VERIFY: FAIL — held at implemented, matching what #393 already asks (route to worker-desk to land the deliverable, porting the real house-repo findings, before any re-verify). Recommend the coordinator also consider #393's Ask item 2: stripping/marking the brief's own inline Evidence table as detached/non-authoritative, since as written it misleadingly reads as a completed verified-here pass.
 
+### Non-implementer verifier run — VERIFY: FAIL — 2026-09-25 opus-5.5-verifier
+
+The runner is not the implementer. Run on 2026-09-25 against merged main 89042b8fcc7e777a38903b588e0403866c606a41, in the verifier's own worktree. That worktree is this Evidence PR's merge of that main, and it differs from main only in Evidence text. Offline envelope observed (KUBECONFIG=/dev/null). The executable rows' Command cells are the brief's own commands, copied literally and run from the repository root. Row 3 is a dereference check in the brief, and its cell carries that description. This block replaces the 2026-09-23 draft of this pass, which never landed.
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | test -f docs/research/specmem-portability-spike.md | exit 0 — the findings doc exists | FAIL — exit 1; the file is absent on merged main. docs/research/ holds only codex-harness-capabilities.md, cursor-harness-capabilities.md and graph-export-evaluation.md | 2026-09-25 | opus-5.5-verifier |
+| 2 | grep -qiE -e identical -e degraded -e portable -e native-only docs/research/specmem-portability-spike.md | exit 0 — faithfulness verdicts present | FAIL — exit 2; grep cannot open the absent target file | 2026-09-25 | opus-5.5-verifier |
+| 3 | (dereferencing) the doc records the SAME query run from BOTH harnesses, with their actual returned output quoted | both harnesses' outputs for one query quoted and compared | could-not-check — the findings doc does not exist, so there is nothing to dereference | 2026-09-25 | opus-5.5-verifier |
+| 4 | grep -q 'specmem-portability-spike' freshness.yaml | exit 0 — the empirical file is registered | FAIL — exit 1; freshness.yaml is present but has no specmem entry (a case-insensitive re-check confirms it) | 2026-09-25 | opus-5.5-verifier |
+
+RISK-VALUE: N/A — the enumeration over this item's diff and deliverables in this repo found no literal constant, bound, threshold, ratio, timeout, limit or authority binding. This is a documentary spike (a findings doc plus a freshness registration). The deliverable is absent on merged main, so the diff scope enumerated over is empty. Frontmatter risk = {regulatory: no, customer: no, irreversible: no, sensitive-data: no}. The one irreversible act the brief explicitly guards against, treating SpecMem as authoritative over the in-git registers, never happened: the brief keeps the desk registers authoritative in-git during the spike.
+
+VERIFY: FAIL — 0 of 4 rows pass on merged main 89042b8fc: rows 1, 2 and 4 fail, and row 3 is could-not-check. The deliverable is absent from this repository, tracked in #393. Status stays implemented.
+
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the harness-portability README table.
