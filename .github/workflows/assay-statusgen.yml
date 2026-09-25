@@ -179,20 +179,11 @@ jobs:
   # `statusgen --auto-flip-model` walks each brief sitting at `verified`, finds
   # the PR that merged it, and flips it to `done` ONLY when the reviewer App
   # bound in ASSAY_TRUSTED_BOT_SLUGS has an APPROVED review at that PR's merged
-  # head. Every failure is a NON-flip, but NOT every could-not-check fails this
-  # job — the binary's own two-tier exit policy decides that (autoflip.go's
-  # reportAutoFlipModel, "Fix B"; pinned by TestReportAutoFlipStructuralNonFatal
-  # / TestReportAutoFlipMisconfigFatal). Only a candidate flagged a fixable
-  # MISCONFIGURATION (no `reviewer=` App bound in ASSAY_TRUSTED_BOT_SLUGS, or a
-  # stream resolves no owning repo) fails this job loudly (exit 1) — an operator
-  # fixes the roster or `repo:` frontmatter to unblock it. A STRUCTURALLY
-  # unresolvable could-not-check (most commonly: no merged PR resolves in the
-  # brief's recent history, since the desk commits Evidence straight to main) is
-  # a loud NOTICE on stderr but exits 0 — expected, not an outage. There is no
-  # override flag for either kind. The flip commits stream README rows straight
-  # to main under the board-writer App (the same identity that writes
-  # STATUS.md), and `regen` re-runs on that push so the board catches up by
-  # itself.
+  # head. Every failure is a NON-flip; a candidate the tool could not check
+  # fails this job loudly (exit 1) rather than passing as a clean run. There is
+  # no override flag. The flip commits stream README rows straight to main
+  # under the board-writer App (the same identity that writes STATUS.md), and
+  # `regen` re-runs on that push so the board catches up by itself.
   #
   # Reads go through `gh` with the default token (this repo is public, so
   # reviews are readable without the App); the WRITE is the App token, exactly
@@ -283,6 +274,6 @@ jobs:
             echo "push attempt $attempt lost a race with a concurrent push — retrying"
           done
           if [ "$flip_rc" -ne 0 ]; then
-            echo "::error::statusgen --auto-flip-model reported a fixable MISCONFIGURATION (no reviewer= App bound / no owning repo) — see the COULD-NOT-CHECK lines above. None of those briefs was flipped; each stays \`verified\` until the setup is fixed and an App approval at its merged head can be read. (A structurally-unresolvable could-not-check, e.g. no merged PR in a brief's window, is a non-fatal NOTICE and does not reach this exit — see the job's own header comment.)"
+            echo "::error::statusgen --auto-flip-model reported candidate(s) it COULD NOT CHECK — see the COULD-NOT-CHECK lines above. None of those briefs was flipped; each stays \`verified\` until an App approval at its merged head can be read."
             exit 1
           fi
