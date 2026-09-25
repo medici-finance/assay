@@ -60,7 +60,7 @@ this stream, which also lands briefs 01–13 citing it, so its header reads `**S
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Semantic-owner index in docs/contracts.md — one meaning, one home](brief-01-semantic-owner-index.md) | 0 | M | implemented | — | — |
+| 01 | [Semantic-owner index in docs/contracts.md — one meaning, one home](brief-01-semantic-owner-index.md) | 0 | M | verified | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) | — |
 | 02 | [design-fit: in every new brief — owner, contract, retires, weight, why-add](brief-02-design-fit-in-briefs.md) | 1 | M | todo | — | — |
 | 03 | [Weight counter and CI ratchet (a Go test, not a verb)](brief-03-weight-ratchet.md) | 0 | M | implemented | — | — |
 | 04 | [Intake files by error class; a recurring class triggers a design brief, not another point fix](brief-04-intake-by-error-class.md) | 2 | M | todo | — | — |

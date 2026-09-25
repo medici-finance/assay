@@ -110,6 +110,31 @@ found?) is the review gate's.
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
 
+### Verification — 2026-09-25 (assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian))
+
+Non-implementer run against merged origin/main 7aa3835d7f3323b04f7f4f69aafc82a8afefc37e (the implementation merged in #1671, commit bbc2e23a8; docs/contracts.md is unchanged since). Witness rows below are statusgen verifyrun output, built from this tree, landed verbatim.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -c '^## Semantic owners — one meaning, one home$' docs/contracts.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `sed -n '/^## Semantic owners/,$p' docs/contracts.md \| grep -o -e S-eligibility -e S-delivery -e S-identity -e S-claim -e S-worktree -e S-decision-acceptance -e S-review-verdict -e S-publication-scan -e S-status-derivation -e S-exit-codes -e S-semantic-index \| sort -u \| wc -l \| tr -d ' '` | pass exit=0 | sha256:25d4f2a86deb | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `sed -n '/^## Semantic owners/,$p' docs/contracts.md \| grep -ciE 'amends? its decision record'` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `set -o pipefail; sed -n '/^## Semantic owners/,$p' docs/contracts.md \| grep -oE -e 'tools/desk/[A-Za-z0-9_./-]+\.go' -e 'statusgen/[A-Za-z0-9_./-]+\.go' \| sort -u \| wc -l \| tr -d ' '` | pass exit=0 | sha256:4c82a221b575 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `out=$(sed -n '/^## Semantic owners/,$p' docs/contracts.md \| grep -oE -e 'tools/desk/[A-Za-z0-9_./-]+\.go' -e 'statusgen/[A-Za-z0-9_./-]+\.go' \| sort -u \| while read p; do test -e "$p" \|\| echo "MISSING $p"; done); test -z "$out" && echo CLEAN \|\| echo "$out"` | pass exit=0 | sha256:0b98843240a0 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `sed -n '/^## Semantic owners/,$p' docs/contracts.md \| grep -E '^[\|] *S-eligibility' \| grep -c 'statusgen/eligibility.go'` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+
+Hand-written rows (verifyrun decides exit status only for rows 1, 2, 5 and 6; these record the printed values against each Expect cell):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| H1 | re-ran Verify rows 1–6 by hand in bash from the repo root | pass exit=0 | printed 1 / 11 / 1 / 55 / CLEAN / 1 against Expect 1 / 11 / ≥1 / ≥15 / CLEAN / 1; sha256 of each printed line matches the witness Output hash (4355a46b19d3, 25d4f2a86deb, 4c82a221b575, 0b98843240a0) | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| H2 | test -f changelog/build-less-brittle-01.md (Task step 5 deliverable) | pass exit=0 | fragment present, one Added entry naming the eleven S- rows | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| H3 | dereferenced the exit-code literals the S-exit-codes row quotes, by grep over deskkit exitcodes.go and statusgen conform.go, gatetelemetry.go, newbrief.go, briefinfo.go | pass exit=0 | ExitOK=0, ExitDisabled=3, ExitUnverifiable=6 (exitcodes.go:17/20/31); conformExitCouldNot=2 and conformExitUsageError=2 (conform.go:121-122); gtExitCouldNotCheck=3 (gatetelemetry.go:72); newBriefExitRefuse=2 (newbrief.go:66); briefInfoExitOK=0 (briefinfo.go:47) all match the row text | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+
+RISK-VALUE: N/A — enumeration over the implementation diff (bbc2e23a8: 61 added lines of prose in docs/contracts.md, a changelog fragment, a one-cell stream-README status flip; no code, config or workflow) found no literal constant, bound, threshold, timeout, limit or authority binding introduced or changed; the numbers the section quotes (exit codes 0/2/3/6, line numbers) are citations of existing code, dereferenced in H3, not values this item sets. The item is reversible by a markdown edit; there is no irreversible act. Risk block is all-no, gate model.
+
+VERIFY: PASS — 6/6 witness rows pass, every printed value matches its Expect cell.
+
 ## Review
 Gate: model (from frontmatter). The reviewer answers: does any seeded row name an owner that is
 itself one of several competing implementations, without saying so?
