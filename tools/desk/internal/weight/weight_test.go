@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"bytes"
 	"flag"
-	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -16,7 +15,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/weight"
 )
 
-// Test-only flags (build-less-brittle/03, brief files list). Pass with `go test -args
+// Test-only flags (see the brief's files list). Pass with `go test -args
 // -root=... -rev=... -mode=... -base=...` — the `-args` marker hands everything after it
 // to the test binary's own flag.Parse rather than `go test`'s.
 var (
@@ -142,6 +141,13 @@ func TestGrowthAnnotationAbove(t *testing.T) {
 // ceiling. When -base names a revision, it additionally requires a "# grow" annotation
 // above any dimension whose ceiling rose since that revision; without -base that check is
 // skipped and says so (facts: "Growth approval").
+//
+// Each ratcheted dimension runs as its own subtest so that a could-not-check ruletext
+// dimension shows up as an explicit SKIP rather than silently dropping out of the parent
+// test's result: countRuleText's three-state "ok=false" (an absent plugin tree, or one
+// listed skill body that cannot be read) must never look like "measured zero and clean",
+// and a single flat PASS over a partial `results` slice was exactly that trap — go test
+// ./... without -v never printed the t.Logf, so the ratchet gap was invisible in CI.
 func TestCeiling(t *testing.T) {
 	root := findRepoRoot(t)
 	fsys, desc := targetFS(t, root)
@@ -149,9 +155,6 @@ func TestCeiling(t *testing.T) {
 	w, err := weight.Count(fsys)
 	if err != nil {
 		t.Fatalf("Count(%s): %v", desc, err)
-	}
-	if w.RuleTextCouldNotCheck {
-		t.Logf("could-not-check ruletext: %s", w.RuleTextReason)
 	}
 
 	ceilingPath := filepath.Join(root, "tools", "desk", "internal", "weight", "ceiling.txt")
@@ -173,24 +176,39 @@ func TestCeiling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
-
-	var failures []string
+	resultByDim := make(map[string]weight.DimensionResult, len(results))
 	for _, r := range results {
-		if !r.Grown() {
-			t.Log(weight.SlackMessage(r))
-			continue
-		}
-		msg := weight.GrowthMessage(r)
-		if mode == "blocking" {
-			failures = append(failures, msg)
-		} else {
-			t.Logf("GROWTH-NOTICE %s", msg)
-		}
+		resultByDim[r.Dimension] = r
 	}
 
-	if *baseFlag == "" {
-		t.Log("grow-line check skipped: no -base given")
-	} else {
+	for _, dim := range weight.RatchetedDimensions {
+		dim := dim
+		t.Run(dim, func(t *testing.T) {
+			if dim == "ruletext" && w.RuleTextCouldNotCheck {
+				t.Skipf("could-not-check ruletext: %s", w.RuleTextReason)
+			}
+			r, ok := resultByDim[dim]
+			if !ok {
+				t.Fatalf("Evaluate produced no result for ratcheted dimension %q", dim)
+			}
+			if !r.Grown() {
+				t.Log(weight.SlackMessage(r))
+				return
+			}
+			msg := weight.GrowthMessage(r)
+			if mode == "blocking" {
+				t.Error(msg)
+			} else {
+				t.Logf("GROWTH-NOTICE %s", msg)
+			}
+		})
+	}
+
+	t.Run("grow-annotation", func(t *testing.T) {
+		if *baseFlag == "" {
+			t.Log("grow-line check skipped: no -base given")
+			return
+		}
 		baseData := fileAtRev(t, root, *baseFlag, "tools/desk/internal/weight/ceiling.txt")
 		baseCeiling, berr := weight.ParseCeiling(baseData)
 		if berr != nil {
@@ -202,23 +220,18 @@ func TestCeiling(t *testing.T) {
 				continue
 			}
 			if !weight.GrowthAnnotationAbove(c.Lines, r.Dimension) {
-				failures = append(failures, fmt.Sprintf(
-					"%s: ceiling raised %d -> %d with no \"# grow %s +<n> <url>\" line above it",
-					r.Dimension, baseVal, r.Ceiling, r.Dimension))
+				t.Errorf("%s: ceiling raised %d -> %d with no \"# grow %s +<n> <url>\" line above it",
+					r.Dimension, baseVal, r.Ceiling, r.Dimension)
 			}
 		}
-	}
-
-	for _, f := range failures {
-		t.Error(f)
-	}
+	})
 }
 
 // TestPrintWeight logs exactly one line — "weight: verbs=<n> flags=<n> refusals=<n>
 // ruletext=<n|could-not-check> golines=<n>" — for -root (default: the repository root) or
-// -rev (a `git archive` of that revision into a temp dir). This is the line PR bodies
-// (build-less-brittle/05), reviewers (06) and an adopting project's baseline/close-out
-// all quote (brief-03 Task step 5).
+// -rev (a `git archive` of that revision into a temp dir). This is the line PR bodies,
+// reviewers and an adopting project's baseline/close-out all quote (this brief's Task
+// step 5, and later briefs in this stream that build on the counter).
 func TestPrintWeight(t *testing.T) {
 	fsys, desc := targetFS(t, findRepoRoot(t))
 	w, err := weight.Count(fsys)

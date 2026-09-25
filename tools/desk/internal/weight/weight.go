@@ -1,6 +1,6 @@
 // Package weight is the desk tools' weight counter: five measures of how much surface
 // the tool set carries, computed by pure counting functions over an fs.FS rather than by
-// grep proxy (build-less-brittle/03; spec.md §3 row 5, §4.5, §5.2).
+// grep proxy (spec.md §3 row 5, §4.5, §5.2).
 //
 // WHY. Additions to tools/desk pass review easily one PR at a time and deletions are rare,
 // so the tool set only grows. Nothing noticed that growth before this package: 63 verbs,

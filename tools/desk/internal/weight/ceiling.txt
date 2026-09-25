@@ -1,5 +1,5 @@
 # mode: advisory
-# Ratchet for tools/desk's weight (build-less-brittle/03; spec.md §3 row 5, §4.5, §5.2).
+# Ratchet for tools/desk's weight (spec.md §3 row 5, §4.5, §5.2).
 # Growing a line requires a "# grow <dimension> +<n> <url>" line directly above it, citing
 # the driver's `grow <PR#>` reply on the project's standing weight-growth decision issue.
 # golines is reported by `weight: ...` but never ratcheted — no line for it here.
