@@ -11,8 +11,8 @@ import "strings"
 // These two lists are deskdigest's DISPLAY classifier, where a miss only means a row shows as
 // "unclassified" and the item keeps its label. deskfile's gate, where a miss would take an
 // item OFF the driver's queue, does not rely on HumanOnlySignals alone: it adds the broader
-// fail-closed OneWay check (noticelane.go) and admits the notice lane only on a POSITIVE
-// ReversibleSignals match.
+// fail-closed OneWay check (noticelane.go) and admits the notice lane only on a POSITIVE,
+// content-bearing ReversibleSignals match (FirstNoticeLaneSignal).
 
 // Signal is one substring matcher plus the R-3 category it evidences. The needle is matched
 // case-insensitively; callers lower-case the haystack before calling FirstHumanOnlySignal (or
@@ -106,7 +106,8 @@ func MatchesHumanOnlySignal(hay string) (*Signal, bool) {
 // ReversibleSignals are R-3's own four examples of a one-commit reversal and their immediate
 // neighbours. Nothing is added here on a hunch: the list stays close to the ruling's text
 // because widening it silently widens what the desk may decide without asking — and, since
-// deskfile's notice lane is admitted ONLY on a match here, what may leave the driver's queue.
+// deskfile's notice lane is admitted ONLY on a match here (minus the shape-only needles,
+// NoticeLaneShapeOnlyNeedles in noticelane.go), what may leave the driver's queue.
 var ReversibleSignals = []Signal{
 	{"docs wording", "docs wording (R-3 example)"},
 	{"wording", "docs wording (R-3 example)"},

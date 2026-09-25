@@ -336,7 +336,11 @@ func splitRepo(repo string) (owner, name string, ok bool) {
 // is the desk's act, and RECORDING it in the weekly digest — with the veto deadline — is
 // this tool's. R-3 makes the digest the veto surface, so the surface must show every
 // decision it can find and must not be able to manufacture one.
-var r3MarkerRe = regexp.MustCompile(`(?is)<!--\s*desk-r3-decision v1\s*-->\s*(.*)`)
+//
+// The marker half is deskkit.DeskDecidedMarkerExpr, declared once in deskkit beside the
+// caller-body refusal deskfile applies (deskkit.HasDeskDecidedMarkerClaim, a strict superset
+// of it), so no spelling this reader accepts can be filed by a caller.
+var r3MarkerRe = regexp.MustCompile(`(?s)` + deskkit.DeskDecidedMarkerExpr + `\s*(.*)`)
 
 // r3DecisionRe pulls the decision sentence out of the marker comment.
 var r3DecisionRe = regexp.MustCompile(`(?im)^[ \t>*_-]*decision:[ \t]*(.+)$`)

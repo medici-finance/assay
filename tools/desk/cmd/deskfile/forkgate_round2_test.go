@@ -44,7 +44,11 @@ func TestNoticeLaneRefusesReversibleSubjectOneWay(t *testing.T) {
 			withEnv(t)
 			t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 			t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
-			body := bodyFileWith(t, noticeLaneBlock+"\n"+neutralEvidence)
+			// The body adds a content-bearing reversible signal ("docs wording"), so the
+			// notice lane would admit the filing were it not for the one-way term: the
+			// one-way list, not the shape-only admission rule, is what this test pins.
+			body := bodyFileWith(t, "The docs wording follows whichever option is chosen.\n\n"+
+				noticeLaneBlock+"\n"+neutralEvidence)
 
 			rc, out := runCapture([]string{"new", "-R", allowedRepo,
 				"--title", tc.title, "--body-file", body, "--label", needsDecisionLabel})
@@ -82,10 +86,10 @@ func TestRuledCheckLineIsReadForOneWayTerms(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
-	body := bodyFileWith(t, "A reversible tool-default question.\n\n"+neutralEvidence+"\n"+ruledCheckOnlyBlock)
+	body := bodyFileWith(t, "A reversible docs-wording question.\n\n"+neutralEvidence+"\n"+ruledCheckOnlyBlock)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
-		"--title", "flip the tool default for --sla-days", "--body-file", body,
+		"--title", reversibleTitle, "--body-file", body,
 		"--label", needsDecisionLabel})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("rc = %d, want 0; out=%s", rc, out)
@@ -108,10 +112,10 @@ func TestRuledCheckRulingWordingStillAdmits(t *testing.T) {
 	if block == noticeLaneBlock {
 		t.Fatal("fixture: the ruled-check line was not replaced")
 	}
-	body := bodyFileWith(t, "A reversible tool-default question.\n\n"+block)
+	body := bodyFileWith(t, "A reversible docs-wording question.\n\n"+block)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
-		"--title", "flip the tool default for --sla-days", "--body-file", body,
+		"--title", reversibleTitle, "--body-file", body,
 		"--label", needsDecisionLabel})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("rc = %d, want 0; out=%s", rc, out)
@@ -148,7 +152,7 @@ func TestNewRefusesCallerDeskDecidedLabel(t *testing.T) {
 				lbl = strings.ToUpper(lbl)
 			}
 			body := bodyFileWith(t, "An ordinary filing.")
-			args := append([]string{"new", "-R", allowedRepo, "--title", "flip the tool default for --sla-days",
+			args := append([]string{"new", "-R", allowedRepo, "--title", reversibleTitle,
 				"--body-file", body, "--label", lbl}, tc.extra...)
 			rc, out := runCapture(args)
 			if rc != deskkit.ExitRefused {

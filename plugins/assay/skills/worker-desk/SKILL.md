@@ -778,8 +778,9 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   `tool-false-positive`); use the one that fits rather than forcing the filing. Two workable options
   plus a gate the driver still holds MAY file on the NOTICE LANE (`desk-decided`, off the driver's
   queue, in the weekly digest with its veto date) instead of `needs-decision`. The tool admits it
-  only on a positive R-3 reversible signal with no one-way term or one-way label, and the same
-  one-way check refuses `--no-fork` (exact lists: `tools/desk/README.md`). The tool's keyword check
+  only on a positive, content-bearing R-3 reversible signal (a tool default alone never admits)
+  with no one-way term or one-way label, and the same one-way check refuses `--no-fork` (exact
+  lists: `tools/desk/README.md`). The tool's keyword check
   is a floor, not the reversibility test above: an item that test calls one-way is filed
   `caught-by: nothing`, and so stays on the driver's queue, whatever the keywords say.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,

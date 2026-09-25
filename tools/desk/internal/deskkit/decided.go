@@ -38,6 +38,30 @@ const DeskDecidedHeading = "## Desk-decided"
 // reused verbatim here so issues and PRs never carry two markers for the same term.
 const DeskDecidedMarker = "<!-- desk-r3-decision v1 -->"
 
+// DeskDecidedMarkerExpr is the ONE pattern every READER of the marker uses: the exact
+// DeskDecidedMarker the tools write, plus the case and whitespace variants a hand-written
+// marker comes in (deskdigest's veto surface reads with it). Declared here so a reader and
+// a refusal can never disagree about what counts as the marker (review findings cor-1688-C6,
+// sec-1688-S4: a refusal narrower than the reader let a variant spelling through).
+const DeskDecidedMarkerExpr = `(?i)<!--\s*desk-r3-decision v1\s*-->`
+
+// DeskDecidedMarkerRe is DeskDecidedMarkerExpr compiled: it matches every spelling a reader
+// accepts as the marker.
+var DeskDecidedMarkerRe = regexp.MustCompile(DeskDecidedMarkerExpr)
+
+// deskDecidedMarkerClaimRe is deliberately BROADER than DeskDecidedMarkerRe: an HTML comment
+// OPENING with `desk-r3-decision`, any case, any whitespace, any version, closed or not.
+// HasDeskDecidedMarkerClaim uses it for refusals, so everything a reader would take as the
+// marker — and anything that looks like an attempt at it — is refused.
+var deskDecidedMarkerClaimRe = regexp.MustCompile(`(?i)<!--\s*desk-r3-decision`)
+
+// HasDeskDecidedMarkerClaim reports whether text carries anything a caller may not write
+// itself: any spelling of the desk-r3-decision marker, a superset of what DeskDecidedMarkerRe
+// reads.
+func HasDeskDecidedMarkerClaim(text string) bool {
+	return deskDecidedMarkerClaimRe.MatchString(text)
+}
+
 // DeskDecidedLabel is the PR label — the counterpart of the existing `human-decided` label
 // (which desklabel's vocabulary refuses for every role, since it records a human act; this
 // one records a DESK act, and deskpr applies it directly through LabelChange, the same

@@ -2821,7 +2821,11 @@ is the human-held gate that would catch a wrong guess on the default (a draft PR
 merge, a flip CI still runs, an issue close still to happen, or `nothing`, meaning no gate
 catches it). `ruled-check` records the search for an existing ruling on the same question —
 the item's own thread and the tracker for the item id — so a filer cannot skip checking
-whether it was already decided. The arrow accepts `→` or `->`, and the dash before "what it
+whether it was already decided. Name the search by its SUBJECT, e.g.
+`ruled-check: searched this item's thread and the tracker for "sla-days help text" → nothing on record`;
+that line reads clean. The line is read for one-way terms (below), so a line naming a
+driver-owned act — "searched closed needs-decision issues → nothing" matches the auto-close
+pattern — keeps the item on `needs-decision`: the safe direction, but a needless one. The arrow accepts `→` or `->`, and the dash before "what it
 is" accepts an em dash, en dash, or a plain hyphen.
 
 **Outcomes, in this precedence:**
@@ -2873,13 +2877,18 @@ is" accepts an em dash, en dash, or a plain hyphen.
   within a few words of a control noun (check, scan, gate, guard, hook, review, requirement,
   protection, lint, test, CI, verification, assertion, signing, policy, rule, control, alert),
   in either order;
-- a POSITIVE R-3 reversible signal is present (`deskkit.ReversibleSignals`: docs wording,
-  typo, phrasing, lint level, port-or-drop, tool/flag default, default value, a rename, a
-  table column).
+- a POSITIVE, CONTENT-BEARING R-3 reversible signal is present (`deskkit.FirstNoticeLaneSignal`:
+  docs wording, typo, phrasing, lint level, port-or-drop, a table column). The SHAPE-only
+  needles in `deskkit.ReversibleSignals` — `tool default`, `default value`, `flag default`,
+  `rename the` (`deskkit.NoticeLaneShapeOnlyNeedles`) — never admit on their own: they name
+  the kind of change and nothing about what it governs ("tool default: build untrusted fork
+  heads in CI"), so as an admission signal they admitted every one-way act the keyword list
+  had not named. An item whose only reversible signal is one of them stays on
+  `needs-decision`. `deskdigest`'s display classifier still reads them.
 
 An item that matches neither list stays on `needs-decision`: the absence of a one-way term is
 not evidence that an item is reversible, and a reversible signal never outranks a one-way
-term: "the tool default for the trust gate" is one-way, because what the default governs is
+term: "the docs wording for the trust gate" is one-way, because what the wording is about is
 a control. The one-way check reads the whole title and body, the `ruled-check:` line
 included — that line is where a filer names the subject of the search. The one exemption is
 the `ruling` needle on that line alone, whose wording is the grammar's own record of a search
@@ -2920,8 +2929,11 @@ label write fails — and the exit code is the signal to re-label it by hand.
 description `deskkit` declares for it (`deskpr --decided` creates it with the same spec on a
 PR). It is never a caller `--label`: `deskfile new --label desk-decided` is refused (exit 5),
 `--force-new` included, and so is a caller body that already carries the
-`<!-- desk-r3-decision v1 -->` marker — the marker in an issue body is the notice lane's
-record that the gate admitted the filing, and only the tool writes it.
+`<!-- desk-r3-decision v1 -->` marker in ANY spelling — any case, any whitespace inside the
+comment, any version (`deskkit.HasDeskDecidedMarkerClaim`, a strict superset of
+`deskkit.DeskDecidedMarkerRe`, the one pattern `deskdigest` reads the marker with). The marker
+in an issue body is the notice lane's record that the gate admitted the filing, and only the
+tool writes it.
 
 **Audit.** Every `new` filing that reaches the gate records its route on the local audit
 line: `lane=desk-decided (<the reversible signal>)`, `lane=needs-decision (<why it stayed>)`,

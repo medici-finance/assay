@@ -102,7 +102,7 @@ func TestNoForkWrongRepoFiledWithoutDecisionLabel(t *testing.T) {
 }
 
 // TestCaughtByFilesNoticeWithMarker — Verify row 4. Two counted options plus
-// `caught-by: draft-pr`, a reversible item (the title names a tool default, an R-3 example)
+// `caught-by: draft-pr`, a reversible item (the title names a docs-wording change, an R-3 example)
 // with no one-way term, files on the notice lane: the issue ends up labelled desk-decided
 // (not needs-decision), and the body carries the shared `desk-r3-decision v1` marker and a
 // `decision:` line equal to the default's text. The label writes are add-first: desk-decided
@@ -111,10 +111,10 @@ func TestCaughtByFilesNoticeWithMarker(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
-	body := bodyFileWith(t, "A reversible tool-default question.\n\n"+noticeLaneBlock)
+	body := bodyFileWith(t, "A reversible docs-wording question.\n\n"+noticeLaneBlock)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
-		"--title", "flip the tool default for --sla-days", "--body-file", body,
+		"--title", reversibleTitle, "--body-file", body,
 		"--label", needsDecisionLabel})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("notice-lane filing rc = %d, want 0; out=%s", rc, out)
@@ -177,7 +177,7 @@ func TestOneWayTermOverridesCaughtBy(t *testing.T) {
 		neutralEvidence+"\n\n"+noticeLaneBlock)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
-		"--title", "flip the tool default for --sla-days", "--body-file", body,
+		"--title", reversibleTitle, "--body-file", body,
 		"--label", needsDecisionLabel})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("one-way-term filing rc = %d, want 0; out=%s", rc, out)

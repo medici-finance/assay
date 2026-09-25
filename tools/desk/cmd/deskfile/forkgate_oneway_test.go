@@ -16,7 +16,7 @@ import (
 
 // noticeLaneBlock is a two-option block the driver still holds a gate on (`caught-by:
 // draft-pr`), worded so that NOTHING in it is a one-way term — the fixture the notice lane
-// is meant for. Paired with a title naming a tool default (an R-3 reversible example), it
+// is meant for. Paired with reversibleTitle (a content-bearing R-3 reversible example), it
 // reaches the notice lane; every negative test below adds exactly one thing to it.
 const noticeLaneBlock = `### Fork test
 
@@ -27,6 +27,12 @@ caught-by: draft-pr — #777
 ruled-check: searched the tracker for "the same question" → nothing on record
 `
 
+// reversibleTitle names a CONTENT-BEARING R-3 reversible example (docs wording), the kind of
+// signal that admits the notice lane. A shape-only needle ("tool default") no longer admits
+// on its own (TestNoticeLaneRefusesShapeOnlyReversibleSubject), so a fixture titled with one
+// would pass every one-way test below for the wrong reason.
+const reversibleTitle = "fix the docs wording of the --sla-days help text"
+
 // neutralEvidence is an `### Evidence` fence carrying no one-way term (bodyWithEvidence's
 // "cluster" is itself a live-infrastructure term, so it cannot isolate a one-way assertion).
 // Any filing that stays on needs-decision still passes the blocker-evidence gate with it.
@@ -34,7 +40,7 @@ const neutralEvidence = "### Evidence\n\n```\n$ deskfile new --help\nusage: desk
 
 // oneWayLeads is one lead per one-way class the gate must keep on the driver's queue. The
 // first twelve are the security review's probes, verbatim; the next five are the correctness
-// review's. Each is filed with a reversible title ("the tool default for --sla-days"), a
+// review's. Each is filed with a reversible title (reversibleTitle), a
 // well-formed two-option block and `caught-by: draft-pr` — the filer's claim — so the only
 // thing keeping it on needs-decision is the one-way term itself.
 var oneWayLeads = []struct{ name, lead string }{
@@ -90,7 +96,7 @@ func TestNoticeLaneRefusesOneWayClasses(t *testing.T) {
 			body := bodyFileWith(t, tc.lead+"\n\n"+neutralEvidence+"\n"+noticeLaneBlock)
 
 			rc, out := runCapture([]string{"new", "-R", allowedRepo,
-				"--title", "the tool default for --sla-days", "--body-file", body,
+				"--title", reversibleTitle, "--body-file", body,
 				"--label", needsDecisionLabel})
 			if rc != deskkit.ExitOK {
 				t.Fatalf("rc = %d, want 0 (filed, on needs-decision); out=%s", rc, out)
@@ -137,7 +143,7 @@ func TestNoticeLaneRefusedByOneWayCallerLabel(t *testing.T) {
 			body := bodyFileWith(t, "A reversible question.\n\n"+neutralEvidence+"\n"+noticeLaneBlock)
 
 			rc, out := runCapture([]string{"new", "-R", allowedRepo,
-				"--title", "flip the tool default for --sla-days", "--body-file", body,
+				"--title", reversibleTitle, "--body-file", body,
 				"--label", needsDecisionLabel, "--label", lbl})
 			if rc != deskkit.ExitOK {
 				t.Fatalf("rc = %d, want 0; out=%s", rc, out)
@@ -224,10 +230,10 @@ func TestNoticeLaneAddsBeforeRemoving(t *testing.T) {
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
 	t.Setenv("FAKEGH_LABEL_REMOVE_FAIL", "1")
-	body := bodyFileWith(t, "A reversible tool-default question.\n\n"+noticeLaneBlock)
+	body := bodyFileWith(t, "A reversible docs-wording question.\n\n"+noticeLaneBlock)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
-		"--title", "flip the tool default for --sla-days", "--body-file", body,
+		"--title", reversibleTitle, "--body-file", body,
 		"--label", needsDecisionLabel})
 	if rc != deskkit.ExitUnverifiable {
 		t.Fatalf("rc = %d, want %d (the remove write failed, loudly); out=%s", rc, deskkit.ExitUnverifiable, out)
@@ -247,9 +253,9 @@ func TestNoticeLaneAuditRecordsLane(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
-	body := bodyFileWith(t, "A reversible tool-default question.\n\n"+noticeLaneBlock)
+	body := bodyFileWith(t, "A reversible docs-wording question.\n\n"+noticeLaneBlock)
 	if rc, out := runCapture([]string{"new", "-R", allowedRepo,
-		"--title", "flip the tool default for --sla-days", "--body-file", body,
+		"--title", reversibleTitle, "--body-file", body,
 		"--label", needsDecisionLabel}); rc != deskkit.ExitOK {
 		t.Fatalf("rc = %d; out=%s", rc, out)
 	}
@@ -285,9 +291,9 @@ func TestDeskDecidedLabelCreatedOnFirstUse(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel)) // no desk-decided
-	body := bodyFileWith(t, "A reversible tool-default question.\n\n"+noticeLaneBlock)
+	body := bodyFileWith(t, "A reversible docs-wording question.\n\n"+noticeLaneBlock)
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
-		"--title", "flip the tool default for --sla-days", "--body-file", body,
+		"--title", reversibleTitle, "--body-file", body,
 		"--label", needsDecisionLabel})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("rc = %d, want 0 (desk-decided is created on first use); out=%s", rc, out)

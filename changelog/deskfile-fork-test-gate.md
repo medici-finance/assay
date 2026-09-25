@@ -6,8 +6,10 @@
   (`brief-contradicts-artifact` | `wrong-repo` | `tool-false-positive`) instead.
 - Two workable options plus a gate the driver still holds can file on a NOTICE LANE
   (`desk-decided`, off the driver's queue, with the shared `desk-r3-decision v1` marker)
-  rather than `needs-decision`. Admission fails closed: the item must carry a positive R-3
-  reversible signal (`deskkit.ReversibleSignals`) AND no one-way signal — a one-way caller
+  rather than `needs-decision`. Admission fails closed: the item must carry a positive,
+  content-bearing R-3 reversible signal (docs wording, typo, phrasing, lint level,
+  port-or-drop, a table column — never a shape-only `tool default` / `default value` /
+  `flag default` / `rename the` alone) AND no one-way signal — a one-way caller
   label (`human-only`, `security`, `gate:human`), a `deskkit.HumanOnlySignals` needle, or a
   `deskkit.OneWayPatterns` match (merge, ready-flip, main push, tag/release, weakening a
   security control, secrets/keys/PII, money, identity/auth, deleting or overwriting data,
@@ -22,8 +24,9 @@
   `deskdigest` lists notice-lane items in its desk-decisions section with their veto date,
   and drops a `desk-decided` item from the Queue only when that section lists it.
 - `deskfile new` refuses a caller `--label desk-decided` and a caller body already carrying
-  the `desk-r3-decision v1` marker (`--force-new` included): only the notice lane writes
-  either.
+  the `desk-r3-decision v1` marker in any spelling the digest reads, or broader
+  (`--force-new` included): only the notice lane writes either. The marker's reader pattern
+  is declared once, in `deskkit`.
 
 ### Changed
 - The R-3 human-only and reversible keyword lists moved from `cmd/deskdigest` into

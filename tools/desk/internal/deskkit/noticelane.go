@@ -13,19 +13,27 @@ import (
 //
 //  1. a caller label that marks the item one-way (OneWayLabels) keeps it on the queue;
 //  2. any one-way term — HumanOnlySignals, or the broader OneWayPatterns below — keeps it;
-//  3. only then, a POSITIVE match on R-3's ReversibleSignals admits it.
+//  3. only then, a POSITIVE match on a CONTENT-BEARING R-3 reversible signal admits it —
+//     ReversibleSignals minus the shape-only needles (NoticeLaneShapeOnlyNeedles).
 //
-// A reversible needle never outranks a one-way term: R-3's "tool default" names the SHAPE of
-// a change, and a tool default that governs a control ("the default for the trust gate") is
-// still one-way. That is why step 2 runs first and is broad.
+// A reversible needle never outranks a one-way term, which is why step 2 runs first and is
+// broad. But step 2 is a keyword list, and a keyword list only catches the phrasings it
+// names. The shape-only needles — "tool default", "default value", "flag default", "rename
+// the" — name the SHAPE of a change and nothing about what it governs ("tool default: build
+// untrusted fork heads"), so as an admission signal they admitted every one-way act the
+// list had not named (security review sec-1688-S1, three rounds of fresh probes). They are
+// therefore NOT admission signals here: an item whose only reversible signal is one of them
+// stays with the human. They remain in ReversibleSignals for deskdigest's display classifier,
+// where a miss costs nothing but a row's class.
 //
 // An item that matches nothing is NOT admitted: absence of a one-way term is not evidence
 // that the item is reversible, and a substring list that fails open would let every
 // one-way item the list forgot leave the queue on the filer's own `caught-by` claim.
 //
 // The same one-way check (steps 1–2) guards deskfile's other off-queue routes — the
-// fewer-than-two-options re-route message and `--no-fork` — so no route the tool offers
-// steers a one-way item off the driver's queue.
+// fewer-than-two-options re-route message and `--no-fork` — so none of those routes takes
+// an item the one-way check recognises off the driver's queue. The check is a keyword floor:
+// it recognises the phrasings it lists, not every possible one-way wording.
 
 // OneWayLabels are caller labels that mark a filing one-way by construction. A filing
 // carrying any of them never takes the notice lane or a `--no-fork` re-route.
@@ -171,15 +179,42 @@ func OneWayExempting(text string, exempt ...string) (OneWayHit, bool) {
 	return OneWayHit{}, false
 }
 
+// NoticeLaneShapeOnlyNeedles are the ReversibleSignals needles that name only the SHAPE of a
+// change (a default, a rename), not its content. They never admit the notice lane (see the
+// file comment); every other ReversibleSignals needle does.
+var NoticeLaneShapeOnlyNeedles = []string{"tool default", "default value", "flag default", "rename the"}
+
+// FirstNoticeLaneSignal returns the first ReversibleSignals entry that may admit the notice
+// lane — a content-bearing needle, never one of NoticeLaneShapeOnlyNeedles — whose needle
+// occurs in hay, or nil. hay must already be lower-cased, as for FirstReversibleSignal.
+func FirstNoticeLaneSignal(hay string) *Signal {
+	for i := range ReversibleSignals {
+		s := &ReversibleSignals[i]
+		if slices.Contains(NoticeLaneShapeOnlyNeedles, s.Needle) {
+			continue
+		}
+		if strings.Contains(hay, s.Needle) {
+			return s
+		}
+	}
+	return nil
+}
+
 // NoticeLaneVerdict decides whether a structurally valid, two-plus-option filing with a held
 // catching gate may take the notice lane. admit is true ONLY when the filing is not one-way
-// AND carries a positive R-3 reversible signal; why names the deciding signal either way.
+// AND carries a positive, content-bearing R-3 reversible signal (FirstNoticeLaneSignal); why
+// names the deciding signal either way.
 func NoticeLaneVerdict(title, body string, labels []string) (admit bool, why string) {
 	if hit, ok := OneWay(title, body, labels); ok {
 		return false, "one-way: " + hit.String()
 	}
-	if s := FirstReversibleSignal(strings.ToLower(title + "\n" + body)); s != nil {
+	hay := strings.ToLower(title + "\n" + body)
+	if s := FirstNoticeLaneSignal(hay); s != nil {
 		return true, "reversible: " + s.Category + " (`" + s.Needle + "`)"
+	}
+	if s := FirstReversibleSignal(hay); s != nil {
+		return false, "only a shape-only R-3 signal (`" + s.Needle + "`), which names the shape of the change, " +
+			"not what it governs (fails closed: stays with the human)"
 	}
 	return false, "no R-3 reversible signal (fails closed: an item the lists cannot place stays with the human)"
 }
@@ -195,7 +230,8 @@ var deskDecidedHeadingRe = regexp.MustCompile(`(?i)^\s*#{1,6}\s*Desk-decided\s*$
 var anyMDHeadingRe = regexp.MustCompile(`^\s*#{1,6}(\s|$)`)
 
 // StripDeskDecidedBlock returns body without the tool-written `## Desk-decided` section
-// (heading through the next heading or EOF) when that section carries DeskDecidedMarker.
+// (heading through the next heading or EOF) when that section carries the marker, in any
+// spelling DeskDecidedMarkerRe (the digest's own reader) accepts.
 // The block is the TOOL's text, not the filer's: a classifier that read it would classify
 // every notice on the tool's own field names (`cost:` is an R-3 spend needle).
 func StripDeskDecidedBlock(body string) string {
@@ -210,7 +246,7 @@ func StripDeskDecidedBlock(body string) string {
 					break
 				}
 			}
-			if strings.Contains(strings.Join(lines[i:end], "\n"), DeskDecidedMarker) {
+			if DeskDecidedMarkerRe.MatchString(strings.Join(lines[i:end], "\n")) {
 				i = end - 1
 				continue
 			}

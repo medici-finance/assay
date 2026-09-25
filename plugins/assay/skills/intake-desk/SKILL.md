@@ -309,8 +309,9 @@ issues landed three days later. That is why the two rules sit together.
    instead of forcing a `needs-decision` filing over a question that never had a fork. Two workable
    options plus a gate you still hold (a draft PR, a flip, an issue close) MAY file on the NOTICE
    LANE instead — `desk-decided`, off the queue, in the weekly digest with its veto date. The tool
-   admits it only on a positive R-3 reversible signal with no one-way term or one-way label, and
-   the same one-way check refuses `--no-fork`; the exact lists are in `tools/desk/README.md`. Any
+   admits it only on a positive, content-bearing R-3 reversible signal (a tool default alone
+   never admits) with no one-way term or one-way label, and the same one-way check refuses
+   `--no-fork`; the exact lists are in `tools/desk/README.md`. Any
    item that is one-way to you stays on the human queue whatever the tool would admit — file it
    `caught-by: nothing`.
    The decider is the human, and only a verified human account is honored. This is the SINGLE

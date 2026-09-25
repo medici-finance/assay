@@ -69,10 +69,10 @@ func TestNoticeLaneVerdictFailsClosed(t *testing.T) {
 		title string
 		admit bool
 	}{
-		{"flip the tool default for --sla-days", true},
 		{"fix the docs wording in the README", true},
-		{"flip the tool default before the release", false}, // one-way outranks reversible
-		{"pick the retry backoff shape", false},             // neither list: fail closed
+		{"fix the docs wording before the release", false}, // one-way outranks reversible
+		{"flip the tool default for --sla-days", false},    // shape-only signal: fail closed
+		{"pick the retry backoff shape", false},            // neither list: fail closed
 	}
 	for _, c := range cases {
 		if got, why := NoticeLaneVerdict(c.title, "", nil); got != c.admit {
@@ -173,7 +173,7 @@ func TestNoticeLaneVerdictRefusesControlPhrasings(t *testing.T) {
 		"Two-factor for bot accounts: keep it or drop it?",
 		"Close the human-only issues after a month",
 	} {
-		if admit, why := NoticeLaneVerdict("the tool default for --sla-days", body, nil); admit {
+		if admit, why := NoticeLaneVerdict("fix the docs wording of the --sla-days help text", body, nil); admit {
 			t.Errorf("NoticeLaneVerdict(..., %q) admitted (%s), want refused", body, why)
 		}
 	}
@@ -184,11 +184,11 @@ func TestNoticeLaneVerdictRefusesControlPhrasings(t *testing.T) {
 // reversible item makes the lane dead.
 func TestNoticeLaneVerdictStillAdmitsReversible(t *testing.T) {
 	for _, title := range []string{
-		"flip the tool default for --sla-days",
 		"fix the docs wording in the README",
+		"fix the typo in the digest header",
 		"lint level for the unrun check: notice or error?",
-		"rename the digest's Age column",
-		"flag default for --window: 7 or 14 days?",
+		"port-or-drop the legacy helper scripts",
+		"table column order in the digest",
 	} {
 		if admit, why := NoticeLaneVerdict(title, "", nil); !admit {
 			t.Errorf("NoticeLaneVerdict(%q) refused (%s), want admitted", title, why)
@@ -208,5 +208,79 @@ func TestOneWayExemptingRuling(t *testing.T) {
 	}
 	if _, ok := OneWayExempting("ruled-check: this is irreversible -> nothing", "ruling"); !ok {
 		t.Error("a non-exempt HumanOnlySignals needle on the ruled-check line was not read")
+	}
+}
+
+// TestNoticeLaneVerdictShapeOnlyNotAdmitted — a shape-only reversible needle ("tool default",
+// "default value", "flag default", "rename the") names the shape of a change, not what it
+// governs, so on its own it never admits the notice lane (security review sec-1688-S1, round
+// 3). Each title here matches no one-way term; the refusal names the shape-only signal.
+func TestNoticeLaneVerdictShapeOnlyNotAdmitted(t *testing.T) {
+	for _, title := range []string{
+		"flip the tool default for --sla-days",
+		"Default value of --window: 7 or 14?",
+		"flag default for --window: 7 or 14 days?",
+		"rename the digest's Age column",
+		"Tool default: build untrusted fork heads in CI?",
+		"Tool default: scale the worker pool to zero overnight?",
+	} {
+		admit, why := NoticeLaneVerdict(title, "", nil)
+		if admit {
+			t.Errorf("NoticeLaneVerdict(%q) admitted (%s), want refused", title, why)
+			continue
+		}
+		if !strings.Contains(why, "shape-only") && !strings.HasPrefix(why, "one-way") {
+			t.Errorf("NoticeLaneVerdict(%q) refused for %q, want the shape-only reason (or a one-way hit)", title, why)
+		}
+	}
+	// Every shape-only needle is a real ReversibleSignals needle (so the digest still reads
+	// it), and FirstNoticeLaneSignal never returns one.
+	for _, n := range NoticeLaneShapeOnlyNeedles {
+		if s := FirstReversibleSignal(n); s == nil || s.Needle != n {
+			t.Errorf("shape-only needle %q is not a ReversibleSignals needle", n)
+		}
+		if s := FirstNoticeLaneSignal(n); s != nil {
+			t.Errorf("FirstNoticeLaneSignal(%q) = %q, want nil", n, s.Needle)
+		}
+	}
+}
+
+// TestDeskDecidedMarkerClaimCoversReader — the caller-body refusal
+// (HasDeskDecidedMarkerClaim) matches every spelling the reader (DeskDecidedMarkerRe) accepts,
+// so a variant marker can never be filed by a caller and then read as a desk decision
+// (review findings cor-1688-C6, sec-1688-S4).
+func TestDeskDecidedMarkerClaimCoversReader(t *testing.T) {
+	for _, m := range []string{
+		DeskDecidedMarker,
+		"<!--desk-r3-decision v1-->",
+		"<!-- DESK-R3-DECISION V1 -->",
+		"<!--  desk-r3-decision v1  -->",
+		"<!--  desk-r3-decision v1\n-->",
+		"<!--\tDesk-R3-Decision v1\t-->",
+	} {
+		if !DeskDecidedMarkerRe.MatchString(m) {
+			t.Errorf("fixture: the reader does not accept %q", m)
+		}
+		if !HasDeskDecidedMarkerClaim(m) {
+			t.Errorf("HasDeskDecidedMarkerClaim(%q) = false, but the reader accepts it", m)
+		}
+	}
+	// Broader than the reader: other versions and unclosed attempts are refused too.
+	for _, m := range []string{"<!-- desk-r3-decision v2 -->", "<!-- desk-r3-decision"} {
+		if !HasDeskDecidedMarkerClaim(m) {
+			t.Errorf("HasDeskDecidedMarkerClaim(%q) = false, want true (the refusal is a superset)", m)
+		}
+	}
+	if HasDeskDecidedMarkerClaim("the desk-r3-decision marker, named in prose") {
+		t.Error("prose naming the marker, with no comment opener, was treated as a marker")
+	}
+}
+
+// TestStripDeskDecidedBlockReadsMarkerVariants — the classifier strip uses the reader's own
+// matcher, so a block the digest would read as marked is also the block it strips.
+func TestStripDeskDecidedBlockReadsMarkerVariants(t *testing.T) {
+	body := "Kept.\n\n## Desk-decided\n\n<!--DESK-R3-DECISION V1-->\ndecision: keep\ncost: draft-pr\n"
+	if got := StripDeskDecidedBlock(body); strings.Contains(got, "cost:") {
+		t.Errorf("a variant-marker block was not stripped:\n%s", got)
 	}
 }

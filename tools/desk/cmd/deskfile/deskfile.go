@@ -806,8 +806,11 @@ func cmdNew(args []string) (err error) {
 	// The desk-r3-decision marker in a filed issue's body is the notice lane's record that the
 	// TOOL admitted the filing; deskdigest reads it as exactly that. A caller body already
 	// carrying it would forge that record, so it is refused (exit 5), --force-new included.
-	if strings.Contains(string(body), deskDecidedMarker) {
-		return deskkit.Refused("refused: the body carries the " + deskDecidedMarker + " marker, which only this " +
+	// The refusal matches every spelling of the marker (any case, any whitespace, any
+	// version) — a superset of what deskdigest's reader accepts, so no variant the reader
+	// would take as the marker gets past it (cor-1688-C6, sec-1688-S4).
+	if deskkit.HasDeskDecidedMarkerClaim(string(body)) {
+		return deskkit.Refused("refused: the body carries the " + deskDecidedMarker + " marker (in some spelling), which only this " +
 			"tool writes (the notice lane's record that its gate admitted the filing). Remove it; a " +
 			needsDecisionLabel + " filing with a `### Fork test` block gets it from the gate if admitted.")
 	}
@@ -860,8 +863,9 @@ func cmdNew(args []string) (err error) {
 	//
 	// Every route off the driver's queue this gate offers FAILS CLOSED (deskkit/noticelane.go):
 	// the fewer-than-two-options refusal names the --no-fork re-routes only for an item that
-	// is not one-way, and the notice lane admits only a positive R-3 reversible signal with no
-	// one-way term and no one-way caller label.
+	// is not one-way, and the notice lane admits only a positive, content-bearing R-3
+	// reversible signal (deskkit.FirstNoticeLaneSignal) with no one-way term and no one-way
+	// caller label.
 	deskDecidedApply := false
 	if !*forceNew && noForkVal == "" && hasLabel(labels, needsDecisionLabel) {
 		res := parseForkTest(string(body))
