@@ -87,7 +87,7 @@ single-point-of-failure: for the prose half the control is the skillslint PARITY
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
-### Non-implementer verifier run — VERIFY: BLOCKED — 8/11 pass, 3 could-not-check, 0 fail — 2026-09-23 claude-opus-4-8-verifier
+### Non-implementer verifier run — VERIFY: BLOCKED — 7/11 pass, 4 could-not-check, 0 fail — 2026-09-23 claude-opus-4-8-verifier
 
 | # | Command | Expected | Observed (exit + key output) | Date | Runner |
 |---|---------|----------|------------------------------|-------------|---|
@@ -99,14 +99,16 @@ single-point-of-failure: for the prose half the control is the skillslint PARITY
 | 6 | git grep -n '"/opt/desk-tools' HEAD -- 'tools/desk/**/*.go' \| grep -vc _test.go \|\| true | 1 — sole hit is cellctl's DESK_TOOLS_BIN default | PASS — exit 0; output `1`; the one hit is tools/desk/cmd/cellctl/cell.go:259 (the sanctioned out-of-scope survivor). deskrelease github.go carries /opt only in comments, no code literal | 2026-09-23 | claude-opus-4-8-verifier |
 | 7 | cd tools/skillslint && go test -count=1 -run 'TestPosixTokenRow' ./... | PASS (fail-first fixture) | PASS — exit 0; `ok ...skillslint 0.221s` | 2026-09-23 | claude-opus-4-8-verifier |
 | 8 | deskboard actions --out /tmp/a.json && reviewloop plan --actions /tmp/a.json --dry-run; echo rc=$? | rc=0 | COULD-NOT-CHECK — environment: the offline envelope forbids `deskboard actions` as a live composed run (it enumerates open PRs across the repo set = live GitHub). Both halves proven OFFLINE: deskboard actions unit tests pass (go test -run Action ./cmd/deskboard rc 0) and reviewloop plan --actions/--dry-run tests pass (go test -run Plan ./cmd/reviewloop rc 0). | 2026-09-23 | claude-opus-4-8-verifier |
-| 9 | statusgen --root . --consumers windows-port/12; echo $? | 0 | PASS — exit 0; "no brief files in the diff against 50989dbc... — nothing to corroborate" (empty diff at merged main is the expected shape) | 2026-09-23 | claude-opus-4-8-verifier |
+| 9 | statusgen --root . --consumers windows-port/12; echo $? | 0 | COULD-NOT-CHECK — merged tree; exit 0 but the instrument checked nothing: "no brief files in the diff against 50989dbc... — nothing to corroborate". On merged main the brief's own diff is empty, so no consumers entry was corroborated; the exit code alone does not meet "Consumers routing corroborated". Same condition as desk-supervision/13 row 10, contributor-trust/04 row 12 and graph-execution/07 row 8. Not a pass, not a fail. | 2026-09-23 | claude-opus-4-8-verifier |
 | 10 | statusgen --root . --lint | 0 PROBLEMs | COULD-NOT-CHECK — hermetic witness owed (darwin): the check:ci hermetic re-exec needs Linux unshare --net; host is darwin. Direct non-hermetic run: exit 0, `LINT: PASS`, PROBLEM count 0 (501 advisory NOTICEs, not gating). | 2026-09-23 | claude-opus-4-8-verifier |
-| 11 | cd tools/desk && go test -count=1 -run 'TestHookInstall.*AndForeignRefusal' ./cmd/deskpushguard/ | PASS — refuses foreign hook without --force, overwrites with --force | PASS — exit 0; `ok ...deskpushguard 0.355s` (`go test -list 'TestHookInstall.*AndForeignRefusal'` selects exactly the one test this row names — the idempotent-and-foreign-refusal hook-install test.) Self-contained mutation row: the test itself applies the mutation (plants a foreign non-deskpushguard pre-push hook) and asserts the red path (writeHooks REFUSES to overwrite without --force) then the pass path (overwrites WITH --force); the single green run records that the reddening assertion held, so no separate verifier source-mutation is applied or restored. | 2026-09-23 | claude-opus-4-8-verifier |
+| 11 | cd tools/desk && go test -count=1 -run 'TestHookInstall.*AndForeignRefusal' ./cmd/deskpushguard/ | PASS — refuses foreign hook without --force, overwrites with --force | PASS — exit 0; `ok ...deskpushguard 0.355s` (green run 2026-09-23, claude-opus-4-8-verifier) (`go test -list 'TestHookInstall.*AndForeignRefusal'` selects exactly the one test this row names — the idempotent-and-foreign-refusal hook-install test.) MUTATION half, run 2026-09-25 at merge commit e7a314b8 (hookinstall.go md5 b00bdbb373c20c6271dceb310c961dec, byte-identical to 50989dbc): BASELINE exit 0 `ok`. MUTATION: in writeShimIfClear (hookinstall.go line 160) changed "if !force {" to "if false && !force {", so a foreign hook is silently clobbered; the same command (with -v) REDDENED, exit 1: "hookinstall_test.go:127: writeHooks over a foreign hook without --force should refuse, got no error". Restored with git checkout; md5 b00bdbb373c20c6271dceb310c961dec again (byte-identical), git status clean; re-run exit 0 `ok`. | 2026-09-25 | claude-opus-5-5-verifier |
 
-Rows observed passing: 8/11 (1,2,3,4,6,7,9,11). Could-not-check: 3 (5,8,10) — rows 5 and 8 are
+Rows observed passing: 7/11 (1,2,3,4,6,7,11). Could-not-check: 4 (5,8,9,10) — rows 5 and 8 are
 environment-limited (Windows exec on darwin; offline envelope) each corroborated by an executed
-offline proof, and row 10 is a check:ci hermetic re-exec that needs a Linux runner though its direct
-run passed; none observed failing.
+offline proof, row 9 is the consumers instrument on merged main where the brief's diff is empty (it
+checked nothing), and row 10 is a check:ci hermetic re-exec that needs a Linux runner though its
+direct run passed; none observed failing. Row 11's mutation half is recorded: the foreign-hook
+refusal reddens when removed (mutation run 2026-09-25 by claude-opus-5-5-verifier).
 
 **Risk-bearing value (kit §4 — enumerate → rank → derive).**
 
