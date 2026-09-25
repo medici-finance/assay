@@ -1271,7 +1271,9 @@ func TestVerifyPassHeldContradictionNegatedMentionIsNotADisposition(t *testing.T
 // answer to a question ("available? no HELD") or a field value ("green: no
 // HELD") put the same tokens in front of a LIVE hold. Each must-refuse line
 // below is a genuine hold that a PASS must not proceed over; each must-excuse
-// line is a clean count or negation that must not refuse.
+// line is a clean count or negation that must not refuse. Every position
+// rule has at least one must-refuse line with NO hold reason, so deleting
+// that rule turns a case red rather than being masked by the reason check.
 func TestVerifyPassHeldContradictionNegationCuePosition(t *testing.T) {
 	const header = "**VERIFY: PASS** — row 1 green.\n\n"
 	cell := func(result string) string {
@@ -1300,12 +1302,39 @@ func TestVerifyPassHeldContradictionNegationCuePosition(t *testing.T) {
 		{"field value not before HELD", prose("row 3: not HELD"), true},
 		{"assigned no before HELD", prose("runner=no HELD"), true},
 		{"table-cell no before HELD", prose("| 3 | no HELD |"), true},
+		// No hold reason on these, so only the position rule can refuse them.
+		{"question answered no, no hold reason", prose("runner available? no HELD"), true},
+		{"question answered no across a non-breaking space", prose("runner available? no HELD"), true},
+		{"question answered no across a zero-width space", prose("runner available?​no HELD"), true},
+		{"bold field label before no", prose("**row 3 green:** no HELD"), true},
+		{"bold question-style field label before no", prose("**Runner available:** no HELD"), true},
+		{"bold row label before not", prose("**row 3:** not HELD"), true},
+		{"hyphen before no", prose("row 3 green - no HELD"), true},
+		{"closing parenthesis before no", prose("(runner up) no HELD"), true},
+		{"non-zero is not a zero count", prose("exit codes: 0 clean / non-zero could-not-check"), true},
+		// Must refuse: an exit status spelled out, or a number that is not a
+		// verdict count, is not a count position.
+		{"exit status zero before HELD", prose("row 3 exit zero HELD"), true},
+		{"exit code zero before HELD", prose("row 3 exit code zero HELD"), true},
+		{"rc zero before HELD", prose("rc zero HELD"), true},
+		{"returned zero before HELD", prose("row 3 returned zero HELD"), true},
+		{"non-count item before zero", prose("row 3 exit, 0 HELD"), true},
+		{"non-count item closed by semicolon before zero", prose("step 2 exit; 0 HELD"), true},
 		// Must refuse: a negation followed by a hold reason contradicts itself.
 		{"dash-answered no with hold reason", prose("runner available — no HELD pending runner"), true},
 		{"zero count with hold reason", prose("0 HELD until the runner is back"), true},
-		// Must refuse: struck text never joins a cue to a marker.
+		{"zero count, comma, hold reason", prose("0 HELD, pending runner"), true},
+		{"zero count, parenthesised hold reason", prose("0 HELD (awaiting runner)"), true},
+		{"zero count, hyphen, hold reason", prose("0 HELD - awaiting runner"), true},
+		{"zero count, em dash, hold reason", prose("summary: 0 HELD — until the runner is back"), true},
+		{"negation, comma, hold reason", prose("row 3 is not HELD, pending runner"), true},
+		{"dash-answered no, comma, hold reason", prose("runner available — no HELD, pending runner"), true},
+		{"marker used as a label with a value", prose("0 HELD: human read owed"), true},
+		// Must refuse: struck text never joins a cue to a marker, and never
+		// stands in for what precedes a cue.
 		{"struck span between cue and marker", prose("row 3 not ~~yet green, still~~ HELD"), true},
 		{"struck span between count label and zero", prose("summary: ~~3~~0 HELD"), true},
+		{"struck span right before the cue", prose("row 3 ~~ok~~ no HELD"), true},
 
 		// Must excuse: genuine negations and zero counts.
 		{"not negates the marker in prose", prose("row 3 is not HELD; every row ran green."), false},
@@ -1315,6 +1344,18 @@ func TestVerifyPassHeldContradictionNegationCuePosition(t *testing.T) {
 		{"zero count after a count label", prose("Count: 0 could-not-check."), false},
 		{"negation after a count label", prose("summary: no could-not-check rows."), false},
 		{"dash then negation, no hold reason", prose("all rows ran — no could-not-check."), false},
+		{"negation after a bold count label", prose("**Summary:** no could-not-check"), false},
+		{"zero count after a bold count label", prose("**Summary:** 0 HELD"), false},
+		{"negation after a list marker", prose("- no could-not-check rows"), false},
+		{"sentence-start negation", prose("every row passes. No HELD rows remain."), false},
+		{"linking word before zero", prose("certificate issued with zero could-not-check."), false},
+		{"linking word otherwise before no", prose("otherwise no could-not-check rows, no invented scope."), false},
+		{"semicolon before zero", prose("all rows green; zero could-not-check."), false},
+		{"arrow before no", prose("`go` present → no could-not-check."), false},
+		{"parenthesised negation", prose("every row ran (no could-not-check)."), false},
+		{"clause break then a non-breaking space before no", prose("all rows ran,\u00a0no could-not-check."), false},
+		{"zero count after a rows count, dash note", prose("**VERIFY: PASS (5/5 rows, 0 HELD — live cluster access was available)**"), false},
+		{"zero count after a fail count", prose("9/9 rows pass, 0 fail, 0 held."), false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

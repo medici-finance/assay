@@ -4,7 +4,17 @@
   held state ("VERIFY: PASS ... no could-not-check", "summary: 0 HELD") — only
   an actual, un-negated disposition still contradicts the PASS. This NARROWS a
   flip-refusal detector (the model autoflip, the verify-gate card and
-  closeVerify's `verified` path), so the excusal fails closed: a "no"/"not"/
-  "zero" or "0" cue excuses only in a count or negation position, never after
-  a question, a field or exit-code label, a table cell, struck text, or when
-  the marker is followed by a hold reason ("pending", "until", "for", …).
+  closeVerify's `verified` path), so the excusal fails closed and what may
+  precede a cue is an allowlist. A "no"/"not"/"zero" cue excuses only after
+  the line start, a list marker, a count label ("summary:"), a clause break
+  (",", ";", ".", "(", an em or en dash, "→") or a linking word ("is", "with",
+  "and", …) — so not right after "?", "=", "|", ")", "-", a non-count ":"
+  label (bold or plain), struck text or any other word ("rc zero HELD"). A
+  "0" cue excuses only in a count position: the line start, a list marker, a
+  count label, or right after a verdict-count item ("7 PASS, 0 HELD"). An
+  occurrence followed — past spaces, emphasis or clause punctuation — by a
+  hold-reason word ("pending", "awaiting", "until", "for", …), or by a colon,
+  is never excused. Residuals: a clause break or linking word admits whatever
+  precedes it ("runner available — no HELD" is excused), a hold reason that
+  uses none of the reason words ("0 HELD — runner offline") is not detected,
+  and each physical line is judged on its own.
