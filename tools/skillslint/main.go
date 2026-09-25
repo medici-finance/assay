@@ -233,7 +233,15 @@ func main() {
 }
 
 func runSync(root string) int {
-	changed, rep, err := SyncGuardrails(root)
+	// priorGuardrailSources gives SyncGuardrails every earlier text of each
+	// block, so a copy is rewritten only when the lines at its anchor match a
+	// known text exactly (medici-finance/assay#1690). Without history, only
+	// already-synced copies can be proven; every other is could-not-check.
+	prior, notes := priorGuardrailSources(root)
+	for _, n := range notes {
+		fmt.Fprintf(os.Stderr, "skillslint --sync: note: %s\n", n)
+	}
+	changed, rep, err := SyncGuardrails(root, prior)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "skillslint --sync: %v\n", err)
 		return 2

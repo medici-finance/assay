@@ -33,6 +33,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -109,7 +110,16 @@ func ParseGuardrailSource(root string) (*GuardrailSource, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could-not-check: cannot read the declared guardrail source %s: %w", guardrailSourcePath, err)
 	}
+	return parseGuardrailBytes(raw)
+}
 
+// parseGuardrailBytes is the byte-level half of ParseGuardrailSource, split out
+// so a PREVIOUS revision of the source (fetched from git, not the working
+// tree) can be parsed the same way SyncGuardrails parses the current one — see
+// priorGuardrailSources and the `prior` parameter of SyncGuardrails, which use
+// earlier texts of a block to prove where its copy ends
+// (medici-finance/assay#1690).
+func parseGuardrailBytes(raw []byte) (*GuardrailSource, error) {
 	src := &GuardrailSource{}
 	lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
 
@@ -425,17 +435,37 @@ func guardrailDiff(want, got string) string {
 // It can only rewrite a block it can locate. A site whose anchor is missing or
 // ambiguous is returned as an unchecked Issue and left untouched — silently
 // guessing where a rule belongs is worse than failing.
-func SyncGuardrails(root string) (changed []string, rep GuardrailReport, err error) {
+//
+// It can only rewrite a block whose EXTENT it can prove (medici-finance/assay#1690).
+// A copy carries no end marker (see locateBlock), so the anchor says where a
+// block starts but not where it stops. The only safe answer is by content: the
+// lines at the anchor must equal, byte-for-byte, a text this block is KNOWN to
+// have had at that site — the current canonical text (the copy is already
+// synced: no write) or its text in one of `prior`, earlier revisions of the
+// declared source (in production, every committed and staged revision, via
+// priorGuardrailSources). The removal is exactly the matched text's length;
+// the new text is inserted in its place. When no known text matches — no
+// history, a history that never held the copy's text, a hand-drifted copy —
+// the site is could-not-check and its file is not written. A length is never
+// guessed: guessing from the NEW text's length is what swallowed trailing
+// content on growth and left stale lines on shrink, and guessing from HEAD's
+// length alone did the same on a re-run or when the source edit was committed
+// before the sync.
+func SyncGuardrails(root string, prior []*GuardrailSource) (changed []string, rep GuardrailReport, err error) {
 	src, perr := ParseGuardrailSource(root)
 	if perr != nil {
 		rep.Unchecked = append(rep.Unchecked, Issue{Path: guardrailSourcePath, Msg: perr.Error()})
 		return nil, rep, perr
 	}
 
-	// Group by file so a file with two blocks is written once.
+	// Group by file so a file with two blocks is written once. Every located
+	// block is recorded — including an already-synced one that needs no write —
+	// so overlapping extents in one file can be refused before anything moves.
 	type edit struct {
-		at    int
-		lines []string
+		id     string
+		at     int
+		oldLen int      // the PROVEN length of the text being replaced
+		lines  []string // nil: already carries the canonical text, no write
 	}
 	perFile := map[string][]edit{}
 
@@ -448,6 +478,7 @@ func SyncGuardrails(root string) (changed []string, rep GuardrailReport, err err
 			}
 			fileLines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
 			want := src.expected(b, site)
+			wantLines := strings.Split(want, "\n")
 			at, hits := locateBlock(fileLines, want)
 			if hits != 1 {
 				rep.Unchecked = append(rep.Unchecked, Issue{
@@ -456,7 +487,22 @@ func SyncGuardrails(root string) (changed []string, rep GuardrailReport, err err
 				})
 				continue
 			}
-			perFile[site.Path] = append(perFile[site.Path], edit{at: at, lines: strings.Split(want, "\n")})
+			known := append([]string{want}, priorSiteTexts(prior, b.ID, site)...)
+			matched, ok := matchExtent(fileLines, at, known)
+			if !ok {
+				rep.Unchecked = append(rep.Unchecked, Issue{
+					Path: site.Path,
+					Msg: fmt.Sprintf("could-not-check: guardrail %q at line %d matches neither the current canonical text nor any of the %d earlier revision(s) of it available from %s, so where the copy ends cannot be proven — not rewritten.\n"+
+						"  If the copy holds an earlier UNCOMMITTED edit of the source, restore it (`git checkout -- %s`) or `git add` that source edit before re-running; if it was hand-edited, replace it by hand with the canonical text.",
+						b.ID, at+1, len(known)-1, guardrailSourcePath, site.Path),
+				})
+				continue
+			}
+			e := edit{id: b.ID, at: at, oldLen: len(strings.Split(matched, "\n"))}
+			if matched != want {
+				e.lines = wantLines
+			}
+			perFile[site.Path] = append(perFile[site.Path], e)
 		}
 	}
 
@@ -467,6 +513,23 @@ func SyncGuardrails(root string) (changed []string, rep GuardrailReport, err err
 	sort.Strings(paths)
 
 	for _, p := range paths {
+		edits := perFile[p]
+		// Apply from the bottom up so earlier indices stay valid.
+		sort.Slice(edits, func(i, j int) bool { return edits[i].at > edits[j].at })
+		overlap := false
+		for i := 1; i < len(edits); i++ {
+			if lo, hi := edits[i], edits[i-1]; lo.at+lo.oldLen > hi.at {
+				rep.Unchecked = append(rep.Unchecked, Issue{
+					Path: p,
+					Msg:  fmt.Sprintf("could-not-check: guardrails %q (line %d) and %q (line %d) overlap — not rewritten", lo.id, lo.at+1, hi.id, hi.at+1),
+				})
+				overlap = true
+			}
+		}
+		if overlap {
+			continue
+		}
+
 		abs := filepath.Join(root, filepath.FromSlash(p))
 		raw, rerr := os.ReadFile(abs)
 		if rerr != nil {
@@ -475,21 +538,14 @@ func SyncGuardrails(root string) (changed []string, rep GuardrailReport, err err
 		}
 		before := strings.ReplaceAll(string(raw), "\r\n", "\n")
 		fileLines := strings.Split(before, "\n")
-		edits := perFile[p]
-		// Apply from the bottom up so earlier indices stay valid; every block
-		// here is the same length as what it replaces, but bottom-up costs
-		// nothing and survives a future variable-length block.
-		sort.Slice(edits, func(i, j int) bool { return edits[i].at > edits[j].at })
 		for _, e := range edits {
-			end := e.at + len(e.lines)
-			if end > len(fileLines) {
-				rep.Unchecked = append(rep.Unchecked, Issue{Path: p, Msg: "could-not-check: block runs past end of file — not rewritten"})
+			if e.lines == nil {
 				continue
 			}
-			out := make([]string, 0, len(fileLines))
+			out := make([]string, 0, len(fileLines)-e.oldLen+len(e.lines))
 			out = append(out, fileLines[:e.at]...)
 			out = append(out, e.lines...)
-			out = append(out, fileLines[end:]...)
+			out = append(out, fileLines[e.at+e.oldLen:]...)
 			fileLines = out
 		}
 		after := strings.Join(fileLines, "\n")
@@ -507,4 +563,114 @@ func SyncGuardrails(root string) (changed []string, rep GuardrailReport, err err
 		changed = append(changed, p)
 	}
 	return changed, rep, nil
+}
+
+// priorSiteTexts returns every distinct text block `blockID` had at `site` in
+// the prior revisions, each rendered with that revision's own scrub table.
+func priorSiteTexts(prior []*GuardrailSource, blockID string, site GuardrailSite) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, old := range prior {
+		if old == nil {
+			continue
+		}
+		for _, ob := range old.Blocks {
+			if ob.ID != blockID {
+				continue
+			}
+			for _, osite := range ob.Sites {
+				if osite.Path != site.Path {
+					continue
+				}
+				if t := old.expected(ob, osite); !seen[t] {
+					seen[t] = true
+					out = append(out, t)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// matchExtent returns the LONGEST of `known` whose lines appear verbatim in
+// fileLines starting at `at`. Longest wins because a shorter known text can be
+// a prefix of a longer one: after a grow is synced, the copy begins with the
+// old, shorter text too, and removing only that would duplicate the new
+// block's tail; before a prefix-shrink is synced, the copy begins with the new
+// text too, and treating it as synced would leave the old tail behind.
+func matchExtent(fileLines []string, at int, known []string) (string, bool) {
+	best, found := "", false
+	for _, k := range known {
+		kl := strings.Split(k, "\n")
+		if at+len(kl) > len(fileLines) || strings.Join(fileLines[at:at+len(kl)], "\n") != k {
+			continue
+		}
+		if !found || len(kl) > len(strings.Split(best, "\n")) {
+			best, found = k, true
+		}
+	}
+	return best, found
+}
+
+// priorGuardrailSources is SyncGuardrails' `prior` in production: every
+// revision of the declared source git knows about under `root` — the staged
+// copy plus every commit that touched it, newest first — each parsed with the
+// same parser as the working tree. These are only CANDIDATE texts: a revision
+// is used for a site only when its text matches the copy on disk exactly, so a
+// wrong or stale revision cannot cause a write, and an unparseable one is
+// skipped (and noted) rather than turned into a guessed length.
+//
+// Paths are passed as `./`-relative so git resolves them against `root`, not
+// the repository top. No history (not a git checkout, no commits, git absent)
+// returns nil plus a note; SyncGuardrails then rewrites only copies it can
+// prove from the current text, and reports every other as could-not-check.
+func priorGuardrailSources(root string) (prior []*GuardrailSource, notes []string) {
+	gitOut := func(args ...string) ([]byte, error) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		return cmd.Output()
+	}
+	rel := "./" + guardrailSourcePath
+
+	var revs []string
+	if _, err := gitOut("rev-parse", "--verify", "-q", "HEAD"); err != nil {
+		notes = append(notes, fmt.Sprintf("no git history for %s under %s — only copies already carrying the current canonical text can be proven", guardrailSourcePath, root))
+	} else {
+		out, err := gitOut("log", "--format=%H", "--", rel)
+		if err != nil {
+			notes = append(notes, fmt.Sprintf("git log of %s failed (%v) — earlier revisions unavailable", guardrailSourcePath, err))
+		} else {
+			revs = strings.Fields(string(out))
+		}
+	}
+
+	skipped := 0
+	seen := map[string]bool{}
+	load := func(spec string, required bool) {
+		raw, err := gitOut("show", spec)
+		if err != nil {
+			if required {
+				skipped++
+			}
+			return
+		}
+		if seen[string(raw)] {
+			return
+		}
+		seen[string(raw)] = true
+		src, perr := parseGuardrailBytes(raw)
+		if perr != nil {
+			skipped++
+			return
+		}
+		prior = append(prior, src)
+	}
+	load(":"+rel, false) // the staged copy, if any
+	for _, h := range revs {
+		load(h+":"+rel, true)
+	}
+	if skipped > 0 {
+		notes = append(notes, fmt.Sprintf("skipped %d revision(s) of %s that could not be read or parsed", skipped, guardrailSourcePath))
+	}
+	return prior, notes
 }
