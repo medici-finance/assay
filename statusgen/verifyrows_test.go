@@ -1065,6 +1065,11 @@ func TestGoTestRunVacuous_Shapes(t *testing.T) {
 			row:  "| 10 | `go test -bench TestShapesBench ./... -benchtime=1x` | PASS |",
 			want: nil,
 		},
+		{
+			name: "run-no-tests idiom paired with -bench (-run '^$') has no --- PASS line it could ever assert — silent",
+			row:  "| 11 | `go test -run '^$' -bench TestShapesBenchOnly ./... -benchtime=1x` | PASS |",
+			want: nil,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

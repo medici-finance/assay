@@ -549,6 +549,13 @@ passing run — which is why they are lint rules and not review vigilance.
     - Write: `go test -run '^Name$' -v ./pkg/... > "${TMPDIR:-/tmp}/x.out" 2>&1
       && grep -F -e '--- PASS: Name' "${TMPDIR:-/tmp}/x.out"`.
 
+    `-run '^$'` is exempt: it is the standard idiom for running NO tests
+    alongside `-bench`/`-fuzz`, deliberately matches no test name, and so has
+    no `--- PASS:` line it could ever assert — the same reason `-bench`/`-fuzz`
+    selectors themselves are out of scope. An unanchored empty pattern
+    (`-run ''`) is not the same thing and is not exempt: in Go, an empty regexp
+    matches every name, so that row runs everything.
+
 28. **A comparison base must be a pinned SHA or a computed merge-base, never a
     branch** (`moving-ref`, #639). A row based on `origin/main` is a function of
     another branch's tip, not of the tree under test. Measured: the identical

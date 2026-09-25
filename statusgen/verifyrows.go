@@ -1128,6 +1128,16 @@ func namedSelector(pat string) (name string, ok bool) {
 	return "", false
 }
 
+// selectsNoTests reports whether a `-run` pattern is the literal `^$` idiom —
+// anchored to the empty string, so it matches no test name (every Go test name
+// is non-empty) and `go test` runs zero tests by design. This is deliberately
+// the exact literal string, not "empty after stripping one `^`/`$`": an
+// UNANCHORED empty pattern (`-run ''`) has the opposite meaning in Go — an
+// empty regexp matches every name as a substring, so it runs everything.
+func selectsNoTests(pat string) bool {
+	return pat == "^$"
+}
+
 // grepNegations reports, in the SAME order as grepCalls(toks), whether each
 // grep-family invocation is immediately negated with a leading `!` in its own
 // simple command (`! grep -q …`). A negated grep's exit status is inverted, so
@@ -1435,9 +1445,18 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 	// Rule 11: a `go test -run` selector with no `--- PASS` assertion.
 	var runSelectors []goTestPattern
 	for _, p := range goTestRunPatterns(toks) {
-		if p.flag == "-run" { // -bench/-fuzz do not print `--- PASS:` lines — out of scope
-			runSelectors = append(runSelectors, p)
+		if p.flag != "-run" { // -bench/-fuzz do not print `--- PASS:` lines — out of scope
+			continue
 		}
+		if selectsNoTests(p.pat) {
+			// `-run '^$'` is the standard idiom for running NO tests, paired with
+			// `-bench`/`-fuzz` (out of scope, same as those flags themselves): it
+			// deliberately matches no test name, so no `--- PASS:` line can ever
+			// exist to assert on, and the NOTICE's own rewrite would turn a
+			// correct benchmark/fuzz row into one that always fails.
+			continue
+		}
+		runSelectors = append(runSelectors, p)
 	}
 	if len(runSelectors) > 0 {
 		// A row-wide `|| true`/`|| echo`/`|| :` neutralises every assertion in it
