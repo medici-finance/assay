@@ -34,7 +34,12 @@ func TestDeskmergeAllowlistNarrowedToTrialMergeFamily(t *testing.T) {
 				"transport verb not yet migrated)", v)
 		}
 	}
-	migrated := []string{"rev-parse", "rev-list", "merge-base", "remote", "commit", "update-ref"}
+	// `remote` stays for the origin-resolution read the fetch/push gates make (#1623): only git
+	// can report what git will resolve, so that read cannot live on gitcore.
+	if !Allowed("deskmerge", "remote") {
+		t.Fatal("deskmerge:remote must stay allowlisted for `remote get-url [--push] --all origin`")
+	}
+	migrated := []string{"rev-parse", "rev-list", "merge-base", "commit", "update-ref"}
 	for _, v := range migrated {
 		if Allowed("deskmerge", v) {
 			t.Fatalf("deskmerge:%s migrated to gitcore in brief 07 — must no "+

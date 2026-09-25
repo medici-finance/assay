@@ -63,9 +63,11 @@ func runCmdIn(dir, name string, args ...string) (string, error) {
 //     a separate, larger go-git gap, explicitly out of scope for this brief and left to
 //     the named follow-on stream.
 //   - "fetch", "push" — the transport verbs; not yet migrated (briefs 05 and 06 own them).
+//   - "remote"   — ONLY `remote get-url [--push] --all origin`, the gates' read of where that
+//     fetch and push will connect, as git resolves it (#1623; see resolveRepoRoot).
 var gitexecVerbs = map[string]bool{
 	"merge": true, "diff": true, "add": true, "worktree": true,
-	"fetch": true, "push": true,
+	"fetch": true, "push": true, "remote": true,
 }
 
 // runGit runs git with cwd=dir. It is a variable so tests can record argv; production

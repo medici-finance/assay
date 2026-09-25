@@ -32,10 +32,10 @@ func TestRunMonitor_HandsTheTokenFileByPath(t *testing.T) {
 	const tokenValue = "x-example-installation-token"
 	t.Setenv("GH_TOKEN", "")
 	var sawEnv, sawArgs []string
-	_, err := RunMonitor("/x/inbound-monitor.sh", t.TempDir(),
+	_, err := RunMonitor(Poller{}, t.TempDir(),
 		[]string{"example-org/tracker", "example-other/agents", "example-org/examples"},
 		map[string]string{"example-org": "/cache/example-token", "example-unused": "/cache/unused-token"},
-		func(_ string, env []string, args ...string) (string, int, error) {
+		func(_ Poller, env []string, args ...string) (string, int, error) {
 			sawEnv, sawArgs = env, args
 			return seededPoll, 0, nil
 		})
@@ -65,8 +65,8 @@ func TestRunMonitor_NoTokenFilesKeepsTodaysArgv(t *testing.T) {
 	scope := []string{"example-org/tracker", "example-other/agents"}
 	for _, tf := range []map[string]string{nil, {}} {
 		var sawArgs []string
-		if _, err := RunMonitor("/x/inbound-monitor.sh", t.TempDir(), scope, tf,
-			func(_ string, _ []string, args ...string) (string, int, error) {
+		if _, err := RunMonitor(Poller{}, t.TempDir(), scope, tf,
+			func(_ Poller, _ []string, args ...string) (string, int, error) {
 				sawArgs = args
 				return seededPoll, 0, nil
 			}); err != nil {
@@ -156,8 +156,8 @@ func TestRunMonitor_KeyringlessHomeReadsCleanWithTokenFile(t *testing.T) {
 	if _, err := exec.LookPath("jq"); err != nil {
 		t.Skip("jq not on PATH — the poller refuses to run without it")
 	}
-	if _, err := os.Stat("/bin/bash"); err != nil {
-		t.Skip("/bin/bash absent — execMonitor runs the poller through it")
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash is not on PATH — parity mode runs the oracle through it")
 	}
 	script, err := filepath.Abs(filepath.Join("..", "..", "..", "..", monitorScriptRelPath))
 	if err != nil {
@@ -187,7 +187,7 @@ func TestRunMonitor_KeyringlessHomeReadsCleanWithTokenFile(t *testing.T) {
 	scope := []string{"example-org/tracker"}
 
 	// With the role's token file: armed, nothing degraded.
-	rep, err := RunMonitor(script, t.TempDir(), scope, map[string]string{"example-org": tokFile}, nil)
+	rep, err := RunMonitor(Poller{Script: script}, t.TempDir(), scope, map[string]string{"example-org": tokFile}, nil)
 	if err != nil {
 		t.Fatalf("keyring-less HOME + token file: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestRunMonitor_KeyringlessHomeReadsCleanWithTokenFile(t *testing.T) {
 	}
 
 	// Without one: the same read goes DEGRADED on the 401, exactly as before the hand-off.
-	rep, err = RunMonitor(script, t.TempDir(), scope, nil, nil)
+	rep, err = RunMonitor(Poller{Script: script}, t.TempDir(), scope, nil, nil)
 	if err != nil {
 		t.Fatalf("keyring-less HOME, no token file: a degraded read must not be fatal: %v", err)
 	}

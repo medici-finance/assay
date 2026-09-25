@@ -53,7 +53,6 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
 | forge-gitlab | 13 — Board reads degrade per row, never per sweep — the GitLab empty-field class [exec:strong] | 3 | 1500 |
-| quality | 17 — regression suite — TestRegression_ naming convention + count-can't-drop / vacuous-selector CI gate [exec:strong] | 0 | 1500 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
 | harness-portability | 17 — Skill frontmatter conformance lint — Codex / agentskills hard limits fail CI [exec:strong] | 0 | 1000 |
 | quality | 19 — qualgen re-fix metric — SZZ-traced fixes that repeat a defect an earlier fix already addressed [exec:strong] | 3 | 1000 |
@@ -63,14 +62,14 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (58 desk-actionable of 77 total — 77 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (59 desk-actionable of 78 total — 78 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (58)
+### Desk-actionable (59)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -110,6 +109,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 19 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| windows-port | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 12 | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 18 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -433,7 +433,7 @@ _None._
 - 08 Go-native GitLab fleet provisioning — retire the bash+curl+jq script's Windows dependency — todo (wave 1)
 - 09 Three-command Windows install — widen the install skill's scope, collapse the walkthrough, correct the CI skew — todo (wave 4)
 - 10 Verify in the harness container: the supported execution-witness runner on Windows — implemented (wave 3)
-- 11 Portable desk-role pollers — inbound + PR monitors and the tick emitter as Go verbs; scanloop arms a binary, not /bin/bash — todo (wave 4)
+- 11 Portable desk-role pollers — inbound + PR monitors and the tick emitter as Go verbs; scanloop arms a binary, not /bin/bash — implemented (wave 4)
 - 12 De-POSIX the desk-role skill prose, and close the two needs-port constants the install brief left behind — implemented (wave 4)
 - 13 assay-inbox.sh → a Go `deskinbox` verb — table + walk (the inbox engine's shared core; html + flow split to windows-port/15) — implemented (wave 4)
 - 14 The Windows CI leg proves the desk-role runtime paths — pollers, tick, inbox, hooks — and retires the bash oracles it can — todo (wave 6)

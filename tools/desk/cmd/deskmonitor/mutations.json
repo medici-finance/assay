@@ -1,0 +1,41 @@
+{
+  "test": "go test ./cmd/deskmonitor/ -count=1 -run TestMonitor",
+  "control": {
+    "name": "CONTROL \u2014 the untrusted-read retention is disarmed wholesale (a failed read advances the baseline)",
+    "file": "cmd/deskmonitor/inbound.go",
+    "old": "\t\tcase !readOK:\n\t\t\tdegraded = true\n\t\t\tfmt.Fprintf(out, \"MONITOR-DEGRADED: %s read FAILED",
+    "new": "\t\tcase false && !readOK:\n\t\t\tdegraded = true\n\t\t\tfmt.Fprintf(out, \"MONITOR-DEGRADED: %s read FAILED"
+  },
+  "mutations": [
+    {
+      "name": "A \u2014 the inherited GH_TOKEN/GITHUB_TOKEN are no longer dropped",
+      "file": "cmd/deskmonitor/identity.go",
+      "old": "\t_ = os.Unsetenv(\"GH_TOKEN\")\n\t_ = os.Unsetenv(\"GITHUB_TOKEN\")\n",
+      "new": ""
+    },
+    {
+      "name": "B \u2014 a zero-after-nonzero read is trusted",
+      "file": "cmd/deskmonitor/inbound.go",
+      "old": "case curN == 0 && prevN > 0:",
+      "new": "case false && curN == 0 && prevN > 0:"
+    },
+    {
+      "name": "B \u2014 an at-limit read is not treated as truncated",
+      "file": "cmd/deskmonitor/inbound.go",
+      "old": "\t\t\t\tatLimit = true\n",
+      "new": ""
+    },
+    {
+      "name": "B \u2014 a read collapsed below the retain floor is trusted",
+      "file": "cmd/deskmonitor/inbound.go",
+      "old": "case cfg.retainFloor > 0 && prevN > 0 && curN*100 < prevN*cfg.retainFloor:",
+      "new": "case false && cfg.retainFloor > 0 && prevN > 0 && curN*100 < prevN*cfg.retainFloor:"
+    },
+    {
+      "name": "C \u2014 a burst at the cap is collapsed instead of listed",
+      "file": "cmd/deskmonitor/inbound.go",
+      "old": "case len(fresh) > cfg.burstCap:",
+      "new": "case len(fresh) >= cfg.burstCap:"
+    }
+  ]
+}

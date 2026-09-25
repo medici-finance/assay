@@ -1,0 +1,130 @@
+{
+ "description": "Arm across two owners, a quiet cycle, then a new issue and a moved updatedAt (a new comment) \u2014 the happy path, plus a repo added to the armed set seeding silently.",
+ "kind": "inbound",
+ "env": {},
+ "repos": [
+  "example-org/tracker",
+  "example-other/site"
+ ],
+ "cycles": [
+  {
+   "note": "arm",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 3,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-other/site": {
+     "issues": [
+      {
+       "number": 9,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "quiet",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 3,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-other/site": {
+     "issues": [
+      {
+       "number": 9,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "one new, one commented",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 4,
+       "updatedAt": "2026-09-02T10:00:00Z"
+      },
+      {
+       "number": 3,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-02T11:00:00Z"
+      },
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-other/site": {
+     "issues": [
+      {
+       "number": 9,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "site returns zero where it had one — retained, never a silent empty",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 4,
+       "updatedAt": "2026-09-02T10:00:00Z"
+      },
+      {
+       "number": 3,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-02T11:00:00Z"
+      },
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-other/site": {
+     "issues": []
+    }
+   }
+  }
+ ]
+}
