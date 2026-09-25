@@ -144,7 +144,7 @@ Options:
    project, so the blast radius is smaller but not zero, and the resulting table has to say which
    steps were narrowed.
 
-Default if no answer: none — the walk blocks until answered. It cannot be started on an assumed
+Default if no answer: none — blocks until answered. The walk cannot be started on an assumed
 project or an assumed credential.
 
 ## Edition

@@ -12,7 +12,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
 | [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-09-25 |  |
-| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P1 | active | 0/13 | 2026-09-25 |  |
+| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 0/13 | 2026-09-25 |  |
 | [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-09-25 |  |
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-25 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-25 |  |
