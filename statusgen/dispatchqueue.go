@@ -107,6 +107,17 @@ func runNextUp(root string) int {
 		briefTouch = LastTransitionTime(entries)
 	}
 	activeDriveSet = loadDrives(root, streams, nowFunc())
+	// Sibling-merge-unreconciled (siblingmerge.go) MUST run before nextUp() here
+	// too, exactly as it does in run() (main.go) ahead of the STATUS.md board's own
+	// nextUp() call: it mutates each checked-failed TODO row's Brief.MergedInSibling
+	// in place, which is the only thing that makes nextUp()'s eligibleBase exclusion
+	// (nextup.go) fire. Without this call the JSON queue and the board disagree —
+	// a row STATUS.md holds as "merged in a sibling" is still emitted here as a
+	// dispatchable todo, which is exactly the queue a cross-repo dispatcher must
+	// never see. Notices are discarded: this emitter is STATUS.md-free by design
+	// (see the package comment above) and never prints board-shaped NOTICE text;
+	// only the MUTATION this call performs is wanted here.
+	_, _ = runSiblingMergeIfOptedIn(streams, root) // opt-in only: --sibling-merge or ASSAY_SIBLING_MERGE=1
 	nu := nextUp(streams, ClaimView{Claimed: claimed, Source: claimSource}, briefTouch)
 
 	// The root's declared repo, carried on the view AND every row so a cross-repo
