@@ -323,7 +323,59 @@ the finding identities survive an agent change.
 - **A record missing its authenticated actor or head is could-not-check** — it clears
   nothing. Report it as itself; never round it up to a resolution.
 
-## 14. Scoped prompt-audit — on a PR that changes prompt text
+## 14. Name an undeclared desk decision
+
+The driver holds merge on every PR, so a desk taking a reversible default needs no ruling
+first — it needs the PR to SAY, at merge time, that this is a choice the desk made rather
+than one already ruled. A worker who takes such a default declares it with `deskpr create
+--decided`/`edit --decided`: a `## Desk-decided` body section plus the `desk-decided` label.
+
+Whether a PR that declares NOTHING in fact contains an undeclared desk decision is not
+mechanical — the ready-flip gate cannot tell "this PR needed no declaration" from "this PR
+should have declared one" by itself. That question is yours. On every review:
+
+- If the diff, in your judgement, takes a reversible default the PR body does not declare —
+  a choice made without a prior ruling, where a `## Desk-decided` block naming the
+  alternative and the reversal cost would have been the honest record — name it in your
+  verdict with the fixed line `Undeclared-desk-decision: <one line>` (one line, no code fence
+  around it: the ready gate reads this as a BLOCK-direction marker, the same shape as
+  `Security-Review: fail`, and a fenced marker still counts there). The ready-flip refuses
+  while this line stands at the current head.
+- **Which verdict carries it.** Carry the line on your CORRECTNESS verdict. When the
+  undeclared decision is the only thing holding the PR, post APPROVE carrying the line — it is
+  not a code defect, and the ready-flip refuses on the line alone. When you also have other
+  blocking findings, post REQUEST_CHANGES carrying the line beside them. Do not post
+  REQUEST_CHANGES for this finding alone; if you do, type it as a body-edit CR (clause 11's
+  `Blocked-On-Body:`), because the fix is a body edit and an untyped same-head CR can only be
+  cleared by a new commit. A security reviewer who spots one may carry the line on the
+  security verdict instead.
+- **What clears it.** The fix is `deskpr edit --decided` — it writes the block and applies the
+  label together, and moves no head. The finding is then cleared by a fresh DECISIVE verdict
+  (APPROVE or REQUEST_CHANGES) at the SAME head, in the SAME lane, that omits the line; no new
+  commit is required, since nothing about the CODE was in question. The gate reads the two
+  lanes separately: a `Security-Review:` verdict never clears a correctness-lane finding, a
+  correctness verdict never clears a security-lane one, and a COMMENTED note that is not a
+  verdict clears nothing.
+- Do not raise this finding merely because a PR carries no `## Desk-decided` block: absence
+  alone is never the finding. A PR that only transcribes rulings already recorded elsewhere
+  correctly declares nothing, and the label/block pair exists to be worn only when it is
+  true. Raise the finding only when you judge the diff itself took an undeclared choice.
+- **Check what IS declared, too.** A `## Desk-decided` item is a claim that the choice was
+  reversible and the merge gate catches it. An item that falls inside the
+  default-forward-reversibility guardrail's fixed human-gated set is NOT that, whatever it is
+  labelled: merge, a ready-flip that is not the role's, a `main` push outside a standing
+  authorization, a tag or release cut; deleting, disabling or weakening a security control or
+  its CI assertion; exposing secrets, credentials, PII or exploit detail; money movement,
+  identity/auth changes, deleting or overwriting durable data; anything that leaves the repo.
+  Such an item is itself a BLOCKING finding (REQUEST_CHANGES): the declaration is not the fix,
+  the decision goes to the driver. The label and block grant nothing — no gate reads them as
+  an exemption — so this check is the only place a mislabelled one-way call gets caught.
+- The finding does not block, and is not cleared by, the pass/fail of either verdict by
+  itself — a PR can be correctness-APPROVED and security-passed while still carrying a
+  standing `Undeclared-desk-decision:` finding, and the ready-flip refuses on that finding
+  alone until a fresh verdict in the lane that raised it omits the line.
+
+## 15. Scoped prompt-audit — on a PR that changes prompt text
 
 **Trigger.** This PR changes a `**/SKILL.md` file, a `**/references/*.md` file, or any
 `CLAUDE.md`. The reference trigger covers a skill's own references, a bundle-level reference
