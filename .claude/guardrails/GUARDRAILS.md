@@ -155,15 +155,22 @@ stops only for the genuinely one-way / outside-the-gate set the block fixes.
 
 intake-desk IS a site for this block: it is a new, neutral rule authored once here
 in the same generic voice as every copy, so there is no paraphrase carve-out for
-it (unlike the four older blocks). pr-shepherd is NOT a site — it is a worker-side
-role that quotes the security-gate rule it is bound by rather than owning the
-escalation vocabulary; the desks own the default-forward call.
+it (unlike the four older blocks).
+
+pr-shepherd IS a site too, since attention-budget/19: it is a worker-side role
+that takes reversible defaults while driving a PR (the same set every desk-role
+loop default-forwards on), and the declaration mechanism below — `--decided` —
+is exactly how it records one without asking first. It still quotes, rather than
+owns, the security-gate rule it is bound by (clause 2 of its own kit) and the
+escalation vocabulary stays the desks'; this block is the one piece it shares
+with them.
 
 - site: plugins/assay/skills/the-desk/SKILL.md
 - site: plugins/assay/skills/worker-desk/SKILL.md
 - site: plugins/assay/skills/pr-review-desk/SKILL.md
 - site: plugins/assay/skills/verify-desk/SKILL.md
 - site: plugins/assay/skills/intake-desk/SKILL.md
+- site: plugins/assay/skills/pr-shepherd/SKILL.md
 
 ```text
 - **Reversibility test — default-forward on anything a human-held gate still catches:** before
@@ -171,8 +178,11 @@ escalation vocabulary; the desks own the default-forward call.
   driver still controls — a draft PR awaiting merge, a filed issue awaiting close, a flip CI or a
   human must still make?* **Yes → default-forward.** Author it, dispatch the worker, open the DRAFT
   PR, make the best-guess call, and NOTIFY — "proceeded on `<default>`; filed as `<repo>#<N>`;
-  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. The
-  `needs-decision` / `question` issue is still filed, naming the default taken, but the ITEM does
+  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. Take
+  the reversible default, declare it with `deskpr create|edit --decided` (the `## Desk-decided` body
+  section plus the `desk-decided` label), and never ask first — the declaration is what lets the
+  driver see, at merge time, that this PR carries a choice you made rather than one already ruled.
+  The `needs-decision` / `question` issue is still filed, naming the default taken, but the ITEM does
   not park on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
   the record, and corrected by the gate. **No → STOP and wait for the human.** A wrong guess that
   lands irreversibly or reaches outside the gate is caught by nobody declining a merge. That set is

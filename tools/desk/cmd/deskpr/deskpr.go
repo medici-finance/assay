@@ -139,6 +139,7 @@ func cmdCreate(args []string) (err error) {
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
+	decided := fs.String("decided", "", "path to a file declaring desk-taken decisions (decision:/alternative:/cost: triples, one item per numbered line) — writes the `## Desk-decided` block into the body and applies the desk-decided label; a PR that only transcribes recorded rulings passes none of this")
 	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the Brief:/Authors:/Issue: trailer, the secret scan, the public-repo self-containment scan, the push-transport gate, the publish-identity gate) and stop BEFORE minting a token or opening any connection — exit 0 only when every local gate passed; a category this cannot decide offline is reported, by name, as not checked")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
@@ -172,6 +173,14 @@ func cmdCreate(args []string) (err error) {
 	body, berr := readBody(*bodyFile, *bodyMin)
 	if berr != nil {
 		return berr
+	}
+	// --decided (attention-budget/19): fold the desk-decided block into the body BEFORE any
+	// scan or network call — an empty file or an item missing a field refuses here (exit 5),
+	// with no PR call made. See decided.go for why create refuses on a hand-written heading
+	// where edit instead replaces one in place.
+	body, dberr := injectDecidedBlock(body, *decided, "create")
+	if dberr != nil {
+		return dberr
 	}
 	if serr := deskkit.HandleScanRefusal(deskkit.ScanOverride{
 		Tool: "deskpr", Verb: "create", Reason: *scanOverride,
@@ -390,6 +399,15 @@ func cmdCreate(args []string) (err error) {
 				"%s was created, but opening its merge-hold marker thread failed: %v — the change exists "+
 					"WITHOUT its server-side merge gate armed. Open one by hand (or re-run this step) before "+
 					"the PR is reviewed.", url, hErr), hErr)
+		}
+		// --decided (attention-budget/19): the block is already IN the body the create call
+		// just published — this only mirrors it as the at-a-glance label. A PR with no
+		// --decided applies no label at all (the transcribe-only shape stays byte-for-byte
+		// what it was before this flag existed).
+		if *decided != "" {
+			if lerr := applyDeskDecidedLabel(fg, fr, n); lerr != nil {
+				return deskDecidedLabelFailure(url, lerr)
+			}
 		}
 		// Post-create mergeable check (#770): a PR GitHub reports CONFLICTING gets zero
 		// pull_request runs at its head — indistinguishable, on the audit line or any

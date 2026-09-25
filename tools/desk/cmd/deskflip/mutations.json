@@ -150,6 +150,30 @@
       "file": "cmd/deskflip/flip.go",
       "old": "if editedAt, err = live.EditedAt(); err != nil {",
       "new": "if editedAt, err = live.EditedAt(); err != nil && false {"
+    },
+    {
+      "name": "desk-decided (attention-budget/19): disarm the malformed-block refusal (a Desk-decided section that fails to parse flips freely — reddens TestFlipRefusedOnMalformedDeskDecidedBlock)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tif blocked && perr != nil {\n\t\treturn deskkit.Refused(fmt.Sprintf(\n\t\t\t\"condition %s: PR #%d's `%s` section does not parse: %v — fix the block \"+",
+      "new": "\tif false && blocked && perr != nil {\n\t\treturn deskkit.Refused(fmt.Sprintf(\n\t\t\t\"condition %s: PR #%d's `%s` section does not parse: %v — fix the block \"+"
+    },
+    {
+      "name": "desk-decided (attention-budget/19): disarm the label/block agreement check (a mismatched label and block flip freely — reddens TestFlipLabelBlockMismatchRefused)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tif labelled != blocked {\n\t\tvar detail string",
+      "new": "\tif false && labelled != blocked {\n\t\tvar detail string"
+    },
+    {
+      "name": "desk-decided (attention-budget/19): disarm the reviewer's undeclared-desk-decision finding (a standing finding at head flips freely — reddens TestFlipRefusedOnUndeclaredDeskDecision)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tif latestAtHead != nil {\n\t\tif lines := deskkit.UndeclaredDeskDecisionLines(latestAtHead.Body); len(lines) > 0 {",
+      "new": "\tif false && latestAtHead != nil {\n\t\tif lines := deskkit.UndeclaredDeskDecisionLines(latestAtHead.Body); len(lines) > 0 {"
+    },
+    {
+      "name": "desk-decided (attention-budget/19): widen the refusal to bare ABSENCE of a block (option 2 of the human decision, not what was ruled — reddens TestFlipNoBlockNoFindingUnchanged)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tlabelled := hasLabel(pr.Labels, deskkit.DeskDecidedLabel)\n\t_, blocked, perr := deskkit.ParseDeskDecidedBlockInBody(pr.Body)",
+      "new": "\tlabelled := hasLabel(pr.Labels, deskkit.DeskDecidedLabel)\n\t_, blocked, perr := deskkit.ParseDeskDecidedBlockInBody(pr.Body)\n\tif !blocked {\n\t\treturn deskkit.Refused(fmt.Sprintf(\"condition %s: PR #%d carries no Desk-decided block\", condDeskDecided, o.pr))\n\t}"
     }
   ]
 }

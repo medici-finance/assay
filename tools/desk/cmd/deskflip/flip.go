@@ -25,6 +25,7 @@ const (
 	condChecksGreen      = "checks-green"
 	condMergeable        = "mergeable"
 	condSecurityVerdict  = "security-verdict"
+	condDeskDecided      = "desk-decided"
 	condHeadStable       = "head-stable"
 )
 
@@ -74,6 +75,13 @@ const (
 // one dropped being the paginated timeline. No condition was added, removed, weakened, or
 // made conditional, and no refusal's condition NAME changed — callers key on those names, and
 // a name that drifts breaks every one of them.
+//
+// desk-decided (attention-budget/19) is ADDITIVE to this measured ordering, not a
+// re-derivation of it: it sits right after checks-green per the brief's own ground rules
+// ("the new condition is additive and evaluated after the checks-green read"), reads only the
+// PR's own labels/body (already in hand from pr-open-draft) and the reviews already read for
+// reviewer-approved — no new paginated read — so it costs nothing extra ahead of model-floor
+// and security-verdict, the two conditions the cost ordering above exists to protect.
 var flipConditions = []string{
 	condCallerRole,
 	condAppToken,
@@ -81,6 +89,7 @@ var flipConditions = []string{
 	condMergeable,
 	condReviewerApproved,
 	condChecksGreen,
+	condDeskDecided,
 	condModelFloor,
 	condSecurityVerdict,
 	condHeadStable,
@@ -379,6 +388,17 @@ func flip(o flipOpts) error {
 		}
 	}
 	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(checks), short(head))
+
+	// --- desk-decided --------------------------------------------------------------
+	// Attention-budget/19, option A (the driver's ruling on assay#1677): refuse the flip
+	// ONLY on a FINDING — the reviewer's `Undeclared-desk-decision:` line at the current
+	// head, or the label/block disagreeing with each other. Absence of a block, by itself,
+	// is NEVER a refusal (Verify row 6) — this condition only ADDS a refusal path over the
+	// pre-existing eight; it narrows nothing an existing PR could already do.
+	if err := checkDeskDecided(o, pr, reviews, reviewerLogin, head); err != nil {
+		return err
+	}
+	o.say("%s OK: label/block agree and no reviewer finding stands at %s", condDeskDecided, short(head))
 
 	// --- model-floor -------------------------------------------------------------
 	// The authority-bearing-write floor: a ready-flip requires a strong-tier dispatch. It
@@ -1453,6 +1473,72 @@ func hasLabel(labels []labelInfo, want string) bool {
 		}
 	}
 	return false
+}
+
+// checkDeskDecided is the desk-decided condition (attention-budget/19, option A — the
+// driver's ruling on assay#1677: refuse the flip ONLY on a finding). Two things are
+// MECHANICAL, evaluated in this order:
+//
+//  1. the `## Desk-decided` block, when present, must PARSE — a malformed block (the marker
+//     missing, an empty list, an item missing a field) refuses, since a block nobody can
+//     read is not a declaration;
+//  2. the desk-decided LABEL and the block must AGREE — a label with no block, or a block
+//     with no label, refuses, because either shape lets a human trust a signal (the label,
+//     glanced at) that the other surface (the block, actually read) contradicts.
+//
+// The one thing that is NOT mechanical — whether a PR that declares nothing in fact contains
+// an undeclared desk decision — is the REVIEWER's call: this reads the latest verdict from
+// the bound reviewer role AT THE CURRENT HEAD and refuses while it carries the fixed line
+// `Undeclared-desk-decision: <one line>`. Absence of a block, by itself, with no such finding
+// and no label/block disagreement, is NEVER refused (Verify row 6) — that is option 2 of the
+// human decision, not built without a ruling naming it.
+func checkDeskDecided(o flipOpts, pr prInfo, reviews []reviewInfo, reviewerLogin, head string) error {
+	labelled := hasLabel(pr.Labels, deskkit.DeskDecidedLabel)
+	_, blocked, perr := deskkit.ParseDeskDecidedBlockInBody(pr.Body)
+	if blocked && perr != nil {
+		return deskkit.Refused(fmt.Sprintf(
+			"condition %s: PR #%d's `%s` section does not parse: %v — fix the block "+
+				"(`deskpr edit --decided`) before the flip.",
+			condDeskDecided, o.pr, deskkit.DeskDecidedHeading, perr))
+	}
+	if labelled != blocked {
+		var detail string
+		if labelled {
+			detail = fmt.Sprintf("carries the %s label but its body has no `%s` section",
+				deskkit.DeskDecidedLabel, deskkit.DeskDecidedHeading)
+		} else {
+			detail = fmt.Sprintf("body carries a `%s` section but not the %s label",
+				deskkit.DeskDecidedHeading, deskkit.DeskDecidedLabel)
+		}
+		return deskkit.Refused(fmt.Sprintf(
+			"condition %s: PR #%d %s — the label and the block must agree. Re-run `deskpr edit --decided` "+
+				"(it applies both together), or drop whichever one is stale.", condDeskDecided, o.pr, detail))
+	}
+
+	// The reviewer's finding, at the CURRENT head only: reviews arrive in ascending
+	// submitted order, so the LAST one from the bound reviewer at this exact head is the
+	// governing verdict — an edit that adds the block, followed by a fresh verdict that
+	// omits the line, clears a prior finding at the SAME head without needing a new commit.
+	var latestAtHead *reviewInfo
+	for i := range reviews {
+		r := &reviews[i]
+		if !deskkit.SameActor(r.User.Login, reviewerLogin) {
+			continue
+		}
+		if r.CommitID != head {
+			continue
+		}
+		latestAtHead = r
+	}
+	if latestAtHead != nil {
+		if lines := deskkit.UndeclaredDeskDecisionLines(latestAtHead.Body); len(lines) > 0 {
+			return deskkit.Refused(fmt.Sprintf(
+				"condition %s: %s's review at head %s names an undeclared desk decision: %q — declare it "+
+					"(`deskpr edit --decided`) before the flip.",
+				condDeskDecided, reviewerLogin, short(head), lines[0]))
+		}
+	}
+	return nil
 }
 
 func (o flipOpts) say(format string, args ...any) {

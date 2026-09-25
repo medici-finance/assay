@@ -60,6 +60,7 @@ func cmdEdit(args []string) (err error) {
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
+	decided := fs.String("decided", "", "path to a file declaring desk-taken decisions (decision:/alternative:/cost: triples, one item per numbered line) — writes/replaces the `## Desk-decided` block in the replacement body and applies the desk-decided label")
 	check := fs.Bool("check", false, "run every LOCAL gate (flags, the secret scan, the replacement body's Brief:/Authors:/Issue: trailer grammar, branch state) and stop BEFORE minting a token or opening any connection; the trailer-IMMUTABILITY compare and the self-containment scan's bare-#N hint both need the PR's CURRENT body from the forge and are reported not checked, by name")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
@@ -91,6 +92,13 @@ func cmdEdit(args []string) (err error) {
 	body, berr := readBody(*bodyFile, "")
 	if berr != nil {
 		return berr
+	}
+	// --decided (attention-budget/19): fold the desk-decided block into the replacement body
+	// BEFORE any scan or network call. Unlike create, edit REPLACES an existing
+	// `## Desk-decided` section in place rather than refusing on one — see decided.go.
+	body, dberr := injectDecidedBlock(body, *decided, "edit")
+	if dberr != nil {
+		return dberr
 	}
 	if serr := deskkit.HandleScanRefusal(deskkit.ScanOverride{
 		Tool: "deskpr", Verb: "edit", Reason: *scanOverride,
@@ -274,6 +282,15 @@ func cmdEdit(args []string) (err error) {
 		return deskkit.Unverifiable("edit change failed", eErr)
 	}
 	ac.detail = "edited " + strings.Join(changed, "+") + " of " + pr.URL
+
+	// --decided (attention-budget/19): the block is already IN the body the edit just
+	// published — this mirrors it as the at-a-glance label. Applied only when --decided was
+	// given, so an ordinary correction (no --decided) never touches labels.
+	if *decided != "" {
+		if lerr := applyDeskDecidedLabel(fg, fr, pr.Number); lerr != nil {
+			return deskDecidedLabelFailure(pr.URL, lerr)
+		}
+	}
 
 	// The announcement. A body/title edit moves no head SHA, so a head-keyed review monitor
 	// records no event for it and the correction is invisible to the loop that must act on
