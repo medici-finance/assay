@@ -72,7 +72,7 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 	// base: the deskapps manifest-flow work (#1260) carries the driver-ruled allowlist row
 	// that legitimately raised the ceiling — the "whatever change legitimately moved it" the
 	// failure message itself names.
-	const baseCeiling = 6
+	const baseCeiling = 7
 	if c := forgeban.Ceiling(); c != baseCeiling {
 		t.Fatalf("forgeban.Ceiling() = %d, want %d — this diff must not move the shell-exec ban's "+
 			"ceiling (statusgen is a separate module with no allowlist rows to migrate here; any "+

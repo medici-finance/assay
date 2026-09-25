@@ -81,7 +81,7 @@ type Allowance struct {
 // fails when the permit list is longer (a new forge-CLI call site landed) AND when it is
 // shorter (a call site was migrated but the gain was not locked in). Lowering it is the
 // second half of every migration; raising it is a decision a reviewer sees as a diff.
-const allowedInvocationCeiling = 6
+const allowedInvocationCeiling = 7
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
 var AllowedInvocations = []Allowance{
