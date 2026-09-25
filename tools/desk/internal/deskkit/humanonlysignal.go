@@ -23,8 +23,8 @@ type Signal struct {
 // deliberately BROADER than any "reversible" list: a false human-only costs one item staying
 // in a human's queue that could have left it, and a false reversible costs a decision taken
 // without them. Those are not the same mistake — see deskdigest's classify.go for the fuller
-// discussion of "human gate" vs bare "gate" (assay-toolkit's 2026-08-13 measurement of 4/8
-// items misclassified motivated the narrower phrase there; unchanged here).
+// discussion of "human gate" vs bare "gate" (a 2026-08-13 measurement of 4/8 items
+// misclassified motivated the narrower phrase there; unchanged here).
 var HumanOnlySignals = []Signal{
 	// irreversible
 	{"irreversible", "irreversible"},

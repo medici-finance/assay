@@ -63,7 +63,7 @@ func TestNeedsDecisionOneWorkableOptionRefused(t *testing.T) {
 }
 
 // TestNoForkWrongRepoFiledWithoutDecisionLabel — Verify row 3. The "a brief that spans two
-// repositories" shape (the assay-toolkit#2545 / #2550 instances, neutralised): re-filed with
+// repositories" shape (two prior routing-note instances, neutralised): re-filed with
 // `--no-fork wrong-repo`, the created issue carries no needs-decision label, the
 // `re-dispatch:` title prefix, and the worker-desk address (`to:worker` — the roster's role
 // name for the worker-desk window; --to shares --raised-by's roster vocabulary, never the

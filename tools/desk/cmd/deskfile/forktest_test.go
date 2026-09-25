@@ -31,7 +31,7 @@ const onlyOneWorkableOptionBlock = `### Fork test
 option: A — open the port | works-because: nothing else in the merged work can serve the request | consequence: the service becomes reachable
 default: A
 caught-by: draft-pr — #401
-ruled-check: searched assay-toolkit#2545 and #2550 → no prior ruling on this port
+ruled-check: searched the tracker for the same routing question → no prior ruling on this port
 `
 
 func TestParseForkTestValidBlockIsStructuralAndWorkable(t *testing.T) {
