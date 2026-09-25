@@ -6,8 +6,8 @@ import (
 	"io"
 )
 
-// phantomscli.go — the `statusgen phantoms` CLI (fleet-integrity/10, Interface
-// contract item 5(ii)). Self-contained, STATUS.md-free, offline (same
+// phantomscli.go — the `statusgen phantoms` CLI. Self-contained,
+// STATUS.md-free, offline (same
 // discipline as --eligibility, eligibilitycli.go): it reads the tree once and
 // prints one line per finding.
 //

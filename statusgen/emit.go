@@ -410,7 +410,7 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 			len(nu.HomedElsewhere), strings.Join(frags, ", "))
 		w("")
 	}
-	// Merged in a sibling repo (fleet-integrity/10, siblingmerge.go). A row
+	// Merged in a sibling repo (siblingmerge.go). A row
 	// here is NOT proven delivered — the finding is a PROMPT to read the
 	// merged change Task by Task, never proof — but a change naming it
 	// already merged in the named sibling and nobody has recorded what it

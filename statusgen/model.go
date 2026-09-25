@@ -164,46 +164,45 @@ type Brief struct {
 	// checkBriefFiles (read at render time to
 	// classify VERIFY:PASS / VERIFY:FAIL for Awaiting-board segmentation).
 	Evidence string
-	// DeliverableRepo is the optional brief-v1 `deliverable_repo:` field
-	// (fleet-integrity/10, topology-contract.md requirement (a)) — an ALIAS
-	// (a key in docs/streams/graph-repos.yaml's `repos:` map) naming the repo
-	// this brief's deliverable actually lands in, when that differs from the
-	// repo the brief FILE itself lives in (the desk-console-2/fleet-integrity
-	// convention: code briefs land via sibling PRs). "" when absent. Read by
+	// DeliverableRepo is the optional brief-v1 `deliverable_repo:` field — an
+	// ALIAS (a key in docs/streams/graph-repos.yaml's `repos:` map) naming the
+	// repo this brief's deliverable actually lands in, when that differs from
+	// the repo the brief FILE itself lives in (a multi-repo convention: code
+	// briefs land via sibling PRs). "" when absent. Read by
 	// the sibling-merge-unreconciled detector (siblingmerge.go) as one of the
 	// three sibling-set derivation sources; NEVER a Next-up score input.
 	DeliverableRepo string
 	// TrackedIn is the optional brief-v1 `tracked-in:` list — `<alias>#<N>`
 	// refs (§3.3 grammar) naming a SIBLING ISSUE this brief is tracked by. It
-	// exists for the withheld-identifier shape (fleet-integrity/10 fact 4): a
+	// exists for the withheld-identifier shape: a
 	// PUBLIC sibling PR that deliberately omits the private brief id carries
 	// an `Issue: #<N>` trailer instead, and a plain id match false-negatives on
 	// exactly the PRs the self-containment rule is working correctly on. nil
 	// when absent.
 	TrackedIn []string
 	// Delivery is the optional brief-v1 `delivery:` list of structured
-	// delivery claims (topology-contract.md requirement (f)) — what merged
+	// delivery claims — what merged
 	// WHERE and how much of the brief it covers, e.g.
 	// `{in: "ac#136", covers: full}`. nil when absent. Read by the
 	// sibling-merge-unreconciled detector as the one acknowledgement that can
-	// release its hold (fleet-integrity/10 Interface contract item 7); it is
+	// release its hold; it is
 	// never a witness for anything else and never derives a lifecycle cell.
 	Delivery []DeliveryClaim
 	// MergedInSibling is set by the sibling-merge-unreconciled detector
-	// (siblingmerge.go, fleet-integrity/10), NOT from frontmatter: the
+	// (siblingmerge.go), NOT from frontmatter: the
 	// display target ("<owner>/<repo>" or, when withheld, the alias) of a
 	// SIBLING repo whose history names this TODO row and whose merge is
 	// neither covered by an acknowledged `delivery: covers: partial` claim
 	// nor merely claimed-full-but-unlanded. "" otherwise, including for
-	// in-progress rows — item 6 of the Interface contract: an in-progress row
+	// in-progress rows — an in-progress row
 	// is surfaced (via a NOTICE) but never excluded. Read by eligibleBase
 	// (nextup.go) as an eligibility exclusion in the same shape as HomedIn;
 	// NEVER a Next-up score input.
 	MergedInSibling string
 }
 
-// DeliveryClaim is one entry of a brief's `delivery:` frontmatter list
-// (topology-contract.md requirement (f)): a structured, human-authored record
+// DeliveryClaim is one entry of a brief's `delivery:` frontmatter list: a
+// structured, human-authored record
 // of a merged sibling PR and how much of the brief it covers. Entries are
 // append-only history — a later `full` supersedes an earlier `partial`, and
 // nothing is deleted.
@@ -214,7 +213,7 @@ type DeliveryClaim struct {
 	In string
 	// Covers is "full" or "partial". "partial" REQUIRES Note to name what is
 	// still owed (shape only enforced here; the full delivery-claim lint is a
-	// separate, not-yet-shipped follow-up per topology-contract.md (f)).
+	// separate, not-yet-shipped follow-up).
 	Covers string
 	Note   string
 }

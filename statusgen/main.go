@@ -321,7 +321,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// hard-gated, and the git-derived class 1 reuses the same merge read.
 	// Declared source: statusgen/boardhonesty.go.
 	notices = append(notices, boardHonestyNotices(checkStreams, mergedPRs, mergedErr)...)
-	// Sibling-merge-unreconciled (fleet-integrity/10, siblingmerge.go): the
+	// Sibling-merge-unreconciled (siblingmerge.go): the
 	// SEVENTH board-honesty phantom class, wired right after class 1 like the
 	// package comment describes, but through its OWN driver rather than
 	// classifyPhantom — it needs a live read of ANOTHER repo's checkout,
@@ -1232,7 +1232,7 @@ func main() {
 	}
 
 	// `statusgen phantoms` — positional subcommand (like `mergecheck` above,
-	// fleet-integrity/10, phantomscli.go) that gives the sibling-merge-
+	// phantomscli.go) that gives the sibling-merge-
 	// unreconciled class a dedicated, exit-code-bearing verb: `--lint` never
 	// changes exit code for ANY board-honesty phantom class (severity NOTICE,
 	// deliberately — boardhonesty.go), so a CI row or a desk sweep that wants
@@ -1439,7 +1439,7 @@ func main() {
 	diffBaseFlag := flag.String("diff-base", "", "--lint only: make the lint DIFFERENTIAL against this base ref (e.g. refs/remotes/origin/main). Evaluates the register at the merge-base of HEAD and <ref> AND at the working tree, fires PROBLEM only for problems the diff INTRODUCES, and demotes pre-existing base-side problems to NOTICE; always prints a base-vs-diff summary line. Fails safe to a full-strength lint (nothing demoted) when the base cannot be resolved or materialised")
 	var budget budgetFlags
 	flag.Var(&budget, "budget", "word-budget check: relpath:maxwords (repeatable); overrides --lint's default of "+defaultBudgetSpec)
-	// --sibling-root (fleet-integrity/10, siblingmerge.go): overrides where a
+	// --sibling-root (siblingmerge.go): overrides where a
 	// registered sibling's checkout lives on this machine, for the
 	// sibling-merge-unreconciled detector. Repeatable; also read from the
 	// SAME DESK_ROOTS environment variable the desk tools already use

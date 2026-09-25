@@ -1,12 +1,11 @@
 package main
 
-// siblingmerge.go — the SIBLING-MERGE-UNRECONCILED detector (fleet-integrity/10,
-// tracked in medici-finance/assay-toolkit; this file is the cross-repo
-// deliverable). The SEVENTH board-honesty phantom class.
+// siblingmerge.go — the SIBLING-MERGE-UNRECONCILED detector. The SEVENTH
+// board-honesty phantom class.
 //
 // THE DEFECT IT CLOSES. A brief tracked on one repo's board can be DELIVERED by
-// a PR merged in a SIBLING repo (the desk-console-2/fleet-integrity convention:
-// code briefs land via sibling PRs). The only merge boardhonesty.go's class 1
+// a PR merged in a SIBLING repo (a multi-repo convention: code briefs land via
+// sibling PRs). The only merge boardhonesty.go's class 1
 // (already-merged-unflipped) can see is THIS repo's own first-parent history
 // (mergedPRsFromGit) — a worker dispatched into the sibling can only write
 // there, so the home row never moves and Next-up keeps offering work that has
@@ -24,14 +23,13 @@ package main
 // detector fails when the sibling history carries no matchable key (the
 // withheld-identifier shape below) — so neither alone closes the class.
 //
-// SIBLING-SET DERIVATION (Interface contract item 1). A brief names its sibling
+// SIBLING-SET DERIVATION. A brief names its sibling
 // three ways, in order of reliability:
 //
 //	homed-in: <owner>/<repo>        the brief's OWN de-housing field
 //	                                (statusgen/12) — matched against a
 //	                                registry entry whose Repo equals it.
-//	deliverable_repo: <alias>       an EXPLICIT registry alias
-//	                                (topology-contract.md requirement (a)) —
+//	deliverable_repo: <alias>       an EXPLICIT registry alias —
 //	                                an unresolvable alias here IS a
 //	                                could-not-check (the declaration says a
 //	                                sibling exists; only the LOOKUP failed).
@@ -79,7 +77,7 @@ package main
 // (phantomSiblingMergeUnreconciled, phantomRemediation — boardhonesty.go) so
 // its NOTICE reads as the same family, not a bolt-on.
 //
-// homed-in does NOT suppress this class (Interface contract item 8): it is a
+// homed-in does NOT suppress this class: it is a
 // landed-work fact, like class 1 — homedInSupersedes (boardhonesty.go) never
 // lists it.
 
@@ -209,16 +207,43 @@ func basenameOf(ownerRepo string) string {
 	return ownerRepo
 }
 
-// siblingTargetsForBrief resolves the sibling set for one brief (item 1).
-// rawBody is the brief file's raw, unparsed content — frontmatter and prose
+// ownRepoFor determines the "<owner>/<repo>" this very tree lives in, so
+// siblingTargetsForBrief can exclude the registry entry that names it: a
+// board's own repo is never its own sibling — an own-repo merge is class 1's
+// job (already-merged-unflipped), which has its own semantics, and reading
+// the board's own history back through this detector reports "merged in a
+// sibling" naming the home repo on any own-repo commit that happens to
+// mention a todo row's id (an audit or authoring commit, say).
+//
+// The registry's own `self:` key wins when present — it is an explicit,
+// unambiguous declaration. Absent that, it falls back to the repo a stream's
+// own `repo:` frontmatter declares (rootRepo, multiroot.go) — the same value
+// the dispatch-queue JSON and the roadmap deck already attribute a root to.
+// "" (neither present) means this tree has no declared identity to compare
+// against, so no registry entry is excluded on this basis — the path-based
+// backstop in siblingMergeCheck is what catches that case instead.
+func ownRepoFor(reg *graphRepos, streams []*Stream) string {
+	if reg != nil && reg.Self != "" {
+		if entry, ok := reg.Aliases[reg.Self]; ok && !entry.Unpublished && entry.Repo != "" {
+			return entry.Repo
+		}
+	}
+	repo, _ := rootRepo(streams)
+	return repo
+}
+
+// siblingTargetsForBrief resolves the sibling set for one brief. rawBody is
+// the brief file's raw, unparsed content — frontmatter and prose
 // together — so a `../<basename>/` occurrence anywhere in it (a `sources:`,
-// `consumers:`, or the free-text Context-section `files:` line every brief in
-// this house's convention carries) is visible without a second structured
-// parser. unresolved carries one entry per DECLARED-but-unresolvable
-// `deliverable_repo:` alias (a could-not-check, item 4) — a heuristic
-// candidate that fails to resolve is silently dropped instead (never
-// could-not-check, per item 1 and the Task's "unregistered basename" fixture).
-func siblingTargetsForBrief(b Brief, rawBody string, reg *graphRepos) (targets []siblingTarget, unresolved []string) {
+// `consumers:`, or a free-text Context-section `files:` line) is visible
+// without a second structured parser. unresolved carries one entry per
+// DECLARED-but-unresolvable `deliverable_repo:` alias (a could-not-check) — a
+// heuristic candidate that fails to resolve is silently dropped instead
+// (never could-not-check — an incidental "../foo/" naming no registered
+// sibling is simply not a sibling). ownRepo, when non-empty, excludes any
+// registry entry whose Repo matches it: the board's own repo is never a
+// candidate sibling, from either derivation path.
+func siblingTargetsForBrief(b Brief, rawBody string, reg *graphRepos, ownRepo string) (targets []siblingTarget, unresolved []string) {
 	seen := map[string]bool{}
 	add := func(t siblingTarget) {
 		if seen[t.Alias] {
@@ -240,6 +265,12 @@ func siblingTargetsForBrief(b Brief, rawBody string, reg *graphRepos) (targets [
 		for _, alias := range aliases {
 			entry := reg.Aliases[alias]
 			if entry.Unpublished || entry.Repo == "" {
+				continue
+			}
+			if ownRepo != "" && entry.Repo == ownRepo {
+				// The board's own repo is never its own sibling — see
+				// ownRepoFor's comment. Skip silently: this is not a
+				// could-not-check, it is simply not a candidate.
 				continue
 			}
 			basename := basenameOf(entry.Repo)
@@ -276,6 +307,10 @@ func siblingTargetsForBrief(b Brief, rawBody string, reg *graphRepos) (targets [
 			case entry.Unpublished || entry.Repo == "":
 				unresolved = append(unresolved, fmt.Sprintf(
 					"deliverable_repo: %s is unpublished — its target repo is not resolvable from this tree", b.DeliverableRepo))
+			case ownRepo != "" && entry.Repo == ownRepo:
+				// An explicit deliverable_repo: naming the board's own repo is
+				// the same non-sibling case as the homed-in/basename walk
+				// above — skip silently, never a could-not-check.
 			default:
 				add(siblingTarget{Alias: b.DeliverableRepo, Repo: entry.Repo, Basename: basenameOf(entry.Repo)})
 			}
@@ -298,6 +333,40 @@ func siblingRootPath(root string, target siblingTarget, overrides map[string]str
 		absRoot = root
 	}
 	return filepath.Join(filepath.Dir(absRoot), target.Basename)
+}
+
+// pathIsRoot reports whether path resolves to this tree's own root — the
+// backstop ownRepoFor's name-based exclusion needs (finding C1): a registry
+// entry can name a DIFFERENT alias/repo string than the one this tree
+// declares for itself (a stale `self:`, a registry/name mismatch, a symlinked
+// checkout) and still resolve, via siblingRootPath's directory-next-to-root
+// convention or an explicit --sibling-root override, to the SAME directory
+// root already is. Reading that directory's git history back against root's
+// own briefs is exactly class 1's job (already-merged-unflipped), not this
+// detector's — so this is a path-identity check, never a repo-name one.
+//
+// Resolved with EvalSymlinks first (a checkout reached through a symlink, or
+// CI's own working-copy symlink shape, must compare equal to the real
+// directory it points at); either side failing to resolve (most commonly:
+// path does not exist yet — the ordinary could-not-check case one caller down
+// handles on its own) falls back to a plain Abs+Clean comparison, so a
+// not-yet-existing sibling checkout is never misreported as "is root" and
+// never panics.
+func pathIsRoot(root, path string) bool {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		absRoot = root
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		absPath = path
+	}
+	resolvedRoot, rootErr := filepath.EvalSymlinks(absRoot)
+	resolvedPath, pathErr := filepath.EvalSymlinks(absPath)
+	if rootErr == nil && pathErr == nil {
+		return resolvedRoot == resolvedPath
+	}
+	return filepath.Clean(absRoot) == filepath.Clean(absPath)
 }
 
 // checkSiblingCheckout reports whether path is a usable, non-shallow git
@@ -476,6 +545,7 @@ func deliveryAck(delivery []DeliveryClaim, alias string, pr int) (full, partial 
 // (item 6: surfaced, never excluded) even when it carries the same finding.
 func siblingMergeCheck(streams []*Stream, root string, overrides map[string]string) (notices []string, checkedFailed, couldNotCheck int) {
 	reg, _, _ := loadGraphRepos(root)
+	ownRepo := ownRepoFor(reg, streams)
 
 	type rowRef struct {
 		stream *Stream
@@ -516,7 +586,7 @@ func siblingMergeCheck(streams []*Stream, root string, overrides map[string]stri
 				// duplicating it would double-report one root cause under two class
 				// names.
 			}
-			targets, unresolved := siblingTargetsForBrief(b, body, reg)
+			targets, unresolved := siblingTargetsForBrief(b, body, reg, ownRepo)
 			for _, u := range unresolved {
 				unresolvedReasons[u] = true
 			}
@@ -547,6 +617,15 @@ func siblingMergeCheck(streams []*Stream, root string, overrides map[string]stri
 		target := targetByAlias[alias]
 		rows := neededBySibling[alias]
 		path := siblingRootPath(root, target, overrides)
+		if pathIsRoot(root, path) {
+			// Backstop for ownRepoFor's name-based exclusion: whatever the
+			// repo-name comparison concluded, if the resolved checkout path IS
+			// this tree's own root (a symlink, a same-directory override, or a
+			// registry/name mismatch this run could not otherwise catch), it is
+			// not an external sibling to read. Skip silently — never a
+			// could-not-check, never a checked read of the tree against itself.
+			continue
+		}
 		if ok, reason := checkSiblingCheckout(path); !ok {
 			notices = append(notices, fmt.Sprintf(
 				"could-not-check: sibling-merge-unreconciled could not read %s's history at %s (%s) — no conclusion is drawn about whether work for this repo's briefs has already merged there.",

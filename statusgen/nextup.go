@@ -167,11 +167,11 @@ type NextUp struct {
 	HomedElsewhere map[string]string
 	// MergedElsewhere maps the id ("<stream>/<NN>") of every TODO brief held
 	// OUT of Next-up by a checked-failed sibling-merge-unreconciled finding
-	// (fleet-integrity/10, siblingmerge.go) to the sibling repo whose history
-	// named it. The HomedElsewhere shape (item 5(i) of the Interface
-	// contract): NAMED, never silently dropped, so a cross-repo reader sees
+	// (siblingmerge.go) to the sibling repo whose history
+	// named it. The same shape as HomedElsewhere: NAMED, never silently
+	// dropped, so a cross-repo reader sees
 	// which repo to check before re-dispatching the row. An in-progress row
-	// carrying the same finding is NEVER held (item 6) and so never appears
+	// carrying the same finding is NEVER held and so never appears
 	// here — see Brief.MergedInSibling, set only for a held TODO row.
 	MergedElsewhere map[string]string
 	// --- Drive fields (methodology-metrics/45). All zero when no drive is active,
@@ -449,7 +449,7 @@ func eligibleBase(streams []*Stream, s *Stream, b Brief, claimed map[string]bool
 	if b.HomedIn != "" {
 		return false
 	}
-	// sibling-merge-unreconciled (fleet-integrity/10): MergedInSibling is set
+	// sibling-merge-unreconciled: MergedInSibling is set
 	// ONLY on a checked-failed TODO row not released by an acknowledged
 	// `delivery: covers: partial` claim (siblingmerge.go). Excluded here in
 	// exactly the same shape as HomedIn above — an eligibility exclusion,
@@ -737,9 +737,9 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 					nu.HomedElsewhere[s.Name+"/"+b.Num] = b.HomedIn
 				}
 				// Attribute the sibling-merge-unreconciled exclusion
-				// (fleet-integrity/10) the same way: b.MergedInSibling is only
+				// the same way: b.MergedInSibling is only
 				// ever set on a TODO row (siblingMergeCheck never sets it for
-				// in-progress — item 6), so no status filter is needed here.
+				// in-progress), so no status filter is needed here.
 				if b.MergedInSibling != "" && s.Status == "active" {
 					if nu.MergedElsewhere == nil {
 						nu.MergedElsewhere = map[string]string{}

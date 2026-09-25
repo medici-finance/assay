@@ -247,6 +247,21 @@ repo — check before dispatch" section; an `in-progress` row is surfaced but
 never excluded — hiding what someone already holds is not the same as not
 handing it out.
 
+Matching walks the sibling's first-parent history (both the commit subject
+and its full body, so an id named only in a trailer is still caught) for
+either of two keys. The first is the brief id itself — `<stream>/<NN>` or
+`<stream>-<NN>`, word-bounded — appearing anywhere in the commit message.
+The second, `tracked-in: <alias>#<N>` frontmatter, exists for a PUBLIC
+sibling PR that deliberately withholds the brief id from its own history (a
+self-containment rule working as intended, not a bug to route around): such
+a PR instead carries an `Issue: #<N>` trailer or a GitHub closing keyword
+(`closes #<N>`, `fixes #<N>`, and their variants) naming the tracked issue.
+**Without a `tracked-in:` entry naming that sibling, a PR shaped this way is
+a checked-clean miss** — the detector reads the sibling's history, finds no
+matching key, and reports nothing dispatchable-wise, even though the work
+already landed. Declaring `tracked-in:` for the sibling alias is what turns
+that miss into a checked-failed finding instead.
+
 ## Multi-root (a board that spans repos)
 
 `--root` is **repeatable**. Give it more than once and statusgen emits **one

@@ -1100,6 +1100,15 @@ func runRoadmap(root, cadence string) int {
 	activeFindings = findings
 	defer func() { activeFindings = savedFindings }()
 
+	// Sibling-merge-unreconciled (siblingmerge.go) MUST run before nextUp() here
+	// too, same reasoning and same call shape as runNextUp (dispatchqueue.go): it
+	// mutates each checked-failed TODO row's Brief.MergedInSibling in place, which
+	// is what makes nextUp()'s eligibleBase exclusion (nextup.go) fire. Without it
+	// the roadmap deck's Next-up panel would show a row the STATUS.md board holds
+	// back as "merged in a sibling" as dispatchable. Notices are discarded — the
+	// deck renders its own health/blocker prose, never board NOTICE text.
+	_, _, _ = siblingMergeCheck(streams, root, effectiveSiblingRootOverrides(siblingRootFlagValues))
+
 	// Compute Next-up (reuse nextUp from nextup.go without claim filtering).
 	// The zero ClaimView says so honestly, which also means a stream that
 	// declared max-concurrent is withheld here rather than shown unserialized.

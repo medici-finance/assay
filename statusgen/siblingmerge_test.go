@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,15 +10,15 @@ import (
 	"testing"
 )
 
-// siblingmerge_test.go — Verify rows 1-11 for fleet-integrity/10 (the
-// sibling-merge-unreconciled phantom class). Every fixture uses
-// example-org/example-sibling / example-stream, per this brief's Ground rules:
-// the deliverable repo is PUBLIC and no fixture may name a private repo,
+// siblingmerge_test.go — tests for the sibling-merge-unreconciled phantom
+// class. Every fixture uses
+// example-org/example-sibling / example-stream: the deliverable repo is
+// PUBLIC and no fixture may name a private repo,
 // stream or issue.
 
 // siblingExampleRegistry is the graph-repos.yaml every test in this file
 // shares: "ex" is a published sibling alias, "hidden" is unpublished (a
-// withheld repo, the could-not-check shape item 4 names).
+// withheld repo, the could-not-check shape).
 const siblingExampleRegistry = "schema: graph-repos-v1\ncell: test\nrepos:\n" +
 	"  ex:     {cell: test, repo: example-org/example-sibling}\n" +
 	"  hidden: {cell: test, repo: null, unpublished: true}\n"
@@ -548,4 +549,160 @@ func TestSiblingMergeDeliveryClaimAck(t *testing.T) {
 			t.Errorf("the row must still be held by the unacknowledged PR")
 		}
 	})
+}
+
+// --- Review finding C1: the board's own repo is never its own sibling ------
+
+// TestSiblingTargetsExcludeOwnRepo pins the reviewer's C1 finding on PR 1683:
+// siblingTargetsForBrief must drop any registry entry naming the board's OWN
+// repo, from every one of the three sibling-set derivation paths
+// (deliverable_repo:, homed-in:, and the registry walk the ../<basename>/
+// heuristic shares with it) — never adding it as a target and never reporting
+// it as a could-not-check. ownRepoFor's `self:` alias must win over a
+// stream's own `repo:` frontmatter when both are present.
+func TestSiblingTargetsExcludeOwnRepo(t *testing.T) {
+	registry := "schema: graph-repos-v1\ncell: test\nself: home\nrepos:\n" +
+		"  home: {cell: test, repo: example-org/example-home}\n" +
+		"  ex:   {cell: test, repo: example-org/example-sibling}\n"
+	root := writeSiblingRegistry(t, registry)
+	reg, ok, err := loadGraphRepos(root)
+	if err != nil || !ok {
+		t.Fatalf("loadGraphRepos: ok=%v err=%v", ok, err)
+	}
+
+	streams := []*Stream{{Name: "example-stream", Repo: "example-org/other-declared"}}
+	if got := ownRepoFor(reg, streams); got != "example-org/example-home" {
+		t.Fatalf("ownRepoFor = %q, want example-org/example-home — the registry's self: must win over repo: frontmatter", got)
+	}
+
+	// deliverable_repo: naming the own repo — silently dropped, never
+	// could-not-check (the declaration resolved fine; it is simply not a
+	// sibling).
+	b1 := Brief{Num: "01", Status: "todo", DeliverableRepo: "home"}
+	targets1, unresolved1 := siblingTargetsForBrief(b1, "", reg, "example-org/example-home")
+	if len(targets1) != 0 {
+		t.Errorf("deliverable_repo: naming the own repo must yield zero targets, got %+v", targets1)
+	}
+	if len(unresolved1) != 0 {
+		t.Errorf("deliverable_repo: naming the own repo must NEVER be could-not-check, got %v", unresolved1)
+	}
+
+	// homed-in: naming the own repo — the registry-walk path.
+	b2 := Brief{Num: "02", Status: "todo", HomedIn: "example-org/example-home"}
+	targets2, unresolved2 := siblingTargetsForBrief(b2, "", reg, "example-org/example-home")
+	if len(targets2) != 0 {
+		t.Errorf("homed-in: naming the own repo must yield zero targets, got %+v", targets2)
+	}
+	if len(unresolved2) != 0 {
+		t.Errorf("want 0 unresolved, got %v", unresolved2)
+	}
+
+	// The ../<basename>/ heuristic — same registry walk, own-repo basename in
+	// the raw body.
+	b3 := Brief{Num: "03", Status: "todo"}
+	targets3, _ := siblingTargetsForBrief(b3, "see ../example-home/tools/x.go for context", reg, "example-org/example-home")
+	if len(targets3) != 0 {
+		t.Errorf("a ../<basename>/ hit on the own repo must yield zero targets, got %+v", targets3)
+	}
+
+	// A genuine sibling is unaffected by the exclusion.
+	b4 := Brief{Num: "04", Status: "todo", DeliverableRepo: "ex"}
+	targets4, _ := siblingTargetsForBrief(b4, "", reg, "example-org/example-home")
+	if len(targets4) != 1 || targets4[0].Repo != "example-org/example-sibling" {
+		t.Errorf("a genuine sibling must still resolve, got %+v", targets4)
+	}
+}
+
+// TestSiblingMergeOwnRepoEndToEnd is the end-to-end companion: an own-history
+// commit that happens to mention a todo row's id (an audit/authoring commit,
+// exactly the reviewer's live-reproduction shape) must never hold that row
+// once the brief's own deliverable_repo: alias is excluded as the board's own
+// repo.
+func TestSiblingMergeOwnRepoEndToEnd(t *testing.T) {
+	registry := "schema: graph-repos-v1\ncell: test\nself: home\nrepos:\n" +
+		"  home: {cell: test, repo: example-org/example-home}\n"
+	root := writeSiblingRegistry(t, registry)
+	// The "sibling" checkout is a real git repo whose history mentions the
+	// brief id in an unrelated audit commit — the live false positive the
+	// reviewer observed.
+	home := newSiblingGitRepo(t)
+	commitEmpty(t, home, "docs: audit mentions example-stream/03 in passing (#5)")
+
+	s := &Stream{Name: "example-stream", Status: "active", Briefs: []Brief{
+		{Num: "03", Status: "todo", DeliverableRepo: "home"},
+	}}
+	overrides := map[string]string{"example-org/example-home": home}
+	notices, failed, cnc := siblingMergeCheck([]*Stream{s}, root, overrides)
+	if failed != 0 || cnc != 0 {
+		t.Fatalf("the board's own repo must never be read as a sibling; failed=%d cnc=%d notices=%v", failed, cnc, notices)
+	}
+	if s.Briefs[0].MergedInSibling != "" {
+		t.Errorf("the row must never be held by its own repo's history; got MergedInSibling=%q", s.Briefs[0].MergedInSibling)
+	}
+}
+
+// TestSiblingMergePathIsRootBackstop pins pathIsRoot, the path-identity
+// backstop finding C1 calls for: even when the name-based ownRepo comparison
+// has nothing to compare against (no self:, no repo: frontmatter — ownRepo ==
+// ""), a sibling checkout override that resolves to root's OWN directory must
+// never be read as an external sibling. Without the backstop this reproduces
+// the exact live defect: root's own history (which DOES mention the brief id,
+// same as any audit/authoring commit) is read back as "merged in a sibling".
+func TestSiblingMergePathIsRootBackstop(t *testing.T) {
+	root := newSiblingGitRepo(t) // root is itself a real, non-shallow git checkout
+	streamsDir := filepath.Join(root, "docs", "streams")
+	if err := os.MkdirAll(streamsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(streamsDir, "graph-repos.yaml"), []byte(siblingExampleRegistry), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitEmpty(t, root, "docs: audit mentions example-stream/03 in passing (#5)")
+
+	s := &Stream{Name: "example-stream", Status: "active", Briefs: []Brief{
+		{Num: "03", Status: "todo", DeliverableRepo: "ex"},
+	}}
+	// A registry/name mismatch this run's name-based comparison alone cannot
+	// catch (ownRepo is "" here — no self:, no repo: frontmatter) — but the
+	// override resolves the registered sibling's checkout path back to root
+	// itself.
+	overrides := map[string]string{"example-org/example-sibling": root}
+	notices, failed, cnc := siblingMergeCheck([]*Stream{s}, root, overrides)
+	if failed != 0 || cnc != 0 {
+		t.Fatalf("a sibling checkout path that resolves to root's OWN directory must be skipped silently — never checked, never could-not-check; failed=%d cnc=%d notices=%v", failed, cnc, notices)
+	}
+	if s.Briefs[0].MergedInSibling != "" {
+		t.Errorf("a self-referential path must never hold the row; got MergedInSibling=%q", s.Briefs[0].MergedInSibling)
+	}
+}
+
+// --- Review finding C2: the hold must reach the machine-readable queues too -
+
+// TestNextUpJSONHonorsSiblingMergeHold pins the reviewer's C2 finding on PR
+// 1683: runNextUp (the `--next-up` JSON emitter, dispatchqueue.go) must run
+// the sibling-merge-unreconciled detector before nextUp(), exactly like
+// run()'s STATUS.md path does — otherwise a row STATUS.md holds back as
+// "merged in a sibling" is still emitted as a dispatchable todo in the JSON a
+// cross-repo dispatcher actually reads.
+func TestNextUpJSONHonorsSiblingMergeHold(t *testing.T) {
+	root := siblingBriefTree(t, "deliverable_repo: ex\n") // one todo brief: example-stream/02
+	sib := newSiblingGitRepo(t)
+	commitEmpty(t, sib, "feat: ship it (example-stream/02) (#42)")
+	withSiblingRootOverride(t, "example-org/example-sibling="+sib)
+
+	out := captureStdout(t, func() {
+		if code := runNextUp(root); code != 0 {
+			t.Fatalf("runNextUp returned non-zero exit %d", code)
+		}
+	})
+
+	var view dispatchView
+	if err := json.Unmarshal([]byte(out), &view); err != nil {
+		t.Fatalf("--next-up did not emit valid JSON: %v\noutput: %q", err, out)
+	}
+	for _, r := range view.Rows {
+		if r.Brief == "example-stream/02" {
+			t.Errorf("example-stream/02 is checked-failed sibling-merge-unreconciled and must be ABSENT from --next-up JSON (same hold STATUS.md renders), got rows: %+v", view.Rows)
+		}
+	}
 }

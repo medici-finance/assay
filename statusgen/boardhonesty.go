@@ -100,7 +100,7 @@ const (
 	phantomStatusgenSource = "statusgen-source-elsewhere"
 	phantomDeferredByGate  = "deferred-by-gate"
 	// phantomSiblingMergeUnreconciled is the SEVENTH phantom class
-	// (fleet-integrity/10, siblingmerge.go): a change naming this brief
+	// (siblingmerge.go): a change naming this brief
 	// already merged in a SIBLING repo and nobody has recorded what it
 	// covered. Unlike the six classes above, it is wired and tested from its
 	// own driver (siblingMergeNotices, siblingmerge.go) rather than through
