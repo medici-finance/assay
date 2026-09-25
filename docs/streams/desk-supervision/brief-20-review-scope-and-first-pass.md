@@ -57,7 +57,7 @@ Options:
 1. **Approve this scope rule** — apply the first-pass inventory and impact-based blocking boundary while preserving the existing three-round limit.
 2. **Retain the existing rule** — leave the broader prose gate unchanged and record its continuing review cost.
 
-Default if no answer: none — blocks implementation.
+Default if no answer: none — blocks until answered.
 
 ### Recorded ruling
 
