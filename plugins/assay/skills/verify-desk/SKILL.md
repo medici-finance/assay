@@ -218,9 +218,10 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
   PROBLEM, not the softer per-stream NOTICE the inherited backlog still gets.
 - **Tier — the two-stamp model.** The routine drain runs at the **LOCAL SESSION MODEL, never a
   stronger external/paid tier** (human:<name>, 2026-07-15). A risk-clear brief (gate `model`, all
-  risk answers `no`) is the normal path and most of the queue, and the local tier is its only stamp. A **risk-flagged** brief (`gate: human` or any `yes`)
-  may have its Verify table RUN for the Evidence but **cannot be signed off by a model** — route it to
-  the human gate — and a `gate: human` brief carries TWO stamps before the human closes it: the drain's
+  risk answers `no`) is the normal path and most of the queue, and the local tier is its only
+  stamp. A **risk-flagged** brief (`gate: human` or any `yes`) may have its Verify table RUN for
+  the Evidence but **cannot be signed off by a model** — route it to the human gate — and a
+  `gate: human` brief carries TWO stamps before the human closes it: the drain's
   local-tier PASS (first stamp), then ONE floor-tier re-verify (second stamp), the single sanctioned
   pass above the local tier, one per human-gated brief — see "`gate: human` — the two stamps" below.
   Read each brief's own frontmatter; never default the queue to one treatment.
