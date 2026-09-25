@@ -115,8 +115,9 @@ Options:
    to state, honestly, that the third-harness claim is unproven pending this step, with no
    target date.
 
-Default if no answer: option 2, revisited in 30 days — the acceptance step stays open and
-clearly labeled rather than silently dropped.
+Default if no answer: option 2 after 2026-10-01 (30 days after this brief landed on
+2026-09-01) — the acceptance step stays open and clearly labeled rather than silently
+dropped.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Draft PR only.
