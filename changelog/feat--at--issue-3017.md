@@ -1,0 +1,2 @@
+### Changed
+- Stream boards: `composability/01` and `forge-gitlab/13` flipped `todo` to `implemented` — both delivery PRs (#957, #1084) are merged on main with a unique `Brief:` trailer each, and the rows were never flipped. `forge-gitlab/16` stays `todo`: its merged PR (#1155) delivered the offline half only, and the live review-tick walk it gates on has not run (every live cell in the conformance table reads could-not-check).
