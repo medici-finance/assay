@@ -832,8 +832,11 @@ verdicts are posted by the same reviewer App in parallel: a `Security-Review:` v
 clears a correctness-lane finding (nor the reverse), and a COMMENTED note that is not a
 verdict clears nothing — so the answer never depends on which lane posted last. The
 head-stable re-gate re-runs this condition against its fresh read of the reviews, body and
-labels, so a finding posted during the checks is still seen. **Absence of a block, by
-itself, is NEVER a refusal** — that is the stricter alternative (option 2 of the driver's
+labels, so a finding posted during the checks is still seen. `deskpost ready`, the other
+verb that performs the same ready-flip, runs the SAME condition — one shared implementation,
+`deskkit.DeskDecidedRefusal` — on its first read and again on its pre-mutation re-read, so a
+PR `deskflip` refuses here cannot be flipped through `deskpost ready` instead (#1694).
+**Absence of a block, by itself, is NEVER a refusal** — that is the stricter alternative (option 2 of the driver's
 decision on #1677) and is not built without a ruling naming it specifically.
 
 A `## Desk-decided` heading inside a fenced code block is a quoted example, not a
