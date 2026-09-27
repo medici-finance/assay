@@ -64,7 +64,7 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (60 desk-actionable of 84 total — 83 at implemented, 1 verified awaiting review)
+## Awaiting verification / review (60 desk-actionable of 84 total — 82 at implemented, 2 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -126,7 +126,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 18 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 26 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| desktools-v2 | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desktools-v2 | 04 [exec:strong] | verified | 1000 | 0 | — | 2026-09-27 assay-verifier-app[bot] @ 9585b4b6cc2e (claude-opus-5-5) | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -332,7 +332,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 01 audit & inventory — enumerate every gh shell-out + hardcoded-forge-assumption site (file:line) — implemented (wave 1)
 - 02 the v2 seam contract + the ban-lint (advisory/counting first) — verified (wave 2)
 - 03 native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot) — todo (wave 3)
-- 04 deskclose reads an authorizing comment by its stated kind — retire the kind-less default (#1019) — implemented (wave 2)
+- 04 deskclose reads an authorizing comment by its stated kind — retire the kind-less default (#1019) — verified (wave 2)
 - 05 the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884) — todo (wave 2)
 - 06 installation-token scoping — one token per repo, no ambient-credential hiding (#628 / #1145 / #1146) — todo (wave 4)
 - 08 hold statusgen at zero — the gh ban fails on statusgen and the scan is proven with no gh present — todo (wave 6)
