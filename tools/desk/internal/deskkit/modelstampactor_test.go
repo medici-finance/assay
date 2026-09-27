@@ -131,7 +131,7 @@ ASSAY_ALLOWED_REPOS=example-org/one:ci:private
 // dispatcher removes and re-applies it under its own bound slug, and the floor then clears
 // under the STRICT dispatcher-only predicate. This is the repair the first-class re-stamp
 // verb performs, driven in the model exactly as the verb drives it on the forge.
-func TestModelStampActorReStampRestoresStrictDerivation(t *testing.T) {
+func TestModelStampActorRestampRestoresStrictDerivation(t *testing.T) {
 	plantRoster(t, `ASSAY_BLESS_LOGIN=ada:2001
 ASSAY_TRUSTED_LOGINS=ada:2001,opex:2002
 ASSAY_TRUSTED_BOT_SLUGS=desk=example-desk-app:300000001

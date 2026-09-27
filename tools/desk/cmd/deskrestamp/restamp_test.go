@@ -134,7 +134,7 @@ const (
 // --- The happy path: a foreign-applied stamp is removed and re-applied under the
 // dispatcher, the removal is its OWN write ahead of the application, and the record
 // comment names both actors.
-func TestReStampForeignAppliedPair(t *testing.T) {
+func TestRestampForeignAppliedPair(t *testing.T) {
 	fg := &fakeForge{
 		pr: stampedPR(modelLabel, tierLabel),
 		events: []deskkit.LabelEvent{
@@ -175,7 +175,7 @@ func TestReStampForeignAppliedPair(t *testing.T) {
 
 // An identical stamp already standing under the dispatcher is a no-op: no write, no
 // comment, no budget charged.
-func TestReStampNoopWhenAlreadyStanding(t *testing.T) {
+func TestRestampSkipsStandingPair(t *testing.T) {
 	fg := &fakeForge{
 		pr: stampedPR(modelLabel, tierLabel),
 		events: []deskkit.LabelEvent{
@@ -198,7 +198,7 @@ func TestReStampNoopWhenAlreadyStanding(t *testing.T) {
 
 // A stamp already standing under a roster-allowed trusted login (#336's allowance) is
 // also a no-op — the allowance the floor reads is the allowance this verb respects.
-func TestReStampNoopUnderAllowanceLogin(t *testing.T) {
+func TestRestampUnderAllowanceIsQuiet(t *testing.T) {
 	fg := &fakeForge{
 		pr: stampedPR(modelLabel, tierLabel),
 		events: []deskkit.LabelEvent{
@@ -232,7 +232,7 @@ func TestReStampNoopUnderAllowanceLogin(t *testing.T) {
 // An UNREADABLE stamp is refused: this verb preserves content and never invents it — the
 // corrupt-content repair is the dispatch ceremony's, which validates an explicit
 // --model/--tier.
-func TestReStampRefusesUnreadableContent(t *testing.T) {
+func TestRestampRefusesCorruptContent(t *testing.T) {
 	fg := &fakeForge{
 		pr: stampedPR(modelLabel, tierLabel, "dispatched-tier:any"),
 		events: []deskkit.LabelEvent{
@@ -256,7 +256,7 @@ func TestReStampRefusesUnreadableContent(t *testing.T) {
 
 // A session role that is not a bound dispatcher is refused BEFORE any forge call — a
 // re-stamp under any other identity only mints a second unreadable stamp.
-func TestReStampRefusesNonDispatcherRole(t *testing.T) {
+func TestRestampRefusesWorkerRole(t *testing.T) {
 	fg := &fakeForge{pr: stampedPR(modelLabel, tierLabel)}
 	plantWorld(t, "worker", fg)
 	code, out := runVerb(t, allowedRepo, "7")
@@ -273,7 +273,7 @@ func TestReStampRefusesNonDispatcherRole(t *testing.T) {
 
 // The reviewer role IS a dispatching role (it dispatches the review lane), so its
 // re-stamp proceeds under its own App.
-func TestReStampReviewerRoleProceeds(t *testing.T) {
+func TestRestampReviewerRoleProceeds(t *testing.T) {
 	fg := &fakeForge{
 		pr: stampedPR(modelLabel, tierLabel),
 		events: []deskkit.LabelEvent{
@@ -293,7 +293,7 @@ func TestReStampReviewerRoleProceeds(t *testing.T) {
 
 // --dry-run reads everything, writes nothing, and prints the plan including the previous
 // applier.
-func TestReStampDryRun(t *testing.T) {
+func TestRestampDryRun(t *testing.T) {
 	fg := &fakeForge{
 		pr: stampedPR(modelLabel, tierLabel),
 		events: []deskkit.LabelEvent{
@@ -317,7 +317,7 @@ func TestReStampDryRun(t *testing.T) {
 }
 
 // A forge read failure is could-not-check (exit 6), never a blind write.
-func TestReStampUnverifiableOnReadFailure(t *testing.T) {
+func TestRestampReadFailureIsCouldNotCheck(t *testing.T) {
 	fg := &fakeForge{prErr: errors.New("boom")}
 	plantWorld(t, "desk", fg)
 	code, out := runVerb(t, allowedRepo, "7")
@@ -331,7 +331,7 @@ func TestReStampUnverifiableOnReadFailure(t *testing.T) {
 
 // A re-stamp whose record comment fails to post is reported UNVERIFIABLE — the labels
 // landed, the record did not, and the message says both rather than either alone.
-func TestReStampCommentFailureIsLoud(t *testing.T) {
+func TestRestampCommentFailureIsLoud(t *testing.T) {
 	fg := &fakeForge{
 		pr: stampedPR(modelLabel, tierLabel),
 		events: []deskkit.LabelEvent{
