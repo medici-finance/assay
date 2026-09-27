@@ -1,4 +1,4 @@
-# Skills — assay methodology skills v0.1.0
+# Skills — assay methodology skills
 
 The Assay methodology skills, each as `<name>/SKILL.md`. When the plugin is
 installed they surface **namespaced** as `assay:<name>` — that namespacing is
