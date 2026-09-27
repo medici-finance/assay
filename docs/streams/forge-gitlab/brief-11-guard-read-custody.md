@@ -434,6 +434,126 @@ Runner ≠ implementer. Own detached temp worktree off `medici-finance/assay` or
 
 **Gate statement:** `gate: human` + `sensitive-data: yes` — Evidence only, no verdict/flip made or attempted.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -rnE -e 'exec\.Command(Context)?\([^)]*"gh"' -e 'exec\.Command(Context)?\([^)]*"glab"' tools/desk --include='*.go' \| grep -v _test.go \| wc -l` | fail exit=1 | sha256:4eff2db4bada | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestNoForgeCLIShellout -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v && go test ./internal/deskkit/ -run TestForgeGithubGolden -v` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -cE -e 'Key: +"cmd/repohardenguard/' -e 'Key: +"cmd/deskroster/' tools/desk/internal/forgeban/allowlist.go; test "$(grep -oE 'allowedInvocationCeiling = [0-9]+' tools/desk/internal/forgeban/allowlist.go \| grep -oE '[0-9]+$')" -le 6` | pass exit=0 | sha256:9a271f2a916b | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGithubGolden/hardening_read_unknown_kind -v` | pass exit=0 | sha256:693497cf08a1 | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/repohardenguard/ -run TestChecklistRefusesGhApiCell -v && go test ./cmd/repohardenguard/ -run TestAdminNullIsCouldNotCheck -v && go test ./cmd/repohardenguard/ -run TestForbiddenIsCouldNotCheck -v && go test ./cmd/repohardenguard/ -run TestPublicNotFoundIsAbsent -v` | pass exit=0 | sha256:186f7c45d8c3 | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `repohardenguard --repo "$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+/[^/]+?)(\.git)?$#\1#')" --json \| jq -e '(.identity \| test("\\[bot\\]$")) and ([.rows[] \| select(.state=="could-not-check" and .gated!="admin")] \| length == 0)'` | fail exit=4 | sha256:0087b96b601c | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `curl -sS -o /dev/null -w '%{http_code}' -X PATCH -H "Authorization: Bearer $(cat "$(desktoken auditor --repo "$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+)/[^/]+?(\.git)?$#\1#')")")" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+/[^/]+?)(\.git)?$#\1#')" -d '{}'` | fail exit=6 | sha256:9a07e914d95b | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `desktoken --version \| grep -c 'auditor=auditor-app'` | fail exit=1 | sha256:6acc4612d178 | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --root . --consumers` | pass exit=0 | sha256:1156598a8008 | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && go test ./cmd/desktoken/ -run TestAdopterDocsEnumerateEveryRole -v -timeout 60s` | pass exit=0 | sha256:3d2ce09219a2 | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `test "$(grep -c 'Administration: read' docs/adopting-assay.md)" -ge 1 && grep -qE '^[\|] *auditor *[\|].*read_api' docs/adopting-assay-gitlab.md && sed -n 's/.*for r in \(.*\); do.*/\1/p' docs/adopting-assay-gitlab.md \| grep -qw auditor` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `grep -hniE auditor docs/adopting-assay.md docs/adopting-assay-gitlab.md \| grep -viE -e 'no write' -e read-only -e 'never writes' -e could-not-check \| grep -E -e ': write' -e write_repository -e '` | fail exit=2 | sha256:3b4acfef4ecb | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+
+### Non-implementer verifier re-run — 2026-09-27 claude-opus-5-5-verifier (verify-desk dispatch) — gate: human, risk.sensitive-data: yes — Evidence only, HELD at `implemented`
+
+Runner is not the implementer (implementing change: PR #1097, merge commit 7288a6d198329ae6ab2d57f2bbb3588a42631a99).
+Own detached temp worktree at merged main e70bc86474f94b6e241d12857a10dcbd8136d556 (matches the forge's
+reported main head). The witness table above was written by the PINNED statusgen v1.0.27 (sha256 matches the
+release pin), run OFFLINE: under `sandbox-exec` with all network denied, a stripped environment (no forge
+credential exported), and PATH limited to the system dirs plus `go` and the pinned `statusgen`. `desktoken`,
+`repohardenguard` and every credential file were deliberately kept out of reach, because rows 7 and 8 mint an
+auditor token and call the live GitHub API (row 8 is a PATCH). Rows 7, 8 and 9 in the table therefore record
+what that envelope allowed, not a verdict on the code.
+
+**Per-row notes (real output):**
+- Row 1 (check:ci) — could-not-run on this darwin host, #1800. Out of witness, same sha: `go build ./...` in
+  tools/desk exit 0; targeted `go test -timeout 300s` of the four touched packages (internal/deskkit,
+  internal/forgeban, cmd/repohardenguard, cmd/desktoken) exit 0, all `ok`. The full-module test run was not
+  executed here (dispatch rule: targeted tests only); it clears on a Linux runner.
+- Row 2 — witness `fail exit=1` is a check-definition artifact, not a regression: the witness runs under
+  `pipefail`, and a zero-match `grep -rnE` exits 1. The output hash 4eff2db4bada is the BSD `wc -l` padded
+  count `       0` (reproduced: same hash, exit 1 under `bash -o pipefail`). The count the row asks for is 0.
+- Row 3 (check:ci) — could-not-run, #1800. Out of witness, same sha: all four tests `--- PASS`
+  (`TestNoForgeCLIShellout`, `TestForgeNoPassthrough`, `TestForgeGitlabCoverage`, `TestForgeGithubGolden`
+  plus its count test, which reports 62 golden operations incl. seven `hardening_read_*` cases).
+- Row 4 — pass: permit-row count `0`; `allowedInvocationCeiling = 6` (the ratchet equals the permit-list
+  length; this brief moved it 7 → 6, a later change took it to 5 and another back to 6).
+- Row 5 — pass. The golden fixture for `hardening_read_unknown_kind` records `"requests": []` and the refusal
+  `could-not-check: "not-a-real-kind" is not a known hardening-read kind — …`.
+- Row 6 — pass: all four repohardenguard verdict tests `--- PASS`.
+- Row 7 — could-not-check (live forge; needs a provisioned auditor App, and no auditor custody material
+  exists on this host). Witness `fail exit=4` is the envelope artifact: `repohardenguard` absent from the
+  sandbox PATH, then `jq -e` on empty input exits 4. Exact probe for the human gate, as authored:
+  `repohardenguard --repo "<owner>/<repo>" --json | jq -e '(.identity | test("\\[bot\\]$")) and ([.rows[] | select(.state=="could-not-check" and .gated!="admin")] | length == 0)'`.
+- Row 8 — could-not-check (live forge write probe). Witness `fail exit=6` is `curl: (6) Could not resolve
+  host` under the network deny. Exact probe for the human gate: the row-8 cell with the auditor token, i.e.
+  `curl -sS -o /dev/null -w '%{http_code}' -X PATCH -H "Authorization: Bearer <auditor token>" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/<owner>/<repo>" -d '{}'`, expect `403`.
+- Rows 7 and 8, check-definition defect found while reproducing: the slug derivation
+  `sed -E 's#.*[:/]([^/]+/[^/]+?)(\.git)?$#\1#'` is not portable. macOS/BSD `sed` rejects it
+  (`RE error: repetition-operator operand invalid`, empty slug). GNU `sed` accepts it but POSIX ERE has no
+  lazy `+?`, so for an origin URL ending in `.git` it yields `<owner>/<repo>.git`, not `<owner>/<repo>`.
+  Whoever runs rows 7/8 should pass the slug explicitly; otherwise row 8 can return a non-403 for the wrong
+  reason.
+- Row 9 — witness `fail exit=1` is the envelope artifact (`desktoken` kept off the sandbox PATH because row 8
+  mints with it). Out of witness, offline: `desktoken --version` from a build of this sha prints
+  `auditor=auditor-app`, count `1`; the pinned v1.0.27 `desktoken` also counts `1`.
+- Row 10 — witness pass is VACUOUS on merged main (`consumers: no brief files in the diff … nothing to
+  corroborate`). Supplement: the same pinned binary with `--base` at the implementing commit's parent reports
+  this brief's seven `fixed-here` consumers CORROBORATED and none disproved. The other five entries are
+  out-of-scope or `follow-up forge-gitlab/12`, UNCHECKED by design. No `follow-up forge-gitlab/11` routing
+  remains anywhere under docs/.
+- Row 11 — pass: `TestAdopterDocs…EveryRole` `--- PASS`.
+- Row 12 — pass (exit 0, empty output).
+- Row 13 — witness `fail exit=2` is a TRUNCATED command cell: the cell's own backticks around `api` end the
+  code span early, so the witness ran a fragment with an open quote (shell syntax error). The full command,
+  run by hand at the same sha, is a real FAIL: exit 1, because the final grep matches
+  docs/adopting-assay.md line 359. That line is the **cell-issues** App's row (`issues: write`) and names
+  the auditor only as a cross-reference ("the model the auditor role above follows"). Nothing grants the
+  auditor a write permission. The auditor's own rows (adopting-assay.md line 358: `Metadata: read`,
+  `Contents: read`, `Administration: read`, "no write permission of any kind"; adopting-assay-gitlab.md line
+  142: `read_api`, "no write scope") carry no write grant. So this is a false positive in the negative
+  control. The implementing change added that line, so the row has never passed as written. Same finding
+  as the 2026-09-17 run. It needs a row fix or a human ruling.
+
+**Risk-bearing value enumeration** (literals and authority bindings this item's diff introduces or changes,
+plus those its Deliverables name). Ranked by irreversibility, most sensitive first:
+1. Documented GitHub grant for the auditor App: `Metadata: read`, `Contents: read`, `Administration: read`,
+   no write @ docs/adopting-assay.md:358. This is the single forge-side control (the SPOF line). An adopter
+   copies it, and the forge then enforces it for as long as the App exists. Undoing a mis-provisioned App is
+   an out-of-band human act, not a redeploy.
+2. Documented GitLab grant for the auditor PAT: scope `read_api`, role `Reporter (20)` @
+   docs/adopting-assay-gitlab.md:142. This item introduced `Reporter (20)`. A later item (forge-gitlab/12)
+   added `Maintainer (40)` to the same row for four reads, which is out of this diff but rests on the same
+   `read_api` boundary claim.
+3. Authority binding `validRoles["auditor"] = true` @ tools/desk/cmd/desktoken/desktoken.go:42.
+4. Fixed acting role `"auditor"` @ tools/desk/cmd/repohardenguard/forge.go:73 (resolve) and :92
+   (`desktoken auditor --repo` mint). The identity line, `AppBinding("auditor") + "[bot]"`, is at
+   forge.go:120.
+5. The six fixed GitHub GET literals @ tools/desk/internal/deskkit/forge_github.go:2289-2295 (`/repos/%s/%s`,
+   `…/actions/permissions/workflow`, `…/fork-pr-contributor-approval`, `…/fork-pr-workflows-private-repos`,
+   `…/private-vulnerability-reporting`) and :2341/:2350 (`…/rulesets`, `…/rulesets/%d`).
+6. `allowedInvocationCeiling = 6` @ tools/desk/internal/forgeban/allowlist.go:84. This is a reversible
+   ratchet, ranked last.
+
+RISK-VALUE: NAMED, NOT DERIVED — auditor GitHub grant = `Metadata: read`, `Contents: read`, `Administration: read`, no write @ docs/adopting-assay.md:358 — two derivations are missing. (a) That this set is SUFFICIENT for the six kinds plus ReadFile, with each endpoint's permission requirement checked against GitHub's own permission reference. (b) That no member of it grants a settings write, checked on a provisioned App (row 8's 403). Neither can be done offline: no auditor App is provisioned and live forge calls are outside this envelope. **Open question for the human.**
+RISK-VALUE: NAMED, NOT DERIVED — auditor GitLab grant = scope `read_api`, role `Reporter (20)` @ docs/adopting-assay-gitlab.md:142 — missing: a live check that a `read_api` PAT is refused on a write whatever the project role (it matters more now that the same row lists `Maintainer (40)`). No GitLab instance or credential is in this envelope. **Open question for the human.**
+RISK-VALUE: DERIVED — `validRoles["auditor"] = true` @ tools/desk/cmd/desktoken/desktoken.go:42 — the #857 ruling (option 1, a dedicated read-only auditor identity) requires exactly one new role, keyed by name so the existing role-parameterised mint and token-file lookups resolve it. Row 9 (out of witness) and row 11 confirm that both adopter pages enumerate it.
+RISK-VALUE: DERIVED — acting role `"auditor"` @ tools/desk/cmd/repohardenguard/forge.go:73 and :92 — the design fixes the role instead of reading the loop variable (the guard runs outside a desk window). The custody hook refuses when no auditor token was minted (forge.go:45-56): "never falls back to an ambient forge identity". This matches the ruling and the "never ambient" resolver contract.
+RISK-VALUE: DERIVED — the six GitHub GET literals @ tools/desk/internal/deskkit/forge_github.go:2289-2295, 2341, 2350 — each one matches the brief's kind table verbatim. The map holds one literal per kind, with no caller-supplied path segment, and only `http.MethodGet` is used.
+RISK-VALUE: DERIVED — `allowedInvocationCeiling = 6` @ tools/desk/internal/forgeban/allowlist.go:84 — forgeban_test.go:330 requires it to equal `len(AllowedInvocations)`. At the implementing commit, six named-`gh` permit rows remained, as the brief's facts predicted. Reversible.
+
+**Observations for the human gate:**
+- Row 7's identity assertion (`.identity` ends in `[bot]`) does not discriminate: `identity()` is a display
+  string built from the auditor's App binding, not a whoami, so any completed run satisfies it. The
+  no-ambient guarantee comes from the custody hook's refusal, which this verifier confirmed by reading the
+  code, not by a live run.
+- The rulesets walk GETs the list without pagination (GitHub's default page size). On a repo with more
+  rulesets than one page, a named ruleset beyond page one would read as absent: a false could-not-check or
+  wrong, never a false pass.
+- A darwin human running rows 7/8 exactly as authored hits the BSD `sed` error above.
+
+VERIFY: BLOCKED — offline rows 4, 5, 6, 11 and 12 genuinely pass, and rows 2, 3 and 9 pass on substance
+outside the witness. Row 13 FAILS as authored (a negative-control false positive: check-definition, not a
+real write grant). Rows 7 and 8, the forge-side proof this gate exists for, are could-not-check pending a
+provisioned auditor App and a human-run probe with an explicit repo slug. Rows 1 and 3 are check:ci
+could-not-run on darwin (#1800). Evidence only; status stays `implemented`; no flip made or attempted.
+
 ## Review
 Gate: human (from frontmatter — a risk answer is yes). Human gate is MANDATORY. Reviewer records
 verdict + date in the stream README table. The reviewer answers the two core-system questions:

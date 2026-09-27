@@ -241,6 +241,117 @@ RISK-VALUE: N/A for the page-ceiling knobs (gitlabMaxHardeningPage=10 @ tools/de
 
 Rows 1, 2 are could-not-check (hermetic Linux witness owed); row 4 needs live pilot-project access (human with GitLab access); row 6 corroborates nothing on a merged tree. No defect found in the deliverable.
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 2/6 witness-proven, 0 implementation defects — 2026-09-27 claude-opus-5-5-verifier (verify-desk dispatch)
+
+Runner is not the implementer (implementing PR medici-finance/assay#1179, merge commit
+4ce477d7100bc65a57e7fd1a1510bc2f86d22b76). Own detached temp worktree at merged main
+e70bc86474f94b6e241d12857a10dcbd8136d556 (equal to the forge's main head at run time, read
+with the verifier App token). Witness below written by the pinned statusgen v1.0.27
+darwin-arm64 binary (sha256 matches the pin), invoked directly, inside a macOS
+network-deny sandbox (`sandbox-exec` profile denying all network) with a minimal PATH
+(system dirs plus only the Go toolchain and the pinned statusgen — no credential-minting
+verb resolvable), GOTOOLCHAIN=local, KUBECONFIG=/dev/null, GITLAB_API_BASE unset, no GitLab
+custody file on the host.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGitlabGolden -v && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/repohardenguard/ -run TestGitLabNotAvailableNoRequest -v && go test ./cmd/repohardenguard/ -run TestGitLabTierGateCouldNotCheck -v` | pass exit=0 | sha256:5127cc9a8ad5 | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `curl -sS -o /dev/null -w '%{http_code}' -H "PRIVATE-TOKEN: $(cat "$(desktoken auditor --forge gitlab --repo "$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+/[^/]+?)(\.git)?$#\1#')")")" "$GITLAB_API_BASE/projects/$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+)/([^/]+?)(\.git)?$#\1%2F\2#')/protected_branches"` | fail exit=3 | sha256:825d9d17f84b | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -c 'not available — Premium' docs/adopting-assay-gitlab.md` | pass exit=0 | sha256:53c234e5e847 | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --root . --consumers` | pass exit=0 | sha256:1156598a8008 | 2026-09-27 | assay-verifier-app[bot] @ e70bc86474f9 (on-behalf-of human:ian) (forge-identity) |
+
+Per-row notes (real output; supplementary runs are non-hermetic, same merged main, offline):
+
+- Row 1 — check:ci, could-not-run on this darwin host (no `unshare --net`; tracked by
+  medici-finance/assay#1800). Supplementary targeted run: `go build ./...` exit 0;
+  `go test ./internal/deskkit/ ./cmd/repohardenguard/ -count=1 -timeout 480s` exit 0
+  (`ok …/internal/deskkit 58.9s`, `ok …/cmd/repohardenguard 0.36s`). The whole-module
+  `go test ./...` is left to the Linux hermetic witness; it was deliberately not run here.
+- Row 2 — check:ci, could-not-run on darwin (medici-finance/assay#1800). Supplementary run of
+  the exact three commands (each with `-count=1 -timeout 300s`): exit 0; `--- PASS:
+  TestForgeGitlabGolden`, `--- PASS: TestForgeGitlabCoverage`, `--- PASS:
+  TestForgeNoPassthrough`; 158 PASS lines, 0 FAIL. Golden `push_rules_premium_gated` read
+  directly: one GET of `/api/v4/projects/…/push_rule`, `"result": null`, err text
+  "could-not-check: … permission or tier gate (HTTP 403) … push rules are a Premium feature …
+  record the row as not available — Premium", `"not_found": false`; its 404 twin
+  `push_rules_ce_not_found` carries `"not_found": true`, also `result: null`. The row's
+  `+mutation` class: the repo's mutation spec (deskkit forge-gitlab mutations file) carries
+  a "swallow a tier-gated 403/404 into an empty document" mutant for exactly this path; this
+  pass did not execute the mutant, so the mutation leg is unproven here.
+- Row 3 — witness pass exit 0 inside the sandbox. Key lines: `--- PASS:
+  TestGitLabNotAvailableNoRequest`; `--- PASS: TestGitLabTierGateCouldNotCheck` with subtests
+  `forbidden_403`, `not_found_404_ce_has_no_route`, `premium_null_document…` (the null-document-is-not-a-value case),
+  `premium_value_is_checked` all PASS. This also answers the Review question's negative path:
+  a tier-403 row WITHOUT the `not available` short-circuit is still could-not-check, never a
+  value.
+- Row 4 — witness `fail exit=3` is environment/check-definition shaped, not a defect: no live
+  GitLab instance and no provisioned auditor PAT are available to this verifier. Inside the
+  sandbox the row printed `desktoken: command not found`, `cat: : No such file or directory`,
+  `curl: (3) URL rejected: No host part in the URL`, `000` — no credential was read, minted or
+  rotated and no request left the host. Two check-definition faults the row carries,
+  independent of environment: (a) it runs `desktoken auditor` without `--no-rotate`, so on a
+  host WITH custody a verify run would rotate a live PAT (medici-finance/assay#1794); (b) its
+  `sed -E` uses the lazy `+?` quantifier — macOS system sed rejects it (`RE error:
+  repetition-operator operand invalid`, exit 1) and GNU sed accepts it greedily, leaving a
+  trailing `.git` in the derived project path; and it derives the GitLab project from this
+  checkout's origin, which is the GitHub remote. #1794's proposed explicit-project-path fix
+  covers (b). Exact probe owed by a human with GitLab access, auditor PAT at the documented
+  Maintainer (40) role: `curl -sS -o /dev/null -w '%{http_code}' -H "PRIVATE-TOKEN: <auditor
+  PAT>" "$GITLAB_API_BASE/projects/<group>%2F<project>/protected_branches"` → expect `200`.
+- Row 5 — witness pass exit 0; output `2` (lines naming `reject_unsigned_commits` and
+  `prevent_secrets` as `not available — Premium` in the CE template).
+- Row 6 — witness pass exit 0 but vacuous on a merged tree: `summary: 0 corroborated, 0
+  disproved, 5 unchecked` — each consumer entry is "unchanged since the merge-base". It
+  proves nothing about the deliverables; not counted as witness-proven.
+
+Grounding (independent of the rows): all five GitLab kinds are in the closed vocabulary
+(tools/desk/internal/deskkit/forge.go, `hardeningKindForge` partition at line 1023); each is
+one fixed endpoint literal (tools/desk/internal/deskkit/forge_gitlab.go lines 2443–2450); both
+backends refuse the other forge's kinds through one shared by-name refusal; inventory,
+edition matrix, the adopter doc's §5a CE template and a changelog fragment all landed with
+the implementing PR (the fragment has since been folded into CHANGELOG.md, which carries the
+entry at merged main).
+
+Risk-bearing value — enumeration over the implementing diff (merge 4ce477d7: deskkit
+forge.go / forge_gitlab.go / forge_github.go, repohardenguard check.go / forge.go /
+main.go, and the adopter doc's §5a checklist template):
+
+1. tier-gate status set {403, 404} → could-not-check @ tools/desk/internal/deskkit/forge_gitlab.go:2523
+2. 2xx-with-empty-body refused (`len(raw) == 0`) @ tools/desk/internal/deskkit/forge_gitlab.go:2529
+3. kind→forge partition (five GitLab kinds → ForgeGitLab, six GitHub kinds → ForgeGitHub) @ tools/desk/internal/deskkit/forge.go:1023
+4. endpoint literals `projects/%s`, `…/push_rule`, `…/approvals`, `…/protected_branches`, `…/protected_tags` @ tools/desk/internal/deskkit/forge_gitlab.go:2443–2450
+5. main-push-no-one Required = `0` @ docs/adopting-assay-gitlab.md:1075
+6. main-merge-maintainers Required = `40` @ docs/adopting-assay-gitlab.md:1076; release-tags Required = `40` @ docs/adopting-assay-gitlab.md:1077
+7. auditor minimum project role: Reporter (20) for `project`/`file`, Maintainer (40) for protected-branches / protected-tags / approvals / push-rules @ docs/adopting-assay-gitlab.md:1018–1023
+8. template Required cells: visibility `private`, merge-pipeline `true`, merge-threads `true`, main-no-force `false`, fork-pipelines `false`, approvals-reset `true`, approvals-no-author `false`, approvals-no-committer `true`, push-rules rows `not available — Premium`, secret-push-protection `not available — Ultimate` @ docs/adopting-assay-gitlab.md:1069–1083
+9. gitlabMaxHardeningPage = 10 @ tools/desk/internal/deskkit/forge_gitlab.go:2457; gitlabPerPage = 100 @ tools/desk/internal/deskkit/forge_gitlab.go:432
+
+Rank: the item is read-only and all risk fields are `no`; nothing here is irreversible — every
+entry is fixed by an edit and a redeploy. Top-ranked are the entries whose error fail-OPENS the
+instrument (a Premium/absent document reading as a value, or a checklist passing a project
+that does not satisfy it): 1, 2, 3, 5, 6, 7. Entry 8 is adopter-editable template content
+(reversible, advisory on CE per spec §1). Entry 9 fails CLOSED (a walk past the ceiling
+refuses rather than truncates) and ranks last.
+
+RISK-VALUE: DERIVED — tier-gate {403, 404} → could-not-check @ tools/desk/internal/deskkit/forge_gitlab.go:2523 — GitLab answers 403 when the role or licensed tier does not expose a route and 404 when the route does not exist on Community Edition; in both cases no settings document was observed, so the only honest state is could-not-check (result null, ForgeAPIError reachable), which is what both goldens and the guard's tier-gate test show.
+RISK-VALUE: DERIVED — empty-body guard `len(raw) == 0` @ tools/desk/internal/deskkit/forge_gitlab.go:2529 — a 2xx with no body is not a settings document; refusing it closes the one remaining path by which "nothing" could be read as "empty settings".
+RISK-VALUE: DERIVED — kind→forge partition @ tools/desk/internal/deskkit/forge.go:1023 — the brief requires disjoint per-forge halves of one closed set; the map assigns exactly the kind table's five kinds to GitLab and the six pre-existing kinds to GitHub, and each backend refuses the other half by name with zero requests (golden refusal cases on both backends).
+RISK-VALUE: DERIVED — main-push-no-one Required = 0 @ docs/adopting-assay-gitlab.md:1075 — GitLab's Protected Branches API defines access level 0 as "No one" (30 Developer, 40 Maintainer, 60 Admin), so 0 is the CE-expressible form of "nobody pushes to main", as the brief's facts state.
+RISK-VALUE: DERIVED — main-merge-maintainers / release-tags Required = 40 @ docs/adopting-assay-gitlab.md:1076–1077 — 40 is GitLab's Maintainer access level, matching the rows' stated intent ("Allowed to merge / create = Maintainers") and the provisioning table's `merge_access_level=40`; the protected-branches golden renders the same 0 / 40 values.
+RISK-VALUE: NAMED, NOT DERIVED — auditor minimum role Maintainer (40) for protected-branches / protected-tags / approvals / push-rules, Reporter (20) for project / file @ docs/adopting-assay-gitlab.md:1018–1023 — the adopter doc itself says the Maintainer rows are "a stated minimum, not a measured one" (GitLab's API pages state no minimum role for these GETs); the derivation is the live read-back of Verify row 4, which needs a GitLab instance and a provisioned auditor PAT this verifier does not have. OPEN QUESTION for a human with GitLab access: does a `read_api` auditor PAT at Maintainer (and would one at Reporter/Developer) get `200` on `GET /projects/:id/protected_branches`? A wrong value is reversible and fails closed (403 → could-not-check), but row 4 is the only row that proves it.
+RISK-VALUE: N/A — entry 9 (page ceilings 10 × 100) — reversible operational bound that fails closed by design; out of derivation scope per kit §4 step 3.
+
+Other observations: the brief's Context names op 38; the code has renumbered it op 40 (naming
+drift only, no behaviour change).
+
+VERIFY: BLOCKED — rows 3 and 5 witness-proven; rows 1 and 2 could-not-run (check:ci, darwin,
+medici-finance/assay#1800) with green non-hermetic supplementary runs; row 4 needs a live
+GitLab instance plus a provisioned auditor PAT and carries the check-definition faults tracked
+by medici-finance/assay#1794; row 6 passes vacuously on a merged tree. No implementation
+defect found. Status stays `implemented`.
+
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
