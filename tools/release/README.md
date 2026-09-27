@@ -59,6 +59,13 @@ block down to the `# ---` rule (the `.proposed` file is the full intended
 content; the `.patch` is the exact delta from the currently-live file — both
 were verified byte-identical against each other before this PR was opened).
 
+> **The whole-file route is stale.** The live `release.yml` has changed since
+> this was staged (cellctl is now the Go port stamped via `-ldflags`, the bash
+> script's packaging step is gone, release-authorizer traceability was added),
+> so copying `release.yml.proposed` over it would revert those changes. Use
+> `git apply tools/release/release.yml.patch`, which still applies cleanly and
+> carries only the one new step.
+
 The change adds exactly one step to the `guard` job, next to the existing
 `plugins/assay` manifest-version gate:
 

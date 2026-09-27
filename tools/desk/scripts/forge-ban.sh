@@ -92,8 +92,9 @@ gh_sh() {
 
 GH_GO_DESK=$(gh_go "$DESK")
 GH_SH_DESK=$(gh_sh "$DESK")
-# cellctl's main script is extensionless (no --include filter), but its tests/*.test.sh
-# fixtures are excluded the same way every other tree's .test.sh/_test.go is.
+# cellctl's tree is scanned with no --include filter, so the shell oracle under testdata/ (the
+# bash script the Go port is proved against) stays in scope; its tests/*.test.sh fixtures are
+# excluded the same way every other tree's .test.sh/_test.go is.
 GH_SH_CELLCTL=$(grep -rEn "(^|[^A-Za-z0-9_.-])gh (${GH_SUBCMDS})([^A-Za-z0-9_-]|\$)" "$CELLCTL" 2>/dev/null \
   | grep -v -E '\.test\.sh:' \
   | wc -l | tr -d ' ')
