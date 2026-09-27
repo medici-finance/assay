@@ -12,7 +12,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
 | [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-09-27 |  |
-| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 0/13 | 2026-09-27 |  |
+| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 1/13 | 2026-09-27 |  |
 | [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-09-27 |  |
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-27 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-27 |  |
@@ -57,25 +57,25 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
 | forge-gitlab | 13 — Board reads degrade per row, never per sweep — the GitLab empty-field class [exec:strong] | 3 | 1500 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
+| desktools-v2 | 09 — purpose-built access-pattern query operations (one tuned snapshot, not N per-item calls) [exec:strong] | 3 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (62 desk-actionable of 84 total — 84 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (61 desk-actionable of 83 total — 82 at implemented, 1 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (62)
+### Desk-actionable (61)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | build-less-brittle | 01 [exec:strong] | implemented | 8500 | 11 | — | — | — |
 | graph-execution | 02 [exec:strong] | implemented | 7500 | 11 | — | — | — |
-| build-less-brittle | 03 [exec:strong] | implemented | 6500 | 7 | — | — | — |
 | forge-neutral | 21 [exec:strong] | implemented | 6500 | 9 | — | — | — |
 | desktools-v2 | 01 | implemented | 5500 | 9 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
@@ -85,7 +85,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 06 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
-| desktools-v2 | 02 [exec:strong] | implemented | 3000 | 4 | — | — | — |
+| desktools-v2 | 02 [exec:strong] | verified | 3000 | 4 | — | 2026-09-27 assay-verifier-app[bot] @ 9585b4b6cc2e (claude-opus-5-5) | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | contributor-trust | 06 | implemented | 2500 | 1 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
@@ -222,11 +222,10 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 03 Judgement responder — file the bug and route it with a recommended default, for the judgement and opaque classes — todo (wave 2)
 - 04 Never-invisible watchdog — escalate any red whole-tree gate that no responder acted on within N minutes — todo (wave 3)
 
-### build-less-brittle (13 open)
+### build-less-brittle (12 open)
 
 - 01 Semantic-owner index in docs/contracts.md — one meaning, one home — implemented (wave 0)
 - 02 design-fit: in every new brief — owner, contract, retires, weight, why-add — todo (wave 1)
-- 03 Weight counter and CI ratchet (a Go test, not a verb) — implemented (wave 0)
 - 04 Intake files by error class; a recurring class triggers a design brief, not another point fix — todo (wave 2)
 - 05 Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight — todo (wave 3)
 - 06 Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision — todo (wave 2)
@@ -326,7 +325,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 ### desktools-v2 (10 open)
 
 - 01 audit & inventory — enumerate every gh shell-out + hardcoded-forge-assumption site (file:line) — implemented (wave 1)
-- 02 the v2 seam contract + the ban-lint (advisory/counting first) — implemented (wave 2)
+- 02 the v2 seam contract + the ban-lint (advisory/counting first) — verified (wave 2)
 - 03 native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot) — todo (wave 3)
 - 04 deskclose reads an authorizing comment by its stated kind — retire the kind-less default (#1019) — implemented (wave 2)
 - 05 the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884) — todo (wave 2)
@@ -482,6 +481,10 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 01 Role→App indirection — six desk roles on N GitHub Apps without symlinks — done (wave 0)
 - 05 `deskavatar` — deterministic per-adopter App avatars with a 20 px legibility proof — done (wave 0)
 
+### build-less-brittle (1 done)
+
+- 03 Weight counter and CI ratchet (a Go test, not a verb) — done (wave 0)
+
 ### composability (2 done)
 
 - 00 Component manifests, key catalogue, and the resolve/cycle lint — done (wave 0)
@@ -612,4 +615,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**23** streams (**18** active, **0** paused, **5** parked) · **88/288** briefs done · completed initiatives: see `docs/archive/`
+**23** streams (**18** active, **0** paused, **5** parked) · **89/288** briefs done · completed initiatives: see `docs/archive/`
