@@ -254,3 +254,154 @@ func TestPriorGuardrailSources_FromGit(t *testing.T) {
 func syncWith(root string, prior ...*GuardrailSource) ([]string, GuardrailReport, error) {
 	return SyncGuardrails(root, prior)
 }
+
+// --- medici-finance/assay#1692 round 2: the residual longest-match tie ---
+//
+// matchExtent's longest-known-text-wins rule (above) closed round 1's data
+// loss, but review findings F-1692-prefix-extent-ambiguity /
+// F-1692-longest-match-ambiguity showed it can still pick the wrong extent
+// when MORE THAN ONE known length matches at the anchor and the longest is
+// not the current canonical text: the bytes cannot tell a copy still
+// genuinely at that longer, earlier text (the ordinary case this rule
+// serves — see TestSyncGuardrails_SourceCommittedFirst/shrink-to-prefix,
+// which needs exactly this rewrite to pass) apart from a copy already at the
+// current text, followed by unrelated content that coincidentally equals the
+// earlier text's own tail. Refusing outright would also refuse that ordinary
+// case, so the rewrite still happens; what closes the finding is that the
+// tie is no longer silent — GuardrailReport.Notes carries it. Both fixtures
+// below assert a note is present for the ambiguous rewrite; mutating
+// matchExtent's `ambiguous` computation to always false turns them red.
+
+// TestSyncGuardrails_AmbiguousLongestMatchIsNoted covers the two repros from
+// the F-1692-longest-match-ambiguity finding.
+func TestSyncGuardrails_AmbiguousLongestMatchIsNoted(t *testing.T) {
+	t.Run("dropped-line-kept-locally", func(t *testing.T) {
+		// Revision 1 (historical): the block carries a trailing bullet.
+		// Revision 2 (current, want): that bullet is dropped from the block.
+		// The adopter keeps the exact same sentence as SITE-LOCAL text right
+		// after the block — a natural way to demote a shared rule to a local
+		// one — so a later sync, with no further source change, still finds
+		// the historical (longer) text matching at the anchor.
+		anchor := "- **Extent test:** anchor line, stable across edits."
+		keep := "- keep this line."
+		dropped := "- dropped bullet, once part of the block."
+		oldBlock := []string{anchor, keep, dropped}
+		newBlock := []string{anchor, keep}
+
+		root := t.TempDir()
+		mkdirWrite(t, root, guardrailSourcePath, extentSource("extent", extentSite, newBlock...))
+		body := strings.Join([]string{"# ext", "", anchor, keep, dropped, "- NEXT SECTION."}, "\n") + "\n"
+		mkdirWrite(t, root, extentSite, body)
+		prior := oldGuardrailSource(t, extentSource("extent", extentSite, oldBlock...))
+
+		changed, rep, err := syncWith(root, prior)
+		if err != nil {
+			t.Fatalf("sync: %v", err)
+		}
+		if len(rep.Unchecked) != 0 {
+			t.Fatalf("could-not-check: %+v", rep.Unchecked)
+		}
+		if len(changed) != 1 {
+			t.Fatalf("changed=%v, want the one site rewritten", changed)
+		}
+		if len(rep.Notes) == 0 {
+			t.Fatal("want an ambiguous-match note — the longest match (the historical, 3-line text) was not the current canonical text, and the current text also matched")
+		}
+		if got, want := read(t, root, extentSite), strings.Join([]string{"# ext", "", anchor, keep, "- NEXT SECTION."}, "\n")+"\n"; got != want {
+			t.Fatalf("site after sync:\n--- got ---\n%s--- want ---\n%s", got, want)
+		}
+	})
+
+	t.Run("second-sync-after-trailing-blank-shrink", func(t *testing.T) {
+		// Revision 1 (historical): the block's own fence ends in a blank line.
+		// Revision 2 (current, want): that trailing blank is dropped from the
+		// block. The site separately carries its own genuine separator blank
+		// line right after the block, which happens to equal the historical
+		// text's dropped tail. The first sync correctly drops the stale
+		// in-block blank; the second, with nothing left to fix, must not also
+		// eat the site's own separator blank — and if it still does (this is
+		// the SAME ambiguity, not a new one), that must be noted, not silent.
+		anchor := "- **Extent test:** anchor line, stable across edits."
+		keep := "- keep this line."
+		oldBlock := []string{anchor, keep, ""}
+		newBlock := []string{anchor, keep}
+
+		root := t.TempDir()
+		mkdirWrite(t, root, guardrailSourcePath, extentSource("extent", extentSite, newBlock...))
+		body := strings.Join([]string{"# ext", "", anchor, keep, "", "", "- NEXT SECTION."}, "\n") + "\n"
+		mkdirWrite(t, root, extentSite, body)
+		prior := oldGuardrailSource(t, extentSource("extent", extentSite, oldBlock...))
+
+		changed1, rep1, err := syncWith(root, prior)
+		if err != nil {
+			t.Fatalf("sync 1: %v", err)
+		}
+		if len(rep1.Unchecked) != 0 {
+			t.Fatalf("sync 1 could-not-check: %+v", rep1.Unchecked)
+		}
+		if len(changed1) != 1 {
+			t.Fatalf("sync 1 changed=%v, want the one site rewritten (the stale in-block blank dropped)", changed1)
+		}
+		if len(rep1.Notes) == 0 {
+			t.Fatal("sync 1: want an ambiguous-match note")
+		}
+
+		changed2, rep2, err := syncWith(root, prior)
+		if err != nil {
+			t.Fatalf("sync 2: %v", err)
+		}
+		if len(rep2.Unchecked) != 0 {
+			t.Fatalf("sync 2 could-not-check: %+v", rep2.Unchecked)
+		}
+		if len(changed2) != 0 {
+			t.Logf("sync 2 rewrote %v — the residual ambiguity this fixture pins (medici-finance/assay#1692)", changed2)
+		}
+		if len(rep2.Notes) == 0 {
+			t.Fatal("sync 2: want an ambiguous-match note whether or not it rewrote — the tie must never be silent")
+		}
+	})
+}
+
+// TestSyncGuardrails_RefusesOverlappingProvenExtents pins
+// F-1692-overlap-guard-unpinned: the overlap refusal (SyncGuardrails' per-file
+// bottom-up edit loop) had no fixture of its own, so a mutation removing it
+// left the suite green. A block-split history — one merged block in an
+// earlier revision, split into two adjacent blocks at the same site in the
+// current source — gives two edits whose PROVEN extents overlap once the
+// first (longer, historical) block's extent is matched. The whole file must
+// be refused, byte-identical, not partially rewritten.
+func TestSyncGuardrails_RefusesOverlappingProvenExtents(t *testing.T) {
+	x1, x2 := "- X anchor, stable across edits.", "- X body line."
+	y1, y2 := "- Y anchor, stable across edits.", "- Y body line."
+
+	mergedSrc := extentSource("x", extentSite, x1, x2, y1, y2)
+	splitSrc := "---\nname: guardrails\ndescription: fixture\n---\n\n" +
+		"## guardrail: x\n\n- site: " + extentSite + "\n\n```text\n" + strings.Join([]string{x1, x2}, "\n") + "\n```\n\n" +
+		"## guardrail: y\n\n- site: " + extentSite + "\n\n```text\n" + strings.Join([]string{y1, y2}, "\n") + "\n```\n"
+
+	root := t.TempDir()
+	mkdirWrite(t, root, guardrailSourcePath, splitSrc)
+	body := strings.Join(append([]string{"# ext", "", x1, x2, y1, y2}, extentTrailer...), "\n") + "\n"
+	mkdirWrite(t, root, extentSite, body)
+	prior := oldGuardrailSource(t, mergedSrc)
+
+	changed, rep, err := syncWith(root, prior)
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if len(changed) != 0 {
+		t.Fatalf("rewrote %v — an overlapping proven extent must refuse the whole file", changed)
+	}
+	foundOverlap := false
+	for _, is := range rep.Unchecked {
+		if strings.Contains(is.Msg, "overlap") {
+			foundOverlap = true
+		}
+	}
+	if !foundOverlap {
+		t.Fatalf("want an overlap-refusal could-not-check, got %+v", rep.Unchecked)
+	}
+	if got := read(t, root, extentSite); got != body {
+		t.Fatalf("site was rewritten despite the overlap refusal.\n--- got ---\n%s--- want ---\n%s", got, body)
+	}
+}

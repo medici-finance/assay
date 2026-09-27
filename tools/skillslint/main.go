@@ -246,6 +246,9 @@ func runSync(root string) int {
 		fmt.Fprintf(os.Stderr, "skillslint --sync: %v\n", err)
 		return 2
 	}
+	for _, n := range rep.Notes {
+		fmt.Fprintf(os.Stderr, "skillslint --sync: note: %s\n", n)
+	}
 	for _, is := range rep.Unchecked {
 		fmt.Fprintf(os.Stderr, "skillslint --sync: %s: %s\n", is.Path, is.Msg)
 	}

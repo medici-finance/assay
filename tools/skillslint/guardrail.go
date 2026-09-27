@@ -84,6 +84,15 @@ type GuardrailReport struct {
 	// Unchecked are could-not-check outcomes: the source, a site file, or a
 	// block's anchor could not be read or located. NEVER treat as clean.
 	Unchecked []Issue
+	// Notes are advisory-only: SyncGuardrails still wrote the file (this is
+	// not a could-not-check), but the removal length it chose was one of
+	// SEVERAL lengths that matched at the anchor, and the length it chose was
+	// not the current canonical text's own. See matchExtent's doc comment —
+	// this is the residual, content-cannot-disambiguate case the "longest
+	// wins" rule cannot always get right (medici-finance/assay#1692). Never
+	// silence this: it is the caller's only signal that the rewrite it just
+	// made deserves a second look.
+	Notes []string
 }
 
 // Clean reports whether the run is checked-clean: at least one comparison
@@ -447,10 +456,29 @@ func guardrailDiff(want, got string) string {
 // the new text is inserted in its place. When no known text matches — no
 // history, a history that never held the copy's text, a hand-drifted copy —
 // the site is could-not-check and its file is not written. A length is never
-// guessed: guessing from the NEW text's length is what swallowed trailing
-// content on growth and left stale lines on shrink, and guessing from HEAD's
-// length alone did the same on a re-run or when the source edit was committed
-// before the sync.
+// invented out of thin air: guessing from the NEW text's length is what
+// swallowed trailing content on growth and left stale lines on shrink, and
+// guessing from HEAD's length alone did the same on a re-run or when the
+// source edit was committed before the sync.
+//
+// This still leaves one narrower ambiguity content alone cannot resolve
+// (medici-finance/assay#1692, round 2): when MORE THAN ONE known length
+// matches at the anchor, the longest is chosen (matchExtent), because a
+// shorter known text is normally a stale, not-yet-synced prefix of a longer
+// one still on disk. But a copy already AT the current text, followed by
+// unrelated trailing content that happens to equal an earlier revision's own
+// tail, matches the same bytes and cannot be told apart from that. Rather
+// than refuse the ordinary case to close this rare one, the rewrite still
+// happens and the tie is reported in rep.Notes so it is never silent — see
+// matchExtent's own doc comment, and README §4's "`git add` after each sync"
+// guidance, which keeps a block's history from ever containing such a
+// same-anchor collision. Separately, a shrink of an uncommitted, unstaged
+// edit that is never itself committed or staged (so no revision of it is ever
+// KNOWN) is could-not-check only when nothing at the anchor matches at all;
+// when the shrunk text still matches as a prefix of what is on disk, the
+// copy reads as already synced and the trailing, no-longer-declared lines are
+// left in place rather than guessed away — `git add` immediately after a
+// grow, before trimming it back down, avoids this window.
 func SyncGuardrails(root string, prior []*GuardrailSource) (changed []string, rep GuardrailReport, err error) {
 	src, perr := ParseGuardrailSource(root)
 	if perr != nil {
@@ -488,7 +516,7 @@ func SyncGuardrails(root string, prior []*GuardrailSource) (changed []string, re
 				continue
 			}
 			known := append([]string{want}, priorSiteTexts(prior, b.ID, site)...)
-			matched, ok := matchExtent(fileLines, at, known)
+			matched, ok, ambiguous := matchExtent(fileLines, at, want, known)
 			if !ok {
 				rep.Unchecked = append(rep.Unchecked, Issue{
 					Path: site.Path,
@@ -497,6 +525,12 @@ func SyncGuardrails(root string, prior []*GuardrailSource) (changed []string, re
 						b.ID, at+1, len(known)-1, guardrailSourcePath, site.Path),
 				})
 				continue
+			}
+			if ambiguous {
+				rep.Notes = append(rep.Notes, fmt.Sprintf(
+					"guardrail %q at %s:%d: the rewrite removed %d line(s), an earlier revision's length, but the current canonical text (%d line(s)) ALSO matched at the same anchor. "+
+						"Content alone cannot tell a copy still genuinely at that longer, earlier text apart from a copy already at the current text followed by unrelated content that happens to equal the earlier text's tail — verify the removed lines by hand (`git diff -- %s`); if they were not stale, restore them and `git add` the source edit before the next sync.",
+					b.ID, site.Path, at+1, len(strings.Split(matched, "\n")), len(wantLines), site.Path))
 			}
 			e := edit{id: b.ID, at: at, oldLen: len(strings.Split(matched, "\n"))}
 			if matched != want {
@@ -598,18 +632,34 @@ func priorSiteTexts(prior []*GuardrailSource, blockID string, site GuardrailSite
 // old, shorter text too, and removing only that would duplicate the new
 // block's tail; before a prefix-shrink is synced, the copy begins with the new
 // text too, and treating it as synced would leave the old tail behind.
-func matchExtent(fileLines []string, at int, known []string) (string, bool) {
-	best, found := "", false
+//
+// AMBIGUOUS reports the one case "longest wins" cannot get right by content
+// alone: more than one distinct length matched at the anchor, and the winning
+// (longest) text is not `want`. When that happens, a copy that is genuinely
+// still at that longer, earlier text (an unsynced or committed-first shrink —
+// the ordinary case this rule exists to serve) is indistinguishable, byte for
+// byte, from a copy already AT `want`, followed by unrelated trailing content
+// that happens to equal the earlier text's own tail (medici-finance/assay#1692,
+// round 2: F-1692-longest-match-ambiguity / F-1692-prefix-extent-ambiguity).
+// Refusing outright here would also refuse the ordinary case, so the caller
+// still applies the rewrite; ambiguous only means the tie is reported rather
+// than silent, so a false positive (deleted, not stale, content) is visible
+// instead of indistinguishable from success. See SyncGuardrails' README §4 note
+// on this same limitation and its "`git add` after each sync" mitigation.
+func matchExtent(fileLines []string, at int, want string, known []string) (matched string, ok bool, ambiguous bool) {
+	lengths := map[int]bool{}
 	for _, k := range known {
 		kl := strings.Split(k, "\n")
 		if at+len(kl) > len(fileLines) || strings.Join(fileLines[at:at+len(kl)], "\n") != k {
 			continue
 		}
-		if !found || len(kl) > len(strings.Split(best, "\n")) {
-			best, found = k, true
+		lengths[len(kl)] = true
+		if !ok || len(kl) > len(strings.Split(matched, "\n")) {
+			matched, ok = k, true
 		}
 	}
-	return best, found
+	ambiguous = ok && matched != want && len(lengths) > 1
+	return matched, ok, ambiguous
 }
 
 // priorGuardrailSources is SyncGuardrails' `prior` in production: every

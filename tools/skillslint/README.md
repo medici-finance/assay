@@ -232,6 +232,19 @@ alone. If you will edit the source again before committing, `git add` it after
 each sync so the next sync can match the copies it wrote. Otherwise restore the
 sites with `git checkout` and sync once.
 
+Two narrower cases stay content-limited even so. When more than one known
+length matches at the anchor (the ordinary shape once a block has grown and
+shrunk more than once in its history), the longest is taken and the tie is
+printed as a `note:` — it is not could-not-check, because refusing it would
+also refuse the common, unambiguous case of a copy still at an older revision.
+`git add` right after each sync keeps a block's history from ever containing
+two lengths that both match the same copy, which is what avoids the tie
+entirely. And a shrink of an edit that is never committed or staged is
+could-not-check only when nothing at the anchor matches; if the shrunk text
+still matches as a prefix of what is on disk, the copy reads as already synced
+and content the shrink dropped, but never registered anywhere sync can see, is
+left in place rather than guessed away.
+
 ## Fixtures
 
 `testdata/plugintree/` holds a matched pair of fake roots:
