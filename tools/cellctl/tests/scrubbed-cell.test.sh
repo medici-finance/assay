@@ -18,7 +18,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The binary under test. $CELLCTL lets the SAME suite run against either implementation
 # (the bash oracle, the default, or the Go port) — desk-containers/10.
-CELLCTL="${CELLCTL:-$HERE/../cellctl}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
+CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 # /tmp, never $TMPDIR: a scrubbed cell's session lives on a private UNIX-socket tmux server
 # (`<cell>/run/tmux.sock`), and `sun_path` has a hard ~104-108 byte limit every platform enforces
 # — macOS's default $TMPDIR (/var/folders/.../T/, ~50 bytes on its own) blows that budget once
@@ -279,7 +279,7 @@ case_plan_grammar(){
   # binary has no source to grep. The oracle stays in the tree as the reference until the cutover,
   # so this keeps the dereference honest for BOTH — the Go port has to emit the same set the
   # declared allowlist names, which is exactly the claim worth proving.
-  local want; want="$(grep -oE 'SCRUBBED_ENV_KEYS="[^"]*"' "$HERE/../cellctl" | sed -E 's/^SCRUBBED_ENV_KEYS="//; s/"$//' | tr ' ' '\n' | grep -vx 'CODEX_HOME' | sort)"
+  local want; want="$(grep -oE 'SCRUBBED_ENV_KEYS="[^"]*"' "$HERE/../testdata/cellctl-shell-oracle.sh" | sed -E 's/^SCRUBBED_ENV_KEYS="//; s/"$//' | tr ' ' '\n' | grep -vx 'CODEX_HOME' | sort)"
   local got; got="$(sort <<<"$env_keys")"
   assert "plan-grammar: [plan] env KEY set equals SCRUBBED_ENV_KEYS minus the inactive harness var" '[[ "$got" == "$want" ]]'
 }
