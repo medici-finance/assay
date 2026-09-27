@@ -215,8 +215,9 @@ nothing else. Clearing one costs a merge of main, a head move past the approval,
 - `25` removes the correctness re-review when a keep-current merge of a draft changed nothing. A
   tool-derived carry verdict stands in for it only when the only new commits are driver-free clean
   merges of main and the diff is byte-identical. Both flip verbs re-derive it by a different method,
-  a human-landed guard keeps the Evidence auto-merge lane from arming on a carry no flip verb
-  re-derived, the forge dismisses it on any later push, and security verdicts are never carried. It depends on
+  a human-landed guard lets the Evidence auto-merge lane arm only on an approval at head and only
+  after re-deriving a carry itself, the forge dismisses it on any later push, and security verdicts
+  are never carried. One narrow residual window is named for the human gate. It depends on
   `24`: while outcomes share one appended log, every Evidence PR's merge needs the union driver, which
   the carry refuses. It is `gate: human` because it relaxes a review gate.
 - `26` cuts the PR and review count. One tick's Evidence-only outcomes land in one PR, and a refused

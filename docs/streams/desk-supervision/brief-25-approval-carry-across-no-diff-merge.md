@@ -43,7 +43,7 @@ sources:
   - "tools/desk/cmd/deskflip/flip.go — checkReviewerApproved (line 771) and reduceSecurityVerdict (line 1412)"
   - "tools/desk/cmd/deskpost/ready.go — the second ready-flip verb, gate (b)"
   - "tools/desk/cmd/deskboard/board.go:1233 — the MERGE-CURR classification"
-  - ".github/workflows/evidence-automerge.yml — enables auto-merge on a ready, approved verifier-App PR"
+  - ".github/workflows/evidence-automerge.yml — requests auto-merge on a non-draft verifier-App PR whose files are all under docs/streams/, without reading any review"
   - "plugins/assay/skills/pr-review-desk/references/merge-time-recheck.md — approval staleness and the unreliability of a review's commit_id"
   - "live reads 2026-09-27: the default branch's rules, and the timeline, reviews and commits of #1706 (facts)"
   - "freshness-checked 2026-09-27 @ b227b4076 (origin/main): no carry exists; both flip verbs require the verdict at the current head"
@@ -53,12 +53,13 @@ consumers:
   - "tools/desk/internal/deskkit/approvalcarry.go (planned; both carry predicates): follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation adds it)"
   - "tools/desk/cmd/deskpost (the carry verb, and `deskpost ready` gate (b) re-deriving a carry): follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation edits it)"
   - "tools/desk/cmd/deskflip (accepts a carry verdict only after its own re-derivation): follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation edits it)"
-  - "tools/desk/cmd/deskboard (MERGE-CURR becomes CARRY on the same predicate; CARRY-ON-READY is keyed on a ready-mark no flip verb made): follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation edits it)"
+  - "tools/desk/cmd/deskboard (MERGE-CURR becomes CARRY on the same predicate; CARRY-ON-READY is keyed on forge data: the ready-mark's actor and order, and the carry's re-derivation at head): follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation edits it)"
   - "docs/streams/desk-supervision/review-finding-v1.md (line 85): follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation amends it)"
   - "plugins/assay/skills/pr-review-desk/SKILL.md and references/merge-time-recheck.md: follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation edits them)"
   - "plugins/assay/skills/verify-desk/SKILL.md (the Evidence-PR state table of the PR lane): follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation edits it)"
   - "tools/desk/README.md (deskpost, deskflip, deskboard sections): follow-up desk-supervision/25 (this brief; flips to fixed-here when the implementation edits it)"
   - "tools/evidence-automerge/ (planned carry-guard decision script and its offline test, beside automerge-refusal.sh): follow-up desk-supervision/25 (this brief; Task step 5 — flips to fixed-here when the implementation adds it)"
+  - "tools/desk/cmd/carrycheck (planned; a read-only command the auto-merge guard runs, wrapping CarryByBlobs): follow-up desk-supervision/25 (this brief; Task step 5 — flips to fixed-here when the implementation adds it)"
   - ".github/workflows/evidence-automerge.yml (calls the carry guard on every trigger): out-of-scope (a HUMAN-LANDED deliverable of this brief, delivered through the repository's workflow landing path and never pushed by the implementer, since no implementer App can write a workflow; until it lands, C9 keeps the verb off this lane and Verify row 14 is could-not-check)"
   - "the default branch's rulesets: out-of-scope (unchanged by design; layer 3 depends on them staying as they are, and Verify row 8 reads them back)"
 ---
@@ -74,6 +75,7 @@ files:
 - **edit** `tools/desk/cmd/deskflip/flip.go` + tests — `checkReviewerApproved`.
 - **edit** `tools/desk/cmd/deskboard/board.go` + tests — the MERGE-CURR branch of `classify`, and the
   carry-on-ready anomaly.
+- **add** `tools/desk/cmd/carrycheck/` (planned) — the read-only `CarryByBlobs` command the guard runs.
 - **add** `tools/evidence-automerge/carry-guard.sh` (planned) +
   `tools/evidence-automerge/carry-guard_test.sh` (planned) — the auto-merge carry guard's decision.
 - **human-landed:** a change to `.github/workflows/evidence-automerge.yml` calling that guard, delivered
@@ -84,7 +86,7 @@ files:
   `plugins/assay/skills/verify-desk/SKILL.md`, `tools/desk/README.md`.
 - **add** `changelog/<branch>.md` — the fragment this repo enforces.
 
-single-point-of-failure: the carry predicate is the ONE control between "the head moved" and "the old correctness approval counts". Layers, counted per path to a merge. (A) A carried draft flipped by `deskflip` or `deskpost ready`: (1) the carry verb derives the predicate from local git objects and posts only on a draft with no auto-merge request (C8); (2) the flip verb re-derives it from forge data by a different method and never trusts the verdict; (3) the forge dismisses a correctness APPROVED on any later push; (4) the review board flags a carry whose ready-mark did not come from a flip verb. Four layers. (B) A carried draft on the Evidence auto-merge lane marked ready by any other route (its author, any identity with write access, or a ready-mark that races C8): layer 2 does not run. Layer 5, the auto-merge carry guard (Task step 5), refuses to arm, and disarms, when the approval at head is a carry and the latest ready-mark is not by the flip identity or predates the carry, or when a PR that has had a security verdict lacks a pass at head. Until that guard is on the default branch, C9 keeps the verb from posting a carry on any PR that lane would arm. Layers 1 (C8, C9), 5, 3 and 4. (C) The same ready-mark off the auto-merge lane: nothing merges without a person merging it, and that person is the gate; layer 4 flags it. (D) A carry verdict placed without the verb on a PR already marked ready: on the auto-merge lane layer 5 refuses it (no flip-identity ready-mark after the carry), off it a person merges; before either, only the reviewer identity's key custody. The security lane is never carried, so layer 3's limit to APPROVED reviews (a security pass is a COMMENT review the forge never dismisses) does not apply.
+single-point-of-failure: the carry predicate is the ONE control between "the head moved" and "the old correctness approval counts". Layers, counted per path to a merge. (A) A carried draft flipped by `deskflip` or `deskpost ready`: (1) the carry verb derives the predicate from local git objects and posts only on a draft with no auto-merge request (C8); (2) the flip verb re-derives it from forge data by a different method and never trusts the verdict; (3) the forge dismisses a correctness APPROVED on any later push; (4) the review board flags a carry whose ready-mark is not by the flip identity or predates the carry, or whose re-derivation at head fails. Four layers. (B) A carried draft on the Evidence auto-merge lane made ready by any other route, including a ready-mark that races C8 and a raw ready-mark under the flip identity outside the verbs: layer 2 does not run, but (5) the auto-merge carry guard arms only when a reviewer-identity correctness APPROVED exists at head at trigger time, re-derives a carry approval from forge data before arming (with the same `CarryByBlobs` code as layer 2: independent of who marked the PR ready, not of a bug in that code), requires a security pass at head where one applies, and cancels any armed request on every head change. Until the guard is on the default branch, C9 keeps the verb off the lane. Layers 1, 5, 3 and 4. (C) The same ready-mark off the auto-merge lane: a person merges and is the gate; layer 4 flags it. (D) A carry placed without the verb: on the lane, layer 5 evaluates it before arming. The one named residual: in the window between a push and the lane cancelling a request armed at an earlier head, a carry placed without the verb, with every required check already passing at the new head, meets only the reviewer identity's key custody before the merge (layer 4 flags it afterwards). Off the lane, a person merges. The security lane is never carried, so layer 3's limit to APPROVED reviews (a security pass is a COMMENT review the forge never dismisses) does not apply.
 
 facts (2026-09-27 @ b227b4076; re-establish from the named files and commands at pickup):
 - **The rule being amended.** `review-finding-v1.md:85`: "A finding keeps its id and evidence when
@@ -109,15 +111,18 @@ facts (2026-09-27 @ b227b4076; re-establish from the named files and commands at
   verifier pushed a merge of main, 86f8b67ee (2026-09-27 16:02:58Z); the timeline records
   `review_dismissed` by the pushing identity at 16:04:03Z; a fresh APPROVED at 86f8b67ee followed
   at 16:13:03Z. So a carried approval must be a NEW review at the new head.
-- **The auto-merge lane.** `evidence-automerge.yml` enables auto-merge on a verifier-App PR that is
-  ready (not a draft) and approved; the request survives later pushes. So a carry on a ready PR
-  would be the approval that request waits for, with no flip gate in between — which is why C8
-  refuses it. The workflow runs on `ready_for_review` and on each push and review, checks only the
-  author, the draft state and the changed paths, and does not look at who marked the PR ready. So a
-  carried draft marked ready by any identity other than a flip verb would arm on the carry alone;
-  that is what the carry guard (Task step 5) and, until it lands, C9 close. Its decision logic
-  already lives in a script beside it (`tools/evidence-automerge/automerge-refusal.sh`, with an
-  offline test), which the implementer can change; the workflow file itself only a human can land.
+- **The auto-merge lane.** `evidence-automerge.yml` runs on `ready_for_review`, on each push and on
+  each review. It checks the author, the draft state and the changed paths, reads no review, and
+  requests auto-merge; the approval is only the ruleset's condition for the merge, and the request
+  survives later pushes. So a ready-mark by any route arms the lane before any carry exists, and a
+  carry posted afterwards is the approval the armed request waits for, with no flip verb in between.
+  The carry guard (Task step 5) closes that: arm only on an approval at head, re-derive a carry
+  before arming, cancel on every head change. Until it lands, C9 keeps the verb off the lane. The
+  lane's decision logic already lives in a script beside it
+  (`tools/evidence-automerge/automerge-refusal.sh`, with an offline test), which the implementer can
+  change; the workflow file itself only a human can land. A refused ready flip being retried through
+  a raw ready mutation under the same App token is a recorded shape (`tools/desk/cmd/deskpost/github.go`),
+  so the guard must not key on who marked the PR ready.
 - **Under the shared log no Evidence PR can carry.** Measured on #1706: the default-context patch-id
   of the 3-dot diff differs between 135f3a344 and 86f8b67ee (the log's context lines moved), and the
   `-U0` one is equal. That `-U0` equality does NOT make it carryable under either option: the merge
@@ -167,11 +172,11 @@ only if ALL of these hold; any unreadable or truncated input is could-not-check,
 - **C7 — security is never carried.** A standing `Security-Review: fail` blocks a carry; a security
   pass is never carried and never counts at a new head without a fresh security review there.
 - **C8 — only a draft with no auto-merge request.** The PR is a draft and has no auto-merge request
-  at the moment the carry is posted. This is checked once, at posting; a later ready-mark by another
-  route is closed by the auto-merge carry guard (Task step 5), not by C8.
+  at the moment the carry is posted. This is checked once, at posting; a ready-mark by another route,
+  before or after the carry, is closed by the auto-merge carry guard (Task step 5), not by C8.
 - **C9 — never on the auto-merge lane before its guard.** Until the default branch's copy of the
-  auto-merge workflow carries the carry guard (read for its `carry-guard: v1` marker; unreadable is
-  could-not-check), the verb refuses a carry on any PR that lane would arm (authored by the verifier
+  auto-merge workflow carries the carry guard (read for its `carry-guard: v1` marker and a step that
+  invokes the guard with no `if:` able to skip it; unreadable is could-not-check), the verb refuses a carry on any PR that lane would arm (authored by the verifier
   identity, every changed file under `docs/streams/`).
 
 ## Human decision
@@ -187,19 +192,24 @@ names the approved commit, and no model re-reads it.
 Safeguards: the approval is posted only while the pull request is still a draft with no automatic
 merge requested; both commands that mark a pull request ready re-check the proof themselves, by a
 different method, before accepting it; the hosting platform discards the approval the moment another
-commit is pushed; the review board flags any such approval found on a pull request that is no longer
-a draft. A security review is never carried: a pull request that needs one gets a fresh one at the
+commit is pushed; the review board flags, afterwards, a carried approval on a pull request marked
+ready by anyone other than those commands, or one whose proof no longer holds. A security review is never carried: a pull request that needs one gets a fresh one at the
 new commit.
 
-The automatic-merge step gets its own check: when the approval at the new commit is a carried one,
-it arms only if the pull request was marked ready by those commands after the approval, and, for a
-pull request that has had a security review, only if a passing one stands at the new commit;
-otherwise it does not arm, and cancels a request already armed. That change to the automatic-merge
-step must be landed by a person; until it is, carried approvals are not posted on pull requests that
-step would merge. Off the automatic-merge lane, a pull request marked ready by hand still needs a
-person to merge it, and that person is the check there. An approval placed by some route other than
-the posting command is guarded before the merge only by who holds the reviewer identity's key, the
-automatic-merge check above, and the person who merges; the review board flags it afterwards.
+The automatic-merge step gets its own checks. It arms only when an approval exists at the current
+commit. When that approval is a carried one, it re-checks the proof itself from the hosting
+platform's data before arming, whoever marked the pull request ready, and for a pull request that
+has had a security review it requires a passing one at the new commit. Every push cancels a request
+already armed, and the step re-arms only once those checks pass at the new commit. That change must
+be landed by a person; until it is, carried approvals are not posted on pull requests that step would
+merge.
+
+One narrow window remains, and it is the residual this decision accepts or refuses: between a push
+and the moment the step cancels a request armed earlier, an approval placed by some route other than
+the posting command, with every other required check already passing at the new commit, is guarded
+before the merge only by who holds the reviewer identity's key; the review board flags it
+afterwards. Off the automatic-merge lane, a pull request marked ready by hand still needs a person
+to merge it, and that person is the check there.
 
 What the carry cannot see: a change the default branch made to some other file that alters what the
 pull request means (a function it calls, a test helper, the CI configuration). The only check on that
@@ -277,21 +287,30 @@ Default if no answer: none — blocks until answered.
 4. **The board.** `classify`'s MERGE-CURR branch uses `CarryByBlobs`. An eligible draft PR gets a new
    CARRY action ("post a correctness carry"; a risk-classed PR still needs its security review);
    anything else is RE-REVIEW. CARRY-ON-READY, an anomaly row the review desk files for a human, is
-   keyed on what only a bypass shows: a carry verdict at the head of a non-draft PR whose latest
-   `ready_for_review` event is by an identity other than the flip identity, or predates the carry
-   verdict, or for which no flip-verb audit record names that head and that carry. A carry followed
-   by a flip through `deskflip` or `deskpost ready` is not an anomaly.
-5. **The auto-merge carry guard (human-landed).** Add the decision to
-   `tools/evidence-automerge/` (a script beside `automerge-refusal.sh`, with an offline test) and
-   specify the call in `.github/workflows/evidence-automerge.yml`, carrying the marker line
-   `# carry-guard: v1`. On every trigger, when the reviewer identity's latest correctness APPROVED at
-   head carries `Approval-Carried-From:`, the workflow arms auto-merge only if the PR's latest
-   `ready_for_review` timeline event is by the flip identity (a repository variable) and is later
-   than that approval, and, if the PR has ever had a security verdict, a `Security-Review: pass`
-   from the reviewer identity stands at head with no fail standing; otherwise it does not arm and
-   disables an auto-merge request already armed. Any unreadable input refuses. The workflow change
-   goes through the repository's workflow landing path and a human lands it: no implementer App can
-   write a workflow file.
+   keyed on forge data only a bypass or a bad carry shows: a carry verdict at the head of a non-draft
+   PR whose latest `ready_for_review` event is by an identity other than the flip identity or
+   predates the carry verdict, or whose `CarryByBlobs` re-derivation at head is no-carry. A
+   could-not-check re-derivation is shown as could-not-check on the row and never filed as an
+   anomaly. A carry followed by a flip through `deskflip` or `deskpost ready` (flip identity, after
+   the carry, re-derives) is not an anomaly. A raw ready-mark under the flip identity over a sound
+   carry is not flagged either; on the lane, layer 5 re-derives it anyway, and off the lane a person
+   merges.
+5. **The auto-merge carry guard (human-landed).** Add `tools/desk/cmd/carrycheck` (planned), a
+   read-only command that runs `CarryByBlobs` for one PR from forge reads and prints carry, no-carry
+   (naming the condition) or could-not-check. Add the decision to `tools/evidence-automerge/` (a
+   script beside `automerge-refusal.sh`, with an offline test), and specify the change to
+   `.github/workflows/evidence-automerge.yml`, carrying the marker line `# carry-guard: v1`, that
+   runs it on every trigger, building `carrycheck` from a default-branch checkout, never from the PR
+   tree:
+   - on every head change (`synchronize`), disable any armed auto-merge request first;
+   - arm only when a reviewer-identity correctness APPROVED exists at head at trigger time;
+   - when that approval carries `Approval-Carried-From:`, arm only if `carrycheck` returns carry for
+     the cited `A` and the current head, and, for a PR that has ever had a security verdict, a
+     `Security-Review: pass` from the reviewer identity stands at head with no fail standing;
+   - otherwise do not arm, and disable a request already armed. Any unreadable input refuses.
+   The guard does not look at who marked the PR ready. The workflow change goes through the
+   repository's workflow landing path and a human lands it: no implementer App can write a workflow
+   file.
 6. **Amend `review-finding-v1.md:85`** to read, in substance: "An approval recorded at an old head is
    **not** carried across the change, with one exception. When the PR is a draft, the only new
    commits are driver-free clean merges of the base branch, and the PR's diff against the base is
@@ -318,15 +337,15 @@ Default if no answer: none — blocks until answered.
 | 3 | `cd tools/desk && go test ./cmd/deskpost/ -run '^TestCarryVerb$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b25-r3-1.out" 2>&1 && grep -F -e '--- PASS: TestCarryVerb' "${TMPDIR:-/tmp}/b25-r3-1.out"` | exit 0; output contains `--- PASS: TestCarryVerb`. Each disqualifier exits 5 and the stub forge records zero posts, a ready PR and an auto-merge-requested draft included; could-not-check exits 6 with zero posts; an eligible PR gets exactly one APPROVED at `H` carrying the three body lines and no `Security-Review:` line; the verb has no security-lane form; C9: with no `carry-guard: v1` marker in the default branch's auto-merge workflow, a verifier-authored `docs/streams/`-only PR exits 5 naming C9, and an unreadable workflow copy exits 6 | check:ci +mutation |
 | 4 | `cd tools/desk && go test ./cmd/deskflip/ -run '^TestFlipCarriedVerdict$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b25-r4-1.out" 2>&1 && grep -F -e '--- PASS: TestFlipCarriedVerdict' "${TMPDIR:-/tmp}/b25-r4-1.out"` | exit 0; output contains `--- PASS: TestFlipCarriedVerdict`. LOWER LAYER WITH THE UPPER BYPASSED: a carry APPROVED at `H` placed directly in the fixture's reviews, never produced by the verb, citing an `A` whose file entries differ at `H` (a merge that edited a PR file), is refused naming the carry and the failed condition. A valid carry flips. A carry on a risk-classed PR with no fresh security pass at `H` is refused at the security condition. A carry citing a source whose body head differs from its `commit_id` is refused. The security reductions ignore any review whose body carries `Approval-Carried-From:`, even one that also carries a `Security-Review: pass` line | check:ci +mutation |
 | 5 | `cd tools/desk && go test ./cmd/deskpost/ -run '^TestReadyCarriedVerdict$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b25-r5-1.out" 2>&1 && grep -F -e '--- PASS: TestReadyCarriedVerdict' "${TMPDIR:-/tmp}/b25-r5-1.out"` | exit 0; output contains `--- PASS: TestReadyCarriedVerdict`. The same LOWER-LAYER fixtures as row 4, run through `deskpost ready` gate (b): the verb-less carry over a content change is refused naming the carry; a valid carry flips; the head-stable re-read refuses when the head moves between read and mutation | check:ci +mutation |
-| 6 | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestClassifyCarry$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b25-r6-1.out" 2>&1 && grep -F -e '--- PASS: TestClassifyCarry' "${TMPDIR:-/tmp}/b25-r6-1.out"` | exit 0; output contains `--- PASS: TestClassifyCarry`. A keep-current merge whose PR files are unchanged but whose merge resolved a PR file with a driver is RE-REVIEW, not CARRY; an eligible draft is CARRY; unreadable inputs degrade to RE-REVIEW. CARRY-ON-READY, both halves: a carry followed by a flip-identity `ready_for_review` event after it, with a flip-verb audit record naming that head, is NOT an anomaly; a carry on a PR marked ready by another identity, or marked ready before the carry, or with no flip-verb record, IS | check:ci +neighbour +mutation |
+| 6 | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestClassifyCarry$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b25-r6-1.out" 2>&1 && grep -F -e '--- PASS: TestClassifyCarry' "${TMPDIR:-/tmp}/b25-r6-1.out"` | exit 0; output contains `--- PASS: TestClassifyCarry`. A keep-current merge whose PR files are unchanged but whose merge resolved a PR file with a driver is RE-REVIEW, not CARRY; an eligible draft is CARRY; unreadable inputs degrade to RE-REVIEW. CARRY-ON-READY, both halves: a carry followed by a flip-identity `ready_for_review` after it, whose re-derivation at head is carry, is NOT an anomaly; a carry marked ready by another identity, a carry marked ready before it was posted, and a carry whose re-derivation at head is no-carry each ARE; a re-derivation that cannot be read is shown as could-not-check and not filed. No fixture supplies a flip-verb audit record: the key reads forge data only | check:ci +neighbour +mutation |
 | 7 | Live, on a canary draft PR in this repository (number exported as `CANARY_PR`) after a carry verdict at `H`: push a further merge of main, then `gh api "repos/medici-finance/assay/issues/$CANARY_PR/timeline" --jq '.[] \| select(.event=="review_dismissed") \| .created_at' && deskflip "$CANARY_PR"` | the timeline shows the carry review dismissed after the push, and deskflip refuses until a new carry is posted: a carry never outlives its head. Use a merge whose diff is truly unchanged; if the forge moved the old review's `commit_id` to the new head instead, record that (C5 then fails closed) | gate:human +mutation |
 | 8 | `gh api repos/medici-finance/assay/rules/branches/main --jq '[.[] \| select(.type=="pull_request") \| .parameters \| {dismiss_stale_reviews_on_push, require_last_push_approval}]'` | at least one entry reads `{"dismiss_stale_reviews_on_push":true,"require_last_push_approval":true}` — the server layer this design relies on is still in place | check +dereference |
 | 9 | Live: a real draft PR approved at `A` merges main to an eligible `H`; the review desk runs `deskpost carry`; then `deskflip` on it; then read the PR's reviews | one carry review at `H` naming `A` and the patch-id, no model correctness review between `A` and the flip, and the flip succeeds | gate:human +flow |
 | 10 | `grep -n 'is \*\*not\*\* carried across the change' docs/streams/desk-supervision/review-finding-v1.md && cd tools/desk && go test ./internal/deskkit/ -run '^TestDeriveLedgerCarry$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b25-r10-1.out" 2>&1 && grep -F -e '--- PASS: TestDeriveLedgerCarry' "${TMPDIR:-/tmp}/b25-r10-1.out"` | output contains `--- PASS: TestDeriveLedgerCarry`; the amended sentence is present with its exception clause; the ledger test shows a carry verdict clears no finding and a finding opened after `A` blocks the carry | check:ci +dereference |
 | 11 | `cd tools/skillslint && go run . --root ../..` | exit 0 | check:ci |
 | 12 | Live: on a canary PR that is ready (or a draft with an auto-merge request), after a qualifying merge of main, run `deskpost carry` on it | exit 5 naming C8, and the PR's reviews show no new review: the verb never posts on a ready PR or one with an auto-merge request | gate:human +mutation |
-| 13 | `bash tools/evidence-automerge/carry-guard_test.sh` | exit 0. Offline fixtures: a carried approval with a flip-identity ready-mark after it arms; one marked ready by another identity, one marked ready before the carry, and one whose PR has a security fail or no pass at head each refuse and ask to disable an armed request; an unreadable timeline refuses | check:ci +mutation |
-| 14 | Live, after a human lands the workflow change: on a canary verifier-authored draft carrying a valid carry, mark it ready from an identity other than the flip identity, wait for the workflow run, then `gh pr view "$CANARY_PR" -R medici-finance/assay --json autoMergeRequest --jq .autoMergeRequest` | `null`: the lane did not arm on the carry, with the flip verb bypassed. Before the workflow change lands this row is could-not-check, and C9 (row 3) is the control | gate:human +mutation |
+| 13 | `bash tools/evidence-automerge/carry-guard_test.sh && cd tools/desk && go test ./cmd/carrycheck/ -run '^TestCarryCheck$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b25-r13-1.out" 2>&1 && grep -F -e '--- PASS: TestCarryCheck' "${TMPDIR:-/tmp}/b25-r13-1.out"` | exit 0; output contains `--- PASS: TestCarryCheck`. Guard fixtures: a `ready_for_review` with no approval at head does not arm; a carry posted after that ready-mark does not arm when `carrycheck` says no-carry, and arms when it says carry; a carry with a ready-mark under the flip identity but a no-carry re-derivation does not arm; a `synchronize` disables an armed request; a PR with a security fail, or no pass at head where one applies, does not arm; any unreadable input refuses. A structural check fails if the workflow carries the marker but no step invoking the guard, or one guarded by an `if:` that could skip it. `carrycheck` returns the same verdicts as `CarryByBlobs` on the row 2 scenarios | check:ci +mutation |
+| 14 | Live, after a human lands the workflow change, and again whenever that workflow file changes, on a canary verifier-authored draft (number exported as `CANARY_PR`): mark it ready from any identity before any approval exists; then, as the reviewer identity and bypassing `deskpost carry`, post a carry-shaped APPROVED at head citing an earlier head across a merge that edited a PR file; wait for the workflow runs; then `gh pr view "$CANARY_PR" -R medici-finance/assay --json autoMergeRequest --jq .autoMergeRequest` | `null`: the lane did not arm before an approval existed, and did not arm on a carry whose re-derivation fails, with every flip verb bypassed. Before the workflow change lands this row is could-not-check, and C9 (row 3) is the control | gate:human +mutation |
 | 15 | `statusgen --consumers --root .` | exit 0 — every routing token above corroborated against the branch diff | check:ci +dereference |
 
 Pre-mortem (failure mode → row):
@@ -339,8 +358,9 @@ Pre-mortem (failure mode → row):
 | The verb's predicate has a bug and posts a bad carry | rows 4 and 5 (independent re-derivation at every flip verb), row 2 (agreement and named asymmetries) |
 | One flip verb re-derives and the other does not | rows 4 and 5 |
 | The verb posts a carry on a ready PR or one with an auto-merge request | rows 1 and 3 (C8), row 12 (live) |
-| A carried draft is marked ready by another route and auto-merges on the carry with no flip verb | rows 13 and 14 (the carry guard, with the flip verb bypassed), row 3 (C9 until the guard lands), row 6 (CARRY-ON-READY keyed on the ready-mark) |
-| The board anomaly fires on every legitimate carry and is ignored | row 6 (a verb-flipped carry is not an anomaly) |
+| A carried draft is marked ready by another route (any identity, before or after the carry, the flip identity included) and auto-merges with no flip verb | rows 13 and 14 (the guard arms only on an approval at head and re-derives a carry), row 3 (C9 until the guard lands), row 6 (CARRY-ON-READY) |
+| A request armed at an earlier head merges on a carry placed without the verb right after a push | row 13 (`synchronize` disables the request); the window before that run is the named residual: review-only, in the Human decision |
+| The board anomaly fires on every legitimate carry and is ignored, or depends on a record nothing writes | row 6 (a verb-flipped carry is not an anomaly; the key reads forge data only) |
 | A future change echoes a security pass into a carry body | rows 3 and 4 (no `Security-Review:` line; carries ignored by the security reductions) |
 | A carried security pass is never dismissed | C7: no security carry exists (rows 1, 3, 4) |
 | A carry outlives a later push | row 7 (server dismissal), rows 4 and 5 (head-stable re-read) |
@@ -359,12 +379,14 @@ Pre-mortem (failure mode → row):
 Gate: human (from frontmatter: irreversible is yes). The human gate is MANDATORY. The reviewer
 answers BOTH, in the verdict:
 1. What is the single control standing between the fault and the damage, and is that acceptable?
-   (The SPOF line names the carry predicate and counts the layers on each of the four paths A-D;
-   confirm each count.)
+   (The SPOF line names the carry predicate, counts the layers on each of paths A-D, and names one
+   residual window; confirm each count and whether that residual is acceptable.)
 2. Does any Verify row prove a LOWER layer catches the fault with the UPPER layer bypassed? (Rows 4
    and 5 place a carry verdict the verb never produced in front of each flip verb; rows 13 and 14
-   mark a carried draft ready with the flip verbs bypassed and show the auto-merge lane does not
-   arm; row 7 proves the server dismisses a carry on a later push; row 12 proves the verb refuses a
-   ready or auto-merge-armed PR.)
+   show the auto-merge lane arms neither before an approval exists nor on a carry whose
+   re-derivation fails, whoever marked the PR ready, with every flip verb bypassed; row 7 proves the
+   server dismisses a carry on a later push; row 12 proves the verb refuses a ready or
+   auto-merge-armed PR. The one path no row closes is the named residual window in the Human
+   decision.)
 
 Reviewer records verdict + date in the stream README table.
