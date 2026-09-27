@@ -83,7 +83,7 @@ This is configuration correctness, not containment of an agent that can execute 
 | 2 | check:ci | `bash tools/cellctl/tests/provider.test.sh` | exit 0; existing provider credential and override behavior preserved without policy |
 | 3 | check:ci | `bash tools/cellctl/tests/harness.test.sh` | exit 0; existing Claude/Codex launch behavior preserved without policy |
 | 4 | check:ci | `bash tools/cellctl/tests/model-namespace.test.sh && bash tools/cellctl/tests/model-override.test.sh && bash tools/cellctl/tests/cell-set.test.sh` | all three suites exit 0; no legacy pin, override or persistence regression |
-| 5 | check:ci | `bash -n tools/cellctl/cellctl` | exit 0 |
+| 5 | check:ci | `bash -n tools/cellctl/testdata/cellctl-shell-oracle.sh` | exit 0 |
 
 Pre-mortem → detection: aliases drift to a prohibited model: direct/child/allowlist negative
 cases in row 1. Wrong credential adapter: recorded mixed-provider exec in row 1. Effort
