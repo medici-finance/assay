@@ -308,7 +308,7 @@ func TestNoticeLaneVerdictRefusesNamedCheckByLintOrPortNeedle(t *testing.T) {
 	}
 }
 
-// TestNoticeLaneVerdictShapeOnlyNeedleVetoesPairedContentNeedle — round 6 (correctness
+// TestNoticeLaneShapeOnlyNeedleVetoesPairedNeedle — round 6 (correctness
 // re-review finding cor-1688-C7, residual; security review sec-1688-S1, round 6):
 // FirstNoticeLaneSignal used to SKIP the four lint-level/port-or-drop shape-only needles
 // while scanning for an admitting needle, rather than treating a match on one of them as a
@@ -320,7 +320,7 @@ func TestNoticeLaneVerdictRefusesNamedCheckByLintOrPortNeedle(t *testing.T) {
 // FAIL-FIRST (FirstNoticeLaneSignal reverted to `continue` instead of `return nil` on a
 // shape-only match): "wording of the pin-consistency lint level: notice or error" admitted via
 // the "wording" needle.
-func TestNoticeLaneVerdictShapeOnlyNeedleVetoesPairedContentNeedle(t *testing.T) {
+func TestNoticeLaneShapeOnlyNeedleVetoesPairedNeedle(t *testing.T) {
 	for _, subject := range []string{
 		"wording of the pin-consistency lint level: notice or error",
 		"port-or-drop forge-surface",
