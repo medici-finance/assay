@@ -14,9 +14,13 @@ import (
 // error must never collapse to 0 (that is the silent-default the fail-closed contract forbids).
 //
 // Derivation: the values follow the long-standing shell exit-code convention
-// (BSD sysexits aside, the portable baseline every POSIX shell documents): 0 is
-// success, 1 is the shell's own general-error code, and 2 is its
-// builtin-misuse / usage-error code. A CLI that starts its own codes at 3 keeps
+// (BSD sysexits aside). POSIX (XCU §2.8.2) reserves only 126 (found but not
+// executable), 127 (not found) and >128 (terminated by signal); it leaves every
+// other value to each utility's own page. Within that room, 1 is the
+// conventional general-error status most utilities use for an ordinary
+// failure, and 2 is the code the bash manual documents for a builtin's own
+// incorrect usage ("All builtins return an exit status of 2 to indicate
+// incorrect usage"). A CLI that starts its own codes at 3 keeps
 // every refusal it REPORTS distinct from a crash or a usage error the SHELL
 // reports, so a caller branching on the status never mistakes one for the
 // other. From 3 the table is one code per refusal CLASS the caller must handle
