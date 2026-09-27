@@ -71,6 +71,12 @@ type Account struct {
 	// gate, which refuses a sign-off artifact whose author is not a User (freeze rule: fields,
 	// not methods — this lands with its call site).
 	Type string `json:",omitempty"`
+	// State is the forge's own account-status word where the read reports one — GitLab's
+	// users API reports "active", "blocked" or "deactivated" — and EMPTY where it does not
+	// (GitHub's account read exposes no such field, so this stays "" on every GitHub-sourced
+	// Account; it is never defaulted to "active"). Consumer: trustliveness.go's
+	// classifyLiveness, which refuses to classify a non-active GitLab account Alive.
+	State string `json:",omitempty"`
 }
 
 // PullRequest is the subset of a change (GitHub pull request ↔ GitLab merge request) the
