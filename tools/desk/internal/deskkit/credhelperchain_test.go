@@ -542,6 +542,18 @@ var netrcLexCases = []netrcLexCase{
 	{"quoted host is red", "machine \"HOST\" login op\n", "red"},
 	{"entry on a last line with no newline is red", "machine HOST login op", "red"},
 
+	// SR-1614-4 (round 4): every libcurl release before 8.21 skips one extra byte after a
+	// closing quote before it starts the next token; the state-free scan above did not, so a
+	// quoted token glued to a following non-space byte fused the host or `default` into a
+	// longer token the no-skip pass never compares. Fixed by scanning both tokenizations (with
+	// and without the extra byte a token-close consumes) and reddening if either matches.
+	// Fail-first: both rows read GREEN on e87ab6409 (the round-3-ruling head, before this fix);
+	// live git 2.55.0 + libcurl 8.7.1 on loopback presented the netrc credential for both.
+	{"closing quote eats the byte before the host, fusing it into a longer token (SR-1614-4)",
+		"\"machine\"XHOST login op\n", "red"},
+	{"closing quote eats the byte before default, fusing it into a longer token (SR-1614-4)",
+		"\"x\"Xdefault login op\n", "red"},
+
 	// FALSE-RED (Ruling 1's accepted cost): no curl reader we know of would authenticate from
 	// any of these — the host or `default` sits in a macro body, a hidden comment, or a value
 	// word, never in a position any known reader treats as a keyword — but the state-free scan

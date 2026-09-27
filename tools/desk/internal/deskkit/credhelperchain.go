@@ -517,10 +517,39 @@ func netrcEntryFor(host string) (string, error) {
 // reads red though no known curl reader would ever authenticate from it — the check no longer
 // tracks position, only token identity. The operator clears a false red by editing their netrc
 // so the word does not appear there (see the PR body's false-red table for concrete shapes).
+//
+// SR-1614-4: token identity over position is the right idea, but the token STREAM a reader
+// sees depends on the reader. Every libcurl release before 8.21 skips one byte — the whitespace
+// that ended an unquoted token, or the byte after a closing quote — before it starts looking for
+// the next token (round 3's model, TestCredChainHostlessMatchesGit); the 8.21+ grammar lexer
+// used above does not. For an unquoted token that one-byte skip is a no-op here (the loop above
+// already consumes leading whitespace before every token), but for a quoted token immediately
+// followed by a non-space byte, the two readings diverge: the pre-8.21 skip silently drops that
+// byte, so a byte that would otherwise glue onto the next token instead falls away and the host
+// or `default` can surface as its own token; the no-skip reading above fuses it onto whatever
+// follows and never compares it. `"machine"X127.0.0.1` reads as one token `X127.0.0.1` under
+// the no-skip scan (no match) but presents the credential for host `127.0.0.1` under every
+// pre-8.21 reader (the leading `X` is dropped, not glued). So a single token-identity scan is
+// not enough: the check runs both tokenizations — with and without the extra byte a token-close
+// consumes — and reddens if either finds the host or `default`. Both are pinned by
+// TestCredChainNetrcMatchesCurl against whatever libcurl the host actually links, and by the
+// SR-1614-4 fixtures in netrcLexCases against the recorded pre-8.21 behaviour.
 func netrcMatch(body, host string) (string, error) {
 	if strings.IndexByte(body, 0) >= 0 {
 		return "", errors.New("holds a NUL byte, which curl's netrc reader does not read predictably")
 	}
+	if detail, err := netrcScanTokens(body, host, false); err != nil || detail != "" {
+		return detail, err
+	}
+	return netrcScanTokens(body, host, true)
+}
+
+// netrcScanTokens makes one pass over body's tokens, reddening on the first that equals host or
+// `default` (ASCII case-insensitively). With skipAfterToken it advances one extra byte past
+// every token's end before resuming — the pre-8.21 libcurl behaviour SR-1614-4 documents on
+// netrcMatch above — which can split a token differently than the no-skip pass when a quoted
+// token is immediately followed by a non-space byte.
+func netrcScanTokens(body, host string, skipAfterToken bool) (string, error) {
 	for i := 0; i < len(body); {
 		for i < len(body) && isNetrcSpace(body[i]) {
 			i++
@@ -537,6 +566,9 @@ func netrcMatch(body, host string) (string, error) {
 			return fmt.Sprintf("a netrc token %q that matches the push host, case-insensitively", tok), nil
 		case asciiEqualFold(tok, "default"):
 			return fmt.Sprintf("a netrc token %q that matches the keyword `default`, case-insensitively", tok), nil
+		}
+		if skipAfterToken {
+			end++
 		}
 		i = end
 	}
