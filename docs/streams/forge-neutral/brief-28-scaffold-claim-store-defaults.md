@@ -34,7 +34,7 @@ gate-why: >-
 decision-trigger: start
 domain: complicated
 consumers:
-  - "tools/cellctl/cellctl: follow-up forge-neutral/28 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "tools/cellctl/testdata/cellctl-shell-oracle.sh: follow-up forge-neutral/28 (this brief; flips to fixed-here when the implementation edits the path)"
   - "plugins/assay/skills/install/SKILL.md: follow-up forge-neutral/28 (this brief; flips to fixed-here when the implementation edits the path)"
   - "containers/ (launch surfaces): follow-up forge-neutral/28 (this brief; flips to fixed-here when the implementation edits the path)"
   - "docs/cellctl.md, docs/docker.md, containers/README.md: follow-up forge-neutral/29"
@@ -46,7 +46,7 @@ id: 0bf0c155-c89f-49ef-bcb1-4fb040e2a5db
 
 ## Context
 files:
-- `tools/cellctl/cellctl` and `tools/cellctl/tests/` — `new`, `check`, `desk`/`up` exports.
+- `tools/cellctl/testdata/cellctl-shell-oracle.sh` and `tools/cellctl/tests/` — `new`, `check`, `desk`/`up` exports.
 - `plugins/assay/skills/install/SKILL.md` — the roster-writing step.
 - `containers/` launch surfaces — the claim-store environment for container desks.
 - `changelog/<branch-slug>.md` (planned)
