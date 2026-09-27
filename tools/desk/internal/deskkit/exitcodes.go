@@ -12,6 +12,26 @@ import (
 //
 // Exit 0 is reserved for a POSITIVE success or an idempotent no-op; an unexpected
 // error must never collapse to 0 (that is the silent-default the fail-closed contract forbids).
+//
+// Derivation: the values follow the long-standing shell exit-code convention
+// (BSD sysexits aside, the portable baseline every POSIX shell documents): 0 is
+// success, 1 is the shell's own general-error code, and 2 is its
+// builtin-misuse / usage-error code. A CLI that starts its own codes at 3 keeps
+// every refusal it REPORTS distinct from a crash or a usage error the SHELL
+// reports, so a caller branching on the status never mistakes one for the
+// other. From 3 the table is one code per refusal CLASS the caller must handle
+// differently, contiguous and in handling order: 3 disabled (stop entirely —
+// the kill switch is armed), 4 rate-limited (wait the stated RetryAfter, then
+// retry the SAME call), 5 constraint-refused (fix the input or the repo
+// configuration; retrying unchanged never succeeds), 6 unverifiable (a
+// precondition could not be positively verified; fail closed). It is one code
+// per CLASS, not one per message: a single ExitRefused rather than a code per
+// refusal reason is correct because the caller's action is identical for every
+// compiled-in refusal — re-read the refusal, fix what it names, re-run — so
+// distinct codes would add branches no caller could take differently. The
+// classes are the four verbs; the messages carry the detail.
+// TestExitCodeTableMatchesDerivation (exitcodes_test.go) pins each constant to
+// the value this convention predicts and reddens on any drift.
 const (
 	// ExitOK — positive success OR an idempotent no-op.
 	ExitOK = 0
