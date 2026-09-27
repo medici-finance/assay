@@ -288,8 +288,17 @@ func (l *Loop) TierPolicy(item loopengine.Item) (loopengine.Tier, error) {
 	// exactly that (risk:yes -> tier:human) can never fire on a pinned false.
 	// Closing that gap is precisely #1722's scope: grow the envelope signal
 	// (or a mechanical derivation of one) so this value is derived rather
-	// than asserted. Until then, the fail-closed consult default (class 6) is
-	// the layer behind this literal.
+	// than asserted. Class 6's consult-failure default cannot be the backstop
+	// here: it fires only when the consult itself fails (invalid, timed-out,
+	// budget-exhausted or valve-disabled), and the gap above is a consult that
+	// SUCCEEDS but mis-routes — a path class 6 never sees. What actually limits
+	// the gap today is Dispatch's own Native switch (this file): every
+	// production call site leaves Native at its zero value, so a TierSession
+	// item never fires a real session — it gets mailbox delivery only, plus a
+	// synthesized PASS. If Native is ever enabled for commsloop, that backstop
+	// is gone and the only remaining layers are dispatchNative's kill switch
+	// and roleprofile.go's role-fenced session; #1722 should land before that
+	// switch flips.
 	const risk = false
 	tier, err := Assign(action, class, risk)
 	if err != nil {
