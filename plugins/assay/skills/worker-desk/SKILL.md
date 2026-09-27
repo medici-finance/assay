@@ -777,7 +777,11 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   queue, in the weekly digest with its veto date) instead of `needs-decision`. The tool admits it
   only on a positive, content-bearing R-3 reversible signal (a tool default alone never admits)
   with no one-way term or one-way label, and the same one-way check refuses `--no-fork` (exact
-  lists: `tools/desk/README.md`). The tool's keyword check
+  lists: `tools/desk/README.md`). That reversible signal is read from the block's own
+  `subject:` line ALONE, never the title or body prose — a title can carry more than one
+  clause, and a lint-level/port-or-drop example whose subject names a CI check or job never
+  admits either, whichever needle matched: write the `subject:` line yourself, naming the one
+  thing being decided. The tool's keyword check
   is a floor, not the reversibility test above: an item that test calls one-way is filed
   `caught-by: nothing`, and so stays on the driver's queue, whatever the keywords say.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,

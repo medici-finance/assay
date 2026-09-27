@@ -75,7 +75,9 @@ func TestNoticeLaneVerdictFailsClosed(t *testing.T) {
 		{"pick the retry backoff shape", false},            // neither list: fail closed
 	}
 	for _, c := range cases {
-		if got, why := NoticeLaneVerdict(c.title, "", nil); got != c.admit {
+		// subject = title: these fixtures are single-clause, so the title itself is the
+		// declared subject (round 4 binds admission to subject alone; see noticelane.go).
+		if got, why := NoticeLaneVerdict(c.title, "", c.title, nil); got != c.admit {
 			t.Errorf("NoticeLaneVerdict(%q) = %v (%s), want %v", c.title, got, why, c.admit)
 		}
 	}
@@ -173,7 +175,10 @@ func TestNoticeLaneVerdictRefusesControlPhrasings(t *testing.T) {
 		"Two-factor for bot accounts: keep it or drop it?",
 		"Close the human-only issues after a month",
 	} {
-		if admit, why := NoticeLaneVerdict("fix the docs wording of the --sla-days help text", body, nil); admit {
+		// subject is fixed (the reversible half); body carries the one-way phrasing under
+		// test — the one-way check still reads title+body (unchanged by round 4).
+		if admit, why := NoticeLaneVerdict("fix the docs wording of the --sla-days help text", body,
+			"fix the docs wording of the --sla-days help text", nil); admit {
 			t.Errorf("NoticeLaneVerdict(..., %q) admitted (%s), want refused", body, why)
 		}
 	}
@@ -181,16 +186,18 @@ func TestNoticeLaneVerdictRefusesControlPhrasings(t *testing.T) {
 
 // TestNoticeLaneVerdictStillAdmitsReversible — the widened set must not swallow R-3's own
 // reversible examples; a false one-way costs a queue item, but a set that refuses every
-// reversible item makes the lane dead.
+// reversible item makes the lane dead. "lint level for the unrun check" is deliberately NOT
+// on this list any more: it names a CI check, so round 4 (sec-1688-S1) refuses it — see
+// TestNoticeLaneVerdictRefusesReversibleAboutCICheckOrJob.
 func TestNoticeLaneVerdictStillAdmitsReversible(t *testing.T) {
 	for _, title := range []string{
 		"fix the docs wording in the README",
 		"fix the typo in the digest header",
-		"lint level for the unrun check: notice or error?",
+		"lint level for trailing whitespace: notice or error?",
 		"port-or-drop the legacy helper scripts",
 		"table column order in the digest",
 	} {
-		if admit, why := NoticeLaneVerdict(title, "", nil); !admit {
+		if admit, why := NoticeLaneVerdict(title, "", title, nil); !admit {
 			t.Errorf("NoticeLaneVerdict(%q) refused (%s), want admitted", title, why)
 		}
 	}
@@ -224,7 +231,7 @@ func TestNoticeLaneVerdictShapeOnlyNotAdmitted(t *testing.T) {
 		"Tool default: build untrusted fork heads in CI?",
 		"Tool default: scale the worker pool to zero overnight?",
 	} {
-		admit, why := NoticeLaneVerdict(title, "", nil)
+		admit, why := NoticeLaneVerdict(title, "", title, nil)
 		if admit {
 			t.Errorf("NoticeLaneVerdict(%q) admitted (%s), want refused", title, why)
 			continue
@@ -241,6 +248,28 @@ func TestNoticeLaneVerdictShapeOnlyNotAdmitted(t *testing.T) {
 		}
 		if s := FirstNoticeLaneSignal(n); s != nil {
 			t.Errorf("FirstNoticeLaneSignal(%q) = %q, want nil", n, s.Needle)
+		}
+	}
+}
+
+// TestNoticeLaneVerdictRefusesSubjectAboutCICheckOrJob — round 4 (security review
+// sec-1688-S1): a subject that genuinely, single-clause names a lint level, a lint severity,
+// a notice-vs-error choice, or a port-or-drop question is STILL not reversible when what it
+// classifies is a named CI check or job — that is a security/governance decision about the
+// check, not an edit to it. Every subject below carries a real content-bearing R-3 needle (so
+// subject-binding alone, without this rule, would admit it); ciCheckOrJobRe is what refuses
+// it. Mirrors the arbiter packet's round-4 probes (issuecomment-5840449031) at the
+// deskkit.NoticeLaneVerdict level; forkgate_round4_test.go pins the same shapes end to end
+// through `deskfile new`.
+func TestNoticeLaneVerdictRefusesSubjectAboutCICheckOrJob(t *testing.T) {
+	for _, subject := range []string{
+		"lint level for the control-sweep check: notice or error?",
+		"pattern-sweep findings: notice or error?",
+		"lint severity of the leak check: warn only?",
+		"port-or-drop the pattern-sweep job?",
+	} {
+		if admit, why := NoticeLaneVerdict(subject, "", subject, nil); admit {
+			t.Errorf("NoticeLaneVerdict(%q) admitted (%s), want refused (subject names a CI check or job)", subject, why)
 		}
 	}
 }

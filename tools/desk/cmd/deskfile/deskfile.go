@@ -865,7 +865,11 @@ func cmdNew(args []string) (err error) {
 	// the fewer-than-two-options refusal names the --no-fork re-routes only for an item that
 	// is not one-way, and the notice lane admits only a positive, content-bearing R-3
 	// reversible signal (deskkit.FirstNoticeLaneSignal) with no one-way term and no one-way
-	// caller label.
+	// caller label. That reversible signal is read from the block's own `subject:` line alone
+	// (res.Subject below), never from the title or body prose: a title can carry more than one
+	// clause, and a scan of the whole thing admits on whichever clause happens to carry a
+	// reversible needle rather than on what the filing is actually about (security review
+	// sec-1688-S1, round 4).
 	deskDecidedApply := false
 	if !*forceNew && noForkVal == "" && hasLabel(labels, needsDecisionLabel) {
 		res := parseForkTest(string(body))
@@ -888,7 +892,7 @@ func cmdNew(args []string) (err error) {
 			// One-way — including a one-way term on the ruled-check line, which
 			// NoticeLaneVerdict below never sees: stays needs-decision, filed as today.
 			ac.lane += " (one-way: " + hit.String() + ")"
-		} else if admit, why := deskkit.NoticeLaneVerdict(*title, oneWayHay(string(body)), labels); admit {
+		} else if admit, why := deskkit.NoticeLaneVerdict(*title, oneWayHay(string(body)), res.Subject, labels); admit {
 			// Notice lane (R-3): two-plus workable options, a gate the driver still holds, a
 			// positive reversible signal and no one-way term. desk-decided is ADDED alongside
 			// needs-decision at label time, and needs-decision comes off only in a second

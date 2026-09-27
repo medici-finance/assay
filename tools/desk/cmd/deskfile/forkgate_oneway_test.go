@@ -33,6 +33,18 @@ ruled-check: searched the tracker for "the same question" → nothing on record
 // would pass every one-way test below for the wrong reason.
 const reversibleTitle = "fix the docs wording of the --sla-days help text"
 
+// noticeLaneBlockWithSubject is noticeLaneBlock plus a `subject:` line carrying the SAME
+// content-bearing reversible text as reversibleTitle. Round 4 (security review sec-1688-S1)
+// binds the notice lane's positive reversible-signal test to the fork-test block's declared
+// subject alone, never the title or body prose — see noticelane.go — so a fixture that needs
+// the notice lane to actually ADMIT (as opposed to the one-way tests below, which never reach
+// the reversible-signal check at all) must carry a `subject:` line. noticeLaneBlock itself
+// stays subject-less: it is reused, unmodified, by fixtures titled with a ONE-WAY lead or a
+// SHAPE-ONLY needle (forkgate_round3_test.go), which must keep failing closed on the absence
+// of a declared subject, not admit on one this file quietly supplied.
+var noticeLaneBlockWithSubject = strings.Replace(noticeLaneBlock,
+	"### Fork test\n\n", "### Fork test\n\nsubject: "+reversibleTitle+"\n\n", 1)
+
 // neutralEvidence is an `### Evidence` fence carrying no one-way term (bodyWithEvidence's
 // "cluster" is itself a live-infrastructure term, so it cannot isolate a one-way assertion).
 // Any filing that stays on needs-decision still passes the blocker-evidence gate with it.
@@ -230,7 +242,7 @@ func TestNoticeLaneAddsBeforeRemoving(t *testing.T) {
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
 	t.Setenv("FAKEGH_LABEL_REMOVE_FAIL", "1")
-	body := bodyFileWith(t, "A reversible docs-wording question.\n\n"+noticeLaneBlock)
+	body := bodyFileWith(t, "A reversible docs-wording question.\n\n"+noticeLaneBlockWithSubject)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
 		"--title", reversibleTitle, "--body-file", body,
@@ -253,7 +265,7 @@ func TestNoticeLaneAuditRecordsLane(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
-	body := bodyFileWith(t, "A reversible docs-wording question.\n\n"+noticeLaneBlock)
+	body := bodyFileWith(t, "A reversible docs-wording question.\n\n"+noticeLaneBlockWithSubject)
 	if rc, out := runCapture([]string{"new", "-R", allowedRepo,
 		"--title", reversibleTitle, "--body-file", body,
 		"--label", needsDecisionLabel}); rc != deskkit.ExitOK {
@@ -291,7 +303,7 @@ func TestDeskDecidedLabelCreatedOnFirstUse(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel)) // no desk-decided
-	body := bodyFileWith(t, "A reversible docs-wording question.\n\n"+noticeLaneBlock)
+	body := bodyFileWith(t, "A reversible docs-wording question.\n\n"+noticeLaneBlockWithSubject)
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
 		"--title", reversibleTitle, "--body-file", body,
 		"--label", needsDecisionLabel})

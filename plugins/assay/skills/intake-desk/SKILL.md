@@ -311,7 +311,11 @@ issues landed three days later. That is why the two rules sit together.
    LANE instead — `desk-decided`, off the queue, in the weekly digest with its veto date. The tool
    admits it only on a positive, content-bearing R-3 reversible signal (a tool default alone
    never admits) with no one-way term or one-way label, and the same one-way check refuses
-   `--no-fork`; the exact lists are in `tools/desk/README.md`. Any
+   `--no-fork`; the exact lists are in `tools/desk/README.md`. That reversible signal is read
+   from the block's own `subject:` line ALONE, never the title or body prose — a title can
+   carry more than one clause, and a lint-level/port-or-drop example whose subject names a CI
+   check or job never admits either, whichever needle matched: write the `subject:` line
+   yourself, naming the one thing being decided. Any
    item that is one-way to you stays on the human queue whatever the tool would admit — file it
    `caught-by: nothing`.
    The decider is the human, and only a verified human account is honored. This is the SINGLE

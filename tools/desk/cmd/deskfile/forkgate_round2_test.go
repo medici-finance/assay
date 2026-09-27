@@ -106,10 +106,10 @@ func TestRuledCheckRulingWordingStillAdmits(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
-	block := strings.Replace(noticeLaneBlock,
+	block := strings.Replace(noticeLaneBlockWithSubject,
 		`ruled-check: searched the tracker for "the same question" → nothing on record`,
 		`ruled-check: searched the tracker for "sla-days default" → no prior ruling found`, 1)
-	if block == noticeLaneBlock {
+	if block == noticeLaneBlockWithSubject {
 		t.Fatal("fixture: the ruled-check line was not replaced")
 	}
 	body := bodyFileWith(t, "A reversible docs-wording question.\n\n"+block)

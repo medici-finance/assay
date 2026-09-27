@@ -58,6 +58,20 @@ var forkCaughtByValueRe = regexp.MustCompile(`(?i)^(draft-pr|flip|issue-close|no
 // The arrow is accepted as "→" or "->", for a filer whose editor cannot type the former.
 var forkRuledCheckLineRe = regexp.MustCompile(`(?i)^[ \t>*_-]*ruled-check:[ \t]*(.+?)[ \t]*(?:\x{2192}|->)[ \t]*(.*)$`)
 
+// forkSubjectLineRe matches an OPTIONAL `subject: <one line naming what is actually being
+// decided>` line. It is the notice lane's ONLY source for its positive, content-bearing R-3
+// reversible signal (deskkit.NoticeLaneVerdict) — never the issue title, never body prose,
+// never the `ruled-check:` line (security review sec-1688-S1, round 4). A title can and does
+// carry more than one clause ("Tool default: let the desk commit to main when CI is green?
+// Fix the help-text wording too." names a main-push governance question AND, in passing, a
+// wording fix), so a scan over title+body admits on whichever clause happens to carry a
+// reversible needle, not on what the filing is actually about. `subject:` asks the filer to
+// name that in one line instead. Its ABSENCE is not an error (the fork-test gate's structural
+// requirements are unchanged — see forkTestResult.Structural): a filing with no `subject:`
+// line simply never admits the notice lane, which is the fail-closed default every other
+// unrecognised shape already gets.
+var forkSubjectLineRe = regexp.MustCompile(`(?i)^[ \t>*_-]*subject:[ \t]*(.*)$`)
+
 // The closed set caught-by's first field must be one of.
 const (
 	caughtByDraftPR    = "draft-pr"
@@ -231,6 +245,12 @@ type forkTestResult struct {
 	RuledCheckSearch string
 	RuledCheckResult string
 
+	// HasSubject/Subject: the OPTIONAL `subject:` line (forkSubjectLineRe). Never required —
+	// Structural() does not check it — but it is the ONLY text deskkit.NoticeLaneVerdict reads
+	// for its positive reversible-signal test; see forkSubjectLineRe.
+	HasSubject bool
+	Subject    string
+
 	// Errors names every structural problem found, in a stable order, for the refusal
 	// message. Empty iff the block is structurally complete (found, at least one option
 	// line, default/caught-by/ruled-check all present and well-formed, default names a
@@ -338,6 +358,11 @@ func parseForkTest(body string) forkTestResult {
 			r.HasRuledCheck = true
 			r.RuledCheckSearch = strings.TrimSpace(m[1])
 			r.RuledCheckResult = strings.TrimSpace(m[2])
+			continue
+		}
+		if m := forkSubjectLineRe.FindStringSubmatch(ln); m != nil {
+			r.HasSubject = true
+			r.Subject = strings.TrimSpace(m[1])
 			continue
 		}
 	}

@@ -14,7 +14,28 @@ import (
 //  1. a caller label that marks the item one-way (OneWayLabels) keeps it on the queue;
 //  2. any one-way term — HumanOnlySignals, or the broader OneWayPatterns below — keeps it;
 //  3. only then, a POSITIVE match on a CONTENT-BEARING R-3 reversible signal admits it —
-//     ReversibleSignals minus the shape-only needles (NoticeLaneShapeOnlyNeedles).
+//     ReversibleSignals minus the shape-only needles (NoticeLaneShapeOnlyNeedles) — read from
+//     the filing's declared SUBJECT alone (deskfile's `### Fork test` block's optional
+//     `subject:` line), never from the title or body prose.
+//
+// Step 3 used to scan title+body directly. Round 4 (security review sec-1688-S1) found the
+// gap that leaves open: a title routinely carries more than one clause — "Tool default: let
+// the desk commit to main when CI is green? Fix the help-text wording too." is a one-way
+// governance question PLUS an incidental "wording" fix tacked on — and a scan over the whole
+// string admits on whichever clause happens to carry a reversible needle, not on what the
+// filing is actually ABOUT. Binding the read to a filer-declared subject line closes that:
+// the filer states, once, what is being decided, and only that line is read for admission. An
+// item with no `subject:` line simply never admits (fails closed, same as every other
+// unrecognised shape); the fork-test gate's structural requirements are unchanged — a
+// `subject:` line is never required, only consulted when present.
+//
+// The same round found a narrower shape the subject-only read does not fix by itself: a
+// subject can be genuinely, single-clause about a lint level, a lint severity or a
+// notice-vs-error choice — and STILL not be reversible, because what it classifies is a named
+// CI check or job ("lint level for the control-sweep check: notice or error?", "port-or-drop
+// the pattern-sweep job?"). That is a security/governance decision about the check, not an
+// edit to it, so ciCheckOrJobRe below refuses admission whenever the subject names one,
+// whichever reversible needle triggered it.
 //
 // A reversible needle never outranks a one-way term, which is why step 2 runs first and is
 // broad. But step 2 is a keyword list, and a keyword list only catches the phrasings it
@@ -184,16 +205,33 @@ func OneWayExempting(text string, exempt ...string) (OneWayHit, bool) {
 // file comment); every other ReversibleSignals needle does.
 var NoticeLaneShapeOnlyNeedles = []string{"tool default", "default value", "flag default", "rename the"}
 
+// ciCheckOrJobRe names a CI check or job by the nouns this codebase's own CI surfaces use
+// (check/checks, job/jobs, workflow/workflows, pipeline/pipelines) and the "<word>-sweep" /
+// "<word> check" compounds those surfaces are actually named with (leak-sweep, control-sweep,
+// pattern-sweep, "the leak check", …). A subject that names one is asking a classification
+// question ABOUT that check or job — a security/governance decision, not a reversible edit —
+// so FirstNoticeLaneSignal never admits on it, whichever reversible needle matched (round 4,
+// security review sec-1688-S1: "lint level for the control-sweep check: notice or error?",
+// "port-or-drop the pattern-sweep job?"). Deliberately broad, per this file's own fail-closed
+// direction: a false refusal costs one item staying on the driver's queue.
+var ciCheckOrJobRe = regexp.MustCompile(`(?i)\b\w+[- ](?:sweep|check)\b|\b(?:checks?|jobs?|workflows?|pipelines?)\b`)
+
 // FirstNoticeLaneSignal returns the first ReversibleSignals entry that may admit the notice
-// lane — a content-bearing needle, never one of NoticeLaneShapeOnlyNeedles — whose needle
-// occurs in hay, or nil. hay must already be lower-cased, as for FirstReversibleSignal.
-func FirstNoticeLaneSignal(hay string) *Signal {
+// lane — a content-bearing needle, never one of NoticeLaneShapeOnlyNeedles, and never when
+// subject names a CI check or job (ciCheckOrJobRe) — whose needle occurs in subject, or nil.
+// subject must already be lower-cased. subject is the filing's declared subject alone (a
+// `### Fork test` block's `subject:` line), never title+body — see the file comment and
+// NoticeLaneVerdict.
+func FirstNoticeLaneSignal(subject string) *Signal {
+	if ciCheckOrJobRe.MatchString(subject) {
+		return nil
+	}
 	for i := range ReversibleSignals {
 		s := &ReversibleSignals[i]
 		if slices.Contains(NoticeLaneShapeOnlyNeedles, s.Needle) {
 			continue
 		}
-		if strings.Contains(hay, s.Needle) {
+		if strings.Contains(subject, s.Needle) {
 			return s
 		}
 	}
@@ -201,22 +239,34 @@ func FirstNoticeLaneSignal(hay string) *Signal {
 }
 
 // NoticeLaneVerdict decides whether a structurally valid, two-plus-option filing with a held
-// catching gate may take the notice lane. admit is true ONLY when the filing is not one-way
-// AND carries a positive, content-bearing R-3 reversible signal (FirstNoticeLaneSignal); why
-// names the deciding signal either way.
-func NoticeLaneVerdict(title, body string, labels []string) (admit bool, why string) {
+// catching gate may take the notice lane. The one-way check still reads the whole title and
+// body (unchanged: OneWay's fail-closed floor is not what round 4 found narrow — see the file
+// comment). admit is true ONLY when the filing is not one-way AND subject — the filing's
+// declared subject alone, never title or body prose — carries a positive, content-bearing R-3
+// reversible signal (FirstNoticeLaneSignal); why names the deciding signal either way. subject
+// is read exactly as given (case-folded here, so callers pass it unfolded); an empty subject
+// (no `subject:` line in the fork-test block) never admits.
+func NoticeLaneVerdict(title, body, subject string, labels []string) (admit bool, why string) {
 	if hit, ok := OneWay(title, body, labels); ok {
 		return false, "one-way: " + hit.String()
 	}
-	hay := strings.ToLower(title + "\n" + body)
-	if s := FirstNoticeLaneSignal(hay); s != nil {
+	subj := strings.ToLower(strings.TrimSpace(subject))
+	if subj == "" {
+		return false, "no declared subject (fails closed: the reversible signal is read only from the fork-test " +
+			"block's `subject:` line, and none was given)"
+	}
+	if s := FirstNoticeLaneSignal(subj); s != nil {
 		return true, "reversible: " + s.Category + " (`" + s.Needle + "`)"
 	}
-	if s := FirstReversibleSignal(hay); s != nil {
+	if ciCheckOrJobRe.MatchString(subj) {
+		return false, "the subject names a CI check or job: an R-3 reversible example applied to it is a " +
+			"classification decision about that check, not a reversible edit to it (fails closed: stays with the human)"
+	}
+	if s := FirstReversibleSignal(subj); s != nil {
 		return false, "only a shape-only R-3 signal (`" + s.Needle + "`), which names the shape of the change, " +
 			"not what it governs (fails closed: stays with the human)"
 	}
-	return false, "no R-3 reversible signal (fails closed: an item the lists cannot place stays with the human)"
+	return false, "no R-3 reversible signal in the subject (fails closed: an item the lists cannot place stays with the human)"
 }
 
 // DeskDecidedMarker (decided.go) is the machine-readable marker a desk R-3 decision carries

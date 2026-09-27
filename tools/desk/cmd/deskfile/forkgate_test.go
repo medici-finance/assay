@@ -111,7 +111,7 @@ func TestCaughtByFilesNoticeWithMarker(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
-	body := bodyFileWith(t, "A reversible docs-wording question.\n\n"+noticeLaneBlock)
+	body := bodyFileWith(t, "A reversible docs-wording question.\n\n"+noticeLaneBlockWithSubject)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
 		"--title", reversibleTitle, "--body-file", body,

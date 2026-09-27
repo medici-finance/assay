@@ -28,6 +28,16 @@
   (`--force-new` included): only the notice lane writes either. The marker's reader pattern
   is declared once, in `deskkit`.
 
+### Fixed
+- The notice lane's positive reversible-signal test now reads the fork-test block's own
+  `subject:` line alone, never the issue title or body prose (security review sec-1688-S1,
+  round 4): a title routinely carries more than one clause, and a scan of the whole thing
+  admitted on whichever clause happened to carry a reversible needle rather than on what the
+  filing was actually about. `subject:` is optional; its absence never admits. A
+  lint-level/lint-severity/notice-or-error/port-or-drop example whose subject names a CI check
+  or job never admits either, whichever needle matched — that classifies the check, it does
+  not edit it.
+
 ### Changed
 - The R-3 human-only and reversible keyword lists moved from `cmd/deskdigest` into
   `internal/deskkit` (`HumanOnlySignals`, `ReversibleSignals`) so `deskfile`'s notice-lane

@@ -2842,6 +2842,7 @@ option: <letter> — <what it is> | works-because: <...> | consequence: <...>
 default: <letter>            (or `default: <letter> — <text>`)
 caught-by: <draft-pr | flip | issue-close | nothing> — <which one, e.g. the PR number>
 ruled-check: <the search that was run> → <what it returned>
+subject: <one line naming what is actually being decided>   (OPTIONAL)
 ```
 
 An `option:` line with an empty `works-because` or `consequence` is not COUNTED — an option
@@ -2859,7 +2860,9 @@ whether it was already decided. Name the search by its SUBJECT, e.g.
 that line reads clean. The line is read for one-way terms (below), so a line naming a
 driver-owned act — "searched closed needs-decision issues → nothing" matches the auto-close
 pattern — keeps the item on `needs-decision`: the safe direction, but a needless one. The arrow accepts `→` or `->`, and the dash before "what it
-is" accepts an em dash, en dash, or a plain hyphen.
+is" accepts an em dash, en dash, or a plain hyphen. `subject:` is OPTIONAL and never checked
+for well-formedness beyond being present — but it is the ONLY line the notice lane's positive
+reversible-signal test reads (below); a filing with no `subject:` line simply never admits.
 
 **Outcomes, in this precedence:**
 
@@ -2910,20 +2913,43 @@ is" accepts an em dash, en dash, or a plain hyphen.
   within a few words of a control noun (check, scan, gate, guard, hook, review, requirement,
   protection, lint, test, CI, verification, assertion, signing, policy, rule, control, alert),
   in either order;
-- a POSITIVE, CONTENT-BEARING R-3 reversible signal is present (`deskkit.FirstNoticeLaneSignal`:
+- a POSITIVE, CONTENT-BEARING R-3 reversible signal is present in the fork-test block's
+  DECLARED SUBJECT — the `subject:` line, and nothing else (`deskkit.FirstNoticeLaneSignal`:
   docs wording, typo, phrasing, lint level, port-or-drop, a table column). The SHAPE-only
   needles in `deskkit.ReversibleSignals` — `tool default`, `default value`, `flag default`,
   `rename the` (`deskkit.NoticeLaneShapeOnlyNeedles`) — never admit on their own: they name
   the kind of change and nothing about what it governs ("tool default: build untrusted fork
   heads in CI"), so as an admission signal they admitted every one-way act the keyword list
   had not named. An item whose only reversible signal is one of them stays on
-  `needs-decision`. `deskdigest`'s display classifier still reads them.
+  `needs-decision`. `deskdigest`'s display classifier still reads them (from title+body, as
+  before — the subject-only read below is deskfile's admission gate ONLY).
+
+  **The reversible signal is read from `subject:` alone, never the title or body prose**
+  (`deskkit.NoticeLaneVerdict`, security review sec-1688-S1, round 4). A title routinely
+  carries more than one clause — "Tool default: let the desk commit to main when CI is green?
+  Fix the help-text wording too." is a one-way governance question PLUS an incidental
+  "wording" fix tacked on — and a scan of the whole string admits on whichever clause happens
+  to carry a reversible needle, not on what the filing is actually about. The filer states, in
+  `subject:`, what is actually being decided; only that line is read for the reversible
+  signal. No `subject:` line at all means no reversible signal, ever — the same fail-closed
+  default as an item on neither list. And a subject that is genuinely, single-clause about a
+  lint level, a lint severity, a notice-vs-error choice, or a port-or-drop question is STILL
+  refused when what it classifies is a named CI check or job (`deskkit.ciCheckOrJobRe`: the
+  "check"/"job"/"workflow"/"pipeline" nouns, and this codebase's own `<word>-sweep` /
+  `<word> check` compounds — leak-sweep, control-sweep, pattern-sweep, "the leak check") — that
+  is a security/governance decision about the check, never a reversible edit to it
+  ("lint level for the control-sweep check: notice or error?", "port-or-drop the
+  pattern-sweep job?"). `forkgate_round4_test.go` pins both mechanisms against the arbiter
+  packet's twelve probes plus its control case (issuecomment-5840449031 on
+  medici-finance/assay#1688).
 
 An item that matches neither list stays on `needs-decision`: the absence of a one-way term is
 not evidence that an item is reversible, and a reversible signal never outranks a one-way
 term: "the docs wording for the trust gate" is one-way, because what the wording is about is
-a control. The one-way check reads the whole title and body, the `ruled-check:` line
-included — that line is where a filer names the subject of the search. The one exemption is
+a control. The one-way check reads the whole title and body, the `ruled-check:` and `subject:` lines
+included — `ruled-check:` is where a filer names the subject of the SEARCH (not to be
+confused with the block's own `subject:` line, which names the subject of the DECISION). The
+one exemption is
 the `ruling` needle on that line alone, whose wording is the grammar's own record of a search
 for a prior ruling (it would otherwise trip on every filing); every other needle and pattern
 still reads it (`deskkit.OneWayExempting`). The reversible signal is never read from the
