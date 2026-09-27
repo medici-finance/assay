@@ -2073,7 +2073,8 @@ That is where the write boundary lives, and it was already per-cell-shaped. The 
 stating plainly: **authorisation is config; stated topology is compiled.**
 
 **Running a cell on one machine** — the persistent `deskd`, a window per desk role, each resolving
-the cell's own roster and App keys — is `tools/cellctl/cellctl`; see `docs/cellctl.md`.
+the cell's own roster and App keys — is `cellctl`, the Go program in `tools/desk/cmd/cellctl`
+shipped in the desk-tools tarball; see `docs/cellctl.md`.
 
 ---
 
