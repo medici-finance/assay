@@ -78,5 +78,38 @@ facts:
 ## Evidence
 <!-- appended at implementation time by a non-implementer -->
 
+### Implementer run — derivation recorded; pinning test red-then-green; corpus mutant CAUGHT — 2026-09-27, implementer (worker), branch `feat/measured-status-01` off `refs/remotes/origin/main`
+
+Offline envelope (`KUBECONFIG=/dev/null`); every command run from `tools/desk/`.
+
+| # | Result |
+|---|--------|
+| 1 | PASS — `go test ./internal/deskkit/ -run TestExitCodeTableMatchesDerivation -count=1` → exit 0, `ok` |
+| 2 | PASS — `go vet ./internal/deskkit/` → exit 0 |
+| 3 | PASS — `grep -q 'Derivation:' internal/deskkit/exitcodes.go` → exit 0 |
+| 4 | PASS — `go test ./internal/deskkit/ -run TestExitCodeTableMatchesDerivation -count=1 -v 2>&1 \| grep -q 'PASS'` → exit 0 |
+| 5 | PASS — `go run ./cmd/muhar -spec internal/deskkit/mutations.json` → exit 0: "Harness healthy: baseline GREEN, positive control CAUGHT."; Totals 61 caught, 0 NOT CAUGHT; the new exit-code-convention mutant CAUGHT. One PRE-EXISTING corpus entry (`#203 — drop the FORWARD anchor`, `bodycheck.go`) reports COULD_NOT_MUTATE — its `old` text no longer matches the source after the acronym-matching refactor in #1643; stale on `origin/main` before this change and reported separately. |
+
+**Fail-first (rule 9).** Red-then-green on the new pinning test with the spec's new
+mutant planted by hand (`ExitRateLimited = 4` → `= 5` in `exitcodes.go`, then
+reverted):
+
+```
+--- FAIL: TestExitCodeTableMatchesDerivation (0.00s)
+    exitcodes_test.go:97: ExitRateLimited = 5, want 4 (the derivation pins each refusal class to its own code in 3..6)
+    exitcodes_test.go:125: code 5 carries two refusal classes (rate-limited and constraint-refused) — one code per class
+    exitcodes_test.go:130: the four refusal classes are not distinct codes: map[3:disabled 5:constraint-refused 6:unverifiable]
+    exitcodes_test.go:134: code 4 carries no refusal class — the classes must be contiguous 3..6
+FAIL
+```
+
+Reverted: `ok github.com/medici-finance/assay/tools/desk/internal/deskkit`. The same
+swap is the spec's new mutation entry; muhar catches it only because the spec's fixed
+`-run` allow-list was widened to name `TestExitCodeTableMatchesDerivation` (Task item
+4) — before that widening the mutant would have been invisible to the corpus guard.
+
+This is an IMPLEMENTER run, not a verdict — the frontmatter gate is `model`, and the
+flip is the reviewer's / verify-gate's per the Review section below.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
