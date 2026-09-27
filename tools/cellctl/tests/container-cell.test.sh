@@ -3,7 +3,7 @@
 set -euo pipefail
 # The binary under test. $CELLCTL lets the SAME suite run against either implementation
 # (the bash oracle, the default, or the Go port) — desk-containers/10.
-CELLCTL_UNDER_TEST="${CELLCTL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/cellctl}"
+CELLCTL_UNDER_TEST="${CELLCTL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/testdata/cellctl-shell-oracle.sh}"
 [[ "$CELLCTL_UNDER_TEST" == /* ]] || CELLCTL_UNDER_TEST="$PWD/$CELLCTL_UNDER_TEST"
 export CELLCTL_UNDER_TEST
 python3 - <<'PY'

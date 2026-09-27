@@ -31,7 +31,7 @@ version: 1
 id: 148b494e-8ace-4c43-b25c-7ebd57a6073e
 consumers:
   - "tools/desk/cmd/cellctl/cell.go: follow-up desk-containers/11 (this brief; the retired-alias refusal, flips to fixed-here when it lands)"
-  - "tools/cellctl/cellctl: follow-up desk-containers/11 (this brief; the same refusal text in the bash oracle so the parity harness stays green — the ONE bash edit this chain makes after brief 10)"
+  - "tools/cellctl/testdata/cellctl-shell-oracle.sh: follow-up desk-containers/11 (this brief; the same refusal text in the bash oracle so the parity harness stays green — the ONE bash edit this chain makes after brief 10)"
   - "tools/cellctl/tests/parity.test.sh: follow-up desk-containers/11 (this brief; one new fixture cell `local/codex`)"
   - "docs/cellctl.md: follow-up desk-containers/11 (this brief; §'One `cellctl` on PATH' and the migration line)"
 ---
@@ -43,7 +43,7 @@ consumers:
 files:
 - `tools/desk/cmd/cellctl/cell.go` (planned) — created by desk-containers/10 — the kind loader gains a
   RETIRED-ALIAS arm: `local` is refused (exit 3, like any unknown kind) with the migration line.
-- `tools/cellctl/cellctl` — the same arm, same text, in the bash oracle (`load_cell`, :224-236),
+- `tools/cellctl/testdata/cellctl-shell-oracle.sh` — the same arm, same text, in the bash oracle (`load_cell`, :224-236),
   so brief 10's parity harness stays green; no other bash change.
 - `tools/cellctl/tests/parity.test.sh` (planned) — created by desk-containers/10 — one added fixture:
   a `CELL_KIND=local` cell, verb `check`, expected divergence 0 (both refuse identically).
@@ -61,7 +61,7 @@ facts:
   `is not a known kind (k8s|house|container|scrubbed)`. Both implementations emit the same
   bytes (parity row).
 - **One command, because `set` already writes `CELL_KIND`:** `CELL_KIND` is in
-  `CELL_ENV_KNOWN_KEYS` (`tools/cellctl/cellctl:576`), so `cellctl set <cell>
+  `CELL_ENV_KNOWN_KEYS` (`tools/cellctl/testdata/cellctl-shell-oracle.sh:576`), so `cellctl set <cell>
   CELL_KIND=scrubbed` is legal today and needs no `--force`. `set` must NOT itself validate the
   kind against the loader (a migration would otherwise be refused by the very check it is
   meant to satisfy); `check` is what proves the migrated cell — and a bridge registration
@@ -81,7 +81,7 @@ facts:
   the running executable's resolved path equals `command -v cellctl` resolved; a mismatch is
   `warn` (visible, non-fatal — `check` from a checkout is legitimate) naming both paths and
   both `--version` outputs. On the bash oracle the running path is `SELF`
-  (`tools/cellctl/cellctl:169`); on the Go binary it is `os.Executable()` resolved through
+  (`tools/cellctl/testdata/cellctl-shell-oracle.sh:169`); on the Go binary it is `os.Executable()` resolved through
   symlinks. **The `warn` class here is accepted residual risk, chosen deliberately, not a
   weak-by-accident row.** The shadowed-`cellctl` condition it observes is exactly the one that
   let the out-of-tree bridge exist, so it is worth surfacing — but a legitimate run from a
@@ -123,10 +123,10 @@ facts:
 | 1 | `d=$(mktemp -d); mkdir -p "$d/b"; printf 'CELL_KIND=local\nCELL_HARNESS=codex\nCELL_REPO=%s\n' "$PWD" > "$d/b/cell.env"; CELLS_ROOT="$d" tools/desk/cellctl check b 2>&1; test $? -eq 3` | exit 0 — exit 3 AND the output contains `retired bridge kind` and `cellctl set b CELL_KIND=scrubbed`. Red on the merge-base (after brief 10): exit 3 with `is not a known kind` and NO `cellctl set` line, so the row's grep half fails | check +dereference |
 | 2 | `d=$(mktemp -d); mkdir -p "$d/b"; printf 'CELL_KIND=local\nCELL_HARNESS=codex\nCELL_REPO=%s\n' "$PWD" > "$d/b/cell.env"; line=$(CELLS_ROOT="$d" tools/desk/cellctl check b 2>&1 \| sed -n 's/.*migrate it: \(cellctl set [^,]*\),.*/\1/p'); CELLS_ROOT="$d" tools/desk/cellctl ${line#cellctl }; CELLS_ROOT="$d" tools/desk/cellctl check b; test $? -eq 1` | exit 0 — the migration line PRINTED by the refusal, run verbatim, turns exit 3 into exit 1 (loaded, MISS rows). Dereferencing: a docs-only migration line that drifts from the code cannot pass here because the row never reads the docs | check +dereference +flow |
 | 3 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case migrate-local` | exit 0 (the same flow as row 2, against the bash oracle via `CELLCTL`, plus the unknown-kind message now listing four kinds). Red on the merge-base: `--case migrate-local` is unknown to the suite (exit 2) | check:ci |
-| 4 | `CELLCTL_A=tools/cellctl/cellctl CELLCTL_B=tools/desk/cellctl PARITY_ONLY=local/codex/tmux/check bash tools/cellctl/tests/parity.test.sh` | exit 0; `parity: 1 cells, 0 divergent` — both implementations refuse `local` with the same bytes. Red on the merge-base: the fixture cell is unknown to the harness (exit 2) | check:ci +neighbour |
-| 5 | `grep -cF 'is not a known kind (k8s\|house\|container\|scrubbed)' tools/cellctl/cellctl` | exit 0; prints `1` (the bash oracle's unknown-kind text lists four kinds; `-F` matches the pipes as literal text) | check |
+| 4 | `CELLCTL_A=tools/cellctl/testdata/cellctl-shell-oracle.sh CELLCTL_B=tools/desk/cellctl PARITY_ONLY=local/codex/tmux/check bash tools/cellctl/tests/parity.test.sh` | exit 0; `parity: 1 cells, 0 divergent` — both implementations refuse `local` with the same bytes. Red on the merge-base: the fixture cell is unknown to the harness (exit 2) | check:ci +neighbour |
+| 5 | `grep -cF 'is not a known kind (k8s\|house\|container\|scrubbed)' tools/cellctl/testdata/cellctl-shell-oracle.sh` | exit 0; prints `1` (the bash oracle's unknown-kind text lists four kinds; `-F` matches the pipes as literal text) | check |
 | 6 | `grep -c '^## One .cellctl. on PATH' docs/cellctl.md` | exit 0; prints `1` | check |
-| 7 | `doc=$(grep -o 'cellctl set <cell> CELL_KIND=scrubbed' docs/cellctl.md \| head -1); code=$(grep -o 'cellctl set [$][^ ]* CELL_KIND=scrubbed' tools/cellctl/cellctl \| head -1); test -n "$doc" && test -n "$code"` | exit 0 — the migration command appears in the docs (with `<cell>`) and in the oracle's refusal text (with the cell variable); a rename of the target kind on one side only goes red here | check +dereference |
+| 7 | `doc=$(grep -o 'cellctl set <cell> CELL_KIND=scrubbed' docs/cellctl.md \| head -1); code=$(grep -o 'cellctl set [$][^ ]* CELL_KIND=scrubbed' tools/cellctl/testdata/cellctl-shell-oracle.sh \| head -1); test -n "$doc" && test -n "$code"` | exit 0 — the migration command appears in the docs (with `<cell>`) and in the oracle's refusal text (with the cell variable); a rename of the target kind on one side only goes red here | check +dereference |
 | 8 | `bash tools/cellctl/tests/house-cell.test.sh && bash tools/cellctl/tests/container-cell.test.sh` | exit 0 — the two neighbouring kinds still pass (they pass on the merge-base too: regression guard) | check:ci +neighbour |
 | 9 | `statusgen --consumers --root . --base $(git merge-base origin/main HEAD)` | exit 0 | check:ci |
 
