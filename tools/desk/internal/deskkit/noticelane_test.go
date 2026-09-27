@@ -398,6 +398,36 @@ func TestNoticeLaneVerdictHyphenVariantsNormalized(t *testing.T) {
 	}
 }
 
+// TestNoticeLaneVerdictRound7HyphenVariantsNormalized — round 7 widens hyphenVariantReplacer
+// with the further Unicode hyphen/dash look-alikes named in the withheld review-notes#169
+// detail: FULLWIDTH HYPHEN-MINUS, SMALL HYPHEN-MINUS, SOFT HYPHEN (which renders as no visible
+// character at all), and HYPHEN BULLET. Same isolation discipline as
+// TestNoticeLaneVerdictHyphenVariantsNormalized: no bare "job"/"check"/"workflow"/"pipeline"
+// noun elsewhere in the sentence, so only the "<word>-sweep" compound's own hyphen is being
+// exercised.
+//
+// FAIL-FIRST (the four new entries removed from hyphenVariantReplacer): every variant below
+// admitted (true) via the "typo" needle, where the ASCII-hyphen spelling refused (false,
+// ciCheckOrJobRe backstop) — admitVariant != admitASCII.
+func TestNoticeLaneVerdictRound7HyphenVariantsNormalized(t *testing.T) {
+	ascii := "fix the typo in the pattern-sweep output"
+	admitASCII, whyASCII := NoticeLaneVerdict(ascii, "", ascii, nil)
+	if admitASCII {
+		t.Fatalf("fixture: NoticeLaneVerdict(%q) admitted (%s), want refused (ciCheckOrJobRe backstop) — fixture is not isolating the hyphen normalisation", ascii, whyASCII)
+	}
+	for _, variant := range []string{
+		"fix the typo in the pattern－sweep output",                // U+FF0D FULLWIDTH HYPHEN-MINUS
+		"fix the typo in the pattern﹣sweep output",                // U+FE63 SMALL HYPHEN-MINUS
+		"fix the typo in the pattern" + "\u00ad" + "sweep output", // U+00AD SOFT HYPHEN
+		"fix the typo in the pattern⁃sweep output",                // U+2043 HYPHEN BULLET
+	} {
+		admitVariant, why := NoticeLaneVerdict(variant, "", variant, nil)
+		if admitVariant != admitASCII {
+			t.Errorf("NoticeLaneVerdict(%q) admitted=%v (%s), want the same as the ASCII-hyphen spelling (admitted=%v)", variant, admitVariant, why, admitASCII)
+		}
+	}
+}
+
 // TestDeskDecidedMarkerClaimCoversReader — the caller-body refusal
 // (HasDeskDecidedMarkerClaim) matches every spelling the reader (DeskDecidedMarkerRe) accepts,
 // so a variant marker can never be filed by a caller and then read as a desk decision

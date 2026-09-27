@@ -68,6 +68,30 @@
   U+2012, U+2013, U+2014, U+2212) in the subject is normalised to an ASCII hyphen before the
   `ciCheckOrJobRe` backstop and the hyphenated needles run, so a check name typed with a
   "fancy" hyphen still matches (round 6 advisories).
+- **The subject-extraction grammar is now strict and fail-closed (round 7), replacing the
+  round 1-6 shape-by-shape boundary markers with three rules that need no further enumeration**
+  (security review sec-1688-S1, correctness re-review cor-1688-C11/C12; the driver's option-2
+  ruling is unchanged — this is the same ruling, implemented once instead of patched six
+  times): every fenced code block and every HTML comment is stripped from the whole body BEFORE
+  any parsing runs, so nothing inside either — including a `subject:` line hidden inside an
+  HTML comment between two of the block's own real key lines, and a `### Fork test` heading
+  quoted inside an earlier fenced example — can ever be read as a key line or the heading
+  itself; the `### Fork test` heading must be followed DIRECTLY by the block (blank lines are
+  fine, any other text before the first key line is now a MALFORMED block, named as such,
+  rather than a silently empty one); and the block is the CONTIGUOUS run of key lines
+  (`<lowercase-key>: <content>` at column zero, no bullet/quote/indent decoration) starting
+  there, ending at the first line that does not match — blank or not — with nothing past that
+  line ever read as part of the block. This closes, at once: every prior round's trailing-
+  content shape, the plain-trailing-line-after-one-blank-line residual security review
+  5332392502 found still open, the fence-arm gap that had no test able to fail
+  (cor-1688-C12/sec-1688-S5), the intro-prose-before-the-first-key-line case
+  (cor-1688-C11), and the withheld hidden-HTML-comment-subject variant from
+  review-notes#169. The dedicated `>`-quote exclusion and per-shape boundary markers
+  (fence/heading/blank-run tracking) are retired: a decorated or indented line was never a key
+  line under the new grammar, so it can neither start nor extend the block.
+- The Unicode hyphen/dash normaliser (round 6) widens to four further look-alikes named in the
+  withheld review-notes#169 detail: U+FF0D FULLWIDTH HYPHEN-MINUS, U+FE63 SMALL HYPHEN-MINUS,
+  U+00AD SOFT HYPHEN (which renders as no visible character at all), and U+2043 HYPHEN BULLET.
 
 ### Changed
 - The R-3 human-only and reversible keyword lists moved from `cmd/deskdigest` into

@@ -244,13 +244,16 @@ var NoticeLaneShapeOnlyNeedles = []string{
 
 // hyphenVariantReplacer maps the Unicode hyphen/dash characters most likely to be typed or
 // pasted in place of an ASCII hyphen (U+2010 HYPHEN, U+2011 NON-BREAKING HYPHEN, U+2012
-// FIGURE DASH, U+2013 EN DASH, U+2014 EM DASH, U+2212 MINUS SIGN) to plain "-". It is applied
-// once, in NoticeLaneVerdict, to the subject before any needle or regex test in this file runs
-// against it: `ciCheckOrJobRe`'s "<word>-sweep" compounds and the hyphenated needles
-// (`port-or-drop`) are ASCII-hyphen literals, so a check name or phrase typed with a
-// "fancy" hyphen — a smart-quote editor's autocorrect, a pasted em dash — would otherwise
-// silently miss both (security review sec-1688-S1, round 6 advisory: "fix the typo in the
-// pattern‑sweep message", U+2011, got past `ciCheckOrJobRe`).
+// FIGURE DASH, U+2013 EN DASH, U+2014 EM DASH, U+2212 MINUS SIGN, plus, since round 7,
+// U+FF0D FULLWIDTH HYPHEN-MINUS, U+FE63 SMALL HYPHEN-MINUS, U+00AD SOFT HYPHEN, and U+2043
+// HYPHEN BULLET) to plain "-". It is applied once, in NoticeLaneVerdict, to the subject before
+// any needle or regex test in this file runs against it: `ciCheckOrJobRe`'s "<word>-sweep"
+// compounds and the hyphenated needles (`port-or-drop`) are ASCII-hyphen literals, so a check
+// name or phrase typed with a "fancy" hyphen — a smart-quote editor's autocorrect, a pasted em
+// dash — would otherwise silently miss both (security review sec-1688-S1, round 6 advisory:
+// "fix the typo in the pattern‑sweep message", U+2011, got past `ciCheckOrJobRe`; round 7 widens
+// the set with the further look-alikes review-notes#169 named, including the soft hyphen, which
+// renders as no visible character at all).
 var hyphenVariantReplacer = strings.NewReplacer(
 	"‐", "-",
 	"‑", "-",
@@ -258,6 +261,10 @@ var hyphenVariantReplacer = strings.NewReplacer(
 	"–", "-",
 	"—", "-",
 	"−", "-",
+	"－", "-",
+	"﹣", "-",
+	"\u00ad", "-", // U+00AD SOFT HYPHEN — renders as no visible character at all
+	"⁃", "-",
 )
 
 // normalizeHyphens rewrites every Unicode hyphen/dash look-alike hyphenVariantReplacer lists

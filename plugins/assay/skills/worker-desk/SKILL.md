@@ -780,9 +780,15 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   check or not — that is always a classification question about some check, so it never
   admits on its own) with no one-way term or one-way label, and the same one-way check refuses
   `--no-fork` (exact lists: `tools/desk/README.md`). That reversible signal is read from the
-  block's own `subject:` line ALONE, never the title or body prose, and only when the block
-  has exactly one `subject:` line and it is not `>`-quoted — two or more, or a quoted one,
-  admits nothing: write ONE `subject:` line yourself, naming the one thing being decided. The
+  block's own `subject:` line ALONE, never the title or body prose, and only from the STRICT
+  grammar's bounded block: the `### Fork test` heading must be followed directly by the block
+  (blank lines are fine, prose is not), the block is the contiguous run of key lines that
+  follows (`option:`/`default:`/`caught-by:`/`ruled-check:`/`subject:`, each at column zero with
+  no bullet/quote/indent decoration), and it ends at the first line that does not match, blank
+  or not — nothing past that line is ever read as part of it, whatever the rest of the body
+  contains. Exactly one `subject:` line inside that bounded run admits; zero or more than one
+  admits nothing: write ONE `subject:` line yourself, naming the one thing being decided,
+  directly among the block's other key lines (`tools/desk/README.md` has the full grammar). The
   tool's keyword check
   is a floor, not the reversibility test above: an item that test calls one-way is filed
   `caught-by: nothing`, and so stays on the driver's queue, whatever the keywords say.

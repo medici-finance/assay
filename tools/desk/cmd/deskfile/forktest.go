@@ -17,14 +17,57 @@ import (
 // The grammar is spelled out ONCE, in tools/desk/README.md ("The `### Fork test` block —
 // the decision filing gate"); the desk skills point at that section rather than restating
 // it, and so does this comment.
+//
+// ROUND 7 — a strict, fail-closed grammar replaces five rounds of shape-by-shape patches.
+// Rounds 1-6 each closed one more way trailing or embedded content could be read as the
+// block's declared subject (a fence, an indent, a setext heading, a `>`-quote, a second
+// `subject:` line, a blank-then-key-line run-on...) by teaching extractForkSection one more
+// boundary marker or teaching parseForkTest one more exclusion. Security review sec-1688-S1
+// (round 6 residual) and the withheld variants in review-notes#169 kept finding the next shape
+// the marker list had not enumerated (a plain trailing line after one blank line; an HTML
+// comment hidden inside the block itself). The fix is not a seventh marker: it is dropping the
+// whole "scan forward for a boundary marker" design in favour of three rules that need no
+// enumeration —
+//
+//  1. Strip every fenced code block and every HTML comment out of the WHOLE body before any
+//     of the rest of this runs (stripFencedBlocks, stripHTMLComments). Nothing inside either
+//     can ever be read as a heading or a key line again, so a quoted example, a quoted heading,
+//     or a subject hidden in a comment between two real key lines all vanish before parsing
+//     starts, rather than needing their own boundary rule.
+//  2. The heading must be followed DIRECTLY by the block — blank lines are fine (the grammar's
+//     own well-formed shape has one), but any other text before the first key line is a
+//     malformed block, not a silently-empty one (cor-1688-C11).
+//  3. The block is the CONTIGUOUS run of key lines (forkKeyLineRe) starting there. It ends at
+//     the first line that does not match — including a blank line — and nothing past that line
+//     is EVER read as part of the block, whatever the rest of the body contains. A trailing
+//     `subject:`-shaped line separated from the block by so much as one blank line is not a
+//     boundary marker to special-case; it is simply not contiguous, so it was never a candidate
+//     in the first place.
+//
+// `subject:` is read only from within that bounded run, and only when the run carries EXACTLY
+// ONE such line (forkTestResult.HasSubject) — zero or more than one is the same fail-closed
+// "no declared subject" outcome. A `>`-quoted, bulleted, or indented subject-shaped line can
+// never enter the run at all: forkKeyLineRe requires column zero and a lowercase key name, so
+// the round-5/6 quote and indent exclusions are now a CONSEQUENCE of the grammar rather than a
+// bolt-on check parseForkTest had to run.
 
 // forkTestHeadingRe matches the block's heading, any level (`#` through `######`), the same
 // tolerant shape isEvidenceHeading uses above for "### Evidence" — a filer who writes
 // `## Fork test` should not lose the whole gate to a `#`-count mismatch.
 var forkTestHeadingRe = regexp.MustCompile(`(?i)^\s*#{1,6}\s*Fork test\s*$`)
 
-// anyHeadingRe ends a section: any line opening with 1-6 `#` characters.
-var anyHeadingRe = regexp.MustCompile(`^\s*#{1,6}(\s|$)`)
+// forkKeyLineRe is the grammar's ONE definition of a "key line": a lowercase key name (ASCII
+// letters and hyphens only) at column zero, followed by ": " and at least one non-whitespace
+// character of content. No leading whitespace, no bullet/blockquote/emphasis decoration, no
+// indentation, no uppercase key name — a filer who wants a line recognised writes it exactly
+// this way. extractForkSection uses this SAME test to both locate the block (the first key
+// line after the heading) and to bound it (the contiguous run of lines that match); it says
+// nothing about which key NAMES the grammar actually reads — parseForkTest's five field
+// regexes below do that, over the bounded run only. An unrecognised key-shaped line (a typo, a
+// future field) still counts toward CONTIGUITY even though parseForkTest reads nothing from
+// it, which is the simpler, safer default: a stray line does not need to look like NOTHING the
+// grammar recognises in order to keep the block open.
+var forkKeyLineRe = regexp.MustCompile(`^[a-z][a-z-]*: \S`)
 
 // forkOptionLineRe matches one `option:` line:
 //
@@ -34,12 +77,13 @@ var anyHeadingRe = regexp.MustCompile(`^\s*#{1,6}(\s|$)`)
 // plain hyphen — authors reach for whichever their editor produces. The pipe-delimited
 // fields after it are pulled out separately (see parseForkTest) so a missing
 // works-because/consequence segment is DETECTABLE rather than silently absorbed into "what
-// it is".
-var forkOptionLineRe = regexp.MustCompile(`(?i)^[ \t>*_-]*option:[ \t]*([A-Za-z0-9]+)[ \t]*[—–-][ \t]*(.*)$`)
+// it is". The key itself (`option: `) is exactly what forkKeyLineRe already required of any
+// line in the bounded section — see the file comment.
+var forkOptionLineRe = regexp.MustCompile(`^option: ([A-Za-z0-9]+)[ \t]*[—–-][ \t]*(.*)$`)
 
 // forkDefaultAnyRe recognises a `default:` line whatever its value, so a malformed value is
 // reported as malformed, never as "no `default:` line found".
-var forkDefaultAnyRe = regexp.MustCompile(`(?i)^[ \t>*_-]*default:[ \t]*(.*)$`)
+var forkDefaultAnyRe = regexp.MustCompile(`^default: (.*)$`)
 
 // forkDefaultValueRe reads the option letter off a recognised default line's value: a bare
 // letter, optionally followed by " — <text>" (the same letter-dash-text shape `option:` and
@@ -48,24 +92,24 @@ var forkDefaultValueRe = regexp.MustCompile(`^([A-Za-z0-9]+)[ \t]*(?:[—–-][ 
 
 // forkCaughtByAnyRe recognises a `caught-by:` line regardless of whether its value is one of
 // the closed set, so an invalid value is reported as "invalid", never silently as "absent".
-var forkCaughtByAnyRe = regexp.MustCompile(`(?i)^[ \t>*_-]*caught-by:[ \t]*(.*)$`)
+var forkCaughtByAnyRe = regexp.MustCompile(`^caught-by: (.*)$`)
 
 // forkCaughtByValueRe splits a recognised caught-by line's value into its closed-set kind and
-// the optional " — <detail>" that follows it.
+// the optional " — <detail>" that follows it. The enum value itself stays case-insensitive
+// (`Draft-PR` names the same kind as `draft-pr`) — only the `caught-by:` KEY is case-bound now,
+// not its value.
 var forkCaughtByValueRe = regexp.MustCompile(`(?i)^(draft-pr|flip|issue-close|nothing)[ \t]*(?:[—–-][ \t]*(.*))?$`)
 
 // forkRuledCheckLineRe matches `ruled-check: <the search that was run> → <what it returned>`.
 // The arrow is accepted as "→" or "->", for a filer whose editor cannot type the former.
-var forkRuledCheckLineRe = regexp.MustCompile(`(?i)^[ \t>*_-]*ruled-check:[ \t]*(.+?)[ \t]*(?:\x{2192}|->)[ \t]*(.*)$`)
+var forkRuledCheckLineRe = regexp.MustCompile(`^ruled-check: (.+?)[ \t]*(?:\x{2192}|->)[ \t]*(.*)$`)
 
 // forkSubjectLineRe matches an OPTIONAL `subject: <one line naming what is actually being
-// decided>` line, capturing its prefix (group 1, everything before `subject:`) separately
-// from its value (group 2) so the caller can tell a `>`-quoted line from a plain one — see
-// below. It is the notice lane's ONLY source for its positive, content-bearing R-3 reversible
-// signal (deskkit.NoticeLaneVerdict) — never the issue title, never body prose, never the
-// `ruled-check:` line (security review sec-1688-S1, round 4). A title can and does carry more
-// than one clause ("Tool default: let the desk commit to main when CI is green? Fix the
-// help-text wording too." names a main-push governance question AND, in passing, a wording
+// decided>` line. It is the notice lane's ONLY source for its positive, content-bearing R-3
+// reversible signal (deskkit.NoticeLaneVerdict) — never the issue title, never body prose,
+// never the `ruled-check:` line (security review sec-1688-S1, round 4). A title can and does
+// carry more than one clause ("Tool default: let the desk commit to main when CI is green? Fix
+// the help-text wording too." names a main-push governance question AND, in passing, a wording
 // fix), so a scan over title+body admits on whichever clause happens to carry a reversible
 // needle, not on what the filing is actually about. `subject:` asks the filer to name that in
 // one line instead. Its ABSENCE is not an error (the fork-test gate's structural requirements
@@ -73,19 +117,15 @@ var forkRuledCheckLineRe = regexp.MustCompile(`(?i)^[ \t>*_-]*ruled-check:[ \t]*
 // never admits the notice lane, which is the fail-closed default every other unrecognised
 // shape already gets.
 //
-// A well-formed section is meant to declare the subject exactly once. Round 5 (security
-// review sec-1688-S1) found two ways a second line crept in and still admitted: prose after
-// the block with no heading in between (the section runs to the next heading or EOF) can
-// itself carry what reads as a `subject:` line — including a `>`-quoted one, since the prefix
-// class below matches a blockquote marker the same as a bullet — and when two or more
-// `subject:` lines appeared, parseForkTest kept only the LAST one, so an honest first subject
-// could be silently overridden by an incidental second line or a leftover template
-// placeholder. parseForkTest below now reads the declared subject only when the section
-// carries EXACTLY ONE `subject:` line and it is not `>`-quoted (group 1 contains no `>`);
-// two or more — quoted, unquoted, or a mix — leaves r.Subject empty, the same fail-closed
-// default as no `subject:` line at all. Bullet/emphasis prefixes (`*`, `_`, `-`, matching the
-// grammar's other lines) are still accepted on the one subject line that counts.
-var forkSubjectLineRe = regexp.MustCompile(`(?i)^([ \t>*_-]*)subject:[ \t]*(.*)$`)
+// A well-formed section is meant to declare the subject exactly once: parseForkTest reads a
+// declared subject only when the BOUNDED, CONTIGUOUS run (extractForkSection) carries EXACTLY
+// ONE line matching this pattern — zero or more than one leaves r.Subject empty, the same
+// fail-closed default as no `subject:` line at all (round 7 folds rounds 5-6's separate
+// `>`-quote exclusion and blank-run/fence/heading boundary tracking into these two rules:
+// forkKeyLineRe's column-zero, no-decoration shape already keeps a quoted or indented line out
+// of the run entirely, and the run's own contiguity already keeps anything past a blank line,
+// a fence, or a heading out of it — see the file comment).
+var forkSubjectLineRe = regexp.MustCompile(`^subject: (.*)$`)
 
 // The closed set caught-by's first field must be one of.
 const (
@@ -261,12 +301,11 @@ type forkTestResult struct {
 	RuledCheckResult string
 
 	// HasSubject/Subject: the OPTIONAL `subject:` line (forkSubjectLineRe), set only when the
-	// section carries EXACTLY ONE such line and it is not `>`-quoted (round 5 — see
-	// forkSubjectLineRe). Never required — Structural() does not check it — but it is the
-	// ONLY text deskkit.NoticeLaneVerdict reads for its positive reversible-signal test. Two
-	// or more `subject:` lines, or a lone quoted one, leave HasSubject false and Subject
-	// empty: the same fail-closed default as no `subject:` line at all, never a refusal (an
-	// ambiguous subject is not a structural error — see Structural).
+	// bounded section carries EXACTLY ONE such line (see forkSubjectLineRe). Never required —
+	// Structural() does not check it — but it is the ONLY text deskkit.NoticeLaneVerdict reads
+	// for its positive reversible-signal test. Zero or more than one `subject:` line leaves
+	// HasSubject false and Subject empty: the same fail-closed default as no `subject:` line at
+	// all, never a refusal (an ambiguous subject is not a structural error — see Structural).
 	HasSubject bool
 	Subject    string
 
@@ -320,19 +359,21 @@ func (r forkTestResult) Workable() bool {
 // the grammar in tools/desk/README.md. Pure: no I/O, no clock, no network.
 func parseForkTest(body string) forkTestResult {
 	var r forkTestResult
-	section, found := extractForkSection(body)
+	section, found, malformed := extractForkSection(body)
 	if !found {
 		r.Errors = append(r.Errors,
 			"no `### Fork test` section found (any heading level accepted) — see tools/desk/README.md")
 		return r
 	}
 	r.Found = true
+	if malformed != "" {
+		r.Errors = append(r.Errors, malformed)
+		return r
+	}
 
 	seenLetter := map[string]bool{}
 	var dupLetters []string
-	subjectLines := 0     // every `subject:` line seen, quoted or not
-	unquotedSubjects := 0 // the subset that is not `>`-quoted
-	var lastUnquotedSubject string
+	var subjects []string // every `subject:` line in the bounded run
 	for _, ln := range strings.Split(section, "\n") {
 		if m := forkOptionLineRe.FindStringSubmatch(ln); m != nil {
 			if k := strings.ToLower(strings.TrimSpace(m[1])); seenLetter[k] {
@@ -383,17 +424,13 @@ func parseForkTest(body string) forkTestResult {
 			continue
 		}
 		if m := forkSubjectLineRe.FindStringSubmatch(ln); m != nil {
-			subjectLines++
-			if !strings.Contains(m[1], ">") {
-				unquotedSubjects++
-				lastUnquotedSubject = strings.TrimSpace(m[2])
-			}
+			subjects = append(subjects, strings.TrimSpace(m[1]))
 			continue
 		}
 	}
-	if subjectLines == 1 && unquotedSubjects == 1 {
+	if len(subjects) == 1 {
 		r.HasSubject = true
-		r.Subject = lastUnquotedSubject
+		r.Subject = subjects[0]
 	}
 
 	if len(r.Options) == 0 {
@@ -434,57 +471,77 @@ func parseForkTest(body string) forkTestResult {
 }
 
 // forkFenceLineRe matches a fenced-code delimiter line (three or more backticks or tildes),
-// allowed up to 3 leading spaces (a fence may be indented up to 3 columns and still open,
-// per CommonMark). It is one of extractForkSection's hard section-boundary markers.
+// allowed up to 3 leading spaces (a fence may be indented up to 3 columns and still open, per
+// CommonMark). Used by stripFencedBlocks (round 7) to remove every fenced block, delimiters and
+// content both, from the whole body before any of the rest of this file runs.
 var forkFenceLineRe = regexp.MustCompile("^[ \t]{0,3}(```+|~~~+)")
 
-// forkGrammarKeyLine reports whether ln is one of the fork-test grammar's five recognised key
-// lines — option:/default:/caught-by:/ruled-check:/subject: — for the sole purpose of bounding
-// the section in extractForkSection. It never parses ln's value (parseForkTest does that,
-// over the bounded section only).
+// stripFencedBlocks removes every fenced code block in body — the opening delimiter, every
+// line inside it, and the closing delimiter — entirely, by toggling in/out of "fence" state on
+// each line matching forkFenceLineRe and dropping every line seen while in that state
+// (delimiters included). Round 7: this is what closes cor-1688-C12/sec-1688-S5's fence-arm gap
+// and the sibling case the security review noted (a `### Fork test` heading quoted inside an
+// EARLIER fenced example is now gone before the heading search in extractForkSection ever
+// runs) — a fence's contents are unreadable to the parser at all, rather than the parser
+// trying to notice where a fence starts and stops while also scanning for key lines.
 //
-// A line indented 4 or more columns, or opening with a tab, is Markdown's own indented-code-
-// block signal and is deliberately NEVER recognised here even when its text would otherwise
-// match one of the five key-line patterns: security review sec-1688-S1 (round 6) found an
-// indented subject-shaped line outside the real block was silently read as the declared
-// subject, because the grammar's own prefix classes (`[ \t>*_-]*`) tolerate leading
-// whitespace for bullet/quote formatting and cannot themselves tell "a bulleted subject line"
-// from "an indented code block that happens to contain the word subject:".
-func forkGrammarKeyLine(ln string) bool {
-	if strings.HasPrefix(ln, "\t") || strings.HasPrefix(ln, "    ") {
-		return false
+// An UNTERMINATED fence (no closing delimiter before EOF) drops everything after it to the end
+// of the body. That is the fail-closed reading of a malformed fence: the alternative, treating
+// an unterminated fence as if it were never opened, would let whatever comes after it — options,
+// defaults, a subject — parse as if the stray ``` had never been typed, which is the wrong
+// direction to fail in a gate whose whole job is refusing to guess.
+func stripFencedBlocks(body string) string {
+	lines := strings.Split(body, "\n")
+	out := make([]string, 0, len(lines))
+	inFence := false
+	for _, ln := range lines {
+		if forkFenceLineRe.MatchString(ln) {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
+		out = append(out, ln)
 	}
-	return forkOptionLineRe.MatchString(ln) ||
-		forkDefaultAnyRe.MatchString(ln) ||
-		forkCaughtByAnyRe.MatchString(ln) ||
-		forkRuledCheckLineRe.MatchString(ln) ||
-		forkSubjectLineRe.MatchString(ln)
+	return strings.Join(out, "\n")
 }
 
-// extractForkSection returns the text between a "### Fork test" heading (any level) and the
-// BOUNDED end of that section: the first heading, fence-delimiter line, or blank line
-// encountered after the block's LAST recognised grammar key line (forkGrammarKeyLine) —
-// never EOF, and never the section's own natural end-of-string if that runs past the last key
-// line without one of those three markers (the fallback below cuts right after it instead).
-// found is false when no such heading exists at all.
+// htmlCommentRe matches one HTML comment, `<!--` through the nearest following `-->`, across
+// any number of lines. RE2 (Go's regexp package) has no catastrophic-backtracking failure mode
+// regardless of the non-greedy `.*?`, so this is linear even on an adversarial body.
+var htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
+
+// stripHTMLComments removes every HTML comment in body entirely, delimiters included. Round 7:
+// this is what closes the withheld review-notes#169 variant of a `subject:` line hidden inside
+// an HTML comment BETWEEN two of the block's own real key lines — invisible in the rendered
+// issue, but previously still read as a key line by parseForkTest, which never cared what
+// Markdown construct a key-shaped line sat inside. An UNTERMINATED `<!--` (no `-->` anywhere in
+// the rest of the body) is left as plain text: it was never actually hidden from a renderer
+// either, so there is nothing to fail closed about.
+func stripHTMLComments(body string) string {
+	return htmlCommentRe.ReplaceAllString(body, "")
+}
+
+// extractForkSection locates the "### Fork test" block per the round-7 grammar (see the file
+// comment and tools/desk/README.md):
 //
-// Blank lines *before* the first key line, or a blank line immediately followed (after
-// skipping further blank lines) by another key line, do not end the section — the grammar's
-// own well-formed shape has a blank line between the heading and its first key line, and
-// authors are free to group option:/default:/caught-by:/ruled-check:/subject: lines with a
-// blank line between groups (e.g. a `subject:` line, then a blank line, then the option:
-// lines). Only a blank run that is NOT followed by another key line — i.e. the block has
-// genuinely ended — closes the section.
-//
-// Before this bound, the section ran to the next ATX heading or EOF, so prose after the block
-// with no heading in between was still read as part of it: a `subject:`-shaped line inside a
-// fenced or indented code block, in ordinary prose, or past a Markdown setext heading (none of
-// which anyHeadingRe recognises as ending anything) could all be picked up as the declared
-// subject (security review sec-1688-S1, round 6). Bounding the section this way, rather than
-// tightening forkSubjectLineRe itself, keeps the fix in ONE place: any of the five grammar key
-// lines is bound the same way, not just `subject:`.
-func extractForkSection(body string) (section string, found bool) {
+//  1. Fences and HTML comments are stripped from the WHOLE body first (stripFencedBlocks,
+//     stripHTMLComments) — this is a local copy inside this function; it never touches the
+//     body any other gate (evidence, marker-claim, one-way) reads.
+//  2. The heading (any level) is found. found is false only when no heading exists at all.
+//  3. The heading must be followed DIRECTLY by the block: any number of blank lines are
+//     tolerated (the grammar's own well-formed shape has one), but the first non-blank line
+//     after the heading must be a key line (forkKeyLineRe) — anything else (prose, an empty
+//     heading with nothing following it) makes malformed non-empty and section empty
+//     (cor-1688-C11: a heading was found, but no block could be located after it).
+//  4. From that first key line, the section is the CONTIGUOUS run of lines matching
+//     forkKeyLineRe. It ends at the first line that does not match, blank or not — nothing
+//     past that line is ever part of the section, however the rest of the body reads.
+func extractForkSection(body string) (section string, found bool, malformed string) {
+	body = stripHTMLComments(stripFencedBlocks(body))
 	lines := strings.Split(body, "\n")
+
 	start := -1
 	for i, ln := range lines {
 		if forkTestHeadingRe.MatchString(ln) {
@@ -493,32 +550,25 @@ func extractForkSection(body string) (section string, found bool) {
 		}
 	}
 	if start == -1 {
-		return "", false
+		return "", false, ""
 	}
 
-	end := start + 1
-	for i := start + 1; i < len(lines); i++ {
-		ln := lines[i]
-		if anyHeadingRe.MatchString(ln) || forkFenceLineRe.MatchString(ln) {
-			return strings.Join(lines[start+1:i], "\n"), true
-		}
-		if strings.TrimSpace(ln) == "" {
-			j := i + 1
-			for j < len(lines) && strings.TrimSpace(lines[j]) == "" {
-				j++
-			}
-			if j >= len(lines) || !forkGrammarKeyLine(lines[j]) {
-				return strings.Join(lines[start+1:i], "\n"), true
-			}
-			// A key line follows this blank run: the blank is part of the section (an
-			// author's own grouping), not its end. Fall through and keep scanning.
-		}
-		end = i + 1
+	i := start + 1
+	for i < len(lines) && strings.TrimSpace(lines[i]) == "" {
+		i++
 	}
-	// Reached EOF without a heading/fence/blank boundary after the last key line: cut right
-	// after it (end already reflects that — every line up to here either was a key line or a
-	// blank run followed by one), never at physical EOF.
-	return strings.Join(lines[start+1:end], "\n"), true
+	if i >= len(lines) || !forkKeyLineRe.MatchString(lines[i]) {
+		return "", true, "the `### Fork test` heading is not followed directly by the block: " +
+			"blank lines are fine, but no other text may come between the heading and the " +
+			"first `option:`/`default:`/`caught-by:`/`ruled-check:`/`subject:` line — see " +
+			"tools/desk/README.md"
+	}
+
+	end := i
+	for end < len(lines) && forkKeyLineRe.MatchString(lines[end]) {
+		end++
+	}
+	return strings.Join(lines[i:end], "\n"), true, ""
 }
 
 // forkTestErrorMessage renders parseForkTest's Errors as the refused-filing message body,

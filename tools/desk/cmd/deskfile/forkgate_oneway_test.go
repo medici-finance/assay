@@ -70,7 +70,7 @@ const reversibleTitle = "fix the docs wording of the --sla-days help text"
 // TestNoticeLaneRefusesReversibleSubjectOneWay titles went red, not just the excerpted ones).
 // Restoring OneWayExempting turns every one green again.
 var noticeLaneBlockWithSubject = strings.Replace(noticeLaneBlock,
-	"### Fork test\n\n", "### Fork test\n\nsubject: "+reversibleTitle+"\n\n", 1)
+	"### Fork test\n\n", "### Fork test\n\nsubject: "+reversibleTitle+"\n", 1)
 
 // neutralEvidence is an `### Evidence` fence carrying no one-way term (bodyWithEvidence's
 // "cluster" is itself a live-infrastructure term, so it cannot isolate a one-way assertion).

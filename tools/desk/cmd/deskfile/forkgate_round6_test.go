@@ -71,7 +71,7 @@ func TestNoticeLaneRefusesRound6ShapeOnlyVetoProbes(t *testing.T) {
 			withEnv(t)
 			t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 			t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
-			block := strings.Replace(noticeLaneBlock, "### Fork test\n\n", "### Fork test\n\nsubject: "+tc.subject+"\n\n", 1)
+			block := strings.Replace(noticeLaneBlock, "### Fork test\n\n", "### Fork test\n\nsubject: "+tc.subject+"\n", 1)
 			body := bodyFileWith(t, neutralEvidence+"\n"+block)
 
 			rc, out := runCapture([]string{"new", "-R", allowedRepo,

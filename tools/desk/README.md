@@ -2845,17 +2845,44 @@ ruled-check: <the search that was run> → <what it returned>
 subject: <one line naming what is actually being decided>   (OPTIONAL)
 ```
 
+**The block's grammar (round 7) is strict and fail-closed, on purpose.** Six rounds of security
+review each found one more shape of trailing or embedded content that could be misread as part
+of the block — a fence, an indent, a setext heading, a `>`-quote, a second `subject:` line, a
+comment — and each round closed the one shape named. Round 7 replaces that whole approach with
+three rules that need no further enumeration:
+
+1. **Strip first.** Before anything else runs, every FENCED code block and every HTML comment
+   is removed from the whole body — delimiters, content, and all. Nothing inside either can
+   ever be read as a `### Fork test` heading or a key line: a quoted example (heading and all)
+   earlier in the body vanishes before the heading search runs, and a `subject:` line hidden
+   inside an HTML comment — even one sitting BETWEEN two of the block's own real key lines —
+   vanishes before the block is parsed at all.
+2. **The heading must be followed DIRECTLY by the block.** Blank lines between the heading and
+   the first key line are fine (the well-formed shape above has one); anything else — a
+   sentence of context, a leftover note — is a MALFORMED block, refused by naming that specific
+   problem, never silently treated as an empty one.
+3. **The block is the CONTIGUOUS run of key lines that follows.** A key line is
+   `<lowercase-key>: <content>` at column zero — no leading whitespace, no bullet, blockquote,
+   or emphasis marker, no indentation, nothing before the key name. The run ends at the FIRST
+   line that does not match this shape, blank or not, and nothing past that line is EVER read
+   as part of the block, however the rest of the body is shaped. A `>`-quoted or bulleted line
+   was never a key line to begin with, so it can neither start the block nor extend it — the
+   round-5/6 quote and indent exclusions are now a consequence of this one rule rather than a
+   dedicated check.
+
 An `option:` line with an empty `works-because` or `consequence` is not COUNTED — an option
 the filer believes cannot work is not written as an option; it belongs in the prose as a
 rejected alternative. Each option needs its own letter: two `option:` lines with the same
-letter (case-insensitive) are refused, since one option written twice is still one option.
+letter (case-insensitive on the LETTER; the `option:` key itself must be exactly lowercase, per
+the grammar above) are refused, since one option written twice is still one option.
 `default:` names a counted option by its bare letter, optionally followed by ` — <text>`; a
 value that does not open with a letter is reported as malformed, not as missing. `caught-by`
 is the human-held gate that would catch a wrong guess on the default (a draft PR awaiting
 merge, a flip CI still runs, an issue close still to happen, or `nothing`, meaning no gate
-catches it). `ruled-check` records the search for an existing ruling on the same question —
-the item's own thread and the tracker for the item id — so a filer cannot skip checking
-whether it was already decided. Name the search by its SUBJECT, e.g.
+catches it) — the KEY is case-bound, but its enum VALUE (`draft-pr`/`flip`/`issue-close`/
+`nothing`) still reads case-insensitively. `ruled-check` records the search for an existing
+ruling on the same question — the item's own thread and the tracker for the item id — so a
+filer cannot skip checking whether it was already decided. Name the search by its SUBJECT, e.g.
 `ruled-check: searched this item's thread and the tracker for "sla-days help text" → nothing on record`;
 that line reads clean. The line is read for one-way terms (below), so a line naming a
 driver-owned act — "searched closed needs-decision issues → nothing" matches the auto-close
@@ -2863,10 +2890,9 @@ pattern — keeps the item on `needs-decision`: the safe direction, but a needle
 is" accepts an em dash, en dash, or a plain hyphen. `subject:` is OPTIONAL and never checked
 for structural well-formedness — a missing or ambiguous one is never refused — but it is the
 ONLY line the notice lane's positive reversible-signal test reads (below), and only when the
-section carries EXACTLY ONE `subject:` line and it is not `>`-quoted: a filing with no
-`subject:` line, more than one, or a lone quoted one simply never admits (security review
-sec-1688-S1, round 5 — a `>`-quoted line, or a second line the parser used to let win, could
-otherwise override an honest declared subject with incidental trailing prose).
+BOUNDED, CONTIGUOUS block (rule 3 above) carries EXACTLY ONE `subject:` line: a filing with no
+`subject:` line, or more than one, simply never admits (the same fail-closed default either
+way).
 
 **Outcomes, in this precedence:**
 
@@ -2933,7 +2959,12 @@ otherwise override an honest declared subject with incidental trailing prose).
     named by its own name ("lint level for pin-consistency: notice or error?" admitted until
     round 5, since `pin-consistency` names no noun the noun scan recognises).
 
-  An item whose only reversible signal is one of these stays on `needs-decision`.
+  A match on any of these nine is a VETO, checked BEFORE the content-needle scan: an item
+  whose subject pairs a shape-only phrase with an unrelated, otherwise-admitting needle
+  ("wording of the pin-consistency lint level: notice or error" — "wording" is a real
+  `ReversibleSignals` needle) still stays on `needs-decision` (round 6) — the shape-only phrase
+  is never outvoted by a second needle in the same subject. An item whose only reversible
+  signal is one of these nine, paired or not, stays on `needs-decision`.
   `deskdigest`'s display classifier still reads every one of them (from title+body, unchanged
   — the subject-only read below, and the shape-only exclusion, are deskfile's admission gate
   ONLY: the classifier's "reversible" display class and deskfile's notice-lane admission can
@@ -2968,14 +2999,17 @@ otherwise override an honest declared subject with incidental trailing prose).
   (medici-finance/assay#1688).
 
   **The declared subject itself must be unambiguous** (`parseForkTest`, security review
-  sec-1688-S1, round 5). The fork-test section runs to the next heading or EOF, so prose after
-  the block with no heading in between is still part of it — including a `>`-quoted line,
-  which the subject pattern would otherwise still match — and when two or more `subject:`
-  lines appeared, the parser used to keep only the LAST one, so an honest first subject could
-  be silently overridden by an incidental second line or a leftover template placeholder.
-  `parseForkTest` now reads a declared subject only when the section has exactly one
-  `subject:` line and it is not `>`-quoted; two or more — quoted, unquoted, or a mix — leaves
-  no declared subject, same as none at all.
+  sec-1688-S1). Rounds 5-6 found that prose after the block with no heading in between was
+  still read as part of the section — including a `>`-quoted line, and a plain trailing line
+  separated only by a blank line — and that when two or more `subject:` lines appeared, the
+  parser used to keep only the LAST one, so an honest first subject could be silently
+  overridden by an incidental second line or a leftover template placeholder. Round 7's strict
+  grammar (above) closes the whole class at once: the section is the bounded, contiguous run of
+  key lines, so nothing past a blank line, a fence, a heading, or any other non-key line is ever
+  part of it regardless of what it looks like, and a `>`-quoted or bulleted line was never a key
+  line to begin with. `parseForkTest` reads a declared subject only when that bounded run has
+  exactly one `subject:` line; zero or more than one leaves no declared subject, the same
+  fail-closed default either way.
 
 An item that matches neither list stays on `needs-decision`: the absence of a one-way term is
 not evidence that an item is reversible, and a reversible signal never outranks a one-way

@@ -315,9 +315,14 @@ issues landed three days later. That is why the two rules sit together.
    check, so it never admits on its own) with no one-way term or one-way label, and the same
    one-way check refuses `--no-fork`; the exact lists are in `tools/desk/README.md`. That
    reversible signal is read from the block's own `subject:` line ALONE, never the title or
-   body prose, and only when the block has exactly one `subject:` line and it is not
-   `>`-quoted — two or more, or a quoted one, admits nothing: write ONE `subject:` line
-   yourself, naming the one thing being decided. Any
+   body prose, and only from the STRICT grammar's bounded block: the `### Fork test` heading
+   must be followed directly by the block (blank lines are fine, prose is not), the block is
+   the contiguous run of key lines that follows (each at column zero, no bullet/quote/indent
+   decoration), and it ends at the first line that does not match, blank or not — nothing past
+   that line is ever read as part of it. Exactly one `subject:` line inside that bounded run
+   admits; zero or more than one admits nothing: write ONE `subject:` line yourself, among the
+   block's other key lines, naming the one thing being decided (`tools/desk/README.md` has the
+   full grammar). Any
    item that is one-way to you stays on the human queue whatever the tool would admit — file it
    `caught-by: nothing`.
    The decider is the human, and only a verified human account is honored. This is the SINGLE

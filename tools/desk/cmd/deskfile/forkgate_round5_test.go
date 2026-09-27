@@ -48,26 +48,28 @@ var round5SubjectAmbiguityProbes = []struct {
 	{
 		name:  "quoted-trailing-subject",
 		title: "Let the bot LGTM its own PRs (typo-fix PRs only)?",
-		// A real, declared subject, then a `>`-quoted line of trailing prose (no heading
-		// in between, so it is still inside the fork-test section) that itself reads as a
-		// subject-shaped line. This pins the exactly-one-line COUNT rule (two subject
-		// lines, quoted or not, is ambiguous): it does NOT pin the `>`-quote exclusion by
-		// itself, since this fixture also carries a real unquoted subject line, so the
-		// count rule alone refuses it whether or not the quote check exists (security
-		// review sec-1688-S5, round 6). TestParseForkTestLoneQuotedSubjectDoesNotAdmit
-		// (forktest_test.go) is the dedicated probe for the quote check in isolation: a
-		// block with NO other subject line, whose sole `subject:` line is `>`-quoted.
+		// A real, declared subject, then a blank line, then a `>`-quoted line of trailing
+		// prose. Round 7: the blank line already ends the bounded, contiguous section
+		// (extractForkSection), so the quoted line was never a candidate to begin with —
+		// this no longer needs its own quote-exclusion check to stay out. What is left to
+		// pin is that the real, sole subject ("let the bot LGTM its own PRs") carries no
+		// R-3 reversible needle, so the filing stays on needs-decision on that ground alone.
+		// TestParseForkTestLoneQuotedSubjectDoesNotAdmit (forktest_test.go) is the dedicated
+		// pure-parser probe for a `>`-quoted line's own column-zero exclusion.
 		block: strings.Replace(noticeLaneBlock, "### Fork test\n\n",
-			"### Fork test\n\nsubject: let the bot LGTM its own PRs\n\n", 1) +
+			"### Fork test\n\nsubject: let the bot LGTM its own PRs\n", 1) +
 			"\n> Subject: Re: typo in the README\n",
 	},
 	{
 		name:  "duplicate-real-subject-lines",
 		title: "Let the bot LGTM its own PRs (typo-fix PRs only)?",
-		// Two real, unquoted `subject:` lines. The parser used to keep only the last
-		// ("fix a typo", an admitting needle); ambiguity must refuse instead.
+		// Two real, unquoted `subject:` lines, contiguous with each other and the rest of
+		// the block (no blank line between them, so both are inside the bounded section).
+		// Exactly-one-subject-line is the admission rule (forktest.go): two, whichever one
+		// carries an admitting needle, is still the fail-closed "no declared subject"
+		// outcome, never "read the last one".
 		block: strings.Replace(noticeLaneBlock, "### Fork test\n\n",
-			"### Fork test\n\nsubject: let the bot LGTM its own PRs\nsubject: fix a typo\n\n", 1),
+			"### Fork test\n\nsubject: let the bot LGTM its own PRs\nsubject: fix a typo\n", 1),
 	},
 	{
 		name:  "template-placeholder-plus-real-subject",
@@ -76,7 +78,7 @@ var round5SubjectAmbiguityProbes = []struct {
 		// subject line below it. Two lines, so still ambiguous — the placeholder is not
 		// special-cased, it is just another `subject:` line.
 		block: strings.Replace(noticeLaneBlock, "### Fork test\n\n",
-			"### Fork test\n\nsubject: <one line naming what is actually being decided>\nsubject: typo-fix PRs only\n\n", 1),
+			"### Fork test\n\nsubject: <one line naming what is actually being decided>\nsubject: typo-fix PRs only\n", 1),
 	},
 }
 
@@ -152,7 +154,7 @@ func TestNoticeLaneRefusesRound5NamedCheckProbes(t *testing.T) {
 			if tc.secondSubject != "" {
 				subjectLines += "subject: " + tc.secondSubject + "\n"
 			}
-			block := strings.Replace(noticeLaneBlock, "### Fork test\n\n", "### Fork test\n\n"+subjectLines+"\n", 1)
+			block := strings.Replace(noticeLaneBlock, "### Fork test\n\n", "### Fork test\n\n"+subjectLines, 1)
 			body := bodyFileWith(t, neutralEvidence+"\n"+block)
 
 			rc, out := runCapture([]string{"new", "-R", allowedRepo,
@@ -194,7 +196,7 @@ func TestNoticeLaneRefusesRound5NamedCICheckSubjects(t *testing.T) {
 			withEnv(t)
 			t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 			t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
-			block := strings.Replace(noticeLaneBlock, "### Fork test\n\n", "### Fork test\n\nsubject: "+subject+"\n\n", 1)
+			block := strings.Replace(noticeLaneBlock, "### Fork test\n\n", "### Fork test\n\nsubject: "+subject+"\n", 1)
 			body := bodyFileWith(t, neutralEvidence+"\n"+block)
 
 			rc, out := runCapture([]string{"new", "-R", allowedRepo,
