@@ -37,7 +37,7 @@ exec-tier-why: >-
 domain: complicated
 sources:
   - "medici-finance/assay#882 — the re-review churn after each keep-current merge of an Evidence PR"
-  - "medici-finance/assay#882, driver's ruling comment (to be linked on landing: <ruling-comment-URL>) — the option this brief carries is 'approval carry' (carry an approval across a no-diff merge of main); its siblings are 'per-file outcomes' (desk-supervision/24) and 'batched landing' (desk-supervision/26)"
+  - "option name: this brief carries 'approval carry' (carry an approval across a no-diff merge of main); its siblings are 'per-file outcomes' (desk-supervision/24) and 'batched landing' (desk-supervision/26) — three alternatives for the conflict class #882 tracks"
   - "docs/streams/desk-supervision/review-finding-v1.md:85 — the rule this brief amends"
   - "tools/desk/cmd/deskflip/flip.go — checkReviewerApproved (line 771) and reduceSecurityVerdict (line 1412)"
   - "tools/desk/cmd/deskpost/ready.go — the second ready-flip verb, gate (b)"

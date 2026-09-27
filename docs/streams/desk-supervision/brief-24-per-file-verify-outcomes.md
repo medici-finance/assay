@@ -30,7 +30,7 @@ exec-tier-why: >-
 domain: complicated
 sources:
   - "medici-finance/assay#882 — the conflict class: every verify Evidence PR appends to one shared log and goes CONFLICTING when a sibling lands"
-  - "medici-finance/assay#882, driver's ruling comment (to be linked on landing: <ruling-comment-URL>) — the option this brief carries is 'per-file outcomes' (one file per verify outcome); its siblings are 'approval carry' (desk-supervision/25) and 'batched landing' (desk-supervision/26)"
+  - "option name: this brief carries 'per-file outcomes' (one file per verify outcome); its siblings are 'approval carry' (desk-supervision/25) and 'batched landing' (desk-supervision/26) — three alternatives for the conflict class #882 tracks"
   - "medici-finance/assay#882, comment of 2026-09-27 — recurring verify-wake-v1 receipt defects found in review of #1706-#1713 (inputs omit deliverables, free-text blocker_ref, brief hash that does not match the brief as it lands); the driver folds the writer-side validation into this brief"
   - "medici-finance/assay#1338 — the per-file size cap class on the shared log (raised to 4 MiB, rotation still owed)"
   - "medici-finance/assay#588 — the `merge=union` attribute (landed 2026-09-07 in 7aa97b7db)"

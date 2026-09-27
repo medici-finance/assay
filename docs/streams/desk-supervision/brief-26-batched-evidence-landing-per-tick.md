@@ -26,7 +26,7 @@ exec-tier-why: >-
 domain: complicated
 sources:
   - "medici-finance/assay#882 — the Evidence-PR conflict and review churn this option reduces"
-  - "medici-finance/assay#882, driver's ruling comment (to be linked on landing: <ruling-comment-URL>) — the option this brief carries is 'batched landing' (one Evidence PR per verify tick); its siblings are 'per-file outcomes' (desk-supervision/24) and 'approval carry' (desk-supervision/25)"
+  - "option name: this brief carries 'batched landing' (one Evidence PR per verify tick); its siblings are 'per-file outcomes' (desk-supervision/24) and 'approval carry' (desk-supervision/25) — three alternatives for the conflict class #882 tracks"
   - "medici-finance/assay#1568 — the driver's direction for batching (one PR per window, 15 minutes by default as an adopter value, never append to a batch under review, flips stay single-brief in the interim); this brief carries it"
   - "docs/streams/desk-supervision/brief-23-evidence-lander-gatekeeper.md — names the batch Evidence PR as its fallback path"
   - "live read 2026-09-27: open verifier-App PRs and titles; batch PRs #1576 (merged 2026-09-24), #1574 and #1586 (open)"
