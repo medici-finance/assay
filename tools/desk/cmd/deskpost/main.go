@@ -10,7 +10,8 @@
 //     form error, not a head mismatch: see headFormError) — a verdict never lands on
 //     unreviewed code;
 //   - the ready flip happens ONLY when the App has APPROVED at the CURRENT head, CI is
-//     green, and (for risk-classed PRs) a Security-Review: pass verdict exists at head;
+//     green, (for risk-classed PRs) a Security-Review: pass verdict exists at head, and the
+//     desk-decided condition deskflip enforces holds (deskkit.DeskDecidedRefusal, #1694);
 //   - the security verdict is its own verb and its own REVIEW (`security-review`), because
 //     the flip gate reads reviews and never comments — a comment-shaped pass is invisible
 //     to it (#513 / #438);
