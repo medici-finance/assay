@@ -51,6 +51,23 @@
   honest first subject because the parser kept only the last line seen. Two or more lines, or
   a lone quoted one, now leave no declared subject — the same fail-closed default as none at
   all.
+- The fork-test section itself is now BOUNDED (security review sec-1688-S1, round 6): it used
+  to run to the next heading or EOF, so a `subject:`-shaped line anywhere afterward — inside a
+  fenced or indented code block, in ordinary prose, or past a Markdown setext heading, none of
+  which the old scan treated as ending anything — was still read as the declared subject when
+  the block itself declared none. The section now ends at the first heading, fence, or blank
+  line encountered after the block's last recognised grammar key line, never at EOF.
+- A subject pairing a shape-only needle (`lint level`/`lint severity`/`notice or error`/
+  `port-or-drop`/`port or drop`) with an unrelated content-bearing needle (docs wording, a
+  typo, …) now refuses instead of admitting through the content needle (correctness re-review
+  cor-1688-C7, residual; security review sec-1688-S1, round 6): the shape-only needle is a
+  VETO, checked before any content needle is looked for, not merely skipped while scanning for
+  one.
+- Needle matches (the notice lane's admission scan) now respect word boundaries, so `wording`
+  no longer matches inside `rewording`; and a Unicode hyphen/dash look-alike (U+2010, U+2011,
+  U+2012, U+2013, U+2014, U+2212) in the subject is normalised to an ASCII hyphen before the
+  `ciCheckOrJobRe` backstop and the hyphenated needles run, so a check name typed with a
+  "fancy" hyphen still matches (round 6 advisories).
 
 ### Changed
 - The R-3 human-only and reversible keyword lists moved from `cmd/deskdigest` into

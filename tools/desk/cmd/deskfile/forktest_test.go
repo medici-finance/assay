@@ -234,3 +234,84 @@ func TestParseForkTestDuplicateOptionLettersRefused(t *testing.T) {
 		t.Errorf("errors do not name the duplicate letter: %v", r.Errors)
 	}
 }
+
+// round6TrailingSubjectBlock is validForkTestBlock (no `subject:` line of its own) plus a
+// single trailer appended after it, with no heading in between — the shape the old,
+// unbounded extractForkSection absorbed wholesale.
+const round6TrailingSubjectBlockBase = validForkTestBlock
+
+// TestParseForkTestSectionBoundedAgainstTrailingContent — security review sec-1688-S1 (round
+// 6, review 5332050856): extractForkSection used to run to the next ATX heading or EOF, so a
+// `subject:`-shaped line anywhere in the trailing body — fenced, indented, in ordinary prose,
+// or past a Markdown setext heading, none of which the old scan recognised as ending anything
+// — was still read as the block's declared subject when the block itself declared none. The
+// section now ends at the first heading, fence, or blank line after the block's last
+// recognised grammar key line, so none of the four shapes below is ever picked up.
+//
+// FAIL-FIRST: with extractForkSection reverted to the round-5 behaviour (next ATX heading or
+// EOF) and these four probes kept, every one showed HasSubject=true with the trailing text
+// read as the subject:
+//
+//	--- FAIL: TestParseForkTestSectionBoundedAgainstTrailingContent/fenced-subject-outside-block
+//	    HasSubject = true (Subject = "Re: typo in the README"), want false
+//	--- FAIL: TestParseForkTestSectionBoundedAgainstTrailingContent/indented-subject-outside-block
+//	    HasSubject = true (Subject = "Re: typo in the README"), want false
+//	--- FAIL: TestParseForkTestSectionBoundedAgainstTrailingContent/setext-heading-then-subject
+//	    HasSubject = true (Subject = "fix a typo"), want false
+//	--- FAIL: TestParseForkTestSectionBoundedAgainstTrailingContent/prose-subject-outside-block
+//	    HasSubject = true (Subject = "Re: typo in the README"), want false
+func TestParseForkTestSectionBoundedAgainstTrailingContent(t *testing.T) {
+	for _, tc := range []struct{ name, trailer string }{
+		{
+			// the reviewer's own case: a fenced excerpt quoting an unrelated mail header,
+			// directly after the block (one blank line, no other prose in between).
+			name:    "fenced-subject-outside-block",
+			trailer: "\n\n```\nSubject: Re: typo in the README\n```\n",
+		},
+		{
+			// a code-block-style (4-space) indented line: the grammar's own prefix classes
+			// (`[ \t>*_-]*`) tolerate leading whitespace for bullet/quote formatting and
+			// cannot themselves distinguish this from a legitimate indented subject line.
+			name:    "indented-subject-outside-block",
+			trailer: "\n\n    Subject: Re: typo in the README\n",
+		},
+		{
+			// a Markdown setext heading (text + an underline of `=`/`-`): anyHeadingRe only
+			// recognises ATX (`#`-prefixed) headings, so the old scan never treated this as
+			// ending anything either.
+			name:    "setext-heading-then-subject",
+			trailer: "\n\nNotes\n-----\n\nsubject: fix a typo\n",
+		},
+		{
+			// ordinary prose, no code fence or heading involved at all.
+			name:    "prose-subject-outside-block",
+			trailer: "\n\nA general note about the request.\n\nSubject: Re: typo in the README\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := parseForkTest(round6TrailingSubjectBlockBase + tc.trailer)
+			if r.HasSubject {
+				t.Errorf("HasSubject = true (Subject = %q), want false — the trailing text is outside the bounded fork-test section", r.Subject)
+			}
+		})
+	}
+}
+
+// TestParseForkTestLoneQuotedSubjectDoesNotAdmit — sec-1688-S5: the round-5 `>`-quote
+// exclusion in parseForkTest had no test that could fail when disarmed, because the only
+// existing quoted-subject fixture (quoted-trailing-subject, forkgate_round5_test.go) also
+// carries a real unquoted subject line, so the exactly-one-line count rule refuses it whether
+// or not the quote check exists. This fixture has NO other subject line: the block's sole
+// `subject:` line is `>`-quoted, alone.
+//
+// FAIL-FIRST (mutation M28b — the quote check `!strings.Contains(m[1], ">")` replaced with
+// `true`, so a quoted line counts as unquoted; the count rule kept): HasSubject flips to true
+// and Subject becomes "fix a typo in the README".
+func TestParseForkTestLoneQuotedSubjectDoesNotAdmit(t *testing.T) {
+	body := strings.Replace(validForkTestBlock, "### Fork test\n\n",
+		"### Fork test\n\n> subject: fix a typo in the README\n\n", 1)
+	r := parseForkTest(body)
+	if r.HasSubject {
+		t.Errorf("HasSubject = true (Subject = %q), want false — a lone `>`-quoted subject line must admit nothing", r.Subject)
+	}
+}

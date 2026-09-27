@@ -242,6 +242,66 @@ var NoticeLaneShapeOnlyNeedles = []string{
 	"lint level", "lint severity", "notice or error", "port-or-drop", "port or drop",
 }
 
+// hyphenVariantReplacer maps the Unicode hyphen/dash characters most likely to be typed or
+// pasted in place of an ASCII hyphen (U+2010 HYPHEN, U+2011 NON-BREAKING HYPHEN, U+2012
+// FIGURE DASH, U+2013 EN DASH, U+2014 EM DASH, U+2212 MINUS SIGN) to plain "-". It is applied
+// once, in NoticeLaneVerdict, to the subject before any needle or regex test in this file runs
+// against it: `ciCheckOrJobRe`'s "<word>-sweep" compounds and the hyphenated needles
+// (`port-or-drop`) are ASCII-hyphen literals, so a check name or phrase typed with a
+// "fancy" hyphen — a smart-quote editor's autocorrect, a pasted em dash — would otherwise
+// silently miss both (security review sec-1688-S1, round 6 advisory: "fix the typo in the
+// pattern‑sweep message", U+2011, got past `ciCheckOrJobRe`).
+var hyphenVariantReplacer = strings.NewReplacer(
+	"‐", "-",
+	"‑", "-",
+	"‒", "-",
+	"–", "-",
+	"—", "-",
+	"−", "-",
+)
+
+// normalizeHyphens rewrites every Unicode hyphen/dash look-alike hyphenVariantReplacer lists
+// to the ASCII hyphen.
+func normalizeHyphens(s string) string { return hyphenVariantReplacer.Replace(s) }
+
+// isWordByte reports whether b is an ASCII word character (letter, digit or underscore) — the
+// same class regexp's `\w`/`\b` use, applied by hand so wordBoundaryContains needs no
+// per-needle regexp compilation.
+func isWordByte(b byte) bool {
+	return b == '_' ||
+		('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z') ||
+		('0' <= b && b <= '9')
+}
+
+// wordBoundaryContains reports whether needle occurs in hay bounded by a non-word character
+// (or the string's own start/end) on BOTH ends — never as a bare substring run inside a
+// larger word. Needle may itself contain internal spaces or hyphens ("notice or error",
+// "port-or-drop"); only its two ends are boundary-checked, so it still matches as written.
+//
+// Without this, `strings.Contains` alone let the "wording" needle match inside "rewording"
+// (security review sec-1688-S1, round 6 advisory) — "rewording" is not "wording", but the
+// substring is there regardless of what word it sits inside.
+func wordBoundaryContains(hay, needle string) bool {
+	if needle == "" {
+		return false
+	}
+	from := 0
+	for {
+		i := strings.Index(hay[from:], needle)
+		if i < 0 {
+			return false
+		}
+		start := from + i
+		end := start + len(needle)
+		beforeOK := start == 0 || !isWordByte(hay[start-1])
+		afterOK := end == len(hay) || !isWordByte(hay[end])
+		if beforeOK && afterOK {
+			return true
+		}
+		from = start + 1
+	}
+}
+
 // ciCheckOrJobRe names a CI check or job by the nouns this codebase's own CI surfaces use
 // (check/checks, job/jobs, workflow/workflows, pipeline/pipelines) and the "<word>-sweep" /
 // "<word> check" compounds those surfaces are actually named with (leak-sweep, control-sweep,
@@ -260,19 +320,32 @@ var ciCheckOrJobRe = regexp.MustCompile(`(?i)\b\w+[- ](?:sweep|check)\b|\b(?:che
 // FirstNoticeLaneSignal returns the first ReversibleSignals entry that may admit the notice
 // lane — a content-bearing needle, never one of NoticeLaneShapeOnlyNeedles, and never when
 // subject names a CI check or job (ciCheckOrJobRe) — whose needle occurs in subject, or nil.
-// subject must already be lower-cased. subject is the filing's declared subject alone (a
-// `### Fork test` block's `subject:` line), never title+body — see the file comment and
-// NoticeLaneVerdict.
+// subject must already be lower-cased and hyphen-normalised (NoticeLaneVerdict does both
+// before calling this). subject is the filing's declared subject alone (a `### Fork test`
+// block's `subject:` line), never title+body — see the file comment and NoticeLaneVerdict.
+//
+// A NoticeLaneShapeOnlyNeedles match is a VETO, checked BEFORE any content-bearing needle,
+// never a skip: round 5 made the four lint-level/port-or-drop needles never admit ON THEIR
+// OWN, by excluding them from the content-needle scan below — but excluding them from that
+// scan is not the same as refusing the subject outright, so a subject that ALSO carried an
+// unrelated content-bearing needle ("wording of the pin-consistency lint level: notice or
+// error" — "wording" is a real ReversibleSignals needle) still admitted through it, silently
+// outvoting the shape-only phrase (correctness re-review cor-1688-C7, residual; security
+// review sec-1688-S1, round 6). Checking the veto first, and returning nil the instant one
+// matches, means a shape-only phrase can never be outvoted by a second needle in the same
+// subject.
 func FirstNoticeLaneSignal(subject string) *Signal {
 	if ciCheckOrJobRe.MatchString(subject) {
 		return nil
 	}
+	for _, n := range NoticeLaneShapeOnlyNeedles {
+		if wordBoundaryContains(subject, n) {
+			return nil
+		}
+	}
 	for i := range ReversibleSignals {
 		s := &ReversibleSignals[i]
-		if slices.Contains(NoticeLaneShapeOnlyNeedles, s.Needle) {
-			continue
-		}
-		if strings.Contains(subject, s.Needle) {
+		if wordBoundaryContains(subject, s.Needle) {
 			return s
 		}
 	}
@@ -291,7 +364,7 @@ func NoticeLaneVerdict(title, body, subject string, labels []string) (admit bool
 	if hit, ok := OneWay(title, body, labels); ok {
 		return false, "one-way: " + hit.String()
 	}
-	subj := strings.ToLower(strings.TrimSpace(subject))
+	subj := normalizeHyphens(strings.ToLower(strings.TrimSpace(subject)))
 	if subj == "" {
 		return false, "no declared subject (fails closed: the reversible signal is read only from the fork-test " +
 			"block's `subject:` line, and none was given)"

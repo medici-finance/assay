@@ -433,8 +433,56 @@ func parseForkTest(body string) forkTestResult {
 	return r
 }
 
+// forkFenceLineRe matches a fenced-code delimiter line (three or more backticks or tildes),
+// allowed up to 3 leading spaces (a fence may be indented up to 3 columns and still open,
+// per CommonMark). It is one of extractForkSection's hard section-boundary markers.
+var forkFenceLineRe = regexp.MustCompile("^[ \t]{0,3}(```+|~~~+)")
+
+// forkGrammarKeyLine reports whether ln is one of the fork-test grammar's five recognised key
+// lines — option:/default:/caught-by:/ruled-check:/subject: — for the sole purpose of bounding
+// the section in extractForkSection. It never parses ln's value (parseForkTest does that,
+// over the bounded section only).
+//
+// A line indented 4 or more columns, or opening with a tab, is Markdown's own indented-code-
+// block signal and is deliberately NEVER recognised here even when its text would otherwise
+// match one of the five key-line patterns: security review sec-1688-S1 (round 6) found an
+// indented subject-shaped line outside the real block was silently read as the declared
+// subject, because the grammar's own prefix classes (`[ \t>*_-]*`) tolerate leading
+// whitespace for bullet/quote formatting and cannot themselves tell "a bulleted subject line"
+// from "an indented code block that happens to contain the word subject:".
+func forkGrammarKeyLine(ln string) bool {
+	if strings.HasPrefix(ln, "\t") || strings.HasPrefix(ln, "    ") {
+		return false
+	}
+	return forkOptionLineRe.MatchString(ln) ||
+		forkDefaultAnyRe.MatchString(ln) ||
+		forkCaughtByAnyRe.MatchString(ln) ||
+		forkRuledCheckLineRe.MatchString(ln) ||
+		forkSubjectLineRe.MatchString(ln)
+}
+
 // extractForkSection returns the text between a "### Fork test" heading (any level) and the
-// next heading line, or EOF. found is false when no such heading exists at all.
+// BOUNDED end of that section: the first heading, fence-delimiter line, or blank line
+// encountered after the block's LAST recognised grammar key line (forkGrammarKeyLine) —
+// never EOF, and never the section's own natural end-of-string if that runs past the last key
+// line without one of those three markers (the fallback below cuts right after it instead).
+// found is false when no such heading exists at all.
+//
+// Blank lines *before* the first key line, or a blank line immediately followed (after
+// skipping further blank lines) by another key line, do not end the section — the grammar's
+// own well-formed shape has a blank line between the heading and its first key line, and
+// authors are free to group option:/default:/caught-by:/ruled-check:/subject: lines with a
+// blank line between groups (e.g. a `subject:` line, then a blank line, then the option:
+// lines). Only a blank run that is NOT followed by another key line — i.e. the block has
+// genuinely ended — closes the section.
+//
+// Before this bound, the section ran to the next ATX heading or EOF, so prose after the block
+// with no heading in between was still read as part of it: a `subject:`-shaped line inside a
+// fenced or indented code block, in ordinary prose, or past a Markdown setext heading (none of
+// which anyHeadingRe recognises as ending anything) could all be picked up as the declared
+// subject (security review sec-1688-S1, round 6). Bounding the section this way, rather than
+// tightening forkSubjectLineRe itself, keeps the fix in ONE place: any of the five grammar key
+// lines is bound the same way, not just `subject:`.
 func extractForkSection(body string) (section string, found bool) {
 	lines := strings.Split(body, "\n")
 	start := -1
@@ -447,13 +495,29 @@ func extractForkSection(body string) (section string, found bool) {
 	if start == -1 {
 		return "", false
 	}
-	end := len(lines)
+
+	end := start + 1
 	for i := start + 1; i < len(lines); i++ {
-		if anyHeadingRe.MatchString(lines[i]) {
-			end = i
-			break
+		ln := lines[i]
+		if anyHeadingRe.MatchString(ln) || forkFenceLineRe.MatchString(ln) {
+			return strings.Join(lines[start+1:i], "\n"), true
 		}
+		if strings.TrimSpace(ln) == "" {
+			j := i + 1
+			for j < len(lines) && strings.TrimSpace(lines[j]) == "" {
+				j++
+			}
+			if j >= len(lines) || !forkGrammarKeyLine(lines[j]) {
+				return strings.Join(lines[start+1:i], "\n"), true
+			}
+			// A key line follows this blank run: the blank is part of the section (an
+			// author's own grouping), not its end. Fall through and keep scanning.
+		}
+		end = i + 1
 	}
+	// Reached EOF without a heading/fence/blank boundary after the last key line: cut right
+	// after it (end already reflects that — every line up to here either was a key line or a
+	// blank run followed by one), never at physical EOF.
 	return strings.Join(lines[start+1:end], "\n"), true
 }
 

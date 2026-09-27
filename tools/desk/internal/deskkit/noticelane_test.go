@@ -308,6 +308,96 @@ func TestNoticeLaneVerdictRefusesNamedCheckByLintOrPortNeedle(t *testing.T) {
 	}
 }
 
+// TestNoticeLaneVerdictShapeOnlyNeedleVetoesPairedContentNeedle — round 6 (correctness
+// re-review finding cor-1688-C7, residual; security review sec-1688-S1, round 6):
+// FirstNoticeLaneSignal used to SKIP the four lint-level/port-or-drop shape-only needles
+// while scanning for an admitting needle, rather than treating a match on one of them as a
+// veto — so a subject pairing a shape-only phrase with an unrelated content-bearing needle
+// still admitted through that second needle. Both subjects below are the exact cases the two
+// re-reviews named; each carries a real content-bearing ReversibleSignals needle ("wording")
+// or names a real check by its bare name, and each must still refuse.
+//
+// FAIL-FIRST (FirstNoticeLaneSignal reverted to `continue` instead of `return nil` on a
+// shape-only match): "wording of the pin-consistency lint level: notice or error" admitted via
+// the "wording" needle.
+func TestNoticeLaneVerdictShapeOnlyNeedleVetoesPairedContentNeedle(t *testing.T) {
+	for _, subject := range []string{
+		"wording of the pin-consistency lint level: notice or error",
+		"port-or-drop forge-surface",
+	} {
+		if admit, why := NoticeLaneVerdict(subject, "", subject, nil); admit {
+			t.Errorf("NoticeLaneVerdict(%q) admitted (%s), want refused — a shape-only needle must veto, never be outvoted by a paired content needle", subject, why)
+		}
+	}
+}
+
+// TestNoticeLaneVerdictWordBoundaryOnWording — round 6 advisory (security review
+// sec-1688-S1: "Substring match on 'wording'"): needle matches must respect word boundaries.
+// "rewording" is not "wording" — the bare substring match used to admit it anyway.
+//
+// FAIL-FIRST (wordBoundaryContains reverted to a plain strings.Contains): this subject
+// admitted via the "wording" needle matched inside "rewording".
+func TestNoticeLaneVerdictWordBoundaryOnWording(t *testing.T) {
+	subject := "rewording: make pin-consistency a notice instead of an error"
+	if admit, why := NoticeLaneVerdict(subject, "", subject, nil); admit {
+		t.Errorf("NoticeLaneVerdict(%q) admitted (%s) — \"wording\" must not match inside \"rewording\"", subject, why)
+	}
+}
+
+// TestNoticeLaneVerdictCICheckBackstopCatchesContentNeedle — sec-1688-S5: ciCheckOrJobRe had
+// no test that could fail when disarmed, because every existing test that reached it used a
+// lint-level/port-or-drop needle, and those are now refused earlier as shape-only (round 5)
+// regardless of ciCheckOrJobRe. This subject carries a DIFFERENT content-bearing needle
+// ("typo") next to a generic check/job noun via the "<word>-sweep" compound
+// ("pattern-sweep"), so only the ciCheckOrJobRe backstop — not the shape-only veto — refuses
+// it.
+//
+// FAIL-FIRST (mutation ME — the `if ciCheckOrJobRe.MatchString(subject) { return nil }` early
+// return in FirstNoticeLaneSignal disarmed): this subject admitted via the "typo" needle.
+func TestNoticeLaneVerdictCICheckBackstopCatchesContentNeedle(t *testing.T) {
+	subject := "fix the typo in the pattern-sweep job message"
+	if ciCheckOrJobRe.MatchString(subject) == false {
+		t.Fatalf("fixture %q does not match ciCheckOrJobRe — it must pin the backstop, not the shape-only floor", subject)
+	}
+	for _, n := range NoticeLaneShapeOnlyNeedles {
+		if wordBoundaryContains(subject, n) {
+			t.Fatalf("fixture %q matches shape-only needle %q — it must pin the ciCheckOrJobRe backstop alone", subject, n)
+		}
+	}
+	if admit, why := NoticeLaneVerdict(subject, "", subject, nil); admit {
+		t.Errorf("NoticeLaneVerdict(%q) admitted (%s), want refused (ciCheckOrJobRe backstop)", subject, why)
+	}
+}
+
+// TestNoticeLaneVerdictHyphenVariantsNormalized — round 6 advisory (security review
+// sec-1688-S1: "fix the typo in the pattern‑sweep message" with U+2011 NON-BREAKING HYPHEN got
+// past ciCheckOrJobRe). A check name typed with a Unicode hyphen look-alike must still match
+// the same as its ASCII-hyphen spelling. Deliberately avoids any bare "job"/"check"/
+// "workflow"/"pipeline" noun elsewhere in the sentence: ciCheckOrJobRe's second alternation
+// would catch those regardless of hyphen normalisation, masking the very thing this test
+// pins — that the "<word>-sweep" compound itself is recognised however its hyphen is typed.
+//
+// FAIL-FIRST (normalizeHyphens dropped from NoticeLaneVerdict's subj derivation): every
+// variant below admitted (true) via the "typo" needle, where the ASCII-hyphen spelling
+// refused (false, ciCheckOrJobRe backstop) — admitVariant != admitASCII.
+func TestNoticeLaneVerdictHyphenVariantsNormalized(t *testing.T) {
+	ascii := "fix the typo in the pattern-sweep output"
+	admitASCII, whyASCII := NoticeLaneVerdict(ascii, "", ascii, nil)
+	if admitASCII {
+		t.Fatalf("fixture: NoticeLaneVerdict(%q) admitted (%s), want refused (ciCheckOrJobRe backstop) — fixture is not isolating the hyphen normalisation", ascii, whyASCII)
+	}
+	for _, variant := range []string{
+		"fix the typo in the pattern‐sweep output",
+		"fix the typo in the pattern‑sweep output",
+		"fix the typo in the pattern–sweep output",
+	} {
+		admitVariant, why := NoticeLaneVerdict(variant, "", variant, nil)
+		if admitVariant != admitASCII {
+			t.Errorf("NoticeLaneVerdict(%q) admitted=%v (%s), want the same as the ASCII-hyphen spelling (admitted=%v)", variant, admitVariant, why, admitASCII)
+		}
+	}
+}
+
 // TestDeskDecidedMarkerClaimCoversReader — the caller-body refusal
 // (HasDeskDecidedMarkerClaim) matches every spelling the reader (DeskDecidedMarkerRe) accepts,
 // so a variant marker can never be filed by a caller and then read as a desk decision

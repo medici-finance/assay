@@ -66,7 +66,7 @@ const reversibleTitle = "fix the docs wording of the --sla-days help text"
 //	--- FAIL: TestOneWayTermOverridesCaughtBy
 //	    applied labels [needs-decision desk-decided] dropped needs-decision despite the one-way term
 //
-// (all 23 TestNoticeLaneRefusesOneWayClasses leads and all 8
+// (all 25 TestNoticeLaneRefusesOneWayClasses leads and all 8
 // TestNoticeLaneRefusesReversibleSubjectOneWay titles went red, not just the excerpted ones).
 // Restoring OneWayExempting turns every one green again.
 var noticeLaneBlockWithSubject = strings.Replace(noticeLaneBlock,
@@ -118,7 +118,9 @@ var oneWayLeads = []struct{ name, lead string }{
 // one needle row 5 exercises.
 //
 // FAIL-FIRST: against the gate as first submitted (the HumanOnlySignals substring list
-// alone, admitting the notice lane on its absence), all 23 leads went red, e.g.:
+// alone, admitting the notice lane on its absence), all 25 leads went red, e.g.: (round 6
+// correctness re-review advisory: this comment previously said 23, undercounting the two
+// HumanOnlySignals-only leads added for cor-1688-C5)
 //
 //	--- FAIL: TestNoticeLaneRefusesOneWayClasses/tag-release
 //	    one-way lead "Should we cut the v1.2.0 release tag now or after the next batch?" filed with labels [desk-decided], want needs-decision and no desk-decided

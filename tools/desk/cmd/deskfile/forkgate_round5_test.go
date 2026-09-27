@@ -48,10 +48,15 @@ var round5SubjectAmbiguityProbes = []struct {
 	{
 		name:  "quoted-trailing-subject",
 		title: "Let the bot LGTM its own PRs (typo-fix PRs only)?",
-		// A real, declared subject, then a `>`-quoted line of trailing prose (no heading in
-		// between, so it is still inside the fork-test section) that itself reads as a
-		// subject line and carries the actual admitting needle ("typo"). The quoted line
-		// must never be read as, or count toward, the declared subject.
+		// A real, declared subject, then a `>`-quoted line of trailing prose (no heading
+		// in between, so it is still inside the fork-test section) that itself reads as a
+		// subject-shaped line. This pins the exactly-one-line COUNT rule (two subject
+		// lines, quoted or not, is ambiguous): it does NOT pin the `>`-quote exclusion by
+		// itself, since this fixture also carries a real unquoted subject line, so the
+		// count rule alone refuses it whether or not the quote check exists (security
+		// review sec-1688-S5, round 6). TestParseForkTestLoneQuotedSubjectDoesNotAdmit
+		// (forktest_test.go) is the dedicated probe for the quote check in isolation: a
+		// block with NO other subject line, whose sole `subject:` line is `>`-quoted.
 		block: strings.Replace(noticeLaneBlock, "### Fork test\n\n",
 			"### Fork test\n\nsubject: let the bot LGTM its own PRs\n\n", 1) +
 			"\n> Subject: Re: typo in the README\n",
