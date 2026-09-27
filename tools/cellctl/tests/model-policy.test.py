@@ -139,7 +139,7 @@ else:
         r=self.resolve(); settings=r['settings']; env=r['env']
         self.assertEqual(env['ANTHROPIC_DEFAULT_OPUS_MODEL'],'claude-opus-4-8[1m]')
         self.assertEqual(env['CLAUDE_CODE_SUBAGENT_MODEL'],r['model'])
-        self.assertNotIn('CLAUDE_CODE_EFFORT_LEVEL',env)
+        self.assertEqual(env['CLAUDE_CODE_EFFORT_LEVEL'],'high')
         self.assertFalse(any('opus-5' in x for x in settings['availableModels']))
         command=settings['hooks']['PreToolUse'][0]['hooks'][0]['command']
         for value,code in [('opus',0),('inherit',0),('claude-opus-5',2),('unknown-model',2)]:
@@ -207,7 +207,7 @@ else:
                 self.assertIn('agents.default_subagent_reasoning_effort="medium"',record['argv'])
             else:
                 self.assertIn('--effort',record['argv']); self.assertIn('high',record['argv'])
-                self.assertNotIn('CLAUDE_CODE_EFFORT_LEVEL',record['env'])
+                self.assertEqual(record['env']['CLAUDE_CODE_EFFORT_LEVEL'],'high')
                 settings=json.loads(record['argv'][record['argv'].index('--settings')+1])
                 self.assertEqual(settings['env']['ANTHROPIC_MODEL'],record['env']['ANTHROPIC_MODEL'])
                 if role=='worker-desk':
