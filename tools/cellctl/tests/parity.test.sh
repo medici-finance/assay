@@ -7,7 +7,7 @@
 # fixture root each copy was given), and diffs stdout+stderr and the exit code. Any difference is
 # a divergence naming `<kind>/<harness>/<cockpit>/<verb>`, and the harness exits 1.
 #
-#   CELLCTL_A=tools/cellctl/cellctl CELLCTL_B=tools/desk/cellctl bash tools/cellctl/tests/parity.test.sh
+#   CELLCTL_A=tools/cellctl/testdata/cellctl-shell-oracle.sh CELLCTL_B=tools/desk/cellctl bash tools/cellctl/tests/parity.test.sh
 #
 # Both sides default to the bash oracle, so a bare run is the TRIVIAL pass that proves the harness
 # itself is wired up (the state Task step 2 of the brief asks for, before the port exists).
@@ -36,8 +36,8 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 abspath(){ case "$1" in /*) printf '%s\n' "$1";; *) printf '%s\n' "$PWD/$1";; esac; }
-CELLCTL_A="$(abspath "${CELLCTL_A:-$HERE/../cellctl}")"
-CELLCTL_B="$(abspath "${CELLCTL_B:-$HERE/../cellctl}")"
+CELLCTL_A="$(abspath "${CELLCTL_A:-$HERE/../testdata/cellctl-shell-oracle.sh}")"
+CELLCTL_B="$(abspath "${CELLCTL_B:-$HERE/../testdata/cellctl-shell-oracle.sh}")"
 [[ -x "$CELLCTL_A" ]] || { echo "parity: CELLCTL_A is not executable: $CELLCTL_A" >&2; exit 2; }
 [[ -x "$CELLCTL_B" ]] || { echo "parity: CELLCTL_B is not executable: $CELLCTL_B" >&2; exit 2; }
 

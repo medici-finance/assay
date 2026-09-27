@@ -9,9 +9,9 @@
 #                 through to normal dispatch), mirroring statusgen's contract
 #   packaging     re-running the EXACT sed/grep one-liner release.yml's "Build and package
 #                 desk-tools binaries" step uses (kept byte-identical here — see the comment
-#                 below) against the real tools/cellctl/cellctl stamps CELLCTL_VERSION to the
-#                 given release tag, changes NOTHING else in the file, the result is executable,
-#                 and it reports the stamped tag when run
+#                 below) against the shell oracle (tools/cellctl/testdata/cellctl-shell-oracle.sh)
+#                 stamps CELLCTL_VERSION to the given release tag, changes NOTHING else in the
+#                 file, the result is executable, and it reports the stamped tag when run
 #   fail-closed   the release workflow's own guard — grep the stamped copy for the exact stamped
 #                 line, aborting the release if absent — actually trips when the source line's
 #                 shape drifts (proves the guard is live, not decorative)
@@ -25,7 +25,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The binary under test. $CELLCTL lets the SAME suite run against either implementation
 # (the bash oracle, the default, or the Go port) — desk-containers/10.
-CELLCTL="${CELLCTL:-$HERE/../cellctl}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
+CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 # is_shell_impl: is the implementation under test the shell oracle? The sed-stamp packaging case
 # below is a property of the SCRIPT's release packaging — the exception brief desk-containers/10
 # removes — and has no meaning for a binary, which is stamped by `-ldflags -X` instead. It states
