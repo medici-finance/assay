@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -232,6 +233,28 @@ func cmdReStamp(args []string, out io.Writer) error {
 		return nil
 	}
 
+	// THE PROVENANCE GATE (#336, SEC-1/C4). Preserving content is not the same as vouching
+	// for whoever wrote it: this verb must never re-attest a pair under the dispatcher when
+	// its standing foreign applier is an App/bot, an untrusted login, or a present label the
+	// timeline cannot attribute to anyone at all. Only a TRUSTED HUMAN login of the parsed
+	// roster (deskkit.IsTrustedHumanLogin — the same set the stamp-authority allowance
+	// itself must already draw from) is a foreign applier this verb repairs; anyone else is
+	// laundering, not repair, and is refused before any write.
+	unvouched := unvouchedForeignAppliers(original, wantLabelsAmong(want, deskkit.UnattributedStampLabels(tl)))
+	if len(unvouched) > 0 {
+		err := deskkit.Refused(fmt.Sprintf(
+			"refused: %s#%d's standing %s stamp was applied by %s, which this roster does not "+
+				"vouch for as a trusted human login — deskrestamp preserves a stamp's content, but "+
+				"re-attesting content an unvouched identity applied under the dispatcher is exactly "+
+				"the laundering the model-capability floor exists to refuse. This verb repairs only a "+
+				"trusted-human-applied stamp (#336); an App/bot, an untrusted login, or a present label "+
+				"the timeline cannot attribute is not repaired here — re-run the dispatch ceremony "+
+				"instead, which validates an explicit --model/--tier.",
+			req.repo, req.number, strings.Join(want, " + "), joinOrNone(unvouched)))
+		auditLine(req.repo, req.number, deskkit.ResultRefused, "foreign-applier: "+joinOrNone(unvouched))
+		return err
+	}
+
 	if req.dryRun {
 		fmt.Fprintf(out, "dry-run: would remove %s and re-apply %s on %s#%d as the %s App (previous applier(s): %s)\n",
 			joinOrNone(remove), strings.Join(want, " + "), req.repo, req.number, role, joinOrNone(original))
@@ -301,6 +324,52 @@ func cmdReStamp(args []string, out io.Writer) error {
 		joinOrNone(remove), strings.Join(want, " + "), req.repo, req.number, role, joinOrNone(original))
 	auditLine(req.repo, req.number, deskkit.ResultOK, strings.Join(want, ","))
 	return nil
+}
+
+// unvouchedForeignAppliers filters foreign (the deskkit.NonDispatcherStampAppliers list)
+// plus a count of unattributed WANT labels down to the ones this verb refuses to launder:
+// anyone who is not a trusted HUMAN login of the parsed roster. A bot/App rendering and an
+// untrusted login both fail deskkit.IsTrustedHumanLogin (fail-closed on a non-matching
+// input), and an unattributed present label is rendered as a fixed placeholder before the
+// same check, which — naming nobody — also fails it.
+func unvouchedForeignAppliers(foreign []string, unattributedPlaceholders []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(who string) {
+		if deskkit.IsTrustedHumanLogin(who) {
+			return
+		}
+		if seen[who] {
+			return
+		}
+		seen[who] = true
+		out = append(out, who)
+	}
+	for _, who := range foreign {
+		add(who)
+	}
+	for range unattributedPlaceholders {
+		add("(an actor the timeline does not name)")
+	}
+	sort.Strings(out)
+	return out
+}
+
+// wantLabelsAmong intersects want with a label set (here, deskkit.UnattributedStampLabels'
+// output), case/whitespace-insensitively — a present WANT label the timeline cannot
+// attribute to anyone is exactly the "no applier information at all" gap SEC-2 named.
+func wantLabelsAmong(want, labels []string) []string {
+	wantSet := map[string]bool{}
+	for _, w := range want {
+		wantSet[strings.ToLower(strings.TrimSpace(w))] = true
+	}
+	var out []string
+	for _, l := range labels {
+		if wantSet[strings.ToLower(strings.TrimSpace(l))] {
+			out = append(out, l)
+		}
+	}
+	return out
 }
 
 // joinOrNone renders a possibly-empty set for an operator message — an empty removal set

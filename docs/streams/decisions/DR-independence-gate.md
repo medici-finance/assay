@@ -15,10 +15,33 @@ accepted:
   - "Independence is enforced only where a machine-readable signal exists; the full author≠approver proof at the design gate remains a declared boundary, not a silent claim. A reader must be able to see WHERE the property is enforced and where it is only best-effort."
 ---
 
-**PROPOSED — no ruling is recorded.** This record captures the design as authored so the
-design-approval gate has something to dereference; `decided-by:` is a placeholder until a
-human rules on the decision issue of the brief(s) that cite it, and the ruling is recorded
-here in the same motion.
+**Ruling recorded (2026-09-02): both.** The driver (`human:<name>`) recorded the ruling on
+[issue #336](https://github.com/medici-finance/assay/issues/336) — "both." at
+[comment 5512151770](https://github.com/medici-finance/assay/issues/336#issuecomment-5512151770)
+followed by "ratified" at
+[comment 5512153662](https://github.com/medici-finance/assay/issues/336#issuecomment-5512153662)
+(2026-09-02T15:36:58Z / 15:37:06Z) — approving both remedy paths the relay put to the driver:
+(1) an operational, one-time re-stamp of the affected legacy backlog under a trusted App slug,
+recorded per-PR; and (2) a durable, tool-level fix under which the model-floor's actor check
+also honours a `dispatched-*` label applied by a trusted LOGIN, not only a trusted dispatcher
+slug, with a positive-control test that an untrusted actor's label still refuses. This record
+transcribes that ruling into the register; it does not mint a new one — the human act was the
+driver's comment on #336, not this file. `decided-by:` stays the register's placeholder form
+per this repo's convention for a transcribed (not authored-here) ruling.
+
+**Amendment (2026-09-27, at implementation of brief-06 — narrows how alternative 2 above
+reads, does not reopen it).** The second `alternatives:` bullet rules out, as the *primary,
+ambient* control, honouring a `dispatched-*` label from any trusted human login. What #336's
+ratified durable fix authorizes, and what brief-06 ships, is narrower than that: dispatch
+authority still derives from the stamp by default, and a trusted-login label only counts when
+the login is *also* named in an explicit, roster-configured allowance key
+(`ASSAY_STAMP_TRUSTED_LOGINS`) that is itself a strict subset of the trusted-human set — unset
+or unconfigured vouches for nobody, an entry outside the trusted-human set (or bot-shaped)
+refuses the whole allowance, and every floor consumer still runs the one predicate. The
+alternative bullet's rejection of an *ambient* "any trusted login vouches" default stands
+unchanged; this amendment records that the *explicit, opt-in, fail-closed allowance* form is
+the one #336 ratified and is not the same proposition, so the record and the code no longer
+disagree.
 
 The decision is what makes the author≠verifier property TRUE rather than ASSERTED. The
 constraint behind it is the self-attestation error class: everything a session writes about

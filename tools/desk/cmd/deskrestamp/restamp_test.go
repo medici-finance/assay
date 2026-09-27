@@ -131,15 +131,16 @@ const (
 	tierLabel  = "dispatched-tier:strong"
 )
 
-// --- The happy path: a foreign-applied stamp is removed and re-applied under the
-// dispatcher, the removal is its OWN write ahead of the application, and the record
-// comment names both actors.
+// --- The happy path: a stamp standing under a TRUSTED HUMAN login ("ada", of the fixture
+// roster's ASSAY_TRUSTED_LOGINS) is removed and re-applied under the dispatcher, the
+// removal is its OWN write ahead of the application, and the record comment names both
+// actors. This is the #336-ratified case: a trusted human hand-applied the label.
 func TestRestampForeignAppliedPair(t *testing.T) {
 	fg := &fakeForge{
 		pr: stampedPR(modelLabel, tierLabel),
 		events: []deskkit.LabelEvent{
-			labeledBy(modelLabel, "some-human"),
-			labeledBy(tierLabel, "some-human"),
+			labeledBy(modelLabel, "ada"),
+			labeledBy(tierLabel, "ada"),
 		},
 	}
 	plantWorld(t, "desk", fg)
@@ -163,7 +164,7 @@ func TestRestampForeignAppliedPair(t *testing.T) {
 	if len(fg.comments) != 1 {
 		t.Fatalf("comments = %d, want exactly one record comment", len(fg.comments))
 	}
-	for _, want := range []string{"some-human", "desk", modelLabel, tierLabel} {
+	for _, want := range []string{"ada", "desk", modelLabel, tierLabel} {
 		if !strings.Contains(fg.comments[0], want) {
 			t.Fatalf("record comment does not name %q:\n%s", want, fg.comments[0])
 		}
@@ -277,8 +278,8 @@ func TestRestampReviewerRoleProceeds(t *testing.T) {
 	fg := &fakeForge{
 		pr: stampedPR(modelLabel, tierLabel),
 		events: []deskkit.LabelEvent{
-			labeledBy(modelLabel, "some-human"),
-			labeledBy(tierLabel, "some-human"),
+			labeledBy(modelLabel, "ada"),
+			labeledBy(tierLabel, "ada"),
 		},
 	}
 	plantWorld(t, "reviewer", fg)
@@ -297,8 +298,8 @@ func TestRestampDryRun(t *testing.T) {
 	fg := &fakeForge{
 		pr: stampedPR(modelLabel, tierLabel),
 		events: []deskkit.LabelEvent{
-			labeledBy(modelLabel, "some-human"),
-			labeledBy(tierLabel, "some-human"),
+			labeledBy(modelLabel, "ada"),
+			labeledBy(tierLabel, "ada"),
 		},
 	}
 	plantWorld(t, "desk", fg)
@@ -309,7 +310,7 @@ func TestRestampDryRun(t *testing.T) {
 	if len(fg.writes) != 0 || len(fg.comments) != 0 {
 		t.Fatal("a dry run wrote")
 	}
-	for _, want := range []string{"dry-run", "some-human", modelLabel} {
+	for _, want := range []string{"dry-run", "ada", modelLabel} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("dry-run plan does not name %q:\n%s", want, out)
 		}
@@ -329,14 +330,100 @@ func TestRestampReadFailureIsCouldNotCheck(t *testing.T) {
 	}
 }
 
+// SEC-2: a label-HISTORY read failure (ListLabelEvents errors, distinct from the PR-read
+// failure above) is ALSO could-not-check, never a blind re-stamp. With the history
+// unreadable, every present label is unattributable, so proceeding would be SEC-1 with no
+// applier information at all.
+func TestRestampEventsReadFailureIsCouldNotCheck(t *testing.T) {
+	fg := &fakeForge{
+		pr:        stampedPR(modelLabel, tierLabel),
+		eventsErr: errors.New("history boom"),
+	}
+	plantWorld(t, "desk", fg)
+	code, out := runVerb(t, allowedRepo, "7")
+	if code != 6 {
+		t.Fatalf("exit = %d, want 6 (unverifiable):\n%s", code, out)
+	}
+	if len(fg.writes) != 0 || len(fg.comments) != 0 {
+		t.Fatal("a re-stamp over an unreadable label history wrote")
+	}
+}
+
+// SEC-1/C4: a pair standing under an UNTRUSTED login is not this verb's to repair —
+// re-attesting it under the dispatcher would be laundering, not repair. This is the
+// PR's original (pre-fix) TestRestampForeignAppliedPair scenario, now pinned the other
+// way: "some-human" is not in the fixture roster's ASSAY_TRUSTED_LOGINS at all.
+func TestRestampRefusesUntrustedForeignApplier(t *testing.T) {
+	fg := &fakeForge{
+		pr: stampedPR(modelLabel, tierLabel),
+		events: []deskkit.LabelEvent{
+			labeledBy(modelLabel, "some-human"),
+			labeledBy(tierLabel, "some-human"),
+		},
+	}
+	plantWorld(t, "desk", fg)
+	code, out := runVerb(t, allowedRepo, "7")
+	if code != 5 {
+		t.Fatalf("exit = %d, want 5 (refused):\n%s", code, out)
+	}
+	if len(fg.writes) != 0 || len(fg.comments) != 0 {
+		t.Fatal("a refused re-stamp still wrote")
+	}
+	if !strings.Contains(out, "some-human") || !strings.Contains(out, "does not vouch") {
+		t.Fatalf("refusal does not name the unvouched applier:\n%s", out)
+	}
+}
+
+// SEC-1: a pair standing under a bot/App identity (here, a worker App slug — not one of
+// the dispatching roles) is refused the same way. Re-attesting a worker App's stamp under
+// the dispatcher would let a non-reviewing identity's label clear the floor.
+func TestRestampRefusesBotAppliedPair(t *testing.T) {
+	fg := &fakeForge{
+		pr: stampedPR(modelLabel, tierLabel),
+		events: []deskkit.LabelEvent{
+			labeledBy(modelLabel, "assay-worker-app[bot]"),
+			labeledBy(tierLabel, "assay-worker-app[bot]"),
+		},
+	}
+	plantWorld(t, "desk", fg)
+	code, out := runVerb(t, allowedRepo, "7")
+	if code != 5 {
+		t.Fatalf("exit = %d, want 5 (refused):\n%s", code, out)
+	}
+	if len(fg.writes) != 0 || len(fg.comments) != 0 {
+		t.Fatal("a refused re-stamp still wrote")
+	}
+}
+
+// SEC-1/SEC-2: a present WANT label the timeline carries NO standing event for at all
+// (unattributable, as distinct from an events-read failure) is refused too — there is no
+// applier to vouch for, so this is not a pair this verb repairs.
+func TestRestampRefusesUnattributedWantLabel(t *testing.T) {
+	fg := &fakeForge{
+		pr:     stampedPR(modelLabel, tierLabel),
+		events: nil, // no labeled event for either half: both read as unattributed
+	}
+	plantWorld(t, "desk", fg)
+	code, out := runVerb(t, allowedRepo, "7")
+	if code != 5 {
+		t.Fatalf("exit = %d, want 5 (refused):\n%s", code, out)
+	}
+	if len(fg.writes) != 0 || len(fg.comments) != 0 {
+		t.Fatal("a refused re-stamp still wrote")
+	}
+	if !strings.Contains(out, "does not name") {
+		t.Fatalf("refusal does not name the unattributed placeholder:\n%s", out)
+	}
+}
+
 // A re-stamp whose record comment fails to post is reported UNVERIFIABLE — the labels
 // landed, the record did not, and the message says both rather than either alone.
 func TestRestampCommentFailureIsLoud(t *testing.T) {
 	fg := &fakeForge{
 		pr: stampedPR(modelLabel, tierLabel),
 		events: []deskkit.LabelEvent{
-			labeledBy(modelLabel, "some-human"),
-			labeledBy(tierLabel, "some-human"),
+			labeledBy(modelLabel, "ada"),
+			labeledBy(tierLabel, "ada"),
 		},
 		commentErr: errors.New("comment boom"),
 	}

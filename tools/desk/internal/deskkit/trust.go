@@ -151,6 +151,34 @@ func TrustedHumanAuthor(login string) bool {
 	return false
 }
 
+// IsTrustedHumanLogin reports whether login is a trusted, non-bot-shaped human login of
+// the parsed ASSAY_TRUSTED_LOGINS roster (`c.Humans`) — the SAME set the stamp-authority
+// allowance (ASSAY_STAMP_TRUSTED_LOGINS, #336) itself must already draw from at parse time
+// (rosterconfig.go refuses an allowance entry `c.Humans` does not carry). It answers a
+// BROADER question than TrustedHumanAuthor, which narrows further to a mapped, accountable
+// human or the bless authority for the review-neglect metric's purposes: this asks only
+// "is this login one the roster trusts at all, and not an App/bot rendering" — the bar
+// deskrestamp's foreign-applier gate needs, because re-attesting content under the
+// dispatcher is safe to do for any login the roster already vouches for as human, not only
+// the narrower accountable-merge set.
+//
+// Fail-closed: an empty login, a bot-shaped login, or an unconfigured roster is false.
+func IsTrustedHumanLogin(login string) bool {
+	l := strings.ToLower(strings.TrimSpace(login))
+	if l == "" {
+		return false
+	}
+	if looksLikeBot(l) {
+		return false
+	}
+	c := EffectiveConfig()
+	if !c.Configured() {
+		return false
+	}
+	_, ok := c.Humans[l]
+	return ok
+}
+
 // VerifyGateLabel is the label the verify-gate sign-off card carries — the issue the
 // verify-gate-open workflow files for a `gate: human` brief that has become eligible.
 // It is the selector the queue views read (cmd/deskboard) and the scope of the
