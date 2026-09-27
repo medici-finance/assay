@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // writeNestedFile is writeFile (mine_test.go) plus the parent-directory
@@ -203,6 +204,91 @@ func TestRegressionLink_RegressionOf_UnparseableValueIsError(t *testing.T) {
 	}
 	if ok {
 		t.Fatalf("must not report ok=true alongside an error")
+	}
+}
+
+// TestRegressionLink_RegressionOf_MixedParsedAndUnparseable_IsError is the
+// security lane's round-4 surviving F-refix-fail-open-missing-linkage
+// occurrence: a fix commit with NO `Brief:` trailer touches TWO brief files —
+// brief-99 (regression-of "#5", parses cleanly) and brief-96 (regression-of
+// "not-a-valid-reference!!", does not parse). Round 3's fix only turned an
+// unparseable value into an error when NO reference on the fix parsed
+// (len(refs)==0); with brief-99's clean "#5" present, brief-96's unparseable
+// value was silently dropped and RegressionOf returned refs=[#5], ok=true,
+// err=nil as though the unparseable value had never been named. A
+// present-but-unparseable value is not the same as no value at all,
+// regardless of how many OTHER briefs the same fix commit touches.
+func TestRegressionLink_RegressionOf_MixedParsedAndUnparseable_IsError(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "init", "-q", "-b", "main")
+
+	briefPath99 := "docs/streams/quality/brief-99-example.md"
+	briefPath96 := "docs/streams/quality/brief-96-example.md"
+	writeNestedFile(t, dir, briefPath99, regressionOfBriefContent)
+	writeNestedFile(t, dir, briefPath96, regressionOfBriefContentUnparseable)
+	writeFile(t, dir, "fix.go", "package x\n// fix\n")
+	szzGit(t, dir, "2020-06-01T00:00:00Z", "add", briefPath99, briefPath96, "fix.go")
+	szzGit(t, dir, "2020-06-01T00:00:00Z", "commit", "-q", "-m", "fix: repair two widgets (no trailer)")
+	fixSHA := szzGit(t, dir, "2020-06-01T00:00:00Z", "rev-parse", "HEAD")
+
+	repo := openRepo(t, dir)
+	linkage := BriefRegressionLinkage{Repo: repo}
+
+	refs, ok, err := linkage.RegressionOf(DefectFix{FixCommitSHA: fixSHA})
+	if err == nil {
+		t.Fatalf("expected an error: brief-96's unparseable value must not be dropped just because brief-99's parsed cleanly, got ok=%v refs=%+v", ok, refs)
+	}
+	if ok {
+		t.Fatalf("must not report ok=true alongside an error")
+	}
+}
+
+// TestRefix_MixedParsedAndUnparseableRegressionOf_CouldNotMeasure is the
+// end-to-end twin of the adapter test above, run through ComputeRefix against
+// the REAL BriefRegressionLinkage adapter (not a stub): F's fix commit (no
+// `Brief:` trailer) touches brief-99 ("#5", parses) and brief-96 (unparseable),
+// and E — the fix that closes issue #5 — lands AFTER F's inducing commit, so
+// it fails the ordering rule. Before this round's fix, brief-96's dropped
+// unparseable value let #5 resolve alone, so ComputeRefix scored F a measured
+// non-re-fix with full linkage coverage even though brief-96's reference —
+// unread — could have named the qualifying earlier fix. Now the mixed
+// unparseable value must make F could-not-measure, never a measured zero.
+func TestRefix_MixedParsedAndUnparseableRegressionOf_CouldNotMeasure(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "init", "-q", "-b", "main")
+
+	briefPath99 := "docs/streams/quality/brief-99-example.md"
+	briefPath96 := "docs/streams/quality/brief-96-example.md"
+	writeNestedFile(t, dir, briefPath99, regressionOfBriefContent)
+	writeNestedFile(t, dir, briefPath96, regressionOfBriefContentUnparseable)
+	writeFile(t, dir, "fix.go", "package x\n// fix\n")
+	szzGit(t, dir, "2020-06-01T00:00:00Z", "add", briefPath99, briefPath96, "fix.go")
+	szzGit(t, dir, "2020-06-01T00:00:00Z", "commit", "-q", "-m", "fix: repair two widgets (no trailer)")
+	fixSHA := szzGit(t, dir, "2020-06-01T00:00:00Z", "rev-parse", "HEAD")
+
+	repo := openRepo(t, dir)
+	linkage := BriefRegressionLinkage{Repo: repo}
+
+	e := DefectFix{FixCommitSHA: refixE1, FixPRNumber: 100, ClosedIssue: &IssueRef{Number: 5}}
+	f := DefectFix{FixCommitSHA: fixSHA, FixPRNumber: 200}
+	tr := DefectTrace{FixCommit: fixSHA, TraceState: TraceTraced, InducingCommits: []string{refixInd1}}
+	ct := fixedCommitTime{
+		refixE1:   time.Date(2024, 9, 1, 0, 0, 0, 0, time.UTC), // E fixed AFTER F's inducer — fails the ordering rule
+		refixInd1: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, "", time.Now())
+
+	if rec.LinkageCoverage.State != StateCouldNotMeasure {
+		t.Fatalf("expected linkage_coverage could-not-measure (brief-96's unparseable value must not be dropped behind brief-99's clean #5), got %+v", rec.LinkageCoverage)
+	}
+	if rec.RefixRate.State != StateCouldNotMeasure {
+		t.Fatalf("expected refix_rate could-not-measure, got %+v", rec.RefixRate)
+	}
+	if len(rec.Refixes) != 0 {
+		t.Fatalf("expected no counted re-fix, got %+v", rec.Refixes)
 	}
 }
 

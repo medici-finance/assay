@@ -17,3 +17,8 @@
 - Report rendering escapes a could-not-measure Reason for the markdown table
   (pipes escaped, newlines flattened), so adapter error text or frontmatter
   values can no longer break a table row.
+- `BriefRegressionLinkage.RegressionOf` no longer drops a present-but-unparseable
+  `regression-of:` value just because another brief the same (untrailered) fix
+  commit touched happened to parse cleanly — the adapter now errors
+  (could-not-measure upstream) whenever ANY touched brief's value is
+  unparseable, not only when every touched brief's value is.

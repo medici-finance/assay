@@ -147,14 +147,22 @@ func (b BriefRegressionLinkage) RegressionOf(f DefectFix) ([]RegressionRef, bool
 			unparsed = append(unparsed, fmt.Sprintf("%s: %q", p, v))
 		}
 	}
+	if len(unparsed) > 0 {
+		// A `regression-of:` value was PRESENT but did not parse as either
+		// accepted form (issue ref or commit sha) — that is not the same as no
+		// value being named at all, so it is could-not-measure rather than a
+		// silent "legitimately absent" or a silent "clean" result, REGARDLESS
+		// of whether some OTHER brief this same fix commit touched resolved
+		// cleanly. Discarding the unparseable value just because a sibling
+		// brief parsed would launder exactly the fail-open this adapter exists
+		// to refuse: explicitCandidates already turns this error into a
+		// pending could-not-measure (see its doc comment), so a class-path
+		// candidate that satisfies the ordering rule still earns its measured
+		// re-fix — only the parsed refs alongside the unparseable value are
+		// given up, and that loss is fail-closed, never fail-open.
+		return nil, false, fmt.Errorf("regressionlink: unparseable regression-of value(s): %s", strings.Join(unparsed, "; "))
+	}
 	if len(refs) == 0 {
-		if len(unparsed) > 0 {
-			// A `regression-of:` value was PRESENT but did not parse as either
-			// accepted form (issue ref or commit sha) — that is not the same as
-			// no value being named at all, so it is could-not-measure rather
-			// than a silent "legitimately absent".
-			return nil, false, fmt.Errorf("regressionlink: unparseable regression-of value(s): %s", strings.Join(unparsed, "; "))
-		}
 		return nil, false, nil
 	}
 	return refs, true, nil
