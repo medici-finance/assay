@@ -82,7 +82,7 @@ scope (they are not derive-not-assert / independence-enforcement changes).
 | 02 | [Derive MinCorpus for the learned riskscore model against its 15-feature events-per-variable floor, or record the rationale — and pin it with a test](brief-02-mincorpus-derivation.md) | 0 | M | todo | — | — |
 | 03 | [Derive the commsloop router's risk field from the envelope instead of hardcoding false, or record why false is sound — restore the risk:yes->tier:human backstop](brief-03-commsloop-risk-derivation.md) | 0 | M | todo | — | — |
 | 04 | [statusgen --lint: derive stale-FAIL vs missing-card from commit dates, and route each state to the verify desk instead of nudging a worker to hand-file a sign-off](brief-04-stale-fail-lint-derivation.md) | 0 | M | todo | — | — |
-| 05 | [attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish](brief-05-attribution-hard-reject.md) | 1 | M | implemented | — | — |
+| 05 | [attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish](brief-05-attribution-hard-reject.md) | 1 | M | todo | — | — |
 | 06 | [model-floor: derive dispatch authority from the dispatch stamp, and give a first-class re-stamp path — stop refusing verdicts by guessing at a label actor's login](brief-06-modelfloor-derived-stamp.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
