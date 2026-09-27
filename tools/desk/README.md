@@ -3525,8 +3525,12 @@ lifecycle cells changed. The fresh read's content id then rides into the write a
 different id, and cites that id as the forge's own conditional-write precondition (GitHub's
 Contents-API `sha`, GitLab's `last_commit_id`), so a table change landing after the re-check
 is rejected by the forge rather than overwritten. On a forge whose default branch takes no
-direct write (GitLab), the landing goes to a side branch and a draft change instead, where the
-merge itself surfaces any conflict. (`cmd/deskevidence/rowscope.go`.)
+direct write (GitLab), the landing goes to a side branch and a draft change instead, cut from
+the same content id: the fresh read's id rides into that write as `ExpectedSHA` too, so a table
+change in the window between the write-time re-check and the side branch's own creation is
+refused by the forge before the draft change is even opened — not left to surface later as a
+merge conflict, which a side branch cut from the already-moved table would never produce.
+(`cmd/deskevidence/rowscope.go`.)
 
 ## deskgit — the narrow git verb (#1555 F-1)
 

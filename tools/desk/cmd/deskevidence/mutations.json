@@ -126,6 +126,12 @@
       "file": "cmd/deskevidence/rowscope.go",
       "old": "\tif !bytes.Equal(expected, commitContent) {",
       "new": "\tif false && !bytes.Equal(expected, commitContent) {"
+    },
+    {
+      "name": "drop the closed-default-branch lane's ExpectedSHA precondition (landEvidenceAsChange's side-branch write is cut from a table that already moved, and the backend's own pre-write probe only ever compares the write to itself — the round-2 race the direct-write fix left open)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\t\tStartBranch: base,\n\t\tAppendOnly:  appendOnly,\n\t\tAllowShrink: allowShrink,\n\t\tExpectedSHA: rowScopeSHA,\n\t})",
+      "new": "\t\tStartBranch: base,\n\t\tAppendOnly:  appendOnly,\n\t\tAllowShrink: allowShrink,\n\t\tExpectedSHA: \"\",\n\t})"
     }
   ]
 }

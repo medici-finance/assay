@@ -566,7 +566,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// change instead, and say so on stdout. It never attempts the direct write and reports
 	// success, and it never skips the row.
 	if res.DefaultBranchNotWritable {
-		return landEvidenceAsChange(fg, fr, repoSlug, branch, targetRepoPath, commitContent, appendOnly, *allowShrink, remoteContent, ac)
+		return landEvidenceAsChange(fg, fr, repoSlug, branch, targetRepoPath, commitContent, appendOnly, *allowShrink, remoteContent, rowScopeSHA, ac)
 	}
 
 	// Post-condition: the write that landed must carry the verifier App's identity. Checked
@@ -594,7 +594,20 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 // StartBranch cutting it from the closed default), opens a DRAFT change from that branch, and
 // names the change on stdout — so a verified brief's Evidence still lands, as a reviewable
 // change rather than a direct commit, and NO direct write to the default branch is attempted.
-func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base, target string, content []byte, appendOnly, allowShrink bool, remoteContent []byte, ac *auditCtx) error {
+//
+// rowScopeSHA, when non-empty, is the content id rowScopeWriteTimeCheck's independent re-fetch
+// (of base, the same ref StartBranch cuts the side branch from) already validated the pending
+// content against, in cmdEvidence just before this lane was chosen. It rides into this write as
+// ExpectedSHA so the backend's OWN write-time probe of StartBranch — which it always performs to
+// fill in the forge's native conditional-write field, whether or not a caller asked for one — is
+// checked against that same id, not merely echoed back into the write unchecked. Without it, the
+// backend's probe only ever compares the write to itself (it always matches), so a table change
+// in the window between the caller's re-check and the backend's own probe lands unrefused: the
+// side branch is cut from whatever the table has become by then, and the pending content (built
+// against the earlier, now-stale read) silently reverts the row(s) that moved in that window, in
+// a diff no merge can surface because the side branch's parent already carries the reversion.
+// Empty (no row-scope rows named) means no such precondition applies, exactly as before.
+func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base, target string, content []byte, appendOnly, allowShrink bool, remoteContent []byte, rowScopeSHA string, ac *auditCtx) error {
 	dig := deskkit.Sha256Hex(content)
 	side := "evidence/" + sanitizeBranchComponent(path.Base(target)) + "-" + dig[:8]
 
@@ -612,6 +625,7 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 		StartBranch: base,
 		AppendOnly:  appendOnly,
 		AllowShrink: allowShrink,
+		ExpectedSHA: rowScopeSHA,
 	})
 	if werr != nil {
 		return werr

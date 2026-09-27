@@ -474,6 +474,38 @@ func TestReadmeLandingRaceAfterRecheckRefusedByWrite(t *testing.T) {
 	}
 }
 
+// F-rowscope-race-claim, round 2, at run() level: the SAME race as
+// TestReadmeLandingRaceAfterRecheckRefusedByWrite, but on the closed-default-branch lane
+// (defaultBranch set — the GitLab-shaped fallback through landEvidenceAsChange). The direct
+// write to main returns the DefaultBranchNotWritable sentinel without consuming a read, so the
+// table change surfaces on landEvidenceAsChange's OWN WriteFile call (to the new side branch,
+// StartBranch: base) instead: its ExpectedSHA precondition must be the write-time re-check's
+// content id, or the backend's own pre-write probe (which every backend always performs) only
+// ever compares the write to itself and can never catch a change that lands in this window. Before
+// the fix, landEvidenceAsChange built its WriteFileInput with no ExpectedSHA, so this table
+// change went unrefused: the side branch was cut from the moved table, and the committed content
+// — built against the earlier, now-stale read — silently reverted row 02, a diff no merge could
+// surface (the side branch's own parent already carried the reversion).
+func TestReadmeLandingRaceAfterRecheckRefusedByWriteClosedDefaultBranch(t *testing.T) {
+	f, errBuf := setupFake(t)
+	f.defaultBranch = "main"
+	base := exampleStreamReadme("# example-stream\n\n", map[string]string{"01": "todo", "02": "implemented"}, "\n")
+	moved := exampleStreamReadme("# example-stream\n\n", map[string]string{"01": "todo", "02": "verified"}, "\n")
+	local := exampleStreamReadme("# example-stream\n\n", map[string]string{"01": "verified", "02": "implemented"}, "\n")
+	f.readScript = map[string][]string{exampleReadmePath: {base, base, moved}}
+	root := rootWithFile(t, exampleReadmePath, local)
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", exampleReadmePath, "--root", root, "--row", "01"})
+	if code != deskkit.ExitRefused {
+		t.Fatalf("closed-default-branch post-recheck race exit = %d, want %d (stderr: %s)", code, deskkit.ExitRefused, errBuf.String())
+	}
+	if f.putCalls != 0 || f.expectedSHARefusals != 1 {
+		t.Fatalf("want the side-branch write refused by its ExpectedSHA precondition (puts=%d, refusals=%d)", f.putCalls, f.expectedSHARefusals)
+	}
+	if len(f.changes) != 0 {
+		t.Fatalf("want no draft change opened when the side-branch write itself was refused, got %d", len(f.changes))
+	}
+}
+
 // F-rowscope-unpinned M4 + A-prose-race: the write-time layer refuses a commit that carries a
 // foreign row the fresh fetch lacks, and a commit whose prose outside the table moved.
 func TestWriteOpRowScopeCommitOnlyRowAndProse(t *testing.T) {
