@@ -15,15 +15,15 @@ import (
 )
 
 // This file ports the CELL_MODEL_POLICY semantics #1388 added to the shell oracle
-// (tools/cellctl/cellctl's model_policy()/apply_model_policy()/policy_claude_preflight()) into
-// the Go binary — example-stream/10 shipped the Go port without them (assay#1390). The oracle
-// and docs/cellctl-model-policy.md are the spec; tools/cellctl/tests/model-policy.test.py is the
-// behavioural ORACLE this file's tests port cases from. See the PR body for exactly which
-// oracle behaviours this file does, and does not, carry over — some of the oracle's launch-time
-// mechanics (the live PreModelSwitch/PreToolUse Claude Code hook wiring, the local/managed
-// settings.json availableModels/modelOverrides conflict scan, and the `up`/`check` per-role
-// preflight loops) were ported afterwards in policy_enforce.go (assay#1392); the schema,
-// resolution, deny and effort-propagation contract lives here.
+// (tools/cellctl/testdata/cellctl-shell-oracle.sh's model_policy()/apply_model_policy()/
+// policy_claude_preflight()) into the Go binary — example-stream/10 shipped the Go port without
+// them (assay#1390). The oracle and docs/cellctl-model-policy.md are the spec;
+// tools/cellctl/tests/model-policy.test.py is the behavioural ORACLE this file's tests port cases
+// from. See the PR body for exactly which oracle behaviours this file does, and does not, carry
+// over — some of the oracle's launch-time mechanics (the live PreModelSwitch/PreToolUse Claude Code
+// hook wiring, the local/managed settings.json availableModels/modelOverrides conflict scan, and
+// the `up`/`check` per-role preflight loops) were ported afterwards in policy_enforce.go
+// (assay#1392); the schema, resolution, deny and effort-propagation contract lives here.
 
 // policyTierNames is the fixed four-tier ladder every provider must pin exactly.
 var policyTierNames = []string{"top", "strong", "mid", "fast"}

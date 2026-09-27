@@ -2,8 +2,9 @@ package deskkit
 
 // decided.go — the shared parse/render for the desk-decided block: the PR-body record of a
 // reversible default a desk took without asking first (attention-budget/19). ONE shared
-// implementation, because deskpr WRITES the block, deskflip READS it (label/block agreement,
-// and the reviewer's undeclared-decision finding), and a future deskfile notice lane on
+// implementation, because deskpr WRITES the block, both ready-flip verbs READ it — deskflip
+// and `deskpost ready`, through the one shared condition in decidedgate.go (label/block
+// agreement, and the reviewer's undeclared-decision finding) — and a future deskfile notice lane on
 // issues (attention-budget/13, out of scope here) reads the SAME marker — a second
 // hand-rolled parser is exactly how the two surfaces would drift.
 //
