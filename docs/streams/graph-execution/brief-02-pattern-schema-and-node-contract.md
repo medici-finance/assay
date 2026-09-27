@@ -137,6 +137,65 @@ RISK-VALUE: reversible knobs (ranked last, no derivation required) — budget.at
 
 No implementation defect: rows 1/3/4/7 need a Linux hermetic witness (all subtests pass non-hermetically, no SKIP); row 10 is the sanctioned post-merge could-not-check.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test -run TestPatterns ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 2 | `statusgen patterns --lint --root .; echo rc=$?` | pass exit=0 | sha256:e86054a2ccc7 | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test -run TestPatternsEffectExceedsRoleIsProblem ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test -run TestPatternsReviewSameRoleIsProblem ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 5 | `python3 -c 'import json,yaml;s=json.load(open("schemas/workflow-pattern-v1.json"));import jsonschema;[jsonschema.validate(yaml.safe_load(open(p)),s) for p in ["spec/workflow-patterns/implementation-v1.yaml","spec/workflow-patterns/research-v1.yaml"]];print("ok")'` | pass exit=0 | sha256:dc51b8c96c2d | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -c 'workflow-pattern-v1' spec/README.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && go test -run TestTopologyValuesMatchSource ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --lint; echo rc=$?` | pass exit=0 | sha256:6c50dfe73543 | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --consumers --brief graph-execution/02 --root .; echo rc=$?` | fail exit=0 | sha256:ee9008be1b51 | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+
+### Non-implementer verifier re-run — VERIFY: BLOCKED — 4/9 witnessed pass, 5 could-not-check, 0 real fail — 2026-09-27 claude-opus-5.5-verifier
+
+The witness table directly above is this run's (statusgen verifyrun v1.0.27, write mode, clean tree, HEAD == origin/main == b227b40768db08a0a91046899bc1877cf3c6d1ec). Runner is not the implementer. Offline envelope (KUBECONFIG=/dev/null), read-only. gate: model; all four risk answers no.
+
+Since the 2026-09-23 run: every hashed input (this brief, statusgen/patterns.go, the spec, both pattern files, the JSON schema, spec/README.md, topology.yaml) is byte-identical at this head; only the witness tool moved (v1.0.26 to v1.0.27). The blocker class is unchanged.
+
+Per-row key output (direct runs at this head, same commands as the Verify table):
+
+- Row 1: witness could-not-run (check:ci needs the Linux unshare --net sandbox; host is darwin). Direct host run exit 0, all 11 pattern tests PASS, no SKIP. Supporting Linux network-off run (golang 1.25 container, --network none, read-only module cache, GOPROXY=off): exit 0.
+- Row 2: witnessed pass. patterns: 2 checked-clean, 0 checked-failed, 0 could-not-check (2 file(s) scanned) / rc=0.
+- Row 3: witness could-not-run (same darwin reason). Direct host run exit 0, the effect-exceeds-role test PASS; Linux network-off container run exit 0. Independent mutation: the reviewer-with-push fixture copied alone into a scratch root makes patterns --lint exit 1 naming pattern-effect-exceeds-role; a copy of the SHIPPED implementation pattern with the review node's comment effect changed to push also exits 1 with the same rule.
+- Row 4: witness could-not-run (same darwin reason). Direct host run exit 0, the review-same-role test PASS; Linux network-off container run exit 0. Independent mutation: the review-same-role fixture alone exits 1 naming pattern-review-same-role (review node role worker, same as implement).
+- Row 5: witnessed pass. ok (independent jsonschema validator over both shipped patterns).
+- Row 6: witnessed pass. 1.
+- Row 7: witness could-not-run (same darwin reason). Direct host run exit 0, TestTopologyValuesMatchSource PASS; Linux network-off container run exit 0.
+- Row 8: witnessed pass. LINT: PASS / rc=0; 0 PROBLEM lines; no NOTICE names this brief.
+- Row 10: COULD-NOT-CHECK as written, sanctioned by the row's own Expect. statusgen itself exited 2: COULD-NOT-CHECK: assay:assay:graph-execution:02 is not in the diff against b227b40768db, so this run carries no evidence about its claims. The witness cell reads fail exit=0 because (a) the trailing echo rc=$? makes the shell exit 0 whatever statusgen returns, and (b) the witness expect-parser latched "exit 2" from the merged-main clause of the Expect prose — a check-definition artifact, not an observed failure. Sanctioned recipe (checkout of the squash merge 5b384e52c, --base its parent 060980aa0f1a): exit 0, summary 3 corroborated, 0 disproved, 1 unchecked. The UNCHECKED entry is the out-of-scope desk-skill claim; the merge diff touches none of the worker-desk, pr-review-desk or verify-desk SKILL.md files (its only SKILL.md change is the author-brief enforcement-registry mirror), so the out-of-scope routing holds.
+
+Deliverable grounding at this head: spec/workflow-pattern-v1.md, schemas/workflow-pattern-v1.json, both pattern files, statusgen/patterns.go + patterns_test.go, all seven fixtures (two good, five bad), the patterns subcommand in statusgen/main.go, the docs/lifecycle.md §Review gates sentence, and the spec/README.md row are present; the changelog fragment was aggregated into CHANGELOG.md at the v1.0.13 release; statusgen enforcement-status lists all five pattern-* rules as fatal.
+
+Risk-bearing value enumeration (literals the diff introduces):
+
+1. patternRoleEffectPermissions: worker = push, pr-open, comment; reviewer = review, comment; verifier = evidence-commit, comment; desk = file-issue, comment, dispatch @ statusgen/patterns.go:92-95 (mirrored at spec/workflow-pattern-v1.md:111-114).
+2. topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:73-78 (source topology.yaml:237-249).
+3. patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:100.
+4. implementation risk-input: low = [review]; standard = [review, verify]; elevated = [review, verify]; human = [review, verify] @ spec/workflow-patterns/implementation-v1.yaml:15-18. research risk-input: all four = [review-artifact] @ spec/workflow-patterns/research-v1.yaml:13-16.
+5. patterns exit codes: clean = 0, failed = 1, could-not-check = 2, usage = 2 @ statusgen/patterns.go:67-70.
+6. budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31 and research-v1.yaml:26, 37, 50.
+
+Ranked by irreversibility: none is irreversible (nothing executes a pattern yet; every value is fixed by a spec/pattern edit and a version bump). Highest consequence first: 1 (the declared single point of failure for permission safety), 4 (which gates a risk class makes mandatory), 2 and 3 (vocabulary the lint pins), 5 (instrument contract), 6 (retry knob, last, no derivation owed).
+
+RISK-VALUE: DERIVED — patternRoleEffectPermissions (reviewer = review, comment) @ statusgen/patterns.go:92-95 — it equals Task 2's table exactly and each role's present forge behaviour: only worker may push or open a PR, reviewer holds no write effect beyond review/comment, verifier's only write is the Evidence commit, desk files, comments and dispatches. No role holds another role's certifying effect, which is the separation docs/enforcement-model.md requires; the table-covers-topology-roles test and the shipped-pattern push mutation above confirm the lint reads this table.
+
+RISK-VALUE: DERIVED — topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:73-78 — equals the four apps: roles in topology.yaml (the compiled-derivation convention; row 7 pins them together).
+
+RISK-VALUE: DERIVED — patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:100 — the fixed risk-class vocabulary this stream's README binds on every later brief; the missing-verdict fixture exits 1.
+
+RISK-VALUE: DERIVED — patterns exit codes 0 / 1 / 2 @ statusgen/patterns.go:67-70 — Task 4's stated contract (0 clean, 1 PROBLEM, 2 could-not-check) and the same three-state numbers as the binary's other lints; observed rc=0 clean and rc=1 on every bad fixture.
+
+RISK-VALUE: NAMED, NOT DERIVED — implementation risk-input elevated = [review, verify] and human = [review, verify] @ spec/workflow-patterns/implementation-v1.yaml:17-18 — OPEN QUESTION. Task 1's schema example maps elevated to review + security-review + verify and human to review + security-review + verify + human-signoff; Task 3's fixed node list has no security-review or human-signoff node, so the shipped pattern could not name them and elevated/human collapse to the standard gate set. As shipped, a human-class instance of this pattern declares no human node among its mandatory gates. The brief does not say whether that collapse is intended; deriving it needs a design ruling (add the gate nodes to the pattern, or state that human gating stays outside the pattern). Reversible: no component consumes risk-input yet (graph-execution/05 is todo). Related observation: the lint does not check that risk-input names existing node ids — a copy of the shipped pattern with human = [human-signoff] (no such node) lints clean, rc=0. Not a MUST rule this brief states, so not a failure of this item.
+
+RISK-VALUE: reversible knob (ranked last, no derivation owed) — budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31 (also research-v1.yaml:26, 37, 50).
+
+No implementation defect found. Rows 1/3/4/7 owe the hermetic Linux witness (all pass directly and in a Linux network-off container, which is supporting evidence only, not the certified witness); row 10 is the sanctioned post-merge could-not-check, with the sanctioned recipe corroborating 3 of 4 entries and the fourth verified by diff inspection.
+
+VERIFY: BLOCKED
+
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
