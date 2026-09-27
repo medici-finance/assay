@@ -365,8 +365,8 @@ func TestClaudeEnvAndCodexArgsPropagateEffort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.ClaudeEnv["CLAUDE_CODE_EFFORT_LEVEL"] != "high" {
-		t.Errorf("CLAUDE_CODE_EFFORT_LEVEL = %q", res.ClaudeEnv["CLAUDE_CODE_EFFORT_LEVEL"])
+	if _, ok := res.ClaudeEnv["CLAUDE_CODE_EFFORT_LEVEL"]; ok {
+		t.Errorf("CLAUDE_CODE_EFFORT_LEVEL must stay unset (it outranks agent frontmatter): %q", res.ClaudeEnv["CLAUDE_CODE_EFFORT_LEVEL"])
 	}
 	if res.ClaudeEnv["ANTHROPIC_MODEL"] != res.Model || res.ClaudeEnv["CLAUDE_CODE_SUBAGENT_MODEL"] != res.Model {
 		t.Errorf("ANTHROPIC_MODEL/CLAUDE_CODE_SUBAGENT_MODEL should mirror the resolved model, got %+v", res.ClaudeEnv)
