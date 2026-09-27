@@ -1,0 +1,2 @@
+### Fixed
+- The `pattern-sweep` leak leg no longer reports verify-wake-v1 receipt input digests in `docs/streams/verify-outcomes.jsonl` as `generic-api-key` findings when the digested file's path contains `key` or `token`. The new `.gitleaks.toml` allowlist covers that one file and only a `<file path>.<ext>":"<64-hex sha256>"` match. An identifier-keyed value such as `"api_key":"<64 hex>"` in the same file, and the same digest shape in any other file, still fail the leg (#1793).
