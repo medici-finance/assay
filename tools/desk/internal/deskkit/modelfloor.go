@@ -389,22 +389,21 @@ func riskUnstampedRefusal(d FloorDecision, risk FloorRisk) string {
 func unreadableStampMessage(tl StampTimeline, isDispatcher func(applier string) bool) string {
 	var cause string
 	if untrusted := NonDispatcherStampAppliers(tl, isDispatcher); len(untrusted) > 0 {
-		// deskrestamp (#336, SEC-1/C4) itself refuses to re-attest this pair unless EVERY
-		// standing foreign applier is a trusted human login of the parsed roster — an
-		// App, a bot, or an untrusted login is refused there, not repaired. Naming
-		// deskrestamp as the remedy for a case it will only refuse sends the operator in
-		// a circle, so the message routes on the SAME predicate deskrestamp's own
-		// provenance gate uses (deskkit.IsTrustedHumanLogin): only when every standing
-		// foreign applier is a trusted human does deskrestamp get named; otherwise the
-		// remedy is the dispatch ceremony, which validates a fresh --model/--tier under
-		// the dispatcher rather than re-attesting an unvouched applier's content.
-		allVouched := true
-		for _, who := range untrusted {
-			if !IsTrustedHumanLogin(who) {
-				allVouched = false
-				break
-			}
-		}
+		// deskrestamp (#336, SEC-1b round 3 — the driver's ruling on PR #1727) itself
+		// refuses to re-attest this pair unless EVERY standing foreign-applied label is
+		// one its own provenance gate vouches for: the roster's own blessing authority
+		// (IsRestampDriverLogin), applied strictly before RestampDriverCutoff — not the
+		// wider "any trusted human" bar (C5: that bar was superseded by the ruling, and
+		// routing this message on it names deskrestamp for a case — a trusted non-driver
+		// login, or the driver's own login applied AFTER the cutoff — that deskrestamp
+		// itself refuses, sending the operator in a circle). So the message routes on the
+		// SAME shared predicate deskrestamp's own gate uses
+		// (AllForeignStampLabelsRestampVouched, backed by RestampVouchesLabel): only when
+		// EVERY standing foreign-applied label passes it does deskrestamp get named;
+		// otherwise the remedy is the dispatch ceremony, which validates a fresh
+		// --model/--tier under the dispatcher rather than re-attesting an unvouched
+		// applier's content.
+		allVouched := AllForeignStampLabelsRestampVouched(tl, isDispatcher)
 		if allVouched {
 			cause = fmt.Sprintf(
 				"The dispatched-* labels this PR currently carries were applied by %s, and this floor accepts a "+
@@ -417,10 +416,11 @@ func unreadableStampMessage(tl StampTimeline, isDispatcher func(applier string) 
 			cause = fmt.Sprintf(
 				"The dispatched-* labels this PR currently carries were applied by %s, and this floor accepts a "+
 					"stamp only from %s. deskrestamp refuses to repair this one: it re-attests a foreign "+
-					"applier's content only when every standing applier is a trusted human login, and at "+
-					"least one of these is not (an App, a bot, or an untrusted login) — re-run the dispatch "+
-					"ceremony instead, which validates a fresh --model/--tier under the dispatcher, or "+
-					"escalate this write to a strong-tier session.",
+					"applier's content only when every standing applier is the roster's own blessing authority, "+
+					"applied before the #336 legacy-backlog cutoff, and at least one of these is not (an App, "+
+					"a bot, a non-driver login, or a post-cutoff application) — re-run the dispatch ceremony "+
+					"instead, which validates a fresh --model/--tier under the dispatcher, or escalate this "+
+					"write to a strong-tier session.",
 				StripControl(strings.Join(untrusted, ", ")), StampAuthorityLoginsForMessage())
 		}
 	} else if unattributed := UnattributedStampLabels(tl); len(unattributed) > 0 {

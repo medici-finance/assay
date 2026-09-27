@@ -283,50 +283,84 @@ func TestFloorRefusalNamesBothLogins(t *testing.T) {
 	}
 }
 
-// deskrestamp (#336, SEC-1/C4) refuses to re-attest a foreign-applied pair unless EVERY
-// standing foreign applier is a trusted human login of the parsed roster — an App, a bot,
-// or an untrusted login is refused, not repaired. This message is read by the operator the
-// floor refusal sends to deskrestamp, so it must not send an App/bot/untrusted applier to a
-// verb that will only refuse them right back: it must route those cases to the dispatch
-// ceremony instead, and reserve the deskrestamp pointer for the case that verb actually
-// repairs (every standing foreign applier already a trusted human login).
-func TestFloorRefusalRoutesByApplierTrust(t *testing.T) {
-	plantRoster(t, modelstampFixtureRoster) // ASSAY_TRUSTED_LOGINS=ada:2001 is the trusted human
+// modelstampFixtureRosterTwoTrusted adds a SECOND trusted human ("bob") beside the fixture's
+// blessing authority ("ada") — modelstampFixtureRoster alone cannot exercise "a trusted
+// login that is not the driver" at all, because it trusts only the driver.
+const modelstampFixtureRosterTwoTrusted = `ASSAY_BLESS_LOGIN=ada:2001
+ASSAY_TRUSTED_LOGINS=ada:2001,bob:2002
+ASSAY_TRUSTED_BOT_SLUGS=desk=example-desk-app:300000001,worker=example-worker-app:300000006
+ASSAY_ALLOWED_REPOS=example-org/one:ci:private
+`
 
-	trustedHuman := []LabelEvent{
-		{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: "ada"},
+// C5 (round 2): deskrestamp (#336, SEC-1b round 3 — the driver's ruling on PR #1727)
+// refuses to re-attest a foreign-applied pair unless EVERY standing foreign-applied label
+// is one ITS OWN provenance gate vouches for — the roster's own blessing authority, applied
+// strictly before the #336 legacy-backlog cutoff — not the wider "any trusted human" bar a
+// prior round of this message routed on. This message is read by the operator the floor
+// refusal sends to deskrestamp, so it must not send a trusted-but-non-driver applier, or a
+// driver applier after the cutoff, or one with no timestamp at all, to a verb that will
+// only refuse them right back: it must route those cases to the dispatch ceremony instead,
+// and reserve the deskrestamp pointer for the case that verb actually repairs.
+func TestFloorRefusalRoutesByApplierTrust(t *testing.T) {
+	plantRoster(t, modelstampFixtureRosterTwoTrusted) // ada = blessing authority, bob = trusted, non-driver
+
+	preCutoff := "2026-09-01T00:00:00Z" // strictly before RestampDriverCutoffRFC3339
+
+	driverPreCutoff := []LabelEvent{
+		{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: "ada", CreatedAt: preCutoff},
+		{Name: DispatchedTierPrefix + "strong", AppliedBy: "ada", CreatedAt: preCutoff},
+	}
+	driverPostCutoff := []LabelEvent{
+		{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: "ada", CreatedAt: RestampDriverCutoffRFC3339},
+		{Name: DispatchedTierPrefix + "strong", AppliedBy: "ada", CreatedAt: "2026-09-27T00:00:01Z"},
+	}
+	driverNoTimestamp := []LabelEvent{
+		{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: "ada"}, // CreatedAt == ""
 		{Name: DispatchedTierPrefix + "strong", AppliedBy: "ada"},
+	}
+	trustedNonDriver := []LabelEvent{
+		{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: "bob", CreatedAt: preCutoff},
+		{Name: DispatchedTierPrefix + "strong", AppliedBy: "bob", CreatedAt: preCutoff},
 	}
 	botApplied := []LabelEvent{
 		{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: "example-worker-app[bot]"},
 		{Name: DispatchedTierPrefix + "strong", AppliedBy: "example-worker-app[bot]"},
 	}
 	mixed := []LabelEvent{
-		{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: "ada"},
+		{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: "ada", CreatedAt: preCutoff},
 		{Name: DispatchedTierPrefix + "strong", AppliedBy: "example-worker-app[bot]"},
 	}
 
-	trustedDecision := ModelCapabilityFloor(tlOf(trustedHuman...), IsDispatcherLogin, false, ClaimLivenessUnknown)
-	if !strings.Contains(trustedDecision.Message, "deskrestamp") {
-		t.Errorf("a foreign applier who IS a trusted human login (deskrestamp's own repair case) "+
-			"should still be pointed at deskrestamp:\n%s", trustedDecision.Message)
+	// The ONLY case deskrestamp actually repairs: the blessing authority, both labels
+	// strictly before the cutoff.
+	vouchedDecision := ModelCapabilityFloor(tlOf(driverPreCutoff...), IsDispatcherLogin, false, ClaimLivenessUnknown)
+	if !strings.Contains(vouchedDecision.Message, "deskrestamp is the first-class verb: it REMOVES") {
+		t.Errorf("a blessing-authority applier BEFORE the cutoff (deskrestamp's own repair case) "+
+			"should be pointed at deskrestamp as the unqualified repair:\n%s", vouchedDecision.Message)
 	}
 	// StampAuthorityLoginsForMessage, not the narrower DispatcherLoginsForMessage: this
 	// fixture configures no ASSAY_STAMP_TRUSTED_LOGINS allowance, and only the FORMER says
 	// so explicitly — the phrase is the discriminator a mutant swapping one call for the
 	// other would drop.
-	if !strings.Contains(trustedDecision.Message, "no ASSAY_STAMP_TRUSTED_LOGINS allowance is configured") {
+	if !strings.Contains(vouchedDecision.Message, "no ASSAY_STAMP_TRUSTED_LOGINS allowance is configured") {
 		t.Errorf("the all-vouched branch's message does not call StampAuthorityLoginsForMessage "+
 			"(the WHOLE accepted set, including any configured allowance) — it reads as though it "+
-			"called the narrower DispatcherLoginsForMessage instead:\n%s", trustedDecision.Message)
+			"called the narrower DispatcherLoginsForMessage instead:\n%s", vouchedDecision.Message)
 	}
 
-	for name, events := range map[string][]LabelEvent{"bot-applied": botApplied, "mixed": mixed} {
+	unrepairable := map[string][]LabelEvent{
+		"driver-post-cutoff":  driverPostCutoff,  // C5: the driver's OWN login, but after the ruling's cutoff
+		"driver-no-timestamp": driverNoTimestamp, // C5: fail-closed — an unparseable/missing timestamp never vouches
+		"trusted-non-driver":  trustedNonDriver,  // C5: trusted alone is no longer enough, only the driver qualifies
+		"bot-applied":         botApplied,
+		"mixed":               mixed,
+	}
+	for name, events := range unrepairable {
 		d := ModelCapabilityFloor(tlOf(events...), IsDispatcherLogin, false, ClaimLivenessUnknown)
 		if strings.Contains(d.Message, "deskrestamp is the first-class verb: it REMOVES") {
 			t.Errorf("%s: the message sends the operator to deskrestamp as an unqualified repair, but "+
-				"deskrestamp itself refuses this case (not every standing applier is a trusted human "+
-				"login) — it must name the dispatch ceremony instead:\n%s", name, d.Message)
+				"deskrestamp itself refuses this case (not every standing foreign-applied label passes "+
+				"its own provenance gate) — it must name the dispatch ceremony instead:\n%s", name, d.Message)
 		}
 		if !strings.Contains(d.Message, "dispatch ceremony") {
 			t.Errorf("%s: the message does not route the operator to the dispatch ceremony, the only "+

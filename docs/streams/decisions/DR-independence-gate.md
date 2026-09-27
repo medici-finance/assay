@@ -76,11 +76,12 @@ correctness/security review of this PR (SEC-1b, round 3) found the two conflated
 earlier round of `deskrestamp` re-attested any login the roster trusted at all
 (`deskkit.IsTrustedHumanLogin`), which is wider than even the allowance above and does not
 require the applier to be IN the allowance. The driver ruled on this directly, on PR #1727
-([comment 5859647065](https://github.com/medici-finance/assay/pull/1727#issuecomment-5859647065),
-2026-09-27T20:41:27Z), quoted: "deskrestamp may vouch only for dispatched-* labels applied
-by the driver's own login (the roster bless login) before 2026-09-27T00:00:00Z (the #336
-legacy backlog); every other applier is refused. jojig-dao stays in ASSAY_TRUSTED_LOGINS;
-it must never be added to ASSAY_STAMP_TRUSTED_LOGINS." `deskrestamp`'s provenance bar is
+([comment 5860170351](https://github.com/medici-finance/assay/pull/1727#issuecomment-5860170351),
+2026-09-27T21:54:19Z), quoted (tool-facing sentence only — the comment's second sentence is
+a deployment-configuration instruction out of this record's scope): "deskrestamp may vouch
+only for dispatched-* labels applied by the driver's own login (the roster bless login)
+before 2026-09-27T00:00:00Z (the #336 legacy backlog); every other applier is refused."
+`deskrestamp`'s provenance bar is
 therefore now STRICTER than the floor's own allowance, deliberately: minting a fresh
 dispatcher attestation over content someone else applied is a bigger act than a reader
 merely recognising an already-widened stamp, and the ruling narrows it to the roster's

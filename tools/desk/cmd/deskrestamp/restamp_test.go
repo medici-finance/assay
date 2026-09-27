@@ -119,7 +119,7 @@ func stampedPR(labels ...string) *deskkit.PullRequest {
 }
 
 // preCutoffRFC3339 is strictly BEFORE deskkit.RestampDriverCutoff (the driver's ruling on
-// PR #1727, comment 5859647065: "before 2026-09-27T00:00:00Z, the #336 legacy backlog").
+// PR #1727, comment 5860170351: "before 2026-09-27T00:00:00Z, the #336 legacy backlog").
 // labeledBy defaults every event to this timestamp, so a pre-existing happy-path test
 // (applier "ada", the fixture's ASSAY_BLESS_LOGIN) keeps meaning what it always meant —
 // a legacy, pre-ruling hand-applied label — without every call site naming a date. A test
@@ -148,8 +148,8 @@ const (
 // roster's ASSAY_BLESS_LOGIN — every other trusted login is now refused, SEC-1b round 3)
 // applied BEFORE the cutoff (labeledBy's default) is removed and re-applied under the
 // dispatcher, the removal is its OWN write ahead of the application, and the record
-// comment names both actors. This is the #336 legacy-backlog case kryton's ruling on PR
-// #1727 (comment 5859647065) names: a pre-ruling, hand-applied label under the driver's
+// comment names both actors. This is the #336 legacy-backlog case the driver's ruling on PR
+// #1727 (comment 5860170351) names: a pre-ruling, hand-applied label under the driver's
 // own login.
 func TestRestampForeignAppliedPair(t *testing.T) {
 	fg := &fakeForge{
@@ -391,7 +391,7 @@ func TestRestampRefusesUntrustedForeignApplier(t *testing.T) {
 	}
 }
 
-// SEC-1b round 3 (kryton's ruling on PR #1727): a TRUSTED login that is NOT the driver
+// SEC-1b round 3 (the driver's ruling on PR #1727): a TRUSTED login that is NOT the driver
 // ("shared-agent", of the fixture roster's ASSAY_TRUSTED_LOGINS) is refused exactly like
 // an untrusted one — trust alone is no longer enough; only the driver's own login
 // qualifies. This is the case the earlier (reviewer-suggested, now superseded) "any
@@ -484,6 +484,112 @@ func TestRestampRefusesHalfSwapTimeline(t *testing.T) {
 	}
 	if !strings.Contains(out, "shared-agent") {
 		t.Fatalf("refusal does not name the swapped half's applier:\n%s", out)
+	}
+}
+
+// A4 (round 3, C5's companion): a MIXED pair where BOTH labels are foreign to the
+// dispatcher — unlike the half-swap case above, neither is already dispatcher-standing, so
+// BOTH are in the removal set — and only ONE of the two vouches (blessing authority,
+// pre-cutoff). remove is always sorted (modelLabel < tierLabel lexically), so this pair and
+// its mirror below put the vouched half at EACH position in turn. Together they are the
+// only way to distinguish "check every label in the removal set" from a mutant that checks
+// only the first, only the last, or stops scanning at the first label that vouches:
+//   - vouched at index 0 (this test): "only the first" and "stop at first vouched" both
+//     wrongly clear the pair, because the second (unvouched) label is never reached;
+//   - vouched at index 1 (the next test): "only the last" wrongly clears the pair, because
+//     the first (unvouched) label is never reached.
+func TestRestampRefusesMixedPairVouchedFirst(t *testing.T) {
+	fg := &fakeForge{
+		pr: stampedPR(modelLabel, tierLabel),
+		events: []deskkit.LabelEvent{
+			labeledBy(modelLabel, "ada"),          // vouched: blessing authority, pre-cutoff (index 0)
+			labeledBy(tierLabel, "shared-agent"),  // unvouched: trusted, but not the driver (index 1)
+		},
+	}
+	plantWorld(t, "desk", fg)
+	code, out := runVerb(t, allowedRepo, "7")
+	if code != 5 {
+		t.Fatalf("exit = %d, want 5 (refused — the SECOND label in the removal set is unvouched):\n%s", code, out)
+	}
+	if len(fg.writes) != 0 || len(fg.comments) != 0 {
+		t.Fatal("a refused re-stamp still wrote")
+	}
+	if !strings.Contains(out, "shared-agent") {
+		t.Fatalf("refusal does not name the unvouched half's applier:\n%s", out)
+	}
+}
+
+// The mirror of the test above: the unvouched half is now FIRST in the (sorted) removal
+// set and the vouched half LAST, which is what a "check only the last label" mutant gets
+// wrong.
+func TestRestampRefusesMixedPairVouchedLast(t *testing.T) {
+	fg := &fakeForge{
+		pr: stampedPR(modelLabel, tierLabel),
+		events: []deskkit.LabelEvent{
+			labeledBy(modelLabel, "shared-agent"), // unvouched: trusted, but not the driver (index 0)
+			labeledBy(tierLabel, "ada"),            // vouched: blessing authority, pre-cutoff (index 1)
+		},
+	}
+	plantWorld(t, "desk", fg)
+	code, out := runVerb(t, allowedRepo, "7")
+	if code != 5 {
+		t.Fatalf("exit = %d, want 5 (refused — the FIRST label in the removal set is unvouched):\n%s", code, out)
+	}
+	if len(fg.writes) != 0 || len(fg.comments) != 0 {
+		t.Fatal("a refused re-stamp still wrote")
+	}
+	if !strings.Contains(out, "shared-agent") {
+		t.Fatalf("refusal does not name the unvouched half's applier:\n%s", out)
+	}
+}
+
+// A4 (round 3): the driver's login RE-APPLIES the same label after the cutoff, with NO
+// `unlabeled` event in between — deskkit.StandingStampApplierAt must read this label's
+// standing (CURRENT, latest) application as the post-cutoff one, not the pre-cutoff FIRST
+// one. A mutant that keeps the first application instead of the latest would read the
+// pre-cutoff event and wrongly vouch for a label whose actual standing application is
+// post-cutoff.
+func TestRestampRefusesReapplicationAfterCutoffOnStandingLabel(t *testing.T) {
+	fg := &fakeForge{
+		pr: stampedPR(modelLabel, tierLabel),
+		events: []deskkit.LabelEvent{
+			labeledByAt(modelLabel, "ada", preCutoffRFC3339),       // FIRST application: pre-cutoff
+			labeledByAt(modelLabel, "ada", "2026-09-27T00:00:01Z"), // RE-APPLIED, no unlabeled in between: this is now standing
+			labeledBy(tierLabel, "ada"),                            // vouched on its own (pre-cutoff, unaffected)
+		},
+	}
+	plantWorld(t, "desk", fg)
+	code, out := runVerb(t, allowedRepo, "7")
+	if code != 5 {
+		t.Fatalf("exit = %d, want 5 (refused — modelLabel's STANDING application is the post-cutoff re-application):\n%s", code, out)
+	}
+	if len(fg.writes) != 0 || len(fg.comments) != 0 {
+		t.Fatal("a refused re-stamp still wrote")
+	}
+	if !strings.Contains(out, "ada") {
+		t.Fatalf("refusal does not name the post-cutoff standing applier:\n%s", out)
+	}
+}
+
+// A4 (round 3): the driver's login applies a label with NO timestamp at all (the forge
+// reported none) — fail-closed, never fail-open. A mutant that ignores the parse error on
+// an empty/unparseable CreatedAt would compare the zero time against the cutoff, and the
+// zero time is before every real cutoff, so it would wrongly vouch.
+func TestRestampRefusesDriverApplicationWithNoTimestamp(t *testing.T) {
+	fg := &fakeForge{
+		pr: stampedPR(modelLabel, tierLabel),
+		events: []deskkit.LabelEvent{
+			{Name: modelLabel, AppliedBy: "ada"}, // CreatedAt == "" — the forge named no timestamp
+			labeledBy(tierLabel, "ada"),           // vouched on its own (pre-cutoff, unaffected)
+		},
+	}
+	plantWorld(t, "desk", fg)
+	code, out := runVerb(t, allowedRepo, "7")
+	if code != 5 {
+		t.Fatalf("exit = %d, want 5 (refused — an unparseable/missing timestamp is fail-closed, not fail-open):\n%s", code, out)
+	}
+	if len(fg.writes) != 0 || len(fg.comments) != 0 {
+		t.Fatal("a refused re-stamp still wrote")
 	}
 }
 

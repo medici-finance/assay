@@ -18,8 +18,8 @@ package main
 //     predicate the floor reads (deskkit.IsStampAuthorityLogin) — reader and writer
 //     project the standing-applier resolution from one place, so they cannot disagree.
 //  7. no-op when nothing needs removing and the pair is present.
-//  8. THE PROVENANCE GATE (#336, SEC-1b round 3 — kryton's ruling on PR #1727, comment
-//     5859647065) — before any write, PER LABEL in the removal set: REFUSE unless the
+//  8. THE PROVENANCE GATE (#336, SEC-1b round 3 — the driver's ruling on PR #1727, comment
+//     5860170351) — before any write, PER LABEL in the removal set: REFUSE unless the
 //     label's standing application is BOTH the roster's own blessing authority
 //     (deskkit.IsRestampDriverLogin — never any other trusted login) AND timestamped
 //     strictly before deskkit.RestampDriverCutoff (deskkit.StandingStampApplierAt,
@@ -244,9 +244,9 @@ func cmdReStamp(args []string, out io.Writer) error {
 		return nil
 	}
 
-	// THE PROVENANCE GATE (#336; SEC-1b round 3 — kryton's ruling on PR #1727, comment
-	// https://github.com/medici-finance/assay/pull/1727#issuecomment-5859647065,
-	// 2026-09-27T20:41:27Z, quoted): "deskrestamp may vouch only for dispatched-* labels
+	// THE PROVENANCE GATE (#336; SEC-1b round 3 — the driver's ruling on PR #1727, comment
+	// https://github.com/medici-finance/assay/pull/1727#issuecomment-5860170351,
+	// 2026-09-27T21:54:19Z, quoted): "deskrestamp may vouch only for dispatched-* labels
 	// applied by the driver's own login (the roster bless login) before
 	// 2026-09-27T00:00:00Z (the #336 legacy backlog); every other applier is refused."
 	// Preserving a stamp's content is not the same as vouching for whoever applied it:
@@ -262,8 +262,8 @@ func cmdReStamp(args []string, out io.Writer) error {
 	if len(unvouched) > 0 {
 		err := deskkit.Refused(fmt.Sprintf(
 			"refused: %s#%d's standing %s stamp was applied by %s, and this verb vouches only for "+
-				"the roster's own driver login applied before %s (the #336 legacy backlog, kryton's "+
-				"ruling on PR #1727) — deskrestamp preserves a stamp's content, but re-attesting "+
+				"the roster's own driver login applied before %s (the #336 legacy backlog, the "+
+				"driver's ruling on PR #1727)— deskrestamp preserves a stamp's content, but re-attesting "+
 				"content a non-driver applier applied, or that the driver applied AFTER the cutoff, "+
 				"under the dispatcher is exactly the laundering the model-capability floor exists to "+
 				"refuse. Re-run the dispatch ceremony instead, which validates an explicit "+
@@ -345,20 +345,22 @@ func cmdReStamp(args []string, out io.Writer) error {
 	return nil
 }
 
-// unvouchedRemovalLabels checks EACH label in remove against deskrestamp's provenance bar
-// (SEC-1b round 3, kryton's ruling on PR #1727): its standing application must be the
-// roster's own blessing authority (deskkit.IsRestampDriverLogin) AND timestamped strictly
-// before deskkit.RestampDriverCutoff. It returns the applier login (or a fixed placeholder
-// for a label the timeline names no standing applier for at all) for every label that
-// fails EITHER half, de-duplicated and sorted. The check runs PER LABEL, never aggregated
-// across the whole pair, so a half-swap timeline — one label already vouched, the other
-// not — still names the one that failed (SEC-1a): there is no shortcut that only fires
-// when every half is foreign.
+// unvouchedRemovalLabels checks EACH label in remove against deskkit.RestampVouchesLabel —
+// THE SHARED predicate (C5): its standing application must be the roster's own blessing
+// authority (deskkit.IsRestampDriverLogin) AND timestamped strictly before
+// deskkit.RestampDriverCutoff. It returns the applier login (or a fixed placeholder for a
+// label the timeline names no standing applier for at all) for every label that fails
+// EITHER half, de-duplicated and sorted. The check runs PER LABEL, never aggregated across
+// the whole pair, so a half-swap timeline — one label already vouched, the other not —
+// still names the one that failed (SEC-1a): there is no shortcut that only fires when every
+// half is foreign. The model-floor refusal message (modelfloor.go) calls the SAME
+// deskkit.RestampVouchesLabel before naming this verb as the operator's repair, so a
+// refusal is never wrong about what this verb will do with the case it names.
 func unvouchedRemovalLabels(tl deskkit.StampTimeline, remove []string) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, label := range remove {
-		if vouches, who := restampVouchesLabel(tl, label); !vouches {
+		if vouches, who := deskkit.RestampVouchesLabel(tl, label); !vouches {
 			if !seen[who] {
 				seen[who] = true
 				out = append(out, who)
@@ -367,25 +369,6 @@ func unvouchedRemovalLabels(tl deskkit.StampTimeline, remove []string) []string 
 	}
 	sort.Strings(out)
 	return out
-}
-
-// restampVouchesLabel is the per-label predicate unvouchedRemovalLabels runs: TWO
-// independent guards — the applier check and the cutoff check — so a mutant disarming
-// either one alone is still caught by the other (round-3 mutation entries pin both
-// separately).
-func restampVouchesLabel(tl deskkit.StampTimeline, label string) (vouches bool, who string) {
-	applier, createdAt, ok := deskkit.StandingStampApplierAt(tl, label)
-	if !ok || applier == "" {
-		return false, "(an actor the timeline does not name)"
-	}
-	if !deskkit.IsRestampDriverLogin(applier) {
-		return false, applier
-	}
-	at, perr := time.Parse(time.RFC3339, createdAt)
-	if perr != nil || !at.Before(deskkit.RestampDriverCutoff()) {
-		return false, applier
-	}
-	return true, applier
 }
 
 // joinOrNone renders a possibly-empty set for an operator message — an empty removal set

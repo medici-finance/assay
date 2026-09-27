@@ -20,9 +20,9 @@
 // --model/--tier). A re-stamp that could change what a stamp SAYS would let this verb
 // launder content, and it cannot.
 //
-// THE PROVENANCE GATE (#336; SEC-1b round 3 — kryton's ruling on PR #1727, comment
-// https://github.com/medici-finance/assay/pull/1727#issuecomment-5859647065,
-// 2026-09-27T20:41:27Z, quoted): "deskrestamp may vouch only for dispatched-* labels
+// THE PROVENANCE GATE (#336; SEC-1b round 3 — the driver's ruling on PR #1727, comment
+// https://github.com/medici-finance/assay/pull/1727#issuecomment-5860170351,
+// 2026-09-27T21:54:19Z, quoted): "deskrestamp may vouch only for dispatched-* labels
 // applied by the driver's own login (the roster bless login) before
 // 2026-09-27T00:00:00Z (the #336 legacy backlog); every other applier is refused."
 // Preserving a stamp's content is not the same as vouching for whoever applied it. This
