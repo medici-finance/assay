@@ -98,6 +98,8 @@ facts:
 ### Verification — 2026-09-25 (assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian))
 
 VERIFY: BLOCKED — 4/6 pass, 1 could-not-check (environment), 1 could-not-check (check-definition), 0 implementation fail.
+
+Correction 2026-09-27: row 4's pass is vacuous on merged main. `git diff --stat origin/main` compares main against itself, and the witness output hash `e3b0c44298fc` is the empty-output hash. Row 4 is therefore held as could-not-check (check-definition, #1657 class), and the witness-proven count is 3/6.
 Non-implementer run from a worktree cut detached at merged main 893cd6114b0382a1f71e6ef763c6601a5e19d270,
 darwin/arm64, offline (KUBECONFIG=/dev/null). Execution witness below is the verbatim output of
 `statusgen verifyrun --brief` (statusgen built from this tree); the hand-written table after it records the
