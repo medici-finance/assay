@@ -296,7 +296,6 @@ is the single source this table, the `[plan]` lines below, and the live launch a
 | CODEX_HOME | `<cell>/home/.codex` — codex arm only |
 | CLAUDE_CONFIG_DIR | `<cell>/home/.claude` — claude arm only |
 | CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION | `false` — claude arm only |
-| CLAUDE_CODE_AUTO_COMPACT_WINDOW | `200000` — claude arm only; bounds the prefix a long desk session re-reads every turn (cached-input spend against provider rate windows). Override per cell via `cell.env`. |
 | DESK_LOOP | the role (or `smoke`) |
 | DESK_SESSION | `<cell>-<role>-<UTC boot stamp>[-codex]` |
 | DESK_ROOTS | `CELL_ROOTS`, when `cell.env` carries one |
@@ -1369,3 +1368,14 @@ Claude `settings.json`; this covers cron without relying on interactive shell rc
 files. Claude settings can override inherited environment variables, so remove any
 contradictory `true` from higher-priority settings. Existing processes do not acquire
 new shell exports; use `/config` or restart the affected session after rollout.
+
+### Claude auto-compact window
+
+A host `cellctl desk` Claude launch (house and k8s kinds, including provider-backed
+GLM/Kimi sessions) exports `CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000`, so a long-running
+desk session compacts at 200K tokens instead of re-reading an ever-growing prefix on
+every turn — on a 1M-context model the window would otherwise never trip. It is neutral
+for 200K-context models, which compact there anyway. A value set in the cell's
+`cell.env` (or in the launching environment) wins over the default. Scrubbed cells do
+not compose this variable: their launch environment is exactly the allowlist in the
+table above.

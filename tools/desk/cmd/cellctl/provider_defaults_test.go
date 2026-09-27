@@ -194,6 +194,7 @@ printf 'SONNET=%s\n' "${ANTHROPIC_DEFAULT_SONNET_MODEL-}"
 printf 'HAIKU=%s\n' "${ANTHROPIC_DEFAULT_HAIKU_MODEL-}"
 printf 'EFFORT=%s\n' "${CLAUDE_CODE_EFFORT_LEVEL-}"
 printf 'PROMPT_SUGGESTION=%s\n' "${CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION-}"
+printf 'AUTO_COMPACT=%s\n' "${CLAUDE_CODE_AUTO_COMPACT_WINDOW-}"
 printf 'CHILD=%s\n' "${CLAUDE_CODE_SUBAGENT_MODEL-}"
 printf 'BASE_URL=%s\n' "${ANTHROPIC_BASE_URL-}"
 `
@@ -215,7 +216,7 @@ func TestProviderDefaultsBuiltBinaryLaunch(t *testing.T) {
 			if r.code != 0 {
 				t.Fatalf("launch: %+v", r)
 			}
-			for key, value := range map[string]string{"ANTHROPIC_MODEL": tc.model, "FABLE": tc.fable, "OPUS": tc.opus, "SONNET": tc.sonnet, "HAIKU": tc.haiku, "EFFORT": tc.effort, "CHILD": tc.model, "BASE_URL": tc.base, "PROMPT_SUGGESTION": "false"} {
+			for key, value := range map[string]string{"ANTHROPIC_MODEL": tc.model, "FABLE": tc.fable, "OPUS": tc.opus, "SONNET": tc.sonnet, "HAIKU": tc.haiku, "EFFORT": tc.effort, "CHILD": tc.model, "BASE_URL": tc.base, "PROMPT_SUGGESTION": "false", "AUTO_COMPACT": "200000"} {
 				if !strings.Contains(r.stdout, key+"="+value+"\n") {
 					t.Errorf("missing %s=%s in %s", key, value, r.stdout)
 				}
