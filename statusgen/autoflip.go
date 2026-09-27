@@ -79,6 +79,18 @@ package main
 //     COULD-NOT-CHECK.
 //   - approvals whose `commit_id` does not match the merged head — REFUSED,
 //     with the caveat about that signal's strength recorded above.
+//   - candidate PRs that are not THIS brief's delivering PR — a bulk
+//     brief-migration/reformat shape (bulkMigrationReason), a `Brief:` trailer
+//     naming a DIFFERENT brief, or an `Authors:`-only authoring PR — are not
+//     credited; the resolver walks past them to older commits
+//     (attributeCandidate). Walking past NEVER removes the approval
+//     requirement: every candidate the walk reaches must itself carry the App
+//     APPROVED at its own merged head, or the brief is refused exactly as it
+//     would have been had that candidate been credited.
+//   - a candidate PR with no `Brief:` trailer, or several — COULD-NOT-CHECK
+//     (which brief it delivered is not a readable fact).
+//   - a candidate PR whose changed-file list cannot be read in full —
+//     COULD-NOT-CHECK, never a guess from a truncated list.
 
 import (
 	"encoding/json"
@@ -88,6 +100,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -131,6 +144,12 @@ type modelFlipSource interface {
 	// INTRODUCED sha as one of its own branch commits (the merge-committed
 	// intermediate-commit case; see mergedPRForCommit). ok is false when none is.
 	MergedPRForCommit(repo, sha string) (int, bool, error)
+	// PRShape returns the diff/body shape of a candidate PR — its COMPLETE
+	// changed-file list, its Brief:/Authors: trailer count and its Brief:
+	// trailer values — the facts attributeCandidate judges to tell this brief's
+	// delivering PR from any other PR that touched the brief file. It errors
+	// rather than return a truncated file list.
+	PRShape(repo string, pr int) (prShape, error)
 	// ReviewState returns the PR's merge state, merged head and reviews.
 	ReviewState(repo string, pr int) (prReviewState, error)
 }
@@ -276,6 +295,177 @@ func noteBodyPinsSHA(body, headSHA string) bool {
 // this walks past them to the merge that landed the work.
 const commitScanDepth = 25
 
+// ---- bulk-migration PR refusal ----------------------------------------------------
+//
+// A brief file's own commit history can resolve a merged PR that never delivered
+// the brief's CONTENT at all — a fleet-wide reformat/migration PR that touched
+// the file only because it rewrote every brief file's frontmatter shape. The
+// motivating case: a downstream product repo's brief-v2 migration PR
+// bulk-reformatted ten `security-hardening` briefs' files in one PR, and
+// --auto-flip-model resolved THAT PR as each of the ten briefs' "delivering
+// PR", crediting the migration's reviewer approval as if it had reviewed each
+// brief's actual implementation.
+//
+// bulkMigrationReason names the PR's diff/body SHAPE — never its title, author
+// or any other freeform text a migration could plausibly omit — that marks it as
+// a bulk migration rather than a single brief's delivery:
+//
+//   - its diff touches ONLY docs/streams/** paths (a migration rewrites brief
+//     FILES; it does not also touch the code/config/tests a real delivery
+//     brief's Verify table exercises), or
+//   - its body carries an unusually large number of `Brief:`/`Authors:`
+//     trailer lines — the derived-board discipline's own signal that a PR is
+//     about MANY briefs, not implementing one.
+//
+// The shape rule alone is not enough: this repo's own brief-v2 flag-day
+// migration touched a changelog fragment, an upgrade note and a CI patch
+// alongside its 165 brief files, and carried ONE `Brief:` trailer (the brief
+// the migration itself was filed under) — so neither shape signal fires on it. The primary
+// attribution signal is therefore the `Brief:` trailer itself
+// (attributeCandidate): a PR is credited only when its single `Brief:` trailer
+// names THIS brief; the shape rule stays as a secondary guard.
+//
+// A walked-past candidate is not a dead end: decideModelFlip keeps walking OLDER
+// commits past it, so a brief whose real delivering PR sits further back in the
+// same commitScanDepth window still resolves correctly. But walking past is
+// never a way AROUND the approval rule — decideModelFlip checks every candidate
+// it reaches for the App approval at its own merged head BEFORE judging its
+// attribution, so an unapproved later change to the brief blocks the flip
+// exactly as it did when the newest candidate was always the credited one. That
+// is also why the body being editable after merge cannot loosen anything: the
+// body only decides WHICH approved PR is credited, never whether an approval is
+// required.
+type prShape struct {
+	// Files is the PR's changed file paths, repo-relative, forward-slashed —
+	// the COMPLETE list (PRShape errors rather than return a truncated one).
+	Files []string
+	// BriefTrailers is the count of `Brief:`/`Authors:` trailer lines in the PR
+	// body, outside fenced code blocks (the same fence-aware grammar prlink.go's
+	// ClassifyPRLink uses for the `Brief:` trailer alone).
+	BriefTrailers int
+	// Briefs is the canonical "<stream>/<NN>" key (canonicalBriefKey) of each
+	// `Brief:` trailer VALUE in the body, outside fenced code blocks, in order.
+	// `Authors:` trailers are counted in BriefTrailers but never appear here:
+	// they name briefs a PR AUTHORED, not delivered.
+	Briefs []string
+}
+
+// bulkMigrationDocsPrefix is the path prefix a brief-migration/reformat PR's
+// entire diff stays inside. A PR with at least one file OUTSIDE this prefix
+// touched something a pure brief-file rewrite would not.
+const bulkMigrationDocsPrefix = "docs/streams/"
+
+// bulkMigrationTrailerThreshold is the fewest Brief:/Authors: trailers that
+// marks a PR as being about many briefs at once rather than one (or a small
+// stack of closely related ones). The motivating migration carried ten. Three
+// is chosen so an ordinary PR that legitimately names itself plus one or two
+// closely related briefs is never caught, while anything migration-shaped is.
+const bulkMigrationTrailerThreshold = 3
+
+// bulkMigrationReason reports why shape looks like a bulk brief-migration/
+// reformat PR rather than a single brief's delivering PR, or "" when it does
+// not. Either signal alone is sufficient; a migration PR need not trip both.
+func bulkMigrationReason(shape prShape) string {
+	if len(shape.Files) > 0 {
+		onlyDocsStreams := true
+		for _, f := range shape.Files {
+			if !strings.HasPrefix(filepath.ToSlash(f), bulkMigrationDocsPrefix) {
+				onlyDocsStreams = false
+				break
+			}
+		}
+		if onlyDocsStreams {
+			return fmt.Sprintf("its diff touches only %s paths (%d file(s)) — a brief-migration/reformat shape, not a delivering PR",
+				bulkMigrationDocsPrefix, len(shape.Files))
+		}
+	}
+	if shape.BriefTrailers >= bulkMigrationTrailerThreshold {
+		return fmt.Sprintf("its body carries %d Brief:/Authors: trailers — a bulk multi-brief shape, not a single delivering PR",
+			shape.BriefTrailers)
+	}
+	return ""
+}
+
+// briefLikeTrailerRe matches a `Brief:` or `Authors:` trailer line (deskkit's
+// trailer grammar: the key, a colon, then non-empty content on the same line).
+// The first group is the key, the second the trimmed value.
+var briefLikeTrailerRe = regexp.MustCompile(`^[ \t]*(Brief|Authors):[ \t]*(\S.*?)[ \t]*$`)
+
+// parseBriefLikeTrailers reads the Brief:/Authors: trailer lines in a PR body,
+// skipping fenced code blocks — the same fence-aware grammar as prlink.go's
+// ClassifyPRLink, so a trailer shown as a documentation example inside a code
+// sample is never counted as a real one. It returns the count of both kinds
+// (the bulk-shape signal) and the canonical key of each `Brief:` value (the
+// attribution signal).
+func parseBriefLikeTrailers(body string) (count int, briefs []string) {
+	inFence := false
+	for _, raw := range strings.Split(body, "\n") {
+		if rePRLinkFence.MatchString(raw) {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
+		m := briefLikeTrailerRe.FindStringSubmatch(strings.TrimRight(raw, "\r"))
+		if m == nil {
+			continue
+		}
+		count++
+		if m[1] == "Brief" {
+			briefs = append(briefs, canonicalBriefKey(strings.TrimRight(m[2], ".,;:")))
+		}
+	}
+	return count, briefs
+}
+
+// candidateVerdict is attributeCandidate's judgement of one merged, approved
+// candidate PR against the brief being flipped.
+type candidateVerdict int
+
+const (
+	// candidateCredit — the PR is this brief's delivering PR.
+	candidateCredit candidateVerdict = iota
+	// candidateWalkPast — the PR is demonstrably NOT this brief's delivering PR
+	// (bulk-migration shape, a Brief: trailer naming another brief, or an
+	// Authors:-only authoring PR); keep walking older commits.
+	candidateWalkPast
+	// candidateUnattributable — which brief the PR delivered is not a readable
+	// fact (no Brief: trailer, or several); stop at could-not-check.
+	candidateUnattributable
+)
+
+// attributeCandidate decides whether shape is briefID's delivering PR. It is
+// only ever asked about a candidate that is merged AND App-approved at its own
+// merged head (decideModelFlip checks that first), so a walk-past can change
+// which approved PR is credited but never whether an approval was required.
+func attributeCandidate(shape prShape, briefID string) (candidateVerdict, string) {
+	if why := bulkMigrationReason(shape); why != "" {
+		return candidateWalkPast, why
+	}
+	want := canonicalBriefKey(briefID)
+	switch {
+	case len(shape.Briefs) == 0 && shape.BriefTrailers > 0:
+		return candidateWalkPast, "it carries only `Authors:` trailers — a brief-AUTHORING PR, not a delivery"
+	case len(shape.Briefs) == 0:
+		return candidateUnattributable, fmt.Sprintf("it carries no `Brief:` trailer, so whether it delivered %s is not a readable fact", want)
+	}
+	names := false
+	for _, b := range shape.Briefs {
+		if b == want {
+			names = true
+		}
+	}
+	switch {
+	case !names:
+		return candidateWalkPast, fmt.Sprintf("its `Brief:` trailer names %s, not %s", strings.Join(shape.Briefs, ", "), want)
+	case len(shape.Briefs) > 1:
+		return candidateUnattributable, fmt.Sprintf("it carries %d `Brief:` trailers (%s) — a PR body links exactly one brief",
+			len(shape.Briefs), strings.Join(shape.Briefs, ", "))
+	}
+	return candidateCredit, ""
+}
+
 // ---- the decision ------------------------------------------------------------------
 
 // decideModelFlip judges ONE candidate brief. It never writes.
@@ -329,24 +519,79 @@ func decideModelFlip(root string, s *Stream, path string, briefID string, eviden
 		return res
 	}
 
-	pr := 0
+	// Walk the brief file's history newest-first. Every distinct merged PR the
+	// walk reaches is a CANDIDATE, and each one is judged in this order:
+	//
+	//  1. its App approval at its own merged head (approvalAtHead) — a candidate
+	//     that fails this ends the walk with that candidate's refusal or
+	//     could-not-check, exactly as it would have when the newest candidate was
+	//     always the credited one. Walking past a candidate therefore never
+	//     removes an approval requirement; it only changes which APPROVED PR is
+	//     credited.
+	//  2. its attribution (attributeCandidate) — credited, walked past (not this
+	//     brief's delivering PR), or unattributable (could-not-check).
+	var walked []string
+	checked := map[int]bool{} // a commit's PR may repeat across commits; judge each candidate once
 	for _, sha := range commits {
 		n, ok, err := src.MergedPRForCommit(repo, sha)
 		if err != nil {
 			res.Reason = fmt.Sprintf("could not resolve commit %s to a pull request: %v", sha, err)
-			return res
+			return withWalked(res, walked)
 		}
-		if ok {
-			pr = n
-			break
+		if !ok {
+			continue
 		}
-	}
-	if pr == 0 {
-		res.Reason = fmt.Sprintf("no merged pull request resolves from the last %d commits touching %s", commitScanDepth, filepath.ToSlash(rel))
-		return res
-	}
-	res.PR = pr
+		if checked[n] {
+			continue
+		}
+		checked[n] = true
 
+		cand := approvalAtHead(res, n, repo, src, rev)
+		if cand.Outcome != flipDone {
+			return withWalked(cand, walked)
+		}
+		shape, err := src.PRShape(repo, n)
+		if err != nil {
+			cand.Outcome = flipUnchecked
+			cand.Reason = fmt.Sprintf("could not read the diff shape of PR #%d: %v", n, err)
+			return withWalked(cand, walked)
+		}
+		switch verdict, why := attributeCandidate(shape, res.Brief); verdict {
+		case candidateCredit:
+			return cand
+		case candidateWalkPast:
+			walked = append(walked, fmt.Sprintf("#%d (%s)", n, why))
+			continue
+		default: // candidateUnattributable
+			cand.Outcome = flipUnchecked
+			cand.Reason = fmt.Sprintf("PR #%d is App-approved at its merged head but cannot be attributed to %s: %s",
+				n, res.Brief, why)
+			return withWalked(cand, walked)
+		}
+	}
+	res.Reason = fmt.Sprintf("no merged pull request resolves from the last %d commits touching %s", commitScanDepth, filepath.ToSlash(rel))
+	if len(walked) > 0 {
+		res.Reason = fmt.Sprintf("no merged pull request from the last %d commits touching %s is this brief's delivering PR", commitScanDepth, filepath.ToSlash(rel))
+	}
+	return withWalked(res, walked)
+}
+
+// withWalked appends the candidates a walk passed over to a non-flip result's
+// reason, so an operator sees every PR that was considered and why it was not
+// credited.
+func withWalked(res modelFlipResult, walked []string) modelFlipResult {
+	if len(walked) > 0 && res.Outcome != flipDone {
+		res.Reason += " — walked past (approved, but not this brief's delivering PR): " + strings.Join(walked, ", ")
+	}
+	return res
+}
+
+// approvalAtHead reads candidate PR n's review state and applies the forge's
+// corroboration rule. It returns res with PR/SHA filled and Outcome flipDone
+// when the reviewer App approved n at its merged head; otherwise the
+// could-not-check or refusal that candidate earns.
+func approvalAtHead(res modelFlipResult, pr int, repo string, src modelFlipSource, rev reviewerIdentity) modelFlipResult {
+	res.PR = pr
 	st, err := src.ReviewState(repo, pr)
 	if err != nil {
 		res.Reason = fmt.Sprintf("could not read the reviews of PR #%d: %v", pr, err)
@@ -643,6 +888,61 @@ func (ghModelFlipSource) prBranchCommits(repo string, n int) ([]string, error) {
 	return shas, nil
 }
 
+// ghPRSummaryJSON is the slice of the REST `pulls/{n}` object PRShape reads:
+// the body (for trailers) and GitHub's own count of changed files, the
+// completeness check for the paginated file list.
+type ghPRSummaryJSON struct {
+	Body         string `json:"body"`
+	ChangedFiles int    `json:"changed_files"`
+}
+
+// PRShape reads a candidate PR's changed files and body — the facts
+// attributeCandidate judges. The file list comes from the PAGINATED REST
+// `pulls/{n}/files` endpoint, not `gh pr view --json files`: the latter stops
+// at 100 entries (a 168-file PR reads as 100 files) with no truncation signal,
+// and GitHub orders files by path, so a truncated list of a large PR can read
+// as docs/streams-only when later paths are code. Even the REST endpoint caps
+// (at 3000 files), so shapeFromListing refuses any list whose length disagrees
+// with the PR's own changed_files count.
+func (ghModelFlipSource) PRShape(repo string, pr int) (prShape, error) {
+	sum, err := exec.Command("gh", "api", fmt.Sprintf("repos/%s/pulls/%d", repo, pr)).Output()
+	if err != nil {
+		return prShape{}, fmt.Errorf("gh api pulls/%d: %w", pr, err)
+	}
+	var v ghPRSummaryJSON
+	if err := json.Unmarshal(sum, &v); err != nil {
+		return prShape{}, fmt.Errorf("unmarshal PR %d: %w", pr, err)
+	}
+	// --jq emits one filename per line across every page, so the concatenated
+	// per-page arrays --paginate produces never need re-joining.
+	out, err := exec.Command("gh", "api", "--paginate",
+		fmt.Sprintf("repos/%s/pulls/%d/files?per_page=100", repo, pr),
+		"--jq", ".[].filename").Output()
+	if err != nil {
+		return prShape{}, fmt.Errorf("gh api pulls/%d/files: %w", pr, err)
+	}
+	var files []string
+	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+		if line != "" {
+			files = append(files, line)
+		}
+	}
+	return shapeFromListing(pr, v.Body, v.ChangedFiles, files)
+}
+
+// shapeFromListing builds a prShape from a PR's body, GitHub's changed_files
+// count and the file list actually read, refusing (error → could-not-check) a
+// list whose length disagrees with the count: a truncated list must never be
+// judged as if it were the whole diff.
+func shapeFromListing(pr int, body string, changedFiles int, files []string) (prShape, error) {
+	if len(files) != changedFiles {
+		return prShape{}, fmt.Errorf("PR #%d reports %d changed files but %d were listed — refusing to judge a truncated file list",
+			pr, changedFiles, len(files))
+	}
+	n, briefs := parseBriefLikeTrailers(body)
+	return prShape{Files: files, BriefTrailers: n, Briefs: briefs}, nil
+}
+
 // ghRESTReview is the REST reviews-endpoint shape. It is used instead of
 // `gh pr view --json reviews` for one reason: only this endpoint returns
 // `commit_id`, the sole per-review commit reference either transport offers.
@@ -758,6 +1058,10 @@ func (gitlabModelFlipUnavailable) CommitsTouching(root, relPath string, limit in
 
 func (gitlabModelFlipUnavailable) MergedPRForCommit(repo, sha string) (int, bool, error) {
 	return 0, false, errGitLabFlipReadUnavailable
+}
+
+func (gitlabModelFlipUnavailable) PRShape(repo string, pr int) (prShape, error) {
+	return prShape{}, errGitLabFlipReadUnavailable
 }
 
 func (gitlabModelFlipUnavailable) ReviewState(repo string, pr int) (prReviewState, error) {

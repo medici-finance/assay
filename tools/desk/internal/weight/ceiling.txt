@@ -1,0 +1,13 @@
+# mode: advisory
+# Ratchet for tools/desk's weight (spec.md §3 row 5, §4.5, §5.2).
+# Growing a line requires a "# grow <dimension> +<n> <url>" line directly above it, citing
+# the driver's `grow <PR#>` reply on the project's standing weight-growth decision issue.
+# golines is reported by `weight: ...` but never ratcheted — no line for it here.
+#
+# Landing values: the counter's own output over this branch's tree after merging main at
+# 8ad26beab (merge commit 659681c42, 2026-09-25). This file is not itself counted, so the
+# values hold for the commit that carries them.
+verbs 66
+flags 370
+refusals 848
+ruletext 6295

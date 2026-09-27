@@ -189,7 +189,7 @@ Pick one:
 Recommendation: **Option 1.** Naming is where installations legitimately differ. Permissions are
 what a single reviewed list exists to hold still.
 
-Default if no answer: none. This blocks until answered, because it fixes which token permissions
+Default if no answer: none — blocks until answered, because it fixes which token permissions
 the tool is allowed to grant.
 
 ## Ground rules

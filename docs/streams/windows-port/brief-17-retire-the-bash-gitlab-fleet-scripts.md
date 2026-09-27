@@ -151,7 +151,7 @@ Pick one:
 Recommendation: **Option 1.** It is the only option that removes the bash dependency without
 removing a verified security control.
 
-Default if no answer: none. This blocks until answered, because deleting an adopter-facing tool
+Default if no answer: none — blocks until answered, because deleting an adopter-facing tool
 needs a human's decision.
 
 ## Ground rules

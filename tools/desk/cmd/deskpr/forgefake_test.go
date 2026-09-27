@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -52,6 +53,14 @@ type envForge struct {
 	openMergeHoldCalls int
 	openMergeHoldNum   int
 	openMergeHoldErr   error
+
+	// labelChanges / labelNums record every ApplyLabels call this fake sees — the
+	// attention-budget/19 --decided path's label write. applyLabelsErr, when set, is returned
+	// instead of a success, modelling a forge-side label-write failure that follows an
+	// already-landed create/edit.
+	labelChanges   []deskkit.LabelChange
+	labelNums      []int
+	applyLabelsErr error
 }
 
 // synthGH renders the forge ops this fake recorded as canonical gh-shaped pseudo-argvs, so the
@@ -141,6 +150,13 @@ func (f *envForge) GetPullRequest(repo deskkit.ForgeRepo, number int) (*deskkit.
 	if title == "" {
 		title = "fixture PR title"
 	}
+	// FAKEGH_PR_LABELS (comma-separated) is the label set the change currently carries — the
+	// attention-budget/19 `edit --decided` no-op path reconciles a missing desk-decided label
+	// against it. Unset serves no labels, byte-identical to this fake before the knob existed.
+	var labels []string
+	if l := os.Getenv("FAKEGH_PR_LABELS"); l != "" {
+		labels = strings.Split(l, ",")
+	}
 	return &deskkit.PullRequest{
 		Number:    number,
 		URL:       fmt.Sprintf("https://github.com/%s/pull/%d", repo.Slug(), number),
@@ -148,6 +164,7 @@ func (f *envForge) GetPullRequest(repo deskkit.ForgeRepo, number int) (*deskkit.
 		Body:      body,
 		Title:     title,
 		Mergeable: f.mergeable(),
+		Labels:    labels,
 	}, nil
 }
 
@@ -214,6 +231,21 @@ func (f *envForge) PostComment(repo deskkit.ForgeRepo, number int, body string) 
 		ID:  "c1",
 		URL: fmt.Sprintf("https://github.com/%s/pull/%d#issuecomment-1", repo.Slug(), number),
 	}, nil
+}
+
+// ApplyLabels records the attention-budget/19 --decided label write. Every existing test
+// that never sets --decided never calls this at all, so it changes nothing for them.
+func (f *envForge) ApplyLabels(repo deskkit.ForgeRepo, number int, change deskkit.LabelChange) (*deskkit.LabelOutcome, error) {
+	f.labelNums = append(f.labelNums, number)
+	f.labelChanges = append(f.labelChanges, change)
+	if f.applyLabelsErr != nil {
+		return nil, f.applyLabelsErr
+	}
+	var added []string
+	for _, l := range change.Add {
+		added = append(added, l.Name)
+	}
+	return &deskkit.LabelOutcome{Added: added, Removed: change.Remove}, nil
 }
 
 // curForge is the fake installed by the most recent withEnv, for assertions.

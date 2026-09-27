@@ -25,6 +25,7 @@ const (
 	condChecksGreen      = "checks-green"
 	condMergeable        = "mergeable"
 	condSecurityVerdict  = "security-verdict"
+	condDeskDecided      = deskkit.DeskDecidedCondition
 	condHeadStable       = "head-stable"
 )
 
@@ -74,6 +75,13 @@ const (
 // one dropped being the paginated timeline. No condition was added, removed, weakened, or
 // made conditional, and no refusal's condition NAME changed — callers key on those names, and
 // a name that drifts breaks every one of them.
+//
+// desk-decided (attention-budget/19) is ADDITIVE to this measured ordering, not a
+// re-derivation of it: it sits right after checks-green per the brief's own ground rules
+// ("the new condition is additive and evaluated after the checks-green read"), reads only the
+// PR's own labels/body (already in hand from pr-open-draft) and the reviews already read for
+// reviewer-approved — no new paginated read — so it costs nothing extra ahead of model-floor
+// and security-verdict, the two conditions the cost ordering above exists to protect.
 var flipConditions = []string{
 	condCallerRole,
 	condAppToken,
@@ -81,6 +89,7 @@ var flipConditions = []string{
 	condMergeable,
 	condReviewerApproved,
 	condChecksGreen,
+	condDeskDecided,
 	condModelFloor,
 	condSecurityVerdict,
 	condHeadStable,
@@ -380,6 +389,17 @@ func flip(o flipOpts) error {
 	}
 	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(checks), short(head))
 
+	// --- desk-decided --------------------------------------------------------------
+	// Attention-budget/19, option A (the driver's ruling on #1677): refuse the flip
+	// ONLY on a FINDING — the reviewer's `Undeclared-desk-decision:` line at the current
+	// head, or the label/block disagreeing with each other. Absence of a block, by itself,
+	// is NEVER a refusal (Verify row 6) — this condition only ADDS a refusal path over the
+	// pre-existing eight; it narrows nothing an existing PR could already do.
+	if err := checkDeskDecided(o, pr, reviews, reviewerLogin, head); err != nil {
+		return err
+	}
+	o.say("%s OK: label/block agree and no reviewer finding stands at %s", condDeskDecided, short(head))
+
 	// --- model-floor -------------------------------------------------------------
 	// The authority-bearing-write floor: a ready-flip requires a strong-tier dispatch. It
 	// is read from the target PR's dispatcher-attested tier stamp (the applier-aware reader,
@@ -409,7 +429,7 @@ func flip(o flipOpts) error {
 	// The ready mutation has no compare-and-swap, so the head is re-read HERE, after every
 	// condition above and immediately before the mutation. A head that moved means each
 	// verdict above was read against code that is no longer what would flip.
-	head2, body2, err := readHead(o, fg, fr)
+	head2, body2, labels2, err := readHead(o, fg, fr)
 	if err != nil {
 		return err
 	}
@@ -452,6 +472,15 @@ func flip(o flipOpts) error {
 		}
 	}
 	if err := checkSecurityVerdict(o, repo, pr, files, reviews2, reviewerLogin, head); err != nil {
+		return err
+	}
+	// desk-decided re-runs against the SAME re-read (review finding F2 on attention-budget/19's
+	// PR): an `Undeclared-desk-decision:` line posted at this head during the checks, or a body
+	// or label edited between the reads, is exactly the change this re-read exists to see.
+	pr2 := pr
+	pr2.Body = body2
+	pr2.Labels = labels2
+	if err := checkDeskDecided(o, pr2, reviews2, reviewerLogin, head); err != nil {
 		return err
 	}
 	o.say("%s OK: still %s, and the verdicts at that head are unchanged", condHeadStable, short(head))
@@ -1455,6 +1484,28 @@ func hasLabel(labels []labelInfo, want string) bool {
 	return false
 }
 
+// checkDeskDecided is the desk-decided condition (attention-budget/19, option A — the
+// driver's ruling on #1677: refuse the flip ONLY on a finding). The condition itself —
+// block parses, label and block agree, no reviewer `Undeclared-desk-decision:` finding
+// stands at head, per lane — is deskkit.DeskDecidedRefusal, the ONE implementation both
+// ready-flip verbs call (#1694: `deskpost ready` performs the identical mutation and must
+// clear the identical condition). This adapter only lifts deskflip's wire shapes into the
+// shared ones and wraps a refusal reason as ExitRefused.
+func checkDeskDecided(o flipOpts, pr prInfo, reviews []reviewInfo, reviewerLogin, head string) error {
+	labels := make([]string, 0, len(pr.Labels))
+	for _, l := range pr.Labels {
+		labels = append(labels, l.Name)
+	}
+	rs := make([]deskkit.DeskDecidedReview, 0, len(reviews))
+	for _, r := range reviews {
+		rs = append(rs, deskkit.DeskDecidedReview{Login: r.User.Login, State: r.State, CommitID: r.CommitID, Body: r.Body})
+	}
+	if reason := deskkit.DeskDecidedRefusal(o.pr, labels, pr.Body, rs, reviewerLogin, head); reason != "" {
+		return deskkit.Refused(reason)
+	}
+	return nil
+}
+
 func (o flipOpts) say(format string, args ...any) {
 	if o.quiet {
 		return
@@ -1873,15 +1924,19 @@ func readChangedFiles(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]fil
 	return out, nil
 }
 
-func readHead(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) (string, string, error) {
+func readHead(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) (string, string, []labelInfo, error) {
 	ch, err := fg.GetPullRequest(fr, o.pr)
 	if err != nil {
-		return "", "", deskkit.Unverifiable(fmt.Sprintf(
+		return "", "", nil, deskkit.Unverifiable(fmt.Sprintf(
 			"condition %s: cannot re-read PR #%d's head immediately before the flip (%s) — without the "+
 				"re-read there is no way to know the verified state is still current, so the flip does not "+
 				"happen.", condHeadStable, o.pr, firstLine(err.Error())), err)
 	}
-	return strings.TrimSpace(ch.HeadSHA), ch.Body, nil
+	labels := make([]labelInfo, 0, len(ch.Labels))
+	for _, l := range ch.Labels {
+		labels = append(labels, labelInfo{Name: l})
+	}
+	return strings.TrimSpace(ch.HeadSHA), ch.Body, labels, nil
 }
 
 // --- CI reduction ----------------------------------------------------------------
