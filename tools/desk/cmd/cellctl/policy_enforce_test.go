@@ -154,8 +154,11 @@ func TestBinaryLaunchInstallsAllowlistAndHooks(t *testing.T) {
 			t.Errorf("allowlist carries a denied model: %s", m)
 		}
 	}
-	if s.Env["ANTHROPIC_MODEL"] != "claude-opus-4-8[1m]" || s.Env["CLAUDE_CODE_EFFORT_LEVEL"] != "high" || s.Env["CLAUDE_CODE_SUBAGENT_MODEL"] != "claude-opus-4-8[1m]" {
-		t.Errorf("settings env does not carry the resolved model/effort: %v", s.Env)
+	if s.Env["ANTHROPIC_MODEL"] != "claude-opus-4-8[1m]" || s.Env["CLAUDE_CODE_SUBAGENT_MODEL"] != "claude-opus-4-8[1m]" {
+		t.Errorf("settings env does not carry the resolved model: %v", s.Env)
+	}
+	if _, ok := s.Env["CLAUDE_CODE_EFFORT_LEVEL"]; ok {
+		t.Errorf("settings env must not carry CLAUDE_CODE_EFFORT_LEVEL (it outranks agent frontmatter): %v", s.Env)
 	}
 	if !contains(argv, "--effort") || !contains(argv, "high") {
 		t.Errorf("--effort high missing from argv: %q", argv)
@@ -295,9 +298,9 @@ func TestBinaryHookUsesLaunchRequestedModel(t *testing.T) {
 	})
 	f.prepareLocalLaunch(t)
 	recordingClaude(t, f)
-	s, _ := launchPolicyDesk(t, f, "pr-review-desk", "--model", "haiku")
-	if s.Env["CLAUDE_CODE_EFFORT_LEVEL"] != "low" {
-		t.Fatalf("fixture: --model haiku should launch at the fast tier's low effort: %v", s.Env)
+	s, argv := launchPolicyDesk(t, f, "pr-review-desk", "--model", "haiku")
+	if !contains(argv, "--effort") || !contains(argv, "low") {
+		t.Fatalf("fixture: --model haiku should launch at the fast tier's low effort: %v", argv)
 	}
 	command := s.Hooks["PreToolUse"][0].Hooks[0].Command
 	if code, stderr := runHook(t, f, command, agentEvent("sonnet")); code != wantBlock || !strings.Contains(stderr, "inherited effort low") {
