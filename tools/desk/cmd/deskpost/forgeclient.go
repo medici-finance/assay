@@ -29,7 +29,6 @@ type postBackend interface {
 
 	slug() (owner, name string)
 	getPR(pr int) (*prInfo, error)
-	getPRHead(pr int) (string, error)
 	getIssue(n int) (*issueInfo, error)
 	// getIssueTyped is getIssue for a caller that has STATED which kind `n` names (#1091 /
 	// the sibling of assay#1087's deskfile attach --kind). It exists so `deskpost comment
@@ -134,15 +133,10 @@ func (b *forgeBackend) getPR(pr int) (*prInfo, error) {
 	out.User.Login = p.Author.Login
 	out.User.ID = p.Author.ID
 	out.Head.SHA = p.HeadSHA
-	return out, nil
-}
-
-func (b *forgeBackend) getPRHead(pr int) (string, error) {
-	p, err := b.fg.GetPullRequest(b.repo, pr)
-	if err != nil {
-		return "", err
+	for _, l := range p.Labels {
+		out.Labels = append(out.Labels, prLabel{Name: l})
 	}
-	return p.HeadSHA, nil
+	return out, nil
 }
 
 func (b *forgeBackend) listFiles(pr int) ([]prFile, error) {

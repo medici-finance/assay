@@ -54,9 +54,12 @@ it on each cell that needs the prohibition.
 
 ## Harness adapters and child agents
 
-Claude receives `--model`, `--effort`, `CLAUDE_CODE_EFFORT_LEVEL`, the four
-`ANTHROPIC_DEFAULT_*_MODEL` mappings and `CLAUDE_CODE_SUBAGENT_MODEL`. Child agents default
-to their desk's model and inherit its effort. Explicit child model aliases use the provider
+Claude receives `--model`, `--effort`, the four `ANTHROPIC_DEFAULT_*_MODEL` mappings and
+`CLAUDE_CODE_SUBAGENT_MODEL`. Effort deliberately travels only as `--effort`:
+`CLAUDE_CODE_EFFORT_LEVEL` is neither exported nor inherited (an ambient copy is removed),
+because the env var outranks agent frontmatter and would pin every child agent to the
+session level, defeating a per-agent `effort:` override. Child agents default to their
+desk's model and inherit its effort unless their frontmatter raises it. Explicit child model aliases use the provider
 map; a hook rejects unmapped/denied requests and incompatible inherited effort. A tier's
 effort selects the desk at boot; an explicit child model does not separately change effort.
 An inherited `MAX_THINKING_TOKENS` is removed for policy launches so it cannot cap the chosen
