@@ -124,8 +124,12 @@ regexes = [
 # Narrow on every axis, AND-ed:
 #   * targetRules — `generic-api-key` only; a dedicated high-signal rule (ghp_…,
 #     AKIA…, a PEM private key) still fires in this file regardless.
-#   * paths       — this ONE file, nowhere else. The same digest shape in any
-#     other file still fires.
+#   * paths       — this ONE file, nowhere else, anchored at BOTH ends so a
+#     same-named file under another directory (`x/docs/streams/...`) is not
+#     covered. CI runs `gitleaks dir .` from the checkout root, which reports
+#     repo-relative paths; any other path form stops the allowlist applying and
+#     the leg goes red (fail-closed). The same digest shape in any other file
+#     still fires.
 #   * regexes, against the rule's MATCH (regexTarget = "match") — the matched
 #     span must be exactly `<file path ending in .<ext>>":"<64 lowercase hex>`.
 #     An identifier-shaped key (`"api_key":"<64 hex>"`) has no `.<ext>` suffix
@@ -137,6 +141,6 @@ regexes = [
 description = "verify-wake-v1 receipt input digests (file path -> sha256) in verify-outcomes.jsonl only (#1793)"
 targetRules = ["generic-api-key"]
 condition = "AND"
-paths = ['''docs/streams/verify-outcomes\.jsonl$''']
+paths = ['''^docs/streams/verify-outcomes\.jsonl$''']
 regexTarget = "match"
 regexes = ['''^[A-Za-z0-9._/-]+\.[a-z]{1,5}":"[0-9a-f]{64}"?$''']
