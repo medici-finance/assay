@@ -203,9 +203,11 @@ func ModelFloorOverrideEngaged() bool {
 // the dispatch claim the stamp was applied under, and whether the override is engaged. It is
 // the ONE decision both verdict/flip verbs share.
 //
-// isDispatcher is the applier-aware predicate (inject IsDispatcherLogin against the live
-// roster, or a test stub). A nil predicate vouches for no one, so any dispatched-* label
-// then reads Indeterminate and the floor refuses — an unconfigured deployment fails closed.
+// isDispatcher is the applier-aware predicate (inject IsStampAuthorityLogin against the
+// live roster — the bound dispatcher slugs plus the roster-configured stamp-authority
+// allowance, #336 — or a test stub). A nil predicate vouches for no one, so any
+// dispatched-* label then reads Indeterminate and the floor refuses — an unconfigured
+// deployment fails closed.
 //
 // claim is the dispatch claim's liveness (stampage.go). ClaimLivenessUnknown — the zero value,
 // and what a verb with no presence read passes — changes nothing. Only ClaimReleased does: it
@@ -389,11 +391,11 @@ func unreadableStampMessage(tl StampTimeline, isDispatcher func(applier string) 
 	if untrusted := NonDispatcherStampAppliers(tl, isDispatcher); len(untrusted) > 0 {
 		cause = fmt.Sprintf(
 			"The dispatched-* labels this PR currently carries were applied by %s, and this floor accepts a "+
-				"stamp only from a bound dispatching identity: %s. Re-stamp the PR from the dispatcher of its "+
-				"own lane — the dispatch verb REMOVES a foreign stamp and re-applies it under that App, "+
-				"which is the only repair an append-only timeline allows — or escalate this write "+
-				"to a strong-tier session.",
-			StripControl(strings.Join(untrusted, ", ")), DispatcherLoginsForMessage())
+				"stamp only from %s. Re-stamp the PR under the dispatcher of its own lane — deskrestamp is "+
+				"the first-class verb: it REMOVES a foreign stamp and re-applies the same (model, tier) "+
+				"pair under that bound App, which is the only repair an append-only timeline allows — or "+
+				"escalate this write to a strong-tier session.",
+			StripControl(strings.Join(untrusted, ", ")), StampAuthorityLoginsForMessage())
 	} else if unattributed := UnattributedStampLabels(tl); len(unattributed) > 0 {
 		// A DIFFERENT remedy again: the stamp may be perfectly good and the timeline read
 		// short. Sending this operator to re-stamp a correct PR is the wrong next move, so

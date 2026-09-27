@@ -212,6 +212,18 @@ const (
 	// deskkit/rosterconfig.go's EnvSweepWithheldStreams (sweepconfig.go).
 	scanEnvSweepWithheldStreams = "ASSAY_SWEEP_WITHHELD_STREAMS"
 
+	// scanEnvStampTrustedLogins (ASSAY_STAMP_TRUSTED_LOGINS) is a DESK-only roster
+	// value: the stamp-authority ALLOWANCE the desk's model-floor actor check honours
+	// in addition to the bound dispatcher slugs (deskkit/rosterconfig.go's
+	// EnvStampTrustedLogins, #336 — trusted human logins whose standing application of
+	// a dispatched-* label counts as attestation). statusgen never consumes it — but
+	// the two readers share one roster.env, so it must be RECOGNISED here or a
+	// roster.env arming the desk allowance would collapse statusgen's whole trust
+	// configuration on the unknown-ASSAY_-key refusal (the ASSAY_REPO_FORGES outage
+	// class). Recognised, not applied. KEEP IN SYNC with deskkit/rosterconfig.go's
+	// EnvStampTrustedLogins and the coupling vector.
+	scanEnvStampTrustedLogins = "ASSAY_STAMP_TRUSTED_LOGINS"
+
 	// scanEnvDeterministicGatePatterns (ASSAY_DETERMINISTIC_GATE_PATTERNS) carries
 	// additional house-specific deterministic-gate name substrings that the
 	// autonomy report MERGES on top of its generic built-in set (autonomy.go's
@@ -458,6 +470,9 @@ func scanKnownRosterKeys() []string {
 		// desk tools' lane parser consumes — see their declarations above.
 		scanEnvAutoApproveAreas, scanEnvAutoApproveEjectLine,
 		scanEnvAutoApproveFPYFloor, scanEnvAutoApproveDailyCap, scanEnvAutoApproveSignOffThread,
+		// DESK-only, recognised-not-applied (#336): the model-floor's stamp-authority
+		// allowance — see its declaration above.
+		scanEnvStampTrustedLogins,
 	}
 }
 
