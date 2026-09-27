@@ -517,18 +517,44 @@ passing run — which is why they are lint rules and not review vigilance.
       reads identically in both.
     - For a genuinely literal pipe: `grep -F`, or a `[\|]` bracket class.
 
-27. **RE2 selectors get one token or a chain, never an alternation**
-    (`rE2-literal-pipe` / `shredded-cell`, #374). `go test -run` / `-bench`
-    compiles RE2, where `\|` is a literal pipe: `-run 'Forged\|Sub\|Onboard'`
-    matches zero tests, prints "no tests to run", and exits 0 — and the Evidence
-    row records the vacuous command as though the tests ran (two live briefs did
-    exactly this). Writing the pipe RAW does not fix it: a bare `|` is a
-    table-cell delimiter wherever it sits, so the command is cut at the pipe, the
-    Expect column becomes a fragment of the command, and every other row check
-    goes blind past the cut. There is no spelling of an RE2 alternation that
-    survives a table cell unambiguously.
+27. **RE2 selectors get one token or a chain, never an alternation — and every
+    `-run` needs its own `--- PASS` assertion**
+    (`rE2-literal-pipe` / `shredded-cell` / `gotest-run-vacuous`, #374,
+    statusgen/14). `go test -run` / `-bench` compiles RE2, where `\|` is a
+    literal pipe: `-run 'Forged\|Sub\|Onboard'` matches zero tests, prints "no
+    tests to run", and exits 0 — and the Evidence row records the vacuous
+    command as though the tests ran (two live briefs did exactly this). Writing
+    the pipe RAW does not fix it: a bare `|` is a table-cell delimiter wherever
+    it sits, so the command is cut at the pipe, the Expect column becomes a
+    fragment of the command, and every other row check goes blind past the cut.
+    There is no spelling of an RE2 alternation that survives a table cell
+    unambiguously.
     - Write: `-run Forged`, or `go test -run A ./... && go test -run B ./...`,
       or move the command to a fenced block outside the table.
+
+    A single unambiguous token is not enough on its own: `go test -run
+    'TestNoSuchName'` also prints "no tests to run" and exits 0 whether or not a
+    test by that name exists, so a row that never checks a `-run` selector
+    actually matched anything is silently green from the day it ships to the
+    day the named test is renamed out from under it (measured on this repo's
+    `qualgen` module, statusgen/14). `--lint` flags this as `gotest-run-vacuous`
+    (advisory, open briefs only — a closed brief's rows are summarised, not
+    individually flagged). Anchor a NAMED selector (`Test` + letters/digits/`_`,
+    after stripping one leading `^`/trailing `$`) and assert its OWN
+    `--- PASS: <name>` line; a GROUP token (`Cadence`, matching several tests)
+    needs only some `--- PASS` line. A negated grep (`! grep …`) or one
+    neutralised with `|| true` does not count as an assertion, and a mismatched
+    `--- PASS:` line (naming a different test than the selector) does not
+    satisfy a named selector.
+    - Write: `go test -run '^Name$' -v ./pkg/... > "${TMPDIR:-/tmp}/x.out" 2>&1
+      && grep -F -e '--- PASS: Name' "${TMPDIR:-/tmp}/x.out"`.
+
+    `-run '^$'` is exempt: it is the standard idiom for running NO tests
+    alongside `-bench`/`-fuzz`, deliberately matches no test name, and so has
+    no `--- PASS:` line it could ever assert — the same reason `-bench`/`-fuzz`
+    selectors themselves are out of scope. An unanchored empty pattern
+    (`-run ''`) is not the same thing and is not exempt: in Go, an empty regexp
+    matches every name, so that row runs everything.
 
 28. **A comparison base must be a pinned SHA or a computed merge-base, never a
     branch** (`moving-ref`, #639). A row based on `origin/main` is a function of

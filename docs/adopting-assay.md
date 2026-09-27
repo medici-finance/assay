@@ -817,15 +817,29 @@ a label write on a PR fails). So the labels are a **one-off per repo**, created 
 (this primitive is the single home for that list; the operating skills point here rather than
 re-listing it).
 
-**Who creates them, per forge.** This is a human/admin act on either forge — no desk verb
-provisions the whole set yet (#1559):
+**Who creates them, per forge.** `deskfleet labels` (`windows-port/08`) is the **forge-neutral**
+verb that creates the whole set natively on either forge — no `gh`/`glab`, no shell script, and no
+Git-Bash/WSL, so it is also the Windows path:
+
+```
+deskfleet labels --forge github --repo <owner/repo>       --token-file <path> [--dry-run]
+deskfleet labels --forge gitlab --project <path-or-id>    --token-file <path> [--dry-run]
+```
+
+An existing label is a no-op; `--dry-run` enumerates every action with zero network calls. It is
+still a **human-run** act, holding a token that can write the repo's labels: it creates label
+*definitions* from a fixed list and applies none. Whether a desk role should run it on its own is
+the open decision in #1559. The
+GitHub-native equivalent (for a human who prefers `gh` directly, or is not running the desk tools)
+and the GitLab shell script remain as fallbacks:
 
 - **GitHub** — create each label below at the repo's *Settings → Labels* page (or with the REST
   call `POST /repos/{owner}/{repo}/labels`, one per label). The `gh label create` lines below are
   an **optional convenience** for a human who has `gh`; no install step requires it. Creating an
   existing label is a harmless "already exists".
 - **GitLab** — `tools/create-fleet-gitlab.sh` creates the same set, with the same names, colours
-  and descriptions, under `--project` ([`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) §3).
+  and descriptions, under `--project` ([`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) §3) —
+  bash + curl + jq, kept as a labelled fallback (#1646), not a prerequisite.
 
 On either forge `deskflip` also creates the PR-state pair on first use (the forge seam's label
 write ensures a missing label exists before applying it); `deskfile` only *probes* for the
@@ -1068,6 +1082,99 @@ Two honesty caveats travel with it, spelled out below: the SessionStart hooks ne
 Windows runner. Do not read "runs on Windows" as "every surface is native and CI-green" — read the
 specifics.
 
+### The three-command install (Cursor + GitLab, channel E)
+
+This is the **recommended route** for an adopter on Cursor, on the published release channel. It
+has **one open gap**: on a clean host no command in it installs `deskinstall` itself (see
+**[The first `deskinstall` on a clean host](#the-first-deskinstall-on-a-clean-host--an-open-gap)**
+below). Until that closes, it is three commands plus one interim step, not three commands as
+written. The full manual route survives complete below as the
+**[Manual appendix](#manual-appendix--the-fifteen-step-windows-path)**. It covers every one of the
+fifteen steps this collapses, and it is both the fallback for an adopter who cannot use the three
+commands and the reference for what each command below actually does.
+
+**1. Acquire.** Bootstrap the first binary, then pull the rest. The sha256 values come from the
+committed manifest, so nobody transcribes one by hand (`windows-port/06`):
+
+```powershell
+git clone https://github.com/medici-finance/assay.git; cd assay
+powershell -ExecutionPolicy Bypass -File scripts/bootstrap-windows.ps1 -Tag vX.Y.Z
+```
+
+`-Tag` must be the tag `plugins/assay/paired-versions.yaml` pins for `statusgen` on your
+`windows-<arch>` line. The script refuses any other tag. It writes `%LOCALAPPDATA%\Assay\bin` to
+your **user** PATH, which already-open shells do not see. Open a new shell, `cd` back into the
+clone, get a first `deskinstall` (see the gap below), then:
+
+```powershell
+deskinstall --manifest plugins/assay/paired-versions.yaml --dest $env:LOCALAPPDATA\Assay\bin
+```
+
+*What it proves:* in a new shell, `statusgen --version` prints the pinned tag. Each line refuses
+rather than warning and continuing on a sha256 mismatch, but they signal it differently:
+- The **bootstrap** throws a `REFUSED: …` error. It does this on a digest mismatch
+  (`scripts/bootstrap-windows.ps1:108`) and on every manifest-resolve failure (`:52-96`). Under
+  `powershell -File` that is a non-zero exit (not `5`), and nothing is placed.
+  `scripts/windows-bootstrap-hashcheck-smoke.ps1` asserts on that refusal's message text (for
+  example `sha256 mismatch`), not on the `REFUSED:` prefix.
+- **`deskinstall`** exits `5` (refused, nothing placed).
+
+#### The first `deskinstall` on a clean host — an open gap
+
+The bootstrap places only `statusgen`: `statusgen-windows-<arch>.exe` plus a `statusgen.exe` copy.
+`deskinstall.exe` ships only inside `desk-tools-windows-<arch>.tar.gz`, which is the asset
+`deskinstall --manifest` itself downloads. The release publishes no standalone `deskinstall` asset,
+and `statusgen` has no install verb. So on a clean host, step 1's second command and step 2 both
+need a `deskinstall` that nothing above has placed. #1693 tracks closing this. Until it does, get a
+first `deskinstall` **outside** `--dest`. It must be outside because `deskinstall` rewrites every
+file it places in `--dest`, and Windows does not let a running `.exe` overwrite itself. Two ways:
+
+- **With a Go 1.25 toolchain.** From the clone root, run
+  `go build -C tools/desk -o $env:TEMP\deskinstall.exe ./cmd/deskinstall`, then run step 1's
+  second command as `& $env:TEMP\deskinstall.exe --manifest …`. That run places the pinned,
+  sha256-verified release build of the whole toolchain, `deskinstall.exe` included, into `--dest`,
+  and that copy serves step 2.
+- **Without Go.** Download the asset for the pinned tag from
+  `https://github.com/medici-finance/assay/releases/download/<tag>/desk-tools-windows-<arch>.tar.gz`,
+  where `<tag>` and the sha256 are the `desk-tools:` block's `windows-<arch>` line in
+  `plugins/assay/paired-versions.yaml`. Check the digest with a comparison that throws, rather
+  than by eye (`Get-FileHash` prints uppercase hex and the manifest pins lowercase; `-ne` ignores
+  case):
+  `if ((Get-FileHash -Algorithm SHA256 <file>).Hash -ne '<sha256 from the manifest>') { throw 'REFUSED: sha256 mismatch' }`.
+  Stop if it throws. Unpack it into a scratch directory with Windows' bundled
+  `tar -xzf <file> -C <scratch>`, then run step 1's second command as
+  `& <scratch>\deskinstall.exe --manifest …`. This route brings back the operator-copied digest
+  that step 1 otherwise removes. That is why it is an interim route, not the recommended one.
+
+Neither route runs in CI today. Both are read from the tree (the bootstrap script, the release
+workflow's asset list, and `deskinstall`'s own install code), not observed on a Windows host.
+
+**2. Place the Cursor harness.** No manual copy of the skills/references tree, no hand-written
+`AGENTS.md` block (`windows-port/07`). Run it **from the assay clone root**: `--bundle` defaults to
+`plugins/assay` relative to the current directory. From anywhere else, pass
+`--bundle <clone>\plugins\assay`.
+
+```powershell
+deskinstall --harness cursor --forge gitlab --repo C:\src\myrepo
+```
+
+*What it proves:* `deskinstall --harness cursor --forge gitlab --repo C:\src\myrepo --check` exits
+`0` (clean, nothing left to place). The adopter repo then has `.cursor/skills/`, a sibling
+`references/` tree, and the `AGENTS.md` `assay:bindings` block naming `glab`/`--forge gitlab`, not
+bare `gh`.
+
+**3. Run the turnkey install.** Invoke `assay:install` inside Cursor. It scaffolds
+(`statusgen init`), wires CI, and proves itself (`--lint == 0`, `--version` prints the pinned tag);
+every never-autonomous step (reviewer identity, permission grants, merge/push/tag, private-repo CI
+auth) still escalates to a human — see [`plugins/assay/skills/install/SKILL.md`](../plugins/assay/skills/install/SKILL.md).
+
+**No Git-Bash/WSL anywhere in this sequence.** GitLab **fleet provisioning** (the seven role
+service accounts and their tokens) is a separate, forge-scoped verb. It mints live credentials and
+is its own `gate: human` act; see **[GitLab fleet provisioning](#gitlab-fleet-provisioning-deskfleet)**
+below. It is not folded into the three commands above, because an adopter re-running the install
+against an already-provisioned fleet should not re-mint credentials by default. One GitLab
+operation still needs Git-Bash or WSL after install: **bulk PAT renewal**. See **Prerequisites**.
+
 ### Two install lanes — do not mix them
 
 | Lane | When | What you pin | Need Go? |
@@ -1089,12 +1196,23 @@ specifics.
   required. There is no checksummed Windows asset for an unpublished SHA.
 - **`git`** — needed to clone Assay (bootstrap script lives **in this repo**, not on a blank
   adopter machine) and to run desks. `gh` is GitHub-desk only.
-- **Git-Bash** (or WSL) — two different jobs, do not collapse them:
-  - Claude Code **SessionStart hooks** need `bash` + `jq` (see **Known gaps**). Cursor does **not**
-    use those hooks.
-  - GitLab **fleet provisioning** (`tools/create-fleet-gitlab.sh`) is bash + curl + jq. Native
-    PowerShell cannot run it. Token files on Windows are **copied**, not `ln -s` (see the GitLab
-    runbook).
+- **Git-Bash (or WSL, local dev only): not needed to install, but two jobs still need it.**
+  - Claude Code's **SessionStart hooks** need `bash` + `jq` (see **Known gaps**). **Cursor does not
+    use those hooks.**
+  - On GitLab, **bulk PAT renewal** needs it. Initial GitLab **fleet provisioning** is native Go
+    on every OS, Windows included: `deskfleet provision` / `deskfleet labels` (`windows-port/08`,
+    see **[GitLab fleet provisioning](#gitlab-fleet-provisioning-deskfleet)**). Routine per-role
+    rotation while the fleet runs is native too (`desktoken --forge gitlab <role>`). But
+    `deskfleet provision` mints a PAT only for an account it creates in that run, and the default
+    lifetime is 7 days (`--pat-expiry-days`). Re-minting PATs for accounts that already exist, for
+    example after an idle fleet's PATs expire, is
+    `tools/renew-fleet-gitlab-tokens.sh` (bash + `glab`, the GitLab runbook §2g). That script
+    has no native equivalent until `windows-port/16` ships `deskfleet renew`. A GitLab adopter on
+    Windows therefore still needs Git-Bash or WSL for renewal, **on either harness**.
+
+  The bash+curl+jq `tools/create-fleet-gitlab.sh` is different. It survives only as a **labelled
+  fallback** for initial provisioning (#1646), run from Git-Bash or WSL, never as a prerequisite.
+  On Windows, token files it mints are **copied**, not `ln -s`'d (see the GitLab runbook).
 
 ### Config home, PATH, and child processes (Windows-specific)
 
@@ -1156,6 +1274,10 @@ places nothing; it never warns-and-continues.
    ```
 
    Exit `0` = installed & verified; exit `5` = refused (hash mismatch, absent pin, or bad input).
+   On a clean host nothing above has placed `deskinstall` itself (step 2 fetches only
+   `statusgen`). See
+   **[The first `deskinstall` on a clean host](#the-first-deskinstall-on-a-clean-host--an-open-gap)**
+   for the interim routes.
 
 The install fork — a **Go-native installer with a thin PowerShell bootstrap**, chosen over a pure
 PowerShell script — was a maintainer decision: it keeps the security-critical hash-verify in one
@@ -1210,16 +1332,31 @@ statusgen-windows-arm64.exe  v0.26.0  9b01f839841742634377dd1b8c70e07503fe905ed3
 like any other platform — the BLOCKED item below is only its *native smoke*, never its release
 asset.
 
-### CI-proven status — staged, pending promotion (not yet a live check)
-A Windows CI leg — `statusgen --lint` plus an **offline** `--version` smoke on `windows-latest` —
-is authored and **staged**: it lives at `ci/staged-workflows/windows-ci-leg.yml`, *not yet* under
-`.github/workflows/`. Promoting it into the live workflow set requires a **maintainer's
-workflow-scoped credential** — an agent credential cannot push a workflow file at all — so today
-the Windows leg is **pending promotion, not a live green check**. Until it is promoted, the "runs
-on Windows" claim rests on the cross-compiled, checksummed release assets and the local install
-path above; the CI leg is the corroboration that goes live when a maintainer promotes it. The
-**native `windows/arm64` smoke stays BLOCKED** pending an arm64 Windows runner, and is never
-greened from the amd64 result.
+### CI-proven status — the Windows leg is live
+
+A Windows CI leg is **live**, under `.github/workflows/windows-ci-leg.yml` (promoted by a
+maintainer's workflow-scoped credential; `windows-port/04` is `done` on this stream's board). It
+carries two running jobs — `windows-smoke` (`statusgen --lint` plus an **offline** `--version`
+smoke on `windows-latest`, and a fail-first demonstration that the leg genuinely reddens on a
+broken input) and `windows-bootstrap-smoke` (exercises `bootstrap-windows.ps1`'s sha256
+hash-verify at Windows runtime — a tampered checksum refuses, the pinned one installs) — plus one
+**held** job, `arm64-native-smoke` (`if: false`, by design, so it can never read as a passing
+arm64 result): the **native `windows/arm64` smoke stays BLOCKED** pending a `windows-11-arm`
+runner, and is never greened from the `windows-smoke` amd64 result. The `windows/arm64` release
+assets themselves still ship cross-compiled and checksummed regardless of that block.
+
+**When it runs.** "Live" means the workflow is installed, not that it gates every change. It
+triggers only on a `v*` **tag push** and on a manual **`workflow_dispatch`**
+(`.github/workflows/windows-ci-leg.yml`, `on:`). It is not a per-PR or per-push check. The
+fail-first step runs only on a dispatch with `failfirst: true` (`if: ${{ inputs.failfirst }}`).
+So the Windows claim is re-proven at each release tag, not on each PR.
+
+The earlier staged copy under `ci/staged-workflows/windows-ci-leg.yml` was not removed at
+promotion and still exists — but it is **not** a stale duplicate to clean up here: diffed against
+the live file, it carries additional not-yet-promoted jobs (a Windows PowerShell 5.1 parse check
+and the `verify-in-container` / `windows-verify-in-container` legs staged for `windows-port/10`).
+Retiring or promoting the rest of that staged content is a separate decision for whichever brief
+owns those jobs, not a side effect of this docs correction.
 
 ### Known gaps — documented workarounds
 The portability audit (`docs/streams/windows-port/portability-audit.md`) triaged every
@@ -1245,6 +1382,43 @@ real filesystem paths go through `filepath.Join`. The one adopter-facing surface
 The rest of the audit's `needs-port` rows were closed by the install path above (the
 `sudo make desk-install` POSIX install and the push-guard shim / `/opt` assumptions) or are
 internal to the desk pipeline, not surfaces an adopter touches directly.
+
+### GitLab fleet provisioning (deskfleet)
+
+`windows-port/08` replaced the bash+curl+jq `tools/create-fleet-gitlab.sh` dependency with a
+native Go verb for a Windows (or any-OS) adopter on GitLab — **`gate: human`**, because it mints
+and persists live credentials:
+
+```powershell
+deskfleet provision --group mygroup --prefix myorg --project mygroup/myproject `
+  --owner-token-file $env:USERPROFILE\.config\assay\gitlab-owner.token
+```
+
+Keep the group-owner PAT file in the **config home** (`%USERPROFILE%\.config\assay`, or your
+`ASSAY_CONFIG_HOME`), under the owner-only ACL described in **Config home, PATH, and child
+processes**. Never keep it in a repo checkout, where a stray `git add` can commit it. A bare
+relative `--owner-token-file gitlab-owner.token` resolves against the current directory.
+
+It creates the seven role service accounts, their group memberships, and — for each account this
+run created — one PAT, written **owner-only** to `gitlab-<role>.token` under `--out-dir` (default:
+the config home, exactly where `desktoken --forge gitlab <role>` reads it) — no `ln -s`/copy step,
+because the file already has the name the toolchain reads. With `--project` it also protects
+`main`, sets MR approvals, protects release tags, and sets the pipeline/discussion merge checks.
+`--dry-run` enumerates every action with zero network calls; always run it first. The label set is
+`deskfleet labels --forge gitlab …` (see **create-labels**, above) — the same verb also creates the
+GitHub set, forge-neutral. Requires `GITLAB_API_BASE` (the REST v4 base; no default host — see the
+GitLab runbook). Full reference, custody rules, and the tier ladder:
+[`adopting-assay-gitlab.md`](adopting-assay-gitlab.md).
+
+The two bash scripts do not have the same standing:
+- **`tools/create-fleet-gitlab.sh`** is a **labelled fallback** for initial provisioning, run from
+  Git-Bash or WSL (#1646). It is not a prerequisite for a Windows adopter, and not the path this doc
+  points a new adopter at.
+- **`tools/renew-fleet-gitlab-tokens.sh`** is **not** a fallback. It is the **only** bulk renewal
+  path today (bash + `glab`, the GitLab runbook §2g). `deskfleet` has no renew verb: a re-run of
+  `deskfleet provision` against accounts that already exist mints nothing new for them. So once the
+  fleet's PATs lapse (7 days by default), a Windows GitLab adopter re-mints them from Git-Bash or
+  WSL. That stays true until `windows-port/16` (`deskfleet renew`) lands.
 
 ### Channel D — from-source Windows (when there is no release asset)
 
@@ -1380,6 +1554,60 @@ code-signing certificate** held as a release secret and a change to `.github/wor
 — both human acts. Until such a certificate exists the release assets stay **unsigned**; this
 section does not pretend otherwise, and no pin claims a signature that is not there.
 
+### Manual appendix — the fifteen-step Windows path
+
+The **[three-command install](#the-three-command-install-cursor--gitlab-channel-e)** above is the
+recommended route. Every step below still works standalone — this is both the fallback for an
+adopter who cannot or does not want to run the three commands, and the reference for what each of
+those commands actually does underneath. Nothing here is retired by the collapse above.
+
+1. **Clone the repo.** `git clone https://github.com/medici-finance/assay.git; cd assay` —
+   `scripts/bootstrap-windows.ps1` is not a standalone gist; it lives in this checkout.
+2. **Bootstrap the first binary with a hand-copied sha256.** Copy the tag + sha256 for
+   `windows-amd64` out of `plugins/assay/paired-versions.yaml` yourself and pass them explicitly:
+   `powershell -ExecutionPolicy Bypass -File scripts/bootstrap-windows.ps1 -Tag v0.26.0 -Sha256
+   <copied hash>` (the three-command route lets the script resolve both from the manifest
+   instead). The sha256-verify-or-refuse control is unchanged either way.
+3. **Put `%LOCALAPPDATA%\Assay\bin` on PATH by hand** (open a new shell after) — see **Config
+   home, PATH, and child processes** above.
+4. **Run `deskinstall` for the rest of the toolchain.** `deskinstall --manifest
+   plugins/assay/paired-versions.yaml --dest $env:LOCALAPPDATA\Assay\bin` — downloads and
+   sha256-verifies `desk-tools-windows-<arch>.tar.gz`, refusing on any mismatch. Step 2 does not
+   place `deskinstall` itself. For how to get the first one, see
+   **[The first `deskinstall` on a clean host](#the-first-deskinstall-on-a-clean-host--an-open-gap)**.
+5. **Pin the Windows assets in `.assay-versions`** — see **Pin the Windows assets** above; one
+   line per platform, `<artifact> <tag> <sha256>`.
+6. **Install Git-Bash** for three things: the SessionStart hooks (Claude Code only), the GitLab
+   fleet script on this manual route (step 12), and GitLab bulk PAT renewal on either route
+   (`tools/renew-fleet-gitlab-tokens.sh`, until `windows-port/16`). See **Prerequisites** above.
+7. **Scaffold with `statusgen init`** (the CORE `first-board` primitive).
+8. **Copy `plugins/assay/skills/*` to `.cursor/skills/`** (or `.agents/skills/`) in the adopter
+   repo — Cursor's `deskinstall --harness cursor` automates steps 8-10.
+9. **Copy `plugins/assay/references/*.md`** alongside as a SIBLING of the skills root, so the
+   skills' `../../references/*.md` includes resolve — copying only `skills/` leaves them dead.
+10. **Write the `AGENTS.md` bindings** by hand (merge `plugins/assay/codex/AGENTS-assay.md`'s
+    fragment between stable `assay:bindings` delimiters, so a re-run replaces the block instead of
+    duplicating it), naming `glab`/`--forge gitlab` on GitLab, not bare `gh`.
+11. **Put the desk binaries on PATH again for Cursor** — the same `%LOCALAPPDATA%\Assay\bin` entry
+    step 3 wrote; Cursor does not add it for you.
+12. **Run `tools/create-fleet-gitlab.sh` from Git-Bash or WSL.** Native PowerShell cannot run
+    it. Read the owner PAT from its owner-only file in the config home, not typed inline, so it
+    stays out of shell history:
+    `GITLAB_TOKEN="$(cat <config-home>/gitlab-owner.token)" tools/create-fleet-gitlab.sh --group
+    mygroup --prefix myorg --project mygroup/myproject`. `deskfleet provision` (see **GitLab fleet
+    provisioning** above) replaces steps 12-14 in one native command. Step 15 still applies,
+    because `deskfleet` reads `GITLAB_API_BASE` too.
+13. **Copy each `<prefix>-<role>-bot.token` to `gitlab-<role>.token`** in the config home (no
+    `ln -s` on Windows) — see [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) §2.
+14. **Lock each token file to an owner-only ACL** — `icacls <file> /inheritance:r /grant:r
+    "%USERNAME%:F"` (and the folder that holds them, so a re-minted file inherits the lock) — see
+    **Config home, PATH, and child processes** above.
+15. **Export `GITLAB_API_BASE`** in the shell or session-bootstrap that invokes the desk verbs —
+    no default host, and it is not a `roster.env` key (see [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md)).
+
+Plus the **create-labels** primitive (`deskfleet labels`, or the nine `gh label create` lines, or
+the GitLab script) — not numbered above because it is shared with every adopter, Windows or not.
+
 ## 3a. What the bundle delivers by itself — and what you still have to write
 
 The install leaves you with working skills and **two things that behave very differently**. Read
@@ -1426,7 +1654,23 @@ bindings: [`plugins/assay/references/cursor.md`](../plugins/assay/references/cur
 The in-editor agent is the path most adopters actually use; headless `cursor-agent` remains the
 automation/smoke surface (brief 13) and is **not** a prerequisite for copying skills.
 
-**Install (IDE agent):**
+**This is the authoritative account of the Cursor install.**
+[`plugins/assay/references/cursor.md`](../plugins/assay/references/cursor.md) § **Install** links
+back here rather than carrying a second copy of the steps (`windows-port/09`) — read that file for
+the capability bindings, this section for the install steps.
+
+**Install — one command (`windows-port/07`).** `deskinstall --harness cursor --forge
+<github|gitlab> --repo <path>` places the skills/references tree and writes the `AGENTS.md`
+bindings in one idempotent, native command — on Windows this is [step 2 of the
+three-command install](#the-three-command-install-cursor--gitlab-channel-e) above; it runs
+identically on macOS/Linux. Run it from the assay clone root, or pass `--bundle
+<clone>/plugins/assay`: `--bundle` defaults to `plugins/assay` relative to the current directory.
+It runs **before** `assay:install`, because it is what places that skill into Cursor. `--check`
+reports drift (missing / extra / content-differs) without writing. This automates steps 1-3 below; step 4 (desk binaries on PATH) is `deskinstall`'s
+existing acquire mode / the [three-command install](#the-three-command-install-cursor--gitlab-channel-e)'s
+step 1; step 5 never blocks either path.
+
+**Install (IDE agent) — the manual steps, what the command above actually does:**
 
 1. From this repository's `plugins/assay/skills/` (or the plugin cache on a Claude host), copy the
    skill directories into the **adopter repo** at `.cursor/skills/` (or `.agents/skills/`).

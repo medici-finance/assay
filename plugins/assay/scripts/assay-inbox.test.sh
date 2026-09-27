@@ -88,6 +88,14 @@ contains() {
 TMPROOT=$(mktemp -d)
 trap 'rm -rf "$TMPROOT"' EXIT
 
+# Hermetic roster. The screen reads the ratifying identity and the trusted authors from the
+# environment, else from ${ASSAY_CONFIG_HOME:-$HOME/.config/assay}/roster.env. Clear the
+# environment and point the config home at an empty directory, so a developer's own roster
+# never leaks into a case; the screen cases set exactly the roster each one needs.
+export ASSAY_CONFIG_HOME="$TMPROOT/empty-config-home"
+mkdir -p "$ASSAY_CONFIG_HOME"
+unset ASSAY_BLESS_LOGIN ASSAY_TRUSTED_LOGINS ASSAY_TRUSTED_BOT_SLUGS ASSAY_HUMAN_LOGIN_MAP
+
 echo "assay-inbox regression suite ($(bash --version | head -1))"
 
 # ---------------------------------------------------------------- F1 --------
@@ -579,6 +587,541 @@ check "$(grep -qF 'Nothing is waiting' "$HTML" && echo 0 || echo 1)" \
   "the empty page says so positively" "page: $(cat "$HTML" 2>/dev/null | head -c 200)"
 check "$(grep -qF '<article' "$HTML" 2>/dev/null && echo 1 || echo 0)" \
   "the empty page renders no cards" "a card was rendered"
+
+# ============================================================================
+# The screen (attention-budget/15) — --walk classifies every item first and puts only
+# GENUINE decisions to the driver. Every case is a fixture-shaped `gh` stub, exactly like
+# the W-series above. The roster the screen reads (the ratifying identity, the trusted
+# authors, the App logins) is exported/unset around each run with roster_on/roster_off,
+# since it is read straight from the environment; the suite's own ASSAY_CONFIG_HOME points
+# at an empty directory, so no developer roster file ever leaks into a case.
+#
+# PRODUCTION SHAPES. `gh issue view --json comments` reports an App comment's author as the
+# BARE slug (`assay-desk-app`, never `assay-desk-app[bot]`), and `--json author` reports an
+# App issue author as `app/<slug>` with is_bot true. The fixtures use exactly those shapes —
+# a fixture in the `[bot]` form is a shape production never produces.
+# ============================================================================
+
+TRUSTED_APP_AUTHOR='{"is_bot":true,"login":"app/assay-desk-app"}'
+STRANGER_AUTHOR='{"is_bot":false,"login":"stranger"}'
+
+roster_on() {
+  export ASSAY_BLESS_LOGIN="ada:101"
+  export ASSAY_TRUSTED_BOT_SLUGS="desk=assay-desk-app:201,worker=assay-worker-app:202"
+  export ASSAY_HUMAN_LOGIN_MAP="alex:ada,bo:bob2"
+}
+roster_off() {
+  unset ASSAY_BLESS_LOGIN ASSAY_TRUSTED_LOGINS ASSAY_TRUSTED_BOT_SLUGS ASSAY_HUMAN_LOGIN_MAP
+}
+
+# cmt <login> <createdAt> <body> [edited:true|false] — one comment in the gh shape.
+cmt() {
+  jq -nc --arg l "$1" --arg d "$2" --arg b "$3" --argjson e "${4:-false}" \
+    '{author:{login:$l}, createdAt:$d, includesCreatedEdit:$e, body:$b}'
+}
+# thread <comment-json ...> — the comments array.
+thread() {
+  if [[ $# -eq 0 ]]; then echo '[]'; return; fi
+  printf '%s\n' "$@" | jq -sc '.'
+}
+
+# screen_gh <dir> <comments-json> <body> [author-json] — one needs-decision item (#10),
+# with the given comments array, body, and issue author (a roster App by default).
+screen_gh() {
+  local dir="$1" comments="$2" body="$3" author="${4:-$TRUSTED_APP_AUTHOR}"
+  mkdir -p "$dir"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'case "$*" in\n'
+    printf '  *"issue view"*) jq -nc --arg b %s --argjson c %s --argjson a %s '"'"'{author:$a, body:$b, comments:$c}'"'"' ;;\n' \
+      "$(printf '%q' "$body")" "$(printf '%q' "$comments")" "$(printf '%q' "$author")"
+    printf '  *"--label needs-decision"*) printf %s %s ;;\n' \
+      "$(printf '%q' '%s')" \
+      "$(printf '%q' '[{"number":10,"title":"screen fixture","labels":[{"name":"needs-decision"}],"createdAt":"2026-01-01T00:00:00Z","url":"https://example.test/o/r/issues/10"}]')"
+    printf '  *) printf %s %s ;;\n' "$(printf '%q' '%s')" "$(printf '%q' '[]')"
+    printf 'esac\n'
+  } > "$dir/gh"
+  chmod +x "$dir/gh"
+}
+
+# presented — the item was put to the driver as question 1 of 1.
+presented() { printf '%s' "$OUT" | grep -Eq '^o/r#10 — question 1 of 1$'; }
+
+BODY_2OPT='## Options
+
+A. keep it as-is
+B. change it
+'
+BODY_1OPT='## Options
+
+A. the only workable choice
+'
+BODY_NOOPT='Some prose with no Options heading and no fork-test block.'
+BODY_REVDEFAULT='caught-by: a live check, not nothing
+default: A
+'
+BODY_REVDEFAULT_B='## Options
+
+A. keep it as-is
+B. change it
+
+caught-by: ci
+default: B
+'
+BODY_REVDEFAULT_CLASSED='caught-by: a live check, not nothing
+default: A
+class: reversible-default
+'
+BODY_MIXED='## Options
+
+A. ship it now
+B. hold a week
+C. drop it
+
+Option: A is what the desk would pick.
+'
+BODY_FORKTEST_ONE='The fork test for this item.
+
+option: A — the only workable choice
+'
+
+RELAY_TEXT='Ruling relayed from the driver (2026-01-10). Chosen option: A. This comment is a relay record, not the ruling. Awaiting ratification by the driver.'
+RELAY=$(cmt assay-desk-app 2026-01-10T00:00:00Z "$RELAY_TEXT")
+RELAY_ONLY=$(thread "$RELAY")
+RELAY_THEN_HUMAN=$(thread "$RELAY" "$(cmt ada 2026-01-11T00:00:00Z 'ratified')")
+
+# ---------------------------------------------------------------- SCR1 ------
+echo "SCR1 — screen-already-ruled: a relay then the ratifying identity's ratification is not presented"
+
+w="$TMPROOT/scr-already-ruled"
+screen_gh "$w" "$RELAY_THEN_HUMAN" "$BODY_2OPT"
+roster_on
+run_case "$w" --walk o/r
+roster_off
+# One consolidated check, named exactly "screen-already-ruled" and nothing else that
+# would match it: the Verify table greps the suite's own output for this exact name and
+# wants a count of 1.
+check "$([[ "$RC" -eq 0 ]] \
+        && ! printf '%s' "$OUT" | grep -Eq 'question [0-9]+ of' \
+        && contains "$OUT" "screened: 1 already-ruled" \
+        && echo 0 || echo 1)" \
+  "screen-already-ruled" \
+  "exit $RC; stdout was: ${OUT:-<empty>}; stderr: ${ERR:-<empty>}"
+
+# ---------------------------------------------------------------- SCR2 ------
+echo "SCR2 — screen-relay-only: a bare desk relay, with no ratifying reply, is still PRESENTED"
+
+w="$TMPROOT/scr-relay-only"
+screen_gh "$w" "$RELAY_ONLY" "$BODY_2OPT"
+roster_on
+run_case "$w" --walk o/r
+roster_off
+check "$(presented && contains "$OUT" "screened: 0 already-ruled" && echo 0 || echo 1)" \
+  "screen-relay-only" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR3 ------
+echo "SCR3 — screen-no-fork-one-option: a trusted Options section of exactly one entry is no-fork"
+
+w="$TMPROOT/scr-no-fork"
+screen_gh "$w" "[]" "$BODY_1OPT"
+roster_on
+run_case "$w" --walk o/r
+roster_off
+check "$(printf '%s' "$OUT" | grep -Eq 'question [0-9]+ of' && echo 1 || echo 0)" \
+  "screen-no-fork-one-option: a one-option item is never presented as a question" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" "screened: 0 already-ruled · 1 no-fork" && echo 0 || echo 1)" \
+  "screen-no-fork-one-option: the tail counts it as no-fork" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR4 ------
+echo "SCR4 — screen-no-options-stated: no Options section is not positive evidence — stays genuine"
+
+w="$TMPROOT/scr-no-options"
+screen_gh "$w" "[]" "$BODY_NOOPT"
+roster_on
+run_case "$w" --walk o/r
+roster_off
+check "$(presented && echo 0 || echo 1)" \
+  "screen-no-options-stated: an item with no Options heading at all is PRESENTED" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" "options not yet stated — desk to fill" && echo 0 || echo 1)" \
+  "screen-no-options-stated: the placeholder options line is unchanged" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR5 ------
+echo "SCR5 — screen-reversible-default: caught-by (not nothing) + default + no class: line"
+
+w="$TMPROOT/scr-revdefault"
+screen_gh "$w" "[]" "$BODY_REVDEFAULT"
+roster_on
+run_case "$w" --walk o/r
+roster_off
+check "$(printf '%s' "$OUT" | grep -Eq 'question [0-9]+ of' && echo 1 || echo 0)" \
+  "screen-reversible-default: a reversible-default item is never presented as a question" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" "1 reversible-default" && echo 0 || echo 1)" \
+  "screen-reversible-default: the tail counts it as reversible-default" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR6 ------
+echo "SCR6 — screen-class-named-is-genuine: a class: line disqualifies reversible-default"
+
+w="$TMPROOT/scr-classed"
+screen_gh "$w" "[]" "$BODY_REVDEFAULT_CLASSED"
+roster_on
+run_case "$w" --walk o/r
+roster_off
+check "$(presented && echo 0 || echo 1)" \
+  "screen-class-named-is-genuine: a caught-by/default item carrying its own class: line is PRESENTED, not screened" \
+  "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR7 ------
+echo "SCR7 — screen-humans-unknown: with no roster at all, no class can be entered"
+
+w="$TMPROOT/scr-humans-unknown"
+screen_gh "$w" "$RELAY_THEN_HUMAN" "$BODY_2OPT"
+roster_off
+run_case "$w" --walk o/r
+check "$(presented && contains "$OUT" "NOTICE" && echo 0 || echo 1)" \
+  "screen-humans-unknown" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR8 ------
+echo "SCR8 — screen-unread-is-genuine: an item the screen cannot read stays genuine, presented"
+
+w="$TMPROOT/scr-unread"
+mkdir -p "$w"
+cat > "$w/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  *"issue view"*) echo 'HTTP 403: Resource not accessible' >&2; exit 1 ;;
+  *"--label needs-decision"*) printf '%s' '[{"number":11,"title":"unreadable","labels":[{"name":"needs-decision"}],"createdAt":"2026-01-01T00:00:00Z","url":"https://example.test/11"}]' ;;
+  *) printf '%s' '[]' ;;
+esac
+STUB
+chmod +x "$w/gh"
+roster_on
+run_case "$w" --walk o/r
+roster_off
+check "$(printf '%s' "$OUT" | grep -Eq '^o/r#11 — question 1 of 1$' && contains "$OUT" "could-not-check" && echo 0 || echo 1)" \
+  "screen-unread-is-genuine: an unread item is genuine — presented, and says could-not-check" \
+  "stdout was: ${OUT:-<empty>}"
+check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" \
+  "screen-unread-is-genuine: the failed detail fetch still reddens the run" "got $RC"
+
+# ---------------------------------------------------------------- SCR9 ------
+echo "SCR9 — screen-numbering: question k of n counts GENUINE items only"
+
+# make_gh_numbering <dir> — four items: #1 already ruled, #2 one-option (no-fork), #3 and
+# #4 genuine. Every body is authored by a roster App (production author shape).
+make_gh_numbering() {
+  local dir="$1"
+  mkdir -p "$dir"
+  cat > "$dir/gh" <<NUMSTUB
+#!/usr/bin/env bash
+a='$TRUSTED_APP_AUTHOR'
+case "\$*" in
+  *"issue view"*)
+    case "\$*" in
+      *" 1 "*) jq -nc --argjson a "\$a" --argjson c '$RELAY_THEN_HUMAN' --arg b '$BODY_2OPT' '{author:\$a, body:\$b, comments:\$c}' ;;
+      *" 2 "*) jq -nc --argjson a "\$a" --arg b '$BODY_1OPT' '{author:\$a, body:\$b, comments:[]}' ;;
+      *" 3 "*) jq -nc --argjson a "\$a" --arg b '$BODY_NOOPT' '{author:\$a, body:\$b, comments:[]}' ;;
+      *)       jq -nc --argjson a "\$a" --arg b 'A second plain genuine item.' '{author:\$a, body:\$b, comments:[]}' ;;
+    esac
+    ;;
+  *"--label needs-decision"*)
+    printf '%s' '[{"number":1,"title":"ruled","labels":[{"name":"needs-decision"}],"createdAt":"2026-01-01T00:00:00Z","url":"https://example.test/1"},{"number":2,"title":"no fork","labels":[{"name":"needs-decision"}],"createdAt":"2026-01-02T00:00:00Z","url":"https://example.test/2"},{"number":3,"title":"genuine one","labels":[{"name":"needs-decision"}],"createdAt":"2026-01-03T00:00:00Z","url":"https://example.test/3"},{"number":4,"title":"genuine two","labels":[{"name":"needs-decision"}],"createdAt":"2026-01-04T00:00:00Z","url":"https://example.test/4"}]'
+    ;;
+  *) printf '%s' '[]' ;;
+esac
+NUMSTUB
+  chmod +x "$dir/gh"
+}
+
+w="$TMPROOT/scr-numbering"
+make_gh_numbering "$w"
+roster_on
+run_case "$w" --walk --item 1 o/r
+first_header=$(printf '%s\n' "$OUT" | head -1)
+run_case "$w" --walk --item 2 o/r
+second_header=$(printf '%s\n' "$OUT" | head -1)
+run_case "$w" --walk --item 3 o/r
+third_rc="$RC"
+roster_off
+check "$([[ "$first_header" == "o/r#3 — question 1 of 2" ]] && echo 0 || echo 1)" \
+  "screen-numbering: --item 1 is the first GENUINE item, numbered 1 of 2 (not 1 of 4)" \
+  "got: $first_header"
+check "$([[ "$second_header" == "o/r#4 — question 2 of 2" ]] && echo 0 || echo 1)" \
+  "screen-numbering: --item 2 is the second genuine item, numbered 2 of 2" "got: $second_header"
+check "$([[ "$third_rc" -eq 1 ]] && echo 0 || echo 1)" \
+  "screen-numbering: --item 3 is out of range against the GENUINE count (2), not the raw queue (4)" \
+  "got $third_rc"
+
+# ---------------------------------------------------------------- SCR10 -----
+echo "SCR10 — no-screen-flag: --no-screen is byte-identical to the pre-screen rendering"
+
+w="$TMPROOT/scr-no-screen"
+make_gh_walk "$w"
+roster_on
+run_case "$w" --walk --item 1 o/r
+screened_out="$OUT"
+run_case "$w" --walk --no-screen --item 1 o/r
+legacy_out="$OUT"
+roster_off
+# On this fixture nothing is actually screened out, so the ONLY difference screening
+# makes is the one inserted tail line — removing exactly that (it always starts
+# "screened:", a token that never otherwise appears in the format's own text) from the
+# screened output must reproduce the legacy one, byte for byte. One consolidated check,
+# named exactly "no-screen-flag" for the Verify table's grep -c 1.
+screened_minus_tail=$(printf '%s\n' "$screened_out" | grep -v '^screened:')
+check "$(! contains "$legacy_out" "screened:" \
+        && [[ "$screened_minus_tail" == "$legacy_out" ]] \
+        && echo 0 || echo 1)" \
+  "no-screen-flag" \
+  "legacy: ${legacy_out}
+screened-minus-tail: ${screened_minus_tail}"
+
+# ============================================================================
+# Review round 2 — the cases that pin each wrong entry into a screened class the first
+# implementation allowed. Every one is PRESENTED (or, for the positive controls, screened)
+# and each was red against that implementation.
+# ============================================================================
+
+# ---------------------------------------------------------------- SCR11 -----
+echo "SCR11 — screen-ruled-question: a clarifying question from the ratifying identity is not a ruling"
+
+w="$TMPROOT/scr-ruled-question"
+screen_gh "$w" "$(thread "$(cmt ada 2026-01-11T00:00:00Z 'Which one do you recommend? Not deciding yet.')")" "$BODY_2OPT"
+roster_on
+run_case "$w" --walk o/r
+check "$(presented && contains "$OUT" "screened: 0 already-ruled" && echo 0 || echo 1)" \
+  "screen-ruled-question: no desk comment + a question from the ratifier is PRESENTED" "stdout was: ${OUT:-<empty>}"
+screen_gh "$w" "$(thread "$(cmt ada 2026-01-11T00:00:00Z 'What does B cost? I need that before I decide.')")" "$BODY_2OPT"
+run_case "$w" --walk o/r
+roster_off
+check "$(presented && echo 0 || echo 1)" \
+  "screen-ruled-question: a question naming an option (B) is still not a ruling — PRESENTED" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR12 -----
+echo "SCR12 — screen-ruled-refusal: 'I did not rule this, hold' after a relay is not a ruling"
+
+w="$TMPROOT/scr-ruled-refusal"
+screen_gh "$w" "$(thread "$RELAY" "$(cmt ada 2026-01-11T00:00:00Z 'No - I did not rule this, hold.')")" "$BODY_2OPT"
+roster_on
+run_case "$w" --walk o/r
+roster_off
+check "$(presented && echo 0 || echo 1)" \
+  "screen-ruled-refusal: a refusal from the ratifier after the relay is PRESENTED" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR13 -----
+echo "SCR13 — screen-ruled-not-ratifier: a second mapped human is not the ratifying identity"
+
+w="$TMPROOT/scr-ruled-not-ratifier"
+screen_gh "$w" "$(thread "$RELAY" "$(cmt bob2 2026-01-11T00:00:00Z '+1 to watching this')")" "$BODY_2OPT"
+roster_on
+run_case "$w" --walk o/r
+check "$(presented && echo 0 || echo 1)" \
+  "screen-ruled-not-ratifier: '+1' from a non-ratifying mapped human is PRESENTED" "stdout was: ${OUT:-<empty>}"
+screen_gh "$w" "$(thread "$RELAY" "$(cmt bob2 2026-01-11T00:00:00Z 'A')")" "$BODY_2OPT"
+run_case "$w" --walk o/r
+roster_off
+check "$(presented && echo 0 || echo 1)" \
+  "screen-ruled-not-ratifier: even a bare letter from a non-ratifying mapped human is PRESENTED" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR14 -----
+echo "SCR14 — screen-ruled-app-relay-anchors: a relay by ANY roster App (bare-slug shape) moves the anchor"
+
+w="$TMPROOT/scr-ruled-app-anchor"
+screen_gh "$w" "$(thread \
+  "$(cmt ada 2026-01-09T00:00:00Z 'Which one do you recommend?')" \
+  "$(cmt assay-worker-app 2026-01-10T00:00:00Z 'Relay: awaiting ratification by the driver.')")" "$BODY_2OPT"
+roster_on
+run_case "$w" --walk o/r
+roster_off
+check "$(presented && echo 0 || echo 1)" \
+  "screen-ruled-app-relay-anchors: a ratifier question BEFORE a non-desk App's relay is PRESENTED" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR15 -----
+echo "SCR15 — screen-ruled-letter: the ratifier answering with an offered letter IS a ruling; an edited one is not"
+
+w="$TMPROOT/scr-ruled-letter"
+screen_gh "$w" "$(thread "$RELAY" "$(cmt ada 2026-01-11T00:00:00Z 'A')")" "$BODY_2OPT"
+roster_on
+run_case "$w" --walk o/r
+check "$(! presented && contains "$OUT" "screened: 1 already-ruled" && echo 0 || echo 1)" \
+  "screen-ruled-letter: relay then the ratifier's bare 'A' is already-ruled" "stdout was: ${OUT:-<empty>}"
+screen_gh "$w" "$(thread "$RELAY" "$(cmt ada 2026-01-11T00:00:00Z 'A' true)")" "$BODY_2OPT"
+run_case "$w" --walk o/r
+roster_off
+check "$(presented && echo 0 || echo 1)" \
+  "screen-ruled-letter: the same comment, EDITED after posting, is not positive evidence — PRESENTED" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR16 -----
+echo "SCR16 — screen-ruled-older-ask: a ruling on an OLDER ask does not rule a newer one"
+
+w="$TMPROOT/scr-ruled-older-ask"
+screen_gh "$w" "$(thread \
+  "$(cmt ada 2026-01-09T00:00:00Z 'A')" \
+  "$(cmt assay-desk-app 2026-01-10T00:00:00Z 'The options changed; asking again with the revised set.')")" "$BODY_2OPT"
+roster_on
+run_case "$w" --walk o/r
+roster_off
+check "$(presented && echo 0 || echo 1)" \
+  "screen-ruled-older-ask: a ruling followed by a newer desk ask is PRESENTED" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR17 -----
+echo "SCR17 — screen-untrusted-body: body-derived classes need a trusted issue author"
+
+w="$TMPROOT/scr-untrusted-body"
+screen_gh "$w" "[]" "$BODY_REVDEFAULT_B" "$STRANGER_AUTHOR"
+roster_on
+run_case "$w" --walk o/r
+check "$(presented && contains "$OUT" "0 reversible-default" && echo 0 || echo 1)" \
+  "screen-untrusted-body: caught-by/default lines typed by an untrusted author are PRESENTED" "stdout was: ${OUT:-<empty>}"
+screen_gh "$w" "[]" "$BODY_1OPT" "$STRANGER_AUTHOR"
+run_case "$w" --walk o/r
+roster_off
+check "$(presented && contains "$OUT" "0 no-fork" && echo 0 || echo 1)" \
+  "screen-untrusted-body: a one-option body by an untrusted author is PRESENTED" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR18 -----
+echo "SCR18 — screen-default-evidence: the evidence line names the PARSED default, not option A"
+
+w="$TMPROOT/scr-default-evidence"
+screen_gh "$w" "[]" "$BODY_REVDEFAULT_B"
+roster_on
+run_case "$w" --walk --screened o/r
+roster_off
+check "$(contains "$OUT" "reversible-default" && contains "$OUT" "proceeding on default B" \
+        && ! contains "$OUT" "proceeding on default A" && echo 0 || echo 1)" \
+  "screen-default-evidence: 'default: B' is reported as default B" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR19 -----
+echo "SCR19 — screen-no-fork-mixed: a stray 'Option:' prose line never overrides a parsed Options section"
+
+w="$TMPROOT/scr-no-fork-mixed"
+screen_gh "$w" "[]" "$BODY_MIXED"
+roster_on
+run_case "$w" --walk o/r
+check "$(presented && contains "$OUT" "0 no-fork" && echo 0 || echo 1)" \
+  "screen-no-fork-mixed: a three-option Options section plus one 'Option:' line is PRESENTED" "stdout was: ${OUT:-<empty>}"
+screen_gh "$w" "[]" "$BODY_FORKTEST_ONE"
+run_case "$w" --walk o/r
+roster_off
+check "$(! presented && contains "$OUT" "1 no-fork" && echo 0 || echo 1)" \
+  "screen-no-fork-mixed: a fork-test block with ONE option: line and no Options section is still no-fork" \
+  "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR20 -----
+echo "SCR20 — screen-roster-parse: the map splits like the canonical parser; a malformed map is could-not-classify"
+
+w="$TMPROOT/scr-roster-parse"
+screen_gh "$w" "[]" "$BODY_1OPT" '{"is_bot":false,"login":"bob2"}'
+roster_off
+export ASSAY_HUMAN_LOGIN_MAP="alex:ada bo:BOB2"
+run_case "$w" --walk o/r
+roster_off
+check "$(! presented && contains "$OUT" "1 no-fork" && echo 0 || echo 1)" \
+  "screen-roster-parse: a SPACE-separated map is split, and logins compare case-insensitively" "stdout was: ${OUT:-<empty>}"
+export ASSAY_HUMAN_LOGIN_MAP="bo=bob2"
+run_case "$w" --walk o/r
+roster_off
+check "$(presented && contains "$OUT" "NOTICE" && echo 0 || echo 1)" \
+  "screen-roster-parse: a map with no valid name:login entry counts as no roster — PRESENTED, with the NOTICE" \
+  "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR21 -----
+echo "SCR21 — screen-notice-accurate: the NOTICE names exactly the classes it switched off"
+
+w="$TMPROOT/scr-notice-accurate"
+screen_gh "$w" "[]" "$BODY_1OPT"
+roster_off
+export ASSAY_TRUSTED_BOT_SLUGS="desk=assay-desk-app:201"
+run_case "$w" --walk o/r
+roster_off
+check "$(contains "$OUT" "NOTICE" && contains "$OUT" "already-ruled cannot be entered" \
+        && ! contains "$OUT" "every item is presented" && contains "$OUT" "1 no-fork" \
+        && echo 0 || echo 1)" \
+  "screen-notice-accurate: no ratifying identity switches off already-ruled ONLY, and says so" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR22 -----
+echo "SCR22 — screen-config-file: the roster is read from the trusted config home, never a loose one"
+
+w="$TMPROOT/scr-config-file"
+screen_gh "$w" "$RELAY_THEN_HUMAN" "$BODY_2OPT"
+cfg="$TMPROOT/scr-config-home"
+mkdir -p "$cfg"
+chmod 700 "$cfg"
+printf 'ASSAY_BLESS_LOGIN=ada:101\nASSAY_TRUSTED_BOT_SLUGS=desk=assay-desk-app:201\n' > "$cfg/roster.env"
+chmod 600 "$cfg/roster.env"
+roster_off
+ASSAY_CONFIG_HOME="$cfg" run_case "$w" --walk o/r
+check "$(! presented && contains "$OUT" "screened: 1 already-ruled" && echo 0 || echo 1)" \
+  "screen-config-file: an owner-only roster.env in ASSAY_CONFIG_HOME supplies the ratifying identity" "stdout was: ${OUT:-<empty>}"
+chmod 666 "$cfg/roster.env"
+ASSAY_CONFIG_HOME="$cfg" run_case "$w" --walk o/r
+check "$(presented && contains "$OUT" "NOTICE" && echo 0 || echo 1)" \
+  "screen-config-file: a world-writable roster.env is refused — PRESENTED, with the NOTICE" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR23 -----
+echo "SCR23 — screen-cwd-roster-ignored: a humans list in the CURRENT directory chooses nothing"
+
+w="$TMPROOT/scr-cwd-roster"
+screen_gh "$w" "$RELAY_THEN_HUMAN" "$BODY_2OPT"
+mkdir -p "$w/.assay"
+printf 'ada\n' > "$w/.assay/humans.txt"
+roster_off
+OUT=$(cd "$w" && PATH="$w:$PATH" bash "$SCRIPT" --walk o/r 2>"$w/stderr")
+RC=$?
+check "$(presented && contains "$OUT" "NOTICE" && echo 0 || echo 1)" \
+  "screen-cwd-roster-ignored: ./.assay/humans.txt in the checkout being run from is not a roster — PRESENTED" \
+  "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR24 -----
+echo "SCR24 — screen-screened-list: --walk --screened lists every screened item and only those"
+
+w="$TMPROOT/scr-screened-list"
+make_gh_numbering "$w"
+roster_on
+run_case "$w" --walk --screened o/r
+roster_off
+check "$([[ "$RC" -eq 0 ]] \
+        && printf '%s\n' "$OUT" | grep -Eq '^o/r#1 +already-ruled +ruled — flag for relabel/close' \
+        && printf '%s\n' "$OUT" | grep -Eq '^o/r#2 +no-fork +no fork — desk proceeds or re-routes' \
+        && ! printf '%s\n' "$OUT" | grep -Eq '^o/r#(3|4) ' \
+        && ! printf '%s\n' "$OUT" | grep -Eq 'question [0-9]+ of' \
+        && echo 0 || echo 1)" \
+  "screen-screened-list: #1 already-ruled and #2 no-fork are listed with their evidence; #3/#4 are not" \
+  "exit $RC; stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- SCR25 -----
+echo "SCR25 — screen-table-class: the table carries a class column and hides nothing"
+
+w="$TMPROOT/scr-table-class"
+make_gh_numbering "$w"
+roster_on
+run_case "$w" o/r
+table_out="$OUT"
+run_case "$w" --no-screen o/r
+legacy_table="$OUT"
+roster_off
+check "$(printf '%s\n' "$table_out" | grep -F 'example.test/1' | grep -q 'already-ruled' \
+        && printf '%s\n' "$table_out" | grep -F 'example.test/2' | grep -q 'no-fork' \
+        && printf '%s\n' "$table_out" | grep -F 'example.test/3' | grep -q 'genuine' \
+        && [[ "$(printf '%s\n' "$table_out" | grep -c 'example.test/')" -eq 4 ]] \
+        && echo 0 || echo 1)" \
+  "screen-table-class: every row is shown, each with its class" "table: ${table_out}"
+check "$(! contains "$legacy_table" "already-ruled" && ! contains "$legacy_table" "no-fork" && echo 0 || echo 1)" \
+  "screen-table-class: --no-screen drops the class column" "table: ${legacy_table}"
+
+# ---------------------------------------------------------------- SCR26 -----
+echo "SCR26 — screen-html-class: the page carries every item's class and hides nothing"
+
+w="$TMPROOT/scr-html-class"
+make_gh_numbering "$w"
+roster_on
+run_case "$w" --html "$w/page.html" o/r
+roster_off
+check "$(grep -qF 'Class: already-ruled' "$w/page.html" \
+        && grep -qF 'Class: no-fork' "$w/page.html" \
+        && [[ "$(grep -c 'Class: genuine' "$w/page.html")" -eq 2 ]] \
+        && [[ "$(grep -c '<article' "$w/page.html")" -eq 4 ]] \
+        && echo 0 || echo 1)" \
+  "screen-html-class: four cards, each carrying its class line" "page: $(head -c 400 "$w/page.html" 2>/dev/null)"
 
 # ============================================================================
 # The FLOW model and its two renderings — `--flow` and `--flow --html` (issue #224
