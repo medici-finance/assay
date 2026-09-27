@@ -469,29 +469,45 @@ a branch as the target instead of `main`:
    merge follows the reviewer's approval and the required status with no further action; where it has
    not, the PR waits on a human merge. Either way the brief's row is `verified` the moment the Evidence
    PR merges, and the `gate: model` verified→done flip stays CI's (see below).
-4. **Keep a reviewed Evidence PR mergeable: every state has one owner.** Expect an open Evidence PR
-   to go `CONFLICTING` whenever a sibling Evidence PR lands. Every landing appends to the same
-   outcomes log, and the forge computes mergeability and performs the merge server-side, where a
+4. **Keep a reviewed Evidence PR mergeable: every state has exactly one owner.** Expect an open
+   Evidence PR to go `CONFLICTING` whenever a sibling Evidence PR lands. Every landing appends to the
+   same outcomes log, and the forge computes mergeability and performs the merge server-side, where a
    `.gitattributes` merge driver is never applied: the log's `merge=union` resolves a LOCAL merge
    only. (This conflict class is tracked in #882.) Read each of your open Evidence PRs against the
-   table below, oldest first, and act on the rows this desk owns. Merge main locally, where the
-   union driver applies, merge-never-rebase, then push. A conflict in any file other than the
-   outcomes log is authored work: resolve it and say so on the PR.
+   table below and act on the rows this desk owns. Merge main locally, where the union driver
+   applies, merge-never-rebase, then push. A conflict in any file other than the outcomes log is
+   authored work: resolve it and say so on the PR.
 
-| Evidence PR state | Owner | Next move |
-|---|---|---|
-| Never reviewed, at any head, mergeable or not | review desk | first review |
-| A CHANGES_REQUESTED, an open finding, or a security fail stands | this desk | fix and push; the PR then awaits re-review |
-| `CONFLICTING`, reviewed, nothing of the row above standing: approved at this head or an earlier one, or awaiting a re-review | this desk | merge main and push, whether or not its approval is at the current head |
-| `MERGEABLE`, awaiting a re-review of a merge or a fix | review desk | re-review the delta |
-| `MERGEABLE`, every lane clear at the current head | review desk | flip |
-| Merged or closed | nobody | done |
+A PR's state is three facts. **Verdict:** `none` (some required review lane has never given a
+verdict and none is blocking), `blocking` (any lane's latest verdict is a CHANGES_REQUESTED, an open
+finding or a security fail), or `clear` (every required lane's latest verdict passes). **At head:**
+whether the current head is the head that latest verdict was given at. A push after the verdict, a
+fix or a merge of main, makes it `no`. **Mergeable:** `MERGEABLE`, `CONFLICTING` or `UNKNOWN`, as the
+forge reports it. Read the rows top to bottom; the first match is the state.
 
-A PR that re-conflicts while it waits for its re-review goes straight back to row 3, so no state is
-left without an owner. **Stop condition:** stop merging main into a PR once it is `MERGEABLE`, while
-a row-2 item stands (fix that first), and once it is merged or closed. Never merge main into an
-Evidence PR in any other state: a never-reviewed PR is reviewed as it is, and an extra merge only
-adds another re-review round.
+| # | State | Owner | Next move |
+|---|---|---|---|
+| 1 | Merged or closed | nobody | done |
+| 2 | Mergeable `UNKNOWN` | whoever reads it | nothing: re-read on the next pass |
+| 3 | Verdict `none` | review desk | first review of each missing lane, at any mergeability |
+| 4 | Verdict `blocking`, at head `yes` (not yet answered by a push) | this desk | fix and push |
+| 5 | `CONFLICTING`, and verdict `clear`, or at head `no` (answered by a push, awaiting re-review) | this desk | merge main and push, whether or not an approval is at the current head |
+| 6 | `MERGEABLE`, at head `no` | review desk | re-review the delta |
+| 7 | `MERGEABLE`, verdict `clear`, at head `yes` | review desk | flip |
+
+The rows are exclusive, because the first match wins, and exhaustive. Over the 18 combinations of
+verdict × at head × mergeable: the 6 `UNKNOWN` ones are row 2; the 4 `none` ones are row 3;
+`blocking` at head, `MERGEABLE` or `CONFLICTING`, are row 4; the 3 other `CONFLICTING` ones
+(`blocking` not at head, `clear` at head, `clear` not at head) are row 5; the 2 `MERGEABLE` ones
+not at head are row 6; `clear` at head `MERGEABLE` is row 7. 6 + 4 + 2 + 3 + 2 + 1 = 18.
+
+A PR whose fix is pushed and which re-conflicts before its re-review is row 5, not row 4: the
+finding still stands formally, but it has been answered, so this desk merges main. **One at a time:**
+merge main into the oldest row-5 PR only. Take the next one only after that PR has been flipped,
+merged or closed, or has gone back to row 4. When it re-conflicts, merge it again at once. **Stop
+condition:** stop merging main into a PR once it is `MERGEABLE`, while it is in row 4 (fix first),
+and once it is merged or closed. Never merge main into a PR in any other row: a row-3 PR is reviewed
+as it is, and an extra merge only adds another re-review round.
 
 **Land-as-each-verdict-arrives still applies** — the PR replaces the push, not the cadence. Buffering a
 wave of Evidence PRs to the end of the pass is the same defect as buffering pushes: a PASS in hand and

@@ -386,18 +386,20 @@ as the planner and acts on its rows.
 - **Evidence PRs re-conflict by design.** A verify desk's Evidence PR goes `CONFLICTING` whenever
   a sibling Evidence PR lands: they all append to one outcomes log, and the forge's server-side
   merge applies no `.gitattributes` merge driver (#882). The verify-desk skill's Evidence-PR state
-  table gives every state one owner; this desk owns three of its rows:
-  - a **never-reviewed** Evidence PR gets its first review whether or not it is `CONFLICTING`;
-  - a **`MERGEABLE`** Evidence PR awaiting a re-review after a merge of main gets that re-review as
-    soon as it is `MERGEABLE` again, with priority. Scope it to the delta: the PR's own log lines
-    survive intact, the merge added nothing else, and the rest of the diff is unchanged. Because the
-    log is one of the PR's own files, the board shows it as RE-REVIEW;
-  - a `MERGEABLE` Evidence PR clear at its current head gets the flip.
+  table (verdict × at head × mergeable, first match wins) gives every state exactly one owner. This
+  desk owns three of its rows:
+  - **verdict `none`**: first review of each missing lane, whether or not the PR is `CONFLICTING`;
+  - **`MERGEABLE`, the head moved since the latest verdict** (a fix or a merge of main was pushed):
+    re-review the delta as soon as it is `MERGEABLE`, with priority. For a merge of main, check that
+    the PR's own log lines survive intact, the merge added nothing else, and the rest of the diff is
+    unchanged. Because the log is one of the PR's own files, the board shows it as RE-REVIEW;
+  - **`MERGEABLE`, clear at the current head**: flip.
 
-  A `CONFLICTING` Evidence PR that has been reviewed and has no standing finding or fail belongs to
-  the verify desk, which merges main into it whether or not its approval is at the current head.
-  Do not re-review it while it is `CONFLICTING`: its head is about to move. A re-review already
-  under way when it re-conflicts still posts its verdict at the head it reviewed.
+  A `CONFLICTING` Evidence PR whose latest verdict is clear, or has been answered by a push, belongs
+  to the verify desk, which merges main into it, even while a finding formally stands. Do not
+  re-review it while it is `CONFLICTING`: its head is about to move. A re-review already under way
+  when it re-conflicts still posts its verdict at the head it reviewed. A PR whose mergeability
+  reads `UNKNOWN` is nobody's to act on: re-read it on the next pass.
 - **BLOCKED** → the latest review flags a blocker; the worker owns the fix, and the next push
   re-fires the monitor. **CHECK** → a bot review exists at head but is neither APPROVED nor
   CHANGES_REQUESTED (e.g. only a `--comment`): read it and re-dispatch for a decisive verdict.

@@ -32,7 +32,7 @@ sources:
   - "medici-finance/assay#882 — the conflict class: every verify Evidence PR appends to one shared log and goes CONFLICTING when a sibling lands"
   - "https://github.com/medici-finance/assay/issues/882#issuecomment-5857907228 — the driver's acceptance (own login, 2026-09-27) of the plan on #882: briefs desk-supervision/24-26 plus the verify-desk and pr-review-desk skill edits"
   - "option name: this brief carries 'per-file outcomes' (one file per verify outcome); its siblings are 'approval carry' (desk-supervision/25) and 'batched landing' (desk-supervision/26) — three alternatives for the conflict class #882 tracks"
-  - "medici-finance/assay#882, comment of 2026-09-27 — recurring verify-wake-v1 receipt defects found in review of #1706-#1713 (inputs omit deliverables, free-text blocker_ref, brief hash that does not match the brief as it lands); the driver folds the writer-side validation into this brief"
+  - "medici-finance/assay#882, comment of 2026-09-27 — recurring verify-wake-v1 receipt defects found in review of #1706-#1713 (inputs omit deliverables, free-text blocker_ref, brief hash that does not match the brief as it lands); the comment asks that the redesign fold writer-side validation into this brief"
   - "medici-finance/assay#1338 — the per-file size cap class on the shared log (raised to 4 MiB, rotation still owed)"
   - "medici-finance/assay#588 — the `merge=union` attribute (landed 2026-09-07 in 7aa97b7db)"
   - "docs/streams/fresh-views/brief-04-shared-append-only-log-discipline-verify-outcomes-jsonl-merge-union-deskevidence-post-write-sha.md — the prior remedy for this class; lineage in facts"
@@ -50,7 +50,7 @@ consumers:
   - ".gitattributes (line 23, merge=union for the log): follow-up desk-supervision/24 (this brief; removed at the retirement step, Task step 8 — flips to fixed-here then)"
   - "docs/streams/verify-outcomes.jsonl: follow-up desk-supervision/24 (this brief; split into records at Task step 7, deleted at step 8 — flips to fixed-here then)"
   - "docs/streams/desk-supervision/verify-wake-v1.md and repair-obligation-v1.md (name the appended log as the receipt's home): follow-up desk-supervision/24 (this brief; flips to fixed-here when the implementation edits them)"
-  - "plugins/assay/skills/verify-desk/SKILL.md (the outcome-row paragraph and the just-in-time merge rule's premise): follow-up desk-supervision/24 (this brief; flips to fixed-here when the implementation edits it)"
+  - "plugins/assay/skills/verify-desk/SKILL.md (the outcome-row paragraph and the Evidence-PR state table's premise): follow-up desk-supervision/24 (this brief; flips to fixed-here when the implementation edits it)"
   - "plugins/assay/skills/pr-review-desk/SKILL.md (the Evidence-PR re-conflict bullet): follow-up desk-supervision/24 (this brief; flips to fixed-here when the implementation edits it)"
   - "tools/desk/README.md (deskevidence and verifyloop sections): follow-up desk-supervision/24 (this brief; flips to fixed-here when the implementation edits it)"
   - "migrations/ (a new adopter migration note for the split): follow-up desk-supervision/24 (this brief; flips to fixed-here when the implementation adds it)"
@@ -263,7 +263,9 @@ once) and the per-module structural test that fails when any other code opens th
    whose name `RecordName` reproduces from its bytes", and the `merge=union`-dependent remerge
    fixtures and live row 19 (c) are re-stated on that basis; bump its `version:`. If it is already
    implemented, make the same change in its scope core and audit instead.
-10. **Docs and skills.** Update `verify-wake-v1.md` and `repair-obligation-v1.md` (where a receipt
+10. **Docs and skills.** Update `verify-wake-v1.md`, including its `inputs` field wording ("revision
+    observed at receipt time" becomes the brief's revision as it lands, Evidence append included, which
+    is what the wake reader hashes), and `repair-obligation-v1.md` (where a receipt
     lives), `tools/desk/README.md` (deskevidence usage, verifyloop's read), and the skills:
     - `plugins/assay/skills/verify-desk/SKILL.md`: the outcome paragraph ("append one row to the append-only sidecar …")
       becomes "write one outcome record with `deskevidence --outcome-record`"; the description line

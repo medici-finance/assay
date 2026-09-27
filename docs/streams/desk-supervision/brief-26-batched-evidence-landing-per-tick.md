@@ -37,6 +37,7 @@ consumers:
   # commit that edits the path.
   - "tools/desk/cmd/deskevidence (the batch verb): follow-up desk-supervision/26 (this brief; flips to fixed-here when the implementation edits it)"
   - "tools/desk/internal/deskkit (a multi-file commit on the Forge interface, GitHub and GitLab backends): follow-up desk-supervision/26 (this brief; flips to fixed-here when the implementation edits it)"
+  - "tools/desk/cmd/deskflip (a test only, pinning that a batch holding a flagged entry cannot flip; no behaviour change): follow-up desk-supervision/26 (this brief; flips to fixed-here when the implementation adds the test)"
   - "plugins/assay/skills/verify-desk/SKILL.md (the PR-required-main lane): follow-up desk-supervision/26 (this brief; flips to fixed-here when the implementation edits it)"
   - "plugins/assay/skills/pr-review-desk/SKILL.md (reviewing a batch; asking for an entry to be dropped): follow-up desk-supervision/26 (this brief; flips to fixed-here when the implementation edits it)"
   - "tools/desk/README.md (deskevidence section): follow-up desk-supervision/26 (this brief; flips to fixed-here when the implementation edits it)"
@@ -156,7 +157,8 @@ entry.
    - `plugins/assay/skills/pr-review-desk/SKILL.md`: review a batch per entry against the body table.
      A finding on any entry is CHANGES_REQUESTED on the batch naming the entry and asking for
      `--drop`; the drop gets a re-review scoped to it before any flip.
-   - Remove the just-in-time merge step's per-PR framing where it no longer applies.
+   - Update the verify-desk Evidence-PR state table where a batch changes it (a batch is one PR in the
+     table; a finding on an entry is that PR's blocking verdict).
    - Keep every skill body neutral: no values, no names.
 
 ## Verify (executable — no prose-only DoD items)
@@ -173,7 +175,7 @@ entry.
 | 9 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCommitFiles$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b26-r9-1.out" 2>&1 && grep -F -e '--- PASS: TestCommitFiles' "${TMPDIR:-/tmp}/b26-r9-1.out"` | exit 0; output contains `--- PASS: TestCommitFiles`. GitHub and GitLab goldens: one commit with every file; a moved branch is refused with nothing written | check:ci +mutation |
 | 10 | After the first real batch PR merges, with `BATCH_PR` exported as its number: `gh pr view "$BATCH_PR" -R medici-finance/assay --json files,reviews --jq '{files: (.files \| length), reviews: (.reviews \| length)}'` | one PR carrying k ≥ 2 entries' files, and a review count per lane that does not grow with k. If no batch has merged yet, record could-not-check with the date; never a pass | check +dereference +flow |
 | 11 | `cd tools/skillslint && go run . --root ../..` | exit 0 | check:ci |
-| 12 | `cd tools/desk && go test ./cmd/deskflip/ -run '^TestFlipRefusesBatchHoldingFlaggedEntry$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b26-r13-1.out" 2>&1 && grep -F -e '--- PASS: TestFlipRefusesBatchHoldingFlaggedEntry' "${TMPDIR:-/tmp}/b26-r13-1.out"` | exit 0; output contains `--- PASS: TestFlipRefusesBatchHoldingFlaggedEntry`. A batch PR whose reviewer verdict at head is CHANGES_REQUESTED naming an entry is refused by the flip gate; after the `--drop` commit it is refused as STALE until a re-review at the new head; the approved re-review at the drop head flips | check:ci +mutation |
+| 12 | `cd tools/desk && go test ./cmd/deskflip/ -run '^TestFlipRefusesBatchHoldingFlaggedEntry$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b26-r12-1.out" 2>&1 && grep -F -e '--- PASS: TestFlipRefusesBatchHoldingFlaggedEntry' "${TMPDIR:-/tmp}/b26-r12-1.out"` | exit 0; output contains `--- PASS: TestFlipRefusesBatchHoldingFlaggedEntry`. A batch PR whose reviewer verdict at head is CHANGES_REQUESTED naming an entry is refused by the flip gate; after the `--drop` commit it is refused as STALE until a re-review at the new head; the approved re-review at the drop head flips | check:ci +mutation |
 | 13 | `statusgen --consumers --root .` | exit 0 — every routing token above corroborated against the branch diff | check:ci +dereference |
 
 Pre-mortem (failure mode → row):

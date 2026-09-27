@@ -215,7 +215,8 @@ nothing else. Clearing one costs a merge of main, a head move past the approval,
 - `25` removes the correctness re-review when a keep-current merge of a draft changed nothing. A
   tool-derived carry verdict stands in for it only when the only new commits are driver-free clean
   merges of main and the diff is byte-identical. Both flip verbs re-derive it by a different method,
-  the forge dismisses it on any later push, and security verdicts are never carried. It depends on
+  a human-landed guard keeps the Evidence auto-merge lane from arming on a carry no flip verb
+  re-derived, the forge dismisses it on any later push, and security verdicts are never carried. It depends on
   `24`: while outcomes share one appended log, every Evidence PR's merge needs the union driver, which
   the carry refuses. It is `gate: human` because it relaxes a review gate.
 - `26` cuts the PR and review count. One tick's Evidence-only outcomes land in one PR, and a refused
@@ -223,8 +224,10 @@ nothing else. Clearing one costs a merge of main, a head move past the approval,
   shared log would still conflict.
 
 Until they land, the verify-desk and pr-review-desk skills carry the procedure-only mitigation: an
-Evidence-PR state table that gives every state one owner. The verify desk merges main into a reviewed
-CONFLICTING Evidence PR, and the review desk re-reviews the merge delta as soon as it is MERGEABLE.
+Evidence-PR state table over verdict × at head × mergeable whose rows are exclusive and exhaustive,
+each with one owner. The verify desk merges main, one PR at a time, into a CONFLICTING Evidence PR
+whose latest verdict is clear or answered by a push. The review desk re-reviews the delta as soon as
+it is MERGEABLE. An UNKNOWN mergeability is re-read, never acted on.
 
 Relation to fresh-views/04: it planned the same `merge=union` fix for #882, which had already landed
 through #588, and that fix does not reach the forge's merge. Its other half, reporting the
