@@ -400,7 +400,7 @@ RISK-VALUE: DERIVED — githubAPIBase = "https://api.github.com" @ tools/desk/cm
 
 Operational limits (row 8 of the ranking) are reversible by an edit and a redeploy and need no derivation. One observation: per_page=100 with no pagination means a group with more than 100 service accounts could miss an existing role account. That would lead to a refused create, which stops the run, not a silent duplicate.
 
-VERIFY: BLOCKED. Rows 1, 2 and 15 pass under the execution witness; row 15's pipeline cannot fail, so that pass is weak. Rows 3-14 and 16 pass only by direct run, because their Verify cells are mis-specified for the execution witness (check-definition, #1795). Row 19 is could-not-run: it is check:ci, and this host has no network-off sandbox (#1491). Row 18 is vacuous on merged main: the diff is empty and `echo $?` always exits 0. Row 17 is could-not-check, since it is the live human row. Correction 2026-09-27: this line previously read "VERIFY: PASS … checked clean".
+VERIFY: BLOCKED. Rows 1, 2 and 15 pass under the execution witness; row 15's pipeline cannot fail, so that pass is weak. Rows 3-14 and 16 pass only by direct run, because their Verify cells are mis-specified for the execution witness (check-definition, #1795). Row 19 is could-not-run, pending a Linux runner with `unshare --net`: it is check:ci, and this darwin host has no network-off sandbox. Row 18 is vacuous on merged main: the diff is empty and `echo $?` always exits 0. Row 17 is could-not-check, since it is the live human row. Correction 2026-09-27: this line previously read "VERIFY: PASS … checked clean".
 
 
 ## Review
