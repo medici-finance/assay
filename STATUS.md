@@ -17,7 +17,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-27 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-27 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-09-27 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/23 | 2026-09-27 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/26 | 2026-09-27 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-09-27 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-27 |  |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 0/10 | 2026-09-27 |  |
@@ -54,6 +54,7 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
+| desk-supervision | 24 — One file per verify outcome — retire the shared appended outcomes log [exec:strong] | 0 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
 | forge-gitlab | 13 — Board reads degrade per row, never per sweep — the GitLab empty-field class [exec:strong] | 3 | 1500 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
@@ -63,7 +64,7 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (61 desk-actionable of 83 total — 82 at implemented, 1 verified awaiting review)
+## Awaiting verification / review (61 desk-actionable of 84 total — 83 at implemented, 1 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -126,11 +127,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 18 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 26 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| desk-tools | 28 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desktools-v2 | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| quality | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 14 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -148,7 +149,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting implementer rework (13)
+### Awaiting implementer rework (14)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -161,6 +162,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 07 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 28 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -278,7 +280,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 13 Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release — todo (wave 5)
 - 14 Flux install example — a GitRepository and Kustomization that install the desks from a pinned release, with an adopter overlay — todo (wave 6)
 
-### desk-supervision (17 open)
+### desk-supervision (20 open)
 
 - 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — implemented (wave 1)
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — implemented (wave 1)
@@ -297,6 +299,9 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 21 Reverify changed external prerequisites without a synthetic push — implemented (wave 1)
 - 22 Configure provider, model and effort per cell role — implemented (wave 0)
 - 23 Evidence lands on main behind a file-scoped gatekeeper — validator workflow + lander App — todo (wave 2)
+- 24 One file per verify outcome — retire the shared appended outcomes log — todo (wave 0)
+- 25 Carry a correctness approval across a merge of main that leaves the PR's diff byte-identical — todo (wave 1)
+- 26 Land one verify tick's Evidence-only outcomes in one Evidence PR — todo (wave 1)
 
 ### desk-tools (14 open)
 
@@ -437,7 +442,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 - 17 regression suite — TestRegression_ naming convention + count-can't-drop / vacuous-selector CI gate — todo (wave 0)
 - 18 stub-coverage seam report — report-first list of test seams stubbed everywhere and exercised nowhere in production form — todo (wave 1)
-- 19 qualgen re-fix metric — SZZ-traced fixes that repeat a defect an earlier fix already addressed — todo (wave 3)
+- 19 qualgen re-fix metric — SZZ-traced fixes that repeat a defect an earlier fix already addressed — implemented (wave 3)
 
 ### server-controls (5 open)
 
@@ -615,4 +620,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**23** streams (**18** active, **0** paused, **5** parked) · **89/288** briefs done · completed initiatives: see `docs/archive/`
+**23** streams (**18** active, **0** paused, **5** parked) · **89/291** briefs done · completed initiatives: see `docs/archive/`
