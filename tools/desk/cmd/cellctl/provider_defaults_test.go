@@ -228,6 +228,37 @@ func TestProviderDefaultsBuiltBinaryLaunch(t *testing.T) {
 	}
 }
 
+// TestProviderDefaultsAutoCompactCellEnv pins the override the docs promise for
+// CLAUDE_CODE_AUTO_COMPACT_WINDOW: a value in the cell's cell.env reaches the launched harness,
+// and an EMPTY value is treated as unset (the 200000 default still applies — an empty line cannot
+// switch the export off; only a larger number widens the window).
+func TestProviderDefaultsAutoCompactCellEnv(t *testing.T) {
+	for _, tc := range []struct{ name, line, want string }{
+		{"override", "CLAUDE_CODE_AUTO_COMPACT_WINDOW=400000\n", "400000"},
+		{"empty-keeps-default", "CLAUDE_CODE_AUTO_COMPACT_WINDOW=\n", "200000"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := catalogFixture(t)
+			f.prepareLocalLaunch(t)
+			path := filepath.Join(f.cellDir, "cell.env")
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, append(raw, []byte(tc.line)...), 0600); err != nil {
+				t.Fatal(err)
+			}
+			r := f.run(t, []string{"CELLCTL_DESKWT=0"}, "desk", "example", "pr-review-desk", "--provider", "anthropic")
+			if r.code != 0 {
+				t.Fatalf("launch: %+v", r)
+			}
+			if !strings.Contains(r.stdout, "AUTO_COMPACT="+tc.want+"\n") {
+				t.Errorf("want AUTO_COMPACT=%s in %s", tc.want, r.stdout)
+			}
+		})
+	}
+}
+
 func TestProviderDefaultsSharedAcrossCells(t *testing.T) {
 	f := catalogFixture(t)
 	other := filepath.Join(f.cellsRoot, "other")

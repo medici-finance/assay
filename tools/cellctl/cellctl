@@ -769,7 +769,7 @@ try:
             levels = {"minimal", "low", "medium", "high", "xhigh"} if harness == "codex" else {"low", "medium", "high", "xhigh", "max"}
             if not isinstance(supported, list) or not supported or any(x not in levels for x in supported) or effort not in supported:
                 fail("unsupported effort for " + name + "/" + tier)
-            if (value.startswith("glm-5.3") or base(value) == "k3") and any(x not in {"low", "high", "max"} for x in supported):
+            if (value.startswith("glm-5.3") or base(value) in ("k3", "k3-256k")) and any(x not in {"low", "high", "max"} for x in supported):
                 fail("GLM 5.3 and Kimi K3 support low, high or max effort")
     roles = policy["roles"]
     for name, assignment in roles.items():

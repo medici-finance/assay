@@ -1375,7 +1375,10 @@ A host `cellctl desk` Claude launch (house and k8s kinds, including provider-bac
 GLM/Kimi sessions) exports `CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000`, so a long-running
 desk session compacts at 200K tokens instead of re-reading an ever-growing prefix on
 every turn — on a 1M-context model the window would otherwise never trip. It is neutral
-for 200K-context models, which compact there anyway. A value set in the cell's
-`cell.env` (or in the launching environment) wins over the default. Scrubbed cells do
-not compose this variable: their launch environment is exactly the allowlist in the
-table above.
+for 200K-context models, which compact there anyway. A non-empty value set in the
+cell's `cell.env` (or in the launching environment) wins over the default. An empty
+value is treated as unset, so it cannot switch the export off: the 200000 default
+still applies, and only a larger number widens the window. Scrubbed cells do not
+compose this variable — their launch environment is exactly the allowlist in
+[The composed environment](#the-composed-environment) — and neither do container
+cells, whose launch is delegated to the operator's own launcher.
