@@ -315,7 +315,7 @@ func parseModelPolicy(raw []byte, path string) (*ModelPolicy, error) {
 			if len(supported) == 0 || !allIn(supported, levels) || !contains(supported, effort) {
 				return nil, policyFail("unsupported effort for %s/%s", name, tierName)
 			}
-			if (strings.HasPrefix(value, "glm-5.3") || policyBase(value) == "k3") && !allIn(supported, []string{"low", "high", "max"}) {
+			if (strings.HasPrefix(value, "glm-5.3") || policyBase(value) == "k3" || policyBase(value) == "k3-256k") && !allIn(supported, []string{"low", "high", "max"}) {
 				return nil, policyFail("GLM 5.3 and Kimi K3 support low, high or max effort")
 			}
 			tiers[tierName] = PolicyTier{Model: value, Effort: effort, SupportedEfforts: supported}
