@@ -168,6 +168,125 @@ facts:
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -c 'gh release download' plugins/assay/skills/install/SKILL.md plugins/assay/skills/adopt/SKILL.md \|\| true` | pass exit=0 | sha256:1e06514522cb | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -ci 'gitlab' plugins/assay/skills/install/SKILL.md` | pass exit=0 | sha256:a5331f18877e | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 3 | `grep -c 'two GitHub accounts' plugins/assay/skills/install/SKILL.md \|\| true` | pass exit=0 | sha256:9a271f2a916b | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -c '^[\|] ' plugins/assay/skills/install/SKILL.md` | pass exit=0 | sha256:9a92adbc0cee | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 5 | `gh` | pass exit=0 | sha256:5665cc62dabe | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 6 | `on the same box, with the pin file's digest deliberately altered, re-run the acquisition step` | fail exit=2 | sha256:80dd39947a6e | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 7 | `on the same box, with the digest entry for the platform REMOVED from the pin file, re-run the acquisition step` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:2125358ffdab | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 8 | `run the install skill against an already-adopted repo` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:8e39eaae81a7 | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 9 | `grep -rn -e 'gh ' -e 'glab ' plugins/assay/skills/install/SKILL.md plugins/assay/skills/adopt/SKILL.md \| grep -v -e optional -e convenience` | fail exit=1 | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --version` | pass exit=0 | sha256:ea233f8d0995 | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 11 | `grep -c 'adopting-assay-gitlab' docs/adopting-assay.md` | pass exit=0 | sha256:e6c21e8d260f | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 12 | `statusgen --root . --consumers --brief forge-neutral/11` | fail exit=2 | sha256:170dddf43758 | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 13 | `bash plugins/assay/scripts/assay-install.test.sh` | fail exit=0 | sha256:fb2930c98ed1 | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+
+**Verifier notes — 2026-09-27, non-implementer verifier (opus-5.5), merged main b227b40768db;
+implementing change 3439807d08dd (PR #1560).** Every row was also run by hand; the witness
+table above is the machine record, and five of its verdicts are artefacts of how it reads a
+prose or list-shaped row (rows 5-9, 12, 13 below say which). Key real output per row:
+
+- **Row 1** — `install/SKILL.md:0`, `adopt/SKILL.md:0`. PASS.
+- **Row 2** — `46` (need ≥ 3). PASS.
+- **Row 3** — `0`. PASS.
+- **Row 4** — `14` (need ≥ 2). PASS.
+- **Row 5** — the witness row is NOT this row: verifyrun lifted the first code span of the
+  prose (a bare `gh`) and ran it, so its `pass` is evidence of nothing. Run by hand instead: a
+  shell whose PATH held only a symlink farm (bash, coreutils, git, curl, shasum, openssl — no
+  forge CLI); in that same shell `command -v gh; command -v glab` printed nothing (rc=1); then
+  `assay-install.sh rehearse` against a fresh repo whose origin is a GitLab host, with a
+  statusgen built from merged main (stamped `v0.0.0-verifier`) served as a release from a local
+  HTTPS fixture (throwaway certificate via CURL_CA_BUNDLE). Exit 0. Transcript: `fresh` →
+  `pinned: statusgen-darwin-arm64 v0.0.0-verifier 275771dd…` → `verified: sha256 275771dd…
+  matches the pin — installing` → `statusgen init` → `scaffolded: .gitlab-ci.yml` (no GitHub
+  workflow directory created) → `statusgen --version -> v0.0.0-verifier (pinned:
+  v0.0.0-verifier)` → `--lint -> exit 0` → `rehearsal PROVEN`. The real target's git status
+  stayed clean. PASS, scoped: the release was a local fixture, not the published release (the
+  offline envelope forbids the live fetch).
+- **Row 6** — same box, pin digest altered in its first six hex characters: exit 5, `REFUSED —
+  sha256 MISMATCH for statusgen-darwin-arm64 @ v0.0.0-verifier: pinned 000000dd…, fetched
+  275771dd… — nothing installed`; the destination directory was never created. PASS. (Witness
+  `fail exit=2` = the prose sentence executed as a shell command.)
+- **Row 7** — same box, the platform's pin line deleted: exit 5, `REFUSED — no pin line for
+  statusgen-darwin-arm64 … the expected digest could not be read; refusing rather than guessing
+  a platform or skipping verification`; destination never created. PASS, and distinct from
+  row 6's message. Suite N3-N6/N9-N11 cover the placeholder, truncated, upper-cased, missing
+  field, competing-lines, absent-file and other-platform shapes of the same failure.
+- **Row 8** — against the rehearsal's own output (streams tree + real pin + .gitlab-ci.yml):
+  `classify` exit 5 `REFUSED — this repo is already adopted; nothing to install — refusing
+  rather than clobbering the live adoption`; `rehearse` on it exit 5 at step 1 with nothing
+  acquired; a sha256 manifest of the adopted repo was byte-identical before and after. PASS.
+- **Row 9** — zero hits before the filter and zero after; the pipeline's exit 1 is `grep -v`
+  on empty input, i.e. the expected empty list. PASS (witness `fail exit=1` is the list-shaped
+  row read as an exit code). A wider scan for backticked gh/glab finds them only in the
+  optional-CLI note (install skill lines 65 and 93, adopt skill line 61) plus install skill line
+  416 — a Windows limitation note on the GitLab PAT-renewal tool, added later by windows-port/09,
+  not an install primitive and outside the row's pattern.
+- **Row 10** — the acquired binary's `--version` printed `v0.0.0-verifier`, the tag pinned in
+  the rehearsal's .assay-versions. PASS. (The witness ran whatever statusgen was first on PATH,
+  v1.0.27 — not the binary this row names.) Suite R3 shows the layer working on its own: a
+  digest-verified binary that names a different tag exits 5 `install NOT proven`.
+- **Row 11** — `16` and `8`. PASS (the witness ran only the first of the two commands).
+- **Row 12** — as written, on merged main: exit 2, the tool's own message that this merged
+  brief is not in the diff against main, naming the remedy. Re-run per that remedy at the
+  implementing commit with `--base` its parent: exit 0, `3 corroborated, 0 disproved, 6
+  unchecked` (the 6 are entries the authored brief already carried — by design). By hand: that
+  commit's diff does touch the four fixed-here skill/runbook files (+362/−142) and does not
+  touch statusgen/init.go or tools/cellctl/cellctl, so both out-of-scope claims hold. PASS;
+  the row is branch-time shaped, not a defect.
+- **Row 13** — default suite: exit 0, `40 passed, 0 failed`, including `H1 a redirect to http://
+  is REFUSED, nothing written`, H2, H3 and H4. With `--real` (real statusgen built from main):
+  exit 0, `42 passed, 0 failed`, including REAL and REAL2. PASS. (Witness `fail exit=0 —
+  expected 5` read H1's inner exit code from the Expect cell as the suite's own.) T1/T2 also
+  pass: an untrusted certificate is exit 6, and a user curl config that disables verification
+  is ignored.
+
+**Risk-bearing value enumeration** (diff scope: plugins/assay/scripts/assay-install.sh, the two
+skills, paired-versions.yaml; plus the Deliverables). Literals, ranked by irreversibility — an
+unverified binary executed on an adopter's machine cannot be undone by a redeploy:
+
+1. `is_sha256` pattern `^[0-9a-f]{64}$` @ assay-install.sh:95, compared by string equality at :196
+2. curl `-q … --proto '=https' --proto-redir '=https'` @ :155, curl exit `1` → refuse (exit 5) @ :159
+3. initial-URL scheme allowlist `https://*` @ :149
+4. expected-digest source: `pin_fields "$pins" "$asset"` @ :184 — the pin file, and nothing fetched
+5. statusgen `tag: v1.0.24` and the per-platform sha256 lines @ paired-versions.yaml:35-44 (the
+   values `pin` copies into an adopter's .assay-versions; not changed by this diff)
+6. `DEFAULT_BASE_URL="https://github.com"` @ :67, `DEFAULT_RELEASE_HOME="medici-finance/assay"` @ :68
+7. tag charset `^[A-Za-z0-9._/+-]+$` @ :118 plus `*..*` refusal @ :119; pin-line field count `3` @ :114
+8. exit codes `5` refuse / `6` could-not-check / `2` usage @ :71-73; install mode `0755` @ :206, :218
+
+Entries 6-8 are reversible or fail closed (a wrong home or tag yields a refused or failed fetch,
+never an unverified install) and need no derivation.
+
+- `RISK-VALUE: DERIVED — is_sha256 = ^[0-9a-f]{64}$ @ plugins/assay/scripts/assay-install.sh:95 — a sha256 digest is 256 bits = exactly 64 hex characters; sha256sum, shasum -a 256 and openssl dgst -r all print lowercase, as do the release checksums the pins come from, so exact-length lowercase equality is the full digest with no prefix or case-fold leniency; malformed input fails closed (suite N3-N6).`
+- `RISK-VALUE: DERIVED — curl --proto '=https' --proto-redir '=https', exit 1 → refuse @ plugins/assay/scripts/assay-install.sh:155,159 — the '=' form sets the allowed-protocol list to exactly https for the transfer and every redirect, which is the #1554 ruling verbatim; curl documents exit 1 as unsupported/disabled protocol, the error a disallowed hop raises; H1 observed it on a real plain-HTTP hop serving the good asset (exit 5, nothing written); -q first means a user curl config cannot re-enable -k (T2).`
+- `RISK-VALUE: DERIVED — scheme allowlist https://* @ plugins/assay/scripts/assay-install.sh:149 — refuses every non-https initial URL before curl runs (H2 file://, N13 http://), the ruling's initial-URL half; case-variant schemes are refused too, which fails closed.`
+- `RISK-VALUE: DERIVED — expected digest = pin_fields "$pins" @ plugins/assay/scripts/assay-install.sh:184 — the only value compared at :196; the script has no code path that reads checksums.txt or any fetched file as the expected value, and no wget or insecure-TLS fallback, matching DR-forge-neutral-11's accepted ruling that the pin file is the single source.`
+- `RISK-VALUE: NAMED, NOT DERIVED — statusgen tag = v1.0.24 and per-platform sha256 (e.g. darwin-arm64 c7dcdc419674799333f4244ed4cdd9146916e766c4ff9c6fe1f9506dc260e1e8) @ plugins/assay/paired-versions.yaml:35-38 — these are the trust root the install's pin step copies into an adopter's .assay-versions, so after this change "the pin file" in practice means "this manifest as shipped in the plugin". Confirming them means comparing with the published v1.0.24 release's checksums.txt, a live fetch the offline envelope forbids. OPEN QUESTION for the human gate: confirm these digests against the published release, and confirm that a manifest in the plugin bundle is an acceptable single source of truth for a digest.`
+
+**Core-system reviewer questions (answered).** (1) The single control is the sha256 equality at
+assay-install.sh:196 against the pin-file digest. It is not alone: the post-acquisition proof
+(`--version` == pinned tag at :451, `--lint` == 0 at :455) trips on a different signal in a later
+step. (2) Yes, one row proves a lower layer catches a fault with the upper layer bypassed. Suite
+R3 serves a binary whose digest matches its pin but whose `--version` names a different tag, and
+the proof refuses it (exit 5). Rows 6 and 7 prove the digest step refuses in both of its failure
+modes.
+
+**Observations (not row failures).** (a) The witness executed prose rows as shell commands,
+and for row 5 it ran a bare `gh` on a host that has one installed. The witness's row 5 `pass` is
+false: `gh` printed usage and exited 0. That is a verifyrun defect class. (b) docs/adopting-assay.md
+still carries `gh` invocations in manual-runbook verify steps (the Scenario 1 draft-PR check,
+the reviewer-App installation check, and the upgrade section's checksums materialise line). The
+label lines are marked optional convenience. The Verify rows scope task 4 to the skill text, so
+whether the runbook needs the same cleanup is the reviewer's call.
+
+VERIFY: PASS — all 13 rows pass on the observed output above. The notes on rows 5-9, 12 and
+13 explain each witness verdict that differs. This is Evidence for the human gate, not a sign-off
+(gate: human, sensitive-data: yes). One NAMED, NOT DERIVED value is still open.
+
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`). Reviewer records verdict + date in
 the stream README table.
