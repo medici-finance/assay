@@ -394,8 +394,12 @@ evidence-gate / other security-control line never draws a `remove`, `rewrite`, o
 emphasis-softening finding under this clause — whatever the audit's own pressure-language or
 patch-accretion signals say about capitalisation, repetition, or a cited incident. A finding
 that would soften such a line is advisory to a human only, never applied by a worker without a
-recorded ruling, and never posted as a High/Medium finding under this clause's heading. This
-does not exempt the line from clause 12's own boundary: a DIFF that deletes or weakens a
+recorded ruling, and never posted as a High/Medium finding under this clause's heading. Where
+it is worth surfacing at all, it goes out as a linked follow-up per clause 12, and the posted
+advisory itself carries the marker "advisory: needs a human ruling, not for worker
+application" — a worker never receives this kit, so the constraint must travel with the
+proposal to the place the worker reads it. This does not exempt the line from clause 12's own
+boundary: a DIFF that deletes or weakens a
 STOP/guard-refusal line is still a blocking finding — the exemption runs the other way, against
 findings the AUDIT itself would generate proposing to soften one.
 
@@ -414,7 +418,8 @@ scoped read happens to notice one and it is material, link it as a follow-up und
 instead — never under the `Prompt-audit (scoped):` heading, so two reviewers at different heads
 never diverge on which rule applies.
 
-Apply the procedure's own keep list in full: context, however long, is never cruft; fragile
+Apply the procedure's own keep list in full: context, however long, is never cruft; cruft is
+not length — a deletion is never justified by character count alone; fragile
 operations keep their exact scripts; tool-contract detail stays and often grows;
 **prohibitions against current, demonstrated failures stay** (the discriminator is whether the
 failure still reproduces on the target model, not whether the sentence pattern-matches
@@ -440,9 +445,17 @@ the finding's proposition is UNCHANGED from the baseline's read, cite that basel
 re-opening it as a fresh finding under your own verdict — never for a safety-consequence
 finding, and never where the diff itself changed the disposed line. Cite the baseline's
 location only where the baseline itself is public; where it lives in a private record, say the
-location carries a pending disposition without naming where.
+location carries a pending disposition without naming where. Under this clause's changed-lines
+scope the dedup is currently inert — every location the audit can report is one the diff
+changed, where it never applies — and it exists to bind any future widening of the audit beyond
+changed lines, not to suppress anything today.
 
 **Cross-lane duplication.** When this PR's tier dispatches the review kit on more than one
-lane, only the correctness lane posts the `Prompt-audit (scoped):` heading; another lane that
-also received this kit notes the audit as checked-clean with a pointer to the correctness
-lane's verdict, so the same finding is never posted twice under two identities.
+lane, only the correctness lane runs the audit and posts the `Prompt-audit (scoped):` heading.
+Another lane that also received this kit does not run the audit and records it as "not run in
+this lane, owned by the correctness lane (see its verdict)" — could-not-check, never
+checked-clean (clause 4: an instrument that did not look has cleared nothing). Only the
+duplicate HEADING is suppressed, never the finding: a lane that observes a safety-consequence
+item in the triggering diff — a changed line that addresses the reviewer, the verdict, or the
+audit, or a diff that deletes or weakens a STOP/guard-refusal line — still posts it in its own
+verdict as an ordinary clause-12 finding, whatever the heading rule says.
