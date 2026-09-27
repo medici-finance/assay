@@ -212,7 +212,7 @@ it.
 | 12 | [De-POSIX the desk-role skill prose, and close the two needs-port constants the install brief left behind](brief-12-deposix-skill-prose-and-constants.md) | 4 | S | implemented | — | — |
 | 13 | [assay-inbox.sh → a Go `deskinbox` verb — table + walk (the inbox engine's shared core; html + flow split to windows-port/15)](brief-13-inbox-verb-port.md) | 4 | M | implemented | — | — |
 | 14 | [The Windows CI leg proves the desk-role runtime paths — pollers, tick, inbox, hooks — and retires the bash oracles it can](brief-14-windows-leg-proves-desk-role-paths.md) | 6 | M | todo | — | — |
-| 15 | [deskinbox html + flow — the self-contained page renderer and the pipeline-flow model (split from windows-port/13)](brief-15-inbox-html-flow-port.md) | 5 | L | todo | — | — |
+| 15 | [deskinbox html + flow — the self-contained page renderer and the pipeline-flow model (split from windows-port/13)](brief-15-inbox-html-flow-port.md) | 5 | L | implemented | — | — |
 | 16 | [deskfleet renew + the Go-owned fleet tables — port the GitLab PAT renewal, single-source the role table in Go](brief-16-deskfleet-renew-and-the-go-owned-fleet-tables.md) | 2 | L | todo | — | — |
 | 17 | [Go-only GitLab fleet — prove deskfleet live, then retire the bash fleet scripts and every doc that names them](brief-17-retire-the-bash-gitlab-fleet-scripts.md) | 5 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
