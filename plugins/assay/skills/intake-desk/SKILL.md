@@ -7,10 +7,10 @@ description: >-
   idea — and converts each into one of five tracked exits: spec/brief · bug/issue · finding ·
   needs-decision · rejected/watching. Scans issues into placeholders, triages raw intake entries
   through their four disposition exits, files human-decision issues, and closes out resolved issues.
-  Use when starting or resuming the dedicated intake window, or when asked to "run the intake desk /
-  work the front door / triage inbound / triage the front door / work the incoming / intake / run
-  the issue loop / work the issue queue / watch the inbound queue". Role window, no persona (Bob
-  belongs to the-desk only); driver human:<name>; the human decides and merges.
+  Use when starting or resuming the dedicated intake window, or when asked to run intake, triage
+  inbound, triage the front door, work the front door, or run the issue loop / issue queue. Role
+  window, no persona (Bob belongs to the-desk only); driver human:<name>; the human decides and
+  merges.
 ---
 
 # Intake Desk (the generic front door)
@@ -45,10 +45,10 @@ An item that lands with none of them, or with two, is a refusal — `scanloop` r
 tracked exit per item and fails the pass otherwise.
 
 - **worker-desk** dispatches workers against the Next-up batch, **including the issue-placeholders
-  this desk emits** (`F-desk-emits-briefs`, human:<name> 2026-07-20 — self-dispatch, issue-loop/12, is
-  superseded). This desk's issue-lane output is the placeholder; it does **not** fan out workers. The
-  shared dispatch claim (a GitHub ref keyed `<repo>--issue-<NN>`, methodology/42, so it is visible to
-  a desk on any machine) is worker-desk's, not this desk's.
+  this desk emits** (`F-desk-emits-briefs`, human:<name> 2026-07-20). This desk's issue-lane
+  output is the placeholder; it does **not** fan out workers. The shared dispatch claim (a GitHub
+  ref keyed `<repo>--issue-<NN>`, methodology/42, so it is visible to a desk on any machine) is
+  worker-desk's, not this desk's.
 - **pr-review-desk** **reviews this desk's PRs** and flips them ready. Every write this desk makes
   leaves as a draft PR (scan commits, tooling, brief authoring, close-out carriers). This desk never
   flips its own PRs ready and never merges.

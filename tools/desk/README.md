@@ -508,15 +508,44 @@ work queue or steer a desk action.
 `deskroster liveness --repo OWNER/NAME` is a **read-only** NOTICE surface, separate from the
 trust gate above. The trust gate (`TrustedAuthor`/`TrustedHumanAuthor`/`Blessed`, all in
 `trust.go`) compares a login against the CONFIGURED roster — a pure string/id comparison
-that never asks GitHub whether the account behind that login still exists. `liveness`
-closes that gap by asking GitHub, right now, what it says about every login the roster
-configures (`Config.Humans`, `Config.Bless`, `Config.Bots` — GitHub-only; a GitLab identity
-lives in `Config.BotIdents`/`Config.Logins` and is untouched here), and printing one
-`NOTICE:` line for each identity that is not exactly what the roster expects:
+that never asks the forge whether the account behind that login still exists. `liveness`
+closes that gap by asking the repo's own forge, right now, what it says about every login
+the roster configures, and printing one `NOTICE:` line for each identity that is not
+exactly what the roster expects. Both GitHub and GitLab are supported (assay#1667), reading
+a different identity set per forge:
 
-- **deleted** — the login no longer resolves to any GitHub account.
+- On **GitHub**: `Config.Humans`, `Config.Bless`, `Config.Bots`.
+- On **GitLab**: the forge-qualified bot/service-account identities in `Config.BotIdents`
+  whose entry is `gitlab:`-qualified — GitLab has no human/bless roster of its own, only
+  service accounts (`GitLabRosterIdentities`, `trustliveness_gitlab.go`). It looks an
+  identity up with GitLab's exact-match `GET /api/v4/users?username=<name>` and reads both
+  the returned numeric id and the account's `state`. GitLab's users API always reports a
+  `state` field on a matching entry; a response that does not is treated as a
+  partial/malformed read — **could-not-check**, never defaulted to active.
+
+The classes:
+
+- **deleted** — the login no longer resolves to any account (a GitHub 404, or an EMPTY
+  GitLab users-list response — GitLab's endpoint never 404s on a no-match query, it returns
+  `200 []`). On GitLab this is **not unambiguous**: GitLab hides `blocked`/`banned`/
+  `ldap_blocked` accounts from a non-admin token's user search entirely (GitLab's own
+  `UsersFinder#base_scope`/`FORBIDDEN_SEARCH_STATES`), and a desk forge credential
+  (project/group/service-account token) IS a non-admin caller — so an empty result means the
+  account was deleted, OR that it is blocked/banned/ldap_blocked and simply hidden from this
+  token. The DELETED notice for a GitLab identity says so; a GitHub 404 carries no such
+  caveat.
 - **reclaimed** — the login resolves, but to a DIFFERENT numeric id than the one pinned —
-  the two classes the check actually exists to catch.
+  one of the classes the check actually exists to catch. Checked first (pinned identities
+  only), so it is reported whatever the new account's state is.
+- **suspended** — the login resolves, but the forge reports the account in any non-`active`
+  state (GitLab-only today — GitHub's account read exposes no such field). In practice this
+  fires for the GitLab states a non-admin token's user search does NOT hide —
+  `deactivated`, `blocked_pending_approval`, and similar — since `blocked`/`banned`/
+  `ldap_blocked` accounts are hidden entirely and classify **deleted** instead (see above).
+  Checked AFTER **reclaimed** and BEFORE **unpinned**/**renamed**: a non-active GitLab
+  account is reported suspended even when the identity is unpinned, but a pinned identity
+  whose id has moved is reported **reclaimed** whatever the new account's state. Never
+  reported as alive.
 - **renamed** — the pinned id's canonical login changed (advisory).
 - **unpinned** — the login resolves, but the roster carries no id to compare against
   (advisory: pin one).
@@ -524,22 +553,23 @@ lives in `Config.BotIdents`/`Config.Logins` and is untouched here), and printing
 An identity that is exactly alive produces no output — the same quiet-on-the-happy-path
 shape every other NOTICE in this codebase uses.
 
-A bot identity (`Config.Bots`, keyed on the App's bare slug) is probed at its
+A GitHub bot identity (`Config.Bots`, keyed on the App's bare slug) is probed at its
 `"<slug>[bot]"` REST rendering, never the bare slug — GitHub's `GET /users/{login}` only
 resolves a GitHub App's bot account under that suffixed form, so probing the bare slug 404s
 for every live App and misreports it as **deleted** (medici-finance/assay#1665). Human and
-Bless identities resolve directly at their configured login and are untouched by this.
+Bless identities resolve directly at their configured login and are untouched by this. A
+GitLab service account is never suffixed — GitLab has no decorated rendering at all, the
+account's username is the one form its API attributes anything to.
 
 **What it does NOT do.** It never wires a finding into `TrustedAuthor`/`TrustedHumanAuthor`/
 `Blessed`/`ItemTrusted*`'s pass/fail return, never auto-revokes anything, posts no comment,
-files no issue, and mutates nothing on the forge. Who is trusted today is unchanged by
-running it. Auto-revocation is separate, explicitly human-gated follow-up, tracked on
-medici-finance/assay#933 (the issue this check was scoped from).
+files no issue, and mutates nothing on the forge (GitLab included: the check is one read,
+`GET /users`, nothing is written). Who is trusted today is unchanged by running it.
+Auto-revocation is separate, explicitly human-gated follow-up.
 
-It is GitHub-only in this version: a `--repo` backed by a non-GitHub forge prints one
-explicit "GitHub-only" line rather than skipping silently or refusing — the roster itself
-may be perfectly configured, only that repo's forge is unsupported. GitLab account-liveness
-is untracked follow-up.
+A `--repo` backed by neither GitHub nor GitLab prints one explicit could-not-check
+`NOTICE:` line rather than skipping silently or refusing — the roster itself may be
+perfectly configured, only that repo's forge has no liveness implementation yet.
 
 ## Risk classification — how a PR becomes risk-classed
 
