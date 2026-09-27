@@ -232,18 +232,41 @@ alone. If you will edit the source again before committing, `git add` it after
 each sync so the next sync can match the copies it wrote. Otherwise restore the
 sites with `git checkout` and sync once.
 
-Two narrower cases stay content-limited even so. When more than one known
-length matches at the anchor (the ordinary shape once a block has grown and
-shrunk more than once in its history), the longest is taken and the tie is
-printed as a `note:` — it is not could-not-check, because refusing it would
-also refuse the common, unambiguous case of a copy still at an older revision.
-`git add` right after each sync keeps a block's history from ever containing
-two lengths that both match the same copy, which is what avoids the tie
-entirely. And a shrink of an edit that is never committed or staged is
-could-not-check only when nothing at the anchor matches; if the shrunk text
-still matches as a prefix of what is on disk, the copy reads as already synced
-and content the shrink dropped, but never registered anywhere sync can see, is
-left in place rather than guessed away.
+Two narrower cases stay content-limited even so.
+
+The first is genuinely **ambiguous**, not merely "an older revision": when more
+than one known length matches at the anchor and the longest is not the current
+canonical text, the bytes cannot tell a copy still genuinely at that longer,
+earlier text apart from a copy already at the current text, followed by
+unrelated content — possibly a local, site-specific rule someone added right
+after the block — that happens to equal the earlier text's own tail. This
+shape is common: it is exactly what happens the first time a prefix-shrink of
+the canonical text is committed. `git add` does **not** prevent it — the tie
+comes from committed history, not from anything staging can fix — so sync now
+**refuses by default**: could-not-check, naming the file and the exact
+line-range span the longest-match rule would have removed, and nothing is
+written. Verify the ambiguity by hand (`git diff` on the site) and, only once
+you have, re-run with `--allow-ambiguous-extent` to take the longest match
+anyway; that flag's rewrite is still recorded as a `note:` on `--sync`, never
+silently. Earlier revisions of this document said `git add` closed this
+window entirely and called the case "common, unambiguous" — both statements
+were wrong; this default (refuse, with an explicit opt-in) is this project's
+own choice among the review's options, not a settled cross-project ruling
+(medici-finance/assay#1692).
+
+The second is narrower still: a shrink of an edit that is never committed or
+staged is could-not-check only when nothing at the anchor matches; if the
+shrunk text still matches as a prefix of what is on disk, the copy reads as
+already synced and content the shrink dropped, but never registered anywhere
+sync can see, is left in place rather than guessed away.
+
+Every site file a `--sync` run touches is read at most once, and that same
+read is what both the proven extent and the eventual write are built from;
+immediately before writing, the file is re-read and compared against that
+original read, and the write itself goes through a temp file plus atomic
+rename rather than an in-place truncate-then-write. This closes a
+read-compute-write race that let concurrent `--sync` runs corrupt a file
+(medici-finance/assay#1692).
 
 ## Fixtures
 

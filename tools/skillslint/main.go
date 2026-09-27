@@ -18,6 +18,10 @@
 //	go run ./tools/skillslint                 # lint the plugin tree under the cwd
 //	go run ./tools/skillslint --root ..       # lint a sibling checkout
 //	go run ./tools/skillslint --sync          # REGENERATE every guardrail copy
+//	go run ./tools/skillslint --sync --allow-ambiguous-extent  # also take an
+//	                                               # ambiguous removal extent's
+//	                                               # longest match instead of
+//	                                               # refusing it (see guardrail.go)
 //	go run ./tools/skillslint --skills-dir <dir>  # adopter reach: structural +
 //	                                               # conformance ONLY, over
 //	                                               # <dir>/*/SKILL.md (repeatable)
@@ -51,12 +55,13 @@ func (s *stringList) Set(v string) error {
 func main() {
 	root := flag.String("root", ".", "path to the repo root holding plugins/assay/skills/")
 	sync := flag.Bool("sync", false, "regenerate every guardrail copy from "+guardrailSourcePath+" instead of checking")
+	allowAmbiguous := flag.Bool("allow-ambiguous-extent", false, "with --sync: when a copy's removal extent is ambiguous (more than one known length matches at the anchor, and the longest is not the current canonical text), take the longest match anyway instead of refusing — the default is to refuse, naming the file and span, since this case cannot be told apart by content alone from swallowing a local, site-specific rule (medici-finance/assay#1692); verify by hand before passing this")
 	var skillsDirs stringList
 	flag.Var(&skillsDirs, "skills-dir", "path to a directory of <dir>/*/SKILL.md to run ONLY the structural + conformance checks over (repeatable); when given, --root's other checks (house values, hidden chars, guardrails, enforcement block, posix-token) do not run")
 	flag.Parse()
 
 	if *sync {
-		os.Exit(runSync(*root))
+		os.Exit(runSync(*root, *allowAmbiguous))
 	}
 
 	if len(skillsDirs) > 0 {
@@ -232,7 +237,7 @@ func main() {
 	os.Exit(exit)
 }
 
-func runSync(root string) int {
+func runSync(root string, allowAmbiguous bool) int {
 	// priorGuardrailSources gives SyncGuardrails every earlier text of each
 	// block, so a copy is rewritten only when the lines at its anchor match a
 	// known text exactly (medici-finance/assay#1690). Without history, only
@@ -241,7 +246,7 @@ func runSync(root string) int {
 	for _, n := range notes {
 		fmt.Fprintf(os.Stderr, "skillslint --sync: note: %s\n", n)
 	}
-	changed, rep, err := SyncGuardrails(root, prior)
+	changed, rep, err := SyncGuardrails(root, prior, allowAmbiguous)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "skillslint --sync: %v\n", err)
 		return 2

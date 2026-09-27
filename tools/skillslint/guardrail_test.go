@@ -359,7 +359,7 @@ func TestSyncGuardrails_RewritesAStaleCopy(t *testing.T) {
 		t.Fatal("precondition: the stale copies should not be clean")
 	}
 
-	changed, rep, err := SyncGuardrails(root, []*GuardrailSource{prior})
+	changed, rep, err := SyncGuardrails(root, []*GuardrailSource{prior}, false)
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}
@@ -392,7 +392,7 @@ func TestSyncGuardrails_RefusesAHandEditedCopy(t *testing.T) {
 	bent := strings.Replace(body, "-> skip silently.", "-> shrug and carry on.", 1)
 	write(t, root, ".claude/skills/one/SKILL.md", bent)
 
-	changed, rep, err := SyncGuardrails(root, []*GuardrailSource{oldGuardrailSource(t, fixtureSource)})
+	changed, rep, err := SyncGuardrails(root, []*GuardrailSource{oldGuardrailSource(t, fixtureSource)}, false)
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}
@@ -415,7 +415,7 @@ func TestSyncGuardrails_RefusesAHandEditedCopy(t *testing.T) {
 // hides the real change.
 func TestSyncGuardrails_IsIdempotent(t *testing.T) {
 	root := writeFixture(t)
-	changed, rep, err := SyncGuardrails(root, nil)
+	changed, rep, err := SyncGuardrails(root, nil, false)
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}
@@ -436,7 +436,7 @@ func TestSyncGuardrails_LeavesAnUnlocatableCopyAlone(t *testing.T) {
 	trimmed := strings.Replace(body, "At most once per hour, run the prune.\n", "", 1)
 	write(t, root, ".claude/skills/one/SKILL.md", trimmed)
 
-	changed, rep, err := SyncGuardrails(root, nil)
+	changed, rep, err := SyncGuardrails(root, nil, false)
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}
@@ -512,7 +512,7 @@ func TestSyncGuardrails_GrowthKeepsTrailingContent(t *testing.T) {
 	}, "\n")
 	mkdirWrite(t, root, ".claude/skills/two/SKILL.md", site)
 
-	changed, rep, err := SyncGuardrails(root, []*GuardrailSource{old})
+	changed, rep, err := SyncGuardrails(root, []*GuardrailSource{old}, false)
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}
@@ -563,7 +563,7 @@ func TestSyncGuardrails_ShrinkDropsStaleLines(t *testing.T) {
 	}, "\n")
 	mkdirWrite(t, root, ".claude/skills/three/SKILL.md", site)
 
-	changed, rep, err := SyncGuardrails(root, []*GuardrailSource{old})
+	changed, rep, err := SyncGuardrails(root, []*GuardrailSource{old}, false)
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}
