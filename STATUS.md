@@ -52,6 +52,7 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
+| measured-status | 05 — attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish [exec:strong] | 1 | 2200 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | desk-supervision | 24 — One file per verify outcome — retire the shared appended outcomes log [exec:strong] | 0 | 2000 |
