@@ -270,7 +270,7 @@ func TestResolveUnknownRoleAndProvider(t *testing.T) {
 func TestResolveExplicitOverrideRoutesProviderAndTier(t *testing.T) {
 	m := loadExamplePolicy(t)
 	res, err := m.Resolve("pr-review-desk", "kimi", "opus", "")
-	if err != nil || res.Model != "k3[1m]" || res.Effort != "high" {
+	if err != nil || res.Model != "k3-256k" || res.Effort != "high" {
 		t.Fatalf("provider override = %+v, err=%v", res, err)
 	}
 	res, err = m.Resolve("pr-review-desk", "", "", "codex")

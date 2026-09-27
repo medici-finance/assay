@@ -144,6 +144,11 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		env = envSet(env, "CLAUDE_CONFIG_DIR", cfg)
 		// Automated desks do not need the extra next-prompt generation request.
 		env = envSet(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "false")
+		// Bound the context a long desk window carries: auto-compact at 200K so a sustained
+		// session stops re-reading an ever-growing prefix every turn (cached-input spend against
+		// provider rate windows; 1M-context models never trip it otherwise). Neutral for
+		// 200K-context models, which compact there anyway. A cell overrides it via cell.env.
+		env = envSet(env, "CLAUDE_CODE_AUTO_COMPACT_WINDOW", c.Env.GetOr("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "200000"))
 		if provider != "" {
 			// An inherited API key wins over the auth token and silently routes to Anthropic,
 			// so it is UNSET first; then the model plus the three tier aliases are pinned to a
