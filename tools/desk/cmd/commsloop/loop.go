@@ -241,15 +241,64 @@ func (l *Loop) TierPolicy(item loopengine.Item) (loopengine.Tier, error) {
 
 	action := l.router().Route(context.Background(), env)
 	class := normalizeClass(env.Class)
-	// risk: no per-message mechanical risk signal is carried on the envelope
-	// yet (assign.yaml documents risk as "carried on the envelope as an INPUT
-	// to model resolution", a follow-up wiring gap distinct from this
-	// brief's contract — NEEDS_CONTEXT if that gap needs closing here).
-	// Passing false is the conservative, in-scope default: it never grants
-	// MORE autonomy than a risk-flagged message would (assign.yaml's own
-	// risk:yes-forces-human rule only ever narrows), and the router's own
-	// action choice is expected to carry anything risk-shaped to
-	// escalate-human-issue/quarantine until a mechanical risk field lands.
+	// Derivation: `risk` is a hardcoded false, and this block is the record of
+	// why that is sound TODAY — the underived-literal defect (#1065) is closed
+	// by this derivation, and the envelope wiring that would let it be DERIVED
+	// instead is tracked as the follow-up issue #1722.
+	//
+	// Why false is the only value a sender could currently contradict nothing
+	// with: the risk signal assign.yaml specifies — "carried on the envelope
+	// as an INPUT to model resolution" — does not exist on the wire. cellmsg-v1
+	// (internal/comms/envelope.go) has no risk field, and its strict parser
+	// (DisallowUnknownFields) REFUSES one at parse, so no sender can produce a
+	// risk:yes that would ever reach this call. Reading a field nothing can
+	// set would be a derivation of a constant wearing a signal's clothes.
+	//
+	// Enumerating every class of message this router can see, each is covered
+	// without the risk axis firing:
+	//  1. Unparseable, unverifiable, oversize, unknown-verb or unknown-class
+	//     envelopes — refused upstream (commsgw's pre-checks and
+	//     ParseEnvelope's typed refusals); they never reach TierPolicy.
+	//  2. An envelope whose item payload does not carry or parse — fail closed
+	//     to TierHuman at the top of this function, before the consult.
+	//  3. An ACL-violating lane — caught by the routing-boundary re-check
+	//     above (defense in depth), fail closed to TierHuman, before the
+	//     consult.
+	//  4. Unclear, suspicious, or injection-shaped content — the router's own
+	//     action choice maps it to quarantine, which assign.yaml routes to
+	//     TierHuman ALWAYS, regardless of class or risk.
+	//  5. Content needing a human's attention or answer — mapped to
+	//     escalate-human-issue (always TierHuman) or file-question-issue
+	//     (reaches a human by construction, as a filed issue).
+	//  6. A consult failure of any kind — invalid, timed-out, budget-exhausted
+	//     or valve-disabled — resolves to the pre-declared default action,
+	//     quarantine, hence TierHuman (Decide's contract).
+	//  7. The remainder — genuine dispatchable work, review and verify
+	//     requests, and pure reports — are the actions risk:yes would narrow.
+	//     For these the contained prose consult is the designated carrier of
+	//     the risk determination until the envelope grows a mechanical signal,
+	//     and assign.yaml's axis only ever NARROWS (risk:yes forces
+	//     tier:human; it never grants more autonomy), so a pinned false cannot
+	//     grant a message more autonomy than the router's action choice
+	//     already gave it — it can only fail to narrow further.
+	//
+	// The residual gap this record does NOT close: a risk-shaped message the
+	// contained reader MIS-routes to a dispatch-class action reaches
+	// TierSession unattended, because the backstop that exists to catch
+	// exactly that (risk:yes -> tier:human) can never fire on a pinned false.
+	// Closing that gap is precisely #1722's scope: grow the envelope signal
+	// (or a mechanical derivation of one) so this value is derived rather
+	// than asserted. Class 6's consult-failure default cannot be the backstop
+	// here: it fires only when the consult itself fails (invalid, timed-out,
+	// budget-exhausted or valve-disabled), and the gap above is a consult that
+	// SUCCEEDS but mis-routes — a path class 6 never sees. What actually limits
+	// the gap today is Dispatch's own Native switch (this file): every
+	// production call site leaves Native at its zero value, so a TierSession
+	// item never fires a real session — it gets mailbox delivery only, plus a
+	// synthesized PASS. If Native is ever enabled for commsloop, that backstop
+	// is gone and the only remaining layers are dispatchNative's kill switch
+	// and roleprofile.go's role-fenced session; #1722 should land before that
+	// switch flips.
 	const risk = false
 	tier, err := Assign(action, class, risk)
 	if err != nil {
