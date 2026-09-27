@@ -298,6 +298,76 @@ RISK-VALUE: N/A — enumeration over the rest of this brief's own diff found no 
 
 Rows 8 and 10 (re-baselined 2026-09-22) now pass; row 7 ran with the #555 `-skip` in place (`sg=0`, `dt=0`). Rows 13-15 are could-not-check on the merged tree (nothing to corroborate); no defect found in the deliverable.
 
+### Verification — 2026-09-25 (assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian))
+
+Re-verify of this brief after the 2026-09-24 re-write of rows 13-15 (#1651, which moved them
+onto PR #373's merge commit instead of a self-referential merge-base). Runner is not the
+implementer; own detached worktree cut off origin/main at merged main
+893cd6114b0382a1f71e6ef763c6601a5e19d270 (HEAD == origin/main). Offline envelope observed
+(KUBECONFIG=/dev/null). gate: model; all four risk answers `no`. This brief has no
+check:ci-classed rows and no row reads a sibling checkout.
+
+**Execution witness.** statusgen built from this tree (`GOWORK=off go build`), then
+`statusgen verifyrun --brief` run from the repo root. Its table is landed verbatim below;
+exit 2. verifyrun lifts the FIRST backtick span of each Command cell, and seven of this
+table's Command cells open with bold prose that itself contains a backticked token, so
+verifyrun executed that token instead of the command: rows 2, 7, 8, 10, 13, 15 recorded
+could-not-run (exit 127), and row 6 executed only `GOOS=windows` (exit 0, empty output),
+so the row 6 witness pass is vacuous and is not counted. That is a check-definition defect
+in the Verify table (commands not machine-extractable), not a finding about the deliverable.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `for f in statusgen/procgroup statusgen/rosterowner tools/desk/internal/deskkit/filelock tools/desk/internal/deskkit/rosterowner; do test -f "${f}_unix.go" && test -f "${f}_windows.go" \|\| { echo "MISSING pair $f"; exit 1; }; done; echo OK` | pass exit=0 | sha256:a12b7cb43c9d | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `_unix.go` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:7b1418af3dd2 | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && GOOS=windows GOARCH=amd64 go build -o /tmp/wp00-sg-amd64.exe . && GOOS=windows GOARCH=arm64 go build -o /tmp/wp00-sg-arm64.exe . && file /tmp/wp00-sg-amd64.exe /tmp/wp00-sg-arm64.exe` | pass exit=0 | sha256:69bb1610b2ff | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build -o /tmp/wp00-dt-amd64.exe ./cmd/deskpost && GOOS=windows GOARCH=arm64 go build -o /tmp/wp00-dt-arm64.exe ./cmd/deskpost && file /tmp/wp00-dt-amd64.exe /tmp/wp00-dt-arm64.exe` | pass exit=0 | sha256:a1667f7eab42 | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./...; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `GOOS=windows` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `./...` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:fa4b756ef454 | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `_unix.go` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:7b1418af3dd2 | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `grep -rn --include='*.go' -E 'syscall\.(Flock\|Kill\|Stat_t\|SysProcAttr\{Setpgid)' statusgen tools/desk \| grep -c '_unix\.go:'` | pass exit=0 | sha256:2e6d31a5983a | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `NOTICE` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:bac347a4d727 | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `grep -qiE -e 'grandchild' -e 'process group' -e 'orphan' statusgen/procgroup_windows.go; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `grep -qF 'ErrLockBusy' tools/desk/internal/deskkit/filelock_windows.go; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `prune.go` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:8aa1a529c203 | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+| 14 | `M=ca92fda79eb28afa72129578196fcf640c56053e && BASE=$(git merge-base "$M^1" "$M^2") && ! git diff --quiet "$BASE" "$M^2" -- tools/desk/go.mod && git diff --quiet "$BASE" "$M^2" -- tools/desk/go.sum statusgen/go.mod statusgen/go.sum` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+| 14a | `grep -c 'golang.org/x/sys v0.46.0' tools/desk/go.mod` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+| 15 | `fixed-here` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:8aafbcf7e173 | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (on-behalf-of human:ian) (forge-identity) |
+
+**Direct runs of the seven mis-extracted rows** — the real command (the longest code span
+in the cell), each in `bash -o pipefail -c` at the repo root on the same tree:
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 2 | `for f in $(find statusgen tools/desk -name '*_unix.go'); do head -5 "$f" \| grep -qE -e '^//go:build unix' -e '^//go:build !windows' \|\| { echo "NO CONSTRAINT $f"; exit 1; }; done; echo OK` | OK | PASS — exit 0; OK | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 6 | `cd statusgen && GOOS=windows GOARCH=amd64 go vet ./...; echo "sg=$?"; cd ../tools/desk && GOOS=windows GOARCH=amd64 go vet ./...; echo "dt=$?"` | sg=0 and dt=0 | PASS — exit 0; sg=0 ⏎ dt=0 (the witness row 6 above ran only the leading prose token GOOS=windows, an env assignment that exits 0 with empty output, sha256:e3b0c44298fc — that witness pass is vacuous; this direct run is the real one) | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 7 | `cd statusgen && go test ./...; echo "sg=$?"; cd ../tools/desk && go test ./internal/deskkit/... ./internal/loopengine/... ./cmd/deskpost/... ./cmd/deskevidence/... ./cmd/deskrelease/... -skip '^(TestRegistryCoversCmdBinaries\|TestReStampRecovery)'; echo "dt=$?"` | sg=0 and dt=0 | FAIL — exit 0; sg=0 ⏎ FAIL github.com/medici-finance/assay/tools/desk/internal/loopengine ⏎ dt=1 — first attempt; the failing test is TestDrain (drain_test.go:97: max concurrency observed 1; the pool never sustained >1 in flight). A second full run of the row reproduced dt=1 on the same test; an isolated TestDrain -count=5 failed 5/5 (3x the concurrency assertion, 2x drain_test.go:82 engine did not stop within deadline). Host load average 59-67 during every run. Same class as the open load-induced loopengine timing flake #612; TestDrain exercises pool concurrency and a stop deadline, not the lock split this brief made. sg=0 and deskpost, deskevidence, deskrelease, deskkit green | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 8 | `grep -rn --include='*.go' -E 'syscall\.(Flock\|Kill\|Stat_t\|SysProcAttr\{Setpgid)' statusgen tools/desk \| grep -Ev '_(unix\|windows)\.go:' \| grep -Ev ':[0-9]+:[[:space:]]*(//\|\*)' ; echo "rc=$?"` | rc=1 (no lines) | FAIL — exit 0; rc=0, two lines printed: tools/desk/cmd/cellctl/policy_hang_unix_test.go:43 (SysProcAttr Setpgid) and :53 (syscall.Kill). That file carries //go:build unix on line 1 and was added 2026-09-24 by unrelated work (54ce8dcd2, #1594); its _unix_test.go suffix escapes the row anchor, which excludes only _unix.go / _windows.go. The use is correctly build-constrained (row 6 windows vet is clean), so this is a stale anchor, not a surviving unguarded syscall | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 10 | `for f in statusgen/rosterowner_windows.go tools/desk/internal/deskkit/rosterowner_windows.go; do grep -qF 'GetNamedSecurityInfo' "$f" && grep -qF 'evaluateRosterACL' "$f" && grep -qF 'S-1-1-0' "$f" \|\| { echo "MISSING acl-enforcement in $f"; exit 1; }; done; echo "wired=OK"; (cd statusgen && go test ./... -run '^TestEvaluateRosterACL$' -count=1 >/dev/null && echo "sg-test=OK"); (cd tools/desk && go test ./internal/deskkit/... -run '^TestEvaluateRosterACL$' -count=1 >/dev/null && echo "dt-test=OK")` | wired=OK, sg-test=OK, dt-test=OK | PASS — exit 0; wired=OK ⏎ sg-test=OK ⏎ dt-test=OK | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 13 | `M=ca92fda79eb28afa72129578196fcf640c56053e && BASE=$(git merge-base "$M^1" "$M^2") && ! git diff --quiet "$BASE" "$M^2" && git diff --quiet "$BASE" "$M^2" -- tools/desk/cmd/deskwt/prune.go` | exit 0 | PASS — exit 0; no output (pinned range M=ca92fda79 resolved both parents; implementing diff non-empty; prune.go absent from it) | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 15 | `M=ca92fda79eb28afa72129578196fcf640c56053e && BASE=$(git merge-base "$M^1" "$M^2") && C=$(git diff --name-only "$BASE" "$M^2") && test -n "$C" && P=$(awk '/^---$/{n++;next} n==1&&/^consumers:/{f=1;next} f&&/^[^ ]/{f=0} f&&/: fixed-here/' docs/streams/windows-port/brief-00-unix-windows-build-tag-split.md \| sed -e 's/^ *- "//' -e 's/: fixed-here.*//' \| tr ',' '\n' \| tr -d ' ') && test "$(printf '%s\n' "$P" \| grep -c .)" -eq 9 && (for p in $(printf '%s\n' "$P"); do printf '%s\n' "$C" \| grep -qxF "$p" \|\| { echo "NOT IN DIFF $p"; exit 1; }; done) && ! printf '%s\n' "$C" \| grep -qxF docs/streams/windows-port/brief-02-portability-audit.md && grep -qE '^depends:.*"windows-port/00"' docs/streams/windows-port/brief-01-release-build-matrix.md` | exit 0 | PASS — exit 0; no output (9 fixed-here paths parsed, all in the pinned implementing diff; brief-02 not in it; brief-01 depends on windows-port/00) | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+
+Combined: 14 of 16 rows meet their Expect on direct execution (1, 3, 4, 5, 9, 11, 12, 14,
+14a by witness; 2, 6, 10, 13, 15 by direct run). Row 7 FAIL (dt=1, loopengine TestDrain under
+host load, class #612) and row 8 FAIL (rc=0, stale anchor catching a build-constrained
+_unix_test.go file). Neither failure is in this brief's diff; the deliverable itself (the
+pairs, constraints, windows cross-compile, windows vet, fail-closed lock, ACL-enforced owner
+check, pinned-range rows 13-15) checks clean.
+
+Suggested amendments (for the desk to route): (a) move every leading backticked token out of
+rows 2, 6, 7, 8, 10, 13, 15's Command cells (put the prose after the command, or de-backtick
+it) so verifyrun lifts the real command; (b) row 8's exclusion should also drop
+`_(unix|windows)_test.go` files (or any file whose line 1 is a //go:build unix constraint);
+(c) row 7's loopengine leg stays red under load until #612 is fixed.
+
+RISK-VALUE: DERIVED — TryLockExclusive / UnlockFile byte range (reserved=0, nBytesLow=1, nBytesHigh=0, offset 0 via a zero Overlapped) @ tools/desk/internal/deskkit/filelock_windows.go:29 (LockFileEx) and :43 (UnlockFileEx) — lock and unlock cover the IDENTICAL one-byte range at offset 0, the standard whole-file advisory lock; equal ranges are the only correctness requirement the brief's ground rules name (a mismatch leaks the lock and invites double-dispatch), and they match.
+
+RISK-VALUE: DERIVED — lock flags = LOCKFILE_EXCLUSIVE_LOCK|LOCKFILE_FAIL_IMMEDIATELY @ tools/desk/internal/deskkit/filelock_windows.go:28, busy mapping ERROR_LOCK_VIOLATION → ErrLockBusy @ :34-35 — the exact windows analogue of LOCK_EX|LOCK_NB and EWOULDBLOCK → ErrLockBusy @ tools/desk/internal/deskkit/filelock_unix.go:26 and :30; non-blocking plus a busy sentinel, with every other error returned raw, is what makes a contended claim refuse rather than grant (fail closed, row 12).
+
+RISK-VALUE: N/A — enumeration over the rest of the implementing diff (pinned range of PR #373) found no further INTRODUCED literal: the group/world-writable mask 0o022 (statusgen/rosterowner_unix.go:24, tools/desk/internal/deskkit/rosterowner_unix.go:23), Setpgid and SIGKILL (statusgen/procgroup_unix.go:21, :23), cmd.WaitDelay = time.Second (statusgen/gitinfo.go:115) and the 50ms retry sleeps (claim.go:185 and the three writeflow.go copies) moved verbatim from pre-split sites and are reversible operational knobs; golang.org/x/sys v0.46.0 (tools/desk/go.mod:14) is unchanged (row 14a); the World SID S-1-1-0 row 10 checks entered on later commits (#640/#641, #667), outside this diff.
+
+**VERIFY: FAIL** — 9/16 rows pass by execution witness (row 6's witness pass is vacuous and not counted); 14/16 meet Expect on direct execution; rows 7 and 8 fail (environment load flake #612; stale row-8 anchor), and rows 2, 6, 7, 8, 10, 13, 15 are check-definition defects for the witness. No defect found in the deliverable. Status stays implemented; no flip.
 
 ## Review
 Gate: **model** (from frontmatter). All four risk answers are `no` — this is a compile-target
