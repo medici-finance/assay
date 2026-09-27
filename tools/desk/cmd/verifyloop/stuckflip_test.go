@@ -39,7 +39,7 @@ func TestStuckFlip_VerifiedSidecarWithFilledEvidenceIsBucketedNotDispatched(t *t
 		"03": clear,                 // sidecar verified but Evidence EMPTY → DISPATCH (Evidence never landed)
 		"04": clear,                 // no sidecar row at all → DISPATCH
 	})
-	if err := os.WriteFile(filepath.Join(root, "docs", "streams", outcomeSidecarName), []byte(sidecarFixture), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "docs", "streams", "verify-outcomes.jsonl"), []byte(sidecarFixture), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -67,21 +67,33 @@ func TestStuckFlip_VerifiedSidecarWithFilledEvidenceIsBucketedNotDispatched(t *t
 	}
 }
 
-// The sidecar read keys on the LATEST row per brief and tolerates a malformed line.
-func TestReadOutcomeSidecar_LatestRowWinsAndBadLinesSkip(t *testing.T) {
-	p := filepath.Join(t.TempDir(), outcomeSidecarName)
+// The outcome-records read keys on the LATEST record per brief (by timestamp, #882
+// — never line position) and tolerates a malformed legacy line.
+func TestReadVerifyOutcomeRecords_LatestRowWinsAndBadLinesSkip(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs", "streams"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(root, "docs", "streams", "verify-outcomes.jsonl")
 	if err := os.WriteFile(p, []byte(sidecarFixture), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got := readOutcomeSidecar(p)
+	got, _, err := readVerifyOutcomeRecords(root)
+	if err != nil {
+		t.Fatalf("readVerifyOutcomeRecords: %v", err)
+	}
 	if got["example-stream/01"].Outcome != "verified" || got["example-stream/01"].SHA != "0000002" {
 		t.Fatalf("latest row for 01 = %+v, want the verified 0000002 row", got["example-stream/01"])
 	}
 	if len(got) != 3 {
-		t.Fatalf("sidecar map = %d briefs, want 3 (bad line skipped)", len(got))
+		t.Fatalf("outcomes map = %d briefs, want 3 (bad line skipped)", len(got))
 	}
-	if len(readOutcomeSidecar(filepath.Join(t.TempDir(), "absent.jsonl"))) != 0 {
-		t.Fatalf("an absent sidecar must read as no outcomes")
+	empty, _, err := readVerifyOutcomeRecords(t.TempDir())
+	if err != nil {
+		t.Fatalf("readVerifyOutcomeRecords on an absent tree: %v", err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("an absent tree must read as no outcomes")
 	}
 }
 

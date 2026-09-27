@@ -3379,6 +3379,58 @@ landing with no pre-commit check that the landed content was clean:
   (`cmd/deskpreflight/main.go`) rather than reinventing it. statusgen not being on PATH is
   Unverifiable (exit 6), never a silent pass.
 
+### `--outcome-record` — one file per verify outcome (#882)
+
+```bash
+deskevidence <owner/repo> <branch> --outcome-record <local-file>
+```
+
+Mutually exclusive with `--evidence-file`/`--brief-path`. Retires the shared appended
+`docs/streams/verify-outcomes.jsonl` log: every verify Evidence PR used to append one line to
+that ONE path, and the forge merges pull requests server-side with no `merge=union` driver, so
+each landing turned every sibling Evidence PR touching that path CONFLICTING. Instead,
+`--outcome-record` reads one JSON object from `<local-file>`, computes the target path with
+`deskkit.RecordName` (a pure function of the record's own bytes:
+`docs/streams/verify-outcomes/<stream>/<NN>-<YYYYMMDDTHHMMSSZ>-<digest12>.json`), and commits a
+NEW file there. Two concurrent landings only ever pick the same path when they carry
+byte-identical content — the same outcome — and two identical adds merge cleanly with no driver.
+
+Records are **immutable**: an existing path with identical bytes is a noop; an existing path with
+different bytes is refused (exit 5) — a correction is a NEW record (a fresh `ts`, hence a fresh
+digest and path), never an edit of an existing one. The verified-outcome closure gates
+(`guardVerifiedOutcomes`, `gateVerifiedSidecarLanding`) apply to a `verified` record exactly as
+they applied to an added log line; `verify-fail` is never gated.
+
+**Receipt validation.** For a record carrying `wake_schema: "verify-wake-v1"`, the writer
+additionally refuses (exit 5, naming the field) the three recurring defects reviewers kept
+bouncing Evidence PRs for:
+
+- `inputs` must name every backticked path the brief's `## Context` `files:` block declares —
+  read from the brief AT the record's own `sha`, never the working tree — with one `file:<path>`
+  key per declared file (or one nested under a declared directory); a path absent at that sha (a
+  `(planned)` deliverable) is not required.
+- `blocker_ref` must be an actual reference — `#<N>`, `<owner>/<repo>#<N>`, or a forge issue/PR/run
+  URL, parsed and read through the configured forge API — never free text or an `action: …`
+  sentence.
+- the brief's own `file:<path>` revision must equal the SHA-256 of the brief AS IT LANDS on the
+  target branch (which already carries this very landing's own Evidence append), read from the
+  forge — never the pre-Evidence copy a receipt might have hashed at wake-evaluation time.
+
+An unreadable brief, forge read failure, or any other could-not-check condition in these checks
+is exit 6, never a silent pass.
+
+**Class guard.** `deskevidence` refuses (exit 5) ANY write to a file matching
+`docs/streams/*.jsonl` — not just `verify-outcomes.jsonl` — naming #882: a shared appended log is
+exactly the shape whose server-side merge conflicts every sibling PR that touches it
+concurrently, and the class must not reopen through a sibling log (the `repair-obligations.jsonl`
+projection included — its own real sink stays a dry-run, so arming it as a shared appended file
+would fail this guard red, forcing the same per-file layout at that time).
+
+**Migration.** `statusgen outcomes split --root <dir> [--check]` writes one record file per
+legacy log line (verbatim bytes plus a trailing newline), idempotent, leaving the log itself in
+place until every open PR that still touches it has landed (see
+`migrations/0004-*-per-file-verify-outcomes.md`).
+
 **The `flock`** (the third of #1282's guards, ported in #227).
 `cmd/deskevidence/writeflow.go` now holds a `syscall.Flock(…, LOCK_EX|LOCK_NB)` over the
 whole C-5 window — `AllowWrite → commitFile → audit append` — on the same
@@ -4637,7 +4689,9 @@ human's merge of the checkpoint PR is the flip.
 
 **`plan` does not re-run an unchanged failure — wake receipts** (`verify-wake-v1`;
 `docs/streams/example-stream/verify-wake-v1.md`). A `verify-fail`/`blocked` verifier run lands a
-WAKE RECEIPT on the append-only verify-outcomes sidecar row: the inputs it observed, the blocker
+WAKE RECEIPT on the verify-outcome record: since #882, one NEW file per outcome under
+`docs/streams/verify-outcomes/<stream>/` (`deskevidence --outcome-record`), unioned with any
+legacy appended line still present from before the migration — the inputs it observed, the blocker
 class, and the checkable condition that must change before re-running is worth a slot. On the next
 `plan`, `classifyItem` reads the evaluated state (`deskkit.WakeReceipt.EvaluateWake`, computed at
 scan time in `briefscan.go` against an already-authorized, offline, probe-free reader): a complete

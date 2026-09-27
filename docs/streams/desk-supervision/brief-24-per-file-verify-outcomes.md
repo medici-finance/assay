@@ -40,21 +40,23 @@ sources:
   - "live read 2026-09-27 ~16:30Z: open verifier-App PRs and their mergeability, and a local merge-tree of each CONFLICTING head against main (facts)"
   - "freshness-checked 2026-09-27 @ b227b4076 (origin/main): the log is a single appended file, no per-record layout exists, the writer and both readers read it by path"
 consumers:
-  # Authoring PR: each path this brief's implementation will edit is routed to this brief
-  # (rule 6); each flips to fixed-here in the implementation commit that edits the path.
-  - "tools/desk/internal/deskkit/verifyoutcomes.go (planned; the desk-side reader choke point): follow-up desk-supervision/24 (this brief; flips to fixed-here when the implementation adds it)"
-  - "tools/desk/cmd/verifyloop/briefscan.go (readOutcomeSidecar, readWakeReceipts): follow-up desk-supervision/24 (this brief; rewired onto the choke point, latest-by-timestamp — flips to fixed-here then)"
-  - "tools/desk/cmd/deskevidence (writer, size-cap override, verified-outcome gates): follow-up desk-supervision/24 (this brief; flips to fixed-here when the implementation edits it)"
-  - "statusgen/verifyoutcomes.go, statusgen/load.go and the new `statusgen outcomes` subcommand: follow-up desk-supervision/24 (this brief; flips to fixed-here when the implementation edits them)"
-  - "statusgen/verifyoutcomes_union_test.go (asserts merge=union on the log): follow-up desk-supervision/24 (this brief; the assertion retires with the log at Task step 8 — flips to fixed-here then)"
-  - ".gitattributes (line 23, merge=union for the log): follow-up desk-supervision/24 (this brief; removed at the retirement step, Task step 8 — flips to fixed-here then)"
-  - "docs/streams/verify-outcomes.jsonl: follow-up desk-supervision/24 (this brief; split into records at Task step 7, deleted at step 8 — flips to fixed-here then)"
-  - "docs/streams/desk-supervision/verify-wake-v1.md and repair-obligation-v1.md (name the appended log as the receipt's home): follow-up desk-supervision/24 (this brief; flips to fixed-here when the implementation edits them)"
-  - "plugins/assay/skills/verify-desk/SKILL.md (the outcome-row paragraph and the Evidence-PR state table's premise): follow-up desk-supervision/24 (this brief; flips to fixed-here when the implementation edits it)"
-  - "plugins/assay/skills/pr-review-desk/SKILL.md (the Evidence-PR re-conflict bullet): follow-up desk-supervision/24 (this brief; flips to fixed-here when the implementation edits it)"
-  - "tools/desk/README.md (deskevidence and verifyloop sections): follow-up desk-supervision/24 (this brief; flips to fixed-here when the implementation edits it)"
-  - "migrations/ (a new adopter migration note for the split): follow-up desk-supervision/24 (this brief; flips to fixed-here when the implementation adds it)"
-  - "docs/streams/desk-supervision/brief-23-evidence-lander-gatekeeper.md (its scope core admits appended lines of the log and its remerge relies on merge=union): follow-up desk-supervision/24 (this brief; Task step 9 — flips to fixed-here then)"
+  # Authoring PR: each path this brief's implementation edited is routed to this brief
+  # (rule 6). Flipped to fixed-here below for every path this PR actually touched; two stay
+  # follow-up because Task step 8 (the log's retirement) is conditional and did NOT run this
+  # tick — 17 open PRs still touch the log (medici-finance/assay#1802 tracks the retirement).
+  - "tools/desk/internal/deskkit/verifyoutcomes.go: fixed-here (desk-supervision/24) — the reader/name choke point (RecordName, ParseRecord, ReadVerifyOutcomes, LatestPerBrief)"
+  - "tools/desk/cmd/verifyloop/briefscan.go: fixed-here (desk-supervision/24) — readOutcomeSidecar/readWakeReceipts rewired onto the choke point via readVerifyOutcomeRecords, latest-by-timestamp"
+  - "tools/desk/cmd/deskevidence (writer, size-cap override, verified-outcome gates): fixed-here (desk-supervision/24) — --outcome-record, the class guard, receipt validation; the size-cap override is DELETED, not migrated"
+  - "statusgen/verifyoutcomes.go, statusgen/load.go and the new `statusgen outcomes` subcommand: fixed-here (desk-supervision/24) — statusgen's own reader/name copy, reservedRegisterNames, statusgen/outcomessplit.go"
+  - "statusgen/verifyoutcomes_union_test.go (asserts merge=union on the log): follow-up desk-supervision/24 (this brief; the assertion retires with the log at Task step 8, which is CONDITIONAL and did not run this tick — medici-finance/assay#1802 tracks it — flips to fixed-here then)"
+  - ".gitattributes (line 23, merge=union for the log): follow-up desk-supervision/24 (this brief; removed at the retirement step, Task step 8 — conditional, not run this tick, medici-finance/assay#1802 — flips to fixed-here then)"
+  - "docs/streams/verify-outcomes.jsonl: out-of-scope, by design (Task step 7 leaves the log itself byte-for-byte unchanged — the split only ADDS record files under docs/streams/verify-outcomes/; all 72 lines are migrated, `statusgen outcomes split --check` confirms). The DELETE half (Task step 8) stays follow-up desk-supervision/24, conditional on medici-finance/assay#1802"
+  - "docs/streams/desk-supervision/verify-wake-v1.md and repair-obligation-v1.md (name the appended log as the receipt's home): fixed-here (desk-supervision/24)"
+  - "plugins/assay/skills/verify-desk/SKILL.md (the outcome-row paragraph and the Evidence-PR state table's premise): fixed-here (desk-supervision/24)"
+  - "plugins/assay/skills/pr-review-desk/SKILL.md (the Evidence-PR re-conflict bullet): fixed-here (desk-supervision/24)"
+  - "tools/desk/README.md (deskevidence and verifyloop sections): fixed-here (desk-supervision/24)"
+  - "migrations/ (a new adopter migration note for the split): fixed-here (desk-supervision/24) — migrations/0004-v1.0.27-to-v1.0.28-per-file-verify-outcomes.md"
+  - "docs/streams/desk-supervision/brief-23-evidence-lander-gatekeeper.md (its scope core admits appended lines of the log and its remerge relies on merge=union): fixed-here (desk-supervision/24) — Task step 9's amendment, brief still todo, version bumped 1 -> 2"
   - ".github/workflows/evidence-automerge.yml: out-of-scope (it admits a verifier-App PR whose every file is under docs/streams/; the record directory sits under docs/streams/, so the lane admits a per-file Evidence PR unchanged — Verify row 10 observes a real one)"
   - "tools/desk/cmd/deskboard: out-of-scope (reads no outcome record; its MERGE-CURR versus RE-REVIEW split changes only as a consequence, because sibling Evidence PRs stop sharing a file)"
   - "tools/desk/cmd/fanoutloop/repair.go and tools/desk/cmd/deskdispatch/repairadmission.go (the repair-obligations.jsonl projection): out-of-scope (same defect class, but its real sink is not armed: verifyloop/repair.go writes a dry-run only. Task step 5's class guard refuses any write to an appended docs/streams/*.jsonl log, so arming that sink as a shared appended file fails red and forces this layout at that time)"

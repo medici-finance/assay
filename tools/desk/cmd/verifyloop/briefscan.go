@@ -134,8 +134,10 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string, reader deskkit.WakeI
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	outcomes := readOutcomeSidecar(filepath.Join(streamsDir, outcomeSidecarName))
-	receipts := readWakeReceipts(filepath.Join(streamsDir, outcomeSidecarName))
+	outcomes, receipts, oerr := readVerifyOutcomeRecords(root)
+	if oerr != nil {
+		return nil, oerr
+	}
 	var rows []briefRow
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -220,12 +222,7 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string, reader deskkit.WakeI
 	return items, nil
 }
 
-// outcomeSidecarName is the append-only verify-outcomes log under docs/streams/ (the verify
-// desk's single-writer sidecar; the Change Failure Rate sensor's input). Each line is one JSON
-// row: {"ts","brief":"<stream>/<NN>","outcome":"verified"|"verify-fail",…,"sha"}.
-const outcomeSidecarName = "verify-outcomes.jsonl"
-
-// outcomeRow is the subset of a sidecar row the stuck-flip bucket keys on.
+// outcomeRow is the subset of a verify-outcome record the stuck-flip bucket keys on.
 type outcomeRow struct {
 	TS      string `json:"ts"`
 	Brief   string `json:"brief"`
@@ -233,28 +230,32 @@ type outcomeRow struct {
 	SHA     string `json:"sha"`
 }
 
-// readOutcomeSidecar returns the LATEST sidecar row per brief key (the log is append-only, so
-// the last line for a brief is its current outcome). An absent or unreadable sidecar is an
-// empty map — no brief is then stuck-flip, which is the pre-#1309 behaviour; a malformed line
-// is skipped, never fatal to the board read.
-func readOutcomeSidecar(path string) map[string]outcomeRow {
-	out := map[string]outcomeRow{}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return out
+// readVerifyOutcomeRecords is verifyloop's ONE reader of verify-outcome records
+// (#882): every record under docs/streams/verify-outcomes/ AND every line of any
+// legacy docs/streams/verify-outcomes*.jsonl, reduced to the single latest-by-timestamp record
+// per brief (deskkit.LatestPerBrief — never by line/file position), then decoded into the two
+// shapes the rest of this file already consumes (outcomeRow for the stuck-flip bucket,
+// deskkit.WakeReceipt for the wake evaluator) so nothing downstream of this function changed.
+// An absent records directory and an absent legacy log together are an empty set (no brief is
+// then stuck-flip — the pre-#1309 behaviour); an UNREADABLE record is an error that propagates
+// as a could-not-check scan failure, never a silently skipped record (common-clause C4).
+func readVerifyOutcomeRecords(root string) (outcomes map[string]outcomeRow, receipts map[string]deskkit.WakeReceipt, err error) {
+	records, rerr := deskkit.ReadVerifyOutcomes(root)
+	if rerr != nil {
+		return nil, nil, rerr
 	}
-	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
+	outcomes = map[string]outcomeRow{}
+	receipts = map[string]deskkit.WakeReceipt{}
+	for brief, rec := range deskkit.LatestPerBrief(records) {
 		var row outcomeRow
-		if json.Unmarshal([]byte(line), &row) != nil || row.Brief == "" {
-			continue
+		if json.Unmarshal(rec.Raw, &row) == nil && row.Brief != "" {
+			outcomes[brief] = row
 		}
-		out[row.Brief] = row
+		if wrec, ok := deskkit.ParseWakeReceipt(rec.Raw); ok {
+			receipts[brief] = wrec
+		}
 	}
-	return out
+	return outcomes, receipts, nil
 }
 
 func yesNo(b bool) string {
@@ -376,27 +377,6 @@ func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFr
 		verifyRows = append(verifyRows, vr.Num)
 	}
 	return rel, fm, evidenceEmpty, "", verifyRows
-}
-
-// readWakeReceipts returns the LATEST verify-wake receipt per brief key from the append-only
-// sidecar (the last line for a brief is its current receipt). An absent/unreadable sidecar is an
-// empty map; a malformed line is skipped, never fatal — the same tolerance readOutcomeSidecar has.
-func readWakeReceipts(path string) map[string]deskkit.WakeReceipt {
-	out := map[string]deskkit.WakeReceipt{}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return out
-	}
-	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if rec, ok := deskkit.ParseWakeReceipt([]byte(line)); ok {
-			out[rec.Brief] = rec
-		}
-	}
-	return out
 }
 
 // deriveWakePayload evaluates one failed/blocked receipt and writes the wake markers classifyItem

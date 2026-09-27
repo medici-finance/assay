@@ -383,11 +383,16 @@ as the planner and acts on its rows.
   review (the board computes this; don't hand-diff). Keep-current merges are expected work, not
   noise — except one that had to **resolve a conflict**, which edits the PR's own files and shows
   as RE-REVIEW instead: review the resolution, it is authored work.
-- **Evidence PRs re-conflict by design.** A verify desk's Evidence PR goes `CONFLICTING` whenever
-  a sibling Evidence PR lands: they all append to one outcomes log, and the forge's server-side
-  merge applies no `.gitattributes` merge driver (#882). The verify-desk skill's Evidence-PR state
-  table (verdict × at head × mergeable, first match wins) gives every state exactly one owner. This
-  desk owns three of its rows:
+- **A `CONFLICTING` Evidence PR now means a real content conflict.** Since #882, sibling Evidence
+  PRs no longer conflict on outcomes: each writes one NEW file under
+  `docs/streams/verify-outcomes/<stream>/`, named by a pure function of its own content, so two
+  PRs only ever add the same path when they carry byte-identical content, and two identical adds
+  merge cleanly with no driver. (Before #882 every Evidence PR appended to one shared outcomes
+  log, and the forge's server-side merge applied no `.gitattributes` driver, so an Evidence PR went
+  `CONFLICTING` whenever a sibling landed regardless of content — that class is closed.) The
+  verify-desk skill's Evidence-PR state table (verdict × at head × mergeable, first match wins)
+  still gives every state exactly one owner, for whatever DOES conflict now — two PRs editing the
+  same brief's `## Evidence` section, or an unrelated file. This desk owns three of its rows:
   - **verdict `none`**: first review of each missing lane, whether or not the PR is `CONFLICTING`;
   - **`MERGEABLE`, the head moved since the latest verdict** (a fix or a merge of main was pushed):
     re-review the delta as soon as it is `MERGEABLE`, with priority. For a merge of main, check that
