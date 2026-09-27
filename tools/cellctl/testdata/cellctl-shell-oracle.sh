@@ -238,6 +238,21 @@
 # login. ONLY the desk verbs run with the cell config-home, and they get there through the shims.
 set -euo pipefail
 
+# ============================================================================================
+# TEST ORACLE — NOT THE LAUNCHER. Do not install, ship or run this file as `cellctl`.
+#
+# The real `cellctl` is the Go program in tools/desk/cmd/cellctl; releases build and ship that
+# binary (stamped via -ldflags -X main.cellctlVersion). This bash script is kept only as the
+# shell ORACLE the Go port is proved against:
+#   - tools/desk/cmd/cellctl/usage_test.go compares the header comment above the `set -euo`
+#     line with the port's embedded usage.txt (this banner sits BELOW that line on purpose, so
+#     it is not part of the compared header or of `--help` output);
+#   - tools/cellctl/tests/parity.test.sh diffs this script's DRY_RUN plans against the port;
+#   - the tools/cellctl/tests/*.test.sh suites default to it when $CELLCTL is unset.
+# It lives under testdata/ so its path says what it is. Edits to it are oracle edits and follow
+# the parity rules in docs/cellctl.md §"Parity with the shell oracle".
+# ============================================================================================
+
 # Absolute path to this script. The tmux windows `up` opens re-invoke cellctl from the CELL
 # directory, where a relative `$0` (`./cellctl`) does not resolve — so the re-invocation uses this,
 # never `$0`.
@@ -769,7 +784,7 @@ try:
             levels = {"minimal", "low", "medium", "high", "xhigh"} if harness == "codex" else {"low", "medium", "high", "xhigh", "max"}
             if not isinstance(supported, list) or not supported or any(x not in levels for x in supported) or effort not in supported:
                 fail("unsupported effort for " + name + "/" + tier)
-            if (value.startswith("glm-5.3") or base(value) == "k3") and any(x not in {"low", "high", "max"} for x in supported):
+            if (value.startswith("glm-5.3") or base(value) in ("k3", "k3-256k")) and any(x not in {"low", "high", "max"} for x in supported):
                 fail("GLM 5.3 and Kimi K3 support low, high or max effort")
     roles = policy["roles"]
     for name, assignment in roles.items():

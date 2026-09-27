@@ -120,6 +120,18 @@ type fakeGH struct {
 	issueTrustJSON string
 
 	reviews []reviewInfo
+	// reviewsAfterFirstRead, when non-nil, is what GET /pulls/{n}/reviews serves on every
+	// read AFTER the first — the knob that lets a test post a review at the SAME head between
+	// the precondition checks and the pre-mutation re-read (#1694, the deskflip F2 race).
+	reviewsAfterFirstRead []reviewInfo
+	reviewCalls           int
+	// prBody is the PR description GET /pulls/{n} serves (the desk-decided block's surface).
+	// The PR's labels in that payload are prLabels, the same set the label routes mutate.
+	prBody string
+	// onSecondPullRead, when set, runs (under the fake's lock) just before the SECOND
+	// GET /pulls/{n} is served — ready's pre-mutation re-read — so a test can edit the PR's
+	// labels or body between the precondition checks and the mutation without moving the head.
+	onSecondPullRead func()
 	// issueComments is what GET /issues/{n}/comments serves — the shape the
 	// pr-review-desk skill used to prescribe for a clean security pass. The ready gate
 	// must never read it (#513).
@@ -322,6 +334,9 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		call := f.pullCalls
 		f.pullCalls++
+		if call == 1 && f.onSecondPullRead != nil {
+			f.onSecondPullRead()
+		}
 		f.mu.Unlock()
 		p := prInfo{
 			Number: 1, State: f.prState, Draft: f.prDraft, NodeID: f.prNodeID,
@@ -329,7 +344,13 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 			Head: struct {
 				SHA string `json:"sha"`
 			}{SHA: f.headFor(call)},
+			Body: f.prBody,
 		}
+		f.mu.Lock()
+		for _, l := range f.prLabels {
+			p.Labels = append(p.Labels, prLabel{Name: l})
+		}
+		f.mu.Unlock()
 		p.User.Login = f.prAuthor
 		p.User.ID = f.prAuthorID
 		if p.User.Login == "" {
@@ -379,7 +400,15 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 			writeJSON([]reviewInfo{})
 			return
 		}
-		writeJSON(f.reviews)
+		f.mu.Lock()
+		call := f.reviewCalls
+		f.reviewCalls++
+		served := f.reviews
+		if call > 0 && f.reviewsAfterFirstRead != nil {
+			served = f.reviewsAfterFirstRead
+		}
+		f.mu.Unlock()
+		writeJSON(served)
 
 	case r.Method == http.MethodGet && reFiles.MatchString(path):
 		if page != "" && page != "1" {
