@@ -157,10 +157,18 @@ func TrustedHumanAuthor(login string) bool {
 // (rosterconfig.go refuses an allowance entry `c.Humans` does not carry). It answers a
 // BROADER question than TrustedHumanAuthor, which narrows further to a mapped, accountable
 // human or the bless authority for the review-neglect metric's purposes: this asks only
-// "is this login one the roster trusts at all, and not an App/bot rendering" — the bar
-// deskrestamp's foreign-applier gate needs, because re-attesting content under the
-// dispatcher is safe to do for any login the roster already vouches for as human, not only
-// the narrower accountable-merge set.
+// "is this login one the roster trusts at all, and not an App/bot rendering".
+//
+// NOT deskrestamp's foreign-applier bar. An earlier round of this file said re-attesting
+// content under the dispatcher was "safe to do for any login the roster already vouches
+// for as human" — the driver's ruling on PR #1727 (kryton, comment
+// https://github.com/medici-finance/assay/pull/1727#issuecomment-5859647065,
+// 2026-09-27T20:41:27Z) says otherwise: deskrestamp vouches ONLY for the roster's own
+// blessing authority (IsRestampDriverLogin), applied before the ruling's cutoff
+// (RestampDriverCutoff) — not for this broader trusted-human set, and not for the
+// stamp-authority allowance either. This predicate remains what it always was — the
+// general "is this login trusted at all" question the review-neglect metric and similar
+// consumers ask — it is simply no longer deskrestamp's bar.
 //
 // Fail-closed: an empty login, a bot-shaped login, or an unconfigured roster is false.
 func IsTrustedHumanLogin(login string) bool {
@@ -177,6 +185,54 @@ func IsTrustedHumanLogin(login string) bool {
 	}
 	_, ok := c.Humans[l]
 	return ok
+}
+
+// RestampDriverCutoffRFC3339 is the driver's ruling on deskrestamp's provenance bar
+// (#336, SEC-1b round 3 — kryton, PR #1727 comment
+// https://github.com/medici-finance/assay/pull/1727#issuecomment-5859647065,
+// 2026-09-27T20:41:27Z), quoted: "deskrestamp may vouch only for dispatched-* labels
+// applied by the driver's own login (the roster bless login) before
+// 2026-09-27T00:00:00Z (the #336 legacy backlog); every other applier is refused."
+//
+// A COMPILED CONSTANT, never a roster key. The #336 legacy backlog is a closed, already-
+// existing set of pre-ruling labels; the cutoff marks that historical boundary rather than
+// naming an ongoing operator knob, so it does not belong beside ASSAY_STAMP_TRUSTED_LOGINS
+// in the roster — nothing this verb re-stamps in the future should ever qualify merely by
+// having been applied "early" relative to a value an operator could move.
+const RestampDriverCutoffRFC3339 = "2026-09-27T00:00:00Z"
+
+// RestampDriverCutoff parses RestampDriverCutoffRFC3339. TestRestampDriverCutoffParses
+// pins that the literal parses; the zero-value fallback here is fail-closed (the zero
+// time is before nothing a real label timestamp could ever be) rather than a panic, in
+// case that pin ever lapses.
+func RestampDriverCutoff() time.Time {
+	t, err := time.Parse(time.RFC3339, RestampDriverCutoffRFC3339)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+// IsRestampDriverLogin reports whether login is the roster's own blessing authority — the
+// driver's login, read dynamically from EffectiveConfig().Bless.Login and NEVER
+// hard-coded. This is deskrestamp's provenance bar (#336, SEC-1b round 3, kryton's ruling
+// quoted above): membership in the broader ASSAY_TRUSTED_LOGINS set, or even in the
+// narrower stamp-authority allowance (ASSAY_STAMP_TRUSTED_LOGINS), is NOT enough — only
+// the driver's own login qualifies for this verb's repair, and only before
+// RestampDriverCutoff.
+//
+// Fail-closed: an empty login, or an unconfigured roster with no blessing authority set,
+// is false.
+func IsRestampDriverLogin(login string) bool {
+	l := strings.ToLower(strings.TrimSpace(login))
+	if l == "" {
+		return false
+	}
+	c := EffectiveConfig()
+	if !c.Configured() || c.Bless.Login == "" {
+		return false
+	}
+	return l == c.Bless.Login
 }
 
 // VerifyGateLabel is the label the verify-gate sign-off card carries — the issue the

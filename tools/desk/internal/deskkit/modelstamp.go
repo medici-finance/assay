@@ -455,6 +455,33 @@ func UnattributedStampLabels(tl StampTimeline) []string {
 	return unattributed
 }
 
+// StandingStampApplierAt reports the login and CreatedAt (RFC3339, possibly "" when the
+// forge reported none) of a PRESENT dispatched-* label's standing (most recent,
+// not-yet-superseded) application, and whether the timeline carries a standing event for
+// it at all. resolveStampAppliers's aggregate view drops CreatedAt; this exists for a
+// consumer that needs to reason about WHEN a label was applied, not just BY WHOM —
+// deskrestamp's driver-only, cutoff-gated provenance bar (#336, SEC-1b round 3) is the
+// first one.
+func StandingStampApplierAt(tl StampTimeline, label string) (who, createdAt string, ok bool) {
+	standing := map[string]LabelEvent{}
+	for _, e := range tl.Events {
+		n := normLabel(e.Name)
+		if !isStampLabelName(n) {
+			continue
+		}
+		if e.Removed {
+			delete(standing, n)
+			continue
+		}
+		standing[n] = e
+	}
+	ev, found := standing[normLabel(label)]
+	if !found {
+		return "", "", false
+	}
+	return strings.TrimSpace(ev.AppliedBy), ev.CreatedAt, true
+}
+
 // AttestedModelStampOf is the applier-aware reader — the STRONG form a consumer must use
 // when it needs the self-report defence. It reads the same content as ModelStampOf but
 // first requires that EVERY dispatched-* label was applied by a dispatcher identity: if

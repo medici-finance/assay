@@ -118,8 +118,21 @@ func stampedPR(labels ...string) *deskkit.PullRequest {
 	return &deskkit.PullRequest{State: "open", Draft: true, Labels: labels}
 }
 
+// preCutoffRFC3339 is strictly BEFORE deskkit.RestampDriverCutoff (the driver's ruling on
+// PR #1727, comment 5859647065: "before 2026-09-27T00:00:00Z, the #336 legacy backlog").
+// labeledBy defaults every event to this timestamp, so a pre-existing happy-path test
+// (applier "ada", the fixture's ASSAY_BLESS_LOGIN) keeps meaning what it always meant —
+// a legacy, pre-ruling hand-applied label — without every call site naming a date. A test
+// that needs to control WHEN a label was applied (the cutoff boundary, a half-swap
+// timeline) uses labeledByAt instead.
+const preCutoffRFC3339 = "2026-09-01T00:00:00Z"
+
 func labeledBy(name, who string) deskkit.LabelEvent {
-	return deskkit.LabelEvent{Name: name, AppliedBy: who}
+	return deskkit.LabelEvent{Name: name, AppliedBy: who, CreatedAt: preCutoffRFC3339}
+}
+
+func labeledByAt(name, who, createdAt string) deskkit.LabelEvent {
+	return deskkit.LabelEvent{Name: name, AppliedBy: who, CreatedAt: createdAt}
 }
 
 func unlabeledBy(name, who string) deskkit.LabelEvent {
@@ -131,10 +144,13 @@ const (
 	tierLabel  = "dispatched-tier:strong"
 )
 
-// --- The happy path: a stamp standing under a TRUSTED HUMAN login ("ada", of the fixture
-// roster's ASSAY_TRUSTED_LOGINS) is removed and re-applied under the dispatcher, the
-// removal is its OWN write ahead of the application, and the record comment names both
-// actors. This is the #336-ratified case: a trusted human hand-applied the label.
+// --- The happy path: a stamp standing under the DRIVER'S OWN login ("ada", the fixture
+// roster's ASSAY_BLESS_LOGIN — every other trusted login is now refused, SEC-1b round 3)
+// applied BEFORE the cutoff (labeledBy's default) is removed and re-applied under the
+// dispatcher, the removal is its OWN write ahead of the application, and the record
+// comment names both actors. This is the #336 legacy-backlog case kryton's ruling on PR
+// #1727 (comment 5859647065) names: a pre-ruling, hand-applied label under the driver's
+// own login.
 func TestRestampForeignAppliedPair(t *testing.T) {
 	fg := &fakeForge{
 		pr: stampedPR(modelLabel, tierLabel),
@@ -352,7 +368,8 @@ func TestRestampEventsReadFailureIsCouldNotCheck(t *testing.T) {
 // SEC-1/C4: a pair standing under an UNTRUSTED login is not this verb's to repair —
 // re-attesting it under the dispatcher would be laundering, not repair. This is the
 // PR's original (pre-fix) TestRestampForeignAppliedPair scenario, now pinned the other
-// way: "some-human" is not in the fixture roster's ASSAY_TRUSTED_LOGINS at all.
+// way: "some-human" is not the driver's own login (the ONLY login SEC-1b round 3 vouches
+// for) — it is not even in the fixture roster's ASSAY_TRUSTED_LOGINS at all.
 func TestRestampRefusesUntrustedForeignApplier(t *testing.T) {
 	fg := &fakeForge{
 		pr: stampedPR(modelLabel, tierLabel),
@@ -369,8 +386,104 @@ func TestRestampRefusesUntrustedForeignApplier(t *testing.T) {
 	if len(fg.writes) != 0 || len(fg.comments) != 0 {
 		t.Fatal("a refused re-stamp still wrote")
 	}
-	if !strings.Contains(out, "some-human") || !strings.Contains(out, "does not vouch") {
+	if !strings.Contains(out, "some-human") || !strings.Contains(out, "vouches only for") {
 		t.Fatalf("refusal does not name the unvouched applier:\n%s", out)
+	}
+}
+
+// SEC-1b round 3 (kryton's ruling on PR #1727): a TRUSTED login that is NOT the driver
+// ("shared-agent", of the fixture roster's ASSAY_TRUSTED_LOGINS) is refused exactly like
+// an untrusted one — trust alone is no longer enough; only the driver's own login
+// qualifies. This is the case the earlier (reviewer-suggested, now superseded) "any
+// trusted human" bar would have wrongly accepted.
+func TestRestampRefusesNonDriverTrustedLogin(t *testing.T) {
+	fg := &fakeForge{
+		pr: stampedPR(modelLabel, tierLabel),
+		events: []deskkit.LabelEvent{
+			labeledBy(modelLabel, "shared-agent"),
+			labeledBy(tierLabel, "shared-agent"),
+		},
+	}
+	plantWorld(t, "desk", fg)
+	code, out := runVerb(t, allowedRepo, "7")
+	if code != 5 {
+		t.Fatalf("exit = %d, want 5 (refused):\n%s", code, out)
+	}
+	if len(fg.writes) != 0 || len(fg.comments) != 0 {
+		t.Fatal("a refused re-stamp still wrote")
+	}
+	if !strings.Contains(out, "shared-agent") {
+		t.Fatalf("refusal does not name the non-driver applier:\n%s", out)
+	}
+}
+
+// SEC-1b round 3: the driver's OWN login ("ada", ASSAY_BLESS_LOGIN) applied AFTER the
+// cutoff is refused too — the allowance is for the #336 legacy backlog, not a standing
+// bypass for the driver's login going forward.
+func TestRestampRefusesPostCutoffDriverApplication(t *testing.T) {
+	fg := &fakeForge{
+		pr: stampedPR(modelLabel, tierLabel),
+		events: []deskkit.LabelEvent{
+			labeledByAt(modelLabel, "ada", "2026-09-27T00:00:01Z"),
+			labeledByAt(tierLabel, "ada", "2026-09-27T00:00:01Z"),
+		},
+	}
+	plantWorld(t, "desk", fg)
+	code, out := runVerb(t, allowedRepo, "7")
+	if code != 5 {
+		t.Fatalf("exit = %d, want 5 (refused):\n%s", code, out)
+	}
+	if len(fg.writes) != 0 || len(fg.comments) != 0 {
+		t.Fatal("a refused re-stamp still wrote")
+	}
+	if !strings.Contains(out, "ada") {
+		t.Fatalf("refusal does not name the post-cutoff applier:\n%s", out)
+	}
+}
+
+// A label applied exactly AT the cutoff instant is refused too — the ruling says
+// "before" the cutoff, a strict bound, so the boundary instant itself does not qualify.
+func TestRestampRefusesAtCutoffInstant(t *testing.T) {
+	fg := &fakeForge{
+		pr: stampedPR(modelLabel, tierLabel),
+		events: []deskkit.LabelEvent{
+			labeledByAt(modelLabel, "ada", deskkit.RestampDriverCutoffRFC3339),
+			labeledByAt(tierLabel, "ada", deskkit.RestampDriverCutoffRFC3339),
+		},
+	}
+	plantWorld(t, "desk", fg)
+	code, out := runVerb(t, allowedRepo, "7")
+	if code != 5 {
+		t.Fatalf("exit = %d, want 5 (refused, the bound is strict):\n%s", code, out)
+	}
+	if len(fg.writes) != 0 || len(fg.comments) != 0 {
+		t.Fatal("a refused re-stamp still wrote")
+	}
+}
+
+// SEC-1a: a HALF-SWAP timeline — one half already standing under the dispatcher (so it
+// needs no removal), the other re-applied by an unvouched identity — is refused on that
+// one label alone. This is the mutant round 2 left surviving: a gate that only fires when
+// EVERY half is foreign would wrongly pass this case, because only one of the two labels
+// is in the removal set.
+func TestRestampRefusesHalfSwapTimeline(t *testing.T) {
+	fg := &fakeForge{
+		pr: stampedPR(modelLabel, tierLabel),
+		events: []deskkit.LabelEvent{
+			labeledBy(modelLabel, "assay-desk-app[bot]"), // already dispatcher-standing: NOT in remove
+			labeledBy(tierLabel, "shared-agent"),         // foreign, non-driver: IS in remove
+		},
+	}
+	plantWorld(t, "desk", fg)
+	code, out := runVerb(t, allowedRepo, "7")
+	if code != 5 {
+		t.Fatalf("exit = %d, want 5 (refused — a half-swap timeline is not this verb's to repair):\n%s", code, out)
+	}
+	if len(fg.writes) != 0 || len(fg.comments) != 0 {
+		t.Fatal("a refused re-stamp still wrote")
+	}
+	if !strings.Contains(out, "shared-agent") {
+		t.Fatalf("refusal does not name the swapped half's applier:\n%s", out)
 	}
 }
 

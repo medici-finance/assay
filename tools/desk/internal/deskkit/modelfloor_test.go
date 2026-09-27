@@ -283,6 +283,58 @@ func TestFloorRefusalNamesBothLogins(t *testing.T) {
 	}
 }
 
+// deskrestamp (#336, SEC-1/C4) refuses to re-attest a foreign-applied pair unless EVERY
+// standing foreign applier is a trusted human login of the parsed roster — an App, a bot,
+// or an untrusted login is refused, not repaired. This message is read by the operator the
+// floor refusal sends to deskrestamp, so it must not send an App/bot/untrusted applier to a
+// verb that will only refuse them right back: it must route those cases to the dispatch
+// ceremony instead, and reserve the deskrestamp pointer for the case that verb actually
+// repairs (every standing foreign applier already a trusted human login).
+func TestFloorRefusalRoutesByApplierTrust(t *testing.T) {
+	plantRoster(t, modelstampFixtureRoster) // ASSAY_TRUSTED_LOGINS=ada:2001 is the trusted human
+
+	trustedHuman := []LabelEvent{
+		{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: "ada"},
+		{Name: DispatchedTierPrefix + "strong", AppliedBy: "ada"},
+	}
+	botApplied := []LabelEvent{
+		{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: "example-worker-app[bot]"},
+		{Name: DispatchedTierPrefix + "strong", AppliedBy: "example-worker-app[bot]"},
+	}
+	mixed := []LabelEvent{
+		{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: "ada"},
+		{Name: DispatchedTierPrefix + "strong", AppliedBy: "example-worker-app[bot]"},
+	}
+
+	trustedDecision := ModelCapabilityFloor(tlOf(trustedHuman...), IsDispatcherLogin, false, ClaimLivenessUnknown)
+	if !strings.Contains(trustedDecision.Message, "deskrestamp") {
+		t.Errorf("a foreign applier who IS a trusted human login (deskrestamp's own repair case) "+
+			"should still be pointed at deskrestamp:\n%s", trustedDecision.Message)
+	}
+	// StampAuthorityLoginsForMessage, not the narrower DispatcherLoginsForMessage: this
+	// fixture configures no ASSAY_STAMP_TRUSTED_LOGINS allowance, and only the FORMER says
+	// so explicitly — the phrase is the discriminator a mutant swapping one call for the
+	// other would drop.
+	if !strings.Contains(trustedDecision.Message, "no ASSAY_STAMP_TRUSTED_LOGINS allowance is configured") {
+		t.Errorf("the all-vouched branch's message does not call StampAuthorityLoginsForMessage "+
+			"(the WHOLE accepted set, including any configured allowance) — it reads as though it "+
+			"called the narrower DispatcherLoginsForMessage instead:\n%s", trustedDecision.Message)
+	}
+
+	for name, events := range map[string][]LabelEvent{"bot-applied": botApplied, "mixed": mixed} {
+		d := ModelCapabilityFloor(tlOf(events...), IsDispatcherLogin, false, ClaimLivenessUnknown)
+		if strings.Contains(d.Message, "deskrestamp is the first-class verb: it REMOVES") {
+			t.Errorf("%s: the message sends the operator to deskrestamp as an unqualified repair, but "+
+				"deskrestamp itself refuses this case (not every standing applier is a trusted human "+
+				"login) — it must name the dispatch ceremony instead:\n%s", name, d.Message)
+		}
+		if !strings.Contains(d.Message, "dispatch ceremony") {
+			t.Errorf("%s: the message does not route the operator to the dispatch ceremony, the only "+
+				"repair deskrestamp itself leaves available here:\n%s", name, d.Message)
+		}
+	}
+}
+
 // NonDispatcherStampAppliers is the diagnosis the message above is built from: it names
 // every STANDING applier of a dispatched-* label the predicate will not vouch for,
 // de-duplicated and ordered, and nothing else. An empty answer means "no untrusted standing

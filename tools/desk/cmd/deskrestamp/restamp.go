@@ -17,11 +17,22 @@ package main
 //  6. compute the removal set with deskkit.ReStampRemovals under the SAME authority
 //     predicate the floor reads (deskkit.IsStampAuthorityLogin) — reader and writer
 //     project the standing-applier resolution from one place, so they cannot disagree.
-//  7. no-op when nothing needs removing and the pair is present; stop on --dry-run
-//  8. write budget; REMOVE (one write), then APPLY the pair (a second write) — two
+//  7. no-op when nothing needs removing and the pair is present.
+//  8. THE PROVENANCE GATE (#336, SEC-1b round 3 — kryton's ruling on PR #1727, comment
+//     5859647065) — before any write, PER LABEL in the removal set: REFUSE unless the
+//     label's standing application is BOTH the roster's own blessing authority
+//     (deskkit.IsRestampDriverLogin — never any other trusted login) AND timestamped
+//     strictly before deskkit.RestampDriverCutoff (deskkit.StandingStampApplierAt,
+//     unvouchedRemovalLabels). Preserving a stamp's content is not the same as vouching
+//     for whoever applied it; an App, a bot, a non-driver login (trusted or not), a
+//     post-cutoff application, or a present label the timeline cannot attribute at all is
+//     refused here, never re-attested under the dispatcher — that would be laundering,
+//     not repair.
+//  9. stop on --dry-run.
+// 10. write budget; REMOVE (one write), then APPLY the pair (a second write) — two
 //     events, because a label named in both halves of one reconciliation is skipped and
 //     the standing applier would not change.
-//  9. post the record comment naming both actors (#336's recorded-act requirement).
+// 11. post the record comment naming both actors (#336's recorded-act requirement).
 
 import (
 	"flag"
@@ -233,24 +244,32 @@ func cmdReStamp(args []string, out io.Writer) error {
 		return nil
 	}
 
-	// THE PROVENANCE GATE (#336, SEC-1/C4). Preserving content is not the same as vouching
-	// for whoever wrote it: this verb must never re-attest a pair under the dispatcher when
-	// its standing foreign applier is an App/bot, an untrusted login, or a present label the
-	// timeline cannot attribute to anyone at all. Only a TRUSTED HUMAN login of the parsed
-	// roster (deskkit.IsTrustedHumanLogin — the same set the stamp-authority allowance
-	// itself must already draw from) is a foreign applier this verb repairs; anyone else is
-	// laundering, not repair, and is refused before any write.
-	unvouched := unvouchedForeignAppliers(original, wantLabelsAmong(want, deskkit.UnattributedStampLabels(tl)))
+	// THE PROVENANCE GATE (#336; SEC-1b round 3 — kryton's ruling on PR #1727, comment
+	// https://github.com/medici-finance/assay/pull/1727#issuecomment-5859647065,
+	// 2026-09-27T20:41:27Z, quoted): "deskrestamp may vouch only for dispatched-* labels
+	// applied by the driver's own login (the roster bless login) before
+	// 2026-09-27T00:00:00Z (the #336 legacy backlog); every other applier is refused."
+	// Preserving a stamp's content is not the same as vouching for whoever applied it:
+	// this verb repairs a label ONLY when its standing application is BOTH (1) the
+	// roster's own blessing authority (deskkit.IsRestampDriverLogin — never any other
+	// trusted login, and never the broader ASSAY_TRUSTED_LOGINS or
+	// ASSAY_STAMP_TRUSTED_LOGINS sets) AND (2) timestamped strictly before
+	// deskkit.RestampDriverCutoff. Checked PER LABEL in `remove`, never aggregated across
+	// the whole pair, so a half-swap timeline — one half already dispatcher-standing, the
+	// other re-applied by an unvouched identity — is refused on that one label alone
+	// (SEC-1a): there is no "every half must be foreign" shortcut to disarm.
+	unvouched := unvouchedRemovalLabels(tl, remove)
 	if len(unvouched) > 0 {
 		err := deskkit.Refused(fmt.Sprintf(
-			"refused: %s#%d's standing %s stamp was applied by %s, which this roster does not "+
-				"vouch for as a trusted human login — deskrestamp preserves a stamp's content, but "+
-				"re-attesting content an unvouched identity applied under the dispatcher is exactly "+
-				"the laundering the model-capability floor exists to refuse. This verb repairs only a "+
-				"trusted-human-applied stamp (#336); an App/bot, an untrusted login, or a present label "+
-				"the timeline cannot attribute is not repaired here — re-run the dispatch ceremony "+
-				"instead, which validates an explicit --model/--tier.",
-			req.repo, req.number, strings.Join(want, " + "), joinOrNone(unvouched)))
+			"refused: %s#%d's standing %s stamp was applied by %s, and this verb vouches only for "+
+				"the roster's own driver login applied before %s (the #336 legacy backlog, kryton's "+
+				"ruling on PR #1727) — deskrestamp preserves a stamp's content, but re-attesting "+
+				"content a non-driver applier applied, or that the driver applied AFTER the cutoff, "+
+				"under the dispatcher is exactly the laundering the model-capability floor exists to "+
+				"refuse. Re-run the dispatch ceremony instead, which validates an explicit "+
+				"--model/--tier.",
+			req.repo, req.number, strings.Join(want, " + "), joinOrNone(unvouched),
+			deskkit.RestampDriverCutoffRFC3339))
 		auditLine(req.repo, req.number, deskkit.ResultRefused, "foreign-applier: "+joinOrNone(unvouched))
 		return err
 	}
@@ -326,50 +345,47 @@ func cmdReStamp(args []string, out io.Writer) error {
 	return nil
 }
 
-// unvouchedForeignAppliers filters foreign (the deskkit.NonDispatcherStampAppliers list)
-// plus a count of unattributed WANT labels down to the ones this verb refuses to launder:
-// anyone who is not a trusted HUMAN login of the parsed roster. A bot/App rendering and an
-// untrusted login both fail deskkit.IsTrustedHumanLogin (fail-closed on a non-matching
-// input), and an unattributed present label is rendered as a fixed placeholder before the
-// same check, which — naming nobody — also fails it.
-func unvouchedForeignAppliers(foreign []string, unattributedPlaceholders []string) []string {
+// unvouchedRemovalLabels checks EACH label in remove against deskrestamp's provenance bar
+// (SEC-1b round 3, kryton's ruling on PR #1727): its standing application must be the
+// roster's own blessing authority (deskkit.IsRestampDriverLogin) AND timestamped strictly
+// before deskkit.RestampDriverCutoff. It returns the applier login (or a fixed placeholder
+// for a label the timeline names no standing applier for at all) for every label that
+// fails EITHER half, de-duplicated and sorted. The check runs PER LABEL, never aggregated
+// across the whole pair, so a half-swap timeline — one label already vouched, the other
+// not — still names the one that failed (SEC-1a): there is no shortcut that only fires
+// when every half is foreign.
+func unvouchedRemovalLabels(tl deskkit.StampTimeline, remove []string) []string {
 	seen := map[string]bool{}
 	var out []string
-	add := func(who string) {
-		if deskkit.IsTrustedHumanLogin(who) {
-			return
+	for _, label := range remove {
+		if vouches, who := restampVouchesLabel(tl, label); !vouches {
+			if !seen[who] {
+				seen[who] = true
+				out = append(out, who)
+			}
 		}
-		if seen[who] {
-			return
-		}
-		seen[who] = true
-		out = append(out, who)
-	}
-	for _, who := range foreign {
-		add(who)
-	}
-	for range unattributedPlaceholders {
-		add("(an actor the timeline does not name)")
 	}
 	sort.Strings(out)
 	return out
 }
 
-// wantLabelsAmong intersects want with a label set (here, deskkit.UnattributedStampLabels'
-// output), case/whitespace-insensitively — a present WANT label the timeline cannot
-// attribute to anyone is exactly the "no applier information at all" gap SEC-2 named.
-func wantLabelsAmong(want, labels []string) []string {
-	wantSet := map[string]bool{}
-	for _, w := range want {
-		wantSet[strings.ToLower(strings.TrimSpace(w))] = true
+// restampVouchesLabel is the per-label predicate unvouchedRemovalLabels runs: TWO
+// independent guards — the applier check and the cutoff check — so a mutant disarming
+// either one alone is still caught by the other (round-3 mutation entries pin both
+// separately).
+func restampVouchesLabel(tl deskkit.StampTimeline, label string) (vouches bool, who string) {
+	applier, createdAt, ok := deskkit.StandingStampApplierAt(tl, label)
+	if !ok || applier == "" {
+		return false, "(an actor the timeline does not name)"
 	}
-	var out []string
-	for _, l := range labels {
-		if wantSet[strings.ToLower(strings.TrimSpace(l))] {
-			out = append(out, l)
-		}
+	if !deskkit.IsRestampDriverLogin(applier) {
+		return false, applier
 	}
-	return out
+	at, perr := time.Parse(time.RFC3339, createdAt)
+	if perr != nil || !at.Before(deskkit.RestampDriverCutoff()) {
+		return false, applier
+	}
+	return true, applier
 }
 
 // joinOrNone renders a possibly-empty set for an operator message — an empty removal set

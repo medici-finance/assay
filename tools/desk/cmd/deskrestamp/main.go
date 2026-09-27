@@ -20,6 +20,23 @@
 // --model/--tier). A re-stamp that could change what a stamp SAYS would let this verb
 // launder content, and it cannot.
 //
+// THE PROVENANCE GATE (#336; SEC-1b round 3 — kryton's ruling on PR #1727, comment
+// https://github.com/medici-finance/assay/pull/1727#issuecomment-5859647065,
+// 2026-09-27T20:41:27Z, quoted): "deskrestamp may vouch only for dispatched-* labels
+// applied by the driver's own login (the roster bless login) before
+// 2026-09-27T00:00:00Z (the #336 legacy backlog); every other applier is refused."
+// Preserving a stamp's content is not the same as vouching for whoever applied it. This
+// verb re-attests a label ONLY when its standing application is BOTH the roster's own
+// blessing authority (deskkit.IsRestampDriverLogin — never any other trusted login, and
+// never the broader ASSAY_TRUSTED_LOGINS or ASSAY_STAMP_TRUSTED_LOGINS sets) AND
+// timestamped strictly before deskkit.RestampDriverCutoff, checked PER LABEL so a
+// half-swap timeline cannot slip through (SEC-1a) — an App, a bot, any other login
+// (trusted or not), a post-cutoff application, or a present label the timeline cannot
+// attribute to anyone at all is REFUSED before any write, never repaired here.
+// Re-attesting an unvouched applier's content under the dispatcher would be laundering,
+// not repair; that case is the dispatch ceremony's territory, which validates a fresh
+// --model/--tier rather than re-stamping what is already there.
+//
 // WHO MAY RUN IT. The acting role is read from the SESSION (DESK_LOOP → App role via
 // deskkit.SessionTokenRole, never a flag) and must be one of deskkit.DispatcherRoles() —
 // the whole point is that the label's new standing application belongs to an identity the
@@ -57,9 +74,19 @@ timeline read cannot attribute at all — and re-applies the SAME pair under the
 dispatcher App, so the floor reads the stamp as that App's attestation. It then posts one
 comment recording both the original applier(s) and the re-stamp actor.
 
+This repair is available only per label, and only when that label's standing application is
+BOTH the roster's own blessing authority (the driver's own login, read dynamically — never
+any other trusted login) AND applied strictly before 2026-09-27T00:00:00Z (the #336 legacy
+backlog; see REFUSED below).
+
 REFUSED (exit 5): an unreadable/incomplete stamp (re-dispatch validates a fresh --model/--tier
 instead — this verb preserves content, it never invents it); a session role that is not a
-bound dispatcher; a repo outside the desk-tools set.
+bound dispatcher; a repo outside the desk-tools set; a standing foreign applier that is an
+App, a bot, any login other than the roster's own blessing authority (trusted or not), a
+blessing-authority application AT OR AFTER the cutoff, or a present label the timeline cannot
+attribute to anyone at all — re-attesting that content under the dispatcher would be
+laundering, not repair, so the dispatch ceremony (a fresh --model/--tier) is the sanctioned
+path for those cases instead.
 NOOP (exit 0): the pair already stands under an identity the floor accepts — nothing to repair.
 
 --dry-run reads the PR and its label timeline, prints what would be removed and re-applied,

@@ -1,0 +1,29 @@
+{
+  "test": "go test ./cmd/deskrestamp/... -count=1",
+  "control": {
+    "name": "CONTROL — invert the noop check (an already-repaired pair churns writes every run)",
+    "file": "cmd/deskrestamp/restamp.go",
+    "old": "\tif len(remove) == 0 && labelsPresentFold(change.Labels, want) {",
+    "new": "\tif len(remove) != 0 && labelsPresentFold(change.Labels, want) {"
+  },
+  "mutations": [
+    {
+      "name": "SEC-1b (login half): the driver-login check is disarmed — any foreign applier, trusted or not, gets re-attested",
+      "file": "cmd/deskrestamp/restamp.go",
+      "old": "\tif !deskkit.IsRestampDriverLogin(applier) {\n\t\treturn false, applier\n\t}",
+      "new": "\tif false {\n\t\treturn false, applier\n\t}"
+    },
+    {
+      "name": "SEC-1b (cutoff half): the cutoff check is disarmed — the driver's login vouches for a label applied at any time, not only before the #336 legacy-backlog cutoff",
+      "file": "cmd/deskrestamp/restamp.go",
+      "old": "\tat, perr := time.Parse(time.RFC3339, createdAt)\n\tif perr != nil || !at.Before(deskkit.RestampDriverCutoff()) {\n\t\treturn false, applier\n\t}",
+      "new": "\tat, perr := time.Parse(time.RFC3339, createdAt)\n\t_ = at\n\t_ = perr\n\tif false {\n\t\treturn false, applier\n\t}"
+    },
+    {
+      "name": "SEC-1a: the provenance gate is aggregated across the whole pair instead of checked per label — a half-swap timeline (one half already dispatcher-standing, the other foreign) is not refused",
+      "file": "cmd/deskrestamp/restamp.go",
+      "old": "\tunvouched := unvouchedRemovalLabels(tl, remove)",
+      "new": "\tunvouched := unvouchedRemovalLabels(tl, remove)\n\tif len(unvouched) > 0 && len(remove) != len(want) {\n\t\tunvouched = nil\n\t}"
+    }
+  ]
+}
