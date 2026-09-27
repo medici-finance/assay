@@ -235,7 +235,7 @@ func dispatch(o dispatchOpts) error {
 			// rework row's PR is merged. State that, rather than let the branch above read as final.
 			fmt.Printf("  --rework: the phantom check is NOT run in a dry run; if %s's PR is MERGED the real "+
 				"dispatch moves to a FOLLOW-UP branch %s-followup-<N> instead of the branch shown above\n",
-				briefIDFromItem(o.item), "feat/"+sanitizeSegment(o.item))
+				briefIDFromItem(o.item), defaultBranch(o.item, repo))
 		}
 		if line, herr := deskkit.HookDryRunLine(deskkit.HookBeforeRun); herr != nil {
 			return herr
@@ -813,7 +813,9 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	} else {
 		plan.branch = o.branch
 		if plan.branch == "" {
-			plan.branch = "feat/" + sanitizeSegment(o.item)
+			// branchname.go: `feat/<item-key>`, or a NEUTRAL name when the target is public and the
+			// key's repo label names another repo (that label must not reach the public tree).
+			plan.branch = defaultBranch(o.item, repo)
 		}
 		// The worktree verb is the AUTHORITY on what branch and worktree names it accepts; this
 		// is a pre-check, deliberately no looser than its constraint, whose only job is to keep
@@ -1727,7 +1729,8 @@ func claimRootHint(o dispatchOpts) string {
 //
 // Only the CLAIM calls (acquire, the show on contention, the release hint in the prompt)
 // use the derived key. The human-facing derivations — worktree name, branch, brief path,
-// the prompt's item key — stay on the ORIGINAL item key: reshaping those is exactly what
+// the prompt's item key — stay on the ORIGINAL item key (the default branch's one exception, a
+// public target and a foreign-label key, is defaultBranch's, branchname.go): reshaping those is exactly what
 // made passing the translated key by hand corrupt the dispatch instead of working around
 // it.
 func claimKeyFor(item, repo string) string {

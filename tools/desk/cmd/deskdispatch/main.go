@@ -81,8 +81,17 @@ a claim key (<repo>--<stream>--<NN>, <repo>--issue-<NN>) and reaches the repo's 
 byte-for-byte. A plan item key (verifyloop plan's <stream>/<NN>) is TRANSLATED for the
 claim calls only — the repo's short label (configured alias, else the repo basename) is
 prefixed and "/" becomes "--" — by a fixed rule, so every desk derives the SAME claim key
-for the same item and the claims collide. The worktree name, branch, brief path, and the
-prompt's item key stay on the ORIGINAL key.
+for the same item and the claims collide. The worktree name, brief path, and the prompt's
+item key stay on the ORIGINAL key; the default branch does too, except as BRANCH NAME says.
+
+BRANCH NAME. A worker's default branch is feat/<item-key>. When the target repo's roster entry
+is :public AND the item key's repo label (its first "--" segment) is not that repo's own label,
+the default branch is NEUTRAL instead, so another repo's short name and issue number never reach
+the public branch list or a fragment named after the branch: feat/<stream>-<NN> for a brief
+claim key (<label>--<stream>--<NN>), else feat/item-<first 10 hex of sha256(item-key)>. A
+private or unstated-visibility target, a key with no "--" label, or a key carrying the target's
+own label keeps feat/<item-key>. An explicit --branch always wins. The CLAIM KEY never changes
+(it is a ref in the claim store, not tree content), and the prompt still names the original key.
 
 STEPS, in order. Each prints one line; the first red one stops the dispatch and NAMES itself.
 
@@ -166,7 +175,7 @@ PHANTOM PRECONDITION. A fresh worker dispatch is reconciled against the delivera
 merged PRs by ` + "`Brief:`" + ` trailer BEFORE admission, the token mint and the claim. An OPEN PR refuses
 (resume it with --pr). A MERGED PR refuses as DELIVERED — unless --rework says the row awaits
 implementer rework, in which case the dispatch becomes a FOLLOW-UP on a new branch
-(feat/<item>-followup-<N>), never a resume of the merged branch.
+(<default branch>-followup-<N>), never a resume of the merged branch.
 
 --kits lists the prompt kits this binary carries and exits 0.
 --dry-run runs no step: it prints the plan and the prompt that WOULD be emitted. The prompt

@@ -251,10 +251,16 @@ it is the same code either way, and the round trip is better spent on the wordin
 ## 11. Changelog fragment — part of the deliverable where the repo enforces one
 
 > If the target repo carries `changelog/README.md`, your PR is INCOMPLETE until it adds a
-> `changelog/<slug>.md` fragment — `<slug>` is your branch name — holding at least one
+> `changelog/<slug>.md` fragment — `<slug>` is the branch name `deskdispatch` printed for you
+> (the `Branch:` line of your assignment), never the raw item key — holding at least one
 > `- …` highlight bullet (optionally grouped under an `### Added`, `### Fixed`, or
 > `### Changed` heading). Never edit a top-level `CHANGELOG.md`; the aggregate is assembled
 > from the per-PR fragments at release time.
+
+Never put the item key's repo alias into a filename, branch or path in a public repo's tree.
+`deskdispatch` already derives a neutral branch (`feat/item-<hash>`, or `feat/<stream>-<NN>` for a
+brief) when the target is public and the key names another repo, so a fragment named after the
+printed branch carries no alias — the item key you were handed still does.
 
 Detect it, do not remember it: `test -f changelog/README.md` in the checked-out tree tells
 you whether this repo enforces a fragment. Most repos do not, and there this clause is inert.

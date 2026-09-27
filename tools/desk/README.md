@@ -4344,11 +4344,19 @@ carries the tracking alias, and the worker prompt says to run `deskpr create --r
 checkout>` so the PR's `Brief:` trailer resolves against the tracking board. An item that
 declares no alias keeps the path above unchanged.
 
+**A public target never carries another repo's label in its branch name.** A worker's default
+branch is `feat/<item-key>`. When `--repo`'s roster entry is `:public` and the item key's repo label
+(its first `--` segment) names a different repo, the default is neutral instead: `feat/<stream>-<NN>`
+for a brief claim key, else `feat/item-<hash>` (the first 10 hex digits of the key's sha256). A
+worker names its changelog fragment after this branch, so the label and issue number stay out of the
+public branch list and tree. `--branch` still wins, the claim key is unchanged (it is a ref, not tree
+content), and the prompt still names the original key.
+
 **The phantom check is a dispatcher precondition.** A fresh worker dispatch is reconciled against
 the deliverable repo's open and merged PRs by `Brief:` trailer before admission, the mint and the
 claim. An OPEN PR refuses (resume it with `--pr`). A MERGED PR refuses as delivered — unless
 `--rework` says the row awaits implementer rework, in which case the dispatch becomes a FOLLOW-UP
-on a new branch (`feat/<item>-followup-<N>`), never a resume or a re-cut of the merged branch.
+on a new branch (`<default branch>-followup-<N>`), never a resume or a re-cut of the merged branch.
 The board-side measurement of a merge in a sibling repo is a separate verb this one does not
 re-implement; `siblingPhantomsFn` is the seam it plugs into once it ships.
 

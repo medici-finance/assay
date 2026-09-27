@@ -172,10 +172,11 @@ func phantomCheck(o dispatchOpts, repo string) (phantomFollowUp, error) {
 
 // applyFollowUp turns the plan into a FOLLOW-UP of merged PR pr: the default branch moves to a new
 // name keyed on that PR, so the worktree is never cut under the merged branch's name. An explicit
-// --branch equal to the conventional `feat/<item>` is refused — that is the merged work's own name,
+// --branch equal to the conventional default branch (defaultBranch — `feat/<item>`, or its neutral
+// public-target form) is refused — that is the merged work's own name,
 // and re-cutting it at main's tip is exactly the duplicate this path exists to stop.
 func (p *dispatchPlan) applyFollowUp(o dispatchOpts, f phantomFollowUp) error {
-	conventional := "feat/" + sanitizeSegment(o.item)
+	conventional := defaultBranch(o.item, p.repo)
 	if strings.TrimSpace(o.branch) == "" {
 		p.branch = fmt.Sprintf("%s-followup-%d", conventional, f.pr)
 	} else if p.branch == conventional {
