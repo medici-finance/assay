@@ -15,6 +15,8 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: [1065]
+consumers:
+  - "tools/desk/internal/comms/envelope.go (the cellmsg-v1 risk signal the router would derive from): follow-up #1722 (Option 2 taken — the field does not exist upstream and the strict parser refuses one, so the wiring is tracked as issue #1722; this branch touches no consumer path)"
 schema: brief-v2
 authored: 2026-09-16 by measured-status scoping session
 sources:
@@ -86,7 +88,26 @@ facts:
 | 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:03` | Option 2 only: exit 0; output does not contain "DISPROVED" (the follow-up wiring issue recorded as a `consumers:` `follow-up` edge is corroborated, not contradicted) |
 
 ## Evidence
-<!-- appended at implementation time by a non-implementer -->
+Option taken (implementer record, 2026-09-27): **Option 2 — Derivation block + tracked
+follow-up.** The cellmsg-v1 envelope (`tools/desk/internal/comms/envelope.go`) carries no
+risk field anywhere upstream and its strict parser (`DisallowUnknownFields`) refuses one,
+so no sender can produce the signal assign.yaml's risk axis reads; wiring a real envelope
+signal is genuinely out of reach in this change. The `// Derivation:` block at the call
+site (`tools/desk/cmd/commsloop/loop.go`, above the retained `const risk = false`)
+enumerates the seven classes of message the router can see and shows each is covered
+without the risk axis; the residual gap (a mis-routed risk-shaped message reaching
+TierSession) is filed as the tracked wiring follow-up, issue #1722.
+
+Implementer's local runs of the applicable rows (the verifier re-runs; rows 1 and 2 are
+N/A — Option 2 taken, no new routing behaviour exists to test, no pass forced):
+
+| # | Result |
+|---|--------|
+| 1 | N/A — Option 2 taken |
+| 2 | N/A — Option 2 taken |
+| 3 | PASS — `Derivation:` present at the call site, literal `const risk = false` retained |
+| 4 | PASS — `go vet ./cmd/commsloop/` exit 0 |
+| 5 | PASS — exit 0, no DISPROVED (the follow-up edge reports UNCHECKED: it names issue #1722, not a stream/NN brief — corroborated as not-contradicted) |
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
