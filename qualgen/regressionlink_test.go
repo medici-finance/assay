@@ -140,6 +140,15 @@ regression-of: not-a-valid-reference!!
 # Brief 96 — example
 `
 
+const regressionOfBriefContentQuotedTrailingComment = `---
+brief: assay:assay:quality:95
+title: example fix brief with a quoted regression-of value and a trailing comment
+regression-of: "#5"  # prior fix
+---
+
+# Brief 95 — example
+`
+
 // TestRegressionLink_RegressionOf_TrailingYAMLComment is q19-F2(e): a
 // `regression-of:` value carrying a trailing YAML comment (`abc1234  # prior
 // fix`) must still resolve to the commit sha `abc1234`. The original
@@ -194,6 +203,37 @@ func TestRegressionLink_RegressionOf_UnparseableValueIsError(t *testing.T) {
 	}
 	if ok {
 		t.Fatalf("must not report ok=true alongside an error")
+	}
+}
+
+// TestRegressionLink_RegressionOf_QuotedValueTrailingComment: a QUOTED
+// `regression-of:` value carrying a trailing YAML comment (`"#5"  # prior
+// fix`) must still resolve: the comment is stripped before the surrounding
+// quotes are trimmed. Trimming quotes first leaves a stray trailing quote
+// behind the comment strip (`#5"`), turning a well-formed reference into an
+// unparseable-value could-not-measure.
+func TestRegressionLink_RegressionOf_QuotedValueTrailingComment(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "init", "-q", "-b", "main")
+
+	briefPath := "docs/streams/quality/brief-95-example.md"
+	writeNestedFile(t, dir, briefPath, regressionOfBriefContentQuotedTrailingComment)
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "add", briefPath)
+	fixSHA := commitFile(t, dir, "2020-06-01T00:00:00Z", "fix.go", "package x\n// fix\n", "fix: repair the widget\n\nBrief: quality/95\n")
+
+	repo := openRepo(t, dir)
+	linkage := BriefRegressionLinkage{Repo: repo}
+
+	refs, ok, err := linkage.RegressionOf(DefectFix{FixCommitSHA: fixSHA})
+	if err != nil {
+		t.Fatalf("RegressionOf: unexpected error: %v", err)
+	}
+	if !ok || len(refs) != 1 {
+		t.Fatalf("expected exactly one resolved ref, got ok=%v refs=%+v", ok, refs)
+	}
+	if refs[0].Issue == nil || refs[0].Issue.Number != 5 {
+		t.Fatalf("expected issue #5 resolved from the quoted, comment-trailing regression-of:, got %+v", refs[0])
 	}
 }
 

@@ -291,8 +291,12 @@ func regressionOfValue(content string) (string, bool) {
 	if m == nil {
 		return "", false
 	}
-	v := strings.Trim(strings.TrimSpace(m[1]), `"'`)
-	v = strings.TrimSpace(trailingYAMLCommentPattern.ReplaceAllString(v, ""))
+	v := strings.TrimSpace(trailingYAMLCommentPattern.ReplaceAllString(strings.TrimSpace(m[1]), ""))
+	// Strip the comment BEFORE trimming quotes: a quoted value with a trailing
+	// comment (`"#5"  # note`) otherwise trims the leading quote first and the
+	// comment strip then leaves a stray trailing quote (`#5"`), turning a
+	// well-formed reference into an unparseable-value could-not-measure.
+	v = strings.TrimSpace(strings.Trim(v, `"'`))
 	if v == "" {
 		return "", false
 	}

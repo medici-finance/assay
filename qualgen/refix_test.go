@@ -70,7 +70,7 @@ func TestRefix_RegressionOfLink_Counted(t *testing.T) {
 		refixInd1: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC), // F's inducer — AFTER E's fix
 	}
 
-	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, time.Now())
+	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, "", time.Now())
 
 	if rec.TracedFixCount != 1 {
 		t.Fatalf("expected 1 traced fix, got %d", rec.TracedFixCount)
@@ -111,7 +111,7 @@ func TestRefix_SameDefectClass_Counted(t *testing.T) {
 		refixInd2: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
 	}
 
-	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, time.Now())
+	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, "", time.Now())
 
 	if rec.RefixCount.State != StateMeasured || rec.RefixCount.Value != 1 {
 		t.Fatalf("expected refix_count measured 1, got %+v", rec.RefixCount)
@@ -148,7 +148,7 @@ func TestRefix_EarlierFixAfterInducer_NotCounted(t *testing.T) {
 		refixInd1: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
 
-	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, time.Now())
+	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, "", time.Now())
 
 	if rec.RefixCount.State != StateMeasuredZero {
 		t.Fatalf("expected refix_count measured-zero (linked but wrong order), got %+v", rec.RefixCount)
@@ -190,7 +190,7 @@ func TestRefix_NoLinkageConfigured_CouldNotMeasure(t *testing.T) {
 		refixInd1: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
 	}
 
-	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, time.Now())
+	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, "", time.Now())
 
 	if rec.RefixRate.State != StateCouldNotMeasure {
 		t.Fatalf("expected refix_rate could-not-measure, got %+v", rec.RefixRate)
@@ -241,7 +241,7 @@ func TestRefix_IssueLessFixNoLinkage_CouldNotMeasure(t *testing.T) {
 		refixInd2: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
 	}
 
-	rec := ComputeRefix("w1", []DefectFix{withIssue, issueLess}, []DefectTrace{trWith, trIssueLess}, linkage, ct.at, time.Now())
+	rec := ComputeRefix("w1", []DefectFix{withIssue, issueLess}, []DefectTrace{trWith, trIssueLess}, linkage, ct.at, "", time.Now())
 
 	if rec.RefixRate.State != StateCouldNotMeasure {
 		t.Fatalf("expected refix_rate could-not-measure (one fix's linkage never resolved), got %+v", rec.RefixRate)
@@ -277,7 +277,7 @@ func TestRefix_RegressionOfNamesUnknownFix_CouldNotMeasure(t *testing.T) {
 	ct := fixedCommitTime{refixInd1: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)}
 
 	// allFixes contains only f itself — nothing closes issue #77.
-	rec := ComputeRefix("w1", []DefectFix{f}, []DefectTrace{tr}, linkage, ct.at, time.Now())
+	rec := ComputeRefix("w1", []DefectFix{f}, []DefectTrace{tr}, linkage, ct.at, "", time.Now())
 
 	if rec.LinkageCoverage.State != StateCouldNotMeasure {
 		t.Fatalf("expected linkage_coverage could-not-measure (regression-of names an unresolvable fix), got %+v", rec.LinkageCoverage)
@@ -314,7 +314,7 @@ func TestRefix_ClassCandidateLabelError_CouldNotMeasure(t *testing.T) {
 		refixInd2: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
 	}
 
-	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, time.Now())
+	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, "", time.Now())
 
 	if rec.LinkageCoverage.State != StateCouldNotMeasure {
 		t.Fatalf("expected linkage_coverage could-not-measure (E's label read errored), got %+v", rec.LinkageCoverage)
@@ -348,7 +348,7 @@ func TestRefix_CandidateFixTimeUnresolvable_CouldNotMeasure(t *testing.T) {
 	// refixE1's fix time is deliberately absent from the map.
 	ct := fixedCommitTime{refixInd1: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)}
 
-	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, time.Now())
+	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, "", time.Now())
 
 	if rec.LinkageCoverage.State != StateCouldNotMeasure {
 		t.Fatalf("expected linkage_coverage could-not-measure (E's fix time unresolvable), got %+v", rec.LinkageCoverage)
@@ -385,7 +385,7 @@ func TestRefix_PartialInducerTime_CouldNotMeasure(t *testing.T) {
 		// refixIndUnknown deliberately absent.
 	}
 
-	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, time.Now())
+	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, "", time.Now())
 
 	if rec.LinkageCoverage.State != StateCouldNotMeasure {
 		t.Fatalf("expected linkage_coverage could-not-measure (a partial inducer-time set), got %+v", rec.LinkageCoverage)
@@ -401,12 +401,207 @@ func TestRefix_PartialInducerTime_CouldNotMeasure(t *testing.T) {
 // ("the mined repo itself" — IssueRef's own doc comment). A literal
 // ref.Issue.Repo == e.ClosedIssue.Repo comparison can then never match a
 // repo-qualified reference to the mined repo's own fix, even though that is
-// exactly the form the pickup precondition documents as accepted.
+// exactly the form the pickup precondition documents as accepted. The match
+// is made through the mined repo's own slug: the qualified reference names
+// the mined repo, so it matches the mined repo's issue.
 func TestRefMatches_RepoQualifiedRef_MatchesMinedRepoSentinel(t *testing.T) {
 	ref := RegressionRef{Issue: &IssueRef{Repo: "medici-finance/assay", Number: 5}}
 	e := DefectFix{FixCommitSHA: refixE1, ClosedIssue: &IssueRef{Number: 5}} // Repo == "": the mined repo
-	if !refMatches(ref, e) {
-		t.Fatalf("expected a repo-qualified regression-of reference to match the mined repo's own closed issue #5")
+	if !refMatches(ref, e, "medici-finance/assay") {
+		t.Fatalf("expected a repo-qualified regression-of reference naming the mined repo to match its own closed issue #5")
+	}
+}
+
+// TestRefMatches_ForeignRepoQualifiedRef_DoesNotMatch is q19-F3 round 2 /
+// A-refmatches-foreign-repo-wildcard: a `regression-of:` naming ANOTHER
+// repository's issue must never match the mined repo's own same-numbered
+// issue. The round-1 fix treated an empty Repo on EITHER side as a wildcard
+// match, and GithubLabelsLinkage's ClosedIssue always carries Repo == "", so
+// any repo-qualified reference matched — counting a re-fix against an
+// unrelated earlier fix and OVER-counting the rate, worse than the original
+// silent non-link, which could only under-count. And with the mined repo's
+// identity unknown, even a reference naming the mined repo's own slug cannot
+// be confirmed: never a wildcard match.
+func TestRefMatches_ForeignRepoQualifiedRef_DoesNotMatch(t *testing.T) {
+	e := DefectFix{FixCommitSHA: refixE1, ClosedIssue: &IssueRef{Number: 5}} // Repo == "": the mined repo
+	foreign := RegressionRef{Issue: &IssueRef{Repo: "other-org/other-repo", Number: 5}}
+	if refMatches(foreign, e, "medici-finance/assay") {
+		t.Fatalf("a foreign repo-qualified reference must not match the mined repo's issue #5")
+	}
+	own := RegressionRef{Issue: &IssueRef{Repo: "medici-finance/assay", Number: 5}}
+	if refMatches(own, e, "") {
+		t.Fatalf("a repo-qualified reference is unverifiable when the mined repo's identity is unknown — must not match")
+	}
+}
+
+// TestRefix_ClassErrorBehindOrderingFailingCandidate_CouldNotMeasure is the
+// q19-F2(b) residual (round 2) and the security lane's second surviving
+// F-refix-fail-open-missing-linkage occurrence: F's class path produces a
+// CLEAN candidate E1 that then fails the ordering rule (E1's fix landed after
+// F's inducer), while ANOTHER earlier fix E2's label read errored. Round 1
+// surfaced the error only when NO clean candidate existed, so E1's ordering
+// failure hid E2 entirely and F was scored a covered, measured non-re-fix —
+// even though E2 (fixed BEFORE the inducer) could have been the qualifying
+// earlier fix. With no candidate satisfying the ordering rule and an E-side
+// read errored, F is could-not-measure (resolved=false).
+func TestRefix_ClassErrorBehindOrderingFailingCandidate_CouldNotMeasure(t *testing.T) {
+	const refixE3 = "e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3"
+	e1 := DefectFix{FixCommitSHA: refixE2, FixPRNumber: 101, ClosedIssue: &IssueRef{Number: 1}, Tier: Tier1, Identified: Measured(true)}
+	e2 := DefectFix{FixCommitSHA: refixE3, FixPRNumber: 102, ClosedIssue: &IssueRef{Number: 3}, Tier: Tier1, Identified: Measured(true)}
+	f := DefectFix{FixCommitSHA: refixF2, FixPRNumber: 201, ClosedIssue: &IssueRef{Number: 2}, Tier: Tier1, Identified: Measured(true)}
+	tr := DefectTrace{FixCommit: refixF2, TraceState: TraceTraced, InducingCommits: []string{refixInd2}}
+
+	linkage := stubRegressionLinkage{
+		defectClass: func(ref IssueRef) (string, bool, error) {
+			switch ref.Number {
+			case 1, 2:
+				return "class-widget-nil-deref", true, nil
+			case 3:
+				return "", false, fmt.Errorf("403 rate limited")
+			}
+			return "", false, nil
+		},
+	}
+	ct := fixedCommitTime{
+		refixE2:   time.Date(2024, 9, 1, 0, 0, 0, 0, time.UTC), // E1: same class but fixed AFTER F's inducer
+		refixE3:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), // E2: fixed BEFORE the inducer — but its labels never read
+		refixInd2: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	rec := ComputeRefix("w1", []DefectFix{e1, e2, f}, []DefectTrace{tr}, linkage, ct.at, "", time.Now())
+
+	if rec.LinkageCoverage.State != StateCouldNotMeasure {
+		t.Fatalf("expected linkage_coverage could-not-measure (E2's label read errored behind an ordering-failing candidate), got %+v", rec.LinkageCoverage)
+	}
+	if rec.RefixRate.State != StateCouldNotMeasure {
+		t.Fatalf("expected refix_rate could-not-measure, got %+v", rec.RefixRate)
+	}
+	if len(rec.Refixes) != 0 {
+		t.Fatalf("expected no counted re-fix out of an unresolved candidate, got %+v", rec.Refixes)
+	}
+}
+
+// TestRefix_ExplicitPathError_ClassPathResolvedNoMatch_CouldNotMeasure is the
+// security lane's first surviving F-refix-fail-open-missing-linkage occurrence
+// (evaluateFix, round 2): the explicit path ERRORS (a RegressionOf failure —
+// including this round's own unparseable regression-of value) while the class
+// path resolves cleanly with ZERO matching candidates. Round 1's
+// `resolved = expResolved || classResolved` discarded the explicit path's
+// could-not-measure the moment the class path resolved, scoring F a covered,
+// measured non-re-fix. With no candidate satisfying the ordering rule and the
+// explicit path could-not-measure, F is could-not-measure (resolved=false).
+func TestRefix_ExplicitPathError_ClassPathResolvedNoMatch_CouldNotMeasure(t *testing.T) {
+	e := DefectFix{FixCommitSHA: refixE2, FixPRNumber: 101, ClosedIssue: &IssueRef{Number: 1}, Tier: Tier1, Identified: Measured(true)}
+	f := DefectFix{FixCommitSHA: refixF2, FixPRNumber: 201, ClosedIssue: &IssueRef{Number: 2}, Tier: Tier1, Identified: Measured(true)}
+	tr := DefectTrace{FixCommit: refixF2, TraceState: TraceTraced, InducingCommits: []string{refixInd2}}
+
+	linkage := stubRegressionLinkage{
+		regressionOf: func(cand DefectFix) ([]RegressionRef, bool, error) {
+			if cand.FixCommitSHA == refixF2 {
+				return nil, false, fmt.Errorf(`regressionlink: unparseable regression-of value(s): docs/streams/quality/brief-2-f.md: "#5""`)
+			}
+			return nil, false, nil
+		},
+		defectClass: func(ref IssueRef) (string, bool, error) {
+			// F's own class reads fine; E's resolves to a DIFFERENT class —
+			// the class path resolved cleanly and matched nobody.
+			if ref.Number == 2 {
+				return "class-widget-nil-deref", true, nil
+			}
+			return "class-other", true, nil
+		},
+	}
+	ct := fixedCommitTime{
+		refixE2:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		refixInd2: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, "", time.Now())
+
+	if rec.LinkageCoverage.State != StateCouldNotMeasure {
+		t.Fatalf("expected linkage_coverage could-not-measure (the explicit path errored behind a resolved class path), got %+v", rec.LinkageCoverage)
+	}
+	if rec.RefixRate.State != StateCouldNotMeasure {
+		t.Fatalf("expected refix_rate could-not-measure, got %+v", rec.RefixRate)
+	}
+	if len(rec.Refixes) != 0 {
+		t.Fatalf("expected no counted re-fix, got %+v", rec.Refixes)
+	}
+}
+
+// TestRefix_ClassPathError_ExplicitCandidateFailsOrdering_CouldNotMeasure is
+// the mirror shape (the correctness lane's advisory probe, covered here
+// because the security lane holds the class): the explicit path resolves a
+// candidate that FAILS the ordering rule while the class path errors (here:
+// the class-label prefix unconfigured — Verify #5's own error). The resolved
+// explicit candidate proves only that E landed after F's inducer; it says
+// nothing about whether an uncheckable class-linked fix would have qualified.
+// F is could-not-measure (resolved=false), not a measured non-re-fix.
+func TestRefix_ClassPathError_ExplicitCandidateFailsOrdering_CouldNotMeasure(t *testing.T) {
+	e := DefectFix{FixCommitSHA: refixE1, FixPRNumber: 100, Tier: Tier1, Identified: Measured(true)}
+	f := DefectFix{FixCommitSHA: refixF1, FixPRNumber: 200, ClosedIssue: &IssueRef{Number: 2}, Tier: Tier1, Identified: Measured(true)}
+	tr := DefectTrace{FixCommit: refixF1, TraceState: TraceTraced, InducingCommits: []string{refixInd1}}
+
+	linkage := stubRegressionLinkage{
+		regressionOf: func(cand DefectFix) ([]RegressionRef, bool, error) {
+			if cand.FixCommitSHA == refixF1 {
+				return []RegressionRef{{PRNumber: 100}}, true, nil
+			}
+			return nil, false, nil
+		},
+		defectClass: func(ref IssueRef) (string, bool, error) {
+			return "", false, fmt.Errorf("defect-class label prefix not configured")
+		},
+	}
+	ct := fixedCommitTime{
+		refixE1:   time.Date(2024, 9, 1, 0, 0, 0, 0, time.UTC), // E fixed AFTER F's inducer
+		refixInd1: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, "", time.Now())
+
+	if rec.LinkageCoverage.State != StateCouldNotMeasure {
+		t.Fatalf("expected linkage_coverage could-not-measure (the class path errored behind an ordering-failing candidate), got %+v", rec.LinkageCoverage)
+	}
+	if rec.RefixRate.State != StateCouldNotMeasure {
+		t.Fatalf("expected refix_rate could-not-measure, got %+v", rec.RefixRate)
+	}
+}
+
+// TestRefix_ForeignRepoRegressionOf_CouldNotMeasure is q19-F3 end to end: a
+// `regression-of:` naming a foreign repository's issue names a fix outside
+// the mined corpus — the same could-not-measure shape as q19-F2(a)'s
+// unknown-fix reference, never a measured non-re-fix (which the round-1
+// wildcard matching fabricated by "matching" the mined repo's same-numbered
+// issue).
+func TestRefix_ForeignRepoRegressionOf_CouldNotMeasure(t *testing.T) {
+	e := DefectFix{FixCommitSHA: refixE1, FixPRNumber: 100, ClosedIssue: &IssueRef{Number: 5}, Tier: Tier1, Identified: Measured(true)}
+	f := DefectFix{FixCommitSHA: refixF1, FixPRNumber: 200, Tier: Tier1, Identified: Measured(true)}
+	tr := DefectTrace{FixCommit: refixF1, TraceState: TraceTraced, InducingCommits: []string{refixInd1}}
+
+	linkage := stubRegressionLinkage{
+		regressionOf: func(cand DefectFix) ([]RegressionRef, bool, error) {
+			if cand.FixCommitSHA == refixF1 {
+				return []RegressionRef{{Issue: &IssueRef{Repo: "other-org/other-repo", Number: 5}}}, true, nil
+			}
+			return nil, false, nil
+		},
+	}
+	ct := fixedCommitTime{
+		refixE1:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		refixInd1: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, "medici-finance/assay", time.Now())
+
+	if rec.LinkageCoverage.State != StateCouldNotMeasure {
+		t.Fatalf("expected linkage_coverage could-not-measure (a foreign regression-of names no fix in the mined corpus), got %+v", rec.LinkageCoverage)
+	}
+	if rec.RefixRate.State != StateCouldNotMeasure {
+		t.Fatalf("expected refix_rate could-not-measure, got %+v", rec.RefixRate)
+	}
+	if len(rec.Refixes) != 0 {
+		t.Fatalf("a foreign reference must never count a re-fix, got %+v", rec.Refixes)
 	}
 }
 
