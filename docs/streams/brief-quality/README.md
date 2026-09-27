@@ -19,7 +19,7 @@ issues: []
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Define the brief assessment and outcome contract](brief-01-design-contract.md) | 0 | M | todo | — | — |
+| 01 | [Define the brief assessment and outcome contract](brief-01-design-contract.md) | 0 | M | implemented | — | — |
 | 02 | [Ratify acceptance-review and pilot policy](brief-02-policy-rulings.md) | 1 | S | todo | — | — |
 | 03 | [Extend brief parsing, lint and templates with six dimensions](brief-03-assessment-schema.md) | 2 | M | todo | — | — |
 | 04 | [Rewrite authoring and review procedures around assessed contracts](brief-04-desk-procedures.md) | 3 | M | todo | — | — |
@@ -50,4 +50,4 @@ The head was checked at 7aa3835d7 on 2026-09-26: profile parsing, approval-bound
 
 All implementation briefs remain unstarted. This change authors the plan and supplies the design deliverable for 01; it does not claim independent verification. The current brief schema remains in force until 03 lands. This stream does not self-certify its own acceptance review or fabricate retrospective assessments.
 
-The companion article and illustrative explainer describe this idea-to-spec-to-brief path. They are explanatory draft artifacts with their own publication review; neither is evidence that the proposed monitoring tool or admission gate has shipped.
+A companion article and illustrative explainer describing this idea-to-spec-to-brief path may be authored separately, subject to their own publication review; neither is evidence that the proposed monitoring tool or admission gate has shipped, and this stream does not depend on either existing.

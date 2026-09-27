@@ -12,7 +12,7 @@ issues: []
 schema: "brief-v2"
 id: "4a742172-c319-44ef-985d-48fcb1efdd0b"
 version: 1
-authored: "2026-09-26 by design author"
+authored: "2026-09-26 by the authoring session recorded in commit 6a7d90b97"
 sources: ["docs/streams/brief-quality/spec.md", "freshness-checked 2026-09-26 @ 7aa3835d7"]
 exec-tier: "strong"
 exec-tier-why: "Cross-contract design and attribution errors can survive happy-path tests."

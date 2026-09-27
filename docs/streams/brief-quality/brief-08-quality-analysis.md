@@ -18,7 +18,7 @@ issues: []
 schema: "brief-v2"
 id: "3ff3f138-36fd-4d8a-8725-0aa4bc58ef5d"
 version: 1
-authored: "2026-09-26 by design author"
+authored: "2026-09-26 by the authoring session recorded in commit 6a7d90b97"
 sources: ["docs/streams/brief-quality/spec.md", "freshness-checked 2026-09-26 @ 7aa3835d7"]
 exec-tier: "strong"
 exec-tier-why: "Cross-contract design and attribution errors can survive happy-path tests."
@@ -61,7 +61,7 @@ Run from the repository root unless the command changes directory. Proposed test
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check | `cd qualgen && go test ./briefquality/... -count=1` | exit 0; exact denominators and missing states match independent golden expectations |
+| 1 | check | `cd qualgen && go test -run '^TestQualityAnalysisDenominatorsMatchGolden$' -v ./briefquality/... > "${TMPDIR:-/tmp}/bq08a.out" 2>&1 && grep -q -F -- '--- PASS: TestQualityAnalysisDenominatorsMatchGolden' "${TMPDIR:-/tmp}/bq08a.out" && go test -run '^TestQualityAnalysisMissingStatesMatchGolden$' -v ./briefquality/... > "${TMPDIR:-/tmp}/bq08b.out" 2>&1 && grep -q -F -- '--- PASS: TestQualityAnalysisMissingStatesMatchGolden' "${TMPDIR:-/tmp}/bq08b.out"` | exit 0; a missing test fails the row instead of passing vacuously |
 | 2 | check | `cd qualgen && go test ./... -count=1` | exit 0; neighboring quality commands preserved |
 | 90 | check | `statusgen --root . --consumers --brief brief-quality/08` | exit 0 on the implementation branch after dispositions are updated to match the actual diff; inherited/out-of-scope claims remain explicitly unchecked |
 

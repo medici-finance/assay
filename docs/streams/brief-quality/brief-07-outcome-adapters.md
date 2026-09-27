@@ -18,7 +18,7 @@ issues: []
 schema: "brief-v2"
 id: "b2185667-fe74-43bc-84f4-e645eae20250"
 version: 1
-authored: "2026-09-26 by design author"
+authored: "2026-09-26 by the authoring session recorded in commit 6a7d90b97"
 sources: ["docs/streams/brief-quality/spec.md", "freshness-checked 2026-09-26 @ 7aa3835d7"]
 exec-tier: "strong"
 exec-tier-why: "Cross-contract design and attribution errors can survive happy-path tests."
@@ -61,7 +61,7 @@ Run from the repository root unless the command changes directory. Proposed test
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check +flow | `cd qualgen && go test ./briefquality/... -count=1` | exit 0; unknown lineage, missing cost and changed requirements remain distinct |
+| 1 | check +flow | `cd qualgen && go test -run '^TestOutcomeAdapterUnknownLineageDistinct$' -v ./briefquality/... > "${TMPDIR:-/tmp}/bq07a.out" 2>&1 && grep -q -F -- '--- PASS: TestOutcomeAdapterUnknownLineageDistinct' "${TMPDIR:-/tmp}/bq07a.out" && go test -run '^TestOutcomeAdapterMissingCostDistinct$' -v ./briefquality/... > "${TMPDIR:-/tmp}/bq07b.out" 2>&1 && grep -q -F -- '--- PASS: TestOutcomeAdapterMissingCostDistinct' "${TMPDIR:-/tmp}/bq07b.out" && go test -run '^TestOutcomeAdapterChangedRequirementsDistinct$' -v ./briefquality/... > "${TMPDIR:-/tmp}/bq07c.out" 2>&1 && grep -q -F -- '--- PASS: TestOutcomeAdapterChangedRequirementsDistinct' "${TMPDIR:-/tmp}/bq07c.out"` | exit 0; a missing test fails the row instead of passing vacuously |
 | 2 | check | `cd qualgen && go test ./telemetry/... ./attribution/... -count=1` | exit 0; existing telemetry and stage attribution contracts preserved |
 | 90 | check | `statusgen --root . --consumers --brief brief-quality/07` | exit 0 on the implementation branch after dispositions are updated to match the actual diff; inherited/out-of-scope claims remain explicitly unchecked |
 

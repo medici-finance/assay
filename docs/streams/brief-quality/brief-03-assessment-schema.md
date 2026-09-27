@@ -21,7 +21,7 @@ issues: []
 schema: "brief-v2"
 id: "eca58593-c356-4522-a609-e2667b4e2ce4"
 version: 1
-authored: "2026-09-26 by design author"
+authored: "2026-09-26 by the authoring session recorded in commit 6a7d90b97"
 sources: ["docs/streams/brief-quality/spec.md", "freshness-checked 2026-09-26 @ 7aa3835d7"]
 exec-tier: "strong"
 exec-tier-why: "Cross-contract design and attribution errors can survive happy-path tests."
@@ -67,7 +67,7 @@ Run from the repository root unless the command changes directory. Proposed test
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check +flow | `cd statusgen && go test ./... -count=1` | exit 0; malformed and contradictory fixtures fail, legacy absence stays not-assessed |
+| 1 | check +flow | `cd statusgen && go test -run '^TestAssessmentMalformed$' -v ./... > "${TMPDIR:-/tmp}/bq03a.out" 2>&1 && grep -q -F -- '--- PASS: TestAssessmentMalformed' "${TMPDIR:-/tmp}/bq03a.out" && go test -run '^TestAssessmentContradictory$' -v ./... > "${TMPDIR:-/tmp}/bq03b.out" 2>&1 && grep -q -F -- '--- PASS: TestAssessmentContradictory' "${TMPDIR:-/tmp}/bq03b.out" && go test -run '^TestAssessmentLegacyNotAssessed$' -v ./... > "${TMPDIR:-/tmp}/bq03c.out" 2>&1 && grep -q -F -- '--- PASS: TestAssessmentLegacyNotAssessed' "${TMPDIR:-/tmp}/bq03c.out"` | exit 0; a missing test fails the row instead of passing vacuously |
 | 2 | check | `cd statusgen && go test ./... -count=1` | exit 0; existing graph, generator and requirement outcome semantics preserved |
 | 90 | check | `statusgen --root . --consumers --brief brief-quality/03` | exit 0 on the implementation branch after dispositions are updated to match the actual diff; inherited/out-of-scope claims remain explicitly unchecked |
 

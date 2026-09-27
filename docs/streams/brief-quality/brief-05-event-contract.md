@@ -18,7 +18,7 @@ issues: []
 schema: "brief-v2"
 id: "84fefd89-9fb1-4b8a-90e0-cf6f1a3f7a56"
 version: 1
-authored: "2026-09-26 by design author"
+authored: "2026-09-26 by the authoring session recorded in commit 6a7d90b97"
 sources: ["docs/streams/brief-quality/spec.md", "freshness-checked 2026-09-26 @ 7aa3835d7"]
 exec-tier: "strong"
 exec-tier-why: "Cross-contract design and attribution errors can survive happy-path tests."
@@ -61,8 +61,8 @@ Run from the repository root unless the command changes directory. Proposed test
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check | `cd qualgen && go test ./briefquality/... -count=1` | exit 0; seeded missing/conflicting records rejected or visibly incomplete |
-| 2 | check | `cd qualgen && go test -race ./briefquality/... -count=1` | exit 0; concurrent writers retain all unique records |
+| 1 | check | `cd qualgen && go test -run '^TestBriefQualityEventMissingRejected$' -v ./briefquality/... > "${TMPDIR:-/tmp}/bq05a1.out" 2>&1 && grep -q -F -- '--- PASS: TestBriefQualityEventMissingRejected' "${TMPDIR:-/tmp}/bq05a1.out" && go test -run '^TestBriefQualityEventConflictingIncomplete$' -v ./briefquality/... > "${TMPDIR:-/tmp}/bq05a2.out" 2>&1 && grep -q -F -- '--- PASS: TestBriefQualityEventConflictingIncomplete' "${TMPDIR:-/tmp}/bq05a2.out"` | exit 0; a missing test fails the row instead of passing vacuously |
+| 2 | check | `cd qualgen && go test -race -run '^TestBriefQualityEventConcurrentWritersRetainUnique$' -v ./briefquality/... > "${TMPDIR:-/tmp}/bq05b.out" 2>&1 && grep -q -F -- '--- PASS: TestBriefQualityEventConcurrentWritersRetainUnique' "${TMPDIR:-/tmp}/bq05b.out"` | exit 0; a missing test fails the row instead of passing vacuously |
 | 90 | check | `statusgen --root . --consumers --brief brief-quality/05` | exit 0 on the implementation branch after dispositions are updated to match the actual diff; inherited/out-of-scope claims remain explicitly unchecked |
 
 ## Pre-mortem

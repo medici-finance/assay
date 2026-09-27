@@ -19,7 +19,7 @@ issues: []
 schema: "brief-v2"
 id: "e8f154d7-c8a8-46ad-a4b4-5d9e72aa0649"
 version: 1
-authored: "2026-09-26 by design author"
+authored: "2026-09-26 by the authoring session recorded in commit 6a7d90b97"
 sources: ["docs/streams/brief-quality/spec.md", "freshness-checked 2026-09-26 @ 7aa3835d7"]
 exec-tier: "strong"
 exec-tier-why: "Cross-contract design and attribution errors can survive happy-path tests."
@@ -61,7 +61,7 @@ Run from the repository root unless the command changes directory. Proposed test
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check | `cd tools/desk && go test ./internal/deskkit ./cmd/deskdispatch -count=1` | exit 0; self-review, stale approval and missing policy refuse; valid reviewed contract admits |
+| 1 | check | `cd tools/desk && go test -run '^TestAcceptanceAdmissionSelfReviewRefused$' -v ./internal/deskkit ./cmd/deskdispatch > "${TMPDIR:-/tmp}/bq06a.out" 2>&1 && grep -q -F -- '--- PASS: TestAcceptanceAdmissionSelfReviewRefused' "${TMPDIR:-/tmp}/bq06a.out" && go test -run '^TestAcceptanceAdmissionStaleApprovalRefused$' -v ./internal/deskkit ./cmd/deskdispatch > "${TMPDIR:-/tmp}/bq06b.out" 2>&1 && grep -q -F -- '--- PASS: TestAcceptanceAdmissionStaleApprovalRefused' "${TMPDIR:-/tmp}/bq06b.out" && go test -run '^TestAcceptanceAdmissionMissingPolicyRefused$' -v ./internal/deskkit ./cmd/deskdispatch > "${TMPDIR:-/tmp}/bq06c.out" 2>&1 && grep -q -F -- '--- PASS: TestAcceptanceAdmissionMissingPolicyRefused' "${TMPDIR:-/tmp}/bq06c.out" && go test -run '^TestAcceptanceAdmissionValidContractAdmits$' -v ./internal/deskkit ./cmd/deskdispatch > "${TMPDIR:-/tmp}/bq06d.out" 2>&1 && grep -q -F -- '--- PASS: TestAcceptanceAdmissionValidContractAdmits' "${TMPDIR:-/tmp}/bq06d.out"` | exit 0; a missing test fails the row instead of passing vacuously |
 | 2 | check | `cd tools/desk && go test ./cmd/deskdispatch -count=1` | exit 0; neighboring dispatch controls still pass |
 | 90 | check | `statusgen --root . --consumers --brief brief-quality/06` | exit 0 on the implementation branch after dispositions are updated to match the actual diff; inherited/out-of-scope claims remain explicitly unchecked |
 

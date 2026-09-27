@@ -18,7 +18,7 @@ The implementation MUST retain three separately addressable products: task asses
 
 | ID | Question | Status | Recommendation / authority |
 |---|---|---|---|
-| D1 | Codify six task dimensions and measure outcomes / brief authoring | Requested | Operator request of 2026-09-26 authorizes this design and implementation stream, not deployment |
+| D1 | Codify six task dimensions and measure outcomes / brief authoring | Requested | Operator request of 2026-09-26 authorizes this design and implementation stream, not deployment (source locator: commit `6a7d90b97` introducing this spec) |
 | D2 | Who writes the first DoD? | Proposed; human ruling required | Author writes intent, constraints, initial DoD; independent reviewer derives failure cases first, then challenges/amends DoD before dispatch |
 | D3 | Which briefs require acceptance review? | Proposed; human ruling required | Opt-in pilot for all newly authored briefs in named pilot streams; no retroactive gate on existing work; enforcement only after explicit rollout ruling |
 | D4 | Must the reviewer use a different model? | Proposed; human ruling required | Separate non-author run/context mandatory; model-family diversity recorded and preferred where available, not a substitute for independence |
