@@ -64,14 +64,14 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (60 desk-actionable of 83 total — 82 at implemented, 1 verified awaiting review)
+## Awaiting verification / review (61 desk-actionable of 84 total — 83 at implemented, 1 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (60)
+### Desk-actionable (61)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -131,6 +131,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-gitlab | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| quality | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 14 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -441,7 +442,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 - 17 regression suite — TestRegression_ naming convention + count-can't-drop / vacuous-selector CI gate — todo (wave 0)
 - 18 stub-coverage seam report — report-first list of test seams stubbed everywhere and exercised nowhere in production form — todo (wave 1)
-- 19 qualgen re-fix metric — SZZ-traced fixes that repeat a defect an earlier fix already addressed — todo (wave 3)
+- 19 qualgen re-fix metric — SZZ-traced fixes that repeat a defect an earlier fix already addressed — implemented (wave 3)
 
 ### server-controls (5 open)
 
