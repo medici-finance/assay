@@ -59,18 +59,33 @@ var forkCaughtByValueRe = regexp.MustCompile(`(?i)^(draft-pr|flip|issue-close|no
 var forkRuledCheckLineRe = regexp.MustCompile(`(?i)^[ \t>*_-]*ruled-check:[ \t]*(.+?)[ \t]*(?:\x{2192}|->)[ \t]*(.*)$`)
 
 // forkSubjectLineRe matches an OPTIONAL `subject: <one line naming what is actually being
-// decided>` line. It is the notice lane's ONLY source for its positive, content-bearing R-3
-// reversible signal (deskkit.NoticeLaneVerdict) — never the issue title, never body prose,
-// never the `ruled-check:` line (security review sec-1688-S1, round 4). A title can and does
-// carry more than one clause ("Tool default: let the desk commit to main when CI is green?
-// Fix the help-text wording too." names a main-push governance question AND, in passing, a
-// wording fix), so a scan over title+body admits on whichever clause happens to carry a
-// reversible needle, not on what the filing is actually about. `subject:` asks the filer to
-// name that in one line instead. Its ABSENCE is not an error (the fork-test gate's structural
-// requirements are unchanged — see forkTestResult.Structural): a filing with no `subject:`
-// line simply never admits the notice lane, which is the fail-closed default every other
-// unrecognised shape already gets.
-var forkSubjectLineRe = regexp.MustCompile(`(?i)^[ \t>*_-]*subject:[ \t]*(.*)$`)
+// decided>` line, capturing its prefix (group 1, everything before `subject:`) separately
+// from its value (group 2) so the caller can tell a `>`-quoted line from a plain one — see
+// below. It is the notice lane's ONLY source for its positive, content-bearing R-3 reversible
+// signal (deskkit.NoticeLaneVerdict) — never the issue title, never body prose, never the
+// `ruled-check:` line (security review sec-1688-S1, round 4). A title can and does carry more
+// than one clause ("Tool default: let the desk commit to main when CI is green? Fix the
+// help-text wording too." names a main-push governance question AND, in passing, a wording
+// fix), so a scan over title+body admits on whichever clause happens to carry a reversible
+// needle, not on what the filing is actually about. `subject:` asks the filer to name that in
+// one line instead. Its ABSENCE is not an error (the fork-test gate's structural requirements
+// are unchanged — see forkTestResult.Structural): a filing with no `subject:` line simply
+// never admits the notice lane, which is the fail-closed default every other unrecognised
+// shape already gets.
+//
+// A well-formed section is meant to declare the subject exactly once. Round 5 (security
+// review sec-1688-S1) found two ways a second line crept in and still admitted: prose after
+// the block with no heading in between (the section runs to the next heading or EOF) can
+// itself carry what reads as a `subject:` line — including a `>`-quoted one, since the prefix
+// class below matches a blockquote marker the same as a bullet — and when two or more
+// `subject:` lines appeared, parseForkTest kept only the LAST one, so an honest first subject
+// could be silently overridden by an incidental second line or a leftover template
+// placeholder. parseForkTest below now reads the declared subject only when the section
+// carries EXACTLY ONE `subject:` line and it is not `>`-quoted (group 1 contains no `>`);
+// two or more — quoted, unquoted, or a mix — leaves r.Subject empty, the same fail-closed
+// default as no `subject:` line at all. Bullet/emphasis prefixes (`*`, `_`, `-`, matching the
+// grammar's other lines) are still accepted on the one subject line that counts.
+var forkSubjectLineRe = regexp.MustCompile(`(?i)^([ \t>*_-]*)subject:[ \t]*(.*)$`)
 
 // The closed set caught-by's first field must be one of.
 const (
@@ -245,9 +260,13 @@ type forkTestResult struct {
 	RuledCheckSearch string
 	RuledCheckResult string
 
-	// HasSubject/Subject: the OPTIONAL `subject:` line (forkSubjectLineRe). Never required —
-	// Structural() does not check it — but it is the ONLY text deskkit.NoticeLaneVerdict reads
-	// for its positive reversible-signal test; see forkSubjectLineRe.
+	// HasSubject/Subject: the OPTIONAL `subject:` line (forkSubjectLineRe), set only when the
+	// section carries EXACTLY ONE such line and it is not `>`-quoted (round 5 — see
+	// forkSubjectLineRe). Never required — Structural() does not check it — but it is the
+	// ONLY text deskkit.NoticeLaneVerdict reads for its positive reversible-signal test. Two
+	// or more `subject:` lines, or a lone quoted one, leave HasSubject false and Subject
+	// empty: the same fail-closed default as no `subject:` line at all, never a refusal (an
+	// ambiguous subject is not a structural error — see Structural).
 	HasSubject bool
 	Subject    string
 
@@ -311,6 +330,9 @@ func parseForkTest(body string) forkTestResult {
 
 	seenLetter := map[string]bool{}
 	var dupLetters []string
+	subjectLines := 0     // every `subject:` line seen, quoted or not
+	unquotedSubjects := 0 // the subset that is not `>`-quoted
+	var lastUnquotedSubject string
 	for _, ln := range strings.Split(section, "\n") {
 		if m := forkOptionLineRe.FindStringSubmatch(ln); m != nil {
 			if k := strings.ToLower(strings.TrimSpace(m[1])); seenLetter[k] {
@@ -361,10 +383,17 @@ func parseForkTest(body string) forkTestResult {
 			continue
 		}
 		if m := forkSubjectLineRe.FindStringSubmatch(ln); m != nil {
-			r.HasSubject = true
-			r.Subject = strings.TrimSpace(m[1])
+			subjectLines++
+			if !strings.Contains(m[1], ">") {
+				unquotedSubjects++
+				lastUnquotedSubject = strings.TrimSpace(m[2])
+			}
 			continue
 		}
+	}
+	if subjectLines == 1 && unquotedSubjects == 1 {
+		r.HasSubject = true
+		r.Subject = lastUnquotedSubject
 	}
 
 	if len(r.Options) == 0 {

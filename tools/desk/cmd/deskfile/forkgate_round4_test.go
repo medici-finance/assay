@@ -12,21 +12,26 @@ import (
 // issuecomment-5840449031), OPTION 2 — bind the reversible-signal read to the filing's
 // DECLARED SUBJECT (the `### Fork test` block's `subject:` line — see noticelane.go and
 // forktest.go), never the title or body prose, and never admit a lint-level/port-or-drop
-// example whose subject names a CI check or job. Every probe below is the security review's
-// own end-to-end evidence, verbatim (titles and, where given, the "extra" prose the review
-// prepended to the body), reproduced here through deskfile's real `new` command and a
+// example whose subject names a CI check or job (round 5 replaced the CI-check/job NOUN scan
+// for these needles with an unconditional refusal — see forkgate_round5_test.go — but the
+// probes below still pass unchanged, since every one they cover also names a check by a
+// generic noun this round's scan already recognised). Every probe below is the security
+// review's own end-to-end evidence, verbatim (titles and, where given, the "extra" prose the
+// review prepended to the body), reproduced here through deskfile's real `new` command and a
 // well-formed fork-test block, rather than the review's own throwaway harness.
 //
-// FAIL-FIRST: against the previous head (076cd94ec, before this round's fix), all 13 probes
-// below went red — each took the notice lane (rc 0, labels [desk-decided]) exactly as the
+// FAIL-FIRST: against the previous head (076cd94ec, before this round's fix), 12 of these 13
+// probes went red — each took the notice lane (rc 0, labels [desk-decided]) exactly as the
 // arbiter packet's evidence table shows (the packet's positive control, "fix the docs wording
-// in the README", is not repeated here — it is round 1's reversibleTitle fixture). Excerpt:
+// in the README", is not repeated here — it is round 1's reversibleTitle fixture). The 13th,
+// main-commit-plain, is this file's own control and was already correctly needs-decision at
+// that head (see its doc comment below) — not a fail-first case. Excerpt:
 //
 //	--- FAIL: TestNoticeLaneRefusesRound4Probes/main-commit-wording
 //	    "Tool default: let the desk commit to main when CI is green? Fix the help-text wording too." filed with labels [desk-decided], want needs-decision and no desk-decided
 //	--- FAIL: TestNoticeLaneRefusesRound4Probes/control-sweep
-//	    "Lint level for the control-sweep check: notice or error?" filed with labels [desk-decided], want needs-decided and no desk-decided
-//	    ... (13 of 13 probes red)
+//	    "Lint level for the control-sweep check: notice or error?" filed with labels [desk-decided], want needs-decision and no desk-decided
+//	    ... (12 of 13 probes red)
 
 // round4Probes are the arbiter packet's 12 fresh probes plus its own control case, verbatim.
 // Each pairs the probe's real title/extra with a `subject:` line — a clean, single-clause
@@ -127,7 +132,10 @@ var round4Probes = []struct {
 // reversible signal is read from the fork-test block's declared subject alone, never the
 // title or body prose (closing the incidental-clause probes), and a subject naming a CI check
 // or job never admits on a lint-level/port-or-drop example either (closing the
-// named-check/job probes). See round4Probes for which mechanism closes which probe.
+// named-check/job probes — round 5 made this refusal unconditional for the four needles;
+// see TestNoticeLaneRefusesRound5NamedCICheckSubjects for the case that distinguishes them,
+// a check named by itself rather than a generic noun). See round4Probes for which mechanism
+// closes which probe.
 func TestNoticeLaneRefusesRound4Probes(t *testing.T) {
 	for _, tc := range round4Probes {
 		t.Run(tc.name, func(t *testing.T) {

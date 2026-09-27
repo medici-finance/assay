@@ -7,9 +7,11 @@
 - Two workable options plus a gate the driver still holds can file on a NOTICE LANE
   (`desk-decided`, off the driver's queue, with the shared `desk-r3-decision v1` marker)
   rather than `needs-decision`. Admission fails closed: the item must carry a positive,
-  content-bearing R-3 reversible signal (docs wording, typo, phrasing, lint level,
-  port-or-drop, a table column — never a shape-only `tool default` / `default value` /
-  `flag default` / `rename the` alone) AND no one-way signal — a one-way caller
+  content-bearing R-3 reversible signal (docs wording, typo, phrasing, a table column — never
+  a shape-only `tool default` / `default value` / `flag default` / `rename the`, and never a
+  `lint level` / `lint severity` / `notice or error` / `port-or-drop` example either, which is
+  always a classification question about some check or job, named or not) AND no one-way
+  signal — a one-way caller
   label (`human-only`, `security`, `gate:human`), a `deskkit.HumanOnlySignals` needle, or a
   `deskkit.OneWayPatterns` match (merge, ready-flip, main push, tag/release, weakening a
   security control, secrets/keys/PII, money, identity/auth, deleting or overwriting data,
@@ -33,10 +35,22 @@
   `subject:` line alone, never the issue title or body prose (security review sec-1688-S1,
   round 4): a title routinely carries more than one clause, and a scan of the whole thing
   admitted on whichever clause happened to carry a reversible needle rather than on what the
-  filing was actually about. `subject:` is optional; its absence never admits. A
-  lint-level/lint-severity/notice-or-error/port-or-drop example whose subject names a CI check
-  or job never admits either, whichever needle matched — that classifies the check, it does
-  not edit it.
+  filing was actually about. `subject:` is optional; its absence never admits.
+- A `lint level`/`lint severity`/`notice or error`/`port-or-drop` example never admits the
+  notice lane on its own any more, named CI check or not (security review sec-1688-S1, round
+  5): each of those is, by construction, always a classification question about some check or
+  job, so a rule that only refused when the subject named the check by a generic noun
+  (check/job/workflow/pipeline, or this codebase's own `<word>-sweep`/`<word> check`
+  compounds) still admitted a check named by its own name (`pin-consistency`, `skillslint`,
+  `forge-surface`, `build-test`, `govulncheck`, `CodeQL`). The generic-noun check remains as a
+  backstop for other reversible needles paired with an explicit check/job mention.
+- The declared `subject:` line is now read only when the fork-test section carries exactly
+  one such line and it is not `>`-quoted (security review sec-1688-S1, round 5): the section
+  runs to the next heading or EOF, so a `>`-quoted line of trailing prose, or a second
+  `subject:` line (an incidental one, or a leftover template placeholder), used to override an
+  honest first subject because the parser kept only the last line seen. Two or more lines, or
+  a lone quoted one, now leave no declared subject — the same fail-closed default as none at
+  all.
 
 ### Changed
 - The R-3 human-only and reversible keyword lists moved from `cmd/deskdigest` into

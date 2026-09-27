@@ -44,11 +44,14 @@ func TestNoticeLaneRefusesReversibleSubjectOneWay(t *testing.T) {
 			withEnv(t)
 			t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 			t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
-			// The body adds a content-bearing reversible signal ("docs wording"), so the
-			// notice lane would admit the filing were it not for the one-way term: the
-			// one-way list, not the shape-only admission rule, is what this test pins.
+			// The block declares a content-bearing reversible subject ("docs wording"), so
+			// the notice lane would admit the filing were it not for the one-way term in the
+			// title: the one-way list, not the shape-only admission rule, is what this test
+			// pins (round 5, review finding cor-1688-C8: noticeLaneBlock alone has no
+			// declared subject, so this row failed closed on that regardless of the one-way
+			// check; noticeLaneBlockWithSubject makes the one-way check the deciding layer).
 			body := bodyFileWith(t, "The docs wording follows whichever option is chosen.\n\n"+
-				noticeLaneBlock+"\n"+neutralEvidence)
+				noticeLaneBlockWithSubject+"\n"+neutralEvidence)
 
 			rc, out := runCapture([]string{"new", "-R", allowedRepo,
 				"--title", tc.title, "--body-file", body, "--label", needsDecisionLabel})
@@ -64,9 +67,13 @@ func TestNoticeLaneRefusesReversibleSubjectOneWay(t *testing.T) {
 }
 
 // ruledCheckOnlyBlock is noticeLaneBlock with its ruled-check line naming a one-way subject
-// — the only one-way terms in the whole filing.
+// — the only one-way terms in the whole filing — PLUS a declared `subject:` line carrying a
+// real reversible needle (round 5, review finding cor-1688-C8: without one, this filing failed
+// closed on the missing subject regardless of whether the ruled-check line's one-way term was
+// ever read, so it pinned nothing about that path).
 const ruledCheckOnlyBlock = `### Fork test
 
+subject: ` + reversibleTitle + `
 option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today
 option: B — flip the default | works-because: the draft PR catches a wrong flip before it lands | consequence: every caller sees the new default on the next build
 default: A
@@ -82,6 +89,10 @@ ruled-check: merge and tag the v1.2.0 release and rotate the signing keys -> not
 //
 //	--- FAIL: TestRuledCheckLineIsReadForOneWayTerms
 //	    one-way terms on the ruled-check line: filed with labels [desk-decided], want needs-decision and no desk-decided
+//
+// Round 5 FAIL-FIRST (review finding cor-1688-C8): with deskkit.OneWayExempting disarmed
+// (mutation M27), this test now goes red too — see forkgate_oneway_test.go's
+// noticeLaneBlockWithSubject comment for the shared evidence.
 func TestRuledCheckLineIsReadForOneWayTerms(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")

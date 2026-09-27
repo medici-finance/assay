@@ -37,11 +37,38 @@ const reversibleTitle = "fix the docs wording of the --sla-days help text"
 // content-bearing reversible text as reversibleTitle. Round 4 (security review sec-1688-S1)
 // binds the notice lane's positive reversible-signal test to the fork-test block's declared
 // subject alone, never the title or body prose — see noticelane.go — so a fixture that needs
-// the notice lane to actually ADMIT (as opposed to the one-way tests below, which never reach
-// the reversible-signal check at all) must carry a `subject:` line. noticeLaneBlock itself
-// stays subject-less: it is reused, unmodified, by fixtures titled with a ONE-WAY lead or a
+// the notice lane to actually ADMIT must carry a `subject:` line. noticeLaneBlock itself stays
+// subject-less: it is reused, unmodified, by fixtures titled with a ONE-WAY lead or a
 // SHAPE-ONLY needle (forkgate_round3_test.go), which must keep failing closed on the absence
 // of a declared subject, not admit on one this file quietly supplied.
+//
+// The one-way tests below (TestNoticeLaneRefusesOneWayClasses, TestOneWayTermOverridesCaughtBy
+// in forkgate_test.go, TestNoticeLaneRefusesReversibleSubjectOneWay in forkgate_round2_test.go,
+// TestRuledCheckLineIsReadForOneWayTerms's ruledCheckOnlyBlock) also use a declared subject
+// carrying a real reversible needle (round 5, review finding cor-1688-C8): with no subject at
+// all, every one of these filings failed closed on the missing-subject default whether or not
+// the one-way check ever ran, so they proved nothing about the one-way layer — they only
+// proved a filing with no declared subject stays on needs-decision, which
+// TestNoticeLaneFailsClosedWithoutReversibleSignal already pins. With a genuinely admitting
+// subject present, the one-way hit is the ONLY thing keeping these filings off the notice
+// lane.
+//
+// FAIL-FIRST (mutation M27 — deskkit.OneWayExempting returns `OneWayHit{}, false`
+// unconditionally, disarming the whole text half of the one-way check): all four went red,
+// e.g.:
+//
+//	--- FAIL: TestNoticeLaneRefusesOneWayClasses/tag-release
+//	    one-way lead "Should we cut the v1.2.0 release tag now or after the next batch?" filed with labels [desk-decided], want needs-decision and no desk-decided
+//	--- FAIL: TestNoticeLaneRefusesReversibleSubjectOneWay/main-push
+//	    "Flip the tool default of the commit guard: allow commits straight to main without a PR?" filed with labels [desk-decided], want needs-decision and no desk-decided
+//	--- FAIL: TestRuledCheckLineIsReadForOneWayTerms
+//	    one-way terms on the ruled-check line: filed with labels [desk-decided], want needs-decision and no desk-decided
+//	--- FAIL: TestOneWayTermOverridesCaughtBy
+//	    applied labels [needs-decision desk-decided] dropped needs-decision despite the one-way term
+//
+// (all 23 TestNoticeLaneRefusesOneWayClasses leads and all 8
+// TestNoticeLaneRefusesReversibleSubjectOneWay titles went red, not just the excerpted ones).
+// Restoring OneWayExempting turns every one green again.
 var noticeLaneBlockWithSubject = strings.Replace(noticeLaneBlock,
 	"### Fork test\n\n", "### Fork test\n\nsubject: "+reversibleTitle+"\n\n", 1)
 
@@ -105,7 +132,7 @@ func TestNoticeLaneRefusesOneWayClasses(t *testing.T) {
 			withEnv(t)
 			t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 			t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
-			body := bodyFileWith(t, tc.lead+"\n\n"+neutralEvidence+"\n"+noticeLaneBlock)
+			body := bodyFileWith(t, tc.lead+"\n\n"+neutralEvidence+"\n"+noticeLaneBlockWithSubject)
 
 			rc, out := runCapture([]string{"new", "-R", allowedRepo,
 				"--title", reversibleTitle, "--body-file", body,

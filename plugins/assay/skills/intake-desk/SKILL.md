@@ -310,11 +310,13 @@ issues landed three days later. That is why the two rules sit together.
    options plus a gate you still hold (a draft PR, a flip, an issue close) MAY file on the NOTICE
    LANE instead — `desk-decided`, off the queue, in the weekly digest with its veto date. The tool
    admits it only on a positive, content-bearing R-3 reversible signal (a tool default alone
-   never admits) with no one-way term or one-way label, and the same one-way check refuses
-   `--no-fork`; the exact lists are in `tools/desk/README.md`. That reversible signal is read
-   from the block's own `subject:` line ALONE, never the title or body prose — a title can
-   carry more than one clause, and a lint-level/port-or-drop example whose subject names a CI
-   check or job never admits either, whichever needle matched: write the `subject:` line
+   never admits, and neither does a lint-level/lint-severity/notice-or-error/port-or-drop
+   example, named CI check or not — that is always a classification question about some
+   check, so it never admits on its own) with no one-way term or one-way label, and the same
+   one-way check refuses `--no-fork`; the exact lists are in `tools/desk/README.md`. That
+   reversible signal is read from the block's own `subject:` line ALONE, never the title or
+   body prose, and only when the block has exactly one `subject:` line and it is not
+   `>`-quoted — two or more, or a quoted one, admits nothing: write ONE `subject:` line
    yourself, naming the one thing being decided. Any
    item that is one-way to you stays on the human queue whatever the tool would admit — file it
    `caught-by: nothing`.

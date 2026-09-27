@@ -775,13 +775,15 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   `tool-false-positive`); use the one that fits rather than forcing the filing. Two workable options
   plus a gate the driver still holds MAY file on the NOTICE LANE (`desk-decided`, off the driver's
   queue, in the weekly digest with its veto date) instead of `needs-decision`. The tool admits it
-  only on a positive, content-bearing R-3 reversible signal (a tool default alone never admits)
-  with no one-way term or one-way label, and the same one-way check refuses `--no-fork` (exact
-  lists: `tools/desk/README.md`). That reversible signal is read from the block's own
-  `subject:` line ALONE, never the title or body prose — a title can carry more than one
-  clause, and a lint-level/port-or-drop example whose subject names a CI check or job never
-  admits either, whichever needle matched: write the `subject:` line yourself, naming the one
-  thing being decided. The tool's keyword check
+  only on a positive, content-bearing R-3 reversible signal (a tool default alone never admits,
+  and neither does a lint-level/lint-severity/notice-or-error/port-or-drop example, named CI
+  check or not — that is always a classification question about some check, so it never
+  admits on its own) with no one-way term or one-way label, and the same one-way check refuses
+  `--no-fork` (exact lists: `tools/desk/README.md`). That reversible signal is read from the
+  block's own `subject:` line ALONE, never the title or body prose, and only when the block
+  has exactly one `subject:` line and it is not `>`-quoted — two or more, or a quoted one,
+  admits nothing: write ONE `subject:` line yourself, naming the one thing being decided. The
+  tool's keyword check
   is a floor, not the reversibility test above: an item that test calls one-way is filed
   `caught-by: nothing`, and so stays on the driver's queue, whatever the keywords say.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,

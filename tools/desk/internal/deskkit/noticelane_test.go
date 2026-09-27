@@ -187,14 +187,15 @@ func TestNoticeLaneVerdictRefusesControlPhrasings(t *testing.T) {
 // TestNoticeLaneVerdictStillAdmitsReversible — the widened set must not swallow R-3's own
 // reversible examples; a false one-way costs a queue item, but a set that refuses every
 // reversible item makes the lane dead. "lint level for the unrun check" is deliberately NOT
-// on this list any more: it names a CI check, so round 4 (sec-1688-S1) refuses it — see
-// TestNoticeLaneVerdictRefusesReversibleAboutCICheckOrJob.
+// on this list: it names a CI check, so round 4 (sec-1688-S1) refuses it — see
+// TestNoticeLaneVerdictRefusesSubjectAboutCICheckOrJob. Nor is any lint-level/lint-severity/
+// notice-or-error/port-or-drop example, named check or not: round 5 (sec-1688-S1) moved that
+// whole needle set into NoticeLaneShapeOnlyNeedles, so it never admits on its own — see
+// TestNoticeLaneVerdictShapeOnlyNotAdmitted.
 func TestNoticeLaneVerdictStillAdmitsReversible(t *testing.T) {
 	for _, title := range []string{
 		"fix the docs wording in the README",
 		"fix the typo in the digest header",
-		"lint level for trailing whitespace: notice or error?",
-		"port-or-drop the legacy helper scripts",
 		"table column order in the digest",
 	} {
 		if admit, why := NoticeLaneVerdict(title, "", title, nil); !admit {
@@ -218,10 +219,14 @@ func TestOneWayExemptingRuling(t *testing.T) {
 	}
 }
 
-// TestNoticeLaneVerdictShapeOnlyNotAdmitted — a shape-only reversible needle ("tool default",
-// "default value", "flag default", "rename the") names the shape of a change, not what it
-// governs, so on its own it never admits the notice lane (security review sec-1688-S1, round
-// 3). Each title here matches no one-way term; the refusal names the shape-only signal.
+// TestNoticeLaneVerdictShapeOnlyNotAdmitted — a shape-only reversible needle never admits the
+// notice lane on its own: "tool default", "default value", "flag default" and "rename the"
+// name only the shape of a change, not what it governs (security review sec-1688-S1, round
+// 3); "lint level", "lint severity", "notice or error" and "port-or-drop" are, by
+// construction, always a classification question about SOME check or job, named or not
+// (round 5 — see TestNoticeLaneVerdictRefusesNamedCheckByLintOrPortNeedle for the
+// named-check half). Each title here matches no one-way term; the refusal names the
+// shape-only signal.
 func TestNoticeLaneVerdictShapeOnlyNotAdmitted(t *testing.T) {
 	for _, title := range []string{
 		"flip the tool default for --sla-days",
@@ -230,6 +235,8 @@ func TestNoticeLaneVerdictShapeOnlyNotAdmitted(t *testing.T) {
 		"rename the digest's Age column",
 		"Tool default: build untrusted fork heads in CI?",
 		"Tool default: scale the worker pool to zero overnight?",
+		"lint level for trailing whitespace: notice or error?",
+		"port-or-drop the legacy helper scripts",
 	} {
 		admit, why := NoticeLaneVerdict(title, "", title, nil)
 		if admit {
@@ -270,6 +277,33 @@ func TestNoticeLaneVerdictRefusesSubjectAboutCICheckOrJob(t *testing.T) {
 	} {
 		if admit, why := NoticeLaneVerdict(subject, "", subject, nil); admit {
 			t.Errorf("NoticeLaneVerdict(%q) admitted (%s), want refused (subject names a CI check or job)", subject, why)
+		}
+	}
+}
+
+// TestNoticeLaneVerdictRefusesNamedCheckByLintOrPortNeedle — round 5 (security review
+// sec-1688-S1, re-review at 8eb647757): ciCheckOrJobRe recognises only the generic
+// check/job/workflow/pipeline nouns and this codebase's own "<word>-sweep"/"<word> check"
+// compounds — never a CI check's OWN NAME. A subject whose only reversible needle is lint
+// level / lint severity / notice or error / port-or-drop, but which names the check by its
+// bare name instead of a generic noun, used to admit for exactly that reason. None of the six
+// subjects below matches ciCheckOrJobRe at all (asserted below), so a fix that only widened
+// that noun list would still miss every one of them — this pins that the shape-only floor
+// (NoticeLaneShapeOnlyNeedles) is what refuses them, unconditionally, not a longer denylist.
+func TestNoticeLaneVerdictRefusesNamedCheckByLintOrPortNeedle(t *testing.T) {
+	for _, subject := range []string{
+		"lint level for pin-consistency: notice or error?",
+		"lint severity for skillslint findings: warn only?",
+		"port-or-drop forge-surface?",
+		"lint level for the build-test step: notice or error?",
+		"govulncheck findings: notice or error?",
+		"lint level for the CodeQL scan: notice or error?",
+	} {
+		if ciCheckOrJobRe.MatchString(strings.ToLower(subject)) {
+			t.Fatalf("fixture %q matches ciCheckOrJobRe — it must pin the shape-only floor alone, not the CI-noun backstop", subject)
+		}
+		if admit, why := NoticeLaneVerdict(subject, "", subject, nil); admit {
+			t.Errorf("NoticeLaneVerdict(%q) admitted (%s), want refused", subject, why)
 		}
 	}
 }

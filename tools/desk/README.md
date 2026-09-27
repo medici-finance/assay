@@ -2861,8 +2861,12 @@ that line reads clean. The line is read for one-way terms (below), so a line nam
 driver-owned act — "searched closed needs-decision issues → nothing" matches the auto-close
 pattern — keeps the item on `needs-decision`: the safe direction, but a needless one. The arrow accepts `→` or `->`, and the dash before "what it
 is" accepts an em dash, en dash, or a plain hyphen. `subject:` is OPTIONAL and never checked
-for well-formedness beyond being present — but it is the ONLY line the notice lane's positive
-reversible-signal test reads (below); a filing with no `subject:` line simply never admits.
+for structural well-formedness — a missing or ambiguous one is never refused — but it is the
+ONLY line the notice lane's positive reversible-signal test reads (below), and only when the
+section carries EXACTLY ONE `subject:` line and it is not `>`-quoted: a filing with no
+`subject:` line, more than one, or a lone quoted one simply never admits (security review
+sec-1688-S1, round 5 — a `>`-quoted line, or a second line the parser used to let win, could
+otherwise override an honest declared subject with incidental trailing prose).
 
 **Outcomes, in this precedence:**
 
@@ -2915,14 +2919,25 @@ reversible-signal test reads (below); a filing with no `subject:` line simply ne
   in either order;
 - a POSITIVE, CONTENT-BEARING R-3 reversible signal is present in the fork-test block's
   DECLARED SUBJECT — the `subject:` line, and nothing else (`deskkit.FirstNoticeLaneSignal`:
-  docs wording, typo, phrasing, lint level, port-or-drop, a table column). The SHAPE-only
-  needles in `deskkit.ReversibleSignals` — `tool default`, `default value`, `flag default`,
-  `rename the` (`deskkit.NoticeLaneShapeOnlyNeedles`) — never admit on their own: they name
-  the kind of change and nothing about what it governs ("tool default: build untrusted fork
-  heads in CI"), so as an admission signal they admitted every one-way act the keyword list
-  had not named. An item whose only reversible signal is one of them stays on
-  `needs-decision`. `deskdigest`'s display classifier still reads them (from title+body, as
-  before — the subject-only read below is deskfile's admission gate ONLY).
+  docs wording, typo, phrasing, a table column). The SHAPE-only needles in
+  `deskkit.ReversibleSignals` (`deskkit.NoticeLaneShapeOnlyNeedles`) never admit on their own,
+  for two different reasons:
+  - `tool default`, `default value`, `flag default`, `rename the` name the SHAPE of a change
+    and nothing about what it governs ("tool default: build untrusted fork heads in CI"), so
+    as an admission signal they admitted every one-way act the keyword list had not named
+    (round 3).
+  - `lint level`, `lint severity`, `notice or error`, `port-or-drop`/`port or drop` are, BY
+    CONSTRUCTION, always a classification question about SOME check or job, named in the
+    subject or not — a lint level is the level of some check — so an admission rule keyed on
+    a check/job NOUN (below) only ever caught the phrasings it enumerated, never a check
+    named by its own name ("lint level for pin-consistency: notice or error?" admitted until
+    round 5, since `pin-consistency` names no noun the noun scan recognises).
+
+  An item whose only reversible signal is one of these stays on `needs-decision`.
+  `deskdigest`'s display classifier still reads every one of them (from title+body, unchanged
+  — the subject-only read below, and the shape-only exclusion, are deskfile's admission gate
+  ONLY: the classifier's "reversible" display class and deskfile's notice-lane admission can
+  disagree on the same item).
 
   **The reversible signal is read from `subject:` alone, never the title or body prose**
   (`deskkit.NoticeLaneVerdict`, security review sec-1688-S1, round 4). A title routinely
@@ -2931,17 +2946,36 @@ reversible-signal test reads (below); a filing with no `subject:` line simply ne
   "wording" fix tacked on — and a scan of the whole string admits on whichever clause happens
   to carry a reversible needle, not on what the filing is actually about. The filer states, in
   `subject:`, what is actually being decided; only that line is read for the reversible
-  signal. No `subject:` line at all means no reversible signal, ever — the same fail-closed
-  default as an item on neither list. And a subject that is genuinely, single-clause about a
-  lint level, a lint severity, a notice-vs-error choice, or a port-or-drop question is STILL
-  refused when what it classifies is a named CI check or job (`deskkit.ciCheckOrJobRe`: the
+  signal, and only when the fork-test section carries EXACTLY ONE `subject:` line and it is
+  not `>`-quoted (round 5, below). No usable `subject:` line at all means no reversible
+  signal, ever — the same fail-closed default as an item on neither list.
+
+  A subject that names a real CI check or job by a GENERIC noun is refused independently of
+  the shape-only exclusion above: `deskkit.ciCheckOrJobRe` matches the
   "check"/"job"/"workflow"/"pipeline" nouns, and this codebase's own `<word>-sweep` /
-  `<word> check` compounds — leak-sweep, control-sweep, pattern-sweep, "the leak check") — that
-  is a security/governance decision about the check, never a reversible edit to it
-  ("lint level for the control-sweep check: notice or error?", "port-or-drop the
-  pattern-sweep job?"). `forkgate_round4_test.go` pins both mechanisms against the arbiter
-  packet's twelve probes plus its control case (issuecomment-5840449031 on
-  medici-finance/assay#1688).
+  `<word> check` compounds — leak-sweep, control-sweep, pattern-sweep, "the leak check" — and
+  refuses admission on ANY reversible needle when the subject names one of these, not only the
+  four shape-only needles ("lint level for the control-sweep check: notice or error?",
+  "port-or-drop the pattern-sweep job?"). It is a backstop now, not the only guard on the
+  round-4 shape: a longer noun list here was tried and kept missing checks named by their own
+  name rather than a generic noun (pin-consistency, skillslint, forge-surface, build-test,
+  govulncheck, CodeQL — security review sec-1688-S1, round 5), which is why the four
+  lint-level/port-or-drop needles moved to the unconditional shape-only exclusion above
+  instead of growing this noun list further. `forkgate_round4_test.go` pins the round-4
+  mechanisms against the arbiter packet's twelve probes plus its control case
+  (issuecomment-5840449031); `forkgate_round5_test.go` pins the round-5 fix against the
+  security re-review's clause-1/clause-2 probes and the named-check subjects
+  (medici-finance/assay#1688).
+
+  **The declared subject itself must be unambiguous** (`parseForkTest`, security review
+  sec-1688-S1, round 5). The fork-test section runs to the next heading or EOF, so prose after
+  the block with no heading in between is still part of it — including a `>`-quoted line,
+  which the subject pattern would otherwise still match — and when two or more `subject:`
+  lines appeared, the parser used to keep only the LAST one, so an honest first subject could
+  be silently overridden by an incidental second line or a leftover template placeholder.
+  `parseForkTest` now reads a declared subject only when the section has exactly one
+  `subject:` line and it is not `>`-quoted; two or more — quoted, unquoted, or a mix — leaves
+  no declared subject, same as none at all.
 
 An item that matches neither list stays on `needs-decision`: the absence of a one-way term is
 not evidence that an item is reversible, and a reversible signal never outranks a one-way

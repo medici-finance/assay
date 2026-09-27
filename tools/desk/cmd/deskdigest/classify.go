@@ -87,12 +87,19 @@ const needsDecisionLabel = "needs-decision"
 // reversible costs a decision taken without them. Those are not the same mistake.
 //
 // Both MOVED to deskkit (HumanOnlySignals, ReversibleSignals): deskfile's fork-test notice
-// lane admits exactly the items this classifier would call reversible, so it needs the SAME
-// lists, and a copy here would drift from deskfile's the moment either changed. classifyItem
-// below calls deskkit.FirstHumanOnlySignal / FirstReversibleSignal directly; see
-// deskkit/humanonlysignal.go for the entries and the "human gate" vs bare "gate" rationale
-// (the 2026-08-13 measurement: the bare needle misclassified 4 of 8 live items on incidental
-// uses — "the release guard gate" — which is why the narrower phrase is what ships).
+// lane and this classifier share the SAME needle tables, so a copy here would drift from
+// deskfile's the moment either changed. They no longer apply those tables the same way,
+// though (since round 4, security review sec-1688-S1): this classifier still reads
+// title+body directly (classifyItem below calls deskkit.FirstHumanOnlySignal /
+// FirstReversibleSignal on the whole item, unchanged), while deskfile's notice lane reads
+// ONLY the fork-test block's declared `subject:` line and additionally never admits on a
+// shape-only or lint-level/port-or-drop needle (deskkit.FirstNoticeLaneSignal,
+// NoticeLaneShapeOnlyNeedles). So a shared needle table, not a shared admission rule: this
+// classifier's "reversible" display class and deskfile's notice-lane admission can and do
+// disagree on the same item. See deskkit/humanonlysignal.go for the entries and the
+// "human gate" vs bare "gate" rationale (the 2026-08-13 measurement: the bare needle
+// misclassified 4 of 8 live items on incidental uses — "the release guard gate" — which is
+// why the narrower phrase is what ships).
 
 // classifyItem applies the precedence chain. The order is load-bearing and is stated in
 // --help in the same order it is executed here.

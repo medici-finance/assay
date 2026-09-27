@@ -173,8 +173,16 @@ func TestOneWayTermOverridesCaughtBy(t *testing.T) {
 	// neutralEvidence:
 	//
 	//	forkgate_test.go: applied labels [needs-decision desk-decided] dropped needs-decision despite the one-way term
+	//
+	// Round 5 (review finding cor-1688-C8): the fixture below used noticeLaneBlock (no
+	// declared subject) until this round, so the filing failed closed on the missing subject
+	// whether or not the one-way check ran — this row pinned nothing about the one-way layer.
+	// noticeLaneBlockWithSubject gives it a real reversible subject, so disarming
+	// deskkit.OneWayExempting (mutation M27) now turns this row red on its own — see
+	// forkgate_oneway_test.go's noticeLaneBlockWithSubject comment for the shared FAIL-FIRST
+	// evidence, captured once for all four affected tests.
 	body := bodyFileWith(t, "This filing also touches a security control on the ledger boundary.\n\n"+
-		neutralEvidence+"\n\n"+noticeLaneBlock)
+		neutralEvidence+"\n\n"+noticeLaneBlockWithSubject)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
 		"--title", reversibleTitle, "--body-file", body,

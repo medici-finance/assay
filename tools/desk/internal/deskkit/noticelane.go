@@ -33,9 +33,32 @@ import (
 // subject can be genuinely, single-clause about a lint level, a lint severity or a
 // notice-vs-error choice — and STILL not be reversible, because what it classifies is a named
 // CI check or job ("lint level for the control-sweep check: notice or error?", "port-or-drop
-// the pattern-sweep job?"). That is a security/governance decision about the check, not an
-// edit to it, so ciCheckOrJobRe below refuses admission whenever the subject names one,
-// whichever reversible needle triggered it.
+// the pattern-sweep job?"). Round 4 closed that with ciCheckOrJobRe, a check/job noun scan
+// applied to the subject — but the noun scan only recognises the generic nouns
+// ("check"/"job"/"workflow"/"pipeline" and the "<word>-sweep"/"<word> check" compounds this
+// codebase's own CI surfaces use), never a CI check's OWN NAME. A subject that names a real
+// check by name and nothing else ("lint level for pin-consistency: notice or error?",
+// "govulncheck findings: notice or error?") still admitted, and chasing it with a longer
+// noun list only ever catches the names the list happened to enumerate (security review
+// sec-1688-S1, round 5). The fix is narrower than a bigger list: `lint level`, `lint
+// severity`, `notice or error` and `port-or-drop`/`port or drop` are, BY CONSTRUCTION, always
+// a classification question about SOME check or job, named or not — a lint level is the level
+// of some check, a port-or-drop is the disposition of some job. So none of the four ever
+// admits on its own, named check or not; they moved into NoticeLaneShapeOnlyNeedles below,
+// alongside the shape-only needles round 3 found. ciCheckOrJobRe remains as an independent
+// backstop for a subject that pairs a DIFFERENT admitting needle (docs wording, a typo, a
+// table column) with an explicit check/job noun — but it is no longer what makes the four
+// lint-level/port-or-drop needles refuse; they refuse unconditionally now.
+//
+// Round 5 also found the subject read itself was not as narrow as "the block's `subject:`
+// line" implied: a `>`-quoted line still matched the same pattern (so a quoted line of prose
+// after the real subject could override it), and when more than one `subject:` line appeared
+// the LAST one won — so a first, honest subject followed by an incidental second line (or a
+// leftover template placeholder) admitted on whichever one happened to be last, not on what
+// the filer actually declared. The fix (forktest.go, parseForkTest): a fork-test section's
+// declared subject is read only when there is EXACTLY ONE `subject:` line in the section and
+// it is not `>`-quoted. Two or more — quoted, unquoted, or a mix — means no declared subject
+// at all, the same fail-closed default as a missing one.
 //
 // A reversible needle never outranks a one-way term, which is why step 2 runs first and is
 // broad. But step 2 is a keyword list, and a keyword list only catches the phrasings it
@@ -200,20 +223,38 @@ func OneWayExempting(text string, exempt ...string) (OneWayHit, bool) {
 	return OneWayHit{}, false
 }
 
-// NoticeLaneShapeOnlyNeedles are the ReversibleSignals needles that name only the SHAPE of a
-// change (a default, a rename), not its content. They never admit the notice lane (see the
-// file comment); every other ReversibleSignals needle does.
-var NoticeLaneShapeOnlyNeedles = []string{"tool default", "default value", "flag default", "rename the"}
+// NoticeLaneShapeOnlyNeedles are the ReversibleSignals needles that never admit the notice
+// lane on their own (see the file comment); every other ReversibleSignals needle does. Two
+// different reasons put a needle on this list:
+//
+//   - `tool default`, `default value`, `flag default`, `rename the` name only the SHAPE of a
+//     change (a default, a rename), not its content (round 3).
+//   - `lint level`, `lint severity`, `notice or error`, `port-or-drop`, `port or drop` name a
+//     classification question that is, by construction, always ABOUT some check or job,
+//     named in the subject or not — so an admission rule keyed on the check/job noun (round 4)
+//     only ever caught the names it enumerated (round 5).
+//
+// deskdigest's display classifier still reads every one of them (FirstReversibleSignal, from
+// title+body, unchanged) — a miss there costs a row's display class, never a decision taken
+// without the driver.
+var NoticeLaneShapeOnlyNeedles = []string{
+	"tool default", "default value", "flag default", "rename the",
+	"lint level", "lint severity", "notice or error", "port-or-drop", "port or drop",
+}
 
 // ciCheckOrJobRe names a CI check or job by the nouns this codebase's own CI surfaces use
 // (check/checks, job/jobs, workflow/workflows, pipeline/pipelines) and the "<word>-sweep" /
 // "<word> check" compounds those surfaces are actually named with (leak-sweep, control-sweep,
-// pattern-sweep, "the leak check", …). A subject that names one is asking a classification
-// question ABOUT that check or job — a security/governance decision, not a reversible edit —
-// so FirstNoticeLaneSignal never admits on it, whichever reversible needle matched (round 4,
-// security review sec-1688-S1: "lint level for the control-sweep check: notice or error?",
-// "port-or-drop the pattern-sweep job?"). Deliberately broad, per this file's own fail-closed
-// direction: a false refusal costs one item staying on the driver's queue.
+// pattern-sweep, "the leak check", …). A subject that names one alongside an OTHER admitting
+// reversible needle (docs wording, a typo, a table column, …) is asking a classification
+// question about that check or job rather than making the edit the needle would otherwise
+// suggest, so FirstNoticeLaneSignal never admits on it either. This is now a backstop, not the
+// only guard on the round-4 lint-level/port-or-drop shape: those four needles never admit at
+// all any more (NoticeLaneShapeOnlyNeedles, round 5) because a longer noun list here only ever
+// catches the check names it enumerates, never one named by itself
+// ("lint level for pin-consistency: notice or error?" names no noun this regexp lists).
+// Deliberately broad, per this file's own fail-closed direction: a false refusal costs one
+// item staying on the driver's queue.
 var ciCheckOrJobRe = regexp.MustCompile(`(?i)\b\w+[- ](?:sweep|check)\b|\b(?:checks?|jobs?|workflows?|pipelines?)\b`)
 
 // FirstNoticeLaneSignal returns the first ReversibleSignals entry that may admit the notice
