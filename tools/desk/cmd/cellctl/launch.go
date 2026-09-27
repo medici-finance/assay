@@ -168,14 +168,17 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		argv = []string{"claude", "--name", session, "--model", model, "/assay:" + role}
 		if policyRes != nil {
 			// The policy's own env block (ANTHROPIC_MODEL/CLAUDE_CODE_SUBAGENT_MODEL/
-			// CLAUDE_CODE_EFFORT_LEVEL/ANTHROPIC_DEFAULT_*_MODEL, ANTHROPIC_BASE_URL for the
-			// anthropic provider) is applied on top of whatever the glm/kimi credential block
-			// above just set — this is effort propagation into the launch record: the harness
-			// receives the pinned effort both as `--effort` and as CLAUDE_CODE_EFFORT_LEVEL.
+			// ANTHROPIC_DEFAULT_*_MODEL, ANTHROPIC_BASE_URL for the anthropic provider) is
+			// applied on top of whatever the glm/kimi credential block above just set. Effort
+			// travels only as `--effort`: CLAUDE_CODE_EFFORT_LEVEL would outrank agent
+			// frontmatter, so it is neither set here nor allowed to leak in from the ambient
+			// shell — a child agent's `effort:` frontmatter must stay able to raise that child
+			// above the session level the flag pins.
 			for k, v := range policyRes.ClaudeEnv {
 				env = envSet(env, k, v)
 			}
 			env = envUnset(env, "MAX_THINKING_TOKENS")
+			env = envUnset(env, "CLAUDE_CODE_EFFORT_LEVEL")
 			// --settings is the RUNTIME half: an availableModels allowlist of the provider's
 			// pinned IDs plus the PreModelSwitch / PreToolUse(Agent|Task) hooks that call back
 			// into this binary, so neither a mid-session switch nor a child agent can reach a
