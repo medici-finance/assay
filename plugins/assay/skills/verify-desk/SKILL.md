@@ -194,10 +194,11 @@ PRs one at a time (#882 records the pattern). Get them right before the row land
 - **`blocker_ref` is a real issue or PR reference**: `#N`, or `<owner>/<repo>#N` for a sibling
   repo. When no tracking issue exists yet, file the bug first and cite its number. Never write a
   placeholder ("to file") or a sentence in this field; the blocker's description belongs in `note`.
-- **Every `file:` revision is taken at the receipt's `sha`.** Hash the file's bytes as they are at
-  that commit (the SHA-256 of `git show <sha>:<path>`), never the copy in whatever checkout you
-  happen to be in. A hash taken from a later tree records an edit the verify run never saw, and the
-  receipt misfires when it lands.
+- **The brief's `file:` revision is the brief AS IT LANDS.** That is the SHA-256 of the brief on
+  your Evidence branch after your Evidence rows are appended, not the pre-Evidence copy at the
+  receipt's `sha`. The wake reader hashes the file in the merged tree, which includes your append,
+  so a hash of the pre-Evidence brief makes the receipt fire the moment it lands. Write the outcome
+  row last, after every edit to the brief on that branch.
 
 **Sibling repos are in scope** (human:<name>, 2026-07-10, F-23): a brief whose deliverables land
 cross-repo is verified in the sibling checkout — read the set from `deskroster repos`, never a

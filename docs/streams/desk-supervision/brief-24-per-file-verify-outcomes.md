@@ -30,7 +30,7 @@ exec-tier-why: >-
 domain: complicated
 sources:
   - "medici-finance/assay#882 — the conflict class and the 2026-09-27 driver ruling that selects this option (option 1 of 3, with desk-supervision/25 and desk-supervision/26)"
-  - "medici-finance/assay#882, comment of 2026-09-27 — recurring verify-wake-v1 receipt defects found in review of #1706-#1713 (inputs omit deliverables, free-text blocker_ref, brief hash taken off the receipt's sha); the driver folds the writer-side validation into this brief"
+  - "medici-finance/assay#882, comment of 2026-09-27 — recurring verify-wake-v1 receipt defects found in review of #1706-#1713 (inputs omit deliverables, free-text blocker_ref, brief hash that does not match the brief as it lands); the driver folds the writer-side validation into this brief"
   - "medici-finance/assay#1338 — the per-file size cap class on the shared log (raised to 4 MiB, rotation still owed)"
   - "medici-finance/assay#588 — the `merge=union` attribute (landed 2026-09-07 in 7aa97b7db)"
   - "docs/streams/fresh-views/brief-04-shared-append-only-log-discipline-verify-outcomes-jsonl-merge-union-deskevidence-post-write-sha.md — the prior remedy for this class; lineage in facts"
@@ -132,10 +132,14 @@ facts (2026-09-27 @ b227b4076; re-establish from the named files and commands at
   requires, so a fix to a deliverable never wakes the hold (blocking on #1710 and #1712; log lines
   24, 35, 40, 41, 43 and 44 have the same shape). (b) `blocker_ref` is free text ("desk to file", or
   an `action: …` sentence) where the field requires an issue, PR or action reference. (c) the
-  `file:` revision of the brief is taken from a tree other than the receipt's `sha`, so an edit to
-  the brief on main after that sha makes the receipt fire on landing (#1712). A `file:` revision is
-  the SHA-256 of the file's bytes (`deskkit.RootRevisionReader`, verifywake.go:343). The skill now
-  states all three as procedure; nothing in the writer checks them.
+  brief's `file:` revision does not match the brief as it lands. The wake reader
+  (`deskkit.RootRevisionReader.Revision`, verifywake.go:355-373) takes the SHA-256 of the declared
+  file in the root's working tree after the merge, and that copy includes the Evidence PR's own
+  append to the brief. A receipt that hashed the pre-Evidence brief (for example the copy at the
+  receipt's `sha`) therefore fires `relevant-input-changed` the moment it lands (reproduced on
+  #1709; #1712 hit the same class through a later edit on main). The receipt already landed for
+  desk-supervision/04 hashes the brief as it landed. The skill now states all three as procedure;
+  nothing in the writer checks them.
 - **The forge's directory listing is bounded.** The contents API lists at most 1,000 entries per
   directory (GitHub REST documentation; re-check at pickup), so one flat directory of records would
   stop being listable by a forge-side reader long before it stopped being a valid git tree.
@@ -216,10 +220,13 @@ once) and the per-module structural test that fails when any other code opens th
      URL to an issue, pull request or workflow run. The writer then reads the issue or PR on the
      forge. A number that does not exist is refused; a read that fails is could-not-check (exit 6),
      never a pass.
-   - **(c)** a `file:` revision is not the SHA-256 of that path's bytes at the record's `sha`. The
-     writer re-derives each one from the forge at that sha and compares.
+   - **(c)** the brief's own `file:` revision is not the SHA-256 of the brief AS IT LANDS: the copy
+     on the target branch at write time, which already carries this landing's Evidence append. The
+     writer reads that copy from the forge and compares. The outcome record is therefore the last
+     write of a landing, after every edit to the brief on that branch. A later edit to the brief on
+     the branch makes the record stale, and a re-issued record is the fix.
 
-   An unreadable brief or blob at that sha is exit 6. A record without `wake_schema` (a legacy-shape
+   An unreadable brief (at the record's `sha` for (a), or on the target branch for (c)) is exit 6. A record without `wake_schema` (a legacy-shape
    `verified` or `verify-fail` row) is not receipt-validated, as today.
 4. **Retire the size-cap class.** Delete `verifyOutcomesMaxBytes`, `verifyOutcomesGlobPattern` and
    `isVerifyOutcomesSidecar`'s cap use; a record is bounded by the general `maxBytes`, which a
@@ -284,7 +291,7 @@ once) and the per-module structural test that fails when any other code opens th
 | 12 | `statusgen --consumers --root .` | exit 0 — every routing token above corroborated against the branch diff | check:ci +dereference |
 | 13 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestReceiptInputsCoverDeliverables$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b24-r13-1.out" 2>&1 && grep -F -e '--- PASS: TestReceiptInputsCoverDeliverables' "${TMPDIR:-/tmp}/b24-r13-1.out"` | exit 0; output contains `--- PASS: TestReceiptInputsCoverDeliverables`. A receipt whose `inputs` holds only the brief and `tool` for a brief whose `files:` names two existing files exits 5 naming the missing path; one key per file passes; a directory entry needs one `file:` key under it; a `(planned)` path absent at the record's `sha` is not required; the brief is read at the record's `sha`, not the working tree (a fixture whose working-tree brief lists a different file than the brief at `sha` is judged by the latter) | check:ci +mutation |
 | 14 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestReceiptBlockerRef$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b24-r14-1.out" 2>&1 && grep -F -e '--- PASS: TestReceiptBlockerRef' "${TMPDIR:-/tmp}/b24-r14-1.out"` | exit 0; output contains `--- PASS: TestReceiptBlockerRef`. `desk to file`, an `action: …` sentence and an empty value each exit 5; `#1546`, `example-org/example#12` and an issue URL pass when the stubbed forge has them; a well-formed `#999999` the forge does not have exits 5; a forge read error exits 6 | check:ci +mutation |
-| 15 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestReceiptRevisionAtSHA$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b24-r15-1.out" 2>&1 && grep -F -e '--- PASS: TestReceiptRevisionAtSHA' "${TMPDIR:-/tmp}/b24-r15-1.out"` | exit 0; output contains `--- PASS: TestReceiptRevisionAtSHA`. A `file:` revision taken from a tree where the brief was edited after the record's `sha` exits 5 naming the path and both hashes; the revision of the blob at `sha` passes; an unreadable blob at `sha` exits 6 | check:ci +mutation |
+| 15 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestReceiptBriefHashAsLanded$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b24-r15-1.out" 2>&1 && grep -F -e '--- PASS: TestReceiptBriefHashAsLanded' "${TMPDIR:-/tmp}/b24-r15-1.out"` | exit 0; output contains `--- PASS: TestReceiptBriefHashAsLanded`. A brief revision equal to the pre-Evidence copy (the brief at the record's `sha`) exits 5, naming the path and both hashes; the hash of the target branch's copy, which carries the Evidence append, passes; a branch copy that cannot be read exits 6. A second fixture pins the reader side: `RootRevisionReader.Revision` over the merged tree returns the as-landed hash, so a receipt the writer accepted holds (does not fire) right after landing | check:ci +mutation |
 
 Pre-mortem (failure mode → row):
 
@@ -300,9 +307,9 @@ Pre-mortem (failure mode → row):
 | The migration loses or rewrites a row | row 7 (verbatim bytes), row 8 (every line has its record) |
 | Retirement deletes the log under open Evidence PRs and re-conflicts them all | Task step 8's open-PR read; review-only (the PR body records which branch was taken) |
 | Brief 23 lands with a scope core that rejects per-file records | Task step 9; review-only (a human-gated brief's amendment is read by its gate) |
-| A receipt still lands with a narrow `inputs`, a free-text `blocker_ref`, or a brief hash off its `sha` | rows 13, 14, 15 |
+| A receipt still lands with a narrow `inputs`, a free-text `blocker_ref`, or a brief hash that is not the brief as it lands | rows 13, 14, 15 |
 | The deliverable check reads the brief from the wrong tree and passes a receipt it should refuse | row 13 (working-tree-versus-`sha` fixture) |
-| Whether whole-file hashing of the brief (which every Evidence landing edits) is the right wake input at all | no row. Review-only: this brief fixes where the revision is taken, not what the evaluator compares; a change to the evaluator is its own brief |
+| The writer's as-landed hash and the wake reader's hash disagree, so an accepted receipt still fires on landing | row 15 (the reader-side fixture over the merged tree) |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
