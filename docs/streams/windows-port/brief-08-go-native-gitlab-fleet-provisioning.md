@@ -341,7 +341,7 @@ guessed; guessing bakes in exactly the decision this gate exists to make.
 | 18 | `statusgen --root . --consumers windows-port/08; echo $?` | pass exit=0 | sha256:6329b9fd9f85 | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
 | 19 | `statusgen --root . --lint` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
 
-### Verification — 2026-09-25 (assay-verifier-app[bot], non-implementer, VERIFY: PASS at the model tier — Evidence-only, gate: human with sensitive-data: yes; held at implemented for the human gate)
+### Verification — 2026-09-25 (assay-verifier-app[bot], non-implementer, VERIFY: BLOCKED — Evidence-only, gate: human with sensitive-data: yes; held at implemented for the human gate)
 
 Run against merged main at 89042b8fcc7e, with GOWORK=off, KUBECONFIG=/dev/null and no GITLAB_API_BASE, GITLAB_TOKEN or GH_TOKEN in the environment. Nothing contacted a GitLab or GitHub instance.
 
@@ -400,7 +400,7 @@ RISK-VALUE: DERIVED — githubAPIBase = "https://api.github.com" @ tools/desk/cm
 
 Operational limits (row 8 of the ranking) are reversible by an edit and a redeploy and need no derivation. One observation: per_page=100 with no pagination means a group with more than 100 service accounts could miss an existing role account. That would lead to a refused create, which stops the run, not a silent duplicate.
 
-VERIFY: PASS at the model tier (rows 1-16, 18 and 19 checked clean; row 17 could-not-check, since it is the live human row). This is the first, local-tier stamp only. The brief is gate: human with sensitive-data: yes, so a model does not sign it off. The README row stays at implemented, and the human's open questions are row 17 and the 365-day ceiling above.
+VERIFY: BLOCKED. Rows 1, 2 and 15 are witness-proven. Rows 3-14, 16 and 19 pass only by direct run, because their Verify cells are mis-specified for the execution witness (check-definition). Row 18 is vacuous on merged main: the diff is empty and `echo $?` always exits 0. Row 17 is could-not-check, since it is the live human row. Correction 2026-09-27: this line previously read "VERIFY: PASS … checked clean".
 
 
 ## Review
