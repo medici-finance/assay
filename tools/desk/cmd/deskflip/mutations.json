@@ -153,37 +153,37 @@
     },
     {
       "name": "desk-decided (attention-budget/19): disarm the malformed-block refusal (a Desk-decided section that fails to parse flips freely — reddens TestFlipRefusedOnMalformedDeskDecidedBlock)",
-      "file": "cmd/deskflip/flip.go",
-      "old": "\tif blocked && perr != nil {\n\t\treturn deskkit.Refused(fmt.Sprintf(\n\t\t\t\"condition %s: PR #%d's `%s` section does not parse: %v — fix the block \"+",
-      "new": "\tif false && blocked && perr != nil {\n\t\treturn deskkit.Refused(fmt.Sprintf(\n\t\t\t\"condition %s: PR #%d's `%s` section does not parse: %v — fix the block \"+"
+      "file": "internal/deskkit/decidedgate.go",
+      "old": "\tif blocked && perr != nil {\n\t\treturn fmt.Sprintf(",
+      "new": "\tif false && blocked && perr != nil {\n\t\treturn fmt.Sprintf("
     },
     {
       "name": "desk-decided (attention-budget/19): disarm the label/block agreement check (a mismatched label and block flip freely — reddens TestFlipLabelBlockMismatchRefused)",
-      "file": "cmd/deskflip/flip.go",
+      "file": "internal/deskkit/decidedgate.go",
       "old": "\tif labelled != blocked {\n\t\tvar detail string",
       "new": "\tif false && labelled != blocked {\n\t\tvar detail string"
     },
     {
       "name": "desk-decided (attention-budget/19): disarm the reviewer's undeclared-desk-decision finding (a standing finding at head flips freely — reddens TestFlipRefusedOnUndeclaredDeskDecision)",
-      "file": "cmd/deskflip/flip.go",
-      "old": "\tif line, lane := standingUndeclaredFinding(reviews, reviewerLogin, head); line != \"\" {",
-      "new": "\tif line, lane := standingUndeclaredFinding(reviews, reviewerLogin, head); false && line != \"\" {"
+      "file": "internal/deskkit/decidedgate.go",
+      "old": "\tif line, lane := standingUndeclaredDeskDecision(reviews, reviewerLogin, head); line != \"\" {",
+      "new": "\tif line, lane := standingUndeclaredDeskDecision(reviews, reviewerLogin, head); false && line != \"\" {"
     },
     {
       "name": "desk-decided (attention-budget/19): widen the refusal to bare ABSENCE of a block (option 2 of the human decision, not what was ruled — reddens TestFlipNoBlockNoFindingUnchanged)",
-      "file": "cmd/deskflip/flip.go",
-      "old": "\tlabelled := hasLabel(pr.Labels, deskkit.DeskDecidedLabel)\n\t_, blocked, perr := deskkit.ParseDeskDecidedBlockInBody(pr.Body)",
-      "new": "\tlabelled := hasLabel(pr.Labels, deskkit.DeskDecidedLabel)\n\t_, blocked, perr := deskkit.ParseDeskDecidedBlockInBody(pr.Body)\n\tif !blocked {\n\t\treturn deskkit.Refused(fmt.Sprintf(\"condition %s: PR #%d carries no Desk-decided block\", condDeskDecided, o.pr))\n\t}"
+      "file": "internal/deskkit/decidedgate.go",
+      "old": "\tlabelled := hasLabelFold(labels, DeskDecidedLabel)\n\t_, blocked, perr := ParseDeskDecidedBlockInBody(body)",
+      "new": "\tlabelled := hasLabelFold(labels, DeskDecidedLabel)\n\t_, blocked, perr := ParseDeskDecidedBlockInBody(body)\n\tif !blocked {\n\t\treturn fmt.Sprintf(\"condition %s: PR #%d carries no Desk-decided block\", DeskDecidedCondition, pr)\n\t}"
     },
     {
       "name": "desk-decided (attention-budget/19): drop the lane filter so a security verdict can clear a correctness finding (review SEC-1/F1 — reddens TestFlipUndeclaredFindingNotLaunderedBySecurityLane)",
-      "file": "cmd/deskflip/flip.go",
-      "old": "\t\t\tif hasSecurityMarker(r.Body) != security {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif lines := deskkit.UndeclaredDeskDecisionLines(r.Body); len(lines) > 0 {\n\t\t\t\tstanding = lines[0]\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif security || r.State == \"APPROVED\" || r.State == \"CHANGES_REQUESTED\" {",
-      "new": "\t\t\tif security {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif lines := deskkit.UndeclaredDeskDecisionLines(r.Body); len(lines) > 0 {\n\t\t\t\tstanding = lines[0]\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif hasSecurityMarker(r.Body) || r.State == \"APPROVED\" || r.State == \"CHANGES_REQUESTED\" {"
+      "file": "internal/deskkit/decidedgate.go",
+      "old": "\t\t\tif hasSecurityVerdictMarker(r.Body) != security {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif lines := UndeclaredDeskDecisionLines(r.Body); len(lines) > 0 {\n\t\t\t\tstanding = lines[0]\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif security || r.State == \"APPROVED\" || r.State == \"CHANGES_REQUESTED\" {",
+      "new": "\t\t\tif security {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif lines := UndeclaredDeskDecisionLines(r.Body); len(lines) > 0 {\n\t\t\t\tstanding = lines[0]\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif hasSecurityVerdictMarker(r.Body) || r.State == \"APPROVED\" || r.State == \"CHANGES_REQUESTED\" {"
     },
     {
       "name": "desk-decided (attention-budget/19): let a COMMENTED correctness note clear a finding (reddens TestFlipUndeclaredFindingClearedAtSameHead)",
-      "file": "cmd/deskflip/flip.go",
+      "file": "internal/deskkit/decidedgate.go",
       "old": "\t\t\tif security || r.State == \"APPROVED\" || r.State == \"CHANGES_REQUESTED\" {",
       "new": "\t\t\tif true || r.State == \"APPROVED\" || r.State == \"CHANGES_REQUESTED\" {"
     },
