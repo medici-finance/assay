@@ -198,7 +198,9 @@ PRs one at a time (#882 records the pattern). Get them right before the row land
   your Evidence branch after your Evidence rows are appended, not the pre-Evidence copy at the
   receipt's `sha`. The wake reader hashes the file in the merged tree, which includes your append,
   so a hash of the pre-Evidence brief makes the receipt fire the moment it lands. Write the outcome
-  row last, after every edit to the brief on that branch.
+  row last, after every edit to the brief on that branch. A later merge of main into the branch is
+  not such an edit: never re-hash over it. If that merge changed the brief, the receipt fires when it
+  lands, which is correct, because the brief changed after the verify run.
 
 **Sibling repos are in scope** (human:<name>, 2026-07-10, F-23): a brief whose deliverables land
 cross-repo is verified in the sibling checkout — read the set from `deskroster repos`, never a
@@ -467,17 +469,29 @@ a branch as the target instead of `main`:
    merge follows the reviewer's approval and the required status with no further action; where it has
    not, the PR waits on a human merge. Either way the brief's row is `verified` the moment the Evidence
    PR merges, and the `gate: model` verified→done flip stays CI's (see below).
-4. **Keep it current just-in-time, one PR at a time.** Expect an open Evidence PR to go `CONFLICTING`
-   the moment a sibling Evidence PR lands. Every landing appends to the same outcomes log, and the
-   forge computes mergeability and performs the merge server-side, where a `.gitattributes` merge
-   driver is never applied: the log's `merge=union` resolves a LOCAL merge only. (This conflict class
-   is tracked in #882.) So merge main into an Evidence PR only when it is next to flip: its review
-   lanes are otherwise clear at its current head and nothing but the conflict stands between it and
-   the flip. Oldest such PR first. Merge locally, where the union driver applies, merge-never-rebase,
-   then push, and let the review desk know it is ready for its re-review. **Never sweep main into
-   every open Evidence PR at once.** Each merge moves that PR's head past its approval, so every one
-   then needs a re-review, and the next landing re-conflicts all of them again. A conflict in any
-   file other than the outcomes log is authored work: resolve it and say so on the PR.
+4. **Keep a reviewed Evidence PR mergeable: every state has one owner.** Expect an open Evidence PR
+   to go `CONFLICTING` whenever a sibling Evidence PR lands. Every landing appends to the same
+   outcomes log, and the forge computes mergeability and performs the merge server-side, where a
+   `.gitattributes` merge driver is never applied: the log's `merge=union` resolves a LOCAL merge
+   only. (This conflict class is tracked in #882.) Read each of your open Evidence PRs against the
+   table below, oldest first, and act on the rows this desk owns. Merge main locally, where the
+   union driver applies, merge-never-rebase, then push. A conflict in any file other than the
+   outcomes log is authored work: resolve it and say so on the PR.
+
+| Evidence PR state | Owner | Next move |
+|---|---|---|
+| Never reviewed, at any head, mergeable or not | review desk | first review |
+| A CHANGES_REQUESTED, an open finding, or a security fail stands | this desk | fix and push; the PR then awaits re-review |
+| `CONFLICTING`, reviewed, nothing of the row above standing: approved at this head or an earlier one, or awaiting a re-review | this desk | merge main and push, whether or not its approval is at the current head |
+| `MERGEABLE`, awaiting a re-review of a merge or a fix | review desk | re-review the delta |
+| `MERGEABLE`, every lane clear at the current head | review desk | flip |
+| Merged or closed | nobody | done |
+
+A PR that re-conflicts while it waits for its re-review goes straight back to row 3, so no state is
+left without an owner. **Stop condition:** stop merging main into a PR once it is `MERGEABLE`, while
+a row-2 item stands (fix that first), and once it is merged or closed. Never merge main into an
+Evidence PR in any other state: a never-reviewed PR is reviewed as it is, and an extra merge only
+adds another re-review round.
 
 **Land-as-each-verdict-arrives still applies** — the PR replaces the push, not the cadence. Buffering a
 wave of Evidence PRs to the end of the pass is the same defect as buffering pushes: a PASS in hand and

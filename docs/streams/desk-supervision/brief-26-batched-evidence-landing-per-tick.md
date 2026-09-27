@@ -17,7 +17,7 @@ issues: [1568]
 schema: brief-v2
 version: 1
 id: 8bf9453a-31c7-411d-aba0-de7f11735c80
-authored: 2026-09-27 by worker-desk authoring session (#882 ruling, option 3)
+authored: 2026-09-27 by worker-desk authoring session (#882, the batched landing option)
 exec-tier: strong
 exec-tier-why: >-
   (b) one verb gates many entries, writes them atomically through two forge backends and must keep a
@@ -25,7 +25,8 @@ exec-tier-why: >-
   outcome survives a happy-path test.
 domain: complicated
 sources:
-  - "medici-finance/assay#882 — the 2026-09-27 driver ruling that selects this option (option 3 of 3, with desk-supervision/24 and desk-supervision/25)"
+  - "medici-finance/assay#882 — the Evidence-PR conflict and review churn this option reduces"
+  - "medici-finance/assay#882, driver's ruling comment (to be linked on landing: <ruling-comment-URL>) — the option this brief carries is 'batched landing' (one Evidence PR per verify tick); its siblings are 'per-file outcomes' (desk-supervision/24) and 'approval carry' (desk-supervision/25)"
   - "medici-finance/assay#1568 — the driver's direction for batching (one PR per window, 15 minutes by default as an adopter value, never append to a batch under review, flips stay single-brief in the interim); this brief carries it"
   - "docs/streams/desk-supervision/brief-23-evidence-lander-gatekeeper.md — names the batch Evidence PR as its fallback path"
   - "live read 2026-09-27: open verifier-App PRs and titles; batch PRs #1576 (merged 2026-09-24), #1574 and #1586 (open)"
@@ -53,13 +54,15 @@ files:
   GitHub and GitLab implementations, with golden tests beside the existing forge goldens.
 - **edit** `plugins/assay/skills/verify-desk/SKILL.md`, `plugins/assay/skills/pr-review-desk/SKILL.md`,
   `tools/desk/README.md`.
+- **add** a test in `tools/desk/cmd/deskflip/` pinning that a batch holding a flagged entry cannot
+  flip (the existing CHANGES_REQUESTED and stale-head refusals, exercised on a batch).
 - **add** `changelog/<branch>.md` — the fragment this repo enforces.
 
 facts (2026-09-27 @ b227b4076; re-establish from the named files and commands at pickup):
 - **The skill today.** `plugins/assay/skills/verify-desk/SKILL.md`, "Public repo (PR-required main)": one Evidence PR per
   brief, cut server-side from main, one `deskevidence` call per file, a single `Brief:` trailer, and
   "Land-as-each-verdict-arrives … One brief = one branch = one draft PR".
-- **The ruled direction (#1568, open).** Batch Evidence landings into one PR per time window, 15
+- **The direction recorded on #1568 (open).** Batch Evidence landings into one PR per time window, 15
   minutes by default as an adopter value and never hard-coded in the skill body; never append to a
   batch PR that is already under review, but start the next window instead. Interim rule: a landing that
   flips a brief's status stays in its own single-brief PR; only Evidence-only landings (status stays
@@ -133,9 +136,14 @@ entry.
 3. **Refused entries never block.** An excluded entry is not lost and does not hold the batch. It is
    reported, and it stays in the verify desk's own queue for the next tick. A content refusal is also
    filed as a single refusal is today.
-4. **Drop after review.** `deskevidence batch --drop <brief> --branch <batch branch>` restores that
-   entry's files to main's blobs in one commit and leaves the others. A reviewer finding on one entry
-   then costs that entry a window, not the whole batch its approval.
+4. **Drop after a finding.** `deskevidence batch --drop <brief> --branch <batch branch>` restores that
+   entry's files to main's blobs in one commit and leaves the others. A finding on one entry is a
+   BLOCKING verdict on the whole batch: the review desk posts CHANGES_REQUESTED naming the entry and
+   asking for `--drop`, so the batch cannot be flipped or auto-merged while it still holds the
+   flagged entry. The drop commit moves the head, so no approval survives it; the batch re-earns its
+   approval through a re-review scoped to the drop (the entry's files are exactly main's blobs, and
+   nothing else changed since the reviewed head). The dropped entry goes to the next window. The
+   saving is that one bad entry costs the batch one small re-review, not the other entries a window.
 5. **Adopter values.** The window length (default 15 minutes) and the maximum entries per batch
    (default 10) are read from the desk's configuration, never hard-coded in the skill body. Entries
    over the cap are deferred to the next window and reported, never dropped.
@@ -144,8 +152,9 @@ entry.
      through `deskevidence batch`; flips keep the single-brief lane. "Land-as-each-verdict-arrives"
      becomes "land within the tick", and a PASS held past its tick is still phantom verification
      debt.
-   - `plugins/assay/skills/pr-review-desk/SKILL.md`: review a batch per entry against the body table, and ask for a
-     `--drop` for an entry with a finding instead of blocking the batch.
+   - `plugins/assay/skills/pr-review-desk/SKILL.md`: review a batch per entry against the body table.
+     A finding on any entry is CHANGES_REQUESTED on the batch naming the entry and asking for
+     `--drop`; the drop gets a re-review scoped to it before any flip.
    - Remove the just-in-time merge step's per-PR framing where it no longer applies.
    - Keep every skill body neutral: no values, no names.
 
@@ -163,7 +172,8 @@ entry.
 | 9 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCommitFiles$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b26-r9-1.out" 2>&1 && grep -F -e '--- PASS: TestCommitFiles' "${TMPDIR:-/tmp}/b26-r9-1.out"` | exit 0; output contains `--- PASS: TestCommitFiles`. GitHub and GitLab goldens: one commit with every file; a moved branch is refused with nothing written | check:ci +mutation |
 | 10 | After the first real batch PR merges, with `BATCH_PR` exported as its number: `gh pr view "$BATCH_PR" -R medici-finance/assay --json files,reviews --jq '{files: (.files \| length), reviews: (.reviews \| length)}'` | one PR carrying k ≥ 2 entries' files, and a review count per lane that does not grow with k. If no batch has merged yet, record could-not-check with the date; never a pass | check +dereference +flow |
 | 11 | `cd tools/skillslint && go run . --root ../..` | exit 0 | check:ci |
-| 12 | `statusgen --consumers --root .` | exit 0 — every routing token above corroborated against the branch diff | check:ci +dereference |
+| 12 | `cd tools/desk && go test ./cmd/deskflip/ -run '^TestFlipRefusesBatchHoldingFlaggedEntry$' -count=1 -v -timeout 180s > "${TMPDIR:-/tmp}/b26-r13-1.out" 2>&1 && grep -F -e '--- PASS: TestFlipRefusesBatchHoldingFlaggedEntry' "${TMPDIR:-/tmp}/b26-r13-1.out"` | exit 0; output contains `--- PASS: TestFlipRefusesBatchHoldingFlaggedEntry`. A batch PR whose reviewer verdict at head is CHANGES_REQUESTED naming an entry is refused by the flip gate; after the `--drop` commit it is refused as STALE until a re-review at the new head; the approved re-review at the drop head flips | check:ci +mutation |
+| 13 | `statusgen --consumers --root .` | exit 0 — every routing token above corroborated against the branch diff | check:ci +dereference |
 
 Pre-mortem (failure mode → row):
 
@@ -175,7 +185,8 @@ Pre-mortem (failure mode → row):
 | Entries clean alone but broken together | row 3 |
 | A batch grows under review and the approval covers less than lands | row 4 |
 | A status flip rides a batch and the board cannot derive it | row 5 |
-| One bad entry costs the whole batch its approval | row 6 (drop) |
+| One bad entry costs the whole batch its approval | row 6 (drop), then a re-review scoped to the drop |
+| A batch still holding a flagged entry is flipped or auto-merged before the drop lands | Task step 4 (CHANGES_REQUESTED blocks), row 12 |
 | The window or cap is hard-coded | row 7 |
 | Batching does not actually cut the review count | row 10 |
 | Batches still conflict with each other | depends on desk-supervision/24 (its concurrency row); review-only here |

@@ -13,7 +13,7 @@ why: >-
   at the source instead of once per PR.
 wave: 0
 depends: []
-unblocks: ["desk-supervision/26"]
+unblocks: ["desk-supervision/25", "desk-supervision/26"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -21,7 +21,7 @@ issues: [882, 1338]
 schema: brief-v2
 version: 1
 id: 7dc7ad21-b2f0-450e-8969-20b007e92331
-authored: 2026-09-27 by worker-desk authoring session (#882 ruling, option 1)
+authored: 2026-09-27 by worker-desk authoring session (#882, the per-file outcomes option)
 exec-tier: strong
 exec-tier-why: >-
   (b) correctness spans one writer, two reader modules in separate Go modules, a register the board
@@ -29,7 +29,8 @@ exec-tier-why: >-
   reader that silently drops or double-counts a record survives a happy-path test.
 domain: complicated
 sources:
-  - "medici-finance/assay#882 — the conflict class and the 2026-09-27 driver ruling that selects this option (option 1 of 3, with desk-supervision/25 and desk-supervision/26)"
+  - "medici-finance/assay#882 — the conflict class: every verify Evidence PR appends to one shared log and goes CONFLICTING when a sibling lands"
+  - "medici-finance/assay#882, driver's ruling comment (to be linked on landing: <ruling-comment-URL>) — the option this brief carries is 'per-file outcomes' (one file per verify outcome); its siblings are 'approval carry' (desk-supervision/25) and 'batched landing' (desk-supervision/26)"
   - "medici-finance/assay#882, comment of 2026-09-27 — recurring verify-wake-v1 receipt defects found in review of #1706-#1713 (inputs omit deliverables, free-text blocker_ref, brief hash that does not match the brief as it lands); the driver folds the writer-side validation into this brief"
   - "medici-finance/assay#1338 — the per-file size cap class on the shared log (raised to 4 MiB, rotation still owed)"
   - "medici-finance/assay#588 — the `merge=union` attribute (landed 2026-09-07 in 7aa97b7db)"
@@ -217,9 +218,10 @@ once) and the per-module structural test that fails when any other code opens th
      is a directory needs at least one `file:` key under it; a path absent at that sha (a `(planned)`
      file not yet written) is not required.
    - **(b)** `blocker_ref` is not a reference: it must match `#<N>`, `<owner>/<repo>#<N>`, or a forge
-     URL to an issue, pull request or workflow run. The writer then reads the issue or PR on the
-     forge. A number that does not exist is refused; a read that fails is could-not-check (exit 6),
-     never a pass.
+     URL to an issue, pull request or workflow run. A URL is parsed into owner, repository and
+     number, and never fetched as a URL. The writer then reads that issue, PR or run only through the
+     configured forge API. A number that does not exist is refused; a read that fails is
+     could-not-check (exit 6), never a pass.
    - **(c)** the brief's own `file:` revision is not the SHA-256 of the brief AS IT LANDS: the copy
      on the target branch at write time, which already carries this landing's Evidence append. The
      writer reads that copy from the forge and compares. The outcome record is therefore the last
@@ -265,11 +267,11 @@ once) and the per-module structural test that fails when any other code opens th
     - `plugins/assay/skills/verify-desk/SKILL.md`: the outcome paragraph ("append one row to the append-only sidecar …")
       becomes "write one outcome record with `deskevidence --outcome-record`"; the description line
       naming the log names the record directory.
-    - Both skills: step 4 of the verify-desk PR lane ("Keep it current just-in-time") and the
-      pr-review-desk bullet "Evidence PRs re-conflict by design" rest on the shared log. Once this
-      lands, rewrite both to say that sibling Evidence PRs no longer conflict on outcomes. Keep the
-      just-in-time rule for any other conflict, and say that a CONFLICTING Evidence PR now means a
-      real content conflict.
+    - Both skills: the verify-desk Evidence-PR state table (PR lane step 4) and the pr-review-desk
+      bullet "Evidence PRs re-conflict by design" say the shared log is why Evidence PRs re-conflict.
+      Once this lands, rewrite both to say that sibling Evidence PRs no longer conflict on outcomes,
+      keep the state table and its owners for any other conflict, and say that a CONFLICTING
+      Evidence PR now means a real content conflict.
     - `plugins/assay/skills/verify-desk/SKILL.md`, "Writing a receipt: three fields reviewers keep bouncing": keep the
       three procedure rules and add that `deskevidence --outcome-record` now refuses a receipt that
       breaks any of them, naming the field.
