@@ -37,6 +37,7 @@ exec-tier-why: >-
 domain: complicated
 sources:
   - "medici-finance/assay#882 — the re-review churn after each keep-current merge of an Evidence PR"
+  - "https://github.com/medici-finance/assay/issues/882#issuecomment-5857907228 — the driver's acceptance (own login, 2026-09-27) of the plan on #882: briefs desk-supervision/24-26 plus the verify-desk and pr-review-desk skill edits; it accepts authoring this brief and is NOT a decision on its `## Human decision`, which stays open for its own decision-trigger"
   - "option name: this brief carries 'approval carry' (carry an approval across a no-diff merge of main); its siblings are 'per-file outcomes' (desk-supervision/24) and 'batched landing' (desk-supervision/26) — three alternatives for the conflict class #882 tracks"
   - "docs/streams/desk-supervision/review-finding-v1.md:85 — the rule this brief amends"
   - "tools/desk/cmd/deskflip/flip.go — checkReviewerApproved (line 771) and reduceSecurityVerdict (line 1412)"
