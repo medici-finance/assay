@@ -5,10 +5,13 @@ fleet, accountable for its own repo set. This document is the other half — how
 one machine: a persistent `deskd`, one window per desk role, and each of those windows resolving the
 cell's own roster and App keys rather than the operator's.
 
-`tools/cellctl/cellctl` is a single bash script that does it. It exists because doing it by hand is a
-dozen steps with three sharp edges (a harness login that vanishes when `HOME` is swapped, four
-windows racing on one `.git`, a tmux window name that has to match what `down` looks for), and a
-script is the only place those stay fixed.
+`cellctl` is a Go program (`tools/desk/cmd/cellctl`) that does it; releases ship it inside the
+desk-tools tarball (see [Install](#install)). It exists because doing it by hand is a dozen steps
+with three sharp edges (a harness login that vanishes when `HOME` is swapped, four windows racing
+on one `.git`, a tmux window name that has to match what `down` looks for), and a tool is the only
+place those stay fixed. The bash script it was ported from is kept in the tree only as a test
+fixture, `tools/cellctl/testdata/cellctl-shell-oracle.sh` — the oracle the Go program is proved
+against, never the launcher (see [Parity with the shell oracle](#parity-with-the-shell-oracle)).
 
 `cellctl` is **optional**, in the same sense as the desk-tools binaries: it automates a pipeline you
 can also stand up by hand. Nothing else in Assay depends on it.
@@ -277,14 +280,16 @@ links. It refuses an existing cell of the same name, exactly like every other ki
 ### The composed environment
 
 The launch is `env -i` plus an explicit allowlist — the parent shell contributes nothing by
-default. This is the exact list `cellctl` exports (the `SCRUBBED_ENV_KEYS` variable in the script
-is the single source this table, the `[plan]` lines below, and the live launch all trace back to):
+default. This is the exact list `cellctl` exports (`scrubbedEnvKeys` in
+`tools/desk/cmd/cellctl/env.go` is the single source this table, the `[plan]` lines below, and the
+live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares the same set, and
+`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it):
 
 | Variable | Value |
 |---|---|
 | HOME | `<cell>/home` |
 | ZDOTDIR | `<cell>/home` |
-| SHELL | the bash `cellctl` itself runs under (never the operator's login shell) |
+| SHELL | the first `bash` on `PATH`, resolved by `cellctl` itself (never the operator's login shell) |
 | PATH | `<cell>/shim:<desk-tools bindir>:<dir of the resolved harness binary>:/usr/bin:/bin:/usr/sbin:/sbin` — exactly seven elements; `cell.env`'s `CELL_PATH` overrides only the trailing system part, never the shim prefix or the harness dir |
 | TMPDIR | `<cell>/tmp` (created 0700 if absent) |
 | KUBECONFIG | `/dev/null` |
@@ -572,9 +577,9 @@ when the session comes up. `--no-the-desk` opts out and leaves the four loop rol
 is accepted and does nothing — it was the flag when the coordinator was opt-in, and silently
 ignoring it is better than failing a command that asks for what already happens.
 
-Each window re-invokes `cellctl` by its **absolute** path, resolved once at startup from
-`BASH_SOURCE`. A tmux window runs in the cell directory, where the relative `$0` a shell-invoked
-script carries (`./cellctl`) does not resolve.
+Each window re-invokes `cellctl` by its **absolute** path, resolved once at startup (the running
+executable's own path). A tmux window runs in the cell directory, where a relative invocation path
+(`./cellctl`) does not resolve.
 
 **Down:**
 
@@ -758,7 +763,7 @@ a long-context variant. `DESK_MODEL_DEFAULT` itself falls back to `sonnet` if `c
 board, claim an item, open a worktree, and hand the actual judgment to the agent they dispatch. The
 coordinator window is where judgment happens in the loop itself. So the loops get the cheaper model
 and `the-desk` gets the top tier available — and the loops' pin can be moved per cell, which is the
-point of putting it in `cell.env` rather than in the script.
+point of putting it in `cell.env` rather than in the launcher's source.
 
 **The coordinator's pin cannot be moved down to Opus.** `opus` is no longer the top tier, and the
 coordinator role is defined to run on whichever model is. `cellctl desk <cell> the-desk` (including
@@ -815,7 +820,8 @@ TIER_MODEL_MID_CODEX=gpt-5.6-terra
 TIER_MODEL_FAST_CODEX=gpt-5.6-terra
 ```
 
-Resolution order, per role and per the ACTIVE harness (`resolve_role_model` in the script): (1) that
+Resolution order, per role and per the ACTIVE harness (`resolveRoleModel` in
+`tools/desk/cmd/cellctl/model.go`): (1) that
 harness's own per-role pin, (2) that harness's own default, (3) the tier map, by this role's tier
 and the harness's own column. Claude always resolves at step 2 today — `DESK_MODEL_DEFAULT` carries
 a compiled default (`sonnet`) — which is exactly what keeps `--harness claude` unaffected by any of
@@ -1281,14 +1287,18 @@ into an agent merely because those paths are available on its host.
 ## Parity with the shell oracle
 
 `cellctl` was a 3,000-line shell script before it was a Go program, and the script is still in
-the tree at `tools/cellctl/cellctl`. It is not dead weight and it is not a fallback: it is the
-**ORACLE** the Go program is proved against, and it stays until a human signs the cutover.
+the tree at `tools/cellctl/testdata/cellctl-shell-oracle.sh` — under `testdata/`, and with a
+banner saying so, because it is a test fixture and not the launcher. It is not dead weight and it
+is not a fallback: it is the **ORACLE** the Go program is proved against, and it stays until a
+human signs the cutover. Do not install or run it as `cellctl`; the launcher is the Go program
+(see [Install](#install)).
 
 **The harness.** `tools/cellctl/tests/parity.test.sh` runs both implementations over the same
 hand-built fixtures and diffs what they produce:
 
 ```bash
-CELLCTL_A=tools/cellctl/cellctl CELLCTL_B=tools/desk/cellctl bash tools/cellctl/tests/parity.test.sh
+CELLCTL_A=tools/cellctl/testdata/cellctl-shell-oracle.sh CELLCTL_B=tools/desk/cellctl \
+  bash tools/cellctl/tests/parity.test.sh
 ```
 
 For every cell in the matrix it runs `DRY_RUN=1 <impl> <verb> <args>` under both, normalises the
@@ -1335,7 +1345,8 @@ the harness must then go RED:
 
 ```bash
 cd tools/desk && go build -tags parity -o /tmp/cellctl-parity ./cmd/cellctl && cd ../..
-CELLCTL_PARITY_MUTATE=KUBECONFIG CELLCTL_A=tools/cellctl/cellctl CELLCTL_B=/tmp/cellctl-parity \
+CELLCTL_PARITY_MUTATE=KUBECONFIG CELLCTL_A=tools/cellctl/testdata/cellctl-shell-oracle.sh \
+  CELLCTL_B=/tmp/cellctl-parity \
   bash tools/cellctl/tests/parity.test.sh     # expected: exit 1, naming scrubbed/…/desk cells
 ```
 

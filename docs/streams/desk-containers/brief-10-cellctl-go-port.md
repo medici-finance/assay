@@ -54,7 +54,7 @@ consumers:
   - ".github/workflows/release.yml: follow-up desk-containers/10 (this brief; the packaging exception at :1133-1152 is removed — the implementer's App token has no `workflows` scope, so this hunk lands as a separate commit a human pushes, noted on the PR)"
   - "Makefile: follow-up desk-containers/10 (this brief; `CELLCTL_SRC` re-pointed)"
   - "docs/cellctl.md: follow-up desk-containers/10 (this brief; §Install rewritten, plan-grammar section cross-referenced)"
-  - "tools/cellctl/cellctl: follow-up desk-containers/10 (this brief, NARROWLY — the bash stays in the tree as the oracle and its removal is a later brief this stream has not authored. Per the desk ruling recorded on the decision issue and the AMENDMENT under §The oracle, the ONLY edit this brief makes to it is dropping four withheld stream cites from its emitted scaffold text, shipped with the parity proof; nothing else in the script changes)"
+  - "tools/cellctl/testdata/cellctl-shell-oracle.sh: follow-up desk-containers/10 (this brief, NARROWLY — the bash stays in the tree as the oracle and its removal is a later brief this stream has not authored. Per the desk ruling recorded on the decision issue and the AMENDMENT under §The oracle, the ONLY edit this brief makes to it is dropping four withheld stream cites from its emitted scaffold text, shipped with the parity proof; nothing else in the script changes)"
   - "docs/streams/windows-port/: out-of-scope (a native-Windows cellctl is a consequence this brief NAMES for that stream and does not deliver; the build-tag split its brief 00 owns is the precondition)"
 ---
 
@@ -73,7 +73,7 @@ files:
   `CELLCTL_PARITY_MUTATE` code carrying `//go:build parity` so a release build omits it,
   `*_test.go` beside each.
 - `tools/cellctl/tests/parity.test.sh` (planned) — the parity harness; §Parity below.
-- `tools/cellctl/tests/*.test.sh` — each gains `CELLCTL="${CELLCTL:-$HERE/../cellctl}"` so the
+- `tools/cellctl/tests/*.test.sh` — each gains `CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"` so the
   suite runs against either implementation.
 - `.github/workflows/release.yml` — remove the packaging exception (:1133-1152): cellctl is now
   one of the `cmd/*/` builds. **This file needs the `workflows` scope the worker App lacks** —
@@ -102,7 +102,7 @@ facts:
   read; the writeguard → the `tools/desk/cmd/writeguard` package's guard is what the Go
   `desk` verb consults before composing a launch into a worktree. A port that copies the bash
   logic for any of these four is a review finding, not a style nit.
-- **The oracle.** `tools/cellctl/cellctl` stays in the tree, unmodified by this brief except
+- **The oracle.** `tools/cellctl/testdata/cellctl-shell-oracle.sh` stays in the tree, unmodified by this brief except
   where desk-containers/11 later touches it, and is what the parity harness runs the Go
   binary AGAINST. It is not shipped in the tarball once the Go binary is (release.yml hunk),
   and it is not deleted here — its removal is a separate brief this stream has not authored.
@@ -111,6 +111,13 @@ facts:
   parity HONEST, not to preserve text the corpus gate classifies as withheld: a scaffold that
   writes private stream identifiers into every adopter's README and roster is a defect in the
   oracle, and both implementations are corrected together in one PR so the matrix stays whole.
+  AMENDMENT (#1732, maintainer direction): the oracle was MOVED, not changed, from
+  `tools/cellctl/cellctl` to `tools/cellctl/testdata/cellctl-shell-oracle.sh`, so its path
+  marks it as a test fixture rather than the launcher, and it gained a comment banner BELOW its
+  `set -euo` line saying so (below that line, the banner is outside the header `--help` prints
+  and `TestUsageMatchesOracle` compares). Neither implementation's behaviour changed; the
+  parity harness, the behavioural suites and the usage test read the new path. The
+  restriction above applies to the oracle at its new path unchanged.
 - **Parity harness (`tools/cellctl/tests/parity.test.sh` (planned)):** for each cell fixture in the
   matrix below, runs `DRY_RUN=1 <impl> <verb> <args>` under both implementations with the
   same `CELLS_ROOT`, `DESK_TOOLS_BIN`, stub `PATH` and env, normalises (the implementation's
@@ -246,11 +253,11 @@ Default if no answer: none — blocks until answered (the cutover is the irrever
 |---|---------|--------|-------|
 | 1 | `cd tools/desk && go build ./cmd/cellctl && go vet ./cmd/cellctl` | exit 0. Red on the merge-base: `no Go files`/package not found | check:ci |
 | 2 | `cd tools/desk && go test ./cmd/cellctl/... -count=1` | exit 0; ≥ 1 test per verb file listed in `files:` (unit level: cell.env parsing refusals, the allowlist, the plan encoder, the lock). Red on the merge-base: no such package | check:ci |
-| 3 | `CELLCTL_A=tools/cellctl/cellctl CELLCTL_B=tools/desk/cellctl bash tools/cellctl/tests/parity.test.sh` | exit 0; prints one `ok` line per matrix cell and a final `parity: <n> cells, 0 divergent`; `<n>` ≥ 4 kinds × 2 harnesses × 3 cockpits × 8 verbs + `new` cells. Red on the merge-base: the harness does not exist (exit 127) | check:ci +flow |
+| 3 | `CELLCTL_A=tools/cellctl/testdata/cellctl-shell-oracle.sh CELLCTL_B=tools/desk/cellctl bash tools/cellctl/tests/parity.test.sh` | exit 0; prints one `ok` line per matrix cell and a final `parity: <n> cells, 0 divergent`; `<n>` ≥ 4 kinds × 2 harnesses × 3 cockpits × 8 verbs + `new` cells. Red on the merge-base: the harness does not exist (exit 127) | check:ci +flow |
 | 4 | `for s in tools/cellctl/tests/*.test.sh; do case "$s" in *parity*) continue;; esac; CELLCTL=tools/desk/cellctl bash "$s" \|\| { echo "suite red: $s"; exit 1; }; done` | exit 0 — all fifteen behavioural suites pass against the Go binary. Red on the merge-base: the suites ignore `CELLCTL` and test the bash, so the row cannot fail there — that is why row 3 and row 5 exist beside it | check:ci +neighbour |
-| 5 | `cd tools/desk && go build -tags parity -o /tmp/cellctl-parity ./cmd/cellctl && cd ../.. && CELLCTL_PARITY_MUTATE=KUBECONFIG CELLCTL_A=tools/cellctl/cellctl CELLCTL_B=/tmp/cellctl-parity bash tools/cellctl/tests/parity.test.sh; test $? -eq 1` | exit 0 — the harness goes RED (exit 1) and its last line names at least one `scrubbed/…/desk` cell as divergent when the Go side drops one plan line. This is the row that proves the oracle diff catches a divergence | check:ci +mutation |
-| 6 | `cd tools/desk && go build -ldflags '-X main.cellctlVersion=v9.9.9-test' -o /tmp/cellctl-v ./cmd/cellctl && /tmp/cellctl-v --version` | exit 0; prints `v9.9.9-test` — the same `--version` contract the script carries (`tools/cellctl/cellctl:189-197`) | check +dereference |
-| 7 | `grep -n 'tools/cellctl/cellctl' .github/workflows/release.yml Makefile; test $? -eq 1` | exit 0 — no packaging or install step names the script any more. Red on the merge-base: two hits (release.yml:1149, Makefile:35) | check:ci |
+| 5 | `cd tools/desk && go build -tags parity -o /tmp/cellctl-parity ./cmd/cellctl && cd ../.. && CELLCTL_PARITY_MUTATE=KUBECONFIG CELLCTL_A=tools/cellctl/testdata/cellctl-shell-oracle.sh CELLCTL_B=/tmp/cellctl-parity bash tools/cellctl/tests/parity.test.sh; test $? -eq 1` | exit 0 — the harness goes RED (exit 1) and its last line names at least one `scrubbed/…/desk` cell as divergent when the Go side drops one plan line. This is the row that proves the oracle diff catches a divergence | check:ci +mutation |
+| 6 | `cd tools/desk && go build -ldflags '-X main.cellctlVersion=v9.9.9-test' -o /tmp/cellctl-v ./cmd/cellctl && /tmp/cellctl-v --version` | exit 0; prints `v9.9.9-test` — the same `--version` contract the script carries (its `CELLCTL_VERSION` block, `tools/cellctl/testdata/cellctl-shell-oracle.sh`) | check +dereference |
+| 7 | `grep -n -e 'tools/cellctl/cellctl' -e 'cellctl-shell-oracle' .github/workflows/release.yml Makefile; test $? -eq 1` | exit 0 — no packaging or install step names the script any more, under its original path or its test-oracle path. Red on the merge-base: two hits (release.yml:1149, Makefile:35) | check:ci |
 | 8 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build -o /dev/null ./cmd/cellctl; echo "windows build rc=$?"` | prints `windows build rc=` followed by a number; the value is RECORDED in Evidence, not asserted — non-zero is the expected state until windows-port/00 lands, and this row exists so the hand-off is measured, not assumed | check |
 | 9 | `grep -rn --exclude='*_test.go' 'syscall\.' tools/desk/cmd/cellctl/; test $? -eq 1` | exit 0 — the package adds no direct syscall use (the Windows consequence is not made worse here) | check:ci |
 | 10 | `for f in ResolveForge RoleTokenForRepo LoadConfig; do grep -rq --exclude='*_test.go' "deskkit\.$f(" tools/desk/cmd/cellctl/ \|\| { echo "seam not called: $f"; exit 1; }; done` | exit 0 — each of the three deskkit seams is CALLED from a non-test file, not re-implemented (dereferencing: a port that copies the bash JWT/roster logic exits 1 at the first missing call) | check +dereference |

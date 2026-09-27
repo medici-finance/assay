@@ -9,8 +9,8 @@ import subprocess
 import tempfile
 import unittest
 
-CELLCTL = Path(__file__).resolve().parents[1] / 'cellctl'
-EXAMPLE = CELLCTL.parent / 'examples/model-policy.json'
+CELLCTL = Path(__file__).resolve().parents[1] / 'testdata' / 'cellctl-shell-oracle.sh'
+EXAMPLE = Path(__file__).resolve().parents[1] / 'examples/model-policy.json'
 
 
 class ModelPolicyTests(unittest.TestCase):
