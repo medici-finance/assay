@@ -296,6 +296,7 @@ is the single source this table, the `[plan]` lines below, and the live launch a
 | CODEX_HOME | `<cell>/home/.codex` — codex arm only |
 | CLAUDE_CONFIG_DIR | `<cell>/home/.claude` — claude arm only |
 | CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION | `false` — claude arm only |
+| CLAUDE_CODE_AUTO_COMPACT_WINDOW | `200000` — claude arm only; bounds the prefix a long desk session re-reads every turn (cached-input spend against provider rate windows). Override per cell via `cell.env`. |
 | DESK_LOOP | the role (or `smoke`) |
 | DESK_SESSION | `<cell>-<role>-<UTC boot stamp>[-codex]` |
 | DESK_ROOTS | `CELL_ROOTS`, when `cell.env` carries one |

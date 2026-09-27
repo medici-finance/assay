@@ -93,7 +93,7 @@ func TestProviderDefaultsInheritanceAndCellExceptions(t *testing.T) {
 		t.Fatalf("mixed providers: %+v", r)
 	}
 	r = f.dryRunDesk(t, "worker-desk", "--provider", "kimi")
-	if r.code != 0 || !strings.Contains(r.stdout, "model=k3[1m]") {
+	if r.code != 0 || !strings.Contains(r.stdout, "model=k3-256k") {
 		t.Fatalf("explicit provider wins: %+v", r)
 	}
 	r = f.run(t, nil, "show", "example")
@@ -206,7 +206,7 @@ func TestProviderDefaultsBuiltBinaryLaunch(t *testing.T) {
 	for _, tc := range []struct{ provider, role, model, fable, opus, sonnet, haiku, effort, base string }{
 		{"anthropic", "pr-review-desk", "claude-opus-5-5[1m]", "claude-fable-5-1", "claude-opus-5-5[1m]", "claude-sonnet-5", "claude-sonnet-5", "high", "https://api.anthropic.com"},
 		{"glm", "worker-desk", "glm-5.3-flash[1m]", "glm-5.3[1m]", "glm-5.3[1m]", "glm-5.3-flash[1m]", "glm-5.3-flash[1m]", "high", "https://api.z.ai/api/anthropic"},
-		{"kimi", "verify-desk", "k3[1m]", "k3[1m]", "k3[1m]", "k3[1m]", "k3[1m]", "high", "https://api.kimi.com/coding"},
+		{"kimi", "verify-desk", "k3-256k", "k3[1m]", "k3-256k", "k3-256k", "k3[1m]", "high", "https://api.kimi.com/coding"},
 	} {
 		t.Run(tc.provider, func(t *testing.T) {
 			f := catalogFixture(t)
@@ -270,7 +270,7 @@ func TestProviderDefaultsCustomPaths(t *testing.T) {
 		t.Fatal(r.stderr)
 	}
 	r = f.dryRunDesk(t, "worker-desk")
-	if r.code != 0 || !strings.Contains(r.stdout, "model=k3[1m]") || !strings.Contains(r.stdout, "team.json + "+filepath.Join(f.cellDir, "local.json")) {
+	if r.code != 0 || !strings.Contains(r.stdout, "model=k3-256k") || !strings.Contains(r.stdout, "team.json + "+filepath.Join(f.cellDir, "local.json")) {
 		t.Fatalf("custom relative paths: %+v", r)
 	}
 }

@@ -43,7 +43,10 @@ one desk entry inside `providers.anthropic.desks`:
 Changing `providers.anthropic.tiers.strong.model` updates every desk assigned to
 that tier that has not overridden that model in its cell. The seed pins the Opus
 alias to `claude-opus-5-5[1m]`. GLM's strong tier uses its full model and its mid
-and fast tiers use its flash model; Kimi's tiers use K3. These are editable
+and fast tiers use its flash model; Kimi's top and fast tiers use K3 with the 1M
+context while its strong and mid tiers pin the fixed-256K-context `k3-256k` — the
+same weights at roughly half the quota rate, which is what sustained verify/worker
+style windows want. These are editable
 operator defaults, not a promise of backend availability.
 
 Changing a tier's effort affects desks without their own effort field. Changing
