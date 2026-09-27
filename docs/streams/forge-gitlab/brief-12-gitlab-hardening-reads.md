@@ -396,6 +396,12 @@ Per-row notes (real output; supplementary runs are non-hermetic, same merged mai
 - Row 6 — witness pass exit 0 but vacuous on a merged tree: `summary: 0 corroborated, 0
   disproved, 5 unchecked` — each consumer entry is "unchanged since the merge-base". It
   proves nothing about the deliverables; not counted as witness-proven.
+  - Correction (2026-09-27): the quoted summary is not what the witness recorded. Output hash
+    1156598a8008 is the v1.0.27 output at e70bc86474f94b6e241d12857a10dcbd8136d556, where the
+    base equals HEAD: the roster echo lines, then `consumers: no brief files in the diff against
+    e70bc86474f94b6e241d12857a10dcbd8136d556 — nothing to corroborate`. Reproduced with the
+    pinned binary at that commit, network denied: exit 0, same hash 1156598a8008. No consumer
+    entry was judged at all. The row stays vacuous and held; the conclusion is unchanged.
 
 Grounding (independent of the rows): all five GitLab kinds are in the closed vocabulary
 (tools/desk/internal/deskkit/forge.go, `hardeningKindForge` partition at line 1023); each is

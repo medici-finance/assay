@@ -498,6 +498,11 @@ what that envelope allowed, not a verdict on the code.
   this brief's seven `fixed-here` consumers CORROBORATED and none disproved. The other five entries are
   out-of-scope or `follow-up forge-gitlab/12`, UNCHECKED by design. No `follow-up forge-gitlab/11` routing
   remains anywhere under docs/.
+  - Correction (2026-09-27 re-run): the count above is wrong. `statusgen --root . --consumers --base 7288a6d1^1`,
+    pinned v1.0.27, run at 7288a6d198329ae6ab2d57f2bbb3588a42631a99 (an isolated clone checked out at that
+    commit, network denied), exits 0 with `summary: 7 corroborated, 0 disproved, 4 unchecked`. The four
+    UNCHECKED entries are the three out-of-scope rows (website pages, deskroster, the adopter's checklist
+    document) and the one `follow-up forge-gitlab/12` row: four, not five.
 - Row 11 — pass: `TestAdopterDocs…EveryRole` `--- PASS`.
 - Row 12 — pass (exit 0, empty output).
 - Row 13 — witness `fail exit=2` is a TRUNCATED command cell: the cell's own backticks around `api` end the
@@ -553,6 +558,86 @@ outside the witness. Row 13 FAILS as authored (a negative-control false positive
 real write grant). Rows 7 and 8, the forge-side proof this gate exists for, are could-not-check pending a
 provisioned auditor App and a human-run probe with an explicit repo slug. Rows 1 and 3 are check:ci
 could-not-run on darwin (#1800). Evidence only; status stays `implemented`; no flip made or attempted.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ b857f792d2d3 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -rnE -e 'exec\.Command(Context)?\([^)]*"gh"' -e 'exec\.Command(Context)?\([^)]*"glab"' tools/desk --include='*.go' \| grep -v _test.go \| wc -l` | fail exit=1 | sha256:4eff2db4bada | 2026-09-27 | assay-verifier-app[bot] @ b857f792d2d3 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestNoForgeCLIShellout -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v && go test ./internal/deskkit/ -run TestForgeGithubGolden -v` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ b857f792d2d3 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -cE -e 'Key: +"cmd/repohardenguard/' -e 'Key: +"cmd/deskroster/' tools/desk/internal/forgeban/allowlist.go; test "$(grep -oE 'allowedInvocationCeiling = [0-9]+' tools/desk/internal/forgeban/allowlist.go \| grep -oE '[0-9]+$')" -le 6` | pass exit=0 | sha256:9a271f2a916b | 2026-09-27 | assay-verifier-app[bot] @ b857f792d2d3 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGithubGolden/hardening_read_unknown_kind -v` | fail exit=1 | sha256:b356dfa9eded | 2026-09-27 | assay-verifier-app[bot] @ b857f792d2d3 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/repohardenguard/ -run TestChecklistRefusesGhApiCell -v && go test ./cmd/repohardenguard/ -run TestAdminNullIsCouldNotCheck -v && go test ./cmd/repohardenguard/ -run TestForbiddenIsCouldNotCheck -v && go test ./cmd/repohardenguard/ -run TestPublicNotFoundIsAbsent -v` | pass exit=0 | sha256:186f7c45d8c3 | 2026-09-27 | assay-verifier-app[bot] @ b857f792d2d3 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `repohardenguard --repo "$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+/[^/]+?)(\.git)?$#\1#')" --json \| jq -e '(.identity \| test("\\[bot\\]$")) and ([.rows[] \| select(.state=="could-not-check" and .gated!="admin")] \| length == 0)'` | fail exit=4 | sha256:0087b96b601c | 2026-09-27 | assay-verifier-app[bot] @ b857f792d2d3 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `curl -sS -o /dev/null -w '%{http_code}' -X PATCH -H "Authorization: Bearer $(cat "$(desktoken auditor --repo "$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+)/[^/]+?(\.git)?$#\1#')")")" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+/[^/]+?)(\.git)?$#\1#')" -d '{}'` | fail exit=6 | sha256:9a07e914d95b | 2026-09-27 | assay-verifier-app[bot] @ b857f792d2d3 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `desktoken --version \| grep -c 'auditor=auditor-app'` | fail exit=1 | sha256:6acc4612d178 | 2026-09-27 | assay-verifier-app[bot] @ b857f792d2d3 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --root . --consumers` | pass exit=0 | sha256:3b363364f3f0 | 2026-09-27 | assay-verifier-app[bot] @ b857f792d2d3 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && go test ./cmd/desktoken/ -run TestAdopterDocsEnumerateEveryRole -v -timeout 60s` | pass exit=0 | sha256:3d2ce09219a2 | 2026-09-27 | assay-verifier-app[bot] @ b857f792d2d3 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `test "$(grep -c 'Administration: read' docs/adopting-assay.md)" -ge 1 && grep -qE '^[\|] *auditor *[\|].*read_api' docs/adopting-assay-gitlab.md && sed -n 's/.*for r in \(.*\); do.*/\1/p' docs/adopting-assay-gitlab.md \| grep -qw auditor` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ b857f792d2d3 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `grep -hniE auditor docs/adopting-assay.md docs/adopting-assay-gitlab.md \| grep -viE -e 'no write' -e read-only -e 'never writes' -e could-not-check \| grep -E -e ': write' -e write_repository -e '` | fail exit=2 | sha256:3b4acfef4ecb | 2026-09-27 | assay-verifier-app[bot] @ b857f792d2d3 (on-behalf-of human:ian) (forge-identity) |
+
+**Re-run 2026-09-27 at the #1801 merge tree b857f792, after #1684 changed forgeban/allowlist.go**
+(claude-opus-5-5-verifier, verify-desk dispatch; runner is not the implementer). The witness table
+directly above ran at b857f792d2d3b185f9cb7798d07df74ffa917c1b, a local merge of PR #1801's head
+0ad91ca527f40803d4c743540f75e4d4ca29c02a with main 46af8d389d5e02eb9a30c1c723709199d4b43fe5 (the
+forge's main head at run time, read with the verifier App token). The envelope matches the first run:
+pinned statusgen v1.0.27 invoked directly, `sandbox-exec` denying all network, `env -i`,
+KUBECONFIG=/dev/null, and PATH limited to the system dirs plus `go` and the pinned `statusgen`, so
+`desktoken`, `repohardenguard` and `gh` do not resolve. What #1684 changed:
+it added one entry to the separate `UnresolvedArgv` list in tools/desk/internal/forgeban/allowlist.go
+(the deskinbox flow reader seam, which runs statusgen or deskboard). `AllowedInvocations` and the
+ceiling are untouched, and nothing else in the four touched packages (internal/deskkit,
+internal/forgeban, cmd/repohardenguard, cmd/desktoken) differs from e70bc864.
+
+Per row, against the first run:
+- Row 1: unchanged, check:ci could-not-run on darwin (medici-finance/assay#1800). Out of witness, same
+  tree, network denied except loopback: `go build ./...` in tools/desk exit 0; targeted package tests
+  (`go test -count=1 -timeout 300s` of internal/forgeban, cmd/repohardenguard, cmd/desktoken,
+  internal/deskkit) exit 0, all four `ok`. The whole-module `go test ./...` was not run here.
+- Row 2: unchanged, `fail exit=1` with the same hash 4eff2db4bada (the padded count `0` under
+  pipefail). The count is 0.
+- Row 3: unchanged, check:ci could-not-run (#1800). Out of witness, same envelope as row 1:
+  `go test -count=1 -timeout 300s ./internal/deskkit/ -run` over the four named tests, exit 0, each
+  `--- PASS`, golden corpus 62 operations.
+- Row 4: unchanged, pass, same hash 9a271f2a916b (output `0`). `allowedInvocationCeiling = 6` @
+  tools/desk/internal/forgeban/allowlist.go:84 equals the six `AllowedInvocations` permit rows, and the
+  forgeban ratchet test passes in the targeted run above. #1684's new entry sits in `UnresolvedArgv`,
+  which the ceiling does not count.
+- Row 5: CHANGED. The witness shows `fail exit=1` (hash b356dfa9eded). This is an envelope artifact,
+  not a regression. The golden server is an `httptest` listener on loopback, and the all-network deny
+  also refuses a loopback bind (`panic: httptest: failed to listen on a port: listen tcp6 [::1]:0:
+  bind: operation not permitted`). With loopback allowed and all other network still denied, the same
+  command exits 0 with `--- PASS: TestForgeGithubGolden/hardening_read_unknown_kind`. The first run's
+  row-5 `pass` was a Go test-cache replay: its hash 693497cf08a1 is byte-for-byte the `ok … (cached)`
+  output left by a loopback-capable run of the same package inputs (reproduced), so it was not an
+  execution inside the envelope. Row 5 is not witness-proven in either run. Its substance is proven
+  only out of witness.
+- Row 6: unchanged, pass, same hash 186f7c45d8c3, which is again a cache replay (reproduced). Forced
+  uncached (`GOFLAGS=-count=1`) in the same strict envelope, all four tests `--- PASS`, exit 0. These
+  tests do not listen on loopback.
+- Rows 7 and 8: unchanged, same exits (4, 6) and hashes. Both are could-not-check: they need the live
+  forge, and no auditor App is provisioned. Nothing was minted, and no request left the host.
+- Row 9: unchanged envelope artifact (`desktoken` kept off PATH). Out of witness, a build of this tree
+  prints `bindings=auditor=auditor-app …`, count `1`.
+- Row 10: new hash 3b363364f3f0, still VACUOUS. Against main, the diff holds only the three Evidence
+  edits, so every entry reads UNCHECKED "unchanged since the merge-base" (`summary: 0 corroborated,
+  0 disproved, 16 unchecked, 1 brief(s) claiming nothing` across the three briefs in the diff). The
+  real count at the implementing commit is in the Correction under the first run's row-10 note:
+  7 corroborated, 0 disproved, 4 unchecked.
+- Rows 11 and 12: unchanged, pass, same hashes. Row 11 forced uncached in the strict envelope also
+  shows `--- PASS`, exit 0.
+- Row 13: unchanged, `fail exit=2` (the truncated command cell). The negative-control false-positive
+  finding above still stands.
+
+Witness-proven this run: rows 4, 6, 11 and 12. Held: rows 1, 2, 3, 5, 7, 8, 9, 10 and 13.
+Risk-bearing values: the enumeration above is unchanged. #1684 introduces no literal in this item's
+scope, and the ceiling stays `allowedInvocationCeiling = 6` @ tools/desk/internal/forgeban/allowlist.go:84
+(reversible ratchet). The two RISK-VALUE: NAMED, NOT DERIVED lines (the auditor GitHub and GitLab
+grants) remain open questions for the human.
+
+VERIFY: BLOCKED (unchanged in substance). No implementation regression from #1684. Row 5 lost its
+witness pass to the loopback deny and still passes out of witness. Rows 7 and 8 still await a
+provisioned auditor App and a human-run probe, and row 13 still needs a row fix or a human ruling.
+Evidence only; status stays `implemented`.
 
 ## Review
 Gate: human (from frontmatter — a risk answer is yes). Human gate is MANDATORY. Reviewer records
