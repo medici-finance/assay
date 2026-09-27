@@ -10,8 +10,8 @@ description: >-
   install (`--lint` == 0, `--version` prints the pinned tag). It is idempotent, refuses rather than
   clobbers an already-adopted repo, opens draft PRs only, and escalates every never-autonomous step
   (reviewer identity, permission grants, merge/push/tag, private-repo CI auth) to a human.
-  Unix-first, with a native-Windows arm (PowerShell + `deskinstall`). Step-by-step detail and
-  scenario routing: the `adopt` skill + docs/adopting-assay.md.
+  Unix-first; native-Windows arms: acquisition, Cursor placement (`deskinstall --harness`),
+  GitLab provisioning (`deskfleet`). Detail: `adopt` + docs/adopting-assay.md.
 ---
 
 # Install Assay — turnkey installer
@@ -21,13 +21,17 @@ scenario and holds the PRIMITIVEs and human-gates so a human or agent can hand-w
 `assay:install` is the *installer*: invoke it and it self-installs the whole project setup, driving
 each step itself and stopping only at the never-autonomous escalation points.
 
-The orchestration logic here is **Claude-Code-driven, OS-agnostic and forge-neutral**. The single
-OS-specific piece is the statusgen *binary acquisition* in step 2 — Unix (mac/linux) via a plain
-HTTPS fetch verified against the pin file (`scripts/assay-install.sh acquire`, shipped in this
-plugin), and a native-Windows arm via the PowerShell bootstrap + Go-native `deskinstall` (see
-**Scope**). Everything else runs identically on every platform, and on GitHub or GitLab — the
-per-forge differences are named in **Per-forge prerequisites** and **CORE primitives per forge**
-below.
+The orchestration logic here is **Claude-Code-driven and forge-neutral**. Windows has **three**
+OS-specific arms, not one — the statusgen *binary acquisition* in step 2 (Unix via a plain HTTPS
+fetch verified against the pin file, `scripts/assay-install.sh acquire`, shipped in this plugin;
+native Windows via the PowerShell bootstrap + Go-native `deskinstall`), the **Cursor harness
+placement** (`deskinstall --harness cursor --forge <github|gitlab> --repo <path>`, native on every
+OS, run before this skill), and, on GitLab, **fleet provisioning** (`deskfleet provision` /
+`deskfleet labels`, native Go on every OS including Windows, a human act). No Git-Bash/WSL is
+needed to install or provision. GitLab bulk PAT *renewal* still needs it until `windows-port/16`.
+See **Scope** for the full breakdown.
+Everything else runs identically on every platform, and on GitHub or GitLab — the per-forge
+differences are named in **Per-forge prerequisites** and **CORE primitives per forge** below.
 
 This skill does **not** fork the install steps. It DELEGATES the PRIMITIVE detail — exact commands,
 per-step Verify, the failure modes — to **`assay:adopt`** and the full runbook at
@@ -48,7 +52,7 @@ self-satisfiable. How each principal is provisioned differs per forge; the invar
 | Principal | GitHub mechanism | GitLab mechanism | Roster entry it produces |
 |---|---|---|---|
 | Human identity | a personal account the automation never holds credentials for | a personal user the automation never holds credentials for | its login in `ASSAY_BLESS_LOGIN` / `ASSAY_TRUSTED_LOGINS` |
-| Automation identity (implementer and the other roles) | a GitHub App per role, created and installed by a human | a group service account per role, provisioned by a human running `tools/create-fleet-gitlab.sh` | `<role>=github:<slug>[:<id>]` in `ASSAY_TRUSTED_BOT_SLUGS` |
+| Automation identity (implementer and the other roles) | a GitHub App per role, created and installed by a human | a group service account per role, provisioned by a human running `deskfleet provision` (or the fallback `tools/create-fleet-gitlab.sh`) | `<role>=github:<slug>[:<id>]` in `ASSAY_TRUSTED_BOT_SLUGS` |
 | Reviewer identity (a separate automation principal) | a separate reviewer GitHub App | a separate reviewer service account | `reviewer=gitlab:<username>[:<id>]` (GitLab) or `reviewer=github:<slug>[:<id>]` (GitHub) |
 
 The entry grammar, the per-forge renderings and the corroboration rule are defined ONCE in
@@ -79,13 +83,13 @@ Every file the flow writes lands on a branch and reaches `main` by a draft PR/MR
 | `scaffold-streams` | yes | files written by `statusgen init` | identical | `statusgen init` |
 | `scaffold-registers` | yes | files written by `statusgen init` | identical | `statusgen init` |
 | `add-statusgen-ci` | no — delegated | `init` writes the GitHub workflow | `init` writes `.gitlab-ci.yml`; the runner, `STATUSGEN_PUSH_TOKEN` and `STATUSGEN_ROSTER_ENV` are *human* (`docs/adopting-assay-gitlab.md` §2a, §2c, §2e) | `statusgen init` (forge from `origin`, or `--forge`) — never re-authored here |
-| `install-desk-plugin` | yes (harness-specific, not forge-specific) | Claude Code `/plugin`; Cursor / Codex copy the skills | identical | none |
-| `install-main-guard` | the client hook, yes; its server-side counterpart, no | `.githooks/pre-commit` + `core.hooksPath`; server side: a ruleset / branch protection on `main` — *human* | the same hook; server side: a protected branch with a push-access list — *human*, set by `tools/create-fleet-gitlab.sh` | the hook is plain git; `repohardenguard` reads the server-side setting back on either forge (a per-forge checklist) |
+| `install-desk-plugin` | yes (harness-specific, not forge-specific) | Claude Code `/plugin`; Cursor: `deskinstall --harness cursor --forge github --repo <path>` places skills + references + `AGENTS.md` bindings; Codex copies the skills | identical, with `--forge gitlab` for Cursor | `deskinstall --harness cursor` (Cursor; `--check` reads it back); none for Claude Code / Codex |
+| `install-main-guard` | the client hook, yes; its server-side counterpart, no | `.githooks/pre-commit` + `core.hooksPath`; server side: a ruleset / branch protection on `main` — *human* | the same hook; server side: a protected branch with a push-access list — *human*, set by `deskfleet provision --project` (or the fallback `tools/create-fleet-gitlab.sh`) | the hook is plain git; `repohardenguard` reads the server-side setting back on either forge (a per-forge checklist) |
 | `first-board` | yes | `statusgen --root <target> --lint` then `statusgen --root <target>` | identical | `statusgen` |
-| `setup-reviewer-app` (the reviewer grant) | no | a separate reviewer GitHub App with the three write duties, the CI reads and `administration: read` — *human* | a separate reviewer service account at the role in `docs/adopting-assay-gitlab.md` §1 — *human*, via `tools/create-fleet-gitlab.sh` | `deskroster preflight` (run by `deskboot`) reads the grant back — `app-scopes-vs-duties` on GitHub, the token-custody check on GitLab |
-| `create-labels` | no | a one-off at the repo's label settings — *human/admin*; the list is `docs/adopting-assay.md` §3 `create-labels` | created by `tools/create-fleet-gitlab.sh` (same names, colours and descriptions) — *human* | `deskflip` creates the PR-state pair on first use on either forge; `deskfile` only PROBES `raised-by:*` and files unstamped when one is missing. No desk verb provisions the whole set yet (#1559) |
+| `setup-reviewer-app` (the reviewer grant) | no | a separate reviewer GitHub App with the three write duties, the CI reads and `administration: read` — *human* | a separate reviewer service account at the role in `docs/adopting-assay-gitlab.md` §1 — *human*, via `deskfleet provision` (or the fallback `tools/create-fleet-gitlab.sh`) | `deskroster preflight` (run by `deskboot`) reads the grant back — `app-scopes-vs-duties` on GitHub, the token-custody check on GitLab |
+| `create-labels` | no | a one-off — *human/admin*: `deskfleet labels --forge github`, or the repo's label settings; the list is `docs/adopting-assay.md` §3 `create-labels` | `deskfleet labels --forge gitlab` or `deskfleet provision --project` (or the fallback `tools/create-fleet-gitlab.sh`), same names, colours and descriptions — *human* | `deskfleet labels` creates the whole set on either forge, run by a human (`windows-port/08`); whether a desk role runs it on its own is #1559. `deskflip` creates the PR-state pair on first use on either forge; `deskfile` only PROBES `raised-by:*` and files unstamped when one is missing |
 
-`tools/create-fleet-gitlab.sh` and the two runbooks live in your `assay` checkout. Nothing in the
+`deskfleet`, `tools/create-fleet-gitlab.sh` and the two runbooks live in your `assay` checkout. Nothing in the
 table is performed by `gh` or `glab`.
 
 ## Before anything: is this even installable here?
@@ -260,6 +264,13 @@ recommended client-side hardening that refuses un-flagged `main` commits — a p
 identical on either forge. Its server-side counterpart differs per forge and is a human act; see
 **CORE primitives per forge**.
 
+**On Cursor, the plugin is already placed.** `deskinstall --harness cursor --forge
+<github|gitlab> --repo <target>` ran before this skill could run in Cursor, because it is what put
+this skill there. Do not copy skills by hand. Confirm the placement instead: run the same command
+with `--check` from the assay clone root (or with `--bundle <clone>/plugins/assay`). Exit 0 is
+clean. Exit 1 names each drifted path; re-run without `--check` to fix them. Exit 2 is
+could-not-check, which is not a pass.
+
 ### 6. Prove the install
 The install is not done until it is PROVEN:
 
@@ -334,6 +345,11 @@ hands the human the exact values and waits:
   protection; on GitLab a board-writer service account on the protected branch's push-access list,
   plus the `STATUSGEN_PUSH_TOKEN` CI/CD variable. These are repo-admin acts — hand the human the
   identity name + its single write permission + the branch/ruleset to add it to, and wait.
+- **GitLab fleet provisioning and renewal.** This covers `deskfleet provision`, the fallback
+  `tools/create-fleet-gitlab.sh`, and `tools/renew-fleet-gitlab-tokens.sh`. Each one mints live
+  credentials from a group-owner PAT. Hand the human the exact command (with `--dry-run` first),
+  never hold the owner token, and never run any of them yourself. `deskfleet labels` is also the
+  human's to run: it needs a token that can write labels.
 - **Repo creation** + admin / permission grants.
 - **Merge to main / pushing to the main branch / release tag / the first ready-flip.**
 - **git history rewrite** (for a carve-out).
@@ -350,27 +366,60 @@ reviewer identity, and the human-merge gate each fire once (the `adopt` runbook'
 
 ## Scope
 
-**Unix-first (mac/linux), with a real native-Windows arm.** The statusgen binary acquisition in
-step 2 is the only OS-specific arm. It is implemented for mac and linux as a plain HTTPS fetch
-verified against the pin file (`assay-install.sh acquire` — `curl`, plus `sha256sum`,
-`shasum` or `openssl`; no forge CLI), and there is now a **native-Windows path** that slots in
-beside the Unix one without reshaping the flow. Forge is not an axis here: the same arm serves a
-GitHub and a GitLab adopter, because the release assets are fetched from their public release home
-whatever forge the target lives on.
+**Unix-first (mac/linux), with a real native-Windows arm across the whole install — not
+acquisition alone.** Windows has **three** OS-specific arms:
 
-**Windows is supported — the acquisition arm is real, not deferred.** On a native Windows host,
-step 2 acquires the pinned `statusgen-windows-<arch>.exe` (and `desk-tools-windows-<arch>.tar.gz`)
-via a PowerShell first-install bootstrap (`scripts/bootstrap-windows.ps1`) plus the Go-native
-`deskinstall` command, keeping the same **sha256-verify-or-refuse** control the Unix path uses
-(a hash mismatch is a hard refuse — exit 5 — never a warn-and-continue). Two honesty caveats remain
-and are stated in the runbook, not hidden: the harness's session-start resident-rules injection
-channel (harness-portability/05; the mechanism your harness uses is named in
-`../../references/<harness>.md`) needs a documented `bash`+`jq`
-workaround (install Git-Bash, or WSL for local dev only — WSL is a fallback, not the native claim),
-and the **native `windows/arm64` smoke is BLOCKED** pending an arm64 Windows runner (the arm64
-asset still ships cross-compiled + checksummed). The full step-by-step Windows guide — install
-command, `.assay-versions` pins, CI-proven status, and the documented-workaround surfaces — lives in
-`docs/adopting-assay.md` § **Windows adopters**.
+1. **Binary acquisition** (step 2). Unix (mac/linux) uses a plain HTTPS fetch verified against the
+   pin file (`assay-install.sh acquire` — `curl`, plus `sha256sum`, `shasum` or `openssl`; no forge
+   CLI). Native Windows uses a PowerShell first-install bootstrap (`scripts/bootstrap-windows.ps1`)
+   plus the Go-native `deskinstall` (mode 1: `--manifest <paired-versions.yaml> --dest <dir>`).
+   Both keep the same **sha256-verify-or-refuse** control the Unix path uses: a hash mismatch is a
+   hard refuse, never a warn-and-continue. The bootstrap throws a `REFUSED:` error (a non-zero
+   exit under `powershell -File`); `deskinstall` exits 5.
+2. **Cursor harness placement** (runs **before** this skill, not as one of its steps).
+   `deskinstall --harness cursor --forge <github|gitlab> --repo <path>` (mode 2) places the
+   skills/references tree and writes the `AGENTS.md` bindings in one idempotent command, native on
+   every OS including Windows. Cursor's install mechanism *is* file placement, so this command
+   replaces the old five-step manual copy. It is also how this skill reaches Cursor in the first
+   place, so on Cursor step 5 only confirms it with `--check` (reports drift, writes nothing).
+3. **GitLab fleet provisioning** (forge-scoped, **`gate: human`**). `deskfleet provision` mints
+   the seven role service accounts, their PATs, and `gitlab-<role>.token` files directly under the
+   owner-only ACL custody the toolchain already enforces on read, with no `ln -s`/copy step and no
+   Git-Bash/WSL. `deskfleet labels` creates the forge-neutral label set (GitHub or GitLab). Both
+   are native Go, on every OS including Windows. **Hand the human the command.** This skill never
+   holds the group-owner token and never runs `deskfleet provision` itself; see **NEVER
+   autonomous**.
+
+Forge is not an axis for arms 1 and 2. The same acquisition and harness-placement arm serves a
+GitHub and a GitLab adopter, because the release assets are fetched from their public release home
+whatever forge the target lives on, and `--forge` on `deskinstall --harness` only selects the
+`AGENTS.md` bindings vocabulary. Arm 3 is GitLab-only by construction (GitHub has no
+service-account fleet to provision); `deskfleet labels` alone runs on either forge.
+
+**Windows is supported across all three arms.** On a native Windows host, step 2 acquires the
+pinned `statusgen-windows-<arch>.exe` (and `desk-tools-windows-<arch>.tar.gz`) as above. The
+Cursor tree is placed by the same `deskinstall --harness` command as on any other OS. GitLab fleet
+provisioning runs the same `deskfleet` binary with no bash/curl/jq dependency. Two honesty caveats
+remain and are stated in the runbook, not hidden:
+- the harness's session-start resident-rules injection channel (harness-portability/05; the
+  mechanism your harness uses is named in `../../references/<harness>.md`) needs a documented
+  `bash`+`jq` workaround (install Git-Bash, or WSL for local dev only; WSL is a fallback, not the
+  native claim, and Cursor does not need it);
+- the **native `windows/arm64` smoke is BLOCKED** pending an arm64 Windows runner (the arm64 asset
+  still ships cross-compiled + checksummed).
+
+Two further limits are open, and the runbook states both:
+- **Nothing in arm 1 places the first `deskinstall` on a clean host.** The bootstrap fetches only
+  `statusgen`, and `deskinstall` ships only inside the desk-tools tarball it downloads. The runbook
+  names the interim routes.
+- **GitLab bulk PAT renewal is not native yet.** `tools/renew-fleet-gitlab-tokens.sh` is bash +
+  `glab` and needs Git-Bash or WSL on Windows, on either harness, until `windows-port/16` ships
+  `deskfleet renew`. Do not report a Windows GitLab install as "no Git-Bash needed" without that
+  qualifier.
+
+The full step-by-step Windows guide lives in `docs/adopting-assay.md` § **Windows adopters**: the
+three-command install, `.assay-versions` pins, CI-proven status, and the documented-workaround
+surfaces.
 
 ## Delegation
 - **`assay:adopt`** — the scenario router (green-field / existing-suite / carve-out) and the

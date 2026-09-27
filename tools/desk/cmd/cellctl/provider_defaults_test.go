@@ -93,7 +93,7 @@ func TestProviderDefaultsInheritanceAndCellExceptions(t *testing.T) {
 		t.Fatalf("mixed providers: %+v", r)
 	}
 	r = f.dryRunDesk(t, "worker-desk", "--provider", "kimi")
-	if r.code != 0 || !strings.Contains(r.stdout, "model=k3[1m]") {
+	if r.code != 0 || !strings.Contains(r.stdout, "model=k3-256k") {
 		t.Fatalf("explicit provider wins: %+v", r)
 	}
 	r = f.run(t, nil, "show", "example")
@@ -194,6 +194,7 @@ printf 'SONNET=%s\n' "${ANTHROPIC_DEFAULT_SONNET_MODEL-}"
 printf 'HAIKU=%s\n' "${ANTHROPIC_DEFAULT_HAIKU_MODEL-}"
 printf 'EFFORT=%s\n' "${CLAUDE_CODE_EFFORT_LEVEL-}"
 printf 'PROMPT_SUGGESTION=%s\n' "${CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION-}"
+printf 'AUTO_COMPACT=%s\n' "${CLAUDE_CODE_AUTO_COMPACT_WINDOW-}"
 printf 'CHILD=%s\n' "${CLAUDE_CODE_SUBAGENT_MODEL-}"
 printf 'BASE_URL=%s\n' "${ANTHROPIC_BASE_URL-}"
 `
@@ -206,7 +207,7 @@ func TestProviderDefaultsBuiltBinaryLaunch(t *testing.T) {
 	for _, tc := range []struct{ provider, role, model, fable, opus, sonnet, haiku, effort, base string }{
 		{"anthropic", "pr-review-desk", "claude-opus-5-5[1m]", "claude-fable-5-1", "claude-opus-5-5[1m]", "claude-sonnet-5", "claude-sonnet-5", "high", "https://api.anthropic.com"},
 		{"glm", "worker-desk", "glm-5.3-flash[1m]", "glm-5.3[1m]", "glm-5.3[1m]", "glm-5.3-flash[1m]", "glm-5.3-flash[1m]", "high", "https://api.z.ai/api/anthropic"},
-		{"kimi", "verify-desk", "k3[1m]", "k3[1m]", "k3[1m]", "k3[1m]", "k3[1m]", "high", "https://api.kimi.com/coding"},
+		{"kimi", "verify-desk", "k3-256k", "k3[1m]", "k3-256k", "k3-256k", "k3[1m]", "high", "https://api.kimi.com/coding"},
 	} {
 		t.Run(tc.provider, func(t *testing.T) {
 			f := catalogFixture(t)
@@ -215,13 +216,44 @@ func TestProviderDefaultsBuiltBinaryLaunch(t *testing.T) {
 			if r.code != 0 {
 				t.Fatalf("launch: %+v", r)
 			}
-			for key, value := range map[string]string{"ANTHROPIC_MODEL": tc.model, "FABLE": tc.fable, "OPUS": tc.opus, "SONNET": tc.sonnet, "HAIKU": tc.haiku, "EFFORT": tc.effort, "CHILD": tc.model, "BASE_URL": tc.base, "PROMPT_SUGGESTION": "false"} {
+			for key, value := range map[string]string{"ANTHROPIC_MODEL": tc.model, "FABLE": tc.fable, "OPUS": tc.opus, "SONNET": tc.sonnet, "HAIKU": tc.haiku, "EFFORT": tc.effort, "CHILD": tc.model, "BASE_URL": tc.base, "PROMPT_SUGGESTION": "false", "AUTO_COMPACT": "200000"} {
 				if !strings.Contains(r.stdout, key+"="+value+"\n") {
 					t.Errorf("missing %s=%s in %s", key, value, r.stdout)
 				}
 			}
 			if !strings.Contains(r.stdout, "ARGV=--effort "+tc.effort+" ") {
 				t.Errorf("effort not in argv: %s", r.stdout)
+			}
+		})
+	}
+}
+
+// TestProviderDefaultsAutoCompactCellEnv pins the override the docs promise for
+// CLAUDE_CODE_AUTO_COMPACT_WINDOW: a value in the cell's cell.env reaches the launched harness,
+// and an EMPTY value is treated as unset (the 200000 default still applies — an empty line cannot
+// switch the export off; only a larger number widens the window).
+func TestProviderDefaultsAutoCompactCellEnv(t *testing.T) {
+	for _, tc := range []struct{ name, line, want string }{
+		{"override", "CLAUDE_CODE_AUTO_COMPACT_WINDOW=400000\n", "400000"},
+		{"empty-keeps-default", "CLAUDE_CODE_AUTO_COMPACT_WINDOW=\n", "200000"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := catalogFixture(t)
+			f.prepareLocalLaunch(t)
+			path := filepath.Join(f.cellDir, "cell.env")
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, append(raw, []byte(tc.line)...), 0600); err != nil {
+				t.Fatal(err)
+			}
+			r := f.run(t, []string{"CELLCTL_DESKWT=0"}, "desk", "example", "pr-review-desk", "--provider", "anthropic")
+			if r.code != 0 {
+				t.Fatalf("launch: %+v", r)
+			}
+			if !strings.Contains(r.stdout, "AUTO_COMPACT="+tc.want+"\n") {
+				t.Errorf("want AUTO_COMPACT=%s in %s", tc.want, r.stdout)
 			}
 		})
 	}
@@ -270,7 +302,7 @@ func TestProviderDefaultsCustomPaths(t *testing.T) {
 		t.Fatal(r.stderr)
 	}
 	r = f.dryRunDesk(t, "worker-desk")
-	if r.code != 0 || !strings.Contains(r.stdout, "model=k3[1m]") || !strings.Contains(r.stdout, "team.json + "+filepath.Join(f.cellDir, "local.json")) {
+	if r.code != 0 || !strings.Contains(r.stdout, "model=k3-256k") || !strings.Contains(r.stdout, "team.json + "+filepath.Join(f.cellDir, "local.json")) {
 		t.Fatalf("custom relative paths: %+v", r)
 	}
 }

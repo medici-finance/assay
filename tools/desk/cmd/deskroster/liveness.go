@@ -1,16 +1,25 @@
 package main
 
 // liveness.go — `deskroster liveness --repo OWNER/NAME`: a read-only NOTICE surface that
-// asks GitHub what it currently says about every trusted login the roster configures, and
-// prints a NOTICE when something changed (deleted, renamed, reclaimed). It never touches
-// TrustedAuthor/TrustedHumanAuthor/Blessed's pass/fail verdict — see
-// internal/deskkit/trustliveness.go for the classifier and internal/deskkit/trust.go's
+// asks the repo's own forge what it currently says about every trusted login the roster
+// configures, and prints a NOTICE when something changed (deleted, renamed, reclaimed,
+// suspended). It never touches TrustedAuthor/TrustedHumanAuthor/Blessed's pass/fail verdict
+// — see internal/deskkit/trustliveness.go for the classifier and internal/deskkit/trust.go's
 // cross-reference doc-comment.
 //
 // The --repo flag exists ONLY to resolve a token through the same forgeFor seam
-// `deskroster list` already runs its PR reads through (forge.go): GET /users/{login} is
-// host-level and does not depend on which repo minted the credential, so this never mints a
-// second kind of token or widens forgeFor's scope.
+// `deskroster list` already runs its PR reads through (forge.go): GET /users/{login} (or,
+// on GitLab, GET /users?username=) is host-level and does not depend on which repo minted
+// the credential, so this never mints a second kind of token or widens forgeFor's scope.
+//
+// FORGE DISPATCH (assay#1667). forgeFor resolves a *deskkit.Forge value; this file type-
+// switches on its CONCRETE type to pick the matching AccountFetcher/identity-enumerator
+// pair — never constructs a new GitHubForge/GitLabForge literal itself (that stays confined
+// to deskkit.ForgeFor: TestForgeSingleConstructionSite), only reads the already-minted
+// Token/BaseURL/Client fields off the value forgeFor returned. A forge this file does not
+// recognise (neither GitHub nor GitLab) is a could-not-check NOTICE, never a refusal or
+// silence — the roster itself may be perfectly configured; only that repo's forge has no
+// liveness implementation yet.
 
 import (
 	"flag"
@@ -28,12 +37,14 @@ func cmdLiveness(args []string) error {
 		if a == "-h" || a == "--help" || a == "help" {
 			fs.SetOutput(os.Stdout)
 			fmt.Fprintln(os.Stdout, "deskroster liveness --repo OWNER/NAME\n\n"+
-				"Read-only: asks GitHub what it CURRENTLY says about every trusted login the roster\n"+
-				"configures (Humans, Bless, Bots), and prints a NOTICE line for each one that is not\n"+
-				"exactly what the roster expects (deleted, renamed, reclaimed, or unpinned). It never\n"+
-				"gates, never auto-revokes, and never changes TrustedAuthor/TrustedHumanAuthor's\n"+
-				"verdict — see the roster liveness section of tools/desk/README.md. GitHub-only in\n"+
-				"this version; GitLab account-liveness is untracked follow-up (medici-finance/assay#933).")
+				"Read-only: asks the repo's own forge what it CURRENTLY says about every trusted\n"+
+				"login the roster configures — on GitHub: Humans, Bless, Bots; on GitLab: the\n"+
+				"forge-qualified bot/service-account identities (Config.BotIdents) — and prints a\n"+
+				"NOTICE line for each one that is not exactly what the roster expects (deleted,\n"+
+				"renamed, reclaimed, suspended, or unpinned). It never gates, never auto-revokes, and\n"+
+				"never changes TrustedAuthor/TrustedHumanAuthor's verdict — see the roster liveness\n"+
+				"section of tools/desk/README.md. GitHub and GitLab are supported; any other forge\n"+
+				"prints a could-not-check NOTICE naming the gap.")
 			fs.PrintDefaults()
 			return nil
 		}
@@ -59,16 +70,25 @@ func cmdLiveness(args []string) error {
 	if ferr != nil {
 		return deskkit.Unverifiable("liveness: cannot resolve a Forge for "+*repo, ferr)
 	}
-	gf, ok := f.(*deskkit.GitHubForge)
-	if !ok {
-		fmt.Println("NOTICE: could-not-check — " + *repo + " is not GitHub-backed: account-liveness is " +
-			"GitHub-only in this version; GitLab account-liveness is untracked follow-up (medici-finance/assay#933)")
-		fmt.Fprintln(os.Stderr, "liveness: 0 identities checked (non-GitHub forge), 1 notice")
+
+	var (
+		fetcher    deskkit.AccountFetcher
+		identities []deskkit.RosterIdentity
+	)
+	switch forge := f.(type) {
+	case *deskkit.GitHubForge:
+		fetcher = &deskkit.HTTPAccountFetcher{Token: forge.Token, BaseURL: forge.BaseURL, Client: forge.Client}
+		identities = deskkit.RosterIdentities(cfg)
+	case *deskkit.GitLabForge:
+		fetcher = &deskkit.HTTPGitLabAccountFetcher{Token: forge.Token, BaseURL: forge.BaseURL, Client: forge.Client}
+		identities = deskkit.GitLabRosterIdentities(cfg)
+	default:
+		fmt.Println("NOTICE: could-not-check — " + *repo + " is served by a forge account-liveness has no " +
+			"implementation for (neither GitHub nor GitLab)")
+		fmt.Fprintln(os.Stderr, "liveness: 0 identities checked (unrecognised forge), 1 notice")
 		return nil
 	}
-	fetcher := &deskkit.HTTPAccountFetcher{Token: gf.Token, BaseURL: gf.BaseURL, Client: gf.Client}
 
-	identities := deskkit.RosterIdentities(cfg)
 	findings := deskkit.CheckRosterLiveness(fetcher, identities)
 	notices := deskkit.RenderLivenessNotices(findings)
 	for _, line := range notices {

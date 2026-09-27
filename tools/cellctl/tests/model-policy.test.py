@@ -9,8 +9,8 @@ import subprocess
 import tempfile
 import unittest
 
-CELLCTL = Path(__file__).resolve().parents[1] / 'cellctl'
-EXAMPLE = CELLCTL.parent / 'examples/model-policy.json'
+CELLCTL = Path(__file__).resolve().parents[1] / 'testdata' / 'cellctl-shell-oracle.sh'
+EXAMPLE = Path(__file__).resolve().parents[1] / 'examples/model-policy.json'
 
 
 class ModelPolicyTests(unittest.TestCase):
@@ -126,7 +126,7 @@ else:
 
     def test_explicit_override_routes_provider_and_tier(self):
         r=self.resolve(provider='kimi',requested='opus')
-        self.assertEqual((r['model'],r['effort']),('k3[1m]','high'))
+        self.assertEqual((r['model'],r['effort']),('k3-256k','high'))
         r=self.resolve(harness='codex')
         self.assertEqual((r['provider'],r['harness']),('codex','codex'))
 
