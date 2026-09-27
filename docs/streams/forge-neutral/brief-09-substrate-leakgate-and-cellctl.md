@@ -141,13 +141,13 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `bash -n tools/cellctl/cellctl` | exit 0 — the script parses |
+| 1 | `bash -n tools/cellctl/testdata/cellctl-shell-oracle.sh` | exit 0 — the script parses |
 | 2 | `grep -c '^[\|] ' docs/streams/forge-neutral/leak-gate-shape.md` | ≥ 4 — the per-forge verdict-surface table and the three-state contract table are present as tables |
-| 3 | `tools/cellctl/cellctl new --help 2>&1 \| grep -c 'deskd-app-pem'` | ≥ 1, and the help text marks it as required on the GitHub path only — read as text, since the flag must still exist |
-| 4 | `tools/cellctl/cellctl new --forge gitlab --repo example/tracking --cells-yaml /tmp/cells.yaml 2>&1; echo $?` | **negative path**: exits non-zero naming the GitLab custody inputs it needs, and does NOT demand an App PEM; the row fails if the GitHub-only requirement still fires |
-| 5 | `tools/cellctl/cellctl new --forge github --repo example/tracking --cells-yaml /tmp/cells.yaml --orgs example-org 2>&1; echo $?` | **negative path**: still exits non-zero without `--deskd-app-pem` — the existing requirement survives on the forge where it applies |
-| 6 | `tools/cellctl/cellctl check --cell` — run against a cell whose configured forge is GitLab (manual: the verifier names the cell) | reports per-precondition ok/MISS for the GitLab preconditions; a GitHub-only precondition appears as MISS or as not-applicable, never as silently absent — read as text |
-| 7 | `grep -rn -e 'api.github.com' tools/cellctl/cellctl \| wc -l` | prints `0` — the host comes from the cell's configured forge endpoint, not a literal |
+| 3 | `tools/cellctl/testdata/cellctl-shell-oracle.sh new --help 2>&1 \| grep -c 'deskd-app-pem'` | ≥ 1, and the help text marks it as required on the GitHub path only — read as text, since the flag must still exist |
+| 4 | `tools/cellctl/testdata/cellctl-shell-oracle.sh new --forge gitlab --repo example/tracking --cells-yaml /tmp/cells.yaml 2>&1; echo $?` | **negative path**: exits non-zero naming the GitLab custody inputs it needs, and does NOT demand an App PEM; the row fails if the GitHub-only requirement still fires |
+| 5 | `tools/cellctl/testdata/cellctl-shell-oracle.sh new --forge github --repo example/tracking --cells-yaml /tmp/cells.yaml --orgs example-org 2>&1; echo $?` | **negative path**: still exits non-zero without `--deskd-app-pem` — the existing requirement survives on the forge where it applies |
+| 6 | `tools/cellctl/testdata/cellctl-shell-oracle.sh check --cell` — run against a cell whose configured forge is GitLab (manual: the verifier names the cell) | reports per-precondition ok/MISS for the GitLab preconditions; a GitHub-only precondition appears as MISS or as not-applicable, never as silently absent — read as text |
+| 7 | `grep -rn -e 'api.github.com' tools/cellctl/testdata/cellctl-shell-oracle.sh \| wc -l` | prints `0` — the host comes from the cell's configured forge endpoint, not a literal |
 | 8 | `grep -c 'gitlab' docs/cellctl.md` | ≥ 3 — the verb table and the custody hand-steps carry the GitLab shape |
 | 9 | `grep -c 'leak' docs/adopting-assay-gitlab.md` | ≥ 1 — the CI leak-sweep half the pilot found missing is in the runbook |
 | 10 | `cd tools/desk && go test ./cmd/deskflip/... -run TestMissingLeakGateIsCouldNotCheck -count=1 -v` | **negative path**: a change whose leak-gate verdict is ABSENT is treated as could-not-check by the ready-flip decision, not as a pass; the row fails if absence is silently tolerated |

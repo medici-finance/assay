@@ -15,8 +15,9 @@ import (
 )
 
 // This file ports the RUNTIME half of the CELL_MODEL_POLICY contract from the shell oracle
-// (tools/cellctl/cellctl's model_policy "hook" action, apply_model_policy's --settings blob,
-// policy_claude_preflight's settings scan and policy_preflight's up/check loop) — assay#1392.
+// (tools/cellctl/testdata/cellctl-shell-oracle.sh's model_policy "hook" action,
+// apply_model_policy's --settings blob, policy_claude_preflight's settings scan and
+// policy_preflight's up/check loop) — assay#1392.
 // policy.go resolves a role at LAUNCH; this file is what keeps a running Claude window, and the
 // child agents it dispatches, inside that resolution afterwards:
 //
