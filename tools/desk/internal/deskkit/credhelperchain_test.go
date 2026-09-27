@@ -554,6 +554,54 @@ var netrcLexCases = []netrcLexCase{
 	{"closing quote eats the byte before default, fusing it into a longer token (SR-1614-4)",
 		"\"x\"Xdefault login op\n", "red"},
 
+	// SR-1614-6/security (round 5): a raw or escaped newline byte inside a quote used to be
+	// read as ordinary quoted content, letting a quote opened on an inert line (a comment or a
+	// macdef body) absorb a real entry on a following line as part of the same "token" — hiding
+	// it from the scan instead of comparing it. Fail-first: all four rows below read GREEN
+	// before this fix; live git 2.55.0 + system libcurl on loopback presented the netrc
+	// credential for every one of them. Fixed by treating any newline inside a quote — raw or
+	// immediately after a backslash — as ending it unterminated, so these read could-not-check
+	// (curl would in fact refuse none of these — this check's own grammar simply stops trusting
+	// a quote across a line break) rather than silently green.
+	{"a quote opened in a comment line swallows the real entry on the next line (SR-1614-6/security)",
+		"# \"\nmachine HOST login op password pA\n# \"\n", "cnc"},
+	{"a quote opened in a comment line swallows a default entry on the next line (SR-1614-6/security)",
+		"# \"\ndefault login op password pE\n# \"\n", "cnc"},
+	{"a quote opened in a macdef body swallows the real entry that follows it (SR-1614-6/security)",
+		"macdef m\n\"\n\nmachine HOST login op password pB\nmacdef n\n\"\n\n", "cnc"},
+	{"an escaped (backslash-glued) newline inside a quote still swallows the real entry (SR-1614-6/security)",
+		"# \"x\\\nmachine HOST login op password pI\\\n# \"\n", "cnc"},
+
+	// SR-1614-6/correctness (round 5): curl-8.13 through curl-8.20 end an unquoted token at any
+	// byte <= 0x20 (every C0 control byte, not only the six isspace bytes), and, where the
+	// platform's char is signed, at any byte >= 0x80 too. isNetrcSpace's narrow set does not
+	// split on those bytes, so `machine\x01HOST` or `default\x01login` read as ONE fused token
+	// under the narrow passes alone and are never compared. Fail-first: all five rows below read
+	// GREEN before this fix (isNetrcWideBoundary and the third scan pass did not exist yet).
+	// Confirmed live, offline, against a real libcurl 8.19.0 build (conda-forge, loopback-only
+	// 127.0.0.1 server, no network to a real host): git presented the credential for each.
+	{"a C0 control byte (0x01) between machine and the host is a fused token pre-fix (SR-1614-6/correctness)",
+		"machine\x01HOST login op password p1\n", "red"},
+	{"a C0 control byte (0x1f) between machine and the host is a fused token pre-fix (SR-1614-6/correctness)",
+		"machine\x1fHOST login op password p2\n", "red"},
+	{"a high byte (0x80) between machine and the host is a fused token pre-fix (SR-1614-6/correctness)",
+		"machine\x80HOST login op password p3\n", "red"},
+	{"a C0 control byte (0x01) between default and login is a fused token pre-fix (SR-1614-6/correctness)",
+		"default\x01login op password p5\n", "red"},
+	{"a C0 control byte (0x01) glues a leading byte onto default pre-fix (SR-1614-6/correctness)",
+		"x\x01default login op password p6\n", "red"},
+
+	// SR-1614-7 (round 1): pins the no-skip pass (pass 1) on its own, since it is the only pass
+	// that ever needs to catch a keyword sitting immediately after a closing quote with no
+	// separator at all. Deleting pass 1 (mutation M3) leaves every other row in this table
+	// green, because no other row places the host or `default` directly after a closing quote.
+	// Confirmed live: libcurl 8.22.0 (curl-8.21+'s grammar lexer) sends the credential for this
+	// exact shape; 8.7.1 and 8.20.0 (both pre-8.21, which skip the byte after the quote instead)
+	// send nothing — so on a pre-8.21 host, TestCredChainNetrcMatchesCurl alone cannot pin this;
+	// TestCredChainNetrcLexer and the mutation below are what pin it.
+	{"a keyword glued directly to a closing quote with no separator is pinned to the no-skip pass (SR-1614-7)",
+		"\"x\"default login op password q1\n", "red"},
+
 	// FALSE-RED (Ruling 1's accepted cost): no curl reader we know of would authenticate from
 	// any of these — the host or `default` sits in a macro body, a hidden comment, or a value
 	// word, never in a position any known reader treats as a keyword — but the state-free scan
@@ -572,10 +620,18 @@ var netrcLexCases = []netrcLexCase{
 		"machine \nHOST login op\n", "red"},
 	{"hash inside a token is now a false red (host inside a hash-glued token)",
 		"machine other.example.invalid#x\nHOST login op\n", "red"},
-	{"closing quote eats the next byte of a keyword is now a false red (host survives the garbled keyword)",
-		"\"a\"machine HOST login op\n", "red"},
 	{"machine default is now a false red (`default` used as a value word, not the keyword)",
 		"machine default login op\n", "red"},
+
+	// NOT a false red, despite the same "closing quote glued to a keyword" shape as the row
+	// above: on curl-8.21+'s grammar lexer (the no-skip pass), the closing quote's very next
+	// byte starts the next token immediately, so "a"machine reads as two tokens, "a" and
+	// "machine", and curl authenticates for real (A-6). Confirmed live: libcurl 8.22.0 sent the
+	// credential for the analogous `"q"machine 127.0.0.1 login op password q3`; 8.7.1 and 8.20.0
+	// (pre-8.21, which skip the byte after the quote instead) sent nothing. This carries the
+	// same identity risk as SR-1614-7 below and is pinned the same way.
+	{"closing quote glued to a keyword is a true red on curl-8.21+, not only an accepted false red (A-6)",
+		"\"a\"machine HOST login op\n", "red"},
 
 	// A host or `default` genuinely absent from the file is still green: the scan reddens on
 	// token identity, not on netrc content in general.
