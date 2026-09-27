@@ -9,8 +9,8 @@ import _ "embed"
 //
 // The oracle can read its own source; a compiled binary cannot, so the text is embedded. What
 // keeps the copy honest is usage_test.go, which re-derives the header from
-// tools/cellctl/cellctl and fails when the two drift — the same "one source, proven equal"
-// shape the parity harness applies to the rest of the surface.
+// tools/cellctl/testdata/cellctl-shell-oracle.sh and fails when the two drift — the same "one
+// source, proven equal" shape the parity harness applies to the rest of the surface.
 //
 //go:embed usage.txt
 var usageText string

@@ -17,7 +17,7 @@ import (
 // is a red test rather than a silent divergence the parity matrix does not cover (`--help` is
 // not one of its verbs).
 func TestUsageMatchesOracle(t *testing.T) {
-	const oracle = "../../../cellctl/cellctl"
+	const oracle = "../../../cellctl/testdata/cellctl-shell-oracle.sh"
 	raw, err := os.ReadFile(oracle)
 	if err != nil {
 		t.Skipf("oracle not readable from this checkout (%v) — the parity harness covers the rest", err)
