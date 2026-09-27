@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# gen-shims-gh-token.test.sh — assay#1145: gen_shims' generated shim (tools/cellctl/cellctl,
-# gen_shims()) resolves gh's ambient credential BEFORE swapping HOME for the wrapped desk verb,
-# and threads it through as GH_TOKEN, so a `gh` subprocess the verb shells out to still
-# authenticates even though the verb's own config/state is isolated to the cell home.
+# gen-shims-gh-token.test.sh — assay#1145: gen_shims' generated shim (the shell oracle,
+# tools/cellctl/testdata/cellctl-shell-oracle.sh, gen_shims()) resolves gh's ambient credential
+# BEFORE swapping HOME for the wrapped desk verb, and threads it through as GH_TOKEN, so a `gh`
+# subprocess the verb shells out to still authenticates even though the verb's own config/state is isolated to the cell home.
 #
 # What it proves (each an `assert` below):
 #   isolation   the wrapped verb's OWN $HOME is still the cell home, unchanged (the regression
@@ -28,7 +28,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The binary under test. $CELLCTL lets the SAME suite run against either implementation
 # (the bash oracle, the default, or the Go port) — desk-containers/10.
-CELLCTL="${CELLCTL:-$HERE/../cellctl}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
+CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-shim-gh.XXXXXX")" && pwd -P)"
 trap 'rm -rf "$T"' EXIT
 fails=0
