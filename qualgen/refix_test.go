@@ -605,6 +605,80 @@ func TestRefix_ForeignRepoRegressionOf_CouldNotMeasure(t *testing.T) {
 	}
 }
 
+// TestRefix_UnmatchedRefBehindOrderingFailingCandidate_CouldNotMeasure is the
+// security lane's round-3 surviving F-refix-fail-open-missing-linkage
+// occurrence (explicitCandidates): F names TWO regression-of references — one
+// matching E1, whose fix landed AFTER F's inducer (fails the ordering rule),
+// and one (#9) matching NO identified fix. Round 2's fix surfaced an unmatched
+// reference only when ALL references were unmatched, so E1's ordering failure
+// scored F a covered, measured non-re-fix while the author's own #9 reference
+// — which could have named the qualifying earlier fix — was silently
+// discarded. With an unmatched named reference and no candidate satisfying
+// the ordering rule, F is could-not-measure (resolved=false).
+func TestRefix_UnmatchedRefBehindOrderingFailingCandidate_CouldNotMeasure(t *testing.T) {
+	e := DefectFix{FixCommitSHA: refixE1, FixPRNumber: 100, Tier: Tier1, Identified: Measured(true)}
+	f := DefectFix{FixCommitSHA: refixF1, FixPRNumber: 200, Tier: Tier1, Identified: Measured(true)}
+	tr := DefectTrace{FixCommit: refixF1, TraceState: TraceTraced, InducingCommits: []string{refixInd1}}
+
+	linkage := stubRegressionLinkage{
+		regressionOf: func(cand DefectFix) ([]RegressionRef, bool, error) {
+			if cand.FixCommitSHA == refixF1 {
+				return []RegressionRef{{PRNumber: 100}, {Issue: &IssueRef{Number: 9}}}, true, nil
+			}
+			return nil, false, nil
+		},
+	}
+	ct := fixedCommitTime{
+		refixE1:   time.Date(2024, 9, 1, 0, 0, 0, 0, time.UTC), // E fixed AFTER F's inducer — fails the ordering rule
+		refixInd1: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, "", time.Now())
+
+	if rec.LinkageCoverage.State != StateCouldNotMeasure {
+		t.Fatalf("expected linkage_coverage could-not-measure (an unmatched regression-of reference behind an ordering-failing candidate), got %+v", rec.LinkageCoverage)
+	}
+	if rec.RefixRate.State != StateCouldNotMeasure {
+		t.Fatalf("expected refix_rate could-not-measure, got %+v", rec.RefixRate)
+	}
+	if len(rec.Refixes) != 0 {
+		t.Fatalf("expected no counted re-fix, got %+v", rec.Refixes)
+	}
+}
+
+// TestRefix_UnmatchedRefAlongsideQualifyingCandidate_StillCounted is the
+// positive-control mirror of the round-3 fix: the unmatched reference rides
+// along as could-not-measure, but a matched candidate that SATISFIES the
+// ordering rule still earns the measured re-fix — positive evidence stands;
+// only a measured NON-re-fix requires every named reference resolvable.
+func TestRefix_UnmatchedRefAlongsideQualifyingCandidate_StillCounted(t *testing.T) {
+	e := DefectFix{FixCommitSHA: refixE1, FixPRNumber: 100, Tier: Tier1, Identified: Measured(true)}
+	f := DefectFix{FixCommitSHA: refixF1, FixPRNumber: 200, Tier: Tier1, Identified: Measured(true)}
+	tr := DefectTrace{FixCommit: refixF1, TraceState: TraceTraced, InducingCommits: []string{refixInd1}}
+
+	linkage := stubRegressionLinkage{
+		regressionOf: func(cand DefectFix) ([]RegressionRef, bool, error) {
+			if cand.FixCommitSHA == refixF1 {
+				return []RegressionRef{{PRNumber: 100}, {Issue: &IssueRef{Number: 9}}}, true, nil
+			}
+			return nil, false, nil
+		},
+	}
+	ct := fixedCommitTime{
+		refixE1:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), // E fixed BEFORE F's inducer — satisfies the ordering rule
+		refixInd1: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, "", time.Now())
+
+	if rec.RefixCount.State != StateMeasured || rec.RefixCount.Value != 1 {
+		t.Fatalf("expected refix_count measured 1 (a qualifying matched candidate stands despite an unmatched sibling reference), got %+v", rec.RefixCount)
+	}
+	if len(rec.Refixes) != 1 || rec.Refixes[0].EarlierFixPRNumber != 100 {
+		t.Fatalf("expected the E pairing counted, got %+v", rec.Refixes)
+	}
+}
+
 // TestReport_RefixSection_Renders is Verify #6: over a fixture store holding
 // one planted re-fix, the rendered report's re-fix section names that fix's PR
 // number AND a rate of the expected value — dereferencing the rendered number

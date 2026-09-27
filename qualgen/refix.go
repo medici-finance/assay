@@ -184,6 +184,14 @@ func unmatchedLabel(ref RegressionRef, minedRepo string) string {
 // `owner/repo#N` reference certainly does). Reporting that as a resolved,
 // matchless link would score F as a measured non-re-fix; it is
 // could-not-measure instead.
+//
+// The same holds when SOME references matched and others did not: the matched
+// candidates still go forward (one that satisfies the ordering rule earns the
+// measured re-fix — positive evidence stands), but every unmatched reference
+// rides along as could-not-measure, so a measured NON-re-fix is only ever
+// reported when every named reference resolved. evaluateFix's pendingCNM
+// governs, exactly the shape classCandidates gives an errored E-side label
+// read.
 func explicitCandidates(linkage RegressionLinkage, f DefectFix, allFixes []DefectFix, minedRepo string) (cands []candidateLink, resolved, couldNotMeasure bool, reason string) {
 	refs, ok, err := linkage.RegressionOf(f)
 	if err != nil {
@@ -208,8 +216,16 @@ func explicitCandidates(linkage RegressionLinkage, f DefectFix, allFixes []Defec
 			unmatched = append(unmatched, unmatchedLabel(ref, minedRepo))
 		}
 	}
-	if len(cands) == 0 {
-		return nil, false, true, fmt.Sprintf("regression-of names %s, which matches no identified fix", strings.Join(unmatched, ", "))
+	if len(unmatched) > 0 {
+		// couldNotMeasure=true even when cands is non-empty (mirroring
+		// classCandidates' errored-E shape — see its doc comment): an
+		// unmatched reference was named by F's author and never resolved, and
+		// if NO matched candidate satisfies the ordering rule it could have
+		// named the qualifying earlier fix — a measured non-re-fix is blocked
+		// until every named reference resolves. evaluateFix's pendingCNM
+		// decides; a matched candidate that DOES satisfy the ordering rule
+		// still earns the measured re-fix.
+		return cands, len(cands) > 0, true, fmt.Sprintf("regression-of names %s, which matches no identified fix", strings.Join(unmatched, ", "))
 	}
 	return cands, true, false, ""
 }

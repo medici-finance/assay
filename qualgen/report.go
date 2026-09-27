@@ -453,7 +453,7 @@ func renderMeasureFloat(m Measure[float64]) string {
 	case StateMeasuredZero:
 		return "0"
 	case StateCouldNotMeasure:
-		return "not measured (" + m.Reason + ")"
+		return "not measured (" + renderReason(m.Reason) + ")"
 	default:
 		return "not measured (no state)"
 	}
@@ -467,10 +467,19 @@ func renderMeasureInt(m Measure[int]) string {
 	case StateMeasuredZero:
 		return "0"
 	case StateCouldNotMeasure:
-		return "not measured (" + m.Reason + ")"
+		return "not measured (" + renderReason(m.Reason) + ")"
 	default:
 		return "not measured (no state)"
 	}
+}
+
+// renderReason makes a could-not-measure Reason safe inside a markdown table
+// cell. The reason is repo-controlled but not markdown-safe (frontmatter
+// values, adapter error text): a raw `|` breaks the row and a raw newline
+// breaks the table outright, so pipes are escaped (via mdCell) and newlines
+// flatten to spaces.
+func renderReason(s string) string {
+	return mdCell(strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(s))
 }
 
 // sortScore maps a hotspot Measure to a sort key: could-not-measure sorts last

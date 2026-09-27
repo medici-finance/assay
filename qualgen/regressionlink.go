@@ -68,7 +68,10 @@ var briefTrailerPattern = regexp.MustCompile(`(?m)^Brief:\s*([A-Za-z0-9][A-Za-z0
 // regressionOfPattern reads the `regression-of:` frontmatter scalar (author-brief
 // SKILL.md rule 14's format: `regression-of: <issue ref or sha>`) out of a
 // brief's frontmatter block only — never a `regression-of` occurrence in the
-// prose body, which frontmatterBlock excludes.
+// prose body, which frontmatterBlock excludes. FindStringSubmatch reads the
+// FIRST match only: a second `regression-of:` line in the same frontmatter
+// block is silently unread — an accepted limitation, since duplicate YAML
+// keys are already malformed frontmatter.
 var regressionOfPattern = regexp.MustCompile(`(?m)^regression-of:\s*(.+?)\s*$`)
 
 // issueRefPattern / repoIssueRefPattern / shaPattern classify a `regression-of:`
