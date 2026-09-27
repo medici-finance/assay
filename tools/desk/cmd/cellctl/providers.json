@@ -152,7 +152,7 @@
           ]
         },
         "strong": {
-          "model": "k3[1m]",
+          "model": "k3-256k",
           "effort": "high",
           "supported_efforts": [
             "low",
@@ -161,7 +161,7 @@
           ]
         },
         "mid": {
-          "model": "k3[1m]",
+          "model": "k3-256k",
           "effort": "high",
           "supported_efforts": [
             "low",

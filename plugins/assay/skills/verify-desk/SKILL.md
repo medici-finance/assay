@@ -129,8 +129,8 @@ not own.
 3. **Land each verdict as it returns** via `deskevidence` (below) — never a wave buffered to the end.
    **How many verifiers may be in flight at once is `deskroster width --role verify-desk`, re-read
    every tick.** This desk's declared default is the MEASURED SAFE WIDTH — the shipped default in
-   the tools' width table is the number (a parallel drain of six was carried for a full window
-   without a rate-limit trip; the sequential width-1 drain it replaced is retired as the default),
+   the tools' width table is the number (measured: a parallel drain of six ran a full window
+   without a rate-limit trip),
    and the width exists so the coordinator can move it when `deskboard throughput` names verify as
    the bottleneck, without this body carrying a number that could drift from the tools. **A width
    this desk sets itself persists for the life of the window:** a set width decays to the default
@@ -183,6 +183,25 @@ plan's decision, do not second-guess it**:
   `verified`/`done` — it is scheduling evidence only; the flip stays the ordinary
   implemented→verified→done path a NON-implementer runs on merged main.
 
+**Writing a receipt: three fields reviewers keep bouncing.** Each of these has blocked Evidence
+PRs one at a time (#882 records the pattern). Get them right before the row lands:
+
+- **`inputs` declares the deliverables, not just the brief.** Add one `file:<repo-relative-path>`
+  key for every path in the brief's `## Context` `files:` list that exists at the receipt's `sha`,
+  with at least one file under each listed directory, next to the brief itself and `tool`. A
+  receipt that declares only the brief and the tool never wakes when the deliverable is fixed,
+  which is the one change it exists to notice.
+- **`blocker_ref` is a real issue or PR reference**: `#N`, or `<owner>/<repo>#N` for a sibling
+  repo. When no tracking issue exists yet, file the bug first and cite its number. Never write a
+  placeholder ("to file") or a sentence in this field; the blocker's description belongs in `note`.
+- **The brief's `file:` revision is the brief AS IT LANDS.** That is the SHA-256 of the brief on
+  your Evidence branch after your Evidence rows are appended, not the pre-Evidence copy at the
+  receipt's `sha`. The wake reader hashes the file in the merged tree, which includes your append,
+  so a hash of the pre-Evidence brief makes the receipt fire the moment it lands. Write the outcome
+  row last, after every edit to the brief on that branch. A later merge of main into the branch is
+  not such an edit: never re-hash over it. If that merge changed the brief, the receipt fires when it
+  lands, which is correct, because the brief changed after the verify run.
+
 **Sibling repos are in scope** (human:<name>, 2026-07-10, F-23): a brief whose deliverables land
 cross-repo is verified in the sibling checkout — read the set from `deskroster repos`, never a
 hardcoded list; an uncloned repo is **could-not-check** for that row, never a fail. Resync the
@@ -217,11 +236,11 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
   A `verified`/`done` closure this branch makes with no witness for a Verify row is a hard lint
   PROBLEM, not the softer per-stream NOTICE the inherited backlog still gets.
 - **Tier — the two-stamp model.** The routine drain runs at the **LOCAL SESSION MODEL, never a
-  stronger external/paid tier** (human:<name>, 2026-07-15 — overrides any `opus+` default in an older
-  copy). A risk-clear brief (gate `model`, all risk answers `no`) is the normal path and most of the
-  queue, and the local tier is its only stamp. A **risk-flagged** brief (`gate: human` or any `yes`)
-  may have its Verify table RUN for the Evidence but **cannot be signed off by a model** — route it to
-  the human gate — and a `gate: human` brief carries TWO stamps before the human closes it: the drain's
+  stronger external/paid tier** (human:<name>, 2026-07-15). A risk-clear brief (gate `model`, all
+  risk answers `no`) is the normal path and most of the queue, and the local tier is its only
+  stamp. A **risk-flagged** brief (`gate: human` or any `yes`) may have its Verify table RUN for
+  the Evidence but **cannot be signed off by a model** — route it to the human gate — and a
+  `gate: human` brief carries TWO stamps before the human closes it: the drain's
   local-tier PASS (first stamp), then ONE floor-tier re-verify (second stamp), the single sanctioned
   pass above the local tier, one per human-gated brief — see "`gate: human` — the two stamps" below.
   Read each brief's own frontmatter; never default the queue to one treatment.
@@ -450,6 +469,45 @@ a branch as the target instead of `main`:
    merge follows the reviewer's approval and the required status with no further action; where it has
    not, the PR waits on a human merge. Either way the brief's row is `verified` the moment the Evidence
    PR merges, and the `gate: model` verified→done flip stays CI's (see below).
+4. **Keep a reviewed Evidence PR mergeable: every state has exactly one owner.** Expect an open
+   Evidence PR to go `CONFLICTING` whenever a sibling Evidence PR lands. Every landing appends to the
+   same outcomes log, and the forge computes mergeability and performs the merge server-side, where a
+   `.gitattributes` merge driver is never applied: the log's `merge=union` resolves a LOCAL merge
+   only. (This conflict class is tracked in #882.) Read each of your open Evidence PRs against the
+   table below and act on the rows this desk owns. Merge main locally, where the union driver
+   applies, merge-never-rebase, then push. A conflict in any file other than the outcomes log is
+   authored work: resolve it and say so on the PR.
+
+A PR's state is three facts. **Verdict:** `none` (some required review lane has never given a
+verdict and none is blocking), `blocking` (any lane's latest verdict is a CHANGES_REQUESTED, an open
+finding or a security fail), or `clear` (every required lane's latest verdict passes). **At head:**
+whether the current head is the head that latest verdict was given at. A push after the verdict, a
+fix or a merge of main, makes it `no`. **Mergeable:** `MERGEABLE`, `CONFLICTING` or `UNKNOWN`, as the
+forge reports it. Read the rows top to bottom; the first match is the state.
+
+| # | State | Owner | Next move |
+|---|---|---|---|
+| 1 | Merged or closed | nobody | done |
+| 2 | Mergeable `UNKNOWN` | whoever reads it | nothing: re-read on the next pass |
+| 3 | Verdict `none` | review desk | first review of each missing lane, at any mergeability |
+| 4 | Verdict `blocking`, at head `yes` (not yet answered by a push) | this desk | fix and push |
+| 5 | `CONFLICTING`, and verdict `clear`, or at head `no` (answered by a push, awaiting re-review) | this desk | merge main and push, whether or not an approval is at the current head |
+| 6 | `MERGEABLE`, at head `no` | review desk | re-review the delta |
+| 7 | `MERGEABLE`, verdict `clear`, at head `yes` | review desk | flip |
+
+The rows are exclusive, because the first match wins, and exhaustive. Over the 18 combinations of
+verdict × at head × mergeable: the 6 `UNKNOWN` ones are row 2; the 4 `none` ones are row 3;
+`blocking` at head, `MERGEABLE` or `CONFLICTING`, are row 4; the 3 other `CONFLICTING` ones
+(`blocking` not at head, `clear` at head, `clear` not at head) are row 5; the 2 `MERGEABLE` ones
+not at head are row 6; `clear` at head `MERGEABLE` is row 7. 6 + 4 + 2 + 3 + 2 + 1 = 18.
+
+A PR whose fix is pushed and which re-conflicts before its re-review is row 5, not row 4: the
+finding still stands formally, but it has been answered, so this desk merges main. **One at a time:**
+merge main into the oldest row-5 PR only. Take the next one only after that PR has been flipped,
+merged or closed, or has gone back to row 4. When it re-conflicts, merge it again at once. **Stop
+condition:** stop merging main into a PR once it is `MERGEABLE`, while it is in row 4 (fix first),
+and once it is merged or closed. Never merge main into a PR in any other row: a row-3 PR is reviewed
+as it is, and an extra merge only adds another re-review round.
 
 **Land-as-each-verdict-arrives still applies** — the PR replaces the push, not the cadence. Buffering a
 wave of Evidence PRs to the end of the pass is the same defect as buffering pushes: a PASS in hand and

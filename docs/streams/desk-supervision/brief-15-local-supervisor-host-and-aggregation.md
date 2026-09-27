@@ -43,7 +43,7 @@ exec-tier-why: >-
   recycle under the operator's credentials, where a scoping slip is not caught by a happy-path test.
 decision-trigger: creation
 consumers:
-  - "tools/cellctl/cellctl (the `--kind house` + DESKD=1 path and `check_house`): fixed-here (standing + proving a local deskd on a house cell becomes a supported, checked path, not a check-only n/a)"
+  - "tools/cellctl/testdata/cellctl-shell-oracle.sh (the `--kind house` + DESKD=1 path and `check_house`): fixed-here (standing + proving a local deskd on a house cell becomes a supported, checked path, not a check-only n/a)"
   - "tools/cellctl/tests/house-cell.test.sh: fixed-here (a DESKD=1 case proves the house deskd is required, stood, and supervises the cell's desks)"
   - "schemas/desksupervise-aggregate-v1.json (new): fixed-here (the aggregation CONTRACT — per-cell vitals roll-up + fleet ops view — as a published schema a console/fleet view consumes)"
   - "tools/desk/cmd/desksupervise/aggregate.go (new): fixed-here (a reference emitter that reads N cells' status.json/beacons and emits the aggregate document, so the contract is executable and testable offline)"
@@ -61,7 +61,7 @@ id: b394892e-6e4b-48aa-94f0-1167f195cd86
 ## Context
 
 files:
-- `tools/cellctl/cellctl` — make the `--kind house` + `DESKD=1` path first-class: stand the
+- `tools/cellctl/testdata/cellctl-shell-oracle.sh` — make the `--kind house` + `DESKD=1` path first-class: stand the
   local deskd (the existing `cellctl deskd` path applied to a house cell) and have
   `check_house` PROVE (not report n/a) that the deskd is up and supervising the cell's desks
   when `DESKD=1`.

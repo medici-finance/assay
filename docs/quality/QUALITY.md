@@ -802,6 +802,12 @@ Churn volume: 759345 new line(s), 15854 churned line(s) within the 14-day window
 
 not measured — populated by quality/06–07 (defect-fix identification + SZZ trace). Never rendered as 0.
 
+## Re-fix rate (regression-suite effectiveness)
+
+Report-only: no threshold, budget or alarm — thresholds follow after ≥ 2 measured windows (spec §9.6, §13).
+
+not measured — populated once the defects table is traced (quality/06–07) and a RegressionLinkage adapter is configured. Never rendered as 0.
+
 ## Per-stage ledger (M3)
 
 not measured — populated by quality/10 (stage attribution). Never rendered as 0.
