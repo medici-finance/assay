@@ -383,6 +383,14 @@ as the planner and acts on its rows.
   review (the board computes this; don't hand-diff). Keep-current merges are expected work, not
   noise — except one that had to **resolve a conflict**, which edits the PR's own files and shows
   as RE-REVIEW instead: review the resolution, it is authored work.
+- **Evidence PRs re-conflict by design.** A verify desk's Evidence PR goes `CONFLICTING` whenever
+  a sibling Evidence PR lands: they all append to one outcomes log, and the forge's server-side
+  merge applies no `.gitattributes` merge driver (#882). The verify desk merges main into one such
+  PR just-in-time, when it is next to flip, and because the log is one of the PR's own files that
+  merge shows here as RE-REVIEW. Give that re-review priority, since it is the PR next to flip, and
+  scope it to the delta: the PR's own log lines survive intact, the merge added nothing else, and
+  the rest of the diff is unchanged. Do not spend a slot re-reviewing an Evidence PR that is still
+  `CONFLICTING`: its head moves again before it can flip.
 - **BLOCKED** → the latest review flags a blocker; the worker owns the fix, and the next push
   re-fires the monitor. **CHECK** → a bot review exists at head but is neither APPROVED nor
   CHANGES_REQUESTED (e.g. only a `--comment`): read it and re-dispatch for a decisive verdict.

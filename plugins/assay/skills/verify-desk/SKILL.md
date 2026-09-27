@@ -183,6 +183,22 @@ plan's decision, do not second-guess it**:
   `verified`/`done` — it is scheduling evidence only; the flip stays the ordinary
   implemented→verified→done path a NON-implementer runs on merged main.
 
+**Writing a receipt: three fields reviewers keep bouncing.** Each of these has blocked Evidence
+PRs one at a time (#882 records the pattern). Get them right before the row lands:
+
+- **`inputs` declares the deliverables, not just the brief.** Add one `file:<repo-relative-path>`
+  key for every path in the brief's `## Context` `files:` list that exists at the receipt's `sha`,
+  with at least one file under each listed directory, next to the brief itself and `tool`. A
+  receipt that declares only the brief and the tool never wakes when the deliverable is fixed,
+  which is the one change it exists to notice.
+- **`blocker_ref` is a real issue or PR reference**: `#N`, or `<owner>/<repo>#N` for a sibling
+  repo. When no tracking issue exists yet, file the bug first and cite its number. Never write a
+  placeholder ("to file") or a sentence in this field; the blocker's description belongs in `note`.
+- **Every `file:` revision is taken at the receipt's `sha`.** Hash the file's bytes as they are at
+  that commit (the SHA-256 of `git show <sha>:<path>`), never the copy in whatever checkout you
+  happen to be in. A hash taken from a later tree records an edit the verify run never saw, and the
+  receipt misfires when it lands.
+
 **Sibling repos are in scope** (human:<name>, 2026-07-10, F-23): a brief whose deliverables land
 cross-repo is verified in the sibling checkout — read the set from `deskroster repos`, never a
 hardcoded list; an uncloned repo is **could-not-check** for that row, never a fail. Resync the
@@ -450,6 +466,17 @@ a branch as the target instead of `main`:
    merge follows the reviewer's approval and the required status with no further action; where it has
    not, the PR waits on a human merge. Either way the brief's row is `verified` the moment the Evidence
    PR merges, and the `gate: model` verified→done flip stays CI's (see below).
+4. **Keep it current just-in-time, one PR at a time.** Expect an open Evidence PR to go `CONFLICTING`
+   the moment a sibling Evidence PR lands. Every landing appends to the same outcomes log, and the
+   forge computes mergeability and performs the merge server-side, where a `.gitattributes` merge
+   driver is never applied: the log's `merge=union` resolves a LOCAL merge only. (This conflict class
+   is tracked in #882.) So merge main into an Evidence PR only when it is next to flip: its review
+   lanes are otherwise clear at its current head and nothing but the conflict stands between it and
+   the flip. Oldest such PR first. Merge locally, where the union driver applies, merge-never-rebase,
+   then push, and let the review desk know it is ready for its re-review. **Never sweep main into
+   every open Evidence PR at once.** Each merge moves that PR's head past its approval, so every one
+   then needs a re-review, and the next landing re-conflicts all of them again. A conflict in any
+   file other than the outcomes log is authored work: resolve it and say so on the PR.
 
 **Land-as-each-verdict-arrives still applies** — the PR replaces the push, not the cadence. Buffering a
 wave of Evidence PRs to the end of the pass is the same defect as buffering pushes: a PASS in hand and
