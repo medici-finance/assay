@@ -851,6 +851,21 @@ func TestCoverageWitnessScopeNeverFailsOpen(t *testing.T) {
 			writes("src/a/deep.go", "v1\n"), writes("src/a/deep.go", "v2\n")},
 		{"X3 mid-pattern ** that path.Match reads as one segment", "`src/**/*.go`", "`src/**/*.go`",
 			writes("src/a/x.go", "v1\n", "src/a/b/y.go", "v1\n"), writes("src/a/b/y.go", "v2\n")},
+		// Round-4 re-review (head 981623aeb, review 5330931191): F6 / security S6
+		// — a `files:` token with no '/' and no '.' was dropped by the
+		// path-shape filter before it ever reached declaredEntryResolves, so a
+		// REAL dotless declaration (a top-level `Makefile`, a bare directory
+		// name) was silently left outside the scope (P1-P3), and a dotless
+		// token naming nothing never forced the conservative fallback the way
+		// its dotted counterpart already did (P6).
+		{"P1 backticked dotless declared file (Makefile)", "`src/impl.go`, `Makefile`", "`src/impl.go`, `Makefile`",
+			writes("src/impl.go", "v1\n", "Makefile", "v1\n"), writes("Makefile", "v2\n")},
+		{"P2 backticked dotless declared directory", "`src/impl.go`, `tools`", "`src/impl.go`, `tools`",
+			writes("src/impl.go", "v1\n", "tools/x.go", "v1\n"), writes("tools/x.go", "v2\n")},
+		{"P3 unbackticked inline dotless declared file", "src/impl.go, Makefile", "src/impl.go, Makefile",
+			writes("src/impl.go", "v1\n", "Makefile", "v1\n"), writes("Makefile", "v2\n")},
+		{"P6 backticked dotless entry resolving to nothing falls back conservative", "`src/impl.go`, `nosuchthing`", "`src/impl.go`, `nosuchthing`",
+			writes("src/impl.go", "v1\n", "lib/other.go", "v1\n"), writes("lib/other.go", "v2\n")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -918,5 +933,110 @@ func TestCoverageBriefOwnFileNeverInvalidates(t *testing.T) {
 				t.Fatalf("a change to only the brief's own file must release, got %+v", c)
 			}
 		})
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Round-4 re-review (head 981623aeb, review 5330940083): S8 — a witness tree
+// token must be SHA-shaped before it is ever handed to git as a revision
+// expression; S9 — the two fail-closed guards a bound `observe` claim and a
+// zero-claim brief depend on now each have a test that fails when the guard is
+// removed.
+// -----------------------------------------------------------------------------
+
+// TestCoverageWitnessTokenMustBeHexShaped — security pr1682-S8:
+// classifyRevision compared a witness's recorded tree token to the item's
+// revision by handing it to git as a raw revision expression, with no check
+// that it was a commit SHA. A hand-edited Evidence row can carry a SYMBOLIC
+// expression instead — `HEAD^{commit}` here, at least `minRevisionTokenLen`
+// characters and not itself hex — which git resolves to whatever is currently
+// checked out. That makes it its own ancestor with an empty diff forever, so
+// the claim reads `pass` even after the declared file it speaks for changes:
+// unlike a forged-but-real hex SHA, which goes `wrong-revision` on the very
+// next in-scope change, a symbolic token never does. `verifyrun` itself only
+// ever writes a hex SHA (treeSHALen), so only a hand-edited row can carry this
+// shape.
+func TestCoverageWitnessTokenMustBeHexShaped(t *testing.T) {
+	s, root := mustCoverageStream(t, "cov")
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
+	writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", "`src/impl.go`", verify, "")
+	mustWriteFile(t, root, "src/impl.go", "v1\n")
+	mustGitInit(t, root)
+
+	// Hand-edited Evidence: a symbolic tree token — not a hex SHA — that
+	// nonetheless resolves to the checked-out HEAD via git.
+	ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, "HEAD^{commit}"))
+	writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", "`src/impl.go`", verify, ev)
+	mustWriteFile(t, root, "src/impl.go", "v2\n")
+	mustGitCommitAll(t, root, "record Evidence with a symbolic witness token; change the declared file")
+
+	c := evaluateCoverage(root, []*Stream{s}, coverageOptions{})["cov/01"]
+	if len(c.Claims) != 1 {
+		t.Fatalf("want exactly one claim, got %+v", c.Claims)
+	}
+	if got := c.Claims[0].Result; got == covPass {
+		t.Fatalf("a non-hex witness token must never resolve pass after the declared file it speaks for changed, got %+v", c.Claims[0])
+	}
+}
+
+// TestCoverageBoundObserveClaimHolds — security pr1682-S9(1): a
+// workflow-pattern-v1 node's mandatory `observe` evidence entry has no reader
+// wired yet (resolvePatternEvidenceClaim always resolves it could-not-check,
+// with or without a `source`), so a brief bound to such a node must be HELD,
+// never vacuously released. No committed test exercised this before — the
+// reviewer's M-b mutation (observe resolves `pass`) survived the full suite.
+func TestCoverageBoundObserveClaimHolds(t *testing.T) {
+	pat := patternDoc{
+		Name: "fixture-observe-pattern",
+		NodeByID: map[string]patternNode{
+			"deploy": {ID: "deploy", Kind: "effect", Role: "deployer", Evidence: []patternEvidence{
+				{Kind: "observe", Claim: "error-rate-window", Mandatory: true, Source: "prometheus:error-rate"},
+			}},
+		},
+	}
+	opts := coverageOptions{
+		Bindings: map[string]coverageBinding{"cov/01": {Pattern: "fixture-observe-pattern", Node: "deploy"}},
+		Patterns: map[string]patternDoc{"fixture-observe-pattern": pat},
+	}
+	s, root := mustCoverageStream(t, "cov")
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
+	writeCoverageBrief(t, s.Dir, "01", "cov", verify, "")
+	w := mustGitInit(t, root)
+	ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, w))
+	writeCoverageBrief(t, s.Dir, "01", "cov", verify, ev)
+
+	cov := evaluateCoverage(root, []*Stream{s}, opts)
+	c := cov["cov/01"]
+	if c.Released {
+		t.Fatalf("a bound mandatory observe claim has no reader wired yet and must hold, got released: %+v", c)
+	}
+	found := false
+	for _, cl := range c.Claims {
+		if cl.Claim == "error-rate-window" && cl.Result == covCouldNotCheck {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want a could-not-check claim for the observe evidence entry, got %+v", c.Claims)
+	}
+}
+
+// TestCoverageZeroClaimsBriefIsHeld — security pr1682-S9(2): a brief with no
+// Verify rows and no pattern binding has nothing coverage can corroborate, so
+// it must be HELD, never vacuously released. No committed test constructed a
+// genuinely zero-claim brief before — the reviewer's M-d mutation (this guard
+// removed) survived the full suite.
+func TestCoverageZeroClaimsBriefIsHeld(t *testing.T) {
+	s, root := mustCoverageStream(t, "cov")
+	writeCoverageBrief(t, s.Dir, "01", "cov", "", "")
+	mustGitInit(t, root)
+
+	cov := evaluateCoverage(root, []*Stream{s}, coverageOptions{})
+	c := cov["cov/01"]
+	if c.Released {
+		t.Fatalf("a brief with no Verify rows and no pattern binding must be held, not vacuously released, got %+v", c)
+	}
+	if len(c.Claims) != 1 || c.Claims[0].Result != covMissing {
+		t.Fatalf("want exactly one missing claim, got %+v", c.Claims)
 	}
 }

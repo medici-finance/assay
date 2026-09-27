@@ -153,6 +153,22 @@ type BriefFile struct {
 	// at least one path. false is a COULD-NOT-CHECK for any consumer — never round
 	// it up to "no risky paths" (docs/three-state-instrument-rule.md).
 	DeclaredPathsFound bool
+	// DeclaredEntriesRaw are every `files:` token the label line names, UNFILTERED
+	// by path shape — unlike DeclaredPaths, a dotless entry (a top-level `Makefile`,
+	// a bare directory name) is kept. Parsed by extractContextDeclaredEntriesRaw.
+	// coverage.go's witnessScope uses this, never DeclaredPaths: a witness scope
+	// must know about EVERY entry a brief declares, resolvable or not, so an entry
+	// that names nothing real can force the conservative fallback
+	// (declaredEntryResolves) instead of silently narrowing the scope by omission
+	// (round-3 F6, security pr1682-S6). DeclaredPaths stays the path-shape-filtered
+	// view the mistake-proofing/01 cross-read and the obligation-derivation lint
+	// rely on, where a bare symbol name in a backticked span must not be mistaken
+	// for a declared path.
+	DeclaredEntriesRaw []string
+	// DeclaredEntriesRawFound mirrors DeclaredPathsFound for DeclaredEntriesRaw:
+	// true only when the `files:` label line was present AND yielded at least one
+	// entry, raw or not.
+	DeclaredEntriesRawFound bool
 
 	// ---- brief-v2 reserved keys (derived-board/03) ----
 	// These are populated ONLY for `schema: brief-v2` files. All are OPTIONAL under
@@ -898,6 +914,7 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 	bf.Verify = extractSectionByPrefix(body, "Verify")
 	bf.Body = body
 	bf.DeclaredPaths, bf.DeclaredPathsFound = extractContextDeclaredPaths(body)
+	bf.DeclaredEntriesRaw, bf.DeclaredEntriesRawFound = extractContextDeclaredEntriesRaw(body)
 	return bf, true, nil
 }
 
@@ -1007,6 +1024,111 @@ func extractContextDeclaredPaths(body string) (paths []string, found bool) {
 		}
 	}
 	return paths, len(paths) > 0
+}
+
+// extractContextDeclaredEntriesRaw reads the same `files:` label line as
+// extractContextDeclaredPaths, but keeps EVERY cleaned token — including a
+// dotless one (no '/' and no '.') the path-shape filter would drop, such as a
+// real top-level `Makefile` or a bare directory name. coverage.go's
+// witnessScope is the only consumer: it needs to know about every entry a
+// brief declares, resolvable or not, because a witness scope narrows by
+// OMISSION whenever a real entry never reaches it — round-3 F6 / security
+// pr1682-S6 found exactly that: a dotless real path silently left out of the
+// scope, and a dotless token naming nothing never tripping the conservative
+// fallback, because both were dropped before declaredEntryResolves ever saw
+// them.
+//
+// Unlike extractContextDeclaredPaths's single blob-wide pass, the BULLETED
+// form here is walked line by line: a bullet or continuation line that
+// itself carries a backtick span contributes each span; one that carries
+// none still contributes its leading token, even inside a `files:` block
+// where OTHER bullets do have backticks. The prior whole-blob pass took
+// ONLY backtick spans the moment any bullet in the block had one, so a
+// plain, backtick-less bullet sitting next to a backticked one contributed
+// nothing at all — silently speaking for nothing instead of forcing the
+// conservative fallback the way an unresolvable entry should.
+func extractContextDeclaredEntriesRaw(body string) (entries []string, found bool) {
+	ctx := extractSectionByPrefix(body, "Context")
+	if strings.TrimSpace(ctx) == "" {
+		return nil, false
+	}
+	lines := strings.Split(ctx, "\n")
+	labelIdx := -1
+	var inline string
+	for i, l := range lines {
+		if m := contextFilesLabelRe.FindStringSubmatch(l); m != nil {
+			labelIdx = i
+			inline = strings.TrimSpace(m[1])
+			break
+		}
+	}
+	if labelIdx < 0 {
+		return nil, false
+	}
+
+	seen := map[string]bool{}
+	add := func(tok string) {
+		tok = cleanDeclaredPath(tok)
+		if tok == "" || seen[tok] {
+			return
+		}
+		seen[tok] = true
+		entries = append(entries, tok)
+	}
+
+	if inline != "" {
+		inline = mdLinkTextRe.ReplaceAllString(inline, "$1")
+		// When the inline value carries any backtick span, an entry is only
+		// what sits INSIDE a span — the same rule the bulleted form applies
+		// per line. A decorative connector sitting outside every span (a
+		// trailing `(new)`/`(planned)` annotation, a bare `+` or `and`
+		// joining two backticked entries) is not itself a declared entry;
+		// only the path-shape filter told them apart before, which is why a
+		// bare dotless token like that read no differently from a real
+		// dotless path such as `Makefile`. Only a fully backtick-less inline
+        // value (a bare `n/a`, a plain unbackticked path) falls back to a
+        // word split.
+		if spans := backtickSpanRe.FindAllStringSubmatch(inline, -1); len(spans) > 0 {
+			for _, m := range spans {
+				add(m[1])
+			}
+			return entries, len(entries) > 0
+		}
+		for _, tok := range strings.FieldsFunc(inline, func(r rune) bool {
+			return r == ',' || r == ' ' || r == '\t' || r == '`'
+		}) {
+			add(tok)
+		}
+		return entries, len(entries) > 0
+	}
+
+	var block []string
+	for _, l := range lines[labelIdx+1:] {
+		t := strings.TrimSpace(l)
+		if t == "" {
+			break
+		}
+		isBullet := strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* ")
+		isIndentedCont := l != t // a leading-whitespace continuation of a bullet
+		if !isBullet && !isIndentedCont {
+			break // a new flush-left label ends the files: block
+		}
+		block = append(block, l)
+	}
+	for _, l := range block {
+		if spans := backtickSpanRe.FindAllStringSubmatch(l, -1); len(spans) > 0 {
+			for _, m := range spans {
+				add(m[1])
+			}
+			continue
+		}
+		t := mdLinkTextRe.ReplaceAllString(strings.TrimSpace(l), "$1")
+		t = strings.TrimPrefix(strings.TrimPrefix(t, "- "), "* ")
+		if f := strings.Fields(t); len(f) > 0 {
+			add(f[0])
+		}
+	}
+	return entries, len(entries) > 0
 }
 
 // cleanDeclaredPath strips residual decoration from a candidate path token.

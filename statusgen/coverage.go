@@ -183,6 +183,7 @@ import (
 	"os/exec"
 	pathpkg "path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -522,6 +523,20 @@ const (
 // shorter than that proves nothing either way.
 const minRevisionTokenLen = treeSHALen
 
+// hexRevisionRe is the shape classifyRevision requires of a witness token
+// (after witnessBaseRevision strips its `+dirty`/`+unknown` suffix) before it
+// is ever passed to git as a revision expression (security pr1682-S8).
+// `witnessTreeOf` lifts the Runner cell's `@ <tree>` token as free text, and
+// git accepts far more than a commit SHA as a "revision" — an ancestry suffix
+// (`HEAD~0`), a full ref name, an abbreviated ref — so a hand-edited Evidence
+// row naming one of those can resolve to whatever the checked-out HEAD
+// happens to be and stay `pass` forever: a symbolic token never goes stale
+// the way a forged-but-real hex SHA does (it goes `wrong-revision` on the
+// next in-scope change). `verifyrun` itself only ever writes a lowercase hex
+// SHA (treeSHALen, §"treeSHALen" in verifyrun.go), so this shape check
+// rejects nothing a real witness ever produces.
+var hexRevisionRe = regexp.MustCompile(`^[0-9a-fA-F]{12,40}$`)
+
 // witnessBaseRevision strips the `+dirty` / `+unknown` suffix verifyrun's
 // treeSHA appends, leaving the commit the witness ran on top of. The suffix
 // records the witness run's OWN cleanliness, not a different identity — see
@@ -556,6 +571,9 @@ func classifyRevision(root string, scope witnessScope, witnessTree, target strin
 	if len(w) < minRevisionTokenLen || len(t) < minRevisionTokenLen {
 		return revisionUnestablished
 	}
+	if !hexRevisionRe.MatchString(w) || !hexRevisionRe.MatchString(t) {
+		return revisionUnestablished
+	}
 	n := len(w)
 	if len(t) < n {
 		n = len(t)
@@ -585,9 +603,11 @@ type witnessScope struct {
 }
 
 // newWitnessScope builds a brief's witnessScope from its CURRENT parsed `files:`
-// line (BriefFile.DeclaredPaths). A missing/unparseable declaration leaves
-// declared nil and selects the conservative scope. This is only the current
-// half: ancestorNoOtherChanges widens it with atBase before reading a diff.
+// line (BriefFile.DeclaredEntriesRaw — every entry the label names, including a
+// dotless one the mistake-proofing/01 path-shape filter drops; round-3 F6 /
+// security pr1682-S6). A missing/unparseable declaration leaves declared nil
+// and selects the conservative scope. This is only the current half:
+// ancestorNoOtherChanges widens it with atBase before reading a diff.
 func newWitnessScope(root, briefPath string, bf *BriefFile) witnessScope {
 	sc := witnessScope{briefPath: briefPath}
 	if root != "" && briefPath != "" {
@@ -595,8 +615,8 @@ func newWitnessScope(root, briefPath string, bf *BriefFile) witnessScope {
 			sc.briefRel = filepath.ToSlash(rel)
 		}
 	}
-	if bf != nil && bf.DeclaredPathsFound {
-		sc.declared = appendDeclaredEntries(nil, bf.DeclaredPaths)
+	if bf != nil && bf.DeclaredEntriesRawFound {
+		sc.declared = appendDeclaredEntries(nil, bf.DeclaredEntriesRaw)
 	}
 	sc.conservative = sc.declared == nil
 	return sc
@@ -647,10 +667,10 @@ func (sc witnessScope) atBase(root, base, target string) witnessScope {
 	eff.declared = append([]string(nil), sc.declared...)
 	if body, ok := briefBodyAtRevision(root, sc.briefPath, base); !ok {
 		eff.conservative = true
-	} else if paths, found := extractContextDeclaredPaths(body); !found {
+	} else if entries, found := extractContextDeclaredEntriesRaw(body); !found {
 		eff.conservative = true
 	} else {
-		eff.declared = appendDeclaredEntries(eff.declared, paths)
+		eff.declared = appendDeclaredEntries(eff.declared, entries)
 	}
 	for _, d := range eff.declared {
 		if !declaredEntryResolves(root, d, base, target) {
