@@ -403,8 +403,8 @@ func resolveInTiers(tiers map[string]PolicyTier, value string, banned []string) 
 }
 
 // PolicyResolution is one role's fully resolved provider/harness/model/effort, plus what the
-// launch needs to propagate that: the CLAUDE env block (ANTHROPIC_* aliases, the subagent model,
-// the effort level) or the CODEX `-c` argv fragments. `tiers`/`banned` are carried so a later
+// launch needs to propagate that: the CLAUDE env block (ANTHROPIC_* aliases, the subagent
+// model) or the CODEX `-c` argv fragments (which do carry the effort). `tiers`/`banned` are carried so a later
 // ResolveChild call resolves within the SAME provider's tier map without re-loading the file.
 type PolicyResolution struct {
 	Provider     string
@@ -492,7 +492,10 @@ func (m *ModelPolicy) Resolve(role, providerOverride, requested, harnessOverride
 		}
 		env["ANTHROPIC_MODEL"] = model
 		env["CLAUDE_CODE_SUBAGENT_MODEL"] = model
-		env["CLAUDE_CODE_EFFORT_LEVEL"] = effort
+		// Effort deliberately does NOT travel as CLAUDE_CODE_EFFORT_LEVEL: the env var
+		// outranks agent frontmatter, so exporting it would pin every child agent to the
+		// session level and defeat a per-agent `effort:` override. `--effort` (which
+		// frontmatter CAN override) is the only effort channel for the claude harness.
 		if provider == "anthropic" {
 			env["ANTHROPIC_BASE_URL"] = "https://api.anthropic.com"
 		}

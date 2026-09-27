@@ -127,8 +127,9 @@ use live desk windows.
 
 For Claude, the selected provider's four tiers populate all four alias variables.
 The desk's selected model populates `ANTHROPIC_MODEL`, `--model` and
-`CLAUDE_CODE_SUBAGENT_MODEL`; effort populates `--effort` and
-`CLAUDE_CODE_EFFORT_LEVEL`. Provider mappings replace stale inherited alias values.
+`CLAUDE_CODE_SUBAGENT_MODEL`; effort populates `--effort` only —
+`CLAUDE_CODE_EFFORT_LEVEL` is never exported (it outranks agent frontmatter) and an
+ambient copy is scrubbed. Provider mappings replace stale inherited alias values.
 GLM and Kimi retain the existing endpoint/token adapters. Codex receives its
 existing model and reasoning-effort CLI settings instead of Claude aliases.
 

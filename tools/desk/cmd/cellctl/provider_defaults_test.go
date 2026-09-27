@@ -215,7 +215,7 @@ func TestProviderDefaultsBuiltBinaryLaunch(t *testing.T) {
 			if r.code != 0 {
 				t.Fatalf("launch: %+v", r)
 			}
-			for key, value := range map[string]string{"ANTHROPIC_MODEL": tc.model, "FABLE": tc.fable, "OPUS": tc.opus, "SONNET": tc.sonnet, "HAIKU": tc.haiku, "EFFORT": tc.effort, "CHILD": tc.model, "BASE_URL": tc.base, "PROMPT_SUGGESTION": "false"} {
+			for key, value := range map[string]string{"ANTHROPIC_MODEL": tc.model, "FABLE": tc.fable, "OPUS": tc.opus, "SONNET": tc.sonnet, "HAIKU": tc.haiku, "CHILD": tc.model, "BASE_URL": tc.base, "PROMPT_SUGGESTION": "false", "EFFORT": ""} {
 				if !strings.Contains(r.stdout, key+"="+value+"\n") {
 					t.Errorf("missing %s=%s in %s", key, value, r.stdout)
 				}
