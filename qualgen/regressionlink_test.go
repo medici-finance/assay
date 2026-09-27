@@ -1,0 +1,373 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+// writeNestedFile is writeFile (mine_test.go) plus the parent-directory
+// creation a brief path under docs/streams/<stream>/ needs — writeFile itself
+// assumes the directory already exists.
+func writeNestedFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	full := filepath.Join(dir, name)
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatalf("mkdir for %s: %v", name, err)
+	}
+	writeFile(t, dir, name, content)
+}
+
+// --- BriefRegressionLinkage (the reference RegressionLinkage adapter) fixture
+// tests. Reuses szzGit / commitFile / openRepo from szz_test.go (same package)
+// so the adapter is dereferenced against a genuine git repository, never a
+// mock — the same discipline szz_test.go documents for the B-SZZ engine. ---
+
+const regressionOfBriefContent = `---
+brief: assay:assay:quality:99
+title: example fix brief
+regression-of: "#5"
+---
+
+# Brief 99 — example
+`
+
+const regressionOfBriefContentNoLink = `---
+brief: assay:assay:quality:98
+title: example fix brief with no regression-of
+---
+
+# Brief 98 — example
+`
+
+// TestRegressionLink_BriefTrailerResolves proves the primary path: a fix
+// commit carrying a `Brief: quality/99` trailer resolves regression-of from
+// THAT brief file, read at the fix commit's own tree.
+func TestRegressionLink_BriefTrailerResolves(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "init", "-q", "-b", "main")
+
+	briefPath := "docs/streams/quality/brief-99-example.md"
+	writeNestedFile(t, dir, briefPath, regressionOfBriefContent)
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "add", briefPath)
+	fixSHA := commitFile(t, dir, "2020-06-01T00:00:00Z", "fix.go", "package x\n// fix\n", "fix: repair the widget\n\nBrief: quality/99\n")
+
+	repo := openRepo(t, dir)
+	linkage := BriefRegressionLinkage{Repo: repo}
+
+	refs, ok, err := linkage.RegressionOf(DefectFix{FixCommitSHA: fixSHA})
+	if err != nil {
+		t.Fatalf("RegressionOf: unexpected error: %v", err)
+	}
+	if !ok || len(refs) != 1 {
+		t.Fatalf("expected exactly one resolved ref, got ok=%v refs=%+v", ok, refs)
+	}
+	if refs[0].Issue == nil || refs[0].Issue.Number != 5 {
+		t.Fatalf("expected issue #5 resolved from the brief's regression-of:, got %+v", refs[0])
+	}
+}
+
+// TestRegressionLink_TouchedBriefFallback proves the fallback path: with no
+// `Brief:` trailer, a brief file the fix commit itself TOUCHES is read.
+func TestRegressionLink_TouchedBriefFallback(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "init", "-q", "-b", "main")
+	// A prior commit with no brief file at all, so the fallback definitely finds
+	// the brief only via the fix commit's own diff.
+	commitFile(t, dir, "2020-01-01T00:00:00Z", "seed.txt", "seed\n", "seed")
+
+	briefPath := "docs/streams/quality/brief-99-example.md"
+	writeNestedFile(t, dir, briefPath, regressionOfBriefContent)
+	writeFile(t, dir, "fix.go", "package x\n// fix\n")
+	szzGit(t, dir, "2020-06-01T00:00:00Z", "add", briefPath, "fix.go")
+	szzGit(t, dir, "2020-06-01T00:00:00Z", "commit", "-q", "-m", "fix: repair the widget (no trailer)")
+	fixSHA := szzGit(t, dir, "2020-06-01T00:00:00Z", "rev-parse", "HEAD")
+
+	repo := openRepo(t, dir)
+	linkage := BriefRegressionLinkage{Repo: repo}
+
+	refs, ok, err := linkage.RegressionOf(DefectFix{FixCommitSHA: fixSHA})
+	if err != nil {
+		t.Fatalf("RegressionOf: unexpected error: %v", err)
+	}
+	if !ok || len(refs) != 1 || refs[0].Issue == nil || refs[0].Issue.Number != 5 {
+		t.Fatalf("expected issue #5 resolved via the touched-file fallback, got ok=%v refs=%+v", ok, refs)
+	}
+}
+
+// TestRegressionLink_NoRegressionOf_LegitimatelyAbsent proves a brief with no
+// `regression-of:` field returns ok=false, err=nil — a legitimate absence, not
+// an error.
+func TestRegressionLink_NoRegressionOf_LegitimatelyAbsent(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "init", "-q", "-b", "main")
+
+	briefPath := "docs/streams/quality/brief-98-example.md"
+	writeNestedFile(t, dir, briefPath, regressionOfBriefContentNoLink)
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "add", briefPath)
+	fixSHA := commitFile(t, dir, "2020-06-01T00:00:00Z", "fix.go", "package x\n// fix\n", "fix: repair another widget\n\nBrief: quality/98\n")
+
+	repo := openRepo(t, dir)
+	linkage := BriefRegressionLinkage{Repo: repo}
+
+	refs, ok, err := linkage.RegressionOf(DefectFix{FixCommitSHA: fixSHA})
+	if err != nil {
+		t.Fatalf("RegressionOf: unexpected error: %v", err)
+	}
+	if ok || len(refs) != 0 {
+		t.Fatalf("expected a legitimate absence (ok=false, no refs), got ok=%v refs=%+v", ok, refs)
+	}
+}
+
+const regressionOfBriefContentTrailingComment = `---
+brief: assay:assay:quality:97
+title: example fix brief with a trailing YAML comment on regression-of
+regression-of: abc1234  # prior fix
+---
+
+# Brief 97 — example
+`
+
+const regressionOfBriefContentUnparseable = `---
+brief: assay:assay:quality:96
+title: example fix brief with an unparseable regression-of value
+regression-of: not-a-valid-reference!!
+---
+
+# Brief 96 — example
+`
+
+const regressionOfBriefContentQuotedTrailingComment = `---
+brief: assay:assay:quality:95
+title: example fix brief with a quoted regression-of value and a trailing comment
+regression-of: "#5"  # prior fix
+---
+
+# Brief 95 — example
+`
+
+// TestRegressionLink_RegressionOf_TrailingYAMLComment is q19-F2(e): a
+// `regression-of:` value carrying a trailing YAML comment (`abc1234  # prior
+// fix`) must still resolve to the commit sha `abc1234`. The original
+// regressionOfPattern captured the whole rest of the line, comment included,
+// so parseRegressionRef never recognised it as a sha and the reference was
+// silently dropped as "legitimately absent".
+func TestRegressionLink_RegressionOf_TrailingYAMLComment(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "init", "-q", "-b", "main")
+
+	briefPath := "docs/streams/quality/brief-97-example.md"
+	writeNestedFile(t, dir, briefPath, regressionOfBriefContentTrailingComment)
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "add", briefPath)
+	fixSHA := commitFile(t, dir, "2020-06-01T00:00:00Z", "fix.go", "package x\n// fix\n", "fix: repair the widget\n\nBrief: quality/97\n")
+
+	repo := openRepo(t, dir)
+	linkage := BriefRegressionLinkage{Repo: repo}
+
+	refs, ok, err := linkage.RegressionOf(DefectFix{FixCommitSHA: fixSHA})
+	if err != nil {
+		t.Fatalf("RegressionOf: unexpected error: %v", err)
+	}
+	if !ok || len(refs) != 1 {
+		t.Fatalf("expected exactly one resolved ref, got ok=%v refs=%+v", ok, refs)
+	}
+	if refs[0].CommitSHA != "abc1234" {
+		t.Fatalf("expected the trailing comment stripped and abc1234 resolved as a commit sha, got %+v", refs[0])
+	}
+}
+
+// TestRegressionLink_RegressionOf_UnparseableValueIsError is q19-F2(e)'s other
+// half: a `regression-of:` value that is PRESENT but matches neither accepted
+// form (issue ref or commit sha) must be could-not-measure, not the same
+// "legitimately absent" answer as no value being named at all.
+func TestRegressionLink_RegressionOf_UnparseableValueIsError(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "init", "-q", "-b", "main")
+
+	briefPath := "docs/streams/quality/brief-96-example.md"
+	writeNestedFile(t, dir, briefPath, regressionOfBriefContentUnparseable)
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "add", briefPath)
+	fixSHA := commitFile(t, dir, "2020-06-01T00:00:00Z", "fix.go", "package x\n// fix\n", "fix: repair yet another widget\n\nBrief: quality/96\n")
+
+	repo := openRepo(t, dir)
+	linkage := BriefRegressionLinkage{Repo: repo}
+
+	_, ok, err := linkage.RegressionOf(DefectFix{FixCommitSHA: fixSHA})
+	if err == nil {
+		t.Fatalf("expected an error for a present-but-unparseable regression-of value, got ok=%v", ok)
+	}
+	if ok {
+		t.Fatalf("must not report ok=true alongside an error")
+	}
+}
+
+// TestRegressionLink_RegressionOf_MixedParsedAndUnparseable_IsError is the
+// security lane's round-4 surviving F-refix-fail-open-missing-linkage
+// occurrence: a fix commit with NO `Brief:` trailer touches TWO brief files —
+// brief-99 (regression-of "#5", parses cleanly) and brief-96 (regression-of
+// "not-a-valid-reference!!", does not parse). Round 3's fix only turned an
+// unparseable value into an error when NO reference on the fix parsed
+// (len(refs)==0); with brief-99's clean "#5" present, brief-96's unparseable
+// value was silently dropped and RegressionOf returned refs=[#5], ok=true,
+// err=nil as though the unparseable value had never been named. A
+// present-but-unparseable value is not the same as no value at all,
+// regardless of how many OTHER briefs the same fix commit touches.
+func TestRegressionLink_RegressionOf_MixedParsedAndUnparseable_IsError(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "init", "-q", "-b", "main")
+
+	briefPath99 := "docs/streams/quality/brief-99-example.md"
+	briefPath96 := "docs/streams/quality/brief-96-example.md"
+	writeNestedFile(t, dir, briefPath99, regressionOfBriefContent)
+	writeNestedFile(t, dir, briefPath96, regressionOfBriefContentUnparseable)
+	writeFile(t, dir, "fix.go", "package x\n// fix\n")
+	szzGit(t, dir, "2020-06-01T00:00:00Z", "add", briefPath99, briefPath96, "fix.go")
+	szzGit(t, dir, "2020-06-01T00:00:00Z", "commit", "-q", "-m", "fix: repair two widgets (no trailer)")
+	fixSHA := szzGit(t, dir, "2020-06-01T00:00:00Z", "rev-parse", "HEAD")
+
+	repo := openRepo(t, dir)
+	linkage := BriefRegressionLinkage{Repo: repo}
+
+	refs, ok, err := linkage.RegressionOf(DefectFix{FixCommitSHA: fixSHA})
+	if err == nil {
+		t.Fatalf("expected an error: brief-96's unparseable value must not be dropped just because brief-99's parsed cleanly, got ok=%v refs=%+v", ok, refs)
+	}
+	if ok {
+		t.Fatalf("must not report ok=true alongside an error")
+	}
+}
+
+// TestRefix_MixedParsedAndUnparseableRegressionOf_CouldNotMeasure is the
+// end-to-end twin of the adapter test above, run through ComputeRefix against
+// the REAL BriefRegressionLinkage adapter (not a stub): F's fix commit (no
+// `Brief:` trailer) touches brief-99 ("#5", parses) and brief-96 (unparseable),
+// and E — the fix that closes issue #5 — lands AFTER F's inducing commit, so
+// it fails the ordering rule. Before this round's fix, brief-96's dropped
+// unparseable value let #5 resolve alone, so ComputeRefix scored F a measured
+// non-re-fix with full linkage coverage even though brief-96's reference —
+// unread — could have named the qualifying earlier fix. Now the mixed
+// unparseable value must make F could-not-measure, never a measured zero.
+func TestRefix_MixedParsedAndUnparseableRegressionOf_CouldNotMeasure(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "init", "-q", "-b", "main")
+
+	briefPath99 := "docs/streams/quality/brief-99-example.md"
+	briefPath96 := "docs/streams/quality/brief-96-example.md"
+	writeNestedFile(t, dir, briefPath99, regressionOfBriefContent)
+	writeNestedFile(t, dir, briefPath96, regressionOfBriefContentUnparseable)
+	writeFile(t, dir, "fix.go", "package x\n// fix\n")
+	szzGit(t, dir, "2020-06-01T00:00:00Z", "add", briefPath99, briefPath96, "fix.go")
+	szzGit(t, dir, "2020-06-01T00:00:00Z", "commit", "-q", "-m", "fix: repair two widgets (no trailer)")
+	fixSHA := szzGit(t, dir, "2020-06-01T00:00:00Z", "rev-parse", "HEAD")
+
+	repo := openRepo(t, dir)
+	linkage := BriefRegressionLinkage{Repo: repo}
+
+	e := DefectFix{FixCommitSHA: refixE1, FixPRNumber: 100, ClosedIssue: &IssueRef{Number: 5}}
+	f := DefectFix{FixCommitSHA: fixSHA, FixPRNumber: 200}
+	tr := DefectTrace{FixCommit: fixSHA, TraceState: TraceTraced, InducingCommits: []string{refixInd1}}
+	ct := fixedCommitTime{
+		refixE1:   time.Date(2024, 9, 1, 0, 0, 0, 0, time.UTC), // E fixed AFTER F's inducer — fails the ordering rule
+		refixInd1: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, "", time.Now())
+
+	if rec.LinkageCoverage.State != StateCouldNotMeasure {
+		t.Fatalf("expected linkage_coverage could-not-measure (brief-96's unparseable value must not be dropped behind brief-99's clean #5), got %+v", rec.LinkageCoverage)
+	}
+	if rec.RefixRate.State != StateCouldNotMeasure {
+		t.Fatalf("expected refix_rate could-not-measure, got %+v", rec.RefixRate)
+	}
+	if len(rec.Refixes) != 0 {
+		t.Fatalf("expected no counted re-fix, got %+v", rec.Refixes)
+	}
+}
+
+// TestRegressionLink_RegressionOf_QuotedValueTrailingComment: a QUOTED
+// `regression-of:` value carrying a trailing YAML comment (`"#5"  # prior
+// fix`) must still resolve: the comment is stripped before the surrounding
+// quotes are trimmed. Trimming quotes first leaves a stray trailing quote
+// behind the comment strip (`#5"`), turning a well-formed reference into an
+// unparseable-value could-not-measure.
+func TestRegressionLink_RegressionOf_QuotedValueTrailingComment(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "init", "-q", "-b", "main")
+
+	briefPath := "docs/streams/quality/brief-95-example.md"
+	writeNestedFile(t, dir, briefPath, regressionOfBriefContentQuotedTrailingComment)
+	szzGit(t, dir, "2020-01-01T00:00:00Z", "add", briefPath)
+	fixSHA := commitFile(t, dir, "2020-06-01T00:00:00Z", "fix.go", "package x\n// fix\n", "fix: repair the widget\n\nBrief: quality/95\n")
+
+	repo := openRepo(t, dir)
+	linkage := BriefRegressionLinkage{Repo: repo}
+
+	refs, ok, err := linkage.RegressionOf(DefectFix{FixCommitSHA: fixSHA})
+	if err != nil {
+		t.Fatalf("RegressionOf: unexpected error: %v", err)
+	}
+	if !ok || len(refs) != 1 {
+		t.Fatalf("expected exactly one resolved ref, got ok=%v refs=%+v", ok, refs)
+	}
+	if refs[0].Issue == nil || refs[0].Issue.Number != 5 {
+		t.Fatalf("expected issue #5 resolved from the quoted, comment-trailing regression-of:, got %+v", refs[0])
+	}
+}
+
+// TestRegressionLink_DefectClass_UnconfiguredIsError proves the adapter-level
+// enforcement of fact 3: an unconfigured class-label prefix is ALWAYS an error
+// (could-not-measure upstream), never a silent "no class".
+func TestRegressionLink_DefectClass_UnconfiguredIsError(t *testing.T) {
+	linkage := BriefRegressionLinkage{Labels: stubIssueLabelSource{labels: map[string][]string{"5": {"class:widget-nil-deref"}}}}
+	_, ok, err := linkage.DefectClass(IssueRef{Number: 5})
+	if err == nil {
+		t.Fatalf("expected an error for an unconfigured class-label prefix, got ok=%v", ok)
+	}
+	if ok {
+		t.Fatalf("must not report ok=true alongside an error")
+	}
+}
+
+// TestRegressionLink_DefectClass_ConfiguredReadsPrefixedLabel proves the
+// configured path reads the class key off the matching prefixed label.
+func TestRegressionLink_DefectClass_ConfiguredReadsPrefixedLabel(t *testing.T) {
+	source := stubIssueLabelSource{labels: map[string][]string{
+		"5": {"bug", "class:widget-nil-deref"},
+		"6": {"enhancement"},
+	}}
+	linkage := BriefRegressionLinkage{Labels: source, ClassLabelPrefix: "class:"}
+
+	class, ok, err := linkage.DefectClass(IssueRef{Number: 5})
+	if err != nil || !ok || class != "widget-nil-deref" {
+		t.Fatalf("expected class widget-nil-deref, got class=%q ok=%v err=%v", class, ok, err)
+	}
+
+	_, ok, err = linkage.DefectClass(IssueRef{Number: 6})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ok {
+		t.Fatalf("expected no class-prefixed label on issue #6 to resolve ok=false")
+	}
+}
+
+// TestRegressionLink_DefectClass_LabelSourceErrorPropagates proves an
+// IssueLabelSource error is surfaced as-is (could-not-measure upstream), never
+// swallowed into a silent no-class.
+func TestRegressionLink_DefectClass_LabelSourceErrorPropagates(t *testing.T) {
+	source := stubIssueLabelSource{unresolvable: map[int]bool{7: true}}
+	linkage := BriefRegressionLinkage{Labels: source, ClassLabelPrefix: "class:"}
+	_, ok, err := linkage.DefectClass(IssueRef{Number: 7})
+	if err == nil || ok {
+		t.Fatalf("expected the label source's error to propagate, got ok=%v err=%v", ok, err)
+	}
+}
