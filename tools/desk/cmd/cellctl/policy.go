@@ -15,15 +15,15 @@ import (
 )
 
 // This file ports the CELL_MODEL_POLICY semantics #1388 added to the shell oracle
-// (tools/cellctl/cellctl's model_policy()/apply_model_policy()/policy_claude_preflight()) into
-// the Go binary — example-stream/10 shipped the Go port without them (assay#1390). The oracle
-// and docs/cellctl-model-policy.md are the spec; tools/cellctl/tests/model-policy.test.py is the
-// behavioural ORACLE this file's tests port cases from. See the PR body for exactly which
-// oracle behaviours this file does, and does not, carry over — some of the oracle's launch-time
-// mechanics (the live PreModelSwitch/PreToolUse Claude Code hook wiring, the local/managed
-// settings.json availableModels/modelOverrides conflict scan, and the `up`/`check` per-role
-// preflight loops) were ported afterwards in policy_enforce.go (assay#1392); the schema,
-// resolution, deny and effort-propagation contract lives here.
+// (tools/cellctl/testdata/cellctl-shell-oracle.sh's model_policy()/apply_model_policy()/
+// policy_claude_preflight()) into the Go binary — example-stream/10 shipped the Go port without
+// them (assay#1390). The oracle and docs/cellctl-model-policy.md are the spec;
+// tools/cellctl/tests/model-policy.test.py is the behavioural ORACLE this file's tests port cases
+// from. See the PR body for exactly which oracle behaviours this file does, and does not, carry
+// over — some of the oracle's launch-time mechanics (the live PreModelSwitch/PreToolUse Claude Code
+// hook wiring, the local/managed settings.json availableModels/modelOverrides conflict scan, and
+// the `up`/`check` per-role preflight loops) were ported afterwards in policy_enforce.go
+// (assay#1392); the schema, resolution, deny and effort-propagation contract lives here.
 
 // policyTierNames is the fixed four-tier ladder every provider must pin exactly.
 var policyTierNames = []string{"top", "strong", "mid", "fast"}
@@ -315,7 +315,7 @@ func parseModelPolicy(raw []byte, path string) (*ModelPolicy, error) {
 			if len(supported) == 0 || !allIn(supported, levels) || !contains(supported, effort) {
 				return nil, policyFail("unsupported effort for %s/%s", name, tierName)
 			}
-			if (strings.HasPrefix(value, "glm-5.3") || policyBase(value) == "k3") && !allIn(supported, []string{"low", "high", "max"}) {
+			if (strings.HasPrefix(value, "glm-5.3") || policyBase(value) == "k3" || policyBase(value) == "k3-256k") && !allIn(supported, []string{"low", "high", "max"}) {
 				return nil, policyFail("GLM 5.3 and Kimi K3 support low, high or max effort")
 			}
 			tiers[tierName] = PolicyTier{Model: value, Effort: effort, SupportedEfforts: supported}
@@ -403,8 +403,8 @@ func resolveInTiers(tiers map[string]PolicyTier, value string, banned []string) 
 }
 
 // PolicyResolution is one role's fully resolved provider/harness/model/effort, plus what the
-// launch needs to propagate that: the CLAUDE env block (ANTHROPIC_* aliases, the subagent model,
-// the effort level) or the CODEX `-c` argv fragments. `tiers`/`banned` are carried so a later
+// launch needs to propagate that: the CLAUDE env block (ANTHROPIC_* aliases, the subagent
+// model) or the CODEX `-c` argv fragments (which do carry the effort). `tiers`/`banned` are carried so a later
 // ResolveChild call resolves within the SAME provider's tier map without re-loading the file.
 type PolicyResolution struct {
 	Provider     string
@@ -492,7 +492,10 @@ func (m *ModelPolicy) Resolve(role, providerOverride, requested, harnessOverride
 		}
 		env["ANTHROPIC_MODEL"] = model
 		env["CLAUDE_CODE_SUBAGENT_MODEL"] = model
-		env["CLAUDE_CODE_EFFORT_LEVEL"] = effort
+		// Effort deliberately does NOT travel as CLAUDE_CODE_EFFORT_LEVEL: the env var
+		// outranks agent frontmatter, so exporting it would pin every child agent to the
+		// session level and defeat a per-agent `effort:` override. `--effort` (which
+		// frontmatter CAN override) is the only effort channel for the claude harness.
 		if provider == "anthropic" {
 			env["ANTHROPIC_BASE_URL"] = "https://api.anthropic.com"
 		}
