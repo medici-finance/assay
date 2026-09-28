@@ -31,11 +31,13 @@ import (
 //                        config PLACEHOLDER (criticalStampAuthorities), EMPTY by
 //                        default, so the arm is inert until a human ratifies WHO may
 //                        stamp. Reads only the stamped label, never an intensity term.
-//   3. high-unblocks   — blockedCount ≥ highUnblocksThreshold, over the reverse
-//                        typed-depends graph (buildRevDeps/blockedCount). The
-//                        dependency-edge reciprocity lint (brieffile.go) makes that
-//                        count un-gameable: a manufactured one-sided inbound edge is a
-//                        --lint PROBLEM, so blockedCount reflects genuine deps only.
+//   3. high-unblocks   — blockedCount ≥ highUnblocksThreshold, over the
+//                        RECIPROCATED reverse typed-depends graph
+//                        (buildReciprocatedRevDeps): an edge A→B counts only when B
+//                        also declares `unblocks: A`. The reciprocity lint
+//                        (brieffile.go) reports a one-sided edge at NOTICE tier, so
+//                        the lint alone cannot keep a manufactured edge out of the
+//                        tier — the graph this arm reads does, by never walking one.
 //   4. reviewer-finding — an unresolved reviewer finding names this brief (the
 //                        existing Finding.Affects/StaleRef linkage). Machine-derived:
 //                        a reviewer files the finding, the brief author cannot.
@@ -134,18 +136,23 @@ func reviewerFindingCritical(findings []Finding, streamName, briefNum string) bo
 }
 
 // criticalTierArm returns the name of the critical-tier arm that qualifies this
-// brief, or "" if none. Pure and deterministic over board-graph facts (blockedCount,
-// findings) and stamped labels only — no wall clock, no network. Arms are evaluated
-// in a fixed order so the attributed arm is stable; membership is what matters for
-// the (CriticalTier, score) sort, and any single qualifying arm suffices.
-func criticalTierArm(b Brief, streamName string, blockedCount int, findings []Finding) string {
+// brief, or "" if none. Pure and deterministic over board-graph facts (the
+// reciprocated blockedCount, findings) and stamped labels only — no wall clock, no
+// network. Arms are evaluated in a fixed order so the attributed arm is stable;
+// membership is what matters for the (CriticalTier, score) sort, and any single
+// qualifying arm suffices.
+//
+// deps is the RECIPROCATED graph, not a count: the high-unblocks arm computes its
+// own blockedCount from it, so no caller can hand the arm a count walked over
+// one-sided edges (the score's buildRevDeps graph is a different type).
+func criticalTierArm(b Brief, streamName string, deps reciprocatedRevDeps, findings []Finding) string {
 	if mainRedCritical(b, streamName) {
 		return "main-red"
 	}
 	if auth, ok := securityCriticalStamp(b); ok && criticalStampAuthorized(auth) {
 		return "security"
 	}
-	if blockedCount >= highUnblocksThreshold {
+	if deps.count(streamName+"/"+b.Num) >= highUnblocksThreshold {
 		return "high-unblocks"
 	}
 	if reviewerFindingCritical(findings, streamName, b.Num) {

@@ -1,0 +1,53 @@
+{
+  "test": "go test . -run 'TestDriveAntiStarvationFloor|TestDriveDepEdgeReciprocity|TestDriveCriticalTierNeverBuried|TestDriveCriticalArmDisplayedAttributed|TestReciprocatedRevDepsSingleConstructor' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — the 15-of-20 slot floor never holds a drive pick back (the landed phase-3 slot floor, restated as a mutation)",
+    "file": "nextup.go",
+    "old": "\t\tif p.DriveTerm > 0 && driveShown >= driveSlotCap {",
+    "new": "\t\tif false && p.DriveTerm > 0 && driveShown >= driveSlotCap {"
+  },
+  "mutations": [
+    {
+      "name": "row R — the high-unblocks graph counts ONE-SIDED depends edges again (a manufactured inbound edge lifts a brief into the tier above every score)",
+      "file": "nextup.go",
+      "old": "\t\t\t\tif dep == id || !unblocks[dep][id] {",
+      "new": "\t\t\t\tif dep == id {"
+    },
+    {
+      "name": "row R — the high-unblocks arm stops reading the reciprocated count (the arm goes dark)",
+      "file": "drivecritical.go",
+      "old": "\tif deps.count(streamName+\"/\"+b.Num) >= highUnblocksThreshold {",
+      "new": "\tif false && deps.count(streamName+\"/\"+b.Num) >= highUnblocksThreshold {"
+    },
+    {
+      "name": "row 6 — nothing reads driveWorkerCap (the worker floor is inert again)",
+      "file": "nextup.go",
+      "old": "\t\tnu.DriveWorkerCap = driveWorkerCap",
+      "new": "\t\tnu.DriveWorkerCap = 0"
+    },
+    {
+      "name": "row 6 — the dispatch queue stops applying the worker floor to drive picks",
+      "file": "dispatchqueue.go",
+      "old": "\t\tif floor && p.DriveTerm > 0 {",
+      "new": "\t\tif false && floor && p.DriveTerm > 0 {"
+    },
+    {
+      "name": "row 6 — in-flight drive work is not subtracted from the cap (6 new drive workers offered on top of those already running)",
+      "file": "nextup.go",
+      "old": "\th := n.DriveWorkerCap - n.DriveInFlight",
+      "new": "\th := n.DriveWorkerCap"
+    },
+    {
+      "name": "row 6 — claims unread fails OPEN (full cap offered when in-flight drive work cannot be counted)",
+      "file": "nextup.go",
+      "old": "\tif n.DriveWorkerUnknown != \"\" {\n\t\treturn 0, true\n\t}",
+      "new": "\tif n.DriveWorkerUnknown != \"\" {\n\t\treturn n.DriveWorkerCap, true\n\t}"
+    },
+    {
+      "name": "row 6 — driveInFlight never counts a claim (in-flight drive work always reads as zero)",
+      "file": "drives.go",
+      "old": "\t\t\tif d.covers(parts[0], k) {\n\t\t\t\tn++",
+      "new": "\t\t\tif d.covers(parts[0], k) {\n\t\t\t\tn += 0"
+    }
+  ]
+}

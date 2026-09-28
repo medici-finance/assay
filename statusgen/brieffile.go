@@ -1511,6 +1511,10 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				// rule; legacy briefs keep Schema="" and Depends nil.
 				row.Schema = bf.Schema
 				row.Depends = bf.Depends
+				// unblocks: rides along for the critical tier's reciprocated
+				// dependency graph only (buildReciprocatedRevDeps) — never a
+				// score input; the score keeps reading Depends alone.
+				row.Unblocks = bf.Unblocks
 				// gates:/feathers: worm into the Brief row for the eligibility
 				// evaluator (graph-execution/01) — brief-v2 only; nil for
 				// brief-v1/legacy briefs, exactly like Depends above.

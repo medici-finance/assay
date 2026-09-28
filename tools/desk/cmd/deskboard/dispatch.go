@@ -63,6 +63,13 @@ type dispatchView struct {
 	SerializedUnknown []string           `json:"serializedUnknown"`
 	MeasuresGated     []string           `json:"measuresGated"`
 	MeasuresUnknown   []string           `json:"measuresUnknown"`
+	// Drive worker-pool floor (statusgen drives phase 3). Absent (zero) from a
+	// statusgen that predates it, or when no drive is active — the aggregate floor
+	// below then does not apply to that root.
+	DriveWorkerCap       int    `json:"driveWorkerCap"`
+	DriveInFlight        int    `json:"driveInFlight"`
+	HeldByDriveWorkerCap int    `json:"heldByDriveWorkerCap"`
+	DriveWorkerUnknown   string `json:"driveWorkerUnknown"`
 }
 
 // statusgenDispRow is one row of `statusgen --next-up` before repo re-attribution.
@@ -134,6 +141,19 @@ type dispatchReport struct {
 	HeldByStreamCap int `json:"heldByStreamCap"`
 	HeldBySpan      int `json:"heldBySpan"`
 	HeldByDriveCap  int `json:"heldByDriveCap"`
+	// Drive worker-pool floor, applied ACROSS roots. statusgen bounds each root's
+	// drive rows by its own in-flight drive work; the worker pool is shared, so the
+	// merge re-applies the SAME cap (read from statusgen's JSON, never restated
+	// here) against the SUM of in-flight drive work over every root. DriveWorkerCap
+	// is the tightest cap any root reported (0 = no root had an active drive, floor
+	// off); DriveInFlight the summed in-flight drive work; HeldByDriveWorkerCap the
+	// drive rows withheld per root plus by this aggregate pass. DriveWorkerUnknown
+	// names roots whose in-flight drive work could not be counted — while any is
+	// named, NO drive row is offered (could-not-check, fail closed).
+	DriveWorkerCap       int                `json:"driveWorkerCap,omitempty"`
+	DriveInFlight        int                `json:"driveInFlight,omitempty"`
+	HeldByDriveWorkerCap int                `json:"heldByDriveWorkerCap,omitempty"`
+	DriveWorkerUnknown   []dispatchDegraded `json:"driveWorkerUnknown,omitempty"`
 	// ClaimsDegraded names roots whose claim read did not run — their rows are an
 	// unfiltered superset. Non-empty means: do not dispatch from this board.
 	ClaimsDegraded []dispatchDegraded `json:"claimsDegraded"`
@@ -204,6 +224,18 @@ func mergeDispatch(hdr Header, verbUsed string, resolved []deskkit.RootConfig, v
 		rep.HeldByStreamCap += v.HeldByStreamCap
 		rep.HeldBySpan += v.HeldBySpan
 		rep.HeldByDriveCap += v.HeldByDriveCap
+		rep.HeldByDriveWorkerCap += v.HeldByDriveWorkerCap
+		if v.DriveWorkerCap > 0 {
+			if rep.DriveWorkerCap == 0 || v.DriveWorkerCap < rep.DriveWorkerCap {
+				rep.DriveWorkerCap = v.DriveWorkerCap
+			}
+			rep.DriveInFlight += v.DriveInFlight
+			if v.DriveWorkerUnknown != "" {
+				rep.DriveWorkerUnknown = append(rep.DriveWorkerUnknown, dispatchDegraded{
+					Repo: repo, Root: r.Path, Reason: v.DriveWorkerUnknown,
+				})
+			}
+		}
 		if !v.ClaimsKnown {
 			rep.ClaimsDegraded = append(rep.ClaimsDegraded, dispatchDegraded{
 				Repo: repo, Root: r.Path, Reason: v.ClaimsReason,
@@ -223,7 +255,6 @@ func mergeDispatch(hdr Header, verbUsed string, resolved []deskkit.RootConfig, v
 			})
 		}
 	}
-	rep.Shown = len(rep.Rows)
 	// Score descending, then repo/stream/brief for a deterministic board — same
 	// ordering as cmdAwaiting.
 	sort.SliceStable(rep.Rows, func(i, j int) bool {
@@ -239,7 +270,36 @@ func mergeDispatch(hdr Header, verbUsed string, resolved []deskkit.RootConfig, v
 		}
 		return a.Brief < b.Brief
 	})
+	rep.Rows = applyDriveWorkerFloor(&rep)
+	rep.Shown = len(rep.Rows)
 	return &rep, nil
+}
+
+// applyDriveWorkerFloor re-applies the drive worker-pool floor across roots: drive
+// rows (driveSlug set) in queue order take the headroom left by the summed
+// in-flight drive work; every drive row past it is withheld and counted. With any
+// root's in-flight count unknown the headroom is 0. Non-drive rows always pass.
+// With no root reporting an active drive (cap 0) the rows are returned unchanged.
+func applyDriveWorkerFloor(rep *dispatchReport) []dispatchRow {
+	if rep.DriveWorkerCap <= 0 {
+		return rep.Rows
+	}
+	headroom := rep.DriveWorkerCap - rep.DriveInFlight
+	if len(rep.DriveWorkerUnknown) > 0 || headroom < 0 {
+		headroom = 0
+	}
+	kept := make([]dispatchRow, 0, len(rep.Rows))
+	for _, r := range rep.Rows {
+		if r.DriveSlug != "" {
+			if headroom <= 0 {
+				rep.HeldByDriveWorkerCap++
+				continue
+			}
+			headroom--
+		}
+		kept = append(kept, r)
+	}
+	return kept
 }
 
 // dispatchFromRoots is the DEPTH-producing half of the dispatch verb: given an
@@ -300,6 +360,12 @@ func cmdDispatch(hdr Header, verbUsed string) (*Report, error) {
 				"superset; do not dispatch from this root until a run with a reachable origin regenerates it\n",
 				shortRepo(d.Repo), d.Root, d.Reason)
 		}
+		// Drive worker floor could-not-check: in-flight drive work unknown on a
+		// root, so no drive row is offered anywhere this run.
+		for _, d := range rep.DriveWorkerUnknown {
+			fmt.Fprintf(w, "COULD-NOT-CHECK drive worker floor %s (%s): %s — no drive row is offered this run\n",
+				shortRepo(d.Repo), d.Root, d.Reason)
+		}
 		// Held-back decomposition: printed on EVERY run so an empty queue is never a
 		// bare "0". heldBackLine names which cap fired.
 		fmt.Fprintf(w, "queue: %d shown of %d eligible; %s\n", rep.Shown, rep.Eligible, dispatchHeldBackLine(rep))
@@ -323,7 +389,7 @@ func cmdDispatch(hdr Header, verbUsed string) (*Report, error) {
 // fired. It is the dispatch analog of statusgen's heldBackReason and is printed on
 // every run so "0 shown" is always accompanied by WHY.
 func dispatchHeldBackLine(rep *dispatchReport) string {
-	held := rep.HeldByStreamCap + rep.HeldBySpan + rep.HeldByDriveCap
+	held := rep.HeldByStreamCap + rep.HeldBySpan + rep.HeldByDriveCap + rep.HeldByDriveWorkerCap
 	if held == 0 {
 		return "0 held back"
 	}
@@ -336,6 +402,10 @@ func dispatchHeldBackLine(rep *dispatchReport) string {
 	}
 	if rep.HeldByDriveCap > 0 {
 		parts = append(parts, fmt.Sprintf("%d by the drive anti-starvation floor", rep.HeldByDriveCap))
+	}
+	if rep.HeldByDriveWorkerCap > 0 {
+		parts = append(parts, fmt.Sprintf("%d by the drive worker floor (%d in flight of %d)",
+			rep.HeldByDriveWorkerCap, rep.DriveInFlight, rep.DriveWorkerCap))
 	}
 	return fmt.Sprintf("%d held back (%s)", held, strings.Join(parts, ", "))
 }
