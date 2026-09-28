@@ -40,8 +40,10 @@ Runs six checks, each answering checked-clean / checked-failed / could-not-check
   commit-identity        the commit email carries the BOT USER id, not the App id (#638)
   sibling-checkouts      the checkouts the QUEUED briefs declare are present      (#679 #661)
   ambient-identity       no usable ambient human gh identity is the clean state
-                         (gh not logged in, or an App token's 401/403 on /user); a
-                         HUMAN login is a non-blocking WARNING NOTICE (a fall-through
+                         (gh not logged in with no stored credential readable by
+                         gh auth token, a 401 on /user, or an App token's 403); a
+                         stored credential behind "not logged in" is could-not-check;
+                         a HUMAN login is a non-blocking WARNING NOTICE (a fall-through
                          would act as that human); a bot/App slug is checked-failed;
                          and the origin credential helper resolves to the minted App
                          token. Not-applicable on a GitLab-forge repo       (#1527 #1798)

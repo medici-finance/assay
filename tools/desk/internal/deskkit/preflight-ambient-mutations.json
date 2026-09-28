@@ -66,6 +66,42 @@
       "file": "internal/deskkit/preflight.go",
       "old": "\t\tif ctx.Err() != nil {\n\t\t\treturn \"\", fmt.Errorf(\"gh api user did not answer within %s\", ambientProbeTimeout)",
       "new": "\t\tif false && ctx.Err() != nil {\n\t\t\treturn \"\", fmt.Errorf(\"gh api user did not answer within %s\", ambientProbeTimeout)"
+    },
+    {
+      "name": "drop the stored-credential look after a not-logged-in answer (an OS-keyring login behind an empty config dir reads as clean)",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\t\t\t\tif reason == ghNotLoggedInReason {",
+      "new": "\t\t\t\tif false && reason == ghNotLoggedInReason {"
+    },
+    {
+      "name": "round a reachable stored credential up to the no-identity state in the probe",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\t\t\"token into GH_TOKEN hands back to the next gh\", ErrStoredAmbientCredential)",
+      "new": "\t\t\"token into GH_TOKEN hands back to the next gh\", ErrNoAmbientIdentity)"
+    },
+    {
+      "name": "drop the check's stored-credential arm (its remediation stops leading with clearing the credential)",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tcase errors.Is(err, ErrStoredAmbientCredential):",
+      "new": "\tcase false && errors.Is(err, ErrStoredAmbientCredential):"
+    },
+    {
+      "name": "treat every gh auth token failure as a stored credential (every not-logged-in gh turns could-not-check)",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\t\tif asExitError(err, &ee) {\n\t\t\treturn nil\n\t\t}",
+      "new": "\t\tif asExitError(err, &ee) {\n\t\t\treturn ErrStoredAmbientCredential\n\t\t}"
+    },
+    {
+      "name": "treat an empty gh auth token answer as a stored credential",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tif strings.TrimSpace(string(out)) == \"\" {\n\t\treturn nil\n\t}",
+      "new": "\tif false && strings.TrimSpace(string(out)) == \"\" {\n\t\treturn nil\n\t}"
+    },
+    {
+      "name": "drop the gh auth token timeout detection (a hung stored-credential look rounds up to clean)",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tif ctx.Err() != nil {\n\t\treturn fmt.Errorf(\"gh reports not logged in, and gh auth token did not answer",
+      "new": "\tif false && ctx.Err() != nil {\n\t\treturn fmt.Errorf(\"gh reports not logged in, and gh auth token did not answer"
     }
   ]
 }

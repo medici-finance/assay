@@ -20,7 +20,9 @@ package deskkit
 //  2. a human login is ambient (the blessing login or any other) → a
 //     NON-BLOCKING warning naming the login; it never reddens the envelope.
 //  3. a bot/App slug is ambient → checked-failed (blocking).
-//  4. `gh` absent, or a probe that genuinely cannot run → could-not-check.
+//  4. `gh` absent, or a probe that genuinely cannot run → could-not-check; so
+//     is a "not logged in" answer with a stored credential still readable
+//     through `gh auth token` (the empty-GH_CONFIG_DIR / OS-keyring shape).
 //  5. no remediation recommends logging in as the blessing login; every one
 //     leads with clearing the ambient credential for desk shells.
 //
@@ -321,4 +323,117 @@ func TestAmbientIdentityTimeoutIsCouldNotCheck(t *testing.T) {
 	if !strings.Contains(c.Detail, "did not answer") {
 		t.Fatalf("the timeout should say so: %q", c.Detail)
 	}
+}
+
+// ghSplit stubs a `gh` that answers `gh api user` and `gh auth token` with
+// separate scripts, so a test can model a gh that reports "not logged in" for
+// the API call while a stored credential is still readable locally.
+func ghSplit(t *testing.T, apiUser, authToken string) {
+	t.Helper()
+	stubGH(t, "#!/bin/sh", "case \"$1 $2\" in\n"+
+		"'api user') "+apiUser+" ;;\n"+
+		"'auth token') "+authToken+" ;;\n"+
+		"*) echo \"unexpected gh call: $*\" >&2; exit 2 ;;\n"+
+		"esac")
+}
+
+// stubStoredCredential is what the stub prints for `gh auth token` when a
+// stored (OS-keyring) credential is readable. It is not a real credential.
+const stubStoredCredential = "stub-stored-credential-value"
+
+const (
+	ghAPINotLoggedIn   = "printf '%s\\n' '" + ghNotLoggedInStderr + "' >&2; exit 4"
+	ghAuthTokenStored  = "printf '%s\\n' '" + stubStoredCredential + "'; exit 0"
+	ghAuthTokenMissing = "printf '%s\\n' 'no oauth token found for github.com' >&2; exit 1"
+)
+
+// A `gh` that says "not logged in" for `gh api user` while `gh auth token` still
+// returns a stored credential is NOT the no-identity state. That is the shape an
+// empty GH_CONFIG_DIR gives on a machine whose gh login lives in the OS keyring:
+// the API call finds no config, but the keyring credential is one local call
+// away, and a wrapper that resolves `gh auth token` into GH_TOKEN hands it
+// straight back to the next `gh`. The check cannot tell whose credential it is
+// without using it, so it reports could-not-check and never a clean pass, and it
+// never echoes the credential.
+func TestAmbientIdentityStoredCredentialBehindNotLoggedInIsNotClean(t *testing.T) {
+	withRoster(t, goldenRoster())
+	ghSplit(t, ghAPINotLoggedIn, ghAuthTokenStored)
+	rep, c := runRealAmbient(t, okProbes())
+	if c.State != CouldNotCheck {
+		t.Fatalf("not-logged-in API call + readable stored credential = %s, want could-not-check (%s)", c.State, c.Detail)
+	}
+	if rep.Err() == nil {
+		t.Fatalf("a reachable stored credential must not leave the envelope green")
+	}
+	if !strings.Contains(c.Detail, "gh auth token") {
+		t.Fatalf("the detail should name the local call that still yields a credential: %q", c.Detail)
+	}
+	for _, text := range []string{c.Detail, c.Remediation, c.Notice, rep.SummaryLine()} {
+		if strings.Contains(text, stubStoredCredential) {
+			t.Fatalf("the check echoed the stored credential: %q", text)
+		}
+	}
+	if !strings.HasPrefix(strings.ToLower(c.Remediation), "clear the ambient") {
+		t.Fatalf("remediation must lead with clearing the ambient credential: %q", c.Remediation)
+	}
+	assertNoBlessLoginAdvice(t, c.Remediation)
+}
+
+// The same not-logged-in answer with NO stored credential behind it stays the
+// safe state: the stored-credential look must not turn every not-logged-in gh
+// into could-not-check.
+func TestAmbientIdentityNotLoggedInWithNoStoredCredentialPasses(t *testing.T) {
+	withRoster(t, goldenRoster())
+	ghSplit(t, ghAPINotLoggedIn, ghAuthTokenMissing)
+	_, c := runRealAmbient(t, okProbes())
+	if c.State != CheckedClean {
+		t.Fatalf("not logged in + no stored credential = %s, want checked-clean (%s)", c.State, c.Detail)
+	}
+}
+
+// A `gh auth token` that never answers has not shown there is no stored
+// credential, so it is could-not-check, never a clean pass.
+func TestAmbientIdentityStoredCredentialLookTimeoutIsCouldNotCheck(t *testing.T) {
+	withRoster(t, goldenRoster())
+	// The budget is long enough that the immediate `gh api user` answer always
+	// lands inside it, even on a loaded runner, so only the `gh auth token` call
+	// can time out — the detail assertion below pins which call it was.
+	ghSplit(t, ghAPINotLoggedIn, "/bin/sleep 8; exit 1")
+	old := ambientProbeTimeout
+	ambientProbeTimeout = 2 * time.Second
+	t.Cleanup(func() { ambientProbeTimeout = old })
+	_, c := runRealAmbient(t, okProbes())
+	if c.State != CouldNotCheck {
+		t.Fatalf("timed-out stored-credential look = %s, want could-not-check (%s)", c.State, c.Detail)
+	}
+	if !strings.Contains(c.Detail, "gh auth token did not answer") {
+		t.Fatalf("the timeout should name the stored-credential look: %q", c.Detail)
+	}
+}
+
+// The probe-level pin for the same states: a readable stored credential behind
+// "not logged in" is ErrStoredAmbientCredential, never ErrNoAmbientIdentity.
+func TestAmbientLoginProbeStoredCredential(t *testing.T) {
+	t.Run("stored credential readable", func(t *testing.T) {
+		ghSplit(t, ghAPINotLoggedIn, ghAuthTokenStored)
+		_, err := ambientLoginProbe()
+		if !errors.Is(err, ErrStoredAmbientCredential) || errors.Is(err, ErrNoAmbientIdentity) {
+			t.Fatalf("probe err = %v, want ErrStoredAmbientCredential and not ErrNoAmbientIdentity", err)
+		}
+		if strings.Contains(err.Error(), stubStoredCredential) {
+			t.Fatalf("the probe error echoes the stored credential: %v", err)
+		}
+	})
+	t.Run("no stored credential", func(t *testing.T) {
+		ghSplit(t, ghAPINotLoggedIn, ghAuthTokenMissing)
+		if _, err := ambientLoginProbe(); !errors.Is(err, ErrNoAmbientIdentity) {
+			t.Fatalf("probe err = %v, want ErrNoAmbientIdentity", err)
+		}
+	})
+	t.Run("empty stored-credential answer", func(t *testing.T) {
+		ghSplit(t, ghAPINotLoggedIn, "exit 0")
+		if _, err := ambientLoginProbe(); !errors.Is(err, ErrNoAmbientIdentity) {
+			t.Fatalf("probe err = %v, want ErrNoAmbientIdentity", err)
+		}
+	})
 }

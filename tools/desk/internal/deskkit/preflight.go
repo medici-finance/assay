@@ -139,8 +139,11 @@ type Check struct {
 	// summary so the reader can see the failure already has a home and does NOT
 	// need a new issue filed about it.
 	Refs string
-	// Notice is an informational message on an OTHERWISE-GREEN check: something
-	// the reader should see that does NOT block the pass. A sibling checkout an
+	// Notice is an informational message: something the reader should see that
+	// does NOT itself block the pass. It usually rides a green check, but it can
+	// ride a red one too — the ambient-identity check keeps its human-login
+	// warning on every transport outcome, so a transport failure never hides it.
+	// A sibling checkout an
 	// UNCLAIMED cross-repo brief declares is absent at boot is a notice, not a
 	// failure (#661) — the brief is not being claimed now, so the pass proceeds;
 	// the notice records that claiming it later needs that checkout.
@@ -225,8 +228,9 @@ func (r PreflightReport) NotApplicable() []Check {
 	return out
 }
 
-// Notices returns the informational notices attached to otherwise-green checks,
-// in check order, each prefixed with the check name. A notice is something the
+// Notices returns the informational notices attached to checks (usually green
+// ones, see Check.Notice), in check order, each prefixed with the check name. A
+// notice is something the
 // reader should see that does NOT block the pass — an unclaimed brief's absent
 // cross-repo sibling, say (#661) — so it is reported even on a GREEN preflight.
 func (r PreflightReport) Notices() []string {
@@ -1492,8 +1496,13 @@ func dirExistsProbe(path string) (bool, error) {
 //   - IDENTITY. Desk writes go out under minted App tokens; no desk needs an
 //     ambient human login, and the only state with no identity-fall-through risk
 //     is the one with NO usable ambient human identity. So:
-//     no usable ambient human identity (`gh` not logged in, or a credential that
-//     answers 401/403 on /user — an App/integration token) passes this half;
+//     no usable ambient human identity (`gh` not logged in with no stored
+//     credential `gh auth token` can still read, a credential that answers 401
+//     on /user, or an App/integration token's 403) passes this half;
+//     "not logged in" with a stored credential still readable (an OS-keyring
+//     login behind an empty config dir) is could-not-check — a wrapper that
+//     resolves `gh auth token` hands it back, and whose it is cannot be told
+//     without using it;
 //     a HUMAN login — the blessing login or any other — is a non-blocking
 //     WARNING (a Notice on the result) naming the login, because a fall-through
 //     would act as that human, the blessing login included, which is the case
@@ -1543,6 +1552,9 @@ func checkAmbientIdentity(p PreflightProbes, l Landing, tokenPath string, forge 
 	case errors.Is(err, ErrNoAmbientIdentity):
 		identity = "no usable ambient human identity (" + oneLine(strings.TrimPrefix(
 			strings.TrimPrefix(err.Error(), ErrNoAmbientIdentity.Error()), ": ")) + ")"
+	case errors.Is(err, ErrStoredAmbientCredential):
+		return unchecked(CheckAmbientID, oneLine(err.Error()),
+			ambientClearRemedy+"; then re-run preflight", refs)
 	case err != nil:
 		return unchecked(CheckAmbientID, "could not read the ambient gh identity: "+oneLine(err.Error()),
 			"run `gh api user` by hand in this same shell and read its answer — a not-logged-in gh and an "+
@@ -1554,10 +1566,11 @@ func checkAmbientIdentity(p PreflightProbes, l Landing, tokenPath string, forge 
 		case got == "":
 			identity = "no ambient gh identity is set (nothing to fall through to)"
 		case isAmbientBot(cfg, got):
-			return failed(CheckAmbientID,
-				"the ambient gh login is "+got+", a bot/App slug — a tool fall-through would post as a bot and dodge the App-token mint",
-				ambientClearRemedy+"; if the bot credential is the interactive gh login rather than a token variable, "+
-					"log that bot account out of gh", refs)
+			botRemedy := ambientClearRemedy + "; if the bot credential is the interactive gh login rather than " +
+				"a token variable, log that bot account out of gh"
+			botDetail := "the ambient gh login is " + got + ", a bot/App slug — a tool fall-through would post " +
+				"as a bot and dodge the App-token mint"
+			return failed(CheckAmbientID, botDetail, botRemedy, refs)
 		default:
 			identity = "ambient gh login is a human (" + got + ", warned)"
 			whose := "that human"
@@ -1657,6 +1670,17 @@ func isAmbientBot(cfg Config, login string) bool {
 // (#1798).
 var ErrNoAmbientIdentity = errors.New("no usable ambient human identity")
 
+// ErrStoredAmbientCredential is what ambientLoginProbe wraps when `gh api user`
+// answered "not logged in" but `gh auth token` still returns a stored credential.
+// That is the shape an empty GH_CONFIG_DIR gives on a machine whose gh login
+// lives in the OS keyring: the API call finds no config, the keyring credential
+// is one local call away, and a wrapper that resolves `gh auth token` into
+// GH_TOKEN (cellctl's per-verb shim does) hands it straight back to the next
+// `gh`. It is NOT the no-identity state, and the check cannot tell whose
+// credential it is without using it, so it reads as could-not-check. The
+// credential itself is never kept or echoed.
+var ErrStoredAmbientCredential = errors.New("a stored gh credential is still reachable")
+
 // ambientProbeTimeout bounds the `gh api user` call. A var only so the timeout
 // path is testable without a 15-second test.
 var ambientProbeTimeout = 15 * time.Second
@@ -1673,7 +1697,10 @@ const ghExitAuthRequired = 4
 //
 //   - a login on stdout → that login;
 //   - `gh` answered, and the answer is "no usable human identity" (see
-//     classifyNoAmbientIdentity) → an error wrapping ErrNoAmbientIdentity;
+//     classifyNoAmbientIdentity) → an error wrapping ErrNoAmbientIdentity —
+//     except that a "not logged in" answer is only taken once `gh auth token`
+//     confirms no stored credential is readable either (storedAmbientCredential);
+//     one that is → an error wrapping ErrStoredAmbientCredential;
 //   - gh absent, gh could not be started, the call timed out, or any other
 //     answer → a plain error (could-not-check).
 func ambientLoginProbe() (string, error) {
@@ -1696,6 +1723,11 @@ func ambientLoginProbe() (string, error) {
 		if asExitError(err, &ee) {
 			stderr := oneLine(string(ee.Stderr))
 			if reason, ok := classifyNoAmbientIdentity(ee.ExitCode(), stderr); ok {
+				if reason == ghNotLoggedInReason {
+					if err := storedAmbientCredential(bin); err != nil {
+						return "", err
+					}
+				}
 				return "", fmt.Errorf("%w: %s", ErrNoAmbientIdentity, reason)
 			}
 			return "", fmt.Errorf("gh api user failed: %s", stderr)
@@ -1721,9 +1753,45 @@ func classifyNoAmbientIdentity(exitCode int, stderr string) (string, bool) {
 	case strings.Contains(low, "(http 403)"):
 		return "the ambient credential is not a user: HTTP 403 on /user, an App/integration token", true
 	case exitCode == ghExitAuthRequired || strings.Contains(low, "gh auth login"):
-		return "gh is not logged in", true
+		return ghNotLoggedInReason, true
 	}
 	return "", false
+}
+
+// ghNotLoggedInReason is classifyNoAmbientIdentity's reason for the "not logged
+// in" answer — the one answer that is only true of the API call's config view,
+// not of every credential gh can still read locally.
+const ghNotLoggedInReason = "gh is not logged in"
+
+// storedAmbientCredential runs `gh auth token` (local, no network) after `gh api
+// user` said "not logged in", and returns nil only when it shows no stored
+// credential: a non-zero exit, or an empty answer. A non-empty answer is an
+// error wrapping ErrStoredAmbientCredential; a call that could not run or did
+// not answer in time is a plain error (could-not-check). The answer is only
+// tested for being empty — it is never returned, logged, or kept.
+func storedAmbientCredential(bin string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), ambientProbeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, "auth", "token")
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
+	if ctx.Err() != nil {
+		return fmt.Errorf("gh reports not logged in, and gh auth token did not answer within %s, so a stored "+
+			"credential could not be ruled out", ambientProbeTimeout)
+	}
+	if err != nil {
+		var ee *exec.ExitError
+		if asExitError(err, &ee) {
+			return nil
+		}
+		return fmt.Errorf("gh reports not logged in, and gh auth token could not run: %v", oneLine(err.Error()))
+	}
+	if strings.TrimSpace(string(out)) == "" {
+		return nil
+	}
+	return fmt.Errorf("%w: gh api user reports not logged in, but gh auth token still returns a stored "+
+		"credential (an OS-keyring login read past an empty config dir, say) that a wrapper resolving gh auth "+
+		"token into GH_TOKEN hands back to the next gh", ErrStoredAmbientCredential)
 }
 
 // credHelperMatchesAppProbe reports whether EVERY credential source git consults for the
