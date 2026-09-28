@@ -356,6 +356,12 @@ func (s *Store) ReadDocCodeStaleness() ([]DocCodeStalenessRecord, error) {
 	return readFamily[DocCodeStalenessRecord](s, map[string]bool{MetricDocCodeStaleness: true})
 }
 
+// ReadRefix reads the re-fix trend family (brief quality/19) — one record per
+// measured window, appended by WriteRefix (refix.go).
+func (s *Store) ReadRefix() ([]RefixRecord, error) {
+	return readFamily[RefixRecord](s, map[string]bool{MetricRefix: true})
+}
+
 // streamRawJSONL streams a JSONL file's non-empty lines as raw bytes, one call
 // to fn per line, with the same large-record scanner budget streamJSONL uses. A
 // missing file streams nothing (an unmined root is empty, not an error). It is

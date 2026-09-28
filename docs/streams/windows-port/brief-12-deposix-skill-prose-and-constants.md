@@ -87,6 +87,56 @@ single-point-of-failure: for the prose half the control is the skillslint PARITY
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -n -e 'mktemp' -e '/tmp/' -e '~/.config' plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/pr-shepherd/SKILL.md plugins/assay/skills/worker-desk/SKILL.md \| grep -vc 'desk-shell.md' \|\| true` | fail exit=0 | sha256:9a271f2a916b | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -c -e '## Scratch files' -e '## Config home' plugins/assay/references/desk-shell.md` | pass exit=0 | sha256:53c234e5e847 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 3 | `deskboard actions --help 2>&1 \| grep -c -- '--out'` | pass exit=0 | sha256:1121cfccd591 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test -count=1 -run 'TestHookInstallUnix' ./cmd/deskpushguard/` | pass exit=0 | sha256:f2295dec3832 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && GOOS=windows go test -count=1 -run 'TestHookInstallWindows' ./cmd/deskpushguard/` | fail exit=1 | sha256:9ddc259f3fc4 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 6 | `git grep -n '"/opt/desk-tools' HEAD -- 'tools/desk/**/*.go' \| grep -vc _test.go \|\| true` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/skillslint && go test -count=1 -run 'TestPosixTokenRow' ./...` | pass exit=0 | sha256:86ac6c9b04ad | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 8 | `deskboard actions --out /tmp/a.json && reviewloop plan --actions /tmp/a.json --dry-run; echo rc=$?` | pass exit=0 | sha256:e14269118d70 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers windows-port/12; echo $?` | pass exit=0 | sha256:511beaa45d1c | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --root . --lint` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && go test -count=1 -run 'TestHookInstallIdempotentAndForeignRefusal' ./cmd/deskpushguard/` | pass exit=0 | sha256:6306ade6e327 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+
+**Verifier notes — 2026-09-27, assay-verifier-app[bot] (dispatched non-implementer, claude-opus-5-5), merged main 9585b4b6cc2e, darwin host.** Implementing change: #1501 (squash 34e93fbd6).
+
+Per-row observed output (hand re-runs of the exact row commands, same host and head):
+
+- Row 1 — prints `0` (exit 0). Expect `0` met. The witness `fail` is a witness-parse artefact: the Expect cell's parenthetical ("grep -v's exit 1 on zero matches") was read as an expected exit status of 1. The single surviving raw hit (worker-desk SKILL.md line 860, the config-home line) carries the desk-shell.md mechanism reference, exactly as the brief's rule intends. Substantively PASS; check-definition wording defect in the Expect cell.
+- Row 2 — prints `2`. PASS.
+- Row 3 — prints `3` (three `--out` lines in the installed deskboard's usage; a build of deskboard from this head prints the same `3`). `--out` was ADDED by #1501 and is documented in the verb usage (answers Review question 3). PASS.
+- Row 4 — `--- PASS: TestHookInstallUnix`. PASS.
+- Row 5 — could-not-check on this host. `GOOS=windows go test` builds a Windows test binary and then cannot exec it on darwin: `fork/exec …deskpushguard.test.exe: exec format error`, FAIL exit 1. That is the environment, not the code: `GOOS=windows go test -c` of the package builds clean (exit 0), and `TestHookInstallWindows` is target-parameterised (writeHooks takes the target OS), so on the host it runs and prints `--- PASS: TestHookInstallWindows`. The row's alternative ("run on the Windows CI leg") has no instrument today: the Windows CI leg workflow runs only the statusgen lint/version smoke and the bootstrap hash-check, not the deskpushguard tests. Native-Windows execution of this row remains open.
+- Row 6 — prints `1`; the sole non-test hit is cellctl's `DESK_TOOLS_BIN`-overridable default, as the Expect cell names; deskrelease carries none. PASS.
+- Row 7 — `--- PASS: TestPosixTokenRow` (plus the two sibling posix-token tests). PASS.
+- Row 8 — could-not-check. The exact row command prints `rc=6`, not `rc=0`: `deskboard actions` fails closed on an open-PR read of one private watched repo (`Resource not accessible by integration` under the verifier App identity), so no actions file is written and `reviewloop plan` is never reached. The witness `pass` is vacuous — the row ends in `; echo rc=$?`, so its exit status is always 0 and an exit-status witness cannot see the printed rc (check-definition defect). Partial evidence on the flow: `reviewloop plan --actions <file> --dry-run` parses the flag (a bogus flag is refused with "flag provided but not defined"; `--dry-run` reaches payload decoding). The full flow needs an identity with open-PR read on every watched repo.
+- Row 9 — exit 0; summary "0 corroborated, 0 disproved, 6 unchecked". PASS (exit-status row).
+- Row 10 — the witness could not run it (check:ci needs a network-off Linux sandbox). Host run of the same command: exit 0, `LINT: PASS`, 0 PROBLEM lines. Recorded as a host observation, not the network-off check:ci run.
+- Row 11 — `--- PASS: TestHookInstallIdempotentAndForeignRefusal`. PASS.
+
+Risk-bearing values. Trigger: the diff touches a risk-classed path (tools/desk/cmd/deskpushguard; statusgen lint raises a `risk-files-crossread` NOTICE on this brief for it) and changes an authority binding (the identity-mint binary deskrelease executes). Enumeration over the #1501 diff (hookinstall.go, deskrelease/github.go, deskboard/main.go, reviewloop, skillslint/posixtoken.go):
+
+- `deskTokenPath` resolution (authority binding) — deskrelease/github.go:69-84: sibling `desktoken`/`desktoken.exe` next to os.Executable() first, then exec.LookPath, then the bare name. Replaces the removed `/opt/desk-tools/bin/desktoken` literal.
+- `name = "desktoken"` / `"desktoken.exe"` @ deskrelease/github.go:70-72.
+- `hookMarker = "deskpushguard"` @ deskpushguard/hookinstall.go:66 (decides clobber vs idempotent skip).
+- `unixShim` exec target `"$(command -v deskpushguard)"` @ deskpushguard/hookinstall.go:49; `windowsCmdShim` target `deskpushguard.exe` @ deskpushguard/hookinstall.go:59.
+- File modes `0o755` (dir and pre-push) @ hookinstall.go:79,84; `0o644` (pre-push.cmd) @ hookinstall.go:94.
+- `posixTokenPattern = mktemp|/tmp/|~/\.config` @ skillslint/posixtoken.go:34; `unixExampleFenceMarker = "unix"` @ posixtoken.go:42.
+
+Ranked: (1) the deskTokenPath binding — a wrong binary would receive the identity-mint call during a release; a leaked credential cannot be undone by a redeploy. (2) hookMarker — decides whether an existing hook is overwritten; a wrong value would clobber or silently skip a guard. (3) shim exec targets — wrong target means the push guard does not run. Modes and the lint pattern are reversible, advisory knobs and rank last.
+
+- RISK-VALUE: DERIVED — deskTokenPath = sibling-of-os.Executable() "desktoken" @ deskrelease/github.go:74-79 — both shipped installers put every tools/desk/cmd binary into one directory in one step (Makefile desk-install loops over DESK_CMDS into INSTALL_DIR; build-windows.ps1 enumerates every cmd directory), so the sibling is the installed desktoken, and substituting it needs control of the directory that already holds the running deskrelease, the same threat model the old absolute literal defended.
+- RISK-VALUE: NAMED, NOT DERIVED — deskTokenPath fallback = exec.LookPath("desktoken") @ deskrelease/github.go:80-82 — when no sibling exists (dev builds, or a relocated binary) the identity mint resolves from PATH, which the removed comment said the literal existed to prevent. The code comment documents this as a deliberate dev-workflow fallback, but the portability-audit row's claim of "no widening" of that property holds only in the installed case. Whether a PATH fallback is acceptable for a privileged, identity-minting maintainer tool (versus refusing when no sibling exists) is a policy call this verifier cannot derive. Open question for a human.
+- RISK-VALUE: DERIVED — hookMarker = "deskpushguard" @ deskpushguard/hookinstall.go:66 — both the new shims and the older committed pre-push shim contain the tool name, so a re-run is an idempotent skip and any hook without it is refused unless --force is given (row 11 proves the refusal and the --force overwrite). Observation: the marker is a plain substring, so a foreign hook that merely mentions the name (for example a comment) is also reported as installed, and an older `/opt`-exec shim is left in place instead of being upgraded to the PATH-resolving one. Advisory, not a row failure.
+- RISK-VALUE: DERIVED — unixShim exec target = "$(command -v deskpushguard)" @ deskpushguard/hookinstall.go:49 — the brief's fact requires PATH resolution with no `/opt` literal; with deskpushguard missing from PATH, `exec ""` fails non-zero and git aborts the push (fail-closed). The .cmd pair's `deskpushguard.exe %*` likewise fails non-zero (errorlevel 9009) when the binary is absent.
+
+Observations: (a) the brief answers all four risk questions "no" but touches a security-path trigger (the lint NOTICE above); per the verifier kit a risk-classed path means a model does not sign this off alone, so the desk should route that question. (b) Rows 1, 5 and 8 have check-definition defects (Expect parse, no Windows instrument, vacuous exit-status witness) that should be re-authored before the next re-verify.
+
+VERIFY: BLOCKED — rows 5 and 8 could-not-check (row 5 needs a native-Windows run; row 8 needs a board-reading identity with open-PR read on every watched repo); every row that ran on this host met its Expect on observed output; one risk-bearing value is NAMED, NOT DERIVED (the deskrelease PATH fallback).
+
 ## Review
 Gate: **model**. Reviewer's questions: (1) is the prose diff a pure how-rename — same steps, same
 order? (2) does the unix hook still work from a linked worktree (core.hooksPath resolution)?
