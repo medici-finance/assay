@@ -1,0 +1,2 @@
+### Fixed
+- `deskinbox walk` and `deskinbox html` now pick and label the "latest desk note" the same way the `assay-inbox.sh` oracle does. The REST comment reader spells a GitHub App's login `<slug>[bot]`, while `gh` spells it `<slug>`. Because of that, every App's comment was treated as a desk note and printed under the wrong name. The reader now strips the `[bot]` suffix when it reads each comment. The parity tests now give each side its own login shape, and a new guard test fails if any code in the package builds a comment without that normalisation (#1797).

@@ -1,0 +1,53 @@
+{
+  "test": "go test ./internal/gitcore/ -run 'Refusal|Verdict|RemoteText|CapturesServerMessages|RemoteCaptureGuard|PushRefUpdate' -count=1 -timeout 300s && go test ./cmd/deskclaim-ref/ -run 'CauseCarriesServerMessage' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL \u2014 a create the server refused is reported as applied",
+    "file": "internal/gitcore/claimref.go",
+    "old": "\t\t\t\treturn RefUpdateVerdict{Result: RefUpdateRejected, Status: strings.TrimSpace(cs.Status), Remote: remoteText(remote)}, nil",
+    "new": "\t\t\t\treturn RefUpdateVerdict{Result: RefUpdateApplied}, nil"
+  },
+  "mutations": [
+    {
+      "name": "the receive-pack request stops negotiating the sideband (a server refusal loses its reason again)",
+      "file": "internal/gitcore/claimref.go",
+      "old": "\tcase adv.Supports(capability.Sideband64k):\n\t\t_ = req.Capabilities.Set(capability.Sideband64k)\n\tcase adv.Supports(capability.Sideband):\n\t\t_ = req.Capabilities.Set(capability.Sideband)\n\tdefault:",
+      "new": "\tdefault:"
+    },
+    {
+      "name": "the create verdict drops the captured server message",
+      "file": "internal/gitcore/claimref.go",
+      "old": "\t\t\t\treturn RefUpdateVerdict{Result: RefUpdateRejected, Status: strings.TrimSpace(cs.Status), Remote: remoteText(remote)}, nil",
+      "new": "\t\t\t\treturn RefUpdateVerdict{Result: RefUpdateRejected, Status: strings.TrimSpace(cs.Status)}, nil"
+    },
+    {
+      "name": "the delete refusal drops the captured server message",
+      "file": "internal/gitcore/claimref.go",
+      "old": "Status: strings.TrimSpace(cs.Status), Remote: remoteText(remote)}\n",
+      "new": "Status: strings.TrimSpace(cs.Status)}\n"
+    },
+    {
+      "name": "the delete refusal forgets the value it was CAS'd against",
+      "file": "internal/gitcore/claimref.go",
+      "old": "&RefRejectedError{Ref: ref, Old: current,",
+      "new": "&RefRejectedError{Ref: ref,"
+    },
+    {
+      "name": "the delete refusal is an untyped error again",
+      "file": "internal/gitcore/claimref.go",
+      "old": "\t\t\t\treturn 0, &RefRejectedError{Ref: ref, Old: current, Status: strings.TrimSpace(cs.Status), Remote: remoteText(remote)}",
+      "new": "\t\t\t\treturn 0, fmt.Errorf(\"gitcore: delete of %s rejected: %s\", ref, rejectionText(cs.Status, remoteText(remote)))"
+    },
+    {
+      "name": "the scrubber keeps C1 control characters",
+      "file": "internal/gitcore/claimref.go",
+      "old": "\t\t\tif unicode.IsControl(r) {",
+      "new": "\t\t\tif r < 0x20 || r == 0x7f {"
+    },
+    {
+      "name": "the class guard stops recognising a receive-pack request builder",
+      "file": "internal/gitcore/claimref_guard_test.go",
+      "old": "\t\"NewReferenceUpdateRequestFromCapabilities\": true,\n",
+      "new": ""
+    }
+  ]
+}
