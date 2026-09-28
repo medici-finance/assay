@@ -2,6 +2,7 @@ package deskkit
 
 import (
 	"context"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -511,17 +512,16 @@ func netrcFixture(body, host string) string {
 
 // netrcLexCases pins the netrc scan to the driver's ruling on arbiter packet #1622
 // (https://github.com/medici-finance/assay/issues/1622#issuecomment-5837592241, "Ruling: 1",
-// option 1: a state-free scan). Three rounds of trying to lex netrc exactly like ONE curl
-// reader (SR-1614-2, SR-1614-3) each fixed a gap against a different libcurl release without
-// converging, because libcurl has shipped three different netrc readers and git links whatever
-// one the host ships. Ruling 1 replaces "lex like curl" with: red whenever ANY token in the
-// file equals the host or `default`, ASCII case-insensitively, wherever that token sits —
-// inside a comment, a macro body, or a login/password/account value, not only a recognized
-// keyword position. Every row below that carries the host or `default` as a token, anywhere in
-// the body, is now red; the two `cnc` rows (an unreadable file, by curl's own admission) still
-// come first. Most of the former "green" rows are the state-free scan's accepted FALSE-RED
-// cost (see the block below and the PR body): no known curl reader would authenticate from
-// them, but the token appears in the file, so the scan cannot rule it out.
+// option 1: a state-free scan). Rounds that lexed netrc like one curl reader (SR-1614-2, -3),
+// and then like each reader in turn (SR-1614-4, -6, -8), each closed a gap for some libcurl
+// releases and left one open for another, because git links whatever libcurl the host ships.
+// The scan now keeps no quote state and no separator table: red whenever the host or
+// `default` occurs anywhere in the file as a word, ASCII case-insensitively (netrcMatch), plus
+// two add-only rules for words a reader decodes that are not raw words (backslash escapes in a
+// quote; the byte pre-8.21 readers drop after a closing quote). Every row below that carries
+// the host or `default` in any of those forms is red, wherever it sits. Many are the scan's
+// accepted FALSE-RED cost (see the block below and the PR body): no known curl reader would
+// authenticate from them, but the word appears in the file, so the scan cannot rule it out.
 var netrcLexCases = []netrcLexCase{
 	// '#' at the start of a token ends the line (SR-1614-3 a; SR-1614-2 rows A, B, C).
 	{"comment ending in machine above the entry is red", "# work machine\nmachine HOST login op\n", "red"},
@@ -551,43 +551,34 @@ var netrcLexCases = []netrcLexCase{
 	{"entry on a last line with no newline is red", "machine HOST login op", "red"},
 
 	// SR-1614-4 (round 4): every libcurl release before 8.21 skips one extra byte after a
-	// closing quote before it starts the next token; the state-free scan above did not, so a
-	// quoted token glued to a following non-space byte fused the host or `default` into a
-	// longer token the no-skip pass never compares. Fixed by scanning both tokenizations (with
-	// and without the extra byte a token-close consumes) and reddening if either matches.
-	// Fail-first: both rows read GREEN on e87ab6409 (the round-3-ruling head, before this fix);
-	// live git 2.55.0 + libcurl 8.7.1 on loopback presented the netrc credential for both.
+	// closing quote before it starts the next token, so the host or `default` right after `"X`
+	// is a token there though it follows a letter. The core rule does not see it (X is a word
+	// byte); the quote-skip rule does. Fail-first: both rows read GREEN on e87ab6409; live git
+	// 2.55.0 + libcurl 8.7.1 on loopback presented the netrc credential for both.
 	{"closing quote eats the byte before the host, fusing it into a longer token (SR-1614-4)",
 		"\"machine\"XHOST login op\n", "red"},
 	{"closing quote eats the byte before default, fusing it into a longer token (SR-1614-4)",
 		"\"x\"Xdefault login op\n", "red"},
 
-	// SR-1614-6/security (round 5): a raw or escaped newline byte inside a quote used to be
-	// read as ordinary quoted content, letting a quote opened on an inert line (a comment or a
-	// macdef body) absorb a real entry on a following line as part of the same "token" — hiding
-	// it from the scan instead of comparing it. Fail-first: all four rows below read GREEN
-	// before this fix; live git 2.55.0 + system libcurl on loopback presented the netrc
-	// credential for every one of them. Fixed by treating any newline inside a quote — raw or
-	// immediately after a backslash — as ending it unterminated, so these read could-not-check
-	// (curl would in fact refuse none of these — this check's own grammar simply stops trusting
-	// a quote across a line break) rather than silently green.
+	// SR-1614-6/security (round 5): a quote the scan opened on an inert line (a comment or a
+	// macdef body) absorbed the real entry on the next line. Fail-first: all four rows read GREEN
+	// at 7327d03c2; live git 2.55.0 + libcurl 8.7.1, 8.20.0 and 8.22.0 presented the credential
+	// for each. At 9e767f41 they read could-not-check; with no quote state the entry's host or
+	// `default` is simply a word in the file, so they now read red.
 	{"a quote opened in a comment line swallows the real entry on the next line (SR-1614-6/security)",
-		"# \"\nmachine HOST login op password pA\n# \"\n", "cnc"},
+		"# \"\nmachine HOST login op password pA\n# \"\n", "red"},
 	{"a quote opened in a comment line swallows a default entry on the next line (SR-1614-6/security)",
-		"# \"\ndefault login op password pE\n# \"\n", "cnc"},
+		"# \"\ndefault login op password pE\n# \"\n", "red"},
 	{"a quote opened in a macdef body swallows the real entry that follows it (SR-1614-6/security)",
-		"macdef m\n\"\n\nmachine HOST login op password pB\nmacdef n\n\"\n\n", "cnc"},
+		"macdef m\n\"\n\nmachine HOST login op password pB\nmacdef n\n\"\n\n", "red"},
 	{"an escaped (backslash-glued) newline inside a quote still swallows the real entry (SR-1614-6/security)",
-		"# \"x\\\nmachine HOST login op password pI\\\n# \"\n", "cnc"},
+		"# \"x\\\nmachine HOST login op password pI\\\n# \"\n", "red"},
 
 	// SR-1614-6/correctness (round 5): curl-8.13 through curl-8.20 end an unquoted token at any
-	// byte <= 0x20 (every C0 control byte, not only the six isspace bytes), and, where the
-	// platform's char is signed, at any byte >= 0x80 too. isNetrcSpace's narrow set does not
-	// split on those bytes, so `machine\x01HOST` or `default\x01login` read as ONE fused token
-	// under the narrow passes alone and are never compared. Fail-first: all five rows below read
-	// GREEN before this fix (isNetrcWideBoundary and the third scan pass did not exist yet).
-	// Confirmed live, offline, against a real libcurl 8.19.0 build (conda-forge, loopback-only
-	// 127.0.0.1 server, no network to a real host): git presented the credential for each.
+	// byte <= 0x20, and, where char is signed, at any byte >= 0x80 too, so `machine\x01HOST`
+	// is two tokens there. Every such byte is a non-word byte, so the core rule reads these red
+	// with no separator table. Fail-first: all five read GREEN at 7327d03c2; live git presented
+	// the credential for each on libcurl 8.19.0 and 8.20.0.
 	{"a C0 control byte (0x01) between machine and the host is a fused token pre-fix (SR-1614-6/correctness)",
 		"machine\x01HOST login op password p1\n", "red"},
 	{"a C0 control byte (0x1f) between machine and the host is a fused token pre-fix (SR-1614-6/correctness)",
@@ -599,15 +590,11 @@ var netrcLexCases = []netrcLexCase{
 	{"a C0 control byte (0x01) glues a leading byte onto default pre-fix (SR-1614-6/correctness)",
 		"x\x01default login op password p6\n", "red"},
 
-	// SR-1614-7 (round 1): pins the no-skip pass (pass 1) on its own, since it is the only pass
-	// that ever needs to catch a keyword sitting immediately after a closing quote with no
-	// separator at all. Deleting pass 1 (mutation M3) leaves every other row in this table
-	// green, because no other row places the host or `default` directly after a closing quote.
-	// Confirmed live: libcurl 8.22.0 (curl-8.21+'s grammar lexer) sends the credential for this
-	// exact shape; 8.7.1 and 8.20.0 (both pre-8.21, which skip the byte after the quote instead)
-	// send nothing — so on a pre-8.21 host, TestCredChainNetrcMatchesCurl alone cannot pin this;
-	// TestCredChainNetrcLexer and the mutation below are what pin it.
-	{"a keyword glued directly to a closing quote with no separator is pinned to the no-skip pass (SR-1614-7)",
+	// SR-1614-7 (round 5): `default` directly after a closing quote, with no separator. The
+	// curl-8.21+ lexer starts the next token right after the quote and presents the credential
+	// (live on libcurl 8.22.0; 8.7.1 and 8.20.0, which drop that byte, present nothing). The
+	// quote is a non-word byte, so the core rule reads it red.
+	{"a keyword glued directly to a closing quote with no separator is red (SR-1614-7)",
 		"\"x\"default login op password q1\n", "red"},
 
 	// FALSE-RED (Ruling 1's accepted cost): no curl reader we know of would authenticate from
@@ -631,13 +618,11 @@ var netrcLexCases = []netrcLexCase{
 	{"machine default is now a false red (`default` used as a value word, not the keyword)",
 		"machine default login op\n", "red"},
 
-	// NOT a false red, despite the same "closing quote glued to a keyword" shape as the row
-	// above: on curl-8.21+'s grammar lexer (the no-skip pass), the closing quote's very next
-	// byte starts the next token immediately, so "a"machine reads as two tokens, "a" and
-	// "machine", and curl authenticates for real (A-6). Confirmed live: libcurl 8.22.0 sent the
-	// credential for the analogous `"q"machine 127.0.0.1 login op password q3`; 8.7.1 and 8.20.0
-	// (pre-8.21, which skip the byte after the quote instead) sent nothing. This carries the
-	// same identity risk as SR-1614-7 below and is pinned the same way.
+	// NOT a false red: on curl-8.21+'s grammar lexer the byte right after a closing quote starts
+	// the next token, so "a"machine reads as two tokens, "a" and "machine", and curl
+	// authenticates for real (A-6). Confirmed live: libcurl 8.22.0 sent the credential for this
+	// row; 8.7.1 and 8.20.0 (pre-8.21, which drop the byte after the quote) sent nothing. The
+	// host is its own word here, so the core rule reads it red.
 	{"closing quote glued to a keyword is a true red on curl-8.21+, not only an accepted false red (A-6)",
 		"\"a\"machine HOST login op\n", "red"},
 
@@ -685,14 +670,96 @@ var netrcLexCases = []netrcLexCase{
 	// token identity, not on netrc content in general.
 	{"unrelated host and no default keyword is green", "machine other.example.invalid login a password b\n", "green"},
 
-	// curl refuses the whole file; the check does not guess.
-	{"unterminated quote is could-not-check", "\"abc\nmachine HOST login op\n", "cnc"},
-	{"NUL byte is could-not-check", "machine\x00x\nmachine HOST login op\n", "cnc"},
+	// An unterminated quote no longer matters: the scan keeps no quote state, so an entry after
+	// one is red, and a file with neither word in it is green (curl refuses such a file, so no
+	// reader presents anything from it).
+	{"an unterminated quote does not hide the entry after it", "\"abc\nmachine HOST login op\n", "red"},
+	{"an unterminated quote with neither word in the file is green", "\"abc\nmachine other.example.invalid login op\n", "green"},
+
+	// A NUL byte: red if a rule finds a word (no rule's red is overridden), else could-not-check.
+	{"a NUL byte does not hide an entry", "machine\x00x\nmachine HOST login op\n", "red"},
 	// curl reads the file a line at a time with strlen, so a NUL drops the rest of its line AND
 	// the newline, splicing the next line on: `def` NUL LF `ault` reads as `default`. Live,
 	// libcurl 8.7.1, 8.20.0 and 8.22.0 all presented the credential for this body.
 	{"a NUL that splices default across a line is could-not-check",
 		"def\x00\nault login op password n1\n", "cnc"},
+}
+
+// TestNetrcAddOnlyRules pins the shape the SR-1614-8 arbitration requires of every rule after
+// the core one: it can add a red and can never turn a red green. For each add-only rule it
+// shows (a) a body only that rule reddens, which is why the rule stays, and (b) a body the
+// core rule reddens while that rule alone reads green, which netrcMatch must still read red.
+// It then checks the same property over random bodies: whenever any rule reads red, netrcMatch
+// reads red, with no error.
+func TestNetrcAddOnlyRules(t *testing.T) {
+	const host = "github.com"
+	rule := func(name string) netrcRedRule {
+		for _, r := range netrcRedRules {
+			if r.name == name {
+				return r
+			}
+		}
+		t.Fatalf("no netrc rule named %q", name)
+		return netrcRedRule{}
+	}
+	if netrcRedRules[0].name != "core" {
+		t.Fatalf("netrcRedRules[0] = %q, want the core rule first", netrcRedRules[0].name)
+	}
+	cases := []struct {
+		rule     string
+		onlyThis string // only this rule reads red
+		coreOnly string // the core rule reads red; this rule alone reads green
+	}{
+		{"escape-folded",
+			netrcFixture("\v\"x machine \"ESCHOST\" login op password e2\"\n", host),
+			"machine " + host + "\\login op\n"},
+		{"quote-skip",
+			"\x80\"a\x01\"b\"Xdefault\x01login\x01op\x01password\x01k1\"\n",
+			"machine \"" + host + "\" login op\n"},
+	}
+	if len(cases) != len(netrcRedRules)-1 {
+		t.Fatalf("%d add-only rules but %d cases: every add-only rule needs one", len(netrcRedRules)-1, len(cases))
+	}
+	for _, c := range cases {
+		t.Run(c.rule, func(t *testing.T) {
+			r := rule(c.rule)
+			for _, other := range netrcRedRules {
+				got := other.match(c.onlyThis, host)
+				if (other.name == c.rule) != (got != "") {
+					t.Fatalf("rule %q on the only-%s body = %q; want red from %q alone", other.name, c.rule, got, c.rule)
+				}
+			}
+			if got := r.match(c.coreOnly, host); got != "" {
+				t.Fatalf("fixture drift: rule %q alone reads red (%q) on the core-only body", c.rule, got)
+			}
+			if got := netrcWordRule(c.coreOnly, host); got == "" {
+				t.Fatalf("fixture drift: the core rule reads green on the core-only body")
+			}
+			if got, err := netrcMatch(c.coreOnly, host); err != nil || got == "" {
+				t.Fatalf("netrcMatch on a body the core rule reddens = (%q, %v); rule %q must not clear it", got, err, c.rule)
+			}
+		})
+	}
+	t.Run("random bodies", func(t *testing.T) {
+		atoms := []string{host, "GitHub.Com", "default", "DEFAULT", "machine", "login", "op", "\"", "\\", "x", "X",
+			".", "-", "_", " ", "\t", "\n", "\r", "\v", "\f", "\x01", "\x80", "\xc2\xa0", "#", "\x00", "git", "hub.com", "de", "fault"}
+		rng := rand.New(rand.NewSource(1614))
+		for i := 0; i < 20000; i++ {
+			var b strings.Builder
+			for n := rng.Intn(12); n >= 0; n-- {
+				b.WriteString(atoms[rng.Intn(len(atoms))])
+			}
+			body := b.String()
+			for _, r := range netrcRedRules {
+				if r.match(body, host) == "" {
+					continue
+				}
+				if got, err := netrcMatch(body, host); err != nil || got == "" {
+					t.Fatalf("rule %q reads red on %q but netrcMatch = (%q, %v)", r.name, body, got, err)
+				}
+			}
+		}
+	})
 }
 
 // TestCredChainNetrcLexer runs every netrcLexCases body through the full probe, with the App

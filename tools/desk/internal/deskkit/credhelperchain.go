@@ -54,7 +54,7 @@ import (
 //
 // What the check cannot read is could-not-check, never clean: a push URL git cannot
 // normalize or whose host is empty, a pattern git would skip as unparseable, a netrc file
-// that exists but cannot be read.
+// that exists but cannot be read, or one holding a NUL byte that nothing else reddens.
 //
 // Everything here is READ-ONLY: git config reads, file reads and URL parsing. No helper is
 // run and the remote is never contacted.
@@ -63,7 +63,8 @@ import (
 // errs toward APPLYING an entry (which can only redden the check), never toward skipping it:
 // a partial-URL pattern applies when its scheme and host (where given) match, whatever its
 // user or path; `http.<url>.extraHeader` entries apply whenever their <url> matches, without
-// git's best-match narrowing; a netrc `machine` entry counts whatever login it carries.
+// git's best-match narrowing; the host or `default` anywhere in a netrc file counts, wherever
+// it sits and whatever login follows it (netrcMatch).
 
 // credTransportMatchesApp judges the credential git would present for a push to rawURL from
 // the repository at dir. It returns (true, detail, nil) only when every credential source git
@@ -111,9 +112,10 @@ func credTransportMatchesApp(dir, rawURL, appTokenPath string) (bool, string, er
 		return false, "", nerr
 	}
 	if entry != "" {
-		return false, entry + " for " + shown + "; at least one libcurl netrc reader git might link would have " +
-			"curl answer the server's authentication challenge from a matching token before any credential " +
-			"helper runs, and this scan does not track position closely enough to rule that out", nil
+		return false, entry + " for " + shown + "; a libcurl netrc reader git might link can answer the " +
+			"server's authentication challenge from it before any credential helper runs, and this scan does " +
+			"not track where the word sits, so it cannot rule that out (if the word is only in a comment, a " +
+			"macro or a value, edit it out of the netrc file)", nil
 	}
 
 	chain, err := applicableConfigValues(dir, "credential", "helper", rawURL)
@@ -427,8 +429,8 @@ func pctDecode(s string) string {
 	return b.String()
 }
 
-// netrcEntryFor returns a description of the netrc entry curl would answer an authentication
-// challenge for host from, or "" when there is none. git has libcurl consult netrc
+// netrcEntryFor returns a description of what in the netrc files could let curl answer an
+// authentication challenge for host (netrcMatch), or "" when nothing can. git has libcurl consult netrc
 // (CURLOPT_NETRC optional), and curl answers the server's challenge from a matching `machine`
 // entry, or from a `default` entry, before git runs any credential helper. The files read
 // are the ones curl reads — $HOME/.netrc (on Windows also %USERPROFILE% and _netrc) — plus
@@ -480,208 +482,149 @@ func netrcEntryFor(host string) (string, error) {
 	return "", nil
 }
 
-// netrcMatch scans a netrc body for any TOKEN that equals host or the keyword `default`,
-// compared ASCII case-insensitively (strcasecompare) — the state-free scan the driver ruled
-// for on arbiter packet #1622
-// (https://github.com/medici-finance/assay/issues/1622#issuecomment-5837592241, "Ruling: 1").
+// netrcMatch decides whether a netrc body could let curl answer an authentication challenge
+// for host, per the driver's ruling on arbiter packet #1622
+// (https://github.com/medici-finance/assay/issues/1622#issuecomment-5837592241, "Ruling: 1"):
+// a state-free scan that can only read red. It returns a non-empty description when it reads
+// red, an error for could-not-check, and "" for green.
 //
-// Rounds 1 and 2 of this review (SR-1614-2, SR-1614-3) tried to lex netrc exactly like curl's
-// reader, fixing keyword case and then comment/macro/separator handling. Round 3 found that
-// the fixed model matches libcurl 8.10 and earlier exactly but still fails open on 8.11 and
-// every later release: libcurl has shipped three different netrc readers (the pre-8.11 state
-// machine round 1/2 modelled, the 8.11+ reader that drops whole-line comments as it loads the
-// file, and the 8.21+ grammar lexer), and git links whichever one the host's libcurl ships. A
-// fourth round of "lex like curl" would only move the gap to a different set of curl versions.
+// Why state-free. Every earlier round modelled how one libcurl netrc reader splits the file
+// into tokens — keyword case, comments, macro ends, separator bytes, the byte a reader drops
+// after a closing quote, and finally which bytes end an unquoted token (SR-1614-2, -3, -4, -6,
+// -8). Each model was exact for some readers and wrong for the next one found, because git links
+// whichever libcurl the host ships and libcurl has shipped several readers. A quote the model
+// opened where a real reader did not let that quote swallow a real entry. So this check keeps no
+// quote state and no per-reader separator table at all.
 //
-// A token-equality scan needs no POSITIONAL model of any reader: every reader this check has a
-// tokenization for answers an authentication challenge for host, or falls back to a `default`
-// entry, only when one of those two words appears as ONE OF ITS TOKENS somewhere in the file —
-// so scanning every token, wherever it sits (inside a comment, a macro body, or a
-// login/password/account value, not only a position some reader treats as a keyword), covers
-// that reader's fail-open case without tracking where the token sits. That principle does not
-// by itself name which readers are covered: it still needs the token STREAM each pass produces
-// to match what that reader actually reads, which is what the tokenizations below are for. This
-// check covers, precisely: the pre-8.11 state machine and the 8.11-8.12 reader that drops
-// whole-line comments as it loads the file (pass 2, below, narrow boundaries); curl-8.13 through
-// curl-8.20 (pass 3, wide boundaries, SR-1614-6/correctness); and the curl-8.21+ grammar lexer
-// (pass 1, narrow boundaries, no skip). A reader this check has no tokenization for — an
-// unbuilt libcurl release, a distribution patch, or a non-libcurl netrc reader — is out of scope
-// and stays could-not-check where this check cannot observe it directly; it is not "covered" by
-// the general principle alone.
+// The core rule (netrcWordRule): red when the host or `default` occurs ANYWHERE in the file,
+// ASCII case-insensitively, delimited only by the start or end of the file or by a byte that is
+// not an ASCII letter, digit, `.`, `-` or `_` (isNetrcWordByte). Two add-only rules follow it,
+// each covering one way a reader can form a token whose bytes are not a delimited word in the
+// raw file:
 //
-// Tokenizing, per pass (pinned against real git and libcurl by TestCredChainNetrcMatchesCurl,
-// and against each documented reader's recorded behaviour by netrcLexCases):
+//   - netrcEscapeFoldedRule: a quoted token may spell the host with backslash escapes (`\.`
+//     stands for `.`). The core rule runs again over the body with every backslash removed.
+//   - netrcQuoteSkipRule: every libcurl before 8.21 drops the one byte after a closing quote
+//     before reading the next token, so in `"a"Xdefault` the word `default` is a token though
+//     it follows the letter X. Red when the word ends at a delimiter and starts two bytes after
+//     a `"`, whatever the byte between.
 //
-//   - An unquoted token runs to the next boundary byte. Passes 1 and 2 below use the narrow set
-//     every libcurl release except 8.13-8.20 reads: the six `isspace` bytes (space, tab,
-//     newline, vertical tab, form feed, carriage return). Pass 3 uses curl-8.13..8.20's wider
-//     set instead (isNetrcWideBoundary, SR-1614-6/correctness).
-//   - A quoted token takes the escapes \n, \r and \t; any other escaped byte stands for itself.
-//     A raw or escaped newline byte inside a quote always ends it as unterminated — a quote
-//     never absorbs the next line (SR-1614-6/security, netrcToken below). An unterminated quote
-//     makes curl refuse the file.
+// netrcMatch returns the first red any rule finds, in order, so a later rule only ever runs on a
+// body every earlier rule read green: no rule can turn another's red into green or could-not-check.
 //
-// A body curl refuses (an unterminated quote), or one holding a NUL byte, whose reading curl's
-// line reader does not make predictable, returns an error: could-not-check, never clean.
+// Why these cover the readers this check knows of (the pre-8.11 state machine, the 8.11-8.12
+// reader that drops whole-line comments on load, curl-8.13 through curl-8.20 with a signed or an
+// unsigned char, and the curl-8.21+ grammar lexer). Each presents a credential only after reading
+// a token equal to host (after `machine`) or to `default`, case-insensitively. Such a token is
+// one of:
 //
-// Cost the ruling accepts: a netrc that mentions the host or `default` only as an unrelated
-// comment word, a word inside an unrelated macro body, or a login/password/account value now
-// reads red though no known curl reader would ever authenticate from it — the check no longer
-// tracks position, only token identity. The operator clears a false red by editing their netrc
-// so the word does not appear there (see the PR body's false-red table for concrete shapes).
+//   - unquoted: raw file bytes, ended by end of file or a byte that reader treats as a separator,
+//     and started at start of file, after such a byte, right after a closing quote (8.21+), or
+//     right after the byte a pre-8.21 reader drops after a closing quote. No reader separates on
+//     a letter, digit, `.`, `-` or `_`, so every case but the last is a delimited word (core
+//     rule) and the last is the quote-skip rule;
+//   - quoted: the bytes between two quotes, each optionally preceded by a backslash (\n, \r and
+//     \t decode to control bytes a host never holds). With the backslashes removed they are a
+//     word delimited by those quotes (escape-folded rule).
 //
-// SR-1614-4: token identity over position is the right idea, but the token STREAM a reader
-// sees depends on the reader, and readers differ on two independent axes, not one:
+// The limit of that argument: it holds for readers that separate only on non-word bytes, drop at
+// most that one byte after a quote, and decode only single-byte backslash escapes. A reader
+// outside it — an unbuilt libcurl release, a vendor patch, a non-libcurl reader — is NOT covered:
+// the check may read green there. It cannot tell which libcurl git links, so it never reports
+// could-not-check for that reason.
 //
-//   - the one-byte skip after a token close. Every libcurl release before 8.21 skips one byte —
-//     the whitespace that ended an unquoted token, or the byte after a closing quote — before it
-//     starts looking for the next token (round 3's model, pinned by TestCredChainNetrcMatchesCurl
-//     and the SR-1614-4 fixtures below); the 8.21+ grammar lexer does not. For an unquoted token
-//     that one-byte skip is a no-op here (the loop below already consumes leading whitespace
-//     before every token), but for a quoted token immediately followed by a non-space byte, the
-//     two readings diverge: the pre-8.21 skip silently drops that byte, so a byte that would
-//     otherwise glue onto the next token instead falls away and the host or `default` can surface
-//     as its own token; a no-skip reading fuses it onto whatever follows and never compares it.
-//     `"machine"X127.0.0.1` reads as one token `X127.0.0.1` with no skip (no match) but presents
-//     the credential for host `127.0.0.1` under every pre-8.21 reader (the leading `X` is dropped,
-//     not glued).
-//   - the unquoted-token boundary byte set (SR-1614-6/correctness). curl-8.12 and earlier, and
-//     curl-8.21 and later, both end an unquoted token on any `isspace` byte (space, tab, newline,
-//     vertical tab, form feed, carriage return) — isNetrcSpace below. curl-8.13 through curl-8.20
-//     instead end it at any byte <= 0x20, and — on a platform where `char` is signed — at any
-//     byte >= 0x80 too (`while(*tok_end > ' ')` in that span's lib/netrc.c); this check takes the
-//     union of both cases rather than guess the runtime's char signedness, which can only widen a
-//     red, never narrow one. `machine\x01HOST` or `default\x01login` never split on that control
-//     byte under isNetrcSpace, fusing the keyword into a longer token a narrow scan never
-//     compares, while curl-8.13..8.20 read `machine` and `HOST` as two separate tokens and
-//     authenticate.
+// Cost the ruling accepts (a false red): the host or `default` appearing only in a comment, a
+// macro or a value reads red. The operator clears it by editing their netrc.
 //
-// Neither axis lets the other stand in for it: the skip is orthogonal to the boundary set. Every
-// libcurl release this check knows to have shipped is one of three (boundary, skip) pairs, so the
-// check runs three tokenizations and reddens if any finds the host or `default`:
-//
-//  1. narrow boundary, no skip — curl-8.21+'s grammar lexer.
-//  2. narrow boundary, skip — curl-8.12 and earlier, and every pre-8.21 reader in between other
-//     than the 8.13-8.20 span below (SR-1614-4).
-//  3. wide boundary, skip — curl-8.13 through curl-8.20 (SR-1614-6/correctness); that span is
-//     pre-8.21, so it carries the same one-byte skip as pass 2, on top of the wider boundary set.
-//
-// All three are pinned by TestCredChainNetrcMatchesCurl against whatever libcurl the host
-// actually links, and by fixtures in netrcLexCases against each documented reader's recorded
-// behaviour (SR-1614-4 for pass 2, SR-1614-6/correctness for pass 3).
-//
-// This scan is state-free and reddens on token identity alone (Ruling 1, arbiter packet #1622);
-// it is a fail-open guard against every netrc reader named above, not a claim to cover a reader
-// this check has no model for (an unbuilt libcurl release, a distribution patch, or a non-libcurl
-// netrc reader) — those stay could-not-check where this check cannot observe them directly.
+// Could-not-check: a body with a NUL byte and no red. curl reads the file a line at a time with
+// strlen, so a NUL drops the rest of its line and the newline with it, splicing the next line on
+// (`def` NUL LF `ault` reads as `default`); no byte scan can see what that forms.
 func netrcMatch(body, host string) (string, error) {
+	for _, rule := range netrcRedRules {
+		if detail := rule.match(body, host); detail != "" {
+			return detail, nil
+		}
+	}
 	if strings.IndexByte(body, 0) >= 0 {
-		return "", errors.New("holds a NUL byte, which curl's netrc reader does not read predictably")
-	}
-	if detail, err := netrcScanTokens(body, host, false, isNetrcSpace); err != nil || detail != "" {
-		return detail, err
-	}
-	if detail, err := netrcScanTokens(body, host, true, isNetrcSpace); err != nil || detail != "" {
-		return detail, err
-	}
-	return netrcScanTokens(body, host, true, isNetrcWideBoundary)
-}
-
-// netrcScanTokens makes one pass over body's tokens, reddening on the first that equals host or
-// `default` (ASCII case-insensitively). With skipAfterToken it advances one extra byte past
-// every token's end before resuming — the pre-8.21 libcurl behaviour SR-1614-4 documents on
-// netrcMatch above — which can split a token differently than the no-skip pass when a quoted
-// token is immediately followed by a non-space byte. isBoundary picks the unquoted-token
-// boundary byte set for the reader family this pass models (SR-1614-6/correctness); it is also
-// used to skip the separator run between tokens, symmetrically with how it ends one.
-func netrcScanTokens(body, host string, skipAfterToken bool, isBoundary func(byte) bool) (string, error) {
-	for i := 0; i < len(body); {
-		for i < len(body) && isBoundary(body[i]) {
-			i++
-		}
-		if i >= len(body) {
-			break
-		}
-		tok, end, ok := netrcToken(body, i, isBoundary)
-		if !ok {
-			return "", errors.New("has an unterminated quoted token, which makes curl refuse the file")
-		}
-		switch {
-		case asciiEqualFold(tok, host):
-			return fmt.Sprintf("a netrc token %q that matches the push host, case-insensitively", tok), nil
-		case asciiEqualFold(tok, "default"):
-			return fmt.Sprintf("a netrc token %q that matches the keyword `default`, case-insensitively", tok), nil
-		}
-		if skipAfterToken {
-			end++
-		}
-		i = end
+		return "", errors.New("holds a NUL byte, which makes curl splice lines together in ways a byte scan cannot read")
 	}
 	return "", nil
 }
 
-// netrcToken reads the netrc token that starts at line[i] (not a blank), the way curl does. It
-// returns the token, the index just past it (the boundary byte that ended an unquoted token, or
-// the byte after a closing quote), and false for an unterminated quoted token. isBoundary is the
-// unquoted-token boundary byte set for the calling pass (SR-1614-6/correctness); the quoted
-// branch's grammar (escapes, the closing quote) is the same for every reader this check models.
-func netrcToken(line string, i int, isBoundary func(byte) bool) (string, int, bool) {
-	if line[i] != '"' {
-		j := i
-		for j < len(line) && !isBoundary(line[j]) {
-			j++
-		}
-		return line[i:j], j, true
-	}
-	var b strings.Builder
-	escape := false
-	for j := i + 1; j < len(line); j++ {
-		c := line[j]
-		if c == '\n' {
-			// A newline always crosses a line boundary for netrc grammar purposes, whether it
-			// arrives raw or immediately after a backslash (escape is still true here): curl's
-			// reader is line-based and a quote never absorbs the next line, escaped or not
-			// (SR-1614-6/security). Reporting unterminated here, rather than silently treating
-			// the newline as ordinary quoted content, stops a quote opened on an inert line (a
-			// comment or a macdef body) from swallowing a real entry that follows it.
-			return "", j, false
-		}
-		switch {
-		case escape:
-			escape = false
-			switch c {
-			case 'n':
-				c = '\n'
-			case 'r':
-				c = '\r'
-			case 't':
-				c = '\t'
-			}
-		case c == '\\':
-			escape = true
-			continue
-		case c == '"':
-			return b.String(), j + 1, true
-		}
-		b.WriteByte(c)
-	}
-	return "", len(line), false
+// netrcRedRule is one state-free rule of the netrc scan; match returns a description when the
+// rule reads red for host, or "".
+type netrcRedRule struct {
+	name  string
+	match func(body, host string) string
 }
 
-// isNetrcSpace is C's isspace in the C locale, which ends an unquoted netrc token in every
-// libcurl release except curl-8.13 through curl-8.20 (isNetrcWideBoundary below,
-// SR-1614-6/correctness).
-func isNetrcSpace(c byte) bool {
-	return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r'
+// netrcRedRules are netrcMatch's rules in order: the core rule first, then the add-only rules.
+var netrcRedRules = []netrcRedRule{
+	{"core", netrcWordRule},
+	{"escape-folded", netrcEscapeFoldedRule},
+	{"quote-skip", netrcQuoteSkipRule},
 }
 
-// isNetrcWideBoundary is curl-8.13 through curl-8.20's unquoted-token boundary
-// (SR-1614-6/correctness): `while(*tok_end > ' ')` in that span's lib/netrc.c ends the token at
-// any byte <= 0x20, and — where the platform's `char` is signed — at any byte >= 0x80 too. This
-// check takes the union of both halves rather than guess the runtime's char signedness, which
-// can only widen a red, never narrow one.
-func isNetrcWideBoundary(c byte) bool {
-	return c <= 0x20 || c >= 0x80
+// netrcWordRule is the core rule: host or `default` occurs in body as a delimited word.
+func netrcWordRule(body, host string) string {
+	return netrcWordsFound(body, host, "", netrcWordStartsAfterDelimiter)
+}
+
+// netrcEscapeFoldedRule applies the core rule to body with every backslash removed, so a quoted
+// token that spells host (or `default`) with backslash escapes still reads red.
+func netrcEscapeFoldedRule(body, host string) string {
+	if strings.IndexByte(body, '\\') < 0 {
+		return ""
+	}
+	return netrcWordsFound(strings.ReplaceAll(body, `\`, ""), host,
+		" once backslash escapes in quoted tokens are decoded", netrcWordStartsAfterDelimiter)
+}
+
+// netrcQuoteSkipRule reads red when host or `default` ends at a delimiter and starts two bytes
+// after a `"`: a pre-8.21 libcurl drops the byte after a closing quote and reads the word as a
+// token whatever that byte was.
+func netrcQuoteSkipRule(body, host string) string {
+	return netrcWordsFound(body, host, " right after the byte a pre-8.21 libcurl drops after a closing quote",
+		func(b string, p int) bool { return p >= 2 && b[p-2] == '"' })
+}
+
+// netrcWordsFound describes the first of host and `default` that occurs in body, ASCII
+// case-insensitively, ending at the end of body or at a non-word byte and starting where
+// startsOK allows; "" when neither does. The description names only host or `default`, never
+// other bytes of the file.
+func netrcWordsFound(body, host, how string, startsOK func(body string, p int) bool) string {
+	if host != "" && netrcWordOccurs(body, host, startsOK) {
+		return fmt.Sprintf("the push host %q as a netrc word (case-insensitively%s)", host, how)
+	}
+	if netrcWordOccurs(body, "default", startsOK) {
+		return fmt.Sprintf("the keyword `default` as a netrc word (case-insensitively%s)", how)
+	}
+	return ""
+}
+
+// netrcWordOccurs reports whether word occurs in body, ASCII case-insensitively, at an offset p
+// that startsOK accepts and ending at the end of body or at a non-word byte.
+func netrcWordOccurs(body, word string, startsOK func(body string, p int) bool) bool {
+	for p := 0; p+len(word) <= len(body); p++ {
+		end := p + len(word)
+		if (end == len(body) || !isNetrcWordByte(body[end])) && asciiEqualFold(body[p:end], word) && startsOK(body, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// netrcWordStartsAfterDelimiter is the core rule's start condition: the start of body or a
+// non-word byte just before p.
+func netrcWordStartsAfterDelimiter(body string, p int) bool {
+	return p == 0 || !isNetrcWordByte(body[p-1])
+}
+
+// isNetrcWordByte reports whether c can sit inside a host name or `default` without delimiting
+// it: an ASCII letter, digit, `.`, `-` or `_`. Every other byte delimits a word, whether or not
+// any netrc reader treats it as a separator.
+func isNetrcWordByte(c byte) bool {
+	return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' || c == '.' || c == '-' || c == '_'
 }
 
 // asciiEqualFold compares two strings ignoring ASCII letter case only, as curl's
