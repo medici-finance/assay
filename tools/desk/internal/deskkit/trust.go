@@ -151,6 +151,146 @@ func TrustedHumanAuthor(login string) bool {
 	return false
 }
 
+// IsTrustedHumanLogin reports whether login is a trusted, non-bot-shaped human login of
+// the parsed ASSAY_TRUSTED_LOGINS roster (`c.Humans`) — the SAME set the stamp-authority
+// allowance (ASSAY_STAMP_TRUSTED_LOGINS, #336) itself must already draw from at parse time
+// (rosterconfig.go refuses an allowance entry `c.Humans` does not carry). It answers a
+// BROADER question than TrustedHumanAuthor, which narrows further to a mapped, accountable
+// human or the bless authority for its own callers' purposes (the review-neglect metric
+// among them): this asks only "is this login one the roster trusts at all, and not an
+// App/bot rendering".
+//
+// NOT deskrestamp's foreign-applier bar, and — since C5 — not called by ANY production
+// consumer at this head (only tests exercise it directly). An earlier round of this file
+// said re-attesting content under the dispatcher was "safe to do for any login the roster
+// already vouches for as human", and the model-floor refusal message routed on this exact
+// predicate; the driver's ruling on PR #1727 (comment
+// https://github.com/medici-finance/assay/pull/1727#issuecomment-5860170351,
+// 2026-09-27T21:54:19Z) said otherwise, and C5 (round 2) moved that message onto the
+// SHARED, stricter predicate deskrestamp itself enforces (RestampVouchesLabel /
+// AllForeignStampLabelsRestampVouched — the roster's own blessing authority, applied before
+// RestampDriverCutoff) instead of re-deriving it here. This function remains what it always
+// was — the general "is this login trusted at all" question — available to a future
+// consumer that genuinely wants the broader trusted-human set; it is simply not deskrestamp's
+// bar, and no longer anything's re-stamp-adjacent bar either.
+//
+// Fail-closed: an empty login, a bot-shaped login, or an unconfigured roster is false.
+func IsTrustedHumanLogin(login string) bool {
+	l := strings.ToLower(strings.TrimSpace(login))
+	if l == "" {
+		return false
+	}
+	if looksLikeBot(l) {
+		return false
+	}
+	c := EffectiveConfig()
+	if !c.Configured() {
+		return false
+	}
+	_, ok := c.Humans[l]
+	return ok
+}
+
+// RestampDriverCutoffRFC3339 is the driver's ruling on deskrestamp's provenance bar
+// (#336, SEC-1b round 3 — PR #1727 comment
+// https://github.com/medici-finance/assay/pull/1727#issuecomment-5860170351,
+// 2026-09-27T21:54:19Z), quoted: "deskrestamp may vouch only for dispatched-* labels
+// applied by the driver's own login (the roster bless login) before
+// 2026-09-27T00:00:00Z (the #336 legacy backlog); every other applier is refused."
+//
+// A COMPILED CONSTANT, never a roster key. The #336 legacy backlog is a closed, already-
+// existing set of pre-ruling labels; the cutoff marks that historical boundary rather than
+// naming an ongoing operator knob, so it does not belong beside ASSAY_STAMP_TRUSTED_LOGINS
+// in the roster — nothing this verb re-stamps in the future should ever qualify merely by
+// having been applied "early" relative to a value an operator could move.
+const RestampDriverCutoffRFC3339 = "2026-09-27T00:00:00Z"
+
+// RestampDriverCutoff parses RestampDriverCutoffRFC3339. TestRestampDriverCutoffParses
+// pins that the literal parses; the zero-value fallback here is fail-closed (the zero
+// time is before nothing a real label timestamp could ever be) rather than a panic, in
+// case that pin ever lapses.
+func RestampDriverCutoff() time.Time {
+	t, err := time.Parse(time.RFC3339, RestampDriverCutoffRFC3339)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+// IsRestampDriverLogin reports whether login is the roster's own blessing authority — the
+// driver's login, read dynamically from EffectiveConfig().Bless.Login and NEVER
+// hard-coded. This is deskrestamp's provenance bar (#336, SEC-1b round 3, the driver's
+// ruling quoted above): membership in the broader ASSAY_TRUSTED_LOGINS set, or even in the
+// narrower stamp-authority allowance (ASSAY_STAMP_TRUSTED_LOGINS), is NOT enough — only
+// the driver's own login qualifies for this verb's repair, and only before
+// RestampDriverCutoff.
+//
+// Fail-closed: an empty login, or an unconfigured roster with no blessing authority set,
+// is false.
+func IsRestampDriverLogin(login string) bool {
+	l := strings.ToLower(strings.TrimSpace(login))
+	if l == "" {
+		return false
+	}
+	c := EffectiveConfig()
+	if !c.Configured() || c.Bless.Login == "" {
+		return false
+	}
+	return l == c.Bless.Login
+}
+
+// RestampVouchesLabel is deskrestamp's own provenance predicate (#336, SEC-1b round 3, the
+// driver's ruling quoted above), and THE SHARED ONE — the model-floor refusal message (C5)
+// and deskrestamp's own gate both call this, never a re-derived copy, so a refusal that
+// names deskrestamp as the repair is never wrong about what deskrestamp will do with it.
+//
+// It reports whether the PRESENT label's standing application is one deskrestamp itself
+// would re-attest: BOTH the roster's own blessing authority (IsRestampDriverLogin — never
+// any other trusted login, allowance member or not) AND a forge timestamp strictly before
+// RestampDriverCutoff. who is the standing applier login (for a refusal message), or a fixed
+// placeholder when the timeline names no standing applier for the label at all.
+//
+// Fail-closed on every unresolved half: no standing applier, an empty applier, a non-driver
+// applier, or a missing/unparseable CreatedAt (the zero-value fallback of a failed parse is
+// never treated as "before" the cutoff) each answer false.
+func RestampVouchesLabel(tl StampTimeline, label string) (vouches bool, who string) {
+	applier, createdAt, ok := StandingStampApplierAt(tl, label)
+	if !ok || applier == "" {
+		return false, "(an actor the timeline does not name)"
+	}
+	if !IsRestampDriverLogin(applier) {
+		return false, applier
+	}
+	at, perr := time.Parse(time.RFC3339, createdAt)
+	if perr != nil || !at.Before(RestampDriverCutoff()) {
+		return false, applier
+	}
+	return true, applier
+}
+
+// AllForeignStampLabelsRestampVouched reports whether EVERY dispatched-* label the PR
+// currently carries, whose standing applier is NOT one isDispatcher accepts, is one
+// RestampVouchesLabel accepts too — so a caller that names deskrestamp as the operator's
+// next step is naming a case the verb will actually repair, not one it will refuse right
+// back (C5: routing on a WEAKER bar than deskrestamp's own enforces sends the operator in a
+// circle). A label already standing under an identity isDispatcher accepts is skipped:
+// deskrestamp never touches it (it is not in the verb's own removal set), so it is not part
+// of what "would deskrestamp repair this pair" asks. Checked PER LABEL, never aggregated by
+// "any vouches" — every foreign-applied label must vouch on its own, matching deskrestamp's
+// own per-label gate exactly (never the OR-aggregation SEC-3/A4 refuses).
+func AllForeignStampLabelsRestampVouched(tl StampTimeline, isDispatcher func(applier string) bool) bool {
+	appliers, _ := resolveStampAppliers(tl)
+	for label, who := range appliers {
+		if isDispatcher != nil && isDispatcher(who) {
+			continue
+		}
+		if vouches, _ := RestampVouchesLabel(tl, label); !vouches {
+			return false
+		}
+	}
+	return true
+}
+
 // VerifyGateLabel is the label the verify-gate sign-off card carries — the issue the
 // verify-gate-open workflow files for a `gate: human` brief that has become eligible.
 // It is the selector the queue views read (cmd/deskboard) and the scope of the
