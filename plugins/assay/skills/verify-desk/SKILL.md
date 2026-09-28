@@ -634,9 +634,9 @@ implementer**, because it needs an external API key, meters real billed spend, o
 session (the triggering case: a live Anthropic ACP session — adapter negotiation, metered cost, negotiated
 params). Unlike a cluster row it has **no online hand-off lane**: no second non-implementer runner holds the
 credential or can be charged the spend. Left under the plain Verify contract (a non-implementer re-runs
-every row) such a brief rots at `implemented` forever and needs a bespoke human ruling — the class that
-stranded loop-engine/14 at `implemented` and recurs across desk-console-saas/04-05, desk-console-2/01,
-desk-apps/04.
+every row) such a brief rots at `implemented` forever and needs a bespoke human ruling — a class that has
+already stranded briefs at `implemented` and recurs across several streams (any `<stream>/<NN>` whose only
+unrun Verify row is the live probe).
 
 human:<name> ruled (2026-08-27) that this class is handled by **Option 2**:
 the probe is a **Phase-0 implementer obligation**, recorded as Evidence **at implementation time** (adapter
