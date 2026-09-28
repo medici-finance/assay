@@ -186,8 +186,8 @@ facts:
 
 **Verifier notes — 2026-09-27, non-implementer verifier (opus-5.5), merged main b227b40768db;
 implementing change 3439807d08dd (PR #1560).** Every row was also run by hand; the witness
-table above is the machine record, and seven of its verdicts are artefacts of how it reads a
-prose or list-shaped row (rows 5-9, 12, 13 below say which). Key real output per row:
+table above is the machine record, and nine of its verdicts are artefacts of how it reads a
+prose or list-shaped row, or of what it executes (rows 5-13 below say which). Key real output per row:
 
 - **Row 1** — `install/SKILL.md:0`, `adopt/SKILL.md:0`. PASS.
 - **Row 2** — `46` (need ≥ 3). PASS.
