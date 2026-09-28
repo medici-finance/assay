@@ -1,9 +1,11 @@
 // Command cellctl starts, stops and scaffolds an Assay CELL on one laptop.
 //
-// This is the Go port of tools/cellctl/cellctl. The shell script stays in
-// the tree as the parity ORACLE: tools/cellctl/tests/parity.test.sh runs both implementations
-// over the same fixtures and diffs their DRY_RUN plans, stdout, stderr and exit codes, so every
-// line this program prints is a CONTRACT with that script until a human signs the cutover.
+// This is the Go port of the original bash cellctl, and it is the launcher releases ship. The
+// shell script stays in the tree as a TEST FIXTURE only, at
+// tools/cellctl/testdata/cellctl-shell-oracle.sh — the parity ORACLE:
+// tools/cellctl/tests/parity.test.sh runs both implementations over the same fixtures and diffs
+// their DRY_RUN plans, stdout, stderr and exit codes, so every line this program prints is a
+// CONTRACT with that script until a human signs the cutover.
 //
 // Layout mirrors the brief's files: cell.go (cell.env + kind/harness/forge validation), env.go
 // (the scrubbed allowlist, stated once), plan.go (the [plan] grammar), and one file per verb.
