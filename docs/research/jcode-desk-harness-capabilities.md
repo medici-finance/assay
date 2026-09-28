@@ -272,7 +272,7 @@ sourced+caveated above, and the our-workload figures are BLOCKED, not estimated.
 
 **Why density is the point (design read, not a measurement):** if even the embeddings-on ~167 MB
 holds on our workload, that is ~2.3× more desk+worker sessions per node than Claude's ~386 MB — a
-direct multiplier on the desk-console substrate's binding constraint. The win is *plausibly real* but
+direct multiplier on per-node density, the binding constraint of the substrate the desks run on. The win is *plausibly real* but
 must be measured with the memory layer on and the real tool surface loaded, not read off an idle
 embeddings-off client.
 
