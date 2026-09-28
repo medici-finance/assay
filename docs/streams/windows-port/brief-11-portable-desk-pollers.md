@@ -102,6 +102,52 @@ single-point-of-failure: the ONE control is the parity test (verb ≡ script on 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
+### Verification — 2026-09-25 (assay-verifier-app[bot] @ 89042b8fcc7e (claude-opus-5-5[1m]) (on-behalf-of human:ian))
+
+Execution witness: `statusgen verifyrun` built from this tree at merged main 89042b8fcc7e, run on a darwin/arm64 host (go1.26.5, GOWORK=off, no GH_TOKEN in the environment). The verbs named in rows 6, 11 and 12 (desktick, statusgen) resolved to binaries built from this same tree. The rows below are the tool's output, unedited.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go vet ./cmd/deskmonitor/ ./cmd/desktick/ ./cmd/scanloop/ && go test -count=1 ./cmd/deskmonitor/ ./cmd/desktick/ ./cmd/scanloop/` | pass exit=0 | sha256:cc04abd6649a | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test -count=1 -run 'TestParityInboundMonitor' -v ./cmd/deskmonitor/ \| grep -c -- '--- PASS'` | pass exit=0 | sha256:54183f4323f3 | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GH_TOKEN=leak go test -count=1 -run 'TestMonitorDropsRoleToken' ./cmd/deskmonitor/` | pass exit=0 | sha256:424b06cce823 | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test -count=1 -run 'TestMonitorRetainsOnFailedRead' ./cmd/deskmonitor/` | pass exit=0 | sha256:e4f7eb757cb4 | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test -count=1 -run 'TestMonitorBurstCollapse' ./cmd/deskmonitor/` | pass exit=0 | sha256:9dadac2282c7 | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 6 | `bash plugins/assay/scripts/tick-summary.sh regexp > /tmp/a.txt; desktick regexp > /tmp/b.txt; diff /tmp/a.txt /tmp/b.txt; echo rc=$?` | pass exit=0 | sha256:93ff7811a209 | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 7 | `git grep -n '"/bin/bash"' HEAD -- tools/desk/cmd/scanloop/ \| wc -l` | fail exit=1 | sha256:4eff2db4bada | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./cmd/deskmonitor/ ./cmd/desktick/ ./cmd/scanloop/` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test -count=1 -run 'TestScanloopArmsDeskmonitor' ./cmd/scanloop/` | pass exit=0 | sha256:9050f150e246 | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 10 | `grep -c -e 'pr-monitor.sh' -e 'tick-summary.sh' -e 'harness Monitor' -e 'jq' docs/streams/windows-port/portability-audit.md` | pass exit=0 | sha256:aa67a169b0bb | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 11 | `statusgen --root . --consumers windows-port/11; echo $?` | pass exit=0 | sha256:6329b9fd9f85 | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+| 12 | `statusgen --root . --lint` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 89042b8fcc7e (on-behalf-of human:ian) (forge-identity) |
+
+**Rows that are not a witnessed pass (why there is no status flip):**
+
+- Row 7 recorded `fail exit=1`, but the property the row checks holds. Run by hand, the pipeline prints `0`, which is the Expect value, and a plain grep for the /bin/bash literal over the scanloop directory at HEAD finds it only in test fixtures that stub LookPath (arm_test.go lines 221-237), never as a quoted `"/bin/bash"` literal. The exit code comes from the witness shell running with pipefail: `git grep` exits 1 when it finds no match, so the pipeline exits 1 even though `wc -l` printed the expected count. The row's command needs amending (for example `{ git grep -n '"/bin/bash"' HEAD -- tools/desk/cmd/scanloop/ || true; } | wc -l`) before a witness can record this as a pass. The code is not at fault.
+- Row 12 recorded `could-not-run`. It is a `check:ci` row, and the witness needs a network-off sandbox (`unshare --net`) that this darwin host does not have. As a supplementary manual reading that is not a witness, `statusgen --root . --lint` on the same tree exited 0 with `LINT: PASS` and 0 PROBLEM lines (NOTICEs only).
+
+**Supplementary manual readings (not witnesses):** row 2 ran the parent test with 16 fixture subtests, including the degraded §B cases: at-limit-retained, collapse-below-floor-retained, failed-read-retained and zero-after-nonzero-retained. Row 3 ran 3 subtests (token file, no-token degraded, pr poller). Row 4 ran 4 subtests (404, zero-after-nonzero, at-the-limit, collapsed-below-floor). Rows 5 and 9 each ran their named test, and neither reported `no tests to run`. Row 6: diff rc=0 on a 183-byte regexp. Row 10: count 8. Row 11: `consumers: no brief files in the diff ... nothing to corroborate`, exit 0.
+
+**Observation (not a Verify row):** the brief's facts say that on Windows the default state dir is the user config dir. As merged, the default is the OS temp dir plus assay-inbound-monitor (deskmonitor state.go line 72), which matches the script's own `${TMPDIR:-/tmp}` default (inbound-monitor.sh line 80). The script-parity constraint was followed. The facts line was wrong about the script's default.
+
+**Risk-bearing values** (risk all-no, gate model, not irreversible). Enumerated over the deskmonitor and desktick non-test sources, scanloop plan.go and the Deliverables. Every literal is a reversible operational knob:
+
+- `INBOUND_MONITOR_LIMIT` default 500 (inbound.go:120)
+- `INBOUND_MONITOR_BURST_CAP` default 25 (inbound.go:123)
+- `INBOUND_MONITOR_RETAIN_FLOOR` default 50 (inbound.go:126)
+- `ASSAY_MONITOR_PACE_SECONDS` default 2 (inbound.go:129, pr.go:141)
+- `PR_MONITOR_LIMIT` default 100 (pr.go:138)
+- `ASSAY_MONITOR_MAX_REPOS_PER_CYCLE` default 0 (pr.go:144)
+- state dir mode 0o755 (state.go:77)
+- cursor file mode 0o644 (pr.go:318)
+- token-file owner-only 0600 check (identity.go:92)
+
+Ranking: the retain floor and the token-file custody check come first. A wrong floor either loses a baseline, which reads as a burst of phantom new items, or masks a real collapse. A loose custody check lets a group-readable token through. Both are undone by an edit and a redeploy.
+
+- RISK-VALUE: DERIVED — INBOUND_MONITOR_RETAIN_FLOOR default = 50 @ tools/desk/cmd/deskmonitor/inbound.go:126 — the brief's standing constraint is byte-parity with the script, and inbound-monitor.sh:88 pins `${INBOUND_MONITOR_RETAIN_FLOOR:-50}`; LIMIT 500, BURST_CAP 25, PACE 2, PR LIMIT 100 and MAX_REPOS 0 match inbound-monitor.sh:81/82/93 and pr-monitor.sh:65/67/68 the same way
+- RISK-VALUE: DERIVED — token-file mode = 0600 (owner-only) @ tools/desk/cmd/deskmonitor/identity.go:92 — it delegates to the shared deskkit custody rule (VerifyCustodyOwnerOnly), the same owner-only floor every desk token file carries; property (A) requires the verb never widen its credential surface, and TestMonitorDropsRoleToken passed
+
+VERIFY: FAIL (witness). 10 of 12 rows pass exit=0. Row 7 fails on a Verify-row command defect (pipefail against a no-match git grep); the property it checks holds. Row 12 is could-not-run on darwin because the check:ci network sandbox needs Linux. No implemented→verified flip on this landing. Row 7's command needs amending, and row 12 needs a Linux witness.
 
 ## Review
 Gate: **model**. Reviewer's questions: (1) row 2 — do the fixtures cover the four degraded
