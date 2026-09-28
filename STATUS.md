@@ -65,7 +65,7 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (53 desk-actionable of 88 total — 86 at implemented, 2 verified awaiting review)
+## Awaiting verification / review (53 desk-actionable of 88 total — 85 at implemented, 3 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -178,7 +178,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | iso-9001 | 01 [exec:strong] | implemented | 4000 | 6 | — | — | — |
-| iso-9001 | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| iso-9001 | 04 [exec:strong] | verified | 2000 | 2 | — | 2026-09-27 assay-verifier-app[bot] @ 9585b4b6cc2e (claude-opus-5-5) | — |
 
 ## Age at the human gate
 
@@ -430,7 +430,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 - 01 Emit the tool-validation evidence pack as a release asset — implemented (wave 0)
 - 03 A finding closes on a fired control — the corrective-action effectiveness record — todo (wave 1)
-- 04 Record the authorizing human in the release itself — implemented (wave 1)
+- 04 Record the authorizing human in the release itself — verified (wave 1)
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
 - 07 Release by merge — the human merge is the cut and the authorizer — blocked (wave 2)
 
