@@ -383,6 +383,23 @@ as the planner and acts on its rows.
   review (the board computes this; don't hand-diff). Keep-current merges are expected work, not
   noise — except one that had to **resolve a conflict**, which edits the PR's own files and shows
   as RE-REVIEW instead: review the resolution, it is authored work.
+- **Evidence PRs re-conflict by design.** A verify desk's Evidence PR goes `CONFLICTING` whenever
+  a sibling Evidence PR lands: they all append to one outcomes log, and the forge's server-side
+  merge applies no `.gitattributes` merge driver (#882). The verify-desk skill's Evidence-PR state
+  table (verdict × at head × mergeable, first match wins) gives every state exactly one owner. This
+  desk owns three of its rows:
+  - **verdict `none`**: first review of each missing lane, whether or not the PR is `CONFLICTING`;
+  - **`MERGEABLE`, the head moved since the latest verdict** (a fix or a merge of main was pushed):
+    re-review the delta as soon as it is `MERGEABLE`, with priority. For a merge of main, check that
+    the PR's own log lines survive intact, the merge added nothing else, and the rest of the diff is
+    unchanged. Because the log is one of the PR's own files, the board shows it as RE-REVIEW;
+  - **`MERGEABLE`, clear at the current head**: flip.
+
+  A `CONFLICTING` Evidence PR whose latest verdict is clear, or has been answered by a push, belongs
+  to the verify desk, which merges main into it, even while a finding formally stands. Do not
+  re-review it while it is `CONFLICTING`: its head is about to move. A re-review already under way
+  when it re-conflicts still posts its verdict at the head it reviewed. A PR whose mergeability
+  reads `UNKNOWN` is nobody's to act on: re-read it on the next pass.
 - **BLOCKED** → the latest review flags a blocker; the worker owns the fix, and the next push
   re-fires the monitor. **CHECK** → a bot review exists at head but is neither APPROVED nor
   CHANGES_REQUESTED (e.g. only a `--comment`): read it and re-dispatch for a decisive verdict.
@@ -591,7 +608,7 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      `--request-changes`, one line: "hand edit inside the generated table — statusgen derives this
      row from the PR's own trailer + state; drop the hunk." TWO narrow carve-outs admit a hunk —
      (A) newly added rows, below, and (B) a witnessed `implemented` promotion of an existing
-     cross-repo brief's row, after it. Each is mechanical, not a judgment call; a hunk that fits neither bounces. Carve-out
+     brief's row — cross-repo or same-repo — after it. Each is mechanical, not a judgment call; a hunk that fits neither bounces. Carve-out
      A admits a hunk only when ALL of the following hold:
      - **Added rows only.** The hunk ADDS one or more brand-new brief rows and modifies no existing
        row; ANY change to an existing row — down to a single cell — bounces unconditionally unless
@@ -630,9 +647,10 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      authoring PR carry the tool's own unmodified output for newly added rows.
 
      Carve-out B ([the driver's ruling of 2026-09-23](https://github.com/medici-finance/assay/issues/1208#issuecomment-5805483045))
-     admits a hunk that promotes existing rows of CROSS-REPO briefs to `implemented` — briefs
-     tracked on this board and delivered into a different repo — only when ALL of the following
-     hold:
+     admits a hunk that promotes existing rows of briefs tracked on this board to `implemented` —
+     whether the brief is delivered into a different repo (a cross-repo brief) or into the board
+     repo itself (a same-repo brief; widened to same-repo rows by the driver's ruling of
+     2026-09-27, on the same bar) — only when ALL of the following hold:
      - **Status-only, one transition.** The hunk adds and removes no row. On every row it changes,
        the ONLY changed cell is `Status`, and it goes from the bare token `todo` or `in-progress` to
        the bare token `implemented`; the `Verified` and `Reviewed` cells, and every other cell, are
@@ -646,10 +664,12 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
        the board repo itself. NEVER take it from the PR body, the PR head, or the author's say-so.
        It must be a member of `deskroster repos`; a delivery repo outside that set bounces the row.
        The verdict records the delivery repo for each row and where it was read from.
-     - **Cross-repo rows only.** The delivery repo read above must differ from the board repo. A
-       row whose delivery repo IS the board repo — a same-repo brief, including the fall-through
-       case where the brief names no other repo — is outside the ruling and bounces, one line:
-       "same-repo row — carve-out B admits only a cross-repo brief's promotion; drop the hunk."
+     - **Same-repo rows on the same bar.** The delivery repo read above may equal the board repo —
+       a same-repo brief, including the fall-through case where the brief names no other repo. Such
+       a row is held to EVERY condition in this list exactly as a cross-repo row is, with the board
+       repo as its delivery repo: the reconcile run below passes `--repo <board owner/name>`, and
+       the code-existence check reads the board repo's own main at a ref fetched this cycle. Being
+       same-repo relaxes nothing.
      - **Reproduces under reconcile on main.** In a throwaway worktree checked out at the target
        repo's `refs/remotes/origin/main`, fetched this cycle, run
        `statusgen reconcile --backfill --apply --repo <delivery owner/name> --root <that worktree> --json`
@@ -683,7 +703,13 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
        repo — and a PR body stays editable after merge. The verdict records the check: the paths
        and symbols looked for, and the commit read. A deliverable that is missing, a named PR that
        is not merged or does not carry the trailer, or a forge or code read that could not be made,
-       bounces the row — could-not-check is never a pass.
+       bounces the row — could-not-check is never a pass. A promotion the backfill branch/body match
+       would NOT witness — one whose only witness is a `source: "pr"` trailer — is still admissible
+       only when this code-existence check passes. The check never stands in for the reproduce
+       bullet above: a row the run did not write still bounces, however clearly its code exists.
+     - **No other row.** Every row the hunk touches must be a promotion admitted by every bullet
+       above. A hunk that touches any other row — down to a single cell, or whitespace — bounces
+       whole, one line: "hunk touches a row carve-out B does not admit; drop it."
      - **Not a statusgen-source PR.** As in carve-out A.
 
      The PR body must state that the hunk is `reconcile --backfill --apply` output and name the
@@ -694,8 +720,11 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      row, because no witness alone can tell whether this brief's work landed: a trailer-less
      branch-name or body match; a trailer whose `<stream>/<NN>` may belong to a different brief
      delivered into the same repo, whichever board tracks it; and a trailer in a body edited after
-     the merge. Same-repo rows stay outside B because the ruling admits only a cross-repo brief's
-     promotion; widening B to them needs a new ruling, never a reviewer's reading.
+     the merge. Same-repo rows are inside B because the only other compliant path for them was to
+     carry the whole `reconcile --backfill --apply` output, which also promotes every other row the
+     run can witness — including backfill-only matches whose work has not landed. B lets a PR carry
+     just the rows the reviewer has checked. Widening B further — to any other transition, cell or
+     row shape — needs a new ruling, never a reviewer's reading.
   2. **The PR body lacks a link trailer** — the body must carry exactly ONE link trailer:
      `Brief: <stream>/<NN>` (the brief this PR delivers), `Authors: <stream>/<NN>[, …]` (a
      briefs-authoring PR — it writes those briefs and delivers none of them), **or** `Issue: #<N>`
