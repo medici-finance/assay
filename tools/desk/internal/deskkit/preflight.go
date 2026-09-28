@@ -1584,17 +1584,18 @@ func checkAmbientIdentity(p PreflightProbes, l Landing, tokenPath string, forge 
 //
 // An empty GH_CONFIG_DIR alone is NOT enough on a machine whose gh login lives in
 // the OS keyring: `gh api user` reports "not logged in" from an empty config
-// directory, but `gh auth token` still returns the keyring login — and a verb
-// wrapper that threads `gh auth token` into the verb as GH_TOKEN (cellctl's
-// per-verb shim does exactly that when GH_TOKEN and GH_ENTERPRISE_TOKEN are
-// unset) re-materializes the human credential the operator just cleared. Setting
-// GH_TOKEN to the role's minted App token closes both paths: it outranks every
-// stored gh credential, the shim leaves an explicit GH_TOKEN alone, and /user
-// answers 403 for it, which this check reads as no ambient human identity.
+// directory, but `gh auth token` still returns the keyring login — and cellctl's
+// per-verb shim resolves `gh auth token` when GH_TOKEN and GH_ENTERPRISE_TOKEN
+// are unset and its `gh` wrapper hands the result to every `gh` child as
+// GH_TOKEN (#1145, #1631), so the human credential the operator just cleared
+// comes back for exactly the `gh` a fall-through would run. Setting GH_TOKEN to
+// the role's minted App token closes both paths: it outranks every stored gh
+// credential, the shim and its wrapper leave an explicit GH_TOKEN alone, and
+// /user answers 403 for it, which this check reads as no ambient human identity.
 const ambientClearRemedy = "clear the ambient gh credential for desk shells — unset GITHUB_TOKEN/GH_ENTERPRISE_TOKEN " +
 	"and export GH_TOKEN as the role's minted App token (the cache file `desktoken <role>` prints), which outranks " +
 	"every stored gh login; an empty GH_CONFIG_DIR alone is not enough, because `gh auth token` still returns an " +
-	"OS-keyring login from an empty config dir and a verb shim that re-exports it as GH_TOKEN brings that human back. " +
+	"OS-keyring login from an empty config dir, and a verb shim whose gh wrapper hands that to gh as GH_TOKEN brings the human back. " +
 	"Never log a human in, or switch the operator's own gh account, to clear this"
 
 // checkAmbientTransport is the transport half of checkAmbientIdentity: every
