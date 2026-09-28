@@ -130,6 +130,48 @@ Summary: RISK-VALUE all DERIVED; every value is a parity mirror of a named oracl
 
 Row 6 needs a live minted token and a live forge read; its parity content is proven offline by row 2. Row 8's hermetic Linux witness is still owed.
 
+### Non-implementer verifier re-run — VERIFY: FAIL — 6/8 pass, 1 fail (row 6), 1 could-not-run (row 8) — 2026-09-27 claude-opus-5-5-verifier
+
+Runner is not the implementer. Isolated detached worktree at merged main `b227b40768db08a0a91046899bc1877cf3c6d1ec` (HEAD == origin/main == the forge's main), `KUBECONFIG=/dev/null`, host darwin. Execution witness below is `statusgen verifyrun` v1.0.27 (non-dry). Re-run of the 2026-09-23 BLOCKED pass (held rows 6, 7, 8): since then the brief and every shipping `deskinbox` file except `forge.go` are byte-identical (the `forge.go` delta is the deskkit credential-routing change of #1587, a one-line seam rename); the two skill surfaces changed under attention-budget/15 (#1689, the screen). This pass ran row 6 live with a minted read token instead of holding it.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go vet ./cmd/deskinbox/ && go test -count=1 ./cmd/deskinbox/` | pass exit=0 | sha256:0beb8cea3135 | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test -count=1 -run 'TestParityWalk' -v ./cmd/deskinbox/ \| grep -c -- '--- PASS'` | pass exit=0 | sha256:f0b5c2c2211c | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 3 | `! grep -rl -e 'exec\.Command' -e '"make"' -e '"jq"' tools/desk/cmd/deskinbox/*.go \| grep -qv _test.go` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./cmd/deskinbox/` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -c 'deskinbox' plugins/assay/commands/inbox.md plugins/assay/skills/ask-decision/SKILL.md` | pass exit=0 | sha256:680b1617cf1a | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 6 | `deskinbox walk --item 1 medici-finance/assay; echo rc=$?` | pass exit=0 | sha256:983af9c7d089 | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 7 | `statusgen --root . --consumers windows-port/13; echo $?` | pass exit=0 | sha256:37de28eccd46 | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --lint` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+
+Per-row key output (runner claude-opus-5-5-verifier, 2026-09-27; the witness table's Result for rows 6 and 7 is exit-status only):
+
+- Row 1: PASS — exit 0; `ok github.com/medici-finance/assay/tools/desk/cmd/deskinbox 4.917s`
+- Row 2: PASS — exit 0, count = 5 (jq-1.8.2); parent + 4 subtests PASS, 0 SKIP. The extracted oracle program still matches after #1689 reshaped the script
+- Row 3: PASS — exit 0; only match is format_parity_test.go (a test file, allowed)
+- Row 4: PASS — exit 0; artifact is `PE32+ executable (console) x86-64, for MS Windows` (cross-compiled on darwin; a native-Windows run of the binary is out of reach on this host — that is windows-port/14's leg)
+- Row 5: PASS — ask-decision SKILL.md = 7, inbox.md = 13; skillslint exit 0 `ok github.com/medici-finance/assay/tools/skillslint 4.576s`
+- Row 6: FAIL — rc=0 on both tools (verb built from merged main, `DESK_LOOP=verify-desk`, minted verifier read token; oracle run with `--no-screen` so both number the same unscreened queue; both reported 73 items). Header, Options, Reply shape and Verification are identical; Context differs: the verb prints `latest desk note (assay-desk-app[bot])`, the oracle `latest desk note (assay-desk-app)`. Over items 1-20: 12 byte-identical, 8 differ in Context, and on one (item 10, #1193) the two tools pick a DIFFERENT comment as the desk note (verb: a worker-App comment; oracle: a desk-App comment)
+- Row 7: PASS — exit 0; at merged main `nothing to corroborate` (empty diff). Supporting run at the implementing squash commit b3fe2a1c7 against its parent (flags before the positional, `--consumers --base <parent>`): windows-port/13 = 1 CORROBORATED, 2 UNCHECKED, 0 DISPROVED, exit 0
+- Row 8: COULD-NOT-RUN (hermetic) — check:ci network-off witness needs Linux `unshare --net`; host is darwin. Direct non-hermetic run (supporting only): exit 0, 0 PROBLEM lines, `LINT: PASS`; NOTICEs naming this brief are the consumers one-way-coverage note and an ordering-gate prose note, both advisory
+
+**Row 6 — why it fails, and that it is a real defect, not a stale row.** The oracle selects the desk note with `test("\\[bot\\]$|desk"; "i")` over `gh issue view --json comments`, whose `author.login` for a GitHub App carries NO `[bot]` suffix; the verb reads comments over REST (detail.go), whose `user.login` for the same App is `<slug>[bot]`. Same regex (`desknoteAuthorRe` at format.go:76), different wire shape, so (a) the author label renders differently whenever the note is an App's, and (b) any App whose slug lacks `desk` (the worker, reviewer, verifier Apps) is a desk note to the verb but not to the oracle, so the two tools can quote different comments. TestParityWalk cannot see this by construction — it feeds identical fixture input to both sides and is "independent of gh's wire format entirely" (testdata/spec.md) — and spec.md's divergence 3 (comment bodies over REST) says the reader change is "not a narrowing in practice" without recording the login-shape difference. This is exactly the live gh-to-builder residue the 2026-09-23 pass named as un-checked. Fix direction is the implementer's/reviewer's call: normalise the REST login (strip `[bot]`) for parity, or keep it, fix the oracle's selection, and record it as divergence 5. windows-port/15 (open PR #1684) reuses the same detail reader for `--html`.
+
+**Observation — part of Task 3 was later reversed on purpose.** attention-budget/15 (#1689) re-pointed `--walk` in inbox.md and the ask-decision skill back to the bash oracle as the primary renderer (only the oracle runs the screen), with `deskinbox walk` named as the fallback where the oracle cannot run. Row 5 still passes (the verb is still named) and this is a later brief's deliberate change, not a defect of this one; but the "skill's own example" row 6 names is now the oracle's, and under the screen `--item K` numbers a different queue than `deskinbox walk --item K`.
+
+**Risk-bearing values** (kit §4; gate model, all four risk answers `no`, no risk-classed path in this brief's diff scope — enumeration carried forward from the 2026-09-23 pass and re-pointed at current lines; the oracle's lines moved under #1689). Enumerated over the shipping files of tools/desk/cmd/deskinbox: the rank label list, the no-label rank sentinel, the title truncation, the snippet truncation, the default walk item, the option letters, the desk-note author regex, and the comment page size. All are reversible display/ordering knobs; none moves money, identity or authority.
+
+- RISK-VALUE: DERIVED — labels = ["urgent","needs-decision","question","help wanted"] @ tools/desk/cmd/deskinbox/query.go:29 — mirrors the oracle's `rankorder` at assay-inbox.sh:552, the escalation vocabulary's most-urgent-first order. Reversible.
+- RISK-VALUE: DERIVED — best = 99 @ tools/desk/cmd/deskinbox/query.go:45 — the no-escalation-label sentinel, mirrors `min // 99` at assay-inbox.sh:555. Reversible.
+- RISK-VALUE: DERIVED — title cut = 57 runes + "..." @ tools/desk/cmd/deskinbox/table.go:35-36 — mirrors `length > 57` at assay-inbox.sh:564. Reversible.
+- RISK-VALUE: DERIVED — snippet cut = 180 @ tools/desk/cmd/deskinbox/format.go:255 — mirrors `[0:180]` at assay-inbox.sh:684. Reversible.
+- RISK-VALUE: DERIVED — walkItem = 1 @ tools/desk/cmd/deskinbox/main.go:81; letterFor = ["A","B","C","D"] @ format.go:335 — the oracle's default item and at-most-four lettering. Reversible.
+- RISK-VALUE: NAMED, NOT DERIVED — desknoteAuthorRe = `(?i)\[bot\]$|desk` @ tools/desk/cmd/deskinbox/format.go:76 — textually identical to the oracle's regex at assay-inbox.sh:681, but a literal copy is not parity when the two inputs differ in shape (row 6). Whether the right literal is this one over a normalised login, or a changed one with a recorded divergence, is open — routed with the row 6 failure.
+- per_page = 100 @ tools/desk/cmd/deskinbox/detail.go:83 — pagination size of the comment reader; operational knob, ranks last, no derivation owed.
+
+VERIFY: FAIL — row 6 (live parity: Context's desk-note author and, on some items, the chosen desk-note comment diverge from the oracle); row 8 hermetic witness still owed on a Linux runner. Rows 1-5 and 7 pass.
+
 
 ## Review
 Gate: **model**. Reviewer's questions: (1) does `tools/desk/cmd/deskinbox/testdata/spec.md`

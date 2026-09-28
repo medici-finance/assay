@@ -92,6 +92,58 @@ Pre-mortem → detection: Findings are reset with each agent/head: row 1. Worker
 
 Pending implementation and independent verification. No acceptance result claimed by authoring.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingContinuityAcrossHeads$ -v -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 874d56de38a7 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingCannotSelfResolve$ -v -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 874d56de38a7 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingCapSurvivesRestart$ -v -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 874d56de38a7 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingSharedCIBlocker$ -v -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 874d56de38a7 (on-behalf-of human:ian) (forge-identity) |
+
+### Non-implementer verifier run — VERIFY: BLOCKED — 0/4 pass, 4 could-not-check, 0 fail — 2026-09-27 claude-opus-5-5-verifier
+
+The runner is not the implementer. Rows ran on darwin/arm64 with go1.27.1, offline
+(KUBECONFIG=/dev/null), from a worktree cut detached at merged main
+874d56de38a73228dad62ed25482d2af55692849. The implementing commit is 861abb937 (PR #1406). All
+four Verify rows are check:ci. The hermetic statusgen verifyrun witness above could not run any
+of them: its network-off sandbox needs Linux unshare --net, and this host is darwin. The pinned
+harness container image is not present locally, and pulling it would reach an external
+registry, which the offline envelope rules out. Each row is therefore held COULD-NOT-CHECK, with
+its direct non-hermetic run recorded below. Every direct run passed. The block comes from the
+darwin execution-witness environment, not from the implementation. A Linux runner re-running
+the four rows under verifyrun is what advances the item.
+
+Per-row direct-run notes (supporting only, not the hermetic witness):
+
+- Row 1: exit 0; `--- PASS: TestReviewFindingContinuityAcrossHeads`. The test asserts that A keeps its ID, its class and its original evidence ev-A1 across the h1 to h2 change. A is not resolved at the new head (ResolvedAtHead false), B is present, and both are outstanding blocking findings.
+- Row 2: exit 0; `--- PASS: TestReviewFindingCannotSelfResolve` with three subtests passing: worker_cannot_self-resolve, wrong-head_evidence_cannot_resolve and legacy_prose_cannot_resolve. The worker case also checks the write gate: ValidateReviewFindingBlock refuses the block as a worker and accepts it as a reviewer. The legacy case checks that a malformed block fails to parse.
+- Row 3: exit 0; `--- PASS: TestReviewFindingCapSurvivesRestart`. Rounds for classC equal RoundCap, the class is held, and exactly one arbiter packet is produced. Re-deriving the same records gives the same state. A duplicate sweep refiles nothing. The sibling finding C-sibling is set to awaiting-arbitration. Unrelated classD is not held and has 0 rounds. Three reviewer polls with no worker response in between count 0 rounds.
+- Row 4: exit 0; `--- PASS: TestReviewFindingSharedCIBlocker`. The shared-CI finding is absent from ContentDefects on both PRs, while PR one's own defect remains. The two PRs cite exactly one distinct shared repair. The shared blocker stays in OpenBlocking on both PRs.
+- Supporting: the full reviewloop package passes (exit 0). The deskkit review-finding tests pass (exit 0): TestReviewFindingBlockRoundTrips, TestReviewFindingBlockMalformed, TestReviewFindingRoleGate and TestValidateReviewFindingBlockNoBlock.
+
+Risk-bearing value enumeration. The item's risk metadata is present and all "no". The trigger
+still fires because the diff encodes a threshold that the canonical review skill pins. Literals
+introduced by the diff:
+
+- RoundCap = 3 @ tools/desk/internal/deskkit/reviewfinding.go:340. This is the threshold that decides when a class stops re-litigating and goes to the human lane.
+- FindingBlockSchema = "review-finding/v1" @ tools/desk/internal/deskkit/reviewfinding.go:40, and findingBlockOpen = "<!-- assay:review-finding:v1" @ the same file, line 47. These are wire-format markers. Changing them makes older records unparseable, which is reversible by an edit plus a migration.
+- Authority binding: RoleReviewer = "reviewer" / RoleWorker = "worker" @ the same file, lines 116-117. The worker write gate is at lines 254-262: a worker cannot set resolved on a blocking finding or set awaiting-arbitration.
+- Enumerated vocabulary with no numeric weight: the state strings (lines 58-71), blocker kinds (90-91), severities (103-104), record kinds (300-301) and verdicts (308-311).
+
+Ranking: nothing here is irreversible. A wrong RoundCap sends a PR's class to the human lane too
+early or too late, and an edit plus a redeploy undoes it. It still ranks first because it is the
+one threshold the brief forbids changing.
+
+RISK-VALUE: DERIVED — RoundCap = 3 @ tools/desk/internal/deskkit/reviewfinding.go:340 — this is the existing canonical cap and is not a new value. The pr-review-desk skill has carried "Default cap N = 3 full verdict→fix→re-review rounds on the SAME finding class" since commit 5fe5b3c06 (2026-09-06), which predates this brief's authoring (2026-09-20). The brief's facts and Task 5 forbid changing the threshold, and the constant equals it. Semantics match too: the round count saturates at 3, and the next re-review (round N+1) yields the single arbiter packet. That is the skill's "On round N+1 for that class … files … an arbiter packet".
+
+Observations (non-blocking, recorded for the human reader):
+
+1. The skill calls the cap "adopter-tunable", but the code has RoundCap as a compile-time constant with no configuration path. An adopter who tunes the skill's N gets prose and derivation that disagree. This is outside this brief's Verify rows. The brief forbids new policy thresholds, so the gap is reported here rather than fixed.
+2. Actor role and head in the reactor come from the records payload's role and head fields (reviewloop plan --records reads a file). This diff ships no producer that builds that payload from authenticated forge events. The "derived from the authenticated forge event" guarantee therefore depends on whoever assembles the payload. The write-time role gate in deskreply/deskpost and the derivation-time refusal both exist and are tested. This matches the brief's rows, which use injected forge state.
+3. The derivation computes the arbiter packet but does not file it. Filing stays with the reviewer, through deskfile needs-decision per the skill. That matches the brief's "preserve the existing human decision authority".
+4. statusgen --lint raises a risk-files-crossread NOTICE. The brief answers all four risk questions "no" but declares tools/desk/cmd/deskpost/, which is a security-path trigger. The deskpost change is 8 added lines: a pre-network ValidateReviewFindingBlock refusal in the reviewer role. The deskreply change is its worker-role twin, 10 lines. Both changes can only refuse a write. Neither widens what can be posted, and neither touches the existing verdict or role gates. Whether the risk answers stand is the gate owner's call, not the verifier's. The same lint run also notes a +dereference obligation and a consumers-corroboration row that the Verify table does not carry.
+
+VERIFY: BLOCKED — 0/4 pass on the hermetic witness, 4 could-not-check (darwin: no unshare --net network-off sandbox; harness image not local), 0 fail. The direct non-hermetic runs of all four rows passed with their named PASS lines and assertions that match each Expect cell. Held at implemented until a Linux runner records the hermetic witness.
+
 ## Review
 
 Gate: model. Review the negative paths, migration compatibility and limits of enforcement. Any newly discovered need to alter authority is separate human-gated scope, not an implicit part of this brief.

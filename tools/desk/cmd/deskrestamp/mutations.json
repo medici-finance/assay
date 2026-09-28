@@ -1,0 +1,59 @@
+{
+  "test": "go test ./cmd/deskrestamp/... -count=1",
+  "control": {
+    "name": "CONTROL — invert the noop check (an already-repaired pair churns writes every run)",
+    "file": "cmd/deskrestamp/restamp.go",
+    "old": "\tif len(remove) == 0 && labelsPresentFold(change.Labels, want) {",
+    "new": "\tif len(remove) != 0 && labelsPresentFold(change.Labels, want) {"
+  },
+  "mutations": [
+    {
+      "name": "SEC-1b (login half): the driver-login check is disarmed — any foreign applier, trusted or not, gets re-attested. Relocated to internal/deskkit/trust.go's RestampVouchesLabel (C5): the login/cutoff halves now live in the ONE predicate the model-floor message and the verb both call.",
+      "file": "internal/deskkit/trust.go",
+      "old": "\tif !IsRestampDriverLogin(applier) {\n\t\treturn false, applier\n\t}",
+      "new": "\tif false {\n\t\treturn false, applier\n\t}"
+    },
+    {
+      "name": "SEC-1b (cutoff half): the cutoff check is disarmed entirely — the driver's login vouches for a label applied at any time, not only before the #336 legacy-backlog cutoff. Relocated to internal/deskkit/trust.go's RestampVouchesLabel (C5).",
+      "file": "internal/deskkit/trust.go",
+      "old": "\tat, perr := time.Parse(time.RFC3339, createdAt)\n\tif perr != nil || !at.Before(RestampDriverCutoff()) {\n\t\treturn false, applier\n\t}",
+      "new": "\tat, perr := time.Parse(time.RFC3339, createdAt)\n\t_ = at\n\t_ = perr\n\tif false {\n\t\treturn false, applier\n\t}"
+    },
+    {
+      "name": "SEC-1a: the provenance gate is aggregated across the whole pair instead of checked per label — a half-swap timeline (one half already dispatcher-standing, the other foreign) is not refused",
+      "file": "cmd/deskrestamp/restamp.go",
+      "old": "\tunvouched := unvouchedRemovalLabels(tl, remove)",
+      "new": "\tunvouched := unvouchedRemovalLabels(tl, remove)\n\tif len(unvouched) > 0 && len(remove) != len(want) {\n\t\tunvouched = nil\n\t}"
+    },
+    {
+      "name": "A4 (round 3): only the FIRST label in the removal set is checked — a mixed pair with the vouched half first and the unvouched half second is wrongly cleared",
+      "file": "cmd/deskrestamp/restamp.go",
+      "old": "\tfor _, label := range remove {\n\t\tif vouches, who := deskkit.RestampVouchesLabel(tl, label); !vouches {",
+      "new": "\tfor i, label := range remove {\n\t\tif i > 0 {\n\t\t\tcontinue\n\t\t}\n\t\tif vouches, who := deskkit.RestampVouchesLabel(tl, label); !vouches {"
+    },
+    {
+      "name": "A4 (round 3): only the LAST label in the removal set is checked — a mixed pair with the unvouched half first and the vouched half second is wrongly cleared",
+      "file": "cmd/deskrestamp/restamp.go",
+      "old": "\tfor _, label := range remove {\n\t\tif vouches, who := deskkit.RestampVouchesLabel(tl, label); !vouches {",
+      "new": "\tfor i, label := range remove {\n\t\tif i != len(remove)-1 {\n\t\t\tcontinue\n\t\t}\n\t\tif vouches, who := deskkit.RestampVouchesLabel(tl, label); !vouches {"
+    },
+    {
+      "name": "A4 (round 3): the loop STOPS at the first label that vouches instead of continuing to check every label — a mixed pair with the vouched half first is wrongly cleared before the unvouched second half is ever reached",
+      "file": "cmd/deskrestamp/restamp.go",
+      "old": "\t\tif vouches, who := deskkit.RestampVouchesLabel(tl, label); !vouches {\n\t\t\tif !seen[who] {\n\t\t\t\tseen[who] = true\n\t\t\t\tout = append(out, who)\n\t\t\t}\n\t\t}",
+      "new": "\t\tif vouches, who := deskkit.RestampVouchesLabel(tl, label); !vouches {\n\t\t\tif !seen[who] {\n\t\t\t\tseen[who] = true\n\t\t\t\tout = append(out, who)\n\t\t\t}\n\t\t} else {\n\t\t\tbreak\n\t\t}"
+    },
+    {
+      "name": "A4 (round 3): StandingStampApplierAt keeps the label's FIRST application instead of its CURRENT/latest one — a driver's pre-cutoff label re-applied after the cutoff (no intervening unlabeled event) is wrongly read as still pre-cutoff",
+      "file": "internal/deskkit/modelstamp.go",
+      "old": "\t\tif e.Removed {\n\t\t\tdelete(standing, n)\n\t\t\tcontinue\n\t\t}\n\t\tstanding[n] = e",
+      "new": "\t\tif e.Removed {\n\t\t\tdelete(standing, n)\n\t\t\tcontinue\n\t\t}\n\t\tif _, exists := standing[n]; !exists {\n\t\t\tstanding[n] = e\n\t\t}"
+    },
+    {
+      "name": "A4 (round 3): a driver label with NO timestamp (or an unparseable one) is ACCEPTED — the parse error is ignored, and the zero-value fallback compares as before every real cutoff, so a missing CreatedAt fails OPEN instead of closed",
+      "file": "internal/deskkit/trust.go",
+      "old": "\tat, perr := time.Parse(time.RFC3339, createdAt)\n\tif perr != nil || !at.Before(RestampDriverCutoff()) {\n\t\treturn false, applier\n\t}",
+      "new": "\tat, perr := time.Parse(time.RFC3339, createdAt)\n\t_ = perr\n\tif !at.Before(RestampDriverCutoff()) {\n\t\treturn false, applier\n\t}"
+    }
+  ]
+}

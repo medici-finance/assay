@@ -147,3 +147,25 @@ func TestReport_LocalDefaultRendersToStdout(t *testing.T) {
 		t.Fatalf("default run must not write the committed view (stat err=%v)", err)
 	}
 }
+
+// TestRenderMeasure_ReasonPipeAndNewlineEscaped pins the A-refix-render-
+// unescaped fix: a could-not-measure Reason is repo-controlled but not
+// markdown-safe (frontmatter values, adapter error text) — a raw `|` breaks
+// the surrounding table row and a raw newline breaks the table outright, so
+// both renderMeasureFloat and renderMeasureInt escape/flatten it.
+func TestRenderMeasure_ReasonPipeAndNewlineEscaped(t *testing.T) {
+	reason := "adapter error: a|b\nsecond line"
+	gotF := renderMeasureFloat(CouldNotMeasure[float64](reason))
+	gotI := renderMeasureInt(CouldNotMeasure[int](reason))
+	for _, got := range []string{gotF, gotI} {
+		if strings.Contains(got, "a|b") {
+			t.Fatalf("a raw pipe in the reason would break the table row, got %q", got)
+		}
+		if strings.Contains(got, "\n") {
+			t.Fatalf("a raw newline in the reason would break the table, got %q", got)
+		}
+		if !strings.Contains(got, `a\|b second line`) {
+			t.Fatalf("expected escaped pipe and flattened newline, got %q", got)
+		}
+	}
+}
