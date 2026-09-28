@@ -353,7 +353,7 @@ merged tree `bb226e7d3ebb` (this PR's branch with main `89042b8f` merged in). Th
 the execution witness written by `statusgen verifyrun`, built from this tree. It is not
 hand-authored. Fourteen rows are `check:ci`, and verifyrun recorded each one as could-not-run
 because its network-off sandbox needs Linux `unshare --net` and this host is darwin (the same
-environment blocker as the 2026-09-23 run, tracked in #1491). Rows 5 and 16 (`check +mutation`)
+environment blocker as the 2026-09-23 run, tracked in #1800). Rows 5 and 16 (`check +mutation`)
 ran and passed. This run supersedes the 2026-09-16 PASS above, which predates the
 execution-witness gate. The board Status stays `implemented`.
 
