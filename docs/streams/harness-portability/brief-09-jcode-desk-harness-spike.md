@@ -104,5 +104,39 @@ RISK-VALUE: N/A — enumeration over this item's diff/deliverables on this repo 
 
 VERIFY: FAIL — held at implemented (matches what the README already shows, and what #393 already asks: hp/09 must not advance until the deliverable is actually ported/landed in this repo). Not a stale-anchor / renamed-test situation and not fabricated evidence — a real, reproducible gap from an incomplete re-home, already tracked.
 
+### Non-implementer verifier re-run — VERIFY: FAIL (deliverable still absent after the code de-house) — opus-5.5-verifier (verify-desk dispatch), @ merged main `cf56ddeebc187e7923c4c6349bbdf95291bdfe05`, 2026-09-27
+
+Runner is not the implementer. Own detached temp worktree off origin/main at the merged head. Offline envelope observed (`KUBECONFIG=/dev/null`). No PR, no push, no status flip. Execution witness below written by `statusgen verifyrun` (non-dry).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `test -f docs/research/jcode-desk-harness-capabilities.md` | fail exit=1 | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -qiE -e absent -e workaround docs/research/jcode-desk-harness-capabilities.md` | fail exit=2 | sha256:1f4f1773d4ca | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(dereferencing) the measured RAM/boot figures in the doc are each backed by a named command whose output is quoted — a reader can re-run it` | fail exit=2 | sha256:4117c376c8f5 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(dereferencing) the doc records the exec-tier probe (3) and the prose-vs-discrete split (4) as explicit verdicts, not TODOs` | fail exit=2 | sha256:5d664ea9d853 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -q 'jcode-desk-harness-capabilities' freshness.yaml` | fail exit=1 | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+
+Per-row key output (real, observed at the SHA above):
+
+- Row 1 — `test -f` on the capability-matrix doc: exit 1. The file is absent on merged main; `git log --all` over that path returns nothing, and a repo-wide `git grep -il jcode` finds only board/brief/quality files, no research doc. **FAIL.**
+- Row 2 — `grep -qiE -e absent -e workaround` on the same doc: exit 2, `No such file or directory`. **FAIL** (target absent).
+- Row 3 — dereferencing row (prose, no command). The witness records exit 2 because `statusgen verifyrun` executed the prose cell as a shell command; that exit is a parse artefact, not an observation. Real state: **could-not-check** — there is no doc on this tree whose RAM/boot figures could be dereferenced.
+- Row 4 — dereferencing row, same mechanism as row 3 (witness exit 2 is the prose cell parsed as shell). Real state: **could-not-check** — no doc to dereference for the exec-tier verdict or the prose-vs-discrete split.
+- Row 5 — `grep -q` for the doc's name in the freshness registry: exit 1, no match. **FAIL.**
+
+Rows passed: 0 of 5 (3 checked-failed, 2 could-not-check).
+
+**Why the code de-house did not fix this.** Brief 14 (the code de-house, now implemented) lists this item's capability-matrix doc in its "Not in scope" table with the disposition "Dropped — out of scope" ("Brief 09's deliverable, not one of the five held briefs"). So the 2026-09-18 FAIL above still stands unchanged: the deliverable was produced in the private pre-re-home tree and was never landed in this repository, and brief 14 deliberately did not carry it. No PR since has landed it (a forge PR search for "jcode" on this repo returns only the 2026-09-18 evidence PR and the brief-14 authoring PR).
+
+**Stale vs real.** Real gap, not stale-shaped: the paths in rows 1, 2 and 5 are the brief's own planned deliverable paths, unchanged; nothing was renamed or moved — the files simply do not exist here. Already tracked by #393 (open), which names hp/09 with the identical root cause and identical row 1/2/5 failures. No new issue filed by this run.
+
+Risk-bearing value enumeration — scope: every file this item introduces or changes on merged main (none exist: the research doc and its freshness registration are both absent) plus every literal named in the brief's own Deliverables/Task (the brief names two planned files and no constant, bound, threshold, timeout or authority binding for them). Step 1 came back empty.
+
+RISK-VALUE: N/A — enumeration over this item's landed diff on this repository (empty — no deliverable file or freshness entry exists at the SHA above) and the brief's Deliverables (two planned paths, no literal) found no literal; the irreversible act here is none — the item is a reversible research document (risk: all "no", gate: model).
+
+Observation: the brief body still carries the 2026-08-24 PASS table produced in the private source tree; it is detached from this repository's state (the #393 ask 2 class). Rows 3 and 4 are prose rows that the execution witness cannot run meaningfully; a future re-author could give them executable anchors (for example a `grep` for a named measurement-command section) so the witness reports a real exit.
+
+VERIFY: FAIL — rows 1, 2, 5 checked-failed; rows 3, 4 could-not-check (no doc to dereference). Hold at implemented; blocker is implementation (deliverable never landed in this tree), tracked by #393.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the harness-portability README table.

@@ -20,6 +20,224 @@ import (
 	"testing"
 )
 
+// --- The roster-configured stamp-authority allowance (#336) -----------------------------
+//
+// THE RULING THESE PIN. #336 ruled "both": the model-floor's actor check honours a
+// dispatched-* label applied by a trusted LOGIN as well as by a bound dispatcher slug —
+// but ONLY through an explicit, roster-configured allowance (ASSAY_STAMP_TRUSTED_LOGINS),
+// never as a silent default; and a first-class re-stamp verb keeps the strict
+// dispatcher-only path repairable without the allowance. Fail-closed is the invariant
+// throughout: an unconfigured roster vouches for nobody, an actor the roster does not name
+// reads Indeterminate and is refused, and the allowance is a SUBSET of the trusted-human
+// set — it never creates trust on its own.
+//
+// The fixture binds one dispatcher (the desk App), one trusted human WITH the allowance
+// (opex), and one trusted human WITHOUT it (ada, the bless authority). Every outcome below
+// is then attributable to the allowance configuration and nothing else.
+const stampAuthorityFixtureRoster = `ASSAY_BLESS_LOGIN=ada:2001
+ASSAY_TRUSTED_LOGINS=ada:2001,opex:2002
+ASSAY_TRUSTED_BOT_SLUGS=desk=example-desk-app:300000001,reviewer=example-reviewer-app:300000004,worker=example-worker-app:300000006
+ASSAY_ALLOWED_REPOS=example-org/one:ci:private
+ASSAY_STAMP_TRUSTED_LOGINS=opex:2002
+`
+
+func stampTimelineAppliedBy(model, tier, who string) StampTimeline {
+	return StampTimeline{
+		Present: []string{model, tier},
+		Events:  []LabelEvent{labeledBy(model, who), labeledBy(tier, who)},
+	}
+}
+
+// The ACCEPTED case: a complete stamp whose standing application is the allowance login's
+// reads Stamped and the floor clears — the widening the ruling authorised, delivered
+// through the explicit roster key.
+func TestModelStampActorHonorsAllowanceLogin(t *testing.T) {
+	plantRoster(t, stampAuthorityFixtureRoster)
+	model := DispatchedModelPrefix + "example-model-1"
+	tier := DispatchedTierPrefix + "strong"
+
+	if IsDispatcherLogin("opex") {
+		t.Fatal("IsDispatcherLogin vouched for a trusted human login — the allowance widens the " +
+			"AUTHORITY predicate, never the dispatcher set itself")
+	}
+	if !IsStampAuthorityLogin("opex") {
+		t.Fatal("IsStampAuthorityLogin refused the roster-configured allowance login")
+	}
+	if !IsStampAuthorityLogin("example-desk-app[bot]") {
+		t.Fatal("IsStampAuthorityLogin refused the bound dispatcher slug — the allowance is additive")
+	}
+	tl := stampTimelineAppliedBy(model, tier, "opex")
+	if _, state := AttestedModelStampOf(tl, IsStampAuthorityLogin); state != ModelStamped {
+		t.Fatalf("state = %v, want ModelStamped — the allowance login's stamp is attestation", state)
+	}
+	if d := ModelCapabilityFloor(tl, IsStampAuthorityLogin, false, ClaimLivenessUnknown); d.Outcome != FloorAllow {
+		t.Fatalf("floor outcome = %v (%s), want FloorAllow for an allowance-applied stamp", d.Outcome, d.Message)
+	}
+}
+
+// The POSITIVE CONTROL the ruling demanded: an actor the roster does not name — and a
+// trusted login the allowance does NOT name — both stay Indeterminate and are refused.
+func TestModelStampActorRefusesUnvouchedLogin(t *testing.T) {
+	plantRoster(t, stampAuthorityFixtureRoster)
+	model := DispatchedModelPrefix + "example-model-1"
+	tier := DispatchedTierPrefix + "strong"
+
+	for _, who := range []string{"mallory", "ada", "example-worker-app[bot]", ""} {
+		t.Run("applier="+who, func(t *testing.T) {
+			tl := stampTimelineAppliedBy(model, tier, who)
+			if _, state := AttestedModelStampOf(tl, IsStampAuthorityLogin); state != ModelIndeterminate {
+				t.Fatalf("state = %v, want ModelIndeterminate — %q holds no stamp authority", state, who)
+			}
+			d := ModelCapabilityFloor(tl, IsStampAuthorityLogin, false, ClaimLivenessUnknown)
+			if d.Outcome != FloorRefuse {
+				t.Fatalf("floor outcome = %v, want FloorRefuse — %q holds no stamp authority", d.Outcome, who)
+			}
+			if who != "" && !strings.Contains(d.Message, who) {
+				t.Fatalf("refusal does not name the unvouched applier %q:\n%s", who, d.Message)
+			}
+		})
+	}
+}
+
+// The allowance is EXPLICIT, never a silent default: a trusted login with no
+// ASSAY_STAMP_TRUSTED_LOGINS entry — including when the key is absent entirely — vouches
+// for nothing, and an unconfigured roster vouches for nobody.
+func TestModelStampActorAllowanceIsExplicitNeverSilent(t *testing.T) {
+	model := DispatchedModelPrefix + "example-model-1"
+	tier := DispatchedTierPrefix + "strong"
+
+	// The same trusted human, the key ABSENT: no widening.
+	plantRoster(t, `ASSAY_BLESS_LOGIN=ada:2001
+ASSAY_TRUSTED_LOGINS=ada:2001,opex:2002
+ASSAY_TRUSTED_BOT_SLUGS=desk=example-desk-app:300000001
+ASSAY_ALLOWED_REPOS=example-org/one:ci:private
+`)
+	if IsStampAuthorityLogin("opex") {
+		t.Fatal("IsStampAuthorityLogin vouched for a trusted login with no allowance configured — " +
+			"the widening must be an explicit roster act, never a silent default of ASSAY_TRUSTED_LOGINS")
+	}
+	if _, state := AttestedModelStampOf(stampTimelineAppliedBy(model, tier, "opex"), IsStampAuthorityLogin); state != ModelIndeterminate {
+		t.Fatalf("state = %v, want ModelIndeterminate without the allowance", state)
+	}
+
+	// The roster's own fail-closed floor is untouched: unconfigured vouches for nobody.
+	plantRoster(t, "")
+	if IsStampAuthorityLogin("opex") || IsStampAuthorityLogin("example-desk-app[bot]") {
+		t.Fatal("IsStampAuthorityLogin vouched for a login against an unconfigured roster")
+	}
+}
+
+// The RE-STAMP path needs no allowance at all: a foreign-applied stamp refuses, the
+// dispatcher removes and re-applies it under its own bound slug, and the floor then clears
+// under the STRICT dispatcher-only predicate. This is the repair the first-class re-stamp
+// verb performs, driven in the model exactly as the verb drives it on the forge.
+func TestModelStampActorRestampRestoresStrictDerivation(t *testing.T) {
+	plantRoster(t, `ASSAY_BLESS_LOGIN=ada:2001
+ASSAY_TRUSTED_LOGINS=ada:2001,opex:2002
+ASSAY_TRUSTED_BOT_SLUGS=desk=example-desk-app:300000001
+ASSAY_ALLOWED_REPOS=example-org/one:ci:private
+`)
+	const disp = "example-desk-app[bot]"
+	model := DispatchedModelPrefix + "example-model-1"
+	tier := DispatchedTierPrefix + "strong"
+
+	before := stampTimelineAppliedBy(model, tier, "opex")
+	if d := ModelCapabilityFloor(before, IsDispatcherLogin, false, ClaimLivenessUnknown); d.Outcome != FloorRefuse {
+		t.Fatalf("pre-restamp outcome = %v, want FloorRefuse — no allowance is configured", d.Outcome)
+	}
+	// The verb's write sequence in the model: remove the foreign halves, apply the same
+	// pair under the dispatcher. ReStampRemovals names exactly the foreign halves.
+	remove := ReStampRemovals(before, []string{model, tier}, IsDispatcherLogin)
+	if len(remove) != 2 {
+		t.Fatalf("ReStampRemovals = %v, want both halves — the whole stamp is foreign here", remove)
+	}
+	after := StampTimeline{Present: []string{model, tier}, Events: []LabelEvent{
+		labeledBy(model, "opex"), labeledBy(tier, "opex"),
+		unlabeledBy(model, disp), unlabeledBy(tier, disp),
+		labeledBy(model, disp), labeledBy(tier, disp),
+	}}
+	if _, state := AttestedModelStampOf(after, IsDispatcherLogin); state != ModelStamped {
+		t.Fatalf("post-restamp state = %v, want ModelStamped under the strict predicate", state)
+	}
+	if d := ModelCapabilityFloor(after, IsDispatcherLogin, false, ClaimLivenessUnknown); d.Outcome != FloorAllow {
+		t.Fatalf("post-restamp outcome = %v (%s), want FloorAllow", d.Outcome, d.Message)
+	}
+}
+
+// The allowance never CREATES trust and never admits a bot: an entry naming a login the
+// trusted-human set does not carry, or one that renders as a bot/App account, refuses the
+// WHOLE roster — a half-widened trust gate is exactly the configured-but-empty shape the
+// loader exists to prevent.
+func TestModelStampActorAllowanceParseRules(t *testing.T) {
+	// A valid allowance lands on the parsed config, keyed by lowercased login.
+	plantRoster(t, stampAuthorityFixtureRoster)
+	c := EffectiveConfig()
+	if !c.Configured() {
+		t.Fatalf("the fixture roster refused: %v", c.Problems)
+	}
+	if id, ok := c.StampLogins["opex"]; !ok || id != 2002 {
+		t.Fatalf("StampLogins = %v, want opex:2002", c.StampLogins)
+	}
+
+	for name, keyLine := range map[string]string{
+		"a login the trusted-human set does not carry": "ASSAY_STAMP_TRUSTED_LOGINS=mallory:2099",
+		"a bot-shaped login":                           "ASSAY_STAMP_TRUSTED_LOGINS=ada:2001,some-app[bot]:3001",
+		"an unparseable entry":                         "ASSAY_STAMP_TRUSTED_LOGINS=not-a-number:abc",
+	} {
+		t.Run(name, func(t *testing.T) {
+			plantRoster(t, `ASSAY_BLESS_LOGIN=ada:2001
+ASSAY_TRUSTED_LOGINS=ada:2001,opex:2002
+ASSAY_TRUSTED_BOT_SLUGS=desk=example-desk-app:300000001
+ASSAY_ALLOWED_REPOS=example-org/one:ci:private
+`+keyLine+"\n")
+			c := EffectiveConfig()
+			if c.Configured() {
+				t.Fatalf("roster with %s parsed clean — the allowance must fail closed", name)
+			}
+			joined := strings.Join(c.Problems, "\n")
+			if !strings.Contains(joined, EnvStampTrustedLogins) {
+				t.Fatalf("refusal does not name %s:\n%s", EnvStampTrustedLogins, joined)
+			}
+			if IsStampAuthorityLogin("mallory") || IsStampAuthorityLogin("opex") {
+				t.Fatal("a refused roster still vouched for a stamp authority")
+			}
+		})
+	}
+}
+
+// The refusal message renders the WHOLE accepted authority set — dispatcher slugs and the
+// configured allowance — so an operator staring at a refused verdict is told every
+// identity that would have cleared it, and is pointed at the first-class re-stamp verb.
+func TestModelStampActorRefusalNamesTheAllowance(t *testing.T) {
+	plantRoster(t, stampAuthorityFixtureRoster)
+	model := DispatchedModelPrefix + "example-model-1"
+	tier := DispatchedTierPrefix + "strong"
+	d := ModelCapabilityFloor(stampTimelineAppliedBy(model, tier, "mallory"),
+		IsStampAuthorityLogin, false, ClaimLivenessUnknown)
+	if d.Outcome != FloorRefuse {
+		t.Fatalf("outcome = %v, want FloorRefuse", d.Outcome)
+	}
+	for _, want := range []string{"mallory", "example-desk-app[bot]", "opex", "deskrestamp"} {
+		if !strings.Contains(d.Message, want) {
+			t.Fatalf("refusal does not name %q:\n%s", want, d.Message)
+		}
+	}
+	// And with no allowance configured the message says so rather than implying one exists.
+	plantRoster(t, `ASSAY_BLESS_LOGIN=ada:2001
+ASSAY_TRUSTED_LOGINS=ada:2001
+ASSAY_TRUSTED_BOT_SLUGS=desk=example-desk-app:300000001
+ASSAY_ALLOWED_REPOS=example-org/one:ci:private
+`)
+	d = ModelCapabilityFloor(stampTimelineAppliedBy(model, tier, "mallory"),
+		IsStampAuthorityLogin, false, ClaimLivenessUnknown)
+	if d.Outcome != FloorRefuse {
+		t.Fatalf("outcome = %v, want FloorRefuse", d.Outcome)
+	}
+	if !strings.Contains(d.Message, EnvStampTrustedLogins) {
+		t.Fatalf("refusal does not name the allowance key that would permit a widening:\n%s", d.Message)
+	}
+}
+
 // labeledBy / unlabeledBy build the two timeline event kinds. They spell out the whole
 // label name so a case's timeline reads in the order GitHub returns it.
 func labeledBy(name, who string) LabelEvent {

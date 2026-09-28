@@ -1,0 +1,2 @@
+### Changed
+- `cellctl desk` under a model policy no longer exports `CLAUDE_CODE_EFFORT_LEVEL` to a Claude launch (neither in the launch environment nor in the `--settings` env block) and scrubs an inherited ambient copy alongside `MAX_THINKING_TOKENS`. Effort now travels only as `--effort`, so a child agent's `effort:` frontmatter can raise that agent above the session level instead of being pinned to it by the env var. The Codex arm is unchanged.
