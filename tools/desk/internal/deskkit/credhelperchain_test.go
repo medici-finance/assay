@@ -504,11 +504,51 @@ type netrcLexCase struct {
 
 // netrcFixture expands a netrcLexCases body for host: ESCHOST becomes host with a backslash
 // before its last byte (a quoted-token escape every libcurl reader decodes back to host), and
-// HOST becomes host itself.
+// HOST becomes host itself. Then, on a line holding {PAD} and {SPLIT}, {PAD} becomes as many
+// `A` bytes as put {SPLIT} at line offset netrcOldPiece and {SPLIT} is removed: that offset is
+// where a libcurl 7.61.0-7.85.0 reader ends its first read of the line, and so a token, even
+// between two word bytes.
 func netrcFixture(body, host string) string {
 	esc := host[:len(host)-1] + `\` + host[len(host)-1:]
-	return strings.ReplaceAll(strings.ReplaceAll(body, "ESCHOST", esc), "HOST", host)
+	body = strings.ReplaceAll(strings.ReplaceAll(body, "ESCHOST", esc), "HOST", host)
+	lines := strings.SplitAfter(body, "\n")
+	for i, l := range lines {
+		pad, split := strings.Index(l, "{PAD}"), strings.Index(l, "{SPLIT}")
+		if pad < 0 || split < pad {
+			continue
+		}
+		fill := netrcOldPiece - (split - len("{PAD}"))
+		l = strings.Replace(l, "{PAD}", strings.Repeat("A", fill), 1)
+		lines[i] = strings.Replace(l, "{SPLIT}", "", 1)
+	}
+	return strings.Join(lines, "")
 }
+
+// TestNetrcFixtureSplit pins netrcFixture's {PAD}/{SPLIT} expansion, so the SR-1614-9 rows
+// keep their piece boundary exactly on the word they are about, for any host length.
+func TestNetrcFixtureSplit(t *testing.T) {
+	for _, host := range []string{"github.com", "127.0.0.1", "h"} {
+		got := netrcFixture("machine other.example.invalid\n{PAD} machine{SPLIT}HOST login op\n", host)
+		lines := strings.SplitAfter(got, "\n")
+		if len(lines) != 3 || lines[0] != "machine other.example.invalid\n" || lines[2] != "" {
+			t.Fatalf("host %q: lines = %q", host, lines)
+		}
+		l := lines[1]
+		if !strings.HasSuffix(l[:netrcOldPiece], "A machine") || !strings.HasPrefix(l[netrcOldPiece:], host+" login op\n") {
+			t.Fatalf("host %q: the piece boundary is not between machine and the host: ...%q | %q...",
+				host, l[netrcOldPiece-12:netrcOldPiece], l[netrcOldPiece:])
+		}
+		if strings.Trim(l[:netrcOldPiece-len(" machine")], "A") != "" {
+			t.Fatalf("host %q: the pad holds more than A bytes", host)
+		}
+	}
+}
+
+// netrcOldPiece is the most bytes one read of a netrc line returns in libcurl 7.61.0 through
+// 7.85.0 (lib/netrc.c: `char netrcbuffer[4096]` read with `fgets(netrcbuffer, netrcbuffsize,
+// file)`, which stops one byte short of the buffer size). It is written out here, not taken
+// from the code under test, so a change to the code's threshold cannot move the fixtures with it.
+const netrcOldPiece = 4095
 
 // netrcLexCases pins the netrc scan to the driver's ruling on arbiter packet #1622
 // (https://github.com/medici-finance/assay/issues/1622#issuecomment-5837592241, "Ruling: 1",
@@ -517,8 +557,9 @@ func netrcFixture(body, host string) string {
 // releases and left one open for another, because git links whatever libcurl the host ships.
 // The scan now keeps no quote state and no separator table: red whenever the host or
 // `default` occurs anywhere in the file as a word, ASCII case-insensitively (netrcMatch), plus
-// two add-only rules for words a reader decodes that are not raw words (backslash escapes in a
-// quote; the byte pre-8.21 readers drop after a closing quote). Every row below that carries
+// add-only rules for words a reader decodes that are not raw words (backslash escapes in a
+// quote; the byte pre-8.21 readers drop after a closing quote) and for a line an old reader
+// reads in pieces (longer than libcurl 7.61.0-7.85.0's read size). Every row below that carries
 // the host or `default` in any of those forms is red, wherever it sits. Many are the scan's
 // accepted FALSE-RED cost (see the block below and the PR body): no known curl reader would
 // authenticate from them, but the word appears in the file, so the scan cannot rule it out.
@@ -683,6 +724,39 @@ var netrcLexCases = []netrcLexCase{
 	// libcurl 8.7.1, 8.20.0 and 8.22.0 all presented the credential for this body.
 	{"a NUL that splices default across a line is could-not-check",
 		"def\x00\nault login op password n1\n", "cnc"},
+
+	// SR-1614-9 (round 6): libcurl 7.61.0 through 7.85.0 read a netrc line with fgets into a
+	// 4096-byte buffer, so a line of more than 4095 bytes (counting its newline) arrives in
+	// 4095-byte pieces, each tokenized as a line of its own while the lookup state carries on.
+	// A piece boundary therefore ends one token and starts the next even between two word
+	// bytes, and a host or `default` glued to word bytes in the raw file becomes a token. The
+	// four split rows put that boundary right before or right after the word; every one read
+	// GREEN at d09ed382f. The long-line rule reads any such line red, whatever it holds.
+	{"default right after an old reader's piece boundary is red (SR-1614-9)",
+		"{PAD}{SPLIT}default login op password s1\n", "red"},
+	{"the host right after an old reader's piece boundary, glued to machine, is red (SR-1614-9)",
+		"{PAD} machine{SPLIT}HOST login op password s2\n", "red"},
+	{"the host right before an old reader's piece boundary, glued to a letter, is red (SR-1614-9)",
+		"{PAD} machine HOST{SPLIT}X login op password s3\n", "red"},
+	{"default right before an old reader's piece boundary, glued to a letter, is red (SR-1614-9)",
+		"{PAD} default{SPLIT}X login op password s4\n", "red"},
+	// The threshold, byte for byte. A line of 4095 bytes counting its newline is one fgets
+	// read; one of 4096 is two, the second holding only the newline (a piece that also ends a
+	// macdef body on those readers). At end of file with no newline, 4095 bytes is one read
+	// and 4096 is two.
+	{"a 4095-byte line counting its newline, neither word in it, is green",
+		strings.Repeat("A", 4094) + "\n", "green"},
+	{"a 4096-byte line counting its newline is red whatever it holds (SR-1614-9)",
+		strings.Repeat("A", 4095) + "\n", "red"},
+	{"a 4095-byte last line with no newline, neither word in it, is green",
+		"machine other.example.invalid login op\n" + strings.Repeat("A", 4095), "green"},
+	{"a 4096-byte last line with no newline is red whatever it holds (SR-1614-9)",
+		"machine other.example.invalid login op\n" + strings.Repeat("A", 4096), "red"},
+	// FALSE-RED, the long-line rule's share of Ruling 1's accepted cost: a long line that holds
+	// neither the host nor `default` anywhere reads red. The rule keeps no state but the line's
+	// length, so it does not look for the word; the operator clears it by shortening the line.
+	{"an over-long line holding neither word is a false red (SR-1614-9)",
+		"machine other.example.invalid login op password " + strings.Repeat("x", 5000) + "\n", "red"},
 }
 
 // TestNetrcAddOnlyRules pins the shape the SR-1614-8 arbitration requires of every rule after
@@ -716,6 +790,9 @@ func TestNetrcAddOnlyRules(t *testing.T) {
 		{"quote-skip",
 			"\x80\"a\x01\"b\"Xdefault\x01login\x01op\x01password\x01k1\"\n",
 			"machine \"" + host + "\" login op\n"},
+		{"long-line",
+			netrcFixture("{PAD}{SPLIT}default login op\n", host),
+			"machine " + host + " login op\n"},
 	}
 	if len(cases) != len(netrcRedRules)-1 {
 		t.Fatalf("%d add-only rules but %d cases: every add-only rule needs one", len(netrcRedRules)-1, len(cases))
@@ -742,7 +819,9 @@ func TestNetrcAddOnlyRules(t *testing.T) {
 	}
 	t.Run("random bodies", func(t *testing.T) {
 		atoms := []string{host, "GitHub.Com", "default", "DEFAULT", "machine", "login", "op", "\"", "\\", "x", "X",
-			".", "-", "_", " ", "\t", "\n", "\r", "\v", "\f", "\x01", "\x80", "\xc2\xa0", "#", "\x00", "git", "hub.com", "de", "fault"}
+			".", "-", "_", " ", "\t", "\n", "\r", "\v", "\f", "\x01", "\x80", "\xc2\xa0", "#", "\x00", "git", "hub.com", "de", "fault",
+			strings.Repeat("A", netrcOldPiece-1), strings.Repeat("A", (netrcOldPiece-1)/2)}
+		longLine := rule("long-line")
 		rng := rand.New(rand.NewSource(1614))
 		for i := 0; i < 20000; i++ {
 			var b strings.Builder
@@ -750,6 +829,16 @@ func TestNetrcAddOnlyRules(t *testing.T) {
 				b.WriteString(atoms[rng.Intn(len(atoms))])
 			}
 			body := b.String()
+			// The long-line rule against a plain restatement of the threshold: red exactly
+			// when some line holds more than netrcOldPiece bytes counting its newline.
+			over := false
+			for _, l := range strings.SplitAfter(body, "\n") {
+				over = over || len(l) > netrcOldPiece
+			}
+			if got := longLine.match(body, host); (got != "") != over {
+				t.Fatalf("long-line rule on a body with longest line %d bytes = %q; want red = %v",
+					netrcLongestLine(body), got, over)
+			}
 			for _, r := range netrcRedRules {
 				if r.match(body, host) == "" {
 					continue
@@ -760,6 +849,15 @@ func TestNetrcAddOnlyRules(t *testing.T) {
 			}
 		}
 	})
+}
+
+// netrcLongestLine is the length of body's longest line, counting its newline.
+func netrcLongestLine(body string) int {
+	n := 0
+	for _, l := range strings.SplitAfter(body, "\n") {
+		n = max(n, len(l))
+	}
+	return n
 }
 
 // TestCredChainNetrcLexer runs every netrcLexCases body through the full probe, with the App
