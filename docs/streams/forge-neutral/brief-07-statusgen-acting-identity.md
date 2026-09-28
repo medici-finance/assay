@@ -253,6 +253,38 @@ Observations for the human gate:
 
 VERIFY: PASS — rows 1–11 pass on merged main d034d39f; row 12 could-not-check (merged-main `--consumers` has nothing to corroborate, #1281; hand-corroborated). gate: human + sensitive-data — Evidence only, status stays `implemented`; sign-off is the human's.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go build ./... && go test ./... -count=1` | pass exit=0 | sha256:c87e6412d3f3 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && go test ./... -run TestEvidenceActorGitLabVerifier -count=1 -v` | pass exit=0 | sha256:ea300518b5c3 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test ./... -run TestEvidenceActorGitHubVerifierUnchanged -count=1 -v` | pass exit=0 | sha256:b5ed30cee57c | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test ./... -run TestEvidenceActorSelfAttestedStillUnbacked -count=1 -v` | pass exit=0 | sha256:b5bd5c4e1970 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && go test ./... -run TestEvidenceActorUnknownForgeIsCouldNotCheck -count=1 -v` | pass exit=0 | sha256:81be5c6542f0 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd statusgen && go test ./... -run TestVerifyrunRunnerFromForgeIdentity -count=1 -v` | pass exit=0 | sha256:e8b1cd7c79f3 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && go test ./... -run TestVerifyrunFallbackOrder -count=1 -v` | pass exit=0 | sha256:d748fa44ebdc | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && go test ./... -run TestVerifyrunStillRefusesSuppliedRunner -count=1 -v` | pass exit=0 | sha256:fa6ab42d2dde | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd statusgen && go test ./... -run TestRosterGrammarParity -count=1 -v` | pass exit=0 | sha256:817d9c3e9796 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `grep -c '^[\|] ' docs/streams/forge-neutral/identity.md` | pass exit=0 | sha256:2e6d31a5983a | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `statusgen --root . --lint` | pass exit=0 | sha256:2997f4db3d75 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `statusgen --root . --consumers --brief forge-neutral/07` | pass exit=0 | sha256:7741ac4bfdd0 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+
+**Re-run 2026-09-28 at batch tree e1afb99a after main changed `statusgen/rosterconfig.go`** — the witness table directly above. Tree: e1afb99aca990bbdb14ef44eb65fceb0610b18e8 = merged main 02a2f75fb532af2bf7bc6284e3f5f4c6e9337f48 (read with the verifier App token at run time; main had not moved) plus this batch's Evidence commit, clean stamp. Non-implementer dispatched verifier (claude-opus-5-5, local). Envelope: pinned statusgen v1.0.27 called directly (sha256 matches the darwin-arm64 pin); `sandbox-exec` network-denied with loopback-only allowance; `env -i` with the real HOME; PATH = system dirs plus a scratch dir holding only go and statusgen; `KUBECONFIG=/dev/null`, `GOFLAGS=-count=1`, a fresh empty GOCACHE, `GOPROXY=off` over a pre-populated module cache, `GOTOOLCHAIN=local` (go1.27.1). Scratch files outside the checkout.
+
+Drift since the 2026-09-27 run (d034d39f): a5bacb1237f8207051c7ff164cdde08a09dd565b (PR #1727) is the only commit touching this brief's inputs. In `statusgen/rosterconfig.go` it adds one constant, `ASSAY_STAMP_TRUSTED_LOGINS`, to the recognised roster keys (a desk-only model-floor allowance, "recognised, not applied"), and the same key to `statusgen/testdata/roster_coupling.json`. It does not touch the forge-qualified grammar, the unqualified-means-github rule, the role bindings or the bot-id parsing, and no other input (evidenceactor.go, verifyrun.go, forgeidentity.go, identity.md) changed. It does not change this brief's behaviour; it only stops a roster carrying the new desk key from tripping statusgen's unknown-key refusal.
+
+Per row, vs the previous run:
+- Row 1: pass exit 0, full statusgen module build and test inside the sandbox on the first attempt (the previous run's first attempt needed a module download; with the cache pre-populated and `GOPROXY=off` nothing reached the network). The hash differs because the output carries timings.
+- Rows 2–9: pass exit 0 each; hashes differ only by timings. Run once more by hand as one targeted package run (`-run '^(…)$' -count=1 -v -timeout 400s`): all eight named tests exist and report `--- PASS`, so no row passed on "no tests to run". Rows 4, 5 and 8 are the negative paths (implementer Evidence unbacked on both forges; unknown forge is could-not-check by message text; supplied runner still refused).
+- Row 10: `9` (at least 2), hash identical to the previous run.
+- Row 11: `LINT: PASS`, exit 0, at the pre-append tree.
+- Row 12: now `pass exit=0` where it was `fail exit=2`. The pass is vacuous: this batch's own Evidence commit puts the brief in the diff against main, so the check runs, and reports 0 corroborated, 0 disproved, 5 unchecked ("this branch did not make this claim"). Nothing is corroborated on merged main (#1281).
+- No row is classed `check:ci`, so none records could-not-run on this darwin host (#1800 not engaged); row 1 ran the whole statusgen module.
+- Row 6 corroborated live again: this table's Runner cells carry `(forge-identity)` with the on-behalf-of principal.
+
+Risk values: unchanged. The enumeration in the 2026-09-27 notes cites evidenceactor.go, forgeidentity.go, forge.go and verifyrun.go, none of which changed; every literal and line reference still holds. Open questions (a) and (b) stay open for the human.
+
+VERIFY: PASS — at batch tree e1afb99a, rows 1–11 pass under the witness; row 12 is vacuous on merged main (#1281). HELD at `implemented` — gate: human + sensitive-data, sign-off is the human's.
+
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`). Reviewer records verdict + date in
 the stream README table.
