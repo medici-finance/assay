@@ -33,7 +33,7 @@ import (
 //   2. security/leak   — a STAMPED label whose authority is RATIFIED. The authority
 //                        set is roster configuration (ASSAY_CRITICAL_STAMP_AUTHORITIES,
 //                        wired by main into criticalStampAuthorities). UNSET is an
-//                        explicit state (criticalStampAuthoritiesSet=false): the arm
+//                        explicit state (criticalStampAuthoritiesSet is false): the arm
 //                        grants nothing, and any stamp present is reported as
 //                        could-not-check (criticalStampNotices), not silently ignored.
 //                        Reads only the stamped label, never an intensity term.
@@ -189,7 +189,7 @@ func mainRedCritical(b Brief, _ string) bool {
 //     is wrong must be reconciled before it is handed out, and the critical tier
 //     is an ORDERING key over eligible picks, never an eligibility override. So an
 //     affects-named brief never reaches the board through this arm — its fix does,
-//     via control:. TestReviewerFindingArmReachesBoardViaControl pins both halves.
+//     via control:. the reviewer-finding-reaches-board-via-control subtest pins both halves.
 //
 // Deliberately NOT broadcast from a bare-stream entry — that would mark every brief
 // in the stream critical, the over-broad hammer applyFindings' anti-broadcast rule

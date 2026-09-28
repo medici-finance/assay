@@ -305,12 +305,13 @@ func TestCriticalStampAuthoritiesConfig(t *testing.T) {
 		return m
 	}
 	t.Cleanup(func() { wireCriticalStampAuthorities(scanConfig{}) })
+	echoKey := scanEnvCriticalStampAuthorities
 
 	cfg := scanParseConfig(scanClassReadOnly, "test", with("sec-authority, review.desk"))
 	if len(cfg.Problems) != 0 || !cfg.CriticalStampAuthoritiesSet || strings.Join(cfg.CriticalStampAuthorities, ",") != "review.desk,sec-authority" {
 		t.Fatalf("valid list: %+v problems=%v", cfg.CriticalStampAuthorities, cfg.Problems)
 	}
-	if !strings.Contains(strings.Join(cfg.EffectiveConfigLines(), "\n"), "ASSAY_CRITICAL_STAMP_AUTHORITIES=review.desk,sec-authority") {
+	if !strings.Contains(strings.Join(cfg.EffectiveConfigLines(), "\n"), echoKey+"=review.desk,sec-authority") {
 		t.Fatalf("the effective value must be echoed: %v", cfg.EffectiveConfigLines())
 	}
 	wireCriticalStampAuthorities(cfg)
@@ -319,7 +320,7 @@ func TestCriticalStampAuthoritiesConfig(t *testing.T) {
 	}
 
 	cfg = scanParseConfig(scanClassReadOnly, "test", with(""))
-	if cfg.CriticalStampAuthoritiesSet || !strings.Contains(strings.Join(cfg.EffectiveConfigLines(), "\n"), "ASSAY_CRITICAL_STAMP_AUTHORITIES=(unset") {
+	if cfg.CriticalStampAuthoritiesSet || !strings.Contains(strings.Join(cfg.EffectiveConfigLines(), "\n"), echoKey+"=(unset") {
 		t.Fatalf("unset must be an explicit, echoed state: %v", cfg.EffectiveConfigLines())
 	}
 	wireCriticalStampAuthorities(cfg)

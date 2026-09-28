@@ -26,7 +26,7 @@
       "new": "\t\tif false {\n\t\t\tnu.MainRedUnknown = mainRedUnknownText\n\t\t}"
     },
     {
-      "name": "row 5 main-red — a placeholder no longer carries its own issue ref (fixes filed by the issue loop are never recognised)",
+      "name": "row 5 main-red — a placeholder no longer carries its own issue ref (fixes tracked as issue placeholders are never recognised)",
       "file": "placeholder.go",
       "old": "\t\tIssueRefs: []string{fmt.Sprintf(\"%s#%d\", p.Repo, p.Issue)},",
       "new": "\t\tIssueRefs: nil,"

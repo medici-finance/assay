@@ -27,7 +27,7 @@ import (
 //
 // WHAT THE ARM MARKS. A main-red FIX — never "every drive pick" and never the
 // whole board. A brief qualifies when it addresses one of the named tracking
-// issues: an issue-loop placeholder whose `repo:`/`issue:` IS that issue, or a
+// issues: an issue placeholder (placeholder-v1) whose `repo:`/`issue:` IS that issue, or a
 // brief-v1/v2 brief whose `issues:` lists it (resolved against the stream's own
 // `repo:`; a stream that declares no repo cannot resolve a bare issue number, so
 // its briefs never match — the fail-safe direction for a tier above every score).
