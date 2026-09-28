@@ -1,0 +1,2 @@
+### Fixed
+- The harness-portability jcode and SpecMem spike findings (`docs/research/jcode-desk-harness-capabilities.md`, `docs/research/specmem-portability-spike.md`) now live in this repository and are registered in `freshness.yaml`. When the harness-portability stream moved here, its briefs came across but these two research docs did not, so the Verify rows of harness-portability/09 and /10 that check for the docs and their freshness entries failed on main (#393).
