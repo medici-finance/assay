@@ -257,6 +257,8 @@ facts:
 
 ## Verify (executable — no prose-only DoD items)
 
+> **2026-09-27:** Verify rows re-authored for witness executability (#1805); no semantic change — row 12 now opens with its runnable command as the first code span; no status change.
+
 This brief follows brief 13's Class-column convention: `check:ci` runs in CI; `check` is a
 local/grep-level assertion; `+dereference` resolves a claim rather than counting presence;
 `+flow` exercises the cross-component path (verb → `ForgeFor` → backend) end to end;
@@ -282,7 +284,7 @@ deliverables, created by the implementer:
 | 9 | check:ci | `cd tools/desk && go test ./cmd/deskrun/... -run TestDeskrunRefusesWithoutMintedToken -count=1 -v` | **negative path**: a `release-runner` binding whose custody token is absent → `deskrun` REFUSES, zero forge calls — the backends' existing unminted-token refusal, exercised through this verb |
 | 10 | check | `cd tools/desk && go test ./internal/deskkit/ -run TestRosterKnownKeySet -count=1 -v` | exit 0 — the new run-credential config key and the `release-runner` role are registered in the roster's known-set (an unregistered key fails the fleet closed, per brief-01's task 4) |
 | 11 | check | `grep -c 'deskrun' tools/desk/README.md` | ≥ 1 — `deskrun`'s row exists in this repo's desk-verbs index (`## Tool reference`), not merely described in this brief |
-| 12 | check:ci +mutation | **Mutation demonstration for the human-bound refusal.** In the run-credential resolver, disable the human-token check (make it always fall through to the `release-runner` path) — then `cd tools/desk && go test ./cmd/deskrun/... -count=1`; restore the file and re-run | exit **1** on the mutant: `TestDeskrunRefusesOnHumanBoundCredential` reddens (a human-bound repo would now dispatch through whatever `release-runner` binding exists, or attempt an ambient mint) — exit **0** again after restoring. Proves the refusal is a live control, not a check nothing exercises |
+| 12 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskrun/... -count=1` — the test command this mutation row is judged by. **Mutation demonstration for the human-bound refusal.** In the run-credential resolver, disable the human-token check (make it always fall through to the `release-runner` path) — then run the command above; restore the file and re-run it | exit 0 on the unmutated tree (the run the execution witness makes); exit **1** on the mutant: `TestDeskrunRefusesOnHumanBoundCredential` reddens (a human-bound repo would now dispatch through whatever `release-runner` binding exists, or attempt an ambient mint) — exit **0** again after restoring. Proves the refusal is a live control, not a check nothing exercises |
 | 13 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/14` | exit 0 — every `consumers:` routing claim is corroborated against this branch's own diff |
 | 14 | check | GitLab dry-run row | **could-not-check-by-design**: this repo carries no `.gitlab-ci.yml` and no CI-reachable GitLab project (freshness fact above; `gitlab-ci-half.md` templates a pipeline for ADOPTERS, it is not a fixture this repo's own CI can run against) — there is no CI-reachable GitLab fixture to dry-run `RunWorkflow`/`ApproveGate` against from inside this repo's test suite. Rows 4-9 cover the GitLab mapping against recorded fixtures; a live dry run is deferred to whichever brief next extends the GitLab live pilot (`docs/streams/forge-gitlab/pilot-report.md`) to cover run/gate operations, and is named here rather than silently skipped |
 
