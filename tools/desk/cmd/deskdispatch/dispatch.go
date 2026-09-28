@@ -1155,10 +1155,13 @@ type claimAuth struct {
 // because the claim runs four steps before the stamp — which reads its own credential inside
 // deskkit.ResolveForge.
 //
-// PRECEDENCE. An explicit GH_TOKEN already in the environment wins outright and nothing is
-// minted: an operator who exported a credential chose it, and both tools already read it —
-// the Go binary via its env fallback (no --token-file is passed, because that flag would
-// outrank the export inside the binary). Otherwise the role token is minted and handed over
+// PRECEDENCE. An explicit GH_TOKEN already in the environment wins and nothing is minted —
+// but only once verifyInheritedToken shows it IS the dispatching role's credential (issue
+// 1631: a launcher exported the operator's ambient login there, and the claim ran as the
+// human). A verified export is read as-is by both tools — the Go binary via its env fallback
+// (no --token-file is passed, because that flag would outrank the export inside the binary).
+// Any other identity is ignored with a NOTICE and the role token minted; an unreadable one
+// refuses. Otherwise the role token is minted and handed over
 // in the tool's own shape: `--token-file <path>` for the binary (the minter's 0600 cache file,
 // never a copy written anywhere new) and GH_TOKEN in the child environment for the script.
 //
@@ -1177,10 +1180,6 @@ type claimAuth struct {
 // hold for both — a forge that cannot be resolved refuses here, before any claim, rather than
 // guessing.
 func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, isScript bool) (claimAuth, error) {
-	if strings.TrimSpace(os.Getenv("GH_TOKEN")) != "" {
-		const explicit = "the GH_TOKEN already exported in this environment"
-		return claimAuth{source: explicit, scriptSource: explicit}, nil
-	}
 	role := stampRoleForKit(o.kit)
 	// forgeKind is pre-resolved by planClaim for a review dispatch (its prompt is forge-shaped);
 	// a worker dispatch leaves it empty, so resolve it HERE, at execution time — after every
@@ -1194,6 +1193,22 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 			return claimAuth{}, ferr
 		}
 	}
+	// ISSUE 1631. An inherited GH_TOKEN wins only once it is shown to BE the dispatching role's
+	// credential. A launcher (a cell shim) exported the operator's ambient gh login there, and
+	// this verb took it for a deliberate override: no mint, and the claim went out under the
+	// human's identity. A token that is not the role's is dropped from this process — so neither
+	// the claim child nor any later child inherits it — and the role token is minted below as if
+	// nothing had been exported. One whose identity cannot be read refuses (verifyInheritedToken).
+	if inherited := strings.TrimSpace(os.Getenv("GH_TOKEN")); inherited != "" {
+		honoured, source, verr := o.verifyInheritedToken(role, repo, kind, inherited)
+		if verr != nil {
+			return claimAuth{}, verr
+		}
+		if honoured {
+			return claimAuth{source: source, scriptSource: source}, nil
+		}
+		_ = os.Unsetenv("GH_TOKEN")
+	}
 	if kind == deskkit.ForgeGitLab {
 		return resolveClaimAuthGitLab(role, repo, isScript)
 	}
@@ -1204,7 +1219,7 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 				"identity the claim would be taken under cannot be established. NO claim was attempted: the "+
 				"claim tool is never run on the ambient `gh` credential (nothing at all in a sandboxed desk "+
 				"window, or a human login with no write on the target — the two ways this step failed before "+
-				"it minted its own token). Export GH_TOKEN to override the mint deliberately.",
+				"it minted its own token). Export the role App's own token as GH_TOKEN to override the mint deliberately.",
 			stepClaimAcquire, role, deskkit.OwnerOf(repo), tokenPathForMessage(tokPath), err), err)
 	}
 	scriptEnv := append(os.Environ(), "GH_TOKEN="+tok)
@@ -1226,6 +1241,78 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 	}, nil
 }
 
+// verifyInheritedToken decides whether an inherited GH_TOKEN may stand in for the role mint
+// (issue 1631). It answers one of three ways:
+//
+//   - honoured (true, source): the token IS the dispatching role's credential — on GitHub, the
+//     account it acts as (one GraphQL viewer read, tokenIdentityFn) is the role's App as the
+//     roster binds it, login and pinned bot USER id alike; on GitLab, it is byte-equal to the
+//     role's PAT custody file. The operator's deliberate override keeps working exactly as before.
+//     The GitHub read is built by the forge resolver for the TARGET repo and the origin read from
+//     --root (deskkit.GitHubTokenIdentityForRepo), so the inherited token is offered only to the
+//     host the role's own GitHub credential would be — a non-github.com origin refuses unsent.
+//   - ignored (false, "", nil): it is readably SOMEONE ELSE — a human login, another role's App, a
+//     different PAT. A NOTICE says so on stderr and the caller mints the role token instead.
+//   - refused (error): whose it is cannot be established — the probe failed (transport, 401), the
+//     roster binds no identity to the role, or the GitLab custody is unreadable. Nothing is
+//     claimed: the claim is never taken under a credential whose identity is unknown, and it is
+//     never silently swapped for one either. Unsetting GH_TOKEN is always the way through.
+//
+// The token VALUE never appears in any message; the login it acts as, and paths, do.
+func (o dispatchOpts) verifyInheritedToken(role, repo string, kind deskkit.ForgeKind, tok string) (bool, string, error) {
+	if kind == deskkit.ForgeGitLab {
+		custody, custodyPath, err := deskkit.GitLabRoleToken(role)
+		if err != nil {
+			return false, "", deskkit.RefusedWithCause(fmt.Sprintf(
+				"step %s: a GH_TOKEN is exported in this environment, but on a GitLab repo it is honoured only "+
+					"when it IS the %s role's GitLab PAT, and that custody could not be read to compare against (%v). "+
+					"The export was NOT used, and NO claim was attempted. Provision the role's GitLab PAT custody "+
+					"file, or unset GH_TOKEN.", stepClaimAcquire, role, err), err)
+		}
+		if strings.TrimSpace(custody) == tok {
+			return true, fmt.Sprintf("the GH_TOKEN exported in this environment (verified: it is the %s GitLab role PAT, %s)",
+				role, tokenPathForMessage(custodyPath)), nil
+		}
+		noticeIgnoredToken(role, "is not the "+role+" GitLab role PAT ("+tokenPathForMessage(custodyPath)+")")
+		return false, "", nil
+	}
+	expected := deskkit.RoleAppLoginOrEmpty(role)
+	owner, name, _ := strings.Cut(repo, "/")
+	id, err := tokenIdentityFn(deskkit.ForgeRepo{Owner: owner, Name: name}, o.targetOriginURL(), tok)
+	if err != nil {
+		return false, "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: a GH_TOKEN is exported in this environment, but the account it acts as could not be read "+
+				"(%v). It is honoured only when it is the %s App's own token (%s), so it was NOT used, and NO claim "+
+				"was attempted — the claim is never taken under a credential whose identity cannot be established. "+
+				"Unset GH_TOKEN to let this verb mint the %s App token itself.",
+			stepClaimAcquire, err, role, expected, role), err)
+	}
+	login := deskkit.StripControl(id.Login)
+	match, bound := id.ActsAsRole(role)
+	if !bound {
+		return false, "", deskkit.Refused(fmt.Sprintf(
+			"step %s: a GH_TOKEN is exported in this environment (it acts as %s), but the roster binds no App "+
+				"identity to the %s role, so whether it is that role's App cannot be checked. It was NOT used, and "+
+				"NO claim was attempted. Bind the role in %s, or unset GH_TOKEN.",
+			stepClaimAcquire, login, role, deskkit.EnvTrustedBotSlugs))
+	}
+	if match {
+		return true, fmt.Sprintf("the GH_TOKEN exported in this environment (verified: it acts as %s, the %s App)", login, role), nil
+	}
+	noticeIgnoredToken(role, fmt.Sprintf("acts as %s, not the %s App (%s)", login, role, expected))
+	return false, "", nil
+}
+
+// noticeIgnoredToken is the one line an ignored inherited GH_TOKEN earns: it is not an error (the
+// dispatch goes ahead under the role's own token), but a silent swap would hide a launcher that is
+// putting the wrong credential in front of every desk verb.
+func noticeIgnoredToken(role, why string) {
+	fmt.Fprintf(os.Stderr, "deskdispatch: NOTICE — step %s: the GH_TOKEN inherited by this process %s. It is "+
+		"NOT treated as an operator override and is IGNORED; the %s role token is minted instead (issue 1631: a "+
+		"launcher can export an ambient human login there). Export the %s App's own token to override the mint.\n",
+		stepClaimAcquire, why, role, role)
+}
+
 // resolveClaimAuthGitLab is resolveClaimAuth's GitLab branch: it reads the role's already-
 // provisioned GitLab PAT custody file (deskkit.GitLabRoleToken — the same custody
 // deskpost/deskflip act under, NEVER the GitHub App minter) and hands it to the claim child in
@@ -1242,7 +1329,7 @@ func resolveClaimAuthGitLab(role, repo string, isScript bool) (claimAuth, error)
 			"step %s: the %s GitLab role PAT for %s could not be read (%s) — so the identity the claim "+
 				"would be taken under cannot be established. NO claim was attempted: the claim tool is never "+
 				"run on the ambient credential. Provision the role's GitLab PAT custody file, or export "+
-				"GH_TOKEN to override deliberately.",
+				"the role's own GitLab PAT as GH_TOKEN to override deliberately.",
 			stepClaimAcquire, role, deskkit.OwnerOf(repo), err), err)
 	}
 	scriptEnv := append(os.Environ(), "GH_TOKEN="+tok, "GITLAB_TOKEN="+tok)
@@ -1805,15 +1892,21 @@ func (o dispatchOpts) resolveTargetForgeKind(repo string) (deskkit.ForgeKind, er
 			"step %s: %q does not parse to an owner/name, so the forge serving it cannot be resolved.",
 			stepClaimAcquire, repo), nil)
 	}
-	originURL := ""
-	if r := runCmd(o.root, "git", "remote", "get-url", "origin"); r.err == nil {
-		originURL = r.stdout
-	}
-	res, err := deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, originURL)
+	res, err := deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, o.targetOriginURL())
 	if err != nil {
 		return "", err
 	}
 	return res.Kind, nil
+}
+
+// targetOriginURL reads the TARGET checkout's origin remote (o.root) through the runCmd seam, or
+// "" when it cannot be read — deskkit then answers from the roster alone. The raw URL is handed
+// to deskkit and never printed (an https origin can carry userinfo).
+func (o dispatchOpts) targetOriginURL() string {
+	if r := runCmd(o.root, "git", "remote", "get-url", "origin"); r.err == nil {
+		return r.stdout
+	}
+	return ""
 }
 
 func (o dispatchOpts) say(format string, args ...any) {
