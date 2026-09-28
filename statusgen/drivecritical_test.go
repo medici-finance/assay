@@ -151,14 +151,14 @@ func TestDriveCriticalTierNeverBuried(t *testing.T) {
 		}
 	})
 
-	t.Run("main-red-arm-deferred", func(t *testing.T) {
-		// The main-red arm is a documented seam: it must always report false (statusgen
-		// cannot poll live CI offline). This pins the deferral so it cannot silently
-		// grow a network read.
-		if mainRedCritical(Brief{Num: "01", Status: "todo"}, "any") {
-			t.Fatal("the main-red arm is DEFERRED and must always report false pending an in-tree machine-derived signal")
-		}
-	})
+	// Row 5's three formerly-dark arms (drivecritical_mainred_test.go): main-red
+	// from the injected --main-health input, stamped-security from the roster-
+	// configured authority set, and reviewer-finding through the finding's control:.
+	t.Run("main-red-fix-outranks-surge", testMainRedFixOutranksSurge)
+	t.Run("main-red-needs-red-and-linkage", testMainRedNeedsRedAndLinkage)
+	t.Run("main-red-could-not-check-is-named", testMainRedCouldNotCheckIsNamed)
+	t.Run("stamped-security-authority-from-config", testStampedSecurityFromConfig)
+	t.Run("reviewer-finding-reaches-board-via-control", testReviewerFindingReachesBoardViaControl)
 }
 
 // TestDriveCriticalArmDisplayedAttributed pins that a critical pick carries its

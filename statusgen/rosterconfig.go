@@ -342,6 +342,21 @@ const (
 	// SYNC with deskkit/rosterconfig.go's EnvStreamCap.
 	scanEnvStreamCap = "ASSAY_STREAM_CAP"
 
+	// scanEnvCriticalStampAuthorities (ASSAY_CRITICAL_STAMP_AUTHORITIES) is the
+	// STATUSGEN-only ratified authority set for the drives critical tier's
+	// stamped-security arm (drivecritical.go): the authorities whose
+	// `critical-security(<authority>)` stamp may lift a brief above every score.
+	// Comma/space-separated identifiers of the stamp's own capture class
+	// ([0-9A-Za-z_.:-]+); a malformed entry REFUSES the whole configuration (a
+	// half-parsed authority set is the configured-but-wrong shape). UNSET is an
+	// explicit state, not an empty grant: the arm grants nothing and every stamp
+	// present is reported could-not-check. WHICH authority is listed is the human's
+	// ratification (statusgen/05 gate-why item 2) — configuration carries the
+	// answer, code never names one. deskkit RECOGNISES the key (shared roster.env)
+	// but does not consume it. KEEP IN SYNC with deskkit/rosterconfig.go's
+	// EnvCriticalStampAuthorities and the coupling vector.
+	scanEnvCriticalStampAuthorities = "ASSAY_CRITICAL_STAMP_AUTHORITIES"
+
 	// scanEnvContributorLedger (ASSAY_CONTRIBUTOR_LEDGER) is a DESK-only roster
 	// value: the operator-configured path of the contributor-trust ledger,
 	// CONSUMED by deskkit's trusttier.go (ResolveTier) through
@@ -455,6 +470,7 @@ func scanKnownRosterKeys() []string {
 		scanEnvGitLabSessionEmails,
 		scanEnvGitLabDisplayNames,
 		scanEnvStreamCap,
+		scanEnvCriticalStampAuthorities,
 		scanEnvContributorLedger,
 		// DESK-only, recognised-not-applied (verify-integrity/10): consumed by
 		// cmd/deskcalibrate / a documented policy key, never by statusgen — but
@@ -560,6 +576,14 @@ type scanConfig struct {
 	// configuration is refused.
 	StreamCap    int
 	StreamCapSet bool
+
+	// CriticalStampAuthorities is the ratified authority set for the drives
+	// critical tier's stamped-security arm (ASSAY_CRITICAL_STAMP_AUTHORITIES,
+	// statusgen-only). CriticalStampAuthoritiesSet records whether the key was
+	// present at all: absent, the arm grants nothing and reports each stamp
+	// could-not-check — which an empty slice alone cannot say.
+	CriticalStampAuthorities    []string
+	CriticalStampAuthoritiesSet bool
 
 	// GitLabDisplayNames maps a lowercased GitLab account USERNAME to its DISPLAY name
 	// (ASSAY_GITLAB_DISPLAY_NAMES, #1477). It is the offline fallback the Evidence-actor gate
@@ -687,6 +711,7 @@ func scanReadRawConfig(class scanToolClass) (map[string]string, string, []string
 		scanEnvRiskPathTriggersExtra,
 		scanEnvRepoAliases, scanEnvRosterSchema, scanEnvHomeRepo, scanEnvScanRepos,
 		scanEnvAuthorizedAuthors, scanEnvStreamCap, scanEnvGitLabDisplayNames,
+		scanEnvCriticalStampAuthorities,
 	}
 	keys = append(keys, scanProductConfigKeys()...)
 	fromEnv := func() map[string]string {
@@ -1147,6 +1172,18 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 	// positive integer; a malformed one REFUSES the whole configuration, exactly as
 	// a malformed slug does, rather than silently disabling the cap while the
 	// configuration reports itself correct.
+	if raw := strings.TrimSpace(vals[scanEnvCriticalStampAuthorities]); raw != "" {
+		cfg.CriticalStampAuthoritiesSet = true
+		for _, a := range scanSplitList(raw) {
+			if !criticalStampAuthorityRe.MatchString(a) {
+				bad("%s: %q is not a stamp authority identifier ([0-9A-Za-z_.:-]+, the capture class of critical-security(<authority>))",
+					scanEnvCriticalStampAuthorities, a)
+				continue
+			}
+			cfg.CriticalStampAuthorities = append(cfg.CriticalStampAuthorities, a)
+		}
+		sort.Strings(cfg.CriticalStampAuthorities)
+	}
 	if raw := strings.TrimSpace(vals[scanEnvStreamCap]); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 {
@@ -1266,6 +1303,7 @@ func (c scanConfig) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: %s=%s", scanEnvScanRepos, strings.Join(c.ScanRepos, ",")),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvAuthorizedAuthors, sortedIdents(c.AuthorizedAuthors)),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvStreamCap, streamCapEcho(c.StreamCap, c.StreamCapSet)),
+		fmt.Sprintf("assay-config: %s=%s", scanEnvCriticalStampAuthorities, criticalStampAuthoritiesEcho(c.CriticalStampAuthorities, c.CriticalStampAuthoritiesSet)),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvGitLabDisplayNames, strings.Join(gitlabDisplayNames, ",")),
 	}
 	// Product config (non-ASSAY_) echoes under its own prefix via the build-tagged

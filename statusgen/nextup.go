@@ -181,6 +181,13 @@ type NextUp struct {
 	// the ≤15/20 2-pass fill (phase 3). 0 whenever no drive is active, so a no-drive
 	// board is byte-identical to the pre-drives baseline.
 	HeldByDriveCap int
+	// MainHealth / MainRedUnknown — the main-red arm's input state (phase 3), set
+	// ONLY while a drive is active (the only time the critical tier applies), so a
+	// no-drive board is unchanged. MainHealth is the rendered state; MainRedUnknown
+	// is the could-not-check line when no --main-health input was supplied — named
+	// on the board and as a --lint NOTICE, never a silent "main is green".
+	MainHealth     string
+	MainRedUnknown string
 }
 
 // Overflow reports whether the eligible backlog exceeds the overflow threshold —
@@ -886,6 +893,12 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 		picks = append(picks, p)
 	}
 	nu.Picks = picks
+	if activeDriveSet.applied() {
+		nu.MainHealth = activeMainHealth.String()
+		if !activeMainHealth.known() {
+			nu.MainRedUnknown = mainRedUnknownText
+		}
+	}
 	// Honesty (brief-44 Verify row 3): the ACTIVE DRIVE banner renders iff a SHOWN
 	// pick actually carries a drive term. A boosted pick reaching the board without
 	// this banner is a --lint PROBLEM (driveBannerProblems) — the steer is never
