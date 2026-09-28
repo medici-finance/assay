@@ -943,6 +943,7 @@ PY_POLICY_SETTINGS
 }
 
 policy_preflight(){ (
+  # shellcheck disable=SC2030  # the policy vars are local to this subshell on purpose: a preflight must not leak them
   local model="" provider="" harness="" MODEL_POLICY_EFFORT="" MODEL_POLICY_PROVIDER=""
   apply_model_policy "$2" "$3" "$1" "$4"
   [[ -z "$provider" ]] || resolve_provider "$provider"
@@ -1011,9 +1012,11 @@ validate_env_key(){
     esac
   fi
   if [[ "$key" == "CELL_KIND" ]]; then
+    # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
     value_in "$value" $KIND_VALUES || die "set: CELL_KIND must be one of ${KIND_VALUES// /|}, got '$value'"
   fi
   if [[ "$key" == "CELL_COCKPIT" ]]; then
+    # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
     value_in "$value" $COCKPIT_VALUES || die "set: CELL_COCKPIT must be one of ${COCKPIT_VALUES// /|}, got '$value'"
   fi
   # The dispatch-boundary repair-admission gate is a strict on/off opt-in (the gate enables ONLY
@@ -1062,6 +1065,7 @@ prescan_kind_override(){
   while [[ $# -gt 0 ]]; do
     if [[ "$1" == "--kind" ]]; then
       [[ -n "${2:-}" ]] || die "--kind needs a value (${KIND_VALUES// /|})"
+      # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
       value_in "$2" $KIND_VALUES || die "--kind must be one of ${KIND_VALUES// /|}, got '$2'"
       CELL_KIND_OVERRIDE="$2"; shift 2
     else shift; fi
@@ -1328,7 +1332,9 @@ cmd_show(){
     --*) die "show: unknown flag $1";;
     *) die "show: unexpected argument '$1'";;
   esac; done
+  # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
   [[ -z "$harness_flag" ]] || value_in "$harness_flag" $HARNESS_VALUES || die "show: --harness must be one of ${HARNESS_VALUES// /|}, got '$harness_flag'"
+  # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
   [[ -z "$cockpit_flag" ]] || value_in "$cockpit_flag" $COCKPIT_VALUES || die "show: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
   # show_line <key> <flag-value> <effective-value>: source is flag > cell.env line > default.
   show_line(){
@@ -1377,6 +1383,7 @@ cmd_show(){
     if [[ -n "${CELL_MODEL_POLICY:-}" ]]; then
       local model=""
       apply_model_policy "$harness_flag" "$provider_flag" "$r" "$model_flag"
+      # shellcheck disable=SC2031  # read from apply_model_policy just above, in this shell (not the preflight subshell)
       printf "[show] model %s=%s provider=%s harness=%s effort=%s (%s)\n" "$r" "$model" "$MODEL_POLICY_PROVIDER" "$harness" "$MODEL_POLICY_EFFORT" "$RESOLVED_MODEL_SRC"
     elif [[ -n "$model_flag" ]]; then
       printf '[show] model %s=%s (flag)\n' "$r" "$model_flag"
@@ -2198,6 +2205,7 @@ cmd_desk(){
     --*) die "desk: unknown flag $1";;
     *) cfg_in="$1"; shift;;
   esac; done
+  # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
   [[ -z "$cockpit_flag" ]] || value_in "$cockpit_flag" $COCKPIT_VALUES \
     || die "desk: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
   [[ "$persist" == "0" || -n "$model_override$harness_flag$provider_flag$CELL_KIND_OVERRIDE$cockpit_flag" || "$tier_flag" == "1" ]] \
@@ -2693,6 +2701,7 @@ cmd_up(){
     *) cfg_in="$1"; shift;;
   esac; done
   case "$harness_flag" in ""|claude|codex) ;; *) die "up: --harness must be claude or codex, got '$harness_flag'";; esac
+  # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
   [[ -z "$cockpit_flag" ]] || value_in "$cockpit_flag" $COCKPIT_VALUES \
     || die "up: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
   [[ "$persist" == "0" || -n "$model_override$harness_flag$provider_flag$CELL_KIND_OVERRIDE$cockpit_flag$tier_top_flag$tier_mid_flag$tier_fast_flag" ]] \
