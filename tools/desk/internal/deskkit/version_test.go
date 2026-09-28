@@ -71,34 +71,171 @@ func TestReleaseTagOrDev(t *testing.T) {
 	SourceSHA, BuiltAt = "", "" // leave cleared; TestVersion* set their own
 }
 
-// TestVersionStampedFromReleaseWorkflow is the NEW workflow assertion Task 5
-// requires (mirrors statusgen/version_test.go's "release workflow stamps the
-// tag" subtest). The `-X …deskkit.ReleaseTag=$RELEASE_TAG` stamp is the whole
-// mechanism that maps a running desk-tools binary back to its
-// `desk-tools/vX.Y.Z`; a release built without it ships binaries that answer
-// "dev" and silently defeat every pin check. This test goes RED if the stamp is
-// ever removed from release-desk.yml.
+// releaseWorkflowPath is the release workflow that builds and packages
+// desk-tools: .github/workflows/release.yml, the umbrella release. (This guard
+// once read a release-desk.yml this repository never carried, so it skipped on
+// every run and guarded nothing — see fixture_skip_test.go's class guard.)
+var releaseWorkflowPath = filepath.Join("..", "..", "..", "..", ".github", "workflows", "release.yml")
+
+// deskToolsBuildStepName is the release.yml step that cross-compiles and
+// packages the desk-tools binaries — the step whose ldflags must carry the
+// ReleaseTag stamp.
+const deskToolsBuildStepName = "Build and package desk-tools binaries"
+
+// deskkitPkgFromGoMod derives the -X symbol prefix from tools/desk/go.mod, so a
+// module rename that leaves the workflow stamping the OLD path (which the Go
+// linker silently ignores) reddens the guard instead of passing it.
+func deskkitPkgFromGoMod(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
+	if err != nil {
+		t.Fatalf("tools/desk/go.mod not readable: %v", err)
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if mod, ok := strings.CutPrefix(strings.TrimSpace(line), "module "); ok {
+			return strings.TrimSpace(mod) + "/internal/deskkit"
+		}
+	}
+	t.Fatal("tools/desk/go.mod carries no module line")
+	return ""
+}
+
+// workflowStep returns the text of the release.yml step named name — from its
+// `- name:` line up to the next step at the same indentation — or "" when the
+// workflow carries no such step.
+func workflowStep(wf, name string) string {
+	lines := strings.Split(wf, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimLeft(line, " ")
+		if trimmed != "- name: "+name {
+			continue
+		}
+		indent := line[:len(line)-len(trimmed)]
+		end := len(lines)
+		for j := i + 1; j < len(lines); j++ {
+			if strings.HasPrefix(lines[j], indent+"- ") {
+				end = j
+				break
+			}
+		}
+		return strings.Join(lines[i:end], "\n")
+	}
+	return ""
+}
+
+// releaseTagStampProblems reports every way the desk-tools build step in wf
+// fails to stamp deskkit.ReleaseTag from the resolved release tag. It checks
+// the STEP, not the whole file: the stamp appears in comments too, and
+// RELEASE_TAG feeds other steps, so a whole-file substring match stays green
+// with the real stamp deleted or pointed at the wrong value.
+func releaseTagStampProblems(wf, deskkitPath string) []string {
+	step := workflowStep(wf, deskToolsBuildStepName)
+	if step == "" {
+		return []string{"release.yml has no \"" + deskToolsBuildStepName + "\" step — nothing builds desk-tools, so nothing stamps it"}
+	}
+	var problems []string
+	// Only a non-comment line counts: a comment naming the stamp stamps nothing.
+	var code []string
+	for _, line := range strings.Split(step, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "#") {
+			code = append(code, line)
+		}
+	}
+	body := strings.Join(code, "\n")
+	stamp := "-X " + deskkitPath + ".ReleaseTag=${RELEASE_TAG}"
+	if !strings.Contains(body, stamp) {
+		problems = append(problems, "the desk-tools build step does not carry `"+stamp+"` — released binaries would report \"dev\" (or a value that is not the release tag) and defeat pin checks")
+	}
+	// The stamp is fed from the RESOLVED release tag, via env: — never a
+	// ${{ }} splice inside run:, and never a literal.
+	if !strings.Contains(body, "RELEASE_TAG: ${{ needs.resolve.outputs.tag }}") {
+		problems = append(problems, "the desk-tools build step does not set RELEASE_TAG from needs.resolve.outputs.tag in env: — the stamped value would not be the resolved release tag")
+	}
+	// The stamped LDFLAGS must actually reach the build.
+	if !strings.Contains(body, `-ldflags "$LDFLAGS"`) {
+		problems = append(problems, "the desk-tools build step does not pass $LDFLAGS to go build — the stamp would be computed and discarded")
+	}
+	return problems
+}
+
+// TestVersionStampedFromReleaseWorkflow is the workflow assertion for the
+// desk-tools release stamp (mirrors statusgen/version_test.go's "release
+// workflow stamps the tag" subtest). The `-X …deskkit.ReleaseTag=$RELEASE_TAG`
+// stamp is the whole mechanism that maps a running desk-tools binary back to
+// its release; a release built without it ships binaries that answer "dev" and
+// silently defeat every pin check. This test goes RED if the stamp is removed
+// from release.yml's desk-tools build step, fed a value other than the
+// resolved release tag, or left out of the go build.
 //
 // It is DELIBERATELY a distinct, named test: internal/deskkit already carries
 // TestVersionUnpinned / TestVersionPinned, so a Verify row matching `-run
 // Version` would pass today without this stamp ever being wired.
 func TestVersionStampedFromReleaseWorkflow(t *testing.T) {
-	// internal/deskkit sits at tools/desk/internal/deskkit; the repo root is four
-	// levels up.
-	path := filepath.Join("..", "..", "..", "..", ".github", "workflows", "release-desk.yml")
-	skipIfFixtureAbsent(t, path,
+	skipIfFixtureAbsent(t, releaseWorkflowPath,
 		".github/ is not part of this repository's published file set")
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(releaseWorkflowPath)
 	if err != nil {
-		t.Fatalf("release workflow not readable at %s: %v", path, err)
+		t.Fatalf("release workflow not readable at %s: %v", releaseWorkflowPath, err)
+	}
+	for _, p := range releaseTagStampProblems(string(raw), deskkitPkgFromGoMod(t)) {
+		t.Errorf("release.yml: %s", p)
+	}
+}
+
+// TestReleaseTagStampMissingIsCaught is the mutation control for the guard
+// above, in TestReleaseAuthorizerStampMissingIsCaught's shape: each guarded
+// piece of the stamp is broken in a copy of release.yml, and EVERY break must
+// make releaseTagStampProblems report a problem. A guard that still passes with
+// its guarded text removed guards nothing; this proves it can fail on every
+// suite execution, not only inside a mutation harness.
+func TestReleaseTagStampMissingIsCaught(t *testing.T) {
+	skipIfFixtureAbsent(t, releaseWorkflowPath,
+		".github/ is not part of this repository's published file set")
+	raw, err := os.ReadFile(releaseWorkflowPath)
+	if err != nil {
+		t.Fatalf("release workflow not readable at %s: %v", releaseWorkflowPath, err)
 	}
 	wf := string(raw)
-	if !strings.Contains(wf, "deskkit.ReleaseTag=") {
-		t.Error("release-desk.yml does not stamp deskkit.ReleaseTag — released binaries would report \"dev\" and defeat pin checks")
+	pkg := deskkitPkgFromGoMod(t)
+
+	// Positive control on the intact tree first, or the mutations prove nothing.
+	if problems := releaseTagStampProblems(wf, pkg); len(problems) != 0 {
+		t.Fatalf("the intact release.yml already reports problems (%v) — fix the stamp before proving the check can catch its absence", problems)
 	}
-	// The stamp must be fed from the resolved release tag, not a literal.
-	if !strings.Contains(wf, "RELEASE_TAG") {
-		t.Error("release-desk.yml stamps ReleaseTag but not from $RELEASE_TAG — the tag would not be the resolved release tag")
+
+	// Every mutation but the rename is applied INSIDE the desk-tools build step:
+	// RELEASE_TAG and -ldflags "$LDFLAGS" also appear in other steps, so a
+	// whole-file replace could hit a sibling step and leave this one intact.
+	step := workflowStep(wf, deskToolsBuildStepName)
+	stamp := "-X " + pkg + ".ReleaseTag=${RELEASE_TAG}"
+	for _, m := range []struct {
+		name, from, to string
+		wholeFile      bool
+	}{
+		{name: "stamp removed", from: stamp, to: ""},
+		{name: "stamp fed the commit, not the tag", from: stamp, to: "-X " + pkg + ".ReleaseTag=${SHA_SHORT}"},
+		{name: "stamp fed a literal", from: stamp, to: "-X " + pkg + ".ReleaseTag=dev"},
+		{name: "stamp on the wrong package", from: stamp, to: "-X " + pkg + "x.ReleaseTag=${RELEASE_TAG}"},
+		{name: "stamp commented out", from: "                   " + stamp, to: "#                  " + stamp},
+		{name: "RELEASE_TAG not from the resolved tag", from: "RELEASE_TAG: ${{ needs.resolve.outputs.tag }}", to: "RELEASE_TAG: v0.0.0"},
+		{name: "LDFLAGS not passed to go build", from: `go build -ldflags "$LDFLAGS" \`, to: `go build \`},
+		{name: "desk-tools build step renamed away", from: "- name: " + deskToolsBuildStepName, to: "- name: Build something else", wholeFile: true},
+	} {
+		src := step
+		if m.wholeFile {
+			src = wf
+		}
+		if !strings.Contains(src, m.from) {
+			t.Errorf("%s: guarded text %q is not in the desk-tools build step — the mutation control and the workflow have drifted apart", m.name, m.from)
+			continue
+		}
+		mutated := strings.Replace(src, m.from, m.to, 1)
+		if !m.wholeFile {
+			mutated = strings.Replace(wf, step, mutated, 1)
+		}
+		if problems := releaseTagStampProblems(mutated, pkg); len(problems) == 0 {
+			t.Errorf("%s was NOT caught — the release-stamp guard passes with the stamp broken, so it guards nothing", m.name)
+		}
 	}
 }
 

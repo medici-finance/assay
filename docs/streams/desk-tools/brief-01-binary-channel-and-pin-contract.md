@@ -131,6 +131,16 @@ facts:
 
 ## Verify (executable — no prose-only DoD items)
 
+**Row-shape note (2026-09-27, #1546).** Rows 1, 5, 6 and 8 are re-shaped; no Expect changes and
+no row's own shell assertion changes. Row 8's check was real and failing: its test read a
+release workflow this repository does not carry and skipped on every run (`pass=0`), so it now
+reads `.github/workflows/release.yml`, where the desk-tools build step stamps
+`deskkit.ReleaseTag`. The other three were check-shape defects the execution witness could not
+score, while each row's intended check passed by hand: row 1's command holds a backtick inside a
+single-backtick span, which the witness truncated (exit 2), so the span now uses a double-backtick
+fence; rows 5, 6 and 8 printed `rc` last, and the witness reads the last integer on the last line
+as the `≥` count, so the echo order puts `pass` last. Each row's `[ … ]` assertion is unchanged.
+
 **Build step, run once before the code rows**: `make desk-build` — builds every
 `tools/desk/cmd/*` unprivileged into `tools/desk/dist/`. Rows that call `tools/desk/dist/deskpins`
 will report "no such file or directory" (a failed row, not a placeholder) if this step is skipped.
@@ -138,15 +148,15 @@ will report "no such file or directory" (a failed row, not a placeholder) if thi
 | # | Command | Expect |
 |---|---------|--------|
 | 0 | single-spec: `n=$( { grep -rl 'assay-versions. pin file' docs/ README.md tools/desk/README.md 2>/dev/null; } \| xargs -r grep -l -e '^#\{1,3\} .*pin file' \| sort -u \| wc -l \| tr -d ' '); echo "spec-homes=$n"; [ "$n" -eq 1 ]` | exit 0, `spec-homes=1` — one file carries the spec heading; every other mention links to it |
-| 1 | `SPEC=docs/distribution.md; test -f "$SPEC" && grep -q '^## The `.assay-versions` pin file' "$SPEC" && n=$(grep -c -e statusgen -e desk-tools -e daily-harvest -e sha256 -e could-not-check "$SPEC"); echo "n=$n"; [ "$n" -ge 5 ]` | exit 0, `n` ≥ 5 — the spec section exists and names every artifact line and the three states |
+| 1 | `` SPEC=docs/distribution.md; test -f "$SPEC" && grep -q '^## The `.assay-versions` pin file' "$SPEC" && n=$(grep -c -e statusgen -e desk-tools -e daily-harvest -e sha256 -e could-not-check "$SPEC"); echo "n=$n"; [ "$n" -ge 5 ] `` | exit 0, `n` ≥ 5 — the spec section exists and names every artifact line and the three states |
 | 2 | `cd tools/desk && go test ./... && go vet ./...` | exit 0 |
 | 3 | backward-compat against the golden fixture: `mkdir -p /tmp/av && cp tools/desk/internal/deskkit/testdata/assay-versions-live.golden /tmp/av/.assay-versions && tools/desk/dist/deskpins --check --root /tmp/av` | exit 0; checked-clean; the per-platform lines and comment lines parse; no bare `desk-tools` line is required |
 | 3a | not-a-duplicate: `mkdir -p /tmp/avd && cp /tmp/av/.assay-versions /tmp/avd/.assay-versions && grep -m1 '^statusgen ' /tmp/avd/.assay-versions > /tmp/dupline && cat /tmp/dupline >> /tmp/avd/.assay-versions && tools/desk/dist/deskpins --check --root /tmp/avd; rc=$?; echo "dup-rc=$rc"; [ "$rc" -ne 0 ]` | exit 0, non-zero `dup-rc` — the identical-tag/sha `statusgen`+`statusgen-linux-amd64` pair stays clean; a real second `statusgen ` line is rejected |
 | 4 | fail-closed: `mkdir -p /tmp/av && rm -f /tmp/av/.assay-versions; tools/desk/dist/deskpins --check --root /tmp/av; a=$?; printf 'statusgen only-a-tag\n' > /tmp/av/.assay-versions; tools/desk/dist/deskpins --check --root /tmp/av; b=$?; echo "absent=$a malformed=$b"; [ "$a" -ne 0 ] && [ "$b" -ne 0 ] && [ "$a" -ne "$b" ]` | exit 0 — absent and malformed both non-zero and distinct from each other; never a default |
-| 5 | flow: `cd tools/desk && go test ./cmd/deskboard/... -run TestNextup_PinFlowFromConfiguredRoot -v > /tmp/f.txt 2>&1; rc=$?; p=$(grep -c '^--- PASS' /tmp/f.txt); f=$(grep -c '^--- FAIL' /tmp/f.txt); echo "pass=$p fail=$f rc=$rc"; [ "$p" -ge 1 ] && [ "$f" -eq 0 ] && [ "$rc" -eq 0 ]` | exit 0, `pass` ≥ 1, `fail=0` — reading the pin, resolving the binary, and rendering the board still work as one chain |
-| 6 | neighbour: `cd tools/desk && go test ./cmd/deskboard/... -run TestStatusgenPin -v > /tmp/n.txt 2>&1; rc=$?; p=$(grep -c '^--- PASS' /tmp/n.txt); f=$(grep -c '^--- FAIL' /tmp/n.txt); echo "pass=$p fail=$f rc=$rc"; [ "$p" -ge 1 ] && [ "$f" -eq 0 ] && [ "$rc" -eq 0 ]` | exit 0, `pass` ≥ 1, `fail=0` — the pre-existing pin reader still parses a good pin and refuses every unreadable one |
+| 5 | flow: `cd tools/desk && go test ./cmd/deskboard/... -run TestNextup_PinFlowFromConfiguredRoot -v > /tmp/f.txt 2>&1; rc=$?; p=$(grep -c '^--- PASS' /tmp/f.txt); f=$(grep -c '^--- FAIL' /tmp/f.txt); echo "fail=$f rc=$rc pass=$p"; [ "$p" -ge 1 ] && [ "$f" -eq 0 ] && [ "$rc" -eq 0 ]` | exit 0, `pass` ≥ 1, `fail=0` — reading the pin, resolving the binary, and rendering the board still work as one chain |
+| 6 | neighbour: `cd tools/desk && go test ./cmd/deskboard/... -run TestStatusgenPin -v > /tmp/n.txt 2>&1; rc=$?; p=$(grep -c '^--- PASS' /tmp/n.txt); f=$(grep -c '^--- FAIL' /tmp/n.txt); echo "fail=$f rc=$rc pass=$p"; [ "$p" -ge 1 ] && [ "$f" -eq 0 ] && [ "$rc" -eq 0 ]` | exit 0, `pass` ≥ 1, `fail=0` — the pre-existing pin reader still parses a good pin and refuses every unreadable one |
 | 7 | `grep -q -e 'deskkit.ReleaseTag' -e 'deskkit.Tag' .github/workflows/release.yml && grep -q 'RELEASE_TAG' .github/workflows/release.yml` | exit 0 — the computed tag is stamped, not assigned and discarded |
-| 8 | `cd tools/desk && go test ./internal/deskkit/... -run TestVersionStampedFromReleaseWorkflow -v > /tmp/v.txt 2>&1; rc=$?; p=$(grep -c '^--- PASS' /tmp/v.txt); echo "pass=$p rc=$rc"; [ "$p" -ge 1 ] && [ "$rc" -eq 0 ]` | exit 0, `pass` ≥ 1 — the new workflow-assertion test exists and passes |
+| 8 | `cd tools/desk && go test ./internal/deskkit/... -run TestVersionStampedFromReleaseWorkflow -v > /tmp/v.txt 2>&1; rc=$?; p=$(grep -c '^--- PASS' /tmp/v.txt); echo "rc=$rc pass=$p"; [ "$p" -ge 1 ] && [ "$rc" -eq 0 ]` | exit 0, `pass` ≥ 1 — the new workflow-assertion test exists and passes |
 | 9 | `n=$(grep -rn 'ConsumerRepo' tools/desk/cmd/deskboard/*.go \| grep -v _test \| grep -c 'hardcoded' \| tr -d ' '); echo "hardcoded=$n"; [ "$n" -eq 0 ]` | exit 0, `hardcoded=0` — the single-consumer hardcoding is gone from non-test source |
 
 **On `tools/desk/dist/deskpins`**: the chosen name for the Task 4 validator, built by
