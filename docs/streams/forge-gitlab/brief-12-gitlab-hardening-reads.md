@@ -332,7 +332,7 @@ VERIFY: BLOCKED — rows 3, 5, 6 PASS; rows 1 and 2 could-not-check on the witne
 
 ### Non-implementer verifier run — VERIFY: BLOCKED — 2/6 witness-proven, 0 implementation defects — 2026-09-27 claude-opus-5-5-verifier (verify-desk dispatch)
 
-**Supersede note (2026-09-27, verify-desk):** this run supersedes the batch B (#1783) forge-gitlab/12 receipt and the Evidence block above it. That run executed Verify row 4 unsandboxed (the live-credential class, #1794); this run is network-denied with a trimmed PATH, so rows 2-4's live and credential paths could not run. The block above is kept as history.
+**Supersede note (2026-09-27, verify-desk):** this run supersedes the batch B (#1783) forge-gitlab/12 receipt and the Evidence block above it. That run executed Verify row 4 unsandboxed (the live-credential class, #1794); this run is network-denied with a trimmed PATH, so row 4 (the only row with a live-credential path) could not run; rows 1-2 are check:ci could-not-run on darwin (#1800). The block above is kept as history.
 
 Runner is not the implementer (implementing PR medici-finance/assay#1179, merge commit
 4ce477d7100bc65a57e7fd1a1510bc2f86d22b76). Own detached temp worktree at merged main
@@ -448,6 +448,61 @@ medici-finance/assay#1800) with green non-hermetic supplementary runs; row 4 nee
 GitLab instance plus a provisioned auditor PAT and carries the check-definition faults tracked
 by medici-finance/assay#1794; row 6 passes vacuously on a merged tree. No implementation
 defect found. Status stays `implemented`.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGitlabGolden -v && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/repohardenguard/ -run TestGitLabNotAvailableNoRequest -v && go test ./cmd/repohardenguard/ -run TestGitLabTierGateCouldNotCheck -v` | pass exit=0 | sha256:0c12566622bb | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `curl -sS -o /dev/null -w '%{http_code}' -H "PRIVATE-TOKEN: $(cat "$(desktoken auditor --forge gitlab --repo "$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+/[^/]+?)(\.git)?$#\1#')")")" "$GITLAB_API_BASE/projects/$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+)/([^/]+?)(\.git)?$#\1%2F\2#')/protected_branches"` | fail exit=3 | sha256:825d9d17f84b | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -c 'not available — Premium' docs/adopting-assay-gitlab.md` | pass exit=0 | sha256:53c234e5e847 | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --root . --consumers` | pass exit=0 | sha256:c53bb5f05568 | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+
+**Re-run (round 2) 2026-09-27 at the #1801 merge tree 25fb2a4b, after #1685 added the ExpectedSHA conditional-write precondition to forge.go / forge_github.go / forge_gitlab.go**
+(claude-opus-5-5-verifier, verify-desk dispatch; runner is not the implementer). The witness table
+directly above ran at 25fb2a4b3ea34c8b3a5c7acbe540262f8e76309c, a local merge of PR #1801's head
+2f1e152f3baa93f0d06d9ccdcde4690c2b9dec16 with main c50a38fc12518a4eec4db37e8dd847d49e79149a (the
+forge's main head at run time, read with the verifier App token); rows dated 2026-09-28 (UTC
+stamp). Same envelope as the forge-gitlab/11 round-2 re-run: pinned statusgen v1.0.27 invoked
+directly, `sandbox-exec` STRICT all-network deny (no loopback), `env -i`, KUBECONFIG=/dev/null,
+GOFLAGS=-count=1, a fresh empty GOCACHE, GOPROXY=off, GOTOOLCHAIN=local, PATH limited to the system
+dirs plus `go` and the pinned `statusgen` (`desktoken`, `gh`, `glab` do not resolve),
+GITLAB_API_BASE unset, no GitLab custody file. Two earlier attempts also set TMPDIR to a scratch
+path; they were discarded and re-run without it, with the same exit on every row.
+
+#1685 is on the WRITE path only: `WriteFileInput.ExpectedSHA` plus `expectedSHAPrecondition` in
+forge.go (+30) and one call to it in each backend's `WriteFile` (forge_github.go +8,
+forge_gitlab.go +5, the latter at line ~3905, after every hardening-read line this brief cites).
+The GitLab hardening kinds, their paths, the tier-gate classification, the empty-body guard and
+the goldens are untouched. Line cites: forge_gitlab.go:432 / 2399 / 2443 / 2457 / 2523 / 2529 are
+unchanged; forge.go moved down by 30, so the kind-to-forge map is now forge.go:1053 (was 1023) and
+the forge.go:959 cite is now forge.go:989.
+
+Per row, against the previous witness (at e70bc864):
+- Row 1: unchanged, check:ci could-not-run on darwin (medici-finance/assay#1800). Out of witness,
+  network denied except loopback: `go build ./...` exit 0; `go test -count=1 -timeout 480s` of
+  internal/deskkit and cmd/repohardenguard (plus internal/forgeban and cmd/desktoken) exit 0, all
+  `ok`. The whole-module `go test ./...` was NOT run here.
+- Row 2: unchanged, check:ci could-not-run (#1800). Out of witness, same loopback envelope,
+  uncached: the three named tests `--- PASS`, exit 0, 158 PASS lines and 0 FAIL;
+  `push_rules_premium_gated` golden-pinned OK. The mutation leg is still unexecuted.
+- Row 3: pass, NEW hash 0c12566622bb, uncached (-count=1, fresh GOCACHE) inside the strict deny:
+  `--- PASS: TestGitLabNotAvailableNoRequest` and `TestGitLabTierGateCouldNotCheck` with its four
+  subtests (403, CE 404, Premium null document, Premium value) all PASS. The hash differs because
+  the uncached output carries fresh timings; the result did not move.
+- Row 4: unchanged, `fail exit=3`, same hash 825d9d17f84b. It remains could-not-check: it needs a
+  live GitLab instance and a provisioned auditor PAT, and carries the row fixes tracked by
+  medici-finance/assay#1794.
+- Row 5: unchanged, pass, same hash 53c234e5e847.
+- Row 6: pass, new hash c53bb5f05568 (base now c50a38fc), still VACUOUS on a merged tree:
+  `summary: 0 corroborated, 0 disproved, 16 unchecked, 1 brief(s) claiming nothing`.
+
+Witness-proven this run: rows 3 and 5. Held: rows 1, 2, 4 and 6. No hardening-read row's result
+moved, and no implementation regression from #1685. The risk-bearing enumeration is unchanged
+apart from the forge.go line shift above; the RISK-VALUE: NAMED, NOT DERIVED auditor minimum-role
+line remains an open question for a human with GitLab access.
+
+VERIFY: BLOCKED (unchanged in substance). Status stays `implemented`.
 
 
 ## Review

@@ -639,6 +639,90 @@ witness pass to the loopback deny and still passes out of witness. Rows 7 and 8 
 provisioned auditor App and a human-run probe, and row 13 still needs a row fix or a human ruling.
 Evidence only; status stays `implemented`.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -rnE -e 'exec\.Command(Context)?\([^)]*"gh"' -e 'exec\.Command(Context)?\([^)]*"glab"' tools/desk --include='*.go' \| grep -v _test.go \| wc -l` | fail exit=1 | sha256:4eff2db4bada | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestNoForgeCLIShellout -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v && go test ./internal/deskkit/ -run TestForgeGithubGolden -v` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -cE -e 'Key: +"cmd/repohardenguard/' -e 'Key: +"cmd/deskroster/' tools/desk/internal/forgeban/allowlist.go; test "$(grep -oE 'allowedInvocationCeiling = [0-9]+' tools/desk/internal/forgeban/allowlist.go \| grep -oE '[0-9]+$')" -le 6` | pass exit=0 | sha256:9a271f2a916b | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGithubGolden/hardening_read_unknown_kind -v` | fail exit=1 | sha256:ce391305ecdf | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/repohardenguard/ -run TestChecklistRefusesGhApiCell -v && go test ./cmd/repohardenguard/ -run TestAdminNullIsCouldNotCheck -v && go test ./cmd/repohardenguard/ -run TestForbiddenIsCouldNotCheck -v && go test ./cmd/repohardenguard/ -run TestPublicNotFoundIsAbsent -v` | pass exit=0 | sha256:e9581cfbef81 | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `repohardenguard --repo "$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+/[^/]+?)(\.git)?$#\1#')" --json \| jq -e '(.identity \| test("\\[bot\\]$")) and ([.rows[] \| select(.state=="could-not-check" and .gated!="admin")] \| length == 0)'` | fail exit=4 | sha256:0087b96b601c | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `curl -sS -o /dev/null -w '%{http_code}' -X PATCH -H "Authorization: Bearer $(cat "$(desktoken auditor --repo "$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+)/[^/]+?(\.git)?$#\1#')")")" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+/[^/]+?)(\.git)?$#\1#')" -d '{}'` | fail exit=6 | sha256:9a07e914d95b | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `desktoken --version \| grep -c 'auditor=auditor-app'` | fail exit=1 | sha256:6acc4612d178 | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --root . --consumers` | pass exit=0 | sha256:c53bb5f05568 | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && go test ./cmd/desktoken/ -run TestAdopterDocsEnumerateEveryRole -v -timeout 60s` | pass exit=0 | sha256:286a22766366 | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `test "$(grep -c 'Administration: read' docs/adopting-assay.md)" -ge 1 && grep -qE '^[\|] *auditor *[\|].*read_api' docs/adopting-assay-gitlab.md && sed -n 's/.*for r in \(.*\); do.*/\1/p' docs/adopting-assay-gitlab.md \| grep -qw auditor` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `grep -hniE auditor docs/adopting-assay.md docs/adopting-assay-gitlab.md \| grep -viE -e 'no write' -e read-only -e 'never writes' -e could-not-check \| grep -E -e ': write' -e write_repository -e '` | fail exit=2 | sha256:3b4acfef4ecb | 2026-09-28 | assay-verifier-app[bot] @ 25fb2a4b3ea3 (on-behalf-of human:ian) (forge-identity) |
+
+**Re-run (round 2) 2026-09-27 at the #1801 merge tree 25fb2a4b, after #1685 added the ExpectedSHA conditional-write precondition to forge.go / forge_github.go / forge_gitlab.go**
+(claude-opus-5-5-verifier, verify-desk dispatch; runner is not the implementer). The witness table
+directly above ran at 25fb2a4b3ea34c8b3a5c7acbe540262f8e76309c, a local merge of PR #1801's head
+2f1e152f3baa93f0d06d9ccdcde4690c2b9dec16 with main c50a38fc12518a4eec4db37e8dd847d49e79149a (the
+forge's main head at run time, read with the verifier App token). Its rows are dated 2026-09-28
+because the witness stamps UTC. Envelope, as in round 1: pinned statusgen v1.0.27 invoked directly
+(sha256 matches the darwin-arm64 pin), `sandbox-exec` with a STRICT all-network deny (no loopback
+allowance), `env -i`, KUBECONFIG=/dev/null, GOFLAGS=-count=1, a fresh empty GOCACHE, GOPROXY=off
+over a pre-populated module cache, GOTOOLCHAIN=local, and PATH limited to the system dirs plus `go`
+and the pinned `statusgen`. `desktoken`, `repohardenguard`, `gh` and `glab` do not resolve
+(checked before the run); `curl` inside the sandbox cannot resolve a host. HOME pointed at a scratch
+dir holding only the roster config the Runner stamp reads. Two earlier attempts this session also
+set TMPDIR to a scratch path, a departure from round 1; their tables were discarded (path-specific
+restore) and both briefs re-run without it. Every row had the same exit in all three attempts.
+
+What #1685 changed in this item's inputs: a new `WriteFileInput.ExpectedSHA` field and a
+backend-neutral `expectedSHAPrecondition` helper in tools/desk/internal/deskkit/forge.go (+30), and
+one call to it inside `GitHubForge.WriteFile` (forge_github.go +8) and `GitLabForge.WriteFile`
+(forge_gitlab.go +5), right after each backend's own pre-write fetch. It is on the WRITE path only.
+`RepoHardeningRead`, the kind table, the kind-to-forge map, the per-kind paths and the goldens are
+untouched; tools/desk/internal/forgeban/allowlist.go is unchanged since round 1. The +30 lines sit
+above the hardening-read block in forge.go, so line cites there moved down by 30 (the kind map
+`hardeningKindForge` is now forge.go:1053); forge.go:45 / 73 / 120, forge_github.go:2289 and
+allowlist.go:84 are unchanged.
+
+Per row, against round 1:
+- Row 1: unchanged, check:ci could-not-run on darwin (medici-finance/assay#1800). Out of witness,
+  same tree, network denied except loopback: `go build ./...` in tools/desk exit 0 (also exit 0
+  under the strict deny); targeted package tests `go test -count=1 -timeout 480s` of
+  internal/deskkit, internal/forgeban, cmd/repohardenguard and cmd/desktoken exit 0, all four
+  `ok`. The whole-module `go test ./...` was NOT run here. #1685's own test
+  (`TestWriteFileOpBothBackends`, in internal/deskkit) passes in that run.
+- Row 2: unchanged, `fail exit=1`, same hash 4eff2db4bada. The printed count is `0`; the non-zero
+  exit is the `grep -v` stage selecting nothing under pipefail.
+- Row 3: unchanged, check:ci could-not-run (#1800). Out of witness, same loopback envelope: the four
+  named tests each `--- PASS`, exit 0; golden corpus 62 operations; the frozen surface is 54
+  operations and the committed inventory reconciles.
+- Row 4: unchanged, pass, same hash 9a271f2a916b (output `0`); ceiling still 6 @ allowlist.go:84.
+- Row 5: unchanged in substance, `fail exit=1` under the strict deny: the golden server cannot bind
+  loopback (`panic: httptest: failed to listen on a port … bind: operation not permitted`). The hash
+  (now ce391305ecdf) differs run to run because the panic trace carries addresses. With loopback
+  allowed and all other network denied, uncached, the same command exits 0 with
+  `--- PASS: TestForgeGithubGolden/hardening_read_unknown_kind`; the golden still records
+  `"requests": []` and a could-not-check refusal naming the kind. Not witness-proven.
+- Row 6: pass, NEW hash e9581cfbef81. Round 1's hash was a Go test-cache replay; this run is
+  uncached (fresh GOCACHE, -count=1) inside the strict deny, all four tests `--- PASS`. This row
+  is now genuinely witness-proven by execution. The hardening-read result did not move.
+- Rows 7 and 8: unchanged, same exits (4, 6) and hashes. Could-not-check: they need the live forge
+  and a provisioned auditor App. Nothing was minted, and no request left the host.
+- Row 9: unchanged envelope artifact (`desktoken` kept off PATH), same exit and hash.
+- Row 10: pass, new hash c53bb5f05568, still VACUOUS. The base is now c50a38fc and the diff holds
+  only Evidence edits, so every entry reads UNCHECKED "unchanged since the merge-base" (`summary: 0
+  corroborated, 0 disproved, 16 unchecked, 1 brief(s) claiming nothing`), as in round 1.
+- Row 11: pass, NEW hash 286a22766366, now uncached inside the strict deny (`--- PASS`, exit 0).
+  Round 1's witness hash was a cache replay.
+- Row 12: unchanged, pass, same hash.
+- Row 13: unchanged, `fail exit=2` (the truncated command cell); the negative-control finding
+  above still stands.
+
+Witness-proven this run: rows 4, 6, 11 and 12. Held: rows 1, 2, 3, 5, 7, 8, 9, 10 and 13.
+No hardening-read row's result moved, and no implementation regression from #1685. Risk-bearing
+values are unchanged; the two RISK-VALUE: NAMED, NOT DERIVED lines (the auditor GitHub and GitLab
+grants) remain open questions for the human.
+
+VERIFY: BLOCKED (unchanged in substance). Rows 7 and 8 still await a provisioned auditor App and a
+human-run probe, row 5 passes only with loopback allowed, and row 13 still needs a row fix or a
+human ruling. Evidence only; status stays `implemented`.
+
 ## Review
 Gate: human (from frontmatter — a risk answer is yes). Human gate is MANDATORY. Reviewer records
 verdict + date in the stream README table. The reviewer answers the two core-system questions:
