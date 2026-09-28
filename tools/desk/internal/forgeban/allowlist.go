@@ -131,14 +131,15 @@ var AllowedInvocations = []Allowance{
 // unresolvedRegister records every exec site whose argv[0] the checker cannot resolve. It is
 // a LEDGER of blind spots, not a permit — see the file header.
 var UnresolvedArgv = []Allowance{
-	// cmd/cellctl — the cell launcher (the Go port of tools/cellctl/cellctl). It reaches NO forge
-	// at all: its one credential path goes through deskkit.RoleTokenForRepo, and its own brief
-	// asserts at the source level that the package carries no signing primitive, no certificate
-	// package, no bearer-assertion format and no TLS-toolkit shell-out. What it DOES launch is
-	// the local surface a launcher has to: the operator's harness, a terminal multiplexer, the
-	// two cockpit CLIs it probes by name, and the cell's own operator-owned binaries. None of
-	// those is a forge CLI, and none of the argv[0]s is a compile-time constant because the NAME
-	// is the thing being selected at run time.
+	// cmd/cellctl — the cell launcher (the Go port of the bash script now kept only as a test
+	// oracle, tools/cellctl/testdata/cellctl-shell-oracle.sh). It reaches NO forge at all: its one
+	// credential path goes through deskkit.RoleTokenForRepo, and its own brief asserts at the
+	// source level that the package carries no signing primitive, no certificate package, no
+	// bearer-assertion format and no TLS-toolkit shell-out. What it DOES launch is the local
+	// surface a launcher has to: the operator's harness, a terminal multiplexer, the two cockpit
+	// CLIs it probes by name, and the cell's own operator-owned binaries. None of those is a forge
+	// CLI, and none of the argv[0]s is a compile-time constant because the NAME is the thing being
+	// selected at run time.
 	{
 		Key: "cmd/cellctl/cockpit.go::onPath::<unresolved>",
 		Reason: "exec.LookPath of a cockpit/harness name held in a variable (tmux, herdr, orca, claude, " +
@@ -211,6 +212,15 @@ var UnresolvedArgv = []Allowance{
 	{
 		Key:    "cmd/deskboard/nextup.go::gateScoresForRoot::<unresolved>",
 		Reason: "runs the resolved statusgen binary with --gate-scores.",
+	},
+	{
+		Key: "cmd/deskinbox/flow.go::runReaderFn::<unresolved>",
+		Reason: "the flow model's reader seam: runs the statusgen or deskboard binary resolveFlowBin resolved " +
+			"(`statusgen --bottleneck/--intake-debt/--net-flow --json`, `deskboard throughput --json`). argv[0] is " +
+			"a variable because the oracle's ASSAY_STATUSGEN / ASSAY_DESKBOARD overrides may re-point it at a " +
+			"specific build; resolveFlowBin REFUSES any override (and any PATH resolution) whose base name, with a " +
+			"trailing .exe stripped, is not statusgen / deskboard respectively, so this site cannot be aimed at a " +
+			"forge CLI by an environment variable. Read-only readers; never a forge write.",
 	},
 	{
 		Key:    "cmd/deskpreflight/main.go::realOutput::<unresolved>",

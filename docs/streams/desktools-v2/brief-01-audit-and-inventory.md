@@ -153,6 +153,66 @@ constants — I re-derived the 26/15 figure from the tree (grep sweep, tests exc
 matches. The brief's own risk block is {regulatory: no, customer: no, irreversible: no,
 sensitive-data: no}, gate model, consistent with N/A.
 
+### Execution witness + fresh re-verify — VERIFY: FAIL — 2026-09-27 opus-5.5-verifier
+
+Fresh non-implementer run at merged main 9a557a4c48d1 (statusgen v1.0.27, non-dry witness),
+detached worktree, offline. Every row was also run by hand; the hand results match the witness.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `test -f docs/streams/desktools-v2/inventory.md; echo rc=$?` | pass exit=0 | sha256:93ff7811a209 | 2026-09-27 | assay-verifier-app[bot] @ 9a557a4c48d1 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -cE -e 'file:line' -e 'reach-around shape' docs/streams/desktools-v2/inventory.md` | pass exit=0 | sha256:25d4f2a86deb | 2026-09-27 | assay-verifier-app[bot] @ 9a557a4c48d1 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `sh -c 'for p in "#1145" "#1146" "#628" "#1019" "#1201" "#884" "#1223"; do grep -qF -- "$p" docs/streams/desktools-v2/inventory.md; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $p"; exit 1; fi; done; echo all-present'` | pass exit=0 | sha256:6a62edb7cced | 2026-09-27 | assay-verifier-app[bot] @ 9a557a4c48d1 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -c 'Reconciled:' docs/streams/desktools-v2/inventory.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-27 | assay-verifier-app[bot] @ 9a557a4c48d1 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `sh -c 'for f in $(grep -rl "exec.Command(\"gh\"" statusgen --include="*.go"); do case "$f" in *_test.go) continue;; esac; grep -qF -- "$f" docs/streams/desktools-v2/inventory.md; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $f"; exit 1; fi; done; echo all-present'` | fail exit=1 | sha256:c8cff280cd6c | 2026-09-27 | assay-verifier-app[bot] @ 9a557a4c48d1 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `bash -c 'for r in $(grep -oE -e "tools/desk/[A-Za-z0-9_./-]+\.go:[0-9]+" -e "statusgen/[A-Za-z0-9_./-]+\.go:[0-9]+" docs/streams/desktools-v2/inventory.md); do f=${r%%:*}; n=${r##*:}; if [ ! -f "$f" ]; then exit 1; fi; if [ "$(wc -l < "$f")" -lt "$n" ]; then exit 1; fi; done; echo ok'` | pass exit=0 | sha256:dc51b8c96c2d | 2026-09-27 | assay-verifier-app[bot] @ 9a557a4c48d1 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -c 'forge-neutral/18' docs/streams/desktools-v2/inventory.md` | pass exit=0 | sha256:3840bc236ee0 | 2026-09-27 | assay-verifier-app[bot] @ 9a557a4c48d1 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `grep -c '^## Outward writes' docs/streams/desktools-v2/inventory.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-27 | assay-verifier-app[bot] @ 9a557a4c48d1 (on-behalf-of human:ian) (forge-identity) |
+
+Key observed output per row (hand run, same head):
+
+- Row 1: printed rc=0. Row 2: count 11. Row 3: printed all-present. Row 4: count 1.
+- Row 5: printed MISSING statusgen/decisionruling.go, exit 1. That file is new since the
+  inventory froze and since the 2026-09-23 PASS: it landed in #1571 (commit 5cb8039a7,
+  2026-09-23, not an ancestor of the prior run's head 50989dbc) and carries one gh shell-out at
+  statusgen/decisionruling.go line 643, a gh auth token fallback in rulingForgeClient
+  (shape (a) + (d), a token-custody read). The tree-derived set is now 16 non-test statusgen
+  files / 29 sites, against the inventory's recorded 15 files / 26 sites.
+- Row 6: printed ok. Row 7: count 29. Row 8: count 1.
+
+Stale-vs-real (row 5): not stale-shaped. The command is sound and does exactly what its Expect
+cell says it does — derive the file set from the tree at verify time so no file can be silently
+omitted. The inventory was complete at its own commit (c128b3e00) and at the 2026-09-23 run; it
+has since drifted because a new statusgen gh site landed without an inventory row. The
+deliverable, not the check, is out of date. The remedy is one inventory row for
+statusgen/decisionruling.go line 643 routed to forge-neutral/18 (it is statusgen), noted as a
+token-custody read, plus the 26/15 tallies moved to 29/16.
+
+Further drift the Verify table does not catch (observations, not row failures):
+
+- The forgeban ceiling moved: allowedInvocationCeiling = 6 at tools/desk/internal/forgeban/allowlist.go
+  line 84 (the inventory's Reconciled: note records 5). The sixth permit is
+  internal/deskkit/preflight.go::ambientLoginProbe::gh, added in #1528 (commit 39866201c,
+  2026-09-23, after the prior run); it runs gh api user via exec.CommandContext. It has no
+  inventory row and is absent from the reconciliation.
+- Row 6 checks only that each cited line number exists, not that it still points at the gh
+  call. Of the 26 unique statusgen citations, 7 that were gh lines at c128b3e00 no longer are
+  (autoflip.go 535/615/656/666, scanissues.go 114/930, trustgate.go 204); 30 of the 38 unique
+  tools/desk citations now point at changed line content. The inventory's file:line column
+  has line-drifted even where the site set is unchanged.
+
+RISK-VALUE: N/A — enumeration over the implementing diff (c128b3e00: a new markdown
+inventory, a one-line stream-README status flip, a changelog fragment; no code) found no
+literal constant, bound, threshold, tolerance, ratio, timeout, limit or authority binding
+introduced or changed; the item is a reversible documentation inventory with no irreversible
+act. The allowedInvocationCeiling value quoted in the brief's facts (5, now 6 at
+allowlist.go line 84) is owned by other items' diffs, not this one; it is recorded above as
+drift, not as a value this item sets.
+
+VERIFY: FAIL — row 5 (7 of 8 rows pass). The inventory no longer covers the tree: a new
+statusgen gh site (decisionruling.go line 643) and a new forgeban permit (preflight.go
+ambientLoginProbe, ceiling 5 to 6) landed after the freeze. Status stays implemented.
+
 
 ## Review
 Gate: model (all four risk answers no — a read-only inventory document; no code, no
