@@ -1,0 +1,2 @@
+### Fixed
+- The deskkit mutation corpus no longer reports `could-not-mutate` for the "#203 — drop the FORWARD anchor" entry. The entry now targets the acronym forward anchor as it stands after the plural/closing-unit rework (the mid-run `startsCamelWord` check in `shortAcronymUnit`), so the truth-suite mutation gate exercises that guard again and reads `65 caught, 0 NOT CAUGHT, 0 could-not-mutate`.
