@@ -217,6 +217,61 @@ RISK-VALUE: N/A (for the true irreversible act) — the irreversible act is the 
 
 **VERIFY: PASS** — all 8 rows clean; rows 5/6 build real Windows PE executables; row 7 regression healed by #974. gate: human + irreversible: yes → a model records Evidence and does NOT sign off, and does NOT flip the verified cell. Status LEFT at `implemented`. Routed to the human publish-gate (decision issue #322): the go/no-go authorizes publishing the two Windows downloads under the existing pinned-hash contract AND landing the release.yml change by human hands (agent credentials lack workflow scope). On "go" the human lands; on "no" the windows-port stream stops.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -cE -e 'GOOS=windows GOARCH=amd64 go build' -e 'GOOS=windows GOARCH=arm64 go build' .github/workflows/release.yml` | pass exit=0 | sha256:7de1555df0c2 | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `.exe` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:78190cea3904 | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `grep -oE -e 'windows-amd64' -e 'windows-arm64' .github/workflows/release.yml \| sort -u \| wc -l` | pass exit=0 | sha256:52dc20cec7d8 | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `for a in statusgen-windows-amd64.exe statusgen-windows-arm64.exe desk-tools-windows-amd64.tar.gz desk-tools-windows-arm64.tar.gz; do grep -qF "$a" .github/workflows/release.yml \|\| { echo "MISSING $a"; exit 1; }; done; echo OK` | pass exit=0 | sha256:a12b7cb43c9d | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 4a | `grep -qF 'statusgen-windows-mips.exe' .github/workflows/release.yml; echo $?` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `windows-port/00` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:058f0d65478b | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build -o /tmp/wp01-dt2.exe ./cmd/deskpost && file /tmp/wp01-dt2.exe` | pass exit=0 | sha256:3e9d54d9e4f4 | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -cE -e '^statusgen-windows-amd64 ' -e '^statusgen-windows-arm64 ' examples/adopter-scaffold/.assay-versions` | pass exit=0 | sha256:53c234e5e847 | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --consumers windows-port/01; echo $?` | pass exit=0 | sha256:ecb46196e63e | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+
+#### Witness notes — 2026-09-28 claude-opus-5-5 (verify-desk dispatch, non-implementer), third verify pass
+
+Merged main c50a38fc12518a4eec4db37e8dd847d49e79149a (the witness stamp). Implementing commit 744fcfc621ad5801925d400aeebfa0558581768b (PR #464); pin-line restoration commit 6424f6be2 (PR #974). Witness run with the pinned statusgen v1.0.27 binary (sha256 matches the darwin-arm64 pin), not a wrapper, under a network-denied sandbox profile `(version 1)(allow default)(deny network*)` (no loopback allowance: no row needs a listener), with GOFLAGS=-count=1, GOPROXY=off, GOTOOLCHAIN=local and a fresh empty GOCACHE outside the checkout. No Verify row's first code span mints a credential, calls a forge, or mutates live state. Host is darwin: no row in this table needs a Windows host (every build row is a cross-compile), and neither deliverable is a CRLF file. No row is a check:ci row. No row writes into the source tree (rows 5 and 6 write their executables to the system temp dir).
+
+Per-row key output (decoded from the witness hash, or re-run by hand under the same sandbox where the witness could not execute the intended command):
+- Row 1: output `4` (Expect >= 2). Witness hash decodes to that output.
+- Row 2: witness could-not-run, exit 127. The first code span in the Command cell is the prose token `.exe` ("carry `.exe`:"), not the grep pair, so the witness executed `.exe`. Check-definition defect, not an implementation defect. Hand re-run of the two intended greps: exit 0, output `3` and `3` (Expect each >= 1).
+- Row 3: output `2` (Expect 2). Witness hash decodes to that output.
+- Row 4: output `OK`. Witness hash decodes to that output.
+- Row 4a: `; echo $?` tail, so the witness exit=0 says nothing by itself; output hash 4355a46b19d3 decodes to `1` (Expect 1). The bogus asset name is absent.
+- Row 5: witness could-not-run, exit 127. The first code span is the prose token `windows-port/00` ("proves `windows-port/00`'s split …"), not the build chain. Check-definition defect. Hand re-run of the intended chain: exit 0; amd64 `PE32+ executable (console) x86-64, for MS Windows`; arm64 `PE32+ executable (console) Aarch64, for MS Windows`.
+- Row 6: exit 0; `PE32+ executable (console) x86-64, for MS Windows` (witness hash decodes to that output).
+- Row 7: output `2` (Expect 2). Lines 23 and 24 of the example pin file carry the two windows lines at v0.28.0.
+- Row 8: vacuous on merged main. The witness ran on a clean tree at the merged head, so there is no branch diff to corroborate. A hand re-run reports `0 corroborated, 0 disproved, 5 unchecked`, exit 0. The row only means something on the implementer's pre-merge branch.
+
+Beyond the table (read-only, verifier App token only): the build, checksum (release.yml lines 1173-1174, 1183-1184) and upload (lines 1381, 1385) lists spell the four windows asset names identically. The installer manifest (plugins/assay/paired-versions.yaml lines 42-43, 67-68) pins those same names. Its four v1.0.24 windows digests (a1555865524a…, c284b2b262fa…, 004d8359557d…, c803325bbb8f…) equal the lines in that published release's checksums.txt. The windows assets have been published on every release since v0.26.0 (2026-09-05). The latest, v1.0.27, carries all six windows assets (statusgen, qualgen and desk-tools, two archs each).
+
+Risk-bearing value enumeration (diff scope: 744fcfc62 and 6424f6be2 over release.yml and the example pin file, plus the Deliverables):
+- `GOOS/GOARCH = windows/amd64` @ .github/workflows/release.yml:1074, and the platform token `windows-amd64` @ :1144
+- `GOOS/GOARCH = windows/arm64` @ .github/workflows/release.yml:1075, and the platform token `windows-arm64` @ :1144
+- `asset name = statusgen-windows-amd64.exe` / `statusgen-windows-arm64.exe` @ .github/workflows/release.yml:1074-1075, 1173-1174, 1381
+- `asset name = desk-tools-windows-amd64.tar.gz` / `desk-tools-windows-arm64.tar.gz` @ .github/workflows/release.yml:1183-1184, 1385 (built from the :1144 loop)
+- `ext = ".exe"` (windows legs only) @ .github/workflows/release.yml:1148
+- `checksum algorithm = sha256sum` @ .github/workflows/release.yml:1169 (unchanged by this diff; the diff appends four entries)
+- `placeholder digest = 64 x 'e'` @ examples/adopter-scaffold/.assay-versions:23; `64 x 'f'` @ :24
+- `pin tag = v0.28.0` @ examples/adopter-scaffold/.assay-versions:23-24
+
+Rank: (1) the published asset names and (2) the windows/arm64 target are irreversible. Once published and fetched, a name or binary can only be superseded by a new release, never recalled, and the assets are already published. (3) The windows/amd64 target, the `.exe` suffix and the checksum coverage are irreversible for the same reason, but they can be derived. (4) The placeholder digests and the example pin tag are reversible documentation and are ranked last.
+
+RISK-VALUE: DERIVED — asset names `statusgen-windows-amd64.exe` / `statusgen-windows-arm64.exe` @ .github/workflows/release.yml:1074-1075 — each is the existing `statusgen-<GOOS>-<GOARCH>` shape plus `.exe`, which Windows needs to run a file as a program. The same spelling appears in the checksum list (:1173-1174), the upload list (:1381) and the installer manifest (paired-versions.yaml:42-43). Those manifest digests equal the published v1.0.24 checksums.txt, so every producer and consumer names the same bytes.
+RISK-VALUE: DERIVED — `GOOS/GOARCH = windows/amd64` @ .github/workflows/release.yml:1074 — this is Go's canonical port name (`go tool dist list` lists windows/386, windows/amd64, windows/arm64). The hand re-run of rows 5 and 6 produced a real x86-64 PE32+ executable.
+RISK-VALUE: DERIVED — `ext = ".exe"` @ .github/workflows/release.yml:1148 — the guard `[ "$os" = windows ]` gives the suffix only to the windows legs, so the three Unix tarball layouts stay unchanged. The tarball names keep the `desk-tools-$platform.tar.gz` shape (:1183-1184) that paired-versions.yaml:67-68 pins.
+RISK-VALUE: NAMED, NOT DERIVED — `GOOS/GOARCH = windows/arm64` @ .github/workflows/release.yml:1075 (and `windows-arm64` @ :1144) — the build is proven: row 5's hand re-run produced a real Aarch64 PE32+ executable. What is not derived is whether the published windows/arm64 binaries behave correctly on a native Windows-on-ARM host. That needs a windows/arm64 host or runner, and this darwin verifier has neither; the brief itself scopes arm64 as build-only. OPEN QUESTION FOR THE HUMAN: do you accept that published windows/arm64 statusgen and desk-tools assets, which have shipped on every release since v0.26.0, are verified only as cross-compiled, never run natively?
+RISK-VALUE: DERIVED — placeholder digests `64 x 'e'` @ examples/adopter-scaffold/.assay-versions:23 and `64 x 'f'` @ :24 — the file header (line 17) marks every digest as a FIXTURE placeholder. The installer's real manifest is plugins/assay/paired-versions.yaml, not this example. A repeated single hex digit is clearly not a harvested digest, which is what the brief's ground rule asks for.
+
+Observations (not failures of this brief):
+- Rows 2 and 5 are check-definition defects. Each Command cell opens with a prose code span before the command, so the execution witness can never prove them. The fix is to re-author those two Verify cells so the command is the first code span. That is a brief edit, not a code change.
+- Row 8 is vacuous on merged main, as in the two earlier passes.
+- The earlier 2026-09-22 pass named #322 as the decision issue, but #322 is the cross-compile defect issue. The go/no-go decisions are #452 (ratified 2026-09-06) and #1148 ("go", 2026-09-15), both closed by the human, and the brief's frontmatter still records no `decision-issue:`.
+- The example pin file's darwin lines (21-22) carry digests that look real even though the line-17 header calls every digest a fixture. These lines are outside this brief's diff.
+
+**VERIFY: BLOCKED** — check-definition. The implementation is correct on every row: rows 1, 3, 4, 4a, 6 and 7 were proved by the witness, and rows 2 and 5 pass on a hand re-run. The execution witness still could not run rows 2 and 5, and row 8 is vacuous on merged main. gate: human, irreversible: yes. A model does not sign this off, and the status stays `implemented`. The windows/arm64 NAMED, NOT DERIVED value above is carried as the human's open question.
+
 ## Review
 Gate: **human** (from frontmatter, risk-derived: `irreversible: yes`) — this edits
 `.github/workflows/release.yml`, a security-classified path, and a published release asset
