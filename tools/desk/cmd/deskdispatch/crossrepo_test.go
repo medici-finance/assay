@@ -598,6 +598,7 @@ func TestCrossRepoGateHumanBriefUnderClaimRootFiresTheDecisionGate(t *testing.T)
 	s.replies = append(happyReplies("/private/tmp/worker-home"),
 		reply{match: "decision-issue.sh ensure", stdout: "created: decision issue #9"})
 	t.Setenv("GH_TOKEN", "example-explicit-export")
+	stubTokenIdentity(t, dispatcherAppIdentity, nil) // issue 1631: the export IS the role's App
 	promptFile := filepath.Join(t.TempDir(), "p.md")
 	if err := cmdDispatch([]string{"example-stream/05", "--root", root, "--claim-root", trk,
 		"--brief", exampleBriefRel, "--quiet", "--prompt-file", promptFile}); err != nil {
