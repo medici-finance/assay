@@ -848,7 +848,10 @@ func planTranscribeVerdict(root string, streams []*Stream, homeRepo string,
 				break
 			}
 			if row.class() == classCheckCI {
-				res := runCheckCI(root, row.Command)
+				// Re-execute the LIFTED command (#1805's choke point), never the raw
+				// cell: the raw cell still carries its code-span backticks, which
+				// the shell reads as command substitution.
+				res := runCheckCI(root, verifyCommand(row.Command))
 				if res.CouldNotRun {
 					refuse("clause-6 (check:ci)", fmt.Sprintf("check:ci row %d of %s could not be re-executed hermetically (%s) — a hermetic check that could not be run hermetically established nothing", e.Row, rel, res.Reason))
 					verdictOK = false

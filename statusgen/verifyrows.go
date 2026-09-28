@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -105,6 +106,217 @@ func codeSpan(cell string) string {
 		return strings.TrimSpace(rest)
 	}
 	return strings.TrimSpace(rest[:end])
+}
+
+// ---------------------------------------------------------------------------
+// The explicit command marker — `cmd: <command>` (issue #1805)
+// ---------------------------------------------------------------------------
+//
+// codeSpan's rule — "the command is the FIRST code span" — is right for the
+// cell shape the corpus mostly uses (a cell that is one code span, or one span
+// followed by a parenthetical). It is WRONG for a prose cell that mentions a
+// token before the command: "In `PublicRepoGate` (`repovis.go`) change … then
+// `cd tools/desk && go test …`" lifts `PublicRepoGate`, and the execution
+// witness runs THAT — exit 127, recorded could-not-run, and the check the row
+// was written for is never witnessed on any runner.
+//
+// The fix is an explicit marker the author writes, never a guess the tool
+// makes: a code span whose content starts `cmd:` names the command, wherever it
+// sits in the cell, and verifyCommand prefers it over the first span:
+//
+//	| 3 | In `PublicRepoGate` change the check, then `cmd: cd tools/desk && go test ./internal/deskkit/ -count=1` | exit 1 |
+//
+// WHY `cmd:` AND NOT `run:`. `run:` is the GitHub Actions step key, and this
+// corpus quotes workflow lines inside Verify prose (a planted `run: echo …`
+// fixture line, "never inside `run:`"). A `run:` marker would turn every such
+// quotation into the command the witness executes — the #1805 defect again, by a
+// different door. `cmd:` appears in no code span in the corpus and is no CI
+// system's step key.
+//
+// WHY A MARKER RATHER THAN A SMARTER GUESS. Choosing "the span that looks most
+// like a command" would make the executed text a function of a heuristic that
+// can change under a row nobody edited — and the witness binds a recorded run to
+// the command text, so the command must be a property of what the author wrote.
+// The heuristic lives only in the lint (proseLedCommandWhy), which ADVISES the
+// author to add the marker; it never selects what runs.
+//
+// COMPATIBILITY. A cell with no marked span lifts exactly what codeSpan lifts
+// today, byte for byte, so no row already on main changes command — and so no
+// witness already recorded changes verdict. A cell that is one code span needs
+// no marker; the marker is for cells that mix prose and spans.
+const verifyCommandMarker = "cmd:"
+
+// codeSpans returns the content of every inline code span in cell, in order,
+// each trimmed. It uses codeSpan's own delimiter rule (a run of N backticks
+// closes at the next run of N) so its FIRST element is what codeSpan lifts
+// whenever the cell's first span is terminated. An unterminated span ends the
+// scan: its tail is a shredded cell (rule 8), not a span.
+func codeSpans(cell string) []string {
+	var out []string
+	s := cell
+	for {
+		start := strings.Index(s, "`")
+		if start < 0 {
+			return out
+		}
+		ticks := 0
+		for start+ticks < len(s) && s[start+ticks] == '`' {
+			ticks++
+		}
+		fence := strings.Repeat("`", ticks)
+		rest := s[start+ticks:]
+		end := strings.Index(rest, fence)
+		if end < 0 {
+			return out
+		}
+		out = append(out, strings.TrimSpace(rest[:end]))
+		s = rest[end+ticks:]
+	}
+}
+
+// proseOutsideSpans returns the cell's text with every terminated code span
+// removed, trimmed — "" for a cell that is nothing but code spans.
+func proseOutsideSpans(cell string) string {
+	var b strings.Builder
+	s := cell
+	for {
+		start := strings.Index(s, "`")
+		if start < 0 {
+			b.WriteString(s)
+			break
+		}
+		b.WriteString(s[:start])
+		ticks := 0
+		for start+ticks < len(s) && s[start+ticks] == '`' {
+			ticks++
+		}
+		rest := s[start+ticks:]
+		end := strings.Index(rest, strings.Repeat("`", ticks))
+		if end < 0 {
+			b.WriteString(s[start:])
+			break
+		}
+		s = rest[end+ticks:]
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// markedCommands returns the command of every `cmd:`-marked span in cell, marker
+// stripped and trimmed. A span that is the bare marker with nothing after it is
+// a MENTION of the marker (as in this repo's own docs), not a marked command.
+func markedCommands(cell string) []string {
+	var out []string
+	for _, sp := range codeSpans(cell) {
+		if !strings.HasPrefix(sp, verifyCommandMarker) {
+			continue
+		}
+		if c := strings.TrimSpace(strings.TrimPrefix(sp, verifyCommandMarker)); c != "" {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// verifyCommand lifts the command a Verify row's Command cell names. It is the
+// ONE place a Verify command is lifted out of its cell — every site that runs,
+// re-executes, or lints the command goes through it (the class guard,
+// TestVerifyCommandLiftHasOneChokePoint, fails on a new site that calls codeSpan
+// on a Verify cell directly). The first `cmd:`-marked span wins; with no marked
+// span the result is codeSpan's, unchanged. A cell carrying more than one marked
+// span is ambiguous and the lint says so (ruleCmdMarkerAmbiguous); the first
+// still runs, so the row's behaviour never depends on the lint having been read.
+func verifyCommand(cell string) string {
+	if m := markedCommands(cell); len(m) > 0 {
+		return m[0]
+	}
+	return codeSpan(cell)
+}
+
+// ---------------------------------------------------------------------------
+// Rule 12 — a prose-led Command cell whose first span is not a command (#1805)
+// ---------------------------------------------------------------------------
+
+// nonExecExtensions are file extensions a bare command word never carries: a
+// source, doc or data file. A first span ending in one of these is a file the
+// prose MENTIONS. Script extensions (.sh, .py, .ps1, .exe, …) are deliberately
+// absent — a script path can be the command.
+var nonExecExtensions = map[string]bool{
+	".go": true, ".md": true, ".yaml": true, ".yml": true, ".json": true, ".jsonl": true,
+	".toml": true, ".txt": true, ".mod": true, ".sum": true, ".ts": true,
+	".tsx": true, ".js": true, ".html": true, ".css": true, ".csv": true, ".lock": true,
+	".xml": true, ".proto": true, ".rs": true, ".tf": true, ".svg": true, ".png": true,
+	".pdf": true,
+}
+
+// scriptExtensions are the extensions that keep a path-shaped span from being
+// read as a mere mention: `scripts/check.sh` can be the whole command.
+var scriptExtensions = map[string]bool{
+	".sh": true, ".bash": true, ".py": true, ".ps1": true, ".exe": true, ".rb": true, ".pl": true,
+}
+
+// codeIdentRe is a code identifier — `PublicRepoGate`, `runSupersededLane`,
+// `pkg.Func`, `Foo()` — as opposed to a command word. It only counts as one when
+// it carries an upper-case letter or a call's `()`: command names are lower case.
+var codeIdentRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*(\(\))?$`)
+
+// bareWordRe is a lone lower-case word — `release-runner`, `make`, `grep`.
+var bareWordRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+
+// proseLedCommandWhy reports why a Command cell's lifted command is a prose
+// MENTION rather than a command, or "" when it is not flagged.
+//
+// It is deliberately CONSERVATIVE — a NOTICE that fires on a real command is
+// noise an author learns to skip, so every arm needs positive evidence the span
+// is not a command:
+//
+//   - the cell carries a `cmd:` marker → never flagged (the author said which);
+//   - the cell is ONE code span and nothing else → never flagged (the span is,
+//     unambiguously, what the author wrote as the command);
+//   - the first span has whitespace in it → never flagged (a multi-word span is
+//     read as a command line; judging it is the other rules' job).
+//
+// Otherwise a single-token first span is flagged when it is: a dotted extension
+// or dotfile (`.exe`); a file with a source/doc/data extension (`repovis.go`); a
+// relative path or `owner/repo` / `stream/NN` reference (`windows-port/00`); a
+// code identifier (`PublicRepoGate`, `Foo()`); or a lone lower-case word that a
+// LATER span in the same cell follows with a multi-word command (`release-runner`
+// … `cd tools/desk && go test …`) — that last arm needs the later span, so a
+// lone `make` in prose is never flagged on its own.
+func proseLedCommandWhy(cell string) string {
+	if len(markedCommands(cell)) > 0 {
+		return ""
+	}
+	spans := codeSpans(cell)
+	if len(spans) == 0 {
+		return ""
+	}
+	if len(spans) == 1 && proseOutsideSpans(cell) == "" {
+		return ""
+	}
+	first := spans[0]
+	if first == "" || strings.ContainsAny(first, " \t") {
+		return ""
+	}
+	ext := strings.ToLower(filepath.Ext(first))
+	switch {
+	case strings.HasPrefix(first, ".") && !strings.HasPrefix(first, "./") && !strings.HasPrefix(first, "../") && first != ".":
+		return "a file extension or dotfile name"
+	case nonExecExtensions[ext]:
+		return "a " + ext + " file name"
+	case strings.Contains(first, "/") && !scriptExtensions[ext] &&
+		!strings.HasPrefix(first, "./") && !strings.HasPrefix(first, "../") &&
+		!strings.HasPrefix(first, "/") && !strings.HasPrefix(first, "~") && !strings.HasPrefix(first, "$"):
+		return "a path or `owner/repo` / `stream/NN` reference"
+	case codeIdentRe.MatchString(first) && (strings.ToLower(first) != first || strings.HasSuffix(first, "()")):
+		return "a code identifier"
+	case bareWordRe.MatchString(first):
+		for _, later := range spans[1:] {
+			if strings.ContainsAny(strings.TrimSpace(later), " \t") {
+				return "a lone word mentioned ahead of the command span"
+			}
+		}
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------------------
@@ -1358,6 +1570,11 @@ const (
 	// `--- PASS` assertion in the same command: a match-nothing selector and a
 	// mismatched selector both exit 0 the same way rule 4's `\|` does.
 	ruleGoTestRunVacuous = "gotest-run-vacuous"
+	// ruleProseLedCommand — #1805 — a prose Command cell whose FIRST code span
+	// (what the witness executes) is a mention, not a command.
+	ruleProseLedCommand = "prose-led-command"
+	// ruleCmdMarkerAmbiguous — #1805 — two `cmd:` markers in one Command cell.
+	ruleCmdMarkerAmbiguous = "cmd-marker-ambiguous"
 )
 
 // rowFindings applies every row rule to one Verify row's Command and Expect
@@ -1377,7 +1594,17 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 		add(ruleShreddedCell, "the Command cell's code span is unterminated — a RAW `|` in the command was read as a table-cell delimiter, cutting the command at the pipe and shifting every column after it (the Expect cell shown is another fragment of the command, not an expectation). The brief therefore prints a command nobody can run, and every other row check goes blind past the cut. Escape shell pipes and regex alternations as `\\|` inside the table cell")
 	}
 
-	cmd := codeSpan(cmdCell)
+	// Rule 12 (#1805): the command the witness would execute is a prose mention.
+	// Judged on the CELL, before the lift, because the defect is in which span
+	// gets lifted — every rule below judges whatever the lift returned.
+	if why := proseLedCommandWhy(cmdCell); why != "" {
+		add(ruleProseLedCommand, "is a prose cell whose FIRST code span `%s` is %s, not a command — `statusgen verifyrun` executes the first code span of a Command cell, so it would run `%s` (typically exit 127, recorded could-not-run) and the check this row describes is never witnessed. Mark the real command with the explicit marker: write it as a code span starting `cmd:` (e.g. `cmd: cd tools/desk && go test ./pkg/ -count=1`), which verifyrun prefers over the first span — or make the Command cell exactly one code span and move the prose to Expect", codeSpan(cmdCell), why, codeSpan(cmdCell))
+	}
+	if m := markedCommands(cmdCell); len(m) > 1 {
+		add(ruleCmdMarkerAmbiguous, "carries %d `cmd:`-marked code spans — the marker names THE command, so two of them leave the row ambiguous (verifyrun runs the first, `%s`). Join them into one marked span (`cmd: a && b`) or split the row", len(m), m[0])
+	}
+
+	cmd := verifyCommand(cmdCell)
 	if cmd == "" {
 		return out
 	}

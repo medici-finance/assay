@@ -120,6 +120,8 @@ var lintRuleRegistry = []LintRule{
 	{ruleMovingRef, "a diff base pinned to a moving ref (a branch name, not a SHA) makes the row's result drift under it", StatusAdvisory},
 	{rulePortability, "a GNU-only shell construct that fails on the BSD/macOS userland a reviewer may run the row on", StatusAdvisory},
 	{ruleGoTestRunVacuous, "a `go test -run` selector with no `--- PASS` assertion in the same command, so the row passes whether or not the named test exists, is built, or was ever renamed away (open briefs only; a closed brief's rows are summarised, not individually flagged)", StatusAdvisory},
+	{ruleProseLedCommand, "a prose Command cell whose first code span — the text `verifyrun` executes — is a mention (a file, a path, an `owner/repo`, a code identifier, a word ahead of the real command), not a command; mark the command with a `cmd:` code span", StatusAdvisory},
+	{ruleCmdMarkerAmbiguous, "a Command cell carrying more than one `cmd:`-marked code span, so which command the row names is ambiguous", StatusAdvisory},
 
 	// consumers: routed-consumer lint (consumers.go). One class is fatal.
 	{"consumers-followup-missing-brief", "a `consumers: follow-up <stream>/<NN>` whose target is not a brief in any stream README — the routing claim is false", StatusFatal},

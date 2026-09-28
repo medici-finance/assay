@@ -1,0 +1,71 @@
+{
+  "test": "go test . -run 'CmdMarker|NoMarkerUnchanged|ProseLedCommand|MarkedRowRoundTrips|ReexecutesLiftedCommand|OneChokePoint' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — verifyCommand ignores the marker (the pre-#1805 first-span lift)",
+    "file": "verifyrows.go",
+    "old": "\tif m := markedCommands(cell); len(m) > 0 {\n\t\treturn m[0]\n\t}\n\treturn codeSpan(cell)",
+    "new": "\treturn codeSpan(cell)"
+  },
+  "mutations": [
+    {
+      "name": "the marker prefix never matches (a `cmd:` span is just another span)",
+      "file": "verifyrows.go",
+      "old": "\t\tif !strings.HasPrefix(sp, verifyCommandMarker) {",
+      "new": "\t\tif true {"
+    },
+    {
+      "name": "the LAST marked span wins instead of the first",
+      "file": "verifyrows.go",
+      "old": "\t\treturn m[0]\n",
+      "new": "\t\treturn m[len(m)-1]\n"
+    },
+    {
+      "name": "briefVerifyRows lifts with codeSpan again (verifyrun runs the first span)",
+      "file": "verifyrun.go",
+      "old": "\t\tcmd := verifyCommand(r.Command)",
+      "new": "\t\tcmd := codeSpan(r.Command)"
+    },
+    {
+      "name": "check:ci re-execution hands the RAW cell to the shell",
+      "file": "transcribeverdict.go",
+      "old": "res := runCheckCI(root, verifyCommand(row.Command))",
+      "new": "res := runCheckCI(root, row.Command)"
+    },
+    {
+      "name": "prose-led-command rule never added",
+      "file": "verifyrows.go",
+      "old": "\tif why := proseLedCommandWhy(cmdCell); why != \"\" {",
+      "new": "\tif why := proseLedCommandWhy(cmdCell); why != \"\" && false {"
+    },
+    {
+      "name": "the single-span exemption dropped (every lone identifier span is flagged)",
+      "file": "verifyrows.go",
+      "old": "\tif len(spans) == 1 && proseOutsideSpans(cell) == \"\" {",
+      "new": "\tif false && len(spans) == 1 && proseOutsideSpans(cell) == \"\" {"
+    },
+    {
+      "name": "the marker exemption dropped from the lint (a marked row is still flagged)",
+      "file": "verifyrows.go",
+      "old": "\tif len(markedCommands(cell)) > 0 {\n\t\treturn \"\"\n\t}\n\tspans := codeSpans(cell)",
+      "new": "\tspans := codeSpans(cell)"
+    },
+    {
+      "name": "the path arm stops firing (owner/repo and stream/NN mentions pass)",
+      "file": "verifyrows.go",
+      "old": "\tcase strings.Contains(first, \"/\") && !scriptExtensions[ext] &&",
+      "new": "\tcase false && strings.Contains(first, \"/\") && !scriptExtensions[ext] &&"
+    },
+    {
+      "name": "the lone-word arm stops requiring a later multi-word span (a lone `make` in prose is flagged)",
+      "file": "verifyrows.go",
+      "old": "\t\tfor _, later := range spans[1:] {\n\t\t\tif strings.ContainsAny(strings.TrimSpace(later), \" \\t\") {",
+      "new": "\t\tfor _, later := range spans {\n\t\t\tif true || strings.ContainsAny(strings.TrimSpace(later), \" \\t\") {"
+    },
+    {
+      "name": "two markers no longer reported as ambiguous",
+      "file": "verifyrows.go",
+      "old": "\tif m := markedCommands(cmdCell); len(m) > 1 {",
+      "new": "\tif m := markedCommands(cmdCell); len(m) > 99 {"
+    }
+  ]
+}

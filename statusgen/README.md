@@ -79,7 +79,11 @@ statusgen verifyrun --brief docs/streams/<stream>/brief-NN-<slug>.md --dry-run
 statusgen verifyrun --check docs/streams/<stream>/brief-NN-<slug>.md
 ```
 
-Each row runs in a fresh subshell at the repo root, and the witness records the
+Each row runs in a fresh subshell at the repo root. The command is the Command
+cell's first code span, or — in a cell that mixes prose and spans — the first span
+marked `cmd:` (`` `cmd: go test ./pkg/ -count=1` ``), which always wins over the first
+span (issue #1805; `--lint` NOTICEs a prose cell whose first span is not a command as
+`prose-led-command`). The witness records the
 command, the exit code, a sha256 fingerprint of the combined output, the date, the
 executing identity, and the tree it ran against. The format and its rules live in
 [`../docs/brief-rules.md`](../docs/brief-rules.md) (rules 25–26).

@@ -1089,7 +1089,7 @@ func briefVerifyRows(verifySection string) []verifyRow {
 	var rows []verifyRow
 	ordinal := 0
 	verifyRowTable(verifySection, func(r verifyRowCells) {
-		cmd := codeSpan(r.Command)
+		cmd := verifyCommand(r.Command)
 		if strings.TrimSpace(cmd) == "" && strings.TrimSpace(r.Expect) == "" {
 			return
 		}

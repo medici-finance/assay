@@ -236,6 +236,15 @@ The body MUST contain a `## Verify` section with an executable table:
 
 - Every row MUST contain a literal command a non-implementer can run and an expected
   exit code or output match.
+- The command is written as an inline code span in the Command cell. A cell that is
+  exactly one code span (optionally followed by a parenthetical) names that span as
+  the command. A cell that mixes prose and code spans MUST mark its command with the
+  explicit command marker: a code span whose content starts `cmd:`, e.g.
+  `` `cmd: go test ./pkg/ -count=1` ``. A tool that executes Verify rows MUST prefer
+  the first `cmd:`-marked span over any other span in the cell; with no marked span,
+  the first code span is the command. A cell SHOULD NOT carry more than one marked
+  span. (The marker is `cmd:`, not `run:`, because `run:` is a CI workflow step key
+  that Verify prose quotes; a quoted workflow line must never become the command.)
 - Rows MUST NOT be prose-only assertions without a command.
 - Prose deliverables (docs, articles) MUST use PRESENCE gates: checks that required
   elements exist (file, section, token). The Verify section MUST state that

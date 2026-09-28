@@ -67,6 +67,18 @@ nothing measured.
 
 7. **Verify rows must be runnable by someone who didn't do the work.** A row with no literal
    command and no expected exit/output is not a DoD item — it's a hope.
+   **Which span is the command.** The execution witness (`statusgen verifyrun`, rule 36)
+   runs the FIRST code span of the Command cell — right for a cell that is one code span,
+   wrong for a prose cell that mentions a function, a file, an `owner/repo` or a label
+   before the real command: the witness runs the mention (exit 127) and the check is never
+   witnessed. In a prose cell, mark the command explicitly with a code span starting
+   `cmd:` — `` In `PublicRepoGate` change the check, then `cmd: cd tools/desk && go test ./internal/deskkit/ -count=1` ``
+   — and every tool that lifts the command (verifyrun, the check:ci re-execution lane,
+   `newbrief`, the row lint) takes the first `cmd:` span. A cell with no marker behaves
+   exactly as before. `statusgen --lint` NOTICEs a prose cell whose first span is not a
+   command shape (`prose-led-command`) and a cell with two markers (`cmd-marker-ambiguous`).
+   The marker is `cmd:`, not `run:`: `run:` is the GitHub Actions step key, and a quoted
+   workflow line in Verify prose must never become the command the witness executes.
 8. **Prose deliverables get PRESENCE gates; quality is the human gate (the honesty rule).**
    For docs/articles, executable checks verify that required elements *exist* (a file, a
    section, a token) — `wc -w ≥ N` or `grep -c` passes N words of garbage with the right
