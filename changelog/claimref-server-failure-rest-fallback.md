@@ -1,2 +1,0 @@
-### Fixed
-- `deskclaim-ref`: when the server refuses a dispatch-claim create or release, the error now includes the server's own message after the status word. The git transport's receive-pack request negotiates the sideband, so a refusal no longer arrives as a bare `failure` with its reason discarded. `gitcore` also exposes the refusal in structured form (`PushRefUpdateVerdict`, and a typed `RefRejectedError` on delete), and a structural guard fails on any receive-pack request built without the capture.
