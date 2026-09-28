@@ -1,0 +1,15 @@
+package planted
+
+// A PLANTED second instance of the defect class the guard in claimref_guard_test.go exists to
+// catch: a receive-pack request built without the sideband capture, so a refusal from the server
+// would arrive as its bare report-status word. The guard MUST flag this file; if it reports it
+// clean, the guard's matcher has stopped matching.
+
+import (
+	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
+	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
+)
+
+func plantedRequest(adv *capability.List) *packp.ReferenceUpdateRequest {
+	return packp.NewReferenceUpdateRequestFromCapabilities(adv)
+}

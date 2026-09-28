@@ -1558,8 +1558,9 @@ func checkAmbientIdentity(p PreflightProbes, l Landing, tokenPath string, forge 
 	if herr != nil {
 		return unchecked(CheckAmbientID, "credential-helper resolution: "+oneLine(herr.Error()),
 			"list the helper chain by hand (`git -C "+orDot(l.Dir)+" config --show-origin --get-regexp "+
-				"'^credential\\.'` against `git -C "+orDot(l.Dir)+" remote get-url --push "+l.Remote+"`) and confirm "+
-				"every applicable helper reads the App token cache", refs)
+				"'^credential\\.'` against every URL `git -C "+orDot(l.Dir)+" remote get-url --push --all "+l.Remote+
+				"` prints) and confirm every applicable helper is the App token helper and no netrc entry answers "+
+				"for the host", refs)
 	}
 	if !ok {
 		return failed(CheckAmbientID,
@@ -1567,7 +1568,8 @@ func checkAmbientIdentity(p PreflightProbes, l Landing, tokenPath string, forge 
 				" push URL is not solely the minted App token ("+oneLine(detail)+
 				") — the write-transport probe and a real push could disagree, the probe-green/push-red split",
 			"reset the helper chain for the "+l.Remote+" URL with an empty credential.helper entry, then add only the "+
-				"desk's App-token helper after it; remove any embedded URL credential or Authorization extraHeader for it", refs)
+				"desk's App-token helper after it; remove any embedded URL credential, Authorization extraHeader or netrc "+
+				"entry for it, and check every push URL the remote lists", refs)
 	}
 	blessed := "ambient gh login is the blessing human (" + cfg.Bless.Login + ")"
 	if got == "" {
@@ -1638,11 +1640,50 @@ func credHelperMatchesAppProbe(l Landing, appTokenPath string) (bool, string, er
 	if strings.TrimSpace(remote) == "" {
 		remote = "origin"
 	}
-	pushURL, err := gitOut(dir, "remote", "get-url", "--push", remote)
+	// --all: `git push` pushes to EVERY push URL the remote has (every pushurl, or every url
+	// when there is no pushurl), so every one of them is judged, and one failing fails the
+	// check. Judging only the first would read green while a later URL authenticates as
+	// something else.
+	out, err := gitOut(dir, "remote", "get-url", "--push", "--all", remote)
 	if err != nil {
 		return false, "", fmt.Errorf("no remote named %s in %s", remote, dir)
 	}
-	return credTransportMatchesApp(dir, strings.TrimSpace(pushURL), appTokenPath)
+	var urls []string
+	for _, line := range strings.Split(out, "\n") {
+		if u := strings.TrimSpace(line); u != "" {
+			urls = append(urls, u)
+		}
+	}
+	if len(urls) == 0 {
+		return false, "", fmt.Errorf("the %s remote in %s lists no push URL", remote, dir)
+	}
+	var cantCheck error
+	details := make([]string, 0, len(urls))
+	for i, u := range urls {
+		ok, detail, cerr := credTransportMatchesApp(dir, u, appTokenPath)
+		prefix := ""
+		if len(urls) > 1 {
+			prefix = fmt.Sprintf("push URL %d of %d: ", i+1, len(urls))
+		}
+		switch {
+		case cerr != nil:
+			if cantCheck == nil {
+				cantCheck = fmt.Errorf("%s%w", prefix, cerr)
+			}
+		case !ok:
+			// A red verdict outranks a could-not-check on another URL: it is a finding.
+			return false, prefix + detail, nil
+		default:
+			details = append(details, detail)
+		}
+	}
+	if cantCheck != nil {
+		return false, "", cantCheck
+	}
+	if len(urls) == 1 {
+		return true, details[0], nil
+	}
+	return true, fmt.Sprintf("all %d push URLs pass: %s", len(urls), strings.Join(details, "; ")), nil
 }
 
 // --- small shared helpers ---------------------------------------------------

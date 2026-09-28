@@ -141,6 +141,16 @@ flags. No flag is silently accepted and no-op'd.
    its own detail fetch fails), never a crash or a silent partial render. A GitLab
    discussion-notes comments reader is a natural, separately-sized follow-up if/when a
    GitLab-hosted repo needs walk/html.
+
+   **The two wires spell an App's login differently, and the reader normalises it (#1797).**
+   REST's `user.login` for a GitHub App is `<slug>[bot]`; `gh issue view --json comments`
+   reports the same account's `author.login` as the bare `<slug>`. The desk-note selector
+   and label are the oracle's literal regex over that login, so the REST spelling made every
+   App a desk note and rendered `<slug>[bot]` where the oracle renders `<slug>`. `detail.go`
+   strips the trailing `[bot]` at the read (`ghLogin`), so what `format.go` receives is the
+   oracle's input shape; the oracle and the shared regex literal are unchanged.
+   `loginshape_guard_test.go` holds every `comment` construction in the package to
+   `ghLogin`, so a second comment reader cannot reintroduce the drift.
 4. **Exit codes.** The oracle's own taxonomy (0 ok / 1 precondition / 2 partial) is
    bespoke to this one script. `deskinbox` uses the shared `deskkit` taxonomy every other
    desk verb in this tree uses: 0 ok, 5 refused (bad arguments/preconditions), 6
@@ -216,10 +226,17 @@ flags. No flag is silently accepted and no-op'd.
 `write_format_program()` jq heredoc VERBATIM at test time (no hand-copied second
 expectation to drift) and runs it through the system `jq` binary on identical fixture
 input, asserting the Go `buildRendered` port byte-for-byte against the real jq program's
-output — independent of `gh`'s wire format entirely, so it needs no network, no recorded
-HTTP fixtures, and no bash 3.2 environment. It requires `jq` on the runner (the oracle's
-own hard dependency); its absence is a `t.Skip` naming why (could-not-check), never a
-silent pass.
+output. It needs no network and no bash 3.2 environment. It requires `jq` on the runner
+(the oracle's own hard dependency); its absence is a `t.Skip` naming why (could-not-check),
+never a silent pass.
+
+It is deliberately NOT independent of the wire format (#1797). Each readable fixture
+comment carries both login shapes (`wireshape_test.go`): the oracle is fed gh's bare
+`<slug>`, and the Go side reads REST's `<slug>[bot]` from an httptest backend through the
+real `fetchDetail` reader. An earlier version fed both sides one login string, which proved
+the builder equal while the two readers disagreed upstream of it — the live Verify row 6
+mismatch. `TestParityHTMLLoginShapes` runs the same wire fixtures through the `--html`
+chain (real reader, `buildRendered`, `buildDecisionPage` vs the oracle's JQFMT then JQHTML).
 
 `query_test.go` / `table_test.go` / `repos_test.go` / `main_test.go` cover the parts the
 jq extraction does not reach: the repo-resolution order, the dedupe/rank/sort ordering,
