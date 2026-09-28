@@ -243,6 +243,15 @@ func TestUnderOutcomeRecordsDirIndependentGuard(t *testing.T) {
 		"docs/streams/verify-outcomes/a/b/c.json",            // wrong depth: too deep
 		"docs/other/verify-outcomes/example-stream/x.json",   // wrong root entirely
 		"",
+		// #1803 SR-1803-3 coverage gap: a short, unrelated two-segment relative path. Its shape
+		// (<seg>/<seg>) mirrors a legitimate record's <stream>/<file>.json depth, so it is the
+		// case that would slip through a naive HasPrefix(clean, OutcomeRecordsDir) check missing
+		// the trailing "/" boundary (that check would treat "x/y.json" as no prefix match either
+		// way, but a hypothetical "docs/streams/verify-outcomesX/y.json" WOULD false-positive
+		// under such a bug — this pins the boundary-correct behavior directly). No production bug
+		// found: the writer's `prefix := OutcomeRecordsDir + "/"` already includes the boundary
+		// slash, so this refuses today; this case exists to keep it refusing.
+		"x/y.json",
 	} {
 		if err := UnderOutcomeRecordsDir(p); err == nil {
 			t.Fatalf("UnderOutcomeRecordsDir(%q): want refusal (path-traversal / prefix escape), got nil", p)
