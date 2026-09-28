@@ -160,6 +160,13 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// anywhere in this tool to fall back to: an unmintable token refuses at the mint step
 	// above, dry-run or not.
 	dryRun := fs.Bool("dry-run", false, "print the commits-API landing plan without committing")
+	// --row (repeatable) names the brief-table row(s) a landing to a
+	// generated-table target may touch. Required whenever the target's REMOTE content
+	// carries the marker-wrapped Briefs table (rowscope.go); ignored (a no-op) for any other
+	// target, so this flag never changes behaviour for a target that carries no such table.
+	var rowFlags stringSliceFlag
+	fs.Var(&rowFlags, "row", "brief-table row number this landing may touch (repeatable); "+
+		"required when the target's remote content carries the generated-table markers")
 	if perr := fs.Parse(flagArgs); perr != nil {
 		return deskkit.Refused("bad flags: " + perr.Error())
 	}
@@ -313,6 +320,42 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		blockAlready = present
 	} else {
 		commitContent = localContent
+	}
+
+	// Row-scoped README landings. A direct-write target (never
+	// --brief-path — a brief file never carries the generated table) whose REMOTE content
+	// carries the marker-wrapped Briefs table may only have its NAMED rows' lifecycle cells
+	// changed by this landing: --row is required, and the committed content is rebased onto
+	// the remote so every other byte — every other row, the named rows' authoring cells, and
+	// everything outside the markers — comes from the remote unchanged, however stale the
+	// local copy is. Detected on the REMOTE fetch, never the local file, so a target with no
+	// such table today behaves exactly as before. A stream README that carries a marker
+	// literal but no region statusgen and this tool agree on is refused rather than treated
+	// as table-less (fail closed: a drifted or mangled marker must not disarm the guard).
+	var rowScopeRows []string
+	if *briefPath == "" && remoteExists && rowScopeMalformed(targetRepoPath, remoteContent) {
+		return deskkit.Refused("refused: " + targetRepoPath +
+			" carries a statusgen briefs-table marker but no complete, line-anchored " +
+			tableMarkerBegin + " / " + tableMarkerEnd +
+			" region — refusing a whole-file write that would bypass the row-scope guard; repair the markers first")
+	}
+	if *briefPath == "" && remoteExists && hasTableMarkers(remoteContent) {
+		if len(rowFlags) == 0 {
+			return deskkit.Refused("refused: " + targetRepoPath +
+				" carries the generated-table markers — --row <NN> is required (repeatable) naming which row(s) this landing may touch")
+		}
+		rebased, staleForeign, staleAuthoring, rerr := rebaseNamedRows(remoteContent, commitContent, rowFlags)
+		if rerr != nil {
+			return rerr
+		}
+		for _, key := range staleForeign {
+			fmt.Fprintln(stderr, "stale-local: row "+key+" differed and was NOT written")
+		}
+		for _, key := range staleAuthoring {
+			fmt.Fprintln(stderr, "stale-local: row "+key+" authoring cell(s) differed and were NOT written (only its lifecycle cells land)")
+		}
+		commitContent = rebased
+		rowScopeRows = append([]string(nil), rowFlags...)
 	}
 
 	// Block-level idempotency: a fresh Evidence block byte-equivalent (after normalising line
@@ -487,6 +530,23 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return oerr
 	}
 
+	// Row-scope write-op second layer (the #1709 two-layer shape): immediately before the
+	// commit, re-fetch the target fresh — independent of the read the rebase above was built
+	// on — and refuse unless the content about to be written is that fresh read with only the
+	// named rows' lifecycle cells changed. Placed after every other gate (including the
+	// rate-limit spend) so it is the LAST thing that can refuse. The fresh read's content id
+	// then rides into the write as ExpectedSHA: the backend refuses if its own fetch sees a
+	// different id and cites it as the forge's conditional-write precondition, so a change
+	// landing after this re-check is refused by the forge rather than overwritten.
+	rowScopeSHA := ""
+	if len(rowScopeRows) > 0 {
+		sha, rserr := rowScopeWriteTimeCheck(fg, fr, targetRepoPath, branch, rowScopeRows, commitContent)
+		if rserr != nil {
+			return rserr
+		}
+		rowScopeSHA = sha
+	}
+
 	// Write the Evidence row through the resolved forge, as the verifier App.
 	res, cerr := fg.WriteFile(fr, deskkit.WriteFileInput{
 		File:        targetRepoPath,
@@ -495,6 +555,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		Message:     "Evidence: verification row for " + targetRepoPath + commitSuffix,
 		AppendOnly:  appendOnly,
 		AllowShrink: *allowShrink,
+		ExpectedSHA: rowScopeSHA,
 	})
 	if cerr != nil {
 		return cerr
@@ -505,7 +566,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// change instead, and say so on stdout. It never attempts the direct write and reports
 	// success, and it never skips the row.
 	if res.DefaultBranchNotWritable {
-		return landEvidenceAsChange(fg, fr, repoSlug, branch, targetRepoPath, commitContent, appendOnly, *allowShrink, remoteContent, ac)
+		return landEvidenceAsChange(fg, fr, repoSlug, branch, targetRepoPath, commitContent, appendOnly, *allowShrink, remoteContent, rowScopeSHA, ac)
 	}
 
 	// Post-condition: the write that landed must carry the verifier App's identity. Checked
@@ -533,7 +594,20 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 // StartBranch cutting it from the closed default), opens a DRAFT change from that branch, and
 // names the change on stdout — so a verified brief's Evidence still lands, as a reviewable
 // change rather than a direct commit, and NO direct write to the default branch is attempted.
-func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base, target string, content []byte, appendOnly, allowShrink bool, remoteContent []byte, ac *auditCtx) error {
+//
+// rowScopeSHA, when non-empty, is the content id rowScopeWriteTimeCheck's independent re-fetch
+// (of base, the same ref StartBranch cuts the side branch from) already validated the pending
+// content against, in cmdEvidence just before this lane was chosen. It rides into this write as
+// ExpectedSHA so the backend's OWN write-time probe of StartBranch — which it always performs to
+// fill in the forge's native conditional-write field, whether or not a caller asked for one — is
+// checked against that same id, not merely echoed back into the write unchecked. Without it, the
+// backend's probe only ever compares the write to itself (it always matches), so a table change
+// in the window between the caller's re-check and the backend's own probe lands unrefused: the
+// side branch is cut from whatever the table has become by then, and the pending content (built
+// against the earlier, now-stale read) silently reverts the row(s) that moved in that window, in
+// a diff no merge can surface because the side branch's parent already carries the reversion.
+// Empty (no row-scope rows named) means no such precondition applies, exactly as before.
+func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base, target string, content []byte, appendOnly, allowShrink bool, remoteContent []byte, rowScopeSHA string, ac *auditCtx) error {
 	dig := deskkit.Sha256Hex(content)
 	side := "evidence/" + sanitizeBranchComponent(path.Base(target)) + "-" + dig[:8]
 
@@ -551,6 +625,7 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 		StartBranch: base,
 		AppendOnly:  appendOnly,
 		AllowShrink: allowShrink,
+		ExpectedSHA: rowScopeSHA,
 	})
 	if werr != nil {
 		return werr

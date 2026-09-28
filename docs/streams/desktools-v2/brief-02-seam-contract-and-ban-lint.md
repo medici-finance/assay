@@ -127,6 +127,47 @@ facts:
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `test -x tools/desk/scripts/forge-ban.sh; echo rc=$?` | pass exit=0 | sha256:93ff7811a209 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 2 | `sh tools/desk/scripts/forge-ban.sh; echo rc=$?` | pass exit=0 | sha256:8b61c43e2c87 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 3 | `sh -c 'for p in forge_github.go forge_gitlab.go; do grep -qF -- "$p" tools/desk/scripts/forge-ban.sh; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $p"; exit 1; fi; done; echo both-exempt'` | pass exit=0 | sha256:ad42e1c04e97 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -c 'forge-ban' .github/workflows/forge-surface-control.yml` | pass exit=0 | sha256:53c234e5e847 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 5 | `sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb.txt 2>&1; grep -oE 'reach-around sites: [0-9]+' /tmp/dv2-fb.txt` | pass exit=0 | sha256:8443c9eb04b0 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 6 | `test -f docs/streams/desktools-v2/seam-contract.md && grep -cE -e 'origin' -e 'pullRequest' -e 'api.github.com' docs/streams/desktools-v2/seam-contract.md` | pass exit=0 | sha256:917df3320d77 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 7 | `sh tools/desk/scripts/forge-ban.sh --baseline && grep -cE '^desktools-v2/02 [0-9]+$' docs/streams/desktools-v2/forge-ban-baseline.txt` | pass exit=0 | sha256:16607f48fa96 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 8 | `sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb2s.txt 2>&1; grep -oE 'statusgen sites: [0-9]+' /tmp/dv2-fb2s.txt` | pass exit=0 | sha256:b00167580a83 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+
+Verifier detail (desktools-v2/02 — NON-implementer, merged main 9585b4b6cc2e, 2026-09-27):
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---------|----------|----------|---------------|
+| 1 | `test -x tools/desk/scripts/forge-ban.sh; echo rc=$?` | rc=0 | exit 0; printed `rc=0` | 2026-09-27 assay-verifier-app[bot] (claude-opus-5-5) @ 9585b4b6cc2e |
+| 2 | `sh tools/desk/scripts/forge-ban.sh; echo rc=$?` | prints `forge reach-around sites: <N>`; rc=0 | exit 0; printed `forge reach-around sites: 61 (desk: 29, statusgen: 32)` then per-class lines (a: desk=18 statusgen=29; b: desk=2 statusgen=1; c: desk=1 statusgen=0; d: desk=8 statusgen=2) and `rc=0` | 2026-09-27 assay-verifier-app[bot] (claude-opus-5-5) @ 9585b4b6cc2e |
+| 3 | `sh -c 'for p in forge_github.go forge_gitlab.go; do grep -qF -- "$p" tools/desk/scripts/forge-ban.sh; ...; done; echo both-exempt'` | exit 0; `both-exempt` | exit 0; printed `both-exempt` (each backend name found separately) | 2026-09-27 assay-verifier-app[bot] (claude-opus-5-5) @ 9585b4b6cc2e |
+| 4 | `grep -c 'forge-ban' .github/workflows/forge-surface-control.yml` | exit 0; count >= 1 | exit 0; printed `2` (advisory step "Forge reach-around counter (forge-ban, advisory)" runs the script with no failing gate) | 2026-09-27 assay-verifier-app[bot] (claude-opus-5-5) @ 9585b4b6cc2e |
+| 5 | `sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb.txt 2>&1; grep -oE 'reach-around sites: [0-9]+' /tmp/dv2-fb.txt` | exit 0; `reach-around sites: <N>`, N an integer | exit 0; printed `reach-around sites: 61` | 2026-09-27 assay-verifier-app[bot] (claude-opus-5-5) @ 9585b4b6cc2e |
+| 6 | `test -f docs/streams/desktools-v2/seam-contract.md && grep -cE -e 'origin' -e 'pullRequest' -e 'api.github.com' docs/streams/desktools-v2/seam-contract.md` | exit 0; count >= 1 | exit 0; printed `10` (the contract's class table names all of classes b, c, d) | 2026-09-27 assay-verifier-app[bot] (claude-opus-5-5) @ 9585b4b6cc2e |
+| 7 | `sh tools/desk/scripts/forge-ban.sh --baseline && grep -cE '^desktools-v2/02 [0-9]+$' docs/streams/desktools-v2/forge-ban-baseline.txt` | exit 0; count = 1 | exit 0; printed `baseline written: desktools-v2/02 61` then `1` (upsert keeps one line; the verifier's worktree copy of the baseline file was restored to its committed value afterwards) | 2026-09-27 assay-verifier-app[bot] (claude-opus-5-5) @ 9585b4b6cc2e |
+| 8 | `sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb2s.txt 2>&1; grep -oE 'statusgen sites: [0-9]+' /tmp/dv2-fb2s.txt` | exit 0; `statusgen sites: <N>`, N an integer | exit 0; printed `statusgen sites: 32` | 2026-09-27 assay-verifier-app[bot] (claude-opus-5-5) @ 9585b4b6cc2e |
+
+Execution witness: `statusgen verifyrun --dry-run` (v1.0.27) on the same head: rows 1-8 all `pass exit=0` (output hashes 93ff7811a209, 8b61c43e2c87, ad42e1c04e97, 53c234e5e847, 8443c9eb04b0, 917df3320d77, 16607f48fa96, b00167580a83).
+
+Risk-bearing values (enumerated over the implementing change, #1322: the counter script, the workflow step, the contract doc, the baseline file):
+- `BACKEND_EXCLUDE = 'forge_github|forge_gitlab'` @ tools/desk/scripts/forge-ban.sh:59
+- `FORGE_GO_EXCLUDE = '/deskkit/forge\.go:'` @ tools/desk/scripts/forge-ban.sh:61
+- `GH_SUBCMDS = 'issue|pr|api|auth|repo|release|workflow|run|label|search|browse'` @ tools/desk/scripts/forge-ban.sh:84
+- `exit 0` (advisory mode, unconditional) @ tools/desk/scripts/forge-ban.sh:177
+- `desktools-v2/02 53` @ docs/streams/desktools-v2/forge-ban-baseline.txt:1
+All reversible by an edit and a redeploy (a CI counter shipped advisory; nothing fails a build and nothing touches a token or a funds path).
+
+RISK-VALUE: DERIVED — BACKEND_EXCLUDE = 'forge_github|forge_gitlab' @ tools/desk/scripts/forge-ban.sh:59 — the brief's facts set the exemption as the two backends plus their `_test.go` siblings; prefix matching (no `.go` suffix) is what covers the many `forge_github*_test.go` / `forge_gitlab*_test.go` siblings. Caveat: the pattern is applied to the whole `path:line:content` grep line, so it also exempts a non-backend line that merely mentions a backend file name. That is a small over-exemption, noted but not a Verify failure.
+RISK-VALUE: DERIVED — exit 0 @ tools/desk/scripts/forge-ban.sh:177 — the brief puts flipping the gate to failing out of scope (advisory first; desktools-v2/08 flips the statusgen half later).
+
+Observation (not a Verify failure): the live count is 61 (desk 29, statusgen 32). The committed baseline is 53 (desk 24, statusgen 29). Reach-around sites have grown by 8 since the ban-lint landed, and the advisory counter does not stop that. Also, row 7 rewrites the committed baseline file when it runs, so running the Verify table on a checkout that will be committed would silently re-baseline it.
+
+VERIFY: PASS
+
 ## Review
 Gate: model (all four risk answers no — a CI counter shipped ADVISORY, a portable grep, and a
 one-page contract doc; adds a lint per the stream's gate rule, binds no identity/token, edits

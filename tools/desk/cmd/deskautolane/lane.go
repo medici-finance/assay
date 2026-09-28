@@ -377,7 +377,7 @@ func gather(o *opts, fg laneForge, fr deskkit.ForgeRepo) (*facts, error) {
 	f.events, f.eventsErr = fg.ListLabelEvents(fr, o.pr)
 	if f.eventsErr == nil {
 		_, f.model = deskkit.AttestedModelStampOf(
-			deskkit.StampTimeline{Present: pr.Labels, Events: f.events}, deskkit.IsDispatcherLogin)
+			deskkit.StampTimeline{Present: pr.Labels, Events: f.events}, deskkit.IsStampAuthorityLogin)
 	}
 
 	f.comments, f.commentsErr = fg.ListComments(fr, o.pr)
