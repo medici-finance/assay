@@ -454,6 +454,38 @@ const (
 	// consumes nothing. KEEP IN SYNC with statusgen's scanEnvAutoApproveSignOffThread and the
 	// coupling vector.
 	EnvAutoApproveSignOffThread = "ASSAY_AUTOAPPROVE_SIGNOFF_THREAD"
+
+	// EnvStampTrustedLogins (ASSAY_STAMP_TRUSTED_LOGINS) is the STAMP-AUTHORITY ALLOWANCE
+	// (#336): the trusted HUMAN logins whose standing application of a dispatched-*
+	// label the model-floor's actor check honours IN ADDITION TO the bound dispatcher
+	// slugs. Comma-separated `login[:id]`, the same grammar as ASSAY_TRUSTED_LOGINS. It exists because a legitimately dispatched PR whose stamp was
+	// applied by a trusted human (an attended, hand-run dispatch) read Indeterminate and was
+	// refused a verdict; the human ruling on #336 widened the actor check to those logins —
+	// gated behind THIS explicit roster key, never a silent default over the whole
+	// trusted-login set.
+	//
+	// Three rules, all load-bearing:
+	//
+	//	EXPLICIT ONLY    UNSET is a complete configuration and means the allowance is EMPTY:
+	//	                 only the dispatcher slugs vouch. Membership in ASSAY_TRUSTED_LOGINS
+	//	                 alone confers NO stamp authority — the widening is always a separate,
+	//	                 deliberate roster act.
+	//	NEVER CREATES    every entry must ALSO appear in ASSAY_TRUSTED_LOGINS (the allowance
+	//	TRUST            widens stamp authority for an already-trusted login; it never makes
+	//	                 an untrusted login trusted). An entry that names a login the
+	//	                 trusted-human set does not carry — or one that renders as a
+	//	                 bot/App account (App identities get authority through a role=
+	//	                 binding in ASSAY_TRUSTED_BOT_SLUGS, never here) — refuses the WHOLE
+	//	                 configuration like any other roster error.
+	//	FAIL-CLOSED      an unconfigured roster vouches for nobody, exactly as before; the
+	//	                 reader (IsStampAuthorityLogin) derives the set from the parsed
+	//	                 config, and write-class tools read it from the config-home FILE only
+	//	                 (the same ClassWrite rule as the rest of the trust surface).
+	//
+	// CONSUMED here: parseConfig lands it on cfg.StampLogins. statusgen recognises it and
+	// consumes nothing. KEEP IN SYNC with statusgen/rosterconfig.go's
+	// scanEnvStampTrustedLogins and the coupling vector.
+	EnvStampTrustedLogins = "ASSAY_STAMP_TRUSTED_LOGINS"
 )
 
 // autoLaneKeys is the four auto-approve lane keys, in one place, so parseConfig's
@@ -497,6 +529,7 @@ func knownRosterKeys() []string {
 		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
 		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo,
 		EnvWriteguardCallout, EnvContributorLedger, EnvRosterSchema,
+		EnvStampTrustedLogins,
 		// STATUSGEN-only keys: recognised so a shared roster.env that configures
 		// statusgen does not collapse deskkit's configuration; not consumed here.
 		EnvHomeRepo, EnvScanRepos, EnvAuthorizedAuthors,
@@ -637,6 +670,14 @@ type Config struct {
 	Bless Identity
 	// Humans maps a lowercased human login to its pinned id (0 = unpinned).
 	Humans map[string]int64
+	// StampLogins is the STAMP-AUTHORITY ALLOWANCE parsed from
+	// ASSAY_STAMP_TRUSTED_LOGINS (#336): the lowercased trusted-human logins whose
+	// standing application of a dispatched-* label the model-floor's actor check honours
+	// in addition to the bound dispatcher slugs. Every entry is also in Humans — the
+	// allowance never creates trust, it widens stamp authority for logins already
+	// trusted. Empty when unset, and that is a complete configuration: only the
+	// dispatcher slugs vouch. Read through IsStampAuthorityLogin, never directly.
+	StampLogins map[string]int64
 	// Bots maps a lowercased GitHub App slug to its BOT USER id (0 = unpinned). It
 	// carries GITHUB entries only — the github-slug-keyed shape trust.go's GitHub
 	// paths read. A GitLab identity lives in BotIdents (and its username in Logins),
@@ -1007,7 +1048,7 @@ func readRawConfig(class ToolClass) (map[string]string, string, []string) {
 		EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs,
 		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
 		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo, EnvWriteguardCallout,
-		EnvContributorLedger, EnvRosterSchema,
+		EnvContributorLedger, EnvRosterSchema, EnvStampTrustedLogins,
 		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost,
 	}
 	fromEnv := func() map[string]string {
@@ -1188,6 +1229,7 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		Class:       class,
 		Source:      source,
 		Humans:      map[string]int64{},
+		StampLogins: map[string]int64{},
 		Bots:        map[string]int64{},
 		BotIdents:   map[string]BotIdentity{},
 		RoleBots:    map[string]string{},
@@ -1311,6 +1353,34 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		}
 		cfg.Humans[login] = id
 		cfg.Logins[login] = true
+	}
+
+	// --- the stamp-authority allowance (parsed AFTER the trusted humans: membership in
+	// that set is a precondition, so the check needs it complete) ---
+	// Every entry must be an ALREADY-trusted human login — the allowance widens stamp
+	// authority for logins the roster already trusts and never creates trust. A bot-shaped
+	// entry is refused for the same reason as in the human roster: an App identity's stamp
+	// authority flows through a role= binding (the dispatcher slugs), never through here.
+	for _, entry := range splitList(vals[EnvStampTrustedLogins]) {
+		login, id, ok := splitIdentity(entry)
+		if !ok {
+			bad("%s: cannot parse entry %q — expected login[:id] with a positive numeric id, "+
+				"the same grammar as %s", EnvStampTrustedLogins, entry, EnvTrustedLogins)
+			continue
+		}
+		if looksLikeBot(login) {
+			bad("%s lists %q, which renders as a bot/App account. An App identity's stamp "+
+				"authority comes from a dispatcher role= binding in %s, never from this key",
+				EnvStampTrustedLogins, login, EnvTrustedBotSlugs)
+			continue
+		}
+		if _, trusted := cfg.Humans[login]; !trusted {
+			bad("%s lists %q, which %s does not carry — the allowance widens stamp authority "+
+				"for an ALREADY-trusted login and never creates trust. Add the login to %s first, "+
+				"or strike it here", EnvStampTrustedLogins, login, EnvTrustedLogins, EnvTrustedLogins)
+			continue
+		}
+		cfg.StampLogins[login] = id
 	}
 
 	// --- the single blessing authority ---
@@ -1961,6 +2031,10 @@ func (c Config) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: class=%s source=%s configured=%t", c.Class, c.Source, c.Configured()),
 		fmt.Sprintf("assay-config: %s=%s", EnvBlessLogin, blessStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvTrustedLogins, sortedIdents(c.Humans)),
+		// The stamp-authority allowance WIDENS the model-floor's actor check, so it
+		// renders its full sorted set here (never a count) — a widening on an identity
+		// gate must be as visible in the run as the role bindings below (#336).
+		fmt.Sprintf("assay-config: %s=%s", EnvStampTrustedLogins, sortedIdents(c.StampLogins)),
 		fmt.Sprintf("assay-config: %s=%s", EnvTrustedBotSlugs, c.sortedBotIdents()),
 		fmt.Sprintf("assay-config: role-bindings=%s", rolesStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvAllowedRepos, reposStr),

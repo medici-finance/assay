@@ -159,6 +159,53 @@ Enumeration notes: the decision rule and the byte-identity constraint are proper
 
 Rows 2 and 5 fail as written and row 9 cannot run post-merge; all three are the Verify-table defects tracked at #1363. Every deliverable property holds.
 
+### Verification — 2026-09-25 (assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian))
+
+Re-verify on merged main 7aa3835d7f3323b04f7f4f69aafc82a8afefc37e after the 2026-09-23 verify-fail receipt (blocker_kind check-definition, #1363). Inputs changed since that receipt (deskdispatch sources, statusgen), but the Verify table itself is unchanged and #1363 is still open. Isolated detached worktree cut from origin/main, offline envelope (KUBECONFIG=/dev/null), non-implementer. Every row ran under a throwaway HOME so no test or tool could append to the live desk audit log; the house roster file (read-only config) was copied into that HOME, because without it deskdispatch refuses with "no roster configured" (exit 6) and row 1 fails for a reason that belongs to the environment rather than the item. Row 9 resolved statusgen from a PATH entry that points at a binary built from this tree. No check:ci rows in the table.
+
+Execution witness (statusgen verifyrun --dry-run, built from this tree, run from the repo root):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --kits` | pass exit=0 | sha256:1a33205685e7 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --dry-run --kit worker-objective --root . assay/desk-supervision/08 \| grep -c 'KUBECONFIG=/dev/null'` | fail exit=1 | sha256:d82189b1b9ca | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk/cmd/deskdispatch/references && awk '/<!-- common-clauses:begin -->/,/<!-- common-clauses:end -->/' worker-prompt-objective.md \| diff - common-clauses.md` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `ls tools/skillbench/fixtures/worker-kit/ \| wc -l` | pass exit=0 | sha256:30179a803d48 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/skillbench && GOWORK=off go run . --arms ../../docs/streams/desk-supervision/08-arms \| grep -c 'check_pass_rate'` | fail exit=1 | sha256:5f845879cfac | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `for a in with-overlay without-overlay; do ls docs/streams/desk-supervision/08-arms/$a \| wc -l; done` | pass exit=0 | sha256:9be9b418f3b8 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -E -e '^decision: adopt-candidate — ' -e '^decision: reject — ' docs/streams/desk-supervision/08-report.md` | pass exit=0 | sha256:eeaffe3f2081 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `grep -c 'wedges' docs/streams/desk-supervision/08-report.md` | fail exit=0 | sha256:10159baf262b | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers --brief desk-supervision/08` | fail exit=2 | sha256:dc361d0bc812 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+
+Direct runs of the same commands (hand-written; key output lines):
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --kits | exit 0; output contains worker-objective | PASS — exit 0; stdout lists review, verifier, worker, worker-objective | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 2 | cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --dry-run --kit worker-objective --root . assay/desk-supervision/08 \| grep -c 'KUBECONFIG=/dev/null' | output is 1 or more | FAIL — grep count 0, pipeline exit 1. deskdispatch refuses the spelling: "first argument must be the item-key, not a flag (--dry-run)", exit status 5. Diagnostic with the item-key first and every other argument identical: exit 0, grep count 2. The property holds; the row as written cannot pass | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 3 | cd tools/desk/cmd/deskdispatch/references && awk '/<!-- common-clauses:begin -->/,/<!-- common-clauses:end -->/' worker-prompt-objective.md \| diff - common-clauses.md | exit 0 (byte-identical inclusion) | PASS — exit 0, diff empty | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 4 | ls tools/skillbench/fixtures/worker-kit/ \| wc -l | output is 5 | PASS — 5 (01-observable-probe, 02-run-stop-signal, 03-eligibility-reconcile, 05-per-class-caps, 06-workpad-upsert) | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 5 | cd tools/skillbench && GOWORK=off go run . --arms ../../docs/streams/desk-supervision/08-arms \| grep -c 'check_pass_rate' | output is 1 or more | FAIL — grep count 0, pipeline exit 1; skillbench exit 0. skillbench writes 0 bytes to stdout; its only stderr line is "skillbench: wrote reports/skillbench/2026-09-25-08-arms.md". The report renders the safety floor as the prose heading "Task-check pass rate" and states "Safety floor (task-check pass rate): held — with-overlay pass rate 100% >= without-overlay 100%". The property holds; the row greps a stream that is always empty. Generated report removed afterwards | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 6 | for a in with-overlay without-overlay; do ls docs/streams/desk-supervision/08-arms/$a \| wc -l; done | each line is 15 or more | PASS — 15 and 15 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 7 | grep -E -e '^decision: adopt-candidate — ' -e '^decision: reject — ' docs/streams/desk-supervision/08-report.md | exit 0; exactly one line | PASS — exit 0; exactly one line: decision adopt-candidate — check_pass_rate 100%/15 vs 100%/15 (equal), wedges 0/15 vs 0/15 (equal), wall_seconds 31.7 vs 23.7 (+33.8%, cost-side regression), diff_lines 8.3 vs 8.1 (+2.5%, cost-side regression) | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 8 | grep -c 'wedges' docs/streams/desk-supervision/08-report.md | output is 1 or more | PASS — exit 0, grep count 7 (7 is 1 or more). The witness row marks this row fail with "no output line equals 1": verifyrun's expectation parser reads "1 or more" as "a line equals 1". That is an instrument artifact, and the direct run satisfies the row as written | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 9 | statusgen --root . --consumers --brief desk-supervision/08 | exit 0; output does not contain DISPROVED | COULD-NOT-CHECK — exit 2. statusgen reports "--consumers: COULD-NOT-CHECK: assay:assay:desk-supervision:08 is not in the diff against 7aa3835d7f33 ... no entry was corroborated and none was disproved". No DISPROVED in the output, but the exit-0 expectation is not met. Structural: the brief file has been on main since 2026-09-02, so no post-merge diff contains it | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+
+Risk-bearing value enumeration (scope: implementation commit badd7b58c, #1266, non-artifact files plus the brief's Deliverables):
+- task-count = 5 @ tools/skillbench/fixtures/worker-kit/ (five task directories; also stated at docs/streams/desk-supervision/08-report.md:9)
+- runs-per-task-per-arm = 3 (15 per arm) @ docs/streams/desk-supervision/08-report.md:8-9
+- kit count = 5 @ tools/desk/cmd/deskdispatch/kittext_test.go:111, and kit-name count = 4 @ tools/desk/cmd/deskdispatch/deskdispatch_test.go:791 (test pins on the registry size)
+- fixture stale threshold = 20*time.Minute @ tools/skillbench/fixtures/worker-kit/01-observable-probe/testdata/start/heartbeat_test.go:11 (fixture test data), plus the fixture cap maps in 05-per-class-caps/testdata/start/caps_test.go
+- decision-line numbers @ docs/streams/desk-supervision/08-report.md (observed measurement data, not pinned constants)
+
+Ranking: nothing in the diff is irreversible. Every entry can be undone with an edit and a re-run. The one irreversible-leaning act, making the objective kit the default for --kit worker, is out of scope under the brief's facts. The kit counts and fixture thresholds are test pins and fixture data, and they rank last.
+
+RISK-VALUE: NAMED, NOT DERIVED — task-count = 5 @ tools/skillbench/fixtures/worker-kit/ — missing: a derivation that these five tasks cover the states the procedural kit anticipates and the objective kit must discover. The brief assigns that question to review only, and its single-point-of-failure note names the task set as the one control, backed by two independent signals (per-task check pass rate and wedge count). Reversible.
+RISK-VALUE: DERIVED — runs-per-task-per-arm = 3 @ docs/streams/desk-supervision/08-report.md:9 — the brief's own facts pre-register "≥3 runs per task per arm" before any run, and 3 is the smallest value that meets that floor. Reversible.
+
+VERIFY: FAIL — 6/9 pass, 2 fail, 1 could-not-check. The result matches the 2026-09-20 and 2026-09-23 runs. Rows 2 and 5 fail as written, and row 9 is structurally could-not-check after merge. All three are Verify-table defects tracked at #1363 (still open). Every underlying deliverable property holds. Row 8 is red in the witness only because verifyrun misparses "1 or more"; the direct run passes. The input changes since the last receipt did not touch the rows' failure causes. Evidence only; status stays implemented.
+
+
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

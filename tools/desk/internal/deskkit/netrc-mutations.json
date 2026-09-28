@@ -1,0 +1,101 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -timeout 300s -run 'TestCredChainNetrcLexer|TestNetrcAddOnlyRules|TestNetrcFixtureSplit|TestCredChainGitParity'",
+  "control": {
+    "name": "CONTROL — the core rule reads nothing (the host as a plain netrc word no longer reddens)",
+    "file": "internal/deskkit/credhelperchain.go",
+    "old": "\treturn netrcWordsFound(body, host, \"\", netrcWordStartsAfterDelimiter)",
+    "new": "\treturn \"\""
+  },
+  "mutations": [
+    {
+      "name": "long-line rule dropped from the rule list (SR-1614-9's split lines read green again)",
+      "file": "internal/deskkit/credhelperchain.go",
+      "old": "\t{\"long-line\", netrcLongLineRule},\n",
+      "new": ""
+    },
+    {
+      "name": "long-line threshold one byte higher (a 4096-byte line counting its newline, read in two pieces, reads green)",
+      "file": "internal/deskkit/credhelperchain.go",
+      "old": "const netrcOldReadPiece = netrcOldReadBuffer - 1",
+      "new": "const netrcOldReadPiece = netrcOldReadBuffer"
+    },
+    {
+      "name": "long-line comparison at the threshold, not above it (a 4095-byte line, read whole, reads red)",
+      "file": "internal/deskkit/credhelperchain.go",
+      "old": "if n := end - start; n > netrcOldReadPiece {",
+      "new": "if n := end - start; n >= netrcOldReadPiece {"
+    },
+    {
+      "name": "long-line rule stops the newline from counting (a line of 4095 bytes plus its newline reads green)",
+      "file": "internal/deskkit/credhelperchain.go",
+      "old": "if n := end - start; n > netrcOldReadPiece {",
+      "new": "if n := end - start; n-1 > netrcOldReadPiece {"
+    },
+    {
+      "name": "long-line rule reads only the first line",
+      "file": "internal/deskkit/credhelperchain.go",
+      "old": "\t\tstart = end\n\t}\n\treturn \"\"\n}",
+      "new": "\t\tstart = len(body)\n\t}\n\treturn \"\"\n}"
+    },
+    {
+      "name": "long-line rule vetoes a red (a body with no over-long line reads green whatever the other rules find)",
+      "file": "internal/deskkit/credhelperchain.go",
+      "old": "func netrcMatch(body, host string) (string, error) {\n",
+      "new": "func netrcMatch(body, host string) (string, error) {\n\tif netrcLongLineRule(body, host) == \"\" && strings.Contains(body, \"\\n\") {\n\t\treturn \"\", nil\n\t}\n"
+    },
+    {
+      "name": "escape-folded rule dropped",
+      "file": "internal/deskkit/credhelperchain.go",
+      "old": "\t{\"escape-folded\", netrcEscapeFoldedRule},\n",
+      "new": ""
+    },
+    {
+      "name": "quote-skip rule dropped",
+      "file": "internal/deskkit/credhelperchain.go",
+      "old": "\t{\"quote-skip\", netrcQuoteSkipRule},\n",
+      "new": ""
+    },
+    {
+      "name": "quote-skip rule one byte back (b[p-1] instead of b[p-2])",
+      "file": "internal/deskkit/credhelperchain.go",
+      "old": "return p >= 2 && b[p-2] == '\"'",
+      "new": "return p >= 1 && b[p-1] == '\"'"
+    },
+    {
+      "name": "escape-folded rule folds a backslash to a space instead of removing it",
+      "file": "internal/deskkit/credhelperchain.go",
+      "old": "strings.ReplaceAll(body, `\\`, \"\")",
+      "new": "strings.ReplaceAll(body, `\\`, \" \")"
+    },
+    {
+      "name": "NUL could-not-check runs before the rules (it overrides a red)",
+      "file": "internal/deskkit/credhelperchain.go",
+      "old": "func netrcMatch(body, host string) (string, error) {\n",
+      "new": "func netrcMatch(body, host string) (string, error) {\n\tif strings.IndexByte(body, 0) >= 0 {\n\t\treturn \"\", errors.New(\"holds a NUL byte\")\n\t}\n"
+    },
+    {
+      "name": "core rule ignores the start delimiter",
+      "file": "internal/deskkit/credhelperchain.go",
+      "old": "\treturn p == 0 || !isNetrcWordByte(body[p-1])",
+      "new": "\treturn true"
+    },
+    {
+      "name": "core rule ignores the end delimiter",
+      "file": "internal/deskkit/credhelperchain.go",
+      "old": "if (end == len(body) || !isNetrcWordByte(body[end])) && asciiEqualFold",
+      "new": "if true && asciiEqualFold"
+    },
+    {
+      "name": "word bytes become everything but whitespace, control bytes and a quote (a separator table)",
+      "file": "internal/deskkit/credhelperchain.go",
+      "old": "\treturn 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' || c == '.' || c == '-' || c == '_'",
+      "new": "\treturn c > ' ' && c != '\"'"
+    },
+    {
+      "name": "case-sensitive match",
+      "file": "internal/deskkit/credhelperchain.go",
+      "old": "\t\tif 'A' <= x && x <= 'Z' {\n\t\t\tx += 'a' - 'A'\n\t\t}",
+      "new": ""
+    }
+  ]
+}
