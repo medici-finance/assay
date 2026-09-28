@@ -571,6 +571,13 @@ func linkProblems(root string, files []string) []string {
 		if !backtickPathScope(root, f) {
 			continue
 		}
+		// Record sections (`## Evidence`, `## Proof it can fail`) record what
+		// was true when they were written; a path they name that has since been
+		// moved or retired is not a broken reference. They are exempt from the
+		// EXISTENCE check below only — see recordsection.go for the heading set
+		// and the boundary.
+		records := recordSectionRanges(content)
+		lines := newLineIndex(content)
 		matches := backtickRe.FindAllStringSubmatchIndex(content, -1)
 		for _, match := range matches {
 			// match[0] and match[1] are start/end of full regex match
@@ -588,6 +595,11 @@ func linkProblems(root string, files []string) []string {
 			// Skip planned deliverables: closing backtick immediately followed
 			// by " (planned)" / " (new)" / " (future ...)".
 			if plannedRe.MatchString(content[fullMatchEnd:]) {
+				continue
+			}
+
+			// A path inside a record section is not existence-checked.
+			if records.contains(lines.line(match[0])) {
 				continue
 			}
 
