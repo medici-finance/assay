@@ -1,2 +1,0 @@
-### Fixed
-- Verify rows in desk-tools/18, forge-neutral/13 and 14, and windows-port/01, 08 and 09 now open with their runnable command as the first code span. The execution witness (`statusgen verifyrun`) runs the intended check instead of a label, a file name or a flag (exit 127 / false fail), and the `--consumers` rows are pinned to the implementing commit so they are not vacuous on merged main (#1805, #1786, #1795). Check definitions only; no row checks anything new and no Expect was weakened.
