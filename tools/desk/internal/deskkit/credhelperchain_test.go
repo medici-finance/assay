@@ -501,6 +501,14 @@ type netrcLexCase struct {
 	want string // "red", "green", or "cnc" (could-not-check)
 }
 
+// netrcFixture expands a netrcLexCases body for host: ESCHOST becomes host with a backslash
+// before its last byte (a quoted-token escape every libcurl reader decodes back to host), and
+// HOST becomes host itself.
+func netrcFixture(body, host string) string {
+	esc := host[:len(host)-1] + `\` + host[len(host)-1:]
+	return strings.ReplaceAll(strings.ReplaceAll(body, "ESCHOST", esc), "HOST", host)
+}
+
 // netrcLexCases pins the netrc scan to the driver's ruling on arbiter packet #1622
 // (https://github.com/medici-finance/assay/issues/1622#issuecomment-5837592241, "Ruling: 1",
 // option 1: a state-free scan). Three rounds of trying to lex netrc exactly like ONE curl
@@ -633,6 +641,46 @@ var netrcLexCases = []netrcLexCase{
 	{"closing quote glued to a keyword is a true red on curl-8.21+, not only an accepted false red (A-6)",
 		"\"a\"machine HOST login op\n", "red"},
 
+	// SR-1614-8 (round 5 security, carried by correctness): readers disagree on which bytes end
+	// an unquoted token. curl-8.21+ ends one only on space, tab, LF and CR, so VT and FF are
+	// token content there; an unsigned-char curl-8.13..8.20 build ends one only at a byte
+	// <= 0x20, so a byte >= 0x80 is content there. Placed right before a `"`, such a byte keeps
+	// the quote inside a junk token for that reader, which then reads the real entry after it.
+	// Every per-reader pass at 9e767f41 treated the byte as a separator, opened a quote, and let
+	// it swallow the entry, so all six read GREEN there; the state-free word scan reads each red.
+	{"VT before a quote does not hide a default entry from curl-8.21+ (SR-1614-8)",
+		"\v\"x default login op password v1\"\n", "red"},
+	{"FF before a quote does not hide a default entry from curl-8.21+ (SR-1614-8)",
+		"\f\"x default login op password v2\"\n", "red"},
+	{"VT before a quote does not hide a machine entry from curl-8.21+ (SR-1614-8)",
+		"\v\"x machine HOST login op password v3\"\n", "red"},
+	{"a high byte before a quote does not hide a default entry from unsigned-char curl-8.13..8.20 (SR-1614-8)",
+		"\x80\"x\x01default\x01login\x01op\x01password\x01u1\"\n", "red"},
+	{"a high byte before a quote does not hide a machine entry from unsigned-char curl-8.13..8.20 (SR-1614-8)",
+		"\x80\"x\x01machine\x01HOST\x01login\x01op\x01password\x01u2\"\n", "red"},
+	{"a UTF-8 NBSP before a quote does not hide a default entry from unsigned-char curl-8.13..8.20 (SR-1614-8)",
+		"\xc2\xa0\"x\x01default\x01login\x01op\x01password\x01u3\"\n", "red"},
+
+	// The escape-folded rule: a quoted token can spell the host with backslash escapes
+	// (`\.` stands for `.`), so the raw bytes never hold the host as a word. With the quote
+	// aligned, the old per-reader passes decoded it; after a VT (SR-1614-8's desync) no pass
+	// opened that quote, and 9e767f41 read the second row GREEN. ESCHOST is the host with a
+	// backslash before its last byte.
+	{"a quoted host spelled with a backslash escape is red (escape-folded rule)",
+		"machine \"ESCHOST\" login op password e1\n", "red"},
+	{"an escaped quoted host after a VT-desynced quote is red (escape-folded rule)",
+		"\v\"x machine \"ESCHOST\" login op password e2\"\n", "red"},
+
+	// The quote-skip rule: every libcurl before 8.21 drops the one byte after a closing quote,
+	// so a word right after `"X` is a token for those readers though X is a letter. A8 (round 5
+	// security advisory) pinned it for an aligned quote; the second row desyncs the quote the
+	// way SR-1614-8 does (0x80 is content for unsigned-char curl-8.13..8.20), so no per-reader
+	// pass at 9e767f41 dropped that byte and it read GREEN there.
+	{"default right after a closing quote and one dropped byte is red (quote-skip rule, A8)",
+		"\"a\"Xdefault\x01login\x01op\x01password\x01s1\n", "red"},
+	{"default after a desynced closing quote and one dropped byte is red (quote-skip rule)",
+		"\x80\"a\x01\"b\"Xdefault\x01login\x01op\x01password\x01k1\"\n", "red"},
+
 	// A host or `default` genuinely absent from the file is still green: the scan reddens on
 	// token identity, not on netrc content in general.
 	{"unrelated host and no default keyword is green", "machine other.example.invalid login a password b\n", "green"},
@@ -640,6 +688,11 @@ var netrcLexCases = []netrcLexCase{
 	// curl refuses the whole file; the check does not guess.
 	{"unterminated quote is could-not-check", "\"abc\nmachine HOST login op\n", "cnc"},
 	{"NUL byte is could-not-check", "machine\x00x\nmachine HOST login op\n", "cnc"},
+	// curl reads the file a line at a time with strlen, so a NUL drops the rest of its line AND
+	// the newline, splicing the next line on: `def` NUL LF `ault` reads as `default`. Live,
+	// libcurl 8.7.1, 8.20.0 and 8.22.0 all presented the credential for this body.
+	{"a NUL that splices default across a line is could-not-check",
+		"def\x00\nault login op password n1\n", "cnc"},
 }
 
 // TestCredChainNetrcLexer runs every netrcLexCases body through the full probe, with the App
@@ -648,7 +701,7 @@ func TestCredChainNetrcLexer(t *testing.T) {
 	for _, c := range netrcLexCases {
 		t.Run(c.name, func(t *testing.T) {
 			r := newChainRepo(t)
-			r.writeHome(".netrc", strings.ReplaceAll(c.body, "HOST", "github.com"), 0o600)
+			r.writeHome(".netrc", netrcFixture(c.body, "github.com"), 0o600)
 			r.local("credential.helper", r.appHelper())
 			ok, detail, err := r.probeFull()
 			switch c.want {
@@ -750,7 +803,7 @@ func TestCredChainNetrcMatchesCurl(t *testing.T) {
 	}
 	for _, c := range netrcLexCases {
 		t.Run(c.name, func(t *testing.T) {
-			body := strings.ReplaceAll(c.body, "HOST", host)
+			body := netrcFixture(c.body, host)
 			sent := curlPresents(t, body)
 			t.Setenv("HOME", t.TempDir())
 			unsetForTest(t, "NETRC")
