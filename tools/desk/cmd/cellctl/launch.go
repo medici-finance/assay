@@ -144,6 +144,11 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		env = envSet(env, "CLAUDE_CONFIG_DIR", cfg)
 		// Automated desks do not need the extra next-prompt generation request.
 		env = envSet(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "false")
+		// Bound the context a long desk window carries: auto-compact at 200K so a sustained
+		// session stops re-reading an ever-growing prefix every turn (cached-input spend against
+		// provider rate windows; 1M-context models never trip it otherwise). Neutral for
+		// 200K-context models, which compact there anyway. A cell overrides it via cell.env.
+		env = envSet(env, "CLAUDE_CODE_AUTO_COMPACT_WINDOW", c.Env.GetOr("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "200000"))
 		if provider != "" {
 			// An inherited API key wins over the auth token and silently routes to Anthropic,
 			// so it is UNSET first; then the model plus the three tier aliases are pinned to a
@@ -163,14 +168,17 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		argv = []string{"claude", "--name", session, "--model", model, "/assay:" + role}
 		if policyRes != nil {
 			// The policy's own env block (ANTHROPIC_MODEL/CLAUDE_CODE_SUBAGENT_MODEL/
-			// CLAUDE_CODE_EFFORT_LEVEL/ANTHROPIC_DEFAULT_*_MODEL, ANTHROPIC_BASE_URL for the
-			// anthropic provider) is applied on top of whatever the glm/kimi credential block
-			// above just set — this is effort propagation into the launch record: the harness
-			// receives the pinned effort both as `--effort` and as CLAUDE_CODE_EFFORT_LEVEL.
+			// ANTHROPIC_DEFAULT_*_MODEL, ANTHROPIC_BASE_URL for the anthropic provider) is
+			// applied on top of whatever the glm/kimi credential block above just set. Effort
+			// travels only as `--effort`: CLAUDE_CODE_EFFORT_LEVEL would outrank agent
+			// frontmatter, so it is neither set here nor allowed to leak in from the ambient
+			// shell — a child agent's `effort:` frontmatter must stay able to raise that child
+			// above the session level the flag pins.
 			for k, v := range policyRes.ClaudeEnv {
 				env = envSet(env, k, v)
 			}
 			env = envUnset(env, "MAX_THINKING_TOKENS")
+			env = envUnset(env, "CLAUDE_CODE_EFFORT_LEVEL")
 			// --settings is the RUNTIME half: an availableModels allowlist of the provider's
 			// pinned IDs plus the PreModelSwitch / PreToolUse(Agent|Task) hooks that call back
 			// into this binary, so neither a mid-session switch nor a child agent can reach a

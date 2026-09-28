@@ -15,10 +15,82 @@ accepted:
   - "Independence is enforced only where a machine-readable signal exists; the full author≠approver proof at the design gate remains a declared boundary, not a silent claim. A reader must be able to see WHERE the property is enforced and where it is only best-effort."
 ---
 
-**PROPOSED — no ruling is recorded.** This record captures the design as authored so the
-design-approval gate has something to dereference; `decided-by:` is a placeholder until a
-human rules on the decision issue of the brief(s) that cite it, and the ruling is recorded
-here in the same motion.
+**PROPOSED — status is split by half; this record covers two decisions and only one of them
+has a ruling recorded.** This record decides two things: (1) the committer-identity
+cross-check becomes a hard PROBLEM (not a NOTICE) in a multi-identity repo — the
+**attribution** half, cited by brief-05 — and (2) dispatch authority is read from a derived
+signal rather than a reader's login guess, and the widening that signal may accept — the
+**dispatch-authority** half, cited by brief-06. Only the dispatch-authority half has a ruling
+recorded, transcribed below. **The attribution half is OPEN — no ruling is recorded for it.**
+Brief-05's own Human decision section states this explicitly ("Default if no answer: none —
+blocks until answered"); nothing in this record or in #336 rules on it, and this PR does not
+ask for that ruling — the desk is raising the open attribution half with the driver
+separately, outside this PR. `decided-by:` stays the register's placeholder form until both
+halves are ruled.
+
+**Dispatch-authority ruling recorded (2026-09-02): both.** The driver (`human:<name>`) recorded
+the ruling on [issue #336](https://github.com/medici-finance/assay/issues/336) — "both." at
+[comment 5512151770](https://github.com/medici-finance/assay/issues/336#issuecomment-5512151770)
+followed by "ratified" at
+[comment 5512153662](https://github.com/medici-finance/assay/issues/336#issuecomment-5512153662)
+(2026-09-02T15:36:58Z / 15:37:06Z) — approving both remedy paths the relay put to the driver
+for the DISPATCH-AUTHORITY half only:
+(1) an operational, one-time re-stamp of the affected legacy backlog under a trusted App slug,
+recorded per-PR; and (2) a durable, tool-level fix under which the model-floor's actor check
+also honours a `dispatched-*` label applied by a trusted LOGIN, not only a trusted dispatcher
+slug, with a positive-control test that an untrusted actor's label still refuses. This record
+transcribes that ruling into the register; it does not mint a new one — the human act was the
+driver's comment on #336, not this file. The ruling as put to the driver (desk relay, comment
+[5512151713](https://github.com/medici-finance/assay/issues/336#issuecomment-5512151713)) reads,
+quoted: "the model-floor's actor check honours `dispatched-*` labels applied by a trusted LOGIN
+as well as by a trusted dispatcher slug (a trusted login is a stronger signal, not a weaker
+one), with a positive-control test that an untrusted actor's label still returns indeterminate
+→ refuse; and a first-class re-stamp verb so a future migration never needs hand work." It does
+not itself specify an allowance-key mechanism; see the amendment below.
+
+**Amendment (2026-09-27, at implementation of brief-06 — narrows how alternative 2 above
+reads, does not reopen it, and does not extend the ruling to the attribution half above).**
+The second `alternatives:` bullet rules out, as the *primary, ambient* control, honouring a
+`dispatched-*` label from any trusted human login. #336's ratified durable fix, quoted above,
+authorizes exactly that — honouring a trusted LOGIN generally, with a positive control — and
+does not itself mandate an allowance-key mechanism. The *explicit, roster-configured
+allowance* form this brief ships (`ASSAY_STAMP_TRUSTED_LOGINS`, itself a strict subset of the
+trusted-human set — unset or unconfigured vouches for nobody, an entry outside the
+trusted-human set or bot-shaped refuses the whole allowance, and every floor consumer still
+runs the one predicate) is **brief-06 Task 1's own engineering choice** — "if the ruling widens
+accepted authority, gate that behind an explicit, roster-configured allowance — never a silent
+default" — built to satisfy the ruling narrowly, not a mechanism #336 itself ratified. The
+alternative bullet's rejection of an *ambient* "any trusted login vouches" default stands
+unchanged; this amendment records that the narrower, explicit, opt-in, fail-closed allowance
+form brief-06 ships satisfies the ruling without reopening the rejected ambient shape, so the
+record and the code no longer disagree — for the dispatch-authority half only. The attribution
+half (brief-05) is untouched by this amendment and remains OPEN, per the status paragraph
+above.
+
+**Second amendment (2026-09-27, `deskrestamp`'s OWN re-stamp bar — narrower than the
+allowance above, a distinct decision).** The amendment directly above describes the
+model-floor's READER: what a widened set of appliers the floor will *recognise* as already
+attesting. It says nothing about `deskrestamp`'s WRITER — the verb that *mints* a fresh
+dispatcher-attested stamp by removing a foreign-applied label and re-applying it — and a
+correctness/security review of this PR (SEC-1b, round 3) found the two conflated: an
+earlier round of `deskrestamp` re-attested any login the roster trusted at all
+(`deskkit.IsTrustedHumanLogin`), which is wider than even the allowance above and does not
+require the applier to be IN the allowance. The driver ruled on this directly, on PR #1727
+([comment 5860170351](https://github.com/medici-finance/assay/pull/1727#issuecomment-5860170351),
+2026-09-27T21:54:19Z), quoted (tool-facing sentence only — the comment's second sentence is
+a deployment-configuration instruction out of this record's scope): "deskrestamp may vouch
+only for dispatched-* labels applied by the driver's own login (the roster bless login)
+before 2026-09-27T00:00:00Z (the #336 legacy backlog); every other applier is refused."
+`deskrestamp`'s provenance bar is
+therefore now STRICTER than the floor's own allowance, deliberately: minting a fresh
+dispatcher attestation over content someone else applied is a bigger act than a reader
+merely recognising an already-widened stamp, and the ruling narrows it to the roster's
+single blessing authority (`deskkit.IsRestampDriverLogin`, read dynamically — never any
+other trusted login, allowance member or not) and a closed, dated backlog window
+(`deskkit.RestampDriverCutoff`, a compiled constant, not a roster key — the backlog is a
+fixed historical set, not an ongoing knob). This does not reopen or widen the allowance
+amendment above; it is a second, independent, narrower decision about one verb's own
+repair bar, and it does not touch `ASSAY_TRUSTED_LOGINS` or its semantics anywhere.
 
 The decision is what makes the author≠verifier property TRUE rather than ASSERTED. The
 constraint behind it is the self-attestation error class: everything a session writes about
