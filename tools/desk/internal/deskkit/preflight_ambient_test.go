@@ -23,13 +23,23 @@ package deskkit
 //  4. `gh` absent, or a probe that genuinely cannot run → could-not-check.
 //  5. no remediation recommends logging in as the blessing login; every one
 //     leads with clearing the ambient credential for desk shells.
+//
+// FAIL-FIRST: the cases that changed behaviour (1, 2, 5, and the no-blessing-
+// login case) are red on the pre-#1798 tree; the preserved cases (3, 4) are
+// proven load-bearing by internal/deskkit/preflight-ambient-mutations.json
+// (`go run ./cmd/muhar -spec internal/deskkit/preflight-ambient-mutations.json`
+// from tools/desk), which also flips each no-identity classification — the
+// 403, the not-logged-in, and the 401 — back to could-not-check and requires
+// this suite to catch it.
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // stubGH writes an executable `gh` into a fresh directory, makes that directory
@@ -229,8 +239,8 @@ func TestAmbientIdentityCannotRunIsCouldNotCheck(t *testing.T) {
 func assertNoBlessLoginAdvice(t *testing.T, text string) {
 	t.Helper()
 	low := strings.ToLower(text)
-	if strings.Contains(low, "in as "+fixtureBlessLogin) || strings.Contains(low, "to "+fixtureBlessLogin) ||
-		strings.Contains(low, "login is "+fixtureBlessLogin) {
+	if strings.Contains(low, "in as "+fixtureBlessLogin) || strings.Contains(low, "identity to "+fixtureBlessLogin) ||
+		strings.Contains(low, "confirm the ambient login is "+fixtureBlessLogin) {
 		t.Fatalf("text recommends the blessing login as the fix: %q", text)
 	}
 	if strings.Contains(low, "gh auth login") {
@@ -249,5 +259,66 @@ func TestAmbientIdentityNeedsNoBlessingLogin(t *testing.T) {
 	_, c := runRealAmbient(t, okProbes())
 	if c.State != CheckedClean {
 		t.Fatalf("no blessing login configured + gh not logged in = %s, want checked-clean (%s)", c.State, c.Detail)
+	}
+}
+
+// TestAmbientLoginProbeClassifiesErrorShapes pins the probe itself: which failed
+// `gh api user` answers are "no usable ambient human identity" (wrapping
+// ErrNoAmbientIdentity) and which are a plain could-not-look error.
+func TestAmbientLoginProbeClassifiesErrorShapes(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		stderr     string
+		code       int
+		noIdentity bool
+	}{
+		{"not logged in: exit 4 + login hint", ghNotLoggedInStderr, 4, true},
+		{"not logged in: exit 4, no stderr", "", 4, true},
+		{"integration token: HTTP 403", ghIntegration403, 1, true},
+		{"bad credentials: HTTP 401", ghBadCreds401, 1, true},
+		{"rate-limit HTTP 403", ghRateLimit403, 1, false},
+		{"server error", ghServer502, 1, false},
+		{"unexplained non-zero exit", "gh: something else went wrong", 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ghSays(t, "", tc.stderr, tc.code)
+			login, err := ambientLoginProbe()
+			if err == nil || login != "" {
+				t.Fatalf("probe = (%q, %v), want an error", login, err)
+			}
+			if got := errors.Is(err, ErrNoAmbientIdentity); got != tc.noIdentity {
+				t.Fatalf("errors.Is(ErrNoAmbientIdentity) = %v, want %v (err: %v)", got, tc.noIdentity, err)
+			}
+		})
+	}
+	t.Run("a login on stdout", func(t *testing.T) {
+		ghSays(t, "mallory", "", 0)
+		if login, err := ambientLoginProbe(); err != nil || login != "mallory" {
+			t.Fatalf("probe = (%q, %v), want (mallory, nil)", login, err)
+		}
+	})
+	t.Run("exec failure is not a no-identity answer", func(t *testing.T) {
+		stubGH(t, "#!/nonexistent/interpreter", "")
+		_, err := ambientLoginProbe()
+		if err == nil || errors.Is(err, ErrNoAmbientIdentity) {
+			t.Fatalf("exec failure = %v, want a plain could-not-look error", err)
+		}
+	})
+}
+
+// TestAmbientIdentityTimeoutIsCouldNotCheck — a `gh` that never answers is a
+// probe that could not look, never a no-identity answer.
+func TestAmbientIdentityTimeoutIsCouldNotCheck(t *testing.T) {
+	withRoster(t, goldenRoster())
+	stubGH(t, "#!/bin/sh", "/bin/sleep 5\nexit 4")
+	old := ambientProbeTimeout
+	ambientProbeTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { ambientProbeTimeout = old })
+	_, c := runRealAmbient(t, okProbes())
+	if c.State != CouldNotCheck {
+		t.Fatalf("timed-out probe = %s, want could-not-check (%s)", c.State, c.Detail)
+	}
+	if !strings.Contains(c.Detail, "did not answer") {
+		t.Fatalf("the timeout should say so: %q", c.Detail)
 	}
 }

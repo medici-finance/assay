@@ -36,6 +36,7 @@ package deskkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -383,11 +384,14 @@ type PreflightProbes struct {
 	DirExists func(path string) (bool, error)
 	// AmbientLogin returns the login the AMBIENT `gh` credential would post/push
 	// as — the identity a tool fall-through would silently use. It is the value
-	// `gh api user` (or `gh auth status`) reports, NOT a minted App token: the
-	// check exists to catch an ambient credential that is a bot slug or a
-	// non-blessing human. It returns "" with no error when there is no
-	// ambient identity at all (nothing to fall through to — safe), and an error
-	// when it could not look (gh absent / unreadable — could-not-check).
+	// `gh api user` reports, NOT a minted App token: the check exists to catch an
+	// ambient credential that is a bot slug, and to warn on a human one. It
+	// returns "" with no error, OR an error wrapping ErrNoAmbientIdentity, when
+	// there is no usable ambient human identity (`gh` not logged in; a credential
+	// that answers 401/403 on /user, i.e. an App/integration token) — nothing to
+	// fall through to as a person, safe. Any other error means it could not look
+	// (gh absent, exec failure, timeout, a server or rate-limit answer) —
+	// could-not-check.
 	AmbientLogin func() (login string, err error)
 	// CredHelperMatchesApp reports whether every credential source git consults
 	// for the landing remote's push URL — the ordered helper chain across all
@@ -1485,12 +1489,23 @@ func dirExistsProbe(path string) (bool, error) {
 // on the same helper. This check closes the two halves the per-tool refusal
 // cannot see from inside one tool:
 //
-//   - IDENTITY. The ambient `gh` login must be the ONE human the roster names for
-//     rulings (ASSAY_BLESS_LOGIN). A bot/App slug is red — a fall-through under a
-//     bot identity misattributes and dodges the App-token mint. A NON-blessing
-//     human login is red — the observed case, where an unrelated account carried
-//     the write. No ambient identity at all is NOT red: there is nothing to fall
-//     through to.
+//   - IDENTITY. Desk writes go out under minted App tokens; no desk needs an
+//     ambient human login, and the only state with no identity-fall-through risk
+//     is the one with NO usable ambient human identity. So:
+//     no usable ambient human identity (`gh` not logged in, or a credential that
+//     answers 401/403 on /user — an App/integration token) passes this half;
+//     a HUMAN login — the blessing login or any other — is a non-blocking
+//     WARNING (a Notice on the result) naming the login, because a fall-through
+//     would act as that human, the blessing login included, which is the case
+//     where a stray write lands under the maintainer's name;
+//     a bot/App slug is checked-failed — a fall-through under a bot identity
+//     misattributes and dodges the App-token mint;
+//     a probe that could not look (gh absent, exec failure, timeout, any other
+//     answer) is could-not-check.
+//     Before #1798 the safe state was unreachable: the real probe reported
+//     "not logged in" and the App-token 403 as errors, the check read both as
+//     could-not-check, and the only green ambient state was a logged-in
+//     blessing human.
 //   - TRANSPORT. Every credential source git consults for the landing remote's
 //     push URL — each helper in the ordered chain git builds across all config
 //     scopes, and any embedded URL credential or Authorization extraHeader it
@@ -1498,14 +1513,15 @@ func dirExistsProbe(path string) (bool, error) {
 //     under, so the write-transport probe (check 3) and a real push from this
 //     envelope present the same credential. A competing source that git would
 //     consult first is what the probe-green/push-red split is made of, and it
-//     reads red here rather than hiding behind the last-configured helper.
+//     reads red here rather than hiding behind the last-configured helper. This
+//     half is independent of the identity half and runs whatever that half found.
 //
 // It is forge-aware. The ambient-login half reads a GitHub `gh` identity, which a
 // GitLab-forge repo does not use, so on GitLab the check is not-applicable (it
 // does not redden a correctly provisioned GitLab envelope) — the same shape the
 // app-scopes check takes for the GitHub-only installation grant.
 func checkAmbientIdentity(p PreflightProbes, l Landing, tokenPath string, forge ForgeKind) Check {
-	const refs = "#1527"
+	const refs = "#1527 #1798"
 	if forge == ForgeGitLab {
 		return notApplicable(CheckAmbientID,
 			"gitlab credential: the ambient-identity check reads a GitHub `gh` login and matches the origin "+
@@ -1517,38 +1533,75 @@ func checkAmbientIdentity(p PreflightProbes, l Landing, tokenPath string, forge 
 	}
 
 	cfg := EffectiveConfig()
-	if strings.TrimSpace(cfg.Bless.Login) == "" {
-		return unchecked(CheckAmbientID,
-			"the roster names no blessing login, so the ambient identity cannot be judged",
-			"set "+EnvBlessLogin+"=<login>:<id> in "+ConfigHomePath()+
-				" — it is the one human login an ambient credential may safely carry", refs)
-	}
-	bless := strings.ToLower(strings.TrimSpace(cfg.Bless.Login))
 
+	// Identity half. identity is the clean-detail phrase; notice is the
+	// non-blocking warning a human ambient login carries on EVERY outcome below,
+	// so a transport failure never hides it.
+	var identity, notice string
 	login, err := p.AmbientLogin()
-	if err != nil {
-		return unchecked(CheckAmbientID, "could not read the ambient gh identity: "+oneLine(err.Error()),
-			"run `gh auth status` (or `gh api user`) by hand and confirm the ambient login is "+cfg.Bless.Login, refs)
-	}
-	got := strings.ToLower(strings.TrimSpace(login))
 	switch {
-	case got == "":
-		// No ambient identity at all: nothing for a tool to fall through TO on the
-		// identity axis. Safe — fall through to the transport half.
-	case isAmbientBot(cfg, got):
-		return failed(CheckAmbientID,
-			"the ambient gh login is "+got+", a bot/App slug — a tool fall-through would post as a bot and dodge the App-token mint",
-			"log the interactive gh identity out of the bot account and in as "+cfg.Bless.Login+
-				" (`gh auth login`), or unset GH_TOKEN so no bot credential is ambient", refs)
-	case got != bless:
-		return failed(CheckAmbientID,
-			"the ambient gh login is "+got+", a non-blessing login — the only human an ambient credential may carry is "+cfg.Bless.Login,
-			"switch the interactive gh identity to "+cfg.Bless.Login+" (`gh auth login`), or clear the ambient credential", refs)
+	case errors.Is(err, ErrNoAmbientIdentity):
+		identity = "no usable ambient human identity (" + oneLine(strings.TrimPrefix(
+			strings.TrimPrefix(err.Error(), ErrNoAmbientIdentity.Error()), ": ")) + ")"
+	case err != nil:
+		return unchecked(CheckAmbientID, "could not read the ambient gh identity: "+oneLine(err.Error()),
+			"run `gh api user` by hand in this same shell and read its answer — a not-logged-in gh and an "+
+				"HTTP 401/403 already count as no ambient human identity, so what blocked the read is something "+
+				"else (gh missing from PATH, a timeout, a server or rate-limit error); fix that and re-run preflight", refs)
+	default:
+		got := strings.ToLower(strings.TrimSpace(login))
+		switch {
+		case got == "":
+			identity = "no ambient gh identity is set (nothing to fall through to)"
+		case isAmbientBot(cfg, got):
+			return failed(CheckAmbientID,
+				"the ambient gh login is "+got+", a bot/App slug — a tool fall-through would post as a bot and dodge the App-token mint",
+				ambientClearRemedy+"; if the bot credential is the interactive gh login rather than a token variable, "+
+					"log that bot account out of gh", refs)
+		default:
+			identity = "ambient gh login is a human (" + got + ", warned)"
+			whose := "that human"
+			if bless := strings.ToLower(strings.TrimSpace(cfg.Bless.Login)); bless != "" && got == bless {
+				whose = "that human — the blessing login, so a stray write would land under the maintainer's name"
+			}
+			notice = "WARNING: the ambient gh login is " + got + ", a human — a tool that falls through to the " +
+				"ambient credential would act as " + whose + ". Desk writes use minted App tokens and need no " +
+				"ambient login: " + ambientClearRemedy
+		}
 	}
 
 	// Transport half: every credential source git consults for the landing remote's
 	// push URL must be the minted App token, so the probe and a real push present
 	// the same credential.
+	c := checkAmbientTransport(p, l, tokenPath, identity, refs)
+	c.Notice = notice
+	return c
+}
+
+// ambientClearRemedy is the ONE remediation for an ambient credential a desk shell
+// should not carry. It leads with clearing the credential, and it never
+// recommends logging a human in.
+//
+// An empty GH_CONFIG_DIR alone is NOT enough on a machine whose gh login lives in
+// the OS keyring: `gh api user` reports "not logged in" from an empty config
+// directory, but `gh auth token` still returns the keyring login — and a verb
+// wrapper that threads `gh auth token` into the verb as GH_TOKEN (cellctl's
+// per-verb shim does exactly that when GH_TOKEN and GH_ENTERPRISE_TOKEN are
+// unset) re-materializes the human credential the operator just cleared. Setting
+// GH_TOKEN to the role's minted App token closes both paths: it outranks every
+// stored gh credential, the shim leaves an explicit GH_TOKEN alone, and /user
+// answers 403 for it, which this check reads as no ambient human identity.
+const ambientClearRemedy = "clear the ambient gh credential for desk shells — unset GITHUB_TOKEN/GH_ENTERPRISE_TOKEN " +
+	"and export GH_TOKEN as the role's minted App token (the cache file `desktoken <role>` prints), which outranks " +
+	"every stored gh login; an empty GH_CONFIG_DIR alone is not enough, because `gh auth token` still returns an " +
+	"OS-keyring login from an empty config dir and a verb shim that re-exports it as GH_TOKEN brings that human back. " +
+	"Never log a human in, or switch the operator's own gh account, to clear this"
+
+// checkAmbientTransport is the transport half of checkAmbientIdentity: every
+// credential source git consults for the landing remote's push URL must be the
+// minted App token. identity is the identity half's clean phrase, carried into
+// the checked-clean detail.
+func checkAmbientTransport(p PreflightProbes, l Landing, tokenPath, identity, refs string) Check {
 	if strings.TrimSpace(tokenPath) == "" {
 		return unchecked(CheckAmbientID,
 			"no App token was minted, so the credential helper cannot be matched against it",
@@ -1569,11 +1622,7 @@ func checkAmbientIdentity(p PreflightProbes, l Landing, tokenPath string, forge 
 			"reset the helper chain for the "+l.Remote+" URL with an empty credential.helper entry, then add only the "+
 				"desk's App-token helper after it; remove any embedded URL credential or Authorization extraHeader for it", refs)
 	}
-	blessed := "ambient gh login is the blessing human (" + cfg.Bless.Login + ")"
-	if got == "" {
-		blessed = "no ambient gh identity is set (nothing to fall through to)"
-	}
-	return clean(CheckAmbientID, blessed+" and every credential source git consults for the "+l.Remote+
+	return clean(CheckAmbientID, identity+" and every credential source git consults for the "+l.Remote+
 		" push URL is the minted App token", refs)
 }
 
@@ -1596,30 +1645,82 @@ func isAmbientBot(cfg Config, login string) bool {
 	return false
 }
 
+// ErrNoAmbientIdentity is what ambientLoginProbe wraps when `gh` answered, and
+// the answer is that there is NO usable ambient human identity: `gh` is not
+// logged in, or the ambient credential answers 401/403 on /user (an
+// App/integration token is not a user). It is the SAFE state for the identity
+// half — nothing to fall through to as a person — and must never be read as
+// could-not-check: doing so is exactly what made the safe state unreachable
+// (#1798).
+var ErrNoAmbientIdentity = errors.New("no usable ambient human identity")
+
+// ambientProbeTimeout bounds the `gh api user` call. A var only so the timeout
+// path is testable without a 15-second test.
+var ambientProbeTimeout = 15 * time.Second
+
+// ghExitAuthRequired is gh's documented exit status for "authentication required"
+// (not logged in, no token).
+const ghExitAuthRequired = 4
+
 // ambientLoginProbe reads the login the ambient `gh` credential would act as.
 //
 // It runs `gh api user` under the AMBIENT environment on purpose — the opposite
 // of the cold mint's scrubbed env — because the whole question is "what identity
-// would a tool fall-through silently use". An App token that 403s the
-// integrations-forbidden `/user` endpoint, or a `gh` that is not logged in, is
-// reported as an ERROR (could-not-check) rather than guessed. A `gh` that is on
-// PATH and answers with an empty login is "no ambient identity", not a failure.
+// would a tool fall-through silently use". Its outcomes:
+//
+//   - a login on stdout → that login;
+//   - `gh` answered, and the answer is "no usable human identity" (see
+//     classifyNoAmbientIdentity) → an error wrapping ErrNoAmbientIdentity;
+//   - gh absent, gh could not be started, the call timed out, or any other
+//     answer → a plain error (could-not-check).
 func ambientLoginProbe() (string, error) {
 	bin, err := exec.LookPath("gh")
 	if err != nil {
 		return "", fmt.Errorf("gh is not on PATH: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ambientProbeTimeout)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, bin, "api", "user", "-q", ".login").Output()
+	cmd := exec.CommandContext(ctx, bin, "api", "user", "-q", ".login")
+	// A child gh leaves behind (a pager, a helper) can hold stdout open past the
+	// kill; WaitDelay bounds that wait so the timeout is the real bound.
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("gh api user did not answer within %s", ambientProbeTimeout)
+		}
 		var ee *exec.ExitError
 		if asExitError(err, &ee) {
-			return "", fmt.Errorf("gh api user failed: %s", oneLine(string(ee.Stderr)))
+			stderr := oneLine(string(ee.Stderr))
+			if reason, ok := classifyNoAmbientIdentity(ee.ExitCode(), stderr); ok {
+				return "", fmt.Errorf("%w: %s", ErrNoAmbientIdentity, reason)
+			}
+			return "", fmt.Errorf("gh api user failed: %s", stderr)
 		}
 		return "", fmt.Errorf("could not run gh api user: %v", oneLine(err.Error()))
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// classifyNoAmbientIdentity reads a FAILED `gh api user` (exit status + stderr)
+// and reports whether the failure is gh's answer "there is no usable human
+// identity here", with the reason. It is deliberately narrow: only the three
+// answers that name the credential's shape count, and everything else — a
+// server error, a network failure, a RATE-LIMIT 403 (a human token can be
+// rate-limited) — is not an answer about identity and stays could-not-check.
+func classifyNoAmbientIdentity(exitCode int, stderr string) (string, bool) {
+	low := strings.ToLower(stderr)
+	switch {
+	case strings.Contains(low, "rate limit"):
+		return "", false
+	case strings.Contains(low, "(http 401)"):
+		return "the ambient credential authenticates as no one: HTTP 401 on /user", true
+	case strings.Contains(low, "(http 403)"):
+		return "the ambient credential is not a user: HTTP 403 on /user, an App/integration token", true
+	case exitCode == ghExitAuthRequired || strings.Contains(low, "gh auth login"):
+		return "gh is not logged in", true
+	}
+	return "", false
 }
 
 // credHelperMatchesAppProbe reports whether EVERY credential source git consults for the
