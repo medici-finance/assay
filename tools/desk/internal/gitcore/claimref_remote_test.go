@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-git/go-git/v5/plumbing"
 )
@@ -99,8 +100,8 @@ func TestDeleteRefRefusalCarriesServerMessage(t *testing.T) {
 	}
 }
 
-// A refused delete is TYPED, and names the value it was compare-and-swapped against — what a
-// second lane must re-confirm before it deletes anything.
+// A refused delete is TYPED, and names the value it was compare-and-swapped against, so a caller
+// that re-reads the ref can tell "it moved under me" from "the server refused the write".
 func TestDeleteRefRefusalIsTypedWithOldValue(t *testing.T) {
 	server, ref, tagSHA, _ := seedRefusingServer(t, "at--stream--34", true)
 	_, err := DeleteRef(context.Background(), server, nil, ref)
@@ -116,32 +117,23 @@ func TestDeleteRefRefusalIsTypedWithOldValue(t *testing.T) {
 	}
 }
 
-func TestIsGenericServerRefusalMatchesOnlyTheBareWord(t *testing.T) {
-	for _, tc := range []struct {
-		status string
-		want   bool
-	}{
-		{"failure", true},
-		{" Failure ", true},
-		{"cannot lock ref 'refs/dispatch/x': reference already exists", false},
-		{"stale info", false},
-		{"pre-receive hook declined", false},
-		{"failure to comply with policy", false},
-		{"", false},
-	} {
-		if got := IsGenericServerRefusal(tc.status); got != tc.want {
-			t.Errorf("IsGenericServerRefusal(%q) = %v, want %v", tc.status, got, tc.want)
-		}
-	}
-}
-
 func TestRemoteTextIsOneBoundedPrintableLine(t *testing.T) {
 	var b strings.Builder
 	b.WriteString("line one\r\n\n\x1b[31mline two\x07\n")
-	b.WriteString(strings.Repeat("x", 3*maxRemoteMessageBytes))
+	b.WriteString("c1:\u0085\u009b|")
+	if b.Len()%2 == 0 {
+		b.WriteString("|") // odd prefix, so the byte cap below lands INSIDE a two-byte rune
+	}
+	b.WriteString(strings.Repeat("\u00e9", maxRemoteMessageBytes))
+	if utf8.ValidString(b.String()[:maxRemoteMessageBytes]) {
+		t.Fatal("fixture broken: the byte cap does not split a rune, so this test would not exercise the repair")
+	}
 	buf := bytesBufferOf(b.String())
 	got := remoteText(buf)
-	if strings.ContainsAny(got, "\r\n\x1b\x07") {
+	if !utf8.ValidString(got) {
+		t.Fatalf("remoteText returned invalid UTF-8 after the byte cap")
+	}
+	if strings.ContainsAny(got, "\r\n\x1b\x07\u0085\u009b") {
 		t.Fatalf("remoteText kept a control character: %q", got)
 	}
 	if !strings.HasPrefix(got, "line one; [31mline two") {

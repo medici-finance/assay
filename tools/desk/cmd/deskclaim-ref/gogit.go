@@ -1,9 +1,7 @@
 package main
 
 // gogit.go — the forge-ref store, one implementation of deskkit.ClaimStore: an in-process git-smart-HTTP transport over go-git
-// (internal/gitcore), the forge access this binary makes — plus, on github.com only, the one
-// bounded REST refs-API retry restlane.go documents for the forge's generic refusal of a claim
-// create or release. There is no `gh`, `glab`, or any
+// (internal/gitcore), the ONLY forge access this binary makes. There is no `gh`, `glab`, or any
 // CLI here and no external `git` process — a dispatch claim is placed, advanced, stolen, read
 // and released as library calls that speak the git wire protocol directly. That is what closes
 // the forge-surface violation the ban (internal/forgeban) exists to catch, and it is why this
@@ -28,7 +26,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -65,20 +62,7 @@ type gogitStore struct {
 	auth    transport.AuthMethod
 	host    string // the host this store dials, for fail-closed attribution
 	lastErr error  // the most recent transport error or server write refusal, for attribution
-
-	// rest is the bounded second lane a create or release takes when the git lane comes back
-	// with the forge's bare, reasonless refusal (restlane.go). nil = no second lane for this
-	// forge/host; the git lane's answer stands.
-	rest *restLane
 }
-
-// pushRefUpdateFn / deleteRefFn are the git-lane seams. Package vars ONLY so a test can make the
-// git lane answer with the forge's generic refusal — which no local git server emits — and
-// drive the REST lane behind it; production is the gitcore transport.
-var (
-	pushRefUpdateFn = gitcore.PushRefUpdateVerdict
-	deleteRefFn     = gitcore.DeleteRef
-)
 
 // gogitStore is the forge-ref implementation of the deskkit claim-store seam.
 var _ deskkit.ClaimStore = (*gogitStore)(nil)
@@ -116,7 +100,6 @@ func newForgeStore(repo, tokenFile string) (deskkit.ClaimStore, error) {
 		url:  "https://" + host + "/" + owner + "/" + name + ".git",
 		auth: gitcore.BasicAuthAs(username, token),
 		host: host,
-		rest: newRESTLane(kind, host, owner, name, token),
 	}, nil
 }
 
@@ -184,78 +167,31 @@ func (g *gogitStore) mintAndPush(id, msg string, old plumbing.Hash) deskkit.Clai
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
 	defer cancel()
-	v, perr := pushRefUpdateFn(ctx, gitcore.RefUpdate{
+	res, reason, perr := gitcore.PushRefUpdateDetail(ctx, gitcore.RefUpdate{
 		URL: g.url, Auth: g.auth, Ref: g.refName(id), Old: old, New: tagSHA, Objects: objs,
 	})
 	if perr != nil {
 		g.fail(perr)
 		return deskkit.ClaimWriteUnverifiable
 	}
-	if v.Result != gitcore.RefUpdateRejected {
-		return deskkit.ClaimWriteApplied
-	}
-	// Keep the server's own refusal text — the status word AND what it said on the sideband —
-	// for attribution: when the verb then finds no holder, "rejected but no claim exists" must
-	// say WHY the server refused.
-	gitRefusal := fmt.Errorf("server refused %s: %s", g.refName(id), refusalText(v.Status, v.Remote))
-	g.fail(gitRefusal)
-	if old != plumbing.ZeroHash || g.rest == nil || !gitcore.IsGenericServerRefusal(v.Status) {
-		// A named refusal (the CAS losing, a policy) is the server's considered answer; an
-		// advance/steal has no REST equivalent that keeps its compare-and-swap. Either way the
-		// git lane's answer stands.
+	if res == gitcore.RefUpdateRejected {
+		// Keep the server's own refusal text for attribution: when the verb then finds no
+		// holder, "rejected but no claim exists" must say WHY the server refused.
+		g.fail(fmt.Errorf("server refused %s: %s", g.refName(id), reason))
 		return deskkit.ClaimWriteRejected
 	}
-	// The forge's bare "failure" on a CREATE: offer the same token to the REST lane, once.
-	rctx, rcancel := context.WithTimeout(context.Background(), storeTimeout)
-	defer rcancel()
-	out, rerr := g.rest.createClaim(rctx, g.refName(id), "dispatch/"+id, msg, time.Now())
-	if rerr != nil {
-		// Both lanes refused: fail closed, naming both answers.
-		g.fail(fmt.Errorf("%v; %v", gitRefusal, rerr))
-		return deskkit.ClaimWriteUnverifiable
-	}
-	if out == restHeld {
-		// 422 "Reference already exists": someone holds it. HELD — the verb reads the holder.
-		g.fail(fmt.Errorf("%v; REST fallback: %s already exists", gitRefusal, g.refName(id)))
-		return deskkit.ClaimWriteRejected
-	}
-	g.lastErr = nil
-	errf("NOTICE: the git transport refused %s with the forge's generic %q; the claim was written through the REST refs API instead", g.refName(id), gitcore.GenericServerRefusal)
 	return deskkit.ClaimWriteApplied
-}
-
-// refusalText renders a server refusal: the status word, then the server's own words.
-func refusalText(status, remote string) string {
-	if strings.TrimSpace(remote) == "" {
-		return status
-	}
-	return status + " (remote: " + remote + ")"
 }
 
 func (g *gogitStore) Remove(id string) (deskkit.ClaimWriteOutcome, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
 	defer cancel()
-	res, err := deleteRefFn(ctx, g.url, g.auth, g.refName(id))
-	if err == nil {
-		return deskkit.ClaimWriteApplied, res == gitcore.DeleteDone
-	}
-	g.fail(err)
-	var rej *gitcore.RefRejectedError
-	if g.rest == nil || !errors.As(err, &rej) || !gitcore.IsGenericServerRefusal(rej.Status) || rej.Old.IsZero() {
+	res, err := gitcore.DeleteRef(ctx, g.url, g.auth, g.refName(id))
+	if err != nil {
+		g.fail(err)
 		return deskkit.ClaimWriteUnverifiable, false
 	}
-	// The forge's bare "failure" on a DELETE: offer the same token to the REST lane, once — and
-	// only to delete the value the git delete was compare-and-swapped against.
-	rctx, rcancel := context.WithTimeout(context.Background(), storeTimeout)
-	defer rcancel()
-	existed, rerr := g.rest.deleteClaim(rctx, g.refName(id), rej.Old)
-	if rerr != nil {
-		g.fail(fmt.Errorf("%v; %v", err, rerr))
-		return deskkit.ClaimWriteUnverifiable, false
-	}
-	g.lastErr = nil
-	errf("NOTICE: the git transport refused the delete of %s with the forge's generic %q; it was released through the REST refs API instead", g.refName(id), gitcore.GenericServerRefusal)
-	return deskkit.ClaimWriteApplied, existed
+	return deskkit.ClaimWriteApplied, res == gitcore.DeleteDone
 }
 
 func (g *gogitStore) List() ([]string, deskkit.ClaimReadStatus) {

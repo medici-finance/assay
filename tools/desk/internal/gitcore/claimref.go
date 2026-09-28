@@ -22,6 +22,7 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/format/packfile"
@@ -53,13 +54,6 @@ func claimTagName(id string) string { return "dispatch/" + id }
 const (
 	claimTaggerName  = "assay dispatch-claim"
 	claimTaggerEmail = "dispatch-claim@assay.invalid"
-)
-
-// ClaimTaggerName / ClaimTaggerEmail export the fixed tagger identity, so a claim tag minted by
-// another route (a REST tag-create) carries the same one as a Go-minted tag.
-const (
-	ClaimTaggerName  = claimTaggerName
-	ClaimTaggerEmail = claimTaggerEmail
 )
 
 // MintClaimTag builds an annotated tag object carrying message, stamped at when, targeting the
@@ -308,28 +302,11 @@ func DeleteRef(ctx context.Context, url string, auth transport.AuthMethod, ref p
 type RefRejectedError struct {
 	Ref plumbing.ReferenceName
 	// Old is the value the delete was compare-and-swapped against — what the advertisement
-	// showed the ref holding when the delete was sent. A caller that retries the delete by
-	// another route must confirm the ref STILL holds Old before it does, or it could delete a
-	// claim that was re-taken in between.
+	// showed the ref holding when the delete was sent — so a caller re-reading the ref can tell
+	// "it moved under me" from "the server refused the write itself".
 	Old    plumbing.Hash
 	Status string
 	Remote string
-}
-
-// GenericServerRefusal is the bare report-status word a forge sends when it refuses a ref
-// update for a reason of its own that is neither a compare-and-swap loss nor a named policy
-// (git's own refusals always say what they are: "stale info", "cannot lock ref …: reference
-// already exists", "pre-receive hook declined", …). It is the ONLY status a caller may treat
-// as "this lane failed, another lane may not": every other refusal is the server's considered
-// answer and is final.
-const GenericServerRefusal = "failure"
-
-// IsGenericServerRefusal reports whether a report-status word is the forge's bare, reasonless
-// refusal (GenericServerRefusal) rather than a named one. Case and surrounding space are
-// ignored; nothing else matches — a status that merely CONTAINS the word (a hook message
-// saying "failure to comply with policy") is a named refusal and is not generic.
-func IsGenericServerRefusal(status string) bool {
-	return strings.EqualFold(strings.TrimSpace(status), GenericServerRefusal)
 }
 
 func (e *RefRejectedError) Error() string {
@@ -366,8 +343,10 @@ func captureRemoteMessages(req *packp.ReferenceUpdateRequest, adv *capability.Li
 }
 
 // remoteText renders the captured sideband text as one printable line: control characters
-// (the server's \r progress rewrites, stray escapes) become spaces, blank lines are dropped,
-// the rest is joined with "; ", and the whole is bounded by maxRemoteMessageBytes.
+// (the server's \r progress rewrites, stray escapes, C0 and C1 alike) become spaces, blank lines
+// are dropped, the rest is joined with "; ", and the whole is bounded by maxRemoteMessageBytes.
+// A cut that lands inside a multi-byte rune cannot leave invalid UTF-8: strings.Map re-encodes
+// every invalid byte as U+FFFD.
 func remoteText(buf *bytes.Buffer) string {
 	if buf == nil || buf.Len() == 0 {
 		return ""
@@ -379,7 +358,7 @@ func remoteText(buf *bytes.Buffer) string {
 	var lines []string
 	for _, ln := range strings.FieldsFunc(string(raw), func(r rune) bool { return r == '\n' || r == '\r' }) {
 		ln = strings.Map(func(r rune) rune {
-			if r < 0x20 || r == 0x7f {
+			if unicode.IsControl(r) {
 				return ' '
 			}
 			return r
