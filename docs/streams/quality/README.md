@@ -58,7 +58,7 @@ decision, not code in this stream.
 | 16 | [code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report](brief-16-slop-sweep.md) | 1 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #399 @ 8c45e4c8aed8e603a3b41d13299e17abfda2e369) |
 | 17 | [regression suite — TestRegression_ naming convention + count-can't-drop / vacuous-selector CI gate](brief-17-regression-suite-gate.md) | 0 | M | todo | — | — |
 | 18 | [stub-coverage seam report — report-first list of test seams stubbed everywhere and exercised nowhere in production form](brief-18-stub-coverage-report.md) | 1 | M | todo | — | — |
-| 19 | [qualgen re-fix metric — SZZ-traced fixes that repeat a defect an earlier fix already addressed](brief-19-refix-metric.md) | 3 | M | todo | — | — |
+| 19 | [qualgen re-fix metric — SZZ-traced fixes that repeat a defect an earlier fix already addressed](brief-19-refix-metric.md) | 3 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 Brief 01 implemented on branch `brief/quality-01-miner-skeleton` (new `qualgen/` module: go-git extraction, incremental extend-never-replace mine, three-state `Measure[T]` plumbing, append-only artifact store; `mine` mode live, `report`/`pr`/`check` scaffolded). Draft-PR link to be attached when the PR is opened.
