@@ -1,0 +1,3 @@
+### Fixed
+- `deskclaim-ref`: a refused claim create or release now prints the server's own message next to its status word. The receive-pack request negotiates the sideband, so a forge refusal is no longer the bare word `failure`.
+- `deskclaim-ref`: on github.com, a claim create or release that the git transport refuses with the forge's generic `failure` is retried once through the REST refs API with the same token. A create stays create-if-absent (an existing ref is HELD, never free), a release deletes only the value it read, and a refusal on both lanes still exits 6. A lost compare-and-swap, a named refusal, or an advance/steal never takes the second lane.

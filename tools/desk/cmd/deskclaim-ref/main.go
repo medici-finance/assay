@@ -29,6 +29,13 @@
 // documented change from the server-stamped gh-CLI port): mutual exclusion rests on the
 // server-side CAS, not the timestamp, which now drives only the TTL age display.
 //
+// SECOND LANE. A create or release that the git transport's receive-pack refuses with the
+// forge's bare, reasonless "failure" (and only that word — a lost CAS or a named policy refusal
+// is final) is offered ONCE to the REST refs API with the same token, on github.com only
+// (restlane.go): create stays create-only, release deletes only the value it read, both lanes
+// refusing is exit 6. The receive-pack request negotiates the sideband, so every refusal now
+// carries the server's own words as well as its status word.
+//
 // CLAIM STORE. Which store holds the claims is deskkit.ResolveClaimStore's answer, read from the
 // roster (ASSAY_CLAIM_STORE) — no flag selects one. The forge transport above is the forge-ref
 // store: what an UNSET key resolves to for one release window, under a removal NOTICE. A
@@ -94,6 +101,10 @@ MANDATORY — a bare stream name cross-locks another repo's stream.
 The forge credential is read from --token-file <0600 file> when given, else GH_TOKEN /
 GITHUB_TOKEN / GITLAB_TOKEN. The forge (github/gitlab) resolves from ASSAY_REPO_FORGES or the
 origin remote host; every forge call is an in-process git-smart-HTTP request (no gh/glab CLI).
+A refused write prints the server's own message alongside its status word. On github.com, a
+create or release the git transport refuses with the forge's bare "failure" is retried ONCE
+through the REST refs API with the same token: a create stays create-only (an existing ref is
+HELD), a release deletes only the value it read, and a refusal on both is exit 6.
 
 acquire   take the claim if free; reclaim it if the holder is past its TTL; refuse (exit 5)
           if a live holder owns it. Never steals a live claim inline.

@@ -1,0 +1,59 @@
+{
+  "test": "go test ./cmd/deskclaim-ref/ -count=1 -timeout 300s && go test ./internal/gitcore/ -run 'Refusal|Verdict|CapturesServerMessages|RemoteCaptureGuard' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL \u2014 release reports the claim released without deleting anything",
+    "file": "cmd/deskclaim-ref/claim.go",
+    "old": "\toutcome, existed := store.Remove(id)",
+    "new": "\toutcome, existed := deskkit.ClaimWriteApplied, false"
+  },
+  "mutations": [
+    {
+      "name": "REST lane reads 422 \"Reference already exists\" as CREATED (a held claim is reported acquired: double dispatch)",
+      "file": "cmd/deskclaim-ref/restlane.go",
+      "old": "\t\treturn restHeld, nil",
+      "new": "\t\treturn restCreated, nil"
+    },
+    {
+      "name": "REST release skips the still-holds-what-was-read check (deletes a claim re-taken since the git read)",
+      "file": "cmd/deskclaim-ref/restlane.go",
+      "old": "\tcase cur.Object.SHA != expect.String():",
+      "new": "\tcase false:"
+    },
+    {
+      "name": "fall back on ANY git refusal, not only the generic \"failure\" (a lost CAS or a policy refusal is retried by another route)",
+      "file": "cmd/deskclaim-ref/gogit.go",
+      "old": "|| !gitcore.IsGenericServerRefusal(v.Status) {",
+      "new": "|| false {"
+    },
+    {
+      "name": "advance/steal also fall back (the REST create ignores the compare-and-swap old value)",
+      "file": "cmd/deskclaim-ref/gogit.go",
+      "old": "\tif old != plumbing.ZeroHash || g.rest == nil ||",
+      "new": "\tif false || g.rest == nil ||"
+    },
+    {
+      "name": "never take the REST lane on a create (the generic git refusal stays a failed acquire)",
+      "file": "cmd/deskclaim-ref/gogit.go",
+      "old": "\tif old != plumbing.ZeroHash || g.rest == nil ||",
+      "new": "\tif true || g.rest == nil ||"
+    },
+    {
+      "name": "both lanes refused a create, reported as applied (fail-open)",
+      "file": "cmd/deskclaim-ref/gogit.go",
+      "old": "\t\tg.fail(fmt.Errorf(\"%v; %v\", gitRefusal, rerr))\n\t\treturn deskkit.ClaimWriteUnverifiable",
+      "new": "\t\tg.fail(fmt.Errorf(\"%v; %v\", gitRefusal, rerr))\n\t\treturn deskkit.ClaimWriteApplied"
+    },
+    {
+      "name": "both lanes refused a release, reported as released (fail-open)",
+      "file": "cmd/deskclaim-ref/gogit.go",
+      "old": "\t\tg.fail(fmt.Errorf(\"%v; %v\", err, rerr))\n\t\treturn deskkit.ClaimWriteUnverifiable, false",
+      "new": "\t\tg.fail(fmt.Errorf(\"%v; %v\", err, rerr))\n\t\treturn deskkit.ClaimWriteApplied, false"
+    },
+    {
+      "name": "the git transport stops negotiating the sideband (a server refusal loses its reason again)",
+      "file": "internal/gitcore/claimref.go",
+      "old": "\tcase adv.Supports(capability.Sideband64k):\n\t\t_ = req.Capabilities.Set(capability.Sideband64k)\n\tcase adv.Supports(capability.Sideband):\n\t\t_ = req.Capabilities.Set(capability.Sideband)\n\tdefault:",
+      "new": "\tdefault:"
+    }
+  ]
+}
