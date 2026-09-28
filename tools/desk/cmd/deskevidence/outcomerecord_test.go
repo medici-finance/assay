@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -94,6 +95,49 @@ func TestOutcomeRecordWrite(t *testing.T) {
 			return closureCouldNotErr, "", nil
 		}
 		line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`
+		recFile := writeRepoFile(t, "record.json", line+"\n")
+
+		code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile})
+		if code != deskkit.ExitOK {
+			t.Fatalf("exit = %d, want 0 (stderr %q)", code, errBuf.String())
+		}
+		if f.putCalls != 1 {
+			t.Fatalf("expected exactly 1 write, got %d", f.putCalls)
+		}
+	})
+
+	// #1803 SR-1803-2 writer half: a record whose ts is more than deskkit.MaxClockSkew ahead of
+	// the writer's own clock is refused before it ever reaches the forge.
+	t.Run("a ts more than the clock-skew tolerance ahead of now is refused", func(t *testing.T) {
+		f, errBuf := setupFake(t)
+		fixedNow := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+		nowFn = func() time.Time { return fixedNow }
+		defer func() { nowFn = time.Now }()
+
+		futureTS := fixedNow.Add(deskkit.MaxClockSkew + time.Minute).Format(time.RFC3339)
+		line := `{"ts":"` + futureTS + `","brief":"example-stream/14","outcome":"verified","sha":"0000002"}`
+		recFile := writeRepoFile(t, "record.json", line+"\n")
+
+		code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile})
+		if code != deskkit.ExitRefused {
+			t.Fatalf("exit = %d, want %d (refused, future ts) (stderr %q)", code, deskkit.ExitRefused, errBuf.String())
+		}
+		if f.putCalls != 0 {
+			t.Fatalf("refusal must not write, got %d", f.putCalls)
+		}
+		if !strings.Contains(errBuf.String(), "ts") {
+			t.Fatalf("refusal message = %q, want it to name ts", errBuf.String())
+		}
+	})
+
+	t.Run("a ts within the clock-skew tolerance is accepted", func(t *testing.T) {
+		f, errBuf := setupFake(t)
+		fixedNow := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+		nowFn = func() time.Time { return fixedNow }
+		defer func() { nowFn = time.Now }()
+
+		withinSkewTS := fixedNow.Add(deskkit.MaxClockSkew - time.Minute).Format(time.RFC3339)
+		line := `{"ts":"` + withinSkewTS + `","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`
 		recFile := writeRepoFile(t, "record.json", line+"\n")
 
 		code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile})

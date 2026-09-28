@@ -292,10 +292,31 @@ func readVerifyOutcomeRecords(root string) ([]outcomeRecord, error) {
 	return records, nil
 }
 
+// maxClockSkew mirrors deskkit.MaxClockSkew (#1803 SR-1803-2) — kept in sync by hand, like every
+// other pure rule in this file's own copy of the record layer (see the header comment).
+const maxClockSkew = 5 * time.Minute
+
+// futureTS mirrors deskkit.FutureTS.
+func futureTS(ts string, now time.Time) bool {
+	t, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return false
+	}
+	return t.After(now.Add(maxClockSkew))
+}
+
 // latestOutcomePerBrief reduces records to one winner per brief key: the newest `ts` wins, ties
-// broken by the lexically greatest record name.
-func latestOutcomePerBrief(records []outcomeRecord) map[string]outcomeRecord {
+// broken by the lexically greatest record name. A record whose `ts` is more than maxClockSkew
+// ahead of now is never a candidate winner (#1803 SR-1803-2): it is excluded from the reduction
+// and its brief key is reported in the second return value.
+func latestOutcomePerBrief(records []outcomeRecord) (latest map[string]outcomeRecord, futureByBrief map[string]bool) {
+	return latestOutcomePerBriefAt(records, time.Now())
+}
+
+// latestOutcomePerBriefAt is latestOutcomePerBrief with an explicit "now", for tests.
+func latestOutcomePerBriefAt(records []outcomeRecord, now time.Time) (latest map[string]outcomeRecord, futureByBrief map[string]bool) {
 	out := make(map[string]outcomeRecord, len(records))
+	future := map[string]bool{}
 	tsOf := func(r outcomeRecord) time.Time {
 		t, err := time.Parse(time.RFC3339, r.TS)
 		if err != nil {
@@ -304,6 +325,10 @@ func latestOutcomePerBrief(records []outcomeRecord) map[string]outcomeRecord {
 		return t
 	}
 	for _, rec := range records {
+		if futureTS(rec.TS, now) {
+			future[rec.Brief] = true
+			continue
+		}
 		cur, ok := out[rec.Brief]
 		if !ok {
 			out[rec.Brief] = rec
@@ -317,5 +342,5 @@ func latestOutcomePerBrief(records []outcomeRecord) map[string]outcomeRecord {
 			out[rec.Brief] = rec
 		}
 	}
-	return out
+	return out, future
 }

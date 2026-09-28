@@ -134,7 +134,7 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string, reader deskkit.WakeI
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	outcomes, receipts, oerr := readVerifyOutcomeRecords(root)
+	outcomes, receipts, futureOutcomes, oerr := readVerifyOutcomeRecords(root)
 	if oerr != nil {
 		return nil, oerr
 	}
@@ -189,6 +189,13 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string, reader deskkit.WakeI
 		}
 		if br.couldNotCheck != "" {
 			payload["could_not_check"] = br.couldNotCheck
+		} else if futureOutcomes[br.Stream+"/"+br.Num] {
+			// SR-1803-2: a verify-outcome record for this brief carries a `ts` more than
+			// deskkit.MaxClockSkew ahead of now. deskkit.LatestPerBrief already refused to let it
+			// win the newest-ts comparison; report the brief as could-not-check rather than
+			// silently trusting whichever OTHER record (if any) was left after excluding it.
+			payload["could_not_check"] = "verify-outcome record for " + br.Stream + "/" + br.Num +
+				" carries a ts more than the clock-skew tolerance ahead of now — could-not-check, never let win (#1803 SR-1803-2)"
 		}
 		if oc, ok := outcomes[br.Stream+"/"+br.Num]; ok {
 			payload["sidecar_outcome"] = oc.Outcome
@@ -239,14 +246,19 @@ type outcomeRow struct {
 // An absent records directory and an absent legacy log together are an empty set (no brief is
 // then stuck-flip — the pre-#1309 behaviour); an UNREADABLE record is an error that propagates
 // as a could-not-check scan failure, never a silently skipped record (common-clause C4).
-func readVerifyOutcomeRecords(root string) (outcomes map[string]outcomeRow, receipts map[string]deskkit.WakeReceipt, err error) {
+// future reports, by brief key, whether that brief's records included one deskkit.LatestPerBrief
+// excluded for carrying a `ts` more than deskkit.MaxClockSkew ahead of now (#1803 SR-1803-2) — the
+// caller reports such a brief as could-not-check rather than silently trusting whatever record (if
+// any) was left.
+func readVerifyOutcomeRecords(root string) (outcomes map[string]outcomeRow, receipts map[string]deskkit.WakeReceipt, future map[string]bool, err error) {
 	records, rerr := deskkit.ReadVerifyOutcomes(root)
 	if rerr != nil {
-		return nil, nil, rerr
+		return nil, nil, nil, rerr
 	}
 	outcomes = map[string]outcomeRow{}
 	receipts = map[string]deskkit.WakeReceipt{}
-	for brief, rec := range deskkit.LatestPerBrief(records) {
+	latest, future := deskkit.LatestPerBrief(records)
+	for brief, rec := range latest {
 		var row outcomeRow
 		if json.Unmarshal(rec.Raw, &row) == nil && row.Brief != "" {
 			outcomes[brief] = row
@@ -255,7 +267,7 @@ func readVerifyOutcomeRecords(root string) (outcomes map[string]outcomeRow, rece
 			receipts[brief] = wrec
 		}
 	}
-	return outcomes, receipts, nil
+	return outcomes, receipts, future, nil
 }
 
 func yesNo(b bool) string {

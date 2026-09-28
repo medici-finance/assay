@@ -264,13 +264,49 @@ func ReadVerifyOutcomes(root string) ([]OutcomeRecord, error) {
 	return records, nil
 }
 
+// MaxClockSkew bounds how far ahead of "now" a verify-outcome record's `ts` may be before it is
+// treated as untrustworthy rather than merely "the newest" (#1803 SR-1803-2). Before this bound
+// existed, "newest ts wins" (LatestPerBrief, below) was UNBOUNDED: a record with a fabricated or
+// clock-skewed future `ts` — whether from a skewed writer clock, a locally-timed value
+// mislabelled `Z`, or a hand-built record — stayed "current" for its brief until that instant
+// actually passed, silently shadowing every later, genuine outcome. The writer
+// (cmdOutcomeRecordWrite, tools/desk/cmd/deskevidence/outcomerecord.go) refuses to land a record
+// whose `ts` is more than MaxClockSkew ahead of its own clock; LatestPerBrief additionally never
+// lets a future-dated record already on disk (from before the writer refusal existed, or from
+// any other lane) win the comparison.
+const MaxClockSkew = 5 * time.Minute
+
+// FutureTS reports whether ts — parsed as RFC 3339 — lands more than MaxClockSkew ahead of now.
+// An unparsable ts is never "future" here: LatestPerBrief's own tsOf already sorts it as the
+// oldest possible instant, so it cannot win on its own account either.
+func FutureTS(ts string, now time.Time) bool {
+	t, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return false
+	}
+	return t.After(now.Add(MaxClockSkew))
+}
+
 // LatestPerBrief reduces records to one winner per brief key: the newest `ts` wins; ties are
 // broken by the lexically greatest record NAME (never by line position or slice order — the
 // defect this whole layout retires). A record whose `ts` fails to parse sorts as the oldest
 // possible instant, so it never silently outranks a well-formed record for the same brief; if it
-// is the ONLY record for that brief it still wins (there is nothing else to prefer).
-func LatestPerBrief(records []OutcomeRecord) map[string]OutcomeRecord {
+// is the ONLY record for that brief it still wins (there is nothing else to prefer). Uses the
+// current wall clock for the future-ts bound; see LatestPerBriefAt for the injectable form tests
+// use.
+func LatestPerBrief(records []OutcomeRecord) (latest map[string]OutcomeRecord, futureByBrief map[string]bool) {
+	return LatestPerBriefAt(records, time.Now())
+}
+
+// LatestPerBriefAt is LatestPerBrief with an explicit "now", so a test never depends on wall-clock
+// time. A record whose `ts` is more than MaxClockSkew ahead of now (SR-1803-2) is NEVER a
+// candidate winner: it is excluded from the reduction entirely, and its brief key is reported in
+// the second return value so a caller can classify that brief as could-not-check rather than
+// either (a) silently letting the future record win, or (b) silently falling back to whatever
+// non-future record happens to be left with no signal that anything was excluded.
+func LatestPerBriefAt(records []OutcomeRecord, now time.Time) (latest map[string]OutcomeRecord, futureByBrief map[string]bool) {
 	out := make(map[string]OutcomeRecord, len(records))
+	future := map[string]bool{}
 	tsOf := func(r OutcomeRecord) time.Time {
 		t, err := time.Parse(time.RFC3339, r.TS)
 		if err != nil {
@@ -279,6 +315,10 @@ func LatestPerBrief(records []OutcomeRecord) map[string]OutcomeRecord {
 		return t
 	}
 	for _, rec := range records {
+		if FutureTS(rec.TS, now) {
+			future[rec.Brief] = true
+			continue
+		}
 		cur, ok := out[rec.Brief]
 		if !ok {
 			out[rec.Brief] = rec
@@ -292,5 +332,32 @@ func LatestPerBrief(records []OutcomeRecord) map[string]OutcomeRecord {
 			out[rec.Brief] = rec
 		}
 	}
-	return out
+	return out, future
+}
+
+// UnderOutcomeRecordsDir is the writer's INDEPENDENT, defense-in-depth check on a record target
+// path (#1803 SR-1803-3): run AFTER RecordName has already computed targetRepoPath, it shares NO
+// code with RecordName/SplitBriefKey's own regex validation, so a regression in either of those
+// (for example outcomeNumRe loosened to admit a traversal-shaped brief number) does not also
+// blind this check. It requires p to be relative, and its path.Clean'd form to sit EXACTLY two
+// path segments below OutcomeRecordsDir (<stream-dir>/<file>.json), with neither segment empty
+// or a "..".
+func UnderOutcomeRecordsDir(p string) error {
+	if p == "" {
+		return errors.New("empty verify-outcome record target path")
+	}
+	if strings.HasPrefix(p, "/") {
+		return fmt.Errorf("verify-outcome record target %q is an absolute path", p)
+	}
+	clean := path.Clean(p)
+	prefix := OutcomeRecordsDir + "/"
+	if !strings.HasPrefix(clean, prefix) {
+		return fmt.Errorf("verify-outcome record target %q resolves to %q, outside %s", p, clean, OutcomeRecordsDir)
+	}
+	rest := strings.TrimPrefix(clean, prefix)
+	parts := strings.Split(rest, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" || parts[0] == ".." || parts[1] == ".." {
+		return fmt.Errorf("verify-outcome record target %q does not have the expected <stream>/<file> depth under %s", p, OutcomeRecordsDir)
+	}
+	return nil
 }

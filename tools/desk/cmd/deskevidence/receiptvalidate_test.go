@@ -112,13 +112,18 @@ func TestReceiptInputsCoverDeliverables(t *testing.T) {
 		rvGitIn(t, wtDir, "init", "-q", "-b", "main")
 		rvWriteAndAdd(t, wtDir, "docs/streams/example-stream/brief-01-x.md", briefWithFiles("foo/bar.go"))
 		rvWriteAndAdd(t, wtDir, "foo/bar.go", "package foo\n")
+		// foo/different.go ALREADY exists at atSHA too, even though the brief AT atSHA does not
+		// declare it yet — this is what makes the fixture below discriminate (#1803 CR-1803-2 /
+		// SR-1803-4). Without this, foo/different.go is absent at atSHA and any receipt touching
+		// it is skipped as "(planned)" under EITHER tree, so the row cannot fail no matter which
+		// tree the brief is read from.
+		rvWriteAndAdd(t, wtDir, "foo/different.go", "package foo\n")
 		rvGitIn(t, wtDir, "commit", "-qm", "base")
 		atSHA := rvGitIn(t, wtDir, "rev-parse", "HEAD")
 
 		// The brief is edited to declare a DIFFERENT file in a LATER commit — the working
 		// tree's current copy of the brief now disagrees with the copy at atSHA.
 		rvWriteAndAdd(t, wtDir, "docs/streams/example-stream/brief-01-x.md", briefWithFiles("foo/different.go"))
-		rvWriteAndAdd(t, wtDir, "foo/different.go", "package foo\n")
 		rvGitIn(t, wtDir, "commit", "-qm", "brief edited later")
 
 		// A receipt covering the file declared AT atSHA (foo/bar.go, NOT foo/different.go)
@@ -126,6 +131,18 @@ func TestReceiptInputsCoverDeliverables(t *testing.T) {
 		wr := deskkit.WakeReceipt{Brief: "example-stream/01", SHA: atSHA, Inputs: map[string]string{"tool": "v1", "file:foo/bar.go": "h1"}}
 		if err := validateReceiptInputsCoverDeliverables(wtDir, wr); err != nil {
 			t.Fatalf("brief must be read AT sha, not the working tree: %v", err)
+		}
+
+		// DISCRIMINATING LEG (#1803 CR-1803-2 / SR-1803-4): this is the case the subtest above
+		// cannot catch. A receipt covering ONLY the working-tree brief's declaration
+		// (foo/different.go) — and NOT foo/bar.go, which is what the brief AT atSHA actually
+		// declares, and which exists at atSHA — must be REFUSED. A wrong-tree read (HEAD instead
+		// of atSHA) would instead see the brief's LATER declaration of foo/different.go, find it
+		// present at atSHA (it is, by construction above), and wrongly ACCEPT this receipt.
+		wrongTreeCoverage := deskkit.WakeReceipt{Brief: "example-stream/01", SHA: atSHA, Inputs: map[string]string{"tool": "v1", "file:foo/different.go": "h1"}}
+		if err := validateReceiptInputsCoverDeliverables(wtDir, wrongTreeCoverage); deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
+			t.Fatalf("a receipt covering only the working-tree brief's declaration (not the sha's) must be refused "+
+				"(exit %v, err=%v) — reading the brief from the wrong tree would wrongly accept it", deskkit.ExitCodeOf(err), err)
 		}
 	})
 }

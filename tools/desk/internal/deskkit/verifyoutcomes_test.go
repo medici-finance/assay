@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeFileT(t *testing.T, p, content string) {
@@ -29,7 +30,15 @@ func TestRecordNameShape(t *testing.T) {
 }
 
 func TestRecordNameMalformedBriefRefused(t *testing.T) {
-	for _, brief := range []string{"../x/01", "X/1", "no-slash", "a/", "/1"} {
+	for _, brief := range []string{
+		"../x/01", "X/1", "no-slash", "a/", "/1",
+		// #1803 SR-1803-3: number-side traversal/injection shapes. SplitBriefKey's
+		// outcomeNumRe (^[0-9]+$) already refuses every one of these today; they are pinned
+		// here so a future loosening of that regex (the exact mutation the security review
+		// probed) is caught here FIRST, before it ever reaches UnderOutcomeRecordsDir's
+		// independent check (see TestUnderOutcomeRecordsDirIndependentGuard).
+		"x/01/../y", "x/../01", "x/01\x00", "x/1a",
+	} {
 		line := `{"ts":"2026-09-07T01:19:23Z","brief":"` + brief + `","outcome":"verified"}`
 		if _, err := RecordName([]byte(line)); err == nil {
 			t.Fatalf("RecordName(brief=%q): want refusal, got a name", brief)
@@ -63,7 +72,7 @@ func TestVerifyOutcomes(t *testing.T) {
 		if len(recs) != 1 {
 			t.Fatalf("got %d records, want 1", len(recs))
 		}
-		latest := LatestPerBrief(recs)
+		latest, _ := LatestPerBrief(recs)
 		if latest["example-stream/20"].Brief != "example-stream/20" {
 			t.Fatalf("LatestPerBrief missing example-stream/20: %+v", latest)
 		}
@@ -111,7 +120,7 @@ func TestVerifyOutcomes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadVerifyOutcomes: %v", err)
 		}
-		latest := LatestPerBrief(recs)
+		latest, _ := LatestPerBrief(recs)
 		got := latest["example-stream/20"]
 		if got.TS != "2026-09-27T10:00:00Z" {
 			t.Fatalf("LatestPerBrief returned %+v, want the newer (2026-09-27) row regardless of line position", got)
@@ -156,4 +165,87 @@ func TestVerifyOutcomes(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestLatestPerBriefFutureTSCouldNotCheck is the reader half of #1803 SR-1803-2: a record whose
+// `ts` is more than MaxClockSkew ahead of "now" must never win LatestPerBrief's newest-ts
+// comparison, and its brief must be reported back (via the second return value) rather than
+// silently folded into a normal result.
+func TestLatestPerBriefFutureTSCouldNotCheck(t *testing.T) {
+	fixedNow := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+
+	t.Run("a lone future-ts record never wins: the brief is reported future, not silently trusted", func(t *testing.T) {
+		future := OutcomeRecord{Brief: "example-stream/30", TS: fixedNow.Add(MaxClockSkew + time.Hour).Format(time.RFC3339), Raw: []byte(`{}`), Name: "z.json"}
+		latest, futureByBrief := LatestPerBriefAt([]OutcomeRecord{future}, fixedNow)
+		if _, ok := latest["example-stream/30"]; ok {
+			t.Fatalf("a future-dated record with no non-future competitor must not appear as a normal winner: %+v", latest)
+		}
+		if !futureByBrief["example-stream/30"] {
+			t.Fatalf("future-dated record must be reported in futureByBrief: %+v", futureByBrief)
+		}
+	})
+
+	t.Run("a future-ts record never outranks a genuine, non-future record for the same brief", func(t *testing.T) {
+		genuine := OutcomeRecord{Brief: "example-stream/31", TS: "2026-09-27T10:00:00Z", Raw: []byte(`{"outcome":"verify-fail"}`), Name: "a.json"}
+		fabricated := OutcomeRecord{Brief: "example-stream/31", TS: "2099-01-01T00:00:00Z", Raw: []byte(`{"outcome":"verified"}`), Name: "b.json"}
+		latest, futureByBrief := LatestPerBriefAt([]OutcomeRecord{genuine, fabricated}, fixedNow)
+		got := latest["example-stream/31"]
+		if got.TS != genuine.TS {
+			t.Fatalf("LatestPerBriefAt returned %+v, want the genuine non-future record to win over the fabricated future one", got)
+		}
+		if !futureByBrief["example-stream/31"] {
+			t.Fatalf("the excluded future record's brief must still be reported: %+v", futureByBrief)
+		}
+	})
+
+	t.Run("a ts within the clock-skew tolerance is NOT future and wins normally", func(t *testing.T) {
+		withinSkew := OutcomeRecord{Brief: "example-stream/32", TS: fixedNow.Add(MaxClockSkew - time.Minute).Format(time.RFC3339), Raw: []byte(`{}`), Name: "c.json"}
+		latest, futureByBrief := LatestPerBriefAt([]OutcomeRecord{withinSkew}, fixedNow)
+		if _, ok := latest["example-stream/32"]; !ok {
+			t.Fatalf("a ts within MaxClockSkew must win normally: %+v", latest)
+		}
+		if futureByBrief["example-stream/32"] {
+			t.Fatalf("a ts within MaxClockSkew must NOT be reported future")
+		}
+	})
+
+	t.Run("FutureTS: unparsable ts is never future", func(t *testing.T) {
+		if FutureTS("not-a-timestamp", fixedNow) {
+			t.Fatalf("an unparsable ts must never be classified future")
+		}
+	})
+}
+
+// TestUnderOutcomeRecordsDirIndependentGuard is #1803 SR-1803-3's negative test: the writer's
+// path-prefix guard is INDEPENDENT of RecordName/SplitBriefKey's own regex validation, so it must
+// still refuse a traversal/absolute-path escape even when fed the exact shape a regression in
+// THAT validation (for example outcomeNumRe loosened to admit a slash) would hand it. This test
+// never calls RecordName — it feeds UnderOutcomeRecordsDir the resolved paths directly, so a
+// regression in RecordName cannot also blind this check (the two share no code).
+func TestUnderOutcomeRecordsDirIndependentGuard(t *testing.T) {
+	for _, p := range []string{
+		"docs/streams/verify-outcomes/example-stream/20-20260907T011923Z-aaaaaaaaaaaa.json",
+	} {
+		if err := UnderOutcomeRecordsDir(p); err != nil {
+			t.Fatalf("UnderOutcomeRecordsDir(%q): want nil (a legitimate record path), got %v", p, err)
+		}
+	}
+
+	for _, p := range []string{
+		// The exact shape SR-1803-3's own probe produced from a brief key carrying traversal
+		// segments in its number half, under a loosened outcomeNumRe: RecordName(brief
+		// "x/01/../../../../.github/workflows/y") would resolve OUTSIDE docs/streams entirely.
+		"docs/.github/workflows/y-20260907T011923Z-aaaaaaaaaaaa.json",
+		"docs/streams/verify-outcomes/example-stream/../../../.github/workflows/evil.json",
+		"docs/streams/verify-outcomes/../not-outcomes/x.json",
+		"/etc/passwd",                                       // absolute-path injection
+		"docs/streams/verify-outcomes/onlyonesegment.json",   // wrong depth: no stream segment
+		"docs/streams/verify-outcomes/a/b/c.json",            // wrong depth: too deep
+		"docs/other/verify-outcomes/example-stream/x.json",   // wrong root entirely
+		"",
+	} {
+		if err := UnderOutcomeRecordsDir(p); err == nil {
+			t.Fatalf("UnderOutcomeRecordsDir(%q): want refusal (path-traversal / prefix escape), got nil", p)
+		}
+	}
 }

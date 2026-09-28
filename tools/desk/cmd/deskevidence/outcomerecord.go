@@ -19,9 +19,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
+
+// nowFn is the writer's clock, overridable in tests. #1803 SR-1803-2: cmdOutcomeRecordWrite
+// refuses a record whose `ts` is more than deskkit.MaxClockSkew ahead of nowFn() — the same bound
+// deskkit.LatestPerBrief applies on the read side, so a record this writer ever lands can never
+// itself trip the reader's could-not-check classification.
+var nowFn = time.Now
 
 // cmdOutcomeRecordWrite implements `deskevidence <owner/repo> <branch> --outcome-record <file>`.
 // localFile is the LOCAL path to a file holding exactly one JSON verify-outcome record; root, if
@@ -41,9 +48,22 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if perr != nil {
 		return deskkit.Refused("refused: invalid --outcome-record JSON: " + perr.Error())
 	}
+	// #1803 SR-1803-2: refuse a record whose ts is more than deskkit.MaxClockSkew ahead of the
+	// writer's own clock, so an unbounded future ts can never land and later shadow every
+	// genuine outcome for its brief under LatestPerBrief's newest-ts comparison.
+	if deskkit.FutureTS(rec.TS, nowFn()) {
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: --outcome-record ts %s is more than %s ahead of now", rec.TS, deskkit.MaxClockSkew))
+	}
 	targetRepoPath, nerr := deskkit.RecordName(rec.Raw)
 	if nerr != nil {
 		return deskkit.Refused("refused: cannot name --outcome-record: " + nerr.Error())
+	}
+	// #1803 SR-1803-3: a second, independent check on the RESOLVED target, run after RecordName
+	// has already computed it and sharing no code with RecordName/SplitBriefKey's own
+	// validation, so a regression in either does not also blind this one.
+	if perr := deskkit.UnderOutcomeRecordsDir(targetRepoPath); perr != nil {
+		return deskkit.Refused("refused: --outcome-record target failed the path-prefix guard: " + perr.Error())
 	}
 	ac.file = targetRepoPath
 	commitContent := deskkit.CanonicalBytes(rec.Raw)

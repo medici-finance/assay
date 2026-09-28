@@ -477,18 +477,28 @@ a branch as the target instead of `main`:
    merge follows the reviewer's approval and the required status with no further action; where it has
    not, the PR waits on a human merge. Either way the brief's row is `verified` the moment the Evidence
    PR merges, and the `gate: model` verified→done flip stays CI's (see below).
-4. **Keep a reviewed Evidence PR mergeable: every state has exactly one owner.** Since #882,
-   sibling Evidence PRs NO LONGER CONFLICT on outcomes: each writes one NEW file under
-   `docs/streams/verify-outcomes/<stream>/`, named by a pure function of its own content, so two
-   PRs only ever add the same path when they carry byte-identical content, and two identical adds
-   merge cleanly with no driver. (Before #882, every Evidence PR appended to one shared outcomes
-   log, and the forge computed mergeability and performed the merge server-side with no
-   `.gitattributes` driver applied — the log's `merge=union` resolved a LOCAL merge only — so an
-   open Evidence PR went `CONFLICTING` whenever a sibling landed. That class is closed.) A
-   `CONFLICTING` Evidence PR now means a REAL content conflict — two PRs editing the same brief's
-   `## Evidence` section, or an unrelated file — never the outcomes shape. Read each of your open
-   Evidence PRs against the table below and act on the rows this desk owns: merge main and push,
-   merge-never-rebase, resolve whatever conflicts for real, and say so on the PR.
+4. **Keep a reviewed Evidence PR mergeable: every state has exactly one owner.** Since #882, an
+   Evidence PR that writes ONLY the per-file layout no longer conflicts on outcomes: each writes
+   one NEW file under `docs/streams/verify-outcomes/<stream>/`, named by a pure function of its own
+   content, so two PRs only ever add the same path when they carry byte-identical content, and two
+   identical adds merge cleanly with no driver. (Before #882, every Evidence PR appended to one
+   shared outcomes log, and the forge computed mergeability and performed the merge server-side
+   with no `.gitattributes` driver applied — the log's `merge=union` resolved a LOCAL merge only —
+   so an open Evidence PR went `CONFLICTING` whenever a sibling landed. That class is closed FOR
+   NEW WORK using the per-file layout.) For such a PR, a `CONFLICTING` verdict now means a REAL
+   content conflict — two PRs editing the same brief's `## Evidence` section, or an unrelated file
+   — never the outcomes shape.
+
+   **Transition window:** the shared `docs/streams/verify-outcomes.jsonl` log stays on disk,
+   unretired, until every open PR still touching it has landed (#882's follow-up, #1802) — a PR
+   still appending to it still conflicts with every sibling PR that also touches it, exactly as
+   before #882. Resolve that the pre-#882 way: merge main locally and push (the `merge=union`
+   driver resolves a LOCAL merge). A receipt correction on such a PR is a NEW `--outcome-record`
+   record with a later `ts`, never an edit of the existing log line.
+
+   Read each of your open Evidence PRs against the table below and act on the rows this desk owns:
+   merge main and push, merge-never-rebase, resolve whatever conflicts for real (or, for a
+   still-on-the-shared-log PR, resolve via the local merge above), and say so on the PR.
 
 A PR's state is three facts. **Verdict:** `none` (some required review lane has never given a
 verdict and none is blocking), `blocking` (any lane's latest verdict is a CHANGES_REQUESTED, an open

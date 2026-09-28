@@ -78,7 +78,7 @@ func TestReadVerifyOutcomeRecords_LatestRowWinsAndBadLinesSkip(t *testing.T) {
 	if err := os.WriteFile(p, []byte(sidecarFixture), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, _, err := readVerifyOutcomeRecords(root)
+	got, _, _, err := readVerifyOutcomeRecords(root)
 	if err != nil {
 		t.Fatalf("readVerifyOutcomeRecords: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestReadVerifyOutcomeRecords_LatestRowWinsAndBadLinesSkip(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("outcomes map = %d briefs, want 3 (bad line skipped)", len(got))
 	}
-	empty, _, err := readVerifyOutcomeRecords(t.TempDir())
+	empty, _, _, err := readVerifyOutcomeRecords(t.TempDir())
 	if err != nil {
 		t.Fatalf("readVerifyOutcomeRecords on an absent tree: %v", err)
 	}
