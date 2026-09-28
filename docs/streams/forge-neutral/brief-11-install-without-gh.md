@@ -186,7 +186,7 @@ facts:
 
 **Verifier notes — 2026-09-27, non-implementer verifier (opus-5.5), merged main b227b40768db;
 implementing change 3439807d08dd (PR #1560).** Every row was also run by hand; the witness
-table above is the machine record, and five of its verdicts are artefacts of how it reads a
+table above is the machine record, and seven of its verdicts are artefacts of how it reads a
 prose or list-shaped row (rows 5-9, 12, 13 below say which). Key real output per row:
 
 - **Row 1** — `install/SKILL.md:0`, `adopt/SKILL.md:0`. PASS.
@@ -265,7 +265,7 @@ never an unverified install) and need no derivation.
 - `RISK-VALUE: DERIVED — curl --proto '=https' --proto-redir '=https', exit 1 → refuse @ plugins/assay/scripts/assay-install.sh:155,159 — the '=' form sets the allowed-protocol list to exactly https for the transfer and every redirect, which is the #1554 ruling verbatim; curl documents exit 1 as unsupported/disabled protocol, the error a disallowed hop raises; H1 observed it on a real plain-HTTP hop serving the good asset (exit 5, nothing written); -q first means a user curl config cannot re-enable -k (T2).`
 - `RISK-VALUE: DERIVED — scheme allowlist https://* @ plugins/assay/scripts/assay-install.sh:149 — refuses every non-https initial URL before curl runs (H2 file://, N13 http://), the ruling's initial-URL half; case-variant schemes are refused too, which fails closed.`
 - `RISK-VALUE: DERIVED — expected digest = pin_fields "$pins" @ plugins/assay/scripts/assay-install.sh:184 — the only value compared at :196; the script has no code path that reads checksums.txt or any fetched file as the expected value, and no wget or insecure-TLS fallback, matching DR-forge-neutral-11's accepted ruling that the pin file is the single source.`
-- `RISK-VALUE: NAMED, NOT DERIVED — statusgen tag = v1.0.24 and per-platform sha256 (e.g. darwin-arm64 c7dcdc419674799333f4244ed4cdd9146916e766c4ff9c6fe1f9506dc260e1e8) @ plugins/assay/paired-versions.yaml:35-38 — these are the trust root the install's pin step copies into an adopter's .assay-versions, so after this change "the pin file" in practice means "this manifest as shipped in the plugin". Confirming them means comparing with the published v1.0.24 release's checksums.txt, a live fetch the offline envelope forbids. OPEN QUESTION for the human gate: confirm these digests against the published release, and confirm that a manifest in the plugin bundle is an acceptable single source of truth for a digest.`
+- `RISK-VALUE: NAMED, NOT DERIVED — statusgen tag = v1.0.24 and per-platform sha256 (e.g. darwin-arm64 c7dcdc419674799333f4244ed4cdd9146916e766c4ff9c6fe1f9506dc260e1e8) @ plugins/assay/paired-versions.yaml:35-43 (tag at 35, digests at 39-43) — these are the trust root the install's pin step copies into an adopter's .assay-versions, so after this change "the pin file" in practice means "this manifest as shipped in the plugin". Confirming them means comparing with the published v1.0.24 release's checksums.txt, a live fetch the offline envelope forbids. OPEN QUESTION for the human gate: confirm these digests against the published release, and confirm that a manifest in the plugin bundle is an acceptable single source of truth for a digest.`
 
 **Core-system reviewer questions (answered).** (1) The single control is the sha256 equality at
 assay-install.sh:196 against the pin-file digest. It is not alone: the post-acquisition proof
