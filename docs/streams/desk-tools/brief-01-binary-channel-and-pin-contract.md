@@ -136,10 +136,12 @@ no row's own shell assertion changes. Row 8's check was real and failing: its te
 release workflow this repository does not carry and skipped on every run (`pass=0`), so it now
 reads `.github/workflows/release.yml`, where the desk-tools build step stamps
 `deskkit.ReleaseTag`. The other three were check-shape defects the execution witness could not
-score, while each row's intended check passed by hand: row 1's command holds a backtick inside a
-single-backtick span, which the witness truncated (exit 2), so the span now uses a double-backtick
-fence; rows 5, 6 and 8 printed `rc` last, and the witness reads the last integer on the last line
-as the `≥` count, so the echo order puts `pass` last. Each row's `[ … ]` assertion is unchanged.
+score, while each row's intended check passed by hand. Row 1's command held a literal backtick
+inside a single-backtick span, which the witness truncated (exit 2). The backtick now comes from
+`printf '\140'` (octal for a backtick), so the grep pattern matches the same heading byte for byte
+and the span holds no backtick. Rows 5, 6 and 8 printed `rc` last, and the witness reads the last
+integer on the last line as the `≥` count, so the echo order now puts `pass` last. Each row's
+`[ … ]` assertion is unchanged.
 
 **Build step, run once before the code rows**: `make desk-build` — builds every
 `tools/desk/cmd/*` unprivileged into `tools/desk/dist/`. Rows that call `tools/desk/dist/deskpins`
@@ -148,7 +150,7 @@ will report "no such file or directory" (a failed row, not a placeholder) if thi
 | # | Command | Expect |
 |---|---------|--------|
 | 0 | single-spec: `n=$( { grep -rl 'assay-versions. pin file' docs/ README.md tools/desk/README.md 2>/dev/null; } \| xargs -r grep -l -e '^#\{1,3\} .*pin file' \| sort -u \| wc -l \| tr -d ' '); echo "spec-homes=$n"; [ "$n" -eq 1 ]` | exit 0, `spec-homes=1` — one file carries the spec heading; every other mention links to it |
-| 1 | `` SPEC=docs/distribution.md; test -f "$SPEC" && grep -q '^## The `.assay-versions` pin file' "$SPEC" && n=$(grep -c -e statusgen -e desk-tools -e daily-harvest -e sha256 -e could-not-check "$SPEC"); echo "n=$n"; [ "$n" -ge 5 ] `` | exit 0, `n` ≥ 5 — the spec section exists and names every artifact line and the three states |
+| 1 | `SPEC=docs/distribution.md; BT=$(printf '\140'); test -f "$SPEC" && grep -q "^## The ${BT}.assay-versions${BT} pin file" "$SPEC" && n=$(grep -c -e statusgen -e desk-tools -e daily-harvest -e sha256 -e could-not-check "$SPEC"); echo "n=$n"; [ "$n" -ge 5 ]` | exit 0, `n` ≥ 5 — the spec section exists and names every artifact line and the three states |
 | 2 | `cd tools/desk && go test ./... && go vet ./...` | exit 0 |
 | 3 | backward-compat against the golden fixture: `mkdir -p /tmp/av && cp tools/desk/internal/deskkit/testdata/assay-versions-live.golden /tmp/av/.assay-versions && tools/desk/dist/deskpins --check --root /tmp/av` | exit 0; checked-clean; the per-platform lines and comment lines parse; no bare `desk-tools` line is required |
 | 3a | not-a-duplicate: `mkdir -p /tmp/avd && cp /tmp/av/.assay-versions /tmp/avd/.assay-versions && grep -m1 '^statusgen ' /tmp/avd/.assay-versions > /tmp/dupline && cat /tmp/dupline >> /tmp/avd/.assay-versions && tools/desk/dist/deskpins --check --root /tmp/avd; rc=$?; echo "dup-rc=$rc"; [ "$rc" -ne 0 ]` | exit 0, non-zero `dup-rc` — the identical-tag/sha `statusgen`+`statusgen-linux-amd64` pair stays clean; a real second `statusgen ` line is rejected |
