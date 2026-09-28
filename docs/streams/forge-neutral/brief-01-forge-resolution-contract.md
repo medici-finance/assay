@@ -320,6 +320,28 @@ Ranked by irreversibility: E1 (a token at a loose mode is an exposed secret; nee
 
 **VERIFY: BLOCKED** — rows 2-10 PASS. Row 1 FAILED in the witness and the cause was not captured (most likely a host-contention package timeout; unconfirmed). Row 11 could-not-check (#1281). This is gate:human with sensitive-data:yes: a model records Evidence and does not sign off, so status stays `implemented`. Open question for the human: the NAMED, NOT DERIVED GitLab PAT destination (E3) above, plus the desktoken `--forge` consumers observation.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | fail exit=1 | sha256:00684f6ad3ac | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeSingleConstructionSite -count=1 -v` | pass exit=0 | sha256:26134f2438a4 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `grep -rn -e 'GitHubForge{' -e 'GitLabForge{' -e '&GitHubForge' -e '&GitLabForge' tools/desk --include='*.go' \| grep -v _test.go \| grep -cv 'forgeresolve.go' \|\| true` | pass exit=0 | sha256:9a271f2a916b | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeForRejectsCallerSuppliedForge -count=1 -v` | pass exit=0 | sha256:af95c9e02523 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeForUnconfiguredRepoRefuses -count=1 -v` | pass exit=0 | sha256:54dd0f92a044 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeForMissingTokenRefuses -count=1 -v` | pass exit=0 | sha256:c6d572ab2414 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run TestUnsupportedOperationIsCouldNotCheck -count=1 -v` | pass exit=0 | sha256:e61c2eb3f199 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/deskpost/... -count=1` | pass exit=0 | sha256:d3e6003827a3 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./internal/forgeban/... -count=1 && go test ./internal/deskkit/ -run TestNoForgeCLIShellout -count=1 && go test ./internal/deskkit/ -run TestForgeNoPassthrough -count=1` | pass exit=0 | sha256:17bbab62c795 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./internal/deskkit/ -run TestRosterKnownKeySet -count=1 -v` | pass exit=0 | sha256:219dd1d1d077 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `statusgen --root . --consumers --brief forge-neutral/01` | pass exit=0 | sha256:ad07be4c20e4 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+
+**Re-witness notes (2026-09-28, clean tree).**
+- Re-run at the batch tree (`e1afb99aca99`, porcelain empty before the run, no `+dirty`) because main changed a declared input after batch F; this table supersedes the batch-F witness above for these rows.
+- Row 1 (whole-module `go test ./...`) is HELD, attributed to the run environment (from a same-tree reproduction of the row), not to this brief: `cmd/commsgw` unix-socket bind is denied by the network-off sandbox; `cmd/cellctl` bash-quoting test sees macOS bash 3.2; `internal/loopengine` and `cmd/commsloop` hit 5s deadlines under host load 21-38 and pass outside the sandbox; `internal/avatar` golden images differ on darwin/arm64 (go1.27.1 local), NOT confirmed against CI. None of these packages is a deliverable of forge-neutral/01.
+- Rows 2-11 PASS (10 of 11), including row 11 `statusgen --consumers`, which exits 0 on this run.
+- Test hygiene: a `cmd/commsloop` test leaves an untracked `mailbox/` directory in the source tree; it reappeared mid-run (stamp is taken before any row runs, so it stays clean) and was removed afterwards.
+
+**VERIFY: BLOCKED** — rows 2-11 pass (10 of 11); row 1 held, environment-attributed above. gate: human, sensitive-data: yes — a model records Evidence and does not sign off; status stays `implemented`.
+
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`). Reviewer records verdict + date in
 the stream README table.

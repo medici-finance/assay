@@ -248,6 +248,28 @@ Observations: #643 (0276ce0a5) adds ASSAY_GITLAB_SESSION_EMAILS, an exact-match 
 
 VERIFY: BLOCKED — rows 2-10 pass on the witness (9 of 11); row 1 witness FAIL is environment-shaped (targeted re-runs clean, avatar golden clean under the CI-pinned toolchain); row 11 COULD-NOT-CHECK by design (#1281), manual consumers corroboration clean. gate: human, sensitive-data: yes — HELD at implemented; two NAMED, NOT DERIVED values carried to the human above.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | fail exit=1 | sha256:636cf0a440f6 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run TestRosterForgeQualifiedEntry -count=1 -v` | pass exit=0 | sha256:9ef38c15a28d | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestRosterUnqualifiedEntryDefaultsToGitHub -count=1 -v` | pass exit=0 | sha256:2bccba376c1c | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestRosterForgeMismatchRefuses -count=1 -v` | pass exit=0 | sha256:5014b5b3761d | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run TestRosterBareSlugStillRejected -count=1 -v` | pass exit=0 | sha256:b87c51a18e05 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./internal/deskkit/ -run TestCommitIdentityPerForge -count=1 -v` | pass exit=0 | sha256:f95c5e6bcc8a | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run TestCommitIdentityCrossForgeRejected -count=1 -v` | pass exit=0 | sha256:fc66e3be3806 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/deskwt/... ./cmd/deskflip/... ./cmd/deskboard/... ./cmd/deskclose/... -count=1` | pass exit=0 | sha256:fd5425235847 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `grep -c '^[\|] ' docs/streams/forge-neutral/identity.md` | pass exit=0 | sha256:2e6d31a5983a | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./internal/deskkit/ -run TestRosterKnownKeySet -count=1` | pass exit=0 | sha256:692d4dc15ba7 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `statusgen --root . --consumers --brief forge-neutral/02` | pass exit=0 | sha256:cfff82922901 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+
+**Re-witness notes (2026-09-28, clean tree).**
+- Re-run at the batch tree (`e1afb99aca99`, porcelain empty before the run, no `+dirty`) because main changed a declared input after batch F; this table supersedes the batch-F witness above for these rows.
+- Row 1 (whole-module `go test ./...`) is HELD, attributed to the run environment (from a same-tree reproduction of the row), not to this brief: `cmd/commsgw` unix-socket bind is denied by the network-off sandbox; `cmd/cellctl` bash-quoting test sees macOS bash 3.2; `internal/loopengine` and `cmd/commsloop` hit 5s deadlines under host load 21-38 and pass outside the sandbox; `internal/avatar` golden images differ on darwin/arm64 (go1.27.1 local), NOT confirmed against CI. None of these packages is a deliverable of forge-neutral/02.
+- Rows 2-11 PASS (10 of 11), including row 11 `statusgen --consumers`, which exits 0 on this run.
+- Test hygiene: a `cmd/commsloop` test leaves an untracked `mailbox/` directory in the source tree; it reappeared mid-run (stamp is taken before any row runs, so it stays clean) and was removed afterwards.
+
+**VERIFY: BLOCKED** — rows 2-11 pass (10 of 11); row 1 held, environment-attributed above. gate: human, sensitive-data: yes — a model records Evidence and does not sign off; status stays `implemented`.
+
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`). Reviewer records verdict + date in
 the stream README table.
