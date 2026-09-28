@@ -174,6 +174,81 @@ Pre-mortem → detection map:
 <!-- appended at implementation time: one witness row per Verify row —
      (command, exit code, output line(s), date, runner). -->
 
+### Verification — 2026-09-25 (assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian))
+
+VERIFY: BLOCKED — 0/10 witnessed pass, 10 could-not-check, 0 fail. Non-implementer run from a
+worktree cut detached at merged main `893cd6114b0382a1f71e6ef763c6601a5e19d270`
+(darwin/arm64, go1.26.5, offline, `KUBECONFIG=/dev/null`). No implementer Evidence was recorded in
+this section before this run. All ten Verify rows are `check:ci`; the `statusgen verifyrun`
+execution witness below (statusgen built from this tree) recorded every one as could-not-run,
+because its network-off sandbox needs Linux `unshare --net` and this host is darwin. Each row was
+then run directly, non-hermetic, and that run is recorded separately in the hand-written table
+after the witness. Direct runs: nine rows ended exit 0 (row 7 on its second attempt). Row 8 ended
+exit 1 on both attempts. The only failures were deadline-timing tests outside this brief's diff,
+on a host at load average 45–124. These are the known open flakes #1232 and #612. Every test
+this brief added or relies on passed. See the row notes. Evidence-only: the board row stays `implemented` and nothing is flipped here — see the
+routing note after the tables.
+
+Execution witness (tool-generated, verbatim):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03+dirty (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/verifyloop/ -run '^TestClassifyItemRiskGateTable$' -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03+dirty (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/verifyloop/ -run '^TestIrreversibleBriefIsRouteHumanNotDispatch$' -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03+dirty (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/verifyloop/ -run '^TestRouteHumanLineCarriesEvidenceOnlyMarker$' -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03+dirty (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/verifyloop/ -run '^TestRiskClearBriefStillDispatches$' -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03+dirty (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/verifyloop/ -run '^TestDormantReversibleFlagNeverDivertsIrreversible$' -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03+dirty (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./internal/loopengine/ -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03+dirty (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./... -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03+dirty (on-behalf-of human:ian) (forge-identity) |
+| 9 | `gofmt -l tools/desk/cmd/verifyloop tools/desk/internal/loopengine > /tmp/b19-fmt.out; test ! -s /tmp/b19-fmt.out` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03+dirty (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd statusgen && go run . --root .. --lint; echo $?` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03+dirty (on-behalf-of human:ian) (forge-identity) |
+
+Direct non-hermetic run (hand-written; separate from the witness above):
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 | COULD-NOT-CHECK — hermetic witness owed (darwin); direct run: exit 0 (build and vet both silent across the module) | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && go test ./cmd/verifyloop/ -run '^TestClassifyItemRiskGateTable$' -count=1` | exit 0 — risk-key × gate-form table, disposition and tier agree | COULD-NOT-CHECK — hermetic witness owed (darwin); direct run: exit 0 (25 of 25 subtests PASS = 5 risk rows × 5 gate forms; the table asserts the TierPolicy tier and the classifyItem disposition for the same input) | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && go test ./cmd/verifyloop/ -run '^TestIrreversibleBriefIsRouteHumanNotDispatch$' -count=1` | exit 0 | COULD-NOT-CHECK — hermetic witness owed (darwin); direct run: exit 0 (--- PASS: TestIrreversibleBriefIsRouteHumanNotDispatch) | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 4 | `cd tools/desk && go test ./cmd/verifyloop/ -run '^TestRouteHumanLineCarriesEvidenceOnlyMarker$' -count=1` | exit 0 | COULD-NOT-CHECK — hermetic witness owed (darwin); direct run: exit 0 (--- PASS: TestRouteHumanLineCarriesEvidenceOnlyMarker) | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 5 | `cd tools/desk && go test ./cmd/verifyloop/ -run '^TestRiskClearBriefStillDispatches$' -count=1` | exit 0 — negative control | COULD-NOT-CHECK — hermetic witness owed (darwin); direct run: exit 0 (--- PASS: TestRiskClearBriefStillDispatches) | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 6 | `cd tools/desk && go test ./cmd/verifyloop/ -run '^TestDormantReversibleFlagNeverDivertsIrreversible$' -count=1` | exit 0 | COULD-NOT-CHECK — hermetic witness owed (darwin); direct run: exit 0 (--- PASS: TestDormantReversibleFlagNeverDivertsIrreversible) | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 7 | `cd tools/desk && go test ./internal/loopengine/ -count=1` | exit 0 — Flagged gate variants and Any() over sixteen combinations | COULD-NOT-CHECK — hermetic witness owed (darwin); direct run: attempts 1 and 2 exit 1 at host load average ~124, only in deadline-timing tests outside this brief's diff (TestDrain "engine did not stop within deadline" and "max concurrency observed 1", TestRun_PoolRefillAfterCompletion), the known open flakes #1232 and #612; attempt 3 at load ~34: exit 0 (ok loopengine 9.976s). The brief's own TestRiskFlags_Flagged_GateVariants and TestRiskFlags_Any_AllSixteen PASS on every attempt | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 8 | `cd tools/desk && go test ./... -count=1` | exit 0 — whole suite including the untouched landing tests | COULD-NOT-CHECK — hermetic witness owed (darwin); direct run: exit 1 on both attempts (84 packages ok on attempt 2), failing only in deadline-timing tests outside this brief's diff at host load average 45–124: loopengine TestDrain and TestRun_PoolRefillAfterCompletion (both attempts), TestRun_IsDoneCallsOnIdleNeverExits and TestRun_LandFailureFilesAndContinues (attempt 1), and commsloop TestRunDoesNotBusySpinOnEmptyQueue (attempt 1). All are "did not stop within deadline" shapes, the known open flakes #1232 and #612. commsloop re-run alone: exit 0. loopengine re-run alone: exit 0. verifyloop, including the landing tests: ok on both attempts | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 9 | `gofmt -l tools/desk/cmd/verifyloop tools/desk/internal/loopengine > /tmp/b19-fmt.out; test ! -s /tmp/b19-fmt.out` | exit 0 | COULD-NOT-CHECK — hermetic witness owed (darwin); direct run: exit 0, empty gofmt listing (output file redirected to the session scratch directory instead of the shared /tmp) | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 10 | `cd statusgen && go run . --root .. --lint; echo $?` | 0 | COULD-NOT-CHECK — hermetic witness owed (darwin); direct run: exit 0, LINT: PASS, zero PROBLEM lines (NOTICEs only) | 2026-09-25 | assay-verifier-app[bot] @ 893cd6114b03 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+
+**Risk-bearing values** (enumeration over the diff of the implementing commit 635f8bde6 across
+the verifyloop and loopengine packages, plus the values named in this brief's Task and facts):
+
+1. evidenceOnlyMarker = "Evidence-only (never flip-eligible)" @ tools/desk/cmd/verifyloop/main.go:233. This is a display string, reversible.
+2. bucket heading suffix " / ROUTE-HUMAN" @ tools/desk/cmd/verifyloop/main.go:241. This is a display string, reversible.
+3. GateIsHuman first-token literal "human" (f[0] == "human") @ tools/desk/internal/loopengine/engine.go:71. This is an authority binding: which gate value routes to the human.
+4. TierPolicy irreversible arm → loopengine.TierHuman @ tools/desk/cmd/verifyloop/tier.go:31. This is an authority binding. Before this brief it was TierLocal.
+5. TierPolicy Flagged arm, flag off → loopengine.TierHuman @ tools/desk/cmd/verifyloop/tier.go:45. This value is unchanged; only its precedence moved.
+6. riskReason key literals "regulatory" / "customer" / "irreversible" / "sensitive-data" and prefix "risk: " @ tools/desk/cmd/verifyloop/queueclass.go:255–269. These are display strings, reversible.
+7. whyItWaits awaiting-human text @ tools/desk/cmd/verifyloop/queueclass.go:130. This is a display string, reversible.
+8. parseRisk matcher (?i)<key>\s*:\s*yes over the whole frontmatter block @ tools/desk/cmd/verifyloop/frontmatter.go:61. This was not changed by this brief. It is named in this brief's facts, and it is the input both layers depend on.
+
+The dormant reversible-risk flag (F16ReversibleRiskToSession) has no literal. It is a bool field
+left at its Go zero value, and no non-test code assigns it. It is dropped from the list under
+rule 2.
+
+Ranking by irreversibility: 4, 3 and 8 come first. Each decides whether a risk-carrying brief
+reaches a model-flippable lane. The flip itself is a README status edit that a revert can undo,
+so even a wrong value here is recoverable. 5 is next. 1, 2, 6 and 7 are output text and rank last.
+
+- RISK-VALUE: DERIVED — TierPolicy irreversible arm = loopengine.TierHuman @ tools/desk/cmd/verifyloop/tier.go:31 — the maintainer ruling of 2026-09-06 quoted in this brief's sources says FAIL SAFE, irreversible first, routes to ROUTE-HUMAN. Placing this arm ahead of the Flagged arm is what keeps the dormant flag (tier.go:42) from ever diverting irreversible work.
+- RISK-VALUE: DERIVED — GateIsHuman first-token = "human" @ tools/desk/internal/loopengine/engine.go:71 — this brief's Task 1 specifies trim, lowercase, then the first whitespace-delimited token. The brief-v2 gate vocabulary is human or model, so "human" is the only value that names the human gate. The qualifier and re-cased forms are covered by row 2's gate-form dimension.
+- RISK-VALUE: NAMED, NOT DERIVED — parseRisk matcher = (?i)<key>\s*:\s*yes @ tools/desk/cmd/verifyloop/frontmatter.go:61 — this matcher is demonstrably too broad. It matches a key-colon-yes sequence anywhere in the frontmatter, including prose. This brief is an example: its own why: text (frontmatter line 9) quotes a sibling brief's customer answer as yes. Direct probe of parseFrontmatter on this brief at 893cd6114b03: gate="model", risk Customer:true, any=true, reason "risk: customer". Declared risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}. A correct derivation needs the matcher anchored to the risk: key, either the inline flow map or the per-line entries under it. That is a change to a file outside this brief's scope, so it is not derived here. The error fails SAFE, over-routing to the human and never under-routing, so it does not reopen the leak this brief closed. It does misreport the routing reason.
+
+**Routing note (gate mismatch).** The brief's frontmatter reads `gate: model` and
+`risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}`. verifyloop plan
+buckets it awaiting-human / ROUTE-HUMAN with the reason `risk: customer`. The cause is the parseRisk
+false positive named above: a prose match in the why: field, not a risk answer. This run takes the
+fail-safe path: Evidence only, no status flip, and the board row stays `implemented`.
+
 ## Review
 
 Gate: model (all four risk answers no — the brief tightens a routing gate and changes no
