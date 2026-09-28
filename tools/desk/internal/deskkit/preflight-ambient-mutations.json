@@ -100,8 +100,8 @@
     {
       "name": "drop the gh auth token timeout detection (a hung stored-credential look rounds up to clean)",
       "file": "internal/deskkit/preflight.go",
-      "old": "\tif ctx.Err() != nil {\n\t\treturn fmt.Errorf(\"gh reports not logged in, and gh auth token did not answer",
-      "new": "\tif false && ctx.Err() != nil {\n\t\treturn fmt.Errorf(\"gh reports not logged in, and gh auth token did not answer"
+      "old": "\tif ctxErr != nil {\n\t\treturn fmt.Errorf(\"gh reports not logged in, and gh auth token did not answer",
+      "new": "\tif false && ctxErr != nil {\n\t\treturn fmt.Errorf(\"gh reports not logged in, and gh auth token did not answer"
     }
   ]
 }

@@ -1724,7 +1724,16 @@ func ambientLoginProbe() (string, error) {
 			stderr := oneLine(string(ee.Stderr))
 			if reason, ok := classifyNoAmbientIdentity(ee.ExitCode(), stderr); ok {
 				if reason == ghNotLoggedInReason {
-					if err := storedAmbientCredential(bin); err != nil {
+					// The stored-credential look is launched HERE, from the one
+					// function the forge-CLI ban's register already names for the
+					// ambient `gh` launch, not from a helper that would be a second
+					// exec site; storedAmbientCredential only judges the result.
+					tctx, tcancel := context.WithTimeout(context.Background(), ambientProbeTimeout)
+					defer tcancel()
+					tcmd := exec.CommandContext(tctx, bin, "auth", "token")
+					tcmd.WaitDelay = time.Second
+					tout, terr := tcmd.Output()
+					if err := storedAmbientCredential(tout, terr, tctx.Err()); err != nil {
 						return "", err
 					}
 				}
@@ -1763,19 +1772,17 @@ func classifyNoAmbientIdentity(exitCode int, stderr string) (string, bool) {
 // not of every credential gh can still read locally.
 const ghNotLoggedInReason = "gh is not logged in"
 
-// storedAmbientCredential runs `gh auth token` (local, no network) after `gh api
-// user` said "not logged in", and returns nil only when it shows no stored
-// credential: a non-zero exit, or an empty answer. A non-empty answer is an
-// error wrapping ErrStoredAmbientCredential; a call that could not run or did
-// not answer in time is a plain error (could-not-check). The answer is only
-// tested for being empty — it is never returned, logged, or kept.
-func storedAmbientCredential(bin string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), ambientProbeTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "auth", "token")
-	cmd.WaitDelay = time.Second
-	out, err := cmd.Output()
-	if ctx.Err() != nil {
+// storedAmbientCredential judges the `gh auth token` call (local, no network)
+// ambientLoginProbe makes after `gh api user` said "not logged in": out and
+// runErr are that call's result, ctxErr its timeout context's error. It returns
+// nil only when the call shows no stored credential: a non-zero exit, or an
+// empty answer. A non-empty answer is an error wrapping
+// ErrStoredAmbientCredential; a call that could not run or did not answer in
+// time is a plain error (could-not-check). The answer is only tested for being
+// empty — it is never returned, logged, or kept.
+func storedAmbientCredential(out []byte, runErr, ctxErr error) error {
+	err := runErr
+	if ctxErr != nil {
 		return fmt.Errorf("gh reports not logged in, and gh auth token did not answer within %s, so a stored "+
 			"credential could not be ruled out", ambientProbeTimeout)
 	}
