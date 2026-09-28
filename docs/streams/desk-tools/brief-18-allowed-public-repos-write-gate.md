@@ -168,6 +168,8 @@ outside every ref the tools evaluate, so no pull request can add its own reposit
 
 ## Verify
 
+> **2026-09-27:** Verify rows re-authored for witness executability (#1805); no semantic change — row 11 now opens with its runnable command as the first code span; no status change.
+
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check:ci | `cd tools/desk && go build ./... && go vet ./...` | exit 0 — every call site compiles against the narrowed signature |
@@ -180,7 +182,7 @@ outside every ref the tools evaluate, so no pull request can add its own reposit
 | 8 | check:ci | `cd tools/desk && go test ./... -count=1` | exit 0 — the whole suite, including every call site's own tests |
 | 9 | check:ci | `gofmt -l tools/desk/internal/deskkit tools/desk/cmd > /tmp/b18-fmt.out; test ! -s /tmp/b18-fmt.out` | exit 0 |
 | 10 | check:ci | `cd statusgen && go run . --root .. --lint; echo $?` | 0 |
-| 11 | check +mutation | **Mutation demonstration for the public-repo write gate this brief adds.** In `PublicRepoGate` (`tools/desk/internal/deskkit/repovis.go`) change the public/internal arm's authorization check `if RepoVisibility(owner+"/"+repo) == VisibilityPublic {` to `if true {` — the fail-open shape in which every live-public/internal repo passes whether or not the allowed-repos set lists it — then `cd tools/desk && go test ./internal/deskkit/ -run '^TestPublicRepoGateUnlistedPublicRefuses$' -count=1`; restore the file and re-run | exit **1** on the mutant: the negative control fails on all three subtests (unlisted, pattern-only, unconfigured each return nil instead of Refused/exit 5), exit **0** again after restoring. This is the row that proves the single control the design rests on reddens when the guarded thing is broken, rather than passing because nothing exercises it |
+| 11 | check +mutation | `cd tools/desk && go test ./internal/deskkit/ -run '^TestPublicRepoGateUnlistedPublicRefuses$' -count=1` — the test command this mutation row is judged by. **Mutation demonstration for the public-repo write gate this brief adds.** In `PublicRepoGate` (`tools/desk/internal/deskkit/repovis.go`) change the public/internal arm's authorization check `if RepoVisibility(owner+"/"+repo) == VisibilityPublic {` to `if true {` — the fail-open shape in which every live-public/internal repo passes whether or not the allowed-repos set lists it — then run the command above; restore the file and re-run it | exit 0 on the unmutated tree (the run the execution witness makes); exit **1** on the mutant: the negative control fails on all three subtests (unlisted, pattern-only, unconfigured each return nil instead of Refused/exit 5), exit **0** again after restoring. This is the row that proves the single control the design rests on reddens when the guarded thing is broken, rather than passing because nothing exercises it |
 
 Pre-mortem → detection map:
 
