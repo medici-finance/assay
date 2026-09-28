@@ -51,6 +51,9 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| build-less-brittle | 02 — design-fit: in every new brief — owner, contract, retires, weight, why-add [exec:strong] | 1 | 6500 |
+| build-less-brittle | 07 — Rule register (owner, invariant, justifying issue, catch source) and the monthly rule diet [exec:strong] | 1 | 5500 |
+| build-less-brittle | 08 — Hotspot metric (churn × complexity, temporal coupling) from git history, and the brittle mark [exec:strong] | 1 | 4500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | measured-status | 03 — Derive the commsloop router's risk field from the envelope instead of hardcoding false, or record why false is sound — restore the risk:yes->tier:human backstop [exec:strong] | 0 | 2200 |
 | measured-status | 05 — attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish [exec:strong] | 1 | 2200 |
@@ -65,7 +68,7 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (53 desk-actionable of 88 total — 85 at implemented, 3 verified awaiting review)
+## Awaiting verification / review (53 desk-actionable of 88 total — 84 at implemented, 4 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -76,7 +79,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| build-less-brittle | 01 [exec:strong] | implemented | 8500 | 11 | — | — | — |
+| build-less-brittle | 01 [exec:strong] | verified | 8500 | 11 | — | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) | — |
 | graph-execution | 02 [exec:strong] | implemented | 7500 | 11 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
@@ -231,7 +234,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 ### build-less-brittle (12 open)
 
-- 01 Semantic-owner index in docs/contracts.md — one meaning, one home — implemented (wave 0)
+- 01 Semantic-owner index in docs/contracts.md — one meaning, one home — verified (wave 0)
 - 02 design-fit: in every new brief — owner, contract, retires, weight, why-add — todo (wave 1)
 - 04 Intake files by error class; a recurring class triggers a design brief, not another point fix — todo (wave 2)
 - 05 Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight — todo (wave 3)
