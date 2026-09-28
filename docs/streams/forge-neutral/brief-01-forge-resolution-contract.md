@@ -342,6 +342,8 @@ Ranked by irreversibility: E1 (a token at a loose mode is an exposed secret; nee
 
 **VERIFY: BLOCKED** — rows 2-11 pass (10 of 11); row 1 held, environment-attributed above. gate: human, sensitive-data: yes — a model records Evidence and does not sign off; status stays `implemented`.
 
+**Correction (2026-09-28, verify-desk, on review of the batch Evidence PR):** the re-run lines above that read "rows 2-11 pass (10 of 11)" over-count. Row 11 (`statusgen --consumers`) passes at the batch tree only because the batch's own Evidence commit puts this brief in the diff; its result is vacuous (no claim corroborated, #1281). Row 3 passes only on its output: its `|| true` tail masks the exit status, so the witness exit proves nothing (the output does equal the expected 0). Witness-proven: rows 2 and 4-10 (8 of 11). Held: rows 1, 3 and 11. The verdict is unchanged: VERIFY BLOCKED, status stays `implemented`.
+
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`). Reviewer records verdict + date in
 the stream README table.
