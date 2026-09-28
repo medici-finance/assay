@@ -210,6 +210,8 @@ VERIFY: FAIL (blocked, not flippable). 11 of 13 rows pass. Rows 9 and 12 are cou
 because of check-definition problems. No implementation defect was observed, and the status stays
 `implemented`.
 
+**Correction (2026-09-28, verify-desk, on review of this Evidence PR):** witness-proven rows are 10 of 13. Held: row 9, row 11 and row 12. Row 11's witness recorded a fail (exit 4: no gh auth under the throwaway HOME) and its pass is a hand run only, so it is held. The earlier "11/13" counted it. Row 9's defect (the probe reads SKILL.md from disk, and the witness runs the plugin name as the command) is tracked on medici-finance/assay#1657, which also tracks row 12's self-referential base. The verdict is unchanged: VERIFY BLOCKED, status stays `implemented`.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table and
 answers: are the shortened descriptions' opening sentences still the trigger text a harness
