@@ -104,6 +104,69 @@ facts:
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./cmd/deskclose/` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test -timeout 5m ./cmd/deskclose/` | pass exit=0 | sha256:4e018f0ac11d | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskclose/ -run TestRulingCommentOnAnIssueAuthorizes -v` | pass exit=0 | sha256:1877e74b790f | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskclose/ -run TestCommentIdFromAnotherItemIsStillRefused -v` | pass exit=0 | sha256:491cd69dca70 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -nE 'fg\.ListComments\(' tools/desk/cmd/deskclose/authority.go; test $? -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+
+### Non-implementer verifier notes — 2026-09-27 opus-5.5-verifier
+
+Run against merged main 9585b4b6cc2ea8d35d367fb912e7c8216a765ba3 from an isolated worktree cut
+detached at that head; implementing commit bbc826d59 (#1320). Each row was also run by hand
+before the witness run above; the key real output per row:
+
+- Row 1: build + vet exit 0, no output (the witness hash is the empty-output digest).
+- Row 2: exit 0; `ok  github.com/medici-finance/assay/tools/desk/cmd/deskclose` (whole suite).
+- Row 3: the literal line `--- PASS: TestRulingCommentOnAnIssueAuthorizes` is present (checked on
+  the line, not only the exit status the witness records).
+- Row 4: the literal line `--- PASS: TestCommentIdFromAnotherItemIsStillRefused` is present.
+- Row 5: grep printed nothing, test exit 0 — no kind-less `fg.ListComments(` call is left in
+  the authorization read; the only read is `fg.ListCommentsTyped` (authority.go line 186).
+
+Fail-first, re-checked independently: with the kind derivation reverted to the old change-only
+read (the default kind in fetchComment set to TargetChange) in this verifier's own worktree,
+row 3's test goes RED with `could-not-check: ... carries no pull request at number 298` and
+row 4 stays green; the mutation was restored before the witness run (tree clean).
+
+Row 2's "no assertion weakened": the only pre-existing test file the implementing commit
+touched is the forge stub, and the change makes its typed comment read STRICTER (a number
+that names the other kind now answers could-not-check, matching production) — it removes no
+assertion. The two authorization controls (the database-id match in fetchCommentKinded and
+verifyHumanAuthor) are unchanged by the diff.
+
+Risk-bearing values — enumeration over the non-test lines of the implementing diff in
+authority.go (the test stub, the new test file's fixture numbers, and the changelog fragment
+are not behavior-governing):
+
+1. `m[3] == "pull"` @ tools/desk/cmd/deskclose/authority.go:145 — which permalink path segment
+   selects a direct change read.
+2. `kind := deskkit.TargetIssue` @ tools/desk/cmd/deskclose/authority.go:144 (TargetIssue =
+   "issue" @ tools/desk/internal/deskkit/forge.go:896) — the default kind for an `/issues/` link.
+3. `kind == deskkit.TargetIssue && deskkit.IsUnverifiable(err)` → retry with
+   `deskkit.TargetChange` @ tools/desk/cmd/deskclose/authority.go:149-150 (TargetChange =
+   "change" @ tools/desk/internal/deskkit/forge.go:898) — the one fallback binding.
+
+Rank: none is irreversible — a wrong value makes deskclose either refuse (could-not-check,
+zero closes) or read another thread, and a close itself is reopenable; each is undone by an
+edit and a rebuild. Entry 3 ranks first (it is the only one that widens where a read looks),
+then 1, then 2.
+
+RISK-VALUE: DERIVED — fallback binding (TargetIssue could-not-check → retry TargetChange) @ tools/desk/cmd/deskclose/authority.go:149 — the brief's facts establish that an `/issues/` permalink does not prove the object is an issue (the forge redirects a pull request's comment under it), so a second read is needed; it cannot widen what authorizes because fetchCommentKinded authorizes only on a database-id match on the permalink's own item, and a double could-not-check stays could-not-check (row 4 and the mutation above exercise both halves).
+RISK-VALUE: DERIVED — `m[3] == "pull"` @ tools/desk/cmd/deskclose/authority.go:145 — commentURLRe (authority.go:66-67) captures owner, repo, (issues|pull), number, comment id as groups 1-5, so group 3 is the kind segment; GitHub never renders an issue's own comment under `/pull/`, so `/pull/` proves a change and a direct TargetChange read is correct with no fallback.
+RISK-VALUE: DERIVED — default `kind := deskkit.TargetIssue` @ tools/desk/cmd/deskclose/authority.go:144 — every permalink that is not `/pull/` is `/issues/` (the regex admits only those two), and an `/issues/` link names an issue unless the retry proves otherwise; trying the issue thread first is what reaches the #1019 residual (row 3).
+
+Observations (no defect): (a) Task 3 said to delete "the kind-less fetchComment wrapper"; the
+name fetchComment survives, but it is no longer kind-less — it derives the kind and every
+path reaches ListCommentsTyped with a stated kind, which is the brief's intent. (b) The
+fallback fires on ANY could-not-check from the issue read (a transient read error too), not
+only on a kind mismatch; the outcome stays fail-closed (the change read of a real issue
+number also answers could-not-check), so the only cost is a second read.
+
+VERIFY: PASS
+
 ## Review
 Gate: model (all four risk answers no — it changes which thread an existing read looks in, on a
 reversible close path; the two authorization controls are unchanged and the negative-path row
