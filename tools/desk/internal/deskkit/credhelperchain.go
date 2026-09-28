@@ -64,7 +64,8 @@ import (
 // a partial-URL pattern applies when its scheme and host (where given) match, whatever its
 // user or path; `http.<url>.extraHeader` entries apply whenever their <url> matches, without
 // git's best-match narrowing; the host or `default` anywhere in a netrc file counts, wherever
-// it sits and whatever login follows it (netrcMatch).
+// it sits and whatever login follows it, and so does any netrc line too long for an old libcurl
+// reader to read whole (netrcMatch).
 
 // credTransportMatchesApp judges the credential git would present for a push to rawURL from
 // the repository at dir. It returns (true, detail, nil) only when every credential source git
@@ -114,8 +115,9 @@ func credTransportMatchesApp(dir, rawURL, appTokenPath string) (bool, string, er
 	if entry != "" {
 		return false, entry + " for " + shown + "; a libcurl netrc reader git might link can answer the " +
 			"server's authentication challenge from it before any credential helper runs, and this scan does " +
-			"not track where the word sits, so it cannot rule that out (if the word is only in a comment, a " +
-			"macro or a value, edit it out of the netrc file)", nil
+			"not track where a word sits or how an old reader splits a long line, so it cannot rule that out " +
+			"(if the word is only in a comment, a macro or a value, edit it out of the netrc file; shorten an " +
+			"over-long line)", nil
 	}
 
 	chain, err := applicableConfigValues(dir, "credential", "helper", rawURL)
@@ -498,7 +500,7 @@ func netrcEntryFor(host string) (string, error) {
 //
 // The core rule (netrcWordRule): red when the host or `default` occurs ANYWHERE in the file,
 // ASCII case-insensitively, delimited only by the start or end of the file or by a byte that is
-// not an ASCII letter, digit, `.`, `-` or `_` (isNetrcWordByte). Two add-only rules follow it,
+// not an ASCII letter, digit, `.`, `-` or `_` (isNetrcWordByte). Three add-only rules follow it,
 // each covering one way a reader can form a token whose bytes are not a delimited word in the
 // raw file:
 //
@@ -508,33 +510,56 @@ func netrcEntryFor(host string) (string, error) {
 //     before reading the next token, so in `"a"Xdefault` the word `default` is a token though
 //     it follows the letter X. Red when the word ends at a delimiter and starts two bytes after
 //     a `"`, whatever the byte between.
+//   - netrcLongLineRule: libcurl 7.61.0 through 7.85.0 read a line in pieces of at most 4095
+//     bytes and tokenize each piece as a line of its own, so a piece boundary can start or end
+//     a token between two word bytes. Red on any line longer than 4095 bytes counting its
+//     newline (netrcOldReadPiece), whatever the line holds; it keeps no state but that length.
+//     The threshold is exact for those readers: a line of 4095 bytes or fewer, counting its
+//     newline, is one read; any longer line is at least two, so no split escapes it.
 //
 // netrcMatch returns the first red any rule finds, in order, so a later rule only ever runs on a
 // body every earlier rule read green: no rule can turn another's red into green or could-not-check.
 //
-// Why these cover the readers this check knows of (the pre-8.11 state machine, the 8.11-8.12
-// reader that drops whole-line comments on load, curl-8.13 through curl-8.20 with a signed or an
-// unsigned char, and the curl-8.21+ grammar lexer). Each presents a credential only after reading
-// a token equal to host (after `machine`) or to `default`, case-insensitively. Such a token is
+// Why these cover the readers this check knows of. By how each libcurl reads a line (lib/netrc.c):
+//
+//   - 7.61.0 through 7.85.0: `fgets(netrcbuffer, netrcbuffsize, file)` into `char
+//     netrcbuffer[4096]`, the line tokenized with strtok_r (to 7.83.x) or a hand-written
+//     tokenizer with quotes (7.84.0, 7.85.0). A line longer than 4095 bytes arrives in pieces:
+//     covered by the long-line rule, which reds every such line. A line of at most 4095 bytes
+//     is read whole, and the token argument below covers it.
+//   - 7.86.0 through 8.6.0: Curl_get_line into the same 4096-byte buffer, which drops a line
+//     too long for it; 8.7.0 onward (among them the 8.11-8.12 reader that drops whole-line
+//     comments on load, curl-8.13 through curl-8.20 with a signed or an unsigned char, and the
+//     curl-8.21+ grammar lexer): Curl_get_line into a capped dynbuf, which stops reading at an
+//     over-long line. Neither splits a line, so the token argument covers them.
+//
+// Every one of them presents a credential only after reading a token equal to host (after
+// `machine`) or to `default`, case-insensitively. Within a line it reads whole, such a token is
 // one of:
 //
 //   - unquoted: raw file bytes, ended by end of file or a byte that reader treats as a separator,
 //     and started at start of file, after such a byte, right after a closing quote (8.21+), or
-//     right after the byte a pre-8.21 reader drops after a closing quote. No reader separates on
-//     a letter, digit, `.`, `-` or `_`, so every case but the last is a delimited word (core
-//     rule) and the last is the quote-skip rule;
+//     right after the byte a pre-8.21 reader drops after a closing quote. No reader separates
+//     on a letter, digit, `.`, `-` or `_` within a line it reads whole, so every case but the
+//     last is a delimited word (core rule) and the last is the quote-skip rule;
 //   - quoted: the bytes between two quotes, each optionally preceded by a backslash (\n, \r and
 //     \t decode to control bytes a host never holds). With the backslashes removed they are a
 //     word delimited by those quotes (escape-folded rule).
 //
-// The limit of that argument: it holds for readers that separate only on non-word bytes, drop at
-// most that one byte after a quote, and decode only single-byte backslash escapes. A reader
-// outside it — an unbuilt libcurl release, a vendor patch, a non-libcurl reader — is NOT covered:
-// the check may read green there. It cannot tell which libcurl git links, so it never reports
-// could-not-check for that reason.
+// The limit of that argument: it holds for readers that split a line only as above, separate only
+// on non-word bytes, drop at most that one byte after a quote, and decode only single-byte
+// backslash escapes. A reader outside it is NOT covered, and the check may read green there:
+//
+//   - libcurl 7.60.0 and older, which read with fgets into `char netrcbuffer[256]`, so a line of
+//     256 to 4095 bytes arrives in pieces too. git has required libcurl 7.61.0 or later since
+//     git 2.48 (git's INSTALL), so only an older git linked against such a libcurl reads that way;
+//   - an unbuilt libcurl release, a vendor patch, or a non-libcurl reader.
+//
+// It cannot tell which libcurl git links, so it never reports could-not-check for that reason.
 //
 // Cost the ruling accepts (a false red): the host or `default` appearing only in a comment, a
-// macro or a value reads red. The operator clears it by editing their netrc.
+// macro or a value reads red, and so does any line longer than 4095 bytes counting its newline,
+// even one holding neither word. The operator clears it by editing their netrc.
 //
 // Could-not-check: a body with a NUL byte and no red. curl reads the file a line at a time with
 // strlen, so a NUL drops the rest of its line and the newline with it, splicing the next line on
@@ -563,6 +588,7 @@ var netrcRedRules = []netrcRedRule{
 	{"core", netrcWordRule},
 	{"escape-folded", netrcEscapeFoldedRule},
 	{"quote-skip", netrcQuoteSkipRule},
+	{"long-line", netrcLongLineRule},
 }
 
 // netrcWordRule is the core rule: host or `default` occurs in body as a delimited word.
@@ -586,6 +612,43 @@ func netrcEscapeFoldedRule(body, host string) string {
 func netrcQuoteSkipRule(body, host string) string {
 	return netrcWordsFound(body, host, " right after the byte a pre-8.21 libcurl drops after a closing quote",
 		func(b string, p int) bool { return p >= 2 && b[p-2] == '"' })
+}
+
+// netrcOldReadBuffer is the netrc line buffer of libcurl 7.61.0 through 7.85.0: lib/netrc.c
+// declares `char netrcbuffer[4096]` and reads each line with `fgets(netrcbuffer, netrcbuffsize,
+// file)`, where netrcbuffsize is sizeof(netrcbuffer). (7.60.0 and older used 256 bytes; 7.86.0
+// moved to Curl_get_line, which drops an over-long line instead of splitting it.)
+const netrcOldReadBuffer = 4096
+
+// netrcOldReadPiece is the most bytes one such fgets call returns: it stops after a newline or
+// one byte short of the buffer, to leave room for the NUL. A line of at most netrcOldReadPiece
+// bytes counting its newline is read whole; a longer one is read in pieces.
+const netrcOldReadPiece = netrcOldReadBuffer - 1
+
+// netrcLongLineRule reads red when some line of body holds more than netrcOldReadPiece bytes,
+// counting its newline (a last line with no newline counts only its bytes). libcurl 7.61.0
+// through 7.85.0 read such a line in pieces and tokenize each piece as a line of its own, so a
+// piece boundary starts or ends a token wherever it falls, even between two word bytes, and a
+// host or `default` glued to other word bytes in the raw file becomes a token. A line of exactly
+// 4096 bytes counting its newline is red too: its second piece is the newline alone, which also
+// ends a macdef body on those readers. The rule does not look for the host or `default`, and its
+// verdict depends on nothing but each line's length (the line number only labels the red, which
+// names the line number and length, never its bytes). On Windows curl opens the file in text
+// mode ("rt"), which only removes bytes from a line, so counting the raw bytes never undercounts.
+func netrcLongLineRule(body, _ string) string {
+	for line, start := 1, 0; start < len(body); line++ {
+		end := len(body)
+		if nl := strings.IndexByte(body[start:], '\n'); nl >= 0 {
+			end = start + nl + 1
+		}
+		if n := end - start; n > netrcOldReadPiece {
+			return fmt.Sprintf("netrc line %d of %d bytes, longer than the %d bytes libcurl 7.61.0 through "+
+				"7.85.0 read at once (they read it in pieces, and a piece boundary can start or end a token "+
+				"inside a word)", line, n, netrcOldReadPiece)
+		}
+		start = end
+	}
+	return ""
 }
 
 // netrcWordsFound describes the first of host and `default` that occurs in body, ASCII
