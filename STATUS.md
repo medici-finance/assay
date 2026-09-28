@@ -51,6 +51,9 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| build-less-brittle | 02 — design-fit: in every new brief — owner, contract, retires, weight, why-add [exec:strong] | 1 | 6500 |
+| build-less-brittle | 07 — Rule register (owner, invariant, justifying issue, catch source) and the monthly rule diet [exec:strong] | 1 | 5500 |
+| build-less-brittle | 08 — Hotspot metric (churn × complexity, temporal coupling) from git history, and the brittle mark [exec:strong] | 1 | 4500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | measured-status | 03 — Derive the commsloop router's risk field from the envelope instead of hardcoding false, or record why false is sound — restore the risk:yes->tier:human backstop [exec:strong] | 0 | 2200 |
 | measured-status | 05 — attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish [exec:strong] | 1 | 2200 |
@@ -65,23 +68,22 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (56 desk-actionable of 87 total — 85 at implemented, 2 verified awaiting review)
+## Awaiting verification / review (51 desk-actionable of 88 total — 83 at implemented, 5 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (56)
+### Desk-actionable (51)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| build-less-brittle | 01 [exec:strong] | implemented | 8500 | 11 | — | — | — |
+| build-less-brittle | 01 [exec:strong] | verified | 8500 | 11 | — | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) | — |
 | graph-execution | 02 [exec:strong] | implemented | 7500 | 11 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
 | graph-execution | 10 [exec:strong] | implemented | 4500 | 5 | — | — | — |
-| forge-neutral | 07 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
@@ -92,12 +94,10 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | desk-containers | 08 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | desktools-go-git | 02 | implemented | 2500 | 3 | — | 2026-09-11 opus-5[1m]-verifier | — |
-| forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
-| contributor-trust | 04 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | desk-supervision | 13 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 16 [exec:strong] | implemented | 2000 | 2 | — | — | — |
-| forge-neutral | 11 [exec:strong] | implemented | 2000 | 0 | — | — | — |
+| desk-supervision | 24 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | forge-neutral | 14 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | — | — |
@@ -111,7 +111,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-gitlab | 13 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 09 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| windows-port | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 12 | implemented | 1500 | 1 | — | — | — |
 | windows-port | 15 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -131,9 +130,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | quality | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 14 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| windows-port | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting human gate (9)
+### Awaiting human gate (12)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -142,12 +140,15 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | windows-port | 01 | implemented | 5500 | 9 | — | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | harness-portability | 03 | implemented | 5000 | 8 | — | — | — |
+| forge-neutral | 07 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | windows-port | 08 [exec:strong] | implemented | 2500 | 3 | — | — | — |
+| forge-neutral | 11 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting implementer rework (20)
+### Awaiting implementer rework (23)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -157,9 +158,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 04 [exec:strong] | implemented | 4500 | 7 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | graph-execution | 07 [exec:strong] | implemented | 2500 | 1 | — | — | — |
+| contributor-trust | 04 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | desk-containers | 09 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | windows-port | 13 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| windows-port | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -171,13 +174,14 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 15 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| windows-port | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
 ### Parked stream (2)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| iso-9001 | 01 [exec:strong] | implemented | 4000 | 6 | — | — | — |
-| iso-9001 | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| iso-9001 | 01 [exec:strong] | verified | 4000 | 6 | — | 2026-09-27 assay-verifier-app[bot] @ b227b40768db (claude-opus-5-5) | — |
+| iso-9001 | 04 [exec:strong] | verified | 2000 | 2 | — | 2026-09-27 assay-verifier-app[bot] @ 9585b4b6cc2e (claude-opus-5-5) | — |
 
 ## Age at the human gate
 
@@ -230,7 +234,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 ### build-less-brittle (12 open)
 
-- 01 Semantic-owner index in docs/contracts.md — one meaning, one home — implemented (wave 0)
+- 01 Semantic-owner index in docs/contracts.md — one meaning, one home — verified (wave 0)
 - 02 design-fit: in every new brief — owner, contract, retires, weight, why-add — todo (wave 1)
 - 04 Intake files by error class; a recurring class triggers a design brief, not another point fix — todo (wave 2)
 - 05 Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight — todo (wave 3)
@@ -303,7 +307,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 21 Reverify changed external prerequisites without a synthetic push — implemented (wave 1)
 - 22 Configure provider, model and effort per cell role — implemented (wave 0)
 - 23 Evidence lands on main behind a file-scoped gatekeeper — validator workflow + lander App — todo (wave 2)
-- 24 One file per verify outcome — retire the shared appended outcomes log — todo (wave 0)
+- 24 One file per verify outcome — retire the shared appended outcomes log — implemented (wave 0)
 - 25 Carry a correctness approval across a merge of main that leaves the PR's diff byte-identical — todo (wave 1)
 - 26 Land one verify tick's Evidence-only outcomes in one Evidence PR — todo (wave 1)
 
@@ -427,9 +431,9 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 ### iso-9001 (5 open)
 
-- 01 Emit the tool-validation evidence pack as a release asset — implemented (wave 0)
+- 01 Emit the tool-validation evidence pack as a release asset — verified (wave 0)
 - 03 A finding closes on a fired control — the corrective-action effectiveness record — todo (wave 1)
-- 04 Record the authorizing human in the release itself — implemented (wave 1)
+- 04 Record the authorizing human in the release itself — verified (wave 1)
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
 - 07 Release by merge — the human merge is the cut and the authorizer — blocked (wave 2)
 

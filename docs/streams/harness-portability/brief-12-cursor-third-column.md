@@ -114,14 +114,28 @@ facts:
 | 2 | `(cd tools/harnessgen && GOWORK=off go run . cursor --check --root ../..); echo $?` | `0` — committed `.mdc` matches the single resident source (`plugins/assay/resident-rules.md` (planned)) + coverage + binding all clean |
 | 3 | **Mutation — drift detected**: `printf '\nX\n' >> "$PWD/plugins/assay/cursor/assay.mdc" && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check >/tmp/hp12r3.out 2>&1; echo $?; (cd tools/harnessgen && GOWORK=off go run . cursor --root ../..)` | `1` naming `assay.mdc`; the `.mdc` is untracked so the revert is a regenerate (`harnessgen cursor`), after which `--check` passes again |
 | 4 | **Mutation — coverage closed**: `mkdir -p /tmp/hp12t && cp -r plugins/assay /tmp/hp12t/ && mkdir /tmp/hp12t/assay/skills/probe-skill && printf -- '---\nname: probe-skill\ndescription: probe\n---\n' > /tmp/hp12t/assay/skills/probe-skill/SKILL.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12t/assay >/tmp/hp12r4.out 2>&1; echo $?; rm -rf /tmp/hp12t` | exit `2`, output names `probe-skill` — an unaccounted skill is a hard error |
-| 5 | **Mutation — binding consistency**: `mkdir -p /tmp/hp12b && cp -r plugins/assay /tmp/hp12b/ && sed 's/`the-desk`/the-desk/g' plugins/assay/references/cursor.md > /tmp/hp12b/assay/references/cursor.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12b/assay >/tmp/hp12r5.out 2>&1; echo $?; rm -rf /tmp/hp12b` | exit `2` naming `the-desk` — packaging↔binding skew is a build error |
+| 5 | **Mutation — binding consistency**: `mkdir -p /tmp/hp12b && cp -r plugins/assay /tmp/hp12b/ && sed "s/$(printf '\140')the-desk$(printf '\140')/the-desk/g" plugins/assay/references/cursor.md > /tmp/hp12b/assay/references/cursor.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12b/assay >/tmp/hp12r5.out 2>&1; echo $?; rm -rf /tmp/hp12b` | exit `2` naming `the-desk` — packaging↔binding skew is a build error |
 | 6 | Neutrality holds: `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bodies plugins/assay/skills && /tmp/hl870 bindings plugins/assay/references; echo $?` | `0` — adopt's Cursor section stays neutral; `cursor.md` resolves every capability + has a cell per skill |
 | 7 | Neighbours unbroken: `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..) && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | `0` — the `resident` and `codex` verbs still pass beside the new one |
 | 8 | Adopt path present: `grep -qi 'Running Assay on Cursor' docs/adopting-assay.md && grep -qF 'plugins/assay/cursor/' docs/adopting-assay.md; echo $?` | `0` — the Cursor install scenario + the generated-rule step both present. (Retarget: the adopter-facing install scenario landed in `docs/adopting-assay.md` — §"Running Assay on Cursor — a second first-class harness" — after `plugins/assay/skills/adopt/SKILL.md` was converted to a thin router; the generated-rule step is the referenced `plugins/assay/cursor/` output, home of the generated `assay.mdc`.) |
 | 8a | **Positive control for row 8**: `grep -qF 'plugins/assay/cursor-no-such-token' docs/adopting-assay.md; echo $?` | `1` — the probe reports absence for an absent token |
-| 9 | `.mdc` frontmatter: `grep -qF 'alwaysApply: true' plugins/assay/cursor/assay.mdc; echo $?` | `0` — the generated rule carries the `.cursor/rules` always-apply contract |
+| 9 | Generated-rule frontmatter: `grep -qF 'alwaysApply: true' plugins/assay/cursor/assay.mdc; echo $?` | `0` — the generated rule carries the `.cursor/rules` always-apply contract |
 | 10 | Live-confirm rows flagged, not asserted: `grep -c 'needs: live-install confirmation' docs/research/cursor-harness-capabilities.md` | `≥ 5` — the unrunnable rows are flagged, never greened |
-| 11 | New entries fresh: `(cd tools/freshness && GOWORK=off go run . --root ../..) 2>&1 \| grep -E -e 'references/cursor.md' -e 'cursor-harness'` | both new entries report `FRESH` (the tool's whole-repo exit is 1 only from pre-existing unrelated stale artifacts, never from these entries) |
+| 11 | New entries fresh: `{ (cd tools/freshness && GOWORK=off go run . --root ../..) 2>&1 \|\| true; } \| grep -E -e 'references/cursor.md' -e 'cursor-harness' \| grep -c '^FRESH'` | both new entries report `FRESH` — the printed count is ≥ 2 (the tool's whole-repo exit is 1 only from pre-existing unrelated stale artifacts, never from these entries, so the row reads the two entries' lines, not that exit) |
+
+**Row-shape note — 2026-09-28 (#1703).** Rows 5, 9 and 11 were re-spelled so the execution
+witness (`statusgen verifyrun`, which runs the FIRST code span of the Command cell under
+`bash -o pipefail`) runs the command the row means. Every Expect is unchanged or stricter; none
+is loosened. Row 5: the `sed` expression held literal backticks, which closed the code span
+early, so the witness ran a truncated command ending at `sed 's/`. It now builds the backtick
+with `printf '\140'`, which makes the same substitution. Row 9: the cell opened with a prose code
+span naming the file extension, and the witness ran that as the command (exit 127). The prose is
+now plain text. Row 11: under pipefail, the whole-repo freshness exit (1, from unrelated stale
+entries) leaked through the pipe, although the Expect already said that exit is not the signal.
+The row now discards that exit explicitly and counts the `FRESH` lines for the two entries. The
+Expect gains a machine-readable floor of 2, so a STALE line for either entry is a failure where
+the old spelling passed on any matching line. Row 6 needed no change. It was a real failure: the
+Claude Code binding had no `system-demo` degradation cell, and #1703 adds it.
 
 ## Evidence
 
