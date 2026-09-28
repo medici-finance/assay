@@ -20,7 +20,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/format/packfile"
@@ -138,41 +140,66 @@ func PushRefUpdate(ctx context.Context, u RefUpdate) (RefUpdateResult, error) {
 
 // PushRefUpdateDetail is PushRefUpdate plus the server's own reason for a refusal: on
 // RefUpdateRejected the string is the per-command report-status text the server sent (for
-// example "stale info", "failed to update ref", or a policy refusal), so a caller can tell the
+// example "stale info", "failed to update ref", or a policy refusal), followed by whatever the
+// server said on the sideband while refusing ("failure (remote: …)"), so a caller can tell the
 // compare-and-swap losing from the server refusing the write for another cause. It is "" on
 // RefUpdateApplied and on error.
 func PushRefUpdateDetail(ctx context.Context, u RefUpdate) (RefUpdateResult, string, error) {
+	v, err := PushRefUpdateVerdict(ctx, u)
+	if err != nil {
+		return 0, "", err
+	}
+	if v.Result == RefUpdateRejected {
+		return v.Result, rejectionText(v.Status, v.Remote), nil
+	}
+	return v.Result, "", nil
+}
+
+// RefUpdateVerdict is the server's whole answer to one ref update: the result, and on a
+// refusal the report-status word (Status) and the sideband text the server sent with it
+// (Remote), kept apart so a caller can branch on the status word without parsing prose.
+type RefUpdateVerdict struct {
+	Result RefUpdateResult
+	Status string
+	Remote string
+}
+
+// PushRefUpdateVerdict is PushRefUpdateDetail with the refusal left structured. A non-nil
+// error is a transport/auth/not-found/protocol failure (could-not-check), exactly as for
+// PushRefUpdate.
+func PushRefUpdateVerdict(ctx context.Context, u RefUpdate) (RefUpdateVerdict, error) {
 	ep, err := transport.NewEndpoint(u.URL)
 	if err != nil {
-		return 0, "", fmt.Errorf("gitcore: ref-update endpoint: %w", err)
+		return RefUpdateVerdict{}, fmt.Errorf("gitcore: ref-update endpoint: %w", err)
 	}
 	cli, err := client.NewClient(ep)
 	if err != nil {
-		return 0, "", fmt.Errorf("gitcore: ref-update client: %w", err)
+		return RefUpdateVerdict{}, fmt.Errorf("gitcore: ref-update client: %w", err)
 	}
 	sess, err := cli.NewReceivePackSession(ep, u.Auth)
 	if err != nil {
-		return 0, "", fmt.Errorf("gitcore: receive-pack session: %w", err)
+		return RefUpdateVerdict{}, fmt.Errorf("gitcore: receive-pack session: %w", err)
 	}
 	defer sess.Close()
 
 	adv, err := sess.AdvertisedReferencesContext(ctx)
 	if err != nil {
-		return 0, "", fmt.Errorf("gitcore: receive-pack advertise: %w", err)
+		return RefUpdateVerdict{}, fmt.Errorf("gitcore: receive-pack advertise: %w", err)
 	}
 
 	req := packp.NewReferenceUpdateRequestFromCapabilities(adv.Capabilities)
 	req.Commands = []*packp.Command{{Name: u.Ref, Old: u.Old, New: u.New}}
+	remote := captureRemoteMessages(req, adv.Capabilities)
 	if u.New != plumbing.ZeroHash {
 		if u.Objects == nil {
-			return 0, "", fmt.Errorf("gitcore: receive-pack: a non-delete update carries no object source")
+			return RefUpdateVerdict{}, fmt.Errorf("gitcore: receive-pack: a non-delete update carries no object source")
 		}
 		var buf bytes.Buffer
 		enc := packfile.NewEncoder(&buf, u.Objects, false)
 		// Encode from the new tip AND the empty blob it targets so the pack is self-contained
 		// even against a server that has never seen an empty-blob loose object.
 		if _, eerr := enc.Encode([]plumbing.Hash{u.New, plumbing.NewHash(EmptyBlobHash)}, 10); eerr != nil {
-			return 0, "", fmt.Errorf("gitcore: receive-pack pack encode: %w", eerr)
+			return RefUpdateVerdict{}, fmt.Errorf("gitcore: receive-pack pack encode: %w", eerr)
 		}
 		req.Packfile = io.NopCloser(&buf)
 	}
@@ -183,22 +210,22 @@ func PushRefUpdateDetail(ctx context.Context, u RefUpdate) (RefUpdateResult, str
 	// losing) is classified as a rejection rather than an opaque error.
 	if rs != nil {
 		if rs.UnpackStatus != "" && rs.UnpackStatus != "ok" {
-			return 0, "", fmt.Errorf("gitcore: receive-pack unpack error: %s", rs.UnpackStatus)
+			return RefUpdateVerdict{}, fmt.Errorf("gitcore: receive-pack unpack error: %s", rejectionText(rs.UnpackStatus, remoteText(remote)))
 		}
 		for _, cs := range rs.CommandStatuses {
 			if cs.Status != "ok" {
-				return RefUpdateRejected, cs.Status, nil
+				return RefUpdateVerdict{Result: RefUpdateRejected, Status: strings.TrimSpace(cs.Status), Remote: remoteText(remote)}, nil
 			}
 		}
-		return RefUpdateApplied, "", nil
+		return RefUpdateVerdict{Result: RefUpdateApplied}, nil
 	}
 	if err != nil {
-		return 0, "", fmt.Errorf("gitcore: receive-pack: %w", err)
+		return RefUpdateVerdict{}, fmt.Errorf("gitcore: receive-pack: %w", withRemote(err, remote))
 	}
 	// No report-status and no error: report-status was not negotiated, but the command was
 	// sent and the session closed cleanly. Treat as applied (the local git transport takes
 	// this path); the http transport always returns a report-status.
-	return RefUpdateApplied, "", nil
+	return RefUpdateVerdict{Result: RefUpdateApplied}, nil
 }
 
 // DeleteResult is the outcome of a ref delete.
@@ -242,24 +269,125 @@ func DeleteRef(ctx context.Context, url string, auth transport.AuthMethod, ref p
 
 	req := packp.NewReferenceUpdateRequestFromCapabilities(adv.Capabilities)
 	req.Commands = []*packp.Command{{Name: ref, Old: current, New: plumbing.ZeroHash}}
+	remote := captureRemoteMessages(req, adv.Capabilities)
 	rs, err := sess.ReceivePack(ctx, req)
 	if rs != nil {
 		if rs.UnpackStatus != "" && rs.UnpackStatus != "ok" {
-			return 0, fmt.Errorf("gitcore: receive-pack unpack error: %s", rs.UnpackStatus)
+			return 0, fmt.Errorf("gitcore: receive-pack unpack error: %s", rejectionText(rs.UnpackStatus, remoteText(remote)))
 		}
 		for _, cs := range rs.CommandStatuses {
 			if cs.Status != "ok" {
-				// The ref changed between advertise and delete — report as a transport-level
-				// could-not-check; the caller re-reads rather than blindly assuming released.
-				return 0, fmt.Errorf("gitcore: delete of %s rejected: %s", ref, cs.Status)
+				// The SERVER refused the delete — the ref changed between advertise and delete,
+				// or the server declined the write for its own reason. Either way it is not
+				// "released": the caller re-reads (or falls back) rather than assuming so. The
+				// typed error carries the report-status word AND the server's own messages.
+				return 0, &RefRejectedError{Ref: ref, Old: current, Status: strings.TrimSpace(cs.Status), Remote: remoteText(remote)}
 			}
 		}
 		return DeleteDone, nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("gitcore: receive-pack: %w", err)
+		return 0, fmt.Errorf("gitcore: receive-pack: %w", withRemote(err, remote))
 	}
 	return DeleteDone, nil
+}
+
+// RefRejectedError is the SERVER's refusal of one ref delete: the per-command report-status
+// word (Status — git's "stale info", "failed to update ref", a hook's "pre-receive hook
+// declined", or a forge's bare "failure") plus whatever the server said on the sideband while
+// it refused (Remote — hook output, a policy message, an internal error line). It is distinct
+// from a transport error so a caller can tell "the server answered no" from "the server could
+// not be reached", and it keeps the server's own words, which the bare status word alone
+// discards.
+type RefRejectedError struct {
+	Ref plumbing.ReferenceName
+	// Old is the value the delete was compare-and-swapped against — what the advertisement
+	// showed the ref holding when the delete was sent — so a caller re-reading the ref can tell
+	// "it moved under me" from "the server refused the write itself".
+	Old    plumbing.Hash
+	Status string
+	Remote string
+}
+
+func (e *RefRejectedError) Error() string {
+	return fmt.Sprintf("gitcore: delete of %s rejected: %s", e.Ref, rejectionText(e.Status, e.Remote))
+}
+
+// maxRemoteMessageBytes bounds how much sideband text a refusal carries into an error string.
+// A server's refusal is a line or two; the bound only stops a chatty or hostile remote from
+// turning one error message into an unbounded one.
+const maxRemoteMessageBytes = 2048
+
+// captureRemoteMessages negotiates the sideband on a receive-pack request, when the server
+// advertises it, and returns the buffer the server's progress channel (band 2 — hook output,
+// policy refusals, "remote: error: ..." lines) is written into. Without the sideband a server
+// has no channel for those messages at all, so a refusal arrives as its bare report-status word
+// ("failure") and the reason is lost before it leaves the server. quiet is requested alongside
+// so ordinary unpack progress does not crowd the one message worth keeping. A server that
+// advertises no sideband yields an empty buffer and the request is unchanged.
+func captureRemoteMessages(req *packp.ReferenceUpdateRequest, adv *capability.List) *bytes.Buffer {
+	buf := &bytes.Buffer{}
+	switch {
+	case adv.Supports(capability.Sideband64k):
+		_ = req.Capabilities.Set(capability.Sideband64k)
+	case adv.Supports(capability.Sideband):
+		_ = req.Capabilities.Set(capability.Sideband)
+	default:
+		return buf
+	}
+	if adv.Supports(capability.Quiet) {
+		_ = req.Capabilities.Set(capability.Quiet)
+	}
+	req.Progress = buf
+	return buf
+}
+
+// remoteText renders the captured sideband text as one printable line: control characters
+// (the server's \r progress rewrites, stray escapes, C0 and C1 alike) become spaces, blank lines
+// are dropped, the rest is joined with "; ", and the whole is bounded by maxRemoteMessageBytes.
+// A cut that lands inside a multi-byte rune cannot leave invalid UTF-8: strings.Map re-encodes
+// every invalid byte as U+FFFD.
+func remoteText(buf *bytes.Buffer) string {
+	if buf == nil || buf.Len() == 0 {
+		return ""
+	}
+	raw := buf.Bytes()
+	if len(raw) > maxRemoteMessageBytes {
+		raw = raw[:maxRemoteMessageBytes]
+	}
+	var lines []string
+	for _, ln := range strings.FieldsFunc(string(raw), func(r rune) bool { return r == '\n' || r == '\r' }) {
+		ln = strings.Map(func(r rune) rune {
+			if unicode.IsControl(r) {
+				return ' '
+			}
+			return r
+		}, ln)
+		if t := strings.TrimSpace(ln); t != "" {
+			lines = append(lines, t)
+		}
+	}
+	return strings.Join(lines, "; ")
+}
+
+// rejectionText is the one rendering of a server refusal: the report-status word, then the
+// server's own messages in brackets when it sent any.
+func rejectionText(status, remote string) string {
+	status = strings.TrimSpace(status)
+	if remote == "" {
+		return status
+	}
+	return status + " (remote: " + remote + ")"
+}
+
+// withRemote appends the captured sideband text to a transport error, so a session that failed
+// after the server had started talking (a sideband error channel, a truncated report) still says
+// what the server said.
+func withRemote(err error, remote *bytes.Buffer) error {
+	if t := remoteText(remote); t != "" {
+		return fmt.Errorf("%w (remote: %s)", err, t)
+	}
+	return err
 }
 
 // TagPayload is the message body and tagger timestamp read off a claim tag object.

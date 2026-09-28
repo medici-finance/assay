@@ -15,6 +15,8 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: [1065]
+consumers:
+  - "tools/desk/internal/comms/envelope.go (the cellmsg-v1 risk signal the router would derive from): follow-up #1722 (Option 2 taken — the field does not exist upstream and the strict parser refuses one, so the wiring is tracked as issue #1722; this branch touches no consumer path)"
 schema: brief-v2
 authored: 2026-09-16 by measured-status scoping session
 sources:
@@ -77,16 +79,47 @@ facts:
      with the literal still `false`. Row 5 applies instead of rows 1/2.
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd tools/desk && go test ./cmd/commsloop/ -run TestRouterRiskDerivedFromEnvelope -count=1` | Option 1: exit 0, output contains "ok". Option 2: N/A (record so in Evidence, do not force a pass) |
-| 2 | `cd tools/desk && go test ./cmd/commsloop/ -run 'TestRouter.*Risk' -count=1 -v 2>&1 \| grep -q 'PASS'` | Option 1: exit 0 (the backstop-fires and fail-closed cases both ran and passed). Option 2: N/A |
-| 3 | `cd tools/desk && ( ! grep -q 'const risk = false' cmd/commsloop/loop.go ) \|\| grep -q 'Derivation:' cmd/commsloop/loop.go` | exit 0 — Option 1: the hardcoded literal is gone. Option 2: the literal remains, but a `Derivation:` block justifies it at the call site |
-| 4 | `cd tools/desk && go vet ./cmd/commsloop/` | exit 0 (both options) |
-| 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:03` | Option 2 only: exit 0; output does not contain "DISPROVED" (the follow-up wiring issue recorded as a `consumers:` `follow-up` edge is corroborated, not contradicted) |
+| # | Class | Command | Expect |
+|---|-------|---------|--------|
+| 1 | check | `cd tools/desk && go test ./cmd/commsloop/ -run TestRouterRiskDerivedFromEnvelope -count=1` | Option 1: exit 0, output contains "ok". Option 2: N/A (record so in Evidence, do not force a pass) |
+| 2 | check | `cd tools/desk && go test ./cmd/commsloop/ -run 'TestRouter.*Risk' -count=1 -v 2>&1 \| grep -q 'PASS'` | Option 1: exit 0 (the backstop-fires and fail-closed cases both ran and passed). Option 2: N/A |
+| 3 | check +mutation | `cd tools/desk && ( ! grep -q 'const risk = false' cmd/commsloop/loop.go ) \|\| grep -q 'Derivation:' cmd/commsloop/loop.go` | exit 0 — Option 1: the hardcoded literal is gone. Option 2: the literal remains, but a `Derivation:` block justifies it at the call site. Mutation proof: the same command run against `origin/main`'s `loop.go` exits 1 (no `Derivation:` block there); at this branch's head it exits 0 — the guard reddens on main and greens here |
+| 4 | check | `cd tools/desk && go vet ./cmd/commsloop/` | exit 0 (both options) |
+| 5 | check | `statusgen --root . --consumers --brief assay:assay:measured-status:03` | Option 2 only: exit 0; output does not contain "DISPROVED" (the follow-up wiring issue recorded as a `consumers:` `follow-up` edge is corroborated, not contradicted) |
 
 ## Evidence
-<!-- appended at implementation time by a non-implementer -->
+Option taken (implementer record, 2026-09-27): **Option 2 — Derivation block + tracked
+follow-up.** The cellmsg-v1 envelope (`tools/desk/internal/comms/envelope.go`) carries no
+risk field anywhere upstream and its strict parser (`DisallowUnknownFields`) refuses one,
+so no sender can produce the signal assign.yaml's risk axis reads; wiring a real envelope
+signal is genuinely out of reach in this change. The `// Derivation:` block at the call
+site (`tools/desk/cmd/commsloop/loop.go`, above the retained `const risk = false`)
+enumerates the seven classes of message the router can see and shows each is covered
+without the risk axis; the residual gap (a mis-routed risk-shaped message reaching
+TierSession) is filed as the tracked wiring follow-up, issue #1722.
+
+Implementer's local runs of the applicable rows (the verifier re-runs; rows 1 and 2 are
+N/A — Option 2 taken, no new routing behaviour exists to test, no pass forced):
+
+| # | Result |
+|---|--------|
+| 1 | N/A — Option 2 taken |
+| 2 | N/A — Option 2 taken |
+| 3 | PASS — `Derivation:` present at the call site, literal `const risk = false` retained. Mutation proof re-run against `origin/main` (no `Derivation:` block there): exit 1. Re-run at this branch's head: exit 0 |
+| 4 | PASS — `go vet ./cmd/commsloop/` exit 0 |
+| 5 | PASS — exit 0, no DISPROVED (the follow-up edge reports UNCHECKED: it names issue #1722, not a stream/NN brief — corroborated as not-contradicted) |
+
+Review follow-up (2026-09-27): both reviewer findings from the first review round are
+addressed in this push. The Derivation block's closing sentence, which named the class-6
+consult-failure default as the layer behind the retained literal, is corrected — class 6
+only fires when the consult itself fails, not when a successful consult mis-routes, so it
+cannot be that backstop. The block now names the controls that actually apply: Dispatch's
+own `Native` zero-value (no session fired, mailbox delivery only) today, and, if `Native` is
+ever enabled, the kill switch and role-fenced session. The Verify table above gained a
+`Class` column with row 3 marked `+mutation`, with the red-then-green proof recorded in
+Evidence. The hand-edited board row in the stream README (row 03's Status cell) is reverted
+to `todo` — the generated table is statusgen's to write, and the PR body's claim of a row
+flip is dropped in the same push.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

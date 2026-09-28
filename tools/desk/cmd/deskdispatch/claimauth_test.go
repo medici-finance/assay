@@ -221,8 +221,9 @@ func stubMint(t *testing.T, token string, err error) *[]mintCall {
 	return &calls
 }
 
-// An explicit GH_TOKEN already in the environment WINS: nothing is minted, the child sees the
-// operator's export, and the Go binary is NOT handed --token-file (that flag would outrank the
+// An explicit GH_TOKEN already in the environment WINS once it is verified to be the dispatching
+// role's own App (issue 1631 — the regression floor for the deliberate override): nothing is
+// minted, the child sees the operator's export, and the Go binary is NOT handed --token-file (that flag would outrank the
 // export inside the binary).
 func TestExplicitGHTokenWinsAndNothingIsMinted(t *testing.T) {
 	for _, tool := range []string{"go-binary", "legacy-script"} {
@@ -238,6 +239,7 @@ func TestExplicitGHTokenWinsAndNothingIsMinted(t *testing.T) {
 			s.replies = happyReplies("/private/tmp/worker-home")
 			t.Setenv("GH_TOKEN", "example-explicit-export")
 			mints := stubMint(t, stubMintedToken, nil)
+			stubTokenIdentity(t, dispatcherAppIdentity, nil) // issue 1631: the export IS the role's App
 
 			rc := run([]string{"example--stream--07", "--root", root, "--repo", allowedRepo,
 				"--prompt-file", filepath.Join(t.TempDir(), "p.md")})

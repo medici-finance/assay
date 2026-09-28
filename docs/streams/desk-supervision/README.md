@@ -132,6 +132,9 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 21 | [Reverify changed external prerequisites without a synthetic push](brief-21-external-prerequisite-reverification.md) | 1 | M | implemented | — | — |
 | 22 | [Configure provider, model and effort per cell role](brief-22-cell-model-policy.md) | 0 | M | implemented | — | — |
 | 23 | [Evidence lands on main behind a file-scoped gatekeeper — validator workflow + lander App](brief-23-evidence-lander-gatekeeper.md) | 2 | L | todo | — | — |
+| 24 | [One file per verify outcome — retire the shared appended outcomes log](brief-24-per-file-verify-outcomes.md) | 0 | L | implemented | — | — |
+| 25 | [Carry a correctness approval across a merge of main that leaves the PR's diff byte-identical](brief-25-approval-carry-across-no-diff-merge.md) | 1 | L | todo | — | — |
+| 26 | [Land one verify tick's Evidence-only outcomes in one Evidence PR](brief-26-batched-evidence-landing-per-tick.md) | 1 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -198,18 +201,60 @@ implementer App can push, so they land only through `11`'s workflow-only PR path
 single-point-of-failure line, and the brief pairs each layer with the Verify row that proves it
 holds with the layer above it bypassed.
 
+**Briefs 24-26 end the Evidence-PR conflict churn (#882).** They are three separate options, by
+name: per-file outcomes (`24`), approval carry (`25`) and batched landing (`26`). On a PR-required
+main every verify outcome lands as its own Evidence PR that appends one line to the shared outcomes
+log. The log's `merge=union` attribute (#588) resolves only a LOCAL merge. The forge computes
+mergeability and merges server-side with no merge driver, so each landing turns every open sibling
+CONFLICTING. On 2026-09-27, 19 of 40 open verifier PRs were conflicting, each on that one file and
+nothing else. Clearing one costs a merge of main, a head move past the approval, and a re-review.
+
+- `24` removes the cause. Each outcome becomes one new, immutable file, readers go through one choke
+  point per module, the log is migrated and retired, and its 256 KiB cap class goes with it. The same
+  writer starts refusing the three receipt defects reviewers keep finding.
+- `25` removes the correctness re-review when a keep-current merge of a draft changed nothing. A
+  tool-derived carry verdict stands in for it only when the only new commits are driver-free clean
+  merges of main and the diff is byte-identical. Both flip verbs re-derive it by a different method,
+  a human-landed guard lets the Evidence auto-merge lane arm only on an approval at head and only
+  after re-deriving a carry itself, the forge dismisses it on any later push, and security verdicts
+  are never carried. One residual window is named for the human gate. It depends on
+  `24`: while outcomes share one appended log, every Evidence PR's merge needs the union driver, which
+  the carry refuses. It is `gate: human` because it relaxes a review gate.
+- `26` cuts the PR and review count. One tick's Evidence-only outcomes land in one PR, and a refused
+  entry is left out, not allowed to block the rest. It depends on `24`, because a batch built on the
+  shared log would still conflict.
+
+Until they land, the verify-desk and pr-review-desk skills carry the procedure-only mitigation: an
+Evidence-PR state table over verdict × at head × mergeable whose rows are exclusive and exhaustive,
+each with one owner. The verify desk merges main, one PR at a time, into a CONFLICTING Evidence PR
+whose latest verdict is clear or answered by a push. The review desk re-reviews the delta as soon as
+it is MERGEABLE. An UNKNOWN mergeability is re-read, never acted on.
+
+Relation to fresh-views/04: it planned the same `merge=union` fix for #882, which had already landed
+through #588, and that fix does not reach the forge's merge. Its other half, reporting the
+forge-returned sha, is independent of these three briefs.
+
+Relation to `23`: `23` would land Evidence on main with no PR at all.
+- If it lands, `24` still matters: its remerge of a waiting staging ref is exactly the concurrent-append
+  case, and per-file records reduce its scope rule to "one new record file".
+- `26` stays its fallback path, the batch Evidence PR `23` already names.
+- `25` stays useful for every non-Evidence PR.
+
+`24` amends `23`'s outcome-log clauses if `23` is not yet implemented.
+
 ## Dependency waves
 
 ```
-Wave 0: [01 probes+observer]  [05 per-class caps]  [06 workpad]  [09 CI fan-out]  [10 workflow-App wiring]
-Wave 1: [02 run-stop] ← 01    [04 hooks] ← 01    [07 snapshot] ← 01    [08 objectives A/B] ← 06    [11 workflow-only PR] ← 10
+Wave 0: [01 probes+observer]  [05 per-class caps]  [06 workpad]  [09 CI fan-out]  [10 workflow-App wiring]  [24 per-file outcomes]
+Wave 1: [02 run-stop] ← 01    [04 hooks] ← 01    [07 snapshot] ← 01    [08 objectives A/B] ← 06    [11 workflow-only PR] ← 10    [25 approval carry] ← 24    [26 batched Evidence] ← 24
 Wave 2: [03 reconcile] ← 01, 02    [12 retire staging] ← 11    [13 vitals resource block] ← 07    [23 Evidence lander] ← 11
 Wave 3: [14 budget-driven recycle] ← 04, 13
 Wave 4: [15 local host + fleet aggregate] ← 13, 14
 ```
 
 Critical paths: `01 → 02 → 03` (supervision), `10 → 11 → 12` / `10 → 11 → 23` (workflow landing),
-and `01 → 07 → 13 → 14 → 15` (vitals delta). The three chains are independent of each other.
+`01 → 07 → 13 → 14 → 15` (vitals delta), and `24 → 25` / `24 → 26` (Evidence churn).
+The chains are independent of each other.
 
 ## Shared conventions
 
