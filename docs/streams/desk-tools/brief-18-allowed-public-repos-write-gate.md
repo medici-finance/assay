@@ -170,6 +170,8 @@ outside every ref the tools evaluate, so no pull request can add its own reposit
 
 > **2026-09-27:** Verify rows re-authored for witness executability (#1805); no semantic change — row 11 now opens with its runnable command as the first code span; no status change.
 
+> **2026-09-28:** Row 7 narrowed per the driver's option (b), recorded in the relay comment https://github.com/medici-finance/assay/pull/1820#issuecomment-5862298850 (ratification in the driver's own login pending). The grep previously covered all of `tools/`. It now covers the retired `+1` gate's surface: `tools/desk/cmd/deskpost/` and the `PublicRepoGate` call path (the gate in `repovis.go` and its test, plus the `deskpr`, `deskreply`, `deskevidence` and `deskrelease` callers). It also gains the "+1 gate" wording patterns. The Expect keeps its meaning: the retired gate's reaction read and its wording are absent from the write gate. The `deskkit` `Forge.IssueReactions` surface (`forge.go`, the GitHub and GitLab backends and their tests) is retained deliberately for the Forge abstraction's separate admission surface (implementing commit d739495fc) and is out of scope for this row. No status change.
+
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check:ci | `cd tools/desk && go build ./... && go vet ./...` | exit 0 — every call site compiles against the narrowed signature |
@@ -178,7 +180,7 @@ outside every ref the tools evaluate, so no pull request can add its own reposit
 | 4 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestPublicRepoGateUnlistedPublicRefuses$' -count=1` | exit 0 — the NEGATIVE control: unlisted, pattern-only and unconfigured all refuse with exit 5 |
 | 5 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestPublicRepoGateRosterDriftRefuses$' -count=1` | exit 0 — live `public` against a `:private` entry refuses; the stale claim never authorizes |
 | 6 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestPublicRepoGatePrivateAndUnreadable$' -count=1` | exit 0 — private passes, unreadable and unrecognised visibility exit 6 |
-| 7 | check:ci | `grep -rn -e 'publicRepoBlessed' -e 'PublicBlessSentinelName' -e 'public-app-ok' -e 'IssueReactions' tools/ > /tmp/b18-residual.out; test ! -s /tmp/b18-residual.out` | exit 0 — the retired sentinel and the reactions probe leave no reference behind |
+| 7 | check:ci | `grep -rn -e 'publicRepoBlessed' -e 'PublicBlessSentinelName' -e 'public-app-ok' -e 'IssueReactions' -e '+1 gate' -e '+1-gate' -e 'public-repo +1' tools/desk/cmd/deskpost/ tools/desk/cmd/deskpr/ tools/desk/cmd/deskreply/ tools/desk/cmd/deskevidence/ tools/desk/cmd/deskrelease/ tools/desk/internal/deskkit/repovis.go tools/desk/internal/deskkit/repovis_test.go > /tmp/b18-residual.out; test ! -s /tmp/b18-residual.out` | exit 0 — the retired sentinel, the retired `+1` gate's reaction read and its "+1 gate" wording leave no reference behind on the public-repo write gate's path: deskpost, every `PublicRepoGate` caller (deskpr, deskreply, deskevidence, deskrelease) and the gate itself (`repovis.go`) |
 | 8 | check:ci | `cd tools/desk && go test ./... -count=1` | exit 0 — the whole suite, including every call site's own tests |
 | 9 | check:ci | `gofmt -l tools/desk/internal/deskkit tools/desk/cmd > /tmp/b18-fmt.out; test ! -s /tmp/b18-fmt.out` | exit 0 |
 | 10 | check:ci | `cd statusgen && go run . --root .. --lint; echo $?` | 0 |
