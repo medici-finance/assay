@@ -1,2 +1,0 @@
-### Changed
-- `statusgen --lint` no longer fails a backticked path that has since been moved or retired when it sits inside a brief's record sections — `## Evidence` (tables, verifier-run write-ups, witness rows) and `## Proof it can fail` mutation records. Those sections record what was true when they ran, so a later retirement no longer forces rewriting history or annotating every line. Task, Deliverables, Context, Verify-table cells and all other prose are still existence-checked, and dead markdown links inside record sections are still reported.
