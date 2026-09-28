@@ -383,11 +383,24 @@ as the planner and acts on its rows.
   review (the board computes this; don't hand-diff). Keep-current merges are expected work, not
   noise — except one that had to **resolve a conflict**, which edits the PR's own files and shows
   as RE-REVIEW instead: review the resolution, it is authored work.
-- **Evidence PRs re-conflict by design.** A verify desk's Evidence PR goes `CONFLICTING` whenever
-  a sibling Evidence PR lands: they all append to one outcomes log, and the forge's server-side
-  merge applies no `.gitattributes` merge driver (#882). The verify-desk skill's Evidence-PR state
-  table (verdict × at head × mergeable, first match wins) gives every state exactly one owner. This
-  desk owns three of its rows:
+- **A `CONFLICTING` Evidence PR on the NEW per-file layout now means a real content conflict —
+  but check whether #1802 has retired the shared log before assuming that for every PR.** Since
+  #882, an Evidence PR that writes ONLY the per-file layout no longer conflicts on outcomes: each
+  writes one NEW file under `docs/streams/verify-outcomes/<stream>/`, named by a pure function of
+  its own content, so two PRs only ever add the same path when they carry byte-identical content,
+  and two identical adds merge cleanly with no driver. (Before #882 every Evidence PR appended to
+  one shared outcomes log, and the forge's server-side merge applied no `.gitattributes` driver, so
+  an Evidence PR went `CONFLICTING` whenever a sibling landed regardless of content — that class is
+  closed FOR NEW WORK using the per-file layout.) **Transition window:** the shared
+  `docs/streams/verify-outcomes.jsonl` log stays on disk, unretired, until every open PR still
+  touching it has landed (#882's follow-up, #1802) — a PR still appending to it still conflicts
+  with every sibling PR that also touches it, exactly as before #882. That is the verify desk's
+  local-merge-of-main lane (the `merge=union` driver resolves it), never a re-review here; a
+  receipt correction on such a PR is a NEW `--outcome-record` record with a later `ts`, never an
+  edit of the existing log line. The verify-desk skill's Evidence-PR state table (verdict × at
+  head × mergeable, first match wins) still gives every state exactly one owner, for whatever DOES
+  conflict now on the per-file layout — two PRs editing the same brief's `## Evidence` section, or
+  an unrelated file. This desk owns three of its rows:
   - **verdict `none`**: first review of each missing lane, whether or not the PR is `CONFLICTING`;
   - **`MERGEABLE`, the head moved since the latest verdict** (a fix or a merge of main was pushed):
     re-review the delta as soon as it is `MERGEABLE`, with priority. For a merge of main, check that

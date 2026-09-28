@@ -79,6 +79,11 @@ var corpusOperationalStreams = map[string]string{
 	"findings":     "deskpushguard register root",
 	"issue-flow":   "rulings.md register — deskclose/deskmerge/deskdigest read it live",
 	"desktools-v2": "forge-ban.sh --baseline mode reads and upserts docs/streams/desktools-v2/forge-ban-baseline.txt at runtime — its own persisted counter for this stream, not a copy-set reference",
+	// verify-outcomes (#882): the per-file verify-outcome record register — deskevidence
+	// writes there (--outcome-record), and both verifyloop (via deskkit.ReadVerifyOutcomes)
+	// and statusgen (its own copy) read it live. Genericising the name would break every one
+	// of them: it is the operational contract itself, not withheld process-management prose.
+	"verify-outcomes": "deskevidence writes it (--outcome-record); verifyloop + statusgen read it live",
 }
 
 // corpusCopySetExempt is the set of tools/desk files this guard does NOT scan
