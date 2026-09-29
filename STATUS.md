@@ -11,24 +11,24 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-09-28 |  |
-| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 1/13 | 2026-09-28 |  |
-| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-09-28 |  |
-| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-28 |  |
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-28 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-09-28 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/26 | 2026-09-28 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-09-28 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-28 |  |
-| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 0/10 | 2026-09-28 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-28 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-09-28 |  |
-| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/18 | 2026-09-28 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/17 | 2026-09-28 |  |
-| [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-09-28 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-09-28 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/14 | 2026-09-28 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/18 | 2026-09-28 |  |
+| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-09-29 |  |
+| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 1/13 | 2026-09-29 |  |
+| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-09-29 |  |
+| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-29 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-29 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-09-29 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/26 | 2026-09-29 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-09-29 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-29 |  |
+| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 0/10 | 2026-09-29 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-29 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-09-29 |  |
+| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/18 | 2026-09-29 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/17 | 2026-09-29 |  |
+| [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-09-29 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-09-29 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/14 | 2026-09-29 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/18 | 2026-09-29 |  |
 
 ## Parked
 
@@ -36,11 +36,11 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Priority | Briefs | Last touched |
 |---|---|---|---|
-| [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-09-28 |
-| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-09-28 |
-| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-28 |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | 2/7 | 2026-09-28 |
-| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-09-28 |
+| [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-09-29 |
+| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-09-29 |
+| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-29 |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | 2/7 | 2026-09-29 |
+| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-09-29 |
 
 ## Next up
 
