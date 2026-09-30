@@ -1305,3 +1305,25 @@ func TestDisprovedReasonNamesTheFailingCheck(t *testing.T) {
 		}
 	})
 }
+
+// TestFollowUpBackRefV2 (#1960 defect class): a follow-up that names a brief-v2
+// referrer by its <stream>/<NN> ref DOES reference it back — the referrer's raw
+// <cell>:<repo>:<stream>:<NN> id never appears in a ref, so matching on it alone
+// reported every v2 deferral as unheld.
+func TestFollowUpBackRefV2(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "docs", "streams", "fu")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeBrief(t, dir, "01", []string{"demo/03"}, nil)
+	streams := []*Stream{{Name: "fu", Dir: dir}}
+	if !followUpReferencesBack(streams, "fu/01", "smoke:sg:demo:03") {
+		t.Fatal("a follow-up depending on demo/03 references the v2 brief smoke:sg:demo:03 back")
+	}
+	if !followUpReferencesBack(streams, "fu/01", "demo/03") {
+		t.Fatal("the brief-v1 spelling must still match")
+	}
+	if followUpReferencesBack(streams, "fu/01", "smoke:sg:demo:04") {
+		t.Fatal("a follow-up that never names demo/04 must not count as referencing it")
+	}
+}

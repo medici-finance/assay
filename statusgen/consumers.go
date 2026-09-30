@@ -482,6 +482,11 @@ func indexBriefIDs(streams []*Stream) map[string]bool {
 // never heard of the brief deferring work to it is a promise with no holder;
 // this is the cheapest evidence that the deferral was actually landed somewhere.
 func followUpReferencesBack(streams []*Stream, target, referrer string) bool {
+	// A brief-v2 referrer's id is the hierarchical <cell>:<repo>:<stream>:<NN>
+	// form, but a back-reference is written as a <stream>/<NN> ref — the form every
+	// depends:/unblocks:/follow-up ref uses. Accept either spelling (#1960's
+	// defect class: a v2 `brief:` id compared against a <stream>/<NN> ref).
+	short := normalizeBriefKey(referrer)
 	stream, num, ok := strings.Cut(target, "/")
 	if !ok {
 		return false
@@ -499,7 +504,7 @@ func followUpReferencesBack(streams []*Stream, target, referrer string) bool {
 			if err != nil {
 				return false
 			}
-			return strings.Contains(string(raw), referrer)
+			return strings.Contains(string(raw), referrer) || strings.Contains(string(raw), short)
 		}
 	}
 	return false
@@ -588,7 +593,7 @@ func runConsumers(root, base, briefFilter string) int {
 	var claimless []string
 	for _, bf := range briefs {
 		if bf.ConsumersProse == "" && len(bf.Consumers) == 0 {
-			claimless = append(claimless, bf.Brief)
+			claimless = append(claimless, bf.Brief) // briefid:raw display list for the claimless report
 			continue
 		}
 		rel, err := filepath.Rel(root, bf.Path)
