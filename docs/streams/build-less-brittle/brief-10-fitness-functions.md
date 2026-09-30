@@ -148,6 +148,45 @@ checks the register rows landed and serve an existing S- row.
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
+### Execution witness @ ca81ea0a9603 — 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) (on-behalf-of human:ian)
+
+What moved since the last run: nothing in the Verify table or the implementation (#1930, merged as 921c22b0a072); the earlier hand-run block recorded PASS on all ten rows but carried no execution-witness table, so the `verified` closure could not lint. This block adds that witness, produced by `statusgen verifyrun` (built from this tree at ca81ea0a9603) against merged main ca81ea0a960387bb34f9dbc22b188802097d5251. verifyrun exited 0. The table below is exactly as emitted.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./internal/arch/ -count=1` | pass exit=0 | sha256:28d0c2a7412a | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/arch/ -run TestRulesFixture -count=1 -v \| grep -c '^--- PASS: TestRulesFixture '` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && printf 'package deskkit\nimport _ "github.com/medici-finance/assay/tools/desk/cmd/deskfile"\n' > internal/deskkit/zz_arch_mutation.go && go test ./internal/arch/ -run TestDependencyDirection -count=1 > /tmp/bl10-m1.out 2>&1; rc=$?; rm -f internal/deskkit/zz_arch_mutation.go; test $rc -ne 0 && grep -c 'R-dep-direction' /tmp/bl10-m1.out` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && printf 'package deskkit\nimport _ "github.com/medici-finance/assay/tools/desk/internal/forgeban"\n' > internal/deskkit/zz_arch_mutation.go && go test ./internal/arch/ -run TestHubAllowList -count=1 > /tmp/bl10-m2.out 2>&1; rc=$?; rm -f internal/deskkit/zz_arch_mutation.go; test $rc -ne 0 && grep -c 'R-hub-allowlist' /tmp/bl10-m2.out` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && printf 'package forgeban\n// semantic: S-claim\nfunc zzMutation() {}\n' > internal/forgeban/zz_arch_mutation.go && go test ./internal/arch/ -run TestOneImplementationPerMeaning -count=1 > /tmp/bl10-m3.out 2>&1; rc=$?; rm -f internal/forgeban/zz_arch_mutation.go; test $rc -ne 0 && grep -c 'implemented outside its owner' /tmp/bl10-m3.out` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && a=$(grep -v '^#' internal/arch/hub-allow.txt \| sort); b=$(go list -f '{{join .Imports "\n"}}' ./internal/deskkit \| grep 'tools/desk/internal/' \| sed 's#.*/internal/##' \| sort); test "$a" = "$b" && echo MATCH \|\| { echo "allow: $a"; echo "golist: $b"; }` | pass exit=0 | sha256:9160780d5c50 | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && d=$(mktemp -d) && cp -R . "$d/desk" && cd "$d/desk" && go test ./internal/arch/ -run TestOneImplementationPerMeaning -count=1 -v \| grep -c 'could-not-check (no semantic index)'` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `for r in R-dep-direction R-hub-allowlist R-one-implementation; do grep -cE "^[\|] *$r .*S-semantic-index" docs/contracts.md; done \| grep -c '^1$'` | pass exit=0 | sha256:1121cfccd591 | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `n=$(git grep -c '^// semantic: S-' -- 'tools/desk/**/*.go' \| awk -F: '{s+=$2} END{print s+0}'); test "$n" -ge 5 && echo "markers=$n"` | pass exit=0 | sha256:01747285dd0f | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/10$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && n=$(git diff --numstat "$base" "$tip" -- tools/desk/cmd \| grep -v '_test.go$' \| awk '$1 > 1 \|\| $2 > 0' \| wc -l \| tr -d ' '); test "$n" = 0 && echo MARKERS-ONLY` | pass exit=0 | sha256:38005de8dd2e | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+
+Per Verify row (the witness row number is the Verify row it discharges; output hashes checked against the expected literal output):
+
+- Verify row 1: pass, exit 0 (go test of the arch package, `ok`).
+- Verify row 2: pass, exit 0, output `1` (sha256:4355a46b19d3 is the hash of `1`): the top-level fixture test passes.
+- Verify row 3: pass, exit 0, output `1`: the internal-to-cmd mutation is red and names R-dep-direction.
+- Verify row 4: pass, exit 0, output `1`: the unlisted hub import mutation is red and names R-hub-allowlist.
+- Verify row 5: pass, exit 0, output `1`: the out-of-owner S-claim marker mutation is red with "implemented outside its owner".
+- Verify row 6: pass, exit 0, output `MATCH` (sha256:9160780d5c50): hub-allow.txt (gitcore, topology) equals `go list`.
+- Verify row 7: pass, exit 0, output `1`: a copy of tools/desk without the semantic index reports could-not-check.
+- Verify row 8: pass, exit 0, output `3` (sha256:1121cfccd591): all three register rows serve S-semantic-index.
+- Verify row 9: pass, exit 0, output `markers=15` (sha256:01747285dd0f). Finding: the count includes 6 fixture markers under the arch package's testdata tree; the real-tree count is 9 (S-claim 1, S-exit-codes 1, S-identity 2, S-publication-scan 1, S-review-verdict 3, S-worktree 1), still at least 5, so the row's intent holds.
+- Verify row 10: pass, exit 0, output `MARKERS-ONLY` (sha256:38005de8dd2e); the implementing merge resolved to 921c22b0a072 (#1930), not the fallback base.
+
+No row needed Linux or network-off; every row ran on this host (darwin/arm64, go1.27.1). The mutation rows removed their mutation files (tree clean after the run apart from the witness append). No verified work maps to no Verify row.
+
+Risk-value enumeration (frontmatter risk: all four no, irreversible: no; the diff touches no risk-classed path). Literals introduced by the diff: S-claim 1, S-exit-codes 1, S-identity 2, S-publication-scan 1, S-review-verdict 3, S-worktree 1 in tools/desk/internal/arch/markers.txt lines 8 to 13; allow-list entries gitcore and topology in tools/desk/internal/arch/hub-allow.txt lines 12 and 13; the reported-only clone threshold `dupl -t 60` in tools/desk/internal/arch/arch_test.go line 166. All are reversible CI knobs (an edit and a re-run undo them). The ceilings are derived: the brief requires ceilings equal to the seeded counts, and `git grep` over the real tree (fixtures excluded) gives exactly 1/1/2/1/3/1. The allow-list is derived from the compiler's view (Verify row 6 MATCH).
+
+rows_passed=10 rows_total=10
+
+RISK-VALUE: DERIVED — S-review-verdict = 3 @ tools/desk/internal/arch/markers.txt:12 (and the five sibling ceilings at lines 8 to 13) — equals the real-tree marker count per meaning, as the brief's "ceilings equal the seeded counts" requires; the allow-list gitcore/topology @ tools/desk/internal/arch/hub-allow.txt:12-13 equals `go list` (row 6). All values are reversible CI knobs.
+
+VERIFY: PASS
 
 ## Review
 Gate: model (from frontmatter). The reviewer answers: does each seeded marker sit on the
