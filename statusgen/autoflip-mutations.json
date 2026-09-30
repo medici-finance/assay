@@ -72,6 +72,42 @@
       "file": "autoflip.go",
       "old": "\tcand := g.cand",
       "new": "\tcand, _ := approvalAtHead(res, n, repo, src, rev)"
+    },
+    {
+      "name": "trailer body-edit check skipped (a trailer added after merge credits the brief and ends the guard: S1 on #1868)",
+      "file": "autoflip.go",
+      "old": "if why := trailerBodyProblem(n, g.mergedAt, repo, src); why != \"\" {",
+      "new": "if why := trailerBodyProblem(n, g.mergedAt, repo, src); false && why != \"\" {"
+    },
+    {
+      "name": "body edited after merge accepted",
+      "file": "autoflip.go",
+      "old": "case edited.After(mergedAt):",
+      "new": "case false:"
+    },
+    {
+      "name": "body edit with unknown merge time accepted",
+      "file": "autoflip.go",
+      "old": "case mergedAt.IsZero():",
+      "new": "case mergedAt.IsZero():\n\t\treturn \"\"\n\tcase false:"
+    },
+    {
+      "name": "unreadable body-edit time accepted as never edited",
+      "file": "autoflip.go",
+      "old": "case err != nil:\n\t\treturn fmt.Sprintf(\"when its body",
+      "new": "case false:\n\t\treturn fmt.Sprintf(\"when its body"
+    },
+    {
+      "name": "Evidence exclusion ignores a rename's old path (a move into docs/streams/ escapes its approval: A1 on #1868)",
+      "file": "autoflip.go",
+      "old": "append(append([]string(nil), shape.Files...), shape.RenamedFrom...)",
+      "new": "shape.Files"
+    },
+    {
+      "name": "file listing drops previous_filename",
+      "file": "autoflip.go",
+      "old": "renamedFrom = append(renamedFrom, pair[1])",
+      "new": "_ = pair[1]"
     }
   ]
 }

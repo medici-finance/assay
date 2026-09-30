@@ -103,6 +103,12 @@ package main
 //     credited PR is the one the stamp cites. This is the resolver that finds
 //     a delivering PR which never touched the brief FILE: the usual case, since
 //     a delivery changes code and the board row, not the brief text.
+//     A PR body stays editable after merge, and the App's approval binds the
+//     head commit, not the body. So a hit is credited only when its body was
+//     last edited at or before its merge (trailerBodyProblem): the trailer it
+//     merged with. A hit edited later, or whose edit time cannot be read or
+//     ordered, is COULD-NOT-CHECK naming it. It is never credited, and it never
+//     ends the guard below.
 //  2. BY THE BRIEF FILE'S HISTORY (the walk above). With a trailer-resolved
 //     delivery in hand, the walk is the GUARD over later changes: every PR that
 //     touched the brief file after that delivery merged must itself be
@@ -193,6 +199,10 @@ type modelFlipSource interface {
 	// HINT (a full-text search can over-match); every hit is re-read with
 	// PRShape and credited only by attributeCandidate.
 	PRsNamingBrief(repo, briefKey string) ([]int, error)
+	// PRBodyEditedAt returns when pr's body was last edited; zero when it never
+	// was. A trailer-resolved credit rests on the body, and a body edited after
+	// merge was never reviewed (trailerBodyProblem).
+	PRBodyEditedAt(repo string, pr int) (time.Time, error)
 }
 
 // ---- outcomes ----------------------------------------------------------------------
@@ -395,10 +405,11 @@ const commitScanDepth = 25
 // never a way AROUND the approval rule — decideModelFlip checks every candidate
 // it reaches for the App approval at its own merged head BEFORE judging its
 // attribution, so an unapproved later change to the brief blocks the flip
-// exactly as it did when the newest candidate was always the credited one. That
-// is also why the body being editable after merge cannot loosen anything: the
-// body only decides WHICH approved PR is credited, never whether an approval is
-// required.
+// exactly as it did when the newest candidate was always the credited one. In
+// the history walk the candidate is in the brief file's git history, which is
+// immutable. The trailer resolver finds candidates by body alone, and a body is
+// editable after merge, so there a body edited after merge is never credited
+// (trailerBodyProblem, #1838).
 type prShape struct {
 	// Files is the PR's changed file paths, repo-relative, forward-slashed —
 	// the COMPLETE list (PRShape errors rather than return a truncated one).
@@ -416,6 +427,10 @@ type prShape struct {
 	// `<slug>[bot]` form for an App). isEvidenceLanding matches it against the
 	// roster's verifier App; "" never matches.
 	Author string
+	// RenamedFrom is the previous path of each renamed file (the REST
+	// `previous_filename`). A rename lists only its NEW path in Files, so
+	// isEvidenceLanding judges these too.
+	RenamedFrom []string
 }
 
 // isEvidenceLanding reports whether shape is a verify Evidence landing: authored
@@ -424,12 +439,14 @@ type prShape struct {
 // verify-outcome record). Both halves are required. The author is an identity
 // the forge attributes, not text a PR author chooses. The docs-only half keeps
 // a verifier-authored PR that touches anything else from being passed over
-// without its approval. An empty file list is never an Evidence landing.
+// without its approval. A renamed file is judged at its old path too
+// (RenamedFrom), so a move into docs/streams/ from outside is not docs-only. An
+// empty file list is never an Evidence landing.
 func isEvidenceLanding(shape prShape, rev reviewerIdentity) bool {
 	if shape.Author == "" || !loginInSet(rev.EvidenceLanders, shape.Author) || len(shape.Files) == 0 {
 		return false
 	}
-	for _, f := range shape.Files {
+	for _, f := range append(append([]string(nil), shape.Files...), shape.RenamedFrom...) {
 		if !strings.HasPrefix(filepath.ToSlash(f), bulkMigrationDocsPrefix) {
 			return false
 		}
@@ -824,7 +841,19 @@ func resolveByTrailer(res modelFlipResult, repo string, src modelFlipSource, rev
 			t.stop = &stop
 			return t
 		}
-		// A credited delivery: its approval at its own merged head is required.
+		// A credited delivery. Its trailer must be the one it merged with: a
+		// body edited after merge was never reviewed (S1 on #1868).
+		if why := trailerBodyProblem(n, g.mergedAt, repo, src); why != "" {
+			stop := g.cand
+			stop.PR = n
+			stop.Outcome = flipUnchecked
+			stop.Reason = fmt.Sprintf("PR #%d names %s in a `Brief:` trailer, but %s — a trailer the PR did not merge with was never reviewed, so it can neither credit this brief nor end the guard over the brief file's history",
+				n, canonicalBriefKey(res.Brief), why)
+			stop = withWalked(stop, t.notes)
+			t.stop = &stop
+			return t
+		}
+		// Its approval at its own merged head is required.
 		if g.cand.Outcome != flipDone {
 			stop := withWalked(g.cand, t.notes)
 			t.stop = &stop
@@ -853,6 +882,27 @@ func resolveByTrailer(res modelFlipResult, repo string, src modelFlipSource, rev
 		t.prs[c.cand.PR] = true
 	}
 	return t
+}
+
+// trailerBodyProblem returns why PR n's body cannot be trusted as the one it
+// merged with, or "" when it can: never edited, or last edited at or before
+// its merge. An unreadable edit time, or an edit with no known merge time to
+// order it against, is a problem, never a pass.
+func trailerBodyProblem(n int, mergedAt time.Time, repo string, src modelFlipSource) string {
+	edited, err := src.PRBodyEditedAt(repo, n)
+	switch {
+	case err != nil:
+		return fmt.Sprintf("when its body was last edited could not be read (%v)", err)
+	case edited.IsZero():
+		return ""
+	case mergedAt.IsZero():
+		return fmt.Sprintf("its body was edited (%s) and its merge time is unknown, so the edit cannot be ordered against the merge",
+			edited.UTC().Format(time.RFC3339))
+	case edited.After(mergedAt):
+		return fmt.Sprintf("its body was last edited %s, after it merged %s",
+			edited.UTC().Format(time.RFC3339), mergedAt.UTC().Format(time.RFC3339))
+	}
+	return ""
 }
 
 // withWalked appends the candidates a walk passed over to a non-flip result's
@@ -1197,26 +1247,46 @@ func (ghModelFlipSource) PRShape(repo string, pr int) (prShape, error) {
 	if err := json.Unmarshal(sum, &v); err != nil {
 		return prShape{}, fmt.Errorf("unmarshal PR %d: %w", pr, err)
 	}
-	// --jq emits one filename per line across every page, so the concatenated
-	// per-page arrays --paginate produces never need re-joining.
+	// --jq emits one JSON [filename, previous_filename] pair per line across
+	// every page, so the concatenated per-page arrays --paginate produces never
+	// need re-joining.
 	out, err := exec.Command("gh", "api", "--paginate",
 		fmt.Sprintf("repos/%s/pulls/%d/files?per_page=100", repo, pr),
-		"--jq", ".[].filename").Output()
+		"--jq", `.[] | [.filename, (.previous_filename // "")] | @json`).Output()
 	if err != nil {
 		return prShape{}, fmt.Errorf("gh api pulls/%d/files: %w", pr, err)
 	}
-	var files []string
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
-		if line != "" {
-			files = append(files, line)
-		}
+	files, renamedFrom, err := parseFileListing(pr, out)
+	if err != nil {
+		return prShape{}, err
 	}
 	shape, err := shapeFromListing(pr, v.Body, v.ChangedFiles, files)
 	if err != nil {
 		return prShape{}, err
 	}
 	shape.Author = v.User.Login
+	shape.RenamedFrom = renamedFrom
 	return shape, nil
+}
+
+// parseFileListing reads PRShape's one-pair-per-line listing into the changed
+// paths and the previous path of each renamed file. A line that is not a
+// two-string pair is an error, never skipped.
+func parseFileListing(pr int, out []byte) (files, renamedFrom []string, err error) {
+	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		var pair []string
+		if err := json.Unmarshal([]byte(line), &pair); err != nil || len(pair) != 2 || pair[0] == "" {
+			return nil, nil, fmt.Errorf("PR #%d file listing line %q is not a [filename, previous_filename] pair", pr, line)
+		}
+		files = append(files, pair[0])
+		if pair[1] != "" {
+			renamedFrom = append(renamedFrom, pair[1])
+		}
+	}
+	return files, renamedFrom, nil
 }
 
 // PRsNamingBrief lists the merged PRs whose body GitHub's search matches for
@@ -1242,6 +1312,50 @@ func (ghModelFlipSource) PRsNamingBrief(repo, briefKey string) ([]int, error) {
 		prs = append(prs, r.Number)
 	}
 	return prs, nil
+}
+
+// PRBodyEditedAt reads the PR's GraphQL `lastEditedAt` (null: never edited).
+// REST and `gh pr view --json` do not expose it.
+func (ghModelFlipSource) PRBodyEditedAt(repo string, pr int) (time.Time, error) {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" {
+		return time.Time{}, fmt.Errorf("repo %q is not <owner>/<name>", repo)
+	}
+	out, err := exec.Command("gh", "api", "graphql",
+		"-f", "query=query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){lastEditedAt}}}",
+		"-f", "o="+owner, "-f", "r="+name, "-F", fmt.Sprintf("n=%d", pr)).Output()
+	if err != nil {
+		return time.Time{}, fmt.Errorf("gh api graphql lastEditedAt of PR %d: %w", pr, err)
+	}
+	return parseLastEditedAt(pr, out)
+}
+
+// parseLastEditedAt reads lastEditedAt from the GraphQL answer. A missing pull
+// request or an unparseable time is an error, never "never edited".
+func parseLastEditedAt(pr int, out []byte) (time.Time, error) {
+	var v struct {
+		Data struct {
+			Repository *struct {
+				PullRequest *struct {
+					LastEditedAt *string `json:"lastEditedAt"`
+				} `json:"pullRequest"`
+			} `json:"repository"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out, &v); err != nil {
+		return time.Time{}, fmt.Errorf("unmarshal lastEditedAt of PR %d: %w", pr, err)
+	}
+	if v.Data.Repository == nil || v.Data.Repository.PullRequest == nil {
+		return time.Time{}, fmt.Errorf("GraphQL returned no pull request #%d", pr)
+	}
+	if v.Data.Repository.PullRequest.LastEditedAt == nil {
+		return time.Time{}, nil
+	}
+	t, err := time.Parse(time.RFC3339, *v.Data.Repository.PullRequest.LastEditedAt)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("PR %d lastEditedAt: %w", pr, err)
+	}
+	return t, nil
 }
 
 // shapeFromListing builds a prShape from a PR's body, GitHub's changed_files
@@ -1387,6 +1501,10 @@ func (gitlabModelFlipUnavailable) ReviewState(repo string, pr int) (prReviewStat
 
 func (gitlabModelFlipUnavailable) PRsNamingBrief(repo, briefKey string) ([]int, error) {
 	return nil, errGitLabFlipReadUnavailable
+}
+
+func (gitlabModelFlipUnavailable) PRBodyEditedAt(repo string, pr int) (time.Time, error) {
+	return time.Time{}, errGitLabFlipReadUnavailable
 }
 
 // reportAutoFlipModel prints the per-candidate report and returns the process

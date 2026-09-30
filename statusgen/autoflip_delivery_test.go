@@ -150,6 +150,8 @@ func TestAutoFlipTrailerPastAuthoring(t *testing.T) {
 func TestAutoFlipEvidenceNeedsVerifier(t *testing.T) {
 	codeTouching := evidenceShape(afVerifier)
 	codeTouching.Files = append(codeTouching.Files, "statusgen/autoflip.go")
+	renamedIn := evidenceShape(afVerifier)
+	renamedIn.RenamedFrom = []string{"statusgen/autoflip.go"}
 	for name, tc := range map[string]struct {
 		shape prShape
 		rev   reviewerIdentity
@@ -159,6 +161,7 @@ func TestAutoFlipEvidenceNeedsVerifier(t *testing.T) {
 		"verifier PR also touches code": {codeTouching, verifierRev()},
 		"verifier PR with no file list": {prShape{Author: afVerifier}, verifierRev()},
 		"author unknown (empty login)":  {evidenceShape(""), verifierRev()},
+		"verifier PR renames code in":   {renamedIn, verifierRev()},
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := walkSource([]int{190, 151},
@@ -291,6 +294,107 @@ func TestAutoFlipTrailerSearchFails(t *testing.T) {
 	}
 	if !strings.Contains(got.Reason, "HTTP 502") || !strings.Contains(got.Reason, "#190") {
 		t.Errorf("reason must carry the search error and the walked Evidence PR; got %q", got.Reason)
+	}
+}
+
+// editedFixture is the review's S1 shape. The brief file's history holds #160,
+// approved by a human only, trailer-less, touching code and the brief file:
+// main refuses on it. #170 is App-approved, merged later, touches an unrelated
+// file, and carries `Brief: af/50` in its body only.
+func editedFixture() *fakeFlipSource {
+	src := walkSource([]int{160},
+		map[int]prReviewState{
+			160: humanApproved(afNoAppSHA, 2),
+			170: mergedApproved(afHeadSHA, 4),
+		},
+		map[int]prShape{
+			160: {Files: []string{"internal/x/x.go", "docs/streams/af/brief-50-walk.md"}},
+			170: {Files: []string{"internal/y/y.go"}, BriefTrailers: 1, Briefs: []string{"af/50"}},
+		})
+	src.trailerHits = map[string][]int{"af/50": {170}}
+	return src
+}
+
+// TestAutoFlipTrailerEditedBody: a trailer the PR did not merge with was never
+// reviewed. A credited hit whose body was edited after it merged, or whose
+// edit time cannot be ordered against its merge, is COULD-NOT-CHECK naming it.
+// It is not credited and does not end the guard over #160.
+func TestAutoFlipTrailerEditedBody(t *testing.T) {
+	for name, set := range map[string]func(*fakeFlipSource){
+		"edited after merge": func(f *fakeFlipSource) {
+			f.bodyEdits = map[int]time.Time{170: afMerged(4).Add(time.Hour)}
+		},
+		"edit time unreadable": func(f *fakeFlipSource) {
+			f.bodyEditErrs = map[int]error{170: errors.New("HTTP 502")}
+		},
+		"edited, merge time unknown": func(f *fakeFlipSource) {
+			st := f.states[170]
+			st.MergedAt = time.Time{}
+			f.states[170] = st
+			f.bodyEdits = map[int]time.Time{170: afMerged(1)}
+		},
+		"edited after merge, unapproved": func(f *fakeFlipSource) {
+			f.states[170] = humanApproved(afHeadSHA, 4)
+			f.bodyEdits = map[int]time.Time{170: afMerged(5)}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			src := editedFixture()
+			set(src)
+			got := decideWalkRev(t, src, verifierRev())
+			if got.Outcome != flipUnchecked || got.PR != 170 {
+				t.Fatalf("want COULD-NOT-CHECK naming #170; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+			}
+		})
+	}
+}
+
+// TestAutoFlipTrailerEditedPreMerge: a body last edited at or before the merge
+// is the body the PR merged with. It credits as before, and main's refusal on
+// the older unapproved #160 is outside the guard.
+func TestAutoFlipTrailerEditedPreMerge(t *testing.T) {
+	for _, edit := range []time.Time{afMerged(4).Add(-time.Hour), afMerged(4)} {
+		src := editedFixture()
+		src.bodyEdits = map[int]time.Time{170: edit}
+		if got := decideWalkRev(t, src, verifierRev()); got.Outcome != flipDone || got.PR != 170 {
+			t.Fatalf("edit %s: want flipDone crediting #170; got %v PR #%d (%s)", edit, got.Outcome, got.PR, got.Reason)
+		}
+	}
+}
+
+// TestAutoFlipParseLastEdited: null is never edited. A missing pull request or
+// an unparseable time is an error, never a pass.
+func TestAutoFlipParseLastEdited(t *testing.T) {
+	at, err := parseLastEditedAt(1, []byte(`{"data":{"repository":{"pullRequest":{"lastEditedAt":"2026-09-25T20:13:32Z"}}}}`))
+	if err != nil || !at.Equal(time.Date(2026, 9, 25, 20, 13, 32, 0, time.UTC)) {
+		t.Errorf("edited: got %v, %v", at, err)
+	}
+	if at, err := parseLastEditedAt(1, []byte(`{"data":{"repository":{"pullRequest":{"lastEditedAt":null}}}}`)); err != nil || !at.IsZero() {
+		t.Errorf("never edited: got %v, %v", at, err)
+	}
+	for _, bad := range []string{
+		`{"data":{"repository":{"pullRequest":null}}}`,
+		`{"data":{"repository":null}}`,
+		`{"data":{"repository":{"pullRequest":{"lastEditedAt":"yesterday"}}}}`,
+		`not json`,
+	} {
+		if _, err := parseLastEditedAt(1, []byte(bad)); err == nil {
+			t.Errorf("%s: want an error", bad)
+		}
+	}
+}
+
+// TestAutoFlipParseFileListing: a rename's old path is kept; a malformed line
+// is an error, never skipped.
+func TestAutoFlipParseFileListing(t *testing.T) {
+	files, from, err := parseFileListing(1, []byte("[\"docs/streams/af/x.md\",\"statusgen/x.go\"]\n[\"docs/streams/af/y.md\",\"\"]\n"))
+	if err != nil || strings.Join(files, ",") != "docs/streams/af/x.md,docs/streams/af/y.md" || strings.Join(from, ",") != "statusgen/x.go" {
+		t.Errorf("got files=%v from=%v err=%v", files, from, err)
+	}
+	for _, bad := range []string{"docs/streams/af/x.md\n", "[\"a\"]\n", "[\"\",\"b\"]\n"} {
+		if _, _, err := parseFileListing(1, []byte(bad)); err == nil {
+			t.Errorf("%q: want an error", bad)
+		}
 	}
 }
 

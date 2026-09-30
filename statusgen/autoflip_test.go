@@ -137,6 +137,17 @@ type fakeFlipSource struct {
 	// the search itself fail.
 	trailerHits map[string][]int
 	trailerErr  error
+	// bodyEdits is when each PR's body was last edited (absent = never edited);
+	// bodyEditErrs makes that read fail for a PR.
+	bodyEdits    map[int]time.Time
+	bodyEditErrs map[int]error
+}
+
+func (f *fakeFlipSource) PRBodyEditedAt(repo string, pr int) (time.Time, error) {
+	if err := f.bodyEditErrs[pr]; err != nil {
+		return time.Time{}, err
+	}
+	return f.bodyEdits[pr], nil
 }
 
 func (f *fakeFlipSource) PRsNamingBrief(repo, briefKey string) ([]int, error) {
