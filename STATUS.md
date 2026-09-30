@@ -73,7 +73,7 @@ _Held by per-stream caps: 5 brief(s) across 2 stream(s) — top: desktools-v2. B
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 5894d06 2026-10-01T08:54:46+10:00_
+_last regen: b5e53a6 2026-10-01T09:01:50+10:00_
 
 **Progress:** 4/13 brief items done.
 
@@ -96,7 +96,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 5894d06 2026-10-01T08:54:46+10:00_
+_last regen: b5e53a6 2026-10-01T09:01:50+10:00_
 
 **Progress:** 10/31 brief items done.
 
