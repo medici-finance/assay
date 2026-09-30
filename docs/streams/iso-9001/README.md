@@ -66,10 +66,10 @@ chain. Related, adjacent, cite both, never conflate them.
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Emit the tool-validation evidence pack as a release asset](brief-01-tool-validation-evidence-pack.md) | 0 | S | implemented | — | — |
+| 01 | [Emit the tool-validation evidence pack as a release asset](brief-01-tool-validation-evidence-pack.md) | 0 | S | verified | 2026-09-27 assay-verifier-app[bot] @ b227b40768db (claude-opus-5-5) | — |
 | 02 | [Align three shipped disclosures with the code they describe](brief-02-disclosure-honesty-fixes.md) | 0 | S | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #318 @ 6ab8de53a40c1a4f71fa6c0a0ddccb4b27a000c8) |
 | 03 | [A finding closes on a fired control — the corrective-action effectiveness record](brief-03-corrective-action-effectiveness.md) | 1 | M | todo | — | — |
-| 04 | [Record the authorizing human in the release itself](brief-04-release-authorizer-traceability.md) | 1 | S | implemented | — | — |
+| 04 | [Record the authorizing human in the release itself](brief-04-release-authorizer-traceability.md) | 1 | S | verified | 2026-09-27 assay-verifier-app[bot] @ 9585b4b6cc2e (claude-opus-5-5) | — |
 | 05 | [Records control and retention, stated once](brief-05-records-control-and-retention.md) | 1 | S | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #400 @ 90c19fd7a273835d01247292ad91f217a4ff9fe1) |
 | 06 | [The auditor one-pager — what Assay is and is not](brief-06-auditor-one-pager.md) | 2 | S | todo | — | — |
 | 07 | [Release by merge — the human merge is the cut and the authorizer](brief-07-release-by-merge.md) | 2 | M | blocked | — | — |

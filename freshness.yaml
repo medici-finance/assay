@@ -39,6 +39,24 @@ artifacts:
     max-age-days: 45
     upstreams: []
 
+  # Harness-portability spikes (harness-portability/09 jcode, /10 SpecMem).
+  # Empirical third-party harness/memory-layer facts with no locally-tracked
+  # upstream clone, so they rot on a clock: empty upstreams, 45-day leash,
+  # last-reviewed = the date the findings were authored.
+  - path: docs/research/jcode-desk-harness-capabilities.md
+    last-reviewed: "2026-08-24"
+    max-age-days: 45
+    upstreams: []
+
+  - path: docs/research/specmem-portability-spike.md
+    last-reviewed: "2026-08-24"
+    max-age-days: 45
+    upstreams: []
+    # SpecMem upstream (SuperagenticAI/specmem) is not a locally-tracked clone,
+    # so no upstream globs — the doc's documentary claims (adapter patterns,
+    # MCP tool names, config keys) are re-verified against upstream on review,
+    # and the live cross-harness run (§7 BLOCKED) is discharged separately.
+
   - path: plugins/assay/references/codex.md
     last-reviewed: "2026-08-24"
     max-age-days: 45

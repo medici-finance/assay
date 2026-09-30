@@ -56,19 +56,21 @@ var onBehalfOfTrailerLiteralRe = regexp.MustCompile(`(?i)on-behalf-of(:|\s+human
 // line with no matching call site is also a failure, so the list cannot drift into
 // describing code that no longer exists.
 var onBehalfOfCallSites = map[string]int{
-	"cmd/deskevidence/deskevidence.go:cmdEvidence:OnBehalfOfCommitSuffix(repoSlug)":          1,
-	"cmd/deskevidence/deskevidence.go:landEvidenceAsChange:OnBehalfOfCommitSuffix(repoSlug)": 1,
-	"cmd/deskfile/deskfile.go:cmdAttach:AppendOnBehalfOf(*repo)":                             1,
-	"cmd/deskfile/deskfile.go:cmdNew:AppendOnBehalfOf(*repo)":                                1,
-	"cmd/deskflip/flip.go:flip:OnBehalfOfLine(repo)":                                         2,
-	"cmd/deskpost/comment.go:runComment:AppendOnBehalfOf(repo)":                              1,
-	"cmd/deskpost/review.go:postVerdictReview:AppendOnBehalfOf(repo)":                        1,
-	"cmd/deskpr/deskpr.go:cmdCreate:AppendOnBehalfOf(facts.repo)":                            1,
-	"cmd/deskpr/edit.go:cmdEdit:AppendOnBehalfOf(facts.repo)":                                1,
-	"cmd/deskreply/deskreply.go:cmdReply:AppendOnBehalfOf(repo)":                             1,
-	"cmd/deskreply/deskreply.go:cmdReply:OnBehalfOfLine(repo)":                               1,
-	"cmd/deskreply/workpad.go:cmdWorkpadUpsert:AppendOnBehalfOf(repo)":                       1,
-	"cmd/deskreply/workpad.go:cmdWorkpadUpsert:OnBehalfOfLine(repo)":                         1,
+	"cmd/deskevidence/deskevidence.go:cmdEvidence:OnBehalfOfCommitSuffix(repoSlug)":                1,
+	"cmd/deskevidence/deskevidence.go:landEvidenceAsChange:OnBehalfOfCommitSuffix(repoSlug)":       1,
+	"cmd/deskevidence/outcomerecord.go:cmdOutcomeRecordWrite:OnBehalfOfCommitSuffix(repoSlug)":     1,
+	"cmd/deskevidence/outcomerecord.go:landOutcomeRecordAsChange:OnBehalfOfCommitSuffix(repoSlug)": 1,
+	"cmd/deskfile/deskfile.go:cmdAttach:AppendOnBehalfOf(*repo)":                                   1,
+	"cmd/deskfile/deskfile.go:cmdNew:AppendOnBehalfOf(*repo)":                                      1,
+	"cmd/deskflip/flip.go:flip:OnBehalfOfLine(repo)":                                               2,
+	"cmd/deskpost/comment.go:runComment:AppendOnBehalfOf(repo)":                                    1,
+	"cmd/deskpost/review.go:postVerdictReview:AppendOnBehalfOf(repo)":                              1,
+	"cmd/deskpr/deskpr.go:cmdCreate:AppendOnBehalfOf(facts.repo)":                                  1,
+	"cmd/deskpr/edit.go:cmdEdit:AppendOnBehalfOf(facts.repo)":                                      1,
+	"cmd/deskreply/deskreply.go:cmdReply:AppendOnBehalfOf(repo)":                                   1,
+	"cmd/deskreply/deskreply.go:cmdReply:OnBehalfOfLine(repo)":                                     1,
+	"cmd/deskreply/workpad.go:cmdWorkpadUpsert:AppendOnBehalfOf(repo)":                             1,
+	"cmd/deskreply/workpad.go:cmdWorkpadUpsert:OnBehalfOfLine(repo)":                               1,
 }
 
 // onBehalfOfScan is what scanOnBehalfOfRenderers found under one module root.

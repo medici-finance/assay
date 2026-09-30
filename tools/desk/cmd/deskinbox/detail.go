@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -101,11 +102,30 @@ func listIssueComments(token string, repo deskkit.ForgeRepo, number int) ([]comm
 			return nil, deskkit.Unverifiable("cannot parse issues/comments response", err)
 		}
 		for _, c := range chunk {
-			out = append(out, comment{Author: c.User.Login, Body: c.Body})
+			out = append(out, comment{Author: ghLogin(c.User.Login), Body: c.Body})
 		}
 		if len(chunk) < 100 {
 			break
 		}
 	}
 	return out, nil
+}
+
+// ghLogin maps a REST `user.login` onto the login shape the oracle reads — the ONE boundary
+// every comment author crosses on its way into format.go (#1797).
+//
+// The two wires spell a GitHub App's account differently: REST (this reader) reports
+// `<slug>[bot]`, while `gh issue view --json comments` — the oracle's reader — reports the
+// bare `<slug>`. format.go's desk-note selector is the oracle's literal regex
+// (`desknoteAuthorRe`, `\[bot\]$|desk`) and its label prints the login verbatim, so feeding
+// it the REST spelling made every App a "desk note" (the `\[bot\]$` arm, which never fires
+// on gh's input) and rendered `<slug>[bot]` where the oracle renders `<slug>`. Normalising
+// here, at the read, keeps both the selection and the label on the oracle's input shape
+// without touching the oracle or the shared literal. A user account's login cannot contain
+// `[`, so only an App's suffix is ever removed.
+//
+// tools/desk/cmd/deskinbox/loginshape_guard_test.go holds every `comment` construction in
+// this package to this one function.
+func ghLogin(restLogin string) string {
+	return strings.TrimSuffix(restLogin, "[bot]")
 }
