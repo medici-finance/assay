@@ -267,6 +267,38 @@ The body MUST contain a `## Verify` section with an executable table:
 
 - Every row MUST contain a literal command a non-implementer can run and an expected
   exit code or output match.
+- The command is written as an inline code span in the Command cell. A cell whose
+  first code span is its command (a cell that is exactly one code span, optionally
+  followed by prose or a parenthetical) needs no marker. A cell whose first code span
+  is NOT its command (a prose cell that mentions a function, a file or a word before
+  the real command) MUST mark its command with the explicit command marker: a code
+  span whose content starts `cmd:`, e.g. `` `cmd: go test ./pkg/ -count=1` ``. A
+  tool that executes Verify rows MUST prefer the first honoured `cmd:`-marked span
+  over any other text in the cell; with no honoured marker, each tool keeps its
+  unmarked lift (the first code span, or the unwrapped cell). An executor MAY decline
+  to run an unmarked first span that is a mention rather than a command (a file, an
+  identifier, a word ahead of the command span) and record the row could-not-run,
+  since running the mention measures nothing and can exit 0. A cell SHOULD NOT carry
+  more than one marked span, and a marked command SHOULD be able to fail (`true`,
+  `:` or `exit 0` passes whatever the tree holds). (The marker is `cmd:`, not `run:`, because `run:` is a
+  CI workflow step key that Verify prose quotes; a quoted workflow line must never
+  become the command.)
+- A marker is honoured only where the rendered brief shows it as code, so a reader of
+  the rendered table sees the command that runs. Code spans are found as CommonMark
+  renders them: a backslash-escaped backtick is literal text, and a run of N
+  backticks closes only on the next run of exactly N. A cell whose prose (outside
+  code spans) carries an unescaped `<` or `[` (raw HTML, an HTML comment, a link or
+  an image, any of which can hide text from the rendered table), or a dollar in any
+  spelling — bare `$`, escaped `\$`, or a character reference such as `&#36;`
+  (GitHub renders dollar-wrapped text as math, not code, and decodes character
+  references first, so any `&…;` reference in prose counts) — has no honoured
+  marker. Neither does a cell where a code span's opening backticks are fused to the
+  text before them (an autolink, a `~~` strikethrough or a dollar can swallow them):
+  only whitespace, the start of the cell or a `(` may lead a span. The marker span
+  itself MUST follow whitespace or the start of the cell, and MUST end the cell or be
+  followed by whitespace or plain punctuation (`.` `,` `;` `:` `!` `?` `)`). Write
+  `\<` or `\[` to use those characters in prose; keep dollars out of a marked
+  Command cell.
 - Rows MUST NOT be prose-only assertions without a command.
 - Prose deliverables (docs, articles) MUST use PRESENCE gates: checks that required
   elements exist (file, section, token). The Verify section MUST state that

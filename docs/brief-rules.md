@@ -67,6 +67,37 @@ nothing measured.
 
 7. **Verify rows must be runnable by someone who didn't do the work.** A row with no literal
    command and no expected exit/output is not a DoD item — it's a hope.
+   **Which span is the command.** The execution witness (`statusgen verifyrun`, rule 36)
+   runs the FIRST code span of the Command cell — right for a cell that is one code span,
+   wrong for a prose cell that mentions a function, a file, an `owner/repo` or a label
+   before the real command: the witness runs the mention (exit 127) and the check is never
+   witnessed. In a prose cell, mark the command explicitly with a code span starting
+   `cmd:` — `` In `PublicRepoGate` change the check, then `cmd: cd tools/desk && go test ./internal/deskkit/ -count=1` ``
+   — and every tool that lifts the command (verifyrun, the check:ci re-execution lane,
+   `newbrief`, the row lint, and the tools/desk executors `verifyloop` and
+   `deskrebaseline`) takes the first honoured `cmd:` span. A cell whose first span is
+   already its command needs no marker, and a cell with no marker lifts exactly as
+   before — except that a row the lint flags `prose-led-command` is recorded could-not-run
+   without being executed (running the mention measures nothing, and a word like `gh`
+   exits 0), until its command is marked; the check:ci verdict re-execution lane refuses such a
+   row the same way, and `verifyrun --check` does not audit an old pass witness on it as pass.
+   A marker counts only where the rendered table shows it as code: not between
+   escaped backticks, and not in a cell whose prose carries an unescaped `<` or `[` (raw
+   HTML, a comment, a link or an image can hide text from the reader) or a dollar in any
+   spelling (`$`, `\$`, or a character reference such as `&#36;` — GitHub renders
+   dollar-wrapped text as math, so any `&…;` reference in prose counts), and not in a cell
+   where a span's opening backticks are fused to the text before them (only whitespace, the
+   cell start or a `(` may lead a span). The marker span itself must follow whitespace or the
+   cell start, and end the cell or be followed by whitespace or plain punctuation. Escape
+   `<` and `[` as `\<`, `\[`; keep dollars out of a marked Command cell. `statusgen --lint`
+   NOTICEs a prose cell whose first span is not a command shape (`prose-led-command`), a
+   cell with two markers (`cmd-marker-ambiguous`), a marker that replaces a command-shaped
+   first span (`cmd-marker-overrides-command`), and a `cmd:` span that is not honoured
+   (`cmd-marker-not-honoured`), and a marked command that cannot fail — `true`, `:`,
+   `exit 0`, a lone `echo` — (`cmd-marker-vacuous`). A closed brief's `prose-led-command` rows collapse
+   into one summary NOTICE, since closed records are not rewritten.
+   The marker is `cmd:`, not `run:`: `run:` is the GitHub Actions step key, and a quoted
+   workflow line in Verify prose must never become the command the witness executes.
 8. **Prose deliverables get PRESENCE gates; quality is the human gate (the honesty rule).**
    For docs/articles, executable checks verify that required elements *exist* (a file, a
    section, a token) — `wc -w ≥ N` or `grep -c` passes N words of garbage with the right
