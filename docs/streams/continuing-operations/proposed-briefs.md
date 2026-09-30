@@ -46,7 +46,7 @@ that named implementation tests or commands already exist.
 - **Depends on:** No local prerequisite. **External:** None.
 - **Unblocks:** O02, O03, O05.
 - **Why:** Give each enduring subject a stable identity, accountable owner and versioned definition.
-- **Deliverables:** operational-subject-v1 specification/schema, per-object file conventions, typed relations and validation. Keep journey goals/touchpoints separate from workflow steps and execution patterns.
+- **Deliverables:** operational-subject-v1 specification/schema, per-object file conventions, typed relations and validation. Keep journey goals/touchpoints separate from operational workflow steps, and keep the new kind distinct from `workflow-pattern-v1` and the planned `workflow-instance-v1` (spec §13).
 - **Owning surfaces:** New `spec/operational-subject-v1.md` (planned), `schemas/operational-subject-v1.json` (planned), subject validator and fixtures under `statusgen/`; source conventions under `docs/operations/`.
 - **Acceptance scenarios:** A journey spans multiple workflows; a workflow supports multiple journeys. Rename preserves identity; dangling and wrong-kind references are rejected. Stream closure cannot retire its journey.
 - **Review / activation considerations:** Set the identity/revision and retirement rules before choosing storage convenience. Wrong-kind, duplicate-ID and dangling-reference cases must be rejected.
@@ -106,7 +106,7 @@ that named implementation tests or commands already exist.
 - **Depends on:** O03, O04. **External:** graph-execution/06, graph-execution/09, graph-execution/17.
 - **Unblocks:** O07, O09.
 - **Why:** Join what was intended to what was exposed and observed.
-- **Deliverables:** Consume and compatibly extend the existing lifecycle-link owner: exact impact snapshot, instance/attempt, release/exposure, observation, interpretation and next-decision references. Add intervention groups for releases containing several briefs.
+- **Deliverables:** Consume and compatibly extend the existing lifecycle-link owner: exact impact snapshot, workflow instance (`workflow-instance-v1`)/attempt, release/exposure, observation, interpretation and next-decision references. Add intervention groups for releases containing several briefs.
 - **Owning surfaces:** Extend the lifecycle-link validator/projection owned by graph-execution/17; consume instance/work-input identity from 09 and run records from 06.
 - **Acceptance scenarios:** Wrong-artifact/version/cohort joins are refused. Unreleased, unobserved and inconclusive remain distinct. A two-brief release cannot acquire invented individual causal credit; null/adverse outcomes survive replay.
 - **Review / activation considerations:** Confirm one canonical lifecycle-link owner. Support later/corrected observations without erasing the evidence used for earlier decisions.
@@ -167,7 +167,7 @@ that named implementation tests or commands already exist.
 - **Unblocks:** cadence-enabled adopter/client rollout.
 - **Why:** Automate due assessments without introducing a second scheduler or duplicate interventions.
 - **Deliverables:** Bind practice triggers/windows/deadlines to existing admission, claims, recovery and budget machinery. Define occurrence identity, restart, coalescing, overdue behavior and stale-input handling. No automatic remediation or policy self-modification.
-- **Owning surfaces:** Practice-to-instance adapter at existing graph admission/dispatch boundary; recovery, coalescing and budget conformance fixtures. No second scheduler.
+- **Owning surfaces:** Practice-to-`workflow-instance-v1` adapter at existing graph admission/dispatch boundary; recovery, coalescing and budget conformance fixtures. No second scheduler.
 - **Acceptance scenarios:** Repeated triggers and a crash resume one logical occurrence; cumulative budget survives restart; stale sources cannot initiate an unjustified intervention. Existing permission denial remains binding.
 - **Review / activation considerations:** Require prerequisite contract acceptance and an explicit activation decision. Derive risk from actual scheduled effects; no production access is implied by the outline.
 

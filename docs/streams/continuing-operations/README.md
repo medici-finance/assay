@@ -41,12 +41,14 @@ admission; external dependency holds continue to apply.
 The local contract head is O01 (durable journeys and workflows). Measurements and impact
 claims need a stable subject before analytics or UI can mean anything. Source review
 against main `024c87b01aba8f6c7dd7ccd939e647a9b936be09` found no equivalent enduring
-journey/workflow contract; existing execution patterns describe a different concern.
+journey/operational-workflow contract. The existing `workflow-pattern-v1` contract and
+graph-execution/09's planned `workflow-instance-v1` describe how delivery work executes,
+a different concern (spec §13 records the naming collision).
 O01 can be specified offline and does not wait for graph runtime delivery.
 
 One longest local path to manual adoption is:
 `O01 → O02 → O03 → O06 → O07 → O10 → O12 → O13`.
-The optional migration adds `→ O14`. Parallel paths through O04 or O08 are also binding.
+The optional migration adds `→ O14`. Parallel paths through O04 are also binding; O08 has one wave of slack.
 Graph-execution prerequisites for O04/O06 may be the actual schedule bottleneck.
 
 **Smallest unblocking move:** agree the subject vocabulary, identity and contract boundary,

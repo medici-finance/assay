@@ -62,7 +62,7 @@ identity and assessment obligations intact. Definition changes enter normal revi
 | Change history: v2 --> v3             Baseline comparability: check   |
 | Context lens: Cynefin v1 (optional)                                  |
 | Assessment: contextual judgment / assessor / date / rationale         |
-| Practice: case review          Execution pattern: separate reference |
+| Practice: case review    Workflow pattern: workflow-pattern-v1 ref   |
 +---------------------------------------------------------------------+
 ```
 

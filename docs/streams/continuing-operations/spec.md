@@ -35,16 +35,20 @@ This capability ships through public Assay contracts, skills and adopter scaffol
 |---|---|---|
 | User journey | A user's goal, stages, touchpoints, pain points and success criteria | Endures beyond delivery; accountable journey owner |
 | Operational workflow | Recurring work that supports one or more journeys; trigger, steps, handoffs, outputs and boundaries | Versioned operational definition; workflow owner |
-| Execution pattern | Reviewed obligations, evidence and permitted effects governing execution | Existing graph-execution contract owner |
+| Workflow pattern | Reviewed, versioned shape of a piece of delivery work: nodes, their execution contracts and the gates a risk class requires (`workflow-pattern-v1`) | Existing contract, [`spec/workflow-pattern-v1.md`](../../../spec/workflow-pattern-v1.md); reference implementation `statusgen patterns` ([graph-execution/02](../graph-execution/brief-02-pattern-schema-and-node-contract.md)) |
+| Workflow instance | A workflow pattern bound to one change's subject, Cell and acceptance (`workflow-instance-v1`) | Planned by [graph-execution/09](../graph-execution/brief-09-instance-contract.md) (`spec/workflow-instance-v1.md` (planned)); not yet implemented |
 | Practice | Continuing responsibility for examining a subject and acting through existing decision channels | Practice owner and separately assigned evaluator |
 | Stream / brief | Finite delivery work changing or investigating an enduring subject | Existing Assay delivery lifecycle |
 | Impact declaration | Preserved intent and predicted effects of a change | Authored before exposure; pinned for assessment |
 | Observation / assessment | Recorded evidence / an interpretation of that evidence | Separate provenance, version and authority |
 
-"Workflow" is retained as the adopter-facing term for recurring operational work;
-"execution pattern" names the existing orchestration contract. A journey can span
-several workflows; a workflow can serve several journeys. Their identities must remain
-distinct. A practice can apply to either or both. An internal delivery journey is valid,
+"Operational workflow" is the adopter-facing term for recurring operational work. It
+is not the existing `workflow-pattern-v1` contract, which describes how Assay executes a
+piece of delivery work, and not graph-execution/09's planned `workflow-instance-v1`,
+which binds such a pattern to one change. The three share the word "workflow"; §13
+records that collision and the recommended qualifier. A journey can span several
+operational workflows; an operational workflow can serve several journeys. Their
+identities must remain distinct. A practice can apply to either or both. An internal delivery journey is valid,
 but the model must also represent a product user's journey.
 
 ```mermaid
@@ -54,7 +58,7 @@ flowchart LR
   P -->|examines| W
   B[Stream and briefs] -->|change or investigate| W
   B --> I[Pinned impact declaration]
-  B --> E[Existing execution pattern and run]
+  B --> E[Workflow pattern and planned workflow instance run]
   E --> R[Recorded release and exposure]
   R --> O[Observations]
   I --> A[Outcome assessment]
@@ -82,7 +86,7 @@ Proposed source layout (exact formats are deliverables of outlines 01–06):
 ```text
 docs/operations/
   journeys/<id>.yaml
-  workflows/<id>.yaml
+  operational-workflows/<id>.yaml
   practices/<id>.yaml
   metrics/<id>.yaml
   assessments/<id>.yaml
@@ -123,7 +127,7 @@ collect everything on the assumption that some future method might use it.
 | Evidence family | Examples | Required interpretation context |
 |---|---|---|
 | User outcomes | Goal completion, abandonment, time to user value | Journey stage, cohort, denominator, exposure and observation window |
-| Flow | Arrival, start, completion, service time, wait time, rework and handoffs | Workflow version, queue boundaries and measurement coverage |
+| Flow | Arrival, start, completion, service time, wait time, rework and handoffs | Operational workflow revision, queue boundaries and measurement coverage |
 | Effort and cost | Human effort, compute usage, collection and evaluation cost | Units, accounting source, scope and missing categories |
 | Quality and guardrails | Defects, failures, retries, reversals and selected safety/service constraints | Severity definition, exposure denominator and agreed limits |
 | Evidence health | Coverage, lag, missing/duplicate/conflicting receipts | Source identity, instrument version, freshness and uncertainty |
@@ -151,7 +155,7 @@ validated optional `change-impact-v1` extension for brief-v2. Proposed contents:
 
 | Field group | What it preserves |
 |---|---|
-| Subjects | Journey/workflow/practice IDs and versions affected, including indirect effects |
+| Subjects | Journey, operational workflow and practice IDs and revisions affected, including indirect effects |
 | Hypothesis | Problem, proposed mechanism, assumptions and uncertainty |
 | Expectations | Metric definition, baseline or baseline gap, anticipated direction/range, cohort, window, guardrails and evaluation rule |
 | Follow-through | Evaluation owner, trigger/deadline, exposure requirement, evidence references and next-decision route |
@@ -264,15 +268,18 @@ refresh the generated board and acceptance evidence before authoring or dispatch
 
 | Surface | Existing owner / proposed change |
 |---|---|
-| Journey/workflow identity | New `spec/operational-subject-v1.md` (planned) + matching schema, outline 01 |
+| Journey/operational workflow identity | New `spec/operational-subject-v1.md` (planned) + matching schema, outline 01; a separate kind from the two workflow contracts below |
+| Workflow pattern | Existing [`spec/workflow-pattern-v1.md`](../../../spec/workflow-pattern-v1.md) + `schemas/workflow-pattern-v1.json`, `statusgen patterns` ([graph-execution/02](../graph-execution/brief-02-pattern-schema-and-node-contract.md)); consumed unchanged, never extended with operational subjects |
 | Measurements | New `spec/measurement-v1.md` (planned) + matching schema, outline 02; reuse [graph-execution/07](../graph-execution/brief-07-flow-instruments.md) instruments |
 | Expected impact | New `spec/change-impact-v1.md` (planned) + matching schema, outline 03; compatible extension of [brief-v2 schema](../../../schemas/brief-v2.json) |
 | Practices/profiles | New `spec/improvement-practice-v1.md` (planned) + matching schema, outline 05; policy authority remains separate |
 | Run/receipt/replay envelope | [graph-execution/06](../graph-execution/brief-06-run-records-and-replay.md), consumed by outlines 04 and 06 |
-| Instance/work-input identity | [graph-execution/09](../graph-execution/brief-09-instance-contract.md) and [work-input amendment](../graph-execution/work-input-amendment.md), consumed by 06 and 11 |
+| Workflow instance / work-input identity | Planned `workflow-instance-v1` from [graph-execution/09](../graph-execution/brief-09-instance-contract.md) and the [work-input amendment](../graph-execution/work-input-amendment.md), consumed by 06 and 11 |
 | Release/exposure/outcome links | [graph-execution/17](../graph-execution/brief-17-lifecycle-links.md), compatibly extended by 06 |
 | Cadence execution boundary | [04 recovery](../graph-execution/brief-04-recovery-contract.md), [14 admission/dispatch](../graph-execution/brief-14-admission-dispatch-binding.md), [16 budgets/ownership](../graph-execution/brief-16-cell-ownership-budgets.md), consumed by 11 |
 | Operations projection | `statusgen`, outline 07; read-only versioned consumer contract for CLI/cockpit |
+| Decision assessment | Existing [`spec/decision-assessment-v1.md`](../../../spec/decision-assessment-v1.md) ([graph-execution/10](../graph-execution/brief-10-decision-contract.md)) assesses a proposed decision before it is taken. The outcome assessment here judges observed evidence after exposure; outline 06 keeps them separate kinds and does not reuse the word unqualified |
+| Requirement register | Existing [`spec/registers-v1.md`](../../../spec/registers-v1.md) §6, which a brief's `outcome:` key already points at. A journey's success criteria describe an enduring user goal, not one recorded ask; outline 01 links a journey to requirement IDs rather than copying their acceptance criteria |
 | Authoring and adoption | Public author-brief guidance, templates and install/adopt bundle, outlines 08 and 12 |
 
 Those four new contracts are proposed deliverables, not files this PR claims exist.
@@ -337,7 +344,7 @@ pilot with comparable exposure and enough evidence to support its conclusions.
 
 | Decision | Recommended starting point | Consequence / owner of follow-through |
 |---|---|---|
-| Terminology and source home | Journeys, operational workflows and practices under `docs/operations` | Approve 01/05 contract authoring |
+| Terminology and source home | Journeys, operational workflows and practices under `docs/operations`. **Collision:** "workflow pattern" (`workflow-pattern-v1`, graph-execution/02) and "workflow instance" (planned `workflow-instance-v1`, graph-execution/09) already name delivery-execution contracts. Recommended: keep "operational workflow" but qualify it everywhere it is a contract term (record kind `operational-workflow`, directory `operational-workflows/`, "operational workflow revision"). Never use a bare "workflow", "workflow version" or "workflow instance" for the new kind, and always cite pattern/instance references by contract ID. Renaming the kind (for example "operating routine") is the alternative if reviewers prefer no shared word | Approve 01/05 contract authoring; O11's adapter produces `workflow-instance-v1` instances of a workflow pattern, never instances of an operational workflow |
 | Minimum impact policy | Optional validated brief-v2 extension first; retain honest dispositions | 03/08 authoring; 14 stays conditional |
 | Methodology commitment | Bounded common evidence core; Cynefin and flow profiles optional | 02/09 define supported coverage, not universal collection |
 | Continuing accountability | Existing desk/human hosts outcomes responsibility with independent assessment | Name adopters' role bindings in 10/12 |
