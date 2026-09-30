@@ -235,7 +235,9 @@ directly; the comments are stale, the code is not. Not rows; not reach-arounds.
 ### E2. `tools/desk/cmd/**` — other hand-built GitHub REST calls added after the first sweep (shape c)
 
 Two verbs that landed after the first sweep each carry a small GitHub-only REST client of their own, outside
-the two backend files. Each one mints its own role token, so neither reads an ambient credential. But each
+the two backend files. Neither reads an ambient credential: `deskinbox` mints a role token
+(`tools/desk/cmd/deskinbox/detail.go:67`), and `deskfleet` reads the token from an operator-named `--token-file`
+(`tools/desk/cmd/deskfleet/labels.go:157`). But each
 request is a GitHub path built outside `forge_github.go`, which is a reach-around under this brief's definition.
 
 | # | file:line | tool/skill | shape | issue | seam op it should use (or GAP) | migrating brief |
