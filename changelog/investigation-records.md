@@ -1,1 +1,2 @@
-Refine existing class records and investigation handoffs with scoped evidence, explicit gaps and pending outcomes. Preserve the current recurrence rules, independent rollout and no-new-tool constraints.
+### Changed
+- Refine existing class records and investigation handoffs with scoped evidence, explicit gaps and pending outcomes. Preserve the current recurrence rules, independent rollout and no-new-tool constraints.
