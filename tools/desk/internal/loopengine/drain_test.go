@@ -10,12 +10,30 @@ import (
 	"time"
 )
 
-// twoInFlightWait bounds how long a dispatched drill item waits for a second item to be in
-// flight beside it. It is far above any delay a loaded scheduler puts between two
+// twoInFlightWait bounds how long a dispatched drill item waits for the barrier to open. Its
+// clock starts at the FIRST dispatch, so setup and recovery time before the pool fills never
+// count against it. It is far above any delay a loaded scheduler puts between two
 // dispatches of one pool fill, so it is never the thing that decides a healthy run. It
 // stays under runUntil's 5s deadline, so a pool that never runs two items at once fails
 // with the concurrency message below rather than the generic no-exit message.
 const twoInFlightWait = 3 * time.Second
+
+// passWatchLoop is the drill's fakeLoop with one extra observation: it counts SelectQueue
+// calls. Only fillPool calls SelectQueue, once at the top of each pass, so the SECOND call
+// means the engine's first fill pass has returned and every dispatch of that pass has
+// already been counted.
+type passWatchLoop struct {
+	*fakeLoop
+	selects     int32
+	onPassTwoFn func()
+}
+
+func (l *passWatchLoop) SelectQueue() ([]Item, error) {
+	if atomic.AddInt32(&l.selects, 1) == 2 {
+		l.onPassTwoFn()
+	}
+	return l.fakeLoop.SelectQueue()
+}
 
 // TestDrain is the drain drill against a FIXTURE queue (no live briefs). It proves,
 // in one run: the pool runs more than one item at once, land-as-returned, the
@@ -24,12 +42,19 @@ const twoInFlightWait = 3 * time.Second
 // with -v to see them.
 //
 // The concurrency proof is a BARRIER, not a sample. Every drill item stays in flight until
-// the pool has had two items in flight at the same moment, so a pool that can run two at
-// once always shows it, however the scheduler orders the goroutines. An earlier version
+// BOTH (1) the pool has had two items in flight at the same moment and (2) the engine's
+// first fill pass has returned. Condition 1 means a pool that can run two at once always
+// shows it, however the scheduler orders the goroutines. Condition 2 means no item can
+// finish while the first pass is still dispatching, so the in-flight peak that pass reaches
+// is counted in full and the upper bound (peak never above PoolSize) can fail: an uncapped
+// pool dispatches all five items in that pass and goes red every run. An earlier version
 // slept a few milliseconds per item and then asserted the observed peak was above 1; on a
 // loaded machine the items finished one after another and the assertion failed although
 // the pool was correct. The barrier wait is bounded (twoInFlightWait), so a pool that
 // really does run items one at a time fails instead of hanging.
+//
+// The pool cap itself is owned by width_test.go; the upper bound here is the drill's own
+// cross-check of it, not the cap's only coverage.
 func TestDrain(t *testing.T) {
 	deskDir := setupDeskHome(t, testLoopName)
 
@@ -38,11 +63,24 @@ func TestDrain(t *testing.T) {
 	var maxConcurrent int32
 
 	// twoInFlight closes the first time a dispatch finds another drill item still in
-	// flight. barrierCtx bounds the wait for it; its Done channel releases every waiter at
-	// once, so a serial pool costs one timeout, not one per item.
+	// flight. firstPassDone closes when the engine starts its second fill pass. release
+	// closes once both have closed, and it is what every drill item waits on. barrierCtx
+	// bounds that wait; its clock starts at the first dispatch, and its Done channel
+	// releases every waiter at once, so a serial pool costs one timeout, not one per item.
 	twoInFlight := make(chan struct{})
-	var twoInFlightOnce sync.Once
-	barrierCtx, cancelBarrier := context.WithTimeout(context.Background(), twoInFlightWait)
+	firstPassDone := make(chan struct{})
+	release := make(chan struct{})
+	var twoInFlightOnce, firstPassOnce, releaseOnce, clockOnce sync.Once
+	var latches int32 // how many of twoInFlight / firstPassDone have closed
+	latch := func(once *sync.Once, ch chan struct{}) {
+		once.Do(func() {
+			close(ch)
+			if atomic.AddInt32(&latches, 1) == 2 {
+				releaseOnce.Do(func() { close(release) })
+			}
+		})
+	}
+	barrierCtx, cancelBarrier := context.WithCancel(context.Background())
 	defer cancelBarrier()
 	verdicts := map[string]string{
 		"drill-ok-1":  VerdictPass,
@@ -56,8 +94,10 @@ func TestDrain(t *testing.T) {
 	for id := range verdicts {
 		loop.remaining = append(loop.remaining, Item{ID: id, BriefPath: "docs/streams/fixture/brief-" + id + ".md"})
 	}
+	watched := &passWatchLoop{fakeLoop: loop, onPassTwoFn: func() { latch(&firstPassOnce, firstPassDone) }}
 
 	loop.dispatchFn = func(l *fakeLoop, it Item, tier Tier) (Handle, error) {
+		clockOnce.Do(func() { time.AfterFunc(twoInFlightWait, cancelBarrier) })
 		cur := atomic.AddInt32(&inFlight, 1)
 		for {
 			m := atomic.LoadInt32(&maxConcurrent)
@@ -68,15 +108,15 @@ func TestDrain(t *testing.T) {
 		// Until the barrier opens no item can finish, so inFlight only counts up: reaching
 		// 2 here means the engine dispatched this item while an earlier one was still out.
 		if cur >= 2 {
-			twoInFlightOnce.Do(func() { close(twoInFlight) })
+			latch(&twoInFlightOnce, twoInFlight)
 		}
 		h := &fakeHandle{item: it, done: make(chan Result, 1)}
 		go func() {
 			select {
-			case <-twoInFlight:
+			case <-release:
 			case <-barrierCtx.Done():
-				// No second item arrived in time. Finish anyway so the drill drains and
-				// the assertion below reports the serial pool, rather than hanging.
+				// The barrier did not open in time. Finish anyway so the drill drains and
+				// the assertions below report why, rather than hanging.
 			}
 			atomic.AddInt32(&inFlight, -1)
 			h.done <- Result{
@@ -114,7 +154,7 @@ func TestDrain(t *testing.T) {
 		Progress:   os.Stdout, // Verify item 3 greps this
 	}
 
-	err := runUntil(t, cfg, loop, deskDir, func() bool {
+	err := runUntil(t, cfg, watched, deskDir, func() bool {
 		// stop once the four landable items landed and the stuck one was filed
 		mu.Lock()
 		f := filed
@@ -133,6 +173,11 @@ func TestDrain(t *testing.T) {
 	default:
 		t.Fatalf("no two items were in flight at once within %s (PoolSize %d, max in flight %d) — the pool runs items one at a time",
 			twoInFlightWait, poolN, atomic.LoadInt32(&maxConcurrent))
+	}
+	select {
+	case <-release:
+	default:
+		t.Fatalf("the engine's first fill pass did not return within %s of the first dispatch — the in-flight peak of that pass was not fully counted, so the PoolSize bound below would prove nothing", twoInFlightWait)
 	}
 	if got := atomic.LoadInt32(&maxConcurrent); got > poolN {
 		t.Fatalf("max concurrency %d exceeded PoolSize %d", got, poolN)

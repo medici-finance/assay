@@ -1,6 +1,7 @@
 package desk_test
 
-// This is the SAMPLED-PEAK GUARD. It closes a defect class in this module's tests: proving
+// This is the SAMPLED-PEAK GUARD. It is a lexical tripwire for a defect class in this
+// module's tests: proving
 // that a pool runs work concurrently by letting each task sleep for a few milliseconds,
 // recording the highest number of tasks seen in flight, and then asserting that peak was at
 // least 2. The peak depends on the scheduler. On a loaded machine the tasks can finish one
@@ -19,7 +20,14 @@ package desk_test
 // still sees the shape, so a broken regex fails here rather than reporting clean.
 //
 // This is a MODULE-ROOT test (like TestLayout in layout_test.go) so it covers every package
-// in the module, not only the one that first hit the flake.
+// in the tools/desk module, not only the one that first hit the flake. It does not scan the
+// repository's other Go modules; none of them carries the shape today.
+//
+// The match is LEXICAL, not semantic. It sees the common spellings (a plain variable, an
+// atomic.LoadIntNN read, an atomic type's .Load() method) and misses rewrites such as
+// `if got := …; got < 2` or `if 2 > maxSeen`, so a clean scan is evidence, not proof. It can
+// also flag a non-concurrency variable (a retry limit named maxRetries compared below 2);
+// rename that variable rather than adding an allow-list entry.
 
 import (
 	"io/fs"
@@ -32,9 +40,9 @@ import (
 )
 
 // sampledPeakRe matches an assertion that a sampled maximum reached 2: an `if` over an
-// identifier containing "max" or "peak" (optionally read through atomic.LoadIntNN) compared
-// `< 2` or `<= 1`.
-var sampledPeakRe = regexp.MustCompile(`(?i)\bif\s+(?:atomic\.Load\w*\(&?)?\w*(?:max|peak)\w*\)?\s*(?:<\s*2|<=\s*1)\b`)
+// identifier containing "max" or "peak" (optionally read through atomic.LoadIntNN or an
+// atomic type's .Load() method) compared `< 2` or `<= 1`.
+var sampledPeakRe = regexp.MustCompile(`(?i)\bif\s+(?:atomic\.Load\w*\(&?)?\w*(?:max|peak)\w*(?:\)|\.Load\(\))?\s*(?:<\s*2|<=\s*1)\b`)
 
 // sampledPeakAllowed maps a module-relative test file to the number of sampled-peak
 // assertions it may still carry. Both entries are tracked on #612 (convert them to a
@@ -50,6 +58,7 @@ func TestNoSampledPeakAssert(t *testing.T) {
 	for _, plant := range []string{
 		"\tif max" + "InFlight < 2 {",
 		"\tif atomic.LoadInt32(&" + "peak) <= 1 {",
+		"\tif max" + "InFlight.Load() < 2 {",
 	} {
 		if !sampledPeakRe.MatchString(plant) {
 			t.Fatalf("sampled-peak guard: the matcher no longer flags the planted line %q — the scan below would report clean on anything", plant)
