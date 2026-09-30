@@ -6,7 +6,9 @@
 #   desk   on a gitlab cell, the boot fetch in cmd_desk runs with GIT_TERMINAL_PROMPT=0 and the
 #          inline credential helper reading DESKD_GITLAB_TOKEN_FILE — never a token in the URL,
 #          never persisted into the operator's git config (a stray git-credential-store cache is
-#          untouched); on a github cell the fetch is the plain, unchanged form
+#          untouched); on a github cell the fetch is the plain, unchanged form; a fetch that fails
+#          outright stops the boot (exit 3, releasing the fetch lock) instead of falling back to a
+#          previous boot's FETCH_HEAD
 #   check  the gitlab arm gets a new row proving `git ls-remote` succeeds with prompts disabled,
 #          using the same helper — ok when the token file is readable and the remote answers,
 #          MISS when the token file is missing/unreadable or the remote is unreachable, so a
@@ -138,6 +140,20 @@ assert "boot fetch logged exactly once" '[[ "$(wc -l < "$CELLCTL_TEST_GIT_LOG" |
 assert "github boot fetch carries no credential.helper flag (gh's own helper already answers)" '! grep -q "credential.helper" "$CELLCTL_TEST_GIT_LOG"'
 assert "github boot fetch carries no GIT_TERMINAL_PROMPT override" 'grep -q "^GIT_TERMINAL_PROMPT=<unset> " "$CELLCTL_TEST_GIT_LOG"'
 assert "still the plain fetch: -C <repo> fetch --no-tags origin main" 'grep -q -- "fetch --no-tags origin main" "$CELLCTL_TEST_GIT_LOG"'
+
+# ---------------------------------------------------------------- failed fetch: never a stale main
+# The boot above left a FETCH_HEAD behind. A fetch that then fails outright (a credential helper
+# answering with a dead token, in the field; an unreachable origin here) must stop the boot — it
+# once fell back to that previous boot's FETCH_HEAD behind a "ref-lock race?" notice.
+echo "[desk: failed fetch refuses, never boots on the previous FETCH_HEAD]"
+assert "precondition: the earlier boot left a FETCH_HEAD" '"$REALGIT" -C "$T/gh-checkout" rev-parse -q --verify FETCH_HEAD >/dev/null'
+"$REALGIT" -C "$T/gh-checkout" remote set-url origin "$T/no-such-origin.git"
+out="$("$CELLCTL" desk gh-cell worker-desk 2>&1)" && rc=0 || rc=$?
+assert "boot refuses (exit 3) when the fetch fails" '[[ $rc -eq 3 ]]'
+[[ "$rc" -eq 3 ]] || echo "$out"
+assert "the refusal names the stale-main risk and the credential-helper check" 'grep -q "wrote no FETCH_HEAD — refusing to boot on a stale main" <<<"$out" && grep -q "config --show-origin --get-regexp" <<<"$out"'
+assert "the fetch lock is released on the refusal (the next boot is not a 60s wait)" '[[ ! -e "$T/gh-checkout/.git/cellctl-fetch.lock" ]]'
+"$REALGIT" -C "$T/gh-checkout" remote set-url origin "$T/origin.git"
 
 # ---------------------------------------------------------------- check: the new gitlab-arm row
 echo "[check: gitlab fetch-transport row]"

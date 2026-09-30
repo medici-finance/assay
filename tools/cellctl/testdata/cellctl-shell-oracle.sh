@@ -2435,7 +2435,11 @@ cmd_desk(){
   local lock="$gitdir/cellctl-fetch.lock"
   local _i; for _i in $(seq 1 60); do mkdir "$lock" 2>/dev/null && break; sleep 1; done
   # A fetch that lost the ref-lock race still wrote FETCH_HEAD, and FETCH_HEAD is all that is used
-  # below — so a non-zero exit here is a notice, not a stop.
+  # below — so a non-zero exit here is a notice, not a stop. FETCH_HEAD is cleared first, so the
+  # one read below is always THIS fetch's: a fetch that failed outright (a credential refusal,
+  # above all) must stop the boot, never fall back to a previous boot's main.
+  local fetch_head; fetch_head="$(git -C "$CELL_REPO" rev-parse --path-format=absolute --git-path FETCH_HEAD 2>/dev/null || true)"
+  [[ -n "$fetch_head" ]] && rm -f "$fetch_head"
   # On the gitlab arm, GITLAB_TOKEN_STORE/DESKD_GITLAB_TOKEN_FILE provision the API token, but
   # nothing else wires a git credential for CELL_REPO's own fetch transport — on a private GitLab
   # project over HTTPS this fetch otherwise stops at an interactive `Username for
@@ -2449,8 +2453,12 @@ cmd_desk(){
   else
     git -C "$CELL_REPO" fetch --no-tags origin main || echo "NOTICE: fetch returned non-zero (ref-lock race?) — using FETCH_HEAD" >&2
   fi
-  local sha; sha="$(git -C "$CELL_REPO" rev-parse FETCH_HEAD)"
+  local sha; sha="$(git -C "$CELL_REPO" rev-parse --verify -q FETCH_HEAD || true)"
   rmdir "$lock" 2>/dev/null || true
+  # The refusal names the usual cause, because git's own output reads like a transient error: a
+  # credential helper answering with a dead token (an expired App token left in the checkout's
+  # shared config, say).
+  [[ -n "$sha" ]] || die "desk: fetch of origin main in $CELL_REPO failed and wrote no FETCH_HEAD — refusing to boot on a stale main. An authentication refusal is the usual cause: check which credential helper answers for origin (git -C $CELL_REPO config --show-origin --get-regexp '^credential\.')"
   mkdir -p "$CELL_DIR/worktrees"
   if [[ -e "$wt/.git" ]]; then
     # An existing tree is MERGED up to the fetched main, or the boot stops — never left behind

@@ -51,7 +51,9 @@ func (c *Cell) gitlabFetchReachable() bool {
 // and concurrent fetches race on the same ref lock. The lock lives in the COMMON git dir, so a
 // CELL_REPO that is itself a linked worktree (where .git is a file) still gets a lock rather
 // than a 60s wait. A fetch that lost the ref-lock race still wrote FETCH_HEAD, and FETCH_HEAD is
-// all that is used — so a non-zero exit is a notice, not a stop.
+// all that is used — so a non-zero exit is a notice, not a stop. FETCH_HEAD is cleared first, so
+// the one read after is always THIS fetch's: a fetch that failed outright (a credential refusal,
+// above all) must stop the boot, never fall back to a previous boot's main.
 func (c *Cell) fetchMainUnderLock() string {
 	gitdir, err := gitOut(c.Repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil || gitdir == "" {
@@ -63,6 +65,12 @@ func (c *Cell) fetchMainUnderLock() string {
 			break
 		}
 		time.Sleep(time.Second)
+	}
+	// die() panics and main recovers, so this release runs on the refusal below too — a refused
+	// boot must not hand the next one a 60s wait.
+	defer os.Remove(lock)
+	if fh, err := gitOut(c.Repo, "rev-parse", "--path-format=absolute", "--git-path", "FETCH_HEAD"); err == nil && fh != "" {
+		_ = os.Remove(fh)
 	}
 	var cmd *exec.Cmd
 	if c.Forge == "gitlab" {
@@ -77,12 +85,20 @@ func (c *Cell) fetchMainUnderLock() string {
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "NOTICE: fetch returned non-zero (ref-lock race?) — using FETCH_HEAD")
 	}
-	sha, err := gitOut(c.Repo, "rev-parse", "FETCH_HEAD")
-	if err != nil {
-		die("desk: could not resolve FETCH_HEAD in %s", c.Repo)
+	sha, err := gitOut(c.Repo, "rev-parse", "--verify", "-q", "FETCH_HEAD")
+	if err != nil || sha == "" {
+		die("%s", fetchFailedMsg(c.Repo))
 	}
-	_ = os.Remove(lock)
 	return sha
+}
+
+// fetchFailedMsg is the refusal when the boot fetch wrote no FETCH_HEAD. It names the usual
+// cause, because git's own output reads like a transient error: a credential helper answering
+// with a dead token (an expired App token left in the checkout's shared config, say).
+func fetchFailedMsg(repo string) string {
+	return fmt.Sprintf("desk: fetch of origin main in %s failed and wrote no FETCH_HEAD — refusing to boot on a stale main. "+
+		"An authentication refusal is the usual cause: check which credential helper answers for origin "+
+		"(git -C %s config --show-origin --get-regexp '^credential\\.')", repo, repo)
 }
 
 // cellctlGeneratedFiles names the single-writer files main's CI regenerates (the board and the
