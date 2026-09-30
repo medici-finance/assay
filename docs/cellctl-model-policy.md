@@ -40,9 +40,12 @@ efforts, request a tier to disambiguate. Context suffixes must already be pinned
 cannot silently add a larger context window.
 
 Opus 5.0 IDs are prohibited by the policy resolver even if `deny` is omitted — `claude-opus-5`
-and its `[1m]` / gateway / `Opus5` / `-5-0` / `-5.0` spellings. The prohibition is anchored at
-end-of-token, so Opus 5.5+ (`claude-opus-5-5`) — a valid top tier — is NOT prohibited: it ends in
-`opus-5-5`, not `opus-5`. `deny` adds further case-insensitive glob patterns. The example pins the
+and its `[1m]` / gateway / `Opus5` / `-5-0` / `-5.0` spellings, including any of them carrying a
+trailing segment after the version (a date such as `claude-opus-5-20260101`, a provider tail such
+as `@20260101` or `-v1:0`, or a variant name). The Go launcher matches the prohibition by version,
+not by spelling: a one- or two-digit segment after the major is the minor, anything else is a
+suffix on the 5.0 release. So Opus 5.5+ (`claude-opus-5-5`, dated or not) — a valid top tier — and
+the other 5.x minors are NOT prohibited. `deny` adds further case-insensitive glob patterns. The example pins the
 Opus alias to `claude-opus-4-8[1m]`. The coordinator rule is a VERSION FLOOR: `the-desk` on Claude
 requires a top model at or above **Opus 5.5**, so Opus 5.5, 5.6, 6.0 and any later tier are
 accepted while the bare `opus` alias (no version), Opus 5.0 and older tiers (e.g. Opus 4.8) stay
