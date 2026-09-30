@@ -7,7 +7,8 @@ survive: the tile colour and one bold silhouette. A family of thin blue strokes
 inside the same blue octagon is six identical dots — the reader has to read the
 login to know who spoke. `deskavatar` hands the installer a set that is on brand,
 distinguishable in a comment thread, tuned to the org, and **byte-identical every
-time it is regenerated**.
+time it is regenerated** with the same Go toolchain (the PNG pixels are identical on
+any toolchain — see [Rasteriser](#rasteriser)).
 
 It is offline (no network — an org avatar, when used, is passed in as a file) and
 **deterministic**: no time, no randomness. `go test -count=2` produces identical
@@ -94,7 +95,7 @@ and only colour — tells them apart. That is the pair the collapse test targets
 
 Alongside the metric, a committed **20 px PNG strip per tier**
 (`internal/avatar/testdata/golden/{team,family}-20px.png`) is compared
-byte-for-byte by `TestGolden20px`. The metric is a floor; the golden is the
+pixel-for-pixel — decoded, exact, zero tolerance — by `TestGolden20px`. The metric is a floor; the golden is the
 backstop — a palette or geometry regression the metric happens to accept is still
 a visible diff a reviewer must approve. Verify row 6 breaks the proof (every role
 hue forced to one blue) and names the colliding pair; the golden catches
@@ -113,7 +114,16 @@ SVG is rendered to PNG with a pure-Go rasteriser
 (`github.com/srwiley/oksvg` + `github.com/srwiley/rasterx`) — **no cgo, no system
 library** — so the desk-tools release matrix is unchanged (Verify row 8). The
 identity monogram is drawn with the embedded Go font; both `image/png` encoding
-and font rasterisation are deterministic, so a regenerated PNG is byte-identical.
+and font rasterisation are deterministic, so a regenerated PNG is byte-identical
+under the same Go toolchain. The encoded bytes are NOT stable across Go releases:
+`compress/flate` output changed for identical scanlines between Go 1.26 and 1.27
+(observed: 1.25.0, 1.26.0 and 1.26.7 reproduce the committed goldens byte-for-byte,
+1.27.1 does not), so a PNG written by one release differs byte-wise from one written by
+another while every pixel is the same. That is why `TestGolden20px` compares
+decoded pixels rather than file bytes (a byte check failed on any machine whose Go
+differed from the one that wrote the goldens), and why
+`TestNoByteCompareOfCompressedGoldens` fails any test in the module that
+byte-compares a committed compressed file.
 
 ## Library
 
