@@ -368,6 +368,24 @@ RISK-VALUE: DERIVED — lock flags = LOCKFILE_EXCLUSIVE_LOCK|LOCKFILE_FAIL_IMMED
 RISK-VALUE: N/A — enumeration over the rest of the implementing diff (pinned range of PR #373) found no further INTRODUCED literal: the group/world-writable mask 0o022 (statusgen/rosterowner_unix.go:24, tools/desk/internal/deskkit/rosterowner_unix.go:23), Setpgid and SIGKILL (statusgen/procgroup_unix.go:21, :23), cmd.WaitDelay = time.Second (statusgen/gitinfo.go:115) and the 50ms retry sleeps (claim.go:185 and the three writeflow.go copies) moved verbatim from pre-split sites and are reversible operational knobs; golang.org/x/sys v0.46.0 (tools/desk/go.mod:14) is unchanged (row 14a); the World SID S-1-1-0 row 10 checks entered on later commits (#640/#641, #667), outside this diff.
 
 **VERIFY: FAIL** — 9/16 rows pass by execution witness (row 6's witness pass is vacuous and not counted); 14/16 meet Expect on direct execution; rows 7 and 8 fail (environment load flake #612; stale row-8 anchor), and rows 2, 6, 7, 8, 10, 13, 15 are check-definition defects for the witness. No defect found in the deliverable. Status stays implemented; no flip.
+### Non-implementer verifier run — VERIFY: FAIL — 15/16 rows by direct run, row 8 (stale anchor, #1454); rows 13-15 now self-proving (#1651 fixed by #1656) — 2026-09-30 claude-opus-5-5-verifier
+
+Runner is not the implementer. Isolated worktree at merged main `43420f7ecd743f5c930dc479f54f5ef5ca7b82ed` (HEAD == the forge's `commits/main`). Offline, rows run directly in `bash -o pipefail`. No row is check:ci and none needs native Windows. `statusgen verifyrun --dry-run` (main-source build): exit 2, 9 pass, 7 could-not-run (rows 2, 6, 7, 8, 10, 13, 15 — the witness runs a prose code span, #1805), so no witnessed PASS is possible yet. Status stays `implemented`.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1-6, 9, 11, 12, 14, 14a | each row's command verbatim | per row | PASS — rows 3/4 both PE32+ (x86-64 and Aarch64, MS Windows); row 5 `0`; row 6 `sg=0 dt=0`; row 9 `9`; rows 11, 12 `0`; row 14a `1` | 2026-09-30 | claude-opus-5-5-verifier |
+| 7 | row 7 command verbatim (statusgen + desk-tools test suites) | sg=0 and dt=0 | PASS on re-run — run 1 `sg=0 dt=1` (only loopengine TestDrain, flake #612); run 2 `sg=0 dt=0`; TestDrain alone 3/3 | 2026-09-30 | claude-opus-5-5-verifier |
+| 8 | `grep -rn --include='*.go' -E 'syscall\.(Flock\|Kill\|Stat_t\|SysProcAttr\{Setpgid)' statusgen tools/desk \| grep -Ev '_(unix\|windows)\.go:' \| grep -Ev ':[0-9]+:[[:space:]]*(//\|\*)' ; echo "rc=$?"` | rc=1 (no output) | **FAIL** — `rc=0`, two lines: `tools/desk/cmd/cellctl/policy_hang_unix_test.go:43` and `:53`. The file is `//go:build unix` (line 1) from unrelated #1594; its `_unix_test.go` suffix escapes the anchor. Extending the exclusion to `_(unix\|windows)(_test)?\.go:` gives `rc=1` | 2026-09-30 | claude-opus-5-5-verifier |
+| 10 | row 10 command verbatim | wired=OK sg-test=OK dt-test=OK | PASS — all three OK; 10 subtests ran in each module | 2026-09-30 | claude-opus-5-5-verifier |
+| 13 | row 13 command verbatim (pinned BASE range) | exit 0; planted defects fail | PASS — exit 0; both planted-defect variants exit 1 | 2026-09-30 | claude-opus-5-5-verifier |
+| 14 | row 14 command verbatim | exit 0; planted defects fail | PASS — exit 0; both planted-defect variants exit 1 | 2026-09-30 | claude-opus-5-5-verifier |
+| 15 | row 15 command verbatim | exit 0; planted defects fail | PASS — exit 0; four planted defects each exit 1, including `NOT IN DIFF` for an invented path | 2026-09-30 | claude-opus-5-5-verifier |
+
+RISK-VALUE: DERIVED — LockFileEx / UnlockFileEx range = (0, 1, 0, zero Overlapped) @ tools/desk/internal/deskkit/filelock_windows.go:29 and :43 — argument order checked against the x/sys v0.46.0 signatures; lock and unlock cover the same one-byte range, so the lock cannot leak.
+RISK-VALUE: DERIVED — flags = LOCKFILE_EXCLUSIVE_LOCK|LOCKFILE_FAIL_IMMEDIATELY @ tools/desk/internal/deskkit/filelock_windows.go:28, ERROR_LOCK_VIOLATION → ErrLockBusy @ :34-35 — mirrors LOCK_EX|LOCK_NB and EWOULDBLOCK → ErrLockBusy @ filelock_unix.go:26/:30; busy is refused, other errors return raw, so the lock fails closed.
+
+Findings: (F1) #1651 is resolved by #1656 (a0b3c5218): the pinned range is the real 20-file implementing diff and every planted-defect variant fails. (F2, the FAIL) row 8's anchor predates `_unix_test.go` files; the use is build-constrained, so this is a stale row, not a surviving syscall — routed to #1454. (F3) seven rows still witness as could-not-run until #1805 is fixed for this brief. (F4) row 7 flakes under load on #612. (F5) the 0o022 mode check is unix-only on main; Windows enforces owner SID + DACL instead (#640/#641, #667), which row 10 asserts.
 
 ## Review
 Gate: **model** (from frontmatter). All four risk answers are `no` — this is a compile-target
