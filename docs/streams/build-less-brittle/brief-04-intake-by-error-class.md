@@ -99,6 +99,11 @@ source revisions/evidence references, unresolved questions and next actionable s
 those fields in the downstream brief instead of requiring the next desk to rediscover the
 class. Coalesce repeated reports through the existing incident-group rule; a new observation
 can enrich the record without becoming another counted incident or another agent request.
+Carry source origin and the existing trust-gate disposition/restrictions with reused text;
+quarantined reporter content never becomes downstream instructions by being copied. In the
+intake procedure use the labels `mechanism:`, `known-scope:`, `source-revisions:`,
+`unresolved-questions:`, `next-action:`, `source-origin:` and `trust-disposition:` within the
+existing attachment block. Label the worked case `### Work-input triage example`.
 
 This is a procedure/record refinement within the existing line offsets, not new schema,
 scheduler or runtime deduplication code. Execution-attempt coalescing belongs to graph 14
@@ -154,6 +159,7 @@ weight rows. Whether the procedure is followed is measured by the project's clos
 | 10 | `statusgen --consumers --root . --brief build-less-brittle/04; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
 | 11 | `grep -c -e 'module:' plugins/assay/skills/intake-desk/SKILL.md && grep -c -e 'brittle' plugins/assay/skills/intake-desk/SKILL.md` | two counts, each ≥ `1` (the hotspot wiring: instances name their module, and a marked module lowers the trigger to the first instance) |
 | 12 | `grep -c -e 'production-down' plugins/assay/skills/intake-desk/SKILL.md && grep -c -e 'bleed' plugins/assay/skills/intake-desk/SKILL.md` | two counts, each ≥ `1` (the parking carve-out: a production-down or security symptom is never parked, and the driver's `bleed` reply un-parks one) |
+| 13 | `f=plugins/assay/skills/intake-desk/SKILL.md; for key in mechanism known-scope source-revisions unresolved-questions next-action source-origin trust-disposition; do grep -qF "$key:" "$f" \|\| exit 1; done; grep -q '^### Work-input triage example$' "$f" && echo WORK-INPUT-FIELDS` | `WORK-INPUT-FIELDS` (presence only; the worked-triage review below checks meaning, retained source trust and recurrence counting) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,
