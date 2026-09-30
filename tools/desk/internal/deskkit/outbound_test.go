@@ -55,56 +55,56 @@ func obRepo(slug string) ForgeRepo {
 	return ForgeRepo{Owner: o, Name: n}
 }
 
-// recordingForge is the fake behind the decorator: it implements every text-carrying write
+// outboundRecordingForge is the fake behind the decorator: it implements every text-carrying write
 // (recording the call and the text it would have published) and ReadFile (the file does
 // not exist yet). Any other method reaches the nil embedded Forge and panics.
-type recordingForge struct {
+type outboundRecordingForge struct {
 	Forge
 	calls  []string
 	bodies []string
 }
 
-func (r *recordingForge) rec(m string, text ...string) {
+func (r *outboundRecordingForge) rec(m string, text ...string) {
 	r.calls = append(r.calls, m)
 	r.bodies = append(r.bodies, strings.Join(text, "\n"))
 }
 
-func (r *recordingForge) FileIssue(_ ForgeRepo, in IssueInput) (*IssueRef, error) {
+func (r *outboundRecordingForge) FileIssue(_ ForgeRepo, in IssueInput) (*IssueRef, error) {
 	r.rec("FileIssue", in.Title, in.Body)
 	return &IssueRef{}, nil
 }
 
-func (r *recordingForge) PostComment(_ ForgeRepo, _ int, body string) (*CommentRef, error) {
+func (r *outboundRecordingForge) PostComment(_ ForgeRepo, _ int, body string) (*CommentRef, error) {
 	r.rec("PostComment", body)
 	return &CommentRef{}, nil
 }
 
-func (r *recordingForge) PostCommentTyped(_ ForgeRepo, _ int, _ TargetKind, body string) (*CommentRef, error) {
+func (r *outboundRecordingForge) PostCommentTyped(_ ForgeRepo, _ int, _ TargetKind, body string) (*CommentRef, error) {
 	r.rec("PostCommentTyped", body)
 	return &CommentRef{}, nil
 }
 
-func (r *recordingForge) EditComment(_ ForgeRepo, _, body string) error {
+func (r *outboundRecordingForge) EditComment(_ ForgeRepo, _, body string) error {
 	r.rec("EditComment", body)
 	return nil
 }
 
-func (r *recordingForge) CreateDraftChange(_ ForgeRepo, in DraftChangeInput) (*PullRef, error) {
+func (r *outboundRecordingForge) CreateDraftChange(_ ForgeRepo, in DraftChangeInput) (*PullRef, error) {
 	r.rec("CreateDraftChange", in.Title, in.Body, in.Head)
 	return &PullRef{}, nil
 }
 
-func (r *recordingForge) EditChange(_ ForgeRepo, _ int, in EditChangeInput) error {
+func (r *outboundRecordingForge) EditChange(_ ForgeRepo, _ int, in EditChangeInput) error {
 	r.rec("EditChange", in.Title, in.Body)
 	return nil
 }
 
-func (r *recordingForge) PostReview(_ ForgeRepo, _ int, in ReviewInput) error {
+func (r *outboundRecordingForge) PostReview(_ ForgeRepo, _ int, in ReviewInput) error {
 	r.rec("PostReview", in.Body)
 	return nil
 }
 
-func (r *recordingForge) ApplyLabels(_ ForgeRepo, _ int, c LabelChange) (*LabelOutcome, error) {
+func (r *outboundRecordingForge) ApplyLabels(_ ForgeRepo, _ int, c LabelChange) (*LabelOutcome, error) {
 	var parts []string
 	for _, l := range c.Add {
 		parts = append(parts, l.Name, l.Description)
@@ -113,12 +113,12 @@ func (r *recordingForge) ApplyLabels(_ ForgeRepo, _ int, c LabelChange) (*LabelO
 	return &LabelOutcome{}, nil
 }
 
-func (r *recordingForge) WriteFile(_ ForgeRepo, in WriteFileInput) (*WriteFileResult, error) {
+func (r *outboundRecordingForge) WriteFile(_ ForgeRepo, in WriteFileInput) (*WriteFileResult, error) {
 	r.rec("WriteFile", in.File, string(in.Content), in.Message)
 	return &WriteFileResult{}, nil
 }
 
-func (r *recordingForge) ReadFile(ForgeRepo, ReadFileInput) (*FileContent, error) {
+func (r *outboundRecordingForge) ReadFile(ForgeRepo, ReadFileInput) (*FileContent, error) {
 	return &FileContent{Exists: false}, nil
 }
 
@@ -277,7 +277,7 @@ func (p *obPushRepo) branch(r obRow, s string) string {
 type obTarget struct {
 	name string
 	kind string
-	run  func(*testing.T) (calls int, fake *recordingForge, err error)
+	run  func(*testing.T) (calls int, fake *outboundRecordingForge, err error)
 }
 
 func obTargets(t *testing.T, r obRow, push *obPushRepo) []obTarget {
@@ -290,8 +290,8 @@ func obTargets(t *testing.T, r obRow, push *obPushRepo) []obTarget {
 					continue
 				}
 				m, tc := m, obTextMethods[m]
-				out = append(out, obTarget{name: m, kind: tc.kind, run: func(t *testing.T) (int, *recordingForge, error) {
-					fake := &recordingForge{}
+				out = append(out, obTarget{name: m, kind: tc.kind, run: func(t *testing.T) (int, *outboundRecordingForge, error) {
+					fake := &outboundRecordingForge{}
 					err := tc.call(OutboundChecked(fake, "worker"), obRepo(r.target), r.text)
 					return len(fake.calls), fake, err
 				}})
@@ -302,7 +302,7 @@ func obTargets(t *testing.T, r obRow, push *obPushRepo) []obTarget {
 			if s == "push-commit" {
 				kind = OutboundKindCommit
 			}
-			out = append(out, obTarget{name: s, kind: kind, run: func(t *testing.T) (int, *recordingForge, error) {
+			out = append(out, obTarget{name: s, kind: kind, run: func(t *testing.T) (int, *outboundRecordingForge, error) {
 				b := push.branch(r, s)
 				err := OutboundCheckPush(OutboundPush{Dir: push.dir, Repo: r.target, Base: "main", Head: b, Branch: b, Role: "worker"})
 				calls := 1 // the push path has no forge; "passed" stands for "the push may proceed"
@@ -481,7 +481,7 @@ func TestOverrideAuditRowHoldsDigestNotText(t *testing.T) {
 	SetOutboundContext(OutboundContext{Tool: "conformance", Verb: "comment", OverrideReason: "a reviewed false positive"})
 
 	body := "the vendor contact is " + obEmailOutside + " per the thread"
-	fake := &recordingForge{}
+	fake := &outboundRecordingForge{}
 	f := OutboundChecked(fake, "worker")
 	for i := 0; i < 2; i++ {
 		if _, err := f.PostComment(obRepo(obPrivate), 7, body); err != nil {
@@ -646,7 +646,7 @@ func TestOutboundWriteFileChecksBranch(t *testing.T) {
 	obRoster(t)
 	defer SetOutboundNoticeWriter(&bytes.Buffer{})()
 	SetOutboundContext(OutboundContext{Tool: "branch", Verb: "writefile"})
-	fake := &recordingForge{}
+	fake := &outboundRecordingForge{}
 	_, err := OutboundChecked(fake, "worker").WriteFile(obRepo(obPublic), WriteFileInput{
 		File: "docs/note.md", Branch: "fix/" + obWithheld, StartBranch: "main",
 		Content: []byte("a neutral line\n"), Message: "add a note",
