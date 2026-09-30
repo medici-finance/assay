@@ -41,7 +41,7 @@ const fixtureRepoRoot = "../../../.."
 // committed knownAbsentFixtures register below, with the exact fixture path.
 //
 // It takes testing.TB rather than *testing.T so that
-// TestSkipHelperRefusesPlantedGuard can drive THIS function — the wiring, not
+// TestSkipHelperWiringRefuses can drive THIS function — the wiring, not
 // only the decision in absentFixtureProblem — with a recording TB. Every
 // caller passes its *testing.T unchanged.
 func skipIfFixtureAbsent(t testing.TB, path, why string) {
