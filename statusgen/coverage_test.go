@@ -1259,6 +1259,49 @@ func TestCoverageManifestScopesReuse(t *testing.T) {
 	}
 }
 
+// TestCoverageNothingDeclaredStaysConservative — review finding pr1682-A11:
+// forRow's "nothing is declared" branch. A COMPLETE manifest whose only
+// dependencies are policy, build or environment ones declares no source path,
+// so with no `files:` line on the brief now there is nothing to narrow the
+// scope to: the claim must stay conservative, and an out-of-scope source edit
+// after the witness must hold it. The brief's `files:` line is removed in the
+// Evidence commit (an edit to the brief's own, otherwise exempt, file), so
+// atBase still finds a declaration at the witness's base and does not widen on
+// its own: only the "nothing is declared" branch keeps the claim held.
+func TestCoverageNothingDeclaredStaysConservative(t *testing.T) {
+	cases := []struct {
+		name string
+		dep  workInputDep
+	}{
+		{"policy only", workInputDep{Kind: depPolicy, Path: "policy/writer-auth.yaml"}},
+		{"build only", workInputDep{Kind: depBuild, Path: "build/config.yaml"}},
+		{"environment only", workInputDep{Kind: depEnvironment, Name: "toolchain", Recorded: "go1.24", Current: "go1.24"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, root := mustCoverageStream(t, "cov")
+			verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
+			mustWriteFile(t, root, "src/impl.go", "v1\n")
+			mustWriteFile(t, root, "lib/other.go", "v1\n")
+			mustWriteFile(t, root, "policy/writer-auth.yaml", "writers: [a]\n")
+			mustWriteFile(t, root, "build/config.yaml", "opt: 1\n")
+			writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", "`src/impl.go`", verify, "")
+			a := mustGitInit(t, root)
+			ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, a))
+			writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", "", verify, ev)
+			mustWriteFile(t, root, "lib/other.go", "v2\n")
+			mustGitCommitAll(t, root, "record Evidence, drop files:, edit an out-of-scope source file")
+			got := soleClaim(t, root, s, withManifest(true, tc.dep))
+			if got.Result != covWrongRevision || got.Revision != a {
+				t.Fatalf("nothing declared: want wrong-revision at %s, got %+v", a, got)
+			}
+			if !strings.Contains(got.Reason, "nothing is declared") {
+				t.Fatalf("the reason must say the scope is conservative because nothing is declared, got %q", got.Reason)
+			}
+		})
+	}
+}
+
 // TestDeclaredEntriesKeepAll is the defect-class guard for round-5 F6 /
 // security S10: whatever form a `files:` value takes, every backtick span and
 // every word outside the spans reaches the witness scope as an entry, and an

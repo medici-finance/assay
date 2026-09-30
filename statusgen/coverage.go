@@ -88,7 +88,7 @@ package main
 //       the author wrote, so prose can only widen the scope, never drop an
 //       entry out of it;
 //     - never the files verify and regen NECESSARILY write, even when
-//       declared: `STATUS.md`, `docs/streams/verify-outcomes*.jsonl`, a
+//       declared: `STATUS.md`, the verify outcome log (verifyOutcomesGlob), a
 //       stream `README.md`, and brief files (isVerifyWrittenPath). Any OTHER
 //       declared `docs/streams/` artifact stays guarded;
 //     - never the brief's own file: its Verify rows are bound separately, by
@@ -905,7 +905,7 @@ func isBoardBookkeepingPath(p string) bool {
 // isVerifyWrittenPath reports whether p is one of the files verify and regen
 // NECESSARILY write between a witness and the main tip — so no witness can
 // speak for it, even when a brief's `files:` names it (round-3 F2): the
-// generated STATUS.md, the verify-outcomes log and its rotation shards, a
+// generated STATUS.md, the verify outcome log and its rotation shards, a
 // stream's README (its status rows flip on every verified/done), and brief
 // files (a verify batch writes several briefs' Evidence in one commit). Any
 // OTHER docs/streams/ artifact a brief declares stays guarded.
