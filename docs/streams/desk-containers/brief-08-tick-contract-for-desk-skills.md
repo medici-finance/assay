@@ -522,7 +522,34 @@ RISK-VALUE: NAMED, NOT DERIVED — R = 60 @ plugins/assay/references/tick-contra
 Observations: (a) The witness's rows 2, 5, 9, 10, 11 and 12 are parse artifacts of Command cells that hold prose, and row 4's "fail" comes from assuming exit 0 when the row expects exit 1. Both are check-definition gaps in the Verify table, not implementation defects. (b) Row 4's named pre-existing red has moved from standing-note.md to claude-code.md (system-demo); the Expect text is stale, the delta assertion holds.
 
 VERIFY: BLOCKED — every offline row passes on substance (rows 1-8, 13 and 14, with the mutation halves of rows 2, 3, 5 and 7 now run), and 0 rows fail. Rows 1, 3, 6, 8, 13 and 14 (check:ci) still need the hermetic Linux network-off witness; the direct runs above only support them. Rows 9-12 need a cell (online lane). The status stays implemented.
+### Non-implementer verifier run — VERIFY: BLOCKED — 0 fail; check:ci rows need the Linux witness, rows 9-12 need a cell (#1491) — 2026-09-30 claude-opus-5-5-verifier
 
+Runner is not the implementer. Isolated worktree at merged main `b89b3957225e227e69d5b5ec7949344f580d9966` (HEAD == the forge's `commits/main`, start and end). Implementing squash commit 21a3e1474 (#1072). `gate: model`. Offline envelope on darwin; mutations on scratch exports; tree clean after the run. check:ci rows ran directly (non-hermetic): the Linux network-off witness cannot run on darwin (#1800). Re-woken because declared inputs (the desk skill bodies, the desk-containers README) changed since the 2026-09-27 pass; the tick-mode copies still byte-match. Status stays `implemented`.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/skillslint && go run . --root ../..` | exit 0 | PASS by direct run — exit 0; every check PASS incl. `HOUSE-VALUES: PASS — 39 markdown file(s) under plugins/` | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | row-1 command, GUARDRAILS line; mutations on a scratch export | PASS clean, FAIL on drift | PASS — `GUARDRAILS: PASS — 33 guardrail copy/copies byte-match` (5 tick-mode sites). Drift in one copy: exit 1, `GUARDRAILS: FAIL — 1 copy/copies drifted`; deleted copy: exit 1, `COULD-NOT-CHECK — 1 site(s) unreadable` | 2026-09-30 | claude-opus-5-5-verifier |
+| 3 | `cd tools/harnesslint && go run . --vocab ../../docs/streams/harness-portability/README.md bodies ../../plugins/assay/skills` | clean | PASS by direct run — `checked-clean: bodies — no violations`; mutation (backticked harness token in a tick-mode section): exit 1, `banned harness token` | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | `cd tools/harnesslint && go run . --vocab ../../docs/streams/harness-portability/README.md bindings ../../plugins/assay/references` | +1 skip, +0 violations | PASS on the delta — exit 0; `skipped (declared non-matrix-reference): … tick-contract.md`, `checked-clean: bindings`. The Expect's "exit remains 1" is stale (the mode is now green). Declaration removed: exit 1 | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | per-body citation check: one link to the tick contract, resolves, no grammar restatement | 5 × (1, yes, 0) | PASS — all five bodies 1 / yes / 0; each of three mutations exits 1 | 2026-09-30 | claude-opus-5-5-verifier |
+| 6 | `bash plugins/assay/scripts/tick-summary.test.sh` | all pass | PASS by direct run — `71 passed, 0 failed`; every named case present | 2026-09-30 | claude-opus-5-5-verifier |
+| 7 | `bash plugins/assay/scripts/tick-summary.test.sh --case rejects-zero-for-unknown && bash plugins/assay/scripts/tick-summary.test.sh --case rejects-unknown-outcome` | pass; mutants fail | PASS — 2/0 and 3/0; widened outcome set: 1 failed; disabled unknown-count test: 2 failed | 2026-09-30 | claude-opus-5-5-verifier |
+| 8 | `git diff refs/remotes/origin/main -- plugins/assay/skills/` | tick sections only | PASS by direct run — literal form is empty on a merged tree; against the implementing commit's parent: 5 files, 130 insertions, one hunk per body after Boot, no liveness or boot line touched | 2026-09-30 | claude-opus-5-5-verifier |
+| 9 | online lane: a pr-review-desk tick on a cell against the loop image | one pass, summary line | could-not-check — needs a cell and the loop image | 2026-09-30 | claude-opus-5-5-verifier |
+| 10 | online lane: grep the row-9 transcript for a durable wake, scheduled wake-up, cadence sleep or human prompt | none | could-not-check — needs the row-9 transcript | 2026-09-30 | claude-opus-5-5-verifier |
+| 11 | online lane: row 9 with a 60-second deadline | exits within the reserve | could-not-check — needs a cell run | 2026-09-30 | claude-opus-5-5-verifier |
+| 12 | online lane: row 9 across the 8 trigger spellings | only the exact value arms | could-not-check — needs a cell run | 2026-09-30 | claude-opus-5-5-verifier |
+| 13 | `statusgen --root . --lint; echo $?` | 0 | PASS by direct run — `LINT: PASS` (v1.0.29), 0 PROBLEM, no NOTICE names this brief | 2026-09-30 | claude-opus-5-5-verifier |
+| 14 | `statusgen --root . --consumers --brief assay:assay:desk-containers:08; echo $?` | exit 0 or merged-tree exit 2 | PASS — literal exit 2 (merged tree, which the row permits); the tool's merged-brief recipe at 21a3e1474: `4 corroborated, 0 disproved, 5 unchecked` (the 5 are out-of-scope reviewer-judgement entries) | 2026-09-30 | claude-opus-5-5-verifier |
+
+RISK-VALUE (all values reversible; nothing moves funds, publishes or deletes):
+
+- RISK-VALUE: DERIVED — tick trigger exact value `1` @ plugins/assay/references/tick-contract.md:40 — only an exact match keeps inherited truthy values from arming tick mode; follows the repo precedent at statusgen/telemetry.go:65. Runtime proof is online row 12.
+- RISK-VALUE: DERIVED — `COUNT='([0-9]+|-)'` @ plugins/assay/scripts/tick-summary.sh:67 and the closed outcome set @ :59 — the three-state rule: `-` is the only unknown count, so a blind pass cannot claim 0; widening either fails its row-7 case.
+- RISK-VALUE: NAMED, NOT DERIVED — exit reserve R = 60 s @ plugins/assay/references/tick-contract.md:99 — must cover exit-path forge writes before the summary line; depends on cell forge-write latency, measurable only by online row 11 (carried on #1491 with the online lane). A too-small R costs one empty pod log.
+
+Findings: 0 rows fail. Stale fact: row 4's "exit remains 1". Check-definition gaps: rows 8 and 14 literal forms are vacuous on a merged tree; rows 2, 5 and 9-12 carry prose in the Command cell, so a witness executing them records artifacts, not evidence.
 
 ## Review
 
