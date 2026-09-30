@@ -121,7 +121,7 @@ resolving to a role App). An SSH push authenticates with whatever key this machi
 holds — a human's — so the forge records the HUMAN as the branch author and the App's
 permission envelope is bypassed, however the commits are authored. The refusal names the
 config key, the url, the acting App and the one-line remedy. The url judged is the one git
-will push to — `git remote get-url --push --all origin`, a local read with url.<base>.insteadOf
+will push to — "git remote get-url --push --all origin", a local read with url.<base>.insteadOf
 and pushInsteadOf applied — so an https remote a rewrite rule turns into SSH is refused, and
 the refusal names the rule. Fetch over SSH stays allowed: an SSH fetch url with an https push
 override passes. edit is NOT gated — it pushes nothing. With $DESK_LOOP unset the gate
