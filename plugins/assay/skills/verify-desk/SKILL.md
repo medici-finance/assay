@@ -10,7 +10,9 @@ pr-review-desk reviews and flips ready → **human:<name> merges** → **verify-
 window) runs each merged brief's Verify table on merged main as a NON-implementer, fills Evidence,
 advances `implemented → verified → done`. Merging is deployment frequency, not completion, and an
 unwatched Awaiting queue is how briefs rot at `implemented`; this loop is the **Change Lead Time** fix
-and the **Change Failure Rate** sensor (`verify-outcomes.jsonl` is its input). It does not run the
+and the **Change Failure Rate** sensor (the `docs/streams/verify-outcomes/` record directory is its
+input — one file per outcome, since #882; a legacy `verify-outcomes.jsonl` line still counts for as
+long as that log is not yet retired). It does not run the
 PR event watcher (`capability:durable-monitor`) — that is pr-review-desk's.
 
 **The stream board is a derived, generated surface** — this
@@ -202,6 +204,11 @@ PRs one at a time (#882 records the pattern). Get them right before the row land
   not such an edit: never re-hash over it. If that merge changed the brief, the receipt fires when it
   lands, which is correct, because the brief changed after the verify run.
 
+Since #882, `deskevidence --outcome-record` REFUSES (exit 5, naming the field) a receipt that
+breaks any of these three rules — writer-side enforcement of what was, until then, a review-time
+catch. The three rules above are unchanged; get them right at write time and the writer's own
+gate never fires.
+
 **Sibling repos are in scope** (human:<name>, 2026-07-10, F-23): a brief whose deliverables land
 cross-repo is verified in the sibling checkout — read the set from `deskroster repos`, never a
 hardcoded list; an uncloned repo is **could-not-check** for that row, never a fail. Resync the
@@ -340,16 +347,17 @@ sets and the PR shape.
 
 Otherwise the brief does NOT advance. File a `bug` immediately (`deskfile new -R <owner/repo> --raised-by verifier
 --label bug`) with the failing command and its real output, then **continue the drain** — the filed issue
-IS the report. **In addition** append one row to the append-only sidecar
-`docs/streams/verify-outcomes.jsonl` (single-writer = this desk; the `VERIFY FAIL` commit-subject
-convention is grep-fragile, so bounce-back rate is not computable from prose). On PASS append the same
-row with `"outcome":"verified"` only AFTER the Evidence, execution witnesses, Status
-`verified` (or `done`), and dated Verified stamp have landed on the target branch and
-`statusgen --lint` accepts that same tree. Refresh the local checkout before appending;
-`deskevidence` checks the closure and compares the brief and stream README with the target
-branch. Evidence-only landings that leave Status `implemented` MUST NOT append a verified
-outcome. A PASS awaiting a closure gate is not yet a completed verification; `verify-fail`
-recording is unchanged.
+IS the report. **In addition** write one outcome record with `deskevidence --outcome-record` (since
+#882: one NEW file per outcome under `docs/streams/verify-outcomes/<stream>/`, single-writer = this
+desk; the `VERIFY FAIL` commit-subject convention is grep-fragile, so bounce-back rate is not
+computable from prose). On PASS write the same row's shape with `"outcome":"verified"` only AFTER
+the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
+landed on the target branch and `statusgen --lint` accepts that same tree. Refresh the local
+checkout before writing; `deskevidence` checks the closure and compares the brief and stream README
+with the target branch. Evidence-only landings that leave Status `implemented` MUST NOT record a
+verified outcome. A PASS awaiting a closure gate is not yet a completed verification; `verify-fail`
+recording is unchanged. Records are immutable — a correction is a NEW record (a fresh `ts`), never an
+edit of one already landed.
 
 ```
 {"ts":"<ISO8601Z>","brief":"<stream>/<NN>","outcome":"verify-fail","rows_passed":<n>,"rows_total":<N>,"sha":"<merged-head-sha>"}
@@ -469,14 +477,28 @@ a branch as the target instead of `main`:
    merge follows the reviewer's approval and the required status with no further action; where it has
    not, the PR waits on a human merge. Either way the brief's row is `verified` the moment the Evidence
    PR merges, and the `gate: model` verified→done flip stays CI's (see below).
-4. **Keep a reviewed Evidence PR mergeable: every state has exactly one owner.** Expect an open
-   Evidence PR to go `CONFLICTING` whenever a sibling Evidence PR lands. Every landing appends to the
-   same outcomes log, and the forge computes mergeability and performs the merge server-side, where a
-   `.gitattributes` merge driver is never applied: the log's `merge=union` resolves a LOCAL merge
-   only. (This conflict class is tracked in #882.) Read each of your open Evidence PRs against the
-   table below and act on the rows this desk owns. Merge main locally, where the union driver
-   applies, merge-never-rebase, then push. A conflict in any file other than the outcomes log is
-   authored work: resolve it and say so on the PR.
+4. **Keep a reviewed Evidence PR mergeable: every state has exactly one owner.** Since #882, an
+   Evidence PR that writes ONLY the per-file layout no longer conflicts on outcomes: each writes
+   one NEW file under `docs/streams/verify-outcomes/<stream>/`, named by a pure function of its own
+   content, so two PRs only ever add the same path when they carry byte-identical content, and two
+   identical adds merge cleanly with no driver. (Before #882, every Evidence PR appended to one
+   shared outcomes log, and the forge computed mergeability and performed the merge server-side
+   with no `.gitattributes` driver applied — the log's `merge=union` resolved a LOCAL merge only —
+   so an open Evidence PR went `CONFLICTING` whenever a sibling landed. That class is closed FOR
+   NEW WORK using the per-file layout.) For such a PR, a `CONFLICTING` verdict now means a REAL
+   content conflict — two PRs editing the same brief's `## Evidence` section, or an unrelated file
+   — never the outcomes shape.
+
+   **Transition window:** the shared `docs/streams/verify-outcomes.jsonl` log stays on disk,
+   unretired, until every open PR still touching it has landed (#882's follow-up, #1802) — a PR
+   still appending to it still conflicts with every sibling PR that also touches it, exactly as
+   before #882. Resolve that the pre-#882 way: merge main locally and push (the `merge=union`
+   driver resolves a LOCAL merge). A receipt correction on such a PR is a NEW `--outcome-record`
+   record with a later `ts`, never an edit of the existing log line.
+
+   Read each of your open Evidence PRs against the table below and act on the rows this desk owns:
+   merge main and push, merge-never-rebase, resolve whatever conflicts for real (or, for a
+   still-on-the-shared-log PR, resolve via the local merge above), and say so on the PR.
 
 A PR's state is three facts. **Verdict:** `none` (some required review lane has never given a
 verdict and none is blocking), `blocking` (any lane's latest verdict is a CHANGES_REQUESTED, an open
@@ -634,9 +656,9 @@ implementer**, because it needs an external API key, meters real billed spend, o
 session (the triggering case: a live Anthropic ACP session — adapter negotiation, metered cost, negotiated
 params). Unlike a cluster row it has **no online hand-off lane**: no second non-implementer runner holds the
 credential or can be charged the spend. Left under the plain Verify contract (a non-implementer re-runs
-every row) such a brief rots at `implemented` forever and needs a bespoke human ruling — the class that
-stranded loop-engine/14 at `implemented` and recurs across desk-console-saas/04-05, desk-console-2/01,
-desk-apps/04.
+every row) such a brief rots at `implemented` forever and needs a bespoke human ruling — a class that has
+already stranded briefs at `implemented` and recurs across several streams (any `<stream>/<NN>` whose only
+unrun Verify row is the live probe).
 
 human:<name> ruled (2026-08-27) that this class is handled by **Option 2**:
 the probe is a **Phase-0 implementer obligation**, recorded as Evidence **at implementation time** (adapter

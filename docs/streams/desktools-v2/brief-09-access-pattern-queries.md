@@ -35,7 +35,7 @@ exec-tier-why: >-
   pre-specify, and (b) — correctness spans the interface, two backend queries, and a migrated
   consumer, where a snapshot that omits a field or tears under pagination survives a naive test.
 domain: complicated
-version: 1
+version: 2
 id: 264e1b84-3155-4369-8c68-059a35e70645
 ---
 
@@ -109,10 +109,29 @@ facts:
 | 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestAccessPatternSingleRoundTrip -v` | output contains the literal line `--- PASS: TestAccessPatternSingleRoundTrip` (assert on that line, not the exit status — a `-run` selector matching nothing exits 0) proving the op resolves in ONE round-trip / one consistent snapshot — the dereferencing row for the freshness claim |
 | 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeNoRawQueryInSignature -v` | output contains the literal line `--- PASS: TestForgeNoRawQueryInSignature` (same rule) asserting the access-pattern op signatures carry typed inputs/results only, no raw query string — the "no raw query crosses the seam" row |
 | 5 | `sh -c 'for p in "calls before" "calls after" "points before" "points after"; do grep -qiF -- "$p" docs/streams/desktools-v2/query-cost.md; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $p"; exit 1; fi; done; echo all-present'` | exit 0; prints `all-present` — each of the four measurements is checked SEPARATELY in `docs/streams/desktools-v2/query-cost.md` (planned), so one word repeated cannot stand in for a missing measurement |
-| 6 | `sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb9.txt 2>&1; grep -oE 'reach-around sites: [0-9]+' /tmp/dv2-fb9.txt` | exit 0; count NOT HIGHER than the `desktools-v2/02` line in `docs/streams/desktools-v2/forge-ban-baseline.txt` — adding typed ops introduces no reach-past site (the query documents stay inside the backends) |
+| 6 | `D="${D:-05c937307aa6}"; test -n "$D" && git rev-parse -q --verify "$D^1^{commit}" >/dev/null && git rev-parse -q --verify "$D^{commit}" >/dev/null && { n0=; n1=; for r in "$D^1" "$D"; do t=$(mktemp -d) && git archive -o "$t.tar" "$r" && tar -xf "$t.tar" -C "$t" && cp tools/desk/scripts/forge-ban.sh "$t/tools/desk/scripts/forge-ban.sh" && sh "$t/tools/desk/scripts/forge-ban.sh" > "$t.out" 2>&1; n=$(sed -n 's/.*reach-around sites: \([0-9][0-9]*\).*/\1/p' "$t.out"); rm -rf "$t" "$t.tar" "$t.out"; if [ -z "$n" ]; then echo "$r NO-COUNT"; exit 1; fi; echo "$r reach-around sites: $n"; if [ -z "$n0" ]; then n0=$n; else n1=$n; fi; done; if [ "$n1" -le "$n0" ]; then echo "NOT-HIGHER $n0 -> $n1"; else echo "HIGHER $n0 -> $n1"; exit 1; fi; }` — run from a main checkout; `D` defaults to this brief's delivering commit on main, `05c937307aa6` (#1851), and a verifier re-verifying a later delivery sets `D` to that commit instead | exit 0; prints three lines, `<D>^1 reach-around sites: N0`, `<D> reach-around sites: N1`, then `NOT-HIGHER N0 -> N1`, with N1 NOT HIGHER than N0 — adding typed ops introduces no reach-past site (the query documents stay inside the backends). The command decides the verdict itself: it exits 1 on `HIGHER`, on a tree that prints no count, and on a `D` that does not resolve to a commit with a parent. Both trees are measured with the SAME current script, and the reference is the count at the delivering commit's own merge parent, not the `desktools-v2/02` line in `docs/streams/desktools-v2/forge-ban-baseline.txt`, so sites other PRs add or remove before or after cannot move the verdict (#1529; the line went stale twice, 53 then 60, before this row stopped reading it). Evidence cites `D`, the parent sha, N0 and N1 |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
+### Non-implementer verifier run — VERIFY: FAIL — 5/6 rows, row 6 (#1529) — 2026-09-30 claude-opus-5-5-verifier
+
+Runner is not the implementer. Isolated worktree at merged main `43420f7ecd743f5c930dc479f54f5ef5ca7b82ed` (HEAD == the forge's `commits/main`). Implementing commit 05c937307 (#1851). `gate: model`, all risk answers `no`. Offline, `KUBECONFIG=/dev/null`; no check:ci row. Status stays `implemented`.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 | PASS — exit 0, no output | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | `cd tools/desk && go test -timeout 10m ./internal/deskkit/` | ok, consumer tests pass | PASS — `ok .../internal/deskkit 70.157s`; the migrated consumer's package (`./cmd/deskboard/`, not in the row's command) also run: exit 0, `ok 59.089s` | 2026-09-30 | claude-opus-5-5-verifier |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestAccessPatternSingleRoundTrip -v` | PASS | PASS — `--- PASS: TestAccessPatternSingleRoundTrip`, 3 subtests incl. the tear control | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeNoRawQueryInSignature -v` | PASS | PASS — `--- PASS: TestForgeNoRawQueryInSignature` | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | row 5 command verbatim (the `sh -c` loop over the four phrases in `docs/streams/desktools-v2/query-cost.md`) | all-present | PASS — `all-present` | 2026-09-30 | claude-opus-5-5-verifier |
+| 6 | row 6 command (forge-ban.sh output to a temp file, then `grep -oE 'reach-around sites: [0-9]+'`) | count NOT HIGHER than the `desktools-v2/02` baseline line | **FAIL** — `reach-around sites: 61` (desk 29, statusgen 32) against baseline `desktools-v2/02 53` | 2026-09-30 | claude-opus-5-5-verifier |
+
+RISK-VALUE: DERIVED — forgeQueueReviewsCap = 100 @ tools/desk/internal/deskkit/forge_github.go:694 — equals the connection's `first:`, so the `hasNextPage` check and the length check agree; 100 is the GraphQL maximum; overflow falls back to `ReviewsAtHead`.
+RISK-VALUE: DERIVED — reviews(first:100) @ tools/desk/internal/deskkit/forge_github.go:683 — the GraphQL maximum; `hasNextPage` is selected, so overflow is detected rather than read as complete.
+RISK-VALUE: DERIVED — GitLab ReviewsComplete: false @ tools/desk/internal/deskkit/forge_gitlab.go:876 — the fail-closed direction under the `QueuedChange` contract; the consumer gates on it.
+RISK-VALUE: DERIVED — query points 3 → 4 @ docs/streams/desktools-v2/query-cost.md:38 — recomputed from the query documents with the published formula (301 requests → 3 points, 401 → 4); computed, not read back live.
+
+Findings: (F1, the FAIL) the item adds no reach-around site: `forge-ban.sh` on archives of 05c937307^ and 05c937307 both print 61. The +8 over the committed 53 predates this brief (brief-02's own Evidence recorded 61 on 2026-09-27). The row cannot pass until the baseline is refreshed or the row compares against the count at the merge's parent — the open question on #1529. (F2) Task 2 asks for one tuned query per backend; GitLab is explicitly degraded (per-item reads, every change reported incomplete, fail-closed) at forge_gitlab.go:857-879. No Verify row covers it. (F3) Query points are computed, not measured; `query-cost.md` itself calls for a live cost read. (F4) Row 2's command covers only `./internal/deskkit/` while its Expect includes the consumer's tests.
 
 ## Review
 Gate: model (all four risk answers no — read-only typed operations added behind the seam; no

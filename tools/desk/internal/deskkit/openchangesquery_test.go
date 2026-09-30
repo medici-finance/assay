@@ -78,6 +78,7 @@ func balancedDelimiters(s string) (string, bool) {
 func TestForgeGraphQLQueriesBalanced(t *testing.T) {
 	for name, q := range map[string]string{
 		"ghOpenChangesQuery": ghOpenChangesQuery,
+		"ghReviewQueueQuery": ghReviewQueueQuery,
 		"ghListChangesQuery": ghListChangesQuery,
 		"PRTrustQuery":       PRTrustQuery,
 		"IssueTrustQuery":    IssueTrustQuery,
@@ -85,6 +86,30 @@ func TestForgeGraphQLQueriesBalanced(t *testing.T) {
 	} {
 		if msg, ok := balancedDelimiters(q); !ok {
 			t.Errorf("%s has unbalanced delimiters: %s\nquery: %s", name, msg, q)
+		}
+	}
+}
+
+// TestReviewQueueQueryIsOpenChangesPlusReviews pins the one-variable claim the stream's
+// query-cost record rests on: the review-queue snapshot document is EXACTLY the open-changes
+// read plus the reviews selection, inserted once after baseRefName. Nothing else may drift —
+// not the OPEN scoping, not the rollup contexts (and so not the actions:read-free shape), not
+// the page bounds — so a cost or scope difference between the two reads is the reviews
+// connection and nothing else.
+func TestReviewQueueQueryIsOpenChangesPlusReviews(t *testing.T) {
+	if n := strings.Count(ghReviewQueueQuery, ghReviewQueueReviewsSel); n != 1 {
+		t.Fatalf("ghReviewQueueQuery carries the reviews selection %d times, want exactly 1\nquery: %s", n, ghReviewQueueQuery)
+	}
+	stripped := strings.Replace(ghReviewQueueQuery, ghReviewQueueReviewsSel+" ", "", 1)
+	if stripped != ghOpenChangesQuery {
+		t.Errorf("ghReviewQueueQuery minus the reviews selection != ghOpenChangesQuery\n got: %s\nwant: %s", stripped, ghOpenChangesQuery)
+	}
+	if !strings.Contains(ghReviewQueueQuery, "baseRefName "+ghReviewQueueReviewsSel+" labels(") {
+		t.Errorf("reviews selection must sit between baseRefName and labels\nquery: %s", ghReviewQueueQuery)
+	}
+	for _, bad := range []string{"workflowRun", "checkSuite"} {
+		if strings.Contains(ghReviewQueueQuery, bad) {
+			t.Errorf("ghReviewQueueQuery requests %q — that needs actions:read\nquery: %s", bad, ghReviewQueueQuery)
 		}
 	}
 }

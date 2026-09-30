@@ -55,19 +55,35 @@ this stream, which also lands briefs 01–13 citing it, so its header reads `**S
   the investigation, assembles the oracle and drafts the refactor PR itself, asking the
   driver exactly one typed decision, only for what the record does not settle.
 
+## Investigation records without a new platform
+
+The 2026-09-28 amendments to briefs 04, 09 and 13 make existing class attachments,
+investigations and oracle handoffs traceable by scope, time and evidence reference. The
+records keep missing evidence and unverified outcomes explicit. No new brief, gate,
+service or dependency on a desk-tool redesign is introduced; later collectors can read
+these artifacts without becoming another owner of their meaning.
+
+## Structured inputs and revision-aware handoffs (2026-09-30)
+
+The [spec clarification](spec.md#work-input-and-handoff-clarification--2026-09-30) refines
+unfinished briefs 04, 09 and 12: preserve evidence/intent, carry the next action, and
+revalidate conclusions whose inputs change. It uses existing records and line budgets.
+Graph execution can consume them without becoming a blocker. Current gates, waves,
+M1–M6/C1–C4 and implemented-brief status remain unchanged.
+
 ## Briefs
 
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Semantic-owner index in docs/contracts.md — one meaning, one home](brief-01-semantic-owner-index.md) | 0 | M | implemented | — | — |
-| 02 | [design-fit: in every new brief — owner, contract, retires, weight, why-add](brief-02-design-fit-in-briefs.md) | 1 | M | todo | — | — |
+| 01 | [Semantic-owner index in docs/contracts.md — one meaning, one home](brief-01-semantic-owner-index.md) | 0 | M | done | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1671 @ d44d6ef3292216341ec8b82741cfc925e3e1c79c) |
+| 02 | [design-fit: in every new brief — owner, contract, retires, weight, why-add](brief-02-design-fit-in-briefs.md) | 1 | M | implemented | — | — |
 | 03 | [Weight counter and CI ratchet (a Go test, not a verb)](brief-03-weight-ratchet.md) | 0 | M | done | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) | 2026-09-27 assay-reviewer-app[bot] (approved PR #1672 @ 0662681ce2588e4a156968be794de94595c53952) |
 | 04 | [Intake files by error class; a recurring class triggers a design brief, not another point fix](brief-04-intake-by-error-class.md) | 2 | M | todo | — | — |
 | 05 | [Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight](brief-05-worker-two-strikes-and-weight.md) | 3 | M | todo | — | — |
 | 06 | [Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision](brief-06-design-fit-review-stage.md) | 2 | M | todo | — | — |
-| 07 | [Rule register (owner, invariant, justifying issue, catch source) and the monthly rule diet](brief-07-rule-register-and-diet.md) | 1 | M | todo | — | — |
-| 08 | [Hotspot metric (churn × complexity, temporal coupling) from git history, and the brittle mark](brief-08-hotspot-metric-and-brittle-mark.md) | 1 | M | todo | — | — |
+| 07 | [Rule register (owner, invariant, justifying issue, catch source) and the monthly rule diet](brief-07-rule-register-and-diet.md) | 1 | M | done | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1846 @ adc753ecdf5f19417405408fc813ba4997270bdb) |
+| 08 | [Hotspot metric (churn × complexity, temporal coupling) from git history, and the brittle mark](brief-08-hotspot-metric-and-brittle-mark.md) | 1 | M | done | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1850 @ 47604cb9c363336ba0ee46717ae7120979b4a859) |
 | 09 | [Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept](brief-09-brittle-investigation.md) | 3 | M | todo | — | — |
 | 10 | [Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning](brief-10-fitness-functions.md) | 2 | M | todo | — | — |
 | 11 | [Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge](brief-11-regression-test-ratchet.md) | 4 | M | todo | — | — |

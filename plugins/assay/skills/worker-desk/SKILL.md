@@ -144,7 +144,7 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | # | Source | The instrument that reads it |
 |---|---|---|
 | 1 | Board rows the board SHOWS, per root (the span-capped Next-up selection) | `git -C <root> fetch origin && fanoutloop plan --root <root>` |
-| 2 | Rows **held back** by the 4-per-stream cap or the span cap | `deskboard dispatch` — it reports the held-back decomposition (N by per-stream caps, M by span) plus per-root claim degradation, so an EMPTY queue is distinguishable from a THROTTLED one |
+| 2 | Rows **held back** by the 4-per-stream cap, the span cap, or the drive worker floor | `deskboard dispatch` — it reports the held-back decomposition (N by per-stream caps, M by span, K by the drive worker floor) plus per-root claim degradation, so an EMPTY queue is distinguishable from a THROTTLED one |
 | 3 | Orphan PRs owing a worker action, `CONFLICTING` PRs, red checks | the per-slug PR + disposition reads in [`references/dispatch-runbook.md`](references/dispatch-runbook.md) §The tick sweep, with the disposition read FIRST |
 | 4 | Stale drafts (reviewer verdict `CHANGES_REQUESTED` at head, author silent) | `deskboard stalled [--min-age-hours N]` — the purpose-built detector; its disposition column is advisory (shepherd / close-candidate) |
 | 5 | `Awaiting implementer rework` board rows | `fanoutloop plan --root <root>` (desk-supervision/05: read per root from `refs/remotes/origin/main:STATUS.md`, the SAME offline ref read row 1 uses — no separate sweep) |
@@ -368,6 +368,18 @@ for the held-back decomposition, and read the rework section off each root's boa
 rows 2 and 5). Where the two disagree, the wider reading wins and the narrower one is a defect to
 file, never a queue to route around.
 
+**The drive worker floor is the one exception: for drive work, the FLOORED reading wins.** While a
+drive is active, drive work takes at most 6 of 8 workers (statusgen's `driveWorkerCap`; the tool's
+value governs, never a number restated in a prompt). `fanoutloop plan` reads the board and carries
+no floor; `deskboard dispatch` applies it across every root against the summed drive work already
+in flight, and tags each row it offers `drive:<slug>` (and `critical:<arm>` for a critical-tier
+row, which takes the headroom first). So when its held-back line names the drive worker floor, or
+it prints `COULD-NOT-CHECK drive worker floor`, a fresh board row is dispatched only if
+`deskboard dispatch` lists it this tick. A board row it withholds waits for a drive worker to
+finish. That gap is the floor working, not a defect to file, and a disagreement over a drive row
+never licenses dispatching past the floor. Resumes and rework (rows 3, 4, 5, 5b) are not fresh
+drive picks and the floor does not hold them.
+
 **2. Merge the per-root plans** with §The interleave rule, tag every row with its repo-qualified ID,
 name every could-not-check root, and exclude items whose `depends:` are not yet `done`. A count from
 human:<name> ("next 3") takes the top N **of the merged order** — scoping bounds THIS refill, never the loop.
@@ -452,9 +464,12 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   names which one ran. Both speak the same wire protocol, so which one runs never changes where
   the claim lands or whether two dispatchers collide. Either way the claim child runs as the
   DISPATCHING role: `deskdispatch` mints (or reuses) that role's App token and hands it over
-  (`--token-file` for the binary, `GH_TOKEN` in the child environment for the script); an
-  exported `GH_TOKEN` wins; a mint refusal is exit 6 with no claim attempted, never a fall-back to
-  the ambient `gh` login.
+  (`--token-file` for the binary, `GH_TOKEN` in the child environment for the script). An
+  exported `GH_TOKEN` wins only when `deskdispatch` verifies it IS the dispatching role's App —
+  the `desk` App for the worker kit, the `reviewer` App for the review kit, never the worker App
+  whose token a worker holds. Any other identity is ignored with a NOTICE and the role token
+  minted; one whose identity cannot be read is exit 6 with no claim attempted. A mint refusal is
+  exit 6 with no claim attempted, never a fall-back to the ambient `gh` login.
 - **Never hand-edit the board row — neither this desk nor the worker it dispatches.**
   `in-progress` appears the instant the worker's draft PR opens carrying the trailer
   `Brief: <stream>/<NN>` in its body; `deskpr create` refuses to open a PR whose body carries no

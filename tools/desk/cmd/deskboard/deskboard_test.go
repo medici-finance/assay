@@ -386,6 +386,41 @@ func (f *listFnForge) ListOpenChanges(deskkit.ForgeRepo) (*deskkit.OpenChanges, 
 	return f.list(f.repo)
 }
 
+func (f *listFnForge) ReviewQueueSnapshot(fr deskkit.ForgeRepo) (*deskkit.ReviewQueue, error) {
+	oc, err := f.list(f.repo)
+	return f.queueFrom(oc, err)
+}
+
+// ReviewQueueSnapshot serves the actions sweep's one-read queue from the SAME fixture
+// ListOpenChanges reads. By default every change is ReviewsComplete=false, so the sweep
+// reads each PR's reviews per-item through ReviewsAtHead — the pre-snapshot path every
+// existing fixture and fail-injection test was written against. forgeHooks.queueReviews
+// makes the snapshot carry each change's reviews as complete, which is the path the
+// snapshot-identity test drives.
+func (f *fakeForge) ReviewQueueSnapshot(fr deskkit.ForgeRepo) (*deskkit.ReviewQueue, error) {
+	oc, err := f.ListOpenChanges(fr)
+	return f.queueFrom(oc, err)
+}
+
+func (f *fakeForge) queueFrom(oc *deskkit.OpenChanges, err error) (*deskkit.ReviewQueue, error) {
+	if err != nil {
+		return nil, err
+	}
+	q := &deskkit.ReviewQueue{Cap: oc.Cap, TruncatedAtCap: oc.TruncatedAtCap}
+	for _, c := range oc.Changes {
+		qc := deskkit.QueuedChange{OpenChange: c}
+		if forgeHooks.queueReviews != nil {
+			rv, rerr := forgeHooks.queueReviews(f.repo, c.Number)
+			if rerr != nil {
+				return nil, rerr
+			}
+			qc.Reviews, qc.ReviewsComplete = rv, true
+		}
+		q.Changes = append(q.Changes, qc)
+	}
+	return q, nil
+}
+
 func (f *fakeForge) PRTrustEvents(_ deskkit.ForgeRepo, _ int) (*deskkit.TrustPayload, error) {
 	return f.trustFromFixture(true)
 }
@@ -442,6 +477,11 @@ type forgeHookSet struct {
 	// GetPullRequest could be failed programmatically, so no test could isolate a
 	// ListChangedFiles-only failure on the risk-classification call.
 	changedFiles func(repo string, num int) ([]deskkit.ChangedFile, error)
+	// queueReviews, when set, makes the fake's ReviewQueueSnapshot carry every change's
+	// reviews in full (ReviewsComplete=true), read from THIS hook — kept separate from
+	// `reviews` (the per-item ReviewsAtHead hook) so a test can count per-item reads alone.
+	// Nil keeps the default per-item fallback shape.
+	queueReviews func(repo string, num int) ([]deskkit.Review, error)
 }
 
 var forgeHooks forgeHookSet

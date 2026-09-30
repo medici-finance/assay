@@ -531,10 +531,28 @@ func (p evidenceActorPolicy) claimsVerifierByName(name string) bool {
 //
 // ok is false when there is no heading or the section body is empty.
 func evidenceLineRange(raw string) (start, end int, ok bool) {
+	return sectionLineRange(raw, isEvidenceHeading)
+}
+
+// isEvidenceHeading is the `## Evidence` heading test — exact after trimming,
+// so a decorated `## Evidence (notes)` or a `### Evidence` subsection is not
+// the section.
+func isEvidenceHeading(trimmed string) bool {
+	return trimmed == "## Evidence"
+}
+
+// sectionLineRange is the line-range parser behind evidenceLineRange, with the
+// heading test passed in: the FIRST line whose trimmed text satisfies isHeading
+// opens the section, and the next `## ` heading (or EOF) closes it. It returns
+// the body's 1-based inclusive line range, heading excluded; ok is false when no
+// line matches or the body is empty. The record-section exemption in the
+// backticked-path check (recordsection.go) reuses this parser rather than
+// carrying a second section detector.
+func sectionLineRange(raw string, isHeading func(trimmed string) bool) (start, end int, ok bool) {
 	lines := strings.Split(raw, "\n")
 	head := -1
 	for i, l := range lines {
-		if strings.TrimSpace(l) == "## Evidence" {
+		if isHeading(strings.TrimSpace(l)) {
 			head = i
 			break
 		}

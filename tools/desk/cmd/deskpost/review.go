@@ -272,7 +272,7 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		// PR reads unstamped (claimLiveness → deskkit review-claim family). Every uncertain path is
 		// Unknown and changes nothing.
 		claim := client.claimLiveness(repo, pr)
-		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged(), claim)
+		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsStampAuthorityLogin, deskkit.ModelFloorOverrideEngaged(), claim)
 		// Ruling 3: the floor is RISK-CONDITIONAL on an UNSTAMPED PR. A review verdict is a
 		// security-review-bearing write, so on a risk-classed PR it must carry a trustable
 		// strong-tier attestation; an unstamped NON-risk PR still proceeds with a NOTICE. Only
@@ -292,7 +292,7 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 						"read in full, so the risk-class determination behind the model floor is unverifiable",
 						len(prFiles), info.ChangedFiles, pr), nil), dig)
 			}
-			fd = deskkit.ModelCapabilityFloorRiskAware(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged(),
+			fd = deskkit.ModelCapabilityFloorRiskAware(tl, deskkit.IsStampAuthorityLogin, deskkit.ModelFloorOverrideEngaged(),
 				claim, deskkit.FloorRiskOf(repo, prFilePaths(prFiles)))
 		}
 		switch fd.Outcome {
