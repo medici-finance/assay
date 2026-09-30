@@ -201,6 +201,39 @@ mechanism lands; do not resolve it in this brief.
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. This is
      gate: human + irreversible, so a human signs off before any row is marked verified. -->
+### Non-implementer verifier run — VERIFY: FAIL — rows 1-6 pass, Deliverable 7 absent (#1855) — 2026-09-30 claude-opus-5-5-verifier
+
+Runner is not the implementer. Isolated worktree at merged main `b89b3957225e227e69d5b5ec7949344f580d9966` (HEAD == the forge's `commits/main`). Implemented by PR #84 (head 9c0a7d5, merged 2026-08-23). `gate: human`, `irreversible: yes` — **Evidence only; nothing flips.** Expectations derived from the brief text before reading the diff. Fixture rows ran in a throwaway clone with `origin/main` pinned to a fixture base, the register's one finding backdated to raise a standing alarm, and an empty or scratch roster; binary built from `statusgen/` at the target sha; tree clean afterwards.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `grep -rl '^parked-until:' docs/streams/findings/ 2>/dev/null; echo done` | no free-text parks | PASS — exit 0; only `done` (1 register entry, no park) | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | `grep -rn -e '^parked:' docs/streams/findings/ 2>/dev/null; echo rc=$?` | rc=1 | PASS — `rc=1` | 2026-09-30 | claude-opus-5-5-verifier |
+| 3a | `statusgen --root . --lint` (main tree) | LINT: PASS | PASS — exit 0, `LINT: PASS` | 2026-09-30 | claude-opus-5-5-verifier |
+| 3b | fixture: park without parked-until; `statusgen --root . --lint` | PROBLEM, alarm still fires | PASS — exit 1; `malformed park — missing/invalid: parked-until (a bounded YYYY-MM-DD expiry — no open-ended parks)`; standing alarm still printed | 2026-09-30 | claude-opus-5-5-verifier |
+| 3c | fixture: park expired 2026-09-15; lint | louder re-annunciation | PASS — exit 0; `NOTICE: park EXPIRED — re-decide: … parked until 2026-09-15`; plain alarm replaced, not duplicated | 2026-09-30 | claude-opus-5-5-verifier |
+| 3d | fixture: live park to 2026-12-31; lint | alarm suppressed | PASS — exit 0; baseline `standing alarm: … open 29 days` gone; `LINT: PASS` | 2026-09-30 | claude-opus-5-5-verifier |
+| 3e | fixture: parked-until = today (now >= parked-until); lint | EXPIRED | PASS — exit 0; `NOTICE: park EXPIRED — re-decide: … parked until 2026-09-30` | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | `git diff --name-only $(git merge-base HEAD origin/main) HEAD -- STATUS.md`, plus `git diff --name-only e15addf 9c0a7d5 -- STATUS.md` | empty | PASS — both empty (the first is vacuous after merge; PR #84's own range touched 7 files, none STATUS.md) | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | `cd statusgen && GOWORK=off go test .` | ok | PASS — exit 0; `ok github.com/medici-finance/assay/statusgen 41.633s`; 14 park and gutting tests pass in a verbose run | 2026-09-30 | claude-opus-5-5-verifier |
+| 6a | fixture: resolved no→yes in the working tree, no authorization; lint | PROBLEM | PASS — exit 1; `register field-gutting (unauthorized): … resolved flipped no->yes vs the version landed at the merge-base with origin/main` | 2026-09-30 | claude-opus-5-5-verifier |
+| 6b | same edit, committed; lint | PROBLEM | PASS — exit 1; same line | 2026-09-30 | claude-opus-5-5-verifier |
+| 6c | fixture: `affects: []`; lint | PROBLEM | PASS — exit 1; `affects dropped [windows-port/02]` | 2026-09-30 | claude-opus-5-5-verifier |
+| 6d | fixture: self-park to 2099-01-01, unmapped parked-by; lint | PROBLEM | PASS — exit 1; `parked-until added [2099-01-01] (mutes the standing alarm until then)` | 2026-09-30 | claude-opus-5-5-verifier |
+| 6e | fixture: resolve + authorized-by naming a mapped fixture human (scratch 0600 roster); lint | pass | PASS — exit 0, `LINT: PASS` | 2026-09-30 | claude-opus-5-5-verifier |
+| 6f | fixture: live park added, `GITHUB_ACTIONS=true`, `ASSAY_HUMAN_LOGIN_MAP` unset (as this repo's lint job runs); lint | fail closed | PASS — exit 1; `register field-gutting (unauthorized): … parked-until added [2026-12-31]`; with the map set, exit 0 | 2026-09-30 | claude-opus-5-5-verifier |
+| 6g | fixture: `refs/remotes/origin/main` deleted, resolve flip committed; lint | fail closed (§B) | **FINDING F3** — exit 0; `NOTICE: register field-gutting guard is running degraded: origin/main could not be resolved … already-COMMITTED gutting cannot be detected`, `LINT: PASS` (an uncommitted flip still exits 1) | 2026-09-30 | claude-opus-5-5-verifier |
+
+RISK-VALUE (enumerated from the diff and the brief's Deliverables, ranked most-irreversible first):
+
+- RISK-VALUE: NAMED, NOT DERIVED — park authority binding `parked-by` OR `authorized-by` @ statusgen/registers.go:802-803,914 — §B requires park authority "corroborated against the PR's reviews/comments"; the offline half checks only that the name is in the login map, and the reviews half (`--corroborate`) runs in no workflow on main (F1). Sufficiency without it is a human design ruling.
+- RISK-VALUE: NAMED, NOT DERIVED — no maximum park horizon (absence of a literal) @ statusgen/alarms.go:175-190 — the brief says "bounded" but pins no cap; a mapped name can park to 2099 (6e/6f pattern). Whether to cap is for the human gate.
+- RISK-VALUE: DERIVED — expiry boundary `!now.Before(until)` @ statusgen/alarms.go:183 — logically now >= until, exactly §A; parse and clock are both UTC; fixture 3e observed EXPIRED on the boundary day.
+- RISK-VALUE: DERIVED — date layout `"2006-01-02"` @ statusgen/alarms.go:182 — Go's layout for the brief's YYYY-MM-DD; strict parse, so a bad expiry is a hard PROBLEM, never a permanent mute.
+- RISK-VALUE: DERIVED — extend guard `curUntil > baseUntil` @ statusgen/registers.go:782 — zero-padded YYYY-MM-DD strings sort in date order and both sides passed the strict parse on any lint-green tree; guards add and extend, leaves narrowing unguarded, matching §B's "ADDS/EXTENDS".
+- Stamp regex (corroborate.go:380), YAML keys, and the 7-day standing and flood thresholds predate this brief or are reversible knobs; not derived.
+
+Findings — filed as #1855: **(F1, the FAIL)** Deliverable 7, CI invocation of the corroboration guard on register-touching PRs, is absent from main (`grep -rn -e '--corroborate' .github/workflows/` finds nothing); commit 9c0a7d5 defers it because the authoring App lacks the workflows permission, and nothing tracked it. So in this repo a legitimate park or resolve can never pass CI (6f), and where a map is set, a mapped name passes without that human acting on the PR (6e). **(F2)** The PROBLEM text near registers.go:810 claims the reference CI wires `--corroborate` into the lint job; it runs only `--lint`. **(F3)** The origin/main→HEAD fallback passes a committed gutting with only a NOTICE (6g); unreachable in this repo's CI (`fetch-depth: 0`), reachable for a shallow adopter checkout. **(F4)** The comment near registers.go:793 says `authorized-by` does not also authorize an unattributed park; the code at :801-803 accepts it (fixture exits 0). Scope notes: the guard lives in registers.go rather than corroborate.go as the files list says; the register migration was a no-op; §C has no instance on this board. Review-gate items 2 and 3 need F3, F4 and the horizon cap decided.
 
 ## Review
 Gate: **human** (integrity-check / anti-falsification logic; irreversible). The human records the
