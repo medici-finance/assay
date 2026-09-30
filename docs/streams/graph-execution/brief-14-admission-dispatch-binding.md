@@ -66,7 +66,7 @@ Decision-trigger: spec. At implementation pickup, prepare concrete policy choice
 
 ## Work-input amendment — 2026-09-30
 
-Implement WI-1/WI-3 in the existing opt-in cohort only. Resolve known facts once, project
+Implement WI-1/WI-2/WI-3 in the existing opt-in cohort only. Resolve known facts once, project
 09's contract into the role packet, and record a dispatch reason and input fingerprint.
 Coalesce duplicate events/ticks under the existing claim authority; no actionable change
 means no model call. A failed launch can retry as a new attempt without losing the work.
@@ -100,7 +100,7 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 2 | check:ci +mutation | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDirectBypassDenied" ./...` | exit 0; output includes PASS for TestGraphAdmissionDirectBypassDenied, with no [no tests to run] for its owning package |
 | 3 | check:ci +flow | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDispatchReceipt" ./...` | exit 0; output includes PASS for TestGraphAdmissionDispatchReceipt, with no [no tests to run] for its owning package |
 | 4 | check:ci +flow | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDuplicateAndRetry$" ./... > /tmp/TestGraphAdmissionDuplicateAndRetry.out && grep -q -- "--- PASS: TestGraphAdmissionDuplicateAndRetry " /tmp/TestGraphAdmissionDuplicateAndRetry.out` | exit 0; named PASS; duplicate same-state events launch once; a failed launch retries under a new attempt |
-| 5 | check:ci +mutation | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionMovedHeadAtAcceptance$" ./... > /tmp/TestGraphAdmissionMovedHeadAtAcceptance.out && grep -q -- "--- PASS: TestGraphAdmissionMovedHeadAtAcceptance " /tmp/TestGraphAdmissionMovedHeadAtAcceptance.out` | exit 0; named PASS; head movement after launch prevents stale result acceptance at the lower boundary |
+| 5 | check:ci +mutation | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionMovedHeadAtAcceptance$" ./... > /tmp/TestGraphAdmissionMovedHeadAtAcceptance.out && grep -q -- "--- PASS: TestGraphAdmissionMovedHeadAtAcceptance " /tmp/TestGraphAdmissionMovedHeadAtAcceptance.out` | exit 0; named PASS; head movement after launch prevents stale result acceptance at the lower boundary; mutation: bypass the acceptance-boundary head comparison — the named test must fail |
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.
 

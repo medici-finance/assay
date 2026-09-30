@@ -595,7 +595,7 @@ revalidate affected conclusions; ordinary work does not acquire a redesign oracl
 The [graph work-input amendment](../graph-execution/work-input-amendment.md) consumes these
 records but is an optional integration, not a dependency or second owner. Runtime packets,
 claims, quota reservations and enforcement stay outside this stream. Preserve §5's M1–M6,
-C1–C4, baseline/soak and ratified advisory gates. Time/cost/recovery measures are supplemental;
+C1–C4, baseline and ratified advisory gates. Time/cost/recovery measures are supplemental;
 lower token use alone does not establish reduced brittleness. New packet machinery still
 counts in the existing weight and operator-relay measures. No additional brief or gate is
 created by this clarification.

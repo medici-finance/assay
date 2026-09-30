@@ -1,6 +1,7 @@
 # Structured work inputs, freshness and execution cost
 
-**Status:** proposed amendment, routed into existing unfinished briefs; no runtime activation.
+**Status:** routed — proposed amendment to existing unfinished briefs; no runtime activation.
+**Routes-to:** docs/streams/graph-execution/
 **Authored:** 2026-09-30. Source review at `8485778515c041fc87966902a14eb9d195492be3`.
 **Scope:** extends [the graph spec](spec.md) and [admission/assurance](admission-assurance-spec.md).
 
@@ -18,7 +19,7 @@ inside a node; checkpoint at an artifact, independent check, decision or externa
 Neither a universal small prefix nor an arbitrary turn count is a correctness constraint.
 Context limits, model choice and account admission are separate experimental dimensions.
 
-## WI-1 — A packet view with sufficient evidence (09)
+## WI-1 — A packet view with sufficient evidence (09; consumed by 14)
 
 Project from canonical work, instance, node and attempt IDs:
 

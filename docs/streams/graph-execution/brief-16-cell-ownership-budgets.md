@@ -63,7 +63,7 @@ Decision-trigger: spec. At implementation pickup, prepare concrete policy choice
 
 ## Work-input amendment — 2026-09-30
 
-Implement WI-4 by extending this brief's durable reservation seam, not by adding a meter
+Implement WI-3/WI-4 by extending this brief's durable reservation seam, not by adding a meter
 service. Persist account/provider unit, model/pricing identity, attempt/request lineage,
 raw usage, uncertainty and outstanding reservations. Charge preparation, summaries, failed
 attempts, fallback and verification to the original work. Preserve missing telemetry as
@@ -95,7 +95,7 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 1 | check:ci | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnership" ./...` | exit 0; output includes PASS for TestCellOwnership, with no [no tests to run] for its owning package |
 | 2 | check:ci +mutation | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnershipStaleWriterDenied" ./...` | exit 0; output includes PASS for TestCellOwnershipStaleWriterDenied, with no [no tests to run] for its owning package |
 | 3 | check:ci +flow | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnershipRestoreBudgetPause" ./...` | exit 0; output includes PASS for TestCellOwnershipRestoreBudgetPause, with no [no tests to run] for its owning package |
-| 4 | check:ci +mutation | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellBudgetConcurrentReservations$" ./... > /tmp/TestCellBudgetConcurrentReservations.out && grep -q -- "--- PASS: TestCellBudgetConcurrentReservations " /tmp/TestCellBudgetConcurrentReservations.out` | exit 0; named PASS; concurrent admissions cannot spend the same available allowance |
+| 4 | check:ci +mutation | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellBudgetConcurrentReservations$" ./... > /tmp/TestCellBudgetConcurrentReservations.out && grep -q -- "--- PASS: TestCellBudgetConcurrentReservations " /tmp/TestCellBudgetConcurrentReservations.out` | exit 0; named PASS; concurrent admissions cannot spend the same available allowance; mutation: exclude outstanding reservations from available allowance — the named test must fail |
 | 5 | check:ci +flow | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellBudgetRestoreAllAttempts$" ./... > /tmp/TestCellBudgetRestoreAllAttempts.out && grep -q -- "--- PASS: TestCellBudgetRestoreAllAttempts " /tmp/TestCellBudgetRestoreAllAttempts.out` | exit 0; named PASS; failed-attempt spend, reservations, unknown usage and stop state survive restore |
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.

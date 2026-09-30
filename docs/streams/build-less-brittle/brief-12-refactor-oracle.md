@@ -79,8 +79,8 @@ facts:
 - **The four parts, and where each comes from.** The oracle is one file,
   `docs/investigations/<yyyy-mm-dd>-<module-slug>-oracle.md`, beside the investigation:
   1. **Intent.** The owning brief(s) and `DR-` record, quoted; the investigation's
-     `divergence:` and its reconciled reading of the intent against what the code does now.
-     Source: 09's file (the oracle never re-derives it).
+     `divergence:` and its reconciled reading of intent at the cited revisions.
+     Source: 09's file; reuse, supersede or revalidate it under the work-input amendment below.
   2. **Failure modes.** Every incident in the class issue and every findings entry whose
      `affects:` names the module, each mapped to its regression test by
      `git grep -n 'regression: .*#<N>' -- '*_test.go'` (11). A failure mode with no test is a
@@ -152,7 +152,9 @@ unrelated edit. The acceptance/read commands must expose the pinned versus candi
 sources; the reviewer checks that the example cannot carry a stale PASS forward. Explicitly
 identify semantic relevance as review-only where no deterministic proof exists. The oracle
 remains required only for redesign, with no dependency on graph tooling or a new document
-for ordinary tasks. Fit the skill/kit wording into the existing net-zero budget.
+for ordinary tasks. In the template, label the bindings `pinned-source:` and
+`candidate-source:` and place the two worked changes under `### Intervening-change example`.
+Fit the skill/kit wording into the existing net-zero budget.
 
 ## Task
 
@@ -198,6 +200,7 @@ wiring and net ≤ 0 rows.
 | 10 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/12$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && grep -c 'oracle:' plugins/assay/skills/author-brief/SKILL.md && test "$(git show "$tip:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" && echo NET-OK` | ≥ `1`, then `NET-OK` |
 | 11 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/12$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && s=$(sed -n '/^## [0-9]*\. Design fit first/,/^## [0-9]*\. /p' tools/desk/cmd/deskdispatch/references/review-prompt.md); echo "$s" \| grep -c 'oracle' && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" && echo NET-OK` | ≥ `1`, then `NET-OK` |
 | 12 | `statusgen --consumers --root . --brief build-less-brittle/12; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
+| 13 | `grep -q "pinned-source:" docs/refactor-oracle-template.md && grep -q "candidate-source:" docs/refactor-oracle-template.md && grep -q "^### Intervening-change example$" docs/refactor-oracle-template.md && echo SOURCE-BINDINGS` | `SOURCE-BINDINGS` (presence only; the review below checks the read commands and stale-result behavior) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,
@@ -214,3 +217,9 @@ the triage grammar let a real behaviour be recorded as `unknown` without inventi
 A template that only works on the worked example is a finding. The reviewer also confirms
 the acceptance rows refuse on an `unknown` and on a failure mode with an empty test cell:
 an oracle that can land with a hole in it is the drift this brief exists to stop.
+
+The reviewer also runs the template's read/acceptance commands over its pinned and candidate
+example sources, records both revisions, and walks the policy/API change and unrelated edit.
+The relevant change must require revalidation; unchanged analysis may be reused only with an
+applicability basis, never by retargeting old PASS evidence. Record source links, outputs and
+semantic relevance judgment in the review; row 13's presence checks alone do not satisfy this.
