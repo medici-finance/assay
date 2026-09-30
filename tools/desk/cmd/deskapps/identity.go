@@ -6,7 +6,7 @@
 // rows without touching anything live, network included.
 //
 // ghOwnedOrgs (the org-membership lookup design.md §2 describes Screen 1 offering) was
-// dropped 2026-09-18 (Desk-decided, PR review finding on assay#1260): it had zero call
+// dropped 2026-09-18 (Desk-decided, PR review finding on #1260): it had zero call
 // sites — Screen 1 never rendered the owned-orgs list this function fetched — so it was
 // dead code carrying a live `gh` shell-out for nothing. Removing it does not touch
 // ghIdentity/runGH's own gh-auth precondition, which is a separate, still-open finding.

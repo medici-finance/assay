@@ -17,9 +17,13 @@ import (
 )
 
 // newStateNonce returns a fresh per-row state nonce: cryptographically random and
-// unguessable. It is the ONE control that keeps a callback from being accepted by a
-// listener that did not issue it (brief 02's single-point-of-failure line); the loopback
-// bind and the record-side match (rowByNonce) are the two independent layers behind it.
+// unguessable. It is the ONE control that keeps a callback from being accepted for a row
+// it was not issued for (brief 02's single-point-of-failure line); rowByNonce's record-side
+// match IS that state check, not a layer behind it. The independent second layer is the
+// owner check on the conversion result (server.go's /callback): the App's real owner as
+// GitHub reports it must equal the owner the operator named. The loopback bind is a
+// precondition, not an independent layer — GET /run serves each pending row's live nonce to
+// any local process, so reaching the listener and knowing the nonce are one capability.
 func newStateNonce() (string, error) {
 	b := make([]byte, 24)
 	if _, err := rand.Read(b); err != nil {

@@ -102,9 +102,11 @@ func (sf *StateFile) rowByApp(app string) *AppRow {
 }
 
 // rowByNonce returns the row whose state_nonce equals nonce, or nil. This is the ONE lookup
-// a callback is trusted through: an unknown nonce means "no pending row issued this state",
-// which is the single-point-of-failure line in the brief — the record-side match is the
-// third, independent layer behind the state check and the loopback bind.
+// a callback is trusted through: an unknown nonce means "no pending row issued this state".
+// This match IS the state check — the single-point-of-failure line in the brief — not a
+// separate layer behind it. The independent second layer is the owner check on the
+// conversion result (server.go's /callback); the loopback bind is a precondition, not a
+// layer (GET /run serves each pending row's live nonce to any local process).
 func (sf *StateFile) rowByNonce(nonce string) *AppRow {
 	if nonce == "" {
 		return nil
