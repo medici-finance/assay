@@ -86,8 +86,9 @@ type GuardrailReport struct {
 	Unchecked []Issue
 	// Notes are advisory-only and fire in exactly one case: --allow-ambiguous-
 	// extent was passed and SyncGuardrails took the longest-match guess over
-	// an ambiguous tie anyway. By DEFAULT an ambiguous tie is refused — it is
-	// reported in Unchecked, not here, and nothing is written — so Notes is no
+	// an ambiguous extent anyway. By DEFAULT an ambiguous extent is refused — it
+	// is reported in Unchecked, not here, and that block is not written (other
+	// blocks in the same file still can be) — so Notes is no
 	// longer the safety mechanism for that case (medici-finance/assay#1692,
 	// round 3: it used to be exactly that, and a reviewer showed the "note
 	// only" behaviour still let an ambiguous rewrite delete a local rule with
@@ -464,33 +465,37 @@ func guardrailDiff(want, got string) string {
 // source edit was committed before the sync.
 //
 // This still leaves one narrower ambiguity content alone cannot resolve
-// (medici-finance/assay#1692): when MORE THAN ONE known length matches at the
-// anchor and the longest is not the current canonical text, the bytes cannot
-// tell a copy still genuinely at that longer, earlier text (the ordinary,
-// ANY-committed-prefix-shrink case matchExtent's "longest wins" rule exists to
-// serve) apart from a copy already AT the current text, followed by
-// unrelated trailing content — possibly a local, site-specific rule someone
-// added right after the block — that happens to equal the earlier text's own
-// tail. Round 2 of this issue tried "take the longest match, but report the
-// tie in rep.Notes so it is never silent"; round 3's review showed that does
-// not work: the identical note fires on every ordinary edit as well as the
-// genuinely ambiguous one, so it cannot act as a control, and the local rule
-// is deleted anyway with only a stderr line to show for it. So by DEFAULT
-// (allowAmbiguous == false) an ambiguous tie is now REFUSED outright:
-// could-not-check, naming the file and the exact span that would have been
-// removed, nothing written. This does mean the ordinary "committed a
-// prefix-shrink, then never synced" case also refuses by default now — that
-// case is structurally indistinguishable from the harmful one, so refusing it
-// too is the point, not a gap. A caller who has checked by hand that the
-// longer match is correct can pass allowAmbiguous == true (the CLI's
+// (#1692): when the longest known text matching at the anchor is NOT also the
+// newest one matching there. Matching texts always nest, so that means a
+// newer known text is a strict prefix of an older one — the block's history
+// holds a prefix-shrink (the current text counts as the newest revision) —
+// and the copy still matches both sides of it. The bytes then cannot tell a
+// copy still genuinely at the older, longer text apart from a copy at the
+// newer, shorter text followed by unrelated trailing content — possibly a
+// local, site-specific rule someone added right after the block — that
+// happens to equal the longer text's own tail. See matchExtent for the exact
+// condition, and for why a grow history (older text a prefix of a newer one)
+// is not ambiguous. Round 2 of this issue tried "take the longest match, but
+// report the tie in rep.Notes so it is never silent"; round 3's review showed
+// that does not work: the identical note fired on every ordinary edit as well
+// as the genuinely ambiguous one, so it cannot act as a control, and the local
+// rule is deleted anyway with only a stderr line to show for it. So by DEFAULT
+// (allowAmbiguous == false) an ambiguous block is REFUSED outright:
+// could-not-check, naming the file, the two lengths that matched and the exact
+// span that would have been removed; that block is not written (another,
+// unambiguous block in the same file still is). This does mean the ordinary
+// "committed a prefix-shrink, then never synced" case refuses by default, and
+// so does every later edit of that block while the copy still matches both
+// texts — that case is structurally indistinguishable from the harmful one, so
+// refusing it too is the point, not a gap. A caller who has checked by hand
+// that the longer match is correct can pass allowAmbiguous == true (the CLI's
 // --allow-ambiguous-extent) to take the longest match anyway, exactly as
 // round 2 always did; SyncGuardrails still records that override in
 // rep.Notes so it is visible, never silent, even when allowed.
 //
-// This ambiguity default (refuse, with an explicit opt-in) is this desk's own
-// choice among the round-2 reviews' options — pending the driver's arbiter
-// answer, should one ever be needed, not a ruling already made. It is fully
-// reversible behind this draft PR.
+// This ambiguity default (refuse, with an explicit opt-in) and the recency
+// condition that decides what is ambiguous are reversible defaults chosen in
+// this change, not rulings made elsewhere.
 //
 // Separately, a shrink of an uncommitted, unstaged edit that is never itself
 // committed or staged (so no revision of it is ever KNOWN) is could-not-check
@@ -579,8 +584,9 @@ func SyncGuardrails(root string, prior []*GuardrailSource, allowAmbiguous bool) 
 				})
 				continue
 			}
+			// Newest first: want, then prior in the order it was given.
 			known := append([]string{want}, priorSiteTexts(prior, b.ID, site)...)
-			matched, ok, ambiguous := matchExtent(l.lines, at, want, known)
+			matched, newest, ok, ambiguous := matchExtent(l.lines, at, known)
 			if !ok {
 				rep.Unchecked = append(rep.Unchecked, Issue{
 					Path: site.Path,
@@ -591,13 +597,20 @@ func SyncGuardrails(root string, prior []*GuardrailSource, allowAmbiguous bool) 
 				continue
 			}
 			matchedLines := strings.Split(matched, "\n")
+			// Name the newer, shorter text that matched truthfully: it is the
+			// current canonical text only when that is what matched.
+			newerDesc := "a more recent revision's"
+			if newest == want {
+				newerDesc = "the current canonical text's"
+			}
+			newestLen := len(strings.Split(newest, "\n"))
 			if ambiguous && !allowAmbiguous {
 				rep.Unchecked = append(rep.Unchecked, Issue{
 					Path: site.Path,
-					Msg: fmt.Sprintf("could-not-check: guardrail %q — the removal extent at %s:%d is AMBIGUOUS: both an earlier revision's %d line(s) and the current canonical text's %d line(s) match at this anchor. Content alone cannot tell a copy still genuinely at that longer, earlier text apart from a copy already at the current text followed by unrelated content — possibly a local, site-specific rule — that happens to equal the earlier text's own tail. Refusing rather than guessing; not rewritten.\n"+
+					Msg: fmt.Sprintf("could-not-check: guardrail %q — the removal extent at %s:%d is AMBIGUOUS: both an older revision's %d line(s) and %s %d line(s) match at this anchor (the block once shrank to a prefix of itself). Content alone cannot tell a copy still genuinely at the older, longer text apart from a copy at the newer, shorter text followed by unrelated content — possibly a local, site-specific rule — that happens to equal the longer text's own tail. Refusing rather than guessing; this block is not rewritten.\n"+
 						"  Ambiguous span: %s:%d-%d (the %d line(s) the longest-match rule would remove).\n"+
-						"  Verify by hand (`git diff -- %s`); if the longer match is genuinely correct here, re-run with --allow-ambiguous-extent to take it.",
-						b.ID, site.Path, at+1, len(matchedLines), len(wantLines), site.Path, at+1, at+len(matchedLines), len(matchedLines), site.Path),
+						"  Verify by hand (`git diff -- %s`); if the longer match is genuinely correct here, re-run with --allow-ambiguous-extent to take it. This refusal recurs on every sync of this block for as long as the copy matches both texts.",
+						b.ID, site.Path, at+1, len(matchedLines), newerDesc, newestLen, site.Path, at+1, at+len(matchedLines), len(matchedLines), site.Path),
 				})
 				continue
 			}
@@ -606,8 +619,8 @@ func SyncGuardrails(root string, prior []*GuardrailSource, allowAmbiguous bool) 
 				// longest-match guess. Still never silent about it — see
 				// GuardrailReport.Notes.
 				rep.Notes = append(rep.Notes, fmt.Sprintf(
-					"guardrail %q at %s:%d: --allow-ambiguous-extent took the longest match, removing %d line(s) (an earlier revision's length), though the current canonical text (%d line(s)) also matched at the same anchor. Verify the removed lines by hand (`git diff -- %s`).",
-					b.ID, site.Path, at+1, len(matchedLines), len(wantLines), site.Path))
+					"guardrail %q at %s:%d: --allow-ambiguous-extent took the longest match, removing %d line(s) (an older revision's length), though %s %d line(s) also matched at the same anchor. Verify the removed lines by hand (`git diff -- %s`).",
+					b.ID, site.Path, at+1, len(matchedLines), newerDesc, newestLen, site.Path))
 			}
 			e := edit{id: b.ID, at: at, oldLen: len(matchedLines)}
 			if matched != want {
@@ -764,35 +777,57 @@ func priorSiteTexts(prior []*GuardrailSource, blockID string, site GuardrailSite
 // block's tail; before a prefix-shrink is synced, the copy begins with the new
 // text too, and treating it as synced would leave the old tail behind.
 //
+// `known` must be ordered NEWEST FIRST: `want` (the current canonical text) at
+// index 0, then the earlier revisions as priorGuardrailSources returns them
+// (staged, then commits in `git log` order). NEWEST is the first of them that
+// matches at the anchor.
+//
 // AMBIGUOUS reports the one case "longest wins" cannot get right by content
-// alone: more than one distinct length matched at the anchor, and the winning
-// (longest) text is not `want`. When that happens, a copy that is genuinely
-// still at that longer, earlier text (an unsynced or committed-first shrink —
-// the ordinary case this rule exists to serve) is indistinguishable, byte for
-// byte, from a copy already AT `want`, followed by unrelated trailing content
-// — possibly a local, site-specific rule — that happens to equal the earlier
-// text's own tail (medici-finance/assay#1692). The caller (SyncGuardrails)
-// refuses by default whenever this is true, naming the file and the exact
-// span that would have been removed, and proceeds with the longest-match
-// guess only when the caller has explicitly opted in
-// (--allow-ambiguous-extent). See SyncGuardrails' doc comment for the full
-// history: round 2 tried reporting the tie instead of refusing it, and round
-// 3's review showed that did not actually protect anything, because the same
-// note fires on every ordinary edit too.
-func matchExtent(fileLines []string, at int, want string, known []string) (matched string, ok bool, ambiguous bool) {
-	lengths := map[int]bool{}
+// alone: the longest match is not also the newest match. Two matching texts
+// always nest (the shorter is a prefix of the longer), so this happens exactly
+// when a NEWER known text is a strict prefix of an OLDER one, that is, when
+// the block's history has a prefix-shrink in it (current text included) and
+// the copy still matches both sides of it. Then a copy genuinely still at the
+// older, longer text is indistinguishable, byte for byte, from a copy at the
+// newer, shorter text followed by unrelated content — possibly a local,
+// site-specific rule — that happens to equal the longer text's own tail
+// (#1692). When the newer, shorter text is `want` this is the unsynced or
+// committed-first prefix-shrink; when it is an earlier revision, the block has
+// been edited again since a committed prefix-shrink. Either way the caller
+// (SyncGuardrails) refuses by default, naming the file, the two lengths that
+// matched and the span that would have been removed, and takes the longest
+// match only when the caller has explicitly opted in (--allow-ambiguous-extent).
+//
+// A grow history is NOT ambiguous: after a committed append-grow the older,
+// shorter text is a prefix of the newer, longer one, so both match at a copy
+// synced to the newer text — but the longest match is also the newest, which
+// is what a synced copy holds. Counting that as a tie (as an earlier draft
+// did, by flagging any two matching lengths) refused every later edit of a
+// block that had ever grown. What this re-admits, deliberately: a copy that
+// MISSED a sync, still at an older text, followed by content equal to the tail
+// a later grow added. That copy is at least two revisions behind the source,
+// and its trailing content would have to repeat that later revision's added
+// lines exactly.
+//
+// See SyncGuardrails' doc comment for the full history: round 2 tried
+// reporting the tie instead of refusing it, and round 3's review showed that
+// did not actually protect anything, because the same note fired on every
+// ordinary edit too.
+func matchExtent(fileLines []string, at int, known []string) (matched, newest string, ok, ambiguous bool) {
 	for _, k := range known {
 		kl := strings.Split(k, "\n")
 		if at+len(kl) > len(fileLines) || strings.Join(fileLines[at:at+len(kl)], "\n") != k {
 			continue
 		}
-		lengths[len(kl)] = true
+		if !ok {
+			newest = k
+		}
 		if !ok || len(kl) > len(strings.Split(matched, "\n")) {
 			matched, ok = k, true
 		}
 	}
-	ambiguous = ok && matched != want && len(lengths) > 1
-	return matched, ok, ambiguous
+	ambiguous = ok && matched != newest
+	return matched, newest, ok, ambiguous
 }
 
 // priorGuardrailSources is SyncGuardrails' `prior` in production: every

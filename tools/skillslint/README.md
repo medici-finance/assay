@@ -234,25 +234,48 @@ sites with `git checkout` and sync once.
 
 Two narrower cases stay content-limited even so.
 
-The first is genuinely **ambiguous**, not merely "an older revision": when more
-than one known length matches at the anchor and the longest is not the current
-canonical text, the bytes cannot tell a copy still genuinely at that longer,
-earlier text apart from a copy already at the current text, followed by
-unrelated content — possibly a local, site-specific rule someone added right
-after the block — that happens to equal the earlier text's own tail. This
-shape is common: it is exactly what happens the first time a prefix-shrink of
-the canonical text is committed. `git add` does **not** prevent it — the tie
-comes from committed history, not from anything staging can fix — so sync now
-**refuses by default**: could-not-check, naming the file and the exact
-line-range span the longest-match rule would have removed, and nothing is
-written. Verify the ambiguity by hand (`git diff` on the site) and, only once
-you have, re-run with `--allow-ambiguous-extent` to take the longest match
-anyway; that flag's rewrite is still recorded as a `note:` on `--sync`, never
-silently. Earlier revisions of this document said `git add` closed this
-window entirely and called the case "common, unambiguous" — both statements
-were wrong; this default (refuse, with an explicit opt-in) is this project's
-own choice among the review's options, not a settled cross-project ruling
-(medici-finance/assay#1692).
+The first is genuinely **ambiguous**, not merely "an older revision": when the
+longest known text matching at the anchor is not also the newest one matching
+there. Two matching texts always nest, one a prefix of the other, so this
+means a newer text of the block (the current canonical text counts as the
+newest) is a strict prefix of an older one: the block once shrank by dropping
+trailing lines, and the copy still matches both sides of that shrink. The
+bytes then cannot tell a copy still genuinely at the older, longer text apart
+from a copy at the newer, shorter text followed by unrelated content —
+possibly a local, site-specific rule someone added right after the block —
+that happens to equal the longer text's own tail. Any trailing-line removal is
+such a shrink, so the first sync after one is ambiguous. `git add` does **not**
+prevent it — the tie comes from history, not from anything staging can fix —
+so sync **refuses by default**: could-not-check, naming the file, the two
+lengths that matched, and the exact line-range span the longest-match rule
+would have removed. That block is not written; another, unambiguous block in
+the same file still is.
+
+The refusal is not one-off. Once such a shrink is committed, every later sync
+of that block refuses too, whatever the later edit, for as long as the copy
+still matches both texts — for example while a dropped line is kept as
+site-local text right under the block. To get past it, either verify the
+ambiguity by hand (`git diff` on the site) and re-run with
+`--allow-ambiguous-extent`, which takes the longest match for **every**
+ambiguous block in that run and records each as a `note:` on `--sync`; or
+separate the site-local text from the block (for example with a blank line)
+so the copy no longer matches the older text.
+
+A block that only ever **grew** is not ambiguous. After a committed
+append-grow the older, shorter text is a prefix of the newer one, so both match
+at a synced copy, but the longest match is also the newest, which is what a
+synced copy holds; later edits of that block rewrite normally. What this
+accepts: a copy that missed a sync, still at an older text, and followed by
+content exactly equal to the lines a later grow added, would have that content
+replaced. Such a copy is at least two revisions behind its source.
+
+Earlier revisions of this document said `git add` closed the ambiguity window
+entirely, and called a committed prefix-shrink "common, unambiguous" — both
+statements were wrong. A later revision treated any two matching lengths as
+ambiguous, which refused every edit of a block that had ever grown; that is
+wrong too. This default (refuse, with an explicit opt-in) and the recency
+condition are this project's own reversible choices, not a settled
+cross-project ruling (#1692).
 
 The second is narrower still: a shrink of an edit that is never committed or
 staged is could-not-check only when nothing at the anchor matches; if the

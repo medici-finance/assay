@@ -282,17 +282,20 @@ func syncAllowAmbiguous(root string, prior ...*GuardrailSource) ([]string, Guard
 // matchExtent's longest-known-text-wins rule (above) closed round 1's data
 // loss, but review findings F-1692-prefix-extent-ambiguity /
 // F-1692-longest-match-ambiguity showed it can still pick the wrong extent
-// when MORE THAN ONE known length matches at the anchor and the longest is
-// not the current canonical text: the bytes cannot tell a copy still
-// genuinely at that longer, earlier text apart from a copy already at the
-// current text, followed by unrelated content — possibly a local,
-// site-specific rule — that coincidentally equals the earlier text's own
-// tail. Round 2 shipped "take the longest match, but note the tie" instead
+// when the longest known text matching at the anchor is not also the newest
+// one matching there (a newer text is a strict prefix of an older one): the
+// bytes cannot tell a copy still genuinely at that older, longer text apart
+// from a copy at the newer, shorter text, followed by unrelated content —
+// possibly a local, site-specific rule — that coincidentally equals the
+// longer text's own tail. (Round 4, F-1692-ambiguity-reach-misstated: the
+// condition used to be "two lengths matched and the longest is not the
+// current text", which also caught every edit after a committed grow; see
+// TestSyncGuardrails_GrowHistoryNotAmbiguous.) Round 2 shipped "take the longest match, but note the tie" instead
 // of refusing; round 3's review showed the note fires identically on every
 // ordinary edit too, so it protects nothing, and a real local rule was
 // deleted with only that note to show for it. Round 3 (this round) REFUSES
 // the ambiguous case BY DEFAULT — could-not-check, naming the file and the
-// exact span, nothing written — and reaches the round-2 behaviour only
+// exact span, that block not written — and reaches the round-2 behaviour only
 // through the explicit --allow-ambiguous-extent opt-in
 // (syncAllowAmbiguous in these tests). This default is this desk's own
 // choice among the review's options, not a ruling already made — see the PR
@@ -500,13 +503,15 @@ func TestSyncGuardrails_ShrinkToPrefixAmbiguousByDefault(t *testing.T) {
 	assertSiteIs(t, root, extentPrefix, "after the opt-in rewrite")
 }
 
-// TestSyncGuardrails_OrdinaryTrailingLineRemovalProceedsSilently is the
-// explicit negative case for the two tests above: the common, genuinely
-// UNAMBIGUOUS shrink (dropping a trailing line that is not a shared prefix of
-// anything else known) must still proceed with no could-not-check and no
-// ambiguous-extent note, exactly as before this round's fix. Fixing the
-// ambiguous case must not have broken the ordinary one.
-func TestSyncGuardrails_OrdinaryTrailingLineRemovalProceedsSilently(t *testing.T) {
+// TestSyncGuardrails_NonPrefixShrinkIsSilent is the explicit negative case
+// for the two tests above: a shrink whose new text is NOT a prefix of the old
+// one (here 4 lines replaced by 2, the second of them different) leaves only
+// one known text matching at the anchor, so it must proceed with no
+// could-not-check and no ambiguous-extent note. Note what this is not: it is
+// not a plain trailing-line removal. Dropping trailing lines always leaves a
+// prefix of the old text, which is the shrink-to-prefix case above and refuses
+// by default.
+func TestSyncGuardrails_NonPrefixShrinkIsSilent(t *testing.T) {
 	root := t.TempDir()
 	mkdirWrite(t, root, guardrailSourcePath, extentSource("extent", extentSite, extentShort...))
 	mkdirWrite(t, root, extentSite, extentSiteBody(extentLong))
@@ -525,7 +530,187 @@ func TestSyncGuardrails_OrdinaryTrailingLineRemovalProceedsSilently(t *testing.T
 	if len(changed) != 1 {
 		t.Fatalf("changed=%v, want the one site rewritten", changed)
 	}
-	assertSiteIs(t, root, extentShort, "ordinary trailing-line removal")
+	assertSiteIs(t, root, extentShort, "non-prefix shrink")
+}
+
+// TestSyncGuardrails_GrowHistoryNotAmbiguous pins the grow-history half of
+// #1692's F-1692-ambiguity-reach-misstated. Once a block has had one committed
+// append-grow, its older, shorter text is a prefix of the newer, longer one, so
+// BOTH match at the anchor of a copy synced to the newer text. That is not the
+// ambiguous case: the longest match is also the NEWEST matching revision, which
+// is exactly what a synced copy holds. Every later edit of such a block must
+// rewrite by default, with no refusal and no note, and a re-sync must be a
+// no-op. Before this fix the condition fired whenever two lengths matched and
+// the longest was not the current text, so all three cases below refused,
+// permanently, and the refusal claimed the current text had matched.
+//
+// prior is newest first, as priorGuardrailSources returns it.
+func TestSyncGuardrails_GrowHistoryNotAmbiguous(t *testing.T) {
+	a := "- **Extent test:** anchor line, stable across edits."
+	l2, l2x := "- second line.", "- second line, reworded."
+	l3, l3x := "- third line, added by the first grow.", "- third line, reworded."
+	l4 := "- fourth line, added by a second grow."
+	r1 := []string{a, l2}
+	r2 := []string{a, l2, l3}
+	r3 := []string{a, l2, l3, l4}
+	for _, tc := range []struct {
+		name   string
+		onDisk []string   // the copy, synced to the newest committed revision
+		want   []string   // the current canonical text
+		prior  [][]string // committed revisions, newest first
+	}{
+		{"second-grow", r2, r3, [][]string{r2, r1}},
+		{"edit-after-grow", r2, []string{a, l2x, l3}, [][]string{r2, r1}},
+		{"edit-after-two-grows", r3, []string{a, l2, l3x, l4}, [][]string{r3, r2, r1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			mkdirWrite(t, root, guardrailSourcePath, extentSource("extent", extentSite, tc.want...))
+			mkdirWrite(t, root, extentSite, extentSiteBody(tc.onDisk))
+			var prior []*GuardrailSource
+			for _, p := range tc.prior {
+				prior = append(prior, parsedExtentSource(t, p))
+			}
+			for run := 1; run <= 2; run++ {
+				changed, rep, err := syncWith(root, prior...)
+				if err != nil {
+					t.Fatalf("run %d: %v", run, err)
+				}
+				if len(rep.Unchecked) != 0 {
+					t.Fatalf("run %d: a grow history must not make the extent ambiguous, got %+v", run, rep.Unchecked)
+				}
+				if len(rep.Notes) != 0 {
+					t.Fatalf("run %d: unexpected note: %+v", run, rep.Notes)
+				}
+				if wantChanged := map[int]int{1: 1, 2: 0}[run]; len(changed) != wantChanged {
+					t.Fatalf("run %d: changed=%v, want %d file(s)", run, changed, wantChanged)
+				}
+				assertSiteIs(t, root, tc.want, "after run "+string(rune('0'+run)))
+			}
+		})
+	}
+}
+
+// TestSyncGuardrails_ShrinkHistoryEditRefuses is the other side of the same
+// finding, and the reason the narrowing is by RECENCY rather than only "the
+// current text also matches". A block shrinks to a prefix of itself (r1 ->
+// r2, committed and synced), the adopter keeps the dropped bullet as
+// site-local text right under the block, and then the block is edited again
+// (r3). The current text no longer matches, but the newer r2 and the older,
+// longer r1 both do, so the longest match is NOT the newest one: taking it
+// would delete the site-local line, the harm F-1692-longest-match-ambiguity
+// was about. It must still refuse by default, the file byte-identical, and
+// the refusal must not claim the current text matched.
+func TestSyncGuardrails_ShrinkHistoryEditRefuses(t *testing.T) {
+	a := "- **Extent test:** anchor line, stable across edits."
+	keep := "- keep this line."
+	dropped := "- dropped bullet, kept as site-local text."
+	r1 := []string{a, keep, dropped}
+	r2 := []string{a, keep}
+	r3 := []string{a, keep, "- a new bullet, added after the shrink."}
+
+	root := t.TempDir()
+	mkdirWrite(t, root, guardrailSourcePath, extentSource("extent", extentSite, r3...))
+	body := strings.Join([]string{"# ext", "", a, keep, dropped, "- NEXT SECTION."}, "\n") + "\n"
+	mkdirWrite(t, root, extentSite, body)
+	prior := []*GuardrailSource{parsedExtentSource(t, r2), parsedExtentSource(t, r1)}
+
+	changed, rep, err := syncWith(root, prior...)
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if len(changed) != 0 {
+		t.Fatalf("changed=%v: the site-local line would be deleted", changed)
+	}
+	if len(rep.Unchecked) != 1 || !strings.Contains(rep.Unchecked[0].Msg, "AMBIGUOUS") {
+		t.Fatalf("want 1 ambiguity refusal, got %+v", rep.Unchecked)
+	}
+	msg := rep.Unchecked[0].Msg
+	if strings.Contains(msg, "current canonical text's") {
+		t.Fatalf("the current text did not match here, but the refusal says it did: %q", msg)
+	}
+	if !strings.Contains(msg, "3 line(s)") || !strings.Contains(msg, "2 line(s)") {
+		t.Fatalf("the refusal must name the two lengths that matched (3 and 2), got %q", msg)
+	}
+	if got := read(t, root, extentSite); got != body {
+		t.Fatalf("site was rewritten despite the refusal.\n--- got ---\n%s--- want ---\n%s", got, body)
+	}
+}
+
+// TestRunSync_AmbiguousCLI runs the built binary, so the parts of the
+// ambiguity handling that live in main.go are pinned too: the flag reaching
+// SyncGuardrails, the refusal and the opt-in note reaching stderr, the exit
+// codes, and --allow-ambiguous-extent being refused without --sync.
+func TestRunSync_AmbiguousCLI(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	if testing.Short() {
+		t.Skip("builds and runs the binary; skipped under -short")
+	}
+	bin := buildSkillslintBinary(t)
+	root := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{
+			"-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid",
+			"-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main",
+		}, args...)...)
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run := func(args ...string) (int, string) {
+		t.Helper()
+		cmd := exec.Command(bin, args...)
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		code := 0
+		if ee, ok := err.(*exec.ExitError); ok {
+			code = ee.ExitCode()
+		} else if err != nil {
+			t.Fatalf("running %v: %v", args, err)
+		}
+		return code, stderr.String()
+	}
+
+	a := "- **Extent test:** anchor line, stable across edits."
+	keep := "- keep this line."
+	dropped := "- dropped bullet, kept as site-local text."
+	git("init", "-q")
+	mkdirWrite(t, root, guardrailSourcePath, extentSource("extent", extentSite, a, keep, dropped))
+	git("add", "-A")
+	git("commit", "-q", "-m", "r1")
+	mkdirWrite(t, root, guardrailSourcePath, extentSource("extent", extentSite, a, keep))
+	git("commit", "-q", "-am", "r2: shrink to a prefix")
+	body := strings.Join([]string{"# ext", "", a, keep, dropped, "- NEXT SECTION."}, "\n") + "\n"
+	mkdirWrite(t, root, extentSite, body)
+
+	if code, stderr := run("--root", root, "--allow-ambiguous-extent"); code != 2 || !strings.Contains(stderr, "requires --sync") {
+		t.Fatalf("--allow-ambiguous-extent without --sync: exit %d, stderr %q; want exit 2 naming the missing --sync", code, stderr)
+	}
+
+	code, stderr := run("--root", root, "--sync")
+	if code != 2 || !strings.Contains(stderr, "AMBIGUOUS") || !strings.Contains(stderr, extentSite) {
+		t.Fatalf("default sync: exit %d, stderr %q; want exit 2 and the refusal naming %s", code, stderr, extentSite)
+	}
+	if got := read(t, root, extentSite); got != body {
+		t.Fatalf("default sync wrote the site despite refusing:\n%s", got)
+	}
+
+	code, stderr = run("--root", root, "--sync", "--allow-ambiguous-extent")
+	if !strings.Contains(stderr, "note: ") || !strings.Contains(stderr, "--allow-ambiguous-extent took the longest match") {
+		t.Fatalf("opt-in sync: stderr %q; want the override note", stderr)
+	}
+	if strings.Contains(stderr, "AMBIGUOUS") {
+		t.Fatalf("opt-in sync still refused: %q", stderr)
+	}
+	if want := strings.Join([]string{"# ext", "", a, keep, "- NEXT SECTION."}, "\n") + "\n"; read(t, root, extentSite) != want {
+		t.Fatalf("opt-in sync (exit %d) did not take the longest match:\n%s", code, read(t, root, extentSite))
+	}
 }
 
 // TestSyncGuardrails_RefusesOverlappingProvenExtents pins
@@ -603,8 +788,9 @@ func TestSyncGuardrails_RefusesOverlappingProvenExtents(t *testing.T) {
 // one fixture — the same shape as the reviewer's reproduction, not an
 // in-process goroutine race, since the corruption comes from two OS
 // processes truncating and writing the same path at once. It was run once,
-// by hand, against the pre-fix SyncGuardrails/os.WriteFile code (checked out
-// at fd41e80a, before this round's changes) to confirm it DOES reproduce
+// by hand, against the pre-fix SyncGuardrails/os.WriteFile code (commit
+// fd41e80a; the PR head at the time, d9051bb5, carries the identical
+// tools/skillslint tree) to confirm it DOES reproduce
 // corruption at roughly the reviewer's ratio before asserting the fix here;
 // see the PR body's fail-first section for that run's output. Checked in,
 // it runs only against the fixed code and must show zero corruption.

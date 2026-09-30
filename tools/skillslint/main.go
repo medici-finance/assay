@@ -55,11 +55,15 @@ func (s *stringList) Set(v string) error {
 func main() {
 	root := flag.String("root", ".", "path to the repo root holding plugins/assay/skills/")
 	sync := flag.Bool("sync", false, "regenerate every guardrail copy from "+guardrailSourcePath+" instead of checking")
-	allowAmbiguous := flag.Bool("allow-ambiguous-extent", false, "with --sync: when a copy's removal extent is ambiguous (more than one known length matches at the anchor, and the longest is not the current canonical text), take the longest match anyway instead of refusing — the default is to refuse, naming the file and span, since this case cannot be told apart by content alone from swallowing a local, site-specific rule (medici-finance/assay#1692); verify by hand before passing this")
+	allowAmbiguous := flag.Bool("allow-ambiguous-extent", false, "with --sync: when a copy's removal extent is ambiguous (an older known text and a more recent one that is a strict prefix of it both match at the anchor, so the longest match is not the newest), take the longest match anyway instead of refusing — the default is to refuse, naming the file and span, since this case cannot be told apart by content alone from swallowing a local, site-specific rule (#1692); applies to every ambiguous block in the run, so verify each by hand before passing this")
 	var skillsDirs stringList
 	flag.Var(&skillsDirs, "skills-dir", "path to a directory of <dir>/*/SKILL.md to run ONLY the structural + conformance checks over (repeatable); when given, --root's other checks (house values, hidden chars, guardrails, enforcement block, posix-token) do not run")
 	flag.Parse()
 
+	if *allowAmbiguous && !*sync {
+		fmt.Fprintln(os.Stderr, "skillslint: --allow-ambiguous-extent requires --sync (it changes only how --sync rewrites guardrail copies)")
+		os.Exit(2)
+	}
 	if *sync {
 		os.Exit(runSync(*root, *allowAmbiguous))
 	}
