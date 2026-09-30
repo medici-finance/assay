@@ -385,10 +385,10 @@ func checkBriefInfoVerified(root string, info *briefInfo) error {
 	// This verb does not run the lint, so it refuses the #1939 case itself: a
 	// closure is never authorized over a section the parser and the rendered
 	// page may read differently.
-	if what := unterminatedCommentIn(verify, evidence); what != "" {
-		return fmt.Errorf("verified outcome requires well-formed Verify and Evidence sections: %s", what)
+	findings, refusal := closureWitnesses(verify, evidence)
+	if refusal != "" {
+		return fmt.Errorf("verified outcome requires well-formed Verify and Evidence sections: %s", refusal)
 	}
-	findings := checkWitnesses(verify, evidence)
 	if len(findings) == 0 {
 		return fmt.Errorf("verified outcome requires Verify rows with passing execution witnesses")
 	}

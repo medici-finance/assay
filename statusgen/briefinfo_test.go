@@ -323,6 +323,8 @@ func TestBriefInfoCheckVerified(t *testing.T) {
 		// passing witness before it no longer lets the closure through.
 		{"evidence-opener", "verified", goodStamp, verify, goodWitness + "\nquotes <!-- a marker\n", "no closing"},
 		{"verify-opener", "verified", goodStamp, verify + "see <!-- note\n", goodWitness, "no closing"},
+		// A line-start opener hides the witness table when rendered.
+		{"line-start-opener", "verified", goodStamp, verify, "<!-- draft\n\n" + goodWitness, "no closing"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
