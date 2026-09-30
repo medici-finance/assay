@@ -12,7 +12,7 @@
 //
 // --fixture always implies --dry-run: fixture data is never posted to a real pull request.
 //
-// Posting is double-gated (clause 9, no-default-probe on the write side). Naming a live
+// Posting is double-gated (clause 10, no-default-probe on the write side). Naming a live
 // target (--repo/--pr) never by itself writes anything: a live run without --post gathers and
 // prints the card exactly like --dry-run, so the flags that merely say WHERE to look never
 // double as the flag that says WRITE. Passing --post is necessary but not sufficient — see
