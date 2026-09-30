@@ -478,7 +478,32 @@ RISK-VALUE: DERIVED — ci/plugin-drift paths-ignore = [docs/**, changelog/**, C
 RISK-VALUE: DERIVED — writer cancel conditioning = github.event_name == 'pull_request' @ tools/ci-load/activation/assay-statusgen.yml:61, assay-qualgen.yml:62, ci.yml:75 — STATUS.md and QUALITY.md each have one writer (the main regen job); conditioning on pull_request lets only the write-nothing lint/render runs be superseded, so a main run is never cancelled by the next merge. Caveat: the value is right, but the file carrying it (assay-statusgen.yml) is stale — see "What changed" (2).
 
 VERIFY: BLOCKED — HELD at implemented. Direct runs: rows 2, 3, 3b, 6, 9, 10 checked-clean; row 11 by dereference; rows 1, 4, 5, 7, 8 remain unrunnable as after-measurements (human workflows-copy not landed, #1185). Hermetic witness: check:ci rows could-not-run on darwin (#1491). No row shows a defect in the landed change; the new staged-copy drift must be refreshed BEFORE the human copy, or the copy regresses #1257 and #1691.
+### Non-implementer verifier run — VERIFY: BLOCKED — rows 1, 4, 5, 7, 8 await the workflow copy (#1185) — 2026-09-30 claude-opus-5-5-verifier
 
+Runner is not the implementer. Isolated worktree at merged main `b6f8f3c4e86df20681cfb5165f49a9e97659b572` (HEAD == the forge's `commits/main`). Offline; rows 1, 2, 7 are read-only GitHub API reads. check:ci rows 3, 3b, 6, 9, 10, 11 run directly on darwin (the network-off witness needs Linux, #1491). Five risk-bearing rows, so fanned out per row cluster. No merged-work defect found. Status stays `implemented`.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | row 1 command verbatim (latest merged PR's runs, workflow/event set) | four survivors only | **BLOCKED** — PR #1845 (docs-only): the four survivors plus ci/push, ci/pull_request and plugin-drift/pull_request — the before state | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | row 2 command verbatim (commit status, rulesets, no-such-check count) | leak-sweep required and posted | PASS — statuses = [leak-sweep]; ruleset requires it; discriminator 0 | 2026-09-30 | claude-opus-5-5-verifier |
+| 3 | `python3 tools/ci-load/pathsemantics.py` | PASS | PASS — mixed, go-only, plugin-only run; docs-only and status-regen skipped | 2026-09-30 | claude-opus-5-5-verifier |
+| 3b | row 3b mutation (GNU sed flips the all-changed test to any-changed), re-run, restore, re-run | FAIL then PASS | PASS — mutant `FAIL mixed: skipped=True (want False)` for both workflows (exit 1); restored exit 0; tree clean | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | row 4 command verbatim (diff of the two leak workflows since the last ci.yml commit) | empty | **BLOCKED** (vacuous) — empty, but the last ci.yml commit is an unrelated 2026-09-07 merge | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | `grep -n cancel-in-progress .github/workflows/*.yml` | 2 event-conditioned | **BLOCKED** — 0 event-conditioned; statusgen and qualgen still bare false; no committing push leg has bare true | 2026-09-30 | claude-opus-5-5-verifier |
+| 6 | row 6 command verbatim (deskboard would-fire and zero-CI tests) | ok, ok | PASS — both exit 0 | 2026-09-30 | claude-opus-5-5-verifier |
+| 7 | row 7 command verbatim (status-check rollup length) | ≥4 | **BLOCKED** — 27 on #1845, informative only (predates the copy) | 2026-09-30 | claude-opus-5-5-verifier |
+| 8 | row 8 command verbatim (staged files vs live) | identical | **BLOCKED** — all five differ | 2026-09-30 | claude-opus-5-5-verifier |
+| 9 | row 9 command verbatim (YAML shape check of the staged files) | five shapes | PASS — exactly the specified shapes | 2026-09-30 | claude-opus-5-5-verifier |
+| 10 | `cd statusgen && go run . --root .. --lint` | LINT: PASS | PASS — zero PROBLEM lines | 2026-09-30 | claude-opus-5-5-verifier |
+| 11 | row 11 command verbatim (consumers for this brief) | CORROBORATED | could-not-check by tool (exit 1, no output on merged main); holds by reading landing commit 162c07b75 — adds the staged activation set, pathsemantics.py, the brief and the fragment; touches none of the three out-of-scope files | 2026-09-30 | claude-opus-5-5-verifier |
+
+RISK-VALUE (the prescribed change sits under `.github/workflows/` while every risk answer is `no`; each value reverts with one revert):
+
+- RISK-VALUE: DERIVED — cancel-in-progress = `${{ github.event_name == 'pull_request' }}` @ tools/ci-load/activation/ci.yml:75, assay-statusgen.yml:61, assay-qualgen.yml:62 — STATUS.md and QUALITY.md are single-writer (the main regen job); only non-writing PR runs may be superseded, so a main regen is never cancelled. Value right; the staged statusgen file carrying it is stale (finding 2).
+- RISK-VALUE: DERIVED — paths-ignore = [docs/**, changelog/**, CHANGELOG.md, STATUS.md] @ tools/ci-load/activation/ci.yml:56,62 and plugin-drift.yml:46 — no job reads those paths; GitHub skips only when every changed file is ignored (rows 3/3b re-prove mixed diffs still run); leak workflows stay unfiltered and leak-sweep posts independently (row 2).
+- RISK-VALUE: DERIVED — enable-if login = `assay-verifier-app[bot]` @ tools/ci-load/activation/evidence-automerge.yml:96 — equals the author constant at :153 and sits before the unchanged default-deny guard (:159, :180); drift can only narrow the lane, never widen automerge.
+
+Findings: (1) Blocker unchanged — the workflows-scope copy has not landed, 25 days after `implemented`; #1185. (2) The staged `assay-statusgen.yml` is stale against live: it lacks the `changelog/**` trigger on both legs (#1257) and the auto-flip exit-policy text (#1691); copying verbatim would revert both — refresh before the copy (already noted on #1185). (3) Row 5's expected list predates the read-only pin-consistency workflow; account for it at re-run. (4) Row 4 is vacuous until the copy lands. (5) Row 3b's mutation must be confirmed with `git diff` (BSD `sed -i ''` silently no-ops under GNU sed). (6) Row 11's literal command is the post-merge vacuous class (#1281).
 
 ## Review
 
