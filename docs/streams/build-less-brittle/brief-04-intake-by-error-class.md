@@ -15,9 +15,11 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format)"
 sources:
+  - "docs/streams/build-less-brittle/spec.md — 2026-09-30 pending scope amendment"
+  - "freshness-checked 2026-09-30 @ 8485778515c041fc87966902a14eb9d195492be3: amend unfinished scope; no implementation claim"
   - "docs/streams/build-less-brittle/spec.md §2 D1, §3 rows 1 and 8, §4.1"
   - "tools/desk/cmd/deskfile/deskfile.go (attach verb; new-issue budget)"
   - "statusgen/nextup.go (dispatch reads only `todo` rows) and statusgen/checks.go (`blocked` is a valid status)"
@@ -89,6 +91,19 @@ Include a worked case in the edited procedure: two mirrored reports of one failu
 later success on another revision, then a same-scope recovery check. Only the last
 establishes recovery; the counted incident remains one. Legacy attachments remain readable
 with unknown fields. Preserve this brief's net-zero skill-line and no-new-tool constraints.
+
+## Work-input amendment — 2026-09-30
+
+Within the existing class attachment/placeholder, carry the mechanism, known scope,
+source revisions/evidence references, unresolved questions and next actionable step. Reuse
+those fields in the downstream brief instead of requiring the next desk to rediscover the
+class. Coalesce repeated reports through the existing incident-group rule; a new observation
+can enrich the record without becoming another counted incident or another agent request.
+
+This is a procedure/record refinement within the existing line offsets, not new schema,
+scheduler or runtime deduplication code. Execution-attempt coalescing belongs to graph 14
+and is not a dependency. Review the worked triage with duplicate versus genuinely new
+incidents; both retain evidence and only the latter advances the recurrence count.
 
 ## Task
 

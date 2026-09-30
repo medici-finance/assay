@@ -21,6 +21,8 @@ issues: []
 schema: brief-v2
 authored: 2026-09-19 by Codex (author-brief)
 sources:
+- docs/streams/graph-execution/work-input-amendment.md
+- freshness-checked 2026-09-30 @ 8485778515c041fc87966902a14eb9d195492be3 (pending scope, not implementation)
 - docs/streams/graph-execution/admission-assurance-spec.md
 - freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
 exec-tier: strong
@@ -29,7 +31,7 @@ domain: complicated
 consumers:
 - 'drainloop: fixed-here'
 - 'tools/desk: follow-up graph-execution/14'
-version: 1
+version: 2
 id: db922112-28f0-44c0-b120-9d6c4f56e103
 ---
 
@@ -59,6 +61,20 @@ Decision-trigger: spec. At implementation pickup, prepare concrete policy choice
 - Existing authority and human gates remain binding. Missing prerequisite evidence is could-not-check.
 - Public fixtures use example-org and synthetic data; do not copy adopter evidence.
 
+## Work-input amendment — 2026-09-30
+
+Implement WI-3/WI-4 by extending this brief's durable reservation seam, not by adding a meter
+service. Persist account/provider unit, model/pricing identity, attempt/request lineage,
+raw usage, uncertainty and outstanding reservations. Charge preparation, summaries, failed
+attempts, fallback and verification to the original work. Preserve missing telemetry as
+unknown and budgets/stops across restart; test concurrent admission against one balance.
+
+Keep quota units separate and make rolling/longer-period constraints and operator headroom
+expressible. Fake-provider fixtures prove accounting/concurrency semantics only. Actual
+model adapters and plan calibration remain adopting-pilot work. State whether a runner can
+limit requests or only launches; a late alarm is not hard enforcement. No live provider
+calls, fixed commercial rates or silent cross-provider fallback are added here.
+
 ## Task
 
 1. Define durable reservation and ownership-generation seams, cancellation intent, cumulative attempt budgets and stop/override retention. Use existing storage where possible; adapter conformance must reject non-durable required stores.
@@ -79,6 +95,8 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 1 | check:ci | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnership" ./...` | exit 0; output includes PASS for TestCellOwnership, with no [no tests to run] for its owning package |
 | 2 | check:ci +mutation | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnershipStaleWriterDenied" ./...` | exit 0; output includes PASS for TestCellOwnershipStaleWriterDenied, with no [no tests to run] for its owning package |
 | 3 | check:ci +flow | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnershipRestoreBudgetPause" ./...` | exit 0; output includes PASS for TestCellOwnershipRestoreBudgetPause, with no [no tests to run] for its owning package |
+| 4 | check:ci +mutation | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellBudgetConcurrentReservations$" ./... > /tmp/TestCellBudgetConcurrentReservations.out && grep -q -- "--- PASS: TestCellBudgetConcurrentReservations " /tmp/TestCellBudgetConcurrentReservations.out` | exit 0; named PASS; concurrent admissions cannot spend the same available allowance; mutation: exclude outstanding reservations from available allowance — the named test must fail |
+| 5 | check:ci +flow | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellBudgetRestoreAllAttempts$" ./... > /tmp/TestCellBudgetRestoreAllAttempts.out && grep -q -- "--- PASS: TestCellBudgetRestoreAllAttempts " /tmp/TestCellBudgetRestoreAllAttempts.out` | exit 0; named PASS; failed-attempt spend, reservations, unknown usage and stop state survive restore |
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.
 

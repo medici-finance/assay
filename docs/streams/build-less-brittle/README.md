@@ -63,6 +63,14 @@ records keep missing evidence and unverified outcomes explicit. No new brief, ga
 service or dependency on a desk-tool redesign is introduced; later collectors can read
 these artifacts without becoming another owner of their meaning.
 
+## Structured inputs and revision-aware handoffs (2026-09-30)
+
+The [spec clarification](spec.md#work-input-and-handoff-clarification--2026-09-30) refines
+unfinished briefs 04, 09 and 12: preserve evidence/intent, carry the next action, and
+revalidate conclusions whose inputs change. It uses existing records and line budgets.
+Graph execution can consume them without becoming a blocker. Current gates, waves,
+M1–M6/C1–C4 and implemented-brief status remain unchanged.
+
 ## Briefs
 
 <!-- statusgen:briefs:begin -->
@@ -74,8 +82,8 @@ these artifacts without becoming another owner of their meaning.
 | 04 | [Intake files by error class; a recurring class triggers a design brief, not another point fix](brief-04-intake-by-error-class.md) | 2 | M | todo | — | — |
 | 05 | [Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight](brief-05-worker-two-strikes-and-weight.md) | 3 | M | todo | — | — |
 | 06 | [Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision](brief-06-design-fit-review-stage.md) | 2 | M | implemented | — | — |
-| 07 | [Rule register (owner, invariant, justifying issue, catch source) and the monthly rule diet](brief-07-rule-register-and-diet.md) | 1 | M | implemented | — | — |
-| 08 | [Hotspot metric (churn × complexity, temporal coupling) from git history, and the brittle mark](brief-08-hotspot-metric-and-brittle-mark.md) | 1 | M | implemented | — | — |
+| 07 | [Rule register (owner, invariant, justifying issue, catch source) and the monthly rule diet](brief-07-rule-register-and-diet.md) | 1 | M | done | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1846 @ adc753ecdf5f19417405408fc813ba4997270bdb) |
+| 08 | [Hotspot metric (churn × complexity, temporal coupling) from git history, and the brittle mark](brief-08-hotspot-metric-and-brittle-mark.md) | 1 | M | done | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1850 @ 47604cb9c363336ba0ee46717ae7120979b4a859) |
 | 09 | [Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept](brief-09-brittle-investigation.md) | 3 | M | todo | — | — |
 | 10 | [Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning](brief-10-fitness-functions.md) | 2 | M | todo | — | — |
 | 11 | [Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge](brief-11-regression-test-ratchet.md) | 4 | M | todo | — | — |

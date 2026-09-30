@@ -204,3 +204,11 @@ description of the direction are the adopter's own briefs, in the adopter's tree
 routed amendment. It keeps this stream as the execution foundation and adds briefs
 09–18; it does not change deployed behavior, remove human gates or require Laya for
 the original offline experiment. Existing 03–06 are revised only at shared contracts.
+
+## Structured inputs and measured execution — 2026-09-30 amendment
+
+[Work-input amendment](work-input-amendment.md) routes packet views, dependency freshness,
+event coalescing, durable resource accounting and matched measurement into unfinished
+briefs 03, 09, 14, 16 and 18. It keeps one evaluator, record family and reservation seam.
+The deterministic parent performs observation/dispatch; models perform scoped work.
+No universal prefix/turn limit is introduced, and existing activation gates remain.
