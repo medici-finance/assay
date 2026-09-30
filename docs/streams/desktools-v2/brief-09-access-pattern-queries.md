@@ -113,6 +113,25 @@ facts:
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
+### Non-implementer verifier run — VERIFY: FAIL — 5/6 rows, row 6 (#1529) — 2026-09-30 claude-opus-5-5-verifier
+
+Runner is not the implementer. Isolated worktree at merged main `43420f7ecd743f5c930dc479f54f5ef5ca7b82ed` (HEAD == the forge's `commits/main`). Implementing commit 05c937307 (#1851). `gate: model`, all risk answers `no`. Offline, `KUBECONFIG=/dev/null`; no check:ci row. Status stays `implemented`.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 | PASS — exit 0, no output | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | `cd tools/desk && go test -timeout 10m ./internal/deskkit/` | ok, consumer tests pass | PASS — `ok .../internal/deskkit 70.157s`; the migrated consumer's package (`./cmd/deskboard/`, not in the row's command) also run: exit 0, `ok 59.089s` | 2026-09-30 | claude-opus-5-5-verifier |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestAccessPatternSingleRoundTrip -v` | PASS | PASS — `--- PASS: TestAccessPatternSingleRoundTrip`, 3 subtests incl. the tear control | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeNoRawQueryInSignature -v` | PASS | PASS — `--- PASS: TestForgeNoRawQueryInSignature` | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | row 5 command verbatim (the `sh -c` loop over the four phrases in `docs/streams/desktools-v2/query-cost.md`) | all-present | PASS — `all-present` | 2026-09-30 | claude-opus-5-5-verifier |
+| 6 | row 6 command (forge-ban.sh output to a temp file, then `grep -oE 'reach-around sites: [0-9]+'`) | count NOT HIGHER than the `desktools-v2/02` baseline line | **FAIL** — `reach-around sites: 61` (desk 29, statusgen 32) against baseline `desktools-v2/02 53` | 2026-09-30 | claude-opus-5-5-verifier |
+
+RISK-VALUE: DERIVED — forgeQueueReviewsCap = 100 @ tools/desk/internal/deskkit/forge_github.go:694 — equals the connection's `first:`, so the `hasNextPage` check and the length check agree; 100 is the GraphQL maximum; overflow falls back to `ReviewsAtHead`.
+RISK-VALUE: DERIVED — reviews(first:100) @ tools/desk/internal/deskkit/forge_github.go:683 — the GraphQL maximum; `hasNextPage` is selected, so overflow is detected rather than read as complete.
+RISK-VALUE: DERIVED — GitLab ReviewsComplete: false @ tools/desk/internal/deskkit/forge_gitlab.go:876 — the fail-closed direction under the `QueuedChange` contract; the consumer gates on it.
+RISK-VALUE: DERIVED — query points 3 → 4 @ docs/streams/desktools-v2/query-cost.md:38 — recomputed from the query documents with the published formula (301 requests → 3 points, 401 → 4); computed, not read back live.
+
+Findings: (F1, the FAIL) the item adds no reach-around site: `forge-ban.sh` on archives of 05c937307^ and 05c937307 both print 61. The +8 over the committed 53 predates this brief (brief-02's own Evidence recorded 61 on 2026-09-27). The row cannot pass until the baseline is refreshed or the row compares against the count at the merge's parent — the open question on #1529. (F2) Task 2 asks for one tuned query per backend; GitLab is explicitly degraded (per-item reads, every change reported incomplete, fail-closed) at forge_gitlab.go:857-879. No Verify row covers it. (F3) Query points are computed, not measured; `query-cost.md` itself calls for a live cost read. (F4) Row 2's command covers only `./internal/deskkit/` while its Expect includes the consumer's tests.
 
 ## Review
 Gate: model (all four risk answers no — read-only typed operations added behind the seam; no

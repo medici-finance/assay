@@ -1,0 +1,2 @@
+### Fixed
+- windows-port/11 Verify row 7 (no hard-coded `"/bin/bash"` under `tools/desk/cmd/scanloop/`) no longer fails on its own success path. The witness runs rows under `pipefail`, and `git grep` exits 1 when it matches nothing, so the old `git grep … | wc -l` row failed exactly when the property held. The row now tolerates only the no-match status, proves the directory exists at HEAD, and gates on `output is \`0\`` so a reintroduced literal fails the output check (#1699).

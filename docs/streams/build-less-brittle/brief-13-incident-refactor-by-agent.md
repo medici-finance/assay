@@ -27,7 +27,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; third-pass amendment)"
 sources:
   - "docs/streams/build-less-brittle/spec.md §3 row 15, §4.13, §4.7 (no new gate), §8"
@@ -158,6 +158,14 @@ design-fit:
 - The one-ask rule is a ceiling, not a target: a run that files an issue for something the record settles has failed the runbook, and the reviewer checks the gap run's question against the fixture.
 - Never widen a hard gate to avoid an ask, and never narrow one to avoid a human.
 
+## Record compatibility amendment — 2026-09-28
+
+Carry spec §4.9's source, gap and expected-observable links from the investigation into
+the existing oracle and refactor PR. Extend the existing two rehearsals to check the links
+survive the handoff: the complete case traces its acceptance check to intent; the gap case
+retains its unavailable evidence. Both remain outcome pending when closed unmerged.
+This adds no third rehearsal, new dispatch, collector or extra human question.
+
 ## Task
 
 1. `docs/incident-refactor-run.md` (planned): the trigger, the ordered reads (each with its command,
@@ -212,6 +220,10 @@ line), which step 6 writes and the Evidence repeats. Rows 8–10 are wiring and 
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
+
+The reviewer also walks the amendment's worked case through the existing deliverables and
+records the source links, gap handling and outcome interpretation in the review. These are
+semantic acceptance checks; presence of field names alone does not satisfy them.
 
 ## Review
 Gate: model (from frontmatter). The reviewer reads the gap run's one question against the
