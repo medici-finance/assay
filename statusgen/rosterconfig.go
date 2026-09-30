@@ -1167,11 +1167,10 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		cfg.AuthorizedAuthors[login] = id
 	}
 
-	// The active-stream cap (attention-budget/04). UNSET is neither an error nor a
-	// refusal — the stream-cap rule is inert without it. A PRESENT value must be a
-	// positive integer; a malformed one REFUSES the whole configuration, exactly as
-	// a malformed slug does, rather than silently disabling the cap while the
-	// configuration reports itself correct.
+	// The stamped-security authority set (ASSAY_CRITICAL_STAMP_AUTHORITIES, the
+	// drives critical tier). UNSET is an explicit state, not an empty grant: the arm
+	// grants nothing. A PRESENT value is a comma/space list of stamp authority
+	// identifiers; one malformed entry REFUSES the whole configuration.
 	if raw := strings.TrimSpace(vals[scanEnvCriticalStampAuthorities]); raw != "" {
 		cfg.CriticalStampAuthoritiesSet = true
 		for _, a := range scanSplitList(raw) {
@@ -1184,6 +1183,12 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		}
 		sort.Strings(cfg.CriticalStampAuthorities)
 	}
+
+	// The active-stream cap (attention-budget/04). UNSET is neither an error nor a
+	// refusal — the stream-cap rule is inert without it. A PRESENT value must be a
+	// positive integer; a malformed one REFUSES the whole configuration, exactly as
+	// a malformed slug does, rather than silently disabling the cap while the
+	// configuration reports itself correct.
 	if raw := strings.TrimSpace(vals[scanEnvStreamCap]); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 {

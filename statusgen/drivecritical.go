@@ -15,11 +15,22 @@ import (
 // with no drive there is nothing to bury and the ordinary score already orders the
 // board, so a no-drive board stays byte-identical to the pre-drives baseline.
 //
-// Membership is MACHINE-DERIVED / STAMPED, never self-declared — that is the whole
-// governance point (a stream must not be able to self-declare itself critical).
-// The derivation here is PURE and DETERMINISTIC over board-graph facts and stamped
-// labels only: no wall clock, no network. The tier is an ORDERING KEY, not the drive
-// term and not a metric — it is never exported.
+// Membership is DERIVED here, never read from a "this is critical" flag: no field
+// lets a brief or stream declare itself critical. The derivation is PURE and
+// DETERMINISTIC over board-graph facts, linkage fields and stamped labels only: no
+// wall clock, no network. The tier is an ORDERING KEY, not the drive term and not a
+// metric — it is never exported.
+//
+// RESIDUAL (named, not derived — the driver's to accept at merge): the inputs the
+// derivation reads are not all authenticated. Three of them are repo text that an
+// ordinary reviewed, human-merged PR can write: a brief's own `issues:` list (arm
+// 1's fix linkage), a README stamp cell (arm 2 — the authority NAME is checked
+// against configuration, but not who wrote the cell), and a findings entry's
+// `control:` (arm 4 — findingEntry carries no actor). So the brief's "never
+// self-declared" holds in the bounded sense that every linkage lands through review
+// and a human merge, not as a structural guarantee. Only arm 1's red and arm 2's
+// authority SET come from outside the tree (the caller's forge read and roster
+// configuration); arm 3's count is guarded by the reciprocity lint.
 //
 // The four arms (brief-44's Scoring section):
 //
@@ -43,10 +54,11 @@ import (
 //                        count un-gameable: a manufactured one-sided inbound edge is a
 //                        --lint PROBLEM, so blockedCount reflects genuine deps only.
 //   4. reviewer-finding — this brief remediates an unresolved reviewer finding: the
-//                        finding's control: names it (Finding.Control). Machine-
-//                        derived: a reviewer files the finding, the brief author
-//                        cannot. (An affects:-named brief is StaleRef-excluded from
-//                        Next-up by design — see reviewerFindingCritical.)
+//                        finding's control: names it (Finding.Control). The findings
+//                        entry is a repo file with no actor field, so the linkage is
+//                        only as trustworthy as the review that merges it (see
+//                        RESIDUAL above). (An affects:-named brief is StaleRef-excluded
+//                        from Next-up by design — see reviewerFindingCritical.)
 
 // highUnblocksThreshold is the blockedCount at/above which a brief is a genuine
 // high-unblocks fire (F-09 tunable heuristic, not a truth). 3 mirrors the
@@ -151,8 +163,9 @@ func securityCriticalStamp(b Brief) (string, bool) {
 }
 
 // criticalStampAuthorized reports whether a stamp authority is in the ratified
-// allowlist. With the placeholder allowlist empty, this is always false — the
-// security arm is inert until a human ratifies the authority chain.
+// set configured from ASSAY_CRITICAL_STAMP_AUTHORITIES. With the key unset (the
+// compiled default) the set is empty and this is always false — the security arm is
+// inert until the driver's ratified authority set is configured.
 func criticalStampAuthorized(authority string) bool {
 	return criticalStampAuthorities[authority]
 }
@@ -176,8 +189,11 @@ func mainRedCritical(b Brief, _ string) bool {
 }
 
 // reviewerFindingCritical reports whether this brief is the REMEDIATION of an
-// unresolved reviewer finding. Machine-derived: a reviewer files the finding, so
-// the brief author cannot self-select into the tier. Two linkages are read:
+// unresolved reviewer finding. The finding is a findings-register entry with no
+// actor field, so nothing here checks WHO filed it: a PR that adds an entry naming
+// a brief in control: lifts that brief, and the only gate is the review and human
+// merge of that PR (the RESIDUAL named at the top of this file). Two linkages are
+// read:
 //
 //   - control: — the finding names this brief (`<stream>/<NN>` or
 //     `<stream>/brief-<NN>`) as the adaptation that closes it

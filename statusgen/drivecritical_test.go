@@ -35,8 +35,10 @@ func withStampAuthorities(t *testing.T, auths ...string) {
 // TestDriveCriticalTierNeverBuried (brief-44 Verify row 5): the lexicographic
 // (criticalTier, score) order ranks main-red / stamped-security / high-unblocks
 // (blockedCount≥3) / reviewer-finding rows ABOVE all scores; no intensity — surge
-// included — can pass the critical tier; membership is machine-derived / stamped,
-// never self-declared.
+// included — can pass the critical tier; membership is derived from linkage fields
+// and stamps, never from a "critical" flag. (Which of those inputs an ordinary PR
+// can write is the RESIDUAL named in drivecritical.go; this test pins the ordering
+// and the derivation, not the authenticity of the linkage.)
 func TestDriveCriticalTierNeverBuried(t *testing.T) {
 	// The critical tier is applied only when a drive is active. A SURGE drive covers
 	// the routine stream — the strongest intensity — and must STILL sit below a
@@ -117,7 +119,8 @@ func TestDriveCriticalTierNeverBuried(t *testing.T) {
 	})
 
 	t.Run("reviewer-finding-arm", func(t *testing.T) {
-		// An unresolved reviewer finding naming the brief qualifies it (machine-derived).
+		// An unresolved reviewer finding naming the brief qualifies it (derived from the
+		// findings entry, which carries no actor — see the RESIDUAL in drivecritical.go).
 		findings := []Finding{{ID: "F-leak-01", Affects: []string{"sec/01"}, Resolved: false}}
 		if arm := criticalTierArm(Brief{Num: "01", Status: "todo"}, "sec", 0, findings); arm != "reviewer-finding" {
 			t.Fatalf("a brief named by an unresolved finding must qualify via reviewer-finding, got %q", arm)

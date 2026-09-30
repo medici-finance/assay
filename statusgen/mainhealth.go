@@ -31,8 +31,12 @@ import (
 // brief-v1/v2 brief whose `issues:` lists it (resolved against the stream's own
 // `repo:`; a stream that declares no repo cannot resolve a bare issue number, so
 // its briefs never match — the fail-safe direction for a tier above every score).
-// Membership is machine-derived: the red and its tracking issue come from the
-// caller's forge read, not from anything a brief author writes about itself.
+// WHERE EACH INPUT COMES FROM. The red and its tracking issue come from the
+// caller's forge read. The FIX linkage does not: it is the brief's own `issues:`
+// list (or a placeholder's own `issue:`), repo text an ordinary PR can write. So a
+// brief that adds the tracking issue's number to `issues:` is lifted while main is
+// red, gated only by the review and human merge of that PR. That residual is named,
+// not derived — see the RESIDUAL note in drivecritical.go.
 
 // MainHealth is the resolved --main-health input for one run. The zero value is
 // the could-not-check state.
