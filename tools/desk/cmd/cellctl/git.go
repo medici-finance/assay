@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -51,26 +53,42 @@ func (c *Cell) gitlabFetchReachable() bool {
 // and concurrent fetches race on the same ref lock. The lock lives in the COMMON git dir, so a
 // CELL_REPO that is itself a linked worktree (where .git is a file) still gets a lock rather
 // than a 60s wait. A fetch that lost the ref-lock race still wrote FETCH_HEAD, and FETCH_HEAD is
-// all that is used — so a non-zero exit is a notice, not a stop. FETCH_HEAD is cleared first, so
-// the one read after is always THIS fetch's: a fetch that failed outright (a credential refusal,
-// above all) must stop the boot, never fall back to a previous boot's main.
-func (c *Cell) fetchMainUnderLock() string {
+// all that is used — so a non-zero exit is a notice, not a stop.
+//
+// FETCH_HEAD is removed before the fetch, so the one read after it is always THIS fetch's. git
+// truncates FETCH_HEAD itself before it contacts the remote, so a fetch that fails on auth or
+// connect already leaves nothing to read. The removal is for the case git's own truncate cannot
+// cover: a FETCH_HEAD git cannot open for writing (read-only file), where the fetch fails and the
+// PREVIOUS boot's sha is left in place. And when the file cannot be removed either, the boot is
+// refused — reading it would be that previous boot's main.
+func (c *Cell) fetchMainUnderLock(role string) string {
 	gitdir, err := gitOut(c.Repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil || gitdir == "" {
 		gitdir = filepath.Join(c.Repo, ".git")
 	}
 	lock := filepath.Join(gitdir, "cellctl-fetch.lock")
+	held := false
 	for i := 0; i < 60; i++ {
 		if os.Mkdir(lock, 0o700) == nil {
+			held = true
 			break
 		}
 		time.Sleep(time.Second)
 	}
-	// die() panics and main recovers, so this release runs on the refusal below too — a refused
+	if !held {
+		// Pre-existing behaviour, kept: a lock still held after 60s is taken to be a dead boot's.
+		// This boot proceeds, and the release below removes that lock. If the holder is in fact
+		// alive, removing FETCH_HEAD under it makes ITS read fail — a refusal, never a stale boot.
+		fmt.Fprintf(os.Stderr, "NOTICE: fetch lock %s still held after 60s — proceeding without it\n", lock)
+	}
+	// die() panics and main recovers, so this release runs on the refusals below too — a refused
 	// boot must not hand the next one a 60s wait.
 	defer os.Remove(lock)
 	if fh, err := gitOut(c.Repo, "rev-parse", "--path-format=absolute", "--git-path", "FETCH_HEAD"); err == nil && fh != "" {
-		_ = os.Remove(fh)
+		if err := os.Remove(fh); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			die("desk: cannot remove %s before the fetch — refusing to boot: a fetch that cannot rewrite it would leave a previous boot's main to read. "+
+				"Make it removable (check its permissions and its directory's), then re-run: cellctl desk %s %s", fh, c.Name, role)
+		}
 	}
 	var cmd *exec.Cmd
 	if c.Forge == "gitlab" {
@@ -83,22 +101,27 @@ func (c *Cell) fetchMainUnderLock() string {
 	}
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "NOTICE: fetch returned non-zero (ref-lock race?) — using FETCH_HEAD")
+		fmt.Fprintln(os.Stderr, "NOTICE: fetch returned non-zero — checking whether it wrote FETCH_HEAD")
 	}
 	sha, err := gitOut(c.Repo, "rev-parse", "--verify", "-q", "FETCH_HEAD")
 	if err != nil || sha == "" {
-		die("%s", fetchFailedMsg(c.Repo))
+		die("%s", fetchFailedMsg(c.Repo, c.Name, role))
 	}
 	return sha
 }
 
 // fetchFailedMsg is the refusal when the boot fetch wrote no FETCH_HEAD. It names the usual
-// cause, because git's own output reads like a transient error: a credential helper answering
-// with a dead token (an expired App token left in the checkout's shared config, say).
-func fetchFailedMsg(repo string) string {
+// cause and the way out, because git's own output reads like a transient error: a credential
+// helper answering with a dead token (an expired App token left in the checkout's shared config,
+// say). The inspect command prints helper values verbatim, and an inline helper can carry that
+// token — hence the warning not to paste it anywhere public.
+func fetchFailedMsg(repo, cell, role string) string {
 	return fmt.Sprintf("desk: fetch of origin main in %s failed and wrote no FETCH_HEAD — refusing to boot on a stale main. "+
-		"An authentication refusal is the usual cause: check which credential helper answers for origin "+
-		"(git -C %s config --show-origin --get-regexp '^credential\\.')", repo, repo)
+		"An authentication refusal is the usual cause. See which credential helper answers for origin: "+
+		"git -C '%s' config --show-origin --get-regexp '^credential\\.' "+
+		"(its output can contain a token — do not paste it into a PR or issue). "+
+		"Re-mint or replace the dead credential, or remove the stale helper entry, then re-run: cellctl desk %s %s",
+		repo, repo, cell, role)
 }
 
 // cellctlGeneratedFiles names the single-writer files main's CI regenerates (the board and the
