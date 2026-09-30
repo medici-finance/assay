@@ -286,6 +286,31 @@ RISK-VALUE: DERIVED — capability vocabulary = the 8-entry set @ docs/streams/h
 The remaining entries, the banned-token list and the lookup paths and markers, are reversible lint-config knobs. They are ranked last and not derived.
 
 VERIFY: FAIL — rows 3 and 7 fail their Expect cells at merged main cf56ddeebc18. Row 3: the Claude Code binding lacks a system-demo degradation cell, drift from a later stream tracked in medici-finance/assay#1703. Row 7: harnesslint is still not wired into any workflow. The patch is unapplied and tracked in #1332 and #1703. Row 8 remains BLOCKED on a live-session run. Every row that exercises this brief's own deliverables directly passes (1, 2, 2a, 3a, 4, 4a, 5, 6). The item stays at implemented.
+### Non-implementer verifier run — VERIFY: FAIL — 9/11 rows pass, row 7 fails (no workflow calls harnesslint, #1332), row 8 blocked (live session); row 3 now passes (#1703 fixed by #1817) — 2026-09-30 claude-opus-5-5-verifier
+
+Runner is not the implementer. Isolated worktree at merged main `0b033c711c9ec30f75cb8c2082a505b06958a423` (HEAD == the forge's `commits/main`). Rows were run by hand on the host with scratch paths in place of `/tmp`, and again as the literal commands in a Linux network-off `statusgen verifyrun` witness (golang:1.25-bookworm, statusgen built from main's source); both paths agree on every row. Every row ending in `; echo $?` reads `pass exit=0` in the witness whatever it printed, so the printed value is the result: sha256:9a271f2a916b is `0` and sha256:4355a46b19d3 is `1`. Status stays `implemented`.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | row 1 command as written | prints 0 | PASS — printed `0`; 48 PASS / 0 FAIL under -v | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | row 2 command as written | prints 0 | PASS — printed `0`; checked-clean: bodies | 2026-09-30 | claude-opus-5-5-verifier |
+| 2a | row 2a mutation as written | prints 1 | PASS — printed `1`; two violations in the planted line | 2026-09-30 | claude-opus-5-5-verifier |
+| 3 | row 3 command as written | prints 0 | PASS — printed `0`; checked-clean: bindings (was `1` on 2026-09-27). Control: removing the system-demo cell from a copy prints `1` | 2026-09-30 | claude-opus-5-5-verifier |
+| 3a | row 3a mutation as written | prints 1 | PASS — printed `1`; the dropped capability does not resolve | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | row 4 command as written | prints 0 | PASS — printed `0`, empty match file | 2026-09-30 | claude-opus-5-5-verifier |
+| 4a | row 4a command as written | count present | PASS — count `2` | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | row 5 command as written | prints 0 | PASS — printed `0`; a no-such-cap control prints MISSING | 2026-09-30 | claude-opus-5-5-verifier |
+| 6 | row 6 command as written | CLEAN | PASS — 14 skills, 0 unaccounted, `PLUGINDRIFT: CLEAN` | 2026-09-30 | claude-opus-5-5-verifier |
+| 7 | `grep -rlE 'harnesslint' .github/workflows > /tmp/hp04r7.out; test -s /tmp/hp04r7.out; echo $?` | prints 0 | **FAIL** — printed `1`; no workflow names harnesslint and `git log -S harnesslint -- .github/workflows` finds no commit. The wiring exists only as the unapplied `tools/harnesslint/ci.yml.patch` (#1332, open) | 2026-09-30 | claude-opus-5-5-verifier |
+| 8 | row 8 (live session, prose) | live-session observation | BLOCKED — not executable by a dispatched, non-interactive verifier; the witness tried to run the prose (exit 2) | 2026-09-30 | claude-opus-5-5-verifier |
+
+RISK-VALUE: DERIVED — exitClean = 0, exitFailed = 1, exitCannot = 2 @ tools/harnesslint/lint.go:36-39 — the brief's three states stay distinct; all three observed live this pass.
+RISK-VALUE: DERIVED — the 8-entry capability vocabulary @ docs/streams/harness-portability/README.md:410-419 — the single closed-set home the brief chose; rows 3a and 5 show it is enforced.
+RISK-VALUE: DERIVED — system-demo cell = runs @ plugins/assay/references/claude-code.md:58 — every capability binds natively on the reference harness.
+
+Findings: (F1) #1817 fixed the row-3 half of #1703; confirmed with a negative control. (F2, the FAIL) #1817's closing reference closed #1703, which named two gaps; the CI-wiring half was handed to #1332, still open — a human must push the workflow change, since App tokens lack the workflow scope. No new issue. (F3) row 8 stays blocked on a live session.
+
+VERIFY: FAIL
 
 ## Review
 
