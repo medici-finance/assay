@@ -130,6 +130,45 @@ every row's links: the `S-` row it serves, its path, and its issue.
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
+### Verification — 2026-09-30 (assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) (on-behalf-of human:ian)) — 2026-09-30 claude-opus-5-5-verifier
+
+Non-implementer verify on merged main 35496323b8fc591651e44537baf51206cc22bbdd of delivery #1846 (6fa25631b). The pass grounded on the brief text before reading the diff. First table: the `statusgen verifyrun` execution witness, landed verbatim. It ran on Linux (golang:1.25-bookworm, `--network none`, statusgen built from main's own source) and passed 8/8. Second table: the hand run on the host.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -c -e '^## Rule register$' -e '^## Rule diet (monthly)$' docs/contracts.md` | pass exit=0 | sha256:53c234e5e847 | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 2 | `sed -n '/^## Rule register$/,/^## Rule diet/p' docs/contracts.md \| grep -cE '^[\|] *R-[a-z0-9-]+ *[\|]'` | pass exit=0 | sha256:54183f4323f3 | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 3 | `sed -n '/^## Rule diet/,$p' docs/contracts.md \| grep -c -e zero-without-proof -e proven-able-to-fire -e could-not-check` | pass exit=0 | sha256:f0b5c2c2211c | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 4 | `reg=$(sed -n '/^## Rule register$/,/^## Rule diet/p' docs/contracts.md); out=$(echo "$reg" \| grep -oE 'S-[a-z0-9-]+' \| sort -u \| while read s; do grep -qE "^[\|] *$s " docs/contracts.md \|\| echo "ORPHAN $s"; done); test -z "$out" && echo SERVED \|\| echo "$out"` | pass exit=0 | sha256:237652ee7ebd | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 5 | `out=$(sed -n '/^## Rule register$/,/^## Rule diet/p' docs/contracts.md \| grep -oE -e 'tools/desk/[A-Za-z0-9_./-]+\.go' -e 'tools/desk/[A-Za-z0-9_./-]+\.txt' -e 'statusgen/[A-Za-z0-9_./-]+\.go' \| sort -u \| while read p; do test -e "$p" \|\| echo "MISSING $p"; done); test -z "$out" && echo CLEAN \|\| echo "$out"` | pass exit=0 | sha256:0b98843240a0 | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 6 | `sed -n '/^## Rule register$/,/^## Rule diet/p' docs/contracts.md \| grep -E '^[\|] *R-' \| grep -vqE '#[0-9]+' && echo UNJUSTIFIED \|\| echo ALL-JUSTIFIED` | pass exit=0 | sha256:458e300b621a | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 7 | `grep -cE '^[\|] *R-weight-ceiling ' docs/contracts.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 8 | `d=$(sed -n '/^## Rule diet/,$p' docs/contracts.md); echo "$d" \| grep -c 'gate: human'; echo "$d" \| grep -c '§4.2 rule 2'` | pass exit=0 | sha256:8d58f634a5b5 | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+
+| # | Verify row | Expected | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | row 1 as written (exact command in the witness table above) | 2 | exit 0; output `2` — PASS | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 2 | row 2 as written (exact command in the witness table above) | >= 12 | exit 0; output `17` — PASS | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 3 | row 3 as written (exact command in the witness table above) | >= 3 | exit 0; output `5` — PASS | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 4 | row 4 as written (exact command in the witness table above) | SERVED | exit 0; output `SERVED` — PASS | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 5 | row 5 as written (exact command in the witness table above) | CLEAN | exit 0; output `CLEAN` — PASS | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 6 | row 6 as written (exact command in the witness table above) | ALL-JUSTIFIED | exit 0; output `ALL-JUSTIFIED` — PASS (not vacuous: row 2 counted 17 rows) | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 7 | row 7 as written (exact command in the witness table above) | 1 | exit 0; output `1` — PASS | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 8 | row 8 as written (exact command in the witness table above) | two counts, each >= 1 | exit 0; output `2` then `2` — PASS (both hits sit in the diet section proper, contracts.md lines 232-295, before the brief-08 "## Brittle marks" heading at 296) | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+
+Execution witness: `statusgen verifyrun` on linux, network-off, 8/8 pass at 35496323b8fc.
+
+RISK-VALUE: DERIVED — the reply authority is the driver's own login, read from the forge author field and counted only while unedited (docs/contracts.md lines 264-267). This is the brief's pinned SPOF control. It reuses the unedited-ruling test that R-dr-ruling-link applies, and the doc names the layers behind it.
+RISK-VALUE: DERIVED — the unanswered default is keep (docs/contracts.md line 275). It is fail-safe by construction and is the brief's pinned default.
+RISK-VALUE: DERIVED — the false-positive candidate threshold is more than half of recorded fires (docs/contracts.md line 253). It matches the brief's pinned figure, and crossing it only nominates a row; it never retires one.
+
+Notes:
+- All 19 path-and-symbol references and all 34 named catch-source tests resolve at this SHA. The catch-source packages pass offline, 10 of 10 ok.
+- All 36 cited issue numbers resolve on this repo.
+- R-new-issue-budget (#955, closed not_planned) and R-weight-ceiling both carry serves none, so they meet the diet candidate criteria from day one. They are for the first diet run; this is not a defect.
+- R-shim-ambient-token's catch source is a shell test that no CI workflow runs, and the row says so. It is a candidate for CI wiring.
+
+VERIFY: PASS
 
 ## Review
 Gate: model (from frontmatter). The reviewer spot-checks three seed rows: does the stated
