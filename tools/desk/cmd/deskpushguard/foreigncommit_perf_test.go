@@ -148,7 +148,7 @@ func TestCheckRegisterIDCollisions_ManyDuplicateRemoteBranchesStaysBounded(t *te
 	head := runGitT(t, victimDir, "rev-parse", "HEAD")
 
 	start := time.Now()
-	collisions, err := checkRegisterIDCollisions(victimDir, "mine", head)
+	collisions, err := checkRegisterIDCollisions(victimDir, "origin", "mine", head)
 	elapsed := time.Since(start)
 	if err != nil {
 		t.Fatalf("checkRegisterIDCollisions error: %v", err)

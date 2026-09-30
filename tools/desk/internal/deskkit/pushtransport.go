@@ -28,6 +28,13 @@ package deskkit
 //     SAME ambient-identity shape one layer along, but the evidence is weaker (a helper this
 //     code cannot recognise may still be the App's), so it is could-not-check, not a STOP.
 //
+// THE URL JUDGED IS THE ONE GIT WILL USE. The configured `remote.<name>.pushurl` / `.url` is
+// not what leaves the machine: git applies `url.<base>.pushInsteadOf` and
+// `url.<base>.insteadOf` before it connects, so an https remote can go out as an SSH push.
+// The gate therefore decides from `git remote get-url --push --all <remote>` (the PushURLs
+// seam) — git's own resolution, both rewrites applied, no remote contacted — and, when a
+// rewrite is what produced the SSH URL, names the rule in the refusal (#884).
+//
 // THREE-STATE. A config read that fails, or a remote with no URL at all, is Unverifiable
 // (exit 6) — never "no SSH found, carry on". A $DESK_LOOP this process cannot resolve to a
 // role is a stderr NOTICE saying the gate DID NOT RUN, never a silent pass.
@@ -61,6 +68,13 @@ type PushTransportInput struct {
 	// helper whose value is a multi-line inline shell function, which the line-oriented
 	// `--list` does not.
 	ConfigZ func() (string, error)
+	// PushURLs returns the output of `git remote get-url --push --all <Remote>` run in Dir:
+	// the URLs a push will ACTUALLY use, one per line, after git has applied
+	// `url.<base>.pushInsteadOf` and `url.<base>.insteadOf`. It reads local config only and
+	// contacts no remote. The gate decides from these, never from the configured strings —
+	// a configured https URL that a rewrite turns into SSH is the false pass it exists to
+	// refuse (#884). A nil reader is could-not-check (exit 6), never a fall-back to ConfigZ.
+	PushURLs func() (string, error)
 	// Stderr receives NOTICE lines; nil means discard.
 	Stderr io.Writer
 }
@@ -109,15 +123,32 @@ func CheckPushTransport(in PushTransportInput) error {
 	}
 	cfg := parseConfigZ(out)
 
-	// 3. Resolve the PUSH url the way git does: every remote.<name>.pushurl if any is set,
-	//    otherwise every remote.<name>.url. Both keys are multi-valued, and a push fans out
-	//    to ALL of them — so ANY SSH value is the refusal, not just the first.
+	// 3. The CONFIGURED push urls: every remote.<name>.pushurl if any is set, otherwise every
+	//    remote.<name>.url. They are what a refusal quotes and what a rewrite rule is traced
+	//    back to — never what the decision is made from (step 4).
 	key := "remote." + remote + ".pushurl"
-	urls := cfg[key]
-	if len(urls) == 0 {
+	configured := cfg[key]
+	explicitPush := len(configured) > 0
+	if !explicitPush {
 		key = "remote." + remote + ".url"
-		urls = cfg[key]
+		configured = cfg[key]
 	}
+
+	// 4. The EFFECTIVE push urls, as git resolves them: rewrites applied, and every value —
+	//    a push fans out to ALL of them, so ANY SSH value is the refusal, not just the first.
+	if in.PushURLs == nil {
+		return Unverifiable(fmt.Sprintf(
+			"%s: no push-URL reader wired for the push-transport gate, so the URL git would push %q to "+
+				"(after url.<base>.insteadOf / pushInsteadOf rewrites) cannot be established", who, remote), nil)
+	}
+	rawURLs, perr := in.PushURLs()
+	if perr != nil {
+		return Unverifiable(fmt.Sprintf(
+			"%s: cannot resolve the push URL of %q in %s (git remote get-url --push --all), so whether the "+
+				"push would go out over SSH under the %s App's identity cannot be established",
+			who, remote, orDot(in.Dir), role), perr)
+	}
+	urls := splitURLLines(rawURLs)
 	if len(urls) == 0 {
 		return Unverifiable(fmt.Sprintf(
 			"%s: remote %q has no url or pushurl configured in %s, so the push transport cannot be "+
@@ -128,19 +159,39 @@ func CheckPushTransport(in PushTransportInput) error {
 		if !isSSHTransport(u) {
 			continue
 		}
+		rw := traceRewrite(cfg, configured, explicitPush, u)
+		if rw.ruleKey == "" {
+			// No rewrite involved (or none this code can attribute): the configured value is
+			// itself SSH, and pointing the push url at https is the whole remedy.
+			shown := u
+			if !containsString(configured, u) {
+				shown = fmt.Sprintf("%s, which git resolves to %s through a url rewrite this gate could not "+
+					"attribute — run `git -C %s config --show-origin --get-regexp '^url\\.'` to find it",
+					strings.Join(configured, ", "), u, orDot(in.Dir))
+			}
+			return Refused(fmt.Sprintf(
+				"refused: %s would push to %q over an SSH transport (%s = %s), but this session acts as the %s "+
+					"App (%s=%s). An SSH push authenticates with whatever key this machine's agent holds — a "+
+					"human's key — so the forge records the HUMAN as the branch author and the App's permission "+
+					"envelope is bypassed, however the commits are authored. Fetch over SSH stays allowed; only "+
+					"the push transport is gated. Remedy (one line, in this worktree):\n"+
+					"  git -C %s remote set-url --push %s %s\n"+
+					"then configure the %s App's credential helper for that URL.",
+				who, remote, key, shown, role, loopEnv, loop,
+				orDot(in.Dir), remote, orSuggestHTTPS(httpsEquivalent(u), remote), role))
+		}
 		return Refused(fmt.Sprintf(
-			"refused: %s would push to %q over an SSH transport (%s = %s), but this session acts as the %s "+
-				"App (%s=%s). An SSH push authenticates with whatever key this machine's agent holds — a "+
-				"human's key — so the forge records the HUMAN as the branch author and the App's permission "+
-				"envelope is bypassed, however the commits are authored. Fetch over SSH stays allowed; only "+
-				"the push transport is gated. Remedy (one line, in this worktree):\n"+
-				"  git -C %s remote set-url --push %s %s\n"+
-				"then configure the %s App's credential helper for that URL.",
-			who, remote, key, u, role, loopEnv, loop,
-			orDot(in.Dir), remote, orSuggestHTTPS(httpsEquivalent(u), remote), role))
+			"refused: %s would push to %q over an SSH transport: %s = %s is rewritten by the rule %s = %s "+
+				"into %s, and git pushes to the REWRITTEN url. This session acts as the %s App (%s=%s); an SSH "+
+				"push authenticates with whatever key this machine's agent holds — a human's key — so the "+
+				"forge records the HUMAN as the branch author and the App's permission envelope is bypassed, "+
+				"however the commits are authored. Fetch over SSH stays allowed; only the push transport is "+
+				"gated. Remedy: %s\n  (find where the rule is set: git -C %s config --show-origin --get-all %s)",
+			who, remote, key, rw.from, rw.ruleKey, rw.prefix, u, role, loopEnv, loop,
+			rw.remedy(in.Dir, remote, u, role), orDot(in.Dir), rw.ruleKey))
 	}
 
-	// 4. Not SSH. An https push is the sanctioned transport — but it only carries the App's
+	// 5. Not SSH. An https push is the sanctioned transport — but it only carries the App's
 	//    identity if an App credential helper answers for it. A bare keychain helper (or
 	//    none at all) hands the push whatever ambient credential the machine holds, which is
 	//    the same ambient-identity shape one layer along. The evidence is weaker than an SSH
@@ -171,6 +222,124 @@ func CheckPushTransport(in PushTransportInput) error {
 		"configure the %s App's credential helper for this URL, or confirm the one in place is it.\n",
 		who, remote, strings.Join(urls, ", "), orDot(in.Dir), shown, role, role)
 	return nil
+}
+
+// splitURLLines splits `git remote get-url --push --all` output into its URLs, one per
+// non-blank line.
+func splitURLLines(out string) []string {
+	var urls []string
+	for _, line := range strings.Split(out, "\n") {
+		if u := strings.TrimSpace(line); u != "" {
+			urls = append(urls, u)
+		}
+	}
+	return urls
+}
+
+func containsString(list []string, want string) bool {
+	for _, v := range list {
+		if v == want {
+			return true
+		}
+	}
+	return false
+}
+
+// rewriteTrace names the url rewrite rule that turned a configured push URL into the
+// effective one. A zero ruleKey means no rule could be attributed.
+type rewriteTrace struct {
+	ruleKey string // url.<base>.insteadOf or url.<base>.pushInsteadOf, git's own spelling
+	prefix  string // the rule's value: the URL prefix it replaces
+	from    string // the configured URL it rewrote
+	push    bool   // pushInsteadOf (push-only) rather than insteadOf
+}
+
+// remedy is the one fix that actually clears the rule. The two forms differ: an explicit
+// https pushurl disables every pushInsteadOf alias, but insteadOf rewrites pushurl values
+// too, so for insteadOf the only fix is the rule itself.
+func (rw rewriteTrace) remedy(dir, remote, effective, role string) string {
+	if rw.push {
+		target := rw.from
+		if !anyHTTPTransport([]string{target}) {
+			target = orSuggestHTTPS(httpsEquivalent(effective), remote)
+		}
+		return fmt.Sprintf("an explicit push url is never pushInsteadOf-rewritten, so set one (one line, "+
+			"in this worktree):\n  git -C %s remote set-url --push %s %s\n"+
+			"then configure the %s App's credential helper for that URL — or remove the rule.",
+			orDot(dir), remote, target, role)
+	}
+	return fmt.Sprintf("remove or narrow the rule %s in the config file that sets it. An explicit push "+
+		"url does NOT escape it — git applies insteadOf to pushurl values too — so `remote set-url "+
+		"--push` alone would leave this refusal standing.", rw.ruleKey)
+}
+
+// urlRewriteRules collects the configured url.<base>.insteadOf (push=false) or
+// url.<base>.pushInsteadOf (push=true) rules as base → prefixes. `git config --list`
+// lowercases the section and variable names but keeps the subsection (the base) verbatim.
+func urlRewriteRules(cfg map[string][]string, push bool) map[string][]string {
+	// ".pushinsteadof" does not end in ".insteadof" (an "h" precedes "insteadof"), so the
+	// two suffixes never claim each other's keys.
+	suffix := ".insteadof"
+	if push {
+		suffix = ".pushinsteadof"
+	}
+	rules := map[string][]string{}
+	for key, vals := range cfg {
+		if !strings.HasPrefix(key, "url.") || !strings.HasSuffix(key, suffix) {
+			continue
+		}
+		base := key[len("url.") : len(key)-len(suffix)]
+		rules[base] = append(rules[base], vals...)
+	}
+	return rules
+}
+
+// longestRewrite applies git's rule for one URL: among every rule's prefixes, the LONGEST
+// one that prefixes the URL wins, and its base replaces it. Ties break on the base, sorted,
+// so the attribution is stable.
+func longestRewrite(rules map[string][]string, u string) (base, prefix, out string, ok bool) {
+	bases := make([]string, 0, len(rules))
+	for b := range rules {
+		bases = append(bases, b)
+	}
+	sort.Strings(bases)
+	for _, b := range bases {
+		for _, p := range rules[b] {
+			if p == "" || !strings.HasPrefix(u, p) {
+				continue
+			}
+			if !ok || len(p) > len(prefix) {
+				base, prefix, ok = b, p, true
+			}
+		}
+	}
+	if ok {
+		out = base + u[len(prefix):]
+	}
+	return base, prefix, out, ok
+}
+
+// traceRewrite finds the rule that turned one of the configured push URLs into effective,
+// following git's own order (remote.c): with no explicit pushurl, a url's pushInsteadOf
+// alias becomes the push URL when one matches; every configured value (pushurl or url) is
+// otherwise insteadOf-rewritten.
+func traceRewrite(cfg map[string][]string, configured []string, explicitPush bool, effective string) rewriteTrace {
+	pushRules := urlRewriteRules(cfg, true)
+	rules := urlRewriteRules(cfg, false)
+	for _, c := range configured {
+		if !explicitPush {
+			if base, prefix, out, ok := longestRewrite(pushRules, c); ok {
+				if out == effective {
+					return rewriteTrace{ruleKey: "url." + base + ".pushInsteadOf", prefix: prefix, from: c, push: true}
+				}
+				continue // git pushes to the alias; insteadOf does not apply on top of it
+			}
+		}
+		if base, prefix, out, ok := longestRewrite(rules, c); ok && out == effective {
+			return rewriteTrace{ruleKey: "url." + base + ".insteadOf", prefix: prefix, from: c}
+		}
+	}
+	return rewriteTrace{}
 }
 
 // orSuggestHTTPS falls back to a shaped placeholder when an SSH URL cannot be rewritten

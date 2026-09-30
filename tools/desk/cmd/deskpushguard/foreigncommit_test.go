@@ -675,7 +675,7 @@ func TestCheckForeignCommits_OrdinaryBranchBehindMainNotFlagged(t *testing.T) {
 }
 
 // TestCheckForeignCommits_AmbiguousOriginMainRefUsesRemoteTracking is the positive control
-// for resolveOriginMain's fully-qualified spelling.
+// for resolveRemoteMain's fully-qualified spelling.
 //
 // It builds the AMBIGUOUS-REF shape this tool's own subject produces: a checkout that
 // carries a real local branch literally named `refs/heads/origin/main` (left behind by a
@@ -691,7 +691,7 @@ func TestCheckForeignCommits_OrdinaryBranchBehindMainNotFlagged(t *testing.T) {
 // an ancestor of that stale base — so they are reported foreign and a correctly-cut branch
 // is refused.
 //
-// FAIL-FIRST: revert resolveOriginMain to the bare `origin/main` spelling and this test goes
+// FAIL-FIRST: revert resolveRemoteMain to the bare `origin/main` spelling and this test goes
 // red with 2 spurious foreign commits.
 func TestCheckForeignCommits_AmbiguousOriginMainRefUsesRemoteTracking(t *testing.T) {
 	remoteDir := t.TempDir()
@@ -774,16 +774,16 @@ func TestResolveOriginMain_PrefersRemoteTrackingOverStrayLocalBranch(t *testing.
 	runGitT(t, dir, "branch", "origin/main", staleBase) // the stray, stale local branch
 	trueBase := runGitT(t, dir, "rev-parse", "refs/remotes/origin/main")
 
-	got, err := resolveOriginMain(dir)
+	got, err := resolveRemoteMain(dir, "origin")
 	if err != nil {
-		t.Fatalf("resolveOriginMain: %v", err)
+		t.Fatalf("resolveRemoteMain: %v", err)
 	}
 	if got == staleBase {
-		t.Fatalf("resolveOriginMain returned the STALE local refs/heads/origin/main (%s) — "+
+		t.Fatalf("resolveRemoteMain returned the STALE local refs/heads/origin/main (%s) — "+
 			"the bare spelling's rev-parse precedence leaked through", got)
 	}
 	if got != trueBase {
-		t.Errorf("resolveOriginMain = %s, want the remote-tracking base %s", got, trueBase)
+		t.Errorf("resolveRemoteMain = %s, want the remote-tracking base %s", got, trueBase)
 	}
 }
 

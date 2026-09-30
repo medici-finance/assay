@@ -59,7 +59,7 @@ it on day one.
 | `deskroster` | `set`, `drop`, `list`, `mine`, `width`, `repos`, `apps`, `preflight` | local-only, out-of-git (`preflight` mints a token and runs one read-only transport probe) | no |
 | `muhar` | `-spec <file>` mutation harness, `-j <n>` mutations in flight (isolated tree per worker), `-shard i/n` this invocation's slice of the spec (shards partition it; baseline + control run per shard) | local diagnostic (no `Guard`) | no |
 | `writeguard` | PreToolUse hook (F-34 isolation backstop) | hook | n/a |
-| `deskpushguard` | pre-push hook — refuses a push to a MERGED/CLOSED branch, one carrying a foreign/laundered commit, a single-parent merge masquerade, or a branch point sitting on a stray local `origin/main`, or one introducing a register-entry `id:` collision with an in-flight sibling branch (#22, #72). Cannot determine the base → prints `COULD-NOT-CHECK` and allows (fail-open, brief-10); that line means UNVERIFIED, not clean | git hook | n/a |
+| `deskpushguard` | pre-push hook — refuses a push to a MERGED/CLOSED branch, one carrying a foreign/laundered commit, a single-parent merge masquerade, or a branch point sitting on a stray local `origin/main`, or one introducing a register-entry `id:` collision with an in-flight sibling branch (#22, #72). Every base check uses the remote git is actually pushing to — the hook's first argument, `refs/remotes/<remote>/main` — never an assumed `origin` (#1201). Cannot determine the base (including no remote name, or no `main` on the pushed remote) → prints `COULD-NOT-CHECK` and allows (fail-open, brief-10); that line means UNVERIFIED, not clean | git hook | n/a |
 | `desksourceguard` | CI gate — refuses a materialised desk-tools source tree that is not the pinned commit | CI | n/a |
 | `clusterguard` | exec-boundary shim for cluster CLIs (`kubectl`, `flux`, `helm`, `talosctl`, `k9s`) — installed as a directory of symlinks on the FRONT of a session's PATH. Refuses every shimmed CLI unless an operator shell exported `ASSAY_ALLOW_CLUSTER`, logs both verdicts, and otherwise execs the real CLI further along PATH. See [clusterguard — the cluster-CLI exec boundary](#clusterguard--the-cluster-cli-exec-boundary) | PATH shim | n/a |
 
@@ -697,12 +697,20 @@ identity — `$DESK_LOOP` resolving to a role App. The refusal names the config 
 the acting App, and the one-line remedy (a `remote set-url --push` to the equivalent https
 URL, which it computes for you). Implementation: `internal/deskkit/pushtransport.go`.
 
+The URL judged is the one git will actually push to — `git remote get-url --push --all
+origin`, a local read that contacts no remote and applies `url.<base>.pushInsteadOf` and
+`url.<base>.insteadOf` exactly as a push does (#884). An https remote that such a rule
+rewrites to SSH is refused, and the refusal names the rule, the configured URL and what it
+became. The remedy differs by rule: an explicit https push URL escapes a `pushInsteadOf` rule
+(git never applies it to a pushurl), but NOT an `insteadOf` rule, which git applies to pushurl
+values too — that one has to be removed or narrowed.
+
 Four boundaries are deliberate:
 
 - **Only the push transport.** Fetch over SSH is untouched — a read carries no identity the
   forge records against a ref. An SSH `remote.origin.url` with an https
-  `remote.origin.pushurl` override is a normal, allowed run, and `remote.origin.pushurl` is
-  what the gate reads whenever it is set, exactly as git resolves a push.
+  `remote.origin.pushurl` override is a normal, allowed run: git pushes to the pushurl, and
+  so does the gate's resolved URL.
 - **Only a bot session.** With `$DESK_LOOP` unset the gate is inert: a human at a terminal
   pushes under their own key, which is what the SSH remote is for. A `$DESK_LOOP` this
   process cannot resolve to a role is a stderr **NOTICE** saying the gate did **not** run —
@@ -722,11 +730,12 @@ Four boundaries are deliberate:
   but the evidence is weaker — a helper this code does not recognise may well be the App's —
   so it says so on stderr and proceeds.
 
-Could-not-check is exit 6, never a pass: a `git config` read that fails, and a remote with
-no URL at all, are both unverifiable rather than "no SSH found, carry on".
+Could-not-check is exit 6, never a pass: a `git config` read that fails, a push URL git
+cannot resolve, and a remote with no URL at all are all unverifiable rather than "no SSH
+found, carry on".
 
-The guard's own fail-first evidence is `internal/deskkit/pushtransport-mutations.json` — ten
-mutations plus a positive control, run with
+The guard's own fail-first evidence is `internal/deskkit/pushtransport-mutations.json` —
+eighteen mutations plus a positive control, run with
 `go run ./cmd/muhar -j 0 -spec internal/deskkit/pushtransport-mutations.json`.
 
 ### The publish-identity gate (`deskpr create` / `update`, `deskevidence`)

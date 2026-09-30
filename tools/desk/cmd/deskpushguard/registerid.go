@@ -10,17 +10,20 @@
 // main's CI (statusgen/registers.go: duplicateIDs).
 //
 // This file closes that gap at push time: for every register entry newly ADDED or MODIFIED on
-// the pushed ref whose id is NEW relative to origin/main, it checks whether the same id is
-// already claimed by a register entry present on some OTHER remote branch that is not itself
-// already merged into origin/main (an in-flight sibling). It enumerates candidate siblings from
-// already-fetched remote-tracking branches (`git branch -r`), the same data source
-// foreigncommit.go's checks would use, so the ordinary push adds no network/gh call, and it
-// fails open on any ambiguity, matching this tool's stated Fail-OPEN contract (main.go's
-// package doc). The one network touch is deliberate and rare (#189): when a collision would
-// otherwise be reported, the sibling ref's liveness is confirmed against origin with a single
-// `git ls-remote` so a stale remote-tracking ref (a merged-and-deleted sibling) is not treated
-// as a live competing claim — a probe that runs only on the collision path and degrades to
-// could-not-check, never an error, when origin is unreachable.
+// the pushed ref whose id is NEW relative to the pushed remote's main, it checks whether the
+// same id is already claimed by a register entry present on some OTHER branch OF THAT REMOTE
+// that is not itself already merged into its main (an in-flight sibling). "The pushed remote"
+// is the one git names to the hook (args[0]), never an assumed origin (#1201): prose below
+// says origin/main for the common case, but every ref this file reads is
+// refs/remotes/<remoteName>/…. It enumerates candidate siblings from already-fetched
+// remote-tracking branches, the same data source foreigncommit.go's checks would use, so the
+// ordinary push adds no network/gh call, and it fails open on any ambiguity, matching this
+// tool's stated Fail-OPEN contract (main.go's package doc). The one network touch is
+// deliberate and rare (#189): when a collision would otherwise be reported, the sibling ref's
+// liveness is confirmed against the pushed remote with a single `git ls-remote` so a stale
+// remote-tracking ref (a merged-and-deleted sibling) is not treated as a live competing claim
+// — a probe that runs only on the collision path and degrades to could-not-check, never an
+// error, when the remote is unreachable.
 //
 // ADVISORY, aligned with the authoritative gate. statusgen's duplicateIDs lint
 // (splitFrontmatter + yaml.v3) is the authoritative fail-closed CI gate; this pre-push layer
@@ -58,20 +61,20 @@ type registerIDCollision struct {
 }
 
 // refLiveness is the tri-state answer to "is this remote-tracking ref still a live head on
-// origin?" — the three-state instrument this check now reports per collision (#189, ask 3) so a
+// the pushed remote?" — the three-state instrument this check now reports per collision (#189, ask 3) so a
 // stale local remote-tracking artifact is never presented as a live competing claim, and a
-// collision whose source ref could not be verified against origin is reported AS unverified
+// collision whose source ref could not be verified against the remote is reported AS unverified
 // rather than rounded up to a confident "live".
 type refLiveness int
 
 const (
-	livenessUnknown refLiveness = iota // could-not-check — origin unreachable (e.g. an offline push)
-	livenessLive                       // ls-remote confirms the head is present on origin
-	livenessStale                      // ls-remote confirms the head is ABSENT on origin
+	livenessUnknown refLiveness = iota // could-not-check — the pushed remote unreachable (e.g. an offline push)
+	livenessLive                       // ls-remote confirms the head is present on the pushed remote
+	livenessStale                      // ls-remote confirms the head is ABSENT on the pushed remote
 )
 
 // note renders the per-refusal liveness clause (#189, ask 3), so a reader can tell a
-// confirmed-live competing claim from one whose source ref could not be verified against origin.
+// confirmed-live competing claim from one whose source ref could not be verified against the remote.
 func (l refLiveness) note() string {
 	switch l {
 	case livenessLive:
@@ -81,7 +84,7 @@ func (l refLiveness) note() string {
 		// ask 2). Kept for completeness so a future caller printing every state is correct.
 		return "source ref stale"
 	default:
-		return "source ref liveness unverified (origin unreachable)"
+		return "source ref liveness unverified (remote unreachable)"
 	}
 }
 
@@ -197,8 +200,10 @@ func remoteBranchNames(repo *gitcore.Repo) ([]string, error) {
 	return out, nil
 }
 
-// remoteHeadLiveness asks origin DIRECTLY whether remoteRef (an `origin/<name>` remote-tracking
-// ref) still corresponds to a live head — the resolution of #189's stale-ref half.
+// remoteHeadLiveness asks the pushed remote DIRECTLY whether remoteRef (a
+// `<remoteName>/<name>` remote-tracking ref) still corresponds to a live head — the resolution
+// of #189's stale-ref half. remoteName is the remote this push goes to (#1201): probing some
+// other remote answers a question about a different repository.
 //
 // A sibling branch that was merged and DELETED leaves refs/remotes/origin/<name> behind in this
 // clone until someone prunes; `git branch -r` still lists it, and the check compared against
@@ -211,14 +216,19 @@ func remoteBranchNames(repo *gitcore.Repo) ([]string, error) {
 // reported as livenessUnknown, keeping this tool's offline-push and fail-open contracts intact.
 // The fully-qualified `refs/heads/<name>` pattern is used so a head named `foo` cannot be
 // matched by a stray `bar/foo` on the remote.
-func remoteHeadLiveness(dir, remoteRef string) refLiveness {
-	head := strings.TrimPrefix(remoteRef, "origin/")
-	out, err := gitOut(dir, "ls-remote", "--heads", "origin", "refs/heads/"+head)
+func remoteHeadLiveness(dir, remoteName, remoteRef string) refLiveness {
+	head, ok := strings.CutPrefix(remoteRef, remoteName+"/")
+	if !ok || remoteName == "" || strings.HasPrefix(remoteName, "-") {
+		// Not a ref of the pushed remote, or a name that would parse as an ls-remote option:
+		// nothing this probe can confirm either way.
+		return livenessUnknown
+	}
+	out, err := gitOut(dir, "ls-remote", "--heads", remoteName, "refs/heads/"+head)
 	if err != nil {
-		return livenessUnknown // origin unreachable (offline) — could-not-check
+		return livenessUnknown // remote unreachable (offline) — could-not-check
 	}
 	if strings.TrimSpace(out) == "" {
-		return livenessStale // origin has no such head — the local remote-tracking ref is stale
+		return livenessStale // the remote has no such head — the local remote-tracking ref is stale
 	}
 	return livenessLive
 }
@@ -239,25 +249,33 @@ func remoteHeadLiveness(dir, remoteRef string) refLiveness {
 //     ref's liveness (live / could-not-check) so a stale-ref artifact is distinguishable from a
 //     real, in-flight collision.
 //
-// dir is the repository to run git in (empty = process cwd). ownBranch's own remote-tracking
-// ref (if already pushed) is excluded from the "other branch" search so an UPDATE push never
-// flags itself against its own prior state.
+// dir is the repository to run git in (empty = process cwd). remoteName is the remote this
+// push goes to (#1201): its main is the base, only ITS branches are candidate siblings (a
+// branch of another remote is a branch of what may be another repository, and cannot put a
+// duplicate id on this remote's main), and its heads are what the liveness probe asks about.
+// ownBranch's own remote-tracking ref (if already pushed) is excluded from the "other branch"
+// search so an UPDATE push never flags itself against its own prior state.
 //
-// Fails open (nil, nil) on any ambiguity: origin/main unresolvable, localSHA not a
-// well-formed object id or not resolvable, or a git error partway through — per-branch and
-// per-file errors just skip that branch/file rather than aborting the whole check.
-func checkRegisterIDCollisions(dir, ownBranch, localSHA string) ([]registerIDCollision, error) {
+// Fails open (nil, nil) on any ambiguity: no remote name, the remote's main unresolvable,
+// localSHA not a well-formed object id or not resolvable, or a git error partway through —
+// per-branch and per-file errors just skip that branch/file rather than aborting the whole
+// check. foreigncommit.go's check, run on the same push, reports the unresolvable-base case
+// as COULD-NOT-CHECK, so this silence is never the only word on it.
+func checkRegisterIDCollisions(dir, remoteName, ownBranch, localSHA string) ([]registerIDCollision, error) {
 	if !shaRe.MatchString(localSHA) {
 		return nil, nil
 	}
-	// FULLY-QUALIFIED remote-tracking ref, not the bare short name `origin/main`
-	// (#885): a stray local `refs/heads/origin/main` decoy would otherwise shadow
+	if remoteName == "" {
+		return nil, nil // no remote named — which main is the base cannot be known; never guess origin
+	}
+	// FULLY-QUALIFIED remote-tracking ref, not the bare short name `<remote>/main`
+	// (#885): a stray local `refs/heads/<remote>/main` decoy would otherwise shadow
 	// the real remote tip and drive the added-file diff off a stale base. The
 	// sibling foreigncommit.go in this same binary already spells it in full — reuse
-	// its resolveOriginMain rather than re-resolving here.
-	originMain, err := resolveOriginMain(dir)
+	// its resolveRemoteMain rather than re-resolving here.
+	originMain, err := resolveRemoteMain(dir, remoteName)
 	if err != nil || originMain == "" {
-		return nil, nil // cannot resolve origin/main — nothing to compare against
+		return nil, nil // cannot resolve the pushed remote's main — nothing to compare against
 	}
 	repo, err := openRepo(dir)
 	if err != nil {
@@ -331,7 +349,8 @@ func checkRegisterIDCollisions(dir, ownBranch, localSHA string) ([]registerIDCol
 	if rerr != nil {
 		return nil, nil
 	}
-	ownRemote := "origin/" + ownBranch
+	ownRemote := remoteName + "/" + ownBranch
+	remotePrefix := remoteName + "/"
 	livenessCache := map[string]refLiveness{} // #189: probe each source ref's liveness at most once
 	var collisions []registerIDCollision
 	for _, b := range remoteBranches {
@@ -341,8 +360,11 @@ func checkRegisterIDCollisions(dir, ownBranch, localSHA string) ([]registerIDCol
 		// unchecked. gitcore's ref enumeration does not surface the symbolic origin/HEAD
 		// alias at all (see gitcore.go's RefsContaining doc), so these two checks are now
 		// belt-and-braces rather than load-bearing, kept for defense and documentation.
-		if b == "" || b == ownRemote || b == "origin/main" || b == "origin/HEAD" || strings.Contains(b, "->") {
+		if b == "" || b == ownRemote || b == remotePrefix+"main" || b == remotePrefix+"HEAD" || strings.Contains(b, "->") {
 			continue
+		}
+		if !strings.HasPrefix(b, remotePrefix) {
+			continue // another remote's branch — not a sibling on the remote this push goes to
 		}
 		tipHash, ok := refs["refs/remotes/"+b]
 		if !ok || originAncestors[tipHash] {
@@ -385,7 +407,7 @@ func checkRegisterIDCollisions(dir, ownBranch, localSHA string) ([]registerIDCol
 				}
 				live, cached := livenessCache[b]
 				if !cached {
-					live = remoteHeadLiveness(dir, b)
+					live = remoteHeadLiveness(dir, remoteName, b)
 					livenessCache[b] = live
 				}
 				if live == livenessStale {

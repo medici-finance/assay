@@ -1,0 +1,3 @@
+### Fixed
+- `deskpushguard` now judges a push against the remote git is actually pushing to (the hook's first argument), not an assumed `origin` (#1201). This covers the foreign-commit base, the register-id base, its sibling candidates and its liveness probe, and the URL fallback. With no remote name, or no `main` on the pushed remote, it reports `COULD-NOT-CHECK` and never falls back to `origin`.
+- The push-transport gate in `deskpr create`/`update` and `deskwt add` now decides from the URL git will really push to (`git remote get-url --push --all`), with `insteadOf` and `pushInsteadOf` rewrites applied (#884). An https remote that a rule rewrites to SSH is refused, and the refusal names the rule and the remedy that fits it.

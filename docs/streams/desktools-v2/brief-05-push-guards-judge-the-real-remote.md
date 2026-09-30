@@ -29,9 +29,9 @@ sources:
   - "tools/desk/cmd/deskgit/deskgit.go:475 — the in-tree precedent: `ls-remote --get-url` expands url.<base>.insteadOf locally and contacts no remote"
   - "freshness-checked 2026-09-17 @ 57509073 — all of the above read at that commit. An earlier draft of this brief described #1201 as an EVASION and placed #884 in deskpushguard; both were wrong — #1201 is a misfire, and #884's gate is deskkit.CheckPushTransport"
 consumers:
-  - "tools/desk/cmd/deskpushguard: follow-up desktools-v2/05 (this brief; the base ref, URL fallback and liveness probe use the pushed-to remote — flips to fixed-here when the implementation lands)"
-  - "tools/desk/internal/deskkit/pushtransport.go: follow-up desktools-v2/05 (this brief; the effective push URL is resolved through git's rewrite rules)"
-  - "tools/desk/cmd/deskpr/exec.go, tools/desk/cmd/deskwt (the two CheckPushTransport callers): follow-up desktools-v2/05 (this brief; they pass the reader the new resolution needs)"
+  - "tools/desk/cmd/deskpushguard: fixed-here (the base ref, register-id candidates, URL fallback and liveness probe use the pushed-to remote; no remote name or no main on it is COULD-NOT-CHECK)"
+  - "tools/desk/internal/deskkit/pushtransport.go: fixed-here (the effective push URL is resolved through git's rewrite rules, and a refusal names the rule)"
+  - "tools/desk/cmd/deskpr/exec.go, tools/desk/cmd/deskwt (the two CheckPushTransport callers): fixed-here (both wire the push-url reader through their git argv seam)"
   - "git transport / push mechanics: out-of-scope (owned by desktools-go-git; this brief reads the effective URL and changes no transport)"
 exec-tier: strong
 exec-tier-why: >-
@@ -107,14 +107,16 @@ facts:
 4. Quote the three red runs in the PR body under `## Fail-first`.
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd tools/desk && go build ./... && go vet ./cmd/deskpushguard/ ./internal/deskkit/` | exit 0 |
-| 2 | `cd tools/desk && go test -timeout 10m ./cmd/deskpushguard/ ./cmd/deskpr/ ./cmd/deskwt/` | exit 0; the existing guard suites still pass — no assertion weakened |
-| 3 | `cd tools/desk && go test ./cmd/deskpushguard/ -run TestForeignCommitCheckUsesThePushedRemotesMain -v` | output contains the literal line `--- PASS: TestForeignCommitCheckUsesThePushedRemotesMain` (assert on that line, not the exit status — a `-run` selector matching nothing exits 0) — the #1201 misfire no longer reproduces |
-| 4 | `cd tools/desk && go test ./cmd/deskpushguard/ -run TestNoMainOnPushedRemoteIsCouldNotCheckNotOrigin -v` | output contains the literal line `--- PASS: TestNoMainOnPushedRemoteIsCouldNotCheckNotOrigin` — the negative path: no silent fall-back to `origin` |
-| 5 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestPushTransportRefuses.*RewrittenToSSH' -v` | output contains BOTH literal lines `--- PASS: TestPushTransportRefusesInsteadOfRewrittenToSSH` and `--- PASS: TestPushTransportRefusesPushInsteadOfRewrittenToSSH` — #884 in both rewrite forms; one line alone is a fail |
-| 6 | `grep -nE '"origin"' tools/desk/cmd/deskpushguard/main.go tools/desk/cmd/deskpushguard/registerid.go; test $? -eq 1` | exit 0 and no line printed — the literal is gone from the URL fallback and the liveness probe (comments spelling `refs/remotes/origin/main` in prose are not matched: the pattern is the quoted Go string) |
+| # | Class | Command | Expect |
+|---|-------|---------|--------|
+| 1 | check | `cd tools/desk && go build ./... && go vet ./cmd/deskpushguard/ ./internal/deskkit/` | exit 0 |
+| 2 | check +flow | `cd tools/desk && go test -timeout 10m ./cmd/deskpushguard/ ./cmd/deskpr/ ./cmd/deskwt/` | exit 0; the existing guard suites still pass — no assertion weakened |
+| 3 | check +dereference | `cd tools/desk && go test ./cmd/deskpushguard/ -run TestForeignCommitCheckUsesThePushedRemotesMain -v` | output contains the literal line `--- PASS: TestForeignCommitCheckUsesThePushedRemotesMain` (assert on that line, not the exit status — a `-run` selector matching nothing exits 0) — the #1201 misfire no longer reproduces |
+| 4 | check | `cd tools/desk && go test ./cmd/deskpushguard/ -run TestNoMainOnPushedRemoteIsCouldNotCheckNotOrigin -v` | output contains the literal line `--- PASS: TestNoMainOnPushedRemoteIsCouldNotCheckNotOrigin` — the negative path: no silent fall-back to `origin` |
+| 5 | check +dereference | `cd tools/desk && go test ./internal/deskkit/ -run 'TestPushTransportRefuses.*RewrittenToSSH' -v` | output contains BOTH literal lines `--- PASS: TestPushTransportRefusesInsteadOfRewrittenToSSH` and `--- PASS: TestPushTransportRefusesPushInsteadOfRewrittenToSSH` — #884 in both rewrite forms; one line alone is a fail |
+| 6 | check | `grep -nE '"origin"' tools/desk/cmd/deskpushguard/main.go tools/desk/cmd/deskpushguard/registerid.go; test $? -eq 1` | exit 0 and no line printed — the literal is gone from the URL fallback and the liveness probe (comments spelling `refs/remotes/origin/main` in prose are not matched: the pattern is the quoted Go string) |
+| 7 | check +mutation | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskpushguard/pushedremote-mutations.json` | exit 0 — baseline GREEN, positive control CAUGHT, `Totals: 7 caught, 0 NOT CAUGHT`: putting `origin` back in place of the pushed remote on any one path (the run() default, the foreign-commit base or its empty-name branch, the register-id base, its empty-name branch, its sibling candidates, its liveness probe) reddens rows 3–4's tests |
+| 8 | check +mutation | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/pushtransport-mutations.json` | exit 0 — baseline GREEN, positive control CAUGHT, `Totals: 18 caught, 0 NOT CAUGHT`: deciding from the configured url, falling back to it when no resolver is wired or it fails, dropping the insteadOf / pushInsteadOf attribution, the wrong remedy for insteadOf, and either caller wiring no resolver each redden a test |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->

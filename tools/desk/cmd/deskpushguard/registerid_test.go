@@ -110,7 +110,7 @@ func TestCheckRegisterIDCollisions_DetectsCrossBranchStyleCollision(t *testing.T
 		t.Fatalf("fixture invariant broken: worker B's commit should not be reachable from any sibling branch")
 	}
 
-	collisions, err := checkRegisterIDCollisions(dir, ownBranch, ownSHA)
+	collisions, err := checkRegisterIDCollisions(dir, "origin", ownBranch, ownSHA)
 	if err != nil {
 		t.Fatalf("checkRegisterIDCollisions error: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestCheckRegisterIDCollisions_DetectsCrossBranchStyleCollision(t *testing.T
 func TestCheckRegisterIDCollisions_DifferentIDsReportNothing(t *testing.T) {
 	dir, ownBranch, ownSHA := newRegisterIDCollisionFixture(t, "F-legit-alpha", "F-legit-beta")
 
-	collisions, err := checkRegisterIDCollisions(dir, ownBranch, ownSHA)
+	collisions, err := checkRegisterIDCollisions(dir, "origin", ownBranch, ownSHA)
 	if err != nil {
 		t.Fatalf("checkRegisterIDCollisions error: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestCheckRegisterIDCollisions_DifferentIDsReportNothing(t *testing.T) {
 }
 
 func TestCheckRegisterIDCollisions_FailsOpenOnNonSHA(t *testing.T) {
-	collisions, err := checkRegisterIDCollisions(t.TempDir(), "some-branch", "not-a-sha")
+	collisions, err := checkRegisterIDCollisions(t.TempDir(), "origin", "some-branch", "not-a-sha")
 	if err != nil {
 		t.Fatalf("expected fail-open (nil error), got %v", err)
 	}
@@ -162,7 +162,7 @@ func TestCheckRegisterIDCollisions_FailsOpenWhenOriginMainUnresolvable(t *testin
 	regIDRunGitT(t, dir, "commit", "--allow-empty", "-m", "chore: only commit, no origin remote at all")
 	sha := regIDRunGitT(t, dir, "rev-parse", "HEAD")
 
-	collisions, err := checkRegisterIDCollisions(dir, "main", sha)
+	collisions, err := checkRegisterIDCollisions(dir, "origin", "main", sha)
 	if err != nil {
 		t.Fatalf("expected fail-open (nil error), got %v", err)
 	}
@@ -350,7 +350,7 @@ func TestCheckRegisterIDCollisions_DetectsInPlaceModifiedID(t *testing.T) {
 	regIDRunGitT(t, workerB, "commit", "-m", "docs(findings): re-id existing entry in place")
 	headSHA := regIDRunGitT(t, workerB, "rev-parse", "HEAD")
 
-	collisions, err := checkRegisterIDCollisions(workerB, "worker-b-branch", headSHA)
+	collisions, err := checkRegisterIDCollisions(workerB, "origin", "worker-b-branch", headSHA)
 	if err != nil {
 		t.Fatalf("checkRegisterIDCollisions error: %v", err)
 	}
@@ -424,7 +424,7 @@ func TestCheckRegisterIDCollisions_SkipsIdenticalPathButKeepsAddedVsAdded(t *tes
 		regIDRunGitT(t, workerB, "commit", "-m", "docs(findings): B edits existing entry")
 		headSHA := regIDRunGitT(t, workerB, "rev-parse", "HEAD")
 
-		collisions, err := checkRegisterIDCollisions(workerB, "worker-b-branch", headSHA)
+		collisions, err := checkRegisterIDCollisions(workerB, "origin", "worker-b-branch", headSHA)
 		if err != nil {
 			t.Fatalf("checkRegisterIDCollisions error: %v", err)
 		}
@@ -436,7 +436,7 @@ func TestCheckRegisterIDCollisions_SkipsIdenticalPathButKeepsAddedVsAdded(t *tes
 	t.Run("different paths with same id IS still a collision", func(t *testing.T) {
 		dir, ownBranch, ownSHA := newRegisterIDCollisionFixture(t, "F-39", "F-39")
 
-		collisions, err := checkRegisterIDCollisions(dir, ownBranch, ownSHA)
+		collisions, err := checkRegisterIDCollisions(dir, "origin", ownBranch, ownSHA)
 		if err != nil {
 			t.Fatalf("checkRegisterIDCollisions error: %v", err)
 		}
@@ -499,7 +499,7 @@ func TestCheckRegisterIDCollisions_IdAlreadyOnMainSameFile_NotAClaim(t *testing.
 	regIDRunGitT(t, workerB, "commit", "-m", "docs(findings): repoint backtick path")
 	headSHA := regIDRunGitT(t, workerB, "rev-parse", "HEAD")
 
-	collisions, err := checkRegisterIDCollisions(workerB, "worker-b-branch", headSHA)
+	collisions, err := checkRegisterIDCollisions(workerB, "origin", "worker-b-branch", headSHA)
 	if err != nil {
 		t.Fatalf("checkRegisterIDCollisions error: %v", err)
 	}
@@ -561,7 +561,7 @@ func TestCheckRegisterIDCollisions_StaleSourceRefDropped(t *testing.T) {
 	regIDRunGitT(t, workerB, "commit", "-m", "docs(findings): b")
 	headSHA := regIDRunGitT(t, workerB, "rev-parse", "HEAD")
 
-	collisions, err := checkRegisterIDCollisions(workerB, "worker-b-branch", headSHA)
+	collisions, err := checkRegisterIDCollisions(workerB, "origin", "worker-b-branch", headSHA)
 	if err != nil {
 		t.Fatalf("checkRegisterIDCollisions error: %v", err)
 	}
@@ -576,7 +576,7 @@ func TestCheckRegisterIDCollisions_StaleSourceRefDropped(t *testing.T) {
 func TestCheckRegisterIDCollisions_LiveSourceRefReportedAsLive(t *testing.T) {
 	dir, ownBranch, ownSHA := newRegisterIDCollisionFixture(t, "F-39", "F-39")
 
-	collisions, err := checkRegisterIDCollisions(dir, ownBranch, ownSHA)
+	collisions, err := checkRegisterIDCollisions(dir, "origin", ownBranch, ownSHA)
 	if err != nil {
 		t.Fatalf("checkRegisterIDCollisions error: %v", err)
 	}
@@ -660,7 +660,7 @@ func TestCheckRegisterIDCollisions_DoesNotSkipBranchNamedLikeHEAD(t *testing.T) 
 	regIDRunGitT(t, workerB, "commit", "-m", "docs(findings): b")
 	headSHA := regIDRunGitT(t, workerB, "rev-parse", "HEAD")
 
-	collisions, err := checkRegisterIDCollisions(workerB, "worker-b-branch", headSHA)
+	collisions, err := checkRegisterIDCollisions(workerB, "origin", "worker-b-branch", headSHA)
 	if err != nil {
 		t.Fatalf("checkRegisterIDCollisions error: %v", err)
 	}
