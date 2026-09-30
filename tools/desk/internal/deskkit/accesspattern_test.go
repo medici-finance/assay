@@ -124,7 +124,7 @@ func TestAccessPatternSingleRoundTrip(t *testing.T) {
 			t.Fatalf("ReviewQueueSnapshot: %v", err)
 		}
 		if fake.requests != 1 {
-			t.Fatalf("snapshot made %d requests, want exactly 1 round-trip", fake.requests)
+			t.Errorf("snapshot made %d requests, want exactly 1 round-trip", fake.requests)
 		}
 		if len(q.Changes) != len(changes) {
 			t.Fatalf("snapshot carried %d changes, want %d", len(q.Changes), len(changes))
