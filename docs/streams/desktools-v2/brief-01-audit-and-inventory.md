@@ -212,7 +212,24 @@ drift, not as a value this item sets.
 VERIFY: FAIL — row 5 (7 of 8 rows pass). The inventory no longer covers the tree: a new
 statusgen gh site (decisionruling.go line 643) and a new forgeban permit (preflight.go
 ambientLoginProbe, ceiling 5 to 6) landed after the freeze. Status stays implemented.
+### Non-implementer verifier run — VERIFY: FAIL — 7/8 rows, row 5 (#1788) — 2026-09-30 claude-opus-5-5-verifier
 
+Runner is not the implementer. Isolated worktree at merged main `b6f8f3c4e86df20681cfb5165f49a9e97659b572` (HEAD == the forge's `commits/main`). `gate: model`, all risk answers `no`. Offline; no check:ci row. Re-confirms the 2026-09-27 FAIL at a newer head: the inventory has not changed since its implementing commit c128b3e00. Status stays `implemented`.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `test -f docs/streams/desktools-v2/inventory.md; echo rc=$?` | rc=0 | PASS — `rc=0` | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | row 2 command verbatim (grep count of the file:line and reach-around shape markers) | ≥1 | PASS — 11 | 2026-09-30 | claude-opus-5-5-verifier |
+| 3 | row 3 command verbatim (each of the seven issues present) | all-present | PASS — `all-present` | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | `grep -c 'Reconciled:' docs/streams/desktools-v2/inventory.md` | ≥1 | PASS — 1 | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | row 5 command verbatim (tree-derived set of non-test statusgen files that shell gh, each looked up in the inventory) | `all-present` | **FAIL** — exit 1, `MISSING statusgen/decisionruling.go` | 2026-09-30 | claude-opus-5-5-verifier |
+| 6 | row 6 command verbatim (dereference every cited file:line) | ok | PASS — `ok` | 2026-09-30 | claude-opus-5-5-verifier |
+| 7 | `grep -c 'forge-neutral/18' docs/streams/desktools-v2/inventory.md` | ≥1 | PASS — 29 | 2026-09-30 | claude-opus-5-5-verifier |
+| 8 | `grep -c '^## Outward writes' docs/streams/desktools-v2/inventory.md` | 1 | PASS — 1 | 2026-09-30 | claude-opus-5-5-verifier |
+
+RISK-VALUE: N/A — the implementing diff (c128b3e00) is a changelog fragment, a README status line and the inventory markdown; no behaviour-governing literal, nothing irreversible.
+
+Findings: (F1, the FAIL) `statusgen/decisionruling.go` shells `gh auth token` near line 643 (landed after the inventory froze) and has no inventory row — tracked as #1788. (F2) The Reconciled: note records an invocation ceiling of 5; the tree's forgeban allowlist says 6, and the sixth permit (the preflight ambient-login probe) has no row — also #1788. (F3) Row 6 checks that each cited line exists, not that it still points at the gh call; line citations have likely drifted across 36 statusgen commits (not re-counted). Fix in flight: draft PR #1818 (changes requested). Re-verify after it merges.
 
 ## Review
 Gate: model (all four risk answers no — a read-only inventory document; no code, no
