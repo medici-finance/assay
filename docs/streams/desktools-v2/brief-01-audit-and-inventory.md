@@ -212,7 +212,45 @@ drift, not as a value this item sets.
 VERIFY: FAIL — row 5 (7 of 8 rows pass). The inventory no longer covers the tree: a new
 statusgen gh site (decisionruling.go line 643) and a new forgeban permit (preflight.go
 ambientLoginProbe, ceiling 5 to 6) landed after the freeze. Status stays implemented.
+### Verification — 2026-09-30 (assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) (on-behalf-of human:ian)) — 2026-09-30 claude-opus-5-5-verifier
 
+Non-implementer re-verify on merged main 35496323b8fc591651e44537baf51206cc22bbdd after the row 5 FAIL of 2026-09-27. The rework is #1818 (6702a972f), which re-derived the inventory at its declared anchor fabe4926e. First table: the `statusgen verifyrun` execution witness, landed verbatim. It ran on Linux (golang:1.25-bookworm, `--network none`, statusgen built from main's own source) and passed 8/8. Second table: the hand run on the host.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `test -f docs/streams/desktools-v2/inventory.md; echo rc=$?` | pass exit=0 | sha256:93ff7811a209 | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 2 | `grep -cE -e 'file:line' -e 'reach-around shape' docs/streams/desktools-v2/inventory.md` | pass exit=0 | sha256:a1fb50e6c86f | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 3 | `sh -c 'for p in "#1145" "#1146" "#628" "#1019" "#1201" "#884" "#1223"; do grep -qF -- "$p" docs/streams/desktools-v2/inventory.md; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $p"; exit 1; fi; done; echo all-present'` | pass exit=0 | sha256:6a62edb7cced | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 4 | `grep -c 'Reconciled:' docs/streams/desktools-v2/inventory.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 5 | `sh -c 'for f in $(grep -rl "exec.Command(\"gh\"" statusgen --include="*.go"); do case "$f" in *_test.go) continue;; esac; grep -qF -- "$f" docs/streams/desktools-v2/inventory.md; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $f"; exit 1; fi; done; echo all-present'` | pass exit=0 | sha256:6a62edb7cced | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 6 | `bash -c 'for r in $(grep -oE -e "tools/desk/[A-Za-z0-9_./-]+\.go:[0-9]+" -e "statusgen/[A-Za-z0-9_./-]+\.go:[0-9]+" docs/streams/desktools-v2/inventory.md); do f=${r%%:*}; n=${r##*:}; if [ ! -f "$f" ]; then exit 1; fi; if [ "$(wc -l < "$f")" -lt "$n" ]; then exit 1; fi; done; echo ok'` | pass exit=0 | sha256:dc51b8c96c2d | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 7 | `grep -c 'forge-neutral/18' docs/streams/desktools-v2/inventory.md` | pass exit=0 | sha256:19b8d5c59e42 | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 8 | `grep -c '^## Outward writes' docs/streams/desktools-v2/inventory.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+
+| # | Verify row | Expected | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | row 1 as written (exact command in the witness table above) | rc=0 | exit 0; printed rc=0 | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 2 | row 2 as written (exact command in the witness table above) | exit 0; count >= 1 | exit 0; printed 12 | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 3 | row 3 as written (exact command in the witness table above) | exit 0; all-present | exit 0; printed all-present | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 4 | row 4 as written (exact command in the witness table above) | exit 0; count >= 1 | exit 0; printed 1 | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 5 | row 5 as written (exact command in the witness table above) | exit 0; all-present | exit 0; printed all-present (16 files, none MISSING; decisionruling.go now covered) | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 6 | row 6 as written (exact command in the witness table above) | exit 0; ok | exit 0; printed ok | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 7 | row 7 as written (exact command in the witness table above) | exit 0; count >= 1 | exit 0; printed 33 | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 8 | row 8 as written (exact command in the witness table above) | exit 0; count >= 1 | exit 0; printed 1 | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+
+Execution witness: `statusgen verifyrun` on linux, network-off, 8/8 pass at 35496323b8fc; from-source lint exit 0 with no PROBLEM naming this brief.
+
+RISK-VALUE: N/A — rework 6702a972f and original c128b3e00 change only the inventory markdown, one README status line and changelog fragments; no code literal is introduced or changed. The quoted ceiling of 6 is set at the forgeban allowlist (line 84), belongs to #1528's diff, and matches HEAD. Reversible documentation inventory.
+
+Notes:
+- The r1 findings are fixed: statusgen decisionruling.go line 643 has a row; the Reconciled cross-check quotes the ceiling as 6; the preflight ambient-login probe has rows at preflight.go lines 1713 and 1733, and both are the gh exec calls at HEAD.
+- Finding (does not fail a row). The inventory's statusgen autoflip.go citations were already out of date when #1818 merged, because #1868 (e05068f41) merged after the fabe4926e anchor.
+  - Rows 22–25 and 70–71 cite lines 793, 873, 908, 918, 969 and 979. The calls now sit at 1148, 1228, 1281, 1292, 1439 and 1449.
+  - Two new gh sites have no row: line 1340 (merged-PR list) and line 1366 (graphql lastEditedAt).
+  - The tree has 31 sites in 16 files; the inventory records 29 in 16.
+  - Rows 5 and 6 are file- and line-existence checks, so they cannot see per-site drift. A follow-up issue will be filed for the re-anchor and for forge-neutral/18's enumeration.
+
+VERIFY: PASS
 
 ## Review
 Gate: model (all four risk answers no — a read-only inventory document; no code, no
