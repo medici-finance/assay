@@ -28,7 +28,7 @@
     {
       "name": "round a remote with NO url at all up to a pass (nothing was examined, so nothing can have been cleared)",
       "file": "internal/deskkit/pushtransport.go",
-      "old": "\tif len(urls) == 0 {\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"%s: remote %q has no url or pushurl configured in %s",
+      "old": "\tif len(urls) == 0 || (allBlank(configured) && len(urls) == 1 && urls[0] == remote) {\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"%s: remote %q has no url or pushurl configured in %s",
       "new": "\tif false {\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"%s: remote %q has no url or pushurl configured in %s"
     },
     {
@@ -156,6 +156,36 @@
       "file": "cmd/deskwt/exec.go",
       "old": "return runGit(dir, \"remote\", \"get-url\", \"--push\", \"--all\", \"origin\") },",
       "new": "return runGit(dir, \"remote\", \"get-url\", \"--push\", \"origin\") },"
+    },
+    {
+      "name": "a remote with no url resolved by real git to its bare NAME passes (drops the no-configured-url + [remote] condition: exit 0 where it is could-not-check)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "if len(urls) == 0 || (allBlank(configured) && len(urls) == 1 && urls[0] == remote) {",
+      "new": "if len(urls) == 0 {"
+    },
+    {
+      "name": "the no-url check ignores the configured value (a url configured as a local path spelled like the remote name is refused as could-not-check)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "if len(urls) == 0 || (allBlank(configured) && len(urls) == 1 && urls[0] == remote) {",
+      "new": "if len(urls) == 0 || (len(urls) == 1 && urls[0] == remote) {"
+    },
+    {
+      "name": "the insteadOf-rule remedy always claims removing the rule is enough (a pushInsteadOf alias, or an SSH configured url, still sends the push over SSH: two rounds)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\t\tif ruleAlone {\n\t\t\treturn msg\n\t\t}",
+      "new": "\t\tif ruleAlone || true {\n\t\t\treturn msg\n\t\t}"
+    },
+    {
+      "name": "a pushInsteadOf-attributed refusal counts the insteadOf rule removal as the whole remedy (drops !rw.push)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "ruleAlone := !rw.push && rw.from == target",
+      "new": "ruleAlone := rw.from == target"
+    },
+    {
+      "name": "the set-url remedy ignores a multi-valued pushurl (prints the plain form git refuses with \"has multiple values\")",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\tif len(pushurls) < 2 {\n\t\treturn cmd\n\t}",
+      "new": "\tif len(pushurls) < 2 || true {\n\t\treturn cmd\n\t}"
     }
   ]
 }

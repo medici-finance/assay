@@ -115,6 +115,16 @@ func TestPushTransportRefusesInsteadOfRewrittenToSSH(t *testing.T) {
 			!strings.Contains(err.Error(), "url.git@example.com:.insteadOf") {
 			t.Errorf("refusal should trace remote.origin.pushurl through the insteadOf rule:\n%s", err.Error())
 		}
+		// The configured value already is the https target, so the rule is the whole story:
+		// no second set-url step is owed, and removing the rule alone clears it.
+		if strings.Contains(err.Error(), "Removing the rule alone is not enough") ||
+			strings.Contains(err.Error(), "remote set-url --push origin") {
+			t.Errorf("refusal proposes a set-url step the rule removal does not need:\n%s", err.Error())
+		}
+		rewriteGit(t, "-C", dir, "config", "--unset-all", "url.git@example.com:.insteadOf")
+		if err := CheckPushTransport(realGitGateInput(dir)); ExitCodeOf(err) == ExitRefused {
+			t.Fatalf("removing the named rule did not clear the refusal:\n%v", err)
+		}
 	})
 }
 
@@ -229,15 +239,157 @@ func TestPushTransportRemedyRuleSSH(t *testing.T) {
 			t.Errorf("refusal is missing %q:\n%s", frag, msg)
 		}
 	}
-	if strings.Contains(msg, "remote set-url --push origin") {
-		t.Errorf("refusal proposes a push url the insteadOf rule rewrites back to SSH:\n%s", msg)
+	// The configured url is itself SSH, so removing the rule is not enough on its own either:
+	// the set-url step must come AFTER the rule, as the second of two steps, never as the
+	// whole remedy.
+	rule := strings.Index(msg, "remove or narrow")
+	setURL := strings.Index(msg, "remote set-url --push origin "+rewriteHTTPS)
+	if setURL < 0 || setURL < rule {
+		t.Errorf("refusal should name the rule first and then `remote set-url --push origin %s`:\n%s", rewriteHTTPS, msg)
 	}
 
-	// Oracle: the set-url remedy really would not have cleared it.
+	// Oracle: the set-url step alone really would not have cleared it...
 	rewriteGit(t, "-C", dir, "remote", "set-url", "--push", "origin", rewriteHTTPS)
 	if err := CheckPushTransport(realGitGateInput(dir)); ExitCodeOf(err) != ExitRefused {
 		t.Fatalf("oracle: an https pushurl the rule matches should still be refused, got %v", err)
 	}
+	// ...and both steps together do.
+	rewriteGit(t, "-C", dir, "config", "--unset-all", "url.git@example.com:.insteadOf")
+	if err := CheckPushTransport(realGitGateInput(dir)); ExitCodeOf(err) == ExitRefused {
+		t.Fatalf("the two named steps did not clear the refusal:\n%v", err)
+	}
+}
+
+// TestPushTransportPushAndInsteadOfRemedy: a pushInsteadOf AND an insteadOf rule both match
+// the configured https url. git pushes to the pushInsteadOf alias; the https push url the
+// remedy proposes is itself insteadOf-rewritten back to SSH. Removing the insteadOf rule
+// alone leaves the pushInsteadOf alias in force, so the refusal must name BOTH steps rather
+// than send the operator round the gate twice.
+//
+// FAIL-FIRST: on a940e5617 the refusal named only the insteadOf rule.
+func TestPushTransportPushAndInsteadOfRemedy(t *testing.T) {
+	t.Setenv("DESK_LOOP", "worker-desk")
+	dir := rewriteRepo(t)
+	rewriteGit(t, "-C", dir, "config", "remote.origin.url", rewriteHTTPS)
+	rewriteGit(t, "-C", dir, "config", "url.git@push.example:.pushInsteadOf", "https://example.com/")
+	rewriteGit(t, "-C", dir, "config", "url.git@example.com:.insteadOf", "https://example.com/")
+
+	if got := strings.TrimSpace(rewriteGit(t, "-C", dir, "remote", "get-url", "--push", "origin")); got != "git@push.example:example-org/tracker.git" {
+		t.Fatalf("fixture: git resolves the push url to %q, want the pushInsteadOf alias", got)
+	}
+	err := CheckPushTransport(realGitGateInput(dir))
+	if err == nil || ExitCodeOf(err) != ExitRefused {
+		t.Fatalf("err = %v (exit %d), want a refusal", err, ExitCodeOf(err))
+	}
+	msg := err.Error()
+	for _, frag := range []string{
+		"is rewritten by the rule url.git@push.example:.pushInsteadOf",
+		"remove or narrow the rule url.git@example.com:.insteadOf",
+		"Removing the rule alone is not enough",
+	} {
+		if !strings.Contains(msg, frag) {
+			t.Errorf("refusal is missing %q:\n%s", frag, msg)
+		}
+	}
+	rule := strings.Index(msg, "remove or narrow")
+	setURL := strings.Index(msg, "remote set-url --push origin "+rewriteHTTPS)
+	if setURL < 0 || setURL < rule {
+		t.Errorf("refusal should name the rule first and then `remote set-url --push origin %s`:\n%s", rewriteHTTPS, msg)
+	}
+
+	// Oracle: the rule removal alone leaves the pushInsteadOf alias in force...
+	rewriteGit(t, "-C", dir, "config", "--unset-all", "url.git@example.com:.insteadOf")
+	if err := CheckPushTransport(realGitGateInput(dir)); ExitCodeOf(err) != ExitRefused {
+		t.Fatalf("oracle: with the pushInsteadOf alias still set the push is still SSH, got %v", err)
+	}
+	// ...and the second named step clears it.
+	rewriteGit(t, "-C", dir, "remote", "set-url", "--push", "origin", rewriteHTTPS)
+	if err := CheckPushTransport(realGitGateInput(dir)); ExitCodeOf(err) == ExitRefused {
+		t.Fatalf("the two named steps did not clear the refusal:\n%v", err)
+	}
+}
+
+// TestPushTransportMultiPushURLRemedy: two pushurls, an https mirror and an SSH one. The
+// plain `remote set-url --push origin <https>` fails on a multi-valued pushurl ("has
+// multiple values"), so the remedy line must name the value it replaces — and running the
+// line exactly as printed must clear the refusal while keeping the https mirror.
+func TestPushTransportMultiPushURLRemedy(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not on PATH")
+	}
+	t.Setenv("DESK_LOOP", "worker-desk")
+	dir := rewriteRepo(t)
+	const mirror = "https://mirror.example/example-org/tracker.git"
+	rewriteGit(t, "-C", dir, "config", "remote.origin.url", rewriteHTTPS)
+	rewriteGit(t, "-C", dir, "config", "remote.origin.pushurl", mirror)
+	rewriteGit(t, "-C", dir, "config", "--add", "remote.origin.pushurl", "git@example.com:example-org/tracker.git")
+
+	err := CheckPushTransport(realGitGateInput(dir))
+	if err == nil || ExitCodeOf(err) != ExitRefused {
+		t.Fatalf("err = %v (exit %d), want a refusal", err, ExitCodeOf(err))
+	}
+	var line string
+	for _, l := range strings.Split(err.Error(), "\n") {
+		if strings.HasPrefix(l, "  git -C ") {
+			line = strings.TrimSpace(l)
+		}
+	}
+	if line == "" {
+		t.Fatalf("refusal carries no runnable remedy line:\n%v", err)
+	}
+	if out, rerr := exec.Command("sh", "-c", line).CombinedOutput(); rerr != nil {
+		t.Fatalf("the remedy line as printed does not run: %v\n%s\nline: %s", rerr, out, line)
+	}
+	if err := CheckPushTransport(realGitGateInput(dir)); ExitCodeOf(err) == ExitRefused {
+		t.Fatalf("the remedy line ran but the refusal stands:\n%v", err)
+	}
+	got := strings.Fields(rewriteGit(t, "-C", dir, "remote", "get-url", "--push", "--all", "origin"))
+	if strings.Join(got, " ") != mirror+" "+rewriteHTTPS {
+		t.Errorf("push urls after the remedy = %q, want the mirror kept and the SSH value replaced", got)
+	}
+}
+
+// TestPushTransportNoURLRealGit: a remote with no url does not resolve to nothing with real
+// git — `remote get-url --push --all` prints the remote's bare NAME. The gate must still call
+// that could-not-check (exit 6), as the stub-driven "remote has no url" case does.
+//
+// FAIL-FIRST: on a940e5617 both shapes returned nil (exit 0).
+func TestPushTransportNoURLRealGit(t *testing.T) {
+	t.Setenv("DESK_LOOP", "worker-desk")
+	for _, tc := range []struct {
+		name string
+		set  [][]string
+	}{
+		{"fetch refspec only", [][]string{{"remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"}}},
+		{"url set empty", [][]string{{"remote.origin.url", ""}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := rewriteRepo(t)
+			for _, kv := range tc.set {
+				rewriteGit(t, "-C", dir, "config", kv[0], kv[1])
+			}
+			if got := strings.TrimSpace(rewriteGit(t, "-C", dir, "remote", "get-url", "--push", "--all", "origin")); got != "origin" {
+				t.Fatalf("fixture: git resolves the push url to %q, want the bare remote name", got)
+			}
+			err := CheckPushTransport(realGitGateInput(dir))
+			if err == nil || ExitCodeOf(err) != ExitUnverifiable {
+				t.Fatalf("err = %v (exit %d), want exit %d: the remote has no url", err, ExitCodeOf(err), ExitUnverifiable)
+			}
+			if !strings.Contains(err.Error(), "no url or pushurl configured") {
+				t.Errorf("could-not-check should say the remote has no url:\n%s", err.Error())
+			}
+		})
+	}
+
+	// Control: a remote whose url really is a local path spelled like its name is configured,
+	// so it is judged (a local path is not SSH), never mistaken for the no-url shape.
+	t.Run("url configured as the name", func(t *testing.T) {
+		dir := rewriteRepo(t)
+		rewriteGit(t, "-C", dir, "config", "remote.origin.url", "origin")
+		if err := CheckPushTransport(realGitGateInput(dir)); err != nil {
+			t.Fatalf("err = %v (exit %d), want nil: the url is configured", err, ExitCodeOf(err))
+		}
+	})
 }
 
 // TestPushTransportLongestRule: two insteadOf rules whose prefixes overlap. Git applies the

@@ -36,13 +36,16 @@ package deskkit
 // rewrite is what produced the SSH URL, names the rule in the refusal (#884).
 //
 // THREE-STATE. A config read that fails, or a remote with no URL at all, is Unverifiable
-// (exit 6) — never "no SSH found, carry on". A $DESK_LOOP this process cannot resolve to a
+// (exit 6) — never "no SSH found, carry on". "No URL at all" includes the shape real git
+// produces for it: no non-blank url/pushurl configured and the remote resolving only to its
+// own bare name. A $DESK_LOOP this process cannot resolve to a
 // role is a stderr NOTICE saying the gate DID NOT RUN, never a silent pass.
 
 import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -149,10 +152,17 @@ func CheckPushTransport(in PushTransportInput) error {
 			who, remote, orDot(in.Dir), role), perr)
 	}
 	urls := splitURLLines(rawURLs)
-	if len(urls) == 0 {
+	// A remote with no url at all does NOT resolve to nothing with real git: a remote that
+	// exists only through another key (a fetch refspec, say) or whose url is set empty is
+	// resolved to its bare NAME, which git would then push to as a local path. So an empty
+	// resolution is not the only no-url shape — a resolution to exactly [remote] with no
+	// non-blank configured value is the same could-not-check, and rounding it to "not SSH,
+	// carry on" is the silent pass this gate exists to refuse. (A legacy .git/remotes file
+	// has no config values either, but git resolves it to its real url, so it is unaffected.)
+	if len(urls) == 0 || (allBlank(configured) && len(urls) == 1 && urls[0] == remote) {
 		return Unverifiable(fmt.Sprintf(
-			"%s: remote %q has no url or pushurl configured in %s, so the push transport cannot be "+
-				"established", who, remote, orDot(in.Dir)), nil)
+			"%s: remote %q has no url or pushurl configured in %s (git resolves it only to its bare name), so "+
+				"the push transport cannot be established", who, remote, orDot(in.Dir)), nil)
 	}
 
 	for _, u := range urls {
@@ -180,6 +190,10 @@ func CheckPushTransport(in PushTransportInput) error {
 			if len(configured) == 1 && isSSHTransport(configured[0]) {
 				target = configured[0]
 			}
+			replace := ""
+			if containsString(configured, target) {
+				replace = target
+			}
 			return Refused(fmt.Sprintf(
 				"refused: %s would push to %q over an SSH transport (%s = %s), but this session acts as the %s "+
 					"App (%s=%s). An SSH push authenticates with whatever key this machine's agent holds — a "+
@@ -187,7 +201,7 @@ func CheckPushTransport(in PushTransportInput) error {
 					"envelope is bypassed, however the commits are authored. Fetch over SSH stays allowed; only "+
 					"the push transport is gated. Remedy: %s",
 				who, remote, key, shown, role, loopEnv, loop,
-				pushURLRemedy(cfg, in.Dir, remote, httpsTargetFor(target, u, remote), role, "")))
+				pushURLRemedy(cfg, in.Dir, remote, httpsTargetFor(target, u, remote), replace, role, "", false)))
 		}
 		return Refused(fmt.Sprintf(
 			"refused: %s would push to %q over an SSH transport: %s = %s is rewritten by the rule %s = %s "+
@@ -245,6 +259,17 @@ func splitURLLines(out string) []string {
 	return urls
 }
 
+// allBlank reports whether no value in list carries anything but whitespace — an empty list
+// included.
+func allBlank(list []string) bool {
+	for _, v := range list {
+		if strings.TrimSpace(v) != "" {
+			return false
+		}
+	}
+	return true
+}
+
 func containsString(list []string, want string) bool {
 	for _, v := range list {
 		if v == want {
@@ -275,7 +300,13 @@ func (rw rewriteTrace) remedy(cfg map[string][]string, dir, remote, effective, r
 	if rw.push {
 		lead = "an explicit push url is never pushInsteadOf-rewritten, so set one"
 	}
-	return pushURLRemedy(cfg, dir, remote, httpsTargetFor(rw.from, effective, remote), role, lead)
+	target := httpsTargetFor(rw.from, effective, remote)
+	// Removing an insteadOf rule that matches target clears the refusal on its own only when
+	// that rule is the whole story: an insteadOf rewrite of a configured url that already IS
+	// target. A pushInsteadOf alias still applies once the insteadOf rule is gone, so there
+	// the push url must be set too.
+	ruleAlone := !rw.push && rw.from == target
+	return pushURLRemedy(cfg, dir, remote, target, rw.from, role, lead, ruleAlone)
 }
 
 // httpsTargetFor is the https push url a remedy proposes. A configured https url is kept
@@ -299,21 +330,57 @@ func httpsTargetFor(configured, effective, remote string) string {
 // shape: an https url an insteadOf rule turns into SSH needs the rule gone, while an SSH url
 // an insteadOf rule turns into another SSH url is cleared by an https push url the rule does
 // not match.
-func pushURLRemedy(cfg map[string][]string, dir, remote, target, role, lead string) string {
+//
+// ruleAlone says whether removing that insteadOf rule is by itself enough — true only when
+// the configured url already is target. Otherwise (the configured url is SSH, or a
+// pushInsteadOf alias still applies once the rule is gone) the remedy names BOTH steps, so
+// the operator is not sent round the gate twice. replace is the configured push-url value
+// the remedy swaps out; it makes the set-url line runnable on a multi-valued pushurl.
+func pushURLRemedy(cfg map[string][]string, dir, remote, target, replace, role, lead string, ruleAlone bool) string {
+	setURL := setPushURLCommand(cfg, dir, remote, target, replace)
 	if base, prefix, out, ok := longestRewrite(urlRewriteRules(cfg, false), target); ok && isSSHTransport(out) {
 		ruleKey := "url." + base + ".insteadOf"
-		return fmt.Sprintf("remove or narrow the rule %s = %s in the config file that sets it. An explicit "+
+		msg := fmt.Sprintf("remove or narrow the rule %s = %s in the config file that sets it. An explicit "+
 			"https push url does NOT escape it — git applies insteadOf to pushurl values too, and it would "+
 			"rewrite %s into %s — so `remote set-url --push` alone would leave this refusal standing "+
 			"(find it: git -C %s config --show-origin --get-all %s).",
 			ruleKey, prefix, target, out, orDot(dir), ruleKey)
+		if ruleAlone {
+			return msg
+		}
+		return fmt.Sprintf("%s Removing the rule alone is not enough either — the push would still go out "+
+			"over SSH — so once it is gone, point the push url at https (one line, in this worktree):\n  %s\n"+
+			"then configure the %s App's credential helper for that URL.", msg, setURL, role)
 	}
 	if lead == "" {
 		lead = "point the push url at https"
 	}
-	return fmt.Sprintf("%s (one line, in this worktree):\n  git -C %s remote set-url --push %s %s\n"+
-		"then configure the %s App's credential helper for that URL.",
-		lead, orDot(dir), remote, target, role)
+	return fmt.Sprintf("%s (one line, in this worktree):\n  %s\nthen configure the %s App's credential "+
+		"helper for that URL.", lead, setURL, role)
+}
+
+// setPushURLCommand is the runnable `remote set-url --push` line for the remedy. On a
+// multi-valued remote.<name>.pushurl the plain form fails ("remote.<name>.pushurl has
+// multiple values"), so it names the value to replace as git's <oldurl> pattern — anchored and
+// regex-quoted, so it swaps exactly that value and keeps every other push destination. When
+// the value to replace is not one of the configured ones, the only runnable form resets the
+// list first.
+func setPushURLCommand(cfg map[string][]string, dir, remote, target, replace string) string {
+	cmd := fmt.Sprintf("git -C %s remote set-url --push %s %s", orDot(dir), remote, target)
+	pushurls := cfg["remote."+remote+".pushurl"]
+	if len(pushurls) < 2 {
+		return cmd
+	}
+	if replace != "" && containsString(pushurls, replace) {
+		return cmd + " " + shellSingleQuote("^"+regexp.QuoteMeta(replace)+"$")
+	}
+	return fmt.Sprintf("git -C %s config --unset-all remote.%s.pushurl && %s", orDot(dir), remote, cmd)
+}
+
+// shellSingleQuote quotes s for a POSIX shell, so a pasted remedy line passes a regex
+// pattern through verbatim.
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // urlRewriteRules collects the configured url.<base>.insteadOf (push=false) or

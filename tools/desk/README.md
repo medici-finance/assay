@@ -694,8 +694,8 @@ is the ambient-identity lane the forge-side custody ruling retired.
 `deskpr create`, `deskpr update` and `deskwt add` therefore **refuse, fail-closed** (exit 5)
 when the resolved **push** URL of `origin` is an SSH one *and* the session presents a bot
 identity — `$DESK_LOOP` resolving to a role App. The refusal names the config key, the URL,
-the acting App, and the one-line remedy (a `remote set-url --push` to the equivalent https
-URL, which it computes for you). Implementation: `internal/deskkit/pushtransport.go`.
+the acting App, and the remedy (usually a `remote set-url --push` to the equivalent https
+URL, which it computes for you; a rewrite rule in the way is named below). Implementation: `internal/deskkit/pushtransport.go`.
 
 The URL judged is the one git will actually push to — `git remote get-url --push --all
 origin`, a local read that contacts no remote and applies `url.<base>.pushInsteadOf` and
@@ -706,7 +706,13 @@ never applies `pushInsteadOf` to an explicit pushurl, but it DOES apply `instead
 the refusal proposes `remote set-url --push <https URL>` unless an `insteadOf` rule would rewrite
 that very https URL back to SSH — then, and only then, the remedy is to remove or narrow that
 rule. An SSH URL that an `insteadOf` rule turns into another SSH URL (an ssh alias on port 443,
-say) is therefore cleared by an https push URL, and removing the rule would not clear it.
+say) is therefore cleared by an https push URL, and removing the rule would not clear it. When
+removing that rule is not enough on its own — the configured URL is itself SSH, or a
+`pushInsteadOf` alias would still apply once it is gone — the refusal names both steps, the rule
+first and the `set-url` second, so the operator is not sent round the gate twice. On a
+multi-valued `remote.<name>.pushurl` the plain `set-url --push` form fails ("has multiple
+values"), so the proposed line names the value it replaces as git's `<oldurl>` pattern and keeps
+every other push destination.
 
 In `deskpr` this refusal is mostly shadowed by the push-destination gate (#1623), which runs
 first and refuses any non-https destination on its own terms; the surface where this gate is
@@ -740,10 +746,12 @@ Four boundaries are deliberate:
 
 Could-not-check is exit 6, never a pass: a `git config` read that fails, a push URL git
 cannot resolve, and a remote with no URL at all are all unverifiable rather than "no SSH
-found, carry on".
+found, carry on". Real git never resolves a url-less remote to nothing — it resolves it to the
+remote's bare NAME (a local path) — so the gate treats "no non-blank `url`/`pushurl` configured,
+and git resolves exactly the remote's name" as the no-URL case too.
 
 The guard's own fail-first evidence is `internal/deskkit/pushtransport-mutations.json` —
-eighteen mutations plus a positive control, run with
+thirty mutations plus a positive control, run with
 `go run ./cmd/muhar -j 0 -spec internal/deskkit/pushtransport-mutations.json`.
 
 ### The publish-identity gate (`deskpr create` / `update`, `deskevidence`)
