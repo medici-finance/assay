@@ -76,14 +76,18 @@ nothing measured.
    — and every tool that lifts the command (verifyrun, the check:ci re-execution lane,
    `newbrief`, the row lint, and the tools/desk executors `verifyloop` and
    `deskrebaseline`) takes the first honoured `cmd:` span. A cell whose first span is
-   already its command needs no marker, and a cell with no marker behaves exactly as
-   before. A marker counts only where the rendered table shows it as code: not between
+   already its command needs no marker, and a cell with no marker lifts exactly as
+   before — except that a row the lint flags `prose-led-command` is recorded could-not-run
+   without being executed (running the mention measures nothing, and a word like `gh`
+   exits 0), until its command is marked. A marker counts only where the rendered table shows it as code: not between
    escaped backticks, and not in a cell whose prose carries an unescaped `<` or `[` (raw
    HTML, a comment, a link or an image can hide text from the reader). `statusgen --lint`
    NOTICEs a prose cell whose first span is not a command shape (`prose-led-command`), a
    cell with two markers (`cmd-marker-ambiguous`), a marker that replaces a command-shaped
    first span (`cmd-marker-overrides-command`), and a `cmd:` span that is not honoured
-   (`cmd-marker-not-honoured`).
+   (`cmd-marker-not-honoured`), and a marked command that cannot fail — `true`, `:`,
+   `exit 0` — (`cmd-marker-vacuous`). A closed brief's `prose-led-command` rows collapse
+   into one summary NOTICE, since closed records are not rewritten.
    The marker is `cmd:`, not `run:`: `run:` is the GitHub Actions step key, and a quoted
    workflow line in Verify prose must never become the command the witness executes.
 8. **Prose deliverables get PRESENCE gates; quality is the human gate (the honesty rule).**

@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'CmdMarker|NoMarkerUnchanged|ProseLedCommand|MarkedRowRoundTrips|ReexecutesLiftedCommand|OneChokePoint|HiddenMarker|RowLintJudges' -count=1 -timeout 300s",
+  "test": "go test . -run 'CmdMarker|NoMarkerUnchanged|ProseLedCommand|MarkedRowRoundTrips|ReexecutesLiftedCommand|OneChokePoint|HiddenMarker|RowLintJudges|ProseLedRow|WitnessRowRoundTrips' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — verifyCommand ignores the marker (the pre-#1805 first-span lift)",
     "file": "verifyrows.go",
@@ -144,6 +144,42 @@
       "file": "verifyrows.go",
       "old": "\tcase nonExecExtensions[ext]:",
       "new": "\tcase false && nonExecExtensions[ext]:"
+    },
+    {
+      "name": "prose-led row executed anyway (runWitnesses skip dropped)",
+      "file": "verifyrun.go",
+      "old": "\t\tif r.ProseLed != \"\" {",
+      "new": "\t\tif false && r.ProseLed != \"\" {"
+    },
+    {
+      "name": "prose-led reason never set on the row",
+      "file": "verifyrun.go",
+      "old": "proseLedCommandWhy(r.Command); why != \"\" {",
+      "new": "proseLedCommandWhy(r.Command); false && why != \"\" {"
+    },
+    {
+      "name": "cmd-marker-vacuous never raised",
+      "file": "verifyrows.go",
+      "old": "\tif len(m) > 0 && vacuousCommands[",
+      "new": "\tif false && len(m) > 0 && vacuousCommands["
+    },
+    {
+      "name": "witness cell always single-backtick fenced",
+      "file": "verifyrun.go",
+      "old": "\tif longest == 0 {",
+      "new": "\tif true {"
+    },
+    {
+      "name": "witness fence never space-padded",
+      "file": "verifyrun.go",
+      "old": "\tif strings.HasPrefix(body, \"`\") || strings.HasSuffix(body, \"`\") {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "closed-brief prose-led collapse dropped",
+      "file": "verifyrows.go",
+      "old": "\t\t\t\t\tif closed && f.rule == ruleProseLedCommand {",
+      "new": "\t\t\t\t\tif false && closed && f.rule == ruleProseLedCommand {"
     }
   ]
 }

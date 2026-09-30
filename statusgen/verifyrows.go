@@ -1633,7 +1633,7 @@ func verifyRowTable(section string, fn func(verifyRowCells)) {
 // Correcting a CLOSED brief's row is not in scope for the backfill: the row is a
 // historical record of what was actually run. Note the defect in Evidence instead.
 //
-// CLOSED-BRIEF SCOPING — `gotest-run-vacuous` only (statusgen/14). Measured
+// CLOSED-BRIEF SCOPING — `gotest-run-vacuous` (statusgen/14) and `prose-led-command`. Measured
 // 2026-09-23: 233 of the 684 rows this rule's shape can hit already sit in 62
 // `done` briefs. Emitting one NOTICE per such row would swamp every real run
 // with historical rows nobody is about to rewrite (the same falsification the
@@ -1644,12 +1644,16 @@ func verifyRowTable(section string, fn func(verifyRowCells)) {
 // rows and briefs it suppressed, so the class stays visible without being
 // unreadable. A brief absent from its stream's README table (no row at all)
 // counts as open — silence about a brief's status is never grounds to suppress
-// its notices. Every OTHER rule is unscoped by brief status; this scoping
-// applies to this one tag only.
+// its notices. `prose-led-command` (#1805) is scoped the same way, for the same
+// reason (#1808 review: its advice to mark the command is not actionable on a
+// closed record). Every OTHER rule is unscoped by brief status; this scoping
+// applies to these two tags only.
 func unfailableRowNotices(streams []*Stream) []string {
 	var notices []string
 	closedRows := 0
 	closedBriefs := map[string]bool{}
+	closedProseRows := 0
+	closedProseBriefs := map[string]bool{}
 
 	for _, s := range streams {
 		statusByNum := map[string]string{}
@@ -1680,6 +1684,11 @@ func unfailableRowNotices(streams []*Stream) []string {
 						closedBriefs[briefID] = true
 						continue
 					}
+					if closed && f.rule == ruleProseLedCommand {
+						closedProseRows++
+						closedProseBriefs[briefID] = true
+						continue
+					}
 					notices = append(notices, fmt.Sprintf("%s: %s [%s] %s", path, where, f.rule, f.msg))
 				}
 			})
@@ -1687,6 +1696,9 @@ func unfailableRowNotices(streams []*Stream) []string {
 	}
 	if closedRows > 0 {
 		notices = append(notices, fmt.Sprintf("[%s] %d Verify row(s) in %d closed brief(s) carry an unasserted go test -run selector — closed records are not rewritten; the per-row notice covers open briefs only", ruleGoTestRunVacuous, closedRows, len(closedBriefs)))
+	}
+	if closedProseRows > 0 {
+		notices = append(notices, fmt.Sprintf("[%s] %d Verify row(s) in %d closed brief(s) have a prose mention as their first code span — closed records are not rewritten, and verifyrun records such a row could-not-run; the per-row notice covers open briefs only", ruleProseLedCommand, closedProseRows, len(closedProseBriefs)))
 	}
 	sort.Strings(notices)
 	return notices
@@ -1728,7 +1740,16 @@ const (
 	// may not show as code (escaped backticks, or `<` / `[` in the prose), so
 	// verifyrun ignores it and runs the first span.
 	ruleCmdMarkerNotHonoured = "cmd-marker-not-honoured"
+	// ruleCmdMarkerVacuous — #1808 review — the marked command cannot fail
+	// (`cmd: true`, `cmd: :`, `cmd: exit 0`), so the row passes whatever the
+	// tree holds.
+	ruleCmdMarkerVacuous = "cmd-marker-vacuous"
 )
+
+// vacuousCommands are marked commands that exit 0 without looking at anything.
+var vacuousCommands = map[string]bool{
+	"true": true, ":": true, "exit": true, "exit 0": true, "/bin/true": true, "/usr/bin/true": true,
+}
 
 // rowFindings applies every row rule to one Verify row's Command and Expect
 // cells. It is the single implementation: unfailableRowNotices formats its
@@ -1751,7 +1772,7 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 	// Judged on the CELL, before the lift, because the defect is in which span
 	// gets lifted — every rule below judges whatever the lift returned.
 	if first, why := proseLedCommandWhy(cmdCell); why != "" {
-		add(ruleProseLedCommand, "is a prose cell whose FIRST code span `%s` is %s, not a command — `statusgen verifyrun` executes the first code span of a Command cell, so it would run `%s` (typically exit 127, recorded could-not-run) and the check this row describes is never witnessed. Mark the real command with the explicit marker: write it as a code span starting `cmd:` (e.g. `cmd: cd tools/desk && go test ./pkg/ -count=1`), which verifyrun prefers over the first span — or make the Command cell exactly one code span and move the prose to Expect", first, why, first)
+		add(ruleProseLedCommand, "is a prose cell whose FIRST code span `%s` is %s, not a command — `statusgen verifyrun` executes the first code span of a Command cell, so verifyrun records the row could-not-run without executing `%s`, and the check this row describes is never witnessed. Mark the real command with the explicit marker: write it as a code span starting `cmd:` (e.g. `cmd: cd tools/desk && go test ./pkg/ -count=1`), which verifyrun prefers over the first span — or make the Command cell exactly one code span and move the prose to Expect. A row that names no command at all (a cold read, a human judgment) cannot be fixed with the marker; it stays could-not-run until it is re-authored with a command", first, why, first)
 	}
 	m := markedCommands(cmdCell)
 	if len(m) > 1 {
@@ -1759,6 +1780,9 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 	}
 	if first := markerOverridesCommandSpan(cmdCell); first != "" {
 		add(ruleCmdMarkerOverrides, "has a `cmd:` marker that REPLACES its first code span `%s`, which reads as a command itself — verifyrun runs `%s`, not the span a reader of the table sees first. The marker is for cells whose earlier spans are mentions (a function, a file, a label); make the marked span the first span, or move the other command out of this row", first, m[0])
+	}
+	if len(m) > 0 && vacuousCommands[strings.Join(strings.Fields(m[0]), " ")] {
+		add(ruleCmdMarkerVacuous, "marks `%s` as its command, which exits 0 without looking at anything — the row passes whatever the tree holds. Mark the command that performs the check", m[0])
 	}
 	if len(m) == 0 && rawMarkerPresent(cmdCell) {
 		add(ruleCmdMarkerNotHonoured, "carries a `cmd:` span that verifyrun does NOT honour, so the row runs its first code span instead: a marker counts only in a cell whose rendered text shows it as code — not between backslash-escaped backticks, and not in a cell whose prose carries a `<` or `[` (raw HTML, an HTML comment, a link or an image, each of which can hide text from the rendered table). Remove the escapes, or move the HTML/link out of the Command cell")

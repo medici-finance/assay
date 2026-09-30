@@ -275,8 +275,12 @@ The body MUST contain a `## Verify` section with an executable table:
   span whose content starts `cmd:`, e.g. `` `cmd: go test ./pkg/ -count=1` ``. A
   tool that executes Verify rows MUST prefer the first honoured `cmd:`-marked span
   over any other text in the cell; with no honoured marker, each tool keeps its
-  unmarked lift (the first code span, or the unwrapped cell). A cell SHOULD NOT carry
-  more than one marked span. (The marker is `cmd:`, not `run:`, because `run:` is a
+  unmarked lift (the first code span, or the unwrapped cell). An executor MAY decline
+  to run an unmarked first span that is a mention rather than a command (a file, an
+  identifier, a word ahead of the command span) and record the row could-not-run,
+  since running the mention measures nothing and can exit 0. A cell SHOULD NOT carry
+  more than one marked span, and a marked command SHOULD be able to fail (`true`,
+  `:` or `exit 0` passes whatever the tree holds). (The marker is `cmd:`, not `run:`, because `run:` is a
   CI workflow step key that Verify prose quotes; a quoted workflow line must never
   become the command.)
 - A marker is honoured only where the rendered brief shows it as code, so a reader of

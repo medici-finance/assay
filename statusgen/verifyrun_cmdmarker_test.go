@@ -33,6 +33,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 const proseLedRule = "prose-led-command"
@@ -209,15 +210,34 @@ func TestProseLedCommandLintReachesLintOutput(t *testing.T) {
 	if err := os.WriteFile(path, []byte(brief), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	s := &Stream{Name: "demo", Root: root, Dir: dir, Briefs: []Brief{{Num: "01", Status: "done"}}}
+	// An OPEN brief gets the per-row notice, naming the row.
+	open := &Stream{Name: "demo", Root: root, Dir: dir, Briefs: []Brief{{Num: "01", Status: "todo"}}}
 	var hit bool
-	for _, n := range unfailableRowNotices([]*Stream{s}) {
+	for _, n := range unfailableRowNotices([]*Stream{open}) {
 		if strings.Contains(n, "["+proseLedRule+"]") && strings.Contains(n, "Verify row 1") {
 			hit = true
 		}
 	}
 	if !hit {
-		t.Errorf("a prose-led row must surface as a [%s] NOTICE (closed briefs included), got %v", proseLedRule, unfailableRowNotices([]*Stream{s}))
+		t.Errorf("a prose-led row in an open brief must surface as a per-row [%s] NOTICE, got %v", proseLedRule, unfailableRowNotices([]*Stream{open}))
+	}
+	// A CLOSED brief is not rewritten, so its rows collapse into ONE summary
+	// line (the gotest-run-vacuous precedent) — counted, never silently dropped.
+	closed := &Stream{Name: "demo", Root: root, Dir: dir, Briefs: []Brief{{Num: "01", Status: "done"}}}
+	var summary, perRow int
+	for _, n := range unfailableRowNotices([]*Stream{closed}) {
+		if !strings.Contains(n, "["+proseLedRule+"]") {
+			continue
+		}
+		if strings.Contains(n, "Verify row 1") {
+			perRow++
+		}
+		if strings.Contains(n, "1 Verify row(s) in 1 closed brief(s)") {
+			summary++
+		}
+	}
+	if summary != 1 || perRow != 0 {
+		t.Errorf("a closed brief's prose-led rows must collapse into one summary [%s] NOTICE (summary=%d perRow=%d), got %v", proseLedRule, summary, perRow, unfailableRowNotices([]*Stream{closed}))
 	}
 }
 
@@ -481,5 +501,88 @@ func TestRowLintJudgesMarkedCommand(t *testing.T) {
 		if fs := rowFindings(c.cell, "exit 0"); !hasRule(fs, c.rule) {
 			t.Errorf("the marked command of %q must raise %s, got %+v", c.cell, c.rule, fs)
 		}
+	}
+}
+
+// TestProseLedRowNotExecuted — #1808 review A1: a prose-led row is recorded
+// could-not-run WITHOUT executing its first span. The fixture's mention is
+// `true`, which exits 0: executed, it would record a PASS for a check that
+// never ran (the `gh` shape — `gh` with no arguments also exits 0). The same
+// cell with the command marked runs the marked command.
+func TestProseLedRowNotExecuted(t *testing.T) {
+	rows := briefVerifyRows(verifyTable(
+		"| 1 | Check `true` first, then run `go test ./nonexistent -count=1` | exit 0 |",
+		"| 2 | Check `x` first, then `cmd: true` | exit 0 |",
+	))
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows, got %d", len(rows))
+	}
+	ws := runWitnesses(t.TempDir(), rows, "human:tester", "", "0000", "2026-09-30", 30*time.Second, false)
+	if len(ws) != 2 {
+		t.Fatalf("want 2 witnesses, got %d", len(ws))
+	}
+	if ws[0].State != stateCouldNotRun || ws[0].Exit != -1 || !strings.Contains(ws[0].Note, proseLedRule) {
+		t.Errorf("a prose-led row must be could-not-run, not executed, with a %s note; got state=%s exit=%d note=%q",
+			proseLedRule, ws[0].State, ws[0].Exit, ws[0].Note)
+	}
+	if ws[1].State != statePass || ws[1].Exit != 0 {
+		t.Errorf("the marked row must execute its marked command and pass; got state=%s exit=%d note=%q",
+			ws[1].State, ws[1].Exit, ws[1].Note)
+	}
+}
+
+// TestCmdMarkerVacuousLint — #1808 review A3: a marked command that cannot
+// fail passes whatever the tree holds; the lint NOTICEs it. A real command,
+// and an unmarked cell, do not raise it.
+func TestCmdMarkerVacuousLint(t *testing.T) {
+	for _, cell := range []string{
+		"`cmd: true`",
+		"In `Foo` change it, then `cmd: exit  0`",
+		"see `x.go`: `cmd::`",
+		"`cmd: /usr/bin/true`",
+	} {
+		if fs := rowFindings(cell, "exit 0"); !hasRule(fs, "cmd-marker-vacuous") {
+			t.Errorf("%q must raise cmd-marker-vacuous, got %+v", cell, fs)
+		}
+	}
+	for _, cell := range []string{
+		"`cmd: go test ./x -count=1`",
+		"`cmd: true && go test ./x -count=1`",
+		"`true`",
+	} {
+		if fs := rowFindings(cell, "exit 0"); hasRule(fs, "cmd-marker-vacuous") {
+			t.Errorf("%q must not raise cmd-marker-vacuous, got %+v", cell, fs)
+		}
+	}
+}
+
+// TestWitnessRowRoundTripsBacktickCommand — #1808 review A4: a marked command
+// that contains backticks is written into the witness row as ONE code span that
+// witnessCommandOf lifts back whole, so --check matches it to its row. A
+// command with no backtick keeps the single-backtick cell byte for byte.
+func TestWitnessRowRoundTripsBacktickCommand(t *testing.T) {
+	for _, cmd := range []string{
+		"echo `date` >/dev/null",
+		"echo ``a`` b",
+		"`date`",
+	} {
+		w := witness{ID: "1", Command: cmd, State: statePass, Exit: 0, OutHash: "0123456789ab",
+			Date: "2026-09-30", Runner: "human:alex", Tree: "0123456789ab"}
+		if got := witnessCommandOf(w.row()); got != cmd {
+			t.Errorf("witness row for %q lifts back %q; row: %s", cmd, got, w.row())
+		}
+	}
+	w := witness{ID: "1", Command: "go test ./x -count=1", State: statePass, Exit: 0, OutHash: "0123456789ab",
+		Date: "2026-09-30", Runner: "human:alex", Tree: "0123456789ab"}
+	if !strings.Contains(w.row(), "| `go test ./x -count=1` |") {
+		t.Errorf("a backtick-free command must keep the single-backtick cell, got %s", w.row())
+	}
+	// End to end: the double-fence marked row checks pass against its own witness.
+	verify := verifyTable("| 1 | the `Foo` path: ``cmd: echo `date` >/dev/null`` | exit 0 |")
+	rows := briefVerifyRows(verify)
+	w = witness{ID: "1", Command: rows[0].Command, State: statePass, Exit: 0, OutHash: "0123456789ab",
+		Date: "2026-09-30", Runner: "human:alex", Tree: "0123456789ab"}
+	if fs := checkWitnesses(verify, witnessHeader+"\n"+w.row()+"\n"); len(fs) != 1 || fs[0].State != statePass {
+		t.Errorf("a backtick-bearing marked row must check pass against its own witness, got %+v (row %s)", fs, w.row())
 	}
 }
