@@ -105,7 +105,12 @@ type Brief struct {
 	// roadmap top-blocker cell and health rules, DORA findings-per-group).
 	StaleRef string
 	Depends  []string // typed deps from brief-v1 frontmatter ("<stream>/<NN>"); nil for legacy
-	Schema   string   // "brief-v1" from frontmatter; "" for legacy (non-brief-v1)
+	// Unblocks is the typed `unblocks:` list from brief-v1 frontmatter, wired the
+	// same way as Depends; nil for legacy. It is read ONLY by the critical tier's
+	// reciprocated dependency graph (buildReciprocatedRevDeps): an edge A→B counts
+	// toward B's high-unblocks arm only when B lists A here. Never a score input.
+	Unblocks []string
+	Schema   string // "brief-v1" from frontmatter; "" for legacy (non-brief-v1)
 	// Gates are the brief-v2 `gates:` reserved edges, wired from BriefFile
 	// (graph-execution/01) for the eligibility evaluator (eligibility.go) — nil
 	// for a brief-v1/legacy brief. GATING: an unsatisfied or could-not-check
