@@ -98,6 +98,30 @@ single-point-of-failure: the flow-model parity test against the extracted oracle
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
+### Non-implementer verifier run — VERIFY: PASS on behaviour, held — 8/10 witness-clear, rows 9–10 held — 2026-09-30 claude-opus-5-5-verifier
+
+Runner is not the implementer. Isolated worktree at merged main `b89b3957225e227e69d5b5ec7949344f580d9966` (HEAD == the forge's `commits/main`, cross-checked), host darwin/arm64, go1.27.1, jq-1.8.2, statusgen v1.0.29; `deskinbox` built from main. Implementing change: #1684 (squash aefb94618), follow-up #1821. `gate: model`, all four risk answers `no`. Status stays `implemented`: row 10 is `check:ci` and its network-off witness cannot run on a darwin host (#1800); row 9's `--consumers` run on merged main corroborates nothing (#1281 class).
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/desk && go vet ./cmd/deskinbox/ && go test -count=1 ./cmd/deskinbox/` | exit 0 | PASS — exit 0; `ok github.com/medici-finance/assay/tools/desk/cmd/deskinbox 5.566s` | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | `cd tools/desk && go test -count=1 -run 'TestParityFlow' -v ./cmd/deskinbox/ \| grep -c -- '--- PASS'` | `>= 1` | PASS — exit 0, count = 8; both flow parity tests passed 3 subtests each, incl. the AT LEAST + could-not-check + n/a case; 0 SKIP. Mutation probe (CountPartial forced false, flow.go:784) turned both red; restored | 2026-09-30 | claude-opus-5-5-verifier |
+| 3 | `cd tools/desk && go test -count=1 -run 'TestParityHTML' ./cmd/deskinbox/` | PASS | PASS — exit 0; with -v both the html parity test and its login-shapes variant report `--- PASS` (not vacuous) | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | `deskinbox html /tmp/inbox-check.html medici-finance/assay && ! grep -q -e 'url(' -e '<script' -e ' src=' /tmp/inbox-check.html` | exit 0 | PASS — exit 0 (output path moved to a session scratch dir); `deskinbox: wrote 76 card(s)`; no `url(`, `<script`, ` src=` or `@import`; the only hrefs are the 76 issue links; Flow section present | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | `! grep -rn 'exec\.Command' tools/desk/cmd/deskinbox/*.go \| grep -v _test.go \| grep -qv -e statusgen -e deskboard` | exit 0 | PASS — exit 0. The one real site (flow.go:194) passes the grep via its trailing comment, so the code was checked directly: `resolveFlowBin` (flow.go:66) refuses any other base name — an `ASSAY_STATUSGEN` override naming `gh` gave rc=5, a Windows-style `gh.EXE` likewise | 2026-09-30 | claude-opus-5-5-verifier |
+| 6 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./cmd/deskinbox/` | exit 0 | PASS — exit 0; cross-compile only (no Windows host run) | 2026-09-30 | claude-opus-5-5-verifier |
+| 7 | `grep -c 'deskinbox' plugins/assay/commands/inbox.md plugins/assay/skills/ask-decision/SKILL.md` | `>=` windows-port/13's counts, strictly more | PASS — inbox.md 37, SKILL.md 10 (vs 11 / 5 at the windows-port/13 merge, 13 / 7 just before #1684); no "not yet ported" text remains | 2026-09-30 | claude-opus-5-5-verifier |
+| 8 | `deskinbox flow medici-finance/assay; echo rc=$?` and `bash plugins/assay/scripts/assay-inbox.sh --flow medici-finance/assay; echo rc=$?` | bottleneck line and per-stage counts agree | PASS — rc=0 / rc=0, run 45 s apart with the same readers; byte-identical apart from asOf and the program name. Both name bottleneck `todo` (1125 waiting / 8 slots = 140.62); stage counts intake 0, todo 106, in-progress 3, review n/a, implemented 83, verified 5, done 89; review is could-not-check in both (never 0) | 2026-09-30 | claude-opus-5-5-verifier |
+| 9 | `statusgen --root . --consumers windows-port/15; echo $?` | `0` | HELD (#1281) — exit 0 but `no brief files in the diff against b89b395… — nothing to corroborate`; at the implementing PR's base (`--base e70bc8647`) rc=2 could-not-check (#1684 did not touch the brief). The three consumer claims were checked by hand: html.go and flow.go exist; assay-inbox.sh untouched by #1684; inbox.md and ask-decision SKILL.md changed by #1684 | 2026-09-30 | claude-opus-5-5-verifier |
+| 10 | `statusgen --root . --lint` | `0` PROBLEMs | HELD (#1800) — check:ci network-off witness needs a Linux runner. Direct non-hermetic run (supporting only): exit 0, `LINT: PASS`, 0 PROBLEM lines; two NOTICEs on this brief (gotest-run-vacuous on rows 2 and 3, both cleared by the -v runs above) | 2026-09-30 | claude-opus-5-5-verifier |
+
+RISK-VALUE (enumerate → rank → derive; the diff touches the forgeban exec allowlist, so enumerated despite all-`no` risk):
+
+- RISK-VALUE: DERIVED — `resolveFlowBin` want = "statusgen" / "deskboard" @ tools/desk/cmd/deskinbox/flow.go:1094,1099 (html.go:170,175) — the brief names these two desk binaries as the flow model's only readers; refusing any other base name (`.exe` stripped, flow.go:95) keeps a forge CLI out of argv[0]; confirmed live (rc=5).
+- RISK-VALUE: DERIVED — `stagedefs` = [intake, todo, in-progress, review, implemented, verified, done] @ tools/desk/cmd/deskinbox/flow.go:465-473 — matches the oracle's stage list entry for entry.
+- RISK-VALUE: DERIVED — page mode `0o600` @ tools/desk/cmd/deskinbox/html.go:189 — owner-only for decision-queue content; the brief pins no value; reversible.
+
+Findings (no defect in scope): `deskinbox html` is documented as the no-bash fallback — `--walk`/`--html` stay on the bash oracle in inbox.md and ask-decision SKILL.md because the screen classifier (attention-budget/15) is not ported; row 5's grep passes on a comment and row 9 passes vacuously once merged (both checked independently above).
 
 ## Review
 Gate: **model**. Reviewer's questions: (1) does the flow-model port reproduce the

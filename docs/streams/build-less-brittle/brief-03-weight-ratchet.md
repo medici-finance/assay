@@ -132,24 +132,121 @@ Rows run from the root of `medici-finance/assay`. Row 3 is the mutation row requ
 brief that adds a check. It plants **50** refusals, more than any plausible slack between
 monthly tightenings.
 
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd tools/desk && go test ./internal/weight/ -count=1` | `ok` |
-| 2 | `cd tools/desk && go test ./internal/weight/ -run TestCountsFixture -count=1 -v` | `--- PASS: TestCountsFixture`; the log names `verbs=2 flags=3 refusals=4 ruletext=10` |
-| 3 | `cd tools/desk && awk 'BEGIN{print "package main"; print "import \"github.com/medici-finance/assay/tools/desk/internal/deskkit\""; for(i=0;i<50;i++) print "var _ = deskkit.Refused(\"weight mutation\")"}' > cmd/deskfile/zz_weight_mutation.go && go test ./internal/weight/ -run TestCeiling -count=1 -args -mode=blocking > /tmp/bl03-mut.out 2>&1; rc=$?; rm -f cmd/deskfile/zz_weight_mutation.go; test $rc -ne 0 && grep -c 'refusals: .* > ceiling' /tmp/bl03-mut.out` | `1` (red on planted growth in blocking mode, and it names the dimension) |
-| 3a | `cd tools/desk && awk 'BEGIN{print "package main"; print "import \"github.com/medici-finance/assay/tools/desk/internal/deskkit\""; for(i=0;i<50;i++) print "var _ = deskkit.Refused(\"weight mutation\")"}' > cmd/deskfile/zz_weight_mutation.go && go test ./internal/weight/ -run TestCeiling -count=1 -v > /tmp/bl03-adv.out 2>&1; rc=$?; rm -f cmd/deskfile/zz_weight_mutation.go; test $rc -eq 0 && grep -c 'GROWTH-NOTICE refusals:' /tmp/bl03-adv.out` | `1` (D-A: in the landing state the same growth is a notice and the test passes) |
-| 3b | `head -1 tools/desk/internal/weight/ceiling.txt` | `# mode: advisory` (the landing state; the promotion is a later recorded decision) |
-| 4 | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v \| grep -cE 'weight: verbs=[0-9]+ flags=[0-9]+ refusals=[0-9]+ ruletext=[0-9]+ golines=[0-9]+$'` | `1` |
-| 5 | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v -args -rev=f7bde6bfa \| grep -cE 'weight: verbs=[0-9]+ flags=[0-9]+ refusals=[0-9]+ ruletext=[0-9]+ golines=[0-9]+$'` | `1` (the counter re-applies to a revision that predates it, which a project's baseline and close-out need) |
-| 6 | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v -args -root="$(mktemp -d)" \| grep -c 'ruletext=could-not-check'` | `1` (three-state: an absent plugin tree is could-not-check, never 0) |
-| 7 | `v=$(for d in tools/desk/cmd/*/; do grep -lq '^package main' "$d"*.go 2>/dev/null && echo x; done \| wc -l \| tr -d ' '); cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v \| grep -c "weight: verbs=$v "` | `1` (dereference: the counter's verbs figure equals an independent shell count over the same tree) |
+| # | Class | Command | Expect |
+|---|-------|---------|--------|
+| 1 | check | `cd tools/desk && go test ./internal/weight/ -count=1` | `ok` |
+| 2 | check | `cd tools/desk && go test ./internal/weight/ -run TestCountsFixture -count=1 -v` | `--- PASS: TestCountsFixture`; the log names `verbs=2 flags=3 refusals=4 ruletext=10` |
+| 3 | check +mutation | `cd tools/desk && awk 'BEGIN{print "package main"; print "import \"github.com/medici-finance/assay/tools/desk/internal/deskkit\""; for(i=0;i<50;i++) print "var _ = deskkit.Refused(\"weight mutation\")"}' > cmd/deskfile/zz_weight_mutation.go && go test ./internal/weight/ -run TestCeiling -count=1 -args -mode=blocking > /tmp/bl03-mut.out 2>&1; rc=$?; rm -f cmd/deskfile/zz_weight_mutation.go; test $rc -ne 0 && grep -c 'refusals: .* > ceiling' /tmp/bl03-mut.out` | `1` (red on planted growth in blocking mode, and it names the dimension) |
+| 3a | check | `cd tools/desk && awk 'BEGIN{print "package main"; print "import \"github.com/medici-finance/assay/tools/desk/internal/deskkit\""; for(i=0;i<50;i++) print "var _ = deskkit.Refused(\"weight mutation\")"}' > cmd/deskfile/zz_weight_mutation.go && go test ./internal/weight/ -run TestCeiling -count=1 -v > /tmp/bl03-adv.out 2>&1; rc=$?; rm -f cmd/deskfile/zz_weight_mutation.go; test $rc -eq 0 && grep -c 'GROWTH-NOTICE refusals:' /tmp/bl03-adv.out` | `1` (D-A: in the landing state the same growth is a notice and the test passes) |
+| 3b | check | `head -1 tools/desk/internal/weight/ceiling.txt` | `# mode: advisory` (the landing state; the promotion is a later recorded decision) |
+| 4 | check | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v \| grep -cE 'weight: verbs=[0-9]+ flags=[0-9]+ refusals=[0-9]+ ruletext=[0-9]+ golines=[0-9]+$'` | `1` |
+| 5 | check | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v -args -rev=f7bde6bfa \| grep -cE 'weight: verbs=[0-9]+ flags=[0-9]+ refusals=[0-9]+ ruletext=[0-9]+ golines=[0-9]+$'` | `1` (the counter re-applies to a revision that predates it, which a project's baseline and close-out need) |
+| 6 | check | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v -args -root="$(mktemp -d)" \| grep -c 'ruletext=could-not-check'` | `1` (three-state: an absent plugin tree is could-not-check, never 0) |
+| 7 | check | `v=$(for d in tools/desk/cmd/*/; do grep -lq '^package main' "$d"*.go 2>/dev/null && echo x; done \| wc -l \| tr -d ' '); cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v \| grep -c "weight: verbs=$v "` | `1` (dereference: the counter's verbs figure equals an independent shell count over the same tree) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,
      output line(s) or hash, date, runner). "verified" requires a NON-implementer. -->
 
+Implemented on branch `feat/build-less-brittle-03`; code and landing values current at
+`72034484e`, after merging main at `8ad26beab` (merge commit `659681c42`).
+Deliverables: `tools/desk/internal/weight/weight.go` (new — `Count`, `Weight`, `Ceiling`/`ParseCeiling`,
+`Evaluate`/`DimensionResult`, `GrowthMessage`/`SlackMessage`/`PrintWeight`, `GrowthAnnotationAbove`),
+`tools/desk/internal/weight/weight_test.go` (new — `TestCountsFixture`, `TestCeilingRedOnGrowthFixture`,
+`TestCeiling`, `TestPrintWeight`, `TestGrowthAnnotationAbove` covering the "# grow" presence
+check the facts describe for a `-base` comparison, `TestCountRefusesSymlinkedFile`,
+`TestRuleTextListIncomplete`; test-only flags `-root`/`-rev`/`-mode`/`-base`),
+`tools/desk/internal/weight/ceiling.txt` (new, `# mode: advisory`, landing values below),
+`tools/desk/internal/weight/testdata/tree/**` (new fixture: 2 verbs, 3 flags — one `…Var` form —,
+4 refusals — one per constructor, one qualified —, 10 rule-text lines, plus the three named decoys),
+`changelog/build-less-brittle-03.md` (new).
+
+**Landing values** (the counter's own output over the merged tree): `weight: verbs=66 flags=370
+refusals=848 ruletext=6295` — written into `ceiling.txt` for the four ratcheted dimensions (golines
+is reported only). They were re-counted after merging main at `8ad26beab`, which added 2 flags,
+7 refusals and 112 rule-text lines; the first push's values (`flags=368 refusals=841
+ruletext=6183`, at `d1c130ce5`) predate that merge. Cross-checked against the brief's own
+f7bde6bfa facts: `TestPrintWeight -args -rev=f7bde6bfa` reports `verbs=65`, matching "65 `cmd/`
+directories exist at f7bde6bfa" exactly.
+
+**Fail-first.** This brief adds the check itself, so there is no prior red/green pair to restore; the
+required fail-first evidence is Verify row 3 below: with `ceiling.txt` unmodified and 50 extra
+`Refused(` calls planted, `TestCeiling -mode=blocking` exits non-zero and names `refusals: 898 >
+ceiling 848 (+50)`. Row 3a is the same mutation in the landing (advisory) mode, which logs the
+identical text prefixed `GROWTH-NOTICE` and exits zero — proving the D-A mode switch actually gates
+the outcome rather than being cosmetic.
+
+**`TestCeiling` shape (review finding F4).** Each ratcheted dimension runs as its own subtest. A
+could-not-check `ruletext` is an explicit `SKIP` with its reason, never a silent pass. When the
+plugin tree is present but a listed skill body is missing (a rename the fixed list was not updated
+for), blocking mode fails `TestCeiling/ruletext` instead of skipping; advisory mode still skips.
+
+**Scope note.** The facts section's Growth-approval paragraph describes a `-base`-revision comparison
+that requires a "# grow <dim> +<n> <url>" line above any dimension raised since that revision. Task
+step 4 does not name a `-base` flag and no Verify row exercises it, so it is not part of this brief's
+completeness bar — but the SPOF note asserts it as this test's behavior, so `TestCeiling` implements
+it as its `grow-annotation` subtest (skipped, and says so, when `-base` is omitted — true for every
+row below and for CI) and `weight.go` exposes the pure presence-check (`GrowthAnnotationAbove`) with
+its own unit test rather than leaving the SPOF note's claim unimplemented.
+
+**Witness table.** Written by `statusgen verifyrun --brief`, the Evidence write path; each Output
+cell is a digest of the row's output, not the output itself.
+
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./internal/weight/ -count=1` | pass exit=0 | sha256:a87ff370ce4f | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/weight/ -run TestCountsFixture -count=1 -v` | pass exit=0 | sha256:25650e32d16a | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && awk 'BEGIN{print "package main"; print "import \"github.com/medici-finance/assay/tools/desk/internal/deskkit\""; for(i=0;i<50;i++) print "var _ = deskkit.Refused(\"weight mutation\")"}' > cmd/deskfile/zz_weight_mutation.go && go test ./internal/weight/ -run TestCeiling -count=1 -args -mode=blocking > /tmp/bl03-mut.out 2>&1; rc=$?; rm -f cmd/deskfile/zz_weight_mutation.go; test $rc -ne 0 && grep -c 'refusals: .* > ceiling' /tmp/bl03-mut.out` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 3a | `cd tools/desk && awk 'BEGIN{print "package main"; print "import \"github.com/medici-finance/assay/tools/desk/internal/deskkit\""; for(i=0;i<50;i++) print "var _ = deskkit.Refused(\"weight mutation\")"}' > cmd/deskfile/zz_weight_mutation.go && go test ./internal/weight/ -run TestCeiling -count=1 -v > /tmp/bl03-adv.out 2>&1; rc=$?; rm -f cmd/deskfile/zz_weight_mutation.go; test $rc -eq 0 && grep -c 'GROWTH-NOTICE refusals:' /tmp/bl03-adv.out` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 3b | `head -1 tools/desk/internal/weight/ceiling.txt` | pass exit=0 | sha256:280c55048373 | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v \| grep -cE 'weight: verbs=[0-9]+ flags=[0-9]+ refusals=[0-9]+ ruletext=[0-9]+ golines=[0-9]+$'` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v -args -rev=f7bde6bfa \| grep -cE 'weight: verbs=[0-9]+ flags=[0-9]+ refusals=[0-9]+ ruletext=[0-9]+ golines=[0-9]+$'` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v -args -root="$(mktemp -d)" \| grep -c 'ruletext=could-not-check'` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `v=$(for d in tools/desk/cmd/*/; do grep -lq '^package main' "$d"*.go 2>/dev/null && echo x; done \| wc -l \| tr -d ' '); cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v \| grep -c "weight: verbs=$v "` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-worker-app[bot] @ 01694a03fc14 (on-behalf-of human:ian) (forge-identity) |
+
+### Verification — 2026-09-25 (assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian))
+
+Witness rows written by `statusgen verifyrun --brief` (built from this tree) at merged main 7aa3835d7f33, landed verbatim:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./internal/weight/ -count=1` | pass exit=0 | sha256:cde346682cf2 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/weight/ -run TestCountsFixture -count=1 -v` | pass exit=0 | sha256:3c84ea865876 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && awk 'BEGIN{print "package main"; print "import \"github.com/medici-finance/assay/tools/desk/internal/deskkit\""; for(i=0;i<50;i++) print "var _ = deskkit.Refused(\"weight mutation\")"}' > cmd/deskfile/zz_weight_mutation.go && go test ./internal/weight/ -run TestCeiling -count=1 -args -mode=blocking > /tmp/bl03-mut.out 2>&1; rc=$?; rm -f cmd/deskfile/zz_weight_mutation.go; test $rc -ne 0 && grep -c 'refusals: .* > ceiling' /tmp/bl03-mut.out` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 3a | `cd tools/desk && awk 'BEGIN{print "package main"; print "import \"github.com/medici-finance/assay/tools/desk/internal/deskkit\""; for(i=0;i<50;i++) print "var _ = deskkit.Refused(\"weight mutation\")"}' > cmd/deskfile/zz_weight_mutation.go && go test ./internal/weight/ -run TestCeiling -count=1 -v > /tmp/bl03-adv.out 2>&1; rc=$?; rm -f cmd/deskfile/zz_weight_mutation.go; test $rc -eq 0 && grep -c 'GROWTH-NOTICE refusals:' /tmp/bl03-adv.out` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 3b | `head -1 tools/desk/internal/weight/ceiling.txt` | pass exit=0 | sha256:280c55048373 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v \| grep -cE 'weight: verbs=[0-9]+ flags=[0-9]+ refusals=[0-9]+ ruletext=[0-9]+ golines=[0-9]+$'` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v -args -rev=f7bde6bfa \| grep -cE 'weight: verbs=[0-9]+ flags=[0-9]+ refusals=[0-9]+ ruletext=[0-9]+ golines=[0-9]+$'` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v -args -root="$(mktemp -d)" \| grep -c 'ruletext=could-not-check'` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `v=$(for d in tools/desk/cmd/*/; do grep -lq '^package main' "$d"*.go 2>/dev/null && echo x; done \| wc -l \| tr -d ' '); cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v \| grep -c "weight: verbs=$v "` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (on-behalf-of human:ian) (forge-identity) |
+
+Hand-written rows: the Expect cell of each row, checked against the real output of a direct re-run of the same command at 7aa3835d7f33 (the witness above records exit status and an output digest only). Every go test ran under a throwaway HOME.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | Verify row 1 command, re-run directly | ok | exit 0; "ok github.com/medici-finance/assay/tools/desk/internal/weight 3.649s" — PASS | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 2 | Verify row 2 command, re-run directly | --- PASS: TestCountsFixture; log names verbs=2 flags=3 refusals=4 ruletext=10 | exit 0; "weight_test.go:42: verbs=2 flags=3 refusals=4 ruletext=10 golines=50" then "--- PASS: TestCountsFixture" — PASS | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 3 | Verify row 3 command; the captured blocking-mode test output read back | 1, red in blocking mode naming the dimension | exit 0, stdout 1 (witness digest sha256:4355a46b19d3 is the digest of "1"); captured output: "--- FAIL: TestCeiling/refusals" and "refusals: 898 > ceiling 848 (+50). Reduce, or ..."; the same output also carries "--- FAIL: TestCeiling/ruletext" at +1, which predates the mutation (see the observation below). The refusals line appears only with the planted growth, so the row still tells the two cases apart. The planted file was removed afterwards and the worktree was clean — PASS | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 3a | Verify row 3a command; the captured advisory-mode test output read back | 1, notice and pass in advisory mode | exit 0, stdout 1; captured output: "GROWTH-NOTICE refusals: 898 > ceiling 848 (+50)" and "--- PASS: TestCeiling/refusals", "--- PASS: TestCeiling", "ok" — PASS | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 3b | Verify row 3b command | # mode: advisory | exit 0; "# mode: advisory" (witness digest sha256:280c55048373 is the digest of that line) — PASS | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 4 | Verify row 4 command; weight line read back | 1 | exit 0, stdout 1; line "weight: verbs=66 flags=370 refusals=848 ruletext=6296 golines=156614" — PASS | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 5 | Verify row 5 command; weight line read back | 1, the counter re-applies to a revision that predates it | exit 0, stdout 1; line "weight: verbs=65 flags=353 refusals=840 ruletext=6172 golines=153318"; verbs=65 matches the brief's own fact of 65 cmd directories at f7bde6bfa; flags and refusals sit within the brief's grep-proxy estimates (about 345 and about 845) — PASS | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 6 | Verify row 6 command; weight line read back | 1, absent plugin tree is could-not-check, never 0 | exit 0, stdout 1; line "weight: verbs=0 flags=0 refusals=0 ruletext=could-not-check golines=0" — PASS | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+| 7 | Verify row 7 command; independent shell count read back | 1, counter verbs equals an independent shell count | exit 0, stdout 1; shell count of cmd directories holding a package main file = 66, counter verbs=66 — PASS | 2026-09-25 | assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) (on-behalf-of human:ian) |
+
+Observation (no Verify row asserts it; not a fail). On merged main the counter reports ruletext=6296 against the landed ceiling of 6295, so TestCeiling already logs "GROWTH-NOTICE ruletext: 6296 > ceiling 6295 (+1)" in advisory mode, and blocking mode already fails on it: an unmutated "go test ./internal/weight/ -run TestCeiling -count=1 -args -mode=blocking" exits 1 with "--- FAIL: TestCeiling/ruletext" and "ruletext: 6296 > ceiling 6295 (+1)". Row 3's non-zero-exit half is therefore met on main without the mutation. Its refusals grep is what makes the row discriminate. The ceiling satisfies the brief's ground rule: the counter at the implementer's branch head 72034484e reports ruletext=6295. The extra line was already on main before the squash merge: the counter at the merge commit ba35739bd and at its parent both report 6296. This needs reconciling (a one-line ceiling edit with a grow line, or trimming a rule-text line) before any promotion to blocking mode.
+
+Risk-bearing values. The frontmatter carries risk metadata, all no, and the item is reversible, so the fail-safe trigger does not fire. The enumeration was still run over the literals this brief's diff introduces:
+- verbs = 66, flags = 370, refusals = 848, ruletext = 6295 @ tools/desk/internal/weight/ceiling.txt:10-13; mode = advisory @ tools/desk/internal/weight/ceiling.txt:1
+- refusal constructor set {Refused, RefusedWithCause, RefusedFinding} @ tools/desk/internal/weight/weight.go:366; flag selector set @ tools/desk/internal/weight/weight.go:305-306; rule-text file list @ tools/desk/internal/weight/weight.go:97-105 and the references directory @ tools/desk/internal/weight/weight.go:111
+- Rank: every entry is a reversible operational knob. A wrong value is fixed with a one-line edit and a merge, and advisory mode fails nothing. None needs derivation. The top entries are still derived below.
+
+RISK-VALUE: DERIVED — refusals = 848 @ tools/desk/internal/weight/ceiling.txt:12 (with verbs = 66, flags = 370 @ :10-11) — equals the counter's own output at the implementer's branch head 72034484e and on merged main 7aa3835d7f33 (both 66/370/848), as the brief's ground rule requires ("the initial ceiling equals the counter's output at your branch head")
+RISK-VALUE: DERIVED — ruletext = 6295 @ tools/desk/internal/weight/ceiling.txt:13 — equals the counter at branch head 72034484e (ground rule satisfied); merged main counts 6296 (+1, pre-existing on main at landing); see the observation above
+RISK-VALUE: DERIVED — mode = advisory @ tools/desk/internal/weight/ceiling.txt:1 — the landing state the driver ratified (D-A, spec section 10); promotion to blocking is a later recorded decision
+RISK-VALUE: DERIVED — refusal constructors {Refused, RefusedWithCause, RefusedFinding} @ tools/desk/internal/weight/weight.go:366 — exactly the three constructors defined at tools/desk/internal/deskkit/exitcodes.go:144,157,164, as the brief's facts name them
+
+VERIFY: PASS — 9/9 Verify rows pass (1, 2, 3, 3a, 3b, 4, 5, 6, 7), 0 could-not-check, 0 fail; non-implementer run at merged main 7aa3835d7f33.
 
 ## Review
 Gate: model (from frontmatter). The reviewer checks the fixture decoys actually exercise each

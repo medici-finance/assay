@@ -1,0 +1,11 @@
+# Drive: land the build-less-brittle waves so red builds stop stalling the
+# pipeline. Declared in session by the driver; the merge of this file is the
+# ratification.
+declared-by: human:ian
+starts: "2026-09-30"
+expires: "2026-10-14"
+intensity: push
+state: active
+why: land build-less-brittle so brittle builds stop stalling every lane
+items:
+  - stream: build-less-brittle

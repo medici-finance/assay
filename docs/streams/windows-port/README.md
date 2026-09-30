@@ -50,11 +50,13 @@ leg proves `statusgen --lint` exits 0 and a desk-verb smoke passes on Windows** 
 cannot be made native on Windows (a `bash`+`jq` SessionStart hook, say), the gap is
 **stated and triaged with a documented workaround**, never silently shipped broken.
 
-**The end state also has a USABILITY half, added by the driver's 2026-09-11 ask** (briefs 06-09).
-"Installable" is not the same claim as "installed in three commands", and the first was reached
-while the second was not: today an adopter on Windows, using Cursor as the harness and GitLab as
-the forge, follows roughly fifteen steps spread across PowerShell, Git-Bash/WSL and manual file
-copies. The target shape is the Claude Code marketplace path's equal:
+**The end state also has a USABILITY half, added by the driver's 2026-09-11 ask** (briefs 06-09,
+delivered). "Installable" is not the same claim as "installed in three commands" — the first was
+reached before the second. With briefs 06, 07 and 08 landed and brief 09 collapsing the adopter
+docs onto them, an adopter on Windows, using Cursor as the harness and GitLab as the forge, no
+longer has to follow the fifteen steps spread across PowerShell, Git-Bash/WSL and manual file
+copies as the *only* route — `docs/adopting-assay.md` § **Windows adopters** now documents this as
+the primary path:
 
 ```
 1.  powershell -File scripts/bootstrap-windows.ps1 -Tag vX.Y.Z
@@ -64,8 +66,17 @@ copies. The target shape is the Claude Code marketplace path's equal:
 
 No operator-supplied sha256 in (1) — it is resolved from the committed manifest, and the
 verify-or-refuse control is unchanged. No manual copy in (2) — Cursor's install mechanism IS file
-placement, so the tool does it. No Git-Bash prerequisite anywhere on the GitLab arm. The
-fifteen-step path survives as a complete manual appendix; it stops being the only route.
+placement, so the tool does it. No Git-Bash is needed to install or to provision the GitLab fleet
+(`deskfleet`, `windows-port/08`, a separate `gate: human` verb). Two items stay open, and the doc
+states both:
+- **Bulk PAT renewal still needs Git-Bash or WSL.** `tools/renew-fleet-gitlab-tokens.sh` is bash +
+  `glab` and has no native equivalent until `windows-port/16` ships `deskfleet renew`.
+- **Nothing in (1) places `deskinstall` itself on a clean host.** The bootstrap fetches only
+  `statusgen`, and `deskinstall` ships only inside the desk-tools tarball it downloads. Until #1693
+  closes that, the doc names two interim routes, so the sequence is three commands plus one step.
+
+The fifteen-step path survives complete, as a labelled manual appendix. It stops being the only
+route; it does not disappear.
 
 ## Scope — the ten units, and what each owns
 
@@ -195,13 +206,13 @@ it.
 | 06 | [Manifest-driven bootstrap — resolve tag + sha256 from the committed manifest, and write PATH](brief-06-manifest-driven-bootstrap.md) | 3 | M | done | 2026-09-15 assay-verifier (15/17 rows PASS + 1 satisfied-by-equivalent, 1 could-not-check apply-gated; risk-value DERIVED, independently re-derived sha256 against the real release asset) | 2026-09-15 assay-reviewer-app[bot] (approved PR #1140 @ 2feb7feff2cf267a7444369cff1305497b3a3f43) |
 | 07 | [deskinstall --harness cursor — place the skills/references tree and write the AGENTS.md bindings](brief-07-deskinstall-harness-cursor.md) | 3 | M | done | 2026-09-17 sonnet-5-verifier (16/16 PASS, fail-first + roster-dereference independently re-derived; risk-values DERIVED) | 2026-09-18 assay-reviewer-app[bot] (approved PR #1301 @ 2bd81462a7e030b265b429c3e8fe529fc4fcd8e3) |
 | 08 | [Go-native GitLab fleet provisioning — retire the bash+curl+jq script's Windows dependency](brief-08-go-native-gitlab-fleet-provisioning.md) | 1 | L | implemented | — | — |
-| 09 | [Three-command Windows install — widen the install skill's scope, collapse the walkthrough, correct the CI skew](brief-09-three-command-install-docs.md) | 4 | M | todo | — | — |
+| 09 | [Three-command Windows install — widen the install skill's scope, collapse the walkthrough, correct the CI skew](brief-09-three-command-install-docs.md) | 4 | M | done | 2026-09-30 assay-verifier-app[bot] @ 43420f7ecd74 (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1680 @ f9887cf7ffdb10e750e50bb026395448cb11580f) |
 | 10 | [Verify in the harness container: the supported execution-witness runner on Windows](brief-10-verify-in-container.md) | 3 | M | implemented | — | — |
 | 11 | [Portable desk-role pollers — inbound + PR monitors and the tick emitter as Go verbs; scanloop arms a binary, not /bin/bash](brief-11-portable-desk-pollers.md) | 4 | L | implemented | — | — |
 | 12 | [De-POSIX the desk-role skill prose, and close the two needs-port constants the install brief left behind](brief-12-deposix-skill-prose-and-constants.md) | 4 | S | implemented | — | — |
 | 13 | [assay-inbox.sh → a Go `deskinbox` verb — table + walk (the inbox engine's shared core; html + flow split to windows-port/15)](brief-13-inbox-verb-port.md) | 4 | M | implemented | — | — |
 | 14 | [The Windows CI leg proves the desk-role runtime paths — pollers, tick, inbox, hooks — and retires the bash oracles it can](brief-14-windows-leg-proves-desk-role-paths.md) | 6 | M | todo | — | — |
-| 15 | [deskinbox html + flow — the self-contained page renderer and the pipeline-flow model (split from windows-port/13)](brief-15-inbox-html-flow-port.md) | 5 | L | todo | — | — |
+| 15 | [deskinbox html + flow — the self-contained page renderer and the pipeline-flow model (split from windows-port/13)](brief-15-inbox-html-flow-port.md) | 5 | L | implemented | — | — |
 | 16 | [deskfleet renew + the Go-owned fleet tables — port the GitLab PAT renewal, single-source the role table in Go](brief-16-deskfleet-renew-and-the-go-owned-fleet-tables.md) | 2 | L | todo | — | — |
 | 17 | [Go-only GitLab fleet — prove deskfleet live, then retire the bash fleet scripts and every doc that names them](brief-17-retire-the-bash-gitlab-fleet-scripts.md) | 5 | M | todo | — | — |
 <!-- statusgen:briefs:end -->

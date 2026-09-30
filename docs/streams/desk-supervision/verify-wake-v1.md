@@ -19,14 +19,19 @@ their existing buckets.
 
 ## Where it lives
 
-A receipt is an **optional, versioned extension of the existing append-only verify-outcomes
-sidecar row** (`docs/streams/verify-outcomes.jsonl`), not a second lifecycle database. Its first
-four keys are exactly the legacy row (`ts`, `brief`, `outcome`, `sha`), so:
+A receipt is an **optional, versioned extension of the verify-outcome record** — since #882
+(desk-supervision/24) one NEW file per outcome under `docs/streams/verify-outcomes/<stream>/`,
+named by `RecordName(content)`; before that, one appended line in the shared
+`docs/streams/verify-outcomes.jsonl` (still read, unioned in, for as long as that log is not yet
+retired — see desk-supervision/24's Task step 8). Either shape's content is exactly the legacy row
+(`ts`, `brief`, `outcome`, `sha`) plus these additive keys, so:
 
 - an older reader that knows only those four keeps working, ignoring the additive fields;
-- a legacy row (no `wake_schema`) parses as an **incomplete** receipt and stays visibly
+- a legacy record (no `wake_schema`) parses as an **incomplete** receipt and stays visibly
   unclassified — never a fabricated hold;
-- the additive keys never invalidate or shrink an existing row (the sidecar stays append-only).
+- the additive keys never invalidate or shrink an existing record: records are IMMUTABLE (a
+  correction is a NEW record — a fresh `ts`/digest — never an edit of an existing one), and the
+  legacy log they replace stayed append-only for the same reason.
 
 ## Fields (`wake_schema: "verify-wake-v1"`)
 
@@ -37,7 +42,7 @@ four keys are exactly the legacy row (`ts`, `brief`, `outcome`, `sha`), so:
 | `verifier` | the TRUSTED-WRITER identity (the engine's RunnerID / signed verdict principal), never a free-text assertion |
 | `outcome` | observed outcome (`verify-fail` / `blocked` / …) |
 | `rows` | the Verify-row numbers this receipt holds (empty = the whole brief) |
-| `inputs` | declared input scope: `input-key -> revision observed at receipt time` |
+| `inputs` | declared input scope: `input-key -> revision`. For a brief file's own `file:<path>` key this is the revision AS IT LANDS — the copy on the target branch at write time, which already carries this landing's own Evidence append (the writer reads it from the forge and refuses a mismatch; #882 Task step 3(c)) — never the pre-Evidence copy hashed at wake-evaluation time. For every other declared deliverable, the revision observed at receipt time |
 | `tool_version` | applicable tool version at receipt time |
 | `blocker_kind` | one of the closed set below |
 | `blocker_ref` | issue/PR/action the blocker points at |
@@ -80,15 +85,15 @@ could-not-check until an authorized online reader supplies it).
 
 Invariants the tests pin (`tools/desk/cmd/verifyloop/wake_test.go`, `tools/desk/internal/deskkit/verifywake_test.go`):
 
-- An unchanged receipt stays a WAIT across a process restart (the receipt lives in the sidecar;
+- An unchanged receipt stays a WAIT across a process restart (the receipt lives in the record;
   the classifier is stateless).
 - An **unrelated** commit does not wake work when the declared inputs are known unchanged; an
   **incomplete input scope cannot establish unchangedness**, so it refuses to claim a hold.
 - A **partial** hold lets a newly-runnable row dispatch while the held rows are recorded as
   explicitly unrun — and **no partial result closes the whole brief** (Land flips only on a
   whole-brief PASS).
-- A duplicate `receipt_id` (the latest row per brief wins in the append-only log) does not create
-  another event.
+- A duplicate `receipt_id` (the latest record per brief wins — the newest `ts`, never file or
+  line position) does not create another event.
 
 ## Migration
 

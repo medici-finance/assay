@@ -67,6 +67,12 @@ var reservedRegisterNames = map[string]bool{
 	requirementsDirName: true,
 	decisionsDirName:    true,
 	deploysDirName:      true,
+	// verify-outcomes (#882): one file per verify outcome, per-stream subdirectory — a
+	// register of per-brief records, not a stream board (no README brief-status table, no
+	// waves). Its own README additionally self-declares "register, not a stream" per
+	// spec/registers-v1.md §7, so an adopter tree that has not yet re-pinned this literal
+	// name still skips it via that declaration.
+	"verify-outcomes": true,
 }
 
 // selfDeclaredRegisterRe matches the canonical self-declaration a register's

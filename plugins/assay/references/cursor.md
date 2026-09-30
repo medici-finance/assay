@@ -11,18 +11,12 @@ enforces it).
 ## Install — copy, do not marketplace
 
 Cursor has **no** `/plugin marketplace add` / `/plugin install` path. That is Claude Code.
-
-1. Copy `plugins/assay/skills/*` into the adopter repo at `.cursor/skills/` or
-   `.agents/skills/`.
-2. Copy `plugins/assay/references/*.md` next to that tree so skill includes of
-   `../../references/*.md` resolve. Skills-only copies leave those links dead.
-3. Resident rules arrive through `AGENTS.md` and/or `.cursor/rules/*.mdc`. Assay's
-   Claude `SessionStart` hooks do **not** run here.
-4. Desk binaries on `PATH`. GitHub desks use `gh`. GitLab desks use `glab` /
-   `--forge gitlab`. Skill examples that say `gh` are GitHub-shaped; they are not a
-   Cursor requirement and they are wrong on GitLab.
-5. `harnessgen cursor` output is optional. If `plugins/assay/cursor/` is absent from
-   the tree, the copy path above still stands.
+The authoritative install steps — the one-command `deskinstall --harness cursor` (`windows-port/07`)
+and the five manual steps it automates — live in
+[`docs/adopting-assay.md`](../../../docs/adopting-assay.md) § **Running Assay on Cursor**
+(`windows-port/09`); this file does not carry a second copy. In short: copy skills + references as
+siblings, bindings arrive via `AGENTS.md`/`.cursor/rules`, desk binaries go on `PATH`, and
+`harnessgen cursor` output is optional.
 
 The in-editor agent is a supported install surface. Headless `cursor-agent` is the
 smoke/automation surface (HP/13); blocked live smoke does not mean "do not copy skills."
