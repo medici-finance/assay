@@ -71,7 +71,7 @@ _Held by per-stream caps: 5 brief(s) across 2 stream(s) — top: desktools-v2. B
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 9044786 2026-10-01T02:26:35+10:00_
+_last regen: 91fcc5a 2026-09-30T22:28:18Z_
 
 **Progress:** 4/13 brief items done.
 
@@ -94,9 +94,9 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 9044786 2026-10-01T02:26:35+10:00_
+_last regen: 91fcc5a 2026-09-30T22:28:18Z_
 
-**Progress:** 9/31 brief items done.
+**Progress:** 10/31 brief items done.
 
 **In-flight:**
 
@@ -110,7 +110,6 @@ _none_
 - windows-port/03
 - windows-port/08
 - windows-port/10
-- windows-port/11
 - windows-port/12
 - windows-port/13
 - windows-port/15
@@ -130,14 +129,14 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (48 desk-actionable of 84 total — 84 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (49 desk-actionable of 84 total — 82 at implemented, 2 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (48)
+### Desk-actionable (49)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -159,7 +158,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-go-git | 02 | implemented | 2500 | 3 | — | 2026-09-11 opus-5[1m]-verifier | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | desk-supervision | 13 [exec:strong] | implemented | 2000 | 2 | — | — | — |
-| desk-supervision | 16 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| desk-supervision | 16 [exec:strong] | verified | 2000 | 2 | — | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | — |
 | desk-supervision | 24 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | forge-neutral | 14 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | — | — |
@@ -172,6 +171,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 13 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| windows-port | 11 [exec:strong] | verified | 1500 | 1 | — | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | — |
 | windows-port | 12 | implemented | 1500 | 1 | — | — | — |
 | windows-port | 15 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -207,7 +207,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | windows-port | 08 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting implementer rework (24)
+### Awaiting implementer rework (23)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -221,7 +221,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | windows-port | 13 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | composability | 01 | implemented | 1500 | 1 | — | — | — |
-| windows-port | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -349,7 +348,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 13 Worker-operations vitals — the self-report resource block — implemented (wave 2)
 - 14 Budget-driven recycle — retire a healthy worker before it degrades — todo (wave 3)
 - 15 Local supervisor host + multi-cell vitals aggregation — todo (wave 4)
-- 16 Verification wake conditions — stop repeating unchanged blocked checks — implemented (wave 0)
+- 16 Verification wake conditions — stop repeating unchanged blocked checks — verified (wave 0)
 - 17 Verification failures create durable worker repair obligations — implemented (wave 1)
 - 18 Enforce repair reservations at worker dispatch — implemented (wave 2)
 - 19 Persist review findings and apply the existing round cap across sessions — implemented (wave 0)
@@ -521,7 +520,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 03 Windows install path — PowerShell-vs-Go-installer fork, then build — implemented (wave 2)
 - 08 Go-native GitLab fleet provisioning — retire the bash+curl+jq script's Windows dependency — implemented (wave 1)
 - 10 Verify in the harness container: the supported execution-witness runner on Windows — implemented (wave 3)
-- 11 Portable desk-role pollers — inbound + PR monitors and the tick emitter as Go verbs; scanloop arms a binary, not /bin/bash — implemented (wave 4)
+- 11 Portable desk-role pollers — inbound + PR monitors and the tick emitter as Go verbs; scanloop arms a binary, not /bin/bash — verified (wave 4)
 - 12 De-POSIX the desk-role skill prose, and close the two needs-port constants the install brief left behind — implemented (wave 4)
 - 13 assay-inbox.sh → a Go `deskinbox` verb — table + walk (the inbox engine's shared core; html + flow split to windows-port/15) — implemented (wave 4)
 - 14 The Windows CI leg proves the desk-role runtime paths — pollers, tick, inbox, hooks — and retires the bash oracles it can — todo (wave 6)
