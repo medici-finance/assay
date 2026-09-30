@@ -189,6 +189,37 @@ type NextUp struct {
 	// on the board and as a --lint NOTICE, never a silent "main is green".
 	MainHealth     string
 	MainRedUnknown string
+	// Worker-pool floor (phase 3, driveWorkerCap). Set ONLY when a drive is active;
+	// all zero otherwise, so a no-drive dispatch queue is unchanged. The floor does
+	// not reshape the STATUS.md board (board slots are driveSlotCap's job) — it
+	// bounds what the `--next-up` dispatch queue offers (buildDispatchView).
+	//
+	// DriveWorkerCap is the floor in effect (driveWorkerCap). DriveInFlight counts
+	// the claimed items an active drive covers. DriveWorkerUnknown is the
+	// could-not-check state: claim filtering did not run, so in-flight drive work is
+	// unknowable and NO drive pick is offered for dispatch (fail closed, named) —
+	// the same call SerializedUnknown makes for a declared max-concurrent.
+	DriveWorkerCap     int
+	DriveInFlight      int
+	DriveWorkerUnknown string
+}
+
+// driveWorkerHeadroom is how many drive picks the worker floor lets the dispatch
+// queue offer: driveWorkerCap minus the drive work already in flight, never
+// negative, and 0 in the could-not-check state. ok is false when no drive is
+// active (the floor does not apply at all).
+func (n NextUp) driveWorkerHeadroom() (headroom int, ok bool) {
+	if n.DriveWorkerCap <= 0 {
+		return 0, false
+	}
+	if n.DriveWorkerUnknown != "" {
+		return 0, true
+	}
+	h := n.DriveWorkerCap - n.DriveInFlight
+	if h < 0 {
+		h = 0
+	}
+	return h, true
 }
 
 // Overflow reports whether the eligible backlog exceeds the overflow threshold —
@@ -304,6 +335,71 @@ func buildRevDeps(streams []*Stream) (rev map[string][]string, status map[string
 		}
 	}
 	return rev, status
+}
+
+// reciprocatedRevDeps is the reverse dependency graph the critical tier's
+// high-unblocks arm reads. It is a DISTINCT TYPE from the score's (rev, status)
+// pair on purpose: criticalTierArm takes this type, not an int, so a caller cannot
+// hand the arm a count walked over one-sided edges. The only constructor is
+// buildReciprocatedRevDeps; TestReciprocatedRevDepsSingleConstructor pins that no
+// other non-test site builds one.
+type reciprocatedRevDeps struct {
+	recipRev    map[string][]string
+	recipStatus map[string]string
+}
+
+// buildReciprocatedRevDeps builds the reverse typed-`depends:` graph keeping ONLY
+// reciprocated edges: A→B (A declares `depends: B`) enters rev[B] only when B also
+// declares `unblocks: A`. It feeds the critical tier's high-unblocks arm, which sits
+// ABOVE every score — so the count that lifts a brief there must not be reachable
+// on edges one endpoint manufactured alone.
+//
+// Why the arm and not the score. The reciprocity lint is a NOTICE (the maintainer's
+// ruling: ~104 legitimate older one-sided edges predate the two-sided convention),
+// so the score's blockedCount keeps counting every declared edge — reweighting the
+// whole board over those edges is a separate call. The tier is different: it
+// reorders above everything, so the count it reads walks only both-sided edges —
+// never a one-sided edge that one endpoint wrote alone. Both-sided is not the same
+// as genuine: both endpoints are PR-writable frontmatter, so one change that writes
+// a brief's `unblocks:` AND its dependents' `depends:` still lifts it. That
+// residual is named for the driver's ratification, not closed here. A legacy
+// target declares no unblocks, so it never reaches the arm through this graph —
+// the fail-safe direction for a tier that outranks every score.
+func buildReciprocatedRevDeps(streams []*Stream) reciprocatedRevDeps {
+	unblocks := map[string]map[string]bool{}
+	status := map[string]string{}
+	for _, s := range streams {
+		for _, b := range s.Briefs {
+			id := s.Name + "/" + b.Num
+			status[id] = b.Status
+			if len(b.Unblocks) == 0 {
+				continue
+			}
+			set := map[string]bool{}
+			for _, u := range b.Unblocks {
+				set[u] = true
+			}
+			unblocks[id] = set
+		}
+	}
+	rev := map[string][]string{}
+	for _, s := range streams {
+		for _, b := range s.Briefs {
+			id := s.Name + "/" + b.Num
+			for _, dep := range b.Depends {
+				if dep == id || !unblocks[dep][id] {
+					continue // self-loop, or one-sided: the target does not reciprocate
+				}
+				rev[dep] = append(rev[dep], id)
+			}
+		}
+	}
+	return reciprocatedRevDeps{recipRev: rev, recipStatus: status}
+}
+
+// count is blockedCount over the reciprocated graph only.
+func (g reciprocatedRevDeps) count(target string) int {
+	return blockedCount(g.recipRev, g.recipStatus, target)
 }
 
 // blockedCount is the held-up-by term: the number of
@@ -668,6 +764,13 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 		}
 	}
 	rev, status := buildRevDeps(streams)
+	// The critical tier's high-unblocks arm reads the RECIPROCATED graph, never the
+	// score's (see buildReciprocatedRevDeps). Built only when a drive is active —
+	// the only time the tier is applied — so a no-drive run does no extra work.
+	var recip reciprocatedRevDeps
+	if activeDriveSet.applied() {
+		recip = buildReciprocatedRevDeps(streams)
+	}
 	// ageDays returns the capped staleness (in days) for one brief, measured from
 	// its own last transition when the historian knows it, else the stream touch.
 	ageDays := func(s *Stream, b Brief) int {
@@ -743,7 +846,7 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 			// and stamped labels only; which of those an ordinary PR can write is the
 			// RESIDUAL named in drivecritical.go.
 			if activeDriveSet.applied() {
-				if arm := criticalTierArm(b, s.Name, bc, activeFindings); arm != "" {
+				if arm := criticalTierArm(b, s.Name, recip, activeFindings); arm != "" {
 					p.CriticalTier = true
 					p.CriticalArm = arm
 				}
@@ -895,6 +998,18 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 		picks = append(picks, p)
 	}
 	nu.Picks = picks
+	// Worker-pool floor inputs (phase 3). Recorded only with an active drive; the
+	// dispatch view applies them (buildDispatchView), so the board picks above are
+	// untouched and a no-drive run carries none of them.
+	if activeDriveSet.applied() {
+		nu.DriveWorkerCap = driveWorkerCap
+		if claims.Source.Known {
+			nu.DriveInFlight = activeDriveSet.driveInFlight(claimed)
+		} else {
+			nu.DriveWorkerUnknown = "claim filtering did not run (" + claims.Source.reason() +
+				") — in-flight drive work cannot be counted, so no drive pick is offered for dispatch"
+		}
+	}
 	if activeDriveSet.applied() {
 		nu.MainHealth = activeMainHealth.String()
 		if !activeMainHealth.known() {
