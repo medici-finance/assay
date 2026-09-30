@@ -386,6 +386,84 @@ RISK-VALUE: DERIVED — LockFileEx / UnlockFileEx range = (0, 1, 0, zero Overlap
 RISK-VALUE: DERIVED — flags = LOCKFILE_EXCLUSIVE_LOCK|LOCKFILE_FAIL_IMMEDIATELY @ tools/desk/internal/deskkit/filelock_windows.go:28, ERROR_LOCK_VIOLATION → ErrLockBusy @ :34-35 — mirrors LOCK_EX|LOCK_NB and EWOULDBLOCK → ErrLockBusy @ filelock_unix.go:26/:30; busy is refused, other errors return raw, so the lock fails closed.
 
 Findings: (F1) #1651 is resolved by #1656 (a0b3c5218): the pinned range is the real 20-file implementing diff and every planted-defect variant fails. (F2, the FAIL) row 8's anchor predates `_unix_test.go` files; the use is build-constrained, so this is a stale row, not a surviving syscall — routed to #1454. (F3) seven rows still witness as could-not-run until #1805 is fixed for this brief. (F4) row 7 flakes under load on #612. (F5) the 0o022 mode check is unix-only on main; Windows enforces owner SID + DACL instead (#640/#641, #667), which row 10 asserts.
+### Verification — 2026-10-01 (assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian)) — VERIFY: PASS, 16/16
+
+**What moved since the last run (2026-09-30, VERIFY: FAIL on row 8 only):** row 8 and row 2 were re-authored by #1880 (aaec59245, an ancestor of this tree). Row 8's exclusion now also drops the `_unix_test.go` / `_windows_test.go` forms. Row 2 now also requires an explicit build constraint on every `_unix_test.go` file, so the wider exclusion cannot hide an unconstrained file. The build-constrained cellctl policy-hang unix test file that reddened row 8 on 09-25 and 09-30 is now excluded, and row 2 proves it carries `//go:build unix`. No change to the deliverable code since the last run.
+
+Runner is not the implementer. Detached worktree cut from refs/remotes/origin/main at merged main b7ca79ab798de5f2faa5861818e72fdb38616386, not shallow. Offline envelope (KUBECONFIG=/dev/null). go1.27.1 darwin/arm64 host. gate: model, all four risk answers `no`. No row is check:ci and no row needs native Windows. `statusgen verifyrun` was not used this pass. Its prose-span extraction defect (#1805) still makes rows 2, 6, 7, 8, 10, 13 and 15 could-not-run under the witness, so every row below was run directly, verbatim.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `for f in statusgen/procgroup statusgen/rosterowner tools/desk/internal/deskkit/filelock tools/desk/internal/deskkit/rosterowner; do test -f "${f}_unix.go" && test -f "${f}_windows.go" \|\| { echo "MISSING pair $f"; exit 1; }; done; echo OK` | OK | PASS — exit 0; `OK` | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 2 | `for f in $(find statusgen tools/desk -name '*_unix.go' -o -name '*_unix_test.go'); do head -5 "$f" \| grep -qE -e '^//go:build unix' -e '^//go:build !windows' \|\| { echo "NO CONSTRAINT $f"; exit 1; }; done; echo OK` | OK | PASS — exit 0; `OK` over 15 files (the find matched 15 `_unix.go` / `_unix_test.go` files, the cellctl policy-hang unix test file among them) | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 3 | `cd statusgen && GOOS=windows GOARCH=amd64 go build -o /tmp/wp00-sg-amd64.exe . && GOOS=windows GOARCH=arm64 go build -o /tmp/wp00-sg-arm64.exe . && file /tmp/wp00-sg-amd64.exe /tmp/wp00-sg-arm64.exe` | exit 0; each line PE32 + MS Windows | PASS — exit 0; `PE32+ executable (console) x86-64, for MS Windows` and `PE32+ executable (console) Aarch64, for MS Windows` | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 4 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build -o /tmp/wp00-dt-amd64.exe ./cmd/deskpost && GOOS=windows GOARCH=arm64 go build -o /tmp/wp00-dt-arm64.exe ./cmd/deskpost && file /tmp/wp00-dt-amd64.exe /tmp/wp00-dt-arm64.exe` | exit 0; each line PE32 + MS Windows | PASS — exit 0; `PE32+ executable (console) x86-64, for MS Windows` and `PE32+ executable (console) Aarch64, for MS Windows` | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 5 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./...; echo $?` | 0 | PASS — `0`, no compiler output | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 6 | `cd statusgen && GOOS=windows GOARCH=amd64 go vet ./...; echo "sg=$?"; cd ../tools/desk && GOOS=windows GOARCH=amd64 go vet ./...; echo "dt=$?"` | sg=0 and dt=0 | PASS — `sg=0` then `dt=0`, no vet findings | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 7 | row 7 command verbatim. Exact text is in block R7 below; it is kept out of this cell because its quoted -skip pattern contains an alternation pipe | sg=0 and dt=0 | PASS, first run — `ok` for statusgen (43.8s) and `sg=0`. deskkit, deskkit/untrustcorpus, loopengine, deskpost, deskpost/internal/bodycheck, deskevidence and deskrelease all `ok`, and `dt=0`. The loopengine TestDrain flake (#612) did not recur. The `-v -count=1` re-run (block R7v) also gives sg=0 and dt=0, with 0 FAIL lines. Every split-relevant test ran and passed, none skipped: the claim, lineage and write-flow lock tests; the roster owner, ACL and custody tests; and the ListRemoteBranches timeout and process-tree kill tests. The 21 SKIP lines all come from fixture-absent or env-gated tests that do not touch this brief's split (workflow, skills, go.work and leak-token fixtures absent from this repo's published file set; live-census, statusgen-binary and drift-register env vars unset). They are listed as could-not-check for themselves, not for this row | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 8 | `grep -rn --include='*.go' -E 'syscall\.(Flock\|Kill\|Stat_t\|SysProcAttr\{Setpgid)' statusgen tools/desk \| grep -Ev -e '_unix(_test)?\.go:' -e '_windows(_test)?\.go:' \| grep -Ev -e ':[0-9]+:[[:space:]]*//' -e ':[0-9]+:[[:space:]]*\*' ; echo "rc=$?"` | rc=1, no lines | PASS — `rc=1`, no lines printed. The unfiltered grep lists 12 hits, all in `_unix.go`, `_unix_test.go` or `_windows.go` files (the last is a comment line). Row 2 proves every unix one is build-constrained | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 9 | `grep -rn --include='*.go' -E 'syscall\.(Flock\|Kill\|Stat_t\|SysProcAttr\{Setpgid)' statusgen tools/desk \| grep -c '_unix\.go:'` | >= 4 | PASS — `9` | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 10 | `for f in statusgen/rosterowner_windows.go tools/desk/internal/deskkit/rosterowner_windows.go; do grep -qF 'GetNamedSecurityInfo' "$f" && grep -qF 'evaluateRosterACL' "$f" && grep -qF 'S-1-1-0' "$f" \|\| { echo "MISSING acl-enforcement in $f"; exit 1; }; done; echo "wired=OK"; (cd statusgen && go test ./... -run '^TestEvaluateRosterACL$' -count=1 >/dev/null && echo "sg-test=OK"); (cd tools/desk && go test ./internal/deskkit/... -run '^TestEvaluateRosterACL$' -count=1 >/dev/null && echo "dt-test=OK")` | wired=OK, sg-test=OK, dt-test=OK | PASS — `wired=OK`, `sg-test=OK`, `dt-test=OK`. The `-v` re-run shows 11 PASS lines per module (the parent plus 10 subtests), 0 SKIP and 0 FAIL | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 11 | `grep -qiE -e 'grandchild' -e 'process group' -e 'orphan' statusgen/procgroup_windows.go; echo $?` | 0 | PASS — `0` | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 12 | `grep -qF 'ErrLockBusy' tools/desk/internal/deskkit/filelock_windows.go; echo $?` | 0 | PASS — `0` | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 13 | `M=ca92fda79eb28afa72129578196fcf640c56053e && BASE=$(git merge-base "$M^1" "$M^2") && ! git diff --quiet "$BASE" "$M^2" && git diff --quiet "$BASE" "$M^2" -- tools/desk/cmd/deskwt/prune.go` | exit 0 | PASS — exit 0, no output. BASE resolved to 310ef7087121b7487e5c1b5f7e7864f442b31d02 (the brief's stated branch base) | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 14 | `M=ca92fda79eb28afa72129578196fcf640c56053e && BASE=$(git merge-base "$M^1" "$M^2") && ! git diff --quiet "$BASE" "$M^2" -- tools/desk/go.mod && git diff --quiet "$BASE" "$M^2" -- tools/desk/go.sum statusgen/go.mod statusgen/go.sum` | exit 0 | PASS — exit 0, no output | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 14a | `grep -c 'golang.org/x/sys v0.46.0' tools/desk/go.mod` | 1 | PASS — `1` | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 15 | `M=ca92fda79eb28afa72129578196fcf640c56053e && BASE=$(git merge-base "$M^1" "$M^2") && C=$(git diff --name-only "$BASE" "$M^2") && test -n "$C" && P=$(awk '/^---$/{n++;next} n==1&&/^consumers:/{f=1;next} f&&/^[^ ]/{f=0} f&&/: fixed-here/' docs/streams/windows-port/brief-00-unix-windows-build-tag-split.md \| sed -e 's/^ *- "//' -e 's/: fixed-here.*//' \| tr ',' '\n' \| tr -d ' ') && test "$(printf '%s\n' "$P" \| grep -c .)" -eq 9 && (for p in $(printf '%s\n' "$P"); do printf '%s\n' "$C" \| grep -qxF "$p" \|\| { echo "NOT IN DIFF $p"; exit 1; }; done) && ! printf '%s\n' "$C" \| grep -qxF docs/streams/windows-port/brief-02-portability-audit.md && grep -qE '^depends:.*"windows-port/00"' docs/streams/windows-port/brief-01-release-build-matrix.md` | exit 0 | PASS — exit 0, no output. The frontmatter extraction yielded exactly the 9 fixed-here paths: statusgen gitinfo.go and rosterconfig.go, deskkit claim.go and rosterconfig.go, loopengine lineagelock.go, the three writeflow.go files, and tools/desk go.mod | 2026-10-01 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+
+**Block R7: row 7's exact command, run from the repo root:**
+
+```
+cd statusgen && go test ./...; echo "sg=$?"; cd ../tools/desk && go test ./internal/deskkit/... ./internal/loopengine/... ./cmd/deskpost/... ./cmd/deskevidence/... ./cmd/deskrelease/... -skip '^(TestRegistryCoversCmdBinaries|TestReStampRecovery)'; echo "dt=$?"
+```
+
+**Block R7v: the verbose re-run behind row 7's skip audit:**
+
+```
+cd statusgen && go test -count=1 -v ./...; echo "sg=$?"; cd ../tools/desk && go test -count=1 -v ./internal/deskkit/... ./internal/loopengine/... ./cmd/deskpost/... ./cmd/deskevidence/... ./cmd/deskrelease/... -skip '^(TestRegistryCoversCmdBinaries|TestReStampRecovery)'; echo "dt=$?"
+```
+
+Result: `sg=0`, `dt=0`. statusgen shows 3101 PASS, 0 FAIL, 2 SKIP. The tools/desk packages show 4321 PASS, 0 FAIL, 19 SKIP.
+
+**Scope traceability.** Every row above discharges the Verify row of the same number. The extra checks map to rows too:
+
+- The `-v` skip audit and the check of the two tests row 7 skips both belong to row 7.
+- The `-v` subtest count belongs to row 10.
+- The unfiltered grep belongs to rows 8 and 9.
+
+No verified work maps to no row.
+
+**Findings, for the desk to route:**
+
+- **F1: row 7's TEMPORARY skip has expired.** Row 7 says its `-skip` is removed once `internal/deskkit` is green again. Both tests it names now pass on this tree when run on their own:
+
+  ```
+  cd tools/desk && go test -count=1 -v ./internal/deskkit/ -run '^(TestRegistryCoversCmdBinaries|TestReStampRecovery)'
+  ```
+
+  Result: TestRegistryCoversCmdBinaries PASS, the one TestReStampRecovery-prefixed test PASS, package `ok`. The skip can now be dropped from row 7. Left in place, it is the "skip with no expiry" the row itself warns against.
+- **F2: rows 13-15 are still self-proving.** They resolved the pinned PR #373 range, and BASE matched the stated 310ef7087.
+- **F3: #1805 is still open for this brief.** Seven Command cells open with a prose code span, so `statusgen verifyrun` could not produce a witnessed PASS for them. This pass used direct runs only.
+- **F4: the mode check has moved since the brief was written.** The group/world-writable 0o022 mode check now lives in the unix owner-check files, where the brief said it would stay in rosterconfig.go. Windows enforces the owner SID and DACL instead, which row 10 asserts. This carries over unchanged from the prior run's F5.
+- **F5: no row shows the lock failing closed on real Windows.** Row 12 shows only that the busy sentinel is referenced, and no row exercises LockFileEx under contention on a Windows host. That is outside this brief's Verify table and is noted for the Windows CI leg (brief 04 / 14).
+
+rows_passed=16 rows_total=16
+
+RISK-VALUE: DERIVED — LockFileEx / UnlockFileEx range (reserved, nBytesLow, nBytesHigh) = 0, 1, 0 with a zero Overlapped (offset 0) @ tools/desk/internal/deskkit/filelock_windows.go:29 (lock) and :43 (unlock). Lock and unlock cover the identical one-byte range at offset 0, the standard advisory whole-file lock idiom. Equal ranges are the only correctness requirement the brief names, because a mismatch leaks the lock and reopens double-dispatch. Reversible by source edit.
+
+RISK-VALUE: DERIVED — lock flags = windows.LOCKFILE_EXCLUSIVE_LOCK or windows.LOCKFILE_FAIL_IMMEDIATELY @ tools/desk/internal/deskkit/filelock_windows.go:28, and busy mapping windows.ERROR_LOCK_VIOLATION to ErrLockBusy @ :34-35. This is the exact Windows analogue of syscall.LOCK_EX or syscall.LOCK_NB with EWOULDBLOCK mapped to ErrLockBusy @ tools/desk/internal/deskkit/filelock_unix.go:26 and :30. Non-blocking plus a busy sentinel, with every other error returned raw and nil only on success, is what makes a contended claim refuse rather than grant (fail closed).
+
+RISK-VALUE: N/A — the rest of the implementing diff (pinned range 310ef7087..ca92fda79^2) introduces no further literal. Enumerated and ranked below, all moved verbatim from pre-split sites or unchanged:
+
+- mode mask 0o022 @ statusgen/rosterowner_unix.go:24 and tools/desk/internal/deskkit/rosterowner_unix.go:23
+- Setpgid true and SIGKILL @ statusgen/procgroup_unix.go:21 and :23
+- cmd.WaitDelay = time.Second @ statusgen/gitinfo.go:115
+- 50 * time.Millisecond retry sleeps @ tools/desk/internal/deskkit/claim.go:185, tools/desk/cmd/deskpost/writeflow.go:134, tools/desk/cmd/deskevidence/writeflow.go:66 and tools/desk/cmd/deskrelease/writeflow.go:128. These are reversible operational knobs.
+- golang.org/x/sys v0.46.0 @ tools/desk/go.mod:14, unchanged (row 14a)
+
+The World SID S-1-1-0 that row 10 checks entered later (#640/#641, #667), outside this diff. Nothing is irreversible here: every change is a git-revertible source edit.
+
+**VERIFY: PASS** — 16/16 rows meet Expect on direct execution against merged main b7ca79ab798d. No row is could-not-check for this brief's scope. gate: model, so the flip to verified follows the normal model-gate path. The verifier sets no status.
 
 ## Review
 Gate: **model** (from frontmatter). All four risk answers are `no` — this is a compile-target
