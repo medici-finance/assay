@@ -223,8 +223,8 @@ func isNoticeBreaking(r rune) bool {
 }
 
 // siblingTarget is one resolved sibling-repo target: a registry alias, its
-// published "<owner>/<repo>", and the checkout directory basename used for
-// default root resolution. Only PUBLISHED, registered aliases ever become a
+// published "<owner>/<repo>", and the repo's basename, used only to match a
+// brief's `../<basename>/` path prefix (never to derive a checkout path). Only PUBLISHED, registered aliases ever become a
 // siblingTarget — an unpublished or unregistered candidate is either a
 // could-not-check (an explicit `deliverable_repo:` alias that cannot be
 // resolved) or simply not a sibling (a heuristic homed-in/basename candidate
@@ -462,9 +462,8 @@ func siblingRootPath(target siblingTarget, overrides map[string]string) (path st
 // backstop ownRepoFor's name-based exclusion needs (finding C1): a registry
 // entry can name a DIFFERENT alias/repo string than the one this tree
 // declares for itself (a stale `self:`, a registry/name mismatch, a symlinked
-// checkout) and still resolve, via siblingRootPath's directory-next-to-root
-// convention or an explicit --sibling-root override, to the SAME directory
-// root already is. Reading that directory's git history back against root's
+// checkout) and still resolve, via the operator's sibling-root map
+// (DESK_ROOTS or --sibling-root), to the SAME directory root already is. Reading that directory's git history back against root's
 // own briefs is exactly class 1's job (already-merged-unflipped), not this
 // detector's — so this is a path-identity check, never a repo-name one.
 //
@@ -665,6 +664,9 @@ type siblingRowSet struct {
 	bySibling     map[string][]siblingRowRef
 	targetByAlias map[string]siblingTarget
 	unresolved    map[string]bool
+	// unresolvedRows is the ids of rows whose `deliverable_repo:` did not
+	// resolve, so the default-off NOTICE counts every row that made it fire.
+	unresolvedRows map[string]bool
 }
 
 // collectSiblingRows derives the sibling set for every todo/in-progress row
@@ -673,9 +675,10 @@ type siblingRowSet struct {
 // path (siblingMergeOffNotices) only counts them.
 func collectSiblingRows(streams []*Stream, reg *graphRepos, ownRepo string) siblingRowSet {
 	set := siblingRowSet{
-		bySibling:     map[string][]siblingRowRef{},
-		targetByAlias: map[string]siblingTarget{},
-		unresolved:    map[string]bool{},
+		bySibling:      map[string][]siblingRowRef{},
+		targetByAlias:  map[string]siblingTarget{},
+		unresolved:     map[string]bool{},
+		unresolvedRows: map[string]bool{},
 	}
 	for _, s := range streams {
 		pathByNum := map[string]string{}
@@ -699,10 +702,11 @@ func collectSiblingRows(streams []*Stream, reg *graphRepos, ownRepo string) sibl
 				// names.
 			}
 			targets, unresolved := siblingTargetsForBrief(b, body, reg, ownRepo)
+			id := s.Name + "/" + b.Num
 			for _, u := range unresolved {
 				set.unresolved[u] = true
+				set.unresolvedRows[id] = true
 			}
-			id := s.Name + "/" + b.Num
 			for _, t := range targets {
 				set.targetByAlias[t.Alias] = t
 				set.bySibling[t.Alias] = append(set.bySibling[t.Alias], siblingRowRef{stream: s, idx: i, id: id, body: body})
@@ -739,7 +743,10 @@ func siblingMergeOffNotices(streams []*Stream, root string) []string {
 			rows[r.id] = true
 		}
 	}
-	if len(rows) == 0 && len(set.unresolved) == 0 {
+	for id := range set.unresolvedRows {
+		rows[id] = true
+	}
+	if len(rows) == 0 {
 		return nil
 	}
 	return []string{fmt.Sprintf(

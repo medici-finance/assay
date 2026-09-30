@@ -194,7 +194,7 @@ type Brief struct {
 	// Delivery is the optional brief-v1 `delivery:` list of structured
 	// delivery claims — what merged
 	// WHERE and how much of the brief it covers, e.g.
-	// `{in: "ac#136", covers: full}`. nil when absent. Read by the
+	// `{in: "sib#136", covers: full}`. nil when absent. Read by the
 	// sibling-merge-unreconciled detector as the one acknowledgement that can
 	// release its hold; it is
 	// never a witness for anything else and never derives a lifecycle cell.

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // siblingmerge_test.go — tests for the sibling-merge-unreconciled phantom
@@ -1004,4 +1005,89 @@ func TestSiblingMergeOffNoticeNamesSkippedRead(t *testing.T) {
 			t.Errorf("a tree with no sibling declarations must stay silent; stderr:\n%s", stderr)
 		}
 	})
+}
+
+// --- Review advisories on the sibling-merge wiring --------------------------
+
+// TestOwnRepoForRejectsInvalidSelfRepo pins ownRepoFor's validation of the
+// registry's `self:` entry: an entry whose repo: is not a strict
+// <owner>/<name> is ignored, and the board's identity falls back to the
+// streams' own `repo:` frontmatter.
+func TestOwnRepoForRejectsInvalidSelfRepo(t *testing.T) {
+	streams := []*Stream{{Name: "example-stream", Repo: "example-org/example-declared"}}
+	for name, bad := range map[string]string{
+		"dot-dot name":  "anyone/..",
+		"control char":  "example-org/example-home\n",
+		"no owner":      "example-home",
+		"extra segment": "example-org/a/b",
+	} {
+		t.Run(name, func(t *testing.T) {
+			reg := &graphRepos{Self: "home", Aliases: map[string]graphRepoEntry{
+				"home": {Cell: "test", Repo: bad},
+			}}
+			if got := ownRepoFor(reg, streams); got != "example-org/example-declared" {
+				t.Errorf("ownRepoFor with self: repo %q = %q, want the repo: frontmatter fallback example-org/example-declared", bad, got)
+			}
+		})
+	}
+}
+
+// TestRoadmapNextUpHonorsSiblingMergeHold pins runRoadmap's wiring: with the
+// opt-in on and the sibling's history naming the todo row, the deck's Next-up
+// panel must not offer it, the same hold STATUS.md and --next-up apply. The
+// opt-in-off run is the control that proves the row is otherwise eligible.
+func TestRoadmapNextUpHonorsSiblingMergeHold(t *testing.T) {
+	oa, og := autonomyMergedAuthors, autonomyGates
+	autonomyMergedAuthors = func(root string, since, until time.Time) ([]autonomyAuthor, bool) { return nil, false }
+	autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR, bool) { return nil, false }
+	t.Cleanup(func() { autonomyMergedAuthors, autonomyGates = oa, og })
+
+	const pick = `href="docs/streams/example-stream/brief-02.md"`
+	deck := func(t *testing.T, optIn bool) string {
+		t.Helper()
+		root := siblingBriefTree(t, "deliverable_repo: ex\n")
+		sib := newSiblingGitRepo(t)
+		commitEmpty(t, sib, "feat: ship it (example-stream/02) (#42)")
+		if optIn {
+			withSiblingMergeOptIn(t)
+		} else {
+			t.Setenv("DESK_ROOTS", "")
+			t.Setenv(siblingOptInEnv, "")
+		}
+		withSiblingRootOverride(t, "example-org/example-sibling="+sib)
+		_ = captureStdout(t, func() {
+			if code := runRoadmap(root, ""); code != 0 {
+				t.Fatalf("runRoadmap returned non-zero exit %d", code)
+			}
+		})
+		html, err := os.ReadFile(filepath.Join(root, "docs", "reports", "roadmap", "index.html"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(html)
+	}
+
+	t.Run("opt-in off: row is offered", func(t *testing.T) {
+		if !strings.Contains(deck(t, false), pick) {
+			t.Fatalf("control: with the opt-in off the fixture row must be in the deck's Next-up panel (%s)", pick)
+		}
+	})
+	t.Run("opt-in on: row is held", func(t *testing.T) {
+		if html := deck(t, true); strings.Contains(html, pick) {
+			t.Errorf("example-stream/02 is checked-failed sibling-merge-unreconciled and must be ABSENT from the roadmap deck's Next-up panel")
+		}
+	})
+}
+
+// TestSiblingMergeOffNoticeCountsUnresolvedRows pins the default-off NOTICE's
+// count: a row whose only sibling declaration is an unresolvable
+// `deliverable_repo:` alias made the line fire, so it is counted.
+func TestSiblingMergeOffNoticeCountsUnresolvedRows(t *testing.T) {
+	t.Setenv("DESK_ROOTS", "")
+	t.Setenv(siblingOptInEnv, "")
+	root := siblingBriefTree(t, "deliverable_repo: no-such-alias\n")
+	stderr := captureStderr(t, func() { _ = run(root, "lint", nil, nil, "") })
+	if !strings.Contains(stderr, "— 1 todo/in-progress row(s) name a sibling repo") {
+		t.Errorf("the not-checked line must count the unresolvable-alias row; stderr:\n%s", stderr)
+	}
 }

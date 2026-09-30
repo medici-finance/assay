@@ -240,9 +240,9 @@ statusgen phantoms --root . --class sibling-merge-unreconciled
 
 Exit `0` clean, `1` at least one checked-failed row (a change naming a `todo`
 or `in-progress` brief already merged in a sibling and nobody has recorded
-what it covered), `2` any could-not-check and no checked-failed (an absent,
-shallow, or unreadable sibling checkout, or an unresolvable `deliverable_repo:`
-alias). A finding is a **prompt to read the merged change Task by Task, never
+what it covered), `2` any could-not-check and no checked-failed (a registered
+sibling the operator's sibling-root map does not name, an absent, shallow, or
+unreadable sibling checkout, or an unresolvable `deliverable_repo:` alias). A finding is a **prompt to read the merged change Task by Task, never
 proof of delivery** — it never claims "implemented" or "delivered" and it
 never writes a lifecycle cell itself; two of the six real-world merges this
 class was built from turned out to be partial deliveries.
@@ -251,7 +251,10 @@ A brief names its sibling via `homed-in: <owner>/<repo>`, `deliverable_repo:
 <alias>` (both resolved through `docs/streams/graph-repos.yaml`), or a
 `../<basename>/` path prefix matching a registered sibling's checkout
 basename — a brief declaring none of the three is simply out of scope for this
-class, not a could-not-check.
+class, not a could-not-check. The board's own repo is never one of its
+siblings: the registry's `self:` key names it, else the streams' `repo:`
+frontmatter does, and any entry matching that name is dropped. As a backstop,
+a sibling whose mapped path resolves to `--root` itself is skipped.
 
 **The sibling read is opt-in on the default paths.** `--lint`, the STATUS.md
 regen, `--next-up` and `--roadmap` read no other checkout unless the operator
@@ -261,6 +264,10 @@ most one `not-checked:` NOTICE when a `todo`/`in-progress` row names a
 sibling, so a skipped read is never mistaken for a clean one, and no row is
 held out of Next-up. `statusgen phantoms --class sibling-merge-unreconciled`
 needs no opt-in: running that verb is the opt-in.
+
+Do not pass `--sibling-merge`, set `ASSAY_SIBLING_MERGE=1`, or run `phantoms`
+with a sibling map over a tree you do not trust: the tree chooses which
+commits of the mapped repos are printed.
 
 **Only siblings in the operator's map are ever read.** The map is
 `--sibling-root <owner>/<repo>=<path>` (repeatable) plus the same
@@ -284,6 +291,11 @@ out of Next-up (`MergedElsewhere`, the same shape `homed-in`'s
 repo — check before dispatch" section; an `in-progress` row is surfaced but
 never excluded — hiding what someone already holds is not the same as not
 handing it out.
+
+The sibling is read at its checked-out HEAD. A checkout parked on an
+unmerged feature branch reports that branch's commits as matches too, so a
+finding means "named in the history this checkout has", not "merged"; keep
+mapped siblings on their default branch.
 
 Matching walks the sibling's first-parent history (both the commit subject
 and its full body, so an id named only in a trailer is still caught) for
