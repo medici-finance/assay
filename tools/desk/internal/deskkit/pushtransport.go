@@ -162,23 +162,32 @@ func CheckPushTransport(in PushTransportInput) error {
 		rw := traceRewrite(cfg, configured, explicitPush, u)
 		if rw.ruleKey == "" {
 			// No rewrite involved (or none this code can attribute): the configured value is
-			// itself SSH, and pointing the push url at https is the whole remedy.
+			// itself SSH, and pointing the push url at https is the remedy — unless an insteadOf
+			// rule would rewrite that https url straight back to SSH (pushURLRemedy checks).
 			shown := u
 			if !containsString(configured, u) {
+				from := strings.Join(configured, ", ")
+				if from == "" {
+					// Nothing under remote.<name>.url / .pushurl in `git config --list` — e.g. a
+					// legacy .git/remotes file. Say so rather than print an empty value.
+					from = "(no " + key + " in git config — a legacy remotes file?)"
+				}
 				shown = fmt.Sprintf("%s, which git resolves to %s through a url rewrite this gate could not "+
 					"attribute — run `git -C %s config --show-origin --get-regexp '^url\\.'` to find it",
-					strings.Join(configured, ", "), u, orDot(in.Dir))
+					from, u, orDot(in.Dir))
+			}
+			target := u
+			if len(configured) == 1 && isSSHTransport(configured[0]) {
+				target = configured[0]
 			}
 			return Refused(fmt.Sprintf(
 				"refused: %s would push to %q over an SSH transport (%s = %s), but this session acts as the %s "+
 					"App (%s=%s). An SSH push authenticates with whatever key this machine's agent holds — a "+
 					"human's key — so the forge records the HUMAN as the branch author and the App's permission "+
 					"envelope is bypassed, however the commits are authored. Fetch over SSH stays allowed; only "+
-					"the push transport is gated. Remedy (one line, in this worktree):\n"+
-					"  git -C %s remote set-url --push %s %s\n"+
-					"then configure the %s App's credential helper for that URL.",
+					"the push transport is gated. Remedy: %s",
 				who, remote, key, shown, role, loopEnv, loop,
-				orDot(in.Dir), remote, orSuggestHTTPS(httpsEquivalent(u), remote), role))
+				pushURLRemedy(cfg, in.Dir, remote, httpsTargetFor(target, u, remote), role, "")))
 		}
 		return Refused(fmt.Sprintf(
 			"refused: %s would push to %q over an SSH transport: %s = %s is rewritten by the rule %s = %s "+
@@ -188,7 +197,7 @@ func CheckPushTransport(in PushTransportInput) error {
 				"however the commits are authored. Fetch over SSH stays allowed; only the push transport is "+
 				"gated. Remedy: %s\n  (find where the rule is set: git -C %s config --show-origin --get-all %s)",
 			who, remote, key, rw.from, rw.ruleKey, rw.prefix, u, role, loopEnv, loop,
-			rw.remedy(in.Dir, remote, u, role), orDot(in.Dir), rw.ruleKey))
+			rw.remedy(cfg, in.Dir, remote, u, role), orDot(in.Dir), rw.ruleKey))
 	}
 
 	// 5. Not SSH. An https push is the sanctioned transport — but it only carries the App's
@@ -254,23 +263,57 @@ type rewriteTrace struct {
 	push    bool   // pushInsteadOf (push-only) rather than insteadOf
 }
 
-// remedy is the one fix that actually clears the rule. The two forms differ: an explicit
-// https pushurl disables every pushInsteadOf alias, but insteadOf rewrites pushurl values
-// too, so for insteadOf the only fix is the rule itself.
-func (rw rewriteTrace) remedy(dir, remote, effective, role string) string {
+// remedy is the one fix that actually clears the rewrite. An explicit https pushurl
+// disables every pushInsteadOf alias, and it escapes an insteadOf rule whose prefix matches
+// only the configured (SSH) spelling — but NOT an insteadOf rule that matches the https
+// pushurl itself, since git applies insteadOf to pushurl values too. Which case this is
+// depends on the https target, not on which rule produced the refusal, so the decision is
+// pushURLRemedy's: it asks whether git would rewrite that target back to SSH.
+func (rw rewriteTrace) remedy(cfg map[string][]string, dir, remote, effective, role string) string {
+	lead := "the rule matches only the configured url, and an explicit push url of a spelling it does " +
+		"not match escapes it, so set one"
 	if rw.push {
-		target := rw.from
-		if !anyHTTPTransport([]string{target}) {
-			target = orSuggestHTTPS(httpsEquivalent(effective), remote)
-		}
-		return fmt.Sprintf("an explicit push url is never pushInsteadOf-rewritten, so set one (one line, "+
-			"in this worktree):\n  git -C %s remote set-url --push %s %s\n"+
-			"then configure the %s App's credential helper for that URL — or remove the rule.",
-			orDot(dir), remote, target, role)
+		lead = "an explicit push url is never pushInsteadOf-rewritten, so set one"
 	}
-	return fmt.Sprintf("remove or narrow the rule %s in the config file that sets it. An explicit push "+
-		"url does NOT escape it — git applies insteadOf to pushurl values too — so `remote set-url "+
-		"--push` alone would leave this refusal standing.", rw.ruleKey)
+	return pushURLRemedy(cfg, dir, remote, httpsTargetFor(rw.from, effective, remote), role, lead)
+}
+
+// httpsTargetFor is the https push url a remedy proposes. A configured https url is kept
+// verbatim (it already names the repository the operator meant); otherwise the https twin of
+// the CONFIGURED spelling is preferred over the effective one — the effective url of an
+// SSH-to-SSH rewrite is typically an ssh alias host (`ssh.<host>:443`) that is not a web host.
+func httpsTargetFor(configured, effective, remote string) string {
+	if anyHTTPTransport([]string{configured}) {
+		return configured
+	}
+	if t := httpsEquivalent(configured); t != "" {
+		return t
+	}
+	return orSuggestHTTPS(httpsEquivalent(effective), remote)
+}
+
+// pushURLRemedy renders the one fix for an SSH push url: point the push url at target —
+// unless a url.<base>.insteadOf rule would rewrite target itself into an SSH url, in which
+// case `remote set-url --push` leaves the refusal standing and the remedy is that rule.
+// Deciding this per TARGET (not per refusal branch) is what keeps the advice true for every
+// shape: an https url an insteadOf rule turns into SSH needs the rule gone, while an SSH url
+// an insteadOf rule turns into another SSH url is cleared by an https push url the rule does
+// not match.
+func pushURLRemedy(cfg map[string][]string, dir, remote, target, role, lead string) string {
+	if base, prefix, out, ok := longestRewrite(urlRewriteRules(cfg, false), target); ok && isSSHTransport(out) {
+		ruleKey := "url." + base + ".insteadOf"
+		return fmt.Sprintf("remove or narrow the rule %s = %s in the config file that sets it. An explicit "+
+			"https push url does NOT escape it — git applies insteadOf to pushurl values too, and it would "+
+			"rewrite %s into %s — so `remote set-url --push` alone would leave this refusal standing "+
+			"(find it: git -C %s config --show-origin --get-all %s).",
+			ruleKey, prefix, target, out, orDot(dir), ruleKey)
+	}
+	if lead == "" {
+		lead = "point the push url at https"
+	}
+	return fmt.Sprintf("%s (one line, in this worktree):\n  git -C %s remote set-url --push %s %s\n"+
+		"then configure the %s App's credential helper for that URL.",
+		lead, orDot(dir), remote, target, role)
 }
 
 // urlRewriteRules collects the configured url.<base>.insteadOf (push=false) or

@@ -79,3 +79,35 @@ func TestAddSshFetchUrlHttpsPush(t *testing.T) {
 		t.Fatalf("SSH FETCH url with a non-SSH push url rc = %d, want 0 — only the push transport is gated; stderr:\n%s", rc, stderr)
 	}
 }
+
+// TestAddSshSecondPushURL pins the `--all` on deskwt's push-url read. A push fans out to
+// EVERY pushurl, so a clean first value is not a pass: here the first pushurl is a local
+// path and the second is SSH, the session acts as the worker App, and no --role is given —
+// the `deskwt add` shape nothing else gates before the new worktree inherits both values.
+// A reader without `--all` sees only the first pushurl and lets the worktree be cut.
+//
+// FAIL-FIRST (the committed mutation entry): internal/deskkit/pushtransport-mutations.json
+// carries "deskwt reads only the FIRST push url", which drops `--all` from this package's
+// reader; with it applied this test's add succeeds and it fails here.
+func TestAddSshSecondPushURL(t *testing.T) {
+	work := newRepo(t)
+	bare := originBare(t, work)
+	mustGit(t, work, "remote", "set-url", "--push", "origin", bare)
+	mustGit(t, work, "remote", "set-url", "--add", "--push", "origin", sshPushURL)
+	if got := strings.Fields(mustGit(t, work, "remote", "get-url", "--push", "--all", "origin")); len(got) != 2 || got[1] != sshPushURL {
+		t.Fatalf("fixture: push urls = %q, want [<bare> %s]", got, sshPushURL)
+	}
+	withEnv(t, work)
+	t.Setenv("DESK_LOOP", "worker-desk")
+
+	rc, stderr := runCapErr(t, []string{"add", "secondssh"})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("add with an SSH second pushurl rc = %d, want %d (refused); stderr:\n%s", rc, deskkit.ExitRefused, stderr)
+	}
+	if !strings.Contains(stderr, "SSH transport") || !strings.Contains(stderr, sshPushURL) {
+		t.Errorf("refusal should name the SSH pushurl:\n%s", stderr)
+	}
+	if _, serr := os.Lstat(filepath.Join(tmpBaseDir, "tracker-secondssh")); !os.IsNotExist(serr) {
+		t.Errorf("a worktree was created on the refusal path (stat err = %v)", serr)
+	}
+}

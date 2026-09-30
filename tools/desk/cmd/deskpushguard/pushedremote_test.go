@@ -186,6 +186,11 @@ func TestNoMainOnPushedRemoteIsCouldNotCheckNotOrigin(t *testing.T) {
 		!strings.Contains(stderr.String(), "refs/remotes/nomain/main") {
 		t.Errorf("want COULD-NOT-CHECK naming refs/remotes/nomain/main, got:\n%s", stderr.String())
 	}
+	// The register-id check returns silently on the same unresolvable base; the one
+	// COULD-NOT-CHECK line must say it was skipped too, or its silence reads as "no collision".
+	if !strings.Contains(stderr.String(), "register-id collision") {
+		t.Errorf("COULD-NOT-CHECK does not say the register-id collision check was skipped:\n%s", stderr.String())
+	}
 	for _, bad := range []string{"refusing", "origin/other", "origin/sib"} {
 		if strings.Contains(stderr.String(), bad) {
 			t.Errorf("stderr carries %q — the guard fell back to origin's main:\n%s", bad, stderr.String())
@@ -203,6 +208,9 @@ func TestNoMainOnPushedRemoteIsCouldNotCheckNotOrigin(t *testing.T) {
 		if !strings.Contains(stderr.String(), "COULD-NOT-CHECK the base of mine") ||
 			!strings.Contains(stderr.String(), "no fall-back to origin") {
 			t.Errorf("want COULD-NOT-CHECK with no fall-back to origin, got:\n%s", stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "register-id collision") {
+			t.Errorf("COULD-NOT-CHECK does not say the register-id collision check was skipped:\n%s", stderr.String())
 		}
 		if strings.Contains(stderr.String(), "refusing") {
 			t.Errorf("judged against origin with no remote named:\n%s", stderr.String())

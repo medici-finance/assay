@@ -304,6 +304,15 @@ func checkStrayBase(dir, remoteName, localSHA, trueBase string, out *baseFinding
 	out.strayBases = append(out.strayBases, strayBase{strayTip: strayTip, trueBase: trueBase, behind: behind})
 }
 
+// baseChecksSkipped closes every could-not-check reason that stops BOTH base-dependent checks
+// before either reads a ref. checkRegisterIDCollisions (registerid.go) returns silently on
+// exactly these conditions — no remote named, a malformed or unresolvable local sha, the pushed
+// remote's main unresolvable, the repository unopenable — so the one COULD-NOT-CHECK line this
+// file prints must say that the register-id collision check was skipped too; otherwise that
+// silence reads as "no collision found".
+const baseChecksSkipped = "base checks NOT performed (foreign-commit, merge-masquerade, stray-base, " +
+	"and register-id collision)"
+
 // checkForeignCommits inspects the commits unique to localSHA relative to the actual push
 // target's main (the range a git pre-push hook is given) and reports:
 //
@@ -337,11 +346,11 @@ func checkForeignCommits(dir, remoteName, ownBranch, localSHA string) (baseFindi
 		// the checkout's origin happens to be — so it is could-not-check, said as such.
 		out.cannotCheck("the hook was not told which remote this push goes to (no remote-name " +
 			"argument), so which refs/remotes/<remote>/main is the base cannot be established — no " +
-			"fall-back to origin; base checks NOT performed")
+			"fall-back to origin; " + baseChecksSkipped)
 		return out, nil
 	}
 	if !shaRe.MatchString(localSHA) {
-		out.cannotCheck("local sha %q is not a well-formed object id — base checks NOT performed", localSHA)
+		out.cannotCheck("local sha %q is not a well-formed object id — %s", localSHA, baseChecksSkipped)
 		return out, nil
 	}
 	originMain, err := resolveRemoteMain(dir, remoteName)
@@ -357,17 +366,17 @@ func checkForeignCommits(dir, remoteName, ownBranch, localSHA string) (baseFindi
 			reason += fmt.Sprintf(" — and a stray local branch refs/heads/origin/main (%s) IS present, "+
 				"so the bare spelling would resolve to it; refusing to guess", shortSHA(strayTip))
 		}
-		out.cannotCheck("%s — base checks NOT performed", reason)
+		out.cannotCheck("%s — %s", reason, baseChecksSkipped)
 		return out, nil
 	}
 	repo, err := openRepo(dir)
 	if err != nil {
-		out.cannotCheck("could not open the repository (%v) — base checks NOT performed", err)
+		out.cannotCheck("could not open the repository (%v) — %s", err, baseChecksSkipped)
 		return out, nil
 	}
 	if ok, _ := repo.CommitVerifyQuiet(localSHA); !ok {
-		out.cannotCheck("commit %s is not present in this repository — base checks NOT performed",
-			shortSHA(localSHA))
+		out.cannotCheck("commit %s is not present in this repository — %s",
+			shortSHA(localSHA), baseChecksSkipped)
 		return out, nil
 	}
 

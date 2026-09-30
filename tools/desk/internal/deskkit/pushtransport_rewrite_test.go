@@ -146,6 +146,7 @@ func TestPushTransportRefusesPushInsteadOfRewrittenToSSH(t *testing.T) {
 		"url.ssh://git@example.com/.pushInsteadOf",
 		"ssh://git@example.com/example-org/tracker.git",
 		"remote set-url --push origin " + rewriteHTTPS, // an explicit pushurl clears a push-only rule
+		"never pushInsteadOf-rewritten",                // and the refusal says why
 	} {
 		if !strings.Contains(err.Error(), frag) {
 			t.Errorf("refusal is missing %q:\n%s", frag, err.Error())
@@ -160,4 +161,154 @@ func TestPushTransportRefusesPushInsteadOfRewrittenToSSH(t *testing.T) {
 			t.Fatalf("an explicit https pushurl is not pushInsteadOf-rewritten, yet the gate refused:\n%v", err)
 		}
 	})
+}
+
+// TestPushTransportSSHAliasRemedy: an scp-like SSH url that an insteadOf rule rewrites into
+// ANOTHER SSH url (the port-443 ssh alias shape). The rule matches only the SSH spelling, so
+// an explicit https push url escapes it — and removing the rule would leave the configured
+// url, still SSH. The remedy must be `remote set-url --push <https twin of the configured
+// url>`, and applying it must clear the refusal.
+//
+// FAIL-FIRST: on c23d37ea4 (remedy() chose by rule kind alone) this refusal told the operator
+// to remove or narrow the rule and that `set-url --push` would NOT clear it — both false here.
+func TestPushTransportSSHAliasRemedy(t *testing.T) {
+	t.Setenv("DESK_LOOP", "worker-desk")
+	dir := rewriteRepo(t)
+	rewriteGit(t, "-C", dir, "config", "remote.origin.url", "git@example.com:example-org/tracker.git")
+	rewriteGit(t, "-C", dir, "config", "url.ssh://git@ssh.example.com:443/.insteadOf", "git@example.com:")
+
+	const alias = "ssh://git@ssh.example.com:443/example-org/tracker.git"
+	if got := strings.TrimSpace(rewriteGit(t, "-C", dir, "remote", "get-url", "--push", "origin")); got != alias {
+		t.Fatalf("fixture: git resolves the push url to %q, want the ssh-alias rewrite %q", got, alias)
+	}
+
+	err := CheckPushTransport(realGitGateInput(dir))
+	if err == nil || ExitCodeOf(err) != ExitRefused {
+		t.Fatalf("err = %v (exit %d), want a refusal: git pushes this over SSH", err, ExitCodeOf(err))
+	}
+	msg := err.Error()
+	for _, frag := range []string{
+		"url.ssh://git@ssh.example.com:443/.insteadOf", // the rule, still attributed
+		"remote set-url --push origin " + rewriteHTTPS, // the https twin of the CONFIGURED url
+		"the rule matches only the configured url",     // why a pushurl escapes an insteadOf rule
+	} {
+		if !strings.Contains(msg, frag) {
+			t.Errorf("refusal is missing %q:\n%s", frag, msg)
+		}
+	}
+	for _, bad := range []string{"does NOT escape it", "remove or narrow", "https://ssh.example.com/"} {
+		if strings.Contains(msg, bad) {
+			t.Errorf("refusal carries %q — advice that is false for an SSH-to-SSH rewrite:\n%s", bad, msg)
+		}
+	}
+
+	// The remedy the refusal names really clears it.
+	rewriteGit(t, "-C", dir, "remote", "set-url", "--push", "origin", rewriteHTTPS)
+	if err := CheckPushTransport(realGitGateInput(dir)); ExitCodeOf(err) == ExitRefused {
+		t.Fatalf("the named remedy did not clear the refusal:\n%v", err)
+	}
+}
+
+// TestPushTransportRemedyRuleSSH: the configured url is itself SSH (no rewrite produced it),
+// but an insteadOf rule rewrites the https url the remedy would propose back into SSH. A
+// `set-url --push` remedy would leave the refusal standing, so the refusal must name that
+// rule instead — the same per-target decision as the attributed branches.
+func TestPushTransportRemedyRuleSSH(t *testing.T) {
+	t.Setenv("DESK_LOOP", "worker-desk")
+	dir := rewriteRepo(t)
+	rewriteGit(t, "-C", dir, "config", "remote.origin.url", "ssh://git@example.com/example-org/tracker.git")
+	rewriteGit(t, "-C", dir, "config", "url.git@example.com:.insteadOf", "https://example.com/")
+
+	err := CheckPushTransport(realGitGateInput(dir))
+	if err == nil || ExitCodeOf(err) != ExitRefused {
+		t.Fatalf("err = %v (exit %d), want a refusal", err, ExitCodeOf(err))
+	}
+	msg := err.Error()
+	for _, frag := range []string{"remove or narrow the rule url.git@example.com:.insteadOf", "does NOT escape it"} {
+		if !strings.Contains(msg, frag) {
+			t.Errorf("refusal is missing %q:\n%s", frag, msg)
+		}
+	}
+	if strings.Contains(msg, "remote set-url --push origin") {
+		t.Errorf("refusal proposes a push url the insteadOf rule rewrites back to SSH:\n%s", msg)
+	}
+
+	// Oracle: the set-url remedy really would not have cleared it.
+	rewriteGit(t, "-C", dir, "remote", "set-url", "--push", "origin", rewriteHTTPS)
+	if err := CheckPushTransport(realGitGateInput(dir)); ExitCodeOf(err) != ExitRefused {
+		t.Fatalf("oracle: an https pushurl the rule matches should still be refused, got %v", err)
+	}
+}
+
+// TestPushTransportLongestRule: two insteadOf rules whose prefixes overlap. Git applies the
+// LONGEST matching prefix, so the refusal must name that rule — not whichever sorts first.
+func TestPushTransportLongestRule(t *testing.T) {
+	t.Setenv("DESK_LOOP", "worker-desk")
+	dir := rewriteRepo(t)
+	rewriteGit(t, "-C", dir, "config", "remote.origin.url", rewriteHTTPS)
+	// The SHORT prefix's base sorts first, so a first-match attribution would name it.
+	rewriteGit(t, "-C", dir, "config", "url.ssh://git@a-short.example/.insteadOf", "https://example.com/")
+	rewriteGit(t, "-C", dir, "config", "url.ssh://git@z-long.example/.insteadOf", "https://example.com/example-org/")
+
+	if got := strings.TrimSpace(rewriteGit(t, "-C", dir, "remote", "get-url", "--push", "origin")); got != "ssh://git@z-long.example/tracker.git" {
+		t.Fatalf("fixture: git resolves the push url to %q, want the longest-prefix rewrite", got)
+	}
+	err := CheckPushTransport(realGitGateInput(dir))
+	if err == nil || ExitCodeOf(err) != ExitRefused {
+		t.Fatalf("err = %v (exit %d), want a refusal", err, ExitCodeOf(err))
+	}
+	if !strings.Contains(err.Error(), "is rewritten by the rule url.ssh://git@z-long.example/.insteadOf") {
+		t.Errorf("refusal should name the longest-prefix rule:\n%s", err.Error())
+	}
+}
+
+// TestPushTransportPushurlNoAlias: with an explicit pushurl git never applies pushInsteadOf,
+// only insteadOf. A pushInsteadOf rule that ALSO matches the pushurl must not steal the
+// attribution from the insteadOf rule git really applied.
+func TestPushTransportPushurlNoAlias(t *testing.T) {
+	t.Setenv("DESK_LOOP", "worker-desk")
+	dir := rewriteRepo(t)
+	rewriteGit(t, "-C", dir, "config", "remote.origin.url", rewriteHTTPS)
+	rewriteGit(t, "-C", dir, "config", "remote.origin.pushurl", rewriteHTTPS)
+	rewriteGit(t, "-C", dir, "config", "url.ssh://git@alias.example/.pushInsteadOf", "https://example.com/")
+	rewriteGit(t, "-C", dir, "config", "url.git@example.com:.insteadOf", "https://example.com/")
+
+	if got := strings.TrimSpace(rewriteGit(t, "-C", dir, "remote", "get-url", "--push", "origin")); got != "git@example.com:example-org/tracker.git" {
+		t.Fatalf("fixture: git resolves the push url to %q, want the insteadOf rewrite of the pushurl", got)
+	}
+	err := CheckPushTransport(realGitGateInput(dir))
+	if err == nil || ExitCodeOf(err) != ExitRefused {
+		t.Fatalf("err = %v (exit %d), want a refusal", err, ExitCodeOf(err))
+	}
+	if !strings.Contains(err.Error(), "remote.origin.pushurl = "+rewriteHTTPS+" is rewritten by the rule url.git@example.com:.insteadOf") {
+		t.Errorf("refusal should trace the pushurl through the insteadOf rule:\n%s", err.Error())
+	}
+}
+
+// TestPushTransportAliasSkip: with no pushurl, once ANY url has a pushInsteadOf alias git
+// pushes to the aliases only, and insteadOf is never applied on top of a url that has one.
+// Here the first url's alias is https while its insteadOf rewrite happens to spell the SSH
+// alias of the SECOND url; the refusal must trace the second url's pushInsteadOf rule — the
+// rewrite git really used — not the first url's insteadOf rewrite, which git never pushes to.
+func TestPushTransportAliasSkip(t *testing.T) {
+	t.Setenv("DESK_LOOP", "worker-desk")
+	dir := rewriteRepo(t)
+	rewriteGit(t, "-C", dir, "config", "remote.origin.url", "https://example.com/r.git")
+	rewriteGit(t, "-C", dir, "config", "--add", "remote.origin.url", "https://other.example/r.git")
+	rewriteGit(t, "-C", dir, "config", "url.https://pushhost.example/.pushInsteadOf", "https://example.com/")
+	rewriteGit(t, "-C", dir, "config", "url.git@ssh.example:.pushInsteadOf", "https://other.example/")
+	rewriteGit(t, "-C", dir, "config", "url.git@ssh.example:.insteadOf", "https://example.com/")
+
+	got := strings.Fields(rewriteGit(t, "-C", dir, "remote", "get-url", "--push", "--all", "origin"))
+	if strings.Join(got, " ") != "https://pushhost.example/r.git git@ssh.example:r.git" {
+		t.Fatalf("fixture: git resolves the push urls to %q", got)
+	}
+	err := CheckPushTransport(realGitGateInput(dir))
+	if err == nil || ExitCodeOf(err) != ExitRefused {
+		t.Fatalf("err = %v (exit %d), want a refusal", err, ExitCodeOf(err))
+	}
+	want := "remote.origin.url = https://other.example/r.git is rewritten by the rule url.git@ssh.example:.pushInsteadOf"
+	if !strings.Contains(err.Error(), want) {
+		t.Errorf("refusal should trace the second url through its pushInsteadOf rule (%q):\n%s", want, err.Error())
+	}
 }

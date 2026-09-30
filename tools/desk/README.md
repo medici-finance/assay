@@ -701,9 +701,17 @@ The URL judged is the one git will actually push to — `git remote get-url --pu
 origin`, a local read that contacts no remote and applies `url.<base>.pushInsteadOf` and
 `url.<base>.insteadOf` exactly as a push does (#884). An https remote that such a rule
 rewrites to SSH is refused, and the refusal names the rule, the configured URL and what it
-became. The remedy differs by rule: an explicit https push URL escapes a `pushInsteadOf` rule
-(git never applies it to a pushurl), but NOT an `insteadOf` rule, which git applies to pushurl
-values too — that one has to be removed or narrowed.
+became. The remedy is decided by the https URL it would propose, not by the kind of rule: git
+never applies `pushInsteadOf` to an explicit pushurl, but it DOES apply `insteadOf` to one. So
+the refusal proposes `remote set-url --push <https URL>` unless an `insteadOf` rule would rewrite
+that very https URL back to SSH — then, and only then, the remedy is to remove or narrow that
+rule. An SSH URL that an `insteadOf` rule turns into another SSH URL (an ssh alias on port 443,
+say) is therefore cleared by an https push URL, and removing the rule would not clear it.
+
+In `deskpr` this refusal is mostly shadowed by the push-destination gate (#1623), which runs
+first and refuses any non-https destination on its own terms; the surface where this gate is
+the one that speaks is `deskwt add` without `--role`, where nothing else inspects the push URL
+before the new worktree inherits it.
 
 Four boundaries are deliberate:
 

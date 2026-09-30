@@ -205,14 +205,14 @@ func remoteBranchNames(repo *gitcore.Repo) ([]string, error) {
 // of #189's stale-ref half. remoteName is the remote this push goes to (#1201): probing some
 // other remote answers a question about a different repository.
 //
-// A sibling branch that was merged and DELETED leaves refs/remotes/origin/<name> behind in this
-// clone until someone prunes; `git branch -r` still lists it, and the check compared against
-// that stale ref, reporting a collision against a branch that no longer exists. `git branch -r`
-// cannot distinguish live from stale — only origin can — so this consults origin via
-// `git ls-remote`.
+// A sibling branch that was merged and DELETED leaves refs/remotes/<remote>/<name> behind in
+// this clone until someone prunes; `git branch -r` still lists it, and the check compared
+// against that stale ref, reporting a collision against a branch that no longer exists. `git
+// branch -r` cannot distinguish live from stale — only the pushed remote can — so this consults
+// that remote via `git ls-remote <remoteName>`.
 //
 // It runs ONLY when a collision would otherwise be reported (rare), so an ordinary push pays no
-// network cost, and it never returns an error: an unreachable origin (an offline push) is
+// network cost, and it never returns an error: an unreachable remote (an offline push) is
 // reported as livenessUnknown, keeping this tool's offline-push and fail-open contracts intact.
 // The fully-qualified `refs/heads/<name>` pattern is used so a head named `foo` cannot be
 // matched by a stray `bar/foo` on the remote.
@@ -234,20 +234,21 @@ func remoteHeadLiveness(dir, remoteName, remoteRef string) refLiveness {
 }
 
 // checkRegisterIDCollisions inspects register entry files newly ADDED or MODIFIED by localSHA
-// relative to origin/main and reports any whose id is NEW relative to origin/main and is also
-// claimed by a register entry file present on some other LIVE remote branch that is not itself
-// already merged into origin/main.
+// relative to the pushed remote's main (refs/remotes/<remoteName>/main) and reports any whose
+// id is NEW relative to that main and is also claimed by a register entry file present on some
+// other LIVE branch of the same remote that is not itself already merged into that main.
 //
 // Two #189 scoping rules keep this from refusing a push it cannot let the author satisfy:
 //
-//   - NEW ids only. An id already present on origin/main in the SAME file is a pre-existing
-//     entry, not a claim (idClaimedOnMainAtPath) — a branch editing an existing findings entry
-//     for an unrelated reason does not stake a fresh claim on its id and cannot collide.
+//   - NEW ids only. An id already present on the pushed remote's main in the SAME file is a
+//     pre-existing entry, not a claim (idClaimedOnMainAtPath) — a branch editing an existing
+//     findings entry for an unrelated reason does not stake a fresh claim on its id and cannot
+//     collide.
 //   - LIVE source refs only. Before reporting a collision the source ref's liveness is
-//     confirmed against origin (remoteHeadLiveness); a stale remote-tracking ref left behind by
-//     a merged-and-deleted sibling is dropped, and each reported collision carries the source
-//     ref's liveness (live / could-not-check) so a stale-ref artifact is distinguishable from a
-//     real, in-flight collision.
+//     confirmed against the pushed remote (remoteHeadLiveness); a stale remote-tracking ref left
+//     behind by a merged-and-deleted sibling is dropped, and each reported collision carries the
+//     source ref's liveness (live / could-not-check) so a stale-ref artifact is distinguishable
+//     from a real, in-flight collision.
 //
 // dir is the repository to run git in (empty = process cwd). remoteName is the remote this
 // push goes to (#1201): its main is the base, only ITS branches are candidate siblings (a

@@ -80,7 +80,7 @@
       "new": "\t\t\t\tif out == effective && false {"
     },
     {
-      "name": "give an insteadOf refusal the pushInsteadOf remedy (`remote set-url --push`, which insteadOf still rewrites — a remedy that leaves the refusal standing)",
+      "name": "give an insteadOf refusal the pushInsteadOf remedy wording (it tells the operator the pushurl escapes because pushInsteadOf never applies to one — the wrong rule kind for an insteadOf refusal)",
       "file": "internal/deskkit/pushtransport.go",
       "old": "\t\t\treturn rewriteTrace{ruleKey: \"url.\" + base + \".insteadOf\", prefix: prefix, from: c}",
       "new": "\t\t\treturn rewriteTrace{ruleKey: \"url.\" + base + \".insteadOf\", prefix: prefix, from: c, push: true}"
@@ -114,6 +114,48 @@
       "file": "cmd/deskwt/exec.go",
       "old": "\t\tPushURLs: func() (string, error) { return runGit(dir, \"remote\", \"get-url\", \"--push\", \"--all\", \"origin\") },",
       "new": "\t\tPushURLs: nil,"
+    },
+    {
+      "name": "the remedy says remove-the-rule for every rewrite, whatever the https target (the SSH-to-SSH insteadOf regression: a set-url remedy that would work is called useless, and removing the rule leaves the SSH url)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "urlRewriteRules(cfg, false), target); ok && isSSHTransport(out) {",
+      "new": "urlRewriteRules(cfg, false), target); ok || !ok {"
+    },
+    {
+      "name": "the remedy never checks whether insteadOf rewrites the proposed https target back to SSH (it proposes a set-url --push that leaves the refusal standing)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "urlRewriteRules(cfg, false), target); ok && isSSHTransport(out) {",
+      "new": "urlRewriteRules(cfg, false), target); ok && isSSHTransport(out) && false {"
+    },
+    {
+      "name": "the remedy's https target is derived from the EFFECTIVE url, not the configured one (an ssh alias host such as ssh.<host>:443 is proposed as a web host)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\tif t := httpsEquivalent(configured); t != \"\" {",
+      "new": "\tif t := httpsEquivalent(configured); t != \"\" && false {"
+    },
+    {
+      "name": "attribute a rewrite to the FIRST matching prefix instead of git's longest (the refusal names a rule git did not apply)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\t\t\tif !ok || len(p) > len(prefix) {",
+      "new": "\t\t\tif !ok {"
+    },
+    {
+      "name": "trace insteadOf on top of a url that has a pushInsteadOf alias (git pushes to the alias only; the refusal blames the wrong url)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\t\t\t\tcontinue // git pushes to the alias; insteadOf does not apply on top of it",
+      "new": "\t\t\t\t// continue dropped"
+    },
+    {
+      "name": "apply pushInsteadOf attribution to an explicit pushurl (git never does; the insteadOf rule git really applied goes unnamed)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\t\tif !explicitPush {\n\t\t\tif base, prefix, out, ok := longestRewrite(pushRules, c); ok {",
+      "new": "\t\tif true {\n\t\t\tif base, prefix, out, ok := longestRewrite(pushRules, c); ok {"
+    },
+    {
+      "name": "deskwt reads only the FIRST push url (drops --all: a clean first pushurl hides an SSH second one, and `deskwt add` without --role cuts a worktree that pushes to both)",
+      "file": "cmd/deskwt/exec.go",
+      "old": "return runGit(dir, \"remote\", \"get-url\", \"--push\", \"--all\", \"origin\") },",
+      "new": "return runGit(dir, \"remote\", \"get-url\", \"--push\", \"origin\") },"
     }
   ]
 }

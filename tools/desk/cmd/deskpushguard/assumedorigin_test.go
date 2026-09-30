@@ -19,17 +19,22 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 )
 
+// assumedOriginRe matches a string literal's value that names the remote `origin`.
+//
+// The ref and config-key forms match at a component boundary, not only with a trailing
+// separator: a literal `refs/remotes/origin` (joined to "/main" elsewhere) or `remote.origin`
+// (joined to ".url") names the remote just as surely as the spelled-out form.
+var assumedOriginRe = regexp.MustCompile(`^origin(/|$)|refs/remotes/origin(/|$)|remote\.origin(\.|$)`)
+
 // assumedOrigin reports whether a string literal's value names the remote `origin`.
 func assumedOrigin(v string) bool {
-	return v == "origin" ||
-		strings.HasPrefix(v, "origin/") ||
-		strings.Contains(v, "refs/remotes/origin/") ||
-		strings.Contains(v, "remote.origin.")
+	return assumedOriginRe.MatchString(v)
 }
 
 // originLiterals parses one Go source and returns "file:line: literal" for every string
@@ -68,6 +73,17 @@ func planted(dir string) { _, _ = resolveRemoteMain(dir, "origin") }`
 	if hits := originLiterals(t, token.NewFileSet(), "planted.go", planted); len(hits) != 1 {
 		t.Fatalf("positive control: the guard flagged %d literal(s) in a planted "+
 			"resolveRemoteMain(dir, \"origin\") call, want 1: %v", len(hits), hits)
+	}
+
+	for _, v := range []string{"refs/remotes/origin", "remote.origin", "origin/main"} {
+		if !assumedOrigin(v) {
+			t.Fatalf("positive control: the guard does not flag the literal %q", v)
+		}
+	}
+	for _, v := range []string{"refs/heads/origin/main", "originals", "refs/remotes/originals/x"} {
+		if assumedOrigin(v) {
+			t.Fatalf("negative control: the guard flags %q, which does not name the remote origin", v)
+		}
 	}
 
 	files, err := filepath.Glob("*.go")
