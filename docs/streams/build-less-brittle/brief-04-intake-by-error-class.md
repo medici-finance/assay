@@ -26,9 +26,9 @@ exec-tier: strong
 exec-tier-why: "(b) one procedure spans three skills (intake, review, worker dispatch) and must reuse existing verbs, labels and status tokens without inventing any."
 domain: complicated
 consumers:
-  - "plugins/assay/skills/intake-desk/SKILL.md: follow-up build-less-brittle/04 (this brief)"
-  - "plugins/assay/skills/pr-review-desk/SKILL.md (Recurrence-promotion paragraph): follow-up build-less-brittle/04 (this brief)"
-  - "plugins/assay/skills/worker-desk/SKILL.md (Un-briefed issues section): follow-up build-less-brittle/04 (this brief)"
+  - "plugins/assay/skills/intake-desk/SKILL.md: fixed-here"
+  - "plugins/assay/skills/pr-review-desk/SKILL.md (Recurrence-promotion paragraph): fixed-here"
+  - "plugins/assay/skills/worker-desk/SKILL.md (Un-briefed issues section): fixed-here"
   - "labels error-class, design-owed on each repo in scope: out-of-scope (per-repo provisioning, as the intake skill already requires for needs-decision)"
 ---
 
