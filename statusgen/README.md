@@ -91,7 +91,10 @@ audit an old pass witness on it as pass).
 A marked command that cannot fail (`true`, `:`, `exit 0`, a lone `echo`) is NOTICEd as
 `cmd-marker-vacuous`. A marker counts only where the rendered table shows it as code:
 spans are found as CommonMark renders them (escaped backticks are literal), and a cell
-whose prose carries an unescaped `<`, `[` or `$` (math) honours no marker (`--lint` NOTICEs it as
+whose prose carries an unescaped `<` or `[`, a dollar in any spelling (`$`, `\$`, `&#36;`:
+math) or any character reference, or a span whose opening backticks are fused to the text
+before them (an autolink, `~~`), honours no marker; the marker span itself must be set apart
+by whitespace or the cell edge (plain punctuation may follow it) (`--lint` NOTICEs it as
 `cmd-marker-not-honoured`; a marker that replaces a command-shaped first span is
 `cmd-marker-overrides-command`). The tools/desk executors (`verifyloop`,
 `deskrebaseline`) apply the same rule, held to the shared vectors in

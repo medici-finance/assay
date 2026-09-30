@@ -83,8 +83,13 @@ nothing measured.
    row the same way, and `verifyrun --check` does not audit an old pass witness on it as pass.
    A marker counts only where the rendered table shows it as code: not between
    escaped backticks, and not in a cell whose prose carries an unescaped `<` or `[` (raw
-   HTML, a comment, a link or an image can hide text from the reader) or an unescaped `$`
-   (GitHub renders a dollar-wrapped span as math); escape them as `\<`, `\[`, `\$`. `statusgen --lint`
+   HTML, a comment, a link or an image can hide text from the reader) or a dollar in any
+   spelling (`$`, `\$`, or a character reference such as `&#36;` — GitHub renders
+   dollar-wrapped text as math, so any `&…;` reference in prose counts), and not in a cell
+   where a span's opening backticks are fused to the text before them (only whitespace, the
+   cell start or a `(` may lead a span). The marker span itself must follow whitespace or the
+   cell start, and end the cell or be followed by whitespace or plain punctuation. Escape
+   `<` and `[` as `\<`, `\[`; keep dollars out of a marked Command cell. `statusgen --lint`
    NOTICEs a prose cell whose first span is not a command shape (`prose-led-command`), a
    cell with two markers (`cmd-marker-ambiguous`), a marker that replaces a command-shaped
    first span (`cmd-marker-overrides-command`), and a `cmd:` span that is not honoured

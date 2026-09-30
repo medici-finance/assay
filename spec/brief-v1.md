@@ -288,9 +288,17 @@ The body MUST contain a `## Verify` section with an executable table:
   renders them: a backslash-escaped backtick is literal text, and a run of N
   backticks closes only on the next run of exactly N. A cell whose prose (outside
   code spans) carries an unescaped `<` or `[` (raw HTML, an HTML comment, a link or
-  an image, any of which can hide text from the rendered table), or an unescaped `$`
-  (GitHub renders a dollar-wrapped span as math, not code), has no honoured
-  marker; write `\<`, `\[` or `\$` to use those characters in prose.
+  an image, any of which can hide text from the rendered table), or a dollar in any
+  spelling — bare `$`, escaped `\$`, or a character reference such as `&#36;`
+  (GitHub renders dollar-wrapped text as math, not code, and decodes character
+  references first, so any `&…;` reference in prose counts) — has no honoured
+  marker. Neither does a cell where a code span's opening backticks are fused to the
+  text before them (an autolink, a `~~` strikethrough or a dollar can swallow them):
+  only whitespace, the start of the cell or a `(` may lead a span. The marker span
+  itself MUST follow whitespace or the start of the cell, and MUST end the cell or be
+  followed by whitespace or plain punctuation (`.` `,` `;` `:` `!` `?` `)`). Write
+  `\<` or `\[` to use those characters in prose; keep dollars out of a marked
+  Command cell.
 - Rows MUST NOT be prose-only assertions without a command.
 - Prose deliverables (docs, articles) MUST use PRESENCE gates: checks that required
   elements exist (file, section, token). The Verify section MUST state that
