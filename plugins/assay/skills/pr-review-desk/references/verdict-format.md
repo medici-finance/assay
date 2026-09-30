@@ -1,7 +1,7 @@
 # Verdict mechanics and the verdict-body schema
 
 The desk's verdict-posting interface. `pr-review-desk/SKILL.md` § The reviewer's bar points here;
-`deskdispatch --kit review` §9 carries the generic wording the dispatched agent receives. The tool
+`deskdispatch --kit review` §12 carries the generic wording the dispatched agent receives. The tool
 reference is `tools/desk/README.md` — the public home of the desk tools.
 
 ## Posting a verdict

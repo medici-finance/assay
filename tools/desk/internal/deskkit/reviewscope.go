@@ -4,7 +4,7 @@ package deskkit
 // blocking boundary (example-stream/20).
 //
 // THE PROBLEM. An incremental reviewer search keeps discovering old instances of the same
-// false claim after each worker fix. Clause 8 of the review kit sweeps the WHOLE diff (and,
+// false claim after each worker fix. Clause 9 of the review kit sweeps the WHOLE diff (and,
 // where cheap, the repository) on RE-review, but never mandates a complete FIRST-pass
 // inventory and never bounds which of the hits may HOLD the pull request. So a small change
 // acquires unbounded cleanup scope: every newly-noticed sibling sentence becomes a fresh

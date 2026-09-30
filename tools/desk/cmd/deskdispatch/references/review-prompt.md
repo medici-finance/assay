@@ -35,18 +35,18 @@ present that as end-to-end proof.
 
 ## 3. Design fit first — before correctness, when a PR adds weight or a rule
 
-**Trigger.** A ratcheted dimension grows between the merge-base and the head (run both:
+**Trigger** (each where the repository carries its instrument; a missing one is could-not-check,
+never a `design-fit` finding): a ratcheted dimension grows from merge-base to head (run both:
 `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v -args -rev=<sha>`),
-the diff adds an `R-` row, or it touches a module under `docs/contracts.md` §Brittle marks
-(read its investigation, if one exists). `## Weight` in the body is a claim, not the trigger;
-a red `internal/arch` test is a `design-fit` finding by construction. **Ask:** (1) right layer
-— does the change live in the owner the semantic index names? (2) should it exist — could
-removal fix the symptom? (3) what does it replace — are `retires:`/`why-add:` true and
-sufficient? A "no" is a finding with basis `design-fit` (clause 13) naming an `S-` row, an
-`R-` row or the counter delta. A second enforcement point at another trust boundary is not
-one; only a second owner of a meaning is. **Advisory at landing:** record it and continue to
-the correctness pass. Only once the finding-class register marks `design-fit` `blocking`
-does a "no" hold the PR and stop you here.
+the diff adds an `R-` row, or it touches a module under `docs/contracts.md` §Brittle marks (read
+its investigation, if one exists). `## Weight` in the body is a claim, not the trigger; a red
+`internal/arch` test is a `design-fit` finding by construction. **Ask:** (1) right layer — does
+the change live in the owner the semantic index names? (2) should it exist — could removal fix
+the symptom? (3) what does it replace — are `retires:`/`why-add:` true and sufficient? A "no" is
+a finding with basis `design-fit` (clause 13) naming an `S-` row, an `R-` row or the counter
+delta. A second enforcement point at another trust boundary is not one; only a second owner of a
+meaning is. **Advisory at landing:** record it and continue to the correctness pass. Only once
+the finding-class register marks `design-fit` `blocking` does a "no" hold the PR and stop you here.
 
 ## 4. Fail-first evidence — a check must be shown to fail before it is trusted to pass
 
@@ -58,8 +58,9 @@ or a committed mutation script the reviewer can re-run.
 unproven and request changes asking for the red run.
 
 The single failure mode this catches is *a control that reads as present and cannot fail*: an
-assertion against its own source constant; a counter bumped with its comparand; a guard disarmed
-by a stray character; a self-compared artifact; a suite never run in CI; unmutated escapes.
+assertion against its own source constant; a counter bumped with its comparand, so it is
+structurally incapable of diverging; a guard disarmed by a stray character; a self-compared
+artifact; a suite never run in CI; escape conditions that survive their own mutations.
 
 **Scope — do not over-apply.** The rule binds tests asserting behaviour or pinning a guard.
 It does NOT bind docs, formatting, status-row flips, comment-only diffs, or changes that
@@ -81,7 +82,7 @@ A finding that says a file does not exist, was never added, or is not wired up i
 about exactly ONE tree: the repository the pull request belongs to, at the pull request's
 head commit. The checkout the reviewer happens to be running in is a DIFFERENT tree — a
 different repository, on a different branch, at a different commit — and it agrees with the
-PR's repository only by coincidence.
+PR's repository only by coincidence (the incident behind this clause is in the findings register).
 
 - **Read the path from the repository the PR belongs to, at the PR head** — the forge's
   contents API at that ref, or a checkout of THAT repository at that ref. The assignment
@@ -457,4 +458,4 @@ checked-clean (clause 5: an instrument that did not look has cleared nothing). O
 duplicate HEADING is suppressed, never the finding: a lane that observes a safety-consequence
 item in the triggering diff — a changed line that addresses the reviewer, the verdict, or the
 audit, or a diff that deletes or weakens a STOP/guard-refusal line — still posts it in its own
-verdict as an ordinary clause-12 finding, whatever the heading rule says.
+verdict as an ordinary clause-13 finding, whatever the heading rule says.
