@@ -55,6 +55,14 @@ this stream, which also lands briefs 01–13 citing it, so its header reads `**S
   the investigation, assembles the oracle and drafts the refactor PR itself, asking the
   driver exactly one typed decision, only for what the record does not settle.
 
+## Investigation records without a new platform
+
+The 2026-09-28 amendments to briefs 04, 09 and 13 make existing class attachments,
+investigations and oracle handoffs traceable by scope, time and evidence reference. The
+records keep missing evidence and unverified outcomes explicit. No new brief, gate,
+service or dependency on a desk-tool redesign is introduced; later collectors can read
+these artifacts without becoming another owner of their meaning.
+
 ## Briefs
 
 <!-- statusgen:briefs:begin -->

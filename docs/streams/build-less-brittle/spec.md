@@ -125,6 +125,16 @@ rule (§5), not a proven cure.
   across PRs) currently promotes a guardrail. It is redirected to attach to, or open, a class
   issue. Promotion goes to design, not to a new guard.
 
+**Evidence references in the existing instance record (04).** Alongside `incident-group`
+and `module`, record `observed-at`, `source-ref` (immutable revision or retained evidence
+reference where available), and `scope` (affected revision/operation, or explicitly unknown).
+Distinguish `active`, `recovered` and `unknown` current state, with `checked-at` and a
+`recovery-ref` when recovered. A later assessment appends a record linked by incident-group;
+it does not erase the original observation or retroactively change the counted incident.
+Mirrored reports still count once. A successful operation on another scope is not recovery;
+a closed issue alone is not evidence of recovery. Existing records lacking these fields
+remain readable as unknown; do not invent values or block intake awaiting a new tool.
+
 ### 4.2 Design fit in every new brief (brief 02)
 
 ```
@@ -288,6 +298,16 @@ hard-gate exceptions are the gates that already exist.
   seam before rewrite), `accept` (amend the record, clear the mark), or `clear`. Plus
   `single-point-of-failure:` on core surfaces and an `end-state:` line the next pass can check.
   An unfindable intent is `NEEDS_CONTEXT`, never invented.
+
+**Replayable reading (09, consumed by 13).** The existing investigation file also records
+`as-of`, `source-revisions` and `evidence-gaps`. In its existing sections, separate observations
+from interpretations, state competing explanations and the next discriminating check, and
+link a proposed intervention to its expected observable and applicable acceptance test.
+Use source references from the class record; no transcript mirror or new event service.
+The runbook carries these links into the oracle and refactor PR, and records `outcome: pending`
+until applicable verification exists. A synthetic rehearsal closed unmerged is not recovery.
+Unavailable evidence stays explicit; `accept`, `clear` and NEEDS_CONTEXT remain real exits.
+These fields require neither a desk-tool redesign nor an installed collector.
 
 ### 4.10 Fitness functions (brief 10)
 
