@@ -12,11 +12,12 @@ import (
 // that oracle, and the oracle's own brief pins it with a `shellcheck` Verify row, but no job ran
 // shellcheck over it, so word-splitting (SC2086) and subshell (SC2030/SC2031) findings landed on
 // main unobserved and sat there until a post-merge verify pass tripped over them. This runs the
-// same whole-file check in `go test`, so a new finding at ANY site in the oracle is a red test
-// in the PR that introduces it, not only at the sites fixed so far.
+// same whole-file check in `go test`, so on any machine with shellcheck installed a new finding
+// at ANY site in the oracle is a red test, not only at the sites fixed so far.
 //
 // Where shellcheck is not installed the test SKIPS and says so: that is could-not-check, never a
-// pass. The positive control below proves the shellcheck it found still flags a planted SC2086,
+// pass. CI does not install shellcheck yet (#1875), so in CI this test skips, and a non-verbose
+// `go test` prints that skip as a plain `ok` — the guard binds only where shellcheck exists. The positive control below proves the shellcheck it found still flags a planted SC2086,
 // so a broken or stubbed shellcheck fails here instead of reporting the oracle clean.
 func TestOracleShellcheckClean(t *testing.T) {
 	const oracle = "../../../cellctl/testdata/cellctl-shell-oracle.sh"
