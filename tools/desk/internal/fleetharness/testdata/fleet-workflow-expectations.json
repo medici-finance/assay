@@ -1,11 +1,11 @@
 {
   "deskreply/detached-worktree-own-repo": {
-    "stage": "unverifiable",
-    "note": "THE HEADLINE FAILURE. deskreply refuses at exit 6 ('detached HEAD — check out your PR's feature branch first') in the exact worktree shape the worker-desk and pr-shepherd skills MANDATE. Measured 5 of 5 workers in one dispatch cycle and 3 of 3 in the cycle before; every one fell back to raw `gh pr comment`, which routes around deskkit.BodyCheck entirely. Exit 6 is an authorised fallback trigger, so nothing in the artifact records that the secret scan did not run. When the fix lands this row becomes reached-remote and the test will say so."
+    "stage": "reached-remote",
+    "note": "FIXED (#1901). deskreply no longer refuses a detached HEAD outright: preflight records the branch as none, resolves the HEAD commit, and leaves the own-PR decision to deskkit.CheckOwnPR, which admits a checkout whose HEAD IS the PR's head commit (exact match) under any branch name or none. Every local precondition now passes in the worktree shape the worker-desk and pr-shepherd skills mandate, and the run stops at the public-repo gate, the first step needing GitHub, exactly like the branch-checked-out control. Before the fix this row was unverifiable at exit 6 ('detached HEAD — check out your PR's feature branch first'), and workers fell back to raw `gh pr comment`, which skips deskkit.BodyCheck."
   },
   "deskreply/detached-worktree-cross-repo": {
-    "stage": "unverifiable",
-    "note": "The acceptance sentence in full — a detached worktree at origin/<branch>, in a repo DIFFERENT from the caller's own. Note what this row records beyond the one above: the detached-HEAD guard fires FIRST, so the separate cross-repo refusal ('not this worktree's origin') is never even reached. Two independent preconditions each block the mandated shape, and fixing only the one named in the message would leave this scenario refusing at exit 5 instead of 6."
+    "stage": "refused",
+    "note": "A detached worktree at origin/<branch>, in a repo DIFFERENT from the caller's own. Since #1901 the detached-HEAD guard no longer fires, so this row now reaches the SEPARATE cross-repo precondition and refuses at exit 5 ('not this worktree's origin — deskreply only replies on your own PR'), as this note predicted before the fix. That refusal is the intended outcome: a worker replies from a checkout of the PR's own repo, which the own-repo row above now admits."
   },
   "deskreply/branch-checked-out-own-repo": {
     "stage": "reached-remote",
