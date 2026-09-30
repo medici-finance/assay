@@ -103,7 +103,7 @@ design-fit:                         # REQUIRED on every NEW brief (spec/brief-v1
   why-add: n/a                      # REQUIRED when any delta is positive: why it cannot live in the owner,
                                     # and what removal was considered instead; n/a otherwise
 # Retiring a control at a trust boundary names the layer still refusing the same threat, with a
-# Verify row proving it with the retired layer absent (spec/brief-v1.md §4.1, both design-fit rules).
+# Verify row proving it with the retired layer absent (spec/brief-v1.md §4.1, design-fit rule 2).
 # If this brief changes a SHARED VALUE (a party/identity, env-var name, config key, a
 # field's meaning, a wire/JSON format, a default — anything another component reads),
 # fill the consumers: frontmatter field above — grep for every reader and route each one.

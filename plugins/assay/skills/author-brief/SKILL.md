@@ -365,7 +365,8 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
        end-to-end flows, sweeping a pattern across sites)?
    (c) Is it code where a subtle implementation error survives the brief's own tests (auth,
        funds, concurrency, safety plumbing)?
-   (d) Is this a design brief raised by an error-class trigger?
+   (d) Is this a design brief raised by an error-class trigger? (A recurring defect class, not
+       one symptom, has accrued enough counted instances or merged fixes to be owed a design.)
    `strong` SHOULD carry a one-line `exec-tier-why` naming which question(s). `statusgen --lint`
    PROBLEMs an unrecognized value, NOTICEs a missing `exec-tier-why`. **Honest limitation:**
    statusgen never verifies which model actually ran — pickup-side compliance is honor-system
@@ -598,8 +599,8 @@ DISPATCH CHECKLIST — brief authored, before dispatch
 [ ] 5. `gate-why` is substantive — names what about THIS brief trips the wire.
 [ ] 6. Effort and exec-tier honest. Not an L wearing an M; not `any` on work that needs `strong`.
 [ ] 7. Shared value → a FLOW row, not only a site row, and `consumers:` enumerated (rule 6).
-[ ] 8. New component, or any weight delta > 0 → `layering:`/`design-fit:` answered; `why-add`
-       names what removal was considered. `layering:` records structure, boundary and current
+[ ] 8. Every new brief → `design-fit:` answered; any weight delta > 0 → `why-add` names what
+       removal was considered. New component → `layering:` records structure, boundary, current
        reason; Task/Verify check the claimed separation (or flat-tool behavior), not its label.
 [ ] 9. Pre-mortem run; every failure mode has a row or a recorded review-only reason.
 ```
