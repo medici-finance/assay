@@ -367,7 +367,52 @@ RISK-VALUE: DERIVED — alwaysApply = true @ tools/harnessgen/gen.go:233 (emitte
 RISK-VALUE: N/A — max-age-days = 45 @ freshness.yaml:39/54 and the row-10 threshold ≥ 5 are reversible operational knobs; they rank last and need no derivation.
 
 VERIFY: FAIL — 11/12 rows pass, row 6 fails (the claude-code.md binding has no system-demo degradation cell, tracked by #1703). Held at `implemented`.
+### Verification — 2026-09-30 (assay-verifier-app[bot] @ 0b033c711c9e (claude-opus-5-5) (on-behalf-of human:ian)) — 2026-09-30 claude-opus-5-5-verifier
 
+Non-implementer re-verify on merged main 0b033c711c9ec30f75cb8c2082a505b06958a423 (HEAD == the forge's `commits/main`). The prior hold was row 6 on #1703, which #1817 closed (merge 4fbd205141a8, an ancestor of this SHA): `plugins/assay/references/claude-code.md:58` now carries the system-demo cell. The same PR re-spelled rows 5, 9 and 11 so the witness runs the full command; none of their Expects is looser, and row 11 is stricter. The first table is the `statusgen verifyrun` execution witness, landed verbatim. It was run on Linux (golang:1.25-bookworm, linux/arm64, `--network none`, statusgen built from main's own source, the adopter roster mounted read-only so each Runner cell carries its on-behalf-of principal): 12/12 pass, witness exit 0, lint exit 0.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test ./... >/tmp/hp12r1.out 2>&1; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 2 | `(cd tools/harnessgen && GOWORK=off go run . cursor --check --root ../..); echo $?` | pass exit=0 | sha256:7200bd9208d1 | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 3 | `printf '\nX\n' >> "$PWD/plugins/assay/cursor/assay.mdc" && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check >/tmp/hp12r3.out 2>&1; echo $?; (cd tools/harnessgen && GOWORK=off go run . cursor --root ../..)` | pass exit=0 | sha256:758dd23267b9 | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 4 | `mkdir -p /tmp/hp12t && cp -r plugins/assay /tmp/hp12t/ && mkdir /tmp/hp12t/assay/skills/probe-skill && printf -- '---\nname: probe-skill\ndescription: probe\n---\n' > /tmp/hp12t/assay/skills/probe-skill/SKILL.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12t/assay >/tmp/hp12r4.out 2>&1; echo $?; rm -rf /tmp/hp12t` | pass exit=0 | sha256:53c234e5e847 | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 5 | `mkdir -p /tmp/hp12b && cp -r plugins/assay /tmp/hp12b/ && sed "s/$(printf '\140')the-desk$(printf '\140')/the-desk/g" plugins/assay/references/cursor.md > /tmp/hp12b/assay/references/cursor.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12b/assay >/tmp/hp12r5.out 2>&1; echo $?; rm -rf /tmp/hp12b` | pass exit=0 | sha256:53c234e5e847 | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 6 | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bodies plugins/assay/skills && /tmp/hl870 bindings plugins/assay/references; echo $?` | pass exit=0 | sha256:eb553a881109 | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 7 | `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..) && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | pass exit=0 | sha256:ef88df36c256 | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 8 | `grep -qi 'Running Assay on Cursor' docs/adopting-assay.md && grep -qF 'plugins/assay/cursor/' docs/adopting-assay.md; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 8a | `grep -qF 'plugins/assay/cursor-no-such-token' docs/adopting-assay.md; echo $?` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 9 | `grep -qF 'alwaysApply: true' plugins/assay/cursor/assay.mdc; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 10 | `grep -c 'needs: live-install confirmation' docs/research/cursor-harness-capabilities.md` | pass exit=0 | sha256:2e6d31a5983a | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 11 | `{ (cd tools/freshness && GOWORK=off go run . --root ../..) 2>&1 \|\| true; } \| grep -E -e 'references/cursor.md' -e 'cursor-harness' \| grep -c '^FRESH'` | pass exit=0 | sha256:53c234e5e847 | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+
+Verifier detail (harness-portability/12 — NON-implementer, merged main 0b033c711c9e, 2026-09-30; every row also run by hand on the host, same exit and output):
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---------|----------|----------|---------------|
+| 1 | row 1 command as written | prints 0 | exit 0; printed `0`; ok harnessgen, all 9 cursor tests pass | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 2 | row 2 command as written | clean | exit 0; generated rule matches the resident source | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 3 | row 3 drift mutation as written | drift then clean | exit 1 naming the rule file, regenerate restores it, recheck clean; file byte-identical afterwards | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 4 | row 4 coverage mutation as written | could-not-check (2) | printed `2`; the probe skill is in neither the packaged roster nor the excluded list | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 5 | row 5 binding-skew mutation as written | could-not-check (2) | printed `2`; packaged skill the-desk has no degradation cell | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 6 | row 6 command as written (the prior FAIL) | prints 0 | exit 0; checked-clean bodies and bindings; printed `0` | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 7 | row 7 command as written | prints 0 | resident clean; codex clean; printed `0` | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 8 | row 8 command as written | prints 0 | printed `0` | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 8a | row 8a command as written | prints 1 | printed `1` | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 9 | row 9 command as written | prints 0 | printed `0` | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 10 | row 10 command as written | count at least 5 | printed `9` | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 11 | row 11 command as written | count at least 2 | printed `2`; both cursor freshness entries FRESH | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+
+Risk-bearing values. Risk metadata is present and all four flags are `no`; enumerated anyway:
+
+RISK-VALUE: DERIVED — exitClean = 0, exitDrift = 1, exitCouldNotCheck = 2 @ tools/harnessgen/main.go:22-24 — could-not-check is non-zero and distinct from drift, so a skew fails hard instead of reading as a regenerate; all three were observed live (rows 2/7, 3, 4/5).
+RISK-VALUE: DERIVED — alwaysApply = true @ tools/harnessgen/gen.go:233 — in the rules contract this is the only setting that loads the rule into every context.
+RISK-VALUE: DERIVED — system-demo Claude Code cell = runs @ plugins/assay/references/claude-code.md:58 — the reference harness binds every capability natively, so nothing forces a degrade.
+RISK-VALUE: N/A — max-age-days = 45 @ freshness.yaml:39/72 and the row-10/11 thresholds are reversible knobs.
+
+Findings: (F1) #1703 is fixed on main by #1817; row 6 passes on both paths. (F2) time-bound: both cursor freshness entries go stale on 2026-10-10 (reviewed 2026-08-26, 45-day limit), after which row 11 prints 0 unless the review stamps are refreshed. (F3) the consumers-placement inversion noted earlier (#870) is unchanged. (F4) the live Cursor smoke run stays a separate human-gated step.
+
+VERIFY: PASS
 
 ## Review
 
