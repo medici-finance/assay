@@ -33,7 +33,7 @@ gate. Additional `assay.roster.ext.<name>` keys follow the same pattern.
 
 | Key | Provided by | Meaning |
 |---|---|---|
-| `assay.roster.trust` | `assay/roster` | the fail-closed trust surface (`ASSAY_BLESS_LOGIN`, `ASSAY_TRUSTED_LOGINS`, `ASSAY_TRUSTED_BOT_SLUGS`, `ASSAY_ALLOWED_REPOS`, `ASSAY_HUMAN_LOGIN_MAP`) |
+| `assay.roster.trust` | `assay/roster` | the fail-closed trust surface (`ASSAY_BLESS_LOGIN`, `ASSAY_TRUSTED_LOGINS`, `ASSAY_TRUSTED_BOT_SLUGS`, `ASSAY_ALLOWED_REPOS`, `ASSAY_HUMAN_LOGIN_MAP`, `ASSAY_RUN_CREDENTIALS`) |
 | `assay.roster.ext.risk-callout` | `assay/roster` | adopter risk-path callout (which paths force a security review) |
 | `assay.roster.ext.writeguard-callout` | `assay/roster` | adopter write-guard callout |
 | `assay.roster.ext.repo-aliases` | `assay/roster` | adopter repo-alias map |

@@ -472,8 +472,8 @@ func TestRosterKnownKeySet(t *testing.T) {
 	if !found {
 		t.Fatalf("%s is not in knownRosterKeys() — a roster carrying it refuses the whole configuration", EnvRunCredentials)
 	}
-	if ext := cfg.Ext["run-credentials"]; ext.Status != ExtOK {
-		t.Fatalf("cfg.Ext[run-credentials] = %+v, want %q", ext, ExtOK)
+	if ext, ok := cfg.Ext["run-credentials"]; ok {
+		t.Fatalf("cfg.Ext[run-credentials] = %+v — ASSAY_RUN_CREDENTIALS is a trust key, never an extension result", ext)
 	}
 	if got := cfg.RunCredentials["example-org/tracker"]; got.Role != ReleaseRunnerRole || got.Human != "" {
 		t.Fatalf("RunCredentials[example-org/tracker] = %+v, want the %s role", got, ReleaseRunnerRole)
