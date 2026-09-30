@@ -1,0 +1,21 @@
+package main
+
+// Positive control for TestCommentAuthorsCrossGHLogin (loginshape_guard_test.go): the guard
+// must flag exactly the two PLANTED sites below and neither of the two sanctioned ones. Kept
+// as .go.txt so the compiler never builds it.
+
+func plantedKeyed(raw string) comment {
+	return comment{Author: raw, Body: "PLANT-1"} // PLANT-1: raw REST login, no ghLogin
+}
+
+func plantedAssign(c *comment, raw string) {
+	c.Author = raw // PLANT-2: raw REST login assigned after construction
+}
+
+func sanctionedKeyed(raw string) comment {
+	return comment{Author: ghLogin(raw), Body: "ok"}
+}
+
+func sanctionedAssign(c *comment, raw string) {
+	c.Author = ghLogin(raw)
+}

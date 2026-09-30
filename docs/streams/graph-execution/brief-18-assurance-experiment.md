@@ -22,6 +22,8 @@ issues: []
 schema: brief-v2
 authored: 2026-09-19 by Codex (author-brief)
 sources:
+- docs/streams/graph-execution/work-input-amendment.md
+- freshness-checked 2026-09-30 @ 8485778515c041fc87966902a14eb9d195492be3 (pending scope, not implementation)
 - docs/streams/graph-execution/admission-assurance-spec.md
 - freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
 exec-tier: strong
@@ -30,7 +32,7 @@ domain: complicated
 consumers:
 - 'statusgen: fixed-here'
 - 'drainloop: out-of-scope (consumed through completed contracts, no duplicate executor)'
-version: 1
+version: 2
 id: 677d16bd-8d1f-4c11-a92d-4815b1f11991
 ---
 
@@ -56,6 +58,22 @@ single-point-of-failure: the new contract or policy alone cannot establish safe 
 - Existing authority and human gates remain binding. Missing prerequisite evidence is could-not-check.
 - Public fixtures use example-org and synthetic data; do not copy adopter evidence.
 
+## Work-input amendment — 2026-09-30
+
+Add WI-5 to this brief's existing connected offline experiment and report. Reuse run/flow
+records; do not retrofit the implemented flow brief or create another event store. Exercise
+duplicate event, failed-launch retry, unrelated/relevant edit, external policy/API change,
+head movement during work, crash after write, overlapping reservations and restored stop/
+spend state. Pin expected affected claims before the run and include incomplete manifests.
+
+Export per-work timing, preparation/failed-attempt cost, accepted-outcome denominator,
+rediscovery classification provenance and recovery/staleness counters. A deliberately
+omitted failed attempt must change the accounting verdict. Counterbalance fixture order
+and distinguish replay/fake timings from actual model performance. Include a matched pilot
+protocol (same runner/profile first; profile × model second) in the existing report, but
+claim no measured quota saving from offline fixtures. No new model benchmark or real
+provider execution is part of this brief.
+
 ## Task
 
 1. Implement GEA-18 integration cases listed in the amendment using real evaluator/coverage/record APIs and a fake external authority. Include confidence-versus-hard-gate, expired calibration, wrong subject, lost ack, stale owner, restore pause, quota and missing control population.
@@ -75,6 +93,8 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 1 | check:ci | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestAssuranceExperiment" ./...` | exit 0; output includes PASS for TestAssuranceExperiment, with no [no tests to run] for its owning package |
 | 2 | check:ci +mutation | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestAssuranceExperimentUpperLayerBypass" ./...` | exit 0; output includes PASS for TestAssuranceExperimentUpperLayerBypass, with no [no tests to run] for its owning package |
 | 3 | check:ci +flow | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestAssuranceExperimentEndToEnd" ./...` | exit 0; output includes PASS for TestAssuranceExperimentEndToEnd, with no [no tests to run] for its owning package |
+| 4 | check:ci +flow | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestAssuranceExperimentInterveningChange$" ./... > /tmp/TestAssuranceExperimentInterveningChange.out && grep -q -- "--- PASS: TestAssuranceExperimentInterveningChange " /tmp/TestAssuranceExperimentInterveningChange.out` | exit 0; named PASS; dispatch → intervening change → result acceptance holds stale evidence and retains artifacts |
+| 5 | check:ci +mutation | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestAssuranceExperimentCountsFailedWork$" ./... > /tmp/TestAssuranceExperimentCountsFailedWork.out && grep -q -- "--- PASS: TestAssuranceExperimentCountsFailedWork " /tmp/TestAssuranceExperimentCountsFailedWork.out` | exit 0; named PASS; omitted preparation or failed-attempt spend is detected; accepted-work denominator cannot be inflated; mutation: drop failed-attempt spend from the report total — the named test must fail |
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.
 

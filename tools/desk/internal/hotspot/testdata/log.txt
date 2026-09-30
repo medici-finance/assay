@@ -1,0 +1,92 @@
+1212121212121212121212121212121212121212<NUL>2026-09-12 09:00:00 +0000<NUL>fix(alpha): nil deref
+
+tools/desk/cmd/alpha/main.go
+tools/desk/cmd/alpha/run.go
+tools/desk/internal/gamma/gamma.go
+1111111111111111111111111111111111111111<NUL>2026-09-11 09:00:00 +0000<NUL>feat: beta
+
+tools/desk/internal/beta/beta.go
+tools/desk/internal/beta/store.go
+1010101010101010101010101010101010101010<NUL>2026-09-10 09:00:00 +0000<NUL>chore: fixture update
+
+tools/desk/cmd/alpha/main.go
+tools/desk/cmd/alpha/run.go
+tools/desk/internal/beta/beta.go
+tools/desk/internal/beta/store.go
+0909090909090909090909090909090909090909<NUL>2026-09-09 09:00:00 +0000<NUL>fixes #12: alpha again
+
+tools/desk/cmd/alpha/main.go
+tools/desk/cmd/alpha/run.go
+0808080808080808080808080808080808080808<NUL>2026-09-08 04:00:00 -0500<NUL>Revert "feat: gamma"
+
+tools/desk/internal/gamma/gamma.go
+tools/desk/internal/beta/beta.go
+0707070707070707070707070707070707070707<NUL>2026-09-07 09:00:00 +0000<NUL>Merge branch 'wide-sweep'
+
+tools/desk/cmd/alpha/main.go
+tools/desk/cmd/alpha/run.go
+tools/desk/internal/beta/beta.go
+tools/desk/internal/beta/store.go
+tools/desk/internal/gamma/gamma.go
+tools/desk/internal/decoy/prefix.go
+tools/desk/internal/wide/w01.go
+tools/desk/internal/wide/w02.go
+tools/desk/internal/wide/w03.go
+tools/desk/internal/wide/w04.go
+tools/desk/internal/wide/w05.go
+tools/desk/internal/wide/w06.go
+tools/desk/internal/wide/w07.go
+tools/desk/internal/wide/w08.go
+tools/desk/internal/wide/w09.go
+tools/desk/internal/wide/w10.go
+tools/desk/internal/wide/w11.go
+tools/desk/internal/wide/w12.go
+tools/desk/internal/wide/w13.go
+tools/desk/internal/wide/w14.go
+tools/desk/internal/wide/w15.go
+tools/desk/internal/wide/w16.go
+tools/desk/internal/wide/w17.go
+tools/desk/internal/wide/w18.go
+tools/desk/internal/wide/w19.go
+tools/desk/internal/wide/w20.go
+tools/desk/internal/wide/w21.go
+tools/desk/internal/wide/w22.go
+tools/desk/internal/wide/w23.go
+tools/desk/internal/wide/w24.go
+tools/desk/internal/wide/w25.go
+tools/desk/internal/wide/w26.go
+tools/desk/internal/wide/w27.go
+tools/desk/internal/wide/w28.go
+tools/desk/internal/wide/w29.go
+tools/desk/internal/wide/w30.go
+tools/desk/internal/wide/w31.go
+tools/desk/internal/wide/w32.go
+tools/desk/internal/wide/w33.go
+tools/desk/internal/wide/w34.go
+0606060606060606060606060606060606060606<NUL>2026-09-06 09:00:00 +0000<NUL>refactor: prefix handling
+
+tools/desk/internal/decoy/prefix.go
+tools/desk/cmd/alpha/main.go
+0505050505050505050505050505050505050505<NUL>2026-09-05 09:00:00 +0000<NUL>fixed beta store ordering
+
+tools/desk/internal/beta/beta.go
+tools/desk/internal/beta/store.go
+tools/desk/internal/beta/beta_test.go
+0404040404040404040404040404040404040404<NUL>2026-09-04 09:00:00 +0000<NUL>docs: tweak the guide
+
+docs/guide.md
+0303030303030303030303030303030303030303<NUL>2026-09-03 09:00:00 +0000<NUL>Fix alpha flag parsing
+
+tools/desk/cmd/alpha/main.go
+tools/desk/cmd/alpha/run.go
+tools/desk/internal/beta/beta.go
+tools/desk/internal/beta/store.go
+0202020202020202020202020202020202020202<NUL>2026-09-02 09:00:00 +0000<NUL>fix: alpha crash on empty input
+
+tools/desk/cmd/alpha/main.go
+tools/desk/cmd/alpha/run.go
+0101010101010101010101010101010101010101<NUL>2026-09-01 09:00:00 +0000<NUL>feat: add alpha
+
+tools/desk/cmd/alpha/main.go
+tools/desk/cmd/alpha/run.go
+tools/desk/README.md
