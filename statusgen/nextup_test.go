@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -309,6 +310,132 @@ func TestDriveAntiStarvationFloor(t *testing.T) {
 	if driveSlotCap != 15 {
 		t.Fatalf("driveSlotCap must be 15, got %d", driveSlotCap)
 	}
+	if driveWorkerCap != 6 {
+		t.Fatalf("driveWorkerCap must be 6, got %d", driveWorkerCap)
+	}
+
+	// --- the 6-of-8 WORKER floor, bound on the dispatch queue (--next-up JSON) ---
+	//
+	// statusgen does not dispatch workers; it emits the queue a dispatcher starts
+	// from. The floor binds THERE: with an active drive, drive picks offered for
+	// dispatch never exceed driveWorkerCap minus the drive work already in flight
+	// (claimed items the drive covers). Each case reads the JSON the dispatcher
+	// consumes, not an internal field.
+	for _, tc := range []struct {
+		name        string
+		inFlight    int  // claimed items in a drive-covered stream
+		unknown     bool // claim filtering did not run
+		wantDrive   int  // drive rows the queue may offer
+		wantHeld    int  // drive rows withheld by the worker floor
+		wantUnknown bool
+	}{
+		{name: "nothing-in-flight-offers-at-most-6", inFlight: 0, wantDrive: 6, wantHeld: 2},
+		{name: "4-in-flight-offers-2", inFlight: 4, wantDrive: 2, wantHeld: 6},
+		{name: "6-in-flight-offers-none", inFlight: 6, wantDrive: 0, wantHeld: 8},
+		{name: "claims-unknown-is-could-not-check-and-offers-none", unknown: true, wantDrive: 0, wantHeld: 8, wantUnknown: true},
+	} {
+		t.Run("worker-floor-"+tc.name, func(t *testing.T) {
+			view := workerFloorQueue(t, true, tc.inFlight, tc.unknown)
+			if got := intField(t, view, "driveWorkerCap"); got != driveWorkerCap {
+				t.Fatalf("the dispatch JSON must carry driveWorkerCap=%d while a drive is active, got %d", driveWorkerCap, got)
+			}
+			driveRows, nonDrive := 0, 0
+			for _, r := range view["rows"].([]any) {
+				if r.(map[string]any)["driveSlug"] != nil {
+					driveRows++
+				} else {
+					nonDrive++
+				}
+			}
+			if driveRows != tc.wantDrive {
+				t.Fatalf("drive rows offered for dispatch: got %d, want %d (driveWorkerCap %d, in flight %d)", driveRows, tc.wantDrive, driveWorkerCap, tc.inFlight)
+			}
+			if nonDrive != 8 {
+				t.Fatalf("the worker floor must never withhold NON-drive work: got %d non-drive rows, want 8", nonDrive)
+			}
+			if got := intField(t, view, "heldByDriveWorkerCap"); got != tc.wantHeld {
+				t.Fatalf("heldByDriveWorkerCap: got %d, want %d", got, tc.wantHeld)
+			}
+			if !tc.unknown {
+				if got := intField(t, view, "driveInFlight"); got != tc.inFlight {
+					t.Fatalf("driveInFlight: got %d, want %d", got, tc.inFlight)
+				}
+			}
+			reason, _ := view["driveWorkerUnknown"].(string)
+			if tc.wantUnknown != (reason != "") {
+				t.Fatalf("driveWorkerUnknown must be set iff claims are unread: got %q", reason)
+			}
+			// Nothing is dropped silently: shown + every held bucket == eligible.
+			sum := intField(t, view, "shown") + intField(t, view, "heldByStreamCap") + intField(t, view, "heldBySpan") +
+				intField(t, view, "heldByDriveCap") + intField(t, view, "heldByDriveWorkerCap")
+			if sum != intField(t, view, "eligible") {
+				t.Fatalf("held-back decomposition must account for every eligible pick: %d != eligible %d (%v)", sum, intField(t, view, "eligible"), view)
+			}
+		})
+	}
+
+	t.Run("worker-floor-critical-pick-takes-headroom-first", func(t *testing.T) {
+		// One slot of headroom (5 of 6 in flight). The drive covers 4 routine P0
+		// briefs and a P3 fire/01 that three reciprocated dependents lift into the
+		// critical tier; the P0 picks outscore fire/01 even with its unblocks term.
+		// The one slot must go to the critical pick, never to a higher-scored
+		// routine drive pick: the floor grants headroom in the (criticalTier,
+		// score) order, the same order the board ranks by.
+		fire := mkStream("fire", "active", "P3",
+			Brief{Num: "01", Wave: 0, Status: "todo", Schema: "brief-v1", Unblocks: fireDependents})
+		fire.LastTouch = day(0)
+		blocked := mkStream("blocked", "active", "P2",
+			Brief{Num: "01", Wave: 1, Status: "todo", Schema: "brief-v1", Depends: []string{"fire/01"}},
+			Brief{Num: "02", Wave: 1, Status: "todo", Schema: "brief-v1", Depends: []string{"fire/01"}},
+			Brief{Num: "03", Wave: 1, Status: "todo", Schema: "brief-v1", Depends: []string{"fire/01"}},
+		)
+		blocked.LastTouch = day(0)
+		busy := driveBriefStream("busy", 5)
+		drv0 := driveBriefStream("drv0", 4)
+		drv0.Priority = "P0"
+		streams := []*Stream{drv0, fire, blocked, busy}
+		claimed := map[string]bool{}
+		for _, b := range busy.Briefs {
+			claimed["busy/"+b.Num] = true
+		}
+		root := t.TempDir()
+		makeStreamsDir(t, root)
+		writeDrive(t, root, "surge-critical", "declared-by: operator\n"+liveWindow+
+			"intensity: surge\nstate: active\nitems:\n  - stream: drv0\n  - stream: fire\n  - stream: busy\n")
+		ds := loadDrives(root, streams, driveTestNow)
+		if !ds.applied() {
+			t.Fatalf("the surge drive must apply: %+v", ds)
+		}
+		withDrives(t, ds)
+		withFindings(t, nil)
+		cv := KnownClaims(claimed)
+		nu := nextUp(streams, cv, nil)
+		view := buildDispatchView(nu, streams, "", cv.Source)
+		var drive []dispatchRow
+		for _, r := range view.Rows {
+			if r.DriveSlug != "" {
+				drive = append(drive, r)
+			}
+		}
+		if len(drive) != 1 || drive[0].Brief != "fire/01" || drive[0].CriticalArm == "" {
+			t.Fatalf("the one slot of headroom must go to the critical pick fire/01, got %+v (held %d)", drive, view.HeldByDriveWorkerCap)
+		}
+		if view.HeldByDriveWorkerCap != 4 {
+			t.Fatalf("the 4 routine drive picks must be withheld, got held=%d", view.HeldByDriveWorkerCap)
+		}
+	})
+
+	t.Run("worker-floor-inert-without-a-drive", func(t *testing.T) {
+		view := workerFloorQueue(t, false, 4, false)
+		for _, k := range []string{"driveWorkerCap", "driveInFlight", "heldByDriveWorkerCap", "driveWorkerUnknown"} {
+			if _, ok := view[k]; ok {
+				t.Fatalf("with no active drive the dispatch JSON must not carry %q (payload unchanged): %v", k, view)
+			}
+		}
+		if n := len(view["rows"].([]any)); n != 16 {
+			t.Fatalf("with no drive every eligible pick is offered: got %d rows, want 16", n)
+		}
+	})
 
 	t.Run("15-of-20-via-2-pass-fill", func(t *testing.T) {
 		// 5 driven streams × 4 briefs = 20 drive-eligible picks; 2 free streams × 4 = 8
@@ -453,6 +580,70 @@ func TestDriveAntiStarvationFloor(t *testing.T) {
 			t.Fatalf("a stream's declared max-concurrent (1) must ALWAYS win over drive-stream-cap (3), got %d picks", serialCount)
 		}
 	})
+}
+
+// workerFloorQueue builds the worker-floor fixture and returns the `--next-up`
+// dispatch JSON as a generic map (what a consumer parses). Two driven streams × 4
+// briefs = 8 drive picks, two free streams × 4 = 8 non-drive picks; a third driven
+// stream "busy" holds inFlight briefs, every one claimed (in flight, not eligible).
+// drive=false skips the manifest; unknown=true runs with claims unread.
+func workerFloorQueue(t *testing.T, drive bool, inFlight int, unknown bool) map[string]any {
+	t.Helper()
+	streams := []*Stream{driveBriefStream("drv0", 4), driveBriefStream("drv1", 4),
+		driveBriefStream("free0", 4), driveBriefStream("free1", 4)}
+	claimed := map[string]bool{}
+	if inFlight > 0 {
+		busy := driveBriefStream("busy", inFlight)
+		streams = append(streams, busy)
+		for _, b := range busy.Briefs {
+			claimed["busy/"+b.Num] = true
+		}
+	}
+	ds := DriveSet{}
+	if drive {
+		root := t.TempDir()
+		makeStreamsDir(t, root)
+		items := "  - stream: drv0\n  - stream: drv1\n"
+		if inFlight > 0 {
+			items += "  - stream: busy\n"
+		}
+		writeDrive(t, root, "surge-workers", "declared-by: operator\n"+liveWindow+
+			"intensity: surge\nstate: active\nitems:\n"+items)
+		ds = loadDrives(root, streams, driveTestNow)
+		if !ds.applied() {
+			t.Fatalf("the surge drive must apply: %+v", ds)
+		}
+	}
+	withDrives(t, ds)
+	withFindings(t, nil)
+	cv := KnownClaims(claimed)
+	if unknown {
+		cv = ClaimView{Claimed: claimed}
+	}
+	nu := nextUp(streams, cv, nil)
+	raw, err := json.Marshal(buildDispatchView(nu, streams, "", cv.Source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var view map[string]any
+	if err := json.Unmarshal(raw, &view); err != nil {
+		t.Fatal(err)
+	}
+	return view
+}
+
+// intField reads an integer JSON field; an absent key reads as 0 (omitempty).
+func intField(t *testing.T, view map[string]any, key string) int {
+	t.Helper()
+	v, ok := view[key]
+	if !ok {
+		return 0
+	}
+	f, ok := v.(float64)
+	if !ok {
+		t.Fatalf("field %q is not a number: %v", key, v)
+	}
+	return int(f)
 }
 
 // TestNextUpSpanCapOverflow — 23 eligible briefs, span cap 7: exactly 7 shown,
