@@ -255,10 +255,18 @@ func mergeDispatch(hdr Header, verbUsed string, resolved []deskkit.RootConfig, v
 			})
 		}
 	}
-	// Score descending, then repo/stream/brief for a deterministic board — same
-	// ordering as cmdAwaiting.
+	// Critical tier first, then score descending, then repo/stream/brief for a
+	// deterministic board. The critical key is statusgen's own lexicographic
+	// (criticalTier, score) order carried across roots: without it a critical row
+	// from one root sorts below higher-scored routine rows from another, and the
+	// drive worker floor below — which grants headroom in this order — withholds
+	// it. CriticalArm is set only while a drive is active, so a no-drive board
+	// keeps the plain score order (same as cmdAwaiting).
 	sort.SliceStable(rep.Rows, func(i, j int) bool {
 		a, b := rep.Rows[i], rep.Rows[j]
+		if ac, bc := a.CriticalArm != "", b.CriticalArm != ""; ac != bc {
+			return ac
+		}
 		if a.Score != b.Score {
 			return a.Score > b.Score
 		}
@@ -276,7 +284,8 @@ func mergeDispatch(hdr Header, verbUsed string, resolved []deskkit.RootConfig, v
 }
 
 // applyDriveWorkerFloor re-applies the drive worker-pool floor across roots: drive
-// rows (driveSlug set) in queue order take the headroom left by the summed
+// rows (driveSlug set) in queue order — critical tier first, as mergeDispatch
+// sorts it — take the headroom left by the summed
 // in-flight drive work; every drive row past it is withheld and counted. With any
 // root's in-flight count unknown the headroom is 0. Non-drive rows always pass.
 // With no root reporting an active drive (cap 0) the rows are returned unchanged.
@@ -379,10 +388,25 @@ func cmdDispatch(hdr Header, verbUsed string) (*Report, error) {
 		}
 		fmt.Fprintf(w, "%-8s %-24s %-6s %-12s %-3s %s\n", "REPO", "STREAM", "SCORE", "STATUS", "UNB", "BRIEF")
 		for _, r := range rep.Rows {
-			fmt.Fprintf(w, "%-8s %-24s %-6d %-12s %-3d %s\n",
-				shortRepo(r.Repo), trunc(r.Stream, 24), r.Score, r.Status, r.BlockedCount, r.Brief)
+			fmt.Fprintf(w, "%-8s %-24s %-6d %-12s %-3d %s%s\n",
+				shortRepo(r.Repo), trunc(r.Stream, 24), r.Score, r.Status, r.BlockedCount, r.Brief, driveRowTags(r))
 		}
 	}}, nil
+}
+
+// driveRowTags marks a row the drive machinery touched, so a reader of the text
+// board can tell which rows count against the drive worker floor (`drive:<slug>`)
+// and which sit in the critical tier (`critical:<arm>`). Both are empty unless a
+// drive is active, so a no-drive board renders exactly as before.
+func driveRowTags(r dispatchRow) string {
+	var s string
+	if r.CriticalArm != "" {
+		s += "  critical:" + r.CriticalArm
+	}
+	if r.DriveSlug != "" {
+		s += "  drive:" + r.DriveSlug
+	}
+	return s
 }
 
 // dispatchHeldBackLine explains the eligible briefs NOT shown, naming which cap

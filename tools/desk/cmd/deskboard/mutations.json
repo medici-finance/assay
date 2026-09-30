@@ -96,6 +96,12 @@
       "file": "cmd/deskboard/dispatch.go",
       "old": "\tif rep.DriveWorkerCap <= 0 {\n\t\treturn rep.Rows\n\t}",
       "new": "\tif true {\n\t\treturn rep.Rows\n\t}"
+    },
+    {
+      "name": "drive worker floor — the cross-root merge drops the critical-tier sort key, so higher-scored routine drive rows take the shared headroom ahead of a critical row",
+      "file": "cmd/deskboard/dispatch.go",
+      "old": "ac, bc := a.CriticalArm != \"\", b.CriticalArm != \"\"; ac != bc",
+      "new": "ac, bc := a.CriticalArm != \"\", b.CriticalArm != \"\"; false && ac != bc"
     }
   ]
 }

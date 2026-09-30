@@ -374,6 +374,57 @@ func TestDriveAntiStarvationFloor(t *testing.T) {
 		})
 	}
 
+	t.Run("worker-floor-critical-pick-takes-headroom-first", func(t *testing.T) {
+		// One slot of headroom (5 of 6 in flight). The drive covers 4 routine P0
+		// briefs and a P3 fire/01 that three reciprocated dependents lift into the
+		// critical tier; the P0 picks outscore fire/01 even with its unblocks term.
+		// The one slot must go to the critical pick, never to a higher-scored
+		// routine drive pick: the floor grants headroom in the (criticalTier,
+		// score) order, the same order the board ranks by.
+		fire := mkStream("fire", "active", "P3",
+			Brief{Num: "01", Wave: 0, Status: "todo", Schema: "brief-v1", Unblocks: fireDependents})
+		fire.LastTouch = day(0)
+		blocked := mkStream("blocked", "active", "P2",
+			Brief{Num: "01", Wave: 1, Status: "todo", Schema: "brief-v1", Depends: []string{"fire/01"}},
+			Brief{Num: "02", Wave: 1, Status: "todo", Schema: "brief-v1", Depends: []string{"fire/01"}},
+			Brief{Num: "03", Wave: 1, Status: "todo", Schema: "brief-v1", Depends: []string{"fire/01"}},
+		)
+		blocked.LastTouch = day(0)
+		busy := driveBriefStream("busy", 5)
+		drv0 := driveBriefStream("drv0", 4)
+		drv0.Priority = "P0"
+		streams := []*Stream{drv0, fire, blocked, busy}
+		claimed := map[string]bool{}
+		for _, b := range busy.Briefs {
+			claimed["busy/"+b.Num] = true
+		}
+		root := t.TempDir()
+		makeStreamsDir(t, root)
+		writeDrive(t, root, "surge-critical", "declared-by: operator\n"+liveWindow+
+			"intensity: surge\nstate: active\nitems:\n  - stream: drv0\n  - stream: fire\n  - stream: busy\n")
+		ds := loadDrives(root, streams, driveTestNow)
+		if !ds.applied() {
+			t.Fatalf("the surge drive must apply: %+v", ds)
+		}
+		withDrives(t, ds)
+		withFindings(t, nil)
+		cv := KnownClaims(claimed)
+		nu := nextUp(streams, cv, nil)
+		view := buildDispatchView(nu, streams, "", cv.Source)
+		var drive []dispatchRow
+		for _, r := range view.Rows {
+			if r.DriveSlug != "" {
+				drive = append(drive, r)
+			}
+		}
+		if len(drive) != 1 || drive[0].Brief != "fire/01" || drive[0].CriticalArm == "" {
+			t.Fatalf("the one slot of headroom must go to the critical pick fire/01, got %+v (held %d)", drive, view.HeldByDriveWorkerCap)
+		}
+		if view.HeldByDriveWorkerCap != 4 {
+			t.Fatalf("the 4 routine drive picks must be withheld, got held=%d", view.HeldByDriveWorkerCap)
+		}
+	})
+
 	t.Run("worker-floor-inert-without-a-drive", func(t *testing.T) {
 		view := workerFloorQueue(t, false, 4, false)
 		for _, k := range []string{"driveWorkerCap", "driveInFlight", "heldByDriveWorkerCap", "driveWorkerUnknown"} {

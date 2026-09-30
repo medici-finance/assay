@@ -36,8 +36,14 @@ import (
 //                        (buildReciprocatedRevDeps): an edge A→B counts only when B
 //                        also declares `unblocks: A`. The reciprocity lint
 //                        (brieffile.go) reports a one-sided edge at NOTICE tier, so
-//                        the lint alone cannot keep a manufactured edge out of the
-//                        tier — the graph this arm reads does, by never walking one.
+//                        the lint alone cannot keep a one-sided edge out of the tier
+//                        — the graph this arm reads does, by never walking one. It
+//                        does NOT stop a change that writes BOTH endpoints (a
+//                        brief's own `unblocks:` plus dependents declaring
+//                        `depends:` on it, same stream included): both are
+//                        PR-writable frontmatter, so such an edge still reaches the
+//                        arm. That residual is named for the driver's ratification,
+//                        not closed here.
 //   4. reviewer-finding — an unresolved reviewer finding names this brief (the
 //                        existing Finding.Affects/StaleRef linkage). Machine-derived:
 //                        a reviewer files the finding, the brief author cannot.

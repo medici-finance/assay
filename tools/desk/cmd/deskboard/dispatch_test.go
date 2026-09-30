@@ -212,3 +212,51 @@ func TestMergeDispatch_DriveWorkerFloorAcrossRoots(t *testing.T) {
 		}
 	})
 }
+
+// TestMergeDispatch_CriticalFirst: the cross-root merge keeps statusgen's
+// lexicographic (criticalTier, score) order. A critical-tier row from one root
+// must sort ahead of higher-scored routine rows from another root, and so take
+// the shared drive worker headroom first — a routine drive (surge included) may
+// never out-score a critical row out of the floor. Here root a offers 6 routine
+// drive rows scored 5000..4995 and root b one critical drive row scored 3000 plus
+// one critical non-drive row scored 2000; the cap is 6 with nothing in flight.
+func TestMergeDispatch_CriticalFirst(t *testing.T) {
+	resolved := []deskkit.RootConfig{
+		{Repo: "medici-finance/a", Path: "/roots/a"},
+		{Repo: "medici-finance/b", Path: "/roots/b"},
+	}
+	var a []statusgenDispRow
+	for i := 0; i < 6; i++ {
+		a = append(a, statusgenDispRow{Brief: "da/0" + string(rune('1'+i)), Stream: "da",
+			Status: "todo", Score: 5000 - i, DriveSlug: "d"})
+	}
+	b := []statusgenDispRow{
+		{Brief: "db/01", Stream: "db", Status: "todo", Score: 3000, DriveSlug: "d", CriticalArm: "high-unblocks"},
+		{Brief: "fb/01", Stream: "fb", Status: "todo", Score: 2000, CriticalArm: "high-unblocks"},
+	}
+	views := []dispatchView{
+		{Rows: a, Eligible: 6, Shown: 6, ClaimsKnown: true, DriveWorkerCap: 6},
+		{Repo: "medici-finance/b", Rows: b, Eligible: 2, Shown: 2, ClaimsKnown: true, DriveWorkerCap: 6},
+	}
+	rep, err := mergeDispatch(dispatchHdrFixture(), "dispatch", resolved, views, "t", "medici-finance/a", "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Rows) < 2 || rep.Rows[0].Brief != "db/01" || rep.Rows[1].Brief != "fb/01" {
+		t.Fatalf("critical rows must lead the merged queue (db/01, fb/01), got %+v", rep.Rows)
+	}
+	for _, r := range rep.Rows {
+		if r.Brief == "da/06" {
+			t.Fatalf("the lowest-scored routine drive row must be the one withheld, got %+v", rep.Rows)
+		}
+	}
+	if rep.HeldByDriveWorkerCap != 1 || len(rep.Rows) != 7 {
+		t.Fatalf("want 7 rows offered, 1 withheld by the floor: rows=%d held=%d", len(rep.Rows), rep.HeldByDriveWorkerCap)
+	}
+	if got := driveRowTags(rep.Rows[0]); got != "  critical:high-unblocks  drive:d" {
+		t.Fatalf("a critical drive row must render both tags, got %q", got)
+	}
+	if got := driveRowTags(dispatchRow{Brief: "x/01", Score: 1}); got != "" {
+		t.Fatalf("a row with no drive and no critical arm must render no tag, got %q", got)
+	}
+}

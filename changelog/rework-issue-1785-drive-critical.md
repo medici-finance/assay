@@ -3,4 +3,5 @@
 
 ### Added
 - statusgen `--next-up`: while a drive is active, the drive worker-pool floor (`driveWorkerCap`, 6) binds the dispatch queue. It offers at most the cap minus the drive work already in flight (claimed items the drive covers). It withholds the rest and counts them in `heldByDriveWorkerCap`, and it offers no drive pick when claims could not be read (`driveWorkerUnknown`). With no active drive the payload is unchanged.
-- `deskboard dispatch` applies the same floor across every configured root, summing in-flight drive work, and names the floor in its held-back line.
+- `deskboard dispatch` applies the same floor across every configured root, summing in-flight drive work, and names the floor in its held-back line. Its merged queue keeps the critical tier ahead of score, so a critical row takes the shared headroom before routine drive rows, and each row it offers is tagged `drive:<slug>` / `critical:<arm>`. The cross-root floor needs statusgen at this version on every root: a root on an older statusgen reports no cap, and with no root reporting one no cross-root floor applies.
+- The worker-desk skill states the drive worker floor: for drive work, the floored `deskboard dispatch` reading wins over the wider `fanoutloop plan` board queue.

@@ -48,6 +48,12 @@
       "file": "drives.go",
       "old": "\t\t\tif d.covers(parts[0], k) {\n\t\t\t\tn++",
       "new": "\t\t\tif d.covers(parts[0], k) {\n\t\t\t\tn += 0"
+    },
+    {
+      "name": "row 6 — the queue drops the critical-tier sort key, so the worker floor hands its headroom to higher-scored routine drive picks ahead of a critical one",
+      "file": "nextup.go",
+      "old": "\t\tif all[i].CriticalTier != all[j].CriticalTier {",
+      "new": "\t\tif false && all[i].CriticalTier != all[j].CriticalTier {"
     }
   ]
 }

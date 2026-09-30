@@ -1759,8 +1759,10 @@ func newDepEdgeIndex() *depEdgeIndex {
 // edges. This flags any depends edge A→B that B does not reciprocate with an
 // `unblocks: A` — a genuine dependency is two-sided (the author-brief methodology
 // requires both Depends-on and Unblocks), so an unreciprocated inbound edge is
-// spurious. Reconciling every edge two-sided makes blockedCount reflect only
-// genuine, both-sided dependencies and un-gameable into the tier.
+// spurious. The critical tier's high-unblocks arm counts reciprocated edges only
+// (buildReciprocatedRevDeps), so a one-sided edge cannot lift a brief there. That
+// is a bar on one endpoint writing an edge alone, not proof an edge is genuine:
+// one change that writes both endpoints still produces a reciprocated edge.
 //
 // TIER — NOTICE, not PROBLEM (Ian's ruling). This is a data-quality
 // lint. The rule is stricter than the pinned release's, and ~104 legitimate
@@ -1809,7 +1811,7 @@ func (idx *depEdgeIndex) reciprocityNotices() []string {
 // zeros and alphanumeric suffixes ("12a"). selfID is the id of the brief that
 // DECLARED the ref: a ref equal to it is self-referential (`a depends on a`) and a
 // hard PROBLEM — part of the dependency-edge reciprocity gate (phase 3) that keeps
-// blockedCount un-gameable. Pass "" to skip the self-ref check.
+// a self-loop out of blockedCount. Pass "" to skip the self-ref check.
 func checkRef(add func(string, ...any), path, kind, ref, selfID string, byName map[string]*Stream) {
 	if selfID != "" && ref == selfID {
 		add("%s: %s %q is self-referential (a brief may not %s itself) — a self-loop is a spurious dependency edge that would inflate blockedCount", path, kind, ref, kind)

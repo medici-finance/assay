@@ -350,8 +350,11 @@ type reciprocatedRevDeps struct {
 // ruling: ~104 legitimate older one-sided edges predate the two-sided convention),
 // so the score's blockedCount keeps counting every declared edge — reweighting the
 // whole board over those edges is a separate call. The tier is different: it
-// reorders above everything, and its anti-gaming guarantee is exactly that
-// blockedCount reflects genuine, both-sided dependencies (statusgen/05). A legacy
+// reorders above everything, so the count it reads walks only both-sided edges —
+// never a one-sided edge that one endpoint wrote alone. Both-sided is not the same
+// as genuine: both endpoints are PR-writable frontmatter, so one change that writes
+// a brief's `unblocks:` AND its dependents' `depends:` still lifts it. That
+// residual is named for the driver's ratification, not closed here. A legacy
 // target declares no unblocks, so it never reaches the arm through this graph —
 // the fail-safe direction for a tier that outranks every score.
 func buildReciprocatedRevDeps(streams []*Stream) reciprocatedRevDeps {
