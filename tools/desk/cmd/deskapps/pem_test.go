@@ -35,7 +35,7 @@ func TestPemMode(t *testing.T) {
 	// an opaque fake string proves just as well, without a repo-wide secret scanner mistaking
 	// test fixture text for a real key.
 	const wantPEM = "SOME-DETERMINISTIC-TEST-BYTES-a19f7c04e8"
-	fake := fakeConversionServer(t, conversionResult{ID: 7, ClientID: "cid", WebhookSecret: "whs", PEM: wantPEM})
+	fake := fakeConversionServer(t, ownedBy("example", conversionResult{ID: 7, ClientID: "cid", WebhookSecret: "whs", PEM: wantPEM}))
 	withFakeGitHubAPI(t, fake)
 
 	srv := newServer(41873, "team", "example", "example", "org", specs, sf)
@@ -146,6 +146,60 @@ func TestPemNeverWrittenOnOrgOwnerMismatch(t *testing.T) {
 	}
 }
 
+// TestOwnerCheckFailsClosedOnEmptyOwner — S-7. The owner check is the independent second
+// layer behind the state nonce, so an EMPTY owner on either side must be refused like a
+// mismatch, never skipped: a conversion response with no owner.login (org path), and a gh
+// login that came back empty (personal path). Each case writes no PEM, no apps.env record,
+// and re-arms the row.
+func TestOwnerCheckFailsClosedOnEmptyOwner(t *testing.T) {
+	cases := []struct {
+		name      string
+		ownerKind string
+		org       string
+		identity  string
+		convOwner string
+	}{
+		{name: "org path, conversion carries no owner.login", ownerKind: "org", org: "example", convOwner: ""},
+		{name: "personal path, gh login empty", ownerKind: "me", identity: "", convOwner: "someone"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setupTest(t)
+			specs, err := TierManifests("team", "example")
+			if err != nil {
+				t.Fatal(err)
+			}
+			actSpec := specFor(specs, "example-act")
+			sf, nonce := plantPendingRow(t, actSpec, "team")
+
+			fake := fakeConversionServer(t, ownedBy(tc.convOwner, conversionResult{ID: 5, ClientID: "cid", WebhookSecret: "whs", PEM: "PEMBYTES-unowned"}))
+			withFakeGitHubAPI(t, fake)
+
+			srv := newServer(41873, "team", "example", tc.org, tc.ownerKind, specs, sf)
+			srv.identity = ghUser{Login: tc.identity}
+			srv.out = &bytes.Buffer{}
+			ts := httptest.NewServer(srv.mux())
+			defer ts.Close()
+
+			resp, err := http.Get(ts.URL + "/callback?code=abc&state=" + nonce)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+
+			if _, err := readPEMFor(t, "example-act"); err == nil {
+				t.Fatal("a PEM was written although one side of the owner check was empty (fail-open)")
+			}
+			if content := readAppsEnv(); strings.Contains(content, "EXAMPLE_ACT") {
+				t.Fatalf("apps.env carries a record although the owner check could not run:\n%s", content)
+			}
+			if got := sf.rowByApp("example-act").State; got != StatePending {
+				t.Fatalf("row state = %s, want pending (re-armed) on an empty owner", got)
+			}
+		})
+	}
+}
+
 // TestPemModeChmodsPreexistingFile — S-4. os.WriteFile applies its perm argument only on
 // create, so a PEM the callback rewrites in place must be Chmod'd back to 0600 even when it
 // already existed at a looser mode. Pre-create the target 0644, run the callback, assert 0600.
@@ -167,7 +221,7 @@ func TestPemModeChmodsPreexistingFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fake := fakeConversionServer(t, conversionResult{ID: 7, ClientID: "cid", WebhookSecret: "whs", PEM: "FRESH-PEM"})
+	fake := fakeConversionServer(t, ownedBy("example", conversionResult{ID: 7, ClientID: "cid", WebhookSecret: "whs", PEM: "FRESH-PEM"}))
 	withFakeGitHubAPI(t, fake)
 
 	srv := newServer(41873, "team", "example", "example", "org", specs, sf)

@@ -40,10 +40,10 @@ func runKeyedCallback(t *testing.T, out io.Writer) (*deskappsServer, *httptest.S
 	actSpec := specFor(specs, "example-act")
 	sf, nonce := plantPendingRow(t, actSpec, "team")
 
-	fake := fakeConversionServer(t, conversionResult{
+	fake := fakeConversionServer(t, ownedBy("example", conversionResult{
 		ID: 99, Slug: "example-act", ClientID: "client-id-xyz",
 		ClientSecret: fakeClientSecret, WebhookSecret: fakeWebhookSecret, PEM: fakePEM,
-	})
+	}))
 	withFakeGitHubAPI(t, fake)
 
 	srv := newServer(41873, "team", "example", "example", "org", specs, sf)

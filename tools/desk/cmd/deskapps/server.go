@@ -274,7 +274,9 @@ func (s *deskappsServer) handleCallback(w http.ResponseWriter, r *http.Request) 
 	// code. Without the org branch the default (org-owned) path had no owner check at all, so a
 	// foreign App's PEM/webhook-secret could be written into the operator's credential plane and
 	// the role bindings repointed at an App they do not own. Nothing is written on a mismatch;
-	// the row is re-armed to pending.
+	// the row is re-armed to pending. The check fails CLOSED (S-7): an empty owner on either
+	// side — a conversion response with no owner.login, a gh login that came back empty, or an
+	// ownerKind that names neither path — is treated as a mismatch, never as "nothing to check".
 	var wantOwner string
 	switch s.ownerKind {
 	case "me":
@@ -282,7 +284,7 @@ func (s *deskappsServer) handleCallback(w http.ResponseWriter, r *http.Request) 
 	case "org":
 		wantOwner = s.org
 	}
-	if wantOwner != "" && cr.Owner.Login != "" && !strings.EqualFold(cr.Owner.Login, wantOwner) {
+	if wantOwner == "" || cr.Owner.Login == "" || !strings.EqualFold(cr.Owner.Login, wantOwner) {
 		s.mu.Lock()
 		row.State = StatePending
 		row.UpdatedAt = time.Now().UTC()

@@ -304,10 +304,11 @@ func TestManifestCallbackKeysStateByAppNameNotRole(t *testing.T) {
 	spec := ManifestAppSpec(m)
 	sf, nonce := plantManifestPendingRow(t, spec)
 
-	fake := fakeConversionServer(t, conversionResult{ID: 42, ClientID: "cid", WebhookSecret: "whs", PEM: "PEMBYTES-manifest"})
+	fake := fakeConversionServer(t, ownedBy("the-real-operator", conversionResult{ID: 42, ClientID: "cid", WebhookSecret: "whs", PEM: "PEMBYTES-manifest"}))
 	withFakeGitHubAPI(t, fake)
 
 	srv := newServer(41873, "manifest", spec.Name, "", "me", []AppSpec{spec}, sf)
+	srv.identity = ghUser{Login: "the-real-operator"}
 	srv.out = &bytes.Buffer{}
 	ts := httptest.NewServer(srv.mux())
 	defer ts.Close()

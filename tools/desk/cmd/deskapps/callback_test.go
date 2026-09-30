@@ -69,7 +69,7 @@ func TestCallbackGoodStateConverts(t *testing.T) {
 	actSpec := specFor(specs, "example-act")
 	sf, nonce := plantPendingRow(t, actSpec, "team")
 
-	fake := fakeConversionServer(t, conversionResult{ID: 1, ClientID: "c", WebhookSecret: "w", PEM: "PEMBYTES"})
+	fake := fakeConversionServer(t, ownedBy("example", conversionResult{ID: 1, ClientID: "c", WebhookSecret: "w", PEM: "PEMBYTES"}))
 	withFakeGitHubAPI(t, fake)
 
 	srv := newServer(41873, "team", "example", "example", "org", specs, sf)
@@ -105,7 +105,7 @@ func TestCallbackReplayDoesNotOverwriteKey(t *testing.T) {
 	actSpec := specFor(specs, "example-act")
 	sf, nonce := plantPendingRow(t, actSpec, "team")
 
-	fake := fakeConversionServer(t, conversionResult{ID: 1, ClientID: "c", WebhookSecret: "w", PEM: "ORIGINAL-KEY"})
+	fake := fakeConversionServer(t, ownedBy("example", conversionResult{ID: 1, ClientID: "c", WebhookSecret: "w", PEM: "ORIGINAL-KEY"}))
 	withFakeGitHubAPI(t, fake)
 
 	srv := newServer(41873, "team", "example", "example", "org", specs, sf)
@@ -132,7 +132,10 @@ func TestCallbackReplayDoesNotOverwriteKey(t *testing.T) {
 	prev := convertCodeFn
 	convertCodeFn = func(code string) (*conversionResult, error) {
 		called = true
-		return &conversionResult{ID: 2, PEM: "ATTACKER-KEY"}, nil
+		// Owned by the operator's own org, so the owner check would PASS it: the replay must be
+		// refused by the S-2 mechanisms, never merely by a fail-closed empty owner.
+		cr := ownedBy("example", conversionResult{ID: 2, PEM: "ATTACKER-KEY"})
+		return &cr, nil
 	}
 	t.Cleanup(func() { convertCodeFn = prev })
 

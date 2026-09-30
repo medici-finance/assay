@@ -4,7 +4,7 @@
   own new-App page, exchanges the returned code for the App's credentials, and writes the
   private key (0600, never printed or logged), `apps.env` and the role→App bindings. Binds
   `127.0.0.1` only, refuses a `/callback` whose state does not match a pending row, and refuses
-  a conversion whose App owner is not the account the operator named (`gh` login or `--org`).
+  a conversion whose App owner is not the account the operator named (`gh` login or `--org`), failing closed when either owner is empty.
   The posted manifest carries no `hook_attributes` key (this flow sets no webhook URL, and
   GitHub's schema rejects a url-less `hook_attributes`).
 - `deskapps init --manifest <file>` — registers a single arbitrary GitHub App (e.g. a

@@ -91,7 +91,9 @@ App set — for an App that isn't one of the six desk roles (e.g. `example-app`)
   App's real owner as GitHub reports it must equal the owner the operator named — their `gh`
   login (personal-owned) or `--org` (org-owned) — before any key is written; a mismatch writes
   nothing and re-arms the row (`pem_test.go`'s `TestPemNeverWrittenOnMismatch` for the personal
-  path, `TestPemNeverWrittenOnOrgOwnerMismatch` for the org path). It trips on a different
+  path, `TestPemNeverWrittenOnOrgOwnerMismatch` for the org path). The check fails closed: an
+  empty owner on either side (no `owner.login` in the conversion response, or an empty `gh`
+  login) is refused like a mismatch (`TestOwnerCheckFailsClosedOnEmptyOwner`). It trips on a different
   signal (the forge's reported owner, not the local state record) in a different component, so
   it catches exactly the fault the nonce cannot: a callback carrying a valid `state` and a
   foreign App's `code`. The loopback bind is a **precondition, not an independent layer** —

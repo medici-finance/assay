@@ -20,6 +20,14 @@ func setupTest(t *testing.T) string {
 	return home
 }
 
+// ownedBy sets the conversion result's owner.login. The /callback owner check fails CLOSED
+// (S-7): a conversion with no owner.login is refused like a mismatch, so every fixture that
+// expects a callback to key its row names the owner the operator named.
+func ownedBy(login string, cr conversionResult) conversionResult {
+	cr.Owner.Login = login
+	return cr
+}
+
 // fakeConversionServer serves a stand-in for GitHub's
 // POST /app-manifests/{code}/conversions. code "expired" returns 404; any other code
 // returns cr (with id, slug filled if unset).
