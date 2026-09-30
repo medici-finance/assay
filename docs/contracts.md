@@ -177,6 +177,122 @@ found nothing names the search that found nothing, per the three-state instrumen
 **How a brief cites this.** A brief's `design-fit:` block names the `S-<slug>` id its change
 fits under in `contract:`, or `none — <why>` when no row applies yet.
 
+## Rule register
+
+Every refusal, gate and guard the tooling enforces has one row here, next to the semantic index
+it serves. A rule with no row cannot be reviewed, so it can never leave: the monthly diet below
+reads this table, and nothing else. The register records rules **as they are**; a row is not an
+endorsement, and nothing in this table retires a rule by itself.
+
+**Row schema.** `id (R-<slug>) | rule (one line) | enforced at (path[:symbol]) | serves (S-<slug>)
+| owner (module or role) | invariant | justifying issue(s) | catch source | last reviewed`.
+
+- *serves* names the semantic-index row above whose meaning the rule enforces, or `none` when no
+  row fits. A `none` row is an orphan, and orphans are diet candidates.
+- *catch source* is how the rule is known to be able to catch anything: a named telemetry class,
+  a test name that shows it firing, or `none`. It feeds the diet's three-state catch status.
+- Rows marked **trust boundary** are security controls. They fire rarely by design, so each one
+  names a test that shows it firing and starts `proven-able-to-fire`, never `zero-without-proof`.
+  A trust-boundary row also names every override or bypass of its rule (flag, env toggle,
+  exemption) in its *rule* cell, with the override's own site in *enforced at*, so a review of
+  the row sees the whole control and not only its refusing half.
+- *justifying issue(s)* cites the issues that motivated the rule, or the public PR that landed it
+  when no separate issue exists.
+- *last reviewed* is the date and the `main` commit the row was checked against.
+
+**A new rule adds a row in the same PR.** A PR that adds a refusal, a gate or a guard adds its row
+here in the same diff, and review stage 06 checks it. A PR that changes a row's enforcement site,
+invariant or serving row amends the row in the same diff.
+
+**Seed scope.** The rows below are the rules implicated in the recent public fix-caused-next-bug
+chains, plus the weight ceiling. This is not a back-fill of every rule in the tree. Later rows
+land with their own briefs, not here: `R-brittle-mark` (brief 08) and `R-dep-direction`,
+`R-hub-allowlist`, `R-one-implementation` (brief 10).
+
+| id | rule | enforced at | serves | owner | invariant | justifying issue(s) | catch source | last reviewed |
+|---|---|---|---|---|---|---|---|---|
+| R-model-floor | **Trust boundary.** An authority-bearing write (a review verdict via `deskpost review`, a ready-flip via `deskflip` or `deskpost ready`) refuses when the dispatcher-attested tier is below the floor or the stamp is present but unreadable; an unstamped write (no stamp, an `any` tier, or a stamp aged out on `deskpost`'s paths; `deskflip` leaves a released claim's stamp standing) proceeds with a NOTICE, except that on the review path only an unstamped verdict on a risk-classed PR refuses. **Override:** the env toggle `DESK_MODEL_FLOOR_OVERRIDE` bypasses the floor, and with it the risk overlay, for incident recovery; every bypass prints a loud `MODEL-FLOOR-OVERRIDE` line. | `tools/desk/internal/deskkit/modelfloor.go:ModelCapabilityFloor` (called by `tools/desk/cmd/deskflip/flip.go` and `tools/desk/cmd/deskpost/ready.go`), `tools/desk/internal/deskkit/modelfloor.go:ModelCapabilityFloorRiskAware` with `tools/desk/internal/deskkit/modelfloorrisk.go:FloorRiskOf` (called only by `tools/desk/cmd/deskpost/review.go`) | S-review-verdict | `tools/desk/internal/deskkit` | Outside the loud override, an attested below-tier session cannot record a correctness judgement or flip a PR, and an unstamped review verdict on a risk-classed PR is refused rather than read as attested. | #1459 #1497 #1498 | `TestModelCapabilityFloorFourCases`, `TestRiskAwareFloorRefusesUnstampedRiskClassed` (deskkit); override: `TestModelFloorReviewOverrideProceedsLoudly` (deskpost), `TestModelFloorOverrideProceedsLoudly` (deskflip) — `proven-able-to-fire` | 2026-09-30 @ `43420f7ec` |
+| R-stamp-age-out | A dispatch stamp whose dispatch claim is positively released is ignored (the PR reads as unstamped); a failed or impossible liveness read leaves the stamp standing. | `tools/desk/internal/deskkit/stampage.go`, `tools/desk/cmd/deskpost/claimliveness.go` | S-review-verdict | `tools/desk/internal/deskkit` | A dead cycle's stamp never blocks a PR harder than no stamp, and a stamp only ages out on positive evidence of release. | #1497 #1498 | `TestForeignStampAgesOutWhenClaimReleased` (deskkit) | 2026-09-30 @ `b89b39572` |
+| R-body-secret-scan | **Trust boundary.** Every body `deskpost`, `deskpr` and `deskreply` would write is scanned for credential shapes and high-entropy runs and refused on a hit. **Override:** `deskpr` (create, update, edit) and `deskreply` take `--force-scan-override <reason>` (reason of at least 12 characters), which lets a refused body through only after writing an audit row; `deskpost` has no override, and the override never applies to the impersonation guard. | `tools/desk/internal/deskkit/bodycheck.go:BodyCheck`, `tools/desk/internal/deskkit/scanoverride.go:HandleScanRefusal`, `tools/desk/cmd/deskpost/internal/bodycheck/bodycheck.go` | S-publication-scan | `tools/desk/internal/deskkit` | No known credential shape leaves the desk verbs in an outward-bound body without either a refusal or an audited, reasoned override; loosening the entropy heuristic never un-refuses a token shape. | #1642 #1643 | `TestTokenShapesStillRefused`, `TestNewShapesStillRefuse`; override: `TestScanOverrideIsLoggedOrRefused` (deskkit) — `proven-able-to-fire` | 2026-09-30 @ `43420f7ec` |
+| R-new-issue-budget | `deskfile new` is capped per session and repo at a rate over a rolling window (3 per 24h shipped), env-overridable; an unparseable override falls back to the default with a NOTICE, and `--force-file --reason` raises it for one filing while still charging an audit line. | `tools/desk/cmd/deskfile/deskfile.go:newBudgetConfig` (`defaultNewRate`) | none | `deskfile` | A runaway session cannot flood a tracker, a typo can never silently disable the cap, and an override never erases the audit trail. | #955 #1204 #1209 | `TestNewRateUnparseableFallsBackWithNotice`, `TestForceFileDoesNotResetTheRateCount` (deskfile) | 2026-09-30 @ `b89b39572` |
+| R-inherited-token | **Trust boundary.** An inherited `GH_TOKEN` is honoured by `deskdispatch` only when verified to be the dispatching role's App (viewer login and bot id against the roster; on GitLab, the role's PAT custody); otherwise it is ignored with a NOTICE and the role token is minted, and an unreadable identity refuses before any claim. | `tools/desk/cmd/deskdispatch/dispatch.go:resolveClaimAuth` (`verifyInheritedToken`), `tools/desk/internal/deskkit/tokenidentity.go` | S-identity | `deskdispatch` | A dispatch never claims, cuts a worktree or writes under an ambient identity that is not the dispatching role's App. | #1145 #1274 #1631 #1650 | `TestInheritedNonRoleTokenIsIgnoredAndTheRoleTokenMinted`, `TestInheritedTokenWithUnreadableIdentityRefusesBeforeAnyClaim` (deskdispatch) — `proven-able-to-fire` | 2026-09-30 @ `b89b39572` |
+| R-shim-ambient-token | **Trust boundary.** The cell launcher's `gh` shim hands the operator's ambient credential over as `CELLCTL_GH_AMBIENT`, never as `GH_TOKEN`, so no desk verb reads it as its own. **Boundary:** a `GH_TOKEN` or `GH_ENTERPRISE_TOKEN` the caller already set passes through untouched; verifying that token is `R-inherited-token`'s job, not this rule's. | `tools/desk/cmd/cellctl/shims.go` | S-identity | `cellctl` | The ambient credential never reaches a desk verb under the name desk verbs read. | #1145 #1631 #1650 | shell test `tools/cellctl/tests/gen-shims-gh-token.test.sh` (defaults to the shell oracle; run with `CELLCTL=<built tools/desk/cmd/cellctl>` for the Go port; no CI workflow runs it yet) — `proven-able-to-fire` | 2026-09-30 @ `43420f7ec` |
+| R-authoring-not-delivery | A PR whose diff only authors a brief is not that brief's delivery (phantom check and planner both exempt it); any doubt keeps the PR counted as delivery. | `tools/desk/cmd/deskdispatch/authoring.go:dropBriefAuthoringPRs`, `tools/desk/cmd/fanoutloop/represented.go`, `tools/desk/internal/deskkit/briefauthoring.go` | S-delivery | `deskdispatch`, `fanoutloop` | An authored-but-unimplemented brief is dispatchable, and a landed delivery is never re-dispatched because of the exemption. | #1339 #1419 #1502 #1558 #1641 | `TestPhantomRefusesDocsOnlyDelivery`, `TestPhantomAdmitsAuthoredBrief` (deskdispatch) | 2026-09-30 @ `b89b39572` |
+| R-authors-trailer-proof | **Trust boundary.** An `Authors:` trailer is refused at PR create unless the diff is authoring-only for every named id, and at flip time a non-authoring diff carrying it is risk-classed. | `tools/desk/cmd/deskpr/deskpr.go:authoringTrailerGate`, `tools/desk/internal/deskkit/briefrisk.go:AuthorsRiskFromBody`, `tools/desk/cmd/deskflip/flip.go` | S-review-verdict | `deskpr`, `deskflip` | A trailer that relaxes the security lane is honoured only when the diff proves the PR is authoring-only. | #1339 #1641 | `TestCreateRefusesAuthorsOnNonAuthoringBranch` (deskpr), `TestAuthorsTrailerOnNonAuthoringDiffRiskClasses` (deskflip) — `proven-able-to-fire` | 2026-09-30 @ `43420f7ec` |
+| R-same-head-reapproval | **Trust boundary.** An APPROVED at an unchanged head over a standing CHANGES_REQUESTED does not clear it; only a new commit, a human dismissal, or a typed exemption (check-only, external-prerequisite, documented body-edit) does. | `tools/desk/cmd/deskflip/flip.go:standingCRRefusal`, `tools/desk/cmd/deskpost/ready.go` (`noOpApproval`), `tools/desk/internal/deskkit/bodyeditcr.go:BodyEditDeclared` | S-review-verdict | `deskflip`, `deskpost` | A reviewer cannot launder its own standing block by re-approving the same code. | #1601 #1602 | `TestApprovalOverAStandingBlockAtTheSameHeadIsRefused`, `TestBodyEdit_UndocumentedReApprove` (deskflip), the same-head no-op approval test in `tools/desk/cmd/deskpost/ready_test.go` — `proven-able-to-fire` | 2026-09-30 @ `b89b39572` |
+| R-dr-ruling-link | **Trust boundary.** A decision record whose `decided-by` is the placeholder counts as ratified only through a `ruling:` link resolving to an unedited, human-mapped comment on that record's decision issue naming the record; otherwise it is a PROBLEM, and a failing link outranks a PR approval. | `statusgen/decisionruling.go` | S-decision-acceptance | `statusgen` | A placeholder decision is never read as a human ruling on the strength of text, a bot, another human or a PR approval. | #1395 #1500 #1564 #1571 | `TestRuling_PlaceholderWithoutRuling`, `TestRuling_WrongAuthorOtherHuman`, `TestRuling_FailingLinkBeatsPRApproval` (statusgen) — `proven-able-to-fire` | 2026-09-30 @ `43420f7ec` |
+| R-onbehalf-not-stamp | An on-behalf-of attribution line is never matched as a sign-off stamp, and stripping it never hides a real stamp on the same line. | `statusgen/corroborate.go:stripOnBehalfOf` | S-decision-acceptance | `statusgen` | Attribution and sign-off stay distinct: neither can stand in for, or mask, the other. | #1335 #1337 | `TestStampsInDiff_OnBehalfOfDoesNotShieldRealStamp` (statusgen) | 2026-09-30 @ `b89b39572` |
+| R-quoted-not-claim | Corroboration does not read quoted notation as a human claim (the removed side of a committed patch, stamp-shaped data in test source), while true positives still count. | `statusgen/corroboratescope.go` | S-decision-acceptance | `statusgen` | Quoting a stamp's notation is not making the claim, and the scope narrowing never drops a real one. | #1395 #1593 | `TestQuotedNotationIsNotAClaim`, `TestQuotedNotationTruePositivesStillCount` (statusgen) | 2026-09-30 @ `b89b39572` |
+| R-origin-git-resolved | **Trust boundary.** `deskgit` gates fetch and push on the origin URL as git itself resolves it (`git remote get-url --all origin`), refusing a multi-valued list; every other go-git remote-URL read is on an allow-list. | `tools/desk/cmd/deskgit/deskgit.go:effectiveOriginURL` | S-identity | `deskgit` | The repo the gate approves is the repo git actually talks to. | #1617 #1623 #1638 | `TestFetch_MultiValuedOriginURL_FailsClosed`, `TestRemoteURLCallers_AllowListed`, `TestRemoteURLCallers_DetectsPlantedCaller` (deskgit) — `proven-able-to-fire` | 2026-09-30 @ `43420f7ec` |
+| R-push-destination | **Trust boundary.** `deskpr` pushes only when git resolves exactly one push destination and it is an https URL naming the gated repo (or a local path); SSH, a sentinel, a multi-valued list, another transport or another repo is refused before the token mint. `deskmerge` gates its push destinations the same way. | `tools/desk/cmd/deskpr/pushdest.go:pushDestinationGate`, `tools/desk/cmd/deskmerge/merge.go:gatePushDestinations` | S-identity | `deskpr`, `deskmerge` | A role-App push never goes out under the operator's SSH key or to a repo other than the one gated. | #1623 #1638 | `TestPushDestMultiValuedRefuses`, `TestPushDestInsteadOfToSSHRefuses`, `TestPushDestOtherRepoRefuses` (deskpr) — `proven-able-to-fire` | 2026-09-30 @ `b89b39572` |
+| R-origin-one-parser | `deskpr`, `deskwt`, `deskreply` and the shared preflight parse an origin remote (https, scp-like with an SSH host alias, hybrid) to its owner/repo through one shared parser. **Known exceptions:** `deskclaim-ref` keeps its own `parseRemote`, and `deskdispatch` resolves the repo from origin with its own `repoSlugFromURL` when `--repo` is omitted; neither is covered. | `tools/desk/internal/deskkit/remoterepo.go:ParseRemoteRepo`, `tools/desk/internal/deskkit/preflight.go`; exceptions: `tools/desk/cmd/deskclaim-ref/gogit.go:parseRemote`, `tools/desk/cmd/deskdispatch/exec.go:repoSlugFromURL` | S-worktree | `tools/desk/internal/deskkit` | The verbs that share the parser read the same repo from the same remote. Claim-acquire is outside this rule until both `deskclaim-ref` and `deskdispatch` move onto the shared parser. | #1371 #1372 #1470 #1474 | `TestParseRemoteRepo` (deskkit) | 2026-09-30 @ `43420f7ec` |
+| R-forge-cli-ceiling | **Trust boundary.** No desk tool execs a forge CLI outside the `AllowedInvocations` permit, the permit count may not exceed `allowedInvocationCeiling`, and an exec whose argv[0] is not a constant is registered as could-not-check, never cleared. | `tools/desk/internal/forgeban/allowlist.go`, `tools/desk/internal/forgeban/check.go` | S-identity | `tools/desk/internal/forgeban` | No desk write silently runs under whatever ambient CLI identity is active; the permit only shrinks. | #1145 #1154 | `TestScannerCatchesEveryLaunchSpelling`, `TestScannerReportsUnresolvedRatherThanClean` (forgeban) — `proven-able-to-fire` | 2026-09-30 @ `b89b39572` |
+| R-weight-ceiling | `tools/desk` verbs, flags, refusals and rule-text lines may not exceed `ceiling.txt` unless a `# grow` line directly above cites the driver's `grow <PR#>` reply (advisory mode at landing). | `tools/desk/internal/weight/ceiling.txt`, `tools/desk/internal/weight/weight.go` | none | `tools/desk/internal/weight` | The tool's surface grows only by an explicit, cited decision. | #1660 #1672 | `TestCeilingRedOnGrowthFixture` (weight) | 2026-09-30 @ `b89b39572` |
+
+## Rule diet (monthly)
+
+Once a month the diet reads the rule register and asks the driver, in one reply, which rules to
+keep. It never deletes a rule automatically. **The cadence and the running role are project
+values**: the project layer names them. The diet runs with the monthly brittle pass (brief 08):
+one role, one cadence, two tables.
+
+**Three-state catch status.** Every row reads exactly one of:
+
+- `could-not-check`: the counter is blind or absent. That is not zero. A rule whose catch
+  source is a telemetry class that is unconfigured or unread reads this state.
+- `proven-able-to-fire`: zero catches in the window, but the row's named test shows it firing.
+- `zero-without-proof`: zero catches, and nothing shows the rule can fire at all.
+
+**Zero catches is an alarm, never a deletion.** A rule that never fires may be guarding a threat
+that has not arrived yet, or it may be dead code that looks like a guard. The diet asks which;
+it never assumes.
+
+**Candidates.** A row is listed on the month's decision issue when any of these holds:
+
+- its status is `zero-without-proof`;
+- more than half of its recorded fires in the window were false positives;
+- it is an orphan (its *serves* cell is `none`, so no semantic-index row owns its meaning);
+- a justifying issue it cites was closed as not-planned.
+
+A candidate is a question, not a verdict. Every other row is kept without asking.
+
+**One decision issue per month, immutable options.** The role files ONE decision issue listing
+the month's candidates, each with its id, status and why it qualified. The options are fixed
+when it is filed. Editing them does not edit the issue: it supersedes it with a new issue that
+links the old one, and only the new one counts.
+
+**Reply grammar.** The reply is one line, either `retire R-a R-b; keep rest` or `keep`. It
+counts only from the driver's own login (a project value), read from the forge's author field,
+never from anything the text says about who wrote it (spec §4.7). A reply counts only while it
+is unedited (the forge's `updated_at` equals its `created_at`), the same check the decision-record
+ruling link makes; an edited reply is quarantined, and a correction is a new comment. When more
+than one counted reply is on the issue, the latest one posted before the month closes is the
+decision. No tool enforces these checks today: the running role reads author, `created_at` and
+`updated_at` from the forge, and the design brief's review and the driver's merge are the layers
+behind it. At month close the role records the counted reply's comment id and URL on the issue
+and in any design brief it starts, so a later deletion cannot silently change which reply was
+acted on. A reply from any other login is quarantined: it is noted on the issue and never acted
+on. **If the month closes with no counted reply, every row is kept.**
+
+**Retirement is a design brief, never an in-loop edit.** A `retire` reply starts a design brief,
+usually one per class of rule, with its own review and the driver's merge. The diet role never
+removes a row, a guard or a test itself.
+
+**Trust-boundary retirement.** Retiring a row marked **trust boundary**, or any row whose
+retirement would delete, disable or weaken a security or identity control (worker kit §2's list),
+also carries:
+
+- spec §4.2 rule 2: the brief names the layer that still refuses the same threat and carries a
+  Verify row proving it with the retired layer absent; and
+- worker kit §2: the retirement brief is `gate: human`, because removing a security control is
+  a human decision.
+
+**Single point of failure.** The author-and-unedited check on the reply (the driver's own login,
+read from the forge, on a comment never edited after posting) is the one control that starts a
+retirement. Behind it sit the design brief's own review
+and the driver's merge, plus, for a trust-boundary row, the §4.2 rule 2 Verify row and the
+`gate: human` path.
+
 ## Brittle marks
 
 A **brittle mark** names a module where fixes keep landing, so the strong-tier investigation
