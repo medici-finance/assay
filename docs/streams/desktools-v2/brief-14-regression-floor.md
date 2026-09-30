@@ -37,12 +37,12 @@ exec-tier-why: >-
   confirmation is per-test evidence work a cheap tier cuts corners on exactly where it matters.
 domain: complicated
 consumers:
-  - "tools/desk (NEW internal/regression/ — planned: MANIFEST.md + TestRegressionManifest + the desk-half TestRegression_ tests): follow-up desktools-v2/14 (this brief)"
-  - "statusgen (the statusgen-half TestRegression_ tests for #999 and #1007): follow-up desktools-v2/14 (this brief)"
+  - "tools/desk (NEW internal/regression/ — planned: MANIFEST.md + TestRegressionManifest + the desk-half TestReg<N> tests): follow-up desktools-v2/14 (this brief)"
+  - "statusgen (the statusgen-half TestReg<N> tests for #999 and #1007): follow-up desktools-v2/14 (this brief)"
   - "docs/streams/desktools-v2/README.md (the `## Regression floor` section): follow-up desktools-v2/14 (this brief)"
   - "every other desktools-v2 brief — the floor their PRs must keep green through the existing go test ./... in PR CI: out-of-scope (no edit to those briefs; the rule lives in the stream README where their implementers read it)"
   - "desktools-v2/12 (the platform compatibility suite): out-of-scope (sibling brief — 14 pins today's resolved behavior, 12 extends coverage to Windows/GitLab semantics; the two suites share no cases)"
-version: 2
+version: 3
 id: 4f2e1b7a-9c3d-4e5f-8a6b-1d2c3b4a5967
 ---
 
@@ -54,6 +54,7 @@ files:
 - NEW `tools/desk/internal/regression/` (planned) — `MANIFEST.md`, the manifest test, its `testdata/` fixture, and desk-half regression tests.
 - `statusgen/` — NEW statusgen-half regression tests (tests only).
 - `docs/streams/desktools-v2/README.md` — the `## Regression floor` section.
+- `changelog/<branch>.md` — the per-PR fragment this repository requires.
 
 v2's premise is that the flows have solidified. What has solidified is recorded in the
 resolved-issue register: every closed Windows/GitLab/desk-tools bug is a behavior someone
@@ -83,8 +84,9 @@ reason.
    - the seed table, one row per pinned issue:
      `| #<N> | behavior pinned | owning package | test | fixing commit |` — the package column
      is a repo-relative path beginning `tools/desk/` or `statusgen/`, and the test column names
-     either a new `TestRegression_Issue<N>_<behavior>` or an existing test that genuinely pins
-     the fix;
+     either a new `TestReg<N><Behavior>` (for example TestReg1034RotateLock; at most 31
+     characters, so no name trips the secret scanners' long-identifier heuristics) or an existing
+     test that genuinely pins the fix;
    - a `## Dropped` section, one row per starter issue that is not a seed:
      `| #<N> | <reason> |`, the reason never empty.
 
@@ -96,13 +98,15 @@ reason.
 2. **The manifest test.** `TestRegressionManifest` (planned) in `tools/desk/internal/regression` parses
    MANIFEST.md and fails unless: every starter issue is either a seed row or a `## Dropped` row
    with a non-empty reason; no issue appears in both; every seed row's fixing commit is a
-   7–40 character hex sha; and every named test function exists as `func <Name>(` in a
+   7–40 character hex sha; every new test name matches `^TestReg[0-9]+[A-Z][A-Za-z0-9]*$` and is
+   at most 31 characters; and every named test function exists as `func <Name>(` in a
    `*_test.go` file under the row's package directory (resolved from the repo root, so both
    modules are checked). It carries a positive-control fixture under `testdata/` — a manifest
    with one starter issue missing and one seed naming a non-existent test — and asserts the
    parser rejects it with both faults named, so the manifest test cannot pass vacuously.
-3. **The tests.** One `TestRegression_Issue<N>_<behavior>` (planned) per seed row that does not point
-   at an existing test, in the row's owning package, asserting the FIXED behavior against
+3. **The tests.** One `TestReg<N><Behavior>` (planned) per seed row that does not point
+   at an existing test, in the row's owning package, as a top-level test (its PASS line is what
+   rows 2 and 3 count; subtests are allowed and are not counted), asserting the FIXED behavior against
    fakes/`httptest` — never a live forge, never a network call. Each test's doc comment cites
    the issue and the fixing commit.
 4. **Red-at-parent confirmation, recorded.** For every seed row, run its test at the parent of
@@ -119,9 +123,9 @@ reason.
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check +dereference +flow | `cd tools/desk && go test -run '^TestRegressionManifest$' -v ./internal/regression/ > "${TMPDIR:-/tmp}/b14-r1.out" 2>&1; grep -F -e '--- PASS: TestRegressionManifest' "${TMPDIR:-/tmp}/b14-r1.out"` | prints the PASS line (exit 0) — every starter issue is a seed row or a reasoned drop, every named test exists in its package, and the positive-control fixture is rejected; exits 1 on today's tree |
-| 2 | check | `cd tools/desk && go test -run '^TestRegression_' -v ./... > "${TMPDIR:-/tmp}/b14-r2.out" 2>&1; echo rc=$?; grep -c -F -e '--- PASS: TestRegression_' "${TMPDIR:-/tmp}/b14-r2.out"` | prints `rc=0` then a count ≥ 1 equal to the manifest's `tools/desk/` seed rows whose test is a new `TestRegression_` (planned) — the desk half of the floor passes TODAY |
-| 3 | check | `cd statusgen && go test -run '^TestRegression_' -v . > "${TMPDIR:-/tmp}/b14-r3.out" 2>&1; echo rc=$?; grep -c -F -e '--- PASS: TestRegression_' "${TMPDIR:-/tmp}/b14-r3.out"` | prints `rc=0` then a count equal to the manifest's `statusgen/` seed rows whose test is a new `TestRegression_` (planned) (#999 and #1007 unless either points at an existing test) — the statusgen half passes TODAY |
+| 1 | check +dereference +flow | `d=$(mktemp -d) && cd tools/desk && go test -run '^TestRegressionManifest$' -v ./internal/regression/ > "$d/r1.out" 2>&1 && grep -E -e '^--- PASS: TestRegressionManifest \(' "$d/r1.out"` | prints the top-level PASS line (exit 0) — every starter issue is a seed row or a reasoned drop, every named test exists in its package, and the positive-control fixture is rejected. The `&&` keeps `go test`'s status and the grep is anchored at column 0, so a failing positive-control subtest cannot hide behind a passing one; exits 1 on today's tree |
+| 2 | check | `d=$(mktemp -d) && cd tools/desk && go test -run '^TestReg[0-9]' -v ./... > "$d/r2.out" 2>&1 && grep -q -F -e '--- PASS' "$d/r2.out" && n=$(grep -c -E -e '^--- PASS: TestReg[0-9]' "$d/r2.out") && m=$(grep -c -E -e '^[\|] #[0-9]+ [\|][^\|]*[\|] tools/desk/[^\|]*[\|] TestReg[0-9]' internal/regression/MANIFEST.md) && echo "pass=$n manifest=$m" && test "$n" -ge 1 && test "$n" -eq "$m"` | prints `pass=<n> manifest=<m>` with equal counts, at least 1, and exits 0 — `go test` passed (the `&&` keeps its status) and every `tools/desk/` seed whose test is a new `TestReg<N>` (planned) passes as a top-level test (the count grep is anchored at column 0, so subtest PASS lines are not counted): the desk half of the floor passes TODAY. A failing test, no test run, or a count mismatch exits 1 |
+| 3 | check | `d=$(mktemp -d) && cd statusgen && go test -run '^TestReg[0-9]' -v . > "$d/r3.out" 2>&1 && grep -q -F -e '--- PASS' "$d/r3.out" && n=$(grep -c -E -e '^--- PASS: TestReg[0-9]' "$d/r3.out") && m=$(grep -c -E -e '^[\|] #[0-9]+ [\|][^\|]*[\|] statusgen/[^\|]*[\|] TestReg[0-9]' ../tools/desk/internal/regression/MANIFEST.md) && echo "pass=$n manifest=$m" && test "$n" -eq "$m"` | prints `pass=<n> manifest=<m>` with equal counts and exits 0 — every `statusgen/` seed whose test is a new `TestReg<N>` (planned) passes as a top-level test (#999 and #1007 unless either points at an existing test): the statusgen half passes TODAY. A failing test or a count mismatch exits 1. If both statusgen seeds point at existing tests, no new `TestReg<N>` (planned) test runs here and this row exits 1 — the implementing PR then replaces it with an anchored run of those named tests, stated in the PR |
 | 4 | check | `m=$(sed '/^## Dropped/,$d' tools/desk/internal/regression/MANIFEST.md \| grep -c -E -e '^[\|] #[0-9]+ [\|]'); e=$(grep -c -E -e '^[\|] #[0-9]+ [\|] Test[A-Za-z0-9_]+ [\|] [0-9a-f]{7,40} [\|] [0-9a-f]{7,40} ' docs/streams/desktools-v2/brief-14-regression-floor.md); echo "manifest=$m evidence=$e"; test "$m" -eq "$e" && test "$m" -ge 18` | prints equal counts and exits 0 — every seed row has its Evidence row carrying the fixing sha and the red-at-parent sha; the ≥ 18 floor allows at most two drops beyond the known #719 and #322, each reasoned in `## Dropped` |
 | 5 | check | `grep -q -E -e '^## Regression floor$' docs/streams/desktools-v2/README.md` | exit 0 — the floor rule is where a v2 implementer reads it |
 | 6 | check | `statusgen --consumers --root .` | exit 0; no routing claim in this brief is disproved by the diff |

@@ -25,7 +25,8 @@ authored: 2026-09-29 by the desk, scoping trusted issue #1836
 sources:
   - "#1836 — the full gap catalog this brief scopes: §1 cross-cutting findings, §2 per-brief gaps, §3 known issues, §4 the T1–T10 suite design, §5 acceptance"
   - "tools/desk/cmd/cellctl/cell.go:451-463 — rootsValid requires a leading '/'; the same HasPrefix shape sits at cell.go:317 (l), new.go:280 (launcher) and set.go:149 (v) — all four re-read 2026-09-30"
-  - "tools/desk/cmd/deskfleet/project.go:266 — configureApprovals treats any non-200/201 from POST /projects/:id/approvals as fatal, re-read at authoring; deskkit already degrades on the same CE 404 (hardening_read_approvals_ce_404.golden.json, reviews_at_head_ce_404_degrades.golden.json)"
+  - "tools/desk/cmd/cellctl/container.go:27 — the launcher is executed (exec.Command on CELL_CONTAINER_LAUNCHER), so the launcher check gates a binary cellctl runs; re-read 2026-09-30"
+  - "tools/desk/cmd/deskfleet/project.go:266-294 — configureApprovals treats any non-200/201 from POST /projects/:id/approvals as fatal, and its Free-tier degrade warns 'do not count approvals as a server-enforced gate on this tier', re-read 2026-09-30; deskkit already degrades on the same CE 404 (hardening_read_approvals_ce_404.golden.json, reviews_at_head_ce_404_degrades.golden.json)"
   - "tools/desk/internal/deskkit/custodyacl.go:38 evaluateCustodyACL — already a build-tag-free pure model of the Windows custody decision, reached from ClassifyCustodyOwnerOnly (custodyverdict_windows.go:17) via classifyCustodyModel (custodyverdict.go:73), which records the invariant 'WITHOUT a second decision procedure'; TestEvaluateCustodyACL (custodyacl_test.go:16) and TestClassifyCustodyModel (custodyverdict_test.go:11) already table-test it on Linux — re-read 2026-09-30"
   - "tools/desk/internal/deskkit/selfcontain.go:117 reAbsMachinePath — the absolute-machine-path class recognises POSIX home and temp prefixes only; no drive-letter or UNC form, re-read 2026-09-30"
   - "docs/streams/desktools-v2/brief-04-deskclose-authorization-read-kind.md — the verified model to copy: GitLab goldens (close_issue_typed_*, list_comments_typed_*)"
@@ -43,13 +44,13 @@ domain: complicated
 consumers:
   - "tools/desk/internal/deskkit (NEW pathabs.go — planned; new cases in the existing custody tables): follow-up desktools-v2/12 (this brief)"
   - "tools/desk/internal/custodytest (NEW — planned; the PrivateTempDir test helper): follow-up desktools-v2/12 (this brief)"
-  - "tools/desk/cmd/cellctl: follow-up desktools-v2/12 (this brief; the four POSIX-only path checks move onto IsAbsFor)"
+  - "tools/desk/cmd/cellctl (NEW pathcheck.go — planned): follow-up desktools-v2/12 (this brief; the four POSIX-only path checks move onto cellPathCheck, which refuses every UNC and device spelling for roots and launcher)"
   - "tools/desk/cmd/deskfleet: follow-up desktools-v2/12 (this brief; CE tier-gap handling + PrivateTempDir in the custody-dependent tests)"
   - "tools/desk/internal/forge_gitlab + the conformance harness: follow-up desktools-v2/12 (this brief)"
   - "docs/streams/desktools-v2 briefs 03, 05, 08, 09, 10: follow-up desktools-v2/12 (this brief amends their Verify tables)"
   - "docs/streams/desktools-v2 brief 06 (row 4 re-target, Windows shim story, GitLab identity issues): follow-up desktools-v2/13 (the single owner of brief 06's re-derivation; this brief does not edit brief 06)"
   - "desktools-v2/13 (the CI legs, forge-ban symmetry and the lint half of #1836): out-of-scope (sibling brief; no dependency either way)"
-version: 2
+version: 3
 id: 968c76a1-05b5-4185-825c-c4464df1648e
 ---
 
@@ -59,13 +60,14 @@ id: 968c76a1-05b5-4185-825c-c4464df1648e
 
 files:
 - NEW `tools/desk/internal/deskkit/pathabs.go` (planned) + its test — `IsAbsFor`.
-- `tools/desk/cmd/cellctl/cell.go`, `new.go`, `set.go` — the four POSIX-only path checks move onto `IsAbsFor`; NEW env-resolution test.
+- `tools/desk/cmd/cellctl/cell.go`, `new.go`, `set.go` — the four POSIX-only path checks move onto one shared check; NEW `tools/desk/cmd/cellctl/pathcheck.go` (planned) — `cellPathCheck`, `IsAbsFor` plus the UNC/device refusal, with its test; NEW env-resolution test.
 - `tools/desk/internal/deskkit/custodyacl_test.go`, `custodyverdict_test.go` — one new case each; the custody decision code is not edited.
 - NEW `tools/desk/internal/custodytest/` (planned) — `PrivateTempDir` and its test; the custody-dependent `tools/desk/cmd/deskfleet` and `tools/desk/cmd/desktoken` tests move onto it.
 - NEW conformance and ambient-decoy tests in `tools/desk/internal/deskkit/`.
 - `tools/desk/cmd/deskpushguard/` — NEW hook-forwarding test (tests only).
 - `tools/desk/cmd/deskfleet/project.go` — CE tier-gap degrade in `configureApprovals`, with its test.
 - `docs/streams/desktools-v2/brief-03-*.md`, `brief-05-*.md`, `brief-08-*.md`, `brief-09-*.md`, `brief-10-*.md` — Verify-table amendments.
+- `changelog/<branch>.md` — the per-PR fragment this repository requires.
 
 Every desktools-v2 contract so far is verified against GitHub shapes on a POSIX shell. Issue
 #1836 catalogs the result: a Windows-only compile break is first seen at release time; a
@@ -98,15 +100,44 @@ cases the existing tables genuinely lack, plus the temp-dir helper the tests nee
 ## Deliverables
 
 1. **T2 — path semantics as string tables.** One helper `deskkit.IsAbsFor(goos, p string) bool` (planned)
-   covering POSIX, drive-letter (`C:\a`, `C:/a`), UNC (`\\srv\share\a`), and the relative and
+   covering POSIX, drive-letter (`C:\a`, `C:/a`), UNC and device forms, and the relative and
    drive-relative forms (`C:rel`, `\rooted`, `a/b`); table-tested for `linux`/`darwin`/`windows`
    over the input set in #1836 §4 T2, including `<owner>/<repo>=<path>` entries containing `:`
-   and `\`. The four POSIX-only checks in cellctl — `cmd/cellctl/cell.go:461` (rootsValid),
-   `cell.go:317`, `new.go:280`, `set.go:149` — move onto it. **UNC roots are refused by
-   cellctl**: `IsAbsFor` reports a UNC path absolute (that is its string semantics), but the
-   cellctl root and launcher checks additionally refuse a UNC path with a named reason, since a
-   root on a network share makes every desk tool authenticate to that host over SMB. Owns the
-   cellctl non-POSIX-path gap from #1836 §3-new-1.
+   and `\`. The input set also carries every UNC and device spelling, each with its expected
+   value:
+   - `\\srv\share\a` — `windows` true; `linux`/`darwin` false.
+   - `//srv/share/a` — true on all three (on POSIX it is an ordinary absolute path).
+   - `\\?\UNC\srv\share\a` — `windows` true; `linux`/`darwin` false.
+   - `\\?\C:\a` — `windows` true; `linux`/`darwin` false.
+   - `\\.\pipe\x` — `windows` true; `linux`/`darwin` false.
+
+   The four POSIX-only checks in cellctl — `cmd/cellctl/cell.go:461` (rootsValid, for
+   `CELL_ROOTS`), and `cell.go:317`, `new.go:280`, `set.go:149` (all three for
+   `CELL_CONTAINER_LAUNCHER`) — move onto one shared helper, `cellPathCheck(goos, p string)
+   error` (planned), in NEW `cmd/cellctl/pathcheck.go` (planned), which applies `IsAbsFor` plus the
+   refusal below.
+
+   **cellctl refuses every UNC and device spelling, for the stream roots and for the
+   launcher.** `IsAbsFor` reports those paths absolute (that is their string semantics), so
+   the refusal is cellctl's own. It is keyed on the shape every such spelling shares, not on
+   one spelling: **a path whose first two characters are both separators, `/` or `\` in any
+   mix**. That covers `\\srv\share\a`, `//srv/share/a`, `\/srv/share`, `\\?\UNC\srv\share\a`,
+   `\\?\C:\a`, `\\.\pipe\x` and their forward-slash forms. A refusal keyed on a leading `\\`
+   alone would not do: `//srv/share/a` already passes today's leading-`/` checks at all four
+   sites (re-read 2026-09-30), and on Windows it is the same UNC path. The refusal applies on
+   every host, not only Windows — POSIX leaves a leading `//` implementation-defined, and one
+   cell.env can be read on several hosts. The error names `UNC or device path` and the reason:
+   a root on a network share makes every desk tool authenticate to that host over SMB, and a
+   launcher there is a binary cellctl executes (`container.go:27`) from a remote host. A POSIX
+   absolute root and a Windows drive-letter root (`C:\a`, under `goos=windows`) stay accepted.
+   `TestCellPathCheck` (planned) in `cmd/cellctl` pins this with two subtest groups, `roots`
+   and `launcher`, and exactly these subtest names: `<group>/<c>_refused` for each `<c>` in
+   `backslash_unc` (`\\srv\share\a`), `slash_unc` (`//srv/share/a`), `mixed_sep_unc`
+   (`\/srv/share`), `extended_unc` (`\\?\UNC\srv\share\a`), `extended_drive` (`\\?\C:\a`) and
+   `device_ns` (`\\.\pipe\x`), each asserting the `UNC or device path` error under both
+   `goos=linux` and `goos=windows`; plus `roots/posix_abs_accepted`,
+   `roots/drive_letter_accepted` and `launcher/posix_exec_accepted`.
+   Owns the cellctl non-POSIX-path gap from #1836 §3-new-1.
 2. **T3 — environment resolution with an injected env.** Using cellctl's existing `e.Get`
    abstraction, a table test `TestEnvResolution` (planned) covering config-home, gh/glab config and
    harness-home resolution under `goos=windows` semantics for: `HOME` unset with
@@ -123,7 +154,9 @@ cases the existing tables genuinely lack, plus the temp-dir helper the tests nee
    - The existing owner-equals-invoking-user refusal (`custodyacl.go:47`, case `a file owned by
      another user is refused`) stays in the tables unchanged; this brief must not remove or
      weaken any existing custody case.
-   - Add `PrivateTempDir(t)` in a new shared test-helper package `internal/custodytest`: on
+   - Add `PrivateTempDir(t)` in a new shared test-helper package `internal/custodytest`, whose
+     package doc states it is for `_test.go` files only (row 8 checks no non-test file imports
+     it, so its permissive-elsewhere temp directory never reaches a shipped path): on
      Windows it creates a directory whose DACL is protected (inheritance stripped) and grants
      only the invoking user; elsewhere it is `t.TempDir()`. Its own test `TestPrivateTempDir` (planned)
      writes a 0600 file there and asserts the platform custody check reports it Verified. Move
@@ -153,11 +186,26 @@ cases the existing tables genuinely lack, plus the temp-dir helper the tests nee
    generates the Windows hook pair via `writeHooks` and string-asserts that `pre-push.cmd`
    forwards `%*`, so the remote name (argv[1]) that brief 05's push-guard fix reads reaches
    `deskpushguard.exe`.
-7. **T10 — tier-gap handling in deskfleet.** `TestConfigureApprovals` (planned) in `cmd/deskfleet`, with a
-   subtest `gitlab_ce_404_degrades`: the fake GitLab server returns 404 on
-   `POST /projects/:id/approvals`; assert a failed-at-tier NOTICE, a continued run, and exit 0
-   for that step — consistent with deskkit's existing CE-404 degrade goldens. Owns the
-   deskfleet CE-approvals-404 gap from #1836 §3-new-2.
+7. **T10 — tier-gap handling in deskfleet, keyed on 404 only.** Today `configureApprovals`
+   (`cmd/deskfleet/project.go:266-271`) fails the run on any non-200/201 from
+   `POST /projects/:id/approvals`, and the Free-tier path degrades only after a read-back shows
+   the write was ignored, warning "do not count approvals as a server-enforced gate on this
+   tier" (`project.go:278-294`). The new CE degrade is keyed on **404 from that endpoint only**:
+   the CE shape for an endpoint the tier lacks, reached after the project itself has resolved.
+   401, 403 and every 5xx still fail the run exactly as today. On an instance that supports
+   approvals, those are a token-scope, permission or server fault; turning them into exit 0
+   would leave the prevent-author and prevent-committer approval settings, a two-person
+   control, unapplied while the run reports a tier gap. `TestConfigureApprovals` (planned) in
+   `cmd/deskfleet` carries:
+   - `gitlab_ce_404_degrades`: the fake GitLab server returns 404 on the POST. Assert a
+     failed-at-tier NOTICE that carries the same "do not count approvals as a server-enforced
+     gate on this tier" warning as the Free-tier path, a continued run, and exit 0 for that
+     step — consistent with deskkit's existing CE-404 degrade goldens.
+   - Negative controls `gitlab_401_still_fails`, `gitlab_403_still_fails` and
+     `gitlab_500_still_fails`: the same fake returns that status. Assert the step fails the run
+     (the existing `approval settings write failed` failure) and prints no tier-gap NOTICE.
+
+   Owns the deskfleet CE-approvals-404 gap from #1836 §3-new-2.
 8. **Verify-table amendments** — briefs 03, 05, 08, 09 and 10 each gain at least one GitLab row
    and one Windows-semantics row (#1836 §5), wired to the tests above. Each added row's Expect
    cell ends with the trace marker `(desktools-v2/12 GitLab row)` or `(desktools-v2/12 Windows
@@ -186,31 +234,43 @@ cases the existing tables genuinely lack, plus the temp-dir helper the tests nee
      conformance table run over both backend fakes. Windows — the absolute-machine-path class
      recognises drive-letter (`C:\Users\…`) and UNC (`\\host\share\…`) paths on a public target,
      using `IsAbsFor` from deliverable 1 (today `selfcontain.go:117` knows POSIX prefixes only).
-     Both name tests brief 10's implementer creates; the Windows row states that it needs this
-     brief's deliverable 1 merged first.
+     Both name tests brief 10's implementer creates. The Windows row is self-contained without
+     a `depends` edge on brief 10: this brief adds it in the same PR that lands deliverable 1,
+     so wherever the row exists `IsAbsFor` exists too. If brief 10 is already implemented when
+     this brief lands, THIS brief creates the tests both new rows name, as for 09.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check | `cd tools/desk && go test -run '^TestIsAbsFor$' -v ./internal/deskkit/ > "${TMPDIR:-/tmp}/b12-r1.out" 2>&1; grep -F -e '--- PASS: TestIsAbsFor' "${TMPDIR:-/tmp}/b12-r1.out"` | prints the `--- PASS: TestIsAbsFor` line (exit 0); a missing test prints nothing and exits 1 |
-| 2 | check | `cd tools/desk && go test -run '^TestEnvResolution$' -v ./cmd/cellctl/ > "${TMPDIR:-/tmp}/b12-r2.out" 2>&1; grep -F -e '--- PASS: TestEnvResolution/windows/neither_set_refuses' "${TMPDIR:-/tmp}/b12-r2.out"` | prints the neither-set refusal subtest's PASS line (exit 0) |
-| 3 | check | `cd tools/desk && go test -run '^TestEvaluateCustodyACL$' -v ./internal/deskkit/ > "${TMPDIR:-/tmp}/b12-r3a.out" 2>&1; go test -run '^TestClassifyCustodyModel$' -v ./internal/deskkit/ > "${TMPDIR:-/tmp}/b12-r3b.out" 2>&1; grep -F -e '--- PASS: TestEvaluateCustodyACL/a_deny_before_a_foreign_read_allow_still_refuses' "${TMPDIR:-/tmp}/b12-r3a.out" && grep -F -e '--- PASS: TestClassifyCustodyModel/a_deny_before_a_foreign_read_allow_still_refuses' "${TMPDIR:-/tmp}/b12-r3b.out" && grep -F -e '--- PASS: TestEvaluateCustodyACL/a_file_owned_by_another_user_is_refused' "${TMPDIR:-/tmp}/b12-r3a.out"` | prints three PASS lines (exit 0): the new deny-ordering case REFUSES in both existing tables, and the owner-equals-invoking-user refusal is still pinned; exits 1 on today's tree (the deny-ordering case does not exist yet) |
-| 4 | check | `cd tools/desk && go test -run '^TestContractConformance$' -v ./internal/deskkit/ > "${TMPDIR:-/tmp}/b12-r4.out" 2>&1; grep -q -F -e '--- PASS: TestContractConformance' "${TMPDIR:-/tmp}/b12-r4.out" && miss=0 && for c in ce_404_approvals ce_404_approval_rules ce_404_push_rules free_tier_403 last_pipeline_empty last_pipeline_absent x_next_page nested_subgroup internal_visibility files_api_400 draft_change_400 mr_note_vs_issue_note; do grep -q -F -e "--- PASS: TestContractConformance/gitlab/$c" "${TMPDIR:-/tmp}/b12-r4.out" \|\| { echo "MISSING gitlab/$c"; miss=1; }; done && test $miss -eq 0` | exit 0 and nothing printed — the conformance test passed and every mandatory GitLab shape from deliverable 4 is present by name and passing (unanchored substring match, so the subtest indent depth does not matter); a missing case prints `MISSING gitlab/<case>` and exits 1 |
-| 5 | check | `cd tools/desk && go test -run '^TestAmbientDecoyMatrix$' -v ./internal/deskkit/ > "${TMPDIR:-/tmp}/b12-r5.out" 2>&1; grep -F -e '--- PASS: TestAmbientDecoyMatrix/github' "${TMPDIR:-/tmp}/b12-r5.out" && grep -F -e '--- PASS: TestAmbientDecoyMatrix/gitlab' "${TMPDIR:-/tmp}/b12-r5.out"` | prints both PASS lines (exit 0); the test itself fails if a `gh`/`glab` PATH stub ran or a decoy reached the fake server; exits 1 on today's tree, where no such test exists |
-| 6 | check | `cd tools/desk && go test -run '^TestPrePushCmdForwardsArgs$' -v ./cmd/deskpushguard/ > "${TMPDIR:-/tmp}/b12-r6.out" 2>&1; grep -F -e '--- PASS: TestPrePushCmdForwardsArgs' "${TMPDIR:-/tmp}/b12-r6.out"` | prints the PASS line (exit 0) — the generated `pre-push.cmd` forwards `%*` |
-| 7 | check | `cd tools/desk && go test -run '^TestConfigureApprovals$' -v ./cmd/deskfleet/ > "${TMPDIR:-/tmp}/b12-r7.out" 2>&1; grep -F -e '--- PASS: TestConfigureApprovals/gitlab_ce_404_degrades' "${TMPDIR:-/tmp}/b12-r7.out"` | prints the CE-404 subtest's PASS line (exit 0): NOTICE printed, run continues, step exits 0 |
-| 8 | check +flow | `cd tools/desk && go test -run '^TestPrivateTempDir$' -v ./internal/custodytest/ > "${TMPDIR:-/tmp}/b12-r8.out" 2>&1; grep -F -e '--- PASS: TestPrivateTempDir' "${TMPDIR:-/tmp}/b12-r8.out" && grep -r -l -F -e 'custodytest.PrivateTempDir(' cmd/deskfleet cmd/desktoken --include='*_test.go'` | prints the PASS line, then a file list that includes at least one file under `cmd/deskfleet/` and one under `cmd/desktoken/` (exit 0); exits non-zero on today's tree. On Linux this proves the helper and its wiring only — the Windows behavior is proven on desktools-v2/13's `windows-latest` leg |
-| 9 | check | `grep -r -n -E -e 'HasPrefix\([a-zA-Z_]+, "/"\)' tools/desk/cmd/cellctl --include='*.go' --exclude='*_test.go'; test $? -eq 1` | exit 0 and nothing printed — no POSIX-only leading-slash check remains in cellctl under ANY variable name (today it prints four sites: `cell.go:317`, `cell.go:461`, `new.go:280`, `set.go:149`) |
+| 1 | check | `d=$(mktemp -d) && cd tools/desk && go test -run '^TestIsAbsFor$' -v ./internal/deskkit/ > "$d/r1.out" 2>&1 && grep -E -e '^--- PASS: TestIsAbsFor \(' "$d/r1.out"` | prints the top-level `--- PASS: TestIsAbsFor` line (exit 0). The `&&` keeps `go test`'s status, so a failing test — even one where only some subtests fail — exits non-zero; the grep is anchored at column 0, so an indented subtest PASS line never satisfies it; a missing test (`no tests to run`) prints nothing and exits 1 |
+| 2 | check | `d=$(mktemp -d) && cd tools/desk && go test -run '^TestEnvResolution$' -v ./cmd/cellctl/ > "$d/r2.out" 2>&1 && grep -E -e '^--- PASS: TestEnvResolution \(' "$d/r2.out" && grep -E -e '--- PASS: TestEnvResolution/windows/neither_set_refuses \(' "$d/r2.out"` | prints the top-level PASS line and the neither-set refusal subtest's PASS line (exit 0); a failing test exits non-zero at `go test` |
+| 3 | check | `d=$(mktemp -d) && cd tools/desk && go test -run '^TestEvaluateCustodyACL$' -v ./internal/deskkit/ > "$d/r3a.out" 2>&1 && go test -run '^TestClassifyCustodyModel$' -v ./internal/deskkit/ > "$d/r3b.out" 2>&1 && grep -E -e '^--- PASS: TestEvaluateCustodyACL \(' "$d/r3a.out" && grep -E -e '^--- PASS: TestClassifyCustodyModel \(' "$d/r3b.out" && grep -E -e '--- PASS: TestEvaluateCustodyACL/a_deny_before_a_foreign_read_allow_still_refuses \(' "$d/r3a.out" && grep -E -e '--- PASS: TestClassifyCustodyModel/a_deny_before_a_foreign_read_allow_still_refuses \(' "$d/r3b.out" && grep -E -e '--- PASS: TestEvaluateCustodyACL/a_file_owned_by_another_user_is_refused \(' "$d/r3a.out"` | prints five PASS lines (exit 0): both whole tables pass, the new deny-ordering case REFUSES in both, and the owner-equals-invoking-user refusal is still pinned; exits 1 on today's tree (the deny-ordering case does not exist yet) |
+| 4 | check | `d=$(mktemp -d) && cd tools/desk && go test -run '^TestContractConformance$' -v ./internal/deskkit/ > "$d/r4.out" 2>&1 && grep -q -E -e '^--- PASS: TestContractConformance \(' "$d/r4.out" && miss=0 && for c in ce_404_approvals ce_404_approval_rules ce_404_push_rules free_tier_403 last_pipeline_empty last_pipeline_absent x_next_page nested_subgroup internal_visibility files_api_400 draft_change_400 mr_note_vs_issue_note; do grep -q -E -e "--- PASS: TestContractConformance/gitlab/$c \(" "$d/r4.out" \|\| { echo "MISSING gitlab/$c"; miss=1; }; done && test $miss -eq 0` | exit 0 and nothing printed — `go test` passed, the top-level PASS line is present at column 0 (so no failing `github/...` or `gitlab/...` case is masked), and every mandatory GitLab shape from deliverable 4 is present by name and passing (the per-case match is indent-agnostic and ends at ` (`, so a nested name cannot stand in); a missing case prints `MISSING gitlab/<case>` and exits 1; a failing test exits non-zero before the loop |
+| 5 | check | `d=$(mktemp -d) && cd tools/desk && go test -run '^TestAmbientDecoyMatrix$' -v ./internal/deskkit/ > "$d/r5.out" 2>&1 && grep -E -e '^--- PASS: TestAmbientDecoyMatrix \(' "$d/r5.out" && grep -E -e '--- PASS: TestAmbientDecoyMatrix/github \(' "$d/r5.out" && grep -E -e '--- PASS: TestAmbientDecoyMatrix/gitlab \(' "$d/r5.out"` | prints three PASS lines (exit 0): the whole test, then its `github` and `gitlab` subtests exactly (a nested `github/<x>` line does not match); the test itself fails if a `gh`/`glab` PATH stub ran or a decoy reached the fake server; exits 1 on today's tree, where no such test exists |
+| 6 | check | `d=$(mktemp -d) && cd tools/desk && go test -run '^TestPrePushCmdForwardsArgs$' -v ./cmd/deskpushguard/ > "$d/r6.out" 2>&1 && grep -E -e '^--- PASS: TestPrePushCmdForwardsArgs \(' "$d/r6.out"` | prints the top-level PASS line (exit 0) — the generated `pre-push.cmd` forwards `%*`; a failing test exits non-zero at `go test` |
+| 7 | check | `d=$(mktemp -d) && cd tools/desk \|\| exit 1; miss=0; go test -run '^TestConfigureApprovals$' -v ./cmd/deskfleet/ > "$d/r7.out" 2>&1 \|\| { echo "FAIL go test"; miss=1; }; grep -q -E -e '^--- PASS: TestConfigureApprovals \(' "$d/r7.out" \|\| { echo "MISSING TestConfigureApprovals"; miss=1; }; for c in gitlab_ce_404_degrades gitlab_401_still_fails gitlab_403_still_fails gitlab_500_still_fails; do grep -q -E -e "--- PASS: TestConfigureApprovals/$c \(" "$d/r7.out" \|\| { echo "MISSING $c"; miss=1; }; done; f=$(grep -r -l -F -e 'func TestConfigureApprovals(' cmd/deskfleet --include='*_test.go'); { test -n "$f" && grep -q -F -e 'server-enforced gate on this tier' $f; } \|\| { echo "MISSING notice assertion"; miss=1; }; test $miss -eq 0` | exit 0 and nothing printed: the whole test passed, the CE-404 degrade and all three negative controls (401, 403, 500) are present by name and passing, and the test file asserts the "server-enforced gate on this tier" NOTICE. A degrade on any non-404 status fails its `_still_fails` control, so the row prints `FAIL go test` and exits 1; today it prints `MISSING` lines and exits 1 |
+| 8 | check +flow | `d=$(mktemp -d) && cd tools/desk && go test -run '^TestPrivateTempDir$' -v ./internal/custodytest/ > "$d/r8.out" 2>&1 && grep -E -e '^--- PASS: TestPrivateTempDir \(' "$d/r8.out" && grep -r -l -F -e 'custodytest.PrivateTempDir(' cmd/deskfleet --include='*_test.go' && grep -r -l -F -e 'custodytest.PrivateTempDir(' cmd/desktoken --include='*_test.go' && { grep -r -l -F -e 'internal/custodytest"' . --include='*.go' --exclude='*_test.go'; test $? -eq 1; }` | prints the PASS line, then at least one `_test.go` file under `cmd/deskfleet/`, then at least one under `cmd/desktoken/` — one grep per directory, so either alone exits 1 — then nothing more, exit 0: no non-test `.go` file imports `internal/custodytest` (an importer is printed and the row exits 1). Exits non-zero on today's tree. On Linux this proves the helper and its wiring only — the Windows behavior is proven on desktools-v2/13's `windows-latest` leg |
+| 9 | check +dereference | `grep -r -n -E -e 'HasPrefix\([a-zA-Z_]+, "/"\)' tools/desk/cmd/cellctl --include='*.go' --exclude='*_test.go'; test $? -eq 1` | exit 0 and nothing printed — no POSIX-only leading-slash check remains in cellctl under ANY variable name (today it prints four sites: `cell.go:317`, `cell.go:461`, `new.go:280`, `set.go:149`) |
 | 10 | check | `miss=0; for b in 03 05 08 09 10; do f=$(ls docs/streams/desktools-v2/brief-$b-*.md); grep -q -F -e '(desktools-v2/12 GitLab row)' "$f" \|\| { echo "MISSING gitlab row: $b"; miss=1; }; grep -q -F -e '(desktools-v2/12 Windows row)' "$f" \|\| { echo "MISSING windows row: $b"; miss=1; }; done; test $miss -eq 0` | exit 0 and nothing printed — each of the five briefs carries its GitLab and Windows-semantics rows per deliverable 8 (today it prints ten `MISSING` lines and exits 1) |
 | 11 | check | `statusgen --consumers --root .` | exit 0; no routing claim in this brief is disproved by the diff |
+| 12 | check | `d=$(mktemp -d) && cd tools/desk \|\| exit 1; miss=0; go test -run '^TestCellPathCheck$' -v ./cmd/cellctl/ > "$d/r12.out" 2>&1 \|\| { echo "FAIL go test"; miss=1; }; grep -q -E -e '^--- PASS: TestCellPathCheck \(' "$d/r12.out" \|\| { echo "MISSING TestCellPathCheck"; miss=1; }; for t in $(for g in roots launcher; do for c in backslash_unc slash_unc mixed_sep_unc extended_unc extended_drive device_ns; do echo "$g/${c}_refused"; done; done) roots/posix_abs_accepted roots/drive_letter_accepted launcher/posix_exec_accepted; do grep -q -E -e "--- PASS: TestCellPathCheck/$t \(" "$d/r12.out" \|\| { echo "MISSING $t"; miss=1; }; done; test $miss -eq 0` | exit 0 and nothing printed — every UNC and device spelling (`\\srv\share`, `//srv/share`, mixed separators, `\\?\UNC\`, `\\?\C:\`, `\\.\`) is refused both as a cell root and as `CELL_CONTAINER_LAUNCHER`, and a POSIX root, a drive-letter root and a POSIX launcher stay accepted. Today it prints `MISSING TestCellPathCheck` and fifteen `MISSING <group>/<case>` lines and exits 1 |
+| 13 | check | `n=$(grep -c -F -e 'cellPathCheck(' tools/desk/cmd/cellctl/cell.go); m=$(grep -c -F -e 'cellPathCheck(' tools/desk/cmd/cellctl/new.go); k=$(grep -c -F -e 'cellPathCheck(' tools/desk/cmd/cellctl/set.go); echo "cell=$n new=$m set=$k"; test "$n" -ge 2 && test "$m" -ge 1 && test "$k" -ge 1` | prints the three counts and exits 0 — all four path sites (`rootsValid` and the launcher check in `cell.go`, the launcher checks in `new.go` and `set.go`) call the one shared check that row 12 tests, so no site keeps a private check that row 12 does not see. Today it prints `cell=0 new=0 set=0` and exits 1 |
 
 ## DoD
 
-- All eleven Verify rows pass on Linux (the suite's home). Rows 1–3 and 8 also pass on the
+- All thirteen Verify rows pass on Linux (the suite's home). Rows 1–3 and 8 also pass on the
   `windows-latest` leg that desktools-v2/13 deliverable 4 adds, once that leg lands.
+  **NOTE — when that Windows proof runs.** Today `.github/workflows/windows-ci-leg.yml`
+  triggers only on a `v*` tag push and on `workflow_dispatch`, not on `pull_request`. Unless
+  desktools-v2/13's staged workflow patch adds a `pull_request` trigger and a human applies
+  it, the Windows pass for rows 1–3 and 8 is proven at release time (or by a manual dispatch),
+  not on this brief's PR; the implementing PR says which. This is a gap in when the proof
+  runs, not in what is proven.
 - No production behavior change except deliverables 1 (cellctl accepts Windows drive-letter
-  path shapes and refuses UNC roots with a named reason) and 7 (deskfleet degrades on a CE tier
-  gap instead of dying), each covered by its own rows above. Deliverable 3 changes tests and
+  path shapes, and refuses every UNC and device spelling for both the stream roots and
+  `CELL_CONTAINER_LAUNCHER` with a named reason — rows 9, 12, 13) and 7 (deskfleet degrades on
+  a CE tier gap, keyed on a 404 from the approvals endpoint only, instead of dying — row 7),
+  each covered by its own rows above. Deliverable 3 changes tests and
   adds one test helper; the custody decision itself is untouched.
 - Every test named by THIS brief's own Verify rows exists at merge and is the test the row
   invokes. Rows this brief adds to briefs 03, 05, 08 and 10 name tests those briefs' own

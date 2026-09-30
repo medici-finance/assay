@@ -97,8 +97,10 @@ another stream: it cannot start until `forge-neutral/18` reaches zero `gh` sites
 - **Wave 2** — `desktools-v2/02` (ban-lint + seam contract, advisory first, scope includes
   `statusgen/**`, baseline written to a file), `desktools-v2/04` (deskclose's authorization
   read states its kind, #1019), `desktools-v2/05` (the push guards judge the real remote,
-  #1201 / #884) and `desktools-v2/10` (one outbound-write check — human-gated). All depend on
-  01 only; parallelizable.
+  #1201 / #884), `desktools-v2/10` (one outbound-write check — human-gated),
+  `desktools-v2/12` (the platform compatibility suite), `desktools-v2/13` (the platform gates
+  and reconciliation) and `desktools-v2/14` (the regression floor). All depend on 01 only;
+  parallelizable.
 - **Wave 3** — `desktools-v2/03` (native read-client custody contract + the 5 desk `gh`
   exceptions; depends 01+02 — human-gated), `desktools-v2/09` (purpose-built access-pattern
   queries; depends 02) and `desktools-v2/11` (the house callout; depends 10 — human-gated).
