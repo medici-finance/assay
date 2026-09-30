@@ -118,8 +118,8 @@
     {
       "name": "leading space inside a span no longer trimmed",
       "file": "verifyrows.go",
-      "old": "\t\t\tspans = append(spans, strings.TrimSpace(cell[i+n:closeAt]))",
-      "new": "\t\t\tspans = append(spans, cell[i+n:closeAt])"
+      "old": "\t\t\t\ttext:     strings.TrimSpace(cell[i+n : closeAt]),",
+      "new": "\t\t\t\ttext:     cell[i+n : closeAt],"
     },
     {
       "name": "cmd-marker-overrides-command never raised",

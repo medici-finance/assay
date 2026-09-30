@@ -17,6 +17,7 @@
     {"name": "unterminated marked span is not a span", "cell": "In `Foo`: `cmd: true", "marked": null},
     {"name": "fence closes only on an equal-length run", "cell": "In `Foo`: ``cmd: true` ", "marked": null},
     {"name": "a longer run does not close a shorter fence", "cell": "In `Foo`: `cmd: true`` x", "marked": null},
+    {"name": "a longer run does not close an earlier span", "cell": "`a``` `cmd: true`", "marked": null},
     {"name": "marker between escaped backticks is literal text", "cell": "`go test ./nonexistent -count=1` then \\`cmd: true #\\`", "marked": null},
     {"name": "marker inside an HTML comment", "cell": "`go test ./nonexistent -count=1` <!-- `cmd: true` -->", "marked": null},
     {"name": "marker beside an HTML comment is still not honoured", "cell": "In `Foo` <!-- note --> then `cmd: true`", "marked": null},
