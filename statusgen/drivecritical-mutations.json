@@ -1,0 +1,77 @@
+{
+  "test": "go test . -run 'TestDriveCriticalTierNeverBuried|TestMainHealthParse|TestIssueRefsWiring|TestCriticalTierInputsHaveOneWriter|TestCriticalStampAuthoritiesConfig' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — the critical tier no longer sorts above the score (the landed lexicographic order, restated as a mutation)",
+    "file": "nextup.go",
+    "old": "\t\t\treturn all[i].CriticalTier // critical members sort first",
+    "new": "\t\t\treturn !all[i].CriticalTier // critical members sort first"
+  },
+  "mutations": [
+    {
+      "name": "row 5 main-red — the arm is flipped back to the always-false stub",
+      "file": "drivecritical.go",
+      "old": "\tif !activeMainHealth.red() {\n\t\treturn false\n\t}",
+      "new": "\tif true {\n\t\treturn false\n\t}"
+    },
+    {
+      "name": "row 5 main-red — any brief is lifted while main is red, linkage ignored (the whole board jumps the tier)",
+      "file": "drivecritical.go",
+      "old": "\t\tif activeMainHealth.Refs[ref] {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false",
+      "new": "\t\tif activeMainHealth.Refs[ref] {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn true"
+    },
+    {
+      "name": "row 5 main-red — an unsupplied input is silently treated as green (could-not-check never named)",
+      "file": "nextup.go",
+      "old": "\t\tif !activeMainHealth.known() {\n\t\t\tnu.MainRedUnknown = mainRedUnknownText\n\t\t}",
+      "new": "\t\tif false {\n\t\t\tnu.MainRedUnknown = mainRedUnknownText\n\t\t}"
+    },
+    {
+      "name": "row 5 main-red — a placeholder no longer carries its own issue ref (fixes tracked as issue placeholders are never recognised)",
+      "file": "placeholder.go",
+      "old": "\t\tIssueRefs: []string{fmt.Sprintf(\"%s#%d\", p.Repo, p.Issue)},",
+      "new": "\t\tIssueRefs: nil,"
+    },
+    {
+      "name": "row 5 main-red — a bare #N is accepted as a tracking ref (ambiguous across repos)",
+      "file": "mainhealth.go",
+      "old": "\t\t\tif !fullIssueRefRe.MatchString(r) {",
+      "new": "\t\t\tif false && !fullIssueRefRe.MatchString(r) {"
+    },
+    {
+      "name": "row 5 stamp authorities — nothing is ever authorised (the config-wired set is ignored)",
+      "file": "drivecritical.go",
+      "old": "\treturn criticalStampAuthorities[authority]",
+      "new": "\treturn false"
+    },
+    {
+      "name": "row 5 stamp authorities — an UNSET authority set is silent (stamps no longer reported could-not-check)",
+      "file": "drivecritical.go",
+      "old": "\t\t\tcase !criticalStampAuthoritiesSet:",
+      "new": "\t\t\tcase false:"
+    },
+    {
+      "name": "row 5 stamp authorities — a compiled-in identity is added to the authority set",
+      "file": "drivecritical.go",
+      "old": "\tcriticalStampAuthorities    = map[string]bool{}",
+      "new": "\tcriticalStampAuthorities    = map[string]bool{\"security-desk\": true}"
+    },
+    {
+      "name": "row 5 stamp authorities — the roster key's entries are no longer validated (a malformed authority set is half-applied instead of refused)",
+      "file": "rosterconfig.go",
+      "old": "\t\t\tif !criticalStampAuthorityRe.MatchString(a) {",
+      "new": "\t\t\tif false && !criticalStampAuthorityRe.MatchString(a) {"
+    },
+    {
+      "name": "row 5 stamp authorities — the roster key is read but never marks the set configured (unset and configured collapse)",
+      "file": "rosterconfig.go",
+      "old": "\t\tcfg.CriticalStampAuthoritiesSet = true",
+      "new": "\t\tcfg.CriticalStampAuthoritiesSet = false"
+    },
+    {
+      "name": "row 5 reviewer-finding — the control: linkage is dropped (the remediation never reaches the tier)",
+      "file": "drivecritical.go",
+      "old": "\t\tif names(f.Control) {\n\t\t\treturn true\n\t\t}",
+      "new": "\t\tif false && names(f.Control) {\n\t\t\treturn true\n\t\t}"
+    }
+  ]
+}

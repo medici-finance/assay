@@ -354,6 +354,15 @@ const (
 	// not applied. KEEP IN SYNC with statusgen/rosterconfig.go's scanEnvStreamCap.
 	EnvStreamCap = "ASSAY_STREAM_CAP"
 
+	// EnvCriticalStampAuthorities (ASSAY_CRITICAL_STAMP_AUTHORITIES) is the
+	// STATUSGEN-only ratified authority set for the drives critical tier's
+	// stamped-security arm. statusgen consumes it; deskkit does not — but it lives
+	// in the SAME shared roster.env, so it must be RECOGNISED here or a roster that
+	// configures the authority set collapses the whole desk-tools configuration on
+	// the unknown-ASSAY_-key refusal. Recognised, not applied. KEEP IN SYNC with
+	// statusgen/rosterconfig.go's scanEnvCriticalStampAuthorities.
+	EnvCriticalStampAuthorities = "ASSAY_CRITICAL_STAMP_AUTHORITIES"
+
 	// EnvReviewerVendor (ASSAY_REVIEWER_VENDOR) records the model VENDOR the
 	// reviewer role's App runs on (verify-integrity/10). It is the reference the
 	// reviewer-calibration SPOF is measured against: deskcalibrate refuses a
@@ -577,6 +586,10 @@ func knownRosterKeys() []string {
 		// collapse the desk tools' configuration. Bound to statusgen's
 		// scanEnvStreamCap by the shared key list.
 		EnvStreamCap,
+		// EnvCriticalStampAuthorities (ASSAY_CRITICAL_STAMP_AUTHORITIES) is
+		// STATUSGEN-only (the drives critical tier's stamped-security authority set):
+		// recognised and ignored here, bound to statusgen's key by the shared list.
+		EnvCriticalStampAuthorities,
 		// EnvReviewerVendor (ASSAY_REVIEWER_VENDOR) is CONSUMED by cmd/deskcalibrate
 		// (the reviewer-calibration SPOF vendor check) via a direct os.Getenv, and
 		// EnvVerifierVendor (ASSAY_VERIFIER_VENDOR) is a documented policy key no tool

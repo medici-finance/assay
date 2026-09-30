@@ -151,6 +151,12 @@ type Brief struct {
 	// (held out of THIS board's Next-up) + a display marker carrying the target
 	// repo — NEVER a Next-up score input (F-09 scope note).
 	HomedIn string
+	// IssueRefs are the FULL `owner/repo#N` refs of the issues this row addresses:
+	// an issue-loop placeholder's own issue, or a brief's `issues:` entries resolved
+	// against the stream's declared `repo:` (a stream with no repo resolves none).
+	// Read ONLY by the critical tier's main-red arm, to recognise a main-red FIX
+	// against the tracking issues the --main-health input names. Never a score input.
+	IssueRefs []string
 	// Measures is the optional brief-v1 `measures:` field — the name of the
 	// process queue this brief instruments (a metric, alarm or report ABOUT that
 	// queue). nil when the field is absent, which is the neutral default: an

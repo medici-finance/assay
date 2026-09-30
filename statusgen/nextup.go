@@ -101,11 +101,12 @@ type Pick struct {
 	// CriticalTier marks a pick in the HARD, never-buried critical tier (phase 3).
 	// The board sorts lexicographically by (CriticalTier, Total()): a critical member
 	// ranks ABOVE every score, so no intensity — surge included — can bury a live
-	// fire. Membership is machine-derived / stamped, never self-declared
-	// (drivecritical.go), and is set ONLY when a drive is active, so a no-drive board
-	// is byte-identical to the pre-drives baseline. CriticalArm names the qualifying
-	// arm (main-red[deferred] / security / high-unblocks / reviewer-finding), "" when
-	// not critical.
+	// fire. Membership is derived by drivecritical.go from linkage fields and stamps,
+	// never from a "critical" flag (its RESIDUAL note names which of those inputs an
+	// ordinary reviewed PR can write), and is set ONLY when a drive is active, so a
+	// no-drive board is byte-identical to the pre-drives baseline. CriticalArm names
+	// the qualifying arm (main-red / security / high-unblocks / reviewer-finding), ""
+	// when not critical.
 	CriticalTier bool
 	CriticalArm  string
 }
@@ -181,6 +182,13 @@ type NextUp struct {
 	// the ≤15/20 2-pass fill (phase 3). 0 whenever no drive is active, so a no-drive
 	// board is byte-identical to the pre-drives baseline.
 	HeldByDriveCap int
+	// MainHealth / MainRedUnknown — the main-red arm's input state (phase 3), set
+	// ONLY while a drive is active (the only time the critical tier applies), so a
+	// no-drive board is unchanged. MainHealth is the rendered state; MainRedUnknown
+	// is the could-not-check line when no --main-health input was supplied — named
+	// on the board and as a --lint NOTICE, never a silent "main is green".
+	MainHealth     string
+	MainRedUnknown string
 }
 
 // Overflow reports whether the eligible backlog exceeds the overflow threshold —
@@ -726,13 +734,14 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 				valueWeight(b.Value) +
 				unblocksWeight*bc
 			p := Pick{Stream: s, Brief: b, Score: score}
-			// Hard critical tier (phase 3): mark machine-derived / stamped critical
-			// briefs so the sort ranks them ABOVE every score. GATED on a drive being
+			// Hard critical tier (phase 3): mark the briefs drivecritical.go derives
+			// as critical so the sort ranks them ABOVE every score. GATED on a drive being
 			// active — with no drive there is nothing to bury and the ordinary score
 			// already orders the board, so a no-drive board stays byte-identical to
 			// the baseline (a high-unblocks brief would otherwise reorder it). The
-			// derivation is pure/deterministic over board-graph facts + stamped labels
-			// only (drivecritical.go).
+			// derivation is pure/deterministic over board-graph facts, linkage fields
+			// and stamped labels only; which of those an ordinary PR can write is the
+			// RESIDUAL named in drivecritical.go.
 			if activeDriveSet.applied() {
 				if arm := criticalTierArm(b, s.Name, bc, activeFindings); arm != "" {
 					p.CriticalTier = true
@@ -886,6 +895,12 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 		picks = append(picks, p)
 	}
 	nu.Picks = picks
+	if activeDriveSet.applied() {
+		nu.MainHealth = activeMainHealth.String()
+		if !activeMainHealth.known() {
+			nu.MainRedUnknown = mainRedUnknownText
+		}
+	}
 	// Honesty (brief-44 Verify row 3): the ACTIVE DRIVE banner renders iff a SHOWN
 	// pick actually carries a drive term. A boosted pick reaching the board without
 	// this banner is a --lint PROBLEM (driveBannerProblems) — the steer is never
