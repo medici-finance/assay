@@ -713,6 +713,150 @@ func TestRunSync_AmbiguousCLI(t *testing.T) {
 	}
 }
 
+// TestSyncGuardrails_ShrinkHistoryEditRefusesFromGit pins
+// F-1692-recency-order-unpinned. matchExtent's ambiguity condition is decided
+// by RECENCY — the first known text that matches at the anchor — so it is only
+// correct while priorGuardrailSources returns revisions newest first: the
+// staged copy, then commits in `git log` order. TestSyncGuardrails_
+// ShrinkHistoryEditRefuses hands matchExtent a hand-ordered prior slice, so it
+// cannot see that order being wrong. This test builds the same shrink-then-edit
+// history in a real repository and goes through priorGuardrailSources itself,
+// so either of these one-line mutations turns it red:
+//
+//   - `git log --reverse` in priorGuardrailSources (oldest commit first):
+//     the "committed" case;
+//   - the staged copy loaded AFTER the commits instead of before: the
+//     "staged" case.
+//
+// Under either one the older, longer r1 becomes the "newest" match, the tie
+// is no longer seen, and the sync deletes the site-local line.
+//
+// History, both cases: r1 is a 3-line block; r2 shrinks it to its own 2-line
+// prefix; the dropped line is kept as site-local text right under the block;
+// r3 edits the block again, so the current text no longer matches at the
+// anchor but r2 (newer) and r1 (older, longer) both do. "committed" commits
+// r1, r2 and r3; "staged" commits r1, stages r2 and leaves r3 in the working
+// tree. Each must refuse (could-not-check naming the ambiguity, exit 2 from
+// the binary) and leave the site byte-identical.
+func TestSyncGuardrails_ShrinkHistoryEditRefusesFromGit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	a := "- **Extent test:** anchor line, stable across edits."
+	keep := "- keep this line."
+	dropped := "- dropped bullet, kept as site-local text."
+	r1 := []string{a, keep, dropped}
+	r2 := []string{a, keep}
+	r3 := []string{a, keep, "- a new bullet, added after the shrink."}
+	body := strings.Join([]string{"# ext", "", a, keep, dropped, "- NEXT SECTION."}, "\n") + "\n"
+
+	var bin string
+	if !testing.Short() {
+		bin = buildSkillslintBinary(t)
+	}
+
+	for _, tc := range []struct {
+		name string
+		// build lays down the r1 -> r2 -> r3 history in root, using git.
+		build func(t *testing.T, root string, git func(...string))
+		// order is the block text of each revision priorGuardrailSources must
+		// return, newest first.
+		order [][]string
+	}{
+		{
+			name: "committed",
+			build: func(t *testing.T, root string, git func(...string)) {
+				mkdirWrite(t, root, guardrailSourcePath, extentSource("extent", extentSite, r1...))
+				mkdirWrite(t, root, extentSite, body)
+				git("add", "-A")
+				git("commit", "-q", "-m", "r1")
+				mkdirWrite(t, root, guardrailSourcePath, extentSource("extent", extentSite, r2...))
+				git("commit", "-q", "-am", "r2: shrink to a prefix")
+				mkdirWrite(t, root, guardrailSourcePath, extentSource("extent", extentSite, r3...))
+				git("commit", "-q", "-am", "r3: edit after the shrink")
+			},
+			// The staged copy equals HEAD (r3) and is loaded first; HEAD's own
+			// copy is then a duplicate and is dropped.
+			order: [][]string{r3, r2, r1},
+		},
+		{
+			name: "staged",
+			build: func(t *testing.T, root string, git func(...string)) {
+				mkdirWrite(t, root, guardrailSourcePath, extentSource("extent", extentSite, r1...))
+				mkdirWrite(t, root, extentSite, body)
+				git("add", "-A")
+				git("commit", "-q", "-m", "r1")
+				mkdirWrite(t, root, guardrailSourcePath, extentSource("extent", extentSite, r2...))
+				git("add", guardrailSourcePath)
+				mkdirWrite(t, root, guardrailSourcePath, extentSource("extent", extentSite, r3...))
+			},
+			order: [][]string{r2, r1},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			git := func(args ...string) {
+				t.Helper()
+				cmd := exec.Command("git", append([]string{
+					"-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid",
+					"-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main",
+				}, args...)...)
+				cmd.Dir = root
+				cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1")
+				if out, err := cmd.CombinedOutput(); err != nil {
+					t.Fatalf("git %v: %v\n%s", args, err, out)
+				}
+			}
+			git("init", "-q")
+			tc.build(t, root, git)
+
+			prior, notes := priorGuardrailSources(root)
+			if len(prior) != len(tc.order) {
+				t.Fatalf("priorGuardrailSources returned %d revision(s), want %d (notes %v)", len(prior), len(tc.order), notes)
+			}
+			for i, want := range tc.order {
+				if len(prior[i].Blocks) != 1 || prior[i].Blocks[0].Text != strings.Join(want, "\n") {
+					t.Fatalf("priorGuardrailSources revision %d is not the expected one — the revisions must come newest first (staged, then git log order):\n got %+v\nwant %q", i, prior[i].Blocks, strings.Join(want, "\n"))
+				}
+			}
+
+			changed, rep, err := SyncGuardrails(root, prior, false)
+			if err != nil {
+				t.Fatalf("sync: %v", err)
+			}
+			if len(changed) != 0 {
+				t.Fatalf("changed=%v: the site-local line would be deleted", changed)
+			}
+			if len(rep.Unchecked) != 1 || !strings.Contains(rep.Unchecked[0].Msg, "AMBIGUOUS") {
+				t.Fatalf("want 1 ambiguity refusal, got %+v", rep.Unchecked)
+			}
+			if got := read(t, root, extentSite); got != body {
+				t.Fatalf("site was rewritten despite the refusal.\n--- got ---\n%s--- want ---\n%s", got, body)
+			}
+
+			if bin == "" {
+				return // -short: the binary half is skipped
+			}
+			cmd := exec.Command(bin, "--root", root, "--sync")
+			var stderr strings.Builder
+			cmd.Stderr = &stderr
+			err = cmd.Run()
+			code := 0
+			if ee, ok := err.(*exec.ExitError); ok {
+				code = ee.ExitCode()
+			} else if err != nil {
+				t.Fatalf("running the binary: %v", err)
+			}
+			if code != 2 || !strings.Contains(stderr.String(), "AMBIGUOUS") || !strings.Contains(stderr.String(), extentSite) {
+				t.Fatalf("binary sync: exit %d, stderr %q; want exit 2 and the refusal naming %s", code, stderr.String(), extentSite)
+			}
+			if got := read(t, root, extentSite); got != body {
+				t.Fatalf("binary sync wrote the site despite refusing:\n%s", got)
+			}
+		})
+	}
+}
+
 // TestSyncGuardrails_RefusesOverlappingProvenExtents pins
 // F-1692-overlap-guard-unpinned: the overlap refusal (SyncGuardrails' per-file
 // bottom-up edit loop) had no fixture of its own, so a mutation removing it

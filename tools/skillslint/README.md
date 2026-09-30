@@ -265,9 +265,15 @@ A block that only ever **grew** is not ambiguous. After a committed
 append-grow the older, shorter text is a prefix of the newer one, so both match
 at a synced copy, but the longest match is also the newest, which is what a
 synced copy holds; later edits of that block rewrite normally. What this
-accepts: a copy that missed a sync, still at an older text, and followed by
-content exactly equal to the lines a later grow added, would have that content
-replaced. Such a copy is at least two revisions behind its source.
+accepts: content right under a copy that exactly equals the lines a later grow
+added is treated as part of the block, and a later edit replaces it. That
+happens by two routes. One is a copy that missed a sync, still at an older text,
+and so at least two revisions behind its source. The other is more ordinary: a
+site-local line that a later grow promotes, verbatim, into the canonical block.
+From that grow on, the copy is byte-identical to the grown text, so the check
+mode reports it as synced and nothing about it looks stale. A later edit of the
+block then replaces that line, which is defensible because it became canonical,
+but it is no longer the site's own text.
 
 Earlier revisions of this document said `git add` closed the ambiguity window
 entirely, and called a committed prefix-shrink "common, unambiguous" — both

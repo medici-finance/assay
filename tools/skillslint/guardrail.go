@@ -803,11 +803,15 @@ func priorSiteTexts(prior []*GuardrailSource, blockID string, site GuardrailSite
 // synced to the newer text — but the longest match is also the newest, which
 // is what a synced copy holds. Counting that as a tie (as an earlier draft
 // did, by flagging any two matching lengths) refused every later edit of a
-// block that had ever grown. What this re-admits, deliberately: a copy that
-// MISSED a sync, still at an older text, followed by content equal to the tail
-// a later grow added. That copy is at least two revisions behind the source,
-// and its trailing content would have to repeat that later revision's added
-// lines exactly.
+// block that had ever grown. What this re-admits, deliberately: content right
+// under a copy that exactly repeats the lines a later grow added is taken as
+// part of the block and replaced by a later edit. Two routes lead there: a
+// copy that MISSED a sync, still at an older text (at least two revisions
+// behind the source); and, more ordinarily, a site-local line that a later
+// grow promoted verbatim into the canonical block. After such a grow the copy
+// is byte-identical to the grown text, so CheckGuardrails reports it synced,
+// and the next edit replaces the promoted line. That is defensible (the line
+// became canonical), but it is no longer the site's own text.
 //
 // See SyncGuardrails' doc comment for the full history: round 2 tried
 // reporting the tie instead of refusing it, and round 3's review showed that
