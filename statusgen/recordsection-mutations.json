@@ -1,0 +1,47 @@
+{
+  "test": "go test . -run 'RecordSection|EvidenceLineRange' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — the backticked-path PROBLEM is never recorded",
+    "file": "linkcheck.go",
+    "old": "\t\t\t\tproblems = append(problems, fmt.Sprintf(\"%s: backticked path %q does not exist",
+    "new": "\t\t\t\t_ = append(problems, fmt.Sprintf(\"%s: backticked path %q does not exist"
+  },
+  "mutations": [
+    {
+      "name": "exemption removed (a retired path inside ## Evidence / ## Proof it can fail is existence-checked again)",
+      "file": "linkcheck.go",
+      "old": "if records.contains(lines.line(match[0])) {",
+      "new": "if false && records.contains(lines.line(match[0])) {"
+    },
+    {
+      "name": "exemption scoping disabled (a file with any record section is exempt WHOLE — Verify cells, Deliverables and prose go unchecked)",
+      "file": "recordsection.go",
+      "old": "if line >= r.start && line <= r.end {",
+      "new": "if true {"
+    },
+    {
+      "name": "record section never closes (runs to EOF, swallowing every section after it)",
+      "file": "evidenceactor.go",
+      "old": "\t\tif strings.HasPrefix(strings.TrimSpace(lines[i]), \"## \") {\n\t\t\tlast = i - 1",
+      "new": "\t\tif false && strings.HasPrefix(strings.TrimSpace(lines[i]), \"## \") {\n\t\t\tlast = i - 1"
+    },
+    {
+      "name": "Evidence heading loosened to any heading containing the word (a decorated or unrelated heading becomes a record section)",
+      "file": "evidenceactor.go",
+      "old": "return trimmed == \"## Evidence\"",
+      "new": "return strings.Contains(strings.ToLower(trimmed), \"evidence\")"
+    },
+    {
+      "name": "Proof heading loosened to a bare prefix (\"## Proof it can failover\" becomes a record section)",
+      "file": "recordsection.go",
+      "old": "return trimmed == h || strings.HasPrefix(trimmed, h+\" \")",
+      "new": "return strings.HasPrefix(trimmed, h)"
+    },
+    {
+      "name": "Proof-it-can-fail heading dropped from the record set (mutation records are existence-checked again)",
+      "file": "recordsection.go",
+      "old": "\tisProofRecordHeading,\n}",
+      "new": "}"
+    }
+  ]
+}

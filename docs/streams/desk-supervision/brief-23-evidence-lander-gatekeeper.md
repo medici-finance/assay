@@ -28,7 +28,7 @@ decision-trigger: creation
 decision-issue: 1620
 issues: [1588]
 schema: brief-v2
-version: 1
+version: 2
 id: db2a1264-d0bd-4540-aa1d-fab9194e7ed9
 authored: 2026-09-23 by worker-desk authoring session
 exec-tier: strong
@@ -61,6 +61,47 @@ consumers:
 ---
 
 # Brief 23 — Evidence lands on main behind a file-scoped gatekeeper
+
+## Amendment (#882, 2026-09-27, brief still `todo`)
+
+desk-supervision/24 retired the shared appended `docs/streams/verify-outcomes.jsonl` log this
+brief's outcome-log clauses were written against: every verify Evidence PR touching that ONE path
+turned every sibling Evidence PR CONFLICTING, because the forge merges pull requests server-side
+with no `merge=union` driver. The log is replaced by ONE NEW FILE per outcome under
+`docs/streams/verify-outcomes/<stream>/`, named `RecordName(content)` — a pure function of the
+record's own bytes, so two concurrent landings only ever pick the same path when they carry
+byte-identical content, and two identical adds merge cleanly with no driver and no special-cased
+remerge handling. This brief is still `todo` — nothing here has been built against the old shape —
+so this amendment corrects the WRITTEN PREMISE before implementation starts, per desk-supervision/24
+Task step 9, rather than migrating a live control.
+
+What changes, at the premise level:
+
+- **The admissible outcome-log change** (Context, "What an Evidence landing writes today", and the
+  v1 allow-list) is no longer "appended lines in `docs/streams/verify-outcomes.jsonl`". It becomes:
+  one NEW file added under `docs/streams/verify-outcomes/`, whose path is exactly what
+  `tools/desk/internal/deskkit.RecordName` reproduces from the file's own bytes. A validator or
+  gatekeeper checking this shape recomputes `RecordName` over the added file's content and refuses
+  any landing whose path does not match, rather than checking "pure append, one JSON object per new
+  line" against the old log.
+- **The per-commit correction case** ("a verifier sometimes corrects an outcome line... rewrites
+  that line") no longer applies to outcome records at all: records are immutable (a correction is a
+  NEW file, a fresh `ts`/digest, never an edit), so there is no rewritten-line shape to reject —
+  every outcome-record commit is a pure ADD, never an edit, by construction.
+- **The `merge=union`-dependent remerge machinery** — row 1's remerge fixtures naming
+  `verify-outcomes.jsonl` concurrent appends, row 3's MERGE FORM fixture, and live row 19 (c)'s
+  attribute-pinned recompute over that path — is retired along with the file it exists for. Two
+  concurrent outcome-record landings each add a DIFFERENT new path (or, in the byte-identical case,
+  the SAME path with identical content), so their remerge is an ORDINARY two-parent merge: no
+  `merge=union` attribute, no pinned `--attr-source`, no special-cased "admit" branch is needed to
+  keep it clean. The gatekeeper's GENERAL remerge-tree-equals-recompute binding (Task step 2's core
+  check, independent of file shape) still applies to every admissible change, outcome records
+  included — only the OUTCOME-LOG-SPECIFIC union/attribute-source special-casing retires.
+- Every fixture and live row this brief's implementer writes against the outcome-log shape should
+  be authored against the per-file layout above; the existing prose (rows 1, 3, 19 and the
+  pre-mortem table) is left as historical record of the v1 design rather than hand-edited
+  fixture-by-fixture here, since nothing has been implemented against it yet — the implementer
+  updates each fixture's concrete shape when this brief moves off `todo`.
 
 ## Context
 

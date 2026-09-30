@@ -82,7 +82,7 @@
     {
       "name": "#203 — drop the FORWARD anchor (an acronym need not be adjacent to a word)",
       "file": "internal/deskkit/bodycheck.go",
-      "old": "\tif k == len(seg) || startsCamelWord(seg, k) {\n\t\treturn k, true\n\t}",
+      "old": "\tif startsCamelWord(seg, k) {\n\t\treturn k, true\n\t}",
       "new": "\tif true {\n\t\treturn k, true\n\t}"
     },
     {

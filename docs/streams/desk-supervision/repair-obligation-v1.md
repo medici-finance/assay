@@ -21,12 +21,18 @@ required action and is never dispatched to a worker.
 ## Where it lives
 
 An obligation is a **versioned, structured marker** — an append-only JSONL projection at
-`docs/streams/repair-obligations.jsonl`, a **sibling** of desk-supervision/16's
-`verify-outcomes.jsonl` kept in a separate file so a repair line never parses as an incomplete wake
-receipt and vice versa. Its first two keys are the legacy sidecar header (`ts`, `brief`), so an
-older reader keeps working. The **durable authority** remains the target-repository issue/PR records
-plus the dispatch claim; this marker is the machine-readable projection over them, never a second
-lifecycle database and never an authority grant.
+`docs/streams/repair-obligations.jsonl`, a **sibling** of desk-supervision/16's wake receipt (a
+verify-outcome record; since #882/desk-supervision/24, one NEW file per outcome under
+`docs/streams/verify-outcomes/<stream>/` — before that, an appended line in the shared
+`docs/streams/verify-outcomes.jsonl`), kept in a separate file so a repair line never parses as an
+incomplete wake receipt and vice versa. Its first two keys are the legacy sidecar header (`ts`,
+`brief`), so an older reader keeps working. `repair-obligations.jsonl` ITSELF stays out of scope
+of #882: its real sink is not yet armed (`tools/desk/cmd/verifyloop/repair.go` writes a dry-run only), so the
+class guard that refuses a shared appended `docs/streams/*.jsonl` write via `deskevidence` simply
+means arming this sink as a shared appended file fails red and forces a per-file layout at that
+time, exactly as it did for the verify-outcomes log. The **durable authority** remains the
+target-repository issue/PR records plus the dispatch claim; this marker is the machine-readable
+projection over them, never a second lifecycle database and never an authority grant.
 
 The log is append-only, so one immutable obligation ID may appear many times (a duplicate delivery,
 a lost acknowledgement re-posted, a claim then a repair then a merge).

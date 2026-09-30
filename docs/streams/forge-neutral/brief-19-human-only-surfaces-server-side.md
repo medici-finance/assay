@@ -343,6 +343,56 @@ workflow file, the fixture, and the ruleset edit) lands. Rows 1 and 2 are the tw
 brief's own Verify table marks as executable without that follow-on, and both were re-run
 live rather than copied from the brief's frozen `sources:` facts.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `gh api repos/medici-finance/assay/rulesets` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:358ec52617c3 | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -n -A5 '^var requiredDuties = \[\]Duty{' tools/desk/internal/deskkit/preflight.go` | pass exit=0 | sha256:0fdd425388a1 | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `medici-finance/assay` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:c73ca0bdacf1 | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `medici-finance/assay` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:c73ca0bdacf1 | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `gh api repos/medici-finance/assay/rulesets/20301257 --jq '.rules[] \| select(.type=="pull_request")'` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:358ec52617c3 | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+
+**Verifier notes — 2026-09-28, dispatched non-implementer verifier (assay-verifier-app[bot], model claude-opus-5-5), merged main c50a38fc12518a4eec4db37e8dd847d49e79149a.**
+Implementing change: PR #1256 (commit 13daafdc5cdc6e70c9ccd56486d702959e3d2741); ruling record DR-forge-neutral-19 via PR #1316.
+
+Witness profile: the pinned statusgen v1.0.27 binary (sha256 matches the pinned darwin-arm64 checksum), run directly, under a network-denied sandbox (`(version 1)(allow default)(deny network*)`, no loopback allowance — no row needs a listener), PATH limited to the base system directories, no forge token exported; Go flags set to -count=1 and a fresh GOCACHE (no Go rows here, so no cache replay was possible). The sandbox is deliberate: rows 1 and 5 call a live forge API and row 3's prose names a merge call, so the witness records them as could-not-run rather than letting them reach a live repo.
+
+Per-row notes:
+- Row 1 — witness could-not-run by design (sandboxed). Supplemental read OUTSIDE the witness, read-only GETs with the verifier App's installation token only (no human credential), same day: the list returns exactly three rulesets — `leak-sweep` (20872509), `protect-main` (20301257), `protect-release-tags` (20301270), all enforcement active. `protect-main` (targets the default branch) carries deletion, non_fast_forward and a `pull_request` rule with `required_approving_review_count` 1, `required_reviewers` empty, `require_code_owner_review` false, `dismissal_restriction` disabled with an empty actor list — no restriction on which identity supplies the approval. `leak-sweep` (default branch) carries a `required_status_checks` rule with the single context `leak-sweep` and a `pull_request` rule with count 0. No detail response carries a `bypass_actors` key; each detail reports `current_user_can_bypass` "never" for this token. No ruleset contains the string `human-approved`. The item-1 characterisation still holds live. Two shape drifts from the frozen text, neither changing the conclusion: the live `leak-sweep` check entry additionally pins the status to one integration (the Expect shows context only), and `protect-main`'s rule now also shows `require_last_push_approval` true and `dismiss_stale_reviews_on_push` true (see open question 3).
+- Row 2 — pass, exit 0. Output: preflight.go lines 817-821 — `var requiredDuties = []Duty{` with exactly three entries, pull_requests write, issues write, contents write; no `workflows` entry in the block or anywhere in that file.
+- Rows 3 and 4 — could-not-run. The witness takes each cell's first code span, which here is the repo name inside the "never point at" warning, so exit 127 is the expected shape; separately, the prerequisite (the human-approved-gate workflow, a stub, and a fixture repo) does not exist at merged main — no such workflow file under the workflows directory. Not attempted by hand: the Ground rules scope these rows to a throwaway fixture, and building one is the follow-on's work.
+- Row 5 — could-not-run in the witness. Supplemental read (same token): the selected `pull_request` rule is unchanged from row 1 and no `human-approved` entry exists in any ruleset, so the row's precondition (the ruleset edit) has not happened. Check-definition note: the command's filter selects the `pull_request` rule, which never carries required status checks, so as written it cannot observe the Expect even after the edit lands; the re-run needs a filter on the `required_status_checks` rule.
+
+Risk-bearing value enumeration (scope: the brief's Task/Verify/sources text as merged by PR #994 and flipped by PR #1256, plus the one code value it cites; PR #1256 itself changed only this Evidence section and the stream README row):
+- E1 `protect-main` id = 20301257 @ brief-19:62 (also :83, :102, :267)
+- E2 `leak-sweep` id = 20872509 @ brief-19:62 (also :268)
+- E3 `protect-release-tags` id = 20301270 @ brief-19:62
+- E4 `protect-main` `required_approving_review_count` = 1 @ brief-19:64 (also :139)
+- E5 `leak-sweep` `required_approving_review_count` = 0 @ brief-19:71
+- E6 `leak-sweep` status context = `leak-sweep` @ brief-19:71
+- E7 proposed status context = `human-approved` @ brief-19:259
+- E8 trigger = `pull_request_review`, type `submitted` @ brief-19:251
+- E9 approval predicate = `review.state == "APPROVED"` @ brief-19:256
+- E10 at-head binding = `review.commit_id` equals the PR head SHA @ brief-19:256
+- E11 workflow token grant = `statuses: write` + `pull-requests: read` @ brief-19:262
+- E12 posted states = `success` / `failure` @ brief-19:259
+- E13 `requiredDuties` = pull_requests write, issues write, contents write @ tools/desk/internal/deskkit/preflight.go:817-821 (cited, not introduced)
+- Dropped: the trusted-human allow-list (Task 1 deliberately fixes no storage and no literal — nothing to quote at a line).
+
+Rank (the item is not irreversible; every value is fixable by an edit, so the ranking is by what a wrong value would silently let through): E7/E10/E11 (the proposed control's authority bindings — wrong, the gate reads closed while a bot can satisfy it) > E4/E1 (the gap characterisation) > E13 (item 2's support) > E2/E3/E5/E6/E8/E9/E12 (descriptive or conventional).
+
+RISK-VALUE: DERIVED — E10 at-head binding (`review.commit_id` == PR head SHA) @ brief-19:256 — it is the GitHub at-head corroboration rule the stream already defines (identity.md, "Corroboration" table, line 151); without it an approval of a superseded head would satisfy the check after new commits land.
+RISK-VALUE: DERIVED — E11 `statuses: write` + `pull-requests: read` @ brief-19:262 — the minimum for the specified steps: posting a commit status needs commit-status write; reading the PR's current head needs pull-request read; the reviewer login, state and commit id arrive in the review event payload; no step writes contents.
+RISK-VALUE: NAMED, NOT DERIVED — E7 `context: "human-approved"` @ brief-19:259 — the design binds the required check by context name only. Task 1/2 do not say the ruleset entry must pin that context to the one integration that posts it (the live `leak-sweep` entry IS pinned to one integration). Unpinned, any installed actor holding commit-status write on the repo could post `human-approved` success itself — the "required check a bot can also satisfy" case the brief's own exec-tier note names. Missing derivation: which integration posts the status and whether the ruleset entry pins it; that is a custody judgment, not one a model certifies. **Open question for the human.**
+RISK-VALUE: DERIVED — E4 `required_approving_review_count` = 1 @ brief-19:64 and E1 id 20301257 @ brief-19:62 — observed values, re-read live today (row 1 note) and matching; with `required_reviewers` empty and no code-owner requirement, one approval from any accepted identity satisfies the count, which is the gap the brief states.
+RISK-VALUE: NAMED, NOT DERIVED — E13 `requiredDuties` (3 entries, no `workflows`) @ tools/desk/internal/deskkit/preflight.go:817-821 — row 2 proves `workflows` is not REQUIRED or checked by preflight; it does not prove no role App installation is GRANTED `workflows`, which is what item 2's GitHub half asserts. Missing derivation: an App-level read of each role installation's granted permissions on this repo, which the verifier's installation token cannot perform. **Open question for the human.**
+
+Open questions for the human gate (carried verbatim above where they are RISK-VALUE lines):
+1. E7 — must the `human-approved` required-check entry be pinned to the posting integration, as `leak-sweep`'s is? (NAMED, NOT DERIVED.)
+2. E13 — is `workflows` absent from every role App's actual installation grant on this repo, not only from the preflight's required set? (NAMED, NOT DERIVED.)
+3. Characterisation scope (the gate-why's "is nothing already catching it"): live `protect-main` now shows `require_last_push_approval` true and `dismiss_stale_reviews_on_push` true, and GitHub never lets a PR's author approve that PR — so the "its own" self-approval arm of item 1 is already refused server-side for the last pusher. The two-App collusion arm (one App pushes, a second App approves, either merges) is not closed by any of these. Tracked as open issue #997.
+
+VERIFY: BLOCKED — row 2 passes in the witness and the row-1 characterisation holds on a live App-token read; the two fixture rows and the ruleset re-run row wait on the named follow-on (the workflow, a fixture, the ruleset edit), and the re-run row's filter needs re-authoring before it can observe its Expect. gate:human with two NAMED, NOT DERIVED values — status stays `implemented`; sign-off is the human's.
+
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`; this brief documents and proposes
 closing a live merge-to-protected-branch gap). Reviewer records verdict + date in the stream

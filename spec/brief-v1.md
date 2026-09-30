@@ -61,7 +61,7 @@ validated against the value set given.
 | Field | Type | Requirement | Description |
 |-------|------|-------------|-------------|
 | `value` | string | OPTIONAL | Coarse worth signal — one of `low`, `med`, `high`. Absent is equivalent to `med`. Feeds the Next-up score (`lifecycle-v1.md` §5.2). An out-of-set value MUST be flagged. |
-| `exec-tier` | string | OPTIONAL | One of `any` or `strong`. `strong` asserts the brief MUST NOT be dispatched to a cheap-tier implementer regardless of `effort` (section 6). An out-of-set value MUST be flagged. |
+| `exec-tier` | string | OPTIONAL | One of `any` or `strong`. `strong` asserts the brief MUST NOT be dispatched to a cheap-tier implementer regardless of `effort` (section 6). The value is DERIVED, not chosen: `strong` when any of four questions is answered yes — (a) Does the Task require design decisions the facts do not fully pre-specify? (b) Does correctness depend on cross-component or cross-artifact reasoning? (c) Is it code where a subtle implementation error survives the brief's own tests (auth, funds, concurrency, safety plumbing)? (d) Is this a design brief raised by an error-class trigger (a recurring defect class, rather than one symptom, has accrued enough counted instances or merged fixes to be owed a design)? — and `any` otherwise. An out-of-set value MUST be flagged. |
 | `exec-tier-why` | string | CONDITIONAL | One-line rationale. REQUIRED when `exec-tier` is `strong`; a `strong` brief without it MUST be flagged. |
 | `decision-issue` | integer | OPTIONAL | Tracker issue that carries the human sign-off for a `gate: human` brief. A conforming linter SHOULD emit a non-fatal notice when a `gate: human` brief is in flight (`in-progress`, `implemented`, or `verified`) without one, and MUST NOT hard-error on its absence. |
 | `domain` | string | OPTIONAL | Cynefin classification of the work — one of `clear`, `complicated`, `complex`, or `chaotic`. Absent is equivalent to `complicated` (the safe Ordered default) at read time. An out-of-set value MUST be flagged. |
@@ -164,9 +164,9 @@ The body MUST contain a `## Context` section. It MUST include:
 
 If the brief changes a SHARED VALUE (a party, identity, environment variable name,
 configuration key, field meaning, wire/JSON format, or default — anything another
-component reads), the Context section MUST include a `consumers:` line that greps
-every reader and lists each with a disposition: `fixed-here`, `follow-up <stream>/NN`,
-or `out-of-scope <reason>`.
+component reads), the brief MUST carry a `consumers:` frontmatter field (a schema field in
+`schemas/brief-v1.json` and `schemas/brief-v2.json`) that greps every reader and lists each
+with a disposition: `fixed-here`, `follow-up <stream>/NN`, or `out-of-scope <reason>`.
 
 If the brief's Task creates a new component, service, or tool — or substantially
 changes where an existing component's logic lives (extracting or dissolving a domain
@@ -212,6 +212,37 @@ presented as proof of freedom from side effects. A new mechanical check also car
 negative control required by §4.4. For a flat tool with no extracted boundary, verify its
 observable behavior and relevant failure paths; do not invent a package boundary just to
 satisfy this requirement.
+
+Every NEW brief's Context section MUST include a `design-fit:` block. It makes the author
+answer where the change belongs, what it replaces and how much weight it adds before any
+implementer starts, and gives the reviewer something to hold the diff to. Five keys:
+
+```
+design-fit:
+  owner: <the one module that owns the meaning this brief touches, or n/a>
+  contract: <an S-<slug> row id of the project's semantic-owner index, or none — <why>>
+  retires: [<mechanism/refusal/flag/test this brief removes>, ...]   # [] is an answer
+  weight: <signed delta per ratcheted dimension: verbs, flags, refusals, rule-text lines>
+  why-add: <REQUIRED when any weight delta is positive: why the capability cannot live
+           in the owner, and what removal was considered instead; n/a otherwise>
+```
+
+`contract` names a row of the project's semantic-owner index (in this repository,
+`docs/contracts.md` §"Semantic owners"), or says `none` and why. Like `layering:`, the
+block is Context text, not frontmatter: no schema field, conformance check or lint reads it
+while its grammar settles. (`consumers:` differs: it is a frontmatter schema field, read by
+`statusgen --lint` and `statusgen --consumers`.) Legacy briefs are not back-filled. Two
+rules keep it from becoming a delete-everything bias:
+
+1. **Consolidate meaning; preserve independent enforcement.** A second *owner* of one
+   meaning is a finding. A second *enforcement point* at a different trust boundary, failing
+   for a different reason, is a legitimate layer, not a duplicate.
+2. **Retiring a control at a trust boundary** names the layer that still refuses the same
+   threat, and carries a Verify row proving that layer refuses it with the retired layer
+   absent. Tests that pinned a retired refusal retire with it; the reviewer checks that the
+   invariant is still covered at its owner, not that every old test survives. This rule adds
+   an obligation and grants no authority: retiring a security or access control is still
+   subject to the `risk`/`gate` derivation (§3.1) like any other change.
 
 ### 4.2 Ground rules
 
