@@ -210,6 +210,48 @@
       "file": "verifyrows.go",
       "old": "\tc = strings.TrimSpace(strings.TrimRight(strings.TrimSpace(c), \";\"))",
       "new": "\tc = strings.TrimSpace(c)"
+    },
+    {
+      "name": "SR-1808-1 rr4: an escaped dollar no longer taints the cell (spaced escaped dollars honour the marker)",
+      "file": "verifyrows.go",
+      "old": "\t\t\tif cell[i+1] == '$' {\n\t\t\t\tplain = false",
+      "new": "\t\t\tif false {\n\t\t\t\tplain = false"
+    },
+    {
+      "name": "SR-1808-1 rr4: a character reference no longer taints the cell (spaced reference dollars honour the marker)",
+      "file": "verifyrows.go",
+      "old": "\t\tcase c == '&' && charRefRe.MatchString(cell[i:]):",
+      "new": "\t\tcase false && c == '&':"
+    },
+    {
+      "name": "SR-1808-1 rr4: a span opener fused to the prose before it no longer taints the cell (an autolink-glued marker is honoured)",
+      "file": "verifyrows.go",
+      "old": "\t\t\tif !parenLed(cell, i) {\n\t\t\t\tplain = false",
+      "new": "\t\t\tif false {\n\t\t\t\tplain = false"
+    },
+    {
+      "name": "SR-1808-1 rr4: the marker opener need not follow whitespace (a paren-led marker is honoured)",
+      "file": "verifyrows.go",
+      "old": "\t\tif !sp.spaceLed {\n\t\t\treturn nil",
+      "new": "\t\tif false {\n\t\t\treturn nil"
+    },
+    {
+      "name": "SR-1808-1 rr4: the marker closer need not stand clear (a marker glued to the text after it is honoured)",
+      "file": "verifyrows.go",
+      "old": "\t\tif !sp.cleanEnd {\n\t\t\treturn nil",
+      "new": "\t\tif false {\n\t\t\treturn nil"
+    },
+    {
+      "name": "SR-1808-1 rr4 over-taint: a `(` no longer allowed before a span opener (a parenthesised mention taints the cell)",
+      "file": "verifyrows.go",
+      "old": "\tfor j > 0 && cell[j-1] == '(' {",
+      "new": "\tfor false && j > 0 && cell[j-1] == '(' {"
+    },
+    {
+      "name": "SR-1808-1 rr4 over-taint: plain punctuation after the marker closer no longer allowed",
+      "file": "verifyrows.go",
+      "old": "|| strings.IndexByte(\".,;:!?)\", cell[k]) >= 0",
+      "new": "|| false"
     }
   ]
 }

@@ -534,6 +534,17 @@ var sr1808Probes = []string{
 	// rr3: GitHub renders a dollar-wrapped span as math, not code.
 	"`go test ./nonexistent-pkg-1808 -count=1` $`cmd: true`$",
 	"`go test ./nonexistent-pkg-1808 -count=1` $$`cmd: true`$$",
+	// rr4: escaped and reference dollars still open math, an autolink runs
+	// through a backtick, and strikethrough glues onto one.
+	"`go test ./nonexistent-pkg-1808 -count=1` \\$`cmd: true`\\$",
+	"`go test ./nonexistent-pkg-1808 -count=1` \\$\\$`cmd: true`\\$\\$",
+	"`go test ./nonexistent-pkg-1808 -count=1` &#36;`cmd: true`&#36;",
+	"`go test ./nonexistent-pkg-1808 -count=1` &#x24;`cmd: true`&#x24;",
+	"`go test ./nonexistent-pkg-1808 -count=1` &dollar;`cmd: true`&dollar;",
+	"`go test ./nonexistent-pkg-1808 -count=1` \\$`cmd: true \\phantom{;false;true }`\\$",
+	"`go test ./nonexistent-pkg-1808 -count=1` https://example.com/`cmd: true`",
+	"`go test ./nonexistent-pkg-1808 -count=1` www.example.com/`cmd: true`",
+	"`go test ./nonexistent-pkg-1808 -count=1` ~~`cmd: true`~~",
 }
 
 // TestHiddenMarkerKeepsFirstSpan — a marker the rendered cell does not show

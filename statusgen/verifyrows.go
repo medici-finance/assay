@@ -206,9 +206,10 @@ func proseOutsideSpans(cell string) string {
 	return strings.TrimSpace(b.String())
 }
 
-// renderedCodeSpans returns the content of every inline code span a Markdown
-// renderer DISPLAYS in cell, in order, each trimmed — and plain=false when the
-// cell's prose carries a construct that can hide text from the rendered page.
+// renderedCodeSpans returns every inline code span a Markdown renderer
+// DISPLAYS in cell, in order, each trimmed and with how it sits in the cell —
+// and plain=false when the cell's prose carries a construct that can hide text
+// from the rendered page or re-pair its backticks.
 //
 // It exists because the marker must never select text the reader of the
 // rendered Verify table cannot see (#1808 review, SR-1808-1). codeSpans reads
@@ -224,28 +225,48 @@ func proseOutsideSpans(cell string) string {
 // Rather than model every construct that can carry hidden text (an HTML
 // comment, a tag's attribute, a link title, an image's alt text, a footnote), a
 // cell whose prose outside code spans carries an unescaped `<` or `[` is not
-// plain. Nor is one whose prose carries an unescaped `$`: GitHub renders a
-// span wrapped in dollar signs as math, not code, so a `cmd:` inside it is
-// not shown as a command. markedCommands honours no marker in a cell that is
-// not plain, and the lint says why
-// (ruleCmdMarkerNotHonoured). A cell with no marker never reaches this rule's
-// consequences — verifyCommand falls back to codeSpan exactly as before.
+// plain. Nor is one whose prose carries a `$` written any way — bare,
+// backslash-escaped, or as a character reference such as `&#36;`: GitHub
+// renders a span wrapped in dollar signs as math, not code, and it applies
+// math after escapes and references are resolved. Any character reference in
+// prose makes the cell not plain, whatever it names.
+//
+// A code span also has to stand clear of the prose around it. GitHub's
+// extended autolinks run through a backtick, and math, strikethrough and
+// references glue onto one, so a span whose opening run is fused to the text
+// before it may not render as the span this scan paired — and when one opener
+// is swallowed, every later pairing shifts. So a cell is not plain when any
+// span's opening run is preceded by anything but whitespace, the start of the
+// cell, or a run of `(` that itself follows whitespace or the start. The
+// marker span itself is held tighter (markedCommands): its opening run must
+// follow whitespace or the start of the cell, and its closing run must be at
+// the end of the cell or followed by whitespace or plain punctuation.
+//
+// markedCommands honours no marker in a cell that is not plain, and the lint
+// says why (ruleCmdMarkerNotHonoured). A cell with no marker never reaches this
+// rule's consequences — verifyCommand falls back to codeSpan exactly as before.
 //
 // The same rule is implemented for tools/desk's executors in
 // tools/desk/internal/verifycmd; both are held to one shared vector table,
 // testdata/cmd-marker-vectors.json.
-func renderedCodeSpans(cell string) (spans []string, plain bool) {
+func renderedCodeSpans(cell string) (spans []renderedSpan, plain bool) {
 	plain = true
 	i := 0
 	for i < len(cell) {
 		c := cell[i]
 		switch {
 		case c == '\\' && i+1 < len(cell) && isASCIIPunct(cell[i+1]):
+			if cell[i+1] == '$' {
+				plain = false // an escaped dollar still opens math on GitHub
+			}
 			i += 2
 		case c == '<' || c == '[':
 			plain = false
 			i++
 		case c == '$':
+			plain = false
+			i++
+		case c == '&' && charRefRe.MatchString(cell[i:]):
 			plain = false
 			i++
 		case c == '`':
@@ -267,13 +288,55 @@ func renderedCodeSpans(cell string) (spans []string, plain bool) {
 				i += n // an unclosed opener is literal backticks
 				continue
 			}
-			spans = append(spans, strings.TrimSpace(cell[i+n:closeAt]))
+			if !parenLed(cell, i) {
+				plain = false // the opener is fused to the prose before it
+			}
+			spans = append(spans, renderedSpan{
+				text:     strings.TrimSpace(cell[i+n : closeAt]),
+				spaceLed: i == 0 || isSpaceByte(cell[i-1]),
+				cleanEnd: cleanSpanEnd(cell, closeAt+n),
+			})
 			i = closeAt + n
 		default:
 			i++
 		}
 	}
 	return spans, plain
+}
+
+// renderedSpan is one code span renderedCodeSpans found: its trimmed content,
+// and how it sits in the cell. spaceLed: the opening run is at the start of
+// the cell or right after whitespace. cleanEnd: the closing run is at the end
+// of the cell or right before whitespace or plain punctuation.
+type renderedSpan struct {
+	text     string
+	spaceLed bool
+	cleanEnd bool
+}
+
+// charRefRe matches a character reference at the start of a string — a named
+// one (`&dollar;`), a decimal one (`&#36;`) or a hex one (`&#x24;`).
+var charRefRe = regexp.MustCompile(`^&(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z][A-Za-z0-9]{1,31});`)
+
+// isSpaceByte reports whether b is a space or a tab.
+func isSpaceByte(b byte) bool { return b == ' ' || b == '\t' }
+
+// parenLed reports whether the backtick run at cell[i] follows whitespace or
+// the start of the cell, allowing a run of `(` between them: "(`x`)" stands
+// clear of the prose, "a/`x`" does not.
+func parenLed(cell string, i int) bool {
+	j := i
+	for j > 0 && cell[j-1] == '(' {
+		j--
+	}
+	return j == 0 || isSpaceByte(cell[j-1])
+}
+
+// cleanSpanEnd reports whether a code span's closing run, ending just before
+// cell[k], is at the end of the cell or followed by whitespace or plain
+// punctuation.
+func cleanSpanEnd(cell string, k int) bool {
+	return k == len(cell) || isSpaceByte(cell[k]) || strings.IndexByte(".,;:!?)", cell[k]) >= 0
 }
 
 // backtickRun is the length of the run of backticks starting at s[i].
@@ -307,7 +370,11 @@ func markerContent(span string) (string, bool) {
 // markedCommands returns the command of every `cmd:`-marked span the RENDERED
 // cell shows as code (renderedCodeSpans), marker stripped and trimmed — and
 // none at all for a cell that is not plain, whose marker the reader of the
-// rendered table might not see.
+// rendered table might not see. A marker span that does not stand clear of its
+// prose — opening run after anything but whitespace or the start of the cell,
+// or closing run before anything but whitespace, plain punctuation or the end
+// — makes the whole cell honour none: the rendered page may not show it as
+// code.
 func markedCommands(cell string) []string {
 	spans, plain := renderedCodeSpans(cell)
 	if !plain {
@@ -315,9 +382,17 @@ func markedCommands(cell string) []string {
 	}
 	var out []string
 	for _, sp := range spans {
-		if c, ok := markerContent(sp); ok {
-			out = append(out, c)
+		c, ok := markerContent(sp.text)
+		if !ok {
+			continue
 		}
+		if !sp.spaceLed {
+			return nil
+		}
+		if !sp.cleanEnd {
+			return nil
+		}
+		out = append(out, c)
 	}
 	return out
 }
@@ -350,7 +425,7 @@ func markerOverridesCommandSpan(cell string) string {
 	if len(spans) == 0 {
 		return ""
 	}
-	first := spans[0]
+	first := spans[0].text
 	if _, ok := markerContent(first); ok {
 		return ""
 	}
@@ -1820,7 +1895,7 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 		add(ruleCmdMarkerVacuous, "marks `%s` as its command, which exits 0 without looking at anything — the row passes whatever the tree holds. Mark the command that performs the check", m[0])
 	}
 	if len(m) == 0 && rawMarkerPresent(cmdCell) {
-		add(ruleCmdMarkerNotHonoured, "carries a `cmd:` span that verifyrun does NOT honour, so the row runs its first code span instead: a marker counts only in a cell whose rendered text shows it as code — not between backslash-escaped backticks, and not in a cell whose prose carries a `<` or `[` (raw HTML, an HTML comment, a link or an image, each of which can hide text from the rendered table) or a `$` (GitHub renders a dollar-wrapped span as math, not code). Remove the escapes, move the HTML/link/math out of the Command cell, or escape a literal `$` as `\\$`")
+		add(ruleCmdMarkerNotHonoured, "carries a `cmd:` span that verifyrun does NOT honour, so the row runs its first code span instead: a marker counts only in a cell whose rendered text shows it as code — not between backslash-escaped backticks, and not in a cell whose prose carries a `<` or `[` (raw HTML, an HTML comment, a link or an image, each of which can hide text from the rendered table) or a `$` in any spelling (bare, `\\$`, or a character reference such as `&#36;`; any character reference counts — GitHub renders a dollar-wrapped span as math, not code), and not in a cell where a code span is fused to the text before it (a URL, a dollar, `~~`; only whitespace, the start of the cell or a `(` may lead a span). The marker span itself must follow whitespace or the start of the cell, and end the cell or be followed by whitespace or punctuation. Remove the escapes, move the HTML/link/math/dollar out of the Command cell, and set the spans apart with spaces")
 	}
 
 	cmd := verifyCommand(cmdCell)

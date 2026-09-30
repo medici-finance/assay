@@ -15,11 +15,24 @@
 // exactly N (an opener with no closer is literal text). A cell whose prose
 // outside code spans carries an unescaped `<` or `[` — raw HTML, an HTML comment,
 // a link or an image, any of which can hide text from the rendered table — has no
-// honoured marker at all. Neither has a cell whose prose carries an unescaped
-// `$`: GitHub renders a span wrapped in dollar signs as math, not code.
+// honoured marker at all. Neither has a cell whose prose carries a `$` in any
+// spelling (bare, backslash-escaped, or a character reference such as `&#36;`;
+// any character reference counts): GitHub renders a span wrapped in dollar signs
+// as math, not code, after resolving escapes and references.
+//
+// Every code span must also stand clear of the prose before it: its opening run
+// follows whitespace, the start of the cell, or a run of `(` that does. An
+// opener fused to the text before it (a URL, a dollar, `~~`) may not render as
+// the span this scan paired, and a swallowed opener shifts every later pairing,
+// so such a cell honours no marker. The marker span is held tighter: its opening
+// run follows whitespace or the start of the cell, and its closing run ends the
+// cell or is followed by whitespace or plain punctuation.
 package verifycmd
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // Marker is the prefix that names a code span as the row's command.
 const Marker = "cmd:"
@@ -32,12 +45,20 @@ func Marked(cell string) (string, bool) {
 		return "", false
 	}
 	for _, sp := range spans {
-		if !strings.HasPrefix(sp, Marker) {
+		if !strings.HasPrefix(sp.text, Marker) {
 			continue
 		}
-		if c := strings.TrimSpace(strings.TrimPrefix(sp, Marker)); c != "" {
-			return c, true
+		c := strings.TrimSpace(strings.TrimPrefix(sp.text, Marker))
+		if c == "" {
+			continue
 		}
+		if !sp.spaceLed {
+			return "", false
+		}
+		if !sp.cleanEnd {
+			return "", false
+		}
+		return c, true
 	}
 	return "", false
 }
@@ -64,21 +85,28 @@ func stripInlineCode(s string) string {
 	return s
 }
 
-// renderedCodeSpans returns the trimmed content of every code span a renderer
-// displays in cell, and plain=false when the cell's prose carries an unescaped
-// `<`, `[` or `$`.
-func renderedCodeSpans(cell string) (spans []string, plain bool) {
+// renderedCodeSpans returns every code span a renderer displays in cell, trimmed
+// and with how it sits in the cell, and plain=false when the cell's prose
+// carries an unescaped `<` or `[`, a `$` in any spelling, a character reference,
+// or a span whose opening run is fused to the text before it.
+func renderedCodeSpans(cell string) (spans []renderedSpan, plain bool) {
 	plain = true
 	i := 0
 	for i < len(cell) {
 		c := cell[i]
 		switch {
 		case c == '\\' && i+1 < len(cell) && isASCIIPunct(cell[i+1]):
+			if cell[i+1] == '$' {
+				plain = false // an escaped dollar still opens math on GitHub
+			}
 			i += 2
 		case c == '<' || c == '[':
 			plain = false
 			i++
 		case c == '$':
+			plain = false
+			i++
+		case c == '&' && charRefRe.MatchString(cell[i:]):
 			plain = false
 			i++
 		case c == '`':
@@ -100,13 +128,51 @@ func renderedCodeSpans(cell string) (spans []string, plain bool) {
 				i += n
 				continue
 			}
-			spans = append(spans, strings.TrimSpace(cell[i+n:closeAt]))
+			if !parenLed(cell, i) {
+				plain = false // the opener is fused to the prose before it
+			}
+			spans = append(spans, renderedSpan{
+				text:     strings.TrimSpace(cell[i+n : closeAt]),
+				spaceLed: i == 0 || isSpaceByte(cell[i-1]),
+				cleanEnd: cleanSpanEnd(cell, closeAt+n),
+			})
 			i = closeAt + n
 		default:
 			i++
 		}
 	}
 	return spans, plain
+}
+
+// renderedSpan is one code span: its trimmed content; spaceLed, the opening run
+// is at the start of the cell or right after whitespace; cleanEnd, the closing
+// run is at the end of the cell or right before whitespace or plain punctuation.
+type renderedSpan struct {
+	text     string
+	spaceLed bool
+	cleanEnd bool
+}
+
+// charRefRe matches a character reference at the start of a string: named
+// (`&dollar;`), decimal (`&#36;`) or hex (`&#x24;`).
+var charRefRe = regexp.MustCompile(`^&(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z][A-Za-z0-9]{1,31});`)
+
+func isSpaceByte(b byte) bool { return b == ' ' || b == '\t' }
+
+// parenLed reports whether the backtick run at cell[i] follows whitespace or the
+// start of the cell, allowing a run of `(` between them.
+func parenLed(cell string, i int) bool {
+	j := i
+	for j > 0 && cell[j-1] == '(' {
+		j--
+	}
+	return j == 0 || isSpaceByte(cell[j-1])
+}
+
+// cleanSpanEnd reports whether a closing run ending just before cell[k] is at the
+// end of the cell or followed by whitespace or plain punctuation.
+func cleanSpanEnd(cell string, k int) bool {
+	return k == len(cell) || isSpaceByte(cell[k]) || strings.IndexByte(".,;:!?)", cell[k]) >= 0
 }
 
 func backtickRun(s string, i int) int {
