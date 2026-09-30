@@ -1383,6 +1383,24 @@ func TestVerifyPassHeldContradictionNegationCuePosition(t *testing.T) {
 	}
 }
 
+// TestHeldReasonSkipsCueBreaks is the class guard for a hold reason hidden
+// behind punctuation the reason lookahead does not skip. It walks every clause
+// break in heldCueBreaks (plus ":", ")" and each dash), so a character added to
+// the cue allowlist later is checked here without a new fixture: a zero count
+// followed by that character and a hold-reason word must refuse.
+func TestHeldReasonSkipsCueBreaks(t *testing.T) {
+	seps := heldCueBreaks + ":)-–—"
+	for _, r := range seps {
+		for _, sp := range []string{"", " "} {
+			line := "0 HELD" + sp + string(r) + " pending runner"
+			held, _ := verifyPassHeldContradiction("**VERIFY: PASS** — row 1 green.\n\n" + line + "\n")
+			if !held {
+				t.Errorf("%q excused; a hold reason after %q must refuse", line, string(r))
+			}
+		}
+	}
+}
+
 // TestUnrunRowsText confirms unrunRowsText extracts UNRUN rows.
 func TestUnrunRowsText(t *testing.T) {
 	evidence := `| # | Command | Exit | Result | Date | Runner |
