@@ -21,7 +21,11 @@
 //	                      such marker sits in the row's owner path or a path the row's
 //	                      duplicates column lists, the count per row stays at or under
 //	                      markers.txt's ceiling, and an owner inside the walked tree carries
-//	                      at least one marker.
+//	                      at least one marker. A listed file path is that one file; a listed
+//	                      directory is the package in that directory, never its
+//	                      subdirectories; and a path naming the walked root, its cmd/ or
+//	                      internal/ directory, or anything above them names no site at all,
+//	                      so a prose mention of the module in a cell cannot swallow the tree.
 //
 // WHAT THE COMPILER ALREADY DOES, and this package does not re-check: Go refuses import
 // cycles and refuses an import of an internal/ package from outside the tree rooted at its
@@ -274,8 +278,9 @@ type Marker struct {
 
 // Markers walks dir inside fsys (the same skips as Imports) for marker comments and
 // checks where each one sits: directly above a func declaration, naming a row of index,
-// in that row's owner path or a listed duplicate. File paths are fsys-relative, so fsys
-// must be rooted where the index's paths are rooted (the repository root).
+// in that row's owner path or a listed duplicate, as sites resolves them against dir. File
+// paths are fsys-relative, so fsys must be rooted where the index's paths are rooted (the
+// repository root).
 func Markers(fsys fs.FS, dir string, index []SRow) ([]Marker, []Violation, error) {
 	rows := map[string]SRow{}
 	for _, r := range index {
@@ -314,7 +319,7 @@ func Markers(fsys fs.FS, dir string, index []SRow) ([]Marker, []Violation, error
 					continue
 				}
 				ms = append(ms, Marker{ID: id, File: p, Line: line})
-				if !coveredBy(p, row.Owners) && !coveredBy(p, row.Duplicates) {
+				if !coveredBy(p, sites(row.Owners, dir)) && !coveredBy(p, sites(row.Duplicates, dir)) {
 					out = append(out, Violation{Rule: RuleOneImpl, File: p, Line: line,
 						Msg: fmt.Sprintf("%s implemented outside its owner at %s:%d; add it to the row's duplicates with a design-fit finding, or move it to the owner", id, p, line)})
 				}
@@ -347,7 +352,7 @@ func Ratchet(ms []Marker, index []SRow, ceilings map[string]int, scope string) (
 				Msg: fmt.Sprintf("%s has %d declared implementations, over its markers.txt ceiling of %d", r.ID, n, c)})
 		}
 		var inScope []string
-		for _, o := range r.Owners {
+		for _, o := range sites(r.Owners, scope) {
 			if under(o, scope) {
 				inScope = append(inScope, o)
 			}
@@ -494,11 +499,51 @@ func under(p, dir string) bool {
 	return p == dir || strings.HasPrefix(p, dir+"/")
 }
 
+// sites drops the index paths that name no marker site relative to the walked root: the
+// root itself, its cmd/ and internal/ directories, and anything above the root. Those are
+// containers of every package, so a cell that mentions one in prose (a search it ran, the
+// module it looked in) would otherwise make every function in the tree a listed site.
+func sites(paths []string, root string) []string {
+	var out []string
+	for _, p := range paths {
+		if under(root, p) || p == root+"/cmd" || p == root+"/internal" {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// coveredBy reports whether file is one of paths, or sits directly in a directory one of
+// paths names. A directory covers its own package only, never its subdirectories: a
+// subpackage is a different package and needs its own entry.
 func coveredBy(file string, paths []string) bool {
 	for _, p := range paths {
-		if under(file, p) {
+		if file == p || path.Dir(file) == p {
 			return true
 		}
+	}
+	return false
+}
+
+// GrowAnnotated reports whether entry is a line of the list file lines and the run of
+// comment lines directly above it carries a "# grow " line. A blank or non-comment line
+// breaks the run, as it does for the weight ceiling's annotation.
+func GrowAnnotated(lines []string, entry string) bool {
+	for i, l := range lines {
+		if strings.TrimSuffix(l, "\r") != entry {
+			continue
+		}
+		for j := i - 1; j >= 0; j-- {
+			c := strings.TrimSpace(lines[j])
+			if !strings.HasPrefix(c, "#") {
+				break
+			}
+			if strings.HasPrefix(c, "# grow ") {
+				return true
+			}
+		}
+		return false
 	}
 	return false
 }

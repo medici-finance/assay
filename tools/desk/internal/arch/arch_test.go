@@ -32,13 +32,28 @@ func TestDependencyDirection(t *testing.T) {
 	failAll(t, arch.Direction(g))
 }
 
+// hubLanding is hub-allow.txt as it landed. Every entry added after landing carries a
+// "# grow <url>" line directly above it; the test checks the line is there, and review
+// checks that the url is the driver's grow reply.
+var hubLanding = map[string]bool{"gitcore": true, "topology": true}
+
 // TestHubAllowList: internal/deskkit imports exactly the internal/ packages on
-// hub-allow.txt — nothing unlisted, and nothing listed that it no longer imports
-// (R-hub-allowlist).
+// hub-allow.txt — nothing unlisted, and nothing listed that it no longer imports — and
+// every entry past the landing set carries its "# grow" line (R-hub-allowlist).
 func TestHubAllowList(t *testing.T) {
 	g := realGraph(t)
 	allow := readList(t, "hub-allow.txt")
 	failAll(t, arch.HubAllow(g, arch.Hub, allow))
+	raw, err := os.ReadFile("hub-allow.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	for _, a := range allow {
+		if !hubLanding[a] && !arch.GrowAnnotated(lines, a) {
+			t.Errorf("%s: hub-allow.txt adds %s with no \"# grow <url>\" line directly above it (%s)", arch.RuleHubAllow, a, registerHint)
+		}
+	}
 }
 
 // TestOneImplementationPerMeaning: every declared implementation of a registered meaning
@@ -162,9 +177,10 @@ func TestReportCloneDensity(t *testing.T) {
 // --- the fixture ---------------------------------------------------------------------
 
 // TestRulesFixture runs every rule over testdata/tree, a fixture repository whose
-// tools/desk module carries one violation of each shape and three decoys: a _test.go
-// importing a command (ignored), a marker in a listed duplicate (allowed) and a
-// cmd/x/internal import (allowed). internal/clean is the clean control.
+// tools/desk module carries one violation of each shape and four decoys: a _test.go
+// importing a command (ignored), a marker in a listed duplicate (allowed), a marker in a
+// listed package directory (allowed) and a cmd/x/internal import (allowed).
+// internal/clean is the clean control.
 func TestRulesFixture(t *testing.T) {
 	fsys := fixtureFS(t)
 	const mod = "tools/desk"
@@ -199,21 +215,26 @@ func TestRulesFixture(t *testing.T) {
 		t.Fatalf("Markers: %v", err)
 	}
 
+	// S-wide's cells name the walked root, its cmd/ and internal/ in prose and list one
+	// package directory. Only that package's own files are sites: the marker in its
+	// subpackage and the marker reachable only through the prose spans are both red.
 	t.Run("markers", func(t *testing.T) {
 		want := []string{
 			"R-one-implementation: tools/desk/internal/stray/stray.go:4: S-thing implemented outside its owner at tools/desk/internal/stray/stray.go:4; add it to the row's duplicates with a design-fit finding, or move it to the owner",
+			"R-one-implementation: tools/desk/internal/pkg/sub/sub.go:4: S-wide implemented outside its owner at tools/desk/internal/pkg/sub/sub.go:4; add it to the row's duplicates with a design-fit finding, or move it to the owner",
+			"R-one-implementation: tools/desk/internal/wide/wide.go:4: S-wide implemented outside its owner at tools/desk/internal/wide/wide.go:4; add it to the row's duplicates with a design-fit finding, or move it to the owner",
 		}
 		assertSet(t, vs, want)
-		if len(ms) != 3 {
-			t.Errorf("markers = %v, want 3 (owner, listed duplicate, stray)", ms)
+		if len(ms) != 6 {
+			t.Errorf("markers = %v, want 6 (S-thing: owner, listed duplicate, stray; S-wide: listed package, subpackage, prose-only)", ms)
 		}
 	})
 
 	t.Run("ratchet-at-ceiling", func(t *testing.T) {
-		rv, skipped := arch.Ratchet(ms, index, map[string]int{"S-thing": 3}, mod)
+		rv, skipped := arch.Ratchet(ms, index, map[string]int{"S-thing": 3, "S-wide": 3}, mod)
 		assertSet(t, rv, nil)
-		if !reflect.DeepEqual(skipped, []string{"S-far"}) {
-			t.Errorf("skipped = %v, want [S-far] (its owner is outside the walked tree)", skipped)
+		if !reflect.DeepEqual(skipped, []string{"S-far", "S-wide"}) {
+			t.Errorf("skipped = %v, want [S-far S-wide] (their owners are outside the walked tree)", skipped)
 		}
 	})
 
@@ -221,8 +242,39 @@ func TestRulesFixture(t *testing.T) {
 		rv, _ := arch.Ratchet(ms, index, map[string]int{"S-thing": 2, "S-gone": 1}, mod)
 		assertSet(t, rv, []string{
 			"R-one-implementation: S-thing has 3 declared implementations, over its markers.txt ceiling of 2",
+			"R-one-implementation: S-wide has 3 declared implementations, over its markers.txt ceiling of 0",
 			"R-one-implementation: markers.txt has a ceiling for S-gone, which is not a row of the semantic index",
 		})
+	})
+
+	// An owner cell that names only the walked root or its containers declares no
+	// in-scope owner, so the owner half skips it rather than reading the tree as its owner.
+	t.Run("ratchet-container-owner", func(t *testing.T) {
+		wide := []arch.SRow{{ID: "S-wide", Owners: []string{"tools/desk", "tools/desk/cmd", "tools/desk/internal", "tools"}}}
+		rv, skipped := arch.Ratchet(nil, wide, nil, mod)
+		assertSet(t, rv, nil)
+		if !reflect.DeepEqual(skipped, []string{"S-wide"}) {
+			t.Errorf("skipped = %v, want [S-wide]", skipped)
+		}
+	})
+
+	t.Run("grow-annotation", func(t *testing.T) {
+		lines := []string{
+			"# header",
+			"gitcore",
+			"# grow https://example.org/issues/1#c2",
+			"# why this one",
+			"forgeban",
+			"# grow https://example.org/issues/1#c3",
+			"",
+			"blanked",
+			"bare",
+		}
+		for entry, want := range map[string]bool{"gitcore": false, "forgeban": true, "blanked": false, "bare": false, "absent": false} {
+			if got := arch.GrowAnnotated(lines, entry); got != want {
+				t.Errorf("GrowAnnotated(%s) = %v, want %v", entry, got, want)
+			}
+		}
 	})
 
 	t.Run("ratchet-owner-undeclared", func(t *testing.T) {
@@ -232,7 +284,7 @@ func TestRulesFixture(t *testing.T) {
 				notOwner = append(notOwner, m)
 			}
 		}
-		rv, _ := arch.Ratchet(notOwner, index, map[string]int{"S-thing": 3}, mod)
+		rv, _ := arch.Ratchet(notOwner, index, map[string]int{"S-thing": 3, "S-wide": 3}, mod)
 		assertSet(t, rv, []string{
 			"R-one-implementation: S-thing's owner (tools/desk/internal/owner/owner.go) declares no implementation; mark the function that computes the meaning",
 		})
@@ -256,6 +308,7 @@ func TestRulesFixture(t *testing.T) {
 		want := []arch.SRow{
 			{ID: "S-thing", Owners: []string{"tools/desk/internal/owner/owner.go"}, Duplicates: []string{"tools/desk/internal/dup/dup.go"}},
 			{ID: "S-far", Owners: []string{"statusgen/far.go"}},
+			{ID: "S-wide", Owners: []string{"statusgen/wide.go"}, Duplicates: []string{"tools/desk/internal/pkg", "tools/desk", "tools/desk/cmd", "tools/desk/internal"}},
 		}
 		if !reflect.DeepEqual(index, want) {
 			t.Errorf("ParseIndex = %+v, want %+v", index, want)
