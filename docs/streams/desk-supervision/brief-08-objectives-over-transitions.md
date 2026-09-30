@@ -204,8 +204,29 @@ RISK-VALUE: NAMED, NOT DERIVED — task-count = 5 @ tools/skillbench/fixtures/wo
 RISK-VALUE: DERIVED — runs-per-task-per-arm = 3 @ docs/streams/desk-supervision/08-report.md:9 — the brief's own facts pre-register "≥3 runs per task per arm" before any run, and 3 is the smallest value that meets that floor. Reversible.
 
 VERIFY: FAIL — 6/9 pass, 2 fail, 1 could-not-check. The result matches the 2026-09-20 and 2026-09-23 runs. Rows 2 and 5 fail as written, and row 9 is structurally could-not-check after merge. All three are Verify-table defects tracked at #1363 (still open). Every underlying deliverable property holds. Row 8 is red in the witness only because verifyrun misparses "1 or more"; the direct run passes. The input changes since the last receipt did not touch the rows' failure causes. Evidence only; status stays implemented.
+### Non-implementer verifier run — VERIFY: FAIL — 6/9 rows, rows 2, 5, 9 are Verify-table defects (#1363) — 2026-09-30 claude-opus-5-5-verifier
 
+Runner is not the implementer. Isolated worktree at merged main `b6f8f3c4e86df20681cfb5165f49a9e97659b572` (HEAD == the forge's `commits/main`). `gate: model`, all risk answers `no`; implemented by badd7b58c (#1266). Offline, throwaway HOME, statusgen built from the tree. Fourth consecutive FAIL on the same three rows; the Verify table is unchanged and #1363 is still open. Every deliverable property holds. Status stays `implemented`.
 
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --kits` | lists worker-objective | PASS — review, verifier, worker, worker-objective | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | row 2 command verbatim (dry-run with the flag before the item key, counting the offline-envelope line) | ≥1 | **FAIL** (row defect) — deskdispatch exit 5, `first argument must be the <item-key>, not a flag (--dry-run)`; with the item key first: exit 0, count 2 | 2026-09-30 | claude-opus-5-5-verifier |
+| 3 | row 3 command verbatim (common-clauses block vs common-clauses.md) | empty diff | PASS — empty | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | row 4 command verbatim (count worker-kit fixtures) | 5 | PASS — 5 | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | row 5 command verbatim (skillbench stdout grep) | ≥1 | **FAIL** (row defect) — skillbench exit 0 but writes nothing to stdout; its report file shows the safety floor held (100% vs 100%) and matches the committed report | 2026-09-30 | claude-opus-5-5-verifier |
+| 6 | row 6 command verbatim (count runs per arm) | 15 / 15 | PASS — 15 and 15 | 2026-09-30 | claude-opus-5-5-verifier |
+| 7 | row 7 command verbatim (one decision line) | exactly one | PASS — `decision: adopt-candidate — check_pass_rate 100%/15 vs 100%/15 (equal), wedges 0/15 vs 0/15 …` | 2026-09-30 | claude-opus-5-5-verifier |
+| 8 | `grep -c 'wedges' docs/streams/desk-supervision/08-report.md` | ≥1 | PASS — 7 | 2026-09-30 | claude-opus-5-5-verifier |
+| 9 | `statusgen --root . --consumers --brief desk-supervision/08` | exit 0 | **COULD-NOT-CHECK** — exit 2, brief not in the diff against main; nothing disproved | 2026-09-30 | claude-opus-5-5-verifier |
+
+RISK-VALUE (nothing irreversible — an edit and a re-run undoes any of it):
+
+- RISK-VALUE: NAMED, NOT DERIVED — task-count = 5 @ tools/skillbench/fixtures/worker-kit/ — representativeness of the task set is left to review by the brief (its stated single point of failure); already on the record from the earlier passes.
+- RISK-VALUE: DERIVED — runs per task per arm = 3 @ docs/streams/desk-supervision/08-report.md:9 — the brief pre-registers at least 3; 3 is the minimum meeting it.
+- RISK-VALUE: DERIVED — default kit = `worker` @ tools/desk/cmd/deskdispatch/dispatch.go:152 — the brief says the objective kit is never the default; unchanged.
+
+Findings: rows 2 and 5 fail as written and row 9 cannot pass post-merge — all three are the Verify-table defects on #1363 (argument order vs the item-key-first guard; a grep of an always-empty stdout; the vacuous post-merge consumers check). No change since the 2026-09-25 receipt touches any of the three causes; held on #1363 until the table is amended.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
