@@ -276,8 +276,8 @@ step, degradations observed match the ruled matrix, failures routed to issues.
 - **First run — 2026-09-12, codex-cli 0.154.0**
   ([`codex-smoke-runs/2026-09-12-codex-0.154.0.md`](codex-smoke-runs/2026-09-12-codex-0.154.0.md)):
   Steps 1–4, 6 and 7 PASS; Step 5 BLOCKED (the `multi_agent=false` precondition was
-  unfalsifiable on that CLI — the #939 finding). Its Step 3 predates `system-demo`, so it
-  covered twelve bodies, not the current list.
+  unfalsifiable on that CLI — the #939 finding). Its Step 3 loaded twelve bodies;
+  `human-runsheet` and `system-demo` were not among them.
 - **Step 5 re-run — 2026-09-13**
   ([`codex-smoke-runs/2026-09-13-codex-0.154.0-step5-rerun.md`](codex-smoke-runs/2026-09-13-codex-0.154.0-step5-rerun.md)):
   PASS under the claim-gated Step 5 form, which the 2026-09-17 re-baseline (#939 ruling)
