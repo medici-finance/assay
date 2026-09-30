@@ -755,6 +755,38 @@ type OpenChanges struct {
 	Cap int
 }
 
+// ReviewQueue is the typed result of ReviewQueueSnapshot: a repo's open-change population
+// AND each change's reviews, read as ONE snapshot. It is the first access-pattern operation
+// (spec Principle 3): a consumer that used to read ListOpenChanges and then ReviewsAtHead once
+// per change (N+1 calls) reads this instead, and gets a head and a review set that cannot
+// straddle a push — N sequential reads can see the list at one head and a change's reviews
+// after a newer head landed. Truncation carries the SAME meaning as OpenChanges.
+type ReviewQueue struct {
+	// Changes are the open changes, newest first, up to Cap of them, each with its reviews.
+	Changes []QueuedChange
+	// TruncatedAtCap is true when the read returned exactly Cap changes (see OpenChanges).
+	TruncatedAtCap bool
+	// Cap is the page cap the read was bounded to.
+	Cap int
+}
+
+// QueuedChange is one open change of a ReviewQueue: the same fields ListOpenChanges reports,
+// plus the change's reviews when the snapshot carries all of them.
+//
+// ReviewsComplete is three-state honesty in a bool. TRUE means Reviews is the change's WHOLE
+// review set, in ReviewsAtHead's ascending order, read in the same round-trip as HeadSHA.
+// FALSE means the snapshot does NOT carry the full set — the change has more reviews than the
+// snapshot's per-change bound, or the backend cannot serve this change's reviews inside the
+// one query (see each backend) — and Reviews is then EMPTY. It never means "no reviews": the
+// caller reads that change per-item with ReviewsAtHead, so a missing or partial set can never
+// reduce to a verdict (the last-verdict-wins reductions would read a truncated set as a
+// different answer).
+type QueuedChange struct {
+	OpenChange
+	Reviews         []Review
+	ReviewsComplete bool
+}
+
 // ChangeStates is the set of change lifecycle states a ListChanges read is scoped to. It is a
 // struct of booleans rather than a slice so an EMPTY request is a compile-visible zero value
 // the op refuses (rather than a nil slice that could read as "all"): a states-less read is a
@@ -1425,6 +1457,17 @@ type Forge interface {
 	// verdict may be superseded by any dated one and may never supersede one, which is the
 	// fail-closed placement.
 	ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error)
+	// ReviewQueueSnapshot reads a repo's OPEN changes together with each change's reviews
+	// as ONE snapshot (see ReviewQueue): the access-pattern operation that replaces
+	// ListOpenChanges + one ReviewsAtHead per change. The caller passes only the typed repo
+	// coordinate — the query document is private to each backend, and nothing about it
+	// crosses this interface. The change fields are exactly ListOpenChanges'; the reviews,
+	// where QueuedChange.ReviewsComplete, are exactly ReviewsAtHead's (same fields, same
+	// ascending order); where not complete, the caller falls back to ReviewsAtHead for that
+	// change alone. A read failure fails the whole snapshot, like ListOpenChanges.
+	// Consumer: cmd/deskboard's actions sweep (sweepActionsRepo — freeze rule: this op lands
+	// with the call site that consumes it).
+	ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error)
 	// ListChangedFiles returns a change's file entries (paginated, rename-aware). The
 	// caller reconciles len against PullRequest.ChangedFiles before trusting it complete.
 	ListChangedFiles(repo ForgeRepo, number int) ([]ChangedFile, error)

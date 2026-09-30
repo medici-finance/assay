@@ -11,24 +11,24 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-09-29 |  |
-| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 1/13 | 2026-09-29 |  |
-| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-09-29 |  |
-| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-29 |  |
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-29 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-09-29 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/26 | 2026-09-29 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-09-29 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-29 |  |
-| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 0/10 | 2026-09-29 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-29 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-09-29 |  |
-| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/18 | 2026-09-29 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/17 | 2026-09-29 |  |
-| [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-09-29 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-09-29 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/14 | 2026-09-29 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/18 | 2026-09-29 |  |
+| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-09-30 |  |
+| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 1/13 | 2026-09-30 |  |
+| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-09-30 |  |
+| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-09-30 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-30 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-09-30 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 6/26 | 2026-09-30 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-09-30 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-09-30 |  |
+| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 0/10 | 2026-09-30 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-09-30 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-09-30 |  |
+| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 1/18 | 2026-09-30 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 4/17 | 2026-09-30 |  |
+| [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-09-30 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-09-30 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 10/14 | 2026-09-30 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 5/18 | 2026-09-30 |  |
 
 ## Parked
 
@@ -36,11 +36,11 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Priority | Briefs | Last touched |
 |---|---|---|---|
-| [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-09-29 |
-| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-09-29 |
-| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-29 |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | 2/7 | 2026-09-29 |
-| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-09-29 |
+| [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-09-30 |
+| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-09-30 |
+| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-30 |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | 2/7 | 2026-09-30 |
+| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-09-30 |
 
 ## Next up
 
@@ -53,7 +53,6 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 |---|---|---|---|
 | build-less-brittle | 02 — design-fit: in every new brief — owner, contract, retires, weight, why-add [exec:strong] | 1 | 6500 |
 | build-less-brittle | 07 — Rule register (owner, invariant, justifying issue, catch source) and the monthly rule diet [exec:strong] | 1 | 5500 |
-| build-less-brittle | 08 — Hotspot metric (churn × complexity, temporal coupling) from git history, and the brittle mark [exec:strong] | 1 | 4500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | measured-status | 03 — Derive the commsloop router's risk field from the envelope instead of hardcoding false, or record why false is sound — restore the risk:yes->tier:human backstop [exec:strong] | 0 | 2200 |
 | measured-status | 05 — attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish [exec:strong] | 1 | 2200 |
@@ -68,7 +67,7 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (51 desk-actionable of 88 total — 83 at implemented, 5 verified awaiting review)
+## Awaiting verification / review (51 desk-actionable of 89 total — 84 at implemented, 5 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -82,6 +81,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | build-less-brittle | 01 [exec:strong] | verified | 8500 | 11 | — | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) | — |
 | graph-execution | 02 [exec:strong] | implemented | 7500 | 11 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
+| build-less-brittle | 08 [exec:strong] | implemented | 4500 | 3 | — | — | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
 | graph-execution | 10 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 4000 | 6 | — | — | — |
@@ -103,7 +103,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 19 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2000 | 2 | — | — | — |
-| composability | 01 | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 19 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -148,7 +147,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 11 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting implementer rework (23)
+### Awaiting implementer rework (24)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -162,6 +161,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-containers | 09 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | windows-port | 13 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| composability | 01 | implemented | 1500 | 1 | — | — | — |
 | windows-port | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -240,7 +240,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 05 Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight — todo (wave 3)
 - 06 Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision — todo (wave 2)
 - 07 Rule register (owner, invariant, justifying issue, catch source) and the monthly rule diet — todo (wave 1)
-- 08 Hotspot metric (churn × complexity, temporal coupling) from git history, and the brittle mark — todo (wave 1)
+- 08 Hotspot metric (churn × complexity, temporal coupling) from git history, and the brittle mark — implemented (wave 1)
 - 09 Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept — todo (wave 3)
 - 10 Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning — todo (wave 2)
 - 11 Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge — todo (wave 4)
