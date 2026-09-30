@@ -57,6 +57,10 @@ var verifyMarkerRe = regexp.MustCompile(`<!-- verify-gate: [^>]*? -->`)
 // canonical form (rather than the colon form) keeps a NEW card matching every
 // pre-migration card, and keeps the extracted id inside the brief-name grammar
 // (<stream>/<NN>) the close side already speaks.
+//
+// It DROPS the repo alias unresolved, so it is a read-side identity only (the marker and the
+// consumers filter). A path that acts on the ref — the done-close — resolves it through the
+// alias registry with resolveLocalBriefRef instead (#1239); topology_guard_test.go pins that.
 func normalizeBriefKey(key string) string {
 	key = strings.TrimSpace(key)
 	if _, _, stream, num, ok := parseBriefV2ID(key); ok {
@@ -1075,17 +1079,35 @@ func flipRowToDone(raw, num, reviewedStamp, verifiedStamp string) (string, error
 // touches STATUS.md (single-writer rule) — status-regen regenerates it on the
 // resulting push.
 func closeVerify(root, briefID string, now time.Time) error {
-	streams, _, err := loadStreams(root)
+	readme, updated, _, err := closeVerifyPlan(root, briefID, now)
 	if err != nil {
 		return err
 	}
+	return os.WriteFile(readme, updated, 0o644)
+}
+
+// closeVerifyPlan is closeVerify without the write: it resolves the ref, runs
+// every refusal, and returns the README path, its flipped content and the local
+// <stream>/<NN> it resolved to. `statusgen verify-gate-close --dry-run` stops
+// here; closeVerify writes the result.
+func closeVerifyPlan(root, briefID string, now time.Time) (readme string, updated []byte, local string, err error) {
 	// Accept either brief-key form: a brief-v1 <stream>/<NN> id or a brief-v2
-	// <cell>:<repo>:<stream>:<NN> id (issue #804). Both name one brief in this
-	// tree; normalize to the canonical <stream>/<NN> the row lookup below uses.
-	briefID = normalizeBriefKey(briefID)
+	// <cell>:<repo>:<stream>:<NN> id (issue #804), plus the reference grammar's
+	// <alias>:<stream>/<NN> and <cell>:<alias>:<stream>/<NN> forms. Any repo
+	// alias resolves through docs/streams/graph-repos.yaml and must be THIS
+	// tree's own (topology.go) — it is never dropped unread, which flipped a
+	// same-numbered local brief for another repo's item.
+	briefID, err = resolveLocalBriefRef(root, briefID)
+	if err != nil {
+		return "", nil, "", err
+	}
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		return "", nil, "", err
+	}
 	streamName, num, ok := strings.Cut(briefID, "/")
 	if !ok || streamName == "" || num == "" {
-		return fmt.Errorf("brief id %q is not a <stream>/<NN> or <cell>:<repo>:<stream>:<NN> id", briefID)
+		return "", nil, "", fmt.Errorf("brief id %q is not a <stream>/<NN>, <alias>:<stream>/<NN> or <cell>:<repo>:<stream>:<NN> id", briefID)
 	}
 	var s *Stream
 	for _, st := range streams {
@@ -1095,7 +1117,7 @@ func closeVerify(root, briefID string, now time.Time) error {
 		}
 	}
 	if s == nil {
-		return fmt.Errorf("unknown stream %q", streamName)
+		return "", nil, "", fmt.Errorf("unknown stream %q", streamName)
 	}
 
 	var bf *BriefFile
@@ -1110,20 +1132,20 @@ func closeVerify(root, briefID string, now time.Time) error {
 		}
 	}
 	if bf == nil {
-		return fmt.Errorf("no brief-v1 file found for %s", briefID)
+		return "", nil, "", fmt.Errorf("no brief-v1 file found for %s", briefID)
 	}
 	if bf.Gate != "human" {
-		return fmt.Errorf("refusing: brief %s gate is %q, not human — not a human sign-off gate", briefID, bf.Gate)
+		return "", nil, "", fmt.Errorf("refusing: brief %s gate is %q, not human — not a human sign-off gate", briefID, bf.Gate)
 	}
 	row := findRow(s, num)
 	if row == nil {
-		return fmt.Errorf("no README row for %s", briefID)
+		return "", nil, "", fmt.Errorf("no README row for %s", briefID)
 	}
 
-	readme := filepath.Join(s.Dir, "README.md")
+	readme = filepath.Join(s.Dir, "README.md")
 	raw, err := os.ReadFile(readme)
 	if err != nil {
-		return err
+		return "", nil, "", err
 	}
 	// Date-first, matching the repo/CLAUDE.md Reviewed-cell convention
 	// ("YYYY-MM-DD human:alex") and every existing row.
@@ -1141,19 +1163,19 @@ func closeVerify(root, briefID string, now time.Time) error {
 		// FAIL read, both BEFORE the floor read on the cell the done row will
 		// carry (two-stamp model).
 		if err := closeVerifyHeldRefusal(briefID, row.Status, bf.Evidence); err != nil {
-			return err
+			return "", nil, "", err
 		}
 		if err := closeVerifyFailRefusal(briefID, row.Status, bf.Evidence); err != nil {
-			return err
+			return "", nil, "", err
 		}
 		if err := closeVerifyFloorRefusal(briefID, bf, row.Verified); err != nil {
-			return err
+			return "", nil, "", err
 		}
-		updated, err := flipRowToDone(string(raw), num, reviewedStamp, "")
+		out, err := flipRowToDone(string(raw), num, reviewedStamp, "")
 		if err != nil {
-			return fmt.Errorf("%s: %w", readme, err)
+			return "", nil, "", fmt.Errorf("%s: %w", readme, err)
 		}
-		return os.WriteFile(readme, []byte(updated), 0o644)
+		return readme, []byte(out), briefID, nil
 
 	case "implemented":
 		// One-step path: the implemented→verified README flip is a manual action
@@ -1164,29 +1186,29 @@ func closeVerify(root, briefID string, now time.Time) error {
 		// the fail-closed gate; loosening WHICH briefs qualify never loosens WHAT
 		// evidence is required.
 		if !hasVerifyPass(bf.Evidence) {
-			return fmt.Errorf("refusing: brief %s status is %q (not verified) and Evidence has no **VERIFY: PASS** marker — a human-gated brief needs a recorded model verify pass before the human sign-off can advance it", briefID, row.Status)
+			return "", nil, "", fmt.Errorf("refusing: brief %s status is %q (not verified) and Evidence has no **VERIFY: PASS** marker — a human-gated brief needs a recorded model verify pass before the human sign-off can advance it", briefID, row.Status)
 		}
 		if err := closeVerifyHeldRefusal(briefID, row.Status, bf.Evidence); err != nil {
-			return err
+			return "", nil, "", err
 		}
 		date, runner := evidenceVerifierInfo(bf.Evidence)
 		if date == "" || runner == "" {
-			return fmt.Errorf("refusing: brief %s has **VERIFY: PASS** but no verifier date/runner found in Evidence table — need a table with Date and Runner columns to stamp the Verified cell", briefID)
+			return "", nil, "", fmt.Errorf("refusing: brief %s has **VERIFY: PASS** but no verifier date/runner found in Evidence table — need a table with Date and Runner columns to stamp the Verified cell", briefID)
 		}
 		verifiedStamp := date + " " + runner
 		// The cell this path is about to WRITE comes from the brief file's
 		// Evidence, so the floor read is on that computed stamp (two-stamp model).
 		if err := closeVerifyFloorRefusal(briefID, bf, verifiedStamp); err != nil {
-			return err
+			return "", nil, "", err
 		}
-		updated, err := flipRowToDone(string(raw), num, reviewedStamp, verifiedStamp)
+		out, err := flipRowToDone(string(raw), num, reviewedStamp, verifiedStamp)
 		if err != nil {
-			return fmt.Errorf("%s: %w", readme, err)
+			return "", nil, "", fmt.Errorf("%s: %w", readme, err)
 		}
-		return os.WriteFile(readme, []byte(updated), 0o644)
+		return readme, []byte(out), briefID, nil
 
 	default:
-		return fmt.Errorf("refusing: brief %s status is %q, not verified (or implemented with a recorded **VERIFY: PASS**) — nothing to sign off", briefID, row.Status)
+		return "", nil, "", fmt.Errorf("refusing: brief %s status is %q, not verified (or implemented with a recorded **VERIFY: PASS**) — nothing to sign off", briefID, row.Status)
 	}
 }
 
