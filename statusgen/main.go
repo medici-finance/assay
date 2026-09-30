@@ -496,6 +496,10 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// tree-only. Declared source: statusgen/verifiedrunneragree.go.
 	notices = append(notices, verifiedRunnerDisagreementNotices(checkStreams)...)
 	problems = append(problems, verifySectionProblems(checkStreams)...)
+	// An unterminated `<!--` in a Verify or Evidence section (#1939): the row
+	// parsers read past it, a rendered page may hide everything after it, so it
+	// is a PROBLEM rather than a silent disagreement between the two views.
+	problems = append(problems, unterminatedCommentProblems(checkStreams)...)
 	// Reverse-orphan (distribution/13 Task E-a): a README brief ROW whose brief
 	// FILE is absent is a phantom brief. checkBriefFiles guards the forward
 	// direction (a file with no row); this guards the reverse (a row with no
@@ -1421,6 +1425,18 @@ func main() {
 		os.Exit(runNewBrief(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	}
 
+	// `statusgen lint --check <name>` and `statusgen verify-gate-close --ref <ref>` — the fleet
+	// topology contract's registry-resolved verbs (topology.go). Intercepted before flag parsing:
+	// each owns its own --root/--check/--ref namespace, and verify-gate-close is a WRITE that must
+	// never be reachable by fallthrough to the default regenerate. The whole-corpus gate stays
+	// `statusgen --lint`; `lint --check` runs only the named checks.
+	if len(os.Args) > 1 && os.Args[1] == "lint" {
+		os.Exit(runLintNamed(os.Args[2:], os.Stdout, os.Stderr))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "verify-gate-close" {
+		os.Exit(runVerifyGateClose(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// UNKNOWN POSITIONAL SUBCOMMAND — fail closed (#1075).
 	//
 	// Every genuine positional subcommand (verifyrun, mergecheck, shardcheck,
@@ -1441,7 +1457,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, enforcement-status, phantoms, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}

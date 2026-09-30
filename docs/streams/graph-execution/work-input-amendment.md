@@ -38,6 +38,12 @@ substitute for reading required evidence. Record omissions; reject silent trunca
 Selected tool/policy bundles must retain their required enforcement. Stable prompt text
 alone does not prove stable runner serialization or provider cache reuse.
 
+GEA-14 also binds role packets and WI-4 usage records: carry identifiers and authorized
+references, never secret keys, credential tokens or authentication headers. Preserve each reused source's
+origin, trust-gate disposition and restrictions. Untrusted or quarantined reporter text
+remains source data; copying it into a packet never makes it an instruction or grants
+authority. A missing disposition goes through the existing trust gate before use.
+
 The returned handoff binds result scope, evidence, dependency updates, artifacts, unresolved
 questions, next action and usage to that same attempt. Mechanical fields are assembled in
 code. An agent resolves ambiguous intent; count its preparation cost. Ordinary work uses
@@ -84,6 +90,10 @@ summaries, fallback and independent verification to the original work. Unknown o
 remain unknown until reconciled. Do not claim exactly-once where the provider cannot enforce it.
 
 ## WI-4 — Resource accounting without new authority (16)
+
+The credential-exclusion and source-trust rules in WI-1 also apply to these usage records.
+Usage token counts are telemetry, not credential tokens; retain counts while keeping
+credential material behind authorized references.
 
 Reservation records carry account/provider, actual model, raw input/cache-write/cache-read/
 output usage, exact timestamps, request identity, attempt lineage and pricing version.

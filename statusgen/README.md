@@ -79,8 +79,28 @@ statusgen verifyrun --brief docs/streams/<stream>/brief-NN-<slug>.md --dry-run
 statusgen verifyrun --check docs/streams/<stream>/brief-NN-<slug>.md
 ```
 
-Each row runs in a fresh subshell at the repo root, and the witness records the
-command, the exit code, a sha256 fingerprint of the combined output, the date, the
+Each row runs in a fresh subshell at the repo root. The command is the Command
+cell's first code span, or — in a cell that mixes prose and spans — the first span
+marked `cmd:` (`` `cmd: go test ./pkg/ -count=1` ``), which always wins over the first
+span (issue #1805; `--lint` NOTICEs a prose cell whose first span is not a command as
+`prose-led-command`, and `verifyrun` records such a row could-not-run without
+executing it — the mention is not the check, and a word like `gh` exits 0; the per-row
+NOTICE covers open briefs, and a closed brief's rows collapse into one summary line;
+the check:ci verdict re-execution lane refuses such a row unrun, and `--check` does not
+audit an old pass witness on it as pass).
+A marked command that cannot fail (`true`, `:`, `exit 0`, a lone `echo`) is NOTICEd as
+`cmd-marker-vacuous`. A marker counts only where the rendered table shows it as code:
+spans are found as CommonMark renders them (escaped backticks are literal), and a cell
+whose prose carries an unescaped `<` or `[`, a dollar in any spelling (`$`, `\$`, `&#36;`:
+math) or any character reference, or a span whose opening backticks are fused to the text
+before them (an autolink, `~~`), honours no marker; the marker span itself must be set apart
+by whitespace or the cell edge (plain punctuation may follow it) (`--lint` NOTICEs it as
+`cmd-marker-not-honoured`; a marker that replaces a command-shaped first span is
+`cmd-marker-overrides-command`). The tools/desk executors (`verifyloop`,
+`deskrebaseline`) apply the same rule, held to the shared vectors in
+`testdata/cmd-marker-vectors.json`. The witness records the
+command (fenced with a longer backtick run when it contains backticks, so `--check`
+reads back the whole command), the exit code, a sha256 fingerprint of the combined output, the date, the
 executing identity, and the tree it ran against. The format and its rules live in
 [`../docs/brief-rules.md`](../docs/brief-rules.md) (rules 25–26).
 

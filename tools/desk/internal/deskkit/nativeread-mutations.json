@@ -1,0 +1,41 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -timeout 300s -run 'TestNativeReadClient'",
+  "control": {
+    "name": "CONTROL — drop the client's refuse-if-unminted check (an empty token falls through to go-gh's ambient resolution)",
+    "file": "internal/deskkit/forge_github.go",
+    "old": "\tif g.Token == \"\" {\n\t\treturn nil, Unverifiable(",
+    "new": "\tif false && g.Token == \"\" {\n\t\treturn nil, Unverifiable("
+  },
+  "mutations": [
+    {
+      "name": "bind no token onto the go-gh client (go-gh then resolves GH_TOKEN / the gh keyring itself)",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\tAuthToken: g.Token,\n",
+      "new": "\t\tAuthToken: \"\",\n"
+    },
+    {
+      "name": "resolver hands the client the environment's GH_TOKEN instead of the mint",
+      "file": "internal/deskkit/forgeresolve.go",
+      "old": "\t\treturn &GitHubForge{Token: tok, BaseURL: base}, res, nil",
+      "new": "\t\treturn &GitHubForge{Token: os.Getenv(\"GH_TOKEN\"), BaseURL: base}, res, nil"
+    },
+    {
+      "name": "GitHub custody mints for the account GH_REPO names, not the repo being read (#628 shape)",
+      "file": "internal/deskkit/forgeresolve.go",
+      "old": "\ttok, path, rerr := githubAppRoleToken(role, repo.Slug())",
+      "new": "\ttok, path, rerr := githubAppRoleToken(role, os.Getenv(\"GH_REPO\"))"
+    },
+    {
+      "name": "the per-repo mint keys on GH_REPO's account instead of the repo argument (planted second site of the class)",
+      "file": "internal/deskkit/roletoken.go",
+      "old": "\treturn RoleTokenForOwner(role, OwnerOf(repo))",
+      "new": "\treturn RoleTokenForOwner(role, OwnerOf(os.Getenv(\"GH_REPO\")))"
+    },
+    {
+      "name": "accept an empty minted token file (the resolver hands back an unminted client)",
+      "file": "internal/deskkit/roletoken.go",
+      "old": "\tif token == \"\" {\n\t\treturn \"\", path, Unverifiable(",
+      "new": "\tif false && token == \"\" {\n\t\treturn \"\", path, Unverifiable("
+    }
+  ]
+}

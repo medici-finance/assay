@@ -125,7 +125,7 @@ still fires because the diff encodes a threshold that the canonical review skill
 introduced by the diff:
 
 - RoundCap = 3 @ tools/desk/internal/deskkit/reviewfinding.go:340. This is the threshold that decides when a class stops re-litigating and goes to the human lane.
-- FindingBlockSchema = "review-finding/v1" @ tools/desk/internal/deskkit/reviewfinding.go:40, and findingBlockOpen = "<!-- assay:review-finding:v1" @ the same file, line 47. These are wire-format markers. Changing them makes older records unparseable, which is reversible by an edit plus a migration.
+- FindingBlockSchema = "review-finding/v1" @ tools/desk/internal/deskkit/reviewfinding.go:40, and findingBlockOpen = the HTML comment opener, one space, then "assay:review-finding:v1" @ the same file, line 47. These are wire-format markers. Changing them makes older records unparseable, which is reversible by an edit plus a migration.
 - Authority binding: RoleReviewer = "reviewer" / RoleWorker = "worker" @ the same file, lines 116-117. The worker write gate is at lines 254-262: a worker cannot set resolved on a blocking finding or set awaiting-arbitration.
 - Enumerated vocabulary with no numeric weight: the state strings (lines 58-71), blocker kinds (90-91), severities (103-104), record kinds (300-301) and verdicts (308-311).
 

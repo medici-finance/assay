@@ -28,9 +28,9 @@ exec-tier: strong
 exec-tier-why: "(b) one procedure spans three skills (intake, review, worker dispatch) and must reuse existing verbs, labels and status tokens without inventing any."
 domain: complicated
 consumers:
-  - "plugins/assay/skills/intake-desk/SKILL.md: follow-up build-less-brittle/04 (this brief)"
-  - "plugins/assay/skills/pr-review-desk/SKILL.md (Recurrence-promotion paragraph): follow-up build-less-brittle/04 (this brief)"
-  - "plugins/assay/skills/worker-desk/SKILL.md (Un-briefed issues section): follow-up build-less-brittle/04 (this brief)"
+  - "plugins/assay/skills/intake-desk/SKILL.md: fixed-here"
+  - "plugins/assay/skills/pr-review-desk/SKILL.md (Recurrence-promotion paragraph): fixed-here"
+  - "plugins/assay/skills/worker-desk/SKILL.md (Un-briefed issues section): fixed-here"
   - "labels error-class, design-owed on each repo in scope: out-of-scope (per-repo provisioning, as the intake skill already requires for needs-decision)"
 ---
 
@@ -99,6 +99,11 @@ source revisions/evidence references, unresolved questions and next actionable s
 those fields in the downstream brief instead of requiring the next desk to rediscover the
 class. Coalesce repeated reports through the existing incident-group rule; a new observation
 can enrich the record without becoming another counted incident or another agent request.
+Carry source origin and the existing trust-gate disposition/restrictions with reused text;
+quarantined reporter content never becomes downstream instructions by being copied. In the
+intake procedure use the labels `mechanism:`, `known-scope:`, `source-revisions:`,
+`unresolved-questions:`, `next-action:`, `source-origin:` and `trust-disposition:` within the
+existing attachment block. Label the worked case `### Work-input triage example`.
 
 This is a procedure/record refinement within the existing line offsets, not new schema,
 scheduler or runtime deduplication code. Execution-attempt coalescing belongs to graph 14
@@ -154,6 +159,7 @@ weight rows. Whether the procedure is followed is measured by the project's clos
 | 10 | `statusgen --consumers --root . --brief build-less-brittle/04; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
 | 11 | `grep -c -e 'module:' plugins/assay/skills/intake-desk/SKILL.md && grep -c -e 'brittle' plugins/assay/skills/intake-desk/SKILL.md` | two counts, each ≥ `1` (the hotspot wiring: instances name their module, and a marked module lowers the trigger to the first instance) |
 | 12 | `grep -c -e 'production-down' plugins/assay/skills/intake-desk/SKILL.md && grep -c -e 'bleed' plugins/assay/skills/intake-desk/SKILL.md` | two counts, each ≥ `1` (the parking carve-out: a production-down or security symptom is never parked, and the driver's `bleed` reply un-parks one) |
+| 13 | `f=plugins/assay/skills/intake-desk/SKILL.md; for key in mechanism known-scope source-revisions unresolved-questions next-action source-origin trust-disposition; do grep -qF "$key:" "$f" \|\| exit 1; done; grep -q '^### Work-input triage example$' "$f" && echo WORK-INPUT-FIELDS` | `WORK-INPUT-FIELDS` (presence only; the worked-triage review below checks meaning, retained source trust and recurrence counting) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,
@@ -162,6 +168,19 @@ weight rows. Whether the procedure is followed is measured by the project's clos
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
+| 1 | `grep -cE 'error-class' plugins/assay/skills/intake-desk/SKILL.md` | pass exit=0 | `2` (≥ 2) | 2026-09-30 | assay-worker-app[bot] @ 7f156368ee91 (on-behalf-of human:ian) (implementer, self-run) |
+| 2 | `grep -c -e 'confirmed-defect.*false-positive' -e 'incident-group' plugins/assay/skills/intake-desk/SKILL.md` | pass exit=0 | `6` (≥ 2) | 2026-09-30 | assay-worker-app[bot] @ 7f156368ee91 (on-behalf-of human:ian) (implementer, self-run) |
+| 3 | `grep -c -e '2nd merged fix' -e 'second merged fix' plugins/assay/skills/intake-desk/SKILL.md` | pass exit=0 | `1` (≥ 1) | 2026-09-30 | assay-worker-app[bot] @ 7f156368ee91 (on-behalf-of human:ian) (implementer, self-run) |
+| 4 | `s=$(sed -n '/Recurrence-promotion/,/^$/p' plugins/assay/skills/pr-review-desk/SKILL.md); echo "$s" \| grep -q 'error-class' && ! echo "$s" \| grep -qi 'guardrail-promotion' && echo REDIRECTED` | pass exit=0 | `REDIRECTED` | 2026-09-30 | assay-worker-app[bot] @ 7f156368ee91 (on-behalf-of human:ian) (implementer, self-run) |
+| 5 | `grep -c '^func cmdAttach' tools/desk/cmd/deskfile/deskfile.go` | pass exit=0 | `1` | 2026-09-30 | assay-worker-app[bot] @ 7f156368ee91 (on-behalf-of human:ian) (implementer, self-run) |
+| 6 | `grep -c '"blocked": true' statusgen/checks.go` | pass exit=0 | `1` | 2026-09-30 | assay-worker-app[bot] @ 7f156368ee91 (on-behalf-of human:ian) (implementer, self-run) |
+| 7 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/04$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/intake-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/intake-desk/SKILL.md" \| wc -l)" && echo NET-OK` | pass exit=0 | `NET-OK` — base cb6da0625 (merge-base), tip 7f156368e; 537 → 537 lines | 2026-09-30 | assay-worker-app[bot] @ 7f156368ee91 (on-behalf-of human:ian) (implementer, self-run) |
+| 8 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/04$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" && echo NET-OK` | pass exit=0 | `NET-OK` — base cb6da0625, tip 7f156368e; 1023 → 1023 lines | 2026-09-30 | assay-worker-app[bot] @ 7f156368ee91 (on-behalf-of human:ian) (implementer, self-run) |
+| 9 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/04$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" && echo NET-OK` | pass exit=0 | `NET-OK` — base cb6da0625, tip 7f156368e; 882 → 882 lines | 2026-09-30 | assay-worker-app[bot] @ 7f156368ee91 (on-behalf-of human:ian) (implementer, self-run) |
+| 10 | `statusgen --consumers --root . --brief build-less-brittle/04; echo "exit=$?"` | pass exit=0 | 3 CORROBORATED (the three `fixed-here` skill entries), 1 UNCHECKED (the out-of-scope labels entry, unchanged since the merge-base), 0 disproved; `exit=0` | 2026-09-30 | assay-worker-app[bot] @ 7f156368ee91 (on-behalf-of human:ian) (implementer, self-run) |
+| 11 | `grep -c -e 'module:' plugins/assay/skills/intake-desk/SKILL.md && grep -c -e 'brittle' plugins/assay/skills/intake-desk/SKILL.md` | pass exit=0 | `2` then `4` (each ≥ 1) | 2026-09-30 | assay-worker-app[bot] @ 7f156368ee91 (on-behalf-of human:ian) (implementer, self-run) |
+| 12 | `grep -c -e 'production-down' plugins/assay/skills/intake-desk/SKILL.md && grep -c -e 'bleed' plugins/assay/skills/intake-desk/SKILL.md` | pass exit=0 | `1` then `1` (each ≥ 1) | 2026-09-30 | assay-worker-app[bot] @ 7f156368ee91 (on-behalf-of human:ian) (implementer, self-run) |
+| T1 | `scanloop plan --offline` (Task step 1 as written), then a scratch Go probe of `runScanIssues` over a copied placeholder root (probe file not committed) | pass on an open scan; the label round trip overwrites it (see Output) | `scanloop plan` has no `--offline` flag (`flag provided but not defined: -offline`; the flag exists only on `scanloop run`), so the proof ran the scanner the scan lane calls (`statusgen --scan-issues`) directly: a placeholder hand-set to `status: blocked` with the class number in its body line was byte-identical after an open-issue scan (`status="blocked"`); `statusgen --lint` with it: `LINT: PASS`, exit 0; a close scan retired it to `done/` (`status="done"`); `--- PASS: TestParkProbe (0.08s)` at base 848577851. `planScan` skips an existing placeholder and `planUnblock` strips only `blocked:`/`blockedAt:`. Correction (review round 1): one scanner path DOES overwrite it. An open issue that gains an excluded label is planned `retire-label` (`statusgen/scanissues.go` `planScan`), which writes `status: done` and archives; when the label comes off, `reactivate` writes `status: todo` (`applyCloseOut`); the body line survives. No scanner code changed here: intake step 1 carries a skill-side re-park (a `todo` row whose body still says `Parked` goes back to `blocked`) | 2026-09-30 | assay-worker-app[bot] @ 65c39e74fb19 (on-behalf-of human:ian) (implementer, self-run) |
 
 The reviewer also walks the amendment's worked case through the existing deliverables and
 records the source links, gap handling and outcome interpretation in the review. These are
