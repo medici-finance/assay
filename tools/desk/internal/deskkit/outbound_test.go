@@ -24,7 +24,7 @@ import (
 // Invented targets: one public, one private, one the roster does not list at all.
 const (
 	obPublic   = "example-org/example-public"
-	obPrivate  = "example-org/example-private"
+	obPrivate  = "example-org/example-restricted"
 	obUnknown  = "example-org/example-unlisted"
 	obInternal = "example-org/example-internal" // private per the roster; a public body must not name it
 	obWithheld = "example-withheld-slug"
