@@ -455,6 +455,33 @@ func UnattributedStampLabels(tl StampTimeline) []string {
 	return unattributed
 }
 
+// StandingStampApplierAt reports the login and CreatedAt (RFC3339, possibly "" when the
+// forge reported none) of a PRESENT dispatched-* label's standing (most recent,
+// not-yet-superseded) application, and whether the timeline carries a standing event for
+// it at all. resolveStampAppliers's aggregate view drops CreatedAt; this exists for a
+// consumer that needs to reason about WHEN a label was applied, not just BY WHOM —
+// deskrestamp's driver-only, cutoff-gated provenance bar (#336, SEC-1b round 3) is the
+// first one.
+func StandingStampApplierAt(tl StampTimeline, label string) (who, createdAt string, ok bool) {
+	standing := map[string]LabelEvent{}
+	for _, e := range tl.Events {
+		n := normLabel(e.Name)
+		if !isStampLabelName(n) {
+			continue
+		}
+		if e.Removed {
+			delete(standing, n)
+			continue
+		}
+		standing[n] = e
+	}
+	ev, found := standing[normLabel(label)]
+	if !found {
+		return "", "", false
+	}
+	return strings.TrimSpace(ev.AppliedBy), ev.CreatedAt, true
+}
+
 // AttestedModelStampOf is the applier-aware reader — the STRONG form a consumer must use
 // when it needs the self-report defence. It reads the same content as ModelStampOf but
 // first requires that EVERY dispatched-* label was applied by a dispatcher identity: if
@@ -462,11 +489,14 @@ func UnattributedStampLabels(tl StampTimeline) []string {
 // the whole stamp is Indeterminate, because a stamp anyone can self-apply is not
 // attestation.
 //
-// isDispatcher answers "is this login the dispatcher?" — inject IsDispatcherLogin for the
-// roster's desk App, or a test stub. A nil predicate cannot vouch for anyone, so a PR that
-// carries any dispatched-* label with a nil predicate is Indeterminate (could-not-check),
-// never Stamped: the strong reader fails safe rather than trusting an applier it cannot
-// check. A PR with NO dispatched-* labels is Unknown regardless of the predicate.
+// isDispatcher answers "may this login's stamp count as attestation?" — inject
+// IsStampAuthorityLogin against the live roster (the bound dispatcher slugs PLUS the
+// roster-configured ASSAY_STAMP_TRUSTED_LOGINS allowance, #336), IsDispatcherLogin where
+// the strict dispatcher-only question is meant, or a test stub. A nil predicate cannot
+// vouch for anyone, so a PR that carries any dispatched-* label with a nil predicate is
+// Indeterminate (could-not-check), never Stamped: the strong reader fails safe rather
+// than trusting an applier it cannot check. A PR with NO dispatched-* labels is Unknown
+// regardless of the predicate.
 func AttestedModelStampOf(tl StampTimeline, isDispatcher func(applier string) bool) (ModelStamp, ModelState) {
 	if len(presentStampLabels(tl.Present)) == 0 {
 		// No dispatched-* label ON THE PR: the applier question does not arise, and the
@@ -655,6 +685,58 @@ func IsDispatcherLogin(login string) bool {
 		}
 	}
 	return false
+}
+
+// IsStampAuthorityLogin is the predicate the model-floor's actor check actually injects:
+// every identity IsDispatcherLogin vouches for, PLUS the logins of the roster-configured
+// stamp-authority allowance (ASSAY_STAMP_TRUSTED_LOGINS — #336's human-ratified widening).
+//
+// WHY A SEPARATE PREDICATE. IsDispatcherLogin's answer — "is this login a bound dispatcher
+// slug" — is unchanged and stays what the re-stamp WRITER derives its identity from. The
+// allowance widens what the READER accepts as attestation, and only there: a trusted human
+// login the operator explicitly listed. The two questions remain separately answerable so a
+// consumer can tell "the dispatcher" from "an identity the floor was configured to accept".
+//
+// FAIL-CLOSED in both arms. The dispatcher arm is roster-derived as above; the allowance
+// arm reads the PARSED roster (write-class tools: the config-home file, never the
+// environment), so an unconfigured roster — or one with no ASSAY_STAMP_TRUSTED_LOGINS key —
+// vouches for exactly the dispatcher slugs and nobody else. An empty login vouches for
+// nothing.
+func IsStampAuthorityLogin(login string) bool {
+	if IsDispatcherLogin(login) {
+		return true
+	}
+	want := strings.ToLower(strings.TrimSpace(login))
+	if want == "" {
+		return false
+	}
+	c := EffectiveConfig()
+	if !c.Configured() {
+		return false
+	}
+	_, ok := c.StampLogins[want]
+	return ok
+}
+
+// StampAuthorityLoginsForMessage renders the WHOLE accepted stamp-authority set for a
+// refusal message: the bound dispatcher identities (DispatcherLoginsForMessage) plus the
+// configured ASSAY_STAMP_TRUSTED_LOGINS allowance — or, with no allowance configured, an
+// explicit note that the key exists and is unset, so a refusal never implies a widening
+// that is not in force and an operator who MEANT to arm one can see the knob's name.
+func StampAuthorityLoginsForMessage() string {
+	base := DispatcherLoginsForMessage()
+	c := EffectiveConfig()
+	if !c.Configured() || len(c.StampLogins) == 0 {
+		return base + "; no " + EnvStampTrustedLogins + " allowance is configured, so no trusted " +
+			"human login vouches either"
+	}
+	allowed := make([]string, 0, len(c.StampLogins))
+	for l := range c.StampLogins {
+		allowed = append(allowed, l)
+	}
+	sort.Strings(allowed)
+	return base + "; or a trusted login of the " + EnvStampTrustedLogins + " allowance (" +
+		strings.Join(allowed, ", ") + ")"
 }
 
 // DispatcherLoginsForMessage renders the accepted dispatcher identities for a refusal message

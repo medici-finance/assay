@@ -196,6 +196,35 @@ restored byte-identical — `git diff` clean afterward) — not merely described
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test -run Verdict ./internal/deskkit/ && go test -run Canonical ./internal/deskkit/ && go test -run WrongKey ./internal/deskkit/ && go test -run Reflow ./internal/deskkit/ && go test -run DeriveAndParse ./internal/deskkit/ && go test -run PubkeyVarForRole ./internal/deskkit/ && go test -run Role ./internal/deskkit/` | pass exit=0 | sha256:5bfd5603074b | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskverdict/... -v` | pass exit=0 | sha256:d35aa731f441 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test -run ScanDelta . -v` | pass exit=0 | sha256:9e68a530a7f7 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test -run TranscribeScan . && go test -run Verdict . && go test -run PubkeyVar .` | pass exit=0 | sha256:74f742bf4af8 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 5 | `test ! -e .github/verify && test -z "$(git ls-files "*.pem" "*.key" "*issue-loop-pubkey*")"` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && gofmt -l cmd/deskverdict/ internal/deskkit/verdict.go internal/deskkit/verdict_test.go && cd ../statusgen && gofmt -l transcribescan.go transcribeverdict.go transcribeverdict_test.go transcribescandelta_test.go main.go` | fail exit=1 | sha256:c5bc76e0d6b7 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestRoleMismatchRefusedBeforeCrypto$' -count=1 -v` | pass exit=0 | sha256:51d2f385e277 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+
+Verifier notes (dispatched non-implementer, claude-opus-5-5, merged main 9585b4b6cc2e, 2026-09-27). These expand the key observed output behind the witness rows above:
+
+- Row 1: seven `ok` lines. With -v, TestValidVerdictRole, TestPubkeyVarForRole, TestIssueLoopRoleRoundtrip, TestRoleMismatchRefusedBeforeCrypto, TestUnrecognizedRoleNeverFallsBackToVerifier and TestNoRoleFieldDefaultsToVerifier all PASS.
+- Row 2: 16/16 PASS, including all seven new TestCLI* role tests.
+- Row 3: 14 PASS (10 TestScanDelta* + 4 TestRunTranscribeScanDelta*), matching the expected count of 14.
+- Row 4: three `ok github.com/medici-finance/assay/statusgen` lines.
+- Row 5: empty output. There is no .github/verify directory, and no tracked files match the key-material patterns.
+- Row 6: `cd: ../statusgen: No such file or directory`. The row's command is wrong: from tools/desk, ../statusgen resolves to tools/statusgen, which has never existed in this repo (statusgen lives at the repo root). The same command with `cd ../../statusgen` exits 0 with empty output, so the code IS gofmt-clean. The defect is in the check definition, not the implementation.
+- Row 7 MUTATION, applied by hand: deleting the 3-line declared-role block from VerifyVerdictBodyForRole makes the test exit 1 with `verdict_test.go:368: role mismatch must be REFUSED even with a cryptographically valid signature, got 0 (verified: signature matches the canonical verdict payload)`. I restored the file (clean git diff, file hash unchanged) and the re-run exits 0.
+- Review note (b), checked in source: VerifyVerdictBodyForRole (tools/desk/internal/deskkit/verdict.go:453) and scanDeltaVerifyBody (statusgen/transcribescan.go:747) both evaluate the declared-role comparison before any canonicalisation or RSA verify call.
+
+RISK-VALUE: DERIVED — VerdictRoleIssueLoop = "issue-loop" @ tools/desk/internal/deskkit/verdict.go:93 (twin scanDeltaWantRole = "issue-loop" @ statusgen/transcribescan.go:671; roster key read as RoleBots["issue-loop"] @ statusgen/transcribescan.go:774) — this must be the roster's existing role-binding name for the intake/issue-loop App. deskkit already maps intake-desk to "issue-loop" in its role-token table (tools/desk/internal/deskkit/roletoken.go:46). All three copies are byte-identical, so signer, verifier and container-author check agree on one role.
+RISK-VALUE: DERIVED — IssueLoopPubkeyVar = "ASSAY_ISSUE_LOOP_PUBKEY" @ tools/desk/internal/deskkit/verdict.go:108 (twin scanDeltaPubkeyVar @ statusgen/transcribescan.go:667) — this follows the existing ASSAY_VERIFIER_PUBKEY convention (verdict.go:515 and statusgen/transcribeverdict.go:80) and is byte-identical across the two independent modules. If they drifted, the consuming lane would silently fall into could-not-check, which is the brief's stated exec-tier risk.
+RISK-VALUE: NAMED, NOT DERIVED — privKeyEnvForRole "ISSUE_LOOP_PEM" / privKeyFileForRole "issue-loop-app.pem" @ tools/desk/cmd/deskverdict/sign.go:99,106 — these are local custody lookup names. They follow the VERIFIER_PEM / verifier-app.pem pattern, but the operator-side config that must match them lives outside this repo, so it could not be checked from here. A wrong value is reversible and fails closed, because sign refuses and names every path it searched.
+Ranked last (reversible operational knobs, no derivation needed): transcribeFloodThreshold = 25 @ statusgen/transcribescan.go:59 (existing value, reused and unchanged); scanDeltaSchemaVersion = "scan-delta-v1" @ statusgen/transcribescan.go:658; CLI exit codes 5 (sign, unknown --key) and 6 (verify, unknown --key or no pubkey). The item's risk answers are all "no" and it is not irreversible, so every entry above can be fixed by an edit plus a redeploy.
+
+VERIFY: FAIL — rows 1–5 and 7 PASS; row 6 FAILS as written (exit 1). The row 6 command cd's into a directory that does not exist; the property it checks holds (the gofmt-clean command with the corrected path exits 0).
+FAIL filed: row 6 check-definition (bad relative path) — medici-finance/assay#1735
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in
 the stream README table. Review note: confirm (a) every pre-existing verdict/scan/verify test

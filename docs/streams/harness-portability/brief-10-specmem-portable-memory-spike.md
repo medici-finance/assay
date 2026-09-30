@@ -94,5 +94,30 @@ RISK-VALUE: N/A — enumeration over this item's diff/deliverables on this repo 
 
 VERIFY: FAIL — held at implemented, matching what #393 already asks (route to worker-desk to land the deliverable, porting the real house-repo findings, before any re-verify). Recommend the coordinator also consider #393's Ask item 2: stripping/marking the brief's own inline Evidence table as detached/non-authoritative, since as written it misleadingly reads as a completed verified-here pass.
 
+### Non-implementer verifier re-run — VERIFY: FAIL (deliverable still absent; tracked at #393) — opus-5.5[1m]-verifier (verify-desk dispatch), @ merged main `cf56ddeebc187e7923c4c6349bbdf95291bdfe05`, 2026-09-27
+
+Runner is not the implementer. Own detached temp worktree off the fetched origin/main (HEAD equals the forge main SHA). Offline envelope observed (`KUBECONFIG=/dev/null`). No PR, no push, no status flip. Execution witness (statusgen verifyrun, non-dry):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `test -f docs/research/specmem-portability-spike.md` | fail exit=1 | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -qiE -e identical -e degraded -e portable -e native-only docs/research/specmem-portability-spike.md` | fail exit=2 | sha256:2e6d05164b27 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(dereferencing) the doc records the SAME query run from BOTH harnesses with their actual returned output quoted — proving portability was exercised, not asserted` | fail exit=2 | sha256:2b9c659c2dc3 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -q 'specmem-portability-spike' freshness.yaml` | fail exit=1 | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+
+Per-row notes (real output):
+- Row 1: the findings doc is absent on merged main (exit 1, empty output). `git grep -i specmem` over freshness.yaml and docs/research returns nothing (exit 1).
+- Row 2: grep exits 2, "No such file or directory" on the findings doc — the target file does not exist.
+- Row 3: a dereferencing (prose) row; the witness's exit 2 is the shell refusing the prose as a command, not an observed result. Manually: could-not-check — there is no doc on this tree to dereference, so no two-harness quoted output exists to compare. A live two-harness SpecMem session is outside the offline envelope in any case.
+- Row 4: freshness.yaml carries no specmem entry (exit 1).
+
+Observation: harness-portability/14 (code de-house) did not re-home this brief's deliverable — brief 14 names no SpecMem path, and this item's deliverable is a research doc plus a freshness registration, not code. The findings doc and its freshness registration still exist only in the pre-re-home source tree. Same defect as the 2026-09-18 run, still OPEN at #393.
+
+Risk-bearing value enumeration: this item's in-repo diff on merged main is the brief markdown only (commits 527a938be, bb2079bdc, 41530fd25); no deliverable file landed, so there is no introduced literal to enumerate. The Deliverables name a freshness registration whose values (max-age-days, last-reviewed) are absent here — nothing to quote at a file:line on this tree.
+
+RISK-VALUE: N/A — enumeration over the item's merged-main diff (brief markdown only) and its named deliverables (research doc + freshness.yaml entry, both absent) found no literal on this tree; frontmatter risk is all-no, and the only irreversible-shaped act the brief guards against (making SpecMem authoritative over in-git registers) is excluded by its ground rules and never happened.
+
+VERIFY: FAIL — rows 1, 2, 4 fail by exit code; row 3 could-not-check (nothing to dereference). A real defect (deliverable never ported to this repo), not stale-shaped: paths and idioms in the Verify table are correct, and they pass against the pre-re-home source tree. Held at implemented; tracked at #393.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the harness-portability README table.

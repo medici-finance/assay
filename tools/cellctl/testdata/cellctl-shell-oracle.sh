@@ -1201,45 +1201,84 @@ cmd_set(){
 }
 
 gen_shims(){
-  mkdir -p "$CELL_DIR/shim"
+  mkdir -p "$CELL_DIR/shim" "$CELL_DIR/shim-gh"
   local b n rendered
   # The shim body template. Single-quoted heredoc on purpose: everything here is LITERAL shell
   # (evaluated when the generated shim itself runs, under the caller's REAL, un-swapped HOME —
   # only the `env HOME=...` on the exec lines below swaps it for the wrapped verb) except the
-  # three __TOKEN__ placeholders, substituted per-binary below via bash parameter expansion (never
+  # __TOKEN__ placeholders, substituted per-binary below via bash parameter expansion (never
   # sed: a bin path or CELL name containing `&` or a regex metacharacter would otherwise corrupt
   # the substitution).
   #
   # assay#1145: `gh`'s ambient credential (keychain on macOS, hosts.yml-adjacent elsewhere) is
   # keyed to the REAL HOME, not the cell one — so a `gh` subprocess a shimmed verb shells out to
-  # silently loses auth once HOME is swapped. Resolved HERE, before the swap, and threaded through
-  # as GH_TOKEN so it does: this widens what a `gh` child process can see, never what the verb's
-  # OWN config/state resolves against (still isolated to $CELL_HOME below) — the isolation the shim
-  # exists to provide is unchanged. An explicit GH_TOKEN/GH_ENTERPRISE_TOKEN already in the
-  # caller's env always wins and is never overridden or even looked up against.
-  local body
+  # silently loses auth once HOME is swapped. It is resolved HERE, before the swap.
+  #
+  # assay#1631: it is NOT handed to the verb as GH_TOKEN. Desk verbs read an inherited GH_TOKEN
+  # as the operator's EXPLICIT choice of credential (deskdispatch skipped its role-App mint on
+  # it), so exporting the human login there made every self-minting verb act as the human. The
+  # token travels as CELLCTL_GH_AMBIENT instead — a name no desk verb reads — and the only thing
+  # that turns it back into GH_TOKEN is the cell's `gh` wrapper (shim-gh/gh, prepended to the
+  # verb's PATH), which does so for a `gh` child with no GH_TOKEN of its own. So #1145's `gh`
+  # subprocess still authenticates, and no verb's own code ever sees the human credential as an
+  # override. An explicit GH_TOKEN/GH_ENTERPRISE_TOKEN in the caller's env still passes through
+  # untouched, and is never looked up against.
+  local body ghwrap
   body="$(cat <<'SHIM_TEMPLATE'
 #!/usr/bin/env bash
 # cellctl shim (__CELL__): run this desk verb with the CELL config-home; the session keeps the
 # real HOME. the ambient gh credential is keyed to the real HOME, so it is resolved HERE (before
-# HOME is swapped below) and threaded through as GH_TOKEN — a `gh` subprocess the verb shells out
-# to then still authenticates (assay#1145) without widening the HOME swap itself.
-gh_token=""
-if [[ -z "${GH_TOKEN:-}" && -z "${GH_ENTERPRISE_TOKEN:-}" ]] && command -v gh >/dev/null 2>&1; then
+# HOME is swapped below) and handed over as CELLCTL_GH_AMBIENT — never as GH_TOKEN, which desk
+# verbs read as an explicit operator override (assay#1631). Only the cell's gh wrapper, first on
+# the verb's PATH, turns it back into GH_TOKEN, for a `gh` child with none of its own (assay#1145).
+gh_token="${CELLCTL_GH_AMBIENT:-}"
+if [[ -z "$gh_token" && -z "${GH_TOKEN:-}" && -z "${GH_ENTERPRISE_TOKEN:-}" ]] && command -v gh >/dev/null 2>&1; then
   gh_token="$(gh auth token 2>/dev/null || true)"
 fi
 if [[ -n "$gh_token" ]]; then
-  exec env HOME="__CELL_HOME__" GH_TOKEN="$gh_token" "__BIN__" "$@"
+  # exported, never an env(1) argument: argv is readable by other local users for as long as
+  # env runs, the environment is not.
+  export CELLCTL_GH_AMBIENT="$gh_token"
+  exec env HOME="__CELL_HOME__" PATH="__GH_WRAP__:$PATH" "__BIN__" "$@"
 else
   exec env HOME="__CELL_HOME__" "__BIN__" "$@"
 fi
 SHIM_TEMPLATE
 )"
+  # The `gh` wrapper (assay#1631). It removes its own directory from PATH (every occurrence: a
+  # shimmed verb that runs another shimmed verb prepends it twice) so the `gh` it execs is the
+  # real one, never itself, and sets GH_TOKEN from CELLCTL_GH_AMBIENT only when the caller has
+  # no GH_TOKEN/GH_ENTERPRISE_TOKEN — a verb that hands its `gh` child its own role token keeps it.
+  ghwrap="$(cat <<'GH_WRAP_TEMPLATE'
+#!/usr/bin/env bash
+# cellctl gh wrapper (__CELL__): the ONE place the cell's ambient gh credential becomes GH_TOKEN,
+# and only for gh itself (assay#1631). A desk verb's own code never sees it as GH_TOKEN.
+wrap="__GH_WRAP__"
+p=":$PATH:"
+while [[ "$p" == *":$wrap:"* ]]; do p="${p//":$wrap:"/:}"; done
+p="${p#:}"; p="${p%:}"
+export PATH="$p"
+# gh gets the credential as GH_TOKEN and nothing else: CELLCTL_GH_AMBIENT is dropped from its
+# environment, and the value is exported rather than passed to env(1), so it is never in an argv.
+ambient="${CELLCTL_GH_AMBIENT:-}"
+unset CELLCTL_GH_AMBIENT
+if [[ -z "${GH_TOKEN:-}" && -z "${GH_ENTERPRISE_TOKEN:-}" && -n "$ambient" ]]; then
+  export GH_TOKEN="$ambient"
+fi
+unset ambient
+exec gh "$@"
+GH_WRAP_TEMPLATE
+)"
+  rendered="${ghwrap//__CELL__/$CELL}"
+  rendered="${rendered//__GH_WRAP__/$CELL_DIR/shim-gh}"
+  printf '%s\n' "$rendered" > "$CELL_DIR/shim-gh/gh"
+  chmod +x "$CELL_DIR/shim-gh/gh"
   for b in "$DESK_TOOLS_BIN"/*; do
     [[ -x "$b" && -f "$b" ]] || continue
     n="$(basename "$b")"
     rendered="${body//__CELL__/$CELL}"
     rendered="${rendered//__CELL_HOME__/$CELL_HOME}"
+    rendered="${rendered//__GH_WRAP__/$CELL_DIR/shim-gh}"
     rendered="${rendered//__BIN__/$b}"
     printf '%s\n' "$rendered" > "$CELL_DIR/shim/$n"
     chmod +x "$CELL_DIR/shim/$n"
@@ -2394,9 +2433,24 @@ cmd_desk(){
   # is itself a linked worktree (where .git is a file) still gets a lock rather than a 60s wait.
   local gitdir; gitdir="$(git -C "$CELL_REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo "$CELL_REPO/.git")"
   local lock="$gitdir/cellctl-fetch.lock"
-  local _i; for _i in $(seq 1 60); do mkdir "$lock" 2>/dev/null && break; sleep 1; done
+  local _i _held=0; for _i in $(seq 1 60); do mkdir "$lock" 2>/dev/null && { _held=1; break; }; sleep 1; done
+  # Pre-existing behaviour, kept: a lock still held after 60s is taken to be a dead boot's. This
+  # boot proceeds, and the release below removes that lock. If the holder is in fact alive,
+  # removing FETCH_HEAD under it makes ITS read fail — a refusal, never a stale boot.
+  [[ "$_held" -eq 1 ]] || echo "NOTICE: fetch lock $lock still held after 60s — proceeding without it" >&2
   # A fetch that lost the ref-lock race still wrote FETCH_HEAD, and FETCH_HEAD is all that is used
   # below — so a non-zero exit here is a notice, not a stop.
+  # FETCH_HEAD is removed before the fetch, so the one read below is always THIS fetch's. git
+  # truncates FETCH_HEAD itself before it contacts the remote, so a fetch that fails on auth or
+  # connect already leaves nothing to read. The removal is for the case git's own truncate cannot
+  # cover: a FETCH_HEAD git cannot open for writing (read-only file), where the fetch fails and the
+  # PREVIOUS boot's sha is left in place. And when the file cannot be removed either, the boot is
+  # refused (lock released first) — reading it would be that previous boot's main.
+  local fetch_head; fetch_head="$(git -C "$CELL_REPO" rev-parse --path-format=absolute --git-path FETCH_HEAD 2>/dev/null || true)"
+  if [[ -n "$fetch_head" ]] && ! rm -f "$fetch_head" 2>/dev/null; then
+    rmdir "$lock" 2>/dev/null || true
+    die "desk: cannot remove $fetch_head before the fetch — refusing to boot: a fetch that cannot rewrite it would leave a previous boot's main to read. Make it removable (check its permissions and its directory's), then re-run: cellctl desk $CELL $role"
+  fi
   # On the gitlab arm, GITLAB_TOKEN_STORE/DESKD_GITLAB_TOKEN_FILE provision the API token, but
   # nothing else wires a git credential for CELL_REPO's own fetch transport — on a private GitLab
   # project over HTTPS this fetch otherwise stops at an interactive `Username for
@@ -2406,12 +2460,17 @@ cmd_desk(){
   if [[ "$CELL_FORGE" == "gitlab" ]]; then
     gitlab_cred_args
     GIT_TERMINAL_PROMPT=0 git "${GITLAB_CRED_ARGS[@]}" -C "$CELL_REPO" fetch --no-tags origin main \
-      || echo "NOTICE: fetch returned non-zero (ref-lock race?) — using FETCH_HEAD" >&2
+      || echo "NOTICE: fetch returned non-zero — checking whether it wrote FETCH_HEAD" >&2
   else
-    git -C "$CELL_REPO" fetch --no-tags origin main || echo "NOTICE: fetch returned non-zero (ref-lock race?) — using FETCH_HEAD" >&2
+    git -C "$CELL_REPO" fetch --no-tags origin main || echo "NOTICE: fetch returned non-zero — checking whether it wrote FETCH_HEAD" >&2
   fi
-  local sha; sha="$(git -C "$CELL_REPO" rev-parse FETCH_HEAD)"
+  local sha; sha="$(git -C "$CELL_REPO" rev-parse --verify -q FETCH_HEAD || true)"
   rmdir "$lock" 2>/dev/null || true
+  # The refusal names the usual cause and the way out, because git's own output reads like a
+  # transient error: a credential helper answering with a dead token (an expired App token left in
+  # the checkout's shared config, say). The inspect command prints helper values verbatim, and an
+  # inline helper can carry that token — hence the warning not to paste it anywhere public.
+  [[ -n "$sha" ]] || die "desk: fetch of origin main in $CELL_REPO failed and wrote no FETCH_HEAD — refusing to boot on a stale main. An authentication refusal is the usual cause. See which credential helper answers for origin: git -C '$CELL_REPO' config --show-origin --get-regexp '^credential\.' (its output can contain a token — do not paste it into a PR or issue). Re-mint or replace the dead credential, or remove the stale helper entry, then re-run: cellctl desk $CELL $role"
   mkdir -p "$CELL_DIR/worktrees"
   if [[ -e "$wt/.git" ]]; then
     # An existing tree is MERGED up to the fetched main, or the boot stops — never left behind

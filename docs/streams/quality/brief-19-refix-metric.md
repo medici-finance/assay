@@ -138,6 +138,28 @@ A bare `-run` would print `no tests to run` and exit 0 (the vacuous pass statusg
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
+### Non-implementer verifier run — VERIFY: PASS on behaviour, held — 1/7 witness-clear, rows 1–6 held (#1800) — 2026-09-30 claude-opus-5-5-verifier
+
+Runner is not the implementer. Isolated worktree at merged main `b89b3957225e227e69d5b5ec7949344f580d9966` (HEAD == the forge's `commits/main`, cross-checked), host darwin/arm64, go1.27.1, `KUBECONFIG=/dev/null`. Implementing merge: #1658 (136f670eb). `gate: model`, all four risk answers `no`. Status stays `implemented`: rows 1–6 are `check:ci` and their network-off witness cannot run on a darwin host (#1800). All direct runs below are non-hermetic and supporting.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd qualgen && go build ./... && go vet ./...` | exit 0 | HELD (#1800) — direct run exit 0, no output | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | Verify row 2 command verbatim (`-run` anchored on the regression-of-link counted test) | exit 0 + named PASS line | HELD (#1800) — direct run exit 0; `--- PASS` for Test Refix_RegressionOfLink_Counted | 2026-09-30 | claude-opus-5-5-verifier |
+| 3 | Verify row 3 command verbatim (same-defect-class counted test) | exit 0 + named PASS line | HELD (#1800) — direct run exit 0; `--- PASS` for Test Refix_SameDefectClass_Counted | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | Verify row 4 command verbatim (earlier-fix-after-inducer not counted) + mutation | exit 0; mutant red | HELD (#1800) — direct run exit 0, `--- PASS`; verifier's own mutation (`et.Before(earliestInducing)` at qualgen/refix.go:371 forced true) → exit 1, `refix_test.go:154 expected refix_count measured-zero … got {State:measured Value:1}` (mutant killed) | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | Verify row 5 command verbatim (no linkage configured → could-not-measure) | exit 0 + named PASS line | HELD (#1800) — direct run exit 0; `--- PASS` for Test Refix_NoLinkageConfigured_CouldNotMeasure | 2026-09-30 | claude-opus-5-5-verifier |
+| 6 | Verify row 6 command verbatim (report refix section renders) | exit 0 + named PASS line | HELD (#1800) — direct run exit 0; `--- PASS`; asserts "PR #4242", "PR #4100" and "0.25" in the rendered view | 2026-09-30 | claude-opus-5-5-verifier |
+| 7 | `cd qualgen && go build -o $TMPDIR/qualgen19 . && $TMPDIR/qualgen19 report --out .. > $TMPDIR/quality19.md && grep -F 'Re-fix rate' $TMPDIR/quality19.md` | exit 0; section present | PASS — exit 0; `## Re-fix rate (regression-suite effectiveness)`, next line `not measured — populated once the defects table is traced … Never rendered as 0.` | 2026-09-30 | claude-opus-5-5-verifier |
+
+Ground checks: `regression-of` present in author-brief SKILL.md (lines 102, 469, 493, 503); the implementing diff touches neither qualgen/fixlinkage.go nor qualgen/szz.go (frozen fields intact); no threshold, budget or alarm added; `MetricRefix = "refix"` unique; an equal-time fix is not counted (strict `Before`).
+
+RISK-VALUE (trigger does not fire — risk all `no`, not irreversible, no risk-classed path; enumerated anyway):
+
+- RISK-VALUE: DERIVED — `shaPattern` min length 7 @ qualgen/regressionlink.go:83 — git's default minimum abbreviation; matched only against the identified-fix set, so a false prefix match is ~4e-5 at 10^4 fixes, and bounded by the ordering rule. Reversible (report-only metric).
+- RISK-VALUE: N/A — `MetricRefix`, the path/trailer regexes and the empty default class prefix are identifiers or format bindings; the only comparator (strict `Before`, refix.go:371) matches the brief's "a later or concurrent E is not a re-fix".
+
+Findings: F1 filed as #1844 — with every traced fix issue-less, no `regression-of:` and no class prefix, the window renders measured-zero where the brief says could-not-measure (outside every Verify row). F2 (minor): the planned `qualgen/testdata/refix/` fixtures were written inline in the tests instead. F3 (minor): row 6 checks a planted pre-computed rate is echoed, not derived through `ComputeRefix`.
 
 ## Review
 Gate: model — all four risk answers are no. It is a read-only metric over committed
