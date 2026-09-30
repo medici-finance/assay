@@ -289,17 +289,17 @@ harmlessly, which is why the close-authority rule sits beside this one.
    instance. Success on another revision is another `scope`, not recovery; only a same-scope re-check
    appends `state: recovered` + `recovery-ref`, count unchanged; a closed issue alone is not recovery.
    **Trigger.** Only `confirmed-defect` and `false-positive` count, deduped by `incident-group`. At 3
-   counted instances or the class's 2nd merged fix, whichever comes first — or at the **first** when
-   its `module:` carries a `brittle` mark in `docs/contracts.md` (deliverable: the investigation,
-   build-less-brittle/09, before any design brief) — label it `design-owed`, unpark its placeholder
-   (`todo`, `Parked` dropped — but a class on a `worker-desk` rule-4 risk-bearing surface stays
-   parked under `needs-decision` until the driver rules), and park each symptom placeholder
-   (`status: blocked`, body line `Parked on class #N.`); the design PR's `Closes` closes them.
-   A production-down or security symptom stays `todo` (two-strikes and `bleed` must reach it); a
-   `bleed` reply from the driver's own login naming a parked symptom sets it back to `todo`, `Parked`
-   dropped. **Re-park:** the scanner's `reactivate` (excluded label removed, or reopened) rewrites a
-   parked row `todo` but keeps its body, so each pass sets a `todo` row whose body says `Parked` back
-   to `blocked`. `intended-control` goes to the refusal-text owner as a wording fix, never design work.
+   counted instances or the class's 2nd merged fix — or at the **first** when its `module:` carries a
+   `brittle` mark in `docs/contracts.md` (deliverable: the investigation, build-less-brittle/09,
+   before any design brief) — label it `design-owed`, unpark its placeholder (`todo`, `Parked` line →
+   `Design-owed: deliverable a brief per author-brief, strong tier.`; a class on a `worker-desk`
+   rule-4 risk-bearing surface stays parked under `needs-decision` until the driver rules; on a
+   proceed ruling, unpark it as above), and park each symptom placeholder (`status: blocked`, body
+   line `Parked on class #N.`); the design PR's `Closes` closes them. A production-down or security
+   symptom stays `todo`; the driver's own-login `bleed` reply naming a parked symptom sets it `todo`,
+   `Parked` dropped. **Re-park:** a scanner `reactivate` (excluded label removed or reopened) sets a
+   parked row `todo`, body kept, so each pass re-blocks a `todo` row still saying `Parked`.
+   `intended-control` is a wording fix for its refusal-text owner, never design work.
 2. **`close-candidate` — the brief-write for a no-merge close.** When an issue must close with NO
    merged fix (`FIXED-NOT-CLOSED | WONTFIX | DUPLICATE | STALE`), mark the placeholder frontmatter
    `close-candidate: <verdict>` — a brief write, path-confined to `docs/streams/**`, on the scan
