@@ -72,6 +72,12 @@
       "file": "internal/verifycmd/verifycmd.go",
       "old": "|| strings.IndexByte(\".,;:!?)\", cell[k]) >= 0",
       "new": "|| false"
+    },
+    {
+      "name": "CR-1808-4: Marked stops at the first good marker (a later marker not set apart is never checked)",
+      "file": "internal/verifycmd/verifycmd.go",
+      "old": "\t\tif !found {\n\t\t\tfirst, found = c, true\n\t\t}",
+      "new": "\t\treturn c, true"
     }
   ]
 }

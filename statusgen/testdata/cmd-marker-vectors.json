@@ -51,6 +51,8 @@
     {"name": "marker opener after a parenthesis is not honoured", "cell": "see (`cmd: true`)", "marked": null},
     {"name": "marker glued to the text after it is not honoured", "cell": "then `cmd: true`x", "marked": null},
     {"name": "a parenthesised span before the marker stays plain", "cell": "In `Foo` (`foo.go`) then `cmd: true`", "marked": "true"},
-    {"name": "marker followed by punctuation is honoured", "cell": "then `cmd: true`, and restore", "marked": "true"}
+    {"name": "marker followed by punctuation is honoured", "cell": "then `cmd: true`, and restore", "marked": "true"},
+    {"name": "a later glued marker refuses the whole cell", "cell": "`cmd: go version` then `cmd: true`x", "marked": null},
+    {"name": "a later paren-led marker refuses the whole cell", "cell": "`cmd: go version` then (`cmd: true`)", "marked": null}
   ]
 }

@@ -38,12 +38,17 @@ import (
 const Marker = "cmd:"
 
 // Marked returns the command the cell's first honoured `cmd:` span names, or
-// ok=false when the cell carries none.
+// ok=false when the cell carries none. A cell with ANY marker span that does
+// not stand clear of its prose honours none, even after an earlier good one.
 func Marked(cell string) (string, bool) {
 	spans, plain := renderedCodeSpans(cell)
 	if !plain {
 		return "", false
 	}
+	// Every marker span is checked, not just the first: one that does not
+	// stand clear of its prose refuses the whole cell, exactly as statusgen's
+	// markedCommands does, so the two scanners never pick different commands.
+	first, found := "", false
 	for _, sp := range spans {
 		if !strings.HasPrefix(sp.text, Marker) {
 			continue
@@ -58,9 +63,11 @@ func Marked(cell string) (string, bool) {
 		if !sp.cleanEnd {
 			return "", false
 		}
-		return c, true
+		if !found {
+			first, found = c, true
+		}
 	}
-	return "", false
+	return first, found
 }
 
 // Lift returns the command a Verify Command cell names: the first honoured
