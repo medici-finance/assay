@@ -223,8 +223,38 @@ func (w witness) row() string {
 	if w.RunnerSource != "" {
 		runnerCell += " (" + w.RunnerSource + ")"
 	}
-	return fmt.Sprintf("| %s | `%s` | %s | sha256:%s | %s | %s |",
-		w.ID, w.Command, result, w.OutHash, w.Date, runnerCell)
+	return fmt.Sprintf("| %s | %s | %s | sha256:%s | %s | %s |",
+		w.ID, codeSpanOf(w.Command), result, w.OutHash, w.Date, runnerCell)
+}
+
+// codeSpanOf writes cmd as ONE inline code span that witnessCommandOf lifts back
+// whole (#1808 review A4). A command with no backtick keeps the single-backtick
+// form every existing witness row has, byte for byte. A command that contains
+// backticks (authored inside a longer backtick fence) is fenced with a run one longer
+// than its longest backtick run, padded with a space where it starts or ends
+// with a backtick, as CommonMark requires; a single-backtick fence would close
+// at the first inner backtick and the witness would record a truncated command.
+func codeSpanOf(cmd string) string {
+	longest, run := 0, 0
+	for i := 0; i < len(cmd); i++ {
+		if cmd[i] == '`' {
+			run++
+			if run > longest {
+				longest = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	if longest == 0 {
+		return "`" + cmd + "`"
+	}
+	fence := strings.Repeat("`", longest+1)
+	body := cmd
+	if strings.HasPrefix(body, "`") || strings.HasSuffix(body, "`") {
+		body = " " + body + " "
+	}
+	return fence + body + fence
 }
 
 // exitCell renders the exit code, or `-` when nothing ran. `exit=-1` would read
@@ -1083,13 +1113,20 @@ type verifyRow struct {
 	// whole inherited corpus), cmd, or pwsh. runWitnesses dispatches the row to
 	// this shell; a shell unavailable on the runner's OS is could-not-run.
 	Shell string
+	// ProseLed is set when the row's Command cell is one the lint flags as
+	// prose-led-command (#1805): its first code span, the text the lift returns,
+	// is a mention (a file, an identifier, a lone word) rather than a command.
+	// runWitnesses records such a row could-not-run WITHOUT executing it, because
+	// running the mention can exit 0 (`gh` with no arguments does) and record a
+	// pass for a check that never ran. The value is the NOTICE's reason text.
+	ProseLed string
 }
 
 func briefVerifyRows(verifySection string) []verifyRow {
 	var rows []verifyRow
 	ordinal := 0
 	verifyRowTable(verifySection, func(r verifyRowCells) {
-		cmd := codeSpan(r.Command)
+		cmd := verifyCommand(r.Command)
 		if strings.TrimSpace(cmd) == "" && strings.TrimSpace(r.Expect) == "" {
 			return
 		}
@@ -1098,7 +1135,11 @@ func briefVerifyRows(verifySection string) []verifyRow {
 		if v := normalizeRowID(r.Num); v != "" {
 			id = v
 		}
-		rows = append(rows, verifyRow{ID: id, Command: cmd, Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell()})
+		row := verifyRow{ID: id, Command: cmd, Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell()}
+		if first, why := proseLedCommandWhy(r.Command); why != "" {
+			row.ProseLed = "first span " + strings.ReplaceAll(first, "|", "\\|") + " is " + why
+		}
+		rows = append(rows, row)
 	})
 	return rows
 }
@@ -1159,6 +1200,19 @@ func runWitnesses(root string, rows []verifyRow, runner, runnerSource, tree, dat
 			})
 			continue
 		}
+		// A prose-led row (#1805, #1808 review A1) is never executed: its lifted
+		// command is a mention, and running it measures nothing — it exits 127
+		// (could-not-run anyway) or, for a word like `gh`, exits 0 and would record
+		// a pass for a check that never ran. Recorded could-not-run with the lint's
+		// rule tag, so the Evidence says why; a `cmd:` marker clears it.
+		if r.ProseLed != "" {
+			out = append(out, witness{
+				ID: r.ID, Command: r.Command, State: stateCouldNotRun, Exit: -1,
+				Date: date, Runner: runner, RunnerSource: runnerSource, Tree: tree,
+				Note: proseLedNote(r.ProseLed),
+			})
+			continue
+		}
 		var res runResult
 		if r.Class == classCheckCI {
 			res = runHermeticallyWith(root, r.Command, timeout, plan, r.Shell)
@@ -1193,6 +1247,12 @@ func runWitnesses(root string, rows []verifyRow, runner, runnerSource, tree, dat
 		})
 	}
 	return out
+}
+
+// proseLedNote is the could-not-run note for a prose-led row: the lint's
+// stable rule tag first (greppable in Evidence), then the reason and the fix.
+func proseLedNote(reason string) string {
+	return ruleProseLedCommand + ": not executed; the " + reason + ", not a command. Mark the command with a cmd: code span"
 }
 
 // witnessTable renders a full Evidence table for a run.
@@ -1306,6 +1366,13 @@ func checkWitnesses(verifySection, evidenceSection string) []checkFinding {
 		default:
 			switch witnessStateOf(latest) {
 			case statePass:
+				// A pass recorded (by an older binary) on a row now flagged
+				// prose-led (#1808 review A2) measured the mention, not a check:
+				// verifyrun would not run it today, so the pass proves nothing.
+				if r.ProseLed != "" {
+					out = append(out, checkFinding{r.ID, stateCouldNotRun, proseLedNote(r.ProseLed)})
+					break
+				}
 				out = append(out, checkFinding{r.ID, statePass, "witness matches the row and passed"})
 			case stateFail:
 				out = append(out, checkFinding{r.ID, stateFail, "the witness records a failure"})

@@ -524,6 +524,10 @@ it is an authoring convention only.
 | rule | what it checks | status |
 | --- | --- | --- |
 | `bre-alternation` | a pipe in a basic-regex grep pattern (no `-E`/`-P`) is an ordinary character, so the pattern matches the Verify row itself | advisory |
+| `cmd-marker-ambiguous` | a Command cell carrying more than one `cmd:`-marked code span, so which command the row names is ambiguous | advisory |
+| `cmd-marker-not-honoured` | a `cmd:` span verifyrun ignores because the rendered cell may not show it as code (backslash-escaped backticks; raw HTML, a link, an image, a dollar in any spelling or a character reference in the cell's prose; a span fused to the text before it; or a marker not set apart by whitespace), so the row runs its first span | advisory |
+| `cmd-marker-overrides-command` | a `cmd:` marker that replaces a first code span which reads as a command itself (multi-word), so the row runs something other than the span a reader sees first | advisory |
+| `cmd-marker-vacuous` | a `cmd:`-marked command that cannot fail (`true`, `:`, `exit 0`, a lone `echo`), so the row passes whatever the tree holds | advisory |
 | `consumers-flow-verify-row` | that a shared-value brief's Verify table carries at least one row exercising the cross-component flow end-to-end — a judgement call no lint decides | not enforced |
 | `consumers-followup-missing-brief` | a `consumers: follow-up <stream>/<NN>` whose target is not a brief in any stream README — the routing claim is false | fatal |
 | `consumers-followup-no-target` | a `follow-up` routing that names no `<stream>/<NN>` target — a deferral with no holder | advisory |
@@ -546,6 +550,7 @@ it is an authoring convention only.
 | `pattern-review-same-role` | a pattern node whose evidence includes a review claim but shares its role with the node that produced its input — the implementer<->reviewer separation is not machine-checked | fatal |
 | `pattern-risk-input-missing-verdict` | a pattern's `risk-input` omits one of the four risk-class verdicts (low/standard/elevated/human) — an instance of that risk class has no declared mandatory gates | fatal |
 | `pipeline-exit-sunk` | a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail | advisory |
+| `prose-led-command` | a prose Command cell whose first code span — the text the lift returns — is a mention (a file, a path, an `owner/repo`, a code identifier, a word ahead of the real command), not a command; verifyrun records the row could-not-run until the command is marked with a `cmd:` code span | advisory |
 | `rE2-literal-pipe` | a `\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation | advisory |
 | `shredded-cell` | a raw `|` in the Command cell is read as a table delimiter, truncating the command and shifting every later column | advisory |
 | `stream-cap` | a change that adds an active stream past the per-root active-stream cap (ASSAY_STREAM_CAP) with no offsetting park — no net new streams past the cap | fatal |
