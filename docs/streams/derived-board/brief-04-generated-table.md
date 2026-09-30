@@ -333,7 +333,28 @@ RISK-VALUE: DERIVED — [skip-status-regen] = "chore(status): regenerate [skip-s
 RISK-VALUE: N/A — enumeration over statusgen/readmetable.go, regen.go and parse.go found no bound, threshold, tolerance, timeout, limit or authority binding. briefsMarkerBegin/End (readmetable.go:45-46) and the "generated" opt-in are marker and opt-in strings that fail safe by construction: a board: generated README without markers is a hard error or lint PROBLEM, never a silent no-op, and without the opt-in the README stays on the hand-table path. The pull-requests: read and issues: read scopes named in the Deliverables are not on merged main, so there is no value to derive (open question, carried by rows 5-6).
 
 **VERIFY: BLOCKED — 6/8 pass (rows 1,2,3,4,7,8 on shipped code; row 4 end-to-end by hand), 2 could-not-check (rows 5-6, human-action).** The schedule trigger and read-only reconcile permissions in the statusgen workflow are still the unlanded human-gated workflow-file half (an App cannot push .github/workflows). This is unchanged since 2026-09-06 and tracked at #1175. The witness fail on row 4, and the --root . form in rows 2-3, are Verify-table check-definition defects, not code defects. Status stays implemented; no flip.
+### Non-implementer verifier run — VERIFY: BLOCKED — 6/8 pass, rows 5-6 await the human-gated workflow half (#1175) — 2026-09-30 claude-opus-5-5-verifier
 
+Runner is not the implementer. Isolated worktree at merged main `b89b3957225e227e69d5b5ec7949344f580d9966` (HEAD == the forge's `commits/main`). `gate: model`, all risk answers `no`. Offline envelope; statusgen built from source; scratch TMPDIR outside the repo; tree clean after the run. Re-woken because `statusgen/main.go` changed since the 2026-09-27 pass (#1803, off this brief's path); the workflow file and the README-table code are unchanged. Status stays `implemented`.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd statusgen && go test . -run ReadmeTable -count=1 -v` | all PASS | PASS — exit 0; 6 tests RUN and PASS, 0 SKIP | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | `cd statusgen && go run . regen --readmes --root .. --offline`, then count non-table changed lines in the derived-board README diff | 0 | PASS — exit 0; 0 non-table lines, README canonical on main. The literal `--root .` form roots at `statusgen/` (no `docs/`) and checks nothing | 2026-09-30 | claude-opus-5-5-verifier |
+| 3 | the row-2 regen run twice, then `git status --porcelain docs/streams` from the repo root | 0 lines | PASS — exit 0; 0 lines (idempotent). The literal `--root .` form checks nothing, as row 2 | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | edit row 01's title cell in the derived-board README (GNU `sed -i`), then `cd statusgen && go run . --lint --root ..`; restore | lint PROBLEM | PASS — baseline rc=0; after the edit rc=1, `PROBLEM: derived-board README: hand edit to a generated table — row 01 authoring cells (title/wave/effort) differ from the brief frontmatter`; restored. The literal BSD `sed -i ''` form exits 2 under GNU sed | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | `python3 -c` load `.github/workflows/assay-statusgen.yml`, assert a `schedule` trigger | ok | FAIL (human-gated half) — exit 1, `KeyError: 'on'`; trigger keys are pull_request and push only | 2026-09-30 | claude-opus-5-5-verifier |
+| 6 | `grep -c -E -e 'pull-requests: read' -e 'issues: read' .github/workflows/assay-statusgen.yml` | ≥1 | FAIL (human-gated half) — 0; every permissions block declares only `contents: read` | 2026-09-30 | claude-opus-5-5-verifier |
+| 7 | `grep -c 'statusgen:briefs:begin' docs/streams/derived-board/README.md` | 1 | PASS — 1 | 2026-09-30 | claude-opus-5-5-verifier |
+| 8 | `cd statusgen && go run . init --dry-run` into a scratch path, count `reconcile` | ≥1 | PASS (weak) — 1; the only match is a scaffold comment line; no directory created | 2026-09-30 | claude-opus-5-5-verifier |
+
+RISK-VALUE (all values reversible):
+
+- RISK-VALUE: DERIVED — `[skip-status-regen]` marker @ .github/workflows/assay-statusgen.yml:161 — the regen commit carries it and both push-job guards (:92, :203) skip any head commit containing it, so the job cannot re-trigger itself; the literal is identical in the init scaffold (statusgen/init.go:560, :772, regex :749).
+- RISK-VALUE: DERIVED — lifecycle column offsets 4, 5, 6, width 7 @ statusgen/readmetable.go:256 — the 7-column header at :50 zero-indexes Status=4, Verified=5, Reviewed=6; the offsets are only a fallback, overridden when a real header row parses (:263-266).
+- RISK-VALUE: N/A — markers, the `generated` opt-in and file mode fail safe; the read scopes cannot be derived because they are absent from main (rows 5-6).
+
+Findings: (1) rows 5-6 fail exactly as in every pass since 2026-09-06 — the human-gated workflow half (an App cannot push workflow files), tracked on #1175. (2) New: no workflow on main runs `regen --readmes` at all, so push-to-main never regenerates stream README tables; the brief's "SHA-only changes land on the next push-to-main regen" does not hold on main, independent of the schedule trigger (attached to #1175). (3) Row 8 is weak: the scaffold has the `regen --readmes` step but no schedule trigger or reconcile PR path, and `examples/adopter-scaffold/` does not exist on main. (4) Rows 2-4 carry command defects (`--root .` from `statusgen/`, BSD `sed -i ''`, unescaped pipes in the Command cell); the corrected forms were run.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
