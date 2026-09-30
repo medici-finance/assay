@@ -1552,6 +1552,16 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				if validHomedInShape(bf.HomedIn) {
 					row.HomedIn = bf.HomedIn
 				}
+				// issues: rides along as FULL refs for the critical tier's main-red
+				// arm only (drivecritical.go). A bare number resolves against the
+				// stream's own repo:; with none declared it cannot resolve, so it
+				// is left off (the arm never guesses a repo). Never a score input.
+				row.IssueRefs = nil
+				if s.Repo != "" {
+					for _, n := range bf.Issues {
+						row.IssueRefs = append(row.IssueRefs, fmt.Sprintf("%s#%d", s.Repo, n))
+					}
+				}
 				// measures worms into the Brief row for the drain-before-
 				// instrument eligibility gate. Wired UNCONDITIONALLY — unlike
 				// value/exec-tier/blocked-by, an invalid name is NOT dropped

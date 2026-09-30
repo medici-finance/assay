@@ -55,8 +55,10 @@ func withStampAuthorities(t *testing.T, auths ...string) {
 // TestDriveCriticalTierNeverBuried (brief-44 Verify row 5): the lexicographic
 // (criticalTier, score) order ranks main-red / stamped-security / high-unblocks
 // (blockedCount≥3) / reviewer-finding rows ABOVE all scores; no intensity — surge
-// included — can pass the critical tier; membership is machine-derived / stamped,
-// never self-declared.
+// included — can pass the critical tier; membership is derived from linkage fields
+// and stamps, never from a "critical" flag. (Which of those inputs an ordinary PR
+// can write is the RESIDUAL named in drivecritical.go; this test pins the ordering
+// and the derivation, not the authenticity of the linkage.)
 func TestDriveCriticalTierNeverBuried(t *testing.T) {
 	// The critical tier is applied only when a drive is active. A SURGE drive covers
 	// the routine stream — the strongest intensity — and must STILL sit below a
@@ -138,7 +140,8 @@ func TestDriveCriticalTierNeverBuried(t *testing.T) {
 	})
 
 	t.Run("reviewer-finding-arm", func(t *testing.T) {
-		// An unresolved reviewer finding naming the brief qualifies it (machine-derived).
+		// An unresolved reviewer finding naming the brief qualifies it (derived from the
+		// findings entry, which carries no actor — see the RESIDUAL in drivecritical.go).
 		findings := []Finding{{ID: "F-leak-01", Affects: []string{"sec/01"}, Resolved: false}}
 		if arm := criticalTierArm(Brief{Num: "01", Status: "todo"}, "sec", reciprocatedRevDeps{}, findings); arm != "reviewer-finding" {
 			t.Fatalf("a brief named by an unresolved finding must qualify via reviewer-finding, got %q", arm)
@@ -172,14 +175,14 @@ func TestDriveCriticalTierNeverBuried(t *testing.T) {
 		}
 	})
 
-	t.Run("main-red-arm-deferred", func(t *testing.T) {
-		// The main-red arm is a documented seam: it must always report false (statusgen
-		// cannot poll live CI offline). This pins the deferral so it cannot silently
-		// grow a network read.
-		if mainRedCritical(Brief{Num: "01", Status: "todo"}, "any") {
-			t.Fatal("the main-red arm is DEFERRED and must always report false pending an in-tree machine-derived signal")
-		}
-	})
+	// Row 5's three formerly-dark arms (drivecritical_mainred_test.go): main-red
+	// from the injected --main-health input, stamped-security from the roster-
+	// configured authority set, and reviewer-finding through the finding's control:.
+	t.Run("main-red-fix-outranks-surge", testMainRedFixOutranksSurge)
+	t.Run("main-red-needs-red-and-linkage", testMainRedNeedsRedAndLinkage)
+	t.Run("main-red-could-not-check-is-named", testMainRedCouldNotCheckIsNamed)
+	t.Run("stamped-security-authority-from-config", testStampedSecurityFromConfig)
+	t.Run("reviewer-finding-reaches-board-via-control", testReviewerFindingReachesBoardViaControl)
 }
 
 // TestDriveCriticalArmDisplayedAttributed pins that a critical pick carries its

@@ -388,6 +388,8 @@ func (p *Placeholder) toBrief() Brief {
 		Schema:  "placeholder-v1",
 		Value:   p.Value,
 		Blocked: p.Blocked,
+		// The placeholder's own issue, as a full ref, for the main-red arm.
+		IssueRefs: []string{fmt.Sprintf("%s#%d", p.Repo, p.Issue)},
 	}
 }
 

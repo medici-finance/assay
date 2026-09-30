@@ -70,6 +70,11 @@ type dispatchView struct {
 	DriveInFlight        int    `json:"driveInFlight,omitempty"`
 	HeldByDriveWorkerCap int    `json:"heldByDriveWorkerCap,omitempty"`
 	DriveWorkerUnknown   string `json:"driveWorkerUnknown,omitempty"`
+	// MainHealth is the main-red arm's input state while a drive is active
+	// ("could-not-check" | "green" | "red:<refs>"); absent with no active drive, so
+	// a no-drive payload is unchanged. could-not-check means no main-red fix can be
+	// lifted into the critical tier on this run — it is not a reading of green.
+	MainHealth string `json:"mainHealth,omitempty"`
 }
 
 // runNextUp loads streams, runs the SAME nextUp() selection the STATUS.md board
@@ -91,6 +96,7 @@ func runNextUp(root string) int {
 	// nil is the inert default (the reviewer-finding critical arm only fires when a
 	// drive is active).
 	activeFindings = findings
+	wireCriticalStampAuthorities(scanEffectiveConfig())
 	for _, s := range streams {
 		rel, _ := filepath.Rel(root, s.Dir)
 		s.LastTouch = gitLastTouch(root, rel)
@@ -158,6 +164,7 @@ func buildDispatchView(nu NextUp, streams []*Stream, repo string, claimSource Cl
 		SerializedUnknown: nu.SerializedUnknown,
 		MeasuresGated:     nu.MeasuresGated,
 		MeasuresUnknown:   nu.MeasuresUnknown,
+		MainHealth:        nu.MainHealth,
 	}
 	// The worker-pool floor binds HERE, on the queue a dispatcher starts from: drive
 	// picks in rank order take the headroom (driveWorkerCap − in-flight drive work);

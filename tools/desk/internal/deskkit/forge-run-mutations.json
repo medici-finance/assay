@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestRunWorkflow|TestApproveGateCredentialCannotApprove|TestApproveGate|TestGitLabRunWorkflow|TestRunStatus|TestRunID|TestResolveRunCredential|TestRunCredentials|TestForgeGithubGolden|TestForgeGitlabGolden'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestRunWorkflow|TestApproveGateCredentialCannotApprove|TestApproveGate|TestGitLabRunWorkflow|TestRunStatus|TestRunID|TestResolveRunCredential|TestRunCredentials|TestExtCatalogue|TestRosterKnownKeySet|TestForgeGithubGolden|TestForgeGitlabGolden'",
   "control": {
     "name": "CONTROL — the GitHub dispatch body loses its ref",
     "file": "internal/deskkit/forge_github.go",
@@ -54,6 +54,24 @@
       "file": "internal/deskkit/forge_github.go",
       "old": "\tif !match[0].CurrentUserCanApprove {",
       "new": "\tif false && !match[0].CurrentUserCanApprove {"
+    },
+    {
+      "name": "ASSAY_RUN_CREDENTIALS is catalogued as an EXTENSION key again (the trust classification is reverted)",
+      "file": "internal/deskkit/rosterconfig.go",
+      "old": "\tEnvRepoForges:         \"repo-forges\",\n\tEnvChannelDriftTarget: \"channel-drift-target\",",
+      "new": "\tEnvRepoForges:         \"repo-forges\",\n\tEnvRunCredentials:     \"run-credentials\",\n\tEnvChannelDriftTarget: \"channel-drift-target\","
+    },
+    {
+      "name": "a malformed ASSAY_RUN_CREDENTIALS no longer refuses the roster (its problems are swallowed)",
+      "file": "internal/deskkit/rosterconfig.go",
+      "old": "\tcfg.RunCredentials = parseRunCredentials(vals[EnvRunCredentials], bad)",
+      "new": "\tcfg.RunCredentials = parseRunCredentials(vals[EnvRunCredentials], func(string, ...any) {})"
+    },
+    {
+      "name": "the resolver's own refused-roster check is removed (the lower layer relies on the caller's gate)",
+      "file": "internal/deskkit/runcredential.go",
+      "old": "\tif len(cfg.Problems) > 0 {",
+      "new": "\tif false && len(cfg.Problems) > 0 {"
     }
   ]
 }
