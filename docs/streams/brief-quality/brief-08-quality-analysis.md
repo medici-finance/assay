@@ -63,6 +63,7 @@ Run from the repository root unless the command changes directory. Proposed test
 |---|---|---|---|
 | 1 | check | `cd qualgen && go test -run '^TestQualityAnalysisDenominatorsMatchGolden$' -v ./briefquality/... > "${TMPDIR:-/tmp}/bq08a.out" 2>&1 && grep -q -F -- '--- PASS: TestQualityAnalysisDenominatorsMatchGolden' "${TMPDIR:-/tmp}/bq08a.out" && go test -run '^TestQualityAnalysisMissingStatesMatchGolden$' -v ./briefquality/... > "${TMPDIR:-/tmp}/bq08b.out" 2>&1 && grep -q -F -- '--- PASS: TestQualityAnalysisMissingStatesMatchGolden' "${TMPDIR:-/tmp}/bq08b.out"` | exit 0; a missing test fails the row instead of passing vacuously |
 | 2 | check | `cd qualgen && go test ./... -count=1` | exit 0; neighboring quality commands preserved |
+| 3 | check | `cd qualgen && go test -run '^TestQualityAnalysisAbandonedCohortMatchesGolden$' -v ./briefquality/... > "${TMPDIR:-/tmp}/bq08c.out" 2>&1 && grep -q -F -- '--- PASS: TestQualityAnalysisAbandonedCohortMatchesGolden' "${TMPDIR:-/tmp}/bq08c.out"` | exit 0; abandoned and late-corrected cohorts stay in the denominator and fixed-cohort cost (Tasks 3–4); a missing test fails the row |
 | 90 | check | `statusgen --root . --consumers --brief brief-quality/08` | exit 0 on the implementation branch after dispositions are updated to match the actual diff; inherited/out-of-scope claims remain explicitly unchecked |
 
 ## Pre-mortem

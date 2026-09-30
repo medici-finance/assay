@@ -19,7 +19,7 @@ issues: []
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Define the brief assessment and outcome contract](brief-01-design-contract.md) | 0 | M | implemented | — | — |
+| 01 | [Define the brief assessment and outcome contract](brief-01-design-contract.md) | 0 | M | todo | — | — |
 | 02 | [Ratify acceptance-review and pilot policy](brief-02-policy-rulings.md) | 1 | S | todo | — | — |
 | 03 | [Extend brief parsing, lint and templates with six dimensions](brief-03-assessment-schema.md) | 2 | M | todo | — | — |
 | 04 | [Rewrite authoring and review procedures around assessed contracts](brief-04-desk-procedures.md) | 3 | M | todo | — | — |
