@@ -382,7 +382,13 @@ func checkBriefInfoVerified(root string, info *briefInfo) error {
 	if err != nil {
 		return fmt.Errorf("cannot read execution witnesses: %w", err)
 	}
-	findings := checkWitnesses(verify, evidence)
+	// This verb does not run the lint, so it refuses the #1939 case itself: a
+	// closure is never authorized over a section the parser and the rendered
+	// page may read differently.
+	findings, refusal := closureWitnesses(verify, evidence)
+	if refusal != "" {
+		return fmt.Errorf("verified outcome requires well-formed Verify and Evidence sections: %s", refusal)
+	}
 	if len(findings) == 0 {
 		return fmt.Errorf("verified outcome requires Verify rows with passing execution witnesses")
 	}

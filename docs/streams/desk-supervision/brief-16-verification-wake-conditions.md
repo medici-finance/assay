@@ -143,6 +143,38 @@ Observations (outside the Verify table; judgment over the declared deliverable s
 3. tools/desk/README.md cites the spec as docs/streams/example-stream/verify-wake-v1.md, a path the slug-neutralising commit introduced. It does not resolve; the real spec is docs/streams/desk-supervision/verify-wake-v1.md.
 
 VERIFY: BLOCKED — rows 1-4 could-not-check (check:ci hermetic witness owed on a Linux runner, #1491); direct runs PASS 4/4 and 5/5 mutants caught, supporting only. Status stays implemented. blocker: environment.
+### Verification — 2026-09-30 (assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) (on-behalf-of human:ian)) — 2026-09-30 claude-opus-5-5-verifier
+
+Non-implementer re-verify on merged main 35496323b8fc591651e44537baf51206cc22bbdd. First table: the `statusgen verifyrun` execution witness, landed verbatim. It ran on Linux (golang:1.25-bookworm, `--network none`, a full clone pinned to this SHA, statusgen built from main's own source) and passed 4/4. Second table: the hand run on the host (darwin/arm64, go1.27.1).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakeUnchangedIsVisibleWait$ -v -count=1` | pass exit=0 | sha256:858ad7a2895b | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakeRelevantChange$ -v -count=1` | pass exit=0 | sha256:b39423aa1307 | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakeUnknownAndLegacy$ -v -count=1` | pass exit=0 | sha256:a42af252455e | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/verifyloop/ -run ^TestVerifyWakePartialRows$ -v -count=1` | pass exit=0 | sha256:5888a434c0b6 | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+
+| # | Verify row | Expected | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | row 1 as written (exact command in the witness table above) | exit 0; named PASS; zero dispatches, one visible WAIT, incl. after restart | exit 0; "--- PASS: Test Verify Wake Unchanged Is Visible Wait (0.00s)"; "ok .../tools/desk/cmd/verifyloop 0.396s". Same result re-run under a network-denied macOS sandbox (exit 0, PASS) | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 2 | row 2 as written (exact command in the witness table above) | exit 0; named PASS; changed file / Verify def / tool / completed action wake, unrelated commit does not | exit 0; "--- PASS: Test Verify Wake Relevant Change (0.01s)"; "ok .../cmd/verifyloop 0.214s". Network-denied re-run exit 0, PASS | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 3 | row 3 as written (exact command in the witness table above) | exit 0; named PASS; unreadable and legacy distinct from empty/pass; no fabricated unchanged | exit 0; "--- PASS: Test Verify Wake Unknown And Legacy (0.00s)"; "ok .../cmd/verifyloop 0.233s". Network-denied re-run exit 0, PASS | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 4 | row 4 as written (exact command in the witness table above) | exit 0; named PASS; one newly runnable row executes without repeating held rows; no partial closes the brief | exit 0; "--- PASS: Test Verify Wake Partial Rows (0.00s)"; "ok .../cmd/verifyloop 0.211s". Network-denied re-run exit 0, PASS | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+
+Execution witness: `statusgen verifyrun` on linux, network-off, 4/4 pass at 35496323b8fc. This supersedes the hand run's could-not-check note on the hermetic witness.
+
+RISK-VALUE: DERIVED — Complete() bound len(r.Inputs) > 0 @ tools/desk/internal/deskkit/verifywake.go:132 — with an empty declared scope "every declared input unchanged" is vacuously true, which would hold a brief forever on no evidence; the brief's contract ("an incomplete input scope cannot establish unchangedness") requires exactly a non-empty scope; M3 shows row 3 catches its removal.
+RISK-VALUE: DERIVED — unreadable-first ordering, if len(unreadable) > 0 @ tools/desk/internal/deskkit/verifywake.go:238 — three-state instrument rule: a partly read scope cannot prove unchanged, so could-not-check must win over both hold and fire; M4 shows row 3 catches its removal.
+RISK-VALUE: DERIVED — IsFailedOrBlocked set {"verify-fail","fail","blocked","needs_context","needs-context"} @ tools/desk/internal/deskkit/verifywake.go:112 — the brief scopes wake to failed/blocked retries only; the set covers the loopengine verdict spellings lower-cased plus the sidecar spelling "verify-fail"; any outcome outside the set is never held, which fails toward dispatch (safe); M6 caught by all four rows.
+RISK-VALUE: DERIVED — partial-hold condition len(rec.Rows) > 0 && len(remaining) > 0 @ tools/desk/cmd/verifyloop/briefscan.go:419 — a receipt naming no rows is a whole-brief hold, one naming a strict subset leaves the remainder runnable, which is Task 3; M5 caught by row 4.
+RISK-VALUE: DERIVED (reversible, ranks last) — deadline fires on !now.Before(dl) @ tools/desk/internal/deskkit/verifywake.go:267 — inclusive at the deadline instant; an off-by-one tick costs at most one verifier slot. NextActor / "wait" / schema tag are printed labels, not authority grants; reversible.
+
+Notes:
+- The four named tests caught all 7 deliberately broken versions of the code (mutation probes run in a scratch export).
+- Finding (does not fail a row): in a scratch probe, the verifyloop landing flipped a PASS verdict for an item with held rows 2 and 3. Row 4's "no partial result closes the brief" is proven only for FAIL and BLOCKED. Today the only wired flip writer is the dry-run printer, and statusgen's held-row detector guards the real flip. Suggested follow-up: the landing refuses to flip while held rows are set.
+- Carried: the wake-receipt constructor is still called only from tests. The offline reader understands only tool and file inputs, so verify-def inputs read as could-not-check, which fails safe. The tools/desk README and a code comment cite a nonexistent example-stream spec path; the real spec is the desk-supervision verify-wake-v1 contract.
+
+VERIFY: PASS
 
 ## Review
 

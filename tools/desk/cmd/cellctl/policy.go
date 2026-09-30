@@ -70,8 +70,9 @@ type ModelPolicy struct {
 	Providers     map[string]PolicyProvider
 	Roles         map[string]PolicyRole
 	ProviderDesks map[string]map[string]ProviderDesk
-	// Banned is Deny plus the two built-in Opus-5 patterns, which apply even when `deny` is
-	// empty or omitted — the prohibition is not something a policy file can lift.
+	// Banned is the policy's own `deny` globs. The built-in Opus 5.0 prohibition is not listed
+	// here: policyDenied applies it to every value, even when `deny` is empty or omitted — the
+	// prohibition is not something a policy file can lift.
 	Banned []string
 	SHA256 string
 }
@@ -163,8 +164,13 @@ func globToRegex(pat string) string {
 	return b.String()
 }
 
+// policyDenied reports whether value is refused: always for the built-in Opus 5.0 prohibition
+// (isBannedOpus50), and otherwise when it matches one of the policy's `deny` globs in banned.
 func policyDenied(value string, banned []string) bool {
 	b := policyBase(value)
+	if isBannedOpus50(b) {
+		return true
+	}
 	for _, pat := range banned {
 		if regexp.MustCompile(globToRegex(strings.ToLower(pat))).MatchString(b) {
 			return true
@@ -243,13 +249,11 @@ func parseModelPolicy(raw []byte, path string) (*ModelPolicy, error) {
 		}
 	}
 	m.Deny = deny
-	// The built-in Opus-5.0 prohibition, applied even when `deny` is empty or omitted — a policy
-	// file cannot lift it. The patterns are ANCHORED at end-of-token (no TRAILING `*`) so they ban
-	// Opus 5.0 exactly — `claude-opus-5`, `claude-opus-5[1m]` (policyBase strips the tag),
-	// `gateway/claude-opus-5`, `Opus5` — while letting the valid Opus 5.5 top tier
-	// (`claude-opus-5-5`) through: that id ends in `opus-5-5`, not `opus-5`, so no pattern matches.
-	// `*opus-5-0` / `*opus-5.0` catch the explicit 5.0 spellings of the same tier.
-	m.Banned = append(append([]string{}, deny...), "*opus-5", "*opus5", "*opus-5-0", "*opus-5.0")
+	// The built-in Opus-5.0 prohibition is NOT a pattern here: policyDenied applies it to every
+	// value via isBannedOpus50 (model.go), which matches the 5.0 id by version — so a policy file
+	// cannot lift it, and a suffixed 5.0 id (a date, a provider tail) is the same tier as
+	// `claude-opus-5`, while Opus 5.5 (`claude-opus-5-5`) and the other 5.x minors stay allowed.
+	m.Banned = append([]string{}, deny...)
 
 	providersRaw, ok := top["providers"]
 	if !ok {

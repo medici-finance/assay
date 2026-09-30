@@ -360,6 +360,7 @@ func strandedAfterDeregister(guard *pathGuard, dir string, paths []string) ([]st
 // branch (delivered, sitting in a stale worker worktree) must not be able to refuse it.
 // `deskwt remove` already accepts a detached HEAD whose commit is proven on a remote (#851),
 // so the lifecycle closes. --detach and --branch are mutually exclusive.
+// semantic: S-worktree
 func cmdAdd(args []string) (err error) {
 	ac := &auditCtx{verb: "add"}
 	defer func() { ac.finalize(err) }()
