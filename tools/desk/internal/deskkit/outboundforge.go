@@ -76,7 +76,15 @@ func ForgeAccountFetcher(f Forge, cfg Config) (fetcher AccountFetcher, identitie
 }
 
 func (o *outboundForge) check(repo ForgeRepo, kind string, fields ...OutboundField) error {
-	return OutboundCheck(OutboundWrite{Role: o.role, Repo: repo.Slug(), Kind: kind, Fields: fields})
+	return o.checkItem(repo, 0, kind, fields...)
+}
+
+// checkItem is check for a write that targets item number on repo: the number is the
+// self-containment scan's evidence for naming a bare `#N` above it (OutboundWrite.NumberHint).
+// Every method whose signature carries the item number passes it here
+// (TestOutboundNumberHintOnDecorator finds them by reflection).
+func (o *outboundForge) checkItem(repo ForgeRepo, number int, kind string, fields ...OutboundField) error {
+	return OutboundCheck(OutboundWrite{Role: o.role, Repo: repo.Slug(), Kind: kind, Fields: fields, NumberHint: number})
 }
 
 func (o *outboundForge) FileIssue(repo ForgeRepo, in IssueInput) (*IssueRef, error) {
@@ -88,14 +96,14 @@ func (o *outboundForge) FileIssue(repo ForgeRepo, in IssueInput) (*IssueRef, err
 }
 
 func (o *outboundForge) PostComment(repo ForgeRepo, number int, body string) (*CommentRef, error) {
-	if err := o.check(repo, OutboundKindComment, OutboundField{"body", body}); err != nil {
+	if err := o.checkItem(repo, number, OutboundKindComment, OutboundField{"body", body}); err != nil {
 		return nil, err
 	}
 	return o.Forge.PostComment(repo, number, body)
 }
 
 func (o *outboundForge) PostCommentTyped(repo ForgeRepo, number int, kind TargetKind, body string) (*CommentRef, error) {
-	if err := o.check(repo, OutboundKindComment, OutboundField{"body", body}); err != nil {
+	if err := o.checkItem(repo, number, OutboundKindComment, OutboundField{"body", body}); err != nil {
 		return nil, err
 	}
 	return o.Forge.PostCommentTyped(repo, number, kind, body)
@@ -118,7 +126,7 @@ func (o *outboundForge) CreateDraftChange(repo ForgeRepo, in DraftChangeInput) (
 }
 
 func (o *outboundForge) EditChange(repo ForgeRepo, number int, in EditChangeInput) error {
-	if err := o.check(repo, OutboundKindChange,
+	if err := o.checkItem(repo, number, OutboundKindChange,
 		OutboundField{"title", in.Title}, OutboundField{"body", in.Body}); err != nil {
 		return err
 	}
@@ -126,7 +134,7 @@ func (o *outboundForge) EditChange(repo ForgeRepo, number int, in EditChangeInpu
 }
 
 func (o *outboundForge) PostReview(repo ForgeRepo, number int, in ReviewInput) error {
-	if err := o.check(repo, OutboundKindReview, OutboundField{"body", in.Body}); err != nil {
+	if err := o.checkItem(repo, number, OutboundKindReview, OutboundField{"body", in.Body}); err != nil {
 		return err
 	}
 	return o.Forge.PostReview(repo, number, in)
@@ -142,7 +150,7 @@ func (o *outboundForge) ApplyLabels(repo ForgeRepo, number int, change LabelChan
 			fields = append(fields, OutboundField{"description", l.Description})
 		}
 	}
-	if err := o.check(repo, OutboundKindLabel, fields...); err != nil {
+	if err := o.checkItem(repo, number, OutboundKindLabel, fields...); err != nil {
 		return nil, err
 	}
 	return o.Forge.ApplyLabels(repo, number, change)
@@ -154,7 +162,16 @@ func (o *outboundForge) ApplyLabels(repo ForgeRepo, number int, change LabelChan
 // disclosure, and re-refusing lines already on the branch would strand every append to a
 // file that predates the check. When the current content cannot be read the WHOLE new
 // content is checked — could-not-read never narrows the scan.
+//
+// The branch the file lands on is checked FIRST, as a ref: with StartBranch set the write
+// creates that branch and publishes its name exactly as a push does (OutboundCheckPush
+// checks the pushed ref the same way). An existing branch is re-checked harmlessly.
 func (o *outboundForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileResult, error) {
+	if in.Branch != "" {
+		if err := o.check(repo, OutboundKindRef, OutboundField{"branch", in.Branch}); err != nil {
+			return nil, err
+		}
+	}
 	added := string(in.Content)
 	if prior, ok := o.priorContent(repo, in); ok {
 		added = addedLinesAgainst(prior, in.Content)

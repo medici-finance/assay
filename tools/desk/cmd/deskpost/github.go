@@ -879,7 +879,7 @@ func (c *ghClient) checkRunsAt(sha string) (*checkRunsResp, error) {
 // the checking decorator does not wrap it, and a write that skipped the check here would be
 // the one seam a verb could publish through unchecked (desktools-v2/10).
 func (c *ghClient) postReview(pr int, head, event, body string) (string, error) {
-	if err := c.outboundCheck(deskkit.OutboundKindReview, body); err != nil {
+	if err := c.outboundCheck(deskkit.OutboundKindReview, pr, body); err != nil {
 		return "", err
 	}
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", c.owner, c.repo, pr)
@@ -890,7 +890,7 @@ func (c *ghClient) postReview(pr int, head, event, body string) (string, error) 
 // postComment posts a plain issue comment AS THE APP, after the outbound-write check (see
 // postReview).
 func (c *ghClient) postComment(pr int, body string) error {
-	if err := c.outboundCheck(deskkit.OutboundKindComment, body); err != nil {
+	if err := c.outboundCheck(deskkit.OutboundKindComment, pr, body); err != nil {
 		return err
 	}
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/comments", c.owner, c.repo, pr)
@@ -899,10 +899,11 @@ func (c *ghClient) postComment(pr int, body string) error {
 }
 
 // outboundCheck runs the outbound-write check over one text write this client makes, under
-// the reviewer App's custody.
-func (c *ghClient) outboundCheck(kind, body string) error {
+// the reviewer App's custody. pr is the item it targets: the self-containment scan's
+// evidence for naming a bare `#N` above it (OutboundWrite.NumberHint).
+func (c *ghClient) outboundCheck(kind string, pr int, body string) error {
 	return deskkit.OutboundCheck(deskkit.OutboundWrite{Role: "reviewer", Repo: c.owner + "/" + c.repo,
-		Kind: kind, Fields: []deskkit.OutboundField{{Name: "body", Text: body}}})
+		Kind: kind, NumberHint: pr, Fields: []deskkit.OutboundField{{Name: "body", Text: body}}})
 }
 
 // The mechanical verdict-time labels (size + surface) are NOT written from this file. They

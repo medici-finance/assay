@@ -136,11 +136,11 @@ var obTextMethods = map[string]obTextCall{
 		return err
 	}},
 	"PostComment": {OutboundKindComment, func(f Forge, r ForgeRepo, s string) error {
-		_, err := f.PostComment(r, 1, s)
+		_, err := f.PostComment(r, obNumber, s)
 		return err
 	}},
 	"PostCommentTyped": {OutboundKindComment, func(f Forge, r ForgeRepo, s string) error {
-		_, err := f.PostCommentTyped(r, 1, TargetIssue, s)
+		_, err := f.PostCommentTyped(r, obNumber, TargetIssue, s)
 		return err
 	}},
 	"EditComment": {OutboundKindComment, func(f Forge, r ForgeRepo, s string) error {
@@ -151,13 +151,13 @@ var obTextMethods = map[string]obTextCall{
 		return err
 	}},
 	"EditChange": {OutboundKindChange, func(f Forge, r ForgeRepo, s string) error {
-		return f.EditChange(r, 1, EditChangeInput{Title: "a neutral title", Body: s})
+		return f.EditChange(r, obNumber, EditChangeInput{Title: "a neutral title", Body: s})
 	}},
 	"PostReview": {OutboundKindReview, func(f Forge, r ForgeRepo, s string) error {
-		return f.PostReview(r, 1, ReviewInput{HeadSHA: "abc123", Event: "COMMENT", Body: s})
+		return f.PostReview(r, obNumber, ReviewInput{HeadSHA: "abc123", Event: "COMMENT", Body: s})
 	}},
 	"ApplyLabels": {OutboundKindLabel, func(f Forge, r ForgeRepo, s string) error {
-		_, err := f.ApplyLabels(r, 1, LabelChange{Target: TargetIssue, Add: []LabelSpec{{Name: s}}})
+		_, err := f.ApplyLabels(r, obNumber, LabelChange{Target: TargetIssue, Add: []LabelSpec{{Name: s}}})
 		return err
 	}},
 	"WriteFile": {OutboundKindFile, func(f Forge, r ForgeRepo, s string) error {
@@ -637,4 +637,28 @@ func TestOutboundForgeWrapsEveryWriteMethod(t *testing.T) {
 			t.Fatalf("ForgeFor returned %T for a GitLab repo, not the outbound-checked decorator", f)
 		}
 	})
+}
+
+// TestOutboundWriteFileChecksBranch pins that the file-write API checks the branch it lands
+// on as a ref: with StartBranch set the write CREATES that branch, publishing its name the
+// way a push does, and the push path already checks the pushed ref.
+func TestOutboundWriteFileChecksBranch(t *testing.T) {
+	obRoster(t)
+	defer SetOutboundNoticeWriter(&bytes.Buffer{})()
+	SetOutboundContext(OutboundContext{Tool: "branch", Verb: "writefile"})
+	fake := &recordingForge{}
+	_, err := OutboundChecked(fake, "worker").WriteFile(obRepo(obPublic), WriteFileInput{
+		File: "docs/note.md", Branch: "fix/" + obWithheld, StartBranch: "main",
+		Content: []byte("a neutral line\n"), Message: "add a note",
+	})
+	if err == nil || !IsRefused(err) || !obRuleMatches(err.Error(), RuleWithheldIdentifier) {
+		t.Fatalf("a withheld identifier in the created branch name: want a %s refusal, got %v",
+			RuleWithheldIdentifier, err)
+	}
+	if !strings.Contains(err.Error(), "at branch:1") || !strings.Contains(err.Error(), "(ref write to") {
+		t.Fatalf("refusal does not name the branch as a ref write: %v", err)
+	}
+	if len(fake.calls) != 0 {
+		t.Fatalf("the backend saw %d calls after a refusal, want ZERO", len(fake.calls))
+	}
 }

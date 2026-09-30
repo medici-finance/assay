@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -timeout 600s -run 'TestOutboundConformance|TestOutboundForgeWrapsEveryWriteMethod|TestOverrideAuditRowHoldsDigestNotText'",
+  "test": "go test ./internal/deskkit/ -count=1 -timeout 600s -run 'TestOutboundConformance|TestOutboundForgeWrapsEveryWriteMethod|TestOverrideAuditRowHoldsDigestNotText|TestOutboundNumberHint|TestOutboundWriteFileChecksBranch'",
   "control": {
     "name": "CONTROL — the outbound check passes every write (a refusal is computed and then dropped)",
     "file": "internal/deskkit/outbound.go",
@@ -66,6 +66,24 @@
       "file": "internal/deskkit/outboundpush.go",
       "old": "\t\tfields = append(fields, OutboundField{Name: fa.Path, Text: fa.Text})",
       "new": "\t\tfields = append(fields, OutboundField{Name: fa.Path, Text: \"\"})"
+    },
+    {
+      "name": "the item number dropped before the self-containment scan (a bare #N above the item is no longer named)",
+      "file": "internal/deskkit/outbound.go",
+      "old": "SelfContainOpts{Repo: w.Repo, NumberHint: w.NumberHint}",
+      "new": "SelfContainOpts{Repo: w.Repo}"
+    },
+    {
+      "name": "the decorator stops passing the item number of a comment, review, change edit or label write",
+      "file": "internal/deskkit/outboundforge.go",
+      "old": "Fields: fields, NumberHint: number})",
+      "new": "Fields: fields, NumberHint: 0})"
+    },
+    {
+      "name": "the file-write API stops checking the branch it creates",
+      "file": "internal/deskkit/outboundforge.go",
+      "old": "\tif in.Branch != \"\" {\n\t\tif err := o.check(repo, OutboundKindRef,",
+      "new": "\tif false && in.Branch != \"\" {\n\t\tif err := o.check(repo, OutboundKindRef,"
     }
   ]
 }

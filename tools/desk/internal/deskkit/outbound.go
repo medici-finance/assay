@@ -99,6 +99,14 @@ type OutboundWrite struct {
 	Kind string
 	// Fields is the text the write carries.
 	Fields []OutboundField
+	// NumberHint is the number of the item the write targets on Repo (the PR or issue being
+	// commented on, reviewed or edited), or zero for a write that targets no numbered item
+	// (a new issue, a file, a commit, a ref). It is the self-containment scan's only offline
+	// evidence for the bare-`#N` notice (SelfContainOpts.NumberHint): with it, a bare
+	// reference ABOVE the number is named as a probable cross-repo reference; without it the
+	// category reports itself NOT CHECKED. Every write to a numbered item sets it
+	// (TestOutboundWritesCarryNumber, TestOutboundNumberHintOnDecorator).
+	NumberHint int
 }
 
 // OutboundContext is the per-process state the check needs but a Forge method's arguments
@@ -318,7 +326,7 @@ func outboundScanField(w OutboundWrite, fd OutboundField, public bool) (refusals
 	}
 	// selfcontain.* and withheld.identifier — public and unknown-visibility targets only.
 	if public {
-		findings, scNotices := selfContainFindings(surface, text, SelfContainOpts{Repo: w.Repo})
+		findings, scNotices := selfContainFindings(surface, text, SelfContainOpts{Repo: w.Repo, NumberHint: w.NumberHint})
 		for _, n := range scNotices {
 			// A category that could not run is a property of the configuration, not of this
 			// field: drop the surface prefix so the per-context dedupe prints it ONCE.

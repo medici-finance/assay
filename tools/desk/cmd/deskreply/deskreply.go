@@ -157,7 +157,7 @@ func cmdReply(args []string) (err error) {
 	if berr != nil {
 		return berr
 	}
-	if serr := deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: repo, Kind: deskkit.OutboundKindComment,
+	if serr := deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: repo, Kind: deskkit.OutboundKindComment, NumberHint: pr,
 		Fields: []deskkit.OutboundField{{Name: "body", Text: string(body)}}}); serr != nil {
 		return serr
 	}

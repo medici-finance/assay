@@ -59,7 +59,7 @@ func runComment(owner, name string, num int, wantHead string, forcedKind *deskki
 			deskkit.MaybeExplain(stderr, opts.explain, err)
 			return withDigest(fromReadErr(preVerb, repo, num, "", err), dig)
 		}
-		if err := deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: repo, Kind: deskkit.OutboundKindComment,
+		if err := deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: repo, Kind: deskkit.OutboundKindComment, NumberHint: num,
 			Fields: []deskkit.OutboundField{{Name: "body", Text: string(body)}}}); err != nil {
 			deskkit.MaybeExplain(stderr, opts.explain, err)
 			return withDigest(fromReadErr(preVerb, repo, num, "", err), dig)

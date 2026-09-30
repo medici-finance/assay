@@ -993,7 +993,7 @@ func cmdAttach(args []string) (err error) {
 		return berr
 	}
 	// Pre-flight of the outbound-write check (see cmdNew); PostComment re-runs it at the seam.
-	if serr := deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: *repo, Kind: deskkit.OutboundKindComment,
+	if serr := deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: *repo, Kind: deskkit.OutboundKindComment, NumberHint: *to,
 		Fields: []deskkit.OutboundField{{Name: "body", Text: string(body)}}}); serr != nil {
 		return serr
 	}

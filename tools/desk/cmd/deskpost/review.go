@@ -136,7 +136,7 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 			deskkit.MaybeExplain(stderr, opts.explain, err)
 			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
 		}
-		if err := deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: repo, Kind: deskkit.OutboundKindReview,
+		if err := deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: repo, Kind: deskkit.OutboundKindReview, NumberHint: pr,
 			Fields: []deskkit.OutboundField{{Name: "body", Text: string(body)}}}); err != nil {
 			deskkit.MaybeExplain(stderr, opts.explain, err)
 			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)

@@ -222,6 +222,12 @@ decorator and against the push path, so a verb has no conformance of its own to 
 | C11 | any refused row, with the override and a 12-character reason | per the human's ruling | overridable rule ids pass and leave one audit row holding rule id + digest and NOT the text; non-overridable ids still refuse |
 | C12 | any refused row | any | the recording fake forge saw ZERO calls and the refusal text appears in no composed body |
 
+Coverage boundary: "one check" means every `Forge` write and deskpr's push. A push that does
+not go through deskpr (the generic push, merge and verify-loop tools, a hand-typed `git push`)
+is checked only where the `deskpushguard` pre-push hook is installed, and that hook fails open
+on could-not-check. Raw API writers that never hold a `Forge` (fleet provisioning, the release
+tagger's tag refs) are outside this brief's "Outward writes" inventory and are not covered.
+
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
