@@ -1,0 +1,2 @@
+### Fixed
+- windows-port/00's Verify row 8 (no unix-only syscall use outside a platform-split file) no longer fails on build-constrained `_unix_test.go` files: its exclusion now covers `_unix_test.go` and `_windows_test.go` as well as `_unix.go` and `_windows.go`. Row 2 now also checks that every `_unix_test.go` file carries an explicit `//go:build` constraint, so the wider exclusion cannot hide an unconstrained file. Rows 2 and 8 now lead with their command, so `statusgen verifyrun` runs the real check (#1454).
