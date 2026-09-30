@@ -1264,6 +1264,16 @@ func main() {
 		os.Exit(runReconcile(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen outcomes split` — the desk-supervision/24 migration: writes one record file
+	// per legacy docs/streams/verify-outcomes*.jsonl line under
+	// docs/streams/verify-outcomes/<stream>/, idempotent, `--check` audits without writing.
+	// Intercepted before flag parsing for verifyrun's reason: it owns its own
+	// --root/--check namespace and is a WRITE-capable subcommand (without --check), so like
+	// verifyrun it is never part of --lint.
+	if len(os.Args) > 1 && os.Args[1] == "outcomes" {
+		os.Exit(runOutcomes(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen regen --readmes` — positional subcommand (derived-board/04) that
 	// regenerates the marker-wrapped Briefs table in every board: generated stream
 	// README from the brief frontmatter, and — with an online --repo — prints the

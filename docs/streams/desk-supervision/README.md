@@ -132,7 +132,7 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 21 | [Reverify changed external prerequisites without a synthetic push](brief-21-external-prerequisite-reverification.md) | 1 | M | implemented | — | — |
 | 22 | [Configure provider, model and effort per cell role](brief-22-cell-model-policy.md) | 0 | M | implemented | — | — |
 | 23 | [Evidence lands on main behind a file-scoped gatekeeper — validator workflow + lander App](brief-23-evidence-lander-gatekeeper.md) | 2 | L | todo | — | — |
-| 24 | [One file per verify outcome — retire the shared appended outcomes log](brief-24-per-file-verify-outcomes.md) | 0 | L | todo | — | — |
+| 24 | [One file per verify outcome — retire the shared appended outcomes log](brief-24-per-file-verify-outcomes.md) | 0 | L | implemented | — | — |
 | 25 | [Carry a correctness approval across a merge of main that leaves the PR's diff byte-identical](brief-25-approval-carry-across-no-diff-merge.md) | 1 | L | todo | — | — |
 | 26 | [Land one verify tick's Evidence-only outcomes in one Evidence PR](brief-26-batched-evidence-landing-per-tick.md) | 1 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
