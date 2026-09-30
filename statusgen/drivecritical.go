@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -13,32 +15,50 @@ import (
 // with no drive there is nothing to bury and the ordinary score already orders the
 // board, so a no-drive board stays byte-identical to the pre-drives baseline.
 //
-// Membership is MACHINE-DERIVED / STAMPED, never self-declared — that is the whole
-// governance point (a stream must not be able to self-declare itself critical).
-// The derivation here is PURE and DETERMINISTIC over board-graph facts and stamped
-// labels only: no wall clock, no network. The tier is an ORDERING KEY, not the drive
-// term and not a metric — it is never exported.
+// Membership is DERIVED here, never read from a "this is critical" flag: no field
+// lets a brief or stream declare itself critical. The derivation is PURE and
+// DETERMINISTIC over board-graph facts, linkage fields and stamped labels only: no
+// wall clock, no network. The tier is an ORDERING KEY, not the drive term and not a
+// metric — it is never exported.
+//
+// RESIDUAL (named, not derived — the driver's to accept at merge): the inputs the
+// derivation reads are not all authenticated. Three of them are repo text that an
+// ordinary reviewed, human-merged PR can write: a brief's own `issues:` list (arm
+// 1's fix linkage), a README stamp cell (arm 2 — the authority NAME is checked
+// against configuration, but not who wrote the cell), and a findings entry's
+// `control:` (arm 4 — findingEntry carries no actor). So the brief's "never
+// self-declared" holds in the bounded sense that every linkage lands through review
+// and a human merge, not as a structural guarantee. Only arm 1's red and arm 2's
+// authority SET come from outside the tree (the caller's forge read and roster
+// configuration); arm 3's count is guarded by the reciprocity lint.
 //
 // The four arms (brief-44's Scoring section):
 //
-//   1. main-red        — DEFERRED. statusgen is byte-stable and offline; it cannot
-//                        poll live GitHub CI, and adding a network/live-CI read would
-//                        violate the deterministic-offline invariant. The arm is a
-//                        documented SEAM (mainRedCritical, always false) pending a
-//                        human ruling on an in-tree, machine-derived main-red marker.
-//   2. security/leak   — a STAMPED label whose authority is RATIFIED. The mechanism
-//                        (parse + authority check) ships here; the authority set is a
-//                        config PLACEHOLDER (criticalStampAuthorities), EMPTY by
-//                        default, so the arm is inert until a human ratifies WHO may
-//                        stamp. Reads only the stamped label, never an intensity term.
+//   1. main-red        — a main-red FIX. statusgen stays offline: whether main is
+//                        red is an INJECTED input (--main-health, mainhealth.go) the
+//                        caller supplies from its own forge read. A brief qualifies
+//                        when main is red AND the brief addresses one of the named
+//                        tracking issues (Brief.IssueRefs). Unset input is the
+//                        could-not-check state: the arm cannot fire and, while a
+//                        drive is active, the board says so — never a silent false.
+//   2. security/leak   — a STAMPED label whose authority is RATIFIED. The authority
+//                        set is roster configuration (ASSAY_CRITICAL_STAMP_AUTHORITIES,
+//                        wired by main into criticalStampAuthorities). UNSET is an
+//                        explicit state (criticalStampAuthoritiesSet is false): the arm
+//                        grants nothing, and any stamp present is reported as
+//                        could-not-check (criticalStampNotices), not silently ignored.
+//                        Reads only the stamped label, never an intensity term.
 //   3. high-unblocks   — blockedCount ≥ highUnblocksThreshold, over the reverse
 //                        typed-depends graph (buildRevDeps/blockedCount). The
 //                        dependency-edge reciprocity lint (brieffile.go) makes that
 //                        count un-gameable: a manufactured one-sided inbound edge is a
 //                        --lint PROBLEM, so blockedCount reflects genuine deps only.
-//   4. reviewer-finding — an unresolved reviewer finding names this brief (the
-//                        existing Finding.Affects/StaleRef linkage). Machine-derived:
-//                        a reviewer files the finding, the brief author cannot.
+//   4. reviewer-finding — this brief remediates an unresolved reviewer finding: the
+//                        finding's control: names it (Finding.Control). The findings
+//                        entry is a repo file with no actor field, so the linkage is
+//                        only as trustworthy as the review that merges it (see
+//                        RESIDUAL above). (An affects:-named brief is StaleRef-excluded
+//                        from Next-up by design — see reviewerFindingCritical.)
 
 // highUnblocksThreshold is the blockedCount at/above which a brief is a genuine
 // high-unblocks fire (F-09 tunable heuristic, not a truth). 3 mirrors the
@@ -46,20 +66,66 @@ import (
 // out-scores a whole priority tier.
 const highUnblocksThreshold = 3
 
-// criticalStampAuthorities is the CONFIG PLACEHOLDER for the stamped security/
-// critical arm's authority chain — the set of authorities whose stamp may lift a
-// brief into the hard critical tier. It is EMPTY by design: this phase ships the
-// MECHANISM, and the HUMAN ratifies WHO is authorized (gate: human). While empty,
-// the security arm is INERT — a stamp with no authorized authority grants nothing,
-// which is the safe default (a placeholder must never silently authorize anyone).
-//
-// Ratification wires the real authority here (or, better, threads it from repo
-// config so it is not a source edit). Example, deliberately COMMENTED OUT:
-//
-//	var criticalStampAuthorities = map[string]bool{
-//		"security-desk": true,
-//	}
-var criticalStampAuthorities = map[string]bool{}
+// criticalStampAuthorities is the ratified authority set for the stamped
+// security/critical arm — the authorities whose stamp may lift a brief into the
+// hard critical tier. It is ROSTER CONFIGURATION, never a compiled-in identity:
+// main() wires it from ASSAY_CRITICAL_STAMP_AUTHORITIES (rosterconfig.go) before
+// the board is built, and criticalStampAuthoritiesSet records whether that key was
+// configured at all. The compiled default is EMPTY and UNSET: a stamp then grants
+// nothing, and criticalStampNotices names every stamp that could not be honoured
+// and why, so "no authority configured" is a visible state rather than a silent
+// "no authority". WHICH authority may stamp is the human's ratification (gate:
+// human); this code only reads the answer.
+var (
+	criticalStampAuthorities    = map[string]bool{}
+	criticalStampAuthoritiesSet bool
+)
+
+// wireCriticalStampAuthorities installs the ratified authority set from roster
+// configuration (ASSAY_CRITICAL_STAMP_AUTHORITIES). Called by main()/runNextUp
+// before the board is built, every run, so a prior value cannot leak in. An unset
+// key — or a refused configuration — leaves the set EMPTY and UNSET: explicit, and
+// reported per stamp by criticalStampNotices.
+func wireCriticalStampAuthorities(cfg scanConfig) {
+	m := map[string]bool{}
+	set := cfg.CriticalStampAuthoritiesSet && len(cfg.Problems) == 0
+	if set {
+		for _, a := range cfg.CriticalStampAuthorities {
+			m[a] = true
+		}
+	}
+	criticalStampAuthorities = m
+	criticalStampAuthoritiesSet = set
+}
+
+// criticalStampNotices reports every well-formed critical-security stamp on a
+// brief in the given streams that grants nothing: the authority set is not
+// configured (could-not-check — no ratified set to compare against), or the
+// stamp's authority is not in it. Surfaced as --lint NOTICEs so an inert stamp is
+// never mistaken for an honoured one. Silent when no brief carries a stamp.
+func criticalStampNotices(streams []*Stream) []string {
+	var notices []string
+	for _, s := range streams {
+		for _, b := range s.Briefs {
+			auth, ok := securityCriticalStamp(b)
+			if !ok {
+				continue
+			}
+			id := s.Name + "/" + b.Num
+			switch {
+			case !criticalStampAuthoritiesSet:
+				notices = append(notices, fmt.Sprintf(
+					"%s carries critical-security(%s) but no critical-stamp authority set is configured (ASSAY_CRITICAL_STAMP_AUTHORITIES unset) — "+
+						"could-not-check: the stamp grants nothing until a ratified authority set is configured", id, auth))
+			case !criticalStampAuthorized(auth):
+				notices = append(notices, fmt.Sprintf(
+					"%s carries critical-security(%s) but %q is not in the configured critical-stamp authority set — the stamp grants nothing", id, auth, auth))
+			}
+		}
+	}
+	sort.Strings(notices)
+	return notices
+}
 
 // securityCriticalStampRe parses a machine-readable security/critical stamp of the
 // shape `critical-security(<authority>)` embedded in a brief's Reviewed/Verified
@@ -67,6 +133,21 @@ var criticalStampAuthorities = map[string]bool{}
 // regex/config). The authority capture is a conservative identifier class so the
 // stamp cannot smuggle arbitrary text.
 var securityCriticalStampRe = regexp.MustCompile(`critical-security\(([0-9A-Za-z_.:-]+)\)`)
+
+// criticalStampAuthorityRe is the same identifier class, anchored, used to validate
+// each configured authority (ASSAY_CRITICAL_STAMP_AUTHORITIES) so the configured set
+// can only name what a stamp can carry.
+var criticalStampAuthorityRe = regexp.MustCompile(`^[0-9A-Za-z_.:-]+$`)
+
+// criticalStampAuthoritiesEcho renders the effective-config value: "(unset)" is
+// distinct from an explicit list, so the echo never presents "no authority
+// configured" as "authority set configured empty".
+func criticalStampAuthoritiesEcho(auths []string, set bool) string {
+	if !set {
+		return "(unset — the stamped-security arm grants nothing)"
+	}
+	return strings.Join(auths, ",")
+}
 
 // securityCriticalStamp returns the stamped authority and true iff a well-formed
 // security/critical stamp is present on the brief. It reads ONLY the stamped label
@@ -82,50 +163,71 @@ func securityCriticalStamp(b Brief) (string, bool) {
 }
 
 // criticalStampAuthorized reports whether a stamp authority is in the ratified
-// allowlist. With the placeholder allowlist empty, this is always false — the
-// security arm is inert until a human ratifies the authority chain.
+// set configured from ASSAY_CRITICAL_STAMP_AUTHORITIES. With the key unset (the
+// compiled default) the set is empty and this is always false — the security arm is
+// inert until the driver's ratified authority set is configured.
 func criticalStampAuthorized(authority string) bool {
 	return criticalStampAuthorities[authority]
 }
 
-// mainRedCritical is the DEFERRED main-red arm. statusgen is deterministic and
-// offline (byte-identical baseline, --lint-clean) and cannot read live GitHub CI,
-// so there is no in-tree, machine-derived "main is red" signal to key on. Rather
-// than add a network/live-CI read (which would break the offline invariant) or
-// invent a governance marker, the arm is deferred: it always reports false and is a
-// clearly documented SEAM. When a human ratifies an in-tree, machine-derived
-// main-red marker, its check goes here — reading that marker, never the wall clock
-// or the network.
-func mainRedCritical(_ Brief, _ string) bool {
+// mainRedCritical is the main-red arm: true iff the injected main-health input
+// says main is RED and this brief addresses one of the tracking issues it names
+// (Brief.IssueRefs — a placeholder's own issue, or a brief's resolved `issues:`).
+// Reads only the injected input and the brief's declared issue linkage — never the
+// wall clock or the network. With the input unset (could-not-check) or green it is
+// false, and the could-not-check case is reported by nextUp, not swallowed here.
+func mainRedCritical(b Brief, _ string) bool {
+	if !activeMainHealth.red() {
+		return false
+	}
+	for _, ref := range b.IssueRefs {
+		if activeMainHealth.Refs[ref] {
+			return true
+		}
+	}
 	return false
 }
 
-// reviewerFindingCritical reports whether an UNRESOLVED reviewer finding names this
-// brief via its Affects list (`<stream>/<NN>` or `<stream>/brief-<NN>`) — the same
-// linkage applyFindings uses. Machine-derived: a reviewer files the finding, so the
-// brief author cannot self-select into the tier.
+// reviewerFindingCritical reports whether this brief is the REMEDIATION of an
+// unresolved reviewer finding. The finding is a findings-register entry with no
+// actor field, so nothing here checks WHO filed it: a PR that adds an entry naming
+// a brief in control: lifts that brief, and the only gate is the review and human
+// merge of that PR (the RESIDUAL named at the top of this file). Two linkages are
+// read:
 //
-// NOTE (documented seam): a brief-SPECIFIC finding also stamps StaleRef, which is a
-// hard Next-up EXCLUSION (nextup.go eligible()), so in the current eligibility model
-// a finding-named brief is not itself an eligible pick. The linkage is honored here
-// so the arm is correct-by-construction and unit-testable, and so it lights up the
-// moment a finding-named brief is eligible by any future path. Deliberately NOT
-// broadcast from a bare-stream `affects:` entry — that would mark every brief in the
-// stream critical, the same over-broad hammer applyFindings' anti-broadcast rule
+//   - control: — the finding names this brief (`<stream>/<NN>` or
+//     `<stream>/brief-<NN>`) as the adaptation that closes it
+//     (coder-skills-review/03). This is the REMEDIATION linkage, and it is the one
+//     that reaches the board: the remediation brief is ordinary eligible work.
+//   - affects: — the finding names this brief as AFFECTED. Honoured for
+//     completeness, but such a brief is also stamped StaleRef, which is a hard
+//     Next-up exclusion (nextup.go eligibleBase) BY DESIGN: a brief a finding says
+//     is wrong must be reconciled before it is handed out, and the critical tier
+//     is an ORDERING key over eligible picks, never an eligibility override. So an
+//     affects-named brief never reaches the board through this arm — its fix does,
+//     via control:. the reviewer-finding-reaches-board-via-control subtest pins both halves.
+//
+// Deliberately NOT broadcast from a bare-stream entry — that would mark every brief
+// in the stream critical, the over-broad hammer applyFindings' anti-broadcast rule
 // forbids.
 func reviewerFindingCritical(findings []Finding, streamName, briefNum string) bool {
 	id := streamName + "/" + briefNum
+	names := func(ref string) bool {
+		parts := strings.SplitN(strings.TrimSpace(ref), "/", 2)
+		if len(parts) != 2 {
+			return false // bare-stream annotation — never a per-brief critical flag
+		}
+		return parts[0]+"/"+strings.TrimPrefix(parts[1], "brief-") == id
+	}
 	for _, f := range findings {
 		if f.Resolved {
 			continue
 		}
+		if names(f.Control) {
+			return true
+		}
 		for _, a := range f.Affects {
-			parts := strings.SplitN(a, "/", 2)
-			if len(parts) != 2 {
-				continue // bare-stream annotation — never a per-brief critical flag
-			}
-			num := strings.TrimPrefix(parts[1], "brief-")
-			if parts[0]+"/"+num == id {
+			if names(a) {
 				return true
 			}
 		}
