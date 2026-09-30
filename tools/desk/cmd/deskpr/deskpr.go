@@ -657,14 +657,25 @@ func cmdUpdate(args []string) (err error) {
 // (exit 5) BEFORE origin/HEAD is consulted, so a missing origin/HEAD can never mask a
 // push to main; a detached HEAD or unreadable origin/HEAD is unverifiable (exit 6).
 func preflight(dir, base string) (*gitFacts, error) {
-	return preflightMode(dir, base, false)
+	return preflightMode(dir, base, false, detachedRefusal)
 }
+
+// detachedRefusal is preflight's exit-6 message for a detached HEAD on create and update,
+// which push the branch and so need one.
+const detachedRefusal = "detached HEAD — check out a feature branch first"
+
+// editDetachedRefusal is the same exit-6 refusal for `deskpr edit` WITHOUT --pr (#1901). A
+// detached rework worker hits exactly this refusal, and for edit the remedy is not a branch:
+// it is naming the PR, so the message points at --pr N.
+const editDetachedRefusal = "detached HEAD — deskpr edit finds its PR by branch; name the PR with --pr N " +
+	"(admitted when HEAD is exactly that PR's head commit), or check out the PR's head branch"
 
 // preflightMode is preflight with one switch: allowDetached admits a detached HEAD, recorded
 // as branch "". Only `deskpr edit --pr N` passes true (#1901) — it pushes nothing and names
 // its PR explicitly, and deskkit.CheckOwnPR then admits the detached checkout ONLY when HEAD
 // is exactly that PR's head commit. create and update push the branch and keep refusing.
-func preflightMode(dir, base string, allowDetached bool) (*gitFacts, error) {
+// detachedMsg is the exit-6 message used when a detached HEAD is refused.
+func preflightMode(dir, base string, allowDetached bool, detachedMsg string) (*gitFacts, error) {
 	gitRepo, gerr := gitcore.Open(dir)
 	if gerr != nil || !gitRepo.InsideWorkTree() {
 		return nil, deskkit.Unverifiable("not inside a git worktree", gerr)
@@ -675,7 +686,7 @@ func preflightMode(dir, base string, allowDetached bool) (*gitFacts, error) {
 	}
 	if branch == "HEAD" || branch == "" {
 		if !allowDetached {
-			return nil, deskkit.Unverifiable("detached HEAD — check out a feature branch first", nil)
+			return nil, deskkit.Unverifiable(detachedMsg, nil)
 		}
 		branch = ""
 	}

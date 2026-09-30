@@ -144,7 +144,7 @@ func cmdEdit(args []string) (err error) {
 	// empty base keeps preflight's ahead-count pinned to origin/HEAD, exactly as update.
 	// --pr (#1901) admits a detached HEAD: the PR is named, so no branch is needed to find it,
 	// and the own-PR guard below admits a detached checkout only at that PR's head commit.
-	facts, perr := preflightMode(dir, "", *prNum > 0)
+	facts, perr := preflightMode(dir, "", *prNum > 0, editDetachedRefusal)
 	if perr != nil {
 		return perr
 	}
@@ -162,10 +162,16 @@ func cmdEdit(args []string) (err error) {
 	if *check {
 		ac.successResult = deskkit.ResultDryRun
 		ac.detail = "check: every local gate passed"
+		// With --pr N the forge read that is skipped is PR #N's state and head (the own-PR
+		// guard's inputs), not a by-branch lookup, so the line names that instead.
+		prCheck := "whether an open PR exists for this branch"
+		if *prNum > 0 {
+			prCheck = fmt.Sprintf("PR #%d's state and head (the own-PR guard)", *prNum)
+		}
 		fmt.Println("check: ok — every local gate passed; no connection opened, nothing pushed. " +
 			"Not checked (needs the forge, not run here): trailer-immutability against the existing " +
 			"PR's current body, the self-containment scan's bare-#N hint (which uses the PR's own " +
-			"number), whether an open PR exists for this branch, the outward-write rate limit, and " +
+			"number), " + prCheck + ", the outward-write rate limit, and " +
 			"the public-repo authorization gate.")
 		return nil
 	}

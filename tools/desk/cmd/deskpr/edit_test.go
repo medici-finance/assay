@@ -525,7 +525,10 @@ func TestEditByPROwnHeadCommit(t *testing.T) {
 
 // TestEditDetachedNeedsPR: a detached HEAD has no branch to look a PR up by, so without --pr
 // the edit still refuses as before (exit 6) — the detached admission is only ever by the
-// named PR's head commit.
+// named PR's head commit. The refusal names the remedy, --pr N: a detached rework worker
+// hits exactly this refusal, and a "check out a feature branch" message would send it to the
+// branch git will not let it check out. Mutation: pass detachedRefusal (the create/update
+// message) from edit.go and the hint assertion goes red.
 func TestEditDetachedNeedsPR(t *testing.T) {
 	work := newBaseFixture(t)
 	mustGit(t, work, "checkout", "--detach", "HEAD")
@@ -533,9 +536,15 @@ func TestEditDetachedNeedsPR(t *testing.T) {
 	t.Setenv("FAKEGH_LIST_HAS_PR", "1")
 	bodyPath := writeTempFile(t, "the corrected body\nBrief: fixture/01\n")
 
-	rc := run([]string{"edit", "--body-file", bodyPath})
+	var rc int
+	stderr := captureStderr(t, func() {
+		rc = run([]string{"edit", "--body-file", bodyPath})
+	})
 	if rc != deskkit.ExitUnverifiable {
 		t.Fatalf("detached edit without --pr rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+	}
+	if !strings.Contains(stderr, "detached HEAD") || !strings.Contains(stderr, "--pr N") {
+		t.Fatalf("detached edit refusal does not point at --pr N; stderr:\n%s", stderr)
 	}
 	if got := editCalls(*calls); len(got) != 0 {
 		t.Fatalf("the refusal still edited: %v", got)
