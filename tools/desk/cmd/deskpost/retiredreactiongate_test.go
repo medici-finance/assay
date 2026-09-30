@@ -16,12 +16,13 @@ import (
 // ---------------------------------------------------------------------------
 // The retired per-item reaction gate must not come back into deskpost.
 //
-// desk-tools/18 replaced the public-repo write gate's per-item human +1 reaction check with
-// the repository-scoped allowed-repos `:public` tag: deskkit.PublicRepoGate now reads ONLY the
-// live repo visibility (deskkit.RepoInfoFetcher.RepoVisibility) and the configured entry. The
-// brief narrowed the shared interface and deleted the HTTP reaction probe, but deskpost's
-// forge-backed adapter kept a reaction-read method with no caller and a comment still naming
-// it as the retired gate's surface — the residue that failed the brief's Verify row 7.
+// The allowed-repos write-gate change replaced the public-repo write gate's per-item human +1
+// reaction check with the repository-scoped allowed-repos `:public` tag: deskkit.PublicRepoGate
+// now reads ONLY the live repo visibility (deskkit.RepoInfoFetcher.RepoVisibility) and the
+// configured entry. That change narrowed the shared interface and deleted the HTTP reaction
+// probe, but deskpost's forge-backed adapter kept a reaction-read method with no caller and a
+// comment still naming it as the retired gate's surface — the residue that failed the
+// change's Verify row 7.
 //
 // DEFECT CLASS: a reaction/award read reachable from deskpost — any declaration, call or
 // interface method carrying the reaction-read name, any reference to deskkit's Reaction /

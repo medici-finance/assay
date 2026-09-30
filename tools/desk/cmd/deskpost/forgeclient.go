@@ -27,8 +27,9 @@ import (
 type postBackend interface {
 	// RepoVisibility — the live-visibility read deskkit.PublicRepoGate consumes on the
 	// comment/review/ready paths. It is the WHOLE of what that gate reads from a backend: the
-	// retired per-item reaction check is gone (desk-tools/18), and no deskpost backend
-	// implements a reaction/award read (retiredreactiongate_test.go guards the absence).
+	// retired per-item reaction check is gone (the allowed-repos write-gate change), and no
+	// deskpost backend implements a reaction/award read (retiredreactiongate_test.go guards
+	// the absence).
 	deskkit.RepoInfoFetcher
 
 	slug() (owner, name string)
