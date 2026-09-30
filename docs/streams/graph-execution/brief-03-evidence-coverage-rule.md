@@ -18,6 +18,8 @@ issues: []
 schema: brief-v2
 authored: 2026-09-16 by graph-execution authoring session (fable-5.1, author-brief)
 sources:
+  - "docs/streams/graph-execution/work-input-amendment.md — 2026-09-30 pending scope amendment"
+  - "freshness-checked 2026-09-30 @ 8485778515c041fc87966902a14eb9d195492be3: amend unfinished scope; no implementation claim"
   - "docs/streams/graph-execution/admission-assurance-spec.md — 2026-09-18 integration amendment"
   - "freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f"
   - "docs/streams/graph-execution/spec.md §2.3 (verification governs transitions; the coverage rule; the observe kind; integration check at the join) and §3 (evidenceactor advisory, autoflip does not re-check the stamp)"
@@ -37,7 +39,7 @@ consumers:
   - "spec/workflow-pattern-v1.md (the `observe` kind's fields): follow-up graph-execution/03 (this brief; the kind is added to the schema graph-execution/02 ships)"
   - ".github/workflows/verify-gate-open.yml and verify-gate-close.yml (the human sign-off pair): out-of-scope (unchanged — a human sign-off is a `decision` node; coverage governs the model lane's transitions and reports for the human lane)"
   - "statusgen/evidenceactor.go (attribution stays advisory): out-of-scope (this brief adds no identity gate; attribution and coverage are different questions and stay separate rules)"
-version: 2
+version: 3
 id: d94aa822-65e3-44ad-ba9a-479ddcb47fdc
 ---
 
@@ -63,6 +65,17 @@ facts:
 
 Retain this brief as the sole coverage implementation. Applicable evidence must bind the exact subject and acceptance-definition digest; a model assessment is never an execution witness. Treat unavailable identity/definition corroboration as could-not-check. The later instance contract (09) supplies bindings through an adapter; this core rule remains testable without a provider. Control-profile population/period export belongs to 15, not this brief. Keep protected acceptance/executor identity as independent controls; coverage alone does not establish them.
 
+## Work-input amendment — 2026-09-30
+
+Apply WI-2 through the existing coverage API and declared coverage fixtures. Same complete
+input fingerprint may reuse a derivation; a new subject cannot inherit an old exact-revision
+PASS. Preserve historical rows and hold affected claims on changed acceptance or source,
+policy, build or environment dependencies. Unknown dependency coverage requires broader
+revalidation. Selective reuse is optional and needs an explicit applicability derivation;
+file non-overlap is not proof. Keep the existing result vocabulary; report the invalidating
+fact in the reason. The later 09 adapter supplies the manifest, without making 09 a cycle
+on this core rule. 14 owns rechecking at the effect/acceptance boundary.
+
 ## Task
 1. **The rule** (`statusgen/coverage.go` (planned)): `func evaluateCoverage(root string, streams []*Stream, patterns map[string]Pattern) map[string]Coverage`. For each brief, the set of mandatory claims is the union of (a) its Verify rows and (b) the `mandatory: true` evidence entries of the pattern node the brief is at (when a pattern applies; a brief with no pattern uses (a) alone). Each claim resolves to `{claim, kind, result, revision, released: bool, reason}`. The brief is `released` only when every mandatory claim is `pass` at the item's revision — the merged SHA for a merged brief, the PR head for an open one. Any `missing | error | could-not-check | wrong-revision` holds with the reason naming the claim. `fail` holds and is reported distinctly from could-not-check.
 2. **The join's integration check.** When the pattern's `join:` node applies, coverage requires at least one Verify row classed `+flow` (rowclass.go's obligation token); absent → a `missing` claim `integration-check` — individually passing rows do not release the join.
@@ -86,6 +99,8 @@ Retain this brief as the sole coverage implementation. Applicable evidence must 
 | 10 | check | `statusgen --consumers --brief graph-execution/03 --root .; echo rc=$?` | `rc=0` on the authoring branch (every entry routes follow-up or out-of-scope); exit 2 (could-not-check) on a fully merged main is acceptable and must be recorded as such, never as pass |
 | 11 | check:ci +mutation | `cd statusgen && go test -count=1 -v -run TestCoverageAdviceCannotSupplyWitness ./...` | exit 0; named test PASS; high-confidence advice does not satisfy missing mandatory evidence |
 | 12 | check:ci +mutation | `cd statusgen && go test -count=1 -v -run TestCoverageAcceptanceDigestChanged ./...` | exit 0; named test PASS; changed acceptance invalidates the affected witness |
+| 13 | check:ci +mutation | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestCoveragePolicyDependencyChanged$" ./... > /tmp/TestCoveragePolicyDependencyChanged.out && grep -q -- "--- PASS: TestCoveragePolicyDependencyChanged " /tmp/TestCoveragePolicyDependencyChanged.out` | exit 0; named PASS; a policy edit outside touched files holds the affected claim and preserves the old receipt; mutation: bypass the policy-fingerprint comparison — the named test must fail |
+| 14 | check:ci +flow | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestCoverageReuseDoesNotRetargetPass$" ./... > /tmp/TestCoverageReuseDoesNotRetargetPass.out && grep -q -- "--- PASS: TestCoverageReuseDoesNotRetargetPass " /tmp/TestCoverageReuseDoesNotRetargetPass.out` | exit 0; named PASS; unchanged analysis can be reused but an old-head PASS cannot release the new subject |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —

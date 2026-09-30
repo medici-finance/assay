@@ -1,0 +1,2 @@
+### Fixed
+- The desktools-v2 forge-ban baseline is refreshed from a stale 53 to 63, the count measured on current main after the one regression was fixed, and a site-by-site ledger in the seam contract explains the change. No Verify row reads that baseline any more: every row that counts reach-around sites compares its brief's delivering commit against that commit's own merge parent and prints its own verdict, so sites other PRs add later cannot move it. The forge-gitlab host-literal row counts code lines only, so comments naming the host no longer hold it above zero.

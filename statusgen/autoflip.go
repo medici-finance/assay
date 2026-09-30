@@ -91,6 +91,47 @@ package main
 //     (which brief it delivered is not a readable fact).
 //   - a candidate PR whose changed-file list cannot be read in full —
 //     COULD-NOT-CHECK, never a guess from a truncated list.
+//
+// HOW THE DELIVERING PR IS FOUND (#1838). Two resolvers, in this order:
+//
+//  1. BY TRAILER. The forge is asked for merged PRs whose body names this brief
+//     in a `Brief:` trailer (PRsNamingBrief). Each hit is re-read and judged by
+//     the same attributeCandidate rule the history walk uses, so the search is
+//     only ever a hint: a PR is credited only when its own single `Brief:`
+//     trailer names THIS brief. EVERY credited PR must carry the App approval
+//     at its own merged head, or the brief is refused naming it. The newest
+//     credited PR is the one the stamp cites. This is the resolver that finds
+//     a delivering PR which never touched the brief FILE: the usual case, since
+//     a delivery changes code and the board row, not the brief text.
+//     Only a PR merged into the repo's default branch is a delivery; a hit
+//     merged into any other branch is walked past (its code may never have
+//     reached the default branch).
+//     A PR body stays editable after merge, and the App's approval binds the
+//     head commit, not the body. So a hit is credited only when its body was
+//     last edited at or before its merge (trailerBodyProblem): the trailer it
+//     merged with. A hit edited later, or whose edit time cannot be read or
+//     ordered, is COULD-NOT-CHECK naming it. It is never credited, and it never
+//     ends the guard below.
+//  2. BY THE BRIEF FILE'S HISTORY (the walk above). With a trailer-resolved
+//     delivery in hand, the walk is the GUARD over later changes: every PR that
+//     touched the brief file after that delivery merged must itself be
+//     App-approved at its head, exactly as before. The guard passes over the
+//     delivery itself and each change whose merge time is known to predate it,
+//     and keeps walking: log order is commit order, not merge order. An
+//     unknown merge time is never "before". With no delivery in hand, the walk
+//     is also the resolver, exactly as before.
+//
+// In both resolvers a VERIFY EVIDENCE LANDING is not a candidate: a PR whose
+// author is the roster's `verifier=` App and whose whole diff stays inside
+// docs/streams/ (isEvidenceLanding). It is the PR form of the verifier's own
+// direct-to-main Evidence commit, and that commit already resolves no PR and
+// asks for no approval. Before #1838 the walk met such a PR first (it is the
+// newest change to the brief file) and demanded the reviewer App's approval of
+// it. Evidence PRs merge on a human approval, so every PR-landed PASS was
+// refused. The exclusion is keyed to an identity (the App is the author), and
+// never to a branch name or other free text any author can set.
+// candidateGate is the one place that exclusion is applied, and
+// TestApprovalOnlyViaCandidateGate pins that approvalAtHead has no other caller.
 
 import (
 	"encoding/json"
@@ -123,6 +164,11 @@ type prReviewState struct {
 	// are empty on the GitHub path, where CommitOID on a review carries the head tie.
 	Approvals []string
 	Notes     []glNote
+	// MergedAt is when the PR merged; zero when the source does not report it.
+	// It orders a trailer-resolved delivery against the brief file's later
+	// changes (the history walk's guard stops at changes that predate the
+	// delivery). Zero never ends the guard early: an unordered PR is judged.
+	MergedAt time.Time
 }
 
 // glNote is one GitLab merge-request note reduced to what corroboration reads: who
@@ -152,6 +198,15 @@ type modelFlipSource interface {
 	PRShape(repo string, pr int) (prShape, error)
 	// ReviewState returns the PR's merge state, merged head and reviews.
 	ReviewState(repo string, pr int) (prReviewState, error)
+	// PRsNamingBrief returns merged PRs whose body the forge reports as naming
+	// briefKey (the canonical "<stream>/<NN>") in a `Brief:` trailer. It is a
+	// HINT (a full-text search can over-match); every hit is re-read with
+	// PRShape and credited only by attributeCandidate.
+	PRsNamingBrief(repo, briefKey string) ([]int, error)
+	// PRBodyEditedAt returns when pr's body was last edited; zero when it never
+	// was. A trailer-resolved credit rests on the body, and a body edited after
+	// merge was never reviewed (trailerBodyProblem).
+	PRBodyEditedAt(repo string, pr int) (time.Time, error)
 }
 
 // ---- outcomes ----------------------------------------------------------------------
@@ -225,6 +280,12 @@ type reviewerIdentity struct {
 	// matched. It is a MISCONFIGURATION (a human fixes the roster), distinct from
 	// "no reviewer bound at all" (Logins empty AND Unresolved "").
 	Unresolved string
+	// EvidenceLanders are the login renderings of the roster's `verifier=` App —
+	// the identity whose docs/streams-only PRs are verify Evidence landings, not
+	// delivery candidates (isEvidenceLanding). Empty when no verifier is bound or
+	// it is bound to an unrecognised forge: then no PR is treated as an Evidence
+	// landing, which is the pre-#1838 behaviour (stricter, never looser).
+	EvidenceLanders []string
 }
 
 // configured reports whether an accepted reviewer identity was resolved. A false
@@ -262,7 +323,24 @@ func modelReviewer() reviewerIdentity {
 	if len(logins) == 0 {
 		return reviewerIdentity{} // defensive: no trustable rendering on this forge
 	}
-	return reviewerIdentity{Logins: logins, Forge: ident.Forge, Display: logins[0]}
+	return reviewerIdentity{Logins: logins, Forge: ident.Forge, Display: logins[0],
+		EvidenceLanders: rosterRoleLogins(cfg, "verifier")}
+}
+
+// rosterRoleLogins is the accepted login set of the App bound to role, resolved
+// the same forge-aware way modelReviewer resolves the reviewer: a legacy roster
+// entry defaults to GitHub, and an unrecognised forge yields no logins (so
+// nothing is matched against it).
+func rosterRoleLogins(cfg scanConfig, role string) []string {
+	slug := strings.TrimSpace(cfg.RoleBots[role])
+	if slug == "" {
+		return nil
+	}
+	ident := scanBotIdentity{Forge: forgeGitHub, Slug: strings.ToLower(slug)}
+	if got, ok := cfg.BotIdents[strings.ToLower(slug)]; ok {
+		ident = got
+	}
+	return ident.acceptedLogins()
 }
 
 // loginInSet reports whether login (case-insensitively) is one of the accepted
@@ -331,10 +409,11 @@ const commitScanDepth = 25
 // never a way AROUND the approval rule — decideModelFlip checks every candidate
 // it reaches for the App approval at its own merged head BEFORE judging its
 // attribution, so an unapproved later change to the brief blocks the flip
-// exactly as it did when the newest candidate was always the credited one. That
-// is also why the body being editable after merge cannot loosen anything: the
-// body only decides WHICH approved PR is credited, never whether an approval is
-// required.
+// exactly as it did when the newest candidate was always the credited one. In
+// the history walk the candidate is in the brief file's git history, which is
+// immutable. The trailer resolver finds candidates by body alone, and a body is
+// editable after merge, so there a body edited after merge is never credited
+// (trailerBodyProblem, #1838).
 type prShape struct {
 	// Files is the PR's changed file paths, repo-relative, forward-slashed —
 	// the COMPLETE list (PRShape errors rather than return a truncated one).
@@ -348,7 +427,45 @@ type prShape struct {
 	// `Authors:` trailers are counted in BriefTrailers but never appear here:
 	// they name briefs a PR AUTHORED, not delivered.
 	Briefs []string
+	// Author is the PR author's login as the forge renders it (on GitHub the
+	// `<slug>[bot]` form for an App). isEvidenceLanding matches it against the
+	// roster's verifier App; "" never matches.
+	Author string
+	// RenamedFrom is the previous path of each renamed file (the REST
+	// `previous_filename`). A rename lists only its NEW path in Files, so
+	// isEvidenceLanding judges these too.
+	RenamedFrom []string
+	// BaseRef is the branch the PR merged into, and DefaultBranch the repo's
+	// default branch, both from the PR's own record. The trailer resolver
+	// credits only a PR whose BaseRef is the DefaultBranch: a PR merged into a
+	// side branch may never have reached it.
+	BaseRef       string
+	DefaultBranch string
 }
+
+// isEvidenceLanding reports whether shape is a verify Evidence landing: authored
+// by the roster's `verifier=` App (rev.EvidenceLanders) AND with a diff that
+// stays wholly inside docs/streams/ (the brief file, its README row, its
+// verify-outcome record). Both halves are required. The author is an identity
+// the forge attributes, not text a PR author chooses. The docs-only half keeps
+// a verifier-authored PR that touches anything else from being passed over
+// without its approval. A renamed file is judged at its old path too
+// (RenamedFrom), so a move into docs/streams/ from outside is not docs-only. An
+// empty file list is never an Evidence landing.
+func isEvidenceLanding(shape prShape, rev reviewerIdentity) bool {
+	if shape.Author == "" || !loginInSet(rev.EvidenceLanders, shape.Author) || len(shape.Files) == 0 {
+		return false
+	}
+	for _, f := range append(append([]string(nil), shape.Files...), shape.RenamedFrom...) {
+		if !strings.HasPrefix(filepath.ToSlash(f), bulkMigrationDocsPrefix) {
+			return false
+		}
+	}
+	return true
+}
+
+// evidenceLandingWhy is the walked-list note for an excluded Evidence landing.
+const evidenceLandingWhy = "a verify Evidence landing by the verifier App — not a delivery candidate, and no reviewer-App approval is asked of it, exactly as for a direct-to-main Evidence commit"
 
 // bulkMigrationDocsPrefix is the path prefix a brief-migration/reformat PR's
 // entire diff stays inside. A PR with at least one file OUTSIDE this prefix
@@ -519,9 +636,30 @@ func decideModelFlip(root string, s *Stream, path string, briefID string, eviden
 		return res
 	}
 
-	// Walk the brief file's history newest-first. Every distinct merged PR the
-	// walk reaches is a CANDIDATE, and each one is judged in this order:
+	// Resolver 1: the delivering PR by its `Brief:` trailer (#1838). A stop is a
+	// candidate that fails its own approval or cannot be read; it ends the run
+	// exactly as a failing walk candidate does.
+	tr := resolveByTrailer(res, repo, src, rev)
+	if tr.stop != nil {
+		return *tr.stop
+	}
+	out := walkBriefHistory(res, commits, filepath.ToSlash(rel), repo, src, rev, tr)
+	if tr.searchErr != "" && out.Outcome != flipDone {
+		out.Reason += "; " + tr.searchErr
+	}
+	return out
+}
+
+// walkBriefHistory is resolver 2 and, when resolver 1 credited a delivery, the
+// guard over every change to the brief file since that delivery.
+func walkBriefHistory(res modelFlipResult, commits []string, rel, repo string, src modelFlipSource, rev reviewerIdentity, tr trailerResolution) modelFlipResult {
+	walked := append([]string(nil), tr.notes...)
+
+	// Resolver 2 / guard: walk the brief file's history newest-first. Every
+	// distinct merged PR the walk reaches is a CANDIDATE, judged in this order:
 	//
+	//  0. a verify Evidence landing (isEvidenceLanding) is passed over, as the
+	//     verifier's direct-to-main Evidence commits always were.
 	//  1. its App approval at its own merged head (approvalAtHead) — a candidate
 	//     that fails this ends the walk with that candidate's refusal or
 	//     could-not-check, exactly as it would have when the newest candidate was
@@ -529,8 +667,13 @@ func decideModelFlip(root string, s *Stream, path string, briefID string, eviden
 	//     removes an approval requirement; it only changes which APPROVED PR is
 	//     credited.
 	//  2. its attribution (attributeCandidate) — credited, walked past (not this
-	//     brief's delivering PR), or unattributable (could-not-check).
-	var walked []string
+	//     brief's delivering PR), or unattributable (could-not-check). When
+	//     resolver 1 already credited a delivery, attribution is settled: an
+	//     approved PR that is not that delivery is walked past, and the
+	//     delivery itself and each change known to predate it are passed over.
+	//     The walk never STOPS at either: git log lists commits by commit date,
+	//     not by merge order, so a change merged after the delivery can be
+	//     listed below both. Every candidate in the scan window is judged.
 	checked := map[int]bool{} // a commit's PR may repeat across commits; judge each candidate once
 	for _, sha := range commits {
 		n, ok, err := src.MergedPRForCommit(repo, sha)
@@ -545,20 +688,40 @@ func decideModelFlip(root string, s *Stream, path string, briefID string, eviden
 			continue
 		}
 		checked[n] = true
+		if tr.delivers(n) {
+			continue // the delivery itself; a change merged later may still follow it in log order
+		}
 
-		cand := approvalAtHead(res, n, repo, src, rev)
+		g := candidateGate(res, n, repo, src, rev)
+		if g.evidence {
+			walked = append(walked, fmt.Sprintf("#%d (%s)", n, evidenceLandingWhy))
+			continue
+		}
+		cand := g.cand
+		if tr.found() && tr.predates(g.mergedAt) {
+			// Merged before the delivery: outside the guard. Keep walking. Log
+			// order is commit order, not merge order, so a change merged after
+			// the delivery may still be listed below this one (F2 on #1868).
+			walked = append(walked, fmt.Sprintf("#%d (merged before the delivering PR #%d — outside the guard)", n, tr.credit.PR))
+			continue
+		}
 		if cand.Outcome != flipDone {
 			return withWalked(cand, walked)
 		}
-		shape, err := src.PRShape(repo, n)
-		if err != nil {
+		if g.shapeErr != nil {
 			cand.Outcome = flipUnchecked
-			cand.Reason = fmt.Sprintf("could not read the diff shape of PR #%d: %v", n, err)
+			cand.Reason = fmt.Sprintf("could not read the diff shape of PR #%d: %v", n, g.shapeErr)
 			return withWalked(cand, walked)
 		}
-		switch verdict, why := attributeCandidate(shape, res.Brief); verdict {
-		case candidateCredit:
+		verdict, why := attributeCandidate(g.shape, res.Brief)
+		if verdict == candidateCredit {
 			return cand
+		}
+		if tr.found() {
+			walked = append(walked, fmt.Sprintf("#%d (%s)", n, why))
+			continue
+		}
+		switch verdict {
 		case candidateWalkPast:
 			walked = append(walked, fmt.Sprintf("#%d (%s)", n, why))
 			continue
@@ -569,11 +732,201 @@ func decideModelFlip(root string, s *Stream, path string, briefID string, eviden
 			return withWalked(cand, walked)
 		}
 	}
-	res.Reason = fmt.Sprintf("no merged pull request resolves from the last %d commits touching %s", commitScanDepth, filepath.ToSlash(rel))
+	if tr.found() {
+		return tr.credit
+	}
+	res.Reason = fmt.Sprintf("no merged pull request resolves from the last %d commits touching %s", commitScanDepth, rel)
 	if len(walked) > 0 {
-		res.Reason = fmt.Sprintf("no merged pull request from the last %d commits touching %s is this brief's delivering PR", commitScanDepth, filepath.ToSlash(rel))
+		res.Reason = fmt.Sprintf("no merged pull request from the last %d commits touching %s is this brief's delivering PR", commitScanDepth, rel)
 	}
 	return withWalked(res, walked)
+}
+
+// gatedCandidate is what candidateGate learned about one candidate PR.
+type gatedCandidate struct {
+	shape    prShape
+	shapeErr error
+	// evidence: a verify Evidence landing — neither credited nor asked for an
+	// approval. When set, cand is unset.
+	evidence bool
+	// cand is approvalAtHead's verdict on the PR (flipDone = App-approved at its
+	// merged head).
+	cand     modelFlipResult
+	mergedAt time.Time
+}
+
+// candidateGate is the ONE door every candidate PR goes through, from either
+// resolver. It reads the PR's shape, passes over a verify Evidence landing
+// before any approval is asked of it, and otherwise returns approvalAtHead's
+// verdict. A shape that cannot be read never excuses a PR: it is judged on its
+// approval, and the caller reports the unreadable shape only after that.
+// TestApprovalOnlyViaCandidateGate pins that approvalAtHead has no other caller,
+// so no future resolver can demand an Evidence PR's approval again (#1838).
+func candidateGate(res modelFlipResult, n int, repo string, src modelFlipSource, rev reviewerIdentity) gatedCandidate {
+	var g gatedCandidate
+	g.shape, g.shapeErr = src.PRShape(repo, n)
+	if g.shapeErr == nil && isEvidenceLanding(g.shape, rev) {
+		g.evidence = true
+		return g
+	}
+	g.cand, g.mergedAt = approvalAtHead(res, n, repo, src, rev)
+	return g
+}
+
+// trailerResolution is resolver 1's outcome.
+type trailerResolution struct {
+	// credit is the newest trailer-credited delivering PR, App-approved at its
+	// merged head (Outcome flipDone). Zero Outcome/PR when none was found.
+	credit   modelFlipResult
+	mergedAt time.Time // credit's merge time; zero when the source did not report it
+	prs      map[int]bool
+	// stop, when set, ends the run with this result (an unapproved or
+	// unreadable delivery candidate).
+	stop *modelFlipResult
+	// notes are the hits that were not credited, for a non-flip reason.
+	notes []string
+	// searchErr is set when the search itself could not be read. The run then
+	// falls back to the history walk alone (the pre-#1838 resolver), and the note
+	// is kept on a non-flip reason. A failed search never becomes a flip.
+	searchErr string
+}
+
+func (t trailerResolution) found() bool         { return t.credit.Outcome == flipDone && t.credit.PR != 0 }
+func (t trailerResolution) delivers(n int) bool { return t.found() && t.prs[n] }
+
+// predates reports whether a change that merged at m landed before the credited
+// delivery. An unknown time on either side is never "before": the guard keeps
+// judging.
+func (t trailerResolution) predates(m time.Time) bool {
+	return !m.IsZero() && !t.mergedAt.IsZero() && m.Before(t.mergedAt)
+}
+
+// resolveByTrailer is resolver 1: the merged PRs that name this brief in their
+// own `Brief:` trailer. Every hit goes through candidateGate (an Evidence
+// landing is set aside first) and attributeCandidate. Every credited PR must be
+// App-approved at its merged head, or the run stops on it.
+func resolveByTrailer(res modelFlipResult, repo string, src modelFlipSource, rev reviewerIdentity) trailerResolution {
+	var t trailerResolution
+	hits, err := src.PRsNamingBrief(repo, canonicalBriefKey(res.Brief))
+	if errors.Is(err, errGitLabFlipReadUnavailable) {
+		return t // the walk reports the same structural could-not-check; one note is enough
+	}
+	if err != nil {
+		t.searchErr = fmt.Sprintf("the `Brief:`-trailer search for %s could not be read (%v), so only the brief file's history was consulted",
+			canonicalBriefKey(res.Brief), err)
+		return t
+	}
+	seen := map[int]bool{}
+	type credited struct {
+		cand     modelFlipResult
+		mergedAt time.Time
+	}
+	var got []credited
+	for _, n := range hits {
+		if seen[n] {
+			continue
+		}
+		seen[n] = true
+		g := candidateGate(res, n, repo, src, rev)
+		if g.evidence {
+			t.notes = append(t.notes, fmt.Sprintf("#%d (%s)", n, evidenceLandingWhy))
+			continue
+		}
+		if g.shapeErr != nil {
+			stop := g.cand
+			if stop.Outcome == flipDone {
+				stop.Outcome = flipUnchecked
+				stop.Reason = fmt.Sprintf("could not read the diff shape of PR #%d (it names %s in a `Brief:` trailer search): %v",
+					n, canonicalBriefKey(res.Brief), g.shapeErr)
+			}
+			t.stop = &stop
+			return t
+		}
+		if g.shape.BaseRef != g.shape.DefaultBranch {
+			// Merged into a side branch: its code may never have reached the
+			// default branch, so it is not a delivery (F1 on #1868).
+			t.notes = append(t.notes, fmt.Sprintf("#%d (merged into %q, not the default branch %q — not a delivery)",
+				n, g.shape.BaseRef, g.shape.DefaultBranch))
+			continue
+		}
+		verdict, why := attributeCandidate(g.shape, res.Brief)
+		switch {
+		case verdict == candidateWalkPast:
+			t.notes = append(t.notes, fmt.Sprintf("#%d (%s)", n, why))
+			continue
+		case verdict == candidateUnattributable && len(g.shape.Briefs) == 0:
+			continue // the search matched body text that is not a real trailer
+		case verdict == candidateUnattributable:
+			stop := g.cand
+			if stop.Outcome == flipDone {
+				stop.Outcome = flipUnchecked
+				stop.Reason = fmt.Sprintf("PR #%d cannot be attributed to %s: %s", n, res.Brief, why)
+			}
+			t.stop = &stop
+			return t
+		}
+		// A credited delivery. Its trailer must be the one it merged with: a
+		// body edited after merge was never reviewed (S1 on #1868).
+		if why := trailerBodyProblem(n, g.mergedAt, repo, src); why != "" {
+			stop := g.cand
+			stop.PR = n
+			stop.Outcome = flipUnchecked
+			stop.Reason = fmt.Sprintf("PR #%d names %s in a `Brief:` trailer, but %s — a trailer the PR did not merge with was never reviewed, so it can neither credit this brief nor end the guard over the brief file's history",
+				n, canonicalBriefKey(res.Brief), why)
+			stop = withWalked(stop, t.notes)
+			t.stop = &stop
+			return t
+		}
+		// Its approval at its own merged head is required.
+		if g.cand.Outcome != flipDone {
+			stop := withWalked(g.cand, t.notes)
+			t.stop = &stop
+			return t
+		}
+		got = append(got, credited{g.cand, g.mergedAt})
+	}
+	if len(got) == 0 {
+		return t
+	}
+	// Newest first: by merge time where both are known, else by PR number.
+	best := got[0]
+	for _, c := range got[1:] {
+		switch {
+		case !c.mergedAt.IsZero() && !best.mergedAt.IsZero():
+			if c.mergedAt.After(best.mergedAt) {
+				best = c
+			}
+		case c.cand.PR > best.cand.PR:
+			best = c
+		}
+	}
+	t.credit, t.mergedAt = best.cand, best.mergedAt
+	t.prs = map[int]bool{}
+	for _, c := range got {
+		t.prs[c.cand.PR] = true
+	}
+	return t
+}
+
+// trailerBodyProblem returns why PR n's body cannot be trusted as the one it
+// merged with, or "" when it can: never edited, or last edited at or before
+// its merge. An unreadable edit time, or an edit with no known merge time to
+// order it against, is a problem, never a pass.
+func trailerBodyProblem(n int, mergedAt time.Time, repo string, src modelFlipSource) string {
+	edited, err := src.PRBodyEditedAt(repo, n)
+	switch {
+	case err != nil:
+		return fmt.Sprintf("when its body was last edited could not be read (%v)", err)
+	case edited.IsZero():
+		return ""
+	case mergedAt.IsZero():
+		return fmt.Sprintf("its body was edited (%s) and its merge time is unknown, so the edit cannot be ordered against the merge",
+			edited.UTC().Format(time.RFC3339))
+	case edited.After(mergedAt):
+		return fmt.Sprintf("its body was last edited %s, after it merged %s",
+			edited.UTC().Format(time.RFC3339), mergedAt.UTC().Format(time.RFC3339))
+	}
+	return ""
 }
 
 // withWalked appends the candidates a walk passed over to a non-flip result's
@@ -581,7 +934,7 @@ func decideModelFlip(root string, s *Stream, path string, briefID string, eviden
 // credited.
 func withWalked(res modelFlipResult, walked []string) modelFlipResult {
 	if len(walked) > 0 && res.Outcome != flipDone {
-		res.Reason += " — walked past (approved, but not this brief's delivering PR): " + strings.Join(walked, ", ")
+		res.Reason += " — walked past (not credited as this brief's delivering PR; each entry says why): " + strings.Join(walked, ", ")
 	}
 	return res
 }
@@ -589,21 +942,23 @@ func withWalked(res modelFlipResult, walked []string) modelFlipResult {
 // approvalAtHead reads candidate PR n's review state and applies the forge's
 // corroboration rule. It returns res with PR/SHA filled and Outcome flipDone
 // when the reviewer App approved n at its merged head; otherwise the
-// could-not-check or refusal that candidate earns.
-func approvalAtHead(res modelFlipResult, pr int, repo string, src modelFlipSource, rev reviewerIdentity) modelFlipResult {
+// could-not-check or refusal that candidate earns. The time is n's merge time
+// as the source reported it (zero when unknown or unreadable). Its only caller
+// is candidateGate (TestApprovalOnlyViaCandidateGate).
+func approvalAtHead(res modelFlipResult, pr int, repo string, src modelFlipSource, rev reviewerIdentity) (modelFlipResult, time.Time) {
 	res.PR = pr
 	st, err := src.ReviewState(repo, pr)
 	if err != nil {
 		res.Reason = fmt.Sprintf("could not read the reviews of PR #%d: %v", pr, err)
-		return res
+		return res, time.Time{}
 	}
 	if !st.Merged {
 		res.Reason = fmt.Sprintf("PR #%d is not merged", pr)
-		return res
+		return res, st.MergedAt
 	}
 	if st.HeadSHA == "" {
 		res.Reason = fmt.Sprintf("PR #%d reports no head commit — nothing to corroborate an approval against", pr)
-		return res
+		return res, st.MergedAt
 	}
 	res.SHA = st.HeadSHA
 
@@ -614,9 +969,9 @@ func approvalAtHead(res modelFlipResult, pr int, repo string, src modelFlipSourc
 	// note by the reviewer pinning the head SHA, the approval flag alone being
 	// insufficient.
 	if rev.Forge == forgeGitLab {
-		return decideGitLabFlip(res, pr, st, rev)
+		return decideGitLabFlip(res, pr, st, rev), st.MergedAt
 	}
-	return decideGitHubFlip(res, pr, st, rev)
+	return decideGitHubFlip(res, pr, st, rev), st.MergedAt
 }
 
 // decideGitHubFlip applies the GitHub corroboration rule: an APPROVED review by an
@@ -894,6 +1249,24 @@ func (ghModelFlipSource) prBranchCommits(repo string, n int) ([]string, error) {
 type ghPRSummaryJSON struct {
 	Body         string `json:"body"`
 	ChangedFiles int    `json:"changed_files"`
+	User         struct {
+		Login string `json:"login"`
+	} `json:"user"`
+	Base struct {
+		Ref  string `json:"ref"`
+		Repo struct {
+			DefaultBranch string `json:"default_branch"`
+		} `json:"repo"`
+	} `json:"base"`
+}
+
+// summaryBase returns the branch the PR merged into and its repo's default
+// branch. Either one missing is an error, never a match.
+func summaryBase(pr int, v ghPRSummaryJSON) (base, def string, err error) {
+	if v.Base.Ref == "" || v.Base.Repo.DefaultBranch == "" {
+		return "", "", fmt.Errorf("PR #%d reports no base branch (%q) or default branch (%q)", pr, v.Base.Ref, v.Base.Repo.DefaultBranch)
+	}
+	return v.Base.Ref, v.Base.Repo.DefaultBranch, nil
 }
 
 // PRShape reads a candidate PR's changed files and body — the facts
@@ -913,21 +1286,118 @@ func (ghModelFlipSource) PRShape(repo string, pr int) (prShape, error) {
 	if err := json.Unmarshal(sum, &v); err != nil {
 		return prShape{}, fmt.Errorf("unmarshal PR %d: %w", pr, err)
 	}
-	// --jq emits one filename per line across every page, so the concatenated
-	// per-page arrays --paginate produces never need re-joining.
+	// --jq emits one JSON [filename, previous_filename] pair per line across
+	// every page, so the concatenated per-page arrays --paginate produces never
+	// need re-joining.
 	out, err := exec.Command("gh", "api", "--paginate",
 		fmt.Sprintf("repos/%s/pulls/%d/files?per_page=100", repo, pr),
-		"--jq", ".[].filename").Output()
+		"--jq", `.[] | [.filename, (.previous_filename // "")] | @json`).Output()
 	if err != nil {
 		return prShape{}, fmt.Errorf("gh api pulls/%d/files: %w", pr, err)
 	}
-	var files []string
+	files, renamedFrom, err := parseFileListing(pr, out)
+	if err != nil {
+		return prShape{}, err
+	}
+	shape, err := shapeFromListing(pr, v.Body, v.ChangedFiles, files)
+	if err != nil {
+		return prShape{}, err
+	}
+	shape.Author = v.User.Login
+	shape.RenamedFrom = renamedFrom
+	if shape.BaseRef, shape.DefaultBranch, err = summaryBase(pr, v); err != nil {
+		return prShape{}, err
+	}
+	return shape, nil
+}
+
+// parseFileListing reads PRShape's one-pair-per-line listing into the changed
+// paths and the previous path of each renamed file. A line that is not a
+// two-string pair is an error, never skipped.
+func parseFileListing(pr int, out []byte) (files, renamedFrom []string, err error) {
 	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
-		if line != "" {
-			files = append(files, line)
+		if line == "" {
+			continue
+		}
+		var pair []string
+		if err := json.Unmarshal([]byte(line), &pair); err != nil || len(pair) != 2 || pair[0] == "" {
+			return nil, nil, fmt.Errorf("PR #%d file listing line %q is not a [filename, previous_filename] pair", pr, line)
+		}
+		files = append(files, pair[0])
+		if pair[1] != "" {
+			renamedFrom = append(renamedFrom, pair[1])
 		}
 	}
-	return shapeFromListing(pr, v.Body, v.ChangedFiles, files)
+	return files, renamedFrom, nil
+}
+
+// PRsNamingBrief lists the merged PRs whose body GitHub's search matches for
+// the literal `Brief: <key>`. The search is a PREFILTER only: every hit is
+// re-read (PRShape) and its trailers parsed before it can be credited, so a
+// looser match (a key that is a prefix of another, prose quoting the trailer)
+// is dropped by attributeCandidate, never credited.
+func (ghModelFlipSource) PRsNamingBrief(repo, briefKey string) ([]int, error) {
+	out, err := exec.Command("gh", "pr", "list", "--repo", repo, "--state", "merged",
+		"--search", fmt.Sprintf("%q in:body", "Brief: "+briefKey),
+		"--limit", "100", "--json", "number").Output()
+	if err != nil {
+		return nil, fmt.Errorf("gh pr list --search Brief: %s: %w", briefKey, err)
+	}
+	var rows []struct {
+		Number int `json:"number"`
+	}
+	if err := json.Unmarshal(out, &rows); err != nil {
+		return nil, fmt.Errorf("unmarshal PR search for %s: %w", briefKey, err)
+	}
+	var prs []int
+	for _, r := range rows {
+		prs = append(prs, r.Number)
+	}
+	return prs, nil
+}
+
+// PRBodyEditedAt reads the PR's GraphQL `lastEditedAt` (null: never edited).
+// REST and `gh pr view --json` do not expose it.
+func (ghModelFlipSource) PRBodyEditedAt(repo string, pr int) (time.Time, error) {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" {
+		return time.Time{}, fmt.Errorf("repo %q is not <owner>/<name>", repo)
+	}
+	out, err := exec.Command("gh", "api", "graphql",
+		"-f", "query=query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){lastEditedAt}}}",
+		"-f", "o="+owner, "-f", "r="+name, "-F", fmt.Sprintf("n=%d", pr)).Output()
+	if err != nil {
+		return time.Time{}, fmt.Errorf("gh api graphql lastEditedAt of PR %d: %w", pr, err)
+	}
+	return parseLastEditedAt(pr, out)
+}
+
+// parseLastEditedAt reads lastEditedAt from the GraphQL answer. A missing pull
+// request or an unparseable time is an error, never "never edited".
+func parseLastEditedAt(pr int, out []byte) (time.Time, error) {
+	var v struct {
+		Data struct {
+			Repository *struct {
+				PullRequest *struct {
+					LastEditedAt *string `json:"lastEditedAt"`
+				} `json:"pullRequest"`
+			} `json:"repository"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out, &v); err != nil {
+		return time.Time{}, fmt.Errorf("unmarshal lastEditedAt of PR %d: %w", pr, err)
+	}
+	if v.Data.Repository == nil || v.Data.Repository.PullRequest == nil {
+		return time.Time{}, fmt.Errorf("GraphQL returned no pull request #%d", pr)
+	}
+	if v.Data.Repository.PullRequest.LastEditedAt == nil {
+		return time.Time{}, nil
+	}
+	t, err := time.Parse(time.RFC3339, *v.Data.Repository.PullRequest.LastEditedAt)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("PR %d lastEditedAt: %w", pr, err)
+	}
+	return t, nil
 }
 
 // shapeFromListing builds a prShape from a PR's body, GitHub's changed_files
@@ -988,6 +1458,9 @@ func (ghModelFlipSource) ReviewState(repo string, pr int) (prReviewState, error)
 	st := prReviewState{
 		Merged:  h.State == "MERGED" && h.MergedAt != "",
 		HeadSHA: h.HeadRefOID,
+	}
+	if t, err := time.Parse(time.RFC3339, h.MergedAt); err == nil {
+		st.MergedAt = t // an unparseable time stays zero: it never ends the guard walk
 	}
 	for _, r := range rest {
 		st.Reviews = append(st.Reviews, ghReview{
@@ -1066,6 +1539,14 @@ func (gitlabModelFlipUnavailable) PRShape(repo string, pr int) (prShape, error) 
 
 func (gitlabModelFlipUnavailable) ReviewState(repo string, pr int) (prReviewState, error) {
 	return prReviewState{}, errGitLabFlipReadUnavailable
+}
+
+func (gitlabModelFlipUnavailable) PRsNamingBrief(repo, briefKey string) ([]int, error) {
+	return nil, errGitLabFlipReadUnavailable
+}
+
+func (gitlabModelFlipUnavailable) PRBodyEditedAt(repo string, pr int) (time.Time, error) {
+	return time.Time{}, errGitLabFlipReadUnavailable
 }
 
 // reportAutoFlipModel prints the per-candidate report and returns the process
