@@ -62,6 +62,7 @@ func cmdEdit(args []string) (err error) {
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	decided := fs.String("decided", "", "path to a file declaring desk-taken decisions (decision:/alternative:/cost: triples, one item per numbered line) — writes/replaces the `## Desk-decided` block in the replacement body and applies the desk-decided label")
+	prNum := fs.Int("pr", 0, "edit THIS open PR instead of the one whose head branch is this worktree's branch (#1901): admitted when the worktree's branch is the PR's head branch OR its HEAD commit is exactly the PR's head commit — a neutral branch or a detached HEAD at the head commit a rework worker pushed")
 	check := fs.Bool("check", false, "run every LOCAL gate (flags, the secret scan, the replacement body's Brief:/Authors:/Issue: trailer grammar, branch state) and stop BEFORE minting a token or opening any connection; the trailer-IMMUTABILITY compare and the self-containment scan's bare-#N hint both need the PR's CURRENT body from the forge and are reported not checked, by name")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
@@ -74,7 +75,10 @@ func cmdEdit(args []string) (err error) {
 	}
 	defer func() { explainScanRefusal(*explain, err) }()
 	if fs.NArg() != 0 {
-		return deskkit.Refused("refused: edit takes no positional arguments — it edits the OPEN PR of the branch this worktree is on")
+		return deskkit.Refused("refused: edit takes no positional arguments — it edits the OPEN PR of the branch this worktree is on (or the one --pr N names)")
+	}
+	if *prNum < 0 {
+		return deskkit.Refused(fmt.Sprintf("refused: --pr must be a positive PR number, got %d", *prNum))
 	}
 	// Validate the override BEFORE anything else runs, so a malformed one refuses in
 	// milliseconds rather than after a token mint and a remote read (same ordering as create).
@@ -138,7 +142,9 @@ func cmdEdit(args []string) (err error) {
 
 	// edit has no --base: it never opens a PR, so there is no base to open against. An
 	// empty base keeps preflight's ahead-count pinned to origin/HEAD, exactly as update.
-	facts, perr := preflight(dir, "")
+	// --pr (#1901) admits a detached HEAD: the PR is named, so no branch is needed to find it,
+	// and the own-PR guard below admits a detached checkout only at that PR's head commit.
+	facts, perr := preflightMode(dir, "", *prNum > 0)
 	if perr != nil {
 		return perr
 	}
@@ -172,27 +178,11 @@ func cmdEdit(args []string) (err error) {
 		return ferr
 	}
 
-	// The PR is found the way update finds it: the OPEN change whose source branch is this
-	// branch. OpenChangeForBranch returns none for a merged or closed PR — one refusal covers
-	// "no PR", "already merged" and "closed", and none of the three can be edited.
-	pr, lerr := fg.OpenChangeForBranch(fr, facts.branch)
-	if lerr != nil {
-		return deskkit.Unverifiable("cannot look up the open PR for the branch", lerr)
-	}
-	if pr == nil {
-		return deskkit.Refused("refused: no OPEN PR for " + facts.branch +
-			" — `deskpr edit` corrects an existing open PR's text; a merged or closed PR is not editable through this verb, " +
-			"and a branch with no PR yet wants `deskpr create`")
+	pr, cur, ferr2 := findEditTarget(fg, fr, facts, *prNum)
+	if ferr2 != nil {
+		return ferr2
 	}
 	ac.pr = &pr.Number
-
-	// Read the current body/title authoritatively (GetPullRequest, the single-change read the
-	// brief pairs with OpenChangeForBranch) — the trailer-immutability check and the
-	// idempotency noop both key on the CURRENT text.
-	cur, terr := fg.GetPullRequest(fr, pr.Number)
-	if terr != nil {
-		return deskkit.Unverifiable("cannot read the PR's current body/title", terr)
-	}
 
 	// Trailer immutability. See the file header: the link is the board's data edge, and a
 	// body-rewrite verb that could re-point or drop it would make the edge assertable
@@ -397,4 +387,47 @@ func editActor() string {
 		return "the " + role + " App"
 	}
 	return "the desk"
+}
+
+// findEditTarget resolves the PR `deskpr edit` corrects, and reads its CURRENT body/title (the
+// trailer-immutability check and the idempotency noop both key on that text).
+//
+// Without --pr the PR is found the way update finds it: the OPEN change whose source branch is
+// this branch. OpenChangeForBranch returns none for a merged or closed PR — one refusal covers
+// "no PR", "already merged" and "closed", and none of the three can be edited.
+//
+// With --pr N (#1901) the named PR is read directly and must pass the shared own-PR guard,
+// deskkit.CheckOwnPR: it must be OPEN, and this checkout must be its own — on its head branch,
+// or with HEAD exactly at its head commit. That second rule is what lets a rework worker whose
+// PR head branch is checked out by another worktree (git allows one worktree per branch)
+// correct the body from the neutral branch or detached HEAD it pushed the head commit from.
+func findEditTarget(fg deskkit.Forge, fr deskkit.ForgeRepo, facts *gitFacts, prNum int) (pr, cur *deskkit.PullRequest, err error) {
+	if prNum > 0 {
+		cur, terr := fg.GetPullRequest(fr, prNum)
+		if terr != nil {
+			return nil, nil, deskkit.Unverifiable(fmt.Sprintf("cannot read PR #%d", prNum), terr)
+		}
+		if _, oerr := deskkit.CheckOwnPR("deskpr edit",
+			deskkit.OwnPRLocal{Branch: facts.branch, Head: facts.head},
+			deskkit.OwnPRRemote{Number: prNum, State: cur.State, HeadRef: cur.HeadRef, HeadOid: cur.HeadSHA},
+		); oerr != nil {
+			return nil, nil, oerr
+		}
+		return cur, cur, nil
+	}
+	pr, lerr := fg.OpenChangeForBranch(fr, facts.branch)
+	if lerr != nil {
+		return nil, nil, deskkit.Unverifiable("cannot look up the open PR for the branch", lerr)
+	}
+	if pr == nil {
+		return nil, nil, deskkit.Refused("refused: no OPEN PR for " + facts.branch +
+			" — `deskpr edit` corrects an existing open PR's text; a merged or closed PR is not editable through this verb, " +
+			"and a branch with no PR yet wants `deskpr create` (a worktree at an open PR's head commit on another " +
+			"branch name edits it with --pr N)")
+	}
+	cur, terr := fg.GetPullRequest(fr, pr.Number)
+	if terr != nil {
+		return nil, nil, deskkit.Unverifiable("cannot read the PR's current body/title", terr)
+	}
+	return pr, cur, nil
 }

@@ -22,7 +22,8 @@ const maxBodyBytes = 16 * 1024 // body cap (16 KiB)
 // write. deskreply reads it with READ-ONLY git; it never pushes.
 type gitFacts struct {
 	dir    string
-	branch string // current branch (never "HEAD"/detached)
+	branch string // current branch; "" on a detached HEAD (#1901: admitted only at the PR's head commit)
+	head   string // full SHA of the HEAD commit
 	repo   string // owner/name parsed from origin
 }
 
@@ -93,7 +94,8 @@ func (a *auditCtx) finalize(err error) {
 
 // cmdReply implements the single verb `deskreply <owner/repo> <pr> --body-file F`.
 // Flow: parse args → read+scan body → verify worktree is my own PR's checkout
-// → verify the PR is OPEN and its head branch is my branch → idempotency
+// → verify the PR is OPEN and this checkout is its own (my branch is its head branch, or my
+// HEAD is its head commit — deskkit.CheckOwnPR) → idempotency
 // → rate limit → PostComment through the resolved forge, as the worker App → audit.
 func cmdReply(args []string) (err error) {
 	ac := &auditCtx{}
@@ -250,8 +252,8 @@ func cmdReply(args []string) (err error) {
 		return gerr
 	}
 
-	// Verify the PR is OPEN and that its head branch is the branch checked out here. Any
-	// API/parse failure is unverifiable (exit 6), never a silent assume-open.
+	// Verify the PR is OPEN and that this checkout is its own. Any API/parse failure is
+	// unverifiable (exit 6), never a silent assume-open.
 	view, verr := viewPR(fg, fr, pr)
 	if verr != nil {
 		return deskkit.Unverifiable("cannot read PR state — refuse rather than guess", verr)
@@ -259,13 +261,16 @@ func cmdReply(args []string) (err error) {
 	if view.URL != "" {
 		ac.detail = view.URL
 	}
-	if !strings.EqualFold(view.State, "OPEN") {
-		return deskkit.Refused(fmt.Sprintf("refused: PR #%d is %s, not OPEN — deskreply only replies on open PRs", pr, view.State))
-	}
-	if view.HeadRefName != facts.branch {
-		return deskkit.Refused(fmt.Sprintf(
-			"refused: this worktree is on %q but PR #%d's head branch is %q — deskreply only replies on YOUR OWN PR",
-			facts.branch, pr, view.HeadRefName))
+	// The own-PR guard is the ONE shared deskkit.CheckOwnPR (#1901): the PR must be OPEN, and
+	// this checkout is its own when its branch IS the PR's head branch OR its HEAD commit IS
+	// the PR's head commit (exactly — a descendant with unpushed commits is refused). The
+	// second rule is what lets a rework worker on a neutral branch, whose PR head branch git
+	// will not let it check out, reply from the head commit it pushed.
+	if _, oerr := deskkit.CheckOwnPR("deskreply",
+		deskkit.OwnPRLocal{Branch: facts.branch, Head: facts.head},
+		deskkit.OwnPRRemote{Number: pr, State: view.State, HeadRef: view.HeadRefName, HeadOid: view.HeadRefOid},
+	); oerr != nil {
+		return oerr
 	}
 	ac.head = view.HeadRefOid
 
@@ -362,9 +367,11 @@ func alreadyReplied(entries []deskkit.Entry, repo string, pr int, head, digest s
 	return false
 }
 
-// preflight verifies the worktree is a git checkout on a real branch and resolves its
-// origin repo (owner/name). A detached HEAD or an unreadable origin is unverifiable
-// (exit 6); an origin outside the deskkit set is refused (exit 5).
+// preflight verifies the worktree is a git checkout, records its branch and HEAD commit, and
+// resolves its origin repo (owner/name). A detached HEAD is recorded as branch "" rather than
+// refused here (#1901): the own-PR guard admits it only when HEAD is exactly the PR's head
+// commit. An unresolvable HEAD or an unreadable origin is unverifiable (exit 6); an origin
+// outside the deskkit set is refused (exit 5).
 func preflight(dir string) (*gitFacts, error) {
 	gitRepo, gerr := gitcore.Open(dir)
 	if gerr != nil || !gitRepo.InsideWorkTree() {
@@ -374,8 +381,12 @@ func preflight(dir string) (*gitFacts, error) {
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot resolve current branch", err)
 	}
-	if branch == "HEAD" || branch == "" {
-		return nil, deskkit.Unverifiable("detached HEAD — check out your PR's feature branch first", nil)
+	if branch == "HEAD" {
+		branch = ""
+	}
+	headHash, herr := gitRepo.Resolve("HEAD")
+	if herr != nil {
+		return nil, deskkit.Unverifiable("cannot resolve HEAD commit", herr)
 	}
 	originURL, oerr := gitRepo.RemoteURL("origin")
 	if oerr != nil {
@@ -388,7 +399,7 @@ func preflight(dir string) (*gitFacts, error) {
 	if !deskkit.IsAllowedRepo(repo) {
 		return nil, deskkit.Refused("refused: origin " + repo + " is not in the desk-tools repo set")
 	}
-	return &gitFacts{dir: dir, branch: branch, repo: repo}, nil
+	return &gitFacts{dir: dir, branch: branch, head: headHash.String(), repo: repo}, nil
 }
 
 // viewPR reads the PR's state / head branch / head oid / url through the resolved forge

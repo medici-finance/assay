@@ -28,7 +28,7 @@ const usage = `deskpr — push a feature branch and open (or update) its pull re
 USAGE:
   deskpr create --title T (--body-file F | --body-min B) [--base main] [--check]
   deskpr update [--check]
-  deskpr edit --body-file F [--title T] [--check]
+  deskpr edit --body-file F [--title T] [--pr N] [--check]
   deskpr --version
 
 --check runs every LOCAL gate the write path runs — flag validity, branch state, the
@@ -48,7 +48,13 @@ non-default branch. deskpr update pushes a follow-up to an EXISTING open PR on t
 branch — draft or ready-flipped. deskpr edit replaces that same open PR's body, and
 optionally its title, and pushes nothing: it refuses when the branch has no OPEN PR
 (which is also how a merged or closed one is refused), and it runs the trailer,
-secret-scan, self-containment, rate-limit and public-repo gates create runs. There is
+secret-scan, self-containment, rate-limit and public-repo gates create runs. edit --pr N
+names the PR instead of finding it by branch, for a worktree that cannot be on the PR's
+head branch (git allows one worktree per branch): it is admitted when the worktree's
+branch IS the PR's head branch or its HEAD commit IS EXACTLY the PR's head commit (any
+branch name, or a detached HEAD); a HEAD with unpushed commits on top of the head commit
+is refused until they are pushed, and a merged or closed PR is refused. deskreply applies
+the same own-PR rule. There is
 no ready/close/merge verb, and no verb can pass --force to git. Preconditions are
 re-verified in-tool; on any state it cannot positively verify it refuses.
 

@@ -1,0 +1,2 @@
+### Fixed
+- `deskreply` and `deskpr edit` no longer refuse a worktree that sits exactly on the pull request's head commit under a different branch name, or on a detached HEAD. A checkout now counts as the PR's own when its branch IS the PR's head branch or its HEAD commit IS the PR's head commit (exact match only; unpushed commits on top are still refused with a push-first remedy). The PR must still be open. `deskpr edit` gains `--pr N` to name the PR when the branch name cannot (#1901).

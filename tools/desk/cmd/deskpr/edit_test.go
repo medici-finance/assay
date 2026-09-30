@@ -438,3 +438,106 @@ func TestEditActorNeverMisnamesItself(t *testing.T) {
 		t.Fatalf("editActor() on an unmapped loop = %q — it must not claim an App it cannot resolve", got)
 	}
 }
+
+// TestEditByPROwnHeadCommit is #1901's acceptance for `deskpr edit --pr N`: a worker whose
+// worktree sits on the PR's head commit under a differently-named branch (or a detached
+// HEAD) — because git would not let it check out the PR head branch another worktree holds —
+// may correct that PR's body. The guard's intent survives: a checkout at a different commit
+// on a different branch, and a merged/closed PR, still refuse with nothing written.
+func TestEditByPROwnHeadCommit(t *testing.T) {
+	cases := []struct {
+		name   string
+		setup  func(t *testing.T, w string)
+		prHead string // FAKEGH_PR_HEAD
+		oidOf  string // "HEAD" | "HEAD~1" | "" (a foreign commit)
+		state  string // FAKEGH_PR_STATE ("" = open)
+		want   int
+	}{
+		{name: "branch equal", prHead: "feature/test-branch", oidOf: "", want: deskkit.ExitOK},
+		{
+			name:   "different branch, HEAD == headRefOid",
+			setup:  func(t *testing.T, w string) { mustGit(t, w, "checkout", "-b", "neutral-rework") },
+			prHead: "feature/held-elsewhere", oidOf: "HEAD", want: deskkit.ExitOK,
+		},
+		{
+			name:   "different branch, HEAD != headRefOid",
+			setup:  func(t *testing.T, w string) { mustGit(t, w, "checkout", "-b", "neutral-rework") },
+			prHead: "feature/held-elsewhere", oidOf: "", want: deskkit.ExitRefused,
+		},
+		{
+			name: "different branch, HEAD is a descendant of headRefOid",
+			setup: func(t *testing.T, w string) {
+				mustGit(t, w, "checkout", "-b", "neutral-rework")
+				writeFile(t, filepath.Join(w, "next.txt"), "unpushed\n")
+				mustGit(t, w, "add", "next.txt")
+				mustGit(t, w, "commit", "-m", "unpushed on top of the PR head")
+			},
+			prHead: "feature/held-elsewhere", oidOf: "HEAD~1", want: deskkit.ExitRefused,
+		},
+		{
+			name:   "detached HEAD at headRefOid",
+			setup:  func(t *testing.T, w string) { mustGit(t, w, "checkout", "--detach", "HEAD") },
+			prHead: "feature/held-elsewhere", oidOf: "HEAD", want: deskkit.ExitOK,
+		},
+		{
+			name:   "merged (closed) PR, HEAD == headRefOid",
+			setup:  func(t *testing.T, w string) { mustGit(t, w, "checkout", "-b", "neutral-rework") },
+			prHead: "feature/held-elsewhere", oidOf: "HEAD", state: "closed", want: deskkit.ExitRefused,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			work := newBaseFixture(t)
+			if tc.setup != nil {
+				tc.setup(t, work)
+			}
+			calls := withEnv(t, work)
+			oid := "1111111111111111111111111111111111111111"
+			if tc.oidOf != "" {
+				oid = mustGit(t, work, "rev-parse", tc.oidOf)
+			}
+			t.Setenv("FAKEGH_PR_OID", oid)
+			t.Setenv("FAKEGH_PR_HEAD", tc.prHead)
+			if tc.state != "" {
+				t.Setenv("FAKEGH_PR_STATE", tc.state)
+			}
+			t.Setenv("FAKEGH_PR_BODY", "the original body\nBrief: fixture/01\n")
+			bodyPath := writeTempFile(t, "the corrected body\nBrief: fixture/01\n")
+
+			rc := run([]string{"edit", "--pr", "42", "--body-file", bodyPath})
+			if rc != tc.want {
+				t.Fatalf("edit --pr 42 rc = %d, want %d; calls: %v", rc, tc.want, *calls)
+			}
+			edits := editCalls(*calls)
+			if tc.want == deskkit.ExitOK {
+				if len(edits) != 1 || !callContainsAll(edits[0], "pr", "edit", "42") {
+					t.Fatalf("want exactly one edit of PR #42, got %v", edits)
+				}
+			} else if len(edits) != 0 || len(commentCalls(*calls)) != 0 {
+				t.Fatalf("the refusal still wrote: edits %v, comments %v", edits, commentCalls(*calls))
+			}
+			if anyCall(gitCalls(*calls), "push") {
+				t.Fatalf("edit pushed: %v", gitCalls(*calls))
+			}
+		})
+	}
+}
+
+// TestEditDetachedNeedsPR: a detached HEAD has no branch to look a PR up by, so without --pr
+// the edit still refuses as before (exit 6) — the detached admission is only ever by the
+// named PR's head commit.
+func TestEditDetachedNeedsPR(t *testing.T) {
+	work := newBaseFixture(t)
+	mustGit(t, work, "checkout", "--detach", "HEAD")
+	calls := withEnv(t, work)
+	t.Setenv("FAKEGH_LIST_HAS_PR", "1")
+	bodyPath := writeTempFile(t, "the corrected body\nBrief: fixture/01\n")
+
+	rc := run([]string{"edit", "--body-file", bodyPath})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("detached edit without --pr rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+	}
+	if got := editCalls(*calls); len(got) != 0 {
+		t.Fatalf("the refusal still edited: %v", got)
+	}
+}

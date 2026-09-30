@@ -1,0 +1,12 @@
+package planted
+
+// A planted instance of the #1901 defect class, kept as the class guard's positive control:
+// an own-PR check written as a bare branch-NAME compare instead of deskkit.CheckOwnPR.
+// TestOwnPRClassGuard must flag the line below; if it ever stops doing so the guard's
+// matcher is broken and would report the real tree clean for the wrong reason.
+
+type view struct{ HeadRefName string }
+
+func mine(v view, branch string) bool {
+	return v.HeadRefName == branch
+}

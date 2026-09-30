@@ -157,14 +157,23 @@ func (f *envForge) GetPullRequest(repo deskkit.ForgeRepo, number int) (*deskkit.
 	if l := os.Getenv("FAKEGH_PR_LABELS"); l != "" {
 		labels = strings.Split(l, ",")
 	}
+	// FAKEGH_PR_STATE / FAKEGH_PR_HEAD / FAKEGH_PR_OID shape the change's state, head branch
+	// and head commit for the `edit --pr N` own-PR guard (#1901). Unset serves an open change
+	// with no head facts, byte-identical to this fake before the knobs existed.
+	state := os.Getenv("FAKEGH_PR_STATE")
+	if state == "" {
+		state = "open"
+	}
 	return &deskkit.PullRequest{
 		Number:    number,
 		URL:       fmt.Sprintf("https://github.com/%s/pull/%d", repo.Slug(), number),
-		State:     "open",
+		State:     state,
 		Body:      body,
 		Title:     title,
 		Mergeable: f.mergeable(),
 		Labels:    labels,
+		HeadRef:   os.Getenv("FAKEGH_PR_HEAD"),
+		HeadSHA:   os.Getenv("FAKEGH_PR_OID"),
 	}, nil
 }
 

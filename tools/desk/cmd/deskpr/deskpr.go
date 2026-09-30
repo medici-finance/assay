@@ -657,6 +657,14 @@ func cmdUpdate(args []string) (err error) {
 // (exit 5) BEFORE origin/HEAD is consulted, so a missing origin/HEAD can never mask a
 // push to main; a detached HEAD or unreadable origin/HEAD is unverifiable (exit 6).
 func preflight(dir, base string) (*gitFacts, error) {
+	return preflightMode(dir, base, false)
+}
+
+// preflightMode is preflight with one switch: allowDetached admits a detached HEAD, recorded
+// as branch "". Only `deskpr edit --pr N` passes true (#1901) — it pushes nothing and names
+// its PR explicitly, and deskkit.CheckOwnPR then admits the detached checkout ONLY when HEAD
+// is exactly that PR's head commit. create and update push the branch and keep refusing.
+func preflightMode(dir, base string, allowDetached bool) (*gitFacts, error) {
 	gitRepo, gerr := gitcore.Open(dir)
 	if gerr != nil || !gitRepo.InsideWorkTree() {
 		return nil, deskkit.Unverifiable("not inside a git worktree", gerr)
@@ -666,7 +674,10 @@ func preflight(dir, base string) (*gitFacts, error) {
 		return nil, deskkit.Unverifiable("cannot resolve current branch", err)
 	}
 	if branch == "HEAD" || branch == "" {
-		return nil, deskkit.Unverifiable("detached HEAD — check out a feature branch first", nil)
+		if !allowDetached {
+			return nil, deskkit.Unverifiable("detached HEAD — check out a feature branch first", nil)
+		}
+		branch = ""
 	}
 	// Refuse the default branch names outright, even if origin/HEAD is unreadable.
 	if isDefaultName(branch) {
