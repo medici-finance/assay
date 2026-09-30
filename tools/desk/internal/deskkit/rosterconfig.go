@@ -299,7 +299,7 @@ const (
 	// EnvGitLabSessionEmails is the SESSION / implementer commit-author allowlist for
 	// a GitLab worktree, comma-separated EXACT emails (#643). It exists because on
 	// GitLab the desk runs TWO distinct identities: the SESSION / implementer identity
-	// (a real GitLab user, e.g. `ih-bot`) authors the worktree's commits under its own
+	// (a real GitLab user, e.g. `qa-bot`) authors the worktree's commits under its own
 	// user.name / user.email, while the role SERVICE ACCOUNT (e.g. `assay-worker-bot`)
 	// is the analog of the GitHub role App and is used only for minted API writes.
 	// The commit-identity preflight (preflight.go) was written for the GitHub model,

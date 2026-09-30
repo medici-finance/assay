@@ -9,8 +9,9 @@ import (
 	"testing"
 )
 
-// example_test.go — the publication-boundary check for Ian's 2026-08-13 ruling
-// on this brief's staged question (`risk.sensitive-data: yes`).
+// example_test.go — the publication-boundary check for the repository owner's
+// ruling on this brief's staged question (`risk.sensitive-data: yes`); the dated
+// ruling record lives in the private project tracker.
 //
 // THE RULING. `topology.yaml` is WITHHELD PERMANENTLY (`do-not-copy`): the file
 // is by design the sink every topological fact ends up in, so `copy` on that
@@ -424,7 +425,7 @@ func loadExampleOrFail(t *testing.T) Topology {
 	ex, err := LoadFile(path)
 	if err != nil {
 		t.Fatalf("COULD-NOT-CHECK: %v\n"+
-			"  %s is what the public tree ships in place of the withheld %s (Ian's 2026-08-13 "+
+			"  %s is what the public tree ships in place of the withheld %s (the owner's "+
 			"ruling). Without it this test verifies nothing, so it fails rather than passing "+
 			"quietly — and a public tree whose topology source does not parse is a published "+
 			"loader with nothing to read.", err, ExampleFile, SourceFile)
