@@ -1,0 +1,3 @@
+### Added
+- `docs/contracts.md` gains a **Rule register**: one row per enforced rule (owner, invariant, the semantic-index row it serves, justifying public issue, and the test or telemetry that shows it can fire), seeded with 17 rules from the recent fix-caused-next-bug chains plus the weight ceiling. A new rule now adds its row in the same PR.
+- `docs/contracts.md` gains a **monthly Rule diet**: a three-state catch status (`could-not-check` / `proven-able-to-fire` / `zero-without-proof`), candidate criteria, one immutable decision issue per month answered by `retire R-a R-b; keep rest` or `keep` from the driver's own login, keep by default, and retirement only through a design brief (`gate: human` plus a proven remaining layer for trust-boundary rules).
