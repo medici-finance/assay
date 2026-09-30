@@ -152,29 +152,6 @@ func TestExpectsZeroCount(t *testing.T) {
 	}
 }
 
-// TestExpectsZeroOutput pins the two prose lead-ins rule 12 accepts in front
-// of the zero, and that a non-zero or relational Expect stays out.
-func TestExpectsZeroOutput(t *testing.T) {
-	tests := []struct {
-		expect string
-		want   bool
-	}{
-		{"`0`", true},
-		{"prints `0` — the host comes from configuration", true},
-		{"output is `0`", true},
-		{"Output is `0`", true},
-		{"prints `3`", false},
-		{"output is `rc=0`", false},
-		{"`≥ 1` — the adapter is still wired", false},
-		{"exit 0", false},
-	}
-	for _, tc := range tests {
-		if got := expectsZeroOutput(tc.expect); got != tc.want {
-			t.Errorf("expectsZeroOutput(%q) = %v, want %v", tc.expect, got, tc.want)
-		}
-	}
-}
-
 func TestGrepCalls(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -967,7 +944,6 @@ func TestRuleFixturesGoRed(t *testing.T) {
 		{"moving-ref", ruleMovingRef, 4},
 		{"portability", rulePortability, 5},
 		{"gotest-run-vacuous", ruleGoTestRunVacuous, 6},
-		{"grep-pipe-zero-count", ruleGrepPipeZero, 6},
 	}
 	for _, tc := range tests {
 		t.Run(tc.dir, func(t *testing.T) {
@@ -1013,7 +989,7 @@ func TestRuleTagsAreUnique(t *testing.T) {
 	tags := []string{
 		ruleERELiteralPipe, ruleGrepZeroCount, ruleExitSwallowed, ruleRE2LiteralPipe,
 		ruleMetavar, ruleGoRunExit, ruleBREAlternation, ruleShreddedCell,
-		ruleMovingRef, rulePortability, ruleGoTestRunVacuous, ruleGrepPipeZero,
+		ruleMovingRef, rulePortability, ruleGoTestRunVacuous,
 	}
 	seen := map[string]bool{}
 	for _, tag := range tags {

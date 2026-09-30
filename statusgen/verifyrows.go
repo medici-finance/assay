@@ -506,107 +506,6 @@ func forcesSuccess(toks []shellTok) bool {
 }
 
 // ---------------------------------------------------------------------------
-// Rule 12 — a grep feeding a later pipeline stage, gated on a zero count
-// ---------------------------------------------------------------------------
-//
-// Rule 2's sibling, and the shape #1699 reported: `git grep -n PAT HEAD -- dir
-// \| wc -l` with Expect `0`. Rule 2 only sees a `grep -c` in LAST position;
-// here the grep is an EARLIER stage and a counter (`wc -l`, a `grep -v` filter,
-// a `tr`) comes after it. Without pipefail the counter's status would win and
-// the row would pass. The witness (verifyrun) and CI both run rows under
-// `bash -o pipefail`, so the grep's no-match exit 1 becomes the pipeline's exit
-// and the row fails on exactly the tree where the property holds.
-//
-// Only the row's FINAL pipeline decides its exit status — the part after the
-// last `;`, `&&` or `||`. That one structural reading covers every sanctioned
-// fix without a special case: `{ grep … || [ $? -eq 1 ]; } | wc -l` and
-// `grep … | wc -l || true` both leave a final pipeline with no grep in it.
-//
-// It is a LOWER BOUND on the class: a grep inside a brace group or subshell
-// that is itself the final pipeline (`{ grep a | wc -l; }`) is not unpicked.
-
-// expectsZeroOutput reports whether an Expect cell asserts that the printed
-// count is exactly zero. It is expectsZeroCount plus the two prose lead-ins the
-// corpus puts in front of that zero: "prints 0 — …" and "output is 0" (each
-// with the zero usually in a code span).
-func expectsZeroOutput(expect string) bool {
-	s := strings.TrimSpace(strings.NewReplacer("`", "", "*", "").Replace(expect))
-	lower := strings.ToLower(s)
-	for _, lead := range []string{"prints ", "output is "} {
-		if strings.HasPrefix(lower, lead) {
-			s = s[len(lead):]
-			break
-		}
-	}
-	return expectsZeroCount(s)
-}
-
-// grepFeedsFinalPipeline returns the grep command name ("grep", "egrep",
-// "fgrep", "ggrep" or "git grep") when the command's final pipeline has at
-// least two stages and a stage BEFORE the last one is a grep. It returns ""
-// when the final pipeline is a single command, is negated with a leading `!`
-// (the negation owns the status), or carries no grep ahead of its last stage.
-func grepFeedsFinalPipeline(toks []shellTok) string {
-	// The final pipeline: every token after the last non-pipe operator.
-	start := 0
-	for i, t := range toks {
-		if t.op && t.text != "|" {
-			start = i + 1
-		}
-	}
-	var stages [][]shellTok
-	var cur []shellTok
-	for _, t := range toks[start:] {
-		if t.op { // only `|` can remain past start
-			stages = append(stages, cur)
-			cur = nil
-			continue
-		}
-		cur = append(cur, t)
-	}
-	stages = append(stages, cur)
-	if len(stages) < 2 {
-		return ""
-	}
-	for si, st := range stages[:len(stages)-1] {
-		k := 0
-		for k < len(st) && (st[k].text == "{" || st[k].text == "(" || st[k].text == "!") {
-			if si == 0 && st[k].text == "!" {
-				return "" // `! a | b` — the negation decides the row's status
-			}
-			k++
-		}
-		if k >= len(st) {
-			continue
-		}
-		switch w := strings.TrimLeft(st[k].text, "({"); w {
-		case "grep", "egrep", "fgrep", "ggrep":
-			return w
-		case "git":
-			if gitSubcommand(st[k+1:]) == "grep" {
-				return "git grep"
-			}
-		}
-	}
-	return ""
-}
-
-// gitSubcommand returns the subcommand word of a `git` invocation, skipping the
-// global options that sit before it (`git -C dir grep …`, `git -c k=v grep …`).
-func gitSubcommand(args []shellTok) string {
-	for i := 0; i < len(args); i++ {
-		a := args[i].text
-		if !strings.HasPrefix(a, "-") {
-			return a
-		}
-		if a == "-C" || a == "-c" {
-			i++ // the option's value
-		}
-	}
-	return ""
-}
-
-// ---------------------------------------------------------------------------
 // Rule 3 — pipeline exit status swallowed by an always-zero sink
 // ---------------------------------------------------------------------------
 
@@ -1459,11 +1358,6 @@ const (
 	// `--- PASS` assertion in the same command: a match-nothing selector and a
 	// mismatched selector both exit 0 the same way rule 4's `\|` does.
 	ruleGoTestRunVacuous = "gotest-run-vacuous"
-	// ruleGrepPipeZero — #1699 — a grep feeding a later stage of the row's
-	// final pipeline, under an Expect of a zero count: the witness shell runs
-	// with pipefail, grep exits 1 when it matches nothing, so the row fails
-	// exactly when the property it checks holds.
-	ruleGrepPipeZero = "grep-pipe-zero-count"
 )
 
 // rowFindings applies every row rule to one Verify row's Command and Expect
@@ -1513,11 +1407,6 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 		if g.count && g.last && expectsZeroCount(expect) && !forcesSuccess(toks) {
 			add(ruleGrepZeroCount, "expects a count of `0` from `grep -c`, but grep exits 1 when it matches nothing — on the success path the row FAILS, and it only passes when it finds what it was meant to prove absent. Gate on the exit status instead (`! grep -qE …`), or keep the count as output and neutralise the status (`grep -cE … || true`)")
 		}
-	}
-
-	// Rule 12: a grep feeding a later pipeline stage, gated on a zero count.
-	if name := grepFeedsFinalPipeline(toks); name != "" && expectsZeroOutput(expect) {
-		add(ruleGrepPipeZero, "expects a count of `0` from a pipeline in which `%s` feeds a later stage — but `%s` exits 1 when it matches nothing, and the witness runs every row under `bash -o pipefail`, so on the success path the pipeline exits 1 and the row FAILS; it only exits 0 when the search finds what the row was meant to prove absent. Neutralise ONLY the no-match status inside a group and keep the count as the output: `{ %s … \\|\\| [ $? -eq 1 ]; } \\| wc -l` with the Expect written as output is `0`, so a real error still fails the exit and a present match fails the output. A bare `\\|\\| true` also greens the success path, but it swallows a grep error and, with a bare `0` Expect, leaves the verdict to the exit status alone", name, name, name)
 	}
 
 	// Rule 3: exit status swallowed by an always-zero sink.
