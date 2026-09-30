@@ -531,7 +531,7 @@ cap threshold are unchanged; the record only makes them survive replacement.
 separate PRs** (repetition, not rounds on one PR) names a mechanism, not a guard to add:
 `deskfile attach` it as an instance to the open `error-class` issue for that mechanism, or
 record the class per `intake-desk` step 1 — independent of whether any PR hit the round cap
-above. Recurrence goes to design, never to one more rule.
+above. Recurrence goes to design, never straight to one more rule.
 
 ### Finding-class calibration — reversal-rate demotion
 

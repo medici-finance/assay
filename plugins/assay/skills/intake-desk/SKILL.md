@@ -276,9 +276,9 @@ harmlessly, which is why the close-authority rule sits beside this one.
    — label it `question` with what is missing, or scope it; a worker-legible issue simply rides
    Next-up. **Do not fan out workers, do not take a dispatch claim, do not author implementation or
    close PRs from this window.**
-   **Class decision** (part of the same judgement as the triple). Is the symptom an instance of an
-   open `error-class` issue (title `class: <mechanism>`)? **Yes** → `deskfile attach` (unbudgeted;
-   `new` is the scarce act) one instance block: `kind` (`confirmed-defect` / `false-positive` /
+   **Class decision** (same judgement as the triple). Is the symptom an instance of an open
+   `error-class` issue intake opened (title `class: <mechanism>`)? **Yes** → `deskfile attach`
+   (outside the new-issue budget) one instance block: `kind` (`confirmed-defect` / `false-positive` /
    `intended-control` / `requested-capability` / `uncertain`), `incident-group` (mirrors share one),
    `module: <owner path or cmd/<verb>>`, `observed-at`, `source-ref` (immutable revision or retained
    evidence), `scope` (revision/operation, or `unknown`), `state: active|recovered|unknown` with

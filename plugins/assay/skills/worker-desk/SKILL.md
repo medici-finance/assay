@@ -309,9 +309,9 @@ but the ordering is a tie-break, not a hold: an empty slot with a qualifying iss
 it dispatches NOW. Claim under the SAME issue-shaped key the placeholder lane uses, `<repo>--issue-<NN>`
 — deliberately shared, so the two lanes contend on one lock and can never double-dispatch. A
 sweep that repeatedly surfaces issues failing rule 4 is an intake-coverage signal: file it, never
-widen this lane. A `design-owed` `error-class` issue (labelled by intake, `intake-desk` step 1)
-carries intake's judgment already, so it passes rule 4: dispatch it at **strong** tier; its
-deliverable is a brief per `author-brief`, never code.
+widen this lane. A `design-owed` `error-class` issue (`intake-desk` step 1) carries intake's
+judgment already, so it passes rule 4's design-fork test (never its risk-bearing-surface test):
+dispatch it at **strong** tier; its deliverable is a brief per `author-brief`, never code.
 
 ## The loop
 
