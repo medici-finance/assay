@@ -202,6 +202,7 @@ func Unverifiable(msg string, err error) *DeskError {
 //
 // The last rule is the load-bearing one: an unexpected error is treated as a
 // precondition we could not verify, NOT as success. No error path collapses to 0.
+// semantic: S-exit-codes
 func ExitCodeOf(err error) int {
 	if err == nil {
 		return ExitOK
