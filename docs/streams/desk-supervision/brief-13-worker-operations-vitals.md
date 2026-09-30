@@ -251,6 +251,32 @@ Risk-bearing values (trigger FIRED on the path clause: risk metadata is all `no`
 - Observation (no literal, so not a risk-value entry): context_pct_used is described as 0-100 (schema line 95, flag help roster.go:357) but neither the parser nor the schema enforces the range, and strconv.ParseFloat also accepts NaN/Inf. Outside this Verify table; a review note for desk-supervision/14, which reads this field as a recycle threshold.
 
 **VERIFY: BLOCKED** — rows 1-8 and 11 checked-clean; row 9 meets its Expect (7 ≥ 1) and its witness fail is a matcher artifact; row 10 could-not-check (medici-finance/assay#1281), nothing disproved. The item stays `implemented` until the desk rules on row 10 or the brief is amended so rows 9 and 10 are machine-checkable after merge. Because the diff touches a security-path trigger while the brief answers every risk question `no`, whether a model may sign this item off (versus routing it to the human gate) is also the desk's call.
+### Non-implementer verifier run — VERIFY: BLOCKED — 10/11 rows, row 10 could-not-check (#1281) — 2026-09-30 claude-opus-5-5-verifier
+
+Runner is not the implementer. Isolated worktree at merged main `b6f8f3c4e86df20681cfb5165f49a9e97659b572` (HEAD == the forge's `commits/main`). `gate: model`, all risk answers `no`; implemented by d8552d9 (#1350). The code under test (vitals, status, roster, the status schema) is unchanged since then, so this repeats the 2026-09-27 BLOCKED. Status stays `implemented`.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'Vitals' -count=1` | ok | PASS — exit 0, `ok`; 2 matching tests | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | row 2 command verbatim (merge preserves acks) | PASS | PASS — exit 0 | 2026-09-30 | claude-opus-5-5-verifier |
+| 3 | row 3 command verbatim (unset vital is null, not zero) | PASS | PASS — exit 0 | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | row 4 command verbatim (measured zero subagents round-trips) | PASS | PASS — exit 0 | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | row 5 command verbatim (build, status JSON on the vitals-beacons fixture) | `60 0 example-model` | PASS — `60 0 example-model` | 2026-09-30 | claude-opus-5-5-verifier |
+| 6 | row 6 command verbatim (no-beacon fixture) | could-not-check | PASS — all five resource fields `could-not-check` (none null, none 0) | 2026-09-30 | claude-opus-5-5-verifier |
+| 7 | row 7 command verbatim (status JSON validates against the schema) | PASS | PASS — exit 0 | 2026-09-30 | claude-opus-5-5-verifier |
+| 8 | row 8 command verbatim (python schema assert) | ok | PASS — `ok` | 2026-09-30 | claude-opus-5-5-verifier |
+| 9 | `grep -c 'could-not-check' schemas/desksupervise-status-v1.json` | ≥1 | PASS — 7 | 2026-09-30 | claude-opus-5-5-verifier |
+| 10 | `statusgen --root . --consumers --brief desk-supervision/13` | exit 0 | **COULD-NOT-CHECK** — exit 2, brief not in the diff against main; same at d8552d9 with `--base f4cb66a` | 2026-09-30 | claude-opus-5-5-verifier |
+| 11 | row 11 command verbatim (roster set refuses a multi-segment session name) | PASS | PASS — exit 0 | 2026-09-30 | claude-opus-5-5-verifier |
+
+RISK-VALUE (diff adds a file under a risk-path trigger, `tools/desk/internal/deskkit/`; all values reversible):
+
+- RISK-VALUE: DERIVED — session-segment validation rejects empty, `.`, `..`, any slash or backslash, and any `..` substring @ tools/desk/internal/deskkit/vitals.go:93-101 — exactly the names that would collapse onto or escape the roster directory; runs before the join; row 11 exercises it.
+- RISK-VALUE: DERIVED — each resource field is oneOf [measured, `could-not-check`, null], all five required @ schemas/desksupervise-status-v1.json:88-100 — the brief's Task 3 contract; no bare-0 sentinel; rows 3, 4, 6, 7 observe all three states.
+- RISK-VALUE: DERIVED — dir 0o700 / file 0o600 @ tools/desk/internal/deskkit/vitals.go:140,147 — matches the stated same-user, same-host trust boundary.
+- RISK-VALUE: DERIVED — sentinel `unknown` writes `could-not-check` @ tools/desk/cmd/deskroster/roster.go:291,307,325 — the exact sentinel Task 2 names.
+
+Findings: (F1) row 10 is the post-merge vacuous consumers class, #1281 — held there. (F2) Hand comparison of the consumers block against the diff: the schema and status entries match; the deskroster flags landed in roster.go, not the declared sets.go, and the merge writer is vitals.go, not the declared ackbeacon.go — brief-text drift, nothing disproved. (F3) The 0-100 range of the context-percent field is documented but unenforced (the parser also accepts NaN/Inf) — a review note for brief 14, outside this table. (F4) Row 6 depends on row 5's build.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
