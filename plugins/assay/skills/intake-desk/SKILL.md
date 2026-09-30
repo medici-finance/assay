@@ -96,9 +96,7 @@ issue that owns it). Two intake-specific residues after boot:
 - **The scan scope comes from the tool; this skill carries no repo list.** `deskroster repos
   --scope scan` prints the front door this desk owns — the same roster value the scanner and
   `issueboard` read, so one scan covers exactly what it prints. Widen coverage by editing the
-  roster, never by editing prose (the hand-maintained pair drifted in BOTH
-  directions — phantom coverage of repos the tools refuse, and a silent blind spot on one they
-  cover). `deskroster` exiting 6 is COULD-NOT-CHECK, not an empty world.
+  roster, never by editing prose. `deskroster` exiting 6 is COULD-NOT-CHECK, not an empty world.
 - **Labels are per-repo and not GitHub defaults.** `needs-decision` and `raised-by:issue-loop` must
   exist on a repo before use there: `gh label create <label> --repo <slug>`.
 
@@ -176,10 +174,8 @@ to one desk's inbox.
 
 ## Scored triage — the impact/risk/effort triple at exit
 
-Every item leaving triage carries a recorded **impact / risk / effort triple**, so the
-human-facing surfaces can order *worth the attention* ahead of *cheap to do*. Without it a
-digest sorts by urgency-then-age alone, and a cheap-but-worthless item and an
-expensive-but-critical one arrive indistinguishable — the front door's sharpest gap.
+Every item leaving triage carries a recorded **impact / risk / effort triple**, so human-facing
+surfaces order *worth the attention* ahead of *cheap to do*, not by urgency-then-age alone.
 
 - **Encoding — three scoped labels plus one rationale line each.** At the exit, set three
   labels on the item — `impact:{high,med,low}`, `risk:{high,med,low}`, `effort:{s,m,l}` — and
@@ -237,11 +233,10 @@ unarmed poller or an untakeable trust read all make the pass unverifiable — re
 as idle, and confirm `plan`'s arming-coverage line before trusting a quiet pass. `--dry-run` prints
 every lane step without running it; `--offline --inbound <file>` opens no network read at all.
 
-**Standing-doctrine pointer.** A successor — the scan-transcription lane (ruling R-7 in
-`docs/streams/issue-flow/rulings.md`; stream `docs/streams/scan-lane/`) — would have an
+**Standing-doctrine pointer.** A successor — a scan-transcription lane (ruling R-7) — would have an
 `issues`-event workflow commit the placeholder delta for trusted-author issues, removing the human
-merge that skims machine-raised work onto the board. Until R-7 signs and its cutover (scan-lane/03)
-lands, the scan-carrier flow above stands; `scanloop`'s lane is swappable. Do not anticipate it.
+merge that skims machine-raised work onto the board. Until R-7 signs and its cutover lands, the
+scan-carrier flow above stands; `scanloop`'s lane is swappable. Do not anticipate it.
 
 ### The judgment half — what `scanloop` emits for you to decide
 
@@ -287,19 +282,24 @@ harmlessly, which is why the close-authority rule sits beside this one.
    summary. A later assessment APPENDS a block with the same `incident-group`, never edits the
    original; a field an older block lacks reads as unknown, never invented. **No, and it is a
    machinery defect** → record `class: <mechanism>` in the triage comment, and open the class issue
-   (label `error-class`) only when a **second** symptom shares that mechanism.
-   *Worked case:* two mirrored reports of one failure are two blocks, one `incident-group`, one
-   counted instance. A later success on another revision is another `scope`, not recovery; only a
-   same-scope re-check appends `state: recovered` with its `recovery-ref`. The count stays one, and
-   a closed issue alone is never evidence of recovery.
+   (label `error-class`) when a **second** symptom shares that mechanism (the **first** in a
+   `brittle`-marked module), one block per symptom so far; park the class issue's own scan
+   placeholder (`status: blocked`, body line `Parked until design-owed.`).
+   *Worked case:* two mirrored reports of one failure: two blocks, one `incident-group`, one counted
+   instance. Success on another revision is another `scope`, not recovery; only a same-scope re-check
+   appends `state: recovered` + `recovery-ref`, count unchanged; a closed issue alone is not recovery.
    **Trigger.** Only `confirmed-defect` and `false-positive` count, deduped by `incident-group`. At 3
    counted instances or the class's 2nd merged fix, whichever comes first — or at the **first** when
    its `module:` carries a `brittle` mark in `docs/contracts.md` (deliverable: the investigation,
-   build-less-brittle/09, before any design brief) — label it `design-owed` and set each symptom
-   placeholder to `status: blocked`, class `#N` in its body line; the design PR's `Closes` closes them.
+   build-less-brittle/09, before any design brief) — label it `design-owed`, unpark its placeholder
+   (`todo`, `Parked` dropped — but a class on a `worker-desk` rule-4 risk-bearing surface stays
+   parked under `needs-decision` until the driver rules), and park each symptom placeholder
+   (`status: blocked`, body line `Parked on class #N.`); the design PR's `Closes` closes them.
    A production-down or security symptom stays `todo` (two-strikes and `bleed` must reach it); a
-   `bleed` reply from the driver's own login naming a parked symptom sets it back to `todo`.
-   `intended-control` instances go to the refusal-text owner as a wording fix, never design work.
+   `bleed` reply from the driver's own login naming a parked symptom sets it back to `todo`, `Parked`
+   dropped. **Re-park:** the scanner's `reactivate` (excluded label removed, or reopened) rewrites a
+   parked row `todo` but keeps its body, so each pass sets a `todo` row whose body says `Parked` back
+   to `blocked`. `intended-control` goes to the refusal-text owner as a wording fix, never design work.
 2. **`close-candidate` — the brief-write for a no-merge close.** When an issue must close with NO
    merged fix (`FIXED-NOT-CLOSED | WONTFIX | DUPLICATE | STALE`), mark the placeholder frontmatter
    `close-candidate: <verdict>` — a brief write, path-confined to `docs/streams/**`, on the scan
