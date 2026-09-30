@@ -115,6 +115,33 @@ shared-value trigger that reads Context text).
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
+### Non-implementer verifier run — VERIFY: PASS — 9/9 rows meet their Expect, held (#1805) — 2026-09-30 claude-opus-5-5-verifier
+
+Runner is not the implementer. Merged main 0b033c711c9ec30f75cb8c2082a505b06958a423 (cross-checked against the forge's `commits/main`); implementing squash 274ece128 (#1842, PR head 43c692117f86). The deliverable files are byte-identical at the PR head, the squash commit and the main tip. `gate: model`, all risk answers `no`. The `statusgen verifyrun` execution witness was run on Linux (golang:1.25-bookworm, linux/arm64, `--network none`, statusgen built from main's own source, the adopter roster mounted read-only): rows 1–8 pass exit 0, lint exit 0 with 0 PROBLEM lines. Row 9 records `fail exit=0 … expected 1` because verifyrun reads the Expect cell's explanatory prose ("Exit 1 names the disproved claim") as an expected exit, and the row can only be decided at the PR head, which its own Expect says. **Held at implemented on witness row 9 alone**; the verifyrun prose-parse class is routed on #1805. The witness table is summarised here, not landed verbatim, so a parse artifact is not recorded as a disproved claim.
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---------|----------|----------|---------------|
+| 1 | row 1 command as written | at least 2 | printed `3`; Linux witness pass exit=0 | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 2 | row 2 command as written | at least 5 | printed `5`, all in the new design-fit block of the brief template; witness pass exit=0 | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 3 | row 3 command as written | at least 5 | printed `5`, all in the skill's new block; witness pass exit=0 | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 4 | row 4 command as written | between 1 and 9 | printed `9`; witness pass exit=0 | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 5 | row 5 command as written | `1` | id `S-eligibility`; printed `1` (the semantic-owner row in the contracts table); witness pass exit=0 | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 6 | row 6 command as written | NET-OK | printed `NET-OK`; implementing commit found, so the base is its parent; skill 772 lines to 771; witness pass exit=0 | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 7 | row 7 command as written | `2` | printed `2` (skill rule 9 and spec §3.2); witness pass exit=0 | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 8 | row 8 command as written | ok | `ok` for the statusgen package; a `-v` re-run shows the named test's PASS line, so the run is not vacuous; witness pass exit=0 | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 9 | row 9 command as written, at the PR head 43c692117f86 against its merge-base 05c937307aa6, and at the squash against its parent | exit=0 at the PR head | printed `exit=0`; 3 corroborated, 0 disproved, 1 unchecked, on the host and on Linux. On merged main the same command reports COULD-NOT-CHECK (exit=2), the tool's documented state once the brief is no longer in the diff | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+
+Risk-bearing values. Risk metadata is present and all four flags are `no`; the diff is markdown only. Enumerated anyway, and every value is reversible by a doc edit:
+
+RISK-VALUE: DERIVED — exec-tier question (d) binds to strong @ spec/brief-v1.md:64 and plugins/assay/skills/author-brief/SKILL.md:368 — the stream spec's own row for this brief names that one new exec-tier question, and its decision D5 runs design work at strong tier.
+RISK-VALUE: DERIVED — why-add is required when any weight delta is above 0 @ SKILL.md:183 and spec/brief-v1.md:226 — the brief's facts, and the stream spec making `n/a` legal only at a zero delta.
+RISK-VALUE: DERIVED — design-fit key count = 5 @ spec/brief-v1.md:221-227, SKILL.md:179-183, docs/brief-template.md:99-103 — the stream spec names exactly owner, contract, retires, weight and why-add.
+RISK-VALUE: DERIVED — complexity-question count = four @ SKILL.md:135, SKILL.md:361, spec/brief-v1.md:64 — three existing questions plus (d).
+RISK-VALUE: N/A — checklist size 9, the skill's net line bound and the template's example weight are operational bounds.
+
+Findings: (1) **held on #1805** — witness row 9 is a verifyrun Expect-cell misparse over a row decidable only at the PR head; the row also ends in `; echo "exit=$?"`, so its exit status is always 0. (2) Advisory lint NOTICEs on this brief (row 8 unanchored `-run`, no `outcome:` field, obligation tokens) are authoring shape; none is a PROBLEM. (3) The out-of-scope consumers entry for downstream copies of the skill stays unchecked by the tool; the only other in-repo copy is a weight-counter fixture, not a synced twin. No implementation defect found.
+
+VERIFY: PASS on all nine rows in the context each row specifies; held at implemented until witness row 9 can pass (#1805).
 
 ## Review
 Gate: model (from frontmatter). The reviewer checks that the skill's offsets removed narrative or
