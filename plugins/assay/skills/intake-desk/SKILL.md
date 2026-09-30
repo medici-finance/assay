@@ -63,14 +63,11 @@ register/evidence discipline of `the-desk` applies (read it if not already boote
 ## Model requirement — run this desk on a SMART model (human:<name>, 2026-07-16)
 
 **This desk's core work is judgment, so it MUST run on a strong/smart tier — not an economy tier.**
-Unlike a worker (which executes a spec someone else already scoped) or a mechanical scan, the
-inbound loop *decides*: whether an inbound thing is work or an idea (the routing test), which of the
-five exits an entry takes, what a `needs-decision` issue's Situation/Options actually are, and how
-to scope an idea toward a brief. Those are the same class of design-tier calls the `author-brief`
-model-tier gate protects — errors here compound downstream through every worker the placeholder or
-brief spawns. `scanloop` is built around this split: it EMITS the judgment half for a model tier and
-never computes it. This is why the desk exists as its own smart window rather than a cron: the front
-door needs a mind, not a trigger.
+Unlike a worker or a mechanical scan, the inbound loop *decides*: work or idea (the routing test),
+which of the five exits an entry takes, a `needs-decision` issue's Situation/Options, and how to
+scope an idea toward a brief — the design-tier calls the `author-brief` model-tier gate protects,
+whose errors compound through every worker downstream. `scanloop` EMITS the judgment half for a
+model tier and never computes it: the front door needs a mind, not a trigger.
 
 - **If you are a cheap/economy-tier session** (haiku-class or equivalent): do **mechanical work
   only** — run `scanloop`, keep the board current, post already-formed placeholders — and **do not
@@ -99,9 +96,7 @@ issue that owns it). Two intake-specific residues after boot:
 - **The scan scope comes from the tool; this skill carries no repo list.** `deskroster repos
   --scope scan` prints the front door this desk owns — the same roster value the scanner and
   `issueboard` read, so one scan covers exactly what it prints. Widen coverage by editing the
-  roster, never by editing prose (the hand-maintained pair drifted in BOTH
-  directions — phantom coverage of repos the tools refuse, and a silent blind spot on one they
-  cover). `deskroster` exiting 6 is COULD-NOT-CHECK, not an empty world.
+  roster, never by editing prose. `deskroster` exiting 6 is COULD-NOT-CHECK, not an empty world.
 - **Labels are per-repo and not GitHub defaults.** `needs-decision` and `raised-by:issue-loop` must
   exist on a repo before use there: `gh label create <label> --repo <slug>`.
 
@@ -179,18 +174,15 @@ to one desk's inbox.
 
 ## Scored triage — the impact/risk/effort triple at exit
 
-Every item leaving triage carries a recorded **impact / risk / effort triple**, so the
-human-facing surfaces can order *worth the attention* ahead of *cheap to do*. Without it a
-digest sorts by urgency-then-age alone, and a cheap-but-worthless item and an
-expensive-but-critical one arrive indistinguishable — the front door's sharpest gap.
+Every item leaving triage carries a recorded **impact / risk / effort triple**, so human-facing
+surfaces order *worth the attention* ahead of *cheap to do*, not by urgency-then-age alone.
 
-- **Encoding — three scoped labels plus one rationale line each.** At the exit, set three
-  labels on the item — `impact:{high,med,low}`, `risk:{high,med,low}`, `effort:{s,m,l}` — and
-  post ONE comment line per axis giving the reason (e.g. `impact: high — blocks every
-  downstream consumer`). The labels are the queryable data; the comment is the audit trail.
-  The taxonomy is generic — no project names belong in a label. Label provisioning is
-  per-repo project config, like the escalation labels above: create idempotently before
-  first use on a repo.
+- **Encoding — three scoped labels plus one rationale line each.** At the exit, set three labels on
+  the item — `impact:{high,med,low}`, `risk:{high,med,low}`, `effort:{s,m,l}` — and post ONE comment
+  line per axis giving the reason (e.g. `impact: high — blocks every downstream consumer`). The
+  labels are the queryable data; the comment is the audit trail. The taxonomy is generic — no project
+  names belong in a label. Label provisioning is per-repo project config, like the escalation labels
+  above: create idempotently before first use on a repo.
 - **Judgment recorded, not computed.** The triple is the triage session's own call, made
   where the judgment already happens — no model scores it in CI and no inferential sensor
   derives it. This desk already runs on a smart tier for exactly this reason.
@@ -240,14 +232,10 @@ unarmed poller or an untakeable trust read all make the pass unverifiable — re
 as idle, and confirm `plan`'s arming-coverage line before trusting a quiet pass. `--dry-run` prints
 every lane step without running it; `--offline --inbound <file>` opens no network read at all.
 
-**Standing-doctrine pointer.** A successor boarding architecture — the scan-transcription lane
-(ruling R-7 in `docs/streams/issue-flow/rulings.md`; work stream `docs/streams/scan-lane/`) would
-have an `issues`-event workflow re-derive and commit the placeholder delta itself for
-trusted-author issues. It is a policy change (it removes the human merge that today skims
-machine-raised work onto the board), so it takes a recorded operator ruling plus a deployed, armed
-lane before it applies — **R-7 is still unsigned** (its Sign-off line is empty, checked 2026-08-25),
-so the scan-carrier flow above stands until R-7 signs and the cutover lands (scan-lane/03);
-`scanloop`'s dispatch lane is built swappable for it. Do not anticipate the cutover.
+**Standing-doctrine pointer.** A successor — a scan-transcription lane (ruling R-7) — would have an
+`issues`-event workflow commit the placeholder delta for trusted-author issues, removing the human
+merge that skims machine-raised work onto the board. Until R-7 signs and its cutover lands, the
+scan-carrier flow above stands; `scanloop`'s lane is swappable. Do not anticipate it.
 
 ### The judgment half — what `scanloop` emits for you to decide
 
@@ -271,23 +259,48 @@ human?**
   the two cases above.
 
 This partitions **autonomous** reactions only: a coordinator working an issue because a human pointed
-at it is NOT a violation. **Exclusivity, not a claim, because coordination-by-announcement does not
-work** — both desks react to the same event, so the announcement lands after the other has already
-started (the incident that set this rule: one fix got two full worker implementations *despite* a
-routing comment naming both dispatches 23 minutes earlier). **Decision: claims are deliberately NOT
-extended to response actions — do not re-propose the ceremony.** human:<name>'s calibration: *"while
-doing double work on some issues is annoying, we are catching them, and it isn't really affecting the
-integrity of the overall system (besides burning tokens)"* — the cost is duplicated tokens, not
-correctness, so it gets one cheap ownership rule. Extending a leaky mechanism to more surface buys
-ceremony, not reliability. The same incident **predicted the next one** — it warned that the same
-race on a **mutating** response "would not converge harmlessly", and a desk unilaterally closing
-issues landed three days later. That is why the two rules sit together.
+at it is NOT a violation. **Exclusivity, not a claim:** both desks react to the same event, so a
+routing announcement lands after the other has already started. **Claims are deliberately NOT
+extended to response actions — do not re-propose the ceremony** (human:<name>'s calibration: the cost
+is duplicated tokens, not correctness). The same race on a **mutating** response does not converge
+harmlessly, which is why the close-authority rule sits beside this one.
 
-1. **CREATE-PLACEHOLDER triage.** `scanloop` writes the placeholder; your job at placeholder time is
-   **triage only**. An issue that fails the routing test (thin / ambiguous) is NOT left for a worker
-   — label it `question` with what is missing, or scope it; a worker-legible issue simply rides
-   Next-up. **Do not fan out workers, do not take a dispatch claim, do not author implementation or
-   close PRs from this window.**
+1. **CREATE-PLACEHOLDER triage.** `scanloop` writes the placeholder; your job here is **triage
+   only**. An issue that fails the routing test (thin / ambiguous) is NOT left for a worker — label
+   it `question` with what is missing, or scope it; a worker-legible issue rides Next-up. **Do not
+   fan out workers, take a dispatch claim, or author implementation or close PRs from this window.**
+   **Class decision** (same judgement as the triple). Is the symptom an instance of an open
+   `error-class` issue intake opened (title `class: <mechanism>`)? **Yes** → `deskfile attach`
+   (outside the new-issue budget) one instance block: `kind` (`confirmed-defect` / `false-positive` /
+   `intended-control` / `requested-capability` / `uncertain`), `incident-group` (mirrors share one),
+   `module: <owner path or cmd/<verb>>`, `observed-at`, `source-ref` (immutable revision or retained
+   evidence), `scope` (revision/operation, or `unknown`), `state: active|recovered|unknown` with
+   `checked-at` (and `recovery-ref` when recovered), optional `introduced-by: <ref>
+   (<same-symptom|shared-mechanism|introduced-by-commit|unconfirmed>)`, `open-questions` and
+   `next-step` (the latest block's are current), and a one-line evidence summary. A later assessment
+   or repeat report APPENDS a same-`incident-group` block (evidence, never a count or class issue),
+   never edits the original; a field an older block lacks reads as unknown, never invented. **No, and
+   it is a machinery defect** → record `class: <mechanism>` in the triage comment, and open the class
+   issue (label `error-class`) when a **second** symptom shares that mechanism (the **first** in a
+   `brittle`-marked module), one block per symptom so far; park the class issue's own scan
+   placeholder (`status: blocked`, body line `Parked until design-owed.`). *Worked case:* two
+   mirrored reports of one failure: two blocks, one `incident-group`, one counted instance; a
+   separate occurrence takes a new `incident-group` and counts. Success on another revision is
+   another `scope`, not recovery; only a same-scope re-check appends `state: recovered` +
+   `recovery-ref`, count unchanged; a closed issue alone is not recovery. **Trigger.** Only
+   `confirmed-defect` and `false-positive` count, deduped by `incident-group`. At 3 counted instances
+   or the class's 2nd merged fix — or at the **first** when its `module:` carries a `brittle` mark in
+   `docs/contracts.md` — label it `design-owed`, unpark its placeholder (`todo`, `Parked` line →
+   `Design-owed: deliverable a brief per author-brief, strong tier.`, a `brittle` first's deliverable
+   `the investigation per build-less-brittle/09`; a class on a `worker-desk` rule-4 risk-bearing
+   surface stays parked under `needs-decision` until the driver rules: proceed unparks it as above,
+   decline sets its symptoms `todo`, `Parked` dropped), and park each symptom placeholder (`status:
+   blocked`, body line `Parked on class #N.`); the design PR's `Closes` closes them; that deliverable
+   reuses the class record, never rediscovers it. A production-down or security symptom stays `todo`;
+   the driver's own-login `bleed` reply naming a parked symptom sets it `todo`, `Parked` dropped.
+   **Re-park:** a scanner `reactivate` (excluded label removed or reopened) sets a parked row `todo`,
+   body kept, so each pass re-blocks a `todo` row still saying `Parked`. `intended-control` is a
+   wording fix for its refusal-text owner, never design work.
 2. **`close-candidate` — the brief-write for a no-merge close.** When an issue must close with NO
    merged fix (`FIXED-NOT-CLOSED | WONTFIX | DUPLICATE | STALE`), mark the placeholder frontmatter
    `close-candidate: <verdict>` — a brief write, path-confined to `docs/streams/**`, on the scan
@@ -306,19 +319,14 @@ issues landed three days later. That is why the two rules sit together.
    the human, and only a verified human account is honored. This is the SINGLE decision queue
    — the intake lane routes into it too, never a second one.
 5. **DUPLICATE — merge the evidence first, and this desk never closes it** (human:<name>, 2026-08-02).
-   Spotting a duplicate is not authority to close one: it is a unilateral judgement that two reports
-   are the same defect, and the loser's non-overlapping evidence dies with it (in the incident that
-   set this rule, the closed report carried the run-ID proof its survivor lacked). Issues and PRs
-   alike:
+   Spotting a duplicate is not authority to close one: the loser's non-overlapping evidence dies
+   with it. Issues and PRs alike:
    - **Fan out a STRONG-tier worker** — never inline at this desk, never a cheap tier.
    - **The evidence-merge comes FIRST and is mandatory.** The worker folds every missing bit of the
-     loser into the survivor *before* anything is marked duplicate. This is the step that incident
-     reports.
+     loser into the survivor *before* anything is marked duplicate.
    - **Pick the survivor on MERIT; first-filed breaks a genuine tie only.** Verify the competing
-     claims — a claim that does not reproduce is not evidence. On this procedure's first run,
-     mechanical first-filed picked the **less** accurate issue and only the mandatory
-     fold rescued the record; the pair were also lossy compressions of one parent record filed 2m28s
-     apart by the same bot, so check provenance before reading agreement as corroboration.
+     claims — a claim that does not reproduce is not evidence — and check provenance before reading
+     agreement as corroboration (two reports can be lossy copies of one parent record).
    - **The dispatcher names the candidates and the tiebreak RULE — never which one survives.** Naming
      the survivor up front deletes the judgement the strong tier was dispatched to exercise.
    - **The worker marks; the reviewer closes.** The worker labels the loser `duplicate`, cross-links
@@ -337,9 +345,8 @@ may be closed by the desk, citing the ruling** (2026-08-24 ruling 7). Implementa
 outstanding is not a reason to hold a decided issue open — but the close comment **must NAME the
 tracker**: the actual brief id, PR number or issue carrying the remaining work, never the assertion
 "the work is tracked"; no tracker, create it first, then close. The relabel is the load-bearing half
-and is mandatory — flip `needs-decision` → `human-decided`, which is what takes it off
-human:<name>'s queue; the close is board hygiene on top, and it is the close the tracker condition
-gates.
+and is mandatory — flip `needs-decision` → `human-decided`, which is what takes it off human:<name>'s
+queue; the close is board hygiene on top, and it is the close the tracker condition gates.
 
 The other two close paths are mechanical. A work issue closes when its fixing PR **MERGES** — the
 merge is the authorization (`--reason completed`, comment naming the PR and merge date), on the
@@ -425,23 +432,16 @@ Stated once for every desk; this skill adds only what is its own above.
   memory channel is a rolling cycle summary; it tells you *where to look*, the fresh read tells you
   *what is true*.
 - **Cross-repo evidence binds to the REMOTE, never a bare sibling checkout.** A triage or
-  verification claim about a repo other than the one this desk's worktree is checked out from —
-  "the code still has X", "the fix already landed", a cited file:line — must be resolved against
-  that repo's remote state: `gh api repos/<owner>/<repo>/contents/<path>` (or an equivalent forge
-  read) directly, or a sibling working copy **fetched and confirmed current in this same cycle**.
-  A `git fetch` alone does not confirm anything — it can fail silently (a rewritten remote, a dead
-  credential) and leave the tree exactly as stale as before it ran, and comparing the checkout's
-  own `HEAD` to its own `origin/main` afterward proves nothing since both move together. The only
-  check that catches a silent fetch failure is an INDEPENDENT read of the same ref — e.g. `git -C
-  <checkout> rev-parse origin/main` after the fetch, compared against `gh api
-  repos/<owner>/<repo>/commits/<branch> --jq .sha` (a different protocol, so a rewrite that
-  silently misroutes the git fetch does not also misroute the API call). A local sibling tree read
-  with no such cross-check is not evidence: it can drift arbitrarily far behind with no visible
-  signal, and a grep against a stale tree returns confident, precise, *wrong* line numbers that
-  read as stronger proof than a vaguer correct one. Citing a sibling-repo detail without stating
-  the SHA it was cross-checked against is the same failure — state the SHA, or don't cite the
-  detail. Cannot reach the remote and cannot cross-check the checkout → **could-not-check**, never
-  a claim badged as re-verified.
+  verification claim about another repo — "the code still has X", "the fix already landed", a cited
+  file:line — is resolved against that repo's remote: a forge read (`gh api
+  repos/<owner>/<repo>/contents/<path>`) directly, or a sibling working copy **fetched and confirmed
+  current in this same cycle**. A `git fetch` can fail silently and leave the tree as stale as
+  before, and comparing the checkout's `HEAD` with its own `origin/main` proves nothing: confirm
+  with an INDEPENDENT read over a different protocol — `git -C <checkout> rev-parse origin/main`
+  against `gh api repos/<owner>/<repo>/commits/<branch> --jq .sha`. A stale tree returns confident,
+  precise, *wrong* line numbers. State the SHA a sibling-repo detail was cross-checked against, or
+  don't cite it; cannot reach the remote and cannot cross-check → **could-not-check**, never a
+  claim badged as re-verified.
 - **Identity.** Post and file as this desk's own App via the desk verbs (`deskfile`, `deskpost`,
   `deskreply`, `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script. A shared
   human/operator login makes authorship ambiguous; a token 404-ing on a repo it should cover means

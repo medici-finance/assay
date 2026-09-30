@@ -526,9 +526,10 @@ authenticated actor or head is could-not-check — it clears nothing. Blocking p
 cap threshold are unchanged; the record only makes them survive replacement.
 
 **Recurrence-promotion:** a finding the reviewer has raised **three or more times across
-separate PRs** (repetition of the same finding, not rounds on one PR) is itself worth filing as
-a guardrail-promotion candidate through the existing insight-routing lane — independent of
-whether any one PR ever hit the round cap above.
+separate PRs** (repetition, not rounds on one PR) names a mechanism, not a guard to add:
+`deskfile attach` it as an instance to the open `error-class` issue for that mechanism, or
+record the class per `intake-desk` step 1 — independent of whether any PR hit the round cap
+above. Recurrence goes to design, never straight to one more rule.
 
 ### Finding-class calibration — reversal-rate demotion
 
