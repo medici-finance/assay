@@ -51,7 +51,6 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| build-less-brittle | 07 — Rule register (owner, invariant, justifying issue, catch source) and the monthly rule diet [exec:strong] | 1 | 5500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | measured-status | 03 — Derive the commsloop router's risk field from the envelope instead of hardcoding false, or record why false is sound — restore the risk:yes->tier:human backstop [exec:strong] | 0 | 2200 |
 | measured-status | 05 — attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish [exec:strong] | 1 | 2200 |
@@ -61,24 +60,81 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 | measured-status | 01 — Derive the deskkit exit-code table — record the convention ExitOK/Disabled/RateLimited/Refused/Unverifiable follow, and pin it with a test | 0 | 2000 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
 
+## Drive: `build-less-brittle`
+
+**State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
+
+_last regen: 6fa2563 2026-09-30T14:07:37+10:00_
+
+**Progress:** 2/13 brief items done.
+
+**In-flight:**
+
+_none_
+
+**Blocked on review:**
+
+- build-less-brittle/02
+- build-less-brittle/07
+- build-less-brittle/08
+
+**Frontier next:**
+
+_none_
+
+
+## Drive: `desktools-v2`
+
+**State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
+
+_last regen: 6fa2563 2026-09-30T14:07:37+10:00_
+
+**Progress:** 7/28 brief items done.
+
+**In-flight:**
+
+_none_
+
+**Blocked on review:**
+
+- desktools-v2/01
+- desktools-v2/09
+- windows-port/00
+- windows-port/01
+- windows-port/03
+- windows-port/08
+- windows-port/09
+- windows-port/10
+- windows-port/11
+- windows-port/12
+- windows-port/13
+- windows-port/15
+
+**Frontier next:**
+
+_none_
+
+
+
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (53 desk-actionable of 91 total — 86 at implemented, 5 verified awaiting review)
+## Awaiting verification / review (54 desk-actionable of 92 total — 87 at implemented, 5 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (53)
+### Desk-actionable (54)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | build-less-brittle | 01 [exec:strong] | verified | 8500 | 11 | — | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) | — |
 | graph-execution | 02 [exec:strong] | implemented | 7500 | 11 | — | — | — |
 | build-less-brittle | 02 [exec:strong] | implemented | 6500 | 7 | — | — | — |
+| build-less-brittle | 07 [exec:strong] | implemented | 5500 | 5 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | build-less-brittle | 08 [exec:strong] | implemented | 4500 | 3 | — | — | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
@@ -239,7 +295,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 04 Intake files by error class; a recurring class triggers a design brief, not another point fix — todo (wave 2)
 - 05 Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight — todo (wave 3)
 - 06 Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision — todo (wave 2)
-- 07 Rule register (owner, invariant, justifying issue, catch source) and the monthly rule diet — todo (wave 1)
+- 07 Rule register (owner, invariant, justifying issue, catch source) and the monthly rule diet — implemented (wave 1)
 - 08 Hotspot metric (churn × complexity, temporal coupling) from git history, and the brittle mark — implemented (wave 1)
 - 09 Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept — todo (wave 3)
 - 10 Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning — todo (wave 2)
