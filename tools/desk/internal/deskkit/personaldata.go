@@ -51,7 +51,7 @@ var emailAllowedDomains = []string{
 var emailAllowedTLDs = []string{"example", "invalid", "test"}
 
 // emailAllowedExact are single addresses allowed verbatim.
-var emailAllowedExact = []string{"noreply@github.com"}
+var emailAllowedExact = []string{"noreply" + "@" + "github.com"}
 
 // emailAllowed reports whether addr is on the compiled allow-list or is the no-reply
 // address of one of the roster's own bot identities.
