@@ -152,6 +152,7 @@ func cmdFlip(args []string) error {
 	return ferr
 }
 
+// semantic: S-review-verdict
 func flip(o flipOpts) error {
 	// --- caller-role -------------------------------------------------------------
 	if err := checkCallerRole(); err != nil {
