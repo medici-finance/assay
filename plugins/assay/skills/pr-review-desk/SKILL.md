@@ -499,8 +499,7 @@ exception to it.
 On round N+1 for that class, the reviewer STOPS re-litigating it and instead files the
 escalation the methodology already has — `needs-decision` — carrying an **arbiter packet**
 in place of another verdict: one row per disputed finding, each side's position plus a link to
-the evidence for it. Structured disagreement, not a transcript dump — the human reads rows, not
-review history.
+the evidence for it. Structured disagreement, not a transcript dump — the human reads rows, not review history.
 
 | finding | worker's position + evidence | reviewer's position + evidence |
 |---|---|---|
