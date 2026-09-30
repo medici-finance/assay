@@ -167,6 +167,51 @@ asserts that test's `--- PASS:` line, which is the shape this brief lints for.
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
+### Verification — 2026-09-30 (assay-verifier-app[bot] @ 43420f7ecd74 (claude-opus-5-5) (on-behalf-of human:ian)) — 2026-09-30 claude-opus-5-5-verifier
+
+Non-implementer verify on merged main 43420f7ecd743f5c930dc479f54f5ef5ca7b82ed (implementing change 0b4da12e0, PR #1659; pre-merge parent 8ad26beab). The first table is the `statusgen verifyrun --dry-run` execution witness, landed verbatim. It was run on Linux (linux/arm64 golang image, `--network none`, statusgen built from main's own source, the adopter roster mounted read-only so each Runner cell carries its on-behalf-of principal): 9/9 pass, witness exit 0.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && GOWORK=off go build ./... && GOWORK=off go vet ./...` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-30 | assay-verifier-app[bot] @ 43420f7ecd74 (on-behalf-of human:ian) (git-config) |
+| 2 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestRuleFixturesGoRed$' -v . > "${TMPDIR:-/tmp}/sg14-r2.out" 2>&1 && grep -F -e '--- PASS: TestRuleFixturesGoRed/gotest-run-vacuous' "${TMPDIR:-/tmp}/sg14-r2.out"` | pass exit=0 | sha256:db32f4a34e27 | 2026-09-30 | assay-verifier-app[bot] @ 43420f7ecd74 (on-behalf-of human:ian) (git-config) |
+| 3 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestGoTestRunVacuous_Shapes$' -v . > "${TMPDIR:-/tmp}/sg14-r3.out" 2>&1 && grep -F -e '--- PASS: TestGoTestRunVacuous_Shapes' "${TMPDIR:-/tmp}/sg14-r3.out"` | pass exit=0 | sha256:eda6fade6483 | 2026-09-30 | assay-verifier-app[bot] @ 43420f7ecd74 (on-behalf-of human:ian) (git-config) |
+| 4 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestGoTestRunVacuous_ClosedBriefsExempt$' -v . > "${TMPDIR:-/tmp}/sg14-r4.out" 2>&1 && grep -F -e '--- PASS: TestGoTestRunVacuous_ClosedBriefsExempt' "${TMPDIR:-/tmp}/sg14-r4.out"` | pass exit=0 | sha256:61ec9dc30b03 | 2026-09-30 | assay-verifier-app[bot] @ 43420f7ecd74 (on-behalf-of human:ian) (git-config) |
+| 5 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestRuleTagsAreUnique$' -v . > "${TMPDIR:-/tmp}/sg14-r5.out" 2>&1 && grep -F -e '--- PASS: TestRuleTagsAreUnique' "${TMPDIR:-/tmp}/sg14-r5.out" && GOWORK=off go test -count=1 -timeout 300s -run '^TestUnfailableRowNoticesOnFixture$' -v . > "${TMPDIR:-/tmp}/sg14-r5b.out" 2>&1 && grep -F -e '--- PASS: TestUnfailableRowNoticesOnFixture' "${TMPDIR:-/tmp}/sg14-r5b.out"` | pass exit=0 | sha256:fa6a342a2ee8 | 2026-09-30 | assay-verifier-app[bot] @ 43420f7ecd74 (on-behalf-of human:ian) (git-config) |
+| 6 | `cd tools/skillslint && go run . --root ../..` | pass exit=0 | sha256:75295daa2b22 | 2026-09-30 | assay-verifier-app[bot] @ 43420f7ecd74 (on-behalf-of human:ian) (git-config) |
+| 7 | `cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg14" . && cd .. && "${TMPDIR:-/tmp}/sg14" --root . --lint > "${TMPDIR:-/tmp}/sg14.lint" 2>&1 && grep -F -e 'closed brief(s) carry an unasserted go test -run selector' "${TMPDIR:-/tmp}/sg14.lint" && ! grep -F -e 'brief-17-regression-suite-gate.md: Verify row 2 [gotest-run-vacuous]' "${TMPDIR:-/tmp}/sg14.lint"` | pass exit=0 | sha256:3be0461243dc | 2026-09-30 | assay-verifier-app[bot] @ 43420f7ecd74 (on-behalf-of human:ian) (git-config) |
+| 8 | `grep -n -F -e 'gotest-run-vacuous' docs/brief-rules.md plugins/assay/skills/author-brief/SKILL.md` | pass exit=0 | sha256:d688c642e3a9 | 2026-09-30 | assay-verifier-app[bot] @ 43420f7ecd74 (on-behalf-of human:ian) (git-config) |
+| 9 | `cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg14c" . && cd .. && "${TMPDIR:-/tmp}/sg14c" --root . --consumers --base "$(git merge-base refs/remotes/origin/main HEAD)"` | pass exit=0 | sha256:f53129ccd00c | 2026-09-30 | assay-verifier-app[bot] @ 43420f7ecd74 (on-behalf-of human:ian) (git-config) |
+
+Verifier detail (statusgen/14 — NON-implementer, merged main 43420f7ecd74, 2026-09-30; host rows ran on darwin/arm64, offline):
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---------|----------|----------|---------------|
+| 1 | row 1 build + vet (check:ci) | clean | exit 0; no output | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 43420f7ecd74 |
+| 2 | row 2 red-fixture test, grep the gotest-run-vacuous subtest PASS line (check:ci +mutation) | subtest PASS | exit 0; subtest PASS, 0 FAIL lines, table pins want=6. Mutation: with the rule block short-circuited the row exits 1 with `red fixture: gotest-run-vacuous fired on 0 rows, want 6`; reverted, tree clean | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 43420f7ecd74 |
+| 3 | row 3 shapes test (check:ci) | PASS | exit 0; parent PASS plus 11 subtests PASS (bare, -run= form, negated grep, or-true, other-test grep, two selectors one assertion, anchored positive control, group-selector silent, no -run silent, -bench silent, `-run '^$'` silent) | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 43420f7ecd74 |
+| 4 | row 4 closed-briefs-exempt test (check:ci) | PASS | exit 0; the test pins the summary `[gotest-run-vacuous] 2 Verify row(s) in 1 closed brief(s) …` and exactly one summary notice | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 43420f7ecd74 |
+| 5 | row 5 rule-tags-unique plus unfailable-row-notices tests (check:ci) | both PASS | exit 0; both PASS lines printed | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 43420f7ecd74 |
+| 6 | `cd tools/skillslint && go run . --root ../..` (check:ci) | ENFORCEMENT-BLOCK PASS | exit 0; `ENFORCEMENT-BLOCK: PASS`; HOUSE-VALUES, GUARDRAILS, POSIX-TOKEN also PASS | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 43420f7ecd74 |
+| 7 | row 7 real-tree `--lint` (check +flow) | summary notice present; quality/17 row 2 silent | exit 0; `LINT: PASS`; `NOTICE: [gotest-run-vacuous] 245 Verify row(s) in 51 closed brief(s) carry an unasserted go test -run selector …`; 475 per-row notices on open briefs; quality/17 row 2 draws none | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 43420f7ecd74 |
+| 8 | `grep -n -F -e 'gotest-run-vacuous' docs/brief-rules.md plugins/assay/skills/author-brief/SKILL.md` (check:ci +dereference) | both docs name the rule | exit 0; brief-rules.md :522 and :540; author-brief SKILL.md :542 (generated table row, advisory) | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 43420f7ecd74 |
+| 9 | row 9 `--consumers --base <merge-base>` (check) | exit 0 | exit 0; `no brief files in the diff … nothing to corroborate` (vacuous, see F1). Manual corroboration: `git diff --name-only 8ad26beab 0b4da12e0` carries all 5 consumers paths | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 43420f7ecd74 |
+
+Execution witness: `statusgen verifyrun --dry-run` (main-source build, Linux network-off) on 43420f7ecd74: rows 1-9 all `pass exit=0`, witness exit 0.
+
+Grounding against the Ground rules and Review asks: the rule is registered advisory (statusgen/enforcementstatus.go:122); closed-brief scoping applies to this tag only (statusgen/verifyrows.go:1320) and a brief with no README row reads as open (:1311); the implementing diff edits no closed brief's Verify table (the only brief files in it are testdata fixtures); the red fixture carries exactly the six prescribed shapes and the closed fixture two rows.
+
+Risk-bearing values. Risk metadata is present and all-no; the diff touches no risk-classed path, so the fail-safe trigger does not fire. Enumerated anyway over 0b4da12e0: rule tag, registry status, the `--- PASS` assertion token and its named form, the test-name pattern, the `^$` exemption, the closed-status set, the fixture counts. All are reversible by edit and re-release; the lint blocks nothing.
+
+RISK-VALUE: DERIVED — registry status = StatusAdvisory @ statusgen/enforcementstatus.go:122 — the Ground rules require a NOTICE, not a PROBLEM; a PROBLEM would red-CI main on the 475 open-brief rows observed in row 7.
+RISK-VALUE: DERIVED — assertion token "--- PASS" and "--- PASS: " + name @ statusgen/verifyrows.go:1474 and :1484 — `go test -v` prints that line per passing test and none when `-run` matches nothing (exit 0, "no tests to run"), so a positive grep on it separates a real pass from a vacuous one.
+RISK-VALUE: DERIVED — selectsNoTests exemption pat == "^$" @ statusgen/verifyrows.go:1138 — the anchored empty pattern matches no test name (Go's run-zero-tests idiom beside -bench/-fuzz); an unanchored empty pattern matches every name, so exempting only the exact literal is correct.
+RISK-VALUE: DERIVED — closed statuses "done"/"verified" @ statusgen/verifyrows.go:1312 — Task 3 names exactly these two.
+RISK-VALUE: DERIVED — test-name pattern `^Test[A-Za-z0-9_]*$` @ statusgen/verifyrows.go:1117 — Task 2's definition of a named selector after stripping one leading ^ and one trailing $.
+
+Findings (non-blocking): (F1) row 9's instrument cannot corroborate this brief — the implementing PR never touched the brief file and on merged main the merge-base is HEAD, so `--consumers` exits 0 while checking nothing, the same vacuous-pass class this brief lints for; the routings were corroborated by a manual diff read. A consumers row should pin a PR-frame base or pass `--brief`, turning the vacuous exit 0 into an honest could-not-check. (F2) within spec: an unanchored named selector with a matching assertion stays silent although a prefix-sharing sibling test would satisfy the grep; worth revisiting if the rule is promoted to a PROBLEM.
+
+VERIFY: PASS
 
 ## Review
 Gate: model — all four risk answers are no. It adds an advisory NOTICE to a lint over

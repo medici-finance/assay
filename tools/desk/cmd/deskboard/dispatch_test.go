@@ -124,3 +124,139 @@ func TestDispatchHeldBackLine_EmptyVsThrottled(t *testing.T) {
 		}
 	}
 }
+
+// TestMergeDispatch_DriveWorkerFloorAcrossRoots: the drive worker-pool floor is one
+// pool shared by every root, so the merge re-applies statusgen's reported
+// driveWorkerCap against the SUM of in-flight drive work. Two roots each within
+// their own headroom must still be cut to the shared headroom; non-drive rows are
+// never withheld; a root whose in-flight count is unknown withholds every drive
+// row; and a root set with no active drive is untouched.
+func TestMergeDispatch_DriveWorkerFloorAcrossRoots(t *testing.T) {
+	resolved := []deskkit.RootConfig{
+		{Repo: "medici-finance/a", Path: "/roots/a"},
+		{Repo: "medici-finance/b", Path: "/roots/b"},
+	}
+	driveRows := func(prefix string, n, base int) []statusgenDispRow {
+		var rows []statusgenDispRow
+		for i := 0; i < n; i++ {
+			rows = append(rows, statusgenDispRow{Brief: prefix + "/0" + string(rune('1'+i)), Stream: prefix,
+				Status: "todo", Score: base - i, DriveSlug: "d"})
+		}
+		return rows
+	}
+	build := func(unknownB string, capA, capB int) []dispatchView {
+		a := driveRows("da", 3, 5000)
+		a = append(a, statusgenDispRow{Brief: "fa/01", Stream: "fa", Status: "todo", Score: 100})
+		b := driveRows("db", 3, 4000)
+		return []dispatchView{
+			{Rows: a, Eligible: 4, Shown: 4, ClaimsKnown: true, DriveWorkerCap: capA, DriveInFlight: 2},
+			{Repo: "medici-finance/b", Rows: b, Eligible: 3, Shown: 3, ClaimsKnown: true,
+				DriveWorkerCap: capB, DriveInFlight: 1, DriveWorkerUnknown: unknownB},
+		}
+	}
+	count := func(rep *dispatchReport) (drive, other int) {
+		for _, r := range rep.Rows {
+			if r.DriveSlug != "" {
+				drive++
+			} else {
+				other++
+			}
+		}
+		return
+	}
+
+	t.Run("shared-headroom", func(t *testing.T) {
+		rep, err := mergeDispatch(dispatchHdrFixture(), "dispatch", resolved, build("", 6, 6), "t", "medici-finance/a", "t")
+		if err != nil {
+			t.Fatal(err)
+		}
+		// cap 6 − (2+1) in flight = 3 drive rows across BOTH roots, highest score first.
+		drive, other := count(rep)
+		if drive != 3 || other != 1 {
+			t.Fatalf("want 3 drive rows (shared headroom) + 1 non-drive, got drive=%d other=%d: %+v", drive, other, rep.Rows)
+		}
+		if rep.HeldByDriveWorkerCap != 3 || rep.DriveWorkerCap != 6 || rep.DriveInFlight != 3 {
+			t.Fatalf("aggregate floor accounting wrong: held=%d cap=%d inFlight=%d", rep.HeldByDriveWorkerCap, rep.DriveWorkerCap, rep.DriveInFlight)
+		}
+		for _, r := range rep.Rows {
+			if r.DriveSlug != "" && !strings.HasPrefix(r.Brief, "da/") {
+				t.Fatalf("the headroom must go to the highest-scored drive rows (root a), got %s", r.Brief)
+			}
+		}
+		if rep.Shown != len(rep.Rows) {
+			t.Fatalf("shown %d must equal len(rows) %d", rep.Shown, len(rep.Rows))
+		}
+		if line := dispatchHeldBackLine(rep); !strings.Contains(line, "3 by the drive worker floor") {
+			t.Fatalf("held-back line must name the drive worker floor: %q", line)
+		}
+	})
+
+	t.Run("unknown-in-flight-withholds-every-drive-row", func(t *testing.T) {
+		rep, err := mergeDispatch(dispatchHdrFixture(), "dispatch", resolved, build("claims unread", 6, 6), "t", "medici-finance/a", "t")
+		if err != nil {
+			t.Fatal(err)
+		}
+		drive, other := count(rep)
+		if drive != 0 || other != 1 || len(rep.DriveWorkerUnknown) != 1 {
+			t.Fatalf("unknown in-flight must withhold every drive row and name the root: drive=%d other=%d unknown=%+v", drive, other, rep.DriveWorkerUnknown)
+		}
+	})
+
+	t.Run("no-active-drive-is-untouched", func(t *testing.T) {
+		rep, err := mergeDispatch(dispatchHdrFixture(), "dispatch", resolved, build("", 0, 0), "t", "medici-finance/a", "t")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rep.Rows) != 7 || rep.HeldByDriveWorkerCap != 0 {
+			t.Fatalf("with no root reporting a drive the queue is unchanged: rows=%d held=%d", len(rep.Rows), rep.HeldByDriveWorkerCap)
+		}
+	})
+}
+
+// TestMergeDispatch_CriticalFirst: the cross-root merge keeps statusgen's
+// lexicographic (criticalTier, score) order. A critical-tier row from one root
+// must sort ahead of higher-scored routine rows from another root, and so take
+// the shared drive worker headroom first — a routine drive (surge included) may
+// never out-score a critical row out of the floor. Here root a offers 6 routine
+// drive rows scored 5000..4995 and root b one critical drive row scored 3000 plus
+// one critical non-drive row scored 2000; the cap is 6 with nothing in flight.
+func TestMergeDispatch_CriticalFirst(t *testing.T) {
+	resolved := []deskkit.RootConfig{
+		{Repo: "medici-finance/a", Path: "/roots/a"},
+		{Repo: "medici-finance/b", Path: "/roots/b"},
+	}
+	var a []statusgenDispRow
+	for i := 0; i < 6; i++ {
+		a = append(a, statusgenDispRow{Brief: "da/0" + string(rune('1'+i)), Stream: "da",
+			Status: "todo", Score: 5000 - i, DriveSlug: "d"})
+	}
+	b := []statusgenDispRow{
+		{Brief: "db/01", Stream: "db", Status: "todo", Score: 3000, DriveSlug: "d", CriticalArm: "high-unblocks"},
+		{Brief: "fb/01", Stream: "fb", Status: "todo", Score: 2000, CriticalArm: "high-unblocks"},
+	}
+	views := []dispatchView{
+		{Rows: a, Eligible: 6, Shown: 6, ClaimsKnown: true, DriveWorkerCap: 6},
+		{Repo: "medici-finance/b", Rows: b, Eligible: 2, Shown: 2, ClaimsKnown: true, DriveWorkerCap: 6},
+	}
+	rep, err := mergeDispatch(dispatchHdrFixture(), "dispatch", resolved, views, "t", "medici-finance/a", "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Rows) < 2 || rep.Rows[0].Brief != "db/01" || rep.Rows[1].Brief != "fb/01" {
+		t.Fatalf("critical rows must lead the merged queue (db/01, fb/01), got %+v", rep.Rows)
+	}
+	for _, r := range rep.Rows {
+		if r.Brief == "da/06" {
+			t.Fatalf("the lowest-scored routine drive row must be the one withheld, got %+v", rep.Rows)
+		}
+	}
+	if rep.HeldByDriveWorkerCap != 1 || len(rep.Rows) != 7 {
+		t.Fatalf("want 7 rows offered, 1 withheld by the floor: rows=%d held=%d", len(rep.Rows), rep.HeldByDriveWorkerCap)
+	}
+	if got := driveRowTags(rep.Rows[0]); got != "  critical:high-unblocks  drive:d" {
+		t.Fatalf("a critical drive row must render both tags, got %q", got)
+	}
+	if got := driveRowTags(dispatchRow{Brief: "x/01", Score: 1}); got != "" {
+		t.Fatalf("a row with no drive and no critical arm must render no tag, got %q", got)
+	}
+}

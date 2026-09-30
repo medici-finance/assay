@@ -118,7 +118,7 @@ func defaultEnv() *env {
 		now:              time.Now,
 		createRestricted: createRestricted,
 		classifyCustody:  deskkit.ClassifyCustodyOwnerOnly,
-		githubAPIBase:    "https://api.github.com",
+		githubAPIBase:    deskkit.GitHubAPIBase,
 	}
 }
 

@@ -1,0 +1,15 @@
+# Drive: finish the desk-tools v2 line so dispatch, review and verify run
+# on the new verbs without hand-holding. Carries windows-port as a second
+# item (the named port of the shell surfaces to Go verbs) because this root
+# is at the two-drive cap and a third manifest would void all of them.
+# Declared in session by the driver; the merge of this file is the
+# ratification.
+declared-by: human:ian
+starts: "2026-09-30"
+expires: "2026-10-14"
+intensity: push
+state: active
+why: finish desktools-v2 and the windows-port of its shell surfaces
+items:
+  - stream: desktools-v2
+  - stream: windows-port

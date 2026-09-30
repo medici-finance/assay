@@ -1,2 +1,0 @@
-### Changed
-- The bash `cellctl` script moved from `tools/cellctl/cellctl` to `tools/cellctl/testdata/cellctl-shell-oracle.sh`, with a banner saying it is a test oracle and not the launcher. The launcher is the Go program in `tools/desk/cmd/cellctl`, the binary releases ship. Neither implementation changed behaviour. The usage test, the parity harness and the behavioural suites now read the new path, and `docs/cellctl.md` and `docs/adopting-assay.md` name the Go program as the launcher (#1732).

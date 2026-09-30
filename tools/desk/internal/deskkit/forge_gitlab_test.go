@@ -1769,6 +1769,19 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) { return f.ListOpenChanges(glRepo) },
 		},
 		{
+			// desktools-v2 brief 09 — the review-queue snapshot is DEGRADED on GitLab: the same
+			// reads as ListOpenChanges (the golden pins that no review read is made here), and
+			// every change reported ReviewsComplete=false with no reviews, so the consumer reads
+			// each MR's verdicts with ReviewsAtHead exactly as before.
+			name: "review_queue_snapshot_degraded", method: "ReviewQueueSnapshot",
+			setup: func(s *glServer) {
+				s.mrList = []map[string]any{glMR(map[string]any{
+					"iid": 7, "created_at": "2026-09-01T09:00:00Z",
+				})}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReviewQueueSnapshot(glRepo) },
+		},
+		{
 			// issue #1125 — the board half. A head with a green pipeline is mapped for real:
 			// the change carries one StatusContext rollup node named `pipeline`, from the same
 			// mapping ChecksAtHead publishes, so the board reads CI green instead of the

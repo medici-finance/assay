@@ -603,6 +603,36 @@ type WriteFileInput struct {
 	// Evidence-lane fallback needs no separate CreateRef op on the frozen interface. Empty
 	// means "write to Branch, which must already exist".
 	StartBranch string
+	// ExpectedSHA, when non-empty, makes the write CONDITIONAL on the file's current content id
+	// (the FileContent.SHA a caller's own ReadFile returned) being exactly this value. The
+	// backend refuses (Refused) when its own fetch reports a different id or no file at all, and
+	// its write then cites that same id as the forge's own precondition (GitHub's Contents-API
+	// `sha`, GitLab's `last_commit_id`), so a change landing after the backend's fetch is
+	// rejected by the forge itself. A caller that judged the content it is about to write
+	// against one specific read uses this so nothing that lands after that read can be
+	// overwritten unrefused. Empty means "no precondition beyond the backend's own fetch".
+	ExpectedSHA string
+}
+
+// expectedSHAPrecondition is the backend-neutral half of WriteFileInput.ExpectedSHA, run by
+// every backend right after its own pre-write fetch: nil when no precondition was asked for or
+// the fetched id matches it; Refused when the file is gone or is no longer the version the
+// caller judged against.
+func expectedSHAPrecondition(in WriteFileInput, exists bool, priorSHA string) error {
+	if in.ExpectedSHA == "" {
+		return nil
+	}
+	if !exists {
+		return Refused(fmt.Sprintf(
+			"refusing a conditional write to %s on %s: the file no longer exists (expected content id %s) — it changed under this write; re-fetch and retry",
+			in.File, in.Branch, in.ExpectedSHA))
+	}
+	if priorSHA != in.ExpectedSHA {
+		return Refused(fmt.Sprintf(
+			"refusing a conditional write to %s on %s: its content id is now %s, not the %s this write was judged against — it changed under this write; re-fetch and retry",
+			in.File, in.Branch, priorSHA, in.ExpectedSHA))
+	}
+	return nil
 }
 
 // WriteFileResult reports what a WriteFile actually did, so a caller can report the difference
@@ -723,6 +753,38 @@ type OpenChanges struct {
 	TruncatedAtCap bool
 	// Cap is the page cap the read was bounded to (the `first:`/`per_page` ceiling).
 	Cap int
+}
+
+// ReviewQueue is the typed result of ReviewQueueSnapshot: a repo's open-change population
+// AND each change's reviews, read as ONE snapshot. It is the first access-pattern operation
+// (spec Principle 3): a consumer that used to read ListOpenChanges and then ReviewsAtHead once
+// per change (N+1 calls) reads this instead, and gets a head and a review set that cannot
+// straddle a push — N sequential reads can see the list at one head and a change's reviews
+// after a newer head landed. Truncation carries the SAME meaning as OpenChanges.
+type ReviewQueue struct {
+	// Changes are the open changes, newest first, up to Cap of them, each with its reviews.
+	Changes []QueuedChange
+	// TruncatedAtCap is true when the read returned exactly Cap changes (see OpenChanges).
+	TruncatedAtCap bool
+	// Cap is the page cap the read was bounded to.
+	Cap int
+}
+
+// QueuedChange is one open change of a ReviewQueue: the same fields ListOpenChanges reports,
+// plus the change's reviews when the snapshot carries all of them.
+//
+// ReviewsComplete is three-state honesty in a bool. TRUE means Reviews is the change's WHOLE
+// review set, in ReviewsAtHead's ascending order, read in the same round-trip as HeadSHA.
+// FALSE means the snapshot does NOT carry the full set — the change has more reviews than the
+// snapshot's per-change bound, or the backend cannot serve this change's reviews inside the
+// one query (see each backend) — and Reviews is then EMPTY. It never means "no reviews": the
+// caller reads that change per-item with ReviewsAtHead, so a missing or partial set can never
+// reduce to a verdict (the last-verdict-wins reductions would read a truncated set as a
+// different answer).
+type QueuedChange struct {
+	OpenChange
+	Reviews         []Review
+	ReviewsComplete bool
 }
 
 // ChangeStates is the set of change lifecycle states a ListChanges read is scoped to. It is a
@@ -1395,6 +1457,17 @@ type Forge interface {
 	// verdict may be superseded by any dated one and may never supersede one, which is the
 	// fail-closed placement.
 	ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error)
+	// ReviewQueueSnapshot reads a repo's OPEN changes together with each change's reviews
+	// as ONE snapshot (see ReviewQueue): the access-pattern operation that replaces
+	// ListOpenChanges + one ReviewsAtHead per change. The caller passes only the typed repo
+	// coordinate — the query document is private to each backend, and nothing about it
+	// crosses this interface. The change fields are exactly ListOpenChanges'; the reviews,
+	// where QueuedChange.ReviewsComplete, are exactly ReviewsAtHead's (same fields, same
+	// ascending order); where not complete, the caller falls back to ReviewsAtHead for that
+	// change alone. A read failure fails the whole snapshot, like ListOpenChanges.
+	// Consumer: cmd/deskboard's actions sweep (sweepActionsRepo — freeze rule: this op lands
+	// with the call site that consumes it).
+	ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error)
 	// ListChangedFiles returns a change's file entries (paginated, rename-aware). The
 	// caller reconciles len against PullRequest.ChangedFiles before trusting it complete.
 	ListChangedFiles(repo ForgeRepo, number int) ([]ChangedFile, error)

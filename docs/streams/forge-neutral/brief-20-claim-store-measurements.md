@@ -151,6 +151,39 @@ Row 5 fails as a check-definition staleness: the pinned §3.1b inventory misses 
 
 **Evidence correction (2026-09-24).** Row 5's Observed says the three files absent from §3.1b match only on a comment line, but its recorded `grep -rln` prints only filenames, not the lines behind them. The command that supports the claim is `grep -n -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' tools/desk/cmd/deskdispatch/repairadmission.go tools/desk/cmd/desksupervise/status.go tools/desk/internal/deskkit/forge_github.go`; re-run at the verified sha `2a5c230e` it prints three matches, each a `//` comment rather than a functional read: repairadmission.go line 219 ("lives in the same refs/dispatch namespace as the item claims, collides"), forge_github.go line 2167 ("refs/dispatch/<key>), verbatim from the ref field"), and status.go line 122 ("refs/dispatch claim, so it is session-influenced input"). No state, count or heading changes.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -c -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md` | pass exit=0 | sha256:53c234e5e847 | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md > /tmp/fn20-rows.txt && ! grep -v -e 'of [0-9][0-9]* succeeded' -e 'determined' -e 'COULD-NOT-CHECK' /tmp/fn20-rows.txt` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 3 | `Re-run the local-disk control of Task 3 from the recorded command text` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:26b6e0457462 | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && grep -rln -e 'ForgeFor(.*"reviewer")' -e 'ReviewDispatcherRole' --include='*.go' cmd internal \| grep -v _test.go \| sort` | pass exit=0 | sha256:5c3e60f74ab7 | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && grep -rln -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' --include='*.go' cmd internal \| grep -v _test.go \| sort` | pass exit=0 | sha256:d2556591d929 | 2026-09-27 | assay-verifier-app[bot] @ b227b40768db (on-behalf-of human:ian) (forge-identity) |
+
+### Non-implementer verifier re-run — VERIFY: FAIL — 4/5 pass, 0 could-not-check, 1 fail — 2026-09-27 claude-opus-5-5-verifier
+
+Runner is not the implementer; documents-only brief, run non-hermetically on darwin at merged main
+`b227b40768db08a0a91046899bc1877cf3c6d1ec`, offline (`KUBECONFIG=/dev/null`). The witness table
+above records exit status only; rows 3 and 5 carry prose Expect cells the witness cannot decide, so
+each is decided below on its direct result.
+
+What changed since the 2026-09-24 runs (at `2a5c230e`): this brief and the spec are byte-identical
+(unchanged hashes), and so are repairadmission.go and status.go. forge_github.go and
+deskpost/forgeclient.go changed (unrelated commits), which moved the forge_github.go comment from
+line 2167 to line 2259. #1606 is still open and §3.1b was not updated, so row 5's outcome is unchanged.
+
+- Row 1 — PASS. exit 0, printed `2`.
+- Row 2 — PASS. exit 0, no line printed; the S2 row carries COULD-NOT-CHECK for network filesystems, the S4 row carries "determined".
+- Row 3 — PASS (run directly; the witness row is exit 127 only because the Verify cell is prose). The recorded local-disk control command from the S2 row, `cd tools/desk && go test ./internal/deskkit/ -run '^TestAcquireConcurrentExactlyOneWinner$' -count=1 -v -timeout 60s`, gave exit 0 and `--- PASS: TestAcquireConcurrentExactlyOneWinner (0.16s)`: 16 racers, exactly one winner (the test's `wins != 1` assertion held).
+- Row 4 — PASS. exit 0; 6 files (deskdispatch/dispatch.go, deskpost/claimliveness.go, deskpost/comment.go, deskpost/forgeclient.go, deskpost/label.go, deskkit/modelstamp.go). A mechanical membership check against §3.1a found all six.
+- Row 5 — FAIL. exit 0; 16 files. A mechanical membership check against §3.1b found 13 and missed the same three as on 2026-09-24: deskdispatch/repairadmission.go, desksupervise/status.go and deskkit/forge_github.go. Running `grep -n` with the same three patterns on those files prints only `//` comment lines: repairadmission.go:219 (the admission lease "lives in the same refs/dispatch namespace", and that lease is taken through the claim tool backend), status.go:122 (a security comment on the claim Owner field), and forge_github.go:2259 (the doc comment of the generic MatchingRefs primitive, the GitHub twin of forge_gitlab.go, which §3.1b already lists as a library file). Not one of them is a claim read that bypasses the claim tool. **Stale-shaped, check-definition:** the pinned inventory has drifted from merged main. No claim reader was missed. #1606 still tracks it.
+
+Risk-bearing values: the enumeration covered this brief's Deliverables and diff, which is documents only (the spec §3.1a/§3.1b/§3.3 plus the Evidence). It found two literals, both unchanged since 2026-09-24:
+
+RISK-VALUE: DERIVED — wins != 1 (winners = 1) @ tools/desk/internal/deskkit/claim_test.go:53 — the shipped primitive's O_CREATE|O_EXCL create (claim.go:273), taken under one directory lock, admits exactly one creator, and every other racer gets EEXIST and backs off. So exactly one of N succeeds by construction, whatever N is. That is the "exactly one is the only passing count" the brief pins.
+Ranked last, so no verdict line: racers = 16 @ tools/desk/internal/deskkit/claim_test.go:22 is a reversible test knob. It only sets how hard the concurrency exercise pushes; the guarantee does not depend on it, and it needs no derivation.
+
+VERIFY: FAIL — row 5 (check-definition staleness, #1606); rows 1–4 PASS.
+
 
 ## Review
 Gate: **model** (from frontmatter — all four risk answers no; documents only). Reviewer records

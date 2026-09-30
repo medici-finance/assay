@@ -16,7 +16,7 @@ package deskkit
 //
 // THREE DISTINCT OUTCOMES, never conflated:
 //
-//	unbound (or the key is invalid)  a CONFIGURATION gap — could-not-check (exit 6) naming
+//	unbound (or the roster refused)  a CONFIGURATION gap — could-not-check (exit 6) naming
 //	                                  the missing key, the unconfigured-forge refusal's shape
 //	human:<name>                     a DELIBERATE state — Refused (exit 5) naming the human
 //	                                  and the repo; nothing is minted, no ambient credential
@@ -66,29 +66,36 @@ type RunCredential struct {
 // runBindingNameRe is the shape of a bound human's name.
 var runBindingNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
-// parseRunCredentials parses ASSAY_RUN_CREDENTIALS. A malformed entry, an unknown value, a
-// bare basename or a repo bound twice marks the key invalid AND returns an empty map: a
-// partially parsed binding set would let the entries that happened to parse dispatch while
-// the operator believes the file is the configuration in force.
-func parseRunCredentials(raw string, issue *extAccumulator) map[string]RunCredential {
+// parseRunCredentials parses ASSAY_RUN_CREDENTIALS, a TRUST key: every problem goes to bad,
+// parseConfig's trust-surface closure, so a malformed entry, an unknown value, a bare basename or
+// a repo bound twice refuses the WHOLE roster (Config.Problems), the same way a malformed
+// ASSAY_TRUSTED_LOGINS does. It also returns an empty map on any problem: a partially parsed
+// binding set would let the entries that happened to parse dispatch while the operator believes
+// the file is the configuration in force.
+func parseRunCredentials(raw string, bad func(format string, a ...any)) map[string]RunCredential {
 	out := map[string]RunCredential{}
+	invalid := false
+	fail := func(format string, a ...any) {
+		invalid = true
+		bad(format, a...)
+	}
 	for _, entry := range splitList(raw) {
 		key, val, hasEq := strings.Cut(entry, "=")
 		key = strings.ToLower(strings.TrimSpace(key))
 		val = strings.TrimSpace(val)
 		if !hasEq || key == "" || val == "" {
-			issue.bad("%s: cannot parse entry %q — expected owner/name=human:<name> or "+
+			fail("%s: cannot parse entry %q — expected owner/name=human:<name> or "+
 				"owner/name=%s[+environment|+manual-job]", EnvRunCredentials, entry, ReleaseRunnerRole)
 			continue
 		}
 		if strings.Count(key, "/") != 1 || strings.HasPrefix(key, "/") || strings.HasSuffix(key, "/") ||
 			strings.Contains(key, "*") {
-			issue.bad("%s: entry %q's repo %q is not a full owner/name slug — this key chooses who may start a "+
+			fail("%s: entry %q's repo %q is not a full owner/name slug — this key chooses who may start a "+
 				"release, so a basename or pattern that could cover more than one repo is refused", EnvRunCredentials, entry, key)
 			continue
 		}
 		if _, dup := out[key]; dup {
-			issue.bad("%s: repo %q is bound more than once", EnvRunCredentials, key)
+			fail("%s: repo %q is bound more than once", EnvRunCredentials, key)
 			continue
 		}
 		cred := RunCredential{Repo: key}
@@ -96,14 +103,14 @@ func parseRunCredentials(raw string, issue *extAccumulator) map[string]RunCreden
 		case strings.HasPrefix(strings.ToLower(val), humanRunBindingPrefix):
 			name := strings.TrimSpace(val[len(humanRunBindingPrefix):])
 			if !runBindingNameRe.MatchString(name) {
-				issue.bad("%s: entry %q names no human — expected human:<name> with a plain name", EnvRunCredentials, entry)
+				fail("%s: entry %q names no human — expected human:<name> with a plain name", EnvRunCredentials, entry)
 				continue
 			}
 			cred.Human = name
 		default:
 			role, shape, hasShape := strings.Cut(val, "+")
 			if strings.ToLower(strings.TrimSpace(role)) != ReleaseRunnerRole {
-				issue.bad("%s: entry %q binds %q, which is neither human:<name> nor the %s role — no other "+
+				fail("%s: entry %q binds %q, which is neither human:<name> nor the %s role — no other "+
 					"role may start a run", EnvRunCredentials, entry, role, ReleaseRunnerRole)
 				continue
 			}
@@ -111,7 +118,7 @@ func parseRunCredentials(raw string, issue *extAccumulator) map[string]RunCreden
 			if hasShape {
 				gs, err := ParseGateShape(shape)
 				if err != nil || gs == "" {
-					issue.bad("%s: entry %q declares gate shape %q — the shapes are %q and %q", EnvRunCredentials,
+					fail("%s: entry %q declares gate shape %q — the shapes are %q and %q", EnvRunCredentials,
 						entry, shape, GateShapeEnvironment, GateShapeManualJob)
 					continue
 				}
@@ -120,7 +127,7 @@ func parseRunCredentials(raw string, issue *extAccumulator) map[string]RunCreden
 		}
 		out[key] = cred
 	}
-	if issue.invalid {
+	if invalid {
 		return map[string]RunCredential{}
 	}
 	return out
@@ -130,7 +137,8 @@ func parseRunCredentials(raw string, issue *extAccumulator) map[string]RunCreden
 // It reads configuration only — it mints nothing and contacts nothing — so a caller calls it
 // BEFORE any credential exists:
 //
-//   - unbound, or ASSAY_RUN_CREDENTIALS invalid → Unverifiable (exit 6) naming the key;
+//   - unbound, or the roster refused (e.g. ASSAY_RUN_CREDENTIALS malformed) → Unverifiable
+//     (exit 6) naming the key;
 //   - `human:<name>` → Refused (exit 5) naming the human and the repo, with the
 //     RunCredential returned alongside so the caller can report it;
 //   - `release-runner` whose roster App binding is SHARED with another desk role → Refused:
@@ -139,10 +147,14 @@ func parseRunCredentials(raw string, issue *extAccumulator) map[string]RunCreden
 func ResolveRunCredential(repo ForgeRepo) (RunCredential, error) {
 	cfg := EffectiveConfig()
 	key := strings.ToLower(strings.TrimSpace(repo.Slug()))
-	if ext, ok := cfg.Ext["run-credentials"]; ok && ext.Status == ExtInvalid {
+	// The resolver's OWN check, independent of any caller's activation gate: a refused roster
+	// (a malformed ASSAY_RUN_CREDENTIALS among its problems, or any other trust key) binds nobody,
+	// even if a caller reached here without checking Configured() first.
+	if len(cfg.Problems) > 0 {
 		return RunCredential{}, Unverifiable(fmt.Sprintf(
-			"could-not-check: %s is invalid (%s), so no repo has a run-credential binding — %s cannot be "+
-				"dispatched or gate-approved until the key is fixed", EnvRunCredentials, ext.Reason, repo.Slug()), nil)
+			"could-not-check: the roster is refused (%s), so no %s binding is in force — %s cannot be "+
+				"dispatched or gate-approved until the roster is fixed", strings.Join(cfg.Problems, "; "),
+			EnvRunCredentials, repo.Slug()), nil)
 	}
 	cred, ok := cfg.RunCredentials[key]
 	if !ok {

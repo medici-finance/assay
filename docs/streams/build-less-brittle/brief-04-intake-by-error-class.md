@@ -15,9 +15,11 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 3
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format)"
 sources:
+  - "docs/streams/build-less-brittle/spec.md — 2026-09-30 pending scope amendment"
+  - "freshness-checked 2026-09-30 @ 8485778515c041fc87966902a14eb9d195492be3: amend unfinished scope; no implementation claim"
   - "docs/streams/build-less-brittle/spec.md §2 D1, §3 rows 1 and 8, §4.1"
   - "tools/desk/cmd/deskfile/deskfile.go (attach verb; new-issue budget)"
   - "statusgen/nextup.go (dispatch reads only `todo` rows) and statusgen/checks.go (`blocked` is a valid status)"
@@ -81,6 +83,28 @@ design-fit:
 - Each skill edit is net ≤ 0 lines. Offset with incident narrative moved to a findings link, or
   with restatements of the adoption guide.
 
+## Record compatibility amendment — 2026-09-28
+
+Use spec §4.1's evidence-reference fields in the existing class attachment block.
+Keep the instance table and existing incident-group deduplication as the sole record.
+Include a worked case in the edited procedure: two mirrored reports of one failure, a
+later success on another revision, then a same-scope recovery check. Only the last
+establishes recovery; the counted incident remains one. Legacy attachments remain readable
+with unknown fields. Preserve this brief's net-zero skill-line and no-new-tool constraints.
+
+## Work-input amendment — 2026-09-30
+
+Within the existing class attachment/placeholder, carry the mechanism, known scope,
+source revisions/evidence references, unresolved questions and next actionable step. Reuse
+those fields in the downstream brief instead of requiring the next desk to rediscover the
+class. Coalesce repeated reports through the existing incident-group rule; a new observation
+can enrich the record without becoming another counted incident or another agent request.
+
+This is a procedure/record refinement within the existing line offsets, not new schema,
+scheduler or runtime deduplication code. Execution-attempt coalescing belongs to graph 14
+and is not a dependency. Review the worked triage with duplicate versus genuinely new
+incidents; both retain evidence and only the latter advances the recurrence count.
+
 ## Task
 
 1. **Verify the parking mechanism first.** Hand-set a scan placeholder's status to `blocked` in a
@@ -138,6 +162,10 @@ weight rows. Whether the procedure is followed is measured by the project's clos
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
+
+The reviewer also walks the amendment's worked case through the existing deliverables and
+records the source links, gap handling and outcome interpretation in the review. These are
+semantic acceptance checks; presence of field names alone does not satisfy them.
 
 ## Review
 Gate: model (from frontmatter). Rows 7–9 compare each skill at this brief's own change against

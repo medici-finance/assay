@@ -99,6 +99,14 @@ or removing any human gate (spec §5 states the divergence).
 | 18 | [Offline graph, advice and assurance integration proof](brief-18-assurance-experiment.md) | 5 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
+## Structured-work amendment (2026-09-30)
+
+[The amendment](work-input-amendment.md) assigns packet views to 09, applicability to 03,
+dispatch/coalescing to 14, cumulative accounting to 16, and connected replay/measurement to
+18. Existing waves and activation gates are unchanged. 02 and 07's implemented delivery
+records are retained; their consumers own compatible extensions. The first runnable proof
+uses offline fixtures; real provider savings need a separately authorized adopting pilot.
+
 ## Critical path
 
 ```

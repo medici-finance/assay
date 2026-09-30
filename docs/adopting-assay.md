@@ -670,11 +670,14 @@ Two consequences worth stating before you debug them:
   red on briefs the roster change never touched.
 
 **A bad TRUST value still refuses everything; a bad EXTENSION value now refuses only its own
-dependents.** The five fail-closed trust surfaces — `ASSAY_BLESS_LOGIN`, `ASSAY_TRUSTED_LOGINS`,
-`ASSAY_TRUSTED_BOT_SLUGS`, `ASSAY_ALLOWED_REPOS`, `ASSAY_HUMAN_LOGIN_MAP` — are unchanged: unset or
-malformed, every acting command refuses exactly as described above. The adopter-extension
+dependents.** The six fail-closed trust surfaces — `ASSAY_BLESS_LOGIN`, `ASSAY_TRUSTED_LOGINS`,
+`ASSAY_TRUSTED_BOT_SLUGS`, `ASSAY_ALLOWED_REPOS`, `ASSAY_HUMAN_LOGIN_MAP`, `ASSAY_RUN_CREDENTIALS` —
+refuse on a malformed value: every acting command refuses exactly as described above.
+`ASSAY_RUN_CREDENTIALS` is a trust surface because it chooses which credential a desk write runs
+as; a malformed entry refuses the whole roster, not only `deskrun` (unset stays valid: no repo is
+bound and `deskrun` dispatches nothing). The adopter-extension
 surfaces — `ASSAY_REPO_ALIASES`, `ASSAY_REPO_FORGES`, `ASSAY_RISK_CALLOUT`,
-`ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS`, `ASSAY_RUN_CREDENTIALS` — no longer collapse the
+`ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS` — no longer collapse the
 whole roster when one of them is malformed: the loader records the rejection against that ONE
 key, the key's own feature falls back to its shipped default (exactly the unset behaviour), and
 only the desk unit that actually declares a dependency on that key deactivates and reports why —
