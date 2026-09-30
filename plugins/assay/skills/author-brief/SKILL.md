@@ -525,6 +525,8 @@ it is an authoring convention only.
 | --- | --- | --- |
 | `bre-alternation` | a pipe in a basic-regex grep pattern (no `-E`/`-P`) is an ordinary character, so the pattern matches the Verify row itself | advisory |
 | `cmd-marker-ambiguous` | a Command cell carrying more than one `cmd:`-marked code span, so which command the row names is ambiguous | advisory |
+| `cmd-marker-not-honoured` | a `cmd:` span verifyrun ignores because the rendered cell may not show it as code (backslash-escaped backticks, or raw HTML / a link / an image in the cell's prose), so the row runs its first span | advisory |
+| `cmd-marker-overrides-command` | a `cmd:` marker that replaces a first code span which reads as a command itself (multi-word), so the row runs something other than the span a reader sees first | advisory |
 | `consumers-flow-verify-row` | that a shared-value brief's Verify table carries at least one row exercising the cross-component flow end-to-end — a judgement call no lint decides | not enforced |
 | `consumers-followup-missing-brief` | a `consumers: follow-up <stream>/<NN>` whose target is not a brief in any stream README — the routing claim is false | fatal |
 | `consumers-followup-no-target` | a `follow-up` routing that names no `<stream>/<NN>` target — a deferral with no holder | advisory |

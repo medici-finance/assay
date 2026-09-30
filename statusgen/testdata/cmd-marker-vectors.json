@@ -1,0 +1,29 @@
+{
+  "about": "Shared test vectors for the Verify-row `cmd:` command marker (#1805, #1808). Every executor that lifts a Verify command must agree on which command a cell's marker names: statusgen (verifyCommand / markedCommands) and tools/desk (internal/verifycmd, used by verifyloop and deskrebaseline) both run this table. `marked` is the command the FIRST honoured marker names, or null when the cell carries no honoured marker (the executor then falls back to its legacy lift).",
+  "vectors": [
+    {"name": "mention-led prose", "cell": "In `PublicRepoGate` change the check, then `cmd: cd tools/desk && go test ./internal/deskkit/ -count=1`; restore", "marked": "cd tools/desk && go test ./internal/deskkit/ -count=1"},
+    {"name": "marker as the only span", "cell": "`cmd: go test ./x -count=1`", "marked": "go test ./x -count=1"},
+    {"name": "no space after the marker", "cell": "see `x.go`: `cmd:true`", "marked": "true"},
+    {"name": "leading space inside the span is trimmed", "cell": "then ` cmd: true`", "marked": "true"},
+    {"name": "double-backtick fence carries an inner backtick", "cell": "the `Foo` path: ``cmd: echo `date` >/dev/null``", "marked": "echo `date` >/dev/null"},
+    {"name": "escaped pipe inside the span survives", "cell": "In `Foo`: `cmd: grep -c x f \\| head -1`", "marked": "grep -c x f \\| head -1"},
+    {"name": "first of two markers wins", "cell": "`cmd: true` or else `cmd: false`", "marked": "true"},
+    {"name": "no code span at all", "cell": "go test ./...", "marked": null},
+    {"name": "no marker", "cell": "`go test ./...` (post apply)", "marked": null},
+    {"name": "bare marker is a mention", "cell": "the `cmd:` marker is optional: `true`", "marked": null},
+    {"name": "upper-case marker is not a marker", "cell": "In `Foo`: `CMD: true`", "marked": null},
+    {"name": "marker text mid-span is not a marker", "cell": "In `Foo`: `echo cmd: x`", "marked": null},
+    {"name": "a run: workflow quotation is not a marker", "cell": "a planted `run: echo hi` line", "marked": null},
+    {"name": "unterminated marked span is not a span", "cell": "In `Foo`: `cmd: true", "marked": null},
+    {"name": "fence closes only on an equal-length run", "cell": "In `Foo`: ``cmd: true` ", "marked": null},
+    {"name": "a longer run does not close a shorter fence", "cell": "In `Foo`: `cmd: true`` x", "marked": null},
+    {"name": "marker between escaped backticks is literal text", "cell": "`go test ./nonexistent -count=1` then \\`cmd: true #\\`", "marked": null},
+    {"name": "marker inside an HTML comment", "cell": "`go test ./nonexistent -count=1` <!-- `cmd: true` -->", "marked": null},
+    {"name": "marker beside an HTML comment is still not honoured", "cell": "In `Foo` <!-- note --> then `cmd: true`", "marked": null},
+    {"name": "marker inside a raw HTML attribute", "cell": "`go test ./nonexistent -count=1` <a title=\"`cmd: true`\">x</a>", "marked": null},
+    {"name": "marker inside a link title", "cell": "`go test ./nonexistent -count=1` [x](https://example.com \"`cmd: true`\")", "marked": null},
+    {"name": "marker inside image alt text", "cell": "`go test ./nonexistent -count=1` ![`cmd: true`](x.png)", "marked": null},
+    {"name": "escaped angle bracket and bracket in prose stay plain", "cell": "In `Foo` \\<ns\\> \\[x\\] then `cmd: true`", "marked": "true"},
+    {"name": "angle bracket inside a span does not taint the cell", "cell": "In `Foo`: `cmd: kubectl -n <ns> get pods`", "marked": "kubectl -n <ns> get pods"}
+  ]
+}

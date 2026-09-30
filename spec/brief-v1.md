@@ -267,15 +267,25 @@ The body MUST contain a `## Verify` section with an executable table:
 
 - Every row MUST contain a literal command a non-implementer can run and an expected
   exit code or output match.
-- The command is written as an inline code span in the Command cell. A cell that is
-  exactly one code span (optionally followed by a parenthetical) names that span as
-  the command. A cell that mixes prose and code spans MUST mark its command with the
-  explicit command marker: a code span whose content starts `cmd:`, e.g.
-  `` `cmd: go test ./pkg/ -count=1` ``. A tool that executes Verify rows MUST prefer
-  the first `cmd:`-marked span over any other span in the cell; with no marked span,
-  the first code span is the command. A cell SHOULD NOT carry more than one marked
-  span. (The marker is `cmd:`, not `run:`, because `run:` is a CI workflow step key
-  that Verify prose quotes; a quoted workflow line must never become the command.)
+- The command is written as an inline code span in the Command cell. A cell whose
+  first code span is its command (a cell that is exactly one code span, optionally
+  followed by prose or a parenthetical) needs no marker. A cell whose first code span
+  is NOT its command (a prose cell that mentions a function, a file or a word before
+  the real command) MUST mark its command with the explicit command marker: a code
+  span whose content starts `cmd:`, e.g. `` `cmd: go test ./pkg/ -count=1` ``. A
+  tool that executes Verify rows MUST prefer the first honoured `cmd:`-marked span
+  over any other text in the cell; with no honoured marker, each tool keeps its
+  unmarked lift (the first code span, or the unwrapped cell). A cell SHOULD NOT carry
+  more than one marked span. (The marker is `cmd:`, not `run:`, because `run:` is a
+  CI workflow step key that Verify prose quotes; a quoted workflow line must never
+  become the command.)
+- A marker is honoured only where the rendered brief shows it as code, so a reader of
+  the rendered table sees the command that runs. Code spans are found as CommonMark
+  renders them: a backslash-escaped backtick is literal text, and a run of N
+  backticks closes only on the next run of exactly N. A cell whose prose (outside
+  code spans) carries an unescaped `<` or `[` (raw HTML, an HTML comment, a link or
+  an image, any of which can hide text from the rendered table) has no honoured
+  marker; write `\<` or `\[` to use those characters in prose.
 - Rows MUST NOT be prose-only assertions without a command.
 - Prose deliverables (docs, articles) MUST use PRESENCE gates: checks that required
   elements exist (file, section, token). The Verify section MUST state that

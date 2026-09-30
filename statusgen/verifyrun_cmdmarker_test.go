@@ -24,6 +24,7 @@ package main
 // verifyrun-cmdmarker-mutations.json.
 
 import (
+	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -142,7 +143,9 @@ func TestProseLedCommandLintFlagsIssueShapes(t *testing.T) {
 		{"forge-neutral/19 r4 — owner/repo first, prose only",
 			"**FIXTURE REPO ONLY — never `example-org/tracker`.** Same fixture, stub now posting `success`"},
 		{"a .go file first", "Edit `repovis.go` then `go test ./...`"},
+		{"a .go file first, no later command span", "Edit `repovis.go` and restore it"},
 		{"a call-shaped identifier", "Break `check()` then `go test ./...`"},
+		{"a bare `cmd:` mention ahead of the command", "`cmd:` `go test ./c`"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -266,27 +269,43 @@ func TestTranscribeVerdictCheckCIReexecutesLiftedCommand(t *testing.T) {
 // Class guard — one choke point for lifting a Verify command
 // ---------------------------------------------------------------------------
 
-// codeSpanCallAllowList is every non-test function permitted to call codeSpan.
-// verifyCommand is THE Verify-cell lift; the others read a span for a purpose
-// that is not "the command to run/lint" (a witness row's own Command cell, the
-// lint's message text naming the span it flagged). A new entry needs the same
+// liftPrimitiveAllowList is, per span-scanning primitive, every non-test
+// function permitted to call it. verifyCommand is THE Verify-cell lift; every
+// other entry reads spans for a purpose that is not "the command to run": a
+// witness row's own Command cell, the lint's JUDGEMENT of a cell (never the
+// text it then lints), or the marker scan itself. A new entry needs the same
 // justification — a site that lifts a Verify command must call verifyCommand.
-var codeSpanCallAllowList = map[string]string{
-	"verifyCommand":    "the one Verify-cell lift (#1805)",
-	"witnessCommandOf": "reads a WITNESS row's Command cell, which verifyrun wrote as exactly one span",
-	"rowFindings":      "names the flagged first span in the prose-led-command NOTICE text only",
+//
+// rowFindings is deliberately NOT on any list (#1808 review, CR-1808-1): it
+// lints whatever verifyCommand returns, and the NOTICE text names the span
+// proseLedCommandWhy hands back, so it never calls a primitive itself. A
+// function-keyed allow-list cannot tell a message-text call from a lift inside
+// one function, so the lint function must hold no call at all.
+var liftPrimitiveAllowList = map[string]map[string]string{
+	"codeSpan": {
+		"verifyCommand":    "the one Verify-cell lift (#1805)",
+		"witnessCommandOf": "reads a WITNESS row's Command cell, which verifyrun wrote as exactly one span",
+	},
+	"codeSpans": {
+		"proseLedCommandWhy": "judges whether the cell's first span is a mention; returns that span for the NOTICE text",
+		"rawMarkerPresent":   "the lint's hidden-marker check: a raw marker the rendered scan does not honour",
+	},
+	"renderedCodeSpans": {
+		"markedCommands":             "the honoured-marker scan verifyCommand consults",
+		"markerOverridesCommandSpan": "the lint's check that a marker replaces a command-shaped first span",
+	},
 }
 
-// codeSpanCallers parses every non-test .go file in dir and returns
-// "file:func" for each function body that calls codeSpan.
-func codeSpanCallers(t *testing.T, dir string) []string {
+// primitiveCallers parses every non-test .go file in dir and returns, per
+// primitive name in allow, "file:func" for each function body that calls it.
+func primitiveCallers(t *testing.T, dir string, allow map[string]map[string]string) map[string][]string {
 	t.Helper()
 	fset := token.NewFileSet()
 	ents, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var out []string
+	out := map[string][]string{}
 	for _, e := range ents {
 		n := e.Name()
 		if e.IsDir() || !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") {
@@ -306,35 +325,161 @@ func codeSpanCallers(t *testing.T, dir string) []string {
 				if !ok {
 					return true
 				}
-				if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "codeSpan" {
-					out = append(out, n+":"+fn.Name.Name)
+				if id, ok := call.Fun.(*ast.Ident); ok {
+					if _, watched := allow[id.Name]; watched {
+						out[id.Name] = append(out[id.Name], n+":"+fn.Name.Name)
+					}
 				}
 				return true
 			})
 		}
 	}
-	sort.Strings(out)
+	for k := range out {
+		sort.Strings(out[k])
+	}
 	return out
 }
 
 // TestVerifyCommandLiftHasOneChokePoint — the #1805 CLASS guard: "a site lifts
 // the command out of a Verify Command cell by a rule other than verifyCommand's"
 // (the verifyrun first-span lift was one; the check:ci re-execution lane handing
-// the RAW cell to the shell was a second). Any codeSpan caller outside the
-// allow-list fails here, naming the site. The positive control proves the walker
-// still sees calls, so a broken matcher cannot report clean.
+// the RAW cell to the shell was a second). Any caller of a span-scanning
+// primitive outside its allow-list fails here, naming the site. The positive
+// controls prove the walker still sees calls, so a broken matcher cannot report
+// clean.
 func TestVerifyCommandLiftHasOneChokePoint(t *testing.T) {
-	callers := codeSpanCallers(t, ".")
-	seen := map[string]bool{}
-	for _, c := range callers {
-		fn := c[strings.Index(c, ":")+1:]
-		seen[fn] = true
-		if _, ok := codeSpanCallAllowList[fn]; !ok {
-			t.Errorf("%s calls codeSpan directly — lift a Verify command through verifyCommand (the #1805 choke point), or add the site to codeSpanCallAllowList with the reason it is not a Verify-command lift", c)
+	callers := primitiveCallers(t, ".", liftPrimitiveAllowList)
+	for prim, sites := range callers {
+		for _, c := range sites {
+			fn := c[strings.Index(c, ":")+1:]
+			if _, ok := liftPrimitiveAllowList[prim][fn]; !ok {
+				t.Errorf("%s calls %s directly — lift a Verify command through verifyCommand (the #1805 choke point), or add the site to liftPrimitiveAllowList with the reason it is not a Verify-command lift", c, prim)
+			}
 		}
 	}
-	// Positive control: the choke point itself must be visible to the walker.
-	if !seen["verifyCommand"] {
-		t.Errorf("positive control: the walker no longer sees verifyCommand's codeSpan call (callers: %v) — the guard is blind", callers)
+	// Positive controls: the choke point and the marker scan must be visible.
+	for prim, fn := range map[string]string{"codeSpan": "verifyCommand", "renderedCodeSpans": "markedCommands"} {
+		seen := false
+		for _, c := range callers[prim] {
+			if strings.HasSuffix(c, ":"+fn) {
+				seen = true
+			}
+		}
+		if !seen {
+			t.Errorf("positive control: the walker no longer sees %s's %s call (callers: %v) — the guard is blind", fn, prim, callers[prim])
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #1808 review — the marker must agree with the rendered table
+// ---------------------------------------------------------------------------
+
+type cmdMarkerVector struct {
+	Name   string  `json:"name"`
+	Cell   string  `json:"cell"`
+	Marked *string `json:"marked"`
+}
+
+// loadCmdMarkerVectors reads the vector table tools/desk's executors are held
+// to as well (tools/desk/internal/verifycmd reads the same file).
+func loadCmdMarkerVectors(t *testing.T) []cmdMarkerVector {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "cmd-marker-vectors.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Vectors []cmdMarkerVector `json:"vectors"`
+	}
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Vectors) < 10 {
+		t.Fatalf("positive control: only %d vectors loaded", len(doc.Vectors))
+	}
+	return doc.Vectors
+}
+
+// TestCmdMarkerSharedVectors — statusgen's marker scan and lift satisfy the
+// shared table: the honoured marker where there is one, and the unchanged
+// legacy first-span lift where there is none.
+func TestCmdMarkerSharedVectors(t *testing.T) {
+	for _, v := range loadCmdMarkerVectors(t) {
+		t.Run(v.Name, func(t *testing.T) {
+			m := markedCommands(v.Cell)
+			switch {
+			case v.Marked == nil && len(m) != 0:
+				t.Errorf("markedCommands(%q) = %q, want no honoured marker", v.Cell, m)
+			case v.Marked != nil && (len(m) == 0 || m[0] != *v.Marked):
+				t.Errorf("markedCommands(%q) = %q, want first %q", v.Cell, m, *v.Marked)
+			}
+			want := codeSpan(v.Cell)
+			if v.Marked != nil {
+				want = *v.Marked
+			}
+			if got := verifyCommand(v.Cell); got != want {
+				t.Errorf("verifyCommand(%q) = %q, want %q", v.Cell, got, want)
+			}
+		})
+	}
+}
+
+// sr1808Probes are the security review's probe cells: a visible, failing,
+// command-shaped first span, then a `cmd: true` the rendered table either
+// shows as prose-adjacent code (probe 0) or does not show as code at all.
+var sr1808Probes = []string{
+	"`go test ./nonexistent-pkg-1808 -count=1` (see `cmd: true`)",
+	"`go test ./nonexistent-pkg-1808 -count=1` <!-- `cmd: true` -->",
+	"`go test ./nonexistent-pkg-1808 -count=1` then \\`cmd: true #\\`",
+}
+
+// TestHiddenMarkerKeepsFirstSpan — a marker the rendered cell does not show
+// as code is not honoured: verifyrun runs the visible first span, and the lint
+// says the marker was ignored.
+func TestHiddenMarkerKeepsFirstSpan(t *testing.T) {
+	for _, cell := range sr1808Probes[1:] {
+		rows := briefVerifyRows(verifyTable("| 1 | " + cell + " | exit 0 |"))
+		if len(rows) != 1 || rows[0].Command != "go test ./nonexistent-pkg-1808 -count=1" {
+			t.Errorf("hidden marker must not replace the visible span: %q lifted %+v", cell, rows)
+		}
+		if fs := rowFindings(cell, "exit 0"); !hasRule(fs, "cmd-marker-not-honoured") {
+			t.Errorf("want a cmd-marker-not-honoured NOTICE for %q, got %+v", cell, fs)
+		}
+	}
+	if fs := rowFindings("In `Foo` then `cmd: true`", "exit 0"); hasRule(fs, "cmd-marker-not-honoured") {
+		t.Errorf("an honoured marker must not raise cmd-marker-not-honoured, got %+v", fs)
+	}
+}
+
+// TestCmdMarkerOverridesLint — a visible marker behind a command-shaped first
+// span is honoured (the author wrote it) but NOTICEd, so the override is never
+// silent; the shape the marker exists for (mentions first) is not.
+func TestCmdMarkerOverridesLint(t *testing.T) {
+	if fs := rowFindings(sr1808Probes[0], "exit 0"); !hasRule(fs, "cmd-marker-overrides-command") {
+		t.Errorf("want cmd-marker-overrides-command for %q, got %+v", sr1808Probes[0], fs)
+	}
+	for _, cell := range []string{
+		"In `PublicRepoGate` (`repovis.go`) change it, then `cmd: go test ./x -count=1`",
+		"`cmd: true` then `go test ./x`",
+		"`cmd: true`",
+	} {
+		if fs := rowFindings(cell, "exit 0"); hasRule(fs, "cmd-marker-overrides-command") {
+			t.Errorf("%q must not raise cmd-marker-overrides-command, got %+v", cell, fs)
+		}
+	}
+}
+
+// TestRowLintJudgesMarkedCommand — CR-1808-1: the row rules judge the command
+// the marker names, not the first span. Each cell's marked command trips an
+// existing rule that its first span (`Foo`) does not.
+func TestRowLintJudgesMarkedCommand(t *testing.T) {
+	for _, c := range []struct{ cell, rule string }{
+		{"In `Foo` change it, then `cmd: kubectl -n <ns> get pods`", ruleMetavar},
+		{"In `Foo` change it, then `cmd: go test ./x -run TestY -count=1`", ruleGoTestRunVacuous},
+	} {
+		if fs := rowFindings(c.cell, "exit 0"); !hasRule(fs, c.rule) {
+			t.Errorf("the marked command of %q must raise %s, got %+v", c.cell, c.rule, fs)
+		}
 	}
 }
