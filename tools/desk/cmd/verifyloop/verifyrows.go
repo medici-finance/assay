@@ -3,6 +3,8 @@ package main
 import (
 	"strconv"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/verifycmd"
 )
 
 // verifyrows.go — parse a brief's `## Verify` table into typed rows the DETERMINISTIC
@@ -80,10 +82,12 @@ func parseVerifyRowsIn(section string) []verifyRow {
 					class = c
 				}
 			}
+			// verifycmd.Lift honours the `cmd:` marker (spec §4.4, #1805) and
+			// otherwise unwraps a fully-backticked cell exactly as before.
 			rows = append(rows, verifyRow{
 				Num:     num,
 				Class:   class,
-				Command: stripInlineCode(cell(cmdCol)),
+				Command: verifycmd.Lift(cell(cmdCol)),
 			})
 		}
 		return rows
@@ -113,14 +117,4 @@ func extractSection(content, heading string) string {
 		out = append(out, l)
 	}
 	return strings.Join(out, "\n")
-}
-
-// stripInlineCode unwraps a `…` inline-code span from a Command cell so the runner sees the
-// bare command; a cell with no wrapping backticks passes through unchanged.
-func stripInlineCode(s string) string {
-	s = strings.TrimSpace(s)
-	if len(s) >= 2 && strings.HasPrefix(s, "`") && strings.HasSuffix(s, "`") {
-		return strings.TrimSpace(strings.Trim(s, "`"))
-	}
-	return s
 }

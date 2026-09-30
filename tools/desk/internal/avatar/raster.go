@@ -32,7 +32,7 @@ func rasterizeSVGOnto(dst *image.RGBA, svg string) error {
 
 // renderStructural renders base + glyph (no identity field) at size×size. This
 // is the render the proof metric and the golden strips operate on: it is font-
-// free, so it is byte-identical across platforms.
+// free, so it is pixel-identical across platforms.
 func renderStructural(sp tileSpec, size int) (*image.RGBA, error) {
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
 	if err := rasterizeSVGOnto(img, sp.svgStructural()); err != nil {
@@ -58,7 +58,9 @@ func renderFull(sp tileSpec, size int) (*image.RGBA, error) {
 }
 
 // renderPNG renders the full tile and encodes it as PNG. image/png encoding is
-// deterministic, so two runs produce identical bytes (Verify row 4).
+// deterministic, so two runs under one Go toolchain produce identical bytes
+// (Verify row 4). Across Go releases the deflate stream can change while the
+// pixels do not (#1952), so a check against a committed PNG compares pixels.
 func renderPNG(sp tileSpec, size int) ([]byte, error) {
 	img, err := renderFull(sp, size)
 	if err != nil {
@@ -89,7 +91,8 @@ func identityFont() (*opentype.Font, error) {
 // uploaded avatar is supplied it is used as a two-tone copy at 30 % opacity;
 // otherwise the monogram initials are drawn with a font in the low-contrast
 // identity colour. Font rasterisation is deterministic (no hinting, fixed size),
-// so a regenerated PNG is byte-identical.
+// so a regenerated PNG is pixel-identical (and byte-identical under one Go
+// toolchain — see renderPNG).
 func drawIdentity(dst *image.RGBA, sp tileSpec) error {
 	if len(sp.Avatar) > 0 {
 		return drawUploadedAvatar(dst, sp.Avatar)

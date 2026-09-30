@@ -39,6 +39,11 @@ import (
 //
 // It is handed an already-minted token (App installation token or PAT) — minting is the
 // identity layer (spec §2/§5) and deliberately not part of this seam.
+//
+// This resolver-built backend is the desk's native read client, and its custody contract is
+// pinned by nativeread_test.go: an unminted token is refused before any request (never an
+// ambient identity), and the installation a read's token is minted for is the account of the
+// repo being read, never one the environment names.
 
 // GitHubForge implements Forge against the GitHub REST/GraphQL API with a bearer token.
 // Same shape as HTTPRepoInfoFetcher (repovis.go): BaseURL defaults to GitHubAPIBase, Client
