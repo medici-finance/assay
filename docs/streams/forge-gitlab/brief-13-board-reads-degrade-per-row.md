@@ -179,6 +179,78 @@ degradation is disclosed — this brief removes a failure mode, it does not add 
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./cmd/deskboard/... -timeout 300s` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskboard/ -run TestSweepDegradesOneRowNotTheBoard -v -timeout 120s` | pass exit=0 | sha256:6e71ed00a142 | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskboard/ -run TestDegradedRowNeverReadsBenign -v -timeout 120s` | pass exit=0 | sha256:a3542fb74ec1 | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && grep -cE -e 'change-level' -e 'repo-level' cmd/deskboard/board.go` | pass exit=0 | sha256:10159baf262b | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/deskboard/ -run TestSweepDegradesOneRowNotTheBoard -count=1 -timeout 120s` | pass exit=0 | sha256:027f2411437b | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskboard/ -run TestDegradedRowCarriesItsReason -v -timeout 120s` | pass exit=0 | sha256:283acfbd27c7 | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `statusgen --root . --consumers` | pass exit=0 | sha256:c3bffb26510f | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --lint` | pass exit=0 | sha256:406c7e5f2433 | 2026-09-28 | assay-verifier-app[bot] @ c50a38fc1251 (on-behalf-of human:ian) (forge-identity) |
+
+**Verifier notes (2026-09-28, re-witnessed at merged main after main advanced — the brief and cmd/deskboard are unchanged between the earlier and this head; assay-verifier-app[bot], non-implementer; merged main c50a38fc12518a4eec4db37e8dd847d49e79149a; implementing change PR #1084, commit 12087009339a50e166b76fddcc1642252387c950).**
+Witness run with the pinned statusgen v1.0.27 binary (sha256 matches the pin) in a clean
+environment with outbound network denied and only loopback allowed (the deskboard tests
+serve fixtures on a loopback listener). No Verify cell mints a credential or calls a live forge.
+
+- Row 1 — the witness recorded could-not-run: check:ci needs a Linux network-off runner
+  (medici-finance/assay#1800). Run by hand in the loopback-only sandbox, the same command
+  exited 0 (`ok .../cmd/deskboard 63.4s`). Held for the Linux runner.
+- Row 2 — exit 0, `--- PASS: TestSweepDegrades…Board`. The fixture's sweep degrades one row
+  through the reviews read, which is not the benign-merge arm.
+- Row 3 — exit 0, subtests `own-files read fails` and `compare read fails` both PASS.
+- Row 4 — output decodes to `7`, above the 5 floor. Six of the seven are real audit labels
+  (one repo-level at the open-changes list read, five change-level in the classifier). The
+  seventh is an unrelated worker-pool comment ("repo-level × PR-level").
+- Row 5 — the witness `pass` is VACUOUS. The first code span runs on the fixed tree, and
+  "against the pre-fix tree" is prose. Fail-first run by hand in a scratch copy: the fix
+  commit's tree with the classifier file put back to its parent's version. Result: exit 1,
+  `sweepActionsRepo returned cannot read reviews for example-org/tracker#52: simulated:
+  cannot read reviews — one PR … must degrade its OWN row, never fail the whole sweep`. The
+  same tree with the fixed classifier exits 0. The test observes the defect. Held because the
+  witness cannot express this row.
+- Row 6 — exit 0, PASS; the rendered Note carries `— DEGRADED: <reason>`.
+- Row 7 — exit 0, but vacuous on merged main: `consumers: no brief files in the diff … —
+  nothing to corroborate` (the medici-finance/assay#1281 class). Held.
+- Row 8 — exit 0, `LINT: PASS`, 0 PROBLEM lines on the pre-Evidence tree. The only NOTICE
+  naming this brief is `risk-files-crossread`: the brief answers all four risk questions
+  "no" while its declared path sits under a security-path trigger.
+
+**Observations for review (not Verify failures).**
+- A sixth whole-sweep return is still in the classifier and has no label: the trust-gate
+  blessing read for an untrusted author (`prBlessed` error, then `return prOutcome{}, berr`).
+  It is a per-change read. At the pre-fix baseline the classifier had six
+  `return prOutcome{}, …` returns, and the fix degraded five. Nothing in the task-1 audit
+  says whether this one is repo-level or change-level. Its own header says the exit 6 is
+  deliberate (Unverifiable), and a quarantine degrade would be the fail-closed alternative.
+  This is the brief's Review question, and it is open.
+- When the reviews read fails, `rs` degrades to its zero value (no verdict). For a trusted
+  human author the row then lands HUMAN-OWNED, not NEEDS-REVIEW. HUMAN-OWNED is not a
+  cleared state and the DEGRADED note is appended. But a standing bot CHANGES_REQUESTED at
+  head that could not be read would show as HUMAN-OWNED instead of BLOCKED, and HUMAN-OWNED
+  is outside the UNREVIEWED alarm. The rendered DEGRADED reason is the only layer that
+  shows it.
+
+**Risk-bearing value enumeration.** The trigger fires because the diff touches a
+risk-classed path (the lint's crossread NOTICE). Scope: the classifier hunks of the
+implementing commit. The fix adds no numeric constant. The literals are the degrade-direction
+bindings and the rendered marker, all in tools/desk/cmd/deskboard/board.go at c50a38fc1251:
+`in.ownFilesChanged = true` @ :2205 and :2213 (new; :2194 is the #1068 arm, reworded);
+`complete = false` @ :2243; `var rs reviewState` zero value (ever=false) @ :2113; the
+separator `" — DEGRADED: "` @ :2279. Outside the diff, the Verify timeouts (120s/300s) and
+the row-4 floor `5` are check-definition knobs. Ranking: every entry can be undone by an
+edit and a redeploy. The board is a read-only classifier and does no irreversible act.
+The three direction bindings rank first because a wrong value there fails OPEN (a row reads
+as cleared when nobody read it). The separator and the timeouts rank last.
+
+- RISK-VALUE: DERIVED — in.ownFilesChanged = true @ tools/desk/cmd/deskboard/board.go:2205,2213 — MERGE-CURR asserts that the change's own files did not change since review. After a failed own-files or compare read that fact is not established, so `true` (RE-REVIEW) is the only value that does not assert something unobserved. It matches the existing truncation contract (an incomplete own-files set yields true) and spec §3 (could-not-check, never fail open).
+- RISK-VALUE: DERIVED — complete = false @ tools/desk/cmd/deskboard/board.go:2243 — the risk gate is a union that only widens. A diff that could not be read may contain the trigger, and `case !complete` then sets riskClassed. This is the same fail-closed arm a truncated diff already takes, so a read error can never reach MERGE-NOW or FLIP.
+- RISK-VALUE: DERIVED — rs = reviewState{} zero value (ever=false) @ tools/desk/cmd/deskboard/board.go:2113 — any other value would invent a verdict nobody gave. ever=false routes through the existing no-verdict arm (NEEDS-REVIEW, or HUMAN-OWNED for a trusted human author), and neither is a cleared state. See the HUMAN-OWNED caveat above; it is open for the human.
+
+VERIFY: PASS — every Verify expectation was observed. The witness genuinely proves rows 2, 3, 4, 6 and 8. Row 1 passed by hand; its witness record is could-not-run pending a Linux runner (medici-finance/assay#1800). Row 5 was proven fail-first by hand. Row 7 exits 0 but is vacuous on merged main. Not witness-complete, so hold rows 1, 5 and 7.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
 Reviewer answers: for each site the audit labelled repo-level, is a whole-sweep refusal really

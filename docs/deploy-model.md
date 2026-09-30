@@ -35,7 +35,7 @@ A typed environment declaration carries:
 |---|---|
 | `name` | The environment's identifier (e.g. `staging`, `prod-us`). Free-form; an adopter's own naming convention. |
 | `purpose` | One line: what this environment is for and who/what it serves. |
-| `may-deploy` | Who holds deploy authority here — a `human:<name>` stamp, a named role, or a named automation identity. This is the SAME authority a `DEPLOY` record's `authority:` field must name (see "The deploy transition"). |
+| `may-deploy` | Who holds deploy authority here — a `human:<name>` stamp; no role and no automation identity satisfies it. This is the SAME authority a `DEPLOY` record's `authority:` field must name (see "The deploy transition"). |
 | `evidence-required` | What a deploy TO this environment must leave behind — at minimum, a `DEPLOY` record (below); an adopter MAY require more (a change ticket, a signed approval). |
 | `user-facing` | `yes` / `no`. A `yes` environment is where the rollback obligation below bites hardest — see "Rollback". |
 

@@ -195,6 +195,96 @@ Target: merged `origin/main` @ `fc9001a7ab48ee9c859dd7e52f7543dec5f86c50` (two-p
 
 **VERDICT: PASS** on rows 1–11; row 12 COULD-NOT-CHECK (brief-v2/`--consumers` gap, hand-corroborated) — **HELD at `implemented` (human sign-off owed via the verify-gate).**
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go build ./... && go test ./... -count=1` | pass exit=0 | sha256:7b398161e40a | 2026-09-27 | assay-verifier-app[bot] @ d034d39fe1c8 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && go test ./... -run TestEvidenceActorGitLabVerifier -count=1 -v` | pass exit=0 | sha256:99996ef7f95a | 2026-09-27 | assay-verifier-app[bot] @ d034d39fe1c8 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test ./... -run TestEvidenceActorGitHubVerifierUnchanged -count=1 -v` | pass exit=0 | sha256:8be5f2bbcb32 | 2026-09-27 | assay-verifier-app[bot] @ d034d39fe1c8 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test ./... -run TestEvidenceActorSelfAttestedStillUnbacked -count=1 -v` | pass exit=0 | sha256:db14edcfd3aa | 2026-09-27 | assay-verifier-app[bot] @ d034d39fe1c8 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && go test ./... -run TestEvidenceActorUnknownForgeIsCouldNotCheck -count=1 -v` | pass exit=0 | sha256:ba9516ca83af | 2026-09-27 | assay-verifier-app[bot] @ d034d39fe1c8 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd statusgen && go test ./... -run TestVerifyrunRunnerFromForgeIdentity -count=1 -v` | pass exit=0 | sha256:155a1f224187 | 2026-09-27 | assay-verifier-app[bot] @ d034d39fe1c8 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && go test ./... -run TestVerifyrunFallbackOrder -count=1 -v` | pass exit=0 | sha256:2629b993dcbb | 2026-09-27 | assay-verifier-app[bot] @ d034d39fe1c8 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && go test ./... -run TestVerifyrunStillRefusesSuppliedRunner -count=1 -v` | pass exit=0 | sha256:92cf499adf04 | 2026-09-27 | assay-verifier-app[bot] @ d034d39fe1c8 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd statusgen && go test ./... -run TestRosterGrammarParity -count=1 -v` | pass exit=0 | sha256:b7bf0a23f23e | 2026-09-27 | assay-verifier-app[bot] @ d034d39fe1c8 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `grep -c '^[\|] ' docs/streams/forge-neutral/identity.md` | pass exit=0 | sha256:2e6d31a5983a | 2026-09-27 | assay-verifier-app[bot] @ d034d39fe1c8 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `statusgen --root . --lint` | pass exit=0 | sha256:ae47fe3dbc48 | 2026-09-27 | assay-verifier-app[bot] @ d034d39fe1c8 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `statusgen --root . --consumers --brief forge-neutral/07` | fail exit=2 | sha256:75fd6f72e40d | 2026-09-27 | assay-verifier-app[bot] @ d034d39fe1c8 (on-behalf-of human:ian) (forge-identity) |
+
+### Re-verify notes — 2026-09-27, non-implementer dispatched verifier (claude-opus-5-5, local) — gate: human, HELD at `implemented`
+
+The witness table directly above is this run's record. Target: merged main @ d034d39fe1c8f0a0a93ba1177f208c48b068a1d0 (worktree HEAD equal to the forge's main at run time, read with the verifier App token). Implementing commit b93380bb5 (PR #825); runner is not the implementer. Witness executed by the pinned statusgen v1.0.27 binary (sha256 matching the release pin) called directly, not via a wrapper, under `sandbox-exec` with network denied except loopback, a minimal PATH (system dirs + go + the pinned statusgen; no gh), `KUBECONFIG=/dev/null`, `GOFLAGS=-count=1`, `GOPROXY=off` over a pre-populated module cache — no row could reach a forge or proxy.
+
+Per-row key output:
+- Row 1: statusgen module builds; full package suite `ok` (about 56s). A first witness attempt recorded row 1 `fail exit=1` because three tests that `go build` a child binary (TestVersionFlag, TestBackCompatFlagsParse, the unknown-subcommand test) tried a module download inside the network-denied sandbox (`lookup proxy.golang.org: no such host`); with the module cache pinned by env and `GOPROXY=off` they pass. Environment artifact of the sandbox, not a code defect; the brief was restored and the witness re-run — the table above is the second run.
+- Rows 2–9: each `--- PASS` / `ok`, run once more by hand as targeted package tests (`-run <name> -count=1 -v -timeout 240s`) with the same result.
+- Row 4 discrimination checked by mutation: a rubber-stamp mutant (GitLab classify returns verifier for everything) FAILS row 4 ("implementer's own service-account commit must be unbacked"; "non-service-account address must be unbacked") and row 2; source restored with a path-specific checkout, tree clean before the witness.
+- Row 5 asserts the could-not-check message text names the forge and says "does not understand"; exactly one notice, no backed/unbacked wording.
+- Row 6 corroborated live: this run's own witness Runner cells carry `(forge-identity)` — the bound verifier identity resolved through the roster, ahead of the CI-env and git-config fallbacks.
+- Row 10: output `9` (at least 2); statusgen/evidenceactor.go and statusgen/verifyrun.go rows present in the identity.md per-forge table.
+- Row 11: `LINT: PASS`, exit 0.
+- Row 12: exit 2, `--consumers: COULD-NOT-CHECK: assay:assay:forge-neutral:07 is not in the diff against d034d39f…` — on merged main there is no diff to corroborate, so the row is structurally vacuous (check-definition class, tracked by #1281). Hand corroboration: `git show --stat b93380bb5` touches evidenceactor.go, verifyrun.go, rosterconfig.go and identity.md (all routed fixed-here) and does NOT touch autoflip.go (routed follow-up forge-neutral/08). Row 12 is could-not-check, not a pass.
+
+**Risk-bearing value (sensitive-data: yes) — ENUMERATE → RANK → DERIVE.** Scope: the b93380bb5 diff to the four consumer files plus forgeidentity.go, read at merged main line numbers.
+1. scanGitlabServiceAccountRe = `^service_account_group_[0-9]+_[0-9a-z]+@noreply\.[a-z0-9.-]+$` @ statusgen/forgeidentity.go:65
+2. GitLab accept-1 name compare = `strings.EqualFold(trimmedName, p.Verifier.Login)` @ statusgen/evidenceactor.go:403
+3. noreplyEmailRe = `^(\d+)\+([^@]+)@users\.noreply\.github\.com$` @ statusgen/evidenceactor.go:185 (unchanged by the diff; named in facts)
+4. idPinned = `p.VerifierForge != forgeGitLab && p.Verifier.ID != 0` @ statusgen/evidenceactor.go:261, with `verifierID := int64(0)` for GitLab @ statusgen/evidenceactor.go:330
+5. recognised forge set = `"github"`, `"gitlab"` @ statusgen/forge.go:33,35; any other forge returns Unavailable @ statusgen/evidenceactor.go:317
+6. explicit-forge discriminator = `strings.Contains(rest, ":")` @ statusgen/forgeidentity.go:124
+7. acceptedLogins = GitLab `[]string{b.Slug}` @ statusgen/forgeidentity.go:176; GitHub `b.Slug + "[bot]", "app/" + b.Slug` @ statusgen/forgeidentity.go:178
+8. forge runner renderings = `b.Slug + "[bot]"` @ statusgen/verifyrun.go:1017; `b.Slug` @ statusgen/verifyrun.go:1024
+9. runner-source tokens = `"forge-identity"`, `"ci-env"`, `"git-config"` @ statusgen/verifyrun.go:926-928
+
+Rank (irreversibility): 1+2 highest — together they are the whole GitLab acceptance rule; wrong means implementer Evidence is believed on GitLab, and a `verified` written on it is only undone by a human re-review, not by redeploying a fix. 3 and 4 next (the GitHub id-pin, and keeping a GitLab user id out of the GitHub id namespace). 5 and 6 (unknown forge must stay could-not-check). 7 and 8 (login renderings; a wrong one fails closed as unbacked). 9 last — display tokens, reversible, no trust decision.
+
+- RISK-VALUE: NAMED, NOT DERIVED — scanGitlabServiceAccountRe = `^service_account_group_[0-9]+_[0-9a-z]+@noreply\.[a-z0-9.-]+$` @ statusgen/forgeidentity.go:65 — the shape is taken from a GitLab pilot observation, not from a cited GitLab format specification; the host is unpinned (any instance matches) and it matches every service account on every group, so it is a shape gate, not an identity binding. I could not confirm GitLab's documented service-account address format offline, and nothing in the repo derives the suffix class or the unpinned host.
+- RISK-VALUE: NAMED, NOT DERIVED — GitLab accept-1 = `strings.EqualFold(trimmedName, p.Verifier.Login)` @ statusgen/evidenceactor.go:403 — with item 1 this is the only discriminator between the verifier and any other GitLab service account, and it compares a git author name the committer sets freely. The code and identity.md record it as the weaker login-only form; whether that strength is acceptable for an anti-self-attestation control is exactly the gate-why question and is a ruling, not a derivation.
+- RISK-VALUE: DERIVED — noreplyEmailRe = `^(\d+)\+([^@]+)@users\.noreply\.github\.com$` @ statusgen/evidenceactor.go:185 — GitHub's documented noreply form is `<id>+<login>@users.noreply.github.com`, the id is the permanent account handle and the host is pinned; unchanged by this diff and row 3 shows the id-pinned path (including the wrong-id impostor case) behaves as before.
+- RISK-VALUE: DERIVED — idPinned / verifierID = `p.VerifierForge != forgeGitLab && p.Verifier.ID != 0`, `int64(0)` @ statusgen/evidenceactor.go:261,330 — a GitLab service-account address carries a group id and a per-account suffix, never the user id, so no GitLab id can be pinned from commit metadata; zeroing it also stops a GitLab user id entering the map the GitHub id paths read (rosterconfig adds ids to Bots for github entries only).
+- RISK-VALUE: DERIVED — recognised forge set = `"github"`, `"gitlab"` @ statusgen/forge.go:33,35 → Unavailable @ statusgen/evidenceactor.go:317 — the brief's three-state ground rule requires an unrecognised forge to be could-not-check; the code returns the Unavailable policy before classify can run, and row 5 asserts the message text.
+- RISK-VALUE: DERIVED — explicit-forge discriminator = `strings.Contains(rest, ":")` @ statusgen/forgeidentity.go:124 — a legacy entry is at most `slug:id`, a GitHub App slug or GitLab username never contains a colon, and a numeric head is rejected, so a third segment can only be a forge qualifier; row 9 shows legacy unqualified entries still load as github (inferred).
+
+Observations for the human gate:
+- Since the 2026-09-11 verification, PR #1486 (issue #1477, still open) widened the same control: a second GitLab accept path on a declared display name (`ASSAY_GITLAB_DISPLAY_NAMES`, statusgen/evidenceactor.go:418) and an id-pinned GitLab human noreply arm (scanGitlabHumanNoreplyRe, statusgen/forgeidentity.go:87). Rows 2–5 still pass at merged main. Those literals are outside this item's diff and were not derived here.
+- verifyrun's GitLab forge-identity source keys on git `user.name` equal to the roster username (statusgen/verifyrun.go:1023) and does not consult the display-name map. A GitLab session whose git name is the account's display name would fall through to the git-config source and stamp `human:<name>`, which is the D-9 shape again. No Verify row covers that case.
+- The check is still dead in CI (evidenceactor.go header, "IT IS DEAD IN CI TODAY"); out of scope per the brief and not made worse.
+
+**Open questions for the human (carried verbatim from the NAMED, NOT DERIVED lines):** (a) scanGitlabServiceAccountRe = `^service_account_group_[0-9]+_[0-9a-z]+@noreply\.[a-z0-9.-]+$` @ statusgen/forgeidentity.go:65 — confirm the address shape against GitLab's own format, and whether the host should stay unpinned. (b) GitLab accept-1 = `strings.EqualFold(trimmedName, p.Verifier.Login)` @ statusgen/evidenceactor.go:403 — confirm that a login-only match on the git author name (plus the shape gate) is an acceptable strength for the GitLab verifier, given GitHub's is id-pinned.
+
+VERIFY: PASS — rows 1–11 pass on merged main d034d39f; row 12 could-not-check (merged-main `--consumers` has nothing to corroborate, #1281; hand-corroborated). gate: human + sensitive-data — Evidence only, status stays `implemented`; sign-off is the human's.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go build ./... && go test ./... -count=1` | pass exit=0 | sha256:c87e6412d3f3 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && go test ./... -run TestEvidenceActorGitLabVerifier -count=1 -v` | pass exit=0 | sha256:ea300518b5c3 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test ./... -run TestEvidenceActorGitHubVerifierUnchanged -count=1 -v` | pass exit=0 | sha256:b5ed30cee57c | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test ./... -run TestEvidenceActorSelfAttestedStillUnbacked -count=1 -v` | pass exit=0 | sha256:b5bd5c4e1970 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && go test ./... -run TestEvidenceActorUnknownForgeIsCouldNotCheck -count=1 -v` | pass exit=0 | sha256:81be5c6542f0 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd statusgen && go test ./... -run TestVerifyrunRunnerFromForgeIdentity -count=1 -v` | pass exit=0 | sha256:e8b1cd7c79f3 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && go test ./... -run TestVerifyrunFallbackOrder -count=1 -v` | pass exit=0 | sha256:d748fa44ebdc | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && go test ./... -run TestVerifyrunStillRefusesSuppliedRunner -count=1 -v` | pass exit=0 | sha256:fa6ab42d2dde | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd statusgen && go test ./... -run TestRosterGrammarParity -count=1 -v` | pass exit=0 | sha256:817d9c3e9796 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `grep -c '^[\|] ' docs/streams/forge-neutral/identity.md` | pass exit=0 | sha256:2e6d31a5983a | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `statusgen --root . --lint` | pass exit=0 | sha256:2997f4db3d75 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `statusgen --root . --consumers --brief forge-neutral/07` | pass exit=0 | sha256:7741ac4bfdd0 | 2026-09-28 | assay-verifier-app[bot] @ e1afb99aca99 (on-behalf-of human:ian) (forge-identity) |
+
+**Re-run 2026-09-28 at batch tree e1afb99a after main changed `statusgen/rosterconfig.go`** — the witness table directly above. Tree: e1afb99aca990bbdb14ef44eb65fceb0610b18e8 = merged main 02a2f75fb532af2bf7bc6284e3f5f4c6e9337f48 (read with the verifier App token at run time; main had not moved) plus this batch's Evidence commit, clean stamp. Non-implementer dispatched verifier (claude-opus-5-5, local). Envelope: pinned statusgen v1.0.27 called directly (sha256 matches the darwin-arm64 pin); `sandbox-exec` network-denied with loopback-only allowance; `env -i` with the real HOME; PATH = system dirs plus a scratch dir holding only go and statusgen; `KUBECONFIG=/dev/null`, `GOFLAGS=-count=1`, a fresh empty GOCACHE, `GOPROXY=off` over a pre-populated module cache, `GOTOOLCHAIN=local` (go1.27.1). Scratch files outside the checkout.
+
+Drift since the 2026-09-27 run (d034d39f): a5bacb1237f8207051c7ff164cdde08a09dd565b (PR #1727) is the only commit touching this brief's inputs. In `statusgen/rosterconfig.go` it adds one constant, `ASSAY_STAMP_TRUSTED_LOGINS`, to the recognised roster keys (a desk-only model-floor allowance, "recognised, not applied"), and the same key to `statusgen/testdata/roster_coupling.json`. It does not touch the forge-qualified grammar, the unqualified-means-github rule, the role bindings or the bot-id parsing, and no other input (evidenceactor.go, verifyrun.go, forgeidentity.go, identity.md) changed. It does not change this brief's behaviour; it only stops a roster carrying the new desk key from tripping statusgen's unknown-key refusal.
+
+Per row, vs the previous run:
+- Row 1: pass exit 0, full statusgen module build and test inside the sandbox on the first attempt (the previous run's first attempt needed a module download; with the cache pre-populated and `GOPROXY=off` nothing reached the network). The hash differs because the output carries timings.
+- Rows 2–9: pass exit 0 each; hashes differ only by timings. Run once more by hand as one targeted package run (`-run '^(…)$' -count=1 -v -timeout 400s`): all eight named tests exist and report `--- PASS`, so no row passed on "no tests to run". Rows 4, 5 and 8 are the negative paths (implementer Evidence unbacked on both forges; unknown forge is could-not-check by message text; supplied runner still refused).
+- Row 10: `9` (at least 2), hash identical to the previous run.
+- Row 11: `LINT: PASS`, exit 0, at the pre-append tree.
+- Row 12: now `pass exit=0` where it was `fail exit=2`. The pass is vacuous: this batch's own Evidence commit puts the brief in the diff against main, so the check runs, and reports 0 corroborated, 0 disproved, 5 unchecked ("this branch did not make this claim"). Nothing is corroborated on merged main (#1281).
+- No row is classed `check:ci`, so none records could-not-run on this darwin host (#1800 not engaged); row 1 ran the whole statusgen module.
+- Row 6 corroborated live again: this table's Runner cells carry `(forge-identity)` with the on-behalf-of principal.
+
+Risk values: unchanged. The enumeration in the 2026-09-27 notes cites evidenceactor.go, forgeidentity.go, forge.go and verifyrun.go, none of which changed; every literal and line reference still holds. Open questions (a) and (b) stay open for the human.
+
+VERIFY: PASS — at batch tree e1afb99a, rows 1–11 pass under the witness; row 12 is vacuous on merged main (#1281). HELD at `implemented` — gate: human + sensitive-data, sign-off is the human's.
+
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`). Reviewer records verdict + date in
 the stream README table.

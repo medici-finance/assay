@@ -109,6 +109,30 @@ facts:
 
 Pending — the implementer records its run here on reaching `implemented`; an independent
 runner records a second run on merged main before `verified`.
+### Non-implementer verifier run — VERIFY: FAIL — 8/10 pass, rows 2 and 5 fail — 2026-09-30 claude-opus-5-5-verifier
+
+Runner is not the implementer. Isolated worktree at merged main `b89b3957225e227e69d5b5ec7949344f580d9966` (HEAD == the forge's `commits/main`, cross-checked before and after). Implementing PR #957 (merge 743195b97). `gate: model`. Binaries built from main. **Grounding:** every desk verb is write-class and reads the roster only from the config-home roster file, so the Verify rows' env-prefixed forms reach no loader; each row was run literally and again through a roster file (synthetic HOME, synthetic keys `ada:2001`, `example-org/tracker`). Failures filed as #1843. Status stays `implemented`.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | roster file with `ASSAY_REPO_ALIASES=not=a=valid=shape`; `deskboard --help`; `deskreply --help` | exit 0; runs | PASS — exit 0 / 0; no `inactive` line, help printed (literal env form: exit 0, never reaches the loader) | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | synthetic manifest tree (desk-tools requires `assay.roster.ext.repo-aliases`), invalid alias in the roster file; `deskreply --help` | exit 2; first line `could-not-check: assay/<component> inactive — assay.roster.ext.repo-aliases invalid` | FAIL — exit 6; `could-not-check: assay/assay/desk-tools inactive — assay.roster.ext.repo-aliases ASSAY_REPO_ALIASES: entry "not=a=valid=shape" has no ':' …`; the `assay-config:` echo block precedes it; component name doubled (activation.go:291). No real manifest requires the key, so the row runs only against a synthetic tree | 2026-09-30 | claude-opus-5-5-verifier |
+| 3 | roster file: bless set + empty trusted logins; trust surface unset; malformed `ASSAY_TRUSTED_LOGINS=bob:notanid` | non-zero; refuses | PASS on intent — 0 / 6 / 6; the bless login counts as trusted (unchanged from pre-#957); unset or malformed: `… inactive — assay.roster.trust unset or malformed` | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | roster file: trust unset + valid alias; then trust unset + invalid alias; `deskreply --help` | non-zero; refuses on the trust key | PASS — exit 6 / 6; both `… inactive — assay.roster.trust unset or malformed` (trust outranks extension) | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | roster file with `ASSAY_UNKNOWN_KEY=1`; `deskboard --help` | exit 0; NOTICE mentions `ASSAY_UNKNOWN_KEY`; no refusal | FAIL — exit 6; `REFUSED — ASSAY_UNKNOWN_KEY: unknown key in the ASSAY_ namespace …`, no NOTICE. Declared deviation in #957; ruling open in #1261 | 2026-09-30 | claude-opus-5-5-verifier |
+| 6 | mutation: any invalid `Ext` aborts `LoadConfig`; rebuild; row 1 (file form); restore | row 1 now fails | PASS — exit 6, `REFUSED — MUTANT abort: repo-aliases …`; deskkit suite fails 6 tests incl. the repo-alias deactivation test; restored | 2026-09-30 | claude-opus-5-5-verifier |
+| 7 | mutations: (a) malformed trusted-login entries to a non-aborting accumulator; (b) trust gate disabled; row 3; restore | row 3 exits 0 and the suite fails | PASS — mutants exit 0 / 0; suite FAILs on the malformed-id test (a) and 4 trust-unset tests (b); restored | 2026-09-30 | claude-opus-5-5-verifier |
+| 8 | `cd tools/desk && go test ./internal/deskkit/... ./cmd/...` | exit 0 | PASS — exit 0; 67 `ok` packages, no FAIL | 2026-09-30 | claude-opus-5-5-verifier |
+| 9 | `deskmanifest lint --root .` | exit 0 | PASS — exit 0; `checked-clean: 26 manifest(s), every inject.required resolves in range, no cycles` | 2026-09-30 | claude-opus-5-5-verifier |
+| 10 | valid roster: `deskboard --help`, `deskversion --version`, `deskreply --help`, `deskroster --help`, `deskfile --help` | all exit 0; no `inactive` line | PASS — exit 0 ×5, no `inactive` line. Caveat: every desk binary maps to the one `assay.desk.verbs` provider, so "three components" cannot hold as written | 2026-09-30 | claude-opus-5-5-verifier |
+
+RISK-VALUE (fail-safe trigger fires: the diff touches the writeguard command's main.go, reviewer-labelled `surface:core`; all values reversible):
+
+- RISK-VALUE: DERIVED — `extKeyNames` @ tools/desk/internal/deskkit/rosterconfig.go:864-874 — none of the brief's five trust keys is in the map; all eight listed extension keys are. A ninth, `run-credentials` (line 871), was added 2026-09-23 outside #957; it decides which credential a write runs as, so under the brief's "ambiguous → treat as trust" rule it deserves a reviewer look.
+- RISK-VALUE: DERIVED — `"assay.roster.trust"` gate @ tools/desk/internal/deskkit/activation.go:191 — resolves only when `Configured()` holds, the pre-existing fail-closed definition (rows 3, 4, mutation 7b).
+- RISK-VALUE: NAMED, NOT DERIVED — `ExitUnverifiable = 6` @ tools/desk/internal/deskkit/exitcodes.go:55 — the brief pins exit 2; 6 was chosen after review found 2 collides with usage errors, but the brief was never amended. Brief-owner call, carried on #1843.
+
+Findings (filed in #1843): the doubled `assay/` prefix at activation.go:291; `DiscoverManifests` walks untracked nested clones/worktrees, and duplicate component names resolve last-wins after an unstable sort, so a nested worktree can change the parent checkout's activation; the env-prefixed Verify rows should be restated in roster-file form. Not re-checked this pass: whether the #957 security-review note (duplicate non-exclusive providers resolve by sort order) was filed.
 
 ## Review
 
