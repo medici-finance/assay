@@ -782,6 +782,31 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   data; and anything that leaves the repo — publishing to a public or external surface, sending
   content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
   either side of the test — the test never routes around one.
+- **A `needs-decision` filing must carry the `### Fork test` block `deskfile new` requires**
+  (grammar in `tools/desk/README.md` — not restated here): the options that can actually work, the
+  default, the gate that catches a wrong guess, and the search proving the question is not already
+  ruled. **An item with one workable option is not a decision** — the tool refuses it (exit 5) and
+  names the three `--no-fork` re-routes (`brief-contradicts-artifact` | `wrong-repo` |
+  `tool-false-positive`); use the one that fits rather than forcing the filing. Two workable options
+  plus a gate the driver still holds MAY file on the NOTICE LANE (`desk-decided`, off the driver's
+  queue, in the weekly digest with its veto date) instead of `needs-decision`. The tool admits it
+  only on a positive, content-bearing R-3 reversible signal (a tool default alone never admits,
+  and neither does a lint-level/lint-severity/notice-or-error/port-or-drop example, named CI
+  check or not — that is always a classification question about some check, so it never
+  admits on its own) with no one-way term or one-way label, and the same one-way check refuses
+  `--no-fork` (exact lists: `tools/desk/README.md`). That reversible signal is read from the
+  block's own `subject:` line ALONE, never the title or body prose, and only from the STRICT
+  grammar's bounded block: the `### Fork test` heading must be followed directly by the block
+  (blank lines are fine, prose is not), the block is the contiguous run of key lines that
+  follows (`option:`/`default:`/`caught-by:`/`ruled-check:`/`subject:`, each at column zero with
+  no bullet/quote/indent decoration), and it ends at the first line that does not match, blank
+  or not — nothing past that line is ever read as part of it, whatever the rest of the body
+  contains. Exactly one `subject:` line inside that bounded run admits; zero or more than one
+  admits nothing: write ONE `subject:` line yourself, naming the one thing being decided,
+  directly among the block's other key lines (`tools/desk/README.md` has the full grammar). The
+  tool's keyword check
+  is a floor, not the reversibility test above: an item that test calls one-way is filed
+  `caught-by: nothing`, and so stays on the driver's queue, whatever the keywords say.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
   or comments.
 
