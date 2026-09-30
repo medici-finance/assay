@@ -1388,6 +1388,18 @@ func main() {
 		os.Exit(runNewBrief(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	}
 
+	// `statusgen lint --check <name>` and `statusgen verify-gate-close --ref <ref>` — the fleet
+	// topology contract's registry-resolved verbs (topology.go). Intercepted before flag parsing:
+	// each owns its own --root/--check/--ref namespace, and verify-gate-close is a WRITE that must
+	// never be reachable by fallthrough to the default regenerate. The whole-corpus gate stays
+	// `statusgen --lint`; `lint --check` runs only the named checks.
+	if len(os.Args) > 1 && os.Args[1] == "lint" {
+		os.Exit(runLintNamed(os.Args[2:], os.Stdout, os.Stderr))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "verify-gate-close" {
+		os.Exit(runVerifyGateClose(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// UNKNOWN POSITIONAL SUBCOMMAND — fail closed (#1075).
 	//
 	// Every genuine positional subcommand (verifyrun, mergecheck, shardcheck,
@@ -1408,7 +1420,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, enforcement-status, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}
