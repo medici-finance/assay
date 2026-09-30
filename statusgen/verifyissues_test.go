@@ -1332,6 +1332,17 @@ func TestVerifyPassHeldContradictionNegationCuePosition(t *testing.T) {
 		{"marker used as a label with a value", prose("0 HELD: human read owed"), true},
 		{"underscore-emphasised hold reason", prose("0 HELD _pending_ runner"), true},
 		{"double-underscore-emphasised hold reason", prose("0 HELD __pending__ runner"), true},
+		{"zero count, sentence break, hold reason", prose("0 HELD. pending runner"), true},
+		{"zero count, arrow, hold reason", prose("0 HELD → pending runner"), true},
+		{"zero count, close paren, hold reason", prose("0 HELD) pending runner"), true},
+		{"negation, sentence break, hold reason", prose("no HELD. Awaiting runner"), true},
+		{"reason word opening next sentence", prose("0 HELD. For the record, all green."), true},
+		// Each hold-reason word refuses on its own, not only "pending".
+		{"zero count, waiting", prose("0 HELD waiting on runner"), true},
+		{"zero count, because", prose("0 HELD because runner down"), true},
+		{"zero count, blocked", prose("0 HELD blocked on runner"), true},
+		{"zero count, due", prose("0 HELD due to runner"), true},
+		{"zero count, for", prose("0 HELD for human read"), true},
 		// Must refuse: struck text never joins a cue to a marker, and never
 		// stands in for what precedes a cue.
 		{"struck span between cue and marker", prose("row 3 not ~~yet green, still~~ HELD"), true},
@@ -1359,6 +1370,8 @@ func TestVerifyPassHeldContradictionNegationCuePosition(t *testing.T) {
 		{"zero count after a rows count, dash note", prose("**VERIFY: PASS (5/5 rows, 0 HELD — live cluster access was available)**"), false},
 		{"zero count after a fail count", prose("9/9 rows pass, 0 fail, 0 held."), false},
 		{"underscore-emphasised non-reason word stays excused", prose("0 HELD _runner_ idle"), false},
+		{"sentence break then non-reason word stays excused", prose("0 HELD. every row ran green."), false},
+		{"arrow then non-reason word stays excused", prose("0 HELD → all rows green"), false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

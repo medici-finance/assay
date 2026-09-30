@@ -341,11 +341,14 @@ var heldOrCouldNotCheckRe = regexp.MustCompile(`(?i)\b(HELD|could-not-check)\b`)
 //     ("2.0", "v1.0") or a parenthesis ("(0 HELD)") is not a count position
 //     and never excuses.
 //   - Hold reason: an occurrence followed by a hold reason — after any run of
-//     whitespace, emphasis, ",", ";", ":", "(" or dash (heldReasonAfterRe:
-//     "HELD pending runner", "HELD, pending runner", "HELD (awaiting runner)",
-//     "HELD — until …") — or by a colon that opens a value ("0 HELD: human
-//     read owed") is refused even behind a valid cue: a negated or zero count
-//     that also gives a reason for holding contradicts itself.
+//     whitespace, emphasis, ",", ";", ":", ".", "(", ")", "→" or dash
+//     (heldReasonAfterRe: "HELD pending runner", "HELD, pending runner",
+//     "HELD (awaiting runner)", "HELD — until …", "HELD. pending runner",
+//     "HELD → pending runner", "HELD) pending runner") — or by a colon that
+//     opens a value ("0 HELD: human read owed") is refused even behind a
+//     valid cue: a negated or zero count that also gives a reason for holding
+//     contradicts itself. A reason word that opens the next sentence ("0 HELD.
+//     For the record, …") therefore refuses too — the fail-closed side.
 //   - Struck text: a struck-through span (`~~…~~`) removed between a cue and
 //     its marker, or right before the cue, is replaced by a sentinel for this
 //     check, so struck text can never join a cue to a marker ("not ~~yet
@@ -383,8 +386,9 @@ var (
 	// heldCuePrevWordRe is a linking word allowed directly before a word cue.
 	heldCuePrevWordRe = regexp.MustCompile(`(?i)\b(?:is|are|was|were|has|have|had|with|and|but|otherwise|means)$`)
 	// heldReasonAfterRe is a hold reason after the marker, past any run of
-	// whitespace, emphasis or clause punctuation.
-	heldReasonAfterRe = regexp.MustCompile(`(?i)^[\s\p{Z}*_,;:(–—-]*(?:pending|awaiting|waiting|until|because|blocked|due|for)(?:\b|_)`)
+	// whitespace, emphasis, ",", ";", ":", ".", "(", ")", "→" or dash. The
+	// word may end at "_" as well as a word boundary, so "_pending_" counts.
+	heldReasonAfterRe = regexp.MustCompile(`(?i)^[\s\p{Z}*_,;:.()→–—-]*(?:pending|awaiting|waiting|until|because|blocked|due|for)(?:\b|_)`)
 	// heldValueAfterRe is a colon right after the marker: the marker is a
 	// label whose value follows ("0 HELD: human read owed").
 	heldValueAfterRe = regexp.MustCompile(`^[\s\p{Z}*_]*:`)
