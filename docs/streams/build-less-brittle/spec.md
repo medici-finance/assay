@@ -362,8 +362,8 @@ These fields require neither a desk-tool redesign nor an installed collector.
   pure-LLM iterations, ~90% only under deterministic guardrails.
 - **The oracle**, one file beside the investigation, `<date>-<module>-oracle.md`:
   1. *Intent* — the owning brief(s) and DR quoted, and the investigation's `divergence:` with
-     its reconciled reading of intent versus what the code does now (09's output, never
-     re-derived).
+     its reconciled reading of intent versus code at the cited revisions (09's output, reused
+     while applicable; superseded or revalidated when relevant inputs change).
   2. *Failure modes* — every class incident and every findings entry touching the module,
      each mapped to its regression test by `git grep 'regression: .*#<N>'` (11). An empty
      test cell is a refusal.
@@ -582,3 +582,20 @@ design-doc-first practice reduces agent-written churn; GitHub Spec Kit, Kiro and
 guidance are recommendations. The hotspot percentages CodeScene quotes are examples, not a
 study; this stream's own 1.8% / 28% figure is the number it uses.
 
+
+## Work-input and handoff clarification — 2026-09-30
+
+Refine existing records through unfinished briefs 04 (class intake), 09 (investigation)
+and 12 (oracle). Inputs carry scope, immutable source/evidence references, unresolved
+questions and next action. Repeated notifications do not create new incidents; unchanged
+reconciled reasoning is reused only within its source/dependency scope. Another brief's
+policy/API change can invalidate it without touching the same file. Keep old records and
+revalidate affected conclusions; ordinary work does not acquire a redesign oracle.
+
+The [graph work-input amendment](../graph-execution/work-input-amendment.md) consumes these
+records but is an optional integration, not a dependency or second owner. Runtime packets,
+claims, quota reservations and enforcement stay outside this stream. Preserve §5's M1–M6,
+C1–C4, baseline and ratified advisory gates. Time/cost/recovery measures are supplemental;
+lower token use alone does not establish reduced brittleness. New packet machinery still
+counts in the existing weight and operator-relay measures. No additional brief or gate is
+created by this clarification.
