@@ -3,7 +3,7 @@ package main
 // reviewscope_test.go — the acceptance suite for the review scope contract
 // (example-stream/20).
 //
-// The contract itself is the prompt kit (review-prompt clause 12) and the review-desk
+// The contract itself is the prompt kit (review-prompt clause 13) and the review-desk
 // reader; deskkit.reviewscope is its executable specification. These tests drive that
 // specification over SYNTHETIC multi-file examples so the three scope outcomes are proved as
 // BEHAVIOUR, not asserted as prose — a literal-text test on the kit alone cannot satisfy the
@@ -225,6 +225,28 @@ func TestReviewScopeNoSilentPromotion(t *testing.T) {
 	// The original class value is not mutated (AbsorbSibling returns by value).
 	if len(class.Occurrences) != 1 {
 		t.Errorf("AbsorbSibling mutated the receiver's occurrences (len now %d) — it must return a new value", len(class.Occurrences))
+	}
+}
+
+// TestDesignFitIsAScopeBasis — review kit clause 3. A design-fit finding names a
+// recognised basis, so the boundary routes it as in scope rather than could-not-check. The
+// basis is spelled as a literal so this reads red against a model that lacks it. Whether the
+// class then HOLDS the pull request is the finding-class register's status (advisory at
+// landing), which this model deliberately does not carry.
+func TestDesignFitIsAScopeBasis(t *testing.T) {
+	const want = deskkit.ScopeBasis("design-fit")
+	listed := false
+	for _, d := range deskkit.ScopeBases() {
+		if d.Basis == want {
+			listed = true
+		}
+	}
+	if !listed {
+		t.Fatalf("ScopeBases() does not list %q — the kit's design-fit row has no model behind it", want)
+	}
+	f := deskkit.ReviewFinding{ClassID: "wrong-owner", Location: "src/x.go:1", Basis: want}
+	if got, reason := deskkit.ClassifyFinding(f); got != deskkit.DispBlocker {
+		t.Fatalf("ClassifyFinding(design-fit) = %q, want %q (reason: %s)", got, deskkit.DispBlocker, reason)
 	}
 }
 

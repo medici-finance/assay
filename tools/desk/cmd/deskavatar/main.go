@@ -4,7 +4,8 @@
 // refuses (exit 5) if any pair would be indistinguishable in a PR timeline.
 //
 // It is offline and deterministic: no network, no time, no randomness. The same
-// org login always produces byte-identical files.
+// org login always produces byte-identical files under the same Go toolchain
+// (a Go release can change a PNG's deflate stream, never its pixels — #1952).
 package main
 
 import (

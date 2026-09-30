@@ -19,7 +19,8 @@
       "DatabaseID": 11,
       "Author": {
         "Login": "worker[bot]",
-        "ID": 0
+        "ID": 0,
+        "Type": "Bot"
       },
       "Body": "first",
       "Minimized": false,
@@ -31,7 +32,8 @@
       "DatabaseID": 12,
       "Author": {
         "Login": "worker[bot]",
-        "ID": 0
+        "ID": 0,
+        "Type": "Bot"
       },
       "Body": "hidden",
       "Minimized": true,

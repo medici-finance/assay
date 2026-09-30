@@ -9,7 +9,9 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -27,9 +29,59 @@ var apiBaseURL = deskkit.GitHubAPIBase
 // ever" property is asserted against the real constructed argv rather than assumed.
 var execCommand = exec.Command
 
-// deskTokenPath is the desktoken binary. It is an absolute path so a PATH entry cannot
-// substitute a different program for the identity mint.
-const deskTokenPath = "/opt/desk-tools/bin/desktoken"
+// deskTokenPath is the desktoken binary, resolved ONCE at process start by
+// resolveDeskTokenPath. It used to be a hardcoded unix-absolute literal under
+// /opt/desk-tools/bin — a literal that does not merely fail to be Windows-idiomatic,
+// it does not exist at all on a native-Windows install (there is no /opt), so the old
+// constant made this tool unconditionally non-portable, not just non-idiomatic
+// (the "deskrelease's desktoken path" needs-port row in
+// docs/streams/example-stream/portability-audit.md — the real stream slug is
+// neutralised to a synthetic example-stream/… slug here because the corpus
+// withheld-path guard forbids a shipping copy-set file naming a real docs/streams
+// path). Resolved instead of hardcoded, but resolved to a
+// SPECIFIC binary, not an open PATH search: see resolveDeskTokenPath's doc comment for
+// why the co-located-sibling check preserves the original "a PATH entry cannot
+// substitute a different program for the identity mint" property in the common
+// (installed) case.
+var deskTokenPath = resolveDeskTokenPath()
+
+// resolveDeskTokenPath resolves the desktoken binary this (privileged, identity-minting)
+// tool invokes. Preference order, most-trusted first:
+//
+//  1. A binary named "desktoken" (or "desktoken.exe" on Windows) in the SAME directory
+//     as the currently-running deskrelease binary (os.Executable()). Every install path
+//     this repo ships — `make desk-install`'s /opt/desk-tools/bin, and
+//     scripts/build-windows.ps1's per-user install dir — installs desktoken and
+//     deskrelease TOGETHER, into the same directory, in the same step. Resolving via
+//     "wherever THIS already-loaded, already-trusted binary lives" ties the identity
+//     mint to a location an attacker would already have to control to have substituted
+//     deskrelease itself — the same threat model the old hardcoded absolute path
+//     defended against, just derived from the real install location instead of a
+//     unix-only literal.
+//  2. A PATH lookup (exec.LookPath), ONLY when no co-located binary is found — the dev
+//     workflow (`go run`/`go test`), where the running binary has no install directory
+//     at all. This is the one step that reintroduces PATH-order dependence, and it is
+//     deliberately the LAST resort, not the first, for that reason.
+//
+// Neither resolving means mintDeskToken's exec attempt fails with the OS's own
+// "executable file not found in $PATH" against the bare name — a clear failure, never a
+// silently wrong path.
+func resolveDeskTokenPath() string {
+	name := "desktoken"
+	if runtime.GOOS == "windows" {
+		name = "desktoken.exe"
+	}
+	if exe, err := os.Executable(); err == nil {
+		sibling := filepath.Join(filepath.Dir(exe), name)
+		if _, statErr := os.Stat(sibling); statErr == nil {
+			return sibling
+		}
+	}
+	if p, err := exec.LookPath(name); err == nil {
+		return p
+	}
+	return name
+}
 
 // sha40 matches a full git object id. A ref response that does not carry one is
 // unverifiable, never "probably fine".

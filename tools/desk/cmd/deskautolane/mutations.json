@@ -1,0 +1,395 @@
+{
+  "test": "go test ./cmd/deskautolane/ ./internal/deskkit/ -run 'AutoLane|ConclusionGreen|GlobSamples' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — an unsigned R-8 enacts the lane (the verb arms itself)",
+    "file": "cmd/deskautolane/forge.go",
+    "old": "\tcase deskkit.SignOffUnsigned:\n\t\treturn false, deskkit.Refused(",
+    "new": "\tcase deskkit.SignOffUnsigned:\n\t\treturn true, nil\n\t\treturn false, deskkit.Refused("
+  },
+  "mutations": [
+    {
+      "name": "unarmed: an absent lane config loads as an open lane with zero-valued numbers",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\tif len(cfg.AutoLaneRaw) == 0 {\n\t\treturn AutoLaneLoad{State: AutoLaneUnconfigured}\n\t}",
+      "new": "\tif len(cfg.AutoLaneRaw) == 0 {\n\t\treturn AutoLaneLoad{State: AutoLaneConfigLoaded, Config: AutoLaneConfig{DailyCap: 1, FPYFloor: 1}}\n\t}"
+    },
+    {
+      "name": "unarmed: the enactment gate skips the author check on the sign-off artifact",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif !deskkit.IsBlessAuthorityIDStrict(c.Author.Login, c.Author.ID) {",
+      "new": "\t\tif false && !deskkit.IsBlessAuthorityIDStrict(c.Author.Login, c.Author.ID) {"
+    },
+    {
+      "name": "unarmed: an ejection writes without the enactment gate",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tif ok, gerr := enactment(o, fg); !ok {\n\t\treturn deskkit.Refused(fmt.Sprintf(\"eject: %s (NOT written",
+      "new": "\tif ok, gerr := enactment(o, fg); false && !ok {\n\t\treturn deskkit.Refused(fmt.Sprintf(\"eject: %s (NOT written"
+    },
+    {
+      "name": "brief file: the compiled stream-brief tripwire stops matching",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tif IsStreamBriefPath(f) {\n\t\t\ttrip(TripStreamBrief, f)",
+      "new": "\t\tif false && IsStreamBriefPath(f) {\n\t\t\ttrip(TripStreamBrief, f)"
+    },
+    {
+      "name": "brief file: an area that can reach a brief loads",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\t\tif w, ok := globsOverlap(a.Glob, bg); ok {",
+      "new": "\t\t\tif w, ok := globsOverlap(a.Glob, bg); false && ok {"
+    },
+    {
+      "name": "path outside area no longer trips the category",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tif !inArea {\n\t\t\ttrip(TripPathOutsideArea, f)",
+      "new": "\t\tif false && !inArea {\n\t\t\ttrip(TripPathOutsideArea, f)"
+    },
+    {
+      "name": "score over the eject line: the line is read as 'at or above' one more than it is",
+      "file": "internal/deskkit/autolane.go",
+      "old": "func (s AutoLaneScore) Ejects(line int) bool { return s.Score > line }",
+      "new": "func (s AutoLaneScore) Ejects(line int) bool { return s.Score > line+1 }"
+    },
+    {
+      "name": "score: a superseded CHANGES_REQUESTED stops counting (the laundered latest view)",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\t\tfired[SignalReviewRework] = true",
+      "new": "\t\t\tfired[SignalReviewRework] = strings.TrimSpace(r.CommitID) == in.Head"
+    },
+    {
+      "name": "score: an unreadable read is read as no signal",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\tif len(unreadable) > 0 {\n\t\tfired[SignalUnreadable] = true\n\t}",
+      "new": "\tif false && len(unreadable) > 0 {\n\t\tfired[SignalUnreadable] = true\n\t}"
+    },
+    {
+      "name": "cap: the daily cap lets one more merge through",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tif n >= cfg.DailyCap {",
+      "new": "\tif n > cfg.DailyCap {"
+    },
+    {
+      "name": "FPY: below the floor with enough merges reads healthy",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\tif fpy < floor {",
+      "new": "\tif fpy < floor-0.5 {"
+    },
+    {
+      "name": "FPY: an absent kill-signal file reads healthy",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\tdata, err := os.ReadFile(path)\n\tif err != nil {\n\t\treturn killHold(\"could-not-check\")\n\t}",
+      "new": "\tdata, err := os.ReadFile(path)\n\tif err != nil {\n\t\treturn AutoLaneKillSignal{State: KillSignalHealthy, Line: \"lane: healthy\"}\n\t}"
+    },
+    {
+      "name": "latch: the audit-log half of the ejection latch is ignored",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tif deskkit.AutoLanePriorEjection(entries, o.repo, o.pr) {\n\t\treturn true, nil",
+      "new": "\tif false && deskkit.AutoLanePriorEjection(entries, o.repo, o.pr) {\n\t\treturn true, nil"
+    },
+    {
+      "name": "re-read: a stale approval passes reviewer-approved",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tcase strings.TrimSpace(last.CommitID) != f.head:",
+      "new": "\tcase false && strings.TrimSpace(last.CommitID) != f.head:"
+    },
+    {
+      "name": "admit: the surface-overlap refusal at config load is disarmed",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\t\tif w, ok := globsOverlap(a.Glob, sg); ok {",
+      "new": "\t\t\tif w, ok := globsOverlap(a.Glob, sg); false && ok {"
+    },
+    {
+      "name": "admit: an untrusted opt-in login loads",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tif v.LoginMayOptIn == nil || !v.LoginMayOptIn(a.Login) {",
+      "new": "\t\tif false && (v.LoginMayOptIn == nil || !v.LoginMayOptIn(a.Login)) {"
+    },
+    {
+      "name": "admit (within scope): area membership is tested with pattern and path swapped",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\t\tif MatchSurfaceGlob(a.Glob, f) {\n\t\t\t\tinArea = true",
+      "new": "\t\t\tif MatchSurfaceGlob(f, a.Glob) {\n\t\t\t\tinArea = true"
+    },
+    {
+      "name": "no merge mutation: merge without --dry-run returns success",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\treturn deskkit.Refused(fmt.Sprintf(\"refused: merge-write",
+      "new": "\treturn nil\n\treturn deskkit.Refused(fmt.Sprintf(\"refused: merge-write"
+    },
+    {
+      "name": "enactment: the sign-off body is not read (a rejection enacts)",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif ok, why := deskkit.AutoLaneAcceptance(c.Body); !ok {",
+      "new": "\t\tif ok, why := deskkit.AutoLaneAcceptance(c.Body); false && !ok {"
+    },
+    {
+      "name": "enactment: a negation no longer voids the acceptance line",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\tif m := autoLaneNegationRe.FindString(body); m != \"\" {",
+      "new": "\tif m := autoLaneNegationRe.FindString(body); false && m != \"\" {"
+    },
+    {
+      "name": "enactment: a non-User author passes the type check",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tcase !strings.EqualFold(t, \"User\"):",
+      "new": "\t\tcase false && !strings.EqualFold(t, \"User\"):"
+    },
+    {
+      "name": "enactment: an untyped author reads as a User",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tcase t == \"\":\n\t\t\treturn false, deskkit.Unverifiable(",
+      "new": "\t\tcase false && t == \"\":\n\t\t\treturn false, deskkit.Unverifiable("
+    },
+    {
+      "name": "enactment: a sign-off on a thread outside the register repo is followed",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tif !strings.EqualFold(m[1], rr.Owner) || !strings.EqualFold(m[2], rr.Name) {",
+      "new": "\tif false && (!strings.EqualFold(m[1], rr.Owner) || !strings.EqualFold(m[2], rr.Name)) {"
+    },
+    {
+      "name": "enactment: the register is read from the caller's worktree, not the forge",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tso := deskkit.ReadSignOffFromText(string(fc.Content), deskkit.AutoLaneRulingID)",
+      "new": "\tso := deskkit.ReadSignOff(o.root+\"/\"+o.rulings, deskkit.AutoLaneRulingID)\n\t_ = fc"
+    },
+    {
+      "name": "latch: the forge-side ejection marker is ignored",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tif deskkit.AutoLaneEjectedOnForge(f.comments, reviewer) {",
+      "new": "\tif false && deskkit.AutoLaneEjectedOnForge(f.comments, reviewer) {"
+    },
+    {
+      "name": "latch: an unreadable PR thread reads as not ejected",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tif f.commentsErr != nil {\n\t\treturn false, deskkit.Unverifiable(",
+      "new": "\tif false && f.commentsErr != nil {\n\t\treturn false, deskkit.Unverifiable("
+    },
+    {
+      "name": "dry-run: merge --dry-run performs the ejection writes",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\t\tif o.dryRun {\n\t\t\t// A dry run writes NOTHING",
+      "new": "\t\tif false && o.dryRun {\n\t\t\t// A dry run writes NOTHING"
+    },
+    {
+      "name": "base: a PR against a non-default branch is judged as if it targeted the default",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tif strings.TrimSpace(f.pr.BaseRef) != f.defaultBranch {",
+      "new": "\tif false && strings.TrimSpace(f.pr.BaseRef) != f.defaultBranch {"
+    },
+    {
+      "name": "never-admit: an instruction file or register in the diff no longer trips",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tif IsAutoLaneNeverAdmitPath(f) {\n\t\t\ttrip(TripNeverAdmit, f)",
+      "new": "\t\tif false && IsAutoLaneNeverAdmitPath(f) {\n\t\t\ttrip(TripNeverAdmit, f)"
+    },
+    {
+      "name": "never-admit: an area over the rulings register loads",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\t\tif MatchSurfaceGlob(a.Glob, w) && MatchSurfaceGlob(AutoLaneRulingsGlob, w) {",
+      "new": "\t\t\tif false && MatchSurfaceGlob(a.Glob, w) && MatchSurfaceGlob(AutoLaneRulingsGlob, w) {"
+    },
+    {
+      "name": "size: an absent or author-set size label reads as not large",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\t\tunreadable = append(unreadable, \"size-label\")",
+      "new": "\t\t\t_ = 0"
+    },
+    {
+      "name": "checks: pending CI fires the ci-nonsuccess demotion again",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tcase ChecksTruncated, ChecksPending, ChecksEmpty:",
+      "new": "\t\tcase ChecksTruncated:"
+    },
+    {
+      "name": "head-stable: a head that moved during the checks passes",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tif h2 := strings.TrimSpace(pr2.HeadSHA); h2 != f.head {",
+      "new": "\tif h2 := strings.TrimSpace(pr2.HeadSHA); false && h2 != f.head {"
+    },
+    {
+      "name": "admission label: a self-applied auto-lane label admits",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tcase !strings.EqualFold(applier, reviewer):\n\t\tf.laneWhy",
+      "new": "\tcase false && !strings.EqualFold(applier, reviewer):\n\t\tf.laneWhy"
+    },
+    {
+      "name": "admit: a Security-Review fail no longer trips the category",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\t\tif HasSecurityReviewFail(r.Body) {\n\t\t\t\ttrip(TripSecurityFail",
+      "new": "\t\t\tif false && HasSecurityReviewFail(r.Body) {\n\t\t\t\ttrip(TripSecurityFail"
+    },
+    {
+      "name": "sign-off thread: a comment on another thread of the register repo is followed",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tcase item != o.signOffThread:",
+      "new": "\tcase false && item != o.signOffThread:"
+    },
+    {
+      "name": "sign-off thread: an unset thread reads as any thread, not could-not-check",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tcase o.signOffThread <= 0:",
+      "new": "\tcase false && o.signOffThread <= 0:"
+    },
+    {
+      "name": "sign-off thread: the configured thread is never handed to the gate",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\to.signOffThread = cfg.SignOffThread\n",
+      "new": "\to.signOffThread = cfg.SignOffThread + 1\n"
+    },
+    {
+      "name": "sign-off thread: a thread of 0 loads as a configured thread",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tif t == \"\" || terr != nil || n <= 0 || strings.TrimLeft(t, \"0123456789\") != \"\" {",
+      "new": "\t\tif t == \"\" || terr != nil || strings.TrimLeft(t, \"0123456789\") != \"\" {"
+    },
+    {
+      "name": "time check: the acceptance's creation time is never compared",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif err := acceptanceAfterText(o, fg, rr, db, string(fc.Content), c.CreatedAt); err != nil {",
+      "new": "\t\tif err := acceptanceAfterText(o, fg, rr, db, string(fc.Content), c.CreatedAt); false && err != nil {"
+    },
+    {
+      "name": "time check: an acceptance at the merge instant counts as after it",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tif !accepted.After(anchor) {",
+      "new": "\tif accepted.Before(anchor) {"
+    },
+    {
+      "name": "time check: an unreadable creation time reads as the zero time, not could-not-check",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\taccepted, perr := time.Parse(time.RFC3339, strings.TrimSpace(createdAt))\n\tif perr != nil {",
+      "new": "\taccepted, perr := time.Parse(time.RFC3339, strings.TrimSpace(createdAt))\n\tif false && perr != nil {"
+    },
+    {
+      "name": "time check: the Sign-off line counts as a change to the ruling's text",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tif signOffKeyRe.MatchString(ln) {\n\t\t\tsigned = true\n\t\t\tcontinue\n\t\t}",
+      "new": "\t\tif signOffKeyRe.MatchString(ln) {\n\t\t\tout = append(out, ln)\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "time check: a text change with no merged PR behind it anchors at the zero time",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tif latestPR == 0 {\n\t\treturn time.Time{}, 0, deskkit.Refused(",
+      "new": "\tif false && latestPR == 0 {\n\t\treturn time.Time{}, 0, deskkit.Refused("
+    },
+    {
+      "name": "time check: an open PR or one merged into another branch counts as the merge",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif !(pr.Merged || strings.TrimSpace(pr.MergedAt) != \"\") || strings.TrimSpace(pr.BaseRef) != db {",
+      "new": "\t\tif !(pr.Merged || strings.TrimSpace(pr.MergedAt) != \"\" || pr.State != \"\") {"
+    },
+    {
+      "name": "time check: the EARLIEST of several merged PRs anchors, not the latest",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif latestPR == 0 || at.After(latest) {",
+      "new": "\t\tif latestPR == 0 || at.Before(latest) {"
+    },
+    {
+      "name": "time check: a history page that ends before the change reads as the text's origin",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\t\tif len(hist) >= rulingHistoryLimit {",
+      "new": "\t\t\tif false && len(hist) >= rulingHistoryLimit {"
+    },
+    {
+      "name": "time check: a history whose newest version is not the default branch's is walked anyway",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tif !nfound || newest != want {",
+      "new": "\tif false && (!nfound || newest != want) {"
+    },
+    {
+      "name": "enact line: the line is taken anywhere in the body (the 7cbc29f matcher)",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\tif strings.TrimRight(first, \" \\t\\r\") != AutoLaneEnactLine {",
+      "new": "\tif !regexp.MustCompile(`(?mi)^[ \\t]*Enact:[ \\t]*R-8[ \\t\\r]*$`).MatchString(body) {"
+    },
+    {
+      "name": "enact line: the LAST non-empty line is read instead of the first",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\t\tif strings.TrimSpace(ln) != \"\" {\n\t\t\tfirst = ln\n\t\t\tbreak\n\t\t}",
+      "new": "\t\tif strings.TrimSpace(ln) != \"\" {\n\t\t\tfirst = ln\n\t\t}"
+    },
+    {
+      "name": "enact line: an indented line reads as bare",
+      "file": "internal/deskkit/autolane.go",
+      "old": "\tif strings.TrimRight(first, \" \\t\\r\") != AutoLaneEnactLine {",
+      "new": "\tif strings.TrimSpace(first) != AutoLaneEnactLine {"
+    },
+    {
+      "name": "time check: the commit's own date anchors, not the merging PR's merged_at",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tif latestPR == 0 {\n\t\treturn time.Time{}, 0, deskkit.Refused(",
+      "new": "\tif cd, e := time.Parse(time.RFC3339, hist[anchorAt].CommittedDate); e == nil && latestPR != 0 {\n\t\tlatest = cd\n\t}\n\tif latestPR == 0 {\n\t\treturn time.Time{}, 0, deskkit.Refused("
+    },
+    {
+      "name": "supersede: the newest-acceptance step never runs",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif err := supersededAcceptance(comments, c); err != nil {",
+      "new": "\t\tif err := supersededAcceptance(comments, c); false && err != nil {"
+    },
+    {
+      "name": "supersede: a later acceptance by the authority is ignored",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif later.After(at) {",
+      "new": "\t\tif false && later.After(at) {"
+    },
+    {
+      "name": "supersede: an EARLIER acceptance by the authority also supersedes",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif later.After(at) {",
+      "new": "\t\tif !later.Equal(at) {"
+    },
+    {
+      "name": "supersede: anyone's later acceptance supersedes, not only the authority's",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif c.DatabaseID == named.DatabaseID || !strings.EqualFold(strings.TrimSpace(c.Author.Type), \"User\") ||\n\t\t\t!deskkit.IsBlessAuthorityIDStrict(c.Author.Login, c.Author.ID) {",
+      "new": "\t\tif c.DatabaseID == named.DatabaseID || !strings.EqualFold(strings.TrimSpace(c.Author.Type), \"User\") {"
+    },
+    {
+      "name": "supersede: an App carrying the authority's login counts as the authority",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif c.DatabaseID == named.DatabaseID || !strings.EqualFold(strings.TrimSpace(c.Author.Type), \"User\") ||\n\t\t\t!deskkit.IsBlessAuthorityIDStrict(c.Author.Login, c.Author.ID) {",
+      "new": "\t\tif c.DatabaseID == named.DatabaseID ||\n\t\t\t!deskkit.IsBlessAuthorityIDStrict(c.Author.Login, c.Author.ID) {"
+    },
+    {
+      "name": "supersede: any later comment by the authority supersedes, acceptance or not",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tif !readsAsLaterAcceptance(c.Body) {\n\t\t\tcontinue\n\t\t}\n\t\tlater, perr",
+      "new": "\t\tlater, perr"
+    },
+    {
+      "name": "supersede: a later acceptance with no readable time reads as not later",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\tlater, perr := time.Parse(time.RFC3339, strings.TrimSpace(c.CreatedAt))\n\t\tif perr != nil {",
+      "new": "\t\tlater, perr := time.Parse(time.RFC3339, strings.TrimSpace(c.CreatedAt))\n\t\tif false && perr != nil {"
+    },
+    {
+      "name": "sign-off thread: a pull-request permalink is read like an issue one",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tif m[3] != \"issues\" {",
+      "new": "\tif false && m[3] != \"issues\" {"
+    },
+    {
+      "name": "supersede: an indented later acceptance supersedes nothing (step 4's strict reading)",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\t\t\tlines[i] = strings.TrimLeft(ln, \" \\t\")",
+      "new": "\t\t\tlines[i] = ln"
+    },
+    {
+      "name": "supersede: the wider reading drops the negation lexicon",
+      "file": "cmd/deskautolane/forge.go",
+      "old": "\tok, _ := deskkit.AutoLaneAcceptance(strings.Join(lines, \"\\n\"))\n\treturn ok",
+      "new": "\t_ = lines\n\treturn strings.Contains(body, deskkit.AutoLaneEnactLine)"
+    },
+    {
+      "name": "gitlab typed notes: a thread still paging at the cap is returned as the whole thread",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif complete {\n\t\treturn nil, Unverifiable(",
+      "new": "\tif false && complete {\n\t\treturn nil, Unverifiable("
+    },
+    {
+      "name": "gitlab typed notes: the typed read takes the lenient capped walk",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\treturn g.listNotes(repo, number, kind, true)",
+      "new": "\treturn g.listNotes(repo, number, kind, false)"
+    }
+  ]
+}

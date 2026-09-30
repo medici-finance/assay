@@ -79,8 +79,28 @@ statusgen verifyrun --brief docs/streams/<stream>/brief-NN-<slug>.md --dry-run
 statusgen verifyrun --check docs/streams/<stream>/brief-NN-<slug>.md
 ```
 
-Each row runs in a fresh subshell at the repo root, and the witness records the
-command, the exit code, a sha256 fingerprint of the combined output, the date, the
+Each row runs in a fresh subshell at the repo root. The command is the Command
+cell's first code span, or — in a cell that mixes prose and spans — the first span
+marked `cmd:` (`` `cmd: go test ./pkg/ -count=1` ``), which always wins over the first
+span (issue #1805; `--lint` NOTICEs a prose cell whose first span is not a command as
+`prose-led-command`, and `verifyrun` records such a row could-not-run without
+executing it — the mention is not the check, and a word like `gh` exits 0; the per-row
+NOTICE covers open briefs, and a closed brief's rows collapse into one summary line;
+the check:ci verdict re-execution lane refuses such a row unrun, and `--check` does not
+audit an old pass witness on it as pass).
+A marked command that cannot fail (`true`, `:`, `exit 0`, a lone `echo`) is NOTICEd as
+`cmd-marker-vacuous`. A marker counts only where the rendered table shows it as code:
+spans are found as CommonMark renders them (escaped backticks are literal), and a cell
+whose prose carries an unescaped `<` or `[`, a dollar in any spelling (`$`, `\$`, `&#36;`:
+math) or any character reference, or a span whose opening backticks are fused to the text
+before them (an autolink, `~~`), honours no marker; the marker span itself must be set apart
+by whitespace or the cell edge (plain punctuation may follow it) (`--lint` NOTICEs it as
+`cmd-marker-not-honoured`; a marker that replaces a command-shaped first span is
+`cmd-marker-overrides-command`). The tools/desk executors (`verifyloop`,
+`deskrebaseline`) apply the same rule, held to the shared vectors in
+`testdata/cmd-marker-vectors.json`. The witness records the
+command (fenced with a longer backtick run when it contains backticks, so `--check`
+reads back the whole command), the exit code, a sha256 fingerprint of the combined output, the date, the
 executing identity, and the tree it ran against. The format and its rules live in
 [`../docs/brief-rules.md`](../docs/brief-rules.md) (rules 25–26).
 
@@ -379,6 +399,42 @@ One pre-existing exclusion predates the marker and is kept: the tutorial-skeleto
 prefix in `corroborate.go`, which teaches the `human:<name>` notation itself with
 fictional personas. It is a named constant, reviewed on its own terms, and it
 needs no marker.
+
+### Quoted notation is not a claim (`--corroborate`)
+
+`--corroborate` reads the pull request's added lines as claims that a human
+acted. Some added lines only quote the notation, and it does not read them as
+claims (`corroboratescope.go`):
+
+- **The removed side of an embedded patch.** In a committed `.patch` or `.diff`
+  file, a line the patch deletes arrives as `+-…`. Neither the stamp scan nor
+  the citation scan reads a `-` line inside one of the patch's hunks. The
+  patch's added side, its context lines, and any text outside a hunk (such as a
+  `git format-patch` commit-message preamble) are still read.
+- **Stamp-shaped text on a surface no stamp reader parses.** This applies to the
+  stamp scan only. It skips **test** source files: a file whose extension is on
+  a closed list (`.go .sh .bash .zsh .ps1 .py .js .mjs .cjs .ts .rb .rs`) and
+  whose name follows a test-file convention (`x_test.go`, `x.test.sh`,
+  `x_test.py`, ...). It also skips YAML lines whose first non-blank character is
+  `#`: outside a block scalar that is a YAML comment, and inside one it is value
+  text, but statusgen never parses YAML for stamps. statusgen reads stamps only
+  from record files: Markdown boards, briefs, decision records and registers,
+  and JSONL ledgers. So a `human:<name>` in a test's fixture data is never a
+  sign-off. A non-test program or script is scanned as before, because it may be
+  the thing that writes a stamp into a record. The citation scan still reads all
+  of these files, because a ruling claim in a code comment is prose that a
+  reader may trust.
+
+Every rule is decided by the file's own name and format, never by a directory
+name, and each one fails closed. Any other extension, every non-test program or
+script, every YAML value line, and every Markdown line, bullets starting with
+`-` included, are scanned as before. Each
+skip is **visible**: the run ends with a
+`# quoted notation — NOT read as a claim` section that lists every stamp or
+citation a skipped line would have produced (`human:<name> in <file>
+NOT-A-CLAIM — <reason>`). All three `--corroborate` lanes read the diff through
+one walker (`walkAddedDiffLines`). `TestCorroborateDiffWalkersShareOneWalker`
+fails if another function in the package walks the diff with its own loop.
 
 ## Standalone layout
 

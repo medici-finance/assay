@@ -26,6 +26,12 @@ func cmdPlan(args []string, stdout io.Writer) error {
 	prsPath := fs.String("prs", "", "path to `deskboard prs` JSON — supplies the head SHAs the actions verb omits")
 	recordsPath := fs.String("records", "", "path to a review-thread records JSON — derives the persistent finding ledger and the per-class round count for one PR")
 	nowStr := fs.String("now", "", "RFC3339 instant to age the board against (default: wall clock)")
+	// --dry-run is accepted but changes nothing: `plan` already spawns nothing and
+	// writes nothing outward on every invocation (doc.go's own contract), so a
+	// caller that wants to say "this run must not act" can pass it and get exactly
+	// the same read-only behaviour `plan` always had — the flag documents intent at
+	// the call site rather than gating a code path that does not otherwise exist.
+	_ = fs.Bool("dry-run", false, "accepted for symmetry with a future acting mode; plan already performs no writes")
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused("reviewloop plan: bad flags: " + err.Error())
 	}

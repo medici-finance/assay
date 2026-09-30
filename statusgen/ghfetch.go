@@ -15,7 +15,9 @@ package main
 //
 // Testability: all HTTP goes through the httpDoer seam, so go test injects a
 // recorded-response double and never touches the network (the offline envelope).
-// Read-only endpoints only: GET /pulls and GET /pulls/{n}/reviews.
+// Read-only endpoints only: GET /pulls and GET /pulls/{n}/reviews, plus the two
+// `--corroborate` ruling-link reads (decisionruling.go): GET
+// /issues/comments/{id} and GET /issues/{n}.
 
 import (
 	"encoding/json"
@@ -186,6 +188,22 @@ func (c *ghClient) ReviewsAtHead(repo string, pr int, headSHA string) (approved,
 		}
 	}
 	return approved, atHead, true, ""
+}
+
+// GetIssueComment reads ONE issue comment by id (GET
+// /repos/{repo}/issues/comments/{id}) — the ruling-link resolution
+// decisionruling.go performs for `--corroborate`. It returns the raw body and HTTP
+// status so the caller can tell an observed 404/410 (the comment is gone) from a
+// fetch that never completed (err != nil); it never interprets either itself.
+func (c *ghClient) GetIssueComment(repo string, id int64) ([]byte, int, error) {
+	return c.get(fmt.Sprintf("%s/repos/%s/issues/comments/%d", c.base, repo, id))
+}
+
+// GetIssue reads ONE issue (GET /repos/{repo}/issues/{n}) — the decision issue a
+// ruling comment sits on, whose body carries the decision-gate marker. Same raw
+// (body, status, err) contract as GetIssueComment.
+func (c *ghClient) GetIssue(repo string, n int) ([]byte, int, error) {
+	return c.get(fmt.Sprintf("%s/repos/%s/issues/%d", c.base, repo, n))
 }
 
 // get performs one authenticated GET, returning body + status. A transport error

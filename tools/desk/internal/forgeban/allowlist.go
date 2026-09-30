@@ -81,6 +81,11 @@ type Allowance struct {
 // fails when the permit list is longer (a new forge-CLI call site landed) AND when it is
 // shorter (a call site was migrated but the gain was not locked in). Lowering it is the
 // second half of every migration; raising it is a decision a reviewer sees as a diff.
+//
+// 7 = the five pre-existing permits plus two reviewed widenings, each its own row below:
+// internal/deskkit/preflight.go::ambientLoginProbe::gh (the ambient-identity preflight,
+// #1528) and cmd/deskapps/identity.go::runGH::gh (deskapps init's pre-token identity read,
+// the driver-ruled exception on #1260). No other permit is authorized by that raise.
 const allowedInvocationCeiling = 7
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
@@ -131,19 +136,33 @@ var AllowedInvocations = []Allowance{
 			"No enumerated op does that — every read on the interface is keyed by number. Needs a typed " +
 			"branch→change lookup, with its GitLab source-branch mapping, in its own brief.",
 	},
+	{
+		Key: "internal/deskkit/preflight.go::ambientLoginProbe::gh",
+		Reason: "TODO(forge-surface): identity — this is the AMBIENT-identity preflight check. It reads " +
+			"`gh api user` to learn WHICH login a tool fall-through would silently act as, which is the exact " +
+			"opposite of routing through the interface: both Forge backends refuse to construct a client without " +
+			"an explicitly minted App token, so the enumerated seam can NEVER observe the ambient credential this " +
+			"check exists to catch. When `gh api user` answers \"not logged in\", the same func also runs `gh auth " +
+			"token` — a LOCAL read of a stored credential (an OS-keyring login behind an empty config dir), no " +
+			"network call — and only tests the answer for being empty, so a credential still reachable behind " +
+			"\"not logged in\" is could-not-check rather than clean. There is no Forge method either call could " +
+			"move to — the whole point is to read the identity the interface deliberately excludes (inventory " +
+			"delta D2). Retiring it would mean deleting the check, not migrating it.",
+	},
 }
 
 // unresolvedRegister records every exec site whose argv[0] the checker cannot resolve. It is
 // a LEDGER of blind spots, not a permit — see the file header.
 var UnresolvedArgv = []Allowance{
-	// cmd/cellctl — the cell launcher (the Go port of tools/cellctl/cellctl). It reaches NO forge
-	// at all: its one credential path goes through deskkit.RoleTokenForRepo, and its own brief
-	// asserts at the source level that the package carries no signing primitive, no certificate
-	// package, no bearer-assertion format and no TLS-toolkit shell-out. What it DOES launch is
-	// the local surface a launcher has to: the operator's harness, a terminal multiplexer, the
-	// two cockpit CLIs it probes by name, and the cell's own operator-owned binaries. None of
-	// those is a forge CLI, and none of the argv[0]s is a compile-time constant because the NAME
-	// is the thing being selected at run time.
+	// cmd/cellctl — the cell launcher (the Go port of the bash script now kept only as a test
+	// oracle, tools/cellctl/testdata/cellctl-shell-oracle.sh). It reaches NO forge at all: its one
+	// credential path goes through deskkit.RoleTokenForRepo, and its own brief asserts at the
+	// source level that the package carries no signing primitive, no certificate package, no
+	// bearer-assertion format and no TLS-toolkit shell-out. What it DOES launch is the local
+	// surface a launcher has to: the operator's harness, a terminal multiplexer, the two cockpit
+	// CLIs it probes by name, and the cell's own operator-owned binaries. None of those is a forge
+	// CLI, and none of the argv[0]s is a compile-time constant because the NAME is the thing being
+	// selected at run time.
 	{
 		Key: "cmd/cellctl/cockpit.go::onPath::<unresolved>",
 		Reason: "exec.LookPath of a cockpit/harness name held in a variable (tmux, herdr, orca, claude, " +
@@ -218,6 +237,15 @@ var UnresolvedArgv = []Allowance{
 		Reason: "runs the resolved statusgen binary with --gate-scores.",
 	},
 	{
+		Key: "cmd/deskinbox/flow.go::runReaderFn::<unresolved>",
+		Reason: "the flow model's reader seam: runs the statusgen or deskboard binary resolveFlowBin resolved " +
+			"(`statusgen --bottleneck/--intake-debt/--net-flow --json`, `deskboard throughput --json`). argv[0] is " +
+			"a variable because the oracle's ASSAY_STATUSGEN / ASSAY_DESKBOARD overrides may re-point it at a " +
+			"specific build; resolveFlowBin REFUSES any override (and any PATH resolution) whose base name, with a " +
+			"trailing .exe stripped, is not statusgen / deskboard respectively, so this site cannot be aimed at a " +
+			"forge CLI by an environment variable. Read-only readers; never a forge write.",
+	},
+	{
 		Key:    "cmd/deskpreflight/main.go::realOutput::<unresolved>",
 		Reason: "the preflight probe seam; the argv comes from deskkit's preflight probe table, not from a caller.",
 	},
@@ -245,6 +273,24 @@ var UnresolvedArgv = []Allowance{
 	{
 		Key:    "internal/deskkit/preflight.go::coldMintProbe::<unresolved>",
 		Reason: "runs the resolved desktoken binary; the identity layer, deliberately outside the interface (D2).",
+	},
+	{
+		Key: "internal/deskkit/preflight.go::ambientLoginProbe::<unresolved>",
+		Reason: "runs the `gh` path resolved one line earlier by exec.LookPath (the AllowedInvocations row for " +
+			"this func covers the forge-CLI permit); argv[0] is the resolved variable, so it lands here as a " +
+			"blind-spot ledger row. It launches `gh api user` to read the ambient identity and, after a " +
+			"\"not logged in\" answer, `gh auth token` to see whether a stored credential is still readable " +
+			"(the answer is only tested for being empty) — the D2 identity layer, deliberately outside the " +
+			"interface — never a write.",
+	},
+	{
+		Key: "cmd/deskrelease/github.go::resolveDeskTokenPath::<unresolved>",
+		Reason: "exec.LookPath of the desktoken binary name (\"desktoken\"/\"desktoken.exe\") — the identity-mint " +
+			"layer, deliberately outside the interface (D2), the same binary coldMintProbe runs. argv[0] is a " +
+			"variable ONLY because of the .exe OS conditional and because this LookPath is the dev-workflow " +
+			"LAST resort: resolveDeskTokenPath prefers the desktoken co-located with the running deskrelease " +
+			"binary via os.Executable(), and falls back to PATH lookup then the bare name only when no " +
+			"co-located sibling exists (go run/go test). Never a forge CLI. Mirrors migrate.go::resolveStatusgenBinary.",
 	},
 	{
 		Key:    "internal/deskkit/riskcallout.go::runRiskCallout::<unresolved>",

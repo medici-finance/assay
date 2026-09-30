@@ -105,7 +105,12 @@ type Brief struct {
 	// roadmap top-blocker cell and health rules, DORA findings-per-group).
 	StaleRef string
 	Depends  []string // typed deps from brief-v1 frontmatter ("<stream>/<NN>"); nil for legacy
-	Schema   string   // "brief-v1" from frontmatter; "" for legacy (non-brief-v1)
+	// Unblocks is the typed `unblocks:` list from brief-v1 frontmatter, wired the
+	// same way as Depends; nil for legacy. It is read ONLY by the critical tier's
+	// reciprocated dependency graph (buildReciprocatedRevDeps): an edge A→B counts
+	// toward B's high-unblocks arm only when B lists A here. Never a score input.
+	Unblocks []string
+	Schema   string // "brief-v1" from frontmatter; "" for legacy (non-brief-v1)
 	// Gates are the brief-v2 `gates:` reserved edges, wired from BriefFile
 	// (graph-execution/01) for the eligibility evaluator (eligibility.go) — nil
 	// for a brief-v1/legacy brief. GATING: an unsatisfied or could-not-check
@@ -151,6 +156,12 @@ type Brief struct {
 	// (held out of THIS board's Next-up) + a display marker carrying the target
 	// repo — NEVER a Next-up score input (F-09 scope note).
 	HomedIn string
+	// IssueRefs are the FULL `owner/repo#N` refs of the issues this row addresses:
+	// an issue-loop placeholder's own issue, or a brief's `issues:` entries resolved
+	// against the stream's declared `repo:` (a stream with no repo resolves none).
+	// Read ONLY by the critical tier's main-red arm, to recognise a main-red FIX
+	// against the tracking issues the --main-health input names. Never a score input.
+	IssueRefs []string
 	// Measures is the optional brief-v1 `measures:` field — the name of the
 	// process queue this brief instruments (a metric, alarm or report ABOUT that
 	// queue). nil when the field is absent, which is the neutral default: an

@@ -1,6 +1,6 @@
 package main
 
-// gogit.go — the production claimStore: an in-process git-smart-HTTP transport over go-git
+// gogit.go — the forge-ref store, one implementation of deskkit.ClaimStore: an in-process git-smart-HTTP transport over go-git
 // (internal/gitcore), the ONLY forge access this binary makes. There is no `gh`, `glab`, or any
 // CLI here and no external `git` process — a dispatch claim is placed, advanced, stolen, read
 // and released as library calls that speak the git wire protocol directly. That is what closes
@@ -54,20 +54,24 @@ const storeTimeout = 30 * time.Second
 // collapse to a bare "unverifiable" naming neither the host dialed nor the auth/DNS cause, so an
 // operator on a self-hosted GitLab debugged the claim namespace, token scopes and ref
 // permissions — all of which were fine — while the real fault was the SaaS host the tool silently
-// dialed (#727). Each transport failure records its cause here; the verb layer reads
-// transportCause() to append "<host>: <error>" to the message.
+// dialed (#727). Each transport failure records its cause here, and so does a server's refusal
+// of a claim write (its report-status text, #1631); the verb layer reads TransportCause() to
+// append "<host>: <error>" to the message.
 type gogitStore struct {
 	url     string
 	auth    transport.AuthMethod
 	host    string // the host this store dials, for fail-closed attribution
-	lastErr error  // the most recent transport-layer error, for fail-closed attribution
+	lastErr error  // the most recent transport error or server write refusal, for attribution
 }
 
+// gogitStore is the forge-ref implementation of the deskkit claim-store seam.
+var _ deskkit.ClaimStore = (*gogitStore)(nil)
+
 // newForgeStore resolves the forge, host, and credential for repo (an "owner/name" slug) and
-// returns a claimStore bound to them, or an error (which the caller maps to exit 6,
+// returns a deskkit.ClaimStore bound to them, or an error (which the caller maps to exit 6,
 // could-not-check). tokenFile, when non-empty, is the 0600 file the token is read from instead
 // of the environment.
-func newForgeStore(repo, tokenFile string) (claimStore, error) {
+func newForgeStore(repo, tokenFile string) (deskkit.ClaimStore, error) {
 	owner, name, ok := splitSlug(repo)
 	if !ok {
 		return nil, fmt.Errorf("repo %q is not an owner/name slug", repo)
@@ -99,16 +103,18 @@ func newForgeStore(repo, tokenFile string) (claimStore, error) {
 	}, nil
 }
 
-// fail records err as the store's most recent transport-layer cause, so the verb layer can
-// attribute a fail-closed exit to the host dialed and the underlying error rather than emitting
-// a bare "unverifiable" (#727). It returns nothing; callers still return the
-// writeUnverifiable/claimUnverifiable sentinel as before.
+// fail records err as the store's most recent cause, so the verb layer can attribute a
+// fail-closed exit to the host dialed and the underlying error rather than emitting a bare
+// "unverifiable" (#727). err is a transport-layer failure (callers then return the
+// ClaimWriteUnverifiable/ClaimReadUnverifiable sentinel) or the server's refusal of a write
+// (mintAndPush then returns ClaimWriteRejected, #1631). It returns nothing.
 func (g *gogitStore) fail(err error) { g.lastErr = err }
 
-// transportCause reports "<host>: <error>" for the store's most recent transport failure, or ""
-// when the last operation did not fail at the transport layer. The verb layer appends it to a
-// fail-closed message so the operator sees WHERE the tool dialed and WHY it failed.
-func (g *gogitStore) transportCause() string {
+// TransportCause reports "<host>: <error>" for the store's most recently recorded cause — a
+// transport failure or a server refusal of a write — or "" when none has been recorded. The verb
+// layer appends it to a fail-closed message so the operator sees WHERE the tool dialed and WHY it
+// failed or was refused.
+func (g *gogitStore) TransportCause() string {
 	if g.lastErr == nil {
 		return ""
 	}
@@ -119,77 +125,80 @@ func (g *gogitStore) refName(id string) plumbing.ReferenceName {
 	return plumbing.ReferenceName(refPrefix + "/" + id)
 }
 
-func (g *gogitStore) read(id string) (claimRef, claimStatus) {
+func (g *gogitStore) Read(id string) (deskkit.ClaimStoreRecord, deskkit.ClaimReadStatus) {
 	refs, err := gitcore.List(gitcore.ListOpts{URL: g.url, Auth: g.auth})
 	if err != nil {
 		g.fail(err)
-		return claimRef{}, claimUnverifiable
+		return deskkit.ClaimStoreRecord{}, deskkit.ClaimReadUnverifiable
 	}
 	sha, found := findRef(refs, refPrefix+"/"+id)
 	if !found {
 		// A clean advertisement with no matching ref is FREE (the brief's rule); only a
 		// transport/auth/not-found error above is could-not-check.
-		return claimRef{}, claimFree
+		return deskkit.ClaimStoreRecord{}, deskkit.ClaimReadFree
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
 	defer cancel()
 	payload, perr := gitcore.FetchTagPayload(ctx, g.url, g.auth, plumbing.NewHash(sha))
 	if perr != nil {
 		g.fail(perr)
-		return claimRef{}, claimUnverifiable
+		return deskkit.ClaimStoreRecord{}, deskkit.ClaimReadUnverifiable
 	}
-	return claimRef{
-		sha:  sha,
-		msg:  strings.TrimRight(payload.Message, "\n"),
-		date: payload.When.UTC().Format(time.RFC3339),
-	}, claimHeld
+	return deskkit.ClaimStoreRecord{
+		Version: sha,
+		Msg:     strings.TrimRight(payload.Message, "\n"),
+		Date:    payload.When.UTC().Format(time.RFC3339),
+	}, deskkit.ClaimReadHeld
 }
 
-func (g *gogitStore) createIfAbsent(id, msg string) writeOutcome {
+func (g *gogitStore) CreateIfAbsent(id, msg string) deskkit.ClaimWriteOutcome {
 	return g.mintAndPush(id, msg, plumbing.ZeroHash)
 }
 
-func (g *gogitStore) updateFrom(id, oldSHA, msg string) writeOutcome {
+func (g *gogitStore) UpdateFrom(id, oldSHA, msg string) deskkit.ClaimWriteOutcome {
 	return g.mintAndPush(id, msg, plumbing.NewHash(oldSHA))
 }
 
-func (g *gogitStore) mintAndPush(id, msg string, old plumbing.Hash) writeOutcome {
+func (g *gogitStore) mintAndPush(id, msg string, old plumbing.Hash) deskkit.ClaimWriteOutcome {
 	objs, tagSHA, err := gitcore.MintClaimTag(id, msg, time.Now())
 	if err != nil {
 		g.fail(err)
-		return writeUnverifiable
+		return deskkit.ClaimWriteUnverifiable
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
 	defer cancel()
-	res, perr := gitcore.PushRefUpdate(ctx, gitcore.RefUpdate{
+	res, reason, perr := gitcore.PushRefUpdateDetail(ctx, gitcore.RefUpdate{
 		URL: g.url, Auth: g.auth, Ref: g.refName(id), Old: old, New: tagSHA, Objects: objs,
 	})
 	if perr != nil {
 		g.fail(perr)
-		return writeUnverifiable
+		return deskkit.ClaimWriteUnverifiable
 	}
 	if res == gitcore.RefUpdateRejected {
-		return writeRejected
+		// Keep the server's own refusal text for attribution: when the verb then finds no
+		// holder, "rejected but no claim exists" must say WHY the server refused.
+		g.fail(fmt.Errorf("server refused %s: %s", g.refName(id), reason))
+		return deskkit.ClaimWriteRejected
 	}
-	return writeApplied
+	return deskkit.ClaimWriteApplied
 }
 
-func (g *gogitStore) remove(id string) (writeOutcome, bool) {
+func (g *gogitStore) Remove(id string) (deskkit.ClaimWriteOutcome, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
 	defer cancel()
 	res, err := gitcore.DeleteRef(ctx, g.url, g.auth, g.refName(id))
 	if err != nil {
 		g.fail(err)
-		return writeUnverifiable, false
+		return deskkit.ClaimWriteUnverifiable, false
 	}
-	return writeApplied, res == gitcore.DeleteDone
+	return deskkit.ClaimWriteApplied, res == gitcore.DeleteDone
 }
 
-func (g *gogitStore) list() ([]string, claimStatus) {
+func (g *gogitStore) List() ([]string, deskkit.ClaimReadStatus) {
 	refs, err := gitcore.List(gitcore.ListOpts{URL: g.url, Auth: g.auth})
 	if err != nil {
 		g.fail(err)
-		return nil, claimUnverifiable
+		return nil, deskkit.ClaimReadUnverifiable
 	}
 	var ids []string
 	for _, r := range refs {
@@ -201,10 +210,10 @@ func (g *gogitStore) list() ([]string, claimStatus) {
 			ids = append(ids, id)
 		}
 	}
-	return ids, claimHeld
+	return ids, deskkit.ClaimReadHeld
 }
 
-func (g *gogitStore) branchExists(branch string) (bool, bool) {
+func (g *gogitStore) BranchExists(branch string) (bool, bool) {
 	if branch == "" || branch == "-" {
 		return false, true
 	}

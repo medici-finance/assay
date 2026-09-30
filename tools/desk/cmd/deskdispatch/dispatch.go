@@ -127,6 +127,18 @@ type dispatchOpts struct {
 	promptFile string
 	quiet      bool
 	dryRun     bool
+	// itemAlias is the `<alias>:` prefix split off the item key (deliverable.go) — the alias the
+	// brief is TRACKED under. item carries the key WITHOUT it, so every derivation below (claim
+	// key, branch, worktree name) sees the ordinary grammar.
+	itemAlias string
+	// rework marks a dispatch of a row awaiting implementer REWORK (implemented, last verdict FAIL).
+	// When the brief's PR is already MERGED the dispatch becomes a FOLLOW-UP on a new branch
+	// rather than a phantom refusal or a resume (phantom.go).
+	rework bool
+	// briefShown is how the prompt spells the specification: the caller's own spelling when the file
+	// sits under --root, else its absolute path (resolveBrief). brief itself is the resolved absolute
+	// path every reader uses.
+	briefShown string
 	// worktree is an operator-STATED home for the agent, accepted ONLY with --dry-run.
 	// A real dispatch names the path deskwt printed and nothing else — this flag never
 	// reaches one. See validateOperatorWorktree for the fail-closed checks it must pass.
@@ -153,6 +165,8 @@ func cmdDispatch(args []string) error {
 	dryRun := fs.Bool("dry-run", false, "print the plan and the prompt; touch nothing")
 	worktree := fs.String("worktree", "", "with --dry-run ONLY: render the prompt against this operator-stated, "+
 		"already-existing home worktree instead of the not-yet-known placeholder. Refused on a real dispatch")
+	rework := fs.Bool("rework", false, "the row awaits implementer REWORK (implemented, last verdict FAIL): a MERGED PR "+
+		"for the brief makes this a FOLLOW-UP on a new branch, never a resume (worker kit, no --pr)")
 
 	if len(args) == 0 {
 		return deskkit.Refused("deskdispatch requires an <item-key>")
@@ -168,8 +182,9 @@ func cmdDispatch(args []string) error {
 		return deskkit.Refused("deskdispatch: unexpected extra arguments after <item-key>: " + strings.Join(fs.Args(), " "))
 	}
 
+	itemAlias, item := splitItemAlias(item)
 	o := dispatchOpts{
-		item: item, tier: *tier, kit: *kit, repo: *repo, root: *root, claimRoot: *claimRoot,
+		item: item, itemAlias: itemAlias, rework: *rework, tier: *tier, kit: *kit, repo: *repo, root: *root, claimRoot: *claimRoot,
 		model: *model, branch: *branch, brief: *brief, gateHuman: *gateHuman, pr: *pr,
 		promptFile: *promptFile, quiet: *quiet, dryRun: *dryRun, worktree: *worktree,
 	}
@@ -179,6 +194,13 @@ func cmdDispatch(args []string) error {
 }
 
 func dispatch(o dispatchOpts) error {
+	// --brief is resolved ONCE, first, to the absolute path every later reader uses (resolveBrief):
+	// a brief found only under --claim-root must gate, file its decision issue and scope its writes
+	// from the SAME file the deliverable resolution read.
+	o, err := resolveBrief(o)
+	if err != nil {
+		return err
+	}
 	// EVERY caller-controlled precondition is checked HERE, before the claim. See
 	// validateCallerPreconditions for why that placement is a correctness property and not
 	// a tidiness preference.
@@ -208,6 +230,13 @@ func dispatch(o dispatchOpts) error {
 		// Step 2 records the run key worktree-locally on a real dispatch; name it here so an
 		// operator can see which STOP.run.<key> would stop this run before launching it.
 		fmt.Printf("  run key (recorded at step %s as assay.runKey): %s\n", stepWorktreeCreate, plan.claimKey)
+		if o.rework {
+			// The phantom check is a forge read and a dry run makes none, so it cannot say whether this
+			// rework row's PR is merged. State that, rather than let the branch above read as final.
+			fmt.Printf("  --rework: the phantom check is NOT run in a dry run; if %s's PR is MERGED the real "+
+				"dispatch moves to a FOLLOW-UP branch %s-followup-<N> instead of the branch shown above\n",
+				briefIDFromItem(o.item), "feat/"+sanitizeSegment(o.item))
+		}
 		if line, herr := deskkit.HookDryRunLine(deskkit.HookBeforeRun); herr != nil {
 			return herr
 		} else {
@@ -224,8 +253,38 @@ func dispatch(o dispatchOpts) error {
 	// has an OPEN or MERGED PR is refused here, keyed on that PR's `Brief:` trailer rather than a
 	// derived branch name, so the branch-naming mismatch that let phantom rows through is closed. It
 	// wedges nothing (no claim yet) and is a no-op for a review/verifier dispatch or a --pr resume.
-	if err := phantomCheck(o, repo); err != nil {
+	// A --rework dispatch whose brief already has a MERGED PR comes back as a FOLLOW-UP: the plan's
+	// branch is moved off the merged branch's name here, still pre-claim, so the worktree, the claim
+	// and the prompt all see the follow-up branch.
+	followUp, err := phantomCheck(o, repo)
+	if err != nil {
 		return err
+	}
+	// The sibling-merge seam (phantom.go, siblingPhantomsFn): nil until the stream's `phantoms` verb
+	// ships. When wired, a CROSS-REPO fresh dispatch also asks whether the TRACKING repo's home row
+	// already has a merged sibling change, and a hit is refused like any other phantom — pre-claim.
+	if siblingPhantomsFn != nil && o.kit == "worker" && o.pr == 0 && plan.dl.crossRepo(o.root) {
+		if id := briefIDFromItem(o.item); id != "" {
+			hit, serr := siblingPhantomsFn(plan.dl.trackingRoot, id)
+			if serr != nil {
+				return deskkit.Unverifiable(fmt.Sprintf(
+					"step %s: the sibling-merge check for %s could not run (%v) — could-not-check is not clear; "+
+						"nothing was claimed.", stepClaimAcquire, id, serr), serr)
+			}
+			if hit != "" {
+				return deskkit.Refused(fmt.Sprintf(
+					"step %s: %s's home row already has a merged sibling change (%s) — reconcile the tracking row; "+
+						"do not fresh-dispatch over it.", stepClaimAcquire, id, hit))
+			}
+		}
+	}
+	if followUp.pr > 0 {
+		if err := plan.applyFollowUp(o, followUp); err != nil {
+			return err
+		}
+		branch = plan.branch
+		o.say("%s FOLLOW-UP: %s was delivered by merged %s#%d; this rework dispatches on a NEW branch %s",
+			stepClaimAcquire, briefIDFromItem(o.item), repo, followUp.pr, branch)
 	}
 
 	// Advisory write-scope overlap echo, BEFORE the claim — a coordination hint
@@ -242,9 +301,18 @@ func dispatch(o dispatchOpts) error {
 	// carries the credential the decision-gate script (step 4) runs under, so it too is taken
 	// HERE, before anything durable, rather than at step 4 with the claim already held — issue
 	// 1146.
-	auth, aerr := resolveClaimAuth(o, repo, plan.forgeKind, plan.claimToolIsScript)
-	if aerr != nil {
-		return aerr
+	//
+	// The credential is minted ONLY when the resolved claim store needs one:
+	// the forge-ref store writes refs on the forge; a store that writes none is handed none.
+	// (Every store this build can resolve to is the forge-ref store, so every dispatch still
+	// mints here exactly as before; the decision gate below reads the same resolution.)
+	var auth claimAuth
+	if plan.claimStore.NeedsForgeCredential {
+		var aerr error
+		auth, aerr = resolveClaimAuth(o, repo, plan.forgeKind, plan.claimToolIsScript)
+		if aerr != nil {
+			return aerr
+		}
 	}
 
 	// ADMISSION (example-stream/18) — the per-class reservation gate, serialized across
@@ -272,8 +340,8 @@ func dispatch(o dispatchOpts) error {
 	if admitRelease != nil {
 		admitRelease()
 	}
-	o.say("%s OK: %s claimed in %s (claim key %s) via %s, authenticated by %s",
-		stepClaimAcquire, o.item, repo, plan.claimKey, plan.claimTool, auth.source)
+	o.say("%s OK: %s claimed in %s (claim key %s) via %s, store %s, authenticated by %s",
+		stepClaimAcquire, o.item, repo, plan.claimKey, plan.claimTool, plan.claimStore.Label(), auth.source)
 
 	// 2 — the agent's worktree, in the ITEM's repo. deskwt owns the safety here (a
 	// sanctioned path prefix, an unambiguous base, no clobber of an existing target), so
@@ -285,11 +353,20 @@ func dispatch(o dispatchOpts) error {
 	// using it, while the branch lane keeps the PR-resume base main introduced. The only
 	// difference between the arms is --detach vs --branch, which is the verifier's whole point:
 	// it reads merged main and touches no feature branch.
+	//
+	// --role names the DISPATCHED agent's role (plan.identityRole, resolved pre-claim), so
+	// deskwt stamps that role's commit identity AND replaces the transport the worktree would
+	// inherit from the shared checkout — an SSH origin, an operator's pushurl sentinel — with
+	// that role App's own worktree-scoped https transport and credential helper, refusing when
+	// git does not then resolve exactly that (#861). Without it the worktree fetched with the
+	// operator's SSH key and pushed to wherever the shared config pointed.
 	var wt runResult
 	if plan.detached {
-		wt = runCmd(o.root, "deskwt", "add", wtName, "--detach", "--base", worktreeBase(o, branch))
+		wt = runCmd(o.root, "deskwt", "add", wtName, "--detach", "--base", worktreeBase(o, branch),
+			"--role", plan.identityRole)
 	} else {
-		wt = runCmd(o.root, "deskwt", "add", wtName, "--branch", branch, "--base", worktreeBase(o, branch))
+		wt = runCmd(o.root, "deskwt", "add", wtName, "--branch", branch, "--base", worktreeBase(o, branch),
+			"--role", plan.identityRole)
 	}
 	if wt.err != nil {
 		// The durable claim was placed one step ago and this dispatch is now aborting, so
@@ -519,6 +596,13 @@ type dispatchPlan struct {
 	identityRole  string
 	identityName  string
 	identityEmail string
+	// dl is the cross-repo resolution (deliverable.go): which repo the deliverable lands in, resolved
+	// through the alias registry, and the tracking checkout the PR's `Brief:` trailer resolves
+	// against. Inactive when the item declared no alias — the legacy path, unchanged.
+	dl deliverable
+	// followUpOf is the MERGED PR a --rework dispatch follows up (0 = not a follow-up). Set by
+	// applyFollowUp, pre-claim, so the worktree branch and the prompt agree.
+	followUpOf int
 	// forgeKind is the resolved forge serving the target repo, set ONLY for a review
 	// dispatch — the one kind whose prompt is forge-shaped (the head-fetch refspec: GitHub
 	// refs/pull/<N>/head vs GitLab refs/merge-requests/<iid>/head, #773). A worker dispatch
@@ -526,6 +610,10 @@ type dispatchPlan struct {
 	// unchanged. Resolved pre-claim so a repo whose forge cannot be determined refuses the
 	// review dispatch before any durable state exists.
 	forgeKind deskkit.ForgeKind
+	// claimStore is where the dispatch claim is kept, as deskkit.ResolveClaimStore decided it
+	// from the roster — never a flag. Resolved pre-claim, so a store that
+	// cannot be used refuses before any worktree is cut and before any credential is minted.
+	claimStore deskkit.ClaimStoreResolution
 }
 
 // validateCallerPreconditions checks EVERY caller-controlled precondition, and it runs
@@ -626,8 +714,34 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		}
 	}
 
-	repo, err := o.resolveRepo()
+	// --rework is a FRESH worker dispatch of a rework row: it is meaningless for a review/verifier
+	// dispatch, and contradicts --pr (a resume of an OPEN PR). Both refused here, pre-claim.
+	if o.rework {
+		if o.kit != "worker" {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: --rework is a fresh implementer dispatch of a rework row and needs --kit worker, not %q.",
+				stepClaimAcquire, o.kit))
+		}
+		if o.pr != 0 {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: --rework and --pr contradict each other — --pr resumes an OPEN PR, --rework follows up a "+
+					"MERGED one on a new branch. Pass one.", stepClaimAcquire))
+		}
+	}
+
+	// CROSS-REPO (deliverable.go). An item that names a repo alias — the brief's deliverable_repo or
+	// homed-in, or an `<alias>:` item-key prefix — resolves its deliverable repo through the alias
+	// registry and HARD-FAILS here, before anything durable, when that repo is not --root's own.
+	// Otherwise the legacy resolution (--repo, else --root's origin) applies unchanged.
+	dl, err := resolveDeliverable(o)
 	if err != nil {
+		return plan, err
+	}
+	plan.dl = dl
+	var repo string
+	if dl.active {
+		repo = dl.repo
+	} else if repo, err = o.resolveRepo(); err != nil {
 		return plan, err
 	}
 	if !deskkit.IsAllowedRepo(repo) {
@@ -637,6 +751,35 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	}
 	plan.repo = repo
 	plan.claimKey = claimKeyFor(o.item, repo)
+	if dl.active && dl.homeAlias != "" && !strings.Contains(o.item, "--") {
+		// A cross-repo item's claim key is prefixed with its TRACKING alias, not the deliverable
+		// repo's short label: two repos can own a stream of the same name, and the tracking alias is
+		// the one that names this brief. The claim still lands in the deliverable repo (--repo).
+		plan.claimKey = dl.homeAlias + "--" + strings.ReplaceAll(strings.Trim(o.item, "/"), "/", "--")
+		// The composed key reaches the claim tool's positional argv, the run-key config and the
+		// prompt's release line, so it passes the SAME grammar a caller-supplied key does.
+		if !itemKeyRe.MatchString(plan.claimKey) {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: the cross-repo claim key %q is outside the item-key grammar, so it is not handed to the "+
+					"claim tool. Nothing was claimed.", stepClaimAcquire, plan.claimKey))
+		}
+	}
+
+	// WHERE the claim is kept is the resolver's answer, read from the roster
+	// and never from a flag. A configured store that cannot be used is a refusal HERE — exit 6,
+	// before any child process, any worktree and any credential mint — and is never replaced by
+	// another store. An unset key is the one-window legacy resolution, whose removal NOTICE is
+	// printed on every run.
+	store, serr := deskkit.ResolveClaimStore(repo)
+	if serr != nil {
+		return plan, deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: no dispatch claim can be taken for %s — the claim store did not resolve. Nothing was "+
+				"claimed, cut or minted.", stepClaimAcquire, repo), serr)
+	}
+	plan.claimStore = store
+	if store.Notice != "" {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", toolName, store.Notice)
+	}
 
 	// A REVIEW dispatch's prompt is forge-shaped: the reviewer fetches the change's HEAD from
 	// the forge-specific server-side ref namespace (GitHub refs/pull/<N>/head ↔ GitLab
@@ -1012,10 +1155,13 @@ type claimAuth struct {
 // because the claim runs four steps before the stamp — which reads its own credential inside
 // deskkit.ResolveForge.
 //
-// PRECEDENCE. An explicit GH_TOKEN already in the environment wins outright and nothing is
-// minted: an operator who exported a credential chose it, and both tools already read it —
-// the Go binary via its env fallback (no --token-file is passed, because that flag would
-// outrank the export inside the binary). Otherwise the role token is minted and handed over
+// PRECEDENCE. An explicit GH_TOKEN already in the environment wins and nothing is minted —
+// but only once verifyInheritedToken shows it IS the dispatching role's credential (issue
+// 1631: a launcher exported the operator's ambient login there, and the claim ran as the
+// human). A verified export is read as-is by both tools — the Go binary via its env fallback
+// (no --token-file is passed, because that flag would outrank the export inside the binary).
+// Any other identity is ignored with a NOTICE and the role token minted; an unreadable one
+// refuses. Otherwise the role token is minted and handed over
 // in the tool's own shape: `--token-file <path>` for the binary (the minter's 0600 cache file,
 // never a copy written anywhere new) and GH_TOKEN in the child environment for the script.
 //
@@ -1034,10 +1180,6 @@ type claimAuth struct {
 // hold for both — a forge that cannot be resolved refuses here, before any claim, rather than
 // guessing.
 func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, isScript bool) (claimAuth, error) {
-	if strings.TrimSpace(os.Getenv("GH_TOKEN")) != "" {
-		const explicit = "the GH_TOKEN already exported in this environment"
-		return claimAuth{source: explicit, scriptSource: explicit}, nil
-	}
 	role := stampRoleForKit(o.kit)
 	// forgeKind is pre-resolved by planClaim for a review dispatch (its prompt is forge-shaped);
 	// a worker dispatch leaves it empty, so resolve it HERE, at execution time — after every
@@ -1051,6 +1193,22 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 			return claimAuth{}, ferr
 		}
 	}
+	// ISSUE 1631. An inherited GH_TOKEN wins only once it is shown to BE the dispatching role's
+	// credential. A launcher (a cell shim) exported the operator's ambient gh login there, and
+	// this verb took it for a deliberate override: no mint, and the claim went out under the
+	// human's identity. A token that is not the role's is dropped from this process — so neither
+	// the claim child nor any later child inherits it — and the role token is minted below as if
+	// nothing had been exported. One whose identity cannot be read refuses (verifyInheritedToken).
+	if inherited := strings.TrimSpace(os.Getenv("GH_TOKEN")); inherited != "" {
+		honoured, source, verr := o.verifyInheritedToken(role, repo, kind, inherited)
+		if verr != nil {
+			return claimAuth{}, verr
+		}
+		if honoured {
+			return claimAuth{source: source, scriptSource: source}, nil
+		}
+		_ = os.Unsetenv("GH_TOKEN")
+	}
 	if kind == deskkit.ForgeGitLab {
 		return resolveClaimAuthGitLab(role, repo, isScript)
 	}
@@ -1061,7 +1219,7 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 				"identity the claim would be taken under cannot be established. NO claim was attempted: the "+
 				"claim tool is never run on the ambient `gh` credential (nothing at all in a sandboxed desk "+
 				"window, or a human login with no write on the target — the two ways this step failed before "+
-				"it minted its own token). Export GH_TOKEN to override the mint deliberately.",
+				"it minted its own token). Export the role App's own token as GH_TOKEN to override the mint deliberately.",
 			stepClaimAcquire, role, deskkit.OwnerOf(repo), tokenPathForMessage(tokPath), err), err)
 	}
 	scriptEnv := append(os.Environ(), "GH_TOKEN="+tok)
@@ -1083,6 +1241,78 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 	}, nil
 }
 
+// verifyInheritedToken decides whether an inherited GH_TOKEN may stand in for the role mint
+// (issue 1631). It answers one of three ways:
+//
+//   - honoured (true, source): the token IS the dispatching role's credential — on GitHub, the
+//     account it acts as (one GraphQL viewer read, tokenIdentityFn) is the role's App as the
+//     roster binds it, login and pinned bot USER id alike; on GitLab, it is byte-equal to the
+//     role's PAT custody file. The operator's deliberate override keeps working exactly as before.
+//     The GitHub read is built by the forge resolver for the TARGET repo and the origin read from
+//     --root (deskkit.GitHubTokenIdentityForRepo), so the inherited token is offered only to the
+//     host the role's own GitHub credential would be — a non-github.com origin refuses unsent.
+//   - ignored (false, "", nil): it is readably SOMEONE ELSE — a human login, another role's App, a
+//     different PAT. A NOTICE says so on stderr and the caller mints the role token instead.
+//   - refused (error): whose it is cannot be established — the probe failed (transport, 401), the
+//     roster binds no identity to the role, or the GitLab custody is unreadable. Nothing is
+//     claimed: the claim is never taken under a credential whose identity is unknown, and it is
+//     never silently swapped for one either. Unsetting GH_TOKEN is always the way through.
+//
+// The token VALUE never appears in any message; the login it acts as, and paths, do.
+func (o dispatchOpts) verifyInheritedToken(role, repo string, kind deskkit.ForgeKind, tok string) (bool, string, error) {
+	if kind == deskkit.ForgeGitLab {
+		custody, custodyPath, err := deskkit.GitLabRoleToken(role)
+		if err != nil {
+			return false, "", deskkit.RefusedWithCause(fmt.Sprintf(
+				"step %s: a GH_TOKEN is exported in this environment, but on a GitLab repo it is honoured only "+
+					"when it IS the %s role's GitLab PAT, and that custody could not be read to compare against (%v). "+
+					"The export was NOT used, and NO claim was attempted. Provision the role's GitLab PAT custody "+
+					"file, or unset GH_TOKEN.", stepClaimAcquire, role, err), err)
+		}
+		if strings.TrimSpace(custody) == tok {
+			return true, fmt.Sprintf("the GH_TOKEN exported in this environment (verified: it is the %s GitLab role PAT, %s)",
+				role, tokenPathForMessage(custodyPath)), nil
+		}
+		noticeIgnoredToken(role, "is not the "+role+" GitLab role PAT ("+tokenPathForMessage(custodyPath)+")")
+		return false, "", nil
+	}
+	expected := deskkit.RoleAppLoginOrEmpty(role)
+	owner, name, _ := strings.Cut(repo, "/")
+	id, err := tokenIdentityFn(deskkit.ForgeRepo{Owner: owner, Name: name}, o.targetOriginURL(), tok)
+	if err != nil {
+		return false, "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: a GH_TOKEN is exported in this environment, but the account it acts as could not be read "+
+				"(%v). It is honoured only when it is the %s App's own token (%s), so it was NOT used, and NO claim "+
+				"was attempted — the claim is never taken under a credential whose identity cannot be established. "+
+				"Unset GH_TOKEN to let this verb mint the %s App token itself.",
+			stepClaimAcquire, err, role, expected, role), err)
+	}
+	login := deskkit.StripControl(id.Login)
+	match, bound := id.ActsAsRole(role)
+	if !bound {
+		return false, "", deskkit.Refused(fmt.Sprintf(
+			"step %s: a GH_TOKEN is exported in this environment (it acts as %s), but the roster binds no App "+
+				"identity to the %s role, so whether it is that role's App cannot be checked. It was NOT used, and "+
+				"NO claim was attempted. Bind the role in %s, or unset GH_TOKEN.",
+			stepClaimAcquire, login, role, deskkit.EnvTrustedBotSlugs))
+	}
+	if match {
+		return true, fmt.Sprintf("the GH_TOKEN exported in this environment (verified: it acts as %s, the %s App)", login, role), nil
+	}
+	noticeIgnoredToken(role, fmt.Sprintf("acts as %s, not the %s App (%s)", login, role, expected))
+	return false, "", nil
+}
+
+// noticeIgnoredToken is the one line an ignored inherited GH_TOKEN earns: it is not an error (the
+// dispatch goes ahead under the role's own token), but a silent swap would hide a launcher that is
+// putting the wrong credential in front of every desk verb.
+func noticeIgnoredToken(role, why string) {
+	fmt.Fprintf(os.Stderr, "deskdispatch: NOTICE — step %s: the GH_TOKEN inherited by this process %s. It is "+
+		"NOT treated as an operator override and is IGNORED; the %s role token is minted instead (issue 1631: a "+
+		"launcher can export an ambient human login there). Export the %s App's own token to override the mint.\n",
+		stepClaimAcquire, why, role, role)
+}
+
 // resolveClaimAuthGitLab is resolveClaimAuth's GitLab branch: it reads the role's already-
 // provisioned GitLab PAT custody file (deskkit.GitLabRoleToken — the same custody
 // deskpost/deskflip act under, NEVER the GitHub App minter) and hands it to the claim child in
@@ -1099,7 +1329,7 @@ func resolveClaimAuthGitLab(role, repo string, isScript bool) (claimAuth, error)
 			"step %s: the %s GitLab role PAT for %s could not be read (%s) — so the identity the claim "+
 				"would be taken under cannot be established. NO claim was attempted: the claim tool is never "+
 				"run on the ambient credential. Provision the role's GitLab PAT custody file, or export "+
-				"GH_TOKEN to override deliberately.",
+				"the role's own GitLab PAT as GH_TOKEN to override deliberately.",
 			stepClaimAcquire, role, deskkit.OwnerOf(repo), err), err)
 	}
 	scriptEnv := append(os.Environ(), "GH_TOKEN="+tok, "GITLAB_TOKEN="+tok)
@@ -1228,7 +1458,10 @@ func stepDecision(o dispatchOpts, gateHuman bool, repo, script string, auth clai
 				"script on ambient auth. Export GH_TOKEN to choose the identity deliberately.",
 			stepDecisionGate, script, o.brief), nil)
 	}
-	r := runCmdEnv(o.root, auth.scriptEnv, script, "ensure", o.brief, "--repo", repo, "--at", "start")
+	// The script runs from --root, so a brief under --root keeps the caller's own relative spelling
+	// (briefArg); a brief found only under --claim-root is handed over by its resolved absolute path,
+	// so the gate is filed from the SAME file the gate detection read.
+	r := runCmdEnv(o.root, auth.scriptEnv, script, "ensure", briefArg(o), "--repo", repo, "--at", "start")
 	if r.err != nil {
 		return "", r.run.FailVerbatim(deskkit.ExitUnverifiable, fmt.Sprintf(
 			"step %s: the decision-issue gate for %s could not be ensured (%s) — a possible duplicate is the "+
@@ -1350,7 +1583,7 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			stepModelStamp, repo, o.pr, forge, firstLine(eerr.Error())), eerr)
 	}
 	tl := deskkit.StampTimeline{Present: change.Labels, Events: events}
-	stale := deskkit.ReStampRemovals(tl, labels, deskkit.IsDispatcherLogin)
+	stale := deskkit.ReStampRemovals(tl, labels, deskkit.IsStampAuthorityLogin)
 	if len(stale) == 0 && labelsPresent(change.Labels, labels) {
 		// An IDENTICAL stamp already standing under the dispatcher is a no-op: nothing is
 		// removed and nothing is re-applied, so a re-dispatch neither churns the label
@@ -1659,15 +1892,21 @@ func (o dispatchOpts) resolveTargetForgeKind(repo string) (deskkit.ForgeKind, er
 			"step %s: %q does not parse to an owner/name, so the forge serving it cannot be resolved.",
 			stepClaimAcquire, repo), nil)
 	}
-	originURL := ""
-	if r := runCmd(o.root, "git", "remote", "get-url", "origin"); r.err == nil {
-		originURL = r.stdout
-	}
-	res, err := deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, originURL)
+	res, err := deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, o.targetOriginURL())
 	if err != nil {
 		return "", err
 	}
 	return res.Kind, nil
+}
+
+// targetOriginURL reads the TARGET checkout's origin remote (o.root) through the runCmd seam, or
+// "" when it cannot be read — deskkit then answers from the roster alone. The raw URL is handed
+// to deskkit and never printed (an https origin can carry userinfo).
+func (o dispatchOpts) targetOriginURL() string {
+	if r := runCmd(o.root, "git", "remote", "get-url", "origin"); r.err == nil {
+		return r.stdout
+	}
+	return ""
 }
 
 func (o dispatchOpts) say(format string, args ...any) {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,6 +30,12 @@ func (s *stub) install(t *testing.T) (home, root string) {
 	t.Helper()
 	home = t.TempDir()
 	root = t.TempDir()
+	// A real --brief must resolve now (resolveBrief refuses one that names no file), so the item
+	// checkout carries the `spec.md` the human-gate tests pass. It has no frontmatter: it gates on
+	// nothing by itself, so only an explicit --gate-human makes those items human-gated.
+	if err := os.WriteFile(filepath.Join(root, "spec.md"), []byte("# example spec\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("HOME", home)
 	plantFixtureRoster(t, home)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
@@ -85,6 +92,9 @@ func (s *stub) install(t *testing.T) (home, root string) {
 //     minter (stubMint overrides it);
 //   - GH_TOKEN is cleared, so the explicit-export precedence is never inherited from the
 //     developer's shell (a test that wants it sets it).
+//   - the inherited-GH_TOKEN identity probe (issue 1631) is bound to a stub that FAILS, so no
+//     test reaches a forge and a test that exports GH_TOKEN without saying whose it is fails
+//     closed (stubTokenIdentity binds the identity a test means).
 //
 // Every harness that runs a real dispatch — install, and the hand-rolled ones — calls this.
 func isolateClaimTool(t *testing.T, home string) {
@@ -99,6 +109,12 @@ func isolateClaimTool(t *testing.T, home string) {
 		return stubMintedToken, stubMintedTokenPath(t, home), nil
 	}
 	t.Cleanup(func() { mintTokenFn = oldMint })
+
+	oldProbe := tokenIdentityFn
+	tokenIdentityFn = func(deskkit.ForgeRepo, string, string) (deskkit.TokenIdentity, error) {
+		return deskkit.TokenIdentity{}, errors.New("example: no forge in tests — bind stubTokenIdentity")
+	}
+	t.Cleanup(func() { tokenIdentityFn = oldProbe })
 }
 
 // stubMintedToken is the token value the harness's default mint hands the claim step. It is

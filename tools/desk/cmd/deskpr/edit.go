@@ -18,8 +18,8 @@ package main
 // touch labels, reviewers or base. The git argv it never builds is the point: this file
 // runs no git command at all past preflight's reads.
 //
-// THE TRAILER IS NOT EDITABLE. The body's one link trailer (`Brief: <stream>/<NN>` or
-// `Issue: #<N>`) is the derived board's DATA EDGE from the PR to its work item. A verb
+// THE TRAILER IS NOT EDITABLE. The body's one link trailer (`Brief: <stream>/<NN>`,
+// `Authors: <stream>/<NN>[, …]` or `Issue: #<N>`) is the derived board's DATA EDGE from the PR to its work item. A verb
 // that can rewrite the body could otherwise silently re-point a merged-tomorrow PR at a
 // different brief, or drop the edge entirely, after every gate that checked it has run.
 // So: the replacement body must carry exactly one trailer (the same grammar `create`
@@ -38,6 +38,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -60,7 +61,8 @@ func cmdEdit(args []string) (err error) {
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
-	check := fs.Bool("check", false, "run every LOCAL gate (flags, the secret scan, the replacement body's Brief:/Issue: trailer grammar, branch state) and stop BEFORE minting a token or opening any connection; the trailer-IMMUTABILITY compare and the self-containment scan's bare-#N hint both need the PR's CURRENT body from the forge and are reported not checked, by name")
+	decided := fs.String("decided", "", "path to a file declaring desk-taken decisions (decision:/alternative:/cost: triples, one item per numbered line) — writes/replaces the `## Desk-decided` block in the replacement body and applies the desk-decided label")
+	check := fs.Bool("check", false, "run every LOCAL gate (flags, the secret scan, the replacement body's Brief:/Authors:/Issue: trailer grammar, branch state) and stop BEFORE minting a token or opening any connection; the trailer-IMMUTABILITY compare and the self-containment scan's bare-#N hint both need the PR's CURRENT body from the forge and are reported not checked, by name")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -91,6 +93,13 @@ func cmdEdit(args []string) (err error) {
 	body, berr := readBody(*bodyFile, "")
 	if berr != nil {
 		return berr
+	}
+	// --decided (attention-budget/19): fold the desk-decided block into the replacement body
+	// BEFORE any scan or network call. Unlike create, edit REPLACES an existing
+	// `## Desk-decided` section in place rather than refusing on one — see decided.go.
+	body, dberr := injectDecidedBlock(body, *decided, "edit")
+	if dberr != nil {
+		return dberr
 	}
 	if serr := deskkit.HandleScanRefusal(deskkit.ScanOverride{
 		Tool: "deskpr", Verb: "edit", Reason: *scanOverride,
@@ -137,7 +146,7 @@ func cmdEdit(args []string) (err error) {
 
 	// --check stops HERE, before the token mint and before any forge call. Every gate
 	// above it is local: flags, the secret scan of the replacement body/title, the
-	// replacement body's own Brief:/Issue: trailer grammar (requireTrailer), and branch
+	// replacement body's own Brief:/Authors:/Issue: trailer grammar (requireTrailer), and branch
 	// state (preflight). edit pushes no git command, so there is no push-transport gate
 	// to run. Two things this verb checks are NOT decided here, because both need the
 	// PR's CURRENT body/number from the forge: trailer-IMMUTABILITY (the replacement
@@ -231,7 +240,15 @@ func cmdEdit(args []string) (err error) {
 	// The live body carries a PRIOR edit/create's on-behalf-of trailer (multi-principal/01);
 	// strip it from both sides before the noop compare so an edit that is otherwise
 	// byte-for-byte identical still noops instead of re-posting for a trailer-only delta.
-	if deskkit.StripOnBehalfOfSuffix(cur.Body) == string(body) && titleUnchanged {
+	//
+	// --decided (attention-budget/19, review finding F4): an unchanged body is still NOT a no-op
+	// when the desk-decided label is missing — a prior run whose label write failed left the
+	// PR block-without-label (a shape deskflip refuses), and re-running the same edit is the
+	// remedy that failure names. So the no-op only fires when the label is already there; a
+	// missing one falls through to the gates below and a label-only reconcile.
+	bodyUnchanged := deskkit.StripOnBehalfOfSuffix(cur.Body) == string(body) && titleUnchanged
+	labelMissing := *decided != "" && !slices.Contains(cur.Labels, deskkit.DeskDecidedLabel)
+	if bodyUnchanged && !labelMissing {
 		ac.successResult = deskkit.ResultNoop
 		ac.detail = "body/title already match " + pr.URL
 		fmt.Printf("noop: %s already carries this body/title\n", pr.URL)
@@ -252,6 +269,18 @@ func cmdEdit(args []string) (err error) {
 	fetcher := deskkit.ForgeRepoInfoFetcher{Forge: fg}
 	if gerr := publicRepoGateFn(fetcher, owner, name); gerr != nil {
 		return gerr
+	}
+
+	// Label-only reconcile: the body already matches, only the desk-decided label is missing.
+	// No EditChange (nothing to change) and no re-review notice (the notice announces a body
+	// change, and none happened here — the run that changed the body posted its own).
+	if bodyUnchanged {
+		if lerr := applyDeskDecidedLabel(fg, fr, pr.Number); lerr != nil {
+			return deskDecidedLabelFailure(pr.URL, "the body already carried its Desk-decided block", lerr)
+		}
+		ac.detail = "reconciled the " + deskkit.DeskDecidedLabel + " label on " + pr.URL + " (body unchanged)"
+		fmt.Printf("reconciled: %s already carried this body; applied the missing %s label\n", pr.URL, deskkit.DeskDecidedLabel)
+		return nil
 	}
 
 	// EditChange replaces the body and, when --title is given, the title. Only the surfaces
@@ -277,14 +306,34 @@ func cmdEdit(args []string) (err error) {
 
 	// The announcement. A body/title edit moves no head SHA, so a head-keyed review monitor
 	// records no event for it and the correction is invisible to the loop that must act on
-	// it. This comment is that event.
-	if _, cErr := fg.PostComment(fr, pr.Number, reviewNotice(changed)); cErr != nil {
+	// it. This comment is that event. It is posted BEFORE the --decided label write (review
+	// finding F4): a label failure must never swallow the one event that tells the review
+	// loop the body changed.
+	_, cErr := fg.PostComment(fr, pr.Number, reviewNotice(changed))
+	if cErr != nil {
+		ac.detail += " — re-review notice FAILED"
+	}
+
+	// --decided (attention-budget/19): the block is already IN the body the edit just
+	// published — this mirrors it as the at-a-glance label. Applied only when --decided was
+	// given, so an ordinary correction (no --decided) never touches labels.
+	if *decided != "" {
+		if lerr := applyDeskDecidedLabel(fg, fr, pr.Number); lerr != nil {
+			noticeState := "the re-review notice WAS posted"
+			if cErr != nil {
+				noticeState = "the re-review notice could NOT be posted either (" + cErr.Error() +
+					") — post it by hand"
+			}
+			return deskDecidedLabelFailure(pr.URL, "the edit landed and "+noticeState, lerr)
+		}
+	}
+
+	if cErr != nil {
 		// The edit LANDED. Say so plainly in the same breath as the failure, because a
 		// caller that reads this as "the edit failed" would re-run — harmless (the
 		// idempotency noop above catches it) but a wasted lap — while a caller that reads
 		// exit 0 would never learn the review desk was not told. Exit 6 with both facts is
 		// the only reading that leaves nothing silent.
-		ac.detail += " — re-review notice FAILED"
 		return deskkit.Unverifiable(
 			"the body/title edit LANDED at "+pr.URL+", but the re-review notice comment could NOT be posted. "+
 				"An edit moves no head SHA, so nothing else will tell the review desk this PR changed — post the "+
@@ -295,7 +344,7 @@ func cmdEdit(args []string) (err error) {
 }
 
 // trailerLink renders a body's single link trailer in one comparable form —
-// `Brief: <value>` or `Issue: #<n>` — and reports whether the body carries one at all.
+// `Brief: <value>`, `Authors: <value>` or `Issue: #<n>` — and reports whether the body carries one at all.
 //
 // It is deliberately TOTAL where requireTrailer refuses: a body with no trailer, a
 // multiplicity error, or the machine-written scan-carrier marker all come back
@@ -311,8 +360,11 @@ func trailerLink(body []byte) (string, bool) {
 	if err != nil || len(trs) == 0 {
 		return "", false
 	}
-	if trs[0].Kind == deskkit.TrailerIssue {
+	switch trs[0].Kind {
+	case deskkit.TrailerIssue:
 		return "Issue: #" + trs[0].Value, true
+	case deskkit.TrailerAuthors:
+		return "Authors: " + trs[0].Value, true
 	}
 	return "Brief: " + trs[0].Value, true
 }

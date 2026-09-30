@@ -47,7 +47,9 @@ func TestCheckRosterLivenessClassifiesEveryCase(t *testing.T) {
 			"unpinned-human":  {Login: "unpinned-human", ID: 5555},
 		},
 		errs: map[string]error{
-			"deleted-bot":           ErrAccountNotFound,
+			// A bot identity is probed at "<slug>[bot]" (assay#1665) — the stub's fixture key
+			// must be the probed form, exactly what a real GitHub REST 404 would key on.
+			"deleted-bot[bot]":      ErrAccountNotFound,
 			"transport-error-human": errors.New("500 internal server error"),
 		},
 	}
@@ -107,6 +109,73 @@ func TestCheckRosterLivenessNeverReportsAliveOnIDMismatch(t *testing.T) {
 	}
 	if findings[0].Class != LivenessReclaimed {
 		t.Fatalf("id mismatch classified %q, want LivenessReclaimed", findings[0].Class)
+	}
+}
+
+// TestCheckRosterLivenessBotProbesWithBotSuffix is the CLASS GUARD for assay#1665: a bot
+// identity's GitHub REST account only resolves under its "[bot]"-suffixed login (GET
+// /users/<slug> 404s, GET /users/<slug>[bot] succeeds for every GitHub App). A liveness
+// check that probes the bare, roster-configured slug misclassifies every live bot as
+// LivenessDeleted. This test drives the stub with a fixture ONLY under the REST-shaped
+// "<slug>[bot]" login — nothing under the bare slug — and asserts the bot identity still
+// classifies Alive: the fetcher must be asked for the suffixed form, never the bare one. Run
+// against the pre-fix code (classifyLiveness calling fetcher.GetAccount(id.Login) directly)
+// this failed with LivenessCouldNotCheck ("no fixture for assay-worker-app") — see the PR's
+// "## Fail-first" section for the red run.
+func TestCheckRosterLivenessBotProbesWithBotSuffix(t *testing.T) {
+	identities := []RosterIdentity{
+		{Login: "assay-worker-app", PinnedID: 555, Source: "bot"},
+	}
+	fetcher := &stubAccountFetcher{
+		accounts: map[string]*Account{
+			// ONLY the REST-shaped, "[bot]"-suffixed login resolves — exactly what GitHub
+			// does for a real App account. No fixture exists under the bare slug: if
+			// classifyLiveness ever regresses to probing the bare form, the stub's
+			// "no fixture" error surfaces as LivenessCouldNotCheck, not Alive, and this test
+			// fails loudly rather than silently passing on the wrong probe.
+			"assay-worker-app[bot]": {Login: "assay-worker-app[bot]", ID: 555},
+		},
+	}
+
+	findings := CheckRosterLiveness(fetcher, identities)
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	if findings[0].Class != LivenessAlive {
+		t.Fatalf("bot identity resolving only at the [bot]-suffixed REST login classified %q (%s), want LivenessAlive — "+
+			"the liveness probe must query <slug>[bot] for a bot identity, not the bare roster slug",
+			findings[0].Class, findings[0].Detail)
+	}
+	// The finding's Identity keeps the bare, roster-configured login — callers/renderers must
+	// see the identity in the shape the roster itself uses, not the REST-probed form.
+	if findings[0].Identity.Login != "assay-worker-app" {
+		t.Fatalf("finding Identity.Login = %q, want the bare roster-configured slug %q",
+			findings[0].Identity.Login, "assay-worker-app")
+	}
+}
+
+// TestProbeLoginOnlySuffixesBotSource confirms probeLogin — the assay#1665 fix point — is
+// bot-only: a human or bless identity's login (which resolves directly at GET /users/{login},
+// no App/[bot] rendering) must never gain a spurious "[bot]" suffix, and an already-suffixed
+// bot login (defensive: should not occur given rosterconfig.go's bare-slug invariant, but
+// must not double-suffix if it ever did) is left alone.
+func TestProbeLoginOnlySuffixesBotSource(t *testing.T) {
+	cases := []struct {
+		name string
+		id   RosterIdentity
+		want string
+	}{
+		{"human untouched", RosterIdentity{Login: "ada", Source: "human"}, "ada"},
+		{"bless untouched", RosterIdentity{Login: "ada", Source: "bless"}, "ada"},
+		{"bot gets suffixed", RosterIdentity{Login: "assay-worker-app", Source: "bot"}, "assay-worker-app[bot]"},
+		{"already-suffixed bot not doubled", RosterIdentity{Login: "assay-worker-app[bot]", Source: "bot"}, "assay-worker-app[bot]"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := probeLogin(tc.id); got != tc.want {
+				t.Fatalf("probeLogin(%+v) = %q, want %q", tc.id, got, tc.want)
+			}
+		})
 	}
 }
 

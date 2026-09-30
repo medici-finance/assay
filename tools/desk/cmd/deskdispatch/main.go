@@ -39,7 +39,9 @@
 // desk window (no ambient `gh` login) failed closed on every fresh claim while its other
 // steps minted their own role token and succeeded. Now the claim step mints (or reuses)
 // the dispatching role's token through the same seam the model stamp uses and passes it in
-// the tool's own shape; an explicit GH_TOKEN already in the environment wins; a mint
+// the tool's own shape; an explicit GH_TOKEN already in the environment wins only once it is
+// verified to BE the dispatching role's App (issue 1631 — otherwise it is ignored with a NOTICE,
+// and one whose identity cannot be read refuses); a mint
 // failure is the refusal, never a fall-back to whatever `gh` is logged in as. The decision
 // gate's script shells out to the forge CLI too, so it is handed the SAME credential in
 // environment shape from that one resolution (issue 1146) — keyed on what the child does, not
@@ -71,7 +73,7 @@ const usage = `deskdispatch — the per-item dispatch ceremony (engine seam: DIS
 USAGE:
   deskdispatch <item-key> [--tier strong|any] [--kit worker|worker-objective|review|verifier]
                [--repo OWNER/NAME] [--root DIR] [--claim-root DIR] [--model SLUG]
-               [--branch NAME] [--brief PATH] [--gate-human] [--pr N]
+               [--branch NAME] [--brief PATH] [--gate-human] [--pr N] [--rework]
                [--prompt-file FILE] [--quiet] [--dry-run] [--worktree PATH]
   deskdispatch --kits
   deskdispatch --version
@@ -97,7 +99,11 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       mints (or reuses) that role's App token exactly as the model-stamp step
                       does and hands it over as --token-file <0600 path> (deskclaim-ref) or
                       GH_TOKEN in the child's environment (the script); a GH_TOKEN already
-                      exported wins and nothing is minted; a mint failure is exit 6 with NO
+                      exported wins and nothing is minted ONLY when it is verified to be the
+                      dispatching role's App (a GitHub viewer read vs the roster binding; on
+                      GitLab, equal to the role's PAT custody) — any other identity is ignored
+                      with a NOTICE and the role token minted, and one whose identity cannot
+                      be read is exit 5/6 with NO claim attempted; a mint failure is exit 6 with NO
                       claim attempted — the tool is never run on the ambient gh login. Exit 5
                       there with a READABLE holder = a LIVE holder owns it: this verb prints
                       the holder and exits 5; it never steals. Exit 5 with no readable holder
@@ -147,6 +153,27 @@ holding an in-flight dispatch claim for the same root, as 'WRITE-OVERLAP: <item>
 <prefix>' lines on stderr. These are COORDINATION HINTS, NOT LOCKS: the dispatch always proceeds,
 the echo has no exit code, and overlap never blocks or delays the claim.
 
+CROSS-REPO (alias registry). An item may name the repo its deliverable lands in by ALIAS: the
+brief's ` + "`deliverable_repo: <alias>`" + ` or ` + "`homed-in: <owner>/<name>`" + ` frontmatter, or an
+` + "`<alias>:<stream>/<NN>`" + ` item-key prefix or the alias segment of the brief's own brief-v2 id (the
+alias the brief is TRACKED under). --brief is resolved ONCE (absolute, else under --root, else
+under --claim-root) and every reader uses that file; a --brief that resolves nowhere is refused.
+Every registry alias key, ` + "`repo:`" + ` value and ` + "`self:`" + ` is grammar-checked before use; a bad one
+is refused (exit 5). The alias resolves
+through the alias registry (graph-repos.yaml, schema graph-repos-v1) of the stream root at
+--claim-root (else --root), and nothing else. Before
+anything durable: no registry, or an alias reserved but unpublished there = exit 6; an alias the
+registry does not define = exit 5 naming it; a resolved repo that is not --repo or not --root's own
+origin = HARD FAIL exit 5 naming both repos — no claim, no worktree. The resolved repo is the claim
+repo and the token's repo; a cross-repo claim key carries the TRACKING alias; the prompt tells the
+worker to run ` + "`deskpr create --root <tracking checkout>`" + ` so its Brief: trailer resolves there.
+
+PHANTOM PRECONDITION. A fresh worker dispatch is reconciled against the deliverable repo's open and
+merged PRs by ` + "`Brief:`" + ` trailer BEFORE admission, the token mint and the claim. An OPEN PR refuses
+(resume it with --pr). A MERGED PR refuses as DELIVERED — unless --rework says the row awaits
+implementer rework, in which case the dispatch becomes a FOLLOW-UP on a new branch
+(feat/<item>-followup-<N>), never a resume of the merged branch.
+
 --kits lists the prompt kits this binary carries and exits 0.
 --dry-run runs no step: it prints the plan and the prompt that WOULD be emitted. The prompt
 shows the agent's home worktree as a not-yet-known placeholder, because a real dispatch names
@@ -183,6 +210,9 @@ func main() {
 	// the nil default (the check stays inert unless a test wires its own recorded transport), while
 	// the real binary reads the repo's open+merged changes through the typed Forge seam.
 	listRepresentedPRs = liveRepresentedPRs
+	// ...and the per-PR file read that keeps a briefs-AUTHORING PR from counting as the brief's
+	// delivery (authoring.go).
+	listPRFiles = livePRFiles
 	os.Exit(run(os.Args[1:]))
 }
 

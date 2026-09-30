@@ -176,7 +176,7 @@ func (c *Cell) cellModelPolicy() (*ModelPolicy, string, error) {
 	}
 	path, explicit := configuredPath(c.Env, "CELL_PROVIDER_DEFAULTS", "providers.json", cellsRoot(c.Env))
 	local, localExplicit := configuredPath(c.Env, "CELL_PROVIDER_OVERRIDES", "providers.json", c.Dir)
-	raw, err := os.ReadFile(path)
+	raw, err := readPolicySource(path)
 	if err != nil {
 		if os.IsNotExist(err) && !explicit {
 			_, localErr := os.Stat(local)
@@ -196,7 +196,7 @@ func (c *Cell) cellModelPolicy() (*ModelPolicy, string, error) {
 		return nil, "", err
 	}
 	source := path
-	overlay, err := os.ReadFile(local)
+	overlay, err := readPolicySource(local)
 	if err == nil {
 		var base, patch map[string]any
 		if err := json.Unmarshal(raw, &base); err != nil {

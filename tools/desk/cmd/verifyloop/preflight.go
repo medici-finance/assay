@@ -9,7 +9,7 @@ package main
 // The property being demonstrated is narrow and total. The preflight runs BEFORE
 // the Awaiting queue is read. If it is not green the loop prints ONE line and
 // exits 6 — it does not read the queue, does not claim an item, does not dispatch,
-// and does not file an issue about its own envelope. Four of the five checks
+// and does not file an issue about its own envelope. Five of the six checks
 // exist because a live desk discovered that failure three quarters of the way
 // through a pass and spent the rest of the pass writing the issue instead of the
 // work.
@@ -68,7 +68,7 @@ func preflightRunnerTable(getenv func(string) string) error {
 	return table.ValidateReachable((&VerifyLoop{}).reachableTiers())
 }
 
-// preflightRoot runs the five envelope checks against ONE root and returns its one-line
+// preflightRoot runs the six envelope checks against ONE root and returns its one-line
 // could-not-run refusal, or nil when every check is passing. It is a package var ONLY as a
 // test seam (a fixture root has no App credential to mint); production is the real
 // deskkit preflight, unchanged from what the single-root boot has always run.

@@ -41,18 +41,18 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 	sort.Strings(got)
 
 	want := []string{
-		"ApplyLabels", "ChangeDiff", "ChecksAtHead", "CloseIssue", "CloseIssueTyped",
+		"ApplyLabels", "ApproveGate", "ChangeDiff", "ChecksAtHead", "CloseIssue", "CloseIssueTyped",
 		"CompareRefs", "CreateDraftChange", "DeleteRef", "EditChange", "EditComment",
 		"FileIssue", "GetCommit", "GetIssue", "GetIssueTyped", "GetPullRequest",
 		"IssueContentEvents", "IssueReactions", "IssueTrustEvents", "ListChangedFiles",
-		"ListChanges", "ListComments",
+		"ListChanges", "ListComments", "ListCommitChanges", "ListFileCommits",
 		"ListCommentsTyped", "ListLabelEvents", "ListLabels", "ListOpenChanges",
 		"ListOpenIssues", "ListRecentCommits", "ListWorkflowFiles", "MarkReadyForReview",
 		"MatchingRefs",
 		"OpenChangeForBranch", "OpenMergeHold", "PRTrustEvents", "PostComment",
 		"PostCommentTyped", "PostReview", "PushTransportHint", "ReadFile", "ReadMergeHold",
 		"RefExists", "ReopenIssue", "RepoHardeningRead", "RepoVisibility",
-		"RequiredStatusChecks", "ReviewsAtHead", "SearchIssues", "SearchOpenChanges",
+		"RequiredStatusChecks", "ReviewQueueSnapshot", "ReviewsAtHead", "RunStatus", "RunWorkflow", "SearchIssues", "SearchOpenChanges",
 		"SetMergeHold", "WriteFile",
 	}
 	sort.Strings(want)
@@ -68,10 +68,20 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 
 	// forgeban's ceiling at this work's own base (freshness-checked against this branch before
 	// any statusgen/deskread work landed). statusgen carries no allowlist rows of its own to
-	// migrate off, so this diff must never move it. Re-based 5→6 for this branch's stacked
-	// base: the deskapps manifest-flow work (#1260) carries the driver-ruled allowlist row
-	// that legitimately raised the ceiling — the "whatever change legitimately moved it" the
-	// failure message itself names.
+	// migrate off, so this diff must never move it.
+	//
+	// Re-based 5→6 by the credfence balancing-loops work: its preflight ambient-identity
+	// check legitimately ADDED one forge-CLI permit (internal/deskkit/preflight.go's
+	// ambientLoginProbe reads `gh api user` to learn the ambient identity — the D2 identity
+	// layer that cannot route through the token-minting interface; #1528). That is a real,
+	// reviewed widening of the permit list, not the silent deskread drift this row guards
+	// against, so the base moves with it — exactly the "re-base in whatever change legitimately
+	// moved it" this test's own message names.
+	//
+	// Re-based 6→7 by the deskapps manifest-flow installer (#1260): its driver-ruled permit
+	// cmd/deskapps/identity.go::runGH::gh reads the signed-in `gh auth` login before any App
+	// token can exist. 7 = the #1528 ambientLoginProbe row plus the #1260 runGH row on top of
+	// the five pre-existing permits; the same two rows forgeban's allowedInvocationCeiling cites.
 	const baseCeiling = 7
 	if c := forgeban.Ceiling(); c != baseCeiling {
 		t.Fatalf("forgeban.Ceiling() = %d, want %d — this diff must not move the shell-exec ban's "+

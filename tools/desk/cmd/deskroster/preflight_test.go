@@ -9,6 +9,7 @@ package main
 // had to be registered rather than left to the default branch, which refuses.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -45,6 +46,99 @@ func TestPreflightRequiresARole(t *testing.T) {
 	installRosterEnv(t, fullRosterForPreflight)
 	if got := run([]string{"preflight"}); got != deskkit.ExitRefused {
 		t.Fatalf("preflight with no --role exited %d, want 5 (refused)", got)
+	}
+}
+
+// greenPreflightProbes is an all-green, fully-INJECTED probe set for role verifier under
+// fullRosterForPreflight — every edge is stubbed so the suite is hermetic (no mint, no git
+// remote, no `gh`). Each ambient-identity sub-case below darkens exactly the one probe it
+// tests, so a red CheckAmbientID is attributable to that probe and nothing else.
+func greenPreflightProbes() deskkit.PreflightProbes {
+	return deskkit.PreflightProbes{
+		ColdMint:          func(string, string) (string, error) { return "/tmp/fake-token", nil },
+		ResolveForgeKind:  func(string) deskkit.ForgeKind { return deskkit.ForgeGitHub },
+		GitLabColdCustody: func(string) (string, error) { return "/tmp/fake-gitlab-token", nil },
+		GrantedScopes: func(string, string) (map[string]string, error) {
+			return map[string]string{"pull_requests": "write", "issues": "write", "contents": "write"}, nil
+		},
+		WriteTransport: func(deskkit.Landing) (deskkit.ProbeVerdict, string, error) {
+			return deskkit.ProbePermitted, "up to date", nil
+		},
+		CommitEmail:    func(string) (string, error) { return "300000005+assay-verifier-app[bot]@users.noreply.github.com", nil },
+		AppIDFor:       func(string) (string, error) { return "400000005", nil },
+		QueuedSiblings: func(string) ([]deskkit.SiblingReq, error) { return nil, nil },
+		DirExists:      func(string) (bool, error) { return true, nil },
+		// Ambient identity: the blessing human, with a helper that resolves to the App token.
+		AmbientLogin:         func() (string, error) { return "ada", nil },
+		CredHelperMatchesApp: func(deskkit.Landing, string) (bool, string, error) { return true, "app-token helper", nil },
+	}
+}
+
+func ambientIDCheck(t *testing.T, p deskkit.PreflightProbes) deskkit.Check {
+	t.Helper()
+	rep := deskkit.PreflightRequest{Role: "verifier", Root: t.TempDir(), Probes: p}.Run()
+	for _, c := range rep.Checks {
+		if c.Name == deskkit.CheckAmbientID {
+			return c
+		}
+	}
+	t.Fatalf("the report carries no %s check", deskkit.CheckAmbientID)
+	return deskkit.Check{}
+}
+
+// TestPreflightAmbientIdentity is Verify row 4, the negative-path row for the remaining
+// credfence layer: the ambient `gh` login the tools would fall through to must not be a bot
+// slug (a human login is a non-blocking warning; no usable ambient human is the clean state),
+// and the origin credential helper must resolve to the minted App token. It exercises the deskroster preflight's own check via the
+// injectable deskkit API — the check lives in deskkit (where preflight.go is), and the verb is
+// a thin wrapper, so testing it through the injectable API is testing exactly what the
+// `deskroster preflight` verb runs.
+//
+// FAIL-FIRST: on the pre-brief code there is no ambient-identity check at all, so ambientIDCheck
+// t.Fatalf's ("no ambient-identity check") on the unfixed tree; the fix is the whole check.
+func TestPreflightAmbientIdentity(t *testing.T) {
+	installRosterEnv(t, fullRosterForPreflight) // blessing login ada; assay-verifier-app is a bot slug
+
+	// bot login → red.
+	p := greenPreflightProbes()
+	p.AmbientLogin = func() (string, error) { return "assay-verifier-app[bot]", nil }
+	if c := ambientIDCheck(t, p); c.State != deskkit.CheckedFailed {
+		t.Fatalf("bot ambient login = %s, want checked-failed (%s)", c.State, c.Detail)
+	}
+
+	// a human login — non-blessing or blessing — is a NON-BLOCKING warning (#1798): the check
+	// stays passing, the envelope stays green (so `deskroster preflight` exits 0 and deskboot's
+	// roster-preflight step, which keys on that exit, proceeds), and the warning names the login.
+	for _, login := range []string{"mallory", "ada"} {
+		p = greenPreflightProbes()
+		p.AmbientLogin = func() (string, error) { return login, nil }
+		rep := deskkit.PreflightRequest{Role: "verifier", Root: t.TempDir(), Probes: p}.Run()
+		if err := rep.Err(); err != nil {
+			t.Fatalf("human ambient login %q reddened the envelope (preflight would exit non-zero): %v", login, err)
+		}
+		if c := ambientIDCheck(t, p); c.State != deskkit.CheckedClean || !strings.Contains(c.Notice, login) {
+			t.Fatalf("human ambient login %q = %s notice %q, want checked-clean with a warning naming it (%s)",
+				login, c.State, c.Notice, c.Detail)
+		}
+	}
+
+	// no usable ambient human identity (gh not logged in / an App token's 403 on /user) + matching
+	// helper → green, no warning.
+	p = greenPreflightProbes()
+	p.AmbientLogin = func() (string, error) {
+		return "", fmt.Errorf("%w: HTTP 403 on /user, an App/integration token", deskkit.ErrNoAmbientIdentity)
+	}
+	if c := ambientIDCheck(t, p); c.State != deskkit.CheckedClean || c.Notice != "" {
+		t.Fatalf("no ambient human + matching helper = %s notice %q, want checked-clean, no warning (%s)", c.State, c.Notice, c.Detail)
+	}
+
+	// helper mismatch → red (independent of the identity half).
+	p = greenPreflightProbes()
+	p.CredHelperMatchesApp = func(deskkit.Landing, string) (bool, string, error) {
+		return false, "osxkeychain, not the App token", nil
+	}
+	if c := ambientIDCheck(t, p); c.State != deskkit.CheckedFailed {
+		t.Fatalf("helper mismatch = %s, want checked-failed (%s)", c.State, c.Detail)
 	}
 }
 

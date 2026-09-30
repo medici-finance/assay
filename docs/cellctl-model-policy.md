@@ -40,9 +40,12 @@ efforts, request a tier to disambiguate. Context suffixes must already be pinned
 cannot silently add a larger context window.
 
 Opus 5.0 IDs are prohibited by the policy resolver even if `deny` is omitted — `claude-opus-5`
-and its `[1m]` / gateway / `Opus5` / `-5-0` / `-5.0` spellings. The prohibition is anchored at
-end-of-token, so Opus 5.5+ (`claude-opus-5-5`) — a valid top tier — is NOT prohibited: it ends in
-`opus-5-5`, not `opus-5`. `deny` adds further case-insensitive glob patterns. The example pins the
+and its `[1m]` / gateway / `Opus5` / `-5-0` / `-5.0` spellings, including any of them carrying a
+trailing segment after the version (a date such as `claude-opus-5-20260101`, a provider tail such
+as `@20260101` or `-v1:0`, or a variant name). The Go launcher matches the prohibition by version,
+not by spelling: a one- or two-digit segment after the major is the minor, anything else is a
+suffix on the 5.0 release. So Opus 5.5+ (`claude-opus-5-5`, dated or not) — a valid top tier — and
+the other 5.x minors are NOT prohibited. `deny` adds further case-insensitive glob patterns. The example pins the
 Opus alias to `claude-opus-4-8[1m]`. The coordinator rule is a VERSION FLOOR: `the-desk` on Claude
 requires a top model at or above **Opus 5.5**, so Opus 5.5, 5.6, 6.0 and any later tier are
 accepted while the bare `opus` alias (no version), Opus 5.0 and older tiers (e.g. Opus 4.8) stay
@@ -54,9 +57,12 @@ it on each cell that needs the prohibition.
 
 ## Harness adapters and child agents
 
-Claude receives `--model`, `--effort`, `CLAUDE_CODE_EFFORT_LEVEL`, the four
-`ANTHROPIC_DEFAULT_*_MODEL` mappings and `CLAUDE_CODE_SUBAGENT_MODEL`. Child agents default
-to their desk's model and inherit its effort. Explicit child model aliases use the provider
+Claude receives `--model`, `--effort`, the four `ANTHROPIC_DEFAULT_*_MODEL` mappings and
+`CLAUDE_CODE_SUBAGENT_MODEL`. Effort deliberately travels only as `--effort`:
+`CLAUDE_CODE_EFFORT_LEVEL` is neither exported nor inherited (an ambient copy is removed),
+because the env var outranks agent frontmatter and would pin every child agent to the
+session level, defeating a per-agent `effort:` override. Child agents default to their
+desk's model and inherit its effort unless their frontmatter raises it. Explicit child model aliases use the provider
 map; a hook rejects unmapped/denied requests and incompatible inherited effort. A tier's
 effort selects the desk at boot; an explicit child model does not separately change effort.
 An inherited `MAX_THINKING_TOKENS` is removed for policy launches so it cannot cap the chosen
@@ -67,7 +73,26 @@ Claude also receives an `availableModels` allowlist and a `PreModelSwitch` hook 
 the actual target ID. Claude Code >=2.1.251 is required. Before launch, cellctl refuses local
 user/project/managed-file allowlists that widen the policy, and any local `modelOverrides`.
 The worktree is rechecked after creation/merge. These checks preserve other settings and
-hooks rather than replacing the operator's full configuration.
+hooks rather than replacing the operator's full configuration. Both hooks call back into the
+launcher itself (`cellctl model-policy hook <cell-dir> <role> <provider> <requested> <harness>
+<policy-sha256>`, the event on stdin), which re-resolves the cell's policy for the launched
+route. The hook refuses a policy whose SHA-256 differs from the one the window launched with,
+whether the file was edited after launch or the hook's inherited environment points
+`CELL_MODEL_POLICY`, `CELL_PROVIDER_DEFAULTS` or `CELL_PROVIDER_OVERRIDES` somewhere else. Until
+the window is restarted, every model switch and child dispatch is blocked. Every refusal exits
+2, Claude Code's blocking status. That includes a cell or policy that can no longer be loaded.
+The hook command line ends in `|| exit 2`, so a hook binary that has been removed or is no
+longer executable also blocks; on its own the shell would exit 127 or 126, which Claude Code
+does not treat as blocking. Claude Code also lets an action through when a hook times out, so
+the hook must not be made to hang. It refuses a policy path that is not a regular file (a
+FIFO, say) instead of opening it, and it exits 2 by itself if it has not finished within
+5 seconds, whatever it is waiting on. Each hook entry sets a 30-second `timeout`, so Claude
+Code does not cancel the hook before that deadline.
+
+The hook is stricter than the shell launcher in one place: it refuses an Agent/Task event with
+no `tool_input` object instead of reading it as empty. A model ID pinned at two tiers, such as
+the example policy's `claude-sonnet-5` at mid and fast, appears in `availableModels`. A switch
+to that exact ID is still refused, because it does not name a single tier and effort.
 
 Codex receives `model_provider="openai"`, the exact model, `model_reasoning_effort`,
 `agents.default_subagent_model` and `agents.default_subagent_reasoning_effort` as CLI
@@ -84,7 +109,9 @@ operator-observed smoke check before rollout; local tests prove argv/environment
 ## Inspect, launch, and verify adoption
 
 `cellctl show <cell>` reports each role's provider, harness, model, effort and policy SHA-256.
-`cellctl check <cell>` checks policy routes and the required provider credential names.
+`cellctl check <cell>` checks policy routes and the required provider credential names. It
+also reports one `model policy: <role>` row per role for the preflight `up` runs: credential,
+harness on PATH, Claude version floor and the settings conflict scan.
 `cellctl up <cell>` preflights every selected role before opening windows, so a missing
 credential does not start half a cell. `DRY_RUN=1 cellctl desk <cell> <role>` prints the
 resolved launch. A real boot prints the same values. No automatic restart is performed.
@@ -112,7 +139,9 @@ their launch settings and must be restarted deliberately.
 Run `python3 tools/cellctl/tests/model-policy.test.py` plus the existing provider, harness,
 model-namespace, model-override and cell-set shell suites. The model-policy suite uses only
 local Git fixtures and recording harness stubs. No inference call, production endpoint or
-real credential is involved. Python 3.9+ is required for policy preflight.
+real credential is involved. The shell launcher needs Python 3.9+ for policy preflight; the Go
+`cellctl` binary needs no Python. Its policy tests run against the built binary with the same
+kind of fixtures: `go -C tools/desk test ./cmd/cellctl/ -run 'Policy|Hook|Settings|Preflight'`.
 
 Sources checked 2026-09-20:
 

@@ -1,0 +1,35 @@
+{
+  "test": "go test ./cmd/deskrun/... -count=1",
+  "control": {
+    "name": "CONTROL — the dispatch never reaches the backend (RunWorkflow call dropped)",
+    "file": "cmd/deskrun/verbs.go",
+    "old": "\trunRef, err := fg.RunWorkflow(fr, in)",
+    "new": "\t_ = fg\n\trunRef, err := deskkit.RunRef{ID: \"4242\"}, error(nil)"
+  },
+  "mutations": [
+    {
+      "name": "Verify row 12 — the run-credential resolver's human-token check is disabled (a human-bound binding falls through to the release-runner path)",
+      "file": "internal/deskkit/runcredential.go",
+      "old": "\tif cred.Human != \"\" {",
+      "new": "\tif false && cred.Human != \"\" {"
+    },
+    {
+      "name": "the verb ignores the resolver's refusal and proceeds to mint (the binding is read but not acted on)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\tcred, err := resolveCredFn(fr)\n\tif err != nil {",
+      "new": "\tcred, err := resolveCredFn(fr)\n\tif cred.Human != \"\" {\n\t\tcred.Role, err = deskkit.ReleaseRunnerRole, nil\n\t}\n\tif err != nil {"
+    },
+    {
+      "name": "a failed release-runner mint falls back to a placeholder token (custody no longer refuses an unminted credential)",
+      "file": "cmd/deskrun/forge.go",
+      "old": "\tif merr != nil {\n\t\treturn \"\", \"\", merr\n\t}\n\treturn tok, forgeAPIBase, nil",
+      "new": "\tif merr != nil || tok == \"\" {\n\t\treturn \"ambient-fallback\", forgeAPIBase, nil\n\t}\n\treturn tok, forgeAPIBase, nil"
+    },
+    {
+      "name": "approve drops the roster-declared gate shape (GitLab would be asked to guess)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "deskkit.ApproveGateInput{Gate: *gate, Shape: cred.GateShape}",
+      "new": "deskkit.ApproveGateInput{Gate: *gate}"
+    }
+  ]
+}

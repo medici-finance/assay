@@ -45,7 +45,7 @@ func TestPhantomCheckRefusesViaRealTransport(t *testing.T) {
 	}}}
 	withRepresentedPRs(t, realTransport(f))
 
-	err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker", pr: 0}, allowedRepo)
+	_, err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker", pr: 0}, allowedRepo)
 	if err == nil {
 		t.Fatal("a merged change representing the brief, read through the real transport, must refuse the dispatch")
 	}
@@ -66,7 +66,7 @@ func TestPhantomCheckAllows_ViaRealTransport_WhenUnrepresented(t *testing.T) {
 	}}}
 	withRepresentedPRs(t, realTransport(f))
 
-	if err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker"}, allowedRepo); err != nil {
+	if _, err := phantomCheck(dispatchOpts{item: "assay--example-a--00", kit: "worker"}, allowedRepo); err != nil {
 		t.Fatalf("a brief with no representing change must dispatch through the real transport: %v", err)
 	}
 }

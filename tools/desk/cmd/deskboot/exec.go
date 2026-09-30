@@ -68,7 +68,7 @@ func firstLine(s string) string {
 // streams, skipping the two preamble lines every desk tool prints on stderr BEFORE its
 // real message: the effective-config echo (`assay-config: …`) and the unpinned-build
 // warning. A naive firstLine over that output quotes the banner's
-// `… configured=true` header instead of the `preflight role=… RED n/5` summary and the
+// `… configured=true` header instead of the `preflight role=… RED n/6` summary and the
 // per-check `<check>=checked-failed: … → fix: …` remediations, so the failing check never
 // reaches the pod log — the boot logs the banner three ticks running and the real red stays
 // unknown (#660). The REFUSED roster line is deliberately NOT preamble: when the

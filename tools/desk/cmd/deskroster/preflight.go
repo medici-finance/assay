@@ -26,7 +26,7 @@ USAGE:
   deskroster preflight --role <role> [--root <dir>] [--repo <owner/name>]
                        [--remote <name>] [--branch <name>] [--claimed-brief <id>] [--verbose]
 
-Runs five checks, each answering checked-clean / checked-failed / could-not-check
+Runs six checks, each answering checked-clean / checked-failed / could-not-check
 / not-applicable with a NAMED remediation:
 
   token-mint-cold        a credential is obtainable from a FRESH scrubbed process:
@@ -39,10 +39,21 @@ Runs five checks, each answering checked-clean / checked-failed / could-not-chec
   write-transport        a READ-ONLY probe of the role's landing path             (#823)
   commit-identity        the commit email carries the BOT USER id, not the App id (#638)
   sibling-checkouts      the checkouts the QUEUED briefs declare are present      (#679 #661)
+  ambient-identity       no usable ambient human gh identity is the clean state
+                         (gh not logged in with no stored credential readable by
+                         gh auth token, a 401 on /user, or an App token's 403); a
+                         stored credential behind "not logged in" is could-not-check;
+                         a HUMAN login is a non-blocking WARNING NOTICE (a fall-through
+                         would act as that human); a bot/App slug is checked-failed;
+                         and the origin credential helper resolves to the minted App
+                         token. Not-applicable on a GitLab-forge repo       (#1527 #1798)
 
 Sibling checkouts resolve through the configured roots (DESK_ROOTS / topology),
 not a flat ../<repo>; at boot an absent sibling is a NOTICE, and only a brief
 named by --claimed-brief turns its own absent sibling into a hard failure (#661).
+
+A NOTICE (an absent unclaimed sibling, a human ambient login) never blocks the
+pass; it rides the summary line as "· NOTICE <check>: …".
 
 A checked-failed or could-not-check result is COULD-NOT-RUN for the whole pass:
 one summary line, exit 6. The desk stops — it does not claim work, burn a pass,

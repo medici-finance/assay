@@ -98,31 +98,49 @@ desk-manifest:
 		echo "desk-manifest: no installed binaries; wrote empty $(MANIFEST)"; \
 	fi
 
-## desk-hook-install: install the pre-push hook shim into .githooks/ (core.hooksPath).
+## desk-hook-install: install the pre-push hook shim(s) into .githooks/ (core.hooksPath).
+## Prefers the just-built deskpushguard's OWN `hook-install` subcommand (tools/desk/dist/
+## deskpushguard): it resolves the guard binary from PATH at hook run time (no baked-in
+## install-location literal) and writes the Windows pre-push.cmd pair when run on that
+## GOOS -- see windows-port/12, which closed the portability audit's "Push-guard shim"
+## needs-port row this target used to carry (a verbatim copy of a #!/bin/sh shim `exec`ing
+## a hardcoded /opt/desk-tools/bin path). Falls back to copying the committed
+## tools/desk/hooks/pre-push shim verbatim -- the pre-windows-port/12 behaviour -- only
+## when no built deskpushguard is available (e.g. a standalone `make desk-hook-install`
+## run before `desk-build`), so this target still installs something useful rather than
+## refusing outright.
 desk-hook-install:
-	@hook=".githooks/pre-push"; \
-	src="$(DESK_DIR)/hooks/pre-push"; \
-	if [ ! -f "$$src" ]; then \
-		echo "desk-hook-install: $$src not found — nothing to install (ok)"; \
-		exit 0; \
-	fi; \
-	if [ -f "$$hook" ]; then \
-		if grep -q deskpushguard "$$hook" 2>/dev/null; then \
-			echo "desk-hook-install: pre-push hook already installed (idempotent skip)"; \
+	@guard="$(DIST_DIR)/deskpushguard"; \
+	if [ -x "$$guard" ]; then \
+		force_flag=""; \
+		if [ "$(FORCE)" = "1" ]; then force_flag="--force"; fi; \
+		"$$guard" hook-install --dir .githooks $$force_flag; \
+	else \
+		echo "desk-hook-install: $$guard not built yet -- falling back to the static shim copy (run desk-build first for the PATH-resolving shim)"; \
+		hook=".githooks/pre-push"; \
+		src="$(DESK_DIR)/hooks/pre-push"; \
+		if [ ! -f "$$src" ]; then \
+			echo "desk-hook-install: $$src not found — nothing to install (ok)"; \
 			exit 0; \
 		fi; \
-		old_name="`head -1 \"$$hook\" 2>/dev/null`"; \
-		if [ "$(FORCE)" = "1" ]; then \
-			echo "desk-hook-install: FORCE=1: overwriting existing non-deskpushguard pre-push hook: $$old_name"; \
-		else \
-			echo "desk-hook-install: refusing to clobber existing non-deskpushguard pre-push hook: $$old_name"; \
-			echo "  Use FORCE=1 to overwrite, e.g.: make desk-hook-install FORCE=1"; \
-			exit 1; \
+		if [ -f "$$hook" ]; then \
+			if grep -q deskpushguard "$$hook" 2>/dev/null; then \
+				echo "desk-hook-install: pre-push hook already installed (idempotent skip)"; \
+				exit 0; \
+			fi; \
+			old_name="`head -1 \"$$hook\" 2>/dev/null`"; \
+			if [ "$(FORCE)" = "1" ]; then \
+				echo "desk-hook-install: FORCE=1: overwriting existing non-deskpushguard pre-push hook: $$old_name"; \
+			else \
+				echo "desk-hook-install: refusing to clobber existing non-deskpushguard pre-push hook: $$old_name"; \
+				echo "  Use FORCE=1 to overwrite, e.g.: make desk-hook-install FORCE=1"; \
+				exit 1; \
+			fi; \
 		fi; \
-	fi; \
-	cp "$$src" "$$hook"; \
-	chmod +x "$$hook"; \
-	echo "desk-hook-install: installed pre-push hook (deskpushguard)"
+		cp "$$src" "$$hook"; \
+		chmod +x "$$hook"; \
+		echo "desk-hook-install: installed pre-push hook (deskpushguard)"; \
+	fi
 
 ## desk-test: run the deskkit test suite (incl. negative-path refusal tests)
 desk-test:

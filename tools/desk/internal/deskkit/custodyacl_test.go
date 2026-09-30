@@ -41,10 +41,91 @@ func TestEvaluateCustodyACL(t *testing.T) {
 			wantErr:    true,
 			wantSubstr: "write-capable Windows access",
 		},
+		// Read parity with the unix 0600 rule: no principal but the owner (and the
+		// OS-trusted SYSTEM / Administrators) may read a credential file.
 		{
-			name: "a foreign READ-only ACE is accepted",
+			name: "a foreign read-only ACE is refused",
 			mutate: func(m *rosterACLModel) {
-				m.Entries = append(m.Entries, rosterACE{SID: sidOther, Kind: rosterACEAllow, GrantsWrite: false})
+				m.Entries = append(m.Entries, rosterACE{SID: sidOther, Kind: rosterACEAllow, GrantsRead: true})
+			},
+			wantErr:    true,
+			wantSubstr: "read-capable Windows access to SID " + sidOther,
+		},
+		{
+			name: "an Everyone read ACE is refused",
+			mutate: func(m *rosterACLModel) {
+				m.Entries = append(m.Entries, rosterACE{SID: sidWorld, Kind: rosterACEAllow, GrantsRead: true})
+			},
+			wantErr:    true,
+			wantSubstr: "read-capable Windows access to SID " + sidWorld,
+		},
+		{
+			name: "an Authenticated Users read ACE is refused",
+			mutate: func(m *rosterACLModel) {
+				m.Entries = append(m.Entries, rosterACE{SID: sidAuthUsers, Kind: rosterACEAllow, GrantsRead: true})
+			},
+			wantErr:    true,
+			wantSubstr: "read-capable Windows access to SID " + sidAuthUsers,
+		},
+		{
+			name: "a Users group read ACE is refused",
+			mutate: func(m *rosterACLModel) {
+				m.Entries = append(m.Entries, rosterACE{SID: sidUsers, Kind: rosterACEAllow, GrantsRead: true})
+			},
+			wantErr:    true,
+			wantSubstr: "read-capable Windows access to SID " + sidUsers,
+		},
+		{
+			name: "an inherited group read ACE is refused and named as inherited",
+			mutate: func(m *rosterACLModel) {
+				m.Entries = append(m.Entries, rosterACE{SID: sidUsers, Kind: rosterACEAllow, GrantsRead: true, Inherited: true})
+			},
+			wantErr:    true,
+			wantSubstr: "(inherited from a parent folder)",
+		},
+		{
+			name: "an inherited foreign write ACE is refused and named as inherited",
+			mutate: func(m *rosterACLModel) {
+				m.Entries = append(m.Entries, rosterACE{SID: sidOther, Kind: rosterACEAllow, GrantsWrite: true, Inherited: true})
+			},
+			wantErr:    true,
+			wantSubstr: "write-capable Windows access to SID " + sidOther + " (inherited from a parent folder)",
+		},
+		{
+			name: "a foreign read ACE after an owner-only prefix is still refused",
+			mutate: func(m *rosterACLModel) {
+				m.Entries = append([]rosterACE{{SID: sidWorld, Kind: rosterACEAllow, GrantsRead: true}}, m.Entries...)
+			},
+			wantErr:    true,
+			wantSubstr: "read-capable Windows access",
+		},
+		{
+			name: "owner and OS-trusted principals holding read and write are accepted",
+			mutate: func(m *rosterACLModel) {
+				for i := range m.Entries {
+					m.Entries[i].GrantsRead = true
+				}
+			},
+			wantErr: false,
+		},
+		{
+			name: "a foreign metadata-only ACE is accepted (no read, no write)",
+			mutate: func(m *rosterACLModel) {
+				m.Entries = append(m.Entries, rosterACE{SID: sidOther, Kind: rosterACEAllow})
+			},
+			wantErr: false,
+		},
+		{
+			name: "a foreign DENY read ACE never widens access",
+			mutate: func(m *rosterACLModel) {
+				m.Entries = append(m.Entries, rosterACE{SID: sidWorld, Kind: rosterACEDeny, GrantsRead: true})
+			},
+			wantErr: false,
+		},
+		{
+			name: "an inherit-only foreign read ACE does not apply to this object",
+			mutate: func(m *rosterACLModel) {
+				m.Entries = append(m.Entries, rosterACE{SID: sidUsers, Kind: rosterACEAllow, GrantsRead: true, InheritOnly: true, Inherited: true})
 			},
 			wantErr: false,
 		},
@@ -101,6 +182,47 @@ func TestEvaluateCustodyACL(t *testing.T) {
 			}
 			if tc.wantErr && !strings.Contains(err.Error(), tc.wantSubstr) {
 				t.Fatalf("refusal %q does not name the reason %q", err, tc.wantSubstr)
+			}
+		})
+	}
+}
+
+// Well-known group SIDs the custody read cases name; the decision compares SIDs as
+// opaque strings, so these only need to be distinct from the owner and trusted set.
+const (
+	sidAuthUsers = "S-1-5-11"     // NT AUTHORITY\Authenticated Users
+	sidUsers     = "S-1-5-32-545" // BUILTIN\Users
+)
+
+// TestEvaluateCustodyACLReadMask pins the access-mask decode the Win32 adapter
+// feeds the custody decision: every right that exposes a credential file's
+// contents (the counterpart of the group/other read and execute bits unix 0600
+// excludes) sets GrantsRead, and the metadata-only rights do not. It is a pure
+// function over the mask, so it runs on every CI platform.
+func TestEvaluateCustodyACLReadMask(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mask uint32
+		want bool
+	}{
+		{"FILE_READ_DATA", 0x00000001, true},
+		{"FILE_READ_EA", 0x00000008, true},
+		{"FILE_EXECUTE", 0x00000020, true},
+		{"GENERIC_READ", 0x80000000, true},
+		{"GENERIC_EXECUTE", 0x20000000, true},
+		{"GENERIC_ALL", 0x10000000, true},
+		{"FILE_GENERIC_READ", 0x00120089, true},
+		{"FILE_ALL_ACCESS", 0x001F01FF, true},
+		{"FILE_READ_ATTRIBUTES", 0x00000080, false},
+		{"READ_CONTROL", 0x00020000, false},
+		{"SYNCHRONIZE", 0x00100000, false},
+		{"metadata only", 0x00120080, false},
+		{"FILE_WRITE_DATA only", 0x00000002, false},
+		{"no rights", 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := aceGrantsRead(tc.mask); got != tc.want {
+				t.Fatalf("aceGrantsRead(%#08x) = %v, want %v", tc.mask, got, tc.want)
 			}
 		})
 	}

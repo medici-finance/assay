@@ -78,8 +78,8 @@
 #                                                --kind / --cockpit / --provider override cell.env's CELL_KIND /
 #                                                CELL_COCKPIT / CELL_PROVIDER for this run (#1303 scope 2; a
 #                                                --kind the cell is not provisioned for is refused naming the
-#                                                missing key; --cockpit on a single desk window only matters
-#                                                when persisted). --set persists EVERY override given —
+#                                                missing key; --cockpit on a single desk window decides the
+#                                                ASSAY_COCKPIT it exports — see CELL_COCKPIT below). --set persists EVERY override given —
 #                                                the model pin, CELL_HARNESS, CELL_PROVIDER, CELL_KIND,
 #                                                CELL_COCKPIT — through the same one-backup path `cellctl set`
 #                                                uses; an override not given is never re-written.
@@ -217,7 +217,10 @@
 #   CELL_COCKPIT=auto|tmux|herdr|orca   the surface `up` opens the role windows in (default auto: herdr if on
 #                         PATH, else orca if on PATH AND its desktop app answers, else tmux). Only the surface
 #                         changes — the per-role worktree, the roster beacon, the pinned model and the shim
-#                         PATH are identical in every cockpit.
+#                         PATH are identical in every cockpit. `desk` (and so every window `up` opens)
+#                         exports the RESOLVED value — never `auto` — as ASSAY_COCKPIT, the one value the
+#                         worker-desk skill's worktree-create step reads (tmux = plain `git worktree add`);
+#                         an explicit cockpit that is not available is refused there as `up` refuses it.
 #
 # Model policy: CELL_MODEL_POLICY=<JSON path relative to cell dir, or absolute> enables
 # per-role provider, exact model and effort selection. See docs/cellctl-model-policy.md.

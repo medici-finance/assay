@@ -83,8 +83,12 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	verifier := verifierKit(o.kit)
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Assignment — %s\n\n", o.item)
-	fmt.Fprintf(&b, "- **Item key:** `%s`\n", o.item)
+	shownItem := o.item
+	if o.itemAlias != "" {
+		shownItem = o.itemAlias + ":" + o.item
+	}
+	fmt.Fprintf(&b, "# Assignment — %s\n\n", shownItem)
+	fmt.Fprintf(&b, "- **Item key:** `%s`\n", shownItem)
 	switch {
 	case review:
 		// A reviewer opens no PR, so the "the PR opens THERE" framing is not just noise here —
@@ -100,6 +104,11 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	default:
 		fmt.Fprintf(&b, "- **Target repo:** `%s` — the PR opens THERE, not anywhere else.\n", repo)
 	}
+	if plan.dl.crossRepo(o.root) {
+		fmt.Fprintf(&b, "- **Tracked in:** %s — the brief and its board row live there; the deliverable lands in `%s` "+
+			"(alias `%s`, resolved from %s through the alias registry). The tracking checkout is READ-ONLY for you.\n",
+			trackingLabel(plan.dl), repo, plan.dl.alias, plan.dl.source)
+	}
 	fmt.Fprintf(&b, "- **Checkout base:** `%s` — the `git -C` source your worktree is cut FROM. It is not your writable root.\n", base)
 	fmt.Fprintf(&b, "- **Your home worktree:** `%s` — every file operation stays under it.\n", home)
 	// The auto-cut worktree branch is the IMPLEMENTER's output surface. A reviewer produces
@@ -112,7 +121,14 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	}
 	fmt.Fprintf(&b, "- **Execution tier:** `%s`\n", o.tier)
 	if strings.TrimSpace(o.brief) != "" {
-		fmt.Fprintf(&b, "- **Specification:** `%s` — implement to its contract; do not expand scope.\n", o.brief)
+		spec := briefArg(o)
+		if spec == o.brief && filepath.IsAbs(spec) && plan.dl.crossRepo(o.root) {
+			// Found only in the tracking checkout — name it there, and say it is a READ source.
+			fmt.Fprintf(&b, "- **Specification:** `%s` (in the tracking checkout — READ-ONLY for you) — implement to "+
+				"its contract; do not expand scope.\n", spec)
+		} else {
+			fmt.Fprintf(&b, "- **Specification:** `%s` — implement to its contract; do not expand scope.\n", spec)
+		}
 	}
 	if plan.gateHuman {
 		b.WriteString("- **Human-gated item:** a decision issue is open for it. Do not pre-empt the decision; " +
@@ -303,9 +319,29 @@ func worktreeCreateHint(kit, branch, deskwtSaid string) string {
 // needs; a reviewer, which produces a verdict and no branch, gets writeReviewAssignment. The
 // text here is byte-for-byte what every worker dispatch has always carried.
 func writeWorkerAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo string) {
+	if plan.followUpOf > 0 {
+		// The rework-after-merge shape: the brief's PR is already MERGED, so this is a FOLLOW-UP on
+		// a new branch — never a resume, and never a push to (or a re-cut of) the merged branch.
+		fmt.Fprintf(b, "## FOLLOW-UP — the original PR is already MERGED\n\n"+
+			"`%s` was delivered by `%s#%d`, which is MERGED. This dispatch is a FOLLOW-UP on the NEW branch `%s`, "+
+			"never a resume: do not push to, re-open, or re-create the merged PR's branch. Open a NEW draft PR that "+
+			"names #%d as the change it follows up, and fix only what the failed verdict found.\n\n",
+			briefIDFromItem(o.item), repo, plan.followUpOf, plan.branch, plan.followUpOf)
+	}
 	b.WriteString("## Open the draft PR in that repo\n\n")
 	fmt.Fprintf(b, "Run `deskpr create` from INSIDE your worktree, so the PR lands against `%s`'s own main. "+
 		"Stop at `implemented`: never set verified/done and never flip a PR ready.\n\n", repo)
+	if plan.dl.crossRepo(o.root) {
+		// CROSS-REPO: the PR lands HERE, but its `Brief:` trailer must resolve against the TRACKING
+		// repo's board, which this worktree does not carry — so deskpr is pointed at the tracking
+		// checkout with --root. That checkout is named as a READ source, never a place to work.
+		fmt.Fprintf(b, "CROSS-REPO delivery: this brief is tracked in %s, not in `%s`. Run `deskpr create --root %s` "+
+			"(still from INSIDE your worktree) so the `Brief:` trailer resolves against the tracking repo's board. "+
+			"That checkout is READ-ONLY for you — never write, commit or branch there — and this PR cannot flip the "+
+			"tracking repo's board row: say in the PR body that the home row is handed back separately, and that "+
+			"the brief's status is the minimum over its constituent PRs.\n\n",
+			trackingLabel(plan.dl), repo, plan.dl.trackingRoot)
+	}
 
 	// Every desk WRITE verb (`deskpr create`, `deskfile`, `deskreply`) refuses with
 	// $DESK_LOOP unset — the kill switch's per-loop `STOP.<loop>` flag has nothing to
@@ -339,6 +375,18 @@ func writeWorkerAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 		shortRepo(repo), o.item)
 	b.WriteString("Release the dispatch claim once your branch is pushed — branch-as-claim takes over:\n\n")
 	writeReleaseClaim(b, o, plan, repo)
+}
+
+// trackingLabel names the tracking repo for the prompt: its published owner/name when the registry
+// names it, else "the tracking repo (alias `<a>`)" — an unpublished repo is never spelled out.
+func trackingLabel(d deliverable) string {
+	switch {
+	case d.trackingRepo != "":
+		return "`" + d.trackingRepo + "`"
+	case d.homeAlias != "":
+		return "the tracking repo (alias `" + d.homeAlias + "`)"
+	}
+	return "the tracking repo"
 }
 
 // writeReviewAssignment emits the REVIEWER's action half. A reviewer is READ-ONLY: it opens

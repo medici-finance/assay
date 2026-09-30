@@ -3,11 +3,14 @@ package main
 import (
 	"os"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// buildStore constructs the live forge seam from the resolved repo + optional token file. It is
-// a package var ONLY so a test can install an in-memory forge (mirroring the old ghRun seam)
-// without a live remote. Production always builds the go-git store (gogit.go).
+// buildStore constructs the forge-ref store from the resolved repo + optional token file, when
+// deskkit.ResolveClaimStore resolves to it. It is a package var ONLY so a test can install an
+// in-memory forge (mirroring the old ghRun seam) without a live remote. Production always
+// builds the go-git store (gogit.go).
 var buildStore = newForgeStore
 
 // dispatchVerb parses argv the way the bash script's main() does: <verb> then an optional
@@ -52,12 +55,28 @@ func dispatchVerb(args []string) int {
 	if owner == "" {
 		owner = defaultOwner()
 	}
-	s, err := buildStore(repo, tokenFile)
+	// The store is the RESOLVER's answer, never this tool's choice: there is no flag that
+	// selects one. The forge-ref opener is installed so that, should the resolver resolve to
+	// the legacy store, it is built here with this invocation's credential; a configured store
+	// whose preconditions fail is a refusal (exit 6) and never becomes the forge-ref store.
+	deskkit.SetForgeRefClaimStoreOpener(func(r string) (deskkit.ClaimStore, error) {
+		return buildStore(r, tokenFile)
+	})
+	res, err := deskkit.ResolveClaimStore(repo)
 	if err != nil {
 		errf("unverifiable: %s", err.Error())
 		return exitUnverifiable
 	}
-	store = s
+	if res.Store == nil {
+		errf("unverifiable: claim store %s resolved for %s but could not be opened", res.Label(), repo)
+		return exitUnverifiable
+	}
+	store = res.Store
+	// The removal NOTICE is printed AFTER the verb, so the verb's own first stderr line — the
+	// one a dispatcher quotes in its step report — is never displaced by it.
+	if res.Notice != "" {
+		defer errf("%s", res.Notice)
+	}
 
 	switch verb {
 	case "list":

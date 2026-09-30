@@ -8,8 +8,8 @@ why: >-
   leg that exercises them on windows-latest the "runs on Windows" claim for the desk roles rests
   on parity fixtures recorded on a Mac. This brief adds that leg, and for each bash oracle whose
   verb the leg proves, retires the script — the only point at which retirement is honest.
-wave: 5
-depends: ["windows-port/04", "windows-port/11", "windows-port/12", "windows-port/13"]
+wave: 6
+depends: ["windows-port/04", "windows-port/11", "windows-port/12", "windows-port/13", "windows-port/15"]
 unblocks: []
 effort: M
 gate: human
@@ -18,9 +18,15 @@ gate-why: >-
   (the same reason brief 04 and brief 10 are human-gated): a maintainer lands the workflow hunk
   from the staged copy. `irreversible: yes` records the workflow-path rule as brief 04 did; the
   other three answers are honestly no — the leg reads no secret beyond the read-only token the
-  existing leg already uses. decision-trigger start: the exact staged-copy vs direct landing
-  question (the same tension brief 10 named) is best framed when the implementer has the leg.
-decision-trigger: start
+  existing leg already uses. decision-trigger spec (corrected from `start`, assay#1679 F1):
+  the exact staged-copy vs direct landing question (the same tension brief 10 named) is only
+  well-formed once the implementer has the leg, and the Task section's own step 4 has the
+  executor author `## Human decision` at pickup — that is `decision-trigger: spec`'s own
+  definition, not `start`'s (a `start`-trigger brief is filed by the dispatcher between
+  claim-acquire and worker launch, before any such authoring happens, which is exactly why the
+  original `start` value made `deskdispatch --gate-human` refuse this brief on a still-unauthored
+  placeholder section).
+decision-trigger: spec
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 issues: [1435]
 schema: brief-v2
@@ -28,7 +34,7 @@ authored: 2026-09-21 by the-desk (Bob) — windows-port authoring session, drive
 sources:
   - ".github/workflows/windows-ci-leg.yml (live; brief 04 done) — jobs windows-smoke, windows-bootstrap-smoke, arm64-native-smoke (held `if: false`): the leg this brief extends"
   - "ci/staged-workflows/ — the staged-copy landing pattern brief 04/06 used and brief 10 (PR #1432, not yet merged) names as a tension; the same landing question applies here"
-  - "windows-port/11 (deskmonitor, desktick), /12 (hook-install, de-POSIX prose), /13 (deskinbox) — the verbs this leg proves; each keeps its .sh oracle until this brief"
+  - "windows-port/11 (deskmonitor, desktick), /12 (hook-install, de-POSIX prose), /13 (deskinbox table+walk), /15 (deskinbox html+flow — SPLIT from the original /13 scope; the `deskinbox flow` step this brief's facts: line names is /15's deliverable, not /13's) — the verbs this leg proves; each keeps its .sh oracle until this brief"
   - "plugins/assay/scripts/{inbound-monitor,pr-monitor,tick-summary,assay-inbox}.sh — the oracles; `pdfingest.sh` (71 lines, curl+python3) is OUT of scope: it needs python3/docling regardless of shell and stays a documented-workaround row"
   - "docs/adopting-assay.md § Windows adopters (brief 05/09) — the doc that states what the leg proves; gains one sentence per proven path"
   - "freshness-checked 2026-09-21 @ 56491ce (origin/main): the live leg has three jobs, none exercising a desk verb beyond --version"
@@ -60,9 +66,9 @@ facts:
 single-point-of-failure: the ONE control is the PATH-scrub assertion (without it a green leg could have used bash). Independent layer: 11/13's parity tests on a bash-less Go test run (`-tags nobash` or a runner without bash) — a different runner, different signal.
 
 ## Human decision
-<!-- decision-trigger: start — the executor authors this at pickup: the landing mechanism for
+<!-- decision-trigger: spec — the executor authors this at pickup: the landing mechanism for
      the workflow hunk (staged copy promoted by a maintainer vs direct), the same question
-     brief 10 raised; then files it via tools/decision-issue.sh ensure … --at start. -->
+     brief 10 raised; then files it via tools/decision-issue.sh ensure … --at spec. -->
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task

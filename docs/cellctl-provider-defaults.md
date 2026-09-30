@@ -42,8 +42,11 @@ one desk entry inside `providers.anthropic.desks`:
 
 Changing `providers.anthropic.tiers.strong.model` updates every desk assigned to
 that tier that has not overridden that model in its cell. The seed pins the Opus
-alias to `claude-opus-4-8[1m]`. GLM's strong tier uses its full model and its mid
-and fast tiers use its flash model; Kimi's tiers use K3. These are editable
+alias to `claude-opus-5-5[1m]`. GLM's strong tier uses its full model and its mid
+and fast tiers use its flash model; Kimi's top and fast tiers use K3 with the 1M
+context while its strong and mid tiers pin `k3-256k` (the provider lists it as
+"K3-256k"), chosen for sustained verify/worker-style windows on the expectation of a
+lower quota cost than the 1M-context model. These are editable
 operator defaults, not a promise of backend availability.
 
 Changing a tier's effort affects desks without their own effort field. Changing
@@ -127,8 +130,9 @@ use live desk windows.
 
 For Claude, the selected provider's four tiers populate all four alias variables.
 The desk's selected model populates `ANTHROPIC_MODEL`, `--model` and
-`CLAUDE_CODE_SUBAGENT_MODEL`; effort populates `--effort` and
-`CLAUDE_CODE_EFFORT_LEVEL`. Provider mappings replace stale inherited alias values.
+`CLAUDE_CODE_SUBAGENT_MODEL`; effort populates `--effort` only —
+`CLAUDE_CODE_EFFORT_LEVEL` is never exported (it outranks agent frontmatter) and an
+ambient copy is scrubbed. Provider mappings replace stale inherited alias values.
 GLM and Kimi retain the existing endpoint/token adapters. Codex receives its
 existing model and reasoning-effort CLI settings instead of Claude aliases.
 

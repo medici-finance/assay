@@ -188,8 +188,8 @@ monitor picks up the new head and re-dispatches review — you do not request it
 `--body-file` on the `gh pr` verbs). The literal-string form (`-f body=…`) mangles a
 multi-line body, silently re-interprets shell metacharacters inside quoted evidence, and puts
 the text on a command line where it is no longer the artifact you reviewed before posting.
-Mint the file per invocation (`mktemp`) so two concurrent shepherds cannot post each other's
-body.
+Mint a per-invocation scratch file (desk-shell.md §Scratch files) so two concurrent shepherds
+cannot post each other's body.
 
 **Report a review verdict with its id and its verbatim source line — NEVER synthesize one.**
 A shepherd once reported the reviewer App as APPROVED at head, with a plausible timestamp and a
@@ -225,6 +225,26 @@ discarded; it must never be the explanation for a verdict you cannot show.
   or land) stay in its skill, directly below this block.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
   or comments.
+- **Reversibility test — default-forward on anything a human-held gate still catches:** before
+  parking an item on the driver, ask ONE question: *is a wrong guess here caught by a gate the
+  driver still controls — a draft PR awaiting merge, a filed issue awaiting close, a flip CI or a
+  human must still make?* **Yes → default-forward.** Author it, dispatch the worker, open the DRAFT
+  PR, make the best-guess call, and NOTIFY — "proceeded on `<default>`; filed as `<repo>#<N>`;
+  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. Take
+  the reversible default, declare it with `deskpr create|edit --decided` (the `## Desk-decided` body
+  section plus the `desk-decided` label), and never ask first: the block is the notice the driver
+  reads at merge time, so a default declared there files NO `needs-decision` / `question` issue —
+  only a default no PR carries still files one, naming the default taken, and the ITEM never parks
+  on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
+  the record, and corrected by the gate. **No → STOP and wait for the human.** A wrong guess that
+  lands irreversibly or reaches outside the gate is caught by nobody declining a merge. That set is
+  fixed, never judged case by case: merge, a ready-flip that is not this role's, any `main` push
+  outside a standing authorization, a tag or release cut; deleting, disabling or WEAKENING a
+  security control or its CI assertion; exposing secrets, credentials, PII or exploit detail (a
+  public repo above all); money movement, identity/auth changes, deleting or overwriting durable
+  data; and anything that leaves the repo — publishing to a public or external surface, sending
+  content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
+  either side of the test — the test never routes around one.
 
 ## 6. Watch loop
 

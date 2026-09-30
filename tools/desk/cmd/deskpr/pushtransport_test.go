@@ -38,8 +38,11 @@ func TestCreateSSHPushRemoteRefuses(t *testing.T) {
 		t.Fatalf("create over an SSH push remote rc = %d, want %d (refused)", rc, deskkit.ExitRefused)
 	}
 	assertNoPushNoCreate(t, *calls)
-	if !anyCall(gitCalls(*calls), "config", "--list", "-z") {
-		t.Fatalf("the gate's config read never happened, so rc=5 came from some OTHER refusal: %v", gitCalls(*calls))
+	// Since #1623 the push-DESTINATION gate runs ahead of the transport gate and refuses an
+	// SSH destination itself (with a worktree-scoped remedy), so its read of git's resolved
+	// push list is the fingerprint that proves rc=5 came from a push gate.
+	if !anyCall(gitCalls(*calls), "remote", "get-url", "--push", "--all", "origin") {
+		t.Fatalf("the push gate's read never happened, so rc=5 came from some OTHER refusal: %v", gitCalls(*calls))
 	}
 	_ = stderr
 }
@@ -110,6 +113,33 @@ func TestCreateHttpsNoAppHelper(t *testing.T) {
 	}
 }
 
+// TestUpdateHttpsNoAppHelper is update's half of the NOTICE contract. Since #1623 the
+// push-destination gate runs ahead of the transport gate and refuses an SSH destination on its
+// own, so the SSH refusal cases no longer prove the transport gate is WIRED into update — this
+// NOTICE, which only the transport gate emits, does.
+func TestUpdateHttpsNoAppHelper(t *testing.T) {
+	work := newBaseFixture(t)
+	bare := mustGit(t, work, "remote", "get-url", "--push", "origin")
+	mustGit(t, work, "remote", "set-url", "--push", "origin", "https://example.com/example-org/tracker.git")
+	mustGit(t, work, "config", "url."+bare+".insteadOf", "https://example.com/example-org/tracker.git")
+	mustGit(t, work, "config", "credential.helper", "osxkeychain") // ambient, not the App's
+	calls := withEnv(t, work)
+	t.Setenv("FAKEGH_LIST_HAS_PR", "1")
+	stderr := withStderrCapture(t)
+
+	rc := run([]string{"update"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("https push url rc = %d, want 0 — the missing App helper is a NOTICE, never a refusal", rc)
+	}
+	got := stderr.String()
+	if !strings.Contains(got, "NOTICE") || !strings.Contains(got, "osxkeychain") {
+		t.Fatalf("expected a NOTICE naming the ambient helper; stderr:\n%s", got)
+	}
+	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
+		t.Fatalf("a NOTICE must not stop the push; git calls: %v", gitCalls(*calls))
+	}
+}
+
 // TestEditIsNotPushTransportGated pins the gate's scope: `edit` replaces a PR body and
 // pushes NOTHING, so an SSH remote is none of its business. A gate wired into the shared
 // preflight (where it would have been one line cheaper) would refuse here, and a worker with
@@ -132,5 +162,8 @@ func TestEditIsNotPushTransportGated(t *testing.T) {
 
 	if anyCall(gitCalls(*calls), "config", "--list", "-z") {
 		t.Fatalf("edit ran the push-transport gate, but it pushes nothing: %v", gitCalls(*calls))
+	}
+	if anyCall(gitCalls(*calls), "remote", "get-url", "--push", "--all", "origin") {
+		t.Fatalf("edit ran the push-destination gate (#1623), but it pushes nothing: %v", gitCalls(*calls))
 	}
 }

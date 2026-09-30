@@ -1,0 +1,162 @@
+{
+ "description": "Property B (4/4): a non-empty read that collapses below the retain floor of the previous count is a partial read \u2014 retained + loud; the recovery cycle absorbs it. A read exactly AT the floor is trusted.",
+ "kind": "inbound",
+ "env": {},
+ "repos": [
+  "example-org/tracker"
+ ],
+ "cycles": [
+  {
+   "note": "arm with ten",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 3,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 4,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 5,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 6,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 7,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 8,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 9,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "collapses to four (under 50%)",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 3,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 4,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "recovery",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 3,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 4,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 5,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 6,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 7,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 8,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 9,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "five of ten is AT the floor \u2014 trusted, baseline shrinks",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 3,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 4,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 5,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

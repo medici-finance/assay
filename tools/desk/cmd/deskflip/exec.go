@@ -24,7 +24,7 @@ var execCommand = exec.Command
 // mintTokenFn is the seam the App-token lookup runs through, so a test can exercise the
 // verb without a real App credential. Production binds it to the shared deskkit resolver,
 // which shells out to the token minter and reads the file it names.
-var mintTokenFn = deskkit.RoleTokenForRepo
+var mintTokenFn = deskkit.GitHubRoleToken
 
 // forgeAPIBase is a TEST-ONLY override of the API base the resolved GitHub backend is
 // pointed at. It is EMPTY in production, which means "the backend's own default" — so this

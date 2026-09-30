@@ -1,0 +1,172 @@
+{
+ "description": "Parity case class (#1640 review F1 round 3): the oracle's is_ratelimit greps only gh's stderr for `secondary rate limit|(http )?429|too many requests`, so the verb decides on the same text — the forge's status line, message and errors[] items — and on nothing else. STATUS CODES: the oracle tests the text of ANY failed read, not only a 403/429 — a 5xx whose message carries the signature stops the cycle; a 5xx without it does not.",
+ "kind": "inbound",
+ "env": {},
+ "repos": [
+  "example-org/tracker",
+  "example-org/agents",
+  "example-other/site"
+ ],
+ "cycles": [
+  {
+   "note": "arm",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-other/site": {
+     "issues": [
+      {
+       "number": 20,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "agents answers 502 naming too many requests; the cycle stops",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "status": 502,
+     "message": "too many requests from this client"
+    },
+    "example-other/site": {
+     "issues": [
+      {
+       "number": 20,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 21,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "agents answers a plain 500; the cycle goes on",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 3,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "status": 500,
+     "message": "Server Error"
+    },
+    "example-other/site": {
+     "issues": [
+      {
+       "number": 20,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 21,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 22,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "recovery reports only what moved against retained baselines",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 3,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 4,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 11,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-other/site": {
+     "issues": [
+      {
+       "number": 20,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 21,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 22,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 23,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

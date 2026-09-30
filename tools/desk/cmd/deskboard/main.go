@@ -116,6 +116,15 @@ flags:
                             (on actions: NEEDS-REVIEW + RE-REVIEW — the dispatch gate).
                             Composable with --delta (quiet line first, changed rows after).
                             Implies the text/table path.
+  --out <path>              write the primary output (the JSON, or the table when --table is
+                            set) to this file instead of stdout — a per-invocation scratch
+                            file the caller mints itself (desk-shell.md §Scratch files),
+                            replacing a shell redirect (deskboard actions > file becomes
+                            deskboard actions --out file) with no dependency on the
+                            invoking shell supporting a redirect. Banners and the audit line
+                            are unaffected: they still go to stderr / the audit log exactly as
+                            without --out. Not composable with --delta/--quiet, which already
+                            select their own (text) output path.
 
 env (nextup):
   DESK_ROOTS      override root PATHS: "<owner>/<repo>=<path>,..." (repos must stay
@@ -186,6 +195,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// ~5-minute cadence (six missed sweeps) while making a dead trigger path loud in
 	// half an hour instead of two.
 	unreviewedThreshold := 30 * time.Minute
+	outPath := ""
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -198,6 +208,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 			quiet = true
 		case "--json":
 			jsonOut = true
+		case "--out":
+			i++
+			if i >= len(args) {
+				fmt.Fprintln(stderr, "deskboard: --out requires a file path argument")
+				return deskkit.ExitRefused
+			}
+			outPath = args[i]
 		case "--min-age-hours":
 			i++
 			if i >= len(args) {
@@ -263,6 +280,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return deskkit.ExitCodeOf(err)
 	}
 
+	// --out is not composable with --delta/--quiet: those already select their own
+	// (text) output path and write a summary/changed-rows shape, not the primary
+	// report --out exists to redirect. Refuse rather than silently ignore --out.
+	if outPath != "" && (delta || quiet) {
+		fmt.Fprintln(stderr, "deskboard: --out is not supported together with --delta/--quiet")
+		return deskkit.ExitRefused
+	}
+
 	// --delta / --quiet: reshape stdout for console discipline.
 	// These flags select the TEXT path — a JSON machine consumer does not pass them.
 	// A subcommand not in deltaExtractors + either flag set = Refused (exit 5): never
@@ -302,11 +327,26 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		wantTable = !jsonOut
 	}
+	// --out redirects the PRIMARY output (table or JSON) to a caller-minted scratch
+	// file instead of stdout — a portable substitute for a shell `>` redirect
+	// (desk-shell.md §Scratch files) that does not depend on the invoking shell.
+	// Banners (stderr) and the audit line are unaffected either way.
+	out := stdout
+	if outPath != "" {
+		f, ferr := os.Create(outPath)
+		if ferr != nil {
+			logRun(sub, deskkit.ResultUnverifiable, "--out: "+ferr.Error())
+			fmt.Fprintln(stderr, "deskboard: --out: cannot create", outPath+":", ferr)
+			return deskkit.ExitUnverifiable
+		}
+		defer f.Close()
+		out = f
+	}
 	if wantTable {
 		printBanners(stderr, hdr)
-		rep.render(stdout)
+		rep.render(out)
 	} else {
-		enc := json.NewEncoder(stdout)
+		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(rep.value); err != nil {
 			logRun(sub, deskkit.ResultUnverifiable, "encode: "+err.Error())

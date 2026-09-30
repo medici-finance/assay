@@ -73,11 +73,21 @@ committing under an unrelated inherited identity. The shared checkout's config i
 touched either way. The identity (or the cleared state) is echoed to stderr; stdout stays the
 bare worktree path.
 
-add REFUSES an SSH PUSH REMOTE under a bot identity. A worktree inherits this checkout's
-remote, so an ssh:// or git@host:path PUSH url here is one in every worktree cut from it —
-and a session whose $DESK_LOOP resolves to a role App would push under whatever key this
-machine's agent holds, a human's, while its commits read as the App's. The refusal names the
-url and the one-line remedy. Fetch over SSH stays allowed (remote.origin.pushurl is what is
+add --role GIVES the new worktree the role App's OWN TRANSPORT instead of the one it would
+inherit (an SSH origin, an operator's pushurl sentinel). At worktree scope it writes
+remote.origin.pushurl and remote.origin.url as an empty entry (git's list reset, git 2.46+)
+followed by https://<host>:443/<owner>/<name>.git — the explicit port keeps a global
+https-to-SSH insteadOf from rewriting it — plus the role App's host-scoped credential helper
+(the same one role-init writes). An SSH host alias is resolved to its real host with
+` + "`ssh -G`" + ` (no connection). It then reads back what git itself resolves for fetch and push, and
+REFUSES (exit 5), rolling the worktree back, unless both are exactly that one URL. An origin on
+git's local transport (a path) carries no key and is left as it is, unless it pushes over SSH.
+
+Without --role, add REFUSES an SSH PUSH REMOTE under a bot identity. A worktree inherits this
+checkout's remote, so an ssh:// or git@host:path PUSH url here is one in every worktree cut
+from it — and a session whose $DESK_LOOP resolves to a role App would push under whatever key
+this machine's agent holds, a human's, while its commits read as the App's. The refusal names
+the url and the one-line remedy. Fetch over SSH stays allowed (remote.origin.pushurl is what is
 read whenever it is set), and with $DESK_LOOP unset the gate is inert — a human pushes under
 their own key, which is what the SSH remote is for.
 

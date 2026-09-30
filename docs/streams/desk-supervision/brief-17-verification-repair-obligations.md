@@ -94,6 +94,79 @@ Pre-mortem → detection: Issue filing succeeds but worker sees nothing: row 1. 
 
 Pending implementation and independent verification. No acceptance result claimed by authoring.
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 0/4 pass, 4 could-not-check, 0 fail — 2026-09-27 claude-opus-5-5-verifier
+
+Runner is not the implementer (implementing commit ebd3e8637, PR #1399, by the worker App). Isolated detached worktree cut off `origin/main` at the merged head (HEAD == origin/main == `9585b4b6cc2ea8d35d367fb912e7c8216a765ba3`), offline envelope (`KUBECONFIG=/dev/null`), read-only. `gate: model`, all four risk answers `no`. All four rows are `check:ci` rows whose hermetic `statusgen verifyrun` witness could-not-run on darwin (it needs a Linux `unshare --net` network-off sandbox); the non-hermetic direct run passed for each, recorded below as supporting-only.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationFailToWorker$ -v -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationRestartAndDuplicate$ -v -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationMergeIsNotResolved$ -v -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationCrossRepoFollowUp$ -v -count=1` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+
+Per-row key output, non-hermetic direct run on the host (supporting-only; same commands, same merged head, 2026-09-27, go1.27.1):
+
+- Row 1: exit 0 — `--- PASS: TestRepairObligationFailToWorker (0.00s)`, `ok .../tools/desk/cmd/fanoutloop 0.258s`. The test feeds a duplicated delivery of one failure and asserts exactly one rework item carrying the immutable obligation id, the target repo, the reproduction text and the sorted failing rows, and that the dispatch prompt carries the REPAIR OBLIGATION framing.
+- Row 2: exit 0 — `--- PASS: TestRepairObligationRestartAndDuplicate (0.00s)`. Asserts a post + claim + lost-ack re-post log folds to one obligation in state repairing; a live lease (20 min) is not assignable; a dead lease (about 2 h) re-queues the SAME id exactly once.
+- Row 3: exit 0 — `--- PASS: TestRepairObligationMergeIsNotResolved (0.00s)`. Asserts repair-PR open and approval do not resolve; a merge moves to awaiting-reverification only; same-actor and wrong-revision passes are refused; an independent pass at the merged revision resolves and a resolved obligation is not dispatchable.
+- Row 4: exit 0 — `--- PASS: TestRepairObligationCrossRepoFollowUp (0.00s)`. Asserts the deliverable sibling repo (not the tracking repo) is carried, a fresh repair follow-up branch is named when the original PR merged, the prompt forbids resuming the merged branch, and a duplicate log line folds to one obligation.
+
+An in-container hermetic attempt (`statusgen verifyrun --in-container --dry-run`) was also made and refused with `could-not-attribute — no executing identity is available`: the container cannot resolve git identity from a linked worktree. Not pursued further.
+
+Risk-bearing value enumeration (diff ebd3e8637, non-test Go files, plus the brief's Deliverables):
+
+1. RepairObligationID truncation = `hex(sha256(...))[:16]` (64-bit key) @ tools/desk/internal/deskkit/repairobligation.go:137 — persisted in the append-only projection; changing it re-keys every existing obligation, so a new reader would no longer fold an old line with a new one (duplicate work). Sticky, fixable only with a migration.
+2. SchemaRepairV1 = "repair-obligation-v1" @ tools/desk/internal/deskkit/repairobligation.go:37 — persisted schema tag; a rename makes older rows read as legacy/unclassified. Sticky, fixable with a migration.
+3. FollowUpBranch prefix = "repair/" + slug + "-followup-" + attempt @ tools/desk/internal/deskkit/repairobligation.go:329 — naming only; reversible.
+4. repairSidecarName = "repair-obligations.jsonl" @ tools/desk/cmd/fanoutloop/repair.go:40 — projection path; reversible (a rename strands the old file, re-readable by edit).
+5. repairLeaseTTL = 45 * time.Minute @ tools/desk/cmd/fanoutloop/repair.go:46 (twin: repairObligationLeaseTTL = 45 * time.Minute @ tools/desk/cmd/deskdispatch/repairadmission.go:66, added by brief 18) — lease horizon; reversible operational knob, ranks last.
+
+RISK-VALUE: DERIVED — RepairObligationID truncation = 16 hex chars (64 bits) @ tools/desk/internal/deskkit/repairobligation.go:137 — the key only needs to be unique among obligations keyed by (repo, brief, receipt, rows); by the birthday bound the collision probability for n obligations is about n²/2^65, which stays below 1e-9 up to roughly 190,000 obligations, far above any plausible per-projection count. The inputs are joined with a NUL separator and the rows are sorted first, so the same failure always yields the same key (the idempotency the brief requires).
+RISK-VALUE: DERIVED — SchemaRepairV1 = "repair-obligation-v1" @ tools/desk/internal/deskkit/repairobligation.go:37 — matches the contract document's name (repair-obligation-v1.md in this stream) and the versioned-marker rule in the Interface contract; a row without it is left visibly unclassified, never turned into an obligation.
+RISK-VALUE: NAMED, NOT DERIVED — repairLeaseTTL = 45 * time.Minute @ tools/desk/cmd/fanoutloop/repair.go:46 — its comment says it "mirrors the dispatch-claim lease horizon", but the dispatch-claim horizons in the tree are 20 min (claimedClaimTTL, deskdispatch/dispatch.go:1273) and 120 min (DefaultStaleClaim, deskkit/claim.go:49); 45 min matches neither, and brief 18 copies it as a separate constant rather than sharing one. Reversible knob, ranked last; open question for the owning stream: which contract does 45 min derive from, and should the two copies share one constant?
+
+Observations (not failures):
+
+- The landing path records the obligation through a dry-run sink by default and treats a record failure as a NOTE while the FileBug escalation still lands (tools/desk/cmd/verifyloop/repair.go:50-59). The code comment says the real-filing cutover will harden "inability to file is an unlanded obligation"; until that cutover, that clause of the Interface contract is deferred rather than enforced.
+- The resolve guard's same-actor check applies only when RepairedBy is set; an obligation merged with an empty RepairedBy relies on the wrong-revision check and the reviewer/verifier identity gates alone.
+- The planned changelog fragment name differs (it landed as a differently named fragment and is now folded into CHANGELOG.md); deskdispatch/dispatch.go and prompt.go were not touched: the prompt is rendered by fanoutloop's own dispatch path. Neither is a Verify row.
+
+VERIFY: BLOCKED — 0/4 pass hermetically, 4 could-not-check (check:ci hermetic witness owed on a Linux runner with `unshare --net`), 0 fail. The non-hermetic direct runs of all four rows pass with their named PASS lines. No implementation defect was observed. Advancing needs the four check:ci rows witnessed on a Linux runner. HELD at implemented.
+### Verification — 2026-09-30 (assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) (on-behalf-of human:ian)) — 2026-09-30 claude-opus-5-5-verifier
+
+Non-implementer re-verify on merged main 35496323b8fc591651e44537baf51206cc22bbdd. First table: the `statusgen verifyrun` execution witness, landed verbatim. It ran on Linux (golang:1.25-bookworm, `--network none`, a full clone pinned to this SHA, statusgen built from main's own source) and passed 4/4. Second table: the hand run on the host (darwin/arm64, go1.27.1).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationFailToWorker$ -v -count=1` | pass exit=0 | sha256:675e97b84419 | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationRestartAndDuplicate$ -v -count=1` | pass exit=0 | sha256:78e9bb627f0e | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationMergeIsNotResolved$ -v -count=1` | pass exit=0 | sha256:86dffbdb72fc | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationCrossRepoFollowUp$ -v -count=1` | pass exit=0 | sha256:4861c2f1ffff | 2026-09-30 | assay-verifier-app[bot] @ 35496323b8fc (on-behalf-of human:ian) (git-config) |
+
+| # | Verify row | Expected | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | row 1 as written (exact command in the witness table above) | exit 0; named PASS; one failure -> exactly one rework item with reproduction + target repo | exit 0 — "--- PASS: Test Repair Obligation Fail To Worker (0.00s)", "ok .../tools/desk/cmd/fanoutloop 0.411s" (host, go1.27.1 darwin/arm64). Network-off Linux re-run (docker --network none, GOPROXY=off, only lo + unconfigured tunl0 in the netns, go1.25.14 linux/arm64): exit 0, same named PASS line. Hermetic statusgen verifyrun witness: could-not-check, see note W | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 2 | row 2 as written (exact command in the witness table above) | exit 0; named PASS; duplicate + lost response reconcile to one; replacement resumes after dead claim | exit 0 — "--- PASS: Test Repair Obligation Restart And Duplicate (0.00s)", "ok ... 0.215s" (host). Network-off Linux re-run: exit 0, same named PASS line | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 3 | row 3 as written (exact command in the witness table above) | exit 0; named PASS; merge wakes verification only; same-actor / wrong-revision pass refused; independent pass resolves | exit 0 — "--- PASS: Test Repair Obligation Merge Is Not Resolved (0.00s)", "ok ... 0.220s" (host). Network-off Linux re-run: exit 0, same named PASS line | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+| 4 | row 4 as written (exact command in the witness table above) | exit 0; named PASS; sibling repo, new branch, linked repair, no duplicate | exit 0 — "--- PASS: Test Repair Obligation Cross Repo Follow Up (0.02s)", "ok ... 0.530s" (host). Network-off Linux re-run: exit 0, same named PASS line | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ 35496323b8fc (on-behalf-of human:ian) |
+
+Execution witness: `statusgen verifyrun` on linux, network-off, 4/4 pass at 35496323b8fc. This supersedes the hand run's could-not-check note on the hermetic witness.
+
+RISK-VALUE: DERIVED — RepairObligationID truncation = 16 hex chars (64 bits) @ tools/desk/internal/deskkit/repairobligation.go:137 — the key only has to be unique among obligations in one projection. The birthday bound gives collision probability of about n^2/2^65, which stays below 1e-9 up to about 190,000 obligations, far more than any plausible count. The rows are sorted and the parts are NUL-joined before hashing, so one failure always yields one key. That determinism is the idempotency the Interface contract requires ("posting the marker is idempotent").
+RISK-VALUE: DERIVED — SchemaRepairV1 = "repair-obligation-v1" @ tools/desk/internal/deskkit/repairobligation.go:37 — it matches the contract document name (docs/streams/desk-supervision/repair-obligation-v1.md, which exists at the verified SHA) and the Interface contract's "versioned structured repair marker" rule.
+RISK-VALUE: DERIVED — repairReceiptID truncation = 16 hex chars @ tools/desk/cmd/verifyloop/repair.go:136 — same 64-bit birthday argument as (a). Keying it on (repo, brief, target sha, verdict) means a re-land of the same failed verification at the same revision gets the same receipt, and so the same obligation ("an ambiguous remote response must be reconciled, not blindly reposted"). A failure observed at a NEW revision is a new receipt and a new obligation, which is what the contract's receipt-keyed identity says should happen.
+RISK-VALUE: NAMED, NOT DERIVED — repairLeaseTTL = 45 * time.Minute @ tools/desk/cmd/fanoutloop/repair.go:46 — the code comment says it "mirrors the dispatch-claim lease horizon", but the dispatch-claim horizons in the tree are claimedClaimTTL = 20 * time.Minute (tools/desk/cmd/deskdispatch/dispatch.go:1360) and DefaultStaleClaim = 120 * time.Minute (tools/desk/internal/deskkit/claim.go:49). 45 min matches neither, and brief 18 copies it into a second constant. It is a reversible knob and ranks last. Open question for the owning stream: which contract does 45 min come from, and should the two copies share one constant? (The 2026-09-27 run reported the same thing.)
+
+Notes:
+- The NAMED, NOT DERIVED lease horizon above holds this brief at implemented. The desk files a question issue for the derivation, links it here, and only then flips.
+- The landing sink is dry-run by default and a record error is only a NOTE, so "inability to file is an unlanded obligation" is enforced only at cutover. Row 1 injects obligations directly.
+- The source receipt is a stand-in hash, not desk-supervision/16's wake-receipt id. The same-actor refusal fires only when the repairer is set.
+- A BLOCKED result that ran no row is recorded against row 1 nominally.
+- The tools/desk README cites a nonexistent example-stream contract path.
+
+VERIFY: PASS
+
 ## Review
 
 Gate: model. Review the negative paths, migration compatibility and limits of enforcement. Any newly discovered need to alter authority is separate human-gated scope, not an implicit part of this brief.

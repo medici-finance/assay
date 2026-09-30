@@ -123,13 +123,13 @@ func cmdDesk(cell string, args []string) {
 		cfg = resolveCfg(c.Env, cfgIn)
 	}
 
-	// The minimum-Claude-Code-version half of the oracle's policy_claude_preflight (the
-	// local/managed settings.json availableModels/modelOverrides conflict scan that same
-	// function also runs is NOT ported — see policy.go's header comment and the PR body).
-	if policyRes != nil && harness == "claude" {
-		if err := checkClaudeMinVersion(); err != nil {
-			die("%s", err)
-		}
+	// The oracle's policy_claude_preflight against the cell's checkout, BEFORE any worktree is
+	// cut (dry run included): the Claude Code version floor, then the user/project/managed
+	// settings scan that refuses an availableModels widening the policy or a local
+	// modelOverrides. deskLaunch re-runs it against the role worktree once that exists.
+	if err := claudePolicyPreflight(policyRes, cfg, c.Repo); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		die("model policy settings preflight failed")
 	}
 
 	if policyRes != nil {
@@ -281,6 +281,23 @@ func cmdDesk(cell string, args []string) {
 		fmt.Fprintln(os.Stderr, "NOTICE: cell.env has no CELL_ROOTS — the window boots WITHOUT DESK_ROOTS (desk verbs fall back to their compiled placeholder topology)")
 	}
 
+	// The cell's ONE cockpit value, exported as ASSAY_COCKPIT into the window so the worker-desk
+	// skill's worktree-create step cuts dispatched worktrees with the same cockpit the windows are
+	// hosted in (tmux = the plain `git worktree add` arm). Resolved exactly as `up` resolves it —
+	// --cockpit beats cell.env CELL_COCKPIT beats the `auto` default — and always to a CONCRETE
+	// value: `auto` never reaches the window, so the skill's PATH-order autodetect runs only where
+	// no cell launcher exported anything. An explicit cockpit that is not available is refused
+	// here, as `up` refuses it, never exported as some other value. A scrubbed cell composes its
+	// own environment and opens no cockpit, so it carries none.
+	var cockpit cockpitResolution
+	if c.Kind != "scrubbed" {
+		want, src := c.cockpitWant(cockpitFlag)
+		cockpit = c.resolveCockpit(want, src)
+		if cockpit.Err != "" {
+			die("desk: %s — it is exported to the window as ASSAY_COCKPIT, so an unavailable explicit choice is refused rather than replaced; install it, or pass --cockpit tmux (or set CELL_COCKPIT)", cockpit.Err)
+		}
+	}
+
 	if dryRun {
 		kindShown := c.Kind
 		if c.KindOverride != "" {
@@ -294,6 +311,9 @@ func cmdDesk(cell string, args []string) {
 		// absent here, matching the composed environment (deskLaunch omits it).
 		if rav := c.repairAdmissionValue(); rav != "" {
 			fmt.Printf("[dry-run] env %s=%s (repair-admission dispatch gate opt-in)\n", deskkit.EnvRepairAdmission, rav)
+		}
+		if cockpit.Cockpit != "" {
+			fmt.Printf("[dry-run] env %s=%s (%s)\n", envAssayCockpit, cockpit.Cockpit, cockpit.Why)
 		}
 		if harness == "claude" && c.Kind != "scrubbed" {
 			fmt.Println("[dry-run] env CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false")
@@ -312,7 +332,7 @@ func cmdDesk(cell string, args []string) {
 		return
 	}
 
-	c.deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider, prov, deskRoots, persist, persistKVs, policyRes)
+	c.deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider, prov, deskRoots, persist, persistKVs, policyRes, cockpit)
 }
 
 func needFlagValue(args []string, i *int, msg string) string {

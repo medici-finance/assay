@@ -203,9 +203,11 @@ func ModelFloorOverrideEngaged() bool {
 // the dispatch claim the stamp was applied under, and whether the override is engaged. It is
 // the ONE decision both verdict/flip verbs share.
 //
-// isDispatcher is the applier-aware predicate (inject IsDispatcherLogin against the live
-// roster, or a test stub). A nil predicate vouches for no one, so any dispatched-* label
-// then reads Indeterminate and the floor refuses — an unconfigured deployment fails closed.
+// isDispatcher is the applier-aware predicate (inject IsStampAuthorityLogin against the
+// live roster — the bound dispatcher slugs plus the roster-configured stamp-authority
+// allowance, #336 — or a test stub). A nil predicate vouches for no one, so any
+// dispatched-* label then reads Indeterminate and the floor refuses — an unconfigured
+// deployment fails closed.
 //
 // claim is the dispatch claim's liveness (stampage.go). ClaimLivenessUnknown — the zero value,
 // and what a verb with no presence read passes — changes nothing. Only ClaimReleased does: it
@@ -387,13 +389,40 @@ func riskUnstampedRefusal(d FloorDecision, risk FloorRisk) string {
 func unreadableStampMessage(tl StampTimeline, isDispatcher func(applier string) bool) string {
 	var cause string
 	if untrusted := NonDispatcherStampAppliers(tl, isDispatcher); len(untrusted) > 0 {
-		cause = fmt.Sprintf(
-			"The dispatched-* labels this PR currently carries were applied by %s, and this floor accepts a "+
-				"stamp only from a bound dispatching identity: %s. Re-stamp the PR from the dispatcher of its "+
-				"own lane — the dispatch verb REMOVES a foreign stamp and re-applies it under that App, "+
-				"which is the only repair an append-only timeline allows — or escalate this write "+
-				"to a strong-tier session.",
-			StripControl(strings.Join(untrusted, ", ")), DispatcherLoginsForMessage())
+		// deskrestamp (#336, SEC-1b round 3 — the driver's ruling on PR #1727) itself
+		// refuses to re-attest this pair unless EVERY standing foreign-applied label is
+		// one its own provenance gate vouches for: the roster's own blessing authority
+		// (IsRestampDriverLogin), applied strictly before RestampDriverCutoff — not the
+		// wider "any trusted human" bar (C5: that bar was superseded by the ruling, and
+		// routing this message on it names deskrestamp for a case — a trusted non-driver
+		// login, or the driver's own login applied AFTER the cutoff — that deskrestamp
+		// itself refuses, sending the operator in a circle). So the message routes on the
+		// SAME shared predicate deskrestamp's own gate uses
+		// (AllForeignStampLabelsRestampVouched, backed by RestampVouchesLabel): only when
+		// EVERY standing foreign-applied label passes it does deskrestamp get named;
+		// otherwise the remedy is the dispatch ceremony, which validates a fresh
+		// --model/--tier under the dispatcher rather than re-attesting an unvouched
+		// applier's content.
+		allVouched := AllForeignStampLabelsRestampVouched(tl, isDispatcher)
+		if allVouched {
+			cause = fmt.Sprintf(
+				"The dispatched-* labels this PR currently carries were applied by %s, and this floor accepts a "+
+					"stamp only from %s. Re-stamp the PR under the dispatcher of its own lane — deskrestamp is "+
+					"the first-class verb: it REMOVES a foreign stamp and re-applies the same (model, tier) "+
+					"pair under that bound App, which is the only repair an append-only timeline allows — or "+
+					"escalate this write to a strong-tier session.",
+				StripControl(strings.Join(untrusted, ", ")), StampAuthorityLoginsForMessage())
+		} else {
+			cause = fmt.Sprintf(
+				"The dispatched-* labels this PR currently carries were applied by %s, and this floor accepts a "+
+					"stamp only from %s. deskrestamp refuses to repair this one: it re-attests a foreign "+
+					"applier's content only when every standing applier is the roster's own blessing authority, "+
+					"applied before the #336 legacy-backlog cutoff, and at least one of these is not (an App, "+
+					"a bot, a non-driver login, or a post-cutoff application) — re-run the dispatch ceremony "+
+					"instead, which validates a fresh --model/--tier under the dispatcher, or escalate this "+
+					"write to a strong-tier session.",
+				StripControl(strings.Join(untrusted, ", ")), StampAuthorityLoginsForMessage())
+		}
 	} else if unattributed := UnattributedStampLabels(tl); len(unattributed) > 0 {
 		// A DIFFERENT remedy again: the stamp may be perfectly good and the timeline read
 		// short. Sending this operator to re-stamp a correct PR is the wrong next move, so

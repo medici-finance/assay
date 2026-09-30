@@ -100,39 +100,75 @@ export DESK_SESSION='<session-id>' && export <LOOP_ROLE_MARKER>='<role>' && <des
 The concrete marker names and values are the project's config; the invariant is that the export
 and the verb share a shell.
 
+## Scratch files
+
+**Mechanism.** A per-invocation scratch file — a body for `deskpr create`/`deskreply`, a JSON
+snapshot passed between two verbs — is minted fresh on every invocation, never a fixed path in
+a shared scratch directory. A fixed name is a race: two concurrent sessions (or two parallel
+workers sharing one scratch dir) converging on the same path can each overwrite the other's
+file, so the loser posts — or plans against — the OTHER session's content. The mechanism this
+name resolves to is platform-specific but the property (unique, private, collision-proof) is
+not: unix/POSIX shells use `mktemp` (`mktemp "${TMPDIR:-/tmp}/name.XXXXXX"` — the explicit
+template argument is portable across BSD and GNU `mktemp`), PowerShell uses
+`New-TemporaryFile`, and Go code uses `os.CreateTemp("", "name-*")`. All three create the file
+with an exclusive/atomic open and hand back the name that won, so no `$$`/date/session suffix
+can alias it.
+
+**Signal.** Two sessions' writes interleaved in one file; a body or plan carrying content that
+does not match what this session intended to write; a scratch directory that never empties
+because nothing owns cleanup of a fixed name.
+
+**Correct form.** Mint the file where the step runs, immediately before use — never a path
+composed ahead of time and handed across a call boundary:
+
+```
+BODY=$(mktemp "${TMPDIR:-/tmp}/pr-body.XXXXXX")     # unix
+$body = New-TemporaryFile                            # PowerShell
+f, _ := os.CreateTemp("", "pr-body-*")                # Go
+```
+
+A skill body names this mechanism as "a per-invocation scratch file (desk-shell.md §Scratch
+files)" rather than spelling `mktemp` as if every adopter's shell has it.
+
+## Config home
+
+**Mechanism.** The desk tools' own config/roster/state directory is the literal path
+`~/.config/assay`, where the leading `~/` is expanded via `os.UserHomeDir()`
+(`tools/desk/internal/deskkit/appconfig.go`'s `expandHome`) — never `os.UserConfigDir()` and
+never `%APPDATA%`. `os.UserHomeDir()` returns `%USERPROFILE%` on Windows, so the SAME literal
+path resolves there too, as `%USERPROFILE%\.config\assay` — this is the brief-02 ruling
+(`docs/streams/windows-port/portability-audit.md` §Config-home recommendation): keep
+`~/.config/assay` unchanged rather than branch on `%APPDATA%`, because it already works on
+Windows through the one home-dir resolver and stays a single documented path across every
+platform. A skill body that spells this as a bare `~/.config/assay/…` literal is stating the
+resolved unix path as if it were POSIX-only, when the mechanism (one `~/`-relative path,
+expanded by `os.UserHomeDir()`) already covers Windows.
+
+**Signal.** A step that reads as if it requires a POSIX home directory (`~/...`) when the
+actual requirement is only "the config home, resolved by the one `~/`-expansion every
+platform shares"; a Windows session unsure whether a `~/.config/assay/HEARTBEAT` instruction
+applies to it.
+
+**Correct form.** Name the mechanism, not just the unix-looking literal: "the config home
+(desk-shell.md §Config home: `~/.config/assay`, expanded via `os.UserHomeDir()` — resolves to
+`%USERPROFILE%\.config\assay` on Windows)" rather than a bare `~/.config/assay` with no
+cross-platform note. The literal path is correct on every platform; what a skill body must
+stop implying is that the `~/` spelling is a unix-only shell expansion rather than a resolved
+Go path.
+
 ## Authenticated transport
 
-<!-- BEGIN authenticated transport
-     This block exists to be DELETED. When desk-tools/08 lands (`deskgit push` and
-     `deskgit fetch`, authenticated transport from the role's token file), this whole block
-     collapses to naming those two verbs. It is bracketed by the BEGIN/END markers so that
-     retirement is a single edit, not a hunt across the file. -->
+<!-- BEGIN authenticated transport -->
 
-**Mechanism.** The canonical fetch/push form reads the role's token from its **file** and
-presents it through a git credential helper as HTTP Basic auth — username `x-access-token`,
-the token as the password. A token embedded directly in the remote URL is refused. Use the
-explicit `:443` host form so a local URL rewrite (an `insteadOf` rule) does not silently
-re-point the remote. A `401` on push or fetch means one of two things: the token has a short
-TTL and has expired (re-mint it), or an OS keychain credential helper is shadowing the one you
-supplied (reset `credential.helper` to empty first, then supply yours).
+Fetch and push under a role's identity with `deskgit fetch` and `deskgit push`, each in its
+role-bound `--as <role>` form. Their flags, output, refusal texts and exit codes are
+documented in `tools/desk/README.md` §"Authenticated transport — `--as <role>` (fetch and
+push)", not in this file.
 
-**Signal.** `401 Unauthorized` / `Authentication failed`; or a remote-URL rewrite sending the
-push to an unexpected host; or a refusal to accept a token embedded in the URL.
-
-**Correct form.**
-
-```
-TOK=$(cat "$ROLE_TOKEN_FILE")
-git -C /abs/worktree \
-  -c credential.helper='!f(){ echo username=x-access-token; echo "password=$TOK"; };f' \
-  push https://github.com:443/<owner>/<repo> HEAD:<branch>
-# On 401: either re-mint the short-TTL token, or clear a shadowing OS keychain helper first —
-#   git -C /abs/worktree -c credential.helper= -c credential.helper='!f(){ … };f' push …
-```
-
-When desk-tools/08 lands, this reduces to `deskgit push` for the push side and `deskgit fetch`
-for the fetch side (the latter selects the acting role through a role selector); the flags,
-output and refusal texts of those verbs belong to that brief, not to this file.
+Never hand-roll the credential-helper recipe these verbs replace: they have no raw fallback,
+whatever they exit with. When one refuses or cannot verify a step, fix the cause it names if
+that cause is the session's own state (for example, check out a branch instead of working on a
+detached HEAD); otherwise stop and escalate.
 
 <!-- END authenticated transport -->
 

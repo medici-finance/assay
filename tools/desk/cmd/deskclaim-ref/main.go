@@ -29,6 +29,11 @@
 // documented change from the server-stamped gh-CLI port): mutual exclusion rests on the
 // server-side CAS, not the timestamp, which now drives only the TTL age display.
 //
+// CLAIM STORE. Which store holds the claims is deskkit.ResolveClaimStore's answer, read from the
+// roster (ASSAY_CLAIM_STORE) — no flag selects one. The forge transport above is the forge-ref
+// store: what an UNSET key resolves to for one release window, under a removal NOTICE. A
+// configured store that cannot be used is exit 6 and never falls back to the forge store.
+//
 // VERBS (identical to the script):
 //
 //	deskclaim-ref acquire  <id> [--repo O/R] [--owner O] [--branch B]
@@ -71,7 +76,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-const usage = `deskclaim-ref — the GitHub-durable, cross-machine dispatch claim (pure-Go port of
+var usage = `deskclaim-ref — the GitHub-durable, cross-machine dispatch claim (pure-Go port of
 tools/dispatch-claim.sh; the only claim path that runs native on Windows).
 
 USAGE:
@@ -98,6 +103,18 @@ steal     forcibly take the claim, recording --reason in the replacement — an 
           takeover, not a hand-delete.
 show      print the claim's holder/state/branch/age, or FREE.
 list      show every dispatch claim in the repo.
+
+CLAIM STORE. Where the claims are kept is resolved from the roster, never chosen here — no
+flag selects a store. Roster keys:
+  ` + deskkit.EnvClaimStore + `        ` + deskkit.ClaimStoreFile + ` | ` + deskkit.ClaimStoreService + ` (one value for the cell, or owner/name=<store> entries)
+  ` + deskkit.EnvClaimDir + `          the ` + deskkit.ClaimStoreFile + ` store's directory (absolute; default <config home>/dispatch-claims)
+  ` + deskkit.EnvClaimSingleHost + `  yes — the declaration that this cell dispatches from this host only
+An unknown value — ` + deskkit.ClaimStoreForgeRef + ` included — is refused (exit 6) printing the two valid
+values, and a configured store that cannot be used is refused (exit 6), never replaced by
+another. The ` + deskkit.ClaimStoreFile + ` and ` + deskkit.ClaimStoreService + ` stores are not shipped in this build yet: setting either
+is refused naming the release that ships it. Unset, claims resolve to the legacy ` + deskkit.ClaimStoreForgeRef + `
+store, and every run prints:
+  ` + deskkit.ClaimStoreLegacyNotice + `
 
 Exit codes (deskkit contract): 0 ok/acquired · 5 refused (a live holder owns it) ·
 6 unverifiable (a claim we could not read or write — NEVER "assume free").`

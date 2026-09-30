@@ -34,7 +34,7 @@ func (c *Cell) repairAdmissionValue() string {
 //
 // Every process here goes through os/exec — no syscall, no shell — so the Windows consequence
 // this brief names is not made worse.
-func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider string, prov Provider, deskRoots string, persist bool, persistKVs []string, policyRes *PolicyResolution) {
+func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider string, prov Provider, deskRoots string, persist bool, persistKVs []string, policyRes *PolicyResolution, cockpit cockpitResolution) {
 	if persist {
 		applyEnvKVs(c.Env, filepath.Join(c.Dir, "cell.env"), false, persistKVs)
 	}
@@ -53,7 +53,7 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		}
 	}
 
-	sha := c.fetchMainUnderLock()
+	sha := c.fetchMainUnderLock(role)
 	_ = os.MkdirAll(filepath.Join(c.Dir, "worktrees"), 0o755)
 	if _, err := os.Stat(filepath.Join(wt, ".git")); err == nil {
 		// An existing tree is MERGED up to the fetched main, or the boot stops — never left
@@ -87,6 +87,12 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		c.scrubbedDeskLaunch(role, harness, model, session, wt)
 		return
 	}
+	// The worktree now exists (created, or merged up to main), so its own .claude settings —
+	// and every parent directory's — are rechecked before the harness starts.
+	if err := claudePolicyPreflight(policyRes, cfg, wt); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		die("model policy settings preflight failed")
+	}
 	providerDisp := provider
 	if policyRes != nil {
 		providerDisp = policyRes.Provider
@@ -94,6 +100,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	effortDisp := "harness-default"
 	if policyRes != nil {
 		effortDisp = policyRes.Effort
+	}
+	if cockpit.Cockpit != "" {
+		fmt.Printf("[cockpit] %s=%s (%s)\n", envAssayCockpit, cockpit.Cockpit, cockpit.Why)
 	}
 	fmt.Printf("[launch] %s/%s kind=%s model=%s effort=%s provider=%s harness=%s session=%s config=%s cwd=%s desk_roots=%s (desk verbs → HOME=%s)\n",
 		c.Name, role, c.Kind, modelDisp, effortDisp, orDefault(providerDisp, "anthropic"), harness, session, cfg, wt, orDefault(deskRoots, "unset"), c.Home)
@@ -113,6 +122,11 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	if rav := c.repairAdmissionValue(); rav != "" {
 		env = envSet(env, deskkit.EnvRepairAdmission, rav)
 	}
+	// The cell's one resolved cockpit (see cmdDesk) — ALWAYS set on a host window, so an
+	// ASSAY_COCKPIT the launching shell happened to carry never outlives the cell's own value.
+	if cockpit.Cockpit != "" {
+		env = envSet(env, envAssayCockpit, cockpit.Cockpit)
+	}
 	var argv []string
 	if harness == "codex" {
 		// The same exported env the claude arm gets; CLAUDE_CONFIG_DIR is irrelevant on this
@@ -130,6 +144,11 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		env = envSet(env, "CLAUDE_CONFIG_DIR", cfg)
 		// Automated desks do not need the extra next-prompt generation request.
 		env = envSet(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "false")
+		// Bound the context a long desk window carries: auto-compact at 200K so a sustained
+		// session stops re-reading an ever-growing prefix every turn (cached-input spend against
+		// provider rate windows; 1M-context models never trip it otherwise). Neutral for
+		// 200K-context models, which compact there anyway. A cell overrides it via cell.env.
+		env = envSet(env, "CLAUDE_CODE_AUTO_COMPACT_WINDOW", c.Env.GetOr("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "200000"))
 		if provider != "" {
 			// An inherited API key wins over the auth token and silently routes to Anthropic,
 			// so it is UNSET first; then the model plus the three tier aliases are pinned to a
@@ -149,15 +168,26 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		argv = []string{"claude", "--name", session, "--model", model, "/assay:" + role}
 		if policyRes != nil {
 			// The policy's own env block (ANTHROPIC_MODEL/CLAUDE_CODE_SUBAGENT_MODEL/
-			// CLAUDE_CODE_EFFORT_LEVEL/ANTHROPIC_DEFAULT_*_MODEL, ANTHROPIC_BASE_URL for the
-			// anthropic provider) is applied on top of whatever the glm/kimi credential block
-			// above just set — this is effort propagation into the launch record: the harness
-			// receives the pinned effort both as `--effort` and as CLAUDE_CODE_EFFORT_LEVEL.
+			// ANTHROPIC_DEFAULT_*_MODEL, ANTHROPIC_BASE_URL for the anthropic provider) is
+			// applied on top of whatever the glm/kimi credential block above just set. Effort
+			// travels only as `--effort`: CLAUDE_CODE_EFFORT_LEVEL would outrank agent
+			// frontmatter, so it is neither set here nor allowed to leak in from the ambient
+			// shell — a child agent's `effort:` frontmatter must stay able to raise that child
+			// above the session level the flag pins.
 			for k, v := range policyRes.ClaudeEnv {
 				env = envSet(env, k, v)
 			}
 			env = envUnset(env, "MAX_THINKING_TOKENS")
-			argv = []string{"claude", "--effort", policyRes.Effort, "--name", session, "--model", model, "/assay:" + role}
+			env = envUnset(env, "CLAUDE_CODE_EFFORT_LEVEL")
+			// --settings is the RUNTIME half: an availableModels allowlist of the provider's
+			// pinned IDs plus the PreModelSwitch / PreToolUse(Agent|Task) hooks that call back
+			// into this binary, so neither a mid-session switch nor a child agent can reach a
+			// model the launch-time resolution would have refused.
+			settings, err := policyClaudeSettings(selfPath(), c.Dir, policyRes)
+			if err != nil {
+				die("model policy: cannot build --settings: %v", err)
+			}
+			argv = []string{"claude", "--effort", policyRes.Effort, "--settings", settings, "--name", session, "--model", model, "/assay:" + role}
 		}
 	}
 	runForeground(argv, env, wt)

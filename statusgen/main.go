@@ -114,6 +114,13 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	srcProblems, srcNotices := streamSourceLint(streams, root, changed)
 	problems = append(problems, srcProblems...)
 	notices = append(notices, srcNotices...)
+	// Instrument-liveness (the liveness balancing loop): a DARK statusgen flag — 0 consumers AND
+	// declared >30 days ago — is a retirement candidate. --lint NOTICEs each once; nothing
+	// is retired by the tool. Gated to lint mode so the daily write/regen never pays the
+	// audit's consumer-grep + git-log cost on every board build.
+	if mode == "lint" {
+		notices = append(notices, instrumentAuditDarkNotices(root)...)
+	}
 	// An UNREADABLE docs/archive/ is could-not-check, surfaced as a NOTICE rather
 	// than rounded to "no archived streams": edges into archived streams may then
 	// (correctly) report "unknown stream" until the directory reads cleanly.
@@ -218,6 +225,10 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	lifecycleProblems, lifecycleNotices := lifecycleLintChecks(root, streams)
 	problems = append(problems, lifecycleProblems...)
 	notices = append(notices, lifecycleNotices...)
+	// outcome-absent (spec/brief-v1.md §3.2): a brief authored after the outcome
+	// line's cutover that names neither a requirement id nor `none` is an advisory
+	// NOTICE. Scoped like checkBriefFiles (checkStreams); grandfathered by date.
+	notices = append(notices, outcomeAbsentNotices(checkStreams)...)
 
 	// derived-board/04: a hand edit to a board: generated stream README's
 	// marker-wrapped Briefs table (its authoring columns) is a PROBLEM, the same
@@ -465,6 +476,10 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// tree-only. Declared source: statusgen/verifiedrunneragree.go.
 	notices = append(notices, verifiedRunnerDisagreementNotices(checkStreams)...)
 	problems = append(problems, verifySectionProblems(checkStreams)...)
+	// An unterminated `<!--` in a Verify or Evidence section (#1939): the row
+	// parsers read past it, a rendered page may hide everything after it, so it
+	// is a PROBLEM rather than a silent disagreement between the two views.
+	problems = append(problems, unterminatedCommentProblems(checkStreams)...)
 	// Reverse-orphan (distribution/13 Task E-a): a README brief ROW whose brief
 	// FILE is absent is a phantom brief. checkBriefFiles guards the forward
 	// direction (a file with no row); this guards the reverse (a row with no
@@ -682,6 +697,11 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// Set explicitly every run so a prior invocation's value can never leak in; nil
 	// is the inert default. It only takes effect when a drive is active (nextUp).
 	activeFindings = findings
+	// The stamped-security arm's ratified authority set comes from roster
+	// configuration, never a compiled-in identity; unset is an explicit state whose
+	// stamps are reported, not silently ignored (drivecritical.go).
+	wireCriticalStampAuthorities(scanEffectiveConfig())
+	notices = append(notices, criticalStampNotices(streams)...)
 	for _, s := range streams {
 		rel, _ := filepath.Rel(root, s.Dir)
 		s.LastTouch = gitLastTouch(root, rel)
@@ -723,6 +743,11 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// Drive anti-Goodhart coverage NOTICEs (a drive covering > threshold of the
 	// eligible board self-taxes) surface on --lint too, not only in the artifact.
 	notices = append(notices, nu.DriveCoverageNotices...)
+	// The main-red arm's could-not-check (no --main-health input while a drive is
+	// active) is a NOTICE here and a line on the board — never a silent green.
+	if nu.MainRedUnknown != "" {
+		notices = append(notices, nu.MainRedUnknown)
+	}
 	// Honesty gate (brief-44 Verify row 3): a boosted Next-up pick shown without
 	// the active-drive banner is a PROBLEM (rc≠0) — the drive term must always be
 	// displayed decomposed and attributed. nextUp sets the banner whenever a shown
@@ -1243,6 +1268,16 @@ func main() {
 		os.Exit(runReconcile(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen outcomes split` — the desk-supervision/24 migration: writes one record file
+	// per legacy docs/streams/verify-outcomes*.jsonl line under
+	// docs/streams/verify-outcomes/<stream>/, idempotent, `--check` audits without writing.
+	// Intercepted before flag parsing for verifyrun's reason: it owns its own
+	// --root/--check namespace and is a WRITE-capable subcommand (without --check), so like
+	// verifyrun it is never part of --lint.
+	if len(os.Args) > 1 && os.Args[1] == "outcomes" {
+		os.Exit(runOutcomes(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen regen --readmes` — positional subcommand (derived-board/04) that
 	// regenerates the marker-wrapped Briefs table in every board: generated stream
 	// README from the brief frontmatter, and — with an online --repo — prints the
@@ -1357,6 +1392,18 @@ func main() {
 		os.Exit(runNewBrief(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	}
 
+	// `statusgen lint --check <name>` and `statusgen verify-gate-close --ref <ref>` — the fleet
+	// topology contract's registry-resolved verbs (topology.go). Intercepted before flag parsing:
+	// each owns its own --root/--check/--ref namespace, and verify-gate-close is a WRITE that must
+	// never be reachable by fallthrough to the default regenerate. The whole-corpus gate stays
+	// `statusgen --lint`; `lint --check` runs only the named checks.
+	if len(os.Args) > 1 && os.Args[1] == "lint" {
+		os.Exit(runLintNamed(os.Args[2:], os.Stdout, os.Stderr))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "verify-gate-close" {
+		os.Exit(runVerifyGateClose(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// UNKNOWN POSITIONAL SUBCOMMAND — fail closed (#1075).
 	//
 	// Every genuine positional subcommand (verifyrun, mergecheck, shardcheck,
@@ -1377,7 +1424,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, enforcement-status, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}
@@ -1394,6 +1441,8 @@ func main() {
 	lintMode := flag.Bool("lint", false, "run all checks without reading or writing STATUS.md (defaults --budget to "+defaultBudgetSpec+" unless overridden)")
 	forgeMode := flag.Bool("forge", false, "opt in to the forge-backed checks. WITHOUT it statusgen is OFFLINE: it starts no forge process and makes no network call, and every forge-backed check reports could-not-check as itself rather than reading green. WITH it those checks read through the desk-tools `deskread` verb on the forge seam. The default is offline because a check that quietly stopped looking is indistinguishable from one that looked and found nothing")
 	lintAuditMode := flag.Bool("lint-audit", false, "30-day check-firing audit (statusgen/01): sample daily commits, tally per-rule PROBLEM/NOTICE firings, flag COLD (0-firing, un-tested) rules as retirement candidates — read-only, advisory, never retires a rule")
+	instrumentAuditMode := flag.Bool("instrument-audit", false, "instrument-liveness audit: for every flag declared in statusgen/main.go, report the consumers found by grepping the roots (default: <root>/{.github/workflows,plugins/assay/skills,plugins/assay/scripts,Makefile,tools/desk/cmd}) — WIRED (>=1), COLD (0), or DARK (0 AND declared >30d ago). Read-only, advisory; --lint NOTICEs each DARK flag, nothing is retired. With --json emits {flags:[...]}. --roots overrides the grep roots")
+	instrumentRootsFlag := flag.String("roots", "", "--instrument-audit: comma-separated directories to grep for flag consumers (default: the day-one consumer surface under --root); a house root adds its own workflows/skills/tools")
 	allowEmptyRootFlag := flag.Bool("allow-empty-root", false, "allow a root whose docs/streams exists but resolves to 0 streams (default: hard PROBLEM, same class as a missing/unreadable docs/streams); with this flag it downgrades to a NOTICE, for a root that has genuinely adopted the methodology but has not authored a stream yet")
 	diffBaseFlag := flag.String("diff-base", "", "--lint only: make the lint DIFFERENTIAL against this base ref (e.g. refs/remotes/origin/main). Evaluates the register at the merge-base of HEAD and <ref> AND at the working tree, fires PROBLEM only for problems the diff INTRODUCES, and demotes pre-existing base-side problems to NOTICE; always prints a base-vs-diff summary line. Fails safe to a full-strength lint (nothing demoted) when the base cannot be resolved or materialised")
 	var budget budgetFlags
@@ -1484,6 +1533,7 @@ func main() {
 	registerLinksFlag := flag.Bool("register-links", false, "backfill: rewrite bare F-NN/I-NN tokens in brief files to linked form")
 	span := flag.Int("span", defaultSpanOfControl, "Next-up span-of-control cap: max items shown (default 20 — agent-worked queue, not the human EEMUA-191 7±2)")
 	overflowT := flag.Int("overflow-threshold", -1, "eligible-brief count above which Next-up flags overflow; <0 = same as --span")
+	mainHealthFlag := flag.String("main-health", "", "the INJECTED main-health input for the drives critical tier's main-red arm: `green`, or `red:<owner/repo#N>[,...]` naming the issue(s) tracking the red main. statusgen never reads live CI; omit the flag and the arm reports could-not-check (named on the board while a drive is active), never a silent green")
 	requireClaimsFlag := flag.Bool("require-claims", false, "fail (exit 1, nothing written) instead of emitting a degraded board when the origin claim read fails")
 	// FINDINGS alarm-KPI knobs (ISA-18.2). Standalone
 	// block so sibling statusgen flag PRs merge trivially.
@@ -1705,6 +1755,7 @@ func main() {
 			"--review-rework":         *reviewReworkMode,
 			"--decision-latency":      *decisionLatencyMode,
 			"--net-flow":              *netFlowMode,
+			"--instrument-audit":      *instrumentAuditMode,
 			"--assayscore":            *assayScoreMode,
 			"--roadmap":               *roadmapMode,
 			"--bottleneck":            *bottleneckMode,
@@ -1762,6 +1813,14 @@ func main() {
 	// the board must still render, wearing its degradation. A caller that
 	// dispatches from the board sets this and gets exit 1 instead.
 	requireClaims = *requireClaimsFlag
+	// The main-red arm's injected input (drives phase 3). A malformed value is a
+	// usage refusal — never a silent fallback to could-not-check or to green.
+	if mh, err := parseMainHealth(*mainHealthFlag); err != nil {
+		fmt.Fprintln(os.Stderr, "statusgen:", err)
+		os.Exit(2)
+	} else {
+		activeMainHealth = mh
+	}
 	// Fail-closed opt-in for a zero-stream root. Default off: a
 	// root that resolves to 0 streams is a hard PROBLEM, matching the three
 	// adjacent cases (missing/unreadable docs/streams, nonexistent root) that
@@ -2151,6 +2210,12 @@ func main() {
 	// rule itself and never gates CI.
 	if *lintAuditMode {
 		os.Exit(runLintAudit(*root))
+	}
+	// Instrument-audit (the liveness balancing loop) — read-only advisory sub-command: classify
+	// every declared statusgen flag WIRED/COLD/DARK by consumer grep, --json optional.
+	// Never retires a flag itself; --lint NOTICEs DARK flags.
+	if *instrumentAuditMode {
+		os.Exit(runInstrumentAudit(*root, splitInstrumentRoots(*instrumentRootsFlag), *doraJSON))
 	}
 
 	// Wire the run's forge reader. The default (set at forgeReaderForRun's

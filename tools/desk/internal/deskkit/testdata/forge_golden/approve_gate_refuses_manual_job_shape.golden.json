@@ -1,0 +1,5 @@
+{
+  "requests": [],
+  "err": "could-not-check: GitHub has no \"manual-job\" gate shape — a GitHub deployment gate is a \"environment\" (pending deployment) approval; refusing rather than approving something else",
+  "not_found": false
+}

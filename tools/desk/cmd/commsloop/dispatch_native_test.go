@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,12 +22,28 @@ import (
 // os/exec trick internal/acp and verifyloop's own dispatch_native_test.go use: the
 // native dispatch spawns os.Args[0] as its runner, distinguished by an env var, so the
 // whole native path is exercised with no real agent and no network.
+//
+// Around m.Run it also enforces the source-tree guard (srctree_test.go): a run that
+// leaves a new path in the package directory fails, naming the path.
 func TestMain(m *testing.M) {
 	if mode := os.Getenv("COMMSLOOP_FAKE_ACP"); mode != "" {
 		runFakeExecutorAgent(mode)
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	before, berr := sourceTreeFiles(".")
+	code := m.Run()
+	after, aerr := sourceTreeFiles(".")
+	switch {
+	case berr != nil || aerr != nil:
+		fmt.Fprintf(os.Stderr, "source-tree guard: could-not-check (before: %v, after: %v)\n", berr, aerr)
+		code = 1
+	default:
+		if stray := strayPaths(before, after); len(stray) > 0 {
+			fmt.Fprintf(os.Stderr, "source-tree guard: the test run wrote into the package source directory instead of t.TempDir(): %s\n", strings.Join(stray, ", "))
+			code = 1
+		}
+	}
+	os.Exit(code)
 }
 
 // runFakeExecutorAgent implements just enough of the ACP agent side to drive
@@ -303,7 +320,10 @@ func TestNativeDispatchRoundTrip(t *testing.T) {
 
 func TestNativeDispatchRefusesWithoutRunner(t *testing.T) {
 	executorTestHome(t)
-	l := &Loop{Native: true}
+	// Root is load-bearing even for a refusal: Dispatch delivers to the addressee's
+	// mailbox BEFORE the native gate, so an empty Root wrote mailbox/ into the
+	// package source directory (#1947).
+	l := &Loop{Root: t.TempDir(), Native: true}
 	_, err := l.Dispatch(executorItem("x", "worker-desk"), loopengine.TierSession)
 	if err == nil || !strings.Contains(err.Error(), "no runner configured") {
 		t.Fatalf("native dispatch with no runner must refuse, got: %v", err)

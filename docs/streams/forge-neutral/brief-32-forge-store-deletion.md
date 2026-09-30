@@ -111,7 +111,7 @@ Options:
 3. **Do not delete** — keep the old storage; the reviewing identity keeps a reason to hold
    write access wherever a cell has not switched.
 
-Default if no answer: none — the deletion does not land without an answer.
+Default if no answer: none — blocks until answered. The deletion does not land without one.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Leave commits per the task

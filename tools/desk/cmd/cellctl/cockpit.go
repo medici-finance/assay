@@ -20,6 +20,11 @@ import (
 // whose app is not answering falls THROUGH to tmux under `auto` rather than failing. An EXPLICIT
 // cockpit that is not available is a refusal naming exactly what is missing — never a silent
 // fall-through.
+// envAssayCockpit is the variable every host role window carries: the cell's RESOLVED cockpit
+// (tmux|herdr|orca, never auto), which the worker-desk skill's worktree-create step reads to pick
+// its arm (tmux = the plain `git worktree add` arm). One value per cell, not per tool.
+const envAssayCockpit = "ASSAY_COCKPIT"
+
 type cockpitResolution struct {
 	Cockpit string
 	Why     string

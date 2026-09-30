@@ -105,6 +105,21 @@ type BriefFile struct {
 	// wrong TYPE is a parse error; the ref grammar and the dereference are checked
 	// in designgate.go, not here (the same split satisfies:/Satisfies uses).
 	Design string
+	// Budget is the optional brief-v1 `budget:` key, beside `effort:`: the spend
+	// the brief is sized to, WITH its unit (`400k tokens`, `25 USD`). nil when
+	// absent — the neutral default, meaning no budget checkpoint applies. The raw
+	// scalar is kept as written (a bare YAML number is stringified) so a unitless
+	// `budget: 400` reaches the semantic check and is flagged by value, rather
+	// than dying as a type error that would hide every other check on the brief.
+	// The grammar lives in costoutcome.go.
+	Budget *string
+	// Outcome is the optional brief-v1 `outcome:` key: the id of the requirement
+	// in the requirement register (registers-v1 §6) whose outcome this brief is
+	// meant to move, or the literal `none`. nil when absent. A wrong TYPE is a
+	// parse error; the grammar and the register dereference live in
+	// costoutcome.go, and the absence NOTICE for post-cutover briefs lives in
+	// lifecyclelint.go.
+	Outcome *string
 	// Consumers is the optional brief-v1 `consumers:` list (brief-rule 9): the
 	// readers of a shared value this brief changes,
 	// each routed `<site>: fixed-here | follow-up <stream>/<NN> | out-of-scope
@@ -182,6 +197,10 @@ var (
 	// checking whether the section has any real content. An unterminated
 	// comment (`<!--` with no closing `-->`) is stripped to end-of-input — it
 	// consumes the rest of the section, so it cannot masquerade as content.
+	// That end-of-input reading is right for the CONTENT check only: row
+	// parsers use stripRowComments (htmlcomment.go), which never drops text
+	// after an unterminated opener (#1939). TestCommentStripSitesAllowList
+	// keeps this regexp confined to evidenceHasContent.
 	htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?(?:-->|$)`)
 
 	// briefSchemaCurrent is the base brief schema version; recognizedBriefSchemas
@@ -828,6 +847,32 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 			addBad("design must be a string")
 		}
 	}
+	// budget is an OPTIONAL but KNOWN key: the spend the brief is sized to, with
+	// its unit. Any scalar is accepted here and stringified — `budget: 400` parses
+	// as a YAML int, and it must reach checkBriefFiles to be flagged by value as
+	// missing its unit. Only a non-scalar (a list or mapping) is a parse error.
+	if v, ok := data["budget"]; ok {
+		switch b := v.(type) {
+		case string:
+			bf.Budget = &b
+		case int, int64, float64:
+			s := fmt.Sprint(b)
+			bf.Budget = &s
+		default:
+			addBad("budget must be a scalar like \"400k tokens\" or \"25 USD\"")
+		}
+	}
+	// outcome is an OPTIONAL but KNOWN key: the requirement id this brief should
+	// move, or `none`. A wrong TYPE (including an empty `outcome:`) is a parse
+	// error; the grammar and the register dereference are checked semantically
+	// in checkBriefFiles so the bad value is echoed back.
+	if v, ok := data["outcome"]; ok {
+		if s, ok := v.(string); ok {
+			bf.Outcome = &s
+		} else {
+			addBad("outcome must be a string (a requirement id REQ-<slug>, or none)")
+		}
+	}
 	// decision-issue is an OPTIONAL but KNOWN key: the GitHub
 	// issue # for the open needs-decision issue tracking this brief. Absence is
 	// fine (most briefs do not need a human decision); a wrong TYPE is an error.
@@ -1267,6 +1312,17 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 		return reg
 	}
 	v2IDOwner := map[string]string{} // uuid -> first brief path that used it
+	// outcome: dereferences against the requirement register of the brief's OWN
+	// root, read once per root (costoutcome.go).
+	outcomeRegCache := map[string]outcomeRegister{}
+	outcomeRegisterFor := func(root string) outcomeRegister {
+		if r, ok := outcomeRegCache[root]; ok {
+			return r
+		}
+		r := loadOutcomeRegister(root)
+		outcomeRegCache[root] = r
+		return r
+	}
 
 	for _, s := range streams {
 		for _, path := range briefFilePaths(s) {
@@ -1380,6 +1436,24 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				}
 				notice("%s: satisfies: %s (reserved, not gating)", path, requirementCountPhrase(len(bf.Satisfies)))
 			}
+			// budget: / outcome: — the cost and outcome lines. Absence of either
+			// is never a PROBLEM here (the post-cutover outcome NOTICE lives in
+			// lifecyclelint.go). A present budget must carry its unit; a present
+			// outcome must be `none` or a requirement id the register defines.
+			if bf.Budget != nil {
+				if reason := budgetProblem(*bf.Budget); reason != "" {
+					add("%s: budget %s", path, reason)
+				}
+			}
+			if bf.Outcome != nil {
+				probs, notes := outcomeChecks(*bf.Outcome, graphReposFor(s.Root), outcomeRegisterFor(s.Root))
+				for _, p := range probs {
+					add("%s: outcome %s", path, p)
+				}
+				for _, n := range notes {
+					notice("%s: outcome %s", path, n)
+				}
+			}
 			anyYes := false
 			for _, v := range bf.Risk {
 				if v == "yes" {
@@ -1441,6 +1515,10 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				// rule; legacy briefs keep Schema="" and Depends nil.
 				row.Schema = bf.Schema
 				row.Depends = bf.Depends
+				// unblocks: rides along for the critical tier's reciprocated
+				// dependency graph only (buildReciprocatedRevDeps) — never a
+				// score input; the score keeps reading Depends alone.
+				row.Unblocks = bf.Unblocks
 				// gates:/feathers: worm into the Brief row for the eligibility
 				// evaluator (graph-execution/01) — brief-v2 only; nil for
 				// brief-v1/legacy briefs, exactly like Depends above.
@@ -1477,6 +1555,16 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				// the board. NEVER a Next-up score input (F-09 scope note).
 				if validHomedInShape(bf.HomedIn) {
 					row.HomedIn = bf.HomedIn
+				}
+				// issues: rides along as FULL refs for the critical tier's main-red
+				// arm only (drivecritical.go). A bare number resolves against the
+				// stream's own repo:; with none declared it cannot resolve, so it
+				// is left off (the arm never guesses a repo). Never a score input.
+				row.IssueRefs = nil
+				if s.Repo != "" {
+					for _, n := range bf.Issues {
+						row.IssueRefs = append(row.IssueRefs, fmt.Sprintf("%s#%d", s.Repo, n))
+					}
 				}
 				// measures worms into the Brief row for the drain-before-
 				// instrument eligibility gate. Wired UNCONDITIONALLY — unlike
@@ -1685,8 +1773,10 @@ func newDepEdgeIndex() *depEdgeIndex {
 // edges. This flags any depends edge A→B that B does not reciprocate with an
 // `unblocks: A` — a genuine dependency is two-sided (the author-brief methodology
 // requires both Depends-on and Unblocks), so an unreciprocated inbound edge is
-// spurious. Reconciling every edge two-sided makes blockedCount reflect only
-// genuine, both-sided dependencies and un-gameable into the tier.
+// spurious. The critical tier's high-unblocks arm counts reciprocated edges only
+// (buildReciprocatedRevDeps), so a one-sided edge cannot lift a brief there. That
+// is a bar on one endpoint writing an edge alone, not proof an edge is genuine:
+// one change that writes both endpoints still produces a reciprocated edge.
 //
 // TIER — NOTICE, not PROBLEM (Ian's ruling). This is a data-quality
 // lint. The rule is stricter than the pinned release's, and ~104 legitimate
@@ -1735,7 +1825,7 @@ func (idx *depEdgeIndex) reciprocityNotices() []string {
 // zeros and alphanumeric suffixes ("12a"). selfID is the id of the brief that
 // DECLARED the ref: a ref equal to it is self-referential (`a depends on a`) and a
 // hard PROBLEM — part of the dependency-edge reciprocity gate (phase 3) that keeps
-// blockedCount un-gameable. Pass "" to skip the self-ref check.
+// a self-loop out of blockedCount. Pass "" to skip the self-ref check.
 func checkRef(add func(string, ...any), path, kind, ref, selfID string, byName map[string]*Stream) {
 	if selfID != "" && ref == selfID {
 		add("%s: %s %q is self-referential (a brief may not %s itself) — a self-loop is a spurious dependency edge that would inflate blockedCount", path, kind, ref, kind)

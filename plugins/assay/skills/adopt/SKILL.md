@@ -34,16 +34,40 @@ table.
 `install-statusgen` · `scaffold-registers` · `scaffold-streams` · `add-statusgen-ci` · `install-desk-plugin`
 · `install-main-guard` · `first-board` · `setup-reviewer-app`. Full commands + Verify checks: guide **CORE §3**.
 
-> **`install-statusgen` installs the sha256-pinned release binary** (`.assay-versions` + `gh release
-> download`) — it does **not** copy `statusgen/` source. Vendoring is retired as a recommendation; the primitive was named `vendor-statusgen` until 2026-08-02.
+> **`install-statusgen` installs the sha256-pinned release binary** — a plain HTTPS fetch of the
+> pinned asset, verified against the digest in the target's `.assay-versions` and REFUSED on a
+> mismatch or on a digest that cannot be read (`<bundle>/scripts/assay-install.sh acquire`). No
+> forge CLI is involved, on GitHub or GitLab. It does **not** copy `statusgen/` source. Vendoring
+> is retired as a recommendation; the primitive was named `vendor-statusgen` until 2026-08-02.
+
+**Per forge.** Five of the eight are forge-neutral (`install-statusgen`, `scaffold-streams`,
+`scaffold-registers`, `install-desk-plugin`, `first-board`). `add-statusgen-ci` is per forge but
+delegated whole to `statusgen init`, which writes the GitHub workflow or `.gitlab-ci.yml` from the
+target's `origin` — never re-author it. The three that need a forge act are expressed per forge,
+never via a forge CLI:
+
+- **`create-labels`** — GitHub: a one-off human/admin act at the repo's label settings (the list
+  is the guide's CORE §3 `create-labels`); GitLab: created by the human-run
+  `tools/create-fleet-gitlab.sh`. `deskflip` creates the PR-state pair on first use on either
+  forge; no desk verb provisions the whole set yet (#1559).
+- **The reviewer grant (`setup-reviewer-app`)** — GitHub: a reviewer GitHub App; GitLab: a reviewer
+  service account (`tools/create-fleet-gitlab.sh`). Both human; `deskroster preflight` reads the
+  grant back.
+- **`install-main-guard`** — the client hook is plain git on either forge; the server-side
+  counterpart (GitHub ruleset / branch protection, GitLab protected branch push-access list) is
+  human, and `repohardenguard` reads it back.
+
+The full table, with the two-principals prerequisite per forge, is in `assay:install` (*CORE
+primitives per forge*, *Per-forge prerequisites*). `gh` / `glab` are optional convenience reads
+only — no primitive requires either.
 
 > **BOOTSTRAP-SAFE GUARD (required in `add-statusgen-ci`):** the regen step must guard on
 > `git status --porcelain -- STATUS.md`, **never** `git diff --quiet -- STATUS.md` — the latter can't
 > see the untracked first board, so a fresh repo never generates one.
 
 ## 3. NEVER autonomous — STOP and escalate to a human
-- **Reviewer GitHub App** creation/install — the identity that posts approvals, which a plain worker
-  session cannot post as; a placeholder or self-minted stand-in defeats the entire mechanism.
+- **Reviewer identity** creation/install (a GitHub App, or a GitLab service account) — the identity
+  that posts approvals, which a plain worker session cannot post as; a placeholder or self-minted stand-in defeats the entire mechanism.
   Claim only that (**not** "tamper-evident" — a retired overclaim): guide **§1a** has the three
   recorded reasons the stronger claim is false; "tamper-evident" and kin are retired as overclaims.
 - **Repo creation** + admin/permission grants.
@@ -51,12 +75,12 @@ table.
 - **git history rewrite** (`filter-repo`) for a carve-out.
 - **Private-repo CI auth** (`GOPRIVATE` / cross-repo checkout token).
 
-Hand the human the exact values (App name + permissions, repo slug + module path, etc.), wait for
+Hand the human the exact values (identity name + permissions, repo slug + module path, etc.), wait for
 confirmation, and never fabricate the outcome. The agent authors branches and opens **draft** PRs only.
 
 ## 4. Prove the install
-Walk ONE trivial seed brief through the FULL lifecycle — `todo → in-progress → implemented → verified →
-done` — so the desks, the board, the reviewer App, and the human-merge gate each fire exactly once
+Walk ONE trivial seed brief across the FULL lifecycle — `todo → in-progress → implemented → verified →
+done` — so the desks, the board, the reviewer identity, and the human-merge gate each fire exactly once
 (guide's "hello-world loop"). If that completes, the machinery works.
 
 ## 5. Codex CLI — the second-harness install arm

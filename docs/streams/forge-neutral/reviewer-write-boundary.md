@@ -1,6 +1,8 @@
 # Reviewer write boundary — the claim store resolved in the tool layer, and duties that follow it
 
-**Status:** draft
+**Status:** approved
+**Approval:** approved by the human driver on #1552 (comment 5800803636, 2026-09-23).
+**Routes-to:** docs/streams/forge-neutral/
 **Issue:** #1267 · **Stream:** [forge-neutral](README.md) · **Authored:** 2026-09-17 ·
 **Base read:** `c67cc371` (origin/main)
 

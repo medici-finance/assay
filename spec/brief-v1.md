@@ -61,7 +61,7 @@ validated against the value set given.
 | Field | Type | Requirement | Description |
 |-------|------|-------------|-------------|
 | `value` | string | OPTIONAL | Coarse worth signal — one of `low`, `med`, `high`. Absent is equivalent to `med`. Feeds the Next-up score (`lifecycle-v1.md` §5.2). An out-of-set value MUST be flagged. |
-| `exec-tier` | string | OPTIONAL | One of `any` or `strong`. `strong` asserts the brief MUST NOT be dispatched to a cheap-tier implementer regardless of `effort` (section 6). An out-of-set value MUST be flagged. |
+| `exec-tier` | string | OPTIONAL | One of `any` or `strong`. `strong` asserts the brief MUST NOT be dispatched to a cheap-tier implementer regardless of `effort` (section 6). The value is DERIVED, not chosen: `strong` when any of four questions is answered yes — (a) Does the Task require design decisions the facts do not fully pre-specify? (b) Does correctness depend on cross-component or cross-artifact reasoning? (c) Is it code where a subtle implementation error survives the brief's own tests (auth, funds, concurrency, safety plumbing)? (d) Is this a design brief raised by an error-class trigger (a recurring defect class, rather than one symptom, has accrued enough counted instances or merged fixes to be owed a design)? — and `any` otherwise. An out-of-set value MUST be flagged. |
 | `exec-tier-why` | string | CONDITIONAL | One-line rationale. REQUIRED when `exec-tier` is `strong`; a `strong` brief without it MUST be flagged. |
 | `decision-issue` | integer | OPTIONAL | Tracker issue that carries the human sign-off for a `gate: human` brief. A conforming linter SHOULD emit a non-fatal notice when a `gate: human` brief is in flight (`in-progress`, `implemented`, or `verified`) without one, and MUST NOT hard-error on its absence. |
 | `domain` | string | OPTIONAL | Cynefin classification of the work — one of `clear`, `complicated`, `complex`, or `chaotic`. Absent is equivalent to `complicated` (the safe Ordered default) at read time. An out-of-set value MUST be flagged. |
@@ -70,6 +70,8 @@ validated against the value set given.
 | `measures` | string | OPTIONAL | Name of the process queue this brief instruments (drain-before-instrument). The only wired queue is `verification-debt`. Absent means the brief is not an instrumentation brief. A present value MUST name a wired queue; a present-but-unrecognized name, or a present-but-empty value, MUST be flagged. |
 | `satisfies` | array[string] | OPTIONAL | The requirements this brief was written against, as requirement references — `REQ-<slug>` in-repo, or `<alias>:REQ-<slug>` cross-repo through the `docs/streams/graph-repos.yaml` alias registry (`registers-v1.md` §6.5). Absence MUST NEVER be flagged on any brief. A present entry that does not match the grammar MUST be flagged; a wrong TYPE is a parse error. A conforming linter MUST emit a NOTICE for a brief carrying the key. The citation feeds the corpus-wide traceability checks §6.5 defines: a `satisfies:` naming an in-repo requirement that does not exist is a `dangling-satisfies` PROBLEM, and a forward brief in a `traced:` stream that cites nothing is an advisory `untraced-brief` NOTICE (§3.3). |
 | `design` | string | CONDITIONAL | The design-decision record this brief was approved against, as a typed reference `DR-<slug>` into the DECISIONS register (`registers-v1.md` §7). REQUIRED for a **risk-gated** brief in the design-approval gate's scope (`lifecycle-v1.md` §4.4) once it is at `in-progress` or later; OPTIONAL — and never flagged when absent — otherwise. A present value that is not a valid `DR-<slug>` reference, or that dereferences to no record in the register, MUST be flagged; a wrong TYPE is a parse error. The gate is grandfathered (§4.4), so absence is flagged only for briefs in the gate's live scope, never for grandfathered legacy briefs. |
+| `budget` | scalar | OPTIONAL | What the brief is sized to spend, beside `effort`, WITH its unit: `<amount>[k\|M] <unit>` (the multiplier is case-sensitive: `k` thousand, `M` million), the unit being `tokens` or a three-letter currency code (`400k tokens`, `25 USD`). Absent means no budget checkpoint applies and MUST NOT be flagged. A present value without a unit (`budget: 400`), with an unrecognised unit, or with a non-positive amount MUST be flagged by value; a bare number is read as the scalar it is so it reaches that flag rather than failing as a type error. A non-scalar is a parse error. |
+| `outcome` | string | OPTIONAL | What the brief is meant to move: a requirement id from the requirement register (`registers-v1.md` §6) — `REQ-<slug>` in-repo or `<alias>:REQ-<slug>` cross-repo, the same grammar as `satisfies` — or the literal `none`. The register's ids ARE the vocabulary; there is no second one. A value that is neither `none` nor a requirement reference MUST be flagged, and so MUST a well-formed in-repo id the register does not define (an unknown outcome id). A cross-repo id names a register the offline linter cannot read and is a could-not-check NOTICE, never a pass. A wrong TYPE is a parse error. Absence is never a PROBLEM; a conforming linter SHOULD emit an advisory NOTICE for a brief authored after the key's introduction that carries neither an id nor `none` — `none` is a decision, absence is not. |
 | `parallel-streams` | array[mapping] | OPTIONAL | Declared shards of an intra-brief split. Each entry is a mapping with a REQUIRED `name` (string) and an OPTIONAL `files` (array of path globs the shard owns); no other key is permitted in an entry. Absent means one worker per brief. Only the entry SHAPE is validated in frontmatter — whether a declared split may actually be dispatched is decided by `statusgen shardcheck` against the file tree, not by the frontmatter linter. A declaration that parses is a request, not a permission. |
 | `split-from` | string | OPTIONAL | The `<stream>/<NN>` id of the brief this brief was split off from — the explicit parent for the split-flag conservation gate (§3.4), used when the parentage is NOT encoded in the numbering (a split across streams, or a renumbered child). Absent means the brief is not a declared split child. A value that is not a `<stream>/<NN>` in-repo brief reference, or that names the brief itself, MUST be flagged; a wrong TYPE is a parse error. A value that does not resolve to a brief in the tree is a `could-not-check` NOTICE (the parent may have been retired in the same change), never a silent pass. |
 
@@ -80,7 +82,8 @@ with the `risk` answers, any `wave` value inconsistent with `depends`, any empty
 `sources` list, any risk-gated brief missing `gate-why`, any out-of-set `value` or
 `exec-tier`, and any `exec-tier: strong` brief missing `exec-tier-why`. It MUST also flag
 any out-of-set `domain`, `blocked-by`, or `measures` value, any malformed `homed-in`
-shape, and any `parallel-streams` entry that carries a key other than `name`/`files`, is
+shape, any `budget` without a unit, any `outcome` that is neither `none` nor a registered
+requirement id, and any `parallel-streams` entry that carries a key other than `name`/`files`, is
 missing `name`, or gives `name` a non-string value. For every optional field in section
 3.2 the rule is the same: an ABSENT field is never flagged, and a wrong *type* is a parse
 error, while a present-but-out-of-set *value* is the semantic flag described here.
@@ -161,9 +164,9 @@ The body MUST contain a `## Context` section. It MUST include:
 
 If the brief changes a SHARED VALUE (a party, identity, environment variable name,
 configuration key, field meaning, wire/JSON format, or default — anything another
-component reads), the Context section MUST include a `consumers:` line that greps
-every reader and lists each with a disposition: `fixed-here`, `follow-up <stream>/NN`,
-or `out-of-scope <reason>`.
+component reads), the brief MUST carry a `consumers:` frontmatter field (a schema field in
+`schemas/brief-v1.json` and `schemas/brief-v2.json`) that greps every reader and lists each
+with a disposition: `fixed-here`, `follow-up <stream>/NN`, or `out-of-scope <reason>`.
 
 If the brief's Task creates a new component, service, or tool — or substantially
 changes where an existing component's logic lives (extracting or dissolving a domain
@@ -210,6 +213,37 @@ negative control required by §4.4. For a flat tool with no extracted boundary, 
 observable behavior and relevant failure paths; do not invent a package boundary just to
 satisfy this requirement.
 
+Every NEW brief's Context section MUST include a `design-fit:` block. It makes the author
+answer where the change belongs, what it replaces and how much weight it adds before any
+implementer starts, and gives the reviewer something to hold the diff to. Five keys:
+
+```
+design-fit:
+  owner: <the one module that owns the meaning this brief touches, or n/a>
+  contract: <an S-<slug> row id of the project's semantic-owner index, or none — <why>>
+  retires: [<mechanism/refusal/flag/test this brief removes>, ...]   # [] is an answer
+  weight: <signed delta per ratcheted dimension: verbs, flags, refusals, rule-text lines>
+  why-add: <REQUIRED when any weight delta is positive: why the capability cannot live
+           in the owner, and what removal was considered instead; n/a otherwise>
+```
+
+`contract` names a row of the project's semantic-owner index (in this repository,
+`docs/contracts.md` §"Semantic owners"), or says `none` and why. Like `layering:`, the
+block is Context text, not frontmatter: no schema field, conformance check or lint reads it
+while its grammar settles. (`consumers:` differs: it is a frontmatter schema field, read by
+`statusgen --lint` and `statusgen --consumers`.) Legacy briefs are not back-filled. Two
+rules keep it from becoming a delete-everything bias:
+
+1. **Consolidate meaning; preserve independent enforcement.** A second *owner* of one
+   meaning is a finding. A second *enforcement point* at a different trust boundary, failing
+   for a different reason, is a legitimate layer, not a duplicate.
+2. **Retiring a control at a trust boundary** names the layer that still refuses the same
+   threat, and carries a Verify row proving that layer refuses it with the retired layer
+   absent. Tests that pinned a retired refusal retire with it; the reviewer checks that the
+   invariant is still covered at its owner, not that every old test survives. This rule adds
+   an obligation and grants no authority: retiring a security or access control is still
+   subject to the `risk`/`gate` derivation (§3.1) like any other change.
+
 ### 4.2 Ground rules
 
 The body MUST contain a `## Ground rules` section. At minimum, it MUST state:
@@ -233,6 +267,38 @@ The body MUST contain a `## Verify` section with an executable table:
 
 - Every row MUST contain a literal command a non-implementer can run and an expected
   exit code or output match.
+- The command is written as an inline code span in the Command cell. A cell whose
+  first code span is its command (a cell that is exactly one code span, optionally
+  followed by prose or a parenthetical) needs no marker. A cell whose first code span
+  is NOT its command (a prose cell that mentions a function, a file or a word before
+  the real command) MUST mark its command with the explicit command marker: a code
+  span whose content starts `cmd:`, e.g. `` `cmd: go test ./pkg/ -count=1` ``. A
+  tool that executes Verify rows MUST prefer the first honoured `cmd:`-marked span
+  over any other text in the cell; with no honoured marker, each tool keeps its
+  unmarked lift (the first code span, or the unwrapped cell). An executor MAY decline
+  to run an unmarked first span that is a mention rather than a command (a file, an
+  identifier, a word ahead of the command span) and record the row could-not-run,
+  since running the mention measures nothing and can exit 0. A cell SHOULD NOT carry
+  more than one marked span, and a marked command SHOULD be able to fail (`true`,
+  `:` or `exit 0` passes whatever the tree holds). (The marker is `cmd:`, not `run:`, because `run:` is a
+  CI workflow step key that Verify prose quotes; a quoted workflow line must never
+  become the command.)
+- A marker is honoured only where the rendered brief shows it as code, so a reader of
+  the rendered table sees the command that runs. Code spans are found as CommonMark
+  renders them: a backslash-escaped backtick is literal text, and a run of N
+  backticks closes only on the next run of exactly N. A cell whose prose (outside
+  code spans) carries an unescaped `<` or `[` (raw HTML, an HTML comment, a link or
+  an image, any of which can hide text from the rendered table), or a dollar in any
+  spelling — bare `$`, escaped `\$`, or a character reference such as `&#36;`
+  (GitHub renders dollar-wrapped text as math, not code, and decodes character
+  references first, so any `&…;` reference in prose counts) — has no honoured
+  marker. Neither does a cell where a code span's opening backticks are fused to the
+  text before them (an autolink, a `~~` strikethrough or a dollar can swallow them):
+  only whitespace, the start of the cell or a `(` may lead a span. The marker span
+  itself MUST follow whitespace or the start of the cell, and MUST end the cell or be
+  followed by whitespace or plain punctuation (`.` `,` `;` `:` `!` `?` `)`). Write
+  `\<` or `\[` to use those characters in prose; keep dollars out of a marked
+  Command cell.
 - Rows MUST NOT be prose-only assertions without a command.
 - Prose deliverables (docs, articles) MUST use PRESENCE gates: checks that required
   elements exist (file, section, token). The Verify section MUST state that

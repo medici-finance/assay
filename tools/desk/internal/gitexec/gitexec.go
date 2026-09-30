@@ -66,8 +66,9 @@ var allowlist = map[verbTool]bool{
 	// scratch-worktree family (create/remove/prune around the trial) — a separately
 	// documented go-git gap (no linked-worktree support at all), explicitly
 	// out-of-scope-for-07 and left to the named follow-on stream, not re-justified
-	// here. Every other deskmerge verb (rev-parse, rev-list, merge-base, remote, the
-	// non-conflict diff reads, commit, update-ref) migrated to gitcore in this brief.
+	// here. Every other deskmerge verb (rev-parse, rev-list, merge-base, the non-conflict diff
+	// reads, commit, update-ref) migrated to gitcore in this brief; `remote` did too, and is back
+	// below for the origin-resolution read (#1623).
 	{tool: "deskmerge", verb: "merge"}:    true,
 	{tool: "deskmerge", verb: "diff"}:     true,
 	{tool: "deskmerge", verb: "add"}:      true,
@@ -76,6 +77,12 @@ var allowlist = map[verbTool]bool{
 	// Transport verbs not yet migrated — briefs 05 (fetch) and 06 (push).
 	{tool: "deskmerge", verb: "fetch"}: true,
 	{tool: "deskmerge", verb: "push"}:  true,
+	// `remote` is back ONLY for `remote get-url [--push] --all origin` — the read of where the
+	// fetch and push above will actually connect (#1623). Brief 07 had migrated it to gitcore's
+	// RemoteURL, which reads the repository config file alone: it misses worktree- and
+	// global-scope values, global insteadOf rules and multi-valued lists, so a gate on it passed
+	// a repo git then never used. Only git can say what git will resolve, so the gate asks git.
+	{tool: "deskmerge", verb: "remote"}: true,
 
 	// Read-heavy tools (briefs 03-05).
 	{tool: "deskgit", verb: "ls-remote"}:         true,

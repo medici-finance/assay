@@ -63,14 +63,14 @@ type RepresentedPR struct {
 	Merged bool
 }
 
-// RepresentedBriefPRs maps each brief id (`<stream>/<NN>`, lower-cased) to the OPEN or MERGED PR
-// that delivers it — its number AND its state — keyed on the PR body's `Brief:` link trailer, NEVER a
-// branch name. When several PRs represent one brief the FIRST in list order wins (deterministic; the
-// caller needs only one to report). A PR with no parseable `Brief:` trailer, or one carrying an
-// `Issue:` link, contributes nothing — it names no brief. It is the single source RepresentedBriefs
-// and RepresentedBriefSet reduce from, so the open/merged split can never drift from the number map.
-func RepresentedBriefPRs(prs []PRRef) map[string]RepresentedPR {
-	out := map[string]RepresentedPR{}
+// RepresentingPRsByBrief maps each brief id (`<stream>/<NN>`, lower-cased) to EVERY OPEN or MERGED
+// PR that names it in a `Brief:` link trailer, in list order. It is the multi-valued form a caller
+// needs when it may set one representing PR aside — the briefs-AUTHORING exemption (#1339,
+// briefauthoring.go) drops a PR that only wrote the brief, and the PR behind it must then still be
+// seen rather than hidden by a first-wins reduction. A PR with no parseable `Brief:` trailer, or one
+// carrying an `Issue:` or `Authors:` link, contributes nothing — neither names a DELIVERED brief.
+func RepresentingPRsByBrief(prs []PRRef) map[string][]RepresentedPR {
+	out := map[string][]RepresentedPR{}
 	for _, pr := range prs {
 		if !prRepresents(pr.State) {
 			continue
@@ -95,10 +95,23 @@ func RepresentedBriefPRs(prs []PRRef) map[string]RepresentedPR {
 			if id == "" {
 				continue
 			}
-			if _, seen := out[id]; !seen {
-				out[id] = RepresentedPR{Number: pr.Number, Merged: merged}
-			}
+			out[id] = append(out[id], RepresentedPR{Number: pr.Number, Merged: merged})
 		}
+	}
+	return out
+}
+
+// RepresentedBriefPRs maps each brief id (`<stream>/<NN>`, lower-cased) to the OPEN or MERGED PR
+// that delivers it — its number AND its state — keyed on the PR body's `Brief:` link trailer, NEVER a
+// branch name. When several PRs represent one brief the FIRST in list order wins (deterministic; the
+// caller needs only one to report). It is RepresentingPRsByBrief reduced to each brief's first PR,
+// and the single source RepresentedBriefs and RepresentedBriefSet reduce from, so the open/merged
+// split can never drift from the number map.
+func RepresentedBriefPRs(prs []PRRef) map[string]RepresentedPR {
+	all := RepresentingPRsByBrief(prs)
+	out := make(map[string]RepresentedPR, len(all))
+	for id, list := range all {
+		out[id] = list[0]
 	}
 	return out
 }

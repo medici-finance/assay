@@ -10,7 +10,7 @@ why: >-
   brief emits, so its output types are the contract the rest of M2/M3 is built on.
 wave: 2
 depends: ["quality/06"]
-unblocks: ["quality/08", "quality/10", "quality/11", "quality/13", "quality/14", "quality/15"]
+unblocks: ["quality/08", "quality/10", "quality/11", "quality/13", "quality/14", "quality/15", "quality/19"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

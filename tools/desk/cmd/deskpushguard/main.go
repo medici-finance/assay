@@ -73,7 +73,16 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	}
 	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help" || args[0] == "help") {
 		fmt.Fprintf(stderr, "deskpushguard — git pre-push hook: refuse push to MERGED/CLOSED PR branch\n")
+		fmt.Fprintf(stderr, "usage: deskpushguard <remote-name> <remote-url>   (hook invocation; stdin carries the ref lines)\n")
+		fmt.Fprintf(stderr, "       deskpushguard hook-install [--dir <githooks-dir>] [--force]\n")
+		fmt.Fprintf(stderr, "                                     write the platform-correct pre-push shim(s) into <dir>\n")
+		fmt.Fprintf(stderr, "                                     (default .githooks) -- sh on unix; pre-push + pre-push.cmd\n")
+		fmt.Fprintf(stderr, "                                     on windows. Both shims resolve the deskpushguard binary\n")
+		fmt.Fprintf(stderr, "                                     from PATH -- no absolute install-location literal.\n")
 		return deskkit.ExitOK
+	}
+	if len(args) > 0 && args[0] == "hook-install" {
+		return runHookInstall(args[1:], stderr)
 	}
 
 	// Running from source (unstamped) is a drift risk.

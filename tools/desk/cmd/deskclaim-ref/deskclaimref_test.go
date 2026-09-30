@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -29,12 +30,15 @@ type fakeStore struct {
 	n        int
 
 	// failure injection: the fail-closed (exit 6) paths.
-	readFails  bool // read/list return claimUnverifiable
-	writeFails bool // create/update return writeUnverifiable
+	readFails  bool // Read/List return ClaimReadUnverifiable
+	writeFails bool // CreateIfAbsent/UpdateFrom return ClaimWriteUnverifiable
+	// rejectCreate makes CreateIfAbsent report ClaimWriteRejected while no claim exists: the
+	// server refused the write for a cause other than a holder (#1631).
+	rejectCreate bool
 
 	// cause is the "<host>: <error>" attribution the real gogitStore records on a transport
-	// failure; the fake returns it from transportCause() so a verb-level test can assert the
-	// operator-facing message carries it (#727).
+	// failure or a server refusal of a write; the fake returns it from TransportCause() so a
+	// verb-level test can assert the operator-facing message carries it (#727, #1631).
 	cause string
 }
 
@@ -60,57 +64,60 @@ func (f *fakeStore) seedClaim(id, owner, state, branch string, age time.Duration
 	}
 }
 
-func (f *fakeStore) read(id string) (claimRef, claimStatus) {
+func (f *fakeStore) Read(id string) (deskkit.ClaimStoreRecord, deskkit.ClaimReadStatus) {
 	if f.readFails {
-		return claimRef{}, claimUnverifiable
+		return deskkit.ClaimStoreRecord{}, deskkit.ClaimReadUnverifiable
 	}
 	if c, ok := f.claims[id]; ok {
-		return claimRef{sha: c.sha, msg: c.msg, date: c.date}, claimHeld
+		return deskkit.ClaimStoreRecord{Version: c.sha, Msg: c.msg, Date: c.date}, deskkit.ClaimReadHeld
 	}
-	return claimRef{}, claimFree
+	return deskkit.ClaimStoreRecord{}, deskkit.ClaimReadFree
 }
 
-func (f *fakeStore) createIfAbsent(id, msg string) writeOutcome {
+func (f *fakeStore) CreateIfAbsent(id, msg string) deskkit.ClaimWriteOutcome {
 	if f.writeFails {
-		return writeUnverifiable
+		return deskkit.ClaimWriteUnverifiable
+	}
+	if f.rejectCreate {
+		return deskkit.ClaimWriteRejected
 	}
 	if _, ok := f.claims[id]; ok {
-		return writeRejected // the server-side CAS: a create loses against an existing ref
+		return deskkit.ClaimWriteRejected // the server-side CAS: a create loses against an existing ref
 	}
 	f.claims[id] = fakeClaim{sha: f.nextSHA(), msg: msg, date: f.now.Format(time.RFC3339)}
-	return writeApplied
+	return deskkit.ClaimWriteApplied
 }
 
-func (f *fakeStore) updateFrom(id, oldSHA, msg string) writeOutcome {
+func (f *fakeStore) UpdateFrom(id, oldSHA, msg string) deskkit.ClaimWriteOutcome {
 	if f.writeFails {
-		return writeUnverifiable
+		return deskkit.ClaimWriteUnverifiable
 	}
 	c, ok := f.claims[id]
 	if !ok || c.sha != oldSHA {
-		return writeRejected // the CAS: the ref moved (or vanished) under the caller
+		return deskkit.ClaimWriteRejected // the CAS: the ref moved (or vanished) under the caller
 	}
 	f.claims[id] = fakeClaim{sha: f.nextSHA(), msg: msg, date: f.now.Format(time.RFC3339)}
-	return writeApplied
+	return deskkit.ClaimWriteApplied
 }
 
-func (f *fakeStore) remove(id string) (writeOutcome, bool) {
+func (f *fakeStore) Remove(id string) (deskkit.ClaimWriteOutcome, bool) {
 	_, existed := f.claims[id]
 	delete(f.claims, id)
-	return writeApplied, existed
+	return deskkit.ClaimWriteApplied, existed
 }
 
-func (f *fakeStore) list() ([]string, claimStatus) {
+func (f *fakeStore) List() ([]string, deskkit.ClaimReadStatus) {
 	if f.readFails {
-		return nil, claimUnverifiable
+		return nil, deskkit.ClaimReadUnverifiable
 	}
 	var ids []string
 	for id := range f.claims {
 		ids = append(ids, id)
 	}
-	return ids, claimHeld
+	return ids, deskkit.ClaimReadHeld
 }
 
-func (f *fakeStore) branchExists(branch string) (bool, bool) {
+func (f *fakeStore) BranchExists(branch string) (bool, bool) {
 	if branch == "" || branch == "-" {
 		return false, true
 	}
@@ -120,14 +127,14 @@ func (f *fakeStore) branchExists(branch string) (bool, bool) {
 	return f.branches[branch], true
 }
 
-func (f *fakeStore) transportCause() string { return f.cause }
+func (f *fakeStore) TransportCause() string { return f.cause }
 
 // harness wires the fake into the tool's store seam and captures its output.
 func harness(t *testing.T, f *fakeStore) (rc func(args ...string) int, stdout, stderr *bytes.Buffer) {
 	t.Helper()
 	var so, se bytes.Buffer
 	oldBuild, oldOut, oldErr := buildStore, out, errOut
-	buildStore = func(_, _ string) (claimStore, error) { return f, nil }
+	buildStore = func(_, _ string) (deskkit.ClaimStore, error) { return f, nil }
 	out = &so
 	errOut = &se
 	t.Cleanup(func() { buildStore, out, errOut = oldBuild, oldOut, oldErr })
@@ -420,13 +427,13 @@ func TestProgressRefusedWhenClaimMovedUnderHolder(t *testing.T) {
 	f.seedClaim("at--stream--07", "owner-1", "claimed", "", time.Minute)
 	// Simulate the claim being stolen after acquire: its sha changes (a new tag), so the
 	// holder's explicit-old CAS no longer matches. The tool re-reads a stale sha via the seam
-	// by driving updateFrom with an sha that no longer matches — emulated by mutating the
+	// by driving UpdateFrom with an sha that no longer matches — emulated by mutating the
 	// stored sha out from under the read the tool just did.
 	run, _, se := harness(t, f)
 	// Wrap read so that after the tool reads the current sha, the store's sha is rotated,
-	// forcing updateFrom's CAS to reject.
+	// forcing UpdateFrom's CAS to reject.
 	moving := &movingStore{fakeStore: f}
-	buildStore = func(_, _ string) (claimStore, error) { return moving, nil }
+	buildStore = func(_, _ string) (deskkit.ClaimStore, error) { return moving, nil }
 	if rc := run("progress", "at--stream--07", "--repo", "medici-finance/assay", "--owner", "owner-1", "--branch", "feat/x"); rc != exitRefused {
 		t.Fatalf("raced progress rc = %d, want 5 (refused); err=%s", rc, se.String())
 	}
@@ -436,9 +443,9 @@ func TestProgressRefusedWhenClaimMovedUnderHolder(t *testing.T) {
 // stale old — the exact race the server-side compare-and-swap rejects.
 type movingStore struct{ *fakeStore }
 
-func (m *movingStore) read(id string) (claimRef, claimStatus) {
-	ref, st := m.fakeStore.read(id)
-	if st == claimHeld {
+func (m *movingStore) Read(id string) (deskkit.ClaimStoreRecord, deskkit.ClaimReadStatus) {
+	ref, st := m.fakeStore.Read(id)
+	if st == deskkit.ClaimReadHeld {
 		if c, ok := m.fakeStore.claims[id]; ok {
 			c.sha = m.fakeStore.nextSHA() // someone else advanced/stole it
 			m.fakeStore.claims[id] = c
@@ -535,17 +542,69 @@ func TestTransportFailureMessageCarriesHostAndCause(t *testing.T) {
 	}
 }
 
+// A create the server REJECTS while no claim exists is not a lost race: the forge refused the
+// write for another cause (a credential or policy refusal). The "rejected but no claim exists"
+// line must carry the store's recorded refusal, so an operator can tell the two apart (#1631).
+func TestRejectedCreateWithNoHolderMessageCarriesCause(t *testing.T) {
+	f := newStore()
+	f.rejectCreate = true
+	f.cause = "gitlab.example.com: server refused refs/dispatch/at--issue-1631: pre-receive hook declined"
+	run, _, se := harness(t, f)
+
+	rc := run("acquire", "at--issue-1631", "--repo", "group/repo", "--owner", "sess-A")
+	if rc != exitUnverifiable {
+		t.Fatalf("rejected-create-no-holder acquire rc = %d, want 6; err=%s", rc, se.String())
+	}
+	got := se.String()
+	for _, want := range []string{
+		"creating refs/dispatch/at--issue-1631 was rejected but no claim exists", // the line
+		"pre-receive hook declined", // AND the server's own refusal
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("rejected-create message missing %q — an operator cannot see WHY:\n%s", want, got)
+		}
+	}
+}
+
 // The store-level formatter: a recorded transport error renders as "<host>: <error>", and a
 // store with no failure attributes nothing (so a non-transport unverifiable stays bare).
 func TestGogitStoreTransportCauseFormatsHostAndError(t *testing.T) {
 	g := &gogitStore{host: "gitlab.example.com"}
-	if c := g.transportCause(); c != "" {
+	if c := g.TransportCause(); c != "" {
 		t.Fatalf("a store with no transport failure attributes %q, want empty", c)
 	}
 	g.fail(errors.New("authentication required: HTTP Basic: Access denied"))
 	want := "gitlab.example.com: authentication required: HTTP Basic: Access denied"
-	if got := g.transportCause(); got != want {
-		t.Fatalf("transportCause = %q, want %q", got, want)
+	if got := g.TransportCause(); got != want {
+		t.Fatalf("TransportCause = %q, want %q", got, want)
+	}
+}
+
+// The live store records the server's refusal of a claim write as its attribution cause: a
+// second create of an existing ref, against a real local git server, is REJECTED and leaves
+// "<host>: server refused <ref>: <report-status text>" in TransportCause (#1631). An applied
+// create records nothing.
+func TestGogitStoreRejectedCreateRecordsServerRefusal(t *testing.T) {
+	server := t.TempDir()
+	if out, err := exec.Command("git", "init", "-q", "--bare", "-b", "main", server).CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v: %s", err, out)
+	}
+	g := &gogitStore{url: server, host: "local-test-server"}
+	id := "at--issue-1631"
+
+	if res := g.CreateIfAbsent(id, claimMessage(id, "sess-A", "claimed", "-", "")); res != deskkit.ClaimWriteApplied {
+		t.Fatalf("first create = %v, want Applied; cause=%q", res, g.TransportCause())
+	}
+	if c := g.TransportCause(); c != "" {
+		t.Fatalf("an applied create recorded cause %q, want none", c)
+	}
+	if res := g.CreateIfAbsent(id, claimMessage(id, "sess-B", "claimed", "-", "")); res != deskkit.ClaimWriteRejected {
+		t.Fatalf("second create = %v, want Rejected", res)
+	}
+	prefix := "local-test-server: server refused " + refPrefix + "/" + id + ": "
+	got := g.TransportCause()
+	if !strings.HasPrefix(got, prefix) || strings.TrimSpace(strings.TrimPrefix(got, prefix)) == "" {
+		t.Fatalf("TransportCause after a rejected create = %q, want %q followed by the server's refusal text", got, prefix)
 	}
 }
 

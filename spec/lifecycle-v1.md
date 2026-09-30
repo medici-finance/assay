@@ -187,7 +187,10 @@ and a dated `human:<name>` `decided-by` stamp. A brief cites it with the OPTIONA
 **Design-approval authority.** `decided-by` MUST be a `human:<name>` stamp — the same
 human-gate authority a `gate: human` brief already carries, reusing the existing
 decision-issue mechanism rather than opening a second human-gate channel. Approval is a
-recorded human act; a model sign-off MUST NOT stand in for it.
+recorded human act; a model sign-off MUST NOT stand in for it. The record MAY carry the ruling
+itself as a `ruling:` link to the human's comment on the decision issue; the corroboration
+check resolves that link and verifies its author, and a `decided-by` placeholder with no
+resolvable link is a problem (`registers-v1.md` §7.5).
 
 **What the gate does and does not attest.** The gate proves an approved design-decision
 record with a human approver EXISTS and dereferences. It does NOT mechanically prove the

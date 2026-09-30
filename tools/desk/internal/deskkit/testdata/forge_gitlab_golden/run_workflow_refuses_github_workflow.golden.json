@@ -1,0 +1,8 @@
+{
+  "requests": [],
+  "result": {
+    "ID": ""
+  },
+  "err": "could-not-check: GitLab has one pipeline definition per project (.gitlab-ci.yml), so workflow \"release.yml\" cannot be selected — refusing rather than ignoring it; pass \".gitlab-ci.yml\" or nothing",
+  "not_found": false
+}
