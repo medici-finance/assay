@@ -353,6 +353,12 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 		w("> **DRIVE COVERAGE — %s**", n)
 		w("")
 	}
+	// The critical tier's main-red arm could not check (drive active, no
+	// --main-health input). Present only while a drive is active.
+	if nu.MainRedUnknown != "" {
+		w("> **COULD NOT CHECK — %s**", nu.MainRedUnknown)
+		w("")
+	}
 	// Could-not-check on a serialized stream. Distinct from the banner above:
 	// that one says the whole board is a superset, this one names the streams
 	// being WITHHELD because of it. Reported, never silently downgraded to

@@ -693,6 +693,11 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// Set explicitly every run so a prior invocation's value can never leak in; nil
 	// is the inert default. It only takes effect when a drive is active (nextUp).
 	activeFindings = findings
+	// The stamped-security arm's ratified authority set comes from roster
+	// configuration, never a compiled-in identity; unset is an explicit state whose
+	// stamps are reported, not silently ignored (drivecritical.go).
+	wireCriticalStampAuthorities(scanEffectiveConfig())
+	notices = append(notices, criticalStampNotices(streams)...)
 	for _, s := range streams {
 		rel, _ := filepath.Rel(root, s.Dir)
 		s.LastTouch = gitLastTouch(root, rel)
@@ -734,6 +739,11 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// Drive anti-Goodhart coverage NOTICEs (a drive covering > threshold of the
 	// eligible board self-taxes) surface on --lint too, not only in the artifact.
 	notices = append(notices, nu.DriveCoverageNotices...)
+	// The main-red arm's could-not-check (no --main-health input while a drive is
+	// active) is a NOTICE here and a line on the board — never a silent green.
+	if nu.MainRedUnknown != "" {
+		notices = append(notices, nu.MainRedUnknown)
+	}
 	// Honesty gate (brief-44 Verify row 3): a boosted Next-up pick shown without
 	// the active-drive banner is a PROBLEM (rc≠0) — the drive term must always be
 	// displayed decomposed and attributed. nextUp sets the banner whenever a shown
@@ -1507,6 +1517,7 @@ func main() {
 	registerLinksFlag := flag.Bool("register-links", false, "backfill: rewrite bare F-NN/I-NN tokens in brief files to linked form")
 	span := flag.Int("span", defaultSpanOfControl, "Next-up span-of-control cap: max items shown (default 20 — agent-worked queue, not the human EEMUA-191 7±2)")
 	overflowT := flag.Int("overflow-threshold", -1, "eligible-brief count above which Next-up flags overflow; <0 = same as --span")
+	mainHealthFlag := flag.String("main-health", "", "the INJECTED main-health input for the drives critical tier's main-red arm: `green`, or `red:<owner/repo#N>[,...]` naming the issue(s) tracking the red main. statusgen never reads live CI; omit the flag and the arm reports could-not-check (named on the board while a drive is active), never a silent green")
 	requireClaimsFlag := flag.Bool("require-claims", false, "fail (exit 1, nothing written) instead of emitting a degraded board when the origin claim read fails")
 	// FINDINGS alarm-KPI knobs (ISA-18.2). Standalone
 	// block so sibling statusgen flag PRs merge trivially.
@@ -1786,6 +1797,14 @@ func main() {
 	// the board must still render, wearing its degradation. A caller that
 	// dispatches from the board sets this and gets exit 1 instead.
 	requireClaims = *requireClaimsFlag
+	// The main-red arm's injected input (drives phase 3). A malformed value is a
+	// usage refusal — never a silent fallback to could-not-check or to green.
+	if mh, err := parseMainHealth(*mainHealthFlag); err != nil {
+		fmt.Fprintln(os.Stderr, "statusgen:", err)
+		os.Exit(2)
+	} else {
+		activeMainHealth = mh
+	}
 	// Fail-closed opt-in for a zero-stream root. Default off: a
 	// root that resolves to 0 streams is a hard PROBLEM, matching the three
 	// adjacent cases (missing/unreadable docs/streams, nonexistent root) that
