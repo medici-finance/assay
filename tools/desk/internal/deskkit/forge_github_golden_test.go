@@ -595,6 +595,52 @@ func TestForgeGithubGolden(t *testing.T) {
 			run: func(f *GitHubForge) (any, error) { return f.ListComments(forgeTestRepo, 7) },
 		},
 		{
+			// desktools-v2 brief 09 — the review-queue snapshot is ONE POST /graphql carrying
+			// every open change with its reviews. The golden pins the document sent (the request
+			// body), the REST rendering of each review (a Bot author re-suffixed to "<slug>[bot]",
+			// databaseId as ID / Author.ID, commit.oid as CommitID, a null commit as ""), and the
+			// fail-closed incompleteness: #8's reviews overflow the page (hasNextPage) and #9's
+			// response carries no reviews connection at all — both come back
+			// ReviewsComplete=false with NO reviews, never an empty-but-complete set.
+			name: "review_queue_snapshot",
+			setup: func(s *goldenServer) {
+				pr := func(n int, head string, reviews any) map[string]any {
+					m := map[string]any{
+						"number": n, "title": "change", "body": "", "state": "OPEN", "isDraft": true,
+						"createdAt": "2026-09-01T00:00:00Z", "lastEditedAt": nil,
+						"author":           map[string]any{"login": "worker", "__typename": "Bot"},
+						"mergeStateStatus": "CLEAN", "headRefOid": head, "headRefName": "feat/x", "baseRefName": "main",
+						"labels":  map[string]any{"nodes": []map[string]any{{"name": "example-label"}}},
+						"commits": map[string]any{"nodes": []map[string]any{}},
+					}
+					if reviews != nil {
+						m["reviews"] = reviews
+					}
+					return m
+				}
+				complete := map[string]any{"pageInfo": map[string]any{"hasNextPage": false}, "nodes": []map[string]any{
+					{"databaseId": 501, "author": map[string]any{"login": "reviewer", "__typename": "Bot", "databaseId": 42},
+						"state": "CHANGES_REQUESTED", "commit": map[string]any{"oid": "old1"}, "body": "Verdict: request-changes",
+						"submittedAt": "2026-09-01T01:00:00Z"},
+					{"databaseId": 502, "author": map[string]any{"login": "example-human", "__typename": "User", "databaseId": 7},
+						"state": "COMMENTED", "commit": nil, "body": "note", "submittedAt": "2026-09-01T02:00:00Z"},
+					{"databaseId": 503, "author": map[string]any{"login": "reviewer", "__typename": "Bot", "databaseId": 42},
+						"state": "APPROVED", "commit": map[string]any{"oid": "head7"}, "body": "Verdict: approve",
+						"submittedAt": "2026-09-01T03:00:00Z"},
+				}}
+				overflow := map[string]any{"pageInfo": map[string]any{"hasNextPage": true}, "nodes": []map[string]any{
+					{"databaseId": 601, "author": map[string]any{"login": "reviewer", "__typename": "Bot", "databaseId": 42},
+						"state": "APPROVED", "commit": map[string]any{"oid": "head8"}, "body": "", "submittedAt": "2026-09-01T04:00:00Z"},
+				}}
+				s.graphql = map[string]any{"data": map[string]any{"repository": map[string]any{
+					"pullRequests": map[string]any{"nodes": []map[string]any{
+						pr(7, "head7", complete), pr(8, "head8", overflow), pr(9, "head9", nil),
+					}},
+				}}}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.ReviewQueueSnapshot(forgeTestRepo) },
+		},
+		{
 			name: "edit_comment",
 			setup: func(s *goldenServer) {
 				s.graphql = map[string]any{"data": map[string]any{"updateIssueComment": map[string]any{
