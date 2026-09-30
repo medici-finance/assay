@@ -3,11 +3,14 @@
 File:line-accurate inventory of every site that reaches past `tools/desk/internal/deskkit/forge.go`'s
 `Forge` interface with a GitHub-specific fact, or with an ambient credential, across `statusgen/**`,
 `tools/desk/**`, `tools/cellctl/**`, `plugins/assay/`/`.claude/` skill bodies, and `.github/workflows/**`.
-Produced by a full re-sweep of the tree at the commit below — **not** copied from `spec.md`'s freshness note or
-this brief's own frontmatter, both of which are already stale in places the sweep below calls out explicitly
-(clause: verify before applying a correction).
+Produced by re-sweeping the tree at the commit below with the commands listed under **How this inventory is
+derived** — **not** copied from `spec.md`'s freshness note or this brief's own frontmatter, both of which are
+already stale in places the sweep below calls out explicitly (clause: verify before applying a correction).
+Shapes (a) and (c) each have a declared sweep command, and every line those commands print is either a row or is
+accounted for in the text. Shapes (b) and (d) have no exhaustive command: their rows are the sites found by
+reading, and the known sites that are not rows are listed as could-not-check, not cleared.
 
-- Tree state: `origin/main` @ `0faa7f372` (2026-09-27). The first sweep ran at `951ca784d` (2026-09-18), i.e.
+- Tree state: `origin/main` @ `b89b39572` (2026-09-29). The first sweep ran at `951ca784d` (2026-09-18), i.e.
   **after** the `spec.md` §1 freshness base (`57509073`, 2026-09-17) and after the `desktools-v2` frontmatter's
   own freshness base (`e9fa19d3`, 2026-09-16). This is a **re-derivation** of that sweep: every row's file:line
   was re-anchored by matching its cited line's content at `951ca784d` against the current tree, and every
@@ -19,13 +22,13 @@ this brief's own frontmatter, both of which are already stale in places the swee
   hardcoded remote name (`"origin"`); **(c)** a hardcoded query shape (a `pullRequest`/`mergeRequest` GraphQL
   block or a REST path fragment) built outside `forge_github.go`/`forge_gitlab.go`; **(d)** a token/identity
   assumption (an inherited `GH_TOKEN`, a `HOME` override, a token attached only to a child named `gh`).
-- Counts are the run's own, not asserted from memory: **75 numbered reach-around rows** — **29 in
-  `statusgen/**`** (16 files; forge-neutral/18's territory) and **46 in `tools/desk/**` + `plugins/assay/**` +
+- Counts are the run's own, not asserted from memory: **78 numbered reach-around rows** — **29 in
+  `statusgen/**`** (16 files; forge-neutral/18's territory) and **49 in `tools/desk/**` + `plugins/assay/**` +
   `.github/workflows/**`** (desk's own territory, this stream's). Three desk-side rows (34, 35, 53) are
-  **RESOLVED** and kept only as the record of where a §1 issue lived, so **72 sites are live**. Row 33b is a
+  **RESOLVED** and kept only as the record of where a §1 issue lived, so **75 sites are live**. Row 33b is a
   disputed annotation row and is not counted, as at the first sweep.
-- Per shape (a row with two shapes counts under both): statusgen — (a) 29, (d) 1. Desk side — (a) 24,
-  (b) 3, (c) 19 (17 in group E plus the two (c)-adjacent rows in group D), (d) 9.
+- Per shape (a row with two shapes counts under both): statusgen — (a) 29, (d) 1. Desk side — (a) 25,
+  (b) 3, (c) 21 (17 in group E, 2 in group E2, and the two (c)-adjacent rows in group D), (d) 10.
 
 ## How this inventory is derived
 
@@ -34,14 +37,21 @@ repository root.
 
 - **Group A (statusgen, shape a):**
   `git grep -n 'exec.Command("gh"' -- 'statusgen/*.go' ':!*_test.go'` — one row per output line (29 lines,
-  16 files at `0faa7f372`). The file-level set Verify row 5 checks is
+  16 files at `b89b39572`). The file-level set Verify row 5 checks is
   `grep -rl 'exec.Command("gh"' statusgen --include='*.go' | grep -v '_test.go$'`.
 - **Groups B and C (tools/desk Go, shape a):** the `forgeban` scan. `TestNoForgeCLIShellout`
   (`tools/desk/internal/deskkit/forge_surface_test.go`) reconciles every Go exec site under `tools/desk` against
-  `tools/desk/internal/forgeban/allowlist.go`; it passes at `0faa7f372` with 6 permitted forge-CLI call sites
-  and 31 unresolved-argv exec sites (29 register rows). Each permit is one group B row. The literal-`gh` subset
+  `tools/desk/internal/forgeban/allowlist.go`; it passes at `b89b39572` with 6 permitted forge-CLI call sites
+  and 32 unresolved-argv exec sites (29 register rows). Each permit is one group B row, except that the
+  `ambientLoginProbe` permit covers two `gh` launches in one function (rows 73 and 78). The literal-`gh` subset
   is also visible to a plain grep:
   `git grep -nE '"gh"' -- 'tools/desk/*.go' ':!*_test.go' ':!tools/desk/internal/forgeban/*'`.
+- **Groups E and E2, and the could-not-check list (tools/desk Go, shape c):**
+  `git grep -nE '/repos/|"repos/|api\.github\.com|"/graphql"|vnd\.github' -- 'tools/desk/*.go' ':!*_test.go' ':!tools/desk/internal/deskkit/forge_github.go' ':!tools/desk/internal/deskkit/forge_gitlab.go' ':!tools/desk/cmd/deskpost/github.go' | grep -vE ':[0-9]+:[[:space:]]*//'`
+  — the two backend files and group E's file are excluded, and so are comment-only lines. The pattern matches
+  `/repos/` anywhere in a literal, so a path built as `%s/repos/…` on a base URL is caught as well as one that
+  starts with `/repos/`, and `"repos/` catches a path handed to `gh api` without a leading slash. Every line it prints at `b89b39572` is a row in group E2, falls inside an existing row, or
+  is named under **Not classified by this re-derivation** below.
 - **Shell and generated-shell surfaces (groups C, G):**
   `git grep -nE '(^|[^A-Za-z0-9_./-])gh (api|issue|pr|repo|auth|run|workflow|label|release|search)( |$)' -- plugins/assay tools/cellctl tools/desk .claude ':!*.go' ':!*.md' ':!*.json'`
   plus `git grep -n 'exec gh\|gh auth token' -- tools/desk/cmd/cellctl` for the shell the Go cell launcher
@@ -69,8 +79,14 @@ here only because `ghIssueLister`, the pre-migration implementation it supersede
 from three *other* statusgen modes (row 20's own function is dead on the `--scan-issues` path but still called by
 `--transcribe-scan`, `--transcribe-scan-delta` and `--transcribe-verdict`; see its row). Since the first sweep,
 #1255 moved the `--scan-issues` comment read and bless read onto the native forge as well
-(`defaultScanCommentLister`, `defaultScanBlessChecker`), so rows 11 and 21 are **no longer on the `scanloop`
-path**; they stay rows because `--transcribe-scan` still wires both.
+(`defaultScanCommentLister`, `defaultScanBlessChecker`, wired at `statusgen/main.go:1863`), so rows 11 and 21
+are **no longer on the `scanloop` path**; they stay rows because `--transcribe-scan` still wires both.
+
+This group's scope is shape (a) only, as this brief's facts define it. statusgen's other GitHub facts are not
+rows here and are recorded for forge-neutral/18: the in-process REST client in `statusgen/ghfetch.go` (its
+`https://api.github.com` base at `statusgen/ghfetch.go:47` and its inherited `GITHUB_TOKEN` read at
+`statusgen/ghfetch.go:71`), and the `git remote get-url origin` reads at `statusgen/forge.go:113`,
+`statusgen/corroborate.go:1545` and `statusgen/doratiming.go:626`.
 
 | # | file:line | tool/skill | shape | issue | seam op / envelope field (or GAP) | migrating brief |
 |---|---|---|---|---|---|---|
@@ -93,7 +109,7 @@ path**; they stay rows because `--transcribe-scan` still wires both.
 | 17 | statusgen/briefdecision.go:41 | statusgen (decision-queue source) | (a) | #1223 | `SearchIssues`-shaped (`ghDecisionQueueSource.Issues`) | forge-neutral/18 |
 | 18 | statusgen/autonomy.go:451 | statusgen (`--autonomy`) | (a) | #1223 | GAP — merged-PR authors, all-state (`autonomyMergedAuthors`) | forge-neutral/18 |
 | 19 | statusgen/autonomy.go:479 | statusgen (`--autonomy`) | (a) | #1223 | GAP — merged-PR gate rollups, all-state (`autonomyGates`) | forge-neutral/18 |
-| 20 | statusgen/scanissues.go:116 | statusgen (`ghIssueLister`, legacy) | (a) | #1223 | superseded by `deskreadIssueLister` **on the `--scan-issues` path only**; still the live implementation for `--transcribe-scan`, `--transcribe-scan-delta` and `--transcribe-verdict` (wired at `statusgen/main.go:1860`, `:1867`, `:1874`) — GAP until those modes migrate too | forge-neutral/18 |
+| 20 | statusgen/scanissues.go:116 | statusgen (`ghIssueLister`, legacy) | (a) | #1223 | superseded by `deskreadIssueLister` **on the `--scan-issues` path only**; still the live implementation for `--transcribe-scan`, `--transcribe-scan-delta` and `--transcribe-verdict` (wired at `statusgen/main.go:1870`, `:1877`, `:1884`) — GAP until those modes migrate too | forge-neutral/18 |
 | 21 | statusgen/scanissues.go:953 | statusgen (`issueCommentLister`, `--transcribe-scan`) | (a) | #1223, #628 (**off the `scanloop` path since #1255** — `--scan-issues` now reads through `defaultScanCommentLister`) | GAP — per-issue comment list, `--paginate` (deskread's `OpenIssues` envelope carries no comments) | forge-neutral/18 |
 | 22 | statusgen/autoflip.go:793 | statusgen (`--auto-flip-model`) | (a) | #1223 | GAP — merged-PR-for-commit lookup (`ghModelFlipSource.MergedPRForCommit`) | forge-neutral/18 |
 | 23 | statusgen/autoflip.go:873 | statusgen (`--auto-flip-model`) | (a) | #1223 | GAP — PR branch commit list (`prBranchCommits`) | forge-neutral/18 |
@@ -109,7 +125,8 @@ path**; they stay rows because `--transcribe-scan` still wires both.
 Already permitted in `tools/desk/internal/forgeban/allowlist.go`'s `AllowedInvocations` (ceiling 6). Per this
 brief's own facts: these are a **separable, token-custody-gated follow-wave, not transport gaps** — routed here
 as such, not to a v2 transport migration. The brief's facts name five; the sixth (row 73, `ambientLoginProbe`)
-landed after the first sweep (#1528) and raised the ceiling from 5 to 6. `tools/desk/cmd/deskpushguard/main.go`'s
+landed after the first sweep (#1528) and raised the ceiling from 5 to 6. That sixth permit now covers two `gh`
+launches in one function, so it has two rows (73 and 78). `tools/desk/cmd/deskpushguard/main.go`'s
 line keeps drifting from the allowlist's own (line-less) key: the allowlist keys carry no line number.
 
 | # | file:line | tool/skill | shape | issue | seam op it should use (or GAP) | migrating brief |
@@ -119,7 +136,8 @@ line keeps drifting from the allowlist's own (line-less) key: the allowlist keys
 | 29 | tools/desk/cmd/deskdisposition/exec.go:30 | deskdisposition | (a), (d) | — | write-only now (`ListOpenChanges` already absorbed the read half, #1123); `label list` has no enumerated op | token-custody follow-wave (unrouted in v2) |
 | 30 | tools/desk/cmd/deskmerge/exec.go:116 | deskmerge | (a), (d) | — | `pr view` half maps to `GetPullRequest`; the merge-authority `gh api` read has no enumerated op | token-custody follow-wave (unrouted in v2) |
 | 31 | tools/desk/cmd/deskpushguard/main.go:441 | deskpushguard | (a) | — | GAP — branch→PR lookup by name; no enumerated op is keyed by branch (every read on the interface is keyed by number) | token-custody follow-wave (unrouted in v2) |
-| 73 | tools/desk/internal/deskkit/preflight.go:1614 (`gh` resolved by `exec.LookPath` at :1608) | deskkit (`ambientLoginProbe`, the preflight ambient-identity check) | (a), (d) | — | GAP — runs `gh api user` under the AMBIENT environment on purpose, to learn which login a tool fall-through would silently act as. Both backends refuse to build a client without a minted token, so the seam can never observe the credential this check exists to catch; the allowlist's own reason says retiring it means deleting the check, not migrating it. Added after the first sweep, #1528 | token-custody follow-wave (unrouted in v2) |
+| 73 | tools/desk/internal/deskkit/preflight.go:1713 (`gh` resolved by `exec.LookPath` at :1707) | deskkit (`ambientLoginProbe`, the preflight ambient-identity check) | (a), (d) | — | GAP — runs `gh api user` under the AMBIENT environment on purpose, to learn which login a tool fall-through would silently act as. Both backends refuse to build a client without a minted token, so the seam can never observe the credential this check exists to catch; the allowlist's own reason says retiring it means deleting the check, not migrating it. Added after the first sweep, #1528 | token-custody follow-wave (unrouted in v2) |
+| 78 | tools/desk/internal/deskkit/preflight.go:1733 (same `gh` path as row 73) | deskkit (`ambientLoginProbe`, stored-credential look) | (a), (d) | — | GAP — the identity-read exception again, same shape as rows 27 and 72: after `gh api user` answers "not logged in", the same function runs `gh auth token` (a local read, no network call) and only tests whether the answer is empty. It is the second `gh` launch under the one `ambientLoginProbe` permit, so the allowlist's ceiling stays 6 while `forgeban`'s unresolved-argv count goes from 31 to 32. Added after the first re-derivation (the allowlist reason for this permit now names both calls) | token-custody follow-wave (unrouted in v2) |
 
 ### C. `tools/desk/**` — other `gh`-subprocess / ambient-identity sites (not in the allowlist)
 
@@ -139,7 +157,7 @@ is a Go `exec` of `gh`, so `forgeban` does not see either — the `gh` lives ins
 
 `desktools-v2/06` (authored 2026-09-16, freshness-checked `e9fa19d3`) states #1146 is open and specifies an
 unlanded test, `TestDispatchHandsTokenToScriptChild` (`git grep -l TestDispatchHandsTokenToScriptChild -- tools/desk`
-finds nothing at `0faa7f372` — confirmed absent). But `resolveClaimAuth`
+finds nothing at `b89b39572` — confirmed absent). But `resolveClaimAuth`
 (tools/desk/cmd/deskdispatch/dispatch.go:1182, credential hand-off at :1225; its GitLab twin
 `resolveClaimAuthGitLab` hands off at :1335) already threads the minted role token into the **full child
 environment** (`append(os.Environ(), "GH_TOKEN="+tok)`) for the legacy claim script, not onto a child literally
@@ -210,6 +228,17 @@ GitHub-typed-not-applicable stubs that issue no request. `tools/desk/cmd/deskboa
 **already migrated** onto `f.PRTrustEvents`/`f.IssueTrustEvents` — `deskboard/board.go:581` (`prBlessed`) and
 `tools/desk/cmd/issueboard/board.go`'s `fetchIssueBlessed` (its stale comment now at `:264`) call the typed `Forge` methods
 directly; the comments are stale, the code is not. Not rows; not reach-arounds.
+
+### E2. `tools/desk/cmd/**` — other hand-built GitHub REST calls added after the first sweep (shape c)
+
+Two verbs that landed after the first sweep each carry a small GitHub-only REST client of their own, outside
+the two backend files. Each one mints its own role token, so neither reads an ambient credential. But each
+request is a GitHub path built outside `forge_github.go`, which is a reach-around under this brief's definition.
+
+| # | file:line | tool/skill | shape | issue | seam op it should use (or GAP) | migrating brief |
+|---|---|---|---|---|---|---|
+| 76 | tools/desk/cmd/deskinbox/detail.go:84 (`listIssueComments`: the `%s/repos/%s/%s/issues/%d/comments` path on a GitHub base URL, `Accept: application/vnd.github+json` at :91) | deskinbox (`--walk`/`--html` detail fetch) | (c) | — | `ListCommentsTyped` with the issue kind. The file header says no typed op returns comment bodies, but `deskkit.Comment` carries `Body` (`tools/desk/internal/deskkit/forge.go:538`) and `ListCommentsTyped` (`forge.go:1467`) reads an issue's own thread. A non-GitHub repo gets could-not-check here today. Added after the first sweep, #1507 | unrouted — no v2 brief names `tools/desk/cmd/deskinbox` |
+| 77 | tools/desk/cmd/deskfleet/labels.go:64 (`githubLabels.create`: `POST /repos/{owner}/{repo}/labels` on deskfleet's own client, GitHub base `https://api.github.com` at `tools/desk/cmd/deskfleet/main.go:121`, `Accept` header at `tools/desk/cmd/deskfleet/client.go:43`) | deskfleet (fleet label definitions) | (c) | — | GAP — creating a label definition on its own. The GitHub backend creates missing definitions only as step 1 of `ApplyLabels` (`forge_github.go:1695`), which also applies them to an item; no op creates a definition without an item. The same file's `gitlabLabels.create` (:33) is the GitLab arm. Added after the first sweep | unrouted — no v2 brief names `tools/desk/cmd/deskfleet` |
 
 ### F. `tools/desk/**` — hardcoded remote name (shape b)
 
@@ -282,41 +311,72 @@ presence probes.)
 
 ### Not classified by this re-derivation — shape (c) candidates (could-not-check)
 
-The first sweep recorded no command for its shape (c) search, so shape (c) cannot be re-derived mechanically the
-way groups A, B, G and H can. A literal sweep for GitHub REST/GraphQL shapes outside the two backends —
-`git grep -nE 'api\.github\.com|"/graphql"|"repos/%s|"/repos/' -- 'tools/desk/*.go' ':!*_test.go'` — returns,
-besides group E and lines that are only comments, the sites below. They are listed as **could-not-check**, not
-as rows and not as cleared: whether each is a reach-around under this brief's definition needs the per-site
-reading group E got, which this re-derivation did not do.
+The first sweep recorded no command for its shape (c) search. This re-derivation declares one (under **How this
+inventory is derived**, groups E and E2), and every line it prints at `b89b39572` is accounted for here or in a
+row. The sites added after the first sweep (`deskinbox`, `deskfleet`) were read and are rows 76 and 77. The sites
+below that were present at the first sweep but not listed then are **could-not-check**, not rows and not
+cleared: whether each is a reach-around under this brief's definition needs the per-site reading groups E and E2
+got. They are follow-ups for a later pass, not part of this re-derivation's drift fix.
 
-- `tools/desk/cmd/deskfleet/labels.go:64` — `githubLabels.create`, a hand-built `POST /repos/{owner}/{repo}/labels`
-  on `deskfleet`'s own HTTP client (added after the first sweep).
-- `tools/desk/cmd/deskrelease/github.go:214` and `:246` — `getRef` / `createTagRef`, hand-built `git/ref` reads and
-  `git/refs` writes on `deskrelease`'s own client (present at the first sweep, not listed then).
+- `tools/desk/cmd/deskadvisory/advisory.go:196` — `ghAPI`, a REST client on `githubAPIBase` (`Accept` header at
+  :201) that reads `repos/…` paths at :234, :389, :423 and :435. It takes its credential from an inherited
+  `GH_TOKEN` or `GITHUB_TOKEN` (:177, :180) before the `gh auth token` fallback that row 27 covers, so it also
+  carries shape (d).
+- `tools/desk/cmd/deskrelease/github.go:214` and `:246` — `getRef` / `createTagRef`, hand-built `git/ref` reads
+  and `git/refs` writes on `deskrelease`'s own client (`Accept` header at :166).
 - `tools/desk/internal/deskkit/compositionsource.go:320` — `LatestReleaseTag`, a `releases/latest` read of the
-  release home (present at the first sweep, not listed then).
-- `tools/desk/cmd/deskdigest/collect.go:213,273` and `tools/desk/cmd/deskmerge/authority.go:70,86` — REST paths
-  handed to `gh api`, so already inside rows 28 and 30 as shape (a); listed so the (c) sweep's output is fully
-  accounted for.
+  release home.
+- `tools/desk/internal/deskkit/repovis.go:163` (`HTTPRepoInfoFetcher.RepoVisibility`, `Accept` header at :169)
+  and `tools/desk/internal/deskkit/trustliveness.go:110` (`HTTPAccountFetcher.GetAccount`, `Accept` header at
+  :115) — deskkit-local HTTP fetchers outside `forge_github.go`, the same situation as `tokenidentity.go:57`
+  below.
+
+The remaining lines the sweep prints are not candidates, for the reason given with each:
+
+- `tools/desk/cmd/deskdigest/collect.go:212,213,272,273` and `tools/desk/cmd/deskmerge/authority.go:69,70,86` —
+  REST paths and headers handed to `gh api`, so already inside rows 28 and 30 as shape (a). (`authority.go:86`
+  builds the expected item path to compare against a comment's own URL; it sends nothing.)
+- `tools/desk/cmd/deskinbox/detail.go:84,91`, `tools/desk/cmd/deskfleet/labels.go:64`,
+  `tools/desk/cmd/deskfleet/main.go:121` and `tools/desk/cmd/deskfleet/client.go:43` — rows 76 and 77.
+- `tools/desk/cmd/desktoken/coverage.go:263,301` and `tools/desk/cmd/desktoken/desktoken.go:208,381` — the
+  `Accept` headers of `desktoken`'s App-JWT installation lookups and token exchange. That is the token minter,
+  the identity layer D2 keeps outside `Forge` on purpose, not a forge operation a verb could route through it.
+- `tools/desk/internal/deskkit/forge.go:37` (the `GitHubAPIBase` constant) and
+  `tools/desk/internal/deskkit/forgegit.go:125` (host mapping for the git transport) — seam-side definitions,
+  not requests.
 - `tools/desk/internal/deskkit/tokenidentity.go:57` — a `viewer` GraphQL read, but it is a `GitHubForge` method
   in a backend-side file outside `forge_github.go`; recorded here, not as a reach-around.
+
+### Not swept exhaustively — shapes (b) and (d) (could-not-check)
+
+Shapes (b) and (d) have no declared sweep command. Their rows (53–55, and the (d) cells in groups B, C and G) are
+the sites found by reading. These further (d) sites were found by a reviewer's spot check and are present at
+the first sweep; they are could-not-check here, not cleared:
+
+- `tools/desk/cmd/deskclaim-ref/gogit.go:595` — reads an inherited `GH_TOKEN`, `GITHUB_TOKEN` or `GITLAB_TOKEN`
+  when no `--token-file` is passed.
+- `tools/desk/cmd/cellctl/cell.go:498` — `ghConfigRelPath`, the operator's `gh` config directory that the cell
+  launcher links into the cell's `HOME`.
+- `tools/desk/cmd/deskadvisory/advisory.go:177,180` — the inherited-token reads named with `ghAPI` above.
 
 ## Reconciled:
 
 Cross-check against `tools/desk/internal/forgeban/allowlist.go` (`const allowedInvocationCeiling = 6` at
-`0faa7f372`; it was 5 at the first sweep), so no Go call site is double-counted or dropped between the two
-registers. `TestNoForgeCLIShellout` passes at `0faa7f372`: 6 permitted call sites, 31 unresolved-argv exec sites.
+`b89b39572`; it was 5 at the first sweep), so no Go call site is double-counted or dropped between the two
+registers. `TestNoForgeCLIShellout` passes at `b89b39572`: 6 permitted call sites, 32 unresolved-argv exec sites.
 
-- **`AllowedInvocations` (6 rows) → inventory rows 27–31 and 73, one-to-one.** All six map cleanly by
+- **`AllowedInvocations` (6 rows) → inventory rows 27–31 and 73 (with 78).** All six map cleanly by
   `<file>::<enclosing decl>::gh` key. The sixth, `internal/deskkit/preflight.go::ambientLoginProbe::gh`, landed
-  after the first sweep (#1528) and is inventory row 73. Line numbers drift freely (allowlist keys carry no line
+  after the first sweep (#1528) and is inventory row 73. Its function now launches `gh` twice (`gh api user`,
+  then `gh auth token`), and the key has no line, so the one permit covers both: rows 73 and 78. Line numbers drift freely (allowlist keys carry no line
   number, only `file::func::bin`, so the drift is invisible to the allowlist itself — it only shows up here
   because this inventory cites concrete lines).
-- **`UnresolvedArgv` (29 rows, 31 exec sites) → two inventory rows (32, 73), the rest excluded with reasons
+- **`UnresolvedArgv` (29 rows, 32 exec sites) → inventory rows 32, 73 and 78, the rest excluded with reasons
   already stated in the register itself.** `askassay/probe.go::execRead::<unresolved>` is the one row that the
   register's own text says "CAN launch `gh`" — inventory row 32. `internal/deskkit/preflight.go::ambientLoginProbe::<unresolved>`
-  is the `exec.CommandContext` on the `gh` path `ambientLoginProbe` resolved one line earlier — the same site as
-  permit row 73, not a second one. The other 27 `UnresolvedArgv` entries are excluded per the register's own
+  covers the two `exec.CommandContext` calls on the `gh` path `ambientLoginProbe` resolved by `exec.LookPath` —
+  the same two sites as rows 73 and 78, not further ones. That register row now counts two exec sites, which is
+  why the total went from 31 to 32 with no new register row. The other 27 `UnresolvedArgv` entries are excluded per the register's own
   stated reasons: each resolves to a non-forge binary that the checker cannot statically prove but that carries
   no forge path on any reachable branch. At the first sweep they were `tools/desk/cmd/clusterguard/shim.go`,
   `deskadvisory/advisory.go::runChecks`, five `deskboard/*.go` rows, `deskpreflight`,
@@ -333,7 +393,7 @@ registers. `TestNoForgeCLIShellout` passes at `0faa7f372`: 6 permitted call site
   constant, which `forgeban`'s AST checker does not read as an exec), D (rows 34–35, not a
   `gh`-subprocess shape at all), E (rows 36–52, `tools/desk/cmd/deskpost/github.go` — an HTTP client, not a `gh` subprocess, so
   `forgeban`'s AST checker — which greps for `exec.Command`/`gh` argv — cannot and does not see it), F (rows
-  53–55, hardcoded-remote shape, not a `gh`-subprocess shape), G (rows 56–59 and 75, shell scripts outside
+  53–55, hardcoded-remote shape, not a `gh`-subprocess shape), E2 (rows 76–77, HTTP clients, for the same reason as E), G (rows 56–59 and 75, shell scripts outside
   `tools/desk/**`), and H (rows 60–69, YAML, not Go). `forgeban` is scoped to `tools/desk/**` Go `exec.Command`
   call sites (`const allowedInvocationCeiling`'s own package, `tools/desk/internal/forgeban`); the other
   groups are exactly the "shell, skills, and **statusgen** sites it does not cover" this brief's facts describe.
@@ -342,17 +402,18 @@ registers. `TestNoForgeCLIShellout` passes at `0faa7f372`: 6 permitted call site
 
 One row per text-carrying `Forge` write call site and per push-path text surface, with the checks it runs today.
 Seeded from `docs/streams/desktools-v2/spec.md` §8.2 and re-verified line by line against `origin/main` @
-`0faa7f372` for this inventory (`desktools-v2/10` ticks against this table). Every citation below was read
+`b89b39572` for this inventory (`desktools-v2/10` ticks against this table). Every citation below was read
 directly, not copied — `deskpr edit`'s row corrects `spec.md`'s bare `edit.go:NNN` citations to their real
 package path, `tools/desk/cmd/deskpr/edit.go` (there is no deskpost/edit.go; `EditChange`'s only definition is
 in `deskpr`). The write-site set was re-derived with
 `git grep -nE '\.(FileIssue|PostComment|PostCommentTyped|EditComment|CreateDraftChange|EditChange|PostReview|WriteFile|ApplyLabels)\(' -- 'tools/desk/cmd/*.go' ':!*_test.go' | grep -v 'os\.WriteFile'`;
-the three text-carrying writes it found that the first table lacked (`deskpr edit`'s review notice,
-`deskautolane`, `deskrestamp`) are added below, and the label-write row lists every `ApplyLabels` caller.
+the text-carrying writes it found that the first table lacked (`deskpr edit`'s review notice,
+`deskautolane`, `deskrestamp`, and `deskevidence --outcome-record`'s record file and draft change) are added
+below, and the label-write row lists every `ApplyLabels` caller.
 
 | Verb (write) | Surface | Secret scan | Self-contained + withheld (public targets) | Override offered |
 |---|---|---|---|---|
-| `deskfile new` (`FileIssue`, tools/desk/cmd/deskfile/deskfile.go:860) | issue title + body | yes (deskfile.go:724,727) | **no** | no (no scan override; `--force-new`/`--force-file` override only the dedupe and rate gates) |
+| `deskfile new` (`FileIssue`, tools/desk/cmd/deskfile/deskfile.go:860) | issue title + body | yes (deskfile.go:724,727) | **no** | no (no scan override; `--force-new` bypasses the dedupe search and the blocker-evidence gate (flag at deskfile.go:593, gates at :738 and :754), and `--force-file` raises the rate gate; neither is a text scan) |
 | `deskfile attach` (`PostCommentTyped`, tools/desk/cmd/deskfile/deskfile.go:1011) | comment body | yes (:979) | **no** | no |
 | `deskpr create` (`CreateDraftChange`, tools/desk/cmd/deskpr/deskpr.go:378) | PR title + body | yes (deskpr.go:188,792) | yes (deskpr.go:274) | yes |
 | `deskpr create`/`update` (the push) | branch name | yes (deskpr.go:796) | **no** | yes |
@@ -363,8 +424,10 @@ the three text-carrying writes it found that the first table lacked (`deskpr edi
 | `deskreply` reply and `--workpad` (tools/desk/cmd/deskreply/deskreply.go:331, workpad.go:100,243) | reply body | yes (deskreply.go:162) | yes (deskreply.go:172) | yes |
 | `deskpost comment` (tools/desk/cmd/deskpost/comment.go:186,189) | comment body | yes (comment.go:54) | yes (comment.go:64) | no |
 | `deskpost review` (tools/desk/cmd/deskpost/review.go, forgeclient.go:293) | review body | yes (review.go:128) | yes (review.go:144) | no |
-| `deskevidence` (`WriteFile`, tools/desk/cmd/deskevidence/deskevidence.go:551,620) | file content (added lines) | yes (deskevidence.go:410) | **no** | no |
-| `deskevidence` (`CreateDraftChange`, :641) | tool-composed PR title + body | **no** | **no** | — |
+| `deskevidence` (`WriteFile`, tools/desk/cmd/deskevidence/deskevidence.go:561,630) | file content (added lines) | yes (deskevidence.go:420) | **no** | no |
+| `deskevidence` (`CreateDraftChange`, :651) | tool-composed PR title + body | **no** | **no** | — |
+| `deskevidence --outcome-record` (`WriteFile`, tools/desk/cmd/deskevidence/outcomerecord.go:173,208) | verify-outcome record file (whole file, new path) | yes (outcomerecord.go:112) | **no** | no |
+| `deskevidence --outcome-record` (`CreateDraftChange`, outcomerecord.go:224) | tool-composed PR title + body | **no** | **no** | — |
 | `deskclose` (`PostCommentTyped`, tools/desk/cmd/deskclose/github.go:189) | tool-composed pre-close comment (can name a cross-repository canonical target) | **no** | **no** | — |
 | `deskprovenance` (tools/desk/cmd/deskprovenance/main.go:238,241) | tool-composed comment | **no** | **no** | — |
 | `deskautolane` (`PostComment`, tools/desk/cmd/deskautolane/lane.go:562) | tool-composed eject comment | **no** | **no** | — |
@@ -383,7 +446,8 @@ board-sweep GraphQL read) these can fold onto, not fixing a bypass.
 ## GAP summary (interface additions a future brief may need)
 
 Recorded, not resolved here, per this brief's own scope: a per-item "present labels" read (row 41; `ApplyLabels`
-writes but nothing reads the current set through the seam), a branch→change lookup (row 31; every read today is
+writes but nothing reads the current set through the seam), a standalone label-definition create (row 77;
+today definitions are created only as a side effect of `ApplyLabels`), a branch→change lookup (row 31; every read today is
 keyed by PR/issue number, never a branch name), and the statusgen-side envelope gaps in group A's "GAP" cells
 (author/comment-permalink resolution, all-state PR/issue listings, merged-PRs-since queries, and the ambient
 token read feeding statusgen's own REST client, row 72) — all of these are `deskread`-envelope questions for
