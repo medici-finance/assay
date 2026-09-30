@@ -48,7 +48,7 @@ open questions for the approver are in [spec.md](spec.md) §4/§7.
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [audit & inventory — enumerate every gh shell-out + hardcoded-forge-assumption site (file:line)](brief-01-audit-and-inventory.md) | 1 | M | implemented | — | — |
+| 01 | [audit & inventory — enumerate every gh shell-out + hardcoded-forge-assumption site (file:line)](brief-01-audit-and-inventory.md) | 1 | M | done | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1317 @ a8380e4121a811637f55fd8024eeafd052a531aa) |
 | 02 | [the v2 seam contract + the ban-lint (advisory/counting first)](brief-02-seam-contract-and-ban-lint.md) | 2 | M | done | 2026-09-27 assay-verifier-app[bot] @ 9585b4b6cc2e (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1322 @ 3209046e0a06dff80d7060e37227e4d87de9970c) |
 | 03 | [native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot)](brief-03-native-read-client.md) | 3 | M | todo | — | — |
 | 04 | [deskclose reads an authorizing comment by its stated kind — retire the kind-less default (#1019)](brief-04-deskclose-authorization-read-kind.md) | 2 | S | done | 2026-09-27 assay-verifier-app[bot] @ 9585b4b6cc2e (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1320 @ f6a6b8fcb28a03884f90590a5ad6557258f3c6f0) |
@@ -58,6 +58,9 @@ open questions for the approver are in [spec.md](spec.md) §4/§7.
 | 09 | [purpose-built access-pattern query operations (one tuned snapshot, not N per-item calls)](brief-09-access-pattern-queries.md) | 3 | L | implemented | — | — |
 | 10 | [one outbound-write check at the forge write seam, keyed on the target's visibility](brief-10-one-outbound-write-check.md) | 2 | L | todo | — | — |
 | 11 | [a house callout for the outbound-write check — deployment vocabulary stays out of the shipped tools](brief-11-outbound-house-callout.md) | 3 | M | todo | — | — |
+| 12 | [platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS](brief-12-platform-compatibility-suite.md) | 2 | L | todo | — | — |
+| 13 | [platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage](brief-13-platform-gates-and-reconciliation.md) | 2 | M | todo | — | — |
+| 14 | [regression floor — the behavior the desk tools pass today, pinned as tests seeded from resolved issues, which desktools-v2 must keep green](brief-14-regression-floor.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -94,8 +97,10 @@ another stream: it cannot start until `forge-neutral/18` reaches zero `gh` sites
 - **Wave 2** — `desktools-v2/02` (ban-lint + seam contract, advisory first, scope includes
   `statusgen/**`, baseline written to a file), `desktools-v2/04` (deskclose's authorization
   read states its kind, #1019), `desktools-v2/05` (the push guards judge the real remote,
-  #1201 / #884) and `desktools-v2/10` (one outbound-write check — human-gated). All depend on
-  01 only; parallelizable.
+  #1201 / #884), `desktools-v2/10` (one outbound-write check — human-gated),
+  `desktools-v2/12` (the platform compatibility suite), `desktools-v2/13` (the platform gates
+  and reconciliation) and `desktools-v2/14` (the regression floor). All depend on 01 only;
+  parallelizable.
 - **Wave 3** — `desktools-v2/03` (native read-client custody contract + the 5 desk `gh`
   exceptions; depends 01+02 — human-gated), `desktools-v2/09` (purpose-built access-pattern
   queries; depends 02) and `desktools-v2/11` (the house callout; depends 10 — human-gated).
