@@ -854,6 +854,30 @@ func (g *GitLabForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 	}, nil
 }
 
+// ReviewQueueSnapshot on GitLab is DEGRADED, and says so per change: it returns exactly
+// ListOpenChanges' population with every change ReviewsComplete=false and no reviews, so a
+// consumer reads each MR's verdicts with ReviewsAtHead — the read it made before this op
+// existed, output unchanged.
+//
+// It is not a one-document read because GitLab's head-pinned review answer is not one
+// document: ReviewsAtHead reconciles the project's reset-approvals-on-push setting, the
+// diff-version arrival times, the approval system notes and the verdict notes (see its doc),
+// and folding that into a single GraphQL query is a new approximation surface that must be
+// proven against a live instance before it can replace a golden-pinned read. Reporting the
+// snapshot incomplete is the fail-closed direction: a caller can never mistake a missing
+// review set for an empty one.
+func (g *GitLabForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) {
+	oc, err := g.ListOpenChanges(repo)
+	if err != nil {
+		return nil, err
+	}
+	changes := make([]QueuedChange, 0, len(oc.Changes))
+	for _, c := range oc.Changes {
+		changes = append(changes, QueuedChange{OpenChange: c, ReviewsComplete: false})
+	}
+	return &ReviewQueue{Changes: changes, TruncatedAtCap: oc.TruncatedAtCap, Cap: oc.Cap}, nil
+}
+
 // gitlabChangeState maps a GitLab MR state word to the seam's uppercased lifecycle state,
 // keeping MERGED DISTINCT from CLOSED — the split ListChanges promises and gitlabState (used by
 // the board's OpenChange) deliberately collapses. `locked` is a transient of an open MR, so it
