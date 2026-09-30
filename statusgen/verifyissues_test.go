@@ -130,8 +130,13 @@ func TestVerifyIssuesSuppressesCrossForm(t *testing.T) {
 // accepts a brief-v2 <cell>:<repo>:<stream>:<NN> id and flips the same row the
 // v1 slash id flips. Pre-fix, closeVerify refused the colon id as "not a
 // <stream>/<NN> id" and nothing advanced.
+//
+// Since #1239 the repo segment is resolved through the alias registry before the
+// flip, so the fixture carries one naming "app" as this tree's own alias; the
+// registry-less and foreign-alias cases live in TestCloseVerifyAliasRouting.
 func TestCloseVerifyAcceptsColonForm(t *testing.T) {
 	root, _ := loadVGStreams(t)
+	writeVGRegistry(t, root)
 	now := time.Date(2026, 7, 9, 0, 0, 0, 0, time.UTC)
 
 	if err := closeVerify(root, "example:app:vg:01", now); err != nil {

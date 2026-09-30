@@ -1,0 +1,2 @@
+### Fixed
+- windows-port/03's Verify rows 2, 3, 5a, 6 and 8 are now exact commands with machine-checkable expectations, so `statusgen verifyrun` runs each one as written. Row 5a's fail-first mutation and row 6's success-line capture run through a `go test -overlay` and leave the working tree untouched (no `git stash`). Row 8 reads the latest `windows-ci-leg` run and checks that its bootstrap smoke passed on a head that carries the current bootstrap scripts; producing that run is still a maintainer dispatch (#1890).
