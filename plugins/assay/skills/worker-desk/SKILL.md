@@ -286,10 +286,8 @@ placeholder on any board.
 the same roster key the placeholder scanner reads, applies the trust gate itself (untrusted, unblessed
 authors are quarantined under EXTERNAL / UNBLESSED — visible, never actionable), ages
 `needs-decision` / `question` rows against its SLA, and **fails closed**: an unset or empty scan set,
-or a single repo the token cannot read, is exit 6 COULD-NOT-CHECK for the WHOLE board rather than a
-silently partial one. A raw `gh issue list` fails soft in exactly the places that matter — a dropped
-repo reads as a clean, empty board — which is why the list form is not the instrument here. **ALL
-four must hold:**
+or one unreadable repo, is exit 6 COULD-NOT-CHECK for the WHOLE board, never a silently partial one
+(a raw `gh issue list` reads a dropped repo as a clean, empty board). **ALL four must hold:**
 
 1. **Trust gate** — authored by a trusted login, or blessed by a trusted comment; the board's own
    quarantine is the reading, and an EXTERNAL / UNBLESSED row is never dispatched. No new exception.
@@ -311,7 +309,9 @@ but the ordering is a tie-break, not a hold: an empty slot with a qualifying iss
 it dispatches NOW. Claim under the SAME issue-shaped key the placeholder lane uses, `<repo>--issue-<NN>`
 — deliberately shared, so the two lanes contend on one lock and can never double-dispatch. A
 sweep that repeatedly surfaces issues failing rule 4 is an intake-coverage signal: file it, never
-widen this lane.
+widen this lane. A `design-owed` `error-class` issue is not this lane's (its placeholder fails rule 2):
+intake unparks that row at the trigger, never past rule 4's risk-bearing-surface test (`intake-desk`
+step 1); it dispatches at **strong** tier, and its deliverable is the one its body line names, never code.
 
 ## The loop
 
