@@ -66,7 +66,7 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 7708420 2026-09-30T14:57:00+10:00_
+_last regen: 3b334e1 2026-09-30T04:57:51Z_
 
 **Progress:** 2/13 brief items done.
 
@@ -89,7 +89,7 @@ _none_
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 7708420 2026-09-30T14:57:00+10:00_
+_last regen: 3b334e1 2026-09-30T04:57:51Z_
 
 **Progress:** 8/28 brief items done.
 
