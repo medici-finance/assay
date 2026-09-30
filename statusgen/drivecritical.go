@@ -22,15 +22,18 @@ import (
 // metric — it is never exported.
 //
 // RESIDUAL (named, not derived — the driver's to accept at merge): the inputs the
-// derivation reads are not all authenticated. Three of them are repo text that an
+// derivation reads are not all authenticated. Four of them are repo text that an
 // ordinary reviewed, human-merged PR can write: a brief's own `issues:` list (arm
 // 1's fix linkage), a README stamp cell (arm 2 — the authority NAME is checked
-// against configuration, but not who wrote the cell), and a findings entry's
-// `control:` (arm 4 — findingEntry carries no actor). So the brief's "never
+// against configuration, but not who wrote the cell), the `depends:`/`unblocks:`
+// endpoints of a reciprocated edge (arm 3), and a findings entry's `control:`
+// (arm 4 — findingEntry carries no actor). So the brief's "never
 // self-declared" holds in the bounded sense that every linkage lands through review
 // and a human merge, not as a structural guarantee. Only arm 1's red and arm 2's
 // authority SET come from outside the tree (the caller's forge read and roster
-// configuration); arm 3's count is guarded by the reciprocity lint.
+// configuration). Arm 3's count reads only reciprocated edges
+// (buildReciprocatedRevDeps), so a one-sided edge never counts, but both
+// endpoints are PR-writable frontmatter (see arm 3).
 //
 // The four arms (brief-44's Scoring section):
 //
@@ -48,11 +51,19 @@ import (
 //                        grants nothing, and any stamp present is reported as
 //                        could-not-check (criticalStampNotices), not silently ignored.
 //                        Reads only the stamped label, never an intensity term.
-//   3. high-unblocks   — blockedCount ≥ highUnblocksThreshold, over the reverse
-//                        typed-depends graph (buildRevDeps/blockedCount). The
-//                        dependency-edge reciprocity lint (brieffile.go) makes that
-//                        count un-gameable: a manufactured one-sided inbound edge is a
-//                        --lint PROBLEM, so blockedCount reflects genuine deps only.
+//   3. high-unblocks   — blockedCount ≥ highUnblocksThreshold, over the
+//                        RECIPROCATED reverse typed-depends graph
+//                        (buildReciprocatedRevDeps): an edge A→B counts only when B
+//                        also declares `unblocks: A`. The reciprocity lint
+//                        (brieffile.go) reports a one-sided edge at NOTICE tier, so
+//                        the lint alone cannot keep a one-sided edge out of the tier
+//                        — the graph this arm reads does, by never walking one. It
+//                        does NOT stop a change that writes BOTH endpoints (a
+//                        brief's own `unblocks:` plus dependents declaring
+//                        `depends:` on it, same stream included): both are
+//                        PR-writable frontmatter, so such an edge still reaches the
+//                        arm. That residual is named for the driver's ratification,
+//                        not closed here.
 //   4. reviewer-finding — this brief remediates an unresolved reviewer finding: the
 //                        finding's control: names it (Finding.Control). The findings
 //                        entry is a repo file with no actor field, so the linkage is
@@ -236,18 +247,23 @@ func reviewerFindingCritical(findings []Finding, streamName, briefNum string) bo
 }
 
 // criticalTierArm returns the name of the critical-tier arm that qualifies this
-// brief, or "" if none. Pure and deterministic over board-graph facts (blockedCount,
-// findings) and stamped labels only — no wall clock, no network. Arms are evaluated
-// in a fixed order so the attributed arm is stable; membership is what matters for
-// the (CriticalTier, score) sort, and any single qualifying arm suffices.
-func criticalTierArm(b Brief, streamName string, blockedCount int, findings []Finding) string {
+// brief, or "" if none. Pure and deterministic over board-graph facts (the
+// reciprocated blockedCount, findings) and stamped labels only — no wall clock, no
+// network. Arms are evaluated in a fixed order so the attributed arm is stable;
+// membership is what matters for the (CriticalTier, score) sort, and any single
+// qualifying arm suffices.
+//
+// deps is the RECIPROCATED graph, not a count: the high-unblocks arm computes its
+// own blockedCount from it, so no caller can hand the arm a count walked over
+// one-sided edges (the score's buildRevDeps graph is a different type).
+func criticalTierArm(b Brief, streamName string, deps reciprocatedRevDeps, findings []Finding) string {
 	if mainRedCritical(b, streamName) {
 		return "main-red"
 	}
 	if auth, ok := securityCriticalStamp(b); ok && criticalStampAuthorized(auth) {
 		return "security"
 	}
-	if blockedCount >= highUnblocksThreshold {
+	if deps.count(streamName+"/"+b.Num) >= highUnblocksThreshold {
 		return "high-unblocks"
 	}
 	if reviewerFindingCritical(findings, streamName, b.Num) {

@@ -90,6 +90,18 @@
       "file": "cmd/deskboard/board.go",
       "old": "applyBodyEditReverification(rs, reviews, p.HeadRefOid, p.Body, p.LastEditedAt)",
       "new": "applyBodyEditReverification(rs, reviews, p.HeadRefOid, p.Body, \"9999-01-01T00:00:00Z\")"
+    },
+    {
+      "name": "drive worker floor — the cross-root merge stops re-applying driveWorkerCap against the SUMMED in-flight drive work (each root's own headroom stacks past the shared pool)",
+      "file": "cmd/deskboard/dispatch.go",
+      "old": "\tif rep.DriveWorkerCap <= 0 {\n\t\treturn rep.Rows\n\t}",
+      "new": "\tif true {\n\t\treturn rep.Rows\n\t}"
+    },
+    {
+      "name": "drive worker floor — the cross-root merge drops the critical-tier sort key, so higher-scored routine drive rows take the shared headroom ahead of a critical row",
+      "file": "cmd/deskboard/dispatch.go",
+      "old": "ac, bc := a.CriticalArm != \"\", b.CriticalArm != \"\"; ac != bc",
+      "new": "ac, bc := a.CriticalArm != \"\", b.CriticalArm != \"\"; false && ac != bc"
     }
   ]
 }

@@ -60,6 +60,16 @@ type dispatchView struct {
 	SerializedUnknown []string      `json:"serializedUnknown,omitempty"`
 	MeasuresGated     []string      `json:"measuresGated,omitempty"`
 	MeasuresUnknown   []string      `json:"measuresUnknown,omitempty"`
+	// Worker-pool floor (drives phase 3). Present only while a drive is active, so a
+	// no-drive payload is unchanged. driveWorkerCap is the floor; driveInFlight the
+	// claimed drive work it subtracts; heldByDriveWorkerCap the drive picks this
+	// queue withheld because the floor was reached. driveWorkerUnknown is the
+	// could-not-check reason (claims unread): every drive pick is withheld then.
+	// A cross-repo aggregator re-applies driveWorkerCap across roots (deskboard).
+	DriveWorkerCap       int    `json:"driveWorkerCap,omitempty"`
+	DriveInFlight        int    `json:"driveInFlight,omitempty"`
+	HeldByDriveWorkerCap int    `json:"heldByDriveWorkerCap,omitempty"`
+	DriveWorkerUnknown   string `json:"driveWorkerUnknown,omitempty"`
 	// MainHealth is the main-red arm's input state while a drive is active
 	// ("could-not-check" | "green" | "red:<refs>"); absent with no active drive, so
 	// a no-drive payload is unchanged. could-not-check means no main-red fix can be
@@ -156,7 +166,24 @@ func buildDispatchView(nu NextUp, streams []*Stream, repo string, claimSource Cl
 		MeasuresUnknown:   nu.MeasuresUnknown,
 		MainHealth:        nu.MainHealth,
 	}
+	// The worker-pool floor binds HERE, on the queue a dispatcher starts from: drive
+	// picks in rank order take the headroom (driveWorkerCap − in-flight drive work);
+	// every drive pick past it is withheld and counted, never silently dropped.
+	// Non-drive picks are untouched. With no active drive the floor does not apply.
+	headroom, floor := nu.driveWorkerHeadroom()
+	if floor {
+		view.DriveWorkerCap = nu.DriveWorkerCap
+		view.DriveInFlight = nu.DriveInFlight
+		view.DriveWorkerUnknown = nu.DriveWorkerUnknown
+	}
 	for _, p := range nu.Picks {
+		if floor && p.DriveTerm > 0 {
+			if headroom <= 0 {
+				view.HeldByDriveWorkerCap++
+				continue
+			}
+			headroom--
+		}
 		id := p.Stream.Name + "/" + p.Brief.Num
 		view.Rows = append(view.Rows, dispatchRow{
 			Brief:        id,
@@ -169,6 +196,7 @@ func buildDispatchView(nu NextUp, streams []*Stream, repo string, claimSource Cl
 			DriveSlug:    p.DriveSlug,
 		})
 	}
+	view.Shown = len(view.Rows)
 	return view
 }
 
