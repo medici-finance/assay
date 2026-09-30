@@ -4,9 +4,17 @@ package main
 // against the REAL jq program the oracle ships (write_format_program, assay-inbox.sh:425-540),
 // extracted verbatim at test time and run through the system `jq` binary. This is a
 // direct parity check on the FORMAT BUILDER itself — the piece both `--walk` and `--html`
-// share in the oracle, and the one this brief's split keeps byte-identical — independent of
-// `gh`'s wire format entirely, so it needs no network, no recorded HTTP fixtures, and no
-// bash 3.2 environment to run.
+// share in the oracle, and the one this brief's split keeps byte-identical. It needs no
+// network and no bash 3.2 environment to run.
+//
+// It is NOT independent of the wire format, and must not be (#1797): the two tools read
+// comments over different wires — the oracle over `gh issue view --json comments`, where an
+// App's author.login is the bare `<slug>`; deskinbox over REST, where the same App's
+// user.login is `<slug>[bot]`. A fixture handing both sides one login string proved the
+// builder equal while the two readers disagreed upstream of it. So the Go side of every
+// readable case reads its detail through the REAL fetchDetail reader, served in the REST
+// shape by an httptest backend (wireshape_test.go), while the oracle is fed the gh shape of
+// the same comments.
 //
 // Needs `jq` on the runner (the oracle's own hard dependency). Its absence is
 // could-not-check, per the three-state instrument rule — never a silent skip read as a
@@ -22,6 +30,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 const oracleScriptRelPath = "../../../../plugins/assay/scripts/assay-inbox.sh"
@@ -142,8 +152,9 @@ func runOracleFormat(t *testing.T, program string, it jqItem, d jqDetail, k, n i
 	return res
 }
 
-// toGoItem/toGoDetail convert the jq-shaped fixtures to this port's own types, so both
-// sides of the comparison are built from literally the SAME fixture data.
+// toGoItem converts the jq-shaped item fixture to this port's own type, so both sides of the
+// comparison are built from literally the SAME item data. The DETAIL is not converted: each
+// side receives it in its own reader's wire shape (see the file header).
 func toGoItem(it jqItem) item {
 	var labels []string
 	for _, l := range it.Labels {
@@ -155,22 +166,13 @@ func toGoItem(it jqItem) item {
 	}
 }
 
-func toGoDetail(d jqDetail) issueDetail {
-	if d.DetailUnavailable {
-		return issueDetail{Unavailable: true}
-	}
-	var cs []comment
-	for _, c := range d.Comments {
-		cs = append(cs, comment{Author: c.Author.Login, Body: c.Body})
-	}
-	return issueDetail{Body: d.Body, Comments: cs}
-}
-
-func assertRenderedMatchesOracle(t *testing.T, name string, it jqItem, d jqDetail, k, n int, now time.Time) {
+// assertRenderedMatchesOracle compares the oracle's rendering of oracleD (gh wire shape)
+// against the port's rendering of goD (whatever deskinbox's own reader produced).
+func assertRenderedMatchesOracle(t *testing.T, name string, it jqItem, oracleD jqDetail, goD issueDetail, k, n int, now time.Time) {
 	t.Helper()
 	program := extractJQFMTProgram(t)
-	want := runOracleFormat(t, program, it, d, k, n)
-	got := buildRendered(toGoItem(it), toGoDetail(d), k, n, now)
+	want := runOracleFormat(t, program, it, oracleD, k, n)
+	got := buildRendered(toGoItem(it), goD, k, n, now)
 
 	if got.Header != want.Header {
 		t.Errorf("%s: header mismatch\n got:  %q\n want: %q", name, got.Header, want.Header)
@@ -218,10 +220,12 @@ func TestParityWalk(t *testing.T) {
 	createdAt := now.Add(-30 * 24 * time.Hour).UTC().Format("2006-01-02T15:04:05Z")
 
 	cases := []struct {
-		name string
-		it   jqItem
-		d    jqDetail
-		k, n int
+		name     string
+		it       jqItem
+		body     string
+		comments []wireComment
+		blind    bool
+		k, n     int
 	}{
 		{
 			name: "typical with context, options, recommended, unblocks, desk-note",
@@ -230,16 +234,49 @@ func TestParityWalk(t *testing.T) {
 				URL: "https://example.invalid/issues/42", CreatedAt: createdAt,
 				Labels: []jqLabel{{Name: "needs-decision"}, {Name: "urgent"}},
 			},
-			d: jqDetail{
-				Body: "Some preamble.\n\n## Context\n\nThe queue is stuck on X.\nY needs a ruling.\n\n" +
-					"unblocks: example-stream/14\n\n## Options\n\n" +
-					"A. Do the safe thing\nB. Do the risky thing — (Recommended)\nC. Do nothing\n",
-				Comments: []jqComment{
-					{Author: jqCommentAuthor{Login: "someone"}, Body: "not the desk"},
-					{Author: jqCommentAuthor{Login: "assay-worker-app[bot]"}, Body: "latest status: waiting on a ruling.\nsecond line here."},
-				},
+			body: "Some preamble.\n\n## Context\n\nThe queue is stuck on X.\nY needs a ruling.\n\n" +
+				"unblocks: example-stream/14\n\n## Options\n\n" +
+				"A. Do the safe thing\nB. Do the risky thing — (Recommended)\nC. Do nothing\n",
+			comments: []wireComment{
+				userComment("someone", "not the desk"),
+				appComment("example-worker-app", "latest status: waiting on a ruling.\nsecond line here."),
 			},
 			k: 0, n: 3,
+		},
+		{
+			// #1797's selection divergence: a desk App's note followed by a comment from an
+			// App whose slug does not read "desk". The oracle (gh shape, no `[bot]`) quotes the
+			// desk App's note; a reader that kept REST's `[bot]` would quote the later App.
+			name: "desk-App note precedes a non-desk App comment (both wire shapes)",
+			it: jqItem{
+				Repo: "example-org/example-repo", Number: 43, Title: "Selection across wire shapes",
+				URL: "https://example.invalid/issues/43", CreatedAt: createdAt,
+				Labels: []jqLabel{{Name: "needs-decision"}},
+			},
+			body: "## Context\nA ruling is needed on Z.\n\n## Options\nA. Keep Z\nB. Drop Z\n",
+			comments: []wireComment{
+				userComment("someone", "a human question"),
+				appComment("example-desk-app", "desk relay: options restated, awaiting the driver."),
+				appComment("example-worker-app", "worker: pushed a fix to the branch."),
+				userComment("someone-else", "a later human reply"),
+			},
+			k: 1, n: 3,
+		},
+		{
+			// #1797's label divergence: the desk App's own note is the latest — both tools
+			// pick it, and its author must render in the oracle's (gh) spelling.
+			name: "desk-App note is the latest, label in the gh login shape",
+			it: jqItem{
+				Repo: "example-org/example-repo", Number: 44, Title: "Label across wire shapes",
+				URL: "https://example.invalid/issues/44", CreatedAt: createdAt,
+				Labels: []jqLabel{{Name: "question"}},
+			},
+			body: "## Context\nWhich way on W?\n",
+			comments: []wireComment{
+				appComment("example-worker-app", "worker status"),
+				appComment("example-desk-app", "desk: relayed to the driver."),
+			},
+			k: 2, n: 3,
 		},
 		{
 			name: "no headings falls back to leading body lines, no options stated",
@@ -248,10 +285,8 @@ func TestParityWalk(t *testing.T) {
 				URL: "https://example.invalid/issues/7", CreatedAt: createdAt,
 				Labels: []jqLabel{{Name: "question"}},
 			},
-			d: jqDetail{
-				Body: "This is just a plain paragraph with no headings at all.\nA second line of prose.\n",
-			},
-			k: 1, n: 3,
+			body: "This is just a plain paragraph with no headings at all.\nA second line of prose.\n",
+			k:    1, n: 3,
 		},
 		{
 			name: "blind detail fetch",
@@ -260,8 +295,8 @@ func TestParityWalk(t *testing.T) {
 				URL: "https://example.invalid/issues/9", CreatedAt: createdAt,
 				Labels: []jqLabel{{Name: "help wanted"}},
 			},
-			d: jqDetail{DetailUnavailable: true},
-			k: 2, n: 3,
+			blind: true,
+			k:     2, n: 3,
 		},
 		{
 			name: "recommended option not first gets reordered and reletterred",
@@ -270,16 +305,21 @@ func TestParityWalk(t *testing.T) {
 				URL: "https://example.invalid/issues/11", CreatedAt: createdAt,
 				Labels: []jqLabel{{Name: "needs-decision"}},
 			},
-			d: jqDetail{
-				Body: "## Options\nA. First choice\nB. Second choice\nC. Third choice, this one is recommended\nD. Fourth choice\n",
-			},
-			k: 0, n: 1,
+			body: "## Options\nA. First choice\nB. Second choice\nC. Third choice, this one is recommended\nD. Fourth choice\n",
+			k:    0, n: 1,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assertRenderedMatchesOracle(t, tc.name, tc.it, tc.d, tc.k, tc.n, now)
+			if tc.blind {
+				assertRenderedMatchesOracle(t, tc.name, tc.it, jqDetail{DetailUnavailable: true},
+					issueDetail{Unavailable: true}, tc.k, tc.n, now)
+				return
+			}
+			repo := deskkit.ForgeRepo{Owner: "example-org", Name: "example-repo"}
+			goD := readDetailOverREST(t, repo, tc.it.Number, tc.body, tc.comments)
+			assertRenderedMatchesOracle(t, tc.name, tc.it, oracleDetail(tc.body, tc.comments), goD, tc.k, tc.n, now)
 		})
 	}
 }

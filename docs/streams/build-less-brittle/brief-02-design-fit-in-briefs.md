@@ -27,9 +27,9 @@ exec-tier: strong
 exec-tier-why: "(b) one convention lands consistently in three artifacts (spec, template, skill), downstream copies re-sync on their own pin bump, and the skill must end net ≤ 0 lines."
 domain: complicated
 consumers:
-  - "spec/brief-v1.md §4.1: follow-up build-less-brittle/02 (this brief)"
-  - "docs/brief-template.md: follow-up build-less-brittle/02 (this brief)"
-  - "plugins/assay/skills/author-brief/SKILL.md: follow-up build-less-brittle/02 (this brief)"
+  - "spec/brief-v1.md §4.1: fixed-here"
+  - "docs/brief-template.md: fixed-here"
+  - "plugins/assay/skills/author-brief/SKILL.md: fixed-here"
   - "downstream project copies of the author-brief skill (synced bundles, byte-parity twins): out-of-scope (each adopter re-syncs on its own pin bump)"
 ---
 

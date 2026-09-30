@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // verifyRepoSlug is the GitHub owner/repo the rendered issue bodies link into —
@@ -55,6 +57,10 @@ var verifyMarkerRe = regexp.MustCompile(`<!-- verify-gate: [^>]*? -->`)
 // canonical form (rather than the colon form) keeps a NEW card matching every
 // pre-migration card, and keeps the extracted id inside the brief-name grammar
 // (<stream>/<NN>) the close side already speaks.
+//
+// It DROPS the repo alias unresolved, so it is a read-side identity only (the marker and the
+// consumers filter). A path that acts on the ref — the done-close — resolves it through the
+// alias registry with resolveLocalBriefRef instead (#1239); topology_guard_test.go pins that.
 func normalizeBriefKey(key string) string {
 	key = strings.TrimSpace(key)
 	if _, _, stream, num, ok := parseBriefV2ID(key); ok {
@@ -295,6 +301,188 @@ var strikethroughRe = regexp.MustCompile(`~~[^~]*~~`)
 // **VERIFY: PASS** marker.
 var heldOrCouldNotCheckRe = regexp.MustCompile(`(?i)\b(HELD|could-not-check)\b`)
 
+// heldOrCouldNotCheckRe is a bare word-boundary match: on its own it cannot
+// tell "this row IS held" from "this row is NOT held" or "there are ZERO held
+// rows", because all three contain the marker word. Clean, fully-passing
+// Evidence routinely says the latter two — "VERIFY: PASS ... no
+// could-not-check", "summary: 0 HELD, 7 PASS" — and refusing it is a false
+// positive. heldOccurrenceNegated below excuses exactly those shapes.
+//
+// It is a narrowing of a flip-refusal control, so every rule in it is written
+// to FAIL CLOSED: a wrongly excused occurrence is a false NEGATIVE — a PASS
+// proceeding over a genuinely held row — which is worse for a refusal gate
+// than the false positive it fixes. A cue word or a "0" directly in front of
+// the marker is therefore NOT enough on its own; what sits in front of the
+// cue, and what follows the marker, must also read as a count or a negation.
+// What may precede a cue is an ALLOWLIST, so anything not on it — including
+// punctuation or characters nobody thought of — refuses.
+//
+// "The text before the cue" is read with trailing whitespace (any Unicode
+// space, so a non-breaking space cannot hide a "?") and trailing markdown
+// emphasis ("*", "_") trimmed, so a bold label reads like a plain one:
+// "**row 3 green:** no HELD" is judged as "row 3 green: no HELD".
+//
+//   - Word cue: "no", "not" or "zero", then only ASCII whitespace, then the
+//     marker. It excuses only when the text before the cue is empty (line
+//     start) or a bare list marker ("- ", "1. "); ends in a count label and
+//     its colon (heldCountLabelRe: "summary: no could-not-check"); ends in a
+//     clause break — ",", ";", ".", "(", an em/en dash or "→" ("all rows
+//     ran — no could-not-check"); or ends in one of a few linking words
+//     (heldCuePrevWordRe: "row 3 is not HELD", "with zero could-not-check").
+//     Everything else refuses: a question ("available? no HELD"), a field or
+//     table-cell value ("runner=no HELD", "| no HELD |", "row 3 green: no
+//     HELD", "row 3: not HELD"), a closing parenthesis ("(runner up) no
+//     HELD"), a hyphen ("row 3 green - no HELD", "non-zero could-not-check"),
+//     struck text, and any other word — so an exit status spelled out
+//     ("rc zero HELD", "row 3 exit zero HELD") is not a negation.
+//   - Zero cue: a standalone "0", then only ASCII whitespace, then the marker.
+//     It excuses only in a COUNT position: at the start of the line or after
+//     a bare list marker, right after a count label and its colon ("summary:
+//     0 HELD"), or right after ", " / "; " that closes another count item
+//     whose noun is a verdict count (heldCountItemRe: "7 PASS, 0 HELD", "5/5
+//     rows, 0 HELD"). An exit code ("exit 0", "exit: 0", "rc: 0", "exit codes:
+//     1, 0", "row 3 exit, 0"), a row label ("row 0"), a decimal or version
+//     ("2.0", "v1.0") or a parenthesis ("(0 HELD)") is not a count position
+//     and never excuses.
+//   - Hold reason: an occurrence followed by a hold reason — after any run of
+//     whitespace, emphasis, ",", ";", ":", ".", "(", ")", "→" or dash
+//     (heldReasonAfterRe: "HELD pending runner", "HELD, pending runner",
+//     "HELD (awaiting runner)", "HELD — until …", "HELD. pending runner",
+//     "HELD → pending runner", "HELD) pending runner") — or by a colon that
+//     opens a value ("0 HELD: human read owed") is refused even behind a
+//     valid cue: a negated or zero count that also gives a reason for holding
+//     contradicts itself. A reason word that opens the next sentence ("0 HELD.
+//     For the record, …") therefore refuses too — the fail-closed side.
+//   - Struck text: a struck-through span (`~~…~~`) removed between a cue and
+//     its marker, or right before the cue, is replaced by a sentinel for this
+//     check, so struck text can never join a cue to a marker ("not ~~yet
+//     green, still~~ HELD") or stand in for what precedes a cue ("row 3
+//     ~~ok~~ no HELD") — the sentinel is on no allowlist.
+//
+// Checked per OCCURRENCE (on the text immediately around it, not anywhere on
+// the line), so a negated or zero-counted mention never excuses a different,
+// genuine occurrence elsewhere on the same line or another line. Each
+// physical line is judged on its own: a hard-wrapped line that happens to
+// begin "0 HELD" reads as a line-start count. Between cue and marker matching
+// is ASCII: a Unicode lookalike, a non-breaking space or markup there ("no
+// **HELD**") does not match and so refuses.
+//
+// Stated residuals: a clause break or linking word before the cue excuses
+// whatever precedes it, so "runner available — no HELD" and "row 3 exit, no
+// HELD" read as negations, exactly as "all rows ran — no could-not-check"
+// must; and a hold reason that uses none of heldReasonAfterRe's words ("0
+// HELD — runner offline") is not detected, because a free-text note after a
+// clean count ("0 HELD — live cluster access was available") has the same
+// shape.
+var (
+	heldWordCueRe = regexp.MustCompile(`(?i)\b(?:no|not|zero)[ \t]+$`)
+	heldZeroCueRe = regexp.MustCompile(`\b0[ \t]+$`)
+	// heldCountLabelRe is a count/summary label closed by a colon, as the
+	// text before a cue ends. Deliberately a short allowlist: an exit,
+	// status or result label is NOT a count label.
+	heldCountLabelRe = regexp.MustCompile(`(?i)\b(?:summary|totals?|counts?|tally):$`)
+	// heldListMarkerRe is a bare list marker with nothing before it.
+	heldListMarkerRe = regexp.MustCompile(`^(?:[-+*]|\d+[.)])$`)
+	// heldCountItemRe is a prior count item closed by "," or ";" ("7 PASS,",
+	// "5/5 rows,"). The noun is a short allowlist of verdict counts, so a
+	// number followed by an arbitrary word ("row 3 exit,") is not a count.
+	heldCountItemRe = regexp.MustCompile(`(?i)\b\d+[ \t]+(?:pass(?:ed|es)?|fail(?:ed|s|ures?)?|held|could-not-check|checked-clean|checked-failed|unrun|skip(?:ped|s)?|rows?|checks?)[,;]$`)
+	// heldCuePrevWordRe is a linking word allowed directly before a word cue.
+	heldCuePrevWordRe = regexp.MustCompile(`(?i)\b(?:is|are|was|were|has|have|had|with|and|but|otherwise|means)$`)
+	// heldReasonAfterRe is a hold reason after the marker, past any run of
+	// whitespace, emphasis, ",", ";", ":", ".", "(", ")", "→" or dash. The
+	// word may end at "_" as well as a word boundary, so "_pending_" counts.
+	heldReasonAfterRe = regexp.MustCompile(`(?i)^[\s\p{Z}*_,;:.()→–—-]*(?:pending|awaiting|waiting|until|because|blocked|due|for)(?:\b|_)`)
+	// heldValueAfterRe is a colon right after the marker: the marker is a
+	// label whose value follows ("0 HELD: human read owed").
+	heldValueAfterRe = regexp.MustCompile(`^[\s\p{Z}*_]*:`)
+)
+
+// struckSentinel stands in for a removed struck span in the negation lookback.
+const struckSentinel = "\x00"
+
+// heldCueBreaks are the clause breaks allowed as the last character before a
+// word cue. Anything else (":", "?", "=", "|", ")", "-", the struck
+// sentinel, …) refuses unless another allowlist rule admits it.
+const heldCueBreaks = ",;.(—–→"
+
+// heldTrimBefore trims trailing whitespace (any Unicode space) and markdown
+// emphasis from the text before a cue, so "**Label:** " reads as "Label:" and
+// a non-breaking space cannot hide what precedes the cue.
+func heldTrimBefore(s string) string {
+	return strings.TrimRightFunc(s, func(r rune) bool {
+		return unicode.IsSpace(r) || r == '*' || r == '_'
+	})
+}
+
+// heldWordCueAllowed reports whether before — the trimmed text in front of a
+// "no"/"not"/"zero" cue — is on the word-cue allowlist.
+func heldWordCueAllowed(before string) bool {
+	if before == "" || heldListMarkerRe.MatchString(before) ||
+		heldCountLabelRe.MatchString(before) || heldCuePrevWordRe.MatchString(before) {
+		return true
+	}
+	r, _ := utf8.DecodeLastRuneInString(before)
+	return strings.ContainsRune(heldCueBreaks, r)
+}
+
+// heldZeroCueAllowed reports whether before — the trimmed text in front of a
+// "0" cue — is a count position.
+func heldZeroCueAllowed(before string) bool {
+	return before == "" || heldListMarkerRe.MatchString(before) ||
+		heldCountLabelRe.MatchString(before) || heldCountItemRe.MatchString(before)
+}
+
+// heldOccurrenceNegated reports whether the HELD/could-not-check occurrence at
+// clean[h[0]:h[1]] is a negation or zero count rather than a live disposition,
+// under the rules on heldOrCouldNotCheckRe above. cuts are the offsets in
+// clean where struck spans were removed.
+func heldOccurrenceNegated(clean string, cuts []int, h []int) bool {
+	after := clean[h[1]:]
+	if heldReasonAfterRe.MatchString(after) || heldValueAfterRe.MatchString(after) {
+		return false
+	}
+	var b strings.Builder
+	prev := 0
+	for _, c := range cuts {
+		if c > h[0] {
+			break
+		}
+		b.WriteString(clean[prev:c])
+		b.WriteString(struckSentinel)
+		prev = c
+	}
+	b.WriteString(clean[prev:h[0]])
+	lookback := b.String()
+
+	if loc := heldWordCueRe.FindStringIndex(lookback); loc != nil {
+		return heldWordCueAllowed(heldTrimBefore(lookback[:loc[0]]))
+	}
+	if loc := heldZeroCueRe.FindStringIndex(lookback); loc != nil {
+		return heldZeroCueAllowed(heldTrimBefore(lookback[:loc[0]]))
+	}
+	return false
+}
+
+// stripStruck removes struck-through spans from line, returning the cleaned
+// text and the offsets in it where a span was removed.
+func stripStruck(line string) (string, []int) {
+	locs := strikethroughRe.FindAllStringIndex(line, -1)
+	if locs == nil {
+		return line, nil
+	}
+	var b strings.Builder
+	cuts := make([]int, 0, len(locs))
+	prev := 0
+	for _, l := range locs {
+		b.WriteString(line[prev:l[0]])
+		cuts = append(cuts, b.Len())
+		prev = l[1]
+	}
+	b.WriteString(line[prev:])
+	return b.String(), cuts
+}
+
 // verifyPassHeldContradiction reports whether evidence both carries a strict
 // hasVerifyPass marker AND, on some line that is not a genuinely routed
 // deferral, also says HELD or could-not-check. The first offending line is
@@ -333,13 +521,14 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 
 // unroutedHeldLine is verifyPassHeldContradiction's line scan WITHOUT the
 // strict-PASS precondition: it reports the first line that says HELD or
-// could-not-check on an occurrence not genuinely routed to a follow-up, under
-// exactly the hygiene and routing rules documented on
-// verifyPassHeldContradiction above (which is this scan behind hasVerifyPass,
-// unchanged). It exists for a caller whose PASS claim is carried by something
-// other than a strict marker — closeVerify's `verified` path, where the README
-// row itself already asserts the pass — so that caller's read cannot be
-// switched off by how (or whether) the marker was written.
+// could-not-check on an occurrence not genuinely routed to a follow-up AND
+// not negated or zero-counted (heldOccurrenceNegated), under exactly the hygiene and
+// routing rules documented on verifyPassHeldContradiction above (which is
+// this scan behind hasVerifyPass, unchanged). It exists for a caller whose
+// PASS claim is carried by something other than a strict marker —
+// closeVerify's `verified` path, where the README row itself already asserts
+// the pass — so that caller's read cannot be switched off by how (or
+// whether) the marker was written.
 func unroutedHeldLine(evidence string) (bool, string) {
 	inFence := false
 	for _, line := range strings.Split(evidence, "\n") {
@@ -351,7 +540,7 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		if inFence || strings.HasPrefix(trimmed, ">") {
 			continue
 		}
-		clean := strikethroughRe.ReplaceAllString(line, "")
+		clean, cuts := stripStruck(line)
 		heldLocs := heldOrCouldNotCheckRe.FindAllStringIndex(clean, -1)
 		if heldLocs == nil {
 			continue
@@ -382,6 +571,15 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		keywordLocs := routingKeywordRe.FindAllStringIndex(clean, -1)
 		refLocs := routingRefRe.FindAllStringIndex(clean, -1)
 		for _, h := range heldLocs {
+			// A negated or zero-counted occurrence ("no could-not-check",
+			// "summary: 0 HELD") is not a live disposition at all — it is
+			// excused outright, the same as a routed one, without needing a
+			// routing keyword+reference. Judged on this occurrence's own
+			// surroundings only (heldOccurrenceNegated), so a negated mention
+			// never excuses a different, genuine occurrence elsewhere.
+			if heldOccurrenceNegated(clean, cuts, h) {
+				continue
+			}
 			keywordAfter := false
 			for _, k := range keywordLocs {
 				if k[0] >= h[0] {
@@ -420,7 +618,7 @@ func unroutedHeldLine(evidence string) (bool, string) {
 // each data row: the last cell is Runner (by convention), second-to-last is Date.
 // It validates against the header row to confirm the table structure is recognized.
 func evidenceVerifierInfo(evidence string) (date, runner string) {
-	stripped := htmlCommentRe.ReplaceAllString(evidence, "")
+	stripped, _ := stripRowComments(evidence)
 	lines := strings.Split(stripped, "\n")
 	tableFound := false
 	for i := 0; i < len(lines); i++ {
@@ -473,7 +671,7 @@ func unrunRowsText(evidence string) string {
 	if !strings.Contains(strings.ToUpper(evidence), "UNRUN") {
 		return ""
 	}
-	stripped := htmlCommentRe.ReplaceAllString(evidence, "")
+	stripped, _ := stripRowComments(evidence)
 	lines := strings.Split(stripped, "\n")
 	var out []string
 	for _, line := range lines {
@@ -881,17 +1079,35 @@ func flipRowToDone(raw, num, reviewedStamp, verifiedStamp string) (string, error
 // touches STATUS.md (single-writer rule) — status-regen regenerates it on the
 // resulting push.
 func closeVerify(root, briefID string, now time.Time) error {
-	streams, _, err := loadStreams(root)
+	readme, updated, _, err := closeVerifyPlan(root, briefID, now)
 	if err != nil {
 		return err
 	}
+	return os.WriteFile(readme, updated, 0o644)
+}
+
+// closeVerifyPlan is closeVerify without the write: it resolves the ref, runs
+// every refusal, and returns the README path, its flipped content and the local
+// <stream>/<NN> it resolved to. `statusgen verify-gate-close --dry-run` stops
+// here; closeVerify writes the result.
+func closeVerifyPlan(root, briefID string, now time.Time) (readme string, updated []byte, local string, err error) {
 	// Accept either brief-key form: a brief-v1 <stream>/<NN> id or a brief-v2
-	// <cell>:<repo>:<stream>:<NN> id (issue #804). Both name one brief in this
-	// tree; normalize to the canonical <stream>/<NN> the row lookup below uses.
-	briefID = normalizeBriefKey(briefID)
+	// <cell>:<repo>:<stream>:<NN> id (issue #804), plus the reference grammar's
+	// <alias>:<stream>/<NN> and <cell>:<alias>:<stream>/<NN> forms. Any repo
+	// alias resolves through docs/streams/graph-repos.yaml and must be THIS
+	// tree's own (topology.go) — it is never dropped unread, which flipped a
+	// same-numbered local brief for another repo's item.
+	briefID, err = resolveLocalBriefRef(root, briefID)
+	if err != nil {
+		return "", nil, "", err
+	}
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		return "", nil, "", err
+	}
 	streamName, num, ok := strings.Cut(briefID, "/")
 	if !ok || streamName == "" || num == "" {
-		return fmt.Errorf("brief id %q is not a <stream>/<NN> or <cell>:<repo>:<stream>:<NN> id", briefID)
+		return "", nil, "", fmt.Errorf("brief id %q is not a <stream>/<NN>, <alias>:<stream>/<NN> or <cell>:<repo>:<stream>:<NN> id", briefID)
 	}
 	var s *Stream
 	for _, st := range streams {
@@ -901,7 +1117,7 @@ func closeVerify(root, briefID string, now time.Time) error {
 		}
 	}
 	if s == nil {
-		return fmt.Errorf("unknown stream %q", streamName)
+		return "", nil, "", fmt.Errorf("unknown stream %q", streamName)
 	}
 
 	var bf *BriefFile
@@ -916,20 +1132,20 @@ func closeVerify(root, briefID string, now time.Time) error {
 		}
 	}
 	if bf == nil {
-		return fmt.Errorf("no brief-v1 file found for %s", briefID)
+		return "", nil, "", fmt.Errorf("no brief-v1 file found for %s", briefID)
 	}
 	if bf.Gate != "human" {
-		return fmt.Errorf("refusing: brief %s gate is %q, not human — not a human sign-off gate", briefID, bf.Gate)
+		return "", nil, "", fmt.Errorf("refusing: brief %s gate is %q, not human — not a human sign-off gate", briefID, bf.Gate)
 	}
 	row := findRow(s, num)
 	if row == nil {
-		return fmt.Errorf("no README row for %s", briefID)
+		return "", nil, "", fmt.Errorf("no README row for %s", briefID)
 	}
 
-	readme := filepath.Join(s.Dir, "README.md")
+	readme = filepath.Join(s.Dir, "README.md")
 	raw, err := os.ReadFile(readme)
 	if err != nil {
-		return err
+		return "", nil, "", err
 	}
 	// Date-first, matching the repo/CLAUDE.md Reviewed-cell convention
 	// ("YYYY-MM-DD human:alex") and every existing row.
@@ -947,19 +1163,19 @@ func closeVerify(root, briefID string, now time.Time) error {
 		// FAIL read, both BEFORE the floor read on the cell the done row will
 		// carry (two-stamp model).
 		if err := closeVerifyHeldRefusal(briefID, row.Status, bf.Evidence); err != nil {
-			return err
+			return "", nil, "", err
 		}
 		if err := closeVerifyFailRefusal(briefID, row.Status, bf.Evidence); err != nil {
-			return err
+			return "", nil, "", err
 		}
 		if err := closeVerifyFloorRefusal(briefID, bf, row.Verified); err != nil {
-			return err
+			return "", nil, "", err
 		}
-		updated, err := flipRowToDone(string(raw), num, reviewedStamp, "")
+		out, err := flipRowToDone(string(raw), num, reviewedStamp, "")
 		if err != nil {
-			return fmt.Errorf("%s: %w", readme, err)
+			return "", nil, "", fmt.Errorf("%s: %w", readme, err)
 		}
-		return os.WriteFile(readme, []byte(updated), 0o644)
+		return readme, []byte(out), briefID, nil
 
 	case "implemented":
 		// One-step path: the implemented→verified README flip is a manual action
@@ -970,29 +1186,29 @@ func closeVerify(root, briefID string, now time.Time) error {
 		// the fail-closed gate; loosening WHICH briefs qualify never loosens WHAT
 		// evidence is required.
 		if !hasVerifyPass(bf.Evidence) {
-			return fmt.Errorf("refusing: brief %s status is %q (not verified) and Evidence has no **VERIFY: PASS** marker — a human-gated brief needs a recorded model verify pass before the human sign-off can advance it", briefID, row.Status)
+			return "", nil, "", fmt.Errorf("refusing: brief %s status is %q (not verified) and Evidence has no **VERIFY: PASS** marker — a human-gated brief needs a recorded model verify pass before the human sign-off can advance it", briefID, row.Status)
 		}
 		if err := closeVerifyHeldRefusal(briefID, row.Status, bf.Evidence); err != nil {
-			return err
+			return "", nil, "", err
 		}
 		date, runner := evidenceVerifierInfo(bf.Evidence)
 		if date == "" || runner == "" {
-			return fmt.Errorf("refusing: brief %s has **VERIFY: PASS** but no verifier date/runner found in Evidence table — need a table with Date and Runner columns to stamp the Verified cell", briefID)
+			return "", nil, "", fmt.Errorf("refusing: brief %s has **VERIFY: PASS** but no verifier date/runner found in Evidence table — need a table with Date and Runner columns to stamp the Verified cell", briefID)
 		}
 		verifiedStamp := date + " " + runner
 		// The cell this path is about to WRITE comes from the brief file's
 		// Evidence, so the floor read is on that computed stamp (two-stamp model).
 		if err := closeVerifyFloorRefusal(briefID, bf, verifiedStamp); err != nil {
-			return err
+			return "", nil, "", err
 		}
-		updated, err := flipRowToDone(string(raw), num, reviewedStamp, verifiedStamp)
+		out, err := flipRowToDone(string(raw), num, reviewedStamp, verifiedStamp)
 		if err != nil {
-			return fmt.Errorf("%s: %w", readme, err)
+			return "", nil, "", fmt.Errorf("%s: %w", readme, err)
 		}
-		return os.WriteFile(readme, []byte(updated), 0o644)
+		return readme, []byte(out), briefID, nil
 
 	default:
-		return fmt.Errorf("refusing: brief %s status is %q, not verified (or implemented with a recorded **VERIFY: PASS**) — nothing to sign off", briefID, row.Status)
+		return "", nil, "", fmt.Errorf("refusing: brief %s status is %q, not verified (or implemented with a recorded **VERIFY: PASS**) — nothing to sign off", briefID, row.Status)
 	}
 }
 

@@ -122,9 +122,12 @@ var AllowedInvocations = []Allowance{
 			"`gh api user` to learn WHICH login a tool fall-through would silently act as, which is the exact " +
 			"opposite of routing through the interface: both Forge backends refuse to construct a client without " +
 			"an explicitly minted App token, so the enumerated seam can NEVER observe the ambient credential this " +
-			"check exists to catch. There is no Forge method it could move to — the whole point is to read the " +
-			"identity the interface deliberately excludes (inventory delta D2). Retiring it would mean deleting " +
-			"the check, not migrating it.",
+			"check exists to catch. When `gh api user` answers \"not logged in\", the same func also runs `gh auth " +
+			"token` — a LOCAL read of a stored credential (an OS-keyring login behind an empty config dir), no " +
+			"network call — and only tests the answer for being empty, so a credential still reachable behind " +
+			"\"not logged in\" is could-not-check rather than clean. There is no Forge method either call could " +
+			"move to — the whole point is to read the identity the interface deliberately excludes (inventory " +
+			"delta D2). Retiring it would mean deleting the check, not migrating it.",
 	},
 }
 
@@ -214,6 +217,15 @@ var UnresolvedArgv = []Allowance{
 		Reason: "runs the resolved statusgen binary with --gate-scores.",
 	},
 	{
+		Key: "cmd/deskinbox/flow.go::runReaderFn::<unresolved>",
+		Reason: "the flow model's reader seam: runs the statusgen or deskboard binary resolveFlowBin resolved " +
+			"(`statusgen --bottleneck/--intake-debt/--net-flow --json`, `deskboard throughput --json`). argv[0] is " +
+			"a variable because the oracle's ASSAY_STATUSGEN / ASSAY_DESKBOARD overrides may re-point it at a " +
+			"specific build; resolveFlowBin REFUSES any override (and any PATH resolution) whose base name, with a " +
+			"trailing .exe stripped, is not statusgen / deskboard respectively, so this site cannot be aimed at a " +
+			"forge CLI by an environment variable. Read-only readers; never a forge write.",
+	},
+	{
 		Key:    "cmd/deskpreflight/main.go::realOutput::<unresolved>",
 		Reason: "the preflight probe seam; the argv comes from deskkit's preflight probe table, not from a caller.",
 	},
@@ -246,8 +258,10 @@ var UnresolvedArgv = []Allowance{
 		Key: "internal/deskkit/preflight.go::ambientLoginProbe::<unresolved>",
 		Reason: "runs the `gh` path resolved one line earlier by exec.LookPath (the AllowedInvocations row for " +
 			"this func covers the forge-CLI permit); argv[0] is the resolved variable, so it lands here as a " +
-			"blind-spot ledger row. It launches `gh api user` to read the ambient identity — the D2 identity " +
-			"layer, deliberately outside the interface — never a write.",
+			"blind-spot ledger row. It launches `gh api user` to read the ambient identity and, after a " +
+			"\"not logged in\" answer, `gh auth token` to see whether a stored credential is still readable " +
+			"(the answer is only tested for being empty) — the D2 identity layer, deliberately outside the " +
+			"interface — never a write.",
 	},
 	{
 		Key: "cmd/deskrelease/github.go::resolveDeskTokenPath::<unresolved>",

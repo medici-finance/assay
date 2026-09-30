@@ -39,6 +39,11 @@ import (
 //
 // It is handed an already-minted token (App installation token or PAT) — minting is the
 // identity layer (spec §2/§5) and deliberately not part of this seam.
+//
+// This resolver-built backend is the desk's native read client, and its custody contract is
+// pinned by nativeread_test.go: an unminted token is refused before any request (never an
+// ambient identity), and the installation a read's token is minted for is the account of the
+// repo being read, never one the environment names.
 
 // GitHubForge implements Forge against the GitHub REST/GraphQL API with a bearer token.
 // Same shape as HTTPRepoInfoFetcher (repovis.go): BaseURL defaults to GitHubAPIBase, Client
@@ -672,67 +677,116 @@ const ghOpenChangesQuery = `query($owner:String!,$name:String!,$limit:Int!){repo
 // represent a currently-queued brief; pageInfo drives the bounded cursor walk.
 const ghListChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String,$states:[PullRequestState!]){repository(owner:$owner,name:$name){pullRequests(states:$states,first:$first,after:$after,orderBy:{field:UPDATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number state headRefOid headRefName title body mergedAt}}}}`
 
-func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
+// ghReviewQueueReviewsSel is the ONE selection ReviewQueueSnapshot adds to the open-changes
+// read. It is held as its own constant so a test can prove the snapshot query is EXACTLY
+// ghOpenChangesQuery plus this selection (one variable changed — the cost measurement in
+// the stream's query-cost record rests on that), and it asks for exactly the Review fields
+// ReviewsAtHead's REST read maps: the review's database id, its author (login + kind + database
+// id — the REST `user` object), state, reviewed commit, body and submitted time. `first:100`
+// is the REST page size ReviewsAtHead walks; `hasNextPage` is how a change with MORE reviews
+// than that is reported incomplete instead of truncated.
+const ghReviewQueueReviewsSel = `reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}}`
+
+// ghReviewQueueQuery is the ReviewQueueSnapshot document: ghOpenChangesQuery with
+// ghReviewQueueReviewsSel inserted after baseRefName (TestReviewQueueQueryIsOpenChangesPlusReviews
+// pins that nothing else differs). ONE POST answers the whole queue — change metadata, CI
+// rollup contexts and every change's reviews — so the head a change is classified at and the
+// reviews reduced against it come from one consistent read. Its point cost is the open-changes
+// read's plus one nested connection per change (see the stream's query-cost record).
+const ghReviewQueueQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}} labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+
+// forgeQueueReviewsCap is the per-change review bound of ghReviewQueueReviewsSel's first:.
+const forgeQueueReviewsCap = 100
+
+// ghOpenChangeNode is one pullRequests node of the open-changes read — shared by
+// ListOpenChanges and ReviewQueueSnapshot so the two map a change through ONE code path and
+// cannot disagree about any field. Reviews is present only in the snapshot's response; a nil
+// Reviews (not requested, or absent from the response) is never read as "no reviews".
+type ghOpenChangeNode struct {
+	Number       int    `json:"number"`
+	Title        string `json:"title"`
+	Body         string `json:"body"`
+	State        string `json:"state"`
+	IsDraft      bool   `json:"isDraft"`
+	CreatedAt    string `json:"createdAt"`
+	LastEditedAt string `json:"lastEditedAt"`
+	Author       *struct {
+		Login    string `json:"login"`
+		Typename string `json:"__typename"`
+	} `json:"author"`
+	MergeStateStatus string          `json:"mergeStateStatus"`
+	HeadRefOid       string          `json:"headRefOid"`
+	HeadRefName      string          `json:"headRefName"`
+	BaseRefName      string          `json:"baseRefName"`
+	Reviews          *ghQueueReviews `json:"reviews"`
+	Labels           struct {
+		Nodes []struct {
+			Name string `json:"name"`
+		} `json:"nodes"`
+	} `json:"labels"`
+	Commits struct {
+		Nodes []struct {
+			Commit struct {
+				StatusCheckRollup *struct {
+					Contexts struct {
+						Nodes []struct {
+							Typename    string `json:"__typename"`
+							Name        string `json:"name"`
+							Status      string `json:"status"`
+							Conclusion  string `json:"conclusion"`
+							StartedAt   string `json:"startedAt"`
+							CompletedAt string `json:"completedAt"`
+							Context     string `json:"context"`
+							State       string `json:"state"`
+							CreatedAt   string `json:"createdAt"`
+						} `json:"nodes"`
+					} `json:"contexts"`
+				} `json:"statusCheckRollup"`
+			} `json:"commit"`
+		} `json:"nodes"`
+	} `json:"commits"`
+}
+
+// ghQueueReviews is the reviews connection of one snapshot node.
+type ghQueueReviews struct {
+	PageInfo gqlPageInfo `json:"pageInfo"`
+	Nodes    []struct {
+		DatabaseID int64     `json:"databaseId"`
+		Author     *gqlActor `json:"author"`
+		State      string    `json:"state"`
+		Commit     *struct {
+			Oid string `json:"oid"`
+		} `json:"commit"`
+		Body        string `json:"body"`
+		SubmittedAt string `json:"submittedAt"`
+	} `json:"nodes"`
+}
+
+// ghOpenChangesEnvelope is the response of both open-change documents.
+type ghOpenChangesEnvelope struct {
+	Data struct {
+		Repository struct {
+			PullRequests struct {
+				Nodes []ghOpenChangeNode `json:"nodes"`
+			} `json:"pullRequests"`
+		} `json:"repository"`
+	} `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+// openChangesRead POSTs one open-change document (ghOpenChangesQuery or ghReviewQueueQuery)
+// and returns its nodes. Any GraphQL-level error fails the whole read could-not-check, exactly
+// as the open-changes read always has — a partial response is never mapped.
+func (g *GitHubForge) openChangesRead(repo ForgeRepo, query, what string) ([]ghOpenChangeNode, error) {
 	in := map[string]any{
-		"query": ghOpenChangesQuery,
+		"query": query,
 		"variables": map[string]any{
 			"owner": repo.Owner, "name": repo.Name, "limit": forgeOpenChangesCap,
 		},
 	}
-	var out struct {
-		Data struct {
-			Repository struct {
-				PullRequests struct {
-					Nodes []struct {
-						Number       int    `json:"number"`
-						Title        string `json:"title"`
-						Body         string `json:"body"`
-						State        string `json:"state"`
-						IsDraft      bool   `json:"isDraft"`
-						CreatedAt    string `json:"createdAt"`
-						LastEditedAt string `json:"lastEditedAt"`
-						Author       *struct {
-							Login    string `json:"login"`
-							Typename string `json:"__typename"`
-						} `json:"author"`
-						MergeStateStatus string `json:"mergeStateStatus"`
-						HeadRefOid       string `json:"headRefOid"`
-						HeadRefName      string `json:"headRefName"`
-						BaseRefName      string `json:"baseRefName"`
-						Labels           struct {
-							Nodes []struct {
-								Name string `json:"name"`
-							} `json:"nodes"`
-						} `json:"labels"`
-						Commits struct {
-							Nodes []struct {
-								Commit struct {
-									StatusCheckRollup *struct {
-										Contexts struct {
-											Nodes []struct {
-												Typename    string `json:"__typename"`
-												Name        string `json:"name"`
-												Status      string `json:"status"`
-												Conclusion  string `json:"conclusion"`
-												StartedAt   string `json:"startedAt"`
-												CompletedAt string `json:"completedAt"`
-												Context     string `json:"context"`
-												State       string `json:"state"`
-												CreatedAt   string `json:"createdAt"`
-											} `json:"nodes"`
-										} `json:"contexts"`
-									} `json:"statusCheckRollup"`
-								} `json:"commit"`
-							} `json:"nodes"`
-						} `json:"commits"`
-					} `json:"nodes"`
-				} `json:"pullRequests"`
-			} `json:"repository"`
-		} `json:"data"`
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
-	}
+	var out ghOpenChangesEnvelope
 	if err := g.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
 		return nil, err
 	}
@@ -741,43 +795,107 @@ func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 		for _, e := range out.Errors {
 			msgs = append(msgs, e.Message)
 		}
-		return nil, Unverifiable("open-changes GraphQL error: "+strings.Join(msgs, "; "), nil)
+		return nil, Unverifiable(what+" GraphQL error: "+strings.Join(msgs, "; "), nil)
 	}
-	nodes := out.Data.Repository.PullRequests.Nodes
+	return out.Data.Repository.PullRequests.Nodes, nil
+}
+
+// ghOpenChange maps one open-change node to the seam's OpenChange.
+func ghOpenChange(n ghOpenChangeNode) OpenChange {
+	oc := OpenChange{
+		Number: n.Number, Title: n.Title, Body: n.Body, State: n.State, Draft: n.IsDraft,
+		CreatedAt: n.CreatedAt, LastEditedAt: n.LastEditedAt, MergeStateStatus: n.MergeStateStatus,
+		HeadSHA: n.HeadRefOid, HeadRef: n.HeadRefName, BaseRef: n.BaseRefName,
+	}
+	if n.Author != nil {
+		// A GraphQL Bot actor carries the BARE slug as login; re-suffix it to
+		// "<slug>[bot]" so the trust set sees the same REST rendering it does elsewhere.
+		// A null author (deleted account) stays "" — untrusted, fail closed.
+		login := n.Author.Login
+		if n.Author.Typename == "Bot" {
+			login += "[bot]"
+		}
+		oc.Author = Account{Login: login}
+	}
+	for _, l := range n.Labels.Nodes {
+		oc.Labels = append(oc.Labels, l.Name)
+	}
+	if len(n.Commits.Nodes) > 0 {
+		if r := n.Commits.Nodes[0].Commit.StatusCheckRollup; r != nil {
+			for _, c := range r.Contexts.Nodes {
+				oc.Rollup = append(oc.Rollup, RollupNode{
+					Typename: c.Typename, Name: c.Name, Status: c.Status, Conclusion: c.Conclusion,
+					StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
+					Context: c.Context, State: c.State, CreatedAt: c.CreatedAt,
+				})
+			}
+		}
+	}
+	return oc
+}
+
+func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
+	nodes, err := g.openChangesRead(repo, ghOpenChangesQuery, "open-changes")
+	if err != nil {
+		return nil, err
+	}
 	changes := make([]OpenChange, 0, len(nodes))
 	for _, n := range nodes {
-		oc := OpenChange{
-			Number: n.Number, Title: n.Title, Body: n.Body, State: n.State, Draft: n.IsDraft,
-			CreatedAt: n.CreatedAt, LastEditedAt: n.LastEditedAt, MergeStateStatus: n.MergeStateStatus,
-			HeadSHA: n.HeadRefOid, HeadRef: n.HeadRefName, BaseRef: n.BaseRefName,
-		}
-		if n.Author != nil {
-			// A GraphQL Bot actor carries the BARE slug as login; re-suffix it to
-			// "<slug>[bot]" so the trust set sees the same REST rendering it does elsewhere.
-			// A null author (deleted account) stays "" — untrusted, fail closed.
-			login := n.Author.Login
-			if n.Author.Typename == "Bot" {
-				login += "[bot]"
-			}
-			oc.Author = Account{Login: login}
-		}
-		for _, l := range n.Labels.Nodes {
-			oc.Labels = append(oc.Labels, l.Name)
-		}
-		if len(n.Commits.Nodes) > 0 {
-			if r := n.Commits.Nodes[0].Commit.StatusCheckRollup; r != nil {
-				for _, c := range r.Contexts.Nodes {
-					oc.Rollup = append(oc.Rollup, RollupNode{
-						Typename: c.Typename, Name: c.Name, Status: c.Status, Conclusion: c.Conclusion,
-						StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
-						Context: c.Context, State: c.State, CreatedAt: c.CreatedAt,
-					})
-				}
-			}
-		}
-		changes = append(changes, oc)
+		changes = append(changes, ghOpenChange(n))
 	}
 	return &OpenChanges{
+		Changes:        changes,
+		Cap:            forgeOpenChangesCap,
+		TruncatedAtCap: len(changes) >= forgeOpenChangesCap,
+	}, nil
+}
+
+// ReviewQueueSnapshot is ListOpenChanges and every change's ReviewsAtHead in ONE GraphQL
+// POST (ghReviewQueueQuery). Each change is mapped through the same ghOpenChange the list
+// read uses; each review carries exactly what ReviewsAtHead's REST read reports, rendered
+// the same way:
+//
+//   - ID / Author.ID are the GraphQL databaseId — the numeric id REST reports as `id` /
+//     `user.id`. Author.Login re-suffixes a Bot to "<slug>[bot]", the REST `user.login`
+//     rendering (a null author — a deleted account — stays "", as REST's null user does).
+//   - CommitID is `commit.oid` (REST `commit_id`); a review whose commit the forge no longer
+//     resolves reads "" on both.
+//   - The connection is chronological, the order REST's reviews endpoint returns and the
+//     ascending order ReviewsAtHead promises.
+//
+// Incompleteness is REPORTED, never truncated into a verdict: a change whose reviews
+// overflow the first:100 bound (hasNextPage) — or whose response carries no reviews
+// connection at all — comes back with ReviewsComplete=false and no reviews, and the caller
+// reads that one change with ReviewsAtHead.
+func (g *GitHubForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) {
+	nodes, err := g.openChangesRead(repo, ghReviewQueueQuery, "review-queue")
+	if err != nil {
+		return nil, err
+	}
+	changes := make([]QueuedChange, 0, len(nodes))
+	for _, n := range nodes {
+		qc := QueuedChange{OpenChange: ghOpenChange(n)}
+		if rv := n.Reviews; rv != nil && !rv.PageInfo.HasNextPage && len(rv.Nodes) <= forgeQueueReviewsCap {
+			qc.ReviewsComplete = true
+			for _, r := range rv.Nodes {
+				review := Review{
+					ID:          r.DatabaseID,
+					State:       r.State,
+					Body:        r.Body,
+					SubmittedAt: r.SubmittedAt,
+				}
+				if r.Author != nil {
+					review.Author = Account{Login: r.Author.renderedLogin(), ID: r.Author.DatabaseID}
+				}
+				if r.Commit != nil {
+					review.CommitID = r.Commit.Oid
+				}
+				qc.Reviews = append(qc.Reviews, review)
+			}
+		}
+		changes = append(changes, qc)
+	}
+	return &ReviewQueue{
 		Changes:        changes,
 		Cap:            forgeOpenChangesCap,
 		TruncatedAtCap: len(changes) >= forgeOpenChangesCap,
@@ -2455,6 +2573,14 @@ func (g *GitHubForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 		// Absent on the branch → this is a create.
 	} else {
 		priorSHA, priorContent, exists = cur.SHA, cur.Content, true
+	}
+
+	// Conditional write (see WriteFileInput.ExpectedSHA): refuse when the file is no longer the
+	// blob the caller judged against. The PUT below then cites priorSHA — equal to ExpectedSHA
+	// here — so a change landing after this fetch is a 409 from the Contents API, not an
+	// overwrite.
+	if err := expectedSHAPrecondition(in, exists, priorSHA); err != nil {
+		return nil, err
 	}
 
 	if in.AppendOnly {

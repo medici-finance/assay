@@ -113,3 +113,46 @@ regexes = [
   # its dedicated rule regardless.
   '''secret := "[A-Za-z0-9]+" \+ "[A-Za-z0-9]+"''',
 ]
+
+# #1793: verify-wake-v1 receipt INPUT DIGESTS in docs/streams/verify-outcomes.jsonl.
+# Scoped to receipt input digests only. A receipt's `inputs` map declares each
+# deliverable file as `"file:<path>":"<sha256>"` (docs/streams/desk-supervision/
+# verify-wake-v1.md §Fields). When a public file's PATH contains `key` or `token`,
+# gitleaks reads the 64-hex content digest after it as a `generic-api-key`. The
+# digest is a public content hash of a public file, not a credential.
+#
+# Narrow on every axis, AND-ed:
+#   * targetRules — `generic-api-key` only; a dedicated high-signal rule (ghp_…,
+#     AKIA…, a PEM private key) still fires in this file regardless.
+#   * paths       — this ONE file, nowhere else, anchored at BOTH ends so a
+#     same-named file under another directory (`x/docs/streams/...`) is not
+#     covered. CI runs `gitleaks dir .` from the checkout root, which reports
+#     repo-relative paths; any other path form stops the allowlist applying and
+#     the leg goes red (fail-closed). The same digest shape in any other file
+#     still fires.
+#   * regexes, against the rule's MATCH (regexTarget = "match") — the matched
+#     span must be exactly `<file path ending in .<ext>>":"<64 lowercase hex>`.
+#     An identifier-shaped key (`"api_key":"<64 hex>"`) has no `.<ext>` suffix
+#     and so still fires, even in this file.
+#
+# To be retired once the receipt encoding stops placing a digest directly after
+# a key-like identifier (tracked on #1793, option B).
+[[allowlists]]
+description = "verify-wake-v1 receipt input digests (file path -> sha256) in verify-outcomes.jsonl only (#1793)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^docs/streams/verify-outcomes\.jsonl$''']
+regexTarget = "match"
+regexes = ['''^[A-Za-z0-9._/-]+\.[a-z]{1,5}":"[0-9a-f]{64}"?$''']
+
+# #1804 ruling A′: the same verify-wake-v1 receipt input digests, in the
+# per-outcome record files that replace verify-outcomes.jsonl. Same rule and
+# value shape as the #1793 block above; paths anchored at both ends to the
+# record-file name pattern <stream>/<NN>-<UTC stamp>-<12 hex>.json, never wider.
+[[allowlists]]
+description = "verify-wake-v1 receipt input digests in per-outcome verify records only (#1804 A′)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^docs/streams/verify-outcomes/[a-z0-9-]+/[0-9]{2}-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}\.json$''']
+regexTarget = "match"
+regexes = ['''^[A-Za-z0-9._/-]+\.[a-z]{1,5}":"[0-9a-f]{64}"?$''']

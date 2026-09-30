@@ -3379,6 +3379,58 @@ landing with no pre-commit check that the landed content was clean:
   (`cmd/deskpreflight/main.go`) rather than reinventing it. statusgen not being on PATH is
   Unverifiable (exit 6), never a silent pass.
 
+### `--outcome-record` — one file per verify outcome (#882)
+
+```bash
+deskevidence <owner/repo> <branch> --outcome-record <local-file>
+```
+
+Mutually exclusive with `--evidence-file`/`--brief-path`. Retires the shared appended
+`docs/streams/verify-outcomes.jsonl` log: every verify Evidence PR used to append one line to
+that ONE path, and the forge merges pull requests server-side with no `merge=union` driver, so
+each landing turned every sibling Evidence PR touching that path CONFLICTING. Instead,
+`--outcome-record` reads one JSON object from `<local-file>`, computes the target path with
+`deskkit.RecordName` (a pure function of the record's own bytes:
+`docs/streams/verify-outcomes/<stream>/<NN>-<YYYYMMDDTHHMMSSZ>-<digest12>.json`), and commits a
+NEW file there. Two concurrent landings only ever pick the same path when they carry
+byte-identical content — the same outcome — and two identical adds merge cleanly with no driver.
+
+Records are **immutable**: an existing path with identical bytes is a noop; an existing path with
+different bytes is refused (exit 5) — a correction is a NEW record (a fresh `ts`, hence a fresh
+digest and path), never an edit of an existing one. The verified-outcome closure gates
+(`guardVerifiedOutcomes`, `gateVerifiedSidecarLanding`) apply to a `verified` record exactly as
+they applied to an added log line; `verify-fail` is never gated.
+
+**Receipt validation.** For a record carrying `wake_schema: "verify-wake-v1"`, the writer
+additionally refuses (exit 5, naming the field) the three recurring defects reviewers kept
+bouncing Evidence PRs for:
+
+- `inputs` must name every backticked path the brief's `## Context` `files:` block declares —
+  read from the brief AT the record's own `sha`, never the working tree — with one `file:<path>`
+  key per declared file (or one nested under a declared directory); a path absent at that sha (a
+  `(planned)` deliverable) is not required.
+- `blocker_ref` must be an actual reference — `#<N>`, `<owner>/<repo>#<N>`, or a forge issue/PR/run
+  URL, parsed and read through the configured forge API — never free text or an `action: …`
+  sentence.
+- the brief's own `file:<path>` revision must equal the SHA-256 of the brief AS IT LANDS on the
+  target branch (which already carries this very landing's own Evidence append), read from the
+  forge — never the pre-Evidence copy a receipt might have hashed at wake-evaluation time.
+
+An unreadable brief, forge read failure, or any other could-not-check condition in these checks
+is exit 6, never a silent pass.
+
+**Class guard.** `deskevidence` refuses (exit 5) ANY write to a file matching
+`docs/streams/*.jsonl` — not just `verify-outcomes.jsonl` — naming #882: a shared appended log is
+exactly the shape whose server-side merge conflicts every sibling PR that touches it
+concurrently, and the class must not reopen through a sibling log (the `repair-obligations.jsonl`
+projection included — its own real sink stays a dry-run, so arming it as a shared appended file
+would fail this guard red, forcing the same per-file layout at that time).
+
+**Migration.** `statusgen outcomes split --root <dir> [--check]` writes one record file per
+legacy log line (verbatim bytes plus a trailing newline), idempotent, leaving the log itself in
+place until every open PR that still touches it has landed (see
+`migrations/0004-*-per-file-verify-outcomes.md`).
+
 **The `flock`** (the third of #1282's guards, ported in #227).
 `cmd/deskevidence/writeflow.go` now holds a `syscall.Flock(…, LOCK_EX|LOCK_NB)` over the
 whole C-5 window — `AllowWrite → commitFile → audit append` — on the same
@@ -3481,6 +3533,56 @@ exit 0, nothing committed. Equivalence is deliberately narrow — no "same comma
 runner": a re-run on a different date or with a different runner is new evidence and lands.
 A partial re-run (a prefix of the standing block), a block differing by one character, and a
 superset that adds new rows are all new content and still land.
+
+**Row-scoped README landings (`--row`).** A whole-file Contents-API PUT
+has no notion of a table region: it commits whatever content it is handed, byte for byte. A
+stream README's generated Briefs table (the `<!-- statusgen:briefs:begin/end -->`
+marker-wrapped region `statusgen regen --readmes` maintains) is shared board state — every
+verify-desk landing that touches the README reads and writes the WHOLE file — so a landing
+built from an even slightly stale local copy silently reverted every OTHER row the copy had
+not yet seen. A board row that had just been corrected was put back to `todo` forty-nine
+seconds later by exactly this shape, independent of how careful the correction itself was.
+
+For a target whose **remote** content carries that marker-wrapped region, `--row <NN>`
+(repeatable) is now **required** and names which row(s) this landing may touch — absent, the
+landing refuses (exit 5) before any write. The committed content is then **rebased** onto the
+remote: only the named rows' **lifecycle cells** (the header's Status / Verified / Reviewed
+columns) come from the local file; the named rows' authoring cells, every other row, the
+header, the separator, and every byte outside the markers come from the remote **unchanged**,
+so a stale local copy cannot revert anything it did not name, nor a named row's title, wave or
+effort. A row present in both tables but not named, whose local line differs from the
+remote's, does not block the landing — it is reported and left alone: `stale-local: row <NN>
+differed and was NOT written`; a named row whose local authoring cells differ is reported the
+same way (`stale-local: row <NN> authoring cell(s) differed and were NOT written`).
+
+It refuses (exit 5), never guesses, when: a named row is absent from either table (the table
+changed under the caller, or there is nothing to rebase in from); either table carries a row
+key more than once; a named row's line on either side has a different cell count from the
+header; or a named local line carries a carriage return anywhere but its very end (it would
+render as an extra row). The region is located exactly as statusgen locates it — the first
+occurrence of each marker literal — and each marker must stand alone on its line; a stream
+`README.md` that carries either literal but does not parse that way is **refused**, not
+treated as table-less, so a drifted or mangled marker cannot silently disarm the guard.
+`TestRowScopeMarkersMatchStatusgen` pins the literals to `statusgen/readmetable.go`. A target
+whose remote content carries no marker at all — or a non-README file that merely quotes them —
+is unaffected by any of this: exactly today's whole-file behaviour, brief-path merges and
+`.jsonl` sidecars included.
+
+The guard is enforced **twice**, the same two-layer shape as the `--append-only` shrink guard
+above: the pre-check builds the rebase against the fetch already in hand, and the write op
+re-fetches the target **again**, independently, immediately before the commit, refusing
+unless the content about to be written is exactly that fresh read with only the named rows'
+lifecycle cells changed. The fresh read's content id then rides into the write as
+`WriteFileInput.ExpectedSHA`: the backend refuses if its own pre-write fetch reports a
+different id, and cites that id as the forge's own conditional-write precondition (GitHub's
+Contents-API `sha`, GitLab's `last_commit_id`), so a table change landing after the re-check
+is rejected by the forge rather than overwritten. On a forge whose default branch takes no
+direct write (GitLab), the landing goes to a side branch and a draft change instead, cut from
+the same content id: the fresh read's id rides into that write as `ExpectedSHA` too, so a table
+change in the window between the write-time re-check and the side branch's own creation is
+refused by the forge before the draft change is even opened — not left to surface later as a
+merge conflict, which a side branch cut from the already-moved table would never produce.
+(`cmd/deskevidence/rowscope.go`.)
 
 ## deskgit — the narrow git verb (#1555 F-1)
 
@@ -4312,8 +4414,15 @@ pass straight through and the `claim-acquire OK` line names which one ran. The c
 runs as the DISPATCHING role, never on the ambient `gh` login: `deskdispatch` mints (or
 reuses) that role's App token through the same seam its model-stamp step uses and hands it
 over in the tool's own shape — `--token-file <0600 path>` for `deskclaim-ref`, `GH_TOKEN` in
-the child's environment for the script — printing neither; an exported `GH_TOKEN` wins and
-nothing is minted; a mint refusal is exit 6 with no claim attempted. The decision script
+the child's environment for the script — printing neither. An exported `GH_TOKEN` wins and
+nothing is minted ONLY when it is verified to BE the dispatching role's App (#1631): on GitHub,
+one `viewer` read — sent only to the host the role's own credential would go to, and refused
+unsent for a repo whose origin is not github.com — must return the role's App login and, when
+the roster pins it, its bot user id; on GitLab, it must equal the role's PAT custody file. Any
+other identity (a human login, another role's App) is ignored with a NOTICE, dropped from the
+process, and the role token minted instead; an identity that cannot be read is exit 6, and a
+role the roster binds no App to is exit 5, both with no claim attempted. A mint refusal is exit
+6 with no claim attempted. The decision script
 shells out to the forge CLI itself, so a rule keyed on a child literally named `gh` never
 covered it (#1146): it is handed the SAME credential from that one resolution, as `GH_TOKEN`
 (plus `GITLAB_TOKEN` on a GitLab-served repo) in its environment, and the `decision-gate OK`
@@ -4637,7 +4746,9 @@ human's merge of the checkpoint PR is the flip.
 
 **`plan` does not re-run an unchanged failure — wake receipts** (`verify-wake-v1`;
 `docs/streams/example-stream/verify-wake-v1.md`). A `verify-fail`/`blocked` verifier run lands a
-WAKE RECEIPT on the append-only verify-outcomes sidecar row: the inputs it observed, the blocker
+WAKE RECEIPT on the verify-outcome record: since #882, one NEW file per outcome under
+`docs/streams/verify-outcomes/<stream>/` (`deskevidence --outcome-record`), unioned with any
+legacy appended line still present from before the migration — the inputs it observed, the blocker
 class, and the checkable condition that must change before re-running is worth a slot. On the next
 `plan`, `classifyItem` reads the evaluated state (`deskkit.WakeReceipt.EvaluateWake`, computed at
 scan time in `briefscan.go` against an already-authorized, offline, probe-free reader): a complete

@@ -232,6 +232,61 @@ RISK-VALUE: DERIVED — 7-entry closed capability vocabulary @ docs/streams/harn
 
 VERIFY: FAIL — held at implemented. Row 7 fails, root-caused to the still-unlanded harness-portability/15 (CI wiring, App-token scope constraint) — not a regression in this brief's own diff, already tracked. Every row exercising this brief's own deliverable directly (1,2,2a,3,3a,4,4a,5,6) passes clean, including row 3 which newly confirms a prior regression (#1182) is fixed on merged main. Housekeeping: closed #1182 (fix landed via #1293, never auto-closed since the PR used "Issue:" not "Closes:").
 
+### Non-implementer verifier re-run — VERIFY: FAIL (rows 3 and 7) — claude-opus-5-5 verifier (verify-desk dispatch), @ merged main `cf56ddeebc187e7923c4c6349bbdf95291bdfe05`, 2026-09-27
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/harnesslint && GOFLAGS=-buildvcs=false go test ./... > /tmp/hp04r1.out 2>&1; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bodies plugins/assay/skills > /tmp/hp04r2.out 2>&1; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 2a | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && cp -r plugins/assay/skills /tmp/hp04-dirty && printf '\nUse the \x60Agent\x60 tool with SendMessage.\n' >> /tmp/hp04-dirty/adopt/SKILL.md && /tmp/hl870 bodies /tmp/hp04-dirty > /tmp/hp04r2a.out 2>&1; echo $?; rm -rf /tmp/hp04-dirty` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bindings plugins/assay/references > /tmp/hp04r3.out 2>&1; echo $?` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 3a | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && cp -r plugins/assay/references /tmp/hp04-dirty-bind && grep -vF 'dispatch-worker' plugins/assay/references/codex.md > /tmp/hp04-dirty-bind/codex.md && /tmp/hl870 bindings /tmp/hp04-dirty-bind > /tmp/hp04r3a.out 2>&1; echo $?; rm -rf /tmp/hp04-dirty-bind` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `git grep -nE 'SendMessage' -- plugins/assay/skills > /tmp/hp04r4.out; test ! -s /tmp/hp04r4.out; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 4a | `git grep -cE 'SendMessage' -- plugins/assay/references/claude-code.md` | pass exit=0 | sha256:979226bec361 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `for c in dispatch-worker message-agent isolate-workspace invoke-skill session-notifications; do grep -qF "$c" plugins/assay/references/claude-code.md && grep -qF "$c" plugins/assay/references/codex.md \|\| echo "MISSING $c"; done > /tmp/hp04r5.out; test ! -s /tmp/hp04r5.out; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `(cd tools/plugindrift && GOWORK=off go run . --root ../..); echo $?` | pass exit=0 | sha256:3e2492290367 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -rlE 'harnesslint' .github/workflows > /tmp/hp04r7.out; test -s /tmp/hp04r7.out; echo $?` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `**BLOCKED (needs live Claude session, non-CI)** — regression: one full loop cycle (fanout a trivial brief → review → verify) driven from the rewritten skills in a real Claude Code session` | fail exit=2 | sha256:a5466c565aba | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+
+**Read the witness Result column with care.** Every Verify command except 4a and 8 ends in
+`; echo $?`, so the subshell exit is always 0 and the witness records `pass exit=0` whatever
+the lint returned. The verdict lives in the printed value, and the output hash identifies it:
+sha256:9a271f2a916b is the hash of the one line `0`, sha256:4355a46b19d3 is the hash of the one
+line `1` (both recomputed locally). Against each row's Expect cell:
+
+- Row 1: printed `0`; suite `ok`, 48 `--- PASS` / 0 `--- FAIL` under `go test -v`, per-fixture red tests included. PASS.
+- Row 2: printed `0`; `checked-clean: bodies — no violations`. PASS.
+- Row 2a: printed `1` (expected non-zero); two violations at the adopt copy line 122 naming banned token "SendMessage" and banned token backticked-Agent, then `checked-failed: bodies — 2 violation(s)`. PASS.
+- Row 3: printed `1`, expected `0`. **FAIL.** Four files skipped by declaration (desk-common, desk-shell, standing-note, tick-contract), then `plugins/assay/references/claude-code.md: no degradation cell for skill "system-demo" (its system-demo row is missing)` and `checked-failed: bindings — 1 violation(s)`. The system-demo skill landed on 2026-09-22 (#1465); the follow-up #1488 added its cell to the Codex and Cursor binding files but not to the Claude Code one. That is drift from a later stream, not a defect in this brief's own diff, and it is already tracked as medici-finance/assay#1703.
+- Row 3a: printed `1` (expected non-zero); `codex.md: capability "dispatch-worker" does not resolve — no capability:dispatch-worker binding present`, `checked-failed: bindings — 1 violation(s)`. PASS. The row-3 system-demo gap does not show here because the copied references directory has no sibling skills roster, so only closure is checked. The lint's own doc comment describes that behaviour.
+- Row 4: printed `0`; no SendMessage in any body. PASS.
+- Row 4a: exit 0, `plugins/assay/references/claude-code.md:2` (count 2, at least 1). PASS, so row 4's empty result means the tree is clean, not that the grep missed.
+- Row 5: printed `0`; all five capabilities resolve in both binding files. Control run with `no-such-cap` appended to the loop printed `MISSING no-such-cap`. PASS.
+- Row 6: printed `0`; `coverage: 14 bundled skills/*/SKILL.md — 0 pinned, 6 canonical, 8 unported, 0 unaccounted`, `PLUGINDRIFT: CLEAN`. PASS.
+- Row 7: printed `1`, expected `0`. **FAIL.** No workflow under .github/workflows mentions harnesslint. The wiring still exists only as the unapplied tools/harnesslint/ci.yml.patch. Tracked as medici-finance/assay#1332 (harness-portability/15's patch was never pushed and needs a human push, because the worker App lacks workflows scope) and #1703.
+- Row 8: this row describes a live Claude Code loop cycle and has no executable command, so verifyrun's `fail exit=2` is a shell parse failure on the prose. It was not run: a dispatched, non-interactive verifier cannot drive a live harness session, and doing so falls outside the offline envelope. No non-implementer live-session record exists in this brief's Evidence. It remains BLOCKED on a human or live-session run.
+
+Public-tree check: every deliverable this brief names is present at merged main in the public
+tree. That covers tools/harnesslint (go.mod, lint.go, main.go, lint_test.go, testdata, banned-tokens.md),
+plugins/assay/references/claude-code.md and codex.md, and the rewritten plugins/assay/skills bodies.
+The CI hook is the one piece still missing (row 7). The repo has no go.work. The Makefile carries
+no harnesslint target, and this pass did not re-examine the recorded sweep decision.
+
+**Risk-bearing value enumeration.** The item has risk metadata, all `no`, and `gate: model`. It is not irreversible and the diff touches no risk-classed path. Literals enumerated over tools/harnesslint and the stream README's vocabulary block:
+
+| Rank | Identifier = literal | Location | Irreversibility |
+|---|---|---|---|
+| 1 | exitClean = 0, exitFailed = 1, exitCannot = 2, exitUsage = 2 | tools/harnesslint/lint.go:36-39 | The three-state exit contract any CI caller gates on. A wrong value would silently green a could-not-check. Reversible with an edit and a redeploy. |
+| 2 | closed capability vocabulary = {dispatch-worker, message-agent, isolate-workspace, invoke-skill, session-notifications, durable-monitor, stop-worker, cadence-tick} (8 entries) | docs/streams/harness-portability/README.md:410-419 | Designed to be amended in-PR. It has grown from the brief's 5 entries to 8 through later briefs. Reversible. |
+| 3 | banned-token list = 19 entries (backticked Agent, SendMessage, Task tool, CLAUDE_PLUGIN_ROOT, claude.ai, SessionStart, spawn_agent, wait_agent, close_agent, resume_agent, send_input, send_message, followup_task, interrupt_agent, multi_agent, backticked Monitor, backticked TaskList, backticked EnterWorktree, persistent: true) | tools/harnesslint/banned-tokens.md:28-48 | A lint config knob, reversible. It is a superset of the brief's seed list. |
+| 4 | defaultReadmePath = "docs/streams/harness-portability/README.md"; vocabMarker, bannedMarker, nonMatrixMarker marker strings | tools/harnesslint/lint.go:48,53,56,75 | Lookup-path knobs. An empty read routes to could-not-check (exit 2), not to a silent pass. Reversible. |
+
+RISK-VALUE: DERIVED — exitClean = 0 / exitFailed = 1 / exitCannot = 2 / exitUsage = 2 @ tools/harnesslint/lint.go:36-39 — these codes keep the three reported states distinct (clean, failed, could-not-check), as the brief's ground rule requires ("parse error / unreadable file / empty vocabulary → non-zero with could-not-check, never a silent pass"). Folding usage errors onto 2 keeps the state count at three. This pass exercised both 0 and 1 live (rows 2, 2a, 3, 3a).
+RISK-VALUE: DERIVED — capability vocabulary = the 8-entry set @ docs/streams/harness-portability/README.md:410-419 — the brief's decided seam puts the closed set in one place in the stream README, and the lint reads that block (vocabMarker) rather than keeping a copy. Rows 3a and 5 show closure is enforced against the live set. The growth from 5 to 8 entries is the intended amend-in-README mechanism.
+The remaining entries, the banned-token list and the lookup paths and markers, are reversible lint-config knobs. They are ranked last and not derived.
+
+VERIFY: FAIL — rows 3 and 7 fail their Expect cells at merged main cf56ddeebc18. Row 3: the Claude Code binding lacks a system-demo degradation cell, drift from a later stream tracked in medici-finance/assay#1703. Row 7: harnesslint is still not wired into any workflow. The patch is unapplied and tracked in #1332 and #1703. Row 8 remains BLOCKED on a live-session run. Every row that exercises this brief's own deliverables directly passes (1, 2, 2a, 3a, 4, 4a, 5, 6). The item stays at implemented.
+
 ## Review
 
 Gate: **model** (from frontmatter). Review priority: the diff of the seven bodies,

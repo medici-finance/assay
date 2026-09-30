@@ -1,0 +1,107 @@
+{
+  "test": "go test ./internal/deskkit/ ./cmd/deskroster/ -count=1 -timeout 300s -run 'TestAmbient|TestPreflightAmbientIdentity'",
+  "control": {
+    "name": "CONTROL — stop failing a bot/App slug ambient login (a fall-through could post as a bot and pass)",
+    "file": "internal/deskkit/preflight.go",
+    "old": "\t\tcase isAmbientBot(cfg, got):",
+    "new": "\t\tcase false && isAmbientBot(cfg, got):"
+  },
+  "mutations": [
+    {
+      "name": "flip the no-usable-human answers (not logged in / 401 / 403) back to could-not-check in the check — the #1798 defect: the safe state unreachable",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tcase errors.Is(err, ErrNoAmbientIdentity):",
+      "new": "\tcase false && errors.Is(err, ErrNoAmbientIdentity):"
+    },
+    {
+      "name": "flip the integration-token HTTP 403 classification back to could-not-check in the probe",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tcase strings.Contains(low, \"(http 403)\"):",
+      "new": "\tcase false && strings.Contains(low, \"(http 403)\"):"
+    },
+    {
+      "name": "flip the gh-not-logged-in classification back to could-not-check in the probe",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tcase exitCode == ghExitAuthRequired || strings.Contains(low, \"gh auth login\"):",
+      "new": "\tcase false && (exitCode == ghExitAuthRequired || strings.Contains(low, \"gh auth login\")):"
+    },
+    {
+      "name": "flip the HTTP 401 classification back to could-not-check in the probe (the planted second instance of the class)",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tcase strings.Contains(low, \"(http 401)\"):",
+      "new": "\tcase false && strings.Contains(low, \"(http 401)\"):"
+    },
+    {
+      "name": "drop the rate-limit carve-out (a rate-limited HUMAN token's 403 would read as no ambient identity)",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tcase strings.Contains(low, \"rate limit\"):\n\t\treturn \"\", false\n",
+      "new": ""
+    },
+    {
+      "name": "drop the human-ambient WARNING (a human login passes silently)",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tc.Notice = notice\n",
+      "new": "\tc.Notice = \"\"\n"
+    },
+    {
+      "name": "make a human ambient login blocking again (the pre-#1798 red on a non-blessing human)",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tc.Notice = notice\n",
+      "new": "\tc.Notice = notice\n\tif notice != \"\" {\n\t\tc.State = CheckedFailed\n\t}\n"
+    },
+    {
+      "name": "skip the transport half once the identity half passes (the helper chain goes unchecked)",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tc := checkAmbientTransport(p, l, tokenPath, identity, refs)",
+      "new": "\tc := clean(CheckAmbientID, identity, refs)"
+    },
+    {
+      "name": "treat a gh exec failure as a no-identity answer (could-not-run rounded up to clean)",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\t\treturn \"\", fmt.Errorf(\"could not run gh api user: %v\", oneLine(err.Error()))",
+      "new": "\t\treturn \"\", fmt.Errorf(\"%w: could not run gh api user: %v\", ErrNoAmbientIdentity, oneLine(err.Error()))"
+    },
+    {
+      "name": "drop the timeout detection (a hung gh stops being reported as a timeout)",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\t\tif ctx.Err() != nil {\n\t\t\treturn \"\", fmt.Errorf(\"gh api user did not answer within %s\", ambientProbeTimeout)",
+      "new": "\t\tif false && ctx.Err() != nil {\n\t\t\treturn \"\", fmt.Errorf(\"gh api user did not answer within %s\", ambientProbeTimeout)"
+    },
+    {
+      "name": "drop the stored-credential look after a not-logged-in answer (an OS-keyring login behind an empty config dir reads as clean)",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\t\t\t\tif reason == ghNotLoggedInReason {",
+      "new": "\t\t\t\tif false && reason == ghNotLoggedInReason {"
+    },
+    {
+      "name": "round a reachable stored credential up to the no-identity state in the probe",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\t\t\"token into GH_TOKEN hands back to the next gh\", ErrStoredAmbientCredential)",
+      "new": "\t\t\"token into GH_TOKEN hands back to the next gh\", ErrNoAmbientIdentity)"
+    },
+    {
+      "name": "drop the check's stored-credential arm (its remediation stops leading with clearing the credential)",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tcase errors.Is(err, ErrStoredAmbientCredential):",
+      "new": "\tcase false && errors.Is(err, ErrStoredAmbientCredential):"
+    },
+    {
+      "name": "treat every gh auth token failure as a stored credential (every not-logged-in gh turns could-not-check)",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\t\tif asExitError(err, &ee) {\n\t\t\treturn nil\n\t\t}",
+      "new": "\t\tif asExitError(err, &ee) {\n\t\t\treturn ErrStoredAmbientCredential\n\t\t}"
+    },
+    {
+      "name": "treat an empty gh auth token answer as a stored credential",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tif strings.TrimSpace(string(out)) == \"\" {\n\t\treturn nil\n\t}",
+      "new": "\tif false && strings.TrimSpace(string(out)) == \"\" {\n\t\treturn nil\n\t}"
+    },
+    {
+      "name": "drop the gh auth token timeout detection (a hung stored-credential look rounds up to clean)",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tif ctxErr != nil {\n\t\treturn fmt.Errorf(\"gh reports not logged in, and gh auth token did not answer",
+      "new": "\tif false && ctxErr != nil {\n\t\treturn fmt.Errorf(\"gh reports not logged in, and gh auth token did not answer"
+    }
+  ]
+}

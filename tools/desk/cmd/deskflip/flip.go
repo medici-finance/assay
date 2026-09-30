@@ -152,6 +152,7 @@ func cmdFlip(args []string) error {
 	return ferr
 }
 
+// semantic: S-review-verdict
 func flip(o flipOpts) error {
 	// --- caller-role -------------------------------------------------------------
 	if err := checkCallerRole(); err != nil {
@@ -699,7 +700,7 @@ func checkModelFloor(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, pr prIn
 	// stamp standing exactly as it stood: no loosening, and no silent claim to have looked.
 	// deskpost's floor sites DO resolve it (cmd/deskpost/claimliveness.go), so the age-out is
 	// live on the verdict verb and on the App-identity ready-flip.
-	d := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged(),
+	d := deskkit.ModelCapabilityFloor(tl, deskkit.IsStampAuthorityLogin, deskkit.ModelFloorOverrideEngaged(),
 		deskkit.ClaimLivenessUnknown)
 	switch d.Outcome {
 	case deskkit.FloorOverrideAllow:

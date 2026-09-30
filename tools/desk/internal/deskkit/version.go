@@ -18,7 +18,7 @@ var (
 	SourceSHA = ""
 	BuiltAt   = ""
 	// ReleaseTag is the artifact-namespaced release tag (`desk-tools/vX.Y.Z`)
-	// stamped by .github/workflows/release-desk.yml via
+	// stamped by .github/workflows/release.yml (the desk-tools build step) via
 	//   -X …/internal/deskkit.ReleaseTag=$RELEASE_TAG
 	// mirroring release-statusgen.yml's `-X main.statusgenVersion`. It is what
 	// maps a RUNNING binary back to the release it was cut from: SourceSHA alone

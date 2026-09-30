@@ -72,7 +72,7 @@ func writeReceipts(t *testing.T, root string, recs ...deskkit.WakeReceipt) {
 		b.Write(line)
 		b.WriteByte('\n')
 	}
-	p := filepath.Join(root, "docs", "streams", outcomeSidecarName)
+	p := filepath.Join(root, "docs", "streams", "verify-outcomes.jsonl")
 	if err := os.WriteFile(p, []byte(b.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}

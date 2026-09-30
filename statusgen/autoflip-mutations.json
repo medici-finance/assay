@@ -1,0 +1,143 @@
+{
+  "test": "go test . -run 'AutoFlip|Autoflip|Attribute|ApprovalOnly|ApprovalGuard' -count=1",
+  "control": {
+    "name": "CONTROL — Evidence-landing exclusion disabled (the #1838 defect: the verifier's Evidence PR is judged as a delivery candidate and refuses the flip)",
+    "file": "autoflip.go",
+    "old": "if shape.Author == \"\" || !loginInSet(rev.EvidenceLanders, shape.Author) || len(shape.Files) == 0 {",
+    "new": "if true || shape.Author == \"\" || !loginInSet(rev.EvidenceLanders, shape.Author) || len(shape.Files) == 0 {"
+  },
+  "mutations": [
+    {
+      "name": "trailer resolver skipped (a delivery that never touched the brief file is not found; shape B stays could-not-check)",
+      "file": "autoflip.go",
+      "old": "hits, err := src.PRsNamingBrief(repo, canonicalBriefKey(res.Brief))",
+      "new": "hits, err := []int(nil), error(nil)"
+    },
+    {
+      "name": "Evidence exclusion drops the author half (any docs/streams-only PR escapes its approval)",
+      "file": "autoflip.go",
+      "old": "!loginInSet(rev.EvidenceLanders, shape.Author)",
+      "new": "false"
+    },
+    {
+      "name": "Evidence exclusion drops the docs/streams-only half (a verifier-authored code change escapes its approval)",
+      "file": "autoflip.go",
+      "old": "\t\tif !strings.HasPrefix(filepath.ToSlash(f), bulkMigrationDocsPrefix) {\n\t\t\treturn false",
+      "new": "\t\tif false && !strings.HasPrefix(filepath.ToSlash(f), bulkMigrationDocsPrefix) {\n\t\t\treturn false"
+    },
+    {
+      "name": "Evidence exclusion accepts an empty file list",
+      "file": "autoflip.go",
+      "old": "|| len(shape.Files) == 0 {",
+      "new": "|| false {"
+    },
+    {
+      "name": "guard drops the approval of a later change to the brief file",
+      "file": "autoflip.go",
+      "old": "\t\tif cand.Outcome != flipDone {",
+      "new": "\t\tif false && cand.Outcome != flipDone {"
+    },
+    {
+      "name": "trailer-resolved delivery credited without its own approval",
+      "file": "autoflip.go",
+      "old": "if g.cand.Outcome != flipDone {",
+      "new": "if false && g.cand.Outcome != flipDone {"
+    },
+    {
+      "name": "guard judges a change that predates the delivery (an older authoring PR refuses the flip)",
+      "file": "autoflip.go",
+      "old": "if tr.found() && tr.predates(g.mergedAt) {",
+      "new": "if false && tr.found() && tr.predates(g.mergedAt) {"
+    },
+    {
+      "name": "guard passes over any change when the delivery's merge time is known (unknown/later change skipped)",
+      "file": "autoflip.go",
+      "old": "return !m.IsZero() && !t.mergedAt.IsZero() && m.Before(t.mergedAt)",
+      "new": "return !t.mergedAt.IsZero()"
+    },
+    {
+      "name": "oldest delivery credited instead of the newest",
+      "file": "autoflip.go",
+      "old": "if c.mergedAt.After(best.mergedAt) {",
+      "new": "if c.mergedAt.Before(best.mergedAt) {"
+    },
+    {
+      "name": "a multi-Brief search hit is credited instead of could-not-check",
+      "file": "autoflip.go",
+      "old": "case verdict == candidateUnattributable:",
+      "new": "case false:"
+    },
+    {
+      "name": "PLANTED second approval route (the defect class: walk demands approval without the Evidence gate)",
+      "file": "autoflip.go",
+      "old": "\tcand := g.cand",
+      "new": "\tcand, _ := approvalAtHead(res, n, repo, src, rev)"
+    },
+    {
+      "name": "trailer body-edit check skipped (a trailer added after merge credits the brief and ends the guard: S1 on #1868)",
+      "file": "autoflip.go",
+      "old": "if why := trailerBodyProblem(n, g.mergedAt, repo, src); why != \"\" {",
+      "new": "if why := trailerBodyProblem(n, g.mergedAt, repo, src); false && why != \"\" {"
+    },
+    {
+      "name": "body edited after merge accepted",
+      "file": "autoflip.go",
+      "old": "case edited.After(mergedAt):",
+      "new": "case false:"
+    },
+    {
+      "name": "body edit with unknown merge time accepted",
+      "file": "autoflip.go",
+      "old": "case mergedAt.IsZero():",
+      "new": "case mergedAt.IsZero():\n\t\treturn \"\"\n\tcase false:"
+    },
+    {
+      "name": "unreadable body-edit time accepted as never edited",
+      "file": "autoflip.go",
+      "old": "case err != nil:\n\t\treturn fmt.Sprintf(\"when its body",
+      "new": "case false:\n\t\treturn fmt.Sprintf(\"when its body"
+    },
+    {
+      "name": "Evidence exclusion ignores a rename's old path (a move into docs/streams/ escapes its approval: A1 on #1868)",
+      "file": "autoflip.go",
+      "old": "append(append([]string(nil), shape.Files...), shape.RenamedFrom...)",
+      "new": "shape.Files"
+    },
+    {
+      "name": "file listing drops previous_filename",
+      "file": "autoflip.go",
+      "old": "renamedFrom = append(renamedFrom, pair[1])",
+      "new": "_ = pair[1]"
+    },
+    {
+      "name": "guard STOPS at a pre-delivery change (log order taken as merge order: F2 on #1868)",
+      "file": "autoflip.go",
+      "old": "walked = append(walked, fmt.Sprintf(\"#%d (merged before the delivering PR #%d — outside the guard)\", n, tr.credit.PR))\n\t\t\tcontinue",
+      "new": "return tr.credit"
+    },
+    {
+      "name": "guard STOPS at the delivery itself (a later-merged change listed below it is never judged)",
+      "file": "autoflip.go",
+      "old": "continue // the delivery itself",
+      "new": "return tr.credit // the delivery itself"
+    },
+    {
+      "name": "side-branch trailer hit credited (F1 on #1868)",
+      "file": "autoflip.go",
+      "old": "if g.shape.BaseRef != g.shape.DefaultBranch {",
+      "new": "if false && g.shape.BaseRef != g.shape.DefaultBranch {"
+    },
+    {
+      "name": "missing base/default branch read as a match",
+      "file": "autoflip.go",
+      "old": "if v.Base.Ref == \"\" || v.Base.Repo.DefaultBranch == \"\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "Evidence landers read from the wrong roster role",
+      "file": "autoflip.go",
+      "old": "EvidenceLanders: rosterRoleLogins(cfg, \"verifier\")}",
+      "new": "EvidenceLanders: rosterRoleLogins(cfg, \"reviewer\")}"
+    }
+  ]
+}
