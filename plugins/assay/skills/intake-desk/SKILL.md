@@ -177,13 +177,12 @@ to one desk's inbox.
 Every item leaving triage carries a recorded **impact / risk / effort triple**, so human-facing
 surfaces order *worth the attention* ahead of *cheap to do*, not by urgency-then-age alone.
 
-- **Encoding — three scoped labels plus one rationale line each.** At the exit, set three
-  labels on the item — `impact:{high,med,low}`, `risk:{high,med,low}`, `effort:{s,m,l}` — and
-  post ONE comment line per axis giving the reason (e.g. `impact: high — blocks every
-  downstream consumer`). The labels are the queryable data; the comment is the audit trail.
-  The taxonomy is generic — no project names belong in a label. Label provisioning is
-  per-repo project config, like the escalation labels above: create idempotently before
-  first use on a repo.
+- **Encoding — three scoped labels plus one rationale line each.** At the exit, set three labels on
+  the item — `impact:{high,med,low}`, `risk:{high,med,low}`, `effort:{s,m,l}` — and post ONE comment
+  line per axis giving the reason (e.g. `impact: high — blocks every downstream consumer`). The
+  labels are the queryable data; the comment is the audit trail. The taxonomy is generic — no project
+  names belong in a label. Label provisioning is per-repo project config, like the escalation labels
+  above: create idempotently before first use on a repo.
 - **Judgment recorded, not computed.** The triple is the triage session's own call, made
   where the judgment already happens — no model scores it in CI and no inferential sensor
   derives it. This desk already runs on a smart tier for exactly this reason.
@@ -266,11 +265,10 @@ extended to response actions — do not re-propose the ceremony** (human:<name>'
 is duplicated tokens, not correctness). The same race on a **mutating** response does not converge
 harmlessly, which is why the close-authority rule sits beside this one.
 
-1. **CREATE-PLACEHOLDER triage.** `scanloop` writes the placeholder; your job at placeholder time is
-   **triage only**. An issue that fails the routing test (thin / ambiguous) is NOT left for a worker
-   — label it `question` with what is missing, or scope it; a worker-legible issue simply rides
-   Next-up. **Do not fan out workers, do not take a dispatch claim, do not author implementation or
-   close PRs from this window.**
+1. **CREATE-PLACEHOLDER triage.** `scanloop` writes the placeholder; your job here is **triage
+   only**. An issue that fails the routing test (thin / ambiguous) is NOT left for a worker — label
+   it `question` with what is missing, or scope it; a worker-legible issue rides Next-up. **Do not
+   fan out workers, take a dispatch claim, or author implementation or close PRs from this window.**
    **Class decision** (same judgement as the triple). Is the symptom an instance of an open
    `error-class` issue intake opened (title `class: <mechanism>`)? **Yes** → `deskfile attach`
    (outside the new-issue budget) one instance block: `kind` (`confirmed-defect` / `false-positive` /
@@ -278,28 +276,31 @@ harmlessly, which is why the close-authority rule sits beside this one.
    `module: <owner path or cmd/<verb>>`, `observed-at`, `source-ref` (immutable revision or retained
    evidence), `scope` (revision/operation, or `unknown`), `state: active|recovered|unknown` with
    `checked-at` (and `recovery-ref` when recovered), optional `introduced-by: <ref>
-   (<same-symptom|shared-mechanism|introduced-by-commit|unconfirmed>)`, and a one-line evidence
-   summary. A later assessment APPENDS a block with the same `incident-group`, never edits the
-   original; a field an older block lacks reads as unknown, never invented. **No, and it is a
-   machinery defect** → record `class: <mechanism>` in the triage comment, and open the class issue
-   (label `error-class`) when a **second** symptom shares that mechanism (the **first** in a
+   (<same-symptom|shared-mechanism|introduced-by-commit|unconfirmed>)`, `open-questions` and
+   `next-step` (the latest block's are current), and a one-line evidence summary. A later assessment
+   or repeat report APPENDS a same-`incident-group` block (evidence, never a count or dispatch),
+   never edits the original; a field an older block lacks reads as unknown, never invented. **No, and
+   it is a machinery defect** → record `class: <mechanism>` in the triage comment, and open the class
+   issue (label `error-class`) when a **second** symptom shares that mechanism (the **first** in a
    `brittle`-marked module), one block per symptom so far; park the class issue's own scan
-   placeholder (`status: blocked`, body line `Parked until design-owed.`).
-   *Worked case:* two mirrored reports of one failure: two blocks, one `incident-group`, one counted
-   instance. Success on another revision is another `scope`, not recovery; only a same-scope re-check
-   appends `state: recovered` + `recovery-ref`, count unchanged; a closed issue alone is not recovery.
-   **Trigger.** Only `confirmed-defect` and `false-positive` count, deduped by `incident-group`. At 3
-   counted instances or the class's 2nd merged fix — or at the **first** when its `module:` carries a
-   `brittle` mark in `docs/contracts.md` (deliverable: the investigation, build-less-brittle/09,
-   before any design brief) — label it `design-owed`, unpark its placeholder (`todo`, `Parked` line →
-   `Design-owed: deliverable a brief per author-brief, strong tier.`; a class on a `worker-desk`
-   rule-4 risk-bearing surface stays parked under `needs-decision` until the driver rules; on a
-   proceed ruling, unpark it as above), and park each symptom placeholder (`status: blocked`, body
-   line `Parked on class #N.`); the design PR's `Closes` closes them. A production-down or security
-   symptom stays `todo`; the driver's own-login `bleed` reply naming a parked symptom sets it `todo`,
-   `Parked` dropped. **Re-park:** a scanner `reactivate` (excluded label removed or reopened) sets a
-   parked row `todo`, body kept, so each pass re-blocks a `todo` row still saying `Parked`.
-   `intended-control` is a wording fix for its refusal-text owner, never design work.
+   placeholder (`status: blocked`, body line `Parked until design-owed.`). *Worked case:* two
+   mirrored reports of one failure: two blocks, one `incident-group`, one counted instance; a
+   separate occurrence takes a new `incident-group` and counts. Success on another revision is
+   another `scope`, not recovery; only a same-scope re-check appends `state: recovered` +
+   `recovery-ref`, count unchanged; a closed issue alone is not recovery. **Trigger.** Only
+   `confirmed-defect` and `false-positive` count, deduped by `incident-group`. At 3 counted instances
+   or the class's 2nd merged fix — or at the **first** when its `module:` carries a `brittle` mark in
+   `docs/contracts.md` — label it `design-owed`, unpark its placeholder (`todo`, `Parked` line →
+   `Design-owed: deliverable a brief per author-brief, strong tier.`, a `brittle` first's deliverable
+   `the investigation per build-less-brittle/09`; a class on a `worker-desk` rule-4 risk-bearing
+   surface stays parked under `needs-decision` until the driver rules: proceed unparks it as above,
+   decline sets its symptoms `todo`, `Parked` dropped), and park each symptom placeholder (`status:
+   blocked`, body line `Parked on class #N.`); the design PR's `Closes` closes them; that deliverable
+   reuses the class record, never rediscovers it. A production-down or security symptom stays `todo`;
+   the driver's own-login `bleed` reply naming a parked symptom sets it `todo`, `Parked` dropped.
+   **Re-park:** a scanner `reactivate` (excluded label removed or reopened) sets a parked row `todo`,
+   body kept, so each pass re-blocks a `todo` row still saying `Parked`. `intended-control` is a
+   wording fix for its refusal-text owner, never design work.
 2. **`close-candidate` — the brief-write for a no-merge close.** When an issue must close with NO
    merged fix (`FIXED-NOT-CLOSED | WONTFIX | DUPLICATE | STALE`), mark the placeholder frontmatter
    `close-candidate: <verdict>` — a brief write, path-confined to `docs/streams/**`, on the scan
@@ -344,9 +345,8 @@ may be closed by the desk, citing the ruling** (2026-08-24 ruling 7). Implementa
 outstanding is not a reason to hold a decided issue open — but the close comment **must NAME the
 tracker**: the actual brief id, PR number or issue carrying the remaining work, never the assertion
 "the work is tracked"; no tracker, create it first, then close. The relabel is the load-bearing half
-and is mandatory — flip `needs-decision` → `human-decided`, which is what takes it off
-human:<name>'s queue; the close is board hygiene on top, and it is the close the tracker condition
-gates.
+and is mandatory — flip `needs-decision` → `human-decided`, which is what takes it off human:<name>'s
+queue; the close is board hygiene on top, and it is the close the tracker condition gates.
 
 The other two close paths are mechanical. A work issue closes when its fixing PR **MERGES** — the
 merge is the authorization (`--reason completed`, comment naming the PR and merge date), on the

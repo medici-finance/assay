@@ -311,7 +311,7 @@ it dispatches NOW. Claim under the SAME issue-shaped key the placeholder lane us
 sweep that repeatedly surfaces issues failing rule 4 is an intake-coverage signal: file it, never
 widen this lane. A `design-owed` `error-class` issue is not this lane's (its placeholder fails rule 2):
 intake unparks that row at the trigger, never past rule 4's risk-bearing-surface test (`intake-desk`
-step 1); it dispatches at **strong** tier, and its deliverable is a brief per `author-brief`, never code.
+step 1); it dispatches at **strong** tier, and its deliverable is the one its body line names, never code.
 
 ## The loop
 
