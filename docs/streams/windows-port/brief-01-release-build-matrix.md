@@ -21,7 +21,7 @@ gate-why: >-
   regardless of how mechanical the diff looks.
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 decision-trigger: creation
-decision-issue: 1148
+decision-issue: 452
 issues: [322]
 schema: brief-v2
 authored: 2026-09-01 by windows-port authoring session
