@@ -32,20 +32,20 @@ statusgen:
   # Release home the umbrella statusgen binaries are published from (public).
   release_home: medici-finance/assay
   # Concrete, pinned repo-level semver tag. Never a floating/rolling ref.
-  tag: v1.0.24
+  tag: v1.0.29
   # Per-platform channel-E pins: `<artifact> <tag> <sha256>`, the exact shape the adopter's
-  # `.assay-versions` carries. sha256 values harvested from the v1.0.24 release checksums.txt.
+  # `.assay-versions` carries. sha256 values harvested from the v1.0.29 release checksums.txt.
   platforms:
-    darwin-arm64: statusgen-darwin-arm64 v1.0.24 c7dcdc419674799333f4244ed4cdd9146916e766c4ff9c6fe1f9506dc260e1e8
-    darwin-amd64: statusgen-darwin-amd64 v1.0.24 4b0fc480ed3b556fca0f3ef90d90ad48a6493f7b29b44611e091d07eec995215
-    linux-amd64:  statusgen-linux-amd64  v1.0.24 8bd3c178c89ba2b293e10f68c810f0544c2e9fbfbe2f4f8d7e6d3a326217aa28
-    windows-amd64: statusgen-windows-amd64.exe v1.0.24 a1555865524ae4bad002137258a316dc56c4919aa62fce571ed8ce1be34da4d1
-    windows-arm64: statusgen-windows-arm64.exe v1.0.24 c284b2b262fa0d16342cdde3c081d8cc186e80445bba01166bf7e5cc26ca6da4
-    # linux-arm64: no published statusgen-linux-arm64 asset in the v1.0.24 release either.
+    darwin-arm64: statusgen-darwin-arm64 v1.0.29 fe970b3175fb5351da2791fc8eb3f6eb2d8cedc1a42f091118eba8763286abaa
+    darwin-amd64: statusgen-darwin-amd64 v1.0.29 ae4fa44f2786cd6ea393df687cf478c1ce1d09961018a8a61c8fe06822e6ea77
+    linux-amd64:  statusgen-linux-amd64  v1.0.29 5c57320d7cbaaac1a9c6f687f776629834af2cfc32c19f94e75627f6b33b8304
+    windows-amd64: statusgen-windows-amd64.exe v1.0.29 6b8d7eda38a9920b6bb21f67caebd9da1213d4cd9a5989212e870a35c3b0da29
+    windows-arm64: statusgen-windows-arm64.exe v1.0.29 5059ccd54e2510586c4d4a87b7e4815315e0cfd5cd26c3ef389146d3d69b4780
+    # linux-arm64: no published statusgen-linux-arm64 asset in the v1.0.29 release either.
     #   Left out deliberately rather than pinned to an invented hash; the install skill REFUSES
     #   (never guesses) when the pin line for a detected platform is absent.
     # The two windows arms above are pinned like any other platform: `statusgen-windows-
-    #   {amd64,arm64}.exe` have shipped in every release since v0.26.0, and v1.0.24 publishes both,
+    #   {amd64,arm64}.exe` have shipped in every release since v0.26.0, and v1.0.29 publishes both,
     #   so both hashes come from its checksums.txt.
 
 # The optional desk-role binaries (deskboard, deskpr, deskevidence, deskfile, deskpost, …), shipped
@@ -56,20 +56,20 @@ desk-tools:
   # Same public release home the statusgen binaries are published from.
   release_home: medici-finance/assay
   # Pinned to the SAME tag as statusgen above — the desk binaries and statusgen are cut together.
-  tag: v1.0.24
+  tag: v1.0.29
   # Per-platform channel-E pins: `<artifact> <tag> <sha256>`. The artifact is a `.tar.gz` (the
   # desk-tools ship as a tarball of binaries, not a single file). sha256 values harvested from the
-  # v1.0.24 release checksums.txt — never hand-invented.
+  # v1.0.29 release checksums.txt — never hand-invented.
   platforms:
-    darwin-arm64: desk-tools-darwin-arm64.tar.gz v1.0.24 8497bf2e850bb146bb02cf5d674b854e18b51cbd423b70b6b163322bfe2e8656
-    darwin-amd64: desk-tools-darwin-amd64.tar.gz v1.0.24 b0e40895a121bcfd925b1b4ecbfcd951e61b840534edc35ef5bc75606510ef26
-    linux-amd64:  desk-tools-linux-amd64.tar.gz  v1.0.24 ceb0b52fbec81ab32aca574013b9322af8ab7a8e8284d53532fac1c4258c80c8
-    windows-amd64: desk-tools-windows-amd64.tar.gz v1.0.24 004d8359557d95bde00ab7607fe79db986c11c9872c723565140dcaa6046fed4
-    windows-arm64: desk-tools-windows-arm64.tar.gz v1.0.24 c803325bbb8f4efd544e8dd7a430692df074fc5426f09f5737acc0b97079762b
-    # linux-arm64: no published desk-tools-linux-arm64 asset in the v1.0.24 release either.
+    darwin-arm64: desk-tools-darwin-arm64.tar.gz v1.0.29 0114eb171d3a8f3e56c3f494a1a4d4fac47480d09e360a2a65dc00f473307a29
+    darwin-amd64: desk-tools-darwin-amd64.tar.gz v1.0.29 ef509b2a42d23d1c1b769d838762acdf2dcf27afe5638e7765b76c74b8fa5d7f
+    linux-amd64:  desk-tools-linux-amd64.tar.gz  v1.0.29 1262cf407e2d02566a088151b8d075ad7abeea82ed7181e77c7124607d327771
+    windows-amd64: desk-tools-windows-amd64.tar.gz v1.0.29 d2b4344a8805de2efb56b10a241161421c3154f3650f48d9e85a23352cd67032
+    windows-arm64: desk-tools-windows-arm64.tar.gz v1.0.29 0fbb57ac671fc3dc51933e5094001620c8908f1a03ac8292a37a2a314bd341bd
+    # linux-arm64: no published desk-tools-linux-arm64 asset in the v1.0.29 release either.
     #   Left out deliberately rather than pinned to an invented hash; the acquisition REFUSES
     #   (never guesses) when the pin line for a detected platform is absent — same as statusgen.
-    # The two windows arms above mirror the statusgen ones: v1.0.24 publishes
+    # The two windows arms above mirror the statusgen ones: v1.0.29 publishes
     #   `desk-tools-windows-{amd64,arm64}.tar.gz`, so they are pinned rather than deferred.
 
 # The HARNESS CONTAINER IMAGE — the witness-runner container `statusgen verifyrun --in-container`
@@ -85,16 +85,15 @@ desk-tools:
 # contract the per-platform pins above hold. The `tag` is kept for human/audit legibility; the
 # digest is authoritative.
 #
-# The `digest` below is a PLACEHOLDER, not a hash: a container image digest is a REGISTRY digest
-# (`docker manifest inspect ghcr.io/medici-finance/assay/desk-tools:v1.0.6`), harvested online from
-# the published image — it is not the release `checksums.txt` sha256, and it must never be invented.
-# Until a maintainer with registry access harvests the real digest and pins it here, the wrapper
-# REFUSES to run (fail-closed) rather than run an un-digest-pinned image. This is the same
-# "apply-gated, proven-on-apply" shape windows-port/04's staged CI rows use. The `tag: v1.0.6`
-# below is kept equal to the statusgen/desk-tools tag on purpose — `check-paired-versions.sh`
-# asserts every `tag:` in this file is the one release tag.
+# The `digest` below is a REGISTRY digest, not a release `checksums.txt` sha256: it is the manifest
+# digest of the published image (`docker manifest inspect ghcr.io/medici-finance/assay/desk-tools:v1.0.29`,
+# or the registry's `Docker-Content-Digest` for that tag), harvested online from the image the
+# release's docker-publish run pushed — never invented. On a re-pin, harvest it again for the new tag;
+# a placeholder or `latest` here makes the wrapper REFUSE to run (fail-closed). The `tag` below is kept
+# equal to the statusgen/desk-tools tag on purpose — `check-paired-versions.sh` asserts every `tag:` in
+# this file is the one release tag.
 harness:
   release_home: medici-finance/assay
   image: ghcr.io/medici-finance/assay/desk-tools
-  tag: v1.0.24
-  digest: sha256:600e548c0e2a574009033fc03a3763246e6bf87d5f5f1c0407a1eb2613e5a9b9
+  tag: v1.0.29
+  digest: sha256:c0a5ab86438e37882c1d1fe60dcbd087476a3c39c850977f8feddc37cb2aaa4f
