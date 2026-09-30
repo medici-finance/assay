@@ -47,6 +47,8 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 > **COULD-NOT-CHECK — dead-claim decay did not run.** PR state through `gh pr list` could not be read: gh pr list: exec: "gh": executable file not found in $PATH
 > Open branches whose PR/merge request has already **merged or closed** are still counted as claims, so they keep consuming their stream's dispatch cap. The rows below are a **subset**: briefs held behind those dead claims are missing from this board, not absent from the backlog.
 
+> **COULD NOT CHECK — main-red arm could not check — no `--main-health` input was supplied, so whether main is red is unknown here (statusgen does not read live CI). A main-red fix cannot be lifted into the critical tier on this run; this is not a reading that main is green.**
+
 _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status. By stream: measured-status (2). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
@@ -64,7 +66,7 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 45d4f34 2026-09-30T14:10:09+10:00_
+_last regen: 7708420 2026-09-30T14:57:00+10:00_
 
 **Progress:** 2/13 brief items done.
 
@@ -87,7 +89,7 @@ _none_
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 45d4f34 2026-09-30T14:10:09+10:00_
+_last regen: 7708420 2026-09-30T14:57:00+10:00_
 
 **Progress:** 8/28 brief items done.
 
