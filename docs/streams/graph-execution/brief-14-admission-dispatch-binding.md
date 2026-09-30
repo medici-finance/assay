@@ -110,4 +110,8 @@ The flow row must call production contract code across the seam; isolated serial
 
 ## Review
 
+Review the assembled-packet fixture at the dispatch boundary: credential material must
+remain excluded, and copied reporter text must not override the source trust-gate result.
+Exercise missing and spoofed dispositions; neither may grant authority.
+
 Gate: human. Confirm scope, consumer routing, negative-path independence and exact-subject evidence; a confidence score cannot enlarge permission.

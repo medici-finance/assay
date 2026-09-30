@@ -106,4 +106,8 @@ The flow row must call production contract code across the seam; isolated serial
 
 ## Review
 
+Review a usage-record fixture through persistence and restore: a synthetic credential
+must be rejected or replaced with an authorized reference, while numeric usage-token
+counts survive unchanged. Check the WI-1 source-trust binding referenced by WI-4.
+
 Gate: human. Confirm scope, consumer routing, negative-path independence and exact-subject evidence; a confidence score cannot enlarge permission.

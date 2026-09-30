@@ -100,4 +100,8 @@ The flow row must call production contract code across the seam; isolated serial
 
 ## Review
 
+Review the packet fixtures for credential exclusion and trust provenance: a synthetic secret
+must be rejected or replaced with an authorized reference, and a reporter-supplied trust
+label must not become an authoritative disposition through export/import.
+
 Gate: model. Confirm scope, consumer routing, negative-path independence and exact-subject evidence; a confidence score cannot enlarge permission.
