@@ -1,0 +1,2 @@
+### Fixed
+- `statusgen --auto-flip-model` now credits the PR that delivered a brief, found by its `Brief:` trailer. Before, it credited the newest PR that touched the brief file. Two cases followed from that. A verify Evidence PR (docs/streams-only, authored by the roster's `verifier=` App, merged on a human approval) refused every brief whose rows landed by PR. A trailer-less stream-authoring PR left a brief at could-not-check. Every credited PR, and every later non-Evidence change to the brief file, must still carry the reviewer App's approval at its merged head (#1838).

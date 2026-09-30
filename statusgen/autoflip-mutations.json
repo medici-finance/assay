@@ -1,0 +1,77 @@
+{
+  "test": "go test . -run 'AutoFlip|Autoflip|Attribute|ApprovalOnly|ApprovalGuard' -count=1",
+  "control": {
+    "name": "CONTROL — Evidence-landing exclusion disabled (the #1838 defect: the verifier's Evidence PR is judged as a delivery candidate and refuses the flip)",
+    "file": "autoflip.go",
+    "old": "if shape.Author == \"\" || !loginInSet(rev.EvidenceLanders, shape.Author) || len(shape.Files) == 0 {",
+    "new": "if true || shape.Author == \"\" || !loginInSet(rev.EvidenceLanders, shape.Author) || len(shape.Files) == 0 {"
+  },
+  "mutations": [
+    {
+      "name": "trailer resolver skipped (a delivery that never touched the brief file is not found; shape B stays could-not-check)",
+      "file": "autoflip.go",
+      "old": "hits, err := src.PRsNamingBrief(repo, canonicalBriefKey(res.Brief))",
+      "new": "hits, err := []int(nil), error(nil)"
+    },
+    {
+      "name": "Evidence exclusion drops the author half (any docs/streams-only PR escapes its approval)",
+      "file": "autoflip.go",
+      "old": "!loginInSet(rev.EvidenceLanders, shape.Author)",
+      "new": "false"
+    },
+    {
+      "name": "Evidence exclusion drops the docs/streams-only half (a verifier-authored code change escapes its approval)",
+      "file": "autoflip.go",
+      "old": "\t\tif !strings.HasPrefix(filepath.ToSlash(f), bulkMigrationDocsPrefix) {\n\t\t\treturn false",
+      "new": "\t\tif false && !strings.HasPrefix(filepath.ToSlash(f), bulkMigrationDocsPrefix) {\n\t\t\treturn false"
+    },
+    {
+      "name": "Evidence exclusion accepts an empty file list",
+      "file": "autoflip.go",
+      "old": "|| len(shape.Files) == 0 {",
+      "new": "|| false {"
+    },
+    {
+      "name": "guard drops the approval of a later change to the brief file",
+      "file": "autoflip.go",
+      "old": "\t\tif cand.Outcome != flipDone {",
+      "new": "\t\tif false && cand.Outcome != flipDone {"
+    },
+    {
+      "name": "trailer-resolved delivery credited without its own approval",
+      "file": "autoflip.go",
+      "old": "if g.cand.Outcome != flipDone {",
+      "new": "if false && g.cand.Outcome != flipDone {"
+    },
+    {
+      "name": "guard never ends at a change that predates the delivery",
+      "file": "autoflip.go",
+      "old": "if tr.found() && tr.predates(g.mergedAt) {",
+      "new": "if false && tr.found() && tr.predates(g.mergedAt) {"
+    },
+    {
+      "name": "guard ends at any change when the delivery's merge time is known (unknown/later change skipped)",
+      "file": "autoflip.go",
+      "old": "return !m.IsZero() && !t.mergedAt.IsZero() && m.Before(t.mergedAt)",
+      "new": "return !t.mergedAt.IsZero()"
+    },
+    {
+      "name": "oldest delivery credited instead of the newest",
+      "file": "autoflip.go",
+      "old": "if c.mergedAt.After(best.mergedAt) {",
+      "new": "if c.mergedAt.Before(best.mergedAt) {"
+    },
+    {
+      "name": "a multi-Brief search hit is credited instead of could-not-check",
+      "file": "autoflip.go",
+      "old": "case verdict == candidateUnattributable:",
+      "new": "case false:"
+    },
+    {
+      "name": "PLANTED second approval route (the defect class: walk demands approval without the Evidence gate)",
+      "file": "autoflip.go",
+      "old": "\tcand := g.cand",
+      "new": "\tcand, _ := approvalAtHead(res, n, repo, src, rev)"
+    }
+  ]
+}

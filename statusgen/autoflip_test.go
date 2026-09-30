@@ -131,6 +131,19 @@ type fakeFlipSource struct {
 	shapesSeen []int
 	// shapeErrs makes PRShape fail for a PR (e.g. a truncated file list).
 	shapeErrs map[int]error
+	// trailerHits is what the `Brief:`-trailer search returns, keyed by the
+	// canonical brief key (af/50). Absent = no hits, so every pre-#1838 fixture
+	// runs on the file-history walk alone, exactly as before. trailerErr makes
+	// the search itself fail.
+	trailerHits map[string][]int
+	trailerErr  error
+}
+
+func (f *fakeFlipSource) PRsNamingBrief(repo, briefKey string) ([]int, error) {
+	if f.trailerErr != nil {
+		return nil, f.trailerErr
+	}
+	return f.trailerHits[briefKey], nil
 }
 
 // ordinarySingleBriefShape is the default prShape a fixture PR without an
