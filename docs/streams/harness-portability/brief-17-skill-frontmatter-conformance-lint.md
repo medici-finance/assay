@@ -152,6 +152,40 @@ must re-run every row to flip verified.
 Pre-mortem/detection-map failure modes (byte-vs-rune, rule-never-fires-on-real-bundle,
 budget-wired-as-failure, empty-skills-dir) are each caught by the rows above (2, 7, 5)
 and by `TestLintSkillsDir_EmptyDirFailsClosed` (unit-level, exit-2 fail-closed path).
+### Non-implementer verifier run — VERIFY: PASS — 11/13 rows pass, row 9 blocked (live Codex), row 12 could-not-check as written, held (#1805) — 2026-09-30 claude-opus-5-5-verifier
+
+Runner is not the implementer. Merged main 0b033c711c9ec30f75cb8c2082a505b06958a423 (cross-checked against the forge's `commits/main`); implementing merge aa1cc0e36 (#1663). Nothing under `tools/skillslint/` or `statusgen/` changed since. `gate: model`, all risk answers `no`. The `statusgen verifyrun` execution witness was run on Linux (golang:1.25-bookworm, linux/arm64, `--network none`, statusgen built from main's own source, the adopter roster mounted read-only): rows 1–8 and 13 pass; row 9 could-not-run exit=127 (verifyrun ran the first backtick span of the prose cell, the plugin id, instead of the probe; #1805); row 10 fail exit=6 (no network in the envelope; passes with network); row 11 could-not-run exit=127 (no gh in the container; passes on the host); row 12 fail exit=2 (see below). **Held at implemented**: the verified flip needs an all-pass witness, and rows 9 and 12 cannot give one as written.
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---------|----------|----------|---------------|
+| 1 | row 1 command as written | exit 1, over the hard limit | exit 1; `description is 1025 characters, over the 1024-character hard limit` | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 2 | row 2 command as written | exit 0 | exit 0; the fixture re-measured at 1024 code points, 2732 bytes | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 3 | row 3 command as written | exit 1, name mismatch | exit 1; frontmatter name differs from the directory name | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 4 | row 4 command as written | exit 1, name pattern | exit 1; the name does not match the agentskills name pattern | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 5 | row 5 command as written | exit 0 with a budget NOTICE | exit 0; NOTICE that 9 skills sum to 8100 description characters, over the 8000 budget | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 6 | row 6 command as written | exit 0 | exit 0; 14 skill files; no description issue for install or pr-review-desk; advisory NOTICEs only | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 7 | row 7 mutation as written | exit 1 on the pre-fix text | exit 1; `description is 1103 characters, over the 1024-character hard limit` | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 8 | row 8 command as written | ok | `ok` for the skillslint package | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 9 | row 9 live Codex probe | BLOCKED is a legitimate record | BLOCKED (needs live Codex): a live model session is outside the verifier's offline envelope, so it was not started | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 10 | row 10 command as written, network on, no tree mounted | `3` | printed `3`; the three constants sit at lines 17, 19 and 21 of the pinned upstream file | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 11 | row 11 command as written, on the host | success | printed `success`, for the check run on head 0b033c711c9e | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 12 | row 12 command as written | exit 0, no claim disproved | exit 2, COULD-NOT-CHECK: after the merge the merge-base is HEAD, so the diff is empty | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 12a | row 12 with `--base 'aa1cc0e36^'` (the implementing merge's first parent) | exit 0, no claim disproved | exit 0; 3 corroborated, 0 disproved, 2 unchecked | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 13 | row 13 command as written | LINT: PASS | exit 0; LINT: PASS; 0 PROBLEM lines; no line names this brief | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+
+Supplemental, not Verify rows: an empty `--skills-dir` exits 2 (could-not-check); the pre-fix install and pr-review-desk descriptions planted into a copy of the tree fail on the default `--root` path too (1103 and 1187 characters); a 1025-code-point multibyte description exits 1.
+
+Risk-bearing values. Risk metadata is present and all four flags are `no`; enumerated anyway, and every value is lint configuration:
+
+RISK-VALUE: DERIVED — maxDescriptionChars = 1024 @ tools/skillslint/conformance.go:69 — the pinned upstream Codex renderer keeps a description unchanged only at 1024 Unicode scalar values or fewer; the Go guard counts runes with the same inclusive bound, and the agentskills spec states 1–1024 characters.
+RISK-VALUE: DERIVED — maxNameChars = 64 @ tools/skillslint/conformance.go:71 — the agentskills spec's 1–64 characters, inclusive.
+RISK-VALUE: DERIVED — namePattern = `^[a-z0-9]+(-[a-z0-9]+)*$` @ tools/skillslint/conformance.go:76 — encodes the spec's three rules: lowercase alphanumerics and hyphens, no leading or trailing hyphen, no doubled hyphen.
+RISK-VALUE: DERIVED — zero-match exit = 2 @ tools/skillslint/main.go:239 — the brief's Task 3 and the tool's 0/1/2 contract; an empty directory proves nothing.
+RISK-VALUE: N/A — the body and bundle budgets (8000 bytes, 500 lines, 5000 tokens, 4 bytes per token, 8000 characters) are advisory NOTICEs that never move the exit code.
+
+Findings: (1) **held on #1805** — row 12's `--base "$(git merge-base origin/main HEAD)"` resolves to HEAD once merged, so it can never corroborate after the merge; 12a is the re-derived form. Row 9's prose cell makes verifyrun run the plugin id instead of the probe. (2) The live Codex probe (row 9) stays a human-run step; it gates only a follow-up filing, not this brief. (3) Descriptions changed after the implementation (install now 1010, pr-review-desk 735); both are under the limit and the rule guards them in CI. (4) The line-count NOTICE is one high for a file ending in a newline; advisory only. No implementation defect found.
+
+VERIFY: PASS on every row that can run; held at implemented until rows 9 and 12 can give an all-pass witness (#1805).
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table and
