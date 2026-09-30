@@ -389,11 +389,12 @@ const (
 	//	                                     token on GitLab); <shape> is the gate shape
 	//	                                     (environment | manual-job) GitLab needs
 	//
-	// This key chooses WHICH credential starts a release, so it takes ASSAY_REPO_FORGES'
-	// strict grammar: a bare basename, an unknown value, or a repo bound twice is
-	// ExtInvalid and the whole binding set resets to empty — every repo then reads as
-	// UNBOUND, which deskrun refuses as a configuration gap. Never a partial binding.
-	// Unset is complete: no repo is bound and deskrun dispatches nothing.
+	// This key chooses WHICH credential starts a release, so it is a TRUST key, not an
+	// extension key (a driver ruling): a bare basename, an unknown value, or a repo bound
+	// twice lands in Config.Problems and refuses the WHOLE roster, exactly as a malformed
+	// ASSAY_TRUSTED_LOGINS does — no binding survives and every desk tool refuses until it
+	// is fixed. Never a partial binding. Unset is complete: no repo is bound and deskrun
+	// dispatches nothing.
 	EnvRunCredentials = "ASSAY_RUN_CREDENTIALS"
 	// EnvClaimStore (ASSAY_CLAIM_STORE) names where this cell keeps its DISPATCH CLAIMS:
 	// `file` or `service` — one value for the cell, or comma-separated
@@ -819,8 +820,8 @@ type Config struct {
 	// Problems are the loud, human-readable reasons the TRUST surface refused
 	// (ASSAY_BLESS_LOGIN, ASSAY_TRUSTED_LOGINS, ASSAY_TRUSTED_BOT_SLUGS,
 	// ASSAY_ALLOWED_REPOS, ASSAY_HUMAN_LOGIN_MAP — the component-manifest spec §6.2's
-	// "trust surface does not change"). Extension-key problems never land
-	// here as of this brief: see Ext.
+	// "trust surface does not change" — and ASSAY_RUN_CREDENTIALS, which chooses the
+	// credential a desk write runs as). Extension-key problems never land here: see Ext.
 	Problems []string
 }
 
@@ -860,7 +861,10 @@ type ExtKeyResult struct {
 // ASSAY_HOME_REPO are STATUSGEN-only (recognised, never parsed, here — see
 // their own const comments): this loader has no shape to validate for either,
 // so their status can only ever be ExtOK (present) or ExtUnset (absent),
-// never ExtInvalid.
+// never ExtInvalid. ASSAY_RUN_CREDENTIALS is deliberately ABSENT: it chooses
+// which credential a desk write runs as, so it is a trust key whose problems
+// refuse the whole roster (a driver ruling). extcatalogue_test.go pins this
+// catalogue to a committed allow-list and fails on any trust key reaching it.
 var extKeyNames = map[string]string{
 	EnvRiskCallout:        "risk-callout",
 	EnvWriteguardCallout:  "writeguard-callout",
@@ -868,7 +872,6 @@ var extKeyNames = map[string]string{
 	EnvReleaseRepo:        "release-repo",
 	EnvScanRepos:          "scan-repos",
 	EnvRepoForges:         "repo-forges",
-	EnvRunCredentials:     "run-credentials",
 	EnvChannelDriftTarget: "channel-drift-target",
 	EnvHomeRepo:           "home-repo",
 }
@@ -1657,11 +1660,11 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	}
 	recordExt(&cfg, EnvRepoForges, vals[EnvRepoForges], repoForgesIssue)
 
-	// --- run-credential binding (ASSAY_RUN_CREDENTIALS), an EXTENSION key
-	// (forge-neutral brief 14) — parsed by parseRunCredentials (runcredential.go). ---
-	var runCredsIssue extAccumulator
-	cfg.RunCredentials = parseRunCredentials(vals[EnvRunCredentials], &runCredsIssue)
-	recordExt(&cfg, EnvRunCredentials, vals[EnvRunCredentials], runCredsIssue)
+	// --- run-credential binding (ASSAY_RUN_CREDENTIALS), a TRUST key — parsed by
+	// parseRunCredentials (runcredential.go). It decides which credential a desk write runs as,
+	// so a malformed value refuses the whole roster via bad, never just this one feature (a
+	// driver ruling reclassified it from the extension catalogue). ---
+	cfg.RunCredentials = parseRunCredentials(vals[EnvRunCredentials], bad)
 
 	// --- auto-approve lane keys (ASSAY_AUTOAPPROVE_*) — passed through RAW. ---
 	// Deliberately NOT validated here: a malformed lane key must close the lane and nothing
