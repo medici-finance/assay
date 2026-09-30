@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -timeout 600s -run 'TestOutboundConformance|TestOutboundForgeWrapsEveryWriteMethod|TestOverrideAuditRowHoldsDigestNotText|TestOutboundNumberHint|TestOutboundWriteFileChecksBranch'",
+  "test": "go test ./internal/deskkit/ -count=1 -timeout 600s -run 'TestOutboundConformance|TestOutboundForgeWrapsEveryWriteMethod|TestOverrideAuditRowHoldsDigestNotText|TestOutboundNumberHint|TestOutboundWriteFileChecksBranch|TestOutboundWritesCarryNumber'",
   "control": {
     "name": "CONTROL — the outbound check passes every write (a refusal is computed and then dropped)",
     "file": "internal/deskkit/outbound.go",
@@ -84,6 +84,12 @@
       "file": "internal/deskkit/outboundforge.go",
       "old": "\tif in.Branch != \"\" {\n\t\tif err := o.check(repo, OutboundKindRef,",
       "new": "\tif false && in.Branch != \"\" {\n\t\tif err := o.check(repo, OutboundKindRef,"
+    },
+    {
+      "name": "a verb sets a literal-zero item number, so its bare-reference notice degrades to NOT CHECKED",
+      "file": "cmd/deskpost/github.go",
+      "old": "Kind: kind, NumberHint: pr, Fields:",
+      "new": "Kind: kind, NumberHint: 0, Fields:"
     }
   ]
 }

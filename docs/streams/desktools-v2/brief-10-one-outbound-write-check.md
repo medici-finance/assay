@@ -225,7 +225,8 @@ decorator and against the push path, so a verb has no conformance of its own to 
 Coverage boundary: "one check" means every `Forge` write and deskpr's push. A push that does
 not go through deskpr (the generic push, merge and verify-loop tools, a hand-typed `git push`)
 is checked only where the `deskpushguard` pre-push hook is installed, and that hook fails open
-on could-not-check. Raw API writers that never hold a `Forge` (fleet provisioning, the release
+on could-not-check. Raw API writers that never hold a `Forge` (fleet provisioning, including
+the label names and descriptions it publishes from its compiled label table; the release
 tagger's tag refs) are outside this brief's "Outward writes" inventory and are not covered.
 
 ## Verify (executable — no prose-only DoD items)

@@ -58,7 +58,7 @@ func TestOutboundNumberHintOnDecorator(t *testing.T) {
 			var notices bytes.Buffer
 			defer SetOutboundNoticeWriter(&notices)()
 			SetOutboundContext(OutboundContext{Tool: "numberhint", Verb: m.Name})
-			if err := tc.call(OutboundChecked(&recordingForge{}, "worker"), obRepo(obPublic), obBareRefBody); err != nil {
+			if err := tc.call(OutboundChecked(&outboundRecordingForge{}, "worker"), obRepo(obPublic), obBareRefBody); err != nil {
 				t.Fatalf("%s: a bare-reference body must pass (it is a notice, never a refusal): %v", m.Name, err)
 			}
 			got := notices.String()
@@ -137,7 +137,9 @@ func hintlessOutboundWrites(fset *token.FileSet, f *ast.File) []string {
 			case "Kind":
 				kind = compositeLitTypeName(kv.Value)
 			case "NumberHint":
-				hinted = true
+				// A literal zero (or negative) hint is no hint: OutboundCheck treats any
+				// hint <= 0 as absent and prints NOT CHECKED, so it must not satisfy the guard.
+				hinted = !literalNonPositiveInt(kv.Value)
 			}
 		}
 		if !hinted && !obNumberlessKinds[kind] {
@@ -148,6 +150,22 @@ func hintlessOutboundWrites(fset *token.FileSet, f *ast.File) []string {
 	return out
 }
 
+// literalNonPositiveInt reports whether e is an integer literal (optionally negated) whose
+// value is zero or below — a NumberHint that OutboundCheck treats as absent.
+func literalNonPositiveInt(e ast.Expr) bool {
+	if u, ok := e.(*ast.UnaryExpr); ok && u.Op == token.SUB {
+		if lit, ok := u.X.(*ast.BasicLit); ok && lit.Kind == token.INT {
+			return true
+		}
+		return false
+	}
+	lit, ok := e.(*ast.BasicLit)
+	if !ok || lit.Kind != token.INT {
+		return false
+	}
+	return strings.Trim(strings.ReplaceAll(lit.Value, "_", ""), "0xXoObB") == ""
+}
+
 // TestOutboundWritesCarryNumber is the verb half of the class guard, with a planted positive
 // control so a matcher that silently stops matching fails instead of reporting clean.
 func TestOutboundWritesCarryNumber(t *testing.T) {
@@ -155,14 +173,20 @@ func TestOutboundWritesCarryNumber(t *testing.T) {
 func f() { _ = deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: r, Kind: deskkit.OutboundKindComment}) }
 func g() { _ = deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: r, Kind: deskkit.OutboundKindIssue}) }
 func h() { _ = deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: r, Kind: k, NumberHint: 7}) }
+func z() { _ = deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: r, Kind: deskkit.OutboundKindReview, NumberHint: 0}) }
+func n() { _ = deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: r, Kind: deskkit.OutboundKindComment, NumberHint: -1}) }
+func v() { _ = deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: r, Kind: deskkit.OutboundKindComment, NumberHint: 10}) }
 `
 	fset := token.NewFileSet()
 	pf, err := parser.ParseFile(fset, "plant.go", plant, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := hintlessOutboundWrites(fset, pf); len(got) != 1 || !strings.Contains(got[0], "plant.go:2") {
-		t.Fatalf("positive control: want exactly the planted comment write flagged, got %v", got)
+	got := hintlessOutboundWrites(fset, pf)
+	if len(got) != 3 || !strings.Contains(got[0], "plant.go:2") ||
+		!strings.Contains(got[1], "plant.go:5") || !strings.Contains(got[2], "plant.go:6") {
+		t.Fatalf("positive control: want the planted hintless, zero-hint and negative-hint "+
+			"writes flagged (lines 2, 5, 6) and nothing else, got %v", got)
 	}
 
 	var offenders []string

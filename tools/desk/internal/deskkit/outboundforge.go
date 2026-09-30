@@ -165,7 +165,9 @@ func (o *outboundForge) ApplyLabels(repo ForgeRepo, number int, change LabelChan
 //
 // The branch the file lands on is checked FIRST, as a ref: with StartBranch set the write
 // creates that branch and publishes its name exactly as a push does (OutboundCheckPush
-// checks the pushed ref the same way). An existing branch is re-checked harmlessly.
+// checks the pushed ref the same way). An existing branch is re-checked too: a clean name
+// passes as before, and a name that trips a layer now refuses a write it used to let
+// through — fail-closed, by design.
 func (o *outboundForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileResult, error) {
 	if in.Branch != "" {
 		if err := o.check(repo, OutboundKindRef, OutboundField{"branch", in.Branch}); err != nil {
