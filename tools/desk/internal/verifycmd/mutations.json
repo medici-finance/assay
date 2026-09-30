@@ -1,0 +1,35 @@
+{
+  "test": "go test ./internal/verifycmd/ -count=1 -timeout 120s -run 'TestMarkedSharedVectors|TestLiftUnmarkedIsLegacy'",
+  "control": {
+    "name": "CONTROL — Marked never honours a marker (the pre-#1805 legacy lift)",
+    "file": "internal/verifycmd/verifycmd.go",
+    "old": "\tif c, ok := Marked(cell); ok {\n\t\treturn c\n\t}\n\treturn stripInlineCode(cell)",
+    "new": "\treturn stripInlineCode(cell)"
+  },
+  "mutations": [
+    {
+      "name": "an unescaped dollar no longer taints the cell (a marker inside inline math is honoured)",
+      "file": "internal/verifycmd/verifycmd.go",
+      "old": "\t\tcase c == '$':\n\t\t\tplain = false",
+      "new": "\t\tcase false:\n\t\t\tplain = false"
+    },
+    {
+      "name": "raw HTML / links no longer taint the cell (a marker in an HTML comment is honoured)",
+      "file": "internal/verifycmd/verifycmd.go",
+      "old": "\t\tcase c == '<' || c == '[':\n\t\t\tplain = false",
+      "new": "\t\tcase false:\n\t\t\tplain = false"
+    },
+    {
+      "name": "a backslash no longer escapes (an escaped dollar or bracket taints the cell)",
+      "file": "internal/verifycmd/verifycmd.go",
+      "old": "\t\tcase c == '\\\\' && i+1 < len(cell) && isASCIIPunct(cell[i+1]):",
+      "new": "\t\tcase false && c == '\\\\':"
+    },
+    {
+      "name": "a non-plain cell still honours its marker",
+      "file": "internal/verifycmd/verifycmd.go",
+      "old": "\tif !plain {\n\t\treturn \"\", false\n\t}",
+      "new": "\tif false && !plain {\n\t\treturn \"\", false\n\t}"
+    }
+  ]
+}

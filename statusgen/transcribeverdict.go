@@ -848,6 +848,15 @@ func planTranscribeVerdict(root string, streams []*Stream, homeRepo string,
 				break
 			}
 			if row.class() == classCheckCI {
+				// A prose-led row (#1808 review CR-1808-3) is never re-executed, exactly
+				// as verifyrun never executes it: its lifted first span is a mention,
+				// and running a mention can exit 0 (`true`, `gh`) and turn a verdict
+				// this gate should refuse into a PASS. A `cmd:` marker clears it.
+				if first, why := proseLedCommandWhy(row.Command); why != "" {
+					refuse("clause-6 (check:ci)", fmt.Sprintf("check:ci row %d of %s is %s: its first code span `%s` is %s, not a command, so it cannot be re-executed — a check that was never run established nothing; mark the command with a `cmd:` code span", e.Row, rel, ruleProseLedCommand, first, why))
+					verdictOK = false
+					break
+				}
 				// Re-execute the LIFTED command (#1805's choke point), never the raw
 				// cell: the raw cell still carries its code-span backticks, which
 				// the shell reads as command substitution.

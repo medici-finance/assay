@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'CmdMarker|NoMarkerUnchanged|ProseLedCommand|MarkedRowRoundTrips|ReexecutesLiftedCommand|OneChokePoint|HiddenMarker|RowLintJudges|ProseLedRow|WitnessRowRoundTrips' -count=1 -timeout 300s",
+  "test": "go test . -run 'CmdMarker|NoMarkerUnchanged|ProseLedCommand|MarkedRowRoundTrips|ReexecutesLiftedCommand|RefusesProseLedCheckCI|ProseLedPassIsNotPass|OneChokePoint|HiddenMarker|RowLintJudges|ProseLedRow|WitnessRowRoundTrips' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — verifyCommand ignores the marker (the pre-#1805 first-span lift)",
     "file": "verifyrows.go",
@@ -98,6 +98,12 @@
       "new": "\t\tcase false:\n\t\t\tplain = false"
     },
     {
+      "name": "SR-1808-1 rr3: an unescaped dollar no longer taints the cell (a marker inside inline math is honoured)",
+      "file": "verifyrows.go",
+      "old": "\t\tcase c == '$':\n\t\t\tplain = false",
+      "new": "\t\tcase false:\n\t\t\tplain = false"
+    },
+    {
       "name": "a fence closes on a longer run too",
       "file": "verifyrows.go",
       "old": "\t\t\t\tif m == n {\n\t\t\t\t\tcloseAt = j",
@@ -160,8 +166,8 @@
     {
       "name": "cmd-marker-vacuous never raised",
       "file": "verifyrows.go",
-      "old": "\tif len(m) > 0 && vacuousCommands[",
-      "new": "\tif false && len(m) > 0 && vacuousCommands["
+      "old": "\tif len(m) > 0 && isVacuousCommand(m[0]) {",
+      "new": "\tif false && len(m) > 0 && isVacuousCommand(m[0]) {"
     },
     {
       "name": "witness cell always single-backtick fenced",
@@ -180,6 +186,30 @@
       "file": "verifyrows.go",
       "old": "\t\t\t\t\tif closed && f.rule == ruleProseLedCommand {",
       "new": "\t\t\t\t\tif false && closed && f.rule == ruleProseLedCommand {"
+    },
+    {
+      "name": "CR-1808-3: transcribe-verdict re-executes a prose-led check:ci row (prose-led gate dropped)",
+      "file": "transcribeverdict.go",
+      "old": "\t\t\t\tif first, why := proseLedCommandWhy(row.Command); why != \"\" {",
+      "new": "\t\t\t\tif first, why := proseLedCommandWhy(row.Command); false && why != \"\" {"
+    },
+    {
+      "name": "A2: --check audits a pass witness on a prose-led row as pass",
+      "file": "verifyrun.go",
+      "old": "\t\t\t\tif r.ProseLed != \"\" {\n\t\t\t\t\tout = append(out, checkFinding{r.ID, stateCouldNotRun, proseLedNote(r.ProseLed)})",
+      "new": "\t\t\t\tif false && r.ProseLed != \"\" {\n\t\t\t\t\tout = append(out, checkFinding{r.ID, stateCouldNotRun, proseLedNote(r.ProseLed)})"
+    },
+    {
+      "name": "A6: a lone echo is not reported vacuous",
+      "file": "verifyrows.go",
+      "old": "|| f[0] == \"echo\" || f[0] == \"printf\"",
+      "new": "|| false"
+    },
+    {
+      "name": "A6: a trailing ; or # comment hides a vacuous marker",
+      "file": "verifyrows.go",
+      "old": "\tc = strings.TrimSpace(strings.TrimRight(strings.TrimSpace(c), \";\"))",
+      "new": "\tc = strings.TrimSpace(c)"
     }
   ]
 }

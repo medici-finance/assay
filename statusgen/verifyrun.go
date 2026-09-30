@@ -1366,6 +1366,13 @@ func checkWitnesses(verifySection, evidenceSection string) []checkFinding {
 		default:
 			switch witnessStateOf(latest) {
 			case statePass:
+				// A pass recorded (by an older binary) on a row now flagged
+				// prose-led (#1808 review A2) measured the mention, not a check:
+				// verifyrun would not run it today, so the pass proves nothing.
+				if r.ProseLed != "" {
+					out = append(out, checkFinding{r.ID, stateCouldNotRun, proseLedNote(r.ProseLed)})
+					break
+				}
 				out = append(out, checkFinding{r.ID, statePass, "witness matches the row and passed"})
 			case stateFail:
 				out = append(out, checkFinding{r.ID, stateFail, "the witness records a failure"})

@@ -137,13 +137,18 @@ func codeSpan(cell string) string {
 // like a command" would make the executed text a function of a heuristic that
 // can change under a row nobody edited — and the witness binds a recorded run to
 // the command text, so the command must be a property of what the author wrote.
-// The heuristic lives only in the lint (proseLedCommandWhy), which ADVISES the
-// author to add the marker; it never selects what runs.
+// The heuristic (proseLedCommandWhy) never selects WHICH command runs. It
+// decides only WHETHER the first span may run: the lint ADVISES the author to add
+// the marker, and a row it flags prose-led is not executed — verifyrun records it
+// could-not-run, the transcribe-verdict check:ci lane refuses it, and --check
+// does not audit an old pass witness on it as pass (#1808 review).
 //
 // COMPATIBILITY. A cell with no marked span lifts exactly what codeSpan lifts
-// today, byte for byte, so no row already on main changes command — and so no
-// witness already recorded changes verdict. A cell that is one code span needs
-// no marker; the marker is for cells that mix prose and spans.
+// today, byte for byte, so no row already on main changes command. A row the
+// lint flags prose-led does change outcome on its next run: whatever its witness
+// recorded, the new witness is could-not-run (no flagged row on main records a
+// pass). A cell that is one code span needs no marker; the marker is for cells
+// that mix prose and spans.
 const verifyCommandMarker = "cmd:"
 
 // codeSpans returns the content of every inline code span in cell, in order,
@@ -219,7 +224,10 @@ func proseOutsideSpans(cell string) string {
 // Rather than model every construct that can carry hidden text (an HTML
 // comment, a tag's attribute, a link title, an image's alt text, a footnote), a
 // cell whose prose outside code spans carries an unescaped `<` or `[` is not
-// plain: markedCommands honours no marker in it, and the lint says why
+// plain. Nor is one whose prose carries an unescaped `$`: GitHub renders a
+// span wrapped in dollar signs as math, not code, so a `cmd:` inside it is
+// not shown as a command. markedCommands honours no marker in a cell that is
+// not plain, and the lint says why
 // (ruleCmdMarkerNotHonoured). A cell with no marker never reaches this rule's
 // consequences — verifyCommand falls back to codeSpan exactly as before.
 //
@@ -235,6 +243,9 @@ func renderedCodeSpans(cell string) (spans []string, plain bool) {
 		case c == '\\' && i+1 < len(cell) && isASCIIPunct(cell[i+1]):
 			i += 2
 		case c == '<' || c == '[':
+			plain = false
+			i++
+		case c == '$':
 			plain = false
 			i++
 		case c == '`':
@@ -1737,7 +1748,7 @@ const (
 	// a first span that is itself command-shaped (multi-word).
 	ruleCmdMarkerOverrides = "cmd-marker-overrides-command"
 	// ruleCmdMarkerNotHonoured — #1808 review — a `cmd:` span the rendered cell
-	// may not show as code (escaped backticks, or `<` / `[` in the prose), so
+	// may not show as code (escaped backticks, or `<` / `[` / `$` in the prose), so
 	// verifyrun ignores it and runs the first span.
 	ruleCmdMarkerNotHonoured = "cmd-marker-not-honoured"
 	// ruleCmdMarkerVacuous — #1808 review — the marked command cannot fail
@@ -1745,6 +1756,30 @@ const (
 	// tree holds.
 	ruleCmdMarkerVacuous = "cmd-marker-vacuous"
 )
+
+// isVacuousCommand reports a marked command that exits 0 without looking at
+// anything: one of vacuousCommands once a trailing `;` or `# comment` is
+// dropped, or a lone echo / printf with no shell operator (#1808 review A6). It
+// is a NOTICE heuristic, so it errs quiet: anything carrying a quote, pipe,
+// redirect, `&`, `;` mid-command or substitution is left alone.
+func isVacuousCommand(cmd string) bool {
+	c := strings.TrimSpace(cmd)
+	if strings.ContainsAny(c, "'\"`$|<>&()") {
+		return false
+	}
+	if i := strings.Index(c, " #"); i >= 0 {
+		c = c[:i]
+	}
+	c = strings.TrimSpace(strings.TrimRight(strings.TrimSpace(c), ";"))
+	if strings.Contains(c, ";") {
+		return false
+	}
+	f := strings.Fields(c)
+	if len(f) == 0 {
+		return false
+	}
+	return vacuousCommands[strings.Join(f, " ")] || f[0] == "echo" || f[0] == "printf"
+}
 
 // vacuousCommands are marked commands that exit 0 without looking at anything.
 var vacuousCommands = map[string]bool{
@@ -1781,11 +1816,11 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 	if first := markerOverridesCommandSpan(cmdCell); first != "" {
 		add(ruleCmdMarkerOverrides, "has a `cmd:` marker that REPLACES its first code span `%s`, which reads as a command itself — verifyrun runs `%s`, not the span a reader of the table sees first. The marker is for cells whose earlier spans are mentions (a function, a file, a label); make the marked span the first span, or move the other command out of this row", first, m[0])
 	}
-	if len(m) > 0 && vacuousCommands[strings.Join(strings.Fields(m[0]), " ")] {
+	if len(m) > 0 && isVacuousCommand(m[0]) {
 		add(ruleCmdMarkerVacuous, "marks `%s` as its command, which exits 0 without looking at anything — the row passes whatever the tree holds. Mark the command that performs the check", m[0])
 	}
 	if len(m) == 0 && rawMarkerPresent(cmdCell) {
-		add(ruleCmdMarkerNotHonoured, "carries a `cmd:` span that verifyrun does NOT honour, so the row runs its first code span instead: a marker counts only in a cell whose rendered text shows it as code — not between backslash-escaped backticks, and not in a cell whose prose carries a `<` or `[` (raw HTML, an HTML comment, a link or an image, each of which can hide text from the rendered table). Remove the escapes, or move the HTML/link out of the Command cell")
+		add(ruleCmdMarkerNotHonoured, "carries a `cmd:` span that verifyrun does NOT honour, so the row runs its first code span instead: a marker counts only in a cell whose rendered text shows it as code — not between backslash-escaped backticks, and not in a cell whose prose carries a `<` or `[` (raw HTML, an HTML comment, a link or an image, each of which can hide text from the rendered table) or a `$` (GitHub renders a dollar-wrapped span as math, not code). Remove the escapes, move the HTML/link/math out of the Command cell, or escape a literal `$` as `\\$`")
 	}
 
 	cmd := verifyCommand(cmdCell)

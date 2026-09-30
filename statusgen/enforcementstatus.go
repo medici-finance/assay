@@ -123,8 +123,8 @@ var lintRuleRegistry = []LintRule{
 	{ruleProseLedCommand, "a prose Command cell whose first code span — the text the lift returns — is a mention (a file, a path, an `owner/repo`, a code identifier, a word ahead of the real command), not a command; verifyrun records the row could-not-run until the command is marked with a `cmd:` code span", StatusAdvisory},
 	{ruleCmdMarkerAmbiguous, "a Command cell carrying more than one `cmd:`-marked code span, so which command the row names is ambiguous", StatusAdvisory},
 	{ruleCmdMarkerOverrides, "a `cmd:` marker that replaces a first code span which reads as a command itself (multi-word), so the row runs something other than the span a reader sees first", StatusAdvisory},
-	{ruleCmdMarkerNotHonoured, "a `cmd:` span verifyrun ignores because the rendered cell may not show it as code (backslash-escaped backticks, or raw HTML / a link / an image in the cell's prose), so the row runs its first span", StatusAdvisory},
-	{ruleCmdMarkerVacuous, "a `cmd:`-marked command that cannot fail (`true`, `:`, `exit 0`), so the row passes whatever the tree holds", StatusAdvisory},
+	{ruleCmdMarkerNotHonoured, "a `cmd:` span verifyrun ignores because the rendered cell may not show it as code (backslash-escaped backticks, or raw HTML / a link / an image / math in the cell's prose), so the row runs its first span", StatusAdvisory},
+	{ruleCmdMarkerVacuous, "a `cmd:`-marked command that cannot fail (`true`, `:`, `exit 0`, a lone `echo`), so the row passes whatever the tree holds", StatusAdvisory},
 
 	// consumers: routed-consumer lint (consumers.go). One class is fatal.
 	{"consumers-followup-missing-brief", "a `consumers: follow-up <stream>/<NN>` whose target is not a brief in any stream README — the routing claim is false", StatusFatal},

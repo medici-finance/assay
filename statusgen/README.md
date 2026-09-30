@@ -85,11 +85,13 @@ marked `cmd:` (`` `cmd: go test ./pkg/ -count=1` ``), which always wins over the
 span (issue #1805; `--lint` NOTICEs a prose cell whose first span is not a command as
 `prose-led-command`, and `verifyrun` records such a row could-not-run without
 executing it — the mention is not the check, and a word like `gh` exits 0; the per-row
-NOTICE covers open briefs, and a closed brief's rows collapse into one summary line).
-A marked command that cannot fail (`true`, `:`, `exit 0`) is NOTICEd as
+NOTICE covers open briefs, and a closed brief's rows collapse into one summary line;
+the check:ci verdict re-execution lane refuses such a row unrun, and `--check` does not
+audit an old pass witness on it as pass).
+A marked command that cannot fail (`true`, `:`, `exit 0`, a lone `echo`) is NOTICEd as
 `cmd-marker-vacuous`. A marker counts only where the rendered table shows it as code:
 spans are found as CommonMark renders them (escaped backticks are literal), and a cell
-whose prose carries an unescaped `<` or `[` honours no marker (`--lint` NOTICEs it as
+whose prose carries an unescaped `<`, `[` or `$` (math) honours no marker (`--lint` NOTICEs it as
 `cmd-marker-not-honoured`; a marker that replaces a command-shaped first span is
 `cmd-marker-overrides-command`). The tools/desk executors (`verifyloop`,
 `deskrebaseline`) apply the same rule, held to the shared vectors in

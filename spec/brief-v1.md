@@ -288,8 +288,9 @@ The body MUST contain a `## Verify` section with an executable table:
   renders them: a backslash-escaped backtick is literal text, and a run of N
   backticks closes only on the next run of exactly N. A cell whose prose (outside
   code spans) carries an unescaped `<` or `[` (raw HTML, an HTML comment, a link or
-  an image, any of which can hide text from the rendered table) has no honoured
-  marker; write `\<` or `\[` to use those characters in prose.
+  an image, any of which can hide text from the rendered table), or an unescaped `$`
+  (GitHub renders a dollar-wrapped span as math, not code), has no honoured
+  marker; write `\<`, `\[` or `\$` to use those characters in prose.
 - Rows MUST NOT be prose-only assertions without a command.
 - Prose deliverables (docs, articles) MUST use PRESENCE gates: checks that required
   elements exist (file, section, token). The Verify section MUST state that

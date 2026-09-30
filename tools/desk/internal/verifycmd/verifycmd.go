@@ -15,7 +15,8 @@
 // exactly N (an opener with no closer is literal text). A cell whose prose
 // outside code spans carries an unescaped `<` or `[` — raw HTML, an HTML comment,
 // a link or an image, any of which can hide text from the rendered table — has no
-// honoured marker at all.
+// honoured marker at all. Neither has a cell whose prose carries an unescaped
+// `$`: GitHub renders a span wrapped in dollar signs as math, not code.
 package verifycmd
 
 import "strings"
@@ -65,7 +66,7 @@ func stripInlineCode(s string) string {
 
 // renderedCodeSpans returns the trimmed content of every code span a renderer
 // displays in cell, and plain=false when the cell's prose carries an unescaped
-// `<` or `[`.
+// `<`, `[` or `$`.
 func renderedCodeSpans(cell string) (spans []string, plain bool) {
 	plain = true
 	i := 0
@@ -75,6 +76,9 @@ func renderedCodeSpans(cell string) (spans []string, plain bool) {
 		case c == '\\' && i+1 < len(cell) && isASCIIPunct(cell[i+1]):
 			i += 2
 		case c == '<' || c == '[':
+			plain = false
+			i++
+		case c == '$':
 			plain = false
 			i++
 		case c == '`':

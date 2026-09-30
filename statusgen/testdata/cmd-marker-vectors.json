@@ -24,6 +24,11 @@
     {"name": "marker inside a link title", "cell": "`go test ./nonexistent -count=1` [x](https://example.com \"`cmd: true`\")", "marked": null},
     {"name": "marker inside image alt text", "cell": "`go test ./nonexistent -count=1` ![`cmd: true`](x.png)", "marked": null},
     {"name": "escaped angle bracket and bracket in prose stay plain", "cell": "In `Foo` \\<ns\\> \\[x\\] then `cmd: true`", "marked": "true"},
-    {"name": "angle bracket inside a span does not taint the cell", "cell": "In `Foo`: `cmd: kubectl -n <ns> get pods`", "marked": "kubectl -n <ns> get pods"}
+    {"name": "angle bracket inside a span does not taint the cell", "cell": "In `Foo`: `cmd: kubectl -n <ns> get pods`", "marked": "kubectl -n <ns> get pods"},
+    {"name": "marker inside inline math", "cell": "`go test ./nonexistent -count=1` $`cmd: true`$", "marked": null},
+    {"name": "marker inside display math", "cell": "`go test ./nonexistent -count=1` $$`cmd: true`$$", "marked": null},
+    {"name": "any unescaped dollar in prose taints the cell", "cell": "costs $5, then `cmd: true`", "marked": null},
+    {"name": "escaped dollar in prose stays plain", "cell": "costs \\$5, then `cmd: true`", "marked": "true"},
+    {"name": "dollar inside a span does not taint the cell", "cell": "In `Foo`: `cmd: echo $HOME`", "marked": "echo $HOME"}
   ]
 }

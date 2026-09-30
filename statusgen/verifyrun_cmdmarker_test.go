@@ -116,6 +116,25 @@ func TestCheckWitnessesMarkedRowRoundTrips(t *testing.T) {
 	}
 }
 
+// TestCheckWitnessesProseLedPassIsNotPass — #1808 review A2. A pass witness an
+// older binary recorded on a row now flagged prose-led measured the mention, not
+// a check; --check must not audit it as pass. A fail witness is left as recorded.
+func TestCheckWitnessesProseLedPassIsNotPass(t *testing.T) {
+	verify := verifyTable("| 1 | `true` then run `go test ./nonexistent-pkg-1808 -count=1` | exit 0 |")
+	rows := briefVerifyRows(verify)
+	if len(rows) != 1 || rows[0].ProseLed == "" {
+		t.Fatalf("fixture drift: the row must be flagged prose-led, got %+v", rows)
+	}
+	for _, c := range []struct{ state, want string }{{statePass, stateCouldNotRun}, {stateFail, stateFail}} {
+		w := witness{ID: "1", Command: rows[0].Command, State: c.state, Exit: 0, OutHash: "0123456789ab",
+			Date: "2026-09-27", Runner: "human:alex", Tree: "0123456789ab"}
+		fs := checkWitnesses(verify, witnessHeader+"\n"+w.row()+"\n")
+		if len(fs) != 1 || fs[0].State != c.want {
+			t.Errorf("prose-led row with a %s witness must check %s, got %+v", c.state, c.want, fs)
+		}
+	}
+}
+
 func hasRule(fs []rowFinding, rule string) bool {
 	for _, f := range fs {
 		if f.rule == rule {
@@ -280,6 +299,66 @@ func TestTranscribeVerdictCheckCIReexecutesLiftedCommand(t *testing.T) {
 			})
 			if len(got) != 1 || got[0] != "true" {
 				t.Errorf("check:ci runner must receive the lifted command %q, got %q\n%s", "true", got, out.log)
+			}
+		})
+	}
+}
+
+// TestTranscribeVerdictRefusesProseLedCheckCI — #1808 review CR-1808-3. verifyrun
+// never executes a prose-led row (its lifted first span is a mention), so the
+// transcribe-verdict re-execution must not either: re-running the mention can
+// exit 0 (`true`, `gh`) and turn a verdict the gate should refuse into a PASS.
+// The row is refused under clause-6 WITHOUT reaching the runner, and a `cmd:`
+// marker still clears it (the marked command is what runs).
+func TestTranscribeVerdictRefusesProseLedCheckCI(t *testing.T) {
+	for _, c := range []struct {
+		name, cell string
+		wantRun    []string
+	}{
+		{"prose-led row is refused unrun", "`true` then run `go test ./nonexistent-pkg-1808 -count=1`", nil},
+		{"reviewer repro cell", "Check `true` first, then run `go test ./nonexistent -count=1`", nil},
+		{"marked row still re-executes", "`true` then run `cmd: go test ./nonexistent-pkg-1808 -count=1`", []string{"go test ./nonexistent-pkg-1808 -count=1"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			scanWithRoster(t, verdictRoster())
+			key := verdictTestKey(t)
+			root := verdictBaseRepo(t, r6Armed)
+			rel := writeVerdictBrief(t, root, "01", "model", false)
+			abs := filepath.Join(root, rel)
+			b, err := os.ReadFile(abs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			nb := strings.Replace(string(b), "| 1 | check:ci | true | exit 0 |", "| 1 | check:ci | "+c.cell+" | exit 0 |", 1)
+			if nb == string(b) {
+				t.Fatal("fixture drift: the check:ci row was not found to rewrite")
+			}
+			if err := os.WriteFile(abs, []byte(nb), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			body := signVerdictBody(t, key, okPayload(okEntry(rel, "| 1 | check:ci | true | 0 | PASS | 2026-09-30 | verifier |")))
+			list := fixtureLister(map[string][]ghIssue{verdictTestRepo: {{Number: 612}}}, "")
+			resolve := fixtureVerdictResolver(map[string]verdictIssue{verdictTestRepo + "#612": {Author: verifierIdent, Body: body}})
+			var got []string
+			rec := func(_ string, command string) checkCIResult {
+				got = append(got, command)
+				return checkCIResult{Passed: true, Reason: "exit 0"}
+			}
+			out := captureRun(t, func() int {
+				return runTranscribeVerdict(root, true, "", list, resolve, rec, noHealthHold, blessR6Resolver)
+			})
+			if strings.Join(got, "\n") != strings.Join(c.wantRun, "\n") {
+				t.Errorf("check:ci runner calls = %q, want %q\n%s", got, c.wantRun, out.log)
+			}
+			refused := strings.Contains(out.log, "REFUSE "+verdictTestRepo+"#612 — clause-6 (check:ci)")
+			if c.wantRun == nil && (!refused || !strings.Contains(out.log, ruleProseLedCommand)) {
+				t.Errorf("a prose-led check:ci row must be REFUSED under clause-6 naming %s; log:\n%s", ruleProseLedCommand, out.log)
+			}
+			if c.wantRun == nil && strings.Contains(out.log, "CONSUME") {
+				t.Errorf("a prose-led check:ci verdict must not be consumed:\n%s", out.log)
+			}
+			if c.wantRun != nil && refused {
+				t.Errorf("a marked row must not be refused:\n%s", out.log)
 			}
 		})
 	}
@@ -452,6 +531,9 @@ var sr1808Probes = []string{
 	"`go test ./nonexistent-pkg-1808 -count=1` (see `cmd: true`)",
 	"`go test ./nonexistent-pkg-1808 -count=1` <!-- `cmd: true` -->",
 	"`go test ./nonexistent-pkg-1808 -count=1` then \\`cmd: true #\\`",
+	// rr3: GitHub renders a dollar-wrapped span as math, not code.
+	"`go test ./nonexistent-pkg-1808 -count=1` $`cmd: true`$",
+	"`go test ./nonexistent-pkg-1808 -count=1` $$`cmd: true`$$",
 }
 
 // TestHiddenMarkerKeepsFirstSpan — a marker the rendered cell does not show
@@ -540,6 +622,10 @@ func TestCmdMarkerVacuousLint(t *testing.T) {
 		"In `Foo` change it, then `cmd: exit  0`",
 		"see `x.go`: `cmd::`",
 		"`cmd: /usr/bin/true`",
+		"`cmd: true;`",
+		"`cmd: true # placeholder`",
+		"`cmd: echo ok`",
+		"`cmd: printf done`",
 	} {
 		if fs := rowFindings(cell, "exit 0"); !hasRule(fs, "cmd-marker-vacuous") {
 			t.Errorf("%q must raise cmd-marker-vacuous, got %+v", cell, fs)
@@ -549,6 +635,10 @@ func TestCmdMarkerVacuousLint(t *testing.T) {
 		"`cmd: go test ./x -count=1`",
 		"`cmd: true && go test ./x -count=1`",
 		"`true`",
+		"`cmd: true; go test ./x -count=1`",
+		"`cmd: echo ok | grep -q ok`",
+		"`cmd: echo \"$(go test ./x -count=1)\"`",
+		"`cmd: go test ./x -count=1 # the real check`",
 	} {
 		if fs := rowFindings(cell, "exit 0"); hasRule(fs, "cmd-marker-vacuous") {
 			t.Errorf("%q must not raise cmd-marker-vacuous, got %+v", cell, fs)
