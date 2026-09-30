@@ -43,7 +43,7 @@ consumers:
   - "plugins/assay/skills/pr-review-desk/SKILL.md:83 and intake-desk/SKILL.md:159, references/tick-contract.md:166-170 (name the verb first, the script as fallback): follow-up windows-port/12"
   - "docs/streams/windows-port/portability-audit.md (add the missed rows): follow-up windows-port/11 (this brief, Task 1)"
   - "plugins/assay/paired-versions.yaml / release matrix: out-of-scope (new verbs ride the existing desk-tools tarball; no new artifact)"
-version: 1
+version: 2
 id: f032490f-5170-4cb9-95f7-f97cfab1f592
 ---
 
@@ -92,7 +92,7 @@ single-point-of-failure: the ONE control is the parity test (verb ≡ script on 
 | 4 | **Negative (B) — retention**: `cd tools/desk && go test -count=1 -run 'TestMonitorRetainsOnFailedRead' ./cmd/deskmonitor/` | PASS — a 404/zero/at-limit/collapsed read keeps the baseline and prints `MONITOR-DEGRADED` | `check` |
 | 5 | **Negative (C) — burst**: `cd tools/desk && go test -count=1 -run 'TestMonitorBurstCollapse' ./cmd/deskmonitor/` | PASS | `check` |
 | 6 | Tick grammar equality: `bash plugins/assay/scripts/tick-summary.sh regexp > /tmp/a.txt; desktick regexp > /tmp/b.txt; diff /tmp/a.txt /tmp/b.txt; echo rc=$?` | `rc=0` | `check +dereference` |
-| 7 | No hard-coded interpreter: `git grep -n '"/bin/bash"' HEAD -- tools/desk/cmd/scanloop/ \| wc -l` | `0` | `check` |
+| 7 | No hard-coded interpreter: `test -n "$(git ls-tree --name-only HEAD tools/desk/cmd/scanloop/)" && { git grep -n '"/bin/bash"' HEAD -- tools/desk/cmd/scanloop/ \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0` — no quoted `"/bin/bash"` literal anywhere under `tools/desk/cmd/scanloop/` at HEAD. A reintroduced literal prints its match count and fails the output check; a `git grep` error (any status other than no-match) fails the row's exit status; a missing or renamed `scanloop/` directory fails the `ls-tree` leg rather than passing on an empty search. _Re-written 2026-09-30 per #1699: the former `git grep … \| wc -l` exited 1 on the success path, because `git grep` exits 1 when it matches nothing and the witness shell runs with `pipefail`. The row failed exactly when the property held, and its bare `0` Expect was not machine-decidable, so a present literal would have passed on exit status alone._ | `check` |
 | 8 | Windows build of the three verbs: `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./cmd/deskmonitor/ ./cmd/desktick/ ./cmd/scanloop/` | exit 0 | `check` |
 | 9 | **Flow — scanloop arms the verb**: `cd tools/desk && go test -count=1 -run 'TestScanloopArmsDeskmonitor' ./cmd/scanloop/` | PASS — `execMonitor` argv[0] is `deskmonitor`, and the state dir it passes is read back as arming evidence | `check +flow` |
 | 10 | Audit rows added: `grep -c -e 'pr-monitor.sh' -e 'tick-summary.sh' -e 'harness Monitor' -e 'jq' docs/streams/windows-port/portability-audit.md` | `>= 4` | `check` |
