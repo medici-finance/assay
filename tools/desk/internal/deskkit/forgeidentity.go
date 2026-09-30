@@ -68,6 +68,7 @@ var gitlabServiceAccountRe = regexp.MustCompile(`^service_account_group_[0-9]+_[
 // `gitlab:` (with something after it) qualifies the entry; anything else is read as a
 // legacy `slug[:id]` on github. A GitHub App slug or a GitLab username is never literally
 // `github`/`gitlab`, so the discriminator does not collide with a real identity.
+// semantic: S-identity
 func splitBotEntry(entry string) (BotIdentity, bool) {
 	b := BotIdentity{Forge: ForgeGitHub, ForgeInferred: true}
 	head, rest, found := strings.Cut(entry, ":")
@@ -147,6 +148,7 @@ type CommitEmailSpec struct {
 }
 
 // CommitEmailSpec returns the expected commit-address spec for this identity.
+// semantic: S-identity
 func (b BotIdentity) CommitEmailSpec() CommitEmailSpec {
 	switch b.Forge {
 	case ForgeGitLab:

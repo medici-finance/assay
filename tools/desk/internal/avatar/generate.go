@@ -96,6 +96,8 @@ var familyRoles = []roleDef{
 // Generate builds the avatar set for org at the given tier. It is a pure
 // function of its inputs: no time, no randomness, so `go test -count=2` — and a
 // re-run months later — produces identical bytes (brief Task / Verify row 4).
+// PNG bytes hold under the same Go toolchain; a Go release can change the
+// deflate stream while the SVG bytes and the PNG pixels stay identical (#1952).
 //
 // The hue seed is derived from the org login via FNV-1a (deterministic); an
 // adopter needs to pass only the login. The installer imports this in-process.

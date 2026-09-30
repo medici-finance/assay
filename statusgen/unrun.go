@@ -207,10 +207,12 @@ func parseVerifyItems(section string) []verifyItem {
 // keyed by row ID. An Evidence section may hold SEVERAL tables (an implementer
 // run, then an independent re-run, then a re-verify at a later SHA); every one
 // is read and the results are unioned, so a row run by any pass counts as run.
-// HTML comments are stripped first — the contract comment is not evidence.
+// Complete HTML comments are stripped first — the contract comment is not
+// evidence. An unterminated opener is left in place (stripRowComments), so the
+// rows after it are still read; the lint reports the opener itself (#1939).
 func parseEvidenceRows(section string) map[string][]evidenceRow {
 	out := map[string][]evidenceRow{}
-	stripped := htmlCommentRe.ReplaceAllString(section, "")
+	stripped, _ := stripRowComments(section)
 	lines := strings.Split(stripped, "\n")
 	numIdx, dateIdx, runnerIdx := -1, -1, -1
 	ordinal := 0

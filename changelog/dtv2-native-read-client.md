@@ -1,0 +1,2 @@
+### Added
+- Negative-path tests pin the custody contract of the desk's native GitHub read client: a read with no minted token is refused before any request, even with a `GH_TOKEN`, `GH_ENTERPRISE_TOKEN` or gh login present, and the installation a read's token is minted for is the account of the repo being read, never one `GH_REPO` or `GH_TOKEN` names. A committed mutation spec proves each check is load-bearing.
