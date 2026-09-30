@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/verifycmd"
 )
 
 // brief.go — load a brief, read its OWN risk declaration, and parse its `## Verify` table
@@ -188,10 +189,12 @@ func parseVerifyRows(content string) []verifyRow {
 			if hasExpect {
 				expect = stripInlineCode(cell(expectCol))
 			}
+			// verifycmd.Lift honours the `cmd:` marker (spec §4.4, #1805) and
+			// otherwise unwraps a fully-backticked cell exactly as before.
 			rows = append(rows, verifyRow{
 				Num:     num,
 				Class:   class,
-				Command: stripInlineCode(cell(cmdCol)),
+				Command: verifycmd.Lift(cell(cmdCol)),
 				Expect:  expect,
 			})
 		}
