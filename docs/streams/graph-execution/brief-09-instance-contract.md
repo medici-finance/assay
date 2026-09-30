@@ -19,6 +19,8 @@ issues: []
 schema: brief-v2
 authored: 2026-09-19 by Codex (author-brief)
 sources:
+- docs/streams/graph-execution/work-input-amendment.md
+- freshness-checked 2026-09-30 @ 8485778515c041fc87966902a14eb9d195492be3 (pending scope, not implementation)
 - docs/streams/graph-execution/admission-assurance-spec.md
 - freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
 exec-tier: strong
@@ -28,7 +30,7 @@ consumers:
 - 'statusgen/experiment.go: follow-up graph-execution/05'
 - 'drainloop: follow-up graph-execution/16'
 - 'tools/desk: follow-up graph-execution/14'
-version: 1
+version: 2
 id: eb0a9f7c-669d-42f6-9686-e30c661a2450
 ---
 
@@ -54,6 +56,20 @@ single-point-of-failure: the new contract or policy alone cannot establish safe 
 - Existing authority and human gates remain binding. Missing prerequisite evidence is could-not-check.
 - Public fixtures use example-org and synthetic data; do not copy adopter evidence.
 
+## Work-input amendment — 2026-09-30
+
+Implement WI-1/WI-2 in the instance schema and validator already owned here. The packet is
+an exported role view of the canonical instance, never a new run record. Bind intent,
+acceptance scope, source/dependency fingerprints, coverage/omissions, unresolved inputs,
+artifact references, delta and next safe action. Keep runner/control/reservation references
+without inventing authority. A complete diff may be large; reject silent truncation.
+
+Add positive and negative fixtures in the declared instance testdata: same-input round trip,
+changed policy outside the touched source file, omitted mandatory evidence and unknown
+coverage. Raw artifacts remain accessible. Serialize result/handoff provenance using the
+same IDs. Actual prompt assembly/dispatch belongs to 14; usage settlement belongs to 16.
+No semantic dependency inference or provider-specific model client is in scope.
+
 ## Task
 
 1. Define and validate the GEA-01 instance fields, pinned input/acceptance/policy references and supersession. Include export/import and old-reader capability refusal; no in-place rewrite of prior decisions.
@@ -73,6 +89,8 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 1 | check:ci | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestInstance" ./...` | exit 0; output includes PASS for TestInstance, with no [no tests to run] for its owning package |
 | 2 | check:ci +mutation | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestInstanceCrossCellDenied" ./...` | exit 0; output includes PASS for TestInstanceCrossCellDenied, with no [no tests to run] for its owning package |
 | 3 | check:ci +flow | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestInstanceRoundTripIdentity" ./...` | exit 0; output includes PASS for TestInstanceRoundTripIdentity, with no [no tests to run] for its owning package |
+| 4 | check:ci +flow | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestInstancePacketViewProvenance$" ./... > /tmp/TestInstancePacketViewProvenance.out && grep -q -- "--- PASS: TestInstancePacketViewProvenance " /tmp/TestInstancePacketViewProvenance.out` | exit 0; named PASS; canonical instance → role view → handoff preserves revision, scope and omissions |
+| 5 | check:ci +mutation | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestInstancePacketChangedDependency$" ./... > /tmp/TestInstancePacketChangedDependency.out && grep -q -- "--- PASS: TestInstancePacketChangedDependency " /tmp/TestInstancePacketChangedDependency.out` | exit 0; named PASS; changed dependency or omitted required evidence cannot masquerade as the previous current packet; mutation: accept a stale dependency fingerprint — the named test must fail |
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.
 

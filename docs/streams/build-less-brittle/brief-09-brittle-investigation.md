@@ -17,9 +17,11 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; SOTA amendment)"
 sources:
+  - "docs/streams/build-less-brittle/spec.md — 2026-09-30 pending scope amendment"
+  - "freshness-checked 2026-09-30 @ 8485778515c041fc87966902a14eb9d195492be3: amend unfinished scope; no implementation claim"
   - "docs/streams/build-less-brittle/spec.md §3 row 11, §4.9, §11"
   - "docs/streams/build-less-brittle/spec.md §11 (Lewis et al. 2013 on actionability; Fowler on refactor-vs-rewrite and the strangler fig; Ousterhout on strategic investment; Foote & Yoder on reconstruction as last resort; SRE workbook on action items with an owner and a verifiable end state)"
   - "docs/brief-template.md (the template precedent this sits beside) and spec/registers-v1.md §7 (DR-<slug> decision records)"
@@ -111,6 +113,20 @@ without adding a seventh section. The example has an unavailable source and a la
 differently scoped success: it must retain the gap and must not infer recovery. Put the
 competing explanation and discriminating check under Divergence, and the expected
 observable under Next act. Preserve bounded reading, existing exits and net-zero skill lines.
+
+## Work-input amendment — 2026-09-30
+
+The template must state its code/source revisions, the relevant source/policy/dependency
+references, reconciled assumptions, unresolved questions and next act. Each conclusion
+names the evidence it depends on. Reuse the investigation at those inputs; if a later brief
+changes a relevant assumption, preserve the old record and produce a superseding revision
+or explicit affected-scope revalidation. An empty dependency list means unknown coverage.
+
+Add a worked example where a policy changes outside the module's touched files between
+investigation and oracle assembly. Show which conclusion needs revalidation and why file
+non-overlap is insufficient. This is a template/review obligation, not automated dependency
+inference. Keep the six sections, net line limits and stream independence. The reviewer
+must reject a template that presents the old conclusion as current in this example.
 
 ## Task
 
