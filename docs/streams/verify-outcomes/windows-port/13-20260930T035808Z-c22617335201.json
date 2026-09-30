@@ -1,0 +1,1 @@
+{"ts":"2026-09-30T03:58:08Z","brief":"windows-port/13","outcome":"verified","sha":"0b033c711c9ec30f75cb8c2082a505b06958a423","rows_passed":8,"rows_total":8,"repo":"medici-finance/assay","verifier":"assay-verifier-app[bot]","note":"claude-opus-5-5 verifier; re-verify after #1797 fixed by #1821; row 6 live parity 20/20; batch verify-desk/batch-j-20260930"}
