@@ -33,14 +33,25 @@ const (
 	fF = "tools/desk/internal/decoy/prefix.go"
 )
 
+// nulMarker stands in for each NUL separator of `--format=%H%x00%ci%x00%s` in
+// testdata/log.txt. The fixture is stored as plain text on purpose: a file carrying NUL
+// bytes is a binary to grep -I and to content scanners, which then cannot search it.
+// loadFixture puts the real NULs back, so Parse still reads the exact git format.
+const nulMarker = "<NUL>"
+
 func loadFixture(t *testing.T) []hotspot.Commit {
 	t.Helper()
-	f, err := os.Open("testdata/log.txt")
+	raw, err := os.ReadFile("testdata/log.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
-	commits, err := hotspot.Parse(f)
+	if bytes.IndexByte(raw, 0) >= 0 {
+		t.Fatalf("testdata/log.txt carries a raw NUL; write separators as %s", nulMarker)
+	}
+	if n := bytes.Count(raw, []byte(nulMarker)); n != 24 {
+		t.Fatalf("testdata/log.txt: %d %s separators, want 24 (two per commit, 12 commits)", n, nulMarker)
+	}
+	commits, err := hotspot.Parse(bytes.NewReader(bytes.ReplaceAll(raw, []byte(nulMarker), []byte{0})))
 	if err != nil {
 		t.Fatalf("Parse(testdata/log.txt): %v", err)
 	}
