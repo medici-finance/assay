@@ -176,3 +176,51 @@ found nothing names the search that found nothing, per the three-state instrumen
 
 **How a brief cites this.** A brief's `design-fit:` block names the `S-<slug>` id its change
 fits under in `contract:`, or `none — <why>` when no row applies yet.
+
+## Brittle marks
+
+A **brittle mark** names a module where fixes keep landing, so the strong-tier investigation
+and the design-fit review stage spend their attention there rather than across the whole
+tree. The mark is a **two-key decision, never the metric alone**: the change-history metric
+**nominates** first, the class defect history **confirms** second, in that order. A ranking
+nobody acts on changes nothing, which is why every mark is bound to a next step — the brittle
+investigation.
+
+**The module.** The unit marked is a module: an `S-` owner path from the table above, or a
+`tools/desk/cmd/<verb>` directory — **never a bare file**. A file is what the metric ranks; a
+module is what gets marked, investigated and cleared.
+
+**Key 1 — nominated by the metric.** The hotspot report (`tools/desk/internal/hotspot/hotspot.go`,
+printed by `TestPrintHotspots` in `tools/desk/internal/hotspot/hotspot_test.go`) ranks every
+non-test `.go` file under `tools/desk` by churn × complexity over first-parent history. A
+module is nominated when at least one of its files is in the top `N%` by score (project
+value; default 2%) with `fixes ≥ 2` in the window. Temporal coupling is an architecture
+signal, not a defect predictor: it never nominates on its own. A module that only holds the
+other end of a nominated file's coupling pair is `watch`, and the pair is recorded on the
+nominated module's row for the investigation to read.
+
+**Key 2 — confirmed by history.** An `error-class` issue records at least two counted
+instances in the module, OR a chain arrow at `introduced-by-commit` lands in it (the
+baseline's re-graded chains).
+
+**States.** Both keys: `brittle`, a row below. Key 1 only: `watch` — reported, not marked.
+Key 2 only: a class-issue matter, no mark. The pass that applies the keys is monthly, the
+rule diet's sibling, run by the same role on the same cadence; the report itself is never a
+CI gate (it needs full history, and on a shallow clone it reports could-not-check).
+
+**Where a mark lands.** (a) A row in the table below. (b) A findings entry with id
+`F-brittle-<module>` under the stream findings directory, `affects:` naming the streams whose
+briefs touch the module and `resolved: false` — the board already renders such an entry under
+"Unresolved findings" and counts it in the change-fail proxy, so no generator change is
+needed; the first mark's entry creates that directory. (c) The label `brittle` on the class
+issue (a label, not a status token).
+
+**Clearing.** A mark is **cleared** when the investigation's recommendation has merged AND the
+next monthly pass no longer nominates the module. The PR that clears it fills the row's
+`cleared` cell and flips the findings entry to `resolved: true`.
+
+No module is marked yet: the first marks are made at the first monthly pass after a project's
+go-live.
+
+| module | S- row | since | churn | fixes | complexity | coupling partner(s) | class issue | investigation | cleared |
+|---|---|---|---|---|---|---|---|---|---|
