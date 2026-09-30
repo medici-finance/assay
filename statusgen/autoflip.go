@@ -103,6 +103,9 @@ package main
 //     credited PR is the one the stamp cites. This is the resolver that finds
 //     a delivering PR which never touched the brief FILE: the usual case, since
 //     a delivery changes code and the board row, not the brief text.
+//     Only a PR merged into the repo's default branch is a delivery; a hit
+//     merged into any other branch is walked past (its code may never have
+//     reached the default branch).
 //     A PR body stays editable after merge, and the App's approval binds the
 //     head commit, not the body. So a hit is credited only when its body was
 //     last edited at or before its merge (trailerBodyProblem): the trailer it
@@ -112,10 +115,11 @@ package main
 //  2. BY THE BRIEF FILE'S HISTORY (the walk above). With a trailer-resolved
 //     delivery in hand, the walk is the GUARD over later changes: every PR that
 //     touched the brief file after that delivery merged must itself be
-//     App-approved at its head, exactly as before. The guard ends at the
-//     delivery itself or at the first change whose merge time is known to
-//     predate it; an unknown merge time never ends it early. With no delivery
-//     in hand, the walk is also the resolver, exactly as before.
+//     App-approved at its head, exactly as before. The guard passes over the
+//     delivery itself and each change whose merge time is known to predate it,
+//     and keeps walking: log order is commit order, not merge order. An
+//     unknown merge time is never "before". With no delivery in hand, the walk
+//     is also the resolver, exactly as before.
 //
 // In both resolvers a VERIFY EVIDENCE LANDING is not a candidate: a PR whose
 // author is the roster's `verifier=` App and whose whole diff stays inside
@@ -431,6 +435,12 @@ type prShape struct {
 	// `previous_filename`). A rename lists only its NEW path in Files, so
 	// isEvidenceLanding judges these too.
 	RenamedFrom []string
+	// BaseRef is the branch the PR merged into, and DefaultBranch the repo's
+	// default branch, both from the PR's own record. The trailer resolver
+	// credits only a PR whose BaseRef is the DefaultBranch: a PR merged into a
+	// side branch may never have reached it.
+	BaseRef       string
+	DefaultBranch string
 }
 
 // isEvidenceLanding reports whether shape is a verify Evidence landing: authored
@@ -659,8 +669,11 @@ func walkBriefHistory(res modelFlipResult, commits []string, rel, repo string, s
 	//  2. its attribution (attributeCandidate) — credited, walked past (not this
 	//     brief's delivering PR), or unattributable (could-not-check). When
 	//     resolver 1 already credited a delivery, attribution is settled: an
-	//     approved PR that is not that delivery is walked past, and the walk
-	//     ends at the delivery itself or at the first change that predates it.
+	//     approved PR that is not that delivery is walked past, and the
+	//     delivery itself and each change known to predate it are passed over.
+	//     The walk never STOPS at either: git log lists commits by commit date,
+	//     not by merge order, so a change merged after the delivery can be
+	//     listed below both. Every candidate in the scan window is judged.
 	checked := map[int]bool{} // a commit's PR may repeat across commits; judge each candidate once
 	for _, sha := range commits {
 		n, ok, err := src.MergedPRForCommit(repo, sha)
@@ -676,7 +689,7 @@ func walkBriefHistory(res modelFlipResult, commits []string, rel, repo string, s
 		}
 		checked[n] = true
 		if tr.delivers(n) {
-			return tr.credit // reached the trailer-resolved delivery: everything newer was approved
+			continue // the delivery itself; a change merged later may still follow it in log order
 		}
 
 		g := candidateGate(res, n, repo, src, rev)
@@ -686,7 +699,11 @@ func walkBriefHistory(res modelFlipResult, commits []string, rel, repo string, s
 		}
 		cand := g.cand
 		if tr.found() && tr.predates(g.mergedAt) {
-			return tr.credit // this change landed before the delivery; the guard is complete
+			// Merged before the delivery: outside the guard. Keep walking. Log
+			// order is commit order, not merge order, so a change merged after
+			// the delivery may still be listed below this one (F2 on #1868).
+			walked = append(walked, fmt.Sprintf("#%d (merged before the delivering PR #%d — outside the guard)", n, tr.credit.PR))
+			continue
 		}
 		if cand.Outcome != flipDone {
 			return withWalked(cand, walked)
@@ -824,6 +841,13 @@ func resolveByTrailer(res modelFlipResult, repo string, src modelFlipSource, rev
 			}
 			t.stop = &stop
 			return t
+		}
+		if g.shape.BaseRef != g.shape.DefaultBranch {
+			// Merged into a side branch: its code may never have reached the
+			// default branch, so it is not a delivery (F1 on #1868).
+			t.notes = append(t.notes, fmt.Sprintf("#%d (merged into %q, not the default branch %q — not a delivery)",
+				n, g.shape.BaseRef, g.shape.DefaultBranch))
+			continue
 		}
 		verdict, why := attributeCandidate(g.shape, res.Brief)
 		switch {
@@ -1228,6 +1252,21 @@ type ghPRSummaryJSON struct {
 	User         struct {
 		Login string `json:"login"`
 	} `json:"user"`
+	Base struct {
+		Ref  string `json:"ref"`
+		Repo struct {
+			DefaultBranch string `json:"default_branch"`
+		} `json:"repo"`
+	} `json:"base"`
+}
+
+// summaryBase returns the branch the PR merged into and its repo's default
+// branch. Either one missing is an error, never a match.
+func summaryBase(pr int, v ghPRSummaryJSON) (base, def string, err error) {
+	if v.Base.Ref == "" || v.Base.Repo.DefaultBranch == "" {
+		return "", "", fmt.Errorf("PR #%d reports no base branch (%q) or default branch (%q)", pr, v.Base.Ref, v.Base.Repo.DefaultBranch)
+	}
+	return v.Base.Ref, v.Base.Repo.DefaultBranch, nil
 }
 
 // PRShape reads a candidate PR's changed files and body — the facts
@@ -1266,6 +1305,9 @@ func (ghModelFlipSource) PRShape(repo string, pr int) (prShape, error) {
 	}
 	shape.Author = v.User.Login
 	shape.RenamedFrom = renamedFrom
+	if shape.BaseRef, shape.DefaultBranch, err = summaryBase(pr, v); err != nil {
+		return prShape{}, err
+	}
 	return shape, nil
 }
 

@@ -362,6 +362,118 @@ func TestAutoFlipTrailerEditedPreMerge(t *testing.T) {
 	}
 }
 
+// TestAutoFlipTrailerSideBranch: a trailer hit that merged into a branch other
+// than the default is not a delivery. Its code may never have reached the
+// default branch. It is walked past, whether or not it is approved, and named
+// on the result. A hit merged into the default branch is credited.
+func TestAutoFlipTrailerSideBranch(t *testing.T) {
+	onBranch := func(base string) prShape {
+		s := realDelivery50
+		s.BaseRef, s.DefaultBranch = base, "main"
+		return s
+	}
+	for name, st := range map[string]prReviewState{
+		"approved at head": mergedApproved(afRealDeliveryHeadSHA, 1),
+		"not approved":     humanApproved(afRealDeliveryHeadSHA, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			src := walkSource([]int{190},
+				map[int]prReviewState{190: humanApproved(afNoAppSHA, 5), 151: st},
+				map[int]prShape{190: evidenceShape(afVerifier), 151: onBranch("feat/side")})
+			src.trailerHits = map[string][]int{"af/50": {151}}
+			got := decideWalkRev(t, src, verifierRev())
+			if got.Outcome != flipUnchecked || got.PR == 151 || !strings.Contains(got.Reason, "#151") {
+				t.Fatalf("want COULD-NOT-CHECK not crediting, but naming, side-branch #151; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+			}
+		})
+	}
+	src := walkSource([]int{190},
+		map[int]prReviewState{190: humanApproved(afNoAppSHA, 5), 151: mergedApproved(afRealDeliveryHeadSHA, 1)},
+		map[int]prShape{190: evidenceShape(afVerifier), 151: onBranch("main")})
+	src.trailerHits = map[string][]int{"af/50": {151}}
+	if got := decideWalkRev(t, src, verifierRev()); got.Outcome != flipDone || got.PR != 151 {
+		t.Fatalf("default-branch hit: want flipDone crediting #151; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+	}
+}
+
+// TestAutoFlipGuardLogOrder: the guard judges every change to the brief file
+// that merged after the delivery, wherever git log lists it. Log order is
+// commit order, not merge order, so a change merged later (#195, day 7) can
+// be listed after an older change (#129) or after the delivery itself (#151).
+func TestAutoFlipGuardLogOrder(t *testing.T) {
+	for name, commits := range map[string][]int{
+		"pre-delivery change listed first": {129, 195},
+		"delivery listed first":            {151, 195},
+	} {
+		t.Run(name, func(t *testing.T) {
+			src := walkSource(commits,
+				map[int]prReviewState{
+					129: mergedApproved(afHeadSHA, 0),
+					151: mergedApproved(afRealDeliveryHeadSHA, 3),
+					195: humanApproved(afNoAppSHA, 7),
+				},
+				map[int]prShape{
+					129: authoringShape,
+					151: realDelivery50,
+					195: {Files: []string{"internal/x/x.go", "docs/streams/af/brief-50-walk.md"}},
+				})
+			src.trailerHits = map[string][]int{"af/50": {151}}
+			if got := decideWalkRev(t, src, verifierRev()); got.Outcome != flipRefused || got.PR != 195 {
+				t.Fatalf("want REFUSED naming the later-merged unapproved #195; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+			}
+		})
+	}
+}
+
+// TestAutoFlipSummaryBase: a PR record missing its base or default branch is
+// an error, never a match of "" to "".
+func TestAutoFlipSummaryBase(t *testing.T) {
+	var v ghPRSummaryJSON
+	v.Base.Ref, v.Base.Repo.DefaultBranch = "feat/side", "main"
+	if b, d, err := summaryBase(1, v); err != nil || b != "feat/side" || d != "main" {
+		t.Errorf("got %q %q %v", b, d, err)
+	}
+	for _, unset := range []func(*ghPRSummaryJSON){
+		func(v *ghPRSummaryJSON) { v.Base.Ref = "" },
+		func(v *ghPRSummaryJSON) { v.Base.Repo.DefaultBranch = "" },
+	} {
+		w := v
+		unset(&w)
+		if _, _, err := summaryBase(1, w); err == nil {
+			t.Errorf("want an error for base %q default %q", w.Base.Ref, w.Base.Repo.DefaultBranch)
+		}
+	}
+}
+
+// TestAutoFlipVerifierFromRoster pins the roster wiring of the Evidence
+// exclusion: the App bound to `verifier=` is the one Evidence landings are
+// matched against, under both GitHub renderings, and an unbound role gives
+// none (the exclusion then never applies).
+func TestAutoFlipVerifierFromRoster(t *testing.T) {
+	scanWithRoster(t, map[string]string{
+		scanEnvBlessLogin:      "ada:100001",
+		scanEnvTrustedLogins:   "ada:100001",
+		scanEnvTrustedBotSlugs: "reviewer=github:example-reviewer-app:300000005,verifier=github:example-verifier-app:300000006",
+	})
+	rev := modelReviewer()
+	for _, l := range []string{"example-verifier-app[bot]", "app/example-verifier-app"} {
+		if !loginInSet(rev.EvidenceLanders, l) {
+			t.Errorf("verifier rendering %q missing; EvidenceLanders = %v", l, rev.EvidenceLanders)
+		}
+	}
+	if loginInSet(rev.EvidenceLanders, "example-reviewer-app[bot]") {
+		t.Errorf("the reviewer App must not be an Evidence lander; EvidenceLanders = %v", rev.EvidenceLanders)
+	}
+	scanWithRoster(t, map[string]string{
+		scanEnvBlessLogin:      "ada:100001",
+		scanEnvTrustedLogins:   "ada:100001",
+		scanEnvTrustedBotSlugs: "reviewer=github:example-reviewer-app:300000005",
+	})
+	if rev := modelReviewer(); len(rev.EvidenceLanders) != 0 {
+		t.Errorf("no verifier bound: want no Evidence landers; got %v", rev.EvidenceLanders)
+	}
+}
+
 // TestAutoFlipParseLastEdited: null is never edited. A missing pull request or
 // an unparseable time is an error, never a pass.
 func TestAutoFlipParseLastEdited(t *testing.T) {
