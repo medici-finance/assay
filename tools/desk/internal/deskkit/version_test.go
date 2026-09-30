@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -143,19 +144,61 @@ func releaseTagStampProblems(wf, deskkitPath string) []string {
 	}
 	body := strings.Join(code, "\n")
 	stamp := "-X " + deskkitPath + ".ReleaseTag=${RELEASE_TAG}"
-	if !strings.Contains(body, stamp) {
-		problems = append(problems, "the desk-tools build step does not carry `"+stamp+"` — released binaries would report \"dev\" (or a value that is not the release tag) and defeat pin checks")
+	// The stamp must sit INSIDE the LDFLAGS assignment: the same text anywhere
+	// else in the step (an echo, a log line) stamps nothing.
+	assign, after := ldflagsAssignment(code)
+	switch {
+	case assign == "":
+		problems = append(problems, "the desk-tools build step has no `LDFLAGS=\"…\"` assignment — nothing carries `"+stamp+"` to the linker")
+	case !strings.Contains(assign, stamp):
+		problems = append(problems, "the desk-tools build step's LDFLAGS assignment does not carry `"+stamp+"` — released binaries would report \"dev\" (or a value that is not the release tag) and defeat pin checks")
 	}
 	// The stamp is fed from the RESOLVED release tag, via env: — never a
 	// ${{ }} splice inside run:, and never a literal.
 	if !strings.Contains(body, "RELEASE_TAG: ${{ needs.resolve.outputs.tag }}") {
 		problems = append(problems, "the desk-tools build step does not set RELEASE_TAG from needs.resolve.outputs.tag in env: — the stamped value would not be the resolved release tag")
 	}
-	// The stamped LDFLAGS must actually reach the build.
-	if !strings.Contains(body, `-ldflags "$LDFLAGS"`) {
-		problems = append(problems, "the desk-tools build step does not pass $LDFLAGS to go build — the stamp would be computed and discarded")
+	// The stamped LDFLAGS must actually reach the build — after the assignment,
+	// and without being reassigned or unset in between.
+	build := -1
+	for i := after; assign != "" && i < len(code); i++ {
+		if strings.Contains(code[i], `-ldflags "$LDFLAGS"`) {
+			build = i
+			break
+		}
+	}
+	switch {
+	case build < 0:
+		problems = append(problems, "the desk-tools build step does not pass $LDFLAGS to go build after assigning it — the stamp would be computed and discarded")
+	default:
+		for _, line := range code[after:build] {
+			if ldflagsClobber.MatchString(line) {
+				problems = append(problems, "the desk-tools build step reassigns LDFLAGS before go build ("+strings.TrimSpace(line)+") — the stamped value never reaches the linker")
+			}
+		}
 	}
 	return problems
+}
+
+// ldflagsClobber matches a shell line that reassigns, appends to or unsets
+// LDFLAGS — anything that would change the value go build receives.
+var ldflagsClobber = regexp.MustCompile(`(^|[\s;&|(])((export|local|declare|readonly)\s+)?LDFLAGS\+?=|\bunset\s+(-v\s+)?LDFLAGS\b`)
+
+// ldflagsAssignment returns the text of the first `LDFLAGS="…"` assignment in
+// code (joined with its backslash-continued lines) and the index of the first
+// line after it, or "" when there is none.
+func ldflagsAssignment(code []string) (string, int) {
+	for i, line := range code {
+		if !strings.HasPrefix(strings.TrimSpace(line), `LDFLAGS="`) {
+			continue
+		}
+		j := i
+		for j < len(code)-1 && strings.HasSuffix(strings.TrimRight(code[j], " "), `\`) {
+			j++
+		}
+		return strings.Join(code[i:j+1], "\n"), j + 1
+	}
+	return "", len(code)
 }
 
 // TestVersionStampedFromReleaseWorkflow is the workflow assertion for the
@@ -164,8 +207,10 @@ func releaseTagStampProblems(wf, deskkitPath string) []string {
 // stamp is the whole mechanism that maps a running desk-tools binary back to
 // its release; a release built without it ships binaries that answer "dev" and
 // silently defeat every pin check. This test goes RED if the stamp is removed
-// from release.yml's desk-tools build step, fed a value other than the
-// resolved release tag, or left out of the go build.
+// from release.yml's desk-tools build step, moved out of the LDFLAGS
+// assignment (an echo of the stamp stamps nothing), fed a value other than the
+// resolved release tag, or kept from the go build (LDFLAGS not passed, or
+// reassigned or unset before the build).
 //
 // It is DELIBERATELY a distinct, named test: internal/deskkit already carries
 // TestVersionUnpinned / TestVersionPinned, so a Verify row matching `-run
@@ -211,6 +256,7 @@ func TestReleaseTagStampMissingIsCaught(t *testing.T) {
 	for _, m := range []struct {
 		name, from, to string
 		wholeFile      bool
+		also           [2]string // an optional second in-step edit, applied after the first
 	}{
 		{name: "stamp removed", from: stamp, to: ""},
 		{name: "stamp fed the commit, not the tag", from: stamp, to: "-X " + pkg + ".ReleaseTag=${SHA_SHORT}"},
@@ -219,6 +265,9 @@ func TestReleaseTagStampMissingIsCaught(t *testing.T) {
 		{name: "stamp commented out", from: "                   " + stamp, to: "#                  " + stamp},
 		{name: "RELEASE_TAG not from the resolved tag", from: "RELEASE_TAG: ${{ needs.resolve.outputs.tag }}", to: "RELEASE_TAG: v0.0.0"},
 		{name: "LDFLAGS not passed to go build", from: `go build -ldflags "$LDFLAGS" \`, to: `go build \`},
+		{name: "stamp moved out of LDFLAGS into an echo", from: stamp, to: "", also: [2]string{`root="$PWD"`, "echo \"" + stamp + "\"\n          root=\"$PWD\""}},
+		{name: "LDFLAGS reassigned before go build", from: `root="$PWD"`, to: "LDFLAGS=\"\"\n          root=\"$PWD\""},
+		{name: "LDFLAGS unset before go build", from: `root="$PWD"`, to: "unset LDFLAGS\n          root=\"$PWD\""},
 		{name: "desk-tools build step renamed away", from: "- name: " + deskToolsBuildStepName, to: "- name: Build something else", wholeFile: true},
 	} {
 		src := step
@@ -230,6 +279,13 @@ func TestReleaseTagStampMissingIsCaught(t *testing.T) {
 			continue
 		}
 		mutated := strings.Replace(src, m.from, m.to, 1)
+		if m.also[0] != "" {
+			if !strings.Contains(mutated, m.also[0]) {
+				t.Errorf("%s: second guarded text %q is not in the desk-tools build step — the mutation control and the workflow have drifted apart", m.name, m.also[0])
+				continue
+			}
+			mutated = strings.Replace(mutated, m.also[0], m.also[1], 1)
+		}
 		if !m.wholeFile {
 			mutated = strings.Replace(wf, step, mutated, 1)
 		}

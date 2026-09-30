@@ -1159,7 +1159,7 @@ func ciCrossModuleRegistry() []ciEntry {
 			why: "TestVersionStampedFromReleaseWorkflow proves the release build still stamps " +
 				"-X …deskkit.ReleaseTag=$RELEASE_TAG; an unstamped release ships desk-tools binaries " +
 				"that answer \"dev\" and cannot be mapped back to their desk-tools/vX.Y.Z, silently " +
-				"defeating pin checks. A release-desk.yml-only edit that drops the stamp must run this test",
+				"defeating pin checks. A release.yml-only edit that drops the stamp must run this test",
 		},
 		{
 			// Registered by the raised-by label guard. raisedbyskills_test.go is the DIFF
