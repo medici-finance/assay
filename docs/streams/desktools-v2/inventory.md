@@ -10,13 +10,16 @@ Shapes (a) and (c) each have a declared sweep command, and every line those comm
 accounted for in the text. Shapes (b) and (d) have no exhaustive command: their rows are the sites found by
 reading, and the known sites that are not rows are listed as could-not-check, not cleared.
 
-- Tree state: `origin/main` @ `b89b39572` (2026-09-29). The first sweep ran at `951ca784d` (2026-09-18), i.e.
+- Tree state: `origin/main` @ `fabe4926e` (2026-09-30). The first sweep ran at `951ca784d` (2026-09-18), i.e.
   **after** the `spec.md` §1 freshness base (`57509073`, 2026-09-17) and after the `desktools-v2` frontmatter's
   own freshness base (`e9fa19d3`, 2026-09-16). This is a **re-derivation** of that sweep: every row's file:line
   was re-anchored by matching its cited line's content at `951ca784d` against the current tree, and every
   surface was re-swept with the commands under **How this inventory is derived** below. Rows 1–69 keep their
   numbers (the text cross-references them); rows added by the re-derivation are numbered 70 onward and
-  sit in the group they belong to. Several rows record a site the older documents call "open" that the tree has
+  sit in the group they belong to. The previous anchor of this re-derivation was `b89b39572`; between it and
+  `fabe4926e` every sweep below prints the same lines except one (`deskfleet/main.go:121`, see row 77), and the
+  only cited lines that moved are `forge.go:1510`, `forge_github.go:1808` and `deskboard/board.go:630`, updated
+  in place. Several rows record a site the older documents call "open" that the tree has
   since closed, and vice versa; each such case is called out under the row rather than silently reconciled away.
 - Shapes: **(a)** a `gh` subprocess (`exec.Command("gh"`, a shim, or a script that shells `gh`); **(b)** a
   hardcoded remote name (`"origin"`); **(c)** a hardcoded query shape (a `pullRequest`/`mergeRequest` GraphQL
@@ -37,11 +40,11 @@ repository root.
 
 - **Group A (statusgen, shape a):**
   `git grep -n 'exec.Command("gh"' -- 'statusgen/*.go' ':!*_test.go'` — one row per output line (29 lines,
-  16 files at `b89b39572`). The file-level set Verify row 5 checks is
+  16 files at `fabe4926e`). The file-level set Verify row 5 checks is
   `grep -rl 'exec.Command("gh"' statusgen --include='*.go' | grep -v '_test.go$'`.
 - **Groups B and C (tools/desk Go, shape a):** the `forgeban` scan. `TestNoForgeCLIShellout`
   (`tools/desk/internal/deskkit/forge_surface_test.go`) reconciles every Go exec site under `tools/desk` against
-  `tools/desk/internal/forgeban/allowlist.go`; it passes at `b89b39572` with 6 permitted forge-CLI call sites
+  `tools/desk/internal/forgeban/allowlist.go`; it passes at `fabe4926e` with 6 permitted forge-CLI call sites
   and 32 unresolved-argv exec sites (29 register rows). Each permit is one group B row, except that the
   `ambientLoginProbe` permit covers two `gh` launches in one function (rows 73 and 78). The literal-`gh` subset
   is also visible to a plain grep:
@@ -50,7 +53,7 @@ repository root.
   `git grep -nE '/repos/|"repos/|api\.github\.com|"/graphql"|vnd\.github' -- 'tools/desk/*.go' ':!*_test.go' ':!tools/desk/internal/deskkit/forge_github.go' ':!tools/desk/internal/deskkit/forge_gitlab.go' ':!tools/desk/cmd/deskpost/github.go' | grep -vE ':[0-9]+:[[:space:]]*//'`
   — the two backend files and group E's file are excluded, and so are comment-only lines. The pattern matches
   `/repos/` anywhere in a literal, so a path built as `%s/repos/…` on a base URL is caught as well as one that
-  starts with `/repos/`, and `"repos/` catches a path handed to `gh api` without a leading slash. Every line it prints at `b89b39572` is a row in group E2, falls inside an existing row, or
+  starts with `/repos/`, and `"repos/` catches a path handed to `gh api` without a leading slash. Every line it prints at `fabe4926e` is a row in group E2, falls inside an existing row, or
   is named under **Not classified by this re-derivation** below.
 - **Shell and generated-shell surfaces (groups C, G):**
   `git grep -nE '(^|[^A-Za-z0-9_./-])gh (api|issue|pr|repo|auth|run|workflow|label|release|search)( |$)' -- plugins/assay tools/cellctl tools/desk .claude ':!*.go' ':!*.md' ':!*.json'`
@@ -157,7 +160,7 @@ is a Go `exec` of `gh`, so `forgeban` does not see either — the `gh` lives ins
 
 `desktools-v2/06` (authored 2026-09-16, freshness-checked `e9fa19d3`) states #1146 is open and specifies an
 unlanded test, `TestDispatchHandsTokenToScriptChild` (`git grep -l TestDispatchHandsTokenToScriptChild -- tools/desk`
-finds nothing at `b89b39572` — confirmed absent). But `resolveClaimAuth`
+finds nothing at `fabe4926e` — confirmed absent). But `resolveClaimAuth`
 (tools/desk/cmd/deskdispatch/dispatch.go:1182, credential hand-off at :1225; its GitLab twin
 `resolveClaimAuthGitLab` hands off at :1335) already threads the minted role token into the **full child
 environment** (`append(os.Environ(), "GH_TOKEN="+tok)`) for the legacy claim script, not onto a child literally
@@ -225,7 +228,7 @@ unchanged since the first sweep (17); every line moved by +15 or more.
 `tools/desk/cmd/deskpost/github.go:1083,1087` (`readMergeHold`/`setMergeHold`) are **not** rows: both are unconditional
 GitHub-typed-not-applicable stubs that issue no request. `tools/desk/cmd/deskboard/board.go` and `tools/desk/cmd/issueboard/board.go`'s own
 `PRTrustQuery`/`IssueTrustQuery` consumers (rows their code comments still describe as `gh api graphql`) have
-**already migrated** onto `f.PRTrustEvents`/`f.IssueTrustEvents` — `deskboard/board.go:581` (`prBlessed`) and
+**already migrated** onto `f.PRTrustEvents`/`f.IssueTrustEvents` — `deskboard/board.go:630` (`prBlessed`) and
 `tools/desk/cmd/issueboard/board.go`'s `fetchIssueBlessed` (its stale comment now at `:264`) call the typed `Forge` methods
 directly; the comments are stale, the code is not. Not rows; not reach-arounds.
 
@@ -237,8 +240,8 @@ request is a GitHub path built outside `forge_github.go`, which is a reach-aroun
 
 | # | file:line | tool/skill | shape | issue | seam op it should use (or GAP) | migrating brief |
 |---|---|---|---|---|---|---|
-| 76 | tools/desk/cmd/deskinbox/detail.go:84 (`listIssueComments`: the `%s/repos/%s/%s/issues/%d/comments` path on a GitHub base URL, `Accept: application/vnd.github+json` at :91) | deskinbox (`--walk`/`--html` detail fetch) | (c) | — | `ListCommentsTyped` with the issue kind. The file header says no typed op returns comment bodies, but `deskkit.Comment` carries `Body` (`tools/desk/internal/deskkit/forge.go:538`) and `ListCommentsTyped` (`forge.go:1467`) reads an issue's own thread. A non-GitHub repo gets could-not-check here today. Added after the first sweep, #1507 | unrouted — no v2 brief names `tools/desk/cmd/deskinbox` |
-| 77 | tools/desk/cmd/deskfleet/labels.go:64 (`githubLabels.create`: `POST /repos/{owner}/{repo}/labels` on deskfleet's own client, GitHub base `https://api.github.com` at `tools/desk/cmd/deskfleet/main.go:121`, `Accept` header at `tools/desk/cmd/deskfleet/client.go:43`) | deskfleet (fleet label definitions) | (c) | — | GAP — creating a label definition on its own. The GitHub backend creates missing definitions only as step 1 of `ApplyLabels` (`forge_github.go:1695`), which also applies them to an item; no op creates a definition without an item. The same file's `gitlabLabels.create` (:33) is the GitLab arm. Added after the first sweep | unrouted — no v2 brief names `tools/desk/cmd/deskfleet` |
+| 76 | tools/desk/cmd/deskinbox/detail.go:84 (`listIssueComments`: the `%s/repos/%s/%s/issues/%d/comments` path on a GitHub base URL, `Accept: application/vnd.github+json` at :91) | deskinbox (`--walk`/`--html` detail fetch) | (c) | — | `ListCommentsTyped` with the issue kind. The file header says no typed op returns comment bodies, but `deskkit.Comment` carries `Body` (`tools/desk/internal/deskkit/forge.go:538`) and `ListCommentsTyped` (`forge.go:1510`) reads an issue's own thread. A non-GitHub repo gets could-not-check here today. Added after the first sweep, #1507 | unrouted — no v2 brief names `tools/desk/cmd/deskinbox` |
+| 77 | tools/desk/cmd/deskfleet/labels.go:64 (`githubLabels.create`: `POST /repos/{owner}/{repo}/labels` on deskfleet's own client, GitHub base `deskkit.GitHubAPIBase` at `tools/desk/cmd/deskfleet/main.go:121` (a literal `https://api.github.com` until #1864), `Accept` header at `tools/desk/cmd/deskfleet/client.go:43`) | deskfleet (fleet label definitions) | (c) | — | GAP — creating a label definition on its own. The GitHub backend creates missing definitions only as step 1 of `ApplyLabels` (`forge_github.go:1808`), which also applies them to an item; no op creates a definition without an item. The same file's `gitlabLabels.create` (:33) is the GitLab arm. Added after the first sweep | unrouted — no v2 brief names `tools/desk/cmd/deskfleet` |
 
 ### F. `tools/desk/**` — hardcoded remote name (shape b)
 
@@ -312,7 +315,7 @@ presence probes.)
 ### Not classified by this re-derivation — shape (c) candidates (could-not-check)
 
 The first sweep recorded no command for its shape (c) search. This re-derivation declares one (under **How this
-inventory is derived**, groups E and E2), and every line it prints at `b89b39572` is accounted for here or in a
+inventory is derived**, groups E and E2), and every line it prints at `fabe4926e` is accounted for here or in a
 row. The sites added after the first sweep (`deskinbox`, `deskfleet`) were read and are rows 76 and 77. The sites
 below that were present at the first sweep but not listed then are **could-not-check**, not rows and not
 cleared: whether each is a reach-around under this brief's definition needs the per-site reading groups E and E2
@@ -336,8 +339,9 @@ The remaining lines the sweep prints are not candidates, for the reason given wi
 - `tools/desk/cmd/deskdigest/collect.go:212,213,272,273` and `tools/desk/cmd/deskmerge/authority.go:69,70,86` —
   REST paths and headers handed to `gh api`, so already inside rows 28 and 30 as shape (a). (`authority.go:86`
   builds the expected item path to compare against a comment's own URL; it sends nothing.)
-- `tools/desk/cmd/deskinbox/detail.go:84,91`, `tools/desk/cmd/deskfleet/labels.go:64`,
-  `tools/desk/cmd/deskfleet/main.go:121` and `tools/desk/cmd/deskfleet/client.go:43` — rows 76 and 77.
+- `tools/desk/cmd/deskinbox/detail.go:84,91`, `tools/desk/cmd/deskfleet/labels.go:64` and
+  `tools/desk/cmd/deskfleet/client.go:43` — rows 76 and 77. (`deskfleet/main.go:121` printed here too until
+  #1864 replaced its literal base with `deskkit.GitHubAPIBase`; it is still cited in row 77 as the base.)
 - `tools/desk/cmd/desktoken/coverage.go:263,301` and `tools/desk/cmd/desktoken/desktoken.go:208,381` — the
   `Accept` headers of `desktoken`'s App-JWT installation lookups and token exchange. That is the token minter,
   the identity layer D2 keeps outside `Forge` on purpose, not a forge operation a verb could route through it.
@@ -362,8 +366,8 @@ the first sweep; they are could-not-check here, not cleared:
 ## Reconciled:
 
 Cross-check against `tools/desk/internal/forgeban/allowlist.go` (`const allowedInvocationCeiling = 6` at
-`b89b39572`; it was 5 at the first sweep), so no Go call site is double-counted or dropped between the two
-registers. `TestNoForgeCLIShellout` passes at `b89b39572`: 6 permitted call sites, 32 unresolved-argv exec sites.
+`fabe4926e`; it was 5 at the first sweep), so no Go call site is double-counted or dropped between the two
+registers. `TestNoForgeCLIShellout` passes at `fabe4926e`: 6 permitted call sites, 32 unresolved-argv exec sites.
 
 - **`AllowedInvocations` (6 rows) → inventory rows 27–31 and 73 (with 78).** All six map cleanly by
   `<file>::<enclosing decl>::gh` key. The sixth, `internal/deskkit/preflight.go::ambientLoginProbe::gh`, landed
@@ -402,7 +406,7 @@ registers. `TestNoForgeCLIShellout` passes at `b89b39572`: 6 permitted call site
 
 One row per text-carrying `Forge` write call site and per push-path text surface, with the checks it runs today.
 Seeded from `docs/streams/desktools-v2/spec.md` §8.2 and re-verified line by line against `origin/main` @
-`b89b39572` for this inventory (`desktools-v2/10` ticks against this table). Every citation below was read
+`fabe4926e` for this inventory (`desktools-v2/10` ticks against this table). Every citation below was read
 directly, not copied — `deskpr edit`'s row corrects `spec.md`'s bare `edit.go:NNN` citations to their real
 package path, `tools/desk/cmd/deskpr/edit.go` (there is no deskpost/edit.go; `EditChange`'s only definition is
 in `deskpr`). The write-site set was re-derived with
@@ -441,7 +445,10 @@ that calls `PRTrustEvents`/`ReviewsAtHead`/`ChecksAtHead` once per PR (`tools/de
 CI-rollup read) and once per issue (`tools/desk/cmd/issueboard/board.go`'s `fetchIssueBlessed`) is exactly the N+1 shape
 Principle 3 targets — each already routes through a typed `Forge` op (not a reach-around; the two migrated
 consumers noted in group E), so `desktools-v2/09`'s work is adding a *snapshot* operation (one review-queue /
-board-sweep GraphQL read) these can fold onto, not fixing a bypass.
+board-sweep GraphQL read) these can fold onto, not fixing a bypass. That operation has since landed (#1851):
+`deskboard`'s open-PR read now calls `ReviewQueueSnapshot` (`tools/desk/cmd/deskboard/board.go:282`), which
+carries each open change's reviews in the same round-trip. `prBlessed` and `fetchIssueBlessed` still read trust
+events once per untrusted item.
 
 ## GAP summary (interface additions a future brief may need)
 
