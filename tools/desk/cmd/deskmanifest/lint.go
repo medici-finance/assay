@@ -218,6 +218,15 @@ func discover(root string) ([]string, error) {
 			if d.Name() == ".git" {
 				return filepath.SkipDir
 			}
+			// A directory below root carrying its own .git entry (a nested
+			// clone, a linked worktree, a submodule) is another checkout:
+			// its manifests are not this tree's. The same rule as
+			// deskkit.DiscoverManifests, so lint and activation read one set.
+			if path != root {
+				if _, gerr := os.Lstat(filepath.Join(path, ".git")); gerr == nil {
+					return filepath.SkipDir
+				}
+			}
 			return nil
 		}
 		if d.Name() == "component.yaml" {

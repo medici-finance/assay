@@ -519,3 +519,38 @@ func TestRun_UnknownCommand(t *testing.T) {
 		t.Fatalf("unknown command exit = %d, want 2", code)
 	}
 }
+
+// TestLint_SkipsNestedCheckouts: a nested clone (.git dir) or linked worktree
+// (.git file) under root is another checkout; its copy of the manifests must not
+// be read as this tree's — before the skip it surfaced as duplicate component ids.
+func TestLint_SkipsNestedCheckouts(t *testing.T) {
+	root := cleanTree(t)
+	for _, nested := range []struct {
+		dir    string
+		gitDir bool
+	}{{"clone", true}, {"wt", false}} {
+		body := `component: assay/desk-tools
+version: 0.28.0
+provides:
+  - assay.desk.verbs
+inject:
+  required: []
+apply: []
+`
+		writeManifest(t, root, filepath.Join(nested.dir, "desk"), body)
+		gitPath := filepath.Join(root, nested.dir, ".git")
+		var err error
+		if nested.gitDir {
+			err = os.MkdirAll(gitPath, 0o755)
+		} else {
+			err = os.WriteFile(gitPath, []byte("gitdir: /elsewhere\n"), 0o644)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	report, code := lint(root)
+	if code != exitClean {
+		t.Fatalf("nested checkouts leaked into lint: exit = %d, want 0; report:\n%s", code, report)
+	}
+}
