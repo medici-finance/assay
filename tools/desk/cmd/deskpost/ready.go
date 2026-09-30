@@ -395,6 +395,7 @@ func ciReadErr(what, head string, err error) error {
 // real flip; admitting them to the SECURITY lane would let an unreadable body satisfy a
 // security gate, which is the direction that must never be guessed. Fail-closed here means
 // "an unreadable verdict blocks a flip it should have blocked", not "it grants one".
+// semantic: S-review-verdict
 func latestAppVerdict(reviews []reviewInfo) (state, head string, found, noOpApproval bool) {
 	var lastCommit string
 	var commitBlocked bool // a CHANGES_REQUESTED stands at lastCommit with no push since

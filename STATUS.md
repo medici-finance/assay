@@ -55,7 +55,6 @@ _Held by per-stream caps: 5 brief(s) across 2 stream(s) — top: desktools-v2. B
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| build-less-brittle | 10 — Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning [exec:strong] | 2 | 4000 + 1500 (drive:build-less-brittle) |
 | desktools-v2 | 03 — native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot) [exec:strong] | 3 | 1500 + 1500 (drive:desktools-v2) |
 | desktools-v2 | 10 — one outbound-write check at the forge write seam, keyed on the target's visibility [exec:strong] | 2 | 1500 + 1500 (drive:desktools-v2) |
 | desktools-v2 | 05 — the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884) [exec:strong] | 2 | 1000 + 1500 (drive:desktools-v2) |
@@ -70,9 +69,9 @@ _Held by per-stream caps: 5 brief(s) across 2 stream(s) — top: desktools-v2. B
 
 ## Drive: `build-less-brittle`
 
-**State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
+**State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: f92fbcd 2026-09-30T19:03:53+10:00_
+_last regen: 9044786 2026-10-01T02:26:35+10:00_
 
 **Progress:** 4/13 brief items done.
 
@@ -84,17 +83,18 @@ _none_
 
 - build-less-brittle/02
 - build-less-brittle/04
+- build-less-brittle/10
 
 **Frontier next:**
 
-- build-less-brittle/10
+_none_
 
 
 ## Drive: `desktools-v2`
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: f92fbcd 2026-09-30T19:03:53+10:00_
+_last regen: 9044786 2026-10-01T02:26:35+10:00_
 
 **Progress:** 9/31 brief items done.
 
@@ -130,14 +130,14 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (47 desk-actionable of 83 total — 83 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (48 desk-actionable of 84 total — 84 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (47)
+### Desk-actionable (48)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -147,6 +147,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
 | graph-execution | 10 [exec:strong] | implemented | 4500 | 5 | — | — | — |
+| build-less-brittle | 10 [exec:strong] | implemented | 4000 | 2 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
@@ -291,7 +292,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 05 Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight — todo (wave 3)
 - 06 Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision — todo (wave 2)
 - 09 Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept — todo (wave 3)
-- 10 Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning — todo (wave 2)
+- 10 Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning — implemented (wave 2)
 - 11 Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge — todo (wave 4)
 - 12 The refactor oracle: what a redesign is coded against — intent, failure modes, triaged characterization tests, invariants, and an acceptance rule — todo (wave 5)
 - 13 Incident-time refactor by an agent, with one human residue: the strong-tier session runs the investigation, assembles the oracle, drafts the refactor PR, and asks the driver exactly one typed decision, only for what the record does not settle — todo (wave 6)

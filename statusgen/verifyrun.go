@@ -1704,7 +1704,13 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 
 // runVerifyrunCheck is the `--check` half: audit, never execute.
 func runVerifyrunCheck(path, verify, evidence string, stdout *os.File) int {
-	findings := checkWitnesses(verify, evidence)
+	// The audit does not run the lint, so it refuses an unterminated `<!--`
+	// itself (#1939) rather than report rows the rendered page may hide.
+	findings, refusal := closureWitnesses(verify, evidence)
+	if refusal != "" {
+		fmt.Fprintf(stdout, "%s: refused — %s\n", path, refusal)
+		return verifyrunExitCouldNot
+	}
 	if len(findings) == 0 {
 		fmt.Fprintf(stdout, "%s: no Verify rows to check\n", path)
 		return verifyrunExitCouldNot
