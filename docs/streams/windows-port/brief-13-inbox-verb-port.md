@@ -171,7 +171,46 @@ Per-row key output (runner claude-opus-5-5-verifier, 2026-09-27; the witness tab
 - per_page = 100 @ tools/desk/cmd/deskinbox/detail.go:83 — pagination size of the comment reader; operational knob, ranks last, no derivation owed.
 
 VERIFY: FAIL — row 6 (live parity: Context's desk-note author and, on some items, the chosen desk-note comment diverge from the oracle); row 8 hermetic witness still owed on a Linux runner. Rows 1-5 and 7 pass.
+### Verification — 2026-09-30 (assay-verifier-app[bot] @ 0b033c711c9e (claude-opus-5-5) (on-behalf-of human:ian)) — 2026-09-30 claude-opus-5-5-verifier
 
+Non-implementer re-verify on merged main 0b033c711c9ec30f75cb8c2082a505b06958a423 (HEAD == the forge's `commits/main`). The 2026-09-27 FAIL was row 6 on #1797 (the walk quoted a different desk note for App-authored comments). #1821 closed it (merge 0bdaf1be78e2, an ancestor of this SHA): `tools/desk/cmd/deskinbox/detail.go:105` now builds every comment author through `ghLogin`, which strips the REST-only `[bot]` suffix at `detail.go:130`. Row 3 is the #1858 re-scope (#1833) and was run as now written. The first table is the `statusgen verifyrun` execution witness, landed verbatim. It was run on Linux (golang:1.25-bookworm, linux/arm64, `--network none`, statusgen built from main's own source, the adopter roster mounted read-only so each Runner cell carries its on-behalf-of principal, a checksum-verified jq mounted on PATH for row 2): 8/8 pass exit 0, lint exit 0 with 0 PROBLEM lines. That run also discharges row 8's `check:ci` hermetic network-off witness, which could not run in either earlier pass.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go vet ./cmd/deskinbox/ && go test -count=1 ./cmd/deskinbox/` | pass exit=0 | sha256:df5a55c77085 | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 2 | `cd tools/desk && go test -count=1 -run 'TestParityWalk' -v ./cmd/deskinbox/ \| grep -c -- '--- PASS'` | pass exit=0 | sha256:10159baf262b | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 3 | `d=tools/desk/cmd/deskinbox; grep -l -e '"os/exec"' -e '"make"' -e '"jq"' $d/main.go $d/forge.go $d/repos.go $d/query.go $d/table.go $d/detail.go $d/format.go $d/walk.go $d/summary.go; test $? -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 4 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./cmd/deskinbox/` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 5 | `grep -c 'deskinbox' plugins/assay/commands/inbox.md plugins/assay/skills/ask-decision/SKILL.md` | pass exit=0 | sha256:10ebd0e57c74 | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 6 | `deskinbox walk --item 1 medici-finance/assay; echo rc=$?` | pass exit=0 | sha256:01b439e676f3 | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 7 | `statusgen --root . --consumers windows-port/13; echo $?` | pass exit=0 | sha256:2bf72064c44e | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+| 8 | `statusgen --root . --lint` | pass exit=0 | sha256:b76e80605df4 | 2026-09-30 | assay-verifier-app[bot] @ 0b033c711c9e (on-behalf-of human:ian) (git-config) |
+
+Witness row 6 is not evidence on its own. The row ends `; echo rc=$?`, so its exit is always 0, and inside the network-off container `deskinbox` was not on PATH (rc=127 printed). Row 6's evidence is the live host run in the detail table below.
+
+Verifier detail (windows-port/13 — NON-implementer, merged main 0b033c711c9e, 2026-09-30; rows 1–5, 7 and 8 also run by hand on the host with the same exits):
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---------|----------|----------|---------------|
+| 1 | row 1 command as written | exit 0 | exit 0; `ok …/tools/desk/cmd/deskinbox 2.332s` | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 2 | row 2 command as written | count at least 1 | printed `7` (the parent plus 6 subtests, including the two login-shape parity cases); 0 SKIP | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 3 | row 3 command as written (re-scoped) | exit 0, no file printed | exit 0; no file printed; all nine files present | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 4 | row 4 command as written | exit 0 | exit 0; PE32+ executable (console) x86-64 for MS Windows; the artifact was deleted afterwards | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 5 | row 5 commands as written | both counts at least 1; skillslint ok | ask-decision SKILL.md = 10, inbox.md = 37; skillslint `ok` | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 6 | row 6 live, verb built from this SHA, read-only verifier token; compared back to back with the shell oracle run with `--walk --item K --no-screen` for K = 1..20, trailing summary lines excluded | parity with the oracle | rc=0 on both tools for all 20 items, 77 items each; 20/20 blocks byte-identical, item 10 (the prior mismatch) included; no `[bot]` in any verb block; the screened oracle's item 1 is the same issue as the verb's | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 7 | row 7 command as written | `0` | printed `0`; the merged tree's diff has no brief files, so nothing is corroborated or disproved (the 2026-09-27 pass corroborated 1/0 at the implementing commit) | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+| 8 | row 8 command as written | LINT: PASS | exit 0, 0 PROBLEM lines, LINT: PASS; the NOTICEs naming this brief are advisory | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 0b033c711c9e |
+
+Risk-bearing values. Risk metadata is present and all four flags are `no`; enumerated anyway, and every value is a reversible display, selection or ordering setting of a read-only verb:
+
+RISK-VALUE: DERIVED — ghLogin suffix = "[bot]" @ tools/desk/cmd/deskinbox/detail.go:130 — REST spells an App author `<slug>[bot]` while the oracle's reader spells it `<slug>`; a user login cannot contain `[`, so only App logins change. The live 20/20 parity run confirms it.
+RISK-VALUE: DERIVED — desknoteAuthorRe = `(?i)\[bot\]$|desk` @ tools/desk/cmd/deskinbox/format.go:76 — a copy of the oracle's selector, now applied to the same login shape on both sides; this resolves the prior pass's NAMED, NOT DERIVED.
+RISK-VALUE: DERIVED — escalation labels, sentinel 99, title cut 57, snippet cut 180, default item 1 and letters A–D @ query.go:29, query.go:45, table.go:35-36, format.go:255, main.go:92, format.go:335 — each mirrors the oracle's own value.
+RISK-VALUE: N/A — per_page = 100 @ detail.go:84 is a pagination setting.
+
+Findings: (F1) #1797 is fixed on main by #1821; row 6 went from 12/20 to 20/20. (F2) row 8's hermetic witness is now satisfied on Linux. (F3) row design: row 6 always exits 0 because of `; echo rc=$?`, so a verifyrun pass on that row proves nothing; a future re-spell could make the row fail when the verb is missing. (F4) row 2 needs jq on the runner; without it the test skips and the row correctly fails closed.
+
+VERIFY: PASS
 
 ## Review
 Gate: **model**. Reviewer's questions: (1) does `tools/desk/cmd/deskinbox/testdata/spec.md`
