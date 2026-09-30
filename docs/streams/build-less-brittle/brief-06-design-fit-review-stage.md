@@ -29,11 +29,11 @@ exec-tier: strong
 exec-tier-why: "(b) a basis added to the model must agree with the kit block, the kit's clause and the skill's finding-class register, under two tests; (a) the three questions' blocking bar is judgement the reviewer must be told precisely."
 domain: complicated
 consumers:
-  - "tools/desk/internal/deskkit/reviewscope.go ScopeBases(): follow-up build-less-brittle/06 (this brief)"
-  - "tools/desk/cmd/deskdispatch/references/review-prompt.md reviewscope block + new clause: follow-up build-less-brittle/06 (this brief)"
-  - "plugins/assay/skills/pr-review-desk/SKILL.md tiering + finding-class register: follow-up build-less-brittle/06 (this brief)"
-  - "docs/contracts.md rule register (R-design-fit-basis row): follow-up build-less-brittle/06 (this brief)"
-  - "the review-scope case corpus scored against ScopeBases(), if present: follow-up build-less-brittle/06 (this brief)"
+  - "tools/desk/internal/deskkit/reviewscope.go ScopeBases(): fixed-here (BasisDesignFit and its ScopeBases row)"
+  - "tools/desk/cmd/deskdispatch/references/review-prompt.md reviewscope block + new clause: fixed-here (block row + clause 3; clauses 3-15 renumbered 4-16 and every cross-reference updated)"
+  - "plugins/assay/skills/pr-review-desk/SKILL.md tiering + finding-class register: fixed-here (weight-keyed tier, design-fit | advisory row, growth-approval step)"
+  - "docs/contracts.md rule register (R-design-fit-basis row): fixed-here"
+  - "the review-scope case corpus scored against ScopeBases(), if present: fixed-here (docs/streams/desk-supervision/review-scope-cases.md names five bases)"
   - "installed deskdispatch binaries (kits are embedded): out-of-scope (reach consumers on the next desk-tools release and pin bump)"
 ---
 

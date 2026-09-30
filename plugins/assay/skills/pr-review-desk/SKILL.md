@@ -155,10 +155,8 @@ is this rule as a function: its third state is could-not-check, and every way of
 the board lands there rather than in Idle. **One instrument, booted once, trusted:** the event
 monitor, the cadenced sweep and the board are a single instrument, not three ad-hoc habits, and two
 of its lines make freshness mechanical — `swept <ISO8601>` is the liveness heartbeat, `actionable:
-N NEEDS-REVIEW, N RE-REVIEW` is the idle gate. This is the one canonical statement of the incident
-behind the rule — a silent monitor outage read as an all-clear while 19 actionable PRs sat unseen;
-the lineage, its four fixes and the liveness contract are recorded in the project's findings
-register. Everywhere else in this file the rule is cited as §HARD GATE, never restated.
+N NEEDS-REVIEW, N RE-REVIEW` is the idle gate. This is the rule's one canonical statement (its incident
+is in the project's findings register); elsewhere in this file it is cited as §HARD GATE, never restated.
 
 **Refresh, don't remember** is a project-level rule and this is its sharpest instance. The
 desk-specific half: at cycle end, compress what matters (which PRs are mid-review, what each waits
@@ -274,7 +272,7 @@ failure this section prevents**, and there is no state in this loop called "the 
   into every freed slot — the re-invocation IS the cue.
 - **What stays ORDERED — parallelise the reviews, never these.** A RE-review runs only AFTER the
   push that answers a finding (a same-head APPROVE over a standing CHANGES_REQUESTED is not
-  re-verification — with the two declared exemptions in `references/review-prompt.md` §11:
+  re-verification — with the two declared exemptions in `references/review-prompt.md` §12:
   a check-only CR whose required check greened, and an external-prerequisite-only CR whose
   named upstream prerequisites all landed; the ready gate independently re-verifies the
   second from fresh evidence and fails closed, so a same-head clear still needs no synthetic
@@ -344,6 +342,7 @@ as the planner and acts on its rows.
   **Tiering is risk-keyed, not a blanket rule (methodology/19):** a risk-clear item (all four risk answers `no`,
   gate `model`) may be reviewed at any tier; a risk-flagged item (`gate: human` OR any risk answer
   `yes`) gets a strong-tier (opus+) or human reviewer. Read the item's risk frontmatter — do not default all reviews to one tier.
+  Weight growth (a ratcheted dimension grows merge-base→head, or an added `R-` row) is strong tier too.
 
   **Lane depth is tier-keyed for external authors.** The lane SET is not the same for every author:
   resolve the pull request's author through the contributor-trust tier resolver the project layer
@@ -462,9 +461,8 @@ pushed to a merged branch is orphaned off main: rescue it as a fresh PR.
 
 ### First-pass inventory + blocking boundary — bounding a small change's review scope
 
-An incremental search that keeps discovering old instances of the same false claim after
-each fix turns a small change into unbounded cleanup. Two rules bound it; both are in
-`review-prompt` clause 12, and this is the DESK's reading of them.
+Two rules stop a small change's review becoming unbounded cleanup; both are in `review-prompt`
+clause 13, and this is the DESK's reading of them.
 
 - **First pass inventories, then declares.** On the FIRST review of a false-claim class, the
   reviewer inventories the class's related occurrences BEFORE the verdict — the changed
@@ -474,8 +472,9 @@ each fix turns a small change into unbounded cleanup. Two rules bound it; both a
   discovery). The desk treats a "clean" verdict resting on an unrecorded or incomplete search
   as could-not-check, not an approval.
 - **A blocker names a concrete failure and its scope basis** — changed behaviour, an explicit
-  acceptance obligation, a material PR-body/Verify claim, or a demonstrated safety consequence
-  of the change. Unrelated pre-existing prose is a **linked follow-up**
+  acceptance obligation, a material PR-body/Verify claim, a demonstrated safety consequence
+  of the change, or a failed design-fit question (clause 3; it holds only as the register below
+  says). Unrelated pre-existing prose is a **linked follow-up**
   (`references/out-of-scope-filing.md`), not a hold. Untouched files are not automatically
   exempt (a required operator-state table is a deliverable even when omitted from the diff);
   co-location — the same directory or a substring — is not a basis.
@@ -501,8 +500,7 @@ On round N+1 for that class, the reviewer STOPS re-litigating it and instead fil
 escalation the methodology already has — `needs-decision` — carrying an **arbiter packet**
 in place of another verdict: one row per disputed finding, each side's position plus a link to
 the evidence for it. Structured disagreement, not a transcript dump — the human reads rows, not
-review history (a small-team conference talk on a capped adversarial review loop, 2026:
-"we've only lost ten minutes" against unbounded re-litigation cost).
+review history.
 
 | finding | worker's position + evidence | reviewer's position + evidence |
 |---|---|---|
@@ -530,8 +528,7 @@ cap threshold are unchanged; the record only makes them survive replacement.
 **Recurrence-promotion:** a finding the reviewer has raised **three or more times across
 separate PRs** (repetition of the same finding, not rounds on one PR) is itself worth filing as
 a guardrail-promotion candidate through the existing insight-routing lane — independent of
-whether any one PR ever hit the round cap above (a harness-engineering talk from the same
-event: never give the same review feedback twice; recurrence promotes leftward).
+whether any one PR ever hit the round cap above.
 
 ### Finding-class calibration — reversal-rate demotion
 
@@ -545,7 +542,7 @@ month are not equally strong evidence.
 The table below is the finding-class register. Each class carries a **status**: `blocking` (a
 CHANGES_REQUESTED on it holds the PR) or `advisory` (the reviewer still records it, but it no
 longer blocks the ready-flip — it reads as a note the worker may act on). The default is
-`blocking`.
+`blocking`; `design-fit` lands `advisory`, and promoting it is a later recorded one-cell edit.
 
 | finding class | status |
 |---|---|
@@ -554,16 +551,21 @@ longer blocks the ready-flip — it reads as a note the worker may act on). The 
 | test-evidence (fail-first / mutation) | blocking |
 | public-surface / leak | blocking |
 | style / prose | blocking |
+| design-fit | advisory |
 
 **The demotion rule.** A class whose reversal rate is **> 50% for two consecutive months** is
 marked **advisory** in this table (edit its status cell). A later month **under 50%** restores it
-to `blocking`. The two-month window is deliberate: one noisy month is noise about the noise, and a
-class that mostly gets reversed is measuring the reviewer's taste, not a defect the human would
-uphold. The demotion is a table edit landed through the ordinary desk PR flow, cited to that
+to `blocking`. The demotion is a table edit landed through the ordinary desk PR flow, cited to that
 month's calibration report — never a silent in-loop decision, and never applied to `security` or
 `public-surface / leak` without a recorded human ruling (those two carry irreversible-harm weight
 that a reversal rate does not capture). Exactly 50%, and a month with no findings of the class,
 neither demote nor restore.
+
+**Design-fit growth approval.** When the stage accepts a growth as justified, attach
+`PR #<N> head <sha>: <dimension> +<n> — <why-add>` to the project's standing weight-growth decision
+issue (`deskfile attach`); the driver replies `grow <N>`. Before approving, check each `# grow`
+line's URL resolves to a comment by the driver's own login, read from the forge. The project layer
+names the issue and the login.
 
 ### PR-state labels — who is the PR waiting on
 
@@ -594,7 +596,7 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   it; a reviewer that stubs a binary must say so and may not call that end-to-end proof.
 - **Prompt-audit (scoped) — on any PR touching a `**/SKILL.md`, a `**/references/*.md` file
   (a skill's own, a bundle-level reference, or a dispatched kit itself), or a `CLAUDE.md`.**
-  Run the review kit's scoped prompt-audit clause (`review-prompt.md` §15, "Scoped
+  Run the review kit's scoped prompt-audit clause (`review-prompt.md` §16, "Scoped
   prompt-audit — on a PR that changes prompt text") against the changed
   lines only, target model = the fleet's current default, and post High/Medium findings under a
   `Prompt-audit (scoped):` heading in the verdict — never on a pre-existing untouched line
@@ -827,9 +829,7 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   Check the diff against three BOUNDED sources only, never a whole-repo archaeology pass: (a) the
   owning brief's own Context/constraints, (b) a finding in the findings register that names the
   touched surface, (c) a ruling recorded on the PR's own linked issues. A contradiction is a
-  normal finding citing the contradicted record by link — not a separate escalation track (a
-  product-teams conference talk, 2026: agents quietly violating a standing decision no single
-  human held in their head, caught only because a reviewer happened to remember it).
+  normal finding citing the contradicted record by link — not a separate escalation track.
 - **Only the human's OWN account proves the human; a shared machine account proves nothing.**
   Check the ACCOUNT, never the text prefix: a shared-account comment claiming to be the human
   ("Decision (…)") is agent output and carries NO gate authority. An agent relaying a real human decision says so and links where it was

@@ -73,7 +73,7 @@ these artifacts without becoming another owner of their meaning.
 | 03 | [Weight counter and CI ratchet (a Go test, not a verb)](brief-03-weight-ratchet.md) | 0 | M | done | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) | 2026-09-27 assay-reviewer-app[bot] (approved PR #1672 @ 0662681ce2588e4a156968be794de94595c53952) |
 | 04 | [Intake files by error class; a recurring class triggers a design brief, not another point fix](brief-04-intake-by-error-class.md) | 2 | M | todo | — | — |
 | 05 | [Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight](brief-05-worker-two-strikes-and-weight.md) | 3 | M | todo | — | — |
-| 06 | [Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision](brief-06-design-fit-review-stage.md) | 2 | M | todo | — | — |
+| 06 | [Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision](brief-06-design-fit-review-stage.md) | 2 | M | implemented | — | — |
 | 07 | [Rule register (owner, invariant, justifying issue, catch source) and the monthly rule diet](brief-07-rule-register-and-diet.md) | 1 | M | implemented | — | — |
 | 08 | [Hotspot metric (churn × complexity, temporal coupling) from git history, and the brittle mark](brief-08-hotspot-metric-and-brittle-mark.md) | 1 | M | implemented | — | — |
 | 09 | [Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept](brief-09-brittle-investigation.md) | 3 | M | todo | — | — |

@@ -44,7 +44,7 @@ package deskkit
 //
 // WHERE IT RUNS. The review boundary is enforced by the dispatched REVIEWER reading the kit
 // clause and by the review-desk reader — this package is the EXECUTABLE SPECIFICATION of
-// that contract: the four bases below are pinned to the kit's machine-checkable block by
+// that contract: the bases below are pinned to the kit's machine-checkable block by
 // TestReviewScopeKitMatchesModel, and the case corpus (docs) is scored against these rules
 // by the independent verifier. Nothing here changes a predicate that admits, authorises or
 // writes.
@@ -68,6 +68,10 @@ const (
 	// BasisSafetyConsequence — the finding is a demonstrated safety consequence of this
 	// change, including outside the edited lines.
 	BasisSafetyConsequence ScopeBasis = "safety-consequence"
+	// BasisDesignFit — the change adds weight or a rule and fails a design-fit question
+	// (review kit clause 3). Whether such a finding HOLDS the pull request is the
+	// finding-class register's status for the class, not this model's: it lands advisory.
+	BasisDesignFit ScopeBasis = "design-fit"
 )
 
 // ScopeBasisDoc pairs a basis with the one-line description the kit's machine-checkable
@@ -78,7 +82,7 @@ type ScopeBasisDoc struct {
 	When  string
 }
 
-// ScopeBases enumerates the four bases in canonical order. This is the single source of
+// ScopeBases enumerates the bases in canonical order. This is the single source of
 // truth the kit block and the case corpus are checked against.
 func ScopeBases() []ScopeBasisDoc {
 	return []ScopeBasisDoc{
@@ -86,10 +90,11 @@ func ScopeBases() []ScopeBasisDoc {
 		{BasisAcceptanceObligation, "the finding is an explicit acceptance deliverable this change owes, even if omitted from the diff"},
 		{BasisMaterialClaim, "the finding contradicts a material PR-body or Verify-table claim of this change"},
 		{BasisSafetyConsequence, "the finding is a demonstrated safety consequence of this change, including outside the edited lines"},
+		{BasisDesignFit, "the change adds weight or a rule and fails a design-fit question: wrong owner, avoidable by removal, or an untrue/insufficient retires/why-add"},
 	}
 }
 
-// validBasis reports whether b is one of the four enumerated bases.
+// validBasis reports whether b is one of the enumerated bases.
 func validBasis(b ScopeBasis) bool {
 	for _, d := range ScopeBases() {
 		if d.Basis == b {
@@ -128,7 +133,8 @@ type ReviewFinding struct {
 type ScopeDisposition string
 
 const (
-	// DispBlocker — the finding holds the pull request.
+	// DispBlocker — the finding holds the pull request, unless the finding-class register
+	// marks its class advisory (recorded, not held); that status is the register's, not this model's.
 	DispBlocker ScopeDisposition = "blocker"
 	// DispFollowUp — the finding is real but out of this change's blocking scope; it goes to
 	// a linked follow-up rather than holding the pull request.
