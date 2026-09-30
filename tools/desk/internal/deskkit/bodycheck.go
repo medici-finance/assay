@@ -406,6 +406,7 @@ func ScanSurfaceRulingClaim(surface string, content []byte) error {
 // in the arm order — after the literal-marker arms, before the high-entropy loop — is
 // unchanged from when it was inlined, so refusal precedence on a surface tripping more
 // than one arm is exactly what it was.
+// semantic: S-publication-scan
 func scanSurface(surface string, content []byte, rulingClaim bool) error {
 	if surface == "" {
 		surface = SurfaceBody

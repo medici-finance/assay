@@ -147,7 +147,13 @@ func runVerifyclosure(args []string, stdout, stderr *os.File) int {
 		fmt.Fprintf(stderr, "statusgen verifyclosure: could-not-check — cannot read the brief file for %s under %s\n", key, root)
 		return verifyclosureExitCouldNotCheck
 	}
-	findings := checkWitnesses(art.Verify, art.Evidence)
+	// This verb does not run the lint, so it refuses an unterminated `<!--`
+	// itself (#1939): a line-start one hides the witness table on the page.
+	findings, refusal := closureWitnesses(art.Verify, art.Evidence)
+	if refusal != "" {
+		fmt.Fprintf(stdout, "%s: NOT accepted — %s\n", key, refusal)
+		return verifyclosureExitNotAccepted
+	}
 	if len(findings) == 0 {
 		// No Verify rows: nothing to witness. The stamp already passed.
 		fmt.Fprintf(stdout, "%s: accepted — Status %q with a stamped Verified cell; no Verify rows to witness\n", key, br.Status)
