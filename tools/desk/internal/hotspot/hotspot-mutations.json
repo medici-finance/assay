@@ -1,0 +1,53 @@
+{
+  "test": "go test ./internal/hotspot/ -count=1 -timeout 120s -run 'TestHotspotFixture|TestCouplingFixture|TestShallowIsCouldNotCheck'",
+  "control": {
+    "name": "fix matcher without word boundaries (prefix and fixture count as fixes)",
+    "file": "internal/hotspot/hotspot.go",
+    "old": "(?i)\\bfix(es|ed)?\\b|revert",
+    "new": "(?i)fix(es|ed)?|revert"
+  },
+  "mutations": [
+    {
+      "name": "count _test.go files",
+      "file": "internal/hotspot/hotspot.go",
+      "old": "|| strings.HasSuffix(path, \"_test.go\") {",
+      "new": "|| false {"
+    },
+    {
+      "name": "include the 40-file merge in coupling (changeset bound 8 -> 64)",
+      "file": "internal/hotspot/hotspot.go",
+      "old": "o.MaxChangeset = 8",
+      "new": "o.MaxChangeset = 64"
+    },
+    {
+      "name": "drop the coupling ratio filter",
+      "file": "internal/hotspot/hotspot.go",
+      "old": "if ratio < o.MinRatio {",
+      "new": "if false && ratio < o.MinRatio {"
+    },
+    {
+      "name": "read %ci wall clock as UTC (drop the zone)",
+      "file": "internal/hotspot/hotspot.go",
+      "old": "Date: d.UTC(), Subject",
+      "new": "Date: time.Date(d.Year(), d.Month(), d.Day(), d.Hour(), d.Minute(), d.Second(), 0, time.UTC), Subject"
+    },
+    {
+      "name": "invert the churn tie-break",
+      "file": "internal/hotspot/hotspot.go",
+      "old": "return a.Churn > b.Churn",
+      "new": "return a.Churn < b.Churn"
+    },
+    {
+      "name": "count every tab, not only leading ones",
+      "file": "internal/hotspot/hotspot.go",
+      "old": "\t\t\tif b != '\\t' {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\tsum++",
+      "new": "\t\t\tif b == '\\t' {\n\t\t\t\tsum++\n\t\t\t}"
+    },
+    {
+      "name": "shallow gate never fires",
+      "file": "internal/hotspot/hotspot_test.go",
+      "old": "== \"true\" {",
+      "new": "== \"never\" {"
+    }
+  ]
+}

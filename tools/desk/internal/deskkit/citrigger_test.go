@@ -1139,25 +1139,27 @@ func ciCrossModuleRegistry() []ciEntry {
 		},
 		{
 			// Registered by the release-stamp guard. version_test.go's
-			// TestVersionStampedFromReleaseWorkflow reads release-desk.yml and
-			// fails if the `-X …deskkit.ReleaseTag=$RELEASE_TAG` stamp is
-			// removed — the stamp that maps a running desk-tools binary back to
-			// its desk-tools/vX.Y.Z. A release-desk.yml-only edit dropping the
+			// TestVersionStampedFromReleaseWorkflow reads release.yml (the umbrella
+			// release that builds desk-tools; it once read a release-desk.yml this
+			// repository never carried, and skipped) and fails if the
+			// `-X …deskkit.ReleaseTag=$RELEASE_TAG` stamp is removed from the
+			// desk-tools build step — the stamp that maps a running desk-tools
+			// binary back to its release. A release.yml-only edit dropping the
 			// stamp is exactly the diff this guard catches, so scoped to tools/**
 			// alone it would be the one diff that does not run it (mirrors
-			// statusgen/version_test.go for release-statusgen.yml).
+			// statusgen/version_test.go).
 			test:     "tools/desk/internal/deskkit/version_test.go",
 			module:   "tools/desk",
 			workflow: ".github/workflows/tools.yml",
 			prJob:    toolsDeskJob,
 			pushJob:  toolsDeskJob,
 			reads: []string{
-				".github/workflows/release-desk.yml",
+				".github/workflows/release.yml",
 			},
 			why: "TestVersionStampedFromReleaseWorkflow proves the release build still stamps " +
 				"-X …deskkit.ReleaseTag=$RELEASE_TAG; an unstamped release ships desk-tools binaries " +
 				"that answer \"dev\" and cannot be mapped back to their desk-tools/vX.Y.Z, silently " +
-				"defeating pin checks. A release-desk.yml-only edit that drops the stamp must run this test",
+				"defeating pin checks. A release.yml-only edit that drops the stamp must run this test",
 		},
 		{
 			// Registered by the raised-by label guard. raisedbyskills_test.go is the DIFF

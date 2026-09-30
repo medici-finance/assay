@@ -322,6 +322,35 @@ Pre-mortem (failure mode → row):
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
+### Non-implementer verifier run — VERIFY: PASS on behaviour, held — 1/15 witness-clear, rows 1–7 and 9–15 held — 2026-09-30 claude-opus-5-5-verifier
+
+Runner is not the implementer. Isolated worktree at merged main `b89b3957225e227e69d5b5ec7949344f580d9966` (HEAD == the forge's `commits/main`, cross-checked), host darwin/arm64, go1.27.1; tree clean before and after. Implementing change: #1803 (squash c248703b0). `gate: model`, all four risk answers `no`. Status stays `implemented`: 13 rows are `check:ci` and their network-off witness cannot run on a darwin host (#1800); row 10's literal command can no longer print `MERGEABLE` (every qualifying sibling pair has merged) and row 12's literal `--consumers` run corroborates nothing on merged main (#1281 class). Every row's direct run passed.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | Verify row 1 command verbatim (deskkit verify-outcomes reader test) | named PASS | HELD (#1800) — direct exit 0; `--- PASS: TestVerifyOutcomes`; 7 subtests pass | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | Verify row 2 command verbatim (verifyloop outcome-records test) | named PASS | HELD (#1800) — direct exit 0; `--- PASS: TestOutcomeRecords` (log only / records only / both) | 2026-09-30 | claude-opus-5-5-verifier |
+| 3 | Verify row 3 command verbatim (deskevidence outcome-record write test) | named PASS | HELD (#1800) — direct exit 0; `--- PASS: TestOutcomeRecordWrite`; 7 subtests incl. noop re-write, different-bytes refused, clock skew | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | Verify row 4 command verbatim (appended-log write refused) | named PASS | HELD (#1800) — direct exit 0; `--- PASS` for Test Appended Log Write Refused; the legacy log write exits 5 naming #882 | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | Verify row 5 command verbatim (single-reader chokepoint, deskkit then statusgen) | named PASS ×2 | HELD (#1800) — direct exit 0 in both modules; each carries a planted-reader positive control | 2026-09-30 | claude-opus-5-5-verifier |
+| 6 | Verify row 6 command verbatim (concurrent landings mergeable) | named PASS | HELD (#1800) — direct exit 0; per-file records stay mergeable with no merge driver; negative control (shared log) conflicts | 2026-09-30 | claude-opus-5-5-verifier |
+| 7 | Verify row 7 command verbatim (statusgen outcomes split test) | named PASS | HELD (#1800) — direct exit 0; `--- PASS: TestOutcomesSplit` | 2026-09-30 | claude-opus-5-5-verifier |
+| 8 | `(cd statusgen && go build -o /tmp/statusgen-24 .) && /tmp/statusgen-24 outcomes split --root . --check` | exit 0 | PASS — exit 0 (output path in a scratch dir); `outcomes split --check: every legacy line has its record file` (log 96 lines, 110 record files) | 2026-09-30 | claude-opus-5-5-verifier |
+| 9 | `/tmp/statusgen-24 --root . --lint` | `LINT: PASS`; verify-outcomes not a stream | HELD (#1800) — direct exit 0, `LINT: PASS`; no line names verify-outcomes as a stream; brief-24 NOTICEs only | 2026-09-30 | claude-opus-5-5-verifier |
+| 10 | `SIBLING_PR=1715; gh pr view "$SIBLING_PR" -R medici-finance/assay --json mergeable --jq .mergeable` | `MERGEABLE` | HELD — literal now prints `UNKNOWN` (the PR merged). Dereferenced instead: #1742 and #1715 were both written with `--outcome-record` and open together; #1742 merged 16:17:52Z, #1715 merged 16:26:04Z with no new commit after 5 main commits under docs/streams/verify-outcomes/. Attribute-free `git merge-tree --write-tree` proxies for #1715, #1765 and #1812 against their pre-merge main all exit 0 | 2026-09-30 | claude-opus-5-5-verifier |
+| 11 | `! grep -rn 'verifyOutcomesMaxBytes' tools/desk/cmd/deskevidence/` | exit 0 | HELD (#1800) — direct exit 0, no matches | 2026-09-30 | claude-opus-5-5-verifier |
+| 12 | `statusgen --consumers --root .` | corroborated | HELD (#1281) — literal on merged main: `no brief files in the diff … nothing to corroborate`. At the implementing commit's parent (`--base b7899516cb45 --brief desk-supervision/24`): `13 corroborated, 0 disproved, 7 unchecked` (all 7 out-of-scope judgements) | 2026-09-30 | claude-opus-5-5-verifier |
+| 13 | Verify row 13 command verbatim (receipt inputs cover deliverables) | named PASS | HELD (#1800) — direct exit 0; 5 subtests incl. directory entry, planned path absent, brief read at the record's sha | 2026-09-30 | claude-opus-5-5-verifier |
+| 14 | Verify row 14 command verbatim (receipt blocker ref) | named PASS | HELD (#1800) — direct exit 0; free text / sentence / empty exit 5; `#N`, `owner/repo#N`, URL pass; `#999999` exits 5; forge read error exits 6 | 2026-09-30 | claude-opus-5-5-verifier |
+| 15 | Verify row 15 command verbatim (receipt brief hash as landed) | named PASS | HELD (#1800) — direct exit 0; 4 subtests incl. the reader-side revision check returning the as-landed hash | 2026-09-30 | claude-opus-5-5-verifier |
+
+RISK-VALUE (trigger fires on the tools/desk/internal/deskkit/ path; none irreversible):
+
+- RISK-VALUE: DERIVED — `RecordDigest` truncation = 12 hex @ tools/desk/internal/deskkit/verifyoutcomes.go:111 — the brief pins "first 12 hex digits"; a path collision needs the same brief, the same second and a 48-bit match, and the writer refuses rather than overwrites. The reader dedupes on the same 48 bits across all briefs: birthday bound ~1.8e-7 at 10^4 records.
+- RISK-VALUE: DERIVED — `outcomeStreamRe` / `outcomeNumRe` @ tools/desk/internal/deskkit/verifyoutcomes.go:54-55 — the brief's own patterns verbatim; no `/` or `.` admitted, so a record path cannot leave its stream dir; `UnderOutcomeRecordsDir` re-checks independently.
+- RISK-VALUE: DERIVED — ts compaction `20060102T150405Z` @ tools/desk/internal/deskkit/verifyoutcomes.go:164 — lossless for second-precision RFC 3339 Z and lexically time-ordered, as the brief requires.
+
+Findings: (a) `MaxClockSkew` / future-ts exclusion and `UnderOutcomeRecordsDir` exceed the Task list but trace to the #1803 security review — not a defect. (b) Advisory: `ReadVerifyOutcomes` dedupes on the 12-hex digest globally; keying on the full digest (or brief + digest) would close the negligible collision drop at no cost. (c) Task step 4 says #1338 closes with this step; #1338 is still open — the code half is satisfied (row 11, c248703b0). (d) Task step 8's retirement was not taken; the log and `.gitattributes` union line remain, tracked by #1802.
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the

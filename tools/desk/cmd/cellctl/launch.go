@@ -53,7 +53,7 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		}
 	}
 
-	sha := c.fetchMainUnderLock()
+	sha := c.fetchMainUnderLock(role)
 	_ = os.MkdirAll(filepath.Join(c.Dir, "worktrees"), 0o755)
 	if _, err := os.Stat(filepath.Join(wt, ".git")); err == nil {
 		// An existing tree is MERGED up to the fetched main, or the boot stops — never left
