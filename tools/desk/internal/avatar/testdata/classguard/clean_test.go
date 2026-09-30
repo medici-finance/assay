@@ -1,4 +1,4 @@
-// Negative-control fixture for TestCompressedGoldenGuardPositiveControl — never compiled (testdata).
+// Negative-control fixture for TestGoldenGuardControl — never compiled (testdata).
 // It reads the same kind of golden but compares decoded content, so it must NOT be flagged.
 package classguard
 

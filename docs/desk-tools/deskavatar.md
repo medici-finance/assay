@@ -122,7 +122,7 @@ under the same Go toolchain. The encoded bytes are NOT stable across Go releases
 another while every pixel is the same. That is why `TestGolden20px` compares
 decoded pixels rather than file bytes (a byte check failed on any machine whose Go
 differed from the one that wrote the goldens), and why
-`TestNoByteCompareOfCompressedGoldens` fails any test in the module that
+`TestNoCompressedByteGolden` fails any test in the module that
 byte-compares a committed compressed file.
 
 ## Library

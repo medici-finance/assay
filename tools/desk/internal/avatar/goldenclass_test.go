@@ -181,9 +181,9 @@ func stringLit(n ast.Node) (string, bool) {
 	return s, err == nil
 }
 
-// TestNoByteCompareOfCompressedGoldens fails naming any test file in the module that repeats the
+// TestNoCompressedByteGolden fails naming any test file in the module that repeats the
 // #1952 shape and is not on the allow-list, and any allow-list entry the scan no longer flags.
-func TestNoByteCompareOfCompressedGoldens(t *testing.T) {
+func TestNoCompressedByteGolden(t *testing.T) {
 	root := filepath.Join("..", "..") // tools/desk
 	hits, scanned, err := compressedGoldenSites(root, []string{"cmd", "internal"}, false)
 	if err != nil {
@@ -206,10 +206,10 @@ func TestNoByteCompareOfCompressedGoldens(t *testing.T) {
 	}
 }
 
-// TestCompressedGoldenGuardPositiveControl proves the matcher still fires: the committed fixture
+// TestGoldenGuardControl proves the matcher still fires: the committed fixture
 // under testdata/classguard repeats the pre-fix shape and must be flagged; its pixel-comparing
 // sibling must not be.
-func TestCompressedGoldenGuardPositiveControl(t *testing.T) {
+func TestGoldenGuardControl(t *testing.T) {
 	hits, scanned, err := compressedGoldenSites(".", []string{filepath.Join("testdata", "classguard")}, true)
 	if err != nil {
 		t.Fatal(err)

@@ -1,4 +1,4 @@
-// Positive-control fixture for TestCompressedGoldenGuardPositiveControl — never compiled (testdata).
+// Positive-control fixture for TestGoldenGuardControl — never compiled (testdata).
 // It repeats the #1952 shape: a committed PNG golden compared byte-for-byte.
 package classguard
 
