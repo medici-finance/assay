@@ -278,7 +278,7 @@ harmlessly, which is why the close-authority rule sits beside this one.
    `checked-at` (and `recovery-ref` when recovered), optional `introduced-by: <ref>
    (<same-symptom|shared-mechanism|introduced-by-commit|unconfirmed>)`, `open-questions` and
    `next-step` (the latest block's are current), and a one-line evidence summary. A later assessment
-   or repeat report APPENDS a same-`incident-group` block (evidence, never a count or dispatch),
+   or repeat report APPENDS a same-`incident-group` block (evidence, never a count or class issue),
    never edits the original; a field an older block lacks reads as unknown, never invented. **No, and
    it is a machinery defect** → record `class: <mechanism>` in the triage comment, and open the class
    issue (label `error-class`) when a **second** symptom shares that mechanism (the **first** in a
