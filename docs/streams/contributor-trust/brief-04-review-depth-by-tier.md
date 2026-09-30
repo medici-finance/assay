@@ -175,6 +175,33 @@ Whether the list is sufficient is left to the review gate / a human reader, and 
 by this verification.
 
 VERIFY: FAIL — row 12 only, and stale-shaped (check-definition): the row's command runs corroboration against merged main, where the brief is not in the diff, so it structurally returns COULD-NOT-CHECK exit 2 (the post-merge `--consumers` class, medici-finance/assay#1281). The substantive consumers claim corroborates at the implementing diff (3 corroborated, 0 disproved, 1 out-of-scope unchecked). All other rows pass on merged main; two mutation probes killed.
+### Non-implementer verifier run — VERIFY: FAIL — 11/12 pass, row 12 fails (check definition) — 2026-09-30 claude-opus-5-5-verifier
+
+Runner is not the implementer. Isolated worktree at merged main `b89b3957225e227e69d5b5ec7949344f580d9966` (HEAD == the forge's `commits/main`). Implementing change: squash commit 2083064fd (#1367). `gate: model`, all risk answers `no`. Offline envelope; scratch TMPDIR outside the repo; tree clean after the run. Re-woken because a declared input (the pr-review-desk skill) changed since the 2026-09-27 pass; the brief body is unchanged. Status stays `implemented`.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanes' -count=1` | exit 0 | PASS — exit 0, `ok  github.com/medici-finance/assay/tools/desk/internal/deskkit` | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesUnknownTier' -count=1 -v` | deep set | PASS — exit 0; Test Review Lanes Unknown Tier Gets The Deep Set; lanes correctness, security, fact-check, fail-first | 2026-09-30 | claude-opus-5-5-verifier |
+| 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesContributorTier' -count=1 -v` | standard path | PASS — exit 0; lanes correctness and security only, zero fail-first. Mutation (contributor row given the fail-first lane): exit 1 — killed, restored | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ClaimStateUnverifiedIsRepresentable' -count=1 -v` | exit 0 | PASS — exit 0. Mutation (extraction seeds confirmed): exit 1, `extraction must start every claim unverified` — killed, restored | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ClaimEveryClaimCarriesAState' -count=1 -v` | exit 0 | PASS — exit 0; 6 claims extracted from the sample body | 2026-09-30 | claude-opus-5-5-verifier |
+| 6 | `grep -n 'unverified' tools/desk/cmd/deskdispatch/references/review-lanes.md` | ≥1 line | PASS — exit 0; 4 lines, first at line 63 | 2026-09-30 | claude-opus-5-5-verifier |
+| 7 | `grep -n 'merge base' tools/desk/cmd/deskdispatch/references/review-lanes.md` | ≥1 line | PASS — exit 0; 2 lines, line 93 `Base, failing.` | 2026-09-30 | claude-opus-5-5-verifier |
+| 8 | `cd tools/desk && GOWORK=off go build ./... && GOWORK=off go vet ./internal/deskkit/` | exit 0 | PASS by direct run — exit 0, no output. check:ci: the hermetic network-off witness needs a Linux runner (#1800) | 2026-09-30 | claude-opus-5-5-verifier |
+| 9 | `cd tools/skillslint && go run . --root ../..; echo rc=$?` | rc=0 | PASS by direct run — `rc=0`, `HOUSE-VALUES: PASS — 39 markdown file(s) under plugins/`. check:ci as row 8 | 2026-09-30 | claude-opus-5-5-verifier |
+| 10 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesReferenceMatchesTable' -count=1 -v` | exit 0 | PASS — exit 0 | 2026-09-30 | claude-opus-5-5-verifier |
+| 11 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesDispatchEndToEnd' -count=1 -v` | exit 0 | PASS — exit 0; no ledger → unknown → deep set; contributor → standard; broken ledger → unknown → deep set; roster maintainer → standard | 2026-09-30 | claude-opus-5-5-verifier |
+| 12 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:04` | exit 0 | FAIL — exit 2 (statusgen v1.0.29), `COULD-NOT-CHECK: … is not in the diff against b89b3957…`. Structurally unrunnable on merged main after a squash merge (#1281). At the implementing commit (base its parent): exit 0, `3 corroborated, 0 disproved, 1 unchecked` (out-of-scope consumer) | 2026-09-30 | claude-opus-5-5-verifier |
+
+RISK-VALUE (trigger fires: the diff touches `tools/desk/internal/deskkit/`; all values reversible):
+
+- RISK-VALUE: DERIVED — laneTable unknown/blessed-once = {strong correctness, security, fact-check, fail-first}; contributor/maintainer = {correctness, security} @ tools/desk/internal/deskkit/reviewlanes.go:119-122 — matches the brief's "Lane set by tier" fact verbatim; row-3 mutant killed.
+- RISK-VALUE: DERIVED — out-of-range fallback `laneTable[TierUnknown]` @ tools/desk/internal/deskkit/reviewlanes.go:137 — fails closed to the deepest set, per "every external identity is unknown".
+- RISK-VALUE: DERIVED — ExecTier `strong` @ tools/desk/internal/deskkit/reviewlanes.go:80,88,96,105 — the brief fixes correctness at strong tier for the deep set.
+- RISK-VALUE: NAMED, NOT DERIVED — `claimMarkerRe` word list @ tools/desk/internal/deskkit/reviewlanes.go:232 — no spec or brief fixes which words mark a claim; a miss only shortens the starting list (every claim starts unverified). Question attached to #1281 (issuecomment-5902864939).
+
+Findings: row 12 is the #1281 check-definition class — re-verifying cannot change it; the row needs restating against the implementing diff, or #1281 needs to land. Note: the lane-selection function has no non-test caller under `tools/`, so tier-keyed depth is enforced by the pr-review-desk procedure, not by the dispatch binary.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
