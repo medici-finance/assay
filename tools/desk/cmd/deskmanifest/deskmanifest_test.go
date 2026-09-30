@@ -523,8 +523,15 @@ func TestRun_UnknownCommand(t *testing.T) {
 // TestLint_SkipsNestedCheckouts: a nested clone (.git dir) or linked worktree
 // (.git file) under root is another checkout; its copy of the manifests must not
 // be read as this tree's — before the skip it surfaced as duplicate component ids.
+// Root carries its OWN .git directory, as every real checkout does: the root is
+// exempt from the skip, so its three manifests must still be counted (a lint that
+// skipped root would report checked-clean over zero manifests). Each nested
+// checkout is named in the report, so the clean verdict states what it did not read.
 func TestLint_SkipsNestedCheckouts(t *testing.T) {
 	root := cleanTree(t)
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	for _, nested := range []struct {
 		dir    string
 		gitDir bool
@@ -552,5 +559,16 @@ apply: []
 	report, code := lint(root)
 	if code != exitClean {
 		t.Fatalf("nested checkouts leaked into lint: exit = %d, want 0; report:\n%s", code, report)
+	}
+	if !strings.Contains(report, "checked-clean: 3 manifest(s),") {
+		t.Fatalf("root's own manifests not counted (root carries .git and must not be skipped); report:\n%s", report)
+	}
+	for _, want := range []string{
+		"SKIPPED: clone: nested checkout (carries .git), not this tree\n",
+		"SKIPPED: wt: nested checkout (carries .git), not this tree\n",
+	} {
+		if !strings.Contains(report, want) {
+			t.Fatalf("report does not name the skipped nested checkout %q; report:\n%s", want, report)
+		}
 	}
 }

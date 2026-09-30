@@ -161,6 +161,21 @@ func TestComputeActivation_TransitiveProvider(t *testing.T) {
 	})
 }
 
+// TestComputeActivation_DuplicateIDFirstWins pins ComputeActivation's by-name
+// index to FIRST-declaration-wins, matching its providers index. An in-memory
+// caller can pass two manifests with one id (DiscoverManifests already drops the
+// later one); the first must decide the component's state. Here the second copy
+// requires an INVALID extension key, so a last-wins index turns it INACTIVE.
+func TestComputeActivation_DuplicateIDFirstWins(t *testing.T) {
+	first := manifestOf("test/dup", nil, []string{"assay.roster.trust"})
+	second := manifestOf("test/dup", nil, []string{"assay.roster.trust", "assay.roster.ext.x"})
+	ext := map[string]ExtKeyResult{"x": {Status: ExtInvalid, Reason: "TEST_KEY: synthetic rejection"}}
+	results := ComputeActivation([]componentManifest{first, second}, ext, true)
+	if !results["test/dup"].Active {
+		t.Fatalf("test/dup = %+v, want ACTIVE: the FIRST declaration must win, not the later duplicate", results["test/dup"])
+	}
+}
+
 // TestComputeActivation_NoProviderIsInactive: a required key with NO declared
 // provider anywhere fails closed rather than being assumed fine.
 func TestComputeActivation_NoProviderIsInactive(t *testing.T) {
@@ -265,7 +280,7 @@ func TestVerbActivationRefusal_ExtensionKeyInvalid(t *testing.T) {
 		t.Fatal("VerbActivationRefusal returned \"\" — an invalid required extension key must refuse")
 	}
 	if !strings.HasPrefix(msg, "could-not-check: test/desk-tools inactive — assay.roster.ext.repo-aliases ") {
-		t.Fatalf("refusal shape = %q, want the could-not-check: assay/<component> inactive — <key> <reason> form", msg)
+		t.Fatalf("refusal shape = %q, want the could-not-check: <component id> inactive — <key> <reason> form", msg)
 	}
 }
 
@@ -432,7 +447,12 @@ func TestNoNamespacePrefixedFormatting(t *testing.T) {
 // TestDiscoverManifests_SkipsNestedCheckouts: a nested clone (.git directory) or
 // linked worktree (.git file) below root is another checkout. Its manifests must
 // not change this tree's activation — here each nested copy requires a key that
-// would deactivate the verbs component if it were read.
+// would deactivate the verbs component if it were read. The nested directories
+// are named to sort BEFORE the root's own manifest directory (`a-…` <
+// `assay-example-verbs/`), so a nested copy that is read wins the duplicate-id
+// tie-break and flips activation: the activation assertion proves the skip on
+// its own, independent of the skipped-list assertion. Each arm (the .git
+// directory and the .git FILE) is pinned by name in skipped.
 func TestDiscoverManifests_SkipsNestedCheckouts(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
@@ -443,7 +463,7 @@ func TestDiscoverManifests_SkipsNestedCheckouts(t *testing.T) {
 	for _, nested := range []struct {
 		dir    string
 		gitDir bool
-	}{{"clone", true}, {"wt", false}} {
+	}{{"a-clone", true}, {"a-wt", false}} {
 		sub := filepath.Join(root, nested.dir)
 		writeManifest(t, sub, "assay/example-verbs", []string{"assay.desk.verbs"},
 			[]string{"assay.roster.trust", "assay.roster.ext.repo-aliases"}, nil)
@@ -465,8 +485,12 @@ func TestDiscoverManifests_SkipsNestedCheckouts(t *testing.T) {
 	if len(ms) != 1 || ms[0].path != "assay-example-verbs/component.yaml" {
 		t.Fatalf("manifests = %+v, want only the root tree's one", ms)
 	}
-	if len(skipped) != 2 || !strings.Contains(strings.Join(skipped, "\n"), "nested checkout") {
-		t.Fatalf("skipped = %q, want both nested checkouts named", skipped)
+	wantSkipped := []string{
+		"a-clone: nested checkout (carries .git), not this tree",
+		"a-wt: nested checkout (carries .git), not this tree",
+	}
+	if strings.Join(skipped, "\n") != strings.Join(wantSkipped, "\n") {
+		t.Fatalf("skipped = %q, want exactly %q (the .git-directory AND the .git-file arm)", skipped, wantSkipped)
 	}
 
 	r := goldenRoster()
