@@ -250,6 +250,21 @@ Notes:
 - Other lint NOTICEs on brief-06: owes a `+flow` Verify row; gate:human with no decision-issue.
 
 VERIFY: FAIL — Verify rows 1-6 pass by hand, but brief Deliverable 7 (CI invocation of the extended corroboration guard on register-touching PRs) is absent on main b0088804294b, so §B's no-self-park/no-self-resolve property is not enforced end to end (tracked #1855). The execution witness also cannot close: Verify row 6 is prose → could-not-run → check-verified exit 1.
+### Correction: 2026-09-30, assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) (on-behalf-of human:ian). VERIFY: FAIL
+
+- The execution-witness table in the entry above is not verbatim. On all six rows the runner source tag was hand-changed from the emitted `(forge-identity)` to `(git-config)`, following a desk dispatch instruction that was out of date. That tag is a derived value, never caller text. The table is restated below exactly as `statusgen verifyrun` emitted it; the "Runner restamped" sentence above does not apply to it. No other cell changed, and the verdict is unchanged.
+- The two findings marked "filed separately" above are the Verify row 6 re-author on #1927 and the flag-before-subcommand regen bug #1954.
+- In the check-verified hypothetical above, only the README Status cell was set to `verified`; the Verified cell was left empty.
+
+**Execution witness** (restated as emitted):
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -rl '^parked-until:' docs/streams/findings/ 2>/dev/null; echo done` | pass exit=0 | sha256:d117fa006ba9 | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -rn -e '^parked:' docs/streams/findings/ 2>/dev/null; echo rc=$?` | pass exit=0 | sha256:91d957f8f274 | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| 3 | `statusgen --root . --lint` | pass exit=0 | sha256:a9236fffe42e | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| 4 | `git diff --name-only $(git merge-base HEAD origin/main) HEAD -- STATUS.md` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && GOWORK=off go test .` | pass exit=0 | sha256:02906d388652 | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| 6 | `resolved: no→yes` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:6a46790d7c5a | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
 
 ## Review
 Gate: **human** (integrity-check / anti-falsification logic; irreversible). The human records the
