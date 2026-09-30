@@ -14,7 +14,9 @@ import (
 // mutants loosen the equality and the refuse rows go red.
 func TestCheckOwnPR(t *testing.T) {
 	const (
-		prHead  = "1111111111111111111111111111111111111111"
+		// prHead carries the letters a-f so the upper-case-hex row is a real case change:
+		// with an all-digit constant strings.ToUpper is the identity and that row cannot fail.
+		prHead  = "abcdef1111111111111111111111111111111111"
 		other   = "2222222222222222222222222222222222222222"
 		prRef   = "feature/pr-head"
 		neutral = "neutral-rework"

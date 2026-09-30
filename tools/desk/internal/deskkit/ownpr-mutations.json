@@ -20,6 +20,12 @@
       "new": "\tif a == \"\" || b == \"\" {\n\t\treturn false\n\t}\n\treturn strings.HasPrefix(strings.ToLower(b), strings.ToLower(a))\n"
     },
     {
+      "name": "the head-commit compare is case-sensitive (upper-case hex from a tool no longer matches the forge's lower-case oid)",
+      "file": "internal/deskkit/ownpr.go",
+      "old": "\treturn strings.EqualFold(a, b)\n",
+      "new": "\treturn a == b\n"
+    },
+    {
       "name": "two absent SHAs compare equal (no local head + a forge that reported no head oid)",
       "file": "internal/deskkit/ownpr.go",
       "old": "\tif a == \"\" || b == \"\" || len(a) != len(b) {\n",
@@ -42,6 +48,12 @@
       "file": "cmd/deskreply/deskreply.go",
       "old": "\t); oerr != nil {\n\t\treturn oerr\n\t}\n\tac.head = view.HeadRefOid\n",
       "new": "\t); false && oerr != nil {\n\t\treturn oerr\n\t}\n\tac.head = view.HeadRefOid\n"
+    },
+    {
+      "name": "deskpr edit's detached-HEAD refusal (no --pr) loses its --pr N remedy (the create/update message again)",
+      "file": "cmd/deskpr/edit.go",
+      "old": "preflightMode(dir, \"\", *prNum > 0, editDetachedRefusal)",
+      "new": "preflightMode(dir, \"\", *prNum > 0, detachedRefusal)"
     },
     {
       "name": "deskpr edit --pr no longer enforces the own-PR guard",
