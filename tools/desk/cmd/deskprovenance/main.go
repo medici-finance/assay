@@ -101,10 +101,15 @@ func run(args []string) int {
 	post := fs.Bool("post", false, "confirm you intend to post/edit a live comment on a real pull request (required in addition to omitting --dry-run; see usage)")
 	role := fs.String("role", "worker", "desk role identity to post as (live run only)")
 	versionFlag := fs.Bool("version", false, "print version and exit")
+	applyOverride, _ := deskkit.RegisterOutboundOverride(fs, "deskprovenance", "post")
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintln(os.Stderr, usageText)
 		return 2
+	}
+	if err := applyOverride(); err != nil {
+		fmt.Fprintln(os.Stderr, "deskprovenance:", err)
+		return deskkit.ExitCodeOf(err)
 	}
 
 	if *versionFlag {

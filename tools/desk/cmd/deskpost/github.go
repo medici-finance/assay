@@ -874,17 +874,35 @@ func (c *ghClient) checkRunsAt(sha string) (*checkRunsResp, error) {
 
 // postReview submits a head-pinned review AS THE APP. event is APPROVE or
 // REQUEST_CHANGES; commit_id pins the verdict to the reviewed head.
+//
+// The body is run through the outbound-write check first: this raw client is not a Forge, so
+// the checking decorator does not wrap it, and a write that skipped the check here would be
+// the one seam a verb could publish through unchecked (desktools-v2/10).
 func (c *ghClient) postReview(pr int, head, event, body string) (string, error) {
+	if err := c.outboundCheck(deskkit.OutboundKindReview, body); err != nil {
+		return "", err
+	}
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", c.owner, c.repo, pr)
 	in := map[string]any{"commit_id": head, "event": event, "body": body}
 	return "", c.doJSON(http.MethodPost, path, in, nil)
 }
 
-// postComment posts a plain issue comment AS THE APP.
+// postComment posts a plain issue comment AS THE APP, after the outbound-write check (see
+// postReview).
 func (c *ghClient) postComment(pr int, body string) error {
+	if err := c.outboundCheck(deskkit.OutboundKindComment, body); err != nil {
+		return err
+	}
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/comments", c.owner, c.repo, pr)
 	in := map[string]any{"body": body}
 	return c.doJSON(http.MethodPost, path, in, nil)
+}
+
+// outboundCheck runs the outbound-write check over one text write this client makes, under
+// the reviewer App's custody.
+func (c *ghClient) outboundCheck(kind, body string) error {
+	return deskkit.OutboundCheck(deskkit.OutboundWrite{Role: "reviewer", Repo: c.owner + "/" + c.repo,
+		Kind: kind, Fields: []deskkit.OutboundField{{Name: "body", Text: body}}})
 }
 
 // The mechanical verdict-time labels (size + surface) are NOT written from this file. They

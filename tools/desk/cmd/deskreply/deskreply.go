@@ -112,7 +112,7 @@ func cmdReply(args []string) (err error) {
 	fs := flag.NewFlagSet("deskreply", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder)) // suppress flag's own output; we craft messages
 	bodyFile := fs.String("body-file", "", "path to a file containing the reply body (required)")
-	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, body digest, reason, identity)")
+	applyOverride, _ := deskkit.RegisterOutboundOverride(fs, "deskreply", "reply")
 	workpad := fs.Bool("workpad", false, "upsert ONE workpad comment per PR instead of always posting a new reply — find the newest unresolved workpad comment authored by the worker identity and edit it in place, or create the first one")
 	dryRun := fs.Bool("dry-run", false, "report what would happen without posting or editing anything: with --workpad, WORKPAD: would edit #<id> / WORKPAD: would create; on the plain reply path, run every check (including the forge reads a real reply performs) and stop before the post")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
@@ -126,10 +126,8 @@ func cmdReply(args []string) (err error) {
 	if strings.TrimSpace(*bodyFile) == "" {
 		return deskkit.Refused("refused: --body-file is required (no stdin/inline body)")
 	}
-	if *scanOverride != "" {
-		if verr := deskkit.ValidateScanOverride(*scanOverride); verr != nil {
-			return verr
-		}
+	if verr := applyOverride(); verr != nil {
+		return verr
 	}
 	// --dry-run used to refuse outright without --workpad, so the plain reply path had no
 	// rehearsal at all. It is now widened: on the plain path it runs every check a real
@@ -149,28 +147,18 @@ func cmdReply(args []string) (err error) {
 	}
 	ac.repo = repo
 
-	// Body: file only, 16 KiB cap, secret scan. The scan's verdict routes through
-	// deskkit.HandleScanRefusal, so a refusal advertises the audited override
-	// (#585) and an override taken here writes its row BEFORE the post.
+	// Body: file only, 16 KiB cap, then the ONE outbound-write check (desktools-v2/10) on
+	// this target, before any preflight, mint or network: the credential arms and the
+	// impersonation guard, personal data and — on a target not stated private — the
+	// self-containment scan and the withheld register. A refusal advertises the audited
+	// --force-scan-override (#585) where the ruling allows one, and an override taken here
+	// writes its row BEFORE the post. The checking Forge re-runs the check at the write.
 	body, berr := readBody(*bodyFile)
 	if berr != nil {
 		return berr
 	}
-	if serr := deskkit.HandleScanRefusal(deskkit.ScanOverride{
-		Tool: "deskreply", Verb: "reply", Repo: repo, PR: &pr, Reason: *scanOverride,
-		Surface: deskkit.SurfaceBody, Content: body,
-	}, deskkit.BodyCheck(body)); serr != nil {
-		return serr
-	}
-	// #203: the PUBLIC-REPO SELF-CONTAINMENT scan, on the same body and through the same
-	// audited-override path. A no-op on a known-private repo and on an unconfigured roster
-	// (deskkit.SelfContainApplies). The PR number is the offline reference point for the
-	// bare-`#N` heuristic — a reply's own PR is by construction a number this repo owns.
-	if serr := deskkit.HandleScanRefusal(deskkit.ScanOverride{
-		Tool: "deskreply", Verb: "reply", Repo: repo, PR: &pr, Reason: *scanOverride,
-		Surface: deskkit.SurfaceBodyPublic, Content: body,
-	}, deskkit.SelfContainCheck("reply body", body,
-		deskkit.SelfContainOpts{Repo: repo, NumberHint: pr})); serr != nil {
+	if serr := deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: repo, Kind: deskkit.OutboundKindComment,
+		Fields: []deskkit.OutboundField{{Name: "body", Text: string(body)}}}); serr != nil {
 		return serr
 	}
 	ac.bodyDigest = deskkit.Sha256Hex(body)

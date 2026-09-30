@@ -1,0 +1,8 @@
+### Added
+- One outbound-write check now runs on every write the desk tools make, before the write leaves the machine. It combines the credential scan, the ruling-claim guard, a new personal-data pass (e-mail addresses and international phone numbers) and, for public or unlisted targets, the self-containment categories and the withheld register. The target's configured visibility decides which layers run.
+- The check sits in two places. The Forge that `ResolveForge` returns wraps every write that carries text, so a verb cannot hold an unchecked Forge. The push path (`deskpr` before it pushes, and the `deskpushguard` pre-push hook) checks the branch name, every commit message and the added lines of the diff.
+- Every write verb takes the same audited `--force-scan-override`. Credential, personal-data and self-containment refusals can be overridden, and each override leaves an audit row that holds the rule id and a digest of the text, never the text itself. A withheld identifier on a public or unknown target, and a ruling claim, can never be overridden.
+- A new `forgeban` rule stops any package outside `internal/deskkit` from naming a backend type, so no code can build an unchecked backend or unwrap the checked one.
+
+### Changed
+- `deskfile`, `deskpost`, `deskreply` and `deskevidence` no longer run their own copies of the scan. Their writes pass through the shared check, which refuses at least everything the old per-verb calls refused.

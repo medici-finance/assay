@@ -1,0 +1,71 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -timeout 600s -run 'TestOutboundConformance|TestOutboundForgeWrapsEveryWriteMethod|TestOverrideAuditRowHoldsDigestNotText'",
+  "control": {
+    "name": "CONTROL — the outbound check passes every write (a refusal is computed and then dropped)",
+    "file": "internal/deskkit/outbound.go",
+    "old": "\tif len(refusals) == 0 {\n\t\treturn nil\n\t}",
+    "new": "\tif true {\n\t\treturn nil\n\t}"
+  },
+  "mutations": [
+    {
+      "name": "the decorator removed from ResolveForge's GitHub return (a verb holds an unchecked backend)",
+      "file": "internal/deskkit/forgeresolve.go",
+      "old": "\t\treturn OutboundChecked(&GitHubForge{Token: tok, BaseURL: base}, role), res, nil",
+      "new": "\t\treturn &GitHubForge{Token: tok, BaseURL: base}, res, nil"
+    },
+    {
+      "name": "the decorator removed from ResolveForge's GitLab return",
+      "file": "internal/deskkit/forgeresolve.go",
+      "old": "\t\treturn OutboundChecked(&GitLabForge{Token: tok, BaseURL: base}, role), res, nil",
+      "new": "\t\treturn &GitLabForge{Token: tok, BaseURL: base}, res, nil"
+    },
+    {
+      "name": "one text-carrying method dropped from the decorator (PostReview falls through to the backend unchecked)",
+      "file": "internal/deskkit/outboundforge.go",
+      "old": "func (o *outboundForge) PostReview(repo ForgeRepo, number int, in ReviewInput) error {",
+      "new": "func (o *outboundForge) PostReviewNoLongerOverridden(repo ForgeRepo, number int, in ReviewInput) error {"
+    },
+    {
+      "name": "another text-carrying method dropped (ApplyLabels: a label name goes out unchecked)",
+      "file": "internal/deskkit/outboundforge.go",
+      "old": "func (o *outboundForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange) (*LabelOutcome, error) {",
+      "new": "func (o *outboundForge) ApplyLabelsNoLongerOverridden(repo ForgeRepo, number int, change LabelChange) (*LabelOutcome, error) {"
+    },
+    {
+      "name": "the visibility test inverted (the public layers run on private targets and not on public ones)",
+      "file": "internal/deskkit/outbound.go",
+      "old": "func outboundPublicLayers(repo string) bool { return SelfContainApplies(repo) }",
+      "new": "func outboundPublicLayers(repo string) bool { return !SelfContainApplies(repo) }"
+    },
+    {
+      "name": "the e-mail allow-list emptied (every forge no-reply address refuses)",
+      "file": "internal/deskkit/personaldata.go",
+      "old": "var emailAllowedDomains = []string{",
+      "new": "var emailAllowedDomains = []string{}\n\nvar _ = []string{"
+    },
+    {
+      "name": "the withheld register made overridable (a written reason publishes a withheld identifier)",
+      "file": "internal/deskkit/outbound.go",
+      "old": "\treturn f.rule != RuleVoiceRulingClaim && f.rule != RuleWithheldIdentifier",
+      "new": "\treturn f.rule != RuleVoiceRulingClaim"
+    },
+    {
+      "name": "the override audit row carries the refusal text beside the digest",
+      "file": "internal/deskkit/outbound.go",
+      "old": "\t\tBodyDigest: r.digest,",
+      "new": "\t\tBodyDigest: r.digest + r.detail,"
+    },
+    {
+      "name": "the push path stops reading commit messages",
+      "file": "internal/deskkit/outboundpush.go",
+      "old": "\t\t\tFields: []OutboundField{{Name: \"commit \" + shortHash(h), Text: msg}}}); err != nil {",
+      "new": "\t\t\tFields: []OutboundField{{Name: \"commit \" + shortHash(h), Text: \"\"}}}); err != nil {"
+    },
+    {
+      "name": "the push path stops reading added lines",
+      "file": "internal/deskkit/outboundpush.go",
+      "old": "\t\tfields = append(fields, OutboundField{Name: fa.Path, Text: fa.Text})",
+      "new": "\t\tfields = append(fields, OutboundField{Name: fa.Path, Text: \"\"})"
+    }
+  ]
+}

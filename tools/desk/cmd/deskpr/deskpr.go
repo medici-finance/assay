@@ -839,7 +839,42 @@ func scanWrite(f *gitFacts, title, verb, override string) error {
 		[]byte(addedDiffLines(diff))); err != nil {
 		return err
 	}
-	return nil
+	// desktools-v2/10: the outbound-write check over what the push publishes — the branch
+	// name (kind ref), every commit message in the range (kind commit) and the range's ADDED
+	// lines per file (kind file). It is the SAME function the deskpushguard pre-push hook
+	// calls, so a push by any route meets one check. The credential arms above keep their
+	// whole-diff breadth; this pass adds the personal-data and, on a target that is not
+	// stated private, the self-containment and withheld-identifier layers. The audited
+	// override is deskpr's existing flag; a withheld identifier and a ruling claim stay
+	// non-overridable.
+	deskkit.SetOutboundContext(deskkit.OutboundContext{Tool: "deskpr", Verb: verb, OverrideReason: override})
+	// The pre-push hook re-runs this check on the push below: hand it exactly this verdict's
+	// override reason, and none when there is none (an ambient value never overrides).
+	var envErr error
+	if strings.TrimSpace(override) != "" {
+		envErr = os.Setenv(deskkit.EnvPushGuardScanOverride, override)
+	} else {
+		envErr = os.Unsetenv(deskkit.EnvPushGuardScanOverride)
+	}
+	if envErr != nil {
+		return deskkit.Unverifiable("cannot hand the override reason to the pre-push hook", envErr)
+	}
+	return deskkit.OutboundCheckPush(deskkit.OutboundPush{
+		Dir: f.dir, Repo: f.repo, Base: f.defaultRef, Head: "HEAD", Branch: f.branch, Role: pushRole(),
+	})
+}
+
+// pushRole is the App role the push goes out under, resolved the way mintWorkerToken
+// resolves it (the worker App when the session names none). It is recorded on an override
+// row; it never widens or narrows what the check refuses.
+func pushRole() string {
+	if mintedRole != "" {
+		return mintedRole
+	}
+	if r, _, err := deskkit.SessionTokenRole("deskpr"); err == nil {
+		return r
+	}
+	return "worker"
 }
 
 // reHunkHeader matches the deterministic RANGE part of a unified-diff hunk header —
