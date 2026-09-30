@@ -17,7 +17,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; SOTA amendment)"
 sources:
   - "docs/streams/build-less-brittle/spec.md §3 row 11, §4.9, §11"
@@ -104,6 +104,14 @@ design-fit:
 - This brief writes the template and the skill line. It runs no investigation.
 - Public tree: mechanisms and public issue numbers only.
 
+## Record compatibility amendment — 2026-09-28
+
+Add spec §4.9's replayable-reading fields to the existing template and worked example,
+without adding a seventh section. The example has an unavailable source and a later,
+differently scoped success: it must retain the gap and must not infer recovery. Put the
+competing explanation and discriminating check under Divergence, and the expected
+observable under Next act. Preserve bounded reading, existing exits and net-zero skill lines.
+
 ## Task
 
 1. Write `docs/brittle-investigation-template.md` (planned): the frontmatter keys above; sections
@@ -150,6 +158,10 @@ dereferences the command the template tells sessions to run, rows 7–8 are the 
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
+
+The reviewer also walks the amendment's worked case through the existing deliverables and
+records the source links, gap handling and outcome interpretation in the review. These are
+semantic acceptance checks; presence of field names alone does not satisfy them.
 
 ## Review
 Gate: model (from frontmatter). The reviewer runs the template's `## Intent` reads against one
