@@ -197,6 +197,10 @@ var (
 	// checking whether the section has any real content. An unterminated
 	// comment (`<!--` with no closing `-->`) is stripped to end-of-input — it
 	// consumes the rest of the section, so it cannot masquerade as content.
+	// That end-of-input reading is right for the CONTENT check only: row
+	// parsers use stripRowComments (htmlcomment.go), which never drops text
+	// after an unterminated opener (#1939). TestCommentStripSitesAllowList
+	// keeps this regexp confined to evidenceHasContent.
 	htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?(?:-->|$)`)
 
 	// briefSchemaCurrent is the base brief schema version; recognizedBriefSchemas

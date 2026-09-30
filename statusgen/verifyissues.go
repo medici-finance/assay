@@ -614,7 +614,7 @@ func unroutedHeldLine(evidence string) (bool, string) {
 // each data row: the last cell is Runner (by convention), second-to-last is Date.
 // It validates against the header row to confirm the table structure is recognized.
 func evidenceVerifierInfo(evidence string) (date, runner string) {
-	stripped := htmlCommentRe.ReplaceAllString(evidence, "")
+	stripped, _ := stripRowComments(evidence)
 	lines := strings.Split(stripped, "\n")
 	tableFound := false
 	for i := 0; i < len(lines); i++ {
@@ -667,7 +667,7 @@ func unrunRowsText(evidence string) string {
 	if !strings.Contains(strings.ToUpper(evidence), "UNRUN") {
 		return ""
 	}
-	stripped := htmlCommentRe.ReplaceAllString(evidence, "")
+	stripped, _ := stripRowComments(evidence)
 	lines := strings.Split(stripped, "\n")
 	var out []string
 	for _, line := range lines {

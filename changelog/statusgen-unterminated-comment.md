@@ -1,0 +1,2 @@
+### Fixed
+- `statusgen` no longer drops every row after an unterminated `<!--` in a brief's `## Evidence` section. The witness, attribution and unrun readers strip complete comments only, so a later witness table is still read. An unterminated opener in a `## Verify` or `## Evidence` section is now a lint PROBLEM, and `statusgen brief --check-verified` refuses a closure over one. The "section has content" check still treats an unterminated opener as consuming the rest of the section.
