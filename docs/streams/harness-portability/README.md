@@ -206,7 +206,7 @@ record — that is a follow-on, not a claim this re-home makes. Statuses therefo
 | 09 | [jcode desk-harness spike — measured parity + fleet-density for driving desks](brief-09-jcode-desk-harness-spike.md) | 0 | L | implemented | — | — |
 | 10 | [SpecMem portable-memory spike — one stream's registers across Claude Code and a second harness](brief-10-specmem-portable-memory-spike.md) | 0 | M | implemented | — | — |
 | 11 | [Durable-monitor capability + residual harness-token prose-audit](brief-11-durable-monitor-capability.md) | 3 | M | done | 2026-09-05 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #475 @ ebbb6c6a828080a29ccef26b2707c49730871513) |
-| 12 | [Cursor — the third harness column](brief-12-cursor-third-column.md) | 5 | L | implemented | — | — |
+| 12 | [Cursor — the third harness column](brief-12-cursor-third-column.md) | 5 | L | verified | 2026-09-30 assay-verifier-app[bot] @ 0b033c711c9e (claude-opus-5-5) | — |
 | 13 | [Cursor live-desk-smoke protocol + first run](brief-13-cursor-live-desk-smoke.md) | 6 | M | implemented | — | — |
 | 14 | [Code de-house — land the stream's tool and packaging deliverables in the public tree](brief-14-code-dehouse.md) | 6 | L | implemented | — | — |
 | 15 | [Public CI wiring + harnesslint clean-up for the de-housed tools](brief-15-ci-wiring-harnesslint.md) | 7 | M | implemented | — | — |
