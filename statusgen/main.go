@@ -476,6 +476,10 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// tree-only. Declared source: statusgen/verifiedrunneragree.go.
 	notices = append(notices, verifiedRunnerDisagreementNotices(checkStreams)...)
 	problems = append(problems, verifySectionProblems(checkStreams)...)
+	// An unterminated `<!--` in a Verify or Evidence section (#1939): the row
+	// parsers read past it, a rendered page may hide everything after it, so it
+	// is a PROBLEM rather than a silent disagreement between the two views.
+	problems = append(problems, unterminatedCommentProblems(checkStreams)...)
 	// Reverse-orphan (distribution/13 Task E-a): a README brief ROW whose brief
 	// FILE is absent is a phantom brief. checkBriefFiles guards the forward
 	// direction (a file with no row); this guards the reverse (a row with no
