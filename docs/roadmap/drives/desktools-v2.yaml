@@ -1,0 +1,11 @@
+# Drive: finish the desk-tools v2 line so dispatch, review and verify run
+# on the new verbs without hand-holding. Declared in session by the driver;
+# the merge of this file is the ratification.
+declared-by: human:ian
+starts: "2026-09-30"
+expires: "2026-10-14"
+intensity: push
+state: active
+why: finish desktools-v2 so the desks stop needing hand-held dispatch
+items:
+  - stream: desktools-v2
