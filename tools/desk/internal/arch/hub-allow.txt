@@ -1,0 +1,11 @@
+# The internal/ packages the hub (internal/deskkit) may import, one per line, relative to
+# internal/. Read by TestHubAllowList (R-hub-allowlist in docs/contracts.md's rule register).
+# The test is red when deskkit imports a package not listed here AND when a listed package
+# is no longer imported, so a removed dependency cannot quietly come back.
+# Adding a line needs a "# grow <url>" line directly above it, citing the driver's
+# `grow <PR#>` reply on the standing weight-growth decision issue (the same mechanism as
+# internal/weight/ceiling.txt; no second gate). Every non-comment line is exactly one
+# entry: no blank lines, no trailing text, so the file compares byte-for-byte with `go list`.
+# Landing values: `go list -f '{{join .Imports "\n"}}' ./internal/deskkit` at this branch's head.
+gitcore
+topology
