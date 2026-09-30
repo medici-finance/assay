@@ -38,6 +38,12 @@ substitute for reading required evidence. Record omissions; reject silent trunca
 Selected tool/policy bundles must retain their required enforcement. Stable prompt text
 alone does not prove stable runner serialization or provider cache reuse.
 
+GEA-14 also binds role packets and WI-4 usage records: carry identifiers and authorized
+references, never keys, tokens or authentication headers. Preserve each reused source's
+origin, trust-gate disposition and restrictions. Untrusted or quarantined reporter text
+remains source data; copying it into a packet never makes it an instruction or grants
+authority. A missing disposition goes through the existing trust gate before use.
+
 The returned handoff binds result scope, evidence, dependency updates, artifacts, unresolved
 questions, next action and usage to that same attempt. Mechanical fields are assembled in
 code. An agent resolves ambiguous intent; count its preparation cost. Ordinary work uses
