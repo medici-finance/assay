@@ -43,5 +43,10 @@ func ghIdentity() (ghUser, error) {
 	if err := json.Unmarshal(out, &u); err != nil {
 		return ghUser{}, fmt.Errorf("parse gh api user: %w", err)
 	}
+	// An empty login cannot drive the callback's owner check (it fails closed on it), so refuse
+	// here, before the browser round trip, rather than after the person has clicked Create.
+	if u.Login == "" {
+		return ghUser{}, fmt.Errorf("gh api user returned no login: is `gh auth` signed in?")
+	}
 	return u, nil
 }

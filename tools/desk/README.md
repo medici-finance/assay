@@ -1588,8 +1588,10 @@ rows without touching the network; every other test and CI invocation runs with
 `--no-browser`. `resume`, `status` and `avatar` are later briefs (03, 04, 06).
 
 The single control behind `/callback` is the per-row state nonce: an unmatched `state`
-refuses (403) before any conversion is attempted, with the loopback bind and the
-record-side match as the two independent layers behind it. Full reference, the tier
+refuses (403) before any conversion is attempted. The independent second layer is the owner
+check on the conversion result (the `gh` login on the personal path, the org on the org
+path), which fails closed on an empty owner and writes nothing on a mismatch; the loopback
+bind is a precondition of the nonce, not a layer behind it. Full reference, the tier
 manifests' exact permission sets, the trust boundaries, and the design.md §9 measured
 facts (blocked on live GitHub access — see that file) are in
 [`docs/desk-tools/deskapps.md`](../../docs/desk-tools/deskapps.md).

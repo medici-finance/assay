@@ -161,6 +161,7 @@ func TestOwnerCheckFailsClosedOnEmptyOwner(t *testing.T) {
 	}{
 		{name: "org path, conversion carries no owner.login", ownerKind: "org", org: "example", convOwner: ""},
 		{name: "personal path, gh login empty", ownerKind: "me", identity: "", convOwner: "someone"},
+		{name: "personal path, both owners empty", ownerKind: "me", identity: "", convOwner: ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
