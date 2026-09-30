@@ -63,6 +63,14 @@ records keep missing evidence and unverified outcomes explicit. No new brief, ga
 service or dependency on a desk-tool redesign is introduced; later collectors can read
 these artifacts without becoming another owner of their meaning.
 
+## Structured inputs and revision-aware handoffs (2026-09-30)
+
+The [spec clarification](spec.md#work-input-and-handoff-clarification--2026-09-30) refines
+unfinished briefs 04, 09 and 12: preserve evidence/intent, carry the next action, and
+revalidate conclusions whose inputs change. It uses existing records and line budgets.
+Graph execution can consume them without becoming a blocker. Current gates, waves,
+M1–M6/C1–C4 and implemented-brief status remain unchanged.
+
 ## Briefs
 
 <!-- statusgen:briefs:begin -->
