@@ -65,23 +65,28 @@ package main
 //     the witness SPEAKS FOR changed in between (ancestorNoOtherChanges,
 //     witnessScope.invalidatedBy). What a witness speaks for (round-2 F2,
 //     round-3 F2/F6):
-//     - the brief's declared `files:` paths when it declares them (a declared
+//     - by default (and always, today): conservatively, every path OUTSIDE
+//       the board's bookkeeping surface: `docs/streams/**` (sibling briefs'
+//       Evidence in the same verify batch, READMEs, verify-outcome logs) and
+//       the regenerated `STATUS.md`, which move between ANY witness and the
+//       main tip and say nothing about the code a check ran against;
+//     - ONLY when a complete work-input dependency manifest is supplied for
+//       the brief (see "WORK-INPUT DEPENDENCIES" below): the brief's declared
+//       `files:` entries plus the row's source dependencies (a declared
 //       directory covers everything under it; a trailing `/**` reads as that
-//       directory; a one-segment glob matches a path or any parent of it) —
-//       the brief's own statement of the surface its checks exercise. The
-//       declaration is the UNION of the `files:` line now and as it stood at
-//       the witness's base commit, so narrowing it afterwards (in the brief's
-//       own, otherwise exempt, file) never shrinks the scope;
-//     - absent a declaration — or when ANY declared entry does not resolve to
-//       a real file at the witness's base commit or the item's revision (a
-//       brace form, `.`, prose such as `n/a`, a bare sibling name, a `**`
-//       inside a glob) — conservatively, every path OUTSIDE the board's
-//       bookkeeping surface: `docs/streams/**` (sibling briefs' Evidence in
-//       the same verify batch, READMEs, verify-outcome logs) and the
-//       regenerated `STATUS.md`, which move between ANY witness and the main
-//       tip and say nothing about the code a check ran against. An entry that
-//       names nothing would otherwise speak for nothing — less conservative
-//       than no declaration at all;
+//       directory; a one-segment glob matches a path or any parent of it).
+//       The declaration is the UNION of the `files:` line now and as it stood
+//       at the witness's base commit, so narrowing it afterwards (in the
+//       brief's own, otherwise exempt, file) never shrinks the scope. Even
+//       then the scope falls back to conservative when ANY entry does not
+//       resolve to a real, non-exempt file at the witness's base commit or the
+//       item's revision (a brace form, `.`, prose such as `n/a` or `(new)`, a
+//       bare sibling name, a `**` inside a glob, an entry naming only
+//       STATUS.md). An entry that names nothing would otherwise speak for
+//       nothing, which is less conservative than no declaration at all. The
+//       `files:` parser (extractContextDeclaredEntriesRaw) keeps every word
+//       the author wrote, so prose can only widen the scope, never drop an
+//       entry out of it;
 //     - never the files verify and regen NECESSARILY write, even when
 //       declared: `STATUS.md`, `docs/streams/verify-outcomes*.jsonl`, a
 //       stream `README.md`, and brief files (isVerifyWrittenPath). Any OTHER
@@ -91,13 +96,42 @@ package main
 //     The changed paths are read with `git diff --no-renames`, so a rename or
 //     move reports its OLD path too, never only its destination. A change to
 //     a path the witness speaks for after it ran is a genuine
-//     `wrong-revision`: the witness no longer speaks for today's code. The
-//     residual this scope accepts, by design: a declared-`files:` brief whose
-//     every entry resolves is not invalidated by a change OUTSIDE its
-//     declaration (a shared helper the declared files call, say) — the
-//     declaration is the contract, and an under-declared brief is fixed by
-//     declaring, not by this rule guessing at a dependency graph it cannot
-//     compute offline.
+//     `wrong-revision`: the witness no longer speaks for today's code, and the
+//     reason names the path that changed.
+//
+// WORK-INPUT DEPENDENCIES (the 2026-09-30 work-input amendment, WI-2). An
+// ancestor match is a REUSE: a result recorded at one revision is credited at
+// a later one. WI-2 allows that only through an explicit applicability
+// derivation, and says "file non-overlap alone is insufficient: shared APIs,
+// generated inputs, build configuration, authority rules and transitive
+// callers may invalidate an assumption outside the edited files". So:
+//
+//   - A `files:` declaration ALONE never narrows the scope any more. Without a
+//     complete dependency manifest (coverageOptions.Dependencies), every claim
+//     takes the conservative scope, whose derivation is "nothing outside the
+//     board's bookkeeping changed". This replaces the round-3 residual, where a
+//     change to a helper outside `files:` let the old PASS stand.
+//   - A manifest names each claim's dependencies by kind: source (joins the
+//     witness scope), policy and build (compared by the git object id of the
+//     path at the witness's base commit against the item's revision), and
+//     environment (a recorded against a current fingerprint). A changed
+//     dependency holds only the claims that depend on it, as `wrong-revision`,
+//     and the reason names it. A dependency that cannot be fingerprinted is
+//     `could-not-check`. These checks run on the exact path too.
+//   - Only a manifest marked Complete licenses a scope narrower than the
+//     conservative one; an incomplete manifest's entries are still checked.
+//   - A reused pass says so: its reason names the revision it is reused at and
+//     the derivation. Claim.Revision stays the witness's own revision, so the
+//     old receipt is never retargeted to the new subject.
+//   - The result vocabulary is unchanged. graph-execution/09's adapter
+//     supplies manifests later. Production passes none today, so every brief
+//     takes the conservative scope. That is the "start with conservative
+//     invalidation" posture WI-2 asks for.
+//
+// The residual the conservative scope still accepts: a change under
+// `docs/streams/**` or to STATUS.md never invalidates a witness unless the
+// brief declares that artifact, and an out-of-tree environment change is seen
+// only when a manifest names it.
 //
 // A value that is not adequately established as one of the two READS as a
 // definite mismatch (`wrong-revision`) only when both tokens are themselves
@@ -259,6 +293,70 @@ type coverageOptions struct {
 	// header ("THE REVISION COMPARISON IS OFFLINE") for how that relates to
 	// "merged SHA / PR head" and why it is not the literal merge SHA.
 	Revision string
+	// Dependencies maps a brief id to its work-input dependency manifest (the
+	// work-input amendment, WI-2). The later graph-execution/09 adapter
+	// supplies it; production passes none today, so every claim takes the
+	// conservative scope. See this file's header ("WORK-INPUT DEPENDENCIES").
+	Dependencies map[string]dependencyManifest
+}
+
+// Work-input dependency kinds (WI-2): what a claim's result depends on
+// besides the Verify row text itself.
+const (
+	depSource      = "source"      // repo code the claim exercises; checked by the tree diff
+	depPolicy      = "policy"      // an authority or policy file; checked by fingerprint
+	depBuild       = "build"       // build configuration or a generated input; checked by fingerprint
+	depEnvironment = "environment" // a named out-of-tree value; checked by fingerprint
+)
+
+// dependencyManifest is one brief's declared work-input dependencies.
+// Complete is the manifest's own statement that it names EVERY dependency of
+// every claim. Only a complete manifest licenses selective reuse (a scope
+// narrower than the conservative one). An incomplete manifest's entries are
+// still checked, but its claims also keep the conservative scope.
+type dependencyManifest struct {
+	Complete bool
+	Deps     []workInputDep
+}
+
+// workInputDep is one dependency. Rows lists the Verify row ids it applies
+// to; empty means every row.
+//
+//   - source, policy, build: Path is repo-relative (a file or a directory).
+//     A source dependency joins the claim's witness scope. A policy or build
+//     dependency is compared by fingerprint: the git object id of Path at the
+//     witness's base commit against the one at the item's revision.
+//   - environment: Name identifies the value; Recorded is its fingerprint when
+//     the witness ran and Current is its fingerprint now. Either one empty
+//     means the dependency cannot be checked.
+type workInputDep struct {
+	Kind     string
+	Path     string
+	Name     string
+	Recorded string
+	Current  string
+	Rows     []string
+}
+
+// appliesTo reports whether d is a dependency of Verify row rowID.
+func (d workInputDep) appliesTo(rowID string) bool {
+	if len(d.Rows) == 0 {
+		return true
+	}
+	for _, r := range d.Rows {
+		if r == rowID {
+			return true
+		}
+	}
+	return false
+}
+
+// label names d in a reason string.
+func (d workInputDep) label() string {
+	if d.Kind == depEnvironment {
+		return fmt.Sprintf("%s dependency %q", d.Kind, d.Name)
+	}
+	return fmt.Sprintf("%s dependency %s", d.Kind, d.Path)
 }
 
 // ruleCoverageJoinMissingFlow is the stable [rule-tag] for the join's missing
@@ -304,9 +402,13 @@ func evaluateOneCoverage(root, briefPath, id string, bf *BriefFile, opts coverag
 	var claims []Claim
 
 	// (a) every Verify row is a mandatory claim by construction.
-	scope := newWitnessScope(root, briefPath, bf)
+	var man *dependencyManifest
+	if m, ok := opts.Dependencies[id]; ok {
+		man = &m
+	}
+	scope := newWitnessScope(root, briefPath, bf, man)
 	for _, r := range verifyRows {
-		result, reason, claimRev := resolveVerifyClaim(root, scope, r, evidence, revision)
+		result, reason, claimRev := resolveVerifyClaim(root, scope.forRow(r.ID), r, evidence, revision)
 		claims = append(claims, Claim{
 			Claim:    fmt.Sprintf("Verify row #%s: %s", r.ID, r.Command),
 			Kind:     "command",
@@ -412,11 +514,16 @@ func resolveVerifyClaim(root string, scope witnessScope, r verifyRow, evidence m
 	wrev := witnessTreeOf(latestText)
 	switch witnessStateOf(latestText) {
 	case statePass:
-		switch classifyRevision(root, scope, wrev, targetRevision) {
+		rel, exact, detail := classifyRevisionDetail(root, scope, wrev, targetRevision)
+		switch rel {
 		case revisionUnestablished:
 			return covCouldNotCheck, fmt.Sprintf("the witness's revision could not be corroborated against the item's revision (witness=%s, item=%s) — a passing result is never credited without knowing which revision it ran at", displayRevision(wrev), displayRevision(targetRevision)), wrev
 		case revisionMismatch:
-			return covWrongRevision, fmt.Sprintf("witness ran at revision %s, the item's revision is %s", wrev, targetRevision), wrev
+			reason := fmt.Sprintf("witness ran at revision %s, the item's revision is %s", wrev, targetRevision)
+			if detail != "" {
+				reason += "; " + detail + ", so the old result cannot release the new revision"
+			}
+			return covWrongRevision, reason, wrev
 		}
 		// revisionMatch: the witness's tree is, or offline-corroborates as, the
 		// item's revision. The acceptance-definition digest guard, Expect half
@@ -435,7 +542,34 @@ func resolveVerifyClaim(root string, scope witnessScope, r verifyRow, evidence m
 		if normalizeCommandText(hist.Expect) != normalizeCommandText(r.Expect) {
 			return covError, "the row's Expect text changed after the witness ran — its acceptance definition changed, so the recorded result proves nothing about the row as it stands today", wrev
 		}
-		return covPass, "witness matches the row and passed", wrev
+		// The work-input dependencies (WI-2): a changed policy, build or
+		// environment dependency holds the claim even when the tree diff is
+		// clean for its scope. Checked on the exact path too, because an
+		// environment value can move without any commit.
+		fingerprinted := 0
+		for _, d := range scope.deps {
+			if d.Kind == depSource {
+				continue
+			}
+			same, unknown := depFingerprintSame(root, d, base, witnessBaseRevision(targetRevision))
+			if unknown != "" {
+				return covCouldNotCheck, fmt.Sprintf("the %s could not be fingerprinted (%s) — a pass is never credited while a dependency of the claim is unknown", d.label(), unknown), wrev
+			}
+			if !same {
+				return covWrongRevision, fmt.Sprintf("the %s changed since the witness ran at %s; the claim is held until it is revalidated at %s, and the old receipt keeps its revision", d.label(), wrev, targetRevision), wrev
+			}
+			fingerprinted++
+		}
+		if fingerprinted > 0 {
+			detail += fmt.Sprintf("; %d policy, build or environment fingerprint(s) unchanged", fingerprinted)
+		}
+		if exact {
+			if fingerprinted > 0 {
+				return covPass, "witness matches the row and passed" + detail, wrev
+			}
+			return covPass, "witness matches the row and passed", wrev
+		}
+		return covPass, fmt.Sprintf("witness ran at %s and is reused at %s: %s; the receipt keeps revision %s", wrev, targetRevision, detail, wrev), wrev
 	case stateFail:
 		return covFail, "the witness records a failure", wrev
 	case stateCouldNotRun:
@@ -563,28 +697,40 @@ func witnessBaseRevision(tok string) string {
 //     leaves the plain mismatch standing; it never invents a match it could
 //     not corroborate.
 func classifyRevision(root string, scope witnessScope, witnessTree, target string) revisionRelation {
+	rel, _, _ := classifyRevisionDetail(root, scope, witnessTree, target)
+	return rel
+}
+
+// classifyRevisionDetail is classifyRevision plus how the verdict was reached.
+// exact is true for a same-token match, where nothing is being reused; it is
+// false for an ancestor match, which IS a reuse. detail is
+// ancestorNoOtherChanges's account: on an ancestor match, the applicability
+// derivation that licenses the reuse; on a mismatch, the first changed path the
+// witness speaks for (when the ancestor check got that far).
+func classifyRevisionDetail(root string, scope witnessScope, witnessTree, target string) (rel revisionRelation, exact bool, detail string) {
 	w := witnessBaseRevision(witnessTree)
 	t := witnessBaseRevision(target)
 	if w == "" || t == "" || w == "no-git" || t == "no-git" {
-		return revisionUnestablished
+		return revisionUnestablished, false, ""
 	}
 	if len(w) < minRevisionTokenLen || len(t) < minRevisionTokenLen {
-		return revisionUnestablished
+		return revisionUnestablished, false, ""
 	}
 	if !hexRevisionRe.MatchString(w) || !hexRevisionRe.MatchString(t) {
-		return revisionUnestablished
+		return revisionUnestablished, false, ""
 	}
 	n := len(w)
 	if len(t) < n {
 		n = len(t)
 	}
 	if strings.EqualFold(w[:n], t[:n]) {
-		return revisionMatch
+		return revisionMatch, true, ""
 	}
-	if ancestorNoOtherChanges(root, scope, w, t) {
-		return revisionMatch
+	ok, detail := ancestorNoOtherChanges(root, scope, w, t)
+	if ok {
+		return revisionMatch, false, detail
 	}
-	return revisionMismatch
+	return revisionMismatch, false, detail
 }
 
 // witnessScope is what a brief's witnesses SPEAK FOR — the paths whose change
@@ -594,22 +740,30 @@ func classifyRevision(root string, scope witnessScope, witnessTree, target strin
 type witnessScope struct {
 	briefPath string   // absolute path of the brief file ("" = none)
 	briefRel  string   // briefPath relative to root, slash-separated
-	declared  []string // the brief's `files:` entries (normalized); nil = no declaration
+	declared  []string // the brief's `files:` entries (normalized) plus, per row, its source dependencies; nil = none
+	// manifest is the brief's work-input dependency manifest (nil = none
+	// supplied). deps are its entries that apply to the row being resolved
+	// (set by forRow).
+	manifest *dependencyManifest
+	deps     []workInputDep
 	// conservative selects the no-declaration scope: every path outside the
-	// board's bookkeeping surface. It is set when the brief declares nothing
-	// and, by atBase, whenever a declaration cannot be trusted to name the
-	// surface (round-3 F6) — it only ever WIDENS the scope, never narrows it.
+	// board's bookkeeping surface. It is set unless a COMPLETE dependency
+	// manifest licenses narrowing (WI-2), when the brief and row declare
+	// nothing, and, by atBase, whenever a declaration cannot be trusted to
+	// name the surface (round-3 F6). It only ever WIDENS the scope.
 	conservative bool
+	// whyConservative says which of those set conservative, for the reason.
+	whyConservative string
 }
 
 // newWitnessScope builds a brief's witnessScope from its CURRENT parsed `files:`
 // line (BriefFile.DeclaredEntriesRaw — every entry the label names, including a
 // dotless one the mistake-proofing/01 path-shape filter drops; round-3 F6 /
-// security pr1682-S6). A missing/unparseable declaration leaves declared nil
-// and selects the conservative scope. This is only the current half:
-// ancestorNoOtherChanges widens it with atBase before reading a diff.
-func newWitnessScope(root, briefPath string, bf *BriefFile) witnessScope {
-	sc := witnessScope{briefPath: briefPath}
+// security pr1682-S6) and its dependency manifest (nil = none). This is only
+// the current, brief-level half: forRow adds the row's own dependencies, and
+// ancestorNoOtherChanges widens the result with atBase before reading a diff.
+func newWitnessScope(root, briefPath string, bf *BriefFile, man *dependencyManifest) witnessScope {
+	sc := witnessScope{briefPath: briefPath, manifest: man}
 	if root != "" && briefPath != "" {
 		if rel, err := filepath.Rel(root, briefPath); err == nil {
 			sc.briefRel = filepath.ToSlash(rel)
@@ -618,8 +772,59 @@ func newWitnessScope(root, briefPath string, bf *BriefFile) witnessScope {
 	if bf != nil && bf.DeclaredEntriesRawFound {
 		sc.declared = appendDeclaredEntries(nil, bf.DeclaredEntriesRaw)
 	}
-	sc.conservative = sc.declared == nil
-	return sc
+	return sc.forRow("")
+}
+
+// forRow returns the scope for Verify row rowID: the brief's `files:` entries
+// plus that row's source dependencies, with the row's policy, build and
+// environment dependencies attached for fingerprinting. Without a complete
+// manifest the scope stays conservative (WI-2: "incomplete dependency
+// knowledge requires broader revalidation"; "file non-overlap alone is
+// insufficient"). The declared entries still count on top of it, so a
+// declared docs/streams artifact stays guarded.
+func (sc witnessScope) forRow(rowID string) witnessScope {
+	out := sc
+	out.declared = append([]string(nil), sc.declared...)
+	out.deps = nil
+	if sc.manifest != nil && rowID != "" {
+		for _, d := range sc.manifest.Deps {
+			if !d.appliesTo(rowID) {
+				continue
+			}
+			out.deps = append(out.deps, d)
+			if d.Kind == depSource {
+				out.declared = appendDeclaredEntries(out.declared, []string{d.Path})
+			}
+		}
+	}
+	switch {
+	case sc.manifest == nil:
+		out.conservative, out.whyConservative = true, "no dependency manifest"
+	case !sc.manifest.Complete:
+		out.conservative, out.whyConservative = true, "the dependency manifest is incomplete"
+	case len(out.declared) == 0:
+		out.conservative, out.whyConservative = true, "nothing is declared"
+	default:
+		out.conservative, out.whyConservative = false, ""
+	}
+	return out
+}
+
+// describe says what the scope covers, for a wrong-revision reason.
+func (sc witnessScope) describe() string {
+	if sc.conservative {
+		return sc.whyConservative + ", so the witness speaks for every path outside docs/streams/** and STATUS.md"
+	}
+	return "a complete dependency manifest scopes the witness to " + strings.Join(sc.declared, ", ")
+}
+
+// derivation is the applicability derivation that licenses reusing a witness
+// at a later revision (WI-2), for a reused pass's reason.
+func (sc witnessScope) derivation() string {
+	if sc.conservative {
+		return "no path outside docs/streams/** and STATUS.md changed in between (" + sc.whyConservative + ", so that whole surface is the input)"
+	}
+	return "applicability derived from a complete dependency manifest: none of " + strings.Join(sc.declared, ", ") + " changed in between"
 }
 
 // appendDeclaredEntries normalizes and de-duplicates declared `files:` entries
@@ -665,16 +870,21 @@ func appendDeclaredEntries(dst []string, entries []string) []string {
 func (sc witnessScope) atBase(root, base, target string) witnessScope {
 	eff := sc
 	eff.declared = append([]string(nil), sc.declared...)
+	widen := func(why string) {
+		if !eff.conservative {
+			eff.conservative, eff.whyConservative = true, why
+		}
+	}
 	if body, ok := briefBodyAtRevision(root, sc.briefPath, base); !ok {
-		eff.conservative = true
+		widen("the brief cannot be read at the witness's commit")
 	} else if entries, found := extractContextDeclaredEntriesRaw(body); !found {
-		eff.conservative = true
+		widen("the brief declared no parseable files: at the witness's commit")
 	} else {
 		eff.declared = appendDeclaredEntries(eff.declared, entries)
 	}
 	for _, d := range eff.declared {
-		if !declaredEntryResolves(root, d, base, target) {
-			eff.conservative = true
+		if !sc.declaredEntryResolves(root, d, base, target) {
+			widen(fmt.Sprintf("the declared entry %q names no checkable file", d))
 			break
 		}
 	}
@@ -782,20 +992,78 @@ func declaredEntrySupported(d string) bool {
 }
 
 // declaredEntryResolves reports whether d is supported AND covers at least one
-// real file in the tree at base or at target — a declaration that names
-// nothing is not evidence of what the witness exercised.
-func declaredEntryResolves(root, d, base, target string) bool {
+// real file in the tree at base or at target that a change can actually
+// invalidate — a declaration that names nothing is not evidence of what the
+// witness exercised. A file no witness can speak for (isVerifyWrittenPath, or
+// the brief's own file) does not count (security S6): a `files:` line naming
+// only `STATUS.md` would otherwise narrow the scope to nothing at all.
+func (sc witnessScope) declaredEntryResolves(root, d, base, target string) bool {
 	if !declaredEntrySupported(d) {
 		return false
 	}
 	for _, rev := range []string{base, target} {
 		for _, f := range treeFilesAt(root, rev) {
+			if f == sc.briefRel || isVerifyWrittenPath(f) {
+				continue
+			}
 			if declaredEntryMatches(d, f) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// depFingerprintSame compares a policy, build or environment dependency's
+// fingerprint when the witness ran (at base) against now (at target). unknown
+// is non-empty when either side cannot be read; the caller then resolves
+// could-not-check, never pass.
+func depFingerprintSame(root string, d workInputDep, base, target string) (same bool, unknown string) {
+	switch d.Kind {
+	case depEnvironment:
+		if d.Name == "" || d.Recorded == "" || d.Current == "" {
+			return false, "no recorded or current value"
+		}
+		return d.Recorded == d.Current, ""
+	case depPolicy, depBuild:
+		p := strings.TrimSuffix(strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(d.Path)), "./"), "/")
+		if !declaredEntrySupported(p) || strings.ContainsAny(p, "*?[") {
+			return false, "not a plain repo-relative path"
+		}
+		was, okW := gitObjectAt(root, base, p)
+		now, okN := gitObjectAt(root, target, p)
+		if !okW || !okN {
+			return false, "git history unreadable"
+		}
+		if was == "" && now == "" {
+			return false, "the path exists at neither revision"
+		}
+		return was == now, ""
+	default:
+		return false, fmt.Sprintf("unknown dependency kind %q", d.Kind)
+	}
+}
+
+// gitObjectAt returns the git object id of path p in rev's tree ("" when p is
+// absent there). ok is false when the lookup itself could not run.
+func gitObjectAt(root, rev, p string) (oid string, ok bool) {
+	if root == "" || rev == "" {
+		return "", false
+	}
+	out, err := exec.Command("git", "-C", root, "ls-tree", "-z", "--full-tree", "--end-of-options", rev, "--", p).Output()
+	if err != nil {
+		return "", false
+	}
+	for _, e := range splitNUL(out) {
+		meta, name, found := strings.Cut(e, "\t")
+		if !found || name != p {
+			continue
+		}
+		if f := strings.Fields(meta); len(f) == 3 {
+			return f[2], true
+		}
+	}
+	return "", true
 }
 
 // treeFilesCache memoizes treeFilesAt per (root, commit): a commit's tree never
@@ -849,22 +1117,25 @@ func splitNUL(out []byte) []string {
 // keeps whatever plain-value comparison it already made, rather than promoting
 // an unverifiable claim to a match. Every revision argument follows
 // `--end-of-options`, so an option-shaped token from Evidence text can never be
-// read as a flag, independent of call order.
-func ancestorNoOtherChanges(root string, scope witnessScope, witnessTree, target string) bool {
+// read as a flag, independent of call order. detail is the account a reason
+// quotes: on a match, the applicability derivation that licenses reusing the
+// witness (witnessScope.derivation); on an in-scope change, the first changed
+// path and what the scope covered; "" when the check could not run.
+func ancestorNoOtherChanges(root string, scope witnessScope, witnessTree, target string) (ok bool, detail string) {
 	if root == "" || scope.briefRel == "" {
-		return false
+		return false, ""
 	}
 	if exec.Command("git", "-C", root, "rev-parse", "--git-dir").Run() != nil {
-		return false
+		return false, ""
 	}
 	if exec.Command("git", "-C", root, "cat-file", "-e", "--end-of-options", witnessTree+"^{commit}").Run() != nil {
-		return false
+		return false, ""
 	}
 	if exec.Command("git", "-C", root, "cat-file", "-e", "--end-of-options", target+"^{commit}").Run() != nil {
-		return false
+		return false, ""
 	}
 	if exec.Command("git", "-C", root, "merge-base", "--is-ancestor", "--end-of-options", witnessTree, target).Run() != nil {
-		return false // not an ancestor, or the check itself could not run
+		return false, "" // not an ancestor, or the check itself could not run
 	}
 	// --no-renames (round-3 F6): with rename detection on, a rename or move
 	// prints only its DESTINATION, so a declared file renamed away — or code
@@ -872,15 +1143,16 @@ func ancestorNoOtherChanges(root string, scope witnessScope, witnessTree, target
 	// -z keeps every path byte-exact (no core.quotePath quoting).
 	out, err := exec.Command("git", "-C", root, "diff", "--name-only", "--no-renames", "-z", "--end-of-options", witnessTree, target, "--").Output()
 	if err != nil {
-		return false
+		return false, ""
 	}
 	eff := scope.atBase(root, witnessTree, target)
 	for _, p := range splitNUL(out) {
 		if eff.invalidatedBy(p) {
-			return false // a path the witness speaks for changed since it ran
+			// a path the witness speaks for changed since it ran
+			return false, fmt.Sprintf("%s changed in between and the witness speaks for it (%s)", p, eff.describe())
 		}
 	}
-	return true
+	return true, eff.derivation()
 }
 
 // verifyRowAtRevision reads briefPath's OWN Verify row for rowID as it stood

@@ -5,11 +5,19 @@
   at the item's revision before the brief is `released`; a missing, errored,
   could-not-check, wrong-revision, or failing claim holds it, with the reason.
   A witness counts at the item's revision when it names that tree, or an ancestor
-  of it with no change since to the paths it speaks for (the brief's `files:` now
-  and at the witness's commit, else — or when a declared entry names no real path —
-  everything outside `docs/streams/**` and `STATUS.md`; never the files verify and
-  regeneration write; renames count against their old path); a witness whose Verify
-  row cannot be read at its own revision is `could-not-check`.
+  of it with no change since to the paths it speaks for. Without a complete work-input
+  dependency manifest that is everything outside `docs/streams/**` and `STATUS.md`
+  (a `files:` declaration alone never narrows it); a complete manifest may narrow it
+  to the brief's `files:` (now and at the witness's commit) plus the claim's source
+  dependencies, unless a declared entry names no real path. It never covers the files
+  verify and regeneration write, and renames count against their old path. A witness
+  whose Verify row cannot be read at its own revision is `could-not-check`.
+- Work-input dependencies (graph-execution/03 work-input amendment): a manifest's
+  policy, build and environment dependencies are fingerprinted at the witness's commit
+  and the item's revision. A changed one holds only the claims that depend on it, as
+  `wrong-revision` naming it; one that cannot be fingerprinted is `could-not-check`. A
+  reused ancestor `pass` names its derivation and keeps the witness's own revision, so
+  an old receipt is never retargeted to a new subject.
 - The `observe` evidence kind (`spec/workflow-pattern-v1.md`, `schemas/workflow-pattern-v1.json`):
   a signal watched over a window after a change lands, declared only where a deploy
   exists.

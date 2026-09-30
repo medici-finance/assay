@@ -627,12 +627,16 @@ func TestCoverageSiblingEvidenceAndStatusRegenStillRelease(t *testing.T) {
 }
 
 // TestCoverageDeclaredFilesScopeTheWitness — round-2 F2: when the brief
-// declares `files:`, those paths are what the witness speaks for. A change to
-// an undeclared implementation path after the witness ran releases; a change
-// to a declared path (including one under a declared directory) holds.
+// declares `files:` AND a complete dependency manifest licenses narrowing
+// (WI-2), those paths are what the witness speaks for. A change to an
+// undeclared implementation path after the witness ran releases; a change to a
+// declared path (including one under a declared directory) holds. Without the
+// manifest the undeclared change holds too (TestCoverageReuseDoesNotRetargetPass).
 func TestCoverageDeclaredFilesScopeTheWitness(t *testing.T) {
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
-	files := "`src/impl.go`, `src/pkg/` (planned)"
+	// No prose annotation: since round 5 a word outside the spans, such as
+	// `(planned)`, is an entry that names nothing and widens to conservative.
+	files := "`src/impl.go`, `src/pkg/`"
 	cases := []struct {
 		name    string
 		changed string
@@ -659,7 +663,7 @@ func TestCoverageDeclaredFilesScopeTheWitness(t *testing.T) {
 			mustWriteFile(t, root, tc.changed, "v2\n")
 			mustGitCommitAll(t, root, "record Evidence; change "+tc.changed)
 
-			c := evaluateCoverage(root, []*Stream{s}, coverageOptions{})["cov/01"]
+			c := evaluateCoverage(root, []*Stream{s}, withManifest(true))["cov/01"]
 			if len(c.Claims) != 1 || c.Claims[0].Result != tc.want {
 				t.Fatalf("changed %s: want %s, got %+v", tc.changed, tc.want, c.Claims)
 			}
@@ -700,7 +704,10 @@ func TestCoverageDirtyWitnessToleranceIsDeclared(t *testing.T) {
 // brief with filesAtW (plus whatever setup writes), commit that as the witness
 // tree W, then in ONE later commit record a passing witness at W, rewrite the
 // brief's `files:` line to filesAfter, and apply change. It returns the single
-// Verify-row claim coverage resolves at the new HEAD.
+// Verify-row claim coverage resolves at the new HEAD. It supplies a complete,
+// otherwise empty dependency manifest: since the work-input amendment (WI-2)
+// only a complete manifest licenses narrowing to `files:` at all, and these
+// probes pin how that narrowing behaves.
 func coverageScopeScenario(t *testing.T, filesAtW, filesAfter string, setup, change func(t *testing.T, root string)) Claim {
 	t.Helper()
 	s, root := mustCoverageStream(t, "cov")
@@ -718,7 +725,7 @@ func coverageScopeScenario(t *testing.T, filesAtW, filesAfter string, setup, cha
 	}
 	mustGitCommitAll(t, root, "record Evidence and apply the change")
 
-	c := evaluateCoverage(root, []*Stream{s}, coverageOptions{})["cov/01"]
+	c := evaluateCoverage(root, []*Stream{s}, withManifest(true))["cov/01"]
 	if len(c.Claims) != 1 {
 		t.Fatalf("want exactly one claim, got %+v", c.Claims)
 	}
@@ -865,6 +872,36 @@ func TestCoverageWitnessScopeNeverFailsOpen(t *testing.T) {
 		{"P3 unbackticked inline dotless declared file", "src/impl.go, Makefile", "src/impl.go, Makefile",
 			writes("src/impl.go", "v1\n", "Makefile", "v1\n"), writes("Makefile", "v2\n")},
 		{"P6 backticked dotless entry resolving to nothing falls back conservative", "`src/impl.go`, `nosuchthing`", "`src/impl.go`, `nosuchthing`",
+			writes("src/impl.go", "v1\n", "lib/other.go", "v1\n"), writes("lib/other.go", "v2\n")},
+		// Round-5 re-review (head 17e215ae4): F6 / security S10 — the inline
+		// parser kept ONLY backtick spans once any span was present, so a plain
+		// entry beside a backticked one (I1), prose around it (I3), an
+		// unresolvable plain entry (I4) and a value wrapped onto a continuation
+		// line (W1, W2) all dropped out of the scope and released.
+		{"I1 plain entry beside a backticked one", "`src/impl.go`, lib/other.go", "`src/impl.go`, lib/other.go",
+			writes("src/impl.go", "v1\n", "lib/other.go", "v1\n"), writes("lib/other.go", "v2\n")},
+		{"I3 prose around a backticked entry", "`src/impl.go` and lib/other.go (new)", "`src/impl.go` and lib/other.go (new)",
+			writes("src/impl.go", "v1\n", "lib/other.go", "v1\n"), writes("lib/other.go", "v2\n")},
+		{"I4 plain entry naming nothing", "`src/impl.go`, nosuch.go", "`src/impl.go`, nosuch.go",
+			writes("src/impl.go", "v1\n", "lib/unrelated.go", "v1\n"), writes("lib/unrelated.go", "v2\n")},
+		{"W1 span wrapped onto a continuation line", "`src/impl.go`, `lib/{a,b,\n  c}.go`", "`src/impl.go`, `lib/{a,b,\n  c}.go`",
+			writes("src/impl.go", "v1\n", "lib/c.go", "v1\n"), writes("lib/c.go", "v2\n")},
+		{"W2 entry on a continuation line", "`src/impl.go`,\n  `lib/c.go`", "`src/impl.go`,\n  `lib/c.go`",
+			writes("src/impl.go", "v1\n", "lib/c.go", "v1\n"), writes("lib/c.go", "v2\n")},
+		// Security S6: a declaration whose every entry is exempt speaks for
+		// nothing; it must fall back to the conservative scope.
+		{"S6 every declared entry exempt", "`STATUS.md`", "`STATUS.md`",
+			writes("src/impl.go", "v1\n", "STATUS.md", "board v1\n"), writes("src/impl.go", "v2\n")},
+		// A8 / security S11: pins each half of the dotless-entry fix separately.
+		{"P4 plain bullet beside a backticked bullet", "\n- `src/impl.go`\n- lib/other.go", "\n- `src/impl.go`\n- lib/other.go",
+			writes("src/impl.go", "v1\n", "lib/other.go", "v1\n"), writes("lib/other.go", "v2\n")},
+		{"P7 dotless entry declared only at the witness", "`src/impl.go`, `tools`", "`src/impl.go`",
+			writes("src/impl.go", "v1\n", "tools/x.go", "v1\n"), writes("tools/x.go", "v2\n")},
+		{"P8 dotless entry declared only now", "`src/impl.go`", "`src/impl.go`, `tools`",
+			writes("src/impl.go", "v1\n", "tools/x.go", "v1\n"), writes("tools/x.go", "v2\n")},
+		// The same defect class in the bulleted form: a bullet that carries a
+		// span dropped every word outside it.
+		{"B1 plain entry beside a span in one bullet", "\n- `src/impl.go` and lib/other.go", "\n- `src/impl.go` and lib/other.go",
 			writes("src/impl.go", "v1\n", "lib/other.go", "v1\n"), writes("lib/other.go", "v2\n")},
 	}
 	for _, tc := range cases {
@@ -1038,5 +1075,221 @@ func TestCoverageZeroClaimsBriefIsHeld(t *testing.T) {
 	}
 	if len(c.Claims) != 1 || c.Claims[0].Result != covMissing {
 		t.Fatalf("want exactly one missing claim, got %+v", c.Claims)
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Work-input amendment (2026-09-30, WI-2): Verify rows 13 and 14. Declared
+// `files:` alone never licenses reuse ("file non-overlap is not proof"); a
+// reused witness keeps its own revision; a changed policy/build/environment
+// dependency holds the claim that depends on it.
+// -----------------------------------------------------------------------------
+
+// withManifest returns options carrying a dependency manifest for cov/01.
+func withManifest(complete bool, deps ...workInputDep) coverageOptions {
+	return coverageOptions{Dependencies: map[string]dependencyManifest{
+		"cov/01": {Complete: complete, Deps: deps},
+	}}
+}
+
+// soleClaim evaluates cov/01 and returns its one Verify-row claim.
+func soleClaim(t *testing.T, root string, s *Stream, opts coverageOptions) Claim {
+	t.Helper()
+	c := evaluateCoverage(root, []*Stream{s}, opts)["cov/01"]
+	if len(c.Claims) != 1 {
+		t.Fatalf("want exactly one claim, got %+v", c.Claims)
+	}
+	return c.Claims[0]
+}
+
+// TestCoverageReuseDoesNotRetargetPass — Verify row 14, one connected flow on
+// one repo: a witness passes at A; a bookkeeping-only commit reuses that
+// unchanged analysis (the receipt keeps revision A, the reason states the
+// derivation); an edit to a file outside the brief's `files:` — with no
+// dependency manifest to prove it irrelevant — holds the claim instead of
+// letting the old PASS release the new subject.
+func TestCoverageReuseDoesNotRetargetPass(t *testing.T) {
+	s, root := mustCoverageStream(t, "cov")
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
+	mustWriteFile(t, root, "src/impl.go", "v1\n")
+	mustWriteFile(t, root, "lib/helper.go", "v1\n")
+	writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", "`src/impl.go`", verify, "")
+	a := mustGitInit(t, root)
+	ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, a))
+	writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", "`src/impl.go`", verify, ev)
+	mustGitCommitAll(t, root, "record Evidence")
+
+	// Unchanged analysis: only board bookkeeping moved.
+	mustWriteFile(t, root, "STATUS.md", "board v2\n")
+	mustWriteFile(t, root, "docs/streams/other/brief-02.md", "sibling Evidence\n")
+	b := mustGitCommitAll(t, root, "verify batch + regen")
+	got := soleClaim(t, root, s, coverageOptions{})
+	if got.Result != covPass || got.Revision != a {
+		t.Fatalf("bookkeeping-only move: want pass with the receipt kept at %s, got %+v", a, got)
+	}
+	if !strings.Contains(got.Reason, "reused") || !strings.Contains(got.Reason, b) {
+		t.Fatalf("a reused witness must say so and name the subject it is reused at (%s), got %q", b, got.Reason)
+	}
+
+	// New subject: a source edit outside `files:`, no manifest.
+	mustWriteFile(t, root, "lib/helper.go", "v2\n")
+	mustGitCommitAll(t, root, "edit a helper the declared file may call")
+	got = soleClaim(t, root, s, coverageOptions{})
+	if got.Result != covWrongRevision || got.Revision != a {
+		t.Fatalf("an old-head PASS must not release the new subject: want wrong-revision at %s, got %+v", a, got)
+	}
+	if !strings.Contains(got.Reason, "lib/helper.go") {
+		t.Fatalf("the reason must name the invalidating path, got %q", got.Reason)
+	}
+}
+
+// TestCoveragePolicyDependencyChanged — Verify row 13 (the WI-2 example
+// fixture): a design at A depends on a writer's authorization policy; a later
+// change alters that policy while the file the brief declares is untouched.
+// The claim that depends on the policy holds as wrong-revision, naming the
+// policy, and its receipt keeps revision A. A sibling claim that does not
+// depend on the policy is still reused.
+func TestCoveragePolicyDependencyChanged(t *testing.T) {
+	s, root := mustCoverageStream(t, "cov")
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |\n| 2 | `true 2` | exit 0 |"
+	mustWriteFile(t, root, "src/impl.go", "v1\n")
+	mustWriteFile(t, root, "policy/writer-auth.yaml", "writers: [a]\n")
+	writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", "`src/impl.go`", verify, "")
+	a := mustGitInit(t, root)
+	ev := coverageEvidenceTable(
+		covWitnessRow("1", "true", statePass, a),
+		covWitnessRow("2", "true 2", statePass, a),
+	)
+	writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", "`src/impl.go`", verify, ev)
+	mustGitCommitAll(t, root, "record Evidence")
+	opts := withManifest(true,
+		workInputDep{Kind: depSource, Path: "src/impl.go"},
+		workInputDep{Kind: depPolicy, Path: "policy/writer-auth.yaml", Rows: []string{"1"}},
+	)
+	claims := func() map[string]Claim {
+		out := map[string]Claim{}
+		for _, c := range evaluateCoverage(root, []*Stream{s}, opts)["cov/01"].Claims {
+			out[c.Claim] = c
+		}
+		return out
+	}
+	if got := claims(); got["Verify row #1: true"].Result != covPass || got["Verify row #2: true 2"].Result != covPass {
+		t.Fatalf("before the policy edit both claims must be reused, got %+v", got)
+	}
+
+	mustWriteFile(t, root, "policy/writer-auth.yaml", "writers: [a, b]\n")
+	mustGitCommitAll(t, root, "widen the writer policy")
+	got := claims()
+	c1, c2 := got["Verify row #1: true"], got["Verify row #2: true 2"]
+	if c1.Result != covWrongRevision || c1.Revision != a {
+		t.Fatalf("row 1 depends on the policy: want wrong-revision with the receipt kept at %s, got %+v", a, c1)
+	}
+	if !strings.Contains(c1.Reason, "policy dependency policy/writer-auth.yaml") {
+		t.Fatalf("the reason must name the invalidating policy, got %q", c1.Reason)
+	}
+	if c2.Result != covPass || c2.Revision != a {
+		t.Fatalf("row 2 does not depend on the policy: want a reused pass at %s, got %+v", a, c2)
+	}
+}
+
+// TestCoverageEnvDependency — an environment dependency is compared by its
+// recorded and current fingerprints; a missing value is could-not-check.
+func TestCoverageEnvDependency(t *testing.T) {
+	cases := []struct {
+		name, recorded, current, want string
+	}{
+		{"unchanged", "go1.24", "go1.24", covPass},
+		{"changed", "go1.24", "go1.25", covWrongRevision},
+		{"current unknown", "go1.24", "", covCouldNotCheck},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, root := mustCoverageStream(t, "cov")
+			verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
+			mustWriteFile(t, root, "src/impl.go", "v1\n")
+			writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", "`src/impl.go`", verify, "")
+			a := mustGitInit(t, root)
+			ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, a))
+			writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", "`src/impl.go`", verify, ev)
+			mustGitCommitAll(t, root, "record Evidence")
+			opts := withManifest(true, workInputDep{Kind: depEnvironment, Name: "toolchain", Recorded: tc.recorded, Current: tc.current})
+			if got := soleClaim(t, root, s, opts); got.Result != tc.want {
+				t.Fatalf("want %s, got %+v", tc.want, got)
+			}
+		})
+	}
+}
+
+// TestCoverageManifestScopesReuse — selective reuse needs an explicit
+// applicability derivation (WI-2). A helper outside `files:` changes: with no
+// manifest or an incomplete one the claim holds; a complete manifest that does
+// not list the helper licenses reuse and says so; one that lists the helper
+// as a source dependency of the row holds.
+func TestCoverageManifestScopesReuse(t *testing.T) {
+	cases := []struct {
+		name string
+		opts coverageOptions
+		want string
+	}{
+		{"no manifest", coverageOptions{}, covWrongRevision},
+		{"incomplete manifest", withManifest(false, workInputDep{Kind: depSource, Path: "src/impl.go"}), covWrongRevision},
+		{"complete manifest without the helper", withManifest(true, workInputDep{Kind: depSource, Path: "src/impl.go"}), covPass},
+		{"complete manifest naming the helper", withManifest(true, workInputDep{Kind: depSource, Path: "lib/helper.go", Rows: []string{"1"}}), covWrongRevision},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, root := mustCoverageStream(t, "cov")
+			verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
+			mustWriteFile(t, root, "src/impl.go", "v1\n")
+			mustWriteFile(t, root, "lib/helper.go", "v1\n")
+			writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", "`src/impl.go`", verify, "")
+			a := mustGitInit(t, root)
+			ev := coverageEvidenceTable(covWitnessRow("1", "true", statePass, a))
+			writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", "`src/impl.go`", verify, ev)
+			mustWriteFile(t, root, "lib/helper.go", "v2\n")
+			mustGitCommitAll(t, root, "record Evidence; edit the helper")
+			got := soleClaim(t, root, s, tc.opts)
+			if got.Result != tc.want || got.Revision != a {
+				t.Fatalf("want %s at %s, got %+v", tc.want, a, got)
+			}
+			if tc.want == covPass && !strings.Contains(got.Reason, "complete dependency manifest") {
+				t.Fatalf("a selective reuse must state its applicability derivation, got %q", got.Reason)
+			}
+		})
+	}
+}
+
+// TestDeclaredEntriesKeepAll is the defect-class guard for round-5 F6 /
+// security S10: whatever form a `files:` value takes, every backtick span and
+// every word outside the spans reaches the witness scope as an entry, and an
+// unclosed backtick makes the whole declaration untrusted (found=false).
+func TestDeclaredEntriesKeepAll(t *testing.T) {
+	cases := []struct {
+		name, context string
+		want          []string // nil = found must be false
+	}{
+		{"inline plain beside span", "files: `a/x.go`, b/y.go", []string{"a/x.go", "b/y.go"}},
+		{"inline prose", "files: `a/x.go` and b/y.go (new)", []string{"a/x.go", "and", "b/y.go", "(new)"}},
+		{"inline wrapped", "files: `a/x.go`,\n  `b/y.go`", []string{"a/x.go", "b/y.go"}},
+		{"inline span wrapped mid-entry", "files: `a/x.go`, `lib/{a,b,\n  c}.go`", []string{"a/x.go", "lib/{a,b, c}.go"}},
+		{"inline unclosed span", "files: `a/x.go`, `b/y.go", nil},
+		{"bullet prose beside span", "files:\n- `a/x.go` and b/y.go", []string{"a/x.go", "and", "b/y.go"}},
+		{"bullet plain beside bullet span", "files:\n- `a/x.go`\n- b/y.go", []string{"a/x.go", "b/y.go"}},
+		{"bullet unclosed span", "files:\n- `a/x.go\n- b/y.go", nil},
+		{"markdown link", "files: [a/x.go](a/x.go)", []string{"a/x.go"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, found := extractContextDeclaredEntriesRaw("## Context\n" + tc.context + "\n\n## Task\nx\n")
+			if tc.want == nil {
+				if found {
+					t.Fatalf("an unclosed backtick must leave no trusted declaration, got %q", got)
+				}
+				return
+			}
+			if !found || strings.Join(got, "|") != strings.Join(tc.want, "|") {
+				t.Fatalf("want %q, got %q (found=%v)", tc.want, got, found)
+			}
+		})
 	}
 }

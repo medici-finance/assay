@@ -100,14 +100,25 @@ item's revision. The item's revision is the tree the evaluation runs at, resolve
 `verified`→`done` flip the main tip that flip runs at — generally LATER than the brief's
 merge SHA, not the merge SHA itself. A witness counts at the item's revision when its tree
 names that revision exactly, or names an ancestor of it with no path the witness speaks for
-changed in between. A witness speaks for the brief's declared `files:` paths when the brief
-declares them (a declared directory covers everything under it), taken as the union of the
+changed in between. Reusing an ancestor's result needs an explicit applicability
+derivation (the work-input amendment): a `files:` declaration by itself never narrows
+what a witness speaks for, because file non-overlap alone is not proof. Without a
+complete work-input dependency manifest for the brief, a witness speaks for every path
+outside the board's own bookkeeping (`docs/streams/**` and the generated `STATUS.md`),
+and the derivation is that none of those paths changed. Only a complete manifest licenses
+a narrower scope: the brief's declared `files:` entries plus the claim's source
+dependencies (a declared directory covers everything under it), taken as the union of the
 declaration now and as it stood at the witness's commit, so narrowing `files:` after the
-run never shrinks it. When the brief declares nothing, or any declared entry does not
-resolve to a real path at the witness's commit or the item's revision (a brace form, `.`,
-prose, a bare sibling name, a `**` inside a glob), the witness instead speaks for every
-path outside the board's own bookkeeping (`docs/streams/**` and the generated
-`STATUS.md`) — an entry that names nothing never narrows the scope to nothing. It never
+run never shrinks it. Even then, if any declared entry does not resolve to a real path at
+the witness's commit or the item's revision (a brace form, `.`, prose, a bare sibling
+name, a `**` inside a glob), the conservative scope applies. An entry that names nothing
+never narrows the scope to nothing, and every word of a `files:` value counts as an entry,
+so prose can only widen the scope. A manifest's policy, build and environment dependencies
+are fingerprinted at the witness's commit and at the item's revision. A changed one holds
+only the claims that depend on it, as `wrong-revision` naming it; one that cannot be
+fingerprinted is `could-not-check`. A reused `pass` states the revision it is reused at
+and its derivation, and keeps the witness's own revision: an old receipt is never
+retargeted to the new subject. A witness never
 speaks for the files verify and regeneration necessarily write — the generated
 `STATUS.md`, the verify-outcomes log, a stream `README.md`, and brief files — even when
 `files:` names them (any other declared `docs/streams/` artifact stays guarded), and never

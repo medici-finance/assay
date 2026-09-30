@@ -1026,27 +1026,31 @@ func extractContextDeclaredPaths(body string) (paths []string, found bool) {
 	return paths, len(paths) > 0
 }
 
-// extractContextDeclaredEntriesRaw reads the same `files:` label line as
-// extractContextDeclaredPaths, but keeps EVERY cleaned token — including a
+// extractContextDeclaredEntriesRaw reads the same `files:` label as
+// extractContextDeclaredPaths, but keeps EVERY cleaned token, including a
 // dotless one (no '/' and no '.') the path-shape filter would drop, such as a
 // real top-level `Makefile` or a bare directory name. coverage.go's
-// witnessScope is the only consumer: it needs to know about every entry a
-// brief declares, resolvable or not, because a witness scope narrows by
-// OMISSION whenever a real entry never reaches it — round-3 F6 / security
-// pr1682-S6 found exactly that: a dotless real path silently left out of the
-// scope, and a dotless token naming nothing never tripping the conservative
-// fallback, because both were dropped before declaredEntryResolves ever saw
-// them.
+// witnessScope is the only consumer. It needs every entry a brief declares,
+// resolvable or not, because a witness scope narrows by OMISSION whenever a
+// real entry never reaches it (round-3 F6 / security pr1682-S6).
 //
-// Unlike extractContextDeclaredPaths's single blob-wide pass, the BULLETED
-// form here is walked line by line: a bullet or continuation line that
-// itself carries a backtick span contributes each span; one that carries
-// none still contributes its leading token, even inside a `files:` block
-// where OTHER bullets do have backticks. The prior whole-blob pass took
-// ONLY backtick spans the moment any bullet in the block had one, so a
-// plain, backtick-less bullet sitting next to a backticked one contributed
-// nothing at all — silently speaking for nothing instead of forcing the
-// conservative fallback the way an unresolvable entry should.
+// THE DEFECT CLASS this parser guards (round-5 F6 / security S10): a token
+// the author wrote under `files:` is silently dropped, so it can neither
+// widen the scope (a real path left out) nor force the conservative fallback
+// (prose that names nothing). Every form therefore follows one rule,
+// declaredValueTokens: each backtick span is an entry AND each word outside
+// the spans is an entry. Prose such as `and` or `(new)` names no real path,
+// so declaredEntryResolves rejects it and the scope falls back to
+// conservative. Prose can only ever widen what a witness speaks for.
+//
+//   - Inline form (`files: a, b`): the label line plus any indented
+//     continuation lines it wraps onto (probe W2).
+//   - Bulleted form: every bullet and indented continuation line, one line at
+//     a time.
+//   - An unclosed backtick anywhere in the value (probe W1, a span wrapped
+//     mid-entry) makes the value unparseable: found is false, which the
+//     caller reads as "no trustworthy declaration" and so takes the
+//     conservative scope.
 func extractContextDeclaredEntriesRaw(body string) (entries []string, found bool) {
 	ctx := extractSectionByPrefix(body, "Context")
 	if strings.TrimSpace(ctx) == "" {
@@ -1076,59 +1080,60 @@ func extractContextDeclaredEntriesRaw(body string) (entries []string, found bool
 		entries = append(entries, tok)
 	}
 
+	var values []string
 	if inline != "" {
-		inline = mdLinkTextRe.ReplaceAllString(inline, "$1")
-		// When the inline value carries any backtick span, an entry is only
-		// what sits INSIDE a span — the same rule the bulleted form applies
-		// per line. A decorative connector sitting outside every span (a
-		// trailing `(new)`/`(planned)` annotation, a bare `+` or `and`
-		// joining two backticked entries) is not itself a declared entry;
-		// only the path-shape filter told them apart before, which is why a
-		// bare dotless token like that read no differently from a real
-		// dotless path such as `Makefile`. Only a fully backtick-less inline
-        // value (a bare `n/a`, a plain unbackticked path) falls back to a
-        // word split.
-		if spans := backtickSpanRe.FindAllStringSubmatch(inline, -1); len(spans) > 0 {
-			for _, m := range spans {
-				add(m[1])
+		value := inline
+		for _, l := range lines[labelIdx+1:] {
+			t := strings.TrimSpace(l)
+			if t == "" || l == t {
+				break // a blank line or a flush-left line ends the value
 			}
-			return entries, len(entries) > 0
+			value += " " + t
 		}
-		for _, tok := range strings.FieldsFunc(inline, func(r rune) bool {
-			return r == ',' || r == ' ' || r == '\t' || r == '`'
-		}) {
+		values = append(values, value)
+	} else {
+		for _, l := range lines[labelIdx+1:] {
+			t := strings.TrimSpace(l)
+			if t == "" {
+				break
+			}
+			isBullet := strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* ")
+			isIndentedCont := l != t // a leading-whitespace continuation of a bullet
+			if !isBullet && !isIndentedCont {
+				break // a new flush-left label ends the files: block
+			}
+			values = append(values, strings.TrimPrefix(strings.TrimPrefix(t, "- "), "* "))
+		}
+	}
+	for _, v := range values {
+		toks, ok := declaredValueTokens(v)
+		if !ok {
+			return nil, false
+		}
+		for _, tok := range toks {
 			add(tok)
-		}
-		return entries, len(entries) > 0
-	}
-
-	var block []string
-	for _, l := range lines[labelIdx+1:] {
-		t := strings.TrimSpace(l)
-		if t == "" {
-			break
-		}
-		isBullet := strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* ")
-		isIndentedCont := l != t // a leading-whitespace continuation of a bullet
-		if !isBullet && !isIndentedCont {
-			break // a new flush-left label ends the files: block
-		}
-		block = append(block, l)
-	}
-	for _, l := range block {
-		if spans := backtickSpanRe.FindAllStringSubmatch(l, -1); len(spans) > 0 {
-			for _, m := range spans {
-				add(m[1])
-			}
-			continue
-		}
-		t := mdLinkTextRe.ReplaceAllString(strings.TrimSpace(l), "$1")
-		t = strings.TrimPrefix(strings.TrimPrefix(t, "- "), "* ")
-		if f := strings.Fields(t); len(f) > 0 {
-			add(f[0])
 		}
 	}
 	return entries, len(entries) > 0
+}
+
+// declaredValueTokens splits one `files:` value (an inline value, or one
+// bullet's text) into its entries: every backtick span, plus every word
+// outside the spans. A markdown link reads as its text. ok is false when the
+// value has an unclosed backtick, because then no split of it is faithful.
+func declaredValueTokens(v string) (toks []string, ok bool) {
+	v = mdLinkTextRe.ReplaceAllString(v, "$1")
+	if strings.Count(v, "`")%2 != 0 {
+		return nil, false
+	}
+	for _, m := range backtickSpanRe.FindAllStringSubmatch(v, -1) {
+		toks = append(toks, m[1])
+	}
+	outside := backtickSpanRe.ReplaceAllString(v, " ")
+	toks = append(toks, strings.FieldsFunc(outside, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t'
+	})...)
+	return toks, true
 }
 
 // cleanDeclaredPath strips residual decoration from a candidate path token.
