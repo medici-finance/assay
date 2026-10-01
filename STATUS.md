@@ -38,6 +38,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 |---|---|---|---|
 | [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-10-01 |
 | [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-10-01 |
+| [brief-quality](docs/streams/brief-quality/README.md) | P1 | 0/9 | 2026-10-01 |
 | [continuing-operations](docs/streams/continuing-operations/README.md) | P2 | 0/0 | 2026-10-01 |
 | [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-10-01 |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | 4/7 | 2026-10-01 |
@@ -74,7 +75,7 @@ _Held by per-stream caps: 3 brief(s) across 2 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: eb2ec26 2026-10-01T01:53:35Z_
+_last regen: 212ea3e 2026-10-01T12:05:36+10:00_
 
 **Progress:** 5/13 brief items done.
 
@@ -97,7 +98,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: eb2ec26 2026-10-01T01:53:35Z_
+_last regen: 212ea3e 2026-10-01T12:05:36+10:00_
 
 **Progress:** 12/31 brief items done.
 
@@ -285,6 +286,18 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 02 Mechanical responder — file the bug and open a fixing draft PR, autonomously, for the mechanical class — todo (wave 2)
 - 03 Judgement responder — file the bug and route it with a recommended default, for the judgement and opaque classes — todo (wave 2)
 - 04 Never-invisible watchdog — escalate any red whole-tree gate that no responder acted on within N minutes — todo (wave 3)
+
+### brief-quality (9 open)
+
+- 01 Define the brief assessment and outcome contract — todo (wave 0)
+- 02 Ratify acceptance-review and pilot policy — todo (wave 1)
+- 03 Extend brief parsing, lint and templates with six dimensions — todo (wave 2)
+- 04 Rewrite authoring and review procedures around assessed contracts — todo (wave 3)
+- 05 Add portable brief-quality events and immutable snapshots — todo (wave 3)
+- 06 Bind independent acceptance approval to the dispatch contract — todo (wave 4)
+- 07 Collect execution outcomes and adjudicated authoring discoveries — todo (wave 4)
+- 08 Report brief-authoring quality and cost with coverage — todo (wave 5)
+- 09 Evaluate authoring quality and decide whether to expand — todo (wave 6)
 
 ### build-less-brittle (9 open)
 
@@ -688,4 +701,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**24** streams (**18** active, **0** paused, **6** parked) · **104/294** briefs done · completed initiatives: see `docs/archive/`
+**25** streams (**18** active, **0** paused, **7** parked) · **104/303** briefs done · completed initiatives: see `docs/archive/`
