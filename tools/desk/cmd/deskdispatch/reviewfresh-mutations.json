@@ -42,6 +42,30 @@
       "file": "cmd/deskdispatch/reviewguard_test.go",
       "old": "fn, ok := decl.(*ast.FuncDecl)\n\t\tif ok {",
       "new": "fn, ok := decl.(*ast.FuncDecl)\n\t\tif !ok { continue }\n\t\tif ok {"
+    },
+    {
+      "name": "permit executable aliases and unknown program expressions",
+      "file": "cmd/deskdispatch/reviewguard_test.go",
+      "old": "return false\n}\n\nfunc guardSafeGit",
+      "new": "return true\n}\n\nfunc guardSafeGit"
+    },
+    {
+      "name": "let nested closures inherit the outer relay exception",
+      "file": "cmd/deskdispatch/reviewguard_test.go",
+      "old": "!nested[c] && guardBindings(fn, c) && guardRelay",
+      "new": "guardBindings(fn, c) && guardRelay"
+    },
+    {
+      "name": "allow shadowed relay argument bindings",
+      "file": "cmd/deskdispatch/reviewguard_test.go",
+      "old": "if bindings[id.Name] == nil || bindings[id.Name] != id.Obj {",
+      "new": "if false {"
+    },
+    {
+      "name": "reject known literal non-allocation reads",
+      "file": "cmd/deskdispatch/reviewguard_test.go",
+      "old": "case \"rev-parse\", \"fetch\", \"config\", \"remote\":\n\t\treturn true",
+      "new": "case \"rev-parse\", \"fetch\", \"config\", \"remote\":\n\t\treturn false"
     }
   ]
 }
