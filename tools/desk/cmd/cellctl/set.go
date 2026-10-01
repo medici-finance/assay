@@ -15,7 +15,7 @@ import (
 // without --force. The DESK_MODEL_<role>, CODEX_MODEL_<role>, TIER_MODEL_<TIER>_<HARNESS> and
 // CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL} families are matched by shape below — a typo'd
 // role/tier/provider name is refused rather than silently scaffolding a variable nothing reads.
-var cellEnvKnownKeys = strings.Fields(`CELL CELL_KIND CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG
+var cellEnvKnownKeys = strings.Fields(`CELL CELL_KIND CELL_CONTAINER_CONFIG CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG
 FORGE_API_BASE DESKD_ADDR DESKD_INDEX DESKD_APP_PEM DESKD_APP_ID_VAR ORGS GITLAB_GROUP
 GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CODEX_MODEL_default
 CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH CELL_MODEL_POLICY CELL_PROVIDER_DEFAULTS CELL_PROVIDER_OVERRIDES ASSAY_REPAIR_ADMISSION
@@ -120,6 +120,25 @@ func validateKindChange(envfile, kind string, kvs []string) {
 	need := ""
 	switch kind {
 	case "container":
+		e := &Env{vals: map[string]string{}, set: map[string]bool{}}
+		if err := parseCellEnv(e, envfile); err != nil {
+			die("set: %v", err)
+		}
+		for _, kv := range kvs {
+			k, v, ok := splitKV(kv)
+			if ok {
+				e.Put(k, v)
+			}
+		}
+		if cfg := e.Get("CELL_CONTAINER_CONFIG"); cfg != "" {
+			if e.Get("CELL_CONTAINER_LAUNCHER") != "" {
+				die("set: clear CELL_CONTAINER_LAUNCHER when selecting native container configuration")
+			}
+			if !filepath.IsAbs(cfg) || !isRegular(cfg) {
+				die("set: CELL_CONTAINER_CONFIG must be an absolute configuration file")
+			}
+			return
+		}
 		need = "CELL_CONTAINER_LAUNCHER"
 	case "house":
 		need = "CELL_ROOTS"

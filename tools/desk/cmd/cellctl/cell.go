@@ -314,7 +314,14 @@ func loadCell(name string) *Cell {
 		}
 		c.Deskd = "0"
 		l := e.Get("CELL_CONTAINER_LAUNCHER")
-		if !strings.HasPrefix(l, "/") || !isExecFile(l) {
+		if cfg := e.Get("CELL_CONTAINER_CONFIG"); cfg != "" {
+			if l != "" {
+				die("set only CELL_CONTAINER_CONFIG or CELL_CONTAINER_LAUNCHER, not both")
+			}
+			if !filepath.IsAbs(cfg) || !isRegular(cfg) {
+				die("CELL_CONTAINER_CONFIG must be an absolute configuration file")
+			}
+		} else if !strings.HasPrefix(l, "/") || !isExecFile(l) {
 			die("container cell needs an absolute executable CELL_CONTAINER_LAUNCHER")
 		}
 	case "house":

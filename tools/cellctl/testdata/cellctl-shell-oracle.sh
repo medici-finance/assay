@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # cellctl — start, stop and scaffold an Assay CELL on one laptop (the laptop route).
 #
+#   Native Go container cells: new <cell> --kind container --container-config /absolute/cells.json
+#   Native container status/check/up/down use Docker directly; see docs/cellctl.md.
 #   cellctl ls                                   cells under $CELLS_ROOT
 #   cellctl providers init                       Go launcher: create shared $CELLS_ROOT/providers.json
 #                                                per-provider desk models/effort; <cell>/providers.json overrides
