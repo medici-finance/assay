@@ -122,7 +122,7 @@ Lifecycle expectations for the downstream implementations:
 ## Proposed design decision — not approved
 
 The proposed choice is a Go-owned launch record and independently bound permit, distinct
-console/workload identities, and an owner-private atomic store. Alternative designs are
+console/workload identities, and an atomic store accessible only to the owner. Alternative designs are
 direct shell command strings (quoting and environment coupling), PID-only state (reuse),
 and a console lifetime lock for container ownership (lost exclusion after console exit).
 The accepted costs proposed for review are a versioned store, explicit recovery semantics
