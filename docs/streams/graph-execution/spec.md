@@ -212,3 +212,8 @@ event coalescing, durable resource accounting and matched measurement into unfin
 briefs 03, 09, 14, 16 and 18. It keeps one evaluator, record family and reservation seam.
 The deterministic parent performs observation/dispatch; models perform scoped work.
 No universal prefix/turn limit is introduced, and existing activation gates remain.
+
+
+## Routed task execution amendment — 2026-10-02
+
+[Task workflow program](task-workflow-program.md) permits a thin executable host over the existing contracts and routes it to 19–25. This is the narrow exception to the original new-orchestration-platform exclusion; it does not authorize a second scheduler authority, credential broker, live trial or change to human gates. Existing consumers remain compatible.

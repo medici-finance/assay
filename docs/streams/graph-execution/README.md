@@ -83,8 +83,8 @@ or removing any human gate (spec §5 states the divergence).
 | 02 | [Workflow-pattern schema, node contract, and the implementation and research patterns](brief-02-pattern-schema-and-node-contract.md) | 0 | L | implemented | — | — |
 | 03 | [Evidence coverage rule and the observe evidence kind](brief-03-evidence-coverage-rule.md) | 1 | L | implemented | — | — |
 | 04 | [Recovery contract for effect-bearing nodes in drainloop](brief-04-recovery-contract.md) | 1 | L | todo | — | — |
-| 05 | [Offline two-pattern experiment on frozen fixtures](brief-05-offline-experiment.md) | 2 | L | todo | — | — |
-| 06 | [Run records and the replay/learning loop](brief-06-run-records-and-replay.md) | 3 | L | todo | — | — |
+| 05 | [Offline two-pattern experiment on frozen fixtures](brief-05-offline-experiment.md) | 5 | L | todo | — | — |
+| 06 | [Run records and the replay/learning loop](brief-06-run-records-and-replay.md) | 6 | L | todo | — | — |
 | 07 | [Flow instruments — service/wait split, CI-slot saturation, gate catch/override](brief-07-flow-instruments.md) | 1 | M | implemented | — | — |
 | 08 | [Signal-triggered pattern — incident and regression](brief-08-signal-triggered-pattern.md) | 1 | M | todo | — | — |
 | 09 | [Versioned workflow instances and shared identity](brief-09-instance-contract.md) | 1 | M | todo | — | — |
@@ -93,10 +93,17 @@ or removing any human gate (spec §5 states the divergence).
 | 12 | [Reproducible decision evaluation and calibration manifests](brief-12-decision-evaluation.md) | 2 | M | todo | — | — |
 | 13 | [Deterministic admission over facts and bounded probabilistic advice](brief-13-agentic-admission.md) | 1 | M | todo | — | — |
 | 14 | [Bind admission and graph eligibility at the dispatch boundary](brief-14-admission-dispatch-binding.md) | 3 | M | todo | — | — |
-| 15 | [Control profiles and complete scoped evidence exports](brief-15-control-evidence.md) | 4 | L | todo | — | — |
+| 15 | [Control profiles and complete scoped evidence exports](brief-15-control-evidence.md) | 7 | L | todo | — | — |
 | 16 | [Cell ownership, cumulative budgets and restoration fencing](brief-16-cell-ownership-budgets.md) | 2 | L | todo | — | — |
-| 17 | [Graph-linked release and outcome records without new authority](brief-17-lifecycle-links.md) | 4 | M | todo | — | — |
-| 18 | [Offline graph, advice and assurance integration proof](brief-18-assurance-experiment.md) | 5 | M | todo | — | — |
+| 17 | [Graph-linked release and outcome records without new authority](brief-17-lifecycle-links.md) | 7 | M | todo | — | — |
+| 18 | [Offline graph, advice and assurance integration proof](brief-18-assurance-experiment.md) | 9 | M | todo | — | — |
+| 19 | [Durable instance store and production coverage binding](brief-19-durable-instance-store.md) | 2 | M | todo | — | — |
+| 20 | [Role runner protocol and offline conformance kit](brief-20-runner-contract.md) | 3 | M | todo | — | — |
+| 21 | [Deterministic task controller with durable dispatch and waits](brief-21-controller-host.md) | 4 | M | todo | — | — |
+| 22 | [First pinned local harness adapter and qualification fixtures](brief-22-local-harness-adapter.md) | 4 | M | todo | — | — |
+| 23 | [Immutable candidate workspaces and independent check inputs](brief-23-candidate-workspaces.md) | 4 | M | todo | — | — |
+| 24 | [Versioned author implement review pattern with bounded repair](brief-24-internal-specialist-pattern.md) | 7 | M | todo | — | — |
+| 25 | [Exact-candidate publication and independent review evidence bridge](brief-25-publication-review-bridge.md) | 8 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Structured-work amendment (2026-09-30)
@@ -180,3 +187,32 @@ receipt. Do not add both the old migration package estimate and its graph equiva
 
 Source refresh 2026-09-19: public Assay `e4109205751a219330b954f75855c05b4be2a5c8`;
 01 verification is now recorded. No changes to the proposed 09–18 target seams were found.
+
+## Task workflow execution routing — 2026-10-02
+
+[The execution extension](task-workflow-program.md) is routed into **19–25**, all todo.
+It permits one thin controller host over existing contracts; the earlier platform exclusion
+continues to prohibit a second scheduler authority, broker, graph store or duplicate evaluator.
+Existing 04/05/06/09/14/16/18 carry consumer/flow amendments. Implemented and completed records
+01/02/03/07/10 remain intact. New source scopes/tests are deliverables, not executed evidence.
+
+The current execution path supersedes the historical critical-path prose above for this extension:
+
+```
+02 -> 09 + 03 -> 19 store/binding
+04 + 09 -> 16 -> 20 runner (also 19)
+10 -> 13 -> 14 (also 01,09,16)
+19 + 20 + 04 + 14 -> 21 controller -> 05 experiment -> 06 records
+20 -> 22 first adapter
+19 + 20 -> 23 immutable workspace
+21 + 23 + 06 -> 24 internal loop -> 25 publication -> 18 integrated proof
+```
+
+The offline host does not wait for live adoption. The verified public experiment/record/flow
+and assurance contracts remain prerequisites for an adopter's live trial as declared there.
+The first unblocking work is 09 and 04 with pure admission 13 alongside them. Model invocation
+alone does not supply recovery or ownership. 22 is independently qualified; no production
+provider calls, automatic fallback or live authority changes are commissioned by these briefs.
+
+Dependency waves (including the existing graph/advice branches) are the authoring table above;
+`wave` is recalculated from in-repo `depends`, while adopter gates remain outside this graph.

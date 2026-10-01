@@ -9,7 +9,9 @@ why: >-
   lets a policy change be one YAML line instead of an edit to a desk's routing code.
 wave: 0
 depends: []
-unblocks: ["graph-execution/05", "graph-execution/07"]
+unblocks:
+- graph-execution/05
+- graph-execution/07
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

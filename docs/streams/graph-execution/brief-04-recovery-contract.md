@@ -9,7 +9,10 @@ why: >-
   thing a retry must find first, so an interrupted run is reconciled, never repeated.
 wave: 1
 depends: ["graph-execution/02"]
-unblocks: ["graph-execution/05"]
+unblocks:
+- graph-execution/05
+- graph-execution/21
+- graph-execution/25
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -17,22 +20,38 @@ issues: []
 schema: brief-v2
 authored: 2026-09-16 by graph-execution authoring session (fable-5.1, author-brief)
 sources:
-  - "docs/streams/graph-execution/admission-assurance-spec.md — 2026-09-18 integration amendment"
-  - "freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f"
-  - "docs/streams/graph-execution/spec.md §2.4 (recovery semantics beyond an audit log; the lost-acknowledgment case) and §4 (the recovery case in the experiment)"
-  - "drainloop/journal.go (Journal contract: 'a returned error is logged but does not abort the drain') and drainloop/engine.go `Config.record` (the best-effort implementation of that contract)"
-  - "drainloop/item.go (Item carries ID, Implementer, Payload, Retry — no run or attempt identity) and drainloop/retry.go (the three-state retry taxonomy this brief's Reconcile step runs before)"
-  - "docs/three-state-instrument-rule.md (a receipt lookup that cannot read the authoritative record is could-not-check, never 'not found')"
-  - "Temporal workshop: deterministic orchestration over nondeterministic activities at https://youtu.be/QjVpE6-G18U?t=306, retry/recovery demonstration at https://youtu.be/QjVpE6-G18U?t=1209 — motivation only; it does not demonstrate lost-acknowledgment recovery"
-  - "freshness-checked 2026-09-16 @ d96fd3ba: `grep -rn 'Effect\\b\\|Receipt\\|RunID\\|AttemptID\\|Reconcile\\|idempoten' drainloop/*.go` returns only the three 'Release is idempotent' comments in engine.go, engine_test.go and claim.go — no effect adapter, receipt, run/attempt identity or reconcile step exists; not already satisfied"
+- docs/streams/graph-execution/admission-assurance-spec.md — 2026-09-18 integration amendment
+- freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
+- docs/streams/graph-execution/spec.md §2.4 (recovery semantics beyond an audit log; the lost-acknowledgment case)
+  and §4 (the recovery case in the experiment)
+- 'drainloop/journal.go (Journal contract: ''a returned error is logged but does not abort the drain'') and drainloop/engine.go
+  `Config.record` (the best-effort implementation of that contract)'
+- drainloop/item.go (Item carries ID, Implementer, Payload, Retry — no run or attempt identity) and drainloop/retry.go
+  (the three-state retry taxonomy this brief's Reconcile step runs before)
+- docs/three-state-instrument-rule.md (a receipt lookup that cannot read the authoritative record is could-not-check,
+  never 'not found')
+- 'Temporal workshop: deterministic orchestration over nondeterministic activities at https://youtu.be/QjVpE6-G18U?t=306,
+  retry/recovery demonstration at https://youtu.be/QjVpE6-G18U?t=1209 — motivation only; it does not demonstrate
+  lost-acknowledgment recovery'
+- 'freshness-checked 2026-09-16 @ d96fd3ba: `grep -rn ''Effect\b\|Receipt\|RunID\|AttemptID\|Reconcile\|idempoten''
+  drainloop/*.go` returns only the three ''Release is idempotent'' comments in engine.go, engine_test.go and claim.go
+  — no effect adapter, receipt, run/attempt identity or reconcile step exists; not already satisfied'
+- docs/streams/graph-execution/task-workflow-program.md — execution routing amendment 2026-10-02
+- freshness-checked 2026-10-02 @ a944ad1103aadaba919c11fe425089057f5c2f4e
 exec-tier: strong
 exec-tier-why: "(c) concurrency and safety plumbing — a subtle ordering error (record after apply, or reconcile after retry) passes every happy-path test and only shows as a duplicated external effect in production; (a) the receipt/idempotency-key shape is a design decision the facts do not fully pre-specify."
 domain: complicated
 consumers:
-  - "drainloop/README.md §Optional layers (the Journal row's 'best-effort' wording is now conditional on whether the adapter registers effects): follow-up graph-execution/04 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "docs/streams/graph-execution/spec.md §3 seam table row 'Drain engine' (state text): out-of-scope (the spec describes the starting state; the stream README's end-state paragraph is the forward statement)"
-  - "graph-execution/05's experiment harness (the recovery case consumes the Effect/Receipt/Reconcile seam by name): follow-up graph-execution/05"
-version: 2
+- 'drainloop/README.md §Optional layers (the Journal row''s ''best-effort'' wording is now conditional on whether
+  the adapter registers effects): follow-up graph-execution/04 (this brief; flips to fixed-here when the implementation
+  edits the path)'
+- 'docs/streams/graph-execution/spec.md §3 seam table row ''Drain engine'' (state text): out-of-scope (the spec
+  describes the starting state; the stream README''s end-state paragraph is the forward statement)'
+- 'graph-execution/05''s experiment harness (the recovery case consumes the Effect/Receipt/Reconcile seam by name):
+  follow-up graph-execution/05'
+- 'workflow/controller: follow-up graph-execution/21'
+- 'workflow/publication: follow-up graph-execution/25'
+version: 3
 id: 961a1aa6-80a6-4712-b8ca-5a71cbdf6ece
 ---
 
@@ -59,6 +78,12 @@ facts:
 
 This remains the basic mandatory-intent/receipt/reconcile contract. Apply it to EVERY declared external effect, including a non-effect-kind node legally declaring effects within its output boundary under pattern §4.2.2; do not let node kind bypass recording. Keys bind logical run, operation, target and subject, NOT attempt, so retries reuse the same operation key. Preserve succeeded/failed/unknown outcomes and hold an unreadable lookup. Cell fencing/cumulative budgets are the separate extension 16; do not enlarge this brief into that work.
 
+## Task workflow amendment — 2026-10-02
+
+Controller launches and publication use this intent/receipt protocol. Preserve stable operation keys across attempts. Replace any unconditional exactly-once claim with the provider-specific enforced boundary: if dedupe or authoritative receipt lookup is unavailable, an unknown result holds; it never licenses a blind retry. The controller is a consumer, not another effect journal.
+
+Implement the named failure/flow case below in the declared test surface. This amendment does not record implementation evidence or authorize live activation.
+
 ## Task
 1. **Identity.** Add `RunID` and `AttemptID` to `Item` (`drainloop/item.go`): `RunID` is stable across attempts of one unit of work; `AttemptID` is minted per dispatch. Document that a queue re-selecting a failed item keeps `RunID` and mints a new `AttemptID`. Both are strings; empty means "the adapter did not assign one", legal only for items with no declared external effects (step 3).
 2. **Effect adapter** (`drainloop/effect.go` (planned)):
@@ -81,7 +106,7 @@ This remains the basic mandatory-intent/receipt/reconcile contract. Apply it to 
    - `TestIntentRecordFailureAbortsEffect` (planned): sink errors on `EFFECT-INTENT` → store has ZERO records; item lands `VerdictError`.
    - `TestReceiptCouldNotCheckHolds` (planned): store returns an error → `VerdictHold`, zero `Apply`.
    - `TestNonEffectJournalStaysBestEffort` (planned): a sink error on `CLAIM` still does not abort (the existing `TestJournalRecordsScheduling` semantics for non-effect kinds).
-6. **Docs.** `drainloop/README.md`: a §Effect layer subsection under §Optional layers stating the reconcile → intent → apply → done order and the conditional journal contract; the Journal row's wording updated. `docs/enforcement-model.md`: one row stating that the recovery contract ENFORCES exactly-once *within adapters that route effects through this layer* and only ATTRIBUTES for anything that bypasses it. `changelog/graph-execution-04-recovery-contract.md` (planned).
+6. **Docs.** `drainloop/README.md`: a §Effect layer subsection under §Optional layers stating the reconcile → intent → apply → done order and the conditional journal contract; the Journal row's wording updated. `docs/enforcement-model.md`: one row stating that the recovery contract states the adapter-specific idempotency/fencing guarantee and holds unknown outcomes where it cannot enforce deduplication; bypasses are only ATTRIBUTED. `changelog/graph-execution-04-recovery-contract.md` (planned).
 
 ## Verify
 | # | Class | Command | Expect |
@@ -96,6 +121,7 @@ This remains the basic mandatory-intent/receipt/reconcile contract. Apply it to 
 | 8 | check +flow | `cd drainloop && GOWORK=off go run ./cmd/demo > /tmp/ge04-demo.txt 2>&1; grep -c LAND /tmp/ge04-demo.txt` | 5 — the demo's five non-effect items still drain unchanged with the layer off |
 | 9 | check | `statusgen --root . --consumers --diff-base $(git merge-base HEAD origin/main)` | exit 0 — the `consumers:` routing above is corroborated by the diff |
 | 10 | check:ci +mutation | `cd drainloop && GOWORK=off go test -count=1 -v -run TestDeclaredEffectCannotBypassJournal ./...` | exit 0; named test PASS; an artifact node with a declared effect cannot bypass mandatory intent recording |
+| 11 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestEffectUnsupportedIdempotencyHolds$" ./... > "$routing_out" && grep -q -- "--- PASS: TestEffectUnsupportedIdempotencyHolds " "$routing_out")` | exit 0; named PASS; unreadable receipt and unsupported dedupe never permit a duplicate Apply |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —

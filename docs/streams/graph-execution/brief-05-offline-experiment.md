@@ -8,9 +8,16 @@ why: >-
   fixtures anyone can re-run, with a written comparison. If a one-line change to a
   declaration cannot change what gets dispatched without touching routing code, the stream
   has not earned a real-work trial.
-wave: 2
-depends: ["graph-execution/01", "graph-execution/02", "graph-execution/03", "graph-execution/04", "graph-execution/09"]
-unblocks: ["graph-execution/06"]
+wave: 5
+depends:
+- graph-execution/01
+- graph-execution/02
+- graph-execution/03
+- graph-execution/04
+- graph-execution/09
+- graph-execution/21
+unblocks:
+- graph-execution/06
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -18,17 +25,28 @@ issues: []
 schema: brief-v2
 authored: 2026-09-16 by graph-execution authoring session (fable-5.1, author-brief)
 sources:
-  - "docs/streams/graph-execution/admission-assurance-spec.md — 2026-09-18 integration amendment"
-  - "freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f"
-  - "docs/streams/graph-execution/spec.md §4 (the eight cases, the baseline comparison, the three pass criteria) and §2 (the first correctness milestone: a declaration change alters dispatch with zero routing-code diff)"
-  - "graph-execution/01 (the `statusgen --eligibility --json` verdicts the harness reads), graph-execution/02 (`spec/workflow-patterns/implementation-v1.yaml` (planned) and `research-v1.yaml` (planned) — the two patterns under test), graph-execution/03 (`statusgen --coverage --json`), graph-execution/04, id assay:assay:graph-execution:04 (the drainloop Effect/Receipt/Reconcile layer the recovery case exercises; this brief is the follow-up 04 routes its harness consumer to)"
-  - "statusgen/testdata/ (the fixture-tree convention this brief follows: one directory per check, e.g. `statusgen/testdata/v2-smoke`, `statusgen/testdata/verifyrun`) and fixtures/ (the untrusted-corpus convention, NOT used here — those fixtures are adversarial inputs, these are frozen repo trees)"
-  - "Rajamohan: test valid outcomes and constraints, not obedience to one sequence, https://youtu.be/BIBDhLDgMdE?t=434 — the reason the comparison scores outcome and permitted route, not exact step order"
-  - "freshness-checked 2026-09-16 @ d96fd3ba: `ls statusgen | grep -i 'experiment\\|replay\\|coverage\\|eligib'` returns nothing and `grep -rn 'experiment' statusgen/main.go` returns nothing — no harness or subcommand exists; not already satisfied"
+- docs/streams/graph-execution/admission-assurance-spec.md — 2026-09-18 integration amendment
+- freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
+- 'docs/streams/graph-execution/spec.md §4 (the eight cases, the baseline comparison, the three pass criteria) and
+  §2 (the first correctness milestone: a declaration change alters dispatch with zero routing-code diff)'
+- graph-execution/01 (the `statusgen --eligibility --json` verdicts the harness reads), graph-execution/02 (`spec/workflow-patterns/implementation-v1.yaml`
+  (planned) and `research-v1.yaml` (planned) — the two patterns under test), graph-execution/03 (`statusgen --coverage
+  --json`), graph-execution/04, id assay:assay:graph-execution:04 (the drainloop Effect/Receipt/Reconcile layer
+  the recovery case exercises; this brief is the follow-up 04 routes its harness consumer to)
+- 'statusgen/testdata/ (the fixture-tree convention this brief follows: one directory per check, e.g. `statusgen/testdata/v2-smoke`,
+  `statusgen/testdata/verifyrun`) and fixtures/ (the untrusted-corpus convention, NOT used here — those fixtures
+  are adversarial inputs, these are frozen repo trees)'
+- 'Rajamohan: test valid outcomes and constraints, not obedience to one sequence, https://youtu.be/BIBDhLDgMdE?t=434
+  — the reason the comparison scores outcome and permitted route, not exact step order'
+- 'freshness-checked 2026-09-16 @ d96fd3ba: `ls statusgen | grep -i ''experiment\|replay\|coverage\|eligib''` returns
+  nothing and `grep -rn ''experiment'' statusgen/main.go` returns nothing — no harness or subcommand exists; not
+  already satisfied'
+- docs/streams/graph-execution/task-workflow-program.md — execution routing amendment 2026-10-02
+- freshness-checked 2026-10-02 @ a944ad1103aadaba919c11fe425089057f5c2f4e
 exec-tier: strong
 exec-tier-why: "(b) correctness depends on cross-artifact reasoning — the harness joins four briefs' outputs (eligibility, patterns, coverage, recovery) into one verdict per case, and a harness that quietly exercises only one of them still prints a full table; (a) the fixture design for the 'reviewed revision to pending work' case is not pre-specified by the facts."
 domain: complicated
-version: 2
+version: 3
 id: 83c0aedc-ef16-4e28-9b89-5d3e8bdafb3a
 ---
 
@@ -56,6 +74,12 @@ facts:
 
 Consume workflow instances from 09 rather than define a private harness instance shape. The original eight cases, baseline and zero-routing-code-diff proof remain unchanged. This experiment stays deterministic and offline, with no model weights, provider service or calibration requirement. The expanded advice/assurance integration is 18.
 
+## Task workflow amendment — 2026-10-02
+
+Run the graph arm through 21’s production controller and 19’s binding adapter with fake runners/effects. Retain the independent fixed-procedure baseline and original cases; do not hand-code another scheduling algorithm inside the experiment. No real model or forge operation.
+
+Implement the named failure/flow case below in the declared test surface. This amendment does not record implementation evidence or authorize live activation.
+
 ## Task
 1. **Fixtures.** Create `statusgen/testdata/graph-execution/<NN>-<case>/` (planned) for the eight cases, each a minimal streams tree (README + briefs with brief-v2 frontmatter, the pattern instance, Evidence rows or witness files where the case needs them) plus `case.yaml`: `pattern:`, `edit:` (the one-line declaration change, cases 2 and 5), `expect:` (eligibility verdict, coverage released yes/no, effect count, journal kinds).
 2. **Harness.** `statusgen experiment --root <fixture-dir> [--json]` (planned): runs the graph path (eligibility → pattern instantiation → coverage → drainloop with the Effect layer over an in-memory authoritative store) and the baseline path over the same fixture, evaluates the three criteria, and prints one row per case: `case | pattern | baseline outcome | graph outcome | criteria a/b/c | evidence refs`. Exit 0 only when every `expect:` matches; any could-not-check in an input is reported as such and fails the run (it is never rounded to pass).
@@ -75,6 +99,7 @@ Consume workflow instances from 09 rather than define a private harness instance
 | 7 | check +neighbour | `cd statusgen && go test -run 'TestBriefV2' ./... && go test -run 'TestNextUp' ./...` | exit 0 — the readers the harness sits on are unchanged by the fixtures being added under testdata |
 | 8 | check +flow | `cd statusgen && go run . experiment --root testdata/graph-execution/01-fanout-join --json > /tmp/ge05-01.json; grep -c '"released": true' /tmp/ge05-01.json` | ≥ 1 — one case runs eligibility → coverage → drainloop end to end and releases the join node, so the four seams are wired, not stubbed |
 | 9 | check | `grep -c 'example-org' statusgen/testdata/graph-execution/*/case.yaml` | every file ≥ 1; and `grep -rn -i -e '-private' -e '~/.config' statusgen/testdata/graph-execution/` returns nothing — the fixtures carry placeholders only |
+| 10 | check:ci +flow +mutation | `(cd statusgen && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestExperimentUsesControllerContract$" ./... > "$routing_out" && grep -q -- "--- PASS: TestExperimentUsesControllerContract " "$routing_out")` | exit 0; named PASS; altered declaration changes dispatch through production seam while baseline stays independent |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —

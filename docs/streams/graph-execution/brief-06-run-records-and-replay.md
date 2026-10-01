@@ -8,9 +8,10 @@ why: >-
   one failed run into a replay fixture, proposes one reviewed pattern revision from it, and
   proves the revision fixes the motivating cases without changing the ones it did not touch.
   A human decides what ships; the loop proposes, it never promotes.
-wave: 3
+wave: 6
 depends: ["graph-execution/05", "graph-execution/09"]
-unblocks: []
+unblocks:
+- graph-execution/24
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -18,18 +19,31 @@ issues: []
 schema: brief-v2
 authored: 2026-09-16 by graph-execution authoring session (fable-5.1, author-brief)
 sources:
-  - "docs/streams/graph-execution/admission-assurance-spec.md — 2026-09-18 integration amendment"
-  - "freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f"
-  - "docs/streams/graph-execution/spec.md §2.5 (run record → recurring failure → replay fixture → small change → regression over motivating cases and holdouts → reviewed next version; outcome and permitted method scored independently) and §4 (one incident-derived improvement replayed over its motivating cases and unchanged holdouts)"
-  - "graph-execution/05 (the eight fixtures and the `statusgen experiment` harness this brief replays through; the failed run its replay fixture derives from) and graph-execution/02 (`spec/workflow-pattern-v1.md` (planned) — the `supersedes:` and `version:` keys a v2 pattern file carries)"
-  - "schemas/desksupervise-status-v1.json (the JSON-schema convention this repo uses for a machine-readable contract: `$id` under schemas/, `additionalProperties: false`, every field three-state per docs/three-state-instrument-rule.md) and schemas/brief-v2.json"
-  - "Replit: trace-to-PR at https://youtu.be/J8XxVnqUjYE?t=260, the human ship/wait/drop decision at https://youtu.be/J8XxVnqUjYE?t=292 — the reason promotion is a review, never an automatic step"
-  - "freshness-checked 2026-09-16 @ d96fd3ba: `ls schemas | grep -i run` returns nothing and `grep -rln 'run-record' docs statusgen schemas` returns only this stream's spec and README — no run-record schema or replay path exists; not already satisfied"
+- docs/streams/graph-execution/admission-assurance-spec.md — 2026-09-18 integration amendment
+- freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
+- docs/streams/graph-execution/spec.md §2.5 (run record → recurring failure → replay fixture → small change → regression
+  over motivating cases and holdouts → reviewed next version; outcome and permitted method scored independently)
+  and §4 (one incident-derived improvement replayed over its motivating cases and unchanged holdouts)
+- graph-execution/05 (the eight fixtures and the `statusgen experiment` harness this brief replays through; the
+  failed run its replay fixture derives from) and graph-execution/02 (`spec/workflow-pattern-v1.md` (planned) —
+  the `supersedes:` and `version:` keys a v2 pattern file carries)
+- 'schemas/desksupervise-status-v1.json (the JSON-schema convention this repo uses for a machine-readable contract:
+  `$id` under schemas/, `additionalProperties: false`, every field three-state per docs/three-state-instrument-rule.md)
+  and schemas/brief-v2.json'
+- 'Replit: trace-to-PR at https://youtu.be/J8XxVnqUjYE?t=260, the human ship/wait/drop decision at https://youtu.be/J8XxVnqUjYE?t=292
+  — the reason promotion is a review, never an automatic step'
+- 'freshness-checked 2026-09-16 @ d96fd3ba: `ls schemas | grep -i run` returns nothing and `grep -rln ''run-record''
+  docs statusgen schemas` returns only this stream''s spec and README — no run-record schema or replay path exists;
+  not already satisfied'
+- docs/streams/graph-execution/task-workflow-program.md — execution routing amendment 2026-10-02
+- freshness-checked 2026-10-02 @ a944ad1103aadaba919c11fe425089057f5c2f4e
 exec-tier: strong
 exec-tier-why: "(a) the run-record field set and the replay-fixture derivation are design decisions the facts do not fully pre-specify; (b) correctness is cross-artifact — a pattern revision, its regression run and the holdout assertion must agree, and a loop that scores outcome only would silently reward a route that broke a constraint."
 domain: complex
-version: 2
+version: 3
 id: 227c272b-dc4c-4528-9066-9e8db14d223d
+consumers:
+- 'workflow/internalreview: follow-up graph-execution/24'
 ---
 
 # Brief 06 — Run records and the replay/learning loop
@@ -56,8 +70,14 @@ facts:
 
 This is the single run-record/replay schema owner. Use 09 instance and canonical Cell/work/node identities; record immutable input/acceptance/policy references, effect receipts, assessment/policy references when present, source freshness and provenance. Add compatible optional extension fields or version the schema with explicit reader refusal for mandatory semantics. Sensitive payloads are permissioned references, not embedded transcripts. Do not copy this record into a second migration schema. Learned selection is only a recorded reason tied to a separate assessment; policy still controls admission.
 
+## Task workflow amendment — 2026-10-02
+
+Include internal stage attempts, findings/dispositions, candidate identity and publication receipts in the existing run record. Resolve actor roles against approved versioned bindings rather than a hard-coded count of desk sessions. Count failed/abandoned attempts and preserve method versus outcome scoring. No extra workflow run-record family.
+
+Implement the named failure/flow case below in the declared test surface. This amendment does not record implementation evidence or authorize live activation.
+
 ## Task
-1. **Schema.** `schemas/run-record-v1.json` (planned) per the facts; `$id` under `schemas/`, `additionalProperties: false`, `required` lists every top-level field. `statusgen/runrecord.go` (planned): `WriteRunRecord` and `ValidateRunRecord`; the validator refuses a record with an unknown field, a non-enumerated `selected_because` or `interventions[].kind`, or a `by_role` that is not one of the five role names.
+1. **Schema.** `schemas/run-record-v1.json` (planned) per the facts; `$id` under `schemas/`, `additionalProperties: false`, `required` lists every top-level field. `statusgen/runrecord.go` (planned): `WriteRunRecord` and `ValidateRunRecord`; the validator refuses a record with an unknown field, a non-enumerated `selected_because` or `interventions[].kind`, or a `by_role` not present in the pinned approved role bindings.
 2. **Emit.** `statusgen experiment` (from 05) writes one run record per case to `--records-dir` (planned flag); `TestExperimentEmitsValidRecords` (planned) validates every emitted record against the schema.
 3. **Replay.** `statusgen replay --record <file> --root <fixture> [--pattern-version N] [--json]` (planned): re-runs and diffs per node; exit 0 only on no divergence; a could-not-check input is reported and fails the run.
 4. **Fixture + revision.** Derive `statusgen/testdata/graph-execution/replay/` (planned) from one failed 05 run (facts). Author `spec/workflow-patterns/<name>-v2.yaml` (planned) with `supersedes:` and a one-line `changed:` rationale. Run the 02 pattern lint over it.
@@ -78,6 +98,7 @@ This is the single run-record/replay schema owner. Use 09 instance and canonical
 | 9 | check +flow | `cd statusgen && go run . experiment --root testdata/graph-execution/replay --records-dir /tmp/ge06-one > /dev/null; go run . replay --record /tmp/ge06-one/*.json --root testdata/graph-execution/replay; echo rc=$?` | `rc=0` — a record written by one run replays cleanly through the other subcommand: emit → validate → replay is one path, not three |
 | 10 | check +dereference | `grep -n -i 'promot' docs/lifecycle.md` | ≥ 1 line and it states the revision lands as a reviewed pull request; a lifecycle doc that describes an automatic promotion fails the reviewer's reading |
 | 11 | check:ci +flow | `cd statusgen && go test -count=1 -v -run TestRunRecordInstanceReferencesRoundTrip ./...` | exit 0; named test PASS; instance, subject and optional assessment references survive emit/validate/replay |
+| 12 | check:ci +flow +mutation | `(cd statusgen && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunRecordInternalAttemptAccounting$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunRecordInternalAttemptAccounting " "$routing_out")` | exit 0; named PASS; dropped failed attempt changes cost verdict; unbound role is rejected |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —

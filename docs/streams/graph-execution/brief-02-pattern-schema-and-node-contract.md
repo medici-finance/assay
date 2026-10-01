@@ -10,7 +10,11 @@ why: >-
   something a reviewer can approve and a tool can refuse.
 wave: 0
 depends: []
-unblocks: ["graph-execution/03", "graph-execution/04", "graph-execution/05", "graph-execution/08"]
+unblocks:
+- graph-execution/03
+- graph-execution/04
+- graph-execution/05
+- graph-execution/08
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

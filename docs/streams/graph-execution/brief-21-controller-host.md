@@ -1,0 +1,91 @@
+---
+brief: assay:assay:graph-execution:21
+title: Deterministic task controller with durable dispatch and waits
+why: Queue mechanics should survive sessions and invoke a model only when a work item becomes actionable.
+wave: 4
+depends:
+- graph-execution/19
+- graph-execution/20
+- graph-execution/04
+- graph-execution/14
+unblocks:
+- graph-execution/05
+- graph-execution/24
+effort: M
+gate: model
+risk:
+  regulatory: 'no'
+  customer: 'no'
+  irreversible: 'no'
+  sensitive-data: 'no'
+issues: []
+schema: brief-v2
+authored: 2026-10-02 by task-workflow authoring session
+sources:
+- docs/streams/graph-execution/task-workflow-program.md
+- freshness-checked 2026-10-02 @ a944ad1103aadaba919c11fe425089057f5c2f4e
+exec-tier: strong
+exec-tier-why: Durable state, authority and cross-component failure cases require design judgment.
+domain: complicated
+consumers:
+- 'workflow/internalreview: follow-up graph-execution/24'
+- 'statusgen/assuranceexperiment.go: follow-up graph-execution/18'
+- 'operator clients: out-of-scope (consume the published protocol through their own adoption gates)'
+version: 1
+id: 008dd7b9-6421-42bd-b6c6-d3c495837fa8
+---
+
+# Brief 21 — Deterministic task controller with durable dispatch and waits
+
+## Context
+
+files: `workflow/controller/` (planned), `workflow/cmd/assay-workflow/` (planned), `workflow/testdata/controller/` (planned), `workflow/README.md` (planned), `docs/enforcement-model.md` (planned), `changelog/graph-execution-21-controller-host.md` (planned).
+
+facts: The graph instance, admission and recovery contracts are the canonical source. The workflow module is new at the inspected revision. Existing role capabilities and human merge/verification gates remain binding. All named commands/tests below are implementation deliverables, not tests already run.
+
+single-point-of-failure: controller correctness alone is insufficient — independently enforcing effect/role boundaries and fixture oracles must still reject a bypass.
+
+## Read first
+
+- [Task workflow specification](task-workflow-program.md).
+- [Stream dependencies and rollout](README.md).
+- [Structured input contract](work-input-amendment.md).
+
+## Ground rules
+
+- Work in an isolated branch; no merge, deployment or live infrastructure contact.
+- Offline fixtures/fake providers only in this brief; a concrete adapter does not authorize provider calls.
+- Stop at implemented; independent verification owns verified/done.
+- Preserve one canonical work identity and one claim authority; no credentials in packets or results.
+
+## Task
+
+1. Implement the executable host over 19 storage, 20 runner protocol and existing eligibility/admission/reservation/effect interfaces. Input events trigger reconciliation; periodic reconciliation recovers missed notifications. Reuse the callable admission boundary, never a copied router or a second claim service.
+2. Durably record dispatch reason/fingerprint and launch intent; dedupe unchanged events at the authoritative owner boundary. Confirmed failed launch may retry with a new attempt; unknown launch/effect reconciles first. Persist typed human/external waits without a live model session.
+3. Implement pause-admission, drain, cancellation intent and passive restore. Recheck subject/acceptance/policy/generation at result acceptance. Every accepted transition is atomic or fenced. A lease expiration does not prove an old provider request stopped.
+4. Expose read-only versioned snapshot/export and narrow operator commands through authenticated local control, with no generic arbitrary-command or caller-selected-role endpoint. Effect credentials stay in separate role executors. The first host profile is single controller on durable local storage; no active-active mode.
+5. Exercise the complete connected fake-runner/effect corpus, including direct boundary bypass. CLI default is offline/dry-run and prints no secret values. Document limits and CI cross-module coverage; live adoption is separately gated.
+
+## Interface contract
+
+Pinned instance/attempt/subject and actor capability enter; typed state, evidence and receipts leave with the same identity. Unknown outcomes remain unknown. Consumers must refuse unsupported mandatory fields and stale generations.
+
+## Verify
+
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 1 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerDuplicateAndRetry$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerDuplicateAndRetry " "$routing_out")` | exit 0; named PASS; same-state notifications launch once and a definite failed launch retries |
+| 2 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerCrashUnknownAndPause$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerCrashUnknownAndPause " "$routing_out")` | exit 0; named PASS; crash recovery retains pause/spend and reconciles unknown effects before resuming |
+| 3 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerStaleAcceptanceAndBypass$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerStaleAcceptanceAndBypass " "$routing_out")` | exit 0; named PASS; head movement or a direct call without a current owner cannot advance |
+
+## Pre-mortem and dispatch checks
+
+The plausible wrong implementations are the negative cases named in Verify: stale acceptance, missing durable data, or a bypass that still returns success. Each row must exercise production code and an independent expected outcome, not only serialization. Bypass the upper controller in at least one authority test. Fail a deliberate mutation of the named control. Facts/source revisions, declared files, risks, consumers and sizing were checked at authoring; final implementation design adequacy remains review-only.
+
+## Evidence
+
+<!-- Independent verifier records command, exit, named result, subject/environment and date. -->
+
+## Review
+
+Gate: model. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.
