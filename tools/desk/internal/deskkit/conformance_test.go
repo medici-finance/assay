@@ -227,6 +227,9 @@ func platformContract(t *testing.T, backend, name string) {
 		if err == nil || !strings.Contains(err.Error(), "400") {
 			t.Fatalf("creation failure lost detail: %v", err)
 		}
+		if backend == "gitlab" && !strings.Contains(err.Error(), "synthetic create rejected") {
+			t.Fatalf("GitLab creation failure lost its message: %v", err)
+		}
 	case "mr_note_vs_issue_note":
 		// Explicit object kinds must route the write without resolving the other object first.
 		for _, kind := range []TargetKind{TargetIssue, TargetChange} {

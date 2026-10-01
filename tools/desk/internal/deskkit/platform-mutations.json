@@ -36,6 +36,12 @@
       "file": "internal/deskkit/pushtransport.go",
       "old": "\t\tif !isSSHTransport(u) {\n\t\t\tcontinue\n\t\t}",
       "new": "\t\tif !isSSHTransport(u) || true {\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "GitLab API error loses rejection message",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "&ForgeAPIError{Status: status, Method: method, Path: path, Body: body}",
+      "new": "&ForgeAPIError{Status: status, Method: method, Path: path, Body: strings.Repeat(body, 0)}"
     }
   ]
 }
