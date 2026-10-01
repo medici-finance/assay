@@ -16,7 +16,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format)"
 sources:
   - "docs/streams/build-less-brittle/spec.md §3 rows 2 and 8, §4.2"
@@ -95,7 +95,9 @@ design-fit:
 
 Rows run from the root of `medici-finance/assay`. Rows 1–4 gate presence. Row 5 dereferences the
 example contract id. Row 6 is the net ≤ 0 weight row. Row 7 checks question (d) landed in both files. Row 8 is the neighbour row (the
-shared-value trigger that reads Context text).
+shared-value trigger that reads Context text). Row 9 corroborates the `consumers:` claims against
+the delivering change itself, pinned so it still has that diff to read after merge (re-authored
+in version 2, #1902).
 
 | # | Command | Expect |
 |---|---------|--------|
@@ -107,7 +109,7 @@ shared-value trigger that reads Context text).
 | 6 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/02$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 7 | `grep -c 'Is this a design brief raised by an error-class trigger' plugins/assay/skills/author-brief/SKILL.md spec/brief-v1.md \| grep -cE ':[1-9][0-9]*$'` | `2` (question (d) landed in both the skill and the spec) |
 | 8 | `cd statusgen && go test -run TestSharedValueTriggerIsNarrow -count=1 .` | `ok` (neighbour: the consumers trigger still does not fire on ordinary Context lines such as the new block) |
-| 9 | `statusgen --consumers --root . --brief build-less-brittle/02; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
+| 9 | `d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach 274ece128 && statusgen --consumers --root "$d" --brief build-less-brittle/02 --base 274ece128~1; s=$?; rm -rf "$d"; exit $s` | exit 0; output is `summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing` (the check runs in a throwaway shared clone checked out at 274ece128, the squash that delivered this brief in #1842, with the base pinned to its parent, so the diff it reads is exactly the delivering change: never main's later commits, never the runner's own working tree. The three `fixed-here` entries are corroborated by that diff; the one UNCHECKED entry is the `out-of-scope` downstream-copies line, which names no path in this repo and stays the reviewer's call per brief-rule 9, never a pass) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,
