@@ -120,6 +120,45 @@ facts:
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
+### Verify — 2026-10-01 (post-merge, merged main 4b1f8fc8bfaf)
+
+What moved since the last run: this is the first verify pass. There was no earlier Evidence block. The implementation is #1918 (merge commit f2005b00bb39), and it is an ancestor of the verified head 4b1f8fc8bfaf6520e26fe0659f944d22e43e3aa5.
+
+Grounded expectation, written before running anything: rows 1–8 pass on merged main. The four named tests exist and pass with no SKIP. The two muhar specs report 7/0 and 30/0. The quoted origin literal is gone from main.go and registerid.go.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./cmd/deskpushguard/ ./internal/deskkit/` | exit 0 | Verify row 1. Exit 0 with no output from build or vet (go1.27.1 darwin/arm64). | 2026-10-01 | assay-verifier-app[bot] @ 4b1f8fc8bfaf (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && go test -timeout 10m ./cmd/deskpushguard/ ./cmd/deskpr/ ./cmd/deskwt/` | exit 0; the existing guard suites still pass | Verify row 2. Exit 0: deskpushguard ok 50.077s, deskpr ok 44.483s, deskwt ok 80.560s. I also ran the same three packages with `-v` to make any skip visible: exit 0, 418 PASS lines, 0 SKIP lines, 0 FAIL lines. | 2026-10-01 | assay-verifier-app[bot] @ 4b1f8fc8bfaf (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && go test ./cmd/deskpushguard/ -run TestForeignCommitCheckUsesThePushedRemotesMain -v` | the literal `--- PASS:` line for the selected test | Verify row 3 (the #1201 dereference). Exit 0. The expected `--- PASS:` line for the selected test was printed (1.67s), with no SKIP and no FAIL anywhere in the output. Package ok 2.016s. | 2026-10-01 | assay-verifier-app[bot] @ 4b1f8fc8bfaf (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 4 | `cd tools/desk && go test ./cmd/deskpushguard/ -run TestNoMainOnPushedRemoteIsCouldNotCheckNotOrigin -v` | the literal `--- PASS:` line for the selected test | Verify row 4 (negative path: no fall-back to origin). Exit 0. The expected `--- PASS:` line for the selected test was printed (0.74s), with no SKIP and no FAIL. Package ok 1.022s. | 2026-10-01 | assay-verifier-app[bot] @ 4b1f8fc8bfaf (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestPushTransportRefuses.*RewrittenToSSH' -v` | BOTH `--- PASS:` lines (the insteadOf form and the pushInsteadOf form) | Verify row 5 (the #884 dereference, both rewrite forms). Exit 0. Two `--- PASS:` lines were printed, one for the insteadOf test (0.09s) and one for the pushInsteadOf test (0.07s), with no SKIP and no FAIL. Package ok 0.562s. | 2026-10-01 | assay-verifier-app[bot] @ 4b1f8fc8bfaf (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 6 | `grep -nE '"origin"' tools/desk/cmd/deskpushguard/main.go tools/desk/cmd/deskpushguard/registerid.go; test $? -eq 1` | exit 0 and no line printed | Verify row 6 (removal check). I ran it from the repo root. grep printed nothing and the final exit was 0. | 2026-10-01 | assay-verifier-app[bot] @ 4b1f8fc8bfaf (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 7 | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskpushguard/pushedremote-mutations.json` | exit 0; baseline GREEN, positive control CAUGHT, 7 caught, 0 NOT CAUGHT | Verify row 7 (mutation). Exit 0. Output: "Harness healthy: baseline GREEN, positive control CAUGHT." and "Totals: 7 caught, 0 NOT CAUGHT, 0 could-not-mutate." All seven mutants were CAUGHT: the run() default, the foreign-commit base, the foreign-commit empty-name branch, the register-id base, the register-id empty-name branch, the sibling candidates, and the liveness probe. | 2026-10-01 | assay-verifier-app[bot] @ 4b1f8fc8bfaf (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 8 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/pushtransport-mutations.json` | exit 0; baseline GREEN, positive control CAUGHT, 30 caught, 0 NOT CAUGHT | Verify row 8 (mutation). Exit 0. Output: "Harness healthy: baseline GREEN, positive control CAUGHT." and "Totals: 30 caught, 0 NOT CAUGHT, 0 could-not-mutate." The caught mutants include: deciding from the configured url, falling back to it when no resolver is wired, the insteadOf and pushInsteadOf attribution, the longest-prefix and alias rules, the remedy decided by its https target, the multi-valued pushurl set-url form, deskwt reading only the first push url, and both callers wiring no resolver. | 2026-10-01 | assay-verifier-app[bot] @ 4b1f8fc8bfaf (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+
+Scope traceability: each of the eight rows above discharges the Verify row with the same number. #1918 also changed some things that no Verify row checks: the tools/desk README section on push transport and the deskpr help text (both documentation), and a changelog fragment. The help-text change is covered indirectly, because row 1 builds that package. The brief's Task 4 asks for a "## Fail-first" section in the PR body quoting three red runs. No Verify row checks it, and I did not read the PR body in this pass.
+
+Risk-bearing value. The brief's risk metadata is present and every field is no, including irreversible: no. So the fail-safe trigger does not fire on its metadata. I ran the enumeration anyway, because both changes are security guards. It covered the non-test Go changes in #1918: deskpushguard main.go, foreigncommit.go and registerid.go; deskkit pushtransport.go; and the deskpr and deskwt exec.go callers.
+
+- `Remote = "origin"` and the resolver argv `remote get-url --push --all origin` @ tools/desk/cmd/deskpr/exec.go:106 and :111. This is the authority binding: it decides which remote the transport gate judges.
+- `Remote = "origin"` and the same resolver argv @ tools/desk/cmd/deskwt/exec.go:39 and :44. Same binding.
+- `base = "refs/remotes/" + remoteName + "/main"` @ tools/desk/cmd/deskpushguard/foreigncommit.go:225. This is the base-ref spelling.
+- `remoteName = ""` (no default) @ tools/desk/cmd/deskpushguard/main.go:109.
+- `len(pushurls) < 2` @ tools/desk/internal/deskkit/pushtransport.go:371. This is the threshold that decides when the remedy uses the multi-valued set-url form.
+- `suffix = ".insteadof"` / `".pushinsteadof"` @ tools/desk/internal/deskkit/pushtransport.go:392. These are the rule-key match suffixes.
+- The leading-dash refusal `strings.HasPrefix(remoteName, "-")` @ tools/desk/cmd/deskpushguard/registerid.go:221.
+
+Ranking: every entry is a client-side advisory guard. A wrong value can be undone with an edit and a re-install, and the server-side branch protection and App permissions still bind regardless of what these guards decide. None is irreversible. The top-ranked entries are the two authority bindings and the base-ref spelling, because a wrong value there reinstates #884 or #1201 silently. I derived those three:
+
+RISK-VALUE: DERIVED — Remote = "origin" @ tools/desk/cmd/deskpr/exec.go:106 (and deskwt/exec.go:39) — deskpr's own pushes are `git push -u origin <branch>` (tools/desk/cmd/deskpr/deskpr.go:362 and :641), and deskwt's transport fix writes remote.origin.pushurl (tools/desk/cmd/deskwt/transport.go:226). So origin is the remote these callers actually push to, which means the gate judges the real target. This is not the assumed-remote defect, which applies only to the pre-push hook. The hook now takes its remote from its first argument.
+RISK-VALUE: DERIVED — resolver argv "remote get-url --push --all origin" @ tools/desk/cmd/deskpr/exec.go:111 — per git-remote(1), `get-url --push` returns the push URL with both pushInsteadOf and insteadOf expanded, and `--all` lists every push URL a push fans out to. It is a local config read that contacts no remote. That is exactly the effective-URL question #884 needs answered.
+RISK-VALUE: DERIVED — base = "refs/remotes/" + remoteName + "/main" @ tools/desk/cmd/deskpushguard/foreigncommit.go:225 — per gitrevisions(7), a bare `<name>/main` resolves refs/heads/ before refs/remotes/, so only the fully qualified spelling is safe against a stray local branch (recorded at foreigncommit.go:186-200). Substituting the pushed remote's name compares the branch against the repository it is actually being pushed to (#1201).
+The lower-ranked entries need no derivation. `len(pushurls) < 2` matches git's refusal of a plain `remote set-url --push` when pushurl has multiple values, and mutation row 8 covers it. The lowercase suffixes match `git config --list` lowercasing variable names.
+
+rows_passed=8 rows_total=8
+
+VERIFY: PASS
 
 ## Review
 Gate: model (all four risk answers no — both changes make an existing guard evaluate the real
