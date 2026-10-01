@@ -35,7 +35,7 @@ The supervisor sends no periodic keystrokes or prompts into a busy interactive t
 ## Configuration and ownership
 
 The cadence uses the same resolved model, policy arguments, role, repository roots,
-shim path, cockpit and worktree as a normal desk launch. A cockpit command explicitly
+command environment, cockpit and worktree as a normal desk launch. A cockpit command explicitly
 pins the cell registry using `--cells-root`, so a cockpit server with a different
 inherited environment cannot select a different cell. Provider credentials stay in
 memory/environment; the checkpoint contains schedule and completion metadata only.
@@ -67,7 +67,7 @@ seconds), then reaps its process tree. `cellctl down` requests this cancellation
 before closing cockpit windows. `resume` clears only the local stop request; it does
 not launch a model, clear the cell's STOP/DISABLED flags, or discard a checkpoint.
 
-A supervisor crash during a pass is ambiguous: the agent might still be running.
+A supervisor crash during a pass or interactive session is ambiguous: the agent might still be running.
 An unfinished checkpoint therefore refuses all replacement launches, even when the
 supervisor lock is free. Inspect and stop the prior harness and its descendants first.
 Only after confirming that they have stopped, explicitly reset that role:
@@ -78,6 +78,51 @@ cellctl cadence house recover pr-review-desk --confirm-stopped
 
 The confirmation is an operator assertion, not a PID-based proof. Recovery does not
 kill an arbitrary recorded PID. Ordinary resume never clears this condition.
+
+## Codex command environment
+
+Host Codex launches use explicit command-environment settings instead of generated
+Bash desk-tool wrappers. The Codex process retains its operator login and plugin
+home. Its command subprocesses receive the cell's `HOME` and `USERPROFILE`, native
+desk-tools PATH, cell credential directory, role and repository roots. GitHub CLI
+configuration retains its original `GH_CONFIG_DIR`, XDG, or native platform location.
+No credential value is copied onto launch arguments. Claude and Cursor keep their
+existing environment adapters.
+
+On macOS and Linux, the role prompt requires an explicit Bash `shell` argument and
+`login=false` on command tools and propagates that requirement to subagents.
+The current Codex CLI chooses its default shell from the account database and ignores
+`SHELL`; this is an instruction to use the supported per-command override, not a claim
+that cellctl changes that CLI default. The launch separately disables shell snapshots,
+login-shell use and profile loading, sets `ZDOTDIR` to the cell home, and clears
+`BASH_ENV` and `ENV`. The operator's shell configuration is never edited.
+Windows retains its native shell and does not acquire a Bash or WSL dependency.
+These settings are invocation-local; existing Codex sessions need restarting.
+An operator's Codex environment include filters can still remove explicit values.
+Such filters must admit the cell home, PATH, role/root and tick variables above;
+cellctl does not silently broaden an operator's allowlist.
+
+Codex's concurrent child-thread limit is resolved from this cell's effective roster
+width. It excludes the primary thread. Each cadence pass resolves it again so a width
+change or expiry takes effect. An interactive launch samples it at startup. Feature
+checks ask the installed CLI for its effective state instead of requiring a literal
+`multi_agent=true` entry; this does not prove account capacity or override managed
+limits. See the [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+
+## Cursor workspace admission
+
+Install the Cursor bindings into each actual role workspace, for example:
+
+```sh
+deskinstall --harness cursor --repo /absolute/cell/worktrees/worker-desk
+```
+
+A local installation in the source checkout alone is insufficient: uncommitted skills
+and configuration do not follow a Git worktree. Launch checks the actual workspace's
+role skill, references and bindings. Cadence also refuses a missing or different
+source `.cursor/cli.json`, so source permission denials are not silently lost.
+Headless passes use `--print --force`; the CLI must advertise that explicit denials
+remain enforced. No trust flag, sandbox override or permission-file rewrite is added.
 
 ## Lifetime and validation limits
 
@@ -92,3 +137,13 @@ mutation. They exercise multiple passes, deadlines, process-tree cleanup, checkp
 restart/refusal, missing summaries, and concurrent ownership. Native Windows runtime
 execution and complete Windows cockpit lifecycle are separate validation obligations;
 Windows compilation alone does not establish those behaviors.
+
+The offline Windows runtime checks can be run from `tools/desk` in PowerShell:
+
+```powershell
+go test ./internal/cellcadence ./internal/cellprocess
+go test ./cmd/cellctl -run 'TestCodex|TestWindowsCommandEnvironment|TestInteractiveOwner'
+```
+
+These checks exercise compiled local fixtures and require no provider login. They do
+not certify a complete Windows cell installation or an interactive cockpit launch.

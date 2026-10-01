@@ -25,7 +25,10 @@ func prepareTickLaunch(harness string, argv, env []string, budget time.Duration)
 	case "claude":
 		mode = []string{"--print", "--output-format", "text"}
 	case "cursor":
-		mode = []string{"--print", "--output-format", "text"}
+		// Cursor print mode otherwise only proposes edits. Its supported --force
+		// route honors explicit denials; cursorHeadlessPreflight checks that
+		// contract before this branch can execute a real cadence launch.
+		mode = []string{"--print", "--force", "--output-format", "text"}
 	default:
 		return nil, nil, fmt.Errorf("tick launch requires a supported noninteractive harness")
 	}
@@ -33,6 +36,10 @@ func prepareTickLaunch(harness string, argv, env []string, budget time.Duration)
 	args = append(args, argv[0])
 	args = append(args, mode...)
 	args = append(args, argv[1:len(argv)-1]...)
+	if harness == "codex" {
+		args = append(args, "-c", `shell_environment_policy.set.ASSAY_TICK="1"`, "-c",
+			`shell_environment_policy.set.ASSAY_TICK_DEADLINE="`+strconv.FormatInt(int64(budget/time.Second), 10)+`"`)
+	}
 	args = append(args, argv[len(argv)-1]+"\nRun this skill in tick mode (--tick): exactly one bounded pass, print its tick summary line, and exit. Do not arm a wake or wait for another cadence.")
 
 	// Do not inherit an outer caller's tick budget or conflicting spelling. Keep

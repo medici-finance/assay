@@ -193,6 +193,12 @@ var UnresolvedArgv = []Allowance{
 			"is trusted host code that owns its own runtime custody.",
 	},
 	{
+		Key: "cmd/cellctl/cursor.go::cursorHeadlessPreflight::<unresolved>",
+		Reason: "runs the Cursor agent executable with --help under a five-second deadline to verify " +
+			"its documented noninteractive permission flags. Production passes agent; tests pass a " +
+			"compiled local fixture. It launches no model session and is not a forge CLI.",
+	},
+	{
 		Key: "cmd/cellctl/deskd.go::cmdDeskd::<unresolved>",
 		Reason: "runs the cell's OWN deskd binary at <cell>/bin/deskd (a read daemon, not a forge CLI). " +
 			"Attended-only, and the credentials it is handed come from deskkit.RoleTokenForRepo.",

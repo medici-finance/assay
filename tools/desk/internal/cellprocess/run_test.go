@@ -178,3 +178,121 @@ func TestRunRefusesBeforeLaunch(t *testing.T) {
 		t.Fatalf("missing executable: %v %v", uncertain, err)
 	}
 }
+
+type transientTree struct {
+	processTree
+	kills, observations int
+}
+
+func (t *transientTree) kill(*os.Process) error {
+	t.kills++
+	if t.kills == 1 {
+		return os.ErrPermission
+	}
+	return nil
+}
+func (t *transientTree) empty(*os.Process) (bool, error) {
+	t.observations++
+	if t.observations == 1 {
+		return false, os.ErrPermission
+	}
+	return true, nil
+}
+func TestCleanupRetriesTransientTeardownErrors(t *testing.T) {
+	tree := &transientTree{}
+	if err := cleanup(tree, nil); err != nil {
+		t.Fatalf("transient teardown did not converge: %v", err)
+	}
+	if tree.kills < 2 || tree.observations < 2 {
+		t.Fatalf("cleaned without successful termination and observation: %+v", tree)
+	}
+}
+
+func TestInteractivePreservesStdin(t *testing.T) {
+	input, err := os.CreateTemp(t.TempDir(), "stdin-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+	if _, err := input.WriteString("interactive input\n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := input.Seek(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	argv, env := fixture(t, "record", "0")
+	var output bytes.Buffer
+	code, uncertain, err := RunInteractive(context.Background(), argv, env, t.TempDir(), input, &output, io.Discard)
+	if code != 0 || uncertain || err != nil {
+		t.Fatalf("interactive result: %d %v %v", code, uncertain, err)
+	}
+	var got fixtureResult
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.StdinBytes != len("interactive input\n") {
+		t.Fatalf("stdin lost: %+v", got)
+	}
+}
+
+func TestInteractiveCleansDescendants(t *testing.T) {
+	for _, mode := range []string{"spawn-exit", "spawn-wait"} {
+		t.Run(mode, func(t *testing.T) {
+			dir := t.TempDir()
+			pidPath, heartPath := filepath.Join(dir, "child.pid"), filepath.Join(dir, "heart")
+			argv, env := fixture(t, mode, pidPath, heartPath)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			type completion struct {
+				uncertain bool
+				err       error
+			}
+			done := make(chan completion, 1)
+			go func() {
+				_, uncertain, err := RunInteractive(ctx, argv, env, dir, nil, io.Discard, io.Discard)
+				done <- completion{uncertain, err}
+			}()
+			until := time.Now().Add(5 * time.Second)
+			var pid int
+			for pid == 0 {
+				if b, err := os.ReadFile(pidPath); err == nil {
+					pid, _ = strconv.Atoi(string(b))
+				}
+				if time.Now().After(until) {
+					t.Fatal("descendant never started")
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+			t.Cleanup(func() {
+				if p, err := os.FindProcess(pid); err == nil {
+					_ = p.Kill()
+				}
+			})
+			if mode == "spawn-wait" {
+				cancel()
+			}
+			select {
+			case result := <-done:
+				if result.uncertain {
+					t.Fatalf("cleanup unproved: %v", result.err)
+				}
+				err := result.err
+				if mode == "spawn-wait" {
+					if !errors.Is(err, context.Canceled) {
+						t.Fatal(err)
+					}
+				} else if err != nil && !errors.Is(err, exec.ErrWaitDelay) {
+					t.Fatal(err)
+				}
+			case <-time.After(6 * time.Second):
+				t.Fatal("interactive tree cleanup unbounded")
+			}
+			before, _ := os.ReadFile(heartPath)
+			time.Sleep(100 * time.Millisecond)
+			after, _ := os.ReadFile(heartPath)
+			if len(before) != len(after) {
+				t.Fatal("descendant still writing after interactive return")
+			}
+		})
+	}
+}

@@ -115,18 +115,12 @@ func TestCursorSetRefusalIsAtomic(t *testing.T) {
 }
 
 func TestCursorSkillDiscoveryRequiresEnabledRoles(t *testing.T) {
-	c := &Cell{Repo: t.TempDir(), Roles: []string{"worker-desk", "pr-review-desk"}}
+	c := &Cell{Repo: t.TempDir(), Dir: t.TempDir(), Roles: []string{"worker-desk", "pr-review-desk"}}
 	for _, role := range c.Roles {
 		if c.cursorSkillsDiscoverable() {
 			t.Fatal("missing role skill passed discovery")
 		}
-		dir := filepath.Join(c.Repo, ".cursor", "skills", role)
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("fixture"), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		writeCursorWorkspace(t, filepath.Join(c.Dir, "worktrees", role), role)
 	}
 	if !c.cursorSkillsDiscoverable() {
 		t.Fatal("installed role skills were not found")

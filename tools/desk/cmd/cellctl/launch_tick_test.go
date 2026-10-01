@@ -15,7 +15,7 @@ func TestPrepareTickLaunchPreservesResolvedLaunch(t *testing.T) {
 	}{
 		{"codex", []string{"/tools with spaces/codex", "-c", `model_provider="approved"`, "-c", `model_reasoning_effort="high"`, "--sandbox", "danger-full-access", "-C", "/work's tree & files", "-m", "pinned-model", `Invoke the "assay:worker-desk" skill now.`}, []string{"exec"}},
 		{"claude", []string{"claude", "--effort", "high", "--settings", `{"availableModels":["pinned-model"]}`, "--name", "cell-role-session", "--model", "pinned-model", "/assay:pr-review-desk"}, []string{"--print", "--output-format", "text"}},
-		{"cursor", []string{"agent", "--workspace", `C:\work's tree & files`, "--model", "pinned-model", `Invoke the "assay:verify-desk" skill now.`}, []string{"--print", "--output-format", "text"}},
+		{"cursor", []string{"agent", "--workspace", `C:\work's tree & files`, "--model", "pinned-model", `Invoke the "assay:verify-desk" skill now.`}, []string{"--print", "--force", "--output-format", "text"}},
 	} {
 		t.Run(tc.harness, func(t *testing.T) {
 			env := []string{"PATH=/cell/shim:/approved/tools", "DESK_LOOP=worker-desk", "DESK_SESSION=cell-role-session", "DESK_ROOTS=example/repo=/work's tree & files", "ASSAY_COCKPIT=herdr", "CLAUDE_CONFIG_DIR=/cell/config", "ANTHROPIC_BASE_URL=https://provider.invalid", "ANTHROPIC_AUTH_TOKEN=synthetic-secret", "ASSAY_REPAIR_ADMISSION=on", "ASSAY_TICK=0", "assay_tick_deadline=999"}
@@ -26,6 +26,9 @@ func TestPrepareTickLaunchPreservesResolvedLaunch(t *testing.T) {
 			}
 			prefix := append([]string{tc.argv[0]}, tc.mode...)
 			prefix = append(prefix, tc.argv[1:len(tc.argv)-1]...)
+			if tc.harness == "codex" {
+				prefix = append(prefix, "-c", `shell_environment_policy.set.ASSAY_TICK="1"`, "-c", `shell_environment_policy.set.ASSAY_TICK_DEADLINE="1200"`)
+			}
 			if !reflect.DeepEqual(args[:len(args)-1], prefix) {
 				t.Fatalf("resolved argv changed: got %#v, want prefix %#v", args, prefix)
 			}

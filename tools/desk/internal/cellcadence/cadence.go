@@ -26,7 +26,7 @@ const Schema = "cell-cadence-v1"
 var (
 	ErrBusy       = errors.New("cell role is already owned by another session")
 	ErrNoState    = errors.New("no cadence checkpoint")
-	ErrUnfinished = errors.New("previous cadence pass did not finish; inspect surviving children before explicit recovery")
+	ErrUnfinished = errors.New("previous role owner did not finish; inspect surviving children before explicit recovery")
 )
 
 type Config struct {
@@ -48,6 +48,7 @@ type Result struct {
 
 type State struct {
 	Schema     string        `json:"schema"`
+	Mode       string        `json:"mode,omitempty"` // empty is the original cadence schema
 	Cell       string        `json:"cell"`
 	Role       string        `json:"role"`
 	PID        int           `json:"pid"` // diagnostic only; never authorizes teardown/recovery
@@ -189,8 +190,11 @@ func Read(dir string) (State, error) {
 	if json.Unmarshal(b, &a) != nil || json.Unmarshal(canonical, &bmap) != nil || !reflect.DeepEqual(a, bmap) {
 		return s, errors.New("noncanonical cadence checkpoint members")
 	}
-	if s.Schema != Schema || s.Cell == "" || s.Role == "" || s.Interval <= 0 || s.Budget <= 0 || s.PID <= 0 || s.NextDue.IsZero() || s.Heartbeat.IsZero() {
+	if s.Schema != Schema || s.Cell == "" || s.Role == "" || s.PID <= 0 || s.NextDue.IsZero() || s.Heartbeat.IsZero() {
 		return s, errors.New("invalid cadence checkpoint fields")
+	}
+	if s.Mode != "" && s.Mode != "interactive" || s.Mode == "" && (s.Interval <= 0 || s.Budget <= 0) || s.Mode == "interactive" && (s.Interval != 0 || s.Budget != 0 || s.Sequence == 0) {
+		return s, errors.New("invalid role owner mode or timing")
 	}
 	if s.Sequence == 0 && (s.Running || !s.LastStart.IsZero() || !s.LastFinish.IsZero() || s.Outcome != "never-run") {
 		return s, errors.New("invalid unused cadence checkpoint")
@@ -263,6 +267,7 @@ func (l *Lease) Run(ctx context.Context, c Config, pass func(context.Context) Re
 		s = State{Schema: Schema, Cell: c.Cell, Role: c.Role, NextDue: time.Now().UTC(), Outcome: "never-run"}
 	}
 	s.PID = os.Getpid()
+	s.Mode = ""
 	s.Interval = c.Interval
 	s.Budget = c.Budget
 	beat := time.NewTicker(c.Heartbeat)

@@ -354,7 +354,7 @@ func (c *Cell) checkHouse(k *checker, cfgArg string) {
 	}
 	if c.Harness == "cursor" {
 		k.chk(onPath("agent"), "Cursor Agent (agent) on PATH")
-		k.chk(c.cursorSkillsDiscoverable(), "Cursor role skills installed in %s/.cursor/skills (deskinstall --harness cursor)", c.Repo)
+		k.chk(c.cursorSkillsDiscoverable(), "Cursor role skills and bindings installed in actual role workspaces under %s/worktrees (deskinstall --harness cursor)", c.Dir)
 		k.na("Claude config/plugin — not required by Cursor")
 	} else if c.Harness == "codex" && c.Env.Get("CELL_MODEL_POLICY") == "" {
 		k.na("Claude config/plugin — not required by Codex")
@@ -472,56 +472,18 @@ func (c *Cell) checkCodexHarness(k *checker) {
 	authed := onPath("codex") && (exec.Command("codex", "login", "status").Run() == nil ||
 		exec.Command("codex", "login", "status", "--json").Run() == nil)
 	k.chk(authed, "codex authenticated (codex login status, or equivalent)")
-	k.chk(c.codexMultiAgentOn(), "[features] multi_agent = true (effective config, or a -c override applied)")
+	k.chk(c.codexMultiAgentOn(), "Codex multi_agent effective state is enabled (codex features list)")
+	for _, role := range c.Roles {
+		args, err := c.codexCapacityArgs(role)
+		if err != nil {
+			k.chk(false, "Codex %s capacity: %v", role, err)
+			continue
+		}
+		k.chk(true, "Codex %s launch capacity: %s (cell roster; excludes primary thread)", role, args[1])
+	}
 	k.chk(fileContains(filepath.Join(c.Repo, "AGENTS.md"), "Assay resident operating rules"),
 		"resident-rules fragment present: %s/AGENTS.md", c.Repo)
 	k.chk(c.codexSkillsDiscoverable(), "skills discoverable: marketplace plugin assay@assay, or .agents/skills/ placed")
-}
-
-// codexMultiAgentOn is true when `[features] multi_agent = true` resolves in codex's effective
-// config. Probed via a `codex config get`-style verb where the installed build advertises one —
-// codex's config-read surface has moved across releases, so it is never hard-coded to a single
-// spelling — falling back to a literal read of config.toml under CODEX_HOME. A `-c` override
-// given on the invocation itself is not visible here, which is why the row's text says "or -c
-// override applied".
-func (c *Cell) codexMultiAgentOn() bool {
-	home := c.Env.Get("CODEX_HOME")
-	if home == "" {
-		home = filepath.Join(c.Env.Get("HOME"), ".codex")
-	}
-	if helpHas("get", "codex", "config") {
-		out, err := exec.Command("codex", "config", "get", "features.multi_agent").Output()
-		if err == nil && strings.TrimSpace(string(out)) == "true" {
-			return true
-		}
-	}
-	f, err := os.Open(filepath.Join(home, "config.toml"))
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	insec := false
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := sc.Text()
-		if strings.HasPrefix(line, "[features]") {
-			insec = true
-			continue
-		}
-		if strings.HasPrefix(line, "[") {
-			insec = false
-		}
-		if insec && strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line), " ")) == "multi_agent = true" {
-			return true
-		}
-		if insec {
-			t := strings.Join(strings.Fields(line), " ")
-			if t == "multi_agent = true" {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // codexSkillsDiscoverable: either discovery arm satisfies invoke-by-name — arm A (marketplace

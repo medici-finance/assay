@@ -1,4 +1,4 @@
-// Package cellprocess executes a single noninteractive harness invocation and
+// Package cellprocess executes a single harness invocation and
 // cleans up its owned process group/job before another cadence turn can start.
 // It is process supervision, not a sandbox against a hostile harness escaping
 // its group or delegating work to an unrelated pre-existing service.
@@ -33,6 +33,17 @@ type processTree interface {
 // verification in addition to cross-compilation.
 func Run(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer) (exitCode int, uncertain bool, err error) {
 	return run(ctx, argv, env, dir, stdout, stderr, newProcessTree)
+}
+
+// RunInteractive preserves stdin and terminal foreground ownership in addition
+// to Run's containment guarantees. It imposes no execution deadline.
+func RunInteractive(ctx context.Context, argv, env []string, dir string, stdin *os.File, stdout, stderr io.Writer) (int, bool, error) {
+	return run(ctx, argv, env, dir, stdout, stderr, func(cmd *exec.Cmd) (processTree, error) {
+		if stdin != nil {
+			cmd.Stdin = stdin
+		}
+		return newInteractiveProcessTree(cmd)
+	})
 }
 
 func run(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, setup func(*exec.Cmd) (processTree, error)) (int, bool, error) {
@@ -104,15 +115,21 @@ func cleanup(tree processTree, process *os.Process) error {
 	until := time.Now().Add(cleanupWait)
 	for {
 		empty, err := tree.empty(process)
-		if err != nil {
-			return errors.Join(killErr, fmt.Errorf("cannot verify process-tree cleanup: %w", err))
-		}
-		if empty {
-			return killErr
+		if err == nil && empty && killErr == nil {
+			return nil
 		}
 		if !time.Now().Before(until) {
-			return errors.Join(killErr, errors.New("process tree still present after bounded cleanup"))
+			if err != nil {
+				return errors.Join(killErr, fmt.Errorf("cannot verify process-tree cleanup: %w", err))
+			}
+			return errors.Join(killErr, errors.New("process-tree cleanup not confirmed within its bound"))
 		}
 		time.Sleep(10 * time.Millisecond)
+		// Teardown can transiently reject a signal or observation (EPERM was
+		// observed on Darwin). Retry within the same cleanup bound;
+		// never turn a denied signal or observation into evidence of emptiness.
+		if killErr != nil {
+			killErr = tree.kill(process)
+		}
 	}
 }

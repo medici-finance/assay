@@ -7,12 +7,60 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
+	"golang.org/x/term"
 )
+
+func TestInteractiveTerminalFixture(t *testing.T) {
+	if os.Getenv("CELLPROCESS_TERMINAL_FIXTURE") != "1" {
+		return
+	}
+	foreground, err := unix.IoctlGetInt(int(os.Stdin.Fd()), unix.TIOCGPGRP)
+	if err != nil || foreground != syscall.Getpgrp() {
+		os.Exit(97)
+	}
+	os.Exit(0)
+}
+
+// Run the compiled test binary directly in a terminal to exercise foreground
+// handoff; ordinary nonterminal CI still covers inherited file stdin separately.
+func TestInteractiveTerminalHandback(t *testing.T) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		t.Skip("requires a controlling terminal")
+	}
+	before, err := unix.IoctlGetInt(int(os.Stdin.Fd()), unix.TIOCGPGRP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, uncertain, err := RunInteractive(context.Background(), []string{exe, "-test.run=^TestInteractiveTerminalFixture$"}, append(os.Environ(), "CELLPROCESS_TERMINAL_FIXTURE=1"), t.TempDir(), os.Stdin, os.Stdout, os.Stderr)
+	if code != 0 || uncertain || err != nil {
+		t.Fatalf("foreground child: %d %v %v", code, uncertain, err)
+	}
+	after, err := unix.IoctlGetInt(int(os.Stdin.Fd()), unix.TIOCGPGRP)
+	if err != nil || before != after {
+		t.Fatalf("terminal not restored: before=%d after=%d error=%v", before, after, err)
+	}
+	// A failed exec must restore the foreground group too.
+	_, _, err = RunInteractive(context.Background(), []string{"/cellprocess-fixture-no-such-executable"}, nil, t.TempDir(), os.Stdin, os.Stdout, os.Stderr)
+	if !errors.Is(err, exec.ErrNotFound) && !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unexpected failed exec: %v", err)
+	}
+	after, err = unix.IoctlGetInt(int(os.Stdin.Fd()), unix.TIOCGPGRP)
+	if err != nil || before != after {
+		t.Fatalf("failed exec terminal not restored: %d %d %v", before, after, err)
+	}
+}
 
 func TestRunCleansDescendants(t *testing.T) {
 	for _, mode := range []string{"spawn-exit", "spawn-wait"} {

@@ -45,6 +45,34 @@ func resolveCadence(kind, interval, budget string) *cadenceOptions {
 
 func (c *Cell) cadenceDir(role string) string { return filepath.Join(c.Dir, "run", "cadence", role) }
 
+func (c *Cell) runInteractiveHarness(role string, argv, env []string, wt string) {
+	if c.cadenceLease == nil {
+		die("interactive launch requires the role ownership lease")
+	}
+	ctx, stop := cellprocess.NotifyContext(context.Background())
+	defer stop()
+	code := -1
+	err := c.cadenceLease.RunInteractive(ctx, c.Name, role, func(child context.Context) cellcadence.Result {
+		var uncertain bool
+		var err error
+		code, uncertain, err = cellprocess.RunInteractive(child, argv, env, wt, os.Stdin, os.Stdout, os.Stderr)
+		return cellcadence.Result{ExitCode: code, Uncertain: uncertain, Err: err}
+	})
+	if errors.Is(err, cellcadence.ErrUnfinished) {
+		die("interactive cleanup: %v", err)
+	}
+	if code < 0 {
+		if err != nil {
+			die("interactive launch: %v", err)
+		}
+		code = 1
+	}
+	if err != nil && code == 0 {
+		die("interactive ownership: %v", err)
+	}
+	exitWith(code)
+}
+
 // The supervisor is the foreground cockpit command. Model completion returns here;
 // no harness-specific prompt injection or shell timer is needed to start the next pass.
 func (c *Cell) runCadencedHarness(role, harness string, argv, env []string, wt string) {
@@ -87,6 +115,11 @@ func (c *Cell) executeCadencePass(ctx context.Context, role, harness string, arg
 	runArgs := append([]string(nil), args...)
 	resultFile := ""
 	if harness == "codex" {
+		var capacityErr error
+		runArgs, capacityErr = c.refreshCodexCapacity(role, runArgs)
+		if capacityErr != nil {
+			return cellcadence.Result{Outcome: "could-not-check", ExitCode: -1, Err: capacityErr}
+		}
 		f, err := os.CreateTemp(c.cadenceDir(role), "last-message-*")
 		if err != nil {
 			return cellcadence.Result{Outcome: "could-not-check", ExitCode: -1, Err: err}

@@ -55,9 +55,16 @@ func newEnvFromProcess() *Env {
 	e := &Env{vals: map[string]string{}, set: map[string]bool{}}
 	for _, kv := range os.Environ() {
 		if i := strings.IndexByte(kv, '='); i > 0 {
-			e.vals[kv[:i]] = kv[i+1:]
-			e.set[kv[:i]] = true
+			key := kv[:i]
+			if runtime.GOOS == "windows" {
+				key = strings.ToUpper(key)
+			}
+			e.vals[key] = kv[i+1:]
+			e.set[key] = true
 		}
+	}
+	if runtime.GOOS == "windows" && e.Get("HOME") == "" {
+		e.Put("HOME", e.Get("USERPROFILE"))
 	}
 	return e
 }
@@ -260,7 +267,12 @@ func cellsRoot(e *Env) string {
 	return filepath.Join(xdg, "assay", "cells")
 }
 
-func deskToolsBin(e *Env) string { return e.GetOr("DESK_TOOLS_BIN", "/opt/desk-tools/bin") }
+func deskToolsBin(e *Env) string {
+	if runtime.GOOS == "windows" {
+		return e.GetOr("DESK_TOOLS_BIN", filepath.Join(e.Get("LOCALAPPDATA"), "Assay", "bin"))
+	}
+	return e.GetOr("DESK_TOOLS_BIN", "/opt/desk-tools/bin")
+}
 
 // realConfigHome is the OPERATOR's config home — the one holding the App private keys a k8s or
 // house cell symlinks to. A scrubbed cell never reads it, by construction.
@@ -417,9 +429,15 @@ func loadCell(name string) *Cell {
 }
 
 func isExecFile(p string) bool {
+	if runtime.GOOS == "windows" && filepath.Ext(p) == "" {
+		p += ".exe"
+	}
 	st, err := os.Stat(p)
 	if err != nil || st.IsDir() {
 		return false
+	}
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(filepath.Ext(p), ".exe")
 	}
 	return st.Mode()&0o111 != 0
 }
