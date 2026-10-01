@@ -17,6 +17,14 @@ todo → in-progress → implemented → verified → done
 - **verified** — a **non-implementer** re-ran the Verify table on merged main and filled
   the Evidence section (dated, with runner). Reason: independent re-execution is the check
   that "works on my machine / green in isolation" claims survive contact with main.
+  Since graph-execution/03, `verified` additionally requires the brief's evidence
+  **coverage** to be `released` (`statusgen --coverage`): every mandatory claim — its own
+  Verify rows, plus a bound workflow-pattern-v1 node's own mandatory evidence when one
+  applies — resolves `pass` at the item's revision. A claim that is missing, errored,
+  could-not-check, at the wrong revision, or an outright fail HOLDS coverage and demotes
+  `verified` the same way a stale witness version already does. The model-lane
+  `verified → done` auto-flip (`--auto-flip-model`) refuses on unreleased coverage before
+  it ever fetches a live review — the one place that flip re-checks the stamp it promotes.
 - **done** — additionally carries the recorded review verdict. A `gate: human` brief needs
   a review entry naming a human (`human:<name>`); a model sign-off does not close a
   risk-flagged brief.
