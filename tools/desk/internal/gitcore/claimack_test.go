@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,7 +24,7 @@ func ackPkt(s string) string { return fmt.Sprintf("%04x%s", len(s)+4, s) }
 
 // Real Git supplies advertisements and healthy writes; only the fault responses
 // are substituted. No fixture fault performs the requested mutation.
-func ackServer(t *testing.T, repo string, response *string, posts *int) string {
+func ackServer(t *testing.T, repo string, response *string, posts *atomic.Int32) string {
 	t.Helper()
 	path, err := exec.Command("git", "--exec-path").Output()
 	if err != nil {
@@ -35,7 +36,7 @@ func ackServer(t *testing.T, repo string, response *string, posts *int) string {
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			*posts++
+			posts.Add(1)
 			if response != nil {
 				io.Copy(io.Discard, r.Body)
 				w.Header().Set("Content-Type", "application/x-git-receive-pack-result")
@@ -85,7 +86,7 @@ func TestAckHTTPMatrix(t *testing.T) {
 				if report != "" {
 					wire = ackPkt("\x01"+report) + "0000"
 				}
-				posts := 0
+				var posts atomic.Int32
 				url := ackServer(t, repo, &wire, &posts)
 				isNG := strings.HasPrefix(name, "ng-")
 				if op == "delete" {
@@ -104,8 +105,8 @@ func TestAckHTTPMatrix(t *testing.T) {
 						t.Fatalf("accepted invalid report: %v", v)
 					}
 				}
-				if posts != 1 {
-					t.Fatalf("POSTs=%d, want exactly one", posts)
+				if posts.Load() != 1 {
+					t.Fatalf("POSTs=%d, want exactly one", posts.Load())
 				}
 				b, err := exec.Command("git", "-C", repo, "show-ref", "--verify", "--hash", ref.String()).Output()
 				if op == "create" {
@@ -122,7 +123,7 @@ func TestAckHTTPMatrix(t *testing.T) {
 
 func TestAckHTTPPositive(t *testing.T) {
 	repo := bareServer(t)
-	posts := 0
+	var posts atomic.Int32
 	url := ackServer(t, repo, nil, &posts)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -152,8 +153,8 @@ func TestAckHTTPPositive(t *testing.T) {
 	if v, err := DeleteRef(ctx, url, nil, ref); err != nil || v != DeleteAbsent {
 		t.Fatalf("absent: %v %v", v, err)
 	}
-	if posts != 4 {
-		t.Fatalf("POSTs=%d want4", posts)
+	if posts.Load() != 4 {
+		t.Fatalf("POSTs=%d want4", posts.Load())
 	}
 }
 
@@ -213,10 +214,10 @@ func TestAckWireBounds(t *testing.T) {
 }
 
 func TestAckNoReportCap(t *testing.T) {
-	posts := 0
+	var posts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			posts++
+			posts.Add(1)
 			return
 		}
 		w.Header().Set("Content-Type", "application/x-git-receive-pack-advertisement")
@@ -236,8 +237,8 @@ func TestAckNoReportCap(t *testing.T) {
 	if _, err := DeleteRef(ctx, server.URL, nil, ref); err == nil {
 		t.Fatal("delete accepted missing report-status")
 	}
-	if posts != 0 {
-		t.Fatalf("POSTs=%d", posts)
+	if posts.Load() != 0 {
+		t.Fatalf("POSTs=%d", posts.Load())
 	}
 }
 
@@ -305,5 +306,73 @@ func TestAckReceiptIsolation(t *testing.T) {
 		if strings.Contains(fmt.Sprint(r), "never-copy") {
 			t.Fatal("payload/header in receipt")
 		}
+	}
+}
+
+func TestAckLifecycle(t *testing.T) {
+	for _, protocol := range []string{"local", "http"} {
+		t.Run(protocol, func(t *testing.T) {
+			repo := bareServer(t)
+			for _, kv := range [][2]string{{"receive.fsckObjects", "true"}, {"transfer.fsckObjects", "true"}, {"receive.unpackLimit", "1"}, {"gc.auto", "0"}} {
+				if out, err := exec.Command("git", "-C", repo, "config", kv[0], kv[1]).CombinedOutput(); err != nil {
+					t.Fatalf("config: %v %s", err, out)
+				}
+			}
+			url := repo
+			var posts atomic.Int32
+			if protocol == "http" {
+				url = ackServer(t, repo, nil, &posts)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			for cycle := range 4 {
+				first := plumbing.ZeroHash
+				updates := make([]RefUpdate, 0, 2)
+				for _, lane := range []string{"correctness", "security"} {
+					id := "example--pr-7--" + lane
+					objects, oid, err := MintClaimTag(id, "dispatch-claim "+id+" owner=fixture", time.Unix(int64(cycle+1), 0))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if oid == first {
+						t.Fatal("same-time lane objects collided")
+					}
+					first = oid
+					if _, err := objects.EncodedObject(plumbing.BlobObject, plumbing.NewHash(EmptyBlobHash)); err != nil {
+						t.Fatal("target blob absent")
+					}
+					updates = append(updates, RefUpdate{URL: url, Ref: plumbing.ReferenceName("refs/dispatch/" + id), New: oid, Objects: objects})
+				}
+				results := make(chan error, 2)
+				for _, u := range updates {
+					u := u
+					go func() {
+						v, err := PushRefUpdate(ctx, u)
+						if err == nil && v != RefUpdateApplied {
+							err = fmt.Errorf("unexpected rejection")
+						}
+						results <- err
+					}()
+				}
+				for range updates {
+					if err := <-results; err != nil {
+						t.Fatal(err)
+					}
+				}
+				for _, u := range updates {
+					if v, err := DeleteRef(ctx, url, nil, u.Ref); err != nil || v != DeleteDone {
+						t.Fatalf("delete: %v %v", v, err)
+					}
+				}
+				for _, args := range [][]string{{"reflog", "expire", "--expire=now", "--all"}, {"gc", "--prune=now"}, {"fsck", "--strict"}} {
+					if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+						t.Fatalf("git: %v %s", err, out)
+					}
+				}
+			}
+			if protocol == "http" && posts.Load() != 16 {
+				t.Fatalf("POSTs=%d want16", posts.Load())
+			}
+		})
 	}
 }

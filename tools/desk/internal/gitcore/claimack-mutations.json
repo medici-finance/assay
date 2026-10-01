@@ -84,6 +84,12 @@
       "file": "cmd/deskclaim-ref/gogit.go",
       "old": "if !deskkit.TraceEnabled() {",
       "new": "if false && !deskkit.TraceEnabled() {"
+    },
+    {
+      "name": "omit target blob from self-contained claim pack",
+      "file": "internal/gitcore/claimref.go",
+      "old": "[]plumbing.Hash{u.New, plumbing.NewHash(EmptyBlobHash)}",
+      "new": "[]plumbing.Hash{u.New}"
     }
   ]
 }
