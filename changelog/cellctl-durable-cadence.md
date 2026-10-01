@@ -1,0 +1,3 @@
+- Add opt-in Go-supervised host desk cadence with bounded passes, persistent checkpoints, role exclusion and honest status; support Cursor Agent alongside Codex in Herdr/Orca terminal launches.
+- Scope Codex command homes, startup isolation and roster capacity to its adapter; preserve native Windows home, executable and PATH semantics. Interactive role ownership now remains dirty across a launcher crash until reconciliation.
+- Verify Cursor skills and permissions in the actual role workspace before unattended passes.

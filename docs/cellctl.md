@@ -1559,3 +1559,9 @@ still applies, and only a larger number widens the window. Scrubbed cells do not
 compose this variable — their launch environment is exactly the allowlist in
 [The composed environment](#the-composed-environment) — and neither do container
 cells, whose launch is delegated to the operator's own launcher.
+
+## Host desk cadence
+
+For Herdr/Codex and Orca/Cursor sessions, `--cadence` makes Go cellctl own repeated
+bounded role passes. See [Host desk cadence](cellctl-cadence.md) for setup, status,
+stop/recovery and process-lifetime limits.
