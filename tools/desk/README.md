@@ -55,6 +55,7 @@ it on day one.
 | `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); each takes `--dry-run` to report the hook plan without touching anything | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
+| `deskapps` | `init` — the GitHub App Manifest-flow installer: serves the loopback page, posts the tier's manifests, converts the callback code, writes the PEM/records/role bindings. `resume`/`status`/`avatar` are later briefs (03/04/06) | local-only + loopback HTTP (no outward GitHub write of its own — the App is created by GitHub on the person's own click) | no |
 | `deskfleet` | `provision` — GitLab fleet bootstrap, the Go port of `tools/create-fleet-gitlab.sh`: seven role service accounts, memberships and PATs written owner-only to `gitlab-<role>.token` and read back through the deskkit custody check (inconclusive read-back = WARN; definite failure = stop; a partial run STOPS and REPORTS every minted token, every account created with no token and every could-not-check request, never revokes — the recorded custody ruling), then with `--project` the protected `main` / approvals / release tags / merge checks / labels; `--avatars-dir` has each new account set its own avatar (no default icon fetch; skipped and named without it), `--avatars-only` sets existing accounts' avatars; `labels` — the nine fleet labels on a GitHub repo or GitLab project from ONE table. `--dry-run` makes zero network calls; a real run refuses without `GITLAB_API_BASE` | outward write (bootstrap: reads no roster; the credential is a human-supplied file) | no |
 | `deskroster` | `set`, `drop`, `list`, `mine`, `width`, `repos`, `apps`, `preflight` | local-only, out-of-git (`preflight` mints a token and runs one read-only transport probe) | no |
 | `muhar` | `-spec <file>` mutation harness, `-j <n>` mutations in flight (isolated tree per worker), `-shard i/n` this invocation's slice of the spec (shards partition it; baseline + control run per shard) | local diagnostic (no `Guard`) | no |
@@ -1572,6 +1573,28 @@ cross-compile, so this is orchestration + Windows path handling (`.exe` suffixes
 [`tools/winparity`](../winparity/README.md), which asserts the script's target set equals
 the Makefile's `.PHONY` set (run `cd tools/winparity && go run . --root ../..`, exit 0 = in
 parity); the Windows script runs that guard as a preflight before any target.
+
+## deskapps — the GitHub App Manifest-flow installer (example-stream/02)
+
+`deskapps init --tier team|family [--org <login>] [--owner org|me] [--prefix <name>] [--port 41873] [--no-browser] [--dry-run]`
+serves the loopback page (`http://127.0.0.1:<port>/`, `127.0.0.1` ONLY — never `0.0.0.0` or
+`::`) that drives GitHub's App Manifest flow end to end: it posts the tier's manifest JSON to
+GitHub's own new-App page, receives the redirect at `/callback`, exchanges the one-hour code
+for the App's credentials (`POST /app-manifests/{code}/conversions`), and writes the PEM
+(0600, never printed/logged/rendered), `apps.env` (App id, client id, webhook secret, plus
+the brief-01 `<ROLE>_APP=`/`READ_APP=` role bindings) and `apps.state.json`
+(`deskapps-state-v1`, the per-App state machine). `--dry-run` prints the planned URL and App
+rows without touching the network; every other test and CI invocation runs with
+`--no-browser`. `resume`, `status` and `avatar` are later briefs (03, 04, 06).
+
+The single control behind `/callback` is the per-row state nonce: an unmatched `state`
+refuses (403) before any conversion is attempted. The independent second layer is the owner
+check on the conversion result (the `gh` login on the personal path, the org on the org
+path), which fails closed on an empty owner and writes nothing on a mismatch; the loopback
+bind is a precondition of the nonce, not a layer behind it. Full reference, the tier
+manifests' exact permission sets, the trust boundaries, and the design.md §9 measured
+facts (blocked on live GitHub access — see that file) are in
+[`docs/desk-tools/deskapps.md`](../../docs/desk-tools/deskapps.md).
 
 ## deskpost — the reviewer App's verdict / comment / ready-flip (brief 03)
 
