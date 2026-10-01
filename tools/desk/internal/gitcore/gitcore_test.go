@@ -995,6 +995,33 @@ func TestCommitSubject_MatchesGitLogFormatS(t *testing.T) {
 	}
 }
 
+// CommitMessage is the full-message read the outbound-write check needs for a pushed
+// range: a body line is published by the push as surely as the subject.
+func TestCommitMessage_MatchesFormatB(t *testing.T) {
+	f := gittest.NewFixture(t)
+	f.CommitFile(t, "second.txt", "second\n",
+		"feat: a subject line\n\nA body paragraph the subject read drops.\n\nTrailer: value")
+
+	want, err := f.Git("log", "-1", "--format=%B", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.CommitMessage("HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimRight(got, "\n") != strings.TrimRight(want, "\n") {
+		t.Fatalf("CommitMessage(HEAD) = %q, want %q (git log -1 --format=%%B)", got, want)
+	}
+	if !strings.Contains(got, "body paragraph") {
+		t.Fatalf("CommitMessage(HEAD) = %q dropped the body", got)
+	}
+}
+
 func TestParentHashes_MatchesGitLogFormatP(t *testing.T) {
 	f := gittest.NewFixture(t)
 	root, err := f.Git("rev-parse", "HEAD")

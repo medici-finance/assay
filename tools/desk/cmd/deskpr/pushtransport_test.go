@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -86,18 +88,48 @@ func TestSshFetchHttpsPushCreates(t *testing.T) {
 	}
 }
 
+// httpsPushURL is the https push url the NOTICE cases configure. It never has to resolve:
+// routePushOffline sends the push itself to the local bare.
+const httpsPushURL = "https://example.com/example-org/tracker.git"
+
+// routePushOffline keeps an https-push fixture offline without lying to the gates. The
+// rewrite to the local bare is injected into the environment of the `git push` PROCESS ONLY
+// (GIT_CONFIG_COUNT), so every gate read — `config --list -z`, `remote get-url --push --all`
+// — still sees the https url the fixture configured, and the push lands in the bare.
+//
+// It replaces a url.<bare>.insteadOf rule in the worktree's config, which the gates also
+// read: since #884 the push-transport gate decides from git's RESOLVED push url, so that rule
+// made the push look local (no credential, no NOTICE) — the old fixture only produced an
+// https push for the gate by relying on the gate ignoring insteadOf. Call it AFTER withEnv so
+// the argv recorder still sees the push.
+func routePushOffline(t *testing.T, bare, httpsURL string) {
+	t.Helper()
+	inner := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		cmd := inner(name, args...)
+		if filepath.Base(name) == "git" && callContainsAll(append([]string{name}, args...), "push") {
+			cmd.Env = append(os.Environ(),
+				"GIT_CONFIG_COUNT=1",
+				"GIT_CONFIG_KEY_0=url."+bare+".insteadOf",
+				"GIT_CONFIG_VALUE_0="+httpsURL)
+		}
+		return cmd
+	}
+	t.Cleanup(func() { execCommand = inner })
+}
+
 // TestCreateHttpsNoAppHelper: https is the sanctioned transport, so
 // this must NOT refuse — but an https push answered by nothing but the machine's ambient
 // credential is the same ambient-identity shape one layer along, so it says so.
 func TestCreateHttpsNoAppHelper(t *testing.T) {
 	work := newBaseFixture(t)
-	// An https push url that still routes to the offline bare: `insteadOf` rewrites it at
-	// transport time, so the gate sees https and the push stays local and offline.
+	// An https push url in the worktree's config — what every gate reads — while the push
+	// process alone is routed to the offline bare (routePushOffline).
 	bare := mustGit(t, work, "remote", "get-url", "--push", "origin")
-	mustGit(t, work, "remote", "set-url", "--push", "origin", "https://example.com/example-org/tracker.git")
-	mustGit(t, work, "config", "url."+bare+".insteadOf", "https://example.com/example-org/tracker.git")
+	mustGit(t, work, "remote", "set-url", "--push", "origin", httpsPushURL)
 	mustGit(t, work, "config", "credential.helper", "osxkeychain") // ambient, not the App's
 	calls := withEnv(t, work)
+	routePushOffline(t, bare, httpsPushURL)
 	stderr := withStderrCapture(t)
 
 	rc := run([]string{"create", "--title", "x", "--body-min", "y\nBrief: fixture/01"})
@@ -120,10 +152,10 @@ func TestCreateHttpsNoAppHelper(t *testing.T) {
 func TestUpdateHttpsNoAppHelper(t *testing.T) {
 	work := newBaseFixture(t)
 	bare := mustGit(t, work, "remote", "get-url", "--push", "origin")
-	mustGit(t, work, "remote", "set-url", "--push", "origin", "https://example.com/example-org/tracker.git")
-	mustGit(t, work, "config", "url."+bare+".insteadOf", "https://example.com/example-org/tracker.git")
+	mustGit(t, work, "remote", "set-url", "--push", "origin", httpsPushURL)
 	mustGit(t, work, "config", "credential.helper", "osxkeychain") // ambient, not the App's
 	calls := withEnv(t, work)
+	routePushOffline(t, bare, httpsPushURL)
 	t.Setenv("FAKEGH_LIST_HAS_PR", "1")
 	stderr := withStderrCapture(t)
 

@@ -96,15 +96,20 @@ func git(dir string, args ...string) (string, error) {
 // into `edit`, which pushes nothing. See deskkit/pushtransport.go for what it refuses and
 // why.
 //
-// The reader hands git `--list -z` through this package's ONE argv seam, so the recorded
-// argv assertions still see every git call the verb makes. runCmd trims trailing
+// Both readers — `config --list -z` and `remote get-url --push --all origin` — go through
+// this package's ONE argv seam, so the recorded argv assertions still see every git call
+// the verb makes. runCmd trims trailing
 // whitespace, which is harmless here: `-z` records are NUL-delimited, and a trailing NUL
 // parses to an empty record the parser drops.
 func pushTransportGate(dir, verb string) error {
 	return deskkit.CheckPushTransport(deskkit.PushTransportInput{
 		Tool: "deskpr", Verb: verb, Dir: dir, Remote: "origin",
 		ConfigZ: func() (string, error) { return git(dir, "config", "--list", "-z") },
-		Stderr:  deskprStderr,
+		// git's own resolution of the push URL, url.<base>.insteadOf / pushInsteadOf rewrites
+		// applied, read from local config only (no remote contacted): the gate decides from
+		// what git WILL push to, not from the configured string (#884).
+		PushURLs: func() (string, error) { return git(dir, "remote", "get-url", "--push", "--all", "origin") },
+		Stderr:   deskprStderr,
 	})
 }
 

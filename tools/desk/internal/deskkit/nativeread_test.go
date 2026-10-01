@@ -226,7 +226,11 @@ func TestNativeReadClientInstallationFromRepoNotEnv(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ForgeFor(%s): %v", repo.Slug(), err)
 		}
-		g, ok := f.(*GitHubForge)
+		// ForgeFor returns the outbound-checked decorator; the client under test is its backend.
+		if !IsOutboundChecked(f) {
+			t.Fatalf("ForgeFor(%s) returned %T, want the outbound-checked decorator", repo.Slug(), f)
+		}
+		g, ok := backendOf(f).(*GitHubForge)
 		if !ok {
 			t.Fatalf("ForgeFor(%s) returned %T, want *GitHubForge", repo.Slug(), f)
 		}

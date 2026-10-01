@@ -202,7 +202,7 @@ func (s *stubRemote) install() {
 		default:
 			mintedRole = "desk"
 		}
-		return s, fr, nil
+		return deskkit.OutboundChecked(s, mintedRole), fr, nil
 	}
 	runDisposition = func(args ...string) (string, error) {
 		s.dispCalls = append(s.dispCalls, args)

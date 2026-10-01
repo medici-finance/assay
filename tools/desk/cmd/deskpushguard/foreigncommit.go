@@ -183,15 +183,6 @@ func logRangeHashes(repo *gitcore.Repo, base, head string) (rangeHashes []string
 	return out, baseSet, nil
 }
 
-// resolveOriginMain is resolveRemoteMain pinned to the literal remote name "origin" — kept
-// as its own entry point because registerid.go's register-id-collision check (a DIFFERENT
-// check from the one #1201 fixes) still compares against the checkout's own configured
-// `origin` deliberately; it is not derived from any particular push's target remote the way
-// checkForeignCommits' base now is.
-func resolveOriginMain(dir string) (string, error) {
-	return resolveRemoteMain(dir, "origin")
-}
-
 // resolveRemoteMain resolves the base this check compares against, spelled FULLY QUALIFIED
 // as `refs/remotes/<remoteName>/main`.
 //
@@ -243,7 +234,7 @@ func resolveRemoteMain(dir, remoteName string) (string, error) {
 // ... -b origin/main`, and which is what makes the bare spelling ambiguous.
 //
 // Returns ("", false) when no such branch exists. Absence is a DETERMINATE answer here, not a
-// could-not-check: this function is only ever called after resolveOriginMain has already
+// could-not-check: this function is only ever called after resolveRemoteMain has already
 // succeeded, which proves git runs and the repo resolves, so the only remaining reason
 // `rev-parse --verify --quiet refs/heads/origin/main` exits non-zero is that the ref is not
 // there.
@@ -278,7 +269,7 @@ func strayLocalOriginMain(dir string) (string, bool) {
 // coincidence that essentially only occurs by having been cut from it. A branch that has
 // since merged main has a branch point at the true base and is not flagged; a repo with no
 // stray branch can never produce this finding at all.
-func checkStrayBase(dir, localSHA, trueBase string, out *baseFindings) {
+func checkStrayBase(dir, remoteName, localSHA, trueBase string, out *baseFindings) {
 	strayTip, present := strayLocalOriginMain(dir)
 	if !present || strayTip == trueBase {
 		return // no stray branch, or it happens to point at the true base — harmless
@@ -286,13 +277,13 @@ func checkStrayBase(dir, localSHA, trueBase string, out *baseFindings) {
 	repo, err := openRepo(dir)
 	if err != nil {
 		out.cannotCheck("could not open the repository to compute the branch point of %s off "+
-			"refs/remotes/origin/main (%v) — stray-base check NOT performed", shortSHA(localSHA), err)
+			"refs/remotes/%s/main (%v) — stray-base check NOT performed", shortSHA(localSHA), remoteName, err)
 		return
 	}
 	mergeBase, err := repo.MergeBase(localSHA, trueBase)
 	if err != nil {
-		out.cannotCheck("could not compute the branch point of %s off refs/remotes/origin/main "+
-			"(git merge-base failed: %v) — stray-base check NOT performed", shortSHA(localSHA), err)
+		out.cannotCheck("could not compute the branch point of %s off refs/remotes/%s/main "+
+			"(git merge-base failed: %v) — stray-base check NOT performed", shortSHA(localSHA), remoteName, err)
 		return
 	}
 	if mergeBase != strayTip {
@@ -312,6 +303,15 @@ func checkStrayBase(dir, localSHA, trueBase string, out *baseFindings) {
 	}
 	out.strayBases = append(out.strayBases, strayBase{strayTip: strayTip, trueBase: trueBase, behind: behind})
 }
+
+// baseChecksSkipped closes every could-not-check reason that stops BOTH base-dependent checks
+// before either reads a ref. checkRegisterIDCollisions (registerid.go) returns silently on
+// exactly these conditions — no remote named, a malformed or unresolvable local sha, the pushed
+// remote's main unresolvable, the repository unopenable — so the one COULD-NOT-CHECK line this
+// file prints must say that the register-id collision check was skipped too; otherwise that
+// silence reads as "no collision found".
+const baseChecksSkipped = "base checks NOT performed (foreign-commit, merge-masquerade, stray-base, " +
+	"and register-id collision)"
 
 // checkForeignCommits inspects the commits unique to localSHA relative to the actual push
 // target's main (the range a git pre-push hook is given) and reports:
@@ -339,16 +339,18 @@ func checkStrayBase(dir, localSHA, trueBase string, out *baseFindings) {
 // Fail-OPEN contract for a client-side hook), but the caller prints and audits the reason, so
 // "could not check the base" can never be mistaken for "the base is fine".
 func checkForeignCommits(dir, remoteName, ownBranch, localSHA string) (baseFindings, error) {
-	if remoteName == "" {
-		// Defensive default only — main.go always resolves a real remote name (falling back
-		// to "origin" itself when the hook's own args[0] is absent) before calling here. Kept
-		// so a caller that omits it still gets the pre-#1201 behaviour rather than a broken
-		// "refs/remotes//main" resolution attempt.
-		remoteName = "origin"
-	}
 	var out baseFindings
+	if remoteName == "" {
+		// No remote name means no way to know WHICH main is the base. Substituting `origin`
+		// here is the #1201 defect itself — it judges the push against whatever repository
+		// the checkout's origin happens to be — so it is could-not-check, said as such.
+		out.cannotCheck("the hook was not told which remote this push goes to (no remote-name " +
+			"argument), so which refs/remotes/<remote>/main is the base cannot be established — no " +
+			"fall-back to origin; " + baseChecksSkipped)
+		return out, nil
+	}
 	if !shaRe.MatchString(localSHA) {
-		out.cannotCheck("local sha %q is not a well-formed object id — base checks NOT performed", localSHA)
+		out.cannotCheck("local sha %q is not a well-formed object id — %s", localSHA, baseChecksSkipped)
 		return out, nil
 	}
 	originMain, err := resolveRemoteMain(dir, remoteName)
@@ -364,26 +366,26 @@ func checkForeignCommits(dir, remoteName, ownBranch, localSHA string) (baseFindi
 			reason += fmt.Sprintf(" — and a stray local branch refs/heads/origin/main (%s) IS present, "+
 				"so the bare spelling would resolve to it; refusing to guess", shortSHA(strayTip))
 		}
-		out.cannotCheck("%s — base checks NOT performed", reason)
+		out.cannotCheck("%s — %s", reason, baseChecksSkipped)
 		return out, nil
 	}
 	repo, err := openRepo(dir)
 	if err != nil {
-		out.cannotCheck("could not open the repository (%v) — base checks NOT performed", err)
+		out.cannotCheck("could not open the repository (%v) — %s", err, baseChecksSkipped)
 		return out, nil
 	}
 	if ok, _ := repo.CommitVerifyQuiet(localSHA); !ok {
-		out.cannotCheck("commit %s is not present in this repository — base checks NOT performed",
-			shortSHA(localSHA))
+		out.cannotCheck("commit %s is not present in this repository — %s",
+			shortSHA(localSHA), baseChecksSkipped)
 		return out, nil
 	}
 
-	checkStrayBase(dir, localSHA, originMain, &out)
+	checkStrayBase(dir, remoteName, localSHA, originMain, &out)
 
 	shas, baseAncestors, err := logRangeHashes(repo, originMain, localSHA)
 	if err != nil {
-		out.cannotCheck("could not enumerate refs/remotes/origin/main..%s (%v) — foreign-commit "+
-			"and masquerade checks NOT performed", shortSHA(localSHA), err)
+		out.cannotCheck("could not enumerate refs/remotes/%s/main..%s (%v) — foreign-commit "+
+			"and masquerade checks NOT performed", remoteName, shortSHA(localSHA), err)
 		return out, nil
 	}
 	if len(shas) == 0 {

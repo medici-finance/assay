@@ -657,6 +657,25 @@ func cmdUpdate(args []string) (err error) {
 // (exit 5) BEFORE origin/HEAD is consulted, so a missing origin/HEAD can never mask a
 // push to main; a detached HEAD or unreadable origin/HEAD is unverifiable (exit 6).
 func preflight(dir, base string) (*gitFacts, error) {
+	return preflightMode(dir, base, false, detachedRefusal)
+}
+
+// detachedRefusal is preflight's exit-6 message for a detached HEAD on create and update,
+// which push the branch and so need one.
+const detachedRefusal = "detached HEAD — check out a feature branch first"
+
+// editDetachedRefusal is the same exit-6 refusal for `deskpr edit` WITHOUT --pr (#1901). A
+// detached rework worker hits exactly this refusal, and for edit the remedy is not a branch:
+// it is naming the PR, so the message points at --pr N.
+const editDetachedRefusal = "detached HEAD — deskpr edit finds its PR by branch; name the PR with --pr N " +
+	"(admitted when HEAD is exactly that PR's head commit), or check out the PR's head branch"
+
+// preflightMode is preflight with one switch: allowDetached admits a detached HEAD, recorded
+// as branch "". Only `deskpr edit --pr N` passes true (#1901) — it pushes nothing and names
+// its PR explicitly, and deskkit.CheckOwnPR then admits the detached checkout ONLY when HEAD
+// is exactly that PR's head commit. create and update push the branch and keep refusing.
+// detachedMsg is the exit-6 message used when a detached HEAD is refused.
+func preflightMode(dir, base string, allowDetached bool, detachedMsg string) (*gitFacts, error) {
 	gitRepo, gerr := gitcore.Open(dir)
 	if gerr != nil || !gitRepo.InsideWorkTree() {
 		return nil, deskkit.Unverifiable("not inside a git worktree", gerr)
@@ -666,7 +685,10 @@ func preflight(dir, base string) (*gitFacts, error) {
 		return nil, deskkit.Unverifiable("cannot resolve current branch", err)
 	}
 	if branch == "HEAD" || branch == "" {
-		return nil, deskkit.Unverifiable("detached HEAD — check out a feature branch first", nil)
+		if !allowDetached {
+			return nil, deskkit.Unverifiable(detachedMsg, nil)
+		}
+		branch = ""
 	}
 	// Refuse the default branch names outright, even if origin/HEAD is unreadable.
 	if isDefaultName(branch) {
@@ -839,7 +861,42 @@ func scanWrite(f *gitFacts, title, verb, override string) error {
 		[]byte(addedDiffLines(diff))); err != nil {
 		return err
 	}
-	return nil
+	// desktools-v2/10: the outbound-write check over what the push publishes — the branch
+	// name (kind ref), every commit message in the range (kind commit) and the range's ADDED
+	// lines per file (kind file). It is the SAME function the deskpushguard pre-push hook
+	// calls, so a push by any route meets one check. The credential arms above keep their
+	// whole-diff breadth; this pass adds the personal-data and, on a target that is not
+	// stated private, the self-containment and withheld-identifier layers. The audited
+	// override is deskpr's existing flag; a withheld identifier and a ruling claim stay
+	// non-overridable.
+	deskkit.SetOutboundContext(deskkit.OutboundContext{Tool: "deskpr", Verb: verb, OverrideReason: override})
+	// The pre-push hook re-runs this check on the push below: hand it exactly this verdict's
+	// override reason, and none when there is none (an ambient value never overrides).
+	var envErr error
+	if strings.TrimSpace(override) != "" {
+		envErr = os.Setenv(deskkit.EnvPushGuardScanOverride, override)
+	} else {
+		envErr = os.Unsetenv(deskkit.EnvPushGuardScanOverride)
+	}
+	if envErr != nil {
+		return deskkit.Unverifiable("cannot hand the override reason to the pre-push hook", envErr)
+	}
+	return deskkit.OutboundCheckPush(deskkit.OutboundPush{
+		Dir: f.dir, Repo: f.repo, Base: f.defaultRef, Head: "HEAD", Branch: f.branch, Role: pushRole(),
+	})
+}
+
+// pushRole is the App role the push goes out under, resolved the way mintWorkerToken
+// resolves it (the worker App when the session names none). It is recorded on an override
+// row; it never widens or narrows what the check refuses.
+func pushRole() string {
+	if mintedRole != "" {
+		return mintedRole
+	}
+	if r, _, err := deskkit.SessionTokenRole("deskpr"); err == nil {
+		return r
+	}
+	return "worker"
 }
 
 // reHunkHeader matches the deterministic RANGE part of a unified-diff hunk header —

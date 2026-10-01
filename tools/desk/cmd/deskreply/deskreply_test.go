@@ -786,3 +786,108 @@ func TestGateSeamIsRealInProduction(t *testing.T) {
 			"is stubbed out in the shipped binary, and every other gate test here is vacuous")
 	}
 }
+
+// TestReplyOwnPRByHeadCommit is #1901's acceptance: a reply posts from a worktree sitting
+// on the PR's head commit under a differently-named branch (or a detached HEAD), because
+// git allows only one worktree per branch and a rework worker whose PR head branch is held
+// elsewhere cannot check it out. The guard's intent survives: a different branch at a
+// different commit, and any merged/closed PR, still refuse.
+func TestReplyOwnPRByHeadCommit(t *testing.T) {
+	cases := []struct {
+		name   string
+		setup  func(t *testing.T, work string) // reshapes the worktree
+		prHead string                          // FAKEGH_PR_HEAD ("" = the fixture branch)
+		prOid  func(head string) string        // FAKEGH_PR_OID from the worktree's HEAD
+		state  string                          // FAKEGH_PR_STATE ("" = OPEN)
+		want   int
+	}{
+		{
+			name:  "branch equal",
+			prOid: func(string) string { return "1111111111111111111111111111111111111111" },
+			want:  deskkit.ExitOK,
+		},
+		{
+			name:   "different branch, HEAD == headRefOid",
+			setup:  func(t *testing.T, w string) { mustGit(t, w, "checkout", "-b", "neutral-rework") },
+			prHead: "feature/held-elsewhere",
+			prOid:  func(h string) string { return h },
+			want:   deskkit.ExitOK,
+		},
+		{
+			name:   "different branch, HEAD != headRefOid",
+			setup:  func(t *testing.T, w string) { mustGit(t, w, "checkout", "-b", "neutral-rework") },
+			prHead: "feature/held-elsewhere",
+			prOid:  func(string) string { return "1111111111111111111111111111111111111111" },
+			want:   deskkit.ExitRefused,
+		},
+		{
+			name: "different branch, HEAD is a descendant of headRefOid",
+			setup: func(t *testing.T, w string) {
+				mustGit(t, w, "checkout", "-b", "neutral-rework")
+				writeFile(t, filepath.Join(w, "next.txt"), "unpushed\n")
+				mustGit(t, w, "add", "next.txt")
+				mustGit(t, w, "commit", "-m", "unpushed on top of the PR head")
+			},
+			prHead: "feature/held-elsewhere",
+			prOid:  func(string) string { return "" }, // replaced below with HEAD~1
+			want:   deskkit.ExitRefused,
+		},
+		{
+			name:   "detached HEAD at headRefOid",
+			setup:  func(t *testing.T, w string) { mustGit(t, w, "checkout", "--detach", "HEAD") },
+			prHead: "feature/held-elsewhere",
+			prOid:  func(h string) string { return h },
+			want:   deskkit.ExitOK,
+		},
+		{
+			name:   "merged PR, HEAD == headRefOid",
+			setup:  func(t *testing.T, w string) { mustGit(t, w, "checkout", "-b", "neutral-rework") },
+			prHead: "feature/held-elsewhere",
+			prOid:  func(h string) string { return h },
+			state:  "MERGED",
+			want:   deskkit.ExitRefused,
+		},
+		{
+			name:   "closed PR, detached at headRefOid",
+			setup:  func(t *testing.T, w string) { mustGit(t, w, "checkout", "--detach", "HEAD") },
+			prHead: "feature/held-elsewhere",
+			prOid:  func(h string) string { return h },
+			state:  "CLOSED",
+			want:   deskkit.ExitRefused,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			work := newBaseFixture(t)
+			if tc.setup != nil {
+				tc.setup(t, work)
+			}
+			withEnv(t, work)
+			head := mustGit(t, work, "rev-parse", "HEAD")
+			oid := tc.prOid(head)
+			if strings.Contains(tc.name, "descendant") {
+				oid = mustGit(t, work, "rev-parse", "HEAD~1")
+			}
+			t.Setenv("FAKEGH_PR_OID", oid)
+			if tc.prHead != "" {
+				t.Setenv("FAKEGH_PR_HEAD", tc.prHead)
+			}
+			if tc.state != "" {
+				t.Setenv("FAKEGH_PR_STATE", tc.state)
+			}
+			body := bodyFileWith(t, "reply for case: "+tc.name)
+
+			rc := run([]string{"example-org/tracker", "7", "--body-file", body})
+			if rc != tc.want {
+				t.Fatalf("rc = %d, want %d", rc, tc.want)
+			}
+			if tc.want == deskkit.ExitOK {
+				if !forgeRec(t).posted() {
+					t.Fatalf("expected a comment post; forge writes: %v", forgeRec(t).writes())
+				}
+			} else {
+				assertNoComment(t, forgeRec(t))
+			}
+		})
+	}
+}

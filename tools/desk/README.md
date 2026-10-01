@@ -60,7 +60,7 @@ it on day one.
 | `deskroster` | `set`, `drop`, `list`, `mine`, `width`, `repos`, `apps`, `preflight` | local-only, out-of-git (`preflight` mints a token and runs one read-only transport probe) | no |
 | `muhar` | `-spec <file>` mutation harness, `-j <n>` mutations in flight (isolated tree per worker), `-shard i/n` this invocation's slice of the spec (shards partition it; baseline + control run per shard) | local diagnostic (no `Guard`) | no |
 | `writeguard` | PreToolUse hook (F-34 isolation backstop) | hook | n/a |
-| `deskpushguard` | pre-push hook — refuses a push to a MERGED/CLOSED branch, one carrying a foreign/laundered commit, a single-parent merge masquerade, or a branch point sitting on a stray local `origin/main`, or one introducing a register-entry `id:` collision with an in-flight sibling branch (#22, #72). Cannot determine the base → prints `COULD-NOT-CHECK` and allows (fail-open, brief-10); that line means UNVERIFIED, not clean | git hook | n/a |
+| `deskpushguard` | pre-push hook — refuses a push to a MERGED/CLOSED branch, one carrying a foreign/laundered commit, a single-parent merge masquerade, or a branch point sitting on a stray local `origin/main`, or one introducing a register-entry `id:` collision with an in-flight sibling branch (#22, #72). Every base check uses the remote git is actually pushing to — the hook's first argument, `refs/remotes/<remote>/main` — never an assumed `origin` (#1201). Cannot determine the base (including no remote name, or no `main` on the pushed remote) → prints `COULD-NOT-CHECK` and allows (fail-open, brief-10); that line means UNVERIFIED, not clean | git hook | n/a |
 | `desksourceguard` | CI gate — refuses a materialised desk-tools source tree that is not the pinned commit | CI | n/a |
 | `clusterguard` | exec-boundary shim for cluster CLIs (`kubectl`, `flux`, `helm`, `talosctl`, `k9s`) — installed as a directory of symlinks on the FRONT of a session's PATH. Refuses every shimmed CLI unless an operator shell exported `ASSAY_ALLOW_CLUSTER`, logs both verdicts, and otherwise execs the real CLI further along PATH. See [clusterguard — the cluster-CLI exec boundary](#clusterguard--the-cluster-cli-exec-boundary) | PATH shim | n/a |
 
@@ -656,6 +656,15 @@ branch diff: those are surfaces a *push* publishes, and `edit` pushes nothing �
 a body correction over code the branch already carries would strand the one verb whose
 job is fixing text.
 
+**`--pr N` names the PR instead (#1901).** Git allows one worktree per branch, so a rework
+worker whose PR head branch is still checked out elsewhere works on a neutral branch or a
+detached HEAD and pushes by explicit refspec. From there `edit --pr N` reads PR #N and
+applies the shared own-PR guard (`deskkit.CheckOwnPR`, the same rule `deskreply` uses): the
+PR must be OPEN, and the worktree's branch must BE the PR's head branch or its HEAD commit
+must be EXACTLY the PR's head commit. A HEAD with unpushed commits on top of the head commit
+is refused until they are pushed. Without `--pr`, a detached HEAD is refused (exit 6) with a
+message that points at `--pr N`.
+
 **The link trailer is not editable.** `Brief: <stream>/<NN>` / `Authors: <stream>/<NN>[, …]` /
 `Issue: #<N>` is the
 derived board's edge from the PR to its work item, and a body-rewrite verb that could
@@ -695,15 +704,37 @@ is the ambient-identity lane the forge-side custody ruling retired.
 `deskpr create`, `deskpr update` and `deskwt add` therefore **refuse, fail-closed** (exit 5)
 when the resolved **push** URL of `origin` is an SSH one *and* the session presents a bot
 identity — `$DESK_LOOP` resolving to a role App. The refusal names the config key, the URL,
-the acting App, and the one-line remedy (a `remote set-url --push` to the equivalent https
-URL, which it computes for you). Implementation: `internal/deskkit/pushtransport.go`.
+the acting App, and the remedy (usually a `remote set-url --push` to the equivalent https
+URL, which it computes for you; a rewrite rule in the way is named below). Implementation: `internal/deskkit/pushtransport.go`.
+
+The URL judged is the one git will actually push to — `git remote get-url --push --all
+origin`, a local read that contacts no remote and applies `url.<base>.pushInsteadOf` and
+`url.<base>.insteadOf` exactly as a push does (#884). An https remote that such a rule
+rewrites to SSH is refused, and the refusal names the rule, the configured URL and what it
+became. The remedy is decided by the https URL it would propose, not by the kind of rule: git
+never applies `pushInsteadOf` to an explicit pushurl, but it DOES apply `insteadOf` to one. So
+the refusal proposes `remote set-url --push <https URL>` unless an `insteadOf` rule would rewrite
+that very https URL back to SSH — then, and only then, the remedy is to remove or narrow that
+rule. An SSH URL that an `insteadOf` rule turns into another SSH URL (an ssh alias on port 443,
+say) is therefore cleared by an https push URL, and removing the rule would not clear it. When
+removing that rule is not enough on its own — the configured URL is itself SSH, or a
+`pushInsteadOf` alias would still apply once it is gone — the refusal names both steps, the rule
+first and the `set-url` second, so the operator is not sent round the gate twice. On a
+multi-valued `remote.<name>.pushurl` the plain `set-url --push` form fails ("has multiple
+values"), so the proposed line names the value it replaces as git's `<oldurl>` pattern and keeps
+every other push destination.
+
+In `deskpr` this refusal is mostly shadowed by the push-destination gate (#1623), which runs
+first and refuses any non-https destination on its own terms; the surface where this gate is
+the one that speaks is `deskwt add` without `--role`, where nothing else inspects the push URL
+before the new worktree inherits it.
 
 Four boundaries are deliberate:
 
 - **Only the push transport.** Fetch over SSH is untouched — a read carries no identity the
   forge records against a ref. An SSH `remote.origin.url` with an https
-  `remote.origin.pushurl` override is a normal, allowed run, and `remote.origin.pushurl` is
-  what the gate reads whenever it is set, exactly as git resolves a push.
+  `remote.origin.pushurl` override is a normal, allowed run: git pushes to the pushurl, and
+  so does the gate's resolved URL.
 - **Only a bot session.** With `$DESK_LOOP` unset the gate is inert: a human at a terminal
   pushes under their own key, which is what the SSH remote is for. A `$DESK_LOOP` this
   process cannot resolve to a role is a stderr **NOTICE** saying the gate did **not** run —
@@ -723,11 +754,14 @@ Four boundaries are deliberate:
   but the evidence is weaker — a helper this code does not recognise may well be the App's —
   so it says so on stderr and proceeds.
 
-Could-not-check is exit 6, never a pass: a `git config` read that fails, and a remote with
-no URL at all, are both unverifiable rather than "no SSH found, carry on".
+Could-not-check is exit 6, never a pass: a `git config` read that fails, a push URL git
+cannot resolve, and a remote with no URL at all are all unverifiable rather than "no SSH
+found, carry on". Real git never resolves a url-less remote to nothing — it resolves it to the
+remote's bare NAME (a local path) — so the gate treats "no non-blank `url`/`pushurl` configured,
+and git resolves exactly the remote's name" as the no-URL case too.
 
-The guard's own fail-first evidence is `internal/deskkit/pushtransport-mutations.json` — ten
-mutations plus a positive control, run with
+The guard's own fail-first evidence is `internal/deskkit/pushtransport-mutations.json` —
+thirty mutations plus a positive control, run with
 `go run ./cmd/muhar -j 0 -spec internal/deskkit/pushtransport-mutations.json`.
 
 ### The publish-identity gate (`deskpr create` / `update`, `deskevidence`)
