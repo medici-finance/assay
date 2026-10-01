@@ -208,6 +208,9 @@ func TestRestampSkipsStandingPair(t *testing.T) {
 	if len(fg.writes) != 0 || len(fg.comments) != 0 {
 		t.Fatalf("a no-op made %d writes and %d comments", len(fg.writes), len(fg.comments))
 	}
+	if !strings.Contains(out, "Claim liveness is not checked") {
+		t.Fatalf("noop must disclose unchecked claim liveness: %s", out)
+	}
 	if !strings.Contains(out, "noop") {
 		t.Fatalf("report does not read as a noop:\n%s", out)
 	}
@@ -502,8 +505,8 @@ func TestRestampRefusesMixedPairVouchedFirst(t *testing.T) {
 	fg := &fakeForge{
 		pr: stampedPR(modelLabel, tierLabel),
 		events: []deskkit.LabelEvent{
-			labeledBy(modelLabel, "ada"),          // vouched: blessing authority, pre-cutoff (index 0)
-			labeledBy(tierLabel, "shared-agent"),  // unvouched: trusted, but not the driver (index 1)
+			labeledBy(modelLabel, "ada"),         // vouched: blessing authority, pre-cutoff (index 0)
+			labeledBy(tierLabel, "shared-agent"), // unvouched: trusted, but not the driver (index 1)
 		},
 	}
 	plantWorld(t, "desk", fg)
@@ -527,7 +530,7 @@ func TestRestampRefusesMixedPairVouchedLast(t *testing.T) {
 		pr: stampedPR(modelLabel, tierLabel),
 		events: []deskkit.LabelEvent{
 			labeledBy(modelLabel, "shared-agent"), // unvouched: trusted, but not the driver (index 0)
-			labeledBy(tierLabel, "ada"),            // vouched: blessing authority, pre-cutoff (index 1)
+			labeledBy(tierLabel, "ada"),           // vouched: blessing authority, pre-cutoff (index 1)
 		},
 	}
 	plantWorld(t, "desk", fg)
@@ -580,7 +583,7 @@ func TestRestampRefusesDriverApplicationWithNoTimestamp(t *testing.T) {
 		pr: stampedPR(modelLabel, tierLabel),
 		events: []deskkit.LabelEvent{
 			{Name: modelLabel, AppliedBy: "ada"}, // CreatedAt == "" — the forge named no timestamp
-			labeledBy(tierLabel, "ada"),           // vouched on its own (pre-cutoff, unaffected)
+			labeledBy(tierLabel, "ada"),          // vouched on its own (pre-cutoff, unaffected)
 		},
 	}
 	plantWorld(t, "desk", fg)

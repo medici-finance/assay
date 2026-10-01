@@ -85,6 +85,9 @@ claim calls only — the repo's short label (configured alias, else the repo bas
 prefixed and "/" becomes "--" — by a fixed rule, so every desk derives the SAME claim key
 for the same item and the claims collide. The worktree name, branch, brief path, and the
 prompt's item key stay on the ORIGINAL key.
+For review kits with --pr N, the resulting claim key must be <configured-alias>--pr-N
+or <repo-basename>--pr-N, optionally followed by --<lane>. Unknown historical aliases
+and keys for another PR are refused before claim acquisition; accepted keys are unchanged.
 
 STEPS, in order. Each prints one line; the first red one stops the dispatch and NAMES itself.
 

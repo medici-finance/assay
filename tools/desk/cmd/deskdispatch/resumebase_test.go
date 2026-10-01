@@ -41,7 +41,13 @@ func resumeDispatch(t *testing.T, remoteBranchSHA string, args ...string) (*stub
 		{match: "rev-parse --verify --quiet refs/remotes/origin/feat/item-1", stdout: remoteBranchSHA},
 		{match: "deskwt add", stdout: filepath.Join(t.TempDir(), "home")},
 	}
-	full := append([]string{"item-1", "--root", root,
+	item := "item-1"
+	for i, arg := range args {
+		if arg == "--kit" && i+1 < len(args) && args[i+1] == "review" {
+			item = "assay--pr-42"
+		}
+	}
+	full := append([]string{item, "--root", root,
 		"--prompt-file", filepath.Join(t.TempDir(), "p.md")}, args...)
 	_, stderr := runCapturingStderr(t, full)
 	argv := deskwtAddArgv(s)
