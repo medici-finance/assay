@@ -122,3 +122,26 @@ Critical path: `01 → 02 → 03 → 06`, with the outbound-write chain `01 → 
   the push-guard fixes (#1201/#884) and coordinates the transport half.
 - **`desk-tools`** is the general planning board for the current suite; v2 is the
   architectural successor for the forge-abstraction slice only.
+
+## Regression floor
+
+The inherited Windows, GitLab and credential behaviors are registered in
+[`MANIFEST.md`](../../../tools/desk/internal/regression/MANIFEST.md). Each seed has
+an owning package, a passing behavior test and a recorded failure at the fixing
+commit's parent. Existing tests are reused where they already pin the fix; the
+manifest guard rejects an omitted starter or a test declaration that disappears.
+The [harvest receipt](../../../tools/desk/internal/regression/HARVEST.md) records
+additional closes and reasoned exclusions.
+
+The floor rides `go test ./...` in PR CI. A desktools-v2 PR that turns a floor test
+red may not delete or weaken it: port the test, and name the behavior change that
+forced the port in the PR description. Both owning modules must run their tests.
+The current desk CI case does; statusgen currently receives build/vet only, so
+that half remains an enforcement hold until the maintainer applies the staged
+[additive CI patch](../../../ci/staged-patches/desktools-v2-14-statusgen-tests.patch).
+A staged patch is not a live gate.
+
+For a bounded local check, run `bash tools/desk/internal/regression/check-floor.sh`
+from the repository root. It runs every named seed in its owning package and
+requires its top-level PASS line; missing selections and failures are red. The
+fixtures use local git repositories, local HTTP servers and fake CLI executables.

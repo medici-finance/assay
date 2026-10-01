@@ -196,6 +196,8 @@ func TestCrossModuleTestsAreTriggeredByWhatTheyRead(t *testing.T) {
 // read outside their own Go module. Both tests in this file consume it: the
 // trigger/reachability guard above, and the staleness scanner below.
 func ciCrossModuleRegistry() []ciEntry {
+	floorJob := ciJobRef{id: "build-test", check: "build-test"}
+
 	toolsDeskJob := ciJobRef{
 		id:          "test",
 		matrixValue: "tools/desk",
@@ -227,6 +229,23 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{
+			test:   "tools/desk/internal/regression/manifest_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"tools/desk", "statusgen"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the manifest dereferences test declarations in both modules; edits in either must run the desk manifest guard",
+		},
+		{
+			test:   "tools/desk/internal/regression/shell_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"tools/create-fleet-gitlab.sh", "tools/create-fleet-gitlab_test.sh", "tools/cellctl"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the floor runs offline shell fixtures outside the desk module; script changes must run the entry points",
+		},
+
 		{
 			// Registered with the guard it enforces (#392 review
 			// B3): closecheck's entire advisory guarantee — that it cannot
@@ -2334,4 +2353,46 @@ runs:
 			}
 		}
 	})
+}
+
+// TestRegressionCIEntrypoints checks the published workflow directly. The
+// legacy house registry test intentionally skips without tools.yml; these
+// public entries must not inherit that skip.
+func TestRegressionCIEntrypoints(t *testing.T) {
+	count := 0
+	for _, e := range ciCrossModuleRegistry() {
+		if !strings.HasPrefix(e.test, "tools/desk/internal/regression/") {
+			continue
+		}
+		count++
+		raw, err := os.ReadFile(filepath.Join("../../../..", e.workflow))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, event := range []string{"pull_request", "push"} {
+			job := e.prJob
+			if event == "push" {
+				job = e.pushJob
+			}
+			ciAssertEventReachesJob(t, string(raw), e.workflow, e.module, event, job, e.runInvokes, e.test, e.why)
+			globs, filtered := ciOnEventKey(t, string(raw), e.workflow, event, "paths")
+			if !filtered {
+				if _, ignored := ciOnEventKey(t, string(raw), e.workflow, event, "paths-ignore"); ignored {
+					t.Fatalf("floor workflow %s has paths-ignore; enumerate its coverage before trusting it", e.workflow)
+				}
+				globs = []string{"**"}
+			} // ci.yml deliberately runs on every change; reachability above still checks the event and job
+			for _, read := range e.reads {
+				if _, err := os.Stat(filepath.Join("../../../..", read)); err != nil {
+					t.Fatal(err)
+				}
+				if !anyGlobMatches(t, globs, read) {
+					t.Errorf("%s does not cover %s for %s", e.workflow, read, event)
+				}
+			}
+		}
+	}
+	if count != 2 {
+		t.Fatalf("floor has %d CI registry entries, want 2", count)
+	}
 }
