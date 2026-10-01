@@ -1,0 +1,17 @@
+{
+  "test": "go test ./internal/deskkit/ ./cmd/cellctl/ -count=1 -timeout 120s -run '^Test(IsAbsFor|CellPathCheck|CellPathClassGuard)$'",
+  "control": {
+    "name": "Network and device path refusal removed",
+    "file": "cmd/cellctl/pathcheck.go",
+    "old": "if len(p) >= 2 && sep(p[0]) && sep(p[1]) {",
+    "new": "if len(p) >= 2 && sep(p[0]) && sep(p[1]) && false {"
+  },
+  "mutations": [
+    {
+      "name": "Windows syntax replaced by POSIX-only absolute check",
+      "file": "internal/deskkit/pathabs.go",
+      "old": "if goos != \"windows\" {",
+      "new": "if goos != \"windows\" || true {"
+    }
+  ]
+}
