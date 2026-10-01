@@ -239,7 +239,46 @@ func SelfContainCheck(surface string, content []byte, o SelfContainOpts) error {
 // selfContainScan is the pure half: it returns the refusal message (empty when clean) and
 // the notice lines, with no I/O and no configuration reads of its own beyond the roster
 // accessors. Split out so tests can assert on both halves without capturing streams.
+//
+// The refusal is the FIRST finding selfContainFindings reports, so the precedence the
+// categories have always had (machine-shaped spans first, then private slugs, then the
+// withheld register) is unchanged.
 func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, notices []string) {
+	findings, notices := selfContainFindings(surface, s, o)
+	if len(findings) > 0 {
+		refusal = selfContainRefusal(surface, findings[0])
+	}
+	return refusal, notices
+}
+
+// scFinding is one refusing self-containment match.
+type scFinding struct {
+	// category is the category's own noun phrase ("private repository name", …).
+	category string
+	// span is the offending text as the scan saw it.
+	span string
+	// why is the category's reason clause.
+	why string
+	// withheld marks the withheld-register category, whose refusal is not overridable
+	// from a verb (scanoverride.go).
+	withheld bool
+	// line is the 1-based line of the span on the scanned surface.
+	line int
+}
+
+// selfContainRefusal renders one finding as the refusal message SelfContainCheck returns.
+func selfContainRefusal(surface string, f scFinding) string {
+	return fmt.Sprintf("refused: %s is not self-contained — %s %q %s. "+
+		"A public body must stand alone for a reader outside this house; reword the span "+
+		"(see `deskpr --help`, PUBLIC-REPO SELF-CONTAINMENT, for the categories)",
+		surface, f.category, f.span, f.why)
+}
+
+// selfContainFindings is the collector behind selfContainScan: EVERY refusing finding, in
+// category order, plus the notice lines. The outbound-write check (outbound.go) reads the
+// whole list, because whether a write may be overridden depends on whether ANY finding is
+// in a non-overridable category, not only on the first.
+func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFinding, notices []string) {
 	// The workpad marker line (workpad.go) is exempt from every
 	// category below by EXACT LINE match — see StripWorkpadMarkerLine's own comment. It is
 	// a fixed, content-free string with no slash, no `#N`, no path and no session/agent
@@ -248,13 +287,10 @@ func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, noti
 	// the credential scan.
 	s = StripWorkpadMarkerLine(s)
 	priv, privShort := privateRepoNames(o.Repo)
-	refuse := func(category, span, why string) {
-		if refusal == "" {
-			refusal = fmt.Sprintf("refused: %s is not self-contained — %s %q %s. "+
-				"A public body must stand alone for a reader outside this house; reword the span "+
-				"(see `deskpr --help`, PUBLIC-REPO SELF-CONTAINMENT, for the categories)",
-				surface, category, span, why)
-		}
+	refuse := func(category, span, why string, at int, withheld bool) {
+		findings = append(findings, scFinding{
+			category: category, span: span, why: why, withheld: withheld, line: lineOf(s, at),
+		})
 	}
 
 	// --- category: machine-local absolute paths, worktree names, session and agent ids ---
@@ -272,8 +308,8 @@ func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, noti
 		{reSessionUUID, "session id", "identifies an agent session, not anything a reader can look up"},
 		{reAgentID, "agent id", "identifies an agent session, not anything a reader can look up"},
 	} {
-		if loc := m.re.FindString(s); loc != "" {
-			refuse(m.category, loc, m.why)
+		if loc := m.re.FindStringIndex(s); loc != nil {
+			refuse(m.category, s[loc[0]:loc[1]], m.why, loc[0], false)
 		}
 	}
 
@@ -282,22 +318,23 @@ func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, noti
 	// A QUALIFIED `owner/name` slug is unambiguous, so it refuses whether or not it carries
 	// a `#N`. The slug alone is the disclosure — #203's report is about a body naming a
 	// house repo, not only about the issue number hanging off it.
-	for _, m := range reQualifiedRef.FindAllStringSubmatch(s, -1) {
-		slug := strings.ToLower(m[1])
+	for _, idx := range reQualifiedRef.FindAllStringSubmatchIndex(s, -1) {
+		slug := strings.ToLower(s[idx[2]:idx[3]])
 		if !priv[slug] {
 			continue
 		}
-		if m[2] != "" {
-			refuse("cross-repo reference", m[0], "points into a repository the roster marks PRIVATE")
+		whole := s[idx[0]:idx[1]]
+		if idx[4] >= 0 && idx[5] > idx[4] {
+			refuse("cross-repo reference", whole, "points into a repository the roster marks PRIVATE", idx[0], false)
 			continue
 		}
-		refuse("private repository name", m[0], "names a repository the roster marks PRIVATE")
+		refuse("private repository name", whole, "names a repository the roster marks PRIVATE", idx[0], false)
 	}
 	// An `alias#N` cross-repo reference resolves through the roster's own alias map, so it
 	// refuses on exactly the aliases the deployment configured and on nothing else.
-	for _, m := range reShortRef.FindAllStringSubmatch(s, -1) {
-		if privShort[strings.ToLower(m[1])] {
-			refuse("cross-repo reference", m[0], "points into a repository the roster marks PRIVATE")
+	for _, idx := range reShortRef.FindAllStringSubmatchIndex(s, -1) {
+		if privShort[strings.ToLower(s[idx[2]:idx[3]])] {
+			refuse("cross-repo reference", s[idx[0]:idx[1]], "points into a repository the roster marks PRIVATE", idx[0], false)
 		}
 	}
 
@@ -324,20 +361,21 @@ func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, noti
 		// the author has to edit — a refusal that under-reports its own span costs a round
 		// trip, which is #328's lesson about surface naming applied one level down.
 		lower := strings.ToLower(s)
-		for _, m := range reBriefID.FindAllStringSubmatch(s, -1) {
+		for _, idx := range reBriefID.FindAllStringSubmatchIndex(s, -1) {
 			for _, id := range withheld {
-				if strings.ToLower(m[1]) == id {
-					refuse("withheld register identifier", m[0],
-						"names a brief in a register this deployment does not publish")
+				if strings.ToLower(s[idx[2]:idx[3]]) == id {
+					refuse("withheld register identifier", s[idx[0]:idx[1]],
+						"names a brief in a register this deployment does not publish", idx[0], true)
 				}
 			}
 		}
 		for _, id := range withheld {
-			if !containsToken(lower, id) {
+			at := tokenIndex(lower, id)
+			if at < 0 {
 				continue
 			}
 			refuse("withheld register identifier", id,
-				"names an entry in a register this deployment does not publish")
+				"names an entry in a register this deployment does not publish", at, true)
 		}
 	}
 
@@ -367,7 +405,7 @@ func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, noti
 		}
 	}
 	sort.Strings(notices)
-	return refusal, notices
+	return findings, notices
 }
 
 // bareRefNotices reports bare `#N` references the body's own repo cannot plausibly own.
@@ -445,23 +483,27 @@ func privateRepoNames(self string) (slugs map[string]bool, shorts map[string]boo
 // containsToken reports whether lowered carries tok as a whole token — bounded on both
 // sides by something other than a letter, digit, `-` or `_`. A substring match would fire on
 // any word that happens to contain a short name.
-func containsToken(lowered, tok string) bool {
+func containsToken(lowered, tok string) bool { return tokenIndex(lowered, tok) >= 0 }
+
+// tokenIndex is containsToken returning WHERE: the byte offset of the first whole-token
+// occurrence of tok in lowered, or -1.
+func tokenIndex(lowered, tok string) int {
 	if tok == "" {
-		return false
+		return -1
 	}
 	for i := 0; ; {
 		j := strings.Index(lowered[i:], tok)
 		if j < 0 {
-			return false
+			return -1
 		}
 		start := i + j
 		end := start + len(tok)
 		if !isTokenByte(lowered, start-1) && !isTokenByte(lowered, end) {
-			return true
+			return start
 		}
 		i = start + 1
 		if i >= len(lowered) {
-			return false
+			return -1
 		}
 	}
 }

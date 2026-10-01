@@ -20,6 +20,8 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
+design: DR-desktools-v2-10
+decision-issue: 1319
 authored: 2026-09-17 by desktools-v2 authoring session
 sources:
   - "docs/streams/desktools-v2/spec.md §8 — the driver's direction of 2026-09-17, the three incidents stated without their identifiers, the verb × check table (§8.2) and the design (§8.3)"
@@ -220,20 +222,27 @@ decorator and against the push path, so a verb has no conformance of its own to 
 | C11 | any refused row, with the override and a 12-character reason | per the human's ruling | overridable rule ids pass and leave one audit row holding rule id + digest and NOT the text; non-overridable ids still refuse |
 | C12 | any refused row | any | the recording fake forge saw ZERO calls and the refusal text appears in no composed body |
 
+Coverage boundary: "one check" means every `Forge` write and deskpr's push. A push that does
+not go through deskpr (the generic push, merge and verify-loop tools, a hand-typed `git push`)
+is checked only where the `deskpushguard` pre-push hook is installed, and that hook fails open
+on could-not-check. Raw API writers that never hold a `Forge` (fleet provisioning, including
+the label names and descriptions it publishes from its compiled label table; the release
+tagger's tag refs) are outside this brief's "Outward writes" inventory and are not covered.
+
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd tools/desk && go build ./... && go vet ./internal/deskkit/ ./internal/forgeban/` | exit 0 |
-| 2 | `cd tools/desk && go test -timeout 10m ./internal/deskkit/ -run 'TestOutbound' -v` | output contains the literal line `--- PASS: TestOutboundConformance` (assert on that line, not the exit status — a `-run` selector matching nothing exits 0) |
-| 3 | `cd tools/desk && go test ./cmd/deskfile/ -run TestNewRefusesWithheldIdentifierOnPublicTarget -v` | output contains `--- PASS: TestNewRefusesWithheldIdentifierOnPublicTarget`. Fail-first: on the unfixed code `deskfile new` FILES the issue (the fake forge records one `FileIssue`) — quote that red run in the PR body |
-| 4 | `cd tools/desk && go test ./cmd/deskfile/ -run TestNewPassesSameBodyOnPrivateTarget -v` | output contains `--- PASS: TestNewPassesSameBodyOnPrivateTarget` — the same text, private target, one `FileIssue` recorded |
-| 5 | `cd tools/desk && go test ./cmd/deskpr/ -run TestPushRefusesWithheldNameInAddedTestComment -v` | output contains `--- PASS: TestPushRefusesWithheldNameInAddedTestComment` and the test asserts the push seam recorded ZERO pushes. Fail-first: on the unfixed code the push proceeds |
-| 6 | `cd tools/desk && go test ./internal/deskkit/ -run TestOutboundForgeWrapsEveryWriteMethod -v` | output contains `--- PASS: TestOutboundForgeWrapsEveryWriteMethod` — the completeness layer, independent of the conformance fixtures |
-| 7 | `cd tools/desk && go test -timeout 10m ./internal/forgeban/ ./internal/deskkit/ -run 'Test(ForgeSingleConstructionSite)$' -v && go test ./internal/forgeban/ -run TestNoBackendTypeOutsideDeskkit -v` | output contains BOTH `--- PASS: TestForgeSingleConstructionSite` and `--- PASS: TestNoBackendTypeOutsideDeskkit` — the structural layer: one construction site, and no cmd package can name a backend type to build or unwrap one |
-| 8 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/deskkit/outbound-mutations.json` | the harness's own Totals line reports every mutation KILLED and none survived; `internal/deskkit/outbound-mutations.json` (planned) carries at least: the decorator removed from `ResolveForge`'s return, one text-carrying method dropped from the decorator, the visibility test inverted, and the e-mail allow-list emptied — the fail-first evidence a reviewer re-runs. (`go run` flattens the exit code, so assert on the Totals line, not the status) |
-| 9 | `cd tools/desk && go test ./internal/deskkit/ -run TestOverrideAuditRowHoldsDigestNotText -v` | output contains `--- PASS: TestOverrideAuditRowHoldsDigestNotText` |
-| 10 | `grep -rn --include='*.go' --exclude='*_test.go' -e 'deskkit.ScanSurface' -e 'deskkit.BodyCheck' -e 'deskkit.SelfContainCheck' tools/desk/cmd/deskfile tools/desk/cmd/deskpost tools/desk/cmd/deskreply tools/desk/cmd/deskevidence; test $? -eq 1` | exit 0 and no line printed — the per-verb scan calls are GONE from the verbs whose writes all cross the decorator (the removal, not just the addition). `deskpr` is excluded by design: its `--check` pre-flight is the recorded second caller |
-| 11 | `statusgen --consumers --root .` | exit 0; no routing claim in this brief is disproved by the diff |
+| # | Class | Command | Expect |
+|---|-------|---------|--------|
+| 1 | check | `cd tools/desk && go build ./... && go vet ./internal/deskkit/ ./internal/forgeban/` | exit 0 |
+| 2 | check | `cd tools/desk && go test -timeout 10m ./internal/deskkit/ -run 'TestOutbound' -v` | output contains the literal line `--- PASS: TestOutboundConformance` (assert on that line, not the exit status — a `-run` selector matching nothing exits 0) |
+| 3 | check | `cd tools/desk && go test ./cmd/deskfile/ -run TestNewRefusesWithheldIdentifierOnPublicTarget -v` | output contains `--- PASS: TestNewRefusesWithheldIdentifierOnPublicTarget`. Fail-first: on the unfixed code `deskfile new` FILES the issue (the fake forge records one `FileIssue`) — quote that red run in the PR body |
+| 4 | check | `cd tools/desk && go test ./cmd/deskfile/ -run TestNewPassesSameBodyOnPrivateTarget -v` | output contains `--- PASS: TestNewPassesSameBodyOnPrivateTarget` — the same text, private target, one `FileIssue` recorded |
+| 5 | check | `cd tools/desk && go test ./cmd/deskpr/ -run TestPushRefusesWithheldNameInAddedTestComment -v` | output contains `--- PASS: TestPushRefusesWithheldNameInAddedTestComment` and the test asserts the push seam recorded ZERO pushes. Fail-first: on the unfixed code the push proceeds |
+| 6 | check | `cd tools/desk && go test ./internal/deskkit/ -run TestOutboundForgeWrapsEveryWriteMethod -v` | output contains `--- PASS: TestOutboundForgeWrapsEveryWriteMethod` — the completeness layer, independent of the conformance fixtures |
+| 7 | check | `cd tools/desk && go test -timeout 10m ./internal/forgeban/ ./internal/deskkit/ -run 'Test(ForgeSingleConstructionSite)$' -v && go test ./internal/forgeban/ -run TestNoBackendTypeOutsideDeskkit -v` | output contains BOTH `--- PASS: TestForgeSingleConstructionSite` and `--- PASS: TestNoBackendTypeOutsideDeskkit` — the structural layer: one construction site, and no cmd package can name a backend type to build or unwrap one |
+| 8 | check +mutation | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/deskkit/outbound-mutations.json` | the harness's own Totals line reports every mutation KILLED and none survived; `internal/deskkit/outbound-mutations.json` (planned) carries at least: the decorator removed from `ResolveForge`'s return, one text-carrying method dropped from the decorator, the visibility test inverted, and the e-mail allow-list emptied — the fail-first evidence a reviewer re-runs. (`go run` flattens the exit code, so assert on the Totals line, not the status) |
+| 9 | check | `cd tools/desk && go test ./internal/deskkit/ -run TestOverrideAuditRowHoldsDigestNotText -v` | output contains `--- PASS: TestOverrideAuditRowHoldsDigestNotText` |
+| 10 | check | `grep -rn --include='*.go' --exclude='*_test.go' -e 'deskkit.ScanSurface' -e 'deskkit.BodyCheck' -e 'deskkit.SelfContainCheck' tools/desk/cmd/deskfile tools/desk/cmd/deskpost tools/desk/cmd/deskreply tools/desk/cmd/deskevidence; test $? -eq 1` | exit 0 and no line printed — the per-verb scan calls are GONE from the verbs whose writes all cross the decorator (the removal, not just the addition). `deskpr` is excluded by design: its `--check` pre-flight is the recorded second caller |
+| 11 | check | `statusgen --consumers --root .` | exit 0; no routing claim in this brief is disproved by the diff |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->

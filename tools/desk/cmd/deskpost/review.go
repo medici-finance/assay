@@ -123,9 +123,21 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		if !deskkit.IsAllowedRepo(repo) {
 			return refused(preVerb, repo, pr, "", "repo "+repo+" is not in the fixed desk repo set")
 		}
-		// Body validation (verdict schema + secret scan) BEFORE any network — a bad
-		// body must refuse with zero side effects.
+		// Body validation BEFORE any network — a bad body must refuse with zero side
+		// effects: the size cap and verdict schema, then the ONE outbound-write check
+		// (desktools-v2/10) on this target. A review body is the densest evidence surface
+		// the desk writes — it quotes paths, cites issues across repos and names streams —
+		// which is precisely why it is also the likeliest to carry a span that resolves only
+		// inside the house; the check's public layers (self-containment, withheld register)
+		// run on any target not stated private, and its credential arms, impersonation guard
+		// and personal-data pass run everywhere. The checking Forge and the raw client re-run
+		// it at the write itself.
 		if err := bodycheck.Review(body); err != nil {
+			deskkit.MaybeExplain(stderr, opts.explain, err)
+			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
+		}
+		if err := deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: repo, Kind: deskkit.OutboundKindReview, NumberHint: pr,
+			Fields: []deskkit.OutboundField{{Name: "body", Text: string(body)}}}); err != nil {
 			deskkit.MaybeExplain(stderr, opts.explain, err)
 			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
 		}
@@ -135,14 +147,6 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		// — a blocking finding with no concrete reproduction/evidence, an unknown state — is a
 		// refusal with zero side effects, the same as every other pre-network body check.
 		if err := deskkit.ValidateReviewFindingBlock(body, deskkit.RoleReviewer); err != nil {
-			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
-		}
-		// #203: the PUBLIC-REPO SELF-CONTAINMENT scan. A review body is the densest
-		// evidence surface the desk writes — it quotes paths, cites issues across repos and
-		// names streams — which is precisely why it is also the likeliest to carry a span
-		// that resolves only inside the house. No-op on a known-private repo.
-		if err := deskkit.SelfContainCheck("review body", body,
-			deskkit.SelfContainOpts{Repo: repo, NumberHint: pr}); err != nil {
 			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
 		}
 		// On-behalf-of trailer (multi-principal/01): resolved before any network call,

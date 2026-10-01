@@ -268,7 +268,7 @@ func installFakeForge(t *testing.T) *envForge {
 	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 		owner, name := splitOwnerRepo(repo)
 		f.repo = deskkit.ForgeRepo{Owner: owner, Name: name}
-		return f, f.repo, nil
+		return deskkit.OutboundChecked(f, "worker"), f.repo, nil
 	}
 	t.Cleanup(func() { forgeForFn = old })
 	return f

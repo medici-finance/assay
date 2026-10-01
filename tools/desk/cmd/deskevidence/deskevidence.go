@@ -163,8 +163,12 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	var rowFlags stringSliceFlag
 	fs.Var(&rowFlags, "row", "brief-table row number this landing may touch (repeatable); "+
 		"required when the target's remote content carries the generated-table markers")
+	applyOverride, _ := deskkit.RegisterOutboundOverride(fs, "deskevidence", "land")
 	if perr := fs.Parse(flagArgs); perr != nil {
 		return deskkit.Refused("bad flags: " + perr.Error())
+	}
+	if oerr := applyOverride(); oerr != nil {
+		return oerr
 	}
 
 	// --outcome-record is a SEPARATE landing shape from --evidence-file/--brief-path: it
@@ -417,7 +421,11 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// the line of the file the caller wrote — and the branch copy's own secret-shaped runs,
 	// which this landing does not own and never refuses on, are NAMED on stderr as
 	// `pre-existing in <target>:<line>` (#1161). Neither message carries the span.
-	if berr := deskkit.BodyCheck(scanTarget); berr != nil {
+	//
+	// The scan is the ONE outbound-write check (desktools-v2/10), run here as a pre-flight on
+	// the bytes this landing adds; the checking Forge re-runs it on the same added lines at
+	// the write itself.
+	if berr := evidenceOutboundCheck(repoSlug, targetRepoPath, scanTarget); berr != nil {
 		return withAddedOrigin(berr, scanTarget, localContent)
 	}
 	if remoteExists {

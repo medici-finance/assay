@@ -38,6 +38,8 @@
 //
 //	DESKPUSHGUARD_OFF=1        skip the check (with stderr warning)
 //	DESKPUSHGUARD_FAKE_STATE=X  fake the gh response (testing only)
+//	DESKPUSHGUARD_SCAN_OVERRIDE=<why>  audited override of an overridable outbound-check
+//	                                   refusal (see outbound.go)
 package main
 
 import (
@@ -214,6 +216,15 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		}
 	}
 
+	// The outbound-write check (desktools-v2/10) over what each ref publishes: its branch
+	// name, every commit message in <remote>/main..<sha>, and the range's ADDED lines — the
+	// SAME function deskpr's pre-push scan calls, so a push by any route meets one check.
+	// Unlike the heuristics above it REFUSES on a finding (exit 5), because what it catches
+	// is not recoverable once pushed. A range it cannot read is COULD-NOT-CHECK: warned,
+	// audited, and allowed, per this hook's client-side fail-open contract — never a pass.
+	outboundRefusals, outboundUnchecked := checkOutbound(stderr, remoteName, repo, refs)
+	unchecked = append(unchecked, outboundUnchecked...)
+
 	// COULD-NOT-CHECK is announced BEFORE any verdict, and whether or not the push is refused.
 	// Silence used to mean two different things — "looked, found nothing" and "could not
 	// look" — and only one of them is safe. Per brief-10 a client-side hook does not wedge a
@@ -229,7 +240,11 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		auditUnchecked(stderr, unchecked)
 	}
 
-	if len(blocked) > 0 || len(laundered) > 0 || len(masqueraded) > 0 || len(strayBased) > 0 || len(collisions) > 0 {
+	if len(blocked) > 0 || len(laundered) > 0 || len(masqueraded) > 0 || len(strayBased) > 0 || len(collisions) > 0 ||
+		len(outboundRefusals) > 0 {
+		for _, o := range outboundRefusals {
+			fmt.Fprintf(stderr, "refusing: %s: %s\n", o.branch, o.msg)
+		}
 		for _, b := range blocked {
 			msg := fmt.Sprintf("refusing: PR #%d for %s is %s — a merged/closed PR is DONE; open a NEW branch for follow-up.",
 				b.pr, b.branch, b.state)

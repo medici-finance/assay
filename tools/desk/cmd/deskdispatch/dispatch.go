@@ -167,6 +167,7 @@ func cmdDispatch(args []string) error {
 		"already-existing home worktree instead of the not-yet-known placeholder. Refused on a real dispatch")
 	rework := fs.Bool("rework", false, "the row awaits implementer REWORK (implemented, last verdict FAIL): a MERGED PR "+
 		"for the brief makes this a FOLLOW-UP on a new branch, never a resume (worker kit, no --pr)")
+	applyOverride, _ := deskkit.RegisterOutboundOverride(fs, "deskdispatch", "dispatch")
 
 	if len(args) == 0 {
 		return deskkit.Refused("deskdispatch requires an <item-key>")
@@ -177,6 +178,9 @@ func cmdDispatch(args []string) error {
 	}
 	if err := fs.Parse(args[1:]); err != nil {
 		return deskkit.Refused("deskdispatch: bad flags: " + err.Error())
+	}
+	if err := applyOverride(); err != nil {
+		return err
 	}
 	if fs.NArg() != 0 {
 		return deskkit.Refused("deskdispatch: unexpected extra arguments after <item-key>: " + strings.Join(fs.Args(), " "))

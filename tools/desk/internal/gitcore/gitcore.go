@@ -1083,6 +1083,23 @@ func (r *Repo) CommitSubject(rev string) (string, error) {
 	return strings.TrimRight(subject, "\r"), nil
 }
 
+// CommitMessage returns rev's FULL commit message, matching `git log -1 --format=%B <rev>`
+// up to trailing newlines: subject, body and trailers. CRLF line endings are normalised to LF
+// as CommitSubject does. The outbound-write check (deskkit/outboundpush.go) reads it,
+// because a disclosure in a commit body is published by the push as surely as one in the
+// subject.
+func (r *Repo) CommitMessage(rev string) (string, error) {
+	hash, err := r.Resolve(rev)
+	if err != nil {
+		return "", err
+	}
+	commit, err := r.repo.CommitObject(hash)
+	if err != nil {
+		return "", fmt.Errorf("gitcore: commit %s: %w", hash, err)
+	}
+	return strings.ReplaceAll(commit.Message, "\r\n", "\n"), nil
+}
+
 // ParentHashes returns the full hex object ids of rev's parent commits, in the commit's own
 // parent order, matching `git log -1 --format=%P <rev>` split on whitespace (an empty slice
 // for a root commit, exactly as %P prints an empty string for one).
