@@ -1,7 +1,7 @@
 {
-  "test": "go test ./cmd/deskwt/ ./cmd/deskdispatch/ -count=1 -timeout 300s -run 'TestAddRole|TestAddWith|TestAddSsh|TestAddSSH|TestWorktreeCreatePassesTheDispatchedRole'",
+  "test": "go test ./cmd/deskwt/ ./cmd/deskdispatch/ -count=1 -timeout 300s -run 'TestRoleInit|TestTransport|TestAddRole|TestAddWith|TestAddSsh|TestAddSSH|TestWorktreeCreatePassesTheDispatchedRole'",
   "control": {
-    "name": "CONTROL — drop the explicit :443 (a global `url.<ssh>.insteadOf = https://<host>/` rewrites the App URL straight back to SSH)",
+    "name": "CONTROL \u2014 drop the explicit :443 (a global `url.<ssh>.insteadOf = https://<host>/` rewrites the App URL straight back to SSH)",
     "file": "cmd/deskwt/transport.go",
     "old": "\thttpsURL := \"https://\" + host + \":443/\" + repo + \".git\"",
     "new": "\thttpsURL := \"https://\" + host + \"/\" + repo + \".git\""
@@ -20,7 +20,7 @@
       "new": "\t\tif _, werr := \"\", error(nil); werr != nil {"
     },
     {
-      "name": "trust the config write — skip the read-back of what git resolves (an insteadOf or an older git leaves the inherited transport in play, reported as success)",
+      "name": "trust the config write \u2014 skip the read-back of what git resolves (an insteadOf or an older git leaves the inherited transport in play, reported as success)",
       "file": "cmd/deskwt/transport.go",
       "old": "\t\tif len(got) != 1 || got[0] != httpsURL {",
       "new": "\t\tif false {"
@@ -46,8 +46,8 @@
     {
       "name": "refuse but do not roll back (the role worktree is left on disk with the inherited transport)",
       "file": "cmd/deskwt/deskwt.go",
-      "old": "\t\ttransportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)\n\t\tif terr != nil {\n\t\t\t_ = removeWorktreeDir(guard, dir, resolvePath(target))\n",
-      "new": "\t\ttransportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)\n\t\tif terr != nil {\n"
+      "old": "transportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)\n\t\tif terr != nil {\n\t\t\tif rerr := removeWorktreeDir(guard, dir, resolvePath(target)); rerr != nil {\n\t\t\t\treturn fmt.Errorf(\"%w; rollback failed: %v\", terr, rerr)\n\t\t\t}\n\t\t\tfmt.Fprintln(os.Stderr, \"deskwt: worktree ROLLED BACK\")\n\t\t\treturn terr\n\t\t}",
+      "new": "transportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)\n\t\tif terr != nil {\n\t\t\treturn terr\n\t\t}"
     },
     {
       "name": "a --role add never wires the transport at all (the worktree inherits the shared checkout's)",
@@ -66,6 +66,24 @@
       "file": "cmd/deskdispatch/dispatch.go",
       "old": "\t\twt = runCmd(o.root, \"deskwt\", \"add\", wtName, \"--branch\", branch, \"--base\", worktreeBase(o, branch),\n\t\t\t\"--role\", plan.identityRole)",
       "new": "\t\twt = runCmd(o.root, \"deskwt\", \"add\", wtName, \"--branch\", branch, \"--base\", worktreeBase(o, branch))"
+    },
+    {
+      "name": "class guard no longer detects credential-only references (positive control must fail)",
+      "file": "cmd/deskwt/transportguard_test.go",
+      "old": "if ok && id.Name == \"wireRoleCredential\" {",
+      "new": "if ok && id.Name == \"unusedCredentialName\" {"
+    },
+    {
+      "name": "new role-init installs credentials without transport",
+      "file": "cmd/deskwt/roleinit.go",
+      "old": "\n\tif _, werr := wireRoleTransport(p.target, p.role, repo); werr != nil {",
+      "new": "\n\tif werr := wireRoleCredential(p.target, p.role, repo, roleCredUser(p.role)); werr != nil {"
+    },
+    {
+      "name": "reused role-init installs credentials without transport",
+      "file": "cmd/deskwt/roleinit.go",
+      "old": "\n\t\tif _, werr := wireRoleTransport(p.target, p.role, repo); werr != nil {",
+      "new": "\n\t\tif werr := wireRoleCredential(p.target, p.role, repo, roleCredUser(p.role)); werr != nil {"
     }
   ]
 }

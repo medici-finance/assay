@@ -1,0 +1,7 @@
+package main
+
+func anotherProvisioner() {
+ wireRoleCredential("target", "worker", "example-org/tracker", "x-access-token")
+}
+
+var anotherHelper = wireRoleCredential

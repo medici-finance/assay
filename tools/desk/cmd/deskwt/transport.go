@@ -1,6 +1,6 @@
 package main
 
-// transport.go — `deskwt add --role`'s worktree-scoped App TRANSPORT (#861).
+// transport.go — role worktrees' shared App TRANSPORT (#861, #1994).
 //
 // THE FAULT. A linked worktree reads its remote from the SHARED .git/config. When that config
 // carries an SSH `remote.origin.url` (or an operator's deliberate `remote.origin.pushurl`
@@ -8,8 +8,8 @@ package main
 // nowhere — or, worse, out over SSH under whatever key the machine's agent holds, a human's —
 // and its fetch authenticates with the operator's SSH key. The refusal in
 // deskkit/pushtransport.go stops a bot session from pushing over that; this file is the other
-// half: a role worktree that `deskwt add --role` cuts is GIVEN an App-only transport of its
-// own, so there is nothing to refuse.
+// half: `deskwt add --role` and `role-init` give role worktrees their own App-only
+// transport, so there is nothing to refuse.
 //
 // WHAT IS WRITTEN, all at WORKTREE scope (extensions.worktreeConfig — the shared checkout's
 // config is never touched):
@@ -36,8 +36,8 @@ package main
 //
 // FAIL CLOSED. What git ITSELF resolves is read back afterwards (`git remote get-url [--push]
 // --all origin`, insteadOf applied): exactly the one https URL for fetch and for push, or the
-// add is REFUSED and the worktree rolled back. A role worktree left on the inherited transport
-// is the fault, so "wrote the config" is never taken as "the transport is right".
+// operation is REFUSED (`add` rolls back; `role-init` retains a reusable worktree).
+// Inherited transport is the fault: writing config does not prove the transport is right.
 
 import (
 	"fmt"
@@ -160,20 +160,21 @@ func redactURL(u string) string {
 }
 
 // transportRefusal is the ONE refusal shape for a role worktree whose App transport could not
-// be established: named, exit 5, and it says the worktree was rolled back.
+// be established: named, exit 5. The caller owns rollback and its reporting.
 func transportRefusal(target, role, why string) error {
 	return deskkit.Refused(fmt.Sprintf(
-		"refused: deskwt add --role %s could not give %s an App-only transport — %s. A role worktree left on "+
+		"refused: could not give the %s role worktree %s an App-only transport — %s. A role worktree left on "+
 			"the transport it inherits from the shared checkout fetches with, and may push under, whatever SSH "+
-			"key or ambient credential this machine holds rather than the %s App, so the worktree was ROLLED "+
-			"BACK instead of being handed out. Fix the origin remote of the checkout this was cut from (or its "+
+			"key or ambient credential this machine holds rather than the %s App, so provisioning stopped. "+
+			"Fix the origin remote of the checkout this was cut from (or its "+
 			"~/.ssh/config Host block), then re-run.",
 		role, target, why, role))
 }
 
-// wireRoleTransport gives a freshly created role worktree its own App-only transport (see the
+// wireRoleTransport gives a new or reused role worktree its own App-only transport (see the
 // file header), then proves it by reading back what git itself resolves. It returns a one-line
-// detail for the audit line and stderr; any error means the caller must roll the worktree back.
+// detail for the audit line and stderr; errors stop provisioning before preflight. A reused
+// worktree must be preserved because it may contain existing work.
 func wireRoleTransport(target, role, repo string) (string, error) {
 	fetch, err := originURLs(target, false)
 	if err != nil {
