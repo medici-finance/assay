@@ -36,6 +36,12 @@
       "file": "cmd/deskdispatch/dispatch.go",
       "old": "released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)\n\t\t// deskwt's OWN",
       "new": "released := \"retained\"\n\t\t// deskwt's OWN"
+    },
+    {
+      "name": "omit package-level initializers from the allocation guard",
+      "file": "cmd/deskdispatch/reviewguard_test.go",
+      "old": "fn, ok := decl.(*ast.FuncDecl)\n\t\tif ok {",
+      "new": "fn, ok := decl.(*ast.FuncDecl)\n\t\tif !ok { continue }\n\t\tif ok {"
     }
   ]
 }

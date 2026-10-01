@@ -22,11 +22,15 @@ func allocationViolations(t *testing.T, name string, src []byte) []string {
 	}
 	var bad []string
 	for _, decl := range f.Decls {
+		site := "package-level"
 		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil {
-			continue
+		if ok {
+			site = fn.Name.Name
+			if name == "reviewworktree.go" && fn.Recv == nil && fn.Name.Name == "createDispatchWorktree" {
+				continue
+			}
 		}
-		ast.Inspect(fn.Body, func(n ast.Node) bool {
+		ast.Inspect(decl, func(n ast.Node) bool {
 			c, ok := n.(*ast.CallExpr)
 			if !ok {
 				return true
@@ -37,8 +41,8 @@ func allocationViolations(t *testing.T, name string, src []byte) []string {
 					continue
 				}
 				s, _ := strconv.Unquote(v.Value)
-				if s == "deskwt" && !(name == "reviewworktree.go" && fn.Recv == nil && fn.Name.Name == "createDispatchWorktree") {
-					bad = append(bad, name+":"+fn.Name.Name)
+				if s == "deskwt" {
+					bad = append(bad, name+":"+site)
 				}
 			}
 			return true
@@ -118,5 +122,12 @@ func TestReviewEntropyPreClaim(t *testing.T) {
 	rc, _ := runCapturingStderr(t, []string{"assay--pr-77", "--root", root, "--repo", allowedRepo, "--kit", "review", "--pr", "77", "--model", "example-model-1", "--tier", "strong", "--prompt-file", filepath.Join(t.TempDir(), "p.md")})
 	if rc != 6 || s.ran("dispatch-claim.sh acquire") || len(s.deskwtCalls()) != 0 || len(gh.requests) != 0 {
 		t.Fatalf("entropy failure reached durable step: rc=%d calls=%v", rc, s.calls)
+	}
+}
+
+func TestAllocationGlobalPlant(t *testing.T) {
+	src := []byte("package main; var planted = runCmd(\"\", \"deskwt\", \"add\")")
+	if bad := allocationViolations(t, "planted.go", src); len(bad) != 1 {
+		t.Fatalf("package initializer escaped guard: %v", bad)
 	}
 }
