@@ -1,0 +1,23 @@
+{
+  "test": "go test ./cmd/deskapps/... -count=1",
+  "control": {
+    "name": "CONTROL — invert the PEM custody-mode check (a 0600 key becomes the only UNACCEPTABLE mode)",
+    "file": "cmd/deskapps/pem_test.go",
+    "old": "\tif fi.Mode().Perm() != 0o600 {",
+    "new": "\tif fi.Mode().Perm() == 0o600 {"
+  },
+  "mutations": [
+    {
+      "name": "drop the state check in /callback (a callback whose state matches no pending row is no longer refused — Task item 7a, Verify row 6/11)",
+      "file": "cmd/deskapps/server.go",
+      "old": "\tif row == nil {\n\t\thttp.Error(w, \"unknown or foreign state — refusing\", http.StatusForbidden)\n\t\treturn\n\t}",
+      "new": "\t_ = row"
+    },
+    {
+      "name": "log the conversion response body (the conversion's raw JSON — pem, client_secret, webhook_secret included — reaches stdout, Task item 7b, Verify row 5/11)",
+      "file": "cmd/deskapps/convert.go",
+      "old": "\tbody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))\n\tif err != nil {\n\t\treturn nil, err\n\t}",
+      "new": "\tbody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tfmt.Println(\"deskapps: conversion response\", string(body))"
+    }
+  ]
+}

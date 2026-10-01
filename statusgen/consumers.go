@@ -422,7 +422,7 @@ func consumersCheck(root string, streams []*Stream) (problems, notices []string)
 							add("%s: consumers entry %q routes to follow-up %s, which is not a brief in any stream README — the routing claim is false", path, raw, t)
 							continue
 						}
-						if !followUpReferencesBack(streams, t, bf.Brief) {
+						if !followUpReferencesBack(streams, t, bf.Brief, path) {
 							notice("%s: consumers entry %q routes to follow-up %s, but %s never references %s — the coverage claim is one-way and unverified", path, raw, t, t, bf.Brief)
 						}
 					}
@@ -481,7 +481,16 @@ func indexBriefIDs(streams []*Stream) map[string]bool {
 // referring brief anywhere — in `depends:` or in its body. A follow-up that has
 // never heard of the brief deferring work to it is a promise with no holder;
 // this is the cheapest evidence that the deferral was actually landed somewhere.
-func followUpReferencesBack(streams []*Stream, target, referrer string) bool {
+//
+// referrer is the referring brief's `brief:` id and referrerPath its file path.
+func followUpReferencesBack(streams []*Stream, target, referrer, referrerPath string) bool {
+	// A brief-v2 referrer's id is the hierarchical <cell>:<repo>:<stream>:<NN>
+	// form, but a back-reference is written as a <stream>/<NN> ref — the form every
+	// depends:/unblocks:/follow-up ref uses. Accept either spelling (#1960's
+	// defect class: a v2 `brief:` id compared against a <stream>/<NN> ref). The
+	// <stream>/<NN> spelling is the referrer's filename-derived id, which drops no
+	// repo alias (TestAliasDropGuard).
+	short, _, okShort := expectedBriefID(referrerPath)
 	stream, num, ok := strings.Cut(target, "/")
 	if !ok {
 		return false
@@ -499,7 +508,7 @@ func followUpReferencesBack(streams []*Stream, target, referrer string) bool {
 			if err != nil {
 				return false
 			}
-			return strings.Contains(string(raw), referrer)
+			return strings.Contains(string(raw), referrer) || (okShort && strings.Contains(string(raw), short))
 		}
 	}
 	return false
@@ -588,7 +597,7 @@ func runConsumers(root, base, briefFilter string) int {
 	var claimless []string
 	for _, bf := range briefs {
 		if bf.ConsumersProse == "" && len(bf.Consumers) == 0 {
-			claimless = append(claimless, bf.Brief)
+			claimless = append(claimless, bf.Brief) // briefid:raw display list for the claimless report
 			continue
 		}
 		rel, err := filepath.Rel(root, bf.Path)
@@ -758,7 +767,7 @@ func corroborateBrief(root string, streams []*Stream, changed map[string]bool, i
 				switch {
 				case !briefIndex[t]:
 					add(stateDisproved, raw, fmt.Sprintf("routes to follow-up %s, which is not a brief in any stream README", t))
-				case !followUpReferencesBack(streams, t, bf.Brief):
+				case !followUpReferencesBack(streams, t, bf.Brief, bf.Path):
 					add(stateUnchecked, raw, fmt.Sprintf("%s exists but never references %s — coverage is claimed, not shown", t, bf.Brief))
 				default:
 					add(stateCorroborated, raw, "")

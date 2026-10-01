@@ -1071,7 +1071,7 @@ func autoFlipModel(root string, streams []*Stream, src modelFlipSource, rev revi
 				continue
 			}
 
-			res := decideModelFlip(root, s, path, bf.Brief, bf.Evidence, src, rev)
+			res := decideModelFlip(root, s, path, bf.Brief, bf.Evidence, src, rev) // briefid:raw label + attributeCandidate, which reduces it via canonicalBriefKey
 			if res.Outcome != flipDone {
 				results = append(results, res)
 				continue
