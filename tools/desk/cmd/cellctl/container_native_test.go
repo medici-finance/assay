@@ -16,7 +16,7 @@ func TestBinaryNativeContainerRegistrationAndMigration(t *testing.T) {
 	root := t.TempDir()
 	config := filepath.Join(root, "containers.json")
 	cells := filepath.Join(root, "cells")
-	cfg := cellcontainer.Config{Schema: "cell-containers-v1", DockerHost: "unix:///tmp/example.sock", Image: "sha256:" + strings.Repeat("a", 64), Cells: map[string]cellcontainer.Cell{"sample": {Repo: "example-org/example-repo", Incoming: filepath.Join(root, "incoming"), Roles: map[string]cellcontainer.Role{"desk": {Harness: "codex", Models: map[string]string{"codex": "test-model"}, Volume: "sample-desk", Config: filepath.Join(root, "config"), AppKey: filepath.Join(root, "key.pem")}}}}}
+	cfg := cellcontainer.Config{Schema: "cell-containers-v1", DockerHost: "unix:///tmp/example.sock", Image: "sha256:" + strings.Repeat("a", 64), Cells: map[string]cellcontainer.Cell{"sample": {Repo: "example-org/example-repo", Incoming: filepath.Join(root, "incoming"), Roles: map[string]cellcontainer.Role{"desk": {Harness: "codex", Models: map[string]string{"codex": "test-model"}, Volume: "sample-desk", Config: filepath.Join(root, "config"), AppKey: filepath.Join(root, "key.pem"), ClaudeToken: filepath.Join(root, "model-token")}}}}}
 	b, _ := json.Marshal(cfg)
 	if err := os.WriteFile(config, b, 0600); err != nil {
 		t.Fatal(err)
@@ -40,6 +40,10 @@ func TestBinaryNativeContainerRegistrationAndMigration(t *testing.T) {
 	}
 	out = run(true, "up", "sample", "--model", "override-model")
 	if !strings.Contains(out, "CELL_MODEL=override-model") {
+		t.Fatal(out)
+	}
+	out = run(false, "container-run", "sample", "the-desk", "claude", "opus")
+	if !strings.Contains(out, "Opus") && !strings.Contains(out, "opus") {
 		t.Fatal(out)
 	}
 	run(true, "status", "sample")

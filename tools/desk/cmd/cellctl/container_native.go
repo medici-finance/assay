@@ -12,6 +12,14 @@ import (
 )
 
 func (c *Cell) nativeContainerPlan(role, harness, model string) *cellcontainer.Plan {
+	// This also protects the internal runner, which can be invoked without desk.
+	policy, _, policyErr := c.cellModelPolicy()
+	if policyErr != nil {
+		die("%v", policyErr)
+	}
+	if policy != nil || c.Env.Get("CELL_PROVIDER") != "" {
+		die("native containers do not accept host model policies or providers")
+	}
 	cfg, err := cellcontainer.Load(c.Env.Get("CELL_CONTAINER_CONFIG"))
 	if err != nil {
 		die("container config: %v", err)
@@ -23,6 +31,9 @@ func (c *Cell) nativeContainerPlan(role, harness, model string) *cellcontainer.P
 	p, err := cfg.Plan(c.Name, key, harness, model)
 	if err != nil {
 		die("%v", err)
+	}
+	if role == "the-desk" && p.Harness == "claude" {
+		refuseOpusForTheDesk(p.Model)
 	}
 	return p
 }

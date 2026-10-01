@@ -30,7 +30,7 @@ func cmdLs() {
 	}
 }
 
-// cmdStatus is a scrubbed-cell-only READ — `running <session>` / `stopped` / `stale-lock <pid>`
+// cmdStatus delegates native container state to Docker; scrubbed cells use a READ — `running <session>` / `stopped` / `stale-lock <pid>`
 // — never a precondition check (that is `check`'s job), exit 0 in every case that is not a load
 // error.
 func cmdStatus(cell string) {
