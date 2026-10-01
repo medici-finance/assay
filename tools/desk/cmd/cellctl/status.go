@@ -35,6 +35,10 @@ func cmdLs() {
 // error.
 func cmdStatus(cell string) {
 	c := loadCell(cell)
+	if c.Kind == "container" {
+		c.containerRun("status")
+		return
+	}
 	if c.Kind != "scrubbed" {
 		die("status is only defined for a scrubbed cell (kind=%s)", c.Kind)
 	}

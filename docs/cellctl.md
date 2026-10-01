@@ -1212,6 +1212,119 @@ is refused rather than launching codex against Anthropic with a provider the ope
 
 ## Container cells
 
+### Native Docker runtime (Go)
+
+`cellctl` owns Docker launch, inspection, console recovery and shutdown when
+`CELL_CONTAINER_CONFIG` names a deployment JSON file. There is no host-side shell
+or Python launcher in this path. Docker and tmux must be installed locally.
+
+```sh
+cellctl new sample --kind container --container-config /absolute/cells.json
+cellctl check sample
+cellctl up sample
+cellctl status sample
+cellctl down sample
+```
+
+The deployment uses the `cell-containers-v1` schema. Paths and credentials remain
+operator-owned data; do not commit real deployment files. For example:
+
+```json
+{
+  "schema": "cell-containers-v1",
+  "docker_host": "unix:///absolute/docker.sock",
+  "image": "sha256:<64 lowercase hexadecimal characters>",
+  "platform": "linux/amd64",
+  "cells": {
+    "sample": {
+      "repo": "example-org/example-repo",
+      "incoming": "/absolute/incoming",
+      "roles": {
+        "desk": {
+          "harness": "codex",
+          "models": {"codex": "<model-id>"},
+          "volume": "sample-desk-work",
+          "config": "/absolute/desk-config",
+          "app_key": "/absolute/desk-key.pem",
+          "startup_action": "paused"
+        }
+      }
+    }
+  }
+}
+```
+
+The image must already exist locally by immutable ID; launching never pulls an
+image. Each role's named work volume must already exist. The image implements the
+`paused` and `handoff` entrypoint actions and consumes `CELL_HARNESS`, `CELL_MODEL`
+and the other cell environment values. `paused` mounts no forge key; `handoff`
+is coordinator-only and mounts the role's private key read-only. Image building,
+workspace provisioning and model login remain explicit provisioning operations.
+The native runtime does not require an implementation language inside the image.
+
+Roles are `desk`, `worker`, `reviewer`, `verifier`, `intake-loop` and `issue-loop`.
+They map to the existing role skill names. Register only one intake role per cell
+because both intake keys map to `intake-desk`. `new` imports the selected roles'
+harness/model pins into `cell.env`; subsequent `desk --harness/--model` overrides
+remain authoritative. The initial registry supports one default harness across
+its enabled roles, with explicit per-launch overrides available.
+
+`up`/`desk` inspect Docker independently of tmux. A matching running container is
+attached by immutable container ID. When its console has disappeared, a new tmux
+console runs Go `cellctl container-run`, which rechecks identity and attaches with
+`docker attach --sig-proxy=false`. When neither exists, the same runner launches
+the configured container. Repeated matching model/harness arguments reconnect;
+changed values refuse and require an explicit restart. Inspection failures are
+errors, never evidence that a container is absent. Failed runners retain their
+pane and diagnostic output until the next explicit `up` attempt.
+
+Runtime checks cover ownership labels, image, role/repository environment, model,
+mount sources and permissions, non-root user, read-only root, dropped capabilities,
+no-new-privileges, resource limits and the dedicated network. Only an explicitly
+configured local Unix Docker socket is supported. `check` performs file and local
+Docker metadata checks without launching a model, minting tokens, creating networks
+or contacting a forge. `DRY_RUN=1` makes no Docker calls. `down` stops only the
+verified container before closing its console; it never removes workspace volumes.
+The host user and Docker administrator remain outside this isolation boundary.
+
+A cell can optionally set `host_lock` to an absolute advisory lock file shared
+with a previous host launcher. The Go runner holds it for its console lifetime
+and refuses a held or unreadable lock. Retire the old host launcher during migration:
+a host-only file lock cannot establish mutual exclusion after its owning console
+process has died while Docker continues running.
+
+For Claude, supply `claude_token` as a private regular file. `codex_sandbox` defaults
+to `workspace-write`; `container` requires a nonempty
+`container_boundary_approved_by` record. The selected image must enforce those
+settings. Credentials are mounted read-only; they are never copied to the workspace
+or supplied as command-line token values.
+
+#### Migrating an external launcher
+
+Keep the existing image, volume, config and credential paths in the deployment
+JSON. If preserving a running unlabelled container, record its **full** Docker ID
+in that role's `adopt_container_id`. Go still checks its runtime configuration;
+this field does not bypass ownership mismatches or isolation checks. Newly launched
+containers carry cell/role labels and do not need this migration field. Disconnect
+the previous console before reconnecting through Go, so its advisory lock is free.
+
+After installing a release containing the native runtime, switch the registration
+atomically (the setter saves a backup):
+
+```sh
+cellctl set sample CELL_KIND=container CELL_CONTAINER_LAUNCHER= \
+  CELL_CONTAINER_CONFIG=/absolute/cells.json
+cellctl check sample
+cellctl up sample
+```
+
+Both runtime selectors set at once is an error. Restore the saved registration to
+return to the previous launcher; neither registration change alters the work volume.
+Once migration is verified, retire the old host scripts. Keep the deployment JSON
+and image assets that the Go runtime still uses.
+
+### External launcher compatibility
+
 Register an existing container launcher to make the cell visible to `cellctl ls`
 and start it through the same command entry point:
 

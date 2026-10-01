@@ -14,6 +14,10 @@ import (
 // owns container mounts, credentials, state validation and the runtime. This boundary is not a
 // sandbox around the launcher, and the port does not make it one.
 func (c *Cell) containerRun(args ...string) {
+	if c.Env.Get("CELL_CONTAINER_CONFIG") != "" {
+		c.nativeContainer(args...)
+		return
+	}
 	if c.Env.Get("DRY_RUN") == "1" {
 		var b strings.Builder
 		for _, a := range args {

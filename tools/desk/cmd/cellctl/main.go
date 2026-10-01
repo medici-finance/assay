@@ -94,6 +94,8 @@ func run() (code int) {
 	}
 
 	switch verb {
+	case "container-run":
+		cmdContainerRun(rest)
 	case "providers":
 		cmdProviders(rest)
 	case "model-policy":
