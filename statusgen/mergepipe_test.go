@@ -211,31 +211,42 @@ func sharedCmdBuffers(path string, src []byte) ([]string, error) {
 				}
 			}
 		}
+		// Direct initializers occur in both var declarations and assignments.
+		// No identifier-to-identifier propagation is attempted: aliases stay out
+		// of this guard's explicitly bounded contract.
+		initializer := func(name string, value ast.Expr) {
+			if literal, ok := value.(*ast.CompositeLit); ok && isType(literal.Type, "bytes", "Buffer") {
+				buffers[name] = true
+			}
+			if call, ok := value.(*ast.CallExpr); ok && (isType(call.Fun, "exec", "Command") || isType(call.Fun, "exec", "CommandContext")) {
+				commands[name] = true
+			}
+		}
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
 			switch v := n.(type) {
 			case *ast.ValueSpec:
-				if isType(v.Type, "bytes", "Buffer") {
-					for _, name := range v.Names {
+				for i, name := range v.Names {
+					if isType(v.Type, "bytes", "Buffer") {
 						buffers[name.Name] = true
 					}
-				}
-				if isType(v.Type, "exec", "Cmd") {
-					for _, name := range v.Names {
+					commandType := v.Type
+					if ptr, ok := commandType.(*ast.StarExpr); ok {
+						commandType = ptr.X
+					}
+					if isType(commandType, "exec", "Cmd") {
 						commands[name.Name] = true
+					}
+					if i < len(v.Values) {
+						initializer(name.Name, v.Values[i])
 					}
 				}
 			case *ast.AssignStmt:
-				for i, r := range v.Rhs {
-					call, ok := r.(*ast.CallExpr)
-					if !ok || i >= len(v.Lhs) {
+				for i, value := range v.Rhs {
+					if i >= len(v.Lhs) {
 						continue
 					}
-					name, ok := v.Lhs[i].(*ast.Ident)
-					if !ok {
-						continue
-					}
-					if isType(call.Fun, "exec", "Command") || isType(call.Fun, "exec", "CommandContext") {
-						commands[name.Name] = true
+					if name, ok := v.Lhs[i].(*ast.Ident); ok {
+						initializer(name.Name, value)
 					}
 				}
 			}
@@ -306,6 +317,40 @@ func example(){ var aBuf,bBuf bytes.Buffer; a:=exec.Command("example"); b:=exec.
 			}
 		})
 	}
+	// Cover declaration forms as a cross-product, so a constructor or buffer form
+	// cannot silently lose coverage when used with another ordinary declaration.
+	for _, buffer := range []string{"var x,y bytes.Buffer", "var x,y = bytes.Buffer{},bytes.Buffer{}", "x,y := bytes.Buffer{},bytes.Buffer{}"} {
+		for _, command := range []struct{ params, body string }{
+			{"", `a,b := exec.Command("example"),exec.Command("example")`},
+			{"", `var a,b = exec.Command("example"),exec.Command("example")`},
+			{"", `var a,b = exec.CommandContext(context.Background(),"example"),exec.CommandContext(context.Background(),"example")`},
+			{"a,b *exec.Cmd", ""},
+			{"", `var a,b exec.Cmd`},
+			{"", `var a,b *exec.Cmd = nil,nil`},
+			{"", `var a,b *exec.Cmd; a=exec.Command("example"); b=exec.Command("example")`},
+		} {
+			for _, control := range []struct {
+				name, tail string
+				want       int
+			}{
+				{"shared", "b.Stderr=&x", 1},
+				{"separate", "b.Stderr=&y", 0},
+				{"same_command", "a.Stdout=&x", 0},
+			} {
+				src := `package fixture
+import("bytes";"os/exec";"context")
+func example(` + command.params + `){ ` + buffer + `; ` + command.body + `; _=a; _=b; _=y; a.Stderr=&x; ` + control.tail + ` }`
+				got, err := sharedCmdBuffers("declarations.go", []byte(src))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(got) != control.want {
+					t.Errorf("buffer=%s commands=%s params=%s control=%s findings=%v want%d", buffer, command.body, command.params, control.name, got, control.want)
+				}
+			}
+		}
+	}
+
 	// Only this module's shipped Go sources are covered. Cross-module siblings are
 	// inventoried separately; CI execution depends on the recorded statusgen wiring.
 	err := filepath.WalkDir(".", func(path string, d os.DirEntry, walkErr error) error {
