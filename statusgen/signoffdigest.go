@@ -118,7 +118,7 @@ func indexBriefMeta(streams []*Stream) map[string]signoffBriefMeta {
 					m.status = row.Status
 				}
 			}
-			index[bf.Brief] = m
+			index[bf.Brief] = m // briefid:raw raw-to-raw: looked up by the verify issue's own raw id
 		}
 	}
 	return index

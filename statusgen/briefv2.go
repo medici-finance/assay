@@ -396,7 +396,7 @@ func checkBriefV2Semantics(add, notice func(string, ...any), path string, bf *Br
 	}
 	// The v2 `brief:` id is the full hierarchical form <cell>:<repo>:<stream>:<NN>.
 	// The brief-v1 `/` form is refused in a v2 file (the migration rewrites it).
-	if strings.Contains(bf.Brief, "/") && !strings.Contains(bf.Brief, ":") {
+	if strings.Contains(bf.Brief, "/") && !strings.Contains(bf.Brief, ":") { // briefid:raw shape check on the id itself, not a key
 		add("%s: brief %q uses the brief-v1 <stream>/<NN> form, but this is a brief-v2 file — v2 ids are the hierarchical <cell>:<repo>:<stream>:<NN> form", path, bf.Brief)
 	} else {
 		cell, alias, brStream, brNum, ok := parseBriefV2ID(bf.Brief)

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>deskapps — tier</title>
+<style>{{.CSS}}</style>
+</head>
+<body>
+<h1>deskapps</h1>
+<p class="subtitle">The installer for Assay's GitHub App identities. Pick what this run is doing — not how many Apps you want.</p>
+<div class="chips">
+  <span class="chip{{if eq .Tier "solo"}} current{{end}}">Tier</span>
+  <span class="chip">Details</span>
+  <span class="chip">Create</span>
+  <span class="chip">Install</span>
+  <span class="chip">Prove</span>
+</div>
+
+<table>
+  <tr><th>Row</th><th>Solo</th><th>Read + Act</th><th>Full suite</th></tr>
+  <tr><td>Bot identities</td><td>0</td><td>2</td><td>6</td></tr>
+  <tr><td>Clicks to set up</td><td>0</td><td>2 create · 2 install per org</td><td>6 create · 6 install per org</td></tr>
+  <tr><td>Sittings</td><td>0</td><td>1</td><td>2 (throttle met once)</td></tr>
+  <tr><td>Runs while you are away</td><td>no</td><td>yes</td><td>yes</td></tr>
+  <tr><td>Review verdicts posted by</td><td>you, as comments</td><td>&lt;prefix&gt;-act[bot], as comments</td><td>reviewer App, formal review</td></tr>
+  <tr><td>Approves a PR</td><td>you</td><td>you</td><td>the reviewer App</td></tr>
+  <tr><td>Merges</td><td>you</td><td>you</td><td>you</td></tr>
+  <tr><td>Author and approver on GitHub</td><td>same login</td><td>same bot</td><td>distinct actors</td></tr>
+  <tr><td>Keys on this machine</td><td>none</td><td>2</td><td>6 — hold them apart</td></tr>
+  <tr><td>Audit trail shows</td><td>your login</td><td>&lt;prefix&gt;-read[bot] · &lt;prefix&gt;-act[bot]</td><td>one login per role</td></tr>
+</table>
+
+<p><strong>This run: tier = {{.Tier}}</strong>{{if .Org}}, owner = {{.OwnerKind}}:{{.Org}}{{end}}, prefix = {{.Prefix}}.</p>
+<p>Planned Apps:</p>
+<ul>
+{{range .Specs}}<li>{{.Name}}</li>{{end}}
+</ul>
+<p><a href="/setup">Continue to Details →</a></p>
+<p class="footer-note">Nothing is sent to GitHub until you click Create on GitHub's own page.</p>
+</body>
+</html>
