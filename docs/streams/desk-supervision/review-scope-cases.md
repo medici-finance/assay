@@ -1,7 +1,7 @@
 # Review-scope case corpus — first-pass inventory and the blocking boundary
 
 Synthetic packets for the review-scope contract (brief 20). An independent reviewer scores
-each case's outcome against the contract in `review-prompt` clause 12 and the executable
+each case's outcome against the contract in `review-prompt` clause 13 and the executable
 specification in `tools/desk/internal/deskkit/reviewscope.go`, and records the model and
 version, the packet hashes and any disagreement in the brief's Evidence.
 
@@ -14,8 +14,8 @@ corpus is the human-readable half a reviewer scores independently.
 
 The contract in one line: **the first pass inventories and declares; a blocker names a
 concrete failure and its scope basis; a late sibling keeps its class and round count.** The
-four scope bases a blocker may name are `changed-behaviour`, `acceptance-obligation`,
-`material-claim`, `safety-consequence`.
+five scope bases a blocker may name are `changed-behaviour`, `acceptance-obligation`,
+`material-claim`, `safety-consequence`, `design-fit`.
 
 ---
 

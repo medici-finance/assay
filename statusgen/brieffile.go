@@ -1480,7 +1480,7 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 						v2IDOwner[bf.ID] = path
 					}
 				}
-			} else if bf.Brief != id {
+			} else if bf.Brief != id { // briefid:raw brief-v1 branch: the id IS <stream>/<NN> and must equal the filename id
 				add("%s: brief %q does not match filename-derived id %q", path, bf.Brief, id)
 			}
 			if !validEffort[bf.Effort] {
@@ -1812,15 +1812,27 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				}
 			}
 
+			// edgeID is this brief's id in the form its depends:/unblocks: refs are
+			// written in — <stream>/<NN>. A brief-v2 file's `brief:` is the
+			// hierarchical <cell>:<repo>:<stream>:<NN> id, so keying the self-ref
+			// check and the reciprocity index on bf.Brief directly never matched a
+			// v2 ref: a v2 self-loop passed --lint and a one-sided v2 edge raised no
+			// NOTICE (#1960). The filename-derived id (expectedBriefID, above) is
+			// that <stream>/<NN> for both schemas — the v1 branch requires bf.Brief
+			// to equal it and the v2 checks require the id to agree with the path —
+			// and it drops no repo alias, so normalizeBriefKey's allow-list
+			// (TestAliasDropGuard) stays as it is.
+			edgeID := id
 			for _, ref := range bf.Depends {
-				checkRef(add, path, "depends", ref, bf.Brief, byName)
+				checkRef(add, path, "depends", ref, edgeID, byName)
 			}
 			// Accumulate the typed edge index for the reciprocity gate (below): the
-			// declared depends/unblocks lists per brief-v1 id. Built here — where every
-			// brief file is already parsed — so the reciprocity pass needs no second walk.
-			recip.dependsOf[bf.Brief] = bf.Depends
-			recip.unblocksOf[bf.Brief] = bf.Unblocks
-			recip.knownV1[bf.Brief] = true
+			// declared depends/unblocks lists per <stream>/<NN> id. Built here — where
+			// every brief file is already parsed — so the reciprocity pass needs no
+			// second walk.
+			recip.dependsOf[edgeID] = bf.Depends
+			recip.unblocksOf[edgeID] = bf.Unblocks
+			recip.knownV1[edgeID] = true
 			// Same-wave-dep lint: a brief's depends: must point
 			// only to briefs in strictly-earlier waves. A same-wave dep breaks strict
 			// wave-layering and miscomputes the critical path.
@@ -1856,7 +1868,7 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				}
 			}
 			for _, ref := range bf.Unblocks {
-				checkRef(add, path, "unblocks", ref, bf.Brief, byName)
+				checkRef(add, path, "unblocks", ref, edgeID, byName)
 			}
 		}
 	}
@@ -1881,9 +1893,9 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 
 // depEdgeIndex is the typed dependency-edge index the reciprocity gate validates.
 type depEdgeIndex struct {
-	dependsOf  map[string][]string // brief id → declared depends ids
-	unblocksOf map[string][]string // brief id → declared unblocks ids
-	knownV1    map[string]bool     // brief-v1 ids present in the corpus
+	dependsOf  map[string][]string // <stream>/<NN> id → declared depends ids
+	unblocksOf map[string][]string // <stream>/<NN> id → declared unblocks ids
+	knownV1    map[string]bool     // typed-schema (brief-v1 or brief-v2) ids present, as <stream>/<NN>
 }
 
 func newDepEdgeIndex() *depEdgeIndex {
@@ -1914,10 +1926,10 @@ func newDepEdgeIndex() *depEdgeIndex {
 // caller (checkBriefFiles) routes this into the `notices` channel accordingly.
 //
 // SCOPE (fail-safe against false positives): the check fires only when BOTH endpoints
-// are brief-v1 (in knownV1). A dangling edge (target absent) is left to checkRef; a
-// self-loop is left to checkRef; a legacy (non-brief-v1) target — which declares no
-// unblocks — is exempt so mixed corpora are not reddened for the pre-typed-edge
-// convention.
+// are typed-schema briefs, brief-v1 or brief-v2 (in knownV1, keyed <stream>/<NN>).
+// A dangling edge (target absent) is left to checkRef; a self-loop is left to
+// checkRef; a legacy (no schema) target — which declares no unblocks — is exempt
+// so mixed corpora are not reddened for the pre-typed-edge convention.
 func (idx *depEdgeIndex) reciprocityNotices() []string {
 	var notices []string
 	var ids []string
