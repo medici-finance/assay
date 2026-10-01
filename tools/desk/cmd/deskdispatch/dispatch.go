@@ -769,6 +769,12 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		}
 	}
 
+	if reviewKit(o.kit) && o.pr > 0 {
+		if err := deskkit.ValidateReviewClaimKey(plan.claimKey, repo, o.pr); err != nil {
+			return plan, err
+		}
+	}
+
 	// WHERE the claim is kept is the resolver's answer, read from the roster
 	// and never from a flag. A configured store that cannot be used is a refusal HERE — exit 6,
 	// before any child process, any worktree and any credential mint — and is never replaced by
