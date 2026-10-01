@@ -13,6 +13,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 |---|---|---|---|---|---|
 | [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-10-01 |  |
 | [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 4/13 | 2026-10-01 |  |
+| [cellctl-windows](docs/streams/cellctl-windows/README.md) | P1 | active | 0/8 | 2026-10-01 |  |
 | [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-10-01 |  |
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-10-01 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-10-01 |  |
@@ -57,6 +58,7 @@ _Held by per-stream caps: 3 brief(s) across 2 stream(s) — top: measured-status
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| cellctl-windows | 00 — Go launch and session contracts for native Windows [exec:strong] | 0 | 5500 |
 | desktools-v2 | 03 — native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot) [exec:strong] | 3 | 1500 + 1500 (drive:desktools-v2) |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
 | graph-execution | 13 — Deterministic admission over facts and bounded probabilistic advice [exec:strong] | 1 | 3000 |
@@ -75,7 +77,7 @@ _Held by per-stream caps: 3 brief(s) across 2 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 0d51f74 2026-10-01T04:15:31Z_
+_last regen: b2cf612 2026-10-01T15:53:34+10:00_
 
 **Progress:** 5/13 brief items done.
 
@@ -98,7 +100,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 0d51f74 2026-10-01T04:15:31Z_
+_last regen: b2cf612 2026-10-01T15:53:34+10:00_
 
 **Progress:** 12/31 brief items done.
 
@@ -310,6 +312,17 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 11 Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge — todo (wave 4)
 - 12 The refactor oracle: what a redesign is coded against — intent, failure modes, triaged characterization tests, invariants, and an acceptance rule — todo (wave 5)
 - 13 Incident-time refactor by an agent, with one human residue: the strong-tier session runs the investigation, assembles the oracle, drafts the refactor PR, and asks the driver exactly one typed decision, only for what the record does not settle — todo (wave 6)
+
+### cellctl-windows (8 open)
+
+- 00 Go launch and session contracts for native Windows — todo (wave 0)
+- 01 Go wrappers and native Windows cell environment — todo (wave 1)
+- 02 Native process ownership and lifetime on Windows — todo (wave 1)
+- 03 Windows Orca and Herdr console adapters — todo (wave 1)
+- 04 Windows-local Docker endpoint and runtime selection — todo (wave 1)
+- 05 Windows Docker bind paths and credential custody — todo (wave 2)
+- 06 Integrate shell-free Windows host and Docker lifecycle — todo (wave 3)
+- 07 Native Windows acceptance, packaged runtime proof and support documentation — todo (wave 4)
 
 ### composability (4 open)
 
@@ -701,4 +714,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**25** streams (**18** active, **0** paused, **7** parked) · **104/303** briefs done · completed initiatives: see `docs/archive/`
+**26** streams (**19** active, **0** paused, **7** parked) · **104/311** briefs done · completed initiatives: see `docs/archive/`
