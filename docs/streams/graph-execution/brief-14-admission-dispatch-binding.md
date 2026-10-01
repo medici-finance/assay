@@ -99,8 +99,8 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 1 | check:ci | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestGraphAdmission" ./...` | exit 0; output includes PASS for TestGraphAdmission, with no [no tests to run] for its owning package |
 | 2 | check:ci +mutation | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDirectBypassDenied" ./...` | exit 0; output includes PASS for TestGraphAdmissionDirectBypassDenied, with no [no tests to run] for its owning package |
 | 3 | check:ci +flow | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDispatchReceipt" ./...` | exit 0; output includes PASS for TestGraphAdmissionDispatchReceipt, with no [no tests to run] for its owning package |
-| 4 | check:ci +flow | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDuplicateAndRetry$" ./... > /tmp/TestGraphAdmissionDuplicateAndRetry.out && grep -q -- "--- PASS: TestGraphAdmissionDuplicateAndRetry " /tmp/TestGraphAdmissionDuplicateAndRetry.out` | exit 0; named PASS; duplicate same-state events launch once; a failed launch retries under a new attempt |
-| 5 | check:ci +mutation | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionMovedHeadAtAcceptance$" ./... > /tmp/TestGraphAdmissionMovedHeadAtAcceptance.out && grep -q -- "--- PASS: TestGraphAdmissionMovedHeadAtAcceptance " /tmp/TestGraphAdmissionMovedHeadAtAcceptance.out` | exit 0; named PASS; head movement after launch prevents stale result acceptance at the lower boundary; mutation: bypass the acceptance-boundary head comparison — the named test must fail |
+| 4 | check:ci +flow | `(cd tools/desk && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestGraphAdmissionDuplicateAndRetry.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDuplicateAndRetry$" ./... > "$wi_out" && grep -q -- "--- PASS: TestGraphAdmissionDuplicateAndRetry " "$wi_out")` | exit 0; named PASS; duplicate same-state events launch once; a failed launch retries under a new attempt |
+| 5 | check:ci +mutation | `(cd tools/desk && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestGraphAdmissionMovedHeadAtAcceptance.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionMovedHeadAtAcceptance$" ./... > "$wi_out" && grep -q -- "--- PASS: TestGraphAdmissionMovedHeadAtAcceptance " "$wi_out")` | exit 0; named PASS; head movement after launch prevents stale result acceptance at the lower boundary; mutation: bypass the acceptance-boundary head comparison — the named test must fail |
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.
 
@@ -109,5 +109,9 @@ The flow row must call production contract code across the seam; isolated serial
 <!-- Independent verifier records command, exit, key output/digest, subject revision, environment and date. No implementation or execution evidence is asserted by this authoring change. -->
 
 ## Review
+
+Review the assembled-packet fixture at the dispatch boundary: credential material must
+remain excluded, and copied reporter text must not override the source trust-gate result.
+Exercise missing and spoofed dispositions; neither may grant authority.
 
 Gate: human. Confirm scope, consumer routing, negative-path independence and exact-subject evidence; a confidence score cannot enlarge permission.

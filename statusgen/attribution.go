@@ -855,7 +855,7 @@ func implementerAttributed(runnerCell string) bool {
 // index and is skipped rather than trusted, so it can never count as
 // independent — a ragged row fails the gate closed, not open.
 func evidenceHasIndependentRow(evidence string) bool {
-	stripped := htmlCommentRe.ReplaceAllString(evidence, "")
+	stripped, _ := stripRowComments(evidence)
 	lines := strings.Split(stripped, "\n")
 	runnerIdx := -1   // -1 = no header seen yet for this table: use the last cell
 	headerCells := -1 // -1 = no header seen yet for this table: skip the alignment check

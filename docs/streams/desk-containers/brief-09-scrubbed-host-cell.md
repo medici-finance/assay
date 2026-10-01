@@ -37,7 +37,7 @@ id: de019175-8488-4b78-a2f9-f7d804e44220
 exec-tier: strong
 exec-tier-why: (a) the env-composition and lock designs are fixed here but the codex/claude one-shot probe shapes must be verified against the installed CLIs at pickup; (c) an env leak that survives the tests is exactly the fault class this kind exists to close
 consumers:
-  - "tools/cellctl/cellctl: follow-up desk-containers/09 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "tools/cellctl/testdata/cellctl-shell-oracle.sh: follow-up desk-containers/09 (this brief; flips to fixed-here when the implementation edits the path)"
   - "tools/cellctl/tests/scrubbed-cell.test.sh: follow-up desk-containers/09 (this brief; new file, flips to fixed-here when it lands)"
   - "docs/cellctl.md: follow-up desk-containers/09 (this brief; the new kind's section + the two new verbs)"
   - "tools/cellctl/tests/house-cell.test.sh: out-of-scope (the house kind is untouched — row 9 proves the neighbour still passes; no edit is owed)"
@@ -48,9 +48,13 @@ consumers:
 ## Context
 
 files:
-- `tools/cellctl/cellctl` — `load_cell` kind switch (a fourth kind, `scrubbed`); `cmd_new
-  --kind scrubbed`; `check_scrubbed`; the scrubbed arm of `cmd_desk`; two new verbs `smoke`
-  and `status`; the session lock; `cmd_down` on a scrubbed cell.
+- `tools/desk/cmd/cellctl/` — the Go launcher that now carries this brief's behaviour
+  (`loadCell` kind switch, `cmdNew`, `cmdCheck`, `cmdDesk`, `cmdSmoke`, `cmdStatus`,
+  `cmdDown`); the bash implementation this brief landed (`load_cell` kind switch, a fourth
+  kind `scrubbed`; `cmd_new --kind scrubbed`; `check_scrubbed`; the scrubbed arm of
+  `cmd_desk`; two new verbs `smoke` and `status`; the session lock; `cmd_down` on a scrubbed
+  cell) is kept as the parity oracle at `tools/cellctl/testdata/cellctl-shell-oracle.sh`
+  (moved there in #1739).
 - `tools/cellctl/tests/scrubbed-cell.test.sh` (planned) — the fixture suite, `--case <name>`
   selectable; every Verify row below names its case.
 - `docs/cellctl.md` — new section *Scrubbed cells — `--kind scrubbed`* placed between *House
@@ -227,7 +231,7 @@ wired house-style even when the launch env is right.
 | 8 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-pem` | exit 0; a PEM that is a symlink → `MISS` row naming `symlink`; a regular 0644 PEM → `MISS` row naming `0600`; a regular 0600 PEM → `ok`; `check` exits 1 on either MISS | check:ci +mutation |
 | 9 | `bash tools/cellctl/tests/house-cell.test.sh` | exit 0 — the house kind is untouched (neighbour row; this suite passes on the merge-base too, so it is the regression guard, not the feature proof) | check:ci +neighbour |
 | 10 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-roster` | exit 0; `ASSAY_ALLOWED_REPOS=example-org/example-repo,example-org/other` → `MISS`; `ASSAY_ALLOWED_REPOS=` → `MISS`; `ASSAY_ALLOWED_REPOS=example-org/example-repo` on a cell with that slug → `ok` | check:ci +mutation |
-| 11 | `d=$(mktemp -d); mkdir -p "$d/x"; printf 'CELL_KIND=scrubbed\nCELL_REPO=%s\nCELL_REPO_SLUG=example-org/example-repo\nCELL_HARNESS=codex\n' "$PWD" > "$d/x/cell.env"; CELLS_ROOT="$d" bash tools/cellctl/testdata/cellctl-shell-oracle.sh check x; test $? -eq 1` | exit 0 — a bare scrubbed cell.env with an empty home is LOADED (no exit-3 die) and `check` reports MISS rows and exits 1. Red on the merge-base: `check` exits 3 (`not a known kind`), so the `test` fails | check +dereference |
+| 11 | `d=$(mktemp -d); mkdir -p "$d/x"; printf 'CELL_KIND=scrubbed\nCELL_REPO=%s\nCELL_REPO_SLUG=example-org/example-repo\nCELL_HARNESS=codex\n' "$PWD" > "$d/x/cell.env"; b="$(mktemp -d)/cellctl"; (cd tools/desk && go build -o "$b" ./cmd/cellctl); CELLS_ROOT="$d" "$b" check x; test $? -eq 1` | exit 0 — a bare scrubbed cell.env with an empty home is LOADED (no exit-3 die) and `check` reports MISS rows and exits 1. Red on a launcher without the `scrubbed` kind: `check` exits 3 (`is not a known kind`), so the `test` fails. Red on the merge-base: `tools/desk/cmd/cellctl` does not exist yet, so `go build` fails, running `"$b"` exits 127 and the `test` fails | check +dereference |
 | 12 | `for k in HOME ZDOTDIR PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR DESK_LOOP DESK_SESSION DESK_ROOTS; do grep -qF "\| $k \|" docs/cellctl.md \|\| { echo "missing env row: $k"; exit 1; }; done` | exit 0 — the docs env table (first column the bare variable name) carries a row per exported variable. Red on the merge-base: exits 1 at `ZDOTDIR` | check |
 | 13 | `grep -c '^## Scrubbed cells' docs/cellctl.md` | exit 0; prints `1` | check |
 | 14 | `statusgen --consumers --root . --base $(git merge-base origin/main HEAD)` | exit 0 — every `consumers:` routing above is corroborated or deferred by the diff | check:ci |

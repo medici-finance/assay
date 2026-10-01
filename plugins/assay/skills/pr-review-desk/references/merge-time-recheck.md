@@ -2,7 +2,7 @@
 
 Two clauses of the reviewer's bar, kept here because the reviewer prompt needs them at length and
 the skill needs them at a glance. `pr-review-desk/SKILL.md` § The reviewer's bar carries the
-short form and points here; `deskdispatch --kit review` §5/§6 carries the generic wording the
+short form and points here; `deskdispatch --kit review` §7/§8 carries the generic wording the
 dispatched agent receives. If you edit one, check all three still say the same thing.
 
 ## Merge-time re-check — review against MERGED main, not the tree you were handed
