@@ -143,16 +143,19 @@ type resolvedModel struct {
 // resolveRoleModel is the per-harness NAMESPACE + TIER-MAP fallback resolution (#986).
 //
 // Order: (1) that harness's own per-role pin — DESK_MODEL_<role> on claude, CODEX_MODEL_<role>
-// on codex — (2) that harness's own default — DESK_MODEL_DEFAULT / CODEX_MODEL_default — (3) the
+// on codex, CURSOR_MODEL_<role> on Cursor — (2) that harness's own default —
+// DESK_MODEL_DEFAULT / CODEX_MODEL_default / CURSOR_MODEL_default — (3) the
 // tier map, by this role's tier and the ACTIVE harness's column. On total failure Src names
 // every place looked and OK is false.
 //
 // NEVER consulted for an explicit --model: that value passes through verbatim, bypassing this
-// whole chain, on either harness.
+// whole chain. Cursor has no compiled model defaults; its model must be configured.
 func (c *Cell) resolveRoleModel(role, harness string) resolvedModel {
 	rvar, dvar := "DESK_MODEL_"+underscore(role), "DESK_MODEL_DEFAULT"
 	if harness == "codex" {
 		rvar, dvar = "CODEX_MODEL_"+underscore(role), "CODEX_MODEL_default"
+	} else if harness == "cursor" {
+		rvar, dvar = "CURSOR_MODEL_"+underscore(role), "CURSOR_MODEL_default"
 	}
 	if v := c.Env.Get(rvar); v != "" {
 		return resolvedModel{Model: v, Src: rvar, OK: true}

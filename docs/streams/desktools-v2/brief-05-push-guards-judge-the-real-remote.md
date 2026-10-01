@@ -39,7 +39,7 @@ exec-tier-why: >-
   but not for push, a remote-derived base that silently falls back to origin) survives
   happy-path tests.
 domain: complicated
-version: 1
+version: 2
 id: a8da9afb-a695-4ee1-bbb0-87064d9eae86
 ---
 
@@ -117,6 +117,8 @@ facts:
 | 6 | check | `grep -nE '"origin"' tools/desk/cmd/deskpushguard/main.go tools/desk/cmd/deskpushguard/registerid.go; test $? -eq 1` | exit 0 and no line printed — the literal is gone from the URL fallback and the liveness probe (comments spelling `refs/remotes/origin/main` in prose are not matched: the pattern is the quoted Go string) |
 | 7 | check +mutation | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskpushguard/pushedremote-mutations.json` | exit 0 — baseline GREEN, positive control CAUGHT, `Totals: 7 caught, 0 NOT CAUGHT`: putting `origin` back in place of the pushed remote on any one path (the run() default, the foreign-commit base or its empty-name branch, the register-id base, its empty-name branch, its sibling candidates, its liveness probe) reddens rows 3–4's tests |
 | 8 | check +mutation | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/pushtransport-mutations.json` | exit 0 — baseline GREEN, positive control CAUGHT, `Totals: 30 caught, 0 NOT CAUGHT`: deciding from the configured url, falling back to it when no resolver is wired or it fails, passing a url-less remote git resolves to its bare name, dropping the insteadOf / pushInsteadOf attribution or its longest-prefix and alias rules, a remedy not decided by whether insteadOf rewrites its https target back to SSH, a two-step remedy collapsed to the rule alone, a set-url line that cannot run on a multi-valued pushurl, deskwt reading only the first push url, and either caller wiring no resolver each redden a test |
+| 9 | check | `cd tools/desk && go test ./internal/deskkit/ -run '^TestGitLabPushRewriteRefusesSSH$' -v` | output must contain the named top-level or subtest `--- PASS:` line (a missing selector is failure); top-level TestGitLabPushRewriteRefusesSSH PASS; both rewrite forms, self-managed host, non-22 port, nested subgroup and oauth2 user (desktools-v2/12 GitLab row) |
+| 10 | check | `cd tools/desk && go test ./cmd/deskpushguard/ -run '^TestPrePushCmdForwardsArgs$' -v` | output must contain the named top-level or subtest `--- PASS:` line (a missing selector is failure); top-level TestPrePushCmdForwardsArgs PASS; generated Windows wrapper forwards remote arguments (desktools-v2/12 Windows row) |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->

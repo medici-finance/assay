@@ -177,7 +177,7 @@ applied state and are expected to pass after the human's commit lands.
 | 2 | check | `d=$(mktemp -d) && sh tools/desk/scripts/forge-ban.sh > "$d/r2.out"; echo rc=$?; grep -F -e 'class e (glab subprocess):' "$d/r2.out" && grep -F -e 'class f (GitLab API literal):' "$d/r2.out"` | prints `rc=0` (the counter stays advisory) and both new class lines with their desk and statusgen counts |
 | 3 | check +flow +dereference | `sh tools/desk/scripts/forge-ban-probe.sh` | prints `PROBE PASS` and exits 0 — a planted `glab` shell-out raises class e by exactly 1 and a planted `/api/v4` literal raises class f by exactly 1, in a `//go:build ignore` probe file (so the rise also proves a build-tagged file still counts), while the `forge reach-around sites:` and `statusgen sites:` totals stay unchanged; the probe file is removed whatever the result (the script's `trap`), so `git status --porcelain tools/desk` is empty afterwards |
 | 4 | check | `grep -E -e '^desktools-v2/02 [0-9]+$' docs/streams/desktools-v2/forge-ban-baseline.txt && grep -E -e '^desktools-v2/13 glab=[0-9]+ gitlab-literal=[0-9]+$' docs/streams/desktools-v2/forge-ban-baseline.txt` | prints the `desktools-v2/02` line and the new `desktools-v2/13` line (exit 0) — the GitLab columns are recorded, machine-readably, on their own line; the `desktools-v2/02` total is untouched by classes e and f (row 3 proves the exclusion) |
-| 5 | check | `d=$(mktemp -d) && cd statusgen && go test -run '^TestVerifyRowPortability$' -v . > "$d/r5.out" 2>&1 && grep -E -e '^--- PASS: TestVerifyRowPortability \(' "$d/r5.out"` | prints the top-level PASS line (exit 0; the `&&` keeps `go test`'s status and the grep is anchored at column 0, so a failing control subtest cannot hide behind a passing one) — the positive controls NOTICE naming the portability rule and the negative controls, `${TMPDIR:-/tmp}` included, stay silent |
+| 5 | check +mutation | `d=$(mktemp -d) && cd statusgen && go test -run '^TestVerifyRowPortability$' -v . > "$d/r5.out" 2>&1 && grep -E -e '^--- PASS: TestVerifyRowPortability \(' "$d/r5.out" && sh testdata/portability-mutation.sh` | prints the top-level PASS line and `MUTATION PASS: disabled detector was rejected` (exit 0; the `&&` keeps `go test`'s status and the grep is anchored at column 0, so a failing control subtest cannot hide behind a passing one) — the positive controls NOTICE naming the portability rule and the negative controls, `${TMPDIR:-/tmp}` included, stay silent |
 | 6 | check | `d=$(mktemp -d) && cd statusgen && go build -o "$d/statusgen" . && cd .. && "$d/statusgen" --root . --lint >/dev/null 2>&1; echo rc=$?` | `rc=0` — the new lint is NOTICE-level: the existing tree, POSIX rows included, still lints clean, and the NOTICE baseline is recorded in Evidence |
 | 7 | check | `grep -q -F -e 'windows-latest' .github/workflows/windows-ci-leg.yml && grep -q -F -e 'tools/desk' .github/workflows/windows-ci-leg.yml` | exit 0 — the windows leg runs the tools/desk suite (passes once the human-applied workflow commit lands) |
 | 8 | check | `grep -n -e 1145 -e 1146 -e 1223 docs/streams/desktools-v2/brief-06-*.md; test $? -eq 1` | exit 0 and nothing printed — the closed premises are out of brief 06 |
@@ -195,3 +195,39 @@ applied state and are expected to pass after the human's commit lands.
   NOTICEs, and brief 06 keeps `gate: human`.
 - Every §3 issue carries its triage comment on the tracker, matching the Evidence table
   (row 13 checks the comments, row 10 the table).
+
+## Evidence
+
+The following is an author routing inventory, not independent Verify evidence. Read on
+2026-10-01: all 24 comments lacked the triage marker; 12 issues were closed. Closed-item
+comments cannot be posted by the worker attach verb and remain human acts. Workflow rows
+1/7 and derived-board row 11 remain unfulfilled until the respective human acts land.
+
+| Issue | Owner | Reason |
+|---|---|---|
+| #641 | desktools-v2/12 | Windows ACL custody parity |
+| #642 | desktools-v2/12 | Cold-child USERPROFILE/custody environment propagation |
+| #1604 | desktools-v2/12 | Windows custody parity and credential-chain environment conformance; owner mapping does not claim resolution |
+| #1621 | out-of-scope (server-controls) | Credential check/use race and filesystem hardening require dedicated custody boundary work, not a platform fixture waiver |
+| #1418 | out-of-scope (statusgen) | Verify runner startup classification on Windows |
+| #1424 | out-of-scope (statusgen) | Explicit Verify row shell selection for native Windows commands |
+| #1805 | out-of-scope (statusgen) | Verify command lifting and witness classification regression |
+| #1435 | out-of-scope (windows-port) | Native Windows inbound monitor launcher replaces Bash dependency |
+| #1644 | out-of-scope (desk-supervision) | Monitor state-directory ownership and shared temporary-directory custody |
+| #678 | out-of-scope (windows-port) | Windows PowerShell parsing regression floor |
+| #1569 | out-of-scope (windows-port) | PowerShell ASCII/parser class guard |
+| #1693 | out-of-scope (windows-port) | First deskinstall bootstrap on clean Windows |
+| #1573 | desktools-v2/06 | GitLab role-init must select explicit role PAT custody rather than GitHub App minting |
+| #1203 | desktools-v2/06 | GitLab dispatch claim identity path and no App-minting fallback regression |
+| #655 | desktools-v2/06 | GitLab cold preflight and explicit role PAT custody |
+| #676 | desktools-v2/06 | GitLab boot credential backend selection |
+| #677 | desktools-v2/06 | GitLab per-role commit identity scoping |
+| #1477 | desktools-v2/12 | GitLab evidence-actor identity conformance |
+| #1411 | desktools-v2/12 | Required check-context conformance when last_pipeline is empty |
+| #1412 | desktools-v2/12 | GitLab existing-file update conformance |
+| #1415 | desktools-v2/12 | GitLab draft-change error and response conformance |
+| #865 | desktools-v2/12 | Issue/change comment-kind conformance on both backends |
+| #1667 | out-of-scope (contributor-trust) | GitLab account-liveness at trust-roster boundary |
+| #1794 | out-of-scope (verify-outcomes) | Live-credential Verify row execution and offline witness policy |
+
+Local portability calibration is in [staged/portability-baseline.md](staged/portability-baseline.md); it is an author observation, not an independent witness.

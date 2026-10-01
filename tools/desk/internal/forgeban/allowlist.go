@@ -163,6 +163,13 @@ var UnresolvedArgv = []Allowance{
 			"and network-denying/read-only sandbox are available. This row registers the blind spot, grants " +
 			"no forge permit or runtime activation, and leaves the owner gate in place.",
 	},
+	{
+		Key: "internal/cellprocess/run.go::run::<unresolved>",
+		Reason: "the bounded host-harness runner. Its production caller is cellctl's cadence supervisor, " +
+			"which supplies the resolved claude, codex, or Cursor agent argv from the registered harness " +
+			"launch builders. It executes that argv directly with process-tree containment, never a shell " +
+			"or a forge CLI; tests supply compiled process fixtures.",
+	},
 	// cmd/cellctl — the cell launcher (the Go port of the bash script now kept only as a test
 	// oracle, tools/cellctl/testdata/cellctl-shell-oracle.sh). It reaches NO forge at all: its one
 	// credential path goes through deskkit.RoleTokenForRepo, and its own brief asserts at the
@@ -193,6 +200,12 @@ var UnresolvedArgv = []Allowance{
 		Reason: "runs the operator-registered container launcher named by CELL_CONTAINER_LAUNCHER, which " +
 			"cell.env must give as an absolute executable path. Executable argv, never eval; the launcher " +
 			"is trusted host code that owns its own runtime custody.",
+	},
+	{
+		Key: "cmd/cellctl/cursor.go::cursorHeadlessPreflight::<unresolved>",
+		Reason: "runs the Cursor agent executable with --help under a five-second deadline to verify " +
+			"its documented noninteractive permission flags. Production passes agent; tests pass a " +
+			"compiled local fixture. It launches no model session and is not a forge CLI.",
 	},
 	{
 		Key: "cmd/cellctl/deskd.go::cmdDeskd::<unresolved>",

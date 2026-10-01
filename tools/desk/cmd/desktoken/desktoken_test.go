@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"github.com/medici-finance/assay/tools/desk/internal/custodytest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -121,7 +122,7 @@ func makeInstallTokenServer(t *testing.T, installs []installationInfo, token, ex
 // class of "resolved somewhere unnamed" bug #794 is about.
 func setupTest(t *testing.T) string {
 	t.Helper()
-	homeDir := t.TempDir()
+	homeDir := custodytest.PrivateTempDir(t)
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
 	t.Setenv("CLAUDE_SESSION_ID", "test-session")

@@ -108,6 +108,7 @@ type LintRule struct {
 // a pure function of this slice (see renderEnforcementBlock), which is what the
 // EnforcementStatusTracksTheLint test proves.
 var lintRuleRegistry = []LintRule{
+	{"verify-row-portability", "a Verify row hardcodes /tmp, sh/bash -c or findstr without an explicit OS marker (TMPDIR fallback is exempt)", StatusAdvisory},
 	// Verify-row shape lint (verifyrows.go) — all advisory (unfailable notices).
 	{ruleERELiteralPipe, "a `\\|` inside a `grep -E` pattern is a literal pipe, not alternation, so the row matches almost nothing and passes blind", StatusAdvisory},
 	{ruleGrepZeroCount, "a `grep -c` whose pass bar is satisfied by a zero count measures nothing", StatusAdvisory},
