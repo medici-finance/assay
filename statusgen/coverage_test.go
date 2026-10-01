@@ -1336,3 +1336,43 @@ func TestDeclaredEntriesKeepAll(t *testing.T) {
 		})
 	}
 }
+
+// TestCoverageProseLedPassIsNotReleased — security review finding S12: a
+// `pass` witness recorded (by a binary older than #1808) on a Verify row the
+// lint now flags prose-led measured the mention, not the check, so
+// checkWitnesses demotes it to could-not-run. Coverage reads the same witness
+// and must agree: the claim resolves could-not-check with the prose-led note,
+// and the brief is HELD — never released on a check that was never run. The
+// row shape is the one TestCheckWitnessesProseLedPassIsNotPass uses; the
+// witness matches the row and its revision, so nothing but the prose-led guard
+// stands between it and a released pass.
+func TestCoverageProseLedPassIsNotReleased(t *testing.T) {
+	s, root := mustCoverageStream(t, "cov")
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` then run `go test ./nonexistent-pkg-1808 -count=1` | exit 0 |"
+	rows := briefVerifyRows(verify)
+	if len(rows) != 1 || rows[0].ProseLed == "" {
+		t.Fatalf("fixture drift: the row must be flagged prose-led, got %+v", rows)
+	}
+	writeCoverageBrief(t, s.Dir, "01", "cov", verify, "")
+	witnessTree := mustGitInit(t, root)
+	ev := coverageEvidenceTable(covWitnessRow("1", rows[0].Command, statePass, witnessTree))
+	writeCoverageBrief(t, s.Dir, "01", "cov", verify, ev)
+	mustGitCommitAll(t, root, "record Evidence")
+
+	// Parity anchor: the verify-gate reader demotes this exact witness.
+	fs := checkWitnesses(verify, ev+"\n")
+	if len(fs) != 1 || fs[0].State != stateCouldNotRun {
+		t.Fatalf("fixture drift: checkWitnesses must demote the prose-led pass to could-not-run, got %+v", fs)
+	}
+
+	c := evaluateCoverage(root, []*Stream{s}, coverageOptions{})["cov/01"]
+	if c.Released {
+		t.Fatalf("coverage released a prose-led row whose pass checkWitnesses demotes to could-not-run: %+v", c)
+	}
+	if len(c.Claims) != 1 || c.Claims[0].Result != covCouldNotCheck {
+		t.Fatalf("want exactly one could-not-check claim, got %+v", c.Claims)
+	}
+	if !strings.Contains(c.Claims[0].Reason, ruleProseLedCommand) {
+		t.Fatalf("the claim's reason must carry the prose-led note, got %q", c.Claims[0].Reason)
+	}
+}

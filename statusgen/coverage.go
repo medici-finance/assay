@@ -514,6 +514,13 @@ func resolveVerifyClaim(root string, scope witnessScope, r verifyRow, evidence m
 	wrev := witnessTreeOf(latestText)
 	switch witnessStateOf(latestText) {
 	case statePass:
+		// A pass recorded (by an older binary) on a row now flagged prose-led
+		// (#1808) measured the mention, not the check — checkWitnesses demotes
+		// the same witness to could-not-run, and coverage must agree: the pass
+		// proves nothing, so it is never credited (security review S12).
+		if r.ProseLed != "" {
+			return covCouldNotCheck, proseLedNote(r.ProseLed), wrev
+		}
 		rel, exact, detail := classifyRevisionDetail(root, scope, wrev, targetRevision)
 		switch rel {
 		case revisionUnestablished:
