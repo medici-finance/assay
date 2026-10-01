@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -41,6 +42,10 @@ func inspection(p *Plan) *Inspection {
 	s.Config.OpenStdin = true
 	s.Config.Cmd = []string{p.Action}
 	s.Config.Labels = map[string]string{"io.assay.cell": p.CellName, "io.assay.role": p.RoleKey}
+	// Image defaults are inherited unless the launch overrides them.
+	s.ImageConfig = ImageConfig{Env: []string{"PATH=/usr/local/bin:/usr/bin:/bin"}, Entrypoint: []string{"/usr/local/bin/cell-entrypoint"}}
+	s.Config.Env = append(s.Config.Env, s.ImageConfig.Env...)
+	s.Config.Entrypoint = s.ImageConfig.Entrypoint
 	for k, v := range p.Env {
 		s.Config.Env = append(s.Config.Env, k+"="+v)
 	}
@@ -75,7 +80,12 @@ func fakeEngine(t *testing.T, s *Inspection) (Engine, *[][]string) {
 			return []byte(s.ID + "\n"), nil
 		case "container inspect":
 			return json.Marshal([]*Inspection{s})
-		case "image inspect", "volume inspect", "network create":
+		case "image inspect":
+			if s == nil {
+				return []byte(`[{"Config":{}}]`), nil
+			}
+			return json.Marshal([]map[string]ImageConfig{{"Config": s.ImageConfig}})
+		case "volume inspect", "network create":
 			return []byte("[]"), nil
 		case "network ls":
 			return nil, nil
@@ -104,59 +114,193 @@ func TestReconnectPreservesRunningContainer(t *testing.T) {
 	}
 }
 func TestInspectionFailuresNeverLaunch(t *testing.T) {
+	listed := strings.Repeat("b", 64)
+	row := func(id, image string) []byte {
+		b, _ := json.Marshal([]map[string]string{{"Id": id, "Image": image}})
+		return b
+	}
 	_, p := fixture(t)
-	for _, stage := range []string{"list", "inspect", "invalid-json", "ambiguous"} {
-		t.Run(stage, func(t *testing.T) {
+	type reply func() ([]byte, error)
+	cases := map[string]struct {
+		list, inspect, image reply
+		want                 string
+	}{
+		"list":             {list: func() ([]byte, error) { return nil, errors.New("daemon unavailable") }, want: "daemon unavailable"},
+		"ambiguous":        {list: func() ([]byte, error) { return []byte("bad-id"), nil }, want: "ambiguous container identity"},
+		"inspect":          {inspect: func() ([]byte, error) { return nil, errors.New("inspect denied") }, want: "inspect denied"},
+		"invalid-json":     {inspect: func() ([]byte, error) { return []byte("not-json"), nil }, want: "invalid Docker inspection"},
+		"identity-changed": {inspect: func() ([]byte, error) { return row(strings.Repeat("c", 64), p.Image), nil }, want: "identity changed"},
+		"two-rows": {inspect: func() ([]byte, error) {
+			return json.Marshal([]map[string]string{{"Id": listed, "Image": p.Image}, {"Id": listed, "Image": p.Image}})
+		}, want: "returned 2 containers"},
+		"mutable-image":  {inspect: func() ([]byte, error) { return row(listed, "example:latest"), nil }, want: "no immutable image ID"},
+		"image-inspect":  {image: func() ([]byte, error) { return nil, errors.New("image unavailable") }, want: "image unavailable"},
+		"image-rows":     {image: func() ([]byte, error) { return []byte("[]"), nil }, want: "returned 0 images"},
+		"image-two-rows": {image: func() ([]byte, error) { return []byte(`[{"Config":{}},{"Config":{}}]`), nil }, want: "returned 2 images"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
 			e := Engine{Output: func(a ...string) ([]byte, error) {
-				if a[1] == "ls" {
-					if stage == "list" {
-						return nil, errors.New("daemon unavailable")
-					}
-					if stage == "ambiguous" {
-						return []byte("bad-id"), nil
-					}
-					return []byte(strings.Repeat("b", 64)), nil
+				switch {
+				case a[1] == "ls" && tc.list != nil:
+					return tc.list()
+				case a[1] == "ls":
+					return []byte(listed), nil
+				case a[0] == "container" && tc.inspect != nil:
+					return tc.inspect()
+				case a[0] == "container":
+					return row(listed, p.Image), nil
+				case tc.image != nil:
+					return tc.image()
 				}
-				if stage == "invalid-json" {
-					return []byte("not-json"), nil
-				}
-				return nil, errors.New("inspect denied")
+				return []byte(`[{"Config":{}}]`), nil
 			}, Foreground: func(...string) error { t.Fatal("launched after failed inspection"); return nil }}
-			if err := e.Run(p); err == nil {
-				t.Fatal("expected refusal")
+			err := e.Run(p)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want refusal containing %q, got %v", tc.want, err)
 			}
 		})
 	}
 }
+
+// Each case changes one setting and must be refused for that setting, so every guard in
+// Validate has a test that fails when that guard alone is removed.
 func TestReconnectRefusesChangedRuntime(t *testing.T) {
-	cases := map[string]func(*Inspection){
-		"model":            func(s *Inspection) { s.Config.Env = append(s.Config.Env, "CELL_MODEL=different") },
-		"harness":          func(s *Inspection) { s.Config.Env = append(s.Config.Env, "CELL_HARNESS=claude") },
-		"owner":            func(s *Inspection) { s.Config.Labels["io.assay.cell"] = "other" },
-		"image":            func(s *Inspection) { s.Image = "sha256:" + strings.Repeat("c", 64) },
-		"volume":           func(s *Inspection) { s.Mounts[0].Name = "other-workspace" },
-		"writable-key":     func(s *Inspection) { s.Mounts[len(s.Mounts)-1].RW = true },
-		"extra-mount":      func(s *Inspection) { s.Mounts = append(s.Mounts, s.Mounts[0]) },
-		"privileged":       func(s *Inspection) { s.HostConfig.Privileged = true },
-		"extra-capability": func(s *Inspection) { s.HostConfig.CapAdd = []string{"SYS_ADMIN"} },
-		"extra-network":    func(s *Inspection) { s.NetworkSettings.Networks["other"] = json.RawMessage(`{}`) },
-		"stopped":          func(s *Inspection) { s.State.Running = false; s.State.Status = "exited" },
-		"paused":           func(s *Inspection) { s.State.Paused = true },
-		"unlabelled":       func(s *Inspection) { s.Config.Labels = nil },
+	empty := json.RawMessage(`{}`)
+	cases := map[string]struct {
+		mutate func(*Plan, *Inspection)
+		want   string
+	}{
+		"model":            {func(_ *Plan, s *Inspection) { s.Config.Env = append(s.Config.Env, "CELL_MODEL=different") }, "differs at CELL_MODEL"},
+		"harness":          {func(_ *Plan, s *Inspection) { s.Config.Env = append(s.Config.Env, "CELL_HARNESS=claude") }, "differs at CELL_HARNESS"},
+		"name":             {func(_ *Plan, s *Inspection) { s.Name = "/other" }, "name/image differs"},
+		"image":            {func(_ *Plan, s *Inspection) { s.Image = "sha256:" + strings.Repeat("c", 64) }, "name/image differs"},
+		"owner":            {func(_ *Plan, s *Inspection) { s.Config.Labels["io.assay.cell"] = "other" }, "ownership is unverified"},
+		"unlabelled":       {func(_ *Plan, s *Inspection) { s.Config.Labels = nil }, "ownership is unverified"},
+		"labelled-adopted": {func(p *Plan, s *Inspection) { s.Config.Labels["io.assay.cell"] = "other"; p.AdoptID = s.ID }, "ownership is unverified"},
+		"extra-env":        {func(_ *Plan, s *Inspection) { s.Config.Env = append(s.Config.Env, "EXTRA_SETTING=1") }, "unplanned setting EXTRA_SETTING"},
+		"image-env":        {func(_ *Plan, s *Inspection) { s.Config.Env = append(s.Config.Env, "PATH=/elsewhere") }, "unplanned setting PATH"},
+		"cmd":              {func(_ *Plan, s *Inspection) { s.Config.Cmd = []string{"sh"} }, "entrypoint arguments differ"},
+		"entrypoint":       {func(_ *Plan, s *Inspection) { s.Config.Entrypoint = []string{"/bin/sh"} }, "entrypoint differs from the image"},
+		"root-user":        {func(_ *Plan, s *Inspection) { s.Config.User = "0:0" }, "user differs"},
+		"image-user":       {func(_ *Plan, s *Inspection) { s.Config.User = "" }, "user differs"},
+		"no-tty":           {func(_ *Plan, s *Inspection) { s.Config.Tty = false }, "terminal settings differ"},
+		"no-stdin":         {func(_ *Plan, s *Inspection) { s.Config.OpenStdin = false }, "terminal settings differ"},
+		"writable-root":    {func(_ *Plan, s *Inspection) { s.HostConfig.ReadonlyRootfs = false }, "root filesystem is writable"},
+		"privileged":       {func(_ *Plan, s *Inspection) { s.HostConfig.Privileged = true }, "is privileged"},
+		"extra-capability": {func(_ *Plan, s *Inspection) { s.HostConfig.CapAdd = []string{"SYS_ADMIN"} }, "adds capabilities"},
+		"kept-capability":  {func(_ *Plan, s *Inspection) { s.HostConfig.CapDrop = nil }, "does not drop all capabilities"},
+		"device":           {func(_ *Plan, s *Inspection) { s.HostConfig.Devices = []json.RawMessage{empty} }, "has devices"},
+		"bind":             {func(_ *Plan, s *Inspection) { s.HostConfig.Binds = []json.RawMessage{json.RawMessage(`"/srv:/srv"`)} }, "unplanned bind mounts"},
+		"group":            {func(_ *Plan, s *Inspection) { s.HostConfig.GroupAdd = []string{"0"} }, "adds groups"},
+		"port":             {func(_ *Plan, s *Inspection) { s.HostConfig.PortBindings = map[string]json.RawMessage{"22/tcp": empty} }, "publishes ports"},
+		"publish-all":      {func(_ *Plan, s *Inspection) { s.HostConfig.PublishAllPorts = true }, "publishes ports"},
+		"pids":             {func(_ *Plan, s *Inspection) { s.HostConfig.PidsLimit = 0 }, "process limit differs"},
+		"memory":           {func(_ *Plan, s *Inspection) { s.HostConfig.Memory = 0 }, "memory limit differs"},
+		"cpus":             {func(_ *Plan, s *Inspection) { s.HostConfig.NanoCpus = 0 }, "CPU limit differs"},
+		"pid-namespace":    {func(_ *Plan, s *Inspection) { s.HostConfig.PidMode = "host" }, "shares a process namespace"},
+		"ipc-host":         {func(_ *Plan, s *Inspection) { s.HostConfig.IpcMode = "host" }, "shares an IPC namespace"},
+		"ipc-container":    {func(_ *Plan, s *Inspection) { s.HostConfig.IpcMode = "container:" + strings.Repeat("d", 64) }, "shares an IPC namespace"},
+		"userns":           {func(_ *Plan, s *Inspection) { s.HostConfig.UsernsMode = "host" }, "user namespace mode differs"},
+		"security-opt":     {func(_ *Plan, s *Inspection) { s.HostConfig.SecurityOpt = nil }, "security options differ"},
+		"tmpfs":            {func(_ *Plan, s *Inspection) { s.HostConfig.Tmpfs["/tmp"] = "rw,size=512m" }, "temporary filesystem differs"},
+		"network-mode":     {func(_ *Plan, s *Inspection) { s.HostConfig.NetworkMode = "host" }, "network differs"},
+		"extra-network":    {func(_ *Plan, s *Inspection) { s.NetworkSettings.Networks["other"] = empty }, "network differs"},
+		"volume":           {func(_ *Plan, s *Inspection) { s.Mounts[0].Name = "other-workspace" }, "mount differs at /work"},
+		"writable-key":     {func(_ *Plan, s *Inspection) { s.Mounts[len(s.Mounts)-1].RW = true }, "mount differs at /run/secrets/app.pem"},
+		"duplicate-mount":  {func(_ *Plan, s *Inspection) { s.Mounts = append(s.Mounts, s.Mounts[0]) }, "duplicate mount target"},
+		"missing-mount":    {func(_ *Plan, s *Inspection) { s.Mounts = s.Mounts[:len(s.Mounts)-1] }, "mount count differs"},
+		"extra-mount": {func(_ *Plan, s *Inspection) {
+			s.Mounts = append(s.Mounts, s.Mounts[len(s.Mounts)-1])
+			s.Mounts[len(s.Mounts)-1].Destination = "/srv"
+		}, "mount count differs"},
+		"stopped":    {func(_ *Plan, s *Inspection) { s.State.Running = false; s.State.Status = "exited" }, "explicit recovery"},
+		"paused":     {func(_ *Plan, s *Inspection) { s.State.Paused = true }, "explicit recovery"},
+		"restarting": {func(_ *Plan, s *Inspection) { s.State.Restarting = true }, "explicit recovery"},
 	}
-	for name, mutate := range cases {
+	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			_, p := fixture(t)
 			s := inspection(p)
-			mutate(s)
+			if err := p.Validate(s); err != nil {
+				t.Fatalf("unchanged fixture refused: %v", err)
+			}
+			tc.mutate(p, s)
 			e, _ := fakeEngine(t, s)
 			e.Foreground = func(...string) error { t.Fatal("attached to incompatible container"); return nil }
-			if err := e.Run(p); err == nil {
-				t.Fatal("expected refusal")
+			err := e.Run(p)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want refusal containing %q, got %v", tc.want, err)
 			}
 		})
 	}
 }
+
+// Down and status read the per-launch selection from the container itself, so a desk
+// --model/--harness override can be reported and stopped. Everything else stays strict.
+func TestRunningAcceptsPerLaunchSelectionOnly(t *testing.T) {
+	c, registered := fixture(t)
+	launched, err := c.Plan("sample", "desk", "", "override-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := inspection(launched)
+	if err = registered.Validate(s); err == nil || !strings.Contains(err.Error(), "differs at CELL_MODEL") {
+		t.Fatalf("attach must keep the strict model match, got %v", err)
+	}
+	e, _ := fakeEngine(t, s)
+	p, got, err := c.Running(e, "sample", "desk")
+	if err != nil {
+		t.Fatalf("running override launch refused: %v", err)
+	}
+	if got.ID != s.ID || p.Model != "override-model" {
+		t.Fatalf("got %s %s", got.ID, p.Model)
+	}
+	s.HostConfig.ReadonlyRootfs = false
+	if _, _, err = c.Running(e, "sample", "desk"); err == nil || !strings.Contains(err.Error(), "root filesystem is writable") {
+		t.Fatalf("running check skipped isolation: %v", err)
+	}
+	s.HostConfig.ReadonlyRootfs = true
+	s.Config.Env = append(s.Config.Env, "CELL_MODEL=bad\x01model")
+	if _, _, err = c.Running(e, "sample", "desk"); err == nil || !strings.Contains(err.Error(), "control character") {
+		t.Fatalf("running check accepted an invalid selection: %v", err)
+	}
+	none, _ := fakeEngine(t, nil)
+	if p, s, err := c.Running(none, "sample", "desk"); p != nil || s != nil || err != nil {
+		t.Fatalf("absent container: %v %v %v", p, s, err)
+	}
+}
+
+func TestNetworkMustCarryCellLabel(t *testing.T) {
+	_, p := fixture(t)
+	for listing, want := range map[string]string{
+		"":                                  "",
+		p.Network + "\tsample\n":            "",
+		p.Network + "\t\n":                  "not labelled for cell sample",
+		p.Network + "\tother\n":             "not labelled for cell sample",
+		p.Network + "\tsample\nx\tsample\n": "ambiguous container network",
+		"assay-product-other\tsample\n":     "ambiguous container network",
+	} {
+		created := false
+		e := Engine{Output: func(a ...string) ([]byte, error) {
+			if a[1] == "create" {
+				created = true
+				if want := []string{"network", "create", "--label", "assay.product-cell=sample", p.Network}; !slices.Equal(a, want) {
+					t.Fatalf("network created as %q, want %q", a, want)
+				}
+			}
+			return []byte(listing), nil
+		}}
+		err := e.EnsureNetwork(p)
+		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
+			t.Fatalf("%q: want %q, got %v", listing, want, err)
+		}
+		if created != (listing == "") {
+			t.Fatalf("%q: created=%v", listing, created)
+		}
+	}
+}
+
 func TestLegacyAdoptionRequiresExactIDAndRuntime(t *testing.T) {
 	_, p := fixture(t)
 	s := inspection(p)
@@ -261,5 +405,168 @@ func TestUnknownConfigurationKeyRefused(t *testing.T) {
 	_ = os.WriteFile(path, b, 0600)
 	if _, err := Load(path); err == nil {
 		t.Fatal("unknown key silently ignored")
+	}
+}
+
+// The launch argv is the only control on a fresh start, so it is pinned exactly.
+func TestRunArgsAreExact(t *testing.T) {
+	_, p := fixture(t)
+	want := []string{"run", "--rm", "--sig-proxy=false", "--pull", "never", "--platform", "linux/amd64", "--read-only", "--user", "501:501", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "256", "--memory", "4g", "--cpus", "2", "--tmpfs", "/tmp:rw,nosuid,nodev,size=512m,mode=1777", "--name", "assay-sample-desk", "--network", "assay-product-sample", "--label", "io.assay.cell=sample", "--label", "io.assay.role=desk", "-it",
+		"--mount", "type=volume,src=sample-desk,dst=/work", "--mount", "type=bind,src=" + p.Mounts[1].Source + ",dst=/cell-config,readonly", "--mount", "type=bind,src=" + p.Mounts[2].Source + ",dst=/incoming,readonly", "--mount", "type=bind,src=" + p.Mounts[3].Source + ",dst=/run/secrets/app.pem,readonly",
+		"--env", "ASSAY_DESK=the-desk", "--env", "CELL_HARNESS=codex", "--env", "CELL_MODEL=test-model", "--env", "CELL_REPO=example-org/example-repo", "--env", "CELL_ROLE=desk", "--env", "CODEX_EXECUTION_BOUNDARY=workspace-write", "--env", "DESK_LOOP=the-desk", "--env", "DESK_PEM=/run/secrets/app.pem", "--env", "DESK_ROOTS=example-org/example-repo=/work/repo", "--env", "DESK_SESSION=container-sample-desk", "--env", "SAMPLE_DESK_PEM=/run/secrets/app.pem",
+		p.Image, "handoff"}
+	if got := p.RunArgs(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("launch argv changed:\n got %q\nwant %q", got, want)
+	}
+}
+
+func TestConfigValidateRefusals(t *testing.T) {
+	cases := map[string]struct {
+		mutate func(c *Config, cell *Cell, r *Role)
+		want   string
+	}{
+		"schema":             {func(c *Config, _ *Cell, _ *Role) { c.Schema = "v0" }, "unsupported container configuration schema"},
+		"remote-engine":      {func(c *Config, _ *Cell, _ *Role) { c.DockerHost = "tcp://localhost:2375" }, "explicit local Unix socket"},
+		"relative-socket":    {func(c *Config, _ *Cell, _ *Role) { c.DockerHost = "unix://docker.sock" }, "explicit local Unix socket"},
+		"mutable-image":      {func(c *Config, _ *Cell, _ *Role) { c.Image = "example:latest" }, "immutable sha256 image ID"},
+		"repo":               {func(_ *Config, cell *Cell, _ *Role) { cell.Repo = "not a repo" }, "invalid cell name, repository or incoming path"},
+		"incoming":           {func(_ *Config, cell *Cell, _ *Role) { cell.Incoming = "relative" }, "invalid cell name, repository or incoming path"},
+		"host-lock":          {func(_ *Config, cell *Cell, _ *Role) { cell.HostLock = "relative.lock" }, "host_lock must be absolute"},
+		"harness":            {func(_ *Config, _ *Cell, r *Role) { r.Harness = "other" }, "invalid role or harness"},
+		"volume":             {func(_ *Config, _ *Cell, r *Role) { r.Volume = "/host/path" }, "distinct valid volume"},
+		"config-path":        {func(_ *Config, _ *Cell, r *Role) { r.Config = "relative" }, "role mount paths must be absolute"},
+		"key-path":           {func(_ *Config, _ *Cell, r *Role) { r.AppKey = "relative.pem" }, "role mount paths must be absolute"},
+		"token-path":         {func(_ *Config, _ *Cell, r *Role) { r.ClaudeToken = "relative" }, "role mount paths must be absolute"},
+		"startup-action":     {func(_ *Config, _ *Cell, r *Role) { r.StartupAction = "shell" }, "startup_action must be paused or handoff"},
+		"sandbox":            {func(_ *Config, _ *Cell, r *Role) { r.Sandbox = "danger-full-access" }, "invalid codex_sandbox"},
+		"sandbox-approval":   {func(_ *Config, _ *Cell, r *Role) { r.Sandbox = "container" }, "container-only sandbox needs an approval record"},
+		"adopt-id":           {func(_ *Config, _ *Cell, r *Role) { r.AdoptID = "abc123" }, "adopt_container_id must be a full container ID"},
+		"model-harness":      {func(_ *Config, _ *Cell, r *Role) { r.Models = map[string]string{"other": "m"} }, "invalid model pin harness"},
+		"model-empty":        {func(_ *Config, _ *Cell, r *Role) { r.Models = map[string]string{"codex": ""} }, "invalid model pin"},
+		"model-newline":      {func(_ *Config, _ *Cell, r *Role) { r.Models = map[string]string{"codex": "a\nb"} }, "invalid model pin"},
+		"model-control":      {func(_ *Config, _ *Cell, r *Role) { r.Models = map[string]string{"codex": "a\x01b"} }, "invalid model pin"},
+		"model-delete":       {func(_ *Config, _ *Cell, r *Role) { r.Models = map[string]string{"codex": "a\x7fb"} }, "invalid model pin"},
+		"config-root":        {func(_ *Config, _ *Cell, r *Role) { r.Config = "/" }, "is the host root"},
+		"incoming-root":      {func(_ *Config, cell *Cell, _ *Role) { cell.Incoming = "/" }, "is the host root"},
+		"config-holds-key":   {func(_ *Config, _ *Cell, r *Role) { r.AppKey = filepath.Join(r.Config, "nested", "key.pem") }, "contains a credential or the engine socket"},
+		"config-holds-token": {func(_ *Config, _ *Cell, r *Role) { r.ClaudeToken = filepath.Join(r.Config, "token") }, "contains a credential or the engine socket"},
+		"incoming-holds-key": {func(_ *Config, cell *Cell, r *Role) { r.AppKey = filepath.Join(cell.Incoming, "key.pem") }, "contains a credential or the engine socket"},
+		"incoming-holds-socket": {func(c *Config, cell *Cell, _ *Role) {
+			c.DockerHost = "unix://" + filepath.Join(cell.Incoming, "engine.sock")
+		}, "contains a credential or the engine socket"},
+		"config-holds-socket": {func(c *Config, _ *Cell, r *Role) { c.DockerHost = "unix://" + filepath.Join(r.Config, "engine.sock") }, "contains a credential or the engine socket"},
+		"default-socket-dir":  {func(_ *Config, cell *Cell, _ *Role) { cell.Incoming = "/var/run" }, "contains a credential or the engine socket"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			c, _ := fixture(t)
+			cell := c.Cells["sample"]
+			r := cell.Roles["desk"]
+			tc.mutate(c, &cell, &r)
+			cell.Roles["desk"] = r
+			c.Cells["sample"] = cell
+			err := c.Validate()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want refusal containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestHandoffIsCoordinatorOnly(t *testing.T) {
+	c, _ := fixture(t)
+	cell := c.Cells["sample"]
+	r := cell.Roles["desk"]
+	r.Volume = "sample-worker"
+	r.StartupAction = "paused"
+	cell.Roles["worker"] = r
+	c.Cells["sample"] = cell
+	if err := c.Validate(); err != nil {
+		t.Fatalf("paused worker refused: %v", err)
+	}
+	r.StartupAction = "handoff"
+	cell.Roles["worker"] = r
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "handoff is coordinator-only") {
+		t.Fatalf("worker handoff accepted: %v", err)
+	}
+}
+
+func TestSandboxApprovalRecordAdmitsContainerBoundary(t *testing.T) {
+	c, _ := fixture(t)
+	cell := c.Cells["sample"]
+	r := cell.Roles["desk"]
+	r.Sandbox, r.BoundaryApproval = "container", "recorded decision"
+	cell.Roles["desk"] = r
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	p, err := c.Plan("sample", "desk", "", "")
+	if err != nil || p.Env["CODEX_EXECUTION_BOUNDARY"] != "container" {
+		t.Fatalf("%v %v", err, p)
+	}
+}
+
+// The lexical check cannot see a directory reached through a symlinked parent; the resolved
+// check at preflight does.
+func TestDirectoryMountsResolvedAgainstProtectedPaths(t *testing.T) {
+	c, _ := fixture(t)
+	d := t.TempDir()
+	real := filepath.Join(d, "real", "config")
+	if err := os.MkdirAll(real, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(d, "real"), filepath.Join(d, "alias")); err != nil {
+		t.Fatal(err)
+	}
+	key := filepath.Join(real, "key.pem")
+	if err := os.WriteFile(key, []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cell := c.Cells["sample"]
+	r := cell.Roles["desk"]
+	r.Config, r.AppKey = filepath.Join(d, "alias", "config"), key
+	cell.Roles["desk"] = r
+	if err := c.Validate(); err != nil {
+		t.Fatalf("lexical check should not see through the alias: %v", err)
+	}
+	p, err := c.Plan("sample", "desk", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = p.CheckFiles(); err == nil || !strings.Contains(err.Error(), "contains a credential or the engine socket") {
+		t.Fatalf("resolved containment missed: %v", err)
+	}
+	// A credential configured through a symlink is compared at its real location.
+	keys := filepath.Join(d, "keys")
+	if err = os.Mkdir(keys, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Symlink(key, filepath.Join(keys, "app.pem")); err != nil {
+		t.Fatal(err)
+	}
+	p.Mounts[1].Source, p.Protected = real, []string{filepath.Join(keys, "app.pem")}
+	if err = p.CheckFiles(); err == nil || !strings.Contains(err.Error(), "contains a credential or the engine socket") {
+		t.Fatalf("credential reached through a symlink missed: %v", err)
+	}
+	root := filepath.Join(d, "root-alias")
+	if err = os.Symlink("/", root); err != nil {
+		t.Fatal(err)
+	}
+	p.Mounts[1].Source = root + "/." // a trailing dot makes Lstat follow the alias
+	p.Protected = nil
+	if err = p.CheckFiles(); err == nil || !strings.Contains(err.Error(), "is the host root") {
+		t.Fatalf("resolved host root accepted: %v", err)
+	}
+}
+
+func TestPlanRefusesControlBytesInModel(t *testing.T) {
+	c, _ := fixture(t)
+	for _, m := range []string{"a\x01b", "a\x1bb", "a\x7fb", "a\tb"} {
+		if _, err := c.Plan("sample", "desk", "", m); err == nil || !strings.Contains(err.Error(), "control character") {
+			t.Fatalf("%q: %v", m, err)
+		}
+	}
+	if _, err := c.Plan("sample", "desk", "", "model-with spaces'and;quotes"); err != nil {
+		t.Fatalf("printable model refused: %v", err)
 	}
 }

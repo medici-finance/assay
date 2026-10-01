@@ -49,6 +49,71 @@ var idRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var repoRE = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 
 func absolute(p string) bool { return filepath.IsAbs(p) && !strings.ContainsAny(p, ",\n\r\x00") }
+
+// validModel refuses every control byte (C0 and DEL), not just line breaks: a model pin is
+// operator data that reaches a console command line and the container environment.
+func validModel(m string) bool {
+	if m == "" {
+		return false
+	}
+	for i := 0; i < len(m); i++ {
+		if m[i] < 0x20 || m[i] == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+// wellKnownSockets are refused as mount content even when docker_host names another socket.
+var wellKnownSockets = []string{"/var/run/docker.sock", "/run/docker.sock"}
+
+// protected lists every path a directory bind must never expose: each configured credential in
+// the file (for any cell or role) and the engine socket.
+func (c *Config) protected() []string {
+	out := append([]string{strings.TrimPrefix(c.DockerHost, "unix://")}, wellKnownSockets...)
+	for _, cell := range c.Cells {
+		for _, r := range cell.Roles {
+			out = append(out, r.AppKey)
+			if r.ClaudeToken != "" {
+				out = append(out, r.ClaudeToken)
+			}
+		}
+	}
+	return out
+}
+
+// within reports whether path equals dir or lies beneath it. Both must be clean absolute paths.
+func within(dir, path string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// checkDirectoryMount refuses a directory bind source that is the host root or that contains a
+// protected path. Callers pass either lexical or symlink-resolved paths, consistently.
+func checkDirectoryMount(dir string, protected []string) error {
+	dir = filepath.Clean(dir)
+	if dir == string(filepath.Separator) {
+		return fmt.Errorf("directory mount %s is the host root", dir)
+	}
+	for _, p := range protected {
+		if within(dir, filepath.Clean(p)) {
+			return fmt.Errorf("directory mount %s contains a credential or the engine socket", dir)
+		}
+	}
+	return nil
+}
+
+// resolve follows symlinks in p. A missing leaf is resolved through its parent so that a socket
+// or credential that is not present yet is still compared in the same namespace.
+func resolve(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	if r, err := filepath.EvalSymlinks(filepath.Dir(p)); err == nil {
+		return filepath.Join(r, filepath.Base(p))
+	}
+	return filepath.Clean(p)
+}
 func Load(path string) (*Config, error) {
 	if !absolute(path) {
 		return nil, fmt.Errorf("container config must be an absolute path")
@@ -92,9 +157,13 @@ func (c *Config) Validate() error {
 		c.Platform = "linux/amd64"
 	}
 	volumes := map[string]bool{}
+	protected := c.protected()
 	for name, cell := range c.Cells {
 		if !nameRE.MatchString(name) || !repoRE.MatchString(cell.Repo) || !absolute(cell.Incoming) {
 			return fmt.Errorf("invalid cell name, repository or incoming path for %q", name)
+		}
+		if err := checkDirectoryMount(cell.Incoming, protected); err != nil {
+			return err
 		}
 		if cell.HostLock != "" && !absolute(cell.HostLock) {
 			return fmt.Errorf("host_lock must be absolute")
@@ -109,6 +178,9 @@ func (c *Config) Validate() error {
 			volumes[r.Volume] = true
 			if !absolute(r.Config) || !absolute(r.AppKey) || (r.ClaudeToken != "" && !absolute(r.ClaudeToken)) {
 				return fmt.Errorf("role mount paths must be absolute")
+			}
+			if err := checkDirectoryMount(r.Config, protected); err != nil {
+				return err
 			}
 			if r.StartupAction != "" && r.StartupAction != "paused" && r.StartupAction != "handoff" {
 				return fmt.Errorf("startup_action must be paused or handoff")
@@ -126,7 +198,10 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("adopt_container_id must be a full container ID")
 			}
 			for h, m := range r.Models {
-				if (h != "codex" && h != "claude") || m == "" || strings.ContainsAny(m, "\r\n\x00") {
+				if h != "codex" && h != "claude" {
+					return fmt.Errorf("invalid model pin harness")
+				}
+				if !validModel(m) {
 					return fmt.Errorf("invalid model pin")
 				}
 			}
@@ -162,7 +237,25 @@ type Plan struct {
 	Name, CellName, RoleKey, Harness, Model, Action, Image, Host, Platform, Network, HostLock, AdoptID string
 	Env                                                                                                map[string]string
 	Mounts                                                                                             []Mount
+	// Protected paths that no directory mount may expose (see CheckFiles).
+	Protected []string
 }
+
+// Fixed runtime limits. A fresh launch applies them and an existing container must match them.
+// They are deliberately not configurable: the image's work volume is owned by this user.
+const (
+	ContainerUser = "501:501"
+	PidsLimit     = 256
+	MemoryBytes   = 4 * 1024 * 1024 * 1024
+	NanoCPUs      = 2 * 1000 * 1000 * 1000
+	TmpfsOptions  = "rw,nosuid,nodev,size=512m,mode=1777"
+)
+
+// ContainerName is the Docker name of one role's container.
+func ContainerName(cell, key string) string { return "assay-" + cell + "-" + key }
+
+// SelectionKeys are the per-launch values a desk --harness/--model override may change.
+var SelectionKeys = []string{"CELL_HARNESS", "CELL_MODEL"}
 
 func (c *Config) Plan(name, key, harness, model string) (*Plan, error) {
 	cell, ok := c.Cells[name]
@@ -182,8 +275,11 @@ func (c *Config) Plan(name, key, harness, model string) (*Plan, error) {
 	if model == "" {
 		model = r.Models[harness]
 	}
-	if model == "" || strings.ContainsAny(model, "\r\n\x00") {
+	if model == "" {
 		return nil, fmt.Errorf("a model pin is required")
+	}
+	if !validModel(model) {
+		return nil, fmt.Errorf("model pin contains a control character")
 	}
 	action := r.StartupAction
 	if action == "" {
@@ -193,7 +289,7 @@ func (c *Config) Plan(name, key, harness, model string) (*Plan, error) {
 	if sandbox == "" {
 		sandbox = "workspace-write"
 	}
-	p := &Plan{Name: "assay-" + name + "-" + key, CellName: name, RoleKey: key, Harness: harness, Model: model, Action: action, Image: c.Image, Host: c.DockerHost, Platform: c.Platform, Network: "assay-product-" + name, AdoptID: r.AdoptID}
+	p := &Plan{Name: ContainerName(name, key), CellName: name, RoleKey: key, Harness: harness, Model: model, Action: action, Image: c.Image, Host: c.DockerHost, Platform: c.Platform, Network: "assay-product-" + name, AdoptID: r.AdoptID, Protected: c.protected()}
 	if key == "desk" {
 		p.HostLock = cell.HostLock
 	}
@@ -213,8 +309,14 @@ func (c *Config) Plan(name, key, harness, model string) (*Plan, error) {
 	return p, nil
 }
 
-// CheckFiles never reads credential contents or contacts Docker/the forge.
+// CheckFiles never reads credential contents or contacts Docker/the forge. Directory mounts are
+// compared with the protected paths again after resolving symlinks, which the lexical check in
+// Config.Validate cannot see.
 func (p *Plan) CheckFiles() error {
+	var protected []string
+	for _, x := range p.Protected {
+		protected = append(protected, resolve(x))
+	}
 	for _, m := range p.Mounts {
 		if m.Type != "bind" {
 			continue
@@ -227,14 +329,19 @@ func (p *Plan) CheckFiles() error {
 			if !st.Mode().IsRegular() || st.Mode().Perm()&0077 != 0 {
 				return fmt.Errorf("credential must be a private regular file: %s", m.Source)
 			}
-		} else if !st.IsDir() {
+			continue
+		}
+		if !st.IsDir() {
 			return fmt.Errorf("mount must be a directory: %s", m.Source)
+		}
+		if err = checkDirectoryMount(resolve(m.Source), protected); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 func (p *Plan) RunArgs() []string {
-	a := []string{"run", "--rm", "--sig-proxy=false", "--pull", "never", "--platform", p.Platform, "--read-only", "--user", "501:501", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "256", "--memory", "4g", "--cpus", "2", "--tmpfs", "/tmp:rw,nosuid,nodev,size=512m,mode=1777", "--name", p.Name, "--network", p.Network, "--label", "io.assay.cell=" + p.CellName, "--label", "io.assay.role=" + p.RoleKey, "-it"}
+	a := []string{"run", "--rm", "--sig-proxy=false", "--pull", "never", "--platform", p.Platform, "--read-only", "--user", ContainerUser, "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "256", "--memory", "4g", "--cpus", "2", "--tmpfs", "/tmp:" + TmpfsOptions, "--name", p.Name, "--network", p.Network, "--label", "io.assay.cell=" + p.CellName, "--label", "io.assay.role=" + p.RoleKey, "-it"}
 	for _, m := range p.Mounts {
 		s := "type=" + m.Type + ",src=" + m.Source + ",dst=" + m.Target
 		if m.ReadOnly {
