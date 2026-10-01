@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -321,7 +322,9 @@ func loadCell(name string) *Cell {
 			if !filepath.IsAbs(cfg) || !isRegular(cfg) {
 				die("CELL_CONTAINER_CONFIG must be an absolute configuration file")
 			}
-		} else if !strings.HasPrefix(l, "/") || !isExecFile(l) {
+		} else if err := cellPathCheck(runtime.GOOS, l); err != nil {
+			die("container launcher: %v", err)
+		} else if !isExecFile(l) {
 			die("container cell needs an absolute executable CELL_CONTAINER_LAUNCHER")
 		}
 	case "house":
@@ -463,9 +466,13 @@ func rootsValid(v string) bool {
 			return false
 		}
 		name, path := entry[:eq], entry[eq+1:]
+		if err := cellPathCheck(runtime.GOOS, path); err != nil {
+			fmt.Fprintf(os.Stderr, "malformed CELL_ROOTS path: %v\n", err)
+			return false
+		}
 		parts := strings.Split(name, "/")
 		bad := len(parts) != 2 || parts[0] == "" || parts[1] == "" ||
-			strings.ContainsAny(name, " \t=") || !strings.HasPrefix(path, "/") || strings.Contains(path, ",")
+			strings.ContainsAny(name, " \t=") || cellPathCheck(runtime.GOOS, path) != nil || strings.Contains(path, ",")
 		if bad {
 			fmt.Fprintf(os.Stderr, "malformed CELL_ROOTS entry '%s' (want <owner>/<repo>=<abs path>)\n", entry)
 			return false
