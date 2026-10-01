@@ -154,6 +154,13 @@ var AllowedInvocations = []Allowance{
 // unresolvedRegister records every exec site whose argv[0] the checker cannot resolve. It is
 // a LEDGER of blind spots, not a permit — see the file header.
 var UnresolvedArgv = []Allowance{
+	{
+		Key: "internal/cellprocess/run.go::run::<unresolved>",
+		Reason: "the bounded host-harness runner. Its production caller is cellctl's cadence supervisor, " +
+			"which supplies the resolved claude, codex, or Cursor agent argv from the registered harness " +
+			"launch builders. It executes that argv directly with process-tree containment, never a shell " +
+			"or a forge CLI; tests supply compiled process fixtures.",
+	},
 	// cmd/cellctl — the cell launcher (the Go port of the bash script now kept only as a test
 	// oracle, tools/cellctl/testdata/cellctl-shell-oracle.sh). It reaches NO forge at all: its one
 	// credential path goes through deskkit.RoleTokenForRepo, and its own brief asserts at the
