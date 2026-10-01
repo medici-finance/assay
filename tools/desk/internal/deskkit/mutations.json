@@ -112,8 +112,8 @@
     {
       "name": "#203 — disarm the machine-shape arm (absolute paths, worktree names, session and agent ids)",
       "file": "internal/deskkit/selfcontain.go",
-      "old": "\t\tif loc := m.re.FindString(s); loc != \"\" {",
-      "new": "\t\tif loc := m.re.FindString(s); false {"
+      "old": "\t\tif loc := m.re.FindStringIndex(s); loc != nil {",
+      "new": "\t\tif loc := m.re.FindStringIndex(s); false {"
     },
     {
       "name": "#203 — stop refusing a PRIVATE repo slug on a public body",

@@ -1,0 +1,2 @@
+### Fixed
+- The `internal/deskkit` mutation gate is green again. #1919 changed the machine-shape arm of the public-repo self-containment scan to use `FindStringIndex`, and the mutation that disarms that arm still targeted the old `FindString` line. The edit stopped applying, so the gate reported `could-not-mutate`. The mutation now targets the current line and disarms the same arm, and the suite catches it.
