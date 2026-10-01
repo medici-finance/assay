@@ -1,0 +1,437 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/agentic-assessment-v1.json",
+  "title": "agentic-assessment-v1",
+  "description": "Machine-readable contract for agentic admission (spec/agentic-admission-v1.md, graph-execution/13): the agenticAssessment record (deterministic hard facts and recorded probabilistic advice, kept in separate fields), the owner's admissionPolicy, the evaluation-time admissionContext, and the deterministic admissionResult. This schema is DESCRIPTIVE of per-value shape only; the cross-field MUST rules (every readiness check mapped to a fail ceiling of human-led or stricter, freshness, binding, exception expiry, advice may only restrict, mandatory gates are a union) live in spec/agentic-admission-v1.md and are enforced by tools/desk/internal/deskkit/admission.go. No value in any of these records is a numeric safety, suitability or compliance score.",
+  "$defs": {
+    "disposition": {
+      "type": "string",
+      "enum": [
+        "bounded-agent-work",
+        "supervised-agent",
+        "human-led",
+        "discovery-only",
+        "blocked"
+      ],
+      "description": "The closed admission vocabulary, least to most restrictive (spec §2)."
+    },
+    "hardCheck": {
+      "type": "string",
+      "enum": [
+        "authority",
+        "data-handling",
+        "acceptance-availability",
+        "executor-capability",
+        "independent-verifier",
+        "budget",
+        "effect-recoverability"
+      ]
+    },
+    "readinessCheck": {
+      "type": "string",
+      "enum": [
+        "acceptance-availability",
+        "executor-capability",
+        "independent-verifier",
+        "budget",
+        "effect-recoverability"
+      ]
+    },
+    "agentOperation": {
+      "description": "An operation an agent may be permitted. merge, release and deploy are human floors and are never in this set (spec §2).",
+      "type": "string",
+      "enum": [
+        "read",
+        "push",
+        "pr-open",
+        "comment",
+        "review",
+        "evidence-commit",
+        "file-issue",
+        "dispatch"
+      ]
+    },
+    "hardFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "check",
+        "state",
+        "observedAt"
+      ],
+      "properties": {
+        "check": {
+          "$ref": "#/$defs/hardCheck"
+        },
+        "state": {
+          "description": "could-not-check is reported as itself, never rounded (spec §3.1).",
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "could-not-check"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "advisoryAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dimension",
+        "scope",
+        "request",
+        "prediction",
+        "observedAt"
+      ],
+      "properties": {
+        "dimension": {
+          "type": "string",
+          "enum": [
+            "ambiguity",
+            "verification-adequacy",
+            "task-model-fit",
+            "semantic-risk"
+          ]
+        },
+        "scope": {
+          "description": "The subject this advice was produced for; MUST equal the assessed subject or the advice is ignored.",
+          "type": "string"
+        },
+        "request": {
+          "$ref": "https://medici-finance.github.io/assay/schemas/decision-assessment-v1.json#/$defs/assessmentRequest"
+        },
+        "prediction": {
+          "$ref": "https://medici-finance.github.io/assay/schemas/decision-assessment-v1.json#/$defs/prediction"
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "agenticAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject",
+        "subjectRevision",
+        "schemaDigest",
+        "environmentDigest",
+        "category",
+        "operations",
+        "facts"
+      ],
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "subjectRevision": {
+          "type": "string"
+        },
+        "schemaDigest": {
+          "type": "string"
+        },
+        "environmentDigest": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "operations": {
+          "description": "The operations the work requests. A human-floor operation here caps the result at human-led.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hardFact"
+          }
+        },
+        "advice": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/advisoryAssessment"
+          }
+        },
+        "assessedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "categoryAdmission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "ceiling",
+        "permittedOperations"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ceiling": {
+          "$ref": "#/$defs/disposition"
+        },
+        "permittedOperations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/agentOperation"
+          }
+        },
+        "revoked": {
+          "type": "boolean"
+        },
+        "revokedReason": {
+          "type": "string"
+        }
+      }
+    },
+    "admissionException": {
+      "description": "Admits one subject outside applicability. Extends applicability only; never waives a check, lifts a ceiling or removes a gate.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject",
+        "owner",
+        "expires"
+      ],
+      "properties": {
+        "subject": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string"
+        },
+        "expires": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "admissionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "owner",
+        "applicability",
+        "categories",
+        "readinessFailCeiling",
+        "maxFactAge",
+        "maxAdviceAge"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "applicability": {
+          "description": "Subject prefixes the policy applies to; no entry may be empty.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "exceptions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/admissionException"
+          }
+        },
+        "categories": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/categoryAdmission"
+          }
+        },
+        "readinessFailCeiling": {
+          "description": "Every readiness check MUST be mapped, and only to human-led or more restrictive (spec §5).",
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/readinessCheck"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "human-led",
+              "discovery-only",
+              "blocked"
+            ]
+          }
+        },
+        "maxFactAge": {
+          "description": "A Go duration string, e.g. \"24h0m0s\". MUST be positive (spec §5).",
+          "type": "string",
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
+        },
+        "maxAdviceAge": {
+          "description": "A Go duration string, e.g. \"24h0m0s\". MUST be positive (spec §5).",
+          "type": "string",
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
+        }
+      }
+    },
+    "discoveryScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "readScope"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "readScope": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "admissionContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "now",
+        "subjectRevision",
+        "schemaDigest",
+        "environmentDigest"
+      ],
+      "properties": {
+        "now": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "subjectRevision": {
+          "type": "string"
+        },
+        "schemaDigest": {
+          "type": "string"
+        },
+        "environmentDigest": {
+          "type": "string"
+        },
+        "stopFlag": {
+          "type": "boolean"
+        },
+        "adviceDisabled": {
+          "type": "boolean"
+        },
+        "discovery": {
+          "$ref": "#/$defs/discoveryScope"
+        }
+      }
+    },
+    "admissionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject",
+        "policyVersion",
+        "disposition",
+        "reasons",
+        "permittedOperations",
+        "humanFloors",
+        "riskInput"
+      ],
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "policyVersion": {
+          "type": "string"
+        },
+        "disposition": {
+          "$ref": "#/$defs/disposition"
+        },
+        "reasons": {
+          "description": "Ordered reason codes; never empty.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "permittedOperations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/agentOperation"
+          }
+        },
+        "humanFloors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "merge",
+              "release",
+              "deploy"
+            ]
+          }
+        },
+        "riskInput": {
+          "description": "The workflow-pattern risk-input verdict this disposition adds; mandatory gates are the union with the brief's own verdict (spec §6).",
+          "type": "string",
+          "enum": [
+            "standard",
+            "elevated",
+            "human"
+          ]
+        },
+        "adviceApplied": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/agenticAssessment"
+    },
+    {
+      "$ref": "#/$defs/admissionPolicy"
+    },
+    {
+      "$ref": "#/$defs/admissionContext"
+    },
+    {
+      "$ref": "#/$defs/admissionResult"
+    }
+  ]
+}

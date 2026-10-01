@@ -1,0 +1,61 @@
+{
+  "version": "example-admission-policy-1",
+  "owner": "example-owner",
+  "applicability": [
+    "example-org/widgets#"
+  ],
+  "exceptions": [
+    {
+      "subject": "example-org/gadgets#3",
+      "owner": "example-owner",
+      "reason": "one-off docs migration",
+      "expires": "2026-09-30T00:00:00Z"
+    },
+    {
+      "subject": "example-org/gadgets#4",
+      "owner": "example-owner",
+      "reason": "one-off docs migration",
+      "expires": "2026-09-15T00:00:00Z"
+    }
+  ],
+  "categories": {
+    "docs-change": {
+      "owner": "example-owner",
+      "ceiling": "bounded-agent-work",
+      "permittedOperations": [
+        "read",
+        "push",
+        "pr-open",
+        "comment"
+      ]
+    },
+    "dependency-bump": {
+      "owner": "example-owner",
+      "ceiling": "supervised-agent",
+      "permittedOperations": [
+        "read",
+        "push",
+        "pr-open",
+        "comment"
+      ]
+    },
+    "schema-migration": {
+      "owner": "example-owner",
+      "ceiling": "human-led",
+      "permittedOperations": [
+        "read"
+      ],
+      "revoked": true,
+      "revokedReason": "owner withdrew the category after an incident review"
+    }
+  },
+  "readinessFailCeiling": {
+    "acceptance-availability": "discovery-only",
+    "executor-capability": "human-led",
+    "independent-verifier": "human-led",
+    "budget": "human-led",
+    "effect-recoverability": "human-led"
+  },
+  "maxFactAge": "24h0m0s",
+  "maxAdviceAge": "24h0m0s"
+}

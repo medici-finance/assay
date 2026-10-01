@@ -1,0 +1,47 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -run '^TestAgenticAdmission'",
+  "control": {
+    "name": "CONTROL \u2014 ignore the stop flag (a stopped system still admits agent work)",
+    "file": "internal/deskkit/admission.go",
+    "old": "\tif c.StopFlag {\n\t\tst.restrict(AdmitBlocked, \"stop-flag\")",
+    "new": "\tif false {\n\t\tst.restrict(AdmitBlocked, \"stop-flag\")"
+  },
+  "mutations": [
+    {
+      "name": "invert the restriction lattice (moreRestrictive returns the LESS restrictive disposition, so confident advice widens)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif rb > ra {\n\t\treturn b\n\t}\n\treturn a\n}",
+      "new": "\tif rb < ra {\n\t\treturn b\n\t}\n\treturn a\n}"
+    },
+    {
+      "name": "let applied advice SET the cap to its label instead of only restricting it (a confident bounded label authorizes)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\tif moreRestrictive(st.cap, label) != st.cap {\n\t\t\tst.restrict(label,",
+      "new": "\t\tif label != st.cap {\n\t\t\tst.cap = label\n\t\t\tst.restrict(label,"
+    },
+    {
+      "name": "honour advice while the advice kill switch is set",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tcase c.AdviceDisabled:\n\t\treturn \"\", \"disabled\"",
+      "new": "\tcase false:\n\t\treturn \"\", \"disabled\""
+    },
+    {
+      "name": "drop the brief's own gates from the union (the admission disposition alone decides the mandatory nodes)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tfor _, g := range base {\n\t\tset[g] = true\n\t}",
+      "new": "\tfor _, g := range base {\n\t\t_ = g\n\t}"
+    },
+    {
+      "name": "let a failed readiness check map to supervised-agent (an agent lane) in a valid policy",
+      "file": "internal/deskkit/admission.go",
+      "old": "if !ceil.Valid() || ceil.rank() < AdmitHumanLed.rank() {",
+      "new": "if !ceil.Valid() || ceil.rank() < AdmitSupervisedAgent.rank() {"
+    },
+    {
+      "name": "treat unknown readiness without a discovery grant as a note, not a hold",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\t\tst.restrict(AdmitBlocked, \"discovery-not-authorized\")",
+      "new": "\t\t\tst.reasons = append(st.reasons, \"discovery-not-authorized\")"
+    }
+  ]
+}

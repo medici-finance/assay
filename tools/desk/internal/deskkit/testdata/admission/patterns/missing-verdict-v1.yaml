@@ -1,0 +1,14 @@
+# Negative fixture: risk-input omits the `human` verdict. The admission seam refuses it.
+schema: workflow-pattern-v1
+pattern: missing-verdict
+version: 1
+risk-input:
+  low: [review]
+  standard: [review]
+  elevated: [review]
+nodes:
+  - {id: work, kind: artifact, role: worker, outputs: [change]}
+  - {id: review, kind: check, role: reviewer, inputs: [{artifact: change}]}
+edges:
+  - {from: work, to: review}
+join: review
