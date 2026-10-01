@@ -140,6 +140,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		}
 		argv = append(argv, "--sandbox", "danger-full-access", "-C", wt, "-m", model,
 			fmt.Sprintf("Invoke the %q skill now.", "assay:"+role))
+	} else if harness == "cursor" {
+		argv = cursorLaunchArgv(role, model, session, wt)
+		env = cursorLaunchEnv(env)
 	} else {
 		env = envSet(env, "CLAUDE_CONFIG_DIR", cfg)
 		// Automated desks do not need the extra next-prompt generation request.

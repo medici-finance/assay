@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -221,7 +222,9 @@ func expandVar(s string, e *Env) (int, string) {
 // Cell is everything `load_cell` leaves in scope: the resolved directory, the kind/forge
 // defaults it asserts, and the variable environment every later step reads.
 type Cell struct {
-	Env *Env
+	Cadence      *cadenceOptions
+	cadenceLease *cellcadence.Lease
+	Env          *Env
 
 	Name       string
 	Dir        string

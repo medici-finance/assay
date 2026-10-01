@@ -1,0 +1,1 @@
+- Add opt-in Go-supervised host desk cadence with bounded passes, persistent checkpoints, role exclusion and honest status; support Cursor Agent alongside Codex in Herdr/Orca terminal launches.

@@ -55,6 +55,9 @@ func cmdDown(cell string, args []string) {
 			die("down: unexpected argument '%s'", a)
 		}
 	}
+	if err := c.stopCadences(); err != nil {
+		die("down: %v", err)
+	}
 	want, src := c.cockpitWant(cockpitFlag)
 	res := c.resolveCockpit(want, src)
 	if res.Err == "" {
