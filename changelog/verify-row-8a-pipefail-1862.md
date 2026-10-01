@@ -1,2 +1,0 @@
-### Fixed
-- build-less-brittle/08 Verify row 8a (the findings loader rejects a malformed entry) no longer fails on its own success path. The row plants a bad findings file so `statusgen --lint` fails on purpose, but it piped that lint straight into `grep -c`, and the witness runs every row under `pipefail`, so the lint's status failed the row even though the count was right. The row now captures the lint's output, asserts that the lint returned `1`, and counts the parse-error line from the captured output (#1862).
