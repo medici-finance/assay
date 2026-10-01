@@ -74,9 +74,9 @@ _Held by per-stream caps: 3 brief(s) across 2 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 8fbe534 2026-10-01T01:46:55Z_
+_last regen: eb2ec26 2026-10-01T01:53:35Z_
 
-**Progress:** 4/13 brief items done.
+**Progress:** 5/13 brief items done.
 
 **In-flight:**
 
@@ -87,7 +87,6 @@ _none_
 - build-less-brittle/02
 - build-less-brittle/04
 - build-less-brittle/06
-- build-less-brittle/10
 
 **Frontier next:**
 
@@ -98,9 +97,9 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 8fbe534 2026-10-01T01:46:55Z_
+_last regen: eb2ec26 2026-10-01T01:53:35Z_
 
-**Progress:** 11/31 brief items done.
+**Progress:** 12/31 brief items done.
 
 **In-flight:**
 
@@ -109,7 +108,6 @@ _none_
 **Blocked on review:**
 
 - desktools-v2/05
-- desktools-v2/09
 - desktools-v2/10
 - windows-port/00
 - windows-port/01
@@ -132,7 +130,7 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (51 desk-actionable of 84 total — 84 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (51 desk-actionable of 84 total — 82 at implemented, 2 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -152,7 +150,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
 | graph-execution | 03 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | apps-installer | 02 [exec:strong] | implemented | 4000 | 4 | — | — | — |
-| build-less-brittle | 10 [exec:strong] | implemented | 4000 | 2 | — | — | — |
+| build-less-brittle | 10 [exec:strong] | verified | 4000 | 2 | — | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
@@ -189,7 +187,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 26 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desktools-v2 | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| desktools-v2 | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desktools-v2 | 09 [exec:strong] | verified | 1000 | 0 | — | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -295,7 +293,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 05 Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight — todo (wave 3)
 - 06 Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision — implemented (wave 2)
 - 09 Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept — todo (wave 3)
-- 10 Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning — implemented (wave 2)
+- 10 Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning — verified (wave 2)
 - 11 Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge — todo (wave 4)
 - 12 The refactor oracle: what a redesign is coded against — intent, failure modes, triaged characterization tests, invariants, and an acceptance rule — todo (wave 5)
 - 13 Incident-time refactor by an agent, with one human residue: the strong-tier session runs the investigation, assembles the oracle, drafts the refactor PR, and asks the driver exactly one typed decision, only for what the record does not settle — todo (wave 6)
@@ -393,7 +391,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 05 the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884) — implemented (wave 2)
 - 06 installation-token scoping — one token per repo, no ambient-credential hiding (#628 / #1145 / #1146) — todo (wave 4)
 - 08 hold statusgen at zero — the gh ban fails on statusgen and the scan is proven with no gh present — todo (wave 6)
-- 09 purpose-built access-pattern query operations (one tuned snapshot, not N per-item calls) — implemented (wave 3)
+- 09 purpose-built access-pattern query operations (one tuned snapshot, not N per-item calls) — verified (wave 3)
 - 10 one outbound-write check at the forge write seam, keyed on the target's visibility — implemented (wave 2)
 - 11 a house callout for the outbound-write check — deployment vocabulary stays out of the shipped tools — todo (wave 3)
 - 12 platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS — todo (wave 2)
