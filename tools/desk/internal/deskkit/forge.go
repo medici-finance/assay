@@ -117,8 +117,9 @@ type PullRequest struct {
 	// the reply's location and records it in the audit detail.
 	URL string
 	// HeadRef is the SOURCE branch name (GitHub head.ref ↔ GitLab source_branch), as
-	// distinct from HeadSHA. Consumer: cmd/deskreply's preflight, which refuses when the
-	// worktree's checked-out branch is not the branch the change is built from.
+	// distinct from HeadSHA. Consumer: the own-PR guard deskkit.CheckOwnPR (cmd/deskreply,
+	// `deskpr edit --pr`), which refuses when the worktree's checked-out branch is not the
+	// branch the change is built from AND its HEAD is not the change's head commit (#1901).
 	HeadRef string
 	// BaseRef is the TARGET branch name (GitHub base.ref ↔ GitLab target_branch) — the branch
 	// whose protection rules gate the merge. Consumer: cmd/deskflip's checks-green condition,

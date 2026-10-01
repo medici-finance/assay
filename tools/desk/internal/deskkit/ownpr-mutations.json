@@ -1,0 +1,65 @@
+{
+  "test": "go test ./internal/deskkit/ ./cmd/deskreply/ ./cmd/deskpr/ -count=1 -timeout 300s -run 'CheckOwnPR|OwnPRByHeadCommit|EditByPROwnHeadCommit|EditDetachedNeedsPR|ReplyNotMyOwnBranch|ReplyPRNotOpen'",
+  "control": {
+    "name": "CONTROL — the own-PR guard is branch-name-only again (the pre-#1901 rule: a worktree at the PR's head commit on another branch name is refused)",
+    "file": "internal/deskkit/ownpr.go",
+    "old": "\tif sameCommit(local.Head, remote.HeadOid) {\n\t\treturn OwnPRByHead, nil\n\t}\n",
+    "new": "\tif false && sameCommit(local.Head, remote.HeadOid) {\n\t\treturn OwnPRByHead, nil\n\t}\n"
+  },
+  "mutations": [
+    {
+      "name": "admit ANY head commit (the equality is dropped — a different branch at a different commit passes)",
+      "file": "internal/deskkit/ownpr.go",
+      "old": "\tif sameCommit(local.Head, remote.HeadOid) {\n",
+      "new": "\tif local.Head != \"\" {\n"
+    },
+    {
+      "name": "admit an abbreviated SHA as a prefix match (length check dropped, prefix compare)",
+      "file": "internal/deskkit/ownpr.go",
+      "old": "\tif a == \"\" || b == \"\" || len(a) != len(b) {\n\t\treturn false\n\t}\n\treturn strings.EqualFold(a, b)\n",
+      "new": "\tif a == \"\" || b == \"\" {\n\t\treturn false\n\t}\n\treturn strings.HasPrefix(strings.ToLower(b), strings.ToLower(a))\n"
+    },
+    {
+      "name": "the head-commit compare is case-sensitive (upper-case hex from a tool no longer matches the forge's lower-case oid)",
+      "file": "internal/deskkit/ownpr.go",
+      "old": "\treturn strings.EqualFold(a, b)\n",
+      "new": "\treturn a == b\n"
+    },
+    {
+      "name": "two absent SHAs compare equal (no local head + a forge that reported no head oid)",
+      "file": "internal/deskkit/ownpr.go",
+      "old": "\tif a == \"\" || b == \"\" || len(a) != len(b) {\n",
+      "new": "\tif len(a) != len(b) {\n"
+    },
+    {
+      "name": "a detached HEAD (branch \"\") matches a PR whose head ref was not reported",
+      "file": "internal/deskkit/ownpr.go",
+      "old": "\tif local.Branch != \"\" && local.Branch == remote.HeadRef {\n",
+      "new": "\tif local.Branch == remote.HeadRef {\n"
+    },
+    {
+      "name": "a merged/closed PR is no longer refused",
+      "file": "internal/deskkit/ownpr.go",
+      "old": "\tif !strings.EqualFold(strings.TrimSpace(remote.State), \"OPEN\") {\n",
+      "new": "\tif false {\n"
+    },
+    {
+      "name": "deskreply no longer enforces the own-PR guard",
+      "file": "cmd/deskreply/deskreply.go",
+      "old": "\t); oerr != nil {\n\t\treturn oerr\n\t}\n\tac.head = view.HeadRefOid\n",
+      "new": "\t); false && oerr != nil {\n\t\treturn oerr\n\t}\n\tac.head = view.HeadRefOid\n"
+    },
+    {
+      "name": "deskpr edit's detached-HEAD refusal (no --pr) loses its --pr N remedy (the create/update message again)",
+      "file": "cmd/deskpr/edit.go",
+      "old": "preflightMode(dir, \"\", *prNum > 0, editDetachedRefusal)",
+      "new": "preflightMode(dir, \"\", *prNum > 0, detachedRefusal)"
+    },
+    {
+      "name": "deskpr edit --pr no longer enforces the own-PR guard",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\t\t); oerr != nil {\n\t\t\treturn nil, nil, oerr\n",
+      "new": "\t\t); false && oerr != nil {\n\t\t\treturn nil, nil, oerr\n"
+    }
+  ]
+}

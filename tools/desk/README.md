@@ -656,6 +656,15 @@ branch diff: those are surfaces a *push* publishes, and `edit` pushes nothing â€
 a body correction over code the branch already carries would strand the one verb whose
 job is fixing text.
 
+**`--pr N` names the PR instead (#1901).** Git allows one worktree per branch, so a rework
+worker whose PR head branch is still checked out elsewhere works on a neutral branch or a
+detached HEAD and pushes by explicit refspec. From there `edit --pr N` reads PR #N and
+applies the shared own-PR guard (`deskkit.CheckOwnPR`, the same rule `deskreply` uses): the
+PR must be OPEN, and the worktree's branch must BE the PR's head branch or its HEAD commit
+must be EXACTLY the PR's head commit. A HEAD with unpushed commits on top of the head commit
+is refused until they are pushed. Without `--pr`, a detached HEAD is refused (exit 6) with a
+message that points at `--pr N`.
+
 **The link trailer is not editable.** `Brief: <stream>/<NN>` / `Authors: <stream>/<NN>[, â€¦]` /
 `Issue: #<N>` is the
 derived board's edge from the PR to its work item, and a body-rewrite verb that could
