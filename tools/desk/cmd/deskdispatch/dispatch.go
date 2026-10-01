@@ -224,7 +224,7 @@ func dispatch(o dispatchOpts) error {
 		}
 		shownBranch := branch
 		if plan.detached {
-			shownBranch = "(detached off origin/main — verifier touches no branch)"
+			shownBranch = fmt.Sprintf("(detached off origin/main — %s touches no branch)", o.kit)
 		}
 		fmt.Printf("deskdispatch: PLAN (dry run — nothing touched) item=%s repo=%s tier=%s kit=%s branch=%s%s\n",
 			o.item, repo, o.tier, o.kit, shownBranch, wtBanner)
@@ -364,14 +364,7 @@ func dispatch(o dispatchOpts) error {
 	// that role App's own worktree-scoped https transport and credential helper, refusing when
 	// git does not then resolve exactly that (#861). Without it the worktree fetched with the
 	// operator's SSH key and pushed to wherever the shared config pointed.
-	var wt runResult
-	if plan.detached {
-		wt = runCmd(o.root, "deskwt", "add", wtName, "--detach", "--base", worktreeBase(o, branch),
-			"--role", plan.identityRole)
-	} else {
-		wt = runCmd(o.root, "deskwt", "add", wtName, "--branch", branch, "--base", worktreeBase(o, branch),
-			"--role", plan.identityRole)
-	}
+	wt := createDispatchWorktree(o, plan)
 	if wt.err != nil {
 		// The durable claim was placed one step ago and this dispatch is now aborting, so
 		// RELEASE it — exactly as the before_run failure path below does — rather than leave it
@@ -385,14 +378,8 @@ func dispatch(o dispatchOpts) error {
 		// worktree holds it, what to do). Not toolMessage(wt.stderr): that strips only the
 		// `assay-config:` preamble and never scrubs, and this message reaches the operator
 		// verbatim via FailVerbatim on every DESK_TRACE setting, on or off. The wrapper no
-		// longer frames this as a transient tree fault to "fix and re-run"; instead it names
-		// the commonest cause, which DIFFERS BY KIT and so must be selected by kit (#851). The
-		// brief-lane hint — the brief's `feat/<id>` branch already existing — is meaningless on
-		// the review lane, which has no brief and no feat branch; sending a reviewer to "look
-		// for a merged/open PR" explains nothing. The review-lane hint points instead at the
-		// reviewer-worktree lifecycle: a review kit checks the PR head out as a DETACHED HEAD,
-		// so the earlier reviewer worktree for this PR must be reclaimed before a re-dispatch
-		// on the same lane key can create its own.
+		// longer guesses that a retained reviewer tree caused this failure: each
+		// review pass gets a fresh detached home, so earlier evidence stays intact.
 		said := wt.run.SaidAll()
 		msg := fmt.Sprintf(
 			"step %s: `deskwt add %s` failed in %s. The claim was %s. %s deskwt said:\n%s",
@@ -465,7 +452,7 @@ func dispatch(o dispatchOpts) error {
 		idSuffix = " identity=" + deskkit.RoleIdentityLabel(plan.identityRole)
 	}
 	if plan.detached {
-		o.say("%s OK: %s detached off origin/main (verifier: no branch)%s", stepWorktreeCreate, home, idSuffix)
+		o.say("%s OK: %s detached off origin/main (%s: no branch)%s", stepWorktreeCreate, home, o.kit, idSuffix)
 	} else {
 		o.say("%s OK: %s on %s%s", stepWorktreeCreate, home, branch, idSuffix)
 	}
@@ -584,9 +571,8 @@ type dispatchPlan struct {
 	// validateOperatorWorktree — an empty value renders the not-yet-known placeholder, so a
 	// real dispatch, which never sets it, is unaffected.
 	home string
-	// detached is set for a VERIFIER dispatch (#1309 item 6): the worktree is cut as a detached
-	// HEAD off origin/main under a `verify-<item>` name (`deskwt add --detach`), branch is empty,
-	// and no feature branch is created, named, or collided with.
+	// Review and verifier kits start detached off mainline without creating,
+	// reclaiming, or naming a feature branch.
 	detached bool
 	// identityRole is the DISPATCHED agent's own desk role — the one whose App commit
 	// identity its worktree must carry (kitRole: worker/worker-objective→worker,
@@ -653,6 +639,10 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 			"step %s: --worktree is accepted only with --dry-run. A real dispatch names the home worktree "+
 				"deskwt printed and nothing else; an operator-stated path must not override that placement.",
 			stepWorktreeCreate))
+	}
+
+	if reviewKit(o.kit) && strings.TrimSpace(o.branch) != "" {
+		return plan, deskkit.Refused("--branch is not accepted with --kit review: reviewer worktrees are detached")
 	}
 
 	if !itemKeyRe.MatchString(o.item) {
@@ -807,17 +797,13 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		plan.forgeKind = kind
 	}
 
-	// A VERIFIER dispatch names no branch (#1309 item 6): its worktree is cut DETACHED off
-	// origin/main under its own `verify-<item>` name and never touches the brief's feature
-	// branch — a delivered brief's `feat/<id>` still sitting in a stale worker worktree used to
-	// refuse the verifier with "already delivered or in progress", which is true of the brief
-	// and irrelevant to a verify pass against merged main. An explicit --branch on a verifier
-	// dispatch contradicts that shape and is refused here, pre-claim.
-	if verifierKit(o.kit) {
+	// Read-only kits allocate detached. A reviewer checks out the PR head
+	// afterward; no disposable feature branch or upstream is needed.
+	if verifierKit(o.kit) || reviewKit(o.kit) {
 		if strings.TrimSpace(o.branch) != "" {
 			return plan, deskkit.Refused(fmt.Sprintf(
-				"step %s: --branch is not accepted with --kit verifier — a verifier's worktree is cut DETACHED "+
-					"off origin/main under its own name and never touches a feature branch.", stepWorktreeCreate))
+				"step %s: --branch is not accepted with --kit %s — its worktree is cut DETACHED "+
+					"off origin/main and never touches a feature branch.", stepWorktreeCreate, o.kit))
 		}
 		plan.detached = true
 	} else {
@@ -847,7 +833,7 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// worktree-name grammar, falls back to the bare item-derived name (the pre-session
 	// behaviour), so this never turns a usable name unusable.
 	base := sanitizeSegment(o.item)
-	if plan.detached {
+	if verifierKit(o.kit) {
 		// The verifier's OWN name: a worker worktree for the same item (tracker-<item>-<sess>)
 		// must never be the dir a verifier lands in or is refused by.
 		base = "verify-" + base
@@ -861,6 +847,14 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	if sess := dispatchSessionSuffix(); sess != "" {
 		if scoped := base + "-" + sess; worktreeNameRe.MatchString(scoped) {
 			plan.wtName = scoped
+		}
+	}
+
+	if reviewKit(o.kit) {
+		var err error
+		plan.wtName, err = freshReviewName(base)
+		if err != nil {
+			return plan, deskkit.Unverifiable("cannot allocate a fresh reviewer worktree name; nothing was claimed", err)
 		}
 	}
 
