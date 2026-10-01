@@ -61,3 +61,63 @@ func TestAllocationHealthyReads(t *testing.T) {
 		t.Fatalf("known non-allocation calls rejected: %v", bad)
 	}
 }
+
+func TestAllocationGitCommandSelection(t *testing.T) {
+	for name, call := range map[string]string{
+		"fetch-upload":   `runCmd(root, "git", "fetch", "--upload-pack="+helper, root)`,
+		"fetch-short":    `runCmd(root, "git", "fetch", "-u", helper, root)`,
+		"fetch-url":      `runCmd(root, "git", "fetch", remote)`,
+		"fetch-wrapper":  `gitOut(root, "fetch", "--upload-pack="+helper, root)`,
+		"fetch-args":     `runCmd(root, "git", "fetch", args...)`,
+		"config-command": `runCmd(root, "git", "config", "remote.origin.uploadpack", helper)`,
+		"config-unknown": `runCmd(root, "git", "config", key, value)`,
+		"config-extra":   `runCmd(root, "git", "config", "--worktree", "user.name", value, extra)`,
+		"config-spread":  `runCmd(root, "git", "config", "--worktree", "user.name", values...)`,
+		"remote-fetch":   `runCmd(root, "git", "remote", "add", "-f", "origin", remote)`,
+		"remote-unknown": `runCmd(root, "git", "remote", action, "origin")`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			src := []byte("package main; func other() { " + call + " }")
+			if bad := allocationViolations(t, "other.go", src); len(bad) == 0 {
+				t.Fatal("source-selected Git command admitted")
+			}
+		})
+	}
+}
+
+func TestAllocationFetchRelay(t *testing.T) {
+	call := `runCmd(o.root, "git", "fetch", "--quiet", "origin", "+refs/heads/"+branch+":"+ref)`
+	direct := `package main; func worktreeBase(o dispatchOpts, branch string) { ref := "refs/remotes/origin/"+branch; ` + call + ` }`
+	if bad := allocationViolations(t, "worktree.go", []byte(direct)); len(bad) != 0 {
+		t.Fatalf("existing fetch refused: %v", bad)
+	}
+	for name, src := range map[string]string{
+		"wrong-site":     `package main; func other(o dispatchOpts, branch string) { ref := "refs/remotes/origin/"+branch; ` + call + ` }`,
+		"wrong-receiver": `package main; type x struct{}; func (x) worktreeBase(o dispatchOpts, branch string) { ref := "refs/remotes/origin/"+branch; ` + call + ` }`,
+		"nested":         `package main; func worktreeBase(o dispatchOpts, branch string) { ref := "refs/remotes/origin/"+branch; invoke := func() { ` + call + ` }; invoke() }`,
+		"shadow":         `package main; func worktreeBase(o dispatchOpts, branch string) { ref := "refs/remotes/origin/"+branch; if enabled { branch := helper; ` + call + ` } }`,
+		"extra-option":   `package main; func worktreeBase(o dispatchOpts, branch string) { ref := "refs/remotes/origin/"+branch; runCmd(o.root, "git", "fetch", "--quiet", "--upload-pack="+helper, "origin", "+refs/heads/"+branch+":"+ref) }`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if bad := allocationViolations(t, "worktree.go", []byte(src)); len(bad) == 0 {
+				t.Fatal("fetch exemption escaped its exact site")
+			}
+		})
+	}
+	if bad := allocationViolations(t, "other.go", []byte(direct)); len(bad) == 0 {
+		t.Fatal("fetch exemption escaped its file")
+	}
+}
+
+func TestAllocationHealthyGitShapes(t *testing.T) {
+	src := []byte(`package main; func healthy() {
+  runCmd(home, "git", "config", "extensions.worktreeConfig", "true")
+  runCmd(home, "git", "config", "--worktree", "user.name", plan.identityName)
+  runCmd(home, "git", "config", "--worktree", "user.email", plan.identityEmail)
+  runCmd(home, "git", "config", "--worktree", "assay.runKey", plan.claimKey)
+  runCmd(root, "git", "remote", "get-url", "origin")
+ }`)
+	if bad := allocationViolations(t, "other.go", src); len(bad) != 0 {
+		t.Fatalf("healthy shapes rejected: %v", bad)
+	}
+}

@@ -64,8 +64,32 @@
     {
       "name": "reject known literal non-allocation reads",
       "file": "cmd/deskdispatch/reviewguard_test.go",
-      "old": "case \"rev-parse\", \"fetch\", \"config\", \"remote\":\n\t\treturn true",
-      "new": "case \"rev-parse\", \"fetch\", \"config\", \"remote\":\n\t\treturn false"
+      "old": "case \"rev-parse\":\n\t\treturn true",
+      "new": "case \"rev-parse\":\n\t\treturn false"
+    },
+    {
+      "name": "admit unrestricted Git fetch arguments",
+      "file": "cmd/deskdispatch/reviewguard_test.go",
+      "old": "switch guardLiteral(args, i) {\n\tcase \"rev-parse\":",
+      "new": "switch guardLiteral(args, i) {\n\tcase \"fetch\": return true\n\tcase \"rev-parse\":"
+    },
+    {
+      "name": "admit arbitrary Git config writes",
+      "file": "cmd/deskdispatch/reviewguard_test.go",
+      "old": "case \"config\":\n\t\tif len(args)",
+      "new": "case \"config\":\n\t\treturn true\n\t\tif len(args)"
+    },
+    {
+      "name": "admit arbitrary Git remote operations",
+      "file": "cmd/deskdispatch/reviewguard_test.go",
+      "old": "return len(args) == i+3 && guardLiteral(args, i+1) == \"get-url\" && guardLiteral(args, i+2) == \"origin\"",
+      "new": "return true"
+    },
+    {
+      "name": "admit expanded arguments into bounded Git shapes",
+      "file": "cmd/deskdispatch/reviewguard_test.go",
+      "old": "!c.Ellipsis.IsValid() && guardSafeCommand(c.Args, 1)",
+      "new": "guardSafeCommand(c.Args, 1)"
     }
   ]
 }

@@ -64,11 +64,11 @@ func allocationViolations(t *testing.T, name string, src []byte) []string {
 				if id, ok := c.Fun.(*ast.Ident); ok {
 					switch id.Name {
 					case "runCmd":
-						if guardSafeCommand(c.Args, 1) || (trustedAllocator && !nested[c] && guardBindings(fn, c) && guardText(c) == `runCmd(o.root, "deskwt", args...)`) {
+						if (!c.Ellipsis.IsValid() && guardSafeCommand(c.Args, 1)) || (trustedAllocator && !nested[c] && guardBindings(fn, c) && guardText(c) == `runCmd(o.root, "deskwt", args...)`) {
 							allowed[id] = true
 						}
 					case "gitOut":
-						if guardSafeGit(c.Args, 1) {
+						if !c.Ellipsis.IsValid() && guardSafeGit(c.Args, 1) {
 							allowed[id] = true
 						}
 					}
@@ -166,7 +166,7 @@ func guardBindings(fn *ast.FuncDecl, n ast.Node) bool {
 	ast.Inspect(n, func(node ast.Node) bool {
 		if id, ok := node.(*ast.Ident); ok && !fields[id] {
 			switch id.Name {
-			case "o", "auth", "script", "args", "claimKey", "repo", "dir", "name", "env", "b", "key", "call", "plan":
+			case "o", "auth", "script", "args", "claimKey", "repo", "dir", "name", "env", "b", "key", "call", "plan", "branch", "ref":
 				if bindings[id.Name] == nil || bindings[id.Name] != id.Obj {
 					valid = false
 				}
@@ -208,11 +208,26 @@ func guardSafeCommand(args []ast.Expr, i int) bool {
 }
 
 func guardSafeGit(args []ast.Expr, i int) bool {
-	// Only explicit existing non-allocation verbs. No shell, -c alias,
-	// argv expansion, unknown command or direct worktree add is admitted.
+	// Git is not inherently a read boundary: fetch can select an executable,
+	// remote can fetch, and config can install an executable for a later call.
+	// Permit only the existing non-executing shapes. The sole existing fetch
+	// is inventoried below with its fixed remote and refspec expression.
 	switch guardLiteral(args, i) {
-	case "rev-parse", "fetch", "config", "remote":
+	case "rev-parse":
 		return true
+	case "remote":
+		return len(args) == i+3 && guardLiteral(args, i+1) == "get-url" && guardLiteral(args, i+2) == "origin"
+	case "config":
+		if len(args) == i+3 {
+			return guardLiteral(args, i+1) == "extensions.worktreeConfig" && guardLiteral(args, i+2) == "true"
+		}
+		if len(args) != i+4 || guardLiteral(args, i+1) != "--worktree" {
+			return false
+		}
+		switch guardLiteral(args, i+2) {
+		case "user.name", "user.email", "assay.runKey":
+			return true
+		}
 	}
 	return false
 }
@@ -223,6 +238,7 @@ func guardRelay(identity, call string) bool {
 	for _, allowed := range map[string][]string{
 		"exec.go::runCmd":           {`runCmdEnv(dir, nil, name, args...)`},
 		"exec.go::runCmdEnv":        {`deskkit.Run(call)`},
+		"worktree.go::worktreeBase": {`runCmd(o.root, "git", "fetch", "--quiet", "origin", "+refs/heads/"+branch+":"+ref)`},
 		"worktree.go::gitOut":       {`runCmd(dir, "git", args...)`},
 		"dispatch.go::stepClaim":    {`runCmdEnv(o.root, auth.env, script, append(args, auth.args...)...)`, `runCmdEnv(o.root, auth.env, script, append([]string{"show", claimKey, "--repo", repo}, auth.args...)...)`},
 		"dispatch.go::releaseClaim": {`runCmdEnv(o.root, auth.env, script, append([]string{"release", claimKey, "--repo", repo}, auth.args...)...)`},
