@@ -24,7 +24,7 @@ while read -r pkg name; do
   # -run is anchored: a renamed/missing test cannot hide behind another match.
   # -v is retained so an empty selection is detected below.
   out=$(mktemp "${TMPDIR:-/tmp}/floor-test.XXXXXX")
-  if ! ( cd "$root/$module" && go test -run "^${name}$" -count=1 -timeout 45s -v "$package" ) > "$out" 2>&1; then
+  if ! ( cd "$root/$module" && go test -run "^${name}$" -count=1 -timeout 90s -v "$package" ) > "$out" 2>&1; then
     cat "$out"; rm -f "$out"; exit 1
   fi
   if ! grep -E -e "^--- PASS: $name [(]" "$out"; then

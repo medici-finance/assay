@@ -20,8 +20,20 @@ controls = {
         "./internal/deskkit",
     ),
 }
+controls["directories"] = (
+    "tools/desk/internal/deskkit/citrigger_test.go",
+    "func ciReadCoverage(t *testing.T, root string, globs, reads []string) []string {",
+    "^TestCIReadTreeCoverage$",
+    "./internal/deskkit",
+)
+controls["deadline"] = (
+    "tools/desk/internal/regression/shell_test.go",
+    'exec.CommandContext(ctx, "bash", path)',
+    "^TestShellDeadline$",
+    "./internal/regression",
+)
 if mode not in controls:
-    raise SystemExit("usage: mutate_guard.py manifest|ci")
+    raise SystemExit("usage: mutate_guard.py manifest|ci|directories|deadline")
 relative, marker, test, package = controls[mode]
 path = root / relative
 original = path.read_bytes()
@@ -29,7 +41,8 @@ text = original.decode()
 if text.count(marker) != 1:
     raise SystemExit("mutation target changed: expected one function")
 try:
-    path.write_text(text.replace(marker, marker + "\nreturn nil", 1))
+    replacement = 'exec.Command("bash", path)' if mode == "deadline" else marker + "\nreturn nil"
+    path.write_text(text.replace(marker, replacement, 1))
     result = subprocess.run(
         ["go", "test", "-run", test, "-count=1", "-timeout", "30s", package],
         cwd=root / "tools/desk",
