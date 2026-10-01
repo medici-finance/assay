@@ -75,7 +75,7 @@ _Held by per-stream caps: 3 brief(s) across 2 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 212ea3e 2026-10-01T12:05:36+10:00_
+_last regen: 7e3159e 2026-10-01T02:06:23Z_
 
 **Progress:** 5/13 brief items done.
 
@@ -98,7 +98,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 212ea3e 2026-10-01T12:05:36+10:00_
+_last regen: 7e3159e 2026-10-01T02:06:23Z_
 
 **Progress:** 12/31 brief items done.
 
