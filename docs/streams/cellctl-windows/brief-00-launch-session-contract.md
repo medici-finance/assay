@@ -40,6 +40,7 @@ consumers:
 files:
 - tools/desk/internal/celllaunch/ (new contract and tests)
 - docs/cellctl-windows.md (new implementation contract)
+- changelog/cellctl-windows-00.md (release note)
 
 facts (freshness checked 2026-10-01):
 - At 1c67aa717, cmd/cellctl/up.go roleCmd returns shell text; firstWindow contains a shell health loop; Herdr and Orca adapters consume command strings.
@@ -85,7 +86,7 @@ asserts the exact selected PASS line and rejects skips as well as a nonzero exit
 | 2 | `$log = New-TemporaryFile; go test ./internal/celllaunch -run '^TestSessionRecordRefusal$' -count=1 -v *> $log; if ($LASTEXITCODE -ne 0) { Get-Content $log; exit 1 }; if (-not (Select-String -Path $log -SimpleMatch '--- PASS: TestSessionRecordRefusal ')) { exit 1 }; if (Select-String -Path $log -SimpleMatch '--- SKIP:') { exit 1 }` | exit 0; unknown schema, foreign cell/role, reused identity and incomplete launch state refuse | check +flow | pwsh |
 | 3 | `$log = New-TemporaryFile; go test ./internal/celllaunch -run '^TestLaunchSpecCustody$' -count=1 -v *> $log; if ($LASTEXITCODE -ne 0) { Get-Content $log; exit 1 }; if (-not (Select-String -Path $log -SimpleMatch '--- PASS: TestLaunchSpecCustody ')) { exit 1 }; if (Select-String -Path $log -SimpleMatch '--- SKIP:') { exit 1 }` | exit 0; token values are absent from serialized records and logs; untrusted spec reference refuses | check +flow | pwsh |
 | 4 | `go test ./cmd/cellctl ./internal/cellcontainer -count=1` | exit 0; pre-existing Unix regression assertions remain effective; run on Unix as the neighboring platform | check +neighbour | sh |
-| 5 | `statusgen --root ../.. --consumers cellctl-windows/00` | exit 0; declared consumer routing corroborates the implementation diff | check | pwsh |
+| 5 | `$base = git merge-base refs/remotes/origin/main HEAD; if ($LASTEXITCODE -ne 0) { exit 1 }; statusgen --root ../.. --consumers --brief cellctl-windows/00 --base $base; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }` | exit 0; declared consumer routing corroborates the implementation diff | check | pwsh |
 
 ## Threat model / pre-mortem
 
