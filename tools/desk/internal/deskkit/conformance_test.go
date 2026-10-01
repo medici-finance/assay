@@ -162,20 +162,13 @@ func platformContract(t *testing.T, backend, name string) {
 		}
 	case "internal_visibility":
 		gl.project = map[string]any{"visibility": "internal"}
-		gh.repo = map[string]any{"visibility": "private"}
+		gh.repo = map[string]any{"visibility": "internal"}
 		got, err := f.RepoVisibility(repo)
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "private"
-		if backend == "gitlab" {
-			want = "internal"
-		}
-		if got != want {
-			t.Fatalf("visibility=%q want %q", got, want)
-		}
-		if backend == "github" {
-			t.Log("unsupported: GitHub internal visibility is represented by the private flag at this boundary")
+		if got != "internal" {
+			t.Fatalf("visibility=%q want internal", got)
 		}
 	case "files_api_400":
 		gl.project = map[string]any{"visibility": "private", "default_branch": "main"}
