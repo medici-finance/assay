@@ -617,10 +617,10 @@ func TestCommitIdentityCrossForgeRejected(t *testing.T) {
 }
 
 // pfGitLabSessionEmail is an ordinary GitLab USER commit address — the shape the
-// documented two-identity session actor (`ih-bot`) commits under (#643). It is NOT the
+// documented two-identity session actor (`qa-bot`) commits under (#643). It is NOT the
 // service-account noreply form and NOT a GitHub noreply address, so the pre-#643 check
 // rejected it outright.
-const pfGitLabSessionEmail = "ih-bot@medici.example"
+const pfGitLabSessionEmail = "qa-bot@medici.example"
 
 // TestCommitIdentityGitLabSessionEmail is the #643 fix, both cases in one test: on a
 // GitLab role the SESSION / implementer identity that authors the commits is DISTINCT
@@ -708,15 +708,15 @@ func TestGitLabSessionEmailAllowedNormalisation(t *testing.T) {
 	// Configured with mixed case + spacing ⇒ matched case-insensitively, exact only.
 	withRoster(t, map[string]string{
 		EnvBlessLogin:          "ada:2001",
-		EnvGitLabSessionEmails: " IH-Bot@Medici.Example , ci-bot@medici.example ",
+		EnvGitLabSessionEmails: " QA-Bot@Medici.Example , ci-bot@medici.example ",
 	})
-	if !GitLabSessionEmailAllowed("ih-bot@medici.example") {
+	if !GitLabSessionEmailAllowed("qa-bot@medici.example") {
 		t.Fatal("configured session email not matched case-insensitively")
 	}
 	if !GitLabSessionEmailAllowed("CI-BOT@MEDICI.EXAMPLE") {
 		t.Fatal("second configured session email not matched")
 	}
-	if GitLabSessionEmailAllowed("ih-bot@other.example") {
+	if GitLabSessionEmailAllowed("qa-bot@other.example") {
 		t.Fatal("a non-listed address was admitted (allowlist must be exact-match)")
 	}
 	if GitLabSessionEmailAllowed("") {
