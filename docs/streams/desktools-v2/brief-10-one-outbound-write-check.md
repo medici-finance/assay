@@ -55,7 +55,7 @@ consumers:
   - "tools/desk/internal/forgeban: follow-up desktools-v2/10 (this brief; the ban that proves no write path is built around the check)"
   - "statusgen, tools/cellctl: out-of-scope (neither writes to a forge through a Forge; statusgen's writes are local files)"
   - "the house callout for this check: follow-up desktools-v2/11"
-version: 1
+version: 2
 id: 72fc4a5f-6e8f-4c4e-807d-608df5501950
 ---
 
@@ -243,6 +243,8 @@ tagger's tag refs) are outside this brief's "Outward writes" inventory and are n
 | 9 | check | `cd tools/desk && go test ./internal/deskkit/ -run TestOverrideAuditRowHoldsDigestNotText -v` | output contains `--- PASS: TestOverrideAuditRowHoldsDigestNotText` |
 | 10 | check | `grep -rn --include='*.go' --exclude='*_test.go' -e 'deskkit.ScanSurface' -e 'deskkit.BodyCheck' -e 'deskkit.SelfContainCheck' tools/desk/cmd/deskfile tools/desk/cmd/deskpost tools/desk/cmd/deskreply tools/desk/cmd/deskevidence; test $? -eq 1` | exit 0 and no line printed — the per-verb scan calls are GONE from the verbs whose writes all cross the decorator (the removal, not just the addition). `deskpr` is excluded by design: its `--check` pre-flight is the recorded second caller |
 | 11 | check | `statusgen --consumers --root .` | exit 0; no routing claim in this brief is disproved by the diff |
+| 12 | check | `cd tools/desk && go test ./internal/deskkit/ -run '^TestOutboundGitLab(NoReply|TypedNotes)$' -v` | output must contain the named top-level or subtest `--- PASS:` line (a missing selector is failure); both top-level tests PASS; public no-reply shapes including self-managed host, internal target and explicit MR note route; refusal sends no request (desktools-v2/12 GitLab row) |
+| 13 | check | `cd tools/desk && go test ./internal/deskkit/ -run '^TestOutboundWindowsMachinePaths$' -v` | output must contain the named top-level or subtest `--- PASS:` line (a missing selector is failure); named top-level TestOutboundWindowsMachinePaths PASS; public drive-letter and UNC machine paths refuse using IsAbsFor. PENDING owner scope clarification on issue 1836: this test and production scanner extension are not supplied by the incomplete preparation (desktools-v2/12 Windows row) |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
