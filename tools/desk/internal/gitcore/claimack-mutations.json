@@ -1,0 +1,89 @@
+{
+  "test": "go test ./internal/gitcore ./cmd/deskclaim-ref -run 'TestAck|TestClaimTrace|TestClaimEmptyAck|TestClaimAckMatrix' -count=1 -timeout 45s",
+  "control": {
+    "name": "accept an empty decoded acknowledgment",
+    "file": "internal/gitcore/claimack.go",
+    "old": "if rs == nil || rs.UnpackStatus",
+    "new": "if rs == nil { return RefUpdateVerdict{Result: RefUpdateApplied}, nil }; if rs.UnpackStatus"
+  },
+  "mutations": [
+    {
+      "name": "lose raw ng marker when reason is ok",
+      "file": "internal/gitcore/claimack.go",
+      "old": "rejected = marker == \"ng\"",
+      "new": "rejected = marker == \"ng\" && reason != \"ok\""
+    },
+    {
+      "name": "skip HTTP wire validation entirely",
+      "file": "internal/gitcore/claimack.go",
+      "old": "if observer != nil {\n\t\tmarker, reason, wireErr",
+      "new": "if false && observer != nil {\n\t\tmarker, reason, wireErr"
+    },
+    {
+      "name": "accept missing or trailing outer flush",
+      "file": "internal/gitcore/claimack.go",
+      "old": "if !flushed || outer.Scan() || outer.Err() != nil {",
+      "new": "if false && (!flushed || outer.Scan() || outer.Err() != nil) {"
+    },
+    {
+      "name": "allow trailing inner records",
+      "file": "internal/gitcore/claimack.go",
+      "old": "scanner.Scan() || scanner.Err() != nil",
+      "new": "false || scanner.Err() != nil"
+    },
+    {
+      "name": "remove retained body cap",
+      "file": "internal/gitcore/claimack.go",
+      "old": "keep = maxWireAck - b.data.Len()",
+      "new": "keep = n"
+    },
+    {
+      "name": "remove channel1 size limit",
+      "file": "internal/gitcore/claimack.go",
+      "old": "const maxAckData = 64 * 1024",
+      "new": "const maxAckData = maxWireAck"
+    },
+    {
+      "name": "lose correlation header",
+      "file": "internal/gitcore/claimack.go",
+      "old": "boundedID(res.Header.Get(\"X-GitHub-Request-Id\"))",
+      "new": "boundedID(\"\")"
+    },
+    {
+      "name": "accept unsafe correlation ID",
+      "file": "internal/gitcore/claimack.go",
+      "old": "return \"invalid\"",
+      "new": "return s"
+    },
+    {
+      "name": "erase packet digest",
+      "file": "internal/gitcore/claimack.go",
+      "old": "r.PackSHA256 = fmt.Sprintf(\"%x\", sha256.Sum256(b))",
+      "new": "r.PackSHA256 = fmt.Sprintf(\"%x\", sha256.Sum256(nil))"
+    },
+    {
+      "name": "skip receipt callback",
+      "file": "internal/gitcore/claimack.go",
+      "old": "if trace != nil {",
+      "new": "if false && trace != nil {"
+    },
+    {
+      "name": "plant a second unaudited method-value sink",
+      "file": "internal/gitcore/claimack.go",
+      "old": "const maxAckData = 64 * 1024",
+      "new": "const maxAckData = 64 * 1024\nvar plantedAck = transport.ReceivePackSession.ReceivePack"
+    },
+    {
+      "name": "disable reference inventory",
+      "file": "internal/gitcore/ackguard_test.go",
+      "old": "s.Sel.Name == \"ReceivePack\"",
+      "new": "s.Sel.Name == \"ReceivePackIgnored\""
+    },
+    {
+      "name": "drop trace disabled guard",
+      "file": "cmd/deskclaim-ref/gogit.go",
+      "old": "if !deskkit.TraceEnabled() {",
+      "new": "if false && !deskkit.TraceEnabled() {"
+    }
+  ]
+}

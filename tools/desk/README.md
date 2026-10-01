@@ -292,6 +292,24 @@ grammar. **Prefer the env var.** It is the portable form: a desk verb that shell
 another desk verb passes the environment along, so one export traces the whole chain, while a
 flag is honoured by the verb you typed and lost by every child it starts.
 
+`deskclaim-ref` also traces in-process forge-ref writes. Each attempt emits a
+bounded receipt with the ref, CAS old/new object IDs, advertised target, encoded
+pack SHA-256/size/object count, negotiated diagnostic capabilities, completion
+phase, verdict, HTTP status and approved request-correlation header. It emits no
+URL, credentials, claim payload, pack bytes or response body; the normal scrubber
+still applies. A missing field means it was not observed, not a successful check.
+The receipt does not establish which principal the server authenticated or explain
+an opaque remote rejection, and it does not trigger a retry.
+
+Claim writes require negotiated `report-status` and exactly one matching complete
+acknowledgment. Missing, mismatched, duplicated or malformed reports fail closed.
+HTTP additionally checks the original `ok`/`ng` marker and both framing layers;
+`ng <ref> ok` is a rejection even though the dependency decoder loses the marker.
+The local Git transport exposes only its decoded report, so that raw-marker check
+is HTTP-specific. Retained HTTP response bytes are capped at 1 MiB and channel-1
+acknowledgment data at 64 KiB; overflow is unverifiable. An absent release remains
+a no-op without a POST. No key, credential, store or retry policy changes.
+
 What the switch changes:
 
 | | Off (the default) | On |

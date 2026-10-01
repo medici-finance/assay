@@ -168,7 +168,7 @@ func (g *gogitStore) mintAndPush(id, msg string, old plumbing.Hash) deskkit.Clai
 	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
 	defer cancel()
 	res, reason, perr := gitcore.PushRefUpdateDetail(ctx, gitcore.RefUpdate{
-		URL: g.url, Auth: g.auth, Ref: g.refName(id), Old: old, New: tagSHA, Objects: objs,
+		URL: g.url, Auth: g.auth, Ref: g.refName(id), Old: old, New: tagSHA, Objects: objs, Trace: claimTrace,
 	})
 	if perr != nil {
 		g.fail(perr)
@@ -186,7 +186,7 @@ func (g *gogitStore) mintAndPush(id, msg string, old plumbing.Hash) deskkit.Clai
 func (g *gogitStore) Remove(id string) (deskkit.ClaimWriteOutcome, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
 	defer cancel()
-	res, err := gitcore.DeleteRef(ctx, g.url, g.auth, g.refName(id))
+	res, err := gitcore.DeleteRefTrace(ctx, g.url, g.auth, g.refName(id), claimTrace)
 	if err != nil {
 		g.fail(err)
 		return deskkit.ClaimWriteUnverifiable, false
@@ -615,4 +615,20 @@ func verifyTokenFileMode(path string) error {
 		return fmt.Errorf("--token-file %s is group/world accessible (mode %s); it must be 0600", path, fi.Mode().Perm())
 	}
 	return nil
+}
+
+// claimTrace emits only the bounded protocol receipt, never payloads or credentials.
+func claimTrace(r gitcore.RefReceipt) {
+	if !deskkit.TraceEnabled() {
+		return
+	}
+	fmt.Fprintln(errOut, deskkit.Scrub(fmt.Sprintf("deskclaim-ref trace: ref=%q old=%s new=%s advertised=%s pack_sha256=%s pack_bytes=%d pack_objects=%d caps=%q phase=%s verdict=%s http_status=%d request_id=%q", traceRef(r.Ref), r.Old, r.New, r.Advertised, r.PackSHA256, r.PackBytes, r.PackObjects, r.Capabilities, r.Phase, r.Verdict, r.HTTPStatus, r.RequestID)))
+}
+
+func traceRef(ref string) string {
+	ref = deskkit.Scrub(ref)
+	if len(ref) > 256 {
+		return ref[:256] + "..."
+	}
+	return ref
 }
