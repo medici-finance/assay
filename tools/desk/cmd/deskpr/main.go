@@ -126,9 +126,11 @@ an ssh:// or git@host:path one AND this session presents a bot identity ($DESK_L
 resolving to a role App). An SSH push authenticates with whatever key this machine's agent
 holds — a human's — so the forge records the HUMAN as the branch author and the App's
 permission envelope is bypassed, however the commits are authored. The refusal names the
-config key, the url, the acting App and the one-line remedy. Fetch over SSH stays allowed:
-remote.origin.pushurl is what is read whenever it is set, so an SSH fetch url with an https
-push override passes. edit is NOT gated — it pushes nothing. With $DESK_LOOP unset the gate
+config key, the url, the acting App and the remedy. The url judged is the one git
+will push to — "git remote get-url --push --all origin", a local read with url.<base>.insteadOf
+and pushInsteadOf applied — so an https remote a rewrite rule turns into SSH is refused, and
+the refusal names the rule. Fetch over SSH stays allowed: an SSH fetch url with an https push
+override passes. edit is NOT gated — it pushes nothing. With $DESK_LOOP unset the gate
 is inert (a human pushes under their own key). An https push url with no App credential
 helper configured is a stderr NOTICE, never a refusal.
 
