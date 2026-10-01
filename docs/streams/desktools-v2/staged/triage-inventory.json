@@ -1,0 +1,194 @@
+[
+  {
+    "number": 641,
+    "state": "CLOSED",
+    "title": "windows / ACL-permissons",
+    "triage": [],
+    "owner": "desktools-v2/12",
+    "reason": "Windows ACL custody parity"
+  },
+  {
+    "number": 642,
+    "state": "CLOSED",
+    "title": "Windows: child mint/preflight cannot find roster (%userprofile% unset)",
+    "triage": [],
+    "owner": "desktools-v2/12",
+    "reason": "Cold-child USERPROFILE/custody environment propagation"
+  },
+  {
+    "number": 1604,
+    "state": "OPEN",
+    "title": "deskkit credential checks: Windows custody parity with Unix 0600 + credential-chain parity with git's resolution",
+    "triage": [],
+    "owner": "desktools-v2/12",
+    "reason": "Windows custody parity and credential-chain environment conformance; owner mapping does not claim resolution"
+  },
+  {
+    "number": 1621,
+    "state": "OPEN",
+    "title": "Token custody: check-then-use windows left after the symlink refusal (#1615)",
+    "triage": [],
+    "owner": "out-of-scope (server-controls)",
+    "reason": "Credential check/use race and filesystem hardening require dedicated custody boundary work, not a platform fixture waiver"
+  },
+  {
+    "number": 1418,
+    "state": "CLOSED",
+    "title": "verifyrun records false failures on Windows when WSL bash cannot start",
+    "triage": [],
+    "owner": "out-of-scope (statusgen)",
+    "reason": "Verify runner startup classification on Windows"
+  },
+  {
+    "number": 1424,
+    "state": "OPEN",
+    "title": "verifyrun Git bash fails Windows findstr Verify rows that pass under cmd",
+    "triage": [],
+    "owner": "out-of-scope (statusgen)",
+    "reason": "Explicit Verify row shell selection for native Windows commands"
+  },
+  {
+    "number": 1805,
+    "state": "CLOSED",
+    "title": "statusgen verifyrun executes the first code span of a prose Verify cell (exit 127 / wrong command) \u2014 witness cannot score prose or label-led rows",
+    "triage": [],
+    "owner": "out-of-scope (statusgen)",
+    "reason": "Verify command lifting and witness classification regression"
+  },
+  {
+    "number": 1435,
+    "state": "OPEN",
+    "title": "scanloop: inbound monitor is a bash script armed via hard-coded /bin/bash \u2014 no native-Windows inbound surface (windows-port gap)",
+    "triage": [],
+    "owner": "out-of-scope (windows-port)",
+    "reason": "Native Windows inbound monitor launcher replaces Bash dependency"
+  },
+  {
+    "number": 1644,
+    "state": "OPEN",
+    "title": "deskmonitor/monitor scripts: state dir not checked for owner/mode on shared /tmp",
+    "triage": [],
+    "owner": "out-of-scope (desk-supervision)",
+    "reason": "Monitor state-directory ownership and shared temporary-directory custody"
+  },
+  {
+    "number": 678,
+    "state": "CLOSED",
+    "title": "build-windows.ps1 does not parse on Windows PowerShell 5.1 (>>> redirection)",
+    "triage": [],
+    "owner": "out-of-scope (windows-port)",
+    "reason": "Windows PowerShell parsing regression floor"
+  },
+  {
+    "number": 1569,
+    "state": "OPEN",
+    "title": "build-windows.ps1: 7 em dashes from #1521 break parsing under Windows PowerShell 5.1 (regression of f5c7a820a); add an ASCII guard for .ps1",
+    "triage": [],
+    "owner": "out-of-scope (windows-port)",
+    "reason": "PowerShell ASCII/parser class guard"
+  },
+  {
+    "number": 1693,
+    "state": "OPEN",
+    "title": "windows-port: no command places the first deskinstall on a clean Windows host",
+    "triage": [],
+    "owner": "out-of-scope (windows-port)",
+    "reason": "First deskinstall bootstrap on clean Windows"
+  },
+  {
+    "number": 1573,
+    "state": "OPEN",
+    "title": "GitLab: deskwt role-init wires oauth2 but still invokes the GitHub App token resolver",
+    "triage": [],
+    "owner": "desktools-v2/06",
+    "reason": "GitLab role-init must select explicit role PAT custody rather than GitHub App minting"
+  },
+  {
+    "number": 1203,
+    "state": "CLOSED",
+    "title": "deskdispatch claim-acquire still requires GitHub App mint on GitLab-bound repos",
+    "triage": [],
+    "owner": "desktools-v2/06",
+    "reason": "GitLab dispatch claim identity path and no App-minting fallback regression"
+  },
+  {
+    "number": 655,
+    "state": "CLOSED",
+    "title": "GitLab: cold mint/preflight still requires GitHub App PEMs",
+    "triage": [],
+    "owner": "desktools-v2/06",
+    "reason": "GitLab cold preflight and explicit role PAT custody"
+  },
+  {
+    "number": 676,
+    "state": "CLOSED",
+    "title": "GitLab: deskboot token-mint still GitHub App default (preflight green, boot cannot finish)",
+    "triage": [],
+    "owner": "desktools-v2/06",
+    "reason": "GitLab boot credential backend selection"
+  },
+  {
+    "number": 677,
+    "state": "CLOSED",
+    "title": "deskwt role-init: GitLab commit identity refuse; only verifier is mapped",
+    "triage": [],
+    "owner": "desktools-v2/06",
+    "reason": "GitLab per-role commit identity scoping"
+  },
+  {
+    "number": 1477,
+    "state": "OPEN",
+    "title": "evidenceactor: GitLab verifier can never back a closure \u2014 commit carries the account display name, roster binds the username",
+    "triage": [],
+    "owner": "desktools-v2/12",
+    "reason": "GitLab evidence-actor identity conformance"
+  },
+  {
+    "number": 1411,
+    "state": "CLOSED",
+    "title": "GitLab ChecksAtHead still omits required context pipeline when commit.last_pipeline is empty",
+    "triage": [],
+    "owner": "desktools-v2/12",
+    "reason": "Required check-context conformance when last_pipeline is empty"
+  },
+  {
+    "number": 1412,
+    "state": "OPEN",
+    "title": "deskevidence GitLab Files API POST 400 when updating an existing brief",
+    "triage": [],
+    "owner": "desktools-v2/12",
+    "reason": "GitLab existing-file update conformance"
+  },
+  {
+    "number": 1415,
+    "state": "CLOSED",
+    "title": "deskpr pushes GitLab branch then CreateDraftChange returns opaque HTTP 400",
+    "triage": [],
+    "owner": "desktools-v2/12",
+    "reason": "GitLab draft-change error and response conformance"
+  },
+  {
+    "number": 865,
+    "state": "CLOSED",
+    "title": "deskkit ListComments is change-only on both backends \u2014 deskclose superseded unreachable for issues",
+    "triage": [],
+    "owner": "desktools-v2/12",
+    "reason": "Issue/change comment-kind conformance on both backends"
+  },
+  {
+    "number": 1667,
+    "state": "OPEN",
+    "title": "deskroster liveness: GitLab account-liveness (the GitHub-only gap; #933 pointer is stale)",
+    "triage": [],
+    "owner": "out-of-scope (contributor-trust)",
+    "reason": "GitLab account-liveness at trust-roster boundary"
+  },
+  {
+    "number": 1794,
+    "state": "OPEN",
+    "title": "verifyrun witness executes live-credential Verify rows (forge-gitlab/12 row 4: desktoken auditor + curl) on a run described as offline",
+    "triage": [],
+    "owner": "out-of-scope (verify-outcomes)",
+    "reason": "Live-credential Verify row execution and offline witness policy"
+  }
+]

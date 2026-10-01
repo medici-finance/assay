@@ -556,6 +556,7 @@ it is an authoring convention only.
 | `stream-cap` | a change that adds an active stream past the per-root active-stream cap (ASSAY_STREAM_CAP) with no offsetting park — no net new streams past the cap | fatal |
 | `stream-source` | a change that adds an active stream README citing no `spec:`, or a `spec:` whose header is not `**Status:** approved` — a stream is scaffolded only from an approved spec | fatal |
 | `unsubstituted-metavar` | an unsubstituted `<metavar>` placeholder left in the Command cell, so the row cannot be run as written | advisory |
+| `verify-row-portability` | a Verify row hardcodes /tmp, sh/bash -c or findstr without an explicit OS marker (TMPDIR fallback is exempt) | advisory |
 
 ## Before dispatch — mistake-proofing the brief itself
 
