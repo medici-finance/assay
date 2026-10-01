@@ -226,6 +226,36 @@ func TestRegUntouchedLaneSilent(t *testing.T) {
 	}
 }
 
+// TestRegAuthorityExcludesRelay: an on-behalf-of relay names no
+// authority (attribution, never sign-off), matching the offline gate.
+func TestRegAuthorityExcludesRelay(t *testing.T) {
+	raw := []byte("---\nid: F-x\nauthorized-by: on-behalf-of human:alex\nparked-by: human:bob\n---\n")
+	got := registerAuthorityNames(raw, "authorized-by")
+	if len(got) != 0 {
+		t.Errorf("relay must contribute no authority name; got %v", got)
+	}
+	got = registerAuthorityNames(raw, "parked-by", "authorized-by")
+	if len(got) != 1 || got[0] != "bob" {
+		t.Errorf("parked-by names = %v, want [bob]", got)
+	}
+}
+
+// TestRegTouchedFileList: the current and the previous (rename) name
+// both count, a nested file under the findings dir does not, other paths are
+// ignored, and a patch-less entry (removal-only or oversize) still counts.
+func TestRegTouchedFileList(t *testing.T) {
+	got := touchedFindings([]ghPRFile{
+		{Filename: "docs/streams/findings/renamed.md", PreviousFilename: findingRel},
+		{Filename: "docs/streams/findings/sub/x.md"},
+		{Filename: "README.md"},
+		{Filename: "docs/streams/findings/no-patch.md"},
+	})
+	want := []string{"docs/streams/findings/2026-07-17-f-gut.md", "docs/streams/findings/no-patch.md", "docs/streams/findings/renamed.md"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("touchedFindings = %v, want %v", got, want)
+	}
+}
+
 // TestRegReusedAnchorAckFails is the second instance of the
 // defect class (an authority anchor honored without on-PR corroboration), on a
 // different field and a REMOVAL-ONLY change: dropping `ack:` from an entry that

@@ -1383,6 +1383,7 @@ func runCorroborate(prsArg string) int {
 	var allResults []corroborateResult
 	var allCitationResults []citationResult
 	var allQuotedNotices []string
+	var allRegisterResults []registerTransitionResult
 	anyMissing := false
 
 	for _, prStr := range prStrs {
@@ -1484,6 +1485,28 @@ func runCorroborate(prsArg string) int {
 			}
 		}
 
+		// --- findings-register TRANSITION lane (statusgen/06 §B) ---
+		// A PR that touches a findings entry has every caution-removing field
+		// transition re-derived against its merge-base and corroborated against
+		// the humans named in the entry's authorizing keys — including a key that
+		// was already on the entry and so adds no diff line for the stamp lane.
+		if len(touchedFindings(files)) > 0 {
+			rs, err := registerTransitionLane(".", repo, pr, files, getMergeBase(), getData)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "statusgen: PR #%d: %v\n", pr, err)
+				return 1
+			}
+			for i := range rs {
+				if rs[i].Rel == "" {
+					rs[i].Rel = fmt.Sprintf("PR #%d", pr)
+				}
+			}
+			allRegisterResults = append(allRegisterResults, rs...)
+			if registerTransitionsFail(rs) {
+				anyMissing = true
+			}
+		}
+
 		// --- quoted notation set aside as NOT-A-CLAIM (#1395) — announced, never silent ---
 		allQuotedNotices = append(allQuotedNotices, quotedClaimNotices(".", diff)...)
 
@@ -1540,6 +1563,20 @@ func runCorroborate(prsArg string) int {
 		fmt.Println("# (a negation or conditional in the same comment voids it — a refusal")
 		fmt.Println("#  such as \"not lgtm\" / \"cannot lgtm\" / \"nack\" / \"non-lgtm\", or a REQUEST")
 		fmt.Println("#  for approval such as \"is this lgtm?\" / \"please lgtm\", is not a sign-off)")
+	}
+
+	// --- findings-register transition section (statusgen/06 §B) ---
+	if len(allRegisterResults) > 0 {
+		fmt.Println()
+		fmt.Println("# findings-register transitions")
+		fmt.Println("# Scope: every caution-removing move of a finding's resolved/affects/ack/")
+		fmt.Println("# parked-until since the PR merge-base needs a human named in the entry's")
+		fmt.Println("# authorizing key (authorized-by; for a park, parked-by or authorized-by) to")
+		fmt.Println("# have ACTED on this PR — whether or not this PR wrote that key.")
+		fmt.Println()
+		for _, r := range allRegisterResults {
+			fmt.Printf("register %s [%s] %s — %s\n", r.Rel, r.Moves, r.Verdict, r.Evidence)
+		}
 	}
 
 	// --- acceptance/ruling CITATION section ---

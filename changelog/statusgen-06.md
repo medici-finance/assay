@@ -1,0 +1,2 @@
+### Added
+- `statusgen --corroborate --pr N` gains a findings-register transition lane: for a PR that touches `docs/streams/findings/`, every caution-removing move of a finding's `resolved` / `affects` / `ack` / `parked-until` since the PR merge-base needs a human named in the entry's authorizing key to have approved or approved-by-comment on that PR. An anchor already on the entry no longer authorizes a later change by itself. An unresolvable merge-base or an unparseable touched entry fails closed.
