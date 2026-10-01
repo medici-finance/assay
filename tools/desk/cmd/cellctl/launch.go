@@ -190,6 +190,10 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 			argv = []string{"claude", "--effort", policyRes.Effort, "--settings", settings, "--name", session, "--model", model, "/assay:" + role}
 		}
 	}
+	if c.Cadence != nil {
+		c.runCadencedHarness(role, harness, argv, env, wt)
+		return
+	}
 	runForeground(argv, env, wt)
 }
 
