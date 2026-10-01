@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -292,7 +293,10 @@ func newContainer(e *Env, root, cell, repo, launcher, roles, roots string) {
 	if repo == "" {
 		die("container new needs --repo <repo-id>")
 	}
-	if !strings.HasPrefix(launcher, "/") || !isExecFile(launcher) {
+	if err := cellPathCheck(runtime.GOOS, launcher); err != nil {
+		die("container launcher: %v", err)
+	}
+	if !isExecFile(launcher) {
 		die("container new needs --launcher <absolute-executable>")
 	}
 	if strings.TrimSpace(roles) == "" {

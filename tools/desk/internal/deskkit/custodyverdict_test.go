@@ -14,6 +14,11 @@ func TestClassifyCustodyModel(t *testing.T) {
 		mutate func(m *rosterACLModel)
 		want   CustodyState
 	}{
+		{"a deny before a foreign read allow still refuses", func(m *rosterACLModel) {
+			m.Entries = append(m.Entries,
+				rosterACE{SID: sidOther, Kind: rosterACEDeny, GrantsRead: true},
+				rosterACE{SID: sidOther, Kind: rosterACEAllow, GrantsRead: true})
+		}, CustodyRefused},
 		{"owner-only ACL is verified", func(*rosterACLModel) {}, CustodyVerified},
 		{"unknown owner is inconclusive", func(m *rosterACLModel) { m.Owner = "" }, CustodyInconclusive},
 		{"unknown invoking user is inconclusive", func(m *rosterACLModel) { m.CurrentUser = "" }, CustodyInconclusive},

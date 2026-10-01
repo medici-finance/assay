@@ -266,6 +266,13 @@ func (p *provisioner) readbackProtectedMain(pp string) {
 func (p *provisioner) configureApprovals(pp string) {
 	body := map[string]any{"merge_requests_author_approval": false, "merge_requests_disable_committers_approval": true}
 	resp, err := p.gl.do("POST", pp+"/approvals", body)
+	// This project has already resolved; only this endpoint's CE 404 is a tier gap.
+	// Authentication, permission and server errors remain failures.
+	if err == nil && resp.Status == 404 {
+		p.outf("NOTICE: approval settings unavailable at this tier (failed-at-tier, remediation: Premium)")
+		p.outf("NOTICE: do not count approvals as a server-enforced gate on this tier")
+		return
+	}
 	if err != nil || (resp.Status != 200 && resp.Status != 201) {
 		p.fail("approval settings write failed (%s)", respOrErr(resp, err))
 		return
