@@ -39,15 +39,18 @@ type layaResponse struct {
 	FallbackReason string           `json:"fallback_reason"`
 }
 type boundedBuffer struct {
-	bytes.Buffer
-	limit int
+	buffer bytes.Buffer
+	limit  int
 }
+
+func (b *boundedBuffer) Len() int      { return b.buffer.Len() }
+func (b *boundedBuffer) Bytes() []byte { return b.buffer.Bytes() }
 
 func (b *boundedBuffer) Write(p []byte) (int, error) {
 	if len(p) > b.limit-b.Len() {
 		return 0, fmt.Errorf("laya: output byte limit")
 	}
-	return b.Buffer.Write(p)
+	return b.buffer.Write(p)
 }
 func (a LayaAdvisor) Predict(ctx context.Context, c Consultation) (Prediction, error) {
 	fail := ConservativePrediction(a.Request)
@@ -75,6 +78,9 @@ func (a LayaAdvisor) Predict(ctx context.Context, c Consultation) (Prediction, e
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, a.Command[0], a.Command[1:]...)
+	// Bound inherited output-pipe completion too: CommandContext alone only
+	// kills the direct process. Fail closed if pipes outlive process exit.
+	cmd.WaitDelay = time.Millisecond
 	cmd.Env = []string{"HF_HUB_OFFLINE=1", "TRANSFORMERS_OFFLINE=1", "KUBECONFIG=/dev/null"}
 	cmd.Stdin = bytes.NewReader(input)
 	out := &boundedBuffer{limit: limit}
@@ -87,8 +93,18 @@ func (a LayaAdvisor) Predict(ctx context.Context, c Consultation) (Prediction, e
 		}
 		return fail, fmt.Errorf("laya: process failed: %w", err)
 	}
+	return a.decode(ctx, out.Bytes())
+}
+
+// decode shares the completion deadline; valid data never revives an expired call.
+func (a LayaAdvisor) decode(ctx context.Context, output []byte) (Prediction, error) {
+	fail := ConservativePrediction(a.Request)
+	if err := layaDeadline(ctx); err != nil {
+		return fail, err
+	}
+	var err error
 	var response layaResponse
-	dec := json.NewDecoder(bytes.NewReader(out.Bytes()))
+	dec := json.NewDecoder(bytes.NewReader(output))
 	dec.DisallowUnknownFields()
 	if err = dec.Decode(&response); err != nil {
 		return fail, fmt.Errorf("laya: malformed response: %w", err)
@@ -109,11 +125,24 @@ func (a LayaAdvisor) Predict(ctx context.Context, c Consultation) (Prediction, e
 		return fail, err
 	}
 	// No calibration has been approved; local upstream action/confidence is shadow-only.
-	if len(p.LabelProbabilities) != 0 {
+	if !p.Abstained || len(p.LabelProbabilities) != 0 {
 		return fail, Refused("laya: no approved calibration")
+	}
+	if err := layaDeadline(ctx); err != nil {
+		return fail, err
 	}
 	return p, nil
 }
 func (a LayaAdvisor) Advise(ctx context.Context, c Consultation) (Advice, error) {
 	return (PredictionAdvisor{Request: a.Request, Predict: a.Predict}).Advise(ctx, c)
+}
+
+func layaDeadline(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+		return context.DeadlineExceeded
+	}
+	return nil
 }

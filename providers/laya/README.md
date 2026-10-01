@@ -25,7 +25,13 @@ output, owns this approval. There is no external fallback or effect callback.
 Go sends one JSON object on stdin: `request`, `consultation`, `backend`, and
 `allow_cpu_fallback`. The child returns `prediction`, `fallback_reason` and optional
 `diagnostics`; diagnostics belong on stderr for a deployed executable. Bytes and
-wall time are bounded independently. Python `assess` provides the record-building
+wall time are bounded independently. Both stdout and stderr copy through a
+checked writer that exposes no unchecked buffer mutation methods. Inherited output
+pipes that survive direct process exit are closed after a 1 ms wait and rejected;
+this fail-closed behavior may reject a slowly drained otherwise valid process.
+The context deadline also covers response decoding and validation; an expired
+valid record is rejected. Timing assertions allow scheduler overhead, not a
+hard real-time guarantee. Python `assess` provides the record-building
 seam; executable launch and real model loading remain held for review.
 The reviewed runtime must count tokens with its exact local tokenizer before
 inference and pass `local_only=True, truncate=False`. It must enforce read-only
