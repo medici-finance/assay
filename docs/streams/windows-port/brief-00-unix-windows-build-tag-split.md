@@ -463,7 +463,7 @@ RISK-VALUE: N/A — the rest of the implementing diff (pinned range 310ef7087..c
 
 The World SID S-1-1-0 that row 10 checks entered later (#640/#641, #667), outside this diff. Nothing is irreversible here: every change is a git-revertible source edit.
 
-**VERIFY: PASS** — 16/16 rows meet Expect on direct execution against merged main b7ca79ab798d. No row is could-not-check for this brief's scope. gate: model, so the flip to verified follows the normal model-gate path. The verifier sets no status.
+**VERIFY: PASS** — 16/16 rows meet Expect on direct execution against merged main b7ca79ab798d. No row is could-not-check for this brief's scope. gate: model. Status stays `implemented` in this batch: the only execution witness table for this brief (2026-09-25, at 893cd6114b03) predates the #1880 row changes and records rows 2, 7, 8, 10, 13 and 15 as could-not-run, and `statusgen verifyrun` was not used this pass. The `verified` close waits for a witnessed re-run on a Linux host (could-not-run rows disclosed under #1805).
 
 ## Review
 Gate: **model** (from frontmatter). All four risk answers are `no` — this is a compile-target
