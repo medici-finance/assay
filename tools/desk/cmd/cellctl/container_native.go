@@ -39,6 +39,9 @@ func (c *Cell) nativeContainerPlan(role, harness, model string) *cellcontainer.P
 	if err != nil {
 		die("%v", err)
 	}
+	// The cell directory holds cell.env and the console socket; CheckFiles refuses a directory
+	// mount that is, or contains, it (and so also the cells root above it).
+	p.Protected = append(p.Protected, c.Dir)
 	if role == "the-desk" && p.Harness == "claude" {
 		refuseOpusForTheDesk(p.Model)
 	}

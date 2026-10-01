@@ -62,7 +62,7 @@ type Inspection struct {
 		ReadonlyRootfs, Privileged, PublishAllPorts bool
 		CapDrop, CapAdd, SecurityOpt, GroupAdd      []string
 		NetworkMode, PidMode, IpcMode, UsernsMode   string
-		Binds, Devices                              []json.RawMessage
+		Binds, Devices, DeviceRequests              []json.RawMessage
 		PortBindings                                map[string]json.RawMessage
 		PidsLimit, Memory, NanoCpus                 int64
 		Tmpfs                                       map[string]string
@@ -209,6 +209,8 @@ func (p *Plan) Validate(s *Inspection) error {
 		return fail("does not drop all capabilities")
 	case len(h.Devices) > 0:
 		return fail("has devices")
+	case len(h.DeviceRequests) > 0:
+		return fail("requests devices (such as GPUs)")
 	case len(h.Binds) > 0:
 		return fail("has unplanned bind mounts")
 	case len(h.GroupAdd) > 0:

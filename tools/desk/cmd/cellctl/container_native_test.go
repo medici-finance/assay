@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -229,4 +230,75 @@ func TestBinaryExternalLauncherStatusRefused(t *testing.T) {
 	if _, statErr := os.Stat(marker); statErr == nil {
 		t.Fatal("external launcher was invoked for status")
 	}
+}
+
+// A launch plan protects the cell directory (cell.env, the console socket): a directory mount
+// that is, or contains, the cell directory or the cells root is refused before launch.
+func TestNativePlanProtectsCellDirectory(t *testing.T) {
+	c, _ := nativeFixture(t, "the-desk")
+	for _, dir := range []string{c.Dir, filepath.Dir(c.Dir)} {
+		p := c.nativeContainerPlan("the-desk", "", "")
+		if err := p.CheckFiles(); err != nil {
+			t.Fatalf("unchanged plan refused: %v", err)
+		}
+		p.Mounts[2].Source = dir
+		if err := p.CheckFiles(); err == nil || !strings.Contains(err.Error(), "contains a protected path") {
+			t.Fatalf("mount of %s accepted: %v", dir, err)
+		}
+	}
+}
+
+// failingDocker wraps fakeDocker so that every call whose first argument is verb fails.
+func failingDocker(next func(string) cellcontainer.Engine, verb string) func(string) cellcontainer.Engine {
+	return func(host string) cellcontainer.Engine {
+		e := next(host)
+		inner := e.Output
+		e.Output = func(a ...string) ([]byte, error) {
+			if a[0] == verb {
+				return nil, errors.New(verb + " failed")
+			}
+			return inner(a...)
+		}
+		return e
+	}
+}
+
+// down refuses (and exits nonzero) when stopping a verified container fails.
+func TestNativeDownRefusesFailedStop(t *testing.T) {
+	c, cfg := nativeFixture(t, "the-desk")
+	desk, err := cfg.Plan("sample", "desk", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stopped []string
+	defer func(orig func(string) cellcontainer.Engine) { nativeEngine = orig }(nativeEngine)
+	nativeEngine = failingDocker(fakeDocker(t, map[string]map[string]any{desk.Name: runningInspection(strings.Repeat("d", 64), desk)}, &stopped), "stop")
+	assertDies(t, "down with a failed stop", func() { c.nativeContainer("down") })
+}
+
+// A role that cannot be resolved is reported, and the remaining roles are still handled.
+func TestNativeDownContinuesPastUnconfiguredRole(t *testing.T) {
+	c, cfg := nativeFixture(t, "the-desk")
+	desk, err := cfg.Plan("sample", "desk", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Roles = []string{"verify-desk", "the-desk"}
+	deskID := strings.Repeat("d", 64)
+	var stopped []string
+	defer func(orig func(string) cellcontainer.Engine) { nativeEngine = orig }(nativeEngine)
+	nativeEngine = fakeDocker(t, map[string]map[string]any{desk.Name: runningInspection(deskID, desk)}, &stopped)
+	assertDies(t, "down with an unconfigured role", func() { c.nativeContainer("down") })
+	if len(stopped) != 1 || stopped[0] != deskID {
+		t.Fatalf("stopped %v, want the configured coordinator %s", stopped, deskID)
+	}
+}
+
+// check exits nonzero when any role's preflight fails.
+func TestNativeCheckExitsNonzeroOnFailure(t *testing.T) {
+	c, _ := nativeFixture(t, "the-desk")
+	var stopped []string
+	defer func(orig func(string) cellcontainer.Engine) { nativeEngine = orig }(nativeEngine)
+	nativeEngine = failingDocker(fakeDocker(t, nil, &stopped), "image")
+	assertDies(t, "check with a missing image", func() { c.nativeContainer("check") })
 }

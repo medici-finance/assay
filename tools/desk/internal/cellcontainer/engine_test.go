@@ -191,6 +191,7 @@ func TestReconnectRefusesChangedRuntime(t *testing.T) {
 		"extra-capability": {func(_ *Plan, s *Inspection) { s.HostConfig.CapAdd = []string{"SYS_ADMIN"} }, "adds capabilities"},
 		"kept-capability":  {func(_ *Plan, s *Inspection) { s.HostConfig.CapDrop = nil }, "does not drop all capabilities"},
 		"device":           {func(_ *Plan, s *Inspection) { s.HostConfig.Devices = []json.RawMessage{empty} }, "has devices"},
+		"device-request":   {func(_ *Plan, s *Inspection) { s.HostConfig.DeviceRequests = []json.RawMessage{empty} }, "requests devices"},
 		"bind":             {func(_ *Plan, s *Inspection) { s.HostConfig.Binds = []json.RawMessage{json.RawMessage(`"/srv:/srv"`)} }, "unplanned bind mounts"},
 		"group":            {func(_ *Plan, s *Inspection) { s.HostConfig.GroupAdd = []string{"0"} }, "adds groups"},
 		"port":             {func(_ *Plan, s *Inspection) { s.HostConfig.PortBindings = map[string]json.RawMessage{"22/tcp": empty} }, "publishes ports"},
@@ -448,14 +449,21 @@ func TestConfigValidateRefusals(t *testing.T) {
 		"model-delete":       {func(_ *Config, _ *Cell, r *Role) { r.Models = map[string]string{"codex": "a\x7fb"} }, "invalid model pin"},
 		"config-root":        {func(_ *Config, _ *Cell, r *Role) { r.Config = "/" }, "is the host root"},
 		"incoming-root":      {func(_ *Config, cell *Cell, _ *Role) { cell.Incoming = "/" }, "is the host root"},
-		"config-holds-key":   {func(_ *Config, _ *Cell, r *Role) { r.AppKey = filepath.Join(r.Config, "nested", "key.pem") }, "contains a credential or the engine socket"},
-		"config-holds-token": {func(_ *Config, _ *Cell, r *Role) { r.ClaudeToken = filepath.Join(r.Config, "token") }, "contains a credential or the engine socket"},
-		"incoming-holds-key": {func(_ *Config, cell *Cell, r *Role) { r.AppKey = filepath.Join(cell.Incoming, "key.pem") }, "contains a credential or the engine socket"},
+		"config-holds-key":   {func(_ *Config, _ *Cell, r *Role) { r.AppKey = filepath.Join(r.Config, "nested", "key.pem") }, "contains a protected path"},
+		"config-holds-token": {func(_ *Config, _ *Cell, r *Role) { r.ClaudeToken = filepath.Join(r.Config, "token") }, "contains a protected path"},
+		"incoming-holds-key": {func(_ *Config, cell *Cell, r *Role) { r.AppKey = filepath.Join(cell.Incoming, "key.pem") }, "contains a protected path"},
 		"incoming-holds-socket": {func(c *Config, cell *Cell, _ *Role) {
 			c.DockerHost = "unix://" + filepath.Join(cell.Incoming, "engine.sock")
-		}, "contains a credential or the engine socket"},
-		"config-holds-socket": {func(c *Config, _ *Cell, r *Role) { c.DockerHost = "unix://" + filepath.Join(r.Config, "engine.sock") }, "contains a credential or the engine socket"},
-		"default-socket-dir":  {func(_ *Config, cell *Cell, _ *Role) { cell.Incoming = "/var/run" }, "contains a credential or the engine socket"},
+		}, "contains a protected path"},
+		"config-holds-socket": {func(c *Config, _ *Cell, r *Role) { c.DockerHost = "unix://" + filepath.Join(r.Config, "engine.sock") }, "contains a protected path"},
+		"default-socket-dir":  {func(_ *Config, cell *Cell, _ *Role) { cell.Incoming = "/var/run" }, "contains a protected path"},
+		// Paths that do not exist yet are refused lexically, without the filesystem.
+		"absent-config-holds-key": {func(_ *Config, _ *Cell, r *Role) {
+			r.Config, r.AppKey = "/nonexistent-example/config", "/nonexistent-example/config/nested/key.pem"
+		}, "contains a protected path"},
+		"absent-incoming-holds-socket": {func(c *Config, cell *Cell, _ *Role) {
+			cell.Incoming, c.DockerHost = "/nonexistent-example/incoming", "unix:///nonexistent-example/incoming/engine.sock"
+		}, "contains a protected path"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -506,56 +514,169 @@ func TestSandboxApprovalRecordAdmitsContainerBoundary(t *testing.T) {
 	}
 }
 
-// The lexical check cannot see a directory reached through a symlinked parent; the resolved
-// check at preflight does.
-func TestDirectoryMountsResolvedAgainstProtectedPaths(t *testing.T) {
-	c, _ := fixture(t)
+// mountAlias returns a second spelling of dir that a string comparison cannot equate with it.
+type mountAlias struct {
+	name string
+	make func(t *testing.T, dir string) string
+}
+
+var mountAliases = []mountAlias{
+	// A symlinked parent: Lstat of the mount source still sees a directory.
+	{"symlink", func(t *testing.T, dir string) string {
+		parent := filepath.Dir(dir) + "-alias"
+		if err := os.Symlink(filepath.Dir(dir), parent); err != nil {
+			t.Fatal(err)
+		}
+		return filepath.Join(parent, filepath.Base(dir))
+	}},
+	// A case-variant spelling names the same directory on a case-insensitive filesystem (the
+	// default on macOS); symlink resolution does not fold it, so only file identity sees it.
+	{"case-variant", func(t *testing.T, dir string) string {
+		alias := filepath.Join(filepath.Dir(dir), strings.ToUpper(filepath.Base(dir)))
+		if _, err := os.Stat(alias); err != nil {
+			t.Skip("temporary filesystem is case-sensitive")
+		}
+		return alias
+	}},
+}
+
+// identityFixture is a paused role whose forge key lives in dir/cfg, plus an alias of dir/cfg.
+func identityFixture(t *testing.T, alias mountAlias) (c *Config, real, other, key string) {
+	t.Helper()
+	c, _ = fixture(t)
 	d := t.TempDir()
-	real := filepath.Join(d, "real", "config")
-	if err := os.MkdirAll(real, 0700); err != nil {
+	real = filepath.Join(d, "cfg")
+	if err := os.Mkdir(real, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(d, "real"), filepath.Join(d, "alias")); err != nil {
-		t.Fatal(err)
-	}
-	key := filepath.Join(real, "key.pem")
+	key = filepath.Join(real, "key.pem")
 	if err := os.WriteFile(key, []byte("fixture"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	other = alias.make(t, real)
 	cell := c.Cells["sample"]
 	r := cell.Roles["desk"]
-	r.Config, r.AppKey = filepath.Join(d, "alias", "config"), key
+	r.AppKey, r.StartupAction = key, "paused"
 	cell.Roles["desk"] = r
-	if err := c.Validate(); err != nil {
-		t.Fatalf("lexical check should not see through the alias: %v", err)
+	c.Cells["sample"] = cell
+	return c, real, other, key
+}
+
+func setMounts(c *Config, config, incoming string) {
+	cell := c.Cells["sample"]
+	r := cell.Roles["desk"]
+	if config != "" {
+		r.Config = config
+	}
+	if incoming != "" {
+		cell.Incoming = incoming
+	}
+	cell.Roles["desk"] = r
+	c.Cells["sample"] = cell
+}
+
+func wantProtected(t *testing.T, what string, err error) {
+	t.Helper()
+	if err == nil || !strings.Contains(err.Error(), "contains a protected path") {
+		t.Fatalf("%s: alias of a directory holding a credential accepted: %v", what, err)
+	}
+}
+
+// Containment compares file identity, so an alternate spelling of a directory that holds a
+// credential is refused by every entrypoint: Config.Validate, Plan and CheckFiles.
+func TestMountContainmentComparesFileIdentity(t *testing.T) {
+	for _, alias := range mountAliases {
+		t.Run(alias.name, func(t *testing.T) {
+			t.Run("validate-config", func(t *testing.T) {
+				c, _, other, _ := identityFixture(t, alias)
+				setMounts(c, other, "")
+				wantProtected(t, "Config.Validate", c.Validate())
+			})
+			t.Run("validate-incoming", func(t *testing.T) {
+				c, _, other, _ := identityFixture(t, alias)
+				setMounts(c, "", other)
+				wantProtected(t, "Config.Validate", c.Validate())
+			})
+			t.Run("plan", func(t *testing.T) {
+				c, _, other, _ := identityFixture(t, alias)
+				setMounts(c, other, "")
+				_, err := c.Plan("sample", "desk", "", "")
+				wantProtected(t, "Plan", err)
+			})
+			t.Run("check-files", func(t *testing.T) {
+				c, _, other, key := identityFixture(t, alias)
+				p, err := c.Plan("sample", "desk", "", "")
+				if err != nil {
+					t.Fatal(err)
+				}
+				p.Mounts[1].Source, p.Protected = other, []string{key}
+				wantProtected(t, "CheckFiles", p.CheckFiles())
+			})
+			t.Run("socket-not-yet-present", func(t *testing.T) {
+				c, real, other, _ := identityFixture(t, alias)
+				// Move the key out so that only the engine socket's directory is protected here.
+				key := filepath.Join(t.TempDir(), "key.pem")
+				if err := os.WriteFile(key, []byte("fixture"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				cell := c.Cells["sample"]
+				r := cell.Roles["desk"]
+				r.AppKey = key
+				cell.Roles["desk"] = r
+				c.DockerHost = "unix://" + filepath.Join(other, "engine.sock")
+				setMounts(c, "", real)
+				wantProtected(t, "Config.Validate", c.Validate())
+			})
+		})
+	}
+}
+
+// A credential configured through a symlink is compared at its real location too.
+func TestCredentialReachedThroughSymlinkIsProtected(t *testing.T) {
+	c, real, _, key := identityFixture(t, mountAliases[0])
+	keys := filepath.Join(t.TempDir(), "keys")
+	if err := os.Mkdir(keys, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(key, filepath.Join(keys, "app.pem")); err != nil {
+		t.Fatal(err)
 	}
 	p, err := c.Plan("sample", "desk", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = p.CheckFiles(); err == nil || !strings.Contains(err.Error(), "contains a credential or the engine socket") {
-		t.Fatalf("resolved containment missed: %v", err)
-	}
-	// A credential configured through a symlink is compared at its real location.
-	keys := filepath.Join(d, "keys")
-	if err = os.Mkdir(keys, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.Symlink(key, filepath.Join(keys, "app.pem")); err != nil {
-		t.Fatal(err)
-	}
 	p.Mounts[1].Source, p.Protected = real, []string{filepath.Join(keys, "app.pem")}
-	if err = p.CheckFiles(); err == nil || !strings.Contains(err.Error(), "contains a credential or the engine socket") {
-		t.Fatalf("credential reached through a symlink missed: %v", err)
-	}
-	root := filepath.Join(d, "root-alias")
-	if err = os.Symlink("/", root); err != nil {
+	wantProtected(t, "CheckFiles", p.CheckFiles())
+}
+
+// The host root is refused under any spelling, with or without protected paths.
+func TestHostRootAliasRefused(t *testing.T) {
+	c, _ := fixture(t)
+	root := filepath.Join(t.TempDir(), "root-alias")
+	if err := os.Symlink("/", root); err != nil {
 		t.Fatal(err)
 	}
+	setMounts(c, root, "")
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "is the host root") {
+		t.Fatalf("Config.Validate accepted an alias of the host root: %v", err)
+	}
+	if _, err := c.Plan("sample", "desk", "", ""); err == nil || !strings.Contains(err.Error(), "is the host root") {
+		t.Fatalf("Plan accepted an alias of the host root: %v", err)
+	}
+	_, p := fixture(t)
 	p.Mounts[1].Source = root + "/." // a trailing dot makes Lstat follow the alias
 	p.Protected = nil
-	if err = p.CheckFiles(); err == nil || !strings.Contains(err.Error(), "is the host root") {
-		t.Fatalf("resolved host root accepted: %v", err)
+	if err := p.CheckFiles(); err == nil || !strings.Contains(err.Error(), "is the host root") {
+		t.Fatalf("CheckFiles accepted an alias of the host root: %v", err)
+	}
+}
+
+// A directory mount may not be, or contain, the operator's home directory.
+func TestMountMayNotContainHome(t *testing.T) {
+	c, _ := fixture(t)
+	t.Setenv("HOME", filepath.Join(c.Cells["sample"].Incoming, "home"))
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "contains a protected path") {
+		t.Fatalf("mount containing the home directory accepted: %v", err)
 	}
 }
 
@@ -568,5 +689,34 @@ func TestPlanRefusesControlBytesInModel(t *testing.T) {
 	}
 	if _, err := c.Plan("sample", "desk", "", "model-with spaces'and;quotes"); err != nil {
 		t.Fatalf("printable model refused: %v", err)
+	}
+}
+
+// A socket that does not exist yet is compared through its symlink-resolved parent, so a mount
+// of a directory above that real parent is refused too.
+func TestMissingSocketBehindSymlinkIsProtected(t *testing.T) {
+	c, _ := fixture(t)
+	d := t.TempDir()
+	inner := filepath.Join(d, "outer", "inner")
+	if err := os.MkdirAll(inner, 0700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(inner, link); err != nil {
+		t.Fatal(err)
+	}
+	c.DockerHost = "unix://" + filepath.Join(link, "engine.sock")
+	setMounts(c, "", filepath.Join(d, "outer"))
+	wantProtected(t, "Config.Validate", c.Validate())
+}
+
+// check validates an existing container, not only the files, image and volume.
+func TestCheckValidatesExistingContainer(t *testing.T) {
+	_, p := fixture(t)
+	s := inspection(p)
+	s.HostConfig.Privileged = true
+	e, _ := fakeEngine(t, s)
+	if err := e.Check(p); err == nil || !strings.Contains(err.Error(), "is privileged") {
+		t.Fatalf("check accepted an incompatible running container: %v", err)
 	}
 }

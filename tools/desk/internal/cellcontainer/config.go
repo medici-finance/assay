@@ -68,9 +68,13 @@ func validModel(m string) bool {
 var wellKnownSockets = []string{"/var/run/docker.sock", "/run/docker.sock"}
 
 // protected lists every path a directory bind must never expose: each configured credential in
-// the file (for any cell or role) and the engine socket.
+// the file (for any cell or role), the engine socket and the operator's home directory. cellctl
+// adds the cell's own directory to a launch plan.
 func (c *Config) protected() []string {
 	out := append([]string{strings.TrimPrefix(c.DockerHost, "unix://")}, wellKnownSockets...)
+	if home := os.Getenv("HOME"); filepath.IsAbs(home) {
+		out = append(out, home)
+	}
 	for _, cell := range c.Cells {
 		for _, r := range cell.Roles {
 			out = append(out, r.AppKey)
@@ -97,7 +101,35 @@ func checkDirectoryMount(dir string, protected []string) error {
 	}
 	for _, p := range protected {
 		if within(dir, filepath.Clean(p)) {
-			return fmt.Errorf("directory mount %s contains a credential or the engine socket", dir)
+			return fmt.Errorf("directory mount %s contains a protected path (a credential, the engine socket, the home directory or the cell directory)", dir)
+		}
+	}
+	return nil
+}
+
+// checkMountIdentity refuses a directory bind source that is, by file identity, the host root
+// or any protected path or one of its ancestors. Identity (device and inode) folds every
+// spelling of a directory that a string comparison cannot: symlinks, case-insensitive or
+// normalising filesystems and filesystem aliases. Each protected path is walked from its
+// symlink-resolved form up to the root; components that do not exist yet are skipped, so a socket or
+// credential that is not present is still compared through its existing parents. A source that
+// does not exist is left to CheckFiles, which refuses it before launch.
+func checkMountIdentity(dir string, protected []string) error {
+	st, err := os.Stat(dir)
+	if err != nil {
+		return nil
+	}
+	if root, err := os.Stat(string(filepath.Separator)); err == nil && os.SameFile(st, root) {
+		return fmt.Errorf("directory mount %s is the host root", dir)
+	}
+	for _, p := range protected {
+		for a := resolve(p); ; a = filepath.Dir(a) {
+			if at, err := os.Stat(a); err == nil && os.SameFile(st, at) {
+				return fmt.Errorf("directory mount %s contains a protected path (a credential, the engine socket, the home directory or the cell directory)", dir)
+			}
+			if a == filepath.Dir(a) {
+				break
+			}
 		}
 	}
 	return nil
@@ -165,6 +197,9 @@ func (c *Config) Validate() error {
 		if err := checkDirectoryMount(cell.Incoming, protected); err != nil {
 			return err
 		}
+		if err := checkMountIdentity(cell.Incoming, protected); err != nil {
+			return err
+		}
 		if cell.HostLock != "" && !absolute(cell.HostLock) {
 			return fmt.Errorf("host_lock must be absolute")
 		}
@@ -180,6 +215,9 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("role mount paths must be absolute")
 			}
 			if err := checkDirectoryMount(r.Config, protected); err != nil {
+				return err
+			}
+			if err := checkMountIdentity(r.Config, protected); err != nil {
 				return err
 			}
 			if r.StartupAction != "" && r.StartupAction != "paused" && r.StartupAction != "handoff" {
@@ -306,17 +344,28 @@ func (c *Config) Plan(name, key, harness, model string) (*Plan, error) {
 		}
 		p.Mounts = append(p.Mounts, Mount{"bind", r.ClaudeToken, "/run/secrets/model-token", true})
 	}
+	if err := p.checkDirectoryIdentities(); err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 
-// CheckFiles never reads credential contents or contacts Docker/the forge. Directory mounts are
-// compared with the protected paths again after resolving symlinks, which the lexical check in
-// Config.Validate cannot see.
-func (p *Plan) CheckFiles() error {
-	var protected []string
-	for _, x := range p.Protected {
-		protected = append(protected, resolve(x))
+// checkDirectoryIdentities applies checkMountIdentity to every directory bind of the plan.
+func (p *Plan) checkDirectoryIdentities() error {
+	for _, m := range p.Mounts {
+		if m.Type == "bind" && !strings.HasPrefix(m.Target, "/run/secrets/") {
+			if err := checkMountIdentity(m.Source, p.Protected); err != nil {
+				return err
+			}
+		}
 	}
+	return nil
+}
+
+// CheckFiles never reads credential contents or contacts Docker/the forge. Directory mounts are
+// compared with the protected paths again, immediately before launch, by file identity, which
+// sees every alternate spelling the lexical check in Config.Validate cannot.
+func (p *Plan) CheckFiles() error {
 	for _, m := range p.Mounts {
 		if m.Type != "bind" {
 			continue
@@ -334,11 +383,8 @@ func (p *Plan) CheckFiles() error {
 		if !st.IsDir() {
 			return fmt.Errorf("mount must be a directory: %s", m.Source)
 		}
-		if err = checkDirectoryMount(resolve(m.Source), protected); err != nil {
-			return err
-		}
 	}
-	return nil
+	return p.checkDirectoryIdentities()
 }
 func (p *Plan) RunArgs() []string {
 	a := []string{"run", "--rm", "--sig-proxy=false", "--pull", "never", "--platform", p.Platform, "--read-only", "--user", ContainerUser, "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "256", "--memory", "4g", "--cpus", "2", "--tmpfs", "/tmp:" + TmpfsOptions, "--name", p.Name, "--network", p.Network, "--label", "io.assay.cell=" + p.CellName, "--label", "io.assay.role=" + p.RoleKey, "-it"}
