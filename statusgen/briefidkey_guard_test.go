@@ -15,13 +15,16 @@ import (
 //
 // DEFECT CLASS: a BriefFile's `brief:` field (bf.Brief) used as a KEY — a map
 // index, an equality operand, or an argument to a function that matches it against
-// refs — without first reducing it with normalizeBriefKey. Refs (depends:,
+// refs. Refs (depends:,
 // unblocks:, follow-up targets, prose refs) are written <stream>/<NN>, but a
 // brief-v2 file's bf.Brief is the hierarchical <cell>:<repo>:<stream>:<NN> id, so
 // the raw value silently never matches on a v2 tree. The instance was the
 // reciprocity lint (the checkRef self id and the depEdgeIndex keys in
 // checkBriefFiles); the siblings were followUpReferencesBack's referrer
-// (consumers.go) and the ordering-gate adjacency (orderinggate.go).
+// (consumers.go) and the ordering-gate adjacency (orderinggate.go). The fix keys
+// on the filename-derived <stream>/<NN> id (expectedBriefID) or resolves the id
+// with resolveLocalBriefRef — never normalizeBriefKey, which drops the repo alias
+// and whose callers TestAliasDropGuard (topology_guard_test.go) allow-lists.
 //
 // The scan covers every non-test .go file. A read of `<x>.Brief`, where <x> is a
 // BriefFile-bound identifier, is a violation when it is a map index, an ==/!=
@@ -31,16 +34,20 @@ import (
 // (a self-consistent identity key, the v1 filename match, a display label).
 
 // briefIDSafeCallees take bf.Brief only to print it, or reduce it to the
-// <stream>/<NN> form themselves.
+// <stream>/<NN> form themselves. Listing a reducer here is NOT a remedy for a new
+// key use: the remedy is the filename-derived id (expectedBriefID) or
+// resolveLocalBriefRef.
 var briefIDSafeCallees = map[string]bool{
 	// display sinks
 	"add": true, "notice": true, "addBad": true, "warn": true,
 	"Sprintf": true, "Errorf": true, "Fprintf": true, "Printf": true,
 	"Fprintln": true, "Println": true, "issueTitle": true,
-	// normalizers — the fix: a key use goes through one of these.
+	// existing v2-aware reducers, listed so their current call sites are not
+	// double-reported. normalizeBriefKey drops the repo alias: its callers are
+	// bounded by TestAliasDropGuard's aliasDropCallers, which binds over this list.
 	"normalizeBriefKey": true, "parseBriefV2ID": true, "verifyMarker": true,
-	"canonicalBriefKey": true, "briefStreamNum": true, // v2-aware reducers
-	"followUpReferencesBack": true, // matches the referrer in both forms
+	"canonicalBriefKey": true, "briefStreamNum": true,
+	"followUpReferencesBack": true, // also takes the referrer's path-derived <stream>/<NN> id
 }
 
 // briefIDRawMarker waives one line; it must be followed by a reason.
@@ -153,7 +160,7 @@ func briefIDKeyViolations(fset *token.FileSet, name string, src []byte) ([]strin
 			if waived[fset.Position(e.Pos()).Line] {
 				return
 			}
-			out = append(out, fset.Position(e.Pos()).String()+": "+fn.Name.Name+": raw brief id "+why+" — reduce it with normalizeBriefKey first")
+			out = append(out, fset.Position(e.Pos()).String()+": "+fn.Name.Name+": raw brief id "+why+" — key on the filename-derived <stream>/<NN> id (expectedBriefID) or resolve it with resolveLocalBriefRef")
 		}
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
 			switch x := n.(type) {
@@ -192,14 +199,17 @@ func TestBriefIDKeyGuard(t *testing.T) {
 	// Positive control: planted repeats of the defect — the pre-fix reciprocity
 	// shape (a map index and a checkRef self id), a raw comparison, the pre-fix
 	// ordering-gate adjacency link, and a bare waiver — MUST each be flagged; the
-	// normalized, display, empty-check and reasoned-waiver forms must not be.
+	// filename-keyed, allow-listed reducer, display, empty-check and
+	// reasoned-waiver forms must not be.
 	planted := []byte(`package main
 func plantedRecip(bf *BriefFile, idx *depEdgeIndex, byName map[string]*Stream) {
 	idx.dependsOf[bf.Brief] = bf.Depends
 	checkRef(nil, "p", "depends", "x/01", bf.Brief, byName)
 	if bf.Brief == "x/01" {
 	}
-	idx.knownV1[normalizeBriefKey(bf.Brief)] = true
+	id, _, _ := expectedBriefID("docs/streams/x/brief-01.md")
+	idx.knownV1[id] = true
+	_ = verifyMarker(bf.Brief)
 	_ = fmt.Sprintf("%s", bf.Brief)
 	if bf.Brief == "" {
 	}
@@ -249,7 +259,7 @@ func plantedParsed(path string) {
 		t.Fatal("could-not-check: no non-test source files were scanned")
 	}
 	if len(violations) > 0 {
-		t.Fatalf("a brief-v2 bf.Brief is <cell>:<repo>:<stream>:<NN>, never the <stream>/<NN> form refs use — normalize before keying on it, or waive the line with a reasoned `briefid:raw` comment (#1960):\n%s",
+		t.Fatalf("a brief-v2 bf.Brief is <cell>:<repo>:<stream>:<NN>, never the <stream>/<NN> form refs use — key on the filename-derived id (expectedBriefID) or resolve it with resolveLocalBriefRef, or waive the line with a reasoned `briefid:raw` comment (#1960):\n%s",
 			strings.Join(violations, "\n"))
 	}
 }

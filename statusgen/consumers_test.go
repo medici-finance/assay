@@ -1317,13 +1317,15 @@ func TestFollowUpBackRefV2(t *testing.T) {
 	}
 	writeBrief(t, dir, "01", []string{"demo/03"}, nil)
 	streams := []*Stream{{Name: "fu", Dir: dir}}
-	if !followUpReferencesBack(streams, "fu/01", "smoke:sg:demo:03") {
+	demo03 := filepath.Join("docs", "streams", "demo", "brief-03-x.md")
+	demo04 := filepath.Join("docs", "streams", "demo", "brief-04-x.md")
+	if !followUpReferencesBack(streams, "fu/01", "smoke:sg:demo:03", demo03) {
 		t.Fatal("a follow-up depending on demo/03 references the v2 brief smoke:sg:demo:03 back")
 	}
-	if !followUpReferencesBack(streams, "fu/01", "demo/03") {
+	if !followUpReferencesBack(streams, "fu/01", "demo/03", demo03) {
 		t.Fatal("the brief-v1 spelling must still match")
 	}
-	if followUpReferencesBack(streams, "fu/01", "smoke:sg:demo:04") {
+	if followUpReferencesBack(streams, "fu/01", "smoke:sg:demo:04", demo04) {
 		t.Fatal("a follow-up that never names demo/04 must not count as referencing it")
 	}
 }

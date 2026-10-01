@@ -1690,8 +1690,12 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 			// hierarchical <cell>:<repo>:<stream>:<NN> id, so keying the self-ref
 			// check and the reciprocity index on bf.Brief directly never matched a
 			// v2 ref: a v2 self-loop passed --lint and a one-sided v2 edge raised no
-			// NOTICE (#1960). normalizeBriefKey reduces both schemas to one key.
-			edgeID := normalizeBriefKey(bf.Brief)
+			// NOTICE (#1960). The filename-derived id (expectedBriefID, above) is
+			// that <stream>/<NN> for both schemas — the v1 branch requires bf.Brief
+			// to equal it and the v2 checks require the id to agree with the path —
+			// and it drops no repo alias, so normalizeBriefKey's allow-list
+			// (TestAliasDropGuard) stays as it is.
+			edgeID := id
 			for _, ref := range bf.Depends {
 				checkRef(add, path, "depends", ref, edgeID, byName)
 			}
