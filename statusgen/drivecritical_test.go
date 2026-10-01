@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -363,6 +365,93 @@ func TestDriveDepEdgeReciprocity(t *testing.T) {
 			t.Fatalf("a self-loop must contribute nothing, got %d", got)
 		}
 	})
+
+	// #1960: the same lint over brief-v2 FILES, end to end through checkBriefFiles.
+	// A v2 `brief:` id is <cell>:<repo>:<stream>:<NN> while its refs stay
+	// <stream>/<NN>; the lint must key both the same way, or a v2 self-loop reads
+	// as a non-self ref and every v2 edge drops out of the reciprocity check.
+	t.Run("v2-self-depends-is-a-problem", func(t *testing.T) {
+		problems, _ := v2EdgeRoot(t, v2Edges{dep1: "demo/01"})
+		if !hasProblem(problems, "brief-01-x.md", "self-referential") {
+			t.Fatalf("a brief-v2 self-referential depends edge must be a PROBLEM: %v", problems)
+		}
+	})
+
+	t.Run("v2-self-unblocks-is-a-problem", func(t *testing.T) {
+		problems, _ := v2EdgeRoot(t, v2Edges{unb1: "demo/01"})
+		if !hasProblem(problems, "brief-01-x.md", "self-referential") {
+			t.Fatalf("a brief-v2 self-referential unblocks edge must be a PROBLEM: %v", problems)
+		}
+	})
+
+	t.Run("v2-one-sided-depends-is-a-notice", func(t *testing.T) {
+		problems, notices := v2EdgeRoot(t, v2Edges{dep2: "demo/01"})
+		if len(problems) != 0 {
+			t.Fatalf("a one-sided v2 edge is a NOTICE, never a PROBLEM: %v", problems)
+		}
+		if !hasProblem(notices, "one-sided", "demo/02", "demo/01") {
+			t.Fatalf("a one-sided brief-v2 depends edge must be a NOTICE naming both ends: %v", notices)
+		}
+	})
+
+	t.Run("v2-reciprocated-edge-passes", func(t *testing.T) {
+		problems, notices := v2EdgeRoot(t, v2Edges{dep2: "demo/01", unb1: "demo/02"})
+		if len(problems) != 0 {
+			t.Fatalf("a reciprocated v2 edge must lint clean: %v", problems)
+		}
+		if hasProblem(notices, "one-sided") {
+			t.Fatalf("a reciprocated v2 edge must raise no one-sided NOTICE: %v", notices)
+		}
+	})
+}
+
+// v2Edges names the typed edges of the two-brief v2 fixture (demo/01, demo/02);
+// an empty field declares no edge.
+type v2Edges struct{ dep1, unb1, dep2, unb2 string }
+
+// v2EdgeRoot writes a brief-v2 board root with two briefs in stream demo and
+// returns checkBriefFiles over it (the v2Root pattern, two briefs wide).
+func v2EdgeRoot(t *testing.T, e v2Edges) (problems, notices []string) {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "docs", "streams", "demo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reg := "schema: graph-repos-v1\ncell: smoke\nrepos:\n  sg: {cell: smoke, repo: medici-finance/assay}\n"
+	readme := "---\nstream: demo\nrepo: medici-finance/assay\nstatus: active\npriority: P1\ntrack: platform\n---\n\n# Demo\n\n" +
+		"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n|---|-------|------|--------|--------|----------|----------|\n" +
+		"| 01 | [One](brief-01-x.md) | 0 | S | todo | — | — |\n| 02 | [Two](brief-02-x.md) | 0 | S | todo | — | — |\n"
+	list := func(ref string) string {
+		if ref == "" {
+			return "[]"
+		}
+		return "[" + ref + "]"
+	}
+	brief := func(num, uuid, dep, unb string) string {
+		return "---\nbrief: smoke:sg:demo:" + num + "\ntitle: v2 edge fixture " + num +
+			"\nwhy: >-\n  Independent rationale a non-engineer could read and justify the work from.\n" +
+			"wave: 0\ndepends: " + list(dep) + "\nunblocks: " + list(unb) +
+			"\neffort: S\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n" +
+			"issues: []\nschema: brief-v2\nversion: 1\nid: " + uuid + "\nsupersedes: []\n" +
+			"authored: 2026-10-01 by fixture\nsources: [\"fixture: v2 edges\"]\n---\n\n# Brief " + num + "\n"
+	}
+	files := map[string]string{
+		filepath.Join(root, "docs", "streams", "graph-repos.yaml"): reg,
+		filepath.Join(dir, "README.md"):                            readme,
+		filepath.Join(dir, "brief-01-x.md"):                        brief("01", "4f8c2d1a-9b3e-4c7a-8f21-0a1b2c3d4e5f", e.dep1, e.unb1),
+		filepath.Join(dir, "brief-02-x.md"):                        brief("02", "5a9d3e2b-0c4f-4d8b-9a32-1b2c3d4e5f60", e.dep2, e.unb2),
+	}
+	for p, body := range files {
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatalf("loadStreams: %v", err)
+	}
+	return checkBriefFiles(streams, streams)
 }
 
 // reciprocityStreams is the fire fixture: fire/01 with three brief-v1 dependents in

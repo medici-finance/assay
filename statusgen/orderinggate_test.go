@@ -177,3 +177,36 @@ func TestOrderingGateWaiver(t *testing.T) {
 		}
 	})
 }
+
+// TestOrderingGateV2EdgeIsClean (#1960 defect class): the encoded-edge case over a
+// brief-v2 file. Its `brief:` id is <cell>:<repo>:<stream>:<NN> but the prose
+// refs are <stream>/<NN>; the adjacency must key the v2 brief the same way, or the
+// typed edge never meets the caption and every v2 gate reads as unencoded.
+func TestOrderingGateV2EdgeIsClean(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "docs", "streams", "pods")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeBrief(t, dir, "04", nil, nil)
+	v2 := "---\nbrief: smoke:sg:pods:06\ntitle: v2 fixture\nwave: 0\ndepends: [\"pods/04\"]\nunblocks: []\n" +
+		"effort: M\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n" +
+		"issues: []\nschema: brief-v2\nversion: 1\nid: 4f8c2d1a-9b3e-4c7a-8f21-0a1b2c3d4e5f\nsupersedes: []\n" +
+		"authored: 2026-10-01 by fixture\nsources: [\"fixture\"]\n---\n\n# Brief 06\nBody.\n"
+	if err := os.WriteFile(filepath.Join(dir, "brief-06.md"), []byte(v2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if bf, ok, err := parseBriefFile(filepath.Join(dir, "brief-06.md")); err != nil || !ok || bf.Brief != "smoke:sg:pods:06" {
+		t.Fatalf("fixture must parse as the v2 brief: ok=%v err=%v", ok, err)
+	}
+	readme := "# pods\n\nBrief 06 is blocked on brief-04 until it lands.\n"
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(readme), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	notices := orderingGateNotices([]*Stream{{Name: "pods", Dir: dir}})
+	for _, n := range notices {
+		if strings.Contains(n, "README.md") {
+			t.Errorf("a brief-v2 depends: edge must leave the caption prose clean; got NOTICE: %s", n)
+		}
+	}
+}

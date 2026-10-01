@@ -585,7 +585,7 @@ func runShardcheck(args []string, stdout, stderr *os.File) int {
 		fmt.Fprintf(stdout, "SPLIT: none-declared — %s dispatches to ONE worker (unchanged behaviour)\n", bf.Brief)
 		return shardExitClean
 	}
-	return reportShardPlan(stdout, bf.Brief, *root, bf.ParallelStreams)
+	return reportShardPlan(stdout, bf.Brief, *root, bf.ParallelStreams) // briefid:raw display label for the shard plan
 }
 
 // reportShardPlan runs the precondition and prints a verdict a dispatcher can
