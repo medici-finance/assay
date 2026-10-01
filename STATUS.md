@@ -52,15 +52,15 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **COULD NOT CHECK — main-red arm could not check — no `--main-health` input was supplied, so whether main is red is unknown here (statusgen does not read live CI). A main-red fix cannot be lifted into the critical tier on this run; this is not a reading that main is green.**
 
-_Held by per-stream caps: 5 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (3), measured-status (2). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 4 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (2), measured-status (2). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | desktools-v2 | 03 — native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot) [exec:strong] | 3 | 1500 + 1500 (drive:desktools-v2) |
-| desktools-v2 | 10 — one outbound-write check at the forge write seam, keyed on the target's visibility [exec:strong] | 2 | 1500 + 1500 (drive:desktools-v2) |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
 | graph-execution | 13 — Deterministic admission over facts and bounded probabilistic advice [exec:strong] | 1 | 3000 |
 | desktools-v2 | 05 — the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884) [exec:strong] | 2 | 1000 + 1500 (drive:desktools-v2) |
+| desktools-v2 | 12 — platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS [exec:strong] | 2 | 1000 + 1500 (drive:desktools-v2) |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | measured-status | 03 — Derive the commsloop router's risk field from the envelope instead of hardcoding false, or record why false is sound — restore the risk:yes->tier:human backstop [exec:strong] | 0 | 2200 |
 | measured-status | 05 — attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish [exec:strong] | 1 | 2200 |
@@ -74,7 +74,7 @@ _Held by per-stream caps: 5 brief(s) across 2 stream(s) — top: desktools-v2. B
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 11c822f 2026-10-01T00:55:51Z_
+_last regen: a17e2ed 2026-10-01T11:34:37+10:00_
 
 **Progress:** 4/13 brief items done.
 
@@ -98,7 +98,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 11c822f 2026-10-01T00:55:51Z_
+_last regen: a17e2ed 2026-10-01T11:34:37+10:00_
 
 **Progress:** 11/31 brief items done.
 
@@ -109,6 +109,7 @@ _none_
 **Blocked on review:**
 
 - desktools-v2/09
+- desktools-v2/10
 - windows-port/00
 - windows-port/01
 - windows-port/03
@@ -121,7 +122,6 @@ _none_
 
 - desktools-v2/03
 - desktools-v2/05
-- desktools-v2/10
 - desktools-v2/12
 - desktools-v2/13
 - desktools-v2/14
@@ -132,14 +132,14 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (48 desk-actionable of 81 total — 81 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (49 desk-actionable of 82 total — 82 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (48)
+### Desk-actionable (49)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -171,6 +171,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 19 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| desktools-v2 | 10 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 13 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -250,6 +251,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | desk-supervision | — | — |
 | desk-tools | — | — |
 | desktools-go-git | — | — |
+| desktools-v2 | — | — |
 | forge-gitlab | — | — |
 | forge-neutral | — | — |
 | harness-portability | — | — |
@@ -390,7 +392,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 06 installation-token scoping — one token per repo, no ambient-credential hiding (#628 / #1145 / #1146) — todo (wave 4)
 - 08 hold statusgen at zero — the gh ban fails on statusgen and the scan is proven with no gh present — todo (wave 6)
 - 09 purpose-built access-pattern query operations (one tuned snapshot, not N per-item calls) — implemented (wave 3)
-- 10 one outbound-write check at the forge write seam, keyed on the target's visibility — todo (wave 2)
+- 10 one outbound-write check at the forge write seam, keyed on the target's visibility — implemented (wave 2)
 - 11 a house callout for the outbound-write check — deployment vocabulary stays out of the shipped tools — todo (wave 3)
 - 12 platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS — todo (wave 2)
 - 13 platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage — todo (wave 2)
