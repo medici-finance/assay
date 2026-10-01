@@ -1292,8 +1292,11 @@ plan, added groups, published ports, process/memory/CPU limits, process, IPC and
 user namespace modes, no-new-privileges, the `/tmp` tmpfs, the dedicated network
 and every mount's source, target and mode. Only an explicitly configured local Unix
 Docker socket is supported. `check` performs file and local Docker metadata checks
-for every registered role, reporting all failures together, without launching a
-model, minting tokens, creating networks or contacting a forge. `DRY_RUN=1` makes
+for every registered role, reporting every role's file and Docker check failures
+together (a configuration or plan error stops at the first role), without launching
+a model, minting tokens, creating networks or contacting a forge. As the preflight
+for `up`, `check` plans from the registered model pins, so a container started with
+a `desk --harness/--model` override is reported as a mismatch. `DRY_RUN=1` makes
 no Docker calls.
 
 `status` and `down` act on what is running. They read the harness and model a
@@ -1304,7 +1307,11 @@ exits nonzero after all roles were handled, naming each refused one. `down` stop
 only verified containers before closing their consoles and never removes
 workspace volumes. `status` is a native-runtime verb; the external launcher
 contract below has none. The host user and Docker administrator remain outside
-this isolation boundary.
+this isolation boundary. Reconnecting compares the settings listed here
+(user, terminal, entrypoint and environment, read-only root, capabilities,
+devices and device requests, groups, ports, limits, namespaces, security options,
+tmpfs, network and mounts); other engine-level settings, such as the runtime,
+sysctls or ulimits, are not compared.
 
 These runtime settings are fixed, not configurable: user `501:501` (the image must
 work for that UID), 256 processes, 4 GiB memory, 2 CPUs, a `/tmp` tmpfs of 512 MiB
@@ -1319,10 +1326,15 @@ name without that label.
 
 Directory mounts (`incoming` and each role's `config`) are validated against
 protected paths: none may be the host root `/`, and none may equal or contain a
-configured credential (any role's `app_key` or `claude_token`) or the Docker
-socket (the configured one and the standard locations). The check runs on the
-configured paths when the deployment is loaded and again on symlink-resolved paths
-before launch.
+configured credential (any role's `app_key` or `claude_token`), the Docker
+socket (the configured one and the standard locations), the operator's home
+directory, or the cell's own directory (and so the cells root above it). The
+check compares the configured paths as written when the deployment is loaded, and
+compares file identity (device and inode) whenever a plan is built and again
+immediately before launch, so any other spelling of a protected directory (a
+symlink, a case or Unicode-normalization variant, or a filesystem alias) is
+refused too. Only these paths are protected: other host data that a mount
+contains is the operator's choice.
 
 A cell can optionally set `host_lock` to an absolute advisory lock file shared
 with a previous host launcher. It is honoured for the `desk` role only: the Go
