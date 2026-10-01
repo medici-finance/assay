@@ -70,8 +70,12 @@ func TestLayaAdvisorLimits(t *testing.T) {
 	a.Approved = true
 	for _, detail := range []string{"malformed", "timeout"} {
 		a.Timeout = 50 * time.Millisecond
+		start := time.Now()
 		if _, err := a.Predict(context.Background(), Consultation{Detail: detail}); err == nil {
 			t.Fatalf("accepted %s", detail)
+		}
+		if time.Since(start) > 500*time.Millisecond {
+			t.Fatal("process exceeded deadline envelope")
 		}
 	}
 	a.MaxBytes = 1

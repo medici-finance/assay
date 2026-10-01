@@ -49,6 +49,11 @@ cd tools/desk
 GOWORK=off go test -timeout 60s -run '^TestLayaAdvisor' ./internal/deskkit
 ```
 
+Reproduce fail-first evidence with `python3 providers/laya/tests/mutations.py`
+and `GOWORK=off python3 providers/laya/tests/go_mutations.py`. The latter restores
+production Go source after each bounded mutant; run it only in an owned clean
+worktree.
+
 Fixtures measure boundary behavior, never model quality, memory or CPU/GPU speed.
 The downstream evaluation work must obtain independent labels and calibration;
 it receives abstaining predictions until then.
