@@ -74,7 +74,7 @@ _Held by per-stream caps: 3 brief(s) across 2 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 171fa3d 2026-10-01T01:37:21Z_
+_last regen: de45ad1 2026-10-01T11:43:28+10:00_
 
 **Progress:** 4/13 brief items done.
 
@@ -98,7 +98,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 171fa3d 2026-10-01T01:37:21Z_
+_last regen: de45ad1 2026-10-01T11:43:28+10:00_
 
 **Progress:** 11/31 brief items done.
 
@@ -132,14 +132,14 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (50 desk-actionable of 83 total — 83 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (51 desk-actionable of 84 total — 84 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (50)
+### Desk-actionable (51)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -150,6 +150,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | build-less-brittle | 06 [exec:strong] | implemented | 4500 | 3 | — | — | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
+| graph-execution | 03 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | apps-installer | 02 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | build-less-brittle | 10 [exec:strong] | implemented | 4000 | 2 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
@@ -447,7 +448,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 ### graph-execution (16 open)
 
 - 02 Workflow-pattern schema, node contract, and the implementation and research patterns — implemented (wave 0)
-- 03 Evidence coverage rule and the observe evidence kind — todo (wave 1)
+- 03 Evidence coverage rule and the observe evidence kind — implemented (wave 1)
 - 04 Recovery contract for effect-bearing nodes in drainloop — todo (wave 1)
 - 05 Offline two-pattern experiment on frozen fixtures — todo (wave 2)
 - 06 Run records and the replay/learning loop — todo (wave 3)
