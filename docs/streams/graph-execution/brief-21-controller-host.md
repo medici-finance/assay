@@ -8,6 +8,7 @@ depends:
 - graph-execution/20
 - graph-execution/04
 - graph-execution/14
+- graph-execution/26
 unblocks:
 - graph-execution/05
 - graph-execution/24
@@ -31,7 +32,7 @@ consumers:
 - 'workflow/internalreview: follow-up graph-execution/24'
 - 'statusgen/assuranceexperiment.go: follow-up graph-execution/18'
 - 'operator clients: out-of-scope (consume the published protocol through their own adoption gates)'
-version: 1
+version: 2
 id: 008dd7b9-6421-42bd-b6c6-d3c495837fa8
 ---
 
@@ -70,6 +71,12 @@ single-point-of-failure: controller correctness alone is insufficient — indepe
 
 Pinned instance/attempt/subject and actor capability enter; typed state, evidence and receipts leave with the same identity. Unknown outcomes remain unknown. Consumers must refuse unsupported mandatory fields and stale generations.
 
+## Shared loop-admin amendment — 2026-10-02
+
+Use /26 loop-admin as the sole model/session launch supervisor; this controller is its workflow-stage client. Map canonical graph instance/node/attempt and claim/reservation references to the /20 envelope and persist their correlation. The controller owns node readiness, pattern progression, decisions and output acceptance; loop-admin owns only process/session lifecycle. Reconcile both journals after a split crash; never launch directly through /22 or duplicate its restart logic. A standing desk can run through the same supervisor without this controller.
+
+Additional implementation files: `workflow/controller/loopadmin_test.go` (planned).
+
 ## Verify
 
 | # | Class | Command | Expect |
@@ -77,6 +84,7 @@ Pinned instance/attempt/subject and actor capability enter; typed state, evidenc
 | 1 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerDuplicateAndRetry$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerDuplicateAndRetry " "$routing_out")` | exit 0; named PASS; same-state notifications launch once and a definite failed launch retries |
 | 2 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerCrashUnknownAndPause$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerCrashUnknownAndPause " "$routing_out")` | exit 0; named PASS; crash recovery retains pause/spend and reconciles unknown effects before resuming |
 | 3 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerStaleAcceptanceAndBypass$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerStaleAcceptanceAndBypass " "$routing_out")` | exit 0; named PASS; head movement or a direct call without a current owner cannot advance |
+| 4 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerUsesSharedLoopAdmin$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerUsesSharedLoopAdmin " "$routing_out")` | exit 0; named PASS; graph node progression uses the common supervisor; a lost cross-journal receipt does not double-launch; a process exit cannot advance an unaccepted node |
 
 ## Pre-mortem and dispatch checks
 

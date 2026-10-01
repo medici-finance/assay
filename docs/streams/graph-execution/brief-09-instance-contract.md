@@ -9,7 +9,6 @@ unblocks:
 - graph-execution/14
 - graph-execution/16
 - graph-execution/19
-- graph-execution/20
 effort: M
 gate: model
 risk:
@@ -35,7 +34,7 @@ consumers:
 - 'drainloop: follow-up graph-execution/16'
 - 'tools/desk: follow-up graph-execution/14'
 - 'workflow/store and bindings: follow-up graph-execution/19'
-- 'workflow/runner: follow-up graph-execution/20'
+- 'workflow/controller: follow-up graph-execution/21'
 version: 3
 id: eb0a9f7c-669d-42f6-9686-e30c661a2450
 ---

@@ -216,4 +216,7 @@ No universal prefix/turn limit is introduced, and existing activation gates rema
 
 ## Routed task execution amendment — 2026-10-02
 
-[Task workflow program](task-workflow-program.md) permits a thin executable host over the existing contracts and routes it to 19–25. This is the narrow exception to the original new-orchestration-platform exclusion; it does not authorize a second scheduler authority, credential broker, live trial or change to human gates. Existing consumers remain compatible.
+[Task workflow program](task-workflow-program.md) permits a thin executable host over the existing contracts and routes it to 19–27. This is the narrow exception to the original new-orchestration-platform exclusion; it does not authorize a second scheduler authority, credential broker, live trial or change to human gates. Existing consumers remain compatible.
+
+
+The shared loop-admin runtime serves existing standing desks and workflow-stage callers. Standing mode must work without graph storage/controller; cellctl retains operator administration. See the routed task workflow specification for module and state ownership.

@@ -2,7 +2,7 @@
 brief: assay:assay:graph-execution:23
 title: Immutable candidate workspaces and independent check inputs
 why: Review cannot establish a result if the implementer can alter the files while the reviewer reads them.
-wave: 4
+wave: 3
 depends:
 - graph-execution/19
 - graph-execution/20

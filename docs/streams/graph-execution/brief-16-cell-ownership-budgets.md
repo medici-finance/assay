@@ -8,7 +8,6 @@ depends:
 - graph-execution/09
 unblocks:
 - graph-execution/14
-- graph-execution/20
 - graph-execution/25
 effort: L
 gate: human

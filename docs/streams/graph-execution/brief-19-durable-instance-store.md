@@ -9,7 +9,6 @@ depends:
 - graph-execution/03
 unblocks:
 - graph-execution/23
-- graph-execution/20
 - graph-execution/21
 effort: M
 gate: model
