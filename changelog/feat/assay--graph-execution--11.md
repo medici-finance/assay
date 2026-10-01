@@ -1,0 +1,1 @@
+- Add an optional, disabled Laya subprocess boundary and offline artifact/input validation stubs; model bundle, sandbox and activation remain subject to owner approval.
