@@ -852,7 +852,7 @@ on two points: a `## Desk-decided` block, when present, must PARSE, and the `des
 label and the block must AGREE — a label with no block, or a block with no label, refuses.
 What is NOT mechanical is whether a PR that declares nothing in fact took an undeclared
 desk decision; that is the reviewer's question, and the reviewer kit (`cmd/deskdispatch/
-references/review-prompt.md` §14) asks it on every review. A reviewer who judges that the
+references/review-prompt.md` §15) asks it on every review. A reviewer who judges that the
 diff took an undeclared reversible default names it in the verdict with the fixed line
 `Undeclared-desk-decision: <one line>`, and the flip refuses while that line stands at the
 CURRENT head — cleared by `deskpr edit --decided` and a fresh DECISIVE verdict (APPROVE or

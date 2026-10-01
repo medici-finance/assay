@@ -242,6 +242,82 @@ values above, verbatim: reciprocity tier = notices @ statusgen/brieffile.go:1731
 criticalStampAuthorities = map[string]bool{} @ statusgen/drivecritical.go:62; mainRedCritical =
 false @ statusgen/drivecritical.go:100; driveWorkerCap = 6 @ statusgen/drives.go:88. The first
 decides whether the only live arm of the critical tier can be gamed.
+### Non-implementer verifier re-run: 2026-09-30, assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) (on-behalf-of human:ian). VERIFY: FAIL — row R: the dependency-edge reciprocity lint does not report a self-referential (or one-sided) depends edge on brief-v2 briefs (--lint exit 0, LINT: PASS on a v2 self-loop fixture; every brief in the tree is v2); rows 5, 6, 7, A, L pass
+
+Re-run after #1825 and #1822 (the 2026-09-25 FAIL rows 5 and 6). gate: human, so this is Evidence only: status stays implemented, and the sign-off belongs to the human gate.
+
+**Hand run**:
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 5 | `cd statusgen && go test ./ -run TestDriveCriticalTierNeverBuried -v` | main-red / stamped-security / high-unblocks / reviewer-finding rows rank above ALL scores; no intensity passes the tier; membership machine-derived or stamped | PASS — exit 0; --- PASS with 9 subtests. An isolated sub-verification drove each of the four arms end to end through nextUp: each lifts a P2 row (total 1000) above a P0 surge row (total 7700), each stays off without its input, and a critical-looking flag in a brief's own frontmatter grants nothing. In deployment two arms have no input: nothing in the repo passes the main-health flag, and the critical-stamp authority key is absent from the deployed roster (named for the human below) | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) (on-behalf-of human:ian) |
+| 6 | `cd statusgen && go test ./ -run TestDriveAntiStarvationFloor -v` | 15 of 20 slots via a 2-pass fill held back to HeldByDriveCap; 6 of 8 workers; effectiveCap min; span 20 and perStreamCap 4 unchanged | PASS — exit 0; --- PASS with 10 subtests. Independent probes: 25 drive plus 10 non-drive picks give 15 drive and 5 non-drive with HeldByDriveCap 10; drive-only backfills to 20; worker floor offers 6, 2, 0, 0 drive rows at 0, 4, 6, 9 in flight and none when claims are unknown; the worker-desk skill states the 6-of-8 floor; span 20 and perStreamCap 4 match the pre-phase-3 source | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) (on-behalf-of human:ian) |
+| 7 | `cd statusgen && go test ./ -run TestDriveOverlapAndCoverage -v` | no regression of overlap max-not-sum, coverage over 40 percent NOTICE, concave scale-down | PASS — exit 0; --- PASS with 4 subtests (overlap-max-not-sum, coverage-over-40pct-taxes-and-notices, concave-monotonic, at-most-2-concurrent) | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) (on-behalf-of human:ian) |
+| R | `cd statusgen && go test ./ -run TestDriveDepEdgeReciprocity -v` | dangling / self-referential / one-sided depends edge is a --lint PROBLEM; a reciprocated edge passes | FAIL — exit 0; --- PASS with 9 subtests, but they call the lint helpers with brief-v1 style ids. End to end on a brief-v2 fixture, a brief whose depends and unblocks name itself lints exit 0 with LINT: PASS and no self-referential PROBLEM, and a one-sided edge emits no line at all; the same fixtures in brief-v1 give 2 self-referential PROBLEMs (exit 1) and a one-sided NOTICE. Every brief in the tree is brief-v2. Dangling edges are a PROBLEM in both schemas and a reciprocated edge passes. The anti-gaming purpose holds: the high-unblocks arm reads a reciprocated-only graph, so three one-sided inbound edges do not lift a brief and three reciprocated ones do. Expected condition NOT met → row FAILS. | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) (on-behalf-of human:ian) |
+| A | `cd statusgen && go test ./ -run TestDriveAbsentIsInert -v` | no manifest gives a board byte-identical to the no-drive baseline; floor and tier reshape order only with a drive | PASS — exit 0; --- PASS: TestDriveAbsentIsInert. Independent end-to-end probe: with all four critical inputs present and no manifest, the Next-up board and the next-up JSON are byte-identical across each phase-3 merge and its parent, and toggling the critical inputs changes nothing until a drive is active | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) (on-behalf-of human:ian) |
+| L | `cd statusgen && go run . --root .. --lint` | exit 0, this brief and its README row lint clean | PASS — exit 0; LINT: PASS, zero PROBLEM lines | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) (on-behalf-of human:ian) |
+
+**Execution witness**:
+Command: `HOME=<throwaway> verifyrun --brief docs/streams/statusgen/brief-05-drives-phase3-floors-critical-tier.md --root <wt>` (statusgen built from <wt>/statusgen at b0088804294b, --version=dev; HOME is a throwaway holding only a copy of the roster) — exit 0; `verifyrun --check` on the written table, exit 0: "6 pass, 0 fail, 0 could-not-run/missing (of 6 Verify rows)". No row is check:ci, so the Linux docker recipe was not needed. The worktree brief was restored with git checkout after the table was captured.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 5 | `cd statusgen && go test ./ -run TestDriveCriticalTierNeverBuried -v` | pass exit=0 | sha256:34dc00237460 | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd statusgen && go test ./ -run TestDriveAntiStarvationFloor -v` | pass exit=0 | sha256:64030c75d0fd | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && go test ./ -run TestDriveOverlapAndCoverage -v` | pass exit=0 | sha256:8831b926569f | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| R | `cd statusgen && go test ./ -run TestDriveDepEdgeReciprocity -v` | pass exit=0 | sha256:ad40e71604e9 | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| A | `cd statusgen && go test ./ -run TestDriveAbsentIsInert -v` | pass exit=0 | sha256:3afd3bf25cba | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| L | `cd statusgen && go run . --root .. --lint` | pass exit=0 | sha256:a12a79f62f3d | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+
+**check-verified** (hypothetical README flip on a throwaway clone):
+Throwaway clone: <wt>/.cv (git clone --no-hardlinks, detached at b0088804294b, refs/remotes/origin/main set to the same SHA).
+- What I changed there:
+  - Inserted a "### Verification — 2026-09-30 re-verify" block (the witness table, then the hand table, then `**VERIFY: FAIL** — row R.`) into the brief just before `## Review`.
+  - Set README row 05 Status to `verified` and the Verified cell to `2026-09-30 assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5)`.
+- `statusgen brief --root . --check-verified statusgen/05` → exit 0. Output: the brief JSON only, with row.status "verified" and the Verified cell echoed. It printed no verdict line and did not object to a gate:human row being set to verified, or to the VERIFY: FAIL line inside Evidence.
+- `statusgen --root . --lint` → exit 0, `LINT: PASS`, 0 PROBLEM lines. Two NOTICEs name this brief:
+  - "is gate:human at verified but has no decision-issue — file one via --decision-issues"
+  - the risk-files-crossread could-not-check NOTICE (no `files:` line in Context).
+- The clone was reset afterwards. This is hypothetical only: the item is gate:human and row R fails, so nothing should be set to verified.
+
+RISK-VALUE: NAMED, NOT DERIVED — selfID = bf.Brief @ statusgen/brieffile.go:1685 — observed wrong for brief-v2. The declared ref is stream/NN form, while bf.Brief is the hierarchical v2 id, so the self-referential PROBLEM never fires on a v2 brief. Row R fails on this value (details under Notes). The correct key is the brief's stream/NN id; I cannot derive a value it would be "right" at.
+RISK-VALUE: NAMED, NOT DERIVED — reciprocity tier = notices @ statusgen/brieffile.go:1745 — set by the driver's recorded ruling: a data-quality lint that returns to PROBLEM once the backlog is reconciled. The tier is no longer load-bearing for anti-gaming, because the high-unblocks arm reads a reciprocated-only graph (buildReciprocatedRevDeps, statusgen/nextup.go:368). On brief-v2 the NOTICE does not fire at all (E8/E7 share the same keying).
+RISK-VALUE: DERIVED — highUnblocksThreshold = 3 @ statusgen/drivecritical.go:78 — 3 × unblocksWeight 500 = 1500, which exceeds one priority tier (weightP0 3000 − weightP1 2000 = 1000), while 2 × 500 = 1000 does not. So 3 is the smallest count at which the ordinary score already lets unblocking outrank a whole tier, and it matches the brief's blockedCount ≥ 3. The count now reads reciprocated edges only.
+RISK-VALUE: NAMED, NOT DERIVED — criticalStampAuthorities = map[string]bool{} (unset) @ statusgen/drivecritical.go:91 — empty/unset is fail-safe: a stamp grants nothing, and each stamp is reported as a NOTICE. Which authority may stamp is gate-why item 2's human ratification, and the deployed roster carries no ASSAY_CRITICAL_STAMP_AUTHORITIES key today, so the arm is inert in deployment.
+RISK-VALUE: NAMED, NOT DERIVED — main-health state "red" @ statusgen/mainhealth.go:61 — the main-red arm fires only on an injected --main-health red:<ref> input, and no caller in .github/ or tools/ supplies it: deskboard runs --next-up --root only, at tools/desk/cmd/deskboard/dispatch.go:166. So in deployment the arm always reads could-not-check, and the board names that only while a drive is active. Who supplies the input is a wiring or governance decision I cannot derive.
+RISK-VALUE: DERIVED — driveSlotCap = 15 @ statusgen/drives.go:94 — staleness caps at 30 × 10 = 300, which is below the weakest drive intensity (driveFocusWeight 800). Within a tier, a non-drive brief can therefore never out-age a drive pick, and only reserved capacity prevents permanent starvation. 20 − 15 = 5 reserved slots is the ratified split. The sub-verification observed exactly 15 drive + 5 non-drive picks with HeldByDriveCap 10.
+RISK-VALUE: NAMED, NOT DERIVED — driveWorkerCap = 6 @ statusgen/drives.go:95 — matches the brief's 6 and is now enforced on the dispatch queue and across roots. But it is an absolute count, not a share of the pool: the "8" is the worker-desk width default (tools/desk/internal/deskkit/width.go:211), so the ratio holds only at the default width. The 6-of-8 split itself is the ratified design's number, with no first-principles derivation in the tree.
+
+Notes:
+Prior FAIL rows (2026-09-25):
+- **Row 5 now PASSES.**
+  - #1825 wired all three previously dead arms: main-red via --main-health, stamped-security via the roster authority set, and reviewer-finding via a finding's control:.
+  - The isolated sub-verification lifted a low-score row above a surge row through each arm end to end.
+- **Row 6 now PASSES.**
+  - #1822 made driveWorkerCap bind the --next-up dispatch queue and the deskboard cross-root merge.
+  - The worker-desk skill now states the floor.
+- **Row R still FAILS, for a different reason than before.**
+  - The earlier gaming concern is fixed: high-unblocks now reads reciprocated edges only, and 3 one-sided inbound edges do not lift a brief, verified end to end.
+  - But end to end on a brief-v2 fixture, the reciprocity lint does not report a self-referential depends/unblocks edge (lint exit 0, LINT: PASS) and emits nothing for a one-sided edge. Every brief in the tree is brief-v2. On main's own tree the live lint emits zero one-sided and zero self-referential lines, while the row R sub-verifier counted 49 one-sided edges in the frontmatter.
+  - The row's own test passes only because it calls the lint helpers with brief-v1-style ids.
+  - The one-sided-at-NOTICE part is the driver's recorded ruling and is not what fails this row. The self-referential clause is.
+
+Findings routed for filing:
+- F1 (bug, statusgen): the dependency-edge reciprocity lint is blind on brief-v2 briefs. A self-referential edge is not a PROBLEM, and a one-sided edge gets no NOTICE.
+  - Reproduction: a two-brief brief-v2 fixture where sx/01 declares depends ["sx/01"] and unblocks ["sx/01"]. `statusgen --root <fixture> --lint` → exit 0, LINT: PASS. The same fixture as brief-v1 → exit 1, 2 self-referential PROBLEMs.
+  - Code: statusgen/brieffile.go:1685, :1690-1692, :1799, :1826.
+  - The row R test needs a checkBriefFiles-level brief-v2 fixture.
+  - Not checked against the contents of #1925/#1926/#1927; the desk should dedupe.
+- F2 (question / needs-decision): the main-red arm has no input in deployment. Nothing in the repo passes --main-health. The brief's premise that "statusgen already knows CI-red" does not hold offline (mainhealth.go says so), so wiring a caller is a decision.
+- F3 (needs-decision, already inside gate-why item 2): ASSAY_CRITICAL_STAMP_AUTHORITIES is absent from the deployed roster, so the stamped-security arm grants nothing. The changelog asks that every roster reader be re-pinned before the key is added.
+- F4 (test gap, low): TestDriveAbsentIsInert (row A) is phase-1 code with no critical inputs, so on its own it does not prove the phase-3 half of row A. The sub-verification did prove it end to end:
+  - with no drive, STATUS.md and --next-up JSON are identical across #1825 and #1822 versus their parents;
+  - toggling the stamp, authority, --main-health red and reciprocated edges changes nothing without a drive.
+  - Separately, criticalStampNotices (statusgen/main.go:700) adds a stderr/--lint NOTICE even with no drive. The board is unaffected and the exit code stays 0.
+- The lint also raises gotest-run-vacuous NOTICEs on every go test row (unanchored -run with no --- PASS assertion). The brief author may want to anchor them. This is not a failure.
+
+Gate: human. This is Evidence only: the status stays `implemented`, and a model never sets it to verified.
+
+VERIFY: FAIL — row R: the dependency-edge reciprocity lint does not report a self-referential (or one-sided) depends edge on brief-v2 briefs (--lint exit 0, LINT: PASS on a v2 self-loop fixture; every brief in the tree is v2); rows 5, 6, 7, A, L pass
 
 ## Review
 Gate: human. This phase adds the hard critical tier (a lexicographic order ABOVE every score) and the
