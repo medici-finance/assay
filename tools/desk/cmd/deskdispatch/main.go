@@ -118,6 +118,10 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       inherits the dispatching desk's identity and misattributes Evidence
                       Runner cells; a --kit whose role has no roster identity is refused
                       pre-claim (exit 5). The OK line prints identity=<slug> <bot-user-id>.
+                      Review kits allocate DETACHED with a fresh per-dispatch directory;
+                      --branch is refused. The canonical claim key stays unchanged.
+                      Prior review worktrees and evidence are preserved; no cleanup is
+                      required to renew the normal trusted dispatch ceremony.
   3 roster-register   ` + "`deskroster set`" + ` for the work entry when --pr is known; without
                       it the registration is the AGENT's first act after its PR opens, and
                       the exact command is emitted into the prompt.

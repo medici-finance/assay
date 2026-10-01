@@ -1,0 +1,41 @@
+{
+  "test": "go test ./cmd/deskdispatch -run 'Test(ReviewFreshAllocation|ReviewRejectsBranch|ReviewNameBoundary|ReviewEntropyPreClaim|ReviewAllocationFailure|Allocation)' -count=1 -timeout=60s",
+  "control": {
+    "name": "reuse the same review directory on every dispatch",
+    "file": "cmd/deskdispatch/reviewworktree.go",
+    "old": "hex.EncodeToString(nonce[:])",
+    "new": "hex.EncodeToString(make([]byte, len(nonce)))"
+  },
+  "mutations": [
+    {
+      "name": "allow same-name methods around the allocation class guard",
+      "file": "cmd/deskdispatch/reviewguard_test.go",
+      "old": "name == \"reviewworktree.go\" && fn.Recv == nil && fn.Name.Name == \"createDispatchWorktree\"",
+      "new": "name == \"reviewworktree.go\" && fn.Name.Name == \"createDispatchWorktree\""
+    },
+    {
+      "name": "guess a worktree name after entropy failure",
+      "file": "cmd/deskdispatch/reviewworktree.go",
+      "old": "return \"\", err",
+      "new": "return \"review-fallback\", nil"
+    },
+    {
+      "name": "drop the name bound for long review keys",
+      "file": "cmd/deskdispatch/reviewworktree.go",
+      "old": "base = base[:maxPrefix]",
+      "new": "_ = maxPrefix"
+    },
+    {
+      "name": "allow explicit reviewer branches to reach later forge reads",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "if reviewKit(o.kit) && strings.TrimSpace(o.branch) != \"\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "skip releasing the claim after allocation fails",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)\n\t\t// deskwt's OWN",
+      "new": "released := \"retained\"\n\t\t// deskwt's OWN"
+    }
+  ]
+}
