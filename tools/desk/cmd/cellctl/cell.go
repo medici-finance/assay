@@ -24,7 +24,7 @@ const houseVerbs = "deskboot deskroster deskwt deskboard deskdispatch deskpr des
 var (
 	kindValues    = []string{"k8s", "house", "container", "scrubbed"}
 	cockpitValues = []string{"auto", "tmux", "herdr", "orca"}
-	harnessValues = []string{"claude", "codex"}
+	harnessValues = []string{"claude", "codex", "cursor"}
 	knownRoles    = []string{"intake-desk", "worker-desk", "pr-review-desk", "verify-desk", "the-desk"}
 )
 
@@ -382,7 +382,10 @@ func loadCell(name string) *Cell {
 
 	c.Harness = e.GetOr("CELL_HARNESS", "claude")
 	if !valueIn(c.Harness, harnessValues) {
-		die("cell.env: CELL_HARNESS=%s is not a known harness (claude|codex)", c.Harness)
+		die("cell.env: CELL_HARNESS=%s is not a known harness (%s)", c.Harness, joinPipe(harnessValues))
+	}
+	if c.Harness == "cursor" && c.Kind != "house" {
+		die("cursor currently requires a house cell; %s is unsupported", c.Kind)
 	}
 
 	// Model TIER map compiled defaults (#986). `-` (not `:-`) on purpose: cell.env can set one
