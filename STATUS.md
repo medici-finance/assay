@@ -73,7 +73,7 @@ _Held by per-stream caps: 5 brief(s) across 2 stream(s) — top: desktools-v2. B
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 08d9632 2026-10-01T10:13:09+10:00_
+_last regen: f60962e 2026-10-01T10:20:48+10:00_
 
 **Progress:** 4/13 brief items done.
 
@@ -97,7 +97,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 08d9632 2026-10-01T10:13:09+10:00_
+_last regen: f60962e 2026-10-01T10:20:48+10:00_
 
 **Progress:** 10/31 brief items done.
 
@@ -145,6 +145,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 |---|---|---|---|---|---|---|---|
 | graph-execution | 02 [exec:strong] | implemented | 7500 | 11 | — | — | — |
 | build-less-brittle | 02 [exec:strong] | implemented | 6500 | 7 | — | — | — |
+| build-less-brittle | 04 [exec:strong] | implemented | 5500 | 5 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | build-less-brittle | 06 [exec:strong] | implemented | 4500 | 3 | — | — | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
@@ -153,7 +154,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 06 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
-| derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | contributor-trust | 06 | implemented | 2500 | 1 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
@@ -190,7 +190,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | quality | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting human gate (12)
+### Awaiting human gate (13)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -206,15 +206,16 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 11 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | windows-port | 08 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
+| windows-port | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting implementer rework (25)
+### Awaiting implementer rework (24)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | — | — |
 | windows-port | 00 | implemented | 6000 | 10 | — | — | — |
-| build-less-brittle | 04 [exec:strong] | implemented | 5500 | 5 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 4500 | 7 | — | — | — |
+| derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | graph-execution | 07 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | contributor-trust | 04 [exec:strong] | implemented | 2000 | 0 | — | — | — |
@@ -235,7 +236,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 15 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| windows-port | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
 ## Age at the human gate
 
