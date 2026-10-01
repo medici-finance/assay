@@ -57,6 +57,8 @@ func TestGitLabPushRewriteRefusesSSH(t *testing.T) {
 	}
 }
 
+// This checks the GitLab.com no-reply shape and a reserved documentation host.
+// Generic self-managed host recognition is an unresolved production scope item on issue 1836.
 func TestOutboundGitLabNoReply(t *testing.T) {
 	obRoster(t)
 	for _, host := range []string{"gitlab.com", "gitlab.example"} {
