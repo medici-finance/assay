@@ -223,6 +223,80 @@ Any rule more than one skill must state verbatim has one declared home,
 (`make skillslint`) and regenerates them (`make guardrail-sync`). Edit the
 source, never a copy.
 
+A copy has no end marker, so sync proves where each copy ends by content: the
+lines at the copy's anchor must equal the current canonical text (already
+synced, no write) or the block's text in an earlier committed or staged
+revision of the source. When nothing matches, as with a hand-edited copy or a
+tree with no git history, sync reports could-not-check and leaves the file
+alone. If you will edit the source again before committing, `git add` it after
+each sync so the next sync can match the copies it wrote. Otherwise restore the
+sites with `git checkout` and sync once.
+
+Two narrower cases stay content-limited even so.
+
+The first is genuinely **ambiguous**, not merely "an older revision": when the
+longest known text matching at the anchor is not also the newest one matching
+there. Two matching texts always nest, one a prefix of the other, so this
+means a newer text of the block (the current canonical text counts as the
+newest) is a strict prefix of an older one: the block once shrank by dropping
+trailing lines, and the copy still matches both sides of that shrink. The
+bytes then cannot tell a copy still genuinely at the older, longer text apart
+from a copy at the newer, shorter text followed by unrelated content —
+possibly a local, site-specific rule someone added right after the block —
+that happens to equal the longer text's own tail. Any trailing-line removal is
+such a shrink, so the first sync after one is ambiguous. `git add` does **not**
+prevent it — the tie comes from history, not from anything staging can fix —
+so sync **refuses by default**: could-not-check, naming the file, the two
+lengths that matched, and the exact line-range span the longest-match rule
+would have removed. That block is not written; another, unambiguous block in
+the same file still is.
+
+The refusal is not one-off. Once such a shrink is committed, every later sync
+of that block refuses too, whatever the later edit, for as long as the copy
+still matches both texts — for example while a dropped line is kept as
+site-local text right under the block. To get past it, either verify the
+ambiguity by hand (`git diff` on the site) and re-run with
+`--allow-ambiguous-extent`, which takes the longest match for **every**
+ambiguous block in that run and records each as a `note:` on `--sync`; or
+separate the site-local text from the block (for example with a blank line)
+so the copy no longer matches the older text.
+
+A block that only ever **grew** is not ambiguous. After a committed
+append-grow the older, shorter text is a prefix of the newer one, so both match
+at a synced copy, but the longest match is also the newest, which is what a
+synced copy holds; later edits of that block rewrite normally. What this
+accepts: content right under a copy that exactly equals the lines a later grow
+added is treated as part of the block, and a later edit replaces it. That
+happens by two routes. One is a copy that missed a sync, still at an older text,
+and so at least two revisions behind its source. The other is more ordinary: a
+site-local line that a later grow promotes, verbatim, into the canonical block.
+From that grow on, the copy is byte-identical to the grown text, so the check
+mode reports it as synced and nothing about it looks stale. A later edit of the
+block then replaces that line, which is defensible because it became canonical,
+but it is no longer the site's own text.
+
+Earlier revisions of this document said `git add` closed the ambiguity window
+entirely, and called a committed prefix-shrink "common, unambiguous" — both
+statements were wrong. A later revision treated any two matching lengths as
+ambiguous, which refused every edit of a block that had ever grown; that is
+wrong too. This default (refuse, with an explicit opt-in) and the recency
+condition are this project's own reversible choices, not a settled
+cross-project ruling (#1692).
+
+The second is narrower still: a shrink of an edit that is never committed or
+staged is could-not-check only when nothing at the anchor matches; if the
+shrunk text still matches as a prefix of what is on disk, the copy reads as
+already synced and content the shrink dropped, but never registered anywhere
+sync can see, is left in place rather than guessed away.
+
+Every site file a `--sync` run touches is read at most once, and that same
+read is what both the proven extent and the eventual write are built from;
+immediately before writing, the file is re-read and compared against that
+original read, and the write itself goes through a temp file plus atomic
+rename rather than an in-place truncate-then-write. This closes a
+read-compute-write race that let concurrent `--sync` runs corrupt a file
+(medici-finance/assay#1692).
+
 ## Fixtures
 
 `testdata/plugintree/` holds a matched pair of fake roots:
