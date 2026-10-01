@@ -69,7 +69,7 @@ func loadDecisionMarkers(path string) (map[string]bool, error) {
 // file plus the static repo slug.
 func renderDecisionBody(root string, bf *BriefFile, row *Brief) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n\n", decisionMarker(bf.Brief))
+	fmt.Fprintf(&b, "%s\n\n", decisionMarker(bf.Brief)) // briefid:raw identity marker; open issues carry the raw id, dedupe must match
 
 	// Situation
 	fmt.Fprintf(&b, "## Situation\n\n")
@@ -180,7 +180,7 @@ func decisionIssues(root string, streams []*Stream, existing map[string]bool) []
 			if row.Status != "implemented" && row.Status != "verified" {
 				continue
 			}
-			marker := decisionMarker(bf.Brief)
+			marker := decisionMarker(bf.Brief) // briefid:raw identity marker; open issues carry the raw id, dedupe must match
 			if existing[marker] {
 				continue
 			}
