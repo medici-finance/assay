@@ -11,6 +11,16 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+// nativeEngine is the Docker engine constructor, replaced in tests.
+var nativeEngine = cellcontainer.Docker
+
+func (c *Cell) nativeContainerConfig() *cellcontainer.Config {
+	cfg, err := cellcontainer.Load(c.Env.Get("CELL_CONTAINER_CONFIG"))
+	if err != nil {
+		die("container config: %v", err)
+	}
+	return cfg
+}
 func (c *Cell) nativeContainerPlan(role, harness, model string) *cellcontainer.Plan {
 	// This also protects the internal runner, which can be invoked without desk.
 	policy, _, policyErr := c.cellModelPolicy()
@@ -20,10 +30,7 @@ func (c *Cell) nativeContainerPlan(role, harness, model string) *cellcontainer.P
 	if policy != nil || c.Env.Get("CELL_PROVIDER") != "" {
 		die("native containers do not accept host model policies or providers")
 	}
-	cfg, err := cellcontainer.Load(c.Env.Get("CELL_CONTAINER_CONFIG"))
-	if err != nil {
-		die("container config: %v", err)
-	}
+	cfg := c.nativeContainerConfig()
 	key, err := cfg.RoleKey(c.Name, role)
 	if err != nil {
 		die("%v", err)
@@ -37,102 +44,132 @@ func (c *Cell) nativeContainerPlan(role, harness, model string) *cellcontainer.P
 	}
 	return p
 }
-func (c *Cell) nativeContainerPlans() []*cellcontainer.Plan {
-	var plans []*cellcontainer.Plan
-	for _, role := range c.Roles {
-		rm := c.resolveRoleModel(role, c.Harness)
-		if !rm.OK {
-			die("%s", rm.Src)
-		}
-		plans = append(plans, c.nativeContainerPlan(role, c.Harness, rm.Model))
-	}
-	return plans
-}
 func (c *Cell) nativeContainer(args ...string) {
-	verb := args[0]
-	var plans []*cellcontainer.Plan
-	if verb == "desk" {
+	switch verb := args[0]; verb {
+	case "desk":
 		if len(args) != 6 || args[2] != "--harness" || args[4] != "--model" {
 			die("invalid native container desk arguments")
 		}
-		plans = []*cellcontainer.Plan{c.nativeContainerPlan(args[1], args[3], args[5])}
-	} else {
-		plans = c.nativeContainerPlans()
-	}
-	for _, p := range plans {
+		p := c.nativeContainerPlan(args[1], args[3], args[5])
 		if c.Env.Get("DRY_RUN") == "1" {
 			fmt.Printf("[dry-run] native container %s target=%s name=%s harness=%s model=%s\n", verb, p.Host, p.Name, p.Harness, p.Model)
-			if verb == "desk" {
-				for _, a := range append([]string{"docker", "--host", p.Host}, p.RunArgs()...) {
-					fmt.Printf("%s ", bashQuote(a))
-				}
-				fmt.Println()
+			for _, a := range append([]string{"docker", "--host", p.Host}, p.RunArgs()...) {
+				fmt.Printf("%s ", bashQuote(a))
 			}
-			continue
+			fmt.Println()
+			return
 		}
 		fmt.Printf("[container] %s target=%s name=%s\n", verb, p.Host, p.Name)
-		e := cellcontainer.Docker(p.Host)
-		switch verb {
-		case "desk":
-			c.nativeContainerUp(p, args[1])
-		case "check":
-			if err := e.Check(p); err != nil {
-				die("container check: %v", err)
+		c.nativeContainerUp(p, args[1])
+	case "check":
+		// check is the preflight for up, so it plans from the registered pins.
+		var failed []string
+		for _, role := range c.Roles {
+			rm := c.resolveRoleModel(role, c.Harness)
+			if !rm.OK {
+				die("%s", rm.Src)
 			}
-			fmt.Printf("[check] %s ready (no model or forge calls)\n", p.Name)
-		case "status":
-			s, err := e.Inspect(p)
-			if err != nil {
-				die("container status: %v", err)
-			}
-			if s == nil {
-				fmt.Printf("%s: stopped\n", p.Name)
+			p := c.nativeContainerPlan(role, c.Harness, rm.Model)
+			if c.Env.Get("DRY_RUN") == "1" {
+				fmt.Printf("[dry-run] native container %s target=%s name=%s harness=%s model=%s\n", verb, p.Host, p.Name, p.Harness, p.Model)
 				continue
 			}
-			if err = p.Validate(s); err != nil {
-				die("container status: %v", err)
+			fmt.Printf("[container] %s target=%s name=%s\n", verb, p.Host, p.Name)
+			if err := nativeEngine(p.Host).Check(p); err != nil {
+				fmt.Fprintf(os.Stderr, "cellctl: container check: %v\n", err)
+				failed = append(failed, p.Name)
+				continue
 			}
-			fmt.Printf("%s: %s (%s)\n", p.Name, s.State.Status, s.ID)
-		case "down":
-			s, err := e.Inspect(p)
-			if err != nil {
-				die("container down: %v", err)
-			}
-			if s != nil {
-				if err = p.Validate(s); err != nil {
-					die("container down: %v", err)
-				}
-				if _, err = e.Output("stop", s.ID); err != nil {
-					die("container down: %v", err)
-				}
-			}
-			// Stop the verified container before removing its console. Volumes are never removed.
-			socket, session := c.nativeConsole(p)
-			if isSocket(socket) {
-				out, err := exec.Command("tmux", "-S", socket, "kill-session", "-t", session).CombinedOutput()
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "[container] console cleanup: %s\n", strings.TrimSpace(string(out)))
-				}
-			}
-			fmt.Printf("%s: stopped; workspace volume retained\n", p.Name)
-		default:
-			die("unsupported native container operation %s", verb)
+			fmt.Printf("[check] %s ready (no model or forge calls)\n", p.Name)
 		}
+		if len(failed) > 0 {
+			die("container check failed for %s", strings.Join(failed, ", "))
+		}
+	case "status", "down":
+		c.nativeLifecycle(verb)
+	default:
+		die("unsupported native container operation %s", verb)
 	}
 }
-func (c *Cell) nativeConsole(p *cellcontainer.Plan) (string, string) {
-	return filepath.Join(c.Dir, "run", "container.sock"), c.Name + "-" + p.RoleKey
+
+// nativeLifecycle reports or stops what is actually running for every enabled role. Each
+// container is validated against the harness and model it was launched with, so a per-launch
+// override never strands it, and a refusal for one role never skips the others.
+func (c *Cell) nativeLifecycle(verb string) {
+	cfg := c.nativeContainerConfig()
+	var failed []string
+	for _, role := range c.Roles {
+		key, err := cfg.RoleKey(c.Name, role)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cellctl: container %s: %v\n", verb, err)
+			failed = append(failed, role)
+			continue
+		}
+		name := cellcontainer.ContainerName(c.Name, key)
+		if c.Env.Get("DRY_RUN") == "1" {
+			fmt.Printf("[dry-run] native container %s target=%s name=%s\n", verb, cfg.DockerHost, name)
+			continue
+		}
+		fmt.Printf("[container] %s target=%s name=%s\n", verb, cfg.DockerHost, name)
+		if err = c.nativeLifecycleRole(nativeEngine(cfg.DockerHost), cfg, verb, key); err != nil {
+			fmt.Fprintf(os.Stderr, "cellctl: container %s: %v\n", verb, err)
+			failed = append(failed, name)
+		}
+	}
+	if len(failed) > 0 {
+		die("container %s refused for %s", verb, strings.Join(failed, ", "))
+	}
+}
+func (c *Cell) nativeLifecycleRole(e cellcontainer.Engine, cfg *cellcontainer.Config, verb, key string) error {
+	name := cellcontainer.ContainerName(c.Name, key)
+	p, s, err := cfg.Running(e, c.Name, key)
+	if err != nil {
+		return err
+	}
+	if verb == "status" {
+		if s == nil {
+			fmt.Printf("%s: stopped\n", name)
+		} else {
+			fmt.Printf("%s: %s (%s) harness=%s model=%s\n", name, s.State.Status, s.ID, p.Harness, p.Model)
+		}
+		return nil
+	}
+	// Stop the verified container before removing its console. Volumes are never removed.
+	if s != nil {
+		if _, err = e.Output("stop", s.ID); err != nil {
+			return err
+		}
+	}
+	socket, session := c.nativeConsole(key)
+	if isSocket(socket) {
+		out, err := exec.Command("tmux", "-S", socket, "kill-session", "-t", session).CombinedOutput()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[container] console cleanup: %s\n", strings.TrimSpace(string(out)))
+		}
+	}
+	fmt.Printf("%s: stopped; workspace volume retained\n", name)
+	return nil
+}
+func (c *Cell) nativeConsole(key string) (string, string) {
+	return filepath.Join(c.Dir, "run", "container.sock"), c.Name + "-" + key
+}
+
+// nativeConsoleArgv is the runner command for tmux. It is passed as separate arguments, so tmux
+// executes it directly and no shell (the operator's default-shell included) parses a value.
+func (c *Cell) nativeConsoleArgv(p *cellcontainer.Plan, role string) []string {
+	// The runner gets the same cell root even when the tmux server was started elsewhere.
+	return []string{"env", "CELLS_ROOT=" + filepath.Dir(c.Dir), selfPath(), "container-run", c.Name, role, p.Harness, p.Model}
 }
 func (c *Cell) nativeContainerUp(p *cellcontainer.Plan, role string) {
 	if !onPath("tmux") {
 		die("native container console requires tmux")
 	}
-	e := cellcontainer.Docker(p.Host)
+	e := nativeEngine(p.Host)
 	// Do all fallible state checks in the visible caller as well as in the runner.
 	if err := e.Check(p); err != nil {
 		die("container preflight: %v", err)
 	}
-	socket, session := c.nativeConsole(p)
+	socket, session := c.nativeConsole(p.RoleKey)
 	mustMkdirAll(filepath.Dir(socket))
 	// Serialize console creation independently of the long-lived host/session lock.
 	lock := containerLock(filepath.Join(c.Dir, "run", "console.lock"))
@@ -151,12 +188,6 @@ func (c *Cell) nativeContainerUp(p *cellcontainer.Plan, role string) {
 		} else if isSocket(socket) && !strings.Contains(string(state), "no server running") && !strings.Contains(string(state), "can't find") && !strings.Contains(string(state), "no sessions") && !strings.Contains(string(state), "No such file") {
 			die("inspect container console: %s", strings.TrimSpace(string(state)))
 		}
-		argv := []string{selfPath(), "container-run", c.Name, role, p.Harness, p.Model}
-		// The runner gets the same cell root even when the tmux server was started elsewhere.
-		command := "env CELLS_ROOT=" + bashQuote(filepath.Dir(c.Dir)) + " "
-		for _, a := range argv {
-			command += bashQuote(a) + " "
-		}
 		// Start a waiting pane first: remain-on-exit is installed before its process can fail.
 		if out, err := tmux("new-session", "-d", "-s", session, "-c", c.Dir, "sleep 86400"); err != nil {
 			die("create container console: %s", out)
@@ -164,7 +195,7 @@ func (c *Cell) nativeContainerUp(p *cellcontainer.Plan, role string) {
 		if out, err := tmux("set-option", "-w", "-t", session, "remain-on-exit", "on"); err != nil {
 			die("retain container errors: %s", out)
 		}
-		if out, err := tmux("respawn-pane", "-k", "-t", session, command); err != nil {
+		if out, err := tmux(append([]string{"respawn-pane", "-k", "-t", session}, c.nativeConsoleArgv(p, role)...)...); err != nil {
 			die("start container console: %s", out)
 		}
 	}
@@ -209,7 +240,7 @@ func cmdContainerRun(args []string) {
 	lock := containerLock(path)
 	defer lock.Close()
 	fmt.Printf("[container] run target=%s name=%s\n", p.Host, p.Name)
-	if err := cellcontainer.Docker(p.Host).Run(p); err != nil {
+	if err := nativeEngine(p.Host).Run(p); err != nil {
 		die("container run: %v", err)
 	}
 }

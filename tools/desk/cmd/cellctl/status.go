@@ -35,7 +35,8 @@ func cmdLs() {
 // error.
 func cmdStatus(cell string) {
 	c := loadCell(cell)
-	if c.Kind == "container" {
+	// Only the native runtime answers status; the external launcher contract has no status verb.
+	if c.Kind == "container" && c.Env.Get("CELL_CONTAINER_CONFIG") != "" {
 		c.containerRun("status")
 		return
 	}
