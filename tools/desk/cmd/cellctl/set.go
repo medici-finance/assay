@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -170,7 +171,12 @@ func validateKindChange(envfile, kind string, kvs []string) {
 	if v == "" {
 		die("set: CELL_KIND=%s needs %s, which is neither set in %s nor given in this call — a %s cell cannot load without it (set both in one call, or %s first); nothing written", kind, need, envfile, kind, need)
 	}
-	if kind == "container" && (!strings.HasPrefix(v, "/") || !isExecFile(v)) {
+	if kind == "container" {
+		if err := cellPathCheck(runtime.GOOS, v); err != nil {
+			die("set: container launcher: %v; nothing written", err)
+		}
+	}
+	if kind == "container" && !isExecFile(v) {
 		die("set: CELL_KIND=container needs an absolute executable CELL_CONTAINER_LAUNCHER, got '%s'; nothing written", v)
 	}
 }
