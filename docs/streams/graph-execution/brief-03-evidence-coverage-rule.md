@@ -431,6 +431,79 @@ RISK-VALUE: DERIVED — hexRevisionRe = `^[0-9a-fA-F]{12,40}$` @ statusgen/cover
 RISK-VALUE: DERIVED — coverageExitOK = 0 / coverageExitCouldNot = 2 @ statusgen/coverage.go:1273-1274 — taken verbatim from Task item 5, and a missing root was observed to exit 2.
 
 VERIFY: PASS
+### Post-merge re-verification with execution witness — 2026-10-01 (verify-desk, independent of the implementer)
+
+What moved since the last run: nothing in the Verify table and nothing in the delivered code. The previous block ran at 4b1f8fc8bfaf by hand. This pass ran at f5827b497467, the main tip. Between the squash merge 909101d1aa20 and this tip, the files this brief delivered (coverage.go, autoflip.go, lifecycle.go, verifyrun.go, brieffile.go, patterns.go, the pattern schema and the spec directory) are byte-identical, and the brief file gained Evidence lines only. What is new here is the `statusgen verifyrun` execution witness on Linux with the network off, which the earlier passes could not produce on a darwin host.
+
+Setup for the witness: a full local clone pinned to f5827b497467 with its remote-tracking main at the same commit and `git status --porcelain` empty before the run; a golang:1.25-bookworm container (go1.25.14 linux/arm64) started with `--network none`, so the only interface was loopback; GOPROXY=off, GOTOOLCHAIN=local, a read-only module cache; `statusgen` built inside the container from that same tree and put on PATH. `statusgen verifyrun --brief <this brief>` then ran all 14 rows. The check:ci rows ran under the tool's own `unshare --net --map-root-user` wrapper; the plain check rows (6, 7, 9, 10) ran in the same network-off container. The table below is the tool's output, verbatim. Two earlier container attempts were discarded before this one because of my own setup faults (a stray GOFLAGS value, then a clone whose remote-tracking main pointed at an older commit, which changed what rows 9 and 10 compared against); neither is recorded here.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test -run TestCoverage ./...` | pass exit=0 | sha256:29903827e0ce | 2026-10-01 | assay-verifier-app[bot] @ f5827b497467 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && go test -run TestCoverageWrongRevisionHolds ./...` | pass exit=0 | sha256:b76956e68534 | 2026-10-01 | assay-verifier-app[bot] @ f5827b497467 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test -run TestCoverageCouldNotCheckIsNotPass ./...` | pass exit=0 | sha256:28ee1419f776 | 2026-10-01 | assay-verifier-app[bot] @ f5827b497467 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test -run TestAutoFlipRefusesUnreleasedCoverage ./...` | pass exit=0 | sha256:2ef712a496ea | 2026-10-01 | assay-verifier-app[bot] @ f5827b497467 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && go test -run TestCoverageJoinRequiresIntegrationRow ./...` | pass exit=0 | sha256:1814891b1ed9 | 2026-10-01 | assay-verifier-app[bot] @ f5827b497467 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --coverage --json --root . > /tmp/ge03.json; python3 -c 'import json;d=json.load(open("/tmp/ge03.json"));print(sorted({c["result"] for b in d for c in b["claims"]}))'` | pass exit=0 | sha256:73af7c13fa8d | 2026-10-01 | assay-verifier-app[bot] @ f5827b497467 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -c 'observe' spec/workflow-pattern-v1.md schemas/workflow-pattern-v1.json spec/lifecycle-v1.md` | pass exit=0 | sha256:38af6536faaa | 2026-10-01 | assay-verifier-app[bot] @ f5827b497467 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && go test -run TestAutoFlipNoOverride ./... && go test -run TestEvidenceActor ./...` | pass exit=0 | sha256:65bc53a7610c | 2026-10-01 | assay-verifier-app[bot] @ f5827b497467 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --lint; echo rc=$?` | pass exit=0 | sha256:5410b8aa3322 | 2026-10-01 | assay-verifier-app[bot] @ f5827b497467 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --consumers --brief graph-execution/03 --root .; echo rc=$?` | fail exit=0 | sha256:d4d4c35249df | 2026-10-01 | assay-verifier-app[bot] @ f5827b497467 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd statusgen && go test -count=1 -v -run TestCoverageAdviceCannotSupplyWitness ./...` | pass exit=0 | sha256:b11ba71130e9 | 2026-10-01 | assay-verifier-app[bot] @ f5827b497467 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd statusgen && go test -count=1 -v -run TestCoverageAcceptanceDigestChanged ./...` | pass exit=0 | sha256:b8d61c8b96be | 2026-10-01 | assay-verifier-app[bot] @ f5827b497467 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCoveragePolicyDependencyChanged.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoveragePolicyDependencyChanged$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCoveragePolicyDependencyChanged " "$wi_out")` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-01 | assay-verifier-app[bot] @ f5827b497467 (on-behalf-of human:ian) (forge-identity) |
+| 14 | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCoverageReuseDoesNotRetargetPass.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoverageReuseDoesNotRetargetPass$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCoverageReuseDoesNotRetargetPass " "$wi_out")` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-01 | assay-verifier-app[bot] @ f5827b497467 (on-behalf-of human:ian) (forge-identity) |
+
+`statusgen verifyrun --check` on the same tree: 13 pass, 1 fail, 0 could-not-run or missing (of 14 Verify rows); exit 1. `statusgen --coverage` on the same tree: `graph-execution/03 held 14 Verify row #10: ... the witness records a failure`.
+
+Hand run on the host (darwin/arm64, go1.27.1), in a clean detached worktree at f5827b497467, with `statusgen` built from that tree first on PATH. A combined verbose run of every named test (`cd statusgen && go test -count=1 -v -run 'TestCoverage|TestAutoFlip(Refuses|NoOverride)|TestEvidenceActor' ./...`) exited 0 with 53 top-level PASS lines, 0 FAIL lines and 0 SKIP lines.
+
+| # | Command | Exit | Result | Date | Runner |
+|---|---------|------|--------|------|--------|
+| 1 | `cd statusgen && go test -run TestCoverage ./...` | 0 | pass. `ok github.com/medici-finance/assay/statusgen 19.970s`. Witness: pass, network-off. | 2026-10-01 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | `cd statusgen && go test -run TestCoverageWrongRevisionHolds ./...` | 0 | pass. `ok ... 0.254s`; the verbose run shows the named test PASS (0.01s). Witness: pass, network-off. | 2026-10-01 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | `cd statusgen && go test -run TestCoverageCouldNotCheckIsNotPass ./...` | 0 | pass. `ok ... 0.242s`; the verbose run shows the named test PASS (0.01s). Witness: pass, network-off. | 2026-10-01 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | `cd statusgen && go test -run TestAutoFlipRefusesUnreleasedCoverage ./...` | 0 | pass. `ok ... 0.317s`; the verbose run shows the named test PASS (0.15s). Witness: pass, network-off. | 2026-10-01 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | `cd statusgen && go test -run TestCoverageJoinRequiresIntegrationRow ./...` | 0 | pass. `ok ... 0.459s`; the verbose run shows the named test PASS (0.17s). Witness: pass, network-off. | 2026-10-01 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | `statusgen --coverage --json --root . > /tmp/ge03.json; python3 -c 'import json;d=json.load(open("/tmp/ge03.json"));print(sorted({c["result"] for b in d for c in b["claims"]}))'` | 0 | pass. Printed `['could-not-check', 'error', 'fail', 'missing', 'wrong-revision']`, a subset of the six results; the container printed the same set. Witness: pass on exit status only (the tool says the Expect cell is not machine-decidable), so the printed set here is the content check. | 2026-10-01 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | `grep -c 'observe' spec/workflow-pattern-v1.md schemas/workflow-pattern-v1.json spec/lifecycle-v1.md` | 0 | pass. Counts 9, 5 and 2. Witness: pass; its output hash equals the one the implementer's pre-merge witness recorded. | 2026-10-01 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | `cd statusgen && go test -run TestAutoFlipNoOverride ./... && go test -run TestEvidenceActor ./...` | 0 | pass. Both invocations printed `ok` (0.165s and 1.312s); the verbose run shows the no-override test PASS. Witness: pass, network-off. | 2026-10-01 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | `statusgen --root . --lint; echo rc=$?` | 0 | pass. Printed `LINT: PASS` and `rc=0` on the host and in the container. Witness: pass on exit status only; see the row 9 note below. | 2026-10-01 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | `statusgen --consumers --brief graph-execution/03 --root .; echo rc=$?` | 0 | could-not-check, not a pass. Printed `COULD-NOT-CHECK: ... is not in the diff against f5827b497467...` and `rc=2`, on the host and in the container. That is the merged-main outcome the Expect cell says must never be recorded as pass. Witness: fail, `exit 0, expected 2`. See the row 10 note below. | 2026-10-01 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | `cd statusgen && go test -count=1 -v -run TestCoverageAdviceCannotSupplyWitness ./...` | 0 | pass. The named test's `--- PASS` line (0.01s), then `ok ... 0.193s`. Witness: pass, network-off. | 2026-10-01 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 12 | `cd statusgen && go test -count=1 -v -run TestCoverageAcceptanceDigestChanged ./...` | 0 | pass. The named test's `--- PASS` line (0.01s), then `ok ... 0.180s`. Witness: pass, network-off. | 2026-10-01 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 13 | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCoveragePolicyDependencyChanged.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoveragePolicyDependencyChanged$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCoveragePolicyDependencyChanged " "$wi_out")` | 0 | pass. Exit 0 means the grep found the named PASS line; the verbose run shows the same test PASS (0.39s). Witness: pass, network-off (the row prints nothing, so its hash is that of empty output). | 2026-10-01 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 14 | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCoverageReuseDoesNotRetargetPass.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoverageReuseDoesNotRetargetPass$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCoverageReuseDoesNotRetargetPass " "$wi_out")` | 0 | pass. Exit 0 means the grep found the named PASS line; the verbose run shows the same test PASS (0.30s). Witness: pass, network-off (empty-output hash, as row 13). | 2026-10-01 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+**Row 10 is a check-definition defect as authored, and it holds this brief.** The row cannot produce a passing witness on any tree:
+- The command ends in `; echo rc=$?`, so the shell always exits 0.
+- The Expect cell contains the unquoted words "exit 2". The witness tool reads the first unquoted exit number as the required process exit, so it requires exit 2 and records `fail exit=0` every time. The implementer's pre-merge witness shows the same `fail exit=0` on the authoring branch, where the command printed `rc=0`.
+- On merged main the command prints `rc=2`, which the Expect cell itself classes as could-not-check and never pass.
+
+The previous block counted this row as passing through a corrected form (10b). That form is not the row as authored, so this pass does not count it. For the record, the corrected form still behaves as before: `statusgen --consumers --brief graph-execution/03 --root . --base 909101d1a^; echo rc=$?` prints `summary: 4 corroborated, 0 disproved, 2 unchecked` and `rc=0`. No consumers entry is disproved; the defect is in the row, not in the delivered code. Releasing this brief needs the Verify row amended by its author so that the merged-main form is the one checked (for example the `--base` form with an Expect written as output is `rc=0`), then a fresh witness.
+
+**Row 9 note (weak check, not a failure).** The Expect cell is a bare backticked `rc=0`, which the witness tool cannot decide, and the trailing echo makes the shell exit 0 whatever the lint prints. A passing witness for row 9 therefore does not show that the lint passed. I saw this directly: in a discarded container attempt the lint printed `LINT: FAIL` and `rc=1` (caused by my stale clone ref, not by main) and the witness still recorded `pass exit=0`. On the correct tree the lint prints `LINT: PASS` and `rc=0`. Writing the Expect as output is `rc=0` would make the witness check it.
+
+**Mutation rows (2, 3, 4, 11, 12, 13).** I did not repeat the mutations. The implementer's mutation tables above record each mutant killed; this pass confirms the named guards pass on merged main.
+
+**Gating.** With this witness landed, coverage for this brief has 13 claims at `pass` at f5827b497467 and one at `fail` (row 10), so the brief stays held and the model-lane flip would refuse it, naming row 10. At f5827b497467 `statusgen --coverage` holds all 311 briefs in the corpus; a missing root exits 2.
+
+**Risk-bearing values.** The risk fields are all `no` and the gate is `model`. The delivered files are unchanged since the previous block, so the enumeration is the same, re-read at f5827b497467:
+- `hexRevisionRe = ^[0-9a-fA-F]{12,40}$` @ statusgen/coverage.go:679
+- `minRevisionTokenLen = treeSHALen` @ statusgen/coverage.go:665, with `treeSHALen = 12` @ statusgen/verifyrun.go:150
+- `coverageExitOK = 0`, `coverageExitCouldNot = 2` @ statusgen/coverage.go:1273-1274
+- `coverageResultOrder` fail 0 / missing 1 / error 2 / wrong-revision 3 / could-not-check 4 / pass 5 @ statusgen/coverage.go:249-256
+- `witnessCellRunner = 5` @ statusgen/verifyrun.go:284
+- the schema adds string fields only and no numeric bound
+
+None is irreversible: a wrong value mis-gates a board flip and an edit plus a re-release undoes it. The revision-token shape ranks first because a wrong bound there fails open. The result order and the Runner cell index only pick a display reason and a column.
+
+RISK-VALUE: DERIVED — hexRevisionRe = `^[0-9a-fA-F]{12,40}$` @ statusgen/coverage.go:679 — the lower bound 12 is treeSHALen (statusgen/verifyrun.go:150), the exact token length verifyrun writes (the witness above carries the 12-character token f5827b497467), so no shorter prefix can match by coincidence; the upper bound 40 is a full SHA-1 hex name, the longest git emits in a SHA-1 repository; hex-only rejects symbolic revisions that would never go stale; a 64-hex SHA-256 name is rejected and resolves could-not-check, which fails closed.
+RISK-VALUE: DERIVED — coverageExitOK = 0 / coverageExitCouldNot = 2 @ statusgen/coverage.go:1273-1274 — taken from Task item 5 ("Exit 0; exit 2 on an unreadable tree"); a root that does not exist was observed to exit 2 and the real tree to exit 0.
+
+rows_passed=13 rows_total=14 (row 10: witness fail, could-not-check by its own Expect on merged main; a check-definition defect, no implementation defect observed)
+
+VERIFY: BLOCKED — 13 of 14 rows pass with a network-off Linux execution witness at f5827b497467; row 10 cannot pass as authored and needs a Verify-table amendment by the author before this brief can be released. Held at implemented.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
