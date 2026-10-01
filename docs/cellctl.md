@@ -1276,26 +1276,66 @@ console runs Go `cellctl container-run`, which rechecks identity and attaches wi
 the configured container. Repeated matching model/harness arguments reconnect;
 changed values refuse and require an explicit restart. Inspection failures are
 errors, never evidence that a container is absent. Failed runners retain their
-pane and diagnostic output until the next explicit `up` attempt.
+pane and diagnostic output until the next explicit `up` attempt. The console's
+runner command reaches tmux as separate arguments, so no shell (including the
+operator's default shell) parses the model or any other value. Model pins with
+control characters are refused when the deployment is loaded and when a launch is
+planned.
 
-Runtime checks cover ownership labels, image, role/repository environment, model,
-mount sources and permissions, non-root user, read-only root, dropped capabilities,
-no-new-privileges, resource limits and the dedicated network. Only an explicitly
-configured local Unix Docker socket is supported. `check` performs file and local
-Docker metadata checks without launching a model, minting tokens, creating networks
-or contacting a forge. `DRY_RUN=1` makes no Docker calls. `down` stops only the
-verified container before closing its console; it never removes workspace volumes.
-The host user and Docker administrator remain outside this isolation boundary.
+Runtime checks compare the inspected container with the plan, each refusal naming
+the one setting that differs: name and immutable image ID, ownership labels (an
+`adopt_container_id` admits only an unlabelled container), every planned
+environment value, no environment beyond the plan and the image's own defaults,
+entrypoint (must be the image's) and arguments, user, terminal settings, read-only
+root, privilege, added and dropped capabilities, devices, bind mounts outside the
+plan, added groups, published ports, process/memory/CPU limits, process, IPC and
+user namespace modes, no-new-privileges, the `/tmp` tmpfs, the dedicated network
+and every mount's source, target and mode. Only an explicitly configured local Unix
+Docker socket is supported. `check` performs file and local Docker metadata checks
+for every registered role, reporting all failures together, without launching a
+model, minting tokens, creating networks or contacting a forge. `DRY_RUN=1` makes
+no Docker calls.
+
+`status` and `down` act on what is running. They read the harness and model a
+container was launched with (so a `desk --harness/--model` override is reported
+and stopped) and still apply every other runtime check before reporting or
+stopping it. One role's refusal never skips the remaining roles; the command
+exits nonzero after all roles were handled, naming each refused one. `down` stops
+only verified containers before closing their consoles and never removes
+workspace volumes. `status` is a native-runtime verb; the external launcher
+contract below has none. The host user and Docker administrator remain outside
+this isolation boundary.
+
+These runtime settings are fixed, not configurable: user `501:501` (the image must
+work for that UID), 256 processes, 4 GiB memory, 2 CPUs, a `/tmp` tmpfs of 512 MiB
+(`rw,nosuid,nodev,mode=1777`), read-only root, all capabilities dropped and
+no-new-privileges. `platform` defaults to `linux/amd64`.
+
+The per-cell network `assay-product-<cell>` is a naming and attachment boundary,
+**not** an egress or host-isolation boundary: containers keep outbound network
+access and whatever the Docker host routes to them. `cellctl` creates the network
+with the label `assay.product-cell=<cell>` and refuses an existing network of that
+name without that label.
+
+Directory mounts (`incoming` and each role's `config`) are validated against
+protected paths: none may be the host root `/`, and none may equal or contain a
+configured credential (any role's `app_key` or `claude_token`) or the Docker
+socket (the configured one and the standard locations). The check runs on the
+configured paths when the deployment is loaded and again on symlink-resolved paths
+before launch.
 
 A cell can optionally set `host_lock` to an absolute advisory lock file shared
-with a previous host launcher. The Go runner holds it for its console lifetime
-and refuses a held or unreadable lock. Retire the old host launcher during migration:
+with a previous host launcher. It is honoured for the `desk` role only: the Go
+runner holds it for that console's lifetime and refuses a held or unreadable lock.
+Other roles never take it. Retire the old host launcher during migration:
 a host-only file lock cannot establish mutual exclusion after its owning console
 process has died while Docker continues running.
 
 For Claude, supply `claude_token` as a private regular file. `codex_sandbox` defaults
 to `workspace-write`; `container` requires a nonempty
-`container_boundary_approved_by` record. The selected image must enforce those
+`container_boundary_approved_by` record. That field only records who accepted the
+container as the sole boundary; `cellctl` verifies nothing about the decision or
+the person beyond the value being present. The selected image must enforce those
 settings. Credentials are mounted read-only; they are never copied to the workspace
 or supplied as command-line token values.
 
@@ -1353,6 +1393,7 @@ it directly as an argument vector, never as a shell command string:
 | `desk sample the-desk` | `desk the-desk --harness claude --model <resolved-pin>` |
 | `up sample` | The same coordinator launch as `desk sample the-desk` |
 | `down sample` | `down` |
+| `status sample` | Not part of this contract: refuses without invoking the launcher |
 
 The default role list is `the-desk`. This first integration supports `up` only
 when that is the sole configured role. For additional roles, register them with
