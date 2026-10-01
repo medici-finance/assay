@@ -595,6 +595,7 @@ func cmdNew(args []string) (err error) {
 		"rate is spent (escape hatch; requires --reason). Distinct from --force-new, which bypasses dedupe; "+
 		"--force-file does NOT weaken dedupe and does NOT reset the rate count (the filing is still audited and charged).")
 	reason := fs.String("reason", "", "stated reason for --force-new / --force-file (required with either)")
+	applyOverride, _ := deskkit.RegisterOutboundOverride(fs, "deskfile", "new")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -603,6 +604,9 @@ func cmdNew(args []string) (err error) {
 			return deskkit.ErrHelpRequested
 		}
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
+	}
+	if oerr := applyOverride(); oerr != nil {
+		return oerr
 	}
 	if fs.NArg() != 0 {
 		return deskkit.Refused("refused: unexpected extra arguments")
@@ -721,10 +725,13 @@ func cmdNew(args []string) (err error) {
 		}
 		body = b
 	}
-	if serr := deskkit.ScanSurface("issue body", body); serr != nil {
-		return serr
-	}
-	if serr := deskkit.ScanSurface("issue title", []byte(*title)); serr != nil {
+	// The outbound-write check (desktools-v2/10) — credentials, the impersonation guard,
+	// personal data and, for a public or unknown-visibility target, self-containment and the
+	// withheld register. It runs HERE, before the dedupe search and any budget is spent, as
+	// a pre-flight; the checked Forge runs the same check again at FileIssue, which is the
+	// guarantee (a refused write never reaches the backend whatever this verb does).
+	if serr := deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: *repo, Kind: deskkit.OutboundKindIssue,
+		Fields: []deskkit.OutboundField{{Name: "title", Text: *title}, {Name: "body", Text: string(body)}}}); serr != nil {
 		return serr
 	}
 	ac.bodyDigest = deskkit.Sha256Hex(body)
@@ -858,6 +865,11 @@ func cmdNew(args []string) (err error) {
 	// carry the marker too. See createSentMarker.
 	ac.createSent = true
 	ref, cerr := fg.FileIssue(fr, deskkit.IssueInput{Title: *title, Body: string(fileBody)})
+	if cerr != nil && deskkit.IsRefused(cerr) {
+		// The checked Forge refused before any request: nothing was sent, nothing to charge.
+		ac.createSent = false
+		return cerr
+	}
 	if cerr != nil {
 		return deskkit.Unverifiable("file issue failed", cerr)
 	}
@@ -932,6 +944,7 @@ func cmdAttach(args []string) (err error) {
 	to := fs.Int("to", 0, "target issue number (required)")
 	bodyFile := fs.String("body-file", "", "path to a file containing the comment body (required)")
 	kindFlag := fs.String("kind", "issue", "which object --to names: issue (default) or mr (pr is an alias)")
+	applyAttachOverride, _ := deskkit.RegisterOutboundOverride(fs, "deskfile", "attach")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -940,6 +953,9 @@ func cmdAttach(args []string) (err error) {
 			return deskkit.ErrHelpRequested
 		}
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
+	}
+	if oerr := applyAttachOverride(); oerr != nil {
+		return oerr
 	}
 	kind, kerr := deskkit.ParseTargetKind(*kindFlag)
 	if kerr != nil {
@@ -976,7 +992,9 @@ func cmdAttach(args []string) (err error) {
 	if berr != nil {
 		return berr
 	}
-	if serr := deskkit.ScanSurface("comment body", body); serr != nil {
+	// Pre-flight of the outbound-write check (see cmdNew); PostComment re-runs it at the seam.
+	if serr := deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: *repo, Kind: deskkit.OutboundKindComment, NumberHint: *to,
+		Fields: []deskkit.OutboundField{{Name: "body", Text: string(body)}}}); serr != nil {
 		return serr
 	}
 	ac.bodyDigest = deskkit.Sha256Hex(body)

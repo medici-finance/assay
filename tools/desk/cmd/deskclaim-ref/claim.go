@@ -181,6 +181,7 @@ func dashOrValue(s string) string {
 
 // --- verbs ------------------------------------------------------------------
 
+// semantic: S-claim
 func cmdAcquire(id, owner, branch string) int {
 	switch store.CreateIfAbsent(id, claimMessage(id, owner, "claimed", branch, "")) {
 	case deskkit.ClaimWriteApplied:

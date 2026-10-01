@@ -71,18 +71,11 @@ func cmdLiveness(args []string) error {
 		return deskkit.Unverifiable("liveness: cannot resolve a Forge for "+*repo, ferr)
 	}
 
-	var (
-		fetcher    deskkit.AccountFetcher
-		identities []deskkit.RosterIdentity
-	)
-	switch forge := f.(type) {
-	case *deskkit.GitHubForge:
-		fetcher = &deskkit.HTTPAccountFetcher{Token: forge.Token, BaseURL: forge.BaseURL, Client: forge.Client}
-		identities = deskkit.RosterIdentities(cfg)
-	case *deskkit.GitLabForge:
-		fetcher = &deskkit.HTTPGitLabAccountFetcher{Token: forge.Token, BaseURL: forge.BaseURL, Client: forge.Client}
-		identities = deskkit.GitLabRosterIdentities(cfg)
-	default:
+	// The backend-specific fetcher is resolved INSIDE deskkit (ForgeAccountFetcher): no cmd
+	// package type-asserts a Forge back to a backend type (forgeban, desktools-v2/10), since
+	// the Forge a verb holds is the outbound-checked decorator.
+	fetcher, identities, ok := deskkit.ForgeAccountFetcher(f, cfg)
+	if !ok {
 		fmt.Println("NOTICE: could-not-check — " + *repo + " is served by a forge account-liveness has no " +
 			"implementation for (neither GitHub nor GitLab)")
 		fmt.Fprintln(os.Stderr, "liveness: 0 identities checked (unrecognised forge), 1 notice")

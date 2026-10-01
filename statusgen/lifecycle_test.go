@@ -79,7 +79,7 @@ func TestLifecycleCellVerified(t *testing.T) {
 	got := deriveSingle(t, BriefIdent{ID: "s/01", Gate: "model", Version: 1},
 		LifecycleInput{LookedAt: true,
 			PRs:       []PRRecord{{BriefRef: "s/01", Number: 67, State: prMerged, MergeSHA: "deadbeef111"}},
-			Witnesses: map[string]WitnessInfo{"s/01": {Passed: true, Version: 1}},
+			Witnesses: map[string]WitnessInfo{"s/01": {Passed: true, Released: true, Version: 1}},
 		})
 	if got.Cell != "verified" {
 		t.Fatalf("want verified, got %q", got.Cell)
@@ -93,7 +93,7 @@ func TestLifecycleCellDone(t *testing.T) {
 	got := deriveSingle(t, BriefIdent{ID: "s/01", Gate: "model", Version: 1},
 		LifecycleInput{LookedAt: true,
 			PRs:       []PRRecord{{BriefRef: "s/01", Number: 67, State: prMerged, MergeSHA: "deadbeef111"}},
-			Witnesses: map[string]WitnessInfo{"s/01": {Passed: true, Version: 1}},
+			Witnesses: map[string]WitnessInfo{"s/01": {Passed: true, Released: true, Version: 1}},
 			Approvals: map[string]ApprovalInfo{"s/01": {Approved: true, AtHead: true}},
 		})
 	if got.Cell != "done" {
@@ -103,7 +103,7 @@ func TestLifecycleCellDone(t *testing.T) {
 	human := deriveSingle(t, BriefIdent{ID: "h/02", Gate: "human", Version: 1},
 		LifecycleInput{LookedAt: true,
 			PRs:       []PRRecord{{BriefRef: "h/02", Number: 8, State: prMerged, MergeSHA: "cafef00d222"}},
-			Witnesses: map[string]WitnessInfo{"h/02": {Passed: true, Version: 1}},
+			Witnesses: map[string]WitnessInfo{"h/02": {Passed: true, Released: true, Version: 1}},
 			Rulings:   map[string]bool{"h/02": true},
 		})
 	if human.Cell != "done" {
@@ -177,7 +177,7 @@ func TestLifecycleDemotionDismissedApproval(t *testing.T) {
 	got := deriveSingle(t, BriefIdent{ID: "s/01", Gate: "model", Version: 1},
 		LifecycleInput{LookedAt: true,
 			PRs:       []PRRecord{{BriefRef: "s/01", Number: 67, State: prMerged, MergeSHA: "deadbeef111"}},
-			Witnesses: map[string]WitnessInfo{"s/01": {Passed: true, Version: 1}},
+			Witnesses: map[string]WitnessInfo{"s/01": {Passed: true, Released: true, Version: 1}},
 			Approvals: map[string]ApprovalInfo{"s/01": {Approved: false, AtHead: false}},
 		})
 	if got.Cell != "verified" {
@@ -191,13 +191,32 @@ func TestLifecycleDemotionStaleVersion(t *testing.T) {
 	got := deriveSingle(t, BriefIdent{ID: "s/01", Gate: "model", Version: 3},
 		LifecycleInput{LookedAt: true,
 			PRs:       []PRRecord{{BriefRef: "s/01", Number: 67, State: prMerged, MergeSHA: "deadbeef111"}},
-			Witnesses: map[string]WitnessInfo{"s/01": {Passed: true, Version: 2}},
+			Witnesses: map[string]WitnessInfo{"s/01": {Passed: true, Released: true, Version: 2}},
 		})
 	if got.Cell != "unknown" {
 		t.Fatalf("stale-version witness should render unknown; got %q", got.Cell)
 	}
 	if got.Reason != "witness for v2, brief is v3" {
 		t.Errorf("unknown reason should name both versions; got %q", got.Reason)
+	}
+}
+
+func TestLifecycleDemotionCoverageNotReleased(t *testing.T) {
+	// A verifyrun witness that PASSED but whose brief's evidence coverage is NOT
+	// released (graph-execution/03) demotes exactly like the stale-version case:
+	// unknown, with a reason — never a bare `implemented` (that would silently
+	// drop the fact that a witness exists at all) and never `verified` (the
+	// claim it would need to support is not there).
+	got := deriveSingle(t, BriefIdent{ID: "s/01", Gate: "model", Version: 1},
+		LifecycleInput{LookedAt: true,
+			PRs:       []PRRecord{{BriefRef: "s/01", Number: 67, State: prMerged, MergeSHA: "deadbeef111"}},
+			Witnesses: map[string]WitnessInfo{"s/01": {Passed: true, Released: false, Version: 1}},
+		})
+	if got.Cell != "unknown" {
+		t.Fatalf("coverage-not-released witness should render unknown, not verified; got %q", got.Cell)
+	}
+	if got.Source != "witness" || got.Reason == "" {
+		t.Errorf("unknown must stay source=witness and carry a reason; got source=%q reason=%q", got.Source, got.Reason)
 	}
 }
 

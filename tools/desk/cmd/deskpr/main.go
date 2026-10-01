@@ -28,7 +28,7 @@ const usage = `deskpr — push a feature branch and open (or update) its pull re
 USAGE:
   deskpr create --title T (--body-file F | --body-min B) [--base main] [--check]
   deskpr update [--check]
-  deskpr edit --body-file F [--title T] [--check]
+  deskpr edit --body-file F [--title T] [--pr N] [--check]
   deskpr --version
 
 --check runs every LOCAL gate the write path runs — flag validity, branch state, the
@@ -48,7 +48,13 @@ non-default branch. deskpr update pushes a follow-up to an EXISTING open PR on t
 branch — draft or ready-flipped. deskpr edit replaces that same open PR's body, and
 optionally its title, and pushes nothing: it refuses when the branch has no OPEN PR
 (which is also how a merged or closed one is refused), and it runs the trailer,
-secret-scan, self-containment, rate-limit and public-repo gates create runs. There is
+secret-scan, self-containment, rate-limit and public-repo gates create runs. edit --pr N
+names the PR instead of finding it by branch, for a worktree that cannot be on the PR's
+head branch (git allows one worktree per branch): it is admitted when the worktree's
+branch IS the PR's head branch or its HEAD commit IS EXACTLY the PR's head commit (any
+branch name, or a detached HEAD); a HEAD with unpushed commits on top of the head commit
+is refused until they are pushed, and a merged or closed PR is refused. deskreply applies
+the same own-PR rule. There is
 no ready/close/merge verb, and no verb can pass --force to git. Preconditions are
 re-verified in-tool; on any state it cannot positively verify it refuses.
 
@@ -120,9 +126,11 @@ an ssh:// or git@host:path one AND this session presents a bot identity ($DESK_L
 resolving to a role App). An SSH push authenticates with whatever key this machine's agent
 holds — a human's — so the forge records the HUMAN as the branch author and the App's
 permission envelope is bypassed, however the commits are authored. The refusal names the
-config key, the url, the acting App and the one-line remedy. Fetch over SSH stays allowed:
-remote.origin.pushurl is what is read whenever it is set, so an SSH fetch url with an https
-push override passes. edit is NOT gated — it pushes nothing. With $DESK_LOOP unset the gate
+config key, the url, the acting App and the remedy. The url judged is the one git
+will push to — "git remote get-url --push --all origin", a local read with url.<base>.insteadOf
+and pushInsteadOf applied — so an https remote a rewrite rule turns into SSH is refused, and
+the refusal names the rule. Fetch over SSH stays allowed: an SSH fetch url with an https push
+override passes. edit is NOT gated — it pushes nothing. With $DESK_LOOP unset the gate
 is inert (a human pushes under their own key). An https push url with no App credential
 helper configured is a stderr NOTICE, never a refusal.
 

@@ -33,10 +33,10 @@ exec-tier: strong
 exec-tier-why: "(b) the rule joins four artifacts — Verify rows, verifyrun witnesses, reviewer approvals and the pattern's evidence declarations — and a mismatch in revision semantics between any two lets a stale pass release work; (c) an aggregation that treats could-not-check as pass is the exact fault and passes every happy-path test"
 domain: complicated
 consumers:
-  - "statusgen/autoflip.go (the verified→done flip gains a coverage precondition): follow-up graph-execution/03 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "statusgen/lifecycle.go (the `verified` witness precedence reads coverage, not only WitnessInfo.Passed): follow-up graph-execution/03 (this brief)"
-  - "spec/lifecycle-v1.md (the verified state gains the coverage condition): follow-up graph-execution/03 (this brief)"
-  - "spec/workflow-pattern-v1.md (the `observe` kind's fields): follow-up graph-execution/03 (this brief; the kind is added to the schema graph-execution/02 ships)"
+  - "statusgen/autoflip.go (the verified→done flip gains a coverage precondition): fixed-here"
+  - "statusgen/lifecycle.go (the `verified` witness precedence reads coverage, not only WitnessInfo.Passed): fixed-here"
+  - "spec/lifecycle-v1.md (the verified state gains the coverage condition): fixed-here"
+  - "spec/workflow-pattern-v1.md (the `observe` kind's fields): fixed-here"
   - ".github/workflows/verify-gate-open.yml and verify-gate-close.yml (the human sign-off pair): out-of-scope (unchanged — a human sign-off is a `decision` node; coverage governs the model lane's transitions and reports for the human lane)"
   - "statusgen/evidenceactor.go (attribution stays advisory): out-of-scope (this brief adds no identity gate; attribution and coverage are different questions and stay separate rules)"
 version: 3
@@ -99,14 +99,280 @@ on this core rule. 14 owns rechecking at the effect/acceptance boundary.
 | 10 | check | `statusgen --consumers --brief graph-execution/03 --root .; echo rc=$?` | `rc=0` on the authoring branch (every entry routes follow-up or out-of-scope); exit 2 (could-not-check) on a fully merged main is acceptable and must be recorded as such, never as pass |
 | 11 | check:ci +mutation | `cd statusgen && go test -count=1 -v -run TestCoverageAdviceCannotSupplyWitness ./...` | exit 0; named test PASS; high-confidence advice does not satisfy missing mandatory evidence |
 | 12 | check:ci +mutation | `cd statusgen && go test -count=1 -v -run TestCoverageAcceptanceDigestChanged ./...` | exit 0; named test PASS; changed acceptance invalidates the affected witness |
-| 13 | check:ci +mutation | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestCoveragePolicyDependencyChanged$" ./... > /tmp/TestCoveragePolicyDependencyChanged.out && grep -q -- "--- PASS: TestCoveragePolicyDependencyChanged " /tmp/TestCoveragePolicyDependencyChanged.out` | exit 0; named PASS; a policy edit outside touched files holds the affected claim and preserves the old receipt; mutation: bypass the policy-fingerprint comparison — the named test must fail |
-| 14 | check:ci +flow | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestCoverageReuseDoesNotRetargetPass$" ./... > /tmp/TestCoverageReuseDoesNotRetargetPass.out && grep -q -- "--- PASS: TestCoverageReuseDoesNotRetargetPass " /tmp/TestCoverageReuseDoesNotRetargetPass.out` | exit 0; named PASS; unchanged analysis can be reused but an old-head PASS cannot release the new subject |
+| 13 | check:ci +mutation | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCoveragePolicyDependencyChanged.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoveragePolicyDependencyChanged$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCoveragePolicyDependencyChanged " "$wi_out")` | exit 0; named PASS; a policy edit outside touched files holds the affected claim and preserves the old receipt; mutation: bypass the policy-fingerprint comparison — the named test must fail |
+| 14 | check:ci +flow | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCoverageReuseDoesNotRetargetPass.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoverageReuseDoesNotRetargetPass$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCoverageReuseDoesNotRetargetPass " "$wi_out")` | exit 0; named PASS; unchanged analysis can be reused but an old-head PASS cannot release the new subject |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test -run TestCoverage ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-01 | assay-worker-app[bot] @ 83b7dc205761 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && go test -run TestCoverageWrongRevisionHolds ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-01 | assay-worker-app[bot] @ 83b7dc205761 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test -run TestCoverageCouldNotCheckIsNotPass ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-01 | assay-worker-app[bot] @ 83b7dc205761 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test -run TestAutoFlipRefusesUnreleasedCoverage ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-01 | assay-worker-app[bot] @ 83b7dc205761 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && go test -run TestCoverageJoinRequiresIntegrationRow ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-01 | assay-worker-app[bot] @ 83b7dc205761 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --coverage --json --root . > /tmp/ge03.json; python3 -c 'import json;d=json.load(open("/tmp/ge03.json"));print(sorted({c["result"] for b in d for c in b["claims"]}))'` | pass exit=0 | sha256:a8774919d94f | 2026-10-01 | assay-worker-app[bot] @ 83b7dc205761 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -c 'observe' spec/workflow-pattern-v1.md schemas/workflow-pattern-v1.json spec/lifecycle-v1.md` | pass exit=0 | sha256:38af6536faaa | 2026-10-01 | assay-worker-app[bot] @ 83b7dc205761 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && go test -run TestAutoFlipNoOverride ./... && go test -run TestEvidenceActor ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-01 | assay-worker-app[bot] @ 83b7dc205761 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --lint; echo rc=$?` | pass exit=0 | sha256:55108acd6d2b | 2026-10-01 | assay-worker-app[bot] @ 83b7dc205761 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --consumers --brief graph-execution/03 --root .; echo rc=$?` | fail exit=0 | sha256:5afa3aae3cf9 | 2026-10-01 | assay-worker-app[bot] @ 83b7dc205761 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd statusgen && go test -count=1 -v -run TestCoverageAdviceCannotSupplyWitness ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-01 | assay-worker-app[bot] @ 83b7dc205761 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd statusgen && go test -count=1 -v -run TestCoverageAcceptanceDigestChanged ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-01 | assay-worker-app[bot] @ 83b7dc205761 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCoveragePolicyDependencyChanged.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoveragePolicyDependencyChanged$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCoveragePolicyDependencyChanged " "$wi_out")` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-01 | assay-worker-app[bot] @ 83b7dc205761 (on-behalf-of human:ian) (forge-identity) |
+| 14 | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCoverageReuseDoesNotRetargetPass.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoverageReuseDoesNotRetargetPass$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCoverageReuseDoesNotRetargetPass " "$wi_out")` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-01 | assay-worker-app[bot] @ 83b7dc205761 (on-behalf-of human:ian) (forge-identity) |
+
+**Re-run 2026-10-01, round 7** (correctness review 5373616187 at `f67856b183e6`, finding M4;
+security review 5373640634, finding S12). Main merged in at `a60712beda05`. The one conflict
+was in `statusgen/autoflip.go`, at the `decideModelFlip` call: the resolution keeps this
+brief's coverage-refusal block and takes main's call line with its `briefid:raw` waiver (#1966),
+which `TestBriefIDKeyGuard` requires. The S12 fix was then committed at `83b7dc205761`.
+`statusgen verifyrun --brief` re-executed all 14 rows at that commit, a clean checkout with
+nothing staged, modified or untracked, with the `statusgen` binary built from that same commit
+first on `PATH`. The table above replaces the round-6 set recorded at `1fd6a1258987`. Rows 1–5,
+8 and 11–14 record `could-not-run` (no `unshare --net` on this darwin host). `cd statusgen &&
+GOWORK=off go build ./... && go vet ./... && go test ./... -count=1` was also run directly on
+the identical tree and passed, including `TestBriefIDKeyGuard`, `TestAliasDropGuard` and
+`TestVerifyOutcomesSingleReader`; that is corroborating detail, not a substitute witness. Row 10
+is `fail exit=0` for the parseExpect reason given below.
+
+**Round-7 fix.** S12: `resolveVerifyClaim`'s pass branch now mirrors `checkWitnesses`. A pass
+witness on a Verify row the lint flags prose-led (#1808) measured the mention, not the check,
+so the claim resolves `could-not-check` with the prose-led note and the brief is held.
+`TestCoverageProseLedPassIsNotReleased` pins it, using `checkWitnesses` on the same witness as
+its parity anchor. The test was written first and failed before the fix (`coverage released a
+prose-led row whose pass checkWitnesses demotes to could-not-run`, `Result:pass`); it passes
+after.
+
+**Mutation proof, round 7.** Applied to a scratch COPY of `statusgen/` at `83b7dc205761` (never
+the worktree), with `go test -count=1 -run`:
+
+| Guard | Mutation (in `coverage.go`) | Killed by | Result |
+|---|---|---|---|
+| S12 prose-led pass | `if r.ProseLed != ""` → `if false && r.ProseLed != ""` | `TestCoverageProseLedPassIsNotReleased` | RED: `Released:true`, `Result:pass` |
+
+**Re-run 2026-09-30, round 6** (the sixth CHANGES_REQUESTED review at `dc8ee95cc688`,
+review 5364066717, findings M2, M3, A11 and A12; plus security review 5363895046, advisory
+S11). #1891 merged to main first, as M3 asked. Its rewrite of Verify rows 13 and 14 to the
+`mktemp` form came in with the merge of main at `ee4d5c9e620f`. The M2 and A11 fixes were then
+committed at `1fd6a1258987`. `statusgen verifyrun --brief` re-executed all 14 rows at that
+commit, a clean checkout with nothing staged, modified or untracked. The `statusgen` binary
+was built from that same commit and put first on `PATH`. The table above replaces the round-5
+set recorded at `66871816d034`. Evidence rows 13 and 14 now quote #1891's command text, so
+they match the Verify table again. Rows 1–5, 8 and 11–14 record `could-not-run` (no
+`unshare --net` on this darwin host). `cd statusgen && GOWORK=off go build ./... && go vet
+./... && go test ./... -count=1` was also run directly on the identical tree and passed. That
+includes every test the could-not-run rows name, and it is corroborating detail, not a
+substitute witness. Row 10 is `fail exit=0` for the parseExpect reason given below.
+
+**Round-6 fixes.** M2: two comments in `coverage.go` no longer spell the verify outcome log's
+literal name, so `TestVerifyOutcomesSingleReader` passes without widening its allow-list. A11:
+`TestCoverageNothingDeclaredStaysConservative` pins `forRow`'s nothing-is-declared branch. Its
+three subtests use a complete manifest whose only dependency is a policy, a build input or an
+environment entry, followed by a source edit outside that dependency after the witness. Each
+must hold as `wrong-revision`. The branch behaved correctly before the test existed; the
+mutation below shows the test is load-bearing.
+
+**Mutation proof, rounds 5 and 6** (A12, S11). Each mutation was applied to a scratch COPY of
+`statusgen/` at `1fd6a1258987` (never the worktree), and the named test was run with
+`go test -count=1 -run`. Every mutant was killed:
+
+| Guard | Mutation (in `coverage.go`) | Killed by | Result |
+|---|---|---|---|
+| A11 nothing declared | `forRow`'s `len(out.declared) == 0` case no longer selects the conservative scope | `TestCoverageNothingDeclaredStaysConservative` (all three subtests) | RED: want `wrong-revision`, got `pass` |
+| S11 mutant A | the bullet branch of `extractContextDeclaredEntriesRaw` skips a bullet with no backtick span | `…NeverFailsOpen/P4 plain bullet beside a backticked bullet` | RED: got `pass` |
+| S11 mutant B | `newWitnessScope` reads `bf.DeclaredPaths` instead of the raw declared entries | `…NeverFailsOpen/P8 dotless entry declared only now` | RED: got `pass` |
+| S11 mutant C | `atBase` reads `extractContextDeclaredPaths` instead of `extractContextDeclaredEntriesRaw` | `…NeverFailsOpen/P7 dotless entry declared only at the witness` | RED: got `pass` |
+| row 13 `+mutation` | the policy-fingerprint comparison bypassed (`if !same` → `if false && !same`) | `TestCoveragePolicyDependencyChanged` | RED: want `wrong-revision`, got `pass` |
+
+**Re-run 2026-09-30, round 5** (the fifth CHANGES_REQUESTED review at `17e215ae4`, plus the
+2026-09-30 work-input amendment's rows 13 and 14): `statusgen verifyrun --brief` re-executed
+all 14 rows at `66871816d034`, a clean checkout with nothing staged, modified or untracked
+(`git status --porcelain` empty). That commit holds the round-5 `coverage.go`, `brieffile.go`
+and tests, the spec paragraph and the changelog. The `statusgen` binary was built from that
+same commit and put first on `PATH`, so rows 6, 9 and 10 run the code under review, not an
+older installed release. The witnesses carry no `+dirty` suffix. The table above replaces the
+round-4 set recorded at `b749edd42546+dirty`. Rows 1–5, 8 and 11–14 record `could-not-run`
+(no `unshare --net` on this darwin host). The row 13 and 14 commands were also run directly
+on the identical tree: both exited 0 and printed their named `--- PASS:` lines. That is
+corroborating detail, not a substitute witness. Row 6's printed set is now
+`['could-not-check', 'error', 'fail', 'missing', 'wrong-revision']`, a subset of the
+expected set. The corpus loses its last `pass` claims (10 rows in two briefs whose witnesses
+predate unrelated code changes) because a `files:` line alone no longer narrows the scope
+(round-5 F6/S10 and WI-2). Row 10 is `fail exit=0`, as in earlier rounds: see the
+parseExpect note below.
+
+**Correction to the round-4 note (round-5 F8).** The round-4 note below calls `b749edd42546`
+"a CLEAN tree", but every round-4 witness recorded `b749edd42546+dirty`. `verifyrun` saw
+uncommitted changes in that worktree when it ran, so those rows were never clean-tree
+witnesses. The round-5 table above is the clean one; the round-4 wording is kept as
+written for the record.
+
+**Re-run 2026-09-27, round 4** (the fourth CHANGES_REQUESTED review at `981623aeb`, reviews
+5330931191 correctness and 5330940083 security: F6/S6 still open, S8/S9 new advisories):
+`statusgen verifyrun --brief` re-executed every row at `b749edd42546` (a CLEAN tree — the
+round-4 fix committed at that same SHA: `statusgen/brieffile.go` now also parses every
+`files:` entry unfiltered by path shape, `coverage.go`'s witness scope uses that raw list
+instead of the path-shape-filtered one, `classifyRevision` now requires a witness token to
+be SHA-shaped before it reaches git, and four new tests pin the fix), using the `statusgen`
+binary built from that same commit. The table above replaces the round-3 set recorded at
+`8b88e97f1252`: those witnesses read `wrong-revision` by design, since `statusgen/coverage.go`
+and `statusgen/brieffile.go` changed after them. Rows 1–5, 8, 11, 12 again record
+`could-not-run` (no `unshare --net` on this darwin host); `cd statusgen && go build ./... &&
+go vet ./... && go test ./... -count=1` was also run directly on the identical tree and
+passed — corroborating detail, not a substitute witness.
+
+**Re-run 2026-09-25, round 3** (the third CHANGES_REQUESTED review at `5980c2acb`: F2 round 3,
+F6 / security S5, A7): `statusgen verifyrun --brief` re-executed every row at `8b88e97f1252`
+(a CLEAN tree — the round-3 `coverage.go`, its tests, the spec paragraph and the changelog
+committed at `83280a436`; then main merged, bringing in #1691, and the `af/brief-08`/`-09`
+autoflip fixtures rewritten to the witnessed Evidence form per the merge-order note), using
+the `statusgen` binary built from that same commit. The table above
+replaces the round-2 set recorded at `e2c2b350c87c`: those witnesses read `wrong-revision`
+by design, since `statusgen/coverage.go` and `spec/lifecycle-v1.md` changed after them.
+Rows 1–5, 8, 11, 12 again record `could-not-run` (no `unshare --net` on this darwin host);
+`cd statusgen && go build ./... && go vet ./... && go test ./... -count=1` was also run
+directly on the identical tree and passed — corroborating detail, not a substitute witness.
+
+**Re-run 2026-09-25, round 2** (the second CHANGES_REQUESTED review at `e43403dfd`: F2, F3,
+security S1–S3): `statusgen verifyrun --brief` re-executed every row at `e2c2b350c87c` (a
+CLEAN tree — the reworked `coverage.go`, its tests, and the spec paragraph committed first,
+so the witnesses carry no `+dirty` suffix), using the `statusgen` binary built from that
+same commit. The table above replaces the round-1 set recorded at `8737498f7fa5+dirty` —
+those witnesses read `wrong-revision` under the round-2 rule by design, since declared
+`files:` paths (`statusgen/coverage.go`, `spec/lifecycle-v1.md`) changed after them. Rows
+1–5, 8, 11, 12 still record `could-not-run` — this darwin host lacks `unshare --net` for
+`check:ci`'s hermetic network-off re-run — but `cd statusgen && go build ./... && go vet
+./... && go test ./... -count=1` was ALSO run directly at `e2c2b350c87c` (no hermetic
+wrapper; no test in the package uses the network) and passed, which includes every test
+those rows name — corroborating detail, not a substitute witness; a Linux `check:ci`
+runner still owes the mechanical rows.
+
+**Fail-first, round 1** (findings F1/F2/F3 at `6c0403006`; tests not named in the frozen
+Verify table, exercised by `go test ./...`): `TestCoverageNoTargetRevisionIsCouldNotCheck`,
+`TestCoverageMissingTreeTokenIsCouldNotCheck`, `TestCoverageShortTreeTokenIsCouldNotCheck`,
+`TestCoverageAncestorWitnessReleases`, `TestCoverageAncestorWitnessOtherPathChangedMismatch`
+and `TestCoverageExpectChangedSinceWitnessRan` were RED against the ORIGINAL `coverage.go`
+(`6c0403006ca3521b74a6421fba2b64c77cb2bbd3`) and GREEN after the round-1 rework.
+
+**Fail-first, round 2** (F2, F3, security S1/S2 at `e43403dfd`): the five new tests below were
+run against `e43403dfd`'s `coverage.go` (new tests in place, no other file touched) and were
+RED, each reproducing one of the review's probes, then GREEN at `e2c2b350c87c`:
+
+| Test | Probe | RED at `e43403dfd` |
+|------|-------|--------------------|
+| `TestCoverageDirtyWitnessExpectChangedIsError` | PROBE-F / S1 | `released: true`, `Result: pass` for a `+dirty` witness whose Expect was tightened |
+| `TestCoverageBriefAbsentAtWitnessTreeIsCouldNotCheck` | PROBE-G / S2 | `released: true`, `Result: pass` with the brief absent at the witness tree |
+| `TestCoverageRowAbsentAtWitnessTreeIsCouldNotCheck` | F3(b) | `released: true` with row 2 absent at the witness tree |
+| `TestCoverageSiblingEvidenceAndStatusRegenStillRelease` | PROBE-D/E | `wrong-revision` after sibling Evidence and a `STATUS.md` regen |
+| `TestCoverageDeclaredFilesScopeTheWitness` | F2 | `wrong-revision` for a change to an UNDECLARED path |
+
+**Mutation proof** (the four pre-existing `+mutation` rows 2, 3, 11, 12, and the round-2
+guards). Each mutation was applied to a scratch COPY of `statusgen/` (never the worktree),
+the named test was run, and the copy was restored. Every mutant was killed (RED):
+
+| Row / guard | Mutation (in `coverage.go`) | Test | Result |
+|---|---|---|---|
+| row 2 | `classifyRevision`'s final `return revisionMismatch` → `revisionMatch` | `TestCoverageWrongRevisionHolds` | RED: want `wrong-revision`, got `could-not-check` |
+| row 3 | the could-not-run branch returns `covPass` | `TestCoverageCouldNotCheckIsNotPass` | RED: `released: true` |
+| row 11 | `if isWitnessRow(er.Text)` → `if true` | `TestCoverageAdviceCannotSupplyWitness` | RED: want `missing`, got `error` |
+| row 12 | the Command guard → `if false` | `TestCoverageAcceptanceDigestChanged` | RED: want `error`, got `could-not-check` |
+| F3(a) | `base := witnessBaseRevision(wrev)` → `base := wrev` | `TestCoverageDirtyWitnessExpectChangedIsError` | RED |
+| F3(b) | an unreadable historical row returns `covPass` | `…BriefAbsentAtWitnessTree…`, `…RowAbsentAtWitnessTree…` | RED (both) |
+| F2 bookkeeping | `isBoardBookkeepingPath` → `false` | `TestCoverageSiblingEvidenceAndStatusRegenStillRelease` | RED |
+| F2 declared | the declared-scope branch disabled | `TestCoverageDeclaredFilesScopeTheWitness` | RED |
+| F2 directory | a declared directory no longer covers paths under it | `TestCoverageDeclaredFilesScopeTheWitness` | RED |
+| F2 other path | the scope check in `ancestorNoOtherChanges` disabled | `TestCoverageAncestorWitnessOtherPathChangedMismatch` | RED: `released: true` |
+
+(The round-1 note that this mutation proof was blocked by a tool-use classifier is superseded:
+it ran this round.)
+
+**Fail-first, round 3** (F2 round 3, F6 / security S5 at `5980c2acb`): the new tests were run
+against `5980c2acb`'s `coverage.go` (new test file in place, no other file touched). These 14
+subtests were RED there, each reproducing one of the reviewers' probes, and are GREEN at
+`83280a43620f`:
+
+| Test / subtest | Probe | RED at `5980c2acb` |
+|------|-------|--------------------|
+| `TestCoverageDeclaredScopeExemptsVerifyBookkeeping/R1…`, `/R2…`, `/whole_docs/streams…` | F2 R1, R2 | `wrong-revision` after the brief's own README row flip, a `STATUS.md` regen, sibling Evidence |
+| `TestCoverageWitnessScopeNeverFailsOpen/S5a…`, `/S5a'…`, `/S5b…` | S5a, S5a', S5b | `pass` after a declared file was renamed / moved into `docs/streams/` |
+| `TestCoverageWitnessScopeNeverFailsOpen/S5c…`, `/S5d…`, `/S5e…`, `/X1…`, `/X2…`, `/X3…` | S5c–e, X1, X2 | `pass` with a brace, `.`, `n/a`, bare-sibling or `**` declaration |
+| `TestCoverageWitnessScopeNeverFailsOpen/S5f…`, `/S5f'…` | S5f | `pass` after `files:` was narrowed / added in the Evidence commit |
+
+The two "still holds" subtests of `TestCoverageDeclaredScopeExemptsVerifyBookkeeping`,
+`TestCoverageResolvableDeclarationsStillScope` and `TestCoverageBriefOwnFileNeverInvalidates`
+(A7) were already GREEN at `5980c2acb`. They pin behaviour that must not regress, and the
+mutations below prove each one is load-bearing. `TestCoverageDeclaredFilesScopeTheWitness`'s
+fixture now writes the file and the directory its `files:` line declares, because an entry that
+names nothing now selects the conservative scope.
+
+**Mutation proof, round 3.** Each mutation was applied to `coverage.go`, `go test -run
+TestCoverage` was run, and the file was restored byte-for-byte. Every mutant was killed:
+
+| Guard | Mutation (in `coverage.go`) | Killed by |
+|---|---|---|
+| F6 renames | drop `--no-renames` from the diff | `…NeverFailsOpen/S5a`, `/S5a'`, `/S5b` |
+| F6 base declaration | skip the `files:` read at the witness's base commit | `…NeverFailsOpen/S5f`, `/S5f'` |
+| F6 unresolved entry | an entry that resolves to nothing no longer widens | `…NeverFailsOpen/S5c`, `/S5d`, `/S5e`, `/X1` |
+| F6 unsupported syntax | `declaredEntrySupported` check off | `…NeverFailsOpen/X3` |
+| trailing `/**` | the `/**` → directory rewrite removed | `…ResolvableDeclarationsStillScope/trailing_/**…` |
+| F2 exemption | the `isVerifyWrittenPath` exemption off | `…ExemptsVerifyBookkeeping/R1`, `/R2`, `/whole_docs/streams…` |
+| F2 over-exemption | every `docs/streams/` path exempt in the declared branch | `…ExemptsVerifyBookkeeping/…artifact_changed_still_holds` (both) |
+| A7 | the brief-own-file exemption removed (`p == sc.briefRel`) | `TestCoverageBriefOwnFileNeverInvalidates` (both subtests) |
+
+**Fail-first, round 4** (F6/S6 re-review, S8, S9 at `981623aeb`): the new/extended tests below
+were run against `981623aeb`'s `coverage.go`/`brieffile.go` (pre-fix) and were RED, each
+reproducing one of the reviewers' probes or mutations, then GREEN at `b749edd42546`:
+
+| Test / subtest | Probe | RED at `981623aeb` |
+|------|-------|--------------------|
+| `TestCoverageWitnessScopeNeverFailsOpen/P1…` | reviewer P1 | `pass` after a declared, backticked, dotless `Makefile` was edited |
+| `TestCoverageWitnessScopeNeverFailsOpen/P2…` | reviewer P2 | `pass` after a declared, backticked, dotless directory (`tools`) had a file under it edited |
+| `TestCoverageWitnessScopeNeverFailsOpen/P3…` | reviewer P3 | `pass` after an unbackticked inline dotless declared file was edited |
+| `TestCoverageWitnessScopeNeverFailsOpen/P6…` | reviewer P6 | `pass` after an unrelated path changed, with a declared dotless entry resolving to nothing |
+| `TestCoverageWitnessTokenMustBeHexShaped` | security S8 | `pass` for a symbolic (`HEAD^{commit}`) witness token, even after the declared file it speaks for changed twice |
+
+`TestCoverageBoundObserveClaimHolds` and `TestCoverageZeroClaimsBriefIsHeld` (security S9) pin
+two guards that already behaved correctly at `981623aeb` but had no test that would catch a
+regression — they are GREEN at `981623aeb` and stay GREEN at `b749edd42546`; see the round-4
+mutation proof below for how each is shown load-bearing.
+
+**Mutation proof, round 4.** Each mutation was applied to `coverage.go`, the named test was
+run, and the file was restored byte-for-byte. Every mutant was killed:
+
+| Guard | Mutation (in `coverage.go`) | Killed by |
+|---|---|---|
+| F6/S6 raw declared entries | `newWitnessScope`/`atBase` reverted to the path-shape-filtered `DeclaredPaths`/`extractContextDeclaredPaths` | `…NeverFailsOpen/P1`, `/P2`, `/P3`, `/P6` |
+| S8 revision-token shape | the `hexRevisionRe` check in `classifyRevision` removed | `TestCoverageWitnessTokenMustBeHexShaped` |
+| S9 observe guard (reviewer's M-b) | `resolvePatternEvidenceClaim`'s `observe` case returns `covPass` unconditionally | `TestCoverageBoundObserveClaimHolds` |
+| S9 zero-claims guard (reviewer's M-d) | the `len(claims) == 0` fail-closed branch disabled | `TestCoverageZeroClaimsBriefIsHeld` |
+
+**Task item 1's revision wording.** Task item 1 says the item's revision is "the merged SHA
+for a merged brief, the PR head for an open one". The implementation resolves the item's
+revision offline as the checked-out `HEAD` — the PR head on the branch, but the main TIP
+(not the merge SHA) on the model-lane flip job — and credits a witness at an ancestor when
+no path it speaks for changed since (the brief's `files:` now and at the witness's commit,
+else — or when a declared entry names no real path — everything outside `docs/streams/**`
+and `STATUS.md`; never the files verify and regeneration write; renames count against their
+old path). That deviation from the Task's literal wording is
+deliberate (the literal form needs a live merge lookup the ground rules forbid, and the
+round-1 whole-tree rule halted the model lane); `spec/lifecycle-v1.md` and the
+`coverage.go` header state the implemented rule. The `+dirty` tolerance is a declared
+residual (header "THE +dirty TOLERANCE"), pinned by `TestCoverageDirtyWitnessToleranceIsDeclared`.
+
+**Row 10** mechanically records `fail exit=0`, but the row's own Expect cell states TWO
+acceptable outcomes (`rc=0` on the authoring branch; `rc=2` on a fully merged main) —
+`parseExpect`'s exit-code reader lifts the FIRST unquoted digit after `exit`, which here
+is the "expected 2" fragment naming the merged-main case, not the authoring-branch case
+this run is actually in. The command's REAL exit code on this authoring branch is `0`
+(confirmed directly above, and by hand: `statusgen --consumers --brief graph-execution/03
+--root .` prints `rc=0` with every consumers: entry CORROBORATED or UNCHECKED, none
+DISPROVED). This is a parseExpect limitation on a two-case Expect cell, not a defect in
+`--consumers` or in coverage.go; recorded here rather than silently edited into a false
+`pass`.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

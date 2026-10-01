@@ -1167,7 +1167,7 @@ func checkGitHubCommitIdentity(p PreflightProbes, ident BotIdentity, role, email
 
 // checkGitLabCommitIdentity validates a GitLab worktree's commit author. On GitLab the
 // desk runs TWO distinct identities (#643): the SESSION / implementer identity (a real
-// GitLab user, e.g. `ih-bot`) authors the commits under an ordinary user address, while
+// GitLab user, e.g. `qa-bot`) authors the commits under an ordinary user address, while
 // the role SERVICE ACCOUNT — the analog of the GitHub role App — is used only for minted
 // API writes. So this check accepts EITHER:
 //

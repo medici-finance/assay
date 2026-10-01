@@ -254,7 +254,7 @@ reliably caught an inverted or false desk claim.
 > must show it failing on the unfixed code — a red run quoted in the PR body or commit trail,
 > or a committed mutation script the reviewer can re-run.
 
-That sentence is the reviewer's rule (`references/review-prompt.md` §3), quoted here
+That sentence is the reviewer's rule (`references/review-prompt.md` §4), quoted here
 verbatim so both kits bind the same obligation. At review, a test whose red state was never
 observed is a finding, not evidence: the PR comes back with a request for the red run, and a
 correct fix spends a full review round-trip on evidence the worker had at hand before the

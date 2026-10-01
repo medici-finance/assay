@@ -730,7 +730,7 @@ func newBriefRegenReadme(readme string, rows []genRow) (string, error) {
 // writing a second one: no code span → not a row; a code span that tokenizes to
 // nothing → not a row; an unsubstituted placeholder → not a row.
 func usableVerifyCommand(cell string) error {
-	cmd := codeSpan(cell)
+	cmd := verifyCommand(cell)
 	if strings.TrimSpace(cmd) == "" {
 		return fmt.Errorf("the command carries no code span (wrap it in backticks so a verifier can lift the literal command)")
 	}
@@ -765,7 +765,7 @@ func usableVerifyCommand(cell string) error {
 // bash escapes); the "use forward slashes" rule for hand-authoring lives in the
 // author-brief skill and brief-template prose, where a human reads it in context.
 func looksWindowsNative(cell string) bool {
-	for _, t := range tokenizeCommand(codeSpan(cell)) {
+	for _, t := range tokenizeCommand(verifyCommand(cell)) {
 		if t.op {
 			continue
 		}

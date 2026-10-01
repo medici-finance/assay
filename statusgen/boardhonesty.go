@@ -99,6 +99,21 @@ const (
 	phantomReHomed         = "re-homed"
 	phantomStatusgenSource = "statusgen-source-elsewhere"
 	phantomDeferredByGate  = "deferred-by-gate"
+	// phantomSiblingMergeUnreconciled is the SEVENTH phantom class
+	// (siblingmerge.go): a change naming this brief
+	// already merged in a SIBLING repo and nobody has recorded what it
+	// covered. Unlike the six classes above, it is wired and tested from its
+	// own driver (siblingMergeNotices, siblingmerge.go) rather than through
+	// classifyPhantom — it needs a live read of ANOTHER repo's checkout, a
+	// dependency none of the tree-only classes above carry, so folding it into
+	// the single-tree pure classifier would smuggle git-on-a-sibling into
+	// every classifyPhantom call site and test. It shares this file's
+	// severity discipline (NOTICE, never a PROBLEM here — see the package
+	// comment) and its NON-DISPATCHABLE wording, and IS one of "the six
+	// phantom classes" the package comment's ruleset describes — the comment
+	// is not re-numbered to keep the diff each future class adds small; this
+	// const block is the seventh entry and the source of truth for the count.
+	phantomSiblingMergeUnreconciled = "sibling-merge-unreconciled"
 )
 
 // The detector strings, as the drain catalogued them. Each is a phrase a routing
@@ -146,12 +161,13 @@ var homedInSupersedes = map[string]bool{
 // phantomRemediation maps a class to the one-line "what clears it" the surfaced
 // board line carries, so a reader is told the resolution, not just the diagnosis.
 var phantomRemediation = map[string]string{
-	phantomMergedUnflipped: "reconcile the row (verified->done + regen), or say in the PR why the merge did not advance it",
-	phantomOutOfRepo:       "route the work to the owning repo and leave a pointer/archived row here so the board stops reading it as fresh todo",
-	phantomDehoused:        "leave a pointer/archived row here; the work is owned by the repo it was de-housed to",
-	phantomReHomed:         "the record already merged elsewhere; retire the row (do not re-implement)",
-	phantomStatusgenSource: "make the change in the repo that now owns the source; here the tool is a pinned binary",
-	phantomDeferredByGate:  "hold until the gating brief lands; the row returns to the board by itself, nothing needs re-authoring",
+	phantomMergedUnflipped:          "reconcile the row (verified->done + regen), or say in the PR why the merge did not advance it",
+	phantomOutOfRepo:                "route the work to the owning repo and leave a pointer/archived row here so the board stops reading it as fresh todo",
+	phantomDehoused:                 "leave a pointer/archived row here; the work is owned by the repo it was de-housed to",
+	phantomReHomed:                  "the record already merged elsewhere; retire the row (do not re-implement)",
+	phantomStatusgenSource:          "make the change in the repo that now owns the source; here the tool is a pinned binary",
+	phantomDeferredByGate:           "hold until the gating brief lands; the row returns to the board by itself, nothing needs re-authoring",
+	phantomSiblingMergeUnreconciled: "read the merged sibling change Task by Task and reconcile the row, or record a `delivery:` claim naming what it covers",
 }
 
 // classifyPhantom is the pure classifier. Given a todo brief's id, its raw file

@@ -1,6 +1,7 @@
 package bodycheck
 
 import (
+	"io"
 	"strings"
 	"testing"
 
@@ -40,14 +41,31 @@ func mustPass(t *testing.T, err error, what string) {
 	}
 }
 
+// preflight is deskpost's whole pre-network body check for a verb: this package's size and
+// schema check, then the outbound-write check the verb runs on its target (desktools-v2/10).
+// The credential arms moved out of this package into that check; these tests keep pinning
+// that every one of them still refuses a deskpost body — the scan moved, it did not narrow.
+func preflight(t *testing.T, kind string, check func([]byte) error, body []byte) error {
+	t.Helper()
+	if err := check(body); err != nil {
+		return err
+	}
+	restore := deskkit.SetOutboundNoticeWriter(io.Discard)
+	defer restore()
+	deskkit.SetOutboundContext(deskkit.OutboundContext{Tool: "deskpost", Verb: kind})
+	return deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: "example-org/tracker", Kind: kind,
+		Fields: []deskkit.OutboundField{{Name: "body", Text: string(body)}}})
+}
+
 // TestReviewSecretScanBothDirections exercises EVERY refusal pattern in the facts
-// (delegated to deskkit.BodyCheck) with a positive (refused) case, and a clean-body
-// negative (passes) case — deliverable. Because the review validator runs the
-// secret scan first, each secret pattern is embedded in an otherwise-valid review body
-// so we prove the scan (not the structure check) is what refuses.
+// (the credential arms, now run by the outbound-write check) with a positive (refused)
+// case, and a clean-body negative (passes) case — deliverable. Each secret pattern is
+// embedded in an otherwise-valid review body so we prove the scan (not the structure
+// check) is what refuses.
 func TestReviewSecretScanBothDirections(t *testing.T) {
 	valid := "## Review\n\n%s\n\nVerdict: approve\n"
 	fill := func(secret string) []byte { return []byte(strings.Replace(valid, "%s", secret, 1)) }
+	Review := func(b []byte) error { return preflight(t, deskkit.OutboundKindReview, Review, b) }
 
 	refusals := []struct {
 		name   string
@@ -84,9 +102,8 @@ func TestReviewSecretScanBothDirections(t *testing.T) {
 	// FRAGMENT: a lone envelope, or a `sops:` metadata block with no encrypted content
 	// outside it, is not an encrypted-at-rest document and still refuses. The DANGER — a
 	// DECRYPTED k8s Secret, and a plaintext value sitting beside an encrypted one — is
-	// covered by deskkit's own tests, which this package delegates to (see the Review →
-	// deskkit.BodyCheck call above); the rows here only pin that the delegation carries the
-	// #778 verdicts through unchanged.
+	// covered by deskkit's own tests; the rows here only pin that the outbound-write check
+	// carries the #778 verdicts through unchanged.
 	//
 	// The marker is split for the reason recorded in deskkit's fixtures: the scanner in
 	// force while this change is open refuses a contiguous marker on an added diff line.
@@ -121,10 +138,11 @@ func TestSizeCap(t *testing.T) {
 }
 
 func TestCommentScanOnly(t *testing.T) {
+	Comment := func(b []byte) error { return preflight(t, deskkit.OutboundKindComment, Comment, b) }
 	// Comments need no structure — a plain sentence passes.
 	mustPass(t, Comment([]byte(cleanComment)), "clean comment")
 	mustPass(t, Comment([]byte("no structure needed here at all")), "unstructured comment")
-	// But the secret scan still applies to comments.
+	// But the secret scan (the outbound-write check's credential arms) still applies.
 	mustRefuse(t, Comment([]byte("token ghp_"+strings.Repeat("A", 36))), "comment with token")
 }
 

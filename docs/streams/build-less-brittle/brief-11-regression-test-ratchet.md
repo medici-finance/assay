@@ -2,7 +2,7 @@
 brief: assay:assay:build-less-brittle:11
 title: "Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge"
 why: >-
-  Every fix already has to show its test failing first (worker kit §9, review kit §3, the
+  Every fix already has to show its test failing first (worker kit §9, review kit §4, the
   fail-first review lane), and every check needs a mutation row (brief-rules 16). Those prove
   the test can fail on the day it lands. Nothing holds the test in place afterwards. Between
   2026-09-17 and 2026-09-24 five test functions were deleted from the public tree and none of
@@ -24,7 +24,7 @@ authored: "2026-09-24 by the build-less-brittle authoring session (read-only; au
 sources:
   - "docs/streams/build-less-brittle/spec.md §3 row 13, §4.11, §11"
   - "tools/desk/cmd/deskdispatch/references/worker-prompt.md §9 (fail-first evidence, line 175 at f7bde6bfa) and §14 (defect class, line 315); worker-prompt-objective.md carries §9 verbatim (line 247)"
-  - "tools/desk/cmd/deskdispatch/references/review-prompt.md §3 (line 36) and review-lanes.md §'The fail-first reproduction's two required records' (line 87): the fail-first lane every unknown or blessed-once author gets"
+  - "tools/desk/cmd/deskdispatch/references/review-prompt.md §4 (line 51) and review-lanes.md §'The fail-first reproduction's two required records' (line 87): the fail-first lane every unknown or blessed-once author gets"
   - "plugins/assay/skills/pr-review-desk/SKILL.md: the finding-class register (`test-evidence (fail-first / mutation) | blocking`, line 524) and the fail-first paragraph (line 735)"
   - "docs/brief-rules.md rule 16 (a brief that adds a check carries a mutation-test row); the committed mutation maps (`tools/desk/internal/deskkit/mutations.json` and 10 siblings)"
   - "#1581 (proposal: a TestRegression_ prefix, a count-can't-drop CI gate, a vacuous-selector gate) — this brief takes the tag and the report and declines both gates; #1580 (fix the class, regression-of:); #1306 (renamed tests leave a Verify row running zero tests); #1657 (the vacuous-row class); #1343 (a deleted Verify row is invisible to the integrity gate: the sibling class, not this brief's)"
@@ -36,7 +36,7 @@ domain: complicated
 consumers:
   - "tools/desk/cmd/deskdispatch/references/worker-prompt.md §9: follow-up build-less-brittle/11 (this brief)"
   - "tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md §Fail-first evidence: follow-up build-less-brittle/11 (this brief)"
-  - "tools/desk/cmd/deskdispatch/references/review-prompt.md §3: follow-up build-less-brittle/11 (this brief)"
+  - "tools/desk/cmd/deskdispatch/references/review-prompt.md §4: follow-up build-less-brittle/11 (this brief)"
   - "plugins/assay/skills/pr-review-desk/SKILL.md fail-first paragraph: follow-up build-less-brittle/11 (this brief)"
   - "docs/contracts.md §Rule register row R-retires-test: follow-up build-less-brittle/11 (this brief; the register exists from 07)"
   - "build-less-brittle/12 (the oracle's failure-mode section reads the tags): follow-up build-less-brittle/12"
@@ -51,7 +51,7 @@ consumers:
 files:
 - `tools/desk/cmd/deskdispatch/references/worker-prompt.md`: §9, the tag rule and the trailer (≤ 6 lines, offset).
 - `tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md`: its verbatim copy of §9.
-- `tools/desk/cmd/deskdispatch/references/review-prompt.md`: §3, the three rubric questions for a reported line (≤ 4 lines, offset).
+- `tools/desk/cmd/deskdispatch/references/review-prompt.md`: §4, the three rubric questions for a reported line (≤ 4 lines, offset).
 - `plugins/assay/skills/pr-review-desk/SKILL.md`: the fail-first paragraph, the report command and the rubric pointer (≤ 2 lines, offset).
 - `tools/desk/internal/testledger/ledger.go` (planned): NEW. Pure functions: `Tests(fsys) []TestFunc` (name, package, tag, body hash) via `go/parser`; `Diff(base, head) Report` (deleted, renamed, added); `ParseTrailers(msgs) []Retirement`; `RowsNaming(fsys, name) []Row` over `docs/streams/**/brief-*.md`.
 - `tools/desk/internal/testledger/ledger_test.go` (planned): NEW. `TestLedgerFixture` (planned), `TestTrailerGrammar` (planned), `TestReportTestLedger` (planned) (test-only flags `-base`, `-head`: a revision via `git archive`, or a directory), `TestUnresolvableBaseIsCouldNotCheck` (planned).
@@ -62,9 +62,9 @@ files:
 
 facts:
 - **What already exists, and where.** Fail-first is the worker's obligation in kit §9 ("show
-  the check failing before you claim it passes", quoted verbatim from review kit §3) and the
+  the check failing before you claim it passes", quoted verbatim from review kit §4) and the
   class version in §14.3 ("show the class guard failing against a PLANTED SECOND instance").
-  It is the reviewer's rule in review kit §3, a lane (`fail-first`) for every unknown or
+  It is the reviewer's rule in review kit §4, a lane (`fail-first`) for every unknown or
   blessed-once author in `review-lanes.md`, and the `test-evidence` finding class in the
   pr-review-desk register, status `blocking`. Mutation rows are brief-rules rule 16, and 11
   committed mutation maps exist. This brief adds nothing to any of that. It adds what happens
@@ -98,7 +98,7 @@ facts:
   `go test ./...` and shows nothing on a pass; the reviewer runs it with `-v` against the
   PR's merge-base and quotes it. A trailed retirement is not reported; a retirement of an
   untagged test is reported without the bracket, so the reviewer weighs a tagged one harder.
-- **What the reviewer does with a line** (review kit §3, three questions): is the behaviour
+- **What the reviewer does with a line** (review kit §4, three questions): is the behaviour
   it pinned still pinned, and by which test; did the reason land as a trailer; if renamed,
   are the Verify rows re-pointed. A departure the reviewer judges unjustified is a
   `test-evidence` finding, the existing blocking class. No new basis, no new class, no new
@@ -109,7 +109,7 @@ facts:
   why, and the report puts that in front of the reviewer. One control per time-scale, and
   neither substitutes: a test with a mutation entry and no tag can vanish silently (the five
   deletions), and a tagged test with no mutation entry can be green for the wrong reason (the
-  shapes review kit §3 lists). The oracle (12) consumes the tag: each failure mode maps to
+  shapes review kit §4 lists). The oracle (12) consumes the tag: each failure mode maps to
   its regression test by `git grep 'regression: .*#<N>'`.
 - **Self-referential base.** `git merge-base origin/main HEAD` is `HEAD` on a merged
   checkout (#1657), so the report takes an explicit `-base`, and every Verify row below pins

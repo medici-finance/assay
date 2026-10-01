@@ -223,6 +223,9 @@ func cmdManifest(args []string, out io.Writer) error {
 	if err := fs.Parse(flags); err != nil {
 		return deskkit.Refused("manifest: " + err.Error())
 	}
+	if err := c.applyOverride(); err != nil {
+		return err
+	}
 	if len(pos)+len(fs.Args()) > 0 {
 		return deskkit.Refused("refused: manifest takes no positional arguments (rows come from --file)")
 	}

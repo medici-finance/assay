@@ -333,7 +333,7 @@ func ciCrossModuleRegistry() []ciEntry {
 				"topology.yaml",
 				"topology.example.yaml",
 			},
-			why: "the 2026-08-13 publication ruling withholds topology.yaml permanently and ships " +
+			why: "the publication ruling withholds topology.yaml permanently and ships " +
 				"topology.example.yaml in its place, relocated to topology.yaml at staging. A withheld " +
 				"real file plus a hand-written public twin is the second-copy defect this test " +
 				"exists to kill, and this shape diff is the ONLY thing closing it — a schema change to " +

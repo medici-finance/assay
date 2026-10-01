@@ -87,7 +87,7 @@ Without --role, add REFUSES an SSH PUSH REMOTE under a bot identity. A worktree 
 checkout's remote, so an ssh:// or git@host:path PUSH url here is one in every worktree cut
 from it — and a session whose $DESK_LOOP resolves to a role App would push under whatever key
 this machine's agent holds, a human's, while its commits read as the App's. The refusal names
-the url and the one-line remedy. Fetch over SSH stays allowed (remote.origin.pushurl is what is
+the url and the remedy. Fetch over SSH stays allowed (remote.origin.pushurl is what is
 read whenever it is set), and with $DESK_LOOP unset the gate is inert — a human pushes under
 their own key, which is what the SSH remote is for.
 
