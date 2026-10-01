@@ -171,6 +171,39 @@ Findings (carried forward and re-checked on this head; none of them fails a Veri
 
 rows_passed=6 rows_total=6
 RISK-VALUE: DERIVED — forgeQueueReviewsCap = 100 @ tools/desk/internal/deskkit/forge_github.go:699 (plus the three other DERIVED lines above)
+
+VERIFY: PASS
+
+### Execution witness — `statusgen verifyrun` at ca81ea0a9603 — VERIFY: PASS — 6/6 rows — 2026-09-30 assay-verifier-app[bot]
+
+What moved since the last run: the Verify table itself did not change. The hand-run block above (VERIFY: PASS, 6/6 at b5e53a6a2dbc) carried no execution witness, so the `verified` closure could not pass lint. This block adds that witness. Main has moved 3 commits since then (to ca81ea0a960387bb34f9dbc22b188802097d5251). The only one that touches tools/desk is #1879 (reviewscope.go and deskdispatch). It does not touch the brief's forge.go, forge_github.go, forge_gitlab.go, deskboard, or query-cost.md.
+
+The runner is not the implementer. I ran from a detached, isolated worktree at the fetched `refs/remotes/origin/main` = ca81ea0a960387bb34f9dbc22b188802097d5251, offline with `KUBECONFIG=/dev/null`, on go1.27.1 darwin/arm64. I built statusgen from that tree and ran `statusgen verifyrun --root <worktree> --brief docs/streams/desktools-v2/brief-09-access-pattern-queries.md` in its writing form, not `--dry-run`, which exited 0. The witness table below is copied exactly as that command wrote it. The runner attribution comes from the worktree's git identity. The witness Date is in UTC.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test -timeout 10m ./internal/deskkit/` | pass exit=0 | sha256:d0b56d896a9b | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestAccessPatternSingleRoundTrip -v` | pass exit=0 | sha256:822a7c5c6cf5 | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeNoRawQueryInSignature -v` | pass exit=0 | sha256:49b43756b72f | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `sh -c 'for p in "calls before" "calls after" "points before" "points after"; do grep -qiF -- "$p" docs/streams/desktools-v2/query-cost.md; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $p"; exit 1; fi; done; echo all-present'` | pass exit=0 | sha256:6a62edb7cced | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `D="${D:-05c937307aa6}"; test -n "$D" && git rev-parse -q --verify "$D^1^{commit}" >/dev/null && git rev-parse -q --verify "$D^{commit}" >/dev/null && { n0=; n1=; for r in "$D^1" "$D"; do t=$(mktemp -d) && git archive -o "$t.tar" "$r" && tar -xf "$t.tar" -C "$t" && cp tools/desk/scripts/forge-ban.sh "$t/tools/desk/scripts/forge-ban.sh" && sh "$t/tools/desk/scripts/forge-ban.sh" > "$t.out" 2>&1; n=$(sed -n 's/.*reach-around sites: \([0-9][0-9]*\).*/\1/p' "$t.out"); rm -rf "$t" "$t.tar" "$t.out"; if [ -z "$n" ]; then echo "$r NO-COUNT"; exit 1; fi; echo "$r reach-around sites: $n"; if [ -z "$n0" ]; then n0=$n; else n1=$n; fi; done; if [ "$n1" -le "$n0" ]; then echo "NOT-HIGHER $n0 -> $n1"; else echo "HIGHER $n0 -> $n1"; exit 1; fi; }` | pass exit=0 | sha256:ecdef79cb26a | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (on-behalf-of human:ian) (forge-identity) |
+
+The witness only checks exit status for rows 3, 4 and 6. Their Expect cells also need specific output lines, which a `-run` selector that matches nothing would not print. So I re-ran those rows, plus row 5, from the same checkout at the same head to confirm the key lines. The table below gives the result for each row.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 | Verify row 1: passed. Witness gave `pass exit=0`, and the output hash is the empty-output digest (no output) | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && go test -timeout 10m ./internal/deskkit/` | exit 0; the new op's backend tests and the migrated consumer's tests pass | Verify row 2: passed. Witness gave `pass exit=0`. The Expect also names the migrated consumer's tests, whose package is outside this row's command. So at this head I also ran `cd tools/desk && go test -timeout 10m ./cmd/deskboard/`, which exited 0 with `ok github.com/medici-finance/assay/tools/desk/cmd/deskboard 11.659s` | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestAccessPatternSingleRoundTrip -v` | output contains the literal `--- PASS:` line for the named test | Verify row 3: passed. Witness gave `pass exit=0`; the confirming run printed the `--- PASS:` line for the selected test (0.01s), then `ok` | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeNoRawQueryInSignature -v` | output contains the literal `--- PASS:` line for the named test | Verify row 4: passed. Witness gave `pass exit=0`; the confirming run printed the `--- PASS:` line for the selected test (0.00s), then `ok` | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 5 | `sh -c 'for p in "calls before" "calls after" "points before" "points after"; do grep -qiF -- "$p" docs/streams/desktools-v2/query-cost.md; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $p"; exit 1; fi; done; echo all-present'` | exit 0; prints `all-present` | Verify row 5: passed. Witness gave `pass exit=0`; the confirming run exited 0 and printed `all-present` | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 6 | row 6 command verbatim (identical to witness row 6 above), run from the checkout root with `D` left at its default | exit 0; three lines ending `NOT-HIGHER N0 -> N1` | Verify row 6: passed. Witness gave `pass exit=0`; the confirming run exited 0 and printed `05c937307aa6^1 reach-around sites: 61`, `05c937307aa6 reach-around sites: 61`, `NOT-HIGHER 61 -> 61`. `D` = 05c937307aa6 (#1851), parent 61d700db1712e4a2512904efdd8659a29e87ad40, N0 = 61, N1 = 61 | 2026-09-30 | assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+
+**Scope traceability.** Each witness row, and each result row, discharges the Verify row with the same number. The extra deskboard run belongs to row 2's Expect clause, not to any new scope. The hand-run block's findings above still apply unchanged: F2 (GitLab's degraded half of Task 2 has no Verify row), F3 (query points are computed, not live-measured) and F4 (row 2's command leaves out the consumer package).
+
+rows_passed=6 rows_total=6
+RISK-VALUE: DERIVED — forgeQueueReviewsCap = 100 @ tools/desk/internal/deskkit/forge_github.go:699 — 100 is GraphQL's maximum `first:` and matches the `reviews(first:100)` selection at forge_github.go:688, which also selects `hasNextPage`, so an overflow is detected and never read as a complete set. The line numbers are unchanged at this head; the derivation is in the hand-run block above.
 VERIFY: PASS
 
 ## Review

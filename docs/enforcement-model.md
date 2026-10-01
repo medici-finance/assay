@@ -114,3 +114,26 @@ identity is even in play, and it enforces the SAME verdict everywhere it is cons
 (Next-up, the drive frontier) — a brief the board hides can never be offered by the
 frontier. It is a graph-shape gate, never an authorization: it says nothing about who
 certified the work, only about whether its declared prerequisites are in force.
+
+## A third layer: WHAT evidence must exist before the model lane may release
+
+The eligibility evaluator above answers "may this brief be dispatched at all". The
+**coverage rule** (`statusgen --coverage`, `docs/streams/graph-execution/brief-03-evidence-coverage-rule.md`,
+graph-execution/03) answers a different, later question: once a brief reaches
+`verified`, did every claim it is required to make actually resolve `pass`, at the
+revision it is being credited for? Like eligibility it is **deterministic and
+identity-free** — it says nothing about who ran a check (that stays evidenceactor.go's
+advisory attribution) or who is authorised to certify it (the reviewer/verifier
+separation above). It is a THIRD, independent enforcement axis: identity (who may
+certify), graph shape (when work may start), and now evidence completeness (whether the
+record a certification rests on actually supports it).
+
+Coverage is the ONE place the model-lane auto-flip (`--auto-flip-model`) RE-CHECKS the
+`verified` stamp it is about to promote to `done` — every other fact that flip consults
+(the README row, the App's approval at the merged head) is taken as given, by design
+(see the flip's own header comment). A brief whose mandatory claims are not ALL
+`released` never reaches the flip's live review fetch at all: coverage is fully offline,
+so it is the cheapest possible refusal, checked first. It never weakens the
+implementer↔reviewer separation or the eligibility gate; it adds a THIRD, independent
+question neither of those two asks: not "who", not "when", but "did what was required
+actually happen, and can this exact revision still stand behind it".

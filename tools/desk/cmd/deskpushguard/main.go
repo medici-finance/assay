@@ -21,10 +21,12 @@
 // worker-desk skill's manual "Pre-PR self-check" (#22, #72): the 2026-07-30
 // recurrence on #22 showed a worker briefed against this in writing do it anyway, so the
 // check now runs on every push instead of depending on a worker remembering a manual step.
-// That check resolves its base against the ACTUAL push-target remote named by args[0] below,
-// never a hardcoded "origin" literal (#1201) — a worktree's own `origin` remote can point at a
+// That check — and the register-id check's base, its sibling candidates and its liveness
+// probe, and the URL fallback — all use the ACTUAL push-target remote named by args[0] below,
+// never an assumed `origin` (#1201): a worktree's own `origin` remote can point at a
 // different repo than the one a given push targets, and comparing against the wrong repo's
-// main misreports every real commit on the branch as foreign.
+// main misreports every real commit on the branch as foreign. With no remote name at all the
+// remote-dependent checks are COULD-NOT-CHECK, never a quiet substitution of `origin`.
 //
 // It does NOT call deskkit.Guard() — the guard must run even when the desk-tools
 // kill-switch is armed, because a stopped desk still must not orphan commits.
@@ -38,6 +40,8 @@
 //
 //	DESKPUSHGUARD_OFF=1        skip the check (with stderr warning)
 //	DESKPUSHGUARD_FAKE_STATE=X  fake the gh response (testing only)
+//	DESKPUSHGUARD_SCAN_OVERRIDE=<why>  audited override of an overridable outbound-check
+//	                                   refusal (see outbound.go)
 package main
 
 import (
@@ -92,14 +96,17 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	//   pre-push <remote-name> <remote-url>
 	// remoteName is the ACTUAL remote this push is going to (#1201) — it is the answer to
 	// "which remote", already handed to the hook by git itself, so nothing downstream may
-	// substitute a hardcoded "origin" literal for it. A worktree's own `origin` remote can
+	// substitute an assumed `origin` for it. A worktree's own `origin` remote can
 	// legitimately point at a different repo than the one a given push targets (e.g. a
 	// worktree cut from a shared checkout whose `origin` is a sibling repo, with the real
 	// target added under a second remote name); resolving refs/remotes/origin/main
 	// unconditionally in that shape compares the branch against the WRONG repo's history and
-	// misreports every real commit as foreign. Falling back to "origin" only when args[0] is
-	// empty preserves prior behaviour for a manual/test invocation that omits it.
-	remoteName := "origin"
+	// misreports every real commit as foreign.
+	//
+	// An ABSENT args[0] stays empty. There is no default: a guess at the remote is exactly the
+	// defect, so every remote-dependent check below reports COULD-NOT-CHECK for it (the
+	// fail-open contract, said out loud) rather than judging some other remote's main.
+	remoteName := ""
 	if len(args) >= 1 && strings.TrimSpace(args[0]) != "" {
 		remoteName = strings.TrimSpace(args[0])
 	}
@@ -139,17 +146,18 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	}
 
 	// Register-id collision check: mechanical detection of a NEW register entry `id:` (new
-	// relative to origin/main — #189) that collides with one already claimed by another
-	// in-flight branch. Candidate siblings come from already-fetched remote-tracking branches
-	// (`git branch -r`), so the ordinary push makes no gh/network call; the only network touch
-	// is a single `git ls-remote` on the rare collision path, to confirm a sibling ref is still
-	// live before refusing (a stale merged-and-deleted ref is dropped, #189). It degrades to
-	// could-not-check, never an error, when origin is unreachable, matching this tool's
-	// fail-open-on-ambiguity contract. Runs regardless of whether the remote/repo below is
-	// derivable, since it needs neither.
+	// relative to the pushed remote's main — #189, #1201) that collides with one already
+	// claimed by another in-flight branch ON THAT REMOTE. Candidate siblings come from
+	// already-fetched remote-tracking branches under refs/remotes/<remoteName>/, so the
+	// ordinary push makes no gh/network call; the only network touch is a single
+	// `git ls-remote <remoteName>` on the rare collision path, to confirm a sibling ref is
+	// still live before refusing (a stale merged-and-deleted ref is dropped, #189). It
+	// degrades to could-not-check, never an error, when the remote is unreachable, matching
+	// this tool's fail-open-on-ambiguity contract. Runs regardless of whether the repo below is
+	// derivable, since it needs only the remote NAME.
 	var collisions []registerIDCollision
 	for _, ref := range refs {
-		cs, cerr := checkRegisterIDCollisions("", ref.branch, ref.localSHA)
+		cs, cerr := checkRegisterIDCollisions("", remoteName, ref.branch, ref.localSHA)
 		if cerr != nil {
 			// checkRegisterIDCollisions currently never returns a non-nil error (it fails
 			// open internally); kept so a future stricter variant has somewhere to report.
@@ -214,6 +222,15 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		}
 	}
 
+	// The outbound-write check (desktools-v2/10) over what each ref publishes: its branch
+	// name, every commit message in <remote>/main..<sha>, and the range's ADDED lines — the
+	// SAME function deskpr's pre-push scan calls, so a push by any route meets one check.
+	// Unlike the heuristics above it REFUSES on a finding (exit 5), because what it catches
+	// is not recoverable once pushed. A range it cannot read is COULD-NOT-CHECK: warned,
+	// audited, and allowed, per this hook's client-side fail-open contract — never a pass.
+	outboundRefusals, outboundUnchecked := checkOutbound(stderr, remoteName, repo, refs)
+	unchecked = append(unchecked, outboundUnchecked...)
+
 	// COULD-NOT-CHECK is announced BEFORE any verdict, and whether or not the push is refused.
 	// Silence used to mean two different things — "looked, found nothing" and "could not
 	// look" — and only one of them is safe. Per brief-10 a client-side hook does not wedge a
@@ -223,13 +240,17 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		for _, u := range unchecked {
 			fmt.Fprintf(stderr, "deskpushguard: COULD-NOT-CHECK the base of %s: %s. This is NOT "+
 				"a clean bill of health — the base was never verified. Allowing the push "+
-				"(fail-open, brief-10); re-check by hand with `git log refs/remotes/origin/main..HEAD`.\n",
-				u.branch, u.reason)
+				"(fail-open, brief-10); re-check by hand with `git log refs/remotes/%s/main..HEAD`.\n",
+				u.branch, u.reason, orRemotePlaceholder(remoteName))
 		}
 		auditUnchecked(stderr, unchecked)
 	}
 
-	if len(blocked) > 0 || len(laundered) > 0 || len(masqueraded) > 0 || len(strayBased) > 0 || len(collisions) > 0 {
+	if len(blocked) > 0 || len(laundered) > 0 || len(masqueraded) > 0 || len(strayBased) > 0 || len(collisions) > 0 ||
+		len(outboundRefusals) > 0 {
+		for _, o := range outboundRefusals {
+			fmt.Fprintf(stderr, "refusing: %s: %s\n", o.branch, o.msg)
+		}
 		for _, b := range blocked {
 			msg := fmt.Sprintf("refusing: PR #%d for %s is %s — a merged/closed PR is DONE; open a NEW branch for follow-up.",
 				b.pr, b.branch, b.state)
@@ -239,12 +260,12 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 			// The remediation is spelled refs/remotes/origin/main deliberately: the bare
 			// `origin/main` form this message used to suggest is exactly what produces the
 			// stray-base cut below when a refs/heads/origin/main exists.
-			fmt.Fprintf(stderr, "refusing: %s: commit %s (%q) is also reachable from %s — foreign commit dragged in from a sibling branch, not main. Re-cut with `git worktree add <path> refs/remotes/origin/main --detach` (#22).\n",
-				l.branch, shortSHA(l.commit.sha), l.commit.subject, l.commit.sourceBranch)
+			fmt.Fprintf(stderr, "refusing: %s: commit %s (%q) is also reachable from %s — foreign commit dragged in from a sibling branch, not main. Re-cut with `git worktree add <path> refs/remotes/%s/main --detach` (#22).\n",
+				l.branch, shortSHA(l.commit.sha), l.commit.subject, l.commit.sourceBranch, orRemotePlaceholder(remoteName))
 		}
 		for _, s := range strayBased {
-			fmt.Fprintf(stderr, "refusing: %s: branch point %s is the tip of the STRAY LOCAL branch refs/heads/origin/main, not refs/remotes/origin/main (%s)%s — this ref was cut from a stale shadow of main. `git worktree add <path> origin/main --detach` picks refs/heads/ over refs/remotes/ and only warns. Re-cut with `git worktree add <path> refs/remotes/origin/main --detach` (#22).\n",
-				s.branch, shortSHA(s.base.strayTip), shortSHA(s.base.trueBase), behindPhrase(s.base.behind))
+			fmt.Fprintf(stderr, "refusing: %s: branch point %s is the tip of the STRAY LOCAL branch refs/heads/origin/main, not refs/remotes/%s/main (%s)%s — this ref was cut from a stale shadow of main. `git worktree add <path> origin/main --detach` picks refs/heads/ over refs/remotes/ and only warns. Re-cut with `git worktree add <path> refs/remotes/%s/main --detach` (#22).\n",
+				s.branch, shortSHA(s.base.strayTip), orRemotePlaceholder(remoteName), shortSHA(s.base.trueBase), behindPhrase(s.base.behind), orRemotePlaceholder(remoteName))
 		}
 		for _, m := range masqueraded {
 			fmt.Fprintf(stderr, "refusing: %s: commit %s (%q) claims to be a merge but has fewer than two parents — fake rebase masquerade (#72).\n",
@@ -362,19 +383,32 @@ func parseRef(line string) (refLine, bool) {
 	return refLine{branch: branch, localSHA: localSHA}, true
 }
 
+// orRemotePlaceholder spells a remote name inside a suggested command, or a visible
+// placeholder when the hook was not told the remote — never a guessed name.
+func orRemotePlaceholder(remoteName string) string {
+	if remoteName == "" {
+		return "<remote>"
+	}
+	return remoteName
+}
+
 // deriveRepo extracts "owner/repo" from the push target's remote URL.
 // Handles HTTPS, git@, and ssh:// URLs.
 func deriveRepo(remoteURL, remoteName string) (string, error) {
 	// The URL normally comes from git's hook invocation (args[1]). If empty, fall back to
 	// the configured remote NAMED remoteName — the same remote the caller already resolved
-	// from args[0] (never a hardcoded "origin"; see run()'s own doc comment and #1201) — an
+	// from args[0] (never an assumed `origin`; see run()'s own doc comment and #1201) — an
 	// in-process, local config read (no network touch), matching `git remote get-url
 	// <remoteName>` / `git config --get remote.<remoteName>.url`, migrated onto gitcore
 	// (#951) exactly as deskgit's and deskkit preflight's own `remote get-url` reads were
 	// migrated in an earlier PR (Repo.RemoteURL).
+	//
+	// With neither a URL nor a remote name there is nothing to derive the repo FROM: the
+	// caller's fail-open path reports it (PR-state check skipped) instead of this function
+	// reading some other remote's URL and checking the PR state of the wrong repository.
 	if remoteURL == "" {
 		if remoteName == "" {
-			remoteName = "origin"
+			return "", fmt.Errorf("the hook was given neither a remote name nor a remote URL")
 		}
 		repo, err := openRepo("")
 		if err != nil {

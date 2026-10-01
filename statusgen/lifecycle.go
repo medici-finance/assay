@@ -56,9 +56,22 @@ type PRRecord struct {
 // WitnessInfo is the `verifyrun --check` result for a brief — the `verified`
 // witness. Version is the brief version the witness was run against; a mismatch
 // against the brief's current version is the stale-Verify demotion (spec §5).
+//
+// Released is the brief's evidence-coverage verdict (graph-execution/03,
+// coverage.go: Coverage.Released) — every mandatory claim resolves `pass` at the
+// item's revision. It demotes `verified` exactly as a Version mismatch does:
+// Passed alone (verifyrun's own three-state result for the rows it ran) says
+// nothing about a claim the pattern node ALSO declares mandatory, or about a
+// witness recorded against a different revision than the one now checked out —
+// coverage catches both. false is the safe default for a caller that does not
+// (yet) compute coverage — see the false-by-default note on deriveOne below;
+// existing callers/fixtures that never set this field keep their prior
+// behaviour ONLY once they are updated to pass Released explicitly, which
+// derived-board's own test fixtures now do.
 type WitnessInfo struct {
-	Passed  bool
-	Version int
+	Passed   bool
+	Version  int
+	Released bool
 }
 
 // ApprovalInfo is the App approval at head — the `done` witness for a gate:model
@@ -175,6 +188,27 @@ func deriveOne(b BriefIdent, prs []PRRecord, in LifecycleInput) BriefCell {
 			c.Source = "witness"
 			c.Reason = fmt.Sprintf("witness for v%d, brief is v%d", w.Version, b.Version)
 			c.Witness = fmt.Sprintf("verifyrun --check witness for v%d, brief is v%d", w.Version, b.Version)
+			return c
+		}
+		if w.Passed && !w.Released {
+			// Coverage demotion (graph-execution/03, coverage.go): the ROW-level
+			// witness this brief's own Verify table produced passed, but the
+			// brief's evidence-coverage verdict is NOT released — some mandatory
+			// claim beyond that one witness (a pattern node's own declared claim,
+			// or this same witness read at the wrong revision) still holds. This
+			// is the SAME demotion shape as the stale-version case just above —
+			// "the record cannot support this claim" — read off a different
+			// signal (Coverage.Released, computed by evaluateCoverage) than a
+			// different component. Released's zero value is false (fail-closed,
+			// matching this file's own three-state-instrument discipline): a
+			// caller that populates Passed but has not yet wired coverage MUST
+			// set Released explicitly (true, if it stands by the witness alone)
+			// or its `verified`/`done` briefs demote to `unknown` here — which is
+			// why every existing fixture in lifecycle_test.go now sets it.
+			c.Cell = "unknown"
+			c.Source = "witness"
+			c.Reason = "verifyrun witness passed but evidence coverage is not released"
+			c.Witness = fmt.Sprintf("verifyrun --check pass (v%d), coverage NOT released", w.Version)
 			return c
 		}
 		if w.Passed {

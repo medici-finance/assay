@@ -52,15 +52,15 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **COULD NOT CHECK — main-red arm could not check — no `--main-health` input was supplied, so whether main is red is unknown here (statusgen does not read live CI). A main-red fix cannot be lifted into the critical tier on this run; this is not a reading that main is green.**
 
-_Held by per-stream caps: 5 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (3), measured-status (2). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 3 brief(s) across 2 stream(s) — top: measured-status. By stream: measured-status (2), desktools-v2 (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | desktools-v2 | 03 — native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot) [exec:strong] | 3 | 1500 + 1500 (drive:desktools-v2) |
-| desktools-v2 | 10 — one outbound-write check at the forge write seam, keyed on the target's visibility [exec:strong] | 2 | 1500 + 1500 (drive:desktools-v2) |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
 | graph-execution | 13 — Deterministic admission over facts and bounded probabilistic advice [exec:strong] | 1 | 3000 |
-| desktools-v2 | 05 — the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884) [exec:strong] | 2 | 1000 + 1500 (drive:desktools-v2) |
+| desktools-v2 | 12 — platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS [exec:strong] | 2 | 1000 + 1500 (drive:desktools-v2) |
+| desktools-v2 | 13 — platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage [exec:strong] | 2 | 1000 + 1500 (drive:desktools-v2) |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | measured-status | 03 — Derive the commsloop router's risk field from the envelope instead of hardcoding false, or record why false is sound — restore the risk:yes->tier:human backstop [exec:strong] | 0 | 2200 |
 | measured-status | 05 — attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish [exec:strong] | 1 | 2200 |
@@ -74,9 +74,9 @@ _Held by per-stream caps: 5 brief(s) across 2 stream(s) — top: desktools-v2. B
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 11c822f 2026-10-01T00:55:51Z_
+_last regen: eb2ec26 2026-10-01T01:53:35Z_
 
-**Progress:** 4/13 brief items done.
+**Progress:** 5/13 brief items done.
 
 **In-flight:**
 
@@ -87,7 +87,6 @@ _none_
 - build-less-brittle/02
 - build-less-brittle/04
 - build-less-brittle/06
-- build-less-brittle/10
 
 **Frontier next:**
 
@@ -98,9 +97,9 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 11c822f 2026-10-01T00:55:51Z_
+_last regen: eb2ec26 2026-10-01T01:53:35Z_
 
-**Progress:** 11/31 brief items done.
+**Progress:** 12/31 brief items done.
 
 **In-flight:**
 
@@ -108,7 +107,8 @@ _none_
 
 **Blocked on review:**
 
-- desktools-v2/09
+- desktools-v2/05
+- desktools-v2/10
 - windows-port/00
 - windows-port/01
 - windows-port/03
@@ -120,8 +120,6 @@ _none_
 **Frontier next:**
 
 - desktools-v2/03
-- desktools-v2/05
-- desktools-v2/10
 - desktools-v2/12
 - desktools-v2/13
 - desktools-v2/14
@@ -132,14 +130,14 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (48 desk-actionable of 81 total — 81 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (51 desk-actionable of 84 total — 82 at implemented, 2 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (48)
+### Desk-actionable (51)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -150,8 +148,9 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | build-less-brittle | 06 [exec:strong] | implemented | 4500 | 3 | — | — | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
+| graph-execution | 03 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | apps-installer | 02 [exec:strong] | implemented | 4000 | 4 | — | — | — |
-| build-less-brittle | 10 [exec:strong] | implemented | 4000 | 2 | — | — | — |
+| build-less-brittle | 10 [exec:strong] | verified | 4000 | 2 | — | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
@@ -171,6 +170,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 19 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| desktools-v2 | 10 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 13 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -186,7 +186,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 17 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 26 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| desktools-v2 | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desktools-v2 | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desktools-v2 | 09 [exec:strong] | verified | 1000 | 0 | — | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -250,6 +251,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | desk-supervision | — | — |
 | desk-tools | — | — |
 | desktools-go-git | — | — |
+| desktools-v2 | — | — |
 | forge-gitlab | — | — |
 | forge-neutral | — | — |
 | harness-portability | — | — |
@@ -291,7 +293,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 05 Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight — todo (wave 3)
 - 06 Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision — implemented (wave 2)
 - 09 Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept — todo (wave 3)
-- 10 Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning — implemented (wave 2)
+- 10 Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning — verified (wave 2)
 - 11 Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge — todo (wave 4)
 - 12 The refactor oracle: what a redesign is coded against — intent, failure modes, triaged characterization tests, invariants, and an acceptance rule — todo (wave 5)
 - 13 Incident-time refactor by an agent, with one human residue: the strong-tier session runs the investigation, assembles the oracle, drafts the refactor PR, and asks the driver exactly one typed decision, only for what the record does not settle — todo (wave 6)
@@ -386,11 +388,11 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 ### desktools-v2 (10 open)
 
 - 03 native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot) — todo (wave 3)
-- 05 the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884) — todo (wave 2)
+- 05 the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884) — implemented (wave 2)
 - 06 installation-token scoping — one token per repo, no ambient-credential hiding (#628 / #1145 / #1146) — todo (wave 4)
 - 08 hold statusgen at zero — the gh ban fails on statusgen and the scan is proven with no gh present — todo (wave 6)
-- 09 purpose-built access-pattern query operations (one tuned snapshot, not N per-item calls) — implemented (wave 3)
-- 10 one outbound-write check at the forge write seam, keyed on the target's visibility — todo (wave 2)
+- 09 purpose-built access-pattern query operations (one tuned snapshot, not N per-item calls) — verified (wave 3)
+- 10 one outbound-write check at the forge write seam, keyed on the target's visibility — implemented (wave 2)
 - 11 a house callout for the outbound-write check — deployment vocabulary stays out of the shipped tools — todo (wave 3)
 - 12 platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS — todo (wave 2)
 - 13 platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage — todo (wave 2)
@@ -444,7 +446,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 ### graph-execution (16 open)
 
 - 02 Workflow-pattern schema, node contract, and the implementation and research patterns — implemented (wave 0)
-- 03 Evidence coverage rule and the observe evidence kind — todo (wave 1)
+- 03 Evidence coverage rule and the observe evidence kind — implemented (wave 1)
 - 04 Recovery contract for effect-bearing nodes in drainloop — todo (wave 1)
 - 05 Offline two-pattern experiment on frozen fixtures — todo (wave 2)
 - 06 Run records and the replay/learning loop — todo (wave 3)

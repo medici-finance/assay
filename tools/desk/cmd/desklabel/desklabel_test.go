@@ -93,7 +93,7 @@ func plantWorld(t *testing.T, role string, fg deskkit.Forge) {
 	roleFn = func() (string, error) { return role, nil }
 	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 		owner, name, _ := strings.Cut(repo, "/")
-		return fg, deskkit.ForgeRepo{Owner: owner, Name: name}, nil
+		return deskkit.OutboundChecked(fg, "worker"), deskkit.ForgeRepo{Owner: owner, Name: name}, nil
 	}
 	nowFunc = func() time.Time { return time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC) }
 	mintedRole, ghToken = "", ""

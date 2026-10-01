@@ -153,6 +153,14 @@ func OverrideIdentity() string {
 // cases that motivated the override at all.
 const impersonationMarker = "reads as a RULING/DECISION claim attributed to"
 
+// withheldMarker is the fragment of a self-containment refusal that names the withheld
+// register; RuleWithheldIdentifier is the outbound check's own spelling of the same rule.
+const withheldMarker = "withheld register identifier"
+
+func isWithheldRefusal(msg string) bool {
+	return strings.Contains(msg, withheldMarker) || strings.Contains(msg, "refused: "+RuleWithheldIdentifier+" at ")
+}
+
 // HandleScanRefusal is the ONE decision point every refusal verb routes its secret-scan
 // result through. Given the scan's verdict and whatever the operator passed to
 // --force-scan-override, it returns:
@@ -187,7 +195,21 @@ func HandleScanRefusal(o ScanOverride, scanErr error) error {
 		}
 		return scanErr
 	}
+	if isWithheldRefusal(scanErr.Error()) {
+		// The withheld register (desktools-v2/10, ruled 2026-09-21 #1319 option 1): it only
+		// runs on a public or unknown-visibility target, and a written reason does not publish
+		// a withheld identifier — rewording does, or a human changing the configured set.
+		if reason != "" {
+			return Refused("refused: --" + ScanOverrideFlag + " does not apply to " +
+				RuleWithheldIdentifier + " — " + nonOverridableWhy(RuleWithheldIdentifier) +
+				" Original refusal: " + scanErr.Error())
+		}
+		return scanErr
+	}
 	if reason == "" {
+		if strings.Contains(scanErr.Error(), OverrideHint()) {
+			return scanErr // already annotated (an OutboundCheck refusal carries the hint)
+		}
 		// Re-wrap with the override hint but PRESERVE any ScanFinding, so a --explain caller
 		// still reaches the rule id and line through the annotated refusal (the message is
 		// unchanged bar the appended hint).

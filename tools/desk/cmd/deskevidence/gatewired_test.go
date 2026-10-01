@@ -37,6 +37,17 @@ func TestPublicRepoGateFetcherRoutesThroughResolvedForge(t *testing.T) {
 	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | ... | evidence row |\n")
 	f.setFile(evidencePath, "# Brief\n\n## Evidence\n")
 
+	// The resolver hands out the fake behind the outbound-write check (desktools-v2/10), so
+	// "the same forge" is the exact value forgeForFn returned, captured here.
+	var resolved deskkit.Forge
+	innerResolve := forgeForFn
+	forgeForFn = func(owner, name string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+		fg, fr, err := innerResolve(owner, name)
+		resolved = fg
+		return fg, fr, err
+	}
+	t.Cleanup(func() { forgeForFn = innerResolve })
+
 	var captured deskkit.RepoInfoFetcher
 	oldGate := publicRepoGateFn
 	publicRepoGateFn = func(fetcher deskkit.RepoInfoFetcher, owner, repo string) error {
@@ -59,7 +70,7 @@ func TestPublicRepoGateFetcherRoutesThroughResolvedForge(t *testing.T) {
 			"wrapping the forge already resolved for this repo — a hardcoded GitHub-only client "+
 			"cannot answer for a GitLab-resolved repo (assay#1066)", captured)
 	}
-	if routed.Forge != deskkit.Forge(f) {
+	if resolved == nil || routed.Forge != resolved {
 		t.Fatal("the fetcher wraps a different forge than the one forgeForFn resolved for this repo")
 	}
 

@@ -23,9 +23,9 @@ sources: ["fixture: model-gated, verified — brief file touched in an intermedi
 ## Evidence
 <!-- contract comment -->
 
-| # | Command | Exit | Result | Date | Runner |
-|---|---------|------|--------|------|--------|
-| 1 | `go vet ./...` | 0 | ok | 2026-07-08 | fixture-verifier |
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `go vet ./...` | pass exit=0 | sha256:abc123def456 | 2026-07-08 | fixture-verifier |
 
 ## Review
 Gate: model.

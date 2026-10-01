@@ -8,8 +8,10 @@ package deskkit
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -159,6 +161,21 @@ func TestComputeActivation_TransitiveProvider(t *testing.T) {
 	})
 }
 
+// TestComputeActivation_DuplicateIDFirstWins pins ComputeActivation's by-name
+// index to FIRST-declaration-wins, matching its providers index. An in-memory
+// caller can pass two manifests with one id (DiscoverManifests already drops the
+// later one); the first must decide the component's state. Here the second copy
+// requires an INVALID extension key, so a last-wins index turns it INACTIVE.
+func TestComputeActivation_DuplicateIDFirstWins(t *testing.T) {
+	first := manifestOf("test/dup", nil, []string{"assay.roster.trust"})
+	second := manifestOf("test/dup", nil, []string{"assay.roster.trust", "assay.roster.ext.x"})
+	ext := map[string]ExtKeyResult{"x": {Status: ExtInvalid, Reason: "TEST_KEY: synthetic rejection"}}
+	results := ComputeActivation([]componentManifest{first, second}, ext, true)
+	if !results["test/dup"].Active {
+		t.Fatalf("test/dup = %+v, want ACTIVE: the FIRST declaration must win, not the later duplicate", results["test/dup"])
+	}
+}
+
 // TestComputeActivation_NoProviderIsInactive: a required key with NO declared
 // provider anywhere fails closed rather than being assumed fine.
 func TestComputeActivation_NoProviderIsInactive(t *testing.T) {
@@ -262,8 +279,8 @@ func TestVerbActivationRefusal_ExtensionKeyInvalid(t *testing.T) {
 	if msg == "" {
 		t.Fatal("VerbActivationRefusal returned \"\" — an invalid required extension key must refuse")
 	}
-	if !strings.HasPrefix(msg, "could-not-check: assay/test/desk-tools inactive — assay.roster.ext.repo-aliases ") {
-		t.Fatalf("refusal shape = %q, want the could-not-check: assay/<component> inactive — <key> <reason> form", msg)
+	if !strings.HasPrefix(msg, "could-not-check: test/desk-tools inactive — assay.roster.ext.repo-aliases ") {
+		t.Fatalf("refusal shape = %q, want the could-not-check: <component id> inactive — <key> <reason> form", msg)
 	}
 }
 
@@ -352,5 +369,169 @@ func TestCheckVerbActivation_PrintsAndReportsFalseWhenInactive(t *testing.T) {
 	}
 	if !strings.HasPrefix(strings.TrimSpace(buf.String()), "could-not-check:") {
 		t.Fatalf("printed message = %q, want a could-not-check: line", buf.String())
+	}
+}
+
+// TestVerbRefusal_NamespacedIDNotDoubled pins the refusal against a component id
+// that already carries the assay/ namespace — the shape every real manifest uses,
+// which the test/-prefixed fixtures above could not catch. The refusal names the
+// id verbatim: `assay/example-verbs`, never `assay/assay/example-verbs`.
+func TestVerbRefusal_NamespacedIDNotDoubled(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, "assay/example-verbs", []string{"assay.desk.verbs"},
+		[]string{"assay.roster.trust", "assay.roster.ext.repo-aliases"}, nil)
+
+	r := goldenRoster()
+	r[EnvRepoAliases] = "not=a=valid=shape"
+	withRoster(t, r)
+
+	msg := VerbActivationRefusal(dir)
+	want := "could-not-check: assay/example-verbs inactive — assay.roster.ext.repo-aliases "
+	if !strings.HasPrefix(msg, want) {
+		t.Fatalf("refusal = %q, want prefix %q", msg, want)
+	}
+	if strings.Contains(msg, "assay/assay/") {
+		t.Fatalf("refusal doubles the namespace: %q", msg)
+	}
+}
+
+// doubledNamespace matches a Go string literal that prepends the assay/ namespace
+// to a formatted or concatenated value — the shape that printed
+// `assay/assay/<id>` when the value was a component id that already carries it.
+var doubledNamespace = regexp.MustCompile(`"assay/(%[sqv]|"\s*\+)`)
+
+// TestNoNamespacePrefixedFormatting is the CLASS guard for the doubled prefix:
+// no non-test Go source in tools/desk formats a value behind a literal assay/
+// prefix. Component ids carry their own namespace; print them verbatim. The
+// allow-list is empty. A positive control proves the matcher still matches.
+func TestNoNamespacePrefixedFormatting(t *testing.T) {
+	for _, plant := range []string{`fmt.Sprintf("assay/%s", id)`, `"assay/" + id`} {
+		if !doubledNamespace.MatchString(plant) {
+			t.Fatalf("positive control: matcher no longer flags %s", plant)
+		}
+	}
+	root := filepath.Join("..", "..") // tools/desk
+	var hits []string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, werr error) error {
+		if werr != nil {
+			return werr
+		}
+		if d.IsDir() {
+			if d.Name() == "testdata" || d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		data, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return rerr
+		}
+		for i, line := range strings.Split(string(data), "\n") {
+			if doubledNamespace.MatchString(line) {
+				hits = append(hits, fmt.Sprintf("%s:%d: %s", path, i+1, strings.TrimSpace(line)))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("could-not-check: walking %s: %v", root, err)
+	}
+	if len(hits) > 0 {
+		t.Fatalf("namespace-prefixed formatting (print the id verbatim):\n%s", strings.Join(hits, "\n"))
+	}
+}
+
+// TestDiscoverManifests_SkipsNestedCheckouts: a nested clone (.git directory) or
+// linked worktree (.git file) below root is another checkout. Its manifests must
+// not change this tree's activation — here each nested copy requires a key that
+// would deactivate the verbs component if it were read. The nested directories
+// are named to sort BEFORE the root's own manifest directory (`a-…` <
+// `assay-example-verbs/`), so a nested copy that is read wins the duplicate-id
+// tie-break and flips activation: the activation assertion proves the skip on
+// its own, independent of the skipped-list assertion. Each arm (the .git
+// directory and the .git FILE) is pinned by name in skipped.
+func TestDiscoverManifests_SkipsNestedCheckouts(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err) // root's own .git is the normal case and must not skip root
+	}
+	writeManifest(t, root, "assay/example-verbs", []string{"assay.desk.verbs"},
+		[]string{"assay.roster.trust"}, nil)
+	for _, nested := range []struct {
+		dir    string
+		gitDir bool
+	}{{"a-clone", true}, {"a-wt", false}} {
+		sub := filepath.Join(root, nested.dir)
+		writeManifest(t, sub, "assay/example-verbs", []string{"assay.desk.verbs"},
+			[]string{"assay.roster.trust", "assay.roster.ext.repo-aliases"}, nil)
+		var err error
+		if nested.gitDir {
+			err = os.MkdirAll(filepath.Join(sub, ".git"), 0o755)
+		} else {
+			err = os.WriteFile(filepath.Join(sub, ".git"), []byte("gitdir: /elsewhere\n"), 0o644)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ms, skipped, err := DiscoverManifests(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 1 || ms[0].path != "assay-example-verbs/component.yaml" {
+		t.Fatalf("manifests = %+v, want only the root tree's one", ms)
+	}
+	wantSkipped := []string{
+		"a-clone: nested checkout (carries .git), not this tree",
+		"a-wt: nested checkout (carries .git), not this tree",
+	}
+	if strings.Join(skipped, "\n") != strings.Join(wantSkipped, "\n") {
+		t.Fatalf("skipped = %q, want exactly %q (the .git-directory AND the .git-file arm)", skipped, wantSkipped)
+	}
+
+	r := goldenRoster()
+	r[EnvRepoAliases] = "not=a=valid=shape"
+	withRoster(t, r)
+	if msg := VerbActivationRefusal(root); msg != "" {
+		t.Fatalf("a nested checkout's manifest changed activation: %q", msg)
+	}
+}
+
+// TestDiscoverManifests_DuplicateIDDeterministic: two manifests declaring one
+// component id resolve to the one at the lexicographically first path, every
+// time, and the other is named in skipped.
+func TestDiscoverManifests_DuplicateIDDeterministic(t *testing.T) {
+	root := t.TempDir()
+	write := func(sub string, required []string) {
+		dir := filepath.Join(root, sub)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := "component: assay/example-dup\nversion: 0.0.1\nprovides: [assay.desk.verbs]\ninject:\n  required:\n"
+		for _, k := range required {
+			body += "    - key: " + k + "\n"
+		}
+		if err := os.WriteFile(filepath.Join(dir, "component.yaml"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("b", []string{"assay.roster.trust", "assay.roster.ext.repo-aliases"})
+	write("a", []string{"assay.roster.trust"})
+
+	for i := 0; i < 20; i++ {
+		ms, skipped, err := DiscoverManifests(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(ms) != 1 || ms[0].path != "a/component.yaml" {
+			t.Fatalf("run %d: manifests = %+v, want only a/component.yaml", i, ms)
+		}
+		if len(skipped) != 1 || !strings.HasPrefix(skipped[0], "b/component.yaml: duplicate component id") {
+			t.Fatalf("run %d: skipped = %q, want b/component.yaml named as the duplicate", i, skipped)
+		}
 	}
 }

@@ -31,13 +31,18 @@ func runGit(dir string, args ...string) (string, error) {
 // — before the branch exists, before a dispatched agent has committed anything into it — is
 // cheaper than refusing at push time, when the work is already in the tree.
 //
-// The read goes through this package's ONE argv seam, so the "no --force in any git argv"
+// Both reads (`config --list -z`, `remote get-url --push --all origin`) go through this
+// package's ONE argv seam, so the "no --force in any git argv"
 // assertion still runs over every git call add makes. See deskkit/pushtransport.go.
 func pushTransportGate(dir, verb string) error {
 	return deskkit.CheckPushTransport(deskkit.PushTransportInput{
 		Tool: "deskwt", Verb: verb, Dir: dir, Remote: "origin",
 		ConfigZ: func() (string, error) { return runGit(dir, "config", "--list", "-z") },
-		Stderr:  os.Stderr,
+		// git's own resolution of the push URL, url.<base>.insteadOf / pushInsteadOf rewrites
+		// applied, read from local config only (no remote contacted): the gate decides from
+		// what git WILL push to, not from the configured string (#884).
+		PushURLs: func() (string, error) { return runGit(dir, "remote", "get-url", "--push", "--all", "origin") },
+		Stderr:   os.Stderr,
 	})
 }
 

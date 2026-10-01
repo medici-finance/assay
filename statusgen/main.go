@@ -321,6 +321,26 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// hard-gated, and the git-derived class 1 reuses the same merge read.
 	// Declared source: statusgen/boardhonesty.go.
 	notices = append(notices, boardHonestyNotices(checkStreams, mergedPRs, mergedErr)...)
+	// Sibling-merge-unreconciled (siblingmerge.go): the
+	// SEVENTH board-honesty phantom class, wired right after class 1 like the
+	// package comment describes, but through its OWN driver rather than
+	// classifyPhantom — it needs a live read of ANOTHER repo's checkout,
+	// which none of the tree-only classes above carry. Runs over the FULL
+	// `streams` (not the scoped checkStreams above) because it also MUTATES
+	// each checked-failed TODO row's Brief.MergedInSibling for the Next-up
+	// eligibility exclusion (nextup.go) below, and nextUp() itself walks the
+	// full set — a scoped mutation here would leave an out-of-scope stream's
+	// row un-excluded on the very board that renders it. NOTICE-only,
+	// exactly like every other class in this file: never a PROBLEM, never an
+	// exit-code change here (severity comes from the eligibility exclusion
+	// and the dedicated `phantoms` verb instead). OPT-IN: without
+	// --sibling-merge or ASSAY_SIBLING_MERGE=1 no other checkout is read and
+	// at most one "not-checked" NOTICE says so (siblingMergeOffNotices).
+	if siblingNotices, ran := runSiblingMergeIfOptedIn(streams, root); ran {
+		notices = append(notices, siblingNotices...)
+	} else {
+		notices = append(notices, siblingMergeOffNotices(streams, root)...)
+	}
 	// Evidence-actor (desk-apps/07, F-verify-self-attest): a `verified`/`done`
 	// row is backed only when an ACCEPTED actor — the roster-bound verifier App or
 	// a roster-known human — committed at least one line of its `## Evidence`
@@ -1230,6 +1250,19 @@ func main() {
 		os.Exit(runShardcheck(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen phantoms` — positional subcommand (like `mergecheck` above,
+	// phantomscli.go) that gives the sibling-merge-
+	// unreconciled class a dedicated, exit-code-bearing verb: `--lint` never
+	// changes exit code for ANY board-honesty phantom class (severity NOTICE,
+	// deliberately — boardhonesty.go), so a CI row or a desk sweep that wants
+	// to go red on a checked-failed sibling merge without arming that against
+	// the whole board's --lint uses this instead. Intercepted before flag
+	// parsing for verifyrun's reason: it owns --root/--class/--sibling-root
+	// with its own meanings and reads no STATUS.md, exactly like --eligibility.
+	if len(os.Args) > 1 && os.Args[1] == "phantoms" {
+		os.Exit(runPhantoms(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen enforcement-status` — the emitter half of mistake-proofing/04.
 	// Prints the generated enforcement-status block (the lint's rules and each
 	// one's fatal/advisory/not-enforced status) to stdout, from the compiled-in
@@ -1424,7 +1457,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}
@@ -1447,6 +1480,21 @@ func main() {
 	diffBaseFlag := flag.String("diff-base", "", "--lint only: make the lint DIFFERENTIAL against this base ref (e.g. refs/remotes/origin/main). Evaluates the register at the merge-base of HEAD and <ref> AND at the working tree, fires PROBLEM only for problems the diff INTRODUCES, and demotes pre-existing base-side problems to NOTICE; always prints a base-vs-diff summary line. Fails safe to a full-strength lint (nothing demoted) when the base cannot be resolved or materialised")
 	var budget budgetFlags
 	flag.Var(&budget, "budget", "word-budget check: relpath:maxwords (repeatable); overrides --lint's default of "+defaultBudgetSpec)
+	// --sibling-root (siblingmerge.go): overrides where a
+	// registered sibling's checkout lives on this machine, for the
+	// sibling-merge-unreconciled detector. Repeatable; also read from the
+	// SAME DESK_ROOTS environment variable the desk tools already use
+	// (effectiveSiblingRootOverrides). The two together are the operator's
+	// allowlist: a sibling named by neither is never read (could-not-check),
+	// whatever the tree's registry says.
+	flag.Var(&siblingRootFlagValues, "sibling-root", `sibling checkout "<owner>/<repo>=<path>" the sibling-merge-unreconciled detector may read (repeatable; also read from DESK_ROOTS); only repos named here or in DESK_ROOTS are ever read`)
+	// --sibling-merge (siblingmerge.go): the opt-in for the sibling read on
+	// --lint, the STATUS.md regen, --next-up and --roadmap. Off by default,
+	// because DESK_ROOTS is routinely inherited from the environment and the
+	// scanned tree's registry would otherwise choose which other local
+	// checkouts get read. ASSAY_SIBLING_MERGE=1 (exactly "1") is the env form.
+	// `statusgen phantoms --class sibling-merge-unreconciled` needs neither.
+	flag.BoolVar(&siblingMergeFlagValue, "sibling-merge", false, "opt in to the sibling-merge-unreconciled sibling read on --lint, regen, --next-up and --roadmap (also ASSAY_SIBLING_MERGE=1); reads only repos named in DESK_ROOTS or --sibling-root")
 	recordMode := flag.Bool("record", false, "append brief status transitions to docs/streams/.history.jsonl (main CI only)")
 	verifyIssuesMode := flag.Bool("verify-issues", false, "emit JSON for newly-eligible verify-gate (gate:human + verified) briefs")
 	existingMarkers := flag.String("existing-markers", "", "file of already-existing verify-gate issue markers (one per line, or raw issue bodies)")
@@ -1559,7 +1607,7 @@ func main() {
 	staleIssueDays := flag.Int("stale-issue-days", defaultStaleIssueDays, "--issues/--lint: age in days past which an open issue trips the stale-issue alarm (default 7)")
 	teamLogins := flag.String("team-logins", "", "--issues/--self-improvement: extra comma-separated team/internal logins beyond the roster trusted logins + bots")
 	cynefinMode := flag.Bool("cynefin", false, "classify active work by Cynefin domain (clear/complicated/complex/chaotic): distribution, drift, and a Disorder list of untagged briefs; reuses --json / --weekly / --daily (does not read/write STATUS.md)")
-	doraJSON := flag.Bool("json", false, "machine-readable JSON output. Used with --issues / --autonomy / --ladder / --cynefin / --bottleneck / --intake-debt / --eligibility")
+	doraJSON := flag.Bool("json", false, "machine-readable JSON output. Used with --issues / --autonomy / --ladder / --cynefin / --bottleneck / --intake-debt / --eligibility / --coverage")
 	doraSeries := flag.Bool("series", false, "time series (per-period buckets) instead of a single aggregate. Used with --issues")
 	since := flag.String("since", "", "period start (YYYY-MM-DD) for --verif-backlog / --autonomy / --ladder / --issues")
 	weekly := flag.Bool("weekly", false, "bucket by ISO week (default) for --verif-backlog / --cynefin")
@@ -1669,6 +1717,7 @@ func main() {
 	// --require-claims.
 	nextUpMode := flag.Bool("next-up", false, "emit the DISPATCH queue as JSON: the claim-filtered, capped Next-up selection (todo/in-progress, unclaimed, eligible) plus the held-back decomposition (eligible/shown/heldByStreamCap/heldBySpan/claimsKnown). NOT --gate-scores, which is the awaiting-verification backlog")
 	eligibilityMode := flag.Bool("eligibility", false, "emit the eligibility evaluator's verdict for every brief (graph-execution/01): gates:/feathers:/depends: become gating, with a reason. One line per brief (`<id>  <verdict>  <holds…>`), or --json for the full {id,verdict,holds,notices} structure. Exit 0 on any verdict; exit 2 when the tree cannot be read. Offline by construction — a forge-backed gate reports could-not-check regardless of --forge")
+	coverageMode := flag.Bool("coverage", false, "emit the evidence coverage verdict for every brief (graph-execution/03): every mandatory claim (its own Verify rows, plus a bound pattern node's mandatory evidence) must resolve `pass` at the item's revision or the brief is `held`, with the first reason. One line per brief (`<id> released|held <n-claims> <reason>`), or --json for the full {brief,released,claims} structure. Exit 0 on any verdict; exit 2 when the tree cannot be read. Offline by construction, same discipline as --eligibility")
 	clusterPendingQueueMode := flag.Bool("cluster-pending-queue", false, "emit the pod verify runner's worklist as JSON (verdict-lane/07): the briefs code-verified but cluster-pending — status implemented, every declared `check:cluster` probe parked by the offline lane (a could-not-check marker in Evidence), no VERIFY:FAIL. Read-only, STATUS.md-free")
 	// Gate-effectiveness telemetry: override rate, catch
 	// rate, ceremonial-gate detection. Self-contained diagnostic sub-command,
@@ -1767,6 +1816,7 @@ func main() {
 			"--gate-scores":           *gateScoresMode,
 			"--next-up":               *nextUpMode,
 			"--eligibility":           *eligibilityMode,
+			"--coverage":              *coverageMode,
 			"--cluster-pending-queue": *clusterPendingQueueMode,
 			"--register-links":        *registerLinksFlag,
 			"--gate-telemetry":        *gateTelemetryMode,
@@ -2107,6 +2157,12 @@ func main() {
 	// construction — it never reads --forge.
 	if *eligibilityMode {
 		os.Exit(runEligibility(*root, *doraJSON))
+	}
+	// Coverage-rule emitter (graph-execution/03): self-contained, STATUS.md-free,
+	// same discipline as --eligibility. Offline by construction — the revision
+	// comparison reads the local tree's own HEAD, never a live PR/merge lookup.
+	if *coverageMode {
+		os.Exit(runCoverage(*root, *doraJSON))
 	}
 	// Cluster-pending queue (verdict-lane/07): self-contained JSON worklist for
 	// the pod verify runner — the briefs code-verified but cluster-pending. Same
