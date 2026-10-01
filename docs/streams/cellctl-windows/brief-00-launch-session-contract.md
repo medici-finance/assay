@@ -25,12 +25,12 @@ exec-tier-why: >-
 domain: complicated
 outcome: none
 consumers:
-  - "tools/desk/internal/celllaunch/: fixed-here"
-  - "docs/cellctl-windows.md: fixed-here"
-  - "cellctl-windows/01: follow-up cellctl-windows/01"
-  - "cellctl-windows/02: follow-up cellctl-windows/02"
-  - "cellctl-windows/03: follow-up cellctl-windows/03"
-  - "cellctl-windows/04: follow-up cellctl-windows/04"
+  - "tools/desk/internal/celllaunch/: fixed-here (versioned contracts, parsers, compiled fixtures and mutation specification)"
+  - "docs/cellctl-windows.md: fixed-here (handoff protocol, lifecycle semantics and capability evidence checklist)"
+  - "cellctl-windows/01: follow-up cellctl-windows/01 (production runner and private store consume the launch contract)"
+  - "cellctl-windows/02: follow-up cellctl-windows/02 (process supervisor consumes scoped process identity and observations)"
+  - "cellctl-windows/03: follow-up cellctl-windows/03 (cockpit adapters consume RunnerRequest and exact console identity)"
+  - "cellctl-windows/04: follow-up cellctl-windows/04 (Docker endpoint work supplies the frozen engine identity)"
 ---
 
 # Brief 00 — Go launch and session contracts for native Windows
