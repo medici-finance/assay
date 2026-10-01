@@ -154,6 +154,15 @@ var AllowedInvocations = []Allowance{
 // unresolvedRegister records every exec site whose argv[0] the checker cannot resolve. It is
 // a LEDGER of blind spots, not a permit — see the file header.
 var UnresolvedArgv = []Allowance{
+	{
+		Key: "internal/deskkit/layaadvisor.go::LayaAdvisor.Predict::<unresolved>",
+		Reason: "runs an explicitly approved operator-selected local inference executable, never wired into " +
+			"default routing; receives a JSON assessment and an offline-only environment without inherited " +
+			"forge credentials. Intended as a local model process, not a forge CLI. The configurable argv[0] " +
+			"cannot be proven by this scanner: retain could-not-check until an owner-approved executable " +
+			"and network-denying/read-only sandbox are available. This row registers the blind spot, grants " +
+			"no forge permit or runtime activation, and leaves the owner gate in place.",
+	},
 	// cmd/cellctl — the cell launcher (the Go port of the bash script now kept only as a test
 	// oracle, tools/cellctl/testdata/cellctl-shell-oracle.sh). It reaches NO forge at all: its one
 	// credential path goes through deskkit.RoleTokenForRepo, and its own brief asserts at the
