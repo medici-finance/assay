@@ -1091,6 +1091,10 @@ func (v verdict) String() string {
 type ghPRFile struct {
 	Filename string `json:"filename"`
 	Patch    string `json:"patch"`
+	// PreviousFilename is set on a rename: the path the file moved FROM. The
+	// findings-register transition lane reads both names so a renamed entry is
+	// still a touched entry.
+	PreviousFilename string `json:"previous_filename,omitempty"`
 }
 
 // prFilesToDiff reconstructs a unified-diff string (parseable by stampsInDiff)
@@ -1112,6 +1116,18 @@ func prFilesToDiff(files []ghPRFile) string {
 // fetchPRDiff returns a unified diff of the given repo's PR, reconstructed from
 // the paginated "List pull request files" REST API.
 func fetchPRDiff(repo string, pr int) (string, error) {
+	files, err := fetchPRFiles(repo, pr)
+	if err != nil {
+		return "", err
+	}
+	return prFilesToDiff(files), nil
+}
+
+// fetchPRFiles returns the given repo's PR file list from the paginated "List
+// pull request files" REST API — the structured form every --corroborate lane
+// reads (the diff lanes through prFilesToDiff, the register-transition lane
+// through the file names).
+func fetchPRFiles(repo string, pr int) ([]ghPRFile, error) {
 	// gh pr diff caps at 300 files (HTTP 406 on larger PRs). The paginated
 	// "List PR files" API has no such cap; reconstruct a unified diff from the
 	// per-file patch fields.
@@ -1119,18 +1135,18 @@ func fetchPRDiff(repo string, pr int) (string, error) {
 		fmt.Sprintf("repos/%s/pulls/%d/files", repo, pr))
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("gh api pulls/%d/files: %w", pr, err)
+		return nil, fmt.Errorf("gh api pulls/%d/files: %w", pr, err)
 	}
 	// --slurp + --paginate yields an array of per-page arrays: [[...],[...]].
 	var pages [][]ghPRFile
 	if err := json.Unmarshal(out, &pages); err != nil {
-		return "", fmt.Errorf("unmarshal PR %d files: %w", pr, err)
+		return nil, fmt.Errorf("unmarshal PR %d files: %w", pr, err)
 	}
 	var files []ghPRFile
 	for _, p := range pages {
 		files = append(files, p...)
 	}
-	return prFilesToDiff(files), nil
+	return files, nil
 }
 
 // ghPRData holds the subset of `gh pr view --json reviews,comments` that this check
@@ -1334,6 +1350,16 @@ func reviewURL(repo string, pr int, r ghReview) string {
 // (markPreExisting): that stamp was authored and corroborated on its own PR, so a
 // board migration that re-emits whole tables does not re-gate it here. PRE-EXISTING,
 // like CORROBORATED, does not fail the run.
+// The forge/git reads runCorroborate makes, as package seams so a test can drive
+// the whole command — every lane and the exit code — against a git fixture with no
+// network. Production values are the real readers.
+var (
+	corroborateRepoFn      = repoFromOrigin
+	corroborateFilesFn     = fetchPRFiles
+	corroborateDataFn      = fetchPRData
+	corroborateMergeBaseFn = prMergeBaseSHA
+)
+
 func runCorroborate(prsArg string) int {
 	if prsArg == "" {
 		fmt.Fprintln(os.Stderr, "statusgen: --corroborate requires at least one PR number (comma-separated)")
@@ -1341,7 +1367,7 @@ func runCorroborate(prsArg string) int {
 	}
 
 	// Discover the repo from git remote.
-	repo := repoFromOrigin()
+	repo := corroborateRepoFn()
 	if repo == "" {
 		fmt.Fprintln(os.Stderr, "statusgen: cannot determine GitHub repo from git remote origin")
 		return 1
@@ -1371,10 +1397,34 @@ func runCorroborate(prsArg string) int {
 		}
 		// Fetch the PR diff ONCE and reuse it for both the stamp scan and the
 		// prose/commit acceptance-citation scan.
-		diff, err := fetchPRDiff(repo, pr)
+		files, err := corroborateFilesFn(repo, pr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "statusgen: PR #%d: %v\n", pr, err)
 			return 1
+		}
+		diff := prFilesToDiff(files)
+		// The PR's reviews/comments and its merge-base are read at most once per
+		// PR, and only by a lane that needs them.
+		var (
+			prData    *ghPRData
+			prDataErr error
+			prDataOK  bool
+			mb        string
+			mbOK      bool
+		)
+		getData := func() (*ghPRData, error) {
+			if !prDataOK {
+				prData, prDataErr = corroborateDataFn(repo, pr)
+				prDataOK = true
+			}
+			return prData, prDataErr
+		}
+		getMergeBase := func() string {
+			if !mbOK {
+				mb = corroborateMergeBaseFn(".", repo, pr)
+				mbOK = true
+			}
+			return mb
 		}
 
 		// --- human:<name> STAMP corroboration ---
@@ -1396,7 +1446,7 @@ func runCorroborate(prsArg string) int {
 		if len(stamps) == 0 {
 			fmt.Printf("PR #%d: no human:<name> stamps found in diff — clean\n", pr)
 		} else {
-			data, err := fetchPRData(repo, pr)
+			data, err := getData()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "statusgen: PR #%d: %v\n", pr, err)
 				return 1
@@ -1414,7 +1464,7 @@ func runCorroborate(prsArg string) int {
 			// PR; a board migration that re-emits whole tables must not re-gate it
 			// here. A merge-base that cannot be resolved (or a base file that cannot
 			// be read) exempts nothing — the fail-closed direction.
-			mb := prMergeBaseSHA(".", repo, pr)
+			mb := getMergeBase()
 			baseRowsByFile := map[string]map[string]string{}
 			baseHeadersByFile := map[string]map[string]int{}
 			for i := range stamps {
