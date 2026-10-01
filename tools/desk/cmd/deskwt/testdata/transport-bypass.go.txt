@@ -5,3 +5,24 @@ func anotherProvisioner() {
 }
 
 var anotherHelper = wireRoleCredential
+
+// Only this receiver-free declaration is exempt, including aliases in its body.
+func wireRoleTransport() {
+ wireRoleCredential("target", "worker", "example-org/tracker", "x-access-token")
+ helper := wireRoleCredential
+ _ = helper
+}
+
+type valueProvisioner struct{}
+func (valueProvisioner) wireRoleTransport() {
+ wireRoleCredential("target", "worker", "example-org/tracker", "x-access-token")
+ helper := wireRoleCredential
+ _ = helper
+}
+
+type pointerProvisioner struct{}
+func (*pointerProvisioner) wireRoleTransport() {
+ wireRoleCredential("target", "worker", "example-org/tracker", "x-access-token")
+ helper := wireRoleCredential
+ _ = helper
+}

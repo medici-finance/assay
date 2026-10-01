@@ -84,6 +84,12 @@
       "file": "cmd/deskwt/roleinit.go",
       "old": "\n\t\tif _, werr := wireRoleTransport(p.target, p.role, repo); werr != nil {",
       "new": "\n\t\tif werr := wireRoleCredential(p.target, p.role, repo, roleCredUser(p.role)); werr != nil {"
+    },
+    {
+      "name": "name-only exemption hides unrelated receiver methods",
+      "file": "cmd/deskwt/transportguard_test.go",
+      "old": "if fn.Recv == nil && fn.Name.Name == \"wireRoleTransport\" {",
+      "new": "if fn.Name.Name == \"wireRoleTransport\" {"
     }
   ]
 }

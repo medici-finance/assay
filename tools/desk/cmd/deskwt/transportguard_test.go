@@ -24,7 +24,7 @@ func bareCredentialRefs(name string, src any) ([]string, error) {
 	for _, decl := range file.Decls {
 		var node ast.Node = decl
 		if fn, ok := decl.(*ast.FuncDecl); ok {
-			if fn.Name.Name == "wireRoleTransport" {
+			if fn.Recv == nil && fn.Name.Name == "wireRoleTransport" {
 				continue
 			}
 			node = fn.Body // the helper declaration itself is not a reference
@@ -68,7 +68,12 @@ func TestTransportGuardControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	found, err := bareCredentialRefs("planted.go", plant)
-	if err != nil || len(found) != 2 {
-		t.Fatalf("guard must detect planted call and alias: %v %v", found, err)
+	want := []string{
+		"planted.go:4:2", "planted.go:7:21",
+		"planted.go:18:2", "planted.go:19:12",
+		"planted.go:25:2", "planted.go:26:12",
+	}
+	if err != nil || strings.Join(found, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("guard must detect ordinary and receiver calls/aliases only: got %v, want %v; error=%v", found, want, err)
 	}
 }
