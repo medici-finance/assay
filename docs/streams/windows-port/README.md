@@ -197,7 +197,7 @@ it.
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 00 | [Build-tag split for the unix-only syscall sites in statusgen and desk-tools](brief-00-unix-windows-build-tag-split.md) | 0 | M | verified | 2026-09-30 assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5) | — |
+| 00 | [Build-tag split for the unix-only syscall sites in statusgen and desk-tools](brief-00-unix-windows-build-tag-split.md) | 0 | M | implemented | — | — |
 | 01 | [Release build matrix — windows/amd64 + windows/arm64 + sha256s](brief-01-release-build-matrix.md) | 1 | M | implemented | — | — |
 | 02 | [Portability audit — enumerate + triage the shell-assuming surfaces](brief-02-portability-audit.md) | 0 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #413 @ ae22e4fc5f1aac543f4e160cef027f2353a2260f) |
 | 03 | [Windows install path — PowerShell-vs-Go-installer fork, then build](brief-03-install-path.md) | 2 | L | implemented | — | — |
