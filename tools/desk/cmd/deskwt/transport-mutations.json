@@ -92,10 +92,22 @@
       "new": "if fn.Name.Name == \"wireRoleTransport\" {"
     },
     {
-      "name": "admit unsupported HTTPS service ports for provisioning",
+      "name": "admit unsupported HTTP(S) service ports for provisioning",
       "file": "cmd/deskwt/transport.go",
-      "old": "if port := u.Port(); port != \"\" && port != \"443\" {",
-      "new": "if port := u.Port(); false && port != \"\" && port != \"443\" {"
+      "old": "if port := u.Port(); port != \"\" && (strings.EqualFold(u.Scheme, \"http\") || port != \"443\") {",
+      "new": "if port := u.Port(); false && port != \"\" && (strings.EqualFold(u.Scheme, \"http\") || port != \"443\") {"
+    },
+    {
+      "name": "validate HTTPS authorities only",
+      "file": "cmd/deskwt/transport.go",
+      "old": "if strings.HasPrefix(lower, \"https://\") || strings.HasPrefix(lower, \"http://\") {",
+      "new": "if strings.HasPrefix(lower, \"https://\") {"
+    },
+    {
+      "name": "accept empty explicit HTTP(S) service ports",
+      "file": "cmd/deskwt/transport.go",
+      "old": "if strings.HasSuffix(u.Host, \":\") {",
+      "new": "if false && strings.HasSuffix(u.Host, \":\") {"
     }
   ]
 }

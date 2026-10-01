@@ -84,8 +84,9 @@ https-to-SSH insteadOf from rewriting it — plus the role App's host-scoped cre
 REFUSES (exit 5) unless both are exactly that one URL. add rolls back its new worktree;
 role-init retains its worktree for repair and stops before preflight. An origin on
 git's local transport (a path) carries no key and is left as it is, unless it pushes over SSH.
-An HTTPS origin with a service port other than 443 is refused before URL or credential
-provisioning; its original endpoint is never rewritten to a different service.
+An explicit HTTP service port, an HTTPS port other than 443, or an empty HTTP(S)
+port is refused before URL or credential provisioning. Omitted HTTP ports retain
+the established HTTPS migration.
 
 Without --role, add REFUSES an SSH PUSH REMOTE under a bot identity. A worktree inherits this
 checkout's remote, so an ssh:// or git@host:path PUSH url here is one in every worktree cut

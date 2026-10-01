@@ -13,8 +13,18 @@ import (
 
 func TestRoleEndpointPreserved(t *testing.T) {
 	for _, mode := range []string{"fresh", "reuse", "add"} {
-		for _, port := range []string{"", ":443", ":8443", ":0", ":bad"} {
-			t.Run(mode+port, func(t *testing.T) {
+		for _, tc := range []struct {
+			scheme, port string
+			refused      bool
+		}{
+			{"https", "", false}, {"https", ":443", false},
+			{"https", ":8443", true}, {"https", ":80", true},
+			{"https", ":0", true}, {"https", ":bad", true}, {"https", ":", true},
+			{"http", "", false}, {"http", ":80", true}, {"http", ":443", true},
+			{"http", ":8443", true}, {"http", ":0", true}, {"http", ":bad", true}, {"http", ":", true},
+			{"HTTP", ":8443", true}, {"HTTPS", ":443", false},
+		} {
+			t.Run(mode+"/"+tc.scheme+tc.port, func(t *testing.T) {
 				work := newRepo(t)
 				withEnv(t, work)
 				gitlabRepoRoster(t, work)
@@ -24,11 +34,8 @@ func TestRoleEndpointPreserved(t *testing.T) {
 					credCalls++
 					return prevCredential(role, repo, origin)
 				}
-				origin := "https://" + gitlabFixtureHost + port + "/example-org/tracker.git"
-				want := origin
-				if port == "" {
-					want = "https://" + gitlabFixtureHost + ":443/example-org/tracker.git"
-				}
+				origin := tc.scheme + "://" + gitlabFixtureHost + tc.port + "/example-org/tracker.git"
+				want := "https://" + gitlabFixtureHost + ":443/example-org/tracker.git"
 				mustGit(t, work, "remote", "set-url", "origin", origin)
 				mustGit(t, work, "config", "remote.origin.pushurl", operatorSentinel)
 				mustGit(t, work, "config", "extensions.worktreeConfig", "true")
@@ -59,8 +66,7 @@ func TestRoleEndpointPreserved(t *testing.T) {
 					target = filepath.Join(tmpBaseDir, "tracker-endpoint")
 				}
 				rc, stderr := runCapErr(t, args)
-				unsupported := port != "" && port != ":443"
-				if unsupported {
+				if tc.refused {
 					if rc != deskkit.ExitRefused {
 						t.Fatalf("rc=%d, want unsupported endpoint refusal: %s", rc, stderr)
 					}
@@ -89,7 +95,7 @@ func TestRoleEndpointPreserved(t *testing.T) {
 					if mode != "add" && pfCalls != 1 {
 						t.Fatalf("preflight calls=%d, want1", pfCalls)
 					}
-					host := gitlabFixtureHost + port
+					host := gitlabFixtureHost + ":443"
 					if got := credentialFill(t, target, "https", host); !strings.Contains(got, "username=oauth2") || !strings.Contains(got, "password="+fixtureTokenValue) {
 						t.Fatalf("expected role credential at original HTTPS endpoint: %s", got)
 					}
@@ -105,5 +111,42 @@ func TestRoleEndpointPreserved(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestTransportAuthority covers parsing forms without invoking credential or preflight seams.
+func TestTransportAuthority(t *testing.T) {
+	for _, tc := range []struct {
+		origin             string
+		refused, networked bool
+	}{
+		{"hTtP://github.com:443/example/repo.git", true, true},
+		{"hTtPs://github.com:443/example/repo.git", false, true},
+		{"http://git@github.com:8443/example/repo.git", true, true},
+		{"https://git@github.com:8443/example/repo.git", true, true},
+		{"http://github.com:65536/example/repo.git", true, true},
+		{"https://github.com:65536/example/repo.git", true, true},
+		{"http://github.com:-1/example/repo.git", true, true},
+		{"https://github.com:-1/example/repo.git", true, true},
+		{"http://github.com:/example/repo.git", true, true},
+		{"https://github.com:/example/repo.git", true, true},
+		// These existing non-HTTP migrations have a separate transport contract.
+		{"ssh://git@github.com:22/example/repo.git", false, true},
+		{"git+ssh://git@github.com:22/example/repo.git", false, true},
+		{"ssh+git://git@github.com:22/example/repo.git", false, true},
+		{"git@github.com:example/repo.git", false, true},
+		{"git://github.com:9418/example/repo.git", false, true},
+		{"file:///tmp/example.git", false, false},
+		{"/tmp/example.git", false, false},
+	} {
+		t.Run(tc.origin, func(t *testing.T) {
+			host, networked, err := transportHost(tc.origin)
+			if (err != nil) != tc.refused || networked != tc.networked {
+				t.Fatalf("host=%q networked=%v err=%v; want refusal=%v networked=%v", host, networked, err, tc.refused, tc.networked)
+			}
+			if !tc.refused && tc.networked && host != "github.com" {
+				t.Fatalf("host=%q, want github.com", host)
+			}
+		})
 	}
 }

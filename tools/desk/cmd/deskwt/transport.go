@@ -117,13 +117,16 @@ func transportHost(raw string) (host string, networked bool, err error) {
 	}
 	// The existing helper is scoped to the default HTTPS service. Reject other
 	// services before provisioning changes either remote URL list or resolves credentials.
-	if strings.HasPrefix(lower, "https://") {
+	if strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "http://") {
 		u, perr := url.Parse(s)
 		if perr != nil {
-			return "", true, fmt.Errorf("cannot parse the HTTPS origin %s", redactURL(s))
+			return "", true, fmt.Errorf("cannot parse the HTTP(S) origin %s", redactURL(s))
 		}
-		if port := u.Port(); port != "" && port != "443" {
-			return "", true, fmt.Errorf("HTTPS service port %q is unsupported; origin left unchanged", port)
+		if strings.HasSuffix(u.Host, ":") {
+			return "", true, fmt.Errorf("an empty HTTP(S) service port is unsupported; origin left unchanged")
+		}
+		if port := u.Port(); port != "" && (strings.EqualFold(u.Scheme, "http") || port != "443") {
+			return "", true, fmt.Errorf("explicit %s service port %q is unsupported; origin left unchanged", strings.ToUpper(u.Scheme), port)
 		}
 	}
 	h, herr := deskkit.HostOfRemote(s)
