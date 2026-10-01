@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskwt/ ./cmd/deskdispatch/ -count=1 -timeout 300s -run 'TestRoleInit|TestTransport|TestAddRole|TestAddWith|TestAddSsh|TestAddSSH|TestWorktreeCreatePassesTheDispatchedRole'",
+  "test": "go test ./cmd/deskwt/ ./cmd/deskdispatch/ -count=1 -timeout 300s -run 'TestRoleEndpoint|TestRoleInit|TestTransport|TestAddRole|TestAddWith|TestAddSsh|TestAddSSH|TestWorktreeCreatePassesTheDispatchedRole'",
   "control": {
     "name": "CONTROL \u2014 drop the explicit :443 (a global `url.<ssh>.insteadOf = https://<host>/` rewrites the App URL straight back to SSH)",
     "file": "cmd/deskwt/transport.go",
@@ -90,6 +90,12 @@
       "file": "cmd/deskwt/transportguard_test.go",
       "old": "if fn.Recv == nil && fn.Name.Name == \"wireRoleTransport\" {",
       "new": "if fn.Name.Name == \"wireRoleTransport\" {"
+    },
+    {
+      "name": "admit unsupported HTTPS service ports for provisioning",
+      "file": "cmd/deskwt/transport.go",
+      "old": "if port := u.Port(); port != \"\" && port != \"443\" {",
+      "new": "if port := u.Port(); false && port != \"\" && port != \"443\" {"
     }
   ]
 }

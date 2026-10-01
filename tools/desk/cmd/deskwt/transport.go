@@ -41,6 +41,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -113,6 +114,17 @@ func transportHost(raw string) (host string, networked bool, err error) {
 		// A scheme URL: https/http/git/ssh. HostOfRemote drops userinfo and port.
 	case !deskkit.IsSSHTransport(s):
 		return "", false, nil // a bare path (or a Windows drive path): local transport
+	}
+	// The existing helper is scoped to the default HTTPS service. Reject other
+	// services before provisioning changes either remote URL list or resolves credentials.
+	if strings.HasPrefix(lower, "https://") {
+		u, perr := url.Parse(s)
+		if perr != nil {
+			return "", true, fmt.Errorf("cannot parse the HTTPS origin %s", redactURL(s))
+		}
+		if port := u.Port(); port != "" && port != "443" {
+			return "", true, fmt.Errorf("HTTPS service port %q is unsupported; origin left unchanged", port)
+		}
 	}
 	h, herr := deskkit.HostOfRemote(s)
 	if herr != nil || h == "" {
