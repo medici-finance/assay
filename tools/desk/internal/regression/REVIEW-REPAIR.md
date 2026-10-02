@@ -94,8 +94,8 @@ addresses the round-3 advisory.
 
 Fail-first. At the unfixed head, `check-floor.sh` was run with `GIT_DIR`,
 `GIT_WORK_TREE` and `GIT_INDEX_FILE` naming a throwaway decoy repository. It exited 1
-at the `deskwt` row, and the decoy's tree digest changed: its config gained
-`user.name=Test`, `user.email=t@e.st` and `commit.gpgsign=false`. In a separate run
+at the `deskwt` row, and the decoy's tree digest changed: its config gained the
+`deskwt` fixture's `user.name`, `user.email` and `commit.gpgsign=false`. In a separate run
 under the same exported variables, unfixed `mutate_guard.py gitenv` added one commit
 to a fresh decoy (1 to 2 commits). After the repair, the full runner under the same
 hostile variables printed `seed passes=26`, exited 0, and left the decoy's digest
