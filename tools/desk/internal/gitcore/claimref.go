@@ -127,6 +127,7 @@ type RefUpdate struct {
 	Old     plumbing.Hash
 	New     plumbing.Hash
 	Objects *memory.Storage
+	Trace   func(RefReceipt)
 }
 
 // PushRefUpdate performs the compare-and-swap ref update over a plumbing receive-pack session.
@@ -167,12 +168,14 @@ type RefUpdateVerdict struct {
 // PushRefUpdateVerdict is PushRefUpdateDetail with the refusal left structured. A non-nil
 // error is a transport/auth/not-found/protocol failure (could-not-check), exactly as for
 // PushRefUpdate.
-func PushRefUpdateVerdict(ctx context.Context, u RefUpdate) (RefUpdateVerdict, error) {
+func PushRefUpdateVerdict(ctx context.Context, u RefUpdate) (verdict RefUpdateVerdict, resultErr error) {
+	r := RefReceipt{Ref: u.Ref.String(), Old: u.Old.String(), New: u.New.String(), Phase: "endpoint"}
+	defer func() { r.finish(verdict, resultErr, u.Trace) }()
 	ep, err := transport.NewEndpoint(u.URL)
 	if err != nil {
 		return RefUpdateVerdict{}, fmt.Errorf("gitcore: ref-update endpoint: %w", err)
 	}
-	cli, err := client.NewClient(ep)
+	cli, observer, err := claimClient(ep, &r)
 	if err != nil {
 		return RefUpdateVerdict{}, fmt.Errorf("gitcore: ref-update client: %w", err)
 	}
@@ -182,11 +185,16 @@ func PushRefUpdateVerdict(ctx context.Context, u RefUpdate) (RefUpdateVerdict, e
 	}
 	defer sess.Close()
 
+	r.Phase = "advertise"
 	adv, err := sess.AdvertisedReferencesContext(ctx)
 	if err != nil {
 		return RefUpdateVerdict{}, fmt.Errorf("gitcore: receive-pack advertise: %w", err)
 	}
 
+	r.Advertised = adv.References[u.Ref.String()].String()
+	if !adv.Capabilities.Supports(capability.ReportStatus) {
+		return RefUpdateVerdict{}, fmt.Errorf("gitcore: receive-pack requires report-status")
+	}
 	req := packp.NewReferenceUpdateRequestFromCapabilities(adv.Capabilities)
 	req.Commands = []*packp.Command{{Name: u.Ref, Old: u.Old, New: u.New}}
 	remote := captureRemoteMessages(req, adv.Capabilities)
@@ -201,31 +209,11 @@ func PushRefUpdateVerdict(ctx context.Context, u RefUpdate) (RefUpdateVerdict, e
 		if _, eerr := enc.Encode([]plumbing.Hash{u.New, plumbing.NewHash(EmptyBlobHash)}, 10); eerr != nil {
 			return RefUpdateVerdict{}, fmt.Errorf("gitcore: receive-pack pack encode: %w", eerr)
 		}
+		r.pack(buf.Bytes())
 		req.Packfile = io.NopCloser(&buf)
 	}
 
-	rs, err := sess.ReceivePack(ctx, req)
-	// A report-status was decoded: the server gave a verdict. Prefer it over the aggregate
-	// error ReceivePack also returns for a non-ok report, so a per-command "ng" (the CAS
-	// losing) is classified as a rejection rather than an opaque error.
-	if rs != nil {
-		if rs.UnpackStatus != "" && rs.UnpackStatus != "ok" {
-			return RefUpdateVerdict{}, fmt.Errorf("gitcore: receive-pack unpack error: %s", rejectionText(rs.UnpackStatus, remoteText(remote)))
-		}
-		for _, cs := range rs.CommandStatuses {
-			if cs.Status != "ok" {
-				return RefUpdateVerdict{Result: RefUpdateRejected, Status: strings.TrimSpace(cs.Status), Remote: remoteText(remote)}, nil
-			}
-		}
-		return RefUpdateVerdict{Result: RefUpdateApplied}, nil
-	}
-	if err != nil {
-		return RefUpdateVerdict{}, fmt.Errorf("gitcore: receive-pack: %w", withRemote(err, remote))
-	}
-	// No report-status and no error: report-status was not negotiated, but the command was
-	// sent and the session closed cleanly. Treat as applied (the local git transport takes
-	// this path); the http transport always returns a report-status.
-	return RefUpdateVerdict{Result: RefUpdateApplied}, nil
+	return receiveClaim(ctx, sess, req, remote, observer, &r)
 }
 
 // DeleteResult is the outcome of a ref delete.
@@ -244,11 +232,24 @@ const (
 // an absent ref is reported as DeleteAbsent rather than mis-read as an error. This is the
 // release path's "delete if present, no-op if absent" without a separate read round trip.
 func DeleteRef(ctx context.Context, url string, auth transport.AuthMethod, ref plumbing.ReferenceName) (DeleteResult, error) {
+	return DeleteRefTrace(ctx, url, auth, ref, nil)
+}
+
+// DeleteRefTrace adds a request-local diagnostic callback to DeleteRef.
+func DeleteRefTrace(ctx context.Context, url string, auth transport.AuthMethod, ref plumbing.ReferenceName, trace func(RefReceipt)) (result DeleteResult, resultErr error) {
+	r := RefReceipt{Ref: ref.String(), New: plumbing.ZeroHash.String(), Phase: "endpoint"}
+	defer func() {
+		v := RefUpdateVerdict{}
+		if _, ok := resultErr.(*RefRejectedError); ok {
+			v.Result = RefUpdateRejected
+		}
+		r.finish(v, resultErr, trace)
+	}()
 	ep, err := transport.NewEndpoint(url)
 	if err != nil {
 		return 0, fmt.Errorf("gitcore: delete-ref endpoint: %w", err)
 	}
-	cli, err := client.NewClient(ep)
+	cli, observer, err := claimClient(ep, &r)
 	if err != nil {
 		return 0, fmt.Errorf("gitcore: delete-ref client: %w", err)
 	}
@@ -258,36 +259,30 @@ func DeleteRef(ctx context.Context, url string, auth transport.AuthMethod, ref p
 	}
 	defer sess.Close()
 
+	r.Phase = "advertise"
 	adv, err := sess.AdvertisedReferencesContext(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("gitcore: receive-pack advertise: %w", err)
 	}
 	current, ok := adv.References[ref.String()]
+	r.Old, r.Advertised = current.String(), current.String()
 	if !ok || current.IsZero() {
+		r.Phase = "absent"
 		return DeleteAbsent, nil
 	}
 
+	if !adv.Capabilities.Supports(capability.ReportStatus) {
+		return 0, fmt.Errorf("gitcore: receive-pack requires report-status")
+	}
 	req := packp.NewReferenceUpdateRequestFromCapabilities(adv.Capabilities)
 	req.Commands = []*packp.Command{{Name: ref, Old: current, New: plumbing.ZeroHash}}
 	remote := captureRemoteMessages(req, adv.Capabilities)
-	rs, err := sess.ReceivePack(ctx, req)
-	if rs != nil {
-		if rs.UnpackStatus != "" && rs.UnpackStatus != "ok" {
-			return 0, fmt.Errorf("gitcore: receive-pack unpack error: %s", rejectionText(rs.UnpackStatus, remoteText(remote)))
-		}
-		for _, cs := range rs.CommandStatuses {
-			if cs.Status != "ok" {
-				// The SERVER refused the delete — the ref changed between advertise and delete,
-				// or the server declined the write for its own reason. Either way it is not
-				// "released": the caller re-reads (or falls back) rather than assuming so. The
-				// typed error carries the report-status word AND the server's own messages.
-				return 0, &RefRejectedError{Ref: ref, Old: current, Status: strings.TrimSpace(cs.Status), Remote: remoteText(remote)}
-			}
-		}
-		return DeleteDone, nil
-	}
+	v, err := receiveClaim(ctx, sess, req, remote, observer, &r)
 	if err != nil {
-		return 0, fmt.Errorf("gitcore: receive-pack: %w", withRemote(err, remote))
+		return 0, err
+	}
+	if v.Result == RefUpdateRejected {
+		return 0, &RefRejectedError{Ref: ref, Old: current, Status: v.Status, Remote: v.Remote}
 	}
 	return DeleteDone, nil
 }
