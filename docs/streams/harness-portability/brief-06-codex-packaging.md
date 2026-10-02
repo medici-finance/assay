@@ -244,6 +244,60 @@ Findings (none block): (F1) the witness alone cannot judge these rows because ea
 
 VERIFY: PASS
 
+### Non-implementer verifier run: 2026-10-02T22:38:23Z (UTC), assay-verifier-app[bot] (claude-opus-5-5[1m]) (on-behalf-of human:ian), merged main e1d99484ffd91b649ea45e10a1cecf4ba2a4924b
+
+Runner is not the implementer. Own detached worktree at the merged head named above, which equals the forge's `commits/main` at run time. Offline envelope observed (`KUBECONFIG=/dev/null`). Every row was run by hand. Two disclosed deviations from the authored text, neither changing what a row measures: (a) in the hand run the rows' `/tmp/hp06*` scratch paths were redirected into a private scratch directory; (b) row 3a's mutation edits a tracked file, so it was run verbatim inside a scratch clone checked out at the same sha, not in the verifier worktree. Go commands ran under a throwaway HOME. Worktree clean after the pass.
+
+| # | Command | Expect | Observed (exit + key output line) | Date / runner |
+|---|---------|--------|-----------------------------------|---------------|
+| 1 | `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test ./... > /tmp/hp06r1.out 2>&1; echo $?` | `0`, includes the skew/coverage red tests | printed 0; "ok github.com/medici-finance/assay/tools/harnessgen". A separate `-v` pass shows 32 tests, all `--- PASS`, including TestCodexCheckDetectsVersionSkew, TestCodexCoverageCatchesUnaccountedSkill, TestCodexExcludedEmptyReasonIsParseError, TestCodexBindingSkewCaught | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | `jq -er '.name and .version and .skills' plugins/assay/.codex-plugin/plugin.json; echo $?` | `0` | printed true then 0; name "assay", version "1.0.32", skills "./skills/" | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | `test "$(jq -r .version plugins/assay/.claude-plugin/plugin.json)" = "$(jq -r .version plugins/assay/.codex-plugin/plugin.json)"; echo $?` | `0` | printed 0; both manifests read 1.0.32 (a real value on each side, so the equality is not null-equals-null) | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3a | `jq '.version="9.9.9"' plugins/assay/.codex-plugin/plugin.json > /tmp/hp06skew.json && cp /tmp/hp06skew.json plugins/assay/.codex-plugin/plugin.json && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..) > /tmp/hp06r3a.out 2>&1; echo $?; git checkout -- plugins/assay/.codex-plugin/plugin.json` | non-zero naming the manifest; clean again after checkout | printed 1; "harnessgen codex --check: DRIFT — committed manifest ../../plugins/assay/.codex-plugin/plugin.json differs from the metadata source"; after the checkout the same check printed "clean" and exit 0, clone status clean (run in a scratch clone at the same sha) | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | `(cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | `0` | printed 0; "harnessgen codex --check: clean — ../../plugins/assay/.codex-plugin/plugin.json matches the metadata source" | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | `mkdir -p /tmp/hp06-tree && cp -r plugins/assay /tmp/hp06-tree/ && mkdir /tmp/hp06-tree/assay/skills/probe-skill && printf -- '---\nname: probe-skill\ndescription: probe\n---\n' > /tmp/hp06-tree/assay/skills/probe-skill/SKILL.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hp06gen . && /tmp/hp06gen codex --check --bundle /tmp/hp06-tree/assay > /tmp/hp06r5.out 2>&1; echo $?; rm -rf /tmp/hp06-tree` | exit `2`, output names `probe-skill` | printed 2; "could-not-check: coverage rule failed … skill \"probe-skill\" is on disk but appears in neither the packaged roster nor the excluded list" | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | `mkdir -p /tmp/hp06-bind && cp -r plugins/assay /tmp/hp06-bind/ && grep -vF 'worker-desk' plugins/assay/references/codex.md > /tmp/hp06-bind/assay/references/codex.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hp06gen . && /tmp/hp06gen codex --check --bundle /tmp/hp06-bind/assay > /tmp/hp06r6.out 2>&1; echo $?; rm -rf /tmp/hp06-bind` | exit `2` naming `worker-desk` | printed 2; "could-not-check: packaging↔binding skew … packaged skill \"worker-desk\" has no degradation cell" (pr-shepherd and the-desk are named too: the row's grep strips every line containing the substring) | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | `grep -qiF 'codex' plugins/assay/skills/adopt/SKILL.md && grep -qF 'AGENTS-assay' plugins/assay/skills/adopt/SKILL.md; echo $?` | `0` | printed 0; the adopt skill's section 5 "Codex CLI — the second-harness install arm" carries the fragment step at line 98. History check: both tokens entered this file in commit 1ef5edeac (#1357), the change made for this brief | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7a | `grep -qF 'AGENTS-assay-no-such-token' plugins/assay/skills/adopt/SKILL.md; echo $?` | `1` | printed 1; the absent token is reported absent | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..); echo $?` | `0` | printed 0; "harnessgen resident --check: clean — committed artifacts match the source" | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Result by hand: 10 of 10 rows pass (1, 2, 3, 3a, 4, 5, 6, 7, 7a, 8). No row failed and every row could be executed on this host.
+
+Execution witness (`statusgen verifyrun --brief … --dry-run`, statusgen v1.0.31, rows as authored, nothing written to the brief): exit 0, 10 of 10 rows `pass exit=0`. Per row, with the output hash decoded (`0`+newline = 9a271f2a916b, `1`+newline = 4355a46b19d3, `2`+newline = 53c234e5e847):
+
+- row 1: pass, sha256:9a271f2a916b (printed 0)
+- row 2: pass, sha256:542e6e399ba3 (printed true then 0)
+- row 3: pass, sha256:9a271f2a916b (printed 0)
+- row 3a: pass, sha256:4355a46b19d3 (printed 1)
+- row 4: pass, sha256:f556ad938565 (clean line then 0)
+- row 5: pass, sha256:53c234e5e847 (printed 2)
+- row 6: pass, sha256:53c234e5e847 (printed 2)
+- row 7: pass, sha256:9a271f2a916b (printed 0)
+- row 7a: pass, sha256:4355a46b19d3 (printed 1)
+- row 8: pass, sha256:3baad508f1f3 (clean line then 0)
+
+The hashes are identical to the 2026-09-30 container witness for every row, and each decoded value is the row's Expect value.
+
+Findings (none block):
+
+- F1. The witness judges exit status only, and every row ends in `echo $?` or a cleanup, so its `pass exit=0` cannot fail on its own. The hash decode above and the hand run carry the proof.
+- F2. No row passes vacuously. Row 1 has no `-run` filter and the `-v` pass shows the ten TestCodex tests executing. Row 7's tokens were introduced by #1357 (checked with `git log -S`), not present before it. Row 3 compares two real version strings.
+- F3. Row 6 names three skills, not one (see its cell). The Expect still holds.
+- F4. Per-PR CI runs `go test ./...` for the harnessgen module, which includes TestCodexCommittedManifestMatchesSource; the explicit `codex --check` invocation is in the release workflow. The brief's CI task is met by the two together.
+- F5. Since the 2026-09-24 outcome record (sha 2a5c230e): the brief file changed (four Evidence-only commits, the last being #1873); statusgen moved v1.0.26 to v1.0.31; both plugin manifests moved in lockstep 1.0.27 to 1.0.32 with the generated resident fragment; a smoke-roster test file was added to harnessgen (#1963). No change to the harnessgen codex code, the adopt skill, or the Codex binding file.
+- F6. #872 (the row 7 gap) is closed. The 2026-09-30 run said a `question` issue would be routed for the 32 KiB cap; no such issue was found, and this pass resolves that value from the repo's own record (below), so none is needed.
+
+Risk-bearing values. Risk metadata is present, all four answers are `no`, the brief is `gate: model`. Enumerated over the codex verb in tools/harnessgen, the generated manifest, and the adopt-skill change (#1357):
+
+RISK-VALUE: DERIVED — exitClean = 0, exitDrift = 1, exitCouldNotCheck = 2 @ tools/harnessgen/main.go:22-24 — the three-state instrument contract (clean / drift / could-not-check as distinct exits so CI can branch); a wrong value would let an unaccounted or binding-skewed skill ship. All three observed live (rows 4 and 8; row 3a; rows 5 and 6).
+RISK-VALUE: DERIVED — Skills = "./skills/" @ tools/harnessgen/codex.go:217 — the brief's Context requires the manifest to point at the same skills tree the Claude plugin serves; row 4 proves the committed manifest equals the generated one and row 5 proves the tree is closed under the coverage rule.
+RISK-VALUE: DERIVED — version = "1.0.32" @ plugins/assay/.codex-plugin/plugin.json:3 — generated from and equal to plugins/assay/.claude-plugin/plugin.json:5; not independently set (row 3, row 3a).
+RISK-VALUE: DERIVED — composition cap 32 KiB @ plugins/assay/skills/adopt/SKILL.md:101 — matches the stream's own capability ground truth (docs/research/codex-harness-capabilities.md, AGENTS.md row: 32 KiB cap on the combined total, `project_doc_max_bytes`) and the adoption guide's Codex section. That source is documentation-measured; the ground-truth file lists a live truncation test as an open item. Reversible doc text, ranked last.
+
+Status note: the stream README row for brief 06 reads `implemented` with empty verifier and reviewer cells. Nothing in the Verify table or the risk metadata holds the row there; the remaining step is the status change itself.
+
+VERIFY: PASS
+
 ## Review
 
 Gate: **model** (from frontmatter). Review focus: the exclusion list — every skill
