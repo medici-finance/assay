@@ -1,0 +1,77 @@
+{
+  "test": "go test ./internal/deskkit/ ./cmd/deskpr/ -count=1 -timeout 300s -run 'PubRange|PubClass|PubIdentity|PublishIdentity|DefaultPublishCommits|UpdateCheckAcceptsMixedPR|UpdatePushesMixedPR|UpdateRefusesNewForeign|UpdateLiveHeadOverrulesRef|UpdateNoLiveHeadFailsClosed|CreateJudgesWholeRange'",
+  "control": {
+    "name": "CONTROL — the gate stops checking authors at all (any identity is published)",
+    "file": "internal/deskkit/publishidentity.go",
+    "old": "\t\tif !emailMatchesRole(ident, c.AuthorEmail) {",
+    "new": "\t\tif false && !emailMatchesRole(ident, c.AuthorEmail) {"
+  },
+  "mutations": [
+    {
+      "name": "narrowing deleted: the reader ignores an accepted remote tip (the #1967 refusal returns)",
+      "file": "internal/deskkit/publishidentity.go",
+      "old": "\t\targs = append(args, \"^\"+r.Tip)\n",
+      "new": "\t\targs = append(args)\n"
+    },
+    {
+      "name": "fail-open: drop the is-ancestor check (a force-moved or diverged remote tip shrinks the range)",
+      "file": "internal/deskkit/publishidentity.go",
+      "old": "\"--is-ancestor\", sha, \"HEAD\"); aerr != nil {",
+      "new": "\"--is-ancestor\", sha, \"HEAD\"); false && aerr != nil {"
+    },
+    {
+      "name": "fail-open: drop the spelling check (HEAD, a local branch or revision syntax can name the pushed commit)",
+      "file": "internal/deskkit/publishidentity.go",
+      "old": "\tif why := tipSpellingProblem(tip); why != \"\" {",
+      "new": "\tif why := tipSpellingProblem(tip); false && why != \"\" {"
+    },
+    {
+      "name": "fail-open: an unresolvable tip (first push / not fetched) narrows to an empty range instead of widening",
+      "file": "internal/deskkit/publishidentity.go",
+      "old": "commit here (a first push, or a remote head not fetched yet — `git fetch origin` and retry)\"\n\t\treturn rng\n",
+      "new": "commit here (a first push, or a remote head not fetched yet — `git fetch origin` and retry)\"\n\t\trng.Tip = \"HEAD\"\n\t\treturn rng\n"
+    },
+    {
+      "name": "accept any ref namespace (refs/heads/<branch>, another remote) as the remote tip",
+      "file": "internal/deskkit/publishidentity.go",
+      "old": "const remoteTipRefPrefix = \"refs/remotes/origin/\"",
+      "new": "const remoteTipRefPrefix = \"refs/\""
+    },
+    {
+      "name": "accept revision syntax in a remote-tracking tip (^, ~, @{})",
+      "file": "internal/deskkit/publishidentity.go",
+      "old": "\t\t\tr == '/' || r == '-' || r == '_' || r == '.'\n",
+      "new": "\t\t\tr == '/' || r == '-' || r == '_' || r == '.' || r == '^' || r == '~' || r == '@' || r == '{' || r == '}'\n"
+    },
+    {
+      "name": "accept an abbreviated object name as the remote tip",
+      "file": "internal/deskkit/publishidentity.go",
+      "old": "\tif len(s) != 40 && len(s) != 64 {",
+      "new": "\tif len(s) < 7 {"
+    },
+    {
+      "name": "update drops the LIVE stage (a stale-ahead tracking ref decides what is pushed)",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA); ierr != nil {",
+      "new": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA); false && ierr != nil {"
+    },
+    {
+      "name": "update's live stage anchors on the local tracking ref instead of the forge's PR head",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA); ierr != nil {",
+      "new": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, remoteTrackingTip(facts.branch)); ierr != nil {"
+    },
+    {
+      "name": "create narrows on an unconfirmed local tracking ref",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\tif ierr := publishIdentityGate(facts.dir, *base, \"\"); ierr != nil {",
+      "new": "\tif ierr := publishIdentityGate(facts.dir, *base, remoteTrackingTip(facts.branch)); ierr != nil {"
+    },
+    {
+      "name": "deskevidence starts offering a remote tip (an unreviewed second instance of the class)",
+      "file": "cmd/deskevidence/github.go",
+      "old": "RemoteTip: \"\", Role: \"verifier\",",
+      "new": "RemoteTip: \"refs/remotes/origin/\" + base, Role: \"verifier\","
+    }
+  ]
+}
