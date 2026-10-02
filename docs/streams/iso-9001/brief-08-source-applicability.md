@@ -25,12 +25,12 @@ exec-tier: strong
 exec-tier-why: Cross-artifact authority, version applicability and evidence completeness must agree across independent readers.
 domain: complicated
 consumers:
-- 'statusgen: fixed-here'
-- 'spec: fixed-here'
-- 'schemas: fixed-here'
-- 'docs/iso9001-mapping.md: fixed-here'
+- 'statusgen: follow-up iso-9001/08'
+- 'spec: follow-up iso-9001/08'
+- 'schemas: follow-up iso-9001/08'
+- 'docs/iso9001-mapping.md: follow-up iso-9001/08'
 - 'docs/evidence-bundle.md: out-of-scope (this brief defines upstream source records)'
-version: 1
+version: 2
 id: 7722e206-2451-45b4-b077-5c6f17ecf540
 ---
 

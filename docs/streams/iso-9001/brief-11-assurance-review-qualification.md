@@ -25,10 +25,10 @@ exec-tier: strong
 exec-tier-why: Cross-artifact authority, version applicability and evidence completeness must agree across independent readers.
 domain: complicated
 consumers:
-- 'statusgen: fixed-here'
-- 'docs/assurance-review-qualification.md: fixed-here'
+- 'statusgen: follow-up iso-9001/11'
+- 'docs/assurance-review-qualification.md: follow-up iso-9001/11'
 - 'spec: out-of-scope (qualification consumes the approved contracts)'
-version: 1
+version: 2
 id: 57bfe550-f444-44d6-bc93-4f31cd8cbae3
 ---
 

@@ -31,10 +31,10 @@ exec-tier: strong
 exec-tier-why: Cross-artifact authority, version applicability and evidence completeness must agree across independent readers.
 domain: complicated
 consumers:
-- 'statusgen: fixed-here'
-- 'spec: fixed-here'
-- 'docs/evidence-bundle.md: fixed-here'
-version: 1
+- 'statusgen: follow-up iso-9001/09'
+- 'spec: follow-up iso-9001/09'
+- 'docs/evidence-bundle.md: follow-up iso-9001/09'
+version: 2
 id: 8e2dce79-e393-4c6c-88fb-f31aaa6b4cbe
 ---
 
