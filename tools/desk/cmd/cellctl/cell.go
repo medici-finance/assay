@@ -281,7 +281,7 @@ func cellsRoot(e *Env) string {
 	}
 	xdg := e.Get("XDG_DATA_HOME")
 	if xdg == "" {
-		xdg = filepath.Join(e.Get("HOME"), ".local", "share")
+		xdg = filepath.Join(hostHome(e), ".local", "share")
 	}
 	return filepath.Join(xdg, "assay", "cells")
 }
@@ -296,10 +296,7 @@ func deskToolsBin(e *Env) string {
 // realConfigHome is the OPERATOR's config home — the one holding the App private keys a k8s or
 // house cell symlinks to. A scrubbed cell never reads it, by construction.
 func realConfigHome(e *Env) string {
-	if v := e.Get("ASSAY_CONFIG_HOME"); v != "" {
-		return v
-	}
-	return filepath.Join(e.Get("HOME"), ".config", "assay")
+	return mustResolve(configHomeFor(runtime.GOOS, e))
 }
 
 func cellDir(e *Env, name string) string {

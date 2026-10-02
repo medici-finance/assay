@@ -1,0 +1,176 @@
+{
+  "name": "schema-changed",
+  "description": "The question schema changed after the assessment was recorded. Every fact and every piece of advice is unbound from the current subject; authority cannot be shown, so the subject is blocked until re-assessed.",
+  "briefRiskVerdict": "standard",
+  "assessment": {
+    "subject": "example-org/widgets#12",
+    "subjectRevision": "rev-a",
+    "schemaDigest": "sha256:example-schema-old",
+    "environmentDigest": "sha256:example-env",
+    "category": "docs-change",
+    "operations": [
+      "push",
+      "pr-open",
+      "comment"
+    ],
+    "facts": [
+      {
+        "check": "authority",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://authority"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "data-handling",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://data-handling"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "acceptance-availability",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://acceptance-availability"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "executor-capability",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://executor-capability"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "independent-verifier",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://independent-verifier"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "budget",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://budget"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "effect-recoverability",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://effect-recoverability"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      }
+    ],
+    "advice": [
+      {
+        "dimension": "verification-adequacy",
+        "scope": "example-org/widgets#12",
+        "request": {
+          "subject": "example-org/widgets#12",
+          "inputDigest": "sha256:example-input",
+          "schemaDigest": "sha256:example-schema",
+          "vocabulary": [
+            "bounded-agent-work",
+            "supervised-agent",
+            "human-led",
+            "discovery-only",
+            "blocked"
+          ],
+          "requiredCalibratorVersion": "example-cal-1"
+        },
+        "prediction": {
+          "subject": "example-org/widgets#12",
+          "inputDigest": "sha256:example-input",
+          "schemaDigest": "sha256:example-schema",
+          "labelProbabilities": {
+            "bounded-agent-work": 0.9,
+            "supervised-agent": 0.025,
+            "human-led": 0.025,
+            "discovery-only": 0.025,
+            "blocked": 0.025
+          },
+          "abstained": false,
+          "providerVersion": "example-provider-0.1",
+          "calibratorVersion": "example-cal-1",
+          "requestedBackend": "cpu",
+          "actualBackend": "cpu",
+          "evidenceRefs": [
+            "example-evidence://advice-verification-adequacy"
+          ]
+        },
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "dimension": "semantic-risk",
+        "scope": "example-org/widgets#12",
+        "request": {
+          "subject": "example-org/widgets#12",
+          "inputDigest": "sha256:example-input",
+          "schemaDigest": "sha256:example-schema",
+          "vocabulary": [
+            "bounded-agent-work",
+            "supervised-agent",
+            "human-led",
+            "discovery-only",
+            "blocked"
+          ],
+          "requiredCalibratorVersion": "example-cal-1"
+        },
+        "prediction": {
+          "subject": "example-org/widgets#12",
+          "inputDigest": "sha256:example-input",
+          "schemaDigest": "sha256:example-schema",
+          "labelProbabilities": {
+            "bounded-agent-work": 0.9,
+            "supervised-agent": 0.025,
+            "human-led": 0.025,
+            "discovery-only": 0.025,
+            "blocked": 0.025
+          },
+          "abstained": false,
+          "providerVersion": "example-provider-0.1",
+          "calibratorVersion": "example-cal-1",
+          "requestedBackend": "cpu",
+          "actualBackend": "cpu",
+          "evidenceRefs": [
+            "example-evidence://advice-semantic-risk"
+          ]
+        },
+        "observedAt": "2026-09-20T10:00:00Z"
+      }
+    ],
+    "assessedAt": "2026-09-20T10:00:00Z"
+  },
+  "context": {
+    "now": "2026-09-20T12:00:00Z",
+    "subjectRevision": "rev-a",
+    "schemaDigest": "sha256:example-schema",
+    "environmentDigest": "sha256:example-env",
+    "discovery": {
+      "owner": "example-owner",
+      "readScope": [
+        "example-org/widgets"
+      ]
+    }
+  },
+  "expect": {
+    "disposition": "blocked",
+    "reasons": [
+      "schema-changed",
+      "hard-unbound:authority",
+      "hard-unbound:data-handling",
+      "advice-ignored:verification-adequacy:binding-changed"
+    ],
+    "permittedOperations": []
+  }
+}

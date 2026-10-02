@@ -1,1 +1,0 @@
-- Define Go launch and session contracts for the native Windows cellctl work, with strict record parsing, independently bound launch permissions and compiled process fixtures. Production Windows integration remains separate work.

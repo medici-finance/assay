@@ -155,6 +155,15 @@ var AllowedInvocations = []Allowance{
 // a LEDGER of blind spots, not a permit — see the file header.
 var UnresolvedArgv = []Allowance{
 	{
+		Key: "internal/deskkit/layaadvisor.go::LayaAdvisor.Predict::<unresolved>",
+		Reason: "runs an explicitly approved operator-selected local inference executable, never wired into " +
+			"default routing; receives a JSON assessment and an offline-only environment without inherited " +
+			"forge credentials. Intended as a local model process, not a forge CLI. The configurable argv[0] " +
+			"cannot be proven by this scanner: retain could-not-check until an owner-approved executable " +
+			"and network-denying/read-only sandbox are available. This row registers the blind spot, grants " +
+			"no forge permit or runtime activation, and leaves the owner gate in place.",
+	},
+	{
 		Key: "internal/cellprocess/run.go::run::<unresolved>",
 		Reason: "the bounded host-harness runner. Its production caller is cellctl's cadence supervisor, " +
 			"which supplies the resolved claude, codex, or Cursor agent argv from the registered harness " +
