@@ -32,7 +32,8 @@ import (
 // an explicit, reviewed change to this guard — never as a silent re-add on the gate's path.
 //
 // The method name is assembled rather than written out so this guard is not itself a hit for
-// the brief's residual grep (Verify row 7 greps tools/ for the joined name).
+// the brief's residual grep (Verify row 7 greps deskpost and the write-gate path for the
+// joined name).
 // ---------------------------------------------------------------------------
 
 var reactionReadMethod = "Issue" + "Reactions"
