@@ -271,27 +271,41 @@ func fileInTree(root, tree, path string) (string, bool, error) {
 func materializeTree(root, tree, dir string) error {
 	archive := exec.Command("git", "-C", root, "archive", "--format=tar", tree)
 	untar := exec.Command("tar", "-x", "-C", dir)
+	return materializeCommands(tree, archive, untar)
+}
+
+// materializeCommands owns the archive-to-extractor pipeline, including its diagnostics.
+func materializeCommands(tree string, archive, untar *exec.Cmd) error {
 	pipe, err := archive.StdoutPipe()
 	if err != nil {
 		return err
 	}
+	defer pipe.Close()
 	untar.Stdin = pipe
-	var errb bytes.Buffer
-	archive.Stderr = &errb
-	untar.Stderr = &errb
+	// os/exec gives each command its own output-copy goroutine. A bytes.Buffer
+	// cannot be shared between them, even when neither child emits diagnostics.
+	var archiveErr, untarErr bytes.Buffer
+	archive.Stderr = &archiveErr
+	untar.Stderr = &untarErr
 	if err := untar.Start(); err != nil {
 		return err
 	}
 	if err := archive.Start(); err != nil {
+		pipe.Close() // Release the already-started extractor before waiting for it.
+		untar.Wait()
 		return err
 	}
-	if err := archive.Wait(); err != nil {
-		untar.Wait()
-		return fmt.Errorf("git archive %s: %s", tree, strings.TrimSpace(errb.String()))
-	}
+	archiveWaitErr := archive.Wait()
 	pipe.Close()
-	if err := untar.Wait(); err != nil {
-		return fmt.Errorf("tar -x: %s", strings.TrimSpace(errb.String()))
+	untarWaitErr := untar.Wait()
+	// Both copy goroutines have finished. Preserve both diagnostics in a stable
+	// producer-then-extractor order, retaining the original error precedence.
+	diagnostic := strings.TrimSpace(archiveErr.String() + "\n" + untarErr.String())
+	if archiveWaitErr != nil {
+		return fmt.Errorf("git archive %s: %s", tree, diagnostic)
+	}
+	if untarWaitErr != nil {
+		return fmt.Errorf("tar -x: %s", diagnostic)
 	}
 	return nil
 }

@@ -11,6 +11,7 @@ import (
 // header, which is what keeps the two from drifting.
 func usage(code int) {
 	fmt.Print(usageText)
+	fmt.Print(cadenceUsage)
 	exitWith(code)
 }
 

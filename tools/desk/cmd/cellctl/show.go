@@ -94,6 +94,11 @@ func cmdShow(cell string, args []string) {
 	if provider == "" {
 		provider = c.Env.Get("CELL_PROVIDER")
 	}
+	if harness == "cursor" {
+		if err := cursorConfigurationError(c.Kind, provider, policy != nil); err != nil {
+			die("show: %v", err)
+		}
+	}
 	if policy != nil {
 		showLine("CELL_PROVIDER", providerFlag, orDefault(provider, "unset (resolved per role by policy)"))
 	} else if provider != "" {
@@ -110,6 +115,8 @@ func cmdShow(cell string, args []string) {
 		fmt.Printf("[show] provider %s base_url=%s (%s)\n", provider, orDefault(pb, "<unset>"), pbs)
 		fmt.Printf("[show] provider %s token_env=%s (%s; %s in this shell)\n", provider, orDefault(pt, "<unset>"), pts, tokstate)
 		fmt.Printf("[show] provider %s model=%s (%s)\n", provider, orDefault(pm, "<unset>"), pms)
+	} else if harness == "cursor" {
+		fmt.Printf("[show] CELL_PROVIDER=unset (Cursor native authentication)\n")
 	} else {
 		fmt.Printf("[show] CELL_PROVIDER=%s (%s)\n", "unset", "default: anthropic")
 	}

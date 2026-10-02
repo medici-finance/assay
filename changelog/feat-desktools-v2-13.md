@@ -1,1 +1,0 @@
-- Add separate advisory GitLab reach-around columns and Verify-row portability notices; stage Windows platform checks for human application.

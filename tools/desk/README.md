@@ -4470,6 +4470,15 @@ skills and desk sessions bind to this **CLI surface**. That is the dependency di
 ends prose-vs-binary drift — prose → CLI → engine — and it is what lets the engine's
 internals (and even its module home) change without a rewrite anywhere else.
 
+**Re-review preserves earlier evidence.** Every `deskdispatch --kit review` allocates a
+fresh detached worktree with a bounded random directory suffix, even in the same desk session.
+The original PR/lane claim key stays unchanged, so a live holder still blocks a second dispatch.
+`--branch` is refused for reviews. Re-run the ordinary ceremony with the actual `--model` and
+`--tier` before resuming the original reviewer; give it the new emitted kit and complete prior
+finding records. The existing claim, reviewer credential, hook, and model-attestation gates
+still apply. Keep old reviewer worktrees and their evidence; their eventual cleanup is separate
+work governed by `deskwt`, never a prerequisite or an automatic side effect of re-review.
+
 **They WRAP, they do not re-implement.** `deskboot` delegates every step to the verb that
 owns it (`deskwt prune`, `deskroster set`/`preflight`, `desktoken`) and adds only the
 ordering, the fail-closed contract, and the named-step report. `deskdispatch` delegates the

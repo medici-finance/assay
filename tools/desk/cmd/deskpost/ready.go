@@ -84,8 +84,9 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		// unstamped (claimLiveness → deskkit review-claim family). This is the SAME shared reader
 		// the verdict path uses (review.go), so a flip and a verdict clear the floor on identical
 		// evidence; every uncertain path is Unknown, which leaves the stamp exactly as it stood.
-		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsStampAuthorityLogin, deskkit.ModelFloorOverrideEngaged(),
-			client.claimLiveness(repo, pr))
+		claim := client.claimLiveness(repo, pr)
+		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsStampAuthorityLogin, deskkit.ModelFloorOverrideEngaged(), claim)
+		fd.Message += claimReleaseNote(repo, pr, claim)
 		switch fd.Outcome {
 		case deskkit.FloorRefuse:
 			return refused("ready", repo, pr, head, fd.Message)

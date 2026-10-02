@@ -85,6 +85,9 @@ claim calls only — the repo's short label (configured alias, else the repo bas
 prefixed and "/" becomes "--" — by a fixed rule, so every desk derives the SAME claim key
 for the same item and the claims collide. The worktree name, branch, brief path, and the
 prompt's item key stay on the ORIGINAL key.
+For review kits with --pr N, the resulting claim key must be <configured-alias>--pr-N
+or <repo-basename>--pr-N, optionally followed by --<lane>. Unknown historical aliases
+and keys for another PR are refused before claim acquisition; accepted keys are unchanged.
 
 STEPS, in order. Each prints one line; the first red one stops the dispatch and NAMES itself.
 
@@ -118,6 +121,10 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       inherits the dispatching desk's identity and misattributes Evidence
                       Runner cells; a --kit whose role has no roster identity is refused
                       pre-claim (exit 5). The OK line prints identity=<slug> <bot-user-id>.
+                      Review kits allocate DETACHED with a fresh per-dispatch directory;
+                      --branch is refused. The canonical claim key stays unchanged.
+                      Prior review worktrees and evidence are preserved; no cleanup is
+                      required to renew the normal trusted dispatch ceremony.
   3 roster-register   ` + "`deskroster set`" + ` for the work entry when --pr is known; without
                       it the registration is the AGENT's first act after its PR opens, and
                       the exact command is emitted into the prompt.

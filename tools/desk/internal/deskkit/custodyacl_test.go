@@ -21,6 +21,16 @@ func TestEvaluateCustodyACL(t *testing.T) {
 		wantSubstr string
 	}{
 		{
+			name: "a deny before a foreign read allow still refuses",
+			mutate: func(m *rosterACLModel) {
+				m.Entries = append(m.Entries,
+					rosterACE{SID: sidOther, Kind: rosterACEDeny, GrantsRead: true},
+					rosterACE{SID: sidOther, Kind: rosterACEAllow, GrantsRead: true})
+			},
+			wantErr:    true,
+			wantSubstr: "read-capable Windows access",
+		},
+		{
 			name:    "owner-only ACL is accepted (the #667 fix: not rejected as synthetic 0666)",
 			mutate:  func(*rosterACLModel) {},
 			wantErr: false,
