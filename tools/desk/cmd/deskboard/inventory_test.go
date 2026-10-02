@@ -362,8 +362,8 @@ var reviewFixtures = map[string]reviewState{
 	// forgery — the classifier must read it as EXTERNAL-PREREQ-REVIEW, never SUSPECT-APPROVAL.
 	"external-prereq-review": {ever: true, atHead: true, blocking: true, suspectNoOp: true, externalPrereqDeclared: true},
 	"approved":               {ever: true, atHead: true, approved: true},
-	"approved-secpass":      {ever: true, atHead: true, approved: true, securityPass: true},
-	"approved-no-secpass":   {ever: true, atHead: true, approved: true, securityPass: false},
+	"approved-secpass":       {ever: true, atHead: true, approved: true, securityPass: true},
+	"approved-no-secpass":    {ever: true, atHead: true, approved: true, securityPass: false},
 }
 
 // expectedAction is the per-fixture expected-action table (#400 Q4), written from the
@@ -377,7 +377,7 @@ var reviewFixtures = map[string]reviewState{
 // It is a second implementation on purpose. If a classifier arm is added or reordered,
 // this must be edited to match — that edit IS the review of the change.
 func expectedAction(rf rollupFixture, mv mergeVerdict, rs reviewState,
-	draft, ciRequired, humanGate, ownFilesChanged, riskClassed, authorTrustedHuman bool, zeroCI string) string {
+	draft, ciRequired, humanGate, ownFilesChanged, riskClassed bool, zeroCI string) string {
 
 	// The tallies and the CI verdict, derived ONLY from the declared fixture. #1652:
 	// a genuine zero rollup's green depends on WHAT the probe found, not just on
@@ -400,12 +400,8 @@ func expectedAction(rf rollupFixture, mv mergeVerdict, rs reviewState,
 
 	switch {
 	case !rs.ever:
-		// #177: a trusted human maintainer's OWN un-reviewed PR is HUMAN-OWNED, not
-		// desk-review neglect. Every other author (App, shared machine account,
-		// untrusted) stays NEEDS-REVIEW.
-		if authorTrustedHuman {
-			return actHumanOwned
-		}
+		// #2028: every author the trust gate admits is reviewed alike — no
+		// authorship arm (the retired #177 HUMAN-OWNED exemption).
 		return actNeedsReview
 	case !rs.atHead:
 		if !ownFilesChanged {
@@ -692,14 +688,13 @@ func TestClassify_ActionInventory(t *testing.T) {
 				for _, draft := range []bool{true, false} {
 					for _, ciRequired := range []bool{true, false} {
 						for _, humanGate := range []bool{true, false} {
-							// #177: the AUTHOR is a classifier dimension too. `shared-agent`
-							// is a shared machine account (∈ ASSAY_TRUSTED_LOGINS but not an
-							// accountable human) — its un-reviewed PR stays NEEDS-REVIEW.
-							// `ada` is the mapped/bless accountable human — its un-reviewed PR
-							// is HUMAN-OWNED. Both must be produced, or Direction 2 below
-							// would report actHumanOwned as an arm no payload can reach.
+							// #2028: the AUTHOR is deliberately NOT a classifier dimension.
+							// `shared-agent` (a trusted shared machine account) and `ada` (the
+							// mapped/bless accountable human) are both enumerated and both must
+							// land on the SAME expected action — expectedAction never sees the
+							// author, so an arm that routes either one differently (the retired
+							// #177 HUMAN-OWNED shape) fails this row by row.
 							for _, author := range []string{"shared-agent", "ada"} {
-								authorTrustedHuman := deskkit.TrustedHumanAuthor(author)
 								title := "t"
 								if humanGate {
 									title = "[HUMAN GATE] t"
@@ -771,7 +766,7 @@ func TestClassify_ActionInventory(t *testing.T) {
 											// requires each action to be produced by SOME row; this binds THIS
 											// row's outcome, which is what Q1 and Q2 escaped through.
 											if want := expectedAction(rf, wantVerdict, rs, draft, ciRequired,
-												humanGate, ownFilesChanged, riskClassed, authorTrustedHuman, zeroCI); action != want {
+												humanGate, ownFilesChanged, riskClassed, zeroCI); action != want {
 												t.Fatalf("%s ownFilesChanged=%v riskClassed=%v author=%s: classify = %s, want %s\nnote: %s",
 													desc, ownFilesChanged, riskClassed, author, action, want, note)
 											}
