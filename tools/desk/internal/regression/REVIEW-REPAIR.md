@@ -117,3 +117,28 @@ than through `floor-go.sh`. Go sources remain `TestFloorExecEnv`'s. Against the 
 scripts it named `check-floor.sh:27` and `testdata/mutate_guard.py:75`. A separately
 planted `testdata/second-plant.sh` running `go test` was named too and then removed.
 In-test planted lines keep the matcher honest.
+
+### Round 4: the brief's own Verify rows (`f2004-fixture-git-env-escape`, continued)
+
+The runner scrub covered every script that starts the go tool. It did not cover the
+brief's Verify rows, which start `go test` themselves. Row 3 ran the four reused
+statusgen tests directly with the caller's environment, and the shallow-clone test's
+fixture runs git with what it inherits. `TestFloorGoChokePoint` reads scripts under
+this package, not the brief, so it could not see the row.
+
+Repair (brief text only). Every Verify row that starts the go tool now starts it
+through `floor-go.sh`: rows 1, 2, 3 and 9 call it directly, and rows 7 and 8 already
+reached it through `check-floor.sh` and `mutate_guard.py`. Rows 1, 2 and 9 ran this
+PR's own isolated tests and left a decoy unchanged before the change; they are routed
+through the scrub anyway, so no Verify row depends on which tests it happens to select.
+The DoD now states the rule. Rows 4 and 5 run only `awk` and `grep`. Row 6 runs the
+`statusgen` binary, which reads git and writes nothing: under the hostile variables it
+exits 2 and leaves the decoy unchanged. It never reports a pass there.
+
+Fail-first, in a scratch copy of the tree with `GIT_DIR`, `GIT_WORK_TREE` and
+`GIT_INDEX_FILE` naming a fresh decoy repository for each run. Row 3 as it stood
+exited 1 at `TestConsumedFragmentIndexShallowCloneIsCouldNotCheck`. The decoy gained
+two fixture commits and a `[user]` block in its config. Row 3 as changed exited 0 with
+four top-level PASS lines and left the decoy unchanged. Rows 1, 2, 4, 5, 7, 8 and 9,
+as changed, each exited 0 with their Expect output under the same variables and left
+the decoy unchanged.
