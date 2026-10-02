@@ -565,7 +565,10 @@ func cmdAdd(args []string) (err error) {
 		// and rolled back when git does not then resolve exactly that transport.
 		transportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)
 		if terr != nil {
-			_ = removeWorktreeDir(guard, dir, resolvePath(target))
+			if rerr := removeWorktreeDir(guard, dir, resolvePath(target)); rerr != nil {
+				return fmt.Errorf("%w; rollback failed: %v", terr, rerr)
+			}
+			fmt.Fprintln(os.Stderr, "deskwt: worktree ROLLED BACK")
 			return terr
 		}
 		identityDetail += "; " + transportDetail

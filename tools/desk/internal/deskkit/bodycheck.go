@@ -210,6 +210,10 @@ const (
 	// lucky caps runs to decompose at all, so the budget is where most of the relaxation's
 	// cost on token material is bought back — see TestShortAcronymCostsAlmostNothing.
 	maxAcronymUnits = 1
+	// maxVersionDigits bounds the digit group behind the `V` that versionUnit admits as one
+	// word unit (`V1`, `V10`). Version tags in identifiers are one or two digits; a longer
+	// group behind a capital is token material.
+	maxVersionDigits = 2
 )
 
 // numeronyms are the closed list of letter-digit-letter abbreviations an identifier may
@@ -599,7 +603,8 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 				"only git SHAs (40/64 lowercase hex), slash-separated paths built from "+
 				"word-shaped segments (optionally behind one leading '+' quantifier or "+
 				"diff marker), bare word-shaped CamelCase identifiers (a 2-4 letter "+
-				"acronym, optionally plural like PRs, and the numeronyms K8s/I18n/L10n/A11y "+
+				"acronym, optionally plural like PRs, a V plus 1-2 digits like V1, and the "+
+				"numeronyms K8s/I18n/L10n/A11y "+
 				"count as words), key=<sha|path|identifier> assignments whose key is short "+
 				"or word-shaped, a git SHA behind an ALL-CAPS digest key (…_SHA, …_DIGEST, "+
 				"…_DIGEST_HEX; never a credential-named variable), all-'=' banner separators, a PGP key fingerprint (40 "+
@@ -1372,7 +1377,14 @@ func isShortDigitRun(seg string) bool {
 //     `XXXXXXXX…` tail opaque, so widening it is the one direction that would cost real
 //     detection;
 //   - a short acronym adjacent to DIGITS rather than to a word (`abcdEFGH1234…`) — the
-//     anchoring requirement, and the reason random material does not ride this exemption;
+//     anchoring requirement, and the reason random material does not ride this exemption.
+//     The one digit-adjacent unit admitted is a lone `V` plus 1-2 digits between words
+//     (`…Test|V1|Desks…`, see versionUnit); any other capital before digits (`S3`) still
+//     refuses;
+//   - a short acronym that OPENS the run (`PS|Native…`, `CI|Required…`) — the backward
+//     anchor and after-a-word bound, pinned by identLeadAcr and a committed mutation entry.
+//     Admitting it removes that bound, which is a control change for a recorded ruling, not
+//     a fix (#1642);
 //   - a capital followed by exactly one lowercase that is not an English word (`…NoOp…`,
 //     `…HumanStampRe…`) — twoLetterWords' closed-list rule, deliberately not widened to
 //     general abbreviations (see its comment for the measured cost of doing so).
@@ -1555,7 +1567,7 @@ func looksLikeWords(seg string) bool {
 // it feeds is left exactly as it was. The relaxation is bounded to 2-4 letters with a word
 // on at least one side, so the run is still admitted on the strength of its word-shaped body.
 func wordDecomposition(seg string, allowShortAcronym bool) (ok bool, words int, camel bool) {
-	acronyms := 0
+	acronyms, versioned := 0, false
 	for i := 0; i < len(seg); {
 		c := seg[i]
 		switch {
@@ -1613,7 +1625,7 @@ func wordDecomposition(seg string, allowShortAcronym bool) (ok bool, words int, 
 			var acrEnd int
 			var acrOK bool
 			if n == 0 && allowShortAcronym {
-				acrEnd, acrOK = shortAcronymUnit(seg, i, words, acronyms)
+				acrEnd, acrOK = shortAcronymUnit(seg, i, words, acronyms, versioned)
 			}
 			switch {
 			case n >= 2:
@@ -1623,7 +1635,10 @@ func wordDecomposition(seg string, allowShortAcronym bool) (ok bool, words int, 
 			case n == 0 && (c == 'A' || c == 'I') && startsCapitalLedWord(seg, j):
 				i, words = j, words+1 // a one-letter word; camel comes from the follower
 			case acrOK:
-				// a short acronym is one word unit; acronyms is the per-run budget
+				// a short acronym is one word unit; acronyms is the per-run budget. A unit
+				// ending in a digit is a version unit (an acronym unit ends in a letter);
+				// versioned withdraws the closing-acronym exemption for the rest of the run.
+				versioned = versioned || (seg[acrEnd-1] >= '0' && seg[acrEnd-1] <= '9')
 				i, words, camel, acronyms = acrEnd, words+1, true, acronyms+1
 			default:
 				return false, 0, false
@@ -1713,7 +1728,8 @@ func startsCapitalLedWord(seg string, k int) bool {
 //     the backward anchor this says the acronym is never the run's opening move, which is
 //     where random material's lucky caps runs most often fall.
 //   - BUDGETED: at most maxAcronymUnits MID-RUN units per run, plus at most one unit that
-//     closes the run (#1642 — a run has one end, so that adds at most one). Random base64
+//     closes the run (#1642 — a run has one end, so that adds at most one; and the closing
+//     unit is budget-free only in a run with no version unit, see versionUnit). Random base64
 //     needs several lucky caps runs to decompose at all; a real identifier needs one or
 //     two. This bound is where most of the measured cost above is bought back.
 //
@@ -1724,7 +1740,10 @@ func startsCapitalLedWord(seg string, k int) bool {
 // The measured cost of the widening on random token material is pinned by
 // TestShortAcronymCostsAlmostNothing, which runs the same 2,000,000-trial fixed-seed
 // comparison TestTwoLetterWordsCostAlmostNothing uses for the two-letter-word list.
-func shortAcronymUnit(seg string, i, wordsSoFar, acronymsSoFar int) (int, bool) {
+//
+// versioned reports that a version unit (versionUnit) has already been decomposed in this
+// run; it withdraws the CLOSING exemption, so the closing unit is held to the budget.
+func shortAcronymUnit(seg string, i, wordsSoFar, acronymsSoFar int, versioned bool) (int, bool) {
 	if wordsSoFar < 1 || i < 1 || seg[i-1] < 'a' || seg[i-1] > 'z' {
 		return 0, false
 	}
@@ -1735,6 +1754,9 @@ func shortAcronymUnit(seg string, i, wordsSoFar, acronymsSoFar int) (int, bool) 
 	for k < len(seg) && seg[k] >= 'A' && seg[k] <= 'Z' && !startsCamelWord(seg, k) {
 		k++
 	}
+	if k-i == 1 {
+		return versionUnit(seg, k, acronymsSoFar)
+	}
 	if n := k - i; n < minAcronym || n > maxAcronym {
 		return 0, false
 	}
@@ -1743,10 +1765,13 @@ func shortAcronymUnit(seg string, i, wordsSoFar, acronymsSoFar int) (int, bool) 
 	if k < len(seg) && seg[k] == 's' && (k+1 == len(seg) || startsCamelWord(seg, k+1)) {
 		k++
 	}
-	if k == len(seg) {
+	if k == len(seg) && !versioned {
 		// CLOSING (#1642): an acronym that ends the run spends no budget (`…PRs|By…Every|PR`).
 		// Everything before it has already decomposed, and a run has exactly one end, so
-		// the per-run total is at most maxAcronymUnits mid-run units plus this one.
+		// the per-run total is at most maxAcronymUnits mid-run units plus this one. NOT in a
+		// run that already carries a version unit (versioned): there the closing acronym
+		// falls through to the budget check below, which the version has spent, so a
+		// version and an acronym never share one run (`…Every|V2|…Handler|OK` refuses).
 		return k, true
 	}
 	if acronymsSoFar >= maxAcronymUnits {
@@ -1754,6 +1779,47 @@ func shortAcronymUnit(seg string, i, wordsSoFar, acronymsSoFar int) (int, bool) 
 	}
 	if startsCamelWord(seg, k) {
 		return k, true
+	}
+	return 0, false
+}
+
+// versionUnit finishes shortAcronymUnit's scan for a LONE capital: the unit is admitted only
+// as a version segment, a `V` directly followed by 1 to maxVersionDigits digits
+// (`…Test|V1|Desks…`, `…The|V10|Schema…`). k is the index just past the capital. This is
+// the same acronym unit with a digit group in place of further capitals, not a new
+// exemption: shortAcronymUnit's backward anchor and after-a-word rule have already held
+// before this is reached, and every other bound is applied here (#1642).
+//
+//   - `V` ONLY: the letter is a closed list of one, for the reason numeronyms is a closed
+//     list. Measured on the 2,000,000-run fixed seed TestTwoLetterWordsCostAlmostNothing
+//     uses, ANY capital plus digits before a word admitted 2 more random 32-char base64
+//     runs (8 -> 10), enough to fail that test's order-of-magnitude bar; `V` alone adds 0.
+//     `S3`, `P2` and the like stay refused.
+//   - DIGITS: one or two. A longer group is not a version tag, and a lone capital with no
+//     digit behind it stays debris exactly as before.
+//   - ANCHORED FORWARD: the digits close the run or a CamelCase word follows them, so
+//     `…V2x…` and capital-digit-capital chains in random base62 stay refused.
+//   - BUDGETED: the unit always spends the per-run acronym budget, closing or not, and once
+//     it is decomposed the closing-acronym exemption is withdrawn for the rest of the run
+//     (wordDecomposition's versioned), so a version segment and an acronym never share one
+//     run — mid-run or closing, plain or plural (`…Every|V2|…Open|PRs` refuses). A
+//     numeronym is a word, not an acronym, and still rides beside a version.
+//
+// A 2-4 letter acronym followed by digits (`…HTTP2…`) is NOT admitted: that shape is pinned
+// refused by identAcrDigit and stays the documented residual it was.
+func versionUnit(seg string, k, acronymsSoFar int) (int, bool) {
+	if seg[k-1] != 'V' {
+		return 0, false
+	}
+	d := k
+	for d < len(seg) && seg[d] >= '0' && seg[d] <= '9' {
+		d++
+	}
+	if d == k || d-k > maxVersionDigits || acronymsSoFar >= maxAcronymUnits {
+		return 0, false
+	}
+	if d == len(seg) || startsCamelWord(seg, d) {
+		return d, true
 	}
 	return 0, false
 }

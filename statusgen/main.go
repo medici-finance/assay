@@ -35,6 +35,9 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// leak its drive section into the next board).
 	activeDriveStatuses = nil
 	activeDriveHeartbeat = ""
+	// One git object reader + read memo for this run, closed when it returns
+	// (gitbatch.go) — so no answer outlives the run that read it.
+	defer beginGitReadSession()()
 	// Word-budget checks run FIRST — a budget violation is a
 	// hard PROBLEM just like any other source-check failure. Malformed specs
 	// were already caught in main() before reaching run().
@@ -732,7 +735,15 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// dispatchable". When the remote read fails, that answer is NOT available, and
 	// the run says so (NOTICE + in-board banner below) instead of quietly emitting
 	// the superset as if it had filtered.
-	claimed, claimSource := resolveClaims(root, streams)
+	//
+	// A plain --lint (no --forge) does NOT read them at all (forge-neutral/18, the
+	// reach contract in docs/statusgen-lint-reach.md): the claim read is
+	// `git ls-remote --heads origin` — a network round-trip to the forge — and its
+	// dead-claim decay starts `gh pr list` or calls a GitLab API. Offline, the
+	// claim set is could-not-check, rendered as itself through the same degraded
+	// notice a failed read produces; it never decides the lint verdict (every
+	// PROBLEM is counted above, before this line).
+	claimed, claimSource := lintClaims(root, mode, streams)
 	// Per-brief staleness clock: read each brief's own
 	// last recorded transition from the historian so aging measures from the
 	// brief's history, not the stream's git touch. A missing/unreadable log just
@@ -1173,6 +1184,11 @@ func (b *budgetFlags) Set(v string) error {
 var statusgenVersion = "dev"
 
 func main() {
+	// The check:ci network-off sandbox re-executes statusgen as its in-namespace
+	// helper (netns.go, issue #1925). Dispatched first: it brings loopback up,
+	// proves isolation and execs the row — or refuses — and never returns.
+	maybeRunNetnsHelper()
+
 	// `statusgen --version` / `statusgen version` — pure introspection, answered
 	// before flag parsing.
 	//
@@ -2282,6 +2298,7 @@ func main() {
 	// path by which a check reaches a forge from a run that did not ask for one.
 	if *forgeMode {
 		forgeReaderForRun = newDeskreadReader()
+		forgeReadsOptedIn = true
 	}
 
 	mode := "write"

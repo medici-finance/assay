@@ -175,17 +175,8 @@ func TestCrossModuleTestsAreTriggeredByWhatTheyRead(t *testing.T) {
 
 				// HALF (2) — coverage. Every read must be matched by a glob.
 				globs := workflowEventPaths(t, content, e.workflow, event)
-				for _, read := range e.reads {
-					if _, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(read))); err != nil {
-						t.Errorf("registry is stale: %s reads %s, which does not exist (%v)", e.test, read, err)
-						continue
-					}
-					if !anyGlobMatches(t, globs, read) {
-						t.Errorf("%s (%s) reads %s, but %s's on.%s.paths does not cover it (globs: %v).\n"+
-							"A cross-module guard whose trigger excludes what it reads is ADVISORY, not enforced — %s.\n"+
-							"Fix the FILTER (add a glob covering %s); do NOT weaken or delete the test (#199).",
-							e.test, job.check, read, e.workflow, event, globs, e.why, read)
-					}
+				for _, fault := range ciReadCoverage(t, repoRoot, globs, e.reads) {
+					t.Errorf("%s (%s), %s on.%s.paths: %s; fix the filter, never weaken the guard (#199)", e.test, job.check, e.workflow, event, fault)
 				}
 			}
 		})
@@ -196,6 +187,8 @@ func TestCrossModuleTestsAreTriggeredByWhatTheyRead(t *testing.T) {
 // read outside their own Go module. Both tests in this file consume it: the
 // trigger/reachability guard above, and the staleness scanner below.
 func ciCrossModuleRegistry() []ciEntry {
+	floorJob := ciJobRef{id: "build-test", check: "build-test"}
+
 	toolsDeskJob := ciJobRef{
 		id:          "test",
 		matrixValue: "tools/desk",
@@ -227,6 +220,23 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{
+			test:   "tools/desk/internal/regression/manifest_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"tools/desk", "statusgen"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the manifest dereferences test declarations in both modules; edits in either must run the desk manifest guard",
+		},
+		{
+			test:   "tools/desk/internal/regression/shell_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"tools/create-fleet-gitlab.sh", "tools/create-fleet-gitlab_test.sh", "tools/cellctl"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the floor runs offline shell fixtures outside the desk module; script changes must run the entry points",
+		},
+
 		{
 			// Registered with the guard it enforces (#392 review
 			// B3): closecheck's entire advisory guarantee — that it cannot
@@ -2335,4 +2345,124 @@ runs:
 			}
 		}
 	})
+}
+
+// TestRegressionCIEntrypoints checks the published workflow directly. The
+// legacy house registry test intentionally skips without tools.yml; these
+// public entries must not inherit that skip.
+func TestRegressionCIEntrypoints(t *testing.T) {
+	count := 0
+	for _, e := range ciCrossModuleRegistry() {
+		if !strings.HasPrefix(e.test, "tools/desk/internal/regression/") {
+			continue
+		}
+		count++
+		raw, err := os.ReadFile(filepath.Join("../../../..", e.workflow))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, event := range []string{"pull_request", "push"} {
+			job := e.prJob
+			if event == "push" {
+				job = e.pushJob
+			}
+			ciAssertEventReachesJob(t, string(raw), e.workflow, e.module, event, job, e.runInvokes, e.test, e.why)
+			globs, filtered := ciOnEventKey(t, string(raw), e.workflow, event, "paths")
+			if !filtered {
+				if _, ignored := ciOnEventKey(t, string(raw), e.workflow, event, "paths-ignore"); ignored {
+					t.Fatalf("floor workflow %s has paths-ignore; enumerate its coverage before trusting it", e.workflow)
+				}
+				globs = []string{"**"}
+			} // ci.yml deliberately runs on every change; reachability above still checks the event and job
+			for _, fault := range ciReadCoverage(t, "../../../..", globs, e.reads) {
+				t.Errorf("%s %s: %s", e.workflow, event, fault)
+			}
+		}
+	}
+	if count != 2 {
+		t.Fatalf("floor has %d CI registry entries, want 2", count)
+	}
+}
+
+// ciReadCoverage expands directory readers to actual files. GitHub paths
+// filters see changed files, never the directory names in this registry.
+func ciReadCoverage(t *testing.T, root string, globs, reads []string) []string {
+	t.Helper()
+	var faults []string
+	for _, read := range reads {
+		count := 0
+		err := filepath.WalkDir(filepath.Join(root, filepath.FromSlash(read)), func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			count++
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			rel = filepath.ToSlash(rel)
+			if !anyGlobMatches(t, globs, rel) {
+				faults = append(faults, "uncovered read: "+rel)
+			}
+			return nil
+		})
+		if err != nil {
+			faults = append(faults, fmt.Sprintf("cannot enumerate %s: %v", read, err))
+		} else if count == 0 {
+			faults = append(faults, "read has no files: "+read)
+		}
+	}
+	return faults
+}
+
+func TestCIReadTreeCoverage(t *testing.T) {
+	root := t.TempDir()
+	entries := []string{"tools/desk", "statusgen", "tools/cellctl"}
+	for _, dir := range entries {
+		path := filepath.Join(root, dir, "nested", "read.go")
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("fixture"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, event := range []string{"pull_request", "push"} {
+		for _, dir := range entries {
+			t.Run(event+"/"+dir, func(t *testing.T) {
+				raw := "on:\n  " + event + ":\n    paths:\n      - '" + dir + "'\n"
+				globs, found := ciOnEventKey(t, raw, "fixture.yml", event, "paths")
+				if !found {
+					t.Fatal("fixture paths not parsed")
+				}
+				faults := ciReadCoverage(t, root, globs, []string{dir})
+				if len(faults) == 0 {
+					t.Fatal("directory-only filter admitted descendant read")
+				}
+				if !strings.Contains(strings.Join(faults, "\n"), dir+"/nested/read.go") {
+					t.Fatalf("descendant not named: %v", faults)
+				}
+				if faults := ciReadCoverage(t, root, []string{dir + "/**"}, []string{dir}); len(faults) > 0 {
+					t.Fatalf("healthy broad filter: %v", faults)
+				}
+			})
+		}
+	}
+	// A distinct planted reader is neither module nor shell subtree from the finding.
+	dir := "new-reader"
+	if err := os.MkdirAll(filepath.Join(root, dir, "deep"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, dir, "deep", "second.txt"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if faults := ciReadCoverage(t, root, []string{dir}, []string{dir}); len(faults) == 0 {
+		t.Fatal("second directory-only plant was missed")
+	}
+	if faults := ciReadCoverage(t, root, []string{dir + "/**"}, []string{dir}); len(faults) > 0 {
+		t.Fatal(faults)
+	}
 }
