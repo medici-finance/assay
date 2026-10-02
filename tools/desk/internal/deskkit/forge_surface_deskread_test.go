@@ -82,7 +82,12 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 	// cmd/deskapps/identity.go::runGH::gh reads the signed-in `gh auth` login before any App
 	// token can exist. 7 = the #1528 ambientLoginProbe row plus the #1260 runGH row on top of
 	// the five pre-existing permits; the same two rows forgeban's allowedInvocationCeiling cites.
-	const baseCeiling = 7
+	//
+	// Re-based 7→6 by desktools-v2/03 (#2025, under the read-path ruling on #1911): deskmerge's
+	// reads moved onto a minted, repo-scoped App token and its cmd/deskmerge/exec.go::runGH::gh
+	// permit was REMOVED with the reach-around — a narrowing of the permit list, re-based in the
+	// change that made it, as this test's own message asks.
+	const baseCeiling = 6
 	if c := forgeban.Ceiling(); c != baseCeiling {
 		t.Fatalf("forgeban.Ceiling() = %d, want %d — this diff must not move the shell-exec ban's "+
 			"ceiling (statusgen is a separate module with no allowlist rows to migrate here; any "+
