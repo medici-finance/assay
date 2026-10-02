@@ -1,2 +1,2 @@
 ### Changed
-- Stream boards: the commsloop router risk-derivation row (measured-status 03) and the deskboard concurrency and refusal-ergonomics row (desk-tools 27) now read `implemented`, matching the work already merged.
+- Stream boards: the commsloop router risk-derivation row (measured-status 03) now reads `implemented`, matching the derivation record and follow-up already merged.
