@@ -126,7 +126,7 @@ func TestPublishIdentityGateSeamIsRealInProduction(t *testing.T) {
 	}
 	if err := productionPublishIdentityGateFn(deskkit.PublishIdentityInput{
 		Role: "verifier",
-		Commits: func(string, string) ([]deskkit.PublishCommit, error) {
+		Commits: func(string, deskkit.PublishRange) ([]deskkit.PublishCommit, error) {
 			return nil, deskkit.Unverifiable("seam probe", nil)
 		},
 	}); err == nil {
