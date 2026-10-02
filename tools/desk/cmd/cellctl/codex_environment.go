@@ -16,17 +16,28 @@ import (
 // shell wrappers decide which trust roster they load. USERPROFILE is Go's home
 // on Windows; HOME alone would silently select the operator's Windows roster.
 func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) {
-	operatorHome := c.codexOperatorHome(runtime.GOOS)
+	operatorHome, err := operatorHomeFor(runtime.GOOS, c.Env)
+	if err != nil {
+		return nil, err
+	}
 	if !filepath.IsAbs(c.Home) || !filepath.IsAbs(operatorHome) {
 		return nil, fmt.Errorf("Codex requires absolute cell and operator home paths")
+	}
+	codexHome, err := codexHomeFor(runtime.GOOS, c.Env)
+	if err != nil {
+		return nil, err
+	}
+	ghConfig, err := ghConfigDirFor(runtime.GOOS, c.Env)
+	if err != nil {
+		return nil, err
 	}
 	values := map[string]string{
 		"HOME":              c.Home,
 		"USERPROFILE":       c.Home,
 		"ZDOTDIR":           c.Home,
 		"ASSAY_CONFIG_HOME": c.Config,
-		"CODEX_HOME":        c.Env.GetOr("CODEX_HOME", filepath.Join(operatorHome, ".codex")),
-		"GH_CONFIG_DIR":     c.codexGHConfigDir(runtime.GOOS, operatorHome),
+		"CODEX_HOME":        codexHome,
+		"GH_CONFIG_DIR":     ghConfig,
 		"PATH":              filepath.Join(c.Dir, "bin") + string(filepath.ListSeparator) + deskToolsBin(c.Env) + string(filepath.ListSeparator) + c.Env.Get("PATH"),
 		// Noninteractive Bash reads BASH_ENV even without login semantics.
 		"BASH_ENV": "",
@@ -43,30 +54,6 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 		}
 	}
 	return values, nil
-}
-
-func (c *Cell) codexOperatorHome(goos string) string {
-	if goos == "windows" {
-		return c.Env.GetOr("USERPROFILE", c.Env.Get("HOME"))
-	}
-	return c.Env.GetOr("HOME", c.Env.Get("USERPROFILE"))
-}
-
-// Match gh's own documented precedence before command HOME changes. In
-// particular, a native Windows login is normally under AppData/GitHub CLI.
-func (c *Cell) codexGHConfigDir(goos, home string) string {
-	if value := c.Env.Get("GH_CONFIG_DIR"); value != "" {
-		return value
-	}
-	if value := c.Env.Get("XDG_CONFIG_HOME"); value != "" {
-		return filepath.Join(value, filepath.Base(ghConfigRelPath))
-	}
-	if goos == "windows" {
-		if value := c.Env.Get("APPDATA"); value != "" {
-			return filepath.Join(value, "GitHub CLI")
-		}
-	}
-	return filepath.Join(home, ghConfigRelPath)
 }
 
 func (c *Cell) codexEnvironmentArgs(env []string) ([]string, error) {
