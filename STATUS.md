@@ -61,6 +61,7 @@ _Held by per-stream caps: 3 brief(s) across 2 stream(s) — top: measured-status
 | desktools-v2 | 03 — native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot) [exec:strong] | 3 | 1500 + 1500 (drive:desktools-v2) |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
 | desktools-v2 | 12 — platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS [exec:strong] | 2 | 1000 + 1500 (drive:desktools-v2) |
+| desktools-v2 | 13 — platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage [exec:strong] | 2 | 1000 + 1500 (drive:desktools-v2) |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
 | measured-status | 03 — Derive the commsloop router's risk field from the envelope instead of hardcoding false, or record why false is sound — restore the risk:yes->tier:human backstop [exec:strong] | 0 | 2200 |
 | measured-status | 05 — attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish [exec:strong] | 1 | 2200 |
@@ -74,7 +75,7 @@ _Held by per-stream caps: 3 brief(s) across 2 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 2a6460e 2026-10-02T16:08:16+10:00_
+_last regen: b6a5223 2026-10-02T18:06:18+10:00_
 
 **Progress:** 5/13 brief items done.
 
@@ -97,13 +98,13 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 2a6460e 2026-10-02T16:08:16+10:00_
+_last regen: b6a5223 2026-10-02T18:06:18+10:00_
 
 **Progress:** 12/31 brief items done.
 
 **In-flight:**
 
-- desktools-v2/14
+_none_
 
 **Blocked on review:**
 
@@ -122,6 +123,7 @@ _last regen: 2a6460e 2026-10-02T16:08:16+10:00_
 - desktools-v2/03
 - desktools-v2/12
 - desktools-v2/13
+- desktools-v2/14
 
 
 
@@ -129,14 +131,14 @@ _last regen: 2a6460e 2026-10-02T16:08:16+10:00_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (51 desk-actionable of 85 total — 83 at implemented, 2 verified awaiting review)
+## Awaiting verification / review (52 desk-actionable of 86 total — 84 at implemented, 2 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (51)
+### Desk-actionable (52)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -154,6 +156,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| graph-execution | 13 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | contributor-trust | 06 | implemented | 2500 | 1 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
@@ -254,6 +257,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | desktools-v2 | — | — |
 | forge-gitlab | — | — |
 | forge-neutral | — | — |
+| graph-execution | — | — |
 | harness-portability | — | — |
 | statusgen | — | — |
 | windows-port | — | — |
@@ -478,7 +482,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 09 Versioned workflow instances and shared identity — todo (wave 1)
 - 11 Optional pinned Laya provider with explicit CPU and GPU profiles — todo (wave 1)
 - 12 Reproducible decision evaluation and calibration manifests — todo (wave 2)
-- 13 Deterministic admission over facts and bounded probabilistic advice — todo (wave 1)
+- 13 Deterministic admission over facts and bounded probabilistic advice — implemented (wave 1)
 - 14 Bind admission and graph eligibility at the dispatch boundary — todo (wave 3)
 - 15 Control profiles and complete scoped evidence exports — todo (wave 4)
 - 16 Cell ownership, cumulative budgets and restoration fencing — todo (wave 2)

@@ -1,0 +1,501 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/agentic-assessment-v1.json",
+  "title": "agentic-assessment-v1",
+  "description": "Machine-readable contract for agentic admission (spec/agentic-admission-v1.md, graph-execution/13): the agenticAssessment record (deterministic hard facts and recorded probabilistic advice, kept in separate fields), the owner's admissionPolicy, the evaluation-time admissionContext, and the deterministic admissionResult. This schema is DESCRIPTIVE of per-value shape only; the cross-field MUST rules (every readiness check mapped to a fail ceiling of human-led or stricter, freshness, binding, exception expiry, advice may only restrict, mandatory gates are a union) live in spec/agentic-admission-v1.md and are enforced by tools/desk/internal/deskkit/admission.go. No value in any of these records is a numeric safety, suitability or compliance score.",
+  "$defs": {
+    "disposition": {
+      "type": "string",
+      "enum": [
+        "bounded-agent-work",
+        "supervised-agent",
+        "human-led",
+        "discovery-only",
+        "blocked"
+      ],
+      "description": "The closed admission vocabulary, least to most restrictive (spec §2)."
+    },
+    "hardCheck": {
+      "type": "string",
+      "enum": [
+        "authority",
+        "data-handling",
+        "acceptance-availability",
+        "executor-capability",
+        "independent-verifier",
+        "budget",
+        "effect-recoverability"
+      ]
+    },
+    "readinessCheck": {
+      "type": "string",
+      "enum": [
+        "acceptance-availability",
+        "executor-capability",
+        "independent-verifier",
+        "budget",
+        "effect-recoverability"
+      ]
+    },
+    "agentOperation": {
+      "description": "An operation an agent may be permitted. merge, release and deploy are human floors and are never in this set (spec §2).",
+      "type": "string",
+      "enum": [
+        "read",
+        "push",
+        "pr-open",
+        "comment",
+        "review",
+        "evidence-commit",
+        "file-issue",
+        "dispatch"
+      ]
+    },
+    "hardFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "check",
+        "state",
+        "observedAt"
+      ],
+      "properties": {
+        "check": {
+          "$ref": "#/$defs/hardCheck"
+        },
+        "state": {
+          "description": "could-not-check is reported as itself, never rounded (spec §3.1).",
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "could-not-check"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "advisoryAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dimension",
+        "scope",
+        "request",
+        "prediction",
+        "observedAt"
+      ],
+      "properties": {
+        "dimension": {
+          "type": "string",
+          "enum": [
+            "ambiguity",
+            "verification-adequacy",
+            "task-model-fit",
+            "semantic-risk"
+          ]
+        },
+        "scope": {
+          "description": "The subject this advice was produced for; MUST equal the assessed subject or the advice is ignored.",
+          "type": "string",
+          "maxLength": 256
+        },
+        "request": {
+          "$ref": "https://medici-finance.github.io/assay/schemas/decision-assessment-v1.json#/$defs/assessmentRequest"
+        },
+        "prediction": {
+          "$ref": "https://medici-finance.github.io/assay/schemas/decision-assessment-v1.json#/$defs/prediction"
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "agenticAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject",
+        "subjectRevision",
+        "schemaDigest",
+        "environmentDigest",
+        "category",
+        "operations",
+        "facts"
+      ],
+      "properties": {
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[^\\s\\u0000-\\u001f\\u007f-\\u009f]+$",
+          "description": "The assessed subject: non-empty, at most 256 characters, no whitespace or control characters; otherwise blocked (subject-invalid, spec §4 step 3)."
+        },
+        "subjectRevision": {
+          "description": "A binding value. MUST be non-empty: an empty binding on either side is blocked (binding-missing), never read as unchanged (spec §4 step 3).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "schemaDigest": {
+          "description": "A binding value. MUST be non-empty: an empty binding on either side is blocked (binding-missing), never read as unchanged (spec §4 step 3).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "environmentDigest": {
+          "description": "A binding value. MUST be non-empty: an empty binding on either side is blocked (binding-missing), never read as unchanged (spec §4 step 3).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operations": {
+          "description": "The operations the work requests, at most 16 (spec §4 step 3). A human-floor operation here caps the result at human-led; an operation outside both vocabularies caps at human-led under the fixed code operation-unknown.",
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/agentOperation"
+              },
+              {
+                "$ref": "#/$defs/humanFloorOperation"
+              }
+            ]
+          }
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hardFact"
+          },
+          "maxItems": 32
+        },
+        "advice": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/advisoryAssessment"
+          },
+          "maxItems": 16
+        },
+        "assessedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "categoryAdmission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "ceiling",
+        "permittedOperations"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ceiling": {
+          "$ref": "#/$defs/disposition"
+        },
+        "permittedOperations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/agentOperation"
+          }
+        },
+        "revoked": {
+          "type": "boolean"
+        },
+        "revokedReason": {
+          "type": "string"
+        }
+      }
+    },
+    "admissionException": {
+      "description": "Admits one subject outside applicability. Extends applicability only; never waives a check, lifts a ceiling or removes a gate.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject",
+        "owner",
+        "expires"
+      ],
+      "properties": {
+        "subject": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "description": "A reason-code token (it appears in exception-applied:<owner>); a policy whose exception owner is not one is invalid (spec §5).",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._@/-]{0,63}$"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "expires": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "admissionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "owner",
+        "applicability",
+        "categories",
+        "readinessFailCeiling",
+        "maxFactAge",
+        "maxAdviceAge"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "applicability": {
+          "description": "Subject prefixes the policy applies to; no entry may be empty.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "exceptions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/admissionException"
+          }
+        },
+        "categories": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/categoryAdmission"
+          },
+          "maxProperties": 64
+        },
+        "readinessFailCeiling": {
+          "description": "Every readiness check MUST be mapped, and only to human-led or more restrictive (spec §5).",
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/readinessCheck"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "human-led",
+              "discovery-only",
+              "blocked"
+            ]
+          }
+        },
+        "maxFactAge": {
+          "description": "A Go duration string, e.g. \"24h0m0s\". MUST be positive (spec §5).",
+          "type": "string",
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
+        },
+        "maxAdviceAge": {
+          "description": "A Go duration string, e.g. \"24h0m0s\". MUST be positive (spec §5).",
+          "type": "string",
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
+        }
+      }
+    },
+    "discoveryScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "readScope"
+      ],
+      "properties": {
+        "owner": {
+          "description": "The grant owner; a reason-code token (it appears in discovery-scope:<owner>).",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._@/-]{0,63}$"
+        },
+        "readScope": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "\\S"
+          }
+        }
+      },
+      "description": "A separately authorized discovery grant. It authorizes discovery-only on a subject only when one read-scope entry covers the subject at a # or / boundary (spec §2, §4 step 12)."
+    },
+    "admissionContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "now",
+        "subjectRevision",
+        "schemaDigest",
+        "environmentDigest"
+      ],
+      "properties": {
+        "now": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "subjectRevision": {
+          "description": "The current binding value. MUST be non-empty (spec §4 step 3).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "schemaDigest": {
+          "description": "The current binding value. MUST be non-empty (spec §4 step 3).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "environmentDigest": {
+          "description": "The current binding value. MUST be non-empty (spec §4 step 3).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "stopFlag": {
+          "type": "boolean"
+        },
+        "adviceDisabled": {
+          "type": "boolean"
+        },
+        "discovery": {
+          "$ref": "#/$defs/discoveryScope"
+        }
+      }
+    },
+    "admissionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject",
+        "policyVersion",
+        "disposition",
+        "reasons",
+        "permittedOperations",
+        "humanFloors",
+        "riskInput"
+      ],
+      "properties": {
+        "subject": {
+          "type": "string",
+          "maxLength": 256,
+          "pattern": "^[^\\s\\u0000-\\u001f\\u007f-\\u009f]*$",
+          "description": "The assessed subject when it passed the subject grammar; empty otherwise. A refused subject is never echoed, on any return (spec §7)."
+        },
+        "policyVersion": {
+          "type": "string"
+        },
+        "disposition": {
+          "$ref": "#/$defs/disposition"
+        },
+        "reasons": {
+          "description": "Ordered reason codes; never empty. Each is a lowercase literal followed by zero or more :-separated reason-code tokens, so no assessed value can add a separator, a line or a code (spec §7).",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*(:[A-Za-z0-9][A-Za-z0-9._@/-]{0,63})*$"
+          }
+        },
+        "permittedOperations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/agentOperation"
+          }
+        },
+        "humanFloors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "merge",
+              "release",
+              "deploy"
+            ]
+          }
+        },
+        "riskInput": {
+          "description": "The workflow-pattern risk-input verdict this disposition adds; mandatory gates are the union with the brief's own verdict (spec §6).",
+          "type": "string",
+          "enum": [
+            "standard",
+            "elevated",
+            "human"
+          ]
+        },
+        "adviceApplied": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "discoveryScope": {
+          "description": "Present exactly when the disposition is discovery-only: the grant read-scope entries covering the subject, sorted. Discovery reads are bounded to these.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "humanFloorOperation": {
+      "description": "An operation that is never permitted to an agent at any disposition (spec §2). An assessment may REQUEST one; the result is then capped at human-led.",
+      "type": "string",
+      "enum": [
+        "merge",
+        "release",
+        "deploy"
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/agenticAssessment"
+    },
+    {
+      "$ref": "#/$defs/admissionPolicy"
+    },
+    {
+      "$ref": "#/$defs/admissionContext"
+    },
+    {
+      "$ref": "#/$defs/admissionResult"
+    }
+  ]
+}
