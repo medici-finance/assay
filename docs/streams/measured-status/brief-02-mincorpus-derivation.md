@@ -91,7 +91,29 @@ facts:
 | 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:02` | exit 0; output does not contain "DISPROVED" (the fixed-here consumer routing is corroborated, not contradicted) | check |
 
 ## Evidence
-<!-- appended at implementation time by a non-implementer -->
+Option taken (implementer record, 2026-10-03): **Task 1 — derive the floor.**
+`EventsPerVariable = 10` and `DerivedMinCorpus()` = `EventsPerVariable * len(FeatureNames())`
+= 10 x 15 = 150; `DefaultConfig().MinCorpus` calls it. The `// Derivation:` comments on the
+constant and on `DerivedMinCorpus` state that the floor counts total labeled examples (both
+classes) per predictor, so meeting it is a necessary, weaker condition than the EPV rule,
+which counts rarer-outcome events per predictor; a rarer-outcome event floor is not added
+here (#1171 stays open for that question).
+
+Fail-first (Task 5), implementer's hand-mutations of `qualgen/riskscore/learned.go`, run from
+`qualgen/` against the working tree on top of `d67b2128b4c7`, each restored from a saved
+copy (`cmp` identical) before the next:
+
+| Mutation | Test | Red (quoted) | Green after restore |
+|---|---|---|---|
+| A — `EventsPerVariable` 10 -> 9 (the derived value one below its correct output) | `TestMinCorpusDerivedFromFeatureCount` | `--- FAIL: TestMinCorpusDerivedFromFeatureCount` / `learned_test.go:330: EventsPerVariable = 9, documented derivation says 10` | `--- PASS` |
+| B — `Train` gate `len(examples) < 40` instead of `< cfg.MinCorpus` | `TestMinCorpusGovernsLearnedSwitch` | `--- FAIL: TestMinCorpusGovernsLearnedSwitch` / `learned_test.go:358: Train with 149 examples (floor 150) must refuse as under-corpus, got <nil>` | `--- PASS` |
+
+After restoring, the full package passes (`go test ./riskscore/ -count=1`: `ok`), and
+`go vet ./riskscore/` and `gofmt -l riskscore` are clean.
+
+Implementer's run of the Verify table follows as an execution witness (`statusgen
+verifyrun`). The independent verifier re-runs on merged main; this record does not set
+`verified`.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

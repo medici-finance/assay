@@ -320,8 +320,8 @@ func containsStr(xs []string, want string) bool {
 }
 
 // TestMinCorpusDerivedFromFeatureCount pins the derivation of the under-corpus
-// floor: DefaultConfig().MinCorpus is the documented events-per-variable target
-// times the feature count, with the count taken from the vector the model really
+// floor: DefaultConfig().MinCorpus is the documented per-predictor multiplier
+// (EventsPerVariable, counting total labeled examples) times the feature count, with the count taken from the vector the model really
 // trains on (not from the same name list the production code reads), so a
 // drift in either the constant or the vector fails here.
 func TestMinCorpusDerivedFromFeatureCount(t *testing.T) {

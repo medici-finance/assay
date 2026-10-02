@@ -30,17 +30,19 @@ type Corpus struct {
 	Defects []Defect `json:"defects"`
 }
 
-// EventsPerVariable is the events-per-variable (EPV) target the learned layer's
-// minimum corpus is derived from: how many labeled training examples the model
-// wants per predictor before its logistic coefficients are treated as stable.
+// EventsPerVariable is the per-predictor multiplier the learned layer's minimum
+// corpus is derived from. As applied here it counts labeled training examples
+// per predictor — TOTAL rows, both classes — not the events of the rarer
+// outcome per predictor that the events-per-variable (EPV) rule it is named
+// after counts. DerivedMinCorpus states what that does and does not guarantee.
 //
 // Derivation: 10 is the conventional EPV floor for logistic regression
 // (Peduzzi et al. 1996, the guidance the JIT defect-prediction lineage in spec
-// §12 inherits). It is the conservative choice here because a floor set too low
-// graduates the model past the heuristic on too little data, and the heuristic
-// fallback is always available while the corpus seasons. Raising or lowering it
-// is a one-constant edit; MinCorpus tracks it, and the feature vector, with no
-// further change.
+// §12 inherits), borrowed as the multiplier. A floor set too low graduates the
+// model past the heuristic on too little data, and the heuristic fallback is
+// always available while the corpus seasons, so the larger value is the safer
+// default. Raising or lowering it is a one-constant edit; MinCorpus tracks it,
+// and the feature vector, with no further change.
 const EventsPerVariable = 10
 
 // DerivedMinCorpus is the minimum labeled-corpus size for the learned layer to
@@ -48,11 +50,12 @@ const EventsPerVariable = 10
 // literal: EventsPerVariable times the number of predictors (len(FeatureNames),
 // 15 today, so 150). Adding or removing a feature moves the floor with it.
 //
-// It counts TOTAL labeled examples, so it is a lower bound on the EPV
-// guidance, which strictly counts defect-positive events: at a defect rate p
-// the corpus holds p*DerivedMinCorpus() events. Train separately refuses a
-// single-class corpus. A positive-event floor would be a different gate and is
-// not applied here.
+// It counts TOTAL labeled examples, so meeting it is a necessary, weaker
+// condition than the EPV guidance, which counts events of the rarer outcome
+// (usually the defect-inducing changes) per predictor: at a defect rate p the
+// corpus holds about p*DerivedMinCorpus() such events — 30 at p=0.2, two per
+// predictor. Train separately refuses a single-class corpus. A rarer-outcome
+// event floor would be a different gate and is not applied here.
 func DerivedMinCorpus() int {
 	return EventsPerVariable * len(FeatureNames())
 }
