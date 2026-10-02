@@ -1,2 +1,0 @@
-### Fixed
-- The outbound check no longer refuses a brief's own frontmatter `id:` as a session id (#2022). The exemption covers exactly one shape: a lowercase UUID that is the whole value of the single `id:` line inside the frontmatter of a `docs/streams/**/brief-*.md` file. The check reads the file's full content to establish that shape, on the push path, the forge file write and the evidence pre-flight. A UUID in brief prose, in any other file, in a commit message or in a PR body is still refused.
