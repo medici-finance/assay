@@ -178,9 +178,11 @@ func (o *outboundForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFile
 	if prior, ok := o.priorContent(repo, in); ok {
 		added = addedLinesAgainst(prior, in.Content)
 	}
-	if err := o.check(repo, OutboundKindFile,
-		OutboundField{"path", in.File}, OutboundField{in.File, added},
-		OutboundField{"commit", in.Message}); err != nil {
+	// in.Content is the file's full new content, line-aligned with `added`: the evidence the
+	// session-id arm's one brief-frontmatter exemption reads (#2022). It is never scanned.
+	if err := OutboundCheck(OutboundWrite{Role: o.role, Repo: repo.Slug(), Kind: OutboundKindFile,
+		Fields:      []OutboundField{{"path", in.File}, {in.File, added}, {"commit", in.Message}},
+		FileSources: map[string]string{in.File: string(in.Content)}}); err != nil {
 		return nil, err
 	}
 	return o.Forge.WriteFile(repo, in)
