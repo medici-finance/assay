@@ -127,6 +127,12 @@ actually boots (and the `internal/deskkit` unix-only syscall sites brief
 `docs/streams/windows-port/` 00 owns) belongs to the windows-port stream, not here. Until that
 stream delivers, treat the Windows binaries as untested.
 
+Paths in `cell.env` on Windows: `cellctl new` writes every path it is handed with forward slashes
+(`CELL_REPO=C:/src/x`), which every Windows API accepts and no shell reads as an escape. A path
+edited in by hand in native form (`C:\src\x`) still loads on Windows — the loader keeps a `\`
+that precedes an ordinary character — but a shell that sources the file (Git Bash) would not, so
+prefer the forward-slash form.
+
 ---
 
 ## `cellctl new` — scaffold, then four hand steps

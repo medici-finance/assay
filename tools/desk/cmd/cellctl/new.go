@@ -82,6 +82,16 @@ func cmdNew(args []string) {
 		}
 	}
 
+	// Every path below is written bare into cell.env, where a Windows `\` would read back as a
+	// shell escape: emit it with forward slashes on Windows (cellenvpath.go; identity elsewhere).
+	// A container cell's --repo is a repo id, not a path, so it is left as given.
+	if kind != "container" {
+		repo = cellEnvPathFor(runtime.GOOS, repo)
+	}
+	roots = cellEnvRootsFor(runtime.GOOS, roots)
+	pem = cellEnvPathFor(runtime.GOOS, pem)
+	tokenStore = cellEnvPathFor(runtime.GOOS, tokenStore)
+
 	root := cellsRoot(e)
 	if containerConfig != "" && kind != "container" {
 		die("--container-config is only valid for --kind container")

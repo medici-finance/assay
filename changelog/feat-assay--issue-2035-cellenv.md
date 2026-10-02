@@ -1,0 +1,2 @@
+### Fixed
+- `cellctl new` on Windows writes `CELL_REPO`, `CELL_ROOTS` and the other paths it is handed into `cell.env` with forward slashes (`C:/src/x`), and the `cell.env` loader on Windows reads a `\` before an ordinary character as a path separator rather than a shell escape — a `C:\…` path no longer loads back as `C:src…` or trips `malformed CELL_ROOTS path`. `cellctl set`'s kind-change precondition now reads values through the same loader.
