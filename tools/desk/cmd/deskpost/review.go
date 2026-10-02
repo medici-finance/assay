@@ -299,6 +299,7 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 			fd = deskkit.ModelCapabilityFloorRiskAware(tl, deskkit.IsStampAuthorityLogin, deskkit.ModelFloorOverrideEngaged(),
 				claim, deskkit.FloorRiskOf(repo, prFilePaths(prFiles)))
 		}
+		fd.Message += claimReleaseNote(repo, pr, claim)
 		switch fd.Outcome {
 		case deskkit.FloorRefuse:
 			return withDigest(refused(verb, repo, pr, curHead, fd.Message), dig)

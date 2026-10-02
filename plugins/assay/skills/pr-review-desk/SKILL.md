@@ -322,8 +322,8 @@ as the planner and acts on its rows.
   rejected at claim-acquire):
 
   ```bash
-  deskdispatch <alias>--pr-<N> --kit review --tier strong|any --repo <owner/repo> --pr <N>
-  deskdispatch <alias>--pr-<N>--security --kit review --tier strong --repo <owner/repo> --pr <N>   # risk-classed only, SAME turn
+  deskdispatch <alias>--pr-<N> --kit review --tier strong|any --model <actual-model> --repo <owner/repo> --pr <N>
+  deskdispatch <alias>--pr-<N>--security --kit review --tier strong --model <actual-model> --repo <owner/repo> --pr <N>   # risk-classed only, SAME turn
   ```
 
   `<alias>` is the repo's short label/basename. It takes the durable claim, cuts the reviewer a
@@ -332,8 +332,12 @@ as the planner and acts on its rows.
   someone else exits 5 with the holder named: never steal. The board's SECURITY-REVIEW-REQUIRED row
   is a MISSED-DISPATCH alarm, not the trigger — it only appears AFTER a correctness approval, so
   waiting for it serialises the two lanes; dispatch the security lane off the actions row's
-  `riskClassed` up front instead. For RE-REVIEW, resume EACH lane's *original* reviewer
-  (`capability:message-agent`, so it keeps that lane's prior findings) and ask for a **delta** review
+  `riskClassed` up front instead. For RE-REVIEW, first run the SAME original-key ceremony
+  again for each lane with its actual model and tier. It takes the normal claim and renews trusted
+  dispatch through the normal stamp step, allocating a fresh DETACHED worktree without removing
+  earlier reviewer evidence. A live claim still refuses; never change the key to get around it.
+  Then resume EACH lane's *original* reviewer (`capability:message-agent`, so it keeps that lane's
+  prior findings), give it the NEW emitted kit and home worktree, and ask for a **delta** review
   of `<lastReviewed>..<head>`; a gone session gets a fresh agent (`capability:dispatch-worker`)
   carrying that lane's FULL open-findings set, never a subset (re-approving against a SUBSET fix-list
   is the 2026-08-15 laundering); for a first review, dispatch a fresh reviewer

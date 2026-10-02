@@ -40,6 +40,12 @@ func cmdStatus(cell string) {
 		c.containerRun("status")
 		return
 	}
+	if c.Kind == "house" {
+		for _, role := range knownRoles {
+			c.printCadenceStatus(role)
+		}
+		return
+	}
 	if c.Kind != "scrubbed" {
 		die("status is only defined for a scrubbed cell (kind=%s)", c.Kind)
 	}

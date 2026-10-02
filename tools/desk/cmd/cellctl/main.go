@@ -14,6 +14,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -55,7 +56,7 @@ func main() {
 	// The cell home's file is the thing under audit, so it is the only admissible source.
 	// The model-policy hook's deadline starts before anything that can block, the roster echo
 	// below included (policy_enforce.go, armHookDeadline).
-	armHookDeadline(os.Args[1:])
+	armHookDeadline(commandArgs(os.Args[1:]))
 	deskkit.SetToolClass(deskkit.ClassForTool(false))
 	// P3: echo the effective roster once per run. A control surface that lives in settings rather
 	// than in a diff is visible only at RUN time; without the echo a NARROWING is invisible.
@@ -75,6 +76,15 @@ func run() (code int) {
 		}
 	}()
 	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "--cells-root" {
+		if len(args) < 3 || !filepath.IsAbs(args[1]) {
+			die("--cells-root requires an absolute registry path and a command")
+		}
+		if err := os.Setenv("CELLS_ROOT", args[1]); err != nil {
+			die("cannot select cell registry: %v", err)
+		}
+		args = args[2:]
+	}
 
 	// `--version` / `version` — pure introspection, recognised as the SOLE argument only, and
 	// answered before any other parsing, so a stale copy is detectable exactly the way
@@ -114,6 +124,8 @@ func run() (code int) {
 		cmdCheck(needCell(rest), cfg)
 	case "deskd":
 		cmdDeskd(needCell(rest))
+	case "cadence":
+		cmdCadence(needCell(rest), rest[1:])
 	case "desk":
 		cmdDesk(needCell(rest), rest[1:])
 	case "smoke":
@@ -147,4 +159,14 @@ func needCell(rest []string) string {
 		exitWith(1)
 	}
 	return rest[0]
+}
+
+// commandArgs recognizes the one global selector before hook deadline detection.
+// Validation still happens in run, but no alternate hook spelling can defer its
+// watchdog until after the potentially blocking roster echo.
+func commandArgs(args []string) []string {
+	if len(args) >= 3 && args[0] == "--cells-root" {
+		return args[2:]
+	}
+	return args
 }
