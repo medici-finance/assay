@@ -392,6 +392,54 @@ Notes:
 
 VERIFY: BLOCKED
 
+### 2026-10-02 desk dispatch — Verification — 2026-10-02T22:58Z (non-implementer hand run on merged main e1d99484ffd9)
+
+Runner is not the implementer. Detached worktree at merged main e1d99484ffd9, gate: model, all four risk answers no. Every row was run by hand from the repository root exactly as authored (the table-escaped pipe read as a pipe), under bash with a clean environment and a throwaway home directory; statusgen was built from this tree's own statusgen source (version dev). Commands are abbreviated in the Command column; the authored text is the Verify table above. No row is classed check:ci.
+
+| # | Command | Exit | Observed | Date | Runner |
+| --- | --- | --- | --- | --- | --- |
+| 1 | two greps of ci.yml for the three module dirs in the go test case | 0 | printed 3 then 8; the three go test arms are at ci.yml lines 78 to 80, beside the kept tools/desk arm at 77. Against the ci.yml that preceded #1813 the same row prints 0 and 0 | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | go test of all packages in harnessgen, harnesslint, plugindrift | 0 | ok for all three modules; suites=0 | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2a | plant a canary skill, run the harnessgen Codex and Committed tests, remove the canary | 0 | drift-exit=1; the captured log shows two FAIL lines, the Codex committed-manifest test and the Cursor committed-rule test; canary removed and tree clean afterwards | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | grep of ci.yml for bodies and bindings near harnesslint | 0 | printed 3 (expect at least 2). Against the ci.yml that preceded #1813 it prints 0 | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | harnesslint bodies over the shipped skills tree | 0 | checked-clean: bodies — no violations; bodies=0. With the two skill bodies restored to their pre-#714 text in a scratch copy the same call reports 4 violations and exits 1 | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4a | positive control: banned token appended to a scratch copy of ask-decision, then harnesslint bodies | 0 | planted=1; an unsilenced repeat shows exactly one violation, on the planted line, checked-failed: bodies — 1 violation(s). Count only, report body not kept | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | harnesslint bindings over the shipped references tree | 0 | four files announced as declared non-matrix (desk-common, desk-shell, standing-note, tick-contract); checked-clean: bindings — no violations; bindings=0. With the declaration line removed from desk-shell in a scratch copy the same call reports 8 violations, all on desk-shell, and exits 1 | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5a | narrowness control: undeclared junk reference added to a scratch copy, then harnesslint bindings | 0 | undeclared=1; an unsilenced repeat shows 8 capability-closure violations, all on the junk file, none on the declared files or the three matrices | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | harnesslint go test filtered to NonMatrix, Skip, Bindings | 0 | ok; hl-suite=0. With -v added, 12 tests PASS, among them the declared-file-skipped test, the undeclared-still-checked test, the neighbour-narrowness test, the reason-required test and the all-declared could-not-check test | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | statusgen lint of the repo root, then echo of its exit | 0 | LINT: PASS; zero PROBLEM lines; printed 0 | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | awk of the v1.0.0 changelog section piped to a quiet grep for a harnesslint bullet | 0 | changelog=0 under plain bash (two matching bullets in the v1.0.0 section). Under bash with pipefail, the shell the execution witness uses, it printed changelog=141 on 2 of 2 runs: the quiet grep exits at the first match and awk takes SIGPIPE. The trailing echo makes the row exit 0 either way. Check-definition defect; substance passes | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | whole-tree count of conflict-marker strings, then a diffstat of main against HEAD | 0 | FAIL as authored: printed 18 where the Expect cell says 0, and an empty diffstat by construction (HEAD is main). All 18 hits, in 11 files, are prose, detection code or test fixtures (5 of them in this brief); no real unresolved conflict. Check-definition defect; substance passes | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Execution witness (dry run, nothing written): 10 of 12 rows proven, exit 2. Rows 1, 2, 2a, 3, 4, 5, 5a, 6, 7 and 8 recorded pass exit=0. Row 4a: could-not-run, prose-led command (the first code span in the Command cell is a lone word ahead of the real command). Row 9: could-not-run, the three-dot range is read as an unsubstituted placeholder. The witness pass on row 8 is exit-status only and is masked by the trailing echo (see row 8 above).
+
+What changed since the 2026-09-30 pass: nothing in the brief's Verify table; rows 4a, 8 and 9 are still authored as they were, so the same three check-definition defects hold. The deliverable is unchanged and still present: CI wiring on main since #1813, skill-body scrubs and the declared skip since #714. The marker count on row 9 moved from 16 to 18 as unrelated files were added. #1332 (the request for a human push of the CI wiring) is still open although #1813 delivered that push; it can be closed citing #1813. The 2026-09-30 note says the row re-authors are tracked at #1927; that issue is open but neither its body nor its comments name this brief, so no open issue found by this pass tracks the re-author of rows 4a, 8 and 9 here.
+
+Vacuity:
+- Rows 1, 3, 4 and 5 discriminate: each fails against the pre-change input (shown in the rows above).
+- Rows 4a, 5a and 2a are controls and each went red on its planted fault with the fault visible in unsilenced output.
+- Row 6 discriminates on the tests this brief added (five of the twelve selected tests exercise the declared skip).
+- Row 8 discriminates in substance (both matching bullets are this brief's), but its exit status cannot fail: the row ends in echo.
+- Row 2 is non-discriminating on its own: the three suites passed before this brief; it shows only that what the new CI arms run is green. Row 2a carries the proof.
+- Row 7 is non-discriminating for this brief: a repo-wide lint that passes with or without the work.
+- Rows 4, 5, 6, 7 and 8 all end in echo, so their exit status is always 0; only the printed value decides them, and the witness scores exit status only.
+- Row 9 cannot pass as authored on merged main.
+
+Lint NOTICE lines that name this brief (not PROBLEM): ere-literal-pipe on rows 1 and 3, verify-row-portability on row 2a, prose-led-command on row 4a, moving-ref and unsubstituted-metavar on row 9, a consumers list with no consumers row, a one-sided depends edge to brief 14, and risk-files-crossread (all four risk answers are no while the files list names a CI workflow path). The last one is for the desk or a human to route; it is not decided here.
+
+Risk values (enumerated over #714 and #1813; all are reversible by an edit, none is a threshold, tolerance, ratio or timeout):
+
+RISK-VALUE: DERIVED — nonMatrixMarker (the `assay:harnesslint non-matrix-reference` comment marker) @ tools/harnesslint/lint.go:75 — the form Task step 5 of this brief names, symmetric with the two markers the tool already parsed; a declaration must be closed and carry a reason (lint.go:185 and :192), every skipped file is announced, and row 5a plus the row 5 mutation show the skip keys on the declaration alone.
+RISK-VALUE: DERIVED — extra = "go test ./..." @ .github/workflows/ci.yml:78-80 — Task step 1 of this brief asks for exactly this, copied from the existing tools/desk arm at line 77.
+RISK-VALUE: NAMED, NOT DERIVED — runs-on = "medici-builder-public" and the checkout action pin 3d3c42e5aac5 in the harnesslint job @ .github/workflows/ci.yml:179 and :181 — both are identical to the other three jobs in the same file (4 of 4 each), so they follow the file's standing convention; this pass did not independently confirm the pin resolves to the tagged release it is commented as.
+RISK-VALUE: N/A (adjacent, checked) — the plugin version is 1.0.32 in both the Claude and the Codex plugin manifest; it is regenerated, not chosen, and is not introduced by this brief.
+
+Other observations: the staged sidecar patch under tools/harnesslint is still on main and is redundant now that the wiring has landed. The relocation in item (b) holds: the two harness-specific tokens are absent from both skill bodies and present in the Claude reference file.
+
+Suggested re-authors, unchanged from the prior pass: row 4a, start the Command cell with the command (move the prose to Expect); row 8, drop the quiet flag or avoid the pipe, and drop the trailing echo; row 9, pin the base to the delivering merge and match markers at line start only.
+
+VERIFY: BLOCKED — check-definition. Rows 1, 2, 2a, 3, 4, 4a, 5, 5a, 6 and 7 pass by hand and every deliverable (a), (b), (c) is on main and behaves as the brief says; rows 4a and 9 cannot be witnessed as authored (witness 10 of 12, exit 2), row 9 prints 18 against an Expect of 0, and row 8 prints 141 under the witness shell. Status stays implemented until rows 4a, 8 and 9 are re-authored.
+
 ## Review
 
 Gate: **model** (from frontmatter; no `irreversible`/`sensitive-data`). The reviewer records the
