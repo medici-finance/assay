@@ -37,12 +37,18 @@ func exactRefCommit(root, ref string) string {
 	return commit
 }
 
-// mergeBaseExact is the ONE place a FIXED base ref (remoteMainRef, or
+// mergeBaseExact is where a HARD-CODED base ref (remoteMainRef, or
 // refs/remotes/origin/<the PR's base branch>) becomes a merge-base with HEAD:
 // the ref is resolved exactly (exactRefCommit) and merge-base runs on its object
 // id. "" when the ref does not exist or no merge-base resolves, so each caller
-// takes its own unresolvable-base path. TestMergeBaseChokePoint fails on any
-// other `git merge-base` call outside its short allow-list.
+// takes its own unresolvable-base path. Callers: the corroborate lane, both
+// offline register guards, register-ID grandfathering, stream-cap, the unrun
+// gate and the Verify-row obligation derivation. NOT covered: the revisions an
+// operator supplies (--consumers --base, the diff-lint base, mergecheck --base),
+// whose DEFAULT is the same fixed ref but which git still resolves by name.
+// TestMergeBaseChokePoint fails on any `git merge-base` call outside its
+// allow-list, and TestFixedBaseNotHandedToHelpers on a fixed ref passed into one
+// of that allow-list's by-name helpers.
 func mergeBaseExact(root, ref string) string {
 	oid := exactRefCommit(root, ref)
 	if oid == "" {

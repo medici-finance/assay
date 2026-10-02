@@ -252,7 +252,7 @@ func registerTransitionLane(root, repo string, pr int, files []ghPRFile, mergeBa
 				Verdict: verdictMissing,
 				Moves:   "touches " + strings.Join(touched, ", "),
 				Evidence: "the PR merge-base could not be resolved, so the findings-register transitions this PR makes " +
-					"cannot be evaluated — fail-closed (statusgen/06 §B); fetch the base branch (fetch-depth: 0) and re-run",
+					"cannot be evaluated — fail-closed (statusgen/06 §B); the exact ref refs/remotes/origin/<base> must exist (fetch the base branch, fetch-depth: 0) and share history with HEAD; re-run",
 			}}, nil
 		}
 		// No merge-base, so the forge listing is the only witness that the PR
@@ -262,7 +262,7 @@ func registerTransitionLane(root, repo string, pr int, files []ghPRFile, mergeBa
 			return []registerTransitionResult{{
 				Verdict: verdictMissing,
 				Moves:   "register touch unknown",
-				Evidence: fmt.Sprintf("the PR merge-base could not be resolved and the forge's changed-file count could not be read (%v), "+
+				Evidence: fmt.Sprintf("the PR merge-base (refs/remotes/origin/<base>) could not be resolved and the forge's changed-file count could not be read (%v), "+
 					"so a file listing that names no findings entry cannot be shown complete — fail-closed (statusgen/06 §B)", err),
 			}}, nil
 		}
@@ -272,7 +272,7 @@ func registerTransitionLane(root, repo string, pr int, files []ghPRFile, mergeBa
 				Moves:   "register touch unknown",
 				Evidence: fmt.Sprintf("the PR merge-base could not be resolved and the forge listed %d of the PR's %d changed files, "+
 					"so a truncated listing cannot show the PR leaves docs/streams/findings/ untouched — fail-closed (statusgen/06 §B); "+
-					"fetch the base branch (fetch-depth: 0) and re-run", len(files), n),
+					"the exact ref refs/remotes/origin/<base> must exist (fetch the base branch, fetch-depth: 0); re-run", len(files), n),
 			}}, nil
 		}
 		return nil, nil

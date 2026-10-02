@@ -683,11 +683,13 @@ func TestRegAbsentRefDecoyFails(t *testing.T) {
 // The class: a FIXED base ref handed to git by name, which git expands through
 // other namespaces when the exact ref is absent. A fixed base goes through
 // mergeBaseExact; the rest take a revision an operator (or a resolved commit)
-// supplies, and are listed with the reason.
+// supplies, and are listed with the reason. The allow-list keys on the enclosing
+// function, so TestFixedBaseNotHandedToHelpers separately fails on a fixed ref
+// passed as an argument into one of the listed helpers.
 var mergeBaseAllow = map[string]string{
 	"mergeBaseExact":         "the choke point: resolves the fixed ref exactly, then runs merge-base on its object id",
 	"consumerEntriesAtBase":  "operator-supplied --base revision",
-	"pinConsumerBase":        "operator-supplied --base revision",
+	"pinConsumerBase":        "operator-supplied --base revision (its only caller passes the --base value; TestFixedBaseNotHandedToHelpers fails on a fixed ref passed in)",
 	"productionResolveBase":  "operator-supplied base revision",
 	"runMergecheck":          "both sides already resolved to commits by resolveCommit",
 	"ancestorNoOtherChanges": "--is-ancestor on two commits verified with cat-file first",
@@ -777,5 +779,98 @@ func TestMergeBaseChokePoint(t *testing.T) {
 	}
 	if !seen["mergeBaseExact"] {
 		t.Errorf("the choke point mergeBaseExact runs no merge-base the guard can see")
+	}
+}
+
+// byNameBaseHelpers are the allow-listed functions that hand a base revision to
+// git by NAME. They are fine for an operator-supplied value and wrong for a
+// fixed ref, which must go through mergeBaseExact.
+var byNameBaseHelpers = map[string]bool{
+	"pinConsumerBase":       true,
+	"consumerEntriesAtBase": true,
+	"productionResolveBase": true,
+}
+
+// fixedBaseHandedSites returns "file:line" for every call in f to a by-name
+// helper that passes the fixed ref (remoteMainRef, defaultMergecheckBase, or the
+// literal refs/remotes/origin/ name) as an argument.
+func fixedBaseHandedSites(fset *token.FileSet, f *ast.File) []string {
+	var sites []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		id, ok := call.Fun.(*ast.Ident)
+		if !ok || !byNameBaseHelpers[id.Name] {
+			return true
+		}
+		for _, a := range call.Args {
+			switch a := a.(type) {
+			case *ast.Ident:
+				if a.Name == "remoteMainRef" || a.Name == "defaultMergecheckBase" {
+					sites = append(sites, fset.Position(call.Pos()).String())
+				}
+			case *ast.BasicLit:
+				if s, err := strconv.Unquote(a.Value); err == nil && strings.HasPrefix(s, "refs/remotes/origin/") {
+					sites = append(sites, fset.Position(call.Pos()).String())
+				}
+			}
+		}
+		return true
+	})
+	return sites
+}
+
+// TestFixedBaseNotHandedToHelpers is the second half of the choke-point guard:
+// TestMergeBaseChokePoint keys on the function that runs `git merge-base`, so a
+// fixed base ref passed INTO an allow-listed by-name helper (the shape of the
+// obligation-derivation base before it was routed through mergeBaseExact) is
+// invisible to it. The planted source is the positive control.
+func TestFixedBaseNotHandedToHelpers(t *testing.T) {
+	fset := token.NewFileSet()
+	plant, err := parser.ParseFile(fset, "plant.go",
+		"package p\nfunc planted(root string) { pinConsumerBase(root, remoteMainRef); productionResolveBase(root, \"refs/remotes/origin/main\") }\n", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fixedBaseHandedSites(fset, plant); len(got) != 2 {
+		t.Fatalf("positive control: both planted calls must be flagged; got %v", got)
+	}
+	matches, err := filepath.Glob("*.go")
+	if err != nil || len(matches) == 0 {
+		t.Fatalf("no statusgen sources found (err %v)", err)
+	}
+	for _, m := range matches {
+		if strings.HasSuffix(m, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, m, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", m, err)
+		}
+		for _, site := range fixedBaseHandedSites(fset, f) {
+			t.Errorf("%s: a fixed base ref handed to a by-name helper — resolve it with mergeBaseExact", site)
+		}
+	}
+}
+
+// TestBranchChangedSetExactBase drives the real branchChangedSet (the
+// obligation-derivation base) with the base's remote-tracking ref ABSENT and a
+// decoy on an earlier PR commit: every decoy must leave the diff unavailable
+// (a could-not-check), never a diff against the PR's own commit. The control,
+// with the exact ref present, yields the PR's changed paths.
+func TestBranchChangedSetExactBase(t *testing.T) {
+	for _, decoy := range absentRefDecoys {
+		root := decoyAfterGut(t, decoy)
+		if set, ok := branchChangedSet(root); ok {
+			t.Errorf("%s with no remote-tracking base: branchChangedSet = %v, want unavailable", decoy, set)
+		}
+	}
+	root := decoyAfterGut(t, "")
+	gitRun(t, root, "update-ref", "refs/remotes/origin/main", "HEAD~2")
+	set, ok := branchChangedSet(root)
+	if !ok || !set["other.txt"] {
+		t.Errorf("control with the exact ref present: branchChangedSet = %v, %v; want other.txt in the set", set, ok)
 	}
 }

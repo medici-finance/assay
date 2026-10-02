@@ -539,11 +539,11 @@ func registerLandedBase(root string) (base string, resolved bool) {
 // workflow edit that drops the fetch disables the control with no failing test and
 // no signal at all.
 //
-// This repo's own .github/workflows/statusgen.yml is WEAKER on exactly that point:
-// its explicit `git fetch --no-tags origin main` is in the STATUS.md-guard step
-// AFTER `go run . --root .. --lint`, so the lint step's origin/main resolution
-// rests entirely on actions/checkout's implicit fetch-depth: 0 refspec. That is an
-// implementation detail of a third-party action, not a guarantee this repo states.
+// This repo's own .github/workflows/assay-statusgen.yml is WEAKER on exactly that
+// point: its lint job has no explicit `git fetch --no-tags origin main` before the
+// lint step, so that step's origin/main resolution rests entirely on
+// actions/checkout's fetch-depth: 0 refspec. That is an implementation detail of a
+// third-party action, not a guarantee this repo states.
 // Hence a NOTICE rather than silence: if the ref is not there, the run says so.
 //
 // Advisory only — never a hard problem. A local clone or a fixture legitimately
