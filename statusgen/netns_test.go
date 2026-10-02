@@ -1,7 +1,9 @@
 package main
 
 // Tests for the check:ci network-off sandbox with loopback up (issue #1925,
-// netns.go). Three properties, each pinned on its own:
+// netns.go). Three properties, each pinned on its own — and each must hold both
+// on the host and when this suite itself runs INSIDE the check:ci sandbox, as a
+// statusgen-suite Verify row does (TestNetnsTestsPassInSandbox guards that):
 //
 //  1. inside the sandbox a 127.0.0.1 listen + connect works (the fix);
 //  2. in the same sandbox an outbound connection to a NON-loopback address still
@@ -170,16 +172,35 @@ func TestNetnsRefusalClassified(t *testing.T) {
 	}
 }
 
-// TestNetnsHelperRefusesOutside: the helper, started OUTSIDE a fresh namespace,
-// must refuse and never run the command. It runs on every host (off Linux the
-// stub refuses). On Linux as non-root it pins the lo-up refusal specifically: a
-// bogus caller id keeps the namespace-identity check from being what trips.
+// TestNetnsHelperRefusesOutside: the helper, started in the SAME network
+// namespace as its caller — no fresh namespace entered — must refuse and never
+// run the command, in every environment the suite runs in. That includes
+// running the suite INSIDE the check:ci sandbox (a statusgen-suite row): there
+// the test process is mapped root in a lo-only namespace it owns, so lo-up
+// succeeds and only the identity check stands between the helper and the
+// command. The test therefore hands the helper this process's OWN
+// `/proc/self/ns/net` id as the caller id, exactly what networkOffWrapper would
+// pass, so the identity check refuses regardless of privilege. (A bogus id here
+// let the helper run the command inside the sandbox — review F1.)
+//
+// Which refusal trips depends on privilege, and both are pinned: unprivileged
+// (no CAP_NET_ADMIN over the namespace) it is the lo-up refusal; with it (real
+// root, or the sandbox's mapped root) it is the identity refusal. Off Linux the
+// stub refuses unconditionally.
 func TestNetnsHelperRefusesOutside(t *testing.T) {
-	cmd := exec.Command(selfExe(t), netnsHelperArg, "net:[0]", "sh", "-c", "echo RAN-UNSANDBOXED")
+	callerNS := "net:[unread-off-linux]"
+	if runtime.GOOS == "linux" {
+		ns, err := os.Readlink("/proc/self/ns/net")
+		if err != nil {
+			t.Fatalf("read this process's network namespace id: %v", err)
+		}
+		callerNS = ns
+	}
+	cmd := exec.Command(selfExe(t), netnsHelperArg, callerNS, "sh", "-c", "echo RAN-UNSANDBOXED")
 	out, err := cmd.CombinedOutput()
 	ee, isExit := err.(*exec.ExitError)
 	if !isExit || ee.ExitCode() != netnsRefusedExit {
-		t.Fatalf("helper outside a namespace: err=%v out=%q, want exit %d (refusal)", err, out, netnsRefusedExit)
+		t.Fatalf("helper in its caller's namespace: err=%v out=%q, want exit %d (refusal)", err, out, netnsRefusedExit)
 	}
 	if strings.Contains(string(out), "RAN-UNSANDBOXED") {
 		t.Fatalf("the helper RAN the command un-sandboxed: %q", out)
@@ -187,8 +208,96 @@ func TestNetnsHelperRefusesOutside(t *testing.T) {
 	if !strings.Contains(string(out), netnsRefusedMarker) {
 		t.Fatalf("refusal carries no marker: %q", out)
 	}
-	if runtime.GOOS == "linux" && os.Geteuid() != 0 && !strings.Contains(string(out), "could not bring lo up") {
-		t.Fatalf("non-root, outside a namespace: refusal = %q, want the lo-up refusal", out)
+	if runtime.GOOS != "linux" {
+		return
+	}
+	loUp := strings.Contains(string(out), "could not bring lo up")
+	identity := strings.Contains(string(out), "still in the caller's network namespace")
+	if os.Geteuid() != 0 && !loUp {
+		t.Fatalf("non-root, in the caller's namespace: refusal = %q, want the lo-up refusal", out)
+	}
+	if !loUp && !identity {
+		t.Fatalf("refusal = %q, want the lo-up or the namespace-identity refusal — nothing else may be what stops a helper in its caller's namespace", out)
+	}
+}
+
+// TestNetnsBinaryDispatchesHelper pins main()'s dispatch of the helper (review
+// A1): the test binary reaches the helper through TestMain, so only a BUILT
+// statusgen proves main() does too. Without the dispatch the hidden argument
+// falls through to the CLI and the marker never appears; with it, the helper
+// refuses in its caller's namespace. Where the namespace facility works, the
+// real binary must also run the row inside the full sandbox.
+func TestNetnsBinaryDispatchesHelper(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("SKIP (could-not-check, not a pass): go toolchain unavailable to build statusgen")
+	}
+	bin := filepath.Join(t.TempDir(), "statusgen")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	callerNS := "net:[unread-off-linux]"
+	if runtime.GOOS == "linux" {
+		ns, err := os.Readlink("/proc/self/ns/net")
+		if err != nil {
+			t.Fatalf("read this process's network namespace id: %v", err)
+		}
+		callerNS = ns
+	}
+	out, err := exec.Command(bin, netnsHelperArg, callerNS, "sh", "-c", "echo RAN-UNSANDBOXED").CombinedOutput()
+	ee, isExit := err.(*exec.ExitError)
+	if !isExit || ee.ExitCode() != netnsRefusedExit || !strings.Contains(string(out), netnsRefusedMarker) {
+		t.Fatalf("built statusgen %s: err=%v out=%q, want the helper's refusal (exit %d + marker) — main() does not dispatch the helper", netnsHelperArg, err, out, netnsRefusedExit)
+	}
+	if strings.Contains(string(out), "RAN-UNSANDBOXED") {
+		t.Fatalf("the built helper RAN the command in its caller's namespace: %q", out)
+	}
+
+	unshare, ok, _ := netnsFacility()
+	if !ok {
+		return
+	}
+	argv := append(netnsWrapperArgv(unshare, bin, callerNS), "sh", "-c", "echo RAN-SANDBOXED")
+	out, err = exec.Command(argv[0], argv[1:]...).CombinedOutput()
+	if err != nil || !strings.Contains(string(out), "RAN-SANDBOXED") {
+		t.Fatalf("built statusgen as the sandbox helper: err=%v out=%q, want the row run inside the fresh namespace", err, out)
+	}
+}
+
+// TestNetnsHermeticPathClassifies pins runHermeticallyWith's two outcomes on
+// every host, through the networkOffWrapperFn seam (review A2, A4):
+//   - sandbox unavailable → could-not-run, and the row NEVER runs un-sandboxed;
+//   - a wrapper whose helper refuses → could-not-run (the refusal goes through
+//     runSandboxed), never the row's own exit 125.
+func TestNetnsHermeticPathClassifies(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("SKIP (could-not-check, not a pass): no `sh` on this host to stand in for the wrapper")
+	}
+	plan := resolveShellPlan()
+	if _, notRun := shellDispatch(rowShellSh, plan); notRun != nil {
+		t.Skipf("SKIP (could-not-check, not a pass): no POSIX row shell: %s", notRun.reason)
+	}
+	defer func(orig func() ([]string, bool, string)) { networkOffWrapperFn = orig }(networkOffWrapperFn)
+
+	marker := filepath.Join(t.TempDir(), "row-ran")
+	row := "touch '" + marker + "'; echo RAN-UNSANDBOXED"
+
+	networkOffWrapperFn = func() ([]string, bool, string) { return nil, false, "planted: no sandbox" }
+	res := runHermeticallyWith(t.TempDir(), row, 30*time.Second, plan, rowShellSh)
+	if !res.couldNotRun || !strings.Contains(res.reason, "planted: no sandbox") {
+		t.Fatalf("sandbox unavailable: exit=%d couldNotRun=%v reason=%q, want could-not-run carrying the reason", res.exit, res.couldNotRun, res.reason)
+	}
+	if _, err := os.Stat(marker); err == nil || strings.Contains(string(res.output), "RAN-UNSANDBOXED") {
+		t.Fatal("sandbox unavailable: the row RAN without the sandbox")
+	}
+
+	refusing := []string{"sh", "-c", "echo '" + netnsRefusedMarker + "planted refusal' >&2; exit 125", "wrapper"}
+	networkOffWrapperFn = func() ([]string, bool, string) { return refusing, true, "" }
+	res = runHermeticallyWith(t.TempDir(), row, 30*time.Second, plan, rowShellSh)
+	if !res.couldNotRun || !strings.Contains(res.reason, "planted refusal") {
+		t.Fatalf("helper refusal: exit=%d couldNotRun=%v reason=%q out=%q, want could-not-run (runHermeticallyWith must go through runSandboxed)", res.exit, res.couldNotRun, res.reason, res.output)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("helper refusal: the row RAN")
 	}
 }
 
@@ -264,6 +373,26 @@ func TestNetnsRefusalIsCouldNotRun(t *testing.T) {
 	}
 }
 
+// (3c) the lo-up check, provoked for real in EVERY environment the facility
+// works in — the host, real root, or the check:ci sandbox itself. The helper runs
+// in a fresh USER namespace without `--net`: it is mapped root there, but the
+// network namespace it sits in is owned by an ancestor user namespace, so it has
+// no CAP_NET_ADMIN over it and the lo-up set must fail. The caller id is a bogus
+// one so the identity check is NOT what trips: inside the sandbox (lo already up,
+// lo the only interface) nothing but the lo-up refusal stands between the helper
+// and the command, which is the case a privilege-dependent premise missed.
+func TestNetnsLoUpFailureRefuses(t *testing.T) {
+	w := requireSandbox(t)
+	out, err := exec.Command(w[0], "--map-root-user", w[3], netnsHelperArg, "net:[0]", "sh", "-c", "echo RAN-UNSANDBOXED").CombinedOutput()
+	ee, isExit := err.(*exec.ExitError)
+	if !isExit || ee.ExitCode() != netnsRefusedExit {
+		t.Fatalf("helper without CAP_NET_ADMIN over its namespace: err=%v out=%q, want exit %d", err, out, netnsRefusedExit)
+	}
+	if strings.Contains(string(out), "RAN-UNSANDBOXED") || !strings.Contains(string(out), "could not bring lo up") {
+		t.Fatalf("helper without CAP_NET_ADMIN over its namespace: out=%q, want the lo-up refusal and no run", out)
+	}
+}
+
 // (3b) the namespace-identity check, provoked for real: inside a fresh namespace
 // (so lo CAN be brought up and only lo exists), tell the helper the caller's
 // namespace is the one it is in. It must refuse on identity alone.
@@ -277,6 +406,40 @@ func TestNetnsSameNamespaceRefused(t *testing.T) {
 	}
 	if strings.Contains(string(out), "RAN-UNSANDBOXED") || !strings.Contains(string(out), "still in the caller's network namespace") {
 		t.Fatalf("same-namespace helper output %q, want the identity refusal and no run", out)
+	}
+}
+
+// ---- class guard: the netns tests hold INSIDE the sandbox too --------------
+
+// netnsNestedEnv marks the nested run TestNetnsTestsPassInSandbox starts, so the
+// nested copy of that test does not recurse.
+const netnsNestedEnv = "STATUSGEN_TEST_NETNS_NESTED"
+
+// TestNetnsTestsPassInSandbox is the guard over review F1's class: a netns test
+// whose premise holds on the host but not inside the check:ci sandbox (there the
+// test process is mapped root in a lo-only namespace it owns). check:ci rows run
+// the statusgen suite inside that sandbox, so such a test records the row `fail`
+// for a reason that is the sandbox's, not the work's. The guard re-runs every
+// TestNetns* test inside the real sandbox and requires them green, so the next
+// test written with a host-only premise is red here rather than in a row.
+func TestNetnsTestsPassInSandbox(t *testing.T) {
+	if os.Getenv(netnsNestedEnv) != "" {
+		t.Skip("SKIP (by design, not a gap): this IS the nested in-sandbox run")
+	}
+	w := requireSandbox(t)
+	argv := append(append([]string{}, w...), selfExe(t), "-test.run=^TestNetns", "-test.count=1", "-test.v", "-test.timeout=300s")
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Env = append(os.Environ(), netnsNestedEnv+"=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("the netns tests FAIL inside the check:ci sandbox (%v) — a test premise that holds only on the host:\n%s", err, out)
+	}
+	// Positive control: the nested run really ran the refusal tests in there,
+	// rather than matching nothing and exiting 0.
+	for _, name := range []string{"TestNetnsHelperRefusesOutside", "TestNetnsLoUpFailureRefuses", "TestNetnsSameNamespaceRefused"} {
+		if !strings.Contains(string(out), "--- PASS: "+name+" ") {
+			t.Fatalf("nested in-sandbox run did not PASS %s — the guard did not look:\n%s", name, out)
+		}
 	}
 }
 

@@ -758,13 +758,20 @@ func runHermetically(root, command string, timeout time.Duration) runResult {
 // is the row's declared shell (issue #1424); check:ci rows are POSIX-shaped in
 // the corpus, so this is `sh` in practice, but it is threaded through faithfully.
 func runHermeticallyWith(root, command string, timeout time.Duration, plan shellPlan, shell string) runResult {
-	wrapper, ok, why := networkOffWrapper()
+	wrapper, ok, why := networkOffWrapperFn()
 	if !ok {
 		return runResult{exit: -1, couldNotRun: true,
 			reason: "check:ci hermetic execution requires a network-off sandbox, unavailable on this host: " + why + ". check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net`"}
 	}
 	return runSandboxed(root, command, timeout, wrapper, plan, shell)
 }
+
+// networkOffWrapperFn is the sandbox source runHermeticallyWith reads. It is
+// networkOffWrapper in production; it is a variable only so a test can drive
+// runHermeticallyWith's two outcomes — sandbox unavailable, helper refusal — on
+// every host (TestNetnsHermeticPathClassifies), pinning that neither ever runs
+// the row outside the sandbox or records a refusal as the row's own exit.
+var networkOffWrapperFn = networkOffWrapper
 
 // runSandboxed runs one row under a network-off wrapper and reclassifies a
 // sandbox-helper refusal (netns.go) as could-not-run: the row never ran, so it

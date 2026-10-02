@@ -41,8 +41,14 @@ import (
 )
 
 // netnsHelperArg is the hidden first argument that turns a statusgen process
-// into the in-namespace helper. It is not a user-facing subcommand: outside a
-// fresh namespace the helper can only refuse.
+// into the in-namespace helper. It is not a user-facing subcommand. The helper
+// runs its command only from a network namespace that differs from the caller
+// id it is given, where it could bring lo up and no other interface is up or
+// addressed; anywhere else — in particular in the caller's own namespace, the
+// id networkOffWrapper always passes — it refuses. (Handed some OTHER id from
+// inside a lo-only namespace it owns, such as the check:ci sandbox itself, it
+// would run: that namespace really is isolated. The id is what makes "still in
+// the caller's namespace" detectable, so callers must pass their own.)
 const netnsHelperArg = "__verifyrun-netns"
 
 // netnsRefusedExit is the helper's exit status when it refuses to run the row.
