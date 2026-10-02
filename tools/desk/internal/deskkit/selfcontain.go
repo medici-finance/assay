@@ -41,6 +41,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"regexp"
 	"sort"
 	"strconv"
@@ -97,6 +98,13 @@ type SelfContainOpts struct {
 	// Notices is where NOTICE lines are written. nil means os.Stderr. Desks run silent on
 	// stdout, so notices go to stderr exactly as PublicRepoGate's bless notice does.
 	Notices io.Writer
+	// FilePath and FileSource are set ONLY by the outbound check for a kind-`file` field
+	// (OutboundWrite.FileSources): the repo-relative path the scanned text was taken from,
+	// and that file's FULL new-side content. They feed exactly one decision —
+	// briefIDExemptLine — and FileSource is never scanned itself. Both empty (every body,
+	// commit message, ref and title) means no exemption: the scan is what it always was.
+	FilePath   string
+	FileSource string
 }
 
 var (
@@ -135,7 +143,90 @@ var (
 	reBareRef = regexp.MustCompile(`(^|[\s(\[,;])#([0-9]+)\b`)
 	// reBriefID matches a `<slug>/<NN>` brief id.
 	reBriefID = regexp.MustCompile(`\b([a-z0-9][a-z0-9-]*)/([0-9]{1,3})\b`)
+	// reBriefFrontmatterID is the ONE line shape the session-id arm exempts (#2022): a
+	// brief-v2 frontmatter `id:` line whose WHOLE value is a lowercase hex UUID, bare or
+	// double-quoted (the two spellings the brief files carry). Anchored on both ends of the
+	// raw line, so leading indentation (a nested key), a trailing comment or any text after
+	// the UUID, a CR, an uppercase or undashed UUID, or any other key all fall outside it.
+	reBriefFrontmatterID = regexp.MustCompile(
+		`^id: (?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")$`)
+	// reFrontmatterIDKey matches ANY top-level `id` key line, however spelled (quoted key,
+	// space before the colon). It counts keys, so a frontmatter carrying a second `id`
+	// key — a duplicate YAML key — earns no exemption at all.
+	reFrontmatterIDKey = regexp.MustCompile(`^["']?id["']?\s*:`)
 )
+
+// briefIDExemptLine returns the 1-based line of scanned that the session-id arm exempts, or
+// 0 for none. It is the whole of the #2022 exemption, and every condition FAILS CLOSED —
+// any one not established means 0, and the arm refuses exactly as before:
+//
+//   - filePath is a brief file, `docs/streams/**/brief-*.md` (isBriefPath);
+//   - source, the file's FULL new-side content, opens with a `---` fence on its first line
+//     and closes it on a later line (the frontmatter statusgen reads);
+//   - that frontmatter holds exactly ONE top-level `id` key, and its line is exactly
+//     reBriefFrontmatterID;
+//   - scanned — the added-lines view the check actually reads, placed at real line
+//     numbers — carries that very line, byte-identical, at the same line number.
+//
+// The last condition is why the full content is needed and is not enough on its own: the
+// added-lines view alone cannot show that a line sits between the fences (a modified file's
+// fences are unchanged context, so they are blank in it), and the full content alone cannot
+// show which line the scan is looking at. A caller whose view is not line-aligned with
+// source (a compacted diff) gets no exemption, never a misplaced one.
+func briefIDExemptLine(filePath, source, scanned string) int {
+	if source == "" || !isBriefPath(filePath) {
+		return 0
+	}
+	src := strings.Split(source, "\n")
+	if len(src) < 3 || strings.TrimSpace(src[0]) != "---" {
+		return 0
+	}
+	closeAt := -1
+	for i := 1; i < len(src); i++ {
+		if strings.TrimSpace(src[i]) == "---" {
+			closeAt = i
+			break
+		}
+	}
+	if closeAt < 0 {
+		return 0 // unterminated: there is no frontmatter to be inside
+	}
+	idx, keys := -1, 0
+	for i := 1; i < closeAt; i++ {
+		if reFrontmatterIDKey.MatchString(src[i]) {
+			keys++
+			if reBriefFrontmatterID.MatchString(src[i]) {
+				idx = i
+			}
+		}
+	}
+	if keys != 1 || idx < 0 {
+		return 0
+	}
+	got := strings.Split(scanned, "\n")
+	if idx >= len(got) || got[idx] != src[idx] {
+		return 0
+	}
+	return idx + 1
+}
+
+// isBriefPath reports whether p, a repo-relative slash path, is `docs/streams/**/brief-*.md`.
+// Every segment must be a real name (no empty, `.` or `..` segment), so the prefix cannot
+// be reached by a path that resolves elsewhere.
+func isBriefPath(p string) bool {
+	rest, ok := strings.CutPrefix(p, "docs/streams/")
+	if !ok || strings.Contains(p, `\`) {
+		return false
+	}
+	segs := strings.Split(rest, "/")
+	for _, s := range segs {
+		if s == "" || s == "." || s == ".." {
+			return false
+		}
+	}
+	ok, err := path.Match("brief-*.md", segs[len(segs)-1])
+	return ok && err == nil
+}
 
 // WithheldIdentifiers returns the house-configured withheld register identifiers for
 // EnvWithheldIdentifiers, lowercased, split on commas and trimmed, with empties dropped.
@@ -298,6 +389,13 @@ func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFin
 	// These are the unambiguous half of the scan: every shape here is minted by tooling and
 	// none of them can be a legitimate part of a public body. They are checked FIRST so the
 	// refusal a worker sees names the span that is easiest to fix.
+	//
+	// ONE exemption, on the session-id arm only (#2022): the brief-v2 frontmatter `id:` line
+	// of a brief file, established against the file's full content by briefIDExemptLine. A
+	// brief id is a public identifier the board resolves, not a session. The arm still
+	// refuses every other UUID in the same text — the first NON-exempt match is reported —
+	// and every surface that is not a brief file's content has no exempt line at all.
+	exemptLine := briefIDExemptLine(o.FilePath, o.FileSource, s)
 	for _, m := range [...]struct {
 		re       *regexp.Regexp
 		category string
@@ -308,8 +406,12 @@ func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFin
 		{reSessionUUID, "session id", "identifies an agent session, not anything a reader can look up"},
 		{reAgentID, "agent id", "identifies an agent session, not anything a reader can look up"},
 	} {
-		if loc := m.re.FindStringIndex(s); loc != nil {
+		for _, loc := range m.re.FindAllStringIndex(s, -1) {
+			if m.re == reSessionUUID && exemptLine > 0 && lineOf(s, loc[0]) == exemptLine {
+				continue
+			}
 			refuse(m.category, s[loc[0]:loc[1]], m.why, loc[0], false)
+			break
 		}
 	}
 
