@@ -1,0 +1,493 @@
+package gitcore
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/cgi"
+	"net/http/httptest"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
+	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
+	"github.com/go-git/go-git/v5/plumbing/transport"
+)
+
+func ackPkt(s string) string { return fmt.Sprintf("%04x%s", len(s)+4, s) }
+
+// Real Git supplies advertisements and healthy writes; only the fault responses
+// are substituted. No fixture fault performs the requested mutation.
+func ackServer(t *testing.T, repo string, response *string, posts *atomic.Int32) string {
+	t.Helper()
+	path, err := exec.Command("git", "--exec-path").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &cgi.Handler{Path: filepath.Join(strings.TrimSpace(string(path)), "git-http-backend"), Env: []string{"GIT_PROJECT_ROOT=" + filepath.Dir(repo), "GIT_HTTP_EXPORT_ALL=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null"}}
+	if b, err := exec.Command("git", "-C", repo, "config", "http.receivepack", "true").CombinedOutput(); err != nil {
+		t.Fatalf("config: %v %s", err, b)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posts.Add(1)
+			if response != nil {
+				io.Copy(io.Discard, r.Body)
+				w.Header().Set("Content-Type", "application/x-git-receive-pack-result")
+				io.WriteString(w, *response)
+				return
+			}
+		}
+		backend.ServeHTTP(w, r)
+	}))
+	t.Cleanup(server.Close)
+	return server.URL + "/" + filepath.Base(repo)
+}
+
+func TestAckHTTPMatrix(t *testing.T) {
+	ref := plumbing.ReferenceName("refs/dispatch/example--pr-7--security")
+	okLine := ackPkt("ok " + ref.String() + "\n")
+	unpack := ackPkt("unpack ok\n")
+	reports := map[string]string{
+		"empty": "", "unpack-only": unpack + "0000",
+		"wrong-ref":      unpack + ackPkt("ok refs/dispatch/other\n") + "0000",
+		"duplicate":      unpack + okLine + okLine + "0000",
+		"wrong-ref-ng":   unpack + ackPkt("ng refs/dispatch/other failed\n") + "0000",
+		"unpack-failure": ackPkt("unpack missing objects\n") + okLine + "0000",
+		"truncated":      unpack + okLine, "malformed": ackPkt("invalid\n") + "0000",
+		"ng-ok":     unpack + ackPkt("ng "+ref.String()+" ok\n") + "0000",
+		"ng-failed": unpack + ackPkt("ng "+ref.String()+" failed\n") + "0000",
+	}
+	for name, report := range reports {
+		for _, op := range []string{"create", "update", "delete"} {
+			t.Run(name+"/"+op, func(t *testing.T) {
+				repo := bareServer(t)
+				objs, newOID, err := MintClaimTag("example", "fixture", time.Unix(1, 0))
+				if err != nil {
+					t.Fatal(err)
+				}
+				old := plumbing.ZeroHash
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if op != "create" {
+					v, err := PushRefUpdate(ctx, RefUpdate{URL: repo, Ref: ref, New: newOID, Objects: objs})
+					if err != nil || v != RefUpdateApplied {
+						t.Fatalf("seed: %v %v", v, err)
+					}
+					old = newOID
+				}
+				wire := ""
+				if report != "" {
+					wire = ackPkt("\x01"+report) + "0000"
+				}
+				var posts atomic.Int32
+				url := ackServer(t, repo, &wire, &posts)
+				isNG := strings.HasPrefix(name, "ng-")
+				if op == "delete" {
+					_, err := DeleteRef(ctx, url, nil, ref)
+					_, rejected := err.(*RefRejectedError)
+					if err == nil || rejected != isNG {
+						t.Fatalf("delete err=%v rejected=%v", err, rejected)
+					}
+				} else {
+					v, err := PushRefUpdateVerdict(ctx, RefUpdate{URL: url, Ref: ref, Old: old, New: newOID, Objects: objs})
+					if isNG {
+						if err != nil || v.Result != RefUpdateRejected {
+							t.Fatalf("expected rejection: %v %v", v, err)
+						}
+					} else if err == nil {
+						t.Fatalf("accepted invalid report: %v", v)
+					}
+				}
+				if posts.Load() != 1 {
+					t.Fatalf("POSTs=%d, want exactly one", posts.Load())
+				}
+				b, err := exec.Command("git", "-C", repo, "show-ref", "--verify", "--hash", ref.String()).Output()
+				if op == "create" {
+					if err == nil {
+						t.Fatal("fault fixture unexpectedly created ref")
+					}
+				} else if err != nil || strings.TrimSpace(string(b)) != old.String() {
+					t.Fatalf("fault fixture changed old ref: %s %v", b, err)
+				}
+			})
+		}
+	}
+}
+
+func TestAckHTTPPositive(t *testing.T) {
+	repo := bareServer(t)
+	var posts atomic.Int32
+	url := ackServer(t, repo, nil, &posts)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ref := plumbing.ReferenceName("refs/dispatch/example--issue-7")
+	objs, oid, err := MintClaimTag("example", "fixture", time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := RefUpdate{URL: url, Ref: ref, New: oid, Objects: objs}
+	if v, err := PushRefUpdate(ctx, u); err != nil || v != RefUpdateApplied {
+		t.Fatalf("create: %v %v", v, err)
+	}
+	if v, err := PushRefUpdate(ctx, u); err != nil || v != RefUpdateRejected {
+		t.Fatalf("CAS: %v %v", v, err)
+	}
+	u.Old = oid
+	u.Objects, u.New, err = MintClaimTag("example", "advanced", time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, err := PushRefUpdate(ctx, u); err != nil || v != RefUpdateApplied {
+		t.Fatalf("update: %v %v", v, err)
+	}
+	if v, err := DeleteRef(ctx, url, nil, ref); err != nil || v != DeleteDone {
+		t.Fatalf("delete: %v %v", v, err)
+	}
+	if v, err := DeleteRef(ctx, url, nil, ref); err != nil || v != DeleteAbsent {
+		t.Fatalf("absent: %v %v", v, err)
+	}
+	if posts.Load() != 4 {
+		t.Fatalf("POSTs=%d want4", posts.Load())
+	}
+}
+
+func TestAckWireBounds(t *testing.T) {
+	ref := plumbing.ReferenceName("refs/dispatch/example")
+	inner := ackPkt("unpack ok\n") + ackPkt("ok "+ref.String()+"\n") + "0000"
+	for _, band := range []capability.Capability{"", capability.Sideband, capability.Sideband64k} {
+		req := packp.NewReferenceUpdateRequest()
+		req.Commands = []*packp.Command{{Name: ref}}
+		if band != "" {
+			req.Capabilities.Set(band)
+		}
+		wire := inner
+		if band != "" {
+			wire = ackPkt("\x01"+inner) + "0000"
+		}
+		body := &ackBody{}
+		body.data.WriteString(wire)
+		if marker, _, err := wireAck(body, req); err != nil || marker != "ok" {
+			t.Fatalf("healthy %s: %s %v", band, marker, err)
+		}
+		for name, data := range map[string]string{"missing-flush": wire[:len(wire)-4], "trailing": wire + ackPkt("extra"), "oversize": strings.Repeat("x", maxWireAck+1)} {
+			body := &ackBody{ReadCloser: io.NopCloser(strings.NewReader(data))}
+			io.Copy(io.Discard, body)
+			if _, _, err := wireAck(body, req); err == nil {
+				t.Errorf("%s/%s accepted", band, name)
+			}
+		}
+		if band != "" {
+			body := &ackBody{}
+			body.data.WriteString(ackPkt("\x02"+inner) + "0000")
+			if _, _, err := wireAck(body, req); err == nil {
+				t.Errorf("%s accepted progress as ack", band)
+			}
+		}
+	}
+	// A second inner record after the first inner flush must not be ignored.
+	reqTail := packp.NewReferenceUpdateRequest()
+	reqTail.Commands = []*packp.Command{{Name: ref}}
+	tail := &ackBody{}
+	tail.data.WriteString(inner + ackPkt("extra") + "0000")
+	if _, _, err := wireAck(tail, reqTail); err == nil {
+		t.Fatal("accepted trailing inner record")
+	}
+	// The retained channel-1 limit is independent of the outer wire limit.
+	req := packp.NewReferenceUpdateRequest()
+	req.Commands = []*packp.Command{{Name: ref}}
+	req.Capabilities.Set(capability.Sideband64k)
+	huge := ackPkt("unpack ok\n") + ackPkt("ng r "+strings.Repeat("x", 65510)+"\n") + "0000"
+	req.Commands[0].Name = "r"
+	body := &ackBody{}
+	body.data.WriteString(ackPkt("\x01"+huge[:40000]) + ackPkt("\x01"+huge[40000:]) + "0000")
+	if _, _, err := wireAck(body, req); err == nil {
+		t.Fatal("accepted oversized valid channel1 report")
+	}
+
+}
+
+func TestAckNoReportCap(t *testing.T) {
+	var posts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posts.Add(1)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-git-receive-pack-advertisement")
+		io.WriteString(w, ackPkt("# service=git-receive-pack\n")+"0000"+ackPkt(strings.Repeat("1", 40)+" refs/dispatch/example\x00delete-refs\n")+"0000")
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	objs, oid, err := MintClaimTag("example", "fixture", time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := plumbing.ReferenceName("refs/dispatch/example")
+	if _, err := PushRefUpdate(ctx, RefUpdate{URL: server.URL, Ref: ref, New: oid, Objects: objs}); err == nil {
+		t.Fatal("create accepted missing report-status")
+	}
+	if _, err := DeleteRef(ctx, server.URL, nil, ref); err == nil {
+		t.Fatal("delete accepted missing report-status")
+	}
+	if posts.Load() != 0 {
+		t.Fatalf("POSTs=%d", posts.Load())
+	}
+}
+
+func TestAckIDBounds(t *testing.T) {
+	for _, s := range []string{"a\nb", "a b", strings.Repeat("a", 129)} {
+		if boundedID(s) != "invalid" {
+			t.Fatalf("accepted %q", s)
+		}
+	}
+	if boundedID("AB12:12ef-34") != "AB12:12ef-34" {
+		t.Fatal("lost valid ID")
+	}
+	b := &ackBody{ReadCloser: io.NopCloser(bytes.NewReader(make([]byte, maxWireAck+1)))}
+	io.Copy(io.Discard, b)
+	if b.data.Len() != maxWireAck || !b.overflow {
+		t.Fatal("capture not bounded")
+	}
+}
+
+func TestAckReceiptIsolation(t *testing.T) {
+	// Two concurrent operations get different response correlation IDs. The
+	// observer is private to the operation, independent of trace consumers.
+	type answer struct {
+		receipt RefReceipt
+		err     error
+	}
+	results := make(chan answer, 2)
+	for _, key := range []string{"first", "second"} {
+		key := key
+		go func() {
+			var receipt RefReceipt
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					w.Header().Set("Content-Type", "application/x-git-receive-pack-advertisement")
+					io.WriteString(w, ackPkt("# service=git-receive-pack\n")+"0000"+ackPkt(strings.Repeat("0", 40)+" capabilities^{}\x00report-status\n")+"0000")
+					return
+				}
+				io.Copy(io.Discard, r.Body)
+				w.Header().Set("X-GitHub-Request-Id", key)
+				w.Header().Set("Authorization", "Bearer never-copy-this")
+				w.Header().Set("Content-Type", "application/x-git-receive-pack-result")
+				io.WriteString(w, ackPkt("unpack ok\n")+ackPkt("ng refs/dispatch/"+key+" failed\n")+"0000")
+			}))
+			defer server.Close()
+			objs, oid, err := MintClaimTag(key, "secret-payload-never-copy", time.Unix(1, 0))
+			if err == nil {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_, err = PushRefUpdate(ctx, RefUpdate{URL: server.URL, Ref: plumbing.ReferenceName("refs/dispatch/" + key), New: oid, Objects: objs, Trace: func(r RefReceipt) { receipt = r }})
+			}
+			results <- answer{receipt, err}
+		}()
+	}
+	seen := map[string]bool{}
+	for range 2 {
+		result := <-results
+		r := result.receipt
+		if result.err != nil || r.Ref != "refs/dispatch/"+r.RequestID || r.Verdict != "rejected" || r.HTTPStatus != 200 || r.PackObjects != 2 || r.PackBytes == 0 || r.PackSHA256 == "" {
+			t.Fatalf("receipt=%+v err=%v", r, result.err)
+		}
+		if seen[r.RequestID] {
+			t.Fatal("receipt crossed operations")
+		}
+		seen[r.RequestID] = true
+		if strings.Contains(fmt.Sprint(r), "never-copy") {
+			t.Fatal("payload/header in receipt")
+		}
+	}
+}
+
+func TestAckLifecycle(t *testing.T) {
+	for _, protocol := range []string{"local", "http"} {
+		t.Run(protocol, func(t *testing.T) {
+			repo := bareServer(t)
+			for _, kv := range [][2]string{{"receive.fsckObjects", "true"}, {"transfer.fsckObjects", "true"}, {"receive.unpackLimit", "1"}, {"gc.auto", "0"}} {
+				if out, err := exec.Command("git", "-C", repo, "config", kv[0], kv[1]).CombinedOutput(); err != nil {
+					t.Fatalf("config: %v %s", err, out)
+				}
+			}
+			url := repo
+			var posts atomic.Int32
+			if protocol == "http" {
+				url = ackServer(t, repo, nil, &posts)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			for cycle := range 4 {
+				first := plumbing.ZeroHash
+				updates := make([]RefUpdate, 0, 2)
+				for _, lane := range []string{"correctness", "security"} {
+					id := "example--pr-7--" + lane
+					objects, oid, err := MintClaimTag(id, "dispatch-claim "+id+" owner=fixture", time.Unix(int64(cycle+1), 0))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if oid == first {
+						t.Fatal("same-time lane objects collided")
+					}
+					first = oid
+					if _, err := objects.EncodedObject(plumbing.BlobObject, plumbing.NewHash(EmptyBlobHash)); err != nil {
+						t.Fatal("target blob absent")
+					}
+					updates = append(updates, RefUpdate{URL: url, Ref: plumbing.ReferenceName("refs/dispatch/" + id), New: oid, Objects: objects})
+				}
+				results := make(chan error, 2)
+				for _, u := range updates {
+					u := u
+					go func() {
+						v, err := PushRefUpdate(ctx, u)
+						if err == nil && v != RefUpdateApplied {
+							err = fmt.Errorf("unexpected rejection")
+						}
+						results <- err
+					}()
+				}
+				for range updates {
+					if err := <-results; err != nil {
+						t.Fatal(err)
+					}
+				}
+				for _, u := range updates {
+					if v, err := DeleteRef(ctx, url, nil, u.Ref); err != nil || v != DeleteDone {
+						t.Fatalf("delete: %v %v", v, err)
+					}
+				}
+				for _, args := range [][]string{{"reflog", "expire", "--expire=now", "--all"}, {"gc", "--prune=now"}, {"fsck", "--strict"}} {
+					if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+						t.Fatalf("git: %v %s", err, out)
+					}
+				}
+			}
+			if protocol == "http" && posts.Load() != 16 {
+				t.Fatalf("POSTs=%d want16", posts.Load())
+			}
+		})
+	}
+}
+
+// A non-2xx POST must keep the dependency's typed cause for both builders: the
+// fail-closed result names why, instead of a read failure on the closed body.
+func TestAckPostStatusCause(t *testing.T) {
+	ref := plumbing.ReferenceName("refs/dispatch/example")
+	for _, tc := range []struct {
+		code int
+		want error
+	}{{401, transport.ErrAuthenticationRequired}, {403, transport.ErrAuthorizationFailed}, {404, transport.ErrRepositoryNotFound}, {503, nil}} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				w.Header().Set("Content-Type", "application/x-git-receive-pack-advertisement")
+				io.WriteString(w, ackPkt("# service=git-receive-pack\n")+"0000"+ackPkt(strings.Repeat("1", 40)+" "+ref.String()+"\x00report-status delete-refs\n")+"0000")
+				return
+			}
+			io.Copy(io.Discard, r.Body)
+			w.WriteHeader(tc.code)
+			io.WriteString(w, "denied\n")
+		}))
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		objs, oid, err := MintClaimTag("example", "fixture", time.Unix(1, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, pushErr := PushRefUpdate(ctx, RefUpdate{URL: server.URL, Ref: ref, New: oid, Objects: objs})
+		_, delErr := DeleteRef(ctx, server.URL, nil, ref)
+		cancel()
+		server.Close()
+		for op, err := range map[string]error{"push": pushErr, "delete": delErr} {
+			if err == nil || strings.Contains(err.Error(), "response read failed") {
+				t.Errorf("%d/%s: cause lost: %v", tc.code, op, err)
+			} else if tc.want != nil && !errors.Is(err, tc.want) {
+				t.Errorf("%d/%s: want %v, got %v", tc.code, op, tc.want, err)
+			} else if tc.want == nil && !strings.Contains(err.Error(), "status code: 503") {
+				t.Errorf("%d/%s: status missing: %v", tc.code, op, err)
+			}
+		}
+	}
+}
+
+type stubReceive struct{ rs *packp.ReportStatus }
+
+func (stubReceive) AdvertisedReferences() (*packp.AdvRefs, error) { return nil, nil }
+func (stubReceive) AdvertisedReferencesContext(context.Context) (*packp.AdvRefs, error) {
+	return nil, nil
+}
+func (stubReceive) Close() error { return nil }
+func (s stubReceive) ReceivePack(context.Context, *packp.ReferenceUpdateRequest) (*packp.ReportStatus, error) {
+	return s.rs, nil
+}
+
+// The decoded report is the only binding on non-HTTP transports (no observer),
+// so it must reject a wrong or duplicated acknowledgment on its own.
+func TestAckDecodedBinding(t *testing.T) {
+	ref := plumbing.ReferenceName("refs/dispatch/example")
+	other := plumbing.ReferenceName("refs/dispatch/other")
+	report := func(st ...*packp.CommandStatus) *packp.ReportStatus {
+		return &packp.ReportStatus{UnpackStatus: "ok", CommandStatuses: st}
+	}
+	ok := &packp.CommandStatus{ReferenceName: ref, Status: "ok"}
+	for name, tc := range map[string]struct {
+		rs   *packp.ReportStatus
+		want RefUpdateResult
+		fail bool
+	}{
+		"match":        {report(ok), RefUpdateApplied, false},
+		"match-ng":     {report(&packp.CommandStatus{ReferenceName: ref, Status: "failed"}), RefUpdateRejected, false},
+		"wrong-ref":    {report(&packp.CommandStatus{ReferenceName: other, Status: "ok"}), 0, true},
+		"wrong-ref-ng": {report(&packp.CommandStatus{ReferenceName: other, Status: "failed"}), 0, true},
+		"duplicate":    {report(ok, ok), 0, true},
+		"extra-other":  {report(ok, &packp.CommandStatus{ReferenceName: other, Status: "ok"}), 0, true},
+	} {
+		req := packp.NewReferenceUpdateRequest()
+		req.Capabilities.Set(capability.ReportStatus)
+		req.Commands = []*packp.Command{{Name: ref}}
+		v, err := receiveClaim(context.Background(), stubReceive{tc.rs}, req, &bytes.Buffer{}, nil, &RefReceipt{})
+		if tc.fail {
+			if err == nil {
+				t.Errorf("%s: accepted %+v", name, v)
+			}
+		} else if err != nil || v.Result != tc.want {
+			t.Errorf("%s: %+v %v", name, v, err)
+		}
+	}
+}
+
+// The raw-marker check binds the ref by itself, independent of the decoded one.
+func TestAckWireRefBinding(t *testing.T) {
+	ref := plumbing.ReferenceName("refs/dispatch/example")
+	for _, band := range []capability.Capability{"", capability.Sideband64k} {
+		req := packp.NewReferenceUpdateRequest()
+		req.Commands = []*packp.Command{{Name: ref}}
+		if band != "" {
+			req.Capabilities.Set(band)
+		}
+		for line, accept := range map[string]bool{
+			"ok " + ref.String():            true,
+			"ok refs/dispatch/other":        false,
+			"ng refs/dispatch/other failed": false,
+			"ok " + ref.String() + "x":      false,
+		} {
+			wire := ackPkt("unpack ok\n") + ackPkt(line+"\n") + "0000"
+			if band != "" {
+				wire = ackPkt("\x01"+wire) + "0000"
+			}
+			body := &ackBody{}
+			body.data.WriteString(wire)
+			if _, _, err := wireAck(body, req); (err == nil) != accept {
+				t.Errorf("%q/%q: accept=%v err=%v", band, line, accept, err)
+			}
+		}
+	}
+}
