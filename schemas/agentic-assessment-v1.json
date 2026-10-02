@@ -412,7 +412,10 @@
       ],
       "properties": {
         "subject": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 256,
+          "pattern": "^[^\\s\\u0000-\\u001f\\u007f-\\u009f]*$",
+          "description": "The assessed subject when it passed the subject grammar; empty otherwise. A refused subject is never echoed, on any return (spec §7)."
         },
         "policyVersion": {
           "type": "string"

@@ -256,9 +256,16 @@ An admission result projects onto the `decision-assessment-v1` `PolicyResult` re
 
 - `decision` is the disposition;
 - `reason` is the ordered reason codes, joined by `; `;
-- `policyVersion` is the policy's version.
+- `policyVersion` is the policy's version;
+- `subject` is the assessed subject only when it passed the subject grammar (§4 step 3),
+  and empty otherwise.
 
 The projection carries no probability.
+
+**Subject rule.** The admission result's `subject`, and the projection's, MUST be either a
+subject that passed the subject grammar or empty. This holds on every return, including
+the `policy-invalid` and `stop-flag` returns that precede the subject check, so a refused
+subject is never echoed into the decision record.
 
 **Reason-code grammar.** Every reason code matches
 `^[a-z][a-z0-9-]*(:[A-Za-z0-9][A-Za-z0-9._@/-]{0,63})*$`: a fixed lowercase literal, then

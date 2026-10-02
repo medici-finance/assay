@@ -3,6 +3,6 @@
   - Advice can only restrict.
   - Unknown readiness holds implementation.
   - discovery-only stands only on a discovery grant whose read scope covers the subject; otherwise the result is blocked.
-  - Malformed input fails closed: empty bindings, invalid or oversized subjects and inputs, and out-of-vocabulary values. Reason codes never echo an assessed string.
+  - Malformed input fails closed: empty bindings, invalid or oversized subjects and inputs, and out-of-vocabulary values. Reason codes never echo an assessed string, and a refused subject is never echoed into the result or its `PolicyResult` projection.
   - Mandatory graph gates are the union of the brief's risk verdict and the disposition's.
   - Nothing activates it yet; dispatch wiring is a separate gated change.

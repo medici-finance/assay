@@ -2,8 +2,9 @@ package deskkit
 
 // FAIL-FIRST: internal/deskkit/admission-mutations.json (run with
 // `go run ./cmd/muhar -spec internal/deskkit/admission-mutations.json` from tools/desk).
-// Six mutants, each a way confidence or a missing fact could open a lane or drop a gate.
-// Every one is caught by this file's TestAgenticAdmission tests.
+// Each mutant is a way confidence, a missing fact or an assessed string could open a
+// lane, drop a gate or reach the decision record. Every one is caught by this file's
+// TestAgenticAdmission tests.
 
 import (
 	"encoding/json"
@@ -171,6 +172,11 @@ func assertAdmissionFloors(t *testing.T, res AdmissionResult) {
 	if len(res.Reasons) == 0 {
 		t.Errorf("result for %q carries no reason codes", res.Subject)
 	}
+	// The record's subject is either one that passed the subject grammar or empty: a
+	// refused subject is never echoed (spec §7).
+	if res.Subject != "" && !subjectValid(res.Subject) {
+		t.Errorf("result echoes a subject outside the subject grammar (%d bytes)", len(res.Subject))
+	}
 	floors := strings.Join(res.HumanFloors, ",")
 	for _, f := range []string{"merge", "release", "deploy"} {
 		if !strings.Contains(floors, f) {
@@ -253,6 +259,9 @@ func TestAgenticAdmissionPolicyValidation(t *testing.T) {
 		{"exception without an owner", func(p *AdmissionPolicy) {
 			p.Exceptions[0].Owner = ""
 		}, "owner and an expiry"},
+		{"exception owner outside the token grammar", func(p *AdmissionPolicy) {
+			p.Exceptions[0].Owner = "a; b"
+		}, "reason-code token"},
 		{"no freshness bound", func(p *AdmissionPolicy) {
 			p.MaxFactAge = 0
 		}, "maxFactAge"},
@@ -584,9 +593,27 @@ func TestAgenticAdmissionMalformedInput(t *testing.T) {
 		{"subject with a newline", func(a *AgenticAssessment, _ *AdmissionContext) {
 			a.Subject = "example-org/widgets#12\nFAKE"
 		}, AdmitBlocked, "subject-invalid"},
+		{"subject with a space", func(a *AgenticAssessment, _ *AdmissionContext) {
+			a.Subject = "example-org/widgets #12"
+		}, AdmitBlocked, "subject-invalid"},
 		{"subject over the length bound", func(a *AgenticAssessment, _ *AdmissionContext) {
 			a.Subject = "example-org/widgets#" + strings.Repeat("9", admissionMaxSubject)
 		}, AdmitBlocked, "subject-invalid"},
+		{"clock missing", func(_ *AgenticAssessment, c *AdmissionContext) {
+			c.Now = time.Time{}
+		}, AdmitBlocked, "clock-missing"},
+		{"category absent from the policy", func(a *AgenticAssessment, _ *AdmissionContext) {
+			a.Category = "example-unlisted-category"
+		}, AdmitBlocked, "category-absent"},
+		{"advice scoped to another subject is ignored", func(a *AgenticAssessment, c *AdmissionContext) {
+			*a = withAdvice(*a, *c, AdmitBlocked, 0.99, []AdvisoryDimension{AdviseSemanticRisk})
+			a.Advice[0].Scope = "example-org/widgets#13"
+		}, AdmitBoundedAgentWork, "advice-ignored:semantic-risk:out-of-scope"},
+		{"advice requested for another subject is ignored", func(a *AgenticAssessment, c *AdmissionContext) {
+			*a = withAdvice(*a, *c, AdmitBlocked, 0.99, []AdvisoryDimension{AdviseSemanticRisk})
+			a.Advice[0].Request.Subject = "example-org/widgets#13"
+			a.Advice[0].Prediction.Subject = "example-org/widgets#13"
+		}, AdmitBoundedAgentWork, "advice-ignored:semantic-risk:out-of-scope"},
 		{"too many operations", func(a *AgenticAssessment, _ *AdmissionContext) {
 			for len(a.Operations) <= admissionMaxOperations {
 				a.Operations = append(a.Operations, "read")
@@ -627,6 +654,8 @@ func TestAgenticAdmissionMalformedInput(t *testing.T) {
 			if pr := res.PolicyResult("sha256:example-input", c.Context.Now); strings.ContainsAny(pr.Reason, "\n\r") ||
 				strings.Count(pr.Reason, "; ") != len(res.Reasons)-1 {
 				t.Errorf("PolicyResult reason %q carries a forged separator or line", pr.Reason)
+			} else if pr.Subject != res.Subject {
+				t.Errorf("PolicyResult subject (%d bytes) differs from the result's (%d bytes)", len(pr.Subject), len(res.Subject))
 			}
 			assertAdmissionFloors(t, res)
 		})
@@ -672,5 +701,52 @@ func TestAgenticAdmissionGateSeamBounds(t *testing.T) {
 	}
 	if _, err := LoadPatternRiskInput(big); err == nil || !strings.Contains(err.Error(), "bound") {
 		t.Fatalf("LoadPatternRiskInput(oversized) = %v, want a size refusal", err)
+	}
+}
+
+// TestAgenticAdmissionSubjectNotEchoed pins spec §7's subject rule on every early return:
+// a subject outside the grammar never reaches AdmissionResult.Subject or the projected
+// PolicyResult, including on the policy-invalid and stop-flag returns that precede the
+// subject check, while a valid subject is carried through (the positive control).
+func TestAgenticAdmissionSubjectNotEchoed(t *testing.T) {
+	base := loadAdmissionPolicy(t)
+	happy := admissionHappy(t)
+	hostile := "example-org/widgets#12\nFAKE; forged" + strings.Repeat("x", 1<<20)
+	badPolicy := base
+	badPolicy.MaxFactAge = 0
+	cases := []struct {
+		name   string
+		policy AdmissionPolicy
+		stop   bool
+		reason string
+	}{
+		{"subject check", base, false, "subject-invalid"},
+		{"policy-invalid return", badPolicy, false, "policy-invalid"},
+		{"stop-flag return", base, true, "stop-flag"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a, c := happy.Assessment, happy.Context
+			a.Subject = hostile
+			c.StopFlag = tc.stop
+			res := EvaluateAgenticAdmission(tc.policy, a, c)
+			if res.Disposition != AdmitBlocked || len(res.Reasons) == 0 || res.Reasons[0] != tc.reason {
+				t.Fatalf("got %q %v, want blocked/%s", res.Disposition, res.Reasons, tc.reason)
+			}
+			if res.Subject != "" {
+				t.Errorf("result echoes the refused subject (%d bytes)", len(res.Subject))
+			}
+			if pr := res.PolicyResult("sha256:example-input", c.Now); pr.Subject != "" {
+				t.Errorf("PolicyResult echoes the refused subject (%d bytes)", len(pr.Subject))
+			}
+			assertAdmissionFloors(t, res)
+		})
+	}
+	if pr := (AdmissionResult{Subject: hostile}).PolicyResult("sha256:example-input", happy.Context.Now); pr.Subject != "" {
+		t.Errorf("PolicyResult projects an invalid subject from a hand-built result (%d bytes)", len(pr.Subject))
+	}
+	res := EvaluateAgenticAdmission(base, happy.Assessment, happy.Context)
+	if res.Subject != happy.Assessment.Subject || res.PolicyResult("sha256:example-input", happy.Context.Now).Subject != res.Subject {
+		t.Fatalf("valid subject %q not carried through (result %q)", happy.Assessment.Subject, res.Subject)
 	}
 }

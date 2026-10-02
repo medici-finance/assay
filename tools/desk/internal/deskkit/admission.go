@@ -312,6 +312,7 @@ type AdmissionContext struct {
 
 // AdmissionResult is the policy's deterministic output for one subject.
 type AdmissionResult struct {
+	// Subject is the assessed subject when it passed the subject grammar, else empty.
 	Subject             string               `json:"subject"`
 	PolicyVersion       string               `json:"policyVersion"`
 	Disposition         AdmissionDisposition `json:"disposition"`
@@ -523,12 +524,17 @@ func (a *admission) restrict(d AdmissionDisposition, reason string) {
 // `blocked` with the reason, never an error a caller could mistake for "no opinion".
 func EvaluateAgenticAdmission(p AdmissionPolicy, a AgenticAssessment, c AdmissionContext) AdmissionResult {
 	res := AdmissionResult{
-		Subject:       a.Subject,
 		PolicyVersion: p.Version,
 		HumanFloors:   append([]string(nil), humanFloorOperations...),
 	}
 	st := &admission{cap: AdmitBoundedAgentWork}
 	finish := func() AdmissionResult {
+		// The record names the subject only when it passed the subject grammar, on every
+		// return including the ones that precede the subject check: a refused subject is
+		// never echoed into the decision record.
+		if subjectValid(a.Subject) {
+			res.Subject = a.Subject
+		}
 		res.Disposition = st.cap
 		res.Reasons = st.reasons
 		res.RiskInput = DispositionRiskInput(st.cap)
@@ -816,9 +822,16 @@ func permittedFor(d AdmissionDisposition, requested []string) []string {
 
 // PolicyResult projects the admission result onto the deterministic PolicyResult record
 // (decisionassessment.go): Decision is the disposition, Reason the ordered reason codes.
+//
+// Subject is projected only when it passes the subject grammar, so a hand-built result
+// carrying an invalid subject cannot put it into the record either.
 func (r AdmissionResult) PolicyResult(inputDigest string, at time.Time) PolicyResult {
+	subject := ""
+	if subjectValid(r.Subject) {
+		subject = r.Subject
+	}
 	return PolicyResult{
-		Subject:       r.Subject,
+		Subject:       subject,
 		InputDigest:   inputDigest,
 		Decision:      string(r.Disposition),
 		PolicyVersion: r.PolicyVersion,

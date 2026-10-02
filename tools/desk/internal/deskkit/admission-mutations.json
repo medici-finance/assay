@@ -156,6 +156,54 @@
       "file": "internal/deskkit/admission.go",
       "old": "\tif fi.Size() > admissionMaxPatternLen {",
       "new": "\tif false {"
+    },
+    {
+      "name": "accept an exception owner outside the reason-code token grammar (the owner is echoed into exception-applied/-expired)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\tif !reasonTokenRE.MatchString(e.Owner) {\n\t\t\treturn Refused(",
+      "new": "\t\tif false {\n\t\t\treturn Refused("
+    },
+    {
+      "name": "let a subject containing a plain space pass the subject grammar",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\tif unicode.IsControl(r) || unicode.IsSpace(r) {",
+      "new": "\t\tif unicode.IsControl(r) {"
+    },
+    {
+      "name": "apply advice whose scope names another subject",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tcase adv.Scope != a.Subject || adv.Request.Subject != a.Subject:",
+      "new": "\tcase adv.Request.Subject != a.Subject:"
+    },
+    {
+      "name": "apply advice whose request names another subject",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tcase adv.Scope != a.Subject || adv.Request.Subject != a.Subject:",
+      "new": "\tcase adv.Scope != a.Subject:"
+    },
+    {
+      "name": "drop the clock-missing check (a zero clock is evaluated)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif c.Now.IsZero() {\n\t\tst.restrict(AdmitBlocked, \"clock-missing\")",
+      "new": "\tif false {\n\t\tst.restrict(AdmitBlocked, \"clock-missing\")"
+    },
+    {
+      "name": "drop the category-absent check (an unlisted category is evaluated against a zero category)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif !ok {\n\t\tst.restrict(AdmitBlocked, \"category-absent\")",
+      "new": "\tif false {\n\t\tst.restrict(AdmitBlocked, \"category-absent\")"
+    },
+    {
+      "name": "echo the assessed subject into the result whatever it is (a refused subject reaches the decision record)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\tif subjectValid(a.Subject) {\n\t\t\tres.Subject = a.Subject",
+      "new": "\t\tif true {\n\t\t\tres.Subject = a.Subject"
+    },
+    {
+      "name": "project a result's subject into PolicyResult without the subject grammar",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif subjectValid(r.Subject) {\n\t\tsubject = r.Subject",
+      "new": "\tif true {\n\t\tsubject = r.Subject"
     }
   ]
 }
