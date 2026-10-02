@@ -132,6 +132,28 @@ func (c ClaimSource) DecayBanner() string {
 		"missing from this board, not absent from the backlog.", r)
 }
 
+// forgeReadsOptedIn is true only when --forge was given. It gates the reads a
+// plain --lint must never make — see lintClaims. Like forgeReaderForRun, nothing
+// but the --forge flag sets it.
+var forgeReadsOptedIn bool
+
+// offlineLintClaimReason is the could-not-check a plain --lint's claim set wears.
+const offlineLintClaimReason = "could-not-check: --lint ran offline (no --forge), so origin's branch heads were " +
+	"not read (`git ls-remote`) and dead claims were not decayed; pass --forge to read them"
+
+// lintClaims is resolveClaims for run(): identical in every mode except a --lint
+// that did not opt into --forge, which reads NO claims — the claim read and its
+// decay are network reads against the forge, and the offline --lint contract
+// (docs/statusgen-lint-reach.md) is zero network calls and zero forge processes.
+// The returned ClaimSource is the degraded one, so the run says so out loud
+// (Notice) and --require-claims still fails closed rather than passing blind.
+func lintClaims(root, mode string, streams []*Stream) (map[string]bool, ClaimSource) {
+	if mode == "lint" && !forgeReadsOptedIn {
+		return map[string]bool{}, ClaimSource{Reason: offlineLintClaimReason}
+	}
+	return resolveClaims(root, streams)
+}
+
 // resolveClaims builds the "stream/NN" claim set from open origin branches.
 //
 // It returns the ClaimSource alongside, so the caller can never confuse "read

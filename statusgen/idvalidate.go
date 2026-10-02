@@ -58,7 +58,7 @@ func grandfatheredIDs(root string) map[string]bool {
 	if hasNoGitDir(root) {
 		return out // not a git checkout — no legacy to freeze against
 	}
-	mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output()
+	mb, err := gitMergeBaseOut(root, "HEAD", remoteMainRef)
 	if err != nil || strings.TrimSpace(string(mb)) == "" {
 		// T9: fail-closed — origin/main unresolvable, treat all IDs as new.
 		// The old fallback to base=HEAD grandfathered the brand-new numeric ID
@@ -79,8 +79,7 @@ func grandfatheredIDs(root string) map[string]bool {
 				continue
 			}
 			// Read the file's YAML frontmatter from the merge-base git tree.
-			showCmd := exec.Command("git", "-C", root, "show", base+":"+line)
-			showOut, err := showCmd.Output()
+			showOut, err := gitShowObject(root, base, line)
 			if err != nil {
 				continue
 			}
@@ -119,7 +118,7 @@ func grandfatheredBaseFallbackNotices(root string) []string {
 	case hasNoGitDir(root):
 		cause = "this tree has no .git directory at all (e.g. a `git archive` export), so no register-ID grandfathering could be determined and the numeric-regression rule was skipped entirely rather than mis-fire against every pre-existing legacy-numeric entry"
 	default:
-		mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output()
+		mb, err := gitMergeBaseOut(root, "HEAD", remoteMainRef)
 		if err == nil && strings.TrimSpace(string(mb)) != "" {
 			return nil // origin/main resolved — no fallback needed
 		}

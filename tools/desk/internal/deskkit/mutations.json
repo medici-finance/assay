@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestFileKindSitesCarrySources'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestFileKindSitesCarrySources'",
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
     "file": "internal/deskkit/bodycheck.go",
@@ -96,6 +96,78 @@
       "file": "internal/deskkit/bodycheck.go",
       "old": "\tif acronymsSoFar >= maxAcronymUnits {",
       "new": "\tif false && acronymsSoFar >= maxAcronymUnits {"
+    },
+    {
+      "name": "#1642 — version unit admits any capital, not only V (S3, P2 ride the exemption)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif seg[k-1] != 'V' {",
+      "new": "\tif false && seg[k-1] != 'V' {"
+    },
+    {
+      "name": "#1642 — drop the version DIGITS bound (V123 becomes one word)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "if d == k || d-k > maxVersionDigits || acronymsSoFar >= maxAcronymUnits {",
+      "new": "if d == k || acronymsSoFar >= maxAcronymUnits {"
+    },
+    {
+      "name": "#1642 — version unit spends no acronym BUDGET",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "if d == k || d-k > maxVersionDigits || acronymsSoFar >= maxAcronymUnits {",
+      "new": "if d == k || d-k > maxVersionDigits {"
+    },
+    {
+      "name": "#1642 — drop the version FORWARD anchor (a lowercase run may follow the digits)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif d == len(seg) || startsCamelWord(seg, d) {\n\t\treturn d, true",
+      "new": "\tif true {\n\t\treturn d, true"
+    },
+    {
+      "name": "#1642 — weaken the version FORWARD anchor to any capital (V2 then a lone A rides the one-letter-word rule)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif d == len(seg) || startsCamelWord(seg, d) {\n\t\treturn d, true",
+      "new": "\tif d == len(seg) || seg[d] >= 'A' && seg[d] <= 'Z' {\n\t\treturn d, true"
+    },
+    {
+      "name": "#1642 — drop the zero-digit check (a lone V before a word becomes a word unit)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "if d == k || d-k > maxVersionDigits || acronymsSoFar >= maxAcronymUnits {",
+      "new": "if d-k > maxVersionDigits || acronymsSoFar >= maxAcronymUnits {"
+    },
+    {
+      "name": "#1642 — a CLOSING version unit spends no budget (acronym mid-run, version closes)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "if d == k || d-k > maxVersionDigits || acronymsSoFar >= maxAcronymUnits {",
+      "new": "if d == k || d-k > maxVersionDigits || acronymsSoFar >= maxAcronymUnits && d != len(seg) {"
+    },
+    {
+      "name": "#1642 — dispatch a caps run ENDING in V before digits to versionUnit (XV1 becomes a version)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif k-i == 1 {\n\t\treturn versionUnit(seg, k, acronymsSoFar)",
+      "new": "\tif k-i == 1 || (seg[k-1] == 'V' && k < len(seg) && seg[k] >= '0' && seg[k] <= '9') {\n\t\treturn versionUnit(seg, k, acronymsSoFar)"
+    },
+    {
+      "name": "#1642 — a closing acronym stays budget-free after a version unit (V2 then a closing OK/PRs)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif k == len(seg) && !versioned {",
+      "new": "\tif k == len(seg) {"
+    },
+    {
+      "name": "#1642 — never mark a run as versioned (the closing-acronym exemption survives a version unit)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "versioned = versioned || (seg[acrEnd-1] >= '0' && seg[acrEnd-1] <= '9')",
+      "new": "versioned = false"
+    },
+    {
+      "name": "#1642 class guard — over-broad identifier exemption at an untouched site (every run is identifier-like)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\treturn ok && words >= 2 && camel\n}",
+      "new": "\treturn ok && words >= 2 && camel || run != \"\"\n}"
+    },
+    {
+      "name": "#1642 class guard — over-exemption in the scan loop (every run carrying a capital is exempt)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "if isGitSHA(run) || isPathLike(run) || isIdentifierLike(run) || isAssignmentLike(run) || isAllEquals(run) {",
+      "new": "if isGitSHA(run) || isPathLike(run) || isIdentifierLike(run) || isAssignmentLike(run) || isAllEquals(run) || strings.ToLower(run) != run {"
     },
     {
       "name": "#203 — make the public-repo self-containment scan a no-op on every repo",
