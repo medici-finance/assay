@@ -2,8 +2,13 @@ package main
 
 import (
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -39,18 +44,25 @@ type corroborateStub struct {
 	// makes the count itself unreadable.
 	listedShort int
 	countErr    error
+	// cwd is the directory, relative to the fixture root, the command runs
+	// from ("" = the repository top level).
+	cwd string
+	// realMergeBase leaves the production merge-base resolver in place (only
+	// the forge's base-branch name is stubbed, as "main"), so a test exercises
+	// how the base is really resolved instead of handing the lane a SHA.
+	realMergeBase bool
 }
 
-// runCorroborateOn chdirs into root, stubs the forge/git seams, and runs the
-// command for PR #7, returning its exit code.
+// runCorroborateOn chdirs into root (or st.cwd under it), stubs the forge/git
+// seams, and runs the command for PR #7, returning its exit code.
 func runCorroborateOn(t *testing.T, root string, st *corroborateStub) int {
 	t.Helper()
-	t.Chdir(root)
+	t.Chdir(filepath.Join(root, filepath.FromSlash(st.cwd)))
 	oldRepo, oldFiles, oldData, oldMB := corroborateRepoFn, corroborateFilesFn, corroborateDataFn, corroborateMergeBaseFn
-	oldCount := corroborateChangedFilesFn
+	oldCount, oldBaseRef := corroborateChangedFilesFn, ghPRBaseRefFn
 	t.Cleanup(func() {
 		corroborateRepoFn, corroborateFilesFn, corroborateDataFn, corroborateMergeBaseFn = oldRepo, oldFiles, oldData, oldMB
-		corroborateChangedFilesFn = oldCount
+		corroborateChangedFilesFn, ghPRBaseRefFn = oldCount, oldBaseRef
 	})
 	corroborateChangedFilesFn = func(string, int) (int, error) {
 		if st.countErr != nil {
@@ -70,7 +82,11 @@ func runCorroborateOn(t *testing.T, root string, st *corroborateStub) int {
 		}
 		return st.data, nil
 	}
-	corroborateMergeBaseFn = func(string, string, int) string { return st.mergeBase }
+	if st.realMergeBase {
+		ghPRBaseRefFn = func(string, int) string { return "main" }
+	} else {
+		corroborateMergeBaseFn = func(string, string, int) string { return st.mergeBase }
+	}
 	return runCorroborate("7")
 }
 
@@ -232,6 +248,12 @@ func TestRegCautionAddingPasses(t *testing.T) {
 // is untouched by this lane — no data fetch, exit 0.
 func TestRegUntouchedLaneSilent(t *testing.T) {
 	root, _ := gutFixture(t, landedOpenFinding)
+	// The tree carries the change the listing names, so the base is shown to
+	// be the PR's base (see TestRegHeadAsBaseFails).
+	if err := os.WriteFile(filepath.Join(root, "docs", "other.md"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitGut(t, root)
 	st := &corroborateStub{files: []ghPRFile{{Filename: "docs/other.md", Patch: "@@ -1 +1 @@\n+hello"}}, mergeBase: originMain(t, root)}
 	if rc := runCorroborateOn(t, root, st); rc != 0 {
 		t.Fatalf("a PR touching no findings entry must not be gated by this lane; rc=%d", rc)
@@ -401,5 +423,194 @@ func TestRegReusedAnchorAckFails(t *testing.T) {
 	st := &corroborateStub{files: findingFiles(`-ack: "2026-07-18"`), mergeBase: originMain(t, root)}
 	if rc := runCorroborateOn(t, root, st); rc != 1 {
 		t.Fatalf("an ack removal authorized only by a pre-existing anchor must fail; rc=%d", rc)
+	}
+}
+
+// commitGut commits the fixture's working-tree change on the feature branch,
+// so the gut is in HEAD rather than only on disk — the CI shape.
+func commitGut(t *testing.T, root string) {
+	t.Helper()
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "gut")
+}
+
+// headSHA returns the fixture's HEAD commit.
+func headSHA(t *testing.T, root string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// TestRegSubdirCwdFails: the lane sees the same tree whatever directory the
+// command runs from. Run from a subdirectory (the `cd statusgen && …` shape),
+// a committed reused-anchor resolve flip must still fail — whether or not the
+// forge listing names the entry.
+func TestRegSubdirCwdFails(t *testing.T) {
+	for _, listing := range [][]ghPRFile{findingFiles("-resolved: false", "+resolved: true"), otherFileListing()} {
+		root, path := gutFixture(t, landedAnchoredFinding)
+		mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
+		commitGut(t, root)
+		mustMkdirAll(t, filepath.Join(root, "statusgen"))
+		st := &corroborateStub{files: listing, mergeBase: originMain(t, root), cwd: "statusgen"}
+		if rc := runCorroborateOn(t, root, st); rc != 1 {
+			t.Fatalf("run from a subdirectory, an uncorroborated resolve flip (listing %s) must fail; rc=%d", listing[0].Filename, rc)
+		}
+	}
+}
+
+// TestRegUnreadableEntryFails: only a touched entry that does not exist is a
+// deletion the tombstone guard owns. One that exists but cannot be read (here:
+// a directory where the entry file was) proves nothing — fail closed.
+func TestRegUnreadableEntryFails(t *testing.T) {
+	root, path := gutFixture(t, landedAnchoredFinding)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	mustMkdirAll(t, path)
+	st := &corroborateStub{files: findingFiles("-resolved: false", "+resolved: true"), mergeBase: originMain(t, root)}
+	if rc := runCorroborateOn(t, root, st); rc != 1 {
+		t.Fatalf("a touched entry that exists but cannot be read must fail closed; rc=%d", rc)
+	}
+}
+
+// TestRegNoBaseCountErrFails: no merge-base, an EMPTY listing and an unreadable
+// changed-file count. 0 listed == 0 counted would read as a complete listing,
+// so the count error itself must fail the run.
+func TestRegNoBaseCountErrFails(t *testing.T) {
+	root, _ := gutFixture(t, landedOpenFinding)
+	st := &corroborateStub{countErr: errors.New("count unreadable")}
+	if rc := runCorroborateOn(t, root, st); rc != 1 {
+		t.Fatalf("an unreadable changed-file count must fail closed even beside an empty listing; rc=%d", rc)
+	}
+}
+
+// TestRegHeadAsBaseFails: a merge-base that is the PR's own commit compares
+// the PR with itself, so a committed gut shows no local change. The forge says
+// the PR changes files, so a tree identical to that base proves the base wrong.
+func TestRegHeadAsBaseFails(t *testing.T) {
+	root, path := gutFixture(t, landedAnchoredFinding)
+	mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
+	commitGut(t, root)
+	st := &corroborateStub{files: findingFiles("-resolved: false", "+resolved: true"), mergeBase: headSHA(t, root)}
+	if rc := runCorroborateOn(t, root, st); rc != 1 {
+		t.Fatalf("a merge-base equal to the PR head, with a non-empty forge listing, must fail closed; rc=%d", rc)
+	}
+}
+
+// TestMergeBaseIgnoresDecoyRefs drives the REAL resolver, not the seam. A tag
+// named origin/main on the PR's own commit outranks refs/remotes/origin/main
+// for the short name; so does a local branch named main for the bare base name.
+// The resolver must read only the fully-qualified remote-tracking ref.
+func TestMergeBaseIgnoresDecoyRefs(t *testing.T) {
+	old := ghPRBaseRefFn
+	t.Cleanup(func() { ghPRBaseRefFn = old })
+	ghPRBaseRefFn = func(string, int) string { return "main" }
+
+	root, path := gutFixture(t, landedAnchoredFinding)
+	mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
+	commitGut(t, root)
+	gitRun(t, root, "tag", "origin/main", "HEAD")
+	if got, want := prMergeBaseSHA(root, "example/repo", 7), originMain(t, root); got != want {
+		t.Errorf("decoy tag origin/main: merge-base = %q, want the remote-tracking base %q", got, want)
+	}
+
+	root2, path2 := gutFixture(t, landedAnchoredFinding)
+	mutateFinding(t, path2, landedAnchoredFinding, "resolved: false", "resolved: true")
+	commitGut(t, root2)
+	gitRun(t, root2, "branch", "main", "HEAD")
+	gitRun(t, root2, "update-ref", "-d", "refs/remotes/origin/main")
+	if got := prMergeBaseSHA(root2, "example/repo", 7); got != "" {
+		t.Errorf("no remote-tracking base and a local branch main: merge-base = %q, want \"\" (unresolvable)", got)
+	}
+}
+
+// TestRegDecoyTagBaseFails: the whole command, real resolver, a decoy tag
+// origin/main on the PR's own commit — a committed reused-anchor gut must still
+// fail. Without the tag (control) it fails too.
+func TestRegDecoyTagBaseFails(t *testing.T) {
+	for _, decoy := range []bool{false, true} {
+		root, path := gutFixture(t, landedAnchoredFinding)
+		mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
+		commitGut(t, root)
+		if decoy {
+			gitRun(t, root, "tag", "origin/main", "HEAD")
+		}
+		st := &corroborateStub{files: findingFiles("-resolved: false", "+resolved: true"), realMergeBase: true}
+		if rc := runCorroborateOn(t, root, st); rc != 1 {
+			t.Fatalf("decoy=%v: an uncorroborated resolve flip must fail under the real base resolver; rc=%d", decoy, rc)
+		}
+	}
+}
+
+// TestRegReportLineOneLine: entry-controlled text (a moved affects value, an
+// entry path) is printed on ONE report line; a newline in it must not start a
+// forged second line.
+func TestRegReportLineOneLine(t *testing.T) {
+	line := registerReportLine(registerTransitionResult{
+		Rel:      "docs/streams/findings/x.md",
+		Moves:    "affects dropped [a\nregister docs/streams/findings/y.md [] CORROBORATED — ok]",
+		Verdict:  verdictMissing,
+		Evidence: "e f",
+	})
+	if strings.ContainsAny(line, "\n\r ") {
+		t.Fatalf("report line carries a line break from entry text: %q", line)
+	}
+}
+
+// shortOriginRefSites returns the "file:line" of every `"origin/…" + x`
+// concatenation in src: a git ref built by its SHORT name, which a tag or a
+// local branch of the same name shadows (git resolves refs/tags/ and refs/heads/
+// ahead of refs/remotes/). The guard below runs it over every statusgen source.
+func shortOriginRefSites(fset *token.FileSet, f *ast.File) []string {
+	var out []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		be, ok := n.(*ast.BinaryExpr)
+		if !ok || be.Op != token.ADD {
+			return true
+		}
+		lit, ok := be.X.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return true
+		}
+		if s, err := strconv.Unquote(lit.Value); err == nil && strings.HasPrefix(s, "origin/") {
+			out = append(out, fset.Position(lit.Pos()).String())
+		}
+		return true
+	})
+	return out
+}
+
+// TestNoShortOriginRefConcat is the class guard for SEC-2013-4's shape: no
+// statusgen source builds a remote ref as "origin/" + name. Spell the ref in
+// full (refs/remotes/origin/<name>, as remoteMainRef does). The planted source
+// is the positive control — a matcher that stops matching fails here instead of
+// reporting clean.
+func TestNoShortOriginRefConcat(t *testing.T) {
+	fset := token.NewFileSet()
+	plant, err := parser.ParseFile(fset, "plant.go", "package p\nvar b = \"main\"\nvar r = \"origin/\" + b\n", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := shortOriginRefSites(fset, plant); len(got) != 1 {
+		t.Fatalf("positive control: the planted short-ref concatenation must be flagged once; got %v", got)
+	}
+	matches, err := filepath.Glob("*.go")
+	if err != nil || len(matches) == 0 {
+		t.Fatalf("no statusgen sources found (err %v)", err)
+	}
+	for _, m := range matches {
+		if strings.HasSuffix(m, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, m, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", m, err)
+		}
+		for _, site := range shortOriginRefSites(fset, f) {
+			t.Errorf("%s: a remote ref built by its short name (\"origin/\" + …) — spell it refs/remotes/origin/<name>", site)
+		}
 	}
 }

@@ -247,9 +247,10 @@ var acceptedApprovalPhrases = []string{
 //
 // This is a HEURISTIC BLOCKLIST, not a decision procedure. It catches common
 // negated and conditional phrasings but will miss novel or indirect negations.
-// hasApprovalPhrase has one caller, --corroborate, which is now a LIVE gate — wired
-// into the pull_request lint job of .github/workflows/statusgen.yml, where an
-// unmatched refusal that reads as approval would let a self-issued human stamp pass.
+// hasApprovalPhrase has one caller, --corroborate, a gate wherever a pull_request
+// job runs `statusgen --corroborate --pr <pr>` (this repo's own workflows do not
+// run it yet); there an unmatched refusal that reads as approval would let a
+// self-issued human stamp pass.
 // The pattern should keep being tightened toward a broader negation grammar as new
 // refusal phrasings are observed.
 //
@@ -828,23 +829,35 @@ var briefRowsAtRef = func(root, ref, path string) (map[string]string, map[string
 // prMergeBaseSHA resolves the PR's merge-base commit against the local HEAD (the
 // PR head in CI), so `git show <merge-base>:<path>` reads the base version of a
 // board file. It reads the PR's base branch name from the API, then resolves the
-// merge-base locally. "" on any failure — the caller then exempts nothing.
+// merge-base locally. "" on any failure — the stamp lane then exempts nothing
+// and the register lane falls back to its fail-closed no-merge-base path.
+//
+// The base is read ONLY from the fully-qualified remote-tracking ref
+// refs/remotes/origin/<base>, never a short name: git resolves a short name
+// through refs/tags/ and refs/heads/ before refs/remotes/, so a tag named
+// `origin/main` (tag creation needs only write access) or a local branch named
+// `main` placed on the PR's own commit would make the merge-base the PR itself,
+// and every lane keyed on it would compare the PR with itself. There is no
+// bare-name fallback for the same reason — the same rule as remoteMainRef.
 func prMergeBaseSHA(root, repo string, pr int) string {
-	baseRef := ghPRBaseRef(repo, pr)
+	baseRef := ghPRBaseRefFn(repo, pr)
 	if baseRef == "" {
 		return ""
 	}
-	for _, ref := range []string{"origin/" + baseRef, baseRef} {
-		out, err := exec.Command("git", "-C", root, "merge-base", ref, "HEAD").Output()
-		if err != nil {
-			continue
-		}
-		if s := strings.TrimSpace(string(out)); s != "" {
-			return s
-		}
+	ref := "refs/remotes/origin/" + baseRef
+	if exec.Command("git", "check-ref-format", ref).Run() != nil {
+		return ""
 	}
-	return ""
+	out, err := exec.Command("git", "-C", root, "merge-base", ref, "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
+
+// ghPRBaseRefFn is the forge read of the PR's base branch name — a package seam
+// so a test drives the real merge-base resolver against a git fixture.
+var ghPRBaseRefFn = ghPRBaseRef
 
 // ghPRBaseRef returns the PR's base branch name (e.g. "main").
 func ghPRBaseRef(repo string, pr int) string {
@@ -1603,7 +1616,7 @@ func runCorroborate(prsArg string) int {
 		fmt.Println("# have ACTED on this PR — whether or not this PR wrote that key.")
 		fmt.Println()
 		for _, r := range allRegisterResults {
-			fmt.Printf("register %s [%s] %s — %s\n", r.Rel, r.Moves, r.Verdict, r.Evidence)
+			fmt.Println(registerReportLine(r))
 		}
 	}
 

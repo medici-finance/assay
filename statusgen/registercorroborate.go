@@ -28,9 +28,18 @@ package main
 // unioned in. When the merge-base cannot be resolved the listing is the only
 // source left, and it is trusted to say "untouched" only when its length equals
 // the forge's own changed_files count; anything else fails closed.
+//
+// The base itself is established fail-closed too: it is resolved only from the
+// fully-qualified refs/remotes/origin/<base> (prMergeBaseSHA — a tag or local
+// branch cannot shadow it), the lane reads the tree from the repository top
+// level whatever the working directory, and a base the PR's own tree is
+// identical to — while the forge lists changed files — is refused as the PR
+// compared with itself.
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -195,6 +204,34 @@ func localTouchedFindings(root, base string) ([]string, error) {
 	return paths, nil
 }
 
+// repoTopLevel returns the top level of the git worktree containing dir.
+func repoTopLevel(dir string) (string, error) {
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse --show-toplevel: %w", err)
+	}
+	top := strings.TrimSpace(string(out))
+	if top == "" {
+		return "", errors.New("git rev-parse --show-toplevel printed nothing")
+	}
+	return filepath.FromSlash(top), nil
+}
+
+// treeMatchesBase reports whether the working tree at root has no tracked
+// change against base. An error (base not a commit, git failure) is returned as
+// such, never as "matches" or "differs".
+func treeMatchesBase(root, base string) (bool, error) {
+	err := exec.Command("git", "-C", root, "diff", "--quiet", "--no-ext-diff", base, "--").Run()
+	if err == nil {
+		return true, nil
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && ee.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("git diff --quiet %s: %w", base, err)
+}
+
 // registerTransitionLane runs the lane for one PR. root is the checkout (the PR
 // head / merge commit in CI), files the PR's forge file list, mergeBase the PR
 // merge-base ("" = unresolvable), changedFiles the forge's changed-file count
@@ -236,6 +273,38 @@ func registerTransitionLane(root, repo string, pr int, files []ghPRFile, mergeBa
 		}
 		return nil, nil
 	}
+	// Every read below is repo-relative (a pathspec, an entry path, the
+	// findings walk), so anchor the lane at the repository top level whatever
+	// directory the command runs from: from a subdirectory the pathspec would
+	// match nothing and the entry reads would fail, a quiet "untouched".
+	top, err := repoTopLevel(root)
+	if err != nil {
+		return []registerTransitionResult{{
+			Verdict: verdictMissing,
+			Moves:   "register touch unknown",
+			Evidence: fmt.Sprintf("the repository top level could not be resolved (%v), so the findings register cannot be "+
+				"located — fail-closed (statusgen/06 §B)", err),
+		}}, nil
+	}
+	root = top
+	// A base the PR's own tree is identical to, while the forge says the PR
+	// changes files, is not the PR's base: it is the PR compared with itself,
+	// which hides every committed transition.
+	if len(files) > 0 {
+		same, err := treeMatchesBase(root, mergeBase)
+		if err != nil || same {
+			why := fmt.Sprintf("the working tree is identical to the resolved merge-base %s while the forge lists %d changed file(s)", mergeBase, len(files))
+			if err != nil {
+				why = fmt.Sprintf("the working tree could not be compared with the PR merge-base (%v)", err)
+			}
+			return []registerTransitionResult{{
+				Verdict: verdictMissing,
+				Moves:   "register touch unknown",
+				Evidence: why + ", so the merge-base cannot be the PR's base and the findings-register transitions this PR makes " +
+					"cannot be evaluated — fail-closed (statusgen/06 §B)",
+			}}, nil
+		}
+	}
 	local, err := localTouchedFindings(root, mergeBase)
 	if err != nil {
 		return []registerTransitionResult{{
@@ -254,8 +323,16 @@ func registerTransitionLane(root, repo string, pr int, files []ghPRFile, mergeBa
 	// rather than read the silence as "no transition".
 	for _, rel := range touched {
 		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
-		if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
 			continue // deleted in this PR — the tombstone guard (deletedRegisterFiles) owns deletion
+		}
+		if err != nil {
+			out = append(out, registerTransitionResult{
+				Rel:      rel,
+				Verdict:  verdictMissing,
+				Evidence: fmt.Sprintf("entry cannot be read (%v) — its field transitions cannot be evaluated, fail-closed", err),
+			})
+			continue
 		}
 		if _, err := parseFindingFile(raw); err != nil {
 			out = append(out, registerTransitionResult{
@@ -288,6 +365,14 @@ func unionSorted(a, b []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// registerReportLine renders one lane result as its report line.
+// The path, the moves and the evidence all carry entry-controlled text (a moved
+// affects value, a parse error quoting the entry), so each is rendered with
+// noticeSafe: a line break in it cannot end this line and forge another.
+func registerReportLine(r registerTransitionResult) string {
+	return fmt.Sprintf("register %s [%s] %s — %s", noticeSafe(r.Rel), noticeSafe(r.Moves), r.Verdict, noticeSafe(r.Evidence))
 }
 
 // registerTransitionsFail reports whether any lane result fails the run.
