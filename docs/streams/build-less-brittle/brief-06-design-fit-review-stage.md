@@ -17,7 +17,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format)"
 sources:
   - "docs/streams/build-less-brittle/spec.md §2 D2, §3 row 4, §4.4, §4.5, §4.7"
@@ -133,20 +133,24 @@ design-fit:
 ## Verify (executable — no prose-only DoD items)
 
 Rows run from the root of `medici-finance/assay`. Row 3 is the mutation row for the kit/model
-pin. Rows 7–8 are net ≤ 0 weight rows.
+pin. Rows 7–8 are net ≤ 0 weight rows. Rows 3, 7, 9 and 10 were re-authored in version 2 (#1977)
+so they can be decided on merged main, under any shell, without leaving the checkout: row 3 keeps
+its scratch files in the checkout root (both gitignored), row 7 braces its revision variables, row 9
+prints one count, and row 10 corroborates the `consumers:` claims against the delivering change
+itself, pinned so it still has that diff to read after merge.
 
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check | `cd tools/desk && go test ./internal/deskkit/ ./cmd/deskdispatch/ -count=1` | `ok` for both |
 | 2 | check | `grep -c 'BasisDesignFit ScopeBasis = "design-fit"' tools/desk/internal/deskkit/reviewscope.go` | `1` |
-| 3 | check +mutation | `cd tools/desk && f=cmd/deskdispatch/references/review-prompt.md && cp "$f" /tmp/bl06-kit.bak && awk '!/^[\|] design-fit [\|]/' /tmp/bl06-kit.bak > "$f" && go test ./cmd/deskdispatch/ -run TestReviewScopeKitMatchesModel -count=1 > /tmp/bl06-mut.out 2>&1; rc=$?; cp /tmp/bl06-kit.bak "$f"; test $rc -ne 0 && echo RED-ON-DRIFT` | `RED-ON-DRIFT` (dropping the kit row while the model keeps the basis fails the pin) |
+| 3 | check +mutation | `cd tools/desk && f=cmd/deskdispatch/references/review-prompt.md && cp "$f" ../../bl06-kit.bak && awk '!/^[\|] design-fit [\|]/' ../../bl06-kit.bak > "$f" && go test ./cmd/deskdispatch/ -run TestReviewScopeKitMatchesModel -count=1 > ../../bl06-mut.out 2>&1; rc=$?; cp ../../bl06-kit.bak "$f"; test $rc -ne 0 && echo RED-ON-DRIFT` | `RED-ON-DRIFT` (dropping the kit row while the model keeps the basis fails the pin; the backup and the mutant's test log stay in the checkout root, where `*.bak` and `*.out` are gitignored, and the log is left there to read) |
 | 4 | check | `grep -cE '^## [0-9]+\. Design fit first' tools/desk/cmd/deskdispatch/references/review-prompt.md` | `1` |
 | 5 | check | `grep -cE '^[\|] design-fit [\|] advisory [\|]' plugins/assay/skills/pr-review-desk/SKILL.md` | `1` (D-A: the class lands `advisory`; the promotion to `blocking` is a later recorded decision, a one-cell edit) |
 | 6 | check | `grep -cE '^[\|] *R-design-fit-basis .*S-review-verdict' docs/contracts.md` | `1` (the new rule is registered and serves an existing S- row) |
-| 7 | check | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/06$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
+| 7 | check | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/06$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "${tip}:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" -le "$(git show "${base}:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" && echo NET-OK` | `NET-OK` (the revision variables are braced: unbraced, zsh reads `:t` as a path modifier, both reads fail, and 0 ≤ 0 would pass) |
 | 8 | check | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/06$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
-| 9 | check | `grep -c 'go test ./internal/weight/ -run TestPrintWeight' tools/desk/cmd/deskdispatch/references/review-prompt.md && test -f tools/desk/internal/weight/weight_test.go && echo COUNTER-EXISTS` | a count ≥ `1`, then `COUNTER-EXISTS` |
-| 10 | check | `statusgen --consumers --root . --brief build-less-brittle/06; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
+| 9 | check | `grep -q '^func TestPrintWeight' tools/desk/internal/weight/weight_test.go && grep -c 'go test ./internal/weight/ -run TestPrintWeight' tools/desk/cmd/deskdispatch/references/review-prompt.md` | ≥ `1` (one line: how often the kit's clause names the counter command, printed only after the counter test that command runs is found; without that test the row prints nothing and fails) |
+| 10 | check | `d=$(mktemp -d "$PWD/.bl06-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach d1258928da48 && statusgen --consumers --root "$d" --brief build-less-brittle/06 --base d1258928da48~1; s=$?; rm -rf "$d"; exit $s` | exit 0; output is `summary: 4 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing` (the check runs in a throwaway shared clone, made inside the checkout and removed afterwards, checked out at d1258928da48, the squash that delivered this brief in #1879, with the base pinned to its parent, so the diff it reads is exactly the delivering change: never main's later commits, never the runner's own working tree. The four `fixed-here` path entries are corroborated by that diff. The two UNCHECKED entries stay the reviewer's call per brief-rule 9, never a pass: the case-corpus entry names its file in prose, and the installed-binaries entry is `out-of-scope`) |
 | 11 | check | `s=$(sed -n '/^## [0-9]*\. Design fit first/,/^## [0-9]*\. /p' tools/desk/cmd/deskdispatch/references/review-prompt.md); echo "$s" \| grep -c 'Brittle marks'; echo "$s" \| grep -c 'internal/arch'` | two counts, each ≥ `1` (a marked module and a red arch test both trigger the stage) |
 
 ## Evidence
