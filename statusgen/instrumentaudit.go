@@ -111,7 +111,7 @@ func (c instrumentAuditConfig) withDefaults() instrumentAuditConfig {
 		c.consumerFiles = readConsumerFiles
 	}
 	if c.declAgeDays == nil {
-		c.declAgeDays = gitDeclAgeDays
+		c.declAgeDays = newBatchedDeclAge().ageDays
 	}
 	return c
 }
@@ -225,31 +225,189 @@ func consumerMatcher(name string) *regexp.Regexp {
 // could-not-check) when the tree is not a git repo or the string is not found in history —
 // never a fabricated 0.
 func gitDeclAgeDays(root, flagFile, name string) (int, bool) {
+	unix, ok := gitDeclIntroUnix(root, flagFile, name)
+	if !ok {
+		return -1, false
+	}
+	return declAgeFromUnix(unix), true
+}
+
+// gitDeclIntroUnix is gitDeclAgeDays' read: the commit time of the oldest commit `git log -S`
+// lists for the quoted name — one git process per name.
+func gitDeclIntroUnix(root, flagFile, name string) (int64, bool) {
+	// -S with the quoted name finds commits that changed the count of `"<name>"`; the
+	// LAST line (git log is newest-first) is the introducing commit.
+	cmd := exec.Command("git", "-C", root, "log", "-S", `"`+name+`"`, "--format=%ct", "--", declRel(root, flagFile))
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, false
+	}
+	lines := strings.Fields(strings.TrimSpace(string(out)))
+	if len(lines) == 0 {
+		return 0, false
+	}
+	unix, err := strconv.ParseInt(lines[len(lines)-1], 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return unix, true
+}
+
+func declRel(root, flagFile string) string {
 	rel, err := filepath.Rel(root, flagFile)
 	if err != nil || strings.HasPrefix(rel, "..") {
 		rel = flagFile
 	}
-	// -S with the quoted name finds commits that changed the count of `"<name>"`; the
-	// LAST line (git log is newest-first) is the introducing commit.
-	cmd := exec.Command("git", "-C", root, "log", "-S", `"`+name+`"`, "--format=%ct", "--", rel)
-	out, err := cmd.Output()
-	if err != nil {
-		return -1, false
-	}
-	lines := strings.Fields(strings.TrimSpace(string(out)))
-	if len(lines) == 0 {
-		return -1, false
-	}
-	oldest := lines[len(lines)-1]
-	unix, err := strconv.ParseInt(oldest, 10, 64)
-	if err != nil {
-		return -1, false
-	}
+	return rel
+}
+
+func declAgeFromUnix(unix int64) int {
 	days := int(time.Since(time.Unix(unix, 0)).Hours() / 24)
 	if days < 0 {
 		days = 0
 	}
-	return days, true
+	return days
+}
+
+// batchedDeclAge answers the same question as gitDeclAgeDays for every COLD flag from ONE
+// `git log -p` of the flag file, instead of one `git log -S` process per flag
+// (forge-neutral/18 Verify row 12: the per-flag pickaxe was 67 of a --lint's git processes).
+//
+// WHY IT IS THE SAME ANSWER. `-S "<s>"` selects a commit when the number of occurrences of s
+// in the file differs between parent and child. A quoted flag name contains no newline, so
+// every occurrence lies inside one line, and that difference is exactly (occurrences in the
+// patch's added lines) − (occurrences in its removed lines): unchanged lines count the same on
+// both sides. Commits `-S` does not diff (merges, without -m) carry no patch here either, so
+// they contribute 0 on both readings. The oldest commit with a non-zero difference is the
+// introducing commit `-S` would list last. Any patch this parser does not read with
+// certainty — a binary file, a rename or copy header — sends EVERY name back to the
+// per-name gitDeclIntroUnix, so an unusual history costs processes, never a different answer.
+type batchedDeclAge struct {
+	indexed map[string]*declPatchIndex // root + "\x00" + rel
+}
+
+func newBatchedDeclAge() *batchedDeclAge {
+	return &batchedDeclAge{indexed: map[string]*declPatchIndex{}}
+}
+
+func (b *batchedDeclAge) ageDays(root, flagFile, name string) (int, bool) {
+	unix, ok := b.introUnix(root, flagFile, name)
+	if !ok {
+		return -1, false
+	}
+	return declAgeFromUnix(unix), true
+}
+
+func (b *batchedDeclAge) introUnix(root, flagFile, name string) (int64, bool) {
+	rel := declRel(root, flagFile)
+	key := root + "\x00" + rel
+	idx, ok := b.indexed[key]
+	if !ok {
+		idx = readDeclPatchIndex(root, rel)
+		b.indexed[key] = idx
+	}
+	if idx == nil {
+		return gitDeclIntroUnix(root, flagFile, name)
+	}
+	return idx.introUnix(`"` + name + `"`)
+}
+
+// declPatchIndex is the flag file's history as (commit time, added text, removed text),
+// newest first — git log's order.
+type declPatchIndex struct {
+	commits []declPatchCommit
+}
+
+type declPatchCommit struct {
+	unix    int64
+	added   string
+	removed string
+}
+
+// introUnix is the commit time of the oldest commit whose patch changes the count of s.
+func (x *declPatchIndex) introUnix(s string) (int64, bool) {
+	for i := len(x.commits) - 1; i >= 0; i-- {
+		c := x.commits[i]
+		if strings.Count(c.added, s) != strings.Count(c.removed, s) {
+			return c.unix, true
+		}
+	}
+	return 0, false
+}
+
+// declCommitMark prefixes each commit header line of the batched log; a NUL never begins a
+// patch line of a text diff.
+const declCommitMark = "\x00statusgen-commit "
+
+// readDeclPatchIndex runs the one `git log -p` and parses it, or returns nil — use the
+// per-name path — on a failed read or any patch it does not parse with certainty.
+func readDeclPatchIndex(root, rel string) *declPatchIndex {
+	out, err := exec.Command("git", "-C", root, "log", "-p", "--no-color", "--no-ext-diff",
+		"--format="+strings.ReplaceAll(declCommitMark, "\x00", "%x00")+"%ct", "--", rel).Output()
+	if err != nil {
+		return nil
+	}
+	return parseDeclPatchLog(string(out))
+}
+
+func parseDeclPatchLog(out string) *declPatchIndex {
+	idx := &declPatchIndex{}
+	var cur *declPatchCommit
+	var added, removed strings.Builder
+	flush := func() {
+		if cur != nil {
+			cur.added, cur.removed = added.String(), removed.String()
+			idx.commits = append(idx.commits, *cur)
+		}
+		added.Reset()
+		removed.Reset()
+	}
+	inHunk := false
+	for _, line := range strings.Split(out, "\n") {
+		if rest, ok := strings.CutPrefix(line, declCommitMark); ok {
+			flush()
+			unix, err := strconv.ParseInt(strings.TrimSpace(rest), 10, 64)
+			if err != nil {
+				return nil
+			}
+			cur = &declPatchCommit{unix: unix}
+			inHunk = false
+			continue
+		}
+		if strings.HasPrefix(line, "diff --git ") || strings.HasPrefix(line, "diff --cc ") || strings.HasPrefix(line, "diff --combined ") {
+			if cur == nil || !strings.HasPrefix(line, "diff --git ") {
+				return nil // a combined diff is not what -S reads
+			}
+			inHunk = false
+			continue
+		}
+		if !inHunk {
+			switch {
+			case strings.HasPrefix(line, "@@ "):
+				inHunk = true
+			case strings.HasPrefix(line, "Binary files "), strings.HasPrefix(line, "GIT binary patch"),
+				strings.HasPrefix(line, "rename from "), strings.HasPrefix(line, "copy from "):
+				return nil
+			}
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "@@ "):
+			// next hunk of the same file
+		case strings.HasPrefix(line, "+"):
+			added.WriteString(line[1:])
+			added.WriteByte('\n')
+		case strings.HasPrefix(line, "-"):
+			removed.WriteString(line[1:])
+			removed.WriteByte('\n')
+		case strings.HasPrefix(line, " "), strings.HasPrefix(line, "\\"), line == "":
+			// context, "\ No newline at end of file", or the separator before the next commit
+		default:
+			return nil
+		}
+	}
+	flush()
+	return idx
 }
 
 // instrumentAudit computes the report from a config. It never returns an error for a flag

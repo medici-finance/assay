@@ -324,7 +324,7 @@ func lookupPathAuthors(idx map[string]pathAuthors, root, relPath string) (first,
 // determine, degrade rather than guess" — NEVER as a pass or as confirmation of either outcome.
 func evidenceSectionTouchedByOtherIdentity(root, relPath, authoringID string) (touched, ok bool) {
 	slashPath := filepath.ToSlash(relPath)
-	content, err := exec.Command("git", "-C", root, "show", "HEAD:"+slashPath).Output()
+	content, err := gitShowObject(root, "HEAD", slashPath)
 	if err != nil {
 		return false, false
 	}
