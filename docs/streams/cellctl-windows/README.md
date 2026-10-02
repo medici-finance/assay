@@ -50,7 +50,7 @@ Old external-launcher registrations remain compatibility paths with their own pr
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 00 | [Go launch and session contracts for native Windows](brief-00-launch-session-contract.md) | 0 | M | todo | — | — |
+| 00 | [Go launch and session contracts for native Windows](brief-00-launch-session-contract.md) | 0 | M | implemented | — | — |
 | 01 | [Go wrappers and native Windows cell environment](brief-01-go-wrappers-environment.md) | 1 | M | todo | — | — |
 | 02 | [Native process ownership and lifetime on Windows](brief-02-windows-process-ownership.md) | 1 | M | todo | — | — |
 | 03 | [Windows Orca and Herdr console adapters](brief-03-orca-herdr-adapters.md) | 1 | L | todo | — | — |

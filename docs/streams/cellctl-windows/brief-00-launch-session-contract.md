@@ -25,12 +25,13 @@ exec-tier-why: >-
 domain: complicated
 outcome: none
 consumers:
-  - "tools/desk/internal/celllaunch/: fixed-here"
-  - "docs/cellctl-windows.md: fixed-here"
-  - "cellctl-windows/01: follow-up cellctl-windows/01"
-  - "cellctl-windows/02: follow-up cellctl-windows/02"
-  - "cellctl-windows/03: follow-up cellctl-windows/03"
-  - "cellctl-windows/04: follow-up cellctl-windows/04"
+  - ".github/workflows/celllaunch-windows.yml: fixed-here (native Windows amd64 execution of the three contract witnesses)"
+  - "tools/desk/internal/celllaunch/: fixed-here (versioned contracts, parsers, compiled fixtures and mutation specification)"
+  - "docs/cellctl-windows.md: fixed-here (handoff protocol, lifecycle semantics and capability evidence checklist)"
+  - "cellctl-windows/01: follow-up cellctl-windows/01 (production runner and private store consume the launch contract)"
+  - "cellctl-windows/02: follow-up cellctl-windows/02 (process supervisor consumes scoped process identity and observations)"
+  - "cellctl-windows/03: follow-up cellctl-windows/03 (cockpit adapters consume RunnerRequest and exact console identity)"
+  - "cellctl-windows/04: follow-up cellctl-windows/04 (Docker endpoint work supplies the frozen engine identity)"
 ---
 
 # Brief 00 — Go launch and session contracts for native Windows
@@ -38,8 +39,10 @@ consumers:
 ## Context
 
 files:
+- .github/workflows/celllaunch-windows.yml (native amd64 contract witnesses for Verify rows 1–3)
 - tools/desk/internal/celllaunch/ (new contract and tests)
 - docs/cellctl-windows.md (new implementation contract)
+- changelog/cellctl-windows-00.md (release note)
 
 facts (freshness checked 2026-10-01):
 - At 1c67aa717, cmd/cellctl/up.go roleCmd returns shell text; firstWindow contains a shell health loop; Herdr and Orca adapters consume command strings.
@@ -85,7 +88,8 @@ asserts the exact selected PASS line and rejects skips as well as a nonzero exit
 | 2 | `$log = New-TemporaryFile; go test ./internal/celllaunch -run '^TestSessionRecordRefusal$' -count=1 -v *> $log; if ($LASTEXITCODE -ne 0) { Get-Content $log; exit 1 }; if (-not (Select-String -Path $log -SimpleMatch '--- PASS: TestSessionRecordRefusal ')) { exit 1 }; if (Select-String -Path $log -SimpleMatch '--- SKIP:') { exit 1 }` | exit 0; unknown schema, foreign cell/role, reused identity and incomplete launch state refuse | check +flow | pwsh |
 | 3 | `$log = New-TemporaryFile; go test ./internal/celllaunch -run '^TestLaunchSpecCustody$' -count=1 -v *> $log; if ($LASTEXITCODE -ne 0) { Get-Content $log; exit 1 }; if (-not (Select-String -Path $log -SimpleMatch '--- PASS: TestLaunchSpecCustody ')) { exit 1 }; if (Select-String -Path $log -SimpleMatch '--- SKIP:') { exit 1 }` | exit 0; token values are absent from serialized records and logs; untrusted spec reference refuses | check +flow | pwsh |
 | 4 | `go test ./cmd/cellctl ./internal/cellcontainer -count=1` | exit 0; pre-existing Unix regression assertions remain effective; run on Unix as the neighboring platform | check +neighbour | sh |
-| 5 | `statusgen --root ../.. --consumers cellctl-windows/00` | exit 0; declared consumer routing corroborates the implementation diff | check | pwsh |
+| 5 | `$base = git merge-base refs/remotes/origin/main HEAD; if ($LASTEXITCODE -ne 0) { exit 1 }; statusgen --root ../.. --consumers --brief cellctl-windows/00 --base $base; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }` | exit 0; declared consumer routing corroborates the implementation diff | check | pwsh |
+| 6 | `go run ./cmd/muhar -spec internal/celllaunch/mutations.json` | exit 0; baseline passes, failing control is caught, all seven guard mutations are caught with no survivors; run on Unix using the existing development mutation harness | check +mutation | sh |
 
 ## Threat model / pre-mortem
 
