@@ -40,9 +40,7 @@ func init() {
 		if err != nil {
 			os.Exit(79)
 		}
-		env := os.Environ()
-		sort.Strings(env)
-		_ = json.NewEncoder(os.Stdout).Encode(childResult{os.Args[3:], env, cwd})
+		_ = json.NewEncoder(os.Stdout).Encode(childResult{os.Args[3:], envDigests(os.Environ()), cwd})
 		os.Exit(code)
 	case "--celllaunch-runner":
 		os.Exit(fixtureRun())
@@ -93,10 +91,59 @@ func fixtureRun() int {
 	return 0
 }
 
+// childResult is everything the fixture child reports. Env maps each variable
+// NAME the child received to a SHA-256 digest of its value: the child never
+// writes an environment value, so no diagnostic built from its output (decoded
+// or raw) can publish the runner's ambient environment.
 type childResult struct {
 	Args []string
-	Env  []string
+	Env  map[string]string
 	Cwd  string
+}
+
+func valueDigest(v string) string {
+	sum := sha256.Sum256([]byte(v))
+	return hex.EncodeToString(sum[:])
+}
+
+// envDigests reduces NAME=value entries to name -> digest. A leading '=' is
+// part of the name (Windows per-drive entries such as "=C:").
+func envDigests(environ []string) map[string]string {
+	out := make(map[string]string, len(environ))
+	for _, kv := range environ {
+		name, value := kv, ""
+		if i := strings.Index(kv, "="); i == 0 {
+			if j := strings.Index(kv[1:], "="); j >= 0 {
+				name, value = kv[:j+1], kv[j+2:]
+			}
+		} else if i > 0 {
+			name, value = kv[:i], kv[i+1:]
+		}
+		out[name] = valueDigest(value)
+	}
+	return out
+}
+
+// envDiff compares the child's environment with the permitted one and names
+// the variables that differ. It reports names only — never a value or digest.
+func envDiff(got map[string]string, want map[string]string) []string {
+	var diff []string
+	for k, v := range want {
+		d, ok := got[k]
+		switch {
+		case !ok:
+			diff = append(diff, "missing "+k)
+		case d != valueDigest(v):
+			diff = append(diff, "changed "+k)
+		}
+	}
+	for k := range got {
+		if _, ok := want[k]; !ok {
+			diff = append(diff, "unexpected "+k)
+		}
+	}
+	sort.Strings(diff)
+	return diff
 }
 
 func fixtureSpec(t *testing.T) LaunchSpec {
@@ -178,15 +225,14 @@ func TestLaunchSpecRoundTrip(t *testing.T) {
 			}
 			var got childResult
 			if err = json.Unmarshal(out, &got); err != nil {
-				t.Fatalf("child output: %v (%s)", err, out)
+				// The raw output is never echoed: report its size only.
+				t.Fatalf("child output: %v (%d bytes)", err, len(out))
 			}
-			wantEnv := []string{}
-			for k, v := range s.Env {
-				wantEnv = append(wantEnv, k+"="+v)
+			if diff := envDiff(got.Env, s.Env); len(diff) != 0 {
+				t.Fatalf("child environment differed: %s", strings.Join(diff, ", "))
 			}
-			sort.Strings(wantEnv)
-			if !reflect.DeepEqual(got.Args, s.Args[2:]) || !reflect.DeepEqual(got.Env, wantEnv) || got.Cwd != s.Cwd {
-				t.Fatalf("child differed: %#v", got)
+			if !reflect.DeepEqual(got.Args, s.Args[2:]) || got.Cwd != s.Cwd {
+				t.Fatalf("child argv/cwd differed: args=%q cwd=%q", got.Args, got.Cwd)
 			}
 		})
 	}
@@ -218,6 +264,53 @@ func TestLaunchSpecRoundTrip(t *testing.T) {
 			t.Fatal("serialized unparseable oversized launch")
 		}
 	})
+}
+
+// TestChildDiagRedacts is the class guard for diagnostics that print the
+// ambient environment. It runs the fixture child with the regression already
+// present — the whole ambient environment forwarded, plus two planted values —
+// and requires that neither the child's raw output nor the diagnostic built
+// from it carries any ambient value, while the diagnostic still NAMES the
+// planted variables (so a blind matcher cannot pass).
+func TestChildDiagRedacts(t *testing.T) {
+	const planted1, planted2 = "synthetic-secret-never-print", "synthetic-cloud-never-print"
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "--celllaunch-child", "0")
+	cmd.Env = append(os.Environ(), "GH_TOKEN="+planted1, "AWS_SECRET_ACCESS_KEY="+planted2)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("fixture child: %v", err)
+	}
+	for _, v := range []string{planted1, planted2} {
+		if bytes.Contains(out, []byte(v)) {
+			t.Fatalf("child output carries a planted environment value (%d bytes withheld)", len(out))
+		}
+	}
+	var got childResult
+	if err = json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("child output: %v (%d bytes)", err, len(out))
+	}
+	diff := envDiff(got.Env, fixtureSpec(t).Env)
+	diag := strings.Join(diff, ", ")
+	for _, want := range []string{"unexpected GH_TOKEN", "unexpected AWS_SECRET_ACCESS_KEY"} {
+		if !strings.Contains(diag, want) {
+			t.Fatalf("diagnostic does not name the forwarded variable: %q missing", want)
+		}
+	}
+	names := strings.Join(diff, "\n")
+	for _, kv := range cmd.Env {
+		_, v, _ := strings.Cut(kv, "=")
+		// Short values and values that are themselves a variable name can
+		// legitimately coincide with a printed name; every other value must
+		// be absent from the diagnostic.
+		if len(v) < 8 || strings.Contains(names, v) && !strings.HasPrefix(v, "synthetic-") {
+			continue
+		}
+		if strings.Contains(diag, v) || strings.Contains(diag, valueDigest(v)) {
+			t.Fatal("diagnostic carries an ambient environment value or its digest")
+		}
+	}
 }
 
 func readySession(t *testing.T) SessionRecord {
