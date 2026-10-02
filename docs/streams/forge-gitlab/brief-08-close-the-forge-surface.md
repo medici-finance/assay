@@ -121,9 +121,9 @@ stream (edition-matrix.md, tables A and C6).
 |---|---------|--------|
 | 1 | `go build ./... && go test ./tools/...` | exit 0 |
 | 2 | `cd tools/desk && GOWORK=off go test ./... -run TestNoForgeCLIShellout -v` | exit 0; output contains `PASS` — the ban test passes because every remaining invocation is allowlisted under the shrinking ratchet (see the matching Evidence entry's `RISK-VALUE: NAMED` line for the current ceiling), not because zero invocations remain |
-| 3 | `grep -rnE -e 'exec\.Command(Context)?\([^)]*"gh"' -e 'exec\.Command(Context)?\([^)]*"glab"' tools/desk --include='*.go' \| grep -v _test.go \| wc -l` | `0` — independent cross-check of the ban across the whole desk tree |
+| 3 | `{ grep -rnE -e 'exec\.Command(Context)?\([^)]*"gh"' -e 'exec\.Command(Context)?\([^)]*"glab"' tools/desk --include='*.go' \|\| [ $? -eq 1 ]; } \| { grep -v _test.go \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0` — independent cross-check of the ban across the whole desk tree. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. |
 | 4 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeNoPassthrough -v` | exit 0; the test reflects `deskkit.Forge`'s method set against `inventory.md` and FAILS on any generic/arbitrary-endpoint method (`Do`/`Raw`/`api`) on the interface or either backend |
-| 5 | `go doc ./tools/desk/internal/deskkit Forge \| grep -cE -e 'Do\(' -e 'Raw\(' -e 'APIRequest\(' -e 'Call\('` | exit 1 (grep exits 1 when nothing matches); output is `0` — no arbitrary-request method surfaces in the interface's godoc |
+| 5 | `out=$(cd tools/desk && go doc ./internal/deskkit Forge) && printf '%s\n' "$out" \| grep -q 'type Forge interface' && printf '%s\n' "$out" \| { grep -cE -e 'Do\(' -e 'Raw\(' -e 'APIRequest\(' -e 'Call\(' \|\| [ $? -eq 1 ]; }` | output is `0` — no arbitrary-request method surfaces in the interface's godoc. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. `go doc` runs inside `tools/desk` (the module root) and must succeed, and the output must carry `type Forge interface`, before the method count is read. |
 
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->

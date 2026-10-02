@@ -26,7 +26,7 @@ tier: free
 consumers:
   - "tools/desk/cmd/*: fixed-here"
   - "tools/desk/internal/deskkit: fixed-here"
-version: 1
+version: 2
 id: 13f71975-1f4f-48e2-b44a-e1902d7a8d7b
 ---
 
@@ -81,7 +81,7 @@ on GitLab as well (edition-matrix.md table A, rows 1-14). Nothing degrades on CE
 | # | Command | Expect |
 |---|---------|--------|
 | 1 | `go build ./... && go test ./tools/...` | exit 0 |
-| 2 | `grep -rn "api.github.com" tools/desk/cmd --include='*.go' \| grep -v _test.go \| grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' \| wc -l` | `0` — no direct API construction outside the forge implementation. Code lines only: a whole-line `//` comment that names the host is prose, not construction, and is filtered out (#1529; unfiltered, three such comments kept this row at 3 with no live literal present). The filter still catches a live literal: on the tree before #1866 it counts 1, `tools/desk/cmd/deskfleet/main.go`'s hardcoded base |
+| 2 | `{ grep -rn "api.github.com" tools/desk/cmd --include='*.go' \|\| [ $? -eq 1 ]; } \| { grep -v _test.go \|\| [ $? -eq 1 ]; } \| { grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0` — no direct API construction outside the forge implementation. Code lines only: a whole-line `//` comment that names the host is prose, not construction, and is filtered out (#1529; unfiltered, three such comments kept this row at 3 with no live literal present). The filter still catches a live literal: on the tree before #1866 it counts 1, `tools/desk/cmd/deskfleet/main.go`'s hardcoded base. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. |
 | 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeGithubGolden -v` | exit 0; output contains `PASS` and lists ≥ 10 golden-pinned operations |
 | 4 | `git diff --stat origin/main -- tools/desk/internal/deskkit/forge.go` then `go doc ./tools/desk/internal/deskkit Forge` | interface exists; method set matches the committed inventory (dereference: compare `go doc` output against inventory.md rows) |
 

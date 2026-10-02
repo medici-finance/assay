@@ -94,8 +94,8 @@ facts:
 | 1 | `cd tools/desk && go build ./cmd/deskgit/ ./cmd/deskadvisory/ ./cmd/deskmerge/ && go vet ./cmd/deskgit/ ./cmd/deskadvisory/ ./cmd/deskmerge/` | exit 0 |
 | 2 | `cd tools/desk && go test ./cmd/deskgit/ ./cmd/deskadvisory/ ./cmd/deskmerge/` | exit 0; fetch + advisory goldens pass |
 | 3 | `cd tools/desk && go test ./cmd/deskgit/ -run DisallowedOriginRefused` | exit 0; a disallowed origin is still REFUSED after migration (the allowed-repo gate survived — mutation-style row) |
-| 4 | `cd tools/desk && grep -crE -e 'GIT_ASKPASS' -e 'credential.helper' cmd/deskadvisory/advisory.go` | exit 1 (grep exits 1 when nothing matches); the printed count is `0` (the askpass file + helper-suppression path is gone) |
-| 5 | `cd tools/desk && grep -crE -e 'upload-pack' -e 'refmap' cmd/deskgit/` | exit 1 (grep exits 1 when no file matches); every printed per-file count is `0` (the moot argv-hardening flags are deleted) |
+| 4 | `cd tools/desk && grep -crE -e 'GIT_ASKPASS' -e 'credential.helper' cmd/deskadvisory/advisory.go` | exit 1 (grep exits 1 when nothing matches); the printed count is `0` (the askpass file + helper-suppression path is gone). Expect re-written 2026-10-03 (#1862). |
+| 5 | `cd tools/desk && grep -crE -e 'upload-pack' -e 'refmap' cmd/deskgit/` | exit 1 (grep exits 1 when no file matches); every printed per-file count is `0` (the moot argv-hardening flags are deleted). Expect re-written 2026-10-03 (#1862). |
 | 6 | `sh tools/desk/scripts/count-git-exec.sh` | prints `git-exec sites: <N>`; N below the count recorded before this brief |
 
 ## Evidence

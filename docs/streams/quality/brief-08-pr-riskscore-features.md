@@ -101,7 +101,7 @@ feature from masquerading as a real zero.
 | 4 (DEREFERENCING — missing coupling partner surfaced) | `cd qualgen && go test ./... -run TestPR_MissingCouplingPartnerFlagged -v` | exit 0. Fixture: files A and B are co-changed in many historical commits (coupled); the fixture PR touches A but NOT B. Assert A's `coupling_missing` list contains B. |
 | 5 (DEREFERENCING — defect density carries trace-rate) | `cd qualgen && go test ./... -run TestPR_DefectDensityCarriesTraceRate -v` | exit 0. Fixture with a traced planted defect on file A (via the brief-07 corpus). Assert A's feed record has a non-empty `defect_density` AND a non-empty `defect_trace_rate` beside it — density without its trace-rate fails the test (honest-claims). |
 | 6 (three-state — new file is could-not-measure, not zero) | `cd qualgen && go test ./... -run TestPR_NewFileIsCouldNotMeasure -v` | exit 0. Fixture PR adds a brand-new file with no history; assert its `measured.hotspot == "could-not-measure"`, NOT a `0` percentile. |
-| 7 (no thresholds leaked) | `cd qualgen && grep -icE -e threshold -e verdict -e 'pass.?fail' -e 'score >' pr.go` | exit 1 (grep exits 1 when nothing matches); output is `0` (this mode emits features only; any threshold/verdict/score belongs in the consumer). |
+| 7 (no thresholds leaked) | `cd qualgen && grep -icE -e threshold -e verdict -e 'pass.?fail' -e 'score >' pr.go` | exit 1 (grep exits 1 when nothing matches); output is `0` (this mode emits features only; any threshold/verdict/score belongs in the consumer). Expect re-written 2026-10-03 (#1862). |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item —

@@ -95,7 +95,7 @@ the layer that stops an unmeasurable file from reading as "safe."
 | 4 (DEREFERENCING — coupling partner named) | `cd qualgen && go test ./... -run TestCheck_CouplingPartnerNamed -v` | exit 0. Fixture: files A and B are historically coupled; `check A` (B not in the set) asserts the result's coupling-partner advisory names B specifically. |
 | 5 (DEREFERENCING — advisory posture, exit 0 on a flag) | `cd qualgen && go test ./... -run TestCheck_AdvisoryPostureExitsZeroOnFlag -v` | exit 0. The test runs `check` over a fixture hotspot file and asserts the output contains the stronger-tier advisory AND that the mode returned exit 0 — it flags but does not fail (advisory NOTICE posture, spec §9.2). |
 | 6 (three-state — unmeasurable file) | `cd qualgen && go test ./... -run TestCheck_NoHistoryIsCouldNotScreen -v` | exit 0. `check` on a brand-new file asserts a `could-not-screen` note, not an all-clear. |
-| 7 (no hard gate leaked) | `cd qualgen && grep -icE -e 'os.Exit\(1\)' -e 'os.Exit\(2\)' -e 'fail.*ci' -e block check.go` | exit 1 (grep exits 1 when nothing matches); output is `0` (advisory posture — no failing/blocking exit path in this mode). |
+| 7 (no hard gate leaked) | `cd qualgen && grep -icE -e 'os.Exit\(1\)' -e 'os.Exit\(2\)' -e 'fail.*ci' -e block check.go` | exit 1 (grep exits 1 when nothing matches); output is `0` (advisory posture — no failing/blocking exit path in this mode). Expect re-written 2026-10-03 (#1862). |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item —

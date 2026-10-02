@@ -75,7 +75,7 @@ facts:
 | 1 | `cd tools/desk && go build ./cmd/deskpushguard/ && go vet ./cmd/deskpushguard/` | exit 0 |
 | 2 | `cd tools/desk && go test ./cmd/deskpushguard/` | exit 0; clean-push + foreign-commit + register-id goldens pass |
 | 3 | `cd tools/desk && go test ./cmd/deskpushguard/ -run ForeignCommitFlagged` | exit 0; the mutation fixture (a foreign commit injected) is flagged RED by the migrated reader — proving the detector still detects |
-| 4 | `cd tools/desk && grep -cE 'exec.Command' cmd/deskpushguard/foreigncommit.go` | exit 1 (grep exits 1 when nothing matches); output is `0` (the read seam no longer shells the git binary) |
+| 4 | `cd tools/desk && grep -cE 'exec.Command' cmd/deskpushguard/foreigncommit.go` | exit 1 (grep exits 1 when nothing matches); output is `0` (the read seam no longer shells the git binary). Expect re-written 2026-10-03 (#1862). |
 | 5 | `sh tools/desk/scripts/count-git-exec.sh` | prints `git-exec sites: <N>`; N below the count recorded before this brief |
 
 ## Evidence

@@ -40,7 +40,7 @@ consumers:
   - "tools/desk/internal/deskkit/forge_gitlab.go: fixed-here (delete the superseded single-forge visibility adapter once no caller remains — #1066's non-blocking half)"
   - "tools/desk/internal/deskkit/repovis.go: out-of-scope (the generic adapter and the gate are unchanged; this brief adds no type and relaxes no check there)"
   - "docs/streams/forge-gitlab/README.md: fixed-here (the status row)"
-version: 1
+version: 2
 id: 83ced764-c760-49c4-8dcf-f1fbc14e5493
 ---
 
@@ -135,7 +135,7 @@ disclosed or removed.
 | 3 | `cd tools/desk && go test ./cmd/deskreply/ -run TestPublicRepoGateFetcherRoutesThroughResolvedForge -v -timeout 120s` | exit 0; output contains `PASS` — same assertion for the reply verb (`TestPublicRepoGateFetcherRoutesThroughResolvedForge` (planned)) | check |
 | 4 | `cd tools/desk && go test ./cmd/... -run TestPublicRepoGateSitesUseResolvedForge -v -timeout 300s` | exit 0; output contains `PASS` — no gate site across the whole command tree builds a single-forge fetcher outside the named exceptions; this is the cross-command row, walking every verb's gate construction rather than the two this brief edits (`TestPublicRepoGateSitesUseResolvedForge` (planned)) | check +flow |
 | 5 | `cd tools/desk && go test ./cmd/deskevidence/ -run TestPublicRepoGateFetcherRoutesThroughResolvedForge -count=1 -timeout 120s` run against the pre-swap tree (stash the swap, or check out the parent commit) | exit non-zero at the type assertion, BEFORE any network call — proving the test observes the defect it pins | check +mutation |
-| 6 | `cd tools/desk && grep -rn 'GitLabRepoInfoFetcher' --include='*.go' . \| grep -v '_test.go' \| wc -l \| tr -d ' '` | `0` — the superseded single-forge adapter is gone from production code | check |
+| 6 | `cd tools/desk && { grep -rn 'GitLabRepoInfoFetcher' --include='*.go' . \|\| [ $? -eq 1 ]; } \| { grep -v '_test.go' \|\| [ $? -eq 1 ]; } \| wc -l \| tr -d ' '` | output is `0` — the superseded single-forge adapter is gone from production code. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. | check |
 | 7 | `statusgen --root . --consumers` | exit 0 | check |
 | 8 | `statusgen --root . --lint` | exit 0; output contains `LINT: PASS` | check |
 
