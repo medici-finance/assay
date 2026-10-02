@@ -140,5 +140,13 @@ mutation A applied, exit 1 with the test renamed; row 2 exit 0 at this head, exi
 mutation B applied. Every scratch edit was restored before the witness below, which
 supersedes the table above for rows 1 and 2 (that table stays as the log of what ran).
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusDerivedFromFeatureCount$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusDerivedFromFeatureCount'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-02 | assay-worker-app[bot] @ 65ea85b7ff98 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusGovernsLearnedSwitch$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusGovernsLearnedSwitch'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-02 | assay-worker-app[bot] @ 65ea85b7ff98 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd qualgen && go build ./riskscore/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-worker-app[bot] @ 65ea85b7ff98 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -q 'Derivation:' qualgen/riskscore/learned.go` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-worker-app[bot] @ 65ea85b7ff98 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:02` | pass exit=0 | sha256:b1e69629fd94 | 2026-10-02 | assay-worker-app[bot] @ 65ea85b7ff98 (on-behalf-of human:ian) (forge-identity) |
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
