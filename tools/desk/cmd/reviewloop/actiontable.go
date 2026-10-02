@@ -77,7 +77,15 @@ type rule struct {
 //
 // The nine actions the pr-review-desk skill names (NEEDS-REVIEW, RE-REVIEW, BLOCKED,
 // CHECK, WAIT-CI, CI-RED, MERGE-CURR, FLIP, READY) are a SUBSET of what the board
-// computes. The other nine are the ones a reactor written from the skill would drop.
+// computes. The others are the ones a reactor written from the skill would drop.
+//
+// There is NO authorship disposition (#2028). Every row deskboard emits is a PR its trust
+// gate already admitted; an unblessed author never gets a row (it sits in the board's
+// EXTERNAL / UNBLESSED quarantine, which this reactor does not read), and an admitted
+// author — a trusted human included — is dispatched by the same NEEDS-REVIEW / RE-REVIEW
+// rules as everyone else. The retired #177 HUMAN-OWNED key mapped a trusted human's own
+// PR to NO-OP; an old board still emitting it now reads as an unknown action, which
+// LookupAction fails CLOSED (exit 6), never as a silent skip.
 var actionTable = map[string]rule{
 	// ---- the two dispatching states ----
 	"NEEDS-REVIEW": {DispositionDispatch, "review", "no reviewer verdict at head — fill a reviewer slot at the risk-keyed tier"},
@@ -93,16 +101,6 @@ var actionTable = map[string]rule{
 
 	// ---- benign head advance ----
 	"MERGE-CURR": {DispositionNoOp, "", "keep-current merge; the PR's own files are unchanged since the last review — deliberately NOT a re-review"},
-
-	// ---- the trusted human maintainer's own PR (#177) ----
-	// A trusted human's own open PR with no reviewer verdict at head — e.g. the
-	// closure artifact of a human-gated brief. The review desk deliberately does NOT
-	// review a human's own ratified ruling (a model reviewing it inverts the human
-	// gate), and the author merges it. NoOp, emphatically not SURFACE: there is no
-	// desk work item here and no human to alert — the human author already owns it.
-	// This is what keeps such a PR out of the neglect metric on the reactor side, the
-	// same way the board keeps it out of the UNREVIEWED count.
-	"HUMAN-OWNED": {DispositionNoOp, "", "a trusted human maintainer's own PR with no desk review at head — the author owns and merges it; the review desk declines to review a human's ratified ruling (#177)"},
 
 	// ---- waiting on someone else, visible, never dropped ----
 	"BLOCKED": {DispositionWait, "", "the reviewer bot requested changes at head — the worker must act"},
@@ -149,8 +147,8 @@ var actionTable = map[string]rule{
 // LookupAction returns the rule for an ACTION string. An action the table does not know
 // is deskkit.Unverifiable (exit 6) — the fail-closed direction. The tempting alternative,
 // treating an unrecognised action as "nothing to do", is precisely how a board surface
-// disappears silently: deskboard has grown from 9 actions to 18, and each addition would
-// otherwise have been an invisible narrowing of what the reactor watches.
+// disappears silently: deskboard has grown well past the 9 actions the skill names, and
+// each addition would otherwise have been an invisible narrowing of what the reactor watches.
 func LookupAction(action string) (rule, error) {
 	r, ok := actionTable[action]
 	if !ok {

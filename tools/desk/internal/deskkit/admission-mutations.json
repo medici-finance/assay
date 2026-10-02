@@ -1,0 +1,209 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -run '^TestAgenticAdmission'",
+  "control": {
+    "name": "CONTROL \u2014 ignore the stop flag (a stopped system still admits agent work)",
+    "file": "internal/deskkit/admission.go",
+    "old": "\tif c.StopFlag {\n\t\tst.restrict(AdmitBlocked, \"stop-flag\")",
+    "new": "\tif false {\n\t\tst.restrict(AdmitBlocked, \"stop-flag\")"
+  },
+  "mutations": [
+    {
+      "name": "invert the restriction lattice (moreRestrictive returns the LESS restrictive disposition, so confident advice widens)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif rb > ra {\n\t\treturn b\n\t}\n\treturn a\n}",
+      "new": "\tif rb < ra {\n\t\treturn b\n\t}\n\treturn a\n}"
+    },
+    {
+      "name": "let applied advice SET the cap to its label instead of only restricting it (a confident bounded label authorizes)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\tif moreRestrictive(st.cap, label) != st.cap {\n\t\t\tst.restrict(label,",
+      "new": "\t\tif label != st.cap {\n\t\t\tst.cap = label\n\t\t\tst.restrict(label,"
+    },
+    {
+      "name": "honour advice while the advice kill switch is set",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tcase c.AdviceDisabled:\n\t\treturn \"\", \"disabled\"",
+      "new": "\tcase false:\n\t\treturn \"\", \"disabled\""
+    },
+    {
+      "name": "drop the brief's own gates from the union (the admission disposition alone decides the mandatory nodes)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tfor _, g := range base {\n\t\tset[g] = true\n\t}",
+      "new": "\tfor _, g := range base {\n\t\t_ = g\n\t}"
+    },
+    {
+      "name": "let a failed readiness check map to supervised-agent (an agent lane) in a valid policy",
+      "file": "internal/deskkit/admission.go",
+      "old": "if !ceil.Valid() || ceil.rank() < AdmitHumanLed.rank() {",
+      "new": "if !ceil.Valid() || ceil.rank() < AdmitSupervisedAgent.rank() {"
+    },
+    {
+      "name": "treat unknown readiness without a discovery grant as a note, not a hold",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\t} else {\n\t\t\tst.restrict(AdmitBlocked, discoveryWhy)\n\t\t}\n\t}\n\n\t// Operations",
+      "new": "\t\t} else {\n\t\t\tst.reasons = append(st.reasons, discoveryWhy)\n\t\t}\n\t}\n\n\t// Operations"
+    },
+    {
+      "name": "drop the binding-presence check (empty bindings on both sides read as unchanged)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\tif strings.TrimSpace(b.assessed) == \"\" || strings.TrimSpace(b.current) == \"\" {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "drop the subject revision comparison (facts from another revision speak for this one)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif a.SubjectRevision != c.SubjectRevision {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "let a duplicated fact resolve to its last copy (a later pass overwrites a fail)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\tcase dup[chk]:",
+      "new": "\t\tcase false:"
+    },
+    {
+      "name": "accept a fact observed in the future",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\tcase f.ObservedAt.IsZero() || f.ObservedAt.After(c.Now) ||",
+      "new": "\t\tcase f.ObservedAt.IsZero() ||"
+    },
+    {
+      "name": "accept a fact with a zero observation time",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\tcase f.ObservedAt.IsZero() || f.ObservedAt.After(c.Now) ||",
+      "new": "\t\tcase f.ObservedAt.After(c.Now) ||"
+    },
+    {
+      "name": "read a fact state outside the vocabulary as pass",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\t\treturn FactCouldNotCheck, \"hard-unknown:\" + string(chk)",
+      "new": "\t\t\treturn FactPass, \"\""
+    },
+    {
+      "name": "skip the applicability check",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif !applies(p.Applicability, a.Subject) {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "match scopes as raw string prefixes (example-org/widgets covers example-org/widgets-evil)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tnext := subject[len(scope)]\n\treturn next == '#' || next == '/'",
+      "new": "\treturn true"
+    },
+    {
+      "name": "admit work that requests no operation",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif len(a.Operations) == 0 {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "ignore the discovery grant's read scope (any grant authorizes discovery of any subject)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\tif scopeCovers(s, subject) {\n\t\t\tcovered",
+      "new": "\t\tif true {\n\t\t\tcovered"
+    },
+    {
+      "name": "accept a discovery grant whose owner is outside the reason-code token grammar",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif !reasonTokenRE.MatchString(g.Owner) || len(g.ReadScope) == 0 {",
+      "new": "\tif len(g.ReadScope) == 0 {"
+    },
+    {
+      "name": "accept a discovery grant with a blank read-scope entry",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\tif strings.TrimSpace(s) == \"\" {\n\t\t\treturn nil, \"discovery-grant-invalid\"",
+      "new": "\t\tif false {\n\t\t\treturn nil, \"discovery-grant-invalid\""
+    },
+    {
+      "name": "let a fail ceiling or advice label stand at discovery-only with no grant",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif st.cap == AdmitDiscoveryOnly {\n\t\tif discoveryWhy != \"\" {",
+      "new": "\tif st.cap == AdmitDiscoveryOnly {\n\t\tif false && discoveryWhy != \"\" {"
+    },
+    {
+      "name": "echo an unknown operation into its reason code (the planted second instance for the reason-grammar class guard)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\t\tst.restrict(AdmitHumanLed, \"operation-unknown\")",
+      "new": "\t\t\tst.restrict(AdmitHumanLed, \"operation-unknown:\"+op)"
+    },
+    {
+      "name": "echo an unknown advice dimension into its reason code",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\t\t\tst.reasons = append(st.reasons, \"advice-ignored:\"+why)",
+      "new": "\t\t\t\tst.reasons = append(st.reasons, \"advice-ignored:\"+string(adv.Dimension)+\":\"+why)"
+    },
+    {
+      "name": "drop the subject grammar check (a subject with a control character is evaluated)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif !subjectValid(a.Subject) {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "drop the input size bounds",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif len(a.Operations) > admissionMaxOperations || len(a.Facts) > admissionMaxFacts ||\n\t\tlen(a.Advice) > admissionMaxAdvice {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "let an unmapped disposition verdict contribute no gates",
+      "file": "internal/deskkit/admission.go",
+      "old": "\textra, ok := ri.Gates[dv]\n\tif !ok {",
+      "new": "\textra, ok := ri.Gates[dv]\n\tif !ok && false {"
+    },
+    {
+      "name": "drop the workflow-pattern size bound",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif fi.Size() > admissionMaxPatternLen {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "accept an exception owner outside the reason-code token grammar (the owner is echoed into exception-applied/-expired)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\tif !reasonTokenRE.MatchString(e.Owner) {\n\t\t\treturn Refused(",
+      "new": "\t\tif false {\n\t\t\treturn Refused("
+    },
+    {
+      "name": "let a subject containing a plain space pass the subject grammar",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\tif unicode.IsControl(r) || unicode.IsSpace(r) {",
+      "new": "\t\tif unicode.IsControl(r) {"
+    },
+    {
+      "name": "apply advice whose scope names another subject",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tcase adv.Scope != a.Subject || adv.Request.Subject != a.Subject:",
+      "new": "\tcase adv.Request.Subject != a.Subject:"
+    },
+    {
+      "name": "apply advice whose request names another subject",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tcase adv.Scope != a.Subject || adv.Request.Subject != a.Subject:",
+      "new": "\tcase adv.Scope != a.Subject:"
+    },
+    {
+      "name": "drop the clock-missing check (a zero clock is evaluated)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif c.Now.IsZero() {\n\t\tst.restrict(AdmitBlocked, \"clock-missing\")",
+      "new": "\tif false {\n\t\tst.restrict(AdmitBlocked, \"clock-missing\")"
+    },
+    {
+      "name": "drop the category-absent check (an unlisted category is evaluated against a zero category)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif !ok {\n\t\tst.restrict(AdmitBlocked, \"category-absent\")",
+      "new": "\tif false {\n\t\tst.restrict(AdmitBlocked, \"category-absent\")"
+    },
+    {
+      "name": "echo the assessed subject into the result whatever it is (a refused subject reaches the decision record)",
+      "file": "internal/deskkit/admission.go",
+      "old": "\t\tif subjectValid(a.Subject) {\n\t\t\tres.Subject = a.Subject",
+      "new": "\t\tif true {\n\t\t\tres.Subject = a.Subject"
+    },
+    {
+      "name": "project a result's subject into PolicyResult without the subject grammar",
+      "file": "internal/deskkit/admission.go",
+      "old": "\tif subjectValid(r.Subject) {\n\t\tsubject = r.Subject",
+      "new": "\tif true {\n\t\tsubject = r.Subject"
+    }
+  ]
+}
