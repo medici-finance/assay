@@ -221,6 +221,56 @@ RISK-VALUE: DERIVED — ExitRefused = 5 @ tools/desk/internal/deskkit/exitcodes.
 
 VERIFY: PASS — all seven Verify rows checked-clean by direct execution at 874d56de38a7 (row 6 is now green because the unrelated gofmt drift was fixed upstream). The machine witness table above records could-not-run on this darwin host (it has no network-off sandbox). A Linux or CI re-execution of the check:ci rows is what gives the board a passing witness. Gate: model, all four risk answers no.
 
+### Non-implementer verifier re-run: 2026-10-02T22:05:32Z (UTC), assay-verifier-app[bot] (claude-opus-5-5[1m]) (on-behalf-of human:ian), merged main e1d99484ffd91b649ea45e10a1cecf4ba2a4924b
+
+Runner is not the implementer (deliverable commit 622400754, confirmed an ancestor of the head run against). Own detached worktree off origin/main, offline envelope (KUBECONFIG=/dev/null), read-only: nothing edited, committed or pushed. The worktree head e1d99484 is two commits past the dispatched SHA cf31c32418ba49f93c679913813768542db1c072 (which is its ancestor); those two commits touch only the generated board and another stream's brief and outcome record, none of this brief's inputs. Toolchain go1.27.1 darwin/arm64. Every go command ran with GOPROXY=off and GOTOOLCHAIN=local (no module or toolchain fetch possible) and under a throwaway HOME so the desk tests could not write to a live audit log.
+
+| # | Command | Expect | Observed (exit + key output line) | Date / runner |
+|---|---------|--------|-----------------------------------|---------------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 | exit 0 — no output from build or vet | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDryRunWorktreeRendersVerifiedPath$' -count=1` | exit 0 — the path appears at both sites, the placeholder at none, the banner says "operator-supplied, verified" | exit 0 — "ok github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 0.750s"; a supplementary -v run of the same selector printed "--- PASS: TestDryRunWorktreeRendersVerifiedPath (0.60s)", so the pass is a real test execution | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDryRunWorktreeRefusesUnverifiablePaths$' -count=1` | exit 0 — the four NEGATIVE cases (outside prefix, not a worktree, other repo, shared checkout) each exit 5 with their own reason and print no prompt | exit 0 — "ok github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 2.413s"; supplementary -v run printed "--- PASS: TestDryRunWorktreeRefusesUnverifiablePaths (1.80s)" and "--- PASS" for all four subtests: outside-prefix, not-a-worktree, other-repo, shared-checkout | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestWorktreeFlagRefusedOnRealDispatch$' -count=1` | exit 0 — exit 5, zero child processes recorded | exit 0 — "ok github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 0.873s"; supplementary -v run printed "--- PASS: TestWorktreeFlagRefusedOnRealDispatch (0.81s)" | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | `cd tools/desk && go test ./cmd/deskdispatch/ -count=1` | exit 0 — including the existing dry-run placeholder test, unchanged | exit 0 — "ok github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 41.654s" (whole package) | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | `gofmt -l tools/desk/cmd/deskdispatch > /tmp/dd-fmt.out; test ! -s /tmp/dd-fmt.out` | exit 0 | exit 0 — gofmt listing empty (0 bytes). Disclosure: the listing file was redirected from the system temp directory into the verifier's own scratch directory; the command is otherwise as authored | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | `cd statusgen && go run . --root .. --lint; echo $?` | 0 | exit 0 — "LINT: PASS", then "0" from the echo. NOTICEs only; four name this brief (see findings) | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+By hand: 7 of 7 rows checked-clean.
+
+**Execution witness** — `statusgen verifyrun --brief <this brief> --dry-run` (statusgen v1.0.31, run from the worktree root; dry-run wrote nothing to the brief): exit 2, 0 of 7 rows witnessed. Every row reports the same line: "could-not-run (exit=-, sha256:e3b0c44298fc) — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses unshare --net, a Linux facility, and this host is darwin." This is could-not-check, reported as itself: it says nothing for or against the deliverable. The in-container mode was not attempted, per dispatch instruction.
+
+**What changed since the 2026-09-27 record (outcome blocked, #1800)**
+
+- The verdict has not changed. The 2026-09-27 pass also had 7 of 7 rows passing by hand and 0 of 7 witnessed; this pass reproduces both numbers at a newer head.
+- #1800 is still OPEN (read this pass; last updated 2026-09-30). The witness refusal text is identical to the one recorded on 2026-09-27, so nothing on main has given a darwin host a network-off sandbox.
+- Of the inputs the record declared, six files have commits on main since 874d56de38a7: the desk tools README, the deskdispatch test file, dispatch.go, main.go, deskwt.go and exitcodes.go. The three that carry this brief's validation and its gofmt history — worktree.go, phantom_test.go, and the brief's Verify table — are unchanged. All seven rows still pass over the changed inputs, so the input change woke the item without moving it.
+- Row 6, the row that held this item through 2026-09-20, stays green (the unrelated gofmt drift tracked at #1119 was fixed by #1268 before the previous pass).
+
+**Findings**
+
+1. Check-definition, non-blocking: the lint in row 7 emits [gotest-run-vacuous] NOTICEs for rows 2, 3 and 4 — each runs a `-run` selector with no "--- PASS:" assertion in the same command, so the row as written cannot tell a real pass from "no tests to run". This pass closed the gap by observing the "--- PASS:" line for each named test directly. The rows could be tightened in a follow-up.
+2. Check-definition, non-blocking: the lint emits a [verify-row-portability] NOTICE for row 6 (a hard-coded system temp path with no OS marker).
+3. No defect found in the deliverable.
+
+**Risk-bearing values** — enumeration over every file the deliverable commit touches (dispatch.go, main.go, worktree.go, the dry-run worktree test file, the desk tools README and changelog) plus the literals the brief's facts name:
+
+1. worktreeTmpBase = "/private/tmp" @ tools/desk/cmd/deskdispatch/worktree.go:76
+2. worktree-name prefix literal "tracker-" @ tools/desk/cmd/deskdispatch/worktree.go:146
+3. sanctioned in-repo prefix filepath.Join(sharedCheckout, ".claude", "worktrees") @ tools/desk/cmd/deskdispatch/worktree.go:149
+4. ExitRefused = 5 @ tools/desk/internal/deskkit/exitcodes.go:51 (used by this diff, named in the brief's facts; the line moved from 27 since the last pass, the value did not)
+5. ExitUnverifiable = 6 @ tools/desk/internal/deskkit/exitcodes.go:55 (the unreadable-root path; moved from line 31, value unchanged)
+6. authority binding: --worktree is refused unless dryRun is true @ tools/desk/cmd/deskdispatch/dispatch.go:637 (a boolean gate, no numeric literal)
+
+Ranking: 1-3 rank highest — a loosened prefix would let a previewed prompt name a home outside the isolation allowlist, and an agent handed that prompt could write in the wrong place, which is only partly undoable. 4-6 affect only a dry-run render or an exit contract and are reversible by an edit and a rebuild; rows 3 and 4 cover them.
+
+RISK-VALUE: DERIVED — worktreeTmpBase = "/private/tmp" @ tools/desk/cmd/deskdispatch/worktree.go:76 — byte-identical to deskwt's tmpBaseDir = "/private/tmp" @ tools/desk/cmd/deskwt/deskwt.go:26, the rule the brief requires duplicating without loosening. deskwt.go changed on main since the last pass; the constant was re-read at this head and is unchanged.
+RISK-VALUE: DERIVED — "tracker-" prefix @ tools/desk/cmd/deskdispatch/worktree.go:146 and the ".claude", "worktrees" join @ tools/desk/cmd/deskdispatch/worktree.go:149 — the same literals and the same two-branch shape as deskwt's prefix test @ tools/desk/cmd/deskwt/deskwt.go:166 and its worktrees directory @ tools/desk/cmd/deskwt/deskwt.go:118, re-read at this head. Not loosened.
+RISK-VALUE: DERIVED — ExitRefused = 5 @ tools/desk/internal/deskkit/exitcodes.go:51 — the brief's facts require exit 5 for each refusal, and this is the verb family's refused-by-constraint code; ExitUnverifiable = 6 @ tools/desk/internal/deskkit/exitcodes.go:55 is kept apart from it for the could-not-verify path.
+
+Gate: model; all four risk answers no. Status left where it is.
+
+VERIFY: BLOCKED — all seven Verify rows pass by direct execution at e1d99484, but the execution witness records 0 of 7 (could-not-run: the check:ci network-off sandbox is Linux-only and the verifier host is darwin). Environment blocker #1800, still open; clears on a Linux runner. Same verdict as 2026-09-27.
+
 ## Review
 
 Gate: model (all four risk answers no). The reviewer confirms row 4 is present and that the
