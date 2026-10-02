@@ -206,9 +206,14 @@ func TestRollbackKeepsForeignFiles(t *testing.T) {
 
 // End to end: a house scaffold whose link fails (a Windows host with no symlink privilege and
 // a junction that also fails) dies with the remediation, leaves NO cell dir, and a retry works.
-func TestNewHouseLinkFailRollback(t *testing.T) {
+// houseFixture is a world newHouse scaffolds into: a HOME carrying a gh config and a gitconfig,
+// an operator config home holding a sentinel roster, a git checkout, and a cells root that does
+// not exist yet.
+func houseFixture(t *testing.T) (e *Env, cfg, repo, root, roots string) {
+	t.Helper()
 	tmp := t.TempDir()
-	home, cfg, repo, root := filepath.Join(tmp, "home"), filepath.Join(tmp, "cfg"), filepath.Join(tmp, "repo"), filepath.Join(tmp, "cells")
+	home := filepath.Join(tmp, "home")
+	cfg, repo, root = filepath.Join(tmp, "cfg"), filepath.Join(tmp, "repo"), filepath.Join(tmp, "cells")
 	for _, p := range []string{filepath.Join(home, ghConfigRelPath), cfg, filepath.Join(repo, "docs", "streams")} {
 		must(t, os.MkdirAll(p, 0o755))
 	}
@@ -217,10 +222,14 @@ func TestNewHouseLinkFailRollback(t *testing.T) {
 	if out, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
 		t.Skipf("git init: %v %s", err, out)
 	}
-	e := &Env{vals: map[string]string{}, set: map[string]bool{}}
+	e = &Env{vals: map[string]string{}, set: map[string]bool{}}
 	e.Put("HOME", home)
 	e.Put("ASSAY_CONFIG_HOME", cfg)
-	roots := "o/r=" + repo
+	return e, cfg, repo, root, "o/r=" + repo
+}
+
+func TestNewHouseLinkFailRollback(t *testing.T) {
+	e, cfg, repo, root, roots := houseFixture(t)
 
 	defer func(prev func() linker) { newLinker = prev }(newLinker)
 	r := &recLinker{symlinkErr: func(o, n string) error {
@@ -258,6 +267,59 @@ func TestNewHouseLinkFailRollback(t *testing.T) {
 	assertDies(t, "pre-existing", func() { newHouse(e, root, "c", repo, roots, "the-desk", "8787") })
 	if !exists(sentinel) || !exists(filepath.Join(root, "c", "cell.env")) {
 		t.Fatal("a refusal over a pre-existing cell deleted something")
+	}
+}
+
+// A nested cell name scaffolds as the oracle's `mkdir -p "$d/..."` scaffolds it: the parents of
+// the cell directory are made, not refused. A failed nested scaffold removes the cell and leaves
+// the (unjournaled) parent, which a retry then reuses.
+func TestNewHouseNestedName(t *testing.T) {
+	e, cfg, repo, root, roots := houseFixture(t)
+	defer func(prev func() linker) { newLinker = prev }(newLinker)
+	l := (&recLinker{symlinkErr: privErr}).linker("windows")
+	l.junction = func(string, string) error { return errors.New("junction refused") }
+	newLinker = func() linker { return l }
+	captureStderr(t, func() {
+		assertDies(t, "nested link failure", func() { newHouse(e, root, "team/c", repo, roots, "the-desk", "8787") })
+	})
+	if !isDir(filepath.Join(root, "team")) {
+		t.Fatal("the nested cell's parent was not made (the oracle's mkdir -p makes it)")
+	}
+	if exists(filepath.Join(root, "team", "c")) {
+		t.Fatal("a failed nested scaffold left the partial cell behind")
+	}
+
+	newLinker = hostLinker
+	captureStdout(t, func() { newHouse(e, root, "team/c", repo, roots, "the-desk", "8787") })
+	d := filepath.Join(root, "team", "c")
+	if link, _ := os.Readlink(filepath.Join(d, "home", ".config", "assay")); link != cfg {
+		t.Fatalf("nested cell not scaffolded: config link %q", link)
+	}
+	for _, p := range []string{"worktrees", "shim", "cell.env", "README.md"} {
+		if !exists(filepath.Join(d, p)) {
+			t.Errorf("nested cell lacks %s", p)
+		}
+	}
+}
+
+// The scaffold's own mkdir is `mkdir -p` inside the cell: missing parents are made parent first,
+// each journaled, and the rollback removes all of them.
+func TestScaffoldMkdirParents(t *testing.T) {
+	d := filepath.Join(t.TempDir(), "c")
+	s, err := beginCellScaffold("linux", d)
+	must(t, err)
+	deep := filepath.Join(d, "x", "y", "z")
+	must(t, s.mkdir(deep))
+	want := []string{filepath.Join(d, "x"), filepath.Join(d, "x", "y"), deep}
+	if strings.Join(s.created, ",") != strings.Join(want, ",") {
+		t.Fatalf("journal = %v, want %v", s.created, want)
+	}
+	if err := s.mkdir(deep); err == nil {
+		t.Fatal("an existing directory must not be re-created (or journaled)")
+	}
+	must(t, s.rollback())
+	if exists(d) {
+		t.Fatal("rollback left the parents behind")
 	}
 }
 
@@ -322,8 +384,8 @@ var symlinkAllowed = map[string]string{
 	"shims.go:genShims":     "known same-class site (shim links); not this change",
 }
 
-// symlinkSites names every function in one Go source that references os.Symlink.
-func symlinkSites(name string, src any) ([]string, error) {
+// osCallSites names every function in one Go source that references os.<call>.
+func osCallSites(name string, src any, call string) ([]string, error) {
 	f, err := parser.ParseFile(token.NewFileSet(), name, src, 0)
 	if err != nil {
 		return nil, err
@@ -339,7 +401,7 @@ func symlinkSites(name string, src any) ([]string, error) {
 			if !ok {
 				return true
 			}
-			if x, isID := sel.X.(*ast.Ident); isID && x.Name == "os" && sel.Sel.Name == "Symlink" {
+			if x, isID := sel.X.(*ast.Ident); isID && x.Name == "os" && sel.Sel.Name == call {
 				sites = append(sites, filepath.Base(name)+":"+fn.Name.Name)
 			}
 			return true
@@ -357,7 +419,7 @@ func TestSymlinkClassGuard(t *testing.T) {
 			continue
 		}
 		scanned++
-		sites, err := symlinkSites(f.Name(), nil)
+		sites, err := osCallSites(f.Name(), nil, "Symlink")
 		must(t, err)
 		for _, s := range sites {
 			seen[s] = true
@@ -375,8 +437,56 @@ func TestSymlinkClassGuard(t *testing.T) {
 		}
 	}
 	// Positive control: a planted raw call must be reported, or the matcher has gone blind.
-	sites, err := symlinkSites("planted.go", "package main\nimport \"os\"\nfunc plantedLink() { _ = os.Symlink(\"a\", \"b\") }\n")
+	sites, err := osCallSites("planted.go", "package main\nimport \"os\"\nfunc plantedLink() { _ = os.Symlink(\"a\", \"b\") }\n", "Symlink")
 	if err != nil || len(sites) != 1 || sites[0] != "planted.go:plantedLink" {
+		t.Fatalf("positive control: %v %v", sites, err)
+	}
+}
+
+// mkdirAllowed is every non-test site that may name os.Mkdir. The class this guards: a
+// NON-recursive mkdir where the shell oracle runs `mkdir -p`, so a nested cell name the oracle
+// scaffolds (`cellctl new team/a`) is refused by the port. Each entry states why that site is
+// exclusive on purpose; a new site either goes through MkdirAll / the scaffold's mkdir, or is
+// added here with the oracle line it matches.
+var mkdirAllowed = map[string]string{
+	"newlink.go:beginCellScaffold":           "parents made by MkdirAll first; the exclusive create IS the pre-existing-cell refusal",
+	"newlink.go:mkdir":                       "the scaffold's mkdir -p inside the cell: parents made first, each create exclusive and journaled",
+	"newlink_windows.go:createJunction":      "the junction's own directory, in a parent the scaffold made; the oracle makes a symlink here",
+	"new.go:newContainer":                    "oracle `mkdir -m 700 \"$d\"` is exclusive too; the name is one path element",
+	"container_native.go:newNativeContainer": "no oracle counterpart; the config's cell name is one path element",
+	"git.go:fetchMainUnderLock":              "a mkdir LOCK; oracle `mkdir \"$lock\"` is exclusive by design",
+	"lock.go:takeSessionLock":                "the session mkdir lock; oracle `mkdir \"$lockdir\"` is exclusive by design",
+}
+
+func TestMkdirClassGuard(t *testing.T) {
+	files, err := os.ReadDir(".")
+	must(t, err)
+	scanned, seen := 0, map[string]bool{}
+	for _, f := range files {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".go") || strings.HasSuffix(f.Name(), "_test.go") {
+			continue
+		}
+		scanned++
+		sites, err := osCallSites(f.Name(), nil, "Mkdir")
+		must(t, err)
+		for _, s := range sites {
+			seen[s] = true
+			if _, ok := mkdirAllowed[s]; !ok {
+				t.Errorf("raw os.Mkdir at %s — where the oracle runs `mkdir -p`, use os.MkdirAll (or the scaffold's mkdir); a deliberate exclusive create goes on mkdirAllowed with its oracle line", s)
+			}
+		}
+	}
+	if scanned == 0 {
+		t.Fatal("no source scanned")
+	}
+	for s := range mkdirAllowed {
+		if !seen[s] {
+			t.Errorf("allow-list entry %s matches no os.Mkdir; remove it", s)
+		}
+	}
+	// Positive control: a planted raw call must be reported, or the matcher has gone blind.
+	sites, err := osCallSites("planted.go", "package main\nimport \"os\"\nfunc plantedDir() { _ = os.Mkdir(\"a/b\", 0o755) }\n", "Mkdir")
+	if err != nil || len(sites) != 1 || sites[0] != "planted.go:plantedDir" {
 		t.Fatalf("positive control: %v %v", sites, err)
 	}
 }

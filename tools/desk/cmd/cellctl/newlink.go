@@ -108,7 +108,14 @@ type cellScaffold struct {
 	created []string // every path this run created under dir, in creation order
 }
 
+// beginCellScaffold makes dir's PARENTS the way the oracle's `mkdir -p "$d/…"` makes them, so a
+// nested cell name (`cellctl new team/a`) scaffolds as it always has, and then dir itself
+// exclusively. The parents sit outside the cell and are not journaled: a rollback never removes
+// them (as it never removes the cells root), and an empty one left behind never blocks a retry.
 func beginCellScaffold(goos, dir string) (*cellScaffold, error) {
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		return nil, fmt.Errorf("cannot create %s: %v", filepath.Dir(dir), err)
+	}
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			return nil, fmt.Errorf("%s already exists (cellctl new never overwrites a cell — remove it yourself, or pick another name)", dir)
@@ -124,15 +131,29 @@ func (s *cellScaffold) owns(p string) bool {
 	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
+// mkdir is the oracle's `mkdir -p` INSIDE the cell: every missing directory between the cell and
+// p is made parent first and journaled, so the rollback removes them child first. p itself must
+// not exist — the journal only ever names what this run created.
 func (s *cellScaffold) mkdir(paths ...string) error {
 	for _, p := range paths {
 		if !s.owns(p) {
 			return fmt.Errorf("refusing to create %s: outside the cell %s", p, s.dir)
 		}
-		if err := os.Mkdir(p, 0o755); err != nil {
-			return fmt.Errorf("cannot create %s: %v", p, err)
+		missing := []string{p}
+		for q := filepath.Dir(p); s.owns(q); q = filepath.Dir(q) {
+			if _, err := os.Lstat(q); err == nil {
+				break
+			} else if !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("cannot create %s: %v", p, err)
+			}
+			missing = append(missing, q)
 		}
-		s.created = append(s.created, p)
+		for i := len(missing) - 1; i >= 0; i-- {
+			if err := os.Mkdir(missing[i], 0o755); err != nil {
+				return fmt.Errorf("cannot create %s: %v", missing[i], err)
+			}
+			s.created = append(s.created, missing[i])
+		}
 	}
 	return nil
 }
