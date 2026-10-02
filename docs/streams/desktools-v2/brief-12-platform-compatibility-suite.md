@@ -61,6 +61,9 @@ id: 968c76a1-05b5-4185-825c-c4464df1648e
 files:
 - NEW `tools/desk/internal/deskkit/pathabs.go` (planned) + its test — `IsAbsFor`.
 - `tools/desk/cmd/cellctl/cell.go`, `new.go`, `set.go` — the four POSIX-only path checks move onto one shared check; NEW `tools/desk/cmd/cellctl/pathcheck.go` (planned) — `cellPathCheck`, `IsAbsFor` plus the UNC/device refusal, with its test; NEW env-resolution test.
+- NEW `tools/desk/cmd/cellctl/homeresolve.go` — the one operator-home resolver and its test; its callers `check.go`, `desk.go`, `codex_environment.go` and `policy_enforce.go` (`cell.go` and `new.go` above) move onto it.
+- `tools/desk/internal/deskkit/selfcontain.go` — the Windows drive-letter and UNC forms of the absolute-machine-path class, with `platform_outbound_test.go` and the `platform-env-outbound-mutations.json` mutation spec (row 14).
+- `tools/desk/cmd/deskpr/main.go` — help text naming the Windows forms of that class.
 - `tools/desk/internal/deskkit/custodyacl_test.go`, `custodyverdict_test.go` — one new case each; the custody decision code is not edited.
 - NEW `tools/desk/internal/custodytest/` (planned) — `PrivateTempDir` and its test; the custody-dependent `tools/desk/cmd/deskfleet` and `tools/desk/cmd/desktoken` tests move onto it.
 - NEW conformance and ambient-decoy tests in `tools/desk/internal/deskkit/`.
@@ -139,10 +142,14 @@ cases the existing tables genuinely lack, plus the temp-dir helper the tests nee
    `roots/drive_letter_accepted` and `launcher/posix_exec_accepted`.
    Owns the cellctl non-POSIX-path gap from #1836 §3-new-1.
 2. **T3 — environment resolution with an injected env.** Using cellctl's existing `e.Get`
-   abstraction, a table test `TestEnvResolution` (planned) covering config-home, gh/glab config and
+   abstraction, a table test `TestEnvResolution` (planned) covering config-home, gh config and
    harness-home resolution under `goos=windows` semantics for: `HOME` unset with
    `USERPROFILE`/`APPDATA` set (#642); both set; neither set — which must REFUSE, never fall
-   back to `/`. The neither-set case is the subtest `windows/neither_set_refuses`.
+   back to `/`. The neither-set case is the subtest `windows/neither_set_refuses`. There is no
+   glab case: cellctl resolves no glab config — a gitlab cell's custody is the role token store,
+   and `check` reports the CLI-config link as not applicable on that arm. Off Windows the home
+   is `HOME` alone (no `USERPROFILE` fallback), and a set home that is relative, non-local or the
+   filesystem root refuses like an unset one; `cellctl new` resolves it before its first mkdir.
 3. **T4 — custody: extend the existing model's tables; add the temp-dir helper.** No new ACE
    type, no new decision function, no production change to the custody check.
    - Add the one case both tables lack: a deny ACE for a foreign SID placed BEFORE an allow ACE
@@ -255,10 +262,11 @@ cases the existing tables genuinely lack, plus the temp-dir helper the tests nee
 | 11 | check | `statusgen --consumers --root .` | exit 0; no routing claim in this brief is disproved by the diff |
 | 12 | check | `d=$(mktemp -d) && cd tools/desk \|\| exit 1; miss=0; go test -run '^TestCellPathCheck$' -v ./cmd/cellctl/ > "$d/r12.out" 2>&1 \|\| { echo "FAIL go test"; miss=1; }; grep -q -E -e '^--- PASS: TestCellPathCheck \(' "$d/r12.out" \|\| { echo "MISSING TestCellPathCheck"; miss=1; }; for t in $(for g in roots launcher; do for c in backslash_unc slash_unc mixed_sep_unc extended_unc extended_drive device_ns; do echo "$g/${c}_refused"; done; done) roots/posix_abs_accepted roots/drive_letter_accepted launcher/posix_exec_accepted; do grep -q -E -e "--- PASS: TestCellPathCheck/$t \(" "$d/r12.out" \|\| { echo "MISSING $t"; miss=1; }; done; test $miss -eq 0` | exit 0 and nothing printed — every UNC and device spelling (`\\srv\share`, `//srv/share`, mixed separators, `\\?\UNC\`, `\\?\C:\`, `\\.\`) is refused both as a cell root and as `CELL_CONTAINER_LAUNCHER`, and a POSIX root, a drive-letter root and a POSIX launcher stay accepted. Today it prints `MISSING TestCellPathCheck` and fifteen `MISSING <group>/<case>` lines and exits 1 |
 | 13 | check | `n=$(grep -c -F -e 'cellPathCheck(' tools/desk/cmd/cellctl/cell.go); m=$(grep -c -F -e 'cellPathCheck(' tools/desk/cmd/cellctl/new.go); k=$(grep -c -F -e 'cellPathCheck(' tools/desk/cmd/cellctl/set.go); echo "cell=$n new=$m set=$k"; test "$n" -ge 2 && test "$m" -ge 1 && test "$k" -ge 1` | prints the three counts and exits 0 — all four path sites (`rootsValid` and the launcher check in `cell.go`, the launcher checks in `new.go` and `set.go`) call the one shared check that row 12 tests, so no site keeps a private check that row 12 does not see. Today it prints `cell=0 new=0 set=0` and exits 1 |
+| 14 | check +mutation | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/deskkit/platform-env-outbound-mutations.json` | exit 0 and the last line reads `Totals: N caught, 0 NOT CAUGHT, 0 could-not-mutate.` with N equal to the spec's mutation count — the harness first proves the baseline green and its positive control (the unset-home refusal removed) caught, then applies each mutant of the controls this brief adds or changes: the operator-home resolver (Windows precedence, no POSIX fallback, the absolute-and-not-root shape check, no fall-through past a bad value), `cellctl new` resolving the home before its first mkdir, the config home derived outside the resolver, the APPDATA gh default, and the Windows drive-letter and UNC matchers (each disabled, the IsAbsFor confirmation inverted, bare-root tolerance, separator tolerance, URL/mid-path exclusion). Any mutant the row-2/row-14 tests do not catch exits non-zero |
 
 ## DoD
 
-- All thirteen Verify rows pass on Linux (the suite's home). Rows 1–3 and 8 also pass on the
+- All fourteen Verify rows pass on Linux (the suite's home). Rows 1–3 and 8 also pass on the
   `windows-latest` leg that desktools-v2/13 deliverable 4 adds, once that leg lands.
   **NOTE — when that Windows proof runs.** Today `.github/workflows/windows-ci-leg.yml`
   triggers only on a `v*` tag push and on `workflow_dispatch`, not on `pull_request`. Unless
@@ -268,9 +276,15 @@ cases the existing tables genuinely lack, plus the temp-dir helper the tests nee
   runs, not in what is proven.
 - No production behavior change except deliverables 1 (cellctl accepts Windows drive-letter
   path shapes, and refuses every UNC and device spelling for both the stream roots and
-  `CELL_CONTAINER_LAUNCHER` with a named reason — rows 9, 12, 13) and 7 (deskfleet degrades on
-  a CE tier gap, keyed on a 404 from the approvals endpoint only, instead of dying — row 7),
-  each covered by its own rows above. Deliverable 3 changes tests and
+  `CELL_CONTAINER_LAUNCHER` with a named reason — rows 9, 12, 13), 2 (cellctl resolves the
+  operator home USERPROFILE-first on Windows and from HOME alone elsewhere, and refuses when the
+  home is unset, relative, non-local or the filesystem root, instead of deriving a relative or
+  root-anchored config path — rows 2, 14), 7 (deskfleet degrades on
+  a CE tier gap, keyed on a 404 from the approvals endpoint only, instead of dying — row 7) and
+  the brief-10 Windows row of deliverable 8 (the public-target absolute-machine-path class also
+  recognises drive-letter and UNC paths, in either separator direction and any run of
+  separators, via `IsAbsFor` — brief 10's own Verify table and row 14),
+  each covered by its own rows. Deliverable 3 changes tests and
   adds one test helper; the custody decision itself is untouched.
 - Every test named by THIS brief's own Verify rows exists at merge and is the test the row
   invokes. Rows this brief adds to briefs 03, 05, 08 and 10 name tests those briefs' own
