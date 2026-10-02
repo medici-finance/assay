@@ -74,7 +74,7 @@ _Held by per-stream caps: 3 brief(s) across 2 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 984c3f3 2026-10-02T14:43:00+10:00_
+_last regen: 2a6460e 2026-10-02T16:08:16+10:00_
 
 **Progress:** 5/13 brief items done.
 
@@ -97,7 +97,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 984c3f3 2026-10-02T14:43:00+10:00_
+_last regen: 2a6460e 2026-10-02T16:08:16+10:00_
 
 **Progress:** 12/31 brief items done.
 
@@ -129,20 +129,21 @@ _last regen: 984c3f3 2026-10-02T14:43:00+10:00_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (50 desk-actionable of 84 total — 82 at implemented, 2 verified awaiting review)
+## Awaiting verification / review (51 desk-actionable of 85 total — 83 at implemented, 2 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (50)
+### Desk-actionable (51)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | graph-execution | 02 [exec:strong] | implemented | 7500 | 11 | — | — | — |
 | build-less-brittle | 02 [exec:strong] | implemented | 6500 | 7 | — | — | — |
 | build-less-brittle | 04 [exec:strong] | implemented | 5500 | 5 | — | — | — |
+| cellctl-windows | 00 [exec:strong] | implemented | 5500 | 7 | — | — | — |
 | windows-port | 00 | implemented | 5500 | 9 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | build-less-brittle | 06 [exec:strong] | implemented | 4500 | 3 | — | — | — |
@@ -311,7 +312,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 ### cellctl-windows (8 open)
 
-- 00 Go launch and session contracts for native Windows — todo (wave 0)
+- 00 Go launch and session contracts for native Windows — implemented (wave 0)
 - 01 Go wrappers and native Windows cell environment — todo (wave 1)
 - 02 Native process ownership and lifetime on Windows — todo (wave 1)
 - 03 Windows Orca and Herdr console adapters — todo (wave 1)
