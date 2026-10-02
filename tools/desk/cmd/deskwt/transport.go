@@ -38,12 +38,18 @@ package main
 // --all origin`, insteadOf applied): exactly the one https URL for fetch and for push, or the
 // operation is REFUSED (`add` rolls back; `role-init` retains a reusable worktree).
 // Inherited transport is the fault: writing config does not prove the transport is right.
+// Any failure after the URL writes — the read-back refusal, or a credential that cannot be
+// resolved — restores the worktree-scoped URL lists this call replaced, and the inherited
+// helper chain is cleared before the first URL write and stays cleared, so a retained
+// worktree never pairs the App URL with an ambient credential.
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -190,7 +196,7 @@ func transportRefusal(target, role, why string) error {
 // file header), then proves it by reading back what git itself resolves. It returns a one-line
 // detail for the audit line and stderr; errors stop provisioning before preflight. A reused
 // worktree must be preserved because it may contain existing work.
-func wireRoleTransport(target, role, repo string) (string, error) {
+func wireRoleTransport(target, role, repo string) (detail string, err error) {
 	fetch, err := originURLs(target, false)
 	if err != nil {
 		return "", deskkit.Unverifiable("cannot read the origin fetch URL at "+target+" to wire the App transport", err)
@@ -223,8 +229,38 @@ func wireRoleTransport(target, role, repo string) (string, error) {
 		return "transport: local origin (no network transport to wire)", nil
 	}
 
+	// PARTIAL-WRITE SAFETY. From here on the URL lists are rewritten BEFORE the credential
+	// helper is wired, so a later failure (a write error, a read-back refusal, a credential
+	// that cannot be resolved) must not leave the worktree pointing at the App URL with the
+	// inherited helper chain still answering for it. Two independent layers:
+	//   1. the inherited unscoped helper chain is cleared at worktree scope FIRST, before the
+	//      App URL exists, and is NOT restored on failure — whatever happens below, no ambient
+	//      credential answers inside this worktree;
+	//   2. the worktree-scoped URL lists are snapshotted now and restored on any failure, so a
+	//      retained worktree goes back to the push destination it had before this call.
+	saved := map[string][]string{}
+	for _, key := range transportURLKeys {
+		vals, serr := worktreeValues(target, key)
+		if serr != nil {
+			return "", deskkit.Unverifiable("cannot read the worktree-scoped "+key+" list at "+target, serr)
+		}
+		saved[key] = vals
+	}
+	if _, rerr := runGit(target, "config", "--worktree", "--replace-all", "credential.helper", ""); rerr != nil {
+		return "", deskkit.Unverifiable("cannot reset the worktree-scoped credential helper chain at "+target, rerr)
+	}
+	provisioned := false
+	defer func() {
+		if provisioned {
+			return
+		}
+		if rerr := restoreWorktreeValues(target, saved); rerr != nil {
+			err = fmt.Errorf("%w; restoring the worktree-scoped origin URLs also failed: %v", err, rerr)
+		}
+	}()
+
 	httpsURL := "https://" + host + ":443/" + repo + ".git"
-	for _, key := range []string{"remote.origin.pushurl", "remote.origin.url"} {
+	for _, key := range transportURLKeys {
 		if _, werr := runGit(target, "config", "--worktree", "--replace-all", key, ""); werr != nil {
 			return "", deskkit.Unverifiable("cannot reset the worktree-scoped "+key+" list at "+target, werr)
 		}
@@ -261,6 +297,52 @@ func wireRoleTransport(target, role, repo string) (string, error) {
 	if werr := wireRoleCredential(target, role, repo, roleCredUser(role)); werr != nil {
 		return "", werr
 	}
+	provisioned = true
 	fmt.Fprintln(os.Stderr, "deskwt: worktree-scoped App transport for origin: fetch and push "+httpsURL)
 	return "transport " + httpsURL + " (fetch+push, worktree-scoped)", nil
+}
+
+// transportURLKeys are the two multi-valued origin URL lists wireRoleTransport rewrites.
+var transportURLKeys = []string{"remote.origin.pushurl", "remote.origin.url"}
+
+// worktreeValues returns key's values at WORKTREE scope only, in order, empty entries kept
+// (an empty entry is the list reset, so it is part of the state). An unset key is an empty
+// list, not an error.
+func worktreeValues(target, key string) ([]string, error) {
+	out, err := runGit(target, "config", "--worktree", "-z", "--get-all", key)
+	if err != nil {
+		var de *deskkit.DeskError
+		if errors.As(err, &de) && de.ExitStatus == 1 {
+			return nil, nil // git config: the key is not set
+		}
+		return nil, err
+	}
+	vals := strings.Split(out, "\x00")
+	return vals[:len(vals)-1], nil // -z terminates every value, so the last field is empty
+}
+
+// restoreWorktreeValues puts each key's worktree-scoped list back to the snapshot and proves
+// it by reading it back. It touches worktree scope only, never the shared checkout's config.
+func restoreWorktreeValues(target string, saved map[string][]string) error {
+	for _, key := range transportURLKeys {
+		if _, err := runGit(target, "config", "--worktree", "--unset-all", key); err != nil {
+			var de *deskkit.DeskError
+			if !errors.As(err, &de) || de.ExitStatus != 5 { // 5: nothing to unset
+				return err
+			}
+		}
+		for _, v := range saved[key] {
+			if _, err := runGit(target, "config", "--worktree", "--add", key, v); err != nil {
+				return err
+			}
+		}
+		got, err := worktreeValues(target, key)
+		if err != nil {
+			return err
+		}
+		if !slices.Equal(got, saved[key]) {
+			return fmt.Errorf("the worktree-scoped %s list reads back as %d entries, not the %d saved", key, len(got), len(saved[key]))
+		}
+	}
+	return nil
 }

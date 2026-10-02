@@ -82,7 +82,10 @@ https-to-SSH insteadOf from rewriting it — plus the role App's host-scoped cre
 (the same one role-init writes). An SSH host alias is resolved to its real host with
 ` + "`ssh -G`" + ` (no connection). It then reads back what git itself resolves for fetch and push, and
 REFUSES (exit 5) unless both are exactly that one URL. add rolls back its new worktree;
-role-init retains its worktree for repair and stops before preflight. An origin on
+role-init retains its worktree for repair and stops before preflight. On any failure after
+the URL writes (that refusal, or a credential that cannot be resolved) the worktree-scoped URL
+lists are restored, and the inherited credential helper chain, cleared before the first URL
+write, stays cleared. An origin on
 git's local transport (a path) carries no key and is left as it is, unless it pushes over SSH.
 An explicit HTTP service port, an HTTPS port other than 443, or an empty HTTP(S)
 port is refused before URL or credential provisioning. Omitted HTTP ports retain

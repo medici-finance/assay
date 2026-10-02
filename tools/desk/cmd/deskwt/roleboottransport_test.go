@@ -81,6 +81,64 @@ func TestRoleInitAppTransport(t *testing.T) {
 	}
 }
 
+// A failure after the URL writes must not leave the retained worktree pushing to the App
+// URL while the inherited helper chain still answers for it. Two independent layers are
+// pinned: the worktree-scoped URL lists are restored (push goes back to the sentinel), and
+// the inherited helper chain is cleared before any URL is written (no ambient credential
+// answers for the App URL even if the restore did not happen).
+func TestRoleInitPartialProvision(t *testing.T) {
+	const ambient = "AMBIENT-FIXTURE-SECRET"
+	for _, fail := range []string{"credential", "readback"} {
+		for _, reuse := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/reuse=%v", fail, reuse), func(t *testing.T) {
+				work := newRepo(t)
+				withEnv(t, work)
+				sshOperatorCheckout(t, work, sharedSSHOrigin)
+				mustGit(t, work, "config", "--global", "credential.helper",
+					"!f(){ echo username=ambient; echo password="+ambient+"; }; f")
+				mustGit(t, work, "config", "extensions.worktreeConfig", "true")
+				mustGit(t, work, "branch", "--track", "verify-desk/partial", "origin/main")
+				switch fail {
+				case "credential":
+					roleCredential = func(string, deskkit.ForgeRepo, string) (deskkit.RoleCredential, error) {
+						return deskkit.RoleCredential{}, deskkit.Unverifiable("fixture: credential resolve failed", nil)
+					}
+				case "readback":
+					mustGit(t, work, "config", "--global", "url.ssh://git@github.com/.insteadOf", "https://github.com:443/")
+				}
+				target := filepath.Join(tmpBaseDir, "tracker-verify-desk-partial")
+				if reuse {
+					mustGit(t, work, "worktree", "add", target, "verify-desk/partial")
+					writeFile(t, filepath.Join(target, "keep.txt"), "existing work\n")
+				}
+				pfRan := false
+				roleInitPreflight = func(deskkit.PreflightRequest) error { pfRan = true; return nil }
+				rc, stderr := runCapErr(t, []string{"role-init", "verifier", "--session", "partial", "--no-fetch"})
+				if rc == deskkit.ExitOK || pfRan {
+					t.Fatalf("rc=%d preflight=%v, want a failure before preflight: %s", rc, pfRan, stderr)
+				}
+				if _, err := os.Stat(target); err != nil {
+					t.Fatalf("role-init no longer retains the worktree: %v", err)
+				}
+				if got := gitLines(t, target, "remote", "get-url", "--push", "--all", "origin"); len(got) != 1 || got[0] != operatorSentinel {
+					t.Fatalf("push destination left at %v, want the inherited sentinel", got)
+				}
+				if got := gitLines(t, target, "remote", "get-url", "--all", "origin"); len(got) != 1 || got[0] != sharedSSHOrigin {
+					t.Fatalf("fetch URL left at %v, want the inherited origin", got)
+				}
+				if got := credentialFill(t, target, "https", "github.com:443"); strings.Contains(got, ambient) {
+					t.Fatalf("inherited credential helper answers for the App URL: %s", got)
+				}
+				if reuse {
+					if got, err := os.ReadFile(filepath.Join(target, "keep.txt")); err != nil || string(got) != "existing work\n" {
+						t.Fatalf("failure destroyed existing work: %q %v", got, err)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestRoleInitBadTransport(t *testing.T) {
 	for _, reuse := range []bool{false, true} {
 		t.Run(fmt.Sprintf("reuse=%v", reuse), func(t *testing.T) {
