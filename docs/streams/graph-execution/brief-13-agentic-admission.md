@@ -110,7 +110,7 @@ The flow row must call production contract code across the seam; isolated serial
 
 ### Verification — graph-execution/13 — first independent pass, 2026-10-02
 
-**VERIFY: PASS 3/3 by hand at 75fc02522bd9 (contains the implementation, #2014). Evidence only — the brief is `gate: human`, `regulatory: yes`; no status change is made here and no model signs it off.** Run by a non-implementer in an isolated worktree, with an isolated home directory for every Go command.
+**VERIFY: BLOCKED (witness owed) — rows 1 to 3 pass by hand at 75fc02522bd9 (contains the implementation, #2014), but all three are `check:ci` rows and no network-off witness has run, so this is not a pass verdict. Evidence only — the brief is `gate: human`, `regulatory: yes`; no status change is made here and no model signs it off.** Run by a non-implementer in an isolated worktree, with an isolated home directory for every Go command.
 
 | # | Command | Exit | Observed | Verdict | Runner |
 |---|---------|------|----------|---------|--------|
