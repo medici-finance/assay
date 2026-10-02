@@ -297,8 +297,8 @@ func wireRoleTransport(target, role, repo string) (detail string, err error) {
 	if werr := wireRoleCredential(target, role, repo, roleCredUser(role)); werr != nil {
 		return "", werr
 	}
-	provisioned = true
 	fmt.Fprintln(os.Stderr, "deskwt: worktree-scoped App transport for origin: fetch and push "+httpsURL)
+	provisioned = true
 	return "transport " + httpsURL + " (fetch+push, worktree-scoped)", nil
 }
 
