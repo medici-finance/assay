@@ -162,17 +162,6 @@ The body MUST contain a `## Context` section. It MUST include:
 - A `files:` line listing exact paths the implementer touches.
 - A `facts:` block containing 3-5 project facts as `key: value` pairs (no narrative prose).
 
-The Context section MAY include a `verify-depends:` line naming, in the same form as
-`files:` (backticked or bare paths, a trailing `/` for a directory, inline or as a bullet
-list), every path the brief's Verify rows read. It is what lets a passing witness be
-reused at a later revision when only OTHER paths changed (lifecycle-v1, the evidence
-coverage condition): the witness then speaks for these entries plus the resolving
-`files:` entries, rather than for every path outside the board's bookkeeping. It is a
-completeness claim — a Verify row that reads a path the line omits can be credited
-across a change to that path — so a reviewer checks it like any other assertion. An
-empty or unparseable line, or an entry that names no real path, never narrows anything:
-the claim is `could-not-check` until the line is fixed.
-
 If the brief changes a SHARED VALUE (a party, identity, environment variable name,
 configuration key, field meaning, wire/JSON format, or default — anything another
 component reads), the brief MUST carry a `consumers:` frontmatter field (a schema field in

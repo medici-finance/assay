@@ -99,14 +99,18 @@ item's revision. The item's revision is the tree the evaluation runs at, resolve
 (the checked-out `HEAD`): the PR head on an open PR's branch, and on the model-lane
 `verified`→`done` flip the main tip that flip runs at — generally LATER than the brief's
 merge SHA, not the merge SHA itself. A witness counts at the item's revision when its tree
-names that revision exactly, or names a commit whose tree does not differ from the item's
-in any path the witness speaks for. That is a CONTENT comparison of the two trees, never a
-commit-ancestry test: a squash merge discards the branch commit a witness names without
-changing a byte the check read, so a conforming implementation MUST NOT refuse a witness
-for not being an ancestor, and MUST NOT accept one while a path it speaks for differs. A
-witness commit that is not in the evaluating clone (an unfetched squash-merged branch
-commit, a hand-edited sha) or an item revision that names no commit leaves the comparison
-without footing: the claim is `could-not-check`, naming which. Reusing another tree's
+names that revision exactly, or names a commit that shares history with the item's
+revision (the two have a common ancestor) and whose tree does not differ from the item's
+in any path the witness speaks for. That is a content comparison of the two trees: the
+witness commit need not be an ancestor of the item's revision, because a squash merge
+discards the branch commit a witness names without changing a byte the check read. An
+implementation MAY instead require the witness commit to be an ancestor (crediting only
+merged history), and MUST NOT accept a witness while a path it speaks for differs. Content
+equality is all the comparison shows: not that the witness commit was merged or reviewed,
+and not that its run happened — the Evidence row remains the only record of the run. A
+witness commit absent from the evaluating clone (an unfetched squash-merged branch commit,
+a hand-edited sha), or an item revision that names no commit, leaves the comparison
+without footing, and the witness is not credited. Reusing another tree's
 result needs an explicit applicability derivation (the work-input amendment): a `files:` declaration by itself never narrows
 what a witness speaks for, because file non-overlap alone is not proof. Without a
 complete work-input dependency manifest for the brief, a witness speaks for every path
@@ -119,14 +123,7 @@ run never shrinks it. Even then, if any declared entry does not resolve to a rea
 the witness's commit or the item's revision (a brace form, `.`, prose, a bare sibling
 name, a `**` inside a glob), the conservative scope applies. An entry that names nothing
 never narrows the scope to nothing, and every word of a `files:` value counts as an entry,
-so prose can only widen the scope. A brief MAY instead declare what its Verify rows read
-with a `verify-depends:` line in `## Context` (brief-v1 §4.1): the witness then speaks for
-those entries, unioned with the line as it stood at the witness's commit, any claim source
-dependencies, and every `files:` entry that resolves. A declaration that cannot establish
-the dependency set — an empty line, an unparseable one, a line empty or unparseable at the
-witness's commit, a brief unreadable there, or an entry that resolves to no checkable path
-at either tree — makes the claim `could-not-check`, naming why; it never falls back to a
-release, and there is no override. A manifest's policy, build and environment dependencies
+so prose can only widen the scope. A manifest's policy, build and environment dependencies
 are fingerprinted at the witness's commit and at the item's revision. A changed one holds
 only the claims that depend on it, as `wrong-revision` naming it; one that cannot be
 fingerprinted is `could-not-check`. A reused `pass` states the revision it is reused at

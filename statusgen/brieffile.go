@@ -1018,11 +1018,6 @@ var (
 	// brief's `## Context` section. Leading whitespace is tolerated; the capture is
 	// the optional inline value that follows the colon on the same line.
 	contextFilesLabelRe = regexp.MustCompile(`^\s*files:\s*(.*)$`)
-	// contextVerifyDependsLabelRe matches the `verify-depends:` label inside
-	// `## Context`: every repo path the brief's Verify rows read, which
-	// coverage.go uses to decide whether a witness still applies at a later
-	// revision (spec/brief-v1.md §4.1).
-	contextVerifyDependsLabelRe = regexp.MustCompile(`^\s*verify-depends:\s*(.*)$`)
 	// backtickSpanRe captures the content of a backtick-delimited span.
 	backtickSpanRe = regexp.MustCompile("`([^`]+)`")
 	// mdLinkRe matches a markdown [text](url) link so the text can be recovered.
@@ -1152,43 +1147,22 @@ func extractContextDeclaredPaths(body string) (paths []string, found bool) {
 //     caller reads as "no trustworthy declaration" and so takes the
 //     conservative scope.
 func extractContextDeclaredEntriesRaw(body string) (entries []string, found bool) {
-	entries, st := extractContextLabelEntries(body, contextFilesLabelRe)
-	return entries, st == labelEntries
-}
-
-// labelState is what extractContextLabelEntries found for one `## Context`
-// label. The four states never collapse: a caller that must fail closed (the
-// `verify-depends:` reader in coverage.go) tells "not declared" apart from
-// "declared but empty" and "declared but unparseable".
-type labelState int
-
-const (
-	labelAbsent      labelState = iota // no such label line in ## Context
-	labelEmpty                         // the label is present but names nothing
-	labelUnparseable                   // the value has an unclosed backtick
-	labelEntries                       // the label names at least one entry
-)
-
-// extractContextLabelEntries is the `files:` grammar above, for any label
-// regexp whose first capture is the inline value: the same inline,
-// continuation and bulleted forms, the same every-span-and-every-word rule.
-func extractContextLabelEntries(body string, label *regexp.Regexp) (entries []string, st labelState) {
 	ctx := extractSectionByPrefix(body, "Context")
 	if strings.TrimSpace(ctx) == "" {
-		return nil, labelAbsent
+		return nil, false
 	}
 	lines := strings.Split(ctx, "\n")
 	labelIdx := -1
 	var inline string
 	for i, l := range lines {
-		if m := label.FindStringSubmatch(l); m != nil {
+		if m := contextFilesLabelRe.FindStringSubmatch(l); m != nil {
 			labelIdx = i
 			inline = strings.TrimSpace(m[1])
 			break
 		}
 	}
 	if labelIdx < 0 {
-		return nil, labelAbsent
+		return nil, false
 	}
 
 	seen := map[string]bool{}
@@ -1229,16 +1203,13 @@ func extractContextLabelEntries(body string, label *regexp.Regexp) (entries []st
 	for _, v := range values {
 		toks, ok := declaredValueTokens(v)
 		if !ok {
-			return nil, labelUnparseable
+			return nil, false
 		}
 		for _, tok := range toks {
 			add(tok)
 		}
 	}
-	if len(entries) == 0 {
-		return nil, labelEmpty
-	}
-	return entries, labelEntries
+	return entries, len(entries) > 0
 }
 
 // declaredValueTokens splits one `files:` value (an inline value, or one

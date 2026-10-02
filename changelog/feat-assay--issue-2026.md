@@ -1,5 +1,2 @@
 ### Fixed
-- `statusgen` evidence coverage judges a reused witness by the content of the paths it speaks for, never by commit ancestry: a witness written on a squash-merged branch is no longer refused as `wrong-revision` when nothing it depends on differs, and a witness commit missing from the clone is `could-not-check`, naming why.
-
-### Added
-- A brief MAY declare `verify-depends:` in `## Context` — the paths its Verify rows read — so a `verified` row survives an unrelated release-bookkeeping change on main. An empty, unparseable or unresolvable declaration fails closed (`could-not-check`); there is no override.
+- `statusgen` evidence coverage judges a reused witness by comparing the witness's tree with the item's over the paths it speaks for, not by commit ancestry: a witness written on a squash-merged branch is no longer refused as `wrong-revision` when no such path differs. The witness commit must still share history with the item's revision (an unrelated root is `wrong-revision`). A witness token that is absent from the clone, resolves through a ref name, or names a non-commit object is `could-not-check`, naming why. The scope is unchanged: with no dependency manifest, any differing path outside `docs/streams/**` and `STATUS.md` still refuses.

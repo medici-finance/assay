@@ -1,17 +1,17 @@
 {
-  "test": "go test . -run 'Coverage|Depends|NoAncestryWitnessJudge|DeclaredEntries' -count=1",
+  "test": "go test . -run 'Coverage|TreeDiff|NoAncestryWitnessJudge|DeclaredEntries' -count=1",
   "control": {
-    "name": "CONTROL — the tree comparison never invalidates (any witness is reused whatever changed: a stale witness with a changed dependency releases)",
+    "name": "CONTROL — the tree comparison never invalidates (any witness is reused whatever changed: a stale witness with a changed path in scope releases)",
     "file": "coverage.go",
     "old": "if eff.invalidatedBy(p) {",
     "new": "if false && eff.invalidatedBy(p) {"
   },
   "mutations": [
     {
-      "name": "ancestry reintroduced as the judge (the #2026 cause-1 defect: a squash-merged witness with byte-identical dependencies is refused)",
+      "name": "ancestry reintroduced as the judge (the #2026 cause-1 defect: a squash-merged witness with a byte-identical scope is refused)",
       "file": "coverage.go",
-      "old": "\tvar eff witnessScope\n\tif scope.dependsState != labelAbsent {",
-      "new": "\tif exec.Command(\"git\", \"-C\", root, \"merge-base\", \"--is-ancestor\", witnessTree, target).Run() != nil {\n\t\treturn revisionMismatch, \"\"\n\t}\n\tvar eff witnessScope\n\tif scope.dependsState != labelAbsent {"
+      "old": "\teff := scope.atBase(root, w, t)\n",
+      "new": "\tif exec.Command(\"git\", \"-C\", root, \"merge-base\", \"--is-ancestor\", w, t).Run() != nil {\n\t\treturn revisionMismatch, \"\"\n\t}\n\teff := scope.atBase(root, w, t)\n"
     },
     {
       "name": "PLANTED second instance of the class: a helper elsewhere in the package asks git for ancestry",
@@ -22,80 +22,44 @@
     {
       "name": "absent witness commit treated as a match (an unreachable witness tree releases)",
       "file": "coverage.go",
-      "old": "return revisionUnestablished, fmt.Sprintf(\"the witness's commit %s is not in this clone",
-      "new": "return revisionMatch, fmt.Sprintf(\"the witness's commit %s is not in this clone"
+      "old": "\tif why != \"\" {\n\t\treturn revisionUnestablished, fmt.Sprintf(\"the witness's commit %s %s\", witnessTree, why)",
+      "new": "\tif why != \"\" {\n\t\treturn revisionMatch, fmt.Sprintf(\"the witness's commit %s %s\", witnessTree, why)"
     },
     {
       "name": "unresolvable item revision treated as a match",
       "file": "coverage.go",
-      "old": "return revisionUnestablished, fmt.Sprintf(\"the item's revision %s does not resolve to a commit in this clone\", target)",
-      "new": "return revisionMatch, fmt.Sprintf(\"the item's revision %s does not resolve to a commit in this clone\", target)"
+      "old": "return revisionUnestablished, fmt.Sprintf(\"the item's revision %s %s\", target, why)",
+      "new": "return revisionMatch, fmt.Sprintf(\"the item's revision %s %s\", target, why)"
     },
     {
-      "name": "empty verify-depends: line read as 'depends on nothing' (an empty dependency set releases)",
+      "name": "shared-history requirement dropped (an unrelated-root commit with an equal tree in scope releases)",
       "file": "coverage.go",
-      "old": "return sc, \"the brief's verify-depends: line names no path\"",
-      "new": "return witnessScope{}, \"\""
+      "old": "if err := coverageGit(root, \"merge-base\", \"--end-of-options\", w, t).Run(); err != nil {",
+      "new": "if err := coverageGit(root, \"merge-base\", \"--end-of-options\", w, t).Run(); false && err != nil {"
     },
     {
-      "name": "unparseable verify-depends: line read as 'depends on nothing'",
+      "name": "a hex-shaped ref name accepted as the witness's object id",
       "file": "coverage.go",
-      "old": "return sc, \"the brief's verify-depends: line cannot be parsed (an unclosed backtick)\"",
-      "new": "return witnessScope{}, \"\""
+      "old": "!strings.HasPrefix(id, strings.ToLower(tok))",
+      "new": "false && !strings.HasPrefix(id, strings.ToLower(tok))"
     },
     {
-      "name": "brief unreadable at the witness's commit is not a refusal",
+      "name": "a non-commit object (a tree id) accepted without peeling to a commit",
       "file": "coverage.go",
-      "old": "return sc, fmt.Sprintf(\"the brief cannot be read at the witness's commit %s, so what its Verify rows depended on there is unknown\", base)",
-      "new": "body = \"\""
+      "old": "\"--end-of-options\", tok+\"^{commit}\").Output()",
+      "new": "\"--end-of-options\", tok).Output()"
     },
     {
-      "name": "an empty line at the witness's commit is not a refusal",
+      "name": "no manifest narrows instead of staying conservative (cause 2 'fixed' by dropping the guard)",
       "file": "coverage.go",
-      "old": "return sc, fmt.Sprintf(\"the brief's verify-depends: line at the witness's commit %s is empty or cannot be parsed\", base)",
-      "new": "_ = base"
+      "old": "\teff := scope.atBase(root, w, t)\n",
+      "new": "\teff := scope.atBase(root, w, t)\n\teff.conservative = false\n"
     },
     {
-      "name": "an entry that names no checkable file is not a refusal",
-      "file": "coverage.go",
-      "old": "if !sc.declaredEntryResolves(root, d, base, target) {\n\t\t\treturn sc, fmt.Sprintf(",
-      "new": "if false && !sc.declaredEntryResolves(root, d, base, target) {\n\t\t\treturn sc, fmt.Sprintf("
-    },
-    {
-      "name": "the line at the witness's commit is not unioned in (narrowing the line after the run drops a guard)",
-      "file": "coverage.go",
-      "old": "\tcase labelEntries:\n\t\trequired = appendDeclaredEntries(required, ents)",
-      "new": "\tcase labelEntries:\n\t\t_ = ents"
-    },
-    {
-      "name": "files: entries no longer guard in declared mode",
-      "file": "coverage.go",
-      "old": "scope = appendDeclaredEntries(scope, []string{d})",
-      "new": "_ = d"
-    },
-    {
-      "name": "no declaration narrows instead of staying conservative (cause 2 'fixed' by dropping the guard)",
-      "file": "coverage.go",
-      "old": "\t\teff = scope.atBase(root, witnessTree, target)\n",
-      "new": "\t\teff = scope.atBase(root, witnessTree, target)\n\t\teff.conservative = false\n"
-    },
-    {
-      "name": "rename detection back on (a dependency renamed away shows only its destination)",
+      "name": "rename detection back on (a path renamed away shows only its destination)",
       "file": "coverage.go",
       "old": "\"diff\", \"--name-only\", \"--no-renames\", \"-z\"",
       "new": "\"diff\", \"--name-only\", \"-z\""
-    },
-    {
-      "name": "unclosed backtick parsed as entries rather than unparseable",
-      "file": "brieffile.go",
-      "old": "\t\t\treturn nil, labelUnparseable",
-      "new": "\t\t\tcontinue"
-    },
-    {
-      "name": "an empty label reported as absent (falls back to the conservative scope instead of refusing)",
-      "file": "brieffile.go",
-      "old": "\t\treturn nil, labelEmpty",
-      "new": "\t\treturn nil, labelAbsent"
     }
   ]
 }
