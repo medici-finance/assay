@@ -310,11 +310,13 @@ type ghPullWire struct {
 		ID    int64  `json:"id"`
 	} `json:"user"`
 	Head struct {
-		SHA string `json:"sha"`
-		Ref string `json:"ref"`
+		SHA  string          `json:"sha"`
+		Ref  string          `json:"ref"`
+		Repo *ghPullRepoWire `json:"repo"`
 	} `json:"head"`
 	Base struct {
-		Ref string `json:"ref"`
+		Ref  string          `json:"ref"`
+		Repo *ghPullRepoWire `json:"repo"`
 	} `json:"base"`
 	HTMLURL   string `json:"html_url"`
 	UpdatedAt string `json:"updated_at"`
@@ -329,6 +331,26 @@ type ghPullWire struct {
 	// report "not yet computed" as "conflicting", which refuses flips that should proceed,
 	// and the opposite collapse would report it as mergeable, which is the fail-open half.
 	Mergeable *bool `json:"mergeable"`
+}
+
+// ghPullRepoWire is the repository a pull's head or base branch lives in. GitHub sends it as
+// null for the head of a pull whose fork was deleted, so it is decoded as a pointer and a null
+// stays distinguishable from a real repository.
+type ghPullRepoWire struct {
+	FullName string `json:"full_name"`
+}
+
+// ghCrossRepo derives PullRequest.CrossRepo from the head and base repositories GitHub reports
+// on the pull itself. Either side absent (null, or no full_name) is EMPTY — could-not-check —
+// never "same": a deleted fork must not read as a branch in the base repository.
+func ghCrossRepo(head, base *ghPullRepoWire) string {
+	if head == nil || base == nil || head.FullName == "" || base.FullName == "" {
+		return ""
+	}
+	if strings.EqualFold(head.FullName, base.FullName) {
+		return CrossRepoSame
+	}
+	return CrossRepoFork
 }
 
 // ghMergeableState maps GitHub's tri-state `mergeable` field onto the forge-neutral
@@ -506,6 +528,7 @@ func ghPullFromWire(w ghPullWire) *PullRequest {
 		URL:          w.HTMLURL,
 		HeadRef:      w.Head.Ref,
 		BaseRef:      w.Base.Ref,
+		CrossRepo:    ghCrossRepo(w.Head.Repo, w.Base.Repo),
 	}
 }
 

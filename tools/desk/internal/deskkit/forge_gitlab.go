@@ -532,6 +532,14 @@ func (g *GitLabForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 		HeadRef:           mr.SourceBranch,
 		BaseRef:           mr.TargetBranch,
 	}
+	// CrossRepo from GitLab's own source/target project ids: a fork MR's source project is not
+	// its target. A zero id on either side is could-not-check (EMPTY), never "same".
+	if mr.SourceProjectID != 0 && mr.TargetProjectID != 0 {
+		out.CrossRepo = CrossRepoSame
+		if mr.SourceProjectID != mr.TargetProjectID {
+			out.CrossRepo = CrossRepoFork
+		}
+	}
 	if mr.Author != nil {
 		out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
 	}

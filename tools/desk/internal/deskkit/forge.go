@@ -170,7 +170,22 @@ type PullRequest struct {
 	// `mergeable` condition (the forge-gitlab merge-hold brief; freeze rule binds METHODS, not fields, so this
 	// addition changes no method count).
 	GitLabMergeStatus string `json:",omitempty"`
+	// CrossRepo is the forge's own answer to "does the head branch live in a DIFFERENT
+	// repository from the base?" — CrossRepoSame, CrossRepoFork, or EMPTY where the read did
+	// not establish it (GitHub reports head.repo as null once a fork is deleted; GitLab reports
+	// a zero project id). Empty is could-not-check, never "same". Consumer: cmd/deskmerge's
+	// eligibility gate, which pushes only to a branch in the base repository and refuses a fork
+	// head (desktools-v2/03 moved that read off `gh pr view --json isCrossRepository`).
+	// omitempty keeps every change read that predates this field byte-identical in the forge
+	// golden corpus.
+	CrossRepo string `json:",omitempty"`
 }
+
+// The two values PullRequest.CrossRepo takes when the forge answered.
+const (
+	CrossRepoSame = "same"
+	CrossRepoFork = "fork"
+)
 
 // The three values PullRequest.Mergeable takes. They are constants rather than free strings
 // because a caller SWITCHES on them, and a switch over free strings falls through to its
