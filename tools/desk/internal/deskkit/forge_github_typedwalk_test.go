@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -39,6 +40,19 @@ func typedCommentsPage(kind TargetKind, hasNext bool, cursor string, id int) str
 		noteable, hasNext, cursor, id, id)
 }
 
+var pageInfoRe = regexp.MustCompile(`"pageInfo":\{[^}]*\},`)
+
+// answerAsAsked serves page as the GitHub API would for the query body it was sent: a query
+// that does not select pageInfo gets the nodes only, so a read that sends the single first-100
+// query sees one page and no continuation. Without this the fixture hands every query the
+// continuation it asks for, and a typed read that quietly stopped walking would still pass here.
+func answerAsAsked(query, page string) string {
+	if strings.Contains(query, "pageInfo") {
+		return page
+	}
+	return pageInfoRe.ReplaceAllString(page, "")
+}
+
 func TestTypedCommentsWalkEveryKind(t *testing.T) {
 	for _, kind := range typedWalkKinds {
 		t.Run(string(kind)+"/walks", func(t *testing.T) {
@@ -47,11 +61,11 @@ func TestTypedCommentsWalkEveryKind(t *testing.T) {
 				body, _ := io.ReadAll(r.Body)
 				if strings.Contains(string(body), `"after":"CURSOR1"`) {
 					seen = append(seen, "CURSOR1")
-					io.WriteString(w, typedCommentsPage(kind, false, "CURSOR2", 2))
+					io.WriteString(w, answerAsAsked(string(body), typedCommentsPage(kind, false, "CURSOR2", 2)))
 					return
 				}
 				seen = append(seen, "<none>")
-				io.WriteString(w, typedCommentsPage(kind, true, "CURSOR1", 1))
+				io.WriteString(w, answerAsAsked(string(body), typedCommentsPage(kind, true, "CURSOR1", 1)))
 			}))
 			defer srv.Close()
 			gh := &GitHubForge{Token: "stub", BaseURL: srv.URL}
@@ -69,9 +83,9 @@ func TestTypedCommentsWalkEveryKind(t *testing.T) {
 		t.Run(string(kind)+"/cap", func(t *testing.T) {
 			pages := 0
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				io.ReadAll(r.Body)
+				body, _ := io.ReadAll(r.Body)
 				pages++
-				io.WriteString(w, typedCommentsPage(kind, true, "MORE", pages))
+				io.WriteString(w, answerAsAsked(string(body), typedCommentsPage(kind, true, "MORE", pages)))
 			}))
 			defer srv.Close()
 			gh := &GitHubForge{Token: "stub", BaseURL: srv.URL}
@@ -85,8 +99,8 @@ func TestTypedCommentsWalkEveryKind(t *testing.T) {
 		})
 		t.Run(string(kind)+"/cursorless", func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				io.ReadAll(r.Body)
-				io.WriteString(w, typedCommentsPage(kind, true, "", 1))
+				body, _ := io.ReadAll(r.Body)
+				io.WriteString(w, answerAsAsked(string(body), typedCommentsPage(kind, true, "", 1)))
 			}))
 			defer srv.Close()
 			gh := &GitHubForge{Token: "stub", BaseURL: srv.URL}

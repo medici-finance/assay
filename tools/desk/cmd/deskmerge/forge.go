@@ -11,8 +11,12 @@ package main
 // one is a could-not-check, and deskmerge acts on nothing it could not read.
 //
 // The installation is derived from the repo argument at the call (repo.Slug() handed to the
-// mint), never from GH_TOKEN / GH_REPO / HOME — so even a present ambient token cannot
-// redirect a read to another installation.
+// mint), never from GH_TOKEN / GH_REPO / HOME as deskmerge passes it — so even a present
+// ambient token cannot redirect a read to another installation. The token is the role App's
+// installation token for the repository's ACCOUNT: it is valid for every repository and
+// permission of that installation, and narrowing it is desktools-v2/06, not this change. The
+// minter child inherits the environment and honours its own documented role-named overrides
+// (cmd/desktoken); those are out of scope here.
 
 import (
 	"strings"

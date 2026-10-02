@@ -60,9 +60,13 @@ func mkComment(id int64, login string, uid int64, typ, body string) gqlComment {
 // that selects no pageInfo gets the first 100 nodes and nothing else — exactly what GitHub does
 // for `comments(first: 100)` — so a read that does not walk sees only the head of the thread.
 type threadServer struct {
-	prs     map[int][]gqlComment
+	prs map[int][]gqlComment
+	// issues holds the threads of real issues (not pull requests), served for an issue query.
+	issues  map[int][]gqlComment
 	mu      sync.Mutex
 	numbers []int
+	// queries counts the requests by the noun the query read: "issue" or "pullRequest".
+	queries map[string]int
 }
 
 func (s *threadServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -87,14 +91,24 @@ func (s *threadServer) handler(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.numbers = append(s.numbers, n)
 	s.mu.Unlock()
+	noun := "pullRequest"
 	if !strings.Contains(req.Query, "pullRequest(number:") {
-		// An issue read of a pull-request number: GitHub resolves no issue there.
-		_, _ = io.WriteString(w, `{"data":{"repository":{"issue":null}}}`)
-		return
+		noun = "issue"
 	}
-	thread, ok := s.prs[n]
+	s.mu.Lock()
+	if s.queries == nil {
+		s.queries = map[string]int{}
+	}
+	s.queries[noun]++
+	s.mu.Unlock()
+	threads := s.prs
+	if noun == "issue" {
+		threads = s.issues
+	}
+	thread, ok := threads[n]
 	if !ok {
-		_, _ = io.WriteString(w, `{"data":{"repository":{"pullRequest":null}}}`)
+		// No such item of this kind: GitHub resolves null, and the backend reports it.
+		_, _ = fmt.Fprintf(w, `{"data":{"repository":{%q:null}}}`, noun)
 		return
 	}
 	start := 0
@@ -110,8 +124,14 @@ func (s *threadServer) handler(w http.ResponseWriter, r *http.Request) {
 		conn["pageInfo"] = map[string]any{"hasNextPage": end < len(thread), "endCursor": fmt.Sprintf("cur-%d", end)}
 	}
 	out := map[string]any{"data": map[string]any{"repository": map[string]any{
-		"pullRequest": map[string]any{"comments": conn}}}}
+		noun: map[string]any{"comments": conn}}}}
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+func (s *threadServer) asked(noun string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.queries[noun]
 }
 
 func (s *threadServer) read() []int {
@@ -123,7 +143,12 @@ func (s *threadServer) read() []int {
 // signOffEnv installs the production read path against a thread server holding prs.
 func signOffEnv(t *testing.T, prs map[int][]gqlComment) *threadServer {
 	t.Helper()
-	ts := &threadServer{prs: prs}
+	return threadsEnv(t, &threadServer{prs: prs})
+}
+
+// threadsEnv installs the production read path against ts.
+func threadsEnv(t *testing.T, ts *threadServer) *threadServer {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(ts.handler))
 	t.Cleanup(srv.Close)
 	readCustodyEnv(t, srv)
@@ -227,5 +252,30 @@ func TestSignOffReadWrongItem(t *testing.T) {
 		if n != 444 {
 			t.Errorf("the read asked for #%d — only the permalink's item (#444) may be read", n)
 		}
+	}
+}
+
+// TestSignOffReadFromIssueThread — A3: a sign-off on a REAL issue thread (an /issues/N link whose
+// number is an issue, not a pull request) is read through the issue query and found, at the head
+// of the thread and past the first 100 comments. No pull-request query is sent for it, so a
+// kind selection that read every permalink as a pull request would get "no such pull request"
+// here and fail closed on a sign-off that is genuinely there.
+func TestSignOffReadFromIssueThread(t *testing.T) {
+	issueURL := strings.Replace(signOffURL, "/pull/444", "/issues/450", 1)
+	for _, pos := range []int{0, 150} {
+		t.Run(fmt.Sprintf("position %d", pos+1), func(t *testing.T) {
+			thread := append(others(pos, 1000), signOffNode())
+			ts := threadsEnv(t, &threadServer{issues: map[int][]gqlComment{450: thread}})
+			c, err := fetchComment(issueURL)
+			if err != nil {
+				t.Fatalf("issue-thread sign-off at comment %d: exit %d: %v", pos+1, deskkit.ExitCodeOf(err), err)
+			}
+			if c.ID != signOffCID {
+				t.Fatalf("read returned comment %d, want %d", c.ID, signOffCID)
+			}
+			if n := ts.asked("pullRequest"); n != 0 {
+				t.Errorf("%d pull-request quer(ies) sent for an /issues/ link naming a real issue — the issue read must come first", n)
+			}
+		})
 	}
 }

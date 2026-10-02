@@ -89,7 +89,7 @@ type Allowance struct {
 //
 // 6 = desktools-v2/03 (#2025, under the ruling on #1911) migrated cmd/deskmerge's reads — the
 // PR-state read onto GetPullRequest and the R-5 sign-off read onto ListCommentsTyped — through
-// a minted, repo-scoped App token, and DELETED its runGH reach-around in the same change, so its
+// a token minted for the repository's installation, and DELETED its runGH reach-around in the same change, so its
 // permit came off and the ceiling went down with it.
 const allowedInvocationCeiling = 6
 

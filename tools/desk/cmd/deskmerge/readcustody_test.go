@@ -1,7 +1,7 @@
 package main
 
 // readcustody_test.go — desktools-v2/03: deskmerge's two READS (the PR-state read and the R-5
-// sign-off read) run on a minted, repo-scoped App token through the real forge resolver.
+// sign-off read) run on an App token minted for the repository's installation, through the real forge resolver.
 //
 // Every other test in this package swaps forgeFor for a recorded stub, which is right for the
 // git-world assertions and useless for these: the property under test IS the resolver path
@@ -16,8 +16,9 @@ package main
 //     the process, while GH_TOKEN / GITHUB_TOKEN hold a decoy. A planted ambient fallback
 //     sends a request carrying the decoy and this test goes red.
 //   - TestReadInstallationFromRepo — the identity floor. The token is minted for the repo
-//     being READ, never for GH_REPO / the environment, and every request carries the minted
-//     token. A planted env-derived installation mints for the decoy repo and this goes red.
+//     being READ, never for GH_REPO / the environment (the test stubs the minter, so it proves
+//     the argument handed to it, not the installation the real minter then selects), and
+//     every request carries the minted token. A planted env-derived installation mints for the decoy repo and this goes red.
 
 import (
 	"errors"
@@ -39,11 +40,14 @@ const (
 )
 
 // readCustodyServer records every request the backend sends — path and Authorization — and
-// answers the PR read with a minimal open, same-repo pull.
+// answers the PR read with a minimal open draft pull (same-repo unless headRepo says otherwise).
 type readCustodyServer struct {
-	mu    sync.Mutex
-	paths []string
-	auths []string
+	// headRepo is the head repository the served pull reports as its full_name; empty means the
+	// base repository (a same-repo pull).
+	headRepo string
+	mu       sync.Mutex
+	paths    []string
+	auths    []string
 }
 
 func (s *readCustodyServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -53,9 +57,13 @@ func (s *readCustodyServer) handler(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pulls/7") {
-		_, _ = w.Write([]byte(`{"number":7,"state":"open","draft":false,"merged":false,` +
+		headRepo := s.headRepo
+		if headRepo == "" {
+			headRepo = "medici-finance/assay"
+		}
+		_, _ = w.Write([]byte(`{"number":7,"state":"open","draft":true,"merged":false,` +
 			`"head":{"ref":"feat/x","sha":"1111111111111111111111111111111111111111",` +
-			`"repo":{"full_name":"medici-finance/assay"}},` +
+			`"repo":{"full_name":"` + headRepo + `"}},` +
 			`"base":{"ref":"main","sha":"2222222222222222222222222222222222222222",` +
 			`"repo":{"full_name":"medici-finance/assay"}},` +
 			`"user":{"login":"someone","id":42}}`))
@@ -227,5 +235,45 @@ func TestReadInstallationFromRepo(t *testing.T) {
 		if strings.Contains(p, "/repos/") && !strings.Contains(p, "/repos/"+testRepo+"/") {
 			t.Errorf("request %s left the repo being read (%s)", p, testRepo)
 		}
+	}
+}
+
+// TestForkPullRefusedThroughProductionRead — the fork refusal, end to end through the production
+// read path. The pull served names a head repository that differs from the base; fetchPR must
+// report it as a fork and eligibleForMerge must REFUSE it (exit 5), which is the check that
+// keeps `deskmerge merge` from reaching its push step on a head the base repository does not
+// own. The same-repo and unreported shapes are held beside it so the refusal is not a blanket.
+//
+// FAIL-FIRST: with ghCrossRepo's final `return CrossRepoFork` changed to CrossRepoSame, the
+// fork case reports "same" and eligibleForMerge returns nil.
+func TestForkPullRefusedThroughProductionRead(t *testing.T) {
+	cases := []struct {
+		name     string
+		headRepo string
+		want     int // exit code of eligibleForMerge on an open draft; 0 = eligible
+	}{
+		{"head in another owner's fork", "forker/assay", deskkit.ExitRefused},
+		{"head in a differently named repository", "medici-finance/assay-fork", deskkit.ExitRefused},
+		{"same repository", "medici-finance/assay", 0},
+		{"same repository, different letter case", "Medici-Finance/Assay", 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := &readCustodyServer{headRepo: tc.headRepo}
+			srv := httptest.NewServer(http.HandlerFunc(rec.handler))
+			t.Cleanup(srv.Close)
+			readCustodyEnv(t, srv)
+			mintTokenFn = func(string, string) (string, string, error) { return mintedReadToken, "", nil }
+
+			pr, err := fetchPR(testRepo, testPR)
+			if err != nil {
+				t.Fatalf("PR-state read: %v", err)
+			}
+			got := deskkit.ExitCodeOf(eligibleForMerge(testRepo, pr))
+			if got != tc.want {
+				t.Fatalf("head %q: eligibleForMerge exit %d (CrossRepo %q), want %d",
+					tc.headRepo, got, pr.CrossRepo, tc.want)
+			}
+		})
 	}
 }

@@ -204,6 +204,24 @@
       "file": "internal/deskkit/forge_github.go",
       "old": "\tcase next != nil:\n\t\tquery = ghChangeCommentsWalkQuery\n",
       "new": "\tcase next != nil:\n\t\tquery = ghCommentsQuery\n"
+    },
+    {
+      "name": "map a fork head to same in ghCrossRepo (a fork pull request passes the fork refusal) \u2014 SEC-F1-fork-mapping-unpinned",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\treturn CrossRepoFork\n",
+      "new": "\treturn CrossRepoSame\n"
+    },
+    {
+      "name": "ignore the forge's merged flag when naming a pull request's state \u2014 SEC-A2-low-survivors",
+      "file": "cmd/deskmerge/github.go",
+      "old": "\tif pr.Merged || pr.MergedAt != \"\" {",
+      "new": "\tif pr.MergedAt != \"\" {"
+    },
+    {
+      "name": "read every sign-off permalink as a pull request (an issue-thread sign-off reads as no such pull request) \u2014 A3-issue-thread-signoff-unpinned",
+      "file": "cmd/deskmerge/authority.go",
+      "old": "\tkind := deskkit.TargetIssue\n\tif m[3] == \"pull\" {\n\t\tkind = deskkit.TargetChange\n\t}\n\tc, err := fetchCommentKinded(url, m, kind)",
+      "new": "\tkind := deskkit.TargetChange\n\tc, err := fetchCommentKinded(url, m, kind)"
     }
   ]
 }
