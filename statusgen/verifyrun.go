@@ -763,7 +763,14 @@ func runHermeticallyWith(root, command string, timeout time.Duration, plan shell
 		return runResult{exit: -1, couldNotRun: true,
 			reason: "check:ci hermetic execution requires a network-off sandbox, unavailable on this host: " + why + ". check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net`"}
 	}
-	return runVerifyCommandWith(root, command, timeout, wrapper, plan, shell)
+	return runSandboxed(root, command, timeout, wrapper, plan, shell)
+}
+
+// runSandboxed runs one row under a network-off wrapper and reclassifies a
+// sandbox-helper refusal (netns.go) as could-not-run: the row never ran, so it
+// has no verdict, and it is NEVER retried without the sandbox.
+func runSandboxed(root, command string, timeout time.Duration, wrapper []string, plan shellPlan, shell string) runResult {
+	return classifyNetnsRefusal(runVerifyCommandWith(root, command, timeout, wrapper, plan, shell))
 }
 
 // runVerifyCommandWith executes one Verify command, optionally under a wrapper
@@ -800,9 +807,10 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// The wrapper (e.g. `unshare --net --map-root-user`) prefixes the shell
-	// invocation, so the network namespace is entered before any of the row's
-	// own shell runs.
+	// The wrapper (netnsWrapperArgv: `unshare --net --map-root-user` + the
+	// statusgen lo-up/isolation helper) prefixes the shell invocation, so the
+	// network namespace is entered — and loopback brought up — before any of the
+	// row's own shell runs.
 	//
 	// For an `sh` row the shell is `bash -o pipefail`, NOT plain `sh`. Without
 	// pipefail, a pipeline reports only its LAST stage's exit status, so a row
@@ -919,32 +927,66 @@ func winCmdLine(argv []string) string {
 // namespace isolated, and whether such a facility exists on this host.
 //
 // The facility is `unshare --net --map-root-user`: a new, empty network
-// namespace (only loopback, no route off-box) entered via an unprivileged user
-// namespace, which is the sandbox GitHub's Linux runner images provide and the
-// verdict runner (verdict-lane/04) will use. `--map-root-user` is what makes the
-// namespace creatable WITHOUT root; the process's real uid is unchanged outside
-// the namespace, so the Go build/module caches (owned by the invoking user)
-// remain readable.
+// namespace (no route off-box) entered via an unprivileged user namespace, which
+// is the sandbox GitHub's Linux runner images provide and the verdict runner
+// (verdict-lane/04) will use. `--map-root-user` is what makes the namespace
+// creatable WITHOUT root; the process's real uid is unchanged outside the
+// namespace, so the Go build/module caches (owned by the invoking user) remain
+// readable. The namespace's first process is the statusgen helper (netns.go),
+// which brings loopback up — a fresh namespace's `lo` starts DOWN, which made
+// every local-server row fail (issue #1925) — proves isolation, then execs the
+// row's shell.
 //
 // ok is false — with a human-legible reason — off Linux, when `unshare` is
-// absent, or when a live probe of unprivileged net-namespace creation fails
-// (user namespaces disabled). The caller renders that as could-not-run: a
-// hermetic row that cannot be run hermetically must never be recorded pass.
+// absent, when a live probe of unprivileged net-namespace creation fails (user
+// namespaces disabled), or when the helper refuses in a live probe (lo could not
+// be brought up, or the namespace is not isolated). The caller renders that as
+// could-not-run: a hermetic row that cannot be run hermetically must never be
+// recorded pass.
 func networkOffWrapper() (prefix []string, ok bool, why string) {
+	path, ok, why := netnsFacility()
+	if !ok {
+		return nil, false, why
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return nil, false, "cannot locate the statusgen executable to run the in-namespace helper: " + err.Error()
+	}
+	parentNS, err := os.Readlink("/proc/self/ns/net")
+	if err != nil {
+		return nil, false, "cannot read this process's network namespace id: " + err.Error()
+	}
+	prefix = netnsWrapperArgv(path, self, parentNS)
+	// Probe the WHOLE sandbox, helper included, so a host where loopback cannot be
+	// brought up (or the namespace is not isolated) is could-not-run up front with
+	// the helper's own reason, rather than surfacing per row.
+	if out, err := exec.Command(prefix[0], append(prefix[1:], "true")...).CombinedOutput(); err != nil {
+		return nil, false, "the network-off sandbox helper failed its probe (" + err.Error() + "): " + strings.TrimSpace(string(out))
+	}
+	return prefix, true, ""
+}
+
+// netnsFacility reports whether this host can create an unprivileged network
+// namespace at all (`unshare --net --map-root-user true`), returning the
+// `unshare` path. It is the raw facility check, separate from the helper probe in
+// networkOffWrapper, so tests can skip ONLY where the facility is absent and
+// still FAIL when the facility works but the helper does not.
+func netnsFacility() (unsharePath string, ok bool, why string) {
 	if runtime.GOOS != "linux" {
-		return nil, false, "the network sandbox uses `unshare --net`, a Linux facility, and this host is " + runtime.GOOS
+		return "", false, "the network sandbox uses `unshare --net`, a Linux facility, and this host is " + runtime.GOOS
 	}
 	path, err := exec.LookPath("unshare")
 	if err != nil {
-		return nil, false, "`unshare` is not on PATH"
+		return "", false, "`unshare` is not on PATH"
 	}
 	// Probe: on a host with user namespaces disabled `unshare` exists but fails
 	// at run time. Detecting that here keeps a sandbox-setup failure from being
 	// mislabelled as the row's own failure.
-	if err := exec.Command(path, "--net", "--map-root-user", "true").Run(); err != nil {
-		return nil, false, "`unshare --net --map-root-user` failed on this host (" + err.Error() + ") — unprivileged user namespaces may be disabled"
+	probe := netnsWrapperArgv(path, "", "")[:3] // unshare --net --map-root-user
+	if err := exec.Command(probe[0], append(probe[1:], "true")...).Run(); err != nil {
+		return "", false, "`unshare --net --map-root-user` failed on this host (" + err.Error() + ") — unprivileged user namespaces may be disabled"
 	}
-	return []string{path, "--net", "--map-root-user"}, true, ""
+	return path, true, ""
 }
 
 // hashOutput is the output fingerprint: the first 12 hex of sha256 over the

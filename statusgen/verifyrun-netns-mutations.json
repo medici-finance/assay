@@ -1,0 +1,59 @@
+{
+  "test": "go test . -run 'Netns' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — the PRE-FIX sandbox: bare `unshare --net --map-root-user`, no helper, lo left DOWN (issue #1925)",
+    "file": "netns.go",
+    "old": "\treturn []string{unsharePath, \"--net\", \"--map-root-user\", selfExe, netnsHelperArg, parentNS}\n",
+    "new": "\treturn []string{unsharePath, \"--net\", \"--map-root-user\"}\n"
+  },
+  "mutations": [
+    {
+      "name": "PLANTED REGRESSION — the sandbox leaves the network open (no new net namespace, no helper)",
+      "file": "netns.go",
+      "old": "\treturn []string{unsharePath, \"--net\", \"--map-root-user\", selfExe, netnsHelperArg, parentNS}\n",
+      "new": "\treturn []string{unsharePath, \"--map-root-user\", \"env\", \"--\", \"env\", \"--\"}\n"
+    },
+    {
+      "name": "the helper ignores a failure to bring lo up (falls through instead of refusing)",
+      "file": "netns_linux.go",
+      "old": "\tif err := loopbackUp(); err != nil {",
+      "new": "\tif err := loopbackUp(); false && err != nil {"
+    },
+    {
+      "name": "the namespace-identity check is dropped (helper runs the row in the caller's namespace)",
+      "file": "netns.go",
+      "old": "\tif own == parent {",
+      "new": "\tif false && own == parent {"
+    },
+    {
+      "name": "an UP non-loopback interface is tolerated inside the namespace",
+      "file": "netns.go",
+      "old": "\t\tif ifc.Up {",
+      "new": "\t\tif false && ifc.Up {"
+    },
+    {
+      "name": "an address-bearing non-loopback interface is tolerated inside the namespace",
+      "file": "netns.go",
+      "old": "\t\tif ifc.Addrs > 0 {",
+      "new": "\t\tif false && ifc.Addrs > 0 {"
+    },
+    {
+      "name": "lo left down is accepted",
+      "file": "netns.go",
+      "old": "\tif !loUp {",
+      "new": "\tif false && !loUp {"
+    },
+    {
+      "name": "a helper refusal is not reclassified (recorded as the row's own result)",
+      "file": "netns.go",
+      "old": "\tres.couldNotRun = true\n",
+      "new": "\tres.couldNotRun = false\n"
+    },
+    {
+      "name": "the class guard's literal matcher never matches",
+      "file": "netns_test.go",
+      "old": "\t\t\t\thit = x.Kind == token.STRING && (v == \"--net\" || strings.HasPrefix(v, \"--net=\"))",
+      "new": "\t\t\t\thit = false && x.Kind == token.STRING && (v == \"--net\" || strings.HasPrefix(v, \"--net=\"))"
+    }
+  ]
+}
