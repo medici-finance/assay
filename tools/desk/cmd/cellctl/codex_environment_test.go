@@ -125,22 +125,22 @@ func TestCodexShellInstructionsArePlatformSpecific(t *testing.T) {
 func TestCodexNativeOperatorHomes(t *testing.T) {
 	c := codexEnvironmentCell(t)
 	c.Env.Put("USERPROFILE", filepath.Join(t.TempDir(), "native home"))
-	if c.codexOperatorHome("windows") != c.Env.Get("USERPROFILE") {
+	if got, err := operatorHomeFor("windows", c.Env); err != nil || got != c.Env.Get("USERPROFILE") {
 		t.Fatal("Windows used Git Bash HOME")
 	}
-	if c.codexOperatorHome("darwin") != c.Env.Get("HOME") {
+	if got, err := operatorHomeFor("darwin", c.Env); err != nil || got != c.Env.Get("HOME") {
 		t.Fatal("Unix home changed")
 	}
 	c.Env.Put("APPDATA", filepath.Join(t.TempDir(), "AppData", "Roaming"))
-	if got := c.codexGHConfigDir("windows", c.Env.Get("USERPROFILE")); got != filepath.Join(c.Env.Get("APPDATA"), "GitHub CLI") {
+	if got, _ := ghConfigDirFor("windows", c.Env); got != filepath.Join(c.Env.Get("APPDATA"), "GitHub CLI") {
 		t.Fatal(got)
 	}
 	c.Env.Put("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg"))
-	if got := c.codexGHConfigDir("windows", c.Env.Get("USERPROFILE")); got != filepath.Join(c.Env.Get("XDG_CONFIG_HOME"), "gh") {
+	if got, _ := ghConfigDirFor("windows", c.Env); got != filepath.Join(c.Env.Get("XDG_CONFIG_HOME"), "gh") {
 		t.Fatal(got)
 	}
 	c.Env.Put("GH_CONFIG_DIR", filepath.Join(t.TempDir(), "gh override"))
-	if got := c.codexGHConfigDir("windows", c.Env.Get("USERPROFILE")); got != c.Env.Get("GH_CONFIG_DIR") {
+	if got, _ := ghConfigDirFor("windows", c.Env); got != c.Env.Get("GH_CONFIG_DIR") {
 		t.Fatal(got)
 	}
 }

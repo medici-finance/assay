@@ -115,6 +115,20 @@ var (
 	// one component. So the one shape the scan must tolerate is exactly the one that carries
 	// no information.
 	reAbsMachinePath = regexp.MustCompile(`(?:/Users/|/home/|/private/tmp/|/private/var/folders/|/tmp/tracker-)[^\s"'` + "`" + `)\]>,;]+`)
+	// reWinUsersPath and reWinUNCPath are the Windows half of the same class
+	// (desktools-v2/12): a drive-letter path under the Users root (`C:` + `\Users\` or its
+	// forward-slash form, any case — every profile, AppData and temp directory lives there)
+	// and a UNC path naming a host and a share. Each candidate is confirmed with
+	// IsAbsFor("windows", …) before it refuses, so the class has ONE definition of
+	// "absolute" on both sides of the seam.
+	//
+	// The #380 lesson holds here too, by requiring a component that starts with a letter or
+	// digit: the bare root, a `…` placeholder after it, and a `<host>`/`<share>` placeholder
+	// carry no information and are what documentation of this check spells. A UNC host needs
+	// two characters so a regex escape pair (a backslash pair, a letter, a backslash, a
+	// letter) is not read as a host and share.
+	reWinUsersPath = regexp.MustCompile(`(?i)\b[a-z]:[\\/]+users[\\/]+[\p{L}\p{N}_$][^\s"'` + "`" + `)\]>,;]*`)
+	reWinUNCPath   = regexp.MustCompile(`\\\\[\p{L}\p{N}][\p{L}\p{N}._$-]+\\[\p{L}\p{N}_$][^\s"'` + "`" + `)\]>,;]*`)
 	// reWorktreeName matches a scratch worktree directory name written WITHOUT its leading
 	// path — `tracker-<item>` — which is how it most often reaches a body (a command line, a
 	// "my worktree is …" sentence). deskwt mints exactly this shape (cmd/deskwt).
@@ -274,6 +288,28 @@ func selfContainRefusal(surface string, f scFinding) string {
 		surface, f.category, f.span, f.why)
 }
 
+// findAbsMachinePath returns the earliest absolute machine path in s — a POSIX path under a
+// machine-local root, or a Windows drive-letter path under the Users root or UNC path that
+// IsAbsFor confirms absolute on windows — or nil.
+func findAbsMachinePath(s string) []int {
+	var best []int
+	if loc := reAbsMachinePath.FindStringIndex(s); loc != nil {
+		best = loc
+	}
+	for _, re := range [...]*regexp.Regexp{reWinUsersPath, reWinUNCPath} {
+		for _, loc := range re.FindAllStringIndex(s, -1) {
+			if best != nil && loc[0] >= best[0] {
+				break
+			}
+			if IsAbsFor("windows", s[loc[0]:loc[1]]) {
+				best = loc
+				break
+			}
+		}
+	}
+	return best
+}
+
 // selfContainFindings is the collector behind selfContainScan: EVERY refusing finding, in
 // category order, plus the notice lines. The outbound-write check (outbound.go) reads the
 // whole list, because whether a write may be overridden depends on whether ANY finding is
@@ -299,16 +335,16 @@ func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFin
 	// none of them can be a legitimate part of a public body. They are checked FIRST so the
 	// refusal a worker sees names the span that is easiest to fix.
 	for _, m := range [...]struct {
-		re       *regexp.Regexp
+		find     func(string) []int
 		category string
 		why      string
 	}{
-		{reAbsMachinePath, "absolute machine path", "resolves only on the machine that wrote it"},
-		{reWorktreeName, "scratch worktree name", "names a throwaway directory nobody else has"},
-		{reSessionUUID, "session id", "identifies an agent session, not anything a reader can look up"},
-		{reAgentID, "agent id", "identifies an agent session, not anything a reader can look up"},
+		{findAbsMachinePath, "absolute machine path", "resolves only on the machine that wrote it"},
+		{reWorktreeName.FindStringIndex, "scratch worktree name", "names a throwaway directory nobody else has"},
+		{reSessionUUID.FindStringIndex, "session id", "identifies an agent session, not anything a reader can look up"},
+		{reAgentID.FindStringIndex, "agent id", "identifies an agent session, not anything a reader can look up"},
 	} {
-		if loc := m.re.FindStringIndex(s); loc != nil {
+		if loc := m.find(s); loc != nil {
 			refuse(m.category, s[loc[0]:loc[1]], m.why, loc[0], false)
 		}
 	}

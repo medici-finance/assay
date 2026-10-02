@@ -73,3 +73,61 @@ func TestOutboundGitLabNoReply(t *testing.T) {
 		})
 	}
 }
+
+// TestOutboundWindowsMachinePaths is the brief-10 Windows row (desktools-v2/12): the
+// absolute-machine-path class recognises a drive-letter path under the Users root and a UNC
+// path, each confirmed absolute by IsAbsFor("windows", …), and a public target refuses the
+// write before any request leaves. A private target is not scanned for self-containment, and
+// the bare roots — what documentation of the check has to spell — stay tolerated.
+func TestOutboundWindowsMachinePaths(t *testing.T) {
+	obRoster(t)
+	bs := `\`
+	refused := []struct{ name, path string }{
+		{"drive_backslash", `C:` + bs + `Users` + bs + `example` + bs + `src` + bs + `notes.md`},
+		{"drive_forward_slash", "D:/Users/example/AppData/Local/Temp/x"},
+		{"drive_lowercase", `c:` + bs + `users` + bs + `example`},
+		{"unc", bs + bs + `fileserver` + bs + `share` + bs + `team` + bs + `doc.md`},
+		{"unc_host_share_only", bs + bs + `fileserver` + bs + `share`},
+	}
+	for _, c := range refused {
+		t.Run("public/"+c.name+"_refused", func(t *testing.T) {
+			if !IsAbsFor("windows", c.path) {
+				t.Fatalf("fixture %q is not a Windows absolute path", c.path)
+			}
+			s := newGLServer(t)
+			f := OutboundChecked(s.forge(), "worker")
+			_, err := f.PostCommentTyped(obRepo(obPublic), 7, TargetChange, "see "+c.path+" for the log")
+			if err == nil || !IsRefused(err) || len(s.requests) != 0 {
+				t.Fatalf("public write carrying %q: err=%v requests=%v", c.path, err, s.requests)
+			}
+			if !strings.Contains(err.Error(), "absolute machine path") {
+				t.Fatalf("refusal does not name the class: %v", err)
+			}
+		})
+		t.Run("private/"+c.name+"_passes", func(t *testing.T) {
+			s := newGLServer(t)
+			f := OutboundChecked(s.forge(), "worker")
+			if _, err := f.PostCommentTyped(obRepo(obPrivate), 7, TargetChange, "see "+c.path+" for the log"); err != nil || len(s.requests) != 1 {
+				t.Fatalf("private write refused: %v requests=%v", err, s.requests)
+			}
+		})
+	}
+	// Documentation of the check names the roots, never a machine: these carry no user,
+	// host or share and must not refuse (the #380 lesson the POSIX roots already follow).
+	for name, body := range map[string]string{
+		"bare_drive_root": "the scan covers `C:" + bs + "Users" + bs + "` and its forward-slash form",
+		"placeholder_unc": "and UNC paths (`" + bs + bs + "<host>" + bs + "<share>`)",
+		"drive_relative":  "a drive-relative `C:rel" + bs + "x` is not absolute",
+		"regex_escape":    "the pattern `" + bs + bs + "d" + bs + bs + "s` is a regex",
+		"non_users_drive": "the installer lands in `C:" + bs + "Program Files" + bs + "Tool`",
+		"url_not_unc":     "see https://example.com/a/b",
+	} {
+		t.Run("public/"+name+"_passes", func(t *testing.T) {
+			s := newGLServer(t)
+			f := OutboundChecked(s.forge(), "worker")
+			if _, err := f.PostCommentTyped(obRepo(obPublic), 7, TargetChange, body); err != nil || len(s.requests) != 1 {
+				t.Fatalf("documentation body refused: %v requests=%v", err, s.requests)
+			}
+		})
+	}
+}

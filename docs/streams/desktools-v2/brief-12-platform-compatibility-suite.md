@@ -268,9 +268,13 @@ cases the existing tables genuinely lack, plus the temp-dir helper the tests nee
   runs, not in what is proven.
 - No production behavior change except deliverables 1 (cellctl accepts Windows drive-letter
   path shapes, and refuses every UNC and device spelling for both the stream roots and
-  `CELL_CONTAINER_LAUNCHER` with a named reason — rows 9, 12, 13) and 7 (deskfleet degrades on
-  a CE tier gap, keyed on a 404 from the approvals endpoint only, instead of dying — row 7),
-  each covered by its own rows above. Deliverable 3 changes tests and
+  `CELL_CONTAINER_LAUNCHER` with a named reason — rows 9, 12, 13), 2 (cellctl resolves the
+  operator home USERPROFILE-first on Windows and refuses when neither home variable is set,
+  instead of deriving a relative or root-anchored config path — row 2), 7 (deskfleet degrades on
+  a CE tier gap, keyed on a 404 from the approvals endpoint only, instead of dying — row 7) and
+  the brief-10 Windows row of deliverable 8 (the public-target absolute-machine-path class also
+  recognises drive-letter and UNC paths via `IsAbsFor` — brief 10's own Verify table),
+  each covered by its own rows. Deliverable 3 changes tests and
   adds one test helper; the custody decision itself is untouched.
 - Every test named by THIS brief's own Verify rows exists at merge and is the test the row
   invokes. Rows this brief adds to briefs 03, 05, 08 and 10 name tests those briefs' own

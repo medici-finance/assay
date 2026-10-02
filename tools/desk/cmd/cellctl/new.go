@@ -157,7 +157,7 @@ func cmdNew(args []string) {
 	mustMkdirAll(filepath.Join(d, "home", ".config", "assay"), filepath.Join(d, "bin"),
 		filepath.Join(d, "index"), filepath.Join(d, "worktrees"))
 	copyFile(yaml, filepath.Join(d, "cells-"+cell+".yaml"))
-	linkIfPresent(filepath.Join(e.Get("HOME"), ".gitconfig"), filepath.Join(d, "home", ".gitconfig"))
+	linkIfPresent(filepath.Join(hostHome(e), ".gitconfig"), filepath.Join(d, "home", ".gitconfig"))
 	chmod700(filepath.Join(d, "home"), filepath.Join(d, "home", ".config"), filepath.Join(d, "home", ".config", "assay"))
 	githubHost := e.GetOr("GITHUB_HOST", "github.com")
 	rootsLine := "# CELL_ROOTS=<owner>/<repo>=<abs path>,...   (exported as DESK_ROOTS at boot; unset = placeholder topology)"
@@ -168,7 +168,7 @@ func cmdNew(args []string) {
 
 	if forge == "github" {
 		// The gh CLI config is a GitHub custody artifact; linked only on a github cell.
-		linkIfPresent(filepath.Join(e.Get("HOME"), ghConfigRelPath), filepath.Join(d, "home", ghConfigRelPath))
+		linkIfPresent(filepath.Join(hostHome(e), ghConfigRelPath), filepath.Join(d, "home", ghConfigRelPath))
 		// The endpoint is DERIVED from the host, never spelled as a literal.
 		forgeAPIBase := "https://api." + githubHost
 		writeFile(filepath.Join(d, "cell.env"), fmt.Sprintf(`# cellctl cell.env — %s (k8s, github, scaffolded %s)
@@ -359,8 +359,8 @@ func newHouse(e *Env, root, cell, repo, roots, roles, port string) {
 	if err := os.Symlink(realCfg, filepath.Join(d, "home", ".config", "assay")); err != nil {
 		die("new: cannot link the config home: %v", err)
 	}
-	linkIfPresent(filepath.Join(e.Get("HOME"), ghConfigRelPath), filepath.Join(d, "home", ghConfigRelPath))
-	linkIfPresent(filepath.Join(e.Get("HOME"), ".gitconfig"), filepath.Join(d, "home", ".gitconfig"))
+	linkIfPresent(filepath.Join(hostHome(e), ghConfigRelPath), filepath.Join(d, "home", ghConfigRelPath))
+	linkIfPresent(filepath.Join(hostHome(e), ".gitconfig"), filepath.Join(d, "home", ".gitconfig"))
 	chmod700(filepath.Join(d, "home"), filepath.Join(d, "home", ".config"))
 	githubHost := e.GetOr("GITHUB_HOST", "github.com")
 	today := time.Now().UTC().Format("2006-01-02")

@@ -1,0 +1,59 @@
+{
+  "test": "go test ./internal/deskkit/ ./cmd/cellctl/ -count=1 -timeout 120s -run '^Test(EnvResolution|HomeReadClassGuard|OutboundWindowsMachinePaths|CodexNativeOperatorHomes)$'",
+  "control": {
+    "name": "Windows neither-set refusal removed (empty home resolves)",
+    "file": "cmd/cellctl/homeresolve.go",
+    "old": "\t\treturn \"\", fmt.Errorf(\"cannot resolve the operator home: neither USERPROFILE nor HOME is set \" +",
+    "new": "\t\treturn \"\", nil\n\t\treturn \"\", fmt.Errorf(\"cannot resolve the operator home: neither USERPROFILE nor HOME is set \" +"
+  },
+  "mutations": [
+    {
+      "name": "POSIX neither-set refusal removed",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\treturn \"\", fmt.Errorf(\"cannot resolve the operator home: neither HOME nor USERPROFILE is set \" +",
+      "new": "\treturn \"\", nil\n\treturn \"\", fmt.Errorf(\"cannot resolve the operator home: neither HOME nor USERPROFILE is set \" +"
+    },
+    {
+      "name": "Windows precedence flipped (Git Bash HOME beats USERPROFILE)",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\tif goos == \"windows\" {\n\t\tif v := e.Get(\"USERPROFILE\"); v != \"\" {",
+      "new": "\tif goos == \"windows\" {\n\t\tif v := e.Get(\"HOME\"); v != \"\" {\n\t\t\treturn v, nil\n\t\t}\n\t\tif v := e.Get(\"USERPROFILE\"); v != \"\" {"
+    },
+    {
+      "name": "APPDATA gh default dropped on windows",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\tif goos == \"windows\" {\n\t\tif v := e.Get(\"APPDATA\"); v != \"\" {",
+      "new": "\tif goos == \"windows-never\" {\n\t\tif v := e.Get(\"APPDATA\"); v != \"\" {"
+    },
+    {
+      "name": "Config home derived from raw HOME outside the resolver",
+      "file": "cmd/cellctl/cell.go",
+      "old": "\treturn mustResolve(configHomeFor(runtime.GOOS, e))",
+      "new": "\treturn filepath.Join(e.Get(\"HOME\"), \".config\", \"assay\")"
+    },
+    {
+      "name": "Windows drive-letter Users matcher disabled",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "for _, re := range [...]*regexp.Regexp{reWinUsersPath, reWinUNCPath} {",
+      "new": "for _, re := range [...]*regexp.Regexp{reWinUNCPath} {"
+    },
+    {
+      "name": "Windows UNC matcher disabled",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "for _, re := range [...]*regexp.Regexp{reWinUsersPath, reWinUNCPath} {",
+      "new": "for _, re := range [...]*regexp.Regexp{reWinUsersPath} {"
+    },
+    {
+      "name": "IsAbsFor confirmation inverted",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "\t\t\tif IsAbsFor(\"windows\", s[loc[0]:loc[1]]) {",
+      "new": "\t\t\tif !IsAbsFor(\"windows\", s[loc[0]:loc[1]]) {"
+    },
+    {
+      "name": "Windows bare-root tolerance dropped (component start no longer required)",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "users[\\\\/]+[\\p{L}\\p{N}_$][^",
+      "new": "users[\\\\/]*[^"
+    }
+  ]
+}
