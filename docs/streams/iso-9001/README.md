@@ -73,6 +73,10 @@ chain. Related, adjacent, cite both, never conflate them.
 | 05 | [Records control and retention, stated once](brief-05-records-control-and-retention.md) | 1 | S | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #400 @ 90c19fd7a273835d01247292ad91f217a4ff9fe1) |
 | 06 | [The auditor one-pager — what Assay is and is not](brief-06-auditor-one-pager.md) | 2 | S | todo | — | — |
 | 07 | [Release by merge — the human merge is the cut and the authorizer](brief-07-release-by-merge.md) | 2 | M | blocked | — | — |
+| 08 | [Versioned source obligations and project applicability](brief-08-source-applicability.md) | 0 | M | todo | — | — |
+| 09 | [Prepare project assurance reviews from canonical evidence](brief-09-project-review-packet.md) | 5 | M | todo | — | — |
+| 10 | [Reassess affected project reviews after source changes](brief-10-source-change-impact.md) | 6 | M | todo | — | — |
+| 11 | [Qualify project assurance preparation on an offline corpus](brief-11-assurance-review-qualification.md) | 7 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -179,3 +183,11 @@ Wave 2: [06] ← {01, 03, 04, 05}
   clause asks for the *results* of the action, not only the action.
 - Freshness: `origin/main` read 2026-08-25 @ `6871a3b`. Every seam named in these briefs, and
   every DEREFERENCE row, was checked against that commit.
+
+## Project assurance extension — proposed 2026-10-03
+
+[Project assurance specification](project-assurance-spec.md) adds a versioned source/applicability link, a review procedure over existing control exports, selective source-change reassessment and an offline qualification corpus. It adds no QMS, scheduler, vendor dependency or compliance claim. **This stream remains parked.**
+
+New briefs: **08 → 09 → 10 → 11**, waves 0, 5, 6, 7. Brief 08 can use existing requirements and synthetic sources immediately after prioritization. Brief 09 also requires graph-execution/02, /03, /15 and iso-9001/03–04. The full delivery path is consequently held by the existing graph instance/experiment/run-record/control-export chain and corrective-action effectiveness, not by acquiring a legal-AI product. No dependency is removed.
+
+The original critical-path prose above is historical. At freshly fetched main `cf31c32418ba49f93c679913813768542db1c072`, 01/02/04/05 are done, 03/06 remain todo and 07 blocked. For this extension, 08 is the independent source-contract head; graph-execution/15 and iso-9001/03 are the existing joining blockers. The specification's section 7 names their upstream chain. Project-specific pilots and organizational acts remain adopter-owned; public code has no dependency on them.
