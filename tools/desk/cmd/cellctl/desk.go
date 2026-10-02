@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -420,10 +421,7 @@ func utcStamp() string { return time.Now().UTC().Format("20060102T150405Z") }
 // else $CLAUDE_CONFIG_DIR, else $HOME/.claude. It must be a directory.
 func resolveCfg(e *Env, in string) string {
 	if in == "" {
-		in = e.Get("CLAUDE_CONFIG_DIR")
-	}
-	if in == "" {
-		in = filepath.Join(e.Get("HOME"), ".claude")
+		in = mustResolve(claudeConfigDirFor(runtime.GOOS, e))
 	}
 	st, err := os.Stat(in)
 	if err != nil || !st.IsDir() {

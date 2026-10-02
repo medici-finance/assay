@@ -1173,6 +1173,11 @@ func (b *budgetFlags) Set(v string) error {
 var statusgenVersion = "dev"
 
 func main() {
+	// The check:ci network-off sandbox re-executes statusgen as its in-namespace
+	// helper (netns.go, issue #1925). Dispatched first: it brings loopback up,
+	// proves isolation and execs the row — or refuses — and never returns.
+	maybeRunNetnsHelper()
+
 	// `statusgen --version` / `statusgen version` — pure introspection, answered
 	// before flag parsing.
 	//
