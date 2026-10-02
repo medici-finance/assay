@@ -98,8 +98,11 @@ func publishIdentityGate(dir, base string) error {
 	if strings.TrimSpace(dir) == "" {
 		dir = "."
 	}
+	// RemoteTip is deliberately empty (#1967): Base here is already the branch the Evidence
+	// lands on, so refs/remotes/origin/<base>..HEAD is exactly "commits this worktree holds
+	// that the remote target branch does not" — there is no separate PR head to exclude.
 	return publishIdentityGateFn(deskkit.PublishIdentityInput{
-		Dir: dir, Base: strings.TrimPrefix(base, "refs/heads/"), Role: "verifier",
+		Dir: dir, Base: strings.TrimPrefix(base, "refs/heads/"), RemoteTip: "", Role: "verifier",
 	})
 }
 
