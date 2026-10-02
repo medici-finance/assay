@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 root = pathlib.Path(__file__).resolve().parents[5]
+floor_go = root / "tools/desk/internal/regression/floor-go.sh"
 mode = sys.argv[1] if len(sys.argv) == 2 else ""
 controls = {
     "manifest": (
@@ -38,6 +39,12 @@ controls["gitenv"] = (
     "^TestShellGitIsolation$",
     "./internal/regression",
 )
+controls["runnerenv"] = (
+    "tools/desk/internal/regression/floor-go.sh",
+    "\nscrub\nexec ",
+    "^TestFloorRunnerGitIsolation$",
+    "./internal/regression",
+)
 controls["execenv"] = (
     "tools/desk/internal/regression/gitenv_test.go",
     "func execEnvFaults(name string, src []byte) (int, []string) {",
@@ -48,9 +55,10 @@ replacements = {
     "deadline": 'exec.Command("bash", path)',
     "gitenv": "func FixtureEnv(extra ...string) []string {\nreturn append(os.Environ(), extra...)",
     "execenv": "func execEnvFaults(name string, src []byte) (int, []string) {\nreturn 0, nil",
+    "runnerenv": "\nexec ",
 }
 if mode not in controls:
-    raise SystemExit("usage: mutate_guard.py manifest|ci|directories|deadline|gitenv|execenv")
+    raise SystemExit("usage: mutate_guard.py manifest|ci|directories|deadline|gitenv|execenv|runnerenv")
 # A run killed between the mutation and its restore leaves a backup beside the target;
 # restore every such backup first, so a guard never stays disabled in the tree.
 for other, *_ in controls.values():
@@ -71,10 +79,12 @@ backup.write_bytes(original)
 try:
     replacement = replacements.get(mode, marker + "\nreturn nil")
     path.write_text(text.replace(marker, replacement, 1))
+    # The go tool starts through floor-go.sh, the floor's one choke point, so the
+    # caller's GIT_* variables and global git config never reach the guard's fixtures.
     result = subprocess.run(
-        ["go", "test", "-run", test, "-count=1", "-timeout", "30s", package],
+        ["bash", str(floor_go), "test", "-run", test, "-count=1", "-timeout", "60s", package],
         cwd=root / "tools/desk",
-        timeout=45,
+        timeout=90,
         capture_output=True,
         text=True,
     )

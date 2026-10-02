@@ -53,6 +53,20 @@ func IsolateGit(t testing.TB) {
 	}
 }
 
+// fixedGitEnv is the environment HostileGitDir builds its victim with: a literal
+// list naming only PATH, a private HOME and null git config, never derived from the
+// caller's environment or from FixtureEnv. Neither an exported GIT_* variable nor a
+// mutation of FixtureEnv (mutate_guard.py gitenv) can redirect the victim's own
+// setup commit into another repository.
+func fixedGitEnv(home string) []string {
+	env := []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home,
+		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull}
+	if root := os.Getenv("SYSTEMROOT"); root != "" {
+		env = append(env, "SYSTEMROOT="+root) // Windows git needs it to start
+	}
+	return env
+}
+
 // HostileGitDir builds a committed repository outside the fixture under test and
 // exports GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE naming it for the rest of t. It
 // returns the repository's directory for TreeDigest. A fixture that leaks the
@@ -62,14 +76,15 @@ func HostileGitDir(t testing.TB) string {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
-	victim := filepath.Join(t.TempDir(), "victim")
+	base := t.TempDir()
+	victim := filepath.Join(base, "victim")
 	for _, args := range [][]string{
 		{"init", "-q", "-b", "main", victim},
 		{"-C", victim, "-c", "user.name=Victim", "-c", "user.email=victim@example.invalid",
 			"-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "victim"},
 	} {
 		cmd := exec.Command("git", args...) // literal argv[0]: the forge-CLI ban resolves it
-		cmd.Env = FixtureEnv("GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+		cmd.Env = fixedGitEnv(base)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("victim git %v: %v\n%s", args, err, out)
 		}

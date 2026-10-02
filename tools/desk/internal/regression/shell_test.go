@@ -42,10 +42,12 @@ func TestReg1145ShimCredential(t *testing.T) {
 
 // Keep the deadline finite while allowing headroom above the observed 23s
 // fixture runtime. The underlying shell assertions are unchanged. The wrapped
-// suites run git, so the child never inherits the caller's GIT_* variables.
+// suites run git, so the child never inherits the caller's GIT_* variables, and
+// null global and system config keep a caller's hooks out of their repositories.
 func runShellFixture(ctx context.Context, path, tmp string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "bash", path)
-	cmd.Env = FixtureEnv("KUBECONFIG=/dev/null", "TMPDIR="+tmp)
+	cmd.Env = FixtureEnv("KUBECONFIG=/dev/null", "TMPDIR="+tmp,
+		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
 	cmd.WaitDelay = time.Second
 	return cmd.CombinedOutput()
 }

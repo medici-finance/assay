@@ -1,14 +1,20 @@
 package regression
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // floorFiles returns the code this floor introduced: every Go source in this package
@@ -76,15 +82,20 @@ func isCall(c *ast.CallExpr, pkg string, names ...string) bool {
 	return false
 }
 
+// cleanEnvFuncs are the two constructors a floor subprocess may take its Env from:
+// FixtureEnv (the caller's environment minus GIT_*) and fixedGitEnv (a literal list,
+// used only for HostileGitDir's victim so a mutated FixtureEnv cannot reach it).
+var cleanEnvFuncs = map[string]bool{"FixtureEnv": true, "fixedGitEnv": true}
+
 func callsFixtureEnv(e ast.Expr) bool {
 	found := false
 	ast.Inspect(e, func(n ast.Node) bool {
 		if c, ok := n.(*ast.CallExpr); ok {
 			switch f := c.Fun.(type) {
 			case *ast.Ident:
-				found = found || f.Name == "FixtureEnv"
+				found = found || cleanEnvFuncs[f.Name]
 			case *ast.SelectorExpr:
-				found = found || f.Sel.Name == "FixtureEnv"
+				found = found || cleanEnvFuncs[f.Sel.Name]
 			}
 		}
 		return !found
@@ -224,5 +235,101 @@ func healthy() { c := exec.Command("git"); c.Env = regression.FixtureEnv("A=1");
 	}
 	if n != 6 || len(faults) != 5 || strings.Contains(got, "plant.go:6:") {
 		t.Errorf("planted controls: sites=%d faults=%d, want 6 and 5 with the healthy site clean:\n%s", n, len(faults), got)
+	}
+}
+
+// TestFloorRunnerGitIsolation runs the floor runner itself, check-floor.sh, over a
+// one-row manifest whose planted test runs git with the environment it inherits,
+// while GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE name a second repository. Reused
+// manifest rows keep their own fixtures, so the runner's scrub is what stands between
+// them and the caller's repository: it must stay byte-unchanged.
+func TestFloorRunnerGitIsolation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX runner: check-floor.sh is the Linux/macOS entrypoint")
+	}
+	victim := HostileGitDir(t)
+	before := TreeDigest(t, victim)
+	manifest, err := filepath.Abs(filepath.Join("testdata", "runner-manifest.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "bash", "check-floor.sh", manifest)
+	cmd.Env = FixtureEnv("KUBECONFIG=/dev/null",
+		"GIT_DIR="+filepath.Join(victim, ".git"), "GIT_WORK_TREE="+victim,
+		"GIT_INDEX_FILE="+filepath.Join(victim, ".git", "index"))
+	cmd.WaitDelay = time.Second
+	out, err := cmd.CombinedOutput()
+	if after := TreeDigest(t, victim); after != before {
+		t.Fatalf("floor runner let a row write to the GIT_DIR-named repository %s\n%s", victim, out)
+	}
+	if err != nil || !strings.Contains(string(out), "seed passes=1") {
+		t.Fatalf("floor runner over the planted manifest: %v\n%s", err, out)
+	}
+}
+
+var (
+	shGoSpawn = regexp.MustCompile(`(^|[\s;&|(])go\s+\S`)
+	pyGoSpawn = regexp.MustCompile(`["']go["']\s*[,\]]`)
+)
+
+// goSpawnFaults reports every non-comment line of a floor script that starts the go
+// tool other than through floor-go.sh: a shell `go <args>` command, or a Python
+// argv element that is exactly "go".
+func goSpawnFaults(name, src string) []string {
+	var faults []string
+	for i, line := range strings.Split(src, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		if shGoSpawn.MatchString(line) || pyGoSpawn.MatchString(line) {
+			faults = append(faults, fmt.Sprintf("%s:%d: starts go outside floor-go.sh", name, i+1))
+		}
+	}
+	return faults
+}
+
+// TestFloorGoChokePoint is the class guard for the runner half of
+// regression-fixture-git-env-isolation: every floor script (shell or Python, at any
+// depth under this package) must start the go tool through floor-go.sh, the one place
+// the caller's GIT_* variables are cleared. Go sources are TestFloorExecEnv's.
+func TestFloorGoChokePoint(t *testing.T) {
+	examined := map[string]bool{}
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		ext := filepath.Ext(path)
+		if (ext != ".sh" && ext != ".py") || path == "floor-go.sh" {
+			return nil
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		examined[filepath.ToSlash(path)] = true
+		for _, f := range goSpawnFaults(filepath.ToSlash(path), string(src)) {
+			t.Error(f)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"check-floor.sh", "testdata/mutate_guard.py"} {
+		if !examined[want] {
+			t.Errorf("floor script %s was not examined", want)
+		}
+	}
+
+	planted := "go test ./x\nfoo && exec go vet .\n# go test in a comment\n" +
+		"bash \"$here/floor-go.sh\" test -run x\n" +
+		"subprocess.run([\"go\", \"test\"])\nsubprocess.run([\"bash\", floor_go, \"test\"])\n"
+	got := strings.Join(goSpawnFaults("plant", planted), "\n")
+	want := "plant:1: starts go outside floor-go.sh\nplant:2: starts go outside floor-go.sh\n" +
+		"plant:5: starts go outside floor-go.sh"
+	if got != want {
+		t.Errorf("planted controls: got\n%s\nwant\n%s", got, want)
 	}
 }

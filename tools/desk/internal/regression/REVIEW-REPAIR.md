@@ -69,3 +69,51 @@ are outside this guard.
 `mutate_guard.py` now keeps a backup beside the mutated file and restores any
 leftover backup before it starts. An interrupted control run therefore cannot
 leave a guard disabled in the tree.
+
+### Round 3: the floor runner (`f2004-fixture-git-env-escape`, continued)
+
+The fixture repair above isolated the fixtures this floor added. The floor's runners
+were still open: `check-floor.sh` and `mutate_guard.py` started `go test` with the
+caller's environment unchanged. Three reused manifest rows (the `deskwt`,
+`deskdispatch` and statusgen shallow-clone tests) run git with whatever environment
+they inherit. With `GIT_DIR` exported, they wrote `user.name`, `user.email` and
+`commit.gpgsign` into the config of the repository it named. Separately,
+`HostileGitDir` built its victim through `FixtureEnv`. Under the `gitenv` mutation, the
+victim's setup commit therefore landed in the caller's repository.
+
+Repair (the runner-side option the reviewer named). `floor-go.sh` is now the only
+place the floor's scripts start the go tool. It unsets every `GIT_*` variable and
+`XDG_CONFIG_HOME`, then sets `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`.
+Both `check-floor.sh` and `mutate_guard.py` call it, so one scrub covers every
+manifest row, reused tests included. The reused tests themselves are unchanged.
+`HostileGitDir` now builds its victim from `fixedGitEnv`: PATH, a private HOME and
+null git config, written out as a fixed list. It does not read the caller's
+environment or call `FixtureEnv`, so the `gitenv` mutation cannot reach the victim.
+The shell-fixture wrapper also passes null global and system git config, which
+addresses the round-3 advisory.
+
+Fail-first. At the unfixed head, `check-floor.sh` was run with `GIT_DIR`,
+`GIT_WORK_TREE` and `GIT_INDEX_FILE` naming a throwaway decoy repository. It exited 1
+at the `deskwt` row, and the decoy's tree digest changed: its config gained
+`user.name=Test`, `user.email=t@e.st` and `commit.gpgsign=false`. In a separate run
+under the same exported variables, unfixed `mutate_guard.py gitenv` added one commit
+to a fresh decoy (1 to 2 commits). After the repair, the full runner under the same
+hostile variables printed `seed passes=26`, exited 0, and left the decoy's digest
+unchanged. `mutate_guard.py gitenv` and `runnerenv` also left a decoy unchanged when
+run with those variables exported.
+
+Controls. `TestFloorRunnerGitIsolation` runs `check-floor.sh` over
+`testdata/runner-manifest.md` while `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE`
+name a second committed repository. That manifest has one planted row whose test,
+under `testdata/runnerplant`, runs git with its inherited environment. The test then
+requires the second repository to be byte-unchanged. `mutate_guard.py runnerenv`
+removes the scrub call from `floor-go.sh`, and the control then fails with
+`floor runner let a row write to the GIT_DIR-named repository`. Verify row 8 now
+runs seven modes, and row 9 runs the control together with the class guard.
+
+Class guard. `TestFloorGoChokePoint` walks every shell and Python file under this
+package, at any depth, and flags any non-comment line that starts the go tool other
+than through `floor-go.sh`. Go sources remain `TestFloorExecEnv`'s. Against the unfixed
+scripts it named `check-floor.sh:27` and `testdata/mutate_guard.py:75`. A separately
+planted `testdata/second-plant.sh` running `go test` was named too and then removed.
+In-test planted lines keep the matcher honest.
