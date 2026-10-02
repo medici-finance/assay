@@ -839,20 +839,19 @@ var briefRowsAtRef = func(root, ref, path string) (map[string]string, map[string
 // `main` placed on the PR's own commit would make the merge-base the PR itself,
 // and every lane keyed on it would compare the PR with itself. There is no
 // bare-name fallback for the same reason — the same rule as remoteMainRef.
+//
+// Spelling the name in full is not enough on its own: when that exact ref is
+// ABSENT, git still expands the full name through refs/, refs/tags/, refs/heads/
+// and refs/remotes/, so a ref such as refs/tags/refs/remotes/origin/main on an
+// earlier commit of the PR would become the base. mergeBaseExact therefore shows
+// the exact ref exists and runs merge-base on its object id; an absent ref is
+// unresolvable ("").
 func prMergeBaseSHA(root, repo string, pr int) string {
 	baseRef := ghPRBaseRefFn(repo, pr)
 	if baseRef == "" {
 		return ""
 	}
-	ref := "refs/remotes/origin/" + baseRef
-	if exec.Command("git", "check-ref-format", ref).Run() != nil {
-		return ""
-	}
-	out, err := exec.Command("git", "-C", root, "merge-base", ref, "HEAD").Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
+	return mergeBaseExact(root, "refs/remotes/origin/"+baseRef)
 }
 
 // ghPRBaseRefFn is the forge read of the PR's base branch name — a package seam

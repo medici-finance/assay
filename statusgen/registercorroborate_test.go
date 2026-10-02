@@ -614,3 +614,168 @@ func TestNoShortOriginRefConcat(t *testing.T) {
 		}
 	}
 }
+
+// absentRefDecoys are the refs git's short-name rules expand the FULL name
+// refs/remotes/origin/main into when that exact ref does not exist: a full
+// refname is still looked up through refs/, refs/tags/, refs/heads/ and
+// refs/remotes/ in turn. Any of them, placed on a PR commit, would make that
+// commit the base unless the resolver requires the exact ref to exist.
+var absentRefDecoys = []string{
+	"refs/refs/remotes/origin/main",
+	"refs/tags/refs/remotes/origin/main",
+	"refs/heads/refs/remotes/origin/main",
+	"refs/remotes/refs/remotes/origin/main",
+}
+
+// decoyAfterGut commits a reused-anchor gut, then a second, unrelated commit,
+// deletes refs/remotes/origin/main and (when decoy != "") points decoy at the
+// gut commit: an EARLIER commit of the same PR, whose tree is not the PR's.
+func decoyAfterGut(t *testing.T, decoy string) string {
+	t.Helper()
+	root, path := gutFixture(t, landedAnchoredFinding)
+	mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
+	commitGut(t, root)
+	if err := os.WriteFile(filepath.Join(root, "other.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitGut(t, root)
+	gitRun(t, root, "update-ref", "-d", "refs/remotes/origin/main")
+	if decoy != "" {
+		gitRun(t, root, "update-ref", decoy, "HEAD~1")
+	}
+	return root
+}
+
+// TestMergeBaseAbsentRefDecoys drives the real resolvers with the base's
+// remote-tracking ref ABSENT. Every decoy git would read the full name as must
+// leave the base unresolved — online (prMergeBaseSHA) and offline
+// (registerLandedBase) alike.
+func TestMergeBaseAbsentRefDecoys(t *testing.T) {
+	old := ghPRBaseRefFn
+	t.Cleanup(func() { ghPRBaseRefFn = old })
+	ghPRBaseRefFn = func(string, int) string { return "main" }
+	for _, decoy := range absentRefDecoys {
+		root := decoyAfterGut(t, decoy)
+		if got := prMergeBaseSHA(root, "example/repo", 7); got != "" {
+			t.Errorf("%s with no remote-tracking base: merge-base = %q, want \"\" (unresolvable)", decoy, got)
+		}
+		if got, ok := registerLandedBase(root); ok {
+			t.Errorf("%s with no remote-tracking base: offline base = %q resolved, want the unresolved fallback", decoy, got)
+		}
+	}
+}
+
+// TestRegAbsentRefDecoyFails: the whole command, real resolver, the base's
+// remote-tracking ref absent and a decoy on an earlier commit of the PR (so the
+// identical-tree refusal cannot catch it). A reused-anchor gut must still fail.
+// The control (no decoy) fails too.
+func TestRegAbsentRefDecoyFails(t *testing.T) {
+	for _, decoy := range append([]string{""}, absentRefDecoys...) {
+		root := decoyAfterGut(t, decoy)
+		st := &corroborateStub{files: findingFiles("-resolved: false", "+resolved: true"), realMergeBase: true}
+		if rc := runCorroborateOn(t, root, st); rc != 1 {
+			t.Errorf("decoy %q: an uncorroborated resolve flip must fail with the base ref absent; rc=%d", decoy, rc)
+		}
+	}
+}
+
+// mergeBaseAllow names every function allowed to run `git merge-base` itself.
+// The class: a FIXED base ref handed to git by name, which git expands through
+// other namespaces when the exact ref is absent. A fixed base goes through
+// mergeBaseExact; the rest take a revision an operator (or a resolved commit)
+// supplies, and are listed with the reason.
+var mergeBaseAllow = map[string]string{
+	"mergeBaseExact":         "the choke point: resolves the fixed ref exactly, then runs merge-base on its object id",
+	"consumerEntriesAtBase":  "operator-supplied --base revision",
+	"pinConsumerBase":        "operator-supplied --base revision",
+	"productionResolveBase":  "operator-supplied base revision",
+	"runMergecheck":          "both sides already resolved to commits by resolveCommit",
+	"ancestorNoOtherChanges": "--is-ancestor on two commits verified with cat-file first",
+}
+
+// mergeBaseCallSites returns "name file:line" for every exec.Command / gitOut
+// call that runs merge-base in f, keyed by its enclosing top-level declaration.
+func mergeBaseCallSites(fset *token.FileSet, f *ast.File) (names, sites []string) {
+	for _, d := range f.Decls {
+		name := ""
+		switch d := d.(type) {
+		case *ast.FuncDecl:
+			name = d.Name.Name
+		case *ast.GenDecl:
+			for _, s := range d.Specs {
+				if vs, ok := s.(*ast.ValueSpec); ok && len(vs.Names) > 0 {
+					name = vs.Names[0].Name
+				}
+			}
+		}
+		ast.Inspect(d, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			switch fn := call.Fun.(type) {
+			case *ast.SelectorExpr:
+				if x, ok := fn.X.(*ast.Ident); !ok || x.Name != "exec" {
+					return true
+				}
+			case *ast.Ident:
+				if fn.Name != "gitOut" {
+					return true
+				}
+			default:
+				return true
+			}
+			for _, a := range call.Args {
+				if lit, ok := a.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+					if s, err := strconv.Unquote(lit.Value); err == nil && s == "merge-base" {
+						names = append(names, name)
+						sites = append(sites, name+" "+fset.Position(call.Pos()).String())
+					}
+				}
+			}
+			return true
+		})
+	}
+	return names, sites
+}
+
+// TestMergeBaseChokePoint is the class guard for SEC-2013-4: no statusgen
+// source runs `git merge-base` outside mergeBaseAllow, so a new caller that
+// hands git a fixed base by name is red here. The planted source is the
+// positive control; the choke point itself must be found, so a matcher that
+// stops matching fails instead of reporting clean.
+func TestMergeBaseChokePoint(t *testing.T) {
+	fset := token.NewFileSet()
+	plant, err := parser.ParseFile(fset, "plant.go",
+		"package p\nimport \"os/exec\"\nfunc planted(r string) { exec.Command(\"git\", \"merge-base\", \"HEAD\", r).Run() }\n", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := mergeBaseCallSites(fset, plant); len(got) != 1 || got[0] != "planted" {
+		t.Fatalf("positive control: the planted merge-base call must be flagged once; got %v", got)
+	}
+	matches, err := filepath.Glob("*.go")
+	if err != nil || len(matches) == 0 {
+		t.Fatalf("no statusgen sources found (err %v)", err)
+	}
+	seen := map[string]bool{}
+	for _, m := range matches {
+		if strings.HasSuffix(m, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, m, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", m, err)
+		}
+		names, sites := mergeBaseCallSites(fset, f)
+		for i, n := range names {
+			seen[n] = true
+			if _, ok := mergeBaseAllow[n]; !ok {
+				t.Errorf("%s: git merge-base run outside the choke point — resolve a fixed base with mergeBaseExact", sites[i])
+			}
+		}
+	}
+	if !seen["mergeBaseExact"] {
+		t.Errorf("the choke point mergeBaseExact runs no merge-base the guard can see")
+	}
+}

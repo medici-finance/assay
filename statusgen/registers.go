@@ -416,10 +416,11 @@ func deletedRegisterFiles(root string) []string {
 
 	// Cut at the merge-base of HEAD and origin/main: files added up to that
 	// shared point are landed; files added on either side after it are not
-	// violations. Fall back to HEAD when origin/main can't be resolved.
+	// violations. Fall back to HEAD when origin/main can't be resolved — the
+	// exact ref, never a decoy git would read its full name as (mergeBaseExact).
 	base := "HEAD"
-	if mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output(); err == nil && strings.TrimSpace(string(mb)) != "" {
-		base = strings.TrimSpace(string(mb))
+	if mb := mergeBaseExact(root, remoteMainRef); mb != "" {
+		base = mb
 	}
 
 	var deleted []string
@@ -516,10 +517,12 @@ func deletedRegisterFiles(root string) []string {
 // actually resolved. When it did NOT, the returned base is "HEAD" — a FAIL-OPEN
 // fallback: a mutation that is already COMMITTED is then compared against itself,
 // diffs to nothing, and passes silently. Callers that gate on the result must
-// surface that (see registerBaseFallbackNotices).
+// surface that (see registerBaseFallbackNotices). The merge-base is taken only
+// from the exact remote-tracking ref (mergeBaseExact): with that ref absent, a
+// decoy git would read its full name as is not a base, so it is unresolved too.
 func registerLandedBase(root string) (base string, resolved bool) {
-	if mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output(); err == nil && strings.TrimSpace(string(mb)) != "" {
-		return strings.TrimSpace(string(mb)), true
+	if mb := mergeBaseExact(root, remoteMainRef); mb != "" {
+		return mb, true
 	}
 	return "HEAD", false
 }

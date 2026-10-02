@@ -30,11 +30,15 @@ package main
 // the forge's own changed_files count; anything else fails closed.
 //
 // The base itself is established fail-closed too: it is resolved only from the
-// fully-qualified refs/remotes/origin/<base> (prMergeBaseSHA — a tag or local
-// branch cannot shadow it), the lane reads the tree from the repository top
-// level whatever the working directory, and a base the PR's own tree is
-// identical to — while the forge lists changed files — is refused as the PR
-// compared with itself.
+// fully-qualified refs/remotes/origin/<base>, and only when that EXACT ref
+// exists (prMergeBaseSHA via mergeBaseExact — git's short-name rules would
+// otherwise read a tag, a local branch or another ref whose name contains it in
+// its place, including when the real ref is absent). The lane reads the tree
+// from the repository top level whatever the working directory. As a second,
+// NARROWER layer, a base the PR's own tree is identical to — while the forge
+// lists changed files — is refused as the PR compared with itself; that layer
+// does NOT catch a wrong base that is an earlier commit of the same PR (its tree
+// differs from the PR's), so it backs up the exact resolution, never replaces it.
 
 import (
 	"errors"
@@ -289,7 +293,9 @@ func registerTransitionLane(root, repo string, pr int, files []ghPRFile, mergeBa
 	root = top
 	// A base the PR's own tree is identical to, while the forge says the PR
 	// changes files, is not the PR's base: it is the PR compared with itself,
-	// which hides every committed transition.
+	// which hides every committed transition. This catches only that one wrong
+	// base; an earlier commit of the PR passes it, which is why the base must
+	// come from mergeBaseExact in the first place.
 	if len(files) > 0 {
 		same, err := treeMatchesBase(root, mergeBase)
 		if err != nil || same {
