@@ -121,5 +121,31 @@ Evidence. The hand-edited board row in the stream README (row 03's Status cell) 
 to `todo` — the generated table is statusgen's to write, and the PR body's claim of a row
 flip is dropped in the same push.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./cmd/commsloop/ -run TestRouterRiskDerivedFromEnvelope -count=1` | pass exit=0 | sha256:96cda6b08f51 | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/commsloop/ -run 'TestRouter.*Risk' -count=1 -v 2>&1 \| grep -q 'PASS'` | fail exit=141 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && ( ! grep -q 'const risk = false' cmd/commsloop/loop.go ) \|\| grep -q 'Derivation:' cmd/commsloop/loop.go` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go vet ./cmd/commsloop/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:03` | fail exit=2 | sha256:16391eade42f | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+
+### Independent verification — 2026-10-02 (non-implementer, merged main 6e419774479f)
+
+Runner for every row below: assay-verifier-app[bot] @ 6e419774479f (claude-opus-5-5, on-behalf-of human:ian). The table above is the execution witness from the same run; this block is the hand reading of each row. Main carries Option 2 (literal kept, `Derivation:` block at the call site, follow-up issue #1722 recorded as a `consumers:` edge).
+
+| Verify row | Command | Exit | Observed | Reading |
+|---|---|---|---|---|
+| 1 | `cd tools/desk && go test ./cmd/commsloop/ -run TestRouterRiskDerivedFromEnvelope -count=1` | 0 | `ok … [no tests to run]` | N/A under Option 2, as the row's Expect states. The exit 0 is vacuous (no matching test exists) and is not counted as a pass. |
+| 2 | `cd tools/desk && go test ./cmd/commsloop/ -run 'TestRouter.*Risk' -count=1 -v 2>&1 \| grep -q 'PASS'` | 0 in a plain shell, 141 under pipefail | `testing: warning: no tests to run` then `PASS` | N/A under Option 2. The witness scores it fail (exit 141: `grep -q` closes the pipe early under pipefail); the row is not option-aware. |
+| 3 | `cd tools/desk && ( ! grep -q 'const risk = false' cmd/commsloop/loop.go ) \|\| grep -q 'Derivation:' cmd/commsloop/loop.go` | 0 | literal at `loop.go` line 302, `Derivation:` block at lines 244–301, directly above the `Assign` call at 303 | PASS. Mutation check: the same command against `loop.go` from the parent of the implementing commit exits 1. |
+| 4 | `cd tools/desk && go vet ./cmd/commsloop/` | 0 | no output | PASS (non-discriminating: it passes without the work). |
+| 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:03` | 2 | the tool reports the brief `is not in the diff against 6e41977…, so this run carries no evidence about its claims` | FAIL as written. On merged main the default base is main itself, so the row has no diff to read. Diagnostic only, not the row: with `--base` set to the parent of the implementing commit it exits 0 with `0 corroborated, 0 disproved, 1 unchecked`. |
+
+Result: 2 of 3 applicable rows pass (rows 1 and 2 are N/A under Option 2); row 5 fails as written. Status stays `implemented`. The row-5 shape is the class tracked in #1915; rows 1, 2 and 5 need a Verify-table re-baseline before the witness can read green.
+
+Derivation block checked by hand against the tree: the envelope carries no risk field and the parser refuses unknown fields (`envelope.go` line 149); every `risk: "yes"` row of `assign.yaml` is tier human; `Native` is declared and read in `loop.go` but assigned nowhere outside tests.
+
+RISK-VALUE: DERIVED — `risk = false` at `tools/desk/cmd/commsloop/loop.go:302`. No sender can express a risk signal today, so `false` is what an envelope-derived read would yield; the assign table's risk axis only narrows. Conditional: this stops holding if `Native` is enabled for the router before #1722 lands.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

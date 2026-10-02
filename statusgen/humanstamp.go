@@ -102,13 +102,13 @@ func humanStampProblems(root string, streams []*Stream) (problems, notices []str
 	// or a miss.
 	for _, s := range streams {
 		rel := relPath(s.Dir) + "/README.md"
-		baseRaw, baseErr := exec.Command("git", "-C", root, "show", base+":"+rel).Output()
+		baseRaw, baseErr := gitShowObject(root, base, rel)
 		if baseErr != nil {
 			// File did not exist at the merge-base. This could be a new stream,
 			// or a renamed stream. For a new stream, any stamps are gains.
 			// For renames, try git rename detection.
 			if oldPath := detectRename(root, base, rel); oldPath != "" {
-				baseRaw, baseErr = exec.Command("git", "-C", root, "show", base+":"+oldPath).Output()
+				baseRaw, baseErr = gitShowObject(root, base, oldPath)
 			}
 			if baseErr != nil {
 				// Truly new: every stamp in this file is a gain.

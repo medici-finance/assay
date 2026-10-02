@@ -1,0 +1,2 @@
+- Add an optional, disabled Laya subprocess boundary and offline artifact/input validation stubs; model bundle, sandbox and activation remain subject to owner approval.
+- Enforce abstention, every stdout/stderr copy bound and inherited-pipe/expired-result deadlines at the optional process boundary.
