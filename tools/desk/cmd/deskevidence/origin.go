@@ -113,9 +113,16 @@ func preexistingNotice(w io.Writer, target string, remote []byte) {
 // landing adds to target on repo, as a pre-flight before any write-budget spend. The checking
 // Forge re-runs the same check at WriteFile; this call is what lets the refusal name the
 // origin line (withAddedOrigin) before anything else happens.
-func evidenceOutboundCheck(repo, target string, added []byte) error {
+//
+// full is the content the landing commits, handed over as the field's FileSources entry —
+// the same evidence the Forge's own WriteFile check carries, so this pre-flight and the seam
+// agree on the session-id arm's one brief-frontmatter exemption (#2022) instead of the
+// pre-flight refusing a write the seam would pass. It is never scanned; where added is not
+// line-aligned with it (a compacted diff) the exemption simply does not apply.
+func evidenceOutboundCheck(repo, target string, added, full []byte) error {
 	return deskkit.OutboundCheck(deskkit.OutboundWrite{
 		Role: "verifier", Repo: repo, Kind: deskkit.OutboundKindFile,
-		Fields: []deskkit.OutboundField{{Name: "path", Text: target}, {Name: target, Text: string(added)}},
+		Fields:      []deskkit.OutboundField{{Name: "path", Text: target}, {Name: target, Text: string(added)}},
+		FileSources: map[string]string{target: string(full)},
 	})
 }
