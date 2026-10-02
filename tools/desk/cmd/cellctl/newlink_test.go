@@ -278,8 +278,8 @@ func TestGhLinkSource(t *testing.T) {
 
 func TestJunctionReparseData(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
-		{`C:\Users\op\.config\assay`, `C:\Users\op\.config\assay`},
-		{`C:/Users/op/.config/assay/`, `C:\Users\op\.config\assay`},
+		{`C:\cells\c\cfg`, `C:\cells\c\cfg`},
+		{`C:/cells/c/cfg/`, `C:\cells\c\cfg`},
 		{`d:\`, `d:\`},
 	} {
 		b, err := junctionReparseData(tc.in)
