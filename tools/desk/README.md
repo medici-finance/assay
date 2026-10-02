@@ -821,6 +821,21 @@ Boundaries mirror the push-transport gate's:
 - **Three-state.** An unbound role is a refusal (exit 5); a GitHub role whose bot USER id the
   roster does not pin, or a base ref that will not resolve, is could-not-check (exit 6), never
   rounded up to a pass; an empty range and every commit matching are clean.
+- **Only the commits the push ADDS are judged (#1967).** A PR head can already carry a
+  commit by another trusted App (a mixed-author PR); re-judging it refused every later
+  `update`, though the push publishes none of it. `update` therefore offers the gate the
+  remote tip — first the local `refs/remotes/origin/<branch>` (this is what `--check` runs),
+  then, immediately before the push, the forge's own live PR head sha — and the range becomes
+  `HEAD ^refs/remotes/origin/<base> ^<tip>`, always a subset of the whole range. The tip is
+  used only when it is spelled as a full object name or a `refs/remotes/origin/…` ref (never
+  `HEAD`, a local branch, an abbreviated sha or revision syntax), resolves to a commit here,
+  and is an ancestor of HEAD; otherwise — first push, unfetched head, force-moved or diverged
+  remote, no head reported — the **whole** range is judged and the refusal says why the tip
+  was not used (usually: `git fetch origin` and retry). A tracking ref that LAGS the remote
+  only widens the range. `create` offers no tip (no PR head exists yet), and `deskevidence`
+  offers none (its base already is the branch it writes). Every caller's tip choice is pinned
+  by `TestPubIdentityCallersTip`; the fail-first evidence is
+  `internal/deskkit/publishidentity-mutations.json`.
 - **`deskevidence` commits as the verifier App via the Contents API**, so its own landing is
   correctly attributed — this gate is the defence-in-depth layer over the verifier worktree it
   derives witness attribution *from*. In the sanctioned post-merge verify flow that worktree
