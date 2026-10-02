@@ -5,12 +5,31 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/regression"
 )
 
 // TestReg727WorktreeOrigin pins #727, fixed by 63303b19c: a real
 // linked worktree with extensions.worktreeConfig must retain its self-hosted
 // origin even when the native git fallback is absent. No remote is contacted.
-func TestReg727WorktreeOrigin(t *testing.T) {
+func TestReg727WorktreeOrigin(t *testing.T) { reg727(t) }
+
+// TestGitDirFixtureIsolation runs the #727 fixture with GIT_DIR, GIT_WORK_TREE and
+// GIT_INDEX_FILE naming a second repository, as a git hook running the suite would,
+// and requires that repository to be byte-unchanged afterwards.
+func TestGitDirFixtureIsolation(t *testing.T) {
+	victim := regression.HostileGitDir(t)
+	before := regression.TreeDigest(t, victim)
+	t.Run("fixture", reg727)
+	if after := regression.TreeDigest(t, victim); after != before {
+		t.Fatalf("fixture wrote to the GIT_DIR-named repository %s", victim)
+	}
+}
+
+func reg727(t *testing.T) {
+	// A caller's GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE would point both the fixture's git
+	// children and originRemoteURL's readers at the caller's repository.
+	regression.IsolateGit(t)
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main")
 	wt := filepath.Join(dir, "linked")
@@ -21,7 +40,7 @@ func TestReg727WorktreeOrigin(t *testing.T) {
 	local := func(args ...string) {
 		t.Helper()
 		cmd := exec.Command(git, args...)
-		cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+		cmd.Env = regression.FixtureEnv("GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("fixture git %v: %v\n%s", args, err, out)
 		}

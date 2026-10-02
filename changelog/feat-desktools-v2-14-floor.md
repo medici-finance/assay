@@ -3,3 +3,4 @@
 - Stage the additive statusgen full-test CI case; its enforcement remains held until the maintainer applies the workflow patch.
 
 - Check descendant files for directory readers on both workflow events, and retain rejecting controls. Give preserved shell fixtures bounded runtime headroom with a cancellation control.
+- Run every floor fixture that starts git, directly or through a shell, without the caller's GIT_* variables, so a GIT_DIR exported by a git hook cannot redirect fixture writes; a hostile-GIT_DIR control and a structural guard pin it.

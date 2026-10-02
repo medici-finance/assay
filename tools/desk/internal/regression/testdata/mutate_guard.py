@@ -32,16 +32,44 @@ controls["deadline"] = (
     "^TestShellDeadline$",
     "./internal/regression",
 )
+controls["gitenv"] = (
+    "tools/desk/internal/regression/fixtureenv.go",
+    "func FixtureEnv(extra ...string) []string {",
+    "^TestShellGitIsolation$",
+    "./internal/regression",
+)
+controls["execenv"] = (
+    "tools/desk/internal/regression/gitenv_test.go",
+    "func execEnvFaults(name string, src []byte) (int, []string) {",
+    "^TestFloorExecEnv$",
+    "./internal/regression",
+)
+replacements = {
+    "deadline": 'exec.Command("bash", path)',
+    "gitenv": "func FixtureEnv(extra ...string) []string {\nreturn append(os.Environ(), extra...)",
+    "execenv": "func execEnvFaults(name string, src []byte) (int, []string) {\nreturn 0, nil",
+}
 if mode not in controls:
-    raise SystemExit("usage: mutate_guard.py manifest|ci|directories|deadline")
+    raise SystemExit("usage: mutate_guard.py manifest|ci|directories|deadline|gitenv|execenv")
+# A run killed between the mutation and its restore leaves a backup beside the target;
+# restore every such backup first, so a guard never stays disabled in the tree.
+for other, *_ in controls.values():
+    target = root / other
+    backup = target.with_name(target.name + ".mutate-backup")
+    if backup.exists():
+        target.write_bytes(backup.read_bytes())
+        backup.unlink()
+        print(f"restored {other} from an interrupted control run", file=sys.stderr)
 relative, marker, test, package = controls[mode]
 path = root / relative
+backup = path.with_name(path.name + ".mutate-backup")
 original = path.read_bytes()
 text = original.decode()
 if text.count(marker) != 1:
     raise SystemExit("mutation target changed: expected one function")
+backup.write_bytes(original)
 try:
-    replacement = 'exec.Command("bash", path)' if mode == "deadline" else marker + "\nreturn nil"
+    replacement = replacements.get(mode, marker + "\nreturn nil")
     path.write_text(text.replace(marker, replacement, 1))
     result = subprocess.run(
         ["go", "test", "-run", test, "-count=1", "-timeout", "30s", package],
@@ -56,3 +84,4 @@ try:
         raise SystemExit("control did not produce the expected test failure")
 finally:
     path.write_bytes(original)
+    backup.unlink()

@@ -41,10 +41,11 @@ func TestReg1145ShimCredential(t *testing.T) {
 }
 
 // Keep the deadline finite while allowing headroom above the observed 23s
-// fixture runtime. The underlying shell assertions are unchanged.
+// fixture runtime. The underlying shell assertions are unchanged. The wrapped
+// suites run git, so the child never inherits the caller's GIT_* variables.
 func runShellFixture(ctx context.Context, path, tmp string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "bash", path)
-	cmd.Env = append(os.Environ(), "KUBECONFIG=/dev/null", "TMPDIR="+tmp)
+	cmd.Env = FixtureEnv("KUBECONFIG=/dev/null", "TMPDIR="+tmp)
 	cmd.WaitDelay = time.Second
 	return cmd.CombinedOutput()
 }
@@ -63,5 +64,35 @@ func TestShellDeadline(t *testing.T) {
 	_, err := runShellFixture(ctx, path, dir)
 	if err == nil || !errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		t.Fatalf("deadline fixture completed without cancellation: err=%v context=%v", err, ctx.Err())
+	}
+}
+
+// TestShellGitIsolation runs a planted shell fixture that creates and commits to its
+// own repository under TMPDIR while GIT_DIR names a second repository. The wrapper
+// must keep that repository byte-unchanged, as it must for the wrapped suites, which
+// also run git.
+func TestShellGitIsolation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX fixture")
+	}
+	victim := HostileGitDir(t)
+	before := TreeDigest(t, victim)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "plant.sh")
+	script := "#!/usr/bin/env bash\nset -eu\nexport GIT_CONFIG_NOSYSTEM=1\n" +
+		"git init -q \"$TMPDIR/plant\"\n" +
+		"git -C \"$TMPDIR/plant\" -c user.name=Plant -c user.email=plant@example.invalid " +
+		"-c commit.gpgsign=false commit -q --allow-empty -m plant\n"
+	if err := os.WriteFile(path, []byte(script), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	out, err := runShellFixture(ctx, path, dir)
+	if after := TreeDigest(t, victim); after != before {
+		t.Fatalf("shell fixture wrote to the GIT_DIR-named repository %s\n%s", victim, out)
+	}
+	if err != nil {
+		t.Fatalf("planted fixture failed in its own repository: %v\n%s", err, out)
 	}
 }

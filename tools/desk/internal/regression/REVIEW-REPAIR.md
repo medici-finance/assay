@@ -34,3 +34,38 @@ from holding the wrapper indefinitely after cancellation.
 
 These are implementer repair receipts, not reviewer resolution. The statusgen
 CI activation hold remains on issue #1836, and its staged patch is unchanged.
+
+`f2004-fixture-git-env-escape` (regression-fixture-git-env-isolation): the #727
+fixture built its git environment from the full inherited environment, so an
+exported `GIT_DIR` sent its commit, remote, config and worktree writes to the
+repository it named. The shell wrapper had the same shape: both wrapped suites
+run git, and with `GIT_DIR` exported the #1145 suite failed instead of using its
+own temporary repositories. `FixtureEnv` in `fixtureenv.go` now drops every
+`GIT_*` variable for fixture children, and `IsolateGit` clears them from the test
+process for the in-process origin readers. Both fixture sites use them.
+
+Controls. `TestGitDirFixtureIsolation` runs the #727 fixture with `GIT_DIR`,
+`GIT_WORK_TREE` and `GIT_INDEX_FILE` naming a second committed repository and
+requires that repository to be byte-unchanged. `TestShellGitIsolation` does the
+same for a planted shell fixture that creates and commits to its own repository.
+Before the repair both failed with `fixture wrote to the GIT_DIR-named
+repository` and `shell fixture wrote to the GIT_DIR-named repository`. After the
+repair both pass, and `TestReg727WorktreeOrigin`, `TestReg786FleetHardening` and
+`TestReg1145ShimCredential` pass with those three variables exported while the
+named repository stays unchanged. `mutate_guard.py gitenv` replays the shell
+control's failure with the filter bypassed.
+
+Class guard. `TestFloorExecEnv` parses every Go source in this package and each
+file declaring a manifest `TestReg*` entry point. Each `exec.Command` or
+`exec.CommandContext` result must have its own `Env` assigned from `FixtureEnv`
+in the same function, and `os.Environ()` may appear only in `fixtureenv.go`. A
+planted source holds five unsafe sites and one healthy site, and the guard must
+flag exactly the five. With the previous environment spelling restored, it named
+both fixture sites. A separate planted `exec.Command("git", "status")` in a
+scratch test file was named too. `mutate_guard.py execenv` replays that failure
+with the guard disabled. Reused pre-existing tests keep their own fixtures and
+are outside this guard.
+
+`mutate_guard.py` now keeps a backup beside the mutated file and restores any
+leftover backup before it starts. An interrupted control run therefore cannot
+leave a guard disabled in the tree.

@@ -31,7 +31,9 @@ runs are recorded:
   resolver and native-binary name on the parent. Parent production ignores that
   resolver and refuses because the legacy script is missing.
 - #727: the new real linked-worktree test runs unchanged on the parent and fixed
-  tree. It creates a complete local repository with `extensions.worktreeConfig`,
+  tree, with the test-only `internal/regression/fixtureenv.go` (standard library
+  only; no desk package imports it) copied beside it for its git-environment
+  isolation. It creates a complete local repository with `extensions.worktreeConfig`,
   then removes executable fallback from PATH. It neither contacts its placeholder
   remote nor relies on an incomplete `.git` fixture.
 - #697, #772, #773, #999, #1007, #1056, #1203, #1411, #1418, #1490 and #1864:
