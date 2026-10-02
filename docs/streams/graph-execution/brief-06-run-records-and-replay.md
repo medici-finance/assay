@@ -36,7 +36,7 @@ sources:
   docs statusgen schemas` returns only this stream''s spec and README — no run-record schema or replay path exists;
   not already satisfied'
 - docs/streams/graph-execution/task-workflow-program.md — execution routing amendment 2026-10-02
-- freshness-checked 2026-10-02 @ a944ad1103aadaba919c11fe425089057f5c2f4e
+- freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
 exec-tier: strong
 exec-tier-why: "(a) the run-record field set and the replay-fixture derivation are design decisions the facts do not fully pre-specify; (b) correctness is cross-artifact — a pattern revision, its regression run and the holdout assertion must agree, and a loop that scores outcome only would silently reward a route that broke a constraint."
 domain: complex
@@ -77,7 +77,7 @@ Include internal stage attempts, findings/dispositions, candidate identity and p
 Implement the named failure/flow case below in the declared test surface. This amendment does not record implementation evidence or authorize live activation.
 
 ## Task
-1. **Schema.** `schemas/run-record-v1.json` (planned) per the facts; `$id` under `schemas/`, `additionalProperties: false`, `required` lists every top-level field. `statusgen/runrecord.go` (planned): `WriteRunRecord` and `ValidateRunRecord`; the validator refuses a record with an unknown field, a non-enumerated `selected_because` or `interventions[].kind`, or a `by_role` not present in the pinned approved role bindings.
+1. **Schema.** `schemas/run-record-v1.json` (planned) per the facts; `$id` under `schemas/`, `additionalProperties: false`, `required` lists every top-level field. `statusgen/runrecord.go` (planned): `WriteRunRecord` and `ValidateRunRecord`; the validator refuses a record with an unknown field, a non-enumerated `selected_because` or `interventions[].kind`, or a `by_role` not present in the pinned approved role bindings. The validator's caller loads those bindings from versioned operator configuration pinned in the run's environment, changed only by a reviewed change to that configuration — never from the record under validation, and a record that carries its own binding set is refused.
 2. **Emit.** `statusgen experiment` (from 05) writes one run record per case to `--records-dir` (planned flag); `TestExperimentEmitsValidRecords` (planned) validates every emitted record against the schema.
 3. **Replay.** `statusgen replay --record <file> --root <fixture> [--pattern-version N] [--json]` (planned): re-runs and diffs per node; exit 0 only on no divergence; a could-not-check input is reported and fails the run.
 4. **Fixture + revision.** Derive `statusgen/testdata/graph-execution/replay/` (planned) from one failed 05 run (facts). Author `spec/workflow-patterns/<name>-v2.yaml` (planned) with `supersedes:` and a one-line `changed:` rationale. Run the 02 pattern lint over it.
@@ -98,7 +98,7 @@ Implement the named failure/flow case below in the declared test surface. This a
 | 9 | check +flow | `cd statusgen && go run . experiment --root testdata/graph-execution/replay --records-dir /tmp/ge06-one > /dev/null; go run . replay --record /tmp/ge06-one/*.json --root testdata/graph-execution/replay; echo rc=$?` | `rc=0` — a record written by one run replays cleanly through the other subcommand: emit → validate → replay is one path, not three |
 | 10 | check +dereference | `grep -n -i 'promot' docs/lifecycle.md` | ≥ 1 line and it states the revision lands as a reviewed pull request; a lifecycle doc that describes an automatic promotion fails the reviewer's reading |
 | 11 | check:ci +flow | `cd statusgen && go test -count=1 -v -run TestRunRecordInstanceReferencesRoundTrip ./...` | exit 0; named test PASS; instance, subject and optional assessment references survive emit/validate/replay |
-| 12 | check:ci +flow +mutation | `(cd statusgen && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunRecordInternalAttemptAccounting$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunRecordInternalAttemptAccounting " "$routing_out")` | exit 0; named PASS; dropped failed attempt changes cost verdict; unbound role is rejected |
+| 12 | check:ci +flow +mutation | `(cd statusgen && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunRecordInternalAttemptAccounting$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunRecordInternalAttemptAccounting " "$routing_out")` | exit 0; named PASS; dropped failed attempt changes cost verdict; unbound role is rejected; a role binding supplied inside the record under validation is refused; mutation: omit failed internal attempts from the run record cost total — the named test must fail |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —

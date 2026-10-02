@@ -178,7 +178,9 @@ fall. The conference evidence motivates the experiment; it does not pre-approve 
 ## 5. Non-goals and the divergence stated
 
 Not prerequisites, and not in scope: a graph database, a trained router, a new orchestration
-platform, a PID-tuned controller, or a full rollout of any private platform design. A derived
+platform, a PID-tuned controller, or a full rollout of any private platform design (the
+orchestration-platform item is narrowed by the routed task execution amendment of 2026-10-02
+below; the graph-database item stands). A derived
 index over reviewed files and execution facts is enough for the first experiment. Inferred
 knowledge relationships are not authorized dependencies: hard gates hold work when
 unavailable; informational feathers stay visible without blocking.
@@ -216,7 +218,7 @@ No universal prefix/turn limit is introduced, and existing activation gates rema
 
 ## Routed task execution amendment — 2026-10-02
 
-[Task workflow program](task-workflow-program.md) permits a thin executable host over the existing contracts and routes it to 19–27. This is the narrow exception to the original new-orchestration-platform exclusion; it does not authorize a second scheduler authority, credential broker, live trial or change to human gates. Existing consumers remain compatible.
+[Task workflow program](task-workflow-program.md) permits a thin executable host over the existing contracts and routes it to 19–27. This is the narrow exception to the original new-orchestration-platform exclusion. It permits one store: a single-controller, local, embedded SQLite store of the existing instance/node/attempt record family (19). It still excludes a graph database or graph-store service, a distributed or shared store or lease service, a message bus, a credential broker, a new rule engine, a second scheduler authority and a duplicate evaluator, and it authorizes no live trial and no change to human gates. Existing consumers remain compatible.
 
 
-The shared loop-admin runtime serves existing standing desks and workflow-stage callers. Standing mode must work without graph storage/controller; cellctl retains operator administration. See the routed task workflow specification for module and state ownership.
+The shared loop-admin runtime serves existing standing desks and workflow-stage callers. Standing mode must work without the instance store or controller; cellctl retains operator administration. The harness-process runner and per-role cadence lease already on main (cellctl's cadence path) are reused, not duplicated: see the program's "Existing launch path" section. See the routed task workflow specification for module and state ownership.

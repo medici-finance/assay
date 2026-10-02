@@ -42,7 +42,7 @@ sources:
   nothing and `grep -rn ''experiment'' statusgen/main.go` returns nothing — no harness or subcommand exists; not
   already satisfied'
 - docs/streams/graph-execution/task-workflow-program.md — execution routing amendment 2026-10-02
-- freshness-checked 2026-10-02 @ a944ad1103aadaba919c11fe425089057f5c2f4e
+- freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
 exec-tier: strong
 exec-tier-why: "(b) correctness depends on cross-artifact reasoning — the harness joins four briefs' outputs (eligibility, patterns, coverage, recovery) into one verdict per case, and a harness that quietly exercises only one of them still prints a full table; (a) the fixture design for the 'reviewed revision to pending work' case is not pre-specified by the facts."
 domain: complicated
@@ -99,7 +99,7 @@ Implement the named failure/flow case below in the declared test surface. This a
 | 7 | check +neighbour | `cd statusgen && go test -run 'TestBriefV2' ./... && go test -run 'TestNextUp' ./...` | exit 0 — the readers the harness sits on are unchanged by the fixtures being added under testdata |
 | 8 | check +flow | `cd statusgen && go run . experiment --root testdata/graph-execution/01-fanout-join --json > /tmp/ge05-01.json; grep -c '"released": true' /tmp/ge05-01.json` | ≥ 1 — one case runs eligibility → coverage → drainloop end to end and releases the join node, so the four seams are wired, not stubbed |
 | 9 | check | `grep -c 'example-org' statusgen/testdata/graph-execution/*/case.yaml` | every file ≥ 1; and `grep -rn -i -e '-private' -e '~/.config' statusgen/testdata/graph-execution/` returns nothing — the fixtures carry placeholders only |
-| 10 | check:ci +flow +mutation | `(cd statusgen && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestExperimentUsesControllerContract$" ./... > "$routing_out" && grep -q -- "--- PASS: TestExperimentUsesControllerContract " "$routing_out")` | exit 0; named PASS; altered declaration changes dispatch through production seam while baseline stays independent |
+| 10 | check:ci +flow +mutation | `(cd statusgen && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestExperimentUsesControllerContract$" ./... > "$routing_out" && grep -q -- "--- PASS: TestExperimentUsesControllerContract " "$routing_out")` | exit 0; named PASS; altered declaration changes dispatch through production seam while baseline stays independent; mutation: have the experiment call its own scheduler instead of the controller seam — the named test must fail |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —

@@ -70,7 +70,9 @@ catch/override rate with environment identity stamped on every number.
    precondition, not delivered here.
 
 **Out of scope:** a graph database, a trained router, a new orchestration platform, a
-PID-tuned controller; any real-work trial (an adopter's own brief, in the adopter's tree);
+PID-tuned controller (the orchestration-platform exclusion is narrowed 2026-10-02 for the
+routed execution host only — see "Task workflow execution routing" below); any real-work trial
+(an adopter's own brief, in the adopter's tree);
 admission-control policy values (an adopter's ruling from its own measured demand); moving
 or removing any human gate (spec §5 states the divergence).
 
@@ -112,7 +114,8 @@ or removing any human gate (spec §5 states the divergence).
 
 [The amendment](work-input-amendment.md) assigns packet views to 09, applicability to 03,
 dispatch/coalescing to 14, cumulative accounting to 16, and connected replay/measurement to
-18. Existing waves and activation gates are unchanged. 02 and 07's implemented delivery
+18. Existing waves and activation gates were unchanged by that amendment; waves have since
+been recalculated by the 2026-10-02 routing below, and the authoring table is current. 02 and 07's implemented delivery
 records are retained; their consumers own compatible extensions. The first runnable proof
 uses offline fixtures; real provider savings need a separately authorized adopting pilot.
 
@@ -165,7 +168,8 @@ it does not commission another runtime. 01 is now done; 02 retains its implement
 starting-state prose above is historical; source presence is not deployed verification.
 Existing 03–06 gain shared-contract amendments; their statuses remain todo.
 
-Waves: 0 = 10; 1 = 09, 11, 13 alongside existing 03/04/07/08;
+Waves as of that amendment (historical — the authoring table above is current, after the
+2026-10-02 routing moved 05/06/15/17/18): 0 = 10; 1 = 09, 11, 13 alongside existing 03/04/07/08;
 2 = 12, 16 and existing 05; 3 = 14 and existing 06;
 4 = 15, 17; 5 = 18. Existing 05 additionally depends on 09.
 
@@ -193,8 +197,11 @@ Source refresh 2026-09-19: public Assay `e4109205751a219330b954f75855c05b4be2a5c
 ## Task workflow execution routing — 2026-10-02
 
 [The execution extension](task-workflow-program.md) is routed into **19–27**, all todo.
-It permits one thin controller host over existing contracts; the earlier platform exclusion
-continues to prohibit a second scheduler authority, broker, graph store or duplicate evaluator.
+It permits one thin controller host over existing contracts, and one store: a single-controller,
+local, embedded SQLite store of the existing instance/node/attempt record family (19). The
+earlier platform exclusion still prohibits a graph database or graph-store service, a
+distributed or shared store or lease service, a message bus, a credential broker, a new rule
+engine, a second scheduler authority and a duplicate evaluator.
 Existing 04/05/06/09/14/16/18 carry consumer/flow amendments. Implemented and completed records
 01/02/03/07/10 remain intact. New source scopes/tests are deliverables, not executed evidence.
 
@@ -207,7 +214,6 @@ The current execution path supersedes the historical critical-path prose above f
 04 + 09 -> 16
 10 -> 13 -> 14 (also 01,09,16)
 19 + 20 + 26 + 04 + 14 -> 21 workflow controller -> 05 experiment -> 06 records
-20 -> 22 first adapter
 19 + 20 -> 23 immutable workspace
 21 + 23 + 06 -> 24 internal loop -> 25 publication -> 18 integrated proof
 ```

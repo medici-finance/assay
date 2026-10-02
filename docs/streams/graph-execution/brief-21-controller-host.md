@@ -24,7 +24,7 @@ schema: brief-v2
 authored: 2026-10-02 by task-workflow authoring session
 sources:
 - docs/streams/graph-execution/task-workflow-program.md
-- freshness-checked 2026-10-02 @ a944ad1103aadaba919c11fe425089057f5c2f4e
+- freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
 exec-tier: strong
 exec-tier-why: Durable state, authority and cross-component failure cases require design judgment.
 domain: complicated
@@ -40,11 +40,11 @@ id: 008dd7b9-6421-42bd-b6c6-d3c495837fa8
 
 ## Context
 
-files: `workflow/controller/` (planned), `workflow/cmd/assay-workflow/` (planned), `workflow/testdata/controller/` (planned), `workflow/README.md` (planned), `docs/enforcement-model.md` (planned), `changelog/graph-execution-21-controller-host.md` (planned).
+files: `workflow/controller/` (planned), `workflow/cmd/assay-workflow/` (planned), `workflow/testdata/controller/` (planned), `workflow/README.md` (planned), `docs/enforcement-model.md`, `changelog/graph-execution-21-controller-host.md` (planned).
 
 facts: The graph instance, admission and recovery contracts are the canonical source. The workflow module is new at the inspected revision. Existing role capabilities and human merge/verification gates remain binding. All named commands/tests below are implementation deliverables, not tests already run.
 
-single-point-of-failure: controller correctness alone is insufficient — independently enforcing effect/role boundaries and fixture oracles must still reject a bypass.
+single-point-of-failure: the controller's current-owner and acceptance recheck at each transition — behind it, the existing effect boundaries (04 receipts, 14 assignment recheck), which reject a stale generation when the controller is bypassed.
 
 ## Read first
 
@@ -81,14 +81,14 @@ Additional implementation files: `workflow/controller/loopadmin_test.go` (planne
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerDuplicateAndRetry$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerDuplicateAndRetry " "$routing_out")` | exit 0; named PASS; same-state notifications launch once and a definite failed launch retries |
-| 2 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerCrashUnknownAndPause$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerCrashUnknownAndPause " "$routing_out")` | exit 0; named PASS; crash recovery retains pause/spend and reconciles unknown effects before resuming |
-| 3 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerStaleAcceptanceAndBypass$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerStaleAcceptanceAndBypass " "$routing_out")` | exit 0; named PASS; head movement or a direct call without a current owner cannot advance |
-| 4 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerUsesSharedLoopAdmin$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerUsesSharedLoopAdmin " "$routing_out")` | exit 0; named PASS; graph node progression uses the common supervisor; a lost cross-journal receipt does not double-launch; a process exit cannot advance an unaccepted node |
+| 1 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerDuplicateAndRetry$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerDuplicateAndRetry " "$routing_out")` | exit 0; named PASS; same-state notifications launch once and a definite failed launch retries; mutation: drop the actionable-fingerprint check before launch — the named test must fail |
+| 2 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerCrashUnknownAndPause$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerCrashUnknownAndPause " "$routing_out")` | exit 0; named PASS; crash recovery retains pause/spend and reconciles unknown effects before resuming; mutation: resume after a crash without reconciling unknown effects — the named test must fail |
+| 3 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerStaleAcceptanceAndBypass$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerStaleAcceptanceAndBypass " "$routing_out")` | exit 0; named PASS; head movement or a direct call without a current owner cannot advance; mutation: skip the current-owner check on the direct transition call — the named test must fail |
+| 4 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerUsesSharedLoopAdmin$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerUsesSharedLoopAdmin " "$routing_out")` | exit 0; named PASS; graph node progression uses the common supervisor; a lost cross-journal receipt does not double-launch; a process exit cannot advance an unaccepted node; mutation: advance a node on process exit without acceptance — the named test must fail |
 
 ## Pre-mortem and dispatch checks
 
-The plausible wrong implementations are the negative cases named in Verify: stale acceptance, missing durable data, or a bypass that still returns success. Each row must exercise production code and an independent expected outcome, not only serialization. Bypass the upper controller in at least one authority test. Fail a deliberate mutation of the named control. Facts/source revisions, declared files, risks, consumers and sizing were checked at authoring; final implementation design adequacy remains review-only.
+The plausible wrong implementations are the negative cases named in Verify: stale acceptance, missing durable data, or a bypass that still returns success. Each row must exercise production code and an independent expected outcome, not only serialization. Bypass the upper controller in at least one authority test. Each +mutation row names its mutation, and that mutation must turn the row's named test red. Facts, declared files, risks, consumers and sizing were re-checked against main at 307fe16992caef53fa46c52622753dd400c7b42a on 2026-10-02, after merging main; final implementation design adequacy remains review-only.
 
 ## Evidence
 

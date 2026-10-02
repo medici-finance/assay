@@ -10,9 +10,7 @@ why: >-
   lacks, a signal watched over a window after a change lands.
 wave: 1
 depends: ["graph-execution/02"]
-unblocks:
-- graph-execution/05
-- graph-execution/19
+unblocks: ["graph-execution/05", "graph-execution/19"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

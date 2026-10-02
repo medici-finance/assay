@@ -27,7 +27,7 @@ sources:
 - docs/streams/graph-execution/admission-assurance-spec.md
 - freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
 - docs/streams/graph-execution/task-workflow-program.md — execution routing amendment 2026-10-02
-- freshness-checked 2026-10-02 @ a944ad1103aadaba919c11fe425089057f5c2f4e
+- freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
 exec-tier: strong
 exec-tier-why: Cross-component contracts and independent failure controls must agree; the implementation requires design judgment.
 domain: complicated
@@ -108,7 +108,7 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 3 | check:ci +flow | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnershipRestoreBudgetPause" ./...` | exit 0; output includes PASS for TestCellOwnershipRestoreBudgetPause, with no [no tests to run] for its owning package |
 | 4 | check:ci +mutation | `(cd drainloop && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCellBudgetConcurrentReservations.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellBudgetConcurrentReservations$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCellBudgetConcurrentReservations " "$wi_out")` | exit 0; named PASS; concurrent admissions cannot spend the same available allowance; mutation: exclude outstanding reservations from available allowance — the named test must fail |
 | 5 | check:ci +flow | `(cd drainloop && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCellBudgetRestoreAllAttempts.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellBudgetRestoreAllAttempts$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCellBudgetRestoreAllAttempts " "$wi_out")` | exit 0; named PASS; failed-attempt spend, reservations, unknown usage and stop state survive restore |
-| 6 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestOwnershipBackendHandbackUnknown$" ./... > "$routing_out" && grep -q -- "--- PASS: TestOwnershipBackendHandbackUnknown " "$routing_out")` | exit 0; named PASS; transfer with unknown effect holds, restore retains usage/stop, stale backend cannot write |
+| 6 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestOwnershipBackendHandbackUnknown$" ./... > "$routing_out" && grep -q -- "--- PASS: TestOwnershipBackendHandbackUnknown " "$routing_out")` | exit 0; named PASS; transfer with unknown effect holds, restore retains usage/stop, stale backend cannot write; mutation: release ownership on handback while an effect is unknown — the named test must fail |
 
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.

@@ -37,7 +37,7 @@ sources:
   drainloop/*.go` returns only the three ''Release is idempotent'' comments in engine.go, engine_test.go and claim.go
   — no effect adapter, receipt, run/attempt identity or reconcile step exists; not already satisfied'
 - docs/streams/graph-execution/task-workflow-program.md — execution routing amendment 2026-10-02
-- freshness-checked 2026-10-02 @ a944ad1103aadaba919c11fe425089057f5c2f4e
+- freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
 exec-tier: strong
 exec-tier-why: "(c) concurrency and safety plumbing — a subtle ordering error (record after apply, or reconcile after retry) passes every happy-path test and only shows as a duplicated external effect in production; (a) the receipt/idempotency-key shape is a design decision the facts do not fully pre-specify."
 domain: complicated
@@ -121,7 +121,7 @@ Implement the named failure/flow case below in the declared test surface. This a
 | 8 | check +flow | `cd drainloop && GOWORK=off go run ./cmd/demo > /tmp/ge04-demo.txt 2>&1; grep -c LAND /tmp/ge04-demo.txt` | 5 — the demo's five non-effect items still drain unchanged with the layer off |
 | 9 | check | `statusgen --root . --consumers --diff-base $(git merge-base HEAD origin/main)` | exit 0 — the `consumers:` routing above is corroborated by the diff |
 | 10 | check:ci +mutation | `cd drainloop && GOWORK=off go test -count=1 -v -run TestDeclaredEffectCannotBypassJournal ./...` | exit 0; named test PASS; an artifact node with a declared effect cannot bypass mandatory intent recording |
-| 11 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestEffectUnsupportedIdempotencyHolds$" ./... > "$routing_out" && grep -q -- "--- PASS: TestEffectUnsupportedIdempotencyHolds " "$routing_out")` | exit 0; named PASS; unreadable receipt and unsupported dedupe never permit a duplicate Apply |
+| 11 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestEffectUnsupportedIdempotencyHolds$" ./... > "$routing_out" && grep -q -- "--- PASS: TestEffectUnsupportedIdempotencyHolds " "$routing_out")` | exit 0; named PASS; unreadable receipt and unsupported dedupe never permit a duplicate Apply; mutation: treat an unreadable receipt as not-applied and re-run Apply — the named test must fail |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —

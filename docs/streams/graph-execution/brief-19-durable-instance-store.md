@@ -22,13 +22,13 @@ schema: brief-v2
 authored: 2026-10-02 by task-workflow authoring session
 sources:
 - docs/streams/graph-execution/task-workflow-program.md
-- freshness-checked 2026-10-02 @ a944ad1103aadaba919c11fe425089057f5c2f4e
+- freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
 exec-tier: strong
 exec-tier-why: Durable state, authority and cross-component failure cases require design judgment.
 domain: complicated
 consumers:
 - 'workflow/controller: follow-up graph-execution/21'
-- 'statusgen/coverage.go: fixed-here'
+- 'statusgen/coverage.go: follow-up graph-execution/19'
 - 'workflow/workspace: follow-up graph-execution/23'
 version: 1
 id: ead4e747-4d61-4ec6-abaf-332873c79b21
@@ -38,11 +38,11 @@ id: ead4e747-4d61-4ec6-abaf-332873c79b21
 
 ## Context
 
-files: `workflow/go.mod` (planned), `workflow/README.md` (planned), `docs/lifecycle.md` (planned), `workflow/store/` (planned), `workflow/bindings/` (planned), `workflow/testdata/store/` (planned), `statusgen/graphcontract/` (planned), `statusgen/coverage.go` (planned), `statusgen/instance.go` (planned), `changelog/graph-execution-19-durable-instance-store.md` (planned).
+files: `workflow/go.mod` (planned), `workflow/README.md` (planned), `docs/lifecycle.md`, `workflow/store/` (planned), `workflow/bindings/` (planned), `workflow/testdata/store/` (planned), `statusgen/graphcontract/` (planned), `statusgen/coverage.go`, `statusgen/instance.go` (planned), `changelog/graph-execution-19-durable-instance-store.md` (planned).
 
 facts: The graph instance, admission and recovery contracts are the canonical source. The workflow module is new at the inspected revision. Existing role capabilities and human merge/verification gates remain binding. All named commands/tests below are implementation deliverables, not tests already run.
 
-single-point-of-failure: controller correctness alone is insufficient — independently enforcing effect/role boundaries and fixture oracles must still reject a bypass.
+single-point-of-failure: the store's expected-version/generation predicate on every transition write — behind it, the existing ownership authority's fence, which refuses a restored or stale writer even when the store is bypassed.
 
 ## Read first
 
@@ -72,13 +72,13 @@ Pinned instance/attempt/subject and actor capability enter; typed state, evidenc
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestWorkflowStoreRestartBinding$" ./... > "$routing_out" && grep -q -- "--- PASS: TestWorkflowStoreRestartBinding " "$routing_out")` | exit 0; named PASS; restart preserves work and all pattern obligations; missing binding holds |
-| 2 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestWorkflowStoreIncompleteRestoreDenied$" ./... > "$routing_out" && grep -q -- "--- PASS: TestWorkflowStoreIncompleteRestoreDenied " "$routing_out")` | exit 0; named PASS; missing artifact or tampered acceptance refuses restore; mutation: skip manifest validation makes test fail |
-| 3 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestWorkflowStoreStaleTransitionDenied$" ./... > "$routing_out" && grep -q -- "--- PASS: TestWorkflowStoreStaleTransitionDenied " "$routing_out")` | exit 0; named PASS; two expected-version transitions cannot both advance |
+| 1 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestWorkflowStoreRestartBinding$" ./... > "$routing_out" && grep -q -- "--- PASS: TestWorkflowStoreRestartBinding " "$routing_out")` | exit 0; named PASS; restart preserves work and all pattern obligations; missing binding holds; mutation: reload instances on restart without their pattern-obligation binding — the named test must fail |
+| 2 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestWorkflowStoreIncompleteRestoreDenied$" ./... > "$routing_out" && grep -q -- "--- PASS: TestWorkflowStoreIncompleteRestoreDenied " "$routing_out")` | exit 0; named PASS; missing artifact or tampered acceptance refuses restore; mutation: skip manifest validation on restore — the named test must fail |
+| 3 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestWorkflowStoreStaleTransitionDenied$" ./... > "$routing_out" && grep -q -- "--- PASS: TestWorkflowStoreStaleTransitionDenied " "$routing_out")` | exit 0; named PASS; two expected-version transitions cannot both advance; mutation: drop the expected-version predicate from the transition write — the named test must fail |
 
 ## Pre-mortem and dispatch checks
 
-The plausible wrong implementations are the negative cases named in Verify: stale acceptance, missing durable data, or a bypass that still returns success. Each row must exercise production code and an independent expected outcome, not only serialization. Bypass the upper controller in at least one authority test. Fail a deliberate mutation of the named control. Facts/source revisions, declared files, risks, consumers and sizing were checked at authoring; final implementation design adequacy remains review-only.
+The plausible wrong implementations are the negative cases named in Verify: stale acceptance, missing durable data, or a bypass that still returns success. Each row must exercise production code and an independent expected outcome, not only serialization. Bypass the upper controller in at least one authority test. Each +mutation row names its mutation, and that mutation must turn the row's named test red. Facts, declared files, risks, consumers and sizing were re-checked against main at 307fe16992caef53fa46c52622753dd400c7b42a on 2026-10-02, after merging main; final implementation design adequacy remains review-only.
 
 ## Evidence
 

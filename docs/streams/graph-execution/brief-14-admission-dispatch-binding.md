@@ -30,7 +30,7 @@ sources:
 - docs/streams/graph-execution/admission-assurance-spec.md
 - freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
 - docs/streams/graph-execution/task-workflow-program.md — execution routing amendment 2026-10-02
-- freshness-checked 2026-10-02 @ a944ad1103aadaba919c11fe425089057f5c2f4e
+- freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
 exec-tier: strong
 exec-tier-why: Cross-component contracts and independent failure controls must agree; the implementation requires design judgment.
 domain: complicated
@@ -112,7 +112,7 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 3 | check:ci +flow | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDispatchReceipt" ./...` | exit 0; output includes PASS for TestGraphAdmissionDispatchReceipt, with no [no tests to run] for its owning package |
 | 4 | check:ci +flow | `(cd tools/desk && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestGraphAdmissionDuplicateAndRetry.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDuplicateAndRetry$" ./... > "$wi_out" && grep -q -- "--- PASS: TestGraphAdmissionDuplicateAndRetry " "$wi_out")` | exit 0; named PASS; duplicate same-state events launch once; a failed launch retries under a new attempt |
 | 5 | check:ci +mutation | `(cd tools/desk && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestGraphAdmissionMovedHeadAtAcceptance.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionMovedHeadAtAcceptance$" ./... > "$wi_out" && grep -q -- "--- PASS: TestGraphAdmissionMovedHeadAtAcceptance " "$wi_out")` | exit 0; named PASS; head movement after launch prevents stale result acceptance at the lower boundary; mutation: bypass the acceptance-boundary head comparison — the named test must fail |
-| 6 | check:ci +flow +mutation | `(cd tools/desk && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDeskProgramRace$" ./... > "$routing_out" && grep -q -- "--- PASS: TestGraphAdmissionDeskProgramRace " "$routing_out")` | exit 0; named PASS; concurrent desk/program claims permit one owner and one launch; direct stale invocation is denied |
+| 6 | check:ci +flow +mutation | `(cd tools/desk && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDeskProgramRace$" ./... > "$routing_out" && grep -q -- "--- PASS: TestGraphAdmissionDeskProgramRace " "$routing_out")` | exit 0; named PASS; concurrent desk/program claims permit one owner and one launch; direct stale invocation is denied; mutation: skip the claim-generation compare on the program path — the named test must fail |
 
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.
