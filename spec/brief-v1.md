@@ -61,7 +61,7 @@ validated against the value set given.
 | Field | Type | Requirement | Description |
 |-------|------|-------------|-------------|
 | `value` | string | OPTIONAL | Coarse worth signal — one of `low`, `med`, `high`. Absent is equivalent to `med`. Feeds the Next-up score (`lifecycle-v1.md` §5.2). An out-of-set value MUST be flagged. |
-| `exec-tier` | string | OPTIONAL | One of `any` or `strong`. `strong` asserts the brief MUST NOT be dispatched to a cheap-tier implementer regardless of `effort` (section 6). An out-of-set value MUST be flagged. |
+| `exec-tier` | string | OPTIONAL | One of `any` or `strong`. `strong` asserts the brief MUST NOT be dispatched to a cheap-tier implementer regardless of `effort` (section 6). The value is DERIVED, not chosen: `strong` when any of four questions is answered yes — (a) Does the Task require design decisions the facts do not fully pre-specify? (b) Does correctness depend on cross-component or cross-artifact reasoning? (c) Is it code where a subtle implementation error survives the brief's own tests (auth, funds, concurrency, safety plumbing)? (d) Is this a design brief raised by an error-class trigger (a recurring defect class, rather than one symptom, has accrued enough counted instances or merged fixes to be owed a design)? — and `any` otherwise. An out-of-set value MUST be flagged. |
 | `exec-tier-why` | string | CONDITIONAL | One-line rationale. REQUIRED when `exec-tier` is `strong`; a `strong` brief without it MUST be flagged. |
 | `decision-issue` | integer | OPTIONAL | Tracker issue that carries the human sign-off for a `gate: human` brief. A conforming linter SHOULD emit a non-fatal notice when a `gate: human` brief is in flight (`in-progress`, `implemented`, or `verified`) without one, and MUST NOT hard-error on its absence. |
 | `domain` | string | OPTIONAL | Cynefin classification of the work — one of `clear`, `complicated`, `complex`, or `chaotic`. Absent is equivalent to `complicated` (the safe Ordered default) at read time. An out-of-set value MUST be flagged. |
@@ -164,9 +164,9 @@ The body MUST contain a `## Context` section. It MUST include:
 
 If the brief changes a SHARED VALUE (a party, identity, environment variable name,
 configuration key, field meaning, wire/JSON format, or default — anything another
-component reads), the Context section MUST include a `consumers:` line that greps
-every reader and lists each with a disposition: `fixed-here`, `follow-up <stream>/NN`,
-or `out-of-scope <reason>`.
+component reads), the brief MUST carry a `consumers:` frontmatter field (a schema field in
+`schemas/brief-v1.json` and `schemas/brief-v2.json`) that greps every reader and lists each
+with a disposition: `fixed-here`, `follow-up <stream>/NN`, or `out-of-scope <reason>`.
 
 If the brief's Task creates a new component, service, or tool — or substantially
 changes where an existing component's logic lives (extracting or dissolving a domain
@@ -213,6 +213,37 @@ negative control required by §4.4. For a flat tool with no extracted boundary, 
 observable behavior and relevant failure paths; do not invent a package boundary just to
 satisfy this requirement.
 
+Every NEW brief's Context section MUST include a `design-fit:` block. It makes the author
+answer where the change belongs, what it replaces and how much weight it adds before any
+implementer starts, and gives the reviewer something to hold the diff to. Five keys:
+
+```
+design-fit:
+  owner: <the one module that owns the meaning this brief touches, or n/a>
+  contract: <an S-<slug> row id of the project's semantic-owner index, or none — <why>>
+  retires: [<mechanism/refusal/flag/test this brief removes>, ...]   # [] is an answer
+  weight: <signed delta per ratcheted dimension: verbs, flags, refusals, rule-text lines>
+  why-add: <REQUIRED when any weight delta is positive: why the capability cannot live
+           in the owner, and what removal was considered instead; n/a otherwise>
+```
+
+`contract` names a row of the project's semantic-owner index (in this repository,
+`docs/contracts.md` §"Semantic owners"), or says `none` and why. Like `layering:`, the
+block is Context text, not frontmatter: no schema field, conformance check or lint reads it
+while its grammar settles. (`consumers:` differs: it is a frontmatter schema field, read by
+`statusgen --lint` and `statusgen --consumers`.) Legacy briefs are not back-filled. Two
+rules keep it from becoming a delete-everything bias:
+
+1. **Consolidate meaning; preserve independent enforcement.** A second *owner* of one
+   meaning is a finding. A second *enforcement point* at a different trust boundary, failing
+   for a different reason, is a legitimate layer, not a duplicate.
+2. **Retiring a control at a trust boundary** names the layer that still refuses the same
+   threat, and carries a Verify row proving that layer refuses it with the retired layer
+   absent. Tests that pinned a retired refusal retire with it; the reviewer checks that the
+   invariant is still covered at its owner, not that every old test survives. This rule adds
+   an obligation and grants no authority: retiring a security or access control is still
+   subject to the `risk`/`gate` derivation (§3.1) like any other change.
+
 ### 4.2 Ground rules
 
 The body MUST contain a `## Ground rules` section. At minimum, it MUST state:
@@ -236,6 +267,38 @@ The body MUST contain a `## Verify` section with an executable table:
 
 - Every row MUST contain a literal command a non-implementer can run and an expected
   exit code or output match.
+- The command is written as an inline code span in the Command cell. A cell whose
+  first code span is its command (a cell that is exactly one code span, optionally
+  followed by prose or a parenthetical) needs no marker. A cell whose first code span
+  is NOT its command (a prose cell that mentions a function, a file or a word before
+  the real command) MUST mark its command with the explicit command marker: a code
+  span whose content starts `cmd:`, e.g. `` `cmd: go test ./pkg/ -count=1` ``. A
+  tool that executes Verify rows MUST prefer the first honoured `cmd:`-marked span
+  over any other text in the cell; with no honoured marker, each tool keeps its
+  unmarked lift (the first code span, or the unwrapped cell). An executor MAY decline
+  to run an unmarked first span that is a mention rather than a command (a file, an
+  identifier, a word ahead of the command span) and record the row could-not-run,
+  since running the mention measures nothing and can exit 0. A cell SHOULD NOT carry
+  more than one marked span, and a marked command SHOULD be able to fail (`true`,
+  `:` or `exit 0` passes whatever the tree holds). (The marker is `cmd:`, not `run:`, because `run:` is a
+  CI workflow step key that Verify prose quotes; a quoted workflow line must never
+  become the command.)
+- A marker is honoured only where the rendered brief shows it as code, so a reader of
+  the rendered table sees the command that runs. Code spans are found as CommonMark
+  renders them: a backslash-escaped backtick is literal text, and a run of N
+  backticks closes only on the next run of exactly N. A cell whose prose (outside
+  code spans) carries an unescaped `<` or `[` (raw HTML, an HTML comment, a link or
+  an image, any of which can hide text from the rendered table), or a dollar in any
+  spelling — bare `$`, escaped `\$`, or a character reference such as `&#36;`
+  (GitHub renders dollar-wrapped text as math, not code, and decodes character
+  references first, so any `&…;` reference in prose counts) — has no honoured
+  marker. Neither does a cell where a code span's opening backticks are fused to the
+  text before them (an autolink, a `~~` strikethrough or a dollar can swallow them):
+  only whitespace, the start of the cell or a `(` may lead a span. The marker span
+  itself MUST follow whitespace or the start of the cell, and MUST end the cell or be
+  followed by whitespace or plain punctuation (`.` `,` `;` `:` `!` `?` `)`). Write
+  `\<` or `\[` to use those characters in prose; keep dollars out of a marked
+  Command cell.
 - Rows MUST NOT be prose-only assertions without a command.
 - Prose deliverables (docs, articles) MUST use PRESENCE gates: checks that required
   elements exist (file, section, token). The Verify section MUST state that

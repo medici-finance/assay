@@ -24,11 +24,21 @@ func configZ(kv ...string) string {
 	return b.String()
 }
 
+// gateInput wires a config fixture into both readers. The PushURLs answer is what git would
+// print for that fixture with NO url rewrite rules in play — every pushurl if any is set,
+// else every url — so these tests pin the configured-URL cases; the rewrite cases drive
+// real git (pushtransport_rewrite_test.go).
 func gateInput(t *testing.T, cfg string) PushTransportInput {
 	t.Helper()
+	parsed := parseConfigZ(cfg)
+	urls := parsed["remote.origin.pushurl"]
+	if len(urls) == 0 {
+		urls = parsed["remote.origin.url"]
+	}
 	return PushTransportInput{
 		Tool: "deskpr", Verb: "create", Dir: "/w", Remote: "origin",
-		ConfigZ: func() (string, error) { return cfg, nil },
+		ConfigZ:  func() (string, error) { return cfg, nil },
+		PushURLs: func() (string, error) { return strings.Join(urls, "\n"), nil },
 	}
 }
 
@@ -297,6 +307,30 @@ func TestPushGateCouldNotCheck(t *testing.T) {
 		err := CheckPushTransport(in)
 		if err == nil || ExitCodeOf(err) != ExitUnverifiable {
 			t.Fatalf("err = %v (exit %d), want exit %d", err, ExitCodeOf(err), ExitUnverifiable)
+		}
+	})
+
+	// The effective push URL is what the decision rests on (#884). A caller that wires no
+	// resolver must not be let through on the configured string — that string is exactly
+	// what an insteadOf rule makes a lie of.
+	t.Run("no push-url resolver wired", func(t *testing.T) {
+		in := gateInput(t, configZ("remote.origin.url", "https://example.com/example-org/tracker.git"))
+		in.PushURLs = nil
+		err := CheckPushTransport(in)
+		if err == nil || ExitCodeOf(err) != ExitUnverifiable {
+			t.Fatalf("err = %v (exit %d), want exit %d", err, ExitCodeOf(err), ExitUnverifiable)
+		}
+	})
+
+	t.Run("push-url resolve fails", func(t *testing.T) {
+		in := gateInput(t, configZ("remote.origin.url", "https://example.com/example-org/tracker.git"))
+		in.PushURLs = func() (string, error) { return "", errors.New("git exploded") }
+		err := CheckPushTransport(in)
+		if err == nil || ExitCodeOf(err) != ExitUnverifiable {
+			t.Fatalf("err = %v (exit %d), want exit %d", err, ExitCodeOf(err), ExitUnverifiable)
+		}
+		if !strings.Contains(err.Error(), "cannot resolve the push URL") {
+			t.Fatalf("a failed push-URL resolve must say so:\n%s", err.Error())
 		}
 	})
 }

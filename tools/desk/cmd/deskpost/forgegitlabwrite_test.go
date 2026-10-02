@@ -140,7 +140,7 @@ ASSAY_REPO_FORGES=gl-group/gl-repo=gitlab
 	t.Setenv("DESK_LOOP", "pr-review-desk")
 
 	oldFor := forgeForReviewer
-	forgeForReviewer = func(deskkit.ForgeRepo) (deskkit.Forge, error) { return f, nil }
+	forgeForReviewer = func(deskkit.ForgeRepo) (deskkit.Forge, error) { return deskkit.OutboundChecked(f, "reviewer"), nil }
 	t.Cleanup(func() { forgeForReviewer = oldFor })
 
 	var errBuf bytes.Buffer

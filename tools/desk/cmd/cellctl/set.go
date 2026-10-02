@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -15,18 +16,19 @@ import (
 // without --force. The DESK_MODEL_<role>, CODEX_MODEL_<role>, TIER_MODEL_<TIER>_<HARNESS> and
 // CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL} families are matched by shape below — a typo'd
 // role/tier/provider name is refused rather than silently scaffolding a variable nothing reads.
-var cellEnvKnownKeys = strings.Fields(`CELL CELL_KIND CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG
+var cellEnvKnownKeys = strings.Fields(`CELL CELL_KIND CELL_CONTAINER_CONFIG CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG
 FORGE_API_BASE DESKD_ADDR DESKD_INDEX DESKD_APP_PEM DESKD_APP_ID_VAR ORGS GITLAB_GROUP
-GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CODEX_MODEL_default
-CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH CELL_MODEL_POLICY CELL_PROVIDER_DEFAULTS CELL_PROVIDER_OVERRIDES ASSAY_REPAIR_ADMISSION
+GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CODEX_MODEL_default CURSOR_MODEL_default
+CELL_CADENCE CELL_TICK_BUDGET CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH CELL_MODEL_POLICY CELL_PROVIDER_DEFAULTS CELL_PROVIDER_OVERRIDES ASSAY_REPAIR_ADMISSION
 TIER_MODEL_TOP_CLAUDE TIER_MODEL_MID_CLAUDE TIER_MODEL_FAST_CLAUDE
-TIER_MODEL_TOP_CODEX TIER_MODEL_MID_CODEX TIER_MODEL_FAST_CODEX`)
+TIER_MODEL_TOP_CODEX TIER_MODEL_MID_CODEX TIER_MODEL_FAST_CODEX
+TIER_MODEL_TOP_CURSOR TIER_MODEL_MID_CURSOR TIER_MODEL_FAST_CURSOR`)
 
 func knownCellEnvKey(k string) bool {
 	if valueIn(k, cellEnvKnownKeys) {
 		return true
 	}
-	for _, prefix := range []string{"DESK_MODEL_", "CODEX_MODEL_"} {
+	for _, prefix := range []string{"DESK_MODEL_", "CODEX_MODEL_", "CURSOR_MODEL_"} {
 		if strings.HasPrefix(k, prefix) {
 			r := strings.TrimPrefix(k, prefix)
 			for _, w := range strings.Fields(rolesDefault) {
@@ -66,9 +68,13 @@ func validateEnvKey(key, value string, force bool) {
 	// cockpit_want accepts would only surface as a refusal at the NEXT boot; `set` catches it
 	// here instead.
 	switch key {
+	case "CELL_CADENCE":
+		resolveCadence("house", value, "")
+	case "CELL_TICK_BUDGET":
+		resolveCadence("house", "30m", value)
 	case "CELL_HARNESS":
 		if !valueIn(value, harnessValues) {
-			die("set: CELL_HARNESS must be claude or codex, got '%s'", value)
+			die("set: CELL_HARNESS must be one of %s, got '%s'", joinPipe(harnessValues), value)
 		}
 	case "CELL_KIND":
 		if !valueIn(value, kindValues) {
@@ -120,6 +126,25 @@ func validateKindChange(envfile, kind string, kvs []string) {
 	need := ""
 	switch kind {
 	case "container":
+		e := &Env{vals: map[string]string{}, set: map[string]bool{}}
+		if err := parseCellEnv(e, envfile); err != nil {
+			die("set: %v", err)
+		}
+		for _, kv := range kvs {
+			k, v, ok := splitKV(kv)
+			if ok {
+				e.Put(k, v)
+			}
+		}
+		if cfg := e.Get("CELL_CONTAINER_CONFIG"); cfg != "" {
+			if e.Get("CELL_CONTAINER_LAUNCHER") != "" {
+				die("set: clear CELL_CONTAINER_LAUNCHER when selecting native container configuration")
+			}
+			if !filepath.IsAbs(cfg) || !isRegular(cfg) {
+				die("set: CELL_CONTAINER_CONFIG must be an absolute configuration file")
+			}
+			return
+		}
 		need = "CELL_CONTAINER_LAUNCHER"
 	case "house":
 		need = "CELL_ROOTS"
@@ -146,7 +171,12 @@ func validateKindChange(envfile, kind string, kvs []string) {
 	if v == "" {
 		die("set: CELL_KIND=%s needs %s, which is neither set in %s nor given in this call — a %s cell cannot load without it (set both in one call, or %s first); nothing written", kind, need, envfile, kind, need)
 	}
-	if kind == "container" && (!strings.HasPrefix(v, "/") || !isExecFile(v)) {
+	if kind == "container" {
+		if err := cellPathCheck(runtime.GOOS, v); err != nil {
+			die("set: container launcher: %v; nothing written", err)
+		}
+	}
+	if kind == "container" && !isExecFile(v) {
 		die("set: CELL_KIND=container needs an absolute executable CELL_CONTAINER_LAUNCHER, got '%s'; nothing written", v)
 	}
 }
@@ -173,6 +203,14 @@ func applyEnvKVs(e *Env, envfile string, force bool, kvs []string) {
 			validateKindChange(envfile, value, kvs)
 		}
 	}
+	// Judge Cursor against the final transaction, so a multi-key switch to a
+	// house cell is accepted atomically and an unsupported combination writes nothing.
+	final := envWithFileForCursor(envfile, kvs)
+	if final.Get("CELL_HARNESS") == "cursor" {
+		if err := cursorConfigurationError(final.GetOr("CELL_KIND", "k8s"), final.Get("CELL_PROVIDER"), final.Get("CELL_MODEL_POLICY") != ""); err != nil {
+			die("set: %v; nothing written", err)
+		}
+	}
 	backup := envfile + ".bak-" + time.Now().UTC().Format("20060102T150405Z")
 	raw, err := os.ReadFile(envfile)
 	if err != nil {
@@ -186,6 +224,18 @@ func applyEnvKVs(e *Env, envfile string, force bool, kvs []string) {
 		key, value, _ := splitKV(kv)
 		setEnvKey(envfile, key, value, force)
 	}
+}
+
+func envWithFileForCursor(envfile string, kvs []string) *Env {
+	e := &Env{vals: map[string]string{}, set: map[string]bool{}}
+	if err := parseCellEnv(e, envfile); err != nil {
+		die("set: %v", err)
+	}
+	for _, kv := range kvs {
+		key, value, _ := splitKV(kv)
+		e.Put(key, value)
+	}
+	return e
 }
 
 // setEnvKey is the single-key rewrite/append, after validateEnvKey has already passed. The
@@ -243,13 +293,10 @@ func setEnvKey(envfile, key, value string, force bool) {
 // sources it (sourcing an operator-writable cell.env as part of `set` would execute arbitrary
 // shell in it), so this reads the one line it needs by hand.
 func activeHarnessOf(envfile string) string {
-	if v, ok := envFileValue(envfile, "CELL_HARNESS"); ok && v != "" {
-		return v
-	}
-	return "claude"
+	return envWithFileForCursor(envfile, nil).GetOr("CELL_HARNESS", "claude")
 }
 
-const setUsage = "cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force]  |  cellctl set <cell> <role> [--harness claude|codex] --model <m>  |  cellctl set <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]"
+const setUsage = "cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force]  |  cellctl set <cell> <role> [--harness claude|codex|cursor] --model <m>  |  cellctl set <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]"
 
 func cmdSet(cell string, args []string) {
 	e := newEnvFromProcess()
@@ -268,7 +315,7 @@ func cmdSet(cell string, args []string) {
 		case "--force":
 			force = true
 		case "--harness":
-			harness = needFlagValue(args, &i, "--harness needs a value (claude|codex)")
+			harness = needFlagValue(args, &i, "--harness needs a value ("+joinPipe(harnessValues)+")")
 		case "--model":
 			model = needFlagValue(args, &i, "--model needs a value")
 		case "--kind":
@@ -318,7 +365,7 @@ func cmdSet(cell string, args []string) {
 			h = "claude"
 		}
 		if !valueIn(h, harnessValues) {
-			die("set: --harness must be claude or codex, got '%s'", harness)
+			die("set: --harness must be one of %s, got '%s'", joinPipe(harnessValues), harness)
 		}
 		active := harness
 		if active == "" {
@@ -327,6 +374,8 @@ func cmdSet(cell string, args []string) {
 		mvar := "DESK_MODEL_" + underscore(role)
 		if active == "codex" {
 			mvar = "CODEX_MODEL_" + underscore(role)
+		} else if active == "cursor" {
+			mvar = "CURSOR_MODEL_" + underscore(role)
 		}
 		kvs = []string{mvar + "=" + model}
 	} else {

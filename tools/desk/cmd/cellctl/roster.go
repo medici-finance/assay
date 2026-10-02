@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -72,7 +73,18 @@ func (c *Cell) rosterAllowedRepos() string {
 func withHome(home string) func() {
 	prev, had := os.LookupEnv("HOME")
 	_ = os.Setenv("HOME", home)
+	profile, hadProfile := os.LookupEnv("USERPROFILE")
+	if runtime.GOOS == "windows" {
+		_ = os.Setenv("USERPROFILE", home)
+	}
 	return func() {
+		if runtime.GOOS == "windows" {
+			if hadProfile {
+				_ = os.Setenv("USERPROFILE", profile)
+			} else {
+				_ = os.Unsetenv("USERPROFILE")
+			}
+		}
 		if had {
 			_ = os.Setenv("HOME", prev)
 			return

@@ -353,6 +353,12 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 		w("> **DRIVE COVERAGE — %s**", n)
 		w("")
 	}
+	// The critical tier's main-red arm could not check (drive active, no
+	// --main-health input). Present only while a drive is active.
+	if nu.MainRedUnknown != "" {
+		w("> **COULD NOT CHECK — %s**", nu.MainRedUnknown)
+		w("")
+	}
 	// Could-not-check on a serialized stream. Distinct from the banner above:
 	// that one says the whole board is a superset, this one names the streams
 	// being WITHHELD because of it. Reported, never silently downgraded to
@@ -408,6 +414,30 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 			"lost, but it is held out of Next-up so no slot is spent re-discovering the move. Dispatch it "+
 			"against the repo named after the arrow.",
 			len(nu.HomedElsewhere), strings.Join(frags, ", "))
+		w("")
+	}
+	// Merged in a sibling repo (siblingmerge.go). A row
+	// here is NOT proven delivered — the finding is a PROMPT to read the
+	// merged change Task by Task, never proof — but a change naming it
+	// already merged in the named sibling and nobody has recorded what it
+	// covered, so it is held out of Next-up rather than let a slot rediscover
+	// work that (at least partly) already landed. The board NAMES each one
+	// with its sibling so a reader checks the right repo instead of guessing.
+	if len(nu.MergedElsewhere) > 0 {
+		ids := make([]string, 0, len(nu.MergedElsewhere))
+		for id := range nu.MergedElsewhere {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		frags := make([]string, 0, len(ids))
+		for _, id := range ids {
+			frags = append(frags, fmt.Sprintf("%s → %s", id, nu.MergedElsewhere[id]))
+		}
+		w("> **Merged in a sibling repo — check before dispatch (%d):** %s. Each has a matching "+
+			"sibling-merge-unreconciled finding: a change naming it already merged in the named sibling "+
+			"repo. This is a PROMPT to read the merged change Task by Task, never proof of delivery — "+
+			"reconcile the row, or record/complete a `delivery:` claim, to release it back onto this board.",
+			len(nu.MergedElsewhere), strings.Join(frags, ", "))
 		w("")
 	}
 	// Overflow is an alarm (SCADA / EEMUA-191): when the eligible backlog exceeds

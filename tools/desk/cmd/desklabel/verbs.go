@@ -66,6 +66,7 @@ func parseArgs(o labelOp, args []string) (request, error) {
 	fs.SetOutput(os.Stderr)
 	kind := fs.String("kind", "", "issue | mr (pr is an alias) — the target's kind; needed only where a bare number is ambiguous")
 	dryRun := fs.Bool("dry-run", false, "validate the ownership check and read the target, then stop before the write")
+	applyOverride, _ := deskkit.RegisterOutboundOverride(fs, "desklabel", string(o))
 	var pos []string
 	for {
 		if err := fs.Parse(args); err != nil {
@@ -77,6 +78,9 @@ func parseArgs(o labelOp, args []string) (request, error) {
 		}
 		pos = append(pos, args[0])
 		args = args[1:]
+	}
+	if err := applyOverride(); err != nil {
+		return request{}, err
 	}
 	if len(pos) != 3 {
 		return request{}, deskkit.Refused(fmt.Sprintf(

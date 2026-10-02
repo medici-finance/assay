@@ -16,7 +16,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format)"
 sources:
   - "docs/streams/build-less-brittle/spec.md §3 rows 2 and 8, §4.2"
@@ -27,9 +27,9 @@ exec-tier: strong
 exec-tier-why: "(b) one convention lands consistently in three artifacts (spec, template, skill), downstream copies re-sync on their own pin bump, and the skill must end net ≤ 0 lines."
 domain: complicated
 consumers:
-  - "spec/brief-v1.md §4.1: follow-up build-less-brittle/02 (this brief)"
-  - "docs/brief-template.md: follow-up build-less-brittle/02 (this brief)"
-  - "plugins/assay/skills/author-brief/SKILL.md: follow-up build-less-brittle/02 (this brief)"
+  - "spec/brief-v1.md §4.1: fixed-here"
+  - "docs/brief-template.md: fixed-here"
+  - "plugins/assay/skills/author-brief/SKILL.md: fixed-here"
   - "downstream project copies of the author-brief skill (synced bundles, byte-parity twins): out-of-scope (each adopter re-syncs on its own pin bump)"
 ---
 
@@ -95,7 +95,9 @@ design-fit:
 
 Rows run from the root of `medici-finance/assay`. Rows 1–4 gate presence. Row 5 dereferences the
 example contract id. Row 6 is the net ≤ 0 weight row. Row 7 checks question (d) landed in both files. Row 8 is the neighbour row (the
-shared-value trigger that reads Context text).
+shared-value trigger that reads Context text). Row 9 corroborates the `consumers:` claims against
+the delivering change itself, pinned so it still has that diff to read after merge (re-authored
+in version 2, #1902).
 
 | # | Command | Expect |
 |---|---------|--------|
@@ -107,7 +109,7 @@ shared-value trigger that reads Context text).
 | 6 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/02$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 7 | `grep -c 'Is this a design brief raised by an error-class trigger' plugins/assay/skills/author-brief/SKILL.md spec/brief-v1.md \| grep -cE ':[1-9][0-9]*$'` | `2` (question (d) landed in both the skill and the spec) |
 | 8 | `cd statusgen && go test -run TestSharedValueTriggerIsNarrow -count=1 .` | `ok` (neighbour: the consumers trigger still does not fire on ordinary Context lines such as the new block) |
-| 9 | `statusgen --consumers --root . --brief build-less-brittle/02; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
+| 9 | `d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach 274ece128 && statusgen --consumers --root "$d" --brief build-less-brittle/02 --base 274ece128~1; s=$?; rm -rf "$d"; exit $s` | exit 0; output is `summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing` (the check runs in a throwaway shared clone checked out at 274ece128, the squash that delivered this brief in #1842, with the base pinned to its parent, so the diff it reads is exactly the delivering change: never main's later commits, never the runner's own working tree. The three `fixed-here` entries are corroborated by that diff; the one UNCHECKED entry is the `out-of-scope` downstream-copies line, which names no path in this repo and stays the reviewer's call per brief-rule 9, never a pass) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,
@@ -115,6 +117,59 @@ shared-value trigger that reads Context text).
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
+### Verification — build-less-brittle/02 @ 024c87b01aba (non-implementer verifier, 2026-09-30 UTC)
+
+What moved since the last run: this is the first verify run. The brief had no Evidence rows and there was no earlier verify-outcome record for 02. The implementation is squash commit 274ece12809994a5334342a02bdbc8aa9b1d350f (#1842), parent def62cbf50bc6acd4110da1cb3a5e2417e1df5a4. Merged main was re-fetched and had not moved from 024c87b01aba8f6c7dd7ccd939e647a9b936be09.
+
+Every command ran from the repo root of a detached worktree at merged main, with `KUBECONFIG=/dev/null`. statusgen on PATH is v1.0.29. Wherever a `--root` flag says `"$PWD"`, the run passed the absolute worktree path, which equals `$PWD` at the repo root. Pipes are escaped as `\|` for the table.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `sed -n '/^### 4.1 Context section/,/^### 4.2/p' spec/brief-v1.md \| grep -c -e 'design-fit:' -e 'why-add'` | ≥ 2 | exit 0, printed `3`. Discharges Verify row 1 | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 2 | `grep -c -e '^ *owner:' -e '^ *contract:' -e '^ *retires:' -e '^ *weight:' -e '^ *why-add:' docs/brief-template.md` | ≥ 5 | exit 0, printed `5`. The matches are the five design-fit keys at template lines 99–103 (example `contract: S-eligibility`). Discharges Verify row 2 | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 3 | `grep -c -e '^ *owner:' -e '^ *contract:' -e '^ *retires:' -e '^ *weight:' -e '^ *why-add:' plugins/assay/skills/author-brief/SKILL.md` | ≥ 5 | exit 0, printed `5`. The matches are the five template keys at skill lines 179–183. Discharges Verify row 3 | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 4 | `grep -cE '^\[ \] [0-9]+\. ' plugins/assay/skills/author-brief/SKILL.md` | ≤ 9 and ≥ 1 | exit 0, printed `9`. Checklist items 1–9 are at skill lines 597–610, and item 8 now carries design-fit. Discharges Verify row 4 | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 5 | `id=$(grep -oE 'contract: S-[a-z-]+' docs/brief-template.md \| head -1 \| cut -d' ' -f2); test -n "$id" && grep -cE "^[\|] *$id " docs/contracts.md` | 1 | exit 0, printed `1` with id=S-eligibility. The row exists at docs/contracts.md line 165. Discharges Verify row 5 | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 6 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/02$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" && echo NET-OK` | NET-OK | exit 0, printed `NET-OK`. impl resolved to 274ece128 and base to 274ece128~1. The skill went from 772 lines to 771, a net change of -1. Discharges Verify row 6 | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 7 | `grep -c 'Is this a design brief raised by an error-class trigger' plugins/assay/skills/author-brief/SKILL.md spec/brief-v1.md \| grep -cE ':[1-9][0-9]*$'` | 2 | exit 0, printed `2`. The question appears at skill line 368 (rule 9 (d)) and in the spec §3.2 exec-tier row at line 64. Discharges Verify row 7 | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 8a | `cd statusgen && go test -run TestSharedValueTriggerIsNarrow -count=1 .` | ok | exit 0, printed `ok  github.com/medici-finance/assay/statusgen 0.154s`. Run as authored. Discharges Verify row 8 | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 8b | `cd statusgen && go test -v -run TestSharedValueTriggerIsNarrow -count=1 .` | --- PASS, no SKIP | exit 0. The test printed `--- PASS` and `ok`, with no SKIP line. This is the -v cross-check for Verify row 8 | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 9a | `statusgen --consumers --root "$PWD" --brief build-less-brittle/02; echo "exit=$?"` | exit=0 at the PR head | Printed `exit=2` with `COULD-NOT-CHECK: ... is not in the diff against 024c87b01aba...` on merged main, as the row predicts: the brief is not in main's own diff. The witness below also ran the as-authored `--root .` form. This is the merged-main arm of Verify row 9 and discharges nothing | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 9b | `git checkout --detach 274ece12809994a5334342a02bdbc8aa9b1d350f && statusgen --consumers --root "$PWD" --brief build-less-brittle/02 --base def62cbf50bc6acd4110da1cb3a5e2417e1df5a4; echo "exit=$?"; git checkout --detach 024c87b01aba8f6c7dd7ccd939e647a9b936be09` | exit=0, no disproved claim | Printed `exit=0`: 3 CORROBORATED (spec/brief-v1.md §4.1, docs/brief-template.md and the author-brief SKILL.md, each fixed-here), 0 disproved, and 1 UNCHECKED (downstream copies, out-of-scope, not in this diff). This is the tool's own printed recipe for a merged brief: the squash commit against its parent is the PR's net diff. A statusgen built from source at 024c87b gave the same result, exit 0 and 3/0/1. Discharges Verify row 9 | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+
+Execution witness from `statusgen verifyrun --root <abs worktree> --brief docs/streams/build-less-brittle/brief-02-design-fit-in-briefs.md --dry-run`. It exited 1 and wrote nothing back. The table is kept exactly as emitted:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `sed -n '/^### 4.1 Context section/,/^### 4.2/p' spec/brief-v1.md \| grep -c -e 'design-fit:' -e 'why-add'` | pass exit=0 | sha256:1121cfccd591 | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -c -e '^ *owner:' -e '^ *contract:' -e '^ *retires:' -e '^ *weight:' -e '^ *why-add:' docs/brief-template.md` | pass exit=0 | sha256:f0b5c2c2211c | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (on-behalf-of human:ian) (forge-identity) |
+| 3 | `grep -c -e '^ *owner:' -e '^ *contract:' -e '^ *retires:' -e '^ *weight:' -e '^ *why-add:' plugins/assay/skills/author-brief/SKILL.md` | pass exit=0 | sha256:f0b5c2c2211c | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -cE '^\[ \] [0-9]+\. ' plugins/assay/skills/author-brief/SKILL.md` | pass exit=0 | sha256:2e6d31a5983a | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (on-behalf-of human:ian) (forge-identity) |
+| 5 | `id=$(grep -oE 'contract: S-[a-z-]+' docs/brief-template.md \| head -1 \| cut -d' ' -f2); test -n "$id" && grep -cE "^[\|] *$id " docs/contracts.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (on-behalf-of human:ian) (forge-identity) |
+| 6 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/02$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" && echo NET-OK` | pass exit=0 | sha256:458c4e39effe | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -c 'Is this a design brief raised by an error-class trigger' plugins/assay/skills/author-brief/SKILL.md spec/brief-v1.md \| grep -cE ':[1-9][0-9]*$'` | pass exit=0 | sha256:53c234e5e847 | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && go test -run TestSharedValueTriggerIsNarrow -count=1 .` | pass exit=0 | sha256:544b328f1fe1 | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --consumers --root . --brief build-less-brittle/02; echo "exit=$?"` | fail exit=0 | sha256:8748211bab8e | 2026-09-30 | assay-verifier-app[bot] @ 024c87b01aba (on-behalf-of human:ian) (forge-identity) |
+
+Findings:
+- **F1 (the witness cannot judge row 9).** verifyrun printed `row 9: fail ... exit 0, expected 1`. It read its expected exit code from the phrase "Exit 1 names the disproved claim" in the Expect cell, but the cell's own pass condition is `exit=0`. Two further problems make the row unusable for an exit-status witness. First, the trailing `; echo "exit=$?"` forces the shell to exit 0 whatever statusgen returns. Second, on merged main the as-authored row is could-not-check by design (arm 9a, statusgen exit 2). So the witness row 9 `fail` is an artifact of how the row is written, not a disproved consumers claim; arm 9b shows 0 disproved at the PR's net diff. The fix is to re-author row 9 to run against the squash parent (`--base <impl>~1` at `<impl>`), drop the `echo`, and state a single expected exit code. Any flip that is gated on the witness will refuse this row until then.
+- **F2 (checklist wording differs from the Task, no Verify row).** Task 3 prescribed item wording beginning "New component, or any weight delta > 0 → `layering:`/`design-fit:` answered". Landed item 8 instead reads "Every new brief → `design-fit:` answered; any weight delta > 0 → `why-add` names what removal was considered. New component → `layering:` …". The meaning is the same or stricter, since it requires design-fit on every new brief, which matches the facts. No Verify row checks this wording.
+- **F3 (deliverables with no Verify row).** Two deliverables have no Verify row: the changelog fragment (changelog/build-less-brittle-02.md) and the two design-fit rules in spec §4.1 (consolidate meaning while preserving independent enforcement; retiring a trust-boundary control names the layer that still refuses the threat). I read both by hand and both are present at spec §4.1 items 1–2. They are recorded here as work that maps to no Verify row.
+- **F4 (unstable output hash).** The witness output hash for row 8 differs between runs (e13dc78d8ff3, then 544b328f1fe1) because `go test` prints wall-clock timing. The pass/fail result is stable; only the hash changes.
+
+Risk-bearing value. The trigger did not fire: the risk frontmatter is present with regulatory, customer, irreversible and sensitive-data all `no`, and the diff (274ece128) touches only spec/brief-v1.md, docs/brief-template.md, the author-brief skill, the changelog and this stream's docs, none of them risk-classed paths. I still enumerated the literals the diff introduces:
+- checklist cap `9` items (skill line 615 wording "single digits"; count 9 at lines 597–610)
+- skill net rule-text lines `≤ 0` (772 → 771)
+- exec-tier mapping `any yes → strong` (skill line 135)
+- why-add threshold `delta > 0` (skill lines 183 and 607)
+
+All four are rule-text knobs that an edit and a republish can reverse, so they rank last and need no derivation.
+
+rows_passed=9 rows_total=9
+
+RISK-VALUE: N/A — the risk trigger did not fire (frontmatter present, irreversible: no, no risk-classed path in 274ece128). Enumerating over the 274ece128 diff found only reversible rule-text literals (checklist cap 9, net lines ≤ 0, any yes → strong, delta > 0), ranked last per kit §4 step 3. There is no irreversible act: this is a docs/spec convention change.
+
+VERIFY: PASS
 
 ## Review
 Gate: model (from frontmatter). The reviewer checks that the skill's offsets removed narrative or

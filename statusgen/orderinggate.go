@@ -117,11 +117,20 @@ func orderingGateEdges(streams []*Stream) map[string]map[string]bool {
 			if err != nil || !ok {
 				continue // malformed/legacy: checkBriefFiles owns that report
 			}
+			// Key by <stream>/<NN>, the form refs (and extractOrderingRefs) use: a
+			// brief-v2 id is <cell>:<repo>:<stream>:<NN> and would never meet its
+			// prose refs, so every v2 gate read as unencoded (#1960 defect class).
+			// The filename-derived id is that <stream>/<NN> for both schemas and
+			// drops no repo alias (TestAliasDropGuard).
+			self, _, okName := expectedBriefID(p)
+			if !okName {
+				continue // a misnamed file: checkBriefFiles owns that report
+			}
 			for _, d := range bf.Depends {
-				link(bf.Brief, d)
+				link(self, d)
 			}
 			for _, u := range bf.Unblocks {
-				link(bf.Brief, u)
+				link(self, u)
 			}
 		}
 	}

@@ -94,7 +94,7 @@ rule (§5), not a proven cure.
 | 10. **Hotspot metric and the `brittle` mark** (SOTA amendment) | **Added** | The driver's proposal: code metrics past a threshold mark a part `brittle`. The literature (§11) says the metric that predicts where the next defect lands is change history, not static complexity, and that hotspots are a ranking, not a threshold. So the mark has two keys: the metric (churn × indentation complexity over 90 days, top 2% by score with ≥ 2 fix commits) **nominates**, and the class defect history (04) **confirms**. Temporal coupling is read, not keyed. The mark lands in `docs/contracts.md` and on the board as a findings entry, using what exists. It is never a CI gate: rankings are not pass/fail and hosted checkouts are shallow. Brief 08. |
 | 11. **Brittle investigation** (SOTA amendment) | **Added** | The driver's proposal: a strong-model tier investigates the original intent, the issues found, and how to reconcile the two. Kept, given a template with a closed vocabulary: which of three divergences holds (drifted / intent-changed / intent-right-implementation-wrong) and which of three acts follows (`reconcile` with a deletion bundle, `redesign` via a DR amendment and a design brief that prefers a strangler seam, `accept` by amending the record). `none`/`clear` is a legal outcome, so the investigation is not a patch generator. Every recommendation carries a verifiable end state. Brief 09. |
 | 12. **Architectural fitness functions** (SOTA amendment) | **Added** | Executable shape rules in the test suite CI already runs: dependency direction (internal never imports cmd; cmd never imports another cmd), the hub's import allow-list as a frozen-rule ratchet, and one declared implementation per registered meaning (a marker the semantic index checks). A separate desk-tool redesign's rule "no logic in main()" is not here; its intent, that new things compose shared building blocks rather than grow unique logic, is what rule 3 holds. Brief 10. |
-| 13. **Regression tests are a ratchet** (third-pass amendment) | **Added** | Fail-first already exists (worker kit §9, review kit §3, the fail-first lane, the `test-evidence` finding class) and proves a test can fail on the day it lands. Nothing holds it afterwards: five test functions left the public tree in one week with no recorded reason, and a rename left a Verify row passing with "no tests to run" (#1306). Every fix's test now carries `// regression: #<N>` (a comment, not a `TestRegression_` prefix: names describe behaviour, a rename is the #1306 defect, one test can pin several incidents, and the prefix's only advantage is the count gate this stream declines, §4.11). A deletion or rename carries `Retires-test: <name> — <why>`. A `go test` report lists every departure without one; review judges under the existing class. **It never blocks by itself: a rubric, not a ruling.** The mutation entry guards the fix at the PR that lands it; the tag guards the test afterwards. Brief 11. |
+| 13. **Regression tests are a ratchet** (third-pass amendment) | **Added** | Fail-first already exists (worker kit §9, review kit §4, the fail-first lane, the `test-evidence` finding class) and proves a test can fail on the day it lands. Nothing holds it afterwards: five test functions left the public tree in one week with no recorded reason, and a rename left a Verify row passing with "no tests to run" (#1306). Every fix's test now carries `// regression: #<N>` (a comment, not a `TestRegression_` prefix: names describe behaviour, a rename is the #1306 defect, one test can pin several incidents, and the prefix's only advantage is the count gate this stream declines, §4.11). A deletion or rename carries `Retires-test: <name> — <why>`. A `go test` report lists every departure without one; review judges under the existing class. **It never blocks by itself: a rubric, not a ruling.** The mutation entry guards the fix at the PR that lands it; the tag guards the test afterwards. Brief 11. |
 | 14. **The refactor oracle** (third-pass amendment) | **Added** | The driver's question: coding is cheap; what do we code AGAINST, and are briefs plus incidents enough? They are not: a brief records intent at authoring time and drifts (about 28 briefs marked done or implemented with no deliverable in the tree), an incident records what broke rather than what must hold, and a partially delivered brief is not the code. The literature's answer (Fowler: a harness; Feathers: characterization tests before change; Ousterhout: interfaces and invariants) becomes an oracle assembled before any `redesign`: (1) intent, from the investigation's reconciled reading; (2) failure modes, each mapped to its tagged test; (3) current behaviour, characterization tests generated over the public surface and **triaged** keep / drop / unknown, because generating is cheap and the triage is the judgement; (4) invariants, the contracts row and the fitness functions; (5) an acceptance rule: the refactor lands only when 1–4 hold and the triage table is in the PR body. A redesign's system-scale parity harness is the same idea, a soft link (§6). Brief 12. |
 | 15. **Incident-time refactor by an agent, one human residue** (third-pass amendment) | **Added** | 09 and 12 as hand-offs leave the mark to go cold between sessions. One strong-tier session now runs the whole loop on a threshold class, a brittle mark or a two-strikes stop: reads the record (brief, DR, class history, git history mapped to issues, Verify tables and Evidence, mutation specs and tags, findings, research), rules (09), assembles the oracle with generated and triaged tests (12), and drafts the refactor as its own PR after the fix. Human contact is one typed decision, only for the `intent-changed?` residue the record cannot settle, with a recommendation and a default; `drifted` and `implementation-wrong` need no human beyond the merge. The only other contact is the three hard gates that already exist (weakening a control, a consumer-facing interface change, crossing a trust boundary). Verify proves a complete record ends with zero asks and a gapped one with exactly one. This is why 01, 04 and 11 come first: the record must be good enough to research. Brief 13. |
 
@@ -124,6 +124,16 @@ rule (§5), not a proven cure.
 - **Review recurrence.** The review desk's "recurrence-promotion" (a finding raised three times
   across PRs) currently promotes a guardrail. It is redirected to attach to, or open, a class
   issue. Promotion goes to design, not to a new guard.
+
+**Evidence references in the existing instance record (04).** Alongside `incident-group`
+and `module`, record `observed-at`, `source-ref` (immutable revision or retained evidence
+reference where available), and `scope` (affected revision/operation, or explicitly unknown).
+Distinguish `active`, `recovered` and `unknown` current state, with `checked-at` and a
+`recovery-ref` when recovered. A later assessment appends a record linked by incident-group;
+it does not erase the original observation or retroactively change the counted incident.
+Mirrored reports still count once. A successful operation on another scope is not recovery;
+a closed issue alone is not evidence of recovery. Existing records lacking these fields
+remain readable as unknown; do not invent values or block intake awaiting a new tool.
 
 ### 4.2 Design fit in every new brief (brief 02)
 
@@ -289,6 +299,16 @@ hard-gate exceptions are the gates that already exist.
   `single-point-of-failure:` on core surfaces and an `end-state:` line the next pass can check.
   An unfindable intent is `NEEDS_CONTEXT`, never invented.
 
+**Replayable reading (09, consumed by 13).** The existing investigation file also records
+`as-of`, `source-revisions` and `evidence-gaps`. In its existing sections, separate observations
+from interpretations, state competing explanations and the next discriminating check, and
+link a proposed intervention to its expected observable and applicable acceptance test.
+Use source references from the class record; no transcript mirror or new event service.
+The runbook carries these links into the oracle and refactor PR, and records `outcome: pending`
+until applicable verification exists. A synthetic rehearsal closed unmerged is not recovery.
+Unavailable evidence stays explicit; `accept`, `clear` and NEEDS_CONTEXT remain real exits.
+These fields require neither a desk-tool redesign nor an installed collector.
+
 ### 4.10 Fitness functions (brief 10)
 
 - `tools/desk/internal/arch`, run by the same `go test ./...`. Rule 1, dependency direction:
@@ -309,7 +329,7 @@ hard-gate exceptions are the gates that already exist.
 
 - **What exists.** Fail-first is the worker's obligation (kit §9: a red run or a committed
   mutation entry; §14.3: the class guard red against a planted second instance), the
-  reviewer's rule (review kit §3), a lane for every unknown or blessed-once author
+  reviewer's rule (review kit §4), a lane for every unknown or blessed-once author
   (`review-lanes.md`), a `blocking` finding class (`test-evidence`), and brief-rules rule 16
   for Verify tables. All of it proves the test can fail on the day it lands.
 - **The tag.** `// regression: #<N>[, #<M>…]` directly above the test (a findings id or a
@@ -342,8 +362,8 @@ hard-gate exceptions are the gates that already exist.
   pure-LLM iterations, ~90% only under deterministic guardrails.
 - **The oracle**, one file beside the investigation, `<date>-<module>-oracle.md`:
   1. *Intent* — the owning brief(s) and DR quoted, and the investigation's `divergence:` with
-     its reconciled reading of intent versus what the code does now (09's output, never
-     re-derived).
+     its reconciled reading of intent versus code at the cited revisions (09's output, reused
+     while applicable; superseded or revalidated when relevant inputs change).
   2. *Failure modes* — every class incident and every findings entry touching the module,
      each mapped to its regression test by `git grep 'regression: .*#<N>'` (11). An empty
      test cell is a refusal.
@@ -562,3 +582,20 @@ design-doc-first practice reduces agent-written churn; GitHub Spec Kit, Kiro and
 guidance are recommendations. The hotspot percentages CodeScene quotes are examples, not a
 study; this stream's own 1.8% / 28% figure is the number it uses.
 
+
+## Work-input and handoff clarification — 2026-09-30
+
+Refine existing records through unfinished briefs 04 (class intake), 09 (investigation)
+and 12 (oracle). Inputs carry scope, immutable source/evidence references, unresolved
+questions and next action. Repeated notifications do not create new incidents; unchanged
+reconciled reasoning is reused only within its source/dependency scope. Another brief's
+policy/API change can invalidate it without touching the same file. Keep old records and
+revalidate affected conclusions; ordinary work does not acquire a redesign oracle.
+
+The [graph work-input amendment](../graph-execution/work-input-amendment.md) consumes these
+records but is an optional integration, not a dependency or second owner. Runtime packets,
+claims, quota reservations and enforcement stay outside this stream. Preserve §5's M1–M6,
+C1–C4, baseline and ratified advisory gates. Time/cost/recovery measures are supplemental;
+lower token use alone does not establish reduced brittleness. New packet machinery still
+counts in the existing weight and operator-relay measures. No additional brief or gate is
+created by this clarification.

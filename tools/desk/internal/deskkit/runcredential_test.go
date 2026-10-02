@@ -44,9 +44,16 @@ func TestResolveRunCredentialOutcomes(t *testing.T) {
 	}
 }
 
-// TestRunCredentialsInvalidResetsEveryBinding — a malformed entry marks the key invalid and
-// EVERY binding (including the well-formed ones) reads as unbound: never a partial binding set.
-func TestRunCredentialsInvalidResetsEveryBinding(t *testing.T) {
+// TestRunCredentialsInvalidRefusesAll — ASSAY_RUN_CREDENTIALS is a TRUST key: it decides which
+// credential a desk write runs as, so a malformed entry refuses the WHOLE roster, exactly as a
+// malformed ASSAY_TRUSTED_LOGINS does. It is never recorded as a per-key extension result, and
+// no binding survives — the well-formed sibling included.
+//
+// It also proves the LOWER layer holds with the UPPER one bypassed: the upper layer is the verb's
+// activation gate (deskrun's CheckVerbActivation refuses on an unconfigured roster). This test
+// calls ResolveRunCredential directly, never through that gate, and the resolver must still
+// refuse — could-not-check naming the key and the refused roster — rather than resolve anything.
+func TestRunCredentialsInvalidRefusesAll(t *testing.T) {
 	for _, bad := range []string{
 		"auto=release-runner",                                        // bare basename
 		"example-org/*=release-runner",                               // pattern
@@ -58,16 +65,50 @@ func TestRunCredentialsInvalidResetsEveryBinding(t *testing.T) {
 	} {
 		runCredRoster(t, "example-org/good=release-runner,"+bad, "")
 		cfg := EffectiveConfig()
-		if !cfg.Configured() {
-			t.Errorf("%q refused the WHOLE roster — an extension key's bad value must only empty its own bindings", bad)
+		if cfg.Configured() {
+			t.Errorf("%q: the roster still loaded — a malformed trust key must refuse the WHOLE configuration", bad)
 		}
-		if ext := cfg.Ext["run-credentials"]; ext.Status != ExtInvalid {
-			t.Errorf("%q: Ext status %q, want %q", bad, ext.Status, ExtInvalid)
+		named := false
+		for _, p := range cfg.Problems {
+			if strings.Contains(p, EnvRunCredentials) {
+				named = true
+			}
+		}
+		if !named {
+			t.Errorf("%q: no roster problem names %s: %v", bad, EnvRunCredentials, cfg.Problems)
+		}
+		if ext, ok := cfg.Ext["run-credentials"]; ok {
+			t.Errorf("%q: recorded as an extension result %+v — a trust key has no per-key outcome", bad, ext)
+		}
+		if len(cfg.RunCredentials) != 0 {
+			t.Errorf("%q: a refused roster still carries bindings %v", bad, cfg.RunCredentials)
 		}
 		_, err := ResolveRunCredential(ForgeRepo{Owner: "example-org", Name: "good"})
 		if ExitCodeOf(err) != ExitUnverifiable {
-			t.Errorf("%q: the well-formed sibling still resolved (err=%v) — a partial binding set", bad, err)
+			t.Errorf("%q: the well-formed sibling resolved with the gate bypassed (err=%v)", bad, err)
+			continue
 		}
+		if msg := err.Error(); !strings.Contains(msg, EnvRunCredentials) || !strings.Contains(msg, "roster is refused") {
+			t.Errorf("%q: the refusal must name %s and the refused roster: %v", bad, EnvRunCredentials, err)
+		}
+	}
+}
+
+// TestRunCredentialsIsTrustKey — the classification itself: ExtKeyName reports ASSAY_RUN_CREDENTIALS
+// as NOT an extension key (ok=false, the answer it gives every trust key), and a well-formed roster
+// carrying it records no `assay.roster.ext.run-credentials` outcome.
+func TestRunCredentialsIsTrustKey(t *testing.T) {
+	if name, ok := ExtKeyName(EnvRunCredentials); ok {
+		t.Fatalf("ExtKeyName(%s) = %q, ok=true — it chooses which credential acts, so it is a trust key",
+			EnvRunCredentials, name)
+	}
+	runCredRoster(t, "example-org/auto=release-runner", "")
+	cfg := EffectiveConfig()
+	if !cfg.Configured() {
+		t.Fatalf("a well-formed %s refused the roster: %v", EnvRunCredentials, cfg.Problems)
+	}
+	if ext, ok := cfg.Ext["run-credentials"]; ok {
+		t.Fatalf("cfg.Ext[run-credentials] = %+v — a trust key has no extension outcome", ext)
 	}
 }
 

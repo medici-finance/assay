@@ -31,7 +31,7 @@ consumers:
   - "statusgen/**: out-of-scope (forge-neutral/18 edits these files; this brief adds one test file and changes no read)"
 exec-tier: any
 domain: clear
-version: 1
+version: 2
 id: 0a18147e-5225-4ba4-91ab-b3bcd92bc00d
 ---
 
@@ -96,6 +96,8 @@ facts:
 | 3 | `sh -c 'f=statusgen/zz_banprobe.go; printf "package main\nimport \"os/exec\"\nvar _ = exec.Command(\"gh\", \"api\")\n" > "$f"; sh tools/desk/scripts/forge-ban.sh >/dev/null 2>&1; rc=$?; rm -f "$f"; echo "rc=$rc"; test "$rc" -ne 0'` | exit 0; prints a non-zero `rc=` — the negative-path row: a re-added `gh` shell-out in statusgen makes the counter FAIL, and the probe file is removed whatever the result |
 | 4 | `cd statusgen && go test -timeout 5m -run TestScanNeverEmptyWithoutForgeBinary -v .` | output contains the literal line `--- PASS: TestScanNeverEmptyWithoutForgeBinary` (assert on that line, not the exit status — a `-run` selector matching nothing exits 0) |
 | 5 | `grep -q 'tools/desk' statusgen/go.mod; test $? -eq 1` | exit 0 (grep found no match — statusgen still imports nothing from desk-tools; the verb boundary held) |
+| 6 | `cd statusgen && go test -run '^TestScanNeverEmptyWithoutForgeBinary/gitlab$' -v .` | output must contain the named top-level or subtest `--- PASS:` line (a missing selector is failure); named GitLab-bound scan subtest PASS; brief 08 creates it with ASSAY_REPO_FORGES selecting GitLab (desktools-v2/12 GitLab row) |
+| 7 | `cd statusgen && go test -run '^TestScanNeverEmptyWithoutForgeBinary/windows$' -v .` | output must contain the named top-level or subtest `--- PASS:` line (a missing selector is failure); named Windows PATH/PATHEXT subtest PASS; brief 08 creates it using an .exe stub (desktools-v2/12 Windows row) |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->

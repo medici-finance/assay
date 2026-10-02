@@ -131,6 +131,7 @@ func cmdFlip(args []string) error {
 	root := fs.String("root", ".", "checkout whose origin names the repo, when --repo is omitted")
 	quiet := fs.Bool("quiet", false, "suppress the per-condition OK lines")
 	dryRun := fs.Bool("dry-run", false, "check every condition and stop before the mutation")
+	applyOverride, _ := deskkit.RegisterOutboundOverride(fs, "deskflip", "flip")
 
 	if len(args) == 0 {
 		return deskkit.Refused("deskflip requires a PR number")
@@ -142,6 +143,9 @@ func cmdFlip(args []string) error {
 	if perr := fs.Parse(args[1:]); perr != nil {
 		return deskkit.Refused("deskflip: bad flags: " + perr.Error())
 	}
+	if oerr := applyOverride(); oerr != nil {
+		return oerr
+	}
 	if fs.NArg() != 0 {
 		return deskkit.Refused("deskflip: unexpected extra arguments after <N>: " + strings.Join(fs.Args(), " "))
 	}
@@ -152,6 +156,7 @@ func cmdFlip(args []string) error {
 	return ferr
 }
 
+// semantic: S-review-verdict
 func flip(o flipOpts) error {
 	// --- caller-role -------------------------------------------------------------
 	if err := checkCallerRole(); err != nil {

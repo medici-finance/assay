@@ -81,7 +81,12 @@ type Allowance struct {
 // fails when the permit list is longer (a new forge-CLI call site landed) AND when it is
 // shorter (a call site was migrated but the gain was not locked in). Lowering it is the
 // second half of every migration; raising it is a decision a reviewer sees as a diff.
-const allowedInvocationCeiling = 6
+//
+// 7 = the five pre-existing permits plus two reviewed widenings, each its own row below:
+// internal/deskkit/preflight.go::ambientLoginProbe::gh (the ambient-identity preflight,
+// #1528) and cmd/deskapps/identity.go::runGH::gh (deskapps init's pre-token identity read,
+// the driver-ruled exception on #1260). No other permit is authorized by that raise.
+const allowedInvocationCeiling = 7
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
 var AllowedInvocations = []Allowance{
@@ -91,6 +96,21 @@ var AllowedInvocations = []Allowance{
 			"operation at all but the identity layer, which inventory delta D2 keeps deliberately outside the " +
 			"interface. Retiring it means giving deskadvisory a minted token of its own; there is no Forge " +
 			"method it could move to.",
+	},
+	{
+		Key: "cmd/deskapps/identity.go::runGH::gh",
+		Reason: "Exception granted by the driver's ruling on #1260 " +
+			"(https://github.com/medici-finance/assay/pull/1260#issuecomment-5737886839): deskapps init's " +
+			"manifest-flow installer runs before any App token can exist, so the design §8 identity-mismatch " +
+			"check (`ghIdentity`) reads the signed-in `gh auth` login via `gh api user` — the ONE verb this " +
+			"row permits, read-only, never a write and never a token mint of its own. The ruling's own three " +
+			"options were (A) rewrite the check off the manifest-conversion response, (B) register the call " +
+			"and raise the ceiling, (C) park until re-scoped; the driver picked (B), so this row is the " +
+			"decision, not a placeholder for one. TODO(forge-surface): retires only if a future brief " +
+			"re-sources the identity-mismatch check from the manifest-conversion response instead (the " +
+			"declined option A) — until then this permit stands as the ruling-authorized exception. " +
+			"`ghOwnedOrgs`, the other `gh` shell-out this file held, was dead code (zero call sites) and " +
+			"was removed rather than registered — see the identity.go file header.",
 	},
 	{
 		Key: "cmd/deskdigest/exec.go::runGH::gh",
@@ -134,6 +154,13 @@ var AllowedInvocations = []Allowance{
 // unresolvedRegister records every exec site whose argv[0] the checker cannot resolve. It is
 // a LEDGER of blind spots, not a permit — see the file header.
 var UnresolvedArgv = []Allowance{
+	{
+		Key: "internal/cellprocess/run.go::run::<unresolved>",
+		Reason: "the bounded host-harness runner. Its production caller is cellctl's cadence supervisor, " +
+			"which supplies the resolved claude, codex, or Cursor agent argv from the registered harness " +
+			"launch builders. It executes that argv directly with process-tree containment, never a shell " +
+			"or a forge CLI; tests supply compiled process fixtures.",
+	},
 	// cmd/cellctl — the cell launcher (the Go port of the bash script now kept only as a test
 	// oracle, tools/cellctl/testdata/cellctl-shell-oracle.sh). It reaches NO forge at all: its one
 	// credential path goes through deskkit.RoleTokenForRepo, and its own brief asserts at the
@@ -164,6 +191,12 @@ var UnresolvedArgv = []Allowance{
 		Reason: "runs the operator-registered container launcher named by CELL_CONTAINER_LAUNCHER, which " +
 			"cell.env must give as an absolute executable path. Executable argv, never eval; the launcher " +
 			"is trusted host code that owns its own runtime custody.",
+	},
+	{
+		Key: "cmd/cellctl/cursor.go::cursorHeadlessPreflight::<unresolved>",
+		Reason: "runs the Cursor agent executable with --help under a five-second deadline to verify " +
+			"its documented noninteractive permission flags. Production passes agent; tests pass a " +
+			"compiled local fixture. It launches no model session and is not a forge CLI.",
 	},
 	{
 		Key: "cmd/cellctl/deskd.go::cmdDeskd::<unresolved>",

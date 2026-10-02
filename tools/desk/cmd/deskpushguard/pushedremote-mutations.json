@@ -1,0 +1,53 @@
+{
+  "test": "go test ./cmd/deskpushguard/ -count=1 -timeout 300s -run 'TestForeignCommitCheckUsesThePushedRemotesMain|TestNoMainOnPushedRemoteIsCouldNotCheckNotOrigin'",
+  "control": {
+    "name": "CONTROL — stop reporting any register-id collision (the positive-control subtest's F-7 claim then passes)",
+    "file": "cmd/deskpushguard/registerid.go",
+    "old": "\t\t\tif ownPath, clash := ownIDs[id]; clash {",
+    "new": "\t\t\tif ownPath, clash := ownIDs[id]; clash && false {"
+  },
+  "mutations": [
+    {
+      "name": "run() defaults a missing remote name to origin again (the pre-fix `remoteName := \"origin\"`)",
+      "file": "cmd/deskpushguard/main.go",
+      "old": "\tremoteName := \"\"\n",
+      "new": "\tremoteName := \"origin\"\n"
+    },
+    {
+      "name": "foreign-commit base resolved against origin, not the pushed remote (#1201 itself)",
+      "file": "cmd/deskpushguard/foreigncommit.go",
+      "old": "\toriginMain, err := resolveRemoteMain(dir, remoteName)",
+      "new": "\toriginMain, err := resolveRemoteMain(dir, \"origin\")"
+    },
+    {
+      "name": "foreign-commit check substitutes origin for a missing remote name instead of could-not-check",
+      "file": "cmd/deskpushguard/foreigncommit.go",
+      "old": "\tif remoteName == \"\" {\n\t\t// No remote name means",
+      "new": "\tif remoteName == \"\" {\n\t\tremoteName = \"origin\"\n\t}\n\tif false {\n\t\t// No remote name means"
+    },
+    {
+      "name": "register-id base resolved against origin, not the pushed remote",
+      "file": "cmd/deskpushguard/registerid.go",
+      "old": "\toriginMain, err := resolveRemoteMain(dir, remoteName)",
+      "new": "\toriginMain, err := resolveRemoteMain(dir, \"origin\")"
+    },
+    {
+      "name": "register-id check substitutes origin for a missing remote name",
+      "file": "cmd/deskpushguard/registerid.go",
+      "old": "\t\treturn nil, nil // no remote named",
+      "new": "\t\tremoteName = \"origin\" // no remote named"
+    },
+    {
+      "name": "register-id sibling candidates taken from origin's branches, not the pushed remote's",
+      "file": "cmd/deskpushguard/registerid.go",
+      "old": "\tremotePrefix := remoteName + \"/\"",
+      "new": "\tremotePrefix := \"origin/\""
+    },
+    {
+      "name": "liveness probe asks origin whether the pushed remote's sibling is live",
+      "file": "cmd/deskpushguard/registerid.go",
+      "old": "gitOut(dir, \"ls-remote\", \"--heads\", remoteName, ",
+      "new": "gitOut(dir, \"ls-remote\", \"--heads\", \"origin\", "
+    }
+  ]
+}

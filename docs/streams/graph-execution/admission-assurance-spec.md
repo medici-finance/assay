@@ -186,3 +186,11 @@ causal product experiments, retirement and general data migrations remain future
 
 Source refresh 2026-09-19: public Assay `e4109205751a219330b954f75855c05b4be2a5c8`;
 01 verification is now recorded. No changes to the proposed 09–18 target seams were found.
+
+## Structured input and quota-accounting clarification — 2026-09-30
+
+[WI-1–WI-5](work-input-amendment.md) refine GEA-01/02's input bindings, the dispatch boundary,
+durable budgets and the existing assurance experiment. Packets project canonical instance
+records; account budgets extend existing reservations. Eligibility, capacity and suitability
+remain separate predicates. This amendment neither enables a cohort nor grants a provider
+permission; measured runner capabilities bound any hard-enforcement claim.

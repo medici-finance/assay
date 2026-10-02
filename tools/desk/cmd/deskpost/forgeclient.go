@@ -228,13 +228,10 @@ func (b *forgeBackend) stampTimeline(pr int) (deskkit.StampTimeline, error) {
 func (b *forgeBackend) claimLiveness(repo string, pr int) deskkit.ClaimLiveness {
 	// Mirrors ghClient.claimLiveness exactly, reading the review-claim family through this
 	// backend's OWN resolved Forge rather than a second ForgeFor construction. Every uncertain
-	// path is Unknown, which changes nothing; only a POSITIVELY empty family ages a stamp out.
-	prefix, ok := deskkit.ReviewClaimFamilyRefPrefix(repo, pr)
-	if !ok {
-		return deskkit.ClaimLivenessUnknown
-	}
-	refs, rerr := b.fg.MatchingRefs(b.repo, prefix)
-	return deskkit.ReviewClaimLivenessFromMatchingRefs(refs, prefix, rerr)
+	// path is Unknown, which changes nothing; only ALL candidate families positively empty age a stamp out.
+	return deskkit.ReadReviewClaims(repo, pr, func(prefix string) ([]string, error) {
+		return b.fg.MatchingRefs(b.repo, prefix)
+	})
 }
 
 func (b *forgeBackend) headCommitAuthor(sha string) (string, error) {

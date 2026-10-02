@@ -1,0 +1,13 @@
+# R-one-implementation ceilings: "<S-id> <ceiling>" per line, the number of functions in
+# tools/desk that may carry the marker "semantic: <S-id>" (see docs/contracts.md, "How a
+# brief cites this"). An S- id with no line here has ceiling 0.
+#
+# The ratchet only goes down. Raising a ceiling needs the new site added to the row's
+# duplicates column with a design-fit finding in the same change; lowering one when a
+# duplicate is folded into its owner locks in the gain.
+S-claim 1
+S-exit-codes 1
+S-identity 2
+S-publication-scan 1
+S-review-verdict 3
+S-worktree 1

@@ -166,7 +166,7 @@ func TestPublishIdentityUnpinnedGitHubIDUnverifiable(t *testing.T) {
 // address is accepted, the service-account noreply SHAPE is accepted, and a GitHub-shaped
 // address for a GitLab role is refused (the cross-forge case).
 func TestPublishIdentityGitLab(t *testing.T) {
-	const sessionEmail = "ih-bot@example.org"
+	const sessionEmail = "qa-bot@example.org"
 	const saEmail = "service_account_group_9619193_abcdef@noreply.gitlab.example.org"
 	withRoster(t, map[string]string{
 		EnvBlessLogin:          "ada:2001",

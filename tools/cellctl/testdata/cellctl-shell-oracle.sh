@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # cellctl — start, stop and scaffold an Assay CELL on one laptop (the laptop route).
 #
+#   Native Go container cells: new <cell> --kind container --container-config /absolute/cells.json
+#   Native container status/check/up/down use Docker directly; see docs/cellctl.md.
 #   cellctl ls                                   cells under $CELLS_ROOT
 #   cellctl providers init                       Go launcher: create shared $CELLS_ROOT/providers.json
 #                                                per-provider desk models/effort; <cell>/providers.json overrides
@@ -943,6 +945,7 @@ PY_POLICY_SETTINGS
 }
 
 policy_preflight(){ (
+  # shellcheck disable=SC2030  # the policy vars are local to this subshell on purpose: a preflight must not leak them
   local model="" provider="" harness="" MODEL_POLICY_EFFORT="" MODEL_POLICY_PROVIDER=""
   apply_model_policy "$2" "$3" "$1" "$4"
   [[ -z "$provider" ]] || resolve_provider "$provider"
@@ -1011,9 +1014,11 @@ validate_env_key(){
     esac
   fi
   if [[ "$key" == "CELL_KIND" ]]; then
+    # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
     value_in "$value" $KIND_VALUES || die "set: CELL_KIND must be one of ${KIND_VALUES// /|}, got '$value'"
   fi
   if [[ "$key" == "CELL_COCKPIT" ]]; then
+    # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
     value_in "$value" $COCKPIT_VALUES || die "set: CELL_COCKPIT must be one of ${COCKPIT_VALUES// /|}, got '$value'"
   fi
   # The dispatch-boundary repair-admission gate is a strict on/off opt-in (the gate enables ONLY
@@ -1062,6 +1067,7 @@ prescan_kind_override(){
   while [[ $# -gt 0 ]]; do
     if [[ "$1" == "--kind" ]]; then
       [[ -n "${2:-}" ]] || die "--kind needs a value (${KIND_VALUES// /|})"
+      # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
       value_in "$2" $KIND_VALUES || die "--kind must be one of ${KIND_VALUES// /|}, got '$2'"
       CELL_KIND_OVERRIDE="$2"; shift 2
     else shift; fi
@@ -1328,7 +1334,9 @@ cmd_show(){
     --*) die "show: unknown flag $1";;
     *) die "show: unexpected argument '$1'";;
   esac; done
+  # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
   [[ -z "$harness_flag" ]] || value_in "$harness_flag" $HARNESS_VALUES || die "show: --harness must be one of ${HARNESS_VALUES// /|}, got '$harness_flag'"
+  # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
   [[ -z "$cockpit_flag" ]] || value_in "$cockpit_flag" $COCKPIT_VALUES || die "show: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
   # show_line <key> <flag-value> <effective-value>: source is flag > cell.env line > default.
   show_line(){
@@ -1377,6 +1385,7 @@ cmd_show(){
     if [[ -n "${CELL_MODEL_POLICY:-}" ]]; then
       local model=""
       apply_model_policy "$harness_flag" "$provider_flag" "$r" "$model_flag"
+      # shellcheck disable=SC2031  # read from apply_model_policy just above, in this shell (not the preflight subshell)
       printf "[show] model %s=%s provider=%s harness=%s effort=%s (%s)\n" "$r" "$model" "$MODEL_POLICY_PROVIDER" "$harness" "$MODEL_POLICY_EFFORT" "$RESOLVED_MODEL_SRC"
     elif [[ -n "$model_flag" ]]; then
       printf '[show] model %s=%s (flag)\n' "$r" "$model_flag"
@@ -2198,6 +2207,7 @@ cmd_desk(){
     --*) die "desk: unknown flag $1";;
     *) cfg_in="$1"; shift;;
   esac; done
+  # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
   [[ -z "$cockpit_flag" ]] || value_in "$cockpit_flag" $COCKPIT_VALUES \
     || die "desk: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
   [[ "$persist" == "0" || -n "$model_override$harness_flag$provider_flag$CELL_KIND_OVERRIDE$cockpit_flag" || "$tier_flag" == "1" ]] \
@@ -2433,9 +2443,24 @@ cmd_desk(){
   # is itself a linked worktree (where .git is a file) still gets a lock rather than a 60s wait.
   local gitdir; gitdir="$(git -C "$CELL_REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo "$CELL_REPO/.git")"
   local lock="$gitdir/cellctl-fetch.lock"
-  local _i; for _i in $(seq 1 60); do mkdir "$lock" 2>/dev/null && break; sleep 1; done
+  local _i _held=0; for _i in $(seq 1 60); do mkdir "$lock" 2>/dev/null && { _held=1; break; }; sleep 1; done
+  # Pre-existing behaviour, kept: a lock still held after 60s is taken to be a dead boot's. This
+  # boot proceeds, and the release below removes that lock. If the holder is in fact alive,
+  # removing FETCH_HEAD under it makes ITS read fail — a refusal, never a stale boot.
+  [[ "$_held" -eq 1 ]] || echo "NOTICE: fetch lock $lock still held after 60s — proceeding without it" >&2
   # A fetch that lost the ref-lock race still wrote FETCH_HEAD, and FETCH_HEAD is all that is used
   # below — so a non-zero exit here is a notice, not a stop.
+  # FETCH_HEAD is removed before the fetch, so the one read below is always THIS fetch's. git
+  # truncates FETCH_HEAD itself before it contacts the remote, so a fetch that fails on auth or
+  # connect already leaves nothing to read. The removal is for the case git's own truncate cannot
+  # cover: a FETCH_HEAD git cannot open for writing (read-only file), where the fetch fails and the
+  # PREVIOUS boot's sha is left in place. And when the file cannot be removed either, the boot is
+  # refused (lock released first) — reading it would be that previous boot's main.
+  local fetch_head; fetch_head="$(git -C "$CELL_REPO" rev-parse --path-format=absolute --git-path FETCH_HEAD 2>/dev/null || true)"
+  if [[ -n "$fetch_head" ]] && ! rm -f "$fetch_head" 2>/dev/null; then
+    rmdir "$lock" 2>/dev/null || true
+    die "desk: cannot remove $fetch_head before the fetch — refusing to boot: a fetch that cannot rewrite it would leave a previous boot's main to read. Make it removable (check its permissions and its directory's), then re-run: cellctl desk $CELL $role"
+  fi
   # On the gitlab arm, GITLAB_TOKEN_STORE/DESKD_GITLAB_TOKEN_FILE provision the API token, but
   # nothing else wires a git credential for CELL_REPO's own fetch transport — on a private GitLab
   # project over HTTPS this fetch otherwise stops at an interactive `Username for
@@ -2445,12 +2470,17 @@ cmd_desk(){
   if [[ "$CELL_FORGE" == "gitlab" ]]; then
     gitlab_cred_args
     GIT_TERMINAL_PROMPT=0 git "${GITLAB_CRED_ARGS[@]}" -C "$CELL_REPO" fetch --no-tags origin main \
-      || echo "NOTICE: fetch returned non-zero (ref-lock race?) — using FETCH_HEAD" >&2
+      || echo "NOTICE: fetch returned non-zero — checking whether it wrote FETCH_HEAD" >&2
   else
-    git -C "$CELL_REPO" fetch --no-tags origin main || echo "NOTICE: fetch returned non-zero (ref-lock race?) — using FETCH_HEAD" >&2
+    git -C "$CELL_REPO" fetch --no-tags origin main || echo "NOTICE: fetch returned non-zero — checking whether it wrote FETCH_HEAD" >&2
   fi
-  local sha; sha="$(git -C "$CELL_REPO" rev-parse FETCH_HEAD)"
+  local sha; sha="$(git -C "$CELL_REPO" rev-parse --verify -q FETCH_HEAD || true)"
   rmdir "$lock" 2>/dev/null || true
+  # The refusal names the usual cause and the way out, because git's own output reads like a
+  # transient error: a credential helper answering with a dead token (an expired App token left in
+  # the checkout's shared config, say). The inspect command prints helper values verbatim, and an
+  # inline helper can carry that token — hence the warning not to paste it anywhere public.
+  [[ -n "$sha" ]] || die "desk: fetch of origin main in $CELL_REPO failed and wrote no FETCH_HEAD — refusing to boot on a stale main. An authentication refusal is the usual cause. See which credential helper answers for origin: git -C '$CELL_REPO' config --show-origin --get-regexp '^credential\.' (its output can contain a token — do not paste it into a PR or issue). Re-mint or replace the dead credential, or remove the stale helper entry, then re-run: cellctl desk $CELL $role"
   mkdir -p "$CELL_DIR/worktrees"
   if [[ -e "$wt/.git" ]]; then
     # An existing tree is MERGED up to the fetched main, or the boot stops — never left behind
@@ -2693,6 +2723,7 @@ cmd_up(){
     *) cfg_in="$1"; shift;;
   esac; done
   case "$harness_flag" in ""|claude|codex) ;; *) die "up: --harness must be claude or codex, got '$harness_flag'";; esac
+  # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
   [[ -z "$cockpit_flag" ]] || value_in "$cockpit_flag" $COCKPIT_VALUES \
     || die "up: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
   [[ "$persist" == "0" || -n "$model_override$harness_flag$provider_flag$CELL_KIND_OVERRIDE$cockpit_flag$tier_top_flag$tier_mid_flag$tier_fast_flag" ]] \

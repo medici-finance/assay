@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -13,6 +15,26 @@ func withFindings(t *testing.T, findings []Finding) {
 	old := activeFindings
 	activeFindings = findings
 	t.Cleanup(func() { activeFindings = old })
+}
+
+// fireDependents is the reciprocal half of the fire fixture's three inbound edges:
+// fire/01 declares `unblocks:` for each blocked/0N that declares `depends: fire/01`,
+// so the high-unblocks arm (which counts reciprocated edges only) sees all three.
+var fireDependents = []string{"blocked/01", "blocked/02", "blocked/03"}
+
+// reciprocatedGraphWith builds, through the one sanctioned constructor, a graph in
+// which target has exactly n reciprocated not-done dependents.
+func reciprocatedGraphWith(target string, n int) reciprocatedRevDeps {
+	parts := strings.SplitN(target, "/", 2)
+	var deps []Brief
+	var unblocks []string
+	for i := 0; i < n; i++ {
+		num := pad2(i + 1)
+		deps = append(deps, Brief{Num: num, Status: "todo", Schema: "brief-v1", Depends: []string{target}})
+		unblocks = append(unblocks, "dep/"+num)
+	}
+	tgt := mkStream(parts[0], "active", "P2", Brief{Num: parts[1], Status: "todo", Schema: "brief-v1", Unblocks: unblocks})
+	return buildReciprocatedRevDeps([]*Stream{tgt, mkStream("dep", "active", "P2", deps...)})
 }
 
 // withStampAuthorities installs a ratified critical-stamp authority allowlist for
@@ -35,8 +57,10 @@ func withStampAuthorities(t *testing.T, auths ...string) {
 // TestDriveCriticalTierNeverBuried (brief-44 Verify row 5): the lexicographic
 // (criticalTier, score) order ranks main-red / stamped-security / high-unblocks
 // (blockedCount≥3) / reviewer-finding rows ABOVE all scores; no intensity — surge
-// included — can pass the critical tier; membership is machine-derived / stamped,
-// never self-declared.
+// included — can pass the critical tier; membership is derived from linkage fields
+// and stamps, never from a "critical" flag. (Which of those inputs an ordinary PR
+// can write is the RESIDUAL named in drivecritical.go; this test pins the ordering
+// and the derivation, not the authenticity of the linkage.)
 func TestDriveCriticalTierNeverBuried(t *testing.T) {
 	// The critical tier is applied only when a drive is active. A SURGE drive covers
 	// the routine stream — the strongest intensity — and must STILL sit below a
@@ -48,10 +72,11 @@ func TestDriveCriticalTierNeverBuried(t *testing.T) {
 		// by a SURGE drive (+2500 = 4500 total). Without the tier the surge total buries
 		// the fire; with it the fire ranks first.
 		fire := mkStream("fire", "active", "P2",
-			Brief{Num: "01", Wave: 0, Status: "todo", Schema: "brief-v1"},
+			Brief{Num: "01", Wave: 0, Status: "todo", Schema: "brief-v1", Unblocks: fireDependents},
 		)
 		fire.LastTouch = day(0)
-		// Three downstream briefs depend on fire/01 → blockedCount(fire/01)=3.
+		// Three downstream briefs depend on fire/01, and fire/01 reciprocates each
+		// with `unblocks:` → reciprocated blockedCount(fire/01)=3.
 		blocked := mkStream("blocked", "active", "P2",
 			Brief{Num: "01", Wave: 1, Status: "todo", Schema: "brief-v1", Depends: []string{"fire/01"}},
 			Brief{Num: "02", Wave: 1, Status: "todo", Schema: "brief-v1", Depends: []string{"fire/01"}},
@@ -101,40 +126,41 @@ func TestDriveCriticalTierNeverBuried(t *testing.T) {
 		b := Brief{Num: "01", Wave: 0, Status: "todo", Reviewed: "2026-08-15 critical-security(security-desk)"}
 
 		// Placeholder (empty allowlist): NOT authorized → not critical.
-		if arm := criticalTierArm(b, "sec", 0, nil); arm != "" {
+		if arm := criticalTierArm(b, "sec", reciprocatedRevDeps{}, nil); arm != "" {
 			t.Fatalf("with the empty placeholder allowlist a security stamp must grant nothing, got arm %q", arm)
 		}
 		// Ratified: authority allowlisted → security arm fires.
 		withStampAuthorities(t, "security-desk")
-		if arm := criticalTierArm(b, "sec", 0, nil); arm != "security" {
+		if arm := criticalTierArm(b, "sec", reciprocatedRevDeps{}, nil); arm != "security" {
 			t.Fatalf("a ratified-authority security stamp must qualify via the security arm, got %q", arm)
 		}
 		// A stamp from an UN-ratified authority still grants nothing.
 		other := Brief{Num: "02", Status: "todo", Reviewed: "critical-security(random-actor)"}
-		if arm := criticalTierArm(other, "sec", 0, nil); arm != "" {
+		if arm := criticalTierArm(other, "sec", reciprocatedRevDeps{}, nil); arm != "" {
 			t.Fatalf("an un-ratified authority must not qualify, got %q", arm)
 		}
 	})
 
 	t.Run("reviewer-finding-arm", func(t *testing.T) {
-		// An unresolved reviewer finding naming the brief qualifies it (machine-derived).
+		// An unresolved reviewer finding naming the brief qualifies it (derived from the
+		// findings entry, which carries no actor — see the RESIDUAL in drivecritical.go).
 		findings := []Finding{{ID: "F-leak-01", Affects: []string{"sec/01"}, Resolved: false}}
-		if arm := criticalTierArm(Brief{Num: "01", Status: "todo"}, "sec", 0, findings); arm != "reviewer-finding" {
+		if arm := criticalTierArm(Brief{Num: "01", Status: "todo"}, "sec", reciprocatedRevDeps{}, findings); arm != "reviewer-finding" {
 			t.Fatalf("a brief named by an unresolved finding must qualify via reviewer-finding, got %q", arm)
 		}
 		// A RESOLVED finding does not.
 		resolved := []Finding{{ID: "F-leak-01", Affects: []string{"sec/01"}, Resolved: true}}
-		if arm := criticalTierArm(Brief{Num: "01", Status: "todo"}, "sec", 0, resolved); arm != "" {
+		if arm := criticalTierArm(Brief{Num: "01", Status: "todo"}, "sec", reciprocatedRevDeps{}, resolved); arm != "" {
 			t.Fatalf("a resolved finding must not qualify, got %q", arm)
 		}
 		// A bare-STREAM affects entry is NOT broadcast to every brief (anti-broadcast).
 		streamLevel := []Finding{{ID: "F-x", Affects: []string{"sec"}, Resolved: false}}
-		if arm := criticalTierArm(Brief{Num: "01", Status: "todo"}, "sec", 0, streamLevel); arm != "" {
+		if arm := criticalTierArm(Brief{Num: "01", Status: "todo"}, "sec", reciprocatedRevDeps{}, streamLevel); arm != "" {
 			t.Fatalf("a bare-stream finding must NOT mark a brief critical (anti-broadcast), got %q", arm)
 		}
 		// The brief-<NN> spelling of an affects entry resolves the same.
 		dashed := []Finding{{ID: "F-y", Affects: []string{"sec/brief-01"}, Resolved: false}}
-		if arm := criticalTierArm(Brief{Num: "01", Status: "todo"}, "sec", 0, dashed); arm != "reviewer-finding" {
+		if arm := criticalTierArm(Brief{Num: "01", Status: "todo"}, "sec", reciprocatedRevDeps{}, dashed); arm != "reviewer-finding" {
 			t.Fatalf("a stream/brief-NN affects entry must resolve, got %q", arm)
 		}
 	})
@@ -145,20 +171,20 @@ func TestDriveCriticalTierNeverBuried(t *testing.T) {
 		// surge-boosted routine brief with no fire property is never critical.
 		routine := Brief{Num: "01", Status: "todo"}
 		for _, bc := range []int{0, 1, 2} { // below the high-unblocks threshold
-			if arm := criticalTierArm(routine, "routine", bc, nil); arm != "" {
+			if arm := criticalTierArm(routine, "routine", reciprocatedGraphWith("routine/01", bc), nil); arm != "" {
 				t.Fatalf("a routine brief (blockedCount %d, no stamp, no finding) must not be critical, got %q", bc, arm)
 			}
 		}
 	})
 
-	t.Run("main-red-arm-deferred", func(t *testing.T) {
-		// The main-red arm is a documented seam: it must always report false (statusgen
-		// cannot poll live CI offline). This pins the deferral so it cannot silently
-		// grow a network read.
-		if mainRedCritical(Brief{Num: "01", Status: "todo"}, "any") {
-			t.Fatal("the main-red arm is DEFERRED and must always report false pending an in-tree machine-derived signal")
-		}
-	})
+	// Row 5's three formerly-dark arms (drivecritical_mainred_test.go): main-red
+	// from the injected --main-health input, stamped-security from the roster-
+	// configured authority set, and reviewer-finding through the finding's control:.
+	t.Run("main-red-fix-outranks-surge", testMainRedFixOutranksSurge)
+	t.Run("main-red-needs-red-and-linkage", testMainRedNeedsRedAndLinkage)
+	t.Run("main-red-could-not-check-is-named", testMainRedCouldNotCheckIsNamed)
+	t.Run("stamped-security-authority-from-config", testStampedSecurityFromConfig)
+	t.Run("reviewer-finding-reaches-board-via-control", testReviewerFindingReachesBoardViaControl)
 }
 
 // TestDriveCriticalArmDisplayedAttributed pins that a critical pick carries its
@@ -166,7 +192,7 @@ func TestDriveCriticalTierNeverBuried(t *testing.T) {
 // reorder).
 func TestDriveCriticalArmDisplayedAttributed(t *testing.T) {
 	fire := mkStream("fire", "active", "P2",
-		Brief{Num: "01", Wave: 0, Status: "todo", Schema: "brief-v1"},
+		Brief{Num: "01", Wave: 0, Status: "todo", Schema: "brief-v1", Unblocks: fireDependents},
 	)
 	fire.LastTouch = day(0)
 	blocked := mkStream("blocked", "active", "P2",
@@ -290,4 +316,173 @@ func TestDriveDepEdgeReciprocity(t *testing.T) {
 			t.Fatalf("a depends edge to a legacy (non-brief-v1) target must be exempt: %v", notices)
 		}
 	})
+
+	// The residual the lint's NOTICE tier left open: a one-sided edge passes --lint
+	// (exit 0), so the lint alone cannot keep it out of blockedCount. The
+	// high-unblocks arm therefore counts RECIPROCATED edges only — three manufactured
+	// one-sided inbound edges must not lift a brief into the tier that sits above
+	// every score.
+	t.Run("one-sided-edges-cannot-lift-into-high-unblocks", func(t *testing.T) {
+		nu := reciprocityBoard(t, nil)
+		_, pFire := pickIndex(nu, "fire")
+		if pFire == nil {
+			t.Fatalf("fire/01 must be on the board: %+v", nu.Picks)
+		}
+		if pFire.CriticalTier {
+			t.Fatalf("three ONE-SIDED inbound depends edges lifted fire/01 into the critical tier via %q — the high-unblocks arm must count reciprocated edges only", pFire.CriticalArm)
+		}
+		// The SCORE keeps counting every declared edge (the reciprocity lint is a
+		// NOTICE; the ~104 legitimate older one-sided edges still weigh in the
+		// ordinary score). Only the tier above the score is closed to them.
+		rev, status := buildRevDeps(reciprocityStreams(nil))
+		if got := blockedCount(rev, status, "fire/01"); got != 3 {
+			t.Fatalf("the score's blockedCount must still count all 3 declared edges, got %d", got)
+		}
+	})
+
+	t.Run("reciprocated-edges-reach-high-unblocks", func(t *testing.T) {
+		nu := reciprocityBoard(t, fireDependents)
+		_, pFire := pickIndex(nu, "fire")
+		if pFire == nil || !pFire.CriticalTier || pFire.CriticalArm != "high-unblocks" {
+			t.Fatalf("three RECIPROCATED inbound edges must qualify fire/01 via high-unblocks, got %+v", pFire)
+		}
+	})
+
+	t.Run("only-the-reciprocated-subset-counts", func(t *testing.T) {
+		// fire/01 reciprocates two of its three inbound edges → count 2, below the
+		// threshold of 3, so not critical; the one-sided third edge adds nothing.
+		g := buildReciprocatedRevDeps(reciprocityStreams(fireDependents[:2]))
+		if got := g.count("fire/01"); got != 2 {
+			t.Fatalf("reciprocated count must be 2 (two of three edges reciprocated), got %d", got)
+		}
+		if arm := criticalTierArm(Brief{Num: "01", Status: "todo"}, "fire", g, nil); arm != "" {
+			t.Fatalf("two reciprocated edges are below the threshold; must not be critical, got %q", arm)
+		}
+		// A self-loop never counts, even when "reciprocated" by the same brief.
+		self := mkStream("self", "active", "P2", Brief{Num: "01", Status: "todo", Schema: "brief-v1",
+			Depends: []string{"self/01"}, Unblocks: []string{"self/01"}})
+		if got := buildReciprocatedRevDeps([]*Stream{self}).count("self/01"); got != 0 {
+			t.Fatalf("a self-loop must contribute nothing, got %d", got)
+		}
+	})
+
+	// #1960: the same lint over brief-v2 FILES, end to end through checkBriefFiles.
+	// A v2 `brief:` id is <cell>:<repo>:<stream>:<NN> while its refs stay
+	// <stream>/<NN>; the lint must key both the same way, or a v2 self-loop reads
+	// as a non-self ref and every v2 edge drops out of the reciprocity check.
+	t.Run("v2-self-depends-is-a-problem", func(t *testing.T) {
+		problems, _ := v2EdgeRoot(t, v2Edges{dep1: "demo/01"})
+		if !hasProblem(problems, "brief-01-x.md", "self-referential") {
+			t.Fatalf("a brief-v2 self-referential depends edge must be a PROBLEM: %v", problems)
+		}
+	})
+
+	t.Run("v2-self-unblocks-is-a-problem", func(t *testing.T) {
+		problems, _ := v2EdgeRoot(t, v2Edges{unb1: "demo/01"})
+		if !hasProblem(problems, "brief-01-x.md", "self-referential") {
+			t.Fatalf("a brief-v2 self-referential unblocks edge must be a PROBLEM: %v", problems)
+		}
+	})
+
+	t.Run("v2-one-sided-depends-is-a-notice", func(t *testing.T) {
+		problems, notices := v2EdgeRoot(t, v2Edges{dep2: "demo/01"})
+		if len(problems) != 0 {
+			t.Fatalf("a one-sided v2 edge is a NOTICE, never a PROBLEM: %v", problems)
+		}
+		if !hasProblem(notices, "one-sided", "demo/02", "demo/01") {
+			t.Fatalf("a one-sided brief-v2 depends edge must be a NOTICE naming both ends: %v", notices)
+		}
+	})
+
+	t.Run("v2-reciprocated-edge-passes", func(t *testing.T) {
+		problems, notices := v2EdgeRoot(t, v2Edges{dep2: "demo/01", unb1: "demo/02"})
+		if len(problems) != 0 {
+			t.Fatalf("a reciprocated v2 edge must lint clean: %v", problems)
+		}
+		if hasProblem(notices, "one-sided") {
+			t.Fatalf("a reciprocated v2 edge must raise no one-sided NOTICE: %v", notices)
+		}
+	})
+}
+
+// v2Edges names the typed edges of the two-brief v2 fixture (demo/01, demo/02);
+// an empty field declares no edge.
+type v2Edges struct{ dep1, unb1, dep2, unb2 string }
+
+// v2EdgeRoot writes a brief-v2 board root with two briefs in stream demo and
+// returns checkBriefFiles over it (the v2Root pattern, two briefs wide).
+func v2EdgeRoot(t *testing.T, e v2Edges) (problems, notices []string) {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "docs", "streams", "demo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reg := "schema: graph-repos-v1\ncell: smoke\nrepos:\n  sg: {cell: smoke, repo: medici-finance/assay}\n"
+	readme := "---\nstream: demo\nrepo: medici-finance/assay\nstatus: active\npriority: P1\ntrack: platform\n---\n\n# Demo\n\n" +
+		"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n|---|-------|------|--------|--------|----------|----------|\n" +
+		"| 01 | [One](brief-01-x.md) | 0 | S | todo | — | — |\n| 02 | [Two](brief-02-x.md) | 0 | S | todo | — | — |\n"
+	list := func(ref string) string {
+		if ref == "" {
+			return "[]"
+		}
+		return "[" + ref + "]"
+	}
+	brief := func(num, uuid, dep, unb string) string {
+		return "---\nbrief: smoke:sg:demo:" + num + "\ntitle: v2 edge fixture " + num +
+			"\nwhy: >-\n  Independent rationale a non-engineer could read and justify the work from.\n" +
+			"wave: 0\ndepends: " + list(dep) + "\nunblocks: " + list(unb) +
+			"\neffort: S\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n" +
+			"issues: []\nschema: brief-v2\nversion: 1\nid: " + uuid + "\nsupersedes: []\n" +
+			"authored: 2026-10-01 by fixture\nsources: [\"fixture: v2 edges\"]\n---\n\n# Brief " + num + "\n"
+	}
+	files := map[string]string{
+		filepath.Join(root, "docs", "streams", "graph-repos.yaml"): reg,
+		filepath.Join(dir, "README.md"):                            readme,
+		filepath.Join(dir, "brief-01-x.md"):                        brief("01", "4f8c2d1a-9b3e-4c7a-8f21-0a1b2c3d4e5f", e.dep1, e.unb1),
+		filepath.Join(dir, "brief-02-x.md"):                        brief("02", "5a9d3e2b-0c4f-4d8b-9a32-1b2c3d4e5f60", e.dep2, e.unb2),
+	}
+	for p, body := range files {
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatalf("loadStreams: %v", err)
+	}
+	return checkBriefFiles(streams, streams)
+}
+
+// reciprocityStreams is the fire fixture: fire/01 with three brief-v1 dependents in
+// stream "blocked", plus a filler stream. unblocks is fire/01's declared
+// `unblocks:` list — nil leaves every edge one-sided.
+func reciprocityStreams(unblocks []string) []*Stream {
+	fire := mkStream("fire", "active", "P2",
+		Brief{Num: "01", Wave: 0, Status: "todo", Schema: "brief-v1", Unblocks: unblocks})
+	fire.LastTouch = day(0)
+	blocked := mkStream("blocked", "active", "P2",
+		Brief{Num: "01", Wave: 1, Status: "todo", Schema: "brief-v1", Depends: []string{"fire/01"}},
+		Brief{Num: "02", Wave: 1, Status: "todo", Schema: "brief-v1", Depends: []string{"fire/01"}},
+		Brief{Num: "03", Wave: 1, Status: "todo", Schema: "brief-v1", Depends: []string{"fire/01"}},
+	)
+	blocked.LastTouch = day(0)
+	return []*Stream{fire, blocked, driveBriefStream("filler", 3)}
+}
+
+// reciprocityBoard runs nextUp over reciprocityStreams under an active surge drive
+// (the critical tier only applies with a drive active).
+func reciprocityBoard(t *testing.T, unblocks []string) NextUp {
+	t.Helper()
+	streams := reciprocityStreams(unblocks)
+	root := t.TempDir()
+	makeStreamsDir(t, root)
+	writeDrive(t, root, "surge-filler", "declared-by: operator\n"+liveWindow+"intensity: surge\nstate: active\nitems:\n  - stream: filler\n")
+	ds := loadDrives(root, streams, driveTestNow)
+	if !ds.applied() {
+		t.Fatalf("the surge drive must apply: %+v", ds)
+	}
+	withDrives(t, ds)
+	withFindings(t, nil)
+	return nextUp(streams, ClaimView{}, nil)
 }

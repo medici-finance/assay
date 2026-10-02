@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>deskapps — run</title>
+<style>{{.CSS}}</style>
+</head>
+<body>
+<h1>deskapps</h1>
+<div class="chips">
+  <span class="chip">Tier</span>
+  <span class="chip">Details</span>
+  <span class="chip current">Create</span>
+  <span class="chip">Install</span>
+  <span class="chip">Prove</span>
+</div>
+
+{{if .AnyPaused}}
+<div class="banner">
+  GitHub paused App creation for this account. This is GitHub's throttle, not an error in
+  your setup. Wait a while, then resume from here. Closing this window loses nothing: the
+  console can resume too.
+</div>
+{{end}}
+
+<table>
+  <tr><th>App</th><th>Create</th><th>Key</th><th>Avatar</th><th>Install</th><th>Verify</th></tr>
+  {{range .Rows}}
+  <tr>
+    <td>{{.App}}</td>
+    <td class="state state-{{.State}}">
+      {{if eq .State "pending"}}
+        <form class="create-form" data-role="create" action="{{.NewAppURL}}?state={{.StateNonce}}" method="post" target="_blank" onsubmit="fetch('/mark-posted?app={{.App}}&state={{.StateNonce}}',{method:'POST'});">
+          <input type="hidden" name="manifest" value='{{.ManifestJSON}}'>
+          <button type="submit">Create</button>
+        </form>
+      {{else}}
+        {{.State}}
+      {{end}}
+    </td>
+    <td class="state state-{{.State}}">{{if or (eq .State "keyed") (eq .State "avatar_ok") (eq .State "installed") (eq .State "verified")}}keyed{{else}}—{{end}}</td>
+    <td>{{if or (eq .State "avatar_ok") (eq .State "installed") (eq .State "verified")}}confirmed{{else}}after create{{end}}</td>
+    <td>{{if or (eq .State "installed") (eq .State "verified")}}installed{{else}}after create{{end}}</td>
+    <td>{{if eq .State "verified"}}verified{{else}}after create{{end}}</td>
+  </tr>
+  {{end}}
+</table>
+
+<p class="footer-note">Each Create form posts a GitHub App Manifest to GitHub's own new-App page with a per-run state token; GitHub redirects back here with a one-hour code, exchanged immediately. The private key is written once, mode 0600, and never shown on this page.</p>
+</body>
+</html>

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -27,7 +28,7 @@ func cmdNew(args []string) {
 	kind, forge, idvar, port := "k8s", "github", "DESK_APP_ID", "8787"
 	cell, repo, yaml, orgs, pem := "", "", "", "", ""
 	group, gitlabAPIBase, tokenStore := "", "", ""
-	roots, launcher, repoSlug := "", "", ""
+	roots, launcher, repoSlug, containerConfig := "", "", "", ""
 	roles, rolesSet := rolesDefault, false
 
 	for i := 0; i < len(args); i++ {
@@ -35,6 +36,8 @@ func cmdNew(args []string) {
 		switch a := args[i]; a {
 		case "--kind":
 			kind = nextOrEmpty(args, &i)
+		case "--container-config":
+			containerConfig = next("--container-config needs an absolute JSON file")
 		case "--launcher":
 			launcher = next("--launcher needs an absolute executable")
 		case "--forge":
@@ -80,6 +83,9 @@ func cmdNew(args []string) {
 	}
 
 	root := cellsRoot(e)
+	if containerConfig != "" && kind != "container" {
+		die("--container-config is only valid for --kind container")
+	}
 	switch kind {
 	case "container":
 		if !rolesSet {
@@ -88,7 +94,17 @@ func cmdNew(args []string) {
 		if anyGiven(yaml, orgs, pem, group, tokenStore) {
 			die("container new does not accept host credential or deskd configuration")
 		}
-		newContainer(e, root, cell, repo, launcher, roles, roots)
+		if containerConfig != "" {
+			if launcher != "" {
+				die("new: choose --container-config or --launcher")
+			}
+			if strings.TrimSpace(roles) == "" {
+				die("new: at least one role is required")
+			}
+			newNativeContainer(root, cell, repo, containerConfig, roles, roots)
+		} else {
+			newContainer(e, root, cell, repo, launcher, roles, roots)
+		}
 		return
 	case "scrubbed":
 		if anyGiven(yaml, orgs, pem, group, tokenStore, launcher) {
@@ -277,7 +293,10 @@ func newContainer(e *Env, root, cell, repo, launcher, roles, roots string) {
 	if repo == "" {
 		die("container new needs --repo <repo-id>")
 	}
-	if !strings.HasPrefix(launcher, "/") || !isExecFile(launcher) {
+	if err := cellPathCheck(runtime.GOOS, launcher); err != nil {
+		die("container launcher: %v", err)
+	}
+	if !isExecFile(launcher) {
 		die("container new needs --launcher <absolute-executable>")
 	}
 	if strings.TrimSpace(roles) == "" {

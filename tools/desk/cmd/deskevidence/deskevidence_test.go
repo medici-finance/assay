@@ -225,7 +225,7 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 
 	oldForge := forgeForFn
 	forgeForFn = func(owner, name string) (deskkit.Forge, deskkit.ForgeRepo, error) {
-		return f, deskkit.ForgeRepo{Owner: owner, Name: name}, nil
+		return deskkit.OutboundChecked(f, "verifier"), deskkit.ForgeRepo{Owner: owner, Name: name}, nil
 	}
 	t.Cleanup(func() { forgeForFn = oldForge })
 

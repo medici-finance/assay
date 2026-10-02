@@ -79,8 +79,28 @@ statusgen verifyrun --brief docs/streams/<stream>/brief-NN-<slug>.md --dry-run
 statusgen verifyrun --check docs/streams/<stream>/brief-NN-<slug>.md
 ```
 
-Each row runs in a fresh subshell at the repo root, and the witness records the
-command, the exit code, a sha256 fingerprint of the combined output, the date, the
+Each row runs in a fresh subshell at the repo root. The command is the Command
+cell's first code span, or — in a cell that mixes prose and spans — the first span
+marked `cmd:` (`` `cmd: go test ./pkg/ -count=1` ``), which always wins over the first
+span (issue #1805; `--lint` NOTICEs a prose cell whose first span is not a command as
+`prose-led-command`, and `verifyrun` records such a row could-not-run without
+executing it — the mention is not the check, and a word like `gh` exits 0; the per-row
+NOTICE covers open briefs, and a closed brief's rows collapse into one summary line;
+the check:ci verdict re-execution lane refuses such a row unrun, and `--check` does not
+audit an old pass witness on it as pass).
+A marked command that cannot fail (`true`, `:`, `exit 0`, a lone `echo`) is NOTICEd as
+`cmd-marker-vacuous`. A marker counts only where the rendered table shows it as code:
+spans are found as CommonMark renders them (escaped backticks are literal), and a cell
+whose prose carries an unescaped `<` or `[`, a dollar in any spelling (`$`, `\$`, `&#36;`:
+math) or any character reference, or a span whose opening backticks are fused to the text
+before them (an autolink, `~~`), honours no marker; the marker span itself must be set apart
+by whitespace or the cell edge (plain punctuation may follow it) (`--lint` NOTICEs it as
+`cmd-marker-not-honoured`; a marker that replaces a command-shaped first span is
+`cmd-marker-overrides-command`). The tools/desk executors (`verifyloop`,
+`deskrebaseline`) apply the same rule, held to the shared vectors in
+`testdata/cmd-marker-vectors.json`. The witness records the
+command (fenced with a longer backtick run when it contains backticks, so `--check`
+reads back the whole command), the exit code, a sha256 fingerprint of the combined output, the date, the
 executing identity, and the tree it ran against. The format and its rules live in
 [`../docs/brief-rules.md`](../docs/brief-rules.md) (rules 25–26).
 
@@ -200,6 +220,97 @@ every Verify row. It returns exit 1 with no JSON when that closure check fails;
 resolution/usage failures remain exit 2. This check does not grandfather missing
 witnesses and does not replace `statusgen --lint`. `deskevidence` uses both before
 appending a new verified outcome receipt.
+
+### `phantoms` — the sibling-merge-unreconciled dedicated exit code
+
+A brief tracked on one repo's board can be delivered by a PR merged in a
+**sibling** repo (the convention where code briefs land via sibling PRs): the
+worker can write only there, so the home row never moves and Next-up keeps
+offering work that has already landed. `--lint`'s board-honesty detector
+(`boardhonesty.go`) surfaces this as its seventh phantom class,
+`sibling-merge-unreconciled` — but `--lint` never changes exit code for ANY
+board-honesty class (severity is NOTICE, deliberately, to avoid redding every
+unrelated PR against an already-drifted backlog). `statusgen phantoms` is the
+dedicated, narrow door for a CI row or a desk sweep that wants to go red on
+this one class without arming that against the whole board:
+
+```bash
+statusgen phantoms --root . --class sibling-merge-unreconciled
+```
+
+Exit `0` clean, `1` at least one checked-failed row (a change naming a `todo`
+or `in-progress` brief already merged in a sibling and nobody has recorded
+what it covered), `2` any could-not-check and no checked-failed (a registered
+sibling the operator's sibling-root map does not name, an absent, shallow, or
+unreadable sibling checkout, or an unresolvable `deliverable_repo:` alias). A finding is a **prompt to read the merged change Task by Task, never
+proof of delivery** — it never claims "implemented" or "delivered" and it
+never writes a lifecycle cell itself; two of the six real-world merges this
+class was built from turned out to be partial deliveries.
+
+A brief names its sibling via `homed-in: <owner>/<repo>`, `deliverable_repo:
+<alias>` (both resolved through `docs/streams/graph-repos.yaml`), or a
+`../<basename>/` path prefix matching a registered sibling's checkout
+basename — a brief declaring none of the three is simply out of scope for this
+class, not a could-not-check. The board's own repo is never one of its
+siblings: the registry's `self:` key names it, else the streams' `repo:`
+frontmatter does, and any entry matching that name is dropped. As a backstop,
+a sibling whose mapped path resolves to `--root` itself is skipped.
+
+**The sibling read is opt-in on the default paths.** `--lint`, the STATUS.md
+regen, `--next-up` and `--roadmap` read no other checkout unless the operator
+passes `--sibling-merge` or sets `ASSAY_SIBLING_MERGE=1` (compared exactly to
+`1`; `true` or `yes` leave it off). Without the opt-in, `--lint` prints at
+most one `not-checked:` NOTICE when a `todo`/`in-progress` row names a
+sibling, so a skipped read is never mistaken for a clean one, and no row is
+held out of Next-up. `statusgen phantoms --class sibling-merge-unreconciled`
+needs no opt-in: running that verb is the opt-in.
+
+Do not pass `--sibling-merge`, set `ASSAY_SIBLING_MERGE=1`, or run `phantoms`
+with a sibling map over a tree you do not trust: the tree chooses which
+commits of the mapped repos are printed.
+
+**Only siblings in the operator's map are ever read.** The map is
+`--sibling-root <owner>/<repo>=<path>` (repeatable) plus the same
+comma-separated `<owner>/<repo>=<path>` list in the `DESK_ROOTS` environment
+variable the desk tools already use; the flag wins on a collision. The
+tree's `graph-repos.yaml` can only narrow that set: a registered sibling the
+operator's map does not name is a could-not-check, never read, and there is
+no fallback path derived from the registry. A registry `repo:` value must be
+a strict `<owner>/<name>` (ASCII letters, digits, `-`, `_`, `.`; no `.` or
+`..` segment; no control characters) before it is used at all; an entry that
+fails is skipped with a NOTICE naming its index, never its value. Every
+NOTICE this class prints has control characters and line separators escaped,
+so it stays on one line. A structured
+`delivery:` claim in the brief's own frontmatter (`{in: "<alias>#<N>",
+covers: full|partial}`) acknowledges a specific merged PR: `covers: partial`
+releases the hold (the rest is real work), `covers: full` with the cell still
+`todo`/`in-progress` keeps the hold with a quieter "claimed delivered, cell
+not landed" NOTICE instead. A checked-failed `todo` row is additionally held
+out of Next-up (`MergedElsewhere`, the same shape `homed-in`'s
+`HomedElsewhere` already uses) and listed in STATUS.md's "Merged in a sibling
+repo — check before dispatch" section; an `in-progress` row is surfaced but
+never excluded — hiding what someone already holds is not the same as not
+handing it out.
+
+The sibling is read at its checked-out HEAD. A checkout parked on an
+unmerged feature branch reports that branch's commits as matches too, so a
+finding means "named in the history this checkout has", not "merged"; keep
+mapped siblings on their default branch.
+
+Matching walks the sibling's first-parent history (both the commit subject
+and its full body, so an id named only in a trailer is still caught) for
+either of two keys. The first is the brief id itself — `<stream>/<NN>` or
+`<stream>-<NN>`, word-bounded — appearing anywhere in the commit message.
+The second, `tracked-in: <alias>#<N>` frontmatter, exists for a PUBLIC
+sibling PR that deliberately withholds the brief id from its own history (a
+self-containment rule working as intended, not a bug to route around): such
+a PR instead carries an `Issue: #<N>` trailer or a GitHub closing keyword
+(`closes #<N>`, `fixes #<N>`, and their variants) naming the tracked issue.
+**Without a `tracked-in:` entry naming that sibling, a PR shaped this way is
+a checked-clean miss** — the detector reads the sibling's history, finds no
+matching key, and reports nothing dispatchable-wise, even though the work
+already landed. Declaring `tracked-in:` for the sibling alias is what turns
+that miss into a checked-failed finding instead.
 
 ## Multi-root (a board that spans repos)
 

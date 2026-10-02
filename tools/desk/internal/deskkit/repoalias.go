@@ -30,12 +30,10 @@ import "strings"
 // generic derivation would be the configured-but-wrong shape the roster design
 // refuses everywhere else.
 //
-// DISPLAY ONLY. Nothing here gates a flip, a write, a bless or a queue admission —
-// the label a board prints and the product a repo is merged under are cosmetic, and
-// the board re-sorts to a total order after the product merge so grouping never
-// changes the board's bytes. This is why the config is a plain override map rather
-// than the additive-only union the risk gate requires: there is no safety direction
-// to protect, only a human-readable label to get right.
+// Product grouping is display-only. Short labels also participate in dispatch claim
+// keys, so they affect coordination and review-stamp liveness. ReviewClaimFamilies
+// keeps the basename alongside the configured short label for compatibility with
+// already-qualified dispatch keys; producers and readers must share that resolver.
 
 // RepoShortLabel returns the short board label for a repo: the configured
 // ASSAY_REPO_ALIASES short name if one is set for this repo (matched by full slug or

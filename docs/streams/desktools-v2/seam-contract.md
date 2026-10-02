@@ -82,3 +82,50 @@ hardcoded release-URL construction, that a narrower scope would have hidden).
 - `tools/desk/cmd/deskpost/github.go` (17 sites, `desktools-v2/01` inventory group E) is the largest single
   finding: a second, hand-rolled GitHub REST+GraphQL client, entirely outside both backends.
   No v2 brief currently names it — it is counted, not hidden, and its migration is unrouted.
+
+## Baseline ledger
+
+The `desktools-v2/02` line in `forge-ban-baseline.txt` is a measured count, so it goes stale as
+soon as a later PR adds a site. Each refresh is recorded here with the tree it was measured on
+and the sites that account for the change. A refresh is only taken when every added site is
+either unported surface or comment prose. A re-introduced site on a surface that was already
+ported is a regression: it is fixed first, and the baseline is not refreshed over it.
+
+| Line | Measured on | Count | Why |
+|---|---|---|---|
+| `desktools-v2/02 53` | `4e2b0374c` (#1322) | 53 (desk 24, statusgen 29) | first baseline, written by `desktools-v2/02` |
+| `desktools-v2/02 60` | `fabe4926e` | 60 (desk 28, statusgen 32) | refresh, #1529: +8 sites from six PRs, then −1 when #1866 fixed the one regression; superseded by the next line before it merged |
+| `desktools-v2/02 63` | `35496323b` | 63 (desk 28, statusgen 35) | refresh, #1529: +3 statusgen sites from #1868, which merged after the `fabe4926e` measurement |
+
+The table below lists every site added since the first line. Sites 1-8 are numbered as in the
+analysis on #1529, with `file:line` at `fabe4926e`; seven remain, and the fifth was removed
+before the refresh. Sites 9-11 came in after that measurement, with `file:line` at `35496323b`.
+
+| # | Site | Kind | Added by | Retired by |
+|---|---|---|---|---|
+| 1 | `plugins/assay/scripts/inbound-monitor.sh:348`, per-owner `gh issue list` read | live call | #1505 | unrouted: no retiring brief yet (inventory group G) |
+| 2 | `plugins/assay/scripts/inbound-monitor.sh:26`, comment naming `gh auth` | comment | #1505 | unrouted: no retiring brief yet (inventory group G) |
+| 3 | `statusgen/decisionruling.go:643`, `gh auth token` fallback | live call | #1571 | `forge-neutral/18`; `desktools-v2/08` holds the zero |
+| 4 | `tools/desk/cmd/deskmonitor/state.go:254`, comment quoting the GraphQL URL | comment | #1640 | none needed: rewording the comment clears it |
+| 5 | `tools/desk/cmd/deskfleet/main.go`, hardcoded `https://api.github.com` base | live literal | #1572 | **removed** by #1866 (bug #1864), 61 → 60 |
+| 6 | `plugins/assay/scripts/assay-inbox.sh:315`, comment naming `gh issue view` | comment | #1689 | unrouted: no retiring brief yet (inventory group G) |
+| 7 | `statusgen/autoflip.go:908`, `PRShape` `gh api` read | live call | #1691 | `forge-neutral/18`; `desktools-v2/08` holds the zero |
+| 8 | `statusgen/autoflip.go:918`, `PRShape` `gh api --paginate` files listing | live call | #1691 | `forge-neutral/18`; `desktools-v2/08` holds the zero |
+| 9 | `statusgen/autoflip.go:1340`, `PRsNamingBrief` `gh pr list --search` read | live call | #1868 | `forge-neutral/18`; `desktools-v2/08` holds the zero |
+| 10 | `statusgen/autoflip.go:1366`, `PRBodyEditedAt` `gh api graphql` read | live call | #1868 | `forge-neutral/18`; `desktools-v2/08` holds the zero |
+| 11 | `statusgen/autoflip.go:1367`, the `pullRequest(number:$n){lastEditedAt}` query built outside a backend | live query | #1868 | `forge-neutral/18`; `desktools-v2/08` holds the zero |
+
+Site 5 was the one regression: it re-introduced class (d) on a surface already ported out of
+`tools/desk/cmd`, so it was fixed rather than absorbed into the refresh. Sites 1, 2 and 6 stay
+counted; the counter's comment handling is unchanged (see "Known limitations" above).
+
+Sites 9-11 are on statusgen, which is not yet ported, so the ledger's rule lets the refresh
+absorb them.
+
+No Verify row compares against the line in `forge-ban-baseline.txt`. The rows that judge a
+delivery by its effect on the count (`desktools-v2/03` row 5, `desktools-v2/06` row 6,
+`desktools-v2/09` row 6) compare the brief's delivering commit `D` against that commit's own
+merge parent `D^1`, both measured with the current script, and print their own verdict line:
+03 and 06 need `D` strictly lower, 09 needs it not higher. Sites that other PRs add or remove
+before or after `D` cannot move that verdict, so a later refresh of this file changes no row's
+result. The line stays as the recorded measurement; this ledger explains each change to it.

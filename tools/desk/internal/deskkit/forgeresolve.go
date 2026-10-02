@@ -757,11 +757,14 @@ func ResolveForge(repo ForgeRepo, role string) (Forge, ForgeResolution, error) {
 	if cerr != nil {
 		return nil, ForgeResolution{}, cerr
 	}
+	// Every backend leaves here WRAPPED by the outbound-write check (outboundforge.go): this is
+	// the one construction site, so a caller holds a checked Forge or none.
+	// TestForgeSingleConstructionSite pins that each literal is OutboundChecked's argument.
 	switch res.Kind {
 	case ForgeGitHub:
-		return &GitHubForge{Token: tok, BaseURL: base}, res, nil
+		return OutboundChecked(&GitHubForge{Token: tok, BaseURL: base}, role), res, nil
 	case ForgeGitLab:
-		return &GitLabForge{Token: tok, BaseURL: base}, res, nil
+		return OutboundChecked(&GitLabForge{Token: tok, BaseURL: base}, role), res, nil
 	default:
 		// Unreachable given resolveForgeKind only ever returns a value from
 		// wellKnownForgeHosts or cfg.RepoForges (both constrained to the two known kinds

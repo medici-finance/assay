@@ -12,7 +12,7 @@
 //
 // --fixture always implies --dry-run: fixture data is never posted to a real pull request.
 //
-// Posting is double-gated (clause 9, no-default-probe on the write side). Naming a live
+// Posting is double-gated (clause 10, no-default-probe on the write side). Naming a live
 // target (--repo/--pr) never by itself writes anything: a live run without --post gathers and
 // prints the card exactly like --dry-run, so the flags that merely say WHERE to look never
 // double as the flag that says WRITE. Passing --post is necessary but not sufficient — see
@@ -101,10 +101,15 @@ func run(args []string) int {
 	post := fs.Bool("post", false, "confirm you intend to post/edit a live comment on a real pull request (required in addition to omitting --dry-run; see usage)")
 	role := fs.String("role", "worker", "desk role identity to post as (live run only)")
 	versionFlag := fs.Bool("version", false, "print version and exit")
+	applyOverride, _ := deskkit.RegisterOutboundOverride(fs, "deskprovenance", "post")
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintln(os.Stderr, usageText)
 		return 2
+	}
+	if err := applyOverride(); err != nil {
+		fmt.Fprintln(os.Stderr, "deskprovenance:", err)
+		return deskkit.ExitCodeOf(err)
 	}
 
 	if *versionFlag {

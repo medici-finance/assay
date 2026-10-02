@@ -51,11 +51,31 @@ func isTheDeskTopTierOpus(base string) bool {
 	return major > theDeskOpusFloorMajor || (major == theDeskOpusFloorMajor && minor >= theDeskOpusFloorMinor)
 }
 
+// isBannedOpus50 is the built-in Opus 5.0 prohibition the model policy applies to every model
+// value (policyDenied), whatever the policy's own `deny` list says. It matches by VERSION, not
+// by a fixed spelling, so every form of the 5.0 id is one tier: `claude-opus-5`, `Opus5`, the
+// explicit `-5-0` / `-5.0` spellings, behind a gateway prefix, AND with any trailing segment after
+// the version — a date (`claude-opus-5-20260101`), a provider tail (`@20260101`, `-v1:0`) or a
+// variant name. Opus 5.5 (`claude-opus-5-5`, dated or not) and every other 5.x minor are not 5.0,
+// so they are not matched; nor is `opus-50` (major 50). Takes a policyBase-form value.
+func isBannedOpus50(base string) bool {
+	major, minor, ok := opusVersion(base)
+	return ok && major == 5 && minor == 0
+}
+
+// opusMinorMaxDigits bounds how long a digit run after the major can be and still be read as the
+// MINOR version. Opus minors are one or two digits; a longer run is a date or build stamp, so
+// `claude-opus-5-20260101` is Opus 5.0 carrying a date, not Opus 5.20260101.
+const opusMinorMaxDigits = 2
+
 // opusVersion parses the MAJOR and MINOR version of a policyBase-form opus id — the digits that
 // follow the `opus` token, separated from it and from each other by `-` or `.` (so opus-5-5,
-// opus5-5, opus-5.5 all parse), with an absent minor read as 0 (opus-6 == 6.0). It returns
-// ok=false when the base names no parseable opus version: the unversioned `opus` / `claude-opus`
-// alias, or any non-opus id. Only ever reached for a value isOpusPin already classified as opus.
+// opus5-5, opus-5.5 all parse), with an absent minor read as 0 (opus-6 == 6.0). A trailing
+// segment that is not a one- or two-digit minor — a date stamp, a provider tail, a variant name —
+// is a suffix on the major's `.0` release, so it reads as minor 0 (opus-5-20260101 == 5.0), while
+// a suffix after a real minor keeps that minor (opus-5-5-20260101 == 5.5). It returns ok=false
+// when the base names no parseable opus version: the unversioned `opus` / `claude-opus` alias, or
+// any non-opus id. Shared by the-desk's floor (isOpusPin) and the built-in ban (isBannedOpus50).
 func opusVersion(base string) (major, minor int, ok bool) {
 	i := strings.LastIndex(base, "opus")
 	if i < 0 {
@@ -74,8 +94,8 @@ func opusVersion(base string) (major, minor int, ok bool) {
 		return major, 0, true // no separator+digits after the major → minor is 0
 	}
 	minor, n = leadingInt(rest[1:])
-	if n == 0 {
-		return major, 0, true // a separator but no minor digits → minor is 0
+	if n == 0 || n > opusMinorMaxDigits {
+		return major, 0, true // a separator but no minor (a non-numeric tail, or a date/build stamp) → minor is 0
 	}
 	return major, minor, true
 }
@@ -123,16 +143,19 @@ type resolvedModel struct {
 // resolveRoleModel is the per-harness NAMESPACE + TIER-MAP fallback resolution (#986).
 //
 // Order: (1) that harness's own per-role pin — DESK_MODEL_<role> on claude, CODEX_MODEL_<role>
-// on codex — (2) that harness's own default — DESK_MODEL_DEFAULT / CODEX_MODEL_default — (3) the
+// on codex, CURSOR_MODEL_<role> on Cursor — (2) that harness's own default —
+// DESK_MODEL_DEFAULT / CODEX_MODEL_default / CURSOR_MODEL_default — (3) the
 // tier map, by this role's tier and the ACTIVE harness's column. On total failure Src names
 // every place looked and OK is false.
 //
 // NEVER consulted for an explicit --model: that value passes through verbatim, bypassing this
-// whole chain, on either harness.
+// whole chain. Cursor has no compiled model defaults; its model must be configured.
 func (c *Cell) resolveRoleModel(role, harness string) resolvedModel {
 	rvar, dvar := "DESK_MODEL_"+underscore(role), "DESK_MODEL_DEFAULT"
 	if harness == "codex" {
 		rvar, dvar = "CODEX_MODEL_"+underscore(role), "CODEX_MODEL_default"
+	} else if harness == "cursor" {
+		rvar, dvar = "CURSOR_MODEL_"+underscore(role), "CURSOR_MODEL_default"
 	}
 	if v := c.Env.Get(rvar); v != "" {
 		return resolvedModel{Model: v, Src: rvar, OK: true}

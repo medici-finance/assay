@@ -80,17 +80,42 @@ const (
 	//     to the HeldByDriveCap bucket (mirrors HeldByStreamCap). A stream's declared
 	//     max-concurrent (mm/13) still ALWAYS wins via effectiveCap = min(cap,
 	//     driveStreamCap) in the streamCaps build loop.
-	//   - driveWorkerCap is the PAIRED worker-pool floor (≤6 of 8) the worker-desk
-	//     skill mirrors. It is declared HERE as the single numeric source of truth;
-	//     statusgen does not dispatch workers, so this binary does not read the const
-	//     — the skill does. Kept beside driveSlotCap so the two floors move together.
+	//   - driveWorkerCap is the PAIRED worker-pool floor (≤6 of 8): at most this many
+	//     drive-covered items may be in flight at once. statusgen does not dispatch
+	//     workers, so it enforces the floor on the DISPATCH QUEUE it emits
+	//     (`--next-up`, which `deskboard dispatch` reads): with an active drive, the
+	//     in-flight drive work is counted from the claim set (driveInFlight), and only
+	//     driveWorkerCap − inFlight drive picks are offered for dispatch — the rest are
+	//     held and counted (heldByDriveWorkerCap). The cap travels in that JSON
+	//     (`driveWorkerCap`) so a cross-repo aggregator applies the same number across
+	//     roots instead of restating it. Kept beside driveSlotCap so the two floors
+	//     move together: 6/8 and 15/20 both reserve a quarter of capacity for
+	//     non-drive work.
 	driveSlotCap   = 15
 	driveWorkerCap = 6
 )
 
-// Reference driveWorkerCap so its role as the worker-desk skill's numeric source of
-// truth is explicit — statusgen does not dispatch workers, so nothing else reads it.
-var _ = driveWorkerCap
+// driveInFlight counts the claimed items ("stream/NN" claim keys — an open branch
+// or PR) that an active drive covers: the drive work already being worked, which
+// the worker floor subtracts from driveWorkerCap. Over-counting (a claim the decay
+// read could not retire) holds MORE drive work back, never less — the safe
+// direction for a floor. Zero for the zero DriveSet.
+func (ds DriveSet) driveInFlight(claimed map[string]bool) int {
+	n := 0
+	for k := range claimed {
+		parts := strings.SplitN(k, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		for _, d := range ds.Active {
+			if d.covers(parts[0], k) {
+				n++
+				break
+			}
+		}
+	}
+	return n
+}
 
 // THE ONE SANCTIONED WALL-CLOCK INPUT (brief-44 ratified decision #1, human:ian
 // 2026-08-15). statusgen is otherwise byte-stable with NO wall-clock input — the
