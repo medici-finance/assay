@@ -236,7 +236,9 @@ names is false. As written in version 2 they could not: rows 2–9, 12 and 13 st
 contains `--- PASS: …`" expectation the runner never checks, so each passed on the `go test`
 exit status alone, and a `-run` selector that matches nothing (a renamed, deleted or not yet
 written test) prints "no tests to run" and exits 0. Row 11 ran `statusgen --consumers` with no
-base, which on merged main has no diff naming this brief and cannot check anything.
+base, which on merged main has no diff naming this brief and cannot check anything. Row 11's
+property is narrower than the others' (no routing claim in the `consumers:` list is disproved);
+what it can and cannot see is stated in its bullet below and in its Expect.
 
 What changed, and what did not:
 
@@ -249,20 +251,35 @@ What changed, and what did not:
 - Row 5 also counts the `pushes != 0` assertion inside its test, the ZERO-pushes property its
   Expect names. Row 7 counts both structural tests. Row 8 reads the mutation harness's own
   healthy line and Totals line and requires the four named mutation classes to be CAUGHT.
-- Row 11 is pinned to the delivering change (#1919, squash b69252cc8) in a throwaway shared
-  clone, the shape build-less-brittle/02 row 9 uses (#1902).
+- Row 11 judges the brief as it stands in the tree under test, against a fixed base: the parent
+  of e7e9f35d3, the commit that first added this brief file (#1229). At that base the file does
+  not exist, so no entry is inherited and every entry is judged — a `follow-up` must name a brief
+  that exists and references back, a `fixed-here` path must exist and appear in the diff, an
+  `out-of-scope` site must not be edited by it. The command asserts the exact summary line as
+  well as the exit status, so a run that judges nothing (every entry UNCHECKED, exit 0), a run
+  that cannot reach the base, and a disproved entry are all red. It cannot see consumer wiring
+  removed from the code: five entries route `follow-up desktools-v2/10` to this brief itself, and
+  a self-route corroborates on the brief's own text. Rows 2–8 carry that property.
+- Row 11's first version-3 form, a clone pinned at #1919's squash with a pinned base, read no
+  part of the tree under test and printed the same all-UNCHECKED line for every state of the
+  repository; review of #2044 showed it green on three planted false states. It is replaced by
+  the form above.
 - Row 13 counts the tests that actually RAN under an anchored selector. Its test,
   TestOutboundWindowsMachinePaths, and the drive-letter/UNC scanner extension it exercises
   belong to desktools-v2/12 (its Windows row) and do not exist yet, so row 13 is RED by design
   until that brief lands. It is neither loosened nor dropped here.
-- Rows 1 and 10, every Expect property, the Task, and the Evidence below are unchanged. The
-  2026-10-01 Evidence was recorded against version 2 rows.
+- Rows 1 and 10, every Expect property, the Task, the `consumers:` list, and the Evidence below
+  are unchanged. The 2026-10-01 Evidence was recorded against version 2 rows, and so is any
+  other Evidence block whose commands are the version 2 ones, whichever order it lands in
+  relative to this amendment: such a block is not evidence for the version 3 rows, which need
+  a fresh run.
 
 ## Verify (executable — no prose-only DoD items)
 
 Rows run from the root of `medici-finance/assay`. Rows 2–9 and 11–13 were re-authored in
 version 3 (#2027, see the Amendment above) so a missing selector or a false property turns the
-row red; row 13 is red until desktools-v2/12 lands its test.
+row red; row 13 is red until desktools-v2/12 lands its test. Row 11 needs `statusgen` on PATH
+and history back to e7e9f35d3 (not a depth-1 clone); without either it is red, never green.
 
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
@@ -276,7 +293,7 @@ row red; row 13 is red until desktools-v2/12 lands its test.
 | 8 | check +mutation | `o=$(cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/deskkit/outbound-mutations.json 2>&1); h=$(grep -c -x -e 'Harness healthy: baseline GREEN, positive control CAUGHT.' <<<"$o"); q=$(grep -c -e '^  CAUGHT  *the decorator removed from ResolveForge' -e '^  CAUGHT  *one text-carrying method dropped from the decorator' -e '^  CAUGHT  *the visibility test inverted' -e '^  CAUGHT  *the e-mail allow-list emptied' <<<"$o"); t=$(sed -n -e 's/^Totals: [0-9]* caught, \([0-9]*\) NOT CAUGHT, \([0-9]*\) could-not-mutate\.$/survived=\1 couldnot=\2/p' <<<"$o"); echo "healthy=$h required=$q $t"; test "$h" = 1 && test "$q" = 5 && test "$t" = 'survived=0 couldnot=0'` | exit 0; output is `healthy=1 required=5 survived=0 couldnot=0`. `healthy=1`: the harness printed its own healthy line (baseline green, positive control caught); a broken harness prints no verdicts. `survived=` and `couldnot=` are read from the harness's Totals line, so a mutation that survived, one that could not be applied, or a missing Totals line breaks the match. `required=5` counts the CAUGHT lines of the mutations this row requires `internal/deskkit/outbound-mutations.json` to carry: the decorator removed from `ResolveForge`'s return (two mutants, the GitHub and the GitLab return), one text-carrying method dropped from the decorator, the visibility test inverted, and the e-mail allow-list emptied — the fail-first evidence a reviewer re-runs. `go run` flattens the exit status, so the row asserts on the printed lines and the closing `test` gives the row its status |
 | 9 | check | `o=$(cd tools/desk && go test -count=1 -timeout 10m ./internal/deskkit/ -run '^TestOverrideAuditRowHoldsDigestNotText$' -v 2>&1); rc=$?; p=$(grep -c -e '^--- PASS: TestOverrideAuditRowHoldsDigestNotText (' <<<"$o"); echo "rc=$rc pass=$p"; test "$rc" = 0 && grep -q -e '^--- PASS: TestOverrideAuditRowHoldsDigestNotText (' <<<"$o"` | exit 0; output is `rc=0 pass=1` |
 | 10 | check | `grep -rn --include='*.go' --exclude='*_test.go' -e 'deskkit.ScanSurface' -e 'deskkit.BodyCheck' -e 'deskkit.SelfContainCheck' tools/desk/cmd/deskfile tools/desk/cmd/deskpost tools/desk/cmd/deskreply tools/desk/cmd/deskevidence; test $? -eq 1` | exit 0 and no line printed — the per-verb scan calls are GONE from the verbs whose writes all cross the decorator (the removal, not just the addition). `deskpr` is excluded by design: its `--check` pre-flight is the recorded second caller |
-| 11 | check | `d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach b69252cc8 && statusgen --consumers --root "$d" --brief desktools-v2/10 --base b69252cc8~1; s=$?; rm -rf "$d"; exit $s` | exit 0; output is `summary: 0 corroborated, 0 disproved, 7 unchecked, 0 brief(s) claiming nothing`. The check runs in a throwaway shared clone checked out at b69252cc8, the squash that delivered this brief in #1919, with the base pinned to its parent, so the diff it reads is exactly the delivering change: never main's later commits, never the runner's own working tree. Run on merged main without a base, the brief is not in the diff and the tool cannot check. No routing claim is disproved; the seven entries are UNCHECKED because the delivering change did not edit the consumers block, and each one's truth is the reviewer's call — the deliverable paths they name are exercised by rows 1–10 |
+| 11 | check | `o=$(statusgen --consumers --root . --brief desktools-v2/10 --base e7e9f35d3~1); rc=$?; l=$(grep -e '^summary: ' <<<"$o"); echo "rc=$rc $l"; test "$rc" = 0 && test "$l" = 'summary: 6 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing'` | exit 0; output is `rc=0 summary: 6 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing`. The tool judges this brief's `consumers:` list as it stands in the tree under test, against the diff from the parent of e7e9f35d3 (the commit that first added this file, #1229), so every entry is judged and none is inherited. The row is red when any routing claim is DISPROVED (a `follow-up` naming a brief that does not exist, a `fixed-here` path that is absent or not in the diff, an `out-of-scope` site the diff edits: the tool exits 1 and the summary shows `1 disproved` or more), when the tool cannot run (no `statusgen`, history too shallow to reach the base: a nonzero `rc`), and when it judges nothing: a summary of `0 corroborated, 0 disproved, 7 unchecked` exits 0 from the tool but is NOT a pass, and the closing `test` on the exact summary line turns it red. Of the six corroborations, five are entries that route `follow-up desktools-v2/10` to this brief itself and corroborate on its own text; the sixth is desktools-v2/11 referencing back. The one UNCHECKED entry is the `out-of-scope` exclusion of statusgen and tools/cellctl, whose reason is the reviewer's call. LIMIT: this row cannot see consumer wiring removed from the code; rows 2–8 carry that property |
 | 12 | check | `o=$(cd tools/desk && go test -count=1 -timeout 10m ./internal/deskkit/ -run '^TestOutboundGitLab' -v 2>&1); rc=$?; a=$(grep -c -e '^--- PASS: TestOutboundGitLabTypedNotes (' <<<"$o"); b=$(grep -c -e '^--- PASS: TestOutboundGitLabNoReply (' <<<"$o"); echo "rc=$rc notes=$a noreply=$b"; test "$rc" = 0 && grep -q -e '^--- PASS: TestOutboundGitLabTypedNotes (' <<<"$o" && grep -q -e '^--- PASS: TestOutboundGitLabNoReply (' <<<"$o"` | exit 0; output is `rc=0 notes=1 noreply=1`: both named top-level tests ran and passed (a missing, skipped or renamed test prints a zero and the row is red); GitLab.com no-reply and reserved documentation-host shapes (generic self-managed recognition remains pending scope on issue 1836), internal target and explicit MR note route; refusal sends no request (desktools-v2/12 GitLab row) |
 | 13 | check | `o=$(cd tools/desk && go test -count=1 -timeout 10m ./internal/deskkit/ -run '^TestOutboundWindowsMachinePaths$' -v 2>&1); rc=$?; r=$(grep -c -x -e '=== RUN   TestOutboundWindowsMachinePaths' <<<"$o"); p=$(grep -c -e '^--- PASS: TestOutboundWindowsMachinePaths (' <<<"$o"); echo "rc=$rc run=$r pass=$p"; test "$rc" = 0 && test "$r" = 1 && grep -q -e '^--- PASS: TestOutboundWindowsMachinePaths (' <<<"$o"` | exit 0; output is `rc=0 run=1 pass=1`: the named top-level test actually RAN once and passed; public drive-letter and UNC machine paths refuse using IsAbsFor. A selector that matches nothing prints `run=0 pass=0` and the row is red, never green on "no tests to run". RED BY DESIGN until desktools-v2/12 lands: that brief owns this test and the production scanner extension (its Windows row), and they do not exist yet; scope is pending owner clarification on issue 1836 |
 
