@@ -1522,7 +1522,10 @@ type Forge interface {
 	// which is exactly how an unread precondition becomes a satisfied one. This op routes
 	// on the stated kind, so an issue's thread is read from the issue. Consumer:
 	// cmd/deskclose's two-role superseded lane (freeze rule: it lands with that call site).
-	// An unknown kind is refused rather than defaulted.
+	// An unknown kind is refused rather than defaulted. Unlike ListComments, it returns the
+	// WHOLE thread of either kind or an error — never a first page presented as the thread —
+	// so an id lookup on the result (cmd/deskmerge's R-5 and cmd/deskclose's R-1 sign-off
+	// reads) can read "not found" as absence.
 	ListCommentsTyped(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error)
 	// RepoVisibility returns the repo's visibility (private | public | internal | ...).
 	RepoVisibility(repo ForgeRepo) (string, error)

@@ -1519,12 +1519,38 @@ func (g *GitHubForge) ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent,
 // already applies to a PR/review author.
 //
 // `first: 100` is the same bound the call site it replaces used, and the same stated
-// residual: a change with more than 100 comments is read as its first 100, never silently
-// re-ordered.
+// residual for ListComments: a change with more than 100 comments is read as its first 100,
+// never silently re-ordered. ListCommentsTyped does NOT carry that residual — it walks the
+// change thread with ghChangeCommentsWalkQuery.
 const ghCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       comments(first: 100) {
+        nodes {
+          id
+          databaseId
+          body
+          isMinimized
+          createdAt
+          url
+          author { login __typename ... on User { databaseId } ... on Bot { databaseId } ... on Organization { databaseId } ... on Mannequin { databaseId } }
+        }
+      }
+    }
+  }
+}`
+
+// ghChangeCommentsWalkQuery is ghCommentsQuery with the walk: a `pageInfo` and an `$after`
+// cursor, the node selection byte-identical. It serves ListCommentsTyped(…, TargetChange) — the
+// typed read an authorization lookup goes through (cmd/deskmerge's R-5 and cmd/deskclose's R-1
+// sign-off reads match a comment by id on the thread the permalink names, and a first-page read
+// reported a sign-off past comment 100 as absent). ListComments keeps the single first-100
+// request the golden corpus pins; only the typed read walks.
+const ghChangeCommentsWalkQuery = `query($owner:String!, $name:String!, $number:Int!, $after:String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      comments(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
         nodes {
           id
           databaseId
@@ -1544,8 +1570,9 @@ const ghCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
 // serve both; the node selection below is byte-identical to the pull-request one, so the
 // two reads produce the same Comment shape and nothing downstream has to know which ran.
 //
-// Unlike the change half, the issue half is WALKED: it carries a `pageInfo` and an `$after`
-// cursor and listCommentsGQL follows it to the end of the thread under forgeMaxEventPages.
+// Unlike ListComments' change read, the issue half is WALKED (as is the typed change read,
+// ghChangeCommentsWalkQuery): it carries a `pageInfo` and an `$after` cursor and
+// listCommentsGQL follows it to the end of the thread under forgeMaxEventPages.
 // An issue thread is read for its NEWEST answer (statusgen's un-block lane keys on the newest
 // blessing-authority comment, and GitLab's listNotes already walks every page), and the
 // newest comments are exactly the ones a first-100 read drops on a long thread — the defect
@@ -1586,8 +1613,9 @@ type ghCommentNodeWire struct {
 }
 
 // ghCommentsConnWire is the `comments` connection hanging off one noteable. PageInfo is
-// selected only by the ISSUE query (the change query does not ask for it, so it decodes to
-// the zero value — no next page — and the change read stays a single request).
+// selected only by the two WALKED queries (issue, and the typed change read); ListComments'
+// golden-pinned change query does not ask for it, so it decodes to the zero value — no next
+// page — and that read stays a single request.
 type ghCommentsConnWire struct {
 	Comments struct {
 		PageInfo struct {
@@ -1614,16 +1642,15 @@ type ghCommentsRespWire struct {
 	} `json:"errors"`
 }
 
-// listCommentsGQL runs the comments query for ONE kind and maps its nodes. It is the shared
-// body of ListComments (changes) and ListCommentsTyped (either kind); the request it emits
-// for a change is byte-identical to the one the golden corpus pins.
+// listCommentsGQL walks the comments query for ONE kind to the end of the thread and maps its
+// nodes. It is the body of ListCommentsTyped (either kind): an ISSUE thread with
+// ghIssueCommentsQuery, a CHANGE thread with ghChangeCommentsWalkQuery. ListComments does not
+// come through here — it is the single first-100 change request the golden corpus pins.
 //
-// An ISSUE thread is walked page by page (see ghIssueCommentsQuery); a change thread is the
-// single first-100 request the golden corpus pins.
+// A thread still advertising a next page at forgeMaxEventPages, or advertising one with no
+// cursor, is could-not-check: a typed read is what an authorization lookup trusts to be the
+// WHOLE thread, so it never hands back the head of one as if it were all of it.
 func (g *GitHubForge) listCommentsGQL(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error) {
-	if kind != TargetIssue {
-		return g.listCommentsPage(repo, number, kind, "", nil)
-	}
 	var res []Comment
 	after := ""
 	for page := 1; page <= forgeMaxEventPages; page++ {
@@ -1645,14 +1672,14 @@ func (g *GitHubForge) listCommentsGQL(repo ForgeRepo, number int, kind TargetKin
 			// back the head of the thread as if it were all of it.
 			return nil, Unverifiable(fmt.Sprintf(
 				"could-not-check: %s#%d advertises more comments but no cursor to read them with — "+
-					"refusing to report a partial issue thread as the whole thread", repo.Slug(), number), nil)
+					"refusing to report a partial %s thread as the whole thread", repo.Slug(), number, kindNoun(kind)), nil)
 		}
 		after = next.cursor
 	}
 	return nil, Unverifiable(fmt.Sprintf(
 		"could-not-check: %s#%d still reports more comments after %d pages of 100 — refusing to report a "+
-			"partial issue thread as the whole thread (its newest comments are the unread ones)",
-		repo.Slug(), number, forgeMaxEventPages), nil)
+			"partial %s thread as the whole thread (its newest comments are the unread ones)",
+		repo.Slug(), number, forgeMaxEventPages, kindNoun(kind)), nil)
 }
 
 // pageCursor is one comments page's continuation: whether the forge advertised a further page
@@ -1667,9 +1694,14 @@ type pageCursor struct {
 // variable at all, so the first request of an issue walk carries only the three coordinates);
 // next, when non-nil, receives the page's continuation.
 func (g *GitHubForge) listCommentsPage(repo ForgeRepo, number int, kind TargetKind, after string, next *pageCursor) ([]Comment, error) {
+	// next == nil is ListComments' single request: the golden-pinned query with no cursor
+	// variable. A walked page (next != nil) selects pageInfo for its kind.
 	query := ghCommentsQuery
-	if kind == TargetIssue {
+	switch {
+	case kind == TargetIssue:
 		query = ghIssueCommentsQuery
+	case next != nil:
+		query = ghChangeCommentsWalkQuery
 	}
 	vars := map[string]any{
 		"owner": repo.Owner, "name": repo.Name, "number": number,
@@ -1737,14 +1769,17 @@ func (g *GitHubForge) listCommentsPage(repo ForgeRepo, number int, kind TargetKi
 }
 
 func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error) {
-	return g.listCommentsGQL(repo, number, TargetChange)
+	return g.listCommentsPage(repo, number, TargetChange, "", nil)
 }
 
 // ListCommentsTyped reads the thread of the object of the STATED kind. On GitHub the two
 // kinds share a number sequence but NOT a GraphQL selection, so the kind picks the query —
 // `issue(number:)` or `pullRequest(number:)` — and a number that names the other kind comes
 // back as a null noteable, which is reported as could-not-check rather than as an empty
-// thread. An unknown kind is refused rather than defaulted.
+// thread. An unknown kind is refused rather than defaulted. Both kinds are WALKED to the end
+// of the thread (listCommentsGQL): a caller that looks a comment up by id on the result —
+// an authorization read — must be able to read "not there" as absence, which a first page
+// cannot support.
 func (g *GitHubForge) ListCommentsTyped(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error) {
 	switch kind {
 	case TargetIssue, TargetChange:
