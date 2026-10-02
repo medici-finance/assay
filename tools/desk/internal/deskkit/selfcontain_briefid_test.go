@@ -105,6 +105,7 @@ func TestBriefIDProseStillRefused(t *testing.T) {
 		"same id in the body":  "id: " + bfID,
 		"quoted id in body":    `id: "` + bfSess + `"`,
 		"bare uuid in a table": "| run | " + bfSess + " |",
+		"same id in prose":     "Recorded as " + bfID + " on the board.",
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := bfBrief("id: "+bfID, body)
@@ -116,6 +117,42 @@ func TestBriefIDProseStillRefused(t *testing.T) {
 			bfWantRefused(t, err, span)
 		})
 	}
+
+	// The span is the ONE id line, not the frontmatter and not the value: a UUID on any
+	// other frontmatter line — above or below the id, a different value or the same one —
+	// still refuses.
+	for name, c := range map[string]struct{ fm, span string }{
+		"other key above the id":     {"run: " + bfSess + "\nid: " + bfID, bfSess},
+		"other key below the id":     {"id: " + bfID + "\nrun: " + bfSess, bfSess},
+		"same value under other key": {"id: " + bfID + "\nparent: " + bfID, bfID},
+	} {
+		t.Run(name, func(t *testing.T) {
+			src := bfBrief(c.fm, "prose")
+			bfWantRefused(t, bfCheck(t, bfPath, src, src, true), c.span)
+		})
+	}
+}
+
+// TestBriefIDOtherArmsArmed: the exemption is on the session-id arm only. A brief whose
+// frontmatter id IS exempt still refuses an agent id, a machine path or a worktree name in
+// its body. Each span is assembled at run time, like the UUIDs, so no line of this file
+// carries one.
+func TestBriefIDOtherArmsArmed(t *testing.T) {
+	bfSetup(t)
+	for _, c := range []struct{ rule, span string }{
+		{"agent-id", "agent-" + "0a1b2c3d" + "4e5f"},
+		{"absolute-machine-path", "/Us" + "ers/someone/notes.md"},
+		{"scratch-worktree-name", "trac" + "ker-demo-item"},
+	} {
+		t.Run(c.rule, func(t *testing.T) {
+			src := bfBrief("id: "+bfID, "See "+c.span+" for the run.")
+			err := bfCheck(t, bfPath, src, src, true)
+			if err == nil || !obRuleMatches(err.Error(), RuleSelfContainPrefix+c.rule) ||
+				!strings.Contains(err.Error(), c.span) {
+				t.Fatalf("want a %s%s refusal naming %q, got %v", RuleSelfContainPrefix, c.rule, c.span, err)
+			}
+		})
+	}
 }
 
 // TestBriefIDOutsideShapeRefused is (b) and the fail-closed conditions: every shape that is
@@ -124,6 +161,12 @@ func TestBriefIDOutsideShapeRefused(t *testing.T) {
 	bfSetup(t)
 	good := bfBrief("id: "+bfID, "prose")
 	noFM := "# Demo\n\nprose\n\nid: " + bfID + "\n"
+	// The id-less frontmatter closes at its FIRST fence; the body's id line sits ahead of a
+	// later `---` rule, so a predicate that took the LAST fence would put it "inside".
+	idlessFM := "---\nschema: brief-v2\n---\n\n# Demo\n\nid: " + bfID + "\n\n---\n\nmore\n"
+	// No fence on line 1, but an id line ahead of a `---`: only the first-line test refuses.
+	noOpenFence := "# Demo\nid: " + bfID + "\n---\nprose\n"
+	dup := func(second string) string { return bfBrief("id: "+bfID+"\n"+second, "prose") }
 	cases := []struct {
 		name, path, text, src string
 		withSrc               bool
@@ -131,19 +174,34 @@ func TestBriefIDOutsideShapeRefused(t *testing.T) {
 		{"no frontmatter, id line in body", bfPath, noFM, noFM, true},
 		{"unterminated frontmatter", bfPath, "---\nschema: brief-v2\nid: " + bfID + "\n\nprose\n",
 			"---\nschema: brief-v2\nid: " + bfID + "\n\nprose\n", true},
-		{"fence not on line 1", bfPath, "\n" + good, "\n" + good, true},
+		{"blank line 1, fence on line 2", bfPath, "\n" + good, "\n" + good, true},
+		{"first line not a fence", bfPath, noOpenFence, noOpenFence, true},
+		{"id-less fm, body id, later rule", bfPath, idlessFM, idlessFM, true},
 		{"stream README", "docs/streams/demo/README.md", good, good, true},
 		{"non-brief file in a stream", "docs/streams/demo/notes.md", good, good, true},
 		{"brief name outside docs/streams", "docs/brief-01-demo.md", good, good, true},
 		{"docs/streams nested elsewhere", "vendor/docs/streams/demo/brief-01.md", good, good, true},
+		{"leading slash", "/docs/streams/demo/brief-01-demo.md", good, good, true},
+		{"prefix case changed", "Docs/Streams/demo/brief-01-demo.md", good, good, true},
+		{"brief name case changed", "docs/streams/demo/Brief-01-demo.md", good, good, true},
+		{"extension case changed", "docs/streams/demo/brief-01-demo.MD", good, good, true},
+		{"name prefixed before brief-", "docs/streams/demo/xbrief-01-demo.md", good, good, true},
 		{"dot-dot segment", "docs/streams/../brief-01-demo.md", good, good, true},
+		{"dot segment", "docs/streams/./brief-01-demo.md", good, good, true},
+		{"empty segment", "docs/streams//brief-01-demo.md", good, good, true},
+		{"backslash in the name", `docs/streams/demo/brief-x\..\..\notes.md`, good, good, true},
 		{"brief named file, wrong extension", "docs/streams/demo/brief-01-demo.txt", good, good, true},
 		{"Go test file", "docs/streams/demo/brief_test.go", good, good, true},
 		{"no full content supplied", bfPath, good, "", false},
 		{"text not line-aligned with source", bfPath, "id: " + bfID + "\n", good, true},
 		{"text line differs from source line", bfPath, bfBrief("id: "+bfSess, "prose"), good, true},
-		{"duplicate id key", bfPath, bfBrief("id: "+bfID+"\nid: "+bfID, "prose"),
-			bfBrief("id: "+bfID+"\nid: "+bfID, "prose"), true},
+		// Both lines carry the UUID here, so the second line refuses whatever the key count
+		// says; the cases below are the ones that pin the count itself.
+		{"duplicate id key, both uuid", bfPath, dup("id: " + bfID), dup("id: " + bfID), true},
+		{"duplicate id key, non-uuid", bfPath, dup("id: second"), dup("id: second"), true},
+		{"duplicate key double-quoted", bfPath, dup(`"id": second`), dup(`"id": second`), true},
+		{"duplicate key single-quoted", bfPath, dup(`'id': second`), dup(`'id': second`), true},
+		{"duplicate key, space before :", bfPath, dup("id : second"), dup("id : second"), true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -171,6 +229,9 @@ func TestBriefIDVariantsUnchanged(t *testing.T) {
 	}{
 		{"id: " + bfID + " extra", true},
 		{"id: " + bfID + " # comment", true},
+		{"id: prefix id: " + bfID, true}, // text BEFORE the value: pins the `^` anchor
+		{`id: "` + bfID, true},           // unbalanced: opening quote only
+		{"id: " + bfID + `"`, true},      // unbalanced: closing quote only
 		{"id: " + bfID + "\r", true},
 		{"id:  " + bfID, true},
 		{"id:" + bfID, true},
