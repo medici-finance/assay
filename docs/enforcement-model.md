@@ -137,3 +137,34 @@ so it is the cheapest possible refusal, checked first. It never weakens the
 implementer↔reviewer separation or the eligibility gate; it adds a THIRD, independent
 question neither of those two asks: not "who", not "when", but "did what was required
 actually happen, and can this exact revision still stand behind it".
+
+## A fourth layer: HOW MUCH an agent may do, and which gates that adds
+
+Agentic admission (`spec/agentic-admission-v1.md`, `tools/desk/internal/deskkit/admission.go`,
+graph-execution/13) asks a different question: given a subject in an owner-admitted category
+of work, how much of it may an agent do right now? It answers with one of five dispositions:
+`bounded-agent-work`, `supervised-agent`, `human-led`, `discovery-only`, `blocked`. Like the
+two layers above it is deterministic and makes no model call. It reads hard facts and
+recorded advice. It is NOT a fourth identity: it never decides who may certify, and it
+leaves the reviewer/verifier separation and the eligibility gate untouched.
+
+The admission layer has four rules:
+
+- **Facts decide.** Advice only restricts. A failed authority or data-handling check is
+  `blocked`. A failed readiness check is capped at `human-led` or stricter; a policy that
+  maps one to an agent lane is refused. Unknown readiness permits at most `discovery-only`,
+  and only under a separately authorized discovery grant whose read scope covers the
+  subject. Every path to `discovery-only` is held to that grant, and with no covering grant
+  the result is `blocked`. Calibrated advice is folded in monotonically toward `blocked`,
+  so no confidence level can enlarge permission.
+- **It adds gates and never removes them.** Each disposition maps to a workflow-pattern
+  risk-input verdict. The work's mandatory gates are the union of that verdict's gates and
+  the brief's own, so a high score cannot delete a required node.
+- **Human floors stand.** `merge`, `release` and `deploy` are never an agent operation at
+  any disposition.
+- **There is no single score.** The result is a disposition plus reason codes. It stays
+  separate from `AssayScore` and from control assurance (GEA-11).
+
+The layer is not yet active. Nothing on the dispatch path consults it. Binding it at the
+dispatch boundary is graph-execution/14, behind its own human gate. Until then it changes
+no behaviour, and the three layers above remain the whole of what is enforced.

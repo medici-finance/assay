@@ -1,0 +1,23 @@
+# Synthetic workflow pattern for the admission union test: every risk verdict maps a
+# DIFFERENT gate, so a union of two verdicts' gates is distinguishable from taking the
+# stricter verdict's gates alone.
+schema: workflow-pattern-v1
+pattern: nonnested
+version: 1
+risk-input:
+  low: [gate-low]
+  standard: [gate-standard]
+  elevated: [gate-elevated]
+  human: [gate-human]
+nodes:
+  - {id: work, kind: artifact, role: worker, outputs: [change]}
+  - {id: gate-low, kind: check, role: reviewer, inputs: [{artifact: change}]}
+  - {id: gate-standard, kind: check, role: reviewer, inputs: [{artifact: change}]}
+  - {id: gate-elevated, kind: check, role: verifier, inputs: [{artifact: change}]}
+  - {id: gate-human, kind: decision, role: desk, inputs: [{artifact: change}]}
+edges:
+  - {from: work, to: gate-low}
+  - {from: work, to: gate-standard}
+  - {from: work, to: gate-elevated}
+  - {from: work, to: gate-human}
+join: gate-standard

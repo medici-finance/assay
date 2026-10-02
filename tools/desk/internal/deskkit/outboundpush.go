@@ -92,13 +92,25 @@ func OutboundCheckPush(p OutboundPush) error {
 		return Unverifiable(fmt.Sprintf("outbound check: cannot diff %s...%s", p.Base, p.Head), err)
 	}
 	var fields []OutboundField
+	sources := map[string]string{}
 	for _, fa := range AddedLinesByFile(diff) {
 		if fa.New {
 			fields = append(fields, OutboundField{Name: "path", Text: fa.Path})
 		}
 		fields = append(fields, OutboundField{Name: fa.Path, Text: fa.Text})
+		// A brief file's full head-side content is the evidence the session-id arm's one
+		// exemption needs (#2022, briefIDExemptLine): the added lines alone cannot show a line
+		// sits inside the frontmatter. Read for brief paths only. A read that fails leaves
+		// no entry, which means no exemption — the refusal stands, so could-not-read never
+		// narrows the scan.
+		if isBriefPath(fa.Path) {
+			if src, rerr := repo.FileAt(p.Head, fa.Path); rerr == nil {
+				sources[fa.Path] = src
+			}
+		}
 	}
-	return OutboundCheck(OutboundWrite{Role: p.Role, Repo: p.Repo, Kind: OutboundKindFile, Fields: fields})
+	return OutboundCheck(OutboundWrite{Role: p.Role, Repo: p.Repo, Kind: OutboundKindFile, Fields: fields,
+		FileSources: sources})
 }
 
 // pushRangeHashes is `git rev-list base..head`: every commit reachable from head and not
