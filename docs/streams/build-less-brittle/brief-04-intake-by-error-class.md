@@ -320,6 +320,50 @@ VERIFY: PASS
 | 12 | `grep -c -e 'production-down' plugins/assay/skills/intake-desk/SKILL.md && grep -c -e 'bleed' plugins/assay/skills/intake-desk/SKILL.md` | pass exit=0 | sha256:ad0fadf63cc7 | 2026-10-02 | assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) (forge-identity) |
 | 13 | `f=plugins/assay/skills/intake-desk/SKILL.md; for key in mechanism known-scope source-revisions unresolved-questions next-action source-origin trust-disposition; do grep -qF "$key:" "$f" \|\| exit 1; done; grep -q '^### Work-input triage example$' "$f" && echo WORK-INPUT-FIELDS` | pass exit=0 | sha256:efb852f8dd4e | 2026-10-02 | assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) (forge-identity) |
 
+### Verification — non-implementer re-witness of the amended Verify table at merged main 2a6460e85c78 (2026-10-02)
+
+- Target SHA: 2a6460e85c78 (detached worktree at merged main; clean before the run).
+- Runner identity: assay-verifier-app[bot] (on-behalf-of human:ian), non-implementer. Host: darwin. statusgen v1.0.30 as installed on the runner's PATH (not built from the target SHA).
+- Gate: model. Risk answers: regulatory no, customer no, irreversible no, sensitive-data no.
+- What moved since the last run: #2030 re-authored Verify row 10 (brief version 4) so that it reads the delivering diff from a throwaway shared clone pinned at 23ebf3fc7bf0 with the base pinned to its parent. The earlier form exited 2 (could-not-check) on merged main. Rows 1–9 and 11–13 are unchanged.
+- `statusgen verifyrun --dry-run`: tool exit 0, 13 of 13 rows stamped pass. `statusgen verifyrun` (writing form): tool exit 0, 13 of 13 rows stamped pass, witness table appended to the brief's Evidence section in the worktree (left uncommitted). Witness runner cell: assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) (forge-identity).
+- Every row was then re-run by hand, each in a fresh `bash -c` at the worktree root, offline. The table below is the hand run.
+
+| # | command (abbreviated) | exit | key observed output | result |
+|---|-----------------------|------|---------------------|--------|
+| 1 | grep -cE 'error-class' on the intake-desk skill | 0 | `2` (Expect ≥ 2) | pass — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 2 | grep -c 'confirmed-defect.*false-positive' / 'incident-group' on the intake-desk skill | 0 | `6` (Expect ≥ 2) | pass — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 3 | grep -c '2nd merged fix' / 'second merged fix' on the intake-desk skill | 0 | `1` (Expect ≥ 1) | pass — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 4 | sed the Recurrence-promotion paragraph of the pr-review-desk skill; grep error-class; negated grep -i guardrail-promotion | 0 | `REDIRECTED`. The paragraph says to attach the finding to the open error-class issue, or record the class per intake-desk step 1 | pass — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 5 | grep -c '^func cmdAttach' in the deskfile source | 0 | `1` (Expect 1) | pass — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 6 | grep -c '"blocked": true' in statusgen checks.go | 0 | `1` (Expect 1) | pass — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 7 | intake-desk skill net line count, delivering commit vs its parent | 0 | `NET-OK`. impl resolved to 23ebf3fc7bf0 (#1876, the only first-parent commit carrying the Brief trailer outside the streams and changelog paths), base b2c341cfd00e; 537 lines before, 537 after. The base-differs-from-tip guard is live because impl resolved | pass — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 8 | pr-review-desk skill net line count, same derivation | 0 | `NET-OK`. base b2c341cfd00e, tip 23ebf3fc7bf0; 1023 before, 1023 after | pass — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 9 | worker-desk skill net line count, same derivation | 0 | `NET-OK`. base b2c341cfd00e, tip 23ebf3fc7bf0; 882 before, 882 after | pass — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 10 | throwaway shared clone inside the checkout, detached at 23ebf3fc7bf0; statusgen --consumers --brief build-less-brittle/04 --base 23ebf3fc7bf0~1; clone removed; exit carries the tool's status | 0 | `summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing`. Base reported as b2c341cfd00e. CORROBORATED: the three fixed-here skill entries. UNCHECKED: the out-of-scope labels entry (names no path in this repo; the reviewer's call, never a pass). The clone directory was gone afterwards and the worktree list was unchanged | pass — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 11 | grep -c 'module:' && grep -c 'brittle' on the intake-desk skill | 0 | `2` then `4` (each ≥ 1) | pass — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 12 | grep -c 'production-down' && grep -c 'bleed' on the intake-desk skill | 0 | `1` then `1` (each ≥ 1) | pass — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 13 | seven work-input labels by grep -qF, plus the '### Work-input triage example' heading, on the intake-desk skill | 0 | `WORK-INPUT-FIELDS`. Per-label counts: mechanism 2, known-scope 3, source-revisions 2, unresolved-questions 1, next-action 2, source-origin 2, trust-disposition 3; heading at line 331 | pass — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+
+Cross-check of the tool's stamps against real output. The witness marks rows 4–9 and 13 "expect: exit-status only". For each of those the hand run printed the exact Expect token (REDIRECTED, 1, 1, NET-OK three times, WORK-INPUT-FIELDS), and the witness hashes equal the sha256 prefix of that token plus newline (8cfcff694556, 4355a46b19d3, 458c4e39effe, efb852f8dd4e). Rows 1 and 11 hashes (53c234e5e847, 7b90b6c82d45) likewise equal the hash of `2` and of `2`/`4`. No row passes on exit status with output that misses its Expect. No row ends in a trailing echo of its own status, so no recorded exit is the echo's. No row uses a shell-specific path-modifier expansion. No row is marked check:ci and none needs a Linux-only or network-off facility; all thirteen ran on this host. Row 10 is no longer vacuous on merged main: it has the delivering diff to read and its exit is the consumers tool's own.
+
+RISK-VALUE: DERIVED — design-owed trigger = 3 counted instances or the 2nd merged fix @ plugins/assay/skills/intake-desk/SKILL.md:281-282 — matches the stream's stated constraint, docs/streams/build-less-brittle/spec.md:113-114, including the counting rule (only confirmed-defect and false-positive, deduped by incident-group). The spec states 3 without a first-principles argument for 3 over 2 or 4; acceptable for a reversible prose knob.
+
+Enumeration over the #1876 and #1943 skill diffs and the brief's Deliverables: first-counted-instance trigger for a brittle-marked module (intake-desk skill line 282); review recurrence at three or more times across separate PRs (pr-review-desk skill line 531); the new-issue budget (default 3 per 24h, unchanged, lives in deskfile); the authoring line budgets (≤ 12, ≤ 8, ≤ 3, net ≤ 0). All are reversible procedure knobs in prose: an edit and a plugin re-release undoes any of them, and none moves funds, identity or published state. Risk metadata is present and all four answers are no, so the fail-safe trigger does not fire.
+
+VERIFY: PASS
+
+Reasoning: all thirteen rows of the amended table exit 0 on merged main 2a6460e85c78 and each row's real output meets its Expect, both in the `statusgen verifyrun` witness (13 of 13 pass, tool exit 0 in the dry and the writing form) and in an independent hand run. Row 10, the row #2030 re-authored and the one that could not give a verdict on merged main before, now exits 0 with exactly the summary line its Expect names. This is a model verdict on a gate: model brief with no risk flag; the verifier records Evidence and does not set the status.
+
+Row defects and notes (none changes the verdict):
+- Rows 7–9 measure only the delivering commit 23ebf3fc7bf0 against its parent. The follow-up #1943 carries no Brief trailer, so the rows do not select it. Checked by hand: the intake-desk skill is 537 lines on merged main as well, so the net ≤ 0 constraint still holds through #1943. The pr-review-desk skill is 1027 lines on merged main against 1023 at the delivering commit; that growth is from other changes, which the rows exclude by design (per the brief's Review section).
+- Rows 7–9 resolve the delivering commit through the checkout's remote-tracking main ref, not through HEAD. In this run that ref was at 1f41825862a8, one commit ahead of the target (a board regeneration touching only STATUS.md), and 23ebf3fc7bf0 is an ancestor of both, so the result is the same at the target SHA.
+- Row 10 depends on a statusgen binary on the runner's PATH. The witness used the installed v1.0.30, not one built from the target SHA.
+- Row 10's one UNCHECKED entry (labels provisioned per repo, out-of-scope) is not evidence either way. Whether those labels exist on each repo in scope was not checked in this pass.
+- The witness tool treats rows 4–9 and 13 as exit-status only, because their Expect cells hold no machine-decidable comparison. The hand run closes that gap for this pass; a later witness alone would not.
+
+Could not check: label provisioning on the forge (offline envelope; outside the Verify table). Task step 1's scanner probe (the implementer's T1 row) is not a Verify row and was not repeated. The semantic walk of the worked triage example was done in the 2026-09-30 re-verify and was not repeated here; the intake-desk skill is unchanged in line count since then, but its content was not diffed against that run.
+
 ## Review
 Gate: model (from frontmatter). Rows 7–9 compare each skill at this brief's own change against
 the same file just before it (the base is derived in the row; see the README's shared
