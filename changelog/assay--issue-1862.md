@@ -1,0 +1,2 @@
+### Fixed
+- Eighteen briefs carried Verify rows that could not fail, or that failed on their success path (#1862). Rows ending `; echo "exit=$?"` always exit 0, so a backticked `exit=0` Expect checked nothing; their Expect now reads `output is `exit=0``. Zero-count `grep -c` rows exit 1 on success under pipefail; their Expect now states `exit 1` with the printed `0`. Commands and witnesses are unchanged; each touched brief's `version` is bumped.

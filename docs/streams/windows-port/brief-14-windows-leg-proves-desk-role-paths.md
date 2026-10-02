@@ -50,7 +50,7 @@ consumers:
   - "plugins/assay/skills/{pr-review-desk,intake-desk,inbox,ask-decision}/SKILL.md + references/tick-contract.md (drop the script fallback wording): follow-up windows-port/14 (this brief)"
   - "docs/adopting-assay.md § Windows adopters: follow-up windows-port/14 (this brief)"
   - "tools/desk/cmd/scanloop/monitor.go parity mode (removed with the oracle): follow-up windows-port/14 (this brief)"
-version: 1
+version: 2
 id: ea048fcd-b19e-466e-bbb5-7c768c57770d
 ---
 
@@ -93,7 +93,7 @@ single-point-of-failure: the ONE control is the PATH-scrub assertion (without it
 | 3 | One step per verb: `grep -c -e 'deskmonitor inbound' -e 'deskmonitor pr' -e 'desktick regexp' -e 'deskinbox flow' -e 'hook-install' ci/staged-workflows/windows-ci-leg.yml` | `5` | `check` |
 | 4 | **DEREFERENCE — the leg ran green on this head** (after the human promotes it): `gh run list --workflow windows-ci-leg.yml --branch <this PR branch> --json conclusion,headSha --jq '.[0]'` | `success` at this PR's head; could-not-check with reason before promotion | `check +dereference` |
 | 5 | Retirement honest: for each deleted script, the PR body cites the green step + the parity test; `git diff --name-status origin/main -- plugins/assay/scripts/ \| grep -c '^D'` | equals the number of scripts the body claims retired | `check` |
-| 6 | No fallback wording left for retired scripts: `grep -c -e 'inbound-monitor.sh' -e 'pr-monitor.sh' -e 'tick-summary.sh' -e 'assay-inbox.sh' plugins/assay/skills/*/SKILL.md plugins/assay/references/*.md` | `0` for each retired script | `check` |
+| 6 | No fallback wording left for retired scripts: `grep -c -e 'inbound-monitor.sh' -e 'pr-monitor.sh' -e 'tick-summary.sh' -e 'assay-inbox.sh' plugins/assay/skills/*/SKILL.md plugins/assay/references/*.md` | exit 1 (grep exits 1 when no file matches); every printed per-file count is `0` for each retired script | `check` |
 | 7 | **Flow — a desk boots without bash**: on a Windows host (or the leg): `deskboot intake-desk --dry-run` with bash absent from PATH | exit 0 and the inbound surface reported as armed | `check +flow` |
 | 8 | Decision issue: `gh issue list -R medici-finance/assay --label needs-decision --search 'decision-gate: windows-port/14' --json number --jq length` | `1` | `check` |
 | 9 | Consumers routing corroborated: `statusgen --root . --consumers windows-port/14; echo $?` | `0` | `check` |

@@ -31,7 +31,7 @@ consumers:
   - "tools/desk/internal/deskkit/forge.go, forge_github.go, forge_gitlab.go: fixed-here (the new read ops on both backends)"
   - "tools/desk/internal/forgeban/allowlist.go: fixed-here (the deskboard permit row removed once its last ghRun caller is gone; ceiling lowered)"
   - "docs/streams/forge-gitlab/inventory.md: fixed-here (the new ops tabulated)"
-version: 1
+version: 2
 id: 7bcc1459-688f-41b7-9260-3d1b9a8e7166
 ---
 
@@ -144,7 +144,7 @@ move to an EXISTING op):
 | 2 | `cd tools/desk && go test ./cmd/deskboard/... -count=1` | exit 0 |
 | 3a | `cd tools/desk && go test -list '.*' ./cmd/deskboard/... \| grep -c '^Test'` | ≥ the baseline measured on this brief's base — the migration retools transports, it does not delete coverage |
 | 3b | reviewed diff: every `*_test.go` hunk is a transport-shim retool (gh shim → the forge seam), no assertion weakened, no expected value changed, no negative-path test dropped. Reviewer signs 3b. |
-| 4 | `grep -c '"gh"' tools/desk/cmd/deskboard/*.go \| grep -v ':0' \| grep -v '_test.go'` (or `grep -r '"gh"' tools/desk/cmd/deskboard --include='*.go' \| grep -v _test.go \| wc -l`) | prints `0` — NO `gh` literal remains in `cmd/deskboard`; the board reaches every forge through the interface |
+| 4 | `grep -c '"gh"' tools/desk/cmd/deskboard/*.go \| grep -v ':0' \| grep -v '_test.go'` (or `grep -r '"gh"' tools/desk/cmd/deskboard --include='*.go' \| grep -v _test.go \| wc -l`) | exit 1 (the final `grep -v` selects no line); no per-file count above `0` is printed — NO `gh` literal remains in `cmd/deskboard`; the board reaches every forge through the interface |
 | 5 | `cd tools/desk && go test ./internal/forgeban/... -count=1 -v` | exit 0 — the ratchet passes at its new (lower) value, the `cmd/deskboard/board.go::ghRun::gh` row is gone, and every surviving permit row still matches a live call site |
 | 6 | `grep -n 'allowedInvocationCeiling' tools/desk/internal/forgeban/allowlist.go` | shows the new value (13 minus deskboard's row, minus any 04b rows already retired) |
 | 7 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestNoForgeCLIShellout\|TestForgeNoPassthrough\|TestForgeGitlabCoverage' -count=1 -v` | exit 0 — the surface stays closed, no new passthrough, every new op tabulated in the committed inventory |

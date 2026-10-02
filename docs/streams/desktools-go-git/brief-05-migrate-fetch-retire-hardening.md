@@ -29,7 +29,7 @@ why: >-
   injection, upload-pack override, remote helpers, insteadOf, PATH trust. gitcore.Fetch
   executes none of them. Migrating the three fetch sites is what lets the old hardening
   code be deleted and the deskadvisory askpass-to-disk pattern disappear.
-version: 1
+version: 2
 id: 7d8455f5-acc2-477a-9d89-3facc6c7de7e
 ---
 
@@ -94,8 +94,8 @@ facts:
 | 1 | `cd tools/desk && go build ./cmd/deskgit/ ./cmd/deskadvisory/ ./cmd/deskmerge/ && go vet ./cmd/deskgit/ ./cmd/deskadvisory/ ./cmd/deskmerge/` | exit 0 |
 | 2 | `cd tools/desk && go test ./cmd/deskgit/ ./cmd/deskadvisory/ ./cmd/deskmerge/` | exit 0; fetch + advisory goldens pass |
 | 3 | `cd tools/desk && go test ./cmd/deskgit/ -run DisallowedOriginRefused` | exit 0; a disallowed origin is still REFUSED after migration (the allowed-repo gate survived — mutation-style row) |
-| 4 | `cd tools/desk && grep -crE -e 'GIT_ASKPASS' -e 'credential.helper' cmd/deskadvisory/advisory.go` | exit 0; count 0 (the askpass file + helper-suppression path is gone) |
-| 5 | `cd tools/desk && grep -crE -e 'upload-pack' -e 'refmap' cmd/deskgit/` | exit 0; count 0 (the moot argv-hardening flags are deleted) |
+| 4 | `cd tools/desk && grep -crE -e 'GIT_ASKPASS' -e 'credential.helper' cmd/deskadvisory/advisory.go` | exit 1 (grep exits 1 when nothing matches); the printed count is `0` (the askpass file + helper-suppression path is gone) |
+| 5 | `cd tools/desk && grep -crE -e 'upload-pack' -e 'refmap' cmd/deskgit/` | exit 1 (grep exits 1 when no file matches); every printed per-file count is `0` (the moot argv-hardening flags are deleted) |
 | 6 | `sh tools/desk/scripts/count-git-exec.sh` | prints `git-exec sites: <N>`; N below the count recorded before this brief |
 
 ## Evidence

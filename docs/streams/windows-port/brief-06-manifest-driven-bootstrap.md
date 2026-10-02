@@ -47,7 +47,7 @@ exec-tier-why: >-
   operator argument to a parsed file — a subtle parse error (wrong column, silent empty match,
   a fall-through when the platform line is absent) would leave the check comparing against
   nothing and survive a happy-path test.
-version: 1
+version: 2
 id: 23362df7-69a4-4278-83e7-a5f5ed192927
 ---
 
@@ -178,7 +178,7 @@ check before it ever reaches the download comparison. NONE is not the answer her
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `grep -n 'Mandatory=$true' scripts/bootstrap-windows.ps1 \| grep -c 'Sha256'` | `0` — `-Sha256` is no longer a mandatory parameter | `check` |
+| 1 | `grep -n 'Mandatory=$true' scripts/bootstrap-windows.ps1 \| grep -c 'Sha256'` | exit 1 (grep exits 1 when nothing matches); output is `0` — `-Sha256` is no longer a mandatory parameter | `check` |
 | 2 | `grep -c 'Mandatory=$true' scripts/bootstrap-windows.ps1` | `1` — exactly one mandatory parameter remains (`-Tag`) | `check` |
 | 3 | `grep -qF 'paired-versions.yaml' scripts/bootstrap-windows.ps1; echo $?` | `0` — the script names the committed manifest it resolves from | `check` |
 | 4 | The verify-or-refuse survives and still precedes placement: `awk '/Get-FileHash/{h=NR} /REFUSED: sha256 mismatch/{r=NR} /Move-Item/{m=NR} END{print (h>0 && r>h && m>r) ? "ORDER-OK" : "ORDER-BROKEN"}' scripts/bootstrap-windows.ps1` | `ORDER-OK` | `check` |

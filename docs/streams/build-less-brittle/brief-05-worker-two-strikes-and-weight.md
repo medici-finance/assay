@@ -15,7 +15,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format)"
 sources:
   - "docs/streams/build-less-brittle/spec.md §2 D1/D3/D5, §3 rows 3 and 8, §4.3"
@@ -138,7 +138,7 @@ test still holds. Row 3 is the mutation row for that guard. Rows 7–9 are net �
 | 8 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 9 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 10 | `f=tools/desk/cmd/deskdispatch/kitparity_test.go; grep -q '"unrepresentable"' "$f" && ! grep -q '"ALLOW-LIST"' "$f" && echo MOVED` | `MOVED` (the pinned token moved with the retired obligation) |
-| 11 | `statusgen --consumers --root . --brief build-less-brittle/05; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
+| 11 | `statusgen --consumers --root . --brief build-less-brittle/05; echo "exit=$?"` | output is `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). A disproved claim makes the command print `exit=1` and names the claim |
 | 12 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c "driver's own login" "$f"; done \| grep -c '^[1-9]'` | `2` (both kits state that only a `bleed` from the driver's own login lifts strike two; the check is procedure the worker runs, not code, so this row gates its presence in each kit) |
 
 ## Evidence

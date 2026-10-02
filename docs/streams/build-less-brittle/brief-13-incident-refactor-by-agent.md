@@ -27,7 +27,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; third-pass amendment)"
 sources:
   - "docs/streams/build-less-brittle/spec.md §3 row 15, §4.13, §4.7 (no new gate), §8"
@@ -211,7 +211,7 @@ line), which step 6 writes and the Evidence repeats. Rows 8–10 are wiring and 
 | 9 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/13$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && grep -c 'incident-refactor-run' plugins/assay/skills/worker-desk/SKILL.md && test "$(git show "$tip:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" && echo NET-OK` | ≥ `1`, then `NET-OK` |
 | 10 | `for g in 'weaken' 'consumer-facing' 'trust boundary'; do grep -ci "$g" docs/incident-refactor-run.md; done \| grep -c '^[1-9]'` | `3` (the three hard gates are named; no fourth is introduced: `grep -c 'gate: human' docs/incident-refactor-run.md` is the reviewer's cross-check) |
 | 11 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/13$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git diff --name-only "$base" "$tip" -- tools/desk \| grep -v _test.go \| grep -v '^tools/desk/internal/testledger/' \| wc -l \| tr -d ' ')" = 0 && echo NO-SHIPPED-CHANGE` | `NO-SHIPPED-CHANGE` (outside the test-only ledger package and its `testdata/rehearsal/` fixture module, no non-test file under `tools/desk` changed; base derived, never `HEAD~1`) |
-| 12 | `statusgen --consumers --root . --brief build-less-brittle/13; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
+| 12 | `statusgen --consumers --root . --brief build-less-brittle/13; echo "exit=$?"` | output is `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). A disproved claim makes the command print `exit=1` and names the claim |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,

@@ -42,7 +42,7 @@ consumers:
   - "tools/desk/internal/deskkit: fixed-here (the GitLab `PRTrustEvents` implementation to GitHub parity — and its `IssueTrustEvents` twin, sharing `trustEventsGap` and the `trustFromEnvelope` reader — plus `GetCommit` resolving the author/committer login on the GitLab backend)"
   - "tools/desk/cmd/deskboard: consumes (prBlessed reads `PRTrustEvents`; issueBlessed reads `IssueTrustEvents`; fetchHeadCommit reads `GetCommit`'s author/committer login) — existing freeze-rule call sites that go from could-not-check to a real verdict on GitLab; no deskboard change is in scope"
   - "tools/desk/cmd/deskpost: follow-up (the blocked deskpost-verdict wiring routes its trust-gate precondition through the now-real Forge `PRTrustEvents`; that wiring is the downstream this unblocks, not delivered here)"
-version: 1
+version: 2
 id: 6d5026cf-4953-466e-a265-b72b84412c96
 ---
 
@@ -187,7 +187,7 @@ keeps its could-not-check posture until the ruling, exactly as it does today.
 | 4 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeGitlabGetCommitAuthorLogin -v` | exit 0; `PASS` — `GetCommit` on a GitLab commit fixture whose author/committer resolve to instance accounts returns NON-EMPTY `AuthorLogin`/`CommitterLogin`; a fixture whose email resolves to no account leaves them EMPTY (per-field could-not-check, never fabricated) |
 | 5 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeGitlabTrustReadTierErrors -v` | exit 0; `PASS` — a permission/transport failure on the trust or commit read surfaces `could-not-check`, distinct from an empty read (no notes / unresolved email) and from a real payload; a read failure is never a clean empty trust set |
 | 6 | `cd tools/desk && GOWORK=off go test ./... -run TestNoForgeCLIShellout -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v` | exit 0 on both; `PASS` — the trust/commit reads add no `glab` shell-out and no arbitrary-endpoint passthrough method |
-| 7 | `grep -c "does not serve PRTrustEvents\|does not serve IssueTrustEvents" tools/desk/internal/deskkit/forge_gitlab.go` | `0` — the `trustEventsGap` refusal is gone; the GitLab backend serves both trust reads |
+| 7 | `grep -c "does not serve PRTrustEvents\|does not serve IssueTrustEvents" tools/desk/internal/deskkit/forge_gitlab.go` | exit 1 (grep exits 1 when nothing matches); output is `0` — the `trustEventsGap` refusal is gone; the GitLab backend serves both trust reads |
 
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->

@@ -19,7 +19,7 @@ why: >-
   This is the primary aim of the request: one command on a desktop that fires up a
   chosen desk interactively, exactly like today's terminal sessions, with the
   credentials mounted correctly every time instead of hand-assembled docker flags.
-version: 1
+version: 2
 id: 8d6363a5-d747-4a47-b4da-52137ebcc3b9
 ---
 
@@ -78,7 +78,7 @@ facts:
 | 3 | `containers/desk-run.sh pr-review-desk --dry-run` (with fixture PEM + env-file paths exported) | exit 0; output contains `-it`, `--name pr-review-desk`, `/work`, `/run/secrets/assay/app.pem`, `ro`, `--env-file`, `ghcr.io/medici-finance/assay/pr-review-desk` |
 | 4 | `containers/desk-run.sh nonsense-desk --dry-run` | exit non-zero; output lists the five valid desk names (negative-path row) |
 | 5 | `containers/desk-run.sh worker-desk --dry-run` with the PEM path pointing at a missing file | exit non-zero; output names the expected PEM location (fail-closed row) |
-| 6 | `containers/desk-run.sh worker-desk --dry-run \| grep -c 'BEGIN'` (fixture PEM in place) | count 0 — the script prints credential PATHS, never contents |
+| 6 | `containers/desk-run.sh worker-desk --dry-run \| grep -c 'BEGIN'` (fixture PEM in place) | exit 1 (grep exits 1 when nothing matches); output is `0` — the script prints credential PATHS, never contents |
 
 ## Definition of Done
 - Verify rows green, recorded in Evidence by a non-implementer.

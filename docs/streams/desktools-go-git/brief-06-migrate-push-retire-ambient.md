@@ -21,7 +21,7 @@ why: >-
   so the ambient machinery and the probe both disappear: a caller mints a repo-scoped
   token and can send it nowhere but that op's URL, and reachability is proved by an
   authenticated List rather than a dry-run push.
-version: 1
+version: 2
 id: 4defb16c-2840-4103-880e-11693f41dc91
 ---
 
@@ -88,7 +88,7 @@ facts:
 | 1 | `cd tools/desk && go build ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/ && go vet ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/` | exit 0 |
 | 2 | `cd tools/desk && go test ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/` | exit 0; push + List goldens pass against the local fixture remote |
 | 3 | `cd tools/desk && go test ./cmd/deskpr/ -run ForcePushRejected` | exit 0; a force-requiring push is REJECTED, not silently forced (type-level no-force holds) |
-| 4 | `cd tools/desk && grep -crE -e 'dry-run' -e 'GIT_TERMINAL_PROMPT' internal/deskkit/preflight.go` | exit 0; count 0 (the ambient-credential probe is gone) |
+| 4 | `cd tools/desk && grep -crE -e 'dry-run' -e 'GIT_TERMINAL_PROMPT' internal/deskkit/preflight.go` | exit 1 (grep exits 1 when nothing matches); the printed count is `0` (the ambient-credential probe is gone) |
 | 5 | `cd tools/desk && go test ./internal/deskkit/ -run PreflightReachability` | exit 0; the neighbour row — a preflight CALLER still gets a correct reachable/unreachable verdict via List |
 | 6 | `sh tools/desk/scripts/count-git-exec.sh` | prints `git-exec sites: <N>`; N below the count recorded before this brief |
 

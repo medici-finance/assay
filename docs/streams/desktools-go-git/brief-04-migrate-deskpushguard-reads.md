@@ -19,7 +19,7 @@ why: >-
   behaviour-preserving swap of a DETECTION control has to prove the detection still FIRES,
   not merely that the happy path is unchanged. It is split from brief 03's read migration
   so its parity + mutation coverage gets its own focused review.
-version: 1
+version: 2
 id: d178703f-dbb2-49ef-afb4-c9e266da8869
 ---
 
@@ -75,7 +75,7 @@ facts:
 | 1 | `cd tools/desk && go build ./cmd/deskpushguard/ && go vet ./cmd/deskpushguard/` | exit 0 |
 | 2 | `cd tools/desk && go test ./cmd/deskpushguard/` | exit 0; clean-push + foreign-commit + register-id goldens pass |
 | 3 | `cd tools/desk && go test ./cmd/deskpushguard/ -run ForeignCommitFlagged` | exit 0; the mutation fixture (a foreign commit injected) is flagged RED by the migrated reader — proving the detector still detects |
-| 4 | `cd tools/desk && grep -cE 'exec.Command' cmd/deskpushguard/foreigncommit.go` | exit 0; count 0 (the read seam no longer shells the git binary) |
+| 4 | `cd tools/desk && grep -cE 'exec.Command' cmd/deskpushguard/foreigncommit.go` | exit 1 (grep exits 1 when nothing matches); output is `0` (the read seam no longer shells the git binary) |
 | 5 | `sh tools/desk/scripts/count-git-exec.sh` | prints `git-exec sites: <N>`; N below the count recorded before this brief |
 
 ## Evidence
