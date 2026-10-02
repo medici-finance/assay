@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "code_revision": "1161ff639204388b1e576a7c5d56a0f6df470455",
+  "model_revision": "OWNER_MUST_SELECT_EXACT_REVISION",
+  "licenses": {"code": "UNVERIFIED", "weights": "UNVERIFIED", "base": "UNVERIFIED"},
+  "assets": [],
+  "note": "Intentionally rejected: no weights, tokenizer, encoder, code or dependency lock has been approved or bundled. Never substitute remote URLs."
+}

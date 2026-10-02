@@ -418,7 +418,7 @@ func deletedRegisterFiles(root string) []string {
 	// shared point are landed; files added on either side after it are not
 	// violations. Fall back to HEAD when origin/main can't be resolved.
 	base := "HEAD"
-	if mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output(); err == nil && strings.TrimSpace(string(mb)) != "" {
+	if mb, err := gitMergeBaseOut(root, "HEAD", remoteMainRef); err == nil && strings.TrimSpace(string(mb)) != "" {
 		base = strings.TrimSpace(string(mb))
 	}
 
@@ -493,8 +493,7 @@ func deletedRegisterFiles(root string) []string {
 			// T8: the file is gone from its old path, but if a file with the
 			// same register ID exists in the current tree, it was RENAMED —
 			// not deleted. Parse the ID from the landed base tree.
-			showCmd := exec.Command("git", "-C", root, "show", base+":"+f)
-			showOut, showErr := showCmd.Output()
+			showOut, showErr := gitShowObject(root, base, f)
 			if showErr == nil {
 				landedID := extractIDFromYAMLFrontmatter(showOut)
 				if landedID != "" && idInTree[landedID] {
@@ -518,7 +517,7 @@ func deletedRegisterFiles(root string) []string {
 // diffs to nothing, and passes silently. Callers that gate on the result must
 // surface that (see registerBaseFallbackNotices).
 func registerLandedBase(root string) (base string, resolved bool) {
-	if mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output(); err == nil && strings.TrimSpace(string(mb)) != "" {
+	if mb, err := gitMergeBaseOut(root, "HEAD", remoteMainRef); err == nil && strings.TrimSpace(string(mb)) != "" {
 		return strings.TrimSpace(string(mb)), true
 	}
 	return "HEAD", false
@@ -698,8 +697,7 @@ func guttedRegisterFieldsEntries(root string) []registerProblem {
 			if line == "" || !strings.HasSuffix(line, ".md") {
 				continue
 			}
-			showCmd := exec.Command("git", "-C", root, "show", base+":"+line)
-			showOut, showErr := showCmd.Output()
+			showOut, showErr := gitShowObject(root, base, line)
 			if showErr != nil {
 				continue
 			}
@@ -736,7 +734,7 @@ func guttedRegisterFieldsEntries(root string) []registerProblem {
 		// file may have been RENAMED — resolve by register ID via the
 		// landedByID index (T8: closes the rename+gut bypass).
 		var baseE *findingEntry
-		baseRaw, pathErr := exec.Command("git", "-C", root, "show", base+":"+rel).Output()
+		baseRaw, pathErr := gitShowObject(root, base, rel)
 		if pathErr == nil {
 			baseE, err = parseFindingFile(baseRaw)
 			if err != nil {
