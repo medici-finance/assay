@@ -1567,7 +1567,7 @@ func looksLikeWords(seg string) bool {
 // it feeds is left exactly as it was. The relaxation is bounded to 2-4 letters with a word
 // on at least one side, so the run is still admitted on the strength of its word-shaped body.
 func wordDecomposition(seg string, allowShortAcronym bool) (ok bool, words int, camel bool) {
-	acronyms := 0
+	acronyms, versioned := 0, false
 	for i := 0; i < len(seg); {
 		c := seg[i]
 		switch {
@@ -1625,7 +1625,7 @@ func wordDecomposition(seg string, allowShortAcronym bool) (ok bool, words int, 
 			var acrEnd int
 			var acrOK bool
 			if n == 0 && allowShortAcronym {
-				acrEnd, acrOK = shortAcronymUnit(seg, i, words, acronyms)
+				acrEnd, acrOK = shortAcronymUnit(seg, i, words, acronyms, versioned)
 			}
 			switch {
 			case n >= 2:
@@ -1635,7 +1635,10 @@ func wordDecomposition(seg string, allowShortAcronym bool) (ok bool, words int, 
 			case n == 0 && (c == 'A' || c == 'I') && startsCapitalLedWord(seg, j):
 				i, words = j, words+1 // a one-letter word; camel comes from the follower
 			case acrOK:
-				// a short acronym is one word unit; acronyms is the per-run budget
+				// a short acronym is one word unit; acronyms is the per-run budget. A unit
+				// ending in a digit is a version unit (an acronym unit ends in a letter);
+				// versioned withdraws the closing-acronym exemption for the rest of the run.
+				versioned = versioned || (seg[acrEnd-1] >= '0' && seg[acrEnd-1] <= '9')
 				i, words, camel, acronyms = acrEnd, words+1, true, acronyms+1
 			default:
 				return false, 0, false
@@ -1725,7 +1728,8 @@ func startsCapitalLedWord(seg string, k int) bool {
 //     the backward anchor this says the acronym is never the run's opening move, which is
 //     where random material's lucky caps runs most often fall.
 //   - BUDGETED: at most maxAcronymUnits MID-RUN units per run, plus at most one unit that
-//     closes the run (#1642 — a run has one end, so that adds at most one). Random base64
+//     closes the run (#1642 — a run has one end, so that adds at most one; and the closing
+//     unit is budget-free only in a run with no version unit, see versionUnit). Random base64
 //     needs several lucky caps runs to decompose at all; a real identifier needs one or
 //     two. This bound is where most of the measured cost above is bought back.
 //
@@ -1736,7 +1740,10 @@ func startsCapitalLedWord(seg string, k int) bool {
 // The measured cost of the widening on random token material is pinned by
 // TestShortAcronymCostsAlmostNothing, which runs the same 2,000,000-trial fixed-seed
 // comparison TestTwoLetterWordsCostAlmostNothing uses for the two-letter-word list.
-func shortAcronymUnit(seg string, i, wordsSoFar, acronymsSoFar int) (int, bool) {
+//
+// versioned reports that a version unit (versionUnit) has already been decomposed in this
+// run; it withdraws the CLOSING exemption, so the closing unit is held to the budget.
+func shortAcronymUnit(seg string, i, wordsSoFar, acronymsSoFar int, versioned bool) (int, bool) {
 	if wordsSoFar < 1 || i < 1 || seg[i-1] < 'a' || seg[i-1] > 'z' {
 		return 0, false
 	}
@@ -1758,10 +1765,13 @@ func shortAcronymUnit(seg string, i, wordsSoFar, acronymsSoFar int) (int, bool) 
 	if k < len(seg) && seg[k] == 's' && (k+1 == len(seg) || startsCamelWord(seg, k+1)) {
 		k++
 	}
-	if k == len(seg) {
+	if k == len(seg) && !versioned {
 		// CLOSING (#1642): an acronym that ends the run spends no budget (`…PRs|By…Every|PR`).
 		// Everything before it has already decomposed, and a run has exactly one end, so
-		// the per-run total is at most maxAcronymUnits mid-run units plus this one.
+		// the per-run total is at most maxAcronymUnits mid-run units plus this one. NOT in a
+		// run that already carries a version unit (versioned): there the closing acronym
+		// falls through to the budget check below, which the version has spent, so a
+		// version and an acronym never share one run (`…Every|V2|…Handler|OK` refuses).
 		return k, true
 	}
 	if acronymsSoFar >= maxAcronymUnits {
@@ -1789,8 +1799,11 @@ func shortAcronymUnit(seg string, i, wordsSoFar, acronymsSoFar int) (int, bool) 
 //     digit behind it stays debris exactly as before.
 //   - ANCHORED FORWARD: the digits close the run or a CamelCase word follows them, so
 //     `…V2x…` and capital-digit-capital chains in random base62 stay refused.
-//   - BUDGETED: the unit always spends the per-run acronym budget, closing or not, so a
-//     version segment and an acronym never share one run.
+//   - BUDGETED: the unit always spends the per-run acronym budget, closing or not, and once
+//     it is decomposed the closing-acronym exemption is withdrawn for the rest of the run
+//     (wordDecomposition's versioned), so a version segment and an acronym never share one
+//     run — mid-run or closing, plain or plural (`…Every|V2|…Open|PRs` refuses). A
+//     numeronym is a word, not an acronym, and still rides beside a version.
 //
 // A 2-4 letter acronym followed by digits (`…HTTP2…`) is NOT admitted: that shape is pinned
 // refused by identAcrDigit and stays the documented residual it was.

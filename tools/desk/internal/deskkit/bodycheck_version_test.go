@@ -29,6 +29,17 @@ var (
 	verAcrDig = "TestRoutesEvery" + "HTTP2" + "RequestToNewHandler" // acronym+digit stays out
 	verB62    = "Qx7pLk2wZt" + "V1" + "Nc4bYf6RhVs8Ju3XoAeG5"       // version inside base62
 	verOther  = "TestUploadsEvery" + "S3" + "ObjectInOneRequest"    // `V` ONLY: other letter
+	verCapsV  = "TestRoutesEvery" + "XV1" + "RequestToNewHandler"   // `V` ONLY: caps run ending in V
+	verLoneV  = "TestRoutesEvery" + "V" + "RequestToNewHandler"     // DIGITS: none before a word
+	verAcrEnd = "TestRoutesCI" + "RequestsToNewHandler" + "V2"      // BUDGETED: closing version
+	verLoneA  = "TestRoutesEvery" + "V2" + "AWriteToNewHandler"     // FORWARD: lone A, then a word
+
+	// A version unit spends the run's acronym budget, and a CLOSING acronym's budget-free
+	// pass does not apply in a run that already carries one: a version and an acronym never
+	// share one run, whichever closes it. A numeronym is a word, not an acronym, and is free.
+	verEndAcr  = "TestRoutesEvery" + "V2" + "RequestToHandler" + "OK"          // closing acronym
+	verEndPl   = "TestRoutesEvery" + "V2" + "RequestFromOpen" + "PRs"          // closing plural
+	identV2K8s = "TestRoutesEvery" + "V2" + "RequestUnder" + "K8s" + "Cluster" // numeronym
 
 	// The leading-acronym shape. It is refused, and stays refused here: admitting it is the
 	// removal of the BACKWARD / AFTER-A-WORD bound that identLeadAcr and a committed
@@ -86,7 +97,8 @@ func TestVersionSegmentBounds(t *testing.T) {
 		"3+ digits": verDigits, "debris after": verDebris, "lowercase after": verLowerW, "opens the run": verLead,
 		"after a digit": verAfterD, "two versions": verTwo, "acronym and version": verAcr,
 		"acronym then digit": verAcrDig, "inside base62": verB62, "leading acronym": identLeadPS,
-		"letter other than V": verOther,
+		"letter other than V": verOther, "caps run ending in V": verCapsV, "lone V before a word": verLoneV,
+		"acronym then closing version": verAcrEnd, "version then lone A": verLoneA,
 	} {
 		if isIdentifierLike(run) {
 			t.Errorf("%s: isIdentifierLike(%q) = true, want false", name, run)
@@ -94,6 +106,28 @@ func TestVersionSegmentBounds(t *testing.T) {
 		if err := BodyCheck([]byte("value " + run + " here")); !IsRefused(err) {
 			t.Errorf("%s: BodyCheck(%q) = %v, want Refused", name, run, err)
 		}
+	}
+}
+
+// TestVersionSegmentClosingAcr: a closing acronym (plain or plural) spends no budget only
+// in a run with no version unit; after a version it refuses. A numeronym is a word and is
+// admitted beside a version.
+func TestVersionSegmentClosingAcr(t *testing.T) {
+	for name, run := range map[string]string{
+		"version then closing acronym": verEndAcr, "version then closing plural": verEndPl,
+	} {
+		if isIdentifierLike(run) {
+			t.Errorf("%s: isIdentifierLike(%q) = true, want false", name, run)
+		}
+		if err := BodyCheck([]byte("value " + run + " here")); !IsRefused(err) {
+			t.Errorf("%s: BodyCheck(%q) = %v, want Refused", name, run, err)
+		}
+	}
+	if !isIdentifierLike(identV2K8s) {
+		t.Errorf("isIdentifierLike(%q) = false, want true", identV2K8s)
+	}
+	if err := BodyCheck([]byte("the assertion is in " + identV2K8s + " today")); err != nil {
+		t.Errorf("BodyCheck rejected a body naming %q: %v", identV2K8s, err)
 	}
 }
 
