@@ -101,9 +101,9 @@ This is the ONE place the categories are enumerated; the skill text points here 
 than restating them.
 
   REFUSED (exit 5) — the span is unambiguous:
-    * an absolute machine path (/Users/…, /home/…, /private/tmp/…, /tmp/tracker-…; on
-      Windows a drive-letter path under the Users root, C:\Users\…, or a UNC path naming a
-      host and a share)
+    * an absolute machine path under a machine-local root (/Users/, /home/, /private/tmp/,
+      /tmp/tracker-; on Windows a drive-letter path under the Users root, or a UNC path
+      naming a host and a share)
     * a scratch worktree name (tracker-…)
     * a session id (a hex UUID) or an agent id (agent-…)
     * an owner/name slug, with or without #N, naming a repo the roster marks PRIVATE
