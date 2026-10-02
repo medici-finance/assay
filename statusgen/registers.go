@@ -610,14 +610,15 @@ func registerBaseFallbackNotices(root string) []string {
 // `authorized-by:` key (see authorizedByVerifiedHuman). An unknown name or a bare
 // agent-written justification does NOT authorize.
 //
-// That anchor is verified online at PR time by `statusgen --corroborate --pr <pr>`,
-// which this repo's board CI runs in the pull_request lint job of
-// .github/workflows/assay-statusgen.yml on every PR that touches
-// docs/streams/findings/. It gates the anchor in TWO lanes: the stamp lane checks a
-// human:<name> token ADDED in the PR diff, and the register-transition lane
-// (corroborateRegisterTransitions, statusgen/06) re-derives every transition this
-// function detects against the PR merge-base and requires a human named in the
-// authorizing key to have ACTED on the PR (an APPROVED review or an approval
+// That anchor is verified online at PR time only where a pull_request job runs
+// `statusgen --corroborate --pr <pr>`; this offline check cannot tell whether one
+// does, and a repo whose CI does not run it gets no online verification at all
+// (TestCorroborateIsWiredIntoStatusgenWorkflow pins the wiring wherever a workflow
+// carries it). Where it runs, it gates the anchor in TWO lanes: the stamp lane
+// checks a human:<name> token ADDED in the PR diff, and the register-transition
+// lane (corroborateRegisterTransitions, statusgen/06) re-derives every transition
+// this function detects against the PR merge-base and requires a human named in
+// the authorizing key to have ACTED on the PR (an APPROVED review or an approval
 // comment from their own account) — so an anchor that was ALREADY on the entry
 // before the PR, which adds no diff line for the stamp lane to see, cannot be
 // reused to authorize a fresh gutting. The residual is stated here rather than omitted because a reader needs the gate's
@@ -698,7 +699,7 @@ func guttedRegisterFieldsEntries(root string) []registerProblem {
 		}
 		problems = append(problems, registerProblem{
 			msg: fmt.Sprintf(
-				"register field-gutting (unauthorized): %s — %s vs the version landed at the merge-base with origin/main, with no verified-human authorization. In-place gutting of a finding's load-bearing fields silently unblocks the brief it demoted, and adding/extending a park silently mutes its standing alarm. This is a HUMAN gate: add an `authorized-by: human:<name>` key (or, for a park, a `parked-by: human:<name>` key) to the entry's YAML frontmatter whose name is mapped in the configured ASSAY_HUMAN_LOGIN_MAP; an agent-written justification is not sufficient. Know what this check does and does not do before you add that key: this offline --lint check does NOT itself read the PR. The authority is corroborated online only where `statusgen --corroborate --pr <pr>` runs in a pull_request job — the toolkit's own board CI runs it on every PR that touches docs/streams/findings/ (the lint job of .github/workflows/assay-statusgen.yml). There it re-derives this same transition against the PR merge-base and fails the PR unless a human named in the authorizing key ACTED on the PR (an APPROVED review or an approval comment from their own account) — whether the key was written in this PR or was already on the entry. If your own CI runs --corroborate on PRs, writing the key on your own authority will NOT quietly pass; if it does not, this gutting gate is all that stands here — either way, get the named human to authorize the change.",
+				"register field-gutting (unauthorized): %s — %s vs the version landed at the merge-base with origin/main, with no verified-human authorization. In-place gutting of a finding's load-bearing fields silently unblocks the brief it demoted, and adding/extending a park silently mutes its standing alarm. This is a HUMAN gate: add an `authorized-by: human:<name>` key (or, for a park, a `parked-by: human:<name>` key) to the entry's YAML frontmatter whose name is mapped in the configured ASSAY_HUMAN_LOGIN_MAP; an agent-written justification is not sufficient. Know what this check does and does not do before you add that key: this offline --lint check does NOT itself read the PR. The authority is corroborated online only where `statusgen --corroborate --pr <pr>` runs in a pull_request job, and this check cannot tell whether yours does. Where it runs, it re-derives this same transition against the PR merge-base and fails the PR unless a human named in the authorizing key ACTED on the PR (an APPROVED review or an approval comment from their own account) — whether the key was written in this PR or was already on the entry. If your own CI runs --corroborate on PRs, writing the key on your own authority will NOT quietly pass; if it does not, this gutting gate is all that stands here — either way, get the named human to authorize the change.",
 				tr.rel, strings.Join(unauthorized, "; ")),
 			paths: []string{tr.rel},
 		})

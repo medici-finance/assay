@@ -20,10 +20,19 @@ package main
 // uses (corroborateStampsRuled). It fails CLOSED: a register-touching PR whose
 // merge-base cannot be resolved, or whose touched finding cannot be parsed, is
 // MISSING-CORROBORATION, never a pass.
+//
+// Whether the PR touches the register at all is decided from the LOCAL tree
+// against the resolved merge-base, never from the forge file listing alone: that
+// listing stops at 3000 files with no error, so a PR padded with paths sorting
+// ahead of docs/streams/findings/ would read as untouched. The listing is only
+// unioned in. When the merge-base cannot be resolved the listing is the only
+// source left, and it is trusted to say "untouched" only when its length equals
+// the forge's own changed_files count; anything else fails closed.
 
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -167,23 +176,78 @@ func corroborateRegisterTransitions(ts []registerTransition, data *ghPRData, rep
 	return out
 }
 
+// localTouchedFindings returns the findings-register entry files that differ
+// between base and the working tree at root — renames split into their delete and
+// add halves, so both names count. It reads git, not the forge, so it is complete
+// however many files the PR changes.
+func localTouchedFindings(root, base string) ([]string, error) {
+	out, err := exec.Command("git", "-C", root, "diff", "--name-only", "--no-renames", "-z",
+		base, "--", findingsRegisterDir).Output()
+	if err != nil {
+		return nil, fmt.Errorf("git diff %s -- %s: %w", base, findingsRegisterDir, err)
+	}
+	var paths []string
+	for _, p := range strings.Split(string(out), "\x00") {
+		if isFindingsRegisterEntry(p) {
+			paths = append(paths, p)
+		}
+	}
+	return paths, nil
+}
+
 // registerTransitionLane runs the lane for one PR. root is the checkout (the PR
-// head / merge commit in CI), files the PR's file list, mergeBase the PR merge-base ("" =
-// unresolvable), and fetchData returns the PR's reviews and comments (called at
-// most once, and only when there is a transition to judge). It returns nil when
-// the PR touches no findings entry — the lane has nothing to say.
-func registerTransitionLane(root, repo string, pr int, files []ghPRFile, mergeBase string, fetchData func() (*ghPRData, error)) ([]registerTransitionResult, error) {
+// head / merge commit in CI), files the PR's forge file list, mergeBase the PR
+// merge-base ("" = unresolvable), changedFiles the forge's changed-file count
+// (read only when the merge-base is unresolvable and the listing names no
+// entry), and fetchData the PR's reviews and comments (called at most once, and
+// only when there is a transition to judge). It returns nil when the PR touches
+// no findings entry — the lane has nothing to say.
+func registerTransitionLane(root, repo string, pr int, files []ghPRFile, mergeBase string,
+	changedFiles func() (int, error), fetchData func() (*ghPRData, error)) ([]registerTransitionResult, error) {
 	touched := touchedFindings(files)
-	if len(touched) == 0 {
+	if mergeBase == "" {
+		if len(touched) > 0 {
+			return []registerTransitionResult{{
+				Verdict: verdictMissing,
+				Moves:   "touches " + strings.Join(touched, ", "),
+				Evidence: "the PR merge-base could not be resolved, so the findings-register transitions this PR makes " +
+					"cannot be evaluated — fail-closed (statusgen/06 §B); fetch the base branch (fetch-depth: 0) and re-run",
+			}}, nil
+		}
+		// No merge-base, so the forge listing is the only witness that the PR
+		// touches no entry — and it is one only when shown complete.
+		n, err := changedFiles()
+		if err != nil {
+			return []registerTransitionResult{{
+				Verdict: verdictMissing,
+				Moves:   "register touch unknown",
+				Evidence: fmt.Sprintf("the PR merge-base could not be resolved and the forge's changed-file count could not be read (%v), "+
+					"so a file listing that names no findings entry cannot be shown complete — fail-closed (statusgen/06 §B)", err),
+			}}, nil
+		}
+		if n != len(files) {
+			return []registerTransitionResult{{
+				Verdict: verdictMissing,
+				Moves:   "register touch unknown",
+				Evidence: fmt.Sprintf("the PR merge-base could not be resolved and the forge listed %d of the PR's %d changed files, "+
+					"so a truncated listing cannot show the PR leaves docs/streams/findings/ untouched — fail-closed (statusgen/06 §B); "+
+					"fetch the base branch (fetch-depth: 0) and re-run", len(files), n),
+			}}, nil
+		}
 		return nil, nil
 	}
-	if mergeBase == "" {
+	local, err := localTouchedFindings(root, mergeBase)
+	if err != nil {
 		return []registerTransitionResult{{
 			Verdict: verdictMissing,
-			Moves:   "touches " + strings.Join(touched, ", "),
-			Evidence: "the PR merge-base could not be resolved, so the findings-register transitions this PR makes " +
-				"cannot be evaluated — fail-closed (statusgen/06 §B); fetch the base branch (fetch-depth: 0) and re-run",
+			Moves:   "register touch unknown",
+			Evidence: fmt.Sprintf("the working tree could not be compared with the PR merge-base (%v), so the findings-register "+
+				"transitions this PR makes cannot be evaluated — fail-closed (statusgen/06 §B)", err),
 		}}, nil
+	}
+	touched = unionSorted(touched, local)
+	if len(touched) == 0 {
+		return nil, nil
 	}
 	var out []registerTransitionResult
 	// A touched entry the detector cannot parse is invisible to it — fail closed
@@ -210,6 +274,20 @@ func registerTransitionLane(root, repo string, pr int, files []ghPRFile, mergeBa
 		out = append(out, corroborateRegisterTransitions(ts, data, repo, pr)...)
 	}
 	return out, nil
+}
+
+// unionSorted returns the sorted, de-duplicated union of two path lists.
+func unionSorted(a, b []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, p := range append(append([]string{}, a...), b...) {
+		if !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // registerTransitionsFail reports whether any lane result fails the run.

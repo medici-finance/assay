@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -1129,8 +1130,10 @@ func fetchPRDiff(repo string, pr int) (string, error) {
 // through the file names).
 func fetchPRFiles(repo string, pr int) ([]ghPRFile, error) {
 	// gh pr diff caps at 300 files (HTTP 406 on larger PRs). The paginated
-	// "List PR files" API has no such cap; reconstruct a unified diff from the
-	// per-file patch fields.
+	// "List PR files" API reaches further but still stops at 3000 files with no
+	// error, so a caller that decides anything from the ABSENCE of a path must
+	// check the listing's completeness (fetchPRChangedFiles) or derive the
+	// answer locally — the register-transition lane does both.
 	cmd := exec.Command("gh", "api", "--paginate", "--slurp",
 		fmt.Sprintf("repos/%s/pulls/%d/files", repo, pr))
 	out, err := cmd.Output()
@@ -1147,6 +1150,24 @@ func fetchPRFiles(repo string, pr int) ([]ghPRFile, error) {
 		files = append(files, p...)
 	}
 	return files, nil
+}
+
+// fetchPRChangedFiles returns the forge's own count of a PR's changed files
+// (the REST `pulls/{n}` changed_files field). The "List pull request files"
+// listing stops at 3000 entries with no error, so a listing is shown complete
+// only when its length equals this count — the same refusal shapeFromListing
+// applies to the model-autoflip lane.
+func fetchPRChangedFiles(repo string, pr int) (int, error) {
+	out, err := exec.Command("gh", "api", fmt.Sprintf("repos/%s/pulls/%d", repo, pr),
+		"--jq", ".changed_files").Output()
+	if err != nil {
+		return 0, fmt.Errorf("gh api pulls/%d: %w", pr, err)
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return 0, fmt.Errorf("PR %d changed_files %q: %w", pr, strings.TrimSpace(string(out)), err)
+	}
+	return n, nil
 }
 
 // ghPRData holds the subset of `gh pr view --json reviews,comments` that this check
@@ -1358,6 +1379,9 @@ var (
 	corroborateFilesFn     = fetchPRFiles
 	corroborateDataFn      = fetchPRData
 	corroborateMergeBaseFn = prMergeBaseSHA
+	// corroborateChangedFilesFn reads the forge's own changed-file count, the
+	// completeness check for the PR file listing (see fetchPRChangedFiles).
+	corroborateChangedFilesFn = fetchPRChangedFiles
 )
 
 func runCorroborate(prsArg string) int {
@@ -1490,8 +1514,12 @@ func runCorroborate(prsArg string) int {
 		// transition re-derived against its merge-base and corroborated against
 		// the humans named in the entry's authorizing keys — including a key that
 		// was already on the entry and so adds no diff line for the stamp lane.
-		if len(touchedFindings(files)) > 0 {
-			rs, err := registerTransitionLane(".", repo, pr, files, getMergeBase(), getData)
+		// The lane runs on EVERY PR: whether the PR touches the register is
+		// decided from the local tree against the merge-base, not from the
+		// forge listing (which truncates silently) — see registerTransitionLane.
+		{
+			countFn := func() (int, error) { return corroborateChangedFilesFn(repo, pr) }
+			rs, err := registerTransitionLane(".", repo, pr, files, getMergeBase(), countFn, getData)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "statusgen: PR #%d: %v\n", pr, err)
 				return 1

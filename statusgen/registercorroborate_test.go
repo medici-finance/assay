@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -30,8 +31,14 @@ const landedAnchoredFinding = "---\n" +
 type corroborateStub struct {
 	files     []ghPRFile
 	data      *ghPRData
+	dataErr   error  // the PR reviews/comments read fails
 	mergeBase string // "" = unresolvable
 	dataCalls int
+	// The forge's changed_files count is len(files)+listedShort: a positive
+	// listedShort is a listing the forge truncated without an error. countErr
+	// makes the count itself unreadable.
+	listedShort int
+	countErr    error
 }
 
 // runCorroborateOn chdirs into root, stubs the forge/git seams, and runs the
@@ -40,13 +47,24 @@ func runCorroborateOn(t *testing.T, root string, st *corroborateStub) int {
 	t.Helper()
 	t.Chdir(root)
 	oldRepo, oldFiles, oldData, oldMB := corroborateRepoFn, corroborateFilesFn, corroborateDataFn, corroborateMergeBaseFn
+	oldCount := corroborateChangedFilesFn
 	t.Cleanup(func() {
 		corroborateRepoFn, corroborateFilesFn, corroborateDataFn, corroborateMergeBaseFn = oldRepo, oldFiles, oldData, oldMB
+		corroborateChangedFilesFn = oldCount
 	})
+	corroborateChangedFilesFn = func(string, int) (int, error) {
+		if st.countErr != nil {
+			return 0, st.countErr
+		}
+		return len(st.files) + st.listedShort, nil
+	}
 	corroborateRepoFn = func() string { return "example/repo" }
 	corroborateFilesFn = func(string, int) ([]ghPRFile, error) { return st.files, nil }
 	corroborateDataFn = func(string, int) (*ghPRData, error) {
 		st.dataCalls++
+		if st.dataErr != nil {
+			return nil, st.dataErr
+		}
 		if st.data == nil {
 			return &ghPRData{}, nil
 		}
@@ -210,19 +228,131 @@ func TestRegCautionAddingPasses(t *testing.T) {
 	}
 }
 
-// TestRegUntouchedLaneSilent: a PR that touches no findings entry
+// TestRegUntouchedLaneSilent: a PR whose tree touches no findings entry
 // is untouched by this lane — no data fetch, exit 0.
 func TestRegUntouchedLaneSilent(t *testing.T) {
-	root, path := gutFixture(t, landedOpenFinding)
-	// Even a gutted working tree is not this PR's change when the diff names no
-	// findings file (the merge-base comparison only runs for a register-touching PR).
-	mutateFinding(t, path, landedOpenFinding, "resolved: false", "resolved: true")
+	root, _ := gutFixture(t, landedOpenFinding)
 	st := &corroborateStub{files: []ghPRFile{{Filename: "docs/other.md", Patch: "@@ -1 +1 @@\n+hello"}}, mergeBase: originMain(t, root)}
 	if rc := runCorroborateOn(t, root, st); rc != 0 {
 		t.Fatalf("a PR touching no findings entry must not be gated by this lane; rc=%d", rc)
 	}
 	if st.dataCalls != 0 {
 		t.Errorf("lane fetched PR data %d times for a PR touching no findings entry", st.dataCalls)
+	}
+}
+
+// otherFileListing is a forge file listing that names no findings entry — what
+// a listing truncated ahead of docs/streams/findings/ looks like.
+func otherFileListing() []ghPRFile {
+	return []ghPRFile{{Filename: "docs/aaa.md", Patch: "@@ -1 +1 @@\n+pad"}}
+}
+
+// TestRegListingOmitsGutFails: whether the PR touches the register is read
+// from the local tree against the resolved merge-base, never from the forge
+// listing alone. A listing that omits the findings entry (truncated with no
+// error) must not silence a reused-anchor gut that is in the tree.
+func TestRegListingOmitsGutFails(t *testing.T) {
+	root, path := gutFixture(t, landedAnchoredFinding)
+	mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
+	st := &corroborateStub{files: otherFileListing(), mergeBase: originMain(t, root), listedShort: 3000}
+	if rc := runCorroborateOn(t, root, st); rc != 1 {
+		t.Fatalf("a gut in the tree that the forge listing omits must still fail; rc=%d", rc)
+	}
+}
+
+// TestRegTruncatedNoBaseFails: with no merge-base the lane can only lean on
+// the listing, so a listing that cannot be shown complete — shorter than the
+// forge's changed_files count, or the count unreadable — fails closed.
+func TestRegTruncatedNoBaseFails(t *testing.T) {
+	for _, st := range []*corroborateStub{
+		{files: otherFileListing(), listedShort: 3000},
+		{files: otherFileListing(), countErr: errors.New("count unreadable")},
+	} {
+		root, _ := gutFixture(t, landedOpenFinding)
+		if rc := runCorroborateOn(t, root, st); rc != 1 {
+			t.Fatalf("no merge-base and an unproven listing (short %d, err %v) must fail closed; rc=%d", st.listedShort, st.countErr, rc)
+		}
+	}
+}
+
+// TestRegCompleteNoBaseSilent: with no merge-base, a listing proven complete
+// against changed_files that names no findings entry is a real "untouched".
+func TestRegCompleteNoBaseSilent(t *testing.T) {
+	root, _ := gutFixture(t, landedOpenFinding)
+	st := &corroborateStub{files: otherFileListing()}
+	if rc := runCorroborateOn(t, root, st); rc != 0 {
+		t.Fatalf("a complete listing naming no findings entry must pass; rc=%d", rc)
+	}
+}
+
+// TestRegBadBaseFailsClosed: a merge-base the local tree cannot be
+// compared with (an object git does not have) proves nothing about what the PR
+// touched — fail closed rather than read the error as "untouched".
+func TestRegBadBaseFailsClosed(t *testing.T) {
+	root, path := gutFixture(t, landedAnchoredFinding)
+	mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
+	st := &corroborateStub{files: otherFileListing(), mergeBase: strings.Repeat("0", 39) + "1"}
+	if rc := runCorroborateOn(t, root, st); rc != 1 {
+		t.Fatalf("a merge-base git cannot diff against must fail closed; rc=%d", rc)
+	}
+}
+
+// landedParkAnchored is an open finding already parked by a mapped human.
+const landedParkAnchored = "---\n" +
+	"id: F-gut\n" +
+	"date: \"2026-07-17\"\n" +
+	"title: Register guard gap\n" +
+	"affects: [\"stream-y\", \"stream-z/brief-01\"]\n" +
+	"resolved: false\n" +
+	"parked-until: \"2026-12-01\"\n" +
+	"parked-by: human:alex\n" +
+	"parked-reason: deferred\n" +
+	"---\n\nBody.\n"
+
+// TestRegReusedParkExtendFails: extending a park whose parked-by anchor is
+// already on the entry adds no human: line; with nobody acting on the PR the
+// park category itself must fail it.
+func TestRegReusedParkExtendFails(t *testing.T) {
+	root, path := gutFixture(t, landedParkAnchored)
+	mutateFinding(t, path, landedParkAnchored, `parked-until: "2026-12-01"`, `parked-until: "2099-01-01"`)
+	st := &corroborateStub{files: findingFiles(`-parked-until: "2026-12-01"`, `+parked-until: "2099-01-01"`), mergeBase: originMain(t, root)}
+	if rc := runCorroborateOn(t, root, st); rc != 1 {
+		t.Fatalf("a park extension authorized only by a pre-existing parked-by must fail; rc=%d", rc)
+	}
+}
+
+// TestRegParkedByNotResolveAuth: each category is judged against its own
+// key. parked-by authorizes a park, never a resolve — even when that human
+// approved the PR.
+func TestRegParkedByNotResolveAuth(t *testing.T) {
+	root, path := gutFixture(t, landedParkAnchored)
+	mutateFinding(t, path, landedParkAnchored, "resolved: false", "resolved: true")
+	st := &corroborateStub{
+		files:     findingFiles("-resolved: false", "+resolved: true"),
+		mergeBase: originMain(t, root),
+		data:      approvedBy("ada"),
+	}
+	if rc := runCorroborateOn(t, root, st); rc != 1 {
+		t.Fatalf("a resolve named only under parked-by must fail; rc=%d", rc)
+	}
+}
+
+// TestRegDataFetchErrFails: a lane that cannot read the PR's reviews and
+// comments cannot corroborate anything — the run exits non-zero.
+func TestRegDataFetchErrFails(t *testing.T) {
+	root, path := gutFixture(t, landedAnchoredFinding)
+	mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
+	st := &corroborateStub{
+		files:     findingFiles("-resolved: false", "+resolved: true"),
+		mergeBase: originMain(t, root),
+		data:      approvedBy("ada"),
+		dataErr:   errors.New("gh: HTTP 502"),
+	}
+	if rc := runCorroborateOn(t, root, st); rc != 1 {
+		t.Fatalf("an unreadable reviews/comments fetch must fail the run; rc=%d", rc)
+	}
+	if st.dataCalls == 0 {
+		t.Fatal("precondition: the lane must have tried to read the PR data")
 	}
 }
 
