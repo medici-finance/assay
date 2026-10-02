@@ -318,3 +318,65 @@ func containsStr(xs []string, want string) bool {
 	}
 	return false
 }
+
+// TestMinCorpusDerivedFromFeatureCount pins the derivation of the under-corpus
+// floor: DefaultConfig().MinCorpus is the documented events-per-variable target
+// times the feature count, with the count taken from the vector the model really
+// trains on (not from the same name list the production code reads), so a
+// drift in either the constant or the vector fails here.
+func TestMinCorpusDerivedFromFeatureCount(t *testing.T) {
+	const documentedEPV = 10 // the value recorded on EventsPerVariable
+	if EventsPerVariable != documentedEPV {
+		t.Fatalf("EventsPerVariable = %d, documented derivation says %d", EventsPerVariable, documentedEPV)
+	}
+	vecLen := len(ExtractJIT(Change{Files: []string{"a/x.go"}}).Vector())
+	want := documentedEPV * vecLen
+	if got := DefaultConfig().MinCorpus; got != want {
+		t.Fatalf("DefaultConfig().MinCorpus = %d, want EPV(%d) x vector length(%d) = %d", got, documentedEPV, vecLen, want)
+	}
+	if got := DerivedMinCorpus(); got != want {
+		t.Fatalf("DerivedMinCorpus() = %d, want %d", got, want)
+	}
+	if n := len(FeatureNames()); n != vecLen {
+		t.Fatalf("FeatureNames (%d) and Vector (%d) disagree on feature count", n, vecLen)
+	}
+}
+
+// TestMinCorpusGovernsLearnedSwitch is the flow test: a corpus one example
+// below the derived floor stays heuristic-only (could-not-learn), and one at the
+// floor trains, so the derived value really governs the heuristic-to-learned
+// switch through both Train and ScoreChange.
+func TestMinCorpusGovernsLearnedSwitch(t *testing.T) {
+	floor := DefaultConfig().MinCorpus
+	corpus := syntheticCorpus(floor+5, 11)
+
+	// Changes land one day apart, so a model as of Changes[k] trains on exactly
+	// the k changes that landed strictly before it.
+	below, at := corpus.Changes[floor-1], corpus.Changes[floor]
+
+	if _, err := Train(corpus, below.landedAt(), DefaultConfig()); err == nil || !contains(err.Error(), "under-corpus") {
+		t.Fatalf("Train with %d examples (floor %d) must refuse as under-corpus, got %v", floor-1, floor, err)
+	}
+	ls := ScoreChange(corpus, below, DefaultConfig())
+	if ls.State != StateCouldNotMeasure || !contains(ls.Reason, "could-not-learn") {
+		t.Fatalf("one below the floor must be could-not-learn, got state %q reason %q", ls.State, ls.Reason)
+	}
+	if ls.CorpusSize != floor-1 {
+		t.Fatalf("below-floor corpus size = %d, want %d", ls.CorpusSize, floor-1)
+	}
+	if !ls.Explained() {
+		t.Fatal("below-floor result must still carry the heuristic fallback")
+	}
+
+	m, err := Train(corpus, at.landedAt(), DefaultConfig())
+	if err != nil {
+		t.Fatalf("Train with exactly %d examples (the floor) must succeed: %v", floor, err)
+	}
+	if m.TrainN != floor {
+		t.Fatalf("TrainN = %d, want %d", m.TrainN, floor)
+	}
+	ls = ScoreChange(corpus, at, DefaultConfig())
+	if ls.State != StateMeasured {
+		t.Fatalf("at the floor must be a measured learned score, got %q (%s)", ls.State, ls.Reason)
+	}
+}

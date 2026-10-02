@@ -30,11 +30,42 @@ type Corpus struct {
 	Defects []Defect `json:"defects"`
 }
 
+// EventsPerVariable is the events-per-variable (EPV) target the learned layer's
+// minimum corpus is derived from: how many labeled training examples the model
+// wants per predictor before its logistic coefficients are treated as stable.
+//
+// Derivation: 10 is the conventional EPV floor for logistic regression
+// (Peduzzi et al. 1996, the guidance the JIT defect-prediction lineage in spec
+// §12 inherits). It is the conservative choice here because a floor set too low
+// graduates the model past the heuristic on too little data, and the heuristic
+// fallback is always available while the corpus seasons. Raising or lowering it
+// is a one-constant edit; MinCorpus tracks it, and the feature vector, with no
+// further change.
+const EventsPerVariable = 10
+
+// DerivedMinCorpus is the minimum labeled-corpus size for the learned layer to
+// train, computed from the model's own feature vector rather than typed as a
+// literal: EventsPerVariable times the number of predictors (len(FeatureNames),
+// 15 today, so 150). Adding or removing a feature moves the floor with it.
+//
+// It counts TOTAL labeled examples, so it is a lower bound on the EPV
+// guidance, which strictly counts defect-positive events: at a defect rate p
+// the corpus holds p*DerivedMinCorpus() events. Train separately refuses a
+// single-class corpus. A positive-event floor would be a different gate and is
+// not applied here.
+func DerivedMinCorpus() int {
+	return EventsPerVariable * len(FeatureNames())
+}
+
 // Config tunes the learned layer. MinCorpus is the three-state under-corpus
 // threshold: below this many labeled training examples the model does not train
 // and the score is emitted heuristic-only with a could-not-learn status.
 type Config struct {
-	MinCorpus    int              // minimum training examples to train (spec §3.2/§11)
+	// MinCorpus is the minimum training examples to train (spec §3.2/§11).
+	// Derivation: DefaultConfig sets it to DerivedMinCorpus() — EventsPerVariable
+	// times the feature count — so it follows the feature vector. It was a bare
+	// 40 before; 40 is under three examples per predictor.
+	MinCorpus    int
 	Weights      HeuristicWeights // heuristic weighting (defaults if zero)
 	Epochs       int              // gradient-descent epochs
 	LearningRate float64          // gradient-descent step
@@ -44,7 +75,7 @@ type Config struct {
 // DefaultConfig is the transparent default tuning.
 func DefaultConfig() Config {
 	return Config{
-		MinCorpus:    40,
+		MinCorpus:    DerivedMinCorpus(),
 		Weights:      DefaultHeuristicWeights(),
 		Epochs:       400,
 		LearningRate: 0.1,
