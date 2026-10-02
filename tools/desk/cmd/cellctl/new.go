@@ -154,10 +154,13 @@ func cmdNew(args []string) {
 	if exists(d) {
 		die("%s already exists", d)
 	}
+	// Every home-derived path is resolved BEFORE the first directory is created: a refusal
+	// that lands mid-scaffold leaves a half-built cell that `new` then refuses to overwrite.
+	home, cfgHome := hostHome(e), realConfigHome(e)
 	mustMkdirAll(filepath.Join(d, "home", ".config", "assay"), filepath.Join(d, "bin"),
 		filepath.Join(d, "index"), filepath.Join(d, "worktrees"))
 	copyFile(yaml, filepath.Join(d, "cells-"+cell+".yaml"))
-	linkIfPresent(filepath.Join(e.Get("HOME"), ".gitconfig"), filepath.Join(d, "home", ".gitconfig"))
+	linkIfPresent(filepath.Join(home, ".gitconfig"), filepath.Join(d, "home", ".gitconfig"))
 	chmod700(filepath.Join(d, "home"), filepath.Join(d, "home", ".config"), filepath.Join(d, "home", ".config", "assay"))
 	githubHost := e.GetOr("GITHUB_HOST", "github.com")
 	rootsLine := "# CELL_ROOTS=<owner>/<repo>=<abs path>,...   (exported as DESK_ROOTS at boot; unset = placeholder topology)"
@@ -168,7 +171,7 @@ func cmdNew(args []string) {
 
 	if forge == "github" {
 		// The gh CLI config is a GitHub custody artifact; linked only on a github cell.
-		linkIfPresent(filepath.Join(e.Get("HOME"), ghConfigRelPath), filepath.Join(d, "home", ghConfigRelPath))
+		linkIfPresent(filepath.Join(home, ghConfigRelPath), filepath.Join(d, "home", ghConfigRelPath))
 		// The endpoint is DERIVED from the host, never spelled as a literal.
 		forgeAPIBase := "https://api." + githubHost
 		writeFile(filepath.Join(d, "cell.env"), fmt.Sprintf(`# cellctl cell.env — %s (k8s, github, scaffolded %s)
@@ -186,7 +189,7 @@ DESKD_APP_ID_VAR=%s
 ORGS=%s
 ROLES="%s"
 `+cockpitBlock+pinnedBlock, cell, today, cell, repo, rootsLine, d, cell, forgeAPIBase, port, d, pem, idvar, orgs, roles))
-		writeFile(filepath.Join(d, "README.md"), fmt.Sprintf(githubReadme, cell, cell, idvar, realConfigHome(e), idvar, cell, cell, cell))
+		writeFile(filepath.Join(d, "README.md"), fmt.Sprintf(githubReadme, cell, cell, idvar, cfgHome, idvar, cell, cell, cell))
 	} else {
 		forgeAPIBase := gitlabAPIBase
 		if forgeAPIBase == "" {
@@ -358,6 +361,9 @@ func newHouse(e *Env, root, cell, repo, roots, roles, port string) {
 	// From here every step is journaled: a failure (a link a Windows host without the symlink
 	// privilege cannot make, above all) removes exactly what this run created and nothing else,
 	// so a retry is not blocked by a half-made cell (newlink.go).
+	// Resolved before the first directory is created, like realCfg above: a refusal here must
+	// leave no half-built cell behind.
+	home := hostHome(e)
 	mustMkdirAll(root)
 	l := newLinker()
 	s, err := beginCellScaffold(l.goos, d)
@@ -366,8 +372,8 @@ func newHouse(e *Env, root, cell, repo, roots, roles, port string) {
 	}
 	s.must(s.mkdir(filepath.Join(d, "home"), filepath.Join(d, "home", ".config"), filepath.Join(d, "worktrees"), filepath.Join(d, "shim")))
 	s.must(s.link(l, realCfg, filepath.Join(d, "home", ".config", "assay"), "the config home"))
-	s.must(s.linkIfPresent(l, ghLinkSource(runtime.GOOS, e, e.Get("HOME")), filepath.Join(d, "home", ghConfigRelPath), "the gh config"))
-	s.must(s.linkIfPresent(l, filepath.Join(e.Get("HOME"), ".gitconfig"), filepath.Join(d, "home", ".gitconfig"), "the gitconfig"))
+	s.must(s.linkIfPresent(l, ghLinkSource(runtime.GOOS, e, home), filepath.Join(d, "home", ghConfigRelPath), "the gh config"))
+	s.must(s.linkIfPresent(l, filepath.Join(home, ".gitconfig"), filepath.Join(d, "home", ".gitconfig"), "the gitconfig"))
 	s.must(s.chmod700(filepath.Join(d, "home"), filepath.Join(d, "home", ".config")))
 	githubHost := e.GetOr("GITHUB_HOST", "github.com")
 	today := time.Now().UTC().Format("2006-01-02")

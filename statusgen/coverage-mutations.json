@@ -1,0 +1,65 @@
+{
+  "test": "go test . -run 'Coverage|TreeDiff|NoAncestryWitnessJudge|DeclaredEntries' -count=1",
+  "control": {
+    "name": "CONTROL — the tree comparison never invalidates (any witness is reused whatever changed: a stale witness with a changed path in scope releases)",
+    "file": "coverage.go",
+    "old": "if eff.invalidatedBy(p) {",
+    "new": "if false && eff.invalidatedBy(p) {"
+  },
+  "mutations": [
+    {
+      "name": "ancestry reintroduced as the judge (the #2026 cause-1 defect: a squash-merged witness with a byte-identical scope is refused)",
+      "file": "coverage.go",
+      "old": "\teff := scope.atBase(root, w, t)\n",
+      "new": "\tif exec.Command(\"git\", \"-C\", root, \"merge-base\", \"--is-ancestor\", w, t).Run() != nil {\n\t\treturn revisionMismatch, \"\"\n\t}\n\teff := scope.atBase(root, w, t)\n"
+    },
+    {
+      "name": "PLANTED second instance of the class: a helper elsewhere in the package asks git for ancestry",
+      "file": "verifyrun.go",
+      "old": "func witnessTreeOf(text string) string {",
+      "new": "func witnessIsAncestor(root, w, t string) bool {\n\treturn exec.Command(\"git\", \"-C\", root, \"merge-base\", \"--is-ancestor\", w, t).Run() == nil\n}\n\nfunc witnessTreeOf(text string) string {"
+    },
+    {
+      "name": "absent witness commit treated as a match (an unreachable witness tree releases)",
+      "file": "coverage.go",
+      "old": "\tif why != \"\" {\n\t\treturn revisionUnestablished, fmt.Sprintf(\"the witness's commit %s %s\", witnessTree, why)",
+      "new": "\tif why != \"\" {\n\t\treturn revisionMatch, fmt.Sprintf(\"the witness's commit %s %s\", witnessTree, why)"
+    },
+    {
+      "name": "unresolvable item revision treated as a match",
+      "file": "coverage.go",
+      "old": "return revisionUnestablished, fmt.Sprintf(\"the item's revision %s %s\", target, why)",
+      "new": "return revisionMatch, fmt.Sprintf(\"the item's revision %s %s\", target, why)"
+    },
+    {
+      "name": "shared-history requirement dropped (an unrelated-root commit with an equal tree in scope releases)",
+      "file": "coverage.go",
+      "old": "if err := coverageGit(root, \"merge-base\", \"--end-of-options\", w, t).Run(); err != nil {",
+      "new": "if err := coverageGit(root, \"merge-base\", \"--end-of-options\", w, t).Run(); false && err != nil {"
+    },
+    {
+      "name": "a hex-shaped ref name accepted as the witness's object id",
+      "file": "coverage.go",
+      "old": "!strings.HasPrefix(id, strings.ToLower(tok))",
+      "new": "false && !strings.HasPrefix(id, strings.ToLower(tok))"
+    },
+    {
+      "name": "a non-commit object (a tree id) accepted without peeling to a commit",
+      "file": "coverage.go",
+      "old": "\"--end-of-options\", tok+\"^{commit}\").Output()",
+      "new": "\"--end-of-options\", tok).Output()"
+    },
+    {
+      "name": "no manifest narrows instead of staying conservative (cause 2 'fixed' by dropping the guard)",
+      "file": "coverage.go",
+      "old": "\teff := scope.atBase(root, w, t)\n",
+      "new": "\teff := scope.atBase(root, w, t)\n\teff.conservative = false\n"
+    },
+    {
+      "name": "rename detection back on (a path renamed away shows only its destination)",
+      "file": "coverage.go",
+      "old": "\"diff\", \"--name-only\", \"--no-renames\", \"-z\"",
+      "new": "\"diff\", \"--name-only\", \"-z\""
+    }
+  ]
+}

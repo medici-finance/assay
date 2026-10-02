@@ -259,13 +259,15 @@ func (s *cellScaffold) write(p, body string) { s.must(s.writeNew(p, body)) }
 // ghLinkSource is the GitHub CLI config directory a house cell links in. Everywhere but windows
 // it stays <home>/.config/gh, the oracle's source (the parity harness diffs the tree). On windows
 // the gh CLI keeps its config under %APPDATA%\GitHub CLI, so the source follows gh's own
-// precedence via the resolver the Codex launch already uses.
+// precedence via ghConfigDirFor, the one resolver (homeresolve.go).
 func ghLinkSource(goos string, e *Env, home string) string {
 	if goos != "windows" {
 		return filepath.Join(home, ghConfigRelPath)
 	}
-	c := &Cell{Env: e}
-	return c.codexGHConfigDir(goos, c.codexOperatorHome(goos))
+	if p, err := ghConfigDirFor(goos, e); err == nil {
+		return p
+	}
+	return filepath.Join(home, ghConfigRelPath)
 }
 
 // ---- junction reparse data (built on every host so it is table-tested everywhere) ----
