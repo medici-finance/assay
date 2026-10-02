@@ -81,6 +81,12 @@ func TestOutboundGitLabNoReply(t *testing.T) {
 // the bare roots — what documentation of the check has to spell — stay tolerated.
 func TestOutboundWindowsMachinePaths(t *testing.T) {
 	obRoster(t)
+	// The outbound context is package-level: an earlier test may have left an override reason
+	// in it, and a public write then passes instead of refusing. Start from a clean one.
+	SetOutboundContext(OutboundContext{Tool: "windows-machine-paths", Verb: "comment"})
+	t.Cleanup(func() { SetOutboundContext(OutboundContext{}) })
+	// The outbound context is package-level: an earlier test may have left an override reason
+	// in it, and a public write then passes instead of refusing. Start from a clean one.
 	bs := `\`
 	refused := []struct{ name, path string }{
 		{"drive_backslash", `C:` + bs + `Users` + bs + `example` + bs + `src` + bs + `notes.md`},
