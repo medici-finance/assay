@@ -1,0 +1,83 @@
+{
+  "test": "go test . -run 'Netns' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — the PRE-FIX sandbox: bare `unshare --net --map-root-user`, no helper, lo left DOWN (issue #1925)",
+    "file": "netns.go",
+    "old": "\treturn []string{unsharePath, \"--net\", \"--map-root-user\", selfExe, netnsHelperArg, parentNS}\n",
+    "new": "\treturn []string{unsharePath, \"--net\", \"--map-root-user\"}\n"
+  },
+  "mutations": [
+    {
+      "name": "PLANTED REGRESSION — the sandbox leaves the network open (no new net namespace, no helper)",
+      "file": "netns.go",
+      "old": "\treturn []string{unsharePath, \"--net\", \"--map-root-user\", selfExe, netnsHelperArg, parentNS}\n",
+      "new": "\treturn []string{unsharePath, \"--map-root-user\", \"env\", \"--\", \"env\", \"--\"}\n"
+    },
+    {
+      "name": "the helper ignores a failure to bring lo up (falls through instead of refusing)",
+      "file": "netns_linux.go",
+      "old": "\tif err := loopbackUp(); err != nil {",
+      "new": "\tif err := loopbackUp(); false && err != nil {"
+    },
+    {
+      "name": "the namespace-identity check is dropped (helper runs the row in the caller's namespace)",
+      "file": "netns.go",
+      "old": "\tif own == parent {",
+      "new": "\tif false && own == parent {"
+    },
+    {
+      "name": "an UP non-loopback interface is tolerated inside the namespace",
+      "file": "netns.go",
+      "old": "\t\tif ifc.Up {",
+      "new": "\t\tif false && ifc.Up {"
+    },
+    {
+      "name": "an address-bearing non-loopback interface is tolerated inside the namespace",
+      "file": "netns.go",
+      "old": "\t\tif ifc.Addrs > 0 {",
+      "new": "\t\tif false && ifc.Addrs > 0 {"
+    },
+    {
+      "name": "lo left down is accepted",
+      "file": "netns.go",
+      "old": "\tif !loUp {",
+      "new": "\tif false && !loUp {"
+    },
+    {
+      "name": "a helper refusal is not reclassified (recorded as the row's own result)",
+      "file": "netns.go",
+      "old": "\tres.couldNotRun = true\n",
+      "new": "\tres.couldNotRun = false\n"
+    },
+    {
+      "name": "main() never dispatches the helper (review A1) — killed by TestNetnsBinaryDispatchesHelper on every host",
+      "file": "main.go",
+      "old": "\tmaybeRunNetnsHelper()\n\n\t// `statusgen --version`",
+      "new": "\n\t// `statusgen --version`"
+    },
+    {
+      "name": "runHermeticallyWith bypasses runSandboxed, so a helper refusal is the row's own exit 125 (review A2)",
+      "file": "verifyrun.go",
+      "old": "\treturn runSandboxed(root, command, timeout, wrapper, plan, shell)\n",
+      "new": "\treturn runVerifyCommandWith(root, command, timeout, wrapper, plan, shell)\n"
+    },
+    {
+      "name": "an unavailable sandbox is ignored and the row runs un-sandboxed (review A4) — killed on every host, Linux included",
+      "file": "verifyrun.go",
+      "old": "\twrapper, ok, why := networkOffWrapperFn()\n\tif !ok {",
+      "new": "\twrapper, ok, why := networkOffWrapperFn()\n\tif false && !ok {"
+    },
+    {
+      "name": "PLANTED F1-CLASS INSTANCE — a netns test regains a host-only premise (bogus caller id); killed by TestNetnsTestsPassInSandbox even when the suite runs on the host",
+      "file": "netns_test.go",
+      "old": "\tcmd := exec.Command(selfExe(t), netnsHelperArg, callerNS, \"sh\", \"-c\", \"echo RAN-UNSANDBOXED\")\n",
+      "new": "\t_ = callerNS\n\tcmd := exec.Command(selfExe(t), netnsHelperArg, \"net:[0]\", \"sh\", \"-c\", \"echo RAN-UNSANDBOXED\")\n"
+    },
+    {
+      "name": "the class guard's literal matcher never matches",
+      "file": "netns_test.go",
+      "old": "\t\t\t\thit = x.Kind == token.STRING && (v == \"--net\" || strings.HasPrefix(v, \"--net=\"))",
+      "new": "\t\t\t\thit = false && x.Kind == token.STRING && (v == \"--net\" || strings.HasPrefix(v, \"--net=\"))"
+    }
+  ]
+}
