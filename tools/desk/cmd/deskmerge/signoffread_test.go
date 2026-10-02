@@ -169,18 +169,27 @@ func TestSignOffReadAmongOthers(t *testing.T) {
 // found. A read that stops at the first page reports it as absent ("deleted"), which is a
 // truncated read presented as a definitive one.
 func TestSignOffReadPastFirst100(t *testing.T) {
-	for _, pos := range []int{100, 150} {
-		t.Run(fmt.Sprintf("position %d", pos+1), func(t *testing.T) {
-			thread := append(others(pos, 1000), signOffNode())
-			signOffEnv(t, map[int][]gqlComment{444: thread})
-			c, err := fetchComment(signOffURL)
-			if err != nil {
-				t.Fatalf("sign-off at comment %d: exit %d: %v", pos+1, deskkit.ExitCodeOf(err), err)
+	// An /issues/N permalink naming a pull request resolves no issue and falls back to the
+	// change read, so it must walk the same way.
+	issuesURL := strings.Replace(signOffURL, "/pull/", "/issues/", 1)
+	for _, link := range []string{signOffURL, issuesURL} {
+		for _, pos := range []int{100, 150} {
+			kind := "pull"
+			if link == issuesURL {
+				kind = "issues"
 			}
-			if c.ID != signOffCID {
-				t.Fatalf("read returned comment %d, want %d", c.ID, signOffCID)
-			}
-		})
+			t.Run(fmt.Sprintf("%s position %d", kind, pos+1), func(t *testing.T) {
+				thread := append(others(pos, 1000), signOffNode())
+				signOffEnv(t, map[int][]gqlComment{444: thread})
+				c, err := fetchComment(link)
+				if err != nil {
+					t.Fatalf("sign-off at comment %d: exit %d: %v", pos+1, deskkit.ExitCodeOf(err), err)
+				}
+				if c.ID != signOffCID {
+					t.Fatalf("read returned comment %d, want %d", c.ID, signOffCID)
+				}
+			})
+		}
 	}
 }
 
