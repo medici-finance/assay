@@ -1263,7 +1263,7 @@ func witnessTreeApplies(root string, scope witnessScope, witnessTree, target str
 		return revisionUnestablished, fmt.Sprintf("the item's revision %s does not resolve to a commit in this clone", target)
 	}
 	if exec.Command("git", "-C", root, "cat-file", "-e", "--end-of-options", witnessTree+"^{commit}").Run() != nil {
-		return revisionMatch, fmt.Sprintf("the witness's commit %s is not in this clone (a squash merge discards the branch commit a witness names; fetch it, e.g. the pull request's head ref), so the tree the check ran against cannot be compared", witnessTree)
+		return revisionUnestablished, fmt.Sprintf("the witness's commit %s is not in this clone (a squash merge discards the branch commit a witness names; fetch it, e.g. the pull request's head ref), so the tree the check ran against cannot be compared", witnessTree)
 	}
 	var eff witnessScope
 	if scope.dependsState != labelAbsent {
