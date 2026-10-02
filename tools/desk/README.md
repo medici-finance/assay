@@ -2002,7 +2002,11 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
   `verify-desk`, `intake-desk`), positionally or as `--role`; a spelling in neither vocabulary
   refuses (exit 5) naming both. An existing valid worktree is reused (idempotent); a stray or
   foreign-repo path is refused, never clobbered; a fetch that cannot run is could-not-check
-  (exit 6) — `--no-fetch` is the explicit opt-out, never the default. The shared checkout's index
+  (exit 6) — `--no-fetch` is the explicit opt-out, never the default. Before the first network
+  fetch, the requested role's credential is refreshed and supplied through a command-scoped,
+  host-scoped helper, replacing inherited helpers without editing the source checkout.
+  Network origins must be HTTPS without embedded credentials; local origins need no credential.
+  The shared checkout's index
   and `user.*` config are untouched; its only writes are enabling `extensions.worktreeConfig`
   (once) and the new branch's own tracking section. `deskboot`'s shared-checkout refusal prints
   this command verbatim (with the loop name it was given and the absolute `--repo-root`), plus

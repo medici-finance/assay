@@ -93,14 +93,14 @@ func TestAckNoRepoOmitsAtSegment(t *testing.T) {
 	}
 }
 
-// TestAckRefusesOverTwelveWords — a restatement over twelve words is refused (exit 5) and
+// TestAckUsageErrorOverTwelveWords — a restatement over twelve words is invalid input (exit 2) and
 // writes NO beacon record (a refused receipt is not a receipt).
-func TestAckRefusesOverTwelveWords(t *testing.T) {
+func TestAckUsageErrorOverTwelveWords(t *testing.T) {
 	withEnv(t)
 	thirteen := "one two three four five six seven eight nine ten eleven twelve thirteen"
 	rc, _, errb := runAck([]string{thirteen})
-	if rc != deskkit.ExitRefused {
-		t.Fatalf("13-word restatement rc = %d, want 5; stderr=%s", rc, errb)
+	if rc != exitUsage {
+		t.Fatalf("13-word restatement rc = %d, want 2; stderr=%s", rc, errb)
 	}
 	if !strings.Contains(errb, "12") {
 		t.Errorf("the refusal must name the twelve-word cap; stderr=%s", errb)
@@ -168,12 +168,12 @@ func TestAckRequiresDeskLoop(t *testing.T) {
 	}
 }
 
-// TestAckEmptyRestatementRefuses — an empty restatement is a refusal (a receipt with
+// TestAckEmptyRestatementUsageError — an empty restatement is invalid input (a receipt with
 // nothing to confirm is not a receipt).
-func TestAckEmptyRestatementRefuses(t *testing.T) {
+func TestAckEmptyRestatementUsageError(t *testing.T) {
 	withEnv(t)
-	if rc, _, _ := runAck([]string{}); rc != deskkit.ExitRefused {
-		t.Fatalf("empty restatement rc = %d, want 5", rc)
+	if rc, _, _ := runAck([]string{}); rc != exitUsage {
+		t.Fatalf("empty restatement rc = %d, want 2", rc)
 	}
 }
 
@@ -184,5 +184,41 @@ func TestAckKillSwitchDisabled(t *testing.T) {
 	t.Setenv("DESK_TOOLS_DISABLED", "1")
 	if rc, _, _ := runAck([]string{"should not ack"}); rc != deskkit.ExitDisabled {
 		t.Fatalf("kill switch rc = %d, want 3", rc)
+	}
+}
+
+func TestAckUsageCorrectionWritesExactlyOneReceipt(t *testing.T) {
+	for _, args := range [][]string{
+		{"one two three four five six seven eight nine ten eleven twelve thirteen"},
+		{"start the worker desk", "--repo", "example-reconciler"},
+		{"--unknown", "start"},
+		{},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			withEnv(t)
+			if rc, out, errb := runAck(args); rc != exitUsage || out != "" || !strings.HasPrefix(errb, "usage:") {
+				t.Fatalf("bad input: rc=%d out=%q stderr=%q", rc, out, errb)
+			}
+			if path, _ := deskkit.AckBeaconPath("sess-1"); path != "" {
+				if _, err := os.Stat(path); !os.IsNotExist(err) {
+					t.Fatal("invalid input wrote a beacon")
+				}
+			}
+			if rc, _, errb := runAck([]string{"--repo", "example-reconciler", "start the worker desk"}); rc != 0 {
+				t.Fatalf("corrected receipt: rc=%d stderr=%s", rc, errb)
+			}
+			var acks []deskkit.AckRecord
+			if err := json.Unmarshal(loadBeacon(t, "sess-1")["acks"], &acks); err != nil || len(acks) != 1 {
+				t.Fatalf("correction must write exactly one receipt: count=%d error=%v", len(acks), err)
+			}
+		})
+	}
+}
+
+func TestAckKillSwitchPrecedesUsageCorrection(t *testing.T) {
+	withEnv(t)
+	t.Setenv("DESK_TOOLS_DISABLED", "1")
+	if rc, _, _ := runAck([]string{"one two three four five six seven eight nine ten eleven twelve thirteen"}); rc != deskkit.ExitDisabled {
+		t.Fatalf("disabled desk returned %d, want 3 even for malformed input", rc)
 	}
 }
