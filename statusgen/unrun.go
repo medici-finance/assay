@@ -69,7 +69,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -468,7 +467,7 @@ var closedAtBase = func(root string, streams []*Stream) (set map[string]bool, ok
 	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
 		return nil, false
 	}
-	mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output()
+	mb, err := gitMergeBaseOut(root, "HEAD", remoteMainRef)
 	if err != nil || strings.TrimSpace(string(mb)) == "" {
 		return nil, false
 	}
@@ -479,8 +478,7 @@ var closedAtBase = func(root string, streams []*Stream) (set map[string]bool, ok
 		if relErr != nil {
 			continue
 		}
-		out, showErr := exec.Command("git", "-C", root, "show",
-			base+":"+filepath.ToSlash(filepath.Join(rel, "README.md"))).Output()
+		out, showErr := gitShowObject(root, base, filepath.ToSlash(filepath.Join(rel, "README.md")))
 		if showErr != nil {
 			continue // stream did not exist at base: every row in it is new
 		}

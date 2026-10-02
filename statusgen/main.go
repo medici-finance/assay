@@ -35,6 +35,9 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// leak its drive section into the next board).
 	activeDriveStatuses = nil
 	activeDriveHeartbeat = ""
+	// One git object reader + read memo for this run, closed when it returns
+	// (gitbatch.go) — so no answer outlives the run that read it.
+	defer beginGitReadSession()()
 	// Word-budget checks run FIRST — a budget violation is a
 	// hard PROBLEM just like any other source-check failure. Malformed specs
 	// were already caught in main() before reaching run().
