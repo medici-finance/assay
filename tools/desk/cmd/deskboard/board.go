@@ -1098,22 +1098,9 @@ const (
 	actFlip        = "FLIP"
 	actReReview    = "RE-REVIEW"
 	actNeedsReview = "NEEDS-REVIEW"
-	// actHumanOwned (#177) is a trusted human maintainer's OWN open PR with no
-	// reviewer-App verdict at head — e.g. the closure artifact of a human-gated
-	// brief, which the review desk deliberately does NOT dispatch a model reviewer
-	// on (a model reviewing the human's own ratified ruling inverts the gate). It is
-	// a distinct TERMINAL state, never NEEDS-REVIEW: without it such a PR read as
-	// desk-review neglect and tripped the UNREVIEWED neglect alarm every sweep, a
-	// false alarm that recurs for every human-gated closure. It is kept OUT of the
-	// NEEDS-REVIEW/RE-REVIEW dispatch gate (delta_extractors.go) and the UNREVIEWED
-	// count (the author owns and merges it, so it is not desk neglect) — but the
-	// row's CI/mergeability columns still render, so the human sees the PR's real
-	// state. Only the ACCOUNTABLE-human set qualifies (deskkit.TrustedHumanAuthor):
-	// App-authored and shared-machine-account PRs stay NEEDS-REVIEW.
-	actHumanOwned = "HUMAN-OWNED"
-	actMergeCurr  = "MERGE-CURR"
-	actReady      = "READY"
-	actCheck      = "CHECK"
+	actMergeCurr   = "MERGE-CURR"
+	actReady       = "READY"
+	actCheck       = "CHECK"
 )
 
 // guardArmMarker is the distinct phrase the fail-loud guard arm (#400 R2) puts in its
@@ -1250,12 +1237,6 @@ type classifyInput struct {
 	// verdict's submitted time is AFTER the label/edit, so the signal clears — no loop.
 	nonCommitResolution     bool
 	nonCommitResolutionNote string
-	// authorTrustedHuman (#177): the PR's author is an ACCOUNTABLE trusted human
-	// (deskkit.TrustedHumanAuthor) — a maintainer's own PR, not a role App's nor a
-	// shared machine account's. Consulted ONLY in the no-verdict-at-head arm, to
-	// route it to HUMAN-OWNED instead of NEEDS-REVIEW so the neglect alarm measures
-	// only PRs the desk is responsible for reviewing.
-	authorTrustedHuman bool
 }
 
 // classify reproduces deskboard v1's ACTION semantics exactly, with the single #216
@@ -1264,18 +1245,13 @@ type classifyInput struct {
 func classify(in classifyInput) (action, note string) {
 	switch {
 	case !in.ever:
-		// #177: a trusted human maintainer's OWN PR with no reviewer verdict is not
-		// desk neglect — the review desk declines to review a human's own ratified
-		// ruling (a model reviewing it inverts the human gate) and the author merges
-		// it. Route it to HUMAN-OWNED so it stays out of the NEEDS-REVIEW dispatch
-		// gate and the UNREVIEWED neglect alarm. App-authored and shared-machine
-		// PRs do NOT qualify (authorTrustedHuman is the accountable-human set) and
-		// stay NEEDS-REVIEW.
-		if in.authorTrustedHuman {
-			return actHumanOwned, "authored by a trusted human maintainer with no desk review at head — the " +
-				"review desk declines to review a human's own ratified ruling (that would invert the human " +
-				"gate); the author owns and merges this. NOT desk-review neglect (#177)"
-		}
+		// #2028: authorship is NOT a reason to skip review. The trust gate in
+		// classifyPRFrom (deskkit.TrustedAuthor, then a current blessing) is the ONE
+		// authorship filter: an unblessed author never reaches classify (quarantined in
+		// EXTERNAL / UNBLESSED), and every author it admits — a trusted human, a trusted
+		// shared login, a role App, a blessed outsider — is dispatched alike. The retired
+		// #177 HUMAN-OWNED arm skipped a trusted human's own PR here; a reintroduction of
+		// that shape is held by TestAuthorSkipClassGuard.
 		return actNeedsReview, "no bot APPROVED/CHANGES_REQUESTED at head — dispatch a reviewer"
 	case !in.atHead:
 		if !in.ownFilesChanged {
@@ -1562,9 +1538,6 @@ func buildClassifyInput(p prBase, rs reviewState, ciRequired bool, zeroCI string
 		zeroCI:                 zeroCI,
 		suspectNoOp:            rs.suspectNoOp,
 		externalPrereqDeclared: rs.externalPrereqDeclared,
-		// #177: the author is derived from the PR payload, with no extra network read
-		// — the same roster the trust gate already consulted for this PR.
-		authorTrustedHuman: deskkit.TrustedHumanAuthor(p.Author.Login),
 	}
 }
 
@@ -2169,9 +2142,8 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 	// change-level: this PR's own reviews. A read failure here is a fact about ONE PR, not
 	// the repo, so it degrades to "no verdict established" — reviewState{}'s zero value
 	// (ever=false) — rather than failing the sweep. That routes through classify()'s
-	// existing !ever arm to NEEDS-REVIEW (or HUMAN-OWNED for a trusted human author,
-	// #177 — also not a cleared state), reusing the existing contract instead of a second
-	// degrade mechanism.
+	// existing !ever arm to NEEDS-REVIEW (never a cleared state), reusing the existing
+	// contract instead of a second degrade mechanism.
 	var rs reviewState
 	reviews, err := snapReviews, error(nil)
 	if !haveReviews {

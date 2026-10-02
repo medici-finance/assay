@@ -97,24 +97,24 @@ func TrustedPublicAuthor(login string) bool {
 	return false
 }
 
-// TrustedHumanAuthor reports whether login is an ACCOUNTABLE trusted human — the
-// person who owns and merges their OWN PR, as distinct from a role App or a shared
-// machine account. It answers one question for the board's neglect axis (#177): a
-// PR with no reviewer-App verdict at head is desk-review neglect ONLY when the desk
-// is responsible for reviewing it; a maintainer's own un-reviewed PR (the closure
-// artifact of a human-gated brief, where the human fills the decision table in their
-// own PR and merges it) is theirs to merge, and the review desk deliberately does
-// not dispatch a model reviewer on it — a model reviewing the human's ratified
-// ruling inverts the gate.
+// TrustedHumanAuthor reports whether login is an ACCOUNTABLE trusted human — a person,
+// as distinct from a role App or a shared machine account. Its consumer is the auto-lane
+// opt-in validator (autolane.go: an area a bot opted in is an area nobody accountable
+// opted in).
+//
+// It is NOT a review-dispatch predicate. It once drove the board's #177 HUMAN-OWNED arm,
+// which skipped review of a trusted human's own PR; #2028 retired that arm. Whether a PR
+// is reviewed is decided by the trust gate alone (TrustedAuthor, then a current blessing):
+// every admitted author is reviewed alike, and only an unblessed one is kept out. Do not
+// re-wire this predicate into a board classification arm — cmd/deskboard's
+// TestAuthorSkipClassGuard fails on it.
 //
 // The accountable-human set is: the mapped humans of ASSAY_HUMAN_LOGIN_MAP, plus
 // the single blessing authority (an accountable human by construction — the
 // loader refuses a bot/App bless login). It deliberately EXCLUDES:
-//   - role Apps / bot renderings ([bot], app/, -app, -bot) — never a human, and
-//     #177's non-goal keeps App-authored PRs in the review-neglect metric;
+//   - role Apps / bot renderings ([bot], app/, -app, -bot) — never a human;
 //   - a shared machine account admitted to ASSAY_TRUSTED_LOGINS as a plain human
-//     (an org push/token account, not an accountable person). Its PRs are NOT "a
-//     trusted human's own PRs" and stay in the neglect metric. This is why the
+//     (an org push/token account, not an accountable person). This is why the
 //     check is NOT `TrustedAuthor && !bot`: that would sweep the shared account
 //     in too — the accountable-human set is ASSAY_HUMAN_LOGIN_MAP plus the bless
 //     authority, nothing wider.
