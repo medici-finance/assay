@@ -211,6 +211,19 @@ rows_passed=10 rows_total=10
 
 VERIFY: PASS — all ten Verify rows passed by hand and in the dry-run witness at cca9028244d9, with every required PASS line and both mutation totals observed.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./cmd/deskpushguard/ ./internal/deskkit/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ beb5461ca66e (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test -timeout 10m ./cmd/deskpushguard/ ./cmd/deskpr/ ./cmd/deskwt/` | pass exit=0 | sha256:2b7a6b9d9a80 | 2026-10-02 | assay-verifier-app[bot] @ beb5461ca66e (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskpushguard/ -run TestForeignCommitCheckUsesThePushedRemotesMain -v` | pass exit=0 | sha256:74faf798ab34 | 2026-10-02 | assay-verifier-app[bot] @ beb5461ca66e (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskpushguard/ -run TestNoMainOnPushedRemoteIsCouldNotCheckNotOrigin -v` | pass exit=0 | sha256:170158f9943a | 2026-10-02 | assay-verifier-app[bot] @ beb5461ca66e (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestPushTransportRefuses.*RewrittenToSSH' -v` | pass exit=0 | sha256:58a024bf94b1 | 2026-10-02 | assay-verifier-app[bot] @ beb5461ca66e (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -nE '"origin"' tools/desk/cmd/deskpushguard/main.go tools/desk/cmd/deskpushguard/registerid.go; test $? -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ beb5461ca66e (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskpushguard/pushedremote-mutations.json` | pass exit=0 | sha256:f931a67481b2 | 2026-10-02 | assay-verifier-app[bot] @ beb5461ca66e (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/pushtransport-mutations.json` | pass exit=0 | sha256:94ffe5f9fa4b | 2026-10-02 | assay-verifier-app[bot] @ beb5461ca66e (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestGitLabPushRewriteRefusesSSH$' -v` | pass exit=0 | sha256:5ff36abadb41 | 2026-10-02 | assay-verifier-app[bot] @ beb5461ca66e (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/deskpushguard/ -run '^TestPrePushCmdForwardsArgs$' -v` | pass exit=0 | sha256:44863cc451fd | 2026-10-02 | assay-verifier-app[bot] @ beb5461ca66e (on-behalf-of human:ian) (forge-identity) |
+
 ## Review
 Gate: model (all four risk answers no — both changes make an existing guard evaluate the real
 remote; no capability is removed and no credential is touched). The security-relevant nature is
