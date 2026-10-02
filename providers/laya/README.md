@@ -26,9 +26,10 @@ Go sends one JSON object on stdin: `request`, `consultation`, `backend`, and
 `allow_cpu_fallback`. The child returns `prediction`, `fallback_reason` and optional
 `diagnostics`; diagnostics belong on stderr for a deployed executable. Bytes and
 wall time are bounded independently. Both stdout and stderr copy through a
-checked writer that exposes no unchecked buffer mutation methods. Inherited output
-pipes that survive direct process exit are closed after a 1 ms wait and rejected;
-this fail-closed behavior may reject a slowly drained otherwise valid process.
+checked writer that exposes no unchecked buffer mutation methods. Go drains
+all three pipes itself, bounded only by the context deadline: output is read to
+end-of-file with no shorter drain window, and a pipe that a descendant still
+holds at the deadline is closed and the call rejected (fail closed).
 The context deadline also covers response decoding and validation; an expired
 valid record is rejected. Timing assertions allow scheduler overhead, not a
 hard real-time guarantee. Python `assess` provides the record-building

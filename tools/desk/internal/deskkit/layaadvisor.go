@@ -78,19 +78,57 @@ func (a LayaAdvisor) Predict(ctx context.Context, c Consultation) (Prediction, e
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, a.Command[0], a.Command[1:]...)
-	// Bound inherited output-pipe completion too: CommandContext alone only
-	// kills the direct process. Fail closed if pipes outlive process exit.
-	cmd.WaitDelay = time.Millisecond
 	cmd.Env = []string{"HF_HUB_OFFLINE=1", "TRANSFORMERS_OFFLINE=1", "KUBECONFIG=/dev/null"}
-	cmd.Stdin = bytes.NewReader(input)
 	out := &boundedBuffer{limit: limit}
 	diagnostic := &boundedBuffer{limit: 4096}
-	cmd.Stdout = out
-	cmd.Stderr = diagnostic
-	if err = cmd.Run(); err != nil {
-		if ctx.Err() != nil {
-			return fail, ctx.Err()
+	// Every pipe is drained here, never by os/exec, so completion has one bound:
+	// the context deadline. CommandContext alone only kills the direct process;
+	// a pipe a descendant still holds at the deadline fails closed. No shorter
+	// drain window exists, so a valid process cannot lose a scheduling race.
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fail, fmt.Errorf("laya: process failed: %w", err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fail, fmt.Errorf("laya: process failed: %w", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fail, fmt.Errorf("laya: process failed: %w", err)
+	}
+	if err = cmd.Start(); err != nil {
+		return fail, fmt.Errorf("laya: process failed: %w", err)
+	}
+	go func() {
+		_, _ = stdin.Write(input)
+		_ = stdin.Close()
+	}()
+	copied := make(chan error, 2)
+	go func() { _, err := io.Copy(out, stdout); copied <- err }()
+	go func() { _, err := io.Copy(diagnostic, stderr); copied <- err }()
+	var copyErr error
+	for pending := 2; pending > 0; pending-- {
+		select {
+		case err := <-copied:
+			if err != nil && copyErr == nil {
+				copyErr = err
+				cancel() // stop a process whose output was refused
+			}
+		case <-ctx.Done():
+			pending = 1 // stop draining; Wait closes the pipes
 		}
+	}
+	// Wait reaps the process (killed if the context ended) and closes every
+	// parent pipe end, which releases any reader or writer still blocked.
+	err = cmd.Wait()
+	if copyErr != nil {
+		return fail, fmt.Errorf("laya: process failed: %w", copyErr)
+	}
+	if ctx.Err() != nil {
+		return fail, ctx.Err()
+	}
+	if err != nil {
 		return fail, fmt.Errorf("laya: process failed: %w", err)
 	}
 	return a.decode(ctx, out.Bytes())

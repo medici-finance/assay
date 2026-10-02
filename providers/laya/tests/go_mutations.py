@@ -9,7 +9,7 @@ mutations = {
     "fallback": ('a.AllowCPUFallback && response.FallbackReason != ""', 'response.FallbackReason != ""'),
     "approval": ('if !a.Approved {', 'if false {'),
     "timeout": ('exec.CommandContext(ctx, a.Command[0], a.Command[1:]...)', 'exec.Command(a.Command[0], a.Command[1:]...)'),
-    "pipes": ('cmd.WaitDelay = time.Millisecond', 'cmd.WaitDelay = 0'),
+    "pipes": ('case <-ctx.Done():', 'case <-(chan struct{})(nil):'),
     "expired": ('func layaDeadline(ctx context.Context) error {', 'func layaDeadline(ctx context.Context) error { return nil;'),
     "abstention": ('!p.Abstained || len(p.LabelProbabilities)', 'len(p.LabelProbabilities)'),
     "output": ('if len(p) > b.limit-b.Len() {', 'if false {'),
