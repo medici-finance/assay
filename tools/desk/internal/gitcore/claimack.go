@@ -150,6 +150,11 @@ func receiveClaim(ctx context.Context, sess transport.ReceivePackSession, req *p
 		_, drainErr := io.Copy(io.Discard, io.LimitReader(observer.body, maxWireAck+1))
 		closeErr := observer.body.Close()
 		if drainErr != nil || closeErr != nil {
+			// Still unverifiable, but the dependency's own error (a non-2xx
+			// status closes the body before returning) names the cause.
+			if err != nil {
+				return RefUpdateVerdict{}, fmt.Errorf("gitcore: receive-pack: %w", withRemote(err, remote))
+			}
 			return RefUpdateVerdict{}, fmt.Errorf("gitcore: receive-pack response read failed")
 		}
 	}

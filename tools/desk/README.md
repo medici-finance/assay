@@ -307,8 +307,13 @@ HTTP additionally checks the original `ok`/`ng` marker and both framing layers;
 `ng <ref> ok` is a rejection even though the dependency decoder loses the marker.
 The local Git transport exposes only its decoded report, so that raw-marker check
 is HTTP-specific. Retained HTTP response bytes are capped at 1 MiB and channel-1
-acknowledgment data at 64 KiB; overflow is unverifiable. An absent release remains
-a no-op without a POST. No key, credential, store or retry policy changes.
+acknowledgment data at 64 KiB; overflow is unverifiable. The HTTP check also
+requires the literal `unpack ok` record with its terminating newline, which the
+dependency decoder would tolerate missing; a server that omits it makes every write
+unverifiable. A non-2xx receive-pack response is unverifiable and keeps the
+transport's own cause (authentication, authorization, not found, or the status
+code). An absent release remains a no-op without a POST. No key, credential, store
+or retry policy changes.
 
 What the switch changes:
 

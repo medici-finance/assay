@@ -3,6 +3,7 @@ package gitcore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
 func ackPkt(s string) string { return fmt.Sprintf("%04x%s", len(s)+4, s) }
@@ -374,5 +376,118 @@ func TestAckLifecycle(t *testing.T) {
 				t.Fatalf("POSTs=%d want16", posts.Load())
 			}
 		})
+	}
+}
+
+// A non-2xx POST must keep the dependency's typed cause for both builders: the
+// fail-closed result names why, instead of a read failure on the closed body.
+func TestAckPostStatusCause(t *testing.T) {
+	ref := plumbing.ReferenceName("refs/dispatch/example")
+	for _, tc := range []struct {
+		code int
+		want error
+	}{{401, transport.ErrAuthenticationRequired}, {403, transport.ErrAuthorizationFailed}, {404, transport.ErrRepositoryNotFound}, {503, nil}} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				w.Header().Set("Content-Type", "application/x-git-receive-pack-advertisement")
+				io.WriteString(w, ackPkt("# service=git-receive-pack\n")+"0000"+ackPkt(strings.Repeat("1", 40)+" "+ref.String()+"\x00report-status delete-refs\n")+"0000")
+				return
+			}
+			io.Copy(io.Discard, r.Body)
+			w.WriteHeader(tc.code)
+			io.WriteString(w, "denied\n")
+		}))
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		objs, oid, err := MintClaimTag("example", "fixture", time.Unix(1, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, pushErr := PushRefUpdate(ctx, RefUpdate{URL: server.URL, Ref: ref, New: oid, Objects: objs})
+		_, delErr := DeleteRef(ctx, server.URL, nil, ref)
+		cancel()
+		server.Close()
+		for op, err := range map[string]error{"push": pushErr, "delete": delErr} {
+			if err == nil || strings.Contains(err.Error(), "response read failed") {
+				t.Errorf("%d/%s: cause lost: %v", tc.code, op, err)
+			} else if tc.want != nil && !errors.Is(err, tc.want) {
+				t.Errorf("%d/%s: want %v, got %v", tc.code, op, tc.want, err)
+			} else if tc.want == nil && !strings.Contains(err.Error(), "status code: 503") {
+				t.Errorf("%d/%s: status missing: %v", tc.code, op, err)
+			}
+		}
+	}
+}
+
+type stubReceive struct{ rs *packp.ReportStatus }
+
+func (stubReceive) AdvertisedReferences() (*packp.AdvRefs, error) { return nil, nil }
+func (stubReceive) AdvertisedReferencesContext(context.Context) (*packp.AdvRefs, error) {
+	return nil, nil
+}
+func (stubReceive) Close() error { return nil }
+func (s stubReceive) ReceivePack(context.Context, *packp.ReferenceUpdateRequest) (*packp.ReportStatus, error) {
+	return s.rs, nil
+}
+
+// The decoded report is the only binding on non-HTTP transports (no observer),
+// so it must reject a wrong or duplicated acknowledgment on its own.
+func TestAckDecodedBinding(t *testing.T) {
+	ref := plumbing.ReferenceName("refs/dispatch/example")
+	other := plumbing.ReferenceName("refs/dispatch/other")
+	report := func(st ...*packp.CommandStatus) *packp.ReportStatus {
+		return &packp.ReportStatus{UnpackStatus: "ok", CommandStatuses: st}
+	}
+	ok := &packp.CommandStatus{ReferenceName: ref, Status: "ok"}
+	for name, tc := range map[string]struct {
+		rs   *packp.ReportStatus
+		want RefUpdateResult
+		fail bool
+	}{
+		"match":        {report(ok), RefUpdateApplied, false},
+		"match-ng":     {report(&packp.CommandStatus{ReferenceName: ref, Status: "failed"}), RefUpdateRejected, false},
+		"wrong-ref":    {report(&packp.CommandStatus{ReferenceName: other, Status: "ok"}), 0, true},
+		"wrong-ref-ng": {report(&packp.CommandStatus{ReferenceName: other, Status: "failed"}), 0, true},
+		"duplicate":    {report(ok, ok), 0, true},
+		"extra-other":  {report(ok, &packp.CommandStatus{ReferenceName: other, Status: "ok"}), 0, true},
+	} {
+		req := packp.NewReferenceUpdateRequest()
+		req.Capabilities.Set(capability.ReportStatus)
+		req.Commands = []*packp.Command{{Name: ref}}
+		v, err := receiveClaim(context.Background(), stubReceive{tc.rs}, req, &bytes.Buffer{}, nil, &RefReceipt{})
+		if tc.fail {
+			if err == nil {
+				t.Errorf("%s: accepted %+v", name, v)
+			}
+		} else if err != nil || v.Result != tc.want {
+			t.Errorf("%s: %+v %v", name, v, err)
+		}
+	}
+}
+
+// The raw-marker check binds the ref by itself, independent of the decoded one.
+func TestAckWireRefBinding(t *testing.T) {
+	ref := plumbing.ReferenceName("refs/dispatch/example")
+	for _, band := range []capability.Capability{"", capability.Sideband64k} {
+		req := packp.NewReferenceUpdateRequest()
+		req.Commands = []*packp.Command{{Name: ref}}
+		if band != "" {
+			req.Capabilities.Set(band)
+		}
+		for line, accept := range map[string]bool{
+			"ok " + ref.String():            true,
+			"ok refs/dispatch/other":        false,
+			"ng refs/dispatch/other failed": false,
+			"ok " + ref.String() + "x":      false,
+		} {
+			wire := ackPkt("unpack ok\n") + ackPkt(line+"\n") + "0000"
+			if band != "" {
+				wire = ackPkt("\x01"+wire) + "0000"
+			}
+			body := &ackBody{}
+			body.data.WriteString(wire)
+			if _, _, err := wireAck(body, req); (err == nil) != accept {
+				t.Errorf("%q/%q: accept=%v err=%v", band, line, accept, err)
+			}
+		}
 	}
 }

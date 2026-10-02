@@ -8,6 +8,30 @@
   },
   "mutations": [
     {
+      "name": "drain failure outranks receive-pack cause",
+      "file": "internal/gitcore/claimack.go",
+      "old": "names the cause.\n\t\t\tif err != nil {",
+      "new": "names the cause.\n\t\t\tif false && err != nil {"
+    },
+    {
+      "name": "drop decoded ref binding",
+      "file": "internal/gitcore/claimack.go",
+      "old": "rs.CommandStatuses[0].ReferenceName != req.Commands[0].Name ||",
+      "new": ""
+    },
+    {
+      "name": "relax exactly-one decoded status",
+      "file": "internal/gitcore/claimack.go",
+      "old": "len(rs.CommandStatuses) != 1",
+      "new": "len(rs.CommandStatuses) < 1"
+    },
+    {
+      "name": "drop wire ref binding",
+      "file": "internal/gitcore/claimack.go",
+      "old": "if ref != req.Commands[0].Name.String() {",
+      "new": "if false && ref != req.Commands[0].Name.String() {"
+    },
+    {
       "name": "lose raw ng marker when reason is ok",
       "file": "internal/gitcore/claimack.go",
       "old": "rejected = marker == \"ng\"",
