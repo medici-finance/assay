@@ -3,6 +3,9 @@ package main
 import (
 	"encoding/binary"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
 	"os/exec"
@@ -306,6 +309,75 @@ func TestJunctionReparseData(t *testing.T) {
 		if _, err := junctionReparseData(bad); err == nil {
 			t.Errorf("junction target %q must be refused", bad)
 		}
+	}
+}
+
+// symlinkAllowed is every non-test site that may name os.Symlink. The class this guards: a raw
+// os.Symlink with no Windows no-privilege fallback (and, in a scaffold, no rollback). newlink.go's
+// hostLinker is the ONE linker new code goes through. The other two entries are known members of
+// the same class, outside this change's scope and left as they are.
+var symlinkAllowed = map[string]string{
+	"newlink.go:hostLinker": "the one linker: symlink, then junction/hardlink on windows",
+	"launch.go:deskLaunch":  "known same-class site (role worktree link at desk launch); not this change",
+	"shims.go:genShims":     "known same-class site (shim links); not this change",
+}
+
+// symlinkSites names every function in one Go source that references os.Symlink.
+func symlinkSites(name string, src any) ([]string, error) {
+	f, err := parser.ParseFile(token.NewFileSet(), name, src, 0)
+	if err != nil {
+		return nil, err
+	}
+	var sites []string
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			sel, ok := n.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			if x, isID := sel.X.(*ast.Ident); isID && x.Name == "os" && sel.Sel.Name == "Symlink" {
+				sites = append(sites, filepath.Base(name)+":"+fn.Name.Name)
+			}
+			return true
+		})
+	}
+	return sites, nil
+}
+
+func TestSymlinkClassGuard(t *testing.T) {
+	files, err := os.ReadDir(".")
+	must(t, err)
+	scanned, seen := 0, map[string]bool{}
+	for _, f := range files {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".go") || strings.HasSuffix(f.Name(), "_test.go") {
+			continue
+		}
+		scanned++
+		sites, err := symlinkSites(f.Name(), nil)
+		must(t, err)
+		for _, s := range sites {
+			seen[s] = true
+			if _, ok := symlinkAllowed[s]; !ok {
+				t.Errorf("raw os.Symlink at %s — link through newLinker() (newlink.go) so a Windows host without the symlink privilege gets the junction/hardlink fallback", s)
+			}
+		}
+	}
+	if scanned == 0 {
+		t.Fatal("no source scanned")
+	}
+	for s := range symlinkAllowed {
+		if !seen[s] {
+			t.Errorf("allow-list entry %s matches no os.Symlink; remove it", s)
+		}
+	}
+	// Positive control: a planted raw call must be reported, or the matcher has gone blind.
+	sites, err := symlinkSites("planted.go", "package main\nimport \"os\"\nfunc plantedLink() { _ = os.Symlink(\"a\", \"b\") }\n")
+	if err != nil || len(sites) != 1 || sites[0] != "planted.go:plantedLink" {
+		t.Fatalf("positive control: %v %v", sites, err)
 	}
 }
 
