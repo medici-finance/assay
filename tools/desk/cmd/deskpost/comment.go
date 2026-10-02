@@ -125,7 +125,7 @@ func runComment(owner, name string, num int, wantHead string, forcedKind *deskki
 		//
 		// The loosening is scoped to the author-trust/bless dimension ONLY. Every OTHER
 		// comment-path protection still runs on a PR comment: the size cap + body
-		// secret/impersonation scan (bodycheck.Comment, above) and the public-repo +1 gate
+		// secret/impersonation scan (bodycheck.Comment, above) and the public-repo write gate
 		// (PublicRepoGate, below).
 		//
 		// Note the verdict-safety here does NOT come from bodycheck: bodycheck.Comment is
