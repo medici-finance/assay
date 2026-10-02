@@ -542,6 +542,8 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// brief's Verify table to green the gate is the very falsification the check
 	// exists to catch. Flip to a hard problem once the active streams are clean.
 	notices = append(notices, unfailableRowNotices(checkStreams)...)
+	// Portability is advisory; existing POSIX rows remain executable records.
+	notices = append(notices, verifyPortabilityNotices(checkStreams)...)
 	// Missing EXECUTION WITNESS (ground-truth/01, #284): a brief the README
 	// calls verified/done whose Evidence carries no record that a Verify row was
 	// actually executed. NOTICE this phase for the same reason the rule above is

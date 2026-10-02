@@ -1,0 +1,47 @@
+{
+  "test": "GOWORK=off go test ./internal/deskkit ./cmd/deskpost ./cmd/deskdispatch ./cmd/deskrestamp -run 'TestReviewFamily|TestReviewGuard|TestReviewKey|TestAliasClaim|TestRestampSkipsStandingPair' -count=1 -timeout=60s",
+  "control": {
+    "name": "Planted second single-family reader is rejected by the module guard",
+    "file": "cmd/deskpost/claimliveness.go",
+    "old": "func claimReleaseNote(",
+    "new": "var plantedSingleFamilyReader = deskkit.ReviewClaimFamilyRefPrefix\n\nfunc claimReleaseNote("
+  },
+  "mutations": [
+    {
+      "name": "Alias-only search loses accepted basename claims",
+      "file": "internal/deskkit/claimref.go",
+      "old": "[]string{RepoShortLabel(repo), repoBasename(repo)}",
+      "new": "[]string{RepoShortLabel(repo)}"
+    },
+    {
+      "name": "Read uncertainty is not evidence of release",
+      "file": "internal/deskkit/claimref.go",
+      "old": "result = ClaimLivenessUnknown",
+      "new": "result = ClaimReleased"
+    },
+    {
+      "name": "Review key validation must run before acquisition",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "if reviewKit(o.kit) && o.pr > 0 {",
+      "new": "if false && reviewKit(o.kit) && o.pr > 0 {"
+    },
+    {
+      "name": "Neighboring PR numbers do not belong to the family",
+      "file": "internal/deskkit/claimref.go",
+      "old": "strings.HasPrefix(r, familyPrefix+\"--\")",
+      "new": "strings.HasPrefix(r, familyPrefix)"
+    },
+    {
+      "name": "Released-family refusal identifies what was searched",
+      "file": "cmd/deskpost/claimliveness.go",
+      "old": "if claim != deskkit.ClaimReleased {",
+      "new": "if true {"
+    },
+    {
+      "name": "Restamp must disclose that claim liveness was not checked",
+      "file": "cmd/deskrestamp/restamp.go",
+      "old": "Claim liveness is not checked;",
+      "new": "Current review authority confirmed;"
+    }
+  ]
+}

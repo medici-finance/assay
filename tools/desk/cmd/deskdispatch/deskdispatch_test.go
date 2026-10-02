@@ -1010,9 +1010,12 @@ func TestPlanItemKeyTranslationIsKitIndependent(t *testing.T) {
 			if !acquired {
 				t.Fatal("the claim tool was never invoked")
 			}
-			// Worktree DIR is session-scoped (install sets DESK_SESSION=deskdispatch-test); the
-			// branch stays bare on the ORIGINAL item key, not the translated claim key.
-			if !s.ran("deskwt add education-10-deskdispatch-test --branch feat/education-10") {
+			// Allocation names retain the ORIGINAL item key, not the translated claim key.
+			if c.kit == "review" {
+				if !s.ran("deskwt add review-education-10-") || !s.ran("--detach --base refs/remotes/origin/main --role reviewer") {
+					t.Error("review allocation did not retain the original key in a fresh detached home")
+				}
+			} else if !s.ran("deskwt add education-10-deskdispatch-test --branch feat/education-10") {
 				t.Error("the worktree/branch were not derived from the ORIGINAL item key")
 			}
 		})
