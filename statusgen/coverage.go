@@ -61,10 +61,24 @@ package main
 //
 //  1. an exact prefix match (in-progress work, still on the same tree the
 //     witness ran on — the common case a run BEFORE the Evidence commit sees);
-//  2. the witness tree is a git ANCESTOR of the item's revision, and no path
-//     the witness SPEAKS FOR changed in between (ancestorNoOtherChanges,
-//     witnessScope.invalidatedBy). What a witness speaks for (round-2 F2,
-//     round-3 F2/F6):
+//  2. no path the witness SPEAKS FOR differs between the witness's tree and
+//     the item's (witnessTreeApplies, witnessScope.invalidatedBy). This is a
+//     CONTENT comparison of the two trees, never a commit-ancestry test
+//     (#2026): a squash merge discards the branch commit a witness names, so
+//     ancestry said nothing about whether the code the check read is still
+//     the code at the item's revision. The witness commit must still be in
+//     the object store; when it is not, the claim is could-not-check, naming
+//     the missing commit. What a witness speaks for (round-2 F2, round-3
+//     F2/F6, #2026):
+//     - when the brief carries a `verify-depends:` line in `## Context`
+//       (DECLARED mode, dependsAt): exactly those paths, as they stand now
+//       and as they stood at the witness's base commit, plus every `files:`
+//       entry that resolves and the row's manifest source dependencies. The
+//       line is the brief's own complete statement of what its Verify rows
+//       read. It FAILS CLOSED: an empty or unparseable line (now or at the
+//       witness's commit), a brief unreadable at that commit, or an entry
+//       that names no real, non-exempt file at either revision resolves
+//       could-not-check, naming why — it never falls back to a guess;
 //     - by default (and always, today): conservatively, every path OUTSIDE
 //       the board's bookkeeping surface: `docs/streams/**` (sibling briefs'
 //       Evidence in the same verify batch, READMEs, verify-outcome logs) and
@@ -93,23 +107,24 @@ package main
 //       declared `docs/streams/` artifact stays guarded;
 //     - never the brief's own file: its Verify rows are bound separately, by
 //       the Command and Expect guards below.
-//     The changed paths are read with `git diff --no-renames`, so a rename or
-//     move reports its OLD path too, never only its destination. A change to
-//     a path the witness speaks for after it ran is a genuine
+//     The differing paths are read with `git diff --no-renames`, so a rename
+//     or move reports its OLD path too, never only its destination. A path
+//     the witness speaks for that differs between the two trees is a genuine
 //     `wrong-revision`: the witness no longer speaks for today's code, and the
-//     reason names the path that changed.
+//     reason names the path.
 //
-// WORK-INPUT DEPENDENCIES (the 2026-09-30 work-input amendment, WI-2). An
-// ancestor match is a REUSE: a result recorded at one revision is credited at
-// a later one. WI-2 allows that only through an explicit applicability
+// WORK-INPUT DEPENDENCIES (the 2026-09-30 work-input amendment, WI-2). A
+// non-exact match is a REUSE: a result recorded at one revision is credited at
+// another. WI-2 allows that only through an explicit applicability
 // derivation, and says "file non-overlap alone is insufficient: shared APIs,
 // generated inputs, build configuration, authority rules and transitive
 // callers may invalidate an assumption outside the edited files". So:
 //
 //   - A `files:` declaration ALONE never narrows the scope any more. Without a
-//     complete dependency manifest (coverageOptions.Dependencies), every claim
-//     takes the conservative scope, whose derivation is "nothing outside the
-//     board's bookkeeping changed". This replaces the round-3 residual, where a
+//     `verify-depends:` line or a complete dependency manifest
+//     (coverageOptions.Dependencies), every claim takes the conservative
+//     scope, whose derivation is "nothing outside the board's bookkeeping
+//     differs". This replaces the round-3 residual, where a
 //     change to a helper outside `files:` let the old PASS stand.
 //   - A manifest names each claim's dependencies by kind: source (joins the
 //     witness scope), policy and build (compared by the git object id of the
@@ -124,9 +139,11 @@ package main
 //     the derivation. Claim.Revision stays the witness's own revision, so the
 //     old receipt is never retargeted to the new subject.
 //   - The result vocabulary is unchanged. graph-execution/09's adapter
-//     supplies manifests later. Production passes none today, so every brief
-//     takes the conservative scope. That is the "start with conservative
-//     invalidation" posture WI-2 asks for.
+//     supplies manifests later. Production passes none today, so a brief
+//     narrows its scope only by its own `verify-depends:` line, which is a
+//     complete manifest of source dependencies written where its Verify rows
+//     are reviewed; every other brief keeps the conservative scope. That is
+//     the "start with conservative invalidation" posture WI-2 asks for.
 //
 // The residual the conservative scope still accepts: a change under
 // `docs/streams/**` or to STATUS.md never invalidates a witness unless the
@@ -135,9 +152,10 @@ package main
 //
 // A value that is not adequately established as one of the two READS as a
 // definite mismatch (`wrong-revision`) only when both tokens are themselves
-// well-formed and simply differ as VALUES — an ancestor check that could not
-// even run (no git, an unresolvable SHA) never upgrades that plain difference
-// into a match, but it also never invents one. Anything coverage cannot
+// well-formed and simply differ as VALUES with no git checkout to compare
+// them in; in a usable checkout, a comparison that cannot be made (the
+// witness commit absent, the item's revision unresolvable) is
+// `could-not-check`. Neither ever invents a match. Anything coverage cannot
 // establish at all — an empty or absent tree token on either side, or a token
 // shorter than minRevisionTokenLen (F1: a 1-character token matched roughly 1
 // commit in 16) — resolves `could-not-check`, never `pass`
@@ -148,7 +166,7 @@ package main
 // A5). verifyrun's treeSHA appends `+dirty` whenever the working tree has ANY
 // uncommitted change (and `+unknown` when it cannot tell): "this SHA is a
 // neighbourhood, not an address". Coverage compares such a witness by its BASE
-// commit (witnessBaseRevision), on both the exact and the ancestor path. It
+// commit (witnessBaseRevision), on both the exact and the tree-diff path. It
 // therefore credits a run over uncommitted edits as a run at that base — edits
 // that may never have landed. That is a real witness-trust gap, and it is
 // accepted HERE deliberately rather than closed, because:
@@ -524,6 +542,9 @@ func resolveVerifyClaim(root string, scope witnessScope, r verifyRow, evidence m
 		rel, exact, detail := classifyRevisionDetail(root, scope, wrev, targetRevision)
 		switch rel {
 		case revisionUnestablished:
+			if detail != "" {
+				return covCouldNotCheck, fmt.Sprintf("the witness ran at %s and cannot be reused at the item's revision %s: %s — a passing result is never credited while its dependencies cannot be established", displayRevision(wrev), displayRevision(targetRevision), detail), wrev
+			}
 			return covCouldNotCheck, fmt.Sprintf("the witness's revision could not be corroborated against the item's revision (witness=%s, item=%s) — a passing result is never credited without knowing which revision it ran at", displayRevision(wrev), displayRevision(targetRevision)), wrev
 		case revisionMismatch:
 			reason := fmt.Sprintf("witness ran at revision %s, the item's revision is %s", wrev, targetRevision)
@@ -695,14 +716,14 @@ func witnessBaseRevision(tok string) string {
 //   - an empty, absent, or too-short token on EITHER side is unestablished —
 //     never a match, never a mismatch;
 //   - a same-length-prefix equal-fold match is a match, unconditionally;
-//   - otherwise the two values plainly differ, which is a mismatch UNLESS a
-//     git ancestor check (ancestorNoOtherChanges) corroborates that the
-//     witness tree is an ancestor of the item's revision with no path the
-//     witness speaks for (scope) touched since — the ordinary shape of "run
+//   - otherwise witnessTreeApplies compares the two trees: a match when no
+//     path the witness speaks for (scope) differs — the ordinary shape of "run
 //     the check, then commit the Evidence that records it, then keep landing
-//     unrelated work on main" (F2). An ancestor check that could not even run
-//     leaves the plain mismatch standing; it never invents a match it could
-//     not corroborate.
+//     unrelated work on main" (F2), and of a witness written on a branch that
+//     was then squash-merged (#2026); a mismatch naming the first differing
+//     path it speaks for; unestablished when the comparison or the
+//     declaration cannot be established. Without a git checkout the plain
+//     mismatch stands; nothing ever invents a match.
 func classifyRevision(root string, scope witnessScope, witnessTree, target string) revisionRelation {
 	rel, _, _ := classifyRevisionDetail(root, scope, witnessTree, target)
 	return rel
@@ -710,10 +731,10 @@ func classifyRevision(root string, scope witnessScope, witnessTree, target strin
 
 // classifyRevisionDetail is classifyRevision plus how the verdict was reached.
 // exact is true for a same-token match, where nothing is being reused; it is
-// false for an ancestor match, which IS a reuse. detail is
-// ancestorNoOtherChanges's account: on an ancestor match, the applicability
-// derivation that licenses the reuse; on a mismatch, the first changed path the
-// witness speaks for (when the ancestor check got that far).
+// false for a tree-diff match, which IS a reuse. detail is witnessTreeApplies's
+// account: on a match, the applicability derivation that licenses the reuse;
+// on a mismatch, the first differing path the witness speaks for; on
+// unestablished, why the comparison could not be made.
 func classifyRevisionDetail(root string, scope witnessScope, witnessTree, target string) (rel revisionRelation, exact bool, detail string) {
 	w := witnessBaseRevision(witnessTree)
 	t := witnessBaseRevision(target)
@@ -733,11 +754,8 @@ func classifyRevisionDetail(root string, scope witnessScope, witnessTree, target
 	if strings.EqualFold(w[:n], t[:n]) {
 		return revisionMatch, true, ""
 	}
-	ok, detail := ancestorNoOtherChanges(root, scope, w, t)
-	if ok {
-		return revisionMatch, false, detail
-	}
-	return revisionMismatch, false, detail
+	rel, detail = witnessTreeApplies(root, scope, w, t)
+	return rel, false, detail
 }
 
 // witnessScope is what a brief's witnesses SPEAK FOR — the paths whose change
@@ -761,6 +779,20 @@ type witnessScope struct {
 	conservative bool
 	// whyConservative says which of those set conservative, for the reason.
 	whyConservative string
+	// depends is the brief's `verify-depends:` declaration as it stands now
+	// (normalized), dependsState what the parser found. Any state but
+	// labelAbsent puts the scope in DECLARED mode (dependsAt): the
+	// declaration is the brief's own complete statement of what its Verify
+	// rows read, and a declaration that cannot be established refuses
+	// instead of widening.
+	depends      []string
+	dependsState labelState
+	// rowSources are the row's manifest source dependencies (set by forRow);
+	// declared mode requires each to resolve.
+	rowSources []string
+	// byDepends is set by dependsAt: declared names the verify-depends:
+	// entries plus the resolving `files:` entries and row sources.
+	byDepends bool
 }
 
 // newWitnessScope builds a brief's witnessScope from its CURRENT parsed `files:`
@@ -768,7 +800,8 @@ type witnessScope struct {
 // dotless one the mistake-proofing/01 path-shape filter drops; round-3 F6 /
 // security pr1682-S6) and its dependency manifest (nil = none). This is only
 // the current, brief-level half: forRow adds the row's own dependencies, and
-// ancestorNoOtherChanges widens the result with atBase before reading a diff.
+// witnessTreeApplies widens the result with atBase (or establishes it with
+// dependsAt) before reading a diff.
 func newWitnessScope(root, briefPath string, bf *BriefFile, man *dependencyManifest) witnessScope {
 	sc := witnessScope{briefPath: briefPath, manifest: man}
 	if root != "" && briefPath != "" {
@@ -778,6 +811,11 @@ func newWitnessScope(root, briefPath string, bf *BriefFile, man *dependencyManif
 	}
 	if bf != nil && bf.DeclaredEntriesRawFound {
 		sc.declared = appendDeclaredEntries(nil, bf.DeclaredEntriesRaw)
+	}
+	if bf != nil {
+		var ents []string
+		ents, sc.dependsState = extractContextLabelEntries(bf.Body, contextVerifyDependsLabelRe)
+		sc.depends = appendDeclaredEntries(nil, ents)
 	}
 	return sc.forRow("")
 }
@@ -793,6 +831,7 @@ func (sc witnessScope) forRow(rowID string) witnessScope {
 	out := sc
 	out.declared = append([]string(nil), sc.declared...)
 	out.deps = nil
+	out.rowSources = nil
 	if sc.manifest != nil && rowID != "" {
 		for _, d := range sc.manifest.Deps {
 			if !d.appliesTo(rowID) {
@@ -801,12 +840,16 @@ func (sc witnessScope) forRow(rowID string) witnessScope {
 			out.deps = append(out.deps, d)
 			if d.Kind == depSource {
 				out.declared = appendDeclaredEntries(out.declared, []string{d.Path})
+				out.rowSources = appendDeclaredEntries(out.rowSources, []string{d.Path})
 			}
 		}
 	}
+	// Declared mode (dependsState != labelAbsent) stays conservative HERE:
+	// only dependsAt, after it has established the declaration at both
+	// revisions, ever narrows it.
 	switch {
 	case sc.manifest == nil:
-		out.conservative, out.whyConservative = true, "no dependency manifest"
+		out.conservative, out.whyConservative = true, "no verify-depends: line and no dependency manifest"
 	case !sc.manifest.Complete:
 		out.conservative, out.whyConservative = true, "the dependency manifest is incomplete"
 	case len(out.declared) == 0:
@@ -822,6 +865,9 @@ func (sc witnessScope) describe() string {
 	if sc.conservative {
 		return sc.whyConservative + ", so the witness speaks for every path outside docs/streams/** and STATUS.md"
 	}
+	if sc.byDepends {
+		return "the brief's verify-depends: line scopes the witness to " + strings.Join(sc.declared, ", ")
+	}
 	return "a complete dependency manifest scopes the witness to " + strings.Join(sc.declared, ", ")
 }
 
@@ -829,9 +875,12 @@ func (sc witnessScope) describe() string {
 // at a later revision (WI-2), for a reused pass's reason.
 func (sc witnessScope) derivation() string {
 	if sc.conservative {
-		return "no path outside docs/streams/** and STATUS.md changed in between (" + sc.whyConservative + ", so that whole surface is the input)"
+		return "no path outside docs/streams/** and STATUS.md differs between the witness's tree and the item's (" + sc.whyConservative + ", so that whole surface is the input)"
 	}
-	return "applicability derived from a complete dependency manifest: none of " + strings.Join(sc.declared, ", ") + " changed in between"
+	if sc.byDepends {
+		return "applicability derived from the brief's verify-depends: line: none of " + strings.Join(sc.declared, ", ") + " differs between the witness's tree and the item's"
+	}
+	return "applicability derived from a complete dependency manifest: none of " + strings.Join(sc.declared, ", ") + " differs between the witness's tree and the item's"
 }
 
 // appendDeclaredEntries normalizes and de-duplicates declared `files:` entries
@@ -896,6 +945,64 @@ func (sc witnessScope) atBase(root, base, target string) witnessScope {
 		}
 	}
 	return eff
+}
+
+// dependsAt is atBase for a brief that carries a `verify-depends:` line
+// (DECLARED mode, #2026). It returns the scope the witness speaks for, or
+// refusal — non-empty whenever the dependency set cannot be established, which
+// the caller resolves could-not-check. It never widens to the conservative
+// scope instead: a brief that declared its dependencies asked to be judged by
+// them, and a declaration that cannot be read is a defect to fix, not a
+// licence to guess. The scope is:
+//
+//   - REQUIRED: the verify-depends: entries now and as they stood at base (so
+//     narrowing the line after the run never shrinks the scope), plus the
+//     row's manifest source dependencies. An empty or unparseable line, now
+//     or at base, a brief unreadable at base, or any required entry that is
+//     unsupported or names no real, non-exempt file at base or target,
+//     refuses;
+//   - ADDED: every `files:` entry (now and at base) that resolves, so the
+//     scope is never narrower than the work's own declared surface. An entry
+//     that names nothing adds nothing; verify-depends: is the statement of
+//     completeness, `files:` only ever adds to it.
+func (sc witnessScope) dependsAt(root, base, target string) (eff witnessScope, refusal string) {
+	switch sc.dependsState {
+	case labelEmpty:
+		return sc, "the brief's verify-depends: line names no path"
+	case labelUnparseable:
+		return sc, "the brief's verify-depends: line cannot be parsed (an unclosed backtick)"
+	}
+	body, ok := briefBodyAtRevision(root, sc.briefPath, base)
+	if !ok {
+		return sc, fmt.Sprintf("the brief cannot be read at the witness's commit %s, so what its Verify rows depended on there is unknown", base)
+	}
+	required := appendDeclaredEntries(nil, sc.depends)
+	switch ents, st := extractContextLabelEntries(body, contextVerifyDependsLabelRe); st {
+	case labelEmpty, labelUnparseable:
+		return sc, fmt.Sprintf("the brief's verify-depends: line at the witness's commit %s is empty or cannot be parsed", base)
+	case labelEntries:
+		required = appendDeclaredEntries(required, ents)
+	}
+	required = appendDeclaredEntries(required, sc.rowSources)
+	for _, d := range required {
+		if !sc.declaredEntryResolves(root, d, base, target) {
+			return sc, fmt.Sprintf("the verify-depends: entry %q names no checkable file at the witness's commit or the item's revision", d)
+		}
+	}
+	optional := append([]string(nil), sc.declared...)
+	if ents, found := extractContextDeclaredEntriesRaw(body); found {
+		optional = appendDeclaredEntries(optional, ents)
+	}
+	scope := required
+	for _, d := range optional {
+		if sc.declaredEntryResolves(root, d, base, target) {
+			scope = appendDeclaredEntries(scope, []string{d})
+		}
+	}
+	eff = sc
+	eff.declared = scope
+	eff.conservative, eff.whyConservative, eff.byDepends = false, "", true
+	return eff, ""
 }
 
 // isBoardBookkeepingPath reports whether a repo-relative path is the board's
@@ -1117,32 +1224,55 @@ func splitNUL(out []byte) []string {
 	return parts
 }
 
-// ancestorNoOtherChanges reports whether witnessTree is a git ancestor of
-// target with no path the witness speaks for (scope.invalidatedBy) changed in
-// between. false whenever root is not a usable git checkout, or either token
-// does not resolve there as a real commit — the caller (classifyRevision) then
-// keeps whatever plain-value comparison it already made, rather than promoting
-// an unverifiable claim to a match. Every revision argument follows
-// `--end-of-options`, so an option-shaped token from Evidence text can never be
-// read as a flag, independent of call order. detail is the account a reason
-// quotes: on a match, the applicability derivation that licenses reusing the
-// witness (witnessScope.derivation); on an in-scope change, the first changed
-// path and what the scope covered; "" when the check could not run.
-func ancestorNoOtherChanges(root string, scope witnessScope, witnessTree, target string) (ok bool, detail string) {
+// witnessTreeApplies decides whether a witness recorded at commit
+// witnessTree still applies at the item's revision target, when the two are
+// not the same commit. It judges by CONTENT, never by commit ancestry (#2026):
+// the two trees are compared directly (`git diff witnessTree target`), and the
+// witness applies when no path it speaks for differs between them. Ancestry
+// is deliberately not consulted — a squash merge discards the branch commit a
+// witness names, so "is it an ancestor of main" says nothing about whether the
+// code the check read is still the code at main; the tree comparison does.
+// TestNoAncestryWitnessJudge is the class guard that keeps it that way.
+//
+// What the witness speaks for (the scope) is one of:
+//
+//   - DECLARED mode, when the brief carries a `verify-depends:` line:
+//     dependsAt's scope. A declaration that cannot be established refuses
+//     (revisionUnestablished, with the reason);
+//   - otherwise atBase's: a complete dependency manifest's declared scope, or
+//     the conservative scope (every path outside the board's bookkeeping).
+//
+// Results: revisionMatch with the applicability derivation; revisionMismatch
+// naming the first differing path the witness speaks for; and
+// revisionUnestablished, with the reason, whenever the comparison itself
+// cannot be made in a usable git checkout (the witness commit is not in the
+// object store — the ordinary shape of a squash-merged branch commit that was
+// never fetched — the item's revision does not resolve, or the diff fails).
+// Where there is no usable git checkout at all the two plainly different
+// tokens stay a mismatch, as before. Every revision argument follows
+// `--end-of-options`, so an option-shaped token from Evidence text can never
+// be read as a flag.
+func witnessTreeApplies(root string, scope witnessScope, witnessTree, target string) (rel revisionRelation, detail string) {
 	if root == "" || scope.briefRel == "" {
-		return false, ""
+		return revisionMismatch, ""
 	}
 	if exec.Command("git", "-C", root, "rev-parse", "--git-dir").Run() != nil {
-		return false, ""
-	}
-	if exec.Command("git", "-C", root, "cat-file", "-e", "--end-of-options", witnessTree+"^{commit}").Run() != nil {
-		return false, ""
+		return revisionMismatch, ""
 	}
 	if exec.Command("git", "-C", root, "cat-file", "-e", "--end-of-options", target+"^{commit}").Run() != nil {
-		return false, ""
+		return revisionUnestablished, fmt.Sprintf("the item's revision %s does not resolve to a commit in this clone", target)
 	}
-	if exec.Command("git", "-C", root, "merge-base", "--is-ancestor", "--end-of-options", witnessTree, target).Run() != nil {
-		return false, "" // not an ancestor, or the check itself could not run
+	if exec.Command("git", "-C", root, "cat-file", "-e", "--end-of-options", witnessTree+"^{commit}").Run() != nil {
+		return revisionMatch, fmt.Sprintf("the witness's commit %s is not in this clone (a squash merge discards the branch commit a witness names; fetch it, e.g. the pull request's head ref), so the tree the check ran against cannot be compared", witnessTree)
+	}
+	var eff witnessScope
+	if scope.dependsState != labelAbsent {
+		var why string
+		if eff, why = scope.dependsAt(root, witnessTree, target); why != "" {
+			return revisionUnestablished, why
+		}
+	} else {
+		eff = scope.atBase(root, witnessTree, target)
 	}
 	// --no-renames (round-3 F6): with rename detection on, a rename or move
 	// prints only its DESTINATION, so a declared file renamed away — or code
@@ -1150,16 +1280,14 @@ func ancestorNoOtherChanges(root string, scope witnessScope, witnessTree, target
 	// -z keeps every path byte-exact (no core.quotePath quoting).
 	out, err := exec.Command("git", "-C", root, "diff", "--name-only", "--no-renames", "-z", "--end-of-options", witnessTree, target, "--").Output()
 	if err != nil {
-		return false, ""
+		return revisionUnestablished, "the witness's tree and the item's could not be compared (git diff failed)"
 	}
-	eff := scope.atBase(root, witnessTree, target)
 	for _, p := range splitNUL(out) {
 		if eff.invalidatedBy(p) {
-			// a path the witness speaks for changed since it ran
-			return false, fmt.Sprintf("%s changed in between and the witness speaks for it (%s)", p, eff.describe())
+			return revisionMismatch, fmt.Sprintf("%s differs between the witness's tree and the item's and the witness speaks for it (%s)", p, eff.describe())
 		}
 	}
-	return true, eff.derivation()
+	return revisionMatch, eff.derivation()
 }
 
 // verifyRowAtRevision reads briefPath's OWN Verify row for rowID as it stood
