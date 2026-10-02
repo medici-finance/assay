@@ -135,7 +135,8 @@ or base64 blobs.
 Cite sops material, never quote it. A finding about an encrypted file names it by `path:line`
 and describes it in words: the `sops` footer, its `mac` or `lastmodified` field, an `ENC[…]`
 envelope missing its `iv`. A quoted footer or envelope is refused on every surface, inside a
-code fence too, and there is no flag that waives it; the refusal names this remedy.
+code fence too; the refusal names this remedy. Reword to cite. The audited
+`--force-scan-override` is a human act, and a reviewer never passes it to get a verdict through.
 
 ## If a raw `gh pr review` is ever unavoidable
 

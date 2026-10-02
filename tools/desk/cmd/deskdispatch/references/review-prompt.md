@@ -246,8 +246,9 @@ Do NOT flag a legitimate `blocked` cell as invalid: it is an accepted value.
 - Cite sops material, never quote it. When a finding is about an encrypted file, name it by
   `path:line` and describe it in words: the `sops` footer, its `mac` or `lastmodified` field,
   an `ENC[…]` envelope missing its `iv`. Never paste the footer or an envelope into the body;
-  the secret scan refuses a quotation on every surface, inside a code fence too, and no flag
-  waives it. The refusal itself names this remedy.
+  the secret scan refuses a quotation on every surface, inside a code fence too. The
+  refusal itself names this remedy. Reword to cite; never pass the audited
+  `--force-scan-override` to get a verdict through — that override is a human act.
 - Findings first, scope second: re-read the PR's reviews before and after every push you
   make to it.
 - Escalate per the common kit's escalate-durably rule: anything the loop cannot resolve
