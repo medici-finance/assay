@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // homeresolve.go — the ONE place cellctl turns the operator's environment into a home
@@ -16,33 +18,56 @@ import (
 //
 // The primary follows os.UserHomeDir — the resolution every desk tool cellctl launches uses
 // to find the roster and the App credentials — so cellctl links and checks the same config
-// home those tools then read: %USERPROFILE% on windows, $HOME elsewhere. The other variable is
-// the fallback when the primary is unset, the precedence the Codex launch already used, so a
-// HOME-only Git Bash shell on windows keeps working.
+// home those tools then read: %USERPROFILE% on windows, $HOME elsewhere. On windows only,
+// $HOME is the fallback when %USERPROFILE% is unset — the precedence the Codex launch already
+// used, so a HOME-only Git Bash shell keeps working. Elsewhere there is NO fallback:
+// os.UserHomeDir reads $HOME alone there, so a home resolved from %USERPROFILE% would point
+// cellctl at a config home every tool it launches fails to find.
 //
-// Neither set REFUSES. Every path derived from an empty home is either relative (resolved
-// against whatever directory cellctl happened to run in) or rooted at the filesystem root, and
-// a config home resolved that way would link, check or launch against a directory that is not
-// the operator's.
+// An unset home REFUSES, and so does a value that is not an absolute local path or that names
+// the filesystem root. Every path derived from such a home is either relative (resolved
+// against whatever directory cellctl happened to run in), rooted at the filesystem root, or on
+// a network share, and a config home resolved that way would link, check or launch against a
+// directory that is not the operator's. The refusal names the variable, never its value.
 func operatorHomeFor(goos string, e *Env) (string, error) {
+	type candidate struct{ name, v string }
+	cands := []candidate{{"HOME", e.Get("HOME")}}
 	if goos == "windows" {
-		if v := e.Get("USERPROFILE"); v != "" {
-			return v, nil
+		cands = []candidate{{"USERPROFILE", e.Get("USERPROFILE")}, {"HOME", e.Get("HOME")}}
+	}
+	for _, c := range cands {
+		if c.v == "" {
+			continue
 		}
-		if v := e.Get("HOME"); v != "" {
-			return v, nil
+		if err := homePathCheck(goos, c.v); err != nil {
+			return "", fmt.Errorf("cannot resolve the operator home: %s %v "+
+				"(refusing to derive a config path from it)", c.name, err)
 		}
-		return "", fmt.Errorf("cannot resolve the operator home: neither USERPROFILE nor HOME is set " +
-			"(refusing to derive a config path from an empty home)")
+		return c.v, nil
 	}
-	if v := e.Get("HOME"); v != "" {
-		return v, nil
+	unset := "HOME is not set"
+	if goos == "windows" {
+		unset = "neither USERPROFILE nor HOME is set"
 	}
-	if v := e.Get("USERPROFILE"); v != "" {
-		return v, nil
+	return "", fmt.Errorf("cannot resolve the operator home: %s "+
+		"(refusing to derive a config path from an empty home)", unset)
+}
+
+// homePathCheck is the shape a resolved home must have: cellPathCheck's absolute, local path
+// (no UNC or device spelling), and not the bare filesystem or drive root. The error text never
+// carries the value.
+func homePathCheck(goos, v string) error {
+	if err := cellPathCheck(goos, v); err != nil {
+		return fmt.Errorf("is not usable: %v", err)
 	}
-	return "", fmt.Errorf("cannot resolve the operator home: neither HOME nor USERPROFILE is set " +
-		"(refusing to derive a config path from an empty home)")
+	q := v
+	if goos == "windows" {
+		q = strings.ReplaceAll(v, `\`, "/")
+	}
+	if c := path.Clean(q); c == "/" || (goos == "windows" && len(c) == 2 && c[1] == ':') {
+		return fmt.Errorf("names the filesystem root")
+	}
+	return nil
 }
 
 // configHomeFor is the operator's assay config home: $ASSAY_CONFIG_HOME, else

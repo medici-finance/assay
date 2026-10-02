@@ -127,8 +127,16 @@ var (
 	// carry no information and are what documentation of this check spells. A UNC host needs
 	// two characters so a regex escape pair (a backslash pair, a letter, a backslash, a
 	// letter) is not read as a host and share.
+	//
+	// The UNC matcher takes separators the way the drive matcher does: either direction and
+	// any run of them, both before the host and between host and share. IsAbsFor accepts any
+	// two leading separators, and Windows itself resolves `//host/share` and a mixed
+	// `\\host/share` to the same share, so each is the same leak; a body that went through a
+	// JSON or Go string escape doubles every backslash, and must not slip past by that alone.
+	// findAbsMachinePath drops the two shapes that are not UNC at all: a run after `:` (a URL
+	// scheme's `//`) and a run after a letter or digit (a doubled separator inside a path).
 	reWinUsersPath = regexp.MustCompile(`(?i)\b[a-z]:[\\/]+users[\\/]+[\p{L}\p{N}_$][^\s"'` + "`" + `)\]>,;]*`)
-	reWinUNCPath   = regexp.MustCompile(`\\\\[\p{L}\p{N}][\p{L}\p{N}._$-]+\\[\p{L}\p{N}_$][^\s"'` + "`" + `)\]>,;]*`)
+	reWinUNCPath   = regexp.MustCompile(`[\\/]{2,}[\p{L}\p{N}][\p{L}\p{N}._$-]+[\\/]+[\p{L}\p{N}_$][^\s"'` + "`" + `)\]>,;]*`)
 	// reWorktreeName matches a scratch worktree directory name written WITHOUT its leading
 	// path — `tracker-<item>` — which is how it most often reaches a body (a command line, a
 	// "my worktree is …" sentence). deskwt mints exactly this shape (cmd/deskwt).
@@ -301,6 +309,9 @@ func findAbsMachinePath(s string) []int {
 			if best != nil && loc[0] >= best[0] {
 				break
 			}
+			if re == reWinUNCPath && loc[0] > 0 && notUNCLead(s[loc[0]-1]) {
+				continue
+			}
 			if IsAbsFor("windows", s[loc[0]:loc[1]]) {
 				best = loc
 				break
@@ -308,6 +319,13 @@ func findAbsMachinePath(s string) []int {
 		}
 	}
 	return best
+}
+
+// notUNCLead reports whether the byte before a UNC-shaped separator run means the run is not
+// a UNC prefix: a `:` ends a URL scheme (`https://host/path`), and a letter or digit means
+// the run is a doubled separator inside a path (`dir//sub/file`).
+func notUNCLead(c byte) bool {
+	return c == ':' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
 
 // selfContainFindings is the collector behind selfContainScan: EVERY refusing finding, in

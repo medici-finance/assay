@@ -69,10 +69,16 @@ func TestCodexCommandEnvironmentSeparatesHomes(t *testing.T) {
 	if values["DESK_LOOP"] != "worker-desk" {
 		t.Fatal("role lost")
 	}
-	// Native Windows installations often carry USERPROFILE without HOME.
+	// Native Windows installations often carry USERPROFILE without HOME, and resolve. Off
+	// windows os.UserHomeDir reads HOME alone, so a USERPROFILE-only environment refuses rather
+	// than resolving a home every launched tool would then fail to find.
 	c.Env.Put("HOME", "")
-	if _, err := c.codexEnvironmentArgs(env); err != nil {
+	_, err = c.codexEnvironmentArgs(env)
+	if runtime.GOOS == "windows" && err != nil {
 		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && (err == nil || !strings.Contains(err.Error(), "HOME is not set")) {
+		t.Fatalf("USERPROFILE-only off windows must refuse, got %v", err)
 	}
 }
 
@@ -124,7 +130,8 @@ func TestCodexShellInstructionsArePlatformSpecific(t *testing.T) {
 
 func TestCodexNativeOperatorHomes(t *testing.T) {
 	c := codexEnvironmentCell(t)
-	c.Env.Put("USERPROFILE", filepath.Join(t.TempDir(), "native home"))
+	// Windows-shaped, so the windows resolver's absolute-path check holds on any host.
+	c.Env.Put("USERPROFILE", `C:\Profiles\native home`)
 	if got, err := operatorHomeFor("windows", c.Env); err != nil || got != c.Env.Get("USERPROFILE") {
 		t.Fatal("Windows used Git Bash HOME")
 	}

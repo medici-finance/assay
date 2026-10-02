@@ -88,6 +88,14 @@ func TestOutboundWindowsMachinePaths(t *testing.T) {
 		{"drive_lowercase", `c:` + bs + `users` + bs + `example`},
 		{"unc", bs + bs + `fileserver` + bs + `share` + bs + `team` + bs + `doc.md`},
 		{"unc_host_share_only", bs + bs + `fileserver` + bs + `share`},
+		// In-class spellings of the same UNC path: IsAbsFor takes any two leading separators,
+		// Windows resolves each to the same share, and a string escape doubles backslashes.
+		{"unc_mixed_separators", bs + bs + `fileserver/share/team`},
+		{"unc_forward_slash", "//" + "fileserver/share/doc.md"},
+		{"unc_forward_then_back", "//" + `fileserver` + bs + `share`},
+		{"unc_repeated_separators", bs + bs + `fileserver` + bs + bs + `share` + bs + bs + `doc.md`},
+		{"unc_json_escaped", bs + bs + bs + bs + `fileserver` + bs + bs + `share`},
+		{"unc_triple_lead", bs + bs + bs + `fileserver` + bs + `share`},
 	}
 	for _, c := range refused {
 		t.Run("public/"+c.name+"_refused", func(t *testing.T) {
@@ -121,6 +129,10 @@ func TestOutboundWindowsMachinePaths(t *testing.T) {
 		"regex_escape":    "the pattern `" + bs + bs + "d" + bs + bs + "s` is a regex",
 		"non_users_drive": "the installer lands in `C:" + bs + "Program Files" + bs + "Tool`",
 		"url_not_unc":     "see https://example.com/a/b",
+		"file_url":        "see file:///srv/notes/a.md",
+		"mid_path_double": "the joined path a//b/c collapses",
+		"url_mid_path":    "see https://example.com/a//b/c",
+		"placeholder_fwd": "and `//<host>/<share>` in its forward-slash form",
 	} {
 		t.Run("public/"+name+"_passes", func(t *testing.T) {
 			s := newGLServer(t)

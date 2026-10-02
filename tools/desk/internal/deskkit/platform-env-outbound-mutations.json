@@ -1,23 +1,23 @@
 {
-  "test": "go test ./internal/deskkit/ ./cmd/cellctl/ -count=1 -timeout 120s -run '^Test(EnvResolution|HomeReadClassGuard|OutboundWindowsMachinePaths|CodexNativeOperatorHomes)$'",
+  "test": "go test ./internal/deskkit/ ./cmd/cellctl/ -count=1 -timeout 120s -run '^Test(EnvResolution|HomeReadClassGuard|OutboundWindowsMachinePaths|CodexNativeOperatorHomes|NewRefusesBeforeMkdir)$'",
   "control": {
-    "name": "Windows neither-set refusal removed (empty home resolves)",
+    "name": "Unset-home refusal removed (empty home resolves)",
     "file": "cmd/cellctl/homeresolve.go",
-    "old": "\t\treturn \"\", fmt.Errorf(\"cannot resolve the operator home: neither USERPROFILE nor HOME is set \" +",
-    "new": "\t\treturn \"\", nil\n\t\treturn \"\", fmt.Errorf(\"cannot resolve the operator home: neither USERPROFILE nor HOME is set \" +"
+    "old": "\treturn \"\", fmt.Errorf(\"cannot resolve the operator home: %s \"+",
+    "new": "\treturn \"\", nil\n\treturn \"\", fmt.Errorf(\"cannot resolve the operator home: %s \"+"
   },
   "mutations": [
     {
-      "name": "POSIX neither-set refusal removed",
+      "name": "POSIX USERPROFILE fallback restored",
       "file": "cmd/cellctl/homeresolve.go",
-      "old": "\treturn \"\", fmt.Errorf(\"cannot resolve the operator home: neither HOME nor USERPROFILE is set \" +",
-      "new": "\treturn \"\", nil\n\treturn \"\", fmt.Errorf(\"cannot resolve the operator home: neither HOME nor USERPROFILE is set \" +"
+      "old": "\tcands := []candidate{{\"HOME\", e.Get(\"HOME\")}}",
+      "new": "\tcands := []candidate{{\"HOME\", e.Get(\"HOME\")}, {\"USERPROFILE\", e.Get(\"USERPROFILE\")}}"
     },
     {
       "name": "Windows precedence flipped (Git Bash HOME beats USERPROFILE)",
       "file": "cmd/cellctl/homeresolve.go",
-      "old": "\tif goos == \"windows\" {\n\t\tif v := e.Get(\"USERPROFILE\"); v != \"\" {",
-      "new": "\tif goos == \"windows\" {\n\t\tif v := e.Get(\"HOME\"); v != \"\" {\n\t\t\treturn v, nil\n\t\t}\n\t\tif v := e.Get(\"USERPROFILE\"); v != \"\" {"
+      "old": "\t\tcands = []candidate{{\"USERPROFILE\", e.Get(\"USERPROFILE\")}, {\"HOME\", e.Get(\"HOME\")}}",
+      "new": "\t\tcands = []candidate{{\"HOME\", e.Get(\"HOME\")}, {\"USERPROFILE\", e.Get(\"USERPROFILE\")}}"
     },
     {
       "name": "APPDATA gh default dropped on windows",
@@ -30,6 +30,36 @@
       "file": "cmd/cellctl/cell.go",
       "old": "\treturn mustResolve(configHomeFor(runtime.GOOS, e))",
       "new": "\treturn filepath.Join(e.Get(\"HOME\"), \".config\", \"assay\")"
+    },
+    {
+      "name": "Home shape check skipped (relative or non-local home resolves)",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\t\tif err := homePathCheck(goos, c.v); err != nil {",
+      "new": "\t\tif err := homePathCheck(goos, c.v); false && err != nil {"
+    },
+    {
+      "name": "Filesystem-root home tolerated",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "c == \"/\" || (goos == \"windows\" && len(c) == 2 && c[1] == ':')",
+      "new": "false && (c == \"/\" || (goos == \"windows\" && len(c) == 2 && c[1] == ':'))"
+    },
+    {
+      "name": "Bad primary falls back to the next variable",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\t\tif err := homePathCheck(goos, c.v); err != nil {",
+      "new": "\t\tif err := homePathCheck(goos, c.v); err != nil {\n\t\t\tcontinue\n\t\t}\n\t\tif err := homePathCheck(goos, c.v); err != nil {"
+    },
+    {
+      "name": "k8s new resolves the home after mkdir",
+      "file": "cmd/cellctl/new.go",
+      "old": "\thome, cfgHome := hostHome(e), realConfigHome(e)\n\tmustMkdirAll(filepath.Join(d, \"home\", \".config\", \"assay\"), filepath.Join(d, \"bin\"),\n\t\tfilepath.Join(d, \"index\"), filepath.Join(d, \"worktrees\"))\n",
+      "new": "\tmustMkdirAll(filepath.Join(d, \"home\", \".config\", \"assay\"), filepath.Join(d, \"bin\"),\n\t\tfilepath.Join(d, \"index\"), filepath.Join(d, \"worktrees\"))\n\thome, cfgHome := hostHome(e), realConfigHome(e)\n"
+    },
+    {
+      "name": "house new resolves the home after mkdir",
+      "file": "cmd/cellctl/new.go",
+      "old": "\thome := hostHome(e)\n\tmustMkdirAll(filepath.Join(d, \"home\", \".config\"), filepath.Join(d, \"worktrees\"), filepath.Join(d, \"shim\"))\n",
+      "new": "\tmustMkdirAll(filepath.Join(d, \"home\", \".config\"), filepath.Join(d, \"worktrees\"), filepath.Join(d, \"shim\"))\n\thome := hostHome(e)\n"
     },
     {
       "name": "Windows drive-letter Users matcher disabled",
@@ -54,6 +84,18 @@
       "file": "internal/deskkit/selfcontain.go",
       "old": "users[\\\\/]+[\\p{L}\\p{N}_$][^",
       "new": "users[\\\\/]*[^"
+    },
+    {
+      "name": "UNC separator tolerance dropped (exact backslash pairs only)",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "reWinUNCPath   = regexp.MustCompile(`[\\\\/]{2,}[\\p{L}\\p{N}][\\p{L}\\p{N}._$-]+[\\\\/]+[\\p{L}\\p{N}_$][^",
+      "new": "reWinUNCPath   = regexp.MustCompile(`\\\\\\\\[\\p{L}\\p{N}][\\p{L}\\p{N}._$-]+\\\\[\\p{L}\\p{N}_$][^"
+    },
+    {
+      "name": "UNC URL-scheme and mid-path exclusion dropped",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "\t\t\tif re == reWinUNCPath && loc[0] > 0 && notUNCLead(s[loc[0]-1]) {",
+      "new": "\t\t\tif re == reWinUNCPath && loc[0] > 0 && false && notUNCLead(s[loc[0]-1]) {"
     }
   ]
 }
