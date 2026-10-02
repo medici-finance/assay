@@ -20,8 +20,8 @@ package deskkit
 // only by the second. Neither is redundant with the other — they guard the same fault at
 // two independent trust boundaries.
 //
-// WHAT IT CHECKS. For every commit the push would publish — `refs/remotes/origin/<base>..HEAD`
-// — the AUTHOR and the COMMITTER must both resolve to the session role's bound identity, by
+// WHAT IT CHECKS. For every commit the push would publish — `refs/remotes/origin/<base>..HEAD`,
+// narrowed to exclude a verified remote tip (see WHICH COMMITS below) — the AUTHOR and the COMMITTER must both resolve to the session role's bound identity, by
 // the SAME forge-aware rules preflight's commit-identity check applies to a worktree's config
 // (forgeidentity.go): a GitHub identity's exact bot-USER-id noreply address, a GitLab
 // service-account noreply SHAPE, or an explicitly trusted GitLab session address. A merge
@@ -30,6 +30,29 @@ package deskkit
 // and never carries the role identity, so requiring it to would false-refuse a legitimately
 // updated branch. There is deliberately no override flag: the remedy is to fix the worktree
 // and re-author, not to wave the commit through.
+//
+// WHICH COMMITS — THE RANGE (issue #1967). The check judges the commits THIS push ADDS to the
+// remote, not every commit on the branch. Walking the whole `origin/<base>..HEAD` re-judged
+// commits the remote PR head already held — an earlier commit by a different trusted App on a
+// mixed-author PR — and refused a push that published none of them, so the only way to update
+// such a PR was a raw push around the gate. A caller may therefore offer a REMOTE TIP: the
+// commit the remote branch this push updates already holds. The range then also excludes
+// everything reachable from that tip — `HEAD ^refs/remotes/origin/<base> ^<tip>` — which is a
+// SUBSET of the wide walk, never a superset: narrowing can only drop commits the remote
+// already has, it can never add or reorder anything.
+//
+// The narrowing FAILS CLOSED to the wide walk, never open. The offered tip is used only when
+// all three hold: (1) it is spelled as a full hex object name or a fully-qualified
+// `refs/remotes/origin/…` remote-tracking ref — never `HEAD`, a local branch, an abbreviated
+// sha or a revision expression, any of which could name the commit being pushed and empty the
+// range; (2) it resolves to a commit in this repository — a first push (no remote branch yet)
+// or an unfetched head has nothing to anchor on; (3) it is an ancestor of HEAD — a remote
+// branch that was force-moved, or a tip this branch diverged from, cannot be fast-forwarded
+// by deskpr's plain (never forced) push, so nothing about it is trusted to shrink the range.
+// Any failure falls back to the whole `origin/<base>..HEAD`, and the refusal (if any) says the
+// tip was offered and why it was not used. A STALE tracking ref that lags the remote is safe
+// by construction: it is an ancestor of the real remote head, so the range it yields is a
+// superset of what the push adds.
 
 import (
 	"fmt"
@@ -65,10 +88,126 @@ type PublishIdentityInput struct {
 	// stray local branch literally named `origin/<base>` cannot shadow it (the same
 	// ambiguity preflight and the worker lineage self-check guard against).
 	Base string
+	// RemoteTip, when non-empty, names the commit the REMOTE branch this push updates already
+	// holds (#1967): a full hex object name the forge reported for the PR head, or the
+	// fully-qualified remote-tracking ref `refs/remotes/origin/<branch>`. The range then also
+	// excludes everything reachable from it, so commits already on the remote are not
+	// re-judged. It is used only when it passes the fail-closed rules in the file header;
+	// otherwise — and when it is empty — the whole refs/remotes/origin/<Base>..HEAD is judged.
+	// Every caller states it explicitly (TestPubIdentityCallersTip).
+	RemoteTip string
 	// Role is the session role the commits must be attributed to (worker, verifier, …).
 	Role string
-	// Commits, when non-nil, replaces the default git reader (test seam).
-	Commits func(dir, base string) ([]PublishCommit, error)
+	// Commits, when non-nil, replaces the default git reader (test seam). It receives the
+	// resolved range and must honour it.
+	Commits func(dir string, rng PublishRange) ([]PublishCommit, error)
+}
+
+// PublishRange is the resolved set of commits the gate judges: everything reachable from
+// HEAD and not from Base, nor — when Tip is set — from Tip.
+type PublishRange struct {
+	// Base is the fully-qualified remote-tracking base ref, refs/remotes/origin/<base>.
+	Base string
+	// Tip is the resolved full object name of the remote tip excluded from the range, or ""
+	// when the range is the whole Base..HEAD.
+	Tip string
+	// Offered is the RemoteTip the caller offered, verbatim ("" when none).
+	Offered string
+	// Widened says why an offered tip was NOT used, so a refusal can name it ("" when no tip
+	// was offered or the offered tip was used).
+	Widened string
+}
+
+// Narrowed reports whether the range excludes a remote tip beyond the base.
+func (r PublishRange) Narrowed() bool { return r.Tip != "" }
+
+// revArgs is the `git log` revision set for the range.
+func (r PublishRange) revArgs() []string {
+	args := []string{"HEAD", "^" + r.Base}
+	if r.Tip != "" {
+		args = append(args, "^"+r.Tip)
+	}
+	return args
+}
+
+// String renders the range for a message.
+func (r PublishRange) String() string {
+	if r.Tip == "" {
+		return r.Base + "..HEAD"
+	}
+	return r.Base + "..HEAD excluding the remote tip " + shortPublishSHA(r.Tip)
+}
+
+// remoteTipRefPrefix is the only ref namespace an offered tip may be spelled in: the remote
+// this push goes to. A local branch (refs/heads/…) or another remote's ref is not evidence
+// of what origin holds.
+const remoteTipRefPrefix = "refs/remotes/origin/"
+
+// tipSpellingProblem returns why an offered tip is not an acceptable SPELLING, or "" when it
+// is: a full 40- or 64-hex object name, or refs/remotes/origin/<name> built only from ref-safe
+// characters with no revision syntax (`..`, `^`, `~`, `@{`, `:`) that could make it name
+// something other than the ref itself.
+func tipSpellingProblem(tip string) string {
+	if isFullHexObjectName(tip) {
+		return ""
+	}
+	if !strings.HasPrefix(tip, remoteTipRefPrefix) || len(tip) == len(remoteTipRefPrefix) {
+		return "it is neither a full object name nor a fully-qualified " + remoteTipRefPrefix + "<branch> ref"
+	}
+	if strings.Contains(tip, "..") || strings.HasSuffix(tip, "/") || strings.HasSuffix(tip, ".lock") {
+		return "it is not a well-formed ref name"
+	}
+	for _, r := range tip {
+		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '/' || r == '-' || r == '_' || r == '.'
+		if !ok {
+			return "it carries a character outside a plain ref name (revision syntax is not accepted)"
+		}
+	}
+	return ""
+}
+
+// isFullHexObjectName reports whether s is a full SHA-1 (40) or SHA-256 (64) hex object name.
+func isFullHexObjectName(s string) bool {
+	if len(s) != 40 && len(s) != 64 {
+		return false
+	}
+	for _, r := range s {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+// resolvePublishRange applies the fail-closed narrowing rules (file header) to an offered
+// remote tip. It never errors: every reason the tip cannot be used widens the range to the
+// whole Base..HEAD and is recorded in Widened. A base ref that does not resolve is left for
+// the commit reader to report as could-not-check, exactly as before the narrowing existed.
+func resolvePublishRange(dir, base, tip string) PublishRange {
+	rng := PublishRange{Base: "refs/remotes/origin/" + base, Offered: tip}
+	tip = strings.TrimSpace(tip)
+	if tip == "" {
+		return rng
+	}
+	if why := tipSpellingProblem(tip); why != "" {
+		rng.Widened = "the offered remote tip " + fmt.Sprintf("%q", tip) + " was not used: " + why
+		return rng
+	}
+	out, err := gitOut(dir, "rev-parse", "--verify", "--quiet", tip+"^{commit}")
+	sha := strings.TrimSpace(out)
+	if err != nil || !isFullHexObjectName(sha) {
+		rng.Widened = "the offered remote tip " + fmt.Sprintf("%q", tip) + " was not used: it does not resolve to a " +
+			"commit here (a first push, or a remote head not fetched yet — `git fetch origin` and retry)"
+		return rng
+	}
+	if _, aerr := gitOut(dir, "merge-base", "--is-ancestor", sha, "HEAD"); aerr != nil {
+		rng.Widened = "the offered remote tip " + fmt.Sprintf("%q", tip) + " was not used: it is not an ancestor of HEAD " +
+			"(the remote branch was force-moved, or this branch diverged from it)"
+		return rng
+	}
+	rng.Tip = strings.ToLower(sha)
+	return rng
 }
 
 // PublishIdentityMatchesRole refuses (exit 5) when any commit the push would publish is not
@@ -109,11 +248,12 @@ func PublishIdentityMatchesRole(in PublishIdentityInput) error {
 	if read == nil {
 		read = defaultPublishCommits
 	}
-	commits, err := read(in.Dir, in.Base)
+	rng := resolvePublishRange(in.Dir, in.Base, in.RemoteTip)
+	commits, err := read(in.Dir, rng)
 	if err != nil {
 		return Unverifiable(fmt.Sprintf(
-			"publish-identity: cannot enumerate the commits refs/remotes/origin/%s..HEAD would publish (%s) — "+
-				"could-not-check, never clean", in.Base, oneLine(err.Error())), err)
+			"publish-identity: cannot enumerate the commits %s would publish (%s) — "+
+				"could-not-check, never clean", rng.String(), oneLine(err.Error())), err)
 	}
 
 	for _, c := range commits {
@@ -125,10 +265,10 @@ func PublishIdentityMatchesRole(in PublishIdentityInput) error {
 			continue
 		}
 		if !emailMatchesRole(ident, c.AuthorEmail) {
-			return publishIdentityRefusal(ident, role, c, "authored", c.AuthorName, c.AuthorEmail)
+			return publishIdentityRefusal(ident, role, c, rng, "authored", c.AuthorName, c.AuthorEmail)
 		}
 		if !emailMatchesRole(ident, c.CommitterEmail) {
-			return publishIdentityRefusal(ident, role, c, "committed", c.CommitterName, c.CommitterEmail)
+			return publishIdentityRefusal(ident, role, c, rng, "committed", c.CommitterName, c.CommitterEmail)
 		}
 	}
 	return nil
@@ -150,13 +290,20 @@ func emailMatchesRole(ident BotIdentity, email string) bool {
 // publishIdentityRefusal renders the exit-5 refusal, naming the commit, the identity found,
 // the identity expected, and the remedy. There is no override flag — the fix is to correct
 // the worktree and re-author the commit, not to wave it through.
-func publishIdentityRefusal(ident BotIdentity, role string, c PublishCommit, verb, foundName, foundEmail string) error {
-	return Refused(fmt.Sprintf(
+func publishIdentityRefusal(ident BotIdentity, role string, c PublishCommit, rng PublishRange, verb, foundName, foundEmail string) error {
+	msg := fmt.Sprintf(
 		"publish-identity: commit %s (%q) is %s by %s, but role %q publishes as %s — a commit carrying "+
 			"another identity would be published under the wrong actor. Fix this worktree's identity and "+
 			"re-author: `git commit --amend --reset-author` after correcting user.name/user.email, or "+
-			"re-create the worktree with `deskwt role-init --role %s`. There is no override.",
-		shortPublishSHA(c.SHA), c.Subject, verb, foundIdentity(foundName, foundEmail), role, expectedIdentity(ident), role))
+			"re-create the worktree with `deskwt role-init --role %s`. There is no override. Range judged: %s.",
+		shortPublishSHA(c.SHA), c.Subject, verb, foundIdentity(foundName, foundEmail), role, expectedIdentity(ident), role,
+		rng.String())
+	if rng.Widened != "" {
+		// Name why the narrower range was not used: a commit the remote branch already holds is
+		// only re-judged here because its tip could not be trusted, and the remedy differs.
+		msg += " Note: " + rng.Widened + ", so the whole range was judged."
+	}
+	return Refused(msg)
 }
 
 // foundIdentity renders the offending "<name> <email>" pair, tolerating an empty half so a
@@ -202,16 +349,18 @@ func IsForgeMergeIdentity(email string) bool {
 	return strings.EqualFold(strings.TrimSpace(email), "noreply@github.com")
 }
 
-// defaultPublishCommits reads the commits refs/remotes/origin/<base>..HEAD would publish,
-// newest first, via `git log`. Fields are separated by US (\x1f) and commits by NUL (the
+// defaultPublishCommits reads the commits the resolved range would publish (refs/remotes/
+// origin/<base>..HEAD, minus the remote tip when one was accepted), newest first, via `git log`. Fields are separated by US (\x1f) and commits by NUL (the
 // -z record separator), so a subject can carry any character short of those two control
 // bytes without breaking the parse. A base ref that does not resolve is returned as an
 // error (git exits non-zero), which the caller reports as could-not-check.
-func defaultPublishCommits(dir, base string) ([]PublishCommit, error) {
+func defaultPublishCommits(dir string, rng PublishRange) ([]PublishCommit, error) {
 	const fieldSep = "\x1f"
-	rangeSpec := "refs/remotes/origin/" + base + "..HEAD"
 	format := strings.Join([]string{"%H", "%P", "%an", "%ae", "%cn", "%ce", "%s"}, fieldSep)
-	out, err := gitOut(dir, "log", "--no-color", "-z", "--format="+format, rangeSpec)
+	args := append([]string{"log", "--no-color", "-z", "--format=" + format}, rng.revArgs()...)
+	// `--` ends the revision list, so no revision can ever be read as a path.
+	args = append(args, "--")
+	out, err := gitOut(dir, args...)
 	if err != nil {
 		return nil, err
 	}
