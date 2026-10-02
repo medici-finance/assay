@@ -109,7 +109,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	}
 
 	// A brand-new file: scan it whole (no base to diff against).
-	if berr := evidenceOutboundCheck(repoSlug, targetRepoPath, commitContent); berr != nil {
+	if berr := evidenceOutboundCheck(repoSlug, targetRepoPath, commitContent, commitContent); berr != nil {
 		return berr
 	}
 
