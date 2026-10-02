@@ -48,7 +48,6 @@ name: windows-ci-leg
 # windows/arm64 still ships cross-compiled + checksummed from windows-port/01 regardless.
 
 on:
-  pull_request:
   push:
     tags:
       - 'v*'
