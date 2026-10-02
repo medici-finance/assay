@@ -151,9 +151,11 @@ func validEnvKeyShape(k string) bool {
 // been assigned so far; an unquoted value expands the same way. A trailing inline comment is
 // NOT stripped — bash does not strip one in an assignment either.
 //
-// One deliberate departure, on Windows only: an unquoted `\` before an ordinary character (or at
-// the end of the value) is a path separator and is kept, so `CELL_REPO=C:\src\x` loads as
-// written instead of as `C:srcx` (cellEnvEscapableFor). Off Windows the rule is bash's.
+// One deliberate departure, on Windows only: an unquoted `\` before a byte bashQuote never
+// escapes there (a letter, a digit, `#%+-./:=@_~` mid-value, a non-ASCII byte) or at the end of
+// the value is a path separator and is kept, so `CELL_REPO=C:\src\x` loads as written instead
+// of as `C:srcx`, while every bashQuote-written value still loads as quoted
+// (cellEnvEscapableFor). Off Windows the rule is bash's.
 func unquoteShellValue(s string, e *Env) string {
 	return unquoteShellValueFor(runtime.GOOS, s, e)
 }
@@ -190,7 +192,7 @@ func unquoteShellValueFor(goos, s string, e *Env) string {
 			}
 			i++
 		case '\\':
-			if goos == "windows" && (i+1 >= len(s) || !cellEnvEscapableFor(goos, s[i+1])) {
+			if goos == "windows" && (i+1 >= len(s) || !cellEnvEscapableFor(goos, s[i+1], i == 0)) {
 				out.WriteByte('\\')
 				i++
 				continue

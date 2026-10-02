@@ -127,11 +127,17 @@ actually boots (and the `internal/deskkit` unix-only syscall sites brief
 `docs/streams/windows-port/` 00 owns) belongs to the windows-port stream, not here. Until that
 stream delivers, treat the Windows binaries as untested.
 
-Paths in `cell.env` on Windows: `cellctl new` writes every path it is handed with forward slashes
+Paths in `cell.env` on Windows: `cellctl new` writes every path it is handed, and every path it
+derives (the cell directory under `CELLS_CONFIG`, `DESKD_INDEX`), with forward slashes
 (`CELL_REPO=C:/src/x`), which every Windows API accepts and no shell reads as an escape. A path
-edited in by hand in native form (`C:\src\x`) still loads on Windows — the loader keeps a `\`
-that precedes an ordinary character — but a shell that sources the file (Git Bash) would not, so
-prefer the forward-slash form.
+edited in by hand in native form (`C:\src\x`) still loads on Windows: the loader keeps a `\` that
+precedes a letter, a digit, one of `#%+-./:=@_~` (`~` and `#` only mid-value), a non-ASCII
+byte, or the end of the value. Before any other byte (a space, `(`, `,`, `$`, `{`, `!`, `&`,
+`[`, …) the `\` is still a shell escape, exactly as in a `printf %q`-quoted value, so
+`C:\{guid}` loads as `C:{guid}`; write such a path with forward slashes or single-quote it
+(`'C:\{guid}'`). A shell that sources the file (Git Bash) reads every unquoted `\` as an escape,
+so prefer the forward-slash form. A `--roots` path cannot contain a space at all: entries are
+split on whitespace.
 
 ---
 

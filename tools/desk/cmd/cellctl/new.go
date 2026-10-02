@@ -178,6 +178,9 @@ func cmdNew(args []string) {
 		rootsLine = "CELL_ROOTS=" + roots
 	}
 	today := time.Now().UTC().Format("2006-01-02")
+	// The cell dir is host-derived (filepath.Join), so on Windows it is native: written into
+	// cell.env with forward slashes like every other path (cellenvpath.go; identity elsewhere).
+	dEnv := cellEnvPathFor(runtime.GOOS, d)
 
 	if forge == "github" {
 		// The gh CLI config is a GitHub custody artifact; linked only on a github cell.
@@ -198,7 +201,7 @@ DESKD_APP_PEM=%s
 DESKD_APP_ID_VAR=%s
 ORGS=%s
 ROLES="%s"
-`+cockpitBlock+pinnedBlock, cell, today, cell, repo, rootsLine, d, cell, forgeAPIBase, port, d, pem, idvar, orgs, roles))
+`+cockpitBlock+pinnedBlock, cell, today, cell, repo, rootsLine, dEnv, cell, forgeAPIBase, port, dEnv, pem, idvar, orgs, roles))
 		writeFile(filepath.Join(d, "README.md"), fmt.Sprintf(githubReadme, cell, cell, idvar, cfgHome, idvar, cell, cell, cell))
 	} else {
 		forgeAPIBase := gitlabAPIBase
@@ -224,7 +227,7 @@ DESKD_GITLAB_TOKEN_FILE=%s/gitlab-deskd.token
 DESKD_ADDR=127.0.0.1:%s
 DESKD_INDEX=%s/index/index.db
 ROLES="%s"
-`+cockpitBlock+pinnedBlock, cell, today, cell, repo, rootsLine, d, cell, forgeAPIBase, forgeAPIBase, group, store, store, port, d, roles))
+`+cockpitBlock+pinnedBlock, cell, today, cell, repo, rootsLine, dEnv, cell, forgeAPIBase, forgeAPIBase, group, cellEnvPathFor(runtime.GOOS, store), cellEnvPathFor(runtime.GOOS, store), port, dEnv, roles))
 		writeFile(filepath.Join(d, "README.md"), fmt.Sprintf(gitlabReadme, cell, cell, store, cell, forgeAPIBase, group, cell, cell))
 	}
 	fmt.Printf("[new] scaffolded %s (%s cell) — see %s/README.md for the hand steps\n", d, forge, d)

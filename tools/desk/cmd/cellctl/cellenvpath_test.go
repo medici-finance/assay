@@ -82,9 +82,41 @@ func TestCellEnvBackslashRules(t *testing.T) {
 		{"windows", `a\$HOME`, `a$HOME`},
 		{"windows", `a\ b`, `a b`},
 		{"windows", `\\srv\share`, `\srv\share`},
+		{"windows", `C:\~x\#y\_z\9\é`, `C:\~x\#y\_z\9\é`},
+		{"windows", `\~x`, `~x`},
+		{"windows", `C:\{guid}`, `C:{guid}`},
+		{"windows", `'C:\{guid}'`, `C:\{guid}`},
+		{"windows", `C:/{guid}`, `C:/{guid}`},
 	} {
 		if got := loadLine(t, tc.goos, "K", tc.rhs); got != tc.want {
 			t.Errorf("%s: K=%s loads as %q, want %q", tc.goos, tc.rhs, got, tc.want)
+		}
+	}
+}
+
+// TestCellEnvBashQuoteRoundTrip: whatever this package's own %q writer (bashQuote) emits loads
+// back as the value it quoted, on Windows as on bash — the Windows separator rule may only keep a
+// `\` the writer never produces as an escape. Covers every printable ASCII byte mid-value, the
+// word-initial `~` and `#` bashQuote escapes, and the container-scaffold shapes that carry them.
+func TestCellEnvBashQuoteRoundTrip(t *testing.T) {
+	vals := []string{
+		`a/b=C:/x,c/d=D:/y`,
+		`C:\Program Files (x86)\tool\launcher.exe`,
+		`C:/Program Files (x86)/tool/launcher.exe`,
+		`~/cells/x`,
+		`#not-a-comment`,
+		`C:\x\`,
+		`\\srv\share`,
+	}
+	for c := byte(0x20); c < 0x7f; c++ {
+		vals = append(vals, "a"+string(c)+"b", `C:\`+string(c)+`x`)
+	}
+	for _, v := range vals {
+		w := bashQuote(v)
+		for _, goos := range []string{"windows", "linux"} {
+			if got := loadLine(t, goos, "K", w); got != v {
+				t.Errorf("%s: bashQuote(%q) = %s loads as %q", goos, v, w, got)
+			}
 		}
 	}
 }

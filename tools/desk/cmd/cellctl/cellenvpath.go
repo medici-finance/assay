@@ -12,8 +12,9 @@ import "strings"
 //   - WRITE: `cellctl new` emits every path it was handed with forward slashes on Windows
 //     (cellEnvPathFor / cellEnvRootsFor). `C:/src/x` is a path every Win32 API accepts and that
 //     no reader — bash or Go — treats as an escape, so a scaffolded file round-trips everywhere.
-//   - READ: on Windows the loader keeps a `\` that precedes an ordinary character literal
-//     (cellEnvEscapableFor), so a hand-edited or `cellctl set` value in native form still loads.
+//   - READ: on Windows the loader keeps a `\` that precedes a byte bashQuote never escapes there
+//     (cellEnvEscapableFor), so a hand-edited or `cellctl set` value in native form still loads
+//     and every value the package's own %q writer emits still reads back as written.
 //
 // Every helper takes the target goos explicitly, so the Windows rules are table-tested on any
 // host; production callers pass runtime.GOOS. On every other goos each one is the identity —
@@ -52,17 +53,26 @@ func cellEnvRootsFor(goos, roots string) string {
 	return b.String()
 }
 
-// cellEnvWinEscapable is the set of bytes an UNQUOTED `\` still escapes on Windows — exactly
-// the ones whose backslash form is how a shell writer (bash's own `printf %q`, bashQuote) spells
-// them, so `C:\\x` and `a\ b` keep their bash meaning. Before anything else the backslash is a
-// path separator and stays.
-const cellEnvWinEscapable = "\\\"'$` \t"
-
 // cellEnvEscapableFor reports whether an unquoted `\` followed by next is a shell escape for
-// goos. Off Windows it always is (bash semantics, which the parity harness pins).
-func cellEnvEscapableFor(goos string, next byte) bool {
+// goos; wordStart says the `\` is the first byte of the value. Off Windows it always is (bash
+// semantics, which the parity harness pins).
+//
+// On Windows the rule is DERIVED from the writer, not kept as a second list: the `\` is an escape
+// exactly when next is a byte bashQuote (bash's own `printf %q`) would backslash-escape there —
+// any ASCII byte outside bashQuoteSafe, plus `~` and `#` in word-initial position. So every value
+// the package writes loads back unchanged (TestCellEnvBashQuoteRoundTrip). Before a safe byte
+// (`#%+-./:=@_~`, a letter, a digit, mid-value), before a non-ASCII byte, or at the end of the
+// value, the `\` is a path separator and stays: `C:\src\x` loads as written.
+//
+// The cost, for a NATIVE path hand-written unquoted: a `\` directly before any other byte
+// (space, `(`, `,`, `$`, `{`, `!`, `&`, `[`, …) still reads as an escape, so `C:\{guid}` loads as
+// `C:{guid}`. Write such a path with forward slashes, or single-quote it (`'C:\{guid}'`).
+func cellEnvEscapableFor(goos string, next byte, wordStart bool) bool {
 	if goos != "windows" {
 		return true
 	}
-	return strings.IndexByte(cellEnvWinEscapable, next) >= 0
+	if next >= 0x80 {
+		return false
+	}
+	return !bashQuoteSafe[next] || (wordStart && (next == '~' || next == '#'))
 }
