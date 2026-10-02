@@ -243,6 +243,11 @@ Do NOT flag a legitimate `blocked` cell as invalid: it is an accepted value.
   the check-only and body-edit classes, `deskpost ready` for the external-prerequisite class).
   No exemption is a merge, and none is a licence to clear a code finding without a code
   change.
+- Cite sops material, never quote it. When a finding is about an encrypted file, name it by
+  `path:line` and describe it in words: the `sops` footer, its `mac` or `lastmodified` field,
+  an `ENC[…]` envelope missing its `iv`. Never paste the footer or an envelope into the body;
+  the secret scan refuses a quotation on every surface, inside a code fence too, and no flag
+  waives it. The refusal itself names this remedy.
 - Findings first, scope second: re-read the PR's reviews before and after every push you
   make to it.
 - Escalate per the common kit's escalate-durably rule: anything the loop cannot resolve

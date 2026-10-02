@@ -1,0 +1,2 @@
+### Changed
+- The `sops-block` secret-scan refusal now names its remedy: cite sops material by `path:line` and describe it in words, never quote a `sops` footer or an `ENC[…]` envelope. Every surface and every outbound write kind gets the same message, so a reviewer whose verdict tripped the rule has a sanctioned way to state the finding. The rule itself is unchanged: a quotation is still refused, inside a code fence too, and no flag waives it. The review prompt, the `pr-review-desk` verdict-format reference and `deskpost`'s usage say the same (#2060).

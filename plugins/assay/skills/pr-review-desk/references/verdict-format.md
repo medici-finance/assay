@@ -132,6 +132,11 @@ charset and the run inside stays contiguous. Break the identifier or shorten the
 the numeric review `id` from `gh api repos/<slug>/pulls/<N>/reviews`; never paste prefixed digests
 or base64 blobs.
 
+Cite sops material, never quote it. A finding about an encrypted file names it by `path:line`
+and describes it in words: the `sops` footer, its `mac` or `lastmodified` field, an `ENC[…]`
+envelope missing its `iv`. A quoted footer or envelope is refused on every surface, inside a
+code fence too, and there is no flag that waives it; the refusal names this remedy.
+
 ## If a raw `gh pr review` is ever unavoidable
 
 Run it **BARE and read `gh`'s OWN exit — never `gh pr review … | grep …`**: the
