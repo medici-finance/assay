@@ -1,0 +1,2 @@
+### Fixed
+- desktools-v2/10 Verify rows 2–9 and 11–13 now fail when the property they name is false: each `go test` row asserts its own anchored `--- PASS:` lines and prints one decidable line instead of passing on the exit status or on "no tests to run", the mutation row reads the harness's healthy and Totals lines, and the consumers row is pinned to the delivering change. Row 13 stays red until desktools-v2/12 adds its test.
