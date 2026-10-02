@@ -87,7 +87,9 @@ blessing-authority application AT OR AFTER the cutoff, or a present label the ti
 attribute to anyone at all — re-attesting that content under the dispatcher would be
 laundering, not repair, so the dispatch ceremony (a fresh --model/--tier) is the sanctioned
 path for those cases instead.
-NOOP (exit 0): the pair already stands under an identity the floor accepts — nothing to repair.
+NOOP (exit 0): the pair already stands under an accepted label authority — no label provenance
+to repair. This verb does not check claim liveness or establish current review authority;
+it cannot renew a released dispatch. Review verdicts still check the live review claim family.
 
 --dry-run reads the PR and its label timeline, prints what would be removed and re-applied,
          and writes nothing.

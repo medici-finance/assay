@@ -1,3 +1,0 @@
-### Added
-- Hotspot report for `tools/desk`: a test-only package (`internal/hotspot`) that ranks files by churn × indentation complexity over first-parent git history and reports temporal-coupling pairs (`go test ./internal/hotspot/ -run TestPrintHotspots -v -args -since=… -until=… -top=N`). A shallow clone reports could-not-check, never an empty ranking. No verb or flag is added to any shipped binary.
-- `docs/contracts.md` gains a `## Brittle marks` section: the two-key rule (the metric nominates, the class defect history confirms), the `watch` state, the mark table and the clearing rule. No module is marked yet.

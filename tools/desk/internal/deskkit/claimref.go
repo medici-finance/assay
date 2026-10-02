@@ -116,6 +116,66 @@ func ReviewClaimFamilyRefPrefix(repo string, pr int) (string, bool) {
 	return fmt.Sprintf("%s%s--pr-%d", DispatchClaimActiveRefsPrefix, short, pr), true
 }
 
+// ReviewClaimFamilies names the finite set accepted by review dispatch: the current
+// configured alias and the repository basename. Keep both so a configured alias does
+// not hide an existing basename claim. Never infer arbitrary historical aliases or
+// rename existing claims: an unconfigured prefix needs an explicit configuration.
+func ReviewClaimFamilies(repo string, pr int) []string {
+	if strings.TrimSpace(repo) == "" || pr <= 0 {
+		return nil
+	}
+	var families []string
+	for _, label := range []string{RepoShortLabel(repo), repoBasename(repo)} {
+		label = strings.TrimSpace(label)
+		if label == "" {
+			continue
+		}
+		prefix := fmt.Sprintf("%s%s--pr-%d", DispatchClaimActiveRefsPrefix, label, pr)
+		if len(families) == 0 || families[0] != prefix {
+			families = append(families, prefix)
+		}
+	}
+	return families
+}
+
+// ValidateReviewClaimKey binds a qualified key to the same repository/PR families
+// the reader searches. It preserves valid keys byte-for-byte and runs before claim
+// acquisition; silently rewriting a key would create a second lock for the same work.
+func ValidateReviewClaimKey(key, repo string, pr int) error {
+	families := ReviewClaimFamilies(repo, pr)
+	ref := DispatchClaimActiveRefsPrefix + key
+	if _, err := ValidateRefPath(strings.TrimPrefix(ref, "refs/")); err == nil && !strings.Contains(key, "/") {
+		for _, prefix := range families {
+			if RefInReviewClaimFamily(prefix, ref) && ref != prefix+"--" {
+				return nil
+			}
+		}
+	}
+	return Refused(fmt.Sprintf("review claim key %q does not belong to %s#%d; expected one of [%s] with an optional --<lane> suffix. Unconfigured historical prefixes require an explicit alias mapping; no claim was acquired or renamed",
+		key, repo, pr, strings.Join(families, ", ")))
+}
+
+// ReadReviewClaims is the shared reader for every review-authority adapter. One
+// observed family member proves Held. Released requires every candidate listing to
+// succeed and be empty; an unreadable candidate is Unknown, never positive release.
+func ReadReviewClaims(repo string, pr int, read func(string) ([]string, error)) ClaimLiveness {
+	families := ReviewClaimFamilies(repo, pr)
+	if len(families) == 0 {
+		return ClaimLivenessUnknown
+	}
+	result := ClaimReleased
+	for _, prefix := range families {
+		refs, err := read(prefix)
+		switch ReviewClaimLivenessFromMatchingRefs(refs, prefix, err) {
+		case ClaimHeld:
+			return ClaimHeld
+		case ClaimLivenessUnknown:
+			result = ClaimLivenessUnknown
+		}
+	}
+	return result
+}
+
 // RefInReviewClaimFamily reports whether ref is a member of the review-claim family named by
 // familyPrefix: it EQUALS the prefix (the un-suffixed review claim) or begins with the prefix
 // plus "--" (a disambiguated re-dispatch). The "--" boundary is load-bearing: without it the

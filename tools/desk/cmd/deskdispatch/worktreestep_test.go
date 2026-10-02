@@ -134,7 +134,7 @@ func TestWorktreeCreateHintDiffersByKit(t *testing.T) {
 	if strings.Contains(review, "feat/item-1") || strings.Contains(review, "brief") {
 		t.Errorf("the review-lane hint still carries brief-lane feat/<id>/brief wording — it misleads a reviewer:\n%s", review)
 	}
-	if !strings.Contains(review, "reviewer worktree") || !strings.Contains(review, "deskwt remove") {
+	if !strings.Contains(review, "reviewer worktree") || strings.Contains(review, "deskwt remove") || !strings.Contains(review, "cleanup is not a prerequisite") {
 		t.Errorf("the review-lane hint does not point at the reviewer-worktree lifecycle:\n%s", review)
 	}
 	if brief == review {

@@ -1,0 +1,30 @@
+{
+  "test": "go test -race . -run '^Test(Pipe.*|CmdBufferClass)$' -count=1 -timeout 60s",
+  "control": {
+    "name": "CONTROL: both command copy goroutines share one stderr buffer",
+    "file": "mergecheck.go",
+    "old": "untar.Stderr = &untarErr",
+    "new": "untar.Stderr = &archiveErr"
+  },
+  "mutations": [
+    {
+      "name": "Discard extractor diagnostic bytes",
+      "file": "mergecheck.go",
+      "old": "archiveErr.String() + \"\\n\" + untarErr.String()",
+      "new": "archiveErr.String() + \"\\n\" + strings.Repeat(untarErr.String(), 0)"
+    },
+    {
+      "name": "Archive start failure returns before closing and waiting for extractor",
+      "file": "mergecheck.go",
+      "old": "\t\tpipe.Close() // Release the already-started extractor before waiting for it.\n\t\tuntar.Wait()",
+      "new": "\t\t// MUTANT: leave the extractor running."
+    },
+    {
+      "name": "Temporary extraction directory is not removed",
+      "file": "mergecheck.go",
+      "old": "defer os.RemoveAll(dir)",
+      "new": "defer func() {}()"
+    }
+  ],
+  "root": "../../statusgen"
+}

@@ -221,12 +221,9 @@ func kitRole(kit string) (role string, ok bool) {
 //     origin/main under its own name), so a branch collision cannot be its cause; the
 //     commonest one is its own stale target dir on the same session key.
 //
-//   - The REVIEW lane has no brief and no `feat/<id>` branch, so that hint points a reviewer
-//     at a PR that explains nothing. A review kit checks the PR head out as a DETACHED HEAD,
-//     so the commonest cause here is the EARLIER reviewer worktree for this PR still present
-//     on the lane key; it must be reclaimed (`deskwt remove <path>`, which now allows a
-//     detached HEAD whose commit is proven on the remote — #851) before a re-dispatch can
-//     create its own worktree.
+//   - The REVIEW lane allocates a fresh detached home for every pass. Earlier trees
+//     are retained evidence, never a prerequisite cleanup target. Surface the actual
+//     child diagnostic without inventing a collision cause.
 //
 //   - A FOURTH shape reaches the worker/verifier-less default lane and is not about a branch
 //     OR a directory: `deskwt add` resolves the checkout's own origin repo (currentRepo,
@@ -252,9 +249,8 @@ func kitRole(kit string) (role string, ok bool) {
 func worktreeCreateHint(kit, branch, deskwtSaid string) string {
 	switch {
 	case reviewKit(kit):
-		return "For a review re-dispatch this is most often the EARLIER reviewer worktree for this PR " +
-			"still present on the same lane key — a review kit checks the PR head out as a detached HEAD, " +
-			"so reclaim that worktree (`deskwt remove <path>`) before re-dispatching, not a transient tree fault."
+		return "Each review dispatch allocates a fresh detached reviewer worktree. Preserve earlier review " +
+			"evidence; cleanup is not a prerequisite. Stop on this allocation failure and inspect deskwt's diagnostic."
 	case verifierKit(kit):
 		return "A verifier worktree is cut DETACHED off origin/main under its own name and touches no feature " +
 			"branch, so this is not a branch collision — most often the verifier's own target dir already exists " +

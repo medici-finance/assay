@@ -1,2 +1,0 @@
-### Fixed
-- statusgen's dependency-edge reciprocity lint now sees brief-v2 files: a v2 brief's hierarchical id is reduced to its `<stream>/<NN>` form before it is compared against `depends:`/`unblocks:` refs, so v2 self-loops are PROBLEMs and one-sided v2 edges are NOTICEs, as on brief-v1. The same fix applies to the ordering-gate lint's edge graph and the follow-up back-reference check, and a new guard test keeps any other raw use of a brief id as a lookup key out.

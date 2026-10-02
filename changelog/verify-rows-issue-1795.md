@@ -1,2 +1,0 @@
-### Fixed
-- windows-port/08 Verify row 17, the live GitLab provisioning row, now opens with the human's literal command sequence (`deskfleet provision … --dry-run`, the real run, then `desktoken --forge gitlab <role>`). Its placeholders are left for the human to fill in, so the execution witness records the row could-not-run and never executes it, where before it ran a bare `--dry-run` fragment and recorded a false fail (#1795). The row is still the `gate:human` live row, and what it checks is unchanged.

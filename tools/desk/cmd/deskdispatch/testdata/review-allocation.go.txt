@@ -1,0 +1,4 @@
+package main
+func plantedAllocation(o dispatchOpts) {
+ runCmd(o.root, "deskwt", "add", "same-review-home", "--branch", "feat/review")
+}
