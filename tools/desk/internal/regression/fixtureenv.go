@@ -59,8 +59,7 @@ func IsolateGit(t testing.TB) {
 // inherited environment to git writes there.
 func HostileGitDir(t testing.TB) string {
 	t.Helper()
-	git, err := exec.LookPath("git")
-	if err != nil {
+	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
 	victim := filepath.Join(t.TempDir(), "victim")
@@ -69,7 +68,7 @@ func HostileGitDir(t testing.TB) string {
 		{"-C", victim, "-c", "user.name=Victim", "-c", "user.email=victim@example.invalid",
 			"-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "victim"},
 	} {
-		cmd := exec.Command(git, args...)
+		cmd := exec.Command("git", args...) // literal argv[0]: the forge-CLI ban resolves it
 		cmd.Env = FixtureEnv("GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("victim git %v: %v\n%s", args, err, out)

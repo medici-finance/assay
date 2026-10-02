@@ -130,10 +130,11 @@ reason.
 | 5 | check | `grep -q -E -e '^## Regression floor$' docs/streams/desktools-v2/README.md` | exit 0 — the floor rule is where a v2 implementer reads it |
 | 6 | check | `statusgen --consumers --root .` | exit 0; no routing claim in this brief is disproved by the diff |
 | 7 | check +flow | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; `seed passes=26` — every named seed passes in its owning module; the runner rejects failed and empty selections |
+| 8 | check +mutation | `g=tools/desk/internal/regression/testdata/mutate_guard.py && python3 "$g" manifest > /dev/null && python3 "$g" ci > /dev/null && python3 "$g" directories > /dev/null && python3 "$g" deadline > /dev/null && python3 "$g" gitenv > /dev/null && python3 "$g" execenv > /dev/null && echo controls=6` | prints `controls=6` and exits 0 — each mode breaks one guard in a compiler-valid way (manifest validation, CI registry, descendant CI coverage, shell deadline, `FixtureEnv` passing the caller's `GIT_*` through, the fixture-exec class guard's matcher), requires `go test` to exit 1 with a `--- FAIL:` line, and restores the file. A guard that stays green under its mutation exits non-zero |
 
 ## DoD
 
-- All seven Verify rows pass on Linux/macOS without a network connection to any forge. The
+- All eight Verify rows pass on Linux/macOS without a network connection to any forge. The
   whole `go test ./...` suite, floor included, is PR CI's job and is not re-run here.
 - Every starter-set issue is either a manifest seed row with a passing test and a
   red-at-parent record, or a `## Dropped` row with its reason (docs-only, decision, held by
