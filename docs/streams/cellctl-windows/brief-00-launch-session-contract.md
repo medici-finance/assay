@@ -112,6 +112,39 @@ date, exact SHA, OS/architecture and backend versions. Record could-not-check ho
 | 5 | `$base = git merge-base refs/remotes/origin/main HEAD; if ($LASTEXITCODE -ne 0) { exit 1 }; statusgen --root ../.. --consumers --brief cellctl-windows/00 --base $base; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }` | could-not-run exit=- — pwsh not available on this OS (darwin) — the row is marked `pwsh` (PowerShell), which this fix dispatches only on Windows; could-not-run here, never a product-check `fail` and never silently rewritten for another shell (issue #1424) | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ b2ba84875c6c (on-behalf-of human:ian) (forge-identity) |
 | 6 | `go run ./cmd/muhar -spec internal/celllaunch/mutations.json` | pass exit=0 | sha256:5ac04fbdb030 | 2026-10-02 | assay-verifier-app[bot] @ b2ba84875c6c (on-behalf-of human:ian) (forge-identity) |
 
+### Verification — cellctl-windows/00 (2026-10-02, non-implementer verifier)
+
+- Target: merged main @ b2ba84875c6c
+- Runner: assay-verifier-app[bot] (on-behalf-of human:ian), dispatched verifier, not the implementer
+- Host: darwin/arm64, go1.27.1, statusgen v1.0.30; PowerShell is not present on this host
+- Working directory for every row: tools/desk (the Verify section's stated convention)
+
+| # | command (abbreviated) | exit | key observed output | result |
+|---|---|---|---|---|
+| 1 | pwsh: go test ./internal/celllaunch -run '^TestLaunchSpecRoundTrip$' -count=1 -v, with exact PASS-line and no-SKIP assertions | - | not run on this host (no PowerShell; native Windows runner required). statusgen verifyrun recorded could-not-run: "pwsh not available on this OS (darwin)" | could-not-run — 2026-10-02 assay-verifier-app[bot] @ b2ba84875c6c (on-behalf-of human:ian) |
+| 2 | pwsh: go test ./internal/celllaunch -run '^TestSessionRecordRefusal$' -count=1 -v, with exact PASS-line and no-SKIP assertions | - | not run on this host (no PowerShell; native Windows runner required). verifyrun recorded could-not-run | could-not-run — 2026-10-02 assay-verifier-app[bot] @ b2ba84875c6c (on-behalf-of human:ian) |
+| 3 | pwsh: go test ./internal/celllaunch -run '^TestLaunchSpecCustody$' -count=1 -v, with exact PASS-line and no-SKIP assertions | - | not run on this host (no PowerShell; native Windows runner required). verifyrun recorded could-not-run | could-not-run — 2026-10-02 assay-verifier-app[bot] @ b2ba84875c6c (on-behalf-of human:ian) |
+| 4 | sh: go test ./cmd/cellctl ./internal/cellcontainer -count=1 | 0 | "ok  .../tools/desk/cmd/cellctl 25.273s" and "ok  .../tools/desk/internal/cellcontainer 0.231s"; verifyrun witness pass exit=0 | pass — 2026-10-02 assay-verifier-app[bot] @ b2ba84875c6c (on-behalf-of human:ian) |
+| 5 | pwsh: statusgen --root ../.. --consumers --brief cellctl-windows/00 --base (merge-base of origin/main and HEAD) | - | not run on this host (no PowerShell; native Windows runner required). verifyrun recorded could-not-run | could-not-run — 2026-10-02 assay-verifier-app[bot] @ b2ba84875c6c (on-behalf-of human:ian) |
+| 6 | sh: go run ./cmd/muhar -spec internal/celllaunch/mutations.json | 0 | "Harness healthy: baseline GREEN, positive control CAUGHT."; seven mutations each CAUGHT; "Totals: 7 caught, 0 NOT CAUGHT, 0 could-not-mutate."; verifyrun witness pass exit=0 | pass — 2026-10-02 assay-verifier-app[bot] @ b2ba84875c6c (on-behalf-of human:ian) |
+
+Row 6 detail. Baseline: green. Failing control ("child exit code is lost"): caught. Mutations, all caught: permitted launch equality removed; process identity comparison removed; console identity comparison removed; container identity comparison removed; duplicate JSON guard removed; ambient environment forwarded; reserved device basename guard removed. Survivors: none.
+
+Execution-witness tool. `statusgen verifyrun` dispatches rows marked pwsh only on Windows and records them could-not-run elsewhere; it neither rewrites them for another shell nor records a product failure. With the command root set to tools/desk it recorded rows 1, 2, 3, 5 could-not-run and rows 4, 6 pass (tool exit 2; `--check` reports 2 pass, 0 fail, 4 could-not-run of 6). At its default root (the repository top level) rows 4 and 6 exit 1 with "go.mod file not found", which is a working-directory artefact and not a product result, so the witness was written only with the tools/desk root.
+
+Supplementary neighbouring-platform observation (darwin; NOT the rows, and not counted toward the verdict). The three selected tests were run directly with go test ... -run '^Name$' -count=1 -v from tools/desk: TestLaunchSpecRoundTrip exit 0, "--- PASS: TestLaunchSpecRoundTrip", no SKIP lines; TestSessionRecordRefusal exit 0, "--- PASS: TestSessionRecordRefusal", no SKIP lines; TestLaunchSpecCustody exit 0, "--- PASS: TestLaunchSpecCustody", no SKIP lines. The consumers command of row 5, run under sh on darwin, exited 0 with "summary: 0 corroborated, 0 disproved, 7 unchecked": on merged main the merge-base equals HEAD, so the diff it inspects is empty. Row 5's Expect ("declared consumer routing corroborates the implementation diff") therefore cannot be observed from merged main with the row as written, on any host; it needs a base that precedes the implementation merge.
+
+Related observation, not a row result. The native Windows workflow (celllaunch-windows) triggers on pull requests only; its most recent run succeeded at PR head ec3dd1b4e358, whose contract package and workflow file are byte-identical to merged main. That run was not re-read line by line in this pass and is not on the merged SHA, so it is cited as a pointer only.
+
+Risk-bearing value. The brief carries risk metadata with every field "no" and irreversible "no". Literals enumerated in the contract package: MaxRecordBytes = 128 * 1024 @ tools/desk/internal/celllaunch/spec.go:20; LaunchSchema = "cell-launch-v1" @ spec.go:18; SessionSchema = "cell-session-v1" @ spec.go:19; name pattern length bound {0,95} @ spec.go:23; full identity pattern 64 hex @ spec.go:24; control-character bound r < 32 or r == 127 @ spec.go:159. All are reversible by an edit and a release (an input-size cap, schema labels, input-shape bounds); none is an irreversible value.
+RISK-VALUE: NAMED, NOT DERIVED — MaxRecordBytes = 128 * 1024 @ tools/desk/internal/celllaunch/spec.go:20 — reversible input-size cap; no derivation attempted. Whether the merged diff touches a risk-classed path was not checked in this pass.
+
+VERIFY: BLOCKED
+
+Reasoning. Nothing failed: both Unix rows (4 and 6) ran from the stated directory and passed with real output, including a healthy mutation harness with zero survivors. Rows 1, 2, 3 and 5 are authored for PowerShell on a native Windows runner and could not execute on the only available host, so they are recorded could-not-run rather than rounded to pass; the darwin observations above are supplementary and do not stand in for them. Four of six required rows have no witness, so the brief cannot advance on this evidence.
+
+To finish. A native Windows amd64 host with PowerShell 7 (pwsh), the Go toolchain, git and statusgen on PATH, checked out at merged main, running rows 1, 2, 3 and 5 from tools/desk. Row 5 additionally needs its base question settled (see above) before its Expect can be met on merged main.
+
 ## Review
 
 Gate: **model**. Confirm scope, truthful native-runtime evidence, preserved security
