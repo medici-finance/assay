@@ -105,11 +105,11 @@ func TestLookupUnknownActionIsUnverifiable(t *testing.T) {
 	}
 }
 
-// TestHumanOwnedRetiredFailsClosed — #2028 retired the board's HUMAN-OWNED action (it
+// TestHumanOwnedRetiredClosed — #2028 retired the board's HUMAN-OWNED action (it
 // skipped review of a trusted human's own PR). The table must not carry it back as a
 // sanctioned no-op, and an older board that still emits it must read as an unknown action
 // (exit 6) — version skew fails closed, never into a silent skip.
-func TestHumanOwnedRetiredFailsClosed(t *testing.T) {
+func TestHumanOwnedRetiredClosed(t *testing.T) {
 	if _, ok := actionTable["HUMAN-OWNED"]; ok {
 		t.Fatal("actionTable carries HUMAN-OWNED — the retired #177 authorship skip is back (#2028)")
 	}
