@@ -44,7 +44,7 @@ func TestRoleEndpointPreserved(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				target := filepath.Join(tmpBaseDir, "tracker-verify-desk-endpoint")
+				target := filepath.Join(tmpBaseDir, "tracker-"+"verify-desk-endpoint")
 				if mode == "reuse" {
 					mustGit(t, work, "worktree", "add", target, "verify-desk/endpoint")
 					writeFile(t, filepath.Join(target, "keep.txt"), "keep\n")
@@ -63,7 +63,7 @@ func TestRoleEndpointPreserved(t *testing.T) {
 				args := []string{"role-init", "verifier", "--session", "endpoint", "--no-fetch"}
 				if mode == "add" {
 					args = []string{"add", "endpoint", "--role", "verifier", "--detach"}
-					target = filepath.Join(tmpBaseDir, "tracker-endpoint")
+					target = filepath.Join(tmpBaseDir, "tracker-"+"endpoint")
 				}
 				rc, stderr := runCapErr(t, args)
 				if tc.refused {

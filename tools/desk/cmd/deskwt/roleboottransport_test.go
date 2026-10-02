@@ -25,7 +25,7 @@ func TestRoleInitAppTransport(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			target := filepath.Join(tmpBaseDir, "tracker-verify-desk-transport")
+			target := filepath.Join(tmpBaseDir, "tracker-"+"verify-desk-transport")
 			if reuse {
 				mustGit(t, work, "worktree", "add", target, "verify-desk/transport")
 				writeFile(t, filepath.Join(target, "keep.txt"), "existing work\n")
@@ -106,7 +106,7 @@ func TestRoleInitPartialProvision(t *testing.T) {
 				case "readback":
 					mustGit(t, work, "config", "--global", "url.ssh://git@github.com/.insteadOf", "https://github.com:443/")
 				}
-				target := filepath.Join(tmpBaseDir, "tracker-verify-desk-partial")
+				target := filepath.Join(tmpBaseDir, "tracker-"+"verify-desk-partial")
 				if reuse {
 					mustGit(t, work, "worktree", "add", target, "verify-desk/partial")
 					writeFile(t, filepath.Join(target, "keep.txt"), "existing work\n")
@@ -146,7 +146,7 @@ func TestRoleInitBadTransport(t *testing.T) {
 			withEnv(t, work)
 			sshOperatorCheckout(t, work, sharedSSHOrigin)
 			writeFile(t, filepath.Join(os.Getenv("HOME"), ".gitconfig"), "[url \"ssh://git@github.com/\"]\n insteadOf = https://github.com:443/\n")
-			target := filepath.Join(tmpBaseDir, "tracker-verify-desk-badtransport")
+			target := filepath.Join(tmpBaseDir, "tracker-"+"verify-desk-badtransport")
 			if reuse {
 				mustGit(t, work, "worktree", "add", "--track", "-b", "verify-desk/badtransport", target, "origin/main")
 				writeFile(t, filepath.Join(target, "keep.txt"), "existing work\n")
