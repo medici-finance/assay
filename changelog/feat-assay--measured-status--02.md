@@ -1,0 +1,2 @@
+### Changed
+- The learned riskscore model's minimum training corpus is now derived from its feature vector (an events-per-variable target of 10 times the 15 predictors, so 150) instead of a bare literal 40. Below the floor a score stays heuristic-only with a could-not-learn status; the model graduates only once the corpus reaches it, and the floor follows the vector if a feature is added or removed.
