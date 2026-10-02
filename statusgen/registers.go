@@ -416,10 +416,11 @@ func deletedRegisterFiles(root string) []string {
 
 	// Cut at the merge-base of HEAD and origin/main: files added up to that
 	// shared point are landed; files added on either side after it are not
-	// violations. Fall back to HEAD when origin/main can't be resolved.
+	// violations. Fall back to HEAD when origin/main can't be resolved — the
+	// exact ref, never a decoy git would read its full name as (mergeBaseExact).
 	base := "HEAD"
-	if mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output(); err == nil && strings.TrimSpace(string(mb)) != "" {
-		base = strings.TrimSpace(string(mb))
+	if mb := mergeBaseExact(root, remoteMainRef); mb != "" {
+		base = mb
 	}
 
 	var deleted []string
@@ -516,10 +517,12 @@ func deletedRegisterFiles(root string) []string {
 // actually resolved. When it did NOT, the returned base is "HEAD" — a FAIL-OPEN
 // fallback: a mutation that is already COMMITTED is then compared against itself,
 // diffs to nothing, and passes silently. Callers that gate on the result must
-// surface that (see registerBaseFallbackNotices).
+// surface that (see registerBaseFallbackNotices). The merge-base is taken only
+// from the exact remote-tracking ref (mergeBaseExact): with that ref absent, a
+// decoy git would read its full name as is not a base, so it is unresolved too.
 func registerLandedBase(root string) (base string, resolved bool) {
-	if mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output(); err == nil && strings.TrimSpace(string(mb)) != "" {
-		return strings.TrimSpace(string(mb)), true
+	if mb := mergeBaseExact(root, remoteMainRef); mb != "" {
+		return mb, true
 	}
 	return "HEAD", false
 }
@@ -536,11 +539,11 @@ func registerLandedBase(root string) (base string, resolved bool) {
 // workflow edit that drops the fetch disables the control with no failing test and
 // no signal at all.
 //
-// This repo's own .github/workflows/statusgen.yml is WEAKER on exactly that point:
-// its explicit `git fetch --no-tags origin main` is in the STATUS.md-guard step
-// AFTER `go run . --root .. --lint`, so the lint step's origin/main resolution
-// rests entirely on actions/checkout's implicit fetch-depth: 0 refspec. That is an
-// implementation detail of a third-party action, not a guarantee this repo states.
+// This repo's own .github/workflows/assay-statusgen.yml is WEAKER on exactly that
+// point: its lint job has no explicit `git fetch --no-tags origin main` before the
+// lint step, so that step's origin/main resolution rests entirely on
+// actions/checkout's fetch-depth: 0 refspec. That is an implementation detail of a
+// third-party action, not a guarantee this repo states.
 // Hence a NOTICE rather than silence: if the ref is not there, the run says so.
 //
 // Advisory only — never a hard problem. A local clone or a fixture legitimately
@@ -610,14 +613,18 @@ func registerBaseFallbackNotices(root string) []string {
 // `authorized-by:` key (see authorizedByVerifiedHuman). An unknown name or a bare
 // agent-written justification does NOT authorize.
 //
-// That anchor is now verified online at PR time. `statusgen --corroborate <pr>` —
-// which checks a human:<name> token ADDED in a PR diff against that account's on-PR
-// action — is wired into the pull_request lint job of
-// .github/workflows/statusgen.yml: a PR that adds an
-// `authorized-by: human:<name>` frontmatter line lands that token on an ADDED diff
-// line, so --corroborate picks it up and fails CI unless the named human ACTED on
-// the PR (an APPROVED review or an approval comment from their own account). The
-// residual is stated here rather than omitted because a reader needs the gate's
+// That anchor is verified online at PR time only where a pull_request job runs
+// `statusgen --corroborate --pr <pr>`; this offline check cannot tell whether one
+// does, and a repo whose CI does not run it gets no online verification at all
+// (TestCorroborateIsWiredIntoStatusgenWorkflow pins the wiring wherever a workflow
+// carries it). Where it runs, it gates the anchor in TWO lanes: the stamp lane
+// checks a human:<name> token ADDED in the PR diff, and the register-transition
+// lane (corroborateRegisterTransitions, statusgen/06) re-derives every transition
+// this function detects against the PR merge-base and requires a human named in
+// the authorizing key to have ACTED on the PR (an APPROVED review or an approval
+// comment from their own account) — so an anchor that was ALREADY on the entry
+// before the PR, which adds no diff line for the stamp lane to see, cannot be
+// reused to authorize a fresh gutting. The residual is stated here rather than omitted because a reader needs the gate's
 // real reach: corroboration proves the human acted on the PR, not that they
 // executed whatever deferred live check the sign-off MEANS, and — like --lint — it
 // runs against the adopter-configured ASSAY_HUMAN_LOGIN_MAP, so an unmapped name is
@@ -672,6 +679,65 @@ func guttedRegisterFieldsEntries(root string) []registerProblem {
 	}
 	base, _ := registerLandedBase(root)
 
+	var problems []registerProblem
+	for _, tr := range registerFieldTransitions(root, base) {
+		// Authorization is field-specific: a resolve/affects/ack gut needs an
+		// `authorized-by: human:<name>` anchor; a park add/extend is authorized by
+		// its own `parked-by: human:<name>` (the authorizing party of the park) OR
+		// an `authorized-by:` anchor. Both keys require a name mapped in
+		// ASSAY_HUMAN_LOGIN_MAP. Each category is judged against its own authority,
+		// so an `authorized-by` anchor for a resolve does not silently also
+		// authorize an unattributed park in the same edit, and vice versa.
+		var unauthorized []string
+		if len(tr.guts) > 0 && !authorizedByVerifiedHuman(tr.curRaw) {
+			unauthorized = append(unauthorized, tr.guts...)
+		}
+		if len(tr.parkGuts) > 0 &&
+			!authorizedByVerifiedHuman(tr.curRaw) &&
+			!parkAuthorizedByVerifiedHuman(tr.curRaw) {
+			unauthorized = append(unauthorized, tr.parkGuts...)
+		}
+		if len(unauthorized) == 0 {
+			continue
+		}
+		problems = append(problems, registerProblem{
+			msg: fmt.Sprintf(
+				"register field-gutting (unauthorized): %s — %s vs the version landed at the merge-base with origin/main, with no verified-human authorization. In-place gutting of a finding's load-bearing fields silently unblocks the brief it demoted, and adding/extending a park silently mutes its standing alarm. This is a HUMAN gate: add an `authorized-by: human:<name>` key (or, for a park, a `parked-by: human:<name>` key) to the entry's YAML frontmatter whose name is mapped in the configured ASSAY_HUMAN_LOGIN_MAP; an agent-written justification is not sufficient. Know what this check does and does not do before you add that key: this offline --lint check does NOT itself read the PR. The authority is corroborated online only where `statusgen --corroborate --pr <pr>` runs in a pull_request job, and this check cannot tell whether yours does. Where it runs, it re-derives this same transition against the PR merge-base and fails the PR unless a human named in the authorizing key ACTED on the PR (an APPROVED review or an approval comment from their own account) — whether the key was written in this PR or was already on the entry. If your own CI runs --corroborate on PRs, writing the key on your own authority will NOT quietly pass; if it does not, this gutting gate is all that stands here — either way, get the named human to authorize the change.",
+				tr.rel, strings.Join(unauthorized, "; ")),
+			paths: []string{tr.rel},
+		})
+	}
+	sort.Slice(problems, func(i, j int) bool { return problems[i].msg < problems[j].msg })
+	return problems
+}
+
+// registerTransition is one finding whose load-bearing fields moved in the
+// caution-REMOVING direction between a base commit and the working tree. guts are
+// the resolve/affects/ack moves (authorized by `authorized-by:`); parkGuts are the
+// park add/extend moves (authorized by `parked-by:` or `authorized-by:`). curRaw is
+// the entry as it stands now — where the authorizing key is read from.
+type registerTransition struct {
+	rel      string
+	guts     []string
+	parkGuts []string
+	curRaw   []byte
+}
+
+// registerFieldTransitions diffs every working-tree finding against its version
+// at base and returns the entries whose resolved/affects/ack/parked-until moved in
+// the caution-removing direction. It makes NO authorization judgement: the
+// offline --lint gate (guttedRegisterFieldsEntries) judges the transitions against
+// the frontmatter anchor, and the online --corroborate lane
+// (corroborateRegisterTransitions) judges the SAME transitions against the PR's
+// reviews and comments. One detector for both halves, so the two cannot disagree
+// about what counts as a transition.
+//
+// base is any commit-ish: the offline gate passes the merge-base with origin/main
+// (registerLandedBase); the online lane passes the PR merge-base. An entry absent
+// at base by path AND by register ID is a not-yet-landed add and is skipped; a
+// deleted entry is never listed (the walk is over the working tree) and is left to
+// deletedRegisterFiles.
+func registerFieldTransitions(root, base string) []registerTransition {
 	const dir = "docs/streams/findings"
 	fsDir := filepath.Join(root, "docs", "streams", "findings")
 	files, err := os.ReadDir(fsDir)
@@ -710,7 +776,7 @@ func guttedRegisterFieldsEntries(root string) []registerProblem {
 		}
 	}
 
-	var problems []registerProblem
+	var out []registerTransition
 	for _, f := range files {
 		if f.IsDir() || !strings.HasSuffix(f.Name(), ".md") {
 			continue
@@ -786,35 +852,10 @@ func guttedRegisterFieldsEntries(root string) []registerProblem {
 		if len(guts) == 0 && len(parkGuts) == 0 {
 			continue
 		}
-
-		// Authorization is field-specific: a resolve/affects/ack gut needs an
-		// `authorized-by: human:<name>` anchor; a park add/extend is authorized by
-		// its own `parked-by: human:<name>` (the authorizing party of the park) OR
-		// an `authorized-by:` anchor. Both keys require a name mapped in
-		// ASSAY_HUMAN_LOGIN_MAP. Each category is judged against its own authority,
-		// so an `authorized-by` anchor for a resolve does not silently also
-		// authorize an unattributed park in the same edit, and vice versa.
-		var unauthorized []string
-		if len(guts) > 0 && !authorizedByVerifiedHuman(curRaw) {
-			unauthorized = append(unauthorized, guts...)
-		}
-		if len(parkGuts) > 0 &&
-			!authorizedByVerifiedHuman(curRaw) &&
-			!parkAuthorizedByVerifiedHuman(curRaw) {
-			unauthorized = append(unauthorized, parkGuts...)
-		}
-		if len(unauthorized) == 0 {
-			continue
-		}
-		problems = append(problems, registerProblem{
-			msg: fmt.Sprintf(
-				"register field-gutting (unauthorized): %s — %s vs the version landed at the merge-base with origin/main, with no verified-human authorization. In-place gutting of a finding's load-bearing fields silently unblocks the brief it demoted, and adding/extending a park silently mutes its standing alarm. This is a HUMAN gate: add an `authorized-by: human:<name>` key (or, for a park, a `parked-by: human:<name>` key) to the entry's YAML frontmatter whose name is mapped in the configured ASSAY_HUMAN_LOGIN_MAP; an agent-written justification is not sufficient. Know what this check does and does not do before you add that key: this offline --lint check does NOT itself read the PR. The anchor gets corroborated online only where `statusgen --corroborate <pr>` is wired into a pull_request job — the toolkit's reference CI wires it into the lint job of .github/workflows/assay-statusgen.yml, where the added `human:<name>` line lands on an ADDED diff line and fails that PR's CI unless the named human ACTED on the PR (an APPROVED review or an approval comment from their own account). If your own CI runs --corroborate on PRs, writing the key on your own authority will NOT quietly pass; if it does not, this gutting gate is all that stands here — either way, get the named human to authorize the change.",
-				rel, strings.Join(unauthorized, "; ")),
-			paths: []string{rel},
-		})
+		out = append(out, registerTransition{rel: rel, guts: guts, parkGuts: parkGuts, curRaw: curRaw})
 	}
-	sort.Slice(problems, func(i, j int) bool { return problems[i].msg < problems[j].msg })
-	return problems
+	sort.Slice(out, func(i, j int) bool { return out[i].rel < out[j].rel })
+	return out
 }
 
 // removedAffects returns the affects entries present in base but absent from cur —
@@ -898,10 +939,11 @@ func authorizedByVerifiedHuman(raw []byte) bool {
 // ADD/EXTEND exactly as `authorized-by` authorizes a resolve/affects gut. Same
 // fail-closed discipline as authorizedByVerifiedHuman: unparseable frontmatter, a
 // missing key, a non-scalar value, or a bare/unmapped name all return false. The
-// ONLINE half (statusgen --corroborate, wired into CI) reads the ADDED
-// `parked-by: human:<name>` diff line and requires that human to have ACTED on the
-// PR — so writing the key on one's own authority does not silently pass where the
-// gate runs. An agent cannot self-park.
+// ONLINE half (statusgen --corroborate --pr) re-derives the park add/extend against
+// the PR merge-base and requires a human named in `parked-by` or `authorized-by` to
+// have ACTED on the PR (corroborateRegisterTransitions) — so writing the key on
+// one's own authority, or reusing one already on the entry, does not silently pass
+// where the gate runs. An agent cannot self-park.
 func parkAuthorizedByVerifiedHuman(raw []byte) bool {
 	fm, _, err := splitFrontmatter(string(raw))
 	if err != nil {
