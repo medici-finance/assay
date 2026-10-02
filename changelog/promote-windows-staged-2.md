@@ -1,1 +1,0 @@
-- ci: promote the staged Windows CI leg and the winparity PowerShell 5.1 parse check into live workflows.
