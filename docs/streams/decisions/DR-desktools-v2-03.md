@@ -4,6 +4,7 @@ date: "2026-10-02"
 title: "Desk reads authenticate only as a minted App token scoped to the repository being read: an unminted or empty token is refused with no ambient fallback, and the read verbs migrate one at a time, each reach-around deleted in the same change"
 consequence: major
 decided-by: "human:<name>"
+ruling: "https://github.com/medici-finance/assay/issues/1911#issuecomment-5946883577"
 alternatives:
   - "Fold the native read client into forge-neutral (option 2) — ruled out: put to the driver on #1911 and not taken. Minting and custody stay with forge-neutral; this stream only consumes a minted token through the resolver it already has."
   - "Hold until the credential-custody model has more design (option 3) — ruled out: not taken. The ruling selected option 1."
@@ -27,10 +28,11 @@ never a role App, in the
 (2026-10-02T05:18:54Z), which reads "1 — approve as scoped". This record transcribes that
 ruling into the register. It does not mint a new one.
 
-The ratifying comment does not name this record's id, so the record carries no `ruling:` link
-(one would fail the corroboration check as `record-not-named`). Its approval is corroborated
-the same way as the register's other placeholder records: by the driver's own approval of the
-pull request that lands this file.
+The driver then approved this record by its id on the same issue, in a second comment under
+the driver's own login
+([approval](https://github.com/medici-finance/assay/issues/1911#issuecomment-5946883577),
+2026-10-02T06:43:35Z), which reads "approve — DR-desktools-v2-03". The record's `ruling:`
+link points at that comment.
 
 **The decision.** A desk read obtains its credential in exactly one way: a token minted for the
 session's App role and for the repository being read. That token is handed to the in-process
