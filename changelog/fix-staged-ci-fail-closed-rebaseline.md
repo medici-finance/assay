@@ -1,6 +1,0 @@
-### Fixed
-- The staged Windows CI leg's fail-closed step for `statusgen verifyrun --in-container` can fail again. Since the real harness digest was pinned, the step no longer exercised the pin control and treated any non-zero exit as a refusal. It now plants a placeholder digest in a scratch copy of the manifest, requires the launcher's own refusal (exit 2 plus its `refusing to run` line), and checks that the committed pin still gets past the control. A new statusgen test flags any workflow that runs the in-container launcher against the committed tree.
-- windows-port/10 Verify rows 3 and 8 are re-baselined so they still prove something on merged main. Row 3 now tests the refusal against a scratch placeholder pin. Row 8 is pinned to the implementing commit instead of a merge-base that resolves to HEAD itself.
-
-### Changed
-- `plugins/assay/paired-versions.yaml` is re-pinned from v1.0.24 to v1.0.29. This covers every section: the statusgen and desk-tools per-platform sha256 pins come from the v1.0.29 release's `checksums.txt`, and the harness image digest is the registry digest of `desk-tools:v1.0.29`. **This moves the statusgen and desk-tools binaries adopters install from v1.0.24 to v1.0.29.** The harness comment no longer calls the digest a placeholder.

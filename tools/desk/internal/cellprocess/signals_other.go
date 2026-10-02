@@ -1,0 +1,13 @@
+//go:build !unix
+
+package cellprocess
+
+import (
+	"context"
+	"os"
+	"os/signal"
+)
+
+func NotifyContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(parent, os.Interrupt)
+}
