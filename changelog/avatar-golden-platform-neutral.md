@@ -1,2 +1,0 @@
-### Fixed
-- `deskavatar`'s golden-strip test (`TestGolden20px`) now compares decoded pixels exactly instead of PNG file bytes, so it no longer fails on a machine whose Go release encodes the same image to a different deflate stream (seen as a macOS-only failure; the cause was Go 1.27's `compress/flate`, not the platform). A new structural guard fails any desk-tools test that byte-compares a committed compressed file.
