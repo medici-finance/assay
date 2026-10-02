@@ -16,7 +16,7 @@ import (
 //
 // WHY AN INTERFACE RATHER THAN A SECOND VERB BODY. The verdict path is a security control (the
 // reviewer-approval gate). A GitLab fork of postVerdictReview would be a second place the head
-// pin, the trust gate, the public-repo +1, the model-capability floor and the non-author
+// pin, the trust gate, the public-repo write gate, the model-capability floor and the non-author
 // assertion could drift out of step — exactly the drift `security-review` was extracted to
 // prevent. One body over an interface keeps every gate byte-identical across forges; only the
 // transport (a GitHub REST client vs. a typed Forge) differs.
@@ -25,7 +25,12 @@ import (
 // *ghClient for a GitHub-resolved (or not-positively-resolved, pre-772) repo, and requireGitHubForge
 // still guards a DIRECT newGHClient call so a GitLab repo can never reach the GitHub App mint.
 type postBackend interface {
-	deskkit.RepoInfoFetcher // RepoVisibility / IssueReactions — the public-repo +1 gate's surface
+	// RepoVisibility — the live-visibility read deskkit.PublicRepoGate consumes on the
+	// comment/review/ready paths. It is the WHOLE of what that gate reads from a backend: the
+	// retired per-item reaction check is gone (the allowed-repos write-gate change), and no
+	// deskpost backend implements a reaction/award read (retiredreactiongate_test.go guards
+	// the absence).
+	deskkit.RepoInfoFetcher
 
 	slug() (owner, name string)
 	getPR(pr int) (*prInfo, error)
@@ -309,10 +314,6 @@ func (b *forgeBackend) setMergeHold(pr int, in deskkit.MergeHoldUpdate) error {
 
 func (b *forgeBackend) RepoVisibility(owner, repo string) (string, error) {
 	return b.fg.RepoVisibility(deskkit.ForgeRepo{Owner: owner, Name: repo})
-}
-
-func (b *forgeBackend) IssueReactions(owner, repo string, issueNumber int) ([]deskkit.Reaction, error) {
-	return b.fg.IssueReactions(deskkit.ForgeRepo{Owner: owner, Name: repo}, issueNumber)
 }
 
 func (b *forgeBackend) verdictLabels(pr, reportedFiles int) (verdictLabelOutcome, error) {

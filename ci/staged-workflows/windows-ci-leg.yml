@@ -296,9 +296,9 @@ jobs:
             plugins/assay/paired-versions.yaml > "${scratch}/plugins/assay/paired-versions.yaml"
           grep -qE '^[[:space:]]*digest: PENDING-HARVEST-scratch-placeholder$' "${scratch}/plugins/assay/paired-versions.yaml" \
             || { echo "::error::could-not-check: the scratch manifest does not carry the placeholder digest"; exit 1; }
+          rc=0
           DOCKER_HOST="${nodaemon}" "${sg}" verifyrun --in-container --root "${scratch}" \
-            --brief "${scratch}/brief.md" > "${scratch}/placeholder.out" 2>&1
-          rc=$?
+            --brief "${scratch}/brief.md" > "${scratch}/placeholder.out" 2>&1 || rc=$?
           cat "${scratch}/placeholder.out"
           if [ "${rc}" -ne 2 ] || ! grep -q 'refusing to run' "${scratch}/placeholder.out"; then
             echo "::error::the wrapper did not refuse a placeholder digest (exit ${rc}) — the fail-closed pin control is broken"
@@ -308,9 +308,9 @@ jobs:
 
           # 2) Committed (real) pin: MUST pass the pin control — the discrimination half.
           cp plugins/assay/paired-versions.yaml "${scratch}/plugins/assay/paired-versions.yaml"
+          rc=0
           DOCKER_HOST="${nodaemon}" "${sg}" verifyrun --in-container --root "${scratch}" \
-            --brief "${scratch}/brief.md" > "${scratch}/pinned.out" 2>&1
-          rc=$?
+            --brief "${scratch}/brief.md" > "${scratch}/pinned.out" 2>&1 || rc=$?
           cat "${scratch}/pinned.out"
           if grep -q 'refusing to run' "${scratch}/pinned.out" || ! grep -qF -- "--in-container: ${image}@${digest}" "${scratch}/pinned.out"; then
             echo "::error::the wrapper did not accept the committed digest pin (exit ${rc}) — the control refuses everything, or the committed pin is not a real digest"
