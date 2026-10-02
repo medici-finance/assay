@@ -40,18 +40,29 @@ var publishIdentityGateFn = deskkit.PublishIdentityMatchesRole
 var productionPublishIdentityGateFn = publishIdentityGateFn
 
 // publishIdentityGate refuses (exit 5) when any commit the push would publish —
-// refs/remotes/origin/<base>..HEAD — is not authored AND committed by this session role's
-// bound identity (#1490 lane B: the push-time layer that stops a mis-attributed commit
-// reaching the forge however the worktree acquired its stale identity). The role is resolved
-// from the session loop identity, the same resolution mintWorkerToken uses for the token the
-// PR is authored under, so the gate and the PR author agree on who this session is.
-func publishIdentityGate(dir, base string) error {
+// refs/remotes/origin/<base>..HEAD, minus what remoteTip already holds — is not authored AND
+// committed by this session role's bound identity (#1490 lane B: the push-time layer that
+// stops a mis-attributed commit reaching the forge however the worktree acquired its stale
+// identity). The role is resolved from the session loop identity, the same resolution
+// mintWorkerToken uses for the token the PR is authored under, so the gate and the PR author
+// agree on who this session is.
+//
+// remoteTip (#1967) is the commit the remote branch this push updates already holds, so the
+// gate judges only the commits the push ADDS; "" judges the whole range. deskkit uses it only
+// when it passes the gate's fail-closed rules, and widens to the whole range otherwise. Each
+// caller's choice is pinned by TestPubIdentityCallersTip.
+func publishIdentityGate(dir, base, remoteTip string) error {
 	role, _, rerr := deskkit.SessionTokenRole("deskpr")
 	if rerr != nil {
 		return rerr
 	}
-	return publishIdentityGateFn(deskkit.PublishIdentityInput{Dir: dir, Base: base, Role: role})
+	return publishIdentityGateFn(deskkit.PublishIdentityInput{Dir: dir, Base: base, RemoteTip: remoteTip, Role: role})
 }
+
+// remoteTrackingTip is the offline stand-in for the remote PR head: the fully-qualified
+// remote-tracking ref for branch, as this checkout last saw it. It is only an estimate —
+// update re-runs the gate against the forge's live PR head before it pushes.
+func remoteTrackingTip(branch string) string { return "refs/remotes/origin/" + branch }
 
 // ghToken holds the App installation token value set by mintWorkerToken. It is handed to the
 // resolved forge backend by the GitHub custody minter (github.go) and to the public-repo gate's

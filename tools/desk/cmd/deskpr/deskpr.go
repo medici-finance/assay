@@ -243,7 +243,12 @@ func cmdCreate(args []string) (err error) {
 	// would otherwise publish commits attributed to the wrong actor; the provisioning fixes
 	// stop new such worktrees, this stops the publish from any route. Local (git + roster),
 	// so it runs before the token mint and is part of --check.
-	if ierr := publishIdentityGate(facts.dir, *base); ierr != nil {
+	//
+	// create offers NO remote tip (#1967): it opens a NEW change, so there is no forge-held
+	// PR head to anchor a narrower range on, and the forge surface has no branch-head read to
+	// confirm a local remote-tracking ref against. The whole range the new PR introduces is
+	// judged — the fail-closed choice. update, which has a PR head, narrows.
+	if ierr := publishIdentityGate(facts.dir, *base, ""); ierr != nil {
 		return ierr
 	}
 
@@ -549,7 +554,14 @@ func cmdUpdate(args []string) (err error) {
 	// PUBLISH-identity gate (#1490 lane B) — same reason as create. update has no --base, so
 	// the published range is measured against the repo default (origin/HEAD), exactly the
 	// base preflight resolved for the ahead-count.
-	if ierr := publishIdentityGate(facts.dir, facts.defaultBranch); ierr != nil {
+	//
+	// #1967: update pushes onto a PR head that may already carry commits by ANOTHER trusted
+	// App (a mixed-author PR). Those are already on the remote; re-judging them refused every
+	// update to such a PR. This OFFLINE stage (it is what --check runs) anchors the range on
+	// the local remote-tracking ref for the branch — absent, unresolvable, or not an ancestor
+	// of HEAD, it falls back to the whole range. It is an estimate of the remote, so the live
+	// stage below re-judges against the forge's own PR head before anything is pushed.
+	if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, remoteTrackingTip(facts.branch)); ierr != nil {
 		return ierr
 	}
 
@@ -570,7 +582,8 @@ func cmdUpdate(args []string) (err error) {
 		fmt.Println("check: ok — every local gate passed; no connection opened, nothing pushed. " +
 			"Not checked (needs the forge, not run here): the Brief:/Authors:/Issue: trailer on the existing " +
 			"PR's current body, whether an open PR exists for this branch, the outward-write rate " +
-			"limit, and the public-repo authorization gate.")
+			"limit, the public-repo authorization gate, and the publish-identity range against the " +
+			"PR's LIVE head (judged here against the local remote-tracking ref; the real run re-judges it).")
 		return nil
 	}
 
@@ -612,6 +625,15 @@ func cmdUpdate(args []string) (err error) {
 	// PR being updated (pr.Number), which is the reactions surface for an update.
 	if _, terr := requireTrailer([]byte(full.Body), *root, dir); terr != nil {
 		return terr
+	}
+
+	// PUBLISH-identity gate, LIVE stage (#1967). The offline stage above anchored the range on
+	// this checkout's remote-tracking ref, which can be stale; the forge's own PR head is the
+	// authority on what the remote branch holds. Re-judge against it before anything is
+	// pushed. A head the forge did not report, one not fetched here, or one this branch does
+	// not descend from (a force-moved PR head) falls back to the whole range — fail closed.
+	if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA); ierr != nil {
+		return ierr
 	}
 
 	// idempotency: this exact head already pushed to this PR → noop.

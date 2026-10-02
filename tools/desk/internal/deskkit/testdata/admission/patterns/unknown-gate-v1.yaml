@@ -1,0 +1,16 @@
+# Negative fixture: risk-input names a gate that is not a node. The admission seam
+# refuses it rather than silently dropping the gate.
+schema: workflow-pattern-v1
+pattern: unknown-gate
+version: 1
+risk-input:
+  low: [review]
+  standard: [review]
+  elevated: [review]
+  human: [review, sign-off]
+nodes:
+  - {id: work, kind: artifact, role: worker, outputs: [change]}
+  - {id: review, kind: check, role: reviewer, inputs: [{artifact: change}]}
+edges:
+  - {from: work, to: review}
+join: review

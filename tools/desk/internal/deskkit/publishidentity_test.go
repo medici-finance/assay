@@ -33,8 +33,8 @@ const (
 
 // seam returns a Commits reader that yields the given commits verbatim, so the identity
 // logic is exercised without building a repository per case.
-func seam(commits ...PublishCommit) func(string, string) ([]PublishCommit, error) {
-	return func(string, string) ([]PublishCommit, error) { return commits, nil }
+func seam(commits ...PublishCommit) func(string, PublishRange) ([]PublishCommit, error) {
+	return func(string, PublishRange) ([]PublishCommit, error) { return commits, nil }
 }
 
 func workerCommit(sha, subject, authorEmail, committerEmail string) PublishCommit {
@@ -236,7 +236,7 @@ func TestDefaultPublishCommitsReadsRange(t *testing.T) {
 	git("add", "feature.txt")
 	git("commit", "-m", "feature work")
 
-	commits, err := defaultPublishCommits(dir, "main")
+	commits, err := defaultPublishCommits(dir, resolvePublishRange(dir, "main", ""))
 	if err != nil {
 		t.Fatalf("defaultPublishCommits: %v", err)
 	}
