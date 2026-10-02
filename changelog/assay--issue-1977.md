@@ -1,0 +1,2 @@
+### Fixed
+- The build-less-brittle/04 and /06 Verify tables now reach a verdict after the briefs land. Each `consumers:` row runs in a throwaway clone pinned to the delivering squash, and Expect names exit 0 and the exact summary line. Row 9 of /06 prints one gated count. Row 7 braces its revision variables, so zsh can no longer pass it at 0 ≤ 0. Row 3 keeps its scratch files in the checkout. What each row proves is unchanged.
