@@ -84,8 +84,8 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd qualgen && go test ./riskscore/ -run TestMinCorpusDerivedFromFeatureCount -count=1` | exit 0; output contains "ok" | check +dereference |
-| 2 | `cd qualgen && go test ./riskscore/ -run TestMinCorpusGovernsLearnedSwitch -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusGovernsLearnedSwitch'` | exit 0 (a corpus one below the derived floor stays heuristic-only/could-not-learn and one at the floor trains — the value actually governs the switch end to end) | check +flow |
+| 1 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusDerivedFromFeatureCount$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusDerivedFromFeatureCount'` | exit 0 (the test's own `--- PASS:` line is present, so a renamed or missing test cannot pass vacuously) | check +dereference |
+| 2 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusGovernsLearnedSwitch$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusGovernsLearnedSwitch'` | exit 0 (a corpus one below the derived floor stays heuristic-only/could-not-learn and one at the floor trains — the value actually governs the switch end to end) | check +flow |
 | 3 | `cd qualgen && go build ./riskscore/` | exit 0 | check |
 | 4 | `grep -q 'Derivation:' qualgen/riskscore/learned.go` | exit 0 (a written derivation exists next to the value) | check |
 | 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:02` | exit 0; output does not contain "DISPROVED" (the fixed-here consumer routing is corroborated, not contradicted) | check |
@@ -129,6 +129,16 @@ verifyrun`). The independent verifier re-runs on merged main; this record does n
 | 3 | `cd qualgen && go build ./riskscore/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-worker-app[bot] @ ecca15f0e94d (on-behalf-of human:ian) (forge-identity) |
 | 4 | `grep -q 'Derivation:' qualgen/riskscore/learned.go` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-worker-app[bot] @ ecca15f0e94d (on-behalf-of human:ian) (forge-identity) |
 | 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:02` | pass exit=0 | sha256:024a79653f52 | 2026-10-02 | assay-worker-app[bot] @ ecca15f0e94d (on-behalf-of human:ian) (forge-identity) |
+
+Verify rows 1 and 2 re-authored again (same class, check-definition): `statusgen --root .
+--lint` raised `gotest-run-vacuous` on row 1 — `go test -run <name>` exits 0 with `[no tests
+to run]` when the test is missing. Reproduced: with `TestMinCorpusDerivedFromFeatureCount`
+renamed in a scratch edit, the old row 1 printed `ok ... [no tests to run]` and exited 0.
+Row 1 now asserts the test's own `--- PASS:` line like row 2, and both selectors are
+anchored (`^...$`). Under `bash -o pipefail`: row 1 exit 0 at this head, exit 1 with
+mutation A applied, exit 1 with the test renamed; row 2 exit 0 at this head, exit 1 with
+mutation B applied. Every scratch edit was restored before the witness below, which
+supersedes the table above for rows 1 and 2 (that table stays as the log of what ran).
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
