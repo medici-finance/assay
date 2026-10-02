@@ -39,11 +39,17 @@ The admission result is exactly one of five dispositions, from least to most res
 | `bounded-agent-work` | an agent works inside the category's permitted operations | the requested operations, plus `read` |
 | `supervised-agent` | as above, with the more heavily gated graph | the requested operations, plus `read` |
 | `human-led` | a human leads the work; an agent may read | `read` |
-| `discovery-only` | no implementation by anyone; scoped reads under a separate grant | `read` |
+| `discovery-only` | no implementation by anyone; reads bounded to a separate grant's read scope | `read`, within `discoveryScope` |
 | `blocked` | nothing proceeds | none |
 
 These are admission dispositions. They do not replace graph risk classes, desk roles or
 `AssayScore`.
+
+**`discovery-only` stands only on a grant.** A result of `discovery-only` MUST carry the
+grant's read-scope entries that cover the subject (`discoveryScope`), and discovery reads are
+bounded to them. A path that would reach `discovery-only` without a grant covering the
+subject — unknown readiness, a readiness fail ceiling of `discovery-only`, or an advice label
+— is `blocked` instead (§4 step 12). No other disposition carries a `discoveryScope`.
 
 The result MUST NOT carry a numeric safety, suitability or compliance score. It carries a
 disposition, the ordered reason codes that produced it, the permitted operations, the
@@ -83,6 +89,13 @@ A fact MUST be treated as could-not-check when any of these holds:
 
 could-not-check MUST NOT be rounded up to `pass` or down to a `fail` that was not observed.
 
+### 3.1.1 Input trust
+
+The evaluator trusts the facts it is given; it cannot detect a fabricated `pass`. A
+deployment MUST take the assessment from a producer that is independent of the executor
+whose work is being admitted, and MUST authenticate that producer where the result is bound
+to dispatch (graph-execution/14). An executor that writes its own assessment admits itself.
+
 ### 3.2 Advice (probabilistic)
 
 An assessment MAY carry recorded advice. Each record holds:
@@ -95,8 +108,12 @@ An assessment MAY carry recorded advice. Each record holds:
 
 The evaluator MUST NOT call a provider.
 
+Only the top calibrated label of each record is read; the rest of the distribution never
+moves the result.
+
 Advice MUST be ignored, with an `advice-ignored:<dimension>:<why>` reason, when any of these
-holds:
+holds. An unknown dimension is reported as `advice-ignored:unknown-dimension`: a value
+outside the vocabulary is never echoed into a reason (§7).
 
 | Condition | `<why>` |
 |---|---|
@@ -115,9 +132,19 @@ Evaluation MUST be total, deterministic and fail-closed. The order is normative.
 
 1. An invalid policy (§5) → `blocked` (`policy-invalid`).
 2. A set stop flag → `blocked` (`stop-flag`).
-3. An empty subject or a zero clock → `blocked`.
+3. **Input shape.** Each of these is `blocked`:
+   - an empty subject (`subject-missing`);
+   - a subject over 256 characters or containing whitespace or a control character
+     (`subject-invalid`);
+   - more than 16 operations, 32 facts or 16 advice records (`input-oversized`);
+   - a zero clock (`clock-missing`);
+   - an empty subject revision, schema digest or environment digest on either side
+     (`binding-missing:<binding>`). Two empty values are not an unchanged binding.
 4. **Applicability.** A subject outside the policy's applicability prefixes is `blocked`
    (`not-applicable`), unless an owner-named exception covers it.
+   - A prefix covers a subject only at a boundary: the subject equals it, the prefix ends
+     in `#` or `/`, or the subject continues with `#` or `/`. `example-org/widgets` covers
+     `example-org/widgets#1`, never `example-org/widgets-evil#1`.
    - A live exception adds `exception-applied:<owner>`.
    - An expired exception is `blocked` (`exception-expired:<owner>`).
    - An exception extends applicability ONLY. It MUST NOT waive a hard check, lift a
@@ -132,18 +159,28 @@ Evaluation MUST be total, deterministic and fail-closed. The order is normative.
 8. **Failed readiness checks.** A failed readiness check caps at the policy's declared
    fail ceiling for that check.
 9. **Unknown readiness.** Any could-not-check readiness fact holds implementation.
-   - The result is `discovery-only` when a separately authorized discovery grant (an owner
-     and a non-empty read scope) is supplied (`discovery-scope:<owner>`).
-   - Otherwise it is `blocked` (`discovery-not-authorized`).
+   - The result is `discovery-only` when a separately authorized discovery grant is
+     supplied whose read scope covers the subject (`discovery-scope:<owner>`). Coverage
+     uses the same boundary rule as applicability.
+   - Otherwise it is `blocked`: `discovery-not-authorized` with no grant,
+     `discovery-grant-invalid` when the owner is not a reason-code token or the read scope
+     is empty or has a blank entry, `discovery-out-of-scope` when no entry covers the
+     subject.
    - Readiness that is not known never reaches an agent lane.
 10. **Operations.**
     - No requested operation → `blocked` (`operations-undeclared`).
     - A human-floor operation → `human-led` (`human-floor:<op>`).
+    - An operation outside both the agent and human-floor vocabularies → `human-led`
+      (`operation-unknown`, a fixed code: the requested string is never echoed).
     - An operation the category does not permit → `human-led`
       (`operation-not-permitted:<op>`).
 11. **Advice.** Each applicable advice record's top calibrated label MAY restrict the
     result to that label (`advice-restricted:<dimension>:<label>`). It MUST NOT widen it.
     The fold is `result = moreRestrictive(result, label)`.
+12. **Discovery grant.** If the result is now `discovery-only`, by whichever step, it is
+    re-checked against the grant as in step 9. With no grant covering the subject it
+    becomes `blocked` with that step's reason. Otherwise it carries `discovery-scope:<owner>`
+    and the covering entries as `discoveryScope`.
 
 Steps 7–10 are why **all-hard-pass is necessary, not sufficient**: a subject whose every
 fact passes is still bounded by its category's ceiling and permitted operations.
@@ -179,7 +216,8 @@ following holds:
   - A fail ceiling names a non-readiness check. Authority checks always fail to `blocked`
     and are not configurable.
 - **Freshness.** `maxFactAge` or `maxAdviceAge` is not positive.
-- **Exceptions.** An exception lacks a subject, an owner or an expiry.
+- **Exceptions.** An exception lacks a subject, an owner or an expiry, or its owner is
+  not a reason-code token (§7).
 
 ## 6. Risk-input mapping and mandatory gates
 
@@ -204,7 +242,11 @@ Some notes on the union:
 - It MUST NOT subtract a gate. A high score cannot delete a required node.
 - It is a union, not "take the stricter verdict". Where two verdicts' gate lists are not
   nested, both lists' gates are mandatory.
-- An unmapped brief verdict is a refusal (hold), never an empty gate set.
+- An unmapped verdict on either side, the brief's or the disposition's, is a refusal
+  (hold), never an empty gate set.
+- Gates are returned for every disposition, `blocked` included. The caller MUST check the
+  disposition first: a `blocked` result proceeds to no gate at all.
+- A workflow-pattern file over 1 MiB is refused before it is parsed.
 - A pattern whose `risk-input` omits a verdict, or names a gate that is not a node, MUST be
   refused at this seam, independently of the pattern lint.
 
@@ -213,10 +255,18 @@ Some notes on the union:
 An admission result projects onto the `decision-assessment-v1` `PolicyResult` record:
 
 - `decision` is the disposition;
-- `reason` is the ordered reason codes;
+- `reason` is the ordered reason codes, joined by `; `;
 - `policyVersion` is the policy's version.
 
 The projection carries no probability.
+
+**Reason-code grammar.** Every reason code matches
+`^[a-z][a-z0-9-]*(:[A-Za-z0-9][A-Za-z0-9._@/-]{0,63})*$`: a fixed lowercase literal, then
+`:`-separated tokens. A token is either drawn from a closed vocabulary (a check, a
+dimension, a disposition, an agent operation) or is an owner that §5 or the grant check
+has already held to the token grammar. A value outside a vocabulary is reported by a
+fixed code and never echoed. So no assessed string can add a `; ` separator, a line, or a
+code to `reason`.
 
 ## 8. Conformance
 
@@ -231,8 +281,19 @@ are the conformance suite.
   - a schema change and an environment change;
   - an expired exception;
   - no data authority;
-  - all-hard-pass but policy-disallowed work.
+  - all-hard-pass but policy-disallowed work;
+  - a changed subject revision; a duplicated, future-dated or zero-time fact;
+  - a subject outside applicability, including a raw-prefix neighbour;
+  - no requested operation;
+  - every path to `discovery-only` without a grant covering the subject.
 - `TestAgenticAdmissionPolicyValidation` covers §5.
+- `TestAgenticAdmissionMalformedInput` covers the step 3 refusals and the inputs the
+  schema already refuses: empty bindings, malformed grants, out-of-vocabulary states,
+  operations and dimensions, and oversized input.
+- `TestAgenticAdmissionScopeBoundary` covers the boundary rule of step 4.
+- `TestAgenticAdmissionGateSeamBounds` covers the §6 seam refusals.
+- Every result in every test is checked against the reason-code grammar of §7 and the
+  `discoveryScope` rule of §2.
 - `TestAgenticAdmissionConfidenceCannotAuthorize` covers §4.1 across every fixture, every
   label, every confidence level and every dimension set.
 - `TestAgenticAdmissionRiskInputUnion` covers §6 against the shipped workflow patterns.

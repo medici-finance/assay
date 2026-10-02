@@ -1,6 +1,6 @@
 {
-  "name": "stale-fact",
-  "description": "The budget fact is older than the policy's freshness bound, so it is could-not-check, not pass.",
+  "name": "advice-discovery-no-grant",
+  "description": "Every fact passes and calibrated advice names discovery-only, but no discovery grant is supplied. Advice can restrict; it cannot stand in for a grant, so the result is blocked.",
   "briefRiskVerdict": "standard",
   "assessment": {
     "subject": "example-org/widgets#12",
@@ -60,7 +60,7 @@
         "evidence": [
           "example-evidence://budget"
         ],
-        "observedAt": "2026-09-10T00:00:00Z"
+        "observedAt": "2026-09-20T10:00:00Z"
       },
       {
         "check": "effect-recoverability",
@@ -72,44 +72,6 @@
       }
     ],
     "advice": [
-      {
-        "dimension": "verification-adequacy",
-        "scope": "example-org/widgets#12",
-        "request": {
-          "subject": "example-org/widgets#12",
-          "inputDigest": "sha256:example-input",
-          "schemaDigest": "sha256:example-schema",
-          "vocabulary": [
-            "bounded-agent-work",
-            "supervised-agent",
-            "human-led",
-            "discovery-only",
-            "blocked"
-          ],
-          "requiredCalibratorVersion": "example-cal-1"
-        },
-        "prediction": {
-          "subject": "example-org/widgets#12",
-          "inputDigest": "sha256:example-input",
-          "schemaDigest": "sha256:example-schema",
-          "labelProbabilities": {
-            "bounded-agent-work": 0.9,
-            "supervised-agent": 0.025,
-            "human-led": 0.025,
-            "discovery-only": 0.025,
-            "blocked": 0.025
-          },
-          "abstained": false,
-          "providerVersion": "example-provider-0.1",
-          "calibratorVersion": "example-cal-1",
-          "requestedBackend": "cpu",
-          "actualBackend": "cpu",
-          "evidenceRefs": [
-            "example-evidence://advice-verification-adequacy"
-          ]
-        },
-        "observedAt": "2026-09-20T10:00:00Z"
-      },
       {
         "dimension": "semantic-risk",
         "scope": "example-org/widgets#12",
@@ -131,10 +93,10 @@
           "inputDigest": "sha256:example-input",
           "schemaDigest": "sha256:example-schema",
           "labelProbabilities": {
-            "bounded-agent-work": 0.9,
+            "bounded-agent-work": 0.025,
             "supervised-agent": 0.025,
             "human-led": 0.025,
-            "discovery-only": 0.025,
+            "discovery-only": 0.9,
             "blocked": 0.025
           },
           "abstained": false,
@@ -155,25 +117,14 @@
     "now": "2026-09-20T12:00:00Z",
     "subjectRevision": "rev-a",
     "schemaDigest": "sha256:example-schema",
-    "environmentDigest": "sha256:example-env",
-    "discovery": {
-      "owner": "example-owner",
-      "readScope": [
-        "example-org/widgets"
-      ]
-    }
+    "environmentDigest": "sha256:example-env"
   },
   "expect": {
-    "disposition": "discovery-only",
+    "disposition": "blocked",
     "reasons": [
-      "hard-stale:budget",
-      "discovery-scope:example-owner"
+      "advice-restricted:semantic-risk:discovery-only",
+      "discovery-not-authorized"
     ],
-    "permittedOperations": [
-      "read"
-    ],
-    "discoveryScope": [
-      "example-org/widgets"
-    ]
+    "permittedOperations": []
   }
 }

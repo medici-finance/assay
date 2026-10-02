@@ -153,8 +153,10 @@ The admission layer has four rules:
 - **Facts decide.** Advice only restricts. A failed authority or data-handling check is
   `blocked`. A failed readiness check is capped at `human-led` or stricter; a policy that
   maps one to an agent lane is refused. Unknown readiness permits at most `discovery-only`,
-  and only under a separately authorized discovery grant. Calibrated advice is folded in
-  monotonically toward `blocked`, so no confidence level can enlarge permission.
+  and only under a separately authorized discovery grant whose read scope covers the
+  subject. Every path to `discovery-only` is held to that grant, and with no covering grant
+  the result is `blocked`. Calibrated advice is folded in monotonically toward `blocked`,
+  so no confidence level can enlarge permission.
 - **It adds gates and never removes them.** Each disposition maps to a workflow-pattern
   risk-input verdict. The work's mandatory gates are the union of that verdict's gates and
   the brief's own, so a high score cannot delete a required node.

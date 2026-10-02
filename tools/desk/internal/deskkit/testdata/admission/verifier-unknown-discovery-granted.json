@@ -163,6 +163,9 @@
     ],
     "permittedOperations": [
       "read"
+    ],
+    "discoveryScope": [
+      "example-org/widgets"
     ]
   }
 }

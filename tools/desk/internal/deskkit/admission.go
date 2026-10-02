@@ -3,9 +3,11 @@ package deskkit
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -34,7 +36,15 @@ import (
 //     agent lane.
 //   - Unknown readiness holds implementation. A could-not-check (missing, stale,
 //     unknown-state or binding-changed) readiness fact permits at most `discovery-only`,
-//     and only when a separately authorized, scoped discovery grant is supplied.
+//     and only when a separately authorized discovery grant whose read scope covers the
+//     subject is supplied. `discovery-only` is never the result without such a grant,
+//     whichever path (unknown readiness, a fail ceiling, advice) reached it, and the
+//     result carries the covering read scope.
+//   - Bindings are never vacuous. An empty subject revision, schema digest or environment
+//     digest on either side is `blocked`, so "empty equals empty" never reads as bound.
+//   - Reason codes are built only from fixed literals, closed-vocabulary values and
+//     grammar-checked owner tokens (reasonTokenRE); an assessed value outside a
+//     vocabulary is never echoed, so the party being assessed cannot forge a reason.
 //   - All-hard-pass is necessary, not sufficient. The owner's category ceiling and its
 //     permitted-operation list still bound the result.
 //   - Absent advice changes nothing. Ignored advice (absent, disabled, stale, malformed,
@@ -279,7 +289,9 @@ func (d Duration) MarshalJSON() ([]byte, error) {
 }
 
 // DiscoveryScope is a SEPARATE authorization for discovery-only work: who granted it and
-// which read scope it covers. Absent (nil) means discovery is not authorized.
+// which read scope it covers. Absent (nil) means discovery is not authorized. A grant
+// authorizes discovery of a subject only when its owner is a reason-code token and at
+// least one read-scope entry covers the subject (scopeCovers); a blank entry voids it.
 type DiscoveryScope struct {
 	Owner     string   `json:"owner"`
 	ReadScope []string `json:"readScope"`
@@ -308,6 +320,82 @@ type AdmissionResult struct {
 	HumanFloors         []string             `json:"humanFloors"`
 	RiskInput           string               `json:"riskInput"`
 	AdviceApplied       []string             `json:"adviceApplied,omitempty"`
+	// DiscoveryScope is set only on a `discovery-only` result: the grant's read-scope
+	// entries that cover the subject, so a consumer can enforce the scope afterwards.
+	DiscoveryScope []string `json:"discoveryScope,omitempty"`
+}
+
+// Input bounds. The evaluator refuses (blocked, `input-oversized` / `subject-invalid`)
+// an assessment beyond them rather than evaluating it; the schema states the same bounds.
+const (
+	admissionMaxSubject    = 256
+	admissionMaxOperations = 16
+	admissionMaxFacts      = 32
+	admissionMaxAdvice     = 16
+	admissionMaxPatternLen = 1 << 20
+)
+
+// reasonTokenRE is the grammar of every non-literal value a reason code may carry (an
+// exception or discovery-grant owner). It excludes whitespace, control characters and
+// the `;` that PolicyResult joins reason codes with, so an echoed value cannot add a
+// line or a reason code of its own.
+var reasonTokenRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@/-]{0,63}$`)
+
+// subjectValid reports whether a subject is non-empty, bounded and free of control
+// characters and whitespace.
+func subjectValid(s string) bool {
+	if s == "" || len(s) > admissionMaxSubject {
+		return false
+	}
+	for _, r := range s {
+		if unicode.IsControl(r) || unicode.IsSpace(r) {
+			return false
+		}
+	}
+	return true
+}
+
+// scopeCovers reports whether a scope entry (an applicability prefix or a discovery read
+// scope) covers the subject. It is boundary-aware: the subject equals the entry, or
+// extends it past a `#` or `/` boundary — so `example-org/widgets` covers
+// `example-org/widgets#1` and never `example-org/widgets-evil#1`.
+func scopeCovers(scope, subject string) bool {
+	if strings.TrimSpace(scope) == "" || !strings.HasPrefix(subject, scope) {
+		return false
+	}
+	if subject == scope {
+		return true
+	}
+	if last := scope[len(scope)-1]; last == '#' || last == '/' {
+		return true
+	}
+	next := subject[len(scope)]
+	return next == '#' || next == '/'
+}
+
+// discoveryGrant returns the grant's read-scope entries that cover the subject, or the
+// reason code that the grant does not authorize discovery of it.
+func discoveryGrant(g *DiscoveryScope, subject string) ([]string, string) {
+	if g == nil {
+		return nil, "discovery-not-authorized"
+	}
+	if !reasonTokenRE.MatchString(g.Owner) || len(g.ReadScope) == 0 {
+		return nil, "discovery-grant-invalid"
+	}
+	var covered []string
+	for _, s := range g.ReadScope {
+		if strings.TrimSpace(s) == "" {
+			return nil, "discovery-grant-invalid"
+		}
+		if scopeCovers(s, subject) {
+			covered = append(covered, s)
+		}
+	}
+	if len(covered) == 0 {
+		return nil, "discovery-out-of-scope"
+	}
+	sort.Strings(covered)
+	return covered, ""
 }
 
 // agentOperations is the vocabulary an owner may list in a category's permitted
@@ -403,6 +491,9 @@ func ValidateAdmissionPolicy(p AdmissionPolicy) error {
 		if strings.TrimSpace(e.Subject) == "" || strings.TrimSpace(e.Owner) == "" || e.Expires.IsZero() {
 			return Refused(fmt.Sprintf("admission: exception %d must name a subject, an owner and an expiry", i))
 		}
+		if !reasonTokenRE.MatchString(e.Owner) {
+			return Refused(fmt.Sprintf("admission: exception %d owner is not a reason-code token (letters, digits and . _ @ / -, at most 64)", i))
+		}
 	}
 	return nil
 }
@@ -457,8 +548,31 @@ func EvaluateAgenticAdmission(p AdmissionPolicy, a AgenticAssessment, c Admissio
 		st.restrict(AdmitBlocked, "subject-missing")
 		return finish()
 	}
+	if !subjectValid(a.Subject) {
+		st.restrict(AdmitBlocked, "subject-invalid")
+		return finish()
+	}
+	if len(a.Operations) > admissionMaxOperations || len(a.Facts) > admissionMaxFacts ||
+		len(a.Advice) > admissionMaxAdvice {
+		st.restrict(AdmitBlocked, "input-oversized")
+		return finish()
+	}
 	if c.Now.IsZero() {
 		st.restrict(AdmitBlocked, "clock-missing")
+		return finish()
+	}
+	// A binding that was never computed cannot be compared: empty on both sides would
+	// otherwise read as "unchanged" and bind every fact to nothing.
+	for _, b := range []struct{ name, assessed, current string }{
+		{"subject-revision", a.SubjectRevision, c.SubjectRevision},
+		{"schema-digest", a.SchemaDigest, c.SchemaDigest},
+		{"environment-digest", a.EnvironmentDigest, c.EnvironmentDigest},
+	} {
+		if strings.TrimSpace(b.assessed) == "" || strings.TrimSpace(b.current) == "" {
+			st.restrict(AdmitBlocked, "binding-missing:"+b.name)
+		}
+	}
+	if st.cap == AdmitBlocked {
 		return finish()
 	}
 
@@ -552,15 +666,21 @@ func EvaluateAgenticAdmission(p AdmissionPolicy, a AgenticAssessment, c Admissio
 			st.reasons = append(st.reasons, why)
 		}
 	}
+	// The discovery grant is read once: whichever path reaches discovery-only below, it
+	// stands only on a grant whose read scope covers this subject.
+	discoveryScope, discoveryWhy := discoveryGrant(c.Discovery, a.Subject)
+	discoveryNoted := false
 	if readinessUnknown {
-		if d := c.Discovery; d != nil && strings.TrimSpace(d.Owner) != "" && len(d.ReadScope) > 0 {
-			st.restrict(AdmitDiscoveryOnly, "discovery-scope:"+d.Owner)
+		if discoveryWhy == "" {
+			st.restrict(AdmitDiscoveryOnly, "discovery-scope:"+c.Discovery.Owner)
+			discoveryNoted = true
 		} else {
-			st.restrict(AdmitBlocked, "discovery-not-authorized")
+			st.restrict(AdmitBlocked, discoveryWhy)
 		}
 	}
 
-	// Operations: all-hard-pass is necessary, not sufficient.
+	// Operations: all-hard-pass is necessary, not sufficient. An operation outside the
+	// vocabulary is reported by a fixed code — the assessed string is never echoed.
 	if len(a.Operations) == 0 {
 		st.restrict(AdmitBlocked, "operations-undeclared")
 	}
@@ -572,6 +692,8 @@ func EvaluateAgenticAdmission(p AdmissionPolicy, a AgenticAssessment, c Admissio
 		switch {
 		case isHumanFloor(op):
 			st.restrict(AdmitHumanLed, "human-floor:"+op)
+		case !agentOperations[op]:
+			st.restrict(AdmitHumanLed, "operation-unknown")
 		case !permitted[op]:
 			st.restrict(AdmitHumanLed, "operation-not-permitted:"+op)
 		}
@@ -583,12 +705,31 @@ func EvaluateAgenticAdmission(p AdmissionPolicy, a AgenticAssessment, c Admissio
 	for _, adv := range a.Advice {
 		label, why := applicableAdvice(p, a, c, adv, bindingChanged)
 		if why != "" {
-			st.reasons = append(st.reasons, "advice-ignored:"+string(adv.Dimension)+":"+why)
+			if !advisoryDimensions[adv.Dimension] {
+				// Never echo a dimension outside the vocabulary.
+				st.reasons = append(st.reasons, "advice-ignored:"+why)
+			} else {
+				st.reasons = append(st.reasons, "advice-ignored:"+string(adv.Dimension)+":"+why)
+			}
 			continue
 		}
 		res.AdviceApplied = append(res.AdviceApplied, string(adv.Dimension)+":"+string(label))
 		if moreRestrictive(st.cap, label) != st.cap {
 			st.restrict(label, "advice-restricted:"+string(adv.Dimension)+":"+string(label))
+		}
+	}
+
+	// discovery-only means "scoped reads under a separate grant". A fail ceiling or an
+	// advice label can reach it too, so it is re-checked here against the grant: with no
+	// grant covering the subject the result is blocked, never a grant-less discovery-only.
+	if st.cap == AdmitDiscoveryOnly {
+		if discoveryWhy != "" {
+			st.restrict(AdmitBlocked, discoveryWhy)
+		} else {
+			if !discoveryNoted {
+				st.reasons = append(st.reasons, "discovery-scope:"+c.Discovery.Owner)
+			}
+			res.DiscoveryScope = discoveryScope
 		}
 	}
 
@@ -632,7 +773,7 @@ func applicableAdvice(p AdmissionPolicy, a AgenticAssessment, c AdmissionContext
 
 func applies(prefixes []string, subject string) bool {
 	for _, pre := range prefixes {
-		if pre != "" && strings.HasPrefix(subject, pre) {
+		if scopeCovers(pre, subject) {
 			return true
 		}
 	}
@@ -700,6 +841,13 @@ type PatternRiskInput struct {
 // file that does not map all four verdicts, or whose gate ids name no node — the
 // admission seam's own check, independent of the pattern lint that guards the same file.
 func LoadPatternRiskInput(path string) (PatternRiskInput, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return PatternRiskInput{}, Unverifiable("admission: cannot read workflow pattern "+path, err)
+	}
+	if fi.Size() > admissionMaxPatternLen {
+		return PatternRiskInput{}, Refused(fmt.Sprintf("admission: workflow pattern %s is %d bytes, over the %d-byte bound", path, fi.Size(), admissionMaxPatternLen))
+	}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return PatternRiskInput{}, Unverifiable("admission: cannot read workflow pattern "+path, err)
@@ -740,17 +888,25 @@ func LoadPatternRiskInput(path string) (PatternRiskInput, error) {
 // MandatoryGates returns the gate node ids the work must clear: the UNION of the gates
 // the brief's own risk verdict requires and the gates the admission disposition's mapped
 // verdict requires. It never subtracts a gate — a high score cannot delete a required
-// node. An unknown brief verdict is a refusal (the caller holds), never an empty set.
+// node. An unmapped verdict on EITHER side is a refusal (the caller holds), never an empty
+// contribution — the guarantee is the function's, not only LoadPatternRiskInput's.
+// Gates are returned for every disposition, `blocked` included: the caller checks the
+// disposition first, and a blocked result proceeds to no gate at all.
 func MandatoryGates(ri PatternRiskInput, briefVerdict string, d AdmissionDisposition) ([]string, error) {
 	base, ok := ri.Gates[briefVerdict]
 	if !ok {
 		return nil, Refused(fmt.Sprintf("admission: brief risk verdict %q is not mapped by pattern %q", briefVerdict, ri.Pattern))
 	}
+	dv := DispositionRiskInput(d)
+	extra, ok := ri.Gates[dv]
+	if !ok {
+		return nil, Refused(fmt.Sprintf("admission: disposition %q verdict %q is not mapped by pattern %q", d, dv, ri.Pattern))
+	}
 	set := map[string]bool{}
 	for _, g := range base {
 		set[g] = true
 	}
-	for _, g := range ri.Gates[DispositionRiskInput(d)] {
+	for _, g := range extra {
 		set[g] = true
 	}
 	out := make([]string, 0, len(set))

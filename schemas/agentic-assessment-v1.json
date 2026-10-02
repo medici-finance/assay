@@ -106,7 +106,8 @@
         },
         "scope": {
           "description": "The subject this advice was produced for; MUST equal the assessed subject or the advice is ignored.",
-          "type": "string"
+          "type": "string",
+          "maxLength": 256
         },
         "request": {
           "$ref": "https://medici-finance.github.io/assay/schemas/decision-assessment-v1.json#/$defs/assessmentRequest"
@@ -134,38 +135,63 @@
       ],
       "properties": {
         "subject": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[^\\s\\u0000-\\u001f\\u007f-\\u009f]+$",
+          "description": "The assessed subject: non-empty, at most 256 characters, no whitespace or control characters; otherwise blocked (subject-invalid, spec §4 step 3)."
         },
         "subjectRevision": {
-          "type": "string"
+          "description": "A binding value. MUST be non-empty: an empty binding on either side is blocked (binding-missing), never read as unchanged (spec §4 step 3).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
         },
         "schemaDigest": {
-          "type": "string"
+          "description": "A binding value. MUST be non-empty: an empty binding on either side is blocked (binding-missing), never read as unchanged (spec §4 step 3).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
         },
         "environmentDigest": {
-          "type": "string"
+          "description": "A binding value. MUST be non-empty: an empty binding on either side is blocked (binding-missing), never read as unchanged (spec §4 step 3).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
         },
         "category": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
         },
         "operations": {
-          "description": "The operations the work requests. A human-floor operation here caps the result at human-led.",
+          "description": "The operations the work requests, at most 16 (spec §4 step 3). A human-floor operation here caps the result at human-led; an operation outside both vocabularies caps at human-led under the fixed code operation-unknown.",
           "type": "array",
+          "maxItems": 16,
           "items": {
-            "type": "string"
+            "anyOf": [
+              {
+                "$ref": "#/$defs/agentOperation"
+              },
+              {
+                "$ref": "#/$defs/humanFloorOperation"
+              }
+            ]
           }
         },
         "facts": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/hardFact"
-          }
+          },
+          "maxItems": 32
         },
         "advice": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/advisoryAssessment"
-          }
+          },
+          "maxItems": 16
         },
         "assessedAt": {
           "type": "string",
@@ -218,8 +244,9 @@
           "minLength": 1
         },
         "owner": {
+          "description": "A reason-code token (it appears in exception-applied:<owner>); a policy whose exception owner is not one is invalid (spec §5).",
           "type": "string",
-          "minLength": 1
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._@/-]{0,63}$"
         },
         "reason": {
           "type": "string"
@@ -271,7 +298,8 @@
           "minProperties": 1,
           "additionalProperties": {
             "$ref": "#/$defs/categoryAdmission"
-          }
+          },
+          "maxProperties": 64
         },
         "readinessFailCeiling": {
           "description": "Every readiness check MUST be mapped, and only to human-led or more restrictive (spec §5).",
@@ -309,17 +337,23 @@
       ],
       "properties": {
         "owner": {
+          "description": "The grant owner; a reason-code token (it appears in discovery-scope:<owner>).",
           "type": "string",
-          "minLength": 1
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._@/-]{0,63}$"
         },
         "readScope": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 64,
           "items": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "\\S"
           }
         }
-      }
+      },
+      "description": "A separately authorized discovery grant. It authorizes discovery-only on a subject only when one read-scope entry covers the subject at a # or / boundary (spec §2, §4 step 12)."
     },
     "admissionContext": {
       "type": "object",
@@ -336,13 +370,22 @@
           "format": "date-time"
         },
         "subjectRevision": {
-          "type": "string"
+          "description": "The current binding value. MUST be non-empty (spec §4 step 3).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
         },
         "schemaDigest": {
-          "type": "string"
+          "description": "The current binding value. MUST be non-empty (spec §4 step 3).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
         },
         "environmentDigest": {
-          "type": "string"
+          "description": "The current binding value. MUST be non-empty (spec §4 step 3).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
         },
         "stopFlag": {
           "type": "boolean"
@@ -378,11 +421,12 @@
           "$ref": "#/$defs/disposition"
         },
         "reasons": {
-          "description": "Ordered reason codes; never empty.",
+          "description": "Ordered reason codes; never empty. Each is a lowercase literal followed by zero or more :-separated reason-code tokens, so no assessed value can add a separator, a line or a code (spec §7).",
           "type": "array",
           "minItems": 1,
           "items": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*(:[A-Za-z0-9][A-Za-z0-9._@/-]{0,63})*$"
           }
         },
         "permittedOperations": {
@@ -416,8 +460,25 @@
           "items": {
             "type": "string"
           }
+        },
+        "discoveryScope": {
+          "description": "Present exactly when the disposition is discovery-only: the grant read-scope entries covering the subject, sorted. Discovery reads are bounded to these.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
         }
       }
+    },
+    "humanFloorOperation": {
+      "description": "An operation that is never permitted to an agent at any disposition (spec §2). An assessment may REQUEST one; the result is then capped at human-led.",
+      "type": "string",
+      "enum": [
+        "merge",
+        "release",
+        "deploy"
+      ]
     }
   },
   "oneOf": [

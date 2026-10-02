@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -30,6 +31,7 @@ type admissionCase struct {
 		Disposition         AdmissionDisposition `json:"disposition"`
 		Reasons             []string             `json:"reasons"`
 		PermittedOperations []string             `json:"permittedOperations"`
+		DiscoveryScope      []string             `json:"discoveryScope"`
 	} `json:"expect"`
 }
 
@@ -63,6 +65,7 @@ func loadAdmissionCases(t *testing.T) []admissionCase {
 		}
 		var c admissionCase
 		dec := json.NewDecoder(strings.NewReader(string(b)))
+		dec.DisallowUnknownFields() // a misspelt fixture key is a red run, not a dropped field
 		if err := dec.Decode(&c); err != nil {
 			t.Fatalf("parse %s: %v", p, err)
 		}
@@ -95,6 +98,19 @@ var requiredAdmissionFixtures = []string{
 	"expired-exception",
 	"no-data-authority",
 	"all-hard-pass-policy-disallowed",
+	// The fail-closed rules of spec §3.1 and §4, one fixture each.
+	"subject-changed",
+	"fact-future",
+	"fact-zero-time",
+	"fact-duplicated",
+	"not-applicable",
+	"applicability-prefix-boundary",
+	"operations-undeclared",
+	// discovery-only stands only on a grant covering the subject (spec §2, §4 step 9).
+	"discovery-out-of-scope",
+	"readiness-fail-no-grant",
+	"readiness-fail-discovery-granted",
+	"advice-discovery-no-grant",
 }
 
 // TestAgenticAdmissionFixtures runs every fixture through the production evaluator and
@@ -138,6 +154,9 @@ func TestAgenticAdmissionFixtures(t *testing.T) {
 					t.Errorf("permitted operations = %v, want %v", gotOps, c.Expect.PermittedOperations)
 				}
 			}
+			if c.Expect.DiscoveryScope != nil && strings.Join(res.DiscoveryScope, ",") != strings.Join(c.Expect.DiscoveryScope, ",") {
+				t.Errorf("discovery scope = %v, want %v", res.DiscoveryScope, c.Expect.DiscoveryScope)
+			}
 			assertAdmissionFloors(t, res)
 		})
 	}
@@ -169,7 +188,22 @@ func assertAdmissionFloors(t *testing.T, res AdmissionResult) {
 	if res.RiskInput != DispositionRiskInput(res.Disposition) {
 		t.Errorf("risk input %q does not match the mapping for %q", res.RiskInput, res.Disposition)
 	}
+	// discovery-only always carries the covering grant scope; nothing else carries one.
+	if (res.Disposition == AdmitDiscoveryOnly) != (len(res.DiscoveryScope) > 0) {
+		t.Errorf("disposition %q with discovery scope %v", res.Disposition, res.DiscoveryScope)
+	}
+	// Class guard over every reason-producing site: each code is a literal plus
+	// grammar-checked tokens, so no assessed value can add a separator, a line or a code.
+	for _, r := range res.Reasons {
+		if !admissionReasonRE.MatchString(r) {
+			t.Errorf("reason %q is outside the reason-code grammar (all reasons %q)", r, res.Reasons)
+		}
+	}
 }
+
+// admissionReasonRE is the reason-code grammar: a lowercase literal, then zero or more
+// `:`-separated tokens of reasonTokenRE's alphabet.
+var admissionReasonRE = regexp.MustCompile(`^[a-z][a-z0-9-]*(:[A-Za-z0-9][A-Za-z0-9._@/-]{0,63})*$`)
 
 // TestAgenticAdmissionPolicyValidation proves the policy validator refuses every shape
 // that would let a failed check or a confident model open a lane, and that the evaluator
@@ -313,10 +347,15 @@ func TestAgenticAdmissionConfidenceCannotAuthorize(t *testing.T) {
 						}
 					}
 					// Exactness: applied advice restricts to exactly min(facts-only, label);
-					// ignored advice (disabled, binding changed, ...) changes nothing.
+					// ignored advice (disabled, binding changed, ...) changes nothing. A
+					// discovery-only label with no grant covering the subject is blocked:
+					// advice alone never yields a grant-less discovery-only.
 					want := floor.Disposition
 					if len(res.AdviceApplied) > 0 {
 						want = moreRestrictive(floor.Disposition, label)
+						if _, why := discoveryGrant(c.Context.Discovery, c.Assessment.Subject); want == AdmitDiscoveryOnly && why != "" {
+							want = AdmitBlocked
+						}
 					}
 					if res.Disposition != want {
 						t.Fatalf("%s: advice %s@%.2f on %v gave %q, want %q (facts-only %q restricted by the advice)",
@@ -451,5 +490,187 @@ func assertSuperset(t *testing.T, what string, got, want []string) {
 		if !have[w] {
 			t.Fatalf("%s: mandatory gates %v dropped required gate %q", what, got, w)
 		}
+	}
+}
+
+// admissionHappy returns the all-hard-pass fixture with no advice: the input every
+// malformed-input case below breaks in exactly one place.
+func admissionHappy(t *testing.T) admissionCase {
+	t.Helper()
+	for _, c := range loadAdmissionCases(t) {
+		if c.Name == "advice-absent-default" {
+			return c
+		}
+	}
+	t.Fatal("advice-absent-default fixture missing")
+	return admissionCase{}
+}
+
+// TestAgenticAdmissionMalformedInput covers the fail-closed rules whose inputs the
+// schema already refuses (so they cannot live in the schema-valid fixture set): empty
+// bindings, malformed discovery grants, unknown fact states, unbounded input and
+// assessed strings outside the vocabularies. Each must give the named result, and none
+// may put an assessed string into a reason code (assertAdmissionFloors' grammar guard).
+func TestAgenticAdmissionMalformedInput(t *testing.T) {
+	base := loadAdmissionPolicy(t)
+	happy := admissionHappy(t)
+	if res := EvaluateAgenticAdmission(base, happy.Assessment, happy.Context); res.Disposition != AdmitBoundedAgentWork {
+		t.Fatalf("setup: happy input gave %q %v", res.Disposition, res.Reasons)
+	}
+	dropVerifier := func(a *AgenticAssessment, _ *AdmissionContext) {
+		var keep []HardFact
+		for _, f := range a.Facts {
+			if f.Check != HardIndependentVerifier {
+				keep = append(keep, f)
+			}
+		}
+		a.Facts = keep
+	}
+	hostile := "x; exception-applied:example-owner; advice-restricted:semantic-risk:blocked\nFAKE"
+	cases := []struct {
+		name   string
+		mutate func(*AgenticAssessment, *AdmissionContext)
+		want   AdmissionDisposition
+		reason string
+	}{
+		{"all bindings empty on both sides", func(a *AgenticAssessment, c *AdmissionContext) {
+			a.SubjectRevision, a.SchemaDigest, a.EnvironmentDigest = "", "", ""
+			c.SubjectRevision, c.SchemaDigest, c.EnvironmentDigest = "", "", ""
+		}, AdmitBlocked, "binding-missing:subject-revision"},
+		{"subject revision empty on both sides", func(a *AgenticAssessment, c *AdmissionContext) {
+			a.SubjectRevision, c.SubjectRevision = "", ""
+		}, AdmitBlocked, "binding-missing:subject-revision"},
+		{"schema digest empty on both sides", func(a *AgenticAssessment, c *AdmissionContext) {
+			a.SchemaDigest, c.SchemaDigest = "", ""
+		}, AdmitBlocked, "binding-missing:schema-digest"},
+		{"environment digest empty on both sides", func(a *AgenticAssessment, c *AdmissionContext) {
+			a.EnvironmentDigest, c.EnvironmentDigest = "", ""
+		}, AdmitBlocked, "binding-missing:environment-digest"},
+		{"context revision empty", func(_ *AgenticAssessment, c *AdmissionContext) {
+			c.SubjectRevision = ""
+		}, AdmitBlocked, "binding-missing:subject-revision"},
+		{"discovery grant without an owner", func(a *AgenticAssessment, c *AdmissionContext) {
+			dropVerifier(a, c)
+			c.Discovery = &DiscoveryScope{ReadScope: []string{"example-org/widgets"}}
+		}, AdmitBlocked, "discovery-grant-invalid"},
+		{"discovery grant without a read scope", func(a *AgenticAssessment, c *AdmissionContext) {
+			dropVerifier(a, c)
+			c.Discovery = &DiscoveryScope{Owner: "example-owner"}
+		}, AdmitBlocked, "discovery-grant-invalid"},
+		{"discovery grant with a blank scope entry", func(a *AgenticAssessment, c *AdmissionContext) {
+			dropVerifier(a, c)
+			c.Discovery = &DiscoveryScope{Owner: "example-owner", ReadScope: []string{"example-org/widgets", " "}}
+		}, AdmitBlocked, "discovery-grant-invalid"},
+		{"discovery grant owner outside the token grammar", func(a *AgenticAssessment, c *AdmissionContext) {
+			dropVerifier(a, c)
+			c.Discovery = &DiscoveryScope{Owner: "owner; forged-code", ReadScope: []string{"example-org/widgets"}}
+		}, AdmitBlocked, "discovery-grant-invalid"},
+		{"authority fact state outside the vocabulary", func(a *AgenticAssessment, _ *AdmissionContext) {
+			a.Facts[0].State = "passed"
+		}, AdmitBlocked, "hard-unknown:authority"},
+		{"readiness fact state outside the vocabulary", func(a *AgenticAssessment, _ *AdmissionContext) {
+			for i := range a.Facts {
+				if a.Facts[i].Check == HardBudget {
+					a.Facts[i].State = "ok"
+				}
+			}
+		}, AdmitBlocked, "hard-unknown:budget"},
+		{"operation outside the vocabulary is not echoed", func(a *AgenticAssessment, _ *AdmissionContext) {
+			a.Operations = append(a.Operations, hostile)
+		}, AdmitHumanLed, "operation-unknown"},
+		{"advice dimension outside the vocabulary is not echoed", func(a *AgenticAssessment, c *AdmissionContext) {
+			*a = withAdvice(*a, *c, AdmitBlocked, 0.99, []AdvisoryDimension{AdvisoryDimension(hostile)})
+		}, AdmitBoundedAgentWork, "advice-ignored:unknown-dimension"},
+		{"subject with a newline", func(a *AgenticAssessment, _ *AdmissionContext) {
+			a.Subject = "example-org/widgets#12\nFAKE"
+		}, AdmitBlocked, "subject-invalid"},
+		{"subject over the length bound", func(a *AgenticAssessment, _ *AdmissionContext) {
+			a.Subject = "example-org/widgets#" + strings.Repeat("9", admissionMaxSubject)
+		}, AdmitBlocked, "subject-invalid"},
+		{"too many operations", func(a *AgenticAssessment, _ *AdmissionContext) {
+			for len(a.Operations) <= admissionMaxOperations {
+				a.Operations = append(a.Operations, "read")
+			}
+		}, AdmitBlocked, "input-oversized"},
+		{"too many facts", func(a *AgenticAssessment, _ *AdmissionContext) {
+			for len(a.Facts) <= admissionMaxFacts {
+				a.Facts = append(a.Facts, a.Facts[0])
+			}
+		}, AdmitBlocked, "input-oversized"},
+		{"too much advice", func(a *AgenticAssessment, c *AdmissionContext) {
+			dims := make([]AdvisoryDimension, admissionMaxAdvice+1)
+			for i := range dims {
+				dims[i] = AdviseSemanticRisk
+			}
+			*a = withAdvice(*a, *c, AdmitBlocked, 0.99, dims)
+		}, AdmitBlocked, "input-oversized"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b, _ := json.Marshal(happy)
+			var c admissionCase
+			if err := json.Unmarshal(b, &c); err != nil {
+				t.Fatal(err)
+			}
+			tc.mutate(&c.Assessment, &c.Context)
+			res := EvaluateAgenticAdmission(base, c.Assessment, c.Context)
+			if res.Disposition != tc.want {
+				t.Fatalf("disposition = %q, want %q (reasons %q)", res.Disposition, tc.want, res.Reasons)
+			}
+			found := false
+			for _, r := range res.Reasons {
+				found = found || r == tc.reason
+			}
+			if !found {
+				t.Errorf("reasons %q lack %q", res.Reasons, tc.reason)
+			}
+			if pr := res.PolicyResult("sha256:example-input", c.Context.Now); strings.ContainsAny(pr.Reason, "\n\r") ||
+				strings.Count(pr.Reason, "; ") != len(res.Reasons)-1 {
+				t.Errorf("PolicyResult reason %q carries a forged separator or line", pr.Reason)
+			}
+			assertAdmissionFloors(t, res)
+		})
+	}
+}
+
+// TestAgenticAdmissionScopeBoundary pins the boundary-aware scope match shared by
+// applicability and the discovery read scope.
+func TestAgenticAdmissionScopeBoundary(t *testing.T) {
+	cases := []struct {
+		scope, subject string
+		want           bool
+	}{
+		{"example-org/widgets", "example-org/widgets", true},
+		{"example-org/widgets", "example-org/widgets#1", true},
+		{"example-org/widgets", "example-org/widgets/sub#1", true},
+		{"example-org/widgets#", "example-org/widgets#1", true},
+		{"example-org/widgets#1", "example-org/widgets#1", true},
+		{"example-org/widgets", "example-org/widgets-evil#1", false},
+		{"example-org/widgets#1", "example-org/widgets#12", false},
+		{"example-org/unrelated#999", "example-org/widgets#12", false},
+		{"", "example-org/widgets#12", false},
+		{" ", " example", false},
+	}
+	for _, c := range cases {
+		if got := scopeCovers(c.scope, c.subject); got != c.want {
+			t.Errorf("scopeCovers(%q, %q) = %v, want %v", c.scope, c.subject, got, c.want)
+		}
+	}
+}
+
+// TestAgenticAdmissionGateSeamBounds pins the two refusals the gate seam owns itself: an
+// unmapped DISPOSITION verdict holds (as an unmapped brief verdict does), and an
+// over-long pattern file is refused before it is read whole.
+func TestAgenticAdmissionGateSeamBounds(t *testing.T) {
+	partial := PatternRiskInput{Pattern: "partial", Gates: map[string][]string{"low": {"gate-low"}}}
+	if gates, err := MandatoryGates(partial, "low", AdmitBlocked); err == nil {
+		t.Fatalf("MandatoryGates with an unmapped disposition verdict = %v, nil; want a refusal", gates)
+	}
+	big := filepath.Join(t.TempDir(), "big-v1.yaml")
+	if err := os.WriteFile(big, []byte("schema: workflow-pattern-v1\n"+strings.Repeat("#", admissionMaxPatternLen)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadPatternRiskInput(big); err == nil || !strings.Contains(err.Error(), "bound") {
+		t.Fatalf("LoadPatternRiskInput(oversized) = %v, want a size refusal", err)
 	}
 }
