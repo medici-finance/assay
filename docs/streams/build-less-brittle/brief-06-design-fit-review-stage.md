@@ -17,7 +17,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format)"
 sources:
   - "docs/streams/build-less-brittle/spec.md §2 D2, §3 row 4, §4.4, §4.5, §4.7"
@@ -133,20 +133,24 @@ design-fit:
 ## Verify (executable — no prose-only DoD items)
 
 Rows run from the root of `medici-finance/assay`. Row 3 is the mutation row for the kit/model
-pin. Rows 7–8 are net ≤ 0 weight rows.
+pin. Rows 7–8 are net ≤ 0 weight rows. Rows 3, 7, 9 and 10 were re-authored in version 2 (#1977)
+so they can be decided on merged main, under any shell, without leaving the checkout: row 3 keeps
+its scratch files in the checkout root (both gitignored), row 7 braces its revision variables, row 9
+prints one count, and row 10 corroborates the `consumers:` claims against the delivering change
+itself, pinned so it still has that diff to read after merge.
 
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check | `cd tools/desk && go test ./internal/deskkit/ ./cmd/deskdispatch/ -count=1` | `ok` for both |
 | 2 | check | `grep -c 'BasisDesignFit ScopeBasis = "design-fit"' tools/desk/internal/deskkit/reviewscope.go` | `1` |
-| 3 | check +mutation | `cd tools/desk && f=cmd/deskdispatch/references/review-prompt.md && cp "$f" /tmp/bl06-kit.bak && awk '!/^[\|] design-fit [\|]/' /tmp/bl06-kit.bak > "$f" && go test ./cmd/deskdispatch/ -run TestReviewScopeKitMatchesModel -count=1 > /tmp/bl06-mut.out 2>&1; rc=$?; cp /tmp/bl06-kit.bak "$f"; test $rc -ne 0 && echo RED-ON-DRIFT` | `RED-ON-DRIFT` (dropping the kit row while the model keeps the basis fails the pin) |
+| 3 | check +mutation | `cd tools/desk && f=cmd/deskdispatch/references/review-prompt.md && cp "$f" ../../bl06-kit.bak && awk '!/^[\|] design-fit [\|]/' ../../bl06-kit.bak > "$f" && go test ./cmd/deskdispatch/ -run TestReviewScopeKitMatchesModel -count=1 > ../../bl06-mut.out 2>&1; rc=$?; cp ../../bl06-kit.bak "$f"; test $rc -ne 0 && echo RED-ON-DRIFT` | `RED-ON-DRIFT` (dropping the kit row while the model keeps the basis fails the pin; the backup and the mutant's test log stay in the checkout root, where `*.bak` and `*.out` are gitignored, and the log is left there to read) |
 | 4 | check | `grep -cE '^## [0-9]+\. Design fit first' tools/desk/cmd/deskdispatch/references/review-prompt.md` | `1` |
 | 5 | check | `grep -cE '^[\|] design-fit [\|] advisory [\|]' plugins/assay/skills/pr-review-desk/SKILL.md` | `1` (D-A: the class lands `advisory`; the promotion to `blocking` is a later recorded decision, a one-cell edit) |
 | 6 | check | `grep -cE '^[\|] *R-design-fit-basis .*S-review-verdict' docs/contracts.md` | `1` (the new rule is registered and serves an existing S- row) |
-| 7 | check | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/06$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
+| 7 | check | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/06$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "${tip}:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" -le "$(git show "${base}:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" && echo NET-OK` | `NET-OK` (the revision variables are braced: unbraced, zsh reads `:t` as a path modifier, both reads fail, and 0 ≤ 0 would pass) |
 | 8 | check | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/06$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
-| 9 | check | `grep -c 'go test ./internal/weight/ -run TestPrintWeight' tools/desk/cmd/deskdispatch/references/review-prompt.md && test -f tools/desk/internal/weight/weight_test.go && echo COUNTER-EXISTS` | a count ≥ `1`, then `COUNTER-EXISTS` |
-| 10 | check | `statusgen --consumers --root . --brief build-less-brittle/06; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
+| 9 | check | `grep -q '^func TestPrintWeight' tools/desk/internal/weight/weight_test.go && grep -c 'go test ./internal/weight/ -run TestPrintWeight' tools/desk/cmd/deskdispatch/references/review-prompt.md` | ≥ `1` (one line: how often the kit's clause names the counter command, printed only after the counter test that command runs is found; without that test the row prints nothing and fails) |
+| 10 | check | `d=$(mktemp -d "$PWD/.bl06-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach d1258928da48 && statusgen --consumers --root "$d" --brief build-less-brittle/06 --base d1258928da48~1; s=$?; rm -rf "$d"; exit $s` | exit 0; output is `summary: 4 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing` (the check runs in a throwaway shared clone, made inside the checkout and removed afterwards, checked out at d1258928da48, the squash that delivered this brief in #1879, with the base pinned to its parent, so the diff it reads is exactly the delivering change: never main's later commits, never the runner's own working tree. The four `fixed-here` path entries are corroborated by that diff. The two UNCHECKED entries stay the reviewer's call per brief-rule 9, never a pass: the case-corpus entry names its file in prose, and the installed-binaries entry is `out-of-scope`) |
 | 11 | check | `s=$(sed -n '/^## [0-9]*\. Design fit first/,/^## [0-9]*\. /p' tools/desk/cmd/deskdispatch/references/review-prompt.md); echo "$s" \| grep -c 'Brittle marks'; echo "$s" \| grep -c 'internal/arch'` | two counts, each ≥ `1` (a marked module and a red arch test both trigger the stage) |
 
 ## Evidence
@@ -231,6 +235,85 @@ rows_passed=10 rows_total=11. Verify rows 1–9 and 11 meet Expect as authored. 
 Verify-row re-authoring is filed as #1977.
 
 VERIFY: BLOCKED. All implementation checks meet Expect, so the deliverable itself checks out. The block comes from Verify-table authoring: row 10 is could-not-check on merged main as authored, and rows 9 and 10 cannot be machine-witnessed. Re-authoring those two rows (findings 1–2) and re-running the witness clears it.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./internal/deskkit/ ./cmd/deskdispatch/ -count=1` | pass exit=0 | sha256:b054b76ba812 | 2026-10-02 | assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -c 'BasisDesignFit ScopeBasis = "design-fit"' tools/desk/internal/deskkit/reviewscope.go` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-02 | assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && f=cmd/deskdispatch/references/review-prompt.md && cp "$f" ../../bl06-kit.bak && awk '!/^[\|] design-fit [\|]/' ../../bl06-kit.bak > "$f" && go test ./cmd/deskdispatch/ -run TestReviewScopeKitMatchesModel -count=1 > ../../bl06-mut.out 2>&1; rc=$?; cp ../../bl06-kit.bak "$f"; test $rc -ne 0 && echo RED-ON-DRIFT` | pass exit=0 | sha256:cd183bfd8e84 | 2026-10-02 | assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -cE '^## [0-9]+\. Design fit first' tools/desk/cmd/deskdispatch/references/review-prompt.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-02 | assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -cE '^[\|] design-fit [\|] advisory [\|]' plugins/assay/skills/pr-review-desk/SKILL.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-02 | assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -cE '^[\|] *R-design-fit-basis .*S-review-verdict' docs/contracts.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-02 | assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/06$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "${tip}:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" -le "$(git show "${base}:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" && echo NET-OK` | pass exit=0 | sha256:458c4e39effe | 2026-10-02 | assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/06$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" && echo NET-OK` | pass exit=0 | sha256:458c4e39effe | 2026-10-02 | assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `grep -q '^func TestPrintWeight' tools/desk/internal/weight/weight_test.go && grep -c 'go test ./internal/weight/ -run TestPrintWeight' tools/desk/cmd/deskdispatch/references/review-prompt.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-02 | assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `d=$(mktemp -d "$PWD/.bl06-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach d1258928da48 && statusgen --consumers --root "$d" --brief build-less-brittle/06 --base d1258928da48~1; s=$?; rm -rf "$d"; exit $s` | pass exit=0 | sha256:85136008240b | 2026-10-02 | assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `s=$(sed -n '/^## [0-9]*\. Design fit first/,/^## [0-9]*\. /p' tools/desk/cmd/deskdispatch/references/review-prompt.md); echo "$s" \| grep -c 'Brittle marks'; echo "$s" \| grep -c 'internal/arch'` | pass exit=0 | sha256:ad0fadf63cc7 | 2026-10-02 | assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) (forge-identity) |
+
+### Verify pass — 2026-10-02, non-implementer verifier, merged main 2a6460e85c78 (re-witness of the Verify table as amended by #2030)
+
+- Target SHA: 2a6460e85c78 (detached worktree at the merged main head; contains the #1879 squash d1258928da48 that delivered this brief, and the #2030 amendment of Verify rows 3, 7, 9 and 10).
+- Runner: assay-verifier-app[bot] (on-behalf-of human:ian). Not the implementer of this brief or its code.
+- Host: darwin, statusgen v1.0.30. Every Verify row is class `check` (row 3 `check +mutation`); the table has no `check:ci` row, so no row needed a Linux runner or a network-off sandbox, and every row ran on this host.
+- Brief frontmatter: gate model; risk regulatory no, customer no, irreversible no, sensitive-data no.
+
+What moved since the 2026-10-01 pass at ca81ea0a9603: Verify rows 3, 7, 9 and 10 were re-authored (#1977, landed in #2030). Row 3 now keeps its scratch files in the checkout root, row 7 braces its revision variables, row 9 prints one count, row 10 pins the consumers check to the delivering squash. The four delivered files are unchanged since the squash except the pr-review-desk skill, which later commits grew by 4 lines (1023 at the squash, 1027 at this head); the design-fit register row moved from line 554 to 558.
+
+#### Execution witness
+
+`statusgen verifyrun --brief <this brief> --timeout 10m`, run from the worktree root, first with `--dry-run` and then in the writing form. Both runs: tool exit 0, 11 of 11 rows stamped `pass exit=0`, no could-not-run and no executing-identity refusal. The writing form appended a 14-line witness table to this brief's Evidence section in the worktree (left uncommitted). The tool states that rows 1–8 were decided on exit status only ("nothing else in the Expect cell is machine-decidable"); rows 9, 10 and 11 were decided against their Expect. The hand runs below are therefore the record for rows 1–8.
+
+#### Hand runs (each row's as-authored text, extracted from the Verify table, run in a fresh `bash -c` at the worktree root)
+
+| # | command (abbreviated) | exit | key observed output | result |
+|---|---|---|---|---|
+| 1 | `cd tools/desk && go test ./internal/deskkit/ ./cmd/deskdispatch/ -count=1` | 0 | `ok …/tools/desk/internal/deskkit 111.203s` and `ok …/tools/desk/cmd/deskdispatch 27.991s` | meets Expect (`ok` for both) — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 2 | `grep -c 'BasisDesignFit ScopeBasis = "design-fit"' …/reviewscope.go` | 0 | `1` (line 74) | meets Expect (`1`) — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 3 | mutation: drop the kit's design-fit block row, run `TestReviewScopeKitMatchesModel`, restore, `test $rc -ne 0 && echo RED-ON-DRIFT` | 0 | `RED-ON-DRIFT`. The mutant's log reads `--- FAIL: TestReviewScopeKitMatchesModel` / `reviewscope_test.go:299: the model names basis "design-fit" but the review kit's block does not`. The awk removed exactly one line (kit line 277); the restored kit is byte-identical to the backup and the tree shows no change under tools/. Backup and log stayed in the checkout root and are gitignored. | meets Expect; the mutation is real (the pin went red for the stated reason, not for a build error) — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 4 | `grep -cE '^## [0-9]+\. Design fit first' …/review-prompt.md` | 0 | `1` (line 36, `## 3. Design fit first — before correctness, when a PR adds weight or a rule`) | meets Expect (`1`) — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 5 | `grep -cE '^[\|] design-fit [\|] advisory [\|]' …/pr-review-desk/SKILL.md` | 0 | `1` (line 558) | meets Expect (`1`) — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 6 | `grep -cE '^[\|] *R-design-fit-basis .*S-review-verdict' docs/contracts.md` | 0 | `1` (line 246) | meets Expect (`1`) — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 7 | net-lines row for review-prompt.md, braced `${tip}` / `${base}` | 0 | `NET-OK`. impl resolves to d1258928da48 (the only first-parent commit carrying the trailer outside docs/streams and changelog), base is its parent, base ≠ tip; 461 lines at the tip, 461 at the base, net 0. Re-run under zsh: also `NET-OK`, now with real reads (the braced form no longer triggers the `:t` modifier). | meets Expect; not vacuous — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 8 | net-lines row for the pr-review-desk skill, unbraced `$tip:plugins/…` | 0 | `NET-OK`. Same impl and base; 1023 lines at the tip, 1023 at the base, net 0. Checked under zsh: `$tip:plugins` expands literally (`:p` is not applied to a parameter), so the unbraced text reads correctly there too. | meets Expect; not vacuous — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 9 | `grep -q '^func TestPrintWeight' …/weight_test.go && grep -c 'go test ./internal/weight/ -run TestPrintWeight' …/review-prompt.md` | 0 | `1` (one output line; the counter test is at weight_test.go line 301) | meets Expect (≥ 1) — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 10 | shared clone at d1258928da48, `statusgen --consumers --root "$d" --brief build-less-brittle/06 --base d1258928da48~1; s=$?; rm -rf "$d"; exit $s` | 0 | `summary: 4 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing`. CORROBORATED: reviewscope.go, review-prompt.md, pr-review-desk SKILL.md, contracts.md. UNCHECKED: the review-scope case corpus (named in prose) and the installed binaries (out-of-scope). The throwaway clone was removed afterwards. | meets Expect verbatim. The row carries its real exit status (no trailing echo masks it) and reads the delivering diff, so it is not vacuous on merged main. The two UNCHECKED entries are not passes; they remain the reviewer's call — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+| 11 | clause-3 extract, `grep -c 'Brittle marks'`; `grep -c 'internal/arch'` | 0 | `1` and `1` | meets Expect (two counts, each ≥ 1) — 2026-10-02 assay-verifier-app[bot] @ 2a6460e85c78 (on-behalf-of human:ian) |
+
+Rows that did not execute on this host: none.
+
+#### Row defects and observations
+
+No row was stamped pass while its output misses its Expect, no row is vacuous on merged main, and no row depends on a zsh path-modifier expansion. Three observations, none of which changes a result:
+
+1. Rows 1–8 are decided by the witness on exit status alone. For rows 3, 7 and 8 that is sound: the token is printed by a trailing `&& echo`, so exit 0 holds only when the token was printed. For rows 2, 4, 5 and 6 the Expect is exactly `1`, while exit 0 from `grep -c` only proves a count ≥ 1; a duplicated line would still be stamped pass. The hand runs show `1` in each case.
+2. Row 8 was not braced when row 7 was. It is correct under bash and zsh as written (verified), so this is a consistency note only.
+3. Row 10's `consumers:` gate leaves two entries UNCHECKED by design. The case-corpus entry was not re-read by hand in this pass; the 2026-10-01 pass recorded reading it (five bases, ending design-fit). It is reported here as could-not-check by the tool, not as a pass.
+
+Scope traceability, unchanged from the prior pass: Task 2's ≤ 14-line bound on the clause and Task 3's ≤ 5-line bound on the growth-approval step have no Verify row. Read directly at this head: clause 3 is review-prompt.md lines 36–49 (14 lines); the growth-approval step is 4 lines in the pr-review-desk skill. Both bounds are met.
+
+#### Risk-bearing value
+
+The trigger fires because the delivering diff touches a security-path file (reviewscope.go), although every risk answer is `no`.
+
+Enumeration over the squash d1258928da48 (its tools/, plugins/ and contracts.md surfaces) plus the literals named in Deliverables, re-located at this head:
+- `BasisDesignFit = "design-fit"` @ tools/desk/internal/deskkit/reviewscope.go:74
+- kit block key `design-fit` @ tools/desk/cmd/deskdispatch/references/review-prompt.md:277
+- register status `design-fit = advisory` @ plugins/assay/skills/pr-review-desk/SKILL.md:558
+- tier binding "Weight growth … is strong tier too" @ plugins/assay/skills/pr-review-desk/SKILL.md:349
+- clause length bound ≤ 14 lines (observed 14), growth-step bound ≤ 5 lines (observed 4), net weight bound ≤ 0 lines (461→461, 1023→1023)
+- demotion threshold `> 50%` for `two consecutive months` @ plugins/assay/skills/pr-review-desk/SKILL.md:560 (named in Deliverables, not changed by the diff)
+- promotion window `go-live + one month` @ docs/streams/build-less-brittle/spec.md:241
+
+The growth-approval authority binding (the `# grow` URL must resolve to a comment by the driver's own login) has no literal in this repository: the project layer names the login and the issue.
+
+Ranking: every entry is reversible by an edit and a release. The register status and the basis identifier rank first (the first decides whether a PR is held, the second whether model, kit and register agree); the bounds, tier binding, threshold and window are reversible operational knobs.
+
+RISK-VALUE: DERIVED — design-fit register status = advisory @ plugins/assay/skills/pr-review-desk/SKILL.md:558 — D-A (ratified on #1660, recorded at spec.md:188 and :241) lands the class without power to hold a PR; the only correction mechanism, the > 50% two-month demotion rule, has no reversal data to act on until a month after go-live, so `advisory` is the fail-soft landing state and promotion is the one-cell edit the register already provides.
+RISK-VALUE: DERIVED — BasisDesignFit = "design-fit" @ tools/desk/internal/deskkit/reviewscope.go:74 — the value's correctness criterion is identity across the surfaces a reviewer is held to; it is the same string as the kit block key (review-prompt.md:277), the register class (SKILL.md:558) and the R-design-fit-basis row (contracts.md:246), and row 3's mutation shows the pin goes red when the kit and model disagree.
+
+rows_passed=11 rows_total=11.
+
+VERIFY: PASS. All eleven rows of the amended table ran on merged main 2a6460e85c78 and each meets its Expect on the real output, by hand as well as by the witness (both witness runs exit 0, 11 pass). The four rows that held the 2026-10-01 pass at BLOCKED are cleared: row 10 now reads the delivering diff and returns exit 0 with the exact expected summary instead of could-not-check; row 9 prints a single count the witness can read; row 7 is shell-portable; row 3 stays inside the checkout. The mutation row fails for the stated reason. What this pass does not establish: the two UNCHECKED `consumers:` entries, which the gate does not judge. Gate is model with all risk answers `no`; this verdict records Evidence only and flips nothing.
 
 ## Review
 Gate: model (from frontmatter). The reviewer answers this stage's own three questions about this

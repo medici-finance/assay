@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"syscall"
@@ -394,5 +395,5 @@ func policyConfigDir(e *Env, in string) string {
 	if in != "" {
 		return in
 	}
-	return e.GetOr("CLAUDE_CONFIG_DIR", filepath.Join(e.Get("HOME"), ".claude"))
+	return mustResolve(claudeConfigDirFor(runtime.GOOS, e))
 }

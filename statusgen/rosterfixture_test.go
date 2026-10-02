@@ -72,6 +72,10 @@ func installFixtureRoster() (cleanup func(), err error) {
 }
 
 func TestMain(m *testing.M) {
+	// The test binary stands in for statusgen as the check:ci sandbox helper
+	// (netns.go) and as the network probe the netns tests run inside it.
+	maybeRunNetnsHelper()
+	maybeRunNetProbe()
 	cleanup, err := installFixtureRoster()
 	if err != nil {
 		panic("cannot install the test-fixture roster: " + err.Error())

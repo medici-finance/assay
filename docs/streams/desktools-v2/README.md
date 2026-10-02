@@ -52,14 +52,14 @@ open questions for the approver are in [spec.md](spec.md) §4/§7.
 | 02 | [the v2 seam contract + the ban-lint (advisory/counting first)](brief-02-seam-contract-and-ban-lint.md) | 2 | M | done | 2026-09-27 assay-verifier-app[bot] @ 9585b4b6cc2e (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1322 @ 3209046e0a06dff80d7060e37227e4d87de9970c) |
 | 03 | [native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot)](brief-03-native-read-client.md) | 3 | M | todo | — | — |
 | 04 | [deskclose reads an authorizing comment by its stated kind — retire the kind-less default (#1019)](brief-04-deskclose-authorization-read-kind.md) | 2 | S | done | 2026-09-27 assay-verifier-app[bot] @ 9585b4b6cc2e (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1320 @ f6a6b8fcb28a03884f90590a5ad6557258f3c6f0) |
-| 05 | [the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884)](brief-05-push-guards-judge-the-real-remote.md) | 2 | M | implemented | — | — |
+| 05 | [the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884)](brief-05-push-guards-judge-the-real-remote.md) | 2 | M | verified | 2026-10-02 assay-verifier-app[bot] @ 454982f91a72 (claude-opus-5-5) | — |
 | 06 | [installation-token scoping — explicit repo-scoped custody across Go, cellctl and dispatch](brief-06-installation-token-scoping.md) | 4 | M | todo | — | — |
 | 08 | [hold statusgen at zero — the gh ban fails on statusgen and the scan is proven with no gh present](brief-08-hold-statusgen-at-zero.md) | 6 | S | todo | — | — |
 | 09 | [purpose-built access-pattern query operations (one tuned snapshot, not N per-item calls)](brief-09-access-pattern-queries.md) | 3 | L | verified | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | 10 | [one outbound-write check at the forge write seam, keyed on the target's visibility](brief-10-one-outbound-write-check.md) | 2 | L | implemented | — | — |
 | 11 | [a house callout for the outbound-write check — deployment vocabulary stays out of the shipped tools](brief-11-outbound-house-callout.md) | 3 | M | todo | — | — |
 | 12 | [platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS](brief-12-platform-compatibility-suite.md) | 2 | L | todo | — | — |
-| 13 | [platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage](brief-13-platform-gates-and-reconciliation.md) | 2 | M | todo | — | — |
+| 13 | [platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage](brief-13-platform-gates-and-reconciliation.md) | 2 | M | implemented | — | — |
 | 14 | [regression floor — the behavior the desk tools pass today, pinned as tests seeded from resolved issues, which desktools-v2 must keep green](brief-14-regression-floor.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
@@ -122,3 +122,26 @@ Critical path: `01 → 02 → 03 → 06`, with the outbound-write chain `01 → 
   the push-guard fixes (#1201/#884) and coordinates the transport half.
 - **`desk-tools`** is the general planning board for the current suite; v2 is the
   architectural successor for the forge-abstraction slice only.
+
+## Regression floor
+
+The inherited Windows, GitLab and credential behaviors are registered in
+[`MANIFEST.md`](../../../tools/desk/internal/regression/MANIFEST.md). Each seed has
+an owning package, a passing behavior test and a recorded failure at the fixing
+commit's parent. Existing tests are reused where they already pin the fix; the
+manifest guard rejects an omitted starter or a test declaration that disappears.
+The [harvest receipt](../../../tools/desk/internal/regression/HARVEST.md) records
+additional closes and reasoned exclusions.
+
+The floor rides `go test ./...` in PR CI. A desktools-v2 PR that turns a floor test
+red may not delete or weaken it: port the test, and name the behavior change that
+forced the port in the PR description. Both owning modules must run their tests.
+The current desk CI case does; statusgen currently receives build/vet only, so
+that half remains an enforcement hold until the maintainer applies the staged
+[additive CI patch](../../../ci/staged-patches/desktools-v2-14-statusgen-tests.patch).
+A staged patch is not a live gate.
+
+For a bounded local check, run `bash tools/desk/internal/regression/check-floor.sh`
+from the repository root. It runs every named seed in its owning package and
+requires its top-level PASS line; missing selections and failures are red. The
+fixtures use local git repositories, local HTTP servers and fake CLI executables.

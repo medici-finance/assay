@@ -107,6 +107,14 @@ type OutboundWrite struct {
 	// category reports itself NOT CHECKED. Every write to a numbered item sets it
 	// (TestOutboundWritesCarryNumber, TestOutboundNumberHintOnDecorator).
 	NumberHint int
+	// FileSources is for a kind-`file` write only: the FULL new-side content of each file
+	// field, keyed by that field's Name (its path). It is never scanned. It is the evidence
+	// for ONE decision — whether a line of the field's added-lines Text is the brief-v2
+	// frontmatter `id:` line the session-id arm exempts (#2022, briefIDExemptLine). A file
+	// with no entry gets no exemption, so a site that omits it is stricter, never looser;
+	// TestFileKindSitesCarrySources pins that every kind-`file` site supplies it, so the
+	// false refusal cannot come back through a new site.
+	FileSources map[string]string
 }
 
 // OutboundContext is the per-process state the check needs but a Forge method's arguments
@@ -326,7 +334,13 @@ func outboundScanField(w OutboundWrite, fd OutboundField, public bool) (refusals
 	}
 	// selfcontain.* and withheld.identifier — public and unknown-visibility targets only.
 	if public {
-		findings, scNotices := selfContainFindings(surface, text, SelfContainOpts{Repo: w.Repo, NumberHint: w.NumberHint})
+		opts := SelfContainOpts{Repo: w.Repo, NumberHint: w.NumberHint}
+		if w.Kind == OutboundKindFile {
+			if src, ok := w.FileSources[fd.Name]; ok {
+				opts.FilePath, opts.FileSource = fd.Name, src
+			}
+		}
+		findings, scNotices := selfContainFindings(surface, text, opts)
 		for _, n := range scNotices {
 			// A category that could not run is a property of the configuration, not of this
 			// field: drop the surface prefix so the per-context dedupe prints it ONCE.

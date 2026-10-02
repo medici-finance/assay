@@ -1,0 +1,78 @@
+name: celllaunch-windows
+
+# Contract witnesses only; no production runner, cockpit, Docker or credentials.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/celllaunch-windows.yml'
+      - 'tools/desk/internal/celllaunch/**'
+      - 'tools/desk/go.mod'
+      - 'tools/desk/go.sum'
+      - 'docs/cellctl-windows.md'
+      - 'docs/streams/cellctl-windows/brief-00-launch-session-contract.md'
+
+permissions:
+  contents: read
+
+jobs:
+  native-windows-contract:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: tools/desk
+    env:
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+      GOTOOLCHAIN: local
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: '1.25.0'
+          cache: false
+
+      - name: Record and verify native platform and source
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $sha -ne $env:EXPECTED_SHA) { throw 'Source SHA mismatch' }
+          if (-not [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
+            throw 'Native Windows is required'
+          }
+          $nativeOS = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
+          $nativeArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+          if ($nativeArch -ne [System.Runtime.InteropServices.Architecture]::X64) {
+            throw 'Native amd64 is required'
+          }
+          Write-Output "source_sha=$sha"
+          Write-Output "os=$nativeOS architecture=$nativeArch"
+          go version
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read Go version' }
+          $goos = go env GOOS
+          if ($LASTEXITCODE -ne 0 -or $goos -ne 'windows') { throw 'GOOS is not windows' }
+          $goarch = go env GOARCH
+          if ($LASTEXITCODE -ne 0 -or $goarch -ne 'amd64') { throw 'GOARCH is not amd64' }
+          Write-Output "GOOS=$goos GOARCH=$goarch"
+
+      - name: Execute all three native contract witnesses
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          foreach ($test in @('TestLaunchSpecRoundTrip', 'TestSessionRecordRefusal', 'TestLaunchSpecCustody')) {
+            $log = Join-Path $env:RUNNER_TEMP "$test.log"
+            Write-Output ("command=go test ./internal/celllaunch -run '^{0}$' -count=1 -v -timeout=60s" -f $test)
+            go test ./internal/celllaunch -run ('^' + $test + '$') -count=1 -v -timeout=60s *> $log
+            $code = $LASTEXITCODE
+            Get-Content $log
+            Write-Output "test=$test exit=$code"
+            if ($code -ne 0) { throw "Test failed: $test" }
+            $pass = '^--- PASS: ' + [regex]::Escape($test) + ' \('
+            if (-not (Select-String -Path $log -Pattern $pass)) { throw "Missing exact PASS: $test" }
+            if (Select-String -Path $log -SimpleMatch '--- SKIP:') { throw "Skipped test: $test" }
+          }
