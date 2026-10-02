@@ -14,6 +14,7 @@ risk:
   customer: no
   irreversible: no
   sensitive-data: no
+design: DR-graph-exec-13
 gate-why: The owner confirms the proposed admission policy preserves mandatory controls and existing human authority.
 decision-trigger: spec
 issues: []
