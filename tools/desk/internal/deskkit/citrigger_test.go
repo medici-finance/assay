@@ -1095,6 +1095,23 @@ func ciCrossModuleRegistry() []ciEntry {
 				"tools/desk lets that recur silently",
 		},
 		{
+			// #2061: the scan-refusal scenario test reads the pr-review-desk
+			// skill's STOP section (outside this module) and binds its
+			// transcript judge to that text.
+			test:     "tools/desk/cmd/deskdispatch/scanrefusal_test.go",
+			module:   "tools/desk",
+			workflow: ".github/workflows/tools.yml",
+			prJob:    toolsDeskJob,
+			pushJob:  toolsDeskJob,
+			reads: []string{
+				"plugins/assay/skills/pr-review-desk/SKILL.md",
+			},
+			why: "scanrefusal_test.go judges desk transcripts after a verdict-body scan refusal " +
+				"against the pr-review-desk skill's STOP section; a skill edit that drops or softens " +
+				"that section without running tools/desk would leave the reword-after-refusal " +
+				"scenario pinning a rule the skill no longer states",
+		},
+		{
 			// #20 (F-34/F-35): writeguard was built and unit-tested in this
 			// module but was never actually wired into a live PreToolUse hook
 			// for sessions working in THIS repo's own shared checkout — only
