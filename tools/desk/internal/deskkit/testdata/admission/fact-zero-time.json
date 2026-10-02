@@ -1,0 +1,152 @@
+{
+  "name": "fact-zero-time",
+  "description": "The budget fact carries a zero observation time. Even under the largest freshness bound a zero time is could-not-check, never a pass; with no discovery grant the result is blocked.",
+  "briefRiskVerdict": "standard",
+  "assessment": {
+    "subject": "example-org/widgets#12",
+    "subjectRevision": "rev-a",
+    "schemaDigest": "sha256:example-schema",
+    "environmentDigest": "sha256:example-env",
+    "category": "docs-change",
+    "operations": [
+      "push",
+      "pr-open",
+      "comment"
+    ],
+    "facts": [
+      {
+        "check": "authority",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://authority"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "data-handling",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://data-handling"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "acceptance-availability",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://acceptance-availability"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "executor-capability",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://executor-capability"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "independent-verifier",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://independent-verifier"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "budget",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://budget"
+        ],
+        "observedAt": "0001-01-01T00:00:00Z"
+      },
+      {
+        "check": "effect-recoverability",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://effect-recoverability"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      }
+    ],
+    "advice": [],
+    "assessedAt": "2026-09-20T10:00:00Z"
+  },
+  "context": {
+    "now": "2026-09-20T12:00:00Z",
+    "subjectRevision": "rev-a",
+    "schemaDigest": "sha256:example-schema",
+    "environmentDigest": "sha256:example-env"
+  },
+  "expect": {
+    "disposition": "blocked",
+    "reasons": [
+      "hard-stale:budget",
+      "discovery-not-authorized"
+    ],
+    "permittedOperations": []
+  },
+  "policy": {
+    "version": "example-admission-policy-1",
+    "owner": "example-owner",
+    "applicability": [
+      "example-org/widgets#"
+    ],
+    "exceptions": [
+      {
+        "subject": "example-org/gadgets#3",
+        "owner": "example-owner",
+        "reason": "one-off docs migration",
+        "expires": "2026-09-30T00:00:00Z"
+      },
+      {
+        "subject": "example-org/gadgets#4",
+        "owner": "example-owner",
+        "reason": "one-off docs migration",
+        "expires": "2026-09-15T00:00:00Z"
+      }
+    ],
+    "categories": {
+      "docs-change": {
+        "owner": "example-owner",
+        "ceiling": "bounded-agent-work",
+        "permittedOperations": [
+          "read",
+          "push",
+          "pr-open",
+          "comment"
+        ]
+      },
+      "dependency-bump": {
+        "owner": "example-owner",
+        "ceiling": "supervised-agent",
+        "permittedOperations": [
+          "read",
+          "push",
+          "pr-open",
+          "comment"
+        ]
+      },
+      "schema-migration": {
+        "owner": "example-owner",
+        "ceiling": "human-led",
+        "permittedOperations": [
+          "read"
+        ],
+        "revoked": true,
+        "revokedReason": "owner withdrew the category after an incident review"
+      }
+    },
+    "readinessFailCeiling": {
+      "acceptance-availability": "discovery-only",
+      "executor-capability": "human-led",
+      "independent-verifier": "human-led",
+      "budget": "human-led",
+      "effect-recoverability": "human-led"
+    },
+    "maxFactAge": "2562047h47m16.854775807s",
+    "maxAdviceAge": "24h0m0s"
+  }
+}

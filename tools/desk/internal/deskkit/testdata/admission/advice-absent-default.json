@@ -1,0 +1,95 @@
+{
+  "name": "advice-absent-default",
+  "description": "No advice was recorded. The facts-only result stands: absent advice neither opens nor narrows the owner-admitted lane.",
+  "briefRiskVerdict": "standard",
+  "assessment": {
+    "subject": "example-org/widgets#12",
+    "subjectRevision": "rev-a",
+    "schemaDigest": "sha256:example-schema",
+    "environmentDigest": "sha256:example-env",
+    "category": "docs-change",
+    "operations": [
+      "push",
+      "pr-open",
+      "comment"
+    ],
+    "facts": [
+      {
+        "check": "authority",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://authority"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "data-handling",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://data-handling"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "acceptance-availability",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://acceptance-availability"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "executor-capability",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://executor-capability"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "independent-verifier",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://independent-verifier"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "budget",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://budget"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      },
+      {
+        "check": "effect-recoverability",
+        "state": "pass",
+        "evidence": [
+          "example-evidence://effect-recoverability"
+        ],
+        "observedAt": "2026-09-20T10:00:00Z"
+      }
+    ],
+    "advice": [],
+    "assessedAt": "2026-09-20T10:00:00Z"
+  },
+  "context": {
+    "now": "2026-09-20T12:00:00Z",
+    "subjectRevision": "rev-a",
+    "schemaDigest": "sha256:example-schema",
+    "environmentDigest": "sha256:example-env"
+  },
+  "expect": {
+    "disposition": "bounded-agent-work",
+    "reasons": [
+      "category-ceiling:bounded-agent-work"
+    ],
+    "permittedOperations": [
+      "comment",
+      "pr-open",
+      "push",
+      "read"
+    ]
+  }
+}

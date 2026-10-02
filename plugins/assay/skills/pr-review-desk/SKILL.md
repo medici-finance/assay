@@ -61,10 +61,13 @@ identity. Three desk-specific residues `deskboot` does not carry:
    signal, an auditable actor's verdict, not a text marker. Its MERGE-CURR classifier (own-files ∩
    changed-since-review, minus shared register files) is what frees the desk from hand-diffing
    keep-current merges, and it already withholds MERGE-NOW/FLIP on an un-mergeable PR. This is the
-   worklist; `reviewloop`'s action table — not this file — is the exhaustive list of the eighteen
+   worklist; `reviewloop`'s action table — not this file — is the exhaustive list of the
    ACTIONs it can emit. The project's trust gate is enforced *by the board* (untrusted items sit
-   quarantined-visible in its EXTERNAL/UNBLESSED section, never reviewed, dispatched or flipped).
-   Two review-specific gates ride on top:
+   quarantined-visible in its EXTERNAL/UNBLESSED section, never reviewed, dispatched or flipped),
+   and it is the ONLY authorship filter: every PR it admits — a trusted human's own PR included —
+   gets NEEDS-REVIEW / RE-REVIEW like any other and counts toward the UNREVIEWED neglect alarm.
+   Authorship is never a reason to skip review; only an unblessed author stays out of dispatch, and
+   an unreadable trust read keeps the PR out too (#2028). Two review-specific gates ride on top:
    - **Public-repo author gate:** on a PUBLIC (risk-classed) repo the author bar is HIGHER
      — auto-review only if the author is a role App (`ASSAY_TRUSTED_BOT_SLUGS`) or a mapped,
      accountable human (`ASSAY_HUMAN_LOGIN_MAP`). A shared machine or CI account admitted only via

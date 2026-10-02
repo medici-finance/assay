@@ -105,6 +105,20 @@ func TestLookupUnknownActionIsUnverifiable(t *testing.T) {
 	}
 }
 
+// TestHumanOwnedRetiredClosed — #2028 retired the board's HUMAN-OWNED action (it
+// skipped review of a trusted human's own PR). The table must not carry it back as a
+// sanctioned no-op, and an older board that still emits it must read as an unknown action
+// (exit 6) — version skew fails closed, never into a silent skip.
+func TestHumanOwnedRetiredClosed(t *testing.T) {
+	if _, ok := actionTable["HUMAN-OWNED"]; ok {
+		t.Fatal("actionTable carries HUMAN-OWNED — the retired #177 authorship skip is back (#2028)")
+	}
+	_, err := LookupAction("HUMAN-OWNED")
+	if got := deskkit.ExitCodeOf(err); err == nil || got != deskkit.ExitUnverifiable {
+		t.Fatalf("LookupAction(HUMAN-OWNED) = (err %v, exit %d), want exit %d", err, got, deskkit.ExitUnverifiable)
+	}
+}
+
 // TestOnlyDispatchIsActionable pins the idle gate's input predicate: FLIP, SURFACE, WAIT
 // and NO-OP rows are real work states but they do not consume a reviewer slot, and folding
 // any of them into "actionable" would change what an idle claim means.

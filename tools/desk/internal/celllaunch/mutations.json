@@ -1,0 +1,53 @@
+{
+  "test": "go test ./internal/celllaunch -count=1 -timeout=60s",
+  "control": {
+    "name": "child exit code is lost",
+    "file": "internal/celllaunch/contract_test.go",
+    "old": "return x.ExitCode()",
+    "new": "return x.ExitCode() * 0"
+  },
+  "mutations": [
+    {
+      "name": "permitted launch equality removed",
+      "file": "internal/celllaunch/spec.go",
+      "old": "string(a) != p.approved",
+      "new": "false && string(a) != p.approved"
+    },
+    {
+      "name": "process identity comparison removed",
+      "file": "internal/celllaunch/session.go",
+      "old": "*s.Process != o.Identity",
+      "new": "false && *s.Process != o.Identity"
+    },
+    {
+      "name": "console identity comparison removed",
+      "file": "internal/celllaunch/session.go",
+      "old": "*s.Console != o.Identity",
+      "new": "false && *s.Console != o.Identity"
+    },
+    {
+      "name": "container identity comparison removed",
+      "file": "internal/celllaunch/session.go",
+      "old": "*s.Container != o.Identity",
+      "new": "false && *s.Container != o.Identity"
+    },
+    {
+      "name": "duplicate JSON guard removed",
+      "file": "internal/celllaunch/spec.go",
+      "old": "!ok || seen[key]",
+      "new": "!ok || false && seen[key]"
+    },
+    {
+      "name": "ambient environment forwarded",
+      "file": "internal/celllaunch/contract_test.go",
+      "old": "cmd.Env = []string{}",
+      "new": "cmd.Env = os.Environ()"
+    },
+    {
+      "name": "reserved device basename guard removed",
+      "file": "internal/celllaunch/session.go",
+      "old": "name := strings.ToUpper(r.ID)",
+      "new": "name := \"safe-\" + strings.ToUpper(r.ID)"
+    }
+  ]
+}

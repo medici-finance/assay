@@ -425,7 +425,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// The scan is the ONE outbound-write check (desktools-v2/10), run here as a pre-flight on
 	// the bytes this landing adds; the checking Forge re-runs it on the same added lines at
 	// the write itself.
-	if berr := evidenceOutboundCheck(repoSlug, targetRepoPath, scanTarget); berr != nil {
+	if berr := evidenceOutboundCheck(repoSlug, targetRepoPath, scanTarget, commitContent); berr != nil {
 		return withAddedOrigin(berr, scanTarget, localContent)
 	}
 	if remoteExists {
