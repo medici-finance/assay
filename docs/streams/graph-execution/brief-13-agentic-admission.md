@@ -14,6 +14,7 @@ risk:
   customer: no
   irreversible: no
   sensitive-data: no
+design: DR-graph-exec-13
 gate-why: The owner confirms the proposed admission policy preserves mandatory controls and existing human authority.
 decision-trigger: spec
 issues: []
@@ -45,7 +46,23 @@ single-point-of-failure: the new contract or policy alone cannot establish safe 
 
 ## Human decision
 
-Decision-trigger: spec. At implementation pickup, prepare concrete policy choices and negative-path evidence, then file a self-contained decision issue. No response permits no activation; schema/test work may proceed within the declared scope.
+Decision-trigger: spec. What is being decided is the admission policy values the owner adopts before anything consults the evaluator. The schema, the validator and the tests ship either way. Nothing is activated by this decision.
+
+Three values are open:
+
+- **Failed readiness checks.** Each one caps at human-led, except a missing acceptance definition, which caps at discovery-only. Validation already refuses any agent lane here.
+- **Disposition to risk-input mapping.** Bounded maps to standard, supervised to elevated, and everything else to human. Gates are always unioned with the brief's own verdict.
+- **Absent or uncalibrated advice.** It changes nothing: the facts-only result stands, so the owner's category ceiling is the only lane-opener.
+
+Why it matters: these values decide how much an agent may do without a human, and only the owner can rule on them.
+
+Options:
+
+1. Adopt the three values above as the starting policy, with every category's ceiling set by its owner when that category is admitted. (Recommended.)
+2. A stricter start: cap every category at supervised-agent until a bounded lane has been separately approved.
+3. Rework: name the values to change, and they come back as a revised policy before any activation.
+
+Default if no answer: nothing activates. The evaluator stays unconsulted, and no admission policy is adopted.
 
 ## Read first
 
