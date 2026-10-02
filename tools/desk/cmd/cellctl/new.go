@@ -355,16 +355,23 @@ func newHouse(e *Env, root, cell, repo, roots, roles, port string) {
 	if exists(d) {
 		die("%s already exists (cellctl new never overwrites a cell — remove it yourself, or pick another name)", d)
 	}
-	mustMkdirAll(filepath.Join(d, "home", ".config"), filepath.Join(d, "worktrees"), filepath.Join(d, "shim"))
-	if err := os.Symlink(realCfg, filepath.Join(d, "home", ".config", "assay")); err != nil {
-		die("new: cannot link the config home: %v", err)
+	// From here every step is journaled: a failure (a link a Windows host without the symlink
+	// privilege cannot make, above all) removes exactly what this run created and nothing else,
+	// so a retry is not blocked by a half-made cell (newlink.go).
+	mustMkdirAll(root)
+	l := newLinker()
+	s, err := beginCellScaffold(l.goos, d)
+	if err != nil {
+		die("new: %v", err)
 	}
-	linkIfPresent(filepath.Join(e.Get("HOME"), ghConfigRelPath), filepath.Join(d, "home", ghConfigRelPath))
-	linkIfPresent(filepath.Join(e.Get("HOME"), ".gitconfig"), filepath.Join(d, "home", ".gitconfig"))
-	chmod700(filepath.Join(d, "home"), filepath.Join(d, "home", ".config"))
+	s.must(s.mkdir(filepath.Join(d, "home"), filepath.Join(d, "home", ".config"), filepath.Join(d, "worktrees"), filepath.Join(d, "shim")))
+	s.must(s.link(l, realCfg, filepath.Join(d, "home", ".config", "assay"), "the config home"))
+	s.must(s.linkIfPresent(l, ghLinkSource(runtime.GOOS, e, e.Get("HOME")), filepath.Join(d, "home", ghConfigRelPath), "the gh config"))
+	s.must(s.linkIfPresent(l, filepath.Join(e.Get("HOME"), ".gitconfig"), filepath.Join(d, "home", ".gitconfig"), "the gitconfig"))
+	s.must(s.chmod700(filepath.Join(d, "home"), filepath.Join(d, "home", ".config")))
 	githubHost := e.GetOr("GITHUB_HOST", "github.com")
 	today := time.Now().UTC().Format("2006-01-02")
-	writeFile(filepath.Join(d, "cell.env"), fmt.Sprintf(`# cellctl cell.env — %s (house, scaffolded %s)
+	s.write(filepath.Join(d, "cell.env"), fmt.Sprintf(`# cellctl cell.env — %s (house, scaffolded %s)
 CELL=%s
 CELL_KIND=house
 CELL_FORGE=github
@@ -374,7 +381,7 @@ CELL_ROOTS=%s
 FORGE_API_BASE=https://api.%s
 ROLES="%s"
 `+houseCellEnvTail, cell, today, cell, repo, roots, githubHost, roles, cell, cell, port))
-	writeFile(filepath.Join(d, "README.md"), fmt.Sprintf(houseReadme, cell, repo, realCfg, cell, cell, cell))
+	s.write(filepath.Join(d, "README.md"), fmt.Sprintf(houseReadme, cell, repo, realCfg, cell, cell, cell))
 	fmt.Printf("[new] scaffolded %s (house cell) — cellctl check %s, then cellctl desk %s <role>\n", d, cell, cell)
 }
 
@@ -548,10 +555,13 @@ func copyFile(src, dst string) {
 }
 
 // linkIfPresent mirrors the oracle's `[[ -e <src> ]] && ln -s <src> <dst>`: absent is not an
-// error, it simply leaves the link unmade.
+// error, it simply leaves the link unmade. It links through newLinker, so on a Windows host
+// without the symlink privilege a directory is linked by junction and a file by hardlink
+// (newlink.go); it never replaces an existing dst. A k8s cell treats the link as best-effort,
+// as it always has — `cellctl check` names a missing one.
 func linkIfPresent(src, dst string) {
 	if !exists(src) {
 		return
 	}
-	_ = os.Symlink(src, dst)
+	_, _ = newLinker().link(src, dst)
 }
