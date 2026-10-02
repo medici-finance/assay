@@ -123,19 +123,76 @@ reason.
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check +dereference +flow | `d=$(mktemp -d) && cd tools/desk && go test -run '^TestRegressionManifest$' -v ./internal/regression/ > "$d/r1.out" 2>&1 && grep -E -e '^--- PASS: TestRegressionManifest \(' "$d/r1.out"` | prints the top-level PASS line (exit 0) — every starter issue is a seed row or a reasoned drop, every named test exists in its package, and the positive-control fixture is rejected. The `&&` keeps `go test`'s status and the grep is anchored at column 0, so a failing positive-control subtest cannot hide behind a passing one; exits 1 on today's tree |
-| 2 | check | `d=$(mktemp -d) && cd tools/desk && go test -run '^TestReg[0-9]' -v ./... > "$d/r2.out" 2>&1 && grep -q -F -e '--- PASS' "$d/r2.out" && n=$(grep -c -E -e '^--- PASS: TestReg[0-9]' "$d/r2.out") && m=$(grep -c -E -e '^[\|] #[0-9]+ [\|][^\|]*[\|] tools/desk/[^\|]*[\|] TestReg[0-9]' internal/regression/MANIFEST.md) && echo "pass=$n manifest=$m" && test "$n" -ge 1 && test "$n" -eq "$m"` | prints `pass=<n> manifest=<m>` with equal counts, at least 1, and exits 0 — `go test` passed (the `&&` keeps its status) and every `tools/desk/` seed whose test is a new `TestReg<N>` (planned) passes as a top-level test (the count grep is anchored at column 0, so subtest PASS lines are not counted): the desk half of the floor passes TODAY. A failing test, no test run, or a count mismatch exits 1 |
-| 3 | check | `d=$(mktemp -d) && cd statusgen && go test -run '^TestReg[0-9]' -v . > "$d/r3.out" 2>&1 && grep -q -F -e '--- PASS' "$d/r3.out" && n=$(grep -c -E -e '^--- PASS: TestReg[0-9]' "$d/r3.out") && m=$(grep -c -E -e '^[\|] #[0-9]+ [\|][^\|]*[\|] statusgen/[^\|]*[\|] TestReg[0-9]' ../tools/desk/internal/regression/MANIFEST.md) && echo "pass=$n manifest=$m" && test "$n" -eq "$m"` | prints `pass=<n> manifest=<m>` with equal counts and exits 0 — every `statusgen/` seed whose test is a new `TestReg<N>` (planned) passes as a top-level test (#999 and #1007 unless either points at an existing test): the statusgen half passes TODAY. A failing test or a count mismatch exits 1. If both statusgen seeds point at existing tests, no new `TestReg<N>` (planned) test runs here and this row exits 1 — the implementing PR then replaces it with an anchored run of those named tests, stated in the PR |
-| 4 | check | `m=$(sed '/^## Dropped/,$d' tools/desk/internal/regression/MANIFEST.md \| grep -c -E -e '^[\|] #[0-9]+ [\|]'); e=$(grep -c -E -e '^[\|] #[0-9]+ [\|] Test[A-Za-z0-9_]+ [\|] [0-9a-f]{7,40} [\|] [0-9a-f]{7,40} ' docs/streams/desktools-v2/brief-14-regression-floor.md); echo "manifest=$m evidence=$e"; test "$m" -eq "$e" && test "$m" -ge 18` | prints equal counts and exits 0 — every seed row has its Evidence row carrying the fixing sha and the red-at-parent sha; the ≥ 18 floor allows at most two drops beyond the known #719 and #322, each reasoned in `## Dropped` |
+| 1 | check +dereference +flow | `d=$(mktemp -d) && cd tools/desk && bash internal/regression/floor-go.sh test -run '^TestRegressionManifest$' -count=1 -timeout 30s -v ./internal/regression/ > "$d/r1.out" 2>&1 && grep -E -e '^--- PASS: TestRegressionManifest \(' "$d/r1.out"` | prints the top-level PASS line (exit 0) — every starter issue is a seed row or a reasoned drop, every named test exists in its package, and the positive-control fixture is rejected. The `&&` keeps `go test`'s status and the grep is anchored at column 0, so a failing positive-control subtest cannot hide behind a passing one; exits 1 on today's tree. The go tool starts through `floor-go.sh`, the floor's git-environment scrub, like every row here that runs `go` |
+| 2 | check | `d=$(mktemp -d) && cd tools/desk && bash internal/regression/floor-go.sh test -run '^TestReg[0-9]' -count=1 -timeout 90s -v ./internal/regression ./cmd/deskclaim-ref > "$d/r2.out" 2>&1 && grep -q -F -e '--- PASS' "$d/r2.out" && n=$(grep -c -E -e '^--- PASS: TestReg[0-9]' "$d/r2.out") && m=$(grep -c -E -e '^[\|] #[0-9]+ [\|][^\|]*[\|] tools/desk/[^\|]*[\|] TestReg[0-9]' internal/regression/MANIFEST.md) && echo "pass=$n manifest=$m" && test "$n" -ge 1 && test "$n" -eq "$m"` | prints `pass=<n> manifest=<m>` with equal counts, at least 1, and exits 0 — `go test` passed (the `&&` keeps its status) and every `tools/desk/` seed whose test is a new `TestReg<N>` (planned) passes as a top-level test (the count grep is anchored at column 0, so subtest PASS lines are not counted): the desk half of the floor passes TODAY. A failing test, no test run, or a count mismatch exits 1. `go` starts through `floor-go.sh` |
+| 3 | check | `cd statusgen && f=../tools/desk/internal/regression/floor-go.sh && bash "$f" test -run '^TestConsumedFragmentIndexShallowCloneIsCouldNotCheck$' -count=1 -timeout 30s -v . && bash "$f" test -run '^TestRelPath_HandlesBothSeparatorStyles$' -count=1 -timeout 30s -v . && bash "$f" test -run '^TestScanIssueReadUsesNativeForgeNotGH$' -count=1 -timeout 30s -v . && bash "$f" test -run '^TestRunWitnesses_WSLLauncher_BootstrapIsCouldNotRun$' -count=1 -timeout 30s -v .` | exit 0 with four top-level PASS lines — all statusgen seeds reuse existing tests; an anchored run replaces the empty new-test selection, including the additional shell-bootstrap seed from the refreshed harvest. Each `go test` starts through `floor-go.sh`: these are reused tests whose fixtures run git with the environment they inherit, so a caller's exported `GIT_DIR` would otherwise send their commits and identity config to the repository it names |
+| 4 | check | `m=$(awk 'BEGIN{FS=sprintf("%c",124)} /^## Dropped/{exit} $2 ~ /^ #[0-9]+ $/ {n++} END{print n+0}' tools/desk/internal/regression/MANIFEST.md); e=$(awk 'BEGIN{FS=sprintf("%c",124)} $2 ~ /^ #[0-9]+ $/ && $3 ~ /^ Test[A-Za-z0-9_]+ $/ && $4 ~ /^ [0-9a-f]+ $/ && $5 ~ /^ [0-9a-f]+ / {n++} END{print n+0}' docs/streams/desktools-v2/brief-14-regression-floor.md); echo "manifest=$m evidence=$e"; test "$m" -eq "$e" && test "$m" -ge 18` | prints equal counts and exits 0 — every seed has its Evidence row; the 18-row minimum remains intact. Field separation uses ASCII 124 to avoid a shell pipe inside a Markdown table cell |
 | 5 | check | `grep -q -E -e '^## Regression floor$' docs/streams/desktools-v2/README.md` | exit 0 — the floor rule is where a v2 implementer reads it |
 | 6 | check | `statusgen --consumers --root .` | exit 0; no routing claim in this brief is disproved by the diff |
+| 7 | check +flow | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; `seed passes=26` — every named seed passes in its owning module; the runner rejects failed and empty selections |
+| 8 | check +mutation | `g=tools/desk/internal/regression/testdata/mutate_guard.py && python3 "$g" manifest > /dev/null && python3 "$g" ci > /dev/null && python3 "$g" directories > /dev/null && python3 "$g" deadline > /dev/null && python3 "$g" gitenv > /dev/null && python3 "$g" execenv > /dev/null && python3 "$g" runnerenv > /dev/null && echo controls=7` | prints `controls=7` and exits 0 — each mode breaks one guard in a compiler-valid way (manifest validation, CI registry, descendant CI coverage, shell deadline, `FixtureEnv` passing the caller's `GIT_*` through, the fixture-exec class guard's matcher, the floor runner's `GIT_*` scrub in `floor-go.sh`), requires `go test` to exit 1 with a `--- FAIL:` line, and restores the file. A guard that stays green under its mutation exits non-zero |
+| 9 | check +flow | `d=$(mktemp -d) && cd tools/desk && bash internal/regression/floor-go.sh test -run '^TestFloor[RG]' -count=1 -timeout 180s -v ./internal/regression/ > "$d/r9.out" 2>&1 && n=$(grep -c -E -e '^--- PASS: TestFloor[RG][A-Za-z]+ [(]' "$d/r9.out") && echo "pass=$n" && test "$n" -eq 2` | prints `pass=2` and exits 0 — the floor runner, run over a planted row while `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE` name a second repository, leaves that repository byte-unchanged, and every floor script starts the go tool only through `floor-go.sh` (planted spawns are named). `-run '^TestFloor[RG]'` selects exactly those two tests without a pipe character in the cell. `go` starts through `floor-go.sh` |
 
 ## DoD
 
-- All six Verify rows pass on Linux/macOS without a network connection to any forge. The
+- All nine Verify rows pass on Linux/macOS without a network connection to any forge. Every
+  row that runs the go tool starts it through `floor-go.sh`, directly or through the runner. The
   whole `go test ./...` suite, floor included, is PR CI's job and is not re-run here.
 - Every starter-set issue is either a manifest seed row with a passing test and a
   red-at-parent record, or a `## Dropped` row with its reason (docs-only, decision, held by
   another gate — named, or already pinned by an existing test — named).
 - No production code changes except test helpers a seed genuinely requires, each named in the
   PR description.
+
+## Evidence
+
+### Implementer regression receipt — 2026-10-02
+
+Targeted package runs at the implementation base passed all 26 named seed behaviors.
+Every parent below is the fixing commit's first parent; only fixture tests and
+compatibility adapters were transplanted. No production fix was carried back.
+Compilation errors encountered during initial transplantation were discarded and
+are not evidence. Fixture paths in the excerpt below are redacted as `[fixture]`.
+
+| Issue | Test | Fixing commit | Parent — observed failing assertion |
+|---|---|---|---|
+| #643 | TestCommitIdentityGitLabSessionEmail | 0276ce0a5 | f5a969f34 — gitlab entry + configured session email = could-not-check, want clean (the roster binds no App to role worker) |
+| #656 | TestAddOnWindowsCreatesUnderPortablePrefix | b31be9266 | 3a25886c9 — expected the worktree under the portable prefix [fixture] stat [fixture] no such file or directory |
+| #687 | TestDeskfileFilesOnGitLabThroughBackend | b7a82c025 | dd72e0486 — new on a GitLab-configured repo should FILE (exit 0) now the backend serves GitLab, got 5 |
+| #697 | TestForgeGitlabTierErrors | 3040653c4 | 92e81315e — a 404 on the CE-absent project approval route must degrade, not refuse: could-not-check: GET /projects/medici-finance%2Fassay/approvals — not visible (HTTP 404): the object does not exist, or the token cannot see it: forge API GET /projects/medici-finance%2Fassay/approvals returned HTTP 404 |
+| #708 | TestDispatchFallsBackToTheGoClaimBinaryWhenNoScriptIsPresent | bf168ab2f | 8bd5ffcc5 — green-field dispatch rc = 6, want 0 — the Go fallback did not carry the claim |
+| #727 | TestReg727WorktreeOrigin | 63303b19c | efee10466 — linked worktree origin="", want "https://gitlab.example.invalid/team/repo.git"; never guess a SaaS host |
+| #757 | TestDispatchAcceptsDeskwtWindowsWorktreeHome | 03cb769a4 | 8d799c6bc — dispatch with deskwt's Windows worktree home rc = 6, want 0 — the #757 refusal |
+| #772 | TestAppTokenGitLabRepoSkipsGitHubMint | 53d6cbe7e | f4693f1df — checkAppToken minted a GitHub App token for a GitLab-resolved repo — the pre-772 bug (medici-finance/assay#772): the GitLab lane must never touch the GitHub App mint |
+| #773 | TestReviewKitHeadFetchIsGitLabShapedOnAGitLabRepo | f4693f1df | 9541b2fb5 — the GitLab review Assignment must fetch the MR head at merge-requests/1/head: |
+| #786 | TestReg786FleetHardening | 643637114 | e89d0eb02 — FAIL T10 the owner PAT must never reach curl argv (found the sentinel in the argv log); FAIL T11 a transport failure is recorded via record_failure |
+| #999 | TestConsumedFragmentIndexShallowCloneIsCouldNotCheck | dc410608c | 64e63388a — shallow clone: got checked=true (exempt=false), want checked=false (could-not-check) — a shallow clone's truncated git log must never be read as a definitive answer |
+| #1007 | TestRelPath_HandlesBothSeparatorStyles | 98960cedb | d97abb672 — relPath("C:\\repo\\docs\\streams\\test-stream") = "C:\\repo\\docs\\streams\\test-stream", want "docs/streams/test-stream" |
+| #1033 | TestForgeGitlabGolden | 7a7cac919 | 5610bdea1 — golden mismatch for "list_open_issues" |
+| #1034 | TestGitLabConcurrentMintsForOneRoleDoNotRevokeTheLivePAT | e428134c6 | 5a03bf5e1 — mint 0 failed: rotate gitlab token for role worker: rotate HTTP 401: {"message":"401 Unauthorized - Token was revoked"} |
+| #1056 | TestBoardAcceptsGitLabReviewerUsername | dac811073 | a658a48db — isReviewerBot("gl-reviewer") = false — the rostered GitLab service account was not recognised as the reviewer, so its approvals are invisible to the queue |
+| #1067 | TestUnpinnedReviewSHADegradesRowNotSweep | e1742b9f8 | 2c67b34f9 — classifyPR returned compare needs both base and head — one merge request whose verdict the forge could not pin to a head must not fail the whole sweep; every other row in the repo is lost with it and the desk sees an empty board |
+| #1086 | TestLabelTargetRoutes | 980ad8cf0 | 7288a6d19 — gitlab: removed [], want [to:desk] |
+| #1145 | TestReg1145ShimCredential | f84dde307 | f1e8fa522 — FAIL verb's gh subprocess authenticated (rc=0) |
+| #1146 | TestDecisionChildReceivesTheMintedRoleTokenInItsEnvironment | 8467637e4 | eb7520558 — the decision script saw GH_TOKEN="", want the dispatching role's minted token — its forge-CLI calls would have run on the ambient login (argv: ensure spec.md --repo medici-finance/assay --at start) |
+| #1223 | TestScanIssueReadUsesNativeForgeNotGH | f19569abc | d9d94a3ec — ghIssueLister(example-org/alpha) errored with a working deskread and no working gh: gh issue list --repo example-org/alpha: exit status 1 gh: stubbed to fail (native-read test) — the read still depends on the gh shell-out |
+| #1203 | TestGitLabWorkerDispatchClaimUsesGitLabPATNotTheAppMinter | ccaa5d566 | 6b0038956 — the GitHub App minter was called 1 time(s) on a GitLab-served worker dispatch: [{desk example-org/example-project}] |
+| #1411 | TestGitLabPipelineByShaFallbackReachesGate | e67e20f2f | 94ffcd490 — commit.last_pipeline is empty but a GREEN pipeline exists at the head SHA via pipelines?sha=; the flip gate still reports required checks [pipeline] as missing (rollup carries []) — #1411: ChecksAtHead did not fall back to the by-SHA read |
+| #1415 | TestGitLabCreateDraftChangeRetriesTransientMissingBranch | 401d545a1 | 54b6da23d — expected the transient missing-branch 400 to be retried to success, got error: could-not-check: POST /projects/medici-finance%2Fassay/merge_requests — HTTP 400: forge API POST /projects/medici-finance%2Fassay/merge_requests returned HTTP 400 |
+| #1418 | TestRunWitnesses_WSLLauncher_BootstrapIsCouldNotRun | 5cc0c0d1b | 07c762ad4 — row 1: state "fail", want "could-not-run" — a shell that never bootstrapped is could-not-run, not a product-check failure |
+| #1490 | TestVerifierDispatchStampsWorktreeIdentityNotTheSharedCheckouts | 8e838df89 | b8e7403f8 — git config --worktree --get user.email: exit status 1 |
+| #1864 | TestNoAPIHostLiteral | 45d4f34a5 | dd9f8b630 — main.go:121:21: string literal restates api.github.com; source it from deskkit.GitHubAPIBase |
+
+Counterfactual compatibility details are recorded in
+`tools/desk/internal/regression/PARENT-PROOF.md`. #727 uses the new real linked-worktree
+fixture unchanged on both trees, with native-git fallback absent after fixture creation.
+The manifest guard was also run against a planted second missing seed and missing test;
+its failure named both faults. The committed `testdata/incomplete.md` keeps that control
+in every run.
+
+CI scope hold: the desk floor is reached by `.github/workflows/ci.yml`'s existing full-test
+case. The statusgen half is build/vet-only until the maintainer applies
+`ci/staged-patches/desktools-v2-14-statusgen-tests.patch`; `git apply --check` passed.
+The correction is recorded on issue #1836. No live workflow was edited. This receipt is
+implementation evidence, not independent verification or a claim that the staged CI
+change is live.

@@ -23,6 +23,33 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.31 — 2026-10-02
+
+### Added
+- Advice can only restrict.
+- Agentic admission draft (`spec/agentic-admission-v1.md`, `schemas/agentic-assessment-v1.json`, `deskkit` `EvaluateAgenticAdmission`). It is a pure, deterministic policy that maps hard facts and recorded advice to one of five dispositions: bounded-agent-work, supervised-agent, human-led, discovery-only or blocked.
+- Malformed input fails closed: empty bindings, invalid or oversized subjects and inputs, and out-of-vocabulary values. Reason codes never echo an assessed string, and a refused subject is never echoed into the result or its `PolicyResult` projection.
+- Mandatory graph gates are the union of the brief's risk verdict and the disposition's.
+- Nothing activates it yet; dispatch wiring is a separate gated change.
+- Unknown readiness holds implementation.
+- discovery-only stands only on a discovery grant whose read scope covers the subject; otherwise the result is blocked.
+
+### Fixed
+- Forge-ref claim writes fail closed without a complete matching receive-pack acknowledgment; HTTP refusals retain their original status marker. Optional trace receipts retain bounded request and pack metadata without claim payloads or credentials.
+- The build-less-brittle/04 and /06 Verify tables now reach a verdict after the briefs land. Each `consumers:` row runs in a throwaway clone pinned to the delivering squash, and Expect names exit 0 and the exact summary line. Row 9 of /06 prints one gated count. Row 7 braces its revision variables, so zsh can no longer pass it at 0 ≤ 0. Row 3 keeps its scratch files in the checkout. What each row proves is unchanged.
+- The outbound check no longer refuses a brief's own frontmatter `id:` as a session id (#2022). The exemption covers exactly one shape: a lowercase UUID that is the whole value of the single `id:` line inside the frontmatter of a `docs/streams/**/brief-*.md` file. The check reads the file's full content to establish that shape, on the push path, the forge file write and the evidence pre-flight. A UUID in brief prose, in any other file, in a commit message or in a PR body is still refused.
+- The publish-identity gate in `deskpr update` now judges only the commits the push adds, so a PR
+  whose head already carries a commit by another trusted App can be updated. The narrowing fails
+  closed: a missing, stale, diverged or oddly-spelled remote tip falls back to the whole
+  `origin/<base>..HEAD` range, and `update` re-checks against the forge's live PR head before it
+  pushes.
+- `deskpost` no longer carries the retired per-item `+1` reaction gate's read path: the orphaned reaction-read method on its forge-backed adapter is gone, the adapter's interface comment now names only the live-visibility read the `:public` write gate consumes, and a structural guard test fails if any reaction/award read reappears anywhere in `deskpost`.
+
+### Changed
+- Define Go launch and session contracts for the native Windows cellctl work, with strict record parsing, independently bound launch permissions and compiled process fixtures. Production Windows integration remains separate work.
+- `deskboard actions` no longer skips review of a PR authored by a trusted or blessed human: the `HUMAN-OWNED` action is retired, so such a PR is `NEEDS-REVIEW` (or `RE-REVIEW` on an advanced head) like any other admitted PR and counts toward the UNREVIEWED neglect alarm. The trust gate (trusted roster login, else a current blessing) is now the only authorship filter: an unblessed author stays quarantined in EXTERNAL / UNBLESSED, and an unreadable trust read or roster still keeps the PR out of dispatch. `reviewloop` drops the matching table key, so an older board that still emits `HUMAN-OWNED` reads as an unknown action and fails closed (#2028).
+- ci: promote the staged Windows CI leg and the winparity PowerShell 5.1 parse check into live workflows.
+
 ## v1.0.30 — 2026-10-01
 
 ### Added
