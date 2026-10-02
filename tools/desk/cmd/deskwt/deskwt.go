@@ -620,6 +620,10 @@ func cmdRemove(args []string) (err error) {
 	dryRun := fs.Bool("dry-run", false, "print the lifecycle-hook plan (HOOK before_remove: ...) and touch nothing")
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
+		// TIER TWO: a help screen is not a refusal and writes no audit row (deskkit/helprequest.go).
+		if deskkit.IsHelpRequest(perr) {
+			return deskkit.ErrHelpRequested
+		}
 		return deskkit.Refused("refused: remove takes no flags but --dry-run (there is no --force): " + perr.Error())
 	}
 	if len(positionals) != 1 {

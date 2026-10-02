@@ -156,6 +156,10 @@ func cmdPrune(args []string) (err error) {
 		"disable the singleton's recency check (equivalent to --singleton-ttl 0); the lock is still taken, so a live sweep still holds this one")
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
+		// TIER TWO: a help screen is not a refusal and writes no audit row (deskkit/helprequest.go).
+		if deskkit.IsHelpRequest(perr) {
+			return deskkit.ErrHelpRequested
+		}
 		return deskkit.Refused("refused: prune takes no flags but --repo, --interval, " +
 			"--reclaim-stale-locks, --reap-dead-sessions, --lock-ttl, --dry-run, --singleton-ttl and --no-singleton " +
 			"(there is no --force): " + perr.Error())
