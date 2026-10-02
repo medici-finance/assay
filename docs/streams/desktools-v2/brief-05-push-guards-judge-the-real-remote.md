@@ -237,6 +237,32 @@ VERIFY: PASS — all ten Verify rows passed by hand and in the dry-run witness a
 | 9 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestGitLabPushRewriteRefusesSSH$' -v` | pass exit=0 | sha256:1cf421507384 | 2026-10-02 | assay-verifier-app[bot] @ 443a1ca91fc1 (on-behalf-of human:ian) (forge-identity) |
 | 10 | `cd tools/desk && go test ./cmd/deskpushguard/ -run '^TestPrePushCmdForwardsArgs$' -v` | pass exit=0 | sha256:c24982ce3aed | 2026-10-02 | assay-verifier-app[bot] @ 443a1ca91fc1 (on-behalf-of human:ian) (forge-identity) |
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./cmd/deskpushguard/ ./internal/deskkit/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ cd435f006a68 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test -timeout 10m ./cmd/deskpushguard/ ./cmd/deskpr/ ./cmd/deskwt/` | pass exit=0 | sha256:1fbf571c1a12 | 2026-10-02 | assay-verifier-app[bot] @ cd435f006a68 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskpushguard/ -run TestForeignCommitCheckUsesThePushedRemotesMain -v` | pass exit=0 | sha256:30d14f048bd4 | 2026-10-02 | assay-verifier-app[bot] @ cd435f006a68 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskpushguard/ -run TestNoMainOnPushedRemoteIsCouldNotCheckNotOrigin -v` | pass exit=0 | sha256:623b6d494521 | 2026-10-02 | assay-verifier-app[bot] @ cd435f006a68 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestPushTransportRefuses.*RewrittenToSSH' -v` | pass exit=0 | sha256:e867aa8ab24c | 2026-10-02 | assay-verifier-app[bot] @ cd435f006a68 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -nE '"origin"' tools/desk/cmd/deskpushguard/main.go tools/desk/cmd/deskpushguard/registerid.go; test $? -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ cd435f006a68 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskpushguard/pushedremote-mutations.json` | pass exit=0 | sha256:513683523f30 | 2026-10-02 | assay-verifier-app[bot] @ cd435f006a68 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/pushtransport-mutations.json` | pass exit=0 | sha256:eb24af297d50 | 2026-10-02 | assay-verifier-app[bot] @ cd435f006a68 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestGitLabPushRewriteRefusesSSH$' -v` | pass exit=0 | sha256:7f3b7197bbb9 | 2026-10-02 | assay-verifier-app[bot] @ cd435f006a68 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/deskpushguard/ -run '^TestPrePushCmdForwardsArgs$' -v` | pass exit=0 | sha256:ab59af972ff3 | 2026-10-02 | assay-verifier-app[bot] @ cd435f006a68 (on-behalf-of human:ian) (forge-identity) |
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./cmd/deskpushguard/ ./internal/deskkit/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 454982f91a72 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test -timeout 10m ./cmd/deskpushguard/ ./cmd/deskpr/ ./cmd/deskwt/` | pass exit=0 | sha256:14f8518b9cf2 | 2026-10-02 | assay-verifier-app[bot] @ 454982f91a72 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskpushguard/ -run TestForeignCommitCheckUsesThePushedRemotesMain -v` | pass exit=0 | sha256:dea82f58f482 | 2026-10-02 | assay-verifier-app[bot] @ 454982f91a72 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskpushguard/ -run TestNoMainOnPushedRemoteIsCouldNotCheckNotOrigin -v` | pass exit=0 | sha256:5d09365ba6e6 | 2026-10-02 | assay-verifier-app[bot] @ 454982f91a72 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestPushTransportRefuses.*RewrittenToSSH' -v` | pass exit=0 | sha256:37c75e54c364 | 2026-10-02 | assay-verifier-app[bot] @ 454982f91a72 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -nE '"origin"' tools/desk/cmd/deskpushguard/main.go tools/desk/cmd/deskpushguard/registerid.go; test $? -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 454982f91a72 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskpushguard/pushedremote-mutations.json` | pass exit=0 | sha256:a2311a3f9bee | 2026-10-02 | assay-verifier-app[bot] @ 454982f91a72 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/pushtransport-mutations.json` | pass exit=0 | sha256:16a2f7594ff4 | 2026-10-02 | assay-verifier-app[bot] @ 454982f91a72 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestGitLabPushRewriteRefusesSSH$' -v` | pass exit=0 | sha256:44d2132b216a | 2026-10-02 | assay-verifier-app[bot] @ 454982f91a72 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/deskpushguard/ -run '^TestPrePushCmdForwardsArgs$' -v` | pass exit=0 | sha256:3c3d36cac5f0 | 2026-10-02 | assay-verifier-app[bot] @ 454982f91a72 (on-behalf-of human:ian) (forge-identity) |
+
 ## Review
 Gate: model (all four risk answers no — both changes make an existing guard evaluate the real
 remote; no capability is removed and no credential is touched). The security-relevant nature is

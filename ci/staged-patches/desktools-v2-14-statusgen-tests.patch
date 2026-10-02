@@ -1,0 +1,10 @@
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -74,6 +74,7 @@
+             # behind, and un-wired they let both land green.
+             extra=true
+             case "$dir" in
++              */statusgen|statusgen) extra="go test ./..." ;;
+               */tools/desk|tools/desk) extra="go test ./..." ;;
+               */tools/harnessgen|tools/harnessgen) extra="go test ./..." ;;
+               */tools/harnesslint|tools/harnesslint) extra="go test ./..." ;;

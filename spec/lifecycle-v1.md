@@ -99,9 +99,19 @@ item's revision. The item's revision is the tree the evaluation runs at, resolve
 (the checked-out `HEAD`): the PR head on an open PR's branch, and on the model-lane
 `verified`→`done` flip the main tip that flip runs at — generally LATER than the brief's
 merge SHA, not the merge SHA itself. A witness counts at the item's revision when its tree
-names that revision exactly, or names an ancestor of it with no path the witness speaks for
-changed in between. Reusing an ancestor's result needs an explicit applicability
-derivation (the work-input amendment): a `files:` declaration by itself never narrows
+names that revision exactly, or names a commit that shares history with the item's
+revision (the two have a common ancestor) and whose tree does not differ from the item's
+in any path the witness speaks for. That is a content comparison of the two trees: the
+witness commit need not be an ancestor of the item's revision, because a squash merge
+discards the branch commit a witness names without changing a byte the check read. An
+implementation MAY instead require the witness commit to be an ancestor (crediting only
+merged history), and MUST NOT accept a witness while a path it speaks for differs. Content
+equality is all the comparison shows: not that the witness commit was merged or reviewed,
+and not that its run happened — the Evidence row remains the only record of the run. A
+witness commit absent from the evaluating clone (an unfetched squash-merged branch commit,
+a hand-edited sha), or an item revision that names no commit, leaves the comparison
+without footing, and the witness is not credited. Reusing another tree's
+result needs an explicit applicability derivation (the work-input amendment): a `files:` declaration by itself never narrows
 what a witness speaks for, because file non-overlap alone is not proof. Without a
 complete work-input dependency manifest for the brief, a witness speaks for every path
 outside the board's own bookkeeping (`docs/streams/**` and the generated `STATUS.md`),
