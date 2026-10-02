@@ -1,2 +1,0 @@
-### Fixed
-- The Codex smoke protocol's Step 3 skill list now names all fourteen bundled skills (it had missed `system-demo`), and its run-log skeleton records the bundle version from `SOURCES.yaml`. A new `tools/harnessgen` test keeps Step 3's list equal to `plugins/assay/skills/`, so a skill added or removed without updating the protocol fails CI. The protocol's run-status section now lists the 2026-09-12 and 2026-09-13 runs and says what still needs a live run.

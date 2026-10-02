@@ -238,7 +238,7 @@ func cmdReStamp(args []string, out io.Writer) error {
 	original := deskkit.NonDispatcherStampAppliers(tl, deskkit.IsStampAuthorityLogin)
 
 	if len(remove) == 0 && labelsPresentFold(change.Labels, want) {
-		fmt.Fprintf(out, "noop: %s#%d already carries %s standing under an identity the floor accepts — nothing to repair\n",
+		fmt.Fprintf(out, "noop: %s#%d already carries %s standing under an accepted label authority — no label provenance to repair. Claim liveness is not checked; this does not establish current review authority or renew a released dispatch\n",
 			req.repo, req.number, strings.Join(want, " + "))
 		auditLine(req.repo, req.number, deskkit.ResultNoop, strings.Join(want, ","))
 		return nil

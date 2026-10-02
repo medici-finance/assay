@@ -35,7 +35,7 @@ exec-tier-why: >-
   pre-specify, and (b) — correctness spans the interface, two backend queries, and a migrated
   consumer, where a snapshot that omits a field or tears under pagination survives a naive test.
 domain: complicated
-version: 2
+version: 3
 id: 264e1b84-3155-4369-8c68-059a35e70645
 ---
 
@@ -110,6 +110,8 @@ facts:
 | 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeNoRawQueryInSignature -v` | output contains the literal line `--- PASS: TestForgeNoRawQueryInSignature` (same rule) asserting the access-pattern op signatures carry typed inputs/results only, no raw query string — the "no raw query crosses the seam" row |
 | 5 | `sh -c 'for p in "calls before" "calls after" "points before" "points after"; do grep -qiF -- "$p" docs/streams/desktools-v2/query-cost.md; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $p"; exit 1; fi; done; echo all-present'` | exit 0; prints `all-present` — each of the four measurements is checked SEPARATELY in `docs/streams/desktools-v2/query-cost.md` (planned), so one word repeated cannot stand in for a missing measurement |
 | 6 | `D="${D:-05c937307aa6}"; test -n "$D" && git rev-parse -q --verify "$D^1^{commit}" >/dev/null && git rev-parse -q --verify "$D^{commit}" >/dev/null && { n0=; n1=; for r in "$D^1" "$D"; do t=$(mktemp -d) && git archive -o "$t.tar" "$r" && tar -xf "$t.tar" -C "$t" && cp tools/desk/scripts/forge-ban.sh "$t/tools/desk/scripts/forge-ban.sh" && sh "$t/tools/desk/scripts/forge-ban.sh" > "$t.out" 2>&1; n=$(sed -n 's/.*reach-around sites: \([0-9][0-9]*\).*/\1/p' "$t.out"); rm -rf "$t" "$t.tar" "$t.out"; if [ -z "$n" ]; then echo "$r NO-COUNT"; exit 1; fi; echo "$r reach-around sites: $n"; if [ -z "$n0" ]; then n0=$n; else n1=$n; fi; done; if [ "$n1" -le "$n0" ]; then echo "NOT-HIGHER $n0 -> $n1"; else echo "HIGHER $n0 -> $n1"; exit 1; fi; }` — run from a main checkout; `D` defaults to this brief's delivering commit on main, `05c937307aa6` (#1851), and a verifier re-verifying a later delivery sets `D` to that commit instead | exit 0; prints three lines, `<D>^1 reach-around sites: N0`, `<D> reach-around sites: N1`, then `NOT-HIGHER N0 -> N1`, with N1 NOT HIGHER than N0 — adding typed ops introduces no reach-past site (the query documents stay inside the backends). The command decides the verdict itself: it exits 1 on `HIGHER`, on a tree that prints no count, and on a `D` that does not resolve to a commit with a parent. Both trees are measured with the SAME current script, and the reference is the count at the delivering commit's own merge parent, not the `desktools-v2/02` line in `docs/streams/desktools-v2/forge-ban-baseline.txt`, so sites other PRs add or remove before or after cannot move the verdict (#1529; the line went stale twice, 53 then 60, before this row stopped reading it). Evidence cites `D`, the parent sha, N0 and N1 |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestReadPatternBackends$' -v` | output must contain the named top-level or subtest `--- PASS:` line (a missing selector is failure); top-level TestReadPatternBackends PASS; GitHub single document, GitLab bounded REST population with explicitly incomplete reviews, CE-404, Free-403, empty/absent pipeline and X-Next-Page (desktools-v2/12 GitLab row) |
+| 8 | `d=$(mktemp -d) && cd tools/desk && GOOS=windows GOARCH=amd64 go test -c -o "$d/accesspattern.test.exe" ./internal/deskkit/ && test -s "$d/accesspattern.test.exe"` | exit 0 and nonempty Windows access-pattern test binary; compile only, no Windows execution claim (desktools-v2/12 Windows row) |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
@@ -205,6 +207,98 @@ The witness only checks exit status for rows 3, 4 and 6. Their Expect cells also
 rows_passed=6 rows_total=6
 RISK-VALUE: DERIVED — forgeQueueReviewsCap = 100 @ tools/desk/internal/deskkit/forge_github.go:699 — 100 is GraphQL's maximum `first:` and matches the `reviews(first:100)` selection at forge_github.go:688, which also selects `hasNextPage`, so an overflow is detected and never read as a complete set. The line numbers are unchanged at this head; the derivation is in the hand-run block above.
 VERIFY: PASS
+
+### Non-implementer verifier run — 2026-10-02 claude-opus-5-5-verifier
+
+What moved since the last run: the Verify table is now version 3. #1997 added rows 7 and 8 (the GitLab read-pattern contract and the Windows compile of the access-pattern test binary). Rows 1-6 are textually unchanged. All eight rows were run fresh on the current head; nothing below is copied from the earlier blocks.
+
+**SHA cross-check.** Worktree HEAD = `cca9028244d9b3bae6501f11df6ea6ebf043ed66`. The forge's `commits/main` = `cca9028244d9b3bae6501f11df6ea6ebf043ed66`. They are equal. The worktree is detached, isolated, and clean before and after the run (`git status --short` printed nothing).
+
+The runner is not the implementer. Delivering commit 05c937307aa6 (#1851). `gate: model`, all four risk answers `no`. Offline with `KUBECONFIG=/dev/null` and `GOPROXY=off`; go1.27.1 darwin/arm64. Every `go test` ran under a throwaway `HOME` with the module and build caches left in place. Rows 1-4, 7 and 8 were run from the checkout root with the `cd` each row shows; rows 5 and 6 from the checkout root verbatim.
+
+**Grounding, written before reading the implementation.** From the brief text the merged work should produce: (a) at least one typed access-pattern op on the shared Forge interface with a typed result and no raw query in the signature; (b) one tuned query per backend, the document private to the backend; (c) exactly one consumer migrated onto the op with identical output; (d) a cost record carrying calls and points, before and after; (e) a test that would tear under N sequential reads; (f) no new reach-past site under the ban-lint; (g, version 3) a named GitLab/GitHub backend contract test and a Windows compile of the test binary. Observed in the tree: `ReviewQueueSnapshot` on the interface (forge.go:1471) with typed `ReviewQueue` / `QueuedChange` results, one GraphQL document in the GitHub backend, a declared-degraded GitLab implementation, one consumer call site (deskboard board.go:282), and the cost record file.
+
+| # | Command | Expect | Result (exit + real output line) | Date | Runner |
+|---|---------|--------|----------------------------------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 | Verify row 1: exit 0, no output | 2026-10-02 | claude-opus-5-5-verifier @ cca9028244d9 |
+| 2 | `cd tools/desk && go test -timeout 10m ./internal/deskkit/` | exit 0; the new op's backend tests + the migrated consumer's tests pass | Verify row 2: exit 0, `ok github.com/medici-finance/assay/tools/desk/internal/deskkit 68.557s`. For the Expect clause's consumer tests (their package is outside the row's command) I also ran `cd tools/desk && go test -timeout 10m ./cmd/deskboard/`: exit 0, `ok github.com/medici-finance/assay/tools/desk/cmd/deskboard 20.632s` | 2026-10-02 | claude-opus-5-5-verifier @ cca9028244d9 |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestAccessPatternSingleRoundTrip -v` | output contains the literal line `--- PASS: TestAccessPatternSingleRoundTrip` | Verify row 3: exit 0. Output contains `--- PASS: TestAccessPatternSingleRoundTrip (0.00s)` with 3 passing subtests: snapshot_is_one_round_trip_and_consistent, control_sequential_per_item_reads_tear, snapshot_reviews_equal_per_item_reviews_at_one_instant | 2026-10-02 | claude-opus-5-5-verifier @ cca9028244d9 |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeNoRawQueryInSignature -v` | output contains the literal line `--- PASS: TestForgeNoRawQueryInSignature` | Verify row 4: exit 0. Output contains `--- PASS: TestForgeNoRawQueryInSignature (0.00s)`, then `PASS` and `ok` | 2026-10-02 | claude-opus-5-5-verifier @ cca9028244d9 |
+| 5 | `sh -c 'for p in "calls before" "calls after" "points before" "points after"; do grep -qiF -- "$p" docs/streams/desktools-v2/query-cost.md; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $p"; exit 1; fi; done; echo all-present'` | exit 0; prints `all-present` | Verify row 5: exit 0, `all-present` | 2026-10-02 | claude-opus-5-5-verifier @ cca9028244d9 |
+| 6 | row 6 command verbatim (the `D="${D:-05c937307aa6}"; ...` forge-ban comparison of `D^1` against `D`), run from the checkout root with `D` left at its default | exit 0; three lines ending `NOT-HIGHER N0 -> N1`, N1 not higher than N0 | Verify row 6: exit 0. Output: `05c937307aa6^1 reach-around sites: 61`, `05c937307aa6 reach-around sites: 61`, `NOT-HIGHER 61 -> 61`. `D` = 05c937307aa65274ae615d650d9d3c8db61b9810 (#1851, one parent). Parent = 61d700db1712e4a2512904efdd8659a29e87ad40. N0 = 61, N1 = 61 | 2026-10-02 | claude-opus-5-5-verifier @ cca9028244d9 |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestReadPatternBackends$' -v` | output contains the named top-level `--- PASS:` line; GitHub single document, GitLab bounded REST population with explicitly incomplete reviews, CE-404, Free-403, empty/absent pipeline and X-Next-Page | Verify row 7: exit 0. Output contains `--- PASS: TestReadPatternBackends (0.01s)` and seven passing subtests: github, gitlab, gitlab/ce_404_approvals, gitlab/free_tier_403, gitlab/last_pipeline_empty, gitlab/last_pipeline_absent, gitlab/x_next_page. Read of the test body against the Expect: the github subtest asserts exactly 1 request for 2 changes, each complete and consistent at head; the gitlab subtest asserts exactly 2 requests, `ReviewsComplete` false with zero reviews, no approvals or notes path requested, and the population equal to `ListOpenChanges` | 2026-10-02 | claude-opus-5-5-verifier @ cca9028244d9 |
+| 8 | `d=$(mktemp -d) && cd tools/desk && GOOS=windows GOARCH=amd64 go test -c -o "$d/accesspattern.test.exe" ./internal/deskkit/ && test -s "$d/accesspattern.test.exe"` | exit 0 and nonempty Windows access-pattern test binary; compile only | Verify row 8: exit 0, no output. The binary is 38029824 bytes and `file` reports `PE32+ executable (console) x86-64, for MS Windows`. Compile only, as the row specifies; no Windows execution is claimed | 2026-10-02 | claude-opus-5-5-verifier @ cca9028244d9 |
+
+**Scope traceability.** Each row above discharges the Verify row with the same number. The extra deskboard run belongs to row 2's Expect clause (the migrated consumer's tests), not to new scope.
+
+**Difference from the earlier Evidence blocks.** Rows 1-6 give the same results as the 2026-10-01 hand run and the 2026-09-30 witness (row 6 still 61 -> 61). Rows 7 and 8 have no earlier result; both pass here. No row's result changed.
+
+**Execution witness (dry run).** `statusgen` was built from this head and run as `statusgen verifyrun --root <checkout> --brief docs/streams/desktools-v2/brief-09-access-pattern-queries.md --dry-run`. It exited 0 and wrote nothing to the brief. Per-row result:
+
+| # | Witness result | Output hash | Note printed by the witness |
+|---|----------------|-------------|-----------------------------|
+| 1 | pass exit=0 | sha256:e3b0c44298fc | empty-output digest |
+| 2 | pass exit=0 | sha256:fa0f66b98664 | |
+| 3 | pass exit=0 | sha256:9f178bae6c16 | expect: exit-status only |
+| 4 | pass exit=0 | sha256:49b43756b72f | expect: exit-status only |
+| 5 | pass exit=0 | sha256:6a62edb7cced | |
+| 6 | pass exit=0 | sha256:ecdef79cb26a | |
+| 7 | pass exit=0 | sha256:62cd6c25f3ca | expect: exit-status only |
+| 8 | pass exit=0 | sha256:e3b0c44298fc | empty-output digest |
+
+Witness: 8 pass, 0 fail, of 8 rows. No row carries a `check:ci` class, so none needed a Linux network-off sandbox. For rows 3, 4 and 7 the witness decides on exit status only; the hand rows above confirm the literal `--- PASS:` lines those Expect cells require.
+
+The audit form, `statusgen verifyrun --check` on the brief as it stands on main, exits 2: rows 1-6 `pass — witness matches the row and passed`, rows 7 and 8 have no execution witness in Evidence yet. That is the committed witness table (written 2026-09-30 for the six-row table) lacking rows for the two new Verify rows, not a failure of those rows. The brief is therefore not witness-complete on main until a writing-form `verifyrun` lands an eight-row witness table.
+
+**Risk-bearing value.** The fail-safe trigger does not fire (risk metadata present, all `no`, not irreversible, no risk-classed path). Enumeration done anyway, over the delivering diff 05c937307aa6 (forge.go, forge_github.go, forge_gitlab.go, deskboard board.go, the cost record) plus the row 7/8 additions from #1997, which are test-only for this brief (platform_readpattern_test.go) and introduce no production literal:
+
+- `forgeQueueReviewsCap = 100` @ tools/desk/internal/deskkit/forge_github.go:699 (introduced)
+- `reviews(first:100)` in `ghReviewQueueReviewsSel` @ tools/desk/internal/deskkit/forge_github.go:688 (introduced)
+- `ReviewsComplete: false` for every GitLab change @ tools/desk/internal/deskkit/forge_gitlab.go:876 (introduced)
+- `points before 3, points after 4` @ docs/streams/desktools-v2/query-cost.md:38 (introduced)
+- Test-only bounds pinned by row 7: GitHub `requests != 1` and GitLab `len(s.requests) != 2` @ tools/desk/internal/deskkit/platform_readpattern_test.go:23 and :43
+- Not introduced, out of scope: `forgeOpenChangesCap = 100` @ forge_github.go:645, `gitlabOpenChangesCap = 100` @ forge_gitlab.go:441, `prListLimit = 100` @ tools/desk/cmd/deskboard/board.go:80
+
+Ranked by irreversibility: none is irreversible; all are read-side bounds an edit and a redeploy can undo. The first three rank highest because a wrong value could let a truncated review set read as complete.
+
+RISK-VALUE: DERIVED — forgeQueueReviewsCap = 100 @ tools/desk/internal/deskkit/forge_github.go:699 — 100 is GitHub GraphQL's maximum `first:` for a connection and equals the selection's own `first:100`; the guard at forge_github.go:878 marks reviews complete only when `hasNextPage` is false and the node count is at most the cap, so an overflow is detected, never read as a whole set.
+RISK-VALUE: DERIVED — reviews(first:100) @ tools/desk/internal/deskkit/forge_github.go:688 — the GraphQL maximum, with `pageInfo{hasNextPage}` selected beside it, so truncation is visible to the guard.
+RISK-VALUE: DERIVED — ReviewsComplete = false @ tools/desk/internal/deskkit/forge_gitlab.go:876 — the fail-closed direction: the GitLab backend has no single-document review read, so it reports every change incomplete and the consumer falls back to the per-item read; row 7 pins exactly this.
+RISK-VALUE: DERIVED — points 3 -> 4 @ docs/streams/desktools-v2/query-cost.md:38 — recomputed from the documents with GitHub's published formula (connection requests / 100, rounded): open-changes 1 + 100 (labels) + 100 (commits) + 100 (contexts) = 301 -> 3; the review-queue document adds 100 (reviews) = 401 -> 4. Computed, not read from a live rateLimit field.
+
+**Findings** (none fails a Verify row):
+- (F2, narrowed) Task 2 asks for one tuned query per backend. The GitLab backend remains a declared degraded path (forge_gitlab.go:857-879). Row 7 now covers it: it pins the degraded contract (bounded REST population, reviews explicitly incomplete) rather than a single tuned query. The earlier "no Verify row covers the GitLab half" finding is closed by row 7; the gap between Task 2's wording and the delivered GitLab behaviour remains as stated in the code's own comment.
+- (F3) Query points in the cost record are computed, not live-measured; the record says so itself and no row requires a live read.
+- (F4) Row 2's command covers only the deskkit package while its Expect names the consumer's tests; the consumer package was run separately and passed.
+- (F5, check definition) Rows 3, 4 and 7 state an output-line requirement that the witness cannot decide (it reports `expect: exit-status only`); a `-run` selector matching nothing would still pass the witness. The hand rows above carry that check.
+- (F6, witness completeness) The committed witness table covers 6 of 8 rows; `verifyrun --check` exits 2 on main until an eight-row witness is written.
+- No flaky row observed: rows 1-8 gave the same result in the hand run and in the witness run. No invented scope found.
+
+rows_passed=8 rows_total=8
+
+VERIFY: PASS — all eight Verify rows pass by hand and in the dry-run witness at cca9028244d9; the committed witness table still lacks rows 7 and 8.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test -timeout 10m ./internal/deskkit/` | pass exit=0 | sha256:fb2f5cc03d5a | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestAccessPatternSingleRoundTrip -v` | pass exit=0 | sha256:822a7c5c6cf5 | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeNoRawQueryInSignature -v` | pass exit=0 | sha256:49b43756b72f | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+| 5 | `sh -c 'for p in "calls before" "calls after" "points before" "points after"; do grep -qiF -- "$p" docs/streams/desktools-v2/query-cost.md; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $p"; exit 1; fi; done; echo all-present'` | pass exit=0 | sha256:6a62edb7cced | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+| 6 | `D="${D:-05c937307aa6}"; test -n "$D" && git rev-parse -q --verify "$D^1^{commit}" >/dev/null && git rev-parse -q --verify "$D^{commit}" >/dev/null && { n0=; n1=; for r in "$D^1" "$D"; do t=$(mktemp -d) && git archive -o "$t.tar" "$r" && tar -xf "$t.tar" -C "$t" && cp tools/desk/scripts/forge-ban.sh "$t/tools/desk/scripts/forge-ban.sh" && sh "$t/tools/desk/scripts/forge-ban.sh" > "$t.out" 2>&1; n=$(sed -n 's/.*reach-around sites: \([0-9][0-9]*\).*/\1/p' "$t.out"); rm -rf "$t" "$t.tar" "$t.out"; if [ -z "$n" ]; then echo "$r NO-COUNT"; exit 1; fi; echo "$r reach-around sites: $n"; if [ -z "$n0" ]; then n0=$n; else n1=$n; fi; done; if [ "$n1" -le "$n0" ]; then echo "NOT-HIGHER $n0 -> $n1"; else echo "HIGHER $n0 -> $n1"; exit 1; fi; }` | pass exit=0 | sha256:ecdef79cb26a | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestReadPatternBackends$' -v` | pass exit=0 | sha256:594cb4d6a4df | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+| 8 | `d=$(mktemp -d) && cd tools/desk && GOOS=windows GOARCH=amd64 go test -c -o "$d/accesspattern.test.exe" ./internal/deskkit/ && test -s "$d/accesspattern.test.exe"` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 9b413ae02993 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test -timeout 10m ./internal/deskkit/` | pass exit=0 | sha256:d679365ac568 | 2026-10-02 | assay-verifier-app[bot] @ 9b413ae02993 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestAccessPatternSingleRoundTrip -v` | pass exit=0 | sha256:686fead3023a | 2026-10-02 | assay-verifier-app[bot] @ 9b413ae02993 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeNoRawQueryInSignature -v` | pass exit=0 | sha256:005b391351de | 2026-10-02 | assay-verifier-app[bot] @ 9b413ae02993 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `sh -c 'for p in "calls before" "calls after" "points before" "points after"; do grep -qiF -- "$p" docs/streams/desktools-v2/query-cost.md; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $p"; exit 1; fi; done; echo all-present'` | pass exit=0 | sha256:6a62edb7cced | 2026-10-02 | assay-verifier-app[bot] @ 9b413ae02993 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `D="${D:-05c937307aa6}"; test -n "$D" && git rev-parse -q --verify "$D^1^{commit}" >/dev/null && git rev-parse -q --verify "$D^{commit}" >/dev/null && { n0=; n1=; for r in "$D^1" "$D"; do t=$(mktemp -d) && git archive -o "$t.tar" "$r" && tar -xf "$t.tar" -C "$t" && cp tools/desk/scripts/forge-ban.sh "$t/tools/desk/scripts/forge-ban.sh" && sh "$t/tools/desk/scripts/forge-ban.sh" > "$t.out" 2>&1; n=$(sed -n 's/.*reach-around sites: \([0-9][0-9]*\).*/\1/p' "$t.out"); rm -rf "$t" "$t.tar" "$t.out"; if [ -z "$n" ]; then echo "$r NO-COUNT"; exit 1; fi; echo "$r reach-around sites: $n"; if [ -z "$n0" ]; then n0=$n; else n1=$n; fi; done; if [ "$n1" -le "$n0" ]; then echo "NOT-HIGHER $n0 -> $n1"; else echo "HIGHER $n0 -> $n1"; exit 1; fi; }` | pass exit=0 | sha256:ecdef79cb26a | 2026-10-02 | assay-verifier-app[bot] @ 9b413ae02993 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestReadPatternBackends$' -v` | pass exit=0 | sha256:fbdc664b5ee4 | 2026-10-02 | assay-verifier-app[bot] @ 9b413ae02993 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `d=$(mktemp -d) && cd tools/desk && GOOS=windows GOARCH=amd64 go test -c -o "$d/accesspattern.test.exe" ./internal/deskkit/ && test -s "$d/accesspattern.test.exe"` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 9b413ae02993 (on-behalf-of human:ian) (forge-identity) |
 
 ## Review
 Gate: model (all four risk answers no — read-only typed operations added behind the seam; no

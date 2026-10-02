@@ -173,7 +173,7 @@ func (s *ghStampServer) wrote() bool {
 
 func stampArgs(t *testing.T, root string, extra ...string) []string {
 	t.Helper()
-	args := []string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
+	args := []string{"assay--pr-77", "--root", root, "--repo", allowedRepo, "--pr", "77",
 		"--model", "example-model-1", "--tier", "strong",
 		"--prompt-file", filepath.Join(t.TempDir(), "p.md")}
 	return append(args, extra...)

@@ -1,3 +1,0 @@
-### Fixed
-- `tools/desk` source no longer carries the origin's operating record: a dated, person-attributed ruling citation in the topology publication-boundary test is now cited generically, and the session-email fixtures and doc-comments use a neutral example handle that keeps the same address shape, so the email allowlist tests still go red when the classifier is broken.
-- New class guard `TestNoPersonDatedRulingCite` walks the published `tools/desk` tree and fails on any "<Name>'s <YYYY-MM-DD>" ruling citation. A positive control (`TestRulingCiteMatcherIsLive`) and a file-count floor make an empty result mean "checked clean", never "looked at nothing".

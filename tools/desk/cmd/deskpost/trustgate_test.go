@@ -126,7 +126,7 @@ func TestUntrustedAuthorPRGateSplitByVerb(t *testing.T) {
 		f.prAuthor = "external-user"
 		f.prAuthorID = 424242
 		// default trustJSON empty (unblessed); default repoVisibility private (public-repo
-		// +1 gate not in play) — so the ONLY gate that could refuse is the author-trust gate.
+		// write gate not in play) — so the ONLY gate that could refuse is the author-trust gate.
 		bf := writeBody(t, "c.md", "reviewed: clean single-dep patch bump.")
 
 		code := run(commentArgs(exampleRepo, "1", bf))

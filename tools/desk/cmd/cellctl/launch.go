@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -79,7 +80,11 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	if c.Deskd == "1" && !c.deskdUp() {
 		fmt.Fprintf(os.Stderr, "NOTICE: cell deskd is NOT up on %s — in your shell: CELL_ATTENDED=1 cellctl deskd %s\n", c.DeskdAddr, c.Name)
 	}
-	c.genShims()
+	// Codex composes command environments natively; other harnesses retain
+	// their existing shim contract, including the separate scrubbed path.
+	if harness != "codex" || c.Kind == "scrubbed" {
+		c.genShims()
+	}
 	if harness == "codex" {
 		c.ensureCodexResidentRules(wt)
 	}
@@ -108,7 +113,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		c.Name, role, c.Kind, modelDisp, effortDisp, orDefault(providerDisp, "anthropic"), harness, session, cfg, wt, orDefault(deskRoots, "unset"), c.Home)
 
 	env := os.Environ()
-	env = envSet(env, "PATH", filepath.Join(c.Dir, "shim")+":"+c.Env.Get("PATH"))
+	if harness != "codex" {
+		env = envSet(env, "PATH", filepath.Join(c.Dir, "shim")+string(filepath.ListSeparator)+c.Env.Get("PATH"))
+	}
 	env = envSet(env, "DESK_LOOP", role)
 	env = envSet(env, "DESK_SESSION", session)
 	if deskRoots != "" {
@@ -138,8 +145,33 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		if policyRes != nil {
 			argv = append(argv, policyRes.CodexArgs...)
 		}
+		commandArgs, err := c.codexEnvironmentArgs(env)
+		if err != nil {
+			die("desk: %v", err)
+		}
+		argv = append(argv, commandArgs...)
+		capacityArgs, err := c.codexCapacityArgs(role)
+		if err != nil {
+			die("desk: Codex capacity: %v", err)
+		}
+		argv = append(argv, capacityArgs...)
+		bash, err := codexBashPath()
+		if err != nil {
+			die("desk: %v", err)
+		}
 		argv = append(argv, "--sandbox", "danger-full-access", "-C", wt, "-m", model,
-			fmt.Sprintf("Invoke the %q skill now.", "assay:"+role))
+			codexRolePrompt(role, runtime.GOOS, bash))
+	} else if harness == "cursor" {
+		if err := c.prepareCursorWorkspace(role, wt); err != nil {
+			die("cursor workspace: %v", err)
+		}
+		if c.Cadence != nil {
+			if err := cursorHeadlessPreflight("agent"); err != nil {
+				die("cursor cadence: %v", err)
+			}
+		}
+		argv = cursorLaunchArgv(role, model, session, wt)
+		env = cursorLaunchEnv(env)
 	} else {
 		env = envSet(env, "CLAUDE_CONFIG_DIR", cfg)
 		// Automated desks do not need the extra next-prompt generation request.
@@ -189,6 +221,14 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 			}
 			argv = []string{"claude", "--effort", policyRes.Effort, "--settings", settings, "--name", session, "--model", model, "/assay:" + role}
 		}
+	}
+	if c.Cadence != nil {
+		c.runCadencedHarness(role, harness, argv, env, wt)
+		return
+	}
+	if c.cadenceLease != nil {
+		c.runInteractiveHarness(role, argv, env, wt)
+		return
 	}
 	runForeground(argv, env, wt)
 }
@@ -260,7 +300,8 @@ func runForeground(argv []string, env []string, dir string) {
 func envSet(env []string, k, v string) []string {
 	out := env[:0:0]
 	for _, kv := range env {
-		if !strings.HasPrefix(kv, k+"=") {
+		key, _, _ := strings.Cut(kv, "=")
+		if key != k && !(runtime.GOOS == "windows" && strings.EqualFold(key, k)) {
 			out = append(out, kv)
 		}
 	}
@@ -270,7 +311,8 @@ func envSet(env []string, k, v string) []string {
 func envUnset(env []string, k string) []string {
 	out := env[:0:0]
 	for _, kv := range env {
-		if !strings.HasPrefix(kv, k+"=") {
+		key, _, _ := strings.Cut(kv, "=")
+		if key != k && !(runtime.GOOS == "windows" && strings.EqualFold(key, k)) {
 			out = append(out, kv)
 		}
 	}
