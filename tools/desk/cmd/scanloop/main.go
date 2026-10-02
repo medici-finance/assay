@@ -87,8 +87,14 @@ Pass the standing window's captured poll with --inbound.
 'run' is the drain. It arms the poller if it is not armed (arming and draining are the same act:
 the seeding pass reports no inbound rather than replaying the backlog), applies the trust gate
 BEFORE anything is queued, executes the dispatch lanes and records exactly ONE tracked exit per
-item. --dry-run prints every lane step without running it; --offline takes the pass's events from
---inbound and opens no network read at all.
+item. --offline takes the pass's events from --inbound and opens no network read at all.
+
+--dry-run prints every lane step without running it, and it does not advance the poller's per-repo
+baselines. A live dry-run polls a THROWAWAY COPY of the state dir, so the preview starts from the
+real baselines and reports the real delta, and the copy is removed when the pass ends. If the copy
+cannot be made (an unreadable entry, a symlinked baseline, no temp dir), the pass is refused with
+exit 5 before anything is polled. It never falls back to the real dir. With --offline --inbound
+there is no poll at all, so there is nothing to copy.
 
   the five tracked exits   placeholder · bug · finding · needs-decision · rejected-watching
                            An item that lands with none of them, or with two, is a refusal.
@@ -116,6 +122,10 @@ item. --dry-run prints every lane step without running it; --offline takes the p
                            placeholder lands here under a repo-stemmed name.
   blind never exits 0      A degraded repo, a suppressed burst, an unarmed poller, or a trust read
                            that could not be taken all make the pass unverifiable.
+  the poller               'run' arms the deskmonitor verb ('deskmonitor inbound') from PATH. A
+                           missing verb is unverifiable, never an empty queue. --monitor <path.sh>
+                           or ASSAY_INBOUND_MONITOR arms the bash oracle inbound-monitor.sh instead
+                           (parity mode), through a bash resolved from PATH.
 
 Stop flags are honoured on every cycle boundary, precedence DISABLED > STOP > STOP.` + LoopName + `.
 

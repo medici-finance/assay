@@ -190,16 +190,25 @@ func resolveRepoRoot(repo, override string) (string, error) {
 	if err != nil {
 		return "", deskkit.Unverifiable("could-not-check: cannot resolve "+root, err)
 	}
-	gr, err := gitcore.Open(abs)
-	if err != nil {
+	if _, err := gitcore.Open(abs); err != nil {
 		return "", deskkit.Unverifiable(
 			"could-not-check: "+abs+" is not a git checkout", err)
 	}
-	url, err := gr.RemoteURL("origin")
+	// The identity check decides on origin's URL AS GIT RESOLVES IT for the `git fetch origin`
+	// that follows (#1623) — every config scope, insteadOf rewrites — never on a read of the
+	// repository config file alone, which can name this repo while git fetches another.
+	urls, err := originURLs(abs, false)
 	if err != nil {
 		return "", deskkit.Unverifiable(
-			"could-not-check: "+abs+" has no `origin` remote to fetch from", err)
+			"could-not-check: "+abs+" has no `origin` remote git can resolve to fetch from", err)
 	}
+	if len(urls) != 1 {
+		return "", deskkit.Refused(fmt.Sprintf(
+			"refused: %s's origin resolves to %d fetch URLs (%s) — a multi-valued remote.origin.url "+
+				"list names no single project, so deskmerge will not compute a merge in it. Set exactly one",
+			abs, len(urls), deskkit.StripControl(strings.Join(urls, ", "))))
+	}
+	url := urls[0]
 	if !originNames(url, repo) {
 		return "", deskkit.Refused(fmt.Sprintf(
 			"refused: %s's origin is %s, which does not name %s — deskmerge will not compute a merge "+
@@ -207,6 +216,31 @@ func resolveRepoRoot(repo, override string) (string, error) {
 			abs, deskkit.StripControl(url), deskkit.StripControl(repo)))
 	}
 	return abs, nil
+}
+
+// originURLs returns every URL git resolves for origin in dir: the fetch URL list (push=false)
+// or the push URL list (push=true — every pushurl value, else the url list, after insteadOf /
+// pushInsteadOf). It is `git remote get-url [--push] --all origin`, a config read that contacts
+// no remote, run through the same seam and environment as the fetch and push it gates.
+func originURLs(dir string, push bool) ([]string, error) {
+	args := []string{"remote", "get-url", "--all", "origin"}
+	if push {
+		args = []string{"remote", "get-url", "--push", "--all", "origin"}
+	}
+	out, err := runGit(dir, args...)
+	if err != nil {
+		return nil, err
+	}
+	var urls []string
+	for _, line := range strings.Split(out, "\n") {
+		if u := strings.TrimSpace(line); u != "" {
+			urls = append(urls, u)
+		}
+	}
+	if len(urls) == 0 {
+		return nil, fmt.Errorf("git resolved no URL for origin")
+	}
+	return urls, nil
 }
 
 // originNames reports whether a remote URL names owner/repo, across the ssh, https and

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -31,10 +32,13 @@ type fakeStore struct {
 	// failure injection: the fail-closed (exit 6) paths.
 	readFails  bool // Read/List return ClaimReadUnverifiable
 	writeFails bool // CreateIfAbsent/UpdateFrom return ClaimWriteUnverifiable
+	// rejectCreate makes CreateIfAbsent report ClaimWriteRejected while no claim exists: the
+	// server refused the write for a cause other than a holder (#1631).
+	rejectCreate bool
 
 	// cause is the "<host>: <error>" attribution the real gogitStore records on a transport
-	// failure; the fake returns it from TransportCause() so a verb-level test can assert the
-	// operator-facing message carries it (#727).
+	// failure or a server refusal of a write; the fake returns it from TransportCause() so a
+	// verb-level test can assert the operator-facing message carries it (#727, #1631).
 	cause string
 }
 
@@ -73,6 +77,9 @@ func (f *fakeStore) Read(id string) (deskkit.ClaimStoreRecord, deskkit.ClaimRead
 func (f *fakeStore) CreateIfAbsent(id, msg string) deskkit.ClaimWriteOutcome {
 	if f.writeFails {
 		return deskkit.ClaimWriteUnverifiable
+	}
+	if f.rejectCreate {
+		return deskkit.ClaimWriteRejected
 	}
 	if _, ok := f.claims[id]; ok {
 		return deskkit.ClaimWriteRejected // the server-side CAS: a create loses against an existing ref
@@ -535,6 +542,30 @@ func TestTransportFailureMessageCarriesHostAndCause(t *testing.T) {
 	}
 }
 
+// A create the server REJECTS while no claim exists is not a lost race: the forge refused the
+// write for another cause (a credential or policy refusal). The "rejected but no claim exists"
+// line must carry the store's recorded refusal, so an operator can tell the two apart (#1631).
+func TestRejectedCreateWithNoHolderMessageCarriesCause(t *testing.T) {
+	f := newStore()
+	f.rejectCreate = true
+	f.cause = "gitlab.example.com: server refused refs/dispatch/at--issue-1631: pre-receive hook declined"
+	run, _, se := harness(t, f)
+
+	rc := run("acquire", "at--issue-1631", "--repo", "group/repo", "--owner", "sess-A")
+	if rc != exitUnverifiable {
+		t.Fatalf("rejected-create-no-holder acquire rc = %d, want 6; err=%s", rc, se.String())
+	}
+	got := se.String()
+	for _, want := range []string{
+		"creating refs/dispatch/at--issue-1631 was rejected but no claim exists", // the line
+		"pre-receive hook declined", // AND the server's own refusal
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("rejected-create message missing %q — an operator cannot see WHY:\n%s", want, got)
+		}
+	}
+}
+
 // The store-level formatter: a recorded transport error renders as "<host>: <error>", and a
 // store with no failure attributes nothing (so a non-transport unverifiable stays bare).
 func TestGogitStoreTransportCauseFormatsHostAndError(t *testing.T) {
@@ -546,6 +577,34 @@ func TestGogitStoreTransportCauseFormatsHostAndError(t *testing.T) {
 	want := "gitlab.example.com: authentication required: HTTP Basic: Access denied"
 	if got := g.TransportCause(); got != want {
 		t.Fatalf("TransportCause = %q, want %q", got, want)
+	}
+}
+
+// The live store records the server's refusal of a claim write as its attribution cause: a
+// second create of an existing ref, against a real local git server, is REJECTED and leaves
+// "<host>: server refused <ref>: <report-status text>" in TransportCause (#1631). An applied
+// create records nothing.
+func TestGogitStoreRejectedCreateRecordsServerRefusal(t *testing.T) {
+	server := t.TempDir()
+	if out, err := exec.Command("git", "init", "-q", "--bare", "-b", "main", server).CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v: %s", err, out)
+	}
+	g := &gogitStore{url: server, host: "local-test-server"}
+	id := "at--issue-1631"
+
+	if res := g.CreateIfAbsent(id, claimMessage(id, "sess-A", "claimed", "-", "")); res != deskkit.ClaimWriteApplied {
+		t.Fatalf("first create = %v, want Applied; cause=%q", res, g.TransportCause())
+	}
+	if c := g.TransportCause(); c != "" {
+		t.Fatalf("an applied create recorded cause %q, want none", c)
+	}
+	if res := g.CreateIfAbsent(id, claimMessage(id, "sess-B", "claimed", "-", "")); res != deskkit.ClaimWriteRejected {
+		t.Fatalf("second create = %v, want Rejected", res)
+	}
+	prefix := "local-test-server: server refused " + refPrefix + "/" + id + ": "
+	got := g.TransportCause()
+	if !strings.HasPrefix(got, prefix) || strings.TrimSpace(strings.TrimPrefix(got, prefix)) == "" {
+		t.Fatalf("TransportCause after a rejected create = %q, want %q followed by the server's refusal text", got, prefix)
 	}
 }
 

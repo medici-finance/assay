@@ -61,7 +61,7 @@ Options:
 1. **Approve this evidence rule** — implement the narrow exception consistently in the board, planner and ready gate with negative-path tests.
 2. **Retain the commit-only rule** — keep the current refusal and existing human resolution path.
 
-Default if no answer: none — blocks implementation.
+Default if no answer: none — blocks until answered.
 
 **Ruling recorded (2026-09-21): APPROVED — option 1.** The driver ruled on the brief's
 decision-gate issue in their own login:

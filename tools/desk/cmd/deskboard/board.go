@@ -210,46 +210,88 @@ func fetchOpenPRs(repo string) (prs []prBase, truncated bool, err error) {
 	}
 	prs = make([]prBase, 0, len(oc.Changes))
 	for _, c := range oc.Changes {
-		pb := prBase{
-			Number:           c.Number,
-			Title:            c.Title,
-			Body:             c.Body,
-			State:            c.State,
-			IsDraft:          c.Draft,
-			CreatedAt:        c.CreatedAt,
-			LastEditedAt:     c.LastEditedAt,
-			HeadRefOid:       c.HeadSHA,
-			HeadRefName:      c.HeadRef,
-			BaseRefName:      c.BaseRef,
-			MergeStateStatus: c.MergeStateStatus,
-		}
-		pb.Author.Login = c.Author.Login
-		for _, l := range c.Labels {
-			pb.Labels = append(pb.Labels, struct {
-				Name string `json:"name"`
-			}{Name: l})
-		}
-		for _, r := range c.Rollup {
-			pb.StatusCheckRollup = append(pb.StatusCheckRollup, check{
-				Status:      r.Status,
-				Conclusion:  r.Conclusion,
-				Name:        r.Name,
-				State:       r.State,
-				Context:     r.Context,
-				TypeName:    r.Typename,
-				StartedAt:   r.StartedAt,
-				CompletedAt: r.CompletedAt,
-				CreatedAt:   r.CreatedAt,
-			})
-		}
-		prs = append(prs, pb)
+		prs = append(prs, prBaseFromChange(c))
 	}
-	if oc.TruncatedAtCap {
-		truncated = true
+	return prs, warnTruncated(repo, len(prs), oc.TruncatedAtCap, oc.Cap), nil
+}
+
+// warnTruncated emits the open-PR cap banner (#80) and returns whether the read truncated.
+func warnTruncated(repo string, n int, truncated bool, limit int) bool {
+	if truncated {
 		fmt.Fprintf(os.Stderr, "deskboard: WARNING %s returned %d open PRs at the first:%d cap — "+
-			"the board may be TRUNCATED; widen prListLimit or paginate (#80)\n", repo, len(prs), oc.Cap)
+			"the board may be TRUNCATED; widen prListLimit or paginate (#80)\n", repo, n, limit)
 	}
-	return prs, truncated, nil
+	return truncated
+}
+
+// prBaseFromChange maps one typed open change onto the board's prBase — the ONE mapping both
+// open-PR reads (fetchOpenPRs and fetchReviewQueue) share, so the two cannot classify a
+// change from different fields.
+func prBaseFromChange(c deskkit.OpenChange) prBase {
+	pb := prBase{
+		Number:           c.Number,
+		Title:            c.Title,
+		Body:             c.Body,
+		State:            c.State,
+		IsDraft:          c.Draft,
+		CreatedAt:        c.CreatedAt,
+		LastEditedAt:     c.LastEditedAt,
+		HeadRefOid:       c.HeadSHA,
+		HeadRefName:      c.HeadRef,
+		BaseRefName:      c.BaseRef,
+		MergeStateStatus: c.MergeStateStatus,
+	}
+	pb.Author.Login = c.Author.Login
+	for _, l := range c.Labels {
+		pb.Labels = append(pb.Labels, struct {
+			Name string `json:"name"`
+		}{Name: l})
+	}
+	for _, r := range c.Rollup {
+		pb.StatusCheckRollup = append(pb.StatusCheckRollup, check{
+			Status:      r.Status,
+			Conclusion:  r.Conclusion,
+			Name:        r.Name,
+			State:       r.State,
+			Context:     r.Context,
+			TypeName:    r.Typename,
+			StartedAt:   r.StartedAt,
+			CompletedAt: r.CompletedAt,
+			CreatedAt:   r.CreatedAt,
+		})
+	}
+	return pb
+}
+
+// fetchReviewQueue is the actions sweep's open-PR read: the typed ReviewQueueSnapshot
+// access-pattern op, which returns every open change AND its reviews in one backend
+// round-trip (desktools-v2 brief 09) instead of fetchOpenPRs followed by one fetchReviews
+// per change. The changes map through the same prBaseFromChange as fetchOpenPRs; reviews
+// maps each change the snapshot carried IN FULL to its reviews, in the same rendering
+// fetchReviews produces. A change absent from reviews (ReviewsComplete=false — more reviews
+// than the snapshot bounds, or a backend that does not carry them) is read per-item by
+// classifyPR exactly as before; absence NEVER means "no reviews".
+//
+// A failure fails the whole run, named for the repo, exactly as fetchOpenPRs does — the
+// error text is the same so the out-of-installation scoping check still recognizes it.
+func fetchReviewQueue(repo string) (prs []prBase, reviews map[int][]review, truncated bool, err error) {
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return nil, nil, false, ferr
+	}
+	q, qerr := f.ReviewQueueSnapshot(fr)
+	if qerr != nil {
+		return nil, nil, false, deskkit.Unverifiable("cannot read open PRs for "+repo, qerr)
+	}
+	prs = make([]prBase, 0, len(q.Changes))
+	reviews = make(map[int][]review, len(q.Changes))
+	for _, c := range q.Changes {
+		prs = append(prs, prBaseFromChange(c.OpenChange))
+		if c.ReviewsComplete {
+			reviews[c.Number] = reviewsFromForge(c.Reviews)
+		}
+	}
+	return prs, reviews, warnTruncated(repo, len(prs), q.TruncatedAtCap, q.Cap), nil
 }
 
 // outOfInstallationMarkers are the phrases GitHub uses when the authenticated identity
@@ -371,6 +413,13 @@ func fetchReviews(repo string, num int) ([]review, error) {
 	if err != nil {
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot read reviews for %s#%d", repo, num), err)
 	}
+	return reviewsFromForge(rs), nil
+}
+
+// reviewsFromForge maps typed forge reviews onto the board's review rows — shared by the
+// per-item read (fetchReviews) and the snapshot read (fetchReviewQueue). Never nil, so a
+// complete-but-empty review set is distinguishable from an absent one.
+func reviewsFromForge(rs []deskkit.Review) []review {
 	all := make([]review, 0, len(rs))
 	for _, r := range rs {
 		var rv review
@@ -381,7 +430,7 @@ func fetchReviews(repo string, num int) ([]review, error) {
 		rv.SubmittedAt = r.SubmittedAt
 		all = append(all, rv)
 	}
-	return all, nil
+	return all
 }
 
 // maxFilePages bounds the changed-files walk (100/page). Exceeding it leaves the entry
@@ -697,6 +746,66 @@ type reviewState struct {
 	// surfaces the row as EXTERNAL-PREREQ-REVIEW and leaves the authoritative grant to the
 	// ready gate (deskpost/ready.go), so the two surfaces agree on what the row IS.
 	externalPrereqDeclared bool
+	// bodyEditReverified is true when a row reduceReviews marked suspectNoOp was LIFTED by
+	// applyBodyEditReverification: every standing CR at head declared the documented body-edit
+	// re-verification class and a later correctness APPROVE documents and verifies it against
+	// the live PR body (deskkit.EvaluateBodyEditReverification — the SAME decision deskflip's
+	// reviewer-approved gate runs). The row then reads approved at head and flows through the
+	// ordinary CI / mergeability / security arms; this flag only annotates its note.
+	bodyEditReverified bool
+}
+
+// applyBodyEditReverification applies the ruled documented body-edit re-verification class
+// to a reduction that suppressed a same-head APPROVE (suspectNoOp). It is a no-op on every
+// other shape, and on a declared external-prerequisite row (that class has its own surface).
+//
+// It mirrors deskflip's gate exactly rather than approximating it: EVERY reviewer CR at head
+// must be cleared by the shared decision (one undeclared or failing CR keeps the row
+// suppressed), the candidate APPROVEs are the reviewer's, at head, correctness lane only,
+// the digest is checked against the body THIS sweep read, and "edited after the CR" is
+// established from the forge's own lastEditedAt THIS sweep read (empty — GitLab, or never
+// edited — keeps the row suppressed). When it lifts, the effective
+// verdict becomes the governing same-head APPROVE — the ruling's "the same-head APPROVE
+// stands" — and CI green stays the board's own CI verdict, never the citation's.
+func applyBodyEditReverification(st reviewState, reviews []review, head, liveBody, bodyEditedAt string) reviewState {
+	if !st.atHead || !st.blocking || !st.suspectNoOp || st.externalPrereqDeclared {
+		return st
+	}
+	var crs []review
+	var approves []deskkit.BodyEditApprove
+	var lastApprove string
+	for _, r := range reviews {
+		if !isReviewerBot(r.User.Login) || !sameHead(r.CommitID, head) {
+			continue
+		}
+		switch r.State {
+		case "CHANGES_REQUESTED":
+			crs = append(crs, r)
+		case "APPROVED":
+			if classifySecurityBody(r.Body) != secNone {
+				continue
+			}
+			approves = append(approves, deskkit.BodyEditApprove{Body: r.Body, SubmittedAt: r.SubmittedAt})
+			lastApprove = r.SubmittedAt
+		}
+	}
+	if len(crs) == 0 || len(approves) == 0 {
+		return st
+	}
+	for _, cr := range crs {
+		dec := deskkit.EvaluateBodyEditReverification(deskkit.BodyEditInput{
+			CRBody: cr.Body, CRSubmittedAt: cr.SubmittedAt, Head: head, Approves: approves, LiveBody: liveBody,
+			BodyEditedAt: bodyEditedAt,
+		})
+		if !dec.Cleared {
+			return st
+		}
+	}
+	st.blocking, st.approved, st.suspectNoOp, st.bodyEditReverified = false, true, false, true
+	if t, err := time.Parse(time.RFC3339, lastApprove); err == nil {
+		st.lastReviewAt, st.approvedAt = t, t
+	}
+	return st
 }
 
 // sameHead reports whether a review's commit sha and the PR's head sha are the SAME
@@ -1966,17 +2075,21 @@ type prOutcome struct {
 // (lowest-index PR first).
 func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time) (actionsPartial, error) {
 	var part actionsPartial
-	// repo-level: fetchOpenPRs lists ALL open PRs for the repo in one read — nothing about
-	// the repo can be classified without it, so failing the whole run here is correct
-	// (contrast classifyPR below, whose five per-change reads are the opposite kind).
-	prs, truncated, err := fetchOpenPRs(repo)
+	// repo-level: fetchReviewQueue lists ALL open PRs for the repo AND their reviews in one
+	// read — nothing about the repo can be classified without it, so failing the whole run
+	// here is correct (contrast classifyPR below, whose per-change reads are the opposite
+	// kind). The reviews it carries replace classifyPR's per-PR review read (N+1 → 1, and
+	// the head and its reviews come from one consistent instant); a PR it did not carry in
+	// full is read per-item as before.
+	prs, queued, truncated, err := fetchReviewQueue(repo)
 	if err != nil {
 		return actionsPartial{}, err // fail the whole run, name the repo
 	}
 	part.truncated = truncated
 	ciRequired := deskkit.CIRequired(repo)
 	outcomes, err := sweepConcurrent(prs, sweepConcurrency, func(p prBase) (prOutcome, error) {
-		return classifyPR(repo, p, ciRequired, briefScore, knownBriefs, redBases, now)
+		rv, have := queued[p.Number]
+		return classifyPRFrom(repo, p, rv, have, ciRequired, briefScore, knownBriefs, redBases, now)
 	})
 	if err != nil {
 		return actionsPartial{}, err
@@ -2000,6 +2113,15 @@ func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []stri
 // shared mutable state — it returns a prOutcome — so it is safe to run for many PRs at
 // once. All gh reads inside it fail CLOSED, naming the repo/PR.
 func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time) (prOutcome, error) {
+	return classifyPRFrom(repo, p, nil, false, ciRequired, briefScore, knownBriefs, redBases, now)
+}
+
+// classifyPRFrom is classifyPR with the PR's reviews optionally supplied by the caller's
+// snapshot read: haveReviews=true means snapReviews is this PR's COMPLETE review set, read at
+// the same instant as p's head, and the per-PR review read is skipped; haveReviews=false
+// reads them per-PR (fetchReviews) exactly as classifyPR always has. Everything downstream
+// of the review set is the same code either way.
+func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews bool, ciRequired bool, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time) (prOutcome, error) {
 	id := fmt.Sprintf("%s#%d", repo, p.Number)
 
 	// Trust gate (deskkit/trust.go): untrusted author + no current blessing → quarantine.
@@ -2051,12 +2173,16 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	// #177 — also not a cleared state), reusing the existing contract instead of a second
 	// degrade mechanism.
 	var rs reviewState
-	reviews, err := fetchReviews(repo, p.Number)
+	reviews, err := snapReviews, error(nil)
+	if !haveReviews {
+		reviews, err = fetchReviews(repo, p.Number)
+	}
 	if err != nil {
 		degrade(fmt.Sprintf("could not read reviews (%v) — degrading to no verdict "+
 			"established rather than failing the sweep", err))
 	} else {
 		rs = reduceReviews(reviews, p.HeadRefOid)
+		rs = applyBodyEditReverification(rs, reviews, p.HeadRefOid, p.Body, p.LastEditedAt)
 	}
 
 	// #1652: an empty rollup is ambiguous until probed. The probe runs ONLY on a truly
@@ -2206,6 +2332,10 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	in.riskReason = riskReason
 
 	action, note := classify(in)
+	if rs.bodyEditReverified {
+		note += " — same-head APPROVE accepted under the documented body-edit re-verification class " +
+			"(deskflip re-verifies it at the gate)"
+	}
 	if len(degradeReasons) > 0 {
 		// The row's RENDERED text carries the could-not-check reason(s) that produced the
 		// degrade, whether or not the classify() arm it landed on would otherwise have

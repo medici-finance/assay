@@ -124,13 +124,17 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 13 | [Worker-operations vitals — the self-report resource block](brief-13-worker-operations-vitals.md) | 2 | M | implemented | — | — |
 | 14 | [Budget-driven recycle — retire a healthy worker before it degrades](brief-14-budget-driven-recycle.md) | 3 | M | todo | — | — |
 | 15 | [Local supervisor host + multi-cell vitals aggregation](brief-15-local-supervisor-host-and-aggregation.md) | 4 | M | todo | — | — |
-| 16 | [Verification wake conditions — stop repeating unchanged blocked checks](brief-16-verification-wake-conditions.md) | 0 | M | implemented | — | — |
+| 16 | [Verification wake conditions — stop repeating unchanged blocked checks](brief-16-verification-wake-conditions.md) | 0 | M | done | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1396 @ e78d34ef8482d8daa0423f231fda1a06f6e3b959) |
 | 17 | [Verification failures create durable worker repair obligations](brief-17-verification-repair-obligations.md) | 1 | M | implemented | — | — |
 | 18 | [Enforce repair reservations at worker dispatch](brief-18-repair-admission.md) | 2 | M | implemented | — | — |
 | 19 | [Persist review findings and apply the existing round cap across sessions](brief-19-review-finding-continuity.md) | 0 | M | implemented | — | — |
 | 20 | [Review scope and first-pass completeness](brief-20-review-scope-and-first-pass.md) | 0 | M | implemented | — | — |
 | 21 | [Reverify changed external prerequisites without a synthetic push](brief-21-external-prerequisite-reverification.md) | 1 | M | implemented | — | — |
 | 22 | [Configure provider, model and effort per cell role](brief-22-cell-model-policy.md) | 0 | M | implemented | — | — |
+| 23 | [Evidence lands on main behind a file-scoped gatekeeper — validator workflow + lander App](brief-23-evidence-lander-gatekeeper.md) | 2 | L | todo | — | — |
+| 24 | [One file per verify outcome — retire the shared appended outcomes log](brief-24-per-file-verify-outcomes.md) | 0 | L | implemented | — | — |
+| 25 | [Carry a correctness approval across a merge of main that leaves the PR's diff byte-identical](brief-25-approval-carry-across-no-diff-merge.md) | 1 | L | todo | — | — |
+| 26 | [Land one verify tick's Evidence-only outcomes in one Evidence PR](brief-26-batched-evidence-landing-per-tick.md) | 1 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -180,18 +184,77 @@ only by `07` landing (done). `14` and `15` are human-gated (a new autonomous sto
 work; a persistent local host under operator credentials), so each also waits on its decision
 issue, not just its `depends:`.
 
+**Brief 23 extends the workflow-landing chain: Evidence lands on main without a PR.** On a
+PR-required main, every Evidence landing pays a full PR's fixed cost (#1588; batching, #1568, cuts
+the count but not the cost). `23` adds a validator that admits only Evidence-only changes, and a
+dedicated lander App that is the only identity allowed to skip the PR rule. Only Evidence the
+verifier App wrote is admitted: a staging-ref ruleset and a forge-verified writer binding keep any
+other identity from landing verification of its own work, and the lander's own merges of main into
+a staging ref are admitted only when their tree is exactly the merge of their two parents. The lander re-checks scope and writer
+itself and lands only a staging ref's current head, and a post-land audit selected by the push
+(not by commit author) halts the lane on a mismatch, or on an input it cannot read, in a lander push. The verifier App keeps no
+write to main, every job holding a key runs on a fresh GitHub-hosted runner (never the pool that runs
+pull-request CI), and a rejected or stranded landing falls back to the batch Evidence PR. It depends on `11`,
+and that dependency is the real head: its deliverable includes workflow files, which no
+implementer App can push, so they land only through `11`'s workflow-only PR path. It is
+`gate: human` and core-system (a new App, a bypass, a ruleset split). Its `## Context` carries the
+single-point-of-failure line, and the brief pairs each layer with the Verify row that proves it
+holds with the layer above it bypassed.
+
+**Briefs 24-26 end the Evidence-PR conflict churn (#882).** They are three separate options, by
+name: per-file outcomes (`24`), approval carry (`25`) and batched landing (`26`). On a PR-required
+main every verify outcome lands as its own Evidence PR that appends one line to the shared outcomes
+log. The log's `merge=union` attribute (#588) resolves only a LOCAL merge. The forge computes
+mergeability and merges server-side with no merge driver, so each landing turns every open sibling
+CONFLICTING. On 2026-09-27, 19 of 40 open verifier PRs were conflicting, each on that one file and
+nothing else. Clearing one costs a merge of main, a head move past the approval, and a re-review.
+
+- `24` removes the cause. Each outcome becomes one new, immutable file, readers go through one choke
+  point per module, the log is migrated and retired, and its 256 KiB cap class goes with it. The same
+  writer starts refusing the three receipt defects reviewers keep finding.
+- `25` removes the correctness re-review when a keep-current merge of a draft changed nothing. A
+  tool-derived carry verdict stands in for it only when the only new commits are driver-free clean
+  merges of main and the diff is byte-identical. Both flip verbs re-derive it by a different method,
+  a human-landed guard lets the Evidence auto-merge lane arm only on an approval at head and only
+  after re-deriving a carry itself, the forge dismisses it on any later push, and security verdicts
+  are never carried. One residual window is named for the human gate. It depends on
+  `24`: while outcomes share one appended log, every Evidence PR's merge needs the union driver, which
+  the carry refuses. It is `gate: human` because it relaxes a review gate.
+- `26` cuts the PR and review count. One tick's Evidence-only outcomes land in one PR, and a refused
+  entry is left out, not allowed to block the rest. It depends on `24`, because a batch built on the
+  shared log would still conflict.
+
+Until they land, the verify-desk and pr-review-desk skills carry the procedure-only mitigation: an
+Evidence-PR state table over verdict × at head × mergeable whose rows are exclusive and exhaustive,
+each with one owner. The verify desk merges main, one PR at a time, into a CONFLICTING Evidence PR
+whose latest verdict is clear or answered by a push. The review desk re-reviews the delta as soon as
+it is MERGEABLE. An UNKNOWN mergeability is re-read, never acted on.
+
+Relation to fresh-views/04: it planned the same `merge=union` fix for #882, which had already landed
+through #588, and that fix does not reach the forge's merge. Its other half, reporting the
+forge-returned sha, is independent of these three briefs.
+
+Relation to `23`: `23` would land Evidence on main with no PR at all.
+- If it lands, `24` still matters: its remerge of a waiting staging ref is exactly the concurrent-append
+  case, and per-file records reduce its scope rule to "one new record file".
+- `26` stays its fallback path, the batch Evidence PR `23` already names.
+- `25` stays useful for every non-Evidence PR.
+
+`24` amends `23`'s outcome-log clauses if `23` is not yet implemented.
+
 ## Dependency waves
 
 ```
-Wave 0: [01 probes+observer]  [05 per-class caps]  [06 workpad]  [09 CI fan-out]  [10 workflow-App wiring]
-Wave 1: [02 run-stop] ← 01    [04 hooks] ← 01    [07 snapshot] ← 01    [08 objectives A/B] ← 06    [11 workflow-only PR] ← 10
-Wave 2: [03 reconcile] ← 01, 02    [12 retire staging] ← 11    [13 vitals resource block] ← 07
+Wave 0: [01 probes+observer]  [05 per-class caps]  [06 workpad]  [09 CI fan-out]  [10 workflow-App wiring]  [24 per-file outcomes]
+Wave 1: [02 run-stop] ← 01    [04 hooks] ← 01    [07 snapshot] ← 01    [08 objectives A/B] ← 06    [11 workflow-only PR] ← 10    [25 approval carry] ← 24    [26 batched Evidence] ← 24
+Wave 2: [03 reconcile] ← 01, 02    [12 retire staging] ← 11    [13 vitals resource block] ← 07    [23 Evidence lander] ← 11
 Wave 3: [14 budget-driven recycle] ← 04, 13
 Wave 4: [15 local host + fleet aggregate] ← 13, 14
 ```
 
-Critical paths: `01 → 02 → 03` (supervision), `10 → 11 → 12` (workflow landing), and
-`01 → 07 → 13 → 14 → 15` (vitals delta) — three independent chains.
+Critical paths: `01 → 02 → 03` (supervision), `10 → 11 → 12` / `10 → 11 → 23` (workflow landing),
+`01 → 07 → 13 → 14 → 15` (vitals delta), and `24 → 25` / `24 → 26` (Evidence churn).
+The chains are independent of each other.
 
 ## Shared conventions
 

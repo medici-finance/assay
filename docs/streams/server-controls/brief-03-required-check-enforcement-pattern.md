@@ -118,7 +118,7 @@ Options:
 3. **Reject** — the pattern is parked and no fine-grained required check is standardised until a
    different design is agreed.
 
-Default if no answer: none — the pattern blocks until answered, since briefs that build on it
+Default if no answer: none — blocks until answered, since briefs that build on the pattern
 cannot safely start without it.
 
 ## Ground rules

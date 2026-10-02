@@ -4,13 +4,42 @@ import copy
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import tempfile
 import unittest
 
-CELLCTL = Path(__file__).resolve().parents[1] / 'cellctl'
-EXAMPLE = CELLCTL.parent / 'examples/model-policy.json'
+CELLCTL = Path(__file__).resolve().parents[1] / 'testdata' / 'cellctl-shell-oracle.sh'
+EXAMPLE = Path(__file__).resolve().parents[1] / 'examples/model-policy.json'
+TESTS = Path(__file__).resolve().parent
+
+# The offline stand-in for the launcher's `git -C <repo> fetch --no-tags origin main`. It keeps a
+# real fetch's whole contract, not just its exit code: exit 0 AND a FETCH_HEAD naming the fetched
+# main. The launcher removes FETCH_HEAD before its boot fetch and refuses to boot when the fetch
+# writes none (#1853), so a stub that only exits 0 reads as a failed fetch. The fixture repo's own
+# refs/remotes/origin/main stands in for the remote's main. Every other git call is the real git.
+FETCH_STUB = r'''#!/bin/sh
+case " $* " in *" fetch "*)
+  dir=.; prev=
+  for a do [ "$prev" = -C ] && dir=$a; prev=$a; done
+  sha=$(@GIT@ -C "$dir" rev-parse --verify -q refs/remotes/origin/main) || exit 1
+  fh=$(@GIT@ -C "$dir" rev-parse --path-format=absolute --git-path FETCH_HEAD) || exit 1
+  printf '%s\t\tbranch main of origin\n' "$sha" > "$fh" || exit 1
+  exit 0;;
+esac
+exec @GIT@ "$@"
+'''
+
+# The defect class behind #1936: a test's git stub whose fetch arm short-circuits with `exit`
+# (never reaching the real git) without writing the FETCH_HEAD the launcher reads. A spy arm that
+# falls through to the real git is fine; an arm that exits must write FETCH_HEAD itself.
+FETCH_ARM = re.compile(r'\*" fetch "\*[^)]*\)(.*?);;', re.S)
+
+
+def fetch_arm_defects(text):
+    return [m.group(0) for m in FETCH_ARM.finditer(text)
+            if re.search(r'\bexit\b', m.group(1)) and 'FETCH_HEAD' not in m.group(1)]
 
 
 class ModelPolicyTests(unittest.TestCase):
@@ -69,7 +98,7 @@ else:
         p=self.bin/'tmux'; p.write_text('#!/bin/sh\nexit 0\n'); p.chmod(0o755)
         # A stub fetch keeps the launch integration offline while preserving real local git.
         real_git=subprocess.check_output(['which','git'],text=True).strip()
-        p=self.bin/'git'; p.write_text('#!/bin/sh\ncase " $* " in *" fetch "*) exit 0;; esac\nexec '+shlex.quote(real_git)+' "$@"\n'); p.chmod(0o755)
+        p=self.bin/'git'; p.write_text(FETCH_STUB.replace('@GIT@',shlex.quote(real_git))); p.chmod(0o755)
 
     def git(self,*args):
         return subprocess.run(['git','-C',str(self.repo),*args],check=True,capture_output=True,text=True)
@@ -126,7 +155,7 @@ else:
 
     def test_explicit_override_routes_provider_and_tier(self):
         r=self.resolve(provider='kimi',requested='opus')
-        self.assertEqual((r['model'],r['effort']),('k3[1m]','high'))
+        self.assertEqual((r['model'],r['effort']),('k3-256k','high'))
         r=self.resolve(harness='codex')
         self.assertEqual((r['provider'],r['harness']),('codex','codex'))
 
@@ -191,6 +220,24 @@ else:
     def test_unknown_effort_field_refuses(self):
         self.policy['roles']['pr-review-desk']['effort']='max'
         self.save(); self.resolve(ok=False)
+
+    def test_fetch_stub_writes_fetch_head(self):
+        # The stub honours the fetch contract on its own, independent of the launcher.
+        fh=self.repo/'.git/FETCH_HEAD'; fh.unlink()
+        subprocess.run([str(self.bin/'git'),'-C',str(self.repo),'fetch','--no-tags','origin','main'],check=True,env=self.env)
+        self.assertTrue(fh.is_file(),'stub fetch exited 0 but wrote no FETCH_HEAD')
+        self.assertEqual(self.git('rev-parse','--verify','FETCH_HEAD').stdout,self.git('rev-parse','refs/remotes/origin/main').stdout)
+
+    def test_no_fetch_stub_exits_without_fetch_head(self):
+        # Class guard: no git stub in this suite may exit from its fetch arm without FETCH_HEAD.
+        planted='case " $* " in *" fe'+'tch "*) exit 0;; esac'  # positive control: must be flagged
+        self.assertEqual(len(fetch_arm_defects(planted)),1)
+        self.assertEqual(fetch_arm_defects(FETCH_STUB),[])
+        scanned=sorted(TESTS.glob('*.test.*'))
+        self.assertIn(Path(__file__).resolve(),scanned)
+        for path in scanned:
+            with self.subTest(path=path.name):
+                self.assertEqual(fetch_arm_defects(path.read_text()),[])
 
     def test_real_exec_argv_and_env(self):
         # Reuse local worktrees; launcher fetch is stubbed, model binaries only record argv.

@@ -33,10 +33,11 @@ package deskkit
 // exemption — a CHANGES_REQUESTED whose sole blockers were external prerequisites that later
 // changed (brief 21). It follows this file's discipline exactly: an EXPLICIT typed
 // declaration, never prose; grant-direction markers that skip fenced code; and a decision
-// that fails closed on every unestablished clause. The two exemptions are the only two ways
-// an unchanged-head APPROVED over a standing rejection may be honoured, and keeping them
-// side by side is deliberate — neither can be widened without the other's discipline being
-// visible next to it.
+// that fails closed on every unestablished clause. bodyeditcr.go is the THIRD, under the
+// same discipline: a CHANGES_REQUESTED whose sole blocker was the PR body, answered by a
+// documented body edit. These three are the only ways an unchanged-head APPROVED over a
+// standing rejection may be honoured, and keeping them side by side is deliberate — none can
+// be widened without the others' discipline being visible next to it.
 
 import "regexp"
 

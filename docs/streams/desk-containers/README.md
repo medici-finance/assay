@@ -110,8 +110,9 @@ beside `04`. `08` hangs off no edge at all.
 ### The `cellctl` chain — `09 → 10 → 11` (#1193)
 
 A second, independent chain, numbered from wave 0 because it shares no edge with the image
-path above: it lives in the host launcher (`tools/cellctl/cellctl`, `docs/cellctl.md`), not
-in `containers/`. #1193 records why: a host-local cell that must NOT inherit the operator's
+path above: it lives in the host launcher (the Go program `tools/desk/cmd/cellctl`, its shell
+test oracle `tools/cellctl/testdata/cellctl-shell-oracle.sh`, and `docs/cellctl.md`), not in
+`containers/`. #1193 records why: a host-local cell that must NOT inherit the operator's
 shell had no kind to register under, so an out-of-tree bridge grew beside the launcher, and
 the launcher itself already runs as three divergent shell copies on one machine.
 

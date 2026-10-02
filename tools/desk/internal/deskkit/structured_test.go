@@ -393,7 +393,10 @@ func pathLikeRatioRule(run string) bool {
 // flag remains a stop AND advertises the flag; with the flag the write proceeds and an
 // audit row lands; and nothing here can take an UNLOGGED bypass.
 func TestScanOverrideIsLoggedOrRefused(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	// setup, not a bare HOME redirect: it points the audit sink at this test's own temp dir
+	// AND neutralises the ambient session variables, so the override row (and its stderr
+	// echo) carry the fixture session rather than whichever desk session runs the suite.
+	setup(t)
 	body := []byte("token " + scanGHToken)
 	scan := ScanSurface("PR body", body)
 	if scan == nil {

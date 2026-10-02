@@ -29,7 +29,6 @@ type postBackend interface {
 
 	slug() (owner, name string)
 	getPR(pr int) (*prInfo, error)
-	getPRHead(pr int) (string, error)
 	getIssue(n int) (*issueInfo, error)
 	// getIssueTyped is getIssue for a caller that has STATED which kind `n` names (#1091 /
 	// the sibling of assay#1087's deskfile attach --kind). It exists so `deskpost comment
@@ -134,15 +133,10 @@ func (b *forgeBackend) getPR(pr int) (*prInfo, error) {
 	out.User.Login = p.Author.Login
 	out.User.ID = p.Author.ID
 	out.Head.SHA = p.HeadSHA
-	return out, nil
-}
-
-func (b *forgeBackend) getPRHead(pr int) (string, error) {
-	p, err := b.fg.GetPullRequest(b.repo, pr)
-	if err != nil {
-		return "", err
+	for _, l := range p.Labels {
+		out.Labels = append(out.Labels, prLabel{Name: l})
 	}
-	return p.HeadSHA, nil
+	return out, nil
 }
 
 func (b *forgeBackend) listFiles(pr int) ([]prFile, error) {
@@ -229,13 +223,10 @@ func (b *forgeBackend) stampTimeline(pr int) (deskkit.StampTimeline, error) {
 func (b *forgeBackend) claimLiveness(repo string, pr int) deskkit.ClaimLiveness {
 	// Mirrors ghClient.claimLiveness exactly, reading the review-claim family through this
 	// backend's OWN resolved Forge rather than a second ForgeFor construction. Every uncertain
-	// path is Unknown, which changes nothing; only a POSITIVELY empty family ages a stamp out.
-	prefix, ok := deskkit.ReviewClaimFamilyRefPrefix(repo, pr)
-	if !ok {
-		return deskkit.ClaimLivenessUnknown
-	}
-	refs, rerr := b.fg.MatchingRefs(b.repo, prefix)
-	return deskkit.ReviewClaimLivenessFromMatchingRefs(refs, prefix, rerr)
+	// path is Unknown, which changes nothing; only ALL candidate families positively empty age a stamp out.
+	return deskkit.ReadReviewClaims(repo, pr, func(prefix string) ([]string, error) {
+		return b.fg.MatchingRefs(b.repo, prefix)
+	})
 }
 
 func (b *forgeBackend) headCommitAuthor(sha string) (string, error) {

@@ -233,9 +233,9 @@ func TestResolveDirectAndAliasRequestsDeniesOpus5Variants(t *testing.T) {
 			t.Errorf("requested=%q must refuse, resolved instead", v)
 		}
 	}
-	// Deny anchoring: Opus 5.0 stays banned (canonical id, its `[1m]` / gateway spellings, the
+	// Deny by version: Opus 5.0 stays banned (canonical id, its `[1m]` / gateway spellings, the
 	// no-hyphen `Opus5`, and the explicit `-5-0` / `-5.0` spellings of the same tier), while
-	// Opus 5.5 — a valid top tier — is NOT banned, because `opus-5-5` does not end in `opus-5`.
+	// Opus 5.5 — a valid top tier — is NOT banned, because `opus-5-5` names minor 5, not 0.
 	for _, v := range []string{
 		"claude-opus-5", "Opus5", "claude-opus-5[1m]", "gateway/claude-opus-5",
 		"claude-opus-5-0", "claude-opus-5.0",
@@ -251,6 +251,66 @@ func TestResolveDirectAndAliasRequestsDeniesOpus5Variants(t *testing.T) {
 		if policyDenied(v, m.Banned) {
 			t.Errorf("policyDenied(%q) = true, want false (not the Opus 5.0 tier)", v)
 		}
+	}
+}
+
+// opus50Suffixed is every suffixed spelling of the Opus 5.0 ID the built-in prohibition must
+// treat as the SAME tier as the unsuffixed `claude-opus-5`: a date stamp, a date on the explicit
+// `-5-0` / `-5.0` spellings, a provider `@date` / `-vN:N` tail, and a non-numeric variant tail —
+// in any case, behind a gateway prefix, and with or without `[1m]`.
+var opus50Suffixed = []string{
+	"claude-opus-5-20260101", "CLAUDE-OPUS-5-20260101", "claude-opus-5-20260101[1m]",
+	"gateway/claude-opus-5-20260101", "claude-opus-5-0-20260101", "claude-opus-5.0-20260101",
+	"claude-opus-5@20260101", "anthropic.claude-opus-5-20260101-v1:0", "claude-opus-5-v1:0",
+	"claude-opus-5-thinking", "Opus5-20260101", "claude-opus-5-0-thinking",
+}
+
+// opus5xAllowed is every non-5.0 ID the prohibition must keep letting through — each of them is
+// allowed on main today, so a matcher that widens to catch suffixes must not reach them: Opus 5.5
+// in every spelling (dated too), the other 5.x minors, a two-digit minor, `opus-50` (a different
+// major), dated 4.x / 6.x ids, and non-opus ids.
+var opus5xAllowed = []string{
+	"claude-opus-5-5", "Claude-Opus-5-5", "claude-opus-5-5[1m]", "claude-opus-5.5",
+	"gateway/claude-opus-5-5", "claude-opus-5-5-20260101", "claude-opus-5-5@20260101",
+	"claude-opus-5-6", "claude-opus-5-6-20260101", "claude-opus-5.6", "claude-opus-5-10",
+	"opus5-5", "claude-opus-50", "claude-opus-4-8[1m]", "claude-opus-4-20250514",
+	"claude-opus-6-20270101", "claude-fable-5-1", "claude-sonnet-5", "gpt-5.6-terra", "opusculum",
+}
+
+// TestBanCoversSuffixedOpus50 pins the built-in prohibition's ID-matching coverage: a suffixed
+// Opus 5.0 ID is refused exactly as the unsuffixed one is — by the deny check, by an explicit
+// request, and as a policy tier target even with `deny` emptied — while claude-opus-5-5 and the
+// other 5.x IDs stay allowed.
+func TestBanCoversSuffixedOpus50(t *testing.T) {
+	m := loadExamplePolicy(t)
+	for _, v := range opus50Suffixed {
+		if !policyDenied(v, m.Banned) {
+			t.Errorf("policyDenied(%q) = false, want true (a suffixed Opus 5.0 id)", v)
+		}
+		if _, err := m.Resolve("pr-review-desk", "", v, ""); err == nil {
+			t.Errorf("requested=%q must refuse, resolved instead", v)
+		}
+	}
+	for _, v := range opus5xAllowed {
+		if policyDenied(v, m.Banned) {
+			t.Errorf("policyDenied(%q) = true, want false (not the Opus 5.0 tier)", v)
+		}
+	}
+	for _, v := range []string{"claude-opus-5-20260101", "claude-opus-5-0-20260101[1m]"} {
+		path := writeMutatedPolicy(t, func(p map[string]any) {
+			p["deny"] = []any{}
+			p["providers"].(map[string]any)["anthropic"].(map[string]any)["tiers"].(map[string]any)["strong"].(map[string]any)["model"] = v
+		})
+		if _, err := loadModelPolicy(path); err == nil {
+			t.Errorf("tier target %q must refuse even with an empty deny list", v)
+		}
+	}
+	path := writeMutatedPolicy(t, func(p map[string]any) {
+		p["deny"] = []any{}
+		p["providers"].(map[string]any)["anthropic"].(map[string]any)["tiers"].(map[string]any)["strong"].(map[string]any)["model"] = "claude-opus-5-5-20260101"
+	})
+	if _, err := loadModelPolicy(path); err != nil {
+		t.Errorf("a dated Opus 5.5 tier target must load: %v", err)
 	}
 }
 
@@ -270,7 +330,7 @@ func TestResolveUnknownRoleAndProvider(t *testing.T) {
 func TestResolveExplicitOverrideRoutesProviderAndTier(t *testing.T) {
 	m := loadExamplePolicy(t)
 	res, err := m.Resolve("pr-review-desk", "kimi", "opus", "")
-	if err != nil || res.Model != "k3[1m]" || res.Effort != "high" {
+	if err != nil || res.Model != "k3-256k" || res.Effort != "high" {
 		t.Fatalf("provider override = %+v, err=%v", res, err)
 	}
 	res, err = m.Resolve("pr-review-desk", "", "", "codex")
@@ -365,8 +425,8 @@ func TestClaudeEnvAndCodexArgsPropagateEffort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.ClaudeEnv["CLAUDE_CODE_EFFORT_LEVEL"] != "high" {
-		t.Errorf("CLAUDE_CODE_EFFORT_LEVEL = %q", res.ClaudeEnv["CLAUDE_CODE_EFFORT_LEVEL"])
+	if _, ok := res.ClaudeEnv["CLAUDE_CODE_EFFORT_LEVEL"]; ok {
+		t.Errorf("CLAUDE_CODE_EFFORT_LEVEL must stay unset (it outranks agent frontmatter): %q", res.ClaudeEnv["CLAUDE_CODE_EFFORT_LEVEL"])
 	}
 	if res.ClaudeEnv["ANTHROPIC_MODEL"] != res.Model || res.ClaudeEnv["CLAUDE_CODE_SUBAGENT_MODEL"] != res.Model {
 		t.Errorf("ANTHROPIC_MODEL/CLAUDE_CODE_SUBAGENT_MODEL should mirror the resolved model, got %+v", res.ClaudeEnv)

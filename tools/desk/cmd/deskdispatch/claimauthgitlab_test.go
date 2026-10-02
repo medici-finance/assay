@@ -51,7 +51,7 @@ func glClaimRun(t *testing.T, useGoBinary bool, extra ...string) (record string,
 		{match: "remote get-url origin", stdout: "git@gitlab.com:" + glProject + ".git"},
 		{match: "deskwt add", stdout: "/private/tmp/worker-home"},
 	}
-	args := append([]string{"item-1", "--root", root, "--repo", glProject,
+	args := append([]string{"example-project--pr-7", "--root", root, "--repo", glProject,
 		"--prompt-file", filepath.Join(t.TempDir(), "p.md")}, extra...)
 	rc = run(args)
 	return record, mints, rc

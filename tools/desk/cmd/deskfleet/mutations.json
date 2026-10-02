@@ -1,0 +1,203 @@
+{
+  "test": "go test ./cmd/deskfleet/... -count=1",
+  "control": {
+    "name": "CONTROL — the role table widens reviewer's scopes (the privilege escalation the table exists to prevent)",
+    "file": "cmd/deskfleet/tables.go",
+    "old": "{\"reviewer\", \"developer\", 30, []string{\"api\"}},",
+    "new": "{\"reviewer\", \"developer\", 30, []string{\"api\", \"write_repository\"}},"
+  },
+  "mutations": [
+    {
+      "name": "row 6 — the minted token is logged (a debug line prints the credential)",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tpat.Token = \"\"\n\tif werr != nil {",
+      "new": "\tp.errf(\"debug: minted %s\", pat.Token)\n\tpat.Token = \"\"\n\tif werr != nil {"
+    },
+    {
+      "name": "row 7 — the deskkit custody evaluation is skipped (every written file is assumed verified)",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tv := p.e.classifyCustody(written)",
+      "new": "\tv := deskkit.CustodyVerdict{State: deskkit.CustodyVerified}"
+    },
+    {
+      "name": "row 8 — a definite custody failure is treated as nil (a refused file is reported usable)",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tcase deskkit.CustodyVerified:\n",
+      "new": "\tcase deskkit.CustodyVerified, deskkit.CustodyRefused:\n"
+    },
+    {
+      "name": "option 2 — an inconclusive read-back refuses instead of warning (the ruling's WARN arm lost)",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tcase deskkit.CustodyInconclusive:\n",
+      "new": "\tcase deskkit.CustodyState(-1):\n"
+    },
+    {
+      "name": "row 11 — a partial run prints no report of the tokens it minted",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tif len(p.minted) == 0 && len(p.tokenless) == 0 && len(p.unknown) == 0 {\n\t\t// Only true",
+      "new": "\tif true {\n\t\t// Only true"
+    },
+    {
+      "name": "row 11 — the report omits the most recently minted token",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tfor _, m := range p.minted {\n\t\tfile := m.Path",
+      "new": "\tfor _, m := range p.minted[:len(p.minted)-1] {\n\t\tfile := m.Path"
+    },
+    {
+      "name": "row 11 — a partial run revokes the tokens it minted (the ruling is report, never auto-revoke)",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\treport := p.partialReport(s.msg)",
+      "new": "\tfor _, m := range p.minted {\n\t\t_, _ = p.gl.do(\"DELETE\", \"/personal_access_tokens/\"+strconv.FormatInt(m.TokenID, 10), nil)\n\t}\n\treport := p.partialReport(s.msg)"
+    },
+    {
+      "name": "row 6 — redirects are followed (the custom PRIVATE-TOKEN header is forwarded to the redirect target)",
+      "file": "cmd/deskfleet/client.go",
+      "old": "\tc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }\n",
+      "new": ""
+    },
+    {
+      "name": "row 3 — --dry-run falls through to the real run",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\t\tp.dryRun()\n\t\treturn exitOK\n",
+      "new": "\t\tp.dryRun()\n"
+    },
+    {
+      "name": "row 5 — an unset GITLAB_API_BASE defaults to a guessed host instead of refusing",
+      "file": "cmd/deskfleet/main.go",
+      "old": "\tif base == \"\" {\n\t\treturn \"\", fmt.Errorf(\"GITLAB_API_BASE is not set",
+      "new": "\tif base == \"\" {\n\t\tbase = \"https://gitlab.com/api/v4\"\n\t}\n\tif false {\n\t\treturn \"\", fmt.Errorf(\"GITLAB_API_BASE is not set"
+    },
+    {
+      "name": "row 12 — a refused POST does not re-apply the rule that was read (main left unprotected)",
+      "file": "cmd/deskfleet/project.go",
+      "old": "\t\tresp, err := p.gl.do(\"POST\", pp+\"/protected_branches\", restoreBody(prev))",
+      "new": "\t\tresp, err := apiResponse{Status: 500}, error(nil)"
+    },
+    {
+      "name": "settings steps — a failed approvals write aborts every later settings step",
+      "file": "cmd/deskfleet/project.go",
+      "old": "\tp.configureApprovals(pp)\n\tp.configureProtectedTags(pp)",
+      "new": "\tp.configureApprovals(pp)\n\tif len(p.failures) > 0 {\n\t\treturn\n\t}\n\tp.configureProtectedTags(pp)"
+    },
+    {
+      "name": "row 14 — GitLab's 409 'already exists' is treated as an error",
+      "file": "cmd/deskfleet/labels.go",
+      "old": "\tcase resp.Status == 409:\n\t\treturn true, nil",
+      "new": "\tcase resp.Status == 409:\n\t\treturn false, errors.New(\"conflict\")"
+    },
+    {
+      "name": "row 13 — the GitHub backend drops the approval-needed row (the forges diverge)",
+      "file": "cmd/deskfleet/labels.go",
+      "old": "\towner, name, _ := strings.Cut(g.repo, \"/\")",
+      "new": "\tif l.Name == \"approval-needed\" {\n\t\treturn false, nil\n\t}\n\towner, name, _ := strings.Cut(g.repo, \"/\")"
+    },
+    {
+      "name": "row 10 — the written name drifts from the name desktoken --forge gitlab <role> reads (the old <prefix>-<role>-bot spelling)",
+      "file": "cmd/deskfleet/tables.go",
+      "old": "func tokenFileName(role string) string { return \"gitlab-\" + role + \".token\" }",
+      "new": "func tokenFileName(role string) string { return \"gitlab-\" + role + \"-bot.token\" }"
+    },
+    {
+      "name": "S1/F1 — a stop before any token was minted prints no report (the pre-fix early return: N = 0 drops the created account)",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tif len(p.minted) == 0 && len(p.tokenless) == 0 && len(p.unknown) == 0 {",
+      "new": "\tif len(p.minted) == 0 {"
+    },
+    {
+      "name": "S1 — a mint whose outcome is unknown (5xx / dropped connection) is treated as a definite refusal",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tif outcomeUnknown(resp, err, 201) {\n\t\t// The mint may have happened",
+      "new": "\tif false {\n\t\t// The mint may have happened"
+    },
+    {
+      "name": "F1 — an account created before a failed membership step is not recorded",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\t\tif createdNow {\n\t\t\tp.tokenless = append(",
+      "new": "\t\tif false {\n\t\t\tp.tokenless = append("
+    },
+    {
+      "name": "F2 — the read-back parses an absent merge level as the intended 40",
+      "file": "cmd/deskfleet/project.go",
+      "old": "\t\tpush, merge, forceDefault = levelNone, levelNone, \"unknown\"",
+      "new": "\t\tpush, merge, forceDefault = levelNone, mergeAccessLevel, \"unknown\""
+    },
+    {
+      "name": "F3 — a new account's avatar is never uploaded although --avatars-dir was given",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\t\t// The avatar goes on now, as the account itself (only it can set its own avatar).\n\t\tp.uploadAvatar(r.Role, user)",
+      "new": "\t\t// The avatar goes on now, as the account itself (only it can set its own avatar)."
+    },
+    {
+      "name": "F3 — the avatar is set with the OWNER credential instead of the role's own token",
+      "file": "cmd/deskfleet/avatars.go",
+      "old": "\tc := newGitLabClient(p.base, p.e.http, tok)",
+      "new": "\tc := newGitLabClient(p.base, p.e.http, tok)\n\tif p.gl != nil {\n\t\tc = p.gl\n\t}"
+    },
+    {
+      "name": "F3 — the closing summary is silent about a skipped avatar step",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\t\tp.outf(\"SKIPPED STEP — avatars: %s\", avatarsSkippedNotice(p.o))",
+      "new": ""
+    },
+    {
+      "name": "F4/S2 — deskfleet labels contacts the forge without printing its target first",
+      "file": "cmd/deskfleet/labels.go",
+      "old": "\tfmt.Fprintf(e.stdout, \"target: %s %s %s\\n\", base, *forge, target)",
+      "new": ""
+    },
+    {
+      "name": "A6 — the HTTPS-only guard accepts plain http to a non-loopback host",
+      "file": "cmd/deskfleet/client.go",
+      "old": "\t\tif h == \"127.0.0.1\" || h == \"::1\" || h == \"localhost\" {",
+      "new": "\t\tif h != \"\" {"
+    },
+    {
+      "name": "A7 — the avatar icon is read with os.ReadFile again (follows a symbolic link, no size cap)",
+      "file": "cmd/deskfleet/avatars.go",
+      "old": "\tdata, err := readAvatarFile(img)",
+      "new": "\tdata, err := os.ReadFile(img)"
+    },
+    {
+      "name": "A7 — the icon's type is read through the link (os.Stat), so a symbolic link to a local file is uploaded",
+      "file": "cmd/deskfleet/avatars.go",
+      "old": "\tfi, err := os.Lstat(path)",
+      "new": "\tfi, err := os.Stat(path)"
+    },
+    {
+      "name": "A7 — the avatar size cap is raised past the forge's 200 KiB limit",
+      "file": "cmd/deskfleet/avatars.go",
+      "old": "const maxAvatarBytes = 200 << 10",
+      "new": "const maxAvatarBytes = 200 << 20"
+    },
+    {
+      "name": "advisory — the suggested --avatars-only command prints the out-dir path unquoted (breaks on a path with a space)",
+      "file": "cmd/deskfleet/avatars.go",
+      "old": "--out-dir \\\"%s\\\" (it signs in",
+      "new": "--out-dir %s (it signs in"
+    },
+    {
+      "name": "custody link rule — the out-dir token file is stat'd through a link again (os.Stat for LstatCustody: an out-of-directory link's target is sent as the role's PRIVATE-TOKEN)",
+      "file": "cmd/deskfleet/main.go",
+      "old": "\t\ttarget, fi, err = deskkit.LstatCustody(path, deskkit.CustodySameDirLink)",
+      "new": "\t\ttarget = path\n\t\tfi, err = os.Stat(path)"
+    },
+    {
+      "name": "custody link rule — the avatar step reads its gitlab-<role>.token as an operator-named file (any link followed)",
+      "file": "cmd/deskfleet/avatars.go",
+      "old": "readCredentialFile(\"token file\", tokPath, custodyTokenFile)",
+      "new": "readCredentialFile(\"token file\", tokPath, operatorNamedFile)"
+    },
+    {
+      "name": "custody link rule — over-restricted: the documented same-directory token link is refused (CustodyNoLinks)",
+      "file": "cmd/deskfleet/main.go",
+      "old": "deskkit.LstatCustody(path, deskkit.CustodySameDirLink)",
+      "new": "deskkit.LstatCustody(path, deskkit.CustodyNoLinks)"
+    },
+    {
+      "name": "--no-avatars — contradicting --avatars-dir / --avatars-only is accepted",
+      "file": "cmd/deskfleet/provision.go",
+      "old": "\tif o.noAvatars && (o.avatarsOnly || o.avatarsDir != \"\") {",
+      "new": "\tif false && o.noAvatars && (o.avatarsOnly || o.avatarsDir != \"\") {"
+    }
+  ]
+}

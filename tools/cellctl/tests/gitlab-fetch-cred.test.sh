@@ -6,7 +6,10 @@
 #   desk   on a gitlab cell, the boot fetch in cmd_desk runs with GIT_TERMINAL_PROMPT=0 and the
 #          inline credential helper reading DESKD_GITLAB_TOKEN_FILE — never a token in the URL,
 #          never persisted into the operator's git config (a stray git-credential-store cache is
-#          untouched); on a github cell the fetch is the plain, unchanged form
+#          untouched); on a github cell the fetch is the plain, unchanged form; a fetch that fails
+#          outright stops the boot (exit 3, naming the recovery, releasing the fetch lock); a
+#          FETCH_HEAD git cannot rewrite (read-only) never hands the boot a previous boot's main;
+#          one that cannot be removed either is a refusal (exit 3, lock released)
 #   check  the gitlab arm gets a new row proving `git ls-remote` succeeds with prompts disabled,
 #          using the same helper — ok when the token file is readable and the remote answers,
 #          MISS when the token file is missing/unreadable or the remote is unreachable, so a
@@ -28,9 +31,10 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The binary under test. $CELLCTL lets the SAME suite run against either implementation
 # (the bash oracle, the default, or the Go port) — desk-containers/10.
-CELLCTL="${CELLCTL:-$HERE/../cellctl}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
+CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-gitlab-fetch.XXXXXX")" && pwd -P)"
-trap 'rm -rf "$T"' EXIT
+# chmod first: the unremovable-FETCH_HEAD case below leaves a read-only directory if it aborts.
+trap 'chmod -R u+w "$T" 2>/dev/null; rm -rf "$T"' EXIT
 fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }
 
@@ -138,6 +142,86 @@ assert "boot fetch logged exactly once" '[[ "$(wc -l < "$CELLCTL_TEST_GIT_LOG" |
 assert "github boot fetch carries no credential.helper flag (gh's own helper already answers)" '! grep -q "credential.helper" "$CELLCTL_TEST_GIT_LOG"'
 assert "github boot fetch carries no GIT_TERMINAL_PROMPT override" 'grep -q "^GIT_TERMINAL_PROMPT=<unset> " "$CELLCTL_TEST_GIT_LOG"'
 assert "still the plain fetch: -C <repo> fetch --no-tags origin main" 'grep -q -- "fetch --no-tags origin main" "$CELLCTL_TEST_GIT_LOG"'
+
+# ---------------------------------------------------------------- failed fetch: refused, with the way out
+# The boot above left a FETCH_HEAD behind. A fetch that then fails outright (a credential helper
+# answering with a dead token, in the field; an unreachable origin here) must stop the boot with
+# exit 3, a message naming the likely cause and the recovery, and the fetch lock released. git
+# itself truncates FETCH_HEAD before it contacts the remote, so this case never read a stale sha
+# even before the fix; what it pins is the refusal's shape. The stale-main cases are the next two.
+echo "[desk: failed fetch refuses with the recovery named, lock released]"
+assert "precondition: the earlier boot left a FETCH_HEAD" '"$REALGIT" -C "$T/gh-checkout" rev-parse -q --verify FETCH_HEAD >/dev/null'
+"$REALGIT" -C "$T/gh-checkout" remote set-url origin "$T/no-such-origin.git"
+out="$("$CELLCTL" desk gh-cell worker-desk 2>&1)" && rc=0 || rc=$?
+assert "boot refuses (exit 3) when the fetch fails" '[[ $rc -eq 3 ]]'
+[[ "$rc" -eq 3 ]] || echo "$out"
+assert "the refusal names the stale-main risk and the credential-helper check" 'grep -q "wrote no FETCH_HEAD — refusing to boot on a stale main" <<<"$out" && grep -qF "config --show-origin --get-regexp" <<<"$out"'
+assert "the copy-paste command quotes the checkout path" 'grep -qF "git -C '"'"'$T/gh-checkout'"'"' config" <<<"$out"'
+assert "the refusal warns not to paste the helper output anywhere public" 'grep -q "do not paste it into a PR or issue" <<<"$out"'
+assert "the refusal names the recovery and the re-run" 'grep -q "Re-mint or replace the dead credential, or remove the stale helper entry" <<<"$out" && grep -q "re-run: cellctl desk gh-cell worker-desk" <<<"$out"'
+assert "the NOTICE no longer claims a ref-lock race" '! grep -q "ref-lock race" <<<"$out" && grep -q "checking whether it wrote FETCH_HEAD" <<<"$out"'
+assert "the fetch lock is released on the refusal (the next boot is not a 60s wait)" '[[ ! -e "$T/gh-checkout/.git/cellctl-fetch.lock" ]]'
+"$REALGIT" -C "$T/gh-checkout" remote set-url origin "$T/origin.git"
+
+# A new commit on origin's main, returned so the boot can be checked for having it.
+advance_origin(){
+  echo "$1" > "$T/seed/$1.txt"
+  "$REALGIT" -C "$T/seed" add -A && "$REALGIT" -C "$T/seed" -c user.name=x -c user.email=x@example.invalid commit -q -m "$1"
+  "$REALGIT" -C "$T/seed" push -q origin main
+  "$REALGIT" -C "$T/seed" rev-parse HEAD
+}
+GHWT="$GHCELL/worktrees/worker-desk"
+
+# ---------------------------------------------------------------- read-only FETCH_HEAD: never a stale main
+# The stale-main path git's own truncate does not cover: a FETCH_HEAD git cannot open for writing.
+# The fetch then fails and leaves the PREVIOUS boot's sha in the file; without the pre-fetch
+# removal, the boot read it and went ahead on the old main with exit 0. Removal (the directory is
+# writable) lets the fetch write a fresh one, so the boot must land on origin's NEW main.
+# Permission bits do not bind root, so the case would pass vacuously there — skipped instead.
+echo "[desk: read-only FETCH_HEAD — the boot still lands on origin's new main]"
+if [[ "$(id -u)" -eq 0 ]]; then
+  echo "  skip  running as root: file modes do not stop git from writing FETCH_HEAD"
+else
+  out="$("$CELLCTL" desk gh-cell worker-desk 2>&1)" && rc=0 || rc=$?
+  assert "precondition: a good boot leaves a FETCH_HEAD" '[[ $rc -eq 0 ]] && "$REALGIT" -C "$T/gh-checkout" rev-parse -q --verify FETCH_HEAD >/dev/null'
+  new_main="$(advance_origin readonly-fetch-head)"
+  chmod 444 "$T/gh-checkout/.git/FETCH_HEAD"
+  out="$("$CELLCTL" desk gh-cell worker-desk 2>&1)" && rc=0 || rc=$?
+  assert "boot succeeds (exit 0)" '[[ $rc -eq 0 ]]'
+  [[ "$rc" -eq 0 ]] || echo "$out"
+  assert "the booted worktree contains origin's NEW main (not the previous boot's)" '"$REALGIT" -C "$GHWT" merge-base --is-ancestor "$new_main" HEAD'
+  chmod 644 "$T/gh-checkout/.git/FETCH_HEAD" 2>/dev/null || true
+fi
+
+# ---------------------------------------------------------------- unremovable FETCH_HEAD: refused
+# If the removal itself fails (and git cannot rewrite the file either), reading FETCH_HEAD would
+# be the previous boot's main — so the boot is refused, exit 3, lock released. Made portable
+# without root or file flags: CELL_REPO is pointed at a LINKED worktree, whose FETCH_HEAD lives in
+# its own per-worktree git dir, and that directory is made read-only. The fetch lock lives in the
+# COMMON git dir, so it is still taken and must still be released.
+echo "[desk: unremovable FETCH_HEAD — refused, never a stale main]"
+if [[ "$(id -u)" -eq 0 ]]; then
+  echo "  skip  running as root: directory modes do not stop the removal"
+else
+  "$REALGIT" -C "$T/gh-checkout" worktree add -q --detach "$T/gh-linked" main 2>/dev/null
+  sed -i.bak "s#^CELL_REPO=.*#CELL_REPO=$T/gh-linked#" "$GHCELL/cell.env"; rm -f "$GHCELL/cell.env.bak"
+  out="$("$CELLCTL" desk gh-cell worker-desk 2>&1)" && rc=0 || rc=$?
+  linked_fh="$("$REALGIT" -C "$T/gh-linked" rev-parse --path-format=absolute --git-path FETCH_HEAD)"
+  assert "precondition: a good boot from the linked worktree leaves its own FETCH_HEAD" '[[ $rc -eq 0 && -s "$linked_fh" && "$linked_fh" != "$T/gh-checkout/.git/FETCH_HEAD" ]]'
+  new_main="$(advance_origin unremovable-fetch-head)"
+  chmod 444 "$linked_fh"; chmod 555 "$(dirname "$linked_fh")"
+  out="$("$CELLCTL" desk gh-cell worker-desk 2>&1)" && rc=0 || rc=$?
+  chmod 755 "$(dirname "$linked_fh")"; chmod 644 "$linked_fh"
+  assert "boot refuses (exit 3) when FETCH_HEAD cannot be removed" '[[ $rc -eq 3 ]]'
+  [[ "$rc" -eq 3 ]] || echo "$out"
+  assert "the refusal names the file and the stale-main risk" 'grep -qF "cannot remove $linked_fh before the fetch — refusing to boot" <<<"$out" && grep -q "re-run: cellctl desk gh-cell worker-desk" <<<"$out"'
+  assert "the fetch lock is released on this refusal too" '[[ ! -e "$T/gh-checkout/.git/cellctl-fetch.lock" ]]'
+  # With the file removable again, the same cell boots onto the new main — the refusal was the
+  # file, not the fixture.
+  out="$("$CELLCTL" desk gh-cell worker-desk 2>&1)" && rc=0 || rc=$?
+  assert "once removable, the boot succeeds and lands on origin's new main" '[[ $rc -eq 0 ]] && "$REALGIT" -C "$GHWT" merge-base --is-ancestor "$new_main" HEAD'
+  sed -i.bak "s#^CELL_REPO=.*#CELL_REPO=$T/gh-checkout#" "$GHCELL/cell.env"; rm -f "$GHCELL/cell.env.bak"
+fi
 
 # ---------------------------------------------------------------- check: the new gitlab-arm row
 echo "[check: gitlab fetch-transport row]"

@@ -4,7 +4,7 @@
 # Counts every reach-around the desktools-v2 seam contract (docs/streams/desktools-v2/
 # seam-contract.md) bans: a GitHub/GitLab-specific fact appearing outside the two Forge
 # backends (tools/desk/internal/deskkit/forge_github.go, forge_gitlab.go) and their
-# forge_github*_test.go / forge_gitlab*_test.go siblings. Four fact classes, each its own
+# forge_github*_test.go / forge_gitlab*_test.go siblings. Six fact classes, each its own
 # column:
 #
 #   (a) a `gh` subprocess          — exec.Command("gh", …) in Go; a shell/skill script that
@@ -18,6 +18,13 @@
 #   (d) the GitHub REST/GraphQL host literal `api.github.com`, outside forge.go's
 #       GitHubAPIBase — the ONE carve-out beyond the two backends: forge.go is the seam's own
 #       interface file and the literal's single documented canonical home.
+#
+#   (e) a GitLab CLI subprocess (Go, desk/cellctl/skill shell scripts).
+#   (f) /api/v4 or gitlab.com (one matching line counts once; Go and desk shell).
+# Classes e/f exclude only backend/test files and this counter itself in shell;
+# the counter contains pattern definitions, not invocations. No forge.go carve-out
+# applies to f. The existing a-d totals are unchanged; e/f stay separate advisory
+# columns and the desktools-v2/13 baseline records the desk counts only.
 #
 # SCOPE. Two trees, counted and reported SEPARATELY so a drop in one cannot hide a rise in the
 # other (desktools-v2/02 facts):
@@ -92,8 +99,9 @@ gh_sh() {
 
 GH_GO_DESK=$(gh_go "$DESK")
 GH_SH_DESK=$(gh_sh "$DESK")
-# cellctl's main script is extensionless (no --include filter), but its tests/*.test.sh
-# fixtures are excluded the same way every other tree's .test.sh/_test.go is.
+# cellctl's tree is scanned with no --include filter, so the shell oracle under testdata/ (the
+# bash script the Go port is proved against) stays in scope; its tests/*.test.sh fixtures are
+# excluded the same way every other tree's .test.sh/_test.go is.
 GH_SH_CELLCTL=$(grep -rEn "(^|[^A-Za-z0-9_.-])gh (${GH_SUBCMDS})([^A-Za-z0-9_-]|\$)" "$CELLCTL" 2>/dev/null \
   | grep -v -E '\.test\.sh:' \
   | wc -l | tr -d ' ')
@@ -145,6 +153,28 @@ host_literal() {
 CLASS_D_DESK=$(host_literal "$DESK" yes)
 CLASS_D_STATUSGEN=$(host_literal "$STATUSGEN" no)
 
+# ---------- classes (e/f): separate GitLab advisory columns ----------
+
+glab_go() {
+  grep -rEn 'exec\.Command\("glab"' "$1" --include='*.go' 2>/dev/null \
+    | grep -v -E "$BACKEND_EXCLUDE" | grep -v '_test\.go:' | wc -l | tr -d ' '
+}
+GLAB_SUBCMDS='issue|mr|api|auth|repo|release|ci|label|schedule|snippet|variable'
+glab_sh() {
+  grep -rEn "(^|[^A-Za-z0-9_.-])glab (${GLAB_SUBCMDS})([^A-Za-z0-9_-]|\$)" "$1" ${2:-} 2>/dev/null \
+    | grep -v -E '/forge-ban\.sh:|\.test\.sh:' | wc -l | tr -d ' '
+}
+gitlab_literal() {
+  grep -rEn '/api/v4|gitlab\.com' "$1" --include='*.go' --include='*.sh' 2>/dev/null \
+    | grep -v -E "$BACKEND_EXCLUDE" \
+    | grep -v -E '_test\.go:|\.test\.sh:|/forge-ban\.sh:' | wc -l | tr -d ' '
+}
+CLASS_E_DESK=$(( $(glab_go "$DESK") + $(glab_sh "$DESK" "--include=*.sh") + $(glab_sh "$CELLCTL") + $(glab_sh "$SKILLS" "--include=*.sh") ))
+CLASS_E_STATUSGEN=$(glab_go "$STATUSGEN")
+CLASS_F_DESK=$(( $(gitlab_literal "$DESK") + $(gitlab_literal "$CELLCTL") + $(gitlab_literal "$SKILLS") ))
+# statusgen has Go consumers only, matching the scope of the original four classes.
+CLASS_F_STATUSGEN=$(grep -rEn '/api/v4|gitlab\.com' "$STATUSGEN" --include='*.go' 2>/dev/null | grep -v -E "$BACKEND_EXCLUDE" | grep -v '_test\.go:' | wc -l | tr -d ' ')
+
 # ---------- totals ----------
 
 DESK_TOTAL=$((CLASS_A_DESK + CLASS_B_DESK + CLASS_C_DESK + CLASS_D_DESK))
@@ -156,6 +186,8 @@ echo "  class a (gh subprocess):                    desk=$CLASS_A_DESK statusgen
 echo "  class b (hardcoded origin, forge/resolve-scoped): desk=$CLASS_B_DESK statusgen=$CLASS_B_STATUSGEN"
 echo "  class c (pullRequest/mergeRequest GraphQL): desk=$CLASS_C_DESK statusgen=$CLASS_C_STATUSGEN"
 echo "  class d (api.github.com host literal):      desk=$CLASS_D_DESK statusgen=$CLASS_D_STATUSGEN"
+echo "class e (glab subprocess): desk=$CLASS_E_DESK statusgen=$CLASS_E_STATUSGEN"
+echo "class f (GitLab API literal): desk=$CLASS_F_DESK statusgen=$CLASS_F_STATUSGEN"
 echo "statusgen sites: $STATUSGEN_TOTAL"
 
 if [ "${1:-}" = "--baseline" ]; then
@@ -171,7 +203,11 @@ if [ "${1:-}" = "--baseline" ]; then
     mkdir -p "$(dirname "$BASELINE_FILE")"
     printf '%s\n' "$LINE" >> "$BASELINE_FILE"
   fi
-  echo "baseline written: $LINE ($BASELINE_FILE)"
+  LINE13="desktools-v2/13 glab=$CLASS_E_DESK gitlab-literal=$CLASS_F_DESK"
+  TMP=$(mktemp "${TMPDIR:-/tmp}/forge-ban-baseline.XXXXXX")
+  awk -v line="$LINE13" 'BEGIN {seen=0} $1 == "desktools-v2/13" {if (!seen++) print line; next} {print} END {if (!seen) print line}' "$BASELINE_FILE" > "$TMP"
+  mv "$TMP" "$BASELINE_FILE"
+  echo "baseline written: $LINE; $LINE13 ($BASELINE_FILE)"
 fi
 
 exit 0

@@ -52,10 +52,13 @@ func okProbes() PreflightProbes {
 		AppIDFor:       func(string) (string, error) { return pfAppID, nil },
 		QueuedSiblings: func(string) ([]SiblingReq, error) { return nil, nil },
 		DirExists:      func(string) (bool, error) { return true, nil },
-		// The fixture roster's blessing login (rosterfixture_test.go) is "ada", so an
-		// all-green probe set presents the ambient identity as the blessing human and a
-		// credential helper that resolves to the minted App token.
-		AmbientLogin:         func() (string, error) { return fixtureBlessLogin, nil },
+		// The recommended ambient state: NO usable ambient human identity (gh not
+		// logged in), and a credential helper that resolves to the minted App token.
+		// A human ambient login would add a non-blocking warning notice to every
+		// green run (#1798); the tests that want one set it themselves.
+		AmbientLogin: func() (string, error) {
+			return "", fmt.Errorf("%w: gh is not logged in", ErrNoAmbientIdentity)
+		},
 		CredHelperMatchesApp: func(Landing, string) (bool, string, error) { return true, "app-token helper", nil },
 	}
 }
@@ -614,10 +617,10 @@ func TestCommitIdentityCrossForgeRejected(t *testing.T) {
 }
 
 // pfGitLabSessionEmail is an ordinary GitLab USER commit address — the shape the
-// documented two-identity session actor (`ih-bot`) commits under (#643). It is NOT the
+// documented two-identity session actor (`qa-bot`) commits under (#643). It is NOT the
 // service-account noreply form and NOT a GitHub noreply address, so the pre-#643 check
 // rejected it outright.
-const pfGitLabSessionEmail = "ih-bot@medici.example"
+const pfGitLabSessionEmail = "qa-bot@medici.example"
 
 // TestCommitIdentityGitLabSessionEmail is the #643 fix, both cases in one test: on a
 // GitLab role the SESSION / implementer identity that authors the commits is DISTINCT
@@ -705,15 +708,15 @@ func TestGitLabSessionEmailAllowedNormalisation(t *testing.T) {
 	// Configured with mixed case + spacing ⇒ matched case-insensitively, exact only.
 	withRoster(t, map[string]string{
 		EnvBlessLogin:          "ada:2001",
-		EnvGitLabSessionEmails: " IH-Bot@Medici.Example , ci-bot@medici.example ",
+		EnvGitLabSessionEmails: " QA-Bot@Medici.Example , ci-bot@medici.example ",
 	})
-	if !GitLabSessionEmailAllowed("ih-bot@medici.example") {
+	if !GitLabSessionEmailAllowed("qa-bot@medici.example") {
 		t.Fatal("configured session email not matched case-insensitively")
 	}
 	if !GitLabSessionEmailAllowed("CI-BOT@MEDICI.EXAMPLE") {
 		t.Fatal("second configured session email not matched")
 	}
-	if GitLabSessionEmailAllowed("ih-bot@other.example") {
+	if GitLabSessionEmailAllowed("qa-bot@other.example") {
 		t.Fatal("a non-listed address was admitted (allowlist must be exact-match)")
 	}
 	if GitLabSessionEmailAllowed("") {
@@ -1324,29 +1327,35 @@ func TestPreflightAmbientIdentity(t *testing.T) {
 		}
 	})
 
-	// (b) ambient login is a NON-blessing human ⇒ RED. The observed field case: an
-	// unrelated account carried the write.
-	t.Run("non-blessing human is red", func(t *testing.T) {
+	// (b) ambient login is a NON-blessing human ⇒ a NON-BLOCKING WARNING (#1798).
+	// Before #1798 this was red and told the operator to log in as the blessing
+	// login — the one state in which a fall-through acts as the maintainer.
+	t.Run("non-blessing human is a non-blocking warning", func(t *testing.T) {
 		withRoster(t, goldenRoster())
 		p := okProbes()
 		p.AmbientLogin = func() (string, error) { return "mallory", nil }
-		c := pfCheck(t, runPF(t, p), CheckAmbientID)
-		if c.State != CheckedFailed {
-			t.Fatalf("non-blessing ambient login = %s, want checked-failed (%s)", c.State, c.Detail)
+		rep := runPF(t, p)
+		c := pfCheck(t, rep, CheckAmbientID)
+		if c.State != CheckedClean || rep.Err() != nil {
+			t.Fatalf("non-blessing ambient login = %s (envelope err %v), want checked-clean + a warning (%s)", c.State, rep.Err(), c.Detail)
 		}
-		if !strings.Contains(strings.ToLower(c.Detail), "non-blessing") {
-			t.Fatalf("the non-blessing failure should say so: %q", c.Detail)
+		if !strings.Contains(c.Notice, "WARNING") || !strings.Contains(c.Notice, "mallory") {
+			t.Fatalf("the human-ambient warning should name the login: %q", c.Notice)
 		}
 	})
 
-	// (c) ambient login is the blessing human AND the helper resolves to the App
-	// token ⇒ GREEN.
-	t.Run("blessing human with matching helper is green", func(t *testing.T) {
+	// (c) ambient login is the blessing human ⇒ ALSO a warning, never the
+	// recommended state: a fall-through would act as the maintainer.
+	t.Run("blessing human is a warning, not the recommended state", func(t *testing.T) {
 		withRoster(t, goldenRoster())
-		p := okProbes() // AmbientLogin=ada, CredHelperMatchesApp=true
+		p := okProbes()
+		p.AmbientLogin = func() (string, error) { return fixtureBlessLogin, nil }
 		c := pfCheck(t, runPF(t, p), CheckAmbientID)
 		if c.State != CheckedClean {
 			t.Fatalf("blessing ambient login + matching helper = %s, want checked-clean (%s)", c.State, c.Detail)
+		}
+		if !strings.Contains(c.Notice, "WARNING") || !strings.Contains(c.Notice, "blessing login") {
+			t.Fatalf("the blessing-login ambient should warn and say it is the blessing login: %q", c.Notice)
 		}
 	})
 
@@ -1369,13 +1378,24 @@ func TestPreflightAmbientIdentity(t *testing.T) {
 	})
 
 	// (e) NO ambient identity at all ⇒ not red: there is nothing to fall through to.
+	// Both probe shapes of "none" — an empty login, and the ErrNoAmbientIdentity
+	// answer the real probe gives for not-logged-in / 401 / 403 — pass, with no
+	// warning.
 	t.Run("no ambient identity is not red", func(t *testing.T) {
 		withRoster(t, goldenRoster())
-		p := okProbes()
-		p.AmbientLogin = func() (string, error) { return "", nil }
-		c := pfCheck(t, runPF(t, p), CheckAmbientID)
-		if c.State != CheckedClean {
-			t.Fatalf("no ambient identity = %s, want checked-clean — nothing to fall through to (%s)", c.State, c.Detail)
+		for _, probe := range []func() (string, error){
+			func() (string, error) { return "", nil },
+			func() (string, error) {
+				return "", fmt.Errorf("%w: HTTP 403 on /user, an App/integration token", ErrNoAmbientIdentity)
+			},
+		} {
+			p := okProbes()
+			p.AmbientLogin = probe
+			c := pfCheck(t, runPF(t, p), CheckAmbientID)
+			if c.State != CheckedClean || c.Notice != "" {
+				t.Fatalf("no ambient identity = %s (notice %q), want checked-clean with no warning — nothing to fall through to (%s)",
+					c.State, c.Notice, c.Detail)
+			}
 		}
 	})
 

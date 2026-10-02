@@ -12,9 +12,11 @@ package deskkit
 // declaration, never from prose. checkonlycr.go handles the case where the sole blocker
 // was a required CHECK that turned green; this file handles the case where the sole
 // blockers were EXTERNAL PREREQUISITES (an upstream PR that later merged, a recorded
-// decision that later answered the question). The two exemptions are deliberately
-// parallel so a reader who understands one understands the other, and so neither can be
-// widened without the other's discipline being visible next to it.
+// decision that later answered the question). bodyeditcr.go is the third sibling, under
+// the same discipline: a CHANGES_REQUESTED whose sole blocker was the PR body, answered by a
+// documented body edit. The exemptions are deliberately parallel so a reader who
+// understands one understands the others, and so none can be widened without the others'
+// discipline being visible next to it.
 //
 // WHY A TYPED DECLARATION AND NOT PROSE. The exemption was authorised on the condition
 // that "external-prerequisite-only" is established by the review's EXPLICIT SHAPE, never

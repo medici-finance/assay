@@ -5,10 +5,13 @@ fleet, accountable for its own repo set. This document is the other half — how
 one machine: a persistent `deskd`, one window per desk role, and each of those windows resolving the
 cell's own roster and App keys rather than the operator's.
 
-`tools/cellctl/cellctl` is a single bash script that does it. It exists because doing it by hand is a
-dozen steps with three sharp edges (a harness login that vanishes when `HOME` is swapped, four
-windows racing on one `.git`, a tmux window name that has to match what `down` looks for), and a
-script is the only place those stay fixed.
+`cellctl` is a Go program (`tools/desk/cmd/cellctl`) that does it; releases ship it inside the
+desk-tools tarball (see [Install](#install)). It exists because doing it by hand is a dozen steps
+with three sharp edges (a harness login that vanishes when `HOME` is swapped, four windows racing
+on one `.git`, a tmux window name that has to match what `down` looks for), and a tool is the only
+place those stay fixed. The bash script it was ported from is kept in the tree only as a test
+fixture, `tools/cellctl/testdata/cellctl-shell-oracle.sh` — the oracle the Go program is proved
+against, never the launcher (see [Parity with the shell oracle](#parity-with-the-shell-oracle)).
 
 `cellctl` is **optional**, in the same sense as the desk-tools binaries: it automates a pipeline you
 can also stand up by hand. Nothing else in Assay depends on it.
@@ -277,14 +280,16 @@ links. It refuses an existing cell of the same name, exactly like every other ki
 ### The composed environment
 
 The launch is `env -i` plus an explicit allowlist — the parent shell contributes nothing by
-default. This is the exact list `cellctl` exports (the `SCRUBBED_ENV_KEYS` variable in the script
-is the single source this table, the `[plan]` lines below, and the live launch all trace back to):
+default. This is the exact list `cellctl` exports (`scrubbedEnvKeys` in
+`tools/desk/cmd/cellctl/env.go` is the single source this table, the `[plan]` lines below, and the
+live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares the same set, and
+`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it):
 
 | Variable | Value |
 |---|---|
 | HOME | `<cell>/home` |
 | ZDOTDIR | `<cell>/home` |
-| SHELL | the bash `cellctl` itself runs under (never the operator's login shell) |
+| SHELL | the first `bash` on `PATH`, resolved by `cellctl` itself (never the operator's login shell) |
 | PATH | `<cell>/shim:<desk-tools bindir>:<dir of the resolved harness binary>:/usr/bin:/bin:/usr/sbin:/sbin` — exactly seven elements; `cell.env`'s `CELL_PATH` overrides only the trailing system part, never the shim prefix or the harness dir |
 | TMPDIR | `<cell>/tmp` (created 0700 if absent) |
 | KUBECONFIG | `/dev/null` |
@@ -572,9 +577,9 @@ when the session comes up. `--no-the-desk` opts out and leaves the four loop rol
 is accepted and does nothing — it was the flag when the coordinator was opt-in, and silently
 ignoring it is better than failing a command that asks for what already happens.
 
-Each window re-invokes `cellctl` by its **absolute** path, resolved once at startup from
-`BASH_SOURCE`. A tmux window runs in the cell directory, where the relative `$0` a shell-invoked
-script carries (`./cellctl`) does not resolve.
+Each window re-invokes `cellctl` by its **absolute** path, resolved once at startup (the running
+executable's own path). A tmux window runs in the cell directory, where a relative invocation path
+(`./cellctl`) does not resolve.
 
 **Down:**
 
@@ -758,7 +763,7 @@ a long-context variant. `DESK_MODEL_DEFAULT` itself falls back to `sonnet` if `c
 board, claim an item, open a worktree, and hand the actual judgment to the agent they dispatch. The
 coordinator window is where judgment happens in the loop itself. So the loops get the cheaper model
 and `the-desk` gets the top tier available — and the loops' pin can be moved per cell, which is the
-point of putting it in `cell.env` rather than in the script.
+point of putting it in `cell.env` rather than in the launcher's source.
 
 **The coordinator's pin cannot be moved down to Opus.** `opus` is no longer the top tier, and the
 coordinator role is defined to run on whichever model is. `cellctl desk <cell> the-desk` (including
@@ -815,7 +820,8 @@ TIER_MODEL_MID_CODEX=gpt-5.6-terra
 TIER_MODEL_FAST_CODEX=gpt-5.6-terra
 ```
 
-Resolution order, per role and per the ACTIVE harness (`resolve_role_model` in the script): (1) that
+Resolution order, per role and per the ACTIVE harness (`resolveRoleModel` in
+`tools/desk/cmd/cellctl/model.go`): (1) that
 harness's own per-role pin, (2) that harness's own default, (3) the tier map, by this role's tier
 and the harness's own column. Claude always resolves at step 2 today — `DESK_MODEL_DEFAULT` carries
 a compiled default (`sonnet`) — which is exactly what keeps `--harness claude` unaffected by any of
@@ -1206,6 +1212,171 @@ is refused rather than launching codex against Anthropic with a provider the ope
 
 ## Container cells
 
+### Native Docker runtime (Go)
+
+`cellctl` owns Docker launch, inspection, console recovery and shutdown when
+`CELL_CONTAINER_CONFIG` names a deployment JSON file. There is no host-side shell
+or Python launcher in this path. Docker and tmux must be installed locally.
+
+```sh
+cellctl new sample --kind container --container-config /absolute/cells.json
+cellctl check sample
+cellctl up sample
+cellctl status sample
+cellctl down sample
+```
+
+The deployment uses the `cell-containers-v1` schema. Paths and credentials remain
+operator-owned data; do not commit real deployment files. For example:
+
+```json
+{
+  "schema": "cell-containers-v1",
+  "docker_host": "unix:///absolute/docker.sock",
+  "image": "sha256:<64 lowercase hexadecimal characters>",
+  "platform": "linux/amd64",
+  "cells": {
+    "sample": {
+      "repo": "example-org/example-repo",
+      "incoming": "/absolute/incoming",
+      "roles": {
+        "desk": {
+          "harness": "codex",
+          "models": {"codex": "<model-id>"},
+          "volume": "sample-desk-work",
+          "config": "/absolute/desk-config",
+          "app_key": "/absolute/desk-key.pem",
+          "startup_action": "paused"
+        }
+      }
+    }
+  }
+}
+```
+
+The image must already exist locally by immutable ID; launching never pulls an
+image. Each role's named work volume must already exist. The image implements the
+`paused` and `handoff` entrypoint actions and consumes `CELL_HARNESS`, `CELL_MODEL`
+and the other cell environment values. `paused` mounts no forge key; `handoff`
+is coordinator-only and mounts the role's private key read-only. Image building,
+workspace provisioning and model login remain explicit provisioning operations.
+The native runtime does not require an implementation language inside the image.
+
+Roles are `desk`, `worker`, `reviewer`, `verifier`, `intake-loop` and `issue-loop`.
+They map to the existing role skill names. Register only one intake role per cell
+because both intake keys map to `intake-desk`. `new` imports the selected roles'
+harness/model pins into `cell.env`; subsequent `desk --harness/--model` overrides
+remain authoritative. The initial registry supports one default harness across
+its enabled roles, with explicit per-launch overrides available.
+
+`up`/`desk` inspect Docker independently of tmux. A matching running container is
+attached by immutable container ID. When its console has disappeared, a new tmux
+console runs Go `cellctl container-run`, which rechecks identity and attaches with
+`docker attach --sig-proxy=false`. When neither exists, the same runner launches
+the configured container. Repeated matching model/harness arguments reconnect;
+changed values refuse and require an explicit restart. Inspection failures are
+errors, never evidence that a container is absent. Failed runners retain their
+pane and diagnostic output until the next explicit `up` attempt. The console's
+runner command reaches tmux as separate arguments, so no shell (including the
+operator's default shell) parses the model or any other value. Model pins with
+control characters are refused when the deployment is loaded and when a launch is
+planned.
+
+Runtime checks compare the inspected container with the plan, each refusal naming
+the one setting that differs: name and immutable image ID, ownership labels (an
+`adopt_container_id` admits only an unlabelled container), every planned
+environment value, no environment beyond the plan and the image's own defaults,
+entrypoint (must be the image's) and arguments, user, terminal settings, read-only
+root, privilege, added and dropped capabilities, devices, bind mounts outside the
+plan, added groups, published ports, process/memory/CPU limits, process, IPC and
+user namespace modes, no-new-privileges, the `/tmp` tmpfs, the dedicated network
+and every mount's source, target and mode. Only an explicitly configured local Unix
+Docker socket is supported. `check` performs file and local Docker metadata checks
+for every registered role, reporting every role's file and Docker check failures
+together (a configuration or plan error stops at the first role), without launching
+a model, minting tokens, creating networks or contacting a forge. As the preflight
+for `up`, `check` plans from the registered model pins, so a container started with
+a `desk --harness/--model` override is reported as a mismatch. `DRY_RUN=1` makes
+no Docker calls.
+
+`status` and `down` act on what is running. They read the harness and model a
+container was launched with (so a `desk --harness/--model` override is reported
+and stopped) and still apply every other runtime check before reporting or
+stopping it. One role's refusal never skips the remaining roles; the command
+exits nonzero after all roles were handled, naming each refused one. `down` stops
+only verified containers before closing their consoles and never removes
+workspace volumes. `status` is a native-runtime verb; the external launcher
+contract below has none. The host user and Docker administrator remain outside
+this isolation boundary. Reconnecting compares the settings listed here
+(user, terminal, entrypoint and environment, read-only root, capabilities,
+devices and device requests, groups, ports, limits, namespaces, security options,
+tmpfs, network and mounts); other engine-level settings, such as the runtime,
+sysctls or ulimits, are not compared.
+
+These runtime settings are fixed, not configurable: user `501:501` (the image must
+work for that UID), 256 processes, 4 GiB memory, 2 CPUs, a `/tmp` tmpfs of 512 MiB
+(`rw,nosuid,nodev,mode=1777`), read-only root, all capabilities dropped and
+no-new-privileges. `platform` defaults to `linux/amd64`.
+
+The per-cell network `assay-product-<cell>` is a naming and attachment boundary,
+**not** an egress or host-isolation boundary: containers keep outbound network
+access and whatever the Docker host routes to them. `cellctl` creates the network
+with the label `assay.product-cell=<cell>` and refuses an existing network of that
+name without that label.
+
+Directory mounts (`incoming` and each role's `config`) are validated against
+protected paths: none may be the host root `/`, and none may equal or contain a
+configured credential (any role's `app_key` or `claude_token`), the Docker
+socket (the configured one and the standard locations), the operator's home
+directory, or the cell's own directory (and so the cells root above it). The
+check compares the configured paths as written when the deployment is loaded, and
+compares file identity (device and inode) whenever a plan is built and again
+immediately before launch, so any other spelling of a protected directory (a
+symlink, a case or Unicode-normalization variant, or a filesystem alias) is
+refused too. Only these paths are protected: other host data that a mount
+contains is the operator's choice.
+
+A cell can optionally set `host_lock` to an absolute advisory lock file shared
+with a previous host launcher. It is honoured for the `desk` role only: the Go
+runner holds it for that console's lifetime and refuses a held or unreadable lock.
+Other roles never take it. Retire the old host launcher during migration:
+a host-only file lock cannot establish mutual exclusion after its owning console
+process has died while Docker continues running.
+
+For Claude, supply `claude_token` as a private regular file. `codex_sandbox` defaults
+to `workspace-write`; `container` requires a nonempty
+`container_boundary_approved_by` record. That field only records who accepted the
+container as the sole boundary; `cellctl` verifies nothing about the decision or
+the person beyond the value being present. The selected image must enforce those
+settings. Credentials are mounted read-only; they are never copied to the workspace
+or supplied as command-line token values.
+
+#### Migrating an external launcher
+
+Keep the existing image, volume, config and credential paths in the deployment
+JSON. If preserving a running unlabelled container, record its **full** Docker ID
+in that role's `adopt_container_id`. Go still checks its runtime configuration;
+this field does not bypass ownership mismatches or isolation checks. Newly launched
+containers carry cell/role labels and do not need this migration field. Disconnect
+the previous console before reconnecting through Go, so its advisory lock is free.
+
+After installing a release containing the native runtime, switch the registration
+atomically (the setter saves a backup):
+
+```sh
+cellctl set sample CELL_KIND=container CELL_CONTAINER_LAUNCHER= \
+  CELL_CONTAINER_CONFIG=/absolute/cells.json
+cellctl check sample
+cellctl up sample
+```
+
+Both runtime selectors set at once is an error. Restore the saved registration to
+return to the previous launcher; neither registration change alters the work volume.
+Once migration is verified, retire the old host scripts. Keep the deployment JSON
+and image assets that the Go runtime still uses.
+
+### External launcher compatibility
+
 Register an existing container launcher to make the cell visible to `cellctl ls`
 and start it through the same command entry point:
 
@@ -1234,6 +1405,7 @@ it directly as an argument vector, never as a shell command string:
 | `desk sample the-desk` | `desk the-desk --harness claude --model <resolved-pin>` |
 | `up sample` | The same coordinator launch as `desk sample the-desk` |
 | `down sample` | `down` |
+| `status sample` | Not part of this contract: refuses without invoking the launcher |
 
 The default role list is `the-desk`. This first integration supports `up` only
 when that is the sole configured role. For additional roles, register them with
@@ -1281,14 +1453,18 @@ into an agent merely because those paths are available on its host.
 ## Parity with the shell oracle
 
 `cellctl` was a 3,000-line shell script before it was a Go program, and the script is still in
-the tree at `tools/cellctl/cellctl`. It is not dead weight and it is not a fallback: it is the
-**ORACLE** the Go program is proved against, and it stays until a human signs the cutover.
+the tree at `tools/cellctl/testdata/cellctl-shell-oracle.sh` — under `testdata/`, and with a
+banner saying so, because it is a test fixture and not the launcher. It is not dead weight and it
+is not a fallback: it is the **ORACLE** the Go program is proved against, and it stays until a
+human signs the cutover. Do not install or run it as `cellctl`; the launcher is the Go program
+(see [Install](#install)).
 
 **The harness.** `tools/cellctl/tests/parity.test.sh` runs both implementations over the same
 hand-built fixtures and diffs what they produce:
 
 ```bash
-CELLCTL_A=tools/cellctl/cellctl CELLCTL_B=tools/desk/cellctl bash tools/cellctl/tests/parity.test.sh
+CELLCTL_A=tools/cellctl/testdata/cellctl-shell-oracle.sh CELLCTL_B=tools/desk/cellctl \
+  bash tools/cellctl/tests/parity.test.sh
 ```
 
 For every cell in the matrix it runs `DRY_RUN=1 <impl> <verb> <args>` under both, normalises the
@@ -1335,7 +1511,8 @@ the harness must then go RED:
 
 ```bash
 cd tools/desk && go build -tags parity -o /tmp/cellctl-parity ./cmd/cellctl && cd ../..
-CELLCTL_PARITY_MUTATE=KUBECONFIG CELLCTL_A=tools/cellctl/cellctl CELLCTL_B=/tmp/cellctl-parity \
+CELLCTL_PARITY_MUTATE=KUBECONFIG CELLCTL_A=tools/cellctl/testdata/cellctl-shell-oracle.sh \
+  CELLCTL_B=/tmp/cellctl-parity \
   bash tools/cellctl/tests/parity.test.sh     # expected: exit 1, naming scrubbed/…/desk cells
 ```
 
@@ -1368,3 +1545,23 @@ Claude `settings.json`; this covers cron without relying on interactive shell rc
 files. Claude settings can override inherited environment variables, so remove any
 contradictory `true` from higher-priority settings. Existing processes do not acquire
 new shell exports; use `/config` or restart the affected session after rollout.
+
+### Claude auto-compact window
+
+A host `cellctl desk` Claude launch (house and k8s kinds, including provider-backed
+GLM/Kimi sessions) exports `CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000`, so a long-running
+desk session compacts at 200K tokens instead of re-reading an ever-growing prefix on
+every turn — on a 1M-context model the window would otherwise never trip. It is neutral
+for 200K-context models, which compact there anyway. A non-empty value set in the
+cell's `cell.env` (or in the launching environment) wins over the default. An empty
+value is treated as unset, so it cannot switch the export off: the 200000 default
+still applies, and only a larger number widens the window. Scrubbed cells do not
+compose this variable — their launch environment is exactly the allowlist in
+[The composed environment](#the-composed-environment) — and neither do container
+cells, whose launch is delegated to the operator's own launcher.
+
+## Host desk cadence
+
+For Herdr/Codex and Orca/Cursor sessions, `--cadence` makes Go cellctl own repeated
+bounded role passes. See [Host desk cadence](cellctl-cadence.md) for setup, status,
+stop/recovery and process-lifetime limits.

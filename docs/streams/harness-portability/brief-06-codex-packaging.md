@@ -172,6 +172,78 @@ RISK-VALUE: DERIVED — exitClean=0, exitDrift=1, exitCouldNotCheck=2 @ tools/ha
 
 VERIFY: FAIL — held at implemented. Same real, unresolved content gap as the 2026-09-11 pass, confirmed unchanged: rows 1-6,8 all pass (harnessgen codex verb, manifest version binding, coverage + binding-skew checks all sound); row 7 fails because adopt/SKILL.md still lacks a Codex install scenario and the AGENTS-assay step this brief's own consumers frontmatter marks fixed-here. Not a stale-anchor case — a genuine unresolved gap, already tracked at medici-finance/assay#872 (confirmed still OPEN). No new issue filed.
 
+### Non-implementer verifier run — VERIFY: PASS — 10/10 pass, 0 could-not-check, 0 fail — 2026-09-24 claude-opus-4-8-verifier
+
+Runner not the implementer; own detached temp worktree cut off origin/main at merged head;
+offline envelope observed (KUBECONFIG=/dev/null); no PR, push, or status flip. Third
+independent verify pass. Runner cells copy the form statusgen verifyrun printed. This pass
+is the first to observe row 7 PASS: the adopt-skill Codex install scenario + AGENTS-assay
+fragment step landed on main (commit 1ef5edeac, PR-referenced #1357), closing the gap the
+2026-09-11 and 2026-09-18 passes held FAIL on (tracked at #872).
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test ./... > /tmp/hp06r1.out 2>&1; echo $?` | 0 — includes skew/coverage red tests | PASS — exit 0 (ok github.com/medici-finance/assay/tools/harnessgen, includes the skew/coverage red tests) | 2026-09-24 | claude-opus-4-8-verifier |
+| 2 | `jq -er '.name and .version and .skills' plugins/assay/.codex-plugin/plugin.json; echo $?` | 0 — manifest parses, required fields present | PASS — exit 0 (jq printed true; manifest parses, required fields present) | 2026-09-24 | claude-opus-4-8-verifier |
+| 3 | `test "$(jq -r .version plugins/assay/.claude-plugin/plugin.json)" = "$(jq -r .version plugins/assay/.codex-plugin/plugin.json)"; echo $?` | 0 — versions equal | PASS — exit 0 (the .codex-plugin and .claude-plugin manifest versions compared equal) | 2026-09-24 | claude-opus-4-8-verifier |
+| 3a | `jq '.version="9.9.9"' plugins/assay/.codex-plugin/plugin.json > /tmp/hp06skew.json && cp /tmp/hp06skew.json plugins/assay/.codex-plugin/plugin.json && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..) > /tmp/hp06r3a.out 2>&1; echo $?; git checkout -- plugins/assay/.codex-plugin/plugin.json` | non-zero naming the manifest; clean again after checkout | PASS — exit 1 (expected non-zero: "DRIFT — committed manifest plugins/assay/.codex-plugin/plugin.json differs from the metadata source"); after checkout row 4 re-runs clean; worktree clean | 2026-09-24 | claude-opus-4-8-verifier |
+| 4 | `(cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | 0 — manifest matches metadata source | PASS — exit 0 ("clean — plugins/assay/.codex-plugin/plugin.json matches the metadata source") | 2026-09-24 | claude-opus-4-8-verifier |
+| 5 | `mkdir -p /tmp/hp06-tree && cp -r plugins/assay /tmp/hp06-tree/ && mkdir /tmp/hp06-tree/assay/skills/probe-skill && printf -- '---\nname: probe-skill\ndescription: probe\n---\n' > /tmp/hp06-tree/assay/skills/probe-skill/SKILL.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hp06gen . && /tmp/hp06gen codex --check --bundle /tmp/hp06-tree/assay > /tmp/hp06r5.out 2>&1; echo $?; rm -rf /tmp/hp06-tree` | exit 2, output names probe-skill | PASS — exit 2 as expected ("coverage rule failed … skill \"probe-skill\" is on disk but appears in neither the packaged roster nor the excluded list") | 2026-09-24 | claude-opus-4-8-verifier |
+| 6 | `mkdir -p /tmp/hp06-bind && cp -r plugins/assay /tmp/hp06-bind/ && grep -vF 'worker-desk' plugins/assay/references/codex.md > /tmp/hp06-bind/assay/references/codex.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hp06gen . && /tmp/hp06gen codex --check --bundle /tmp/hp06-bind/assay > /tmp/hp06r6.out 2>&1; echo $?; rm -rf /tmp/hp06-bind` | exit 2 naming worker-desk | PASS — exit 2 as expected ("packaging↔binding skew … packaged skill \"worker-desk\" has no degradation cell in references/codex.md"; also names pr-shepherd, the-desk — the grep -vF stripped every line containing the substring) | 2026-09-24 | claude-opus-4-8-verifier |
+| 7 | `grep -qiF 'codex' plugins/assay/skills/adopt/SKILL.md && grep -qF 'AGENTS-assay' plugins/assay/skills/adopt/SKILL.md; echo $?` | 0 — install scenario + fragment step both present | PASS — exit 0 (both greps hit — the Codex install scenario and the AGENTS-assay fragment step are both present in plugins/assay/skills/adopt/SKILL.md). First pass to observe row 7 PASS: the gap closed on main | 2026-09-24 | claude-opus-4-8-verifier |
+| 7a | `grep -qF 'AGENTS-assay-no-such-token' plugins/assay/skills/adopt/SKILL.md; echo $?` | 1 — probe reports absence of an absent token | PASS — exit 1 as expected (the absent token is correctly reported absent) | 2026-09-24 | claude-opus-4-8-verifier |
+| 8 | `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..); echo $?` | 0 — brief 05 verb still passes beside the new one | PASS — exit 0 ("clean — committed artifacts match the source"; the brief-05 verb still passes beside the new one) | 2026-09-24 | claude-opus-4-8-verifier |
+
+RISK-VALUE: DERIVED — the three-state exit gate exitClean = 0, exitDrift = 1, exitCouldNotCheck = 2 @ tools/harnessgen/main.go:22-24 is the top-ranked risk-bearing literal introduced by this item's diff; a wrong could-not-check value would let an unaccounted or binding-skewed skill ship silently. Derivation: it is the canonical three-valued instrument contract (0 = checked-clean, 1 = checked-failed/drift, 2 = could-not-check), each state a distinct process exit so a caller and CI can branch on which of the three occurred; the mutation rows observe all three live this pass — clean = 0 (rows 4, 8), drift = 1 (row 3a), could-not-check = 2 (rows 5, 6, built binary). Secondary: the manifest version = 1.0.27 @ plugins/assay/.codex-plugin/plugin.json:3 is NOT an independently-set constant — it is generation-derived and equality-bound to plugins/assay/.claude-plugin/plugin.json:5 (row 3), so it carries no independent-value risk. The exclusion list is empty (no exclusion to justify). Enumeration found no other introduced literal.
+
+Row 7 now passes: the Codex install scenario landed in #1357, resolving the gap tracked at #872.
+### Verification — 2026-09-30 (assay-verifier-app[bot] @ 45d4f34a59de (claude-opus-5-5) (on-behalf-of human:ian)) — 2026-09-30 claude-opus-5-5-verifier
+
+Non-implementer verify on merged main 45d4f34a59de53b58e9516624609c014d4ff0ec8, which equals the forge's `commits/main`. No harness-portability or harnessgen path changed between that SHA and the landing main. The Linux machine witness below is the statusgen verifyrun record. It ran on a fresh copy of the tree in a network-off container (golang 1.25 bookworm, jq 1.6 mounted read-only). The dry-run and the writing run agree.
+
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test ./... > /tmp/hp06r1.out 2>&1; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-30 | assay-verifier-app[bot] @ 45d4f34a59de (on-behalf-of human:ian) (git-config) |
+| 2 | `jq -er '.name and .version and .skills' plugins/assay/.codex-plugin/plugin.json; echo $?` | pass exit=0 | sha256:542e6e399ba3 | 2026-09-30 | assay-verifier-app[bot] @ 45d4f34a59de (on-behalf-of human:ian) (git-config) |
+| 3 | `test "$(jq -r .version plugins/assay/.claude-plugin/plugin.json)" = "$(jq -r .version plugins/assay/.codex-plugin/plugin.json)"; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-30 | assay-verifier-app[bot] @ 45d4f34a59de (on-behalf-of human:ian) (git-config) |
+| 3a | `jq '.version="9.9.9"' plugins/assay/.codex-plugin/plugin.json > /tmp/hp06skew.json && cp /tmp/hp06skew.json plugins/assay/.codex-plugin/plugin.json && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..) > /tmp/hp06r3a.out 2>&1; echo $?; git checkout -- plugins/assay/.codex-plugin/plugin.json` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-30 | assay-verifier-app[bot] @ 45d4f34a59de (on-behalf-of human:ian) (git-config) |
+| 4 | `(cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | pass exit=0 | sha256:f556ad938565 | 2026-09-30 | assay-verifier-app[bot] @ 45d4f34a59de (on-behalf-of human:ian) (git-config) |
+| 5 | `mkdir -p /tmp/hp06-tree && cp -r plugins/assay /tmp/hp06-tree/ && mkdir /tmp/hp06-tree/assay/skills/probe-skill && printf -- '---\nname: probe-skill\ndescription: probe\n---\n' > /tmp/hp06-tree/assay/skills/probe-skill/SKILL.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hp06gen . && /tmp/hp06gen codex --check --bundle /tmp/hp06-tree/assay > /tmp/hp06r5.out 2>&1; echo $?; rm -rf /tmp/hp06-tree` | pass exit=0 | sha256:53c234e5e847 | 2026-09-30 | assay-verifier-app[bot] @ 45d4f34a59de (on-behalf-of human:ian) (git-config) |
+| 6 | `mkdir -p /tmp/hp06-bind && cp -r plugins/assay /tmp/hp06-bind/ && grep -vF 'worker-desk' plugins/assay/references/codex.md > /tmp/hp06-bind/assay/references/codex.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hp06gen . && /tmp/hp06gen codex --check --bundle /tmp/hp06-bind/assay > /tmp/hp06r6.out 2>&1; echo $?; rm -rf /tmp/hp06-bind` | pass exit=0 | sha256:53c234e5e847 | 2026-09-30 | assay-verifier-app[bot] @ 45d4f34a59de (on-behalf-of human:ian) (git-config) |
+| 7 | `grep -qiF 'codex' plugins/assay/skills/adopt/SKILL.md && grep -qF 'AGENTS-assay' plugins/assay/skills/adopt/SKILL.md; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-30 | assay-verifier-app[bot] @ 45d4f34a59de (on-behalf-of human:ian) (git-config) |
+| 7a | `grep -qF 'AGENTS-assay-no-such-token' plugins/assay/skills/adopt/SKILL.md; echo $?` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-30 | assay-verifier-app[bot] @ 45d4f34a59de (on-behalf-of human:ian) (git-config) |
+| 8 | `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..); echo $?` | pass exit=0 | sha256:3baad508f1f3 | 2026-09-30 | assay-verifier-app[bot] @ 45d4f34a59de (on-behalf-of human:ian) (git-config) |
+
+
+Every row ends with `echo $?` or a cleanup command, so the witness exit is always 0. What proves the printed code is the output hash. Decoded on the host: `0` + newline = 9a271f2a916b, `1` + newline = 4355a46b19d3, `2` + newline = 53c234e5e847. So rows 1, 3, 7 printed 0; rows 3a and 7a printed 1; rows 5 and 6 printed 2. Each is the Expect value.
+
+Verifier detail (harness-portability/06 — NON-implementer, merged main 45d4f34a59de, 2026-09-30). Every row was also run by hand on the host, with the rows' scratch prefix moved to a private temp dir:
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---------|----------|----------|---------------|
+| 1 | row 1 command as written | 0 | printed 0; ok for the harnessgen package | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 45d4f34a59de |
+| 2 | row 2 command as written | true, exit 0 | printed true, exit 0 | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 45d4f34a59de |
+| 3 | row 3 command as written | 0 | printed 0; both manifests at version 1.0.30 | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 45d4f34a59de |
+| 3a | row 3a command as written | 1, drift named | printed 1; DRIFT, the committed Codex manifest differs from the metadata source; tree clean after the restore | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 45d4f34a59de |
+| 4 | row 4 command as written | 0 | printed 0; clean, the manifest matches the metadata source | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 45d4f34a59de |
+| 5 | row 5 command as written | 2, names probe-skill | printed 2; could-not-check, coverage rule failed, skill probe-skill in neither the packaged roster nor the excluded list | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 45d4f34a59de |
+| 6 | row 6 command as written | 2, names worker-desk | printed 2; packaging-binding skew, worker-desk has no degradation cell (the grep also strips the pr-shepherd and the-desk cells, so all three are named) | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 45d4f34a59de |
+| 7 | row 7 command as written | 0 | printed 0; the adopt skill section 5 carries the Codex install arm with the AGENTS-assay fragment step | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 45d4f34a59de |
+| 7a | row 7a command as written (positive control) | 1 | printed 1; the absent token is reported absent | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 45d4f34a59de |
+| 8 | row 8 command as written | 0 | printed 0; clean, committed artifacts match the source | 2026-09-30 assay-verifier-app[bot] (claude-opus-5-5) @ 45d4f34a59de |
+
+Risk-bearing values. Risk metadata is present, all four flags are `no`, and no risk-classed path is touched. Enumerated anyway:
+
+RISK-VALUE: DERIVED — exit codes clean 0 / drift 1 / could-not-check 2 @ tools/harnessgen/main.go:22-24 — the repo's three-state instrument contract; all three states were observed live in this pass (rows 4, 3a, 5 and 6).
+RISK-VALUE: DERIVED — Skills = "./skills/" @ tools/harnessgen/codex.go:217 — the brief says the manifest points at the same skills tree; the 14 skill directories match the 14 roster entries in plugins/assay/codex/packaging.md.
+RISK-VALUE: DERIVED — manifest version 1.0.30 @ plugins/assay/.codex-plugin/plugin.json:3 — generated from and equality-bound to the Claude manifest version; row 3a shows a planted skew goes red.
+RISK-VALUE: NAMED, NOT DERIVED — the 32 KiB composition cap @ plugins/assay/skills/adopt/SKILL.md:101 — confirming it needs upstream Codex sources outside the offline envelope; reversible doc text in a gate: model, irreversible: no brief. The desk routes this as a `question` issue before the flip; until that issue exists the brief stays `implemented` with this Evidence recorded.
+
+Findings (none block): (F1) the witness alone cannot judge these rows because each ends in `echo $?`; the hash decode above and the host run carry the proof. (F2) row 6 names three skills, not one, because its grep strips three cells. (F3) the Codex check runs in the release workflow (the tag-cut gate), not in per-PR CI; the brief's CI task is met at release. (F4) lint NOTICEs only: the consumers field has no consumers row, and the Verify rows declare no dereference or flow obligation.
+
+VERIFY: PASS
+
 ## Review
 
 Gate: **model** (from frontmatter). Review focus: the exclusion list — every skill

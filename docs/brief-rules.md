@@ -67,6 +67,37 @@ nothing measured.
 
 7. **Verify rows must be runnable by someone who didn't do the work.** A row with no literal
    command and no expected exit/output is not a DoD item — it's a hope.
+   **Which span is the command.** The execution witness (`statusgen verifyrun`, rule 36)
+   runs the FIRST code span of the Command cell — right for a cell that is one code span,
+   wrong for a prose cell that mentions a function, a file, an `owner/repo` or a label
+   before the real command: the witness runs the mention (exit 127) and the check is never
+   witnessed. In a prose cell, mark the command explicitly with a code span starting
+   `cmd:` — `` In `PublicRepoGate` change the check, then `cmd: cd tools/desk && go test ./internal/deskkit/ -count=1` ``
+   — and every tool that lifts the command (verifyrun, the check:ci re-execution lane,
+   `newbrief`, the row lint, and the tools/desk executors `verifyloop` and
+   `deskrebaseline`) takes the first honoured `cmd:` span. A cell whose first span is
+   already its command needs no marker, and a cell with no marker lifts exactly as
+   before — except that a row the lint flags `prose-led-command` is recorded could-not-run
+   without being executed (running the mention measures nothing, and a word like `gh`
+   exits 0), until its command is marked; the check:ci verdict re-execution lane refuses such a
+   row the same way, and `verifyrun --check` does not audit an old pass witness on it as pass.
+   A marker counts only where the rendered table shows it as code: not between
+   escaped backticks, and not in a cell whose prose carries an unescaped `<` or `[` (raw
+   HTML, a comment, a link or an image can hide text from the reader) or a dollar in any
+   spelling (`$`, `\$`, or a character reference such as `&#36;` — GitHub renders
+   dollar-wrapped text as math, so any `&…;` reference in prose counts), and not in a cell
+   where a span's opening backticks are fused to the text before them (only whitespace, the
+   cell start or a `(` may lead a span). The marker span itself must follow whitespace or the
+   cell start, and end the cell or be followed by whitespace or plain punctuation. Escape
+   `<` and `[` as `\<`, `\[`; keep dollars out of a marked Command cell. `statusgen --lint`
+   NOTICEs a prose cell whose first span is not a command shape (`prose-led-command`), a
+   cell with two markers (`cmd-marker-ambiguous`), a marker that replaces a command-shaped
+   first span (`cmd-marker-overrides-command`), and a `cmd:` span that is not honoured
+   (`cmd-marker-not-honoured`), and a marked command that cannot fail — `true`, `:`,
+   `exit 0`, a lone `echo` — (`cmd-marker-vacuous`). A closed brief's `prose-led-command` rows collapse
+   into one summary NOTICE, since closed records are not rewritten.
+   The marker is `cmd:`, not `run:`: `run:` is the GitHub Actions step key, and a quoted
+   workflow line in Verify prose must never become the command the witness executes.
 8. **Prose deliverables get PRESENCE gates; quality is the human gate (the honesty rule).**
    For docs/articles, executable checks verify that required elements *exist* (a file, a
    section, a token) — `wc -w ≥ N` or `grep -c` passes N words of garbage with the right
@@ -334,7 +365,9 @@ nothing advances a cell but the witness its row names.
     delivers by exactly one trailer line in its body — `Brief: <stream>/<NN>` (the
     hierarchical forms of brief-v2 are accepted on read: `<stream>:<NN>`,
     `<repo>:<stream>:<NN>`, `<cell>:<repo>:<stream>:<NN>`; issue-only work with no brief
-    carries `Issue: #<N>` instead). No title parsing, no branch-name heuristics: a
+    carries `Issue: #<N>` instead, and a PR that only AUTHORS briefs carries
+    `Authors: <stream>/<NN>[, …]`, which names them without asserting delivery — `deskpr create`
+    refuses `Brief:` on a branch that only authors that brief). No title parsing, no branch-name heuristics: a
     derivation that cannot find the trailer finds nothing, and a merged PR with no
     trailer is a lint finding (NOTICE during backfill, PROBLEM after), never a guess. A
     trailer inside a fenced code block is documentation, not a link. There is
@@ -515,18 +548,44 @@ passing run — which is why they are lint rules and not review vigilance.
       reads identically in both.
     - For a genuinely literal pipe: `grep -F`, or a `[\|]` bracket class.
 
-27. **RE2 selectors get one token or a chain, never an alternation**
-    (`rE2-literal-pipe` / `shredded-cell`, #374). `go test -run` / `-bench`
-    compiles RE2, where `\|` is a literal pipe: `-run 'Forged\|Sub\|Onboard'`
-    matches zero tests, prints "no tests to run", and exits 0 — and the Evidence
-    row records the vacuous command as though the tests ran (two live briefs did
-    exactly this). Writing the pipe RAW does not fix it: a bare `|` is a
-    table-cell delimiter wherever it sits, so the command is cut at the pipe, the
-    Expect column becomes a fragment of the command, and every other row check
-    goes blind past the cut. There is no spelling of an RE2 alternation that
-    survives a table cell unambiguously.
+27. **RE2 selectors get one token or a chain, never an alternation — and every
+    `-run` needs its own `--- PASS` assertion**
+    (`rE2-literal-pipe` / `shredded-cell` / `gotest-run-vacuous`, #374,
+    statusgen/14). `go test -run` / `-bench` compiles RE2, where `\|` is a
+    literal pipe: `-run 'Forged\|Sub\|Onboard'` matches zero tests, prints "no
+    tests to run", and exits 0 — and the Evidence row records the vacuous
+    command as though the tests ran (two live briefs did exactly this). Writing
+    the pipe RAW does not fix it: a bare `|` is a table-cell delimiter wherever
+    it sits, so the command is cut at the pipe, the Expect column becomes a
+    fragment of the command, and every other row check goes blind past the cut.
+    There is no spelling of an RE2 alternation that survives a table cell
+    unambiguously.
     - Write: `-run Forged`, or `go test -run A ./... && go test -run B ./...`,
       or move the command to a fenced block outside the table.
+
+    A single unambiguous token is not enough on its own: `go test -run
+    'TestNoSuchName'` also prints "no tests to run" and exits 0 whether or not a
+    test by that name exists, so a row that never checks a `-run` selector
+    actually matched anything is silently green from the day it ships to the
+    day the named test is renamed out from under it (measured on this repo's
+    `qualgen` module, statusgen/14). `--lint` flags this as `gotest-run-vacuous`
+    (advisory, open briefs only — a closed brief's rows are summarised, not
+    individually flagged). Anchor a NAMED selector (`Test` + letters/digits/`_`,
+    after stripping one leading `^`/trailing `$`) and assert its OWN
+    `--- PASS: <name>` line; a GROUP token (`Cadence`, matching several tests)
+    needs only some `--- PASS` line. A negated grep (`! grep …`) or one
+    neutralised with `|| true` does not count as an assertion, and a mismatched
+    `--- PASS:` line (naming a different test than the selector) does not
+    satisfy a named selector.
+    - Write: `go test -run '^Name$' -v ./pkg/... > "${TMPDIR:-/tmp}/x.out" 2>&1
+      && grep -F -e '--- PASS: Name' "${TMPDIR:-/tmp}/x.out"`.
+
+    `-run '^$'` is exempt: it is the standard idiom for running NO tests
+    alongside `-bench`/`-fuzz`, deliberately matches no test name, and so has
+    no `--- PASS:` line it could ever assert — the same reason `-bench`/`-fuzz`
+    selectors themselves are out of scope. An unanchored empty pattern
+    (`-run ''`) is not the same thing and is not exempt: in Go, an empty regexp
+    matches every name, so that row runs everything.
 
 28. **A comparison base must be a pinned SHA or a computed merge-base, never a
     branch** (`moving-ref`, #639). A row based on `origin/main` is a function of

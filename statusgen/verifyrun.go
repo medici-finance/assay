@@ -176,6 +176,10 @@ type witness struct {
 	// pilot to notice it. It is a derived compile-time token, never caller text.
 	RunnerSource string
 	Tree         string // short HEAD SHA, suffixed +dirty when the tree is modified
+	// Repo is the owner/name repo this row is written INTO — the brief's own stream's
+	// `repo:` frontmatter (witnessTargetRepo). It decides which form of the human the
+	// on-behalf-of annotation names; "" (not stated) takes the public form, fail-closed.
+	Repo string
 	// Note is console-only commentary (why could-not-run, which Expect
 	// constraints were undecidable). It is deliberately NOT written into the
 	// row: the row is a record, and free text in a record is where a caption
@@ -211,15 +215,46 @@ func (w witness) row() string {
 	// On-behalf-of annotation (multi-principal/01): rendered inside a parenthetical, same
 	// as RunnerSource just below, and for the same reason — runnerKey (verifiedrunneragree.go)
 	// drops everything from the FIRST "(" onward, so this never changes the runner-
-	// comparison key. "" (a human runner, or no resolvable principal) adds nothing.
-	if obo := onBehalfOfSuffix(w.Runner); obo != "" {
+	// comparison key. "" (a human runner, or no resolvable principal) adds nothing. The
+	// row's target repo decides the form of the human it names (principal.go).
+	if obo := onBehalfOfSuffix(w.Runner, w.Repo); obo != "" {
 		runnerCell += " (" + obo + ")"
 	}
 	if w.RunnerSource != "" {
 		runnerCell += " (" + w.RunnerSource + ")"
 	}
-	return fmt.Sprintf("| %s | `%s` | %s | sha256:%s | %s | %s |",
-		w.ID, w.Command, result, w.OutHash, w.Date, runnerCell)
+	return fmt.Sprintf("| %s | %s | %s | sha256:%s | %s | %s |",
+		w.ID, codeSpanOf(w.Command), result, w.OutHash, w.Date, runnerCell)
+}
+
+// codeSpanOf writes cmd as ONE inline code span that witnessCommandOf lifts back
+// whole (#1808 review A4). A command with no backtick keeps the single-backtick
+// form every existing witness row has, byte for byte. A command that contains
+// backticks (authored inside a longer backtick fence) is fenced with a run one longer
+// than its longest backtick run, padded with a space where it starts or ends
+// with a backtick, as CommonMark requires; a single-backtick fence would close
+// at the first inner backtick and the witness would record a truncated command.
+func codeSpanOf(cmd string) string {
+	longest, run := 0, 0
+	for i := 0; i < len(cmd); i++ {
+		if cmd[i] == '`' {
+			run++
+			if run > longest {
+				longest = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	if longest == 0 {
+		return "`" + cmd + "`"
+	}
+	fence := strings.Repeat("`", longest+1)
+	body := cmd
+	if strings.HasPrefix(body, "`") || strings.HasSuffix(body, "`") {
+		body = " " + body + " "
+	}
+	return fence + body + fence
 }
 
 // exitCell renders the exit code, or `-` when nothing ran. `exit=-1` would read
@@ -246,6 +281,7 @@ const (
 	witnessCellCommand = 1
 	witnessCellResult  = 2
 	witnessCellOutput  = 3
+	witnessCellRunner  = 5
 	witnessCellCount   = 6
 )
 
@@ -303,6 +339,30 @@ func witnessCommandOf(text string) string {
 		return ""
 	}
 	return codeSpan(cells[witnessCellCommand])
+}
+
+// witnessTreeRe lifts the tree token that follows the Runner cell's ` @ `
+// marker (witness.row() writes `<runner> @ <tree>`, optionally followed by one
+// or more parenthetical qualifiers). It stops at the first space or `(` so a
+// trailing on-behalf-of/RunnerSource parenthetical is never swallowed into the
+// tree token.
+var witnessTreeRe = regexp.MustCompile(`@\s*([^\s(]+)`)
+
+// witnessTreeOf lifts the tree SHA (possibly `+dirty`/`+unknown`-suffixed, or
+// `no-git`) a witness row recorded — graph-execution/03's coverage rule reads
+// this to compare against the item's revision. Returns "" when the row is
+// malformed or carries no tree marker, which the caller treats as "nothing to
+// compare", never as a match.
+func witnessTreeOf(text string) string {
+	cells := witnessCells(text)
+	if cells == nil {
+		return ""
+	}
+	m := witnessTreeRe.FindStringSubmatch(cells[witnessCellRunner])
+	if m == nil {
+		return ""
+	}
+	return m[1]
 }
 
 // ---------------------------------------------------------------------------
@@ -1078,13 +1138,27 @@ type verifyRow struct {
 	// whole inherited corpus), cmd, or pwsh. runWitnesses dispatches the row to
 	// this shell; a shell unavailable on the runner's OS is could-not-run.
 	Shell string
+	// Obligations are the row's KNOWN `+`-prefixed obligation tokens
+	// (rowclass.go's splitRowClassCell / verifyRowCells.obligations) — mutation,
+	// flow, dereference, neighbour. graph-execution/03's coverage rule reads
+	// `flow` here for the pattern join's integration check (Task item 2): a
+	// `+flow` row is the one obligation token that proves a Verify row exercises
+	// the cross-component path, as opposed to a site-local check.
+	Obligations []string
+	// ProseLed is set when the row's Command cell is one the lint flags as
+	// prose-led-command (#1805): its first code span, the text the lift returns,
+	// is a mention (a file, an identifier, a lone word) rather than a command.
+	// runWitnesses records such a row could-not-run WITHOUT executing it, because
+	// running the mention can exit 0 (`gh` with no arguments does) and record a
+	// pass for a check that never ran. The value is the NOTICE's reason text.
+	ProseLed string
 }
 
 func briefVerifyRows(verifySection string) []verifyRow {
 	var rows []verifyRow
 	ordinal := 0
 	verifyRowTable(verifySection, func(r verifyRowCells) {
-		cmd := codeSpan(r.Command)
+		cmd := verifyCommand(r.Command)
 		if strings.TrimSpace(cmd) == "" && strings.TrimSpace(r.Expect) == "" {
 			return
 		}
@@ -1093,7 +1167,11 @@ func briefVerifyRows(verifySection string) []verifyRow {
 		if v := normalizeRowID(r.Num); v != "" {
 			id = v
 		}
-		rows = append(rows, verifyRow{ID: id, Command: cmd, Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell()})
+		row := verifyRow{ID: id, Command: cmd, Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell(), Obligations: r.obligations()}
+		if first, why := proseLedCommandWhy(r.Command); why != "" {
+			row.ProseLed = "first span " + strings.ReplaceAll(first, "|", "\\|") + " is " + why
+		}
+		rows = append(rows, row)
 	})
 	return rows
 }
@@ -1154,6 +1232,19 @@ func runWitnesses(root string, rows []verifyRow, runner, runnerSource, tree, dat
 			})
 			continue
 		}
+		// A prose-led row (#1805, #1808 review A1) is never executed: its lifted
+		// command is a mention, and running it measures nothing — it exits 127
+		// (could-not-run anyway) or, for a word like `gh`, exits 0 and would record
+		// a pass for a check that never ran. Recorded could-not-run with the lint's
+		// rule tag, so the Evidence says why; a `cmd:` marker clears it.
+		if r.ProseLed != "" {
+			out = append(out, witness{
+				ID: r.ID, Command: r.Command, State: stateCouldNotRun, Exit: -1,
+				Date: date, Runner: runner, RunnerSource: runnerSource, Tree: tree,
+				Note: proseLedNote(r.ProseLed),
+			})
+			continue
+		}
 		var res runResult
 		if r.Class == classCheckCI {
 			res = runHermeticallyWith(root, r.Command, timeout, plan, r.Shell)
@@ -1188,6 +1279,12 @@ func runWitnesses(root string, rows []verifyRow, runner, runnerSource, tree, dat
 		})
 	}
 	return out
+}
+
+// proseLedNote is the could-not-run note for a prose-led row: the lint's
+// stable rule tag first (greppable in Evidence), then the reason and the fix.
+func proseLedNote(reason string) string {
+	return ruleProseLedCommand + ": not executed; the " + reason + ", not a command. Mark the command with a cmd: code span"
 }
 
 // witnessTable renders a full Evidence table for a run.
@@ -1301,6 +1398,13 @@ func checkWitnesses(verifySection, evidenceSection string) []checkFinding {
 		default:
 			switch witnessStateOf(latest) {
 			case statePass:
+				// A pass recorded (by an older binary) on a row now flagged
+				// prose-led (#1808 review A2) measured the mention, not a check:
+				// verifyrun would not run it today, so the pass proves nothing.
+				if r.ProseLed != "" {
+					out = append(out, checkFinding{r.ID, stateCouldNotRun, proseLedNote(r.ProseLed)})
+					break
+				}
 				out = append(out, checkFinding{r.ID, statePass, "witness matches the row and passed"})
 			case stateFail:
 				out = append(out, checkFinding{r.ID, stateFail, "the witness records a failure"})
@@ -1587,6 +1691,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	}
 
 	ws := runWitnesses(root, rows, runner, runnerSource, treeSHA(root), nowFunc().Format("2006-01-02"), *timeout, *ci)
+	target := witnessAnnotationRepo(witnessTargetRepo(path), witnessOriginRepo(root))
+	for i := range ws {
+		ws[i].Repo = target
+	}
 	table := witnessTable(ws)
 
 	worst := verifyrunExitPass
@@ -1628,7 +1736,13 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 
 // runVerifyrunCheck is the `--check` half: audit, never execute.
 func runVerifyrunCheck(path, verify, evidence string, stdout *os.File) int {
-	findings := checkWitnesses(verify, evidence)
+	// The audit does not run the lint, so it refuses an unterminated `<!--`
+	// itself (#1939) rather than report rows the rendered page may hide.
+	findings, refusal := closureWitnesses(verify, evidence)
+	if refusal != "" {
+		fmt.Fprintf(stdout, "%s: refused — %s\n", path, refusal)
+		return verifyrunExitCouldNot
+	}
 	if len(findings) == 0 {
 		fmt.Fprintf(stdout, "%s: no Verify rows to check\n", path)
 		return verifyrunExitCouldNot
@@ -1641,6 +1755,80 @@ func runVerifyrunCheck(path, verify, evidence string, stdout *os.File) int {
 	fmt.Fprintf(stdout, "%s: %d pass, %d fail, %d could-not-run/missing (of %d Verify rows)\n",
 		path, counts[statePass], counts[stateFail], counts[stateCouldNotRun], len(findings))
 	return checkExitCode(findings)
+}
+
+// witnessTargetRepo names the repo a witness row for briefPath is written INTO: the
+// `repo:` frontmatter of the brief's own stream README (the declared data every other
+// repo attribution in statusgen reads — see rootRepo). "" when the README is missing,
+// unreadable, or states no well-formed repo — which the on-behalf-of annotation reads as
+// "not known-private" and so renders the neutral form (principal.go). A git remote is
+// deliberately NOT consulted as a fallback: a worktree's origin can name the checkout it
+// was cut from rather than the repo the brief lands in, and the only thing a wrong answer
+// here could do is select the login form on a public repo. The remote is consulted only
+// as a VETO on the login form (witnessAnnotationRepo).
+func witnessTargetRepo(briefPath string) string {
+	s, err := parseStreamREADME(filepath.Join(filepath.Dir(briefPath), "README.md"))
+	if err != nil || s == nil {
+		return ""
+	}
+	repo := strings.TrimSpace(s.Repo)
+	if !repoFrontmatterRe.MatchString(repo) {
+		return ""
+	}
+	return repo
+}
+
+// witnessAnnotationRepo decides which repo the witness annotation's form is chosen for.
+// declared is the brief's stream `repo:` frontmatter (witnessTargetRepo). origin is the
+// checkout's git remote, or "" when it cannot be read.
+//
+// The remote can only VETO the login form. It can never select it. When the frontmatter
+// states a `:private` repo and the checkout's origin resolves to a repo the roster does
+// NOT state is `:private`, the result is "" and the annotation takes the neutral form.
+// That covers a README that says `private` in a checkout of a public repo, for example a
+// stream moved between repos with its frontmatter left behind. rootRepo only catches a
+// conflict between sibling streams, so it misses a whole root that is misdeclared. In
+// every other case the frontmatter decides, unchanged. That includes a remote that
+// cannot be read or parsed. A wrong veto costs audit precision only: the neutral name
+// still maps back to the login through the roster.
+func witnessAnnotationRepo(declared, origin string) string {
+	if declared == "" || onBehalfOfPublicForm(declared) || origin == "" {
+		return declared
+	}
+	if onBehalfOfPublicForm(origin) {
+		return ""
+	}
+	return declared
+}
+
+// witnessOriginRepo reads the owner/name of root's `origin` remote for
+// witnessAnnotationRepo's veto. It returns "" when there is no remote or the URL does
+// not parse to owner/name.
+func witnessOriginRepo(root string) string {
+	out, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output()
+	if err != nil {
+		return ""
+	}
+	return originOwnerRepo(strings.TrimSpace(string(out)))
+}
+
+// originOwnerRepo extracts owner/name from a remote URL. It accepts the forms
+// ownerRepoFromURL reads (https with an optional port, scp-style `user@host:owner/name`)
+// and also the `ssh://[user@]host[:port]/owner/name` form, which ownerRepoFromURL
+// misreads. Anything that does not come out as a well-formed owner/name returns "".
+func originOwnerRepo(url string) string {
+	if rest, ok := strings.CutPrefix(url, "ssh://"); ok {
+		_, path, found := strings.Cut(rest, "/") // drop [user@]host[:port]
+		if !found {
+			return ""
+		}
+		url = "https://host/" + path
+	}
+	repo := ownerRepoFromURL(url)
+	if !repoFrontmatterRe.MatchString(repo) {
+		return ""
+	}
+	return repo
 }
 
 // repoRootFor resolves the repo root the commands should run in: the git

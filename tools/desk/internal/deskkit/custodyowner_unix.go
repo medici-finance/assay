@@ -17,8 +17,9 @@ import (
 // (rosterowner_{unix,windows}.go), so the unix contract is unchanged: this is the
 // same `fi.Mode().Perm() != 0o600` test the GitLab custody paths ran inline before.
 //
-// fi must be the os.Stat of path. On unix it carries the mode bits this check reads;
-// on Windows it is unused and the ACL is read from path instead.
+// path and fi must both be LstatCustody's result: the target it judged (a followed link's
+// resolved file, never the link) and that target's FileInfo. On unix fi carries the mode bits
+// this check reads; on Windows fi is unused and the ACL is read from path instead.
 func VerifyCustodyOwnerOnly(path string, fi os.FileInfo) error {
 	if perm := fi.Mode().Perm(); perm != 0o600 {
 		return fmt.Errorf("custody token file at %s has permissions %04o; must be 0600 — run: chmod 600 %s",

@@ -64,15 +64,15 @@ func scrubbedEnv(parent []string) []string {
 //
 // It is the credential-free path (every fetch mode, and every repo probe): it passes the
 // bare scrubbed allowlist, in which GIT_ASKPASS is deliberately absent. The authenticated
-// verbs go through runGitWithEnv with an askpass-bearing env instead.
+// verbs go through runGitWithEnv with the credentialSupply env instead.
 func runGit(dir string, args ...string) (string, error) {
 	return runGitWithEnv(dir, scrubbedEnv(os.Environ()), args...)
 }
 
 // runGitWithEnv is runGit with the child environment supplied by the caller, for the
 // authenticated forms (`push --as`, `fetch --as`). The env MUST be a scrubbedEnv-derived
-// slice — the ONLY additions the caller may make are the controlled GIT_ASKPASS and
-// DESKGIT_TOKEN that askpassSupply appends, never a passthrough of os.Environ(); every
+// slice — the ONLY addition the caller may make is the controlled DESKGIT_TOKEN that
+// credentialSupply appends, never a passthrough of os.Environ(); every
 // other guarantee runGit makes (explicit argv, no shell string) is preserved because the
 // argv is still an explicit slice built from literal verbs plus validated values.
 func runGitWithEnv(dir string, env []string, args ...string) (string, error) {
@@ -93,45 +93,89 @@ func runGitWithEnv(dir string, env []string, args ...string) (string, error) {
 	return stdout, nil
 }
 
-// askpassSupply builds the credential channel for an authenticated git invocation, reusing
-// the deskadvisory pattern (advisory.go § writeAskpass) unchanged in every property that
-// keeps the token off every durable surface:
-//
-//   - the token reaches the child through ONE environment variable (DESKGIT_TOKEN) and an
-//     ephemeral GIT_ASKPASS script that echoes it; it is never placed in argv, in a URL, in
-//     the audit line, or in any file that outlives the call;
-//   - the script lives in a private 0700-perms os.MkdirTemp dir removed by the returned
-//     cleanup, which the caller defers so it runs on EVERY return path including error;
-//   - the argv prefix `-c credential.helper=` clears the helper list on the command line, so
-//     no ambient/configured credential helper (the shadowing the transcript sweep observed)
-//     is ever consulted — only this askpass answers.
-//
-// The env is the scrubbed allowlist plus exactly the two variables above; GIT_ASKPASS is
-// added AFTER the scrub, the one controlled exception to "every GIT_* var is dropped".
-// askpassTempParent is the parent directory the ephemeral askpass dir is created under.
-// Empty means os.MkdirTemp's default (the OS temp dir), which is production. A test points
-// it at a scratch dir so it can assert the ephemeral dir is REMOVED after the call — the
-// leak-on-error-path check — without racing other processes' /tmp entries.
-var askpassTempParent = ""
+// credentialHost is the ONE host the `--as` credential is ever answered for. The token is a
+// GitHub App installation token; it authenticates nowhere else, so no other host may be offered
+// it (sec-1587-S1).
+const credentialHost = "github.com"
 
-func askpassSupply(token string) (env, argvPrefix []string, cleanup func(), err error) {
+// credentialHelperKey is the host-scoped config key the ephemeral helper is installed under. Git
+// consults a `credential.<url>.helper` only for a credential request whose URL matches <url>, so
+// a request for any other host — a submodule's own remote, an http.proxy that asks for its
+// password, a destination rewritten after the gate read it — never reaches the helper at all.
+// This is the scoping `deskwt role-init` already uses for the worktree helper it persists.
+const credentialHelperKey = "credential.https://" + credentialHost + ".helper"
+
+// credentialHelperScript is the ephemeral helper's body. It is the SECOND layer at the answer
+// point: even when git does call it, it answers only a `get` whose request says protocol=https and
+// host=github.com (or github.com:443), and prints nothing for anything else, so git treats every
+// other request as unanswered. The token VALUE never appears in the script — only the variable
+// name DESKGIT_TOKEN does.
+const credentialHelperScript = `#!/bin/sh
+[ "$1" = get ] || exit 0
+proto=
+host=
+while IFS= read -r line; do
+  [ -n "$line" ] || break
+  case "$line" in
+    protocol=*) proto=${line#protocol=} ;;
+    host=*) host=${line#host=} ;;
+  esac
+done
+[ "$proto" = https ] || exit 0
+case "$host" in
+  github.com|github.com:443) ;;
+  *) exit 0 ;;
+esac
+echo username=x-access-token
+printf 'password=%s\n' "$DESKGIT_TOKEN"
+`
+
+// credentialTempParent is the parent directory the ephemeral helper dir is created under.
+// Empty means os.MkdirTemp's default (the OS temp dir), which is production. A test points it
+// at a scratch dir so it can assert the ephemeral dir is REMOVED after the call — the
+// leak-on-error-path check — without racing other processes' /tmp entries.
+var credentialTempParent = ""
+
+// credentialSupply builds the credential channel for an authenticated git invocation. The token
+// is bound where it is ANSWERED, not only where destinations are listed (sec-1587-S1, round 3):
+// an answer channel that replies to any prompt — the GIT_ASKPASS script this replaced — hands the
+// token to every host git talks to during the verb, including hosts no destination list names (a
+// recursed submodule's remote, a user-bearing proxy). So:
+//
+//   - the argv prefix `-c credential.helper=` clears every helper accumulated from system, global,
+//     repo and worktree config (an empty value resets the list, and command-line config is read
+//     last), so no ambient or configured helper is ever consulted;
+//   - `-c credential.https://github.com.helper=!'<script>'` then adds ONE ephemeral helper under
+//     the host-scoped key, so git asks it only for https://github.com; the script itself also
+//     refuses any request that is not protocol=https, host=github.com (credentialHelperScript);
+//   - no GIT_ASKPASS is set, and the env is the scrubbed allowlist with GIT_TERMINAL_PROMPT=0, so
+//     a prompt the helper does not answer (a proxy password, a foreign host) fails closed instead
+//     of being answered with the token.
+//
+// Every property that keeps the token off durable surfaces is unchanged: it reaches the child
+// through ONE environment variable (DESKGIT_TOKEN), never argv, a URL, the audit line, or any
+// file; the script lives in a private 0700-perms os.MkdirTemp dir removed by the returned
+// cleanup, which the caller defers so it runs on EVERY return path including error.
+func credentialSupply(token string) (env, argvPrefix []string, cleanup func(), err error) {
 	cleanup = func() {}
-	dir, derr := os.MkdirTemp(askpassTempParent, "deskgit-askpass-*")
+	dir, derr := os.MkdirTemp(credentialTempParent, "deskgit-cred-*")
 	if derr != nil {
-		return nil, nil, cleanup, fmt.Errorf("cannot create askpass temp dir: %w", derr)
+		return nil, nil, cleanup, fmt.Errorf("cannot create credential helper temp dir: %w", derr)
 	}
 	cleanup = func() { _ = os.RemoveAll(dir) }
-	script := filepath.Join(dir, "askpass.sh")
-	// The Username prompt is answered `x-access-token` (the GitHub App-token username); every
-	// other prompt (the password) gets the token from DESKGIT_TOKEN. The token VALUE never
-	// appears in this script — only the variable name does.
-	body := "#!/bin/sh\ncase \"$1\" in\n  *Username*) echo \"x-access-token\" ;;\n  *) echo \"$DESKGIT_TOKEN\" ;;\nesac\n"
-	if werr := os.WriteFile(script, []byte(body), 0o700); werr != nil {
+	script := filepath.Join(dir, "credential-helper.sh")
+	// The helper value is run by git through the shell, so the path is single-quoted into it. A
+	// path that itself carries a quote cannot be quoted safely: refuse rather than guess.
+	if strings.ContainsAny(script, "'\n") {
 		cleanup()
-		return nil, nil, func() {}, fmt.Errorf("cannot write askpass script: %w", werr)
+		return nil, nil, func() {}, fmt.Errorf("credential helper path %q cannot be quoted into a helper command", script)
+	}
+	if werr := os.WriteFile(script, []byte(credentialHelperScript), 0o700); werr != nil {
+		cleanup()
+		return nil, nil, func() {}, fmt.Errorf("cannot write credential helper script: %w", werr)
 	}
 	env = scrubbedEnv(os.Environ())
-	env = append(env, "GIT_ASKPASS="+script, "DESKGIT_TOKEN="+token)
-	argvPrefix = []string{"-c", "credential.helper="}
+	env = append(env, "DESKGIT_TOKEN="+token)
+	argvPrefix = []string{"-c", "credential.helper=", "-c", credentialHelperKey + "=!'" + script + "'"}
 	return env, argvPrefix, cleanup, nil
 }

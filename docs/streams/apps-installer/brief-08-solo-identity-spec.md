@@ -131,6 +131,8 @@ The options, and each one's consequence for the README tier table:
 | **2. Adopt with named changes.** Same mode, but the driver alters a named boundary (a different switch than `ASSAY_SOLO_LOGIN`, a narrower verb set, or a stricter refusal rule). | The Solo row is amended to match; the "what stays the operator's" column is re-scoped to the altered boundary. |
 | **3. Reject Solo as a supported mode.** No zero-App tier ships; the pilot ramp starts at Read + Act. | The **Solo** row is removed and the "pilot ramp" language moves to Read + Act; design §7 becomes a recorded non-goal. |
 
+Default if no answer: none — blocks until answered.
+
 **Standing ruling.** Decision issue #467 records the driver's ruling on 2026-09-05: **adopt Solo as
 specified (option 1)**, on the condition that the install page and runbook state plainly that Solo
 means the operator does far more than in the other tiers (a callout carried by apps-installer/07).

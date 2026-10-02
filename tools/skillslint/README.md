@@ -9,6 +9,7 @@ code; the other three are gating.
 make skillslint                      # the check form (runs with --root ../..)
 make guardrail-sync                  # regenerate every guardrail copy
 cd tools/skillslint && go run . --root ../..
+cd tools/skillslint && go run . --skills-dir <dir>   # adopter reach: structural + conformance ONLY
 cd tools/skillslint && go test ./... -count=1
 ```
 
@@ -20,6 +21,7 @@ own directory (`cd tools/skillslint && go test ./...`), not from the repo root.
 | Check | Scope | Source |
 |---|---|---|
 | Skill-file structure | `plugins/assay/skills/*/SKILL.md` | `lint.go` |
+| Per-skill frontmatter conformance limits (hard) + soft body/bundle budgets (advisory) | `plugins/assay/skills/*/SKILL.md`, or `<dir>/*/SKILL.md` under `--skills-dir` | `conformance.go` |
 | Invisible-character / Trojan-Source (hard) + context-budget NOTICE (advisory) | the instruction surfaces (below) | `hidden.go` |
 | Unresolved house values | **every `*.md` under `plugins/`** | `housevalue.go` |
 | Shared-guardrail derive-or-diff | every declared guardrail copy | `guardrail.go` |
@@ -48,6 +50,54 @@ description: >-
 Keep the description text byte-identical and change only its quoting — it is
 adopter-facing trigger text the harness matches on, so rewording it to dodge the
 colon changes behaviour that the lint was never asking to change.
+
+### 1a. Per-skill frontmatter conformance limits
+
+The structural check above asks whether `name:` and `description:` are present
+and readable; it says nothing about their LENGTH or SHAPE. Two shipped skills
+(`install`, `pr-review-desk`) exceeded the 1024-character description limit
+both the [agentskills specification](https://agentskills.io/specification) and
+the Codex CLI enforce, and this lint reported PASS on both — the gap
+`harness-portability/17` closes.
+
+**Hard limits (exit 1):**
+
+| Limit | Bound | Source |
+|---|---|---|
+| `description` length | ≤ 1024 Unicode characters, counted with `utf8.RuneCountInString` (never bytes) | agentskills `description`; Codex `MAX_CATALOG_SKILL_DESCRIPTION_CHARS` truncates a description at 1021 chars + `"..."`; an older Codex CLI refuses to load the skill at all ([openai/codex#13941](https://github.com/openai/codex/issues/13941)) |
+| `name` length | ≤ 64 characters | agentskills `name` |
+| `name` pattern | `^[a-z0-9]+(-[a-z0-9]+)*$` | agentskills `name` (lowercase letters/digits, hyphen-separated, no leading/trailing/consecutive hyphen) |
+
+`name == directory` and the strict-YAML-load checks above are unchanged and are
+not duplicated here — this half only bounds the length/shape of values those
+checks already require to be present and readable.
+
+**Soft budgets (advisory NOTICE, stderr, never move the exit code):**
+
+| Budget | Bound | Source |
+|---|---|---|
+| Body size | > 8000 bytes | Codex truncates an agent-plugin skill body past `MAX_SKILL_PROMPT_BYTES` |
+| Body length | > 500 lines | agentskills: "keep your main SKILL.md under 500 lines" |
+| Body size (approx tokens) | > 5000 tokens, at 4 bytes/token (Codex's own `APPROX_BYTES_PER_TOKEN`) | agentskills: "< 5000 tokens recommended" |
+| Bundle description total | summed description characters across every linted skill > 8000 | Codex's skills-list budget when the model's context window is unknown (`DEFAULT_SKILL_METADATA_CHAR_BUDGET`) |
+
+**The budget ruling (recorded in `harness-portability/17`'s brief, reversible).**
+The bundle-wide budget is a NOTICE, not a failure: the 8000-character figure
+only applies when the context window is unknown — a known window instead gets
+2% of it in tokens, a much larger figure for any window Codex plausibly runs —
+and when it does bind, Codex degrades by shortening descriptions rather than
+refusing. Cutting trigger text from every skill to satisfy a fallback path
+would harm triggering on every harness for a soft, degrading limit. Only the
+per-skill HARD limits above — where a harness truncates or refuses one skill
+outright — gate the build.
+
+**Adopter reach — `--skills-dir <dir>`.** The structural check and this
+conformance half are the only two of skillslint's checks that generalize past
+this repo's own fixed `plugins/assay/skills/` layout (the house-value,
+hidden-character, guardrail and enforcement-block halves all check THIS repo's
+own tree). `--skills-dir <dir>` (repeatable) runs ONLY those two checks over
+`<dir>/*/SKILL.md` and exits 0/1/2 the same way `--root` does; zero matched
+files is exit 2, never a quiet pass.
 
 ### 2. Invisible-character / Trojan-Source lint + context-budget NOTICE
 
@@ -173,6 +223,80 @@ Any rule more than one skill must state verbatim has one declared home,
 (`make skillslint`) and regenerates them (`make guardrail-sync`). Edit the
 source, never a copy.
 
+A copy has no end marker, so sync proves where each copy ends by content: the
+lines at the copy's anchor must equal the current canonical text (already
+synced, no write) or the block's text in an earlier committed or staged
+revision of the source. When nothing matches, as with a hand-edited copy or a
+tree with no git history, sync reports could-not-check and leaves the file
+alone. If you will edit the source again before committing, `git add` it after
+each sync so the next sync can match the copies it wrote. Otherwise restore the
+sites with `git checkout` and sync once.
+
+Two narrower cases stay content-limited even so.
+
+The first is genuinely **ambiguous**, not merely "an older revision": when the
+longest known text matching at the anchor is not also the newest one matching
+there. Two matching texts always nest, one a prefix of the other, so this
+means a newer text of the block (the current canonical text counts as the
+newest) is a strict prefix of an older one: the block once shrank by dropping
+trailing lines, and the copy still matches both sides of that shrink. The
+bytes then cannot tell a copy still genuinely at the older, longer text apart
+from a copy at the newer, shorter text followed by unrelated content —
+possibly a local, site-specific rule someone added right after the block —
+that happens to equal the longer text's own tail. Any trailing-line removal is
+such a shrink, so the first sync after one is ambiguous. `git add` does **not**
+prevent it — the tie comes from history, not from anything staging can fix —
+so sync **refuses by default**: could-not-check, naming the file, the two
+lengths that matched, and the exact line-range span the longest-match rule
+would have removed. That block is not written; another, unambiguous block in
+the same file still is.
+
+The refusal is not one-off. Once such a shrink is committed, every later sync
+of that block refuses too, whatever the later edit, for as long as the copy
+still matches both texts — for example while a dropped line is kept as
+site-local text right under the block. To get past it, either verify the
+ambiguity by hand (`git diff` on the site) and re-run with
+`--allow-ambiguous-extent`, which takes the longest match for **every**
+ambiguous block in that run and records each as a `note:` on `--sync`; or
+separate the site-local text from the block (for example with a blank line)
+so the copy no longer matches the older text.
+
+A block that only ever **grew** is not ambiguous. After a committed
+append-grow the older, shorter text is a prefix of the newer one, so both match
+at a synced copy, but the longest match is also the newest, which is what a
+synced copy holds; later edits of that block rewrite normally. What this
+accepts: content right under a copy that exactly equals the lines a later grow
+added is treated as part of the block, and a later edit replaces it. That
+happens by two routes. One is a copy that missed a sync, still at an older text,
+and so at least two revisions behind its source. The other is more ordinary: a
+site-local line that a later grow promotes, verbatim, into the canonical block.
+From that grow on, the copy is byte-identical to the grown text, so the check
+mode reports it as synced and nothing about it looks stale. A later edit of the
+block then replaces that line, which is defensible because it became canonical,
+but it is no longer the site's own text.
+
+Earlier revisions of this document said `git add` closed the ambiguity window
+entirely, and called a committed prefix-shrink "common, unambiguous" — both
+statements were wrong. A later revision treated any two matching lengths as
+ambiguous, which refused every edit of a block that had ever grown; that is
+wrong too. This default (refuse, with an explicit opt-in) and the recency
+condition are this project's own reversible choices, not a settled
+cross-project ruling (#1692).
+
+The second is narrower still: a shrink of an edit that is never committed or
+staged is could-not-check only when nothing at the anchor matches; if the
+shrunk text still matches as a prefix of what is on disk, the copy reads as
+already synced and content the shrink dropped, but never registered anywhere
+sync can see, is left in place rather than guessed away.
+
+Every site file a `--sync` run touches is read at most once, and that same
+read is what both the proven extent and the eventual write are built from;
+immediately before writing, the file is re-read and compared against that
+original read, and the write itself goes through a temp file plus atomic
+rename rather than an in-place truncate-then-write. This closes a
+read-compute-write race that let concurrent `--sync` runs corrupt a file
+(medici-finance/assay#1692).
+
 ## Fixtures
 
 `testdata/plugintree/` holds a matched pair of fake roots:
@@ -187,6 +311,20 @@ so the red arm cannot start passing for reasons that have nothing to do with the
 name. Both fixtures also carry the legitimate capitalised words
 (`Cursor's`, `GitHub's`, `Claude Code's`, `track B's`, `(R6, 2026-07-10)`) that
 must never be reported.
+
+`testdata/conformance/` holds the `--skills-dir` fixtures for the frontmatter
+conformance limits, each a directory of one or more `<name>/SKILL.md` skills:
+
+- `desc-1025/` — one skill, an ASCII description of 1025 characters. Must fail.
+- `desc-1024-multibyte/` — one skill, a 1024-character (≥ 2048-byte) description.
+  Must pass — characters, not bytes, are counted.
+- `name-mismatch/` — one skill whose `name:` does not equal its directory. Must
+  fail (the existing name==dir check, unrelated to conformance).
+- `name-pattern/` — one skill named `Bad--Name` (uppercase, consecutive hyphen).
+  Must fail the agentskills name pattern.
+- `budget-over/` — nine valid skills whose descriptions individually stay under
+  the 1024-character hard limit but sum past the 8000-character bundle budget.
+  Must pass (exit 0) with a bundle NOTICE — the budget is advisory.
 
 ## Not wired into a workflow
 

@@ -1,0 +1,140 @@
+{
+ "description": "Parity case class (#1640 review F1 round 3): the oracle's is_ratelimit greps only gh's stderr for `secondary rate limit|(http )?429|too many requests`, so the verb decides on the same text — the forge's status line, message and errors[] items — and on nothing else. MESSAGE VARIANTS: the signature in the message alone, with no Retry-After, stops the cycle — case-insensitively, in either wording.",
+ "kind": "pr",
+ "env": {},
+ "repos": [
+  "example-org/tracker",
+  "example-org/agents",
+  "example-other/site"
+ ],
+ "cycles": [
+  {
+   "note": "arm",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "t1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 7,
+       "headRefOid": "a1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "agents answers 403 SECONDARY RATE LIMIT, no header; the cycle stops",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "t2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "status": 403,
+     "message": "You have exceeded a SECONDARY RATE LIMIT."
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "agents answers 403 Too Many Requests, no header; the cycle stops",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "t3",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "status": 403,
+     "message": "Too Many Requests"
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s3",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "recovery reports only what moved against retained baselines",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "t4",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 7,
+       "headRefOid": "a2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s4",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

@@ -75,6 +75,25 @@ type BriefFile struct {
 	// A wrong TYPE is a parse error; a present-but-malformed shape is a hard
 	// PROBLEM in checkBriefFiles. NEVER a Next-up score input (F-09 scope note).
 	HomedIn string
+	// DeliverableRepo is the optional brief-v1 `deliverable_repo:` field — an
+	// ALIAS (a docs/streams/graph-repos.yaml key) naming the repo this brief's
+	// deliverable lands in, when that differs from the repo the brief FILE
+	// lives in. "" when absent. A wrong TYPE is a parse error; the sibling-
+	// merge detector (siblingmerge.go) resolves the alias through the
+	// registry itself.
+	DeliverableRepo string
+	// TrackedIn is the optional brief-v1 `tracked-in:` list — `<alias>#<N>`
+	// refs naming a sibling ISSUE this brief is tracked by (the withheld-
+	// identifier shape, key k2 in siblingmerge.go). nil when absent. A wrong
+	// TYPE (not a list of strings) is a parse error; the `§3.3` shape is
+	// checked semantically.
+	TrackedIn []string
+	// Delivery is the optional brief-v1 `delivery:` list of structured
+	// delivery claims — see model.go's DeliveryClaim. nil when absent. Only
+	// the SHAPE (a list of
+	// mappings carrying in/covers/note) is parsed here; the full
+	// delivery-claim lint is a separate, not-yet-shipped follow-up.
+	Delivery []DeliveryClaim
 	// Measures is the optional brief-v1 `measures:` field — the name of the
 	// process queue this brief instruments. nil when absent (the neutral
 	// default: not an instrumentation brief), non-nil when present, including
@@ -153,6 +172,22 @@ type BriefFile struct {
 	// at least one path. false is a COULD-NOT-CHECK for any consumer — never round
 	// it up to "no risky paths" (docs/three-state-instrument-rule.md).
 	DeclaredPathsFound bool
+	// DeclaredEntriesRaw are every `files:` token the label line names, UNFILTERED
+	// by path shape — unlike DeclaredPaths, a dotless entry (a top-level `Makefile`,
+	// a bare directory name) is kept. Parsed by extractContextDeclaredEntriesRaw.
+	// coverage.go's witnessScope uses this, never DeclaredPaths: a witness scope
+	// must know about EVERY entry a brief declares, resolvable or not, so an entry
+	// that names nothing real can force the conservative fallback
+	// (declaredEntryResolves) instead of silently narrowing the scope by omission
+	// (round-3 F6, security pr1682-S6). DeclaredPaths stays the path-shape-filtered
+	// view the mistake-proofing/01 cross-read and the obligation-derivation lint
+	// rely on, where a bare symbol name in a backticked span must not be mistaken
+	// for a declared path.
+	DeclaredEntriesRaw []string
+	// DeclaredEntriesRawFound mirrors DeclaredPathsFound for DeclaredEntriesRaw:
+	// true only when the `files:` label line was present AND yielded at least one
+	// entry, raw or not.
+	DeclaredEntriesRawFound bool
 
 	// ---- brief-v2 reserved keys (derived-board/03) ----
 	// These are populated ONLY for `schema: brief-v2` files. All are OPTIONAL under
@@ -197,6 +232,10 @@ var (
 	// checking whether the section has any real content. An unterminated
 	// comment (`<!--` with no closing `-->`) is stripped to end-of-input — it
 	// consumes the rest of the section, so it cannot masquerade as content.
+	// That end-of-input reading is right for the CONTENT check only: row
+	// parsers use stripRowComments (htmlcomment.go), which never drops text
+	// after an unterminated opener (#1939). TestCommentStripSitesAllowList
+	// keeps this regexp confined to evidenceHasContent.
 	htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?(?:-->|$)`)
 
 	// briefSchemaCurrent is the base brief schema version; recognizedBriefSchemas
@@ -735,6 +774,78 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 			addBad("homed-in must be a string")
 		}
 	}
+	// deliverable_repo is an OPTIONAL but KNOWN key: the registry ALIAS the
+	// brief's deliverable lands under. Absence defaults to "" and is never
+	// flagged. A wrong TYPE is a parse error; alias resolution against
+	// docs/streams/graph-repos.yaml happens in siblingmerge.go, where the
+	// registry is in hand.
+	if v, ok := data["deliverable_repo"]; ok {
+		if s, ok := v.(string); ok {
+			bf.DeliverableRepo = s
+		} else {
+			addBad("deliverable_repo must be a string")
+		}
+	}
+	// tracked-in is an OPTIONAL but KNOWN key (key k2 in siblingmerge.go): a
+	// list of `<alias>#<N>` refs naming a sibling issue this brief is tracked
+	// by. Absence is the default (nil) and is never flagged. A wrong TYPE (not
+	// a list of strings) is a parse error; the §3.3 shape is left to the
+	// sibling-merge detector, which only ever reads a well-formed entry.
+	if v, ok := data["tracked-in"]; ok {
+		if list, err := stringList(v); err == nil {
+			bf.TrackedIn = list
+		} else {
+			addBad("tracked-in: %v", err)
+		}
+	}
+	// delivery is an OPTIONAL but KNOWN key: a list of structured delivery
+	// claims — {in, covers, note} — each naming a merged sibling PR and how
+	// much of the brief it covers. Absence is the default (nil) and is never
+	// flagged. Only SHAPE is parsed here (a list of mappings whose
+	// in/covers/note are strings, when present); the full delivery-claim
+	// lint (a legal `covers`, a required `note` on `partial`,
+	// registry-resolvable `in`) is a separate, not-yet-shipped follow-up —
+	// this parser never rejects an entry it can read. A wrong TYPE (not a
+	// list of mappings) is a parse error.
+	if v, ok := data["delivery"]; ok {
+		list, ok := v.([]any)
+		if !ok {
+			addBad("delivery must be a list")
+		} else {
+			var claims []DeliveryClaim
+			for _, item := range list {
+				m, ok := item.(map[string]any)
+				if !ok {
+					addBad("delivery: each entry must be a mapping")
+					continue
+				}
+				var c DeliveryClaim
+				if in, ok := m["in"]; ok {
+					if s, ok := in.(string); ok {
+						c.In = s
+					} else {
+						addBad("delivery: in must be a string")
+					}
+				}
+				if cov, ok := m["covers"]; ok {
+					if s, ok := cov.(string); ok {
+						c.Covers = s
+					} else {
+						addBad("delivery: covers must be a string")
+					}
+				}
+				if note, ok := m["note"]; ok {
+					if s, ok := note.(string); ok {
+						c.Note = s
+					} else {
+						addBad("delivery: note must be a string")
+					}
+				}
+				claims = append(claims, c)
+			}
+			bf.Delivery = claims
+		}
+	}
 	// split-from is an OPTIONAL but KNOWN key (split-flag conservation): the
 	// `<stream>/<NN>` id of the brief this brief was split off from. Absence is
 	// the default (not a split child) and is never flagged. A wrong TYPE is a
@@ -898,6 +1009,7 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 	bf.Verify = extractSectionByPrefix(body, "Verify")
 	bf.Body = body
 	bf.DeclaredPaths, bf.DeclaredPathsFound = extractContextDeclaredPaths(body)
+	bf.DeclaredEntriesRaw, bf.DeclaredEntriesRawFound = extractContextDeclaredEntriesRaw(body)
 	return bf, true, nil
 }
 
@@ -1007,6 +1119,116 @@ func extractContextDeclaredPaths(body string) (paths []string, found bool) {
 		}
 	}
 	return paths, len(paths) > 0
+}
+
+// extractContextDeclaredEntriesRaw reads the same `files:` label as
+// extractContextDeclaredPaths, but keeps EVERY cleaned token, including a
+// dotless one (no '/' and no '.') the path-shape filter would drop, such as a
+// real top-level `Makefile` or a bare directory name. coverage.go's
+// witnessScope is the only consumer. It needs every entry a brief declares,
+// resolvable or not, because a witness scope narrows by OMISSION whenever a
+// real entry never reaches it (round-3 F6 / security pr1682-S6).
+//
+// THE DEFECT CLASS this parser guards (round-5 F6 / security S10): a token
+// the author wrote under `files:` is silently dropped, so it can neither
+// widen the scope (a real path left out) nor force the conservative fallback
+// (prose that names nothing). Every form therefore follows one rule,
+// declaredValueTokens: each backtick span is an entry AND each word outside
+// the spans is an entry. Prose such as `and` or `(new)` names no real path,
+// so declaredEntryResolves rejects it and the scope falls back to
+// conservative. Prose can only ever widen what a witness speaks for.
+//
+//   - Inline form (`files: a, b`): the label line plus any indented
+//     continuation lines it wraps onto (probe W2).
+//   - Bulleted form: every bullet and indented continuation line, one line at
+//     a time.
+//   - An unclosed backtick anywhere in the value (probe W1, a span wrapped
+//     mid-entry) makes the value unparseable: found is false, which the
+//     caller reads as "no trustworthy declaration" and so takes the
+//     conservative scope.
+func extractContextDeclaredEntriesRaw(body string) (entries []string, found bool) {
+	ctx := extractSectionByPrefix(body, "Context")
+	if strings.TrimSpace(ctx) == "" {
+		return nil, false
+	}
+	lines := strings.Split(ctx, "\n")
+	labelIdx := -1
+	var inline string
+	for i, l := range lines {
+		if m := contextFilesLabelRe.FindStringSubmatch(l); m != nil {
+			labelIdx = i
+			inline = strings.TrimSpace(m[1])
+			break
+		}
+	}
+	if labelIdx < 0 {
+		return nil, false
+	}
+
+	seen := map[string]bool{}
+	add := func(tok string) {
+		tok = cleanDeclaredPath(tok)
+		if tok == "" || seen[tok] {
+			return
+		}
+		seen[tok] = true
+		entries = append(entries, tok)
+	}
+
+	var values []string
+	if inline != "" {
+		value := inline
+		for _, l := range lines[labelIdx+1:] {
+			t := strings.TrimSpace(l)
+			if t == "" || l == t {
+				break // a blank line or a flush-left line ends the value
+			}
+			value += " " + t
+		}
+		values = append(values, value)
+	} else {
+		for _, l := range lines[labelIdx+1:] {
+			t := strings.TrimSpace(l)
+			if t == "" {
+				break
+			}
+			isBullet := strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* ")
+			isIndentedCont := l != t // a leading-whitespace continuation of a bullet
+			if !isBullet && !isIndentedCont {
+				break // a new flush-left label ends the files: block
+			}
+			values = append(values, strings.TrimPrefix(strings.TrimPrefix(t, "- "), "* "))
+		}
+	}
+	for _, v := range values {
+		toks, ok := declaredValueTokens(v)
+		if !ok {
+			return nil, false
+		}
+		for _, tok := range toks {
+			add(tok)
+		}
+	}
+	return entries, len(entries) > 0
+}
+
+// declaredValueTokens splits one `files:` value (an inline value, or one
+// bullet's text) into its entries: every backtick span, plus every word
+// outside the spans. A markdown link reads as its text. ok is false when the
+// value has an unclosed backtick, because then no split of it is faithful.
+func declaredValueTokens(v string) (toks []string, ok bool) {
+	v = mdLinkTextRe.ReplaceAllString(v, "$1")
+	if strings.Count(v, "`")%2 != 0 {
+		return nil, false
+	}
+	for _, m := range backtickSpanRe.FindAllStringSubmatch(v, -1) {
+		toks = append(toks, m[1])
+	}
+	outside := backtickSpanRe.ReplaceAllString(v, " ")
+	toks = append(toks, strings.FieldsFunc(outside, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t'
+	})...)
+	return toks, true
 }
 
 // cleanDeclaredPath strips residual decoration from a candidate path token.
@@ -1349,7 +1571,7 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 						v2IDOwner[bf.ID] = path
 					}
 				}
-			} else if bf.Brief != id {
+			} else if bf.Brief != id { // briefid:raw brief-v1 branch: the id IS <stream>/<NN> and must equal the filename id
 				add("%s: brief %q does not match filename-derived id %q", path, bf.Brief, id)
 			}
 			if !validEffort[bf.Effort] {
@@ -1511,6 +1733,10 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				// rule; legacy briefs keep Schema="" and Depends nil.
 				row.Schema = bf.Schema
 				row.Depends = bf.Depends
+				// unblocks: rides along for the critical tier's reciprocated
+				// dependency graph only (buildReciprocatedRevDeps) — never a
+				// score input; the score keeps reading Depends alone.
+				row.Unblocks = bf.Unblocks
 				// gates:/feathers: worm into the Brief row for the eligibility
 				// evaluator (graph-execution/01) — brief-v2 only; nil for
 				// brief-v1/legacy briefs, exactly like Depends above.
@@ -1547,6 +1773,26 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				// the board. NEVER a Next-up score input (F-09 scope note).
 				if validHomedInShape(bf.HomedIn) {
 					row.HomedIn = bf.HomedIn
+				}
+				// deliverable_repo/tracked-in/delivery worm into the Brief row
+				// UNCONDITIONALLY — the sibling-merge
+				// detector resolves deliverable_repo's alias and validates
+				// tracked-in's §3.3 shape itself, the same split HomedIn's own
+				// shape check keeps (validHomedInShape lives here because the
+				// board rendering reads it directly; alias/ref resolution needs
+				// the registry, which only siblingmerge.go has in hand).
+				row.DeliverableRepo = bf.DeliverableRepo
+				row.TrackedIn = bf.TrackedIn
+				row.Delivery = bf.Delivery
+				// issues: rides along as FULL refs for the critical tier's main-red
+				// arm only (drivecritical.go). A bare number resolves against the
+				// stream's own repo:; with none declared it cannot resolve, so it
+				// is left off (the arm never guesses a repo). Never a score input.
+				row.IssueRefs = nil
+				if s.Repo != "" {
+					for _, n := range bf.Issues {
+						row.IssueRefs = append(row.IssueRefs, fmt.Sprintf("%s#%d", s.Repo, n))
+					}
 				}
 				// measures worms into the Brief row for the drain-before-
 				// instrument eligibility gate. Wired UNCONDITIONALLY — unlike
@@ -1667,15 +1913,27 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				}
 			}
 
+			// edgeID is this brief's id in the form its depends:/unblocks: refs are
+			// written in — <stream>/<NN>. A brief-v2 file's `brief:` is the
+			// hierarchical <cell>:<repo>:<stream>:<NN> id, so keying the self-ref
+			// check and the reciprocity index on bf.Brief directly never matched a
+			// v2 ref: a v2 self-loop passed --lint and a one-sided v2 edge raised no
+			// NOTICE (#1960). The filename-derived id (expectedBriefID, above) is
+			// that <stream>/<NN> for both schemas — the v1 branch requires bf.Brief
+			// to equal it and the v2 checks require the id to agree with the path —
+			// and it drops no repo alias, so normalizeBriefKey's allow-list
+			// (TestAliasDropGuard) stays as it is.
+			edgeID := id
 			for _, ref := range bf.Depends {
-				checkRef(add, path, "depends", ref, bf.Brief, byName)
+				checkRef(add, path, "depends", ref, edgeID, byName)
 			}
 			// Accumulate the typed edge index for the reciprocity gate (below): the
-			// declared depends/unblocks lists per brief-v1 id. Built here — where every
-			// brief file is already parsed — so the reciprocity pass needs no second walk.
-			recip.dependsOf[bf.Brief] = bf.Depends
-			recip.unblocksOf[bf.Brief] = bf.Unblocks
-			recip.knownV1[bf.Brief] = true
+			// declared depends/unblocks lists per <stream>/<NN> id. Built here — where
+			// every brief file is already parsed — so the reciprocity pass needs no
+			// second walk.
+			recip.dependsOf[edgeID] = bf.Depends
+			recip.unblocksOf[edgeID] = bf.Unblocks
+			recip.knownV1[edgeID] = true
 			// Same-wave-dep lint: a brief's depends: must point
 			// only to briefs in strictly-earlier waves. A same-wave dep breaks strict
 			// wave-layering and miscomputes the critical path.
@@ -1711,7 +1969,7 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				}
 			}
 			for _, ref := range bf.Unblocks {
-				checkRef(add, path, "unblocks", ref, bf.Brief, byName)
+				checkRef(add, path, "unblocks", ref, edgeID, byName)
 			}
 		}
 	}
@@ -1736,9 +1994,9 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 
 // depEdgeIndex is the typed dependency-edge index the reciprocity gate validates.
 type depEdgeIndex struct {
-	dependsOf  map[string][]string // brief id → declared depends ids
-	unblocksOf map[string][]string // brief id → declared unblocks ids
-	knownV1    map[string]bool     // brief-v1 ids present in the corpus
+	dependsOf  map[string][]string // <stream>/<NN> id → declared depends ids
+	unblocksOf map[string][]string // <stream>/<NN> id → declared unblocks ids
+	knownV1    map[string]bool     // typed-schema (brief-v1 or brief-v2) ids present, as <stream>/<NN>
 }
 
 func newDepEdgeIndex() *depEdgeIndex {
@@ -1755,8 +2013,10 @@ func newDepEdgeIndex() *depEdgeIndex {
 // edges. This flags any depends edge A→B that B does not reciprocate with an
 // `unblocks: A` — a genuine dependency is two-sided (the author-brief methodology
 // requires both Depends-on and Unblocks), so an unreciprocated inbound edge is
-// spurious. Reconciling every edge two-sided makes blockedCount reflect only
-// genuine, both-sided dependencies and un-gameable into the tier.
+// spurious. The critical tier's high-unblocks arm counts reciprocated edges only
+// (buildReciprocatedRevDeps), so a one-sided edge cannot lift a brief there. That
+// is a bar on one endpoint writing an edge alone, not proof an edge is genuine:
+// one change that writes both endpoints still produces a reciprocated edge.
 //
 // TIER — NOTICE, not PROBLEM (Ian's ruling). This is a data-quality
 // lint. The rule is stricter than the pinned release's, and ~104 legitimate
@@ -1767,10 +2027,10 @@ func newDepEdgeIndex() *depEdgeIndex {
 // caller (checkBriefFiles) routes this into the `notices` channel accordingly.
 //
 // SCOPE (fail-safe against false positives): the check fires only when BOTH endpoints
-// are brief-v1 (in knownV1). A dangling edge (target absent) is left to checkRef; a
-// self-loop is left to checkRef; a legacy (non-brief-v1) target — which declares no
-// unblocks — is exempt so mixed corpora are not reddened for the pre-typed-edge
-// convention.
+// are typed-schema briefs, brief-v1 or brief-v2 (in knownV1, keyed <stream>/<NN>).
+// A dangling edge (target absent) is left to checkRef; a self-loop is left to
+// checkRef; a legacy (no schema) target — which declares no unblocks — is exempt
+// so mixed corpora are not reddened for the pre-typed-edge convention.
 func (idx *depEdgeIndex) reciprocityNotices() []string {
 	var notices []string
 	var ids []string
@@ -1805,7 +2065,7 @@ func (idx *depEdgeIndex) reciprocityNotices() []string {
 // zeros and alphanumeric suffixes ("12a"). selfID is the id of the brief that
 // DECLARED the ref: a ref equal to it is self-referential (`a depends on a`) and a
 // hard PROBLEM — part of the dependency-edge reciprocity gate (phase 3) that keeps
-// blockedCount un-gameable. Pass "" to skip the self-ref check.
+// a self-loop out of blockedCount. Pass "" to skip the self-ref check.
 func checkRef(add func(string, ...any), path, kind, ref, selfID string, byName map[string]*Stream) {
 	if selfID != "" && ref == selfID {
 		add("%s: %s %q is self-referential (a brief may not %s itself) — a self-loop is a spurious dependency edge that would inflate blockedCount", path, kind, ref, kind)

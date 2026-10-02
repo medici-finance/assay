@@ -114,14 +114,28 @@ facts:
 | 2 | `(cd tools/harnessgen && GOWORK=off go run . cursor --check --root ../..); echo $?` | `0` — committed `.mdc` matches the single resident source (`plugins/assay/resident-rules.md` (planned)) + coverage + binding all clean |
 | 3 | **Mutation — drift detected**: `printf '\nX\n' >> "$PWD/plugins/assay/cursor/assay.mdc" && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check >/tmp/hp12r3.out 2>&1; echo $?; (cd tools/harnessgen && GOWORK=off go run . cursor --root ../..)` | `1` naming `assay.mdc`; the `.mdc` is untracked so the revert is a regenerate (`harnessgen cursor`), after which `--check` passes again |
 | 4 | **Mutation — coverage closed**: `mkdir -p /tmp/hp12t && cp -r plugins/assay /tmp/hp12t/ && mkdir /tmp/hp12t/assay/skills/probe-skill && printf -- '---\nname: probe-skill\ndescription: probe\n---\n' > /tmp/hp12t/assay/skills/probe-skill/SKILL.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12t/assay >/tmp/hp12r4.out 2>&1; echo $?; rm -rf /tmp/hp12t` | exit `2`, output names `probe-skill` — an unaccounted skill is a hard error |
-| 5 | **Mutation — binding consistency**: `mkdir -p /tmp/hp12b && cp -r plugins/assay /tmp/hp12b/ && sed 's/`the-desk`/the-desk/g' plugins/assay/references/cursor.md > /tmp/hp12b/assay/references/cursor.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12b/assay >/tmp/hp12r5.out 2>&1; echo $?; rm -rf /tmp/hp12b` | exit `2` naming `the-desk` — packaging↔binding skew is a build error |
+| 5 | **Mutation — binding consistency**: `mkdir -p /tmp/hp12b && cp -r plugins/assay /tmp/hp12b/ && sed "s/$(printf '\140')the-desk$(printf '\140')/the-desk/g" plugins/assay/references/cursor.md > /tmp/hp12b/assay/references/cursor.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12b/assay >/tmp/hp12r5.out 2>&1; echo $?; rm -rf /tmp/hp12b` | exit `2` naming `the-desk` — packaging↔binding skew is a build error |
 | 6 | Neutrality holds: `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bodies plugins/assay/skills && /tmp/hl870 bindings plugins/assay/references; echo $?` | `0` — adopt's Cursor section stays neutral; `cursor.md` resolves every capability + has a cell per skill |
 | 7 | Neighbours unbroken: `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..) && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | `0` — the `resident` and `codex` verbs still pass beside the new one |
 | 8 | Adopt path present: `grep -qi 'Running Assay on Cursor' docs/adopting-assay.md && grep -qF 'plugins/assay/cursor/' docs/adopting-assay.md; echo $?` | `0` — the Cursor install scenario + the generated-rule step both present. (Retarget: the adopter-facing install scenario landed in `docs/adopting-assay.md` — §"Running Assay on Cursor — a second first-class harness" — after `plugins/assay/skills/adopt/SKILL.md` was converted to a thin router; the generated-rule step is the referenced `plugins/assay/cursor/` output, home of the generated `assay.mdc`.) |
 | 8a | **Positive control for row 8**: `grep -qF 'plugins/assay/cursor-no-such-token' docs/adopting-assay.md; echo $?` | `1` — the probe reports absence for an absent token |
-| 9 | `.mdc` frontmatter: `grep -qF 'alwaysApply: true' plugins/assay/cursor/assay.mdc; echo $?` | `0` — the generated rule carries the `.cursor/rules` always-apply contract |
+| 9 | Generated-rule frontmatter: `grep -qF 'alwaysApply: true' plugins/assay/cursor/assay.mdc; echo $?` | `0` — the generated rule carries the `.cursor/rules` always-apply contract |
 | 10 | Live-confirm rows flagged, not asserted: `grep -c 'needs: live-install confirmation' docs/research/cursor-harness-capabilities.md` | `≥ 5` — the unrunnable rows are flagged, never greened |
-| 11 | New entries fresh: `(cd tools/freshness && GOWORK=off go run . --root ../..) 2>&1 \| grep -E -e 'references/cursor.md' -e 'cursor-harness'` | both new entries report `FRESH` (the tool's whole-repo exit is 1 only from pre-existing unrelated stale artifacts, never from these entries) |
+| 11 | New entries fresh: `{ (cd tools/freshness && GOWORK=off go run . --root ../..) 2>&1 \|\| true; } \| grep -E -e 'references/cursor.md' -e 'cursor-harness' \| grep -c '^FRESH'` | both new entries report `FRESH` — the printed count is ≥ 2 (the tool's whole-repo exit is 1 only from pre-existing unrelated stale artifacts, never from these entries, so the row reads the two entries' lines, not that exit) |
+
+**Row-shape note — 2026-09-28 (#1703).** Rows 5, 9 and 11 were re-spelled so the execution
+witness (`statusgen verifyrun`, which runs the FIRST code span of the Command cell under
+`bash -o pipefail`) runs the command the row means. Every Expect is unchanged or stricter; none
+is loosened. Row 5: the `sed` expression held literal backticks, which closed the code span
+early, so the witness ran a truncated command ending at `sed 's/`. It now builds the backtick
+with `printf '\140'`, which makes the same substitution. Row 9: the cell opened with a prose code
+span naming the file extension, and the witness ran that as the command (exit 127). The prose is
+now plain text. Row 11: under pipefail, the whole-repo freshness exit (1, from unrelated stale
+entries) leaked through the pipe, although the Expect already said that exit is not the signal.
+The row now discards that exit explicitly and counts the `FRESH` lines for the two entries. The
+Expect gains a machine-readable floor of 2, so a STALE line for either entry is a failure where
+the old spelling passed on any matching line. Row 6 needed no change. It was a real failure: the
+Claude Code binding had no `system-demo` degradation cell, and #1703 adds it.
 
 ## Evidence
 
@@ -226,6 +240,194 @@ reads `plugins/assay/skills/adopt/SKILL.md: fixed-here (… section 2c)` and
 Verify-row re-home family (#870); not corrected here to avoid frontmatter/lint side-effects beyond
 the probe fix. Implementer evidence — "verified" still requires a non-implementer re-run of the
 retargeted table.
+
+### Non-implementer verifier run — VERIFY: FAIL — 11/12 pass, 0 could-not-check, 1 fail — 2026-09-23 claude-opus-4-8-verifier
+
+Fresh classification pass against merged main `438dd26a3e959707d2eb4347aa1310d9173777f9`,
+offline (`KUBECONFIG=/dev/null`), in a detached worktree cut from `origin/main`. Non-implementer.
+Each tool under `tools/` is its own Go module (no repo-root go.mod), so rows use the
+module-aware command forms already carried in the table. This brief's Verify table has no
+`check:ci`-classed rows. Row 3's mutate -> regenerate cycle restored `assay.mdc` byte-identical
+(working tree clean for that file afterward). Runner is the dispatched verifier, not the implementer.
+
+| # | Command | Expected | Observed (exit + key output) | Date | Runner |
+|---|---------|----------|------------------------------|------|--------|
+| 1 | `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test -v ./...` | 0, TestCursor* present | PASS — cursor-suite-green; exit 0; --- PASS: TestCursorCheckDetectsDrift ⏎ --- PASS: TestCursorBindingSkewCaught ⏎ --- PASS: TestCursorWriteThenCheckClean ⏎ github.com/medici-finance/assay/tools/harnessgen | 2026-09-23 | claude-opus-4-8-verifier |
+| 2 | `(cd tools/harnessgen && GOWORK=off go run . cursor --check --root ../..); echo $?` | 0 clean | PASS — clean; exit 0; harnessgen cursor --check: clean — ../../plugins/assay/cursor/assay.mdc matches the resident source ⏎ 0 | 2026-09-23 | claude-opus-4-8-verifier |
+| 3 | `printf '\nX\n' >> "$PWD/plugins/assay/cursor/assay.mdc" && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check; echo "drift=$?"; (cd tools/harnessgen && GOWORK=off go run . cursor --root ../..); /tmp/hg12 cursor --check; echo "recheck=$?"; git diff --exit-code -- plugins/assay/cursor/assay.mdc >/dev/null && echo "restored=byte-identical"` | 1 naming assay.mdc, then 0 | PASS — drift-then-restore; exit 0; harnessgen cursor --check: DRIFT — committed rule plugins/assay/cursor/assay.mdc differs from the resident source ⏎ drift=1 ⏎ wrote ../../plugins/assay/cursor/assay.mdc ⏎ recheck=0 ⏎ restored=byte-identical | 2026-09-23 | claude-opus-4-8-verifier |
+| 4 | `mkdir -p /tmp/hp12t && cp -r plugins/assay /tmp/hp12t/ && mkdir /tmp/hp12t/assay/skills/probe-skill && printf -- '---\nname: probe-skill\ndescription: probe\n---\n' > /tmp/hp12t/assay/skills/probe-skill/SKILL.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12t/assay >/tmp/hp12r4.out 2>&1; echo "exit=$?"; cat /tmp/hp12r4.out; rm -rf /tmp/hp12t /tmp/hp12r4.out` | exit 2, output names probe-skill | PASS — coverage-cnc; exit 0; exit=2 ⏎ could-not-check: coverage rule failed ⏎ skill "probe-skill" is on disk but appears in neither the packaged roster nor the excluded list | 2026-09-23 | claude-opus-4-8-verifier |
+| 5 | mkdir -p /tmp/hp12b && cp -r plugins/assay /tmp/hp12b/ && sed 's/`the-desk`/the-desk/g' plugins/assay/references/cursor.md > /tmp/hp12b/assay/references/cursor.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12b/assay >/tmp/hp12r5.out 2>&1; echo "exit=$?"; cat /tmp/hp12r5.out; rm -rf /tmp/hp12b /tmp/hp12r5.out | exit 2 naming the-desk | PASS — skew-cnc; exit 0; exit=2 ⏎ could-not-check: packaging↔binding skew ⏎ packaged skill "the-desk" has no degradation cell | 2026-09-23 | claude-opus-4-8-verifier |
+| 6 | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bodies plugins/assay/skills && /tmp/hl870 bindings plugins/assay/references; echo $?` | 0 | FAIL — bindings-drift; exit 0; checked-clean: bodies — no violations ⏎ plugins/assay/references/claude-code.md: no degradation cell for skill "system-demo" ⏎ checked-failed: bindings — 1 violation(s) | 2026-09-23 | claude-opus-4-8-verifier |
+| 7 | `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..) && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | 0 | PASS — verbs-unbroken; exit 0; harnessgen resident --check: clean — committed artifacts match the source ⏎ harnessgen codex --check: clean — ../../plugins/assay/.codex-plugin/plugin.json matches the metadata source ⏎ 0 | 2026-09-23 | claude-opus-4-8-verifier |
+| 8 | `grep -qi 'Running Assay on Cursor' docs/adopting-assay.md && grep -qF 'plugins/assay/cursor/' docs/adopting-assay.md; echo "both=$?"; grep -ci 'Running Assay on Cursor' docs/adopting-assay.md; grep -cF 'plugins/assay/cursor/' docs/adopting-assay.md` | 0 | PASS — both-present; exit 0; both=0 ⏎ 2 ⏎ 1 | 2026-09-23 | claude-opus-4-8-verifier |
+| 8a | `grep -qF 'plugins/assay/cursor-no-such-token' docs/adopting-assay.md; echo $?` | 1 | PASS — absent-control; exit 0; 1 | 2026-09-23 | claude-opus-4-8-verifier |
+| 9 | `grep -qF 'alwaysApply: true' plugins/assay/cursor/assay.mdc; echo "exit=$?"; grep -n 'alwaysApply: true' plugins/assay/cursor/assay.mdc` | 0 | PASS — present-line3; exit 0; exit=0 ⏎ 3:alwaysApply: true | 2026-09-23 | claude-opus-4-8-verifier |
+| 10 | `grep -c 'needs: live-install confirmation' docs/research/cursor-harness-capabilities.md` | >= 5 | PASS — flagged-live-rows; exit 0; 9 | 2026-09-23 | claude-opus-4-8-verifier |
+| 11 | `(cd tools/freshness && GOWORK=off go run . --root ../..) 2>&1 \| grep -E -e 'references/cursor.md' -e 'cursor-harness'` | both FRESH | PASS — fresh; exit 0; FRESH  docs/research/cursor-harness-capabilities.md  reviewed 2026-08-26, max-age 45d ⏎ FRESH  plugins/assay/references/cursor.md  reviewed 2026-08-26, max-age 45d | 2026-09-23 | claude-opus-4-8-verifier |
+
+RISK-VALUE: DERIVED — exitClean = 0, exitDrift = 1, exitCouldNotCheck = 2 @ tools/harnessgen/main.go:22-24 — the three-state fail-closed gate the `cursor` verb reuses. Re-derived live this pass: clean=0 (rows 2, 7), drift=1 (row 3), could-not-check=2 (rows 4, 5). The mapping is correct: could-not-check must be a distinct non-zero, non-drift value so a coverage or binding skew hard-errors rather than reading as clean; drift=1 is the recoverable regenerate-and-commit state. Exit 2 is observable only on a built binary (`go run` collapses 2 into 1), which is why rows 4/5 build the binary first.
+RISK-VALUE: DERIVED — alwaysApply = true @ plugins/assay/cursor/assay.mdc:3 — the `.cursor/rules` contract injects the resident rule into every Cursor context only when always-apply is set; `true` is the sole value satisfying the resident-rules always-on posture (the same always-on stance as the Claude payload). Confirmed present (row 9).
+RISK-VALUE: N/A for the remaining enumerated entries — the freshness max-age (45 days, `freshness.yaml`) and the row-10 flag threshold (>= 5) are reversible operational knobs, rank last, no derivation required.
+
+Row 6 fails only because the Claude Code bindings reference lacks a system-demo degradation cell (real-tree drift from #1488; noted on #1332); this brief's own deliverable is complete.
+
+### Non-implementer verifier run (public tree, post-de-house) — VERIFY: FAIL — 11/12 pass, 1 fail (row 6) — 2026-09-27 claude-opus-5-5-verifier
+
+Execution witness written by `statusgen verifyrun` against merged main `cf56ddeebc18`
+(public tree; the harness-portability/14 de-house is in, so `tools/harnessgen`,
+`tools/harnesslint`, `tools/freshness` and `plugins/assay/{cursor,resident-rules.md}` are all
+resolved in this repo). Offline (`KUBECONFIG=/dev/null`), detached worktree cut from
+`origin/main`. Runner is the dispatched verifier, not the implementer.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test ./... >/tmp/hp12r1.out 2>&1; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/harnessgen && GOWORK=off go run . cursor --check --root ../..); echo $?` | pass exit=0 | sha256:7200bd9208d1 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `printf '\nX\n' >> "$PWD/plugins/assay/cursor/assay.mdc" && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check >/tmp/hp12r3.out 2>&1; echo $?; (cd tools/harnessgen && GOWORK=off go run . cursor --root ../..)` | pass exit=0 | sha256:758dd23267b9 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `mkdir -p /tmp/hp12t && cp -r plugins/assay /tmp/hp12t/ && mkdir /tmp/hp12t/assay/skills/probe-skill && printf -- '---\nname: probe-skill\ndescription: probe\n---\n' > /tmp/hp12t/assay/skills/probe-skill/SKILL.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12t/assay >/tmp/hp12r4.out 2>&1; echo $?; rm -rf /tmp/hp12t` | pass exit=0 | sha256:53c234e5e847 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `mkdir -p /tmp/hp12b && cp -r plugins/assay /tmp/hp12b/ && sed 's/` | fail exit=2 | sha256:80dd39947a6e | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bodies plugins/assay/skills && /tmp/hl870 bindings plugins/assay/references; echo $?` | pass exit=0 | sha256:2bc6944d6f23 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..) && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | pass exit=0 | sha256:ef88df36c256 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `grep -qi 'Running Assay on Cursor' docs/adopting-assay.md && grep -qF 'plugins/assay/cursor/' docs/adopting-assay.md; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 8a | `grep -qF 'plugins/assay/cursor-no-such-token' docs/adopting-assay.md; echo $?` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `.mdc` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:ff1eb0a71da6 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `grep -c 'needs: live-install confirmation' docs/research/cursor-harness-capabilities.md` | pass exit=0 | sha256:2e6d31a5983a | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `(cd tools/freshness && GOWORK=off go run . --root ../..) 2>&1 \| grep -E -e 'references/cursor.md' -e 'cursor-harness'` | fail exit=1 | sha256:92094556d061 | 2026-09-27 | assay-verifier-app[bot] @ cf56ddeebc18 (on-behalf-of human:ian) (forge-identity) |
+
+**Reading the witness.** Its Result column is exit-status only, and most rows end in `echo $?`,
+so a witness `pass exit=0` there means only that the shell ran. Each row was also run by hand as
+written; the verdicts below come from those runs:
+
+- Row 1: printed `0`; `ok github.com/medici-finance/assay/tools/harnessgen`; all nine TestCursor*
+  tests pass (CommittedRuleMatchesSource, RuleHasMdcFrontmatter, CheckDetectsDrift,
+  CoverageCatchesUnaccountedSkill, BindingSkewCaught, ExcludedEmptyReasonIsParseError,
+  MissingSourceIsCouldNotCheck, EmptyRosterIsCouldNotCheck, WriteThenCheckClean). PASS.
+- Row 2: exit 0, `clean — ../../plugins/assay/cursor/assay.mdc matches the resident source`. PASS.
+- Row 3: printed `1`, `DRIFT — committed rule plugins/assay/cursor/assay.mdc differs from the
+  resident source`; regenerate wrote assay.mdc; recheck exit 0 clean; `git diff --exit-code` on
+  assay.mdc clean (byte-identical). PASS.
+- Row 4: printed `2`, `could-not-check: coverage rule failed … skill "probe-skill" is on disk but
+  appears in neither the packaged roster nor the excluded list`. PASS.
+- Row 5: printed `2`, `could-not-check: packaging↔binding skew … packaged skill "the-desk" has no
+  degradation cell`. PASS. (The witness row's `fail exit=2` is a witness-parser artefact: the
+  Command cell contains inner backticks, so the witness ran a truncated command ending at `sed 's/`.)
+- Row 6: `checked-clean: bodies — no violations`, then
+  `plugins/assay/references/claude-code.md: no degradation cell for skill "system-demo"` and
+  `checked-failed: bindings — 1 violation(s)`; printed `1`. **FAIL** (the witness `pass` reflects
+  only the trailing `echo $?`).
+- Row 7: `resident --check: clean` and `codex --check: clean`; printed `0`. PASS.
+- Row 8: printed `0`; heading "Running Assay on Cursor — a second first-class harness" at
+  docs/adopting-assay.md line 1645, the `plugins/assay/cursor/` token at line 1687. PASS.
+- Row 8a: printed `1` (absent token reports absence). PASS.
+- Row 9: exit 0; `3:alwaysApply: true`. PASS. (Witness `could-not-run exit=127` is a parser
+  artefact: the Command cell opens with a prose `.mdc` code span, which the witness took as the
+  command.)
+- Row 10: `9` (≥ 5). PASS.
+- Row 11: `FRESH docs/research/cursor-harness-capabilities.md reviewed 2026-08-26, max-age 45d`
+  and `FRESH plugins/assay/references/cursor.md reviewed 2026-08-26, max-age 45d`. PASS. (Witness
+  `fail exit=1` is pipefail: the whole-repo freshness exit is 1 from two unrelated STALE entries,
+  docs/records-and-retention.md and docs/research/codex-harness-capabilities.md; the same pipeline
+  exits 0 without pipefail, and the row's Expect cell names this exact case.)
+
+**What changed since the prior receipts.** Receipt 1 (2026-09-11, 553dc2ae) failed row 8, a
+stale probe; the row was retargeted on 2026-09-22 and passes now. Receipt 2 (2026-09-23,
+438dd26a) failed row 6 only. Since then, plugins/assay/cursor/assay.mdc (version stamp),
+plugins/assay/references/cursor.md and docs/adopting-assay.md have changed, and the
+harness-portability/14 de-house has landed. None of those changes touch the row-6 cause: the
+claude-code.md binding still has no system-demo degradation cell. That file has not changed
+since 438dd26a. The PR cited as the prior blocker_ref, #1488 (merged), added system-demo to the
+Codex/Cursor packaging rosters only. The open issue tracking the claude-code.md cell gap is #1703.
+
+**Scope note on row 6.** The violation is in the Claude Code binding, not in any file this brief
+delivers. The Cursor binding (references/cursor.md) is clean under the same lint. Row 6 as written
+checks the whole bindings tree, so it stays red until #1703 lands, or until someone rules that the
+row should cover only this brief's own bindings.
+
+**Observation (row 8 substance).** The retargeted probe passes. The install section now marks the
+generated `.mdc` as optional (step 3: "Optional: `.cursor/rules/*.mdc`"; step 5: generated
+`harnessgen cursor` output "is **not** required for the copy path"). So the generated-rule step is
+still documented, but as optional rather than required. The consumers frontmatter still has the
+inverted adopt/SKILL.md vs docs/adopting-assay.md placement noted on 2026-09-22 (#870).
+
+**Risk-bearing value.** Risk metadata is present and all four flags are `no`. The enumeration
+covered the cursor verb in tools/harnessgen, the generated rule, freshness.yaml's two cursor
+entries and the Verify thresholds:
+
+- exitClean = 0, exitDrift = 1, exitCouldNotCheck = 2 @ tools/harnessgen/main.go:22-24
+- `alwaysApply: true` @ tools/harnessgen/gen.go:233 (the generator), emitted at plugins/assay/cursor/assay.mdc:3
+- max-age-days = 45 @ freshness.yaml:39 and freshness.yaml:54
+- row-10 threshold ≥ 5 (Verify table)
+
+All of these can be undone with an edit and a regenerate. The exit codes and alwaysApply rank
+highest because a wrong value there would silently let skew through or silently stop loading the
+rule.
+
+RISK-VALUE: DERIVED — exitClean = 0, exitDrift = 1, exitCouldNotCheck = 2 @ tools/harnessgen/main.go:22-24 — could-not-check has to be a non-zero value distinct from drift, so that coverage or binding skew fails hard instead of reading as clean or as a routine regenerate. Observed live this pass: 0 on rows 2 and 7, 1 on row 3, and 2 on rows 4 and 5 (built binary).
+RISK-VALUE: DERIVED — alwaysApply = true @ tools/harnessgen/gen.go:233 (emitted at plugins/assay/cursor/assay.mdc:3) — resident rules must load in every session, and in the `.cursor/rules` contract only alwaysApply true does that without an agent- or glob-triggered attach.
+RISK-VALUE: N/A — max-age-days = 45 @ freshness.yaml:39/54 and the row-10 threshold ≥ 5 are reversible operational knobs; they rank last and need no derivation.
+
+VERIFY: FAIL — 11/12 rows pass, row 6 fails (the claude-code.md binding has no system-demo degradation cell, tracked by #1703). Held at `implemented`.
+### Non-implementer verifier re-run — VERIFY: PASS — 12/12 rows pass, 0 could-not-check — 2026-09-30 claude-opus-5-5[1m] @ merged main `b7ca79ab798d`
+
+**What moved since the last run (2026-09-27, `cf56ddeebc18`, FAIL on row 6).** #1817 (commit `4fbd20514`, closes #1703) added the `system-demo` degradation cell to the Claude Code binding (plugins/assay/references/claude-code.md line 58), which was the sole row-6 cause. The same commit re-spelled Verify rows 5, 9 and 11 so the execution witness runs the command each row means (Expect unchanged or stricter; row 11 gained a count floor of 2). Nothing else in this brief's scope changed. Main advanced one commit past the run SHA while this pass ran (`b5e53a6a2`, a one-line edit to a windows-port brief), which touches nothing this table reads.
+
+Offline (`KUBECONFIG=/dev/null`), detached worktree cut from `origin/main`, clean before and after (row 3's mutate-then-regenerate restored assay.mdc byte-identical; `git status --short` empty afterward). Runner is a dispatched verifier, not the implementer. Every row was run by hand as authored; the `statusgen verifyrun --dry-run` witness is appended below verbatim.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test ./... >/tmp/hp12r1.out 2>&1; echo $?` | 0, includes TestCursor suite | Verify row 1 — printed `0`; captured output `ok github.com/medici-finance/assay/tools/harnessgen 2.669s`. Supplementary run of `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test -v -run 'TestCursor' ./...`: 9 TestCursor-prefixed tests `--- PASS` (drift, coverage, binding-skew, parse-error, frontmatter, missing-source, empty-roster, write-then-check, committed-rule), and a full `-v` run shows 0 `--- SKIP`. PASS | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 2 | `(cd tools/harnessgen && GOWORK=off go run . cursor --check --root ../..); echo $?` | 0 clean | Verify row 2 — `harnessgen cursor --check: clean — ../../plugins/assay/cursor/assay.mdc matches the resident source`; printed `0`. PASS | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 3 | `printf '\nX\n' >> "$PWD/plugins/assay/cursor/assay.mdc" && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check >/tmp/hp12r3.out 2>&1; echo $?; (cd tools/harnessgen && GOWORK=off go run . cursor --root ../..)` | 1 naming assay.mdc; regenerate restores; recheck passes | Verify row 3 — printed `1`; captured `DRIFT — committed rule plugins/assay/cursor/assay.mdc differs from the resident source`; regenerate printed `wrote ../../plugins/assay/cursor/assay.mdc`; follow-up `(cd tools/harnessgen && GOWORK=off go run . cursor --check --root ../..)` exit 0 clean; `git status --short` empty (byte-identical restore). PASS | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 4 | `mkdir -p /tmp/hp12t && cp -r plugins/assay /tmp/hp12t/ && mkdir /tmp/hp12t/assay/skills/probe-skill && printf -- '---\nname: probe-skill\ndescription: probe\n---\n' > /tmp/hp12t/assay/skills/probe-skill/SKILL.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12t/assay >/tmp/hp12r4.out 2>&1; echo $?; rm -rf /tmp/hp12t` | exit 2 naming probe-skill | Verify row 4 — printed `2`; captured `could-not-check: coverage rule failed` / `skill "probe-skill" is on disk but appears in neither the packaged roster nor the excluded list`. PASS | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 5 | `mkdir -p /tmp/hp12b && cp -r plugins/assay /tmp/hp12b/ && sed "s/$(printf '\140')the-desk$(printf '\140')/the-desk/g" plugins/assay/references/cursor.md > /tmp/hp12b/assay/references/cursor.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12b/assay >/tmp/hp12r5.out 2>&1; echo $?; rm -rf /tmp/hp12b` | exit 2 naming the-desk | Verify row 5 — printed `2`; captured `could-not-check: packaging↔binding skew` / `packaged skill "the-desk" has no degradation cell`. The re-spelled row now runs whole under the witness (witness hash equals row 4's and row 11's, i.e. the same printed `2`). PASS | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 6 | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bodies plugins/assay/skills && /tmp/hl870 bindings plugins/assay/references; echo $?` | 0 | Verify row 6 (last run's FAIL) — `checked-clean: bodies — no violations`; four declared non-matrix references skipped with stated reasons (desk-common, desk-shell, standing-note, tick-contract); `checked-clean: bindings — no violations`; printed `0`. The claude-code.md `system-demo` cell (`\| system-demo \| runs \|`) is now present. PASS | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 7 | `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..) && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | 0 | Verify row 7 — `harnessgen resident --check: clean — committed artifacts match the source`; `harnessgen codex --check: clean — ../../plugins/assay/.codex-plugin/plugin.json matches the metadata source`; printed `0`. PASS | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 8 | `grep -qi 'Running Assay on Cursor' docs/adopting-assay.md && grep -qF 'plugins/assay/cursor/' docs/adopting-assay.md; echo $?` | 0 | Verify row 8 — printed `0`; heading "Running Assay on Cursor — a second first-class harness" at docs/adopting-assay.md line 1648. PASS | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 8a | `grep -qF 'plugins/assay/cursor-no-such-token' docs/adopting-assay.md; echo $?` | 1 | Verify row 8a (positive control) — printed `1`. PASS | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 9 | `grep -qF 'alwaysApply: true' plugins/assay/cursor/assay.mdc; echo $?` | 0 | Verify row 9 — printed `0`; the literal sits at plugins/assay/cursor/assay.mdc line 3. The re-spelled row now runs under the witness (last run: exit 127 on a prose code span). PASS | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 10 | `grep -c 'needs: live-install confirmation' docs/research/cursor-harness-capabilities.md` | ≥ 5 | Verify row 10 — printed `9`, exit 0. PASS | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+| 11 | `{ (cd tools/freshness && GOWORK=off go run . --root ../..) 2>&1 \|\| true; } \| grep -E -e 'references/cursor.md' -e 'cursor-harness' \| grep -c '^FRESH'` | count ≥ 2 | Verify row 11 — printed `2`, exit 0. Underlying lines: `FRESH  docs/research/cursor-harness-capabilities.md  reviewed 2026-08-26, max-age 45d` and `FRESH  plugins/assay/references/cursor.md  reviewed 2026-08-26, max-age 45d`. PASS | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (claude-opus-5-5[1m]) (on-behalf-of human:ian) |
+
+**Execution witness** (`statusgen verifyrun --dry-run`, v1.0.29, emitted verbatim; its Result column is exit-status only, and rows ending in `echo $?` always exit 0 — the printed values in the hand table above are what the verdict rests on):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/harnessgen && GOFLAGS=-buildvcs=false go test ./... >/tmp/hp12r1.out 2>&1; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/harnessgen && GOWORK=off go run . cursor --check --root ../..); echo $?` | pass exit=0 | sha256:7200bd9208d1 | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (on-behalf-of human:ian) (forge-identity) |
+| 3 | `printf '\nX\n' >> "$PWD/plugins/assay/cursor/assay.mdc" && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check >/tmp/hp12r3.out 2>&1; echo $?; (cd tools/harnessgen && GOWORK=off go run . cursor --root ../..)` | pass exit=0 | sha256:758dd23267b9 | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (on-behalf-of human:ian) (forge-identity) |
+| 4 | `mkdir -p /tmp/hp12t && cp -r plugins/assay /tmp/hp12t/ && mkdir /tmp/hp12t/assay/skills/probe-skill && printf -- '---\nname: probe-skill\ndescription: probe\n---\n' > /tmp/hp12t/assay/skills/probe-skill/SKILL.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12t/assay >/tmp/hp12r4.out 2>&1; echo $?; rm -rf /tmp/hp12t` | pass exit=0 | sha256:53c234e5e847 | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (on-behalf-of human:ian) (forge-identity) |
+| 5 | `mkdir -p /tmp/hp12b && cp -r plugins/assay /tmp/hp12b/ && sed "s/$(printf '\140')the-desk$(printf '\140')/the-desk/g" plugins/assay/references/cursor.md > /tmp/hp12b/assay/references/cursor.md && GOWORK=off go build -C tools/harnessgen -o /tmp/hg12 . && /tmp/hg12 cursor --check --bundle /tmp/hp12b/assay >/tmp/hp12r5.out 2>&1; echo $?; rm -rf /tmp/hp12b` | pass exit=0 | sha256:53c234e5e847 | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (on-behalf-of human:ian) (forge-identity) |
+| 6 | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bodies plugins/assay/skills && /tmp/hl870 bindings plugins/assay/references; echo $?` | pass exit=0 | sha256:eb553a881109 | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(cd tools/harnessgen && GOWORK=off go run . resident --check --root ../..) && (cd tools/harnessgen && GOWORK=off go run . codex --check --root ../..); echo $?` | pass exit=0 | sha256:ef88df36c256 | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (on-behalf-of human:ian) (forge-identity) |
+| 8 | `grep -qi 'Running Assay on Cursor' docs/adopting-assay.md && grep -qF 'plugins/assay/cursor/' docs/adopting-assay.md; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (on-behalf-of human:ian) (forge-identity) |
+| 8a | `grep -qF 'plugins/assay/cursor-no-such-token' docs/adopting-assay.md; echo $?` | pass exit=0 | sha256:4355a46b19d3 | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (on-behalf-of human:ian) (forge-identity) |
+| 9 | `grep -qF 'alwaysApply: true' plugins/assay/cursor/assay.mdc; echo $?` | pass exit=0 | sha256:9a271f2a916b | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (on-behalf-of human:ian) (forge-identity) |
+| 10 | `grep -c 'needs: live-install confirmation' docs/research/cursor-harness-capabilities.md` | pass exit=0 | sha256:2e6d31a5983a | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (on-behalf-of human:ian) (forge-identity) |
+| 11 | `{ (cd tools/freshness && GOWORK=off go run . --root ../..) 2>&1 \|\| true; } \| grep -E -e 'references/cursor.md' -e 'cursor-harness' \| grep -c '^FRESH'` | pass exit=0 | sha256:53c234e5e847 | 2026-09-30 | assay-verifier-app[bot] @ b7ca79ab798d (on-behalf-of human:ian) (forge-identity) |
+
+**Hash cross-check.** Rows 1, 8 and 9 share `sha256:9a271f2a916b` (printed `0`); rows 4, 5 and 11 share `sha256:53c234e5e847` (printed `2`, the Expect for all three); row 6's hash changed from the 2026-09-27 run's `2bc6944d6f23` (printed `1`) to `eb553a881109` (printed `0`), matching the fix.
+
+**Findings (non-blocking).**
+- Row 3's Expect still says the `.mdc` "is untracked so the revert is a regenerate". plugins/assay/cursor/assay.mdc is now tracked. The regenerate still restores it byte-identical, so the row holds, but that clause is stale wording.
+- Both Cursor freshness entries were last reviewed 2026-08-26 with max-age 45 days, so they go STALE on 2026-10-10. After that date row 11 prints fewer than 2 and fails unless the two artifacts are re-reviewed.
+- Scope traceability: every row above discharges its own numbered Verify row. The deliverable "Cursor column in docs/how-assay-works.md" has no Verify row. It is present (the capability table header at line 141 reads Capability / Claude Code / Codex / Cursor), but no row checks it.
+- The live Cursor smoke run is still the separate gate:human acceptance step. This pass does not claim it, and research §5's nine live-install flags stay flagged, not greened.
+
+**Risk-bearing value.** Risk metadata is present with all four flags `no`, the gate is model, and `irreversible: no`. Enumeration over the `cursor` verb in tools/harnessgen, the generated rule, freshness.yaml's two Cursor entries and the Verify thresholds:
+- `exitClean = 0`, `exitDrift = 1`, `exitCouldNotCheck = 2` @ tools/harnessgen/main.go:22-24
+- `alwaysApply: true` @ tools/harnessgen/gen.go:233 (generator), emitted at plugins/assay/cursor/assay.mdc:3
+- `max-age-days: 45` @ freshness.yaml:39 and freshness.yaml:72
+- row-10 threshold ≥ 5 and row-11 floor ≥ 2 (Verify table)
+
+All are reversible with an edit and a regenerate. The exit codes and alwaysApply rank highest, because a wrong value there would silently pass skew or silently stop loading the rule.
+
+RISK-VALUE: DERIVED — exitClean = 0, exitDrift = 1, exitCouldNotCheck = 2 @ tools/harnessgen/main.go:22-24 — could-not-check must be non-zero and distinct from drift so a coverage or binding skew fails hard instead of reading as clean or as a routine regenerate; observed live this pass: 0 on rows 2 and 7, 1 on row 3, 2 on rows 4 and 5 (built binary).
+RISK-VALUE: DERIVED — alwaysApply = true @ tools/harnessgen/gen.go:233 (emitted at plugins/assay/cursor/assay.mdc:3) — resident rules must load in every session; in the `.cursor/rules` contract only alwaysApply true does that without an agent- or glob-triggered attach.
+RISK-VALUE: N/A — max-age-days = 45 @ freshness.yaml:39/72 and the row-10/row-11 thresholds are reversible operational knobs; ranked last, no derivation required.
+
+rows_passed=12 rows_total=12
+
+VERIFY: PASS
 
 ## Review
 

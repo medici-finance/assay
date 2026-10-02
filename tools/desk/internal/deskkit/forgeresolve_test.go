@@ -74,8 +74,11 @@ func TestForgeForResolvesFromRepoConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ForgeFor: %v", err)
 	}
-	if _, ok := f.(*GitLabForge); !ok {
-		t.Fatalf("ForgeFor returned %T, want *GitLabForge", f)
+	if !IsOutboundChecked(f) {
+		t.Fatalf("ForgeFor returned %T, want the outbound-checked decorator", f)
+	}
+	if _, ok := backendOf(f).(*GitLabForge); !ok {
+		t.Fatalf("ForgeFor returned %T, want *GitLabForge", backendOf(f))
 	}
 }
 
@@ -216,9 +219,9 @@ func TestGitHubCustodyMinterHookIsHonored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ForgeFor: %v", err)
 	}
-	gh, ok := f.(*GitHubForge)
+	gh, ok := backendOf(f).(*GitHubForge)
 	if !ok {
-		t.Fatalf("ForgeFor returned %T, want *GitHubForge", f)
+		t.Fatalf("ForgeFor returned %T, want *GitHubForge", backendOf(f))
 	}
 	if gh.Token != "hook-minted-token" || gh.BaseURL != "https://fake.example.invalid" {
 		t.Fatalf("GitHubForge = %+v, want the installed hook's token/baseURL", gh)
@@ -303,6 +306,34 @@ func TestForgeSingleConstructionSite(t *testing.T) {
 			return fmt.Errorf("parsing %s: %w", path, perr)
 		}
 		isResolverFile := filepath.Base(path) == "forgeresolve.go"
+		// Inside ResolveForge — the function that HANDS a backend to callers — a backend
+		// literal must be OutboundChecked's direct argument; any other literal there is an
+		// unwrapped return (desktools-v2/10). The resolver file's other literal (the identity
+		// probe) is a receiver that never leaves its function as a Forge.
+		mustWrap := map[ast.Node]bool{}
+		for _, d := range f.Decls {
+			fd, ok := d.(*ast.FuncDecl)
+			if !ok || fd.Name.Name != "ResolveForge" || !isResolverFile {
+				continue
+			}
+			wrappedArg := map[ast.Node]bool{}
+			ast.Inspect(fd, func(n ast.Node) bool {
+				if call, ok := n.(*ast.CallExpr); ok && compositeLitTypeName(call.Fun) == "OutboundChecked" {
+					for _, a := range call.Args {
+						wrappedArg[a] = true
+					}
+				}
+				return true
+			})
+			ast.Inspect(fd, func(n ast.Node) bool {
+				if u, ok := n.(*ast.UnaryExpr); ok && u.Op == token.AND {
+					if _, isLit := u.X.(*ast.CompositeLit); isLit && !wrappedArg[n] {
+						mustWrap[n] = true
+					}
+				}
+				return true
+			})
+		}
 		ast.Inspect(f, func(n ast.Node) bool {
 			var typeName string
 			switch expr := n.(type) {
@@ -319,6 +350,11 @@ func TestForgeSingleConstructionSite(t *testing.T) {
 				return true
 			}
 			if isResolverFile {
+				if mustWrap[n] {
+					offenders = append(offenders, fmt.Sprintf("%s: %s{...} is not wrapped by OutboundChecked",
+						fset.Position(n.Pos()), typeName))
+					return true
+				}
 				sawResolverSite[typeName] = true
 			} else {
 				offenders = append(offenders, fmt.Sprintf("%s: %s{...}", fset.Position(n.Pos()), typeName))
@@ -472,8 +508,8 @@ func TestRosterKnownKeySet(t *testing.T) {
 	if !found {
 		t.Fatalf("%s is not in knownRosterKeys() — a roster carrying it refuses the whole configuration", EnvRunCredentials)
 	}
-	if ext := cfg.Ext["run-credentials"]; ext.Status != ExtOK {
-		t.Fatalf("cfg.Ext[run-credentials] = %+v, want %q", ext, ExtOK)
+	if ext, ok := cfg.Ext["run-credentials"]; ok {
+		t.Fatalf("cfg.Ext[run-credentials] = %+v — ASSAY_RUN_CREDENTIALS is a trust key, never an extension result", ext)
 	}
 	if got := cfg.RunCredentials["example-org/tracker"]; got.Role != ReleaseRunnerRole || got.Human != "" {
 		t.Fatalf("RunCredentials[example-org/tracker] = %+v, want the %s role", got, ReleaseRunnerRole)

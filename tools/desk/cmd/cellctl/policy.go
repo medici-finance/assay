@@ -5,23 +5,25 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // This file ports the CELL_MODEL_POLICY semantics #1388 added to the shell oracle
-// (tools/cellctl/cellctl's model_policy()/apply_model_policy()/policy_claude_preflight()) into
-// the Go binary — example-stream/10 shipped the Go port without them (assay#1390). The oracle
-// and docs/cellctl-model-policy.md are the spec; tools/cellctl/tests/model-policy.test.py is the
-// behavioural ORACLE this file's tests port cases from. See the PR body for exactly which
-// oracle behaviours this file does, and does not, carry over — some of the oracle's launch-time
-// mechanics (the live PreModelSwitch/PreToolUse Claude Code hook wiring, the local/managed
-// settings.json availableModels/modelOverrides conflict scan, and the `up`/`check` per-role
-// preflight loops) are NOT ported here; the schema, resolution, deny and effort-propagation
-// contract is.
+// (tools/cellctl/testdata/cellctl-shell-oracle.sh's model_policy()/apply_model_policy()/
+// policy_claude_preflight()) into the Go binary — example-stream/10 shipped the Go port without
+// them (assay#1390). The oracle and docs/cellctl-model-policy.md are the spec;
+// tools/cellctl/tests/model-policy.test.py is the behavioural ORACLE this file's tests port cases
+// from. See the PR body for exactly which oracle behaviours this file does, and does not, carry
+// over — some of the oracle's launch-time mechanics (the live PreModelSwitch/PreToolUse Claude Code
+// hook wiring, the local/managed settings.json availableModels/modelOverrides conflict scan, and
+// the `up`/`check` per-role preflight loops) were ported afterwards in policy_enforce.go
+// (assay#1392); the schema, resolution, deny and effort-propagation contract lives here.
 
 // policyTierNames is the fixed four-tier ladder every provider must pin exactly.
 var policyTierNames = []string{"top", "strong", "mid", "fast"}
@@ -68,8 +70,9 @@ type ModelPolicy struct {
 	Providers     map[string]PolicyProvider
 	Roles         map[string]PolicyRole
 	ProviderDesks map[string]map[string]ProviderDesk
-	// Banned is Deny plus the two built-in Opus-5 patterns, which apply even when `deny` is
-	// empty or omitted — the prohibition is not something a policy file can lift.
+	// Banned is the policy's own `deny` globs. The built-in Opus 5.0 prohibition is not listed
+	// here: policyDenied applies it to every value, even when `deny` is empty or omitted — the
+	// prohibition is not something a policy file can lift.
 	Banned []string
 	SHA256 string
 }
@@ -161,8 +164,13 @@ func globToRegex(pat string) string {
 	return b.String()
 }
 
+// policyDenied reports whether value is refused: always for the built-in Opus 5.0 prohibition
+// (isBannedOpus50), and otherwise when it matches one of the policy's `deny` globs in banned.
 func policyDenied(value string, banned []string) bool {
 	b := policyBase(value)
+	if isBannedOpus50(b) {
+		return true
+	}
 	for _, pat := range banned {
 		if regexp.MustCompile(globToRegex(strings.ToLower(pat))).MatchString(b) {
 			return true
@@ -177,11 +185,32 @@ func policyDenied(value string, banned []string) bool {
 // both resolvable). A single sha256 of the raw bytes is computed once and carried on the result
 // (docs/cellctl-model-policy.md "Inspect, launch and verify adoption": `show`/dry-run print it).
 func loadModelPolicy(path string) (*ModelPolicy, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := readPolicySource(path)
 	if err != nil {
 		return nil, policyFail("cannot read policy file %s: %v", path, err)
 	}
 	return parseModelPolicy(raw, path)
+}
+
+// readPolicySource reads a file that locates or carries the model policy, refusing anything that
+// is not a regular file. The open is non-blocking, so a FIFO (or a device) at a policy path
+// cannot block the caller; the model-policy hook takes these paths from its inherited
+// environment, and a hook that hangs is a hook Claude Code eventually skips. A missing file
+// still reports os.ErrNotExist, which the catalog lookup relies on.
+func readPolicySource(path string) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s: not a regular file (%s)", path, info.Mode().Type())
+	}
+	return io.ReadAll(f)
 }
 
 func parseModelPolicy(raw []byte, path string) (*ModelPolicy, error) {
@@ -220,13 +249,11 @@ func parseModelPolicy(raw []byte, path string) (*ModelPolicy, error) {
 		}
 	}
 	m.Deny = deny
-	// The built-in Opus-5.0 prohibition, applied even when `deny` is empty or omitted — a policy
-	// file cannot lift it. The patterns are ANCHORED at end-of-token (no TRAILING `*`) so they ban
-	// Opus 5.0 exactly — `claude-opus-5`, `claude-opus-5[1m]` (policyBase strips the tag),
-	// `gateway/claude-opus-5`, `Opus5` — while letting the valid Opus 5.5 top tier
-	// (`claude-opus-5-5`) through: that id ends in `opus-5-5`, not `opus-5`, so no pattern matches.
-	// `*opus-5-0` / `*opus-5.0` catch the explicit 5.0 spellings of the same tier.
-	m.Banned = append(append([]string{}, deny...), "*opus-5", "*opus5", "*opus-5-0", "*opus-5.0")
+	// The built-in Opus-5.0 prohibition is NOT a pattern here: policyDenied applies it to every
+	// value via isBannedOpus50 (model.go), which matches the 5.0 id by version — so a policy file
+	// cannot lift it, and a suffixed 5.0 id (a date, a provider tail) is the same tier as
+	// `claude-opus-5`, while Opus 5.5 (`claude-opus-5-5`) and the other 5.x minors stay allowed.
+	m.Banned = append([]string{}, deny...)
 
 	providersRaw, ok := top["providers"]
 	if !ok {
@@ -292,7 +319,7 @@ func parseModelPolicy(raw []byte, path string) (*ModelPolicy, error) {
 			if len(supported) == 0 || !allIn(supported, levels) || !contains(supported, effort) {
 				return nil, policyFail("unsupported effort for %s/%s", name, tierName)
 			}
-			if (strings.HasPrefix(value, "glm-5.3") || policyBase(value) == "k3") && !allIn(supported, []string{"low", "high", "max"}) {
+			if (strings.HasPrefix(value, "glm-5.3") || policyBase(value) == "k3" || policyBase(value) == "k3-256k") && !allIn(supported, []string{"low", "high", "max"}) {
 				return nil, policyFail("GLM 5.3 and Kimi K3 support low, high or max effort")
 			}
 			tiers[tierName] = PolicyTier{Model: value, Effort: effort, SupportedEfforts: supported}
@@ -380,8 +407,8 @@ func resolveInTiers(tiers map[string]PolicyTier, value string, banned []string) 
 }
 
 // PolicyResolution is one role's fully resolved provider/harness/model/effort, plus what the
-// launch needs to propagate that: the CLAUDE env block (ANTHROPIC_* aliases, the subagent model,
-// the effort level) or the CODEX `-c` argv fragments. `tiers`/`banned` are carried so a later
+// launch needs to propagate that: the CLAUDE env block (ANTHROPIC_* aliases, the subagent
+// model) or the CODEX `-c` argv fragments (which do carry the effort). `tiers`/`banned` are carried so a later
 // ResolveChild call resolves within the SAME provider's tier map without re-loading the file.
 type PolicyResolution struct {
 	Provider     string
@@ -391,8 +418,12 @@ type PolicyResolution struct {
 	Effort       string
 	Tier         string
 	PolicySHA256 string
-	ClaudeEnv    map[string]string
-	CodexArgs    []string
+	// Requested is the explicit --model/DESK_MODEL_OVERRIDE this resolution was made for ("" for
+	// the role's own tier). The runtime hook re-resolves with the SAME request, so the parent
+	// effort it checks a child against is the one the window actually launched with.
+	Requested string
+	ClaudeEnv map[string]string
+	CodexArgs []string
 
 	tiers  map[string]PolicyTier
 	banned []string
@@ -456,7 +487,7 @@ func (m *ModelPolicy) Resolve(role, providerOverride, requested, harnessOverride
 
 	res := &PolicyResolution{
 		Provider: provider, Harness: harness, Role: role, Model: model, Effort: effort,
-		Tier: tierName, PolicySHA256: m.SHA256, tiers: entry.Tiers, banned: m.Banned,
+		Tier: tierName, PolicySHA256: m.SHA256, Requested: requested, tiers: entry.Tiers, banned: m.Banned,
 	}
 	if harness == "claude" {
 		env := map[string]string{}
@@ -465,7 +496,10 @@ func (m *ModelPolicy) Resolve(role, providerOverride, requested, harnessOverride
 		}
 		env["ANTHROPIC_MODEL"] = model
 		env["CLAUDE_CODE_SUBAGENT_MODEL"] = model
-		env["CLAUDE_CODE_EFFORT_LEVEL"] = effort
+		// Effort deliberately does NOT travel as CLAUDE_CODE_EFFORT_LEVEL: the env var
+		// outranks agent frontmatter, so exporting it would pin every child agent to the
+		// session level and defeat a per-agent `effort:` override. `--effort` (which
+		// frontmatter CAN override) is the only effort channel for the claude harness.
 		if provider == "anthropic" {
 			env["ANTHROPIC_BASE_URL"] = "https://api.anthropic.com"
 		}
@@ -514,8 +548,8 @@ var semverRe = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)`)
 const claudeBinary = "claude"
 
 // checkClaudeMinVersion is the version half of the oracle's `policy_claude_preflight` — the
-// settings.json/managed-settings allowlist-conflict scan that function also runs is NOT ported
-// (see this file's header comment and the PR body). It shells out to `claude --version` (a
+// settings.json/managed-settings allowlist-conflict scan that function also runs is
+// scanClaudeSettingsConflicts in policy_enforce.go. It shells out to `claude --version` (a
 // local binary invocation, not a network call) and refuses below the floor above.
 func checkClaudeMinVersion() error {
 	out, err := exec.Command(claudeBinary, "--version").Output()

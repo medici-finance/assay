@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -53,7 +54,7 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		}
 	}
 
-	sha := c.fetchMainUnderLock()
+	sha := c.fetchMainUnderLock(role)
 	_ = os.MkdirAll(filepath.Join(c.Dir, "worktrees"), 0o755)
 	if _, err := os.Stat(filepath.Join(wt, ".git")); err == nil {
 		// An existing tree is MERGED up to the fetched main, or the boot stops — never left
@@ -79,13 +80,23 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	if c.Deskd == "1" && !c.deskdUp() {
 		fmt.Fprintf(os.Stderr, "NOTICE: cell deskd is NOT up on %s — in your shell: CELL_ATTENDED=1 cellctl deskd %s\n", c.DeskdAddr, c.Name)
 	}
-	c.genShims()
+	// Codex composes command environments natively; other harnesses retain
+	// their existing shim contract, including the separate scrubbed path.
+	if harness != "codex" || c.Kind == "scrubbed" {
+		c.genShims()
+	}
 	if harness == "codex" {
 		c.ensureCodexResidentRules(wt)
 	}
 	if c.Kind == "scrubbed" {
 		c.scrubbedDeskLaunch(role, harness, model, session, wt)
 		return
+	}
+	// The worktree now exists (created, or merged up to main), so its own .claude settings —
+	// and every parent directory's — are rechecked before the harness starts.
+	if err := claudePolicyPreflight(policyRes, cfg, wt); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		die("model policy settings preflight failed")
 	}
 	providerDisp := provider
 	if policyRes != nil {
@@ -102,7 +113,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		c.Name, role, c.Kind, modelDisp, effortDisp, orDefault(providerDisp, "anthropic"), harness, session, cfg, wt, orDefault(deskRoots, "unset"), c.Home)
 
 	env := os.Environ()
-	env = envSet(env, "PATH", filepath.Join(c.Dir, "shim")+":"+c.Env.Get("PATH"))
+	if harness != "codex" {
+		env = envSet(env, "PATH", filepath.Join(c.Dir, "shim")+string(filepath.ListSeparator)+c.Env.Get("PATH"))
+	}
 	env = envSet(env, "DESK_LOOP", role)
 	env = envSet(env, "DESK_SESSION", session)
 	if deskRoots != "" {
@@ -132,12 +145,42 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		if policyRes != nil {
 			argv = append(argv, policyRes.CodexArgs...)
 		}
+		commandArgs, err := c.codexEnvironmentArgs(env)
+		if err != nil {
+			die("desk: %v", err)
+		}
+		argv = append(argv, commandArgs...)
+		capacityArgs, err := c.codexCapacityArgs(role)
+		if err != nil {
+			die("desk: Codex capacity: %v", err)
+		}
+		argv = append(argv, capacityArgs...)
+		bash, err := codexBashPath()
+		if err != nil {
+			die("desk: %v", err)
+		}
 		argv = append(argv, "--sandbox", "danger-full-access", "-C", wt, "-m", model,
-			fmt.Sprintf("Invoke the %q skill now.", "assay:"+role))
+			codexRolePrompt(role, runtime.GOOS, bash))
+	} else if harness == "cursor" {
+		if err := c.prepareCursorWorkspace(role, wt); err != nil {
+			die("cursor workspace: %v", err)
+		}
+		if c.Cadence != nil {
+			if err := cursorHeadlessPreflight("agent"); err != nil {
+				die("cursor cadence: %v", err)
+			}
+		}
+		argv = cursorLaunchArgv(role, model, session, wt)
+		env = cursorLaunchEnv(env)
 	} else {
 		env = envSet(env, "CLAUDE_CONFIG_DIR", cfg)
 		// Automated desks do not need the extra next-prompt generation request.
 		env = envSet(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "false")
+		// Bound the context a long desk window carries: auto-compact at 200K so a sustained
+		// session stops re-reading an ever-growing prefix every turn (cached-input spend against
+		// provider rate windows; 1M-context models never trip it otherwise). Neutral for
+		// 200K-context models, which compact there anyway. A cell overrides it via cell.env.
+		env = envSet(env, "CLAUDE_CODE_AUTO_COMPACT_WINDOW", c.Env.GetOr("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "200000"))
 		if provider != "" {
 			// An inherited API key wins over the auth token and silently routes to Anthropic,
 			// so it is UNSET first; then the model plus the three tier aliases are pinned to a
@@ -157,16 +200,35 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		argv = []string{"claude", "--name", session, "--model", model, "/assay:" + role}
 		if policyRes != nil {
 			// The policy's own env block (ANTHROPIC_MODEL/CLAUDE_CODE_SUBAGENT_MODEL/
-			// CLAUDE_CODE_EFFORT_LEVEL/ANTHROPIC_DEFAULT_*_MODEL, ANTHROPIC_BASE_URL for the
-			// anthropic provider) is applied on top of whatever the glm/kimi credential block
-			// above just set — this is effort propagation into the launch record: the harness
-			// receives the pinned effort both as `--effort` and as CLAUDE_CODE_EFFORT_LEVEL.
+			// ANTHROPIC_DEFAULT_*_MODEL, ANTHROPIC_BASE_URL for the anthropic provider) is
+			// applied on top of whatever the glm/kimi credential block above just set. Effort
+			// travels only as `--effort`: CLAUDE_CODE_EFFORT_LEVEL would outrank agent
+			// frontmatter, so it is neither set here nor allowed to leak in from the ambient
+			// shell — a child agent's `effort:` frontmatter must stay able to raise that child
+			// above the session level the flag pins.
 			for k, v := range policyRes.ClaudeEnv {
 				env = envSet(env, k, v)
 			}
 			env = envUnset(env, "MAX_THINKING_TOKENS")
-			argv = []string{"claude", "--effort", policyRes.Effort, "--name", session, "--model", model, "/assay:" + role}
+			env = envUnset(env, "CLAUDE_CODE_EFFORT_LEVEL")
+			// --settings is the RUNTIME half: an availableModels allowlist of the provider's
+			// pinned IDs plus the PreModelSwitch / PreToolUse(Agent|Task) hooks that call back
+			// into this binary, so neither a mid-session switch nor a child agent can reach a
+			// model the launch-time resolution would have refused.
+			settings, err := policyClaudeSettings(selfPath(), c.Dir, policyRes)
+			if err != nil {
+				die("model policy: cannot build --settings: %v", err)
+			}
+			argv = []string{"claude", "--effort", policyRes.Effort, "--settings", settings, "--name", session, "--model", model, "/assay:" + role}
 		}
+	}
+	if c.Cadence != nil {
+		c.runCadencedHarness(role, harness, argv, env, wt)
+		return
+	}
+	if c.cadenceLease != nil {
+		c.runInteractiveHarness(role, argv, env, wt)
+		return
 	}
 	runForeground(argv, env, wt)
 }
@@ -238,7 +300,8 @@ func runForeground(argv []string, env []string, dir string) {
 func envSet(env []string, k, v string) []string {
 	out := env[:0:0]
 	for _, kv := range env {
-		if !strings.HasPrefix(kv, k+"=") {
+		key, _, _ := strings.Cut(kv, "=")
+		if key != k && !(runtime.GOOS == "windows" && strings.EqualFold(key, k)) {
 			out = append(out, kv)
 		}
 	}
@@ -248,7 +311,8 @@ func envSet(env []string, k, v string) []string {
 func envUnset(env []string, k string) []string {
 	out := env[:0:0]
 	for _, kv := range env {
-		if !strings.HasPrefix(kv, k+"=") {
+		key, _, _ := strings.Cut(kv, "=")
+		if key != k && !(runtime.GOOS == "windows" && strings.EqualFold(key, k)) {
 			out = append(out, kv)
 		}
 	}

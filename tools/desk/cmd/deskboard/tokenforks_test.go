@@ -51,7 +51,7 @@ func TestBoardReadsForkTokenMinterOncePerOwner(t *testing.T) {
 	// The PRODUCTION binding: the board's own lookup seam, so this exercises the real path
 	// rather than a stub of it.
 	oldMint := mintTokenFn
-	mintTokenFn = deskkit.RoleTokenForRepo
+	mintTokenFn = deskkit.GitHubRoleToken
 	t.Cleanup(func() { mintTokenFn = oldMint })
 
 	// A minter that writes a per-account token file and records every fork. This is the

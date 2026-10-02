@@ -45,14 +45,14 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 		"CompareRefs", "CreateDraftChange", "DeleteRef", "EditChange", "EditComment",
 		"FileIssue", "GetCommit", "GetIssue", "GetIssueTyped", "GetPullRequest",
 		"IssueContentEvents", "IssueReactions", "IssueTrustEvents", "ListChangedFiles",
-		"ListChanges", "ListComments",
+		"ListChanges", "ListComments", "ListCommitChanges", "ListFileCommits",
 		"ListCommentsTyped", "ListLabelEvents", "ListLabels", "ListOpenChanges",
 		"ListOpenIssues", "ListRecentCommits", "ListWorkflowFiles", "MarkReadyForReview",
 		"MatchingRefs",
 		"OpenChangeForBranch", "OpenMergeHold", "PRTrustEvents", "PostComment",
 		"PostCommentTyped", "PostReview", "PushTransportHint", "ReadFile", "ReadMergeHold",
 		"RefExists", "ReopenIssue", "RepoHardeningRead", "RepoVisibility",
-		"RequiredStatusChecks", "ReviewsAtHead", "RunStatus", "RunWorkflow", "SearchIssues", "SearchOpenChanges",
+		"RequiredStatusChecks", "ReviewQueueSnapshot", "ReviewsAtHead", "RunStatus", "RunWorkflow", "SearchIssues", "SearchOpenChanges",
 		"SetMergeHold", "WriteFile",
 	}
 	sort.Strings(want)
@@ -73,11 +73,16 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 	// Re-based 5→6 by the credfence balancing-loops work: its preflight ambient-identity
 	// check legitimately ADDED one forge-CLI permit (internal/deskkit/preflight.go's
 	// ambientLoginProbe reads `gh api user` to learn the ambient identity — the D2 identity
-	// layer that cannot route through the token-minting interface). That is a real, reviewed
-	// widening of the permit list, not the silent deskread drift this row guards against, so the
-	// base moves with it — exactly the "re-base in whatever change legitimately moved it" this
-	// test's own message names.
-	const baseCeiling = 6
+	// layer that cannot route through the token-minting interface; #1528). That is a real,
+	// reviewed widening of the permit list, not the silent deskread drift this row guards
+	// against, so the base moves with it — exactly the "re-base in whatever change legitimately
+	// moved it" this test's own message names.
+	//
+	// Re-based 6→7 by the deskapps manifest-flow installer (#1260): its driver-ruled permit
+	// cmd/deskapps/identity.go::runGH::gh reads the signed-in `gh auth` login before any App
+	// token can exist. 7 = the #1528 ambientLoginProbe row plus the #1260 runGH row on top of
+	// the five pre-existing permits; the same two rows forgeban's allowedInvocationCeiling cites.
+	const baseCeiling = 7
 	if c := forgeban.Ceiling(); c != baseCeiling {
 		t.Fatalf("forgeban.Ceiling() = %d, want %d — this diff must not move the shell-exec ban's "+
 			"ceiling (statusgen is a separate module with no allowlist rows to migrate here; any "+

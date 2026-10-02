@@ -1,9 +1,11 @@
 // Command cellctl starts, stops and scaffolds an Assay CELL on one laptop.
 //
-// This is the Go port of tools/cellctl/cellctl. The shell script stays in
-// the tree as the parity ORACLE: tools/cellctl/tests/parity.test.sh runs both implementations
-// over the same fixtures and diffs their DRY_RUN plans, stdout, stderr and exit codes, so every
-// line this program prints is a CONTRACT with that script until a human signs the cutover.
+// This is the Go port of the original bash cellctl, and it is the launcher releases ship. The
+// shell script stays in the tree as a TEST FIXTURE only, at
+// tools/cellctl/testdata/cellctl-shell-oracle.sh — the parity ORACLE:
+// tools/cellctl/tests/parity.test.sh runs both implementations over the same fixtures and diffs
+// their DRY_RUN plans, stdout, stderr and exit codes, so every line this program prints is a
+// CONTRACT with that script until a human signs the cutover.
 //
 // Layout mirrors the brief's files: cell.go (cell.env + kind/harness/forge validation), env.go
 // (the scrubbed allowlist, stated once), plan.go (the [plan] grammar), and one file per verb.
@@ -12,6 +14,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -51,6 +54,9 @@ func main() {
 	// environment supply the very scope line `check` exists to audit, so a cell whose roster file
 	// is missing or wider than its CELL_REPO_SLUG could pass its own check on inherited env vars.
 	// The cell home's file is the thing under audit, so it is the only admissible source.
+	// The model-policy hook's deadline starts before anything that can block, the roster echo
+	// below included (policy_enforce.go, armHookDeadline).
+	armHookDeadline(commandArgs(os.Args[1:]))
 	deskkit.SetToolClass(deskkit.ClassForTool(false))
 	// P3: echo the effective roster once per run. A control surface that lives in settings rather
 	// than in a diff is visible only at RUN time; without the echo a NARROWING is invisible.
@@ -70,6 +76,15 @@ func run() (code int) {
 		}
 	}()
 	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "--cells-root" {
+		if len(args) < 3 || !filepath.IsAbs(args[1]) {
+			die("--cells-root requires an absolute registry path and a command")
+		}
+		if err := os.Setenv("CELLS_ROOT", args[1]); err != nil {
+			die("cannot select cell registry: %v", err)
+		}
+		args = args[2:]
+	}
 
 	// `--version` / `version` — pure introspection, recognised as the SOLE argument only, and
 	// answered before any other parsing, so a stale copy is detectable exactly the way
@@ -89,8 +104,14 @@ func run() (code int) {
 	}
 
 	switch verb {
+	case "container-run":
+		cmdContainerRun(rest)
 	case "providers":
 		cmdProviders(rest)
+	case "model-policy":
+		// The runtime hook a policy launch installs in Claude's --settings (policy_enforce.go);
+		// not an operator verb, so it is not in the usage text.
+		cmdModelPolicy(rest)
 	case "ls":
 		cmdLs()
 	case "check":
@@ -103,6 +124,8 @@ func run() (code int) {
 		cmdCheck(needCell(rest), cfg)
 	case "deskd":
 		cmdDeskd(needCell(rest))
+	case "cadence":
+		cmdCadence(needCell(rest), rest[1:])
 	case "desk":
 		cmdDesk(needCell(rest), rest[1:])
 	case "smoke":
@@ -136,4 +159,14 @@ func needCell(rest []string) string {
 		exitWith(1)
 	}
 	return rest[0]
+}
+
+// commandArgs recognizes the one global selector before hook deadline detection.
+// Validation still happens in run, but no alternate hook spelling can defer its
+// watchdog until after the potentially blocking roster echo.
+func commandArgs(args []string) []string {
+	if len(args) >= 3 && args[0] == "--cells-root" {
+		return args[2:]
+	}
+	return args
 }

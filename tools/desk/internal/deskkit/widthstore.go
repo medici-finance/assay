@@ -74,6 +74,10 @@ func LoadWidth(loop string, now time.Time) (*WidthEntry, bool, error) {
 	if err != nil {
 		return nil, false, Unverifiable("cannot resolve the width store path", err)
 	}
+	return loadWidthInDir(canonical, dir, now)
+}
+
+func loadWidthInDir(canonical, dir string, now time.Time) (*WidthEntry, bool, error) {
 	path := filepath.Join(dir, canonical+".json")
 	b, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -143,15 +147,39 @@ func ResolvedWidth(loop string) (width int, source string, err error) {
 func ResolvedWidthAt(loop string, now time.Time) (width int, source string, err error) {
 	canonical, known := CanonicalLoopName(loop)
 	if !known {
-		return 0, "", Refused(fmt.Sprintf(
-			"refused: %q is not a loop this roster recognises. Known loop names: %v", loop, KnownLoopNames()))
+		return 0, "", Refused(fmt.Sprintf("refused: %q is not a loop this roster recognises. Known loop names: %v", loop, KnownLoopNames()))
 	}
 	stored, fresh, lerr := LoadWidth(canonical, now)
+	return resolveStoredWidth(canonical, stored, fresh, lerr)
+}
+
+// ResolvedWidthInStateDir resolves a cell's pool without temporarily changing the
+// process HOME. stateDir is that cell's explicit desk-tools state directory, not
+// the width subdirectory. It shares freshness, fallback and ceilings with
+// ResolvedWidth; unreadable stored state never silently becomes a default.
+func ResolvedWidthInStateDir(loop, stateDir string, now time.Time) (width int, source string, err error) {
+	canonical, known := CanonicalLoopName(loop)
+	if !known {
+		return 0, "", Refused(fmt.Sprintf("refused: %q is not a loop this roster recognises. Known loop names: %v", loop, KnownLoopNames()))
+	}
+	if !filepath.IsAbs(stateDir) {
+		return 0, "", Unverifiable("width state directory must be absolute", nil)
+	}
+	if stateDirGuard != nil {
+		if err := stateDirGuard(stateDir); err != nil {
+			return 0, "", err
+		}
+	}
+	stored, fresh, lerr := loadWidthInDir(canonical, filepath.Join(stateDir, "roster", "width"), now)
+	return resolveStoredWidth(canonical, stored, fresh, lerr)
+}
+
+func resolveStoredWidth(canonical string, stored *WidthEntry, fresh bool, lerr error) (int, string, error) {
 	if lerr != nil {
 		return 0, "", lerr
 	}
 	requested := 0
-	source = "shipped default"
+	source := "shipped default"
 	if fresh {
 		requested = stored.Width
 		source = fmt.Sprintf("set by %s at %s", stored.SetBy, stored.Updated)

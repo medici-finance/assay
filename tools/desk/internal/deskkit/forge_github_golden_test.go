@@ -103,6 +103,10 @@ type goldenServer struct {
 	workflowRuns       map[string]any
 	pendingDeployments []map[string]any
 	run                map[string]any
+	// fileCommits is the path-filtered commits LIST (ListFileCommits) and commitPulls the
+	// commit's associated-PRs LIST (ListCommitChanges).
+	fileCommits []map[string]any
+	commitPulls []map[string]any
 }
 
 var (
@@ -115,6 +119,8 @@ var (
 	gIssueRoot = regexp.MustCompile(`^/repos/[^/]+/[^/]+/issues$`)
 	gStatus    = regexp.MustCompile(`/commits/[^/]+/status$`)
 	gChecks    = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
+	gCommits   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/commits$`)
+	gCommitPRs = regexp.MustCompile(`^/repos/[^/]+/[^/]+/commits/[^/]+/pulls$`)
 	gReqChecks = regexp.MustCompile(`/branches/[^/]+/protection/required_status_checks$`)
 	gRepo      = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
 	gReactions = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
@@ -240,6 +246,10 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.status)
 	case r.Method == http.MethodGet && gChecks.MatchString(path):
 		enc(s.checks)
+	case r.Method == http.MethodGet && gCommits.MatchString(path):
+		enc(s.fileCommits)
+	case r.Method == http.MethodGet && gCommitPRs.MatchString(path):
+		enc(s.commitPulls)
 	case r.Method == http.MethodGet && gReqChecks.MatchString(path):
 		// A branch with no protection (or no required checks) answers 404 — the "nothing
 		// required" case, distinct from a served object. A case that wants the 404 sets it via
@@ -585,6 +595,52 @@ func TestForgeGithubGolden(t *testing.T) {
 			run: func(f *GitHubForge) (any, error) { return f.ListComments(forgeTestRepo, 7) },
 		},
 		{
+			// desktools-v2 brief 09 — the review-queue snapshot is ONE POST /graphql carrying
+			// every open change with its reviews. The golden pins the document sent (the request
+			// body), the REST rendering of each review (a Bot author re-suffixed to "<slug>[bot]",
+			// databaseId as ID / Author.ID, commit.oid as CommitID, a null commit as ""), and the
+			// fail-closed incompleteness: #8's reviews overflow the page (hasNextPage) and #9's
+			// response carries no reviews connection at all — both come back
+			// ReviewsComplete=false with NO reviews, never an empty-but-complete set.
+			name: "review_queue_snapshot",
+			setup: func(s *goldenServer) {
+				pr := func(n int, head string, reviews any) map[string]any {
+					m := map[string]any{
+						"number": n, "title": "change", "body": "", "state": "OPEN", "isDraft": true,
+						"createdAt": "2026-09-01T00:00:00Z", "lastEditedAt": nil,
+						"author":           map[string]any{"login": "worker", "__typename": "Bot"},
+						"mergeStateStatus": "CLEAN", "headRefOid": head, "headRefName": "feat/x", "baseRefName": "main",
+						"labels":  map[string]any{"nodes": []map[string]any{{"name": "example-label"}}},
+						"commits": map[string]any{"nodes": []map[string]any{}},
+					}
+					if reviews != nil {
+						m["reviews"] = reviews
+					}
+					return m
+				}
+				complete := map[string]any{"pageInfo": map[string]any{"hasNextPage": false}, "nodes": []map[string]any{
+					{"databaseId": 501, "author": map[string]any{"login": "reviewer", "__typename": "Bot", "databaseId": 42},
+						"state": "CHANGES_REQUESTED", "commit": map[string]any{"oid": "old1"}, "body": "Verdict: request-changes",
+						"submittedAt": "2026-09-01T01:00:00Z"},
+					{"databaseId": 502, "author": map[string]any{"login": "example-human", "__typename": "User", "databaseId": 7},
+						"state": "COMMENTED", "commit": nil, "body": "note", "submittedAt": "2026-09-01T02:00:00Z"},
+					{"databaseId": 503, "author": map[string]any{"login": "reviewer", "__typename": "Bot", "databaseId": 42},
+						"state": "APPROVED", "commit": map[string]any{"oid": "head7"}, "body": "Verdict: approve",
+						"submittedAt": "2026-09-01T03:00:00Z"},
+				}}
+				overflow := map[string]any{"pageInfo": map[string]any{"hasNextPage": true}, "nodes": []map[string]any{
+					{"databaseId": 601, "author": map[string]any{"login": "reviewer", "__typename": "Bot", "databaseId": 42},
+						"state": "APPROVED", "commit": map[string]any{"oid": "head8"}, "body": "", "submittedAt": "2026-09-01T04:00:00Z"},
+				}}
+				s.graphql = map[string]any{"data": map[string]any{"repository": map[string]any{
+					"pullRequests": map[string]any{"nodes": []map[string]any{
+						pr(7, "head7", complete), pr(8, "head8", overflow), pr(9, "head9", nil),
+					}},
+				}}}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.ReviewQueueSnapshot(forgeTestRepo) },
+		},
+		{
 			name: "edit_comment",
 			setup: func(s *goldenServer) {
 				s.graphql = map[string]any{"data": map[string]any{"updateIssueComment": map[string]any{
@@ -790,6 +846,30 @@ func TestForgeGithubGolden(t *testing.T) {
 				s.repoLabels = []map[string]any{{"name": "bug"}, {"name": "raised-by:worker"}}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.ListLabels(forgeTestRepo) },
+		},
+		{
+			// The auto-approve lane's register history: ONE path-filtered page at the named ref.
+			name: "list_file_commits",
+			setup: func(s *goldenServer) {
+				s.fileCommits = []map[string]any{
+					{"sha": "ccc333", "commit": map[string]any{"committer": map[string]any{"date": "2026-09-02T10:00:00Z"}}},
+					{"sha": "bbb222", "commit": map[string]any{"committer": map[string]any{"date": "2026-09-01T10:00:00Z"}}},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.ListFileCommits(forgeTestRepo, "main", "docs/rulings.md", 50)
+			},
+		},
+		{
+			// The PRs behind one commit, as numbers; the caller reads each for its merge time.
+			name: "list_commit_changes",
+			setup: func(s *goldenServer) {
+				s.commitPulls = []map[string]any{
+					{"number": 21, "state": "closed", "merged_at": "2026-09-01T11:00:00Z"},
+					{"number": 34, "state": "open", "merged_at": nil},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.ListCommitChanges(forgeTestRepo, "bbb222") },
 		},
 		{
 			name: "read_file",

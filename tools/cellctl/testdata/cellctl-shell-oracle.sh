@@ -1,0 +1,3585 @@
+#!/usr/bin/env bash
+# cellctl — start, stop and scaffold an Assay CELL on one laptop (the laptop route).
+#
+#   Native Go container cells: new <cell> --kind container --container-config /absolute/cells.json
+#   Native container status/check/up/down use Docker directly; see docs/cellctl.md.
+#   cellctl ls                                   cells under $CELLS_ROOT
+#   cellctl providers init                       Go launcher: create shared $CELLS_ROOT/providers.json
+#                                                per-provider desk models/effort; <cell>/providers.json overrides
+#   cellctl new   <cell> [--kind k8s|house|container|scrubbed] [--forge github|gitlab] --repo <checkout> ...
+#                        --kind k8s   (default) a full cell: its own deskd, roster and App keys under home/
+#                                     --cells-yaml <file> [forge custody flags]
+#                                     scaffold <cell>/ (cell.env, home/, README) — then YOU fill
+#                                     home/.config/assay/{roster.env,apps.env} + the custody material
+#                                     --forge defaults to github. The custody flags are FORGE-SPECIFIC:
+#                                       github: --orgs a,b --deskd-app-pem <pem> [--deskd-app-id-var VAR]
+#                                               --deskd-app-pem is REQUIRED on the github path ONLY (the App mints
+#                                               per-org installation tokens); VAR defaults to DESK_APP_ID, the generic
+#                                               role name a CELL apps.env uses.
+#                                       gitlab: --group <group> [--gitlab-api-base URL] [--gitlab-token-store DIR]
+#                                               NO App PEM and NO --orgs — GitLab custody is a role token store
+#                                               (gitlab-<role>.token files), provisioned by hand, never minted.
+#                        --kind house a LOCAL cell on the operator's own laptop: the desks reuse the
+#                                     operator's config home (roster, App keys) by SYMLINK, no deskd is
+#                                     required, and every role still boots in its own LOCKED worktree.
+#                                     --roots '<owner>/<repo>=<abs path>,...'   (the DESK_ROOTS map)
+#                                     [--roles "<role> ..."] [--port N]
+#                        --kind container --repo <repo-id> --launcher <absolute-executable>
+#                                     registers an operator-owned container launcher; copies no credentials.
+#                                     check/desk/down delegate to it. up opens the coordinator only;
+#                                     multi-role up and host cockpit/provider flags are not supported yet.
+#                        --kind scrubbed --repo <checkout> --repo-slug <owner/repo> [--roots '...'] [--roles "..."]
+#                                     a host-local cell whose harness runs on THIS laptop but inside an
+#                                     environment `cellctl` fully COMPOSES (`env -i` plus an explicit
+#                                     allowlist) — nothing from the launching shell leaks in. One repo per
+#                                     cell (`CELL_REPO_SLUG`), its own config home (never a symlink into
+#                                     yours), its own harness login. See *Scrubbed cells* in docs/cellctl.md.
+#   cellctl smoke <cell> [--harness <claude|codex>] [--model <m>]
+#                                                scrubbed-cell only: a one-shot, tool-free, read-only
+#                                                readiness probe — the harness answers `READY` or the verb
+#                                                exits 1 naming what it said instead. Never a Verify row on a
+#                                                live harness; DRY_RUN=1 prints the plan and runs nothing.
+#   cellctl status <cell>                       scrubbed-cell only: `running <session>` / `stopped` /
+#                                                `stale-lock <pid>` — a read, exit 0 unless the cell fails to load.
+#   cellctl check <cell>                         preconditions per the cell's kind and forge (cell.env, roster,
+#                                                keys or token store, binaries, repo, roots, plugin) — a
+#                                                precondition for the OTHER kind/forge is reported n/a or MISS,
+#                                                never silently skipped. When CELL_HARNESS=codex, also checks
+#                                                the codex harness block (binary, auth, multi_agent, resident
+#                                                rules, skills discovery) — n/a on a claude cell. Also prints one
+#                                                "model pin" row per role naming that role's HARNESS and its
+#                                                RESOLVED model (namespace pin, else harness default, else the
+#                                                tier-map fallback) — a role with no per-harness pin and no tier
+#                                                match is a MISS here, before boot, not a startup failure (#986).
+#   cellctl deskd <cell>                         stand the cell's persistent deskd (attended: mints per-org read tokens)
+#   cellctl desk  <cell> <role> [--model <m>] [--set] [--harness <claude|codex>]
+#                        [--kind <k>] [--cockpit <c>] [--provider <p>] [CLAUDE_CONFIG_DIR]
+#                                                one role window (own worktree, real HOME, shims).
+#                                                --model overrides the cell.env pin for THIS run only
+#                                                (wins over DESK_MODEL_<role> and DESK_MODEL_DEFAULT);
+#                                                DESK_MODEL_OVERRIDE is the equivalent env form for
+#                                                wrappers. --set persists the override into cell.env
+#                                                instead of (as well as) applying it for one run —
+#                                                sugar for `--model <m>` + `cellctl set <cell> DESK_MODEL_<role>=<m>`.
+#                                                The the-desk Opus refusal (see refuse_opus_for_the_desk below)
+#                                                applies to an override exactly as it does to a pin — it is
+#                                                not an escape hatch from that rule, and binds the claude arm
+#                                                only (see --harness below). --harness overrides cell.env
+#                                                CELL_HARNESS for this run only (default claude); see
+#                                                Harnesses in docs/cellctl.md. --set persists into whichever
+#                                                harness's own pin namespace is ACTIVE for this run
+#                                                (DESK_MODEL_<role> on claude, CODEX_MODEL_<role> on codex) —
+#                                                see Pinned models / Per-harness namespaces below. An explicit
+#                                                --model always passes through verbatim to the selected harness,
+#                                                bypassing the namespace/tier resolution entirely.
+#                                                --model-top/mid/fast <m> override the provider's per-tier
+#                                                models for THIS run (assay#1352; refused without a provider —
+#                                                the keys are provider-keyed); with --set they persist as
+#                                                CELL_PROVIDER_<NAME>_MODEL_<TIER>, making the tier model the
+#                                                cell's default. cellctl up threads the same flags onto every
+#                                                role window via the CELL_TIER_MODEL_<TIER> env.
+#                                                --kind / --cockpit / --provider override cell.env's CELL_KIND /
+#                                                CELL_COCKPIT / CELL_PROVIDER for this run (#1303 scope 2; a
+#                                                --kind the cell is not provisioned for is refused naming the
+#                                                missing key; --cockpit on a single desk window decides the
+#                                                ASSAY_COCKPIT it exports — see CELL_COCKPIT below). --set persists EVERY override given —
+#                                                the model pin, CELL_HARNESS, CELL_PROVIDER, CELL_KIND,
+#                                                CELL_COCKPIT — through the same one-backup path `cellctl set`
+#                                                uses; an override not given is never re-written.
+#   cellctl up    <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca]
+#                        [--automate '<cron>'] [--model <m>] [--harness <claude|codex>]
+#                        [--kind <k>] [--provider <p>] [--set] [CLAUDE_CONFIG_DIR]
+#                                                one window per role in the resolved COCKPIT: a tmux session
+#                                                "<cell>-cell", a labelled herdr tab per role, or an orca
+#                                                terminal per role (deskd + the-desk + the loop roles; a house
+#                                                cell opens no deskd window unless DESKD=1).
+#                                                --cockpit overrides cell.env CELL_COCKPIT for this run.
+#                                                --model overrides the model pin for EVERY role window this
+#                                                run opens (same per-run, not persisted, precedence as
+#                                                `cellctl desk --model`; no per-role `--model-<role>` form).
+#                                                --harness overrides CELL_HARNESS for EVERY role window this
+#                                                run opens (same per-run, not persisted, precedence as
+#                                                `cellctl desk --harness`). --kind and --provider likewise.
+#                                                --set persists every override given (CELL_KIND, CELL_COCKPIT,
+#                                                CELL_HARNESS, CELL_PROVIDER, and --model into the active
+#                                                harness's <FAMILY>_MODEL_<role> for every role window this
+#                                                run opens), one cell.env backup first.
+#                                                --automate '<cron>' is an ORCA-only shape: one scheduled
+#                                                automation per role, fronted by an exit-code precheck, instead
+#                                                of a live terminal.
+#                                                DRY_RUN=1 prints the resolved cockpit and the per-role commands
+#                                                and launches nothing.
+#   cellctl down  <cell> [--keep-deskd] [--cockpit auto|tmux|herdr|orca]
+#                                                tear the session (and this cell's deskd) down; what `up` opened
+#                                                in a non-tmux cockpit is closed where that cockpit offers a verb
+#                                                for it, and named for you to close by hand where it does not
+#   cellctl set   <cell> KEY=VALUE [KEY=VALUE...] [--force]
+#                        <cell> <role> [--harness claude|codex] --model <m>
+#                        <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]
+#                                                persist a change into <cell>/cell.env in place — rewrites an
+#                                                existing KEY= line or appends a new one, comment lines and
+#                                                ordering otherwise untouched. Writes one backup
+#                                                (cell.env.bak-<ts>) before the first edit, refuses a KEY that
+#                                                is not a known cell.env key unless --force, prints each
+#                                                key's before/after value, and applies the same the-desk/Opus
+#                                                refusal to DESK_MODEL_the_desk. The second form is role-sugar
+#                                                for the model pin specifically: it computes the KEY itself from
+#                                                the ACTIVE harness (--harness given, else the cell's own
+#                                                CELL_HARNESS) — DESK_MODEL_<role> on claude, CODEX_MODEL_<role>
+#                                                on codex — so `cellctl set <cell>
+#                                                <role> --harness codex --model X` writes CODEX_MODEL_<role>=X,
+#                                                never DESK_MODEL_<role>. The third form is sugar for the
+#                                                matching KEY=VALUE (CELL_KIND / CELL_COCKPIT / CELL_HARNESS /
+#                                                CELL_PROVIDER), validated by the same rules: an unknown
+#                                                kind/cockpit/harness is refused before anything is written,
+#                                                and a kind change refuses when the target kind's own
+#                                                precondition (container: CELL_CONTAINER_LAUNCHER; house:
+#                                                CELL_ROOTS; scrubbed: CELL_REPO_SLUG) is neither in cell.env
+#                                                nor given in the same call.
+#   cellctl show  <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>] [--model <m>]
+#                                                a READ: one `[show] KEY=VALUE (flag|cell.env|default)` line
+#                                                per per-run choice (CELL_KIND, CELL_COCKPIT, CELL_HARNESS,
+#                                                CELL_PROVIDER) and one `[show] model <role>=<m> (source)`
+#                                                line per role — the effective values, with the flags given
+#                                                applied, so what an invocation would resolve to is greppable
+#                                                before booting it. Launches and writes nothing.
+#   cellctl --version | version                  the release tag this copy ships at ("dev" for a source
+#                                                checkout — see the CELLCTL_VERSION comment below), the same
+#                                                contract `statusgen --version` uses, so a stale copy is
+#                                                detectable.
+#
+# Models are PINNED per role, never the CLI default: cell.env sets DESK_MODEL_DEFAULT (every role, on the
+# claude harness) and DESK_MODEL_<role with - as _> overrides (e.g. DESK_MODEL_the_desk=fable). Values are
+# what `claude --model` accepts (fable | opus | sonnet | haiku | a full model id). the-desk is the one
+# role `cellctl desk`/`cellctl check` refuse to pin to Opus — see refuse_opus_for_the_desk below.
+#
+# PER-HARNESS NAMESPACES (#986). A claude pin names a Claude model; Codex does not understand it (and
+# vice versa), so each harness keeps its OWN namespace: DESK_MODEL_<role>/DESK_MODEL_DEFAULT for claude,
+# CODEX_MODEL_<role>/CODEX_MODEL_default for codex — set independently, never cross-read. A role/harness
+# with NEITHER its own per-role pin NOR that harness's default falls back to the TIER MAP (see
+# resolve_role_model / role_tier below, and the table in docs/cellctl.md's Pinned models section):
+# the-desk resolves at the TOP tier, every other role at MID — so a cell pinned Claude-only (the common
+# case today) still resolves a sane model on a first `--harness codex` boot with no manual re-pin. The
+# tier map's compiled defaults are themselves overridable per entry via cell.env
+# (TIER_MODEL_<TIER>_<HARNESS>, e.g. TIER_MODEL_TOP_CODEX) — the same one-key-one-value override shape
+# DESK_MODEL_<role> and CELL_PROVIDER_<NAME>_* already use elsewhere in this file.
+#
+# PROVIDERS (#1303). `--provider <name>` / CELL_PROVIDER switches the claude harness to an
+# Anthropic-compatible endpoint: CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL} in cell.env, with
+# built-in presets `kimi` (https://api.kimi.com/coding, $KIMI_API_KEY, k3[1m]) and `glm`
+# (https://api.z.ai/api/anthropic, $ZAI_API_KEY, glm-5.3[1m]) that need no cell.env line — a line
+# overrides its preset value piecewise. TOKEN_ENV is the NAME of an env var the operator exports;
+# cellctl never stores, prints or persists a token value. With a provider the launch unsets
+# ANTHROPIC_API_KEY and exports ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL,
+# each alias mapping to the provider's MODEL_<tier> for its tier when one exists (glm maps MID —
+# the sonnet slot — to glm-5.3-flash[1m], assay#1352), else the flat provider model
+# (provider_preset / resolve_provider / cmd_desk's claude arm below; docs/cellctl.md Providers).
+#
+# `cellctl desk`/`up --model <m>` (or DESK_MODEL_OVERRIDE in the environment) overrides the resolved
+# pin for one run without touching cell.env, PASSED THROUGH VERBATIM to the selected harness — it is
+# never remapped through the namespace/tier resolution above, whichever harness is active. `cellctl set`
+# (or `desk ... --model <m> --set`) is the form that edits cell.env. `cellctl check` is never affected by
+# an override — it reports what a plain boot with no --model would resolve to, per role. `--model`
+# changes the model NAME only: a non-Anthropic model still needs ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN
+# set in the launching shell, which cellctl inherits and does not manage.
+#
+# The HARNESS a role window runs on is pinned the same way: cell.env CELL_HARNESS (claude, the
+# default, or codex), `--harness` on `desk`/`up` overrides it for one run without touching cell.env.
+# The claude arm is unchanged (this script execs `claude --model <m> "/assay:<role>"`); the codex
+# arm execs `codex --sandbox danger-full-access -C <worktree> -m <model> "<invoke-by-name prompt>"`
+# with the same DESK_LOOP/DESK_SESSION/DESK_ROOTS/shim-PATH env — CLAUDE_CONFIG_DIR is irrelevant
+# there. The Opus refusal below binds the claude arm ONLY: on codex it refuses nothing and prints
+# the resolved model, because Opus is a Claude-family alias with no meaning to codex. See Harnesses
+# in docs/cellctl.md.
+#
+# A cell directory holds:
+#   cell.env            the per-cell variables (written by `cellctl new`)
+#   cells-<cell>.yaml   the cell's slice of the desk console's cells.yaml (must validate on its own; k8s kind)
+#   home/               the CELL config-home: .config/assay/roster.env (this cell's role→App bindings),
+#                       .config/assay/apps.env + <role>-app.pem symlinks into the operator's real
+#                       config home (key material is symlinked, never copied), and .config/gh +
+#                       .gitconfig symlinked to the operator's real ones.
+#                       A HOUSE cell symlinks the whole .config/assay to the operator's real config
+#                       home instead — the desks ARE the operator's desks; nothing is copied.
+#   bin/                deskd + deskcli for this cell (k8s kind, or a house cell with DESKD=1)
+#   index/              the persistent deskd index
+#   worktrees/<role>/   one worktree per role, fast-forwarded to origin/main at every boot
+#   shim/               generated: every desk verb wrapped to run with HOME=<cell>/home
+#
+# cell.env keys that decide the KIND:
+#   CELL_KIND=k8s|house|container   default k8s (a cell scaffolded before kinds existed carries none)
+#   CELL_ROOTS=<owner>/<repo>=<abs path>,...   exported to every role window as DESK_ROOTS — the stream-root
+#                         map the desk verbs (deskboard / verifyloop / deskdispatch) read. REQUIRED on a house
+#                         cell; optional on k8s, where a boot without it leaves the verbs on their compiled
+#                         placeholder topology.
+#   DESKD=1               on a house cell: require and stand a deskd as a k8s cell does (default: no deskd)
+#   CELL_FF_ROOTS=1       at `cellctl desk` boot, fast-forward every CELL_ROOTS stream root that can move
+#                         without a decision (on a branch with an upstream, clean tree, 0 ahead). Off by
+#                         default: the roots are the OPERATOR's checkouts, not cell-managed worktrees.
+#                         `cellctl check` reports root drift either way, as a non-fatal `warn` row.
+#   CELL_COCKPIT=auto|tmux|herdr|orca   the surface `up` opens the role windows in (default auto: herdr if on
+#                         PATH, else orca if on PATH AND its desktop app answers, else tmux). Only the surface
+#                         changes — the per-role worktree, the roster beacon, the pinned model and the shim
+#                         PATH are identical in every cockpit. `desk` (and so every window `up` opens)
+#                         exports the RESOLVED value — never `auto` — as ASSAY_COCKPIT, the one value the
+#                         worker-desk skill's worktree-create step reads (tmux = plain `git worktree add`);
+#                         an explicit cockpit that is not available is refused there as `up` refuses it.
+#
+# Model policy: CELL_MODEL_POLICY=<JSON path relative to cell dir, or absolute> enables
+# per-role provider, exact model and effort selection. See docs/cellctl-model-policy.md.
+# Without that key, legacy pins and defaults retain their existing behavior.
+#
+# Repair-admission opt-in: ASSAY_REPAIR_ADMISSION=on|off durably enables (or disables) the
+# dispatch-boundary repair-admission gate for a cell. Set it in cell.env (cellctl set accepts
+# on|off only) and every desk this cell launches carries it in its environment, so the gate can
+# be turned on for a cell rather than only via a one-off shell export. off and unset are
+# identical: the key is simply absent from the launched environment. Default: off.
+#
+# Design rule: the Claude session keeps the operator's REAL HOME and CLAUDE_CONFIG_DIR, because the
+# harness keys its login, plugins and memory by HOME — swapping HOME for the whole session loses the
+# login. ONLY the desk verbs run with the cell config-home, and they get there through the shims.
+set -euo pipefail
+
+# ============================================================================================
+# TEST ORACLE — NOT THE LAUNCHER. Do not install, ship or run this file as `cellctl`.
+#
+# The real `cellctl` is the Go program in tools/desk/cmd/cellctl; releases build and ship that
+# binary (stamped via -ldflags -X main.cellctlVersion). This bash script is kept only as the
+# shell ORACLE the Go port is proved against:
+#   - tools/desk/cmd/cellctl/usage_test.go compares the header comment above the `set -euo`
+#     line with the port's embedded usage.txt (this banner sits BELOW that line on purpose, so
+#     it is not part of the compared header or of `--help` output);
+#   - tools/cellctl/tests/parity.test.sh diffs this script's DRY_RUN plans against the port;
+#   - the tools/cellctl/tests/*.test.sh suites default to it when $CELLCTL is unset.
+# It lives under testdata/ so its path says what it is. Edits to it are oracle edits and follow
+# the parity rules in docs/cellctl.md §"Parity with the shell oracle".
+# ============================================================================================
+
+# Absolute path to this script. The tmux windows `up` opens re-invoke cellctl from the CELL
+# directory, where a relative `$0` (`./cellctl`) does not resolve — so the re-invocation uses this,
+# never `$0`.
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+CELLS_ROOT="${CELLS_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/assay/cells}"
+# Where the pinned desk-tools tarball installs its binaries (docs/adopting-assay.md,
+# PRIMITIVE: install-desk-tools). Override for a different bindir.
+DESK_TOOLS_BIN="${DESK_TOOLS_BIN:-/opt/desk-tools/bin}"
+# The operator's REAL config home — the one holding the App private keys the cell symlinks to.
+REAL_CONFIG_HOME="${ASSAY_CONFIG_HOME:-$HOME/.config/assay}"
+ROLES_DEFAULT="the-desk pr-review-desk verify-desk intake-desk worker-desk"
+# The desk verbs a house cell's `check` proves are installed: the boot/roster pair every role
+# needs, the board/dispatch/worktree verbs the loops call, and the write verbs the roles post with.
+HOUSE_VERBS="deskboot deskroster deskwt deskboard deskdispatch deskpr deskfile deskpost desktoken"
+
+# CELLCTL_VERSION is the release tag this copy ships at. A shell script takes no -ldflags, so it
+# cannot be link-time stamped the way statusgen/qualgen/the desk-tools binaries are
+# (-X main.statusgenVersion=... in .github/workflows/release.yml); instead the release workflow's
+# packaging step `sed`s this line, in the STAGED copy only (never the committed source file), to
+# the umbrella tag being cut before that copy is tar'd into desk-tools-<platform>.tar.gz. The
+# source tree — and a checkout install per docs/cellctl.md's `install` line — always honestly
+# reports "dev", the same convention `var statusgenVersion = "dev"` uses for an unstamped Go build.
+CELLCTL_VERSION="dev"
+
+# `cellctl --version` / `cellctl version` — pure introspection, recognised as the SOLE argument
+# only (mirrors statusgen's `--version` contract: a version query combined with real work has no
+# defined meaning), answered before any other parsing so a stale copy is detectable exactly the
+# way `statusgen --version` makes a stale statusgen detectable.
+if [[ $# -eq 1 && ( "$1" == "--version" || "$1" == "version" ) ]]; then
+  echo "$CELLCTL_VERSION"
+  exit 0
+fi
+
+die(){ echo "cellctl: $*" >&2; exit 3; }
+# The usage text is the header comment above, up to the `set -euo` line — so the header can grow
+# without a hand-maintained line range going stale.
+usage(){ awk 'NR>1 && /^set -euo/ {exit} NR>1 {print}' "$SELF"; exit "${1:-0}"; }
+
+cell_dir(){ local c="$1" d="$CELLS_ROOT/$1"; [[ -f "$d/cell.env" ]] || die "no cell '$c' under $CELLS_ROOT (cell.env missing)"; echo "$d"; }
+load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
+  CELL_DIR="$(cell_dir "$1")"; CELL_DIR="$(cd "$CELL_DIR" && pwd)"
+  set -a
+  # shellcheck source=/dev/null
+  source "$CELL_DIR/cell.env"
+  set +a
+  CELL="${CELL:-$1}"
+  CELL_HOME="$CELL_DIR/home"
+  # The cell config-home is a FIXED relative path: the desk binaries resolve their config as
+  # $HOME/.config/assay, and the shims are what point $HOME at the cell.
+  CELL_CONFIG="$CELL_HOME/.config/assay"
+  CELLS_CONFIG="${CELLS_CONFIG:-$CELL_DIR/cells-$CELL.yaml}"
+  DESKD_ADDR="${DESKD_ADDR:-127.0.0.1:8787}"
+  DESKD_INDEX="${DESKD_INDEX:-$CELL_DIR/index/index.db}"
+  # Kind awareness. A cell provisioned before kinds existed carries no CELL_KIND; it is a k8s cell
+  # by construction (its own deskd, roster and keys), so default there and keep every legacy cell
+  # working. A house cell is the operator's own desks: no deskd unless asked for (DESKD=1), and the
+  # stream-root map (CELL_ROOTS) is REQUIRED because it is the whole reason the desks boot at all.
+  CELL_KIND="${CELL_KIND:-k8s}"
+  # A per-run `--kind` (prescan_kind_override, #1303 scope 2) wins over the file for THIS load only
+  # — cell.env is untouched — and is subject to exactly the same per-kind preconditions below, so a
+  # kind the cell is not provisioned for refuses here, naming what is missing.
+  [[ -n "${CELL_KIND_OVERRIDE:-}" ]] && CELL_KIND="$CELL_KIND_OVERRIDE"
+  case "$CELL_KIND" in
+    k8s) DESKD="${DESKD:-1}" ;;
+    container)
+      [[ "${DESKD:-0}" == "0" ]] || die "container cells do not run host deskd"
+      DESKD=0
+      [[ "${CELL_CONTAINER_LAUNCHER:-}" == /* && -f "$CELL_CONTAINER_LAUNCHER" && -x "$CELL_CONTAINER_LAUNCHER" ]] \
+        || die "container cell needs an absolute executable CELL_CONTAINER_LAUNCHER"
+      ;;
+    house)
+      DESKD="${DESKD:-0}"
+      [[ -n "${CELL_ROOTS:-}" ]] || die "cell.env: CELL_ROOTS (the <owner>/<repo>=<abs path>,... stream-root map) is not set — a house cell needs it"
+      ;;
+    scrubbed)
+      # A scrubbed cell runs the harness ON this host, but inside an environment cellctl fully
+      # composes (env -i plus an explicit allowlist) — the opposite of house's "keep the real
+      # HOME" design, so it is a KIND, not a flag on house (brief desk-containers/09). No deskd,
+      # same refusal shape container uses; CELL_REPO must be a real checkout (the worktree
+      # machinery below needs one to fetch/merge against); CELL_REPO_SLUG scopes the cell to
+      # exactly one repo (roster.env's ASSAY_ALLOWED_REPOS is checked against it — check_scrubbed).
+      [[ "${DESKD:-0}" == "0" ]] || die "scrubbed cells do not run host deskd"
+      DESKD=0
+      [[ -n "${CELL_REPO:-}" ]] || die "cell.env: CELL_REPO (the checkout the harness runs against) is not set"
+      git -C "$CELL_REPO" rev-parse --git-dir >/dev/null 2>&1 || die "cell.env: CELL_REPO is not a git checkout: $CELL_REPO"
+      [[ -n "${CELL_REPO_SLUG:-}" ]] || die "cell.env: CELL_REPO_SLUG (<owner>/<repo>) is not set — a scrubbed cell is scoped to one repo"
+      ;;
+    *) die "cell.env: CELL_KIND=$CELL_KIND is not a known kind (k8s|house|container|scrubbed)" ;;
+  esac
+  # Forge awareness. A cell provisioned before forge support carries no CELL_FORGE; it is a
+  # GitHub cell by construction, so default there and keep every legacy cell working. The
+  # forge API endpoint is DERIVED from the forge, never a hardcoded host: GITHUB_HOST lets a
+  # GitHub Enterprise cell point elsewhere, and a GitLab cell carries its own base. This is
+  # the single home of the endpoint, so no verb below spells a host literal.
+  CELL_FORGE="${CELL_FORGE:-github}"
+  GITHUB_HOST="${GITHUB_HOST:-github.com}"
+  case "$CELL_FORGE" in
+    github)
+      FORGE_API_BASE="${FORGE_API_BASE:-https://api.$GITHUB_HOST}"
+      ;;
+    gitlab)
+      FORGE_API_BASE="${FORGE_API_BASE:-${GITLAB_API_BASE:-https://gitlab.com/api/v4}}"
+      GITLAB_API_BASE="${GITLAB_API_BASE:-$FORGE_API_BASE}"
+      GITLAB_TOKEN_STORE="${GITLAB_TOKEN_STORE:-$CELL_CONFIG}"
+      DESKD_GITLAB_TOKEN_FILE="${DESKD_GITLAB_TOKEN_FILE:-$GITLAB_TOKEN_STORE/gitlab-deskd.token}"
+      ;;
+    *) die "cell.env: CELL_FORGE=$CELL_FORGE is not a known forge (github|gitlab)" ;;
+  esac
+  if [[ "$CELL_KIND" == "container" ]]; then ROLES="${ROLES:-the-desk}"
+  else ROLES="${ROLES:-$ROLES_DEFAULT}"; fi
+  DESK_MODEL_DEFAULT="${DESK_MODEL_DEFAULT:-sonnet}"
+  # The harness a role window boots on, pinned the same way a model is: cell.env CELL_HARNESS
+  # (default claude — a cell scaffolded before harness support carries none), `--harness` on
+  # `desk`/`up` overrides it for one run without touching this. Validated here so a typo'd value
+  # in cell.env is caught at every boot, not just when a window happens to hit the codex arm.
+  CELL_HARNESS="${CELL_HARNESS:-claude}"
+  case "$CELL_HARNESS" in
+    claude|codex) ;;
+    *) die "cell.env: CELL_HARNESS=$CELL_HARNESS is not a known harness (claude|codex)" ;;
+  esac
+  # Model TIER map compiled defaults (#986) — the fallback `resolve_role_model` uses when a role has
+  # neither its own per-harness pin (DESK_MODEL_<role>/CODEX_MODEL_<role>) nor that harness's default
+  # (DESK_MODEL_DEFAULT/CODEX_MODEL_default). One column per harness, top/mid/fast tiers; role_tier
+  # below says which tier a role resolves at. `-` (not `:-`) on purpose: cell.env can set one of
+  # these to the EMPTY string to deliberately remove an entry (rather than merely "not touching" it,
+  # which `:-` cannot distinguish from unset) — the shape a fixture uses to reproduce the
+  # no-pin-no-tier-match case `cellctl check` must surface as a MISS.
+  TIER_MODEL_TOP_CLAUDE="${TIER_MODEL_TOP_CLAUDE-fable}"
+  TIER_MODEL_MID_CLAUDE="${TIER_MODEL_MID_CLAUDE-sonnet}"
+  TIER_MODEL_FAST_CLAUDE="${TIER_MODEL_FAST_CLAUDE-haiku}"
+  # codex's model catalog has no per-tier naming confirmed live yet (only one id is proven working —
+  # `gpt-5.6-terra`, docs/codex-smoke-runs/2026-09-12-codex-0.154.0.md) — every tier compiles to that
+  # one proven id until a cheaper/faster id is confirmed, rather than fabricating names that might not
+  # exist. Override any of the three independently in cell.env once one is.
+  TIER_MODEL_TOP_CODEX="${TIER_MODEL_TOP_CODEX-gpt-5.6-terra}"
+  TIER_MODEL_MID_CODEX="${TIER_MODEL_MID_CODEX-gpt-5.6-terra}"
+  TIER_MODEL_FAST_CODEX="${TIER_MODEL_FAST_CODEX-gpt-5.6-terra}"
+  SESSION="${TMUX_SESSION:-${CELL}-cell}"
+  [[ -n "${CELL_REPO:-}" ]] || die "cell.env: CELL_REPO (the checkout roles worktree from) is not set"
+}
+resolve_cfg(){ local in="${1:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"; [[ -d "$in" ]] || die "CLAUDE_CONFIG_DIR not a directory: $in"; (cd "$in" && pwd); }
+deskd_up(){ curl -fsS --max-time 3 "http://${DESKD_ADDR}/healthz" >/dev/null 2>&1; }
+
+# Container launcher contract: executable argv, never eval. A clean environment
+# carries registry metadata, not the operator's forge/model credentials or SSH agent.
+# The launcher is trusted host code; it owns container mounts, credentials, state
+# validation, and the runtime. This boundary is not a sandbox around the launcher.
+container_run(){
+  if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    printf '[dry-run] container cell=%s launcher=%q argv=' "$CELL" "$CELL_CONTAINER_LAUNCHER"
+    printf '%q ' "$@"; printf '\n'
+    return 0
+  fi
+  env -i HOME="$HOME" PATH="$PATH" TERM="${TERM:-xterm-256color}" \
+    CELL="$CELL" CELL_KIND=container CELL_DIR="$CELL_DIR" CELL_REPO="$CELL_REPO" \
+    CELL_ROOTS="${CELL_ROOTS:-}" CELL_HARNESS="$CELL_HARNESS" ROLES="$ROLES" \
+    "$CELL_CONTAINER_LAUNCHER" "$@"
+}
+
+# ---------------------------------------------------------------- cockpits
+# A COCKPIT is only the SURFACE the role windows appear in. Nothing about the per-role worktree,
+# the roster beacon, the pinned model or the shim PATH changes with it, and no cockpit is ever
+# required: tmux is the always-works arm every other arm falls back to.
+#
+# Selection is by PRESENCE ON PATH, never a flag someone has to remember. `auto` prefers herdr
+# (labelled tabs and a semantic agent state that drives its sidebar), then orca (scheduled
+# automations), then tmux. Orca's CLI is a THIN CLIENT of its desktop app, so an `orca` binary
+# whose app is not answering falls THROUGH to tmux under `auto` rather than failing. An EXPLICIT
+# cockpit that is not available is a refusal naming exactly what is missing — never a silent
+# fall-through.
+COCKPIT=""; COCKPIT_WHY=""; COCKPIT_ERR=""
+
+# run_bounded <secs> <cmd...> — a probe that cannot hang the launcher, with NO dependency on an
+# external timeout binary (macOS ships neither `timeout` nor `gtimeout` by default; requiring one
+# would make the bound only as reliable as the operator's coreutils install). The bound is native:
+# run the command in the background, race it against a `sleep <secs>` watchdog in a subshell, and
+# whichever finishes first wins — if the watchdog wins, the command is killed and this returns 124
+# (the same convention `timeout`/`gtimeout` use), so callers never have to distinguish the two
+# bound implementations. `timeout`/`gtimeout` are used first when present only because they are a
+# well-worn primitive that saves a fork; the native path below is what guarantees the bound holds
+# even when neither is installed.
+run_bounded(){
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@" >/dev/null 2>&1; return $?; fi
+  if command -v gtimeout >/dev/null 2>&1; then gtimeout "$secs" "$@" >/dev/null 2>&1; return $?; fi
+  local cmd_pid watchdog_pid rc
+  "$@" >/dev/null 2>&1 &
+  cmd_pid=$!
+  ( sleep "$secs"; kill -TERM "$cmd_pid" 2>/dev/null ) &
+  watchdog_pid=$!
+  if wait "$cmd_pid" 2>/dev/null; then
+    rc=0
+  else
+    rc=$?
+  fi
+  # The command finished (or was killed) — stop the watchdog whether it already fired or not.
+  kill "$watchdog_pid" 2>/dev/null; wait "$watchdog_pid" 2>/dev/null
+  # A killed command exits >128 (128+SIGTERM) under bash's wait; normalize that to 124, the
+  # standard "timed out" rc `timeout`/`gtimeout` use, so callers see one bound-timeout signal
+  # regardless of which arm enforced it.
+  if [[ $rc -gt 128 ]]; then rc=124; fi
+  return "$rc"
+}
+
+# orca_reachable: `orca` on PATH is not enough to pick it — with the desktop app closed every repo,
+# worktree, terminal and automation verb fails. One cheap read verb is the reachability probe.
+orca_reachable(){
+  command -v orca >/dev/null 2>&1 || return 1
+  local secs="${CELLCTL_ORCA_TIMEOUT:-5}"
+  echo "[cockpit] probing orca reachability (orca repo list, bound ${secs}s)" >&2
+  run_bounded "$secs" orca repo list
+}
+
+# help_has <token> <cmd...> — does `<cmd...> --help` advertise this subcommand or flag? These
+# cockpit CLIs move fast (one ships a patch every few days), so every verb and flag whose exact
+# spelling this script cannot see is PROBED at run time and skipped with a NOTICE when the
+# installed build does not carry it, rather than hard-coded as a truth that may have drifted.
+help_has(){ local tok="$1" out; shift; out="$("$@" --help 2>&1)"; grep -qE -- "(^|[[:space:]])${tok}([[:space:],=]|$)" <<<"$out"; }
+
+# first_flag <help text> <candidate flags...> — print the first candidate the help advertises.
+first_flag(){ local h="$1"; shift; local f; for f in "$@"; do
+  grep -qE -- "(^|[[:space:]])${f}([[:space:],=]|$)" <<<"$h" && { printf '%s\n' "$f"; return 0; }
+done; return 1; }
+
+# resolve_cockpit <want> <source> — sets COCKPIT and COCKPIT_WHY, or returns 1 with COCKPIT_ERR
+# holding the refusal text. Callers decide whether an unavailable cockpit is a `die` (up) or a
+# MISS row (check).
+resolve_cockpit(){
+  local want="$1" src="$2"
+  COCKPIT=""; COCKPIT_WHY=""; COCKPIT_ERR=""
+  case "$want" in
+    auto|tmux|herdr|orca) ;;
+    *) COCKPIT_ERR="$src: '$want' is not a known cockpit (auto|tmux|herdr|orca)"; return 1 ;;
+  esac
+  case "$want" in
+    tmux)
+      command -v tmux >/dev/null || { COCKPIT_ERR="cockpit tmux ($src) but tmux is not on PATH"; return 1; }
+      COCKPIT=tmux; COCKPIT_WHY="explicit: $src" ;;
+    herdr)
+      command -v herdr >/dev/null || { COCKPIT_ERR="cockpit herdr ($src) but herdr is not on PATH"; return 1; }
+      COCKPIT=herdr; COCKPIT_WHY="explicit: $src" ;;
+    orca)
+      command -v orca >/dev/null || { COCKPIT_ERR="cockpit orca ($src) but orca is not on PATH"; return 1; }
+      orca_reachable || { COCKPIT_ERR="cockpit orca ($src): orca is on PATH but its desktop app is not reachable — the CLI is a thin client, so start the app (or 'orca serve') and retry"; return 1; }
+      COCKPIT=orca; COCKPIT_WHY="explicit: $src" ;;
+    auto)
+      if command -v herdr >/dev/null; then COCKPIT=herdr; COCKPIT_WHY="auto: on PATH"
+      elif command -v orca >/dev/null && orca_reachable; then COCKPIT=orca; COCKPIT_WHY="auto: on PATH"
+      elif command -v orca >/dev/null; then COCKPIT=tmux; COCKPIT_WHY="orca on PATH but app unreachable"
+      else COCKPIT=tmux; COCKPIT_WHY="fallback: no herdr/orca on PATH"
+      fi ;;
+  esac
+  return 0
+}
+
+# cockpit_want: which cockpit was ASKED for, and by whom — the flag beats cell.env beats the
+# default. Sets COCKPIT_WANT / COCKPIT_SRC.
+cockpit_want(){
+  local flag="${1:-}"
+  if [[ -n "$flag" ]]; then COCKPIT_WANT="$flag"; COCKPIT_SRC="--cockpit"
+  elif [[ -n "${CELL_COCKPIT:-}" ]]; then COCKPIT_WANT="$CELL_COCKPIT"; COCKPIT_SRC="cell.env CELL_COCKPIT"
+  else COCKPIT_WANT="auto"; COCKPIT_SRC="default"
+  fi
+}
+
+# role_cmd <role> <cfg> — the one command a role window runs, identical in every cockpit.
+# $MODEL_OVERRIDE, $HARNESS_OVERRIDE (cmd_up's own --model/--harness) and $up_provider (cmd_up's
+# own --provider) are GLOBALS `cmd_up` sets (never `local`) rather than extra positionals — every
+# cockpit arm below builds this string through several layers of function calls, and threading
+# three more positionals through all of them for values that are the SAME for every role in one
+# `up` run would be pure plumbing. All three are unset outside a `cmd_up` run, so a call to
+# `role_cmd` from elsewhere sees them unset too. Order is fixed (--model, then --harness, then
+# --provider, then --cockpit) so a printed command is stable to grep against. $up_cockpit is the
+# cockpit `up` RESOLVED (never `auto`), threaded so every window exports the same ASSAY_COCKPIT
+# as the surface it was opened in, even when `up --cockpit` overrode cell.env for this run only.
+role_cmd(){
+  local out; out="$(printf "'%s' desk '%s' '%s'" "$SELF" "$CELL" "$1")"
+  [[ -n "${MODEL_OVERRIDE:-}" ]] && out="$out --model '$MODEL_OVERRIDE'"
+  [[ -n "${HARNESS_OVERRIDE:-}" ]] && out="$out --harness '$HARNESS_OVERRIDE'"
+  [[ -n "${up_provider:-}" ]] && out="$out --provider '$up_provider'"
+  [[ -n "${up_cockpit:-}" ]] && out="$out --cockpit '$up_cockpit'"
+  out="$out '$2'"
+  printf '%s' "$out"
+}
+
+# roots_valid checks the SHAPE of a CELL_ROOTS value — every entry `<owner>/<repo>=<abs path>` —
+# and prints the first malformed entry on stderr. Existence of the paths is `check`'s job.
+roots_valid(){
+  local e; for e in ${1//,/ }; do
+    [[ "$e" =~ ^[^/=[:space:]]+/[^/=[:space:]]+=/[^,]*$ ]] || { echo "malformed CELL_ROOTS entry '$e' (want <owner>/<repo>=<abs path>)" >&2; return 1; }
+  done
+}
+
+# roots_state prints "<branch> <upstream> <ahead> <behind> <dirty>" for one stream-root path, or
+# nothing (rc 1) when the root cannot be compared: not a checkout, detached HEAD, or no upstream
+# configured. It NEVER fetches — it compares the local branch against the remote-tracking ref as
+# it already stands, which is exactly the drift that presents as a permanently stale board (a
+# current origin/main while the local branch sits behind it). A stale remote-tracking ref means
+# this under-reports, never over-reports.
+roots_state(){
+  local p="$1" b up ahead behind dirty
+  [[ -e "$p/.git" ]] || return 1
+  b="$(git -C "$p" symbolic-ref --quiet --short HEAD 2>/dev/null)" || return 1
+  up="$(git -C "$p" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)" || return 1
+  ahead="$(git -C "$p" rev-list --count "$up..HEAD" 2>/dev/null || echo 0)"
+  behind="$(git -C "$p" rev-list --count "HEAD..$up" 2>/dev/null || echo 0)"
+  dirty="$(git -C "$p" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+  printf '%s %s %s %s %s\n' "$b" "$up" "$ahead" "$behind" "$dirty"
+}
+
+# ff_roots fast-forwards every stream root that can move WITHOUT a decision: on a branch, that
+# branch has an upstream, the tree is clean, and it is 0 ahead. Anything else is left alone and
+# named — a root the operator is working in is never moved under them.
+#
+# Opt-in (CELL_FF_ROOTS=1) because the roots are the OPERATOR's own checkouts, not cell-managed
+# worktrees: cellctl merges the role worktrees at boot, but nothing has ever refreshed the roots,
+# so a root can sit behind its upstream indefinitely while every desk verb reads it. That is how a
+# board goes stale with no error anywhere (the drift check resolves no pin, and an unverifiable
+# drift check is reported stale, not fresh).
+ff_roots(){
+  local e p name st b up ahead behind dirty
+  for e in ${CELL_ROOTS//,/ }; do
+    name="${e%%=*}"; p="${e#*=}"
+    if ! st="$(roots_state "$p")"; then
+      echo "[roots] $name: not a comparable checkout (missing, detached HEAD, or no upstream) — left as is" >&2; continue
+    fi
+    read -r b up ahead behind dirty <<<"$st"
+    # Refresh the remote-tracking ref first; without it "behind" only reflects the last fetch.
+    git -C "$p" fetch --no-tags --quiet "${up%%/*}" "${up#*/}" 2>/dev/null || true
+    read -r b up ahead behind dirty <<<"$(roots_state "$p")"
+    [[ "$dirty" == "0" ]] || { echo "[roots] $name: $dirty uncommitted change(s) — left as is" >&2; continue; }
+    [[ "$ahead" == "0" ]] || { echo "[roots] $name: $b is $ahead ahead of $up — left as is (merge it yourself)" >&2; continue; }
+    [[ "$behind" != "0" ]] || { echo "[roots] $name: $b already current with $up"; continue; }
+    if git -C "$p" merge --ff-only "$up" >/dev/null 2>&1; then
+      echo "[roots] $name: $b fast-forwarded $behind commit(s) to $(git -C "$p" rev-parse --short HEAD)"
+    else
+      echo "[roots] $name: $b did not fast-forward — left as is" >&2
+    fi
+  done
+}
+
+# is_opus_pin: true when a resolved model value is the `opus` alias or a `claude-opus…` id,
+# case-insensitive (an operator could type Opus, OPUS, or a full id in any case). Any other
+# value — including another full id or a different alias — is not an Opus pin.
+is_opus_pin(){
+  local m; m="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  [[ "$m" == "opus" || "$m" == claude-opus* ]]
+}
+
+# refuse_opus_for_the_desk: the-desk is the one window that spends its tier on judgment,
+# synthesis and arbitration across streams, so the methodology's model-tier rule pins it to the
+# top tier available — a downgrade there is a stop condition, not an operator preference. `opus`
+# is no longer the top tier, so `cmd_desk` calls this for the-desk ONLY (every other role may pin
+# whatever it likes) before it launches, including on the DRY_RUN path — a dry run is a plan of
+# exactly that launch, so it refuses on the same input.
+refuse_opus_for_the_desk(){
+  is_opus_pin "$1" || return 0
+  die "the-desk runs on the top tier; an Opus pin is refused for the coordinator — resolved DESK_MODEL_the_desk=$1 (from DESK_MODEL_the_desk or DESK_MODEL_DEFAULT); set DESK_MODEL_the_desk=fable (or another non-Opus id) in cell.env"
+}
+
+# role_tier <role> — which TIER (top|mid|fast) a role resolves at when it falls all the way through
+# to the tier map (#986): the-desk spends its window on judgment/synthesis/arbitration across
+# streams (the same rationale refuse_opus_for_the_desk's header comment gives), so it is the one
+# role pinned to the TOP tier by default; the four mechanical loop roles get MID — the cheaper tier,
+# matching DESK_MODEL_DEFAULT's own compiled default (sonnet) today. FAST is not assigned to any
+# role automatically; it exists in the tier map for an operator to pin a role at directly.
+role_tier(){
+  case "$1" in
+    the-desk) echo top ;;
+    *) echo mid ;;
+  esac
+}
+
+# resolve_role_model <role> <harness> — the per-harness NAMESPACE + TIER-MAP fallback resolution
+# (#986). Sets RESOLVED_MODEL (the model name) and RESOLVED_MODEL_SRC (the cell.env key, or tier
+# entry, that produced it) and returns 0; on total failure (nothing resolves) sets RESOLVED_MODEL to
+# the empty string, RESOLVED_MODEL_SRC to a message naming every place looked, and returns 1. NEVER
+# consulted for an explicit --model (see cmd_desk) — that value passes through verbatim, bypassing
+# this whole chain, on either harness.
+#
+# Order: (1) that harness's own per-role pin — DESK_MODEL_<role> on claude, CODEX_MODEL_<role> on
+# codex — (2) that harness's own default — DESK_MODEL_DEFAULT / CODEX_MODEL_default — (3) the tier
+# map, by this role's tier (role_tier) and the ACTIVE harness's column (TIER_MODEL_<TIER>_<HARNESS>,
+# compiled defaults in load_cell, overridable per entry in cell.env). Claude always resolves at step
+# 2 today, because DESK_MODEL_DEFAULT carries a compiled default (`sonnet`) — which is exactly what
+# keeps `--harness claude` unaffected by any of this (#986's own backward-compat requirement).
+resolve_role_model(){
+  local role="$1" harness="$2" rvar dvar tier tvar
+  if [[ "$harness" == "codex" ]]; then rvar="CODEX_MODEL_${role//-/_}"; dvar="CODEX_MODEL_default"
+  else rvar="DESK_MODEL_${role//-/_}"; dvar="DESK_MODEL_DEFAULT"
+  fi
+  if [[ -n "${!rvar-}" ]]; then RESOLVED_MODEL="${!rvar}"; RESOLVED_MODEL_SRC="$rvar"; return 0; fi
+  if [[ -n "${!dvar-}" ]]; then RESOLVED_MODEL="${!dvar}"; RESOLVED_MODEL_SRC="$dvar"; return 0; fi
+  tier="$(role_tier "$role")"
+  tvar="TIER_MODEL_$(printf '%s' "$tier" | tr '[:lower:]' '[:upper:]')_$(printf '%s' "$harness" | tr '[:lower:]' '[:upper:]')"
+  if [[ -n "${!tvar-}" ]]; then RESOLVED_MODEL="${!tvar}"; RESOLVED_MODEL_SRC="tier:$tier ($tvar)"; return 0; fi
+  RESOLVED_MODEL=""
+  RESOLVED_MODEL_SRC="no model resolves for role '$role' harness '$harness' — checked $rvar, $dvar, and the '$tier' tier ($tvar), all unset"
+  return 1
+}
+
+# provider_var <name> <suffix> — the cell.env variable name for a provider's BASE_URL/TOKEN_ENV,
+# e.g. `provider_var zai BASE_URL` → CELL_PROVIDER_ZAI_BASE_URL. The name is upper-cased and its
+# `-`s become `_`s so `--provider z.ai`-style typos are refused by a MISSING variable rather than
+# silently reading someone else's.
+provider_var(){ printf 'CELL_PROVIDER_%s_%s' "$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')" "$2"; }
+
+# resolve_provider <name> — sets PROVIDER_BASE_URL / PROVIDER_TOKEN_ENV / PROVIDER_TOKEN_VAL, or
+# dies naming exactly what cell.env or the shell is missing. `--model` (cellctl's existing pin)
+# only changes the model NAME; a non-Anthropic model additionally needs the API endpoint and
+# credential switched, which is what this does. The TOKEN VALUE is never stored in cell.env — only
+# the name of an env var the OPERATOR's shell is expected to already carry (CELL_PROVIDER_<NAME>_TOKEN_ENV),
+# so a leaked cell.env (or a public-repo mistake committing one) never leaks a credential itself.
+#
+# Built-in PRESETS (#1303): `kimi` and `glm` resolve without any CELL_PROVIDER_<NAME>_* line —
+# an Anthropic-compatible endpoint each, the NAME of the env var the operator exports for it, and
+# a default model. Any CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL} line in cell.env (or the
+# environment) overrides the matching preset value; a name with no preset still needs its own
+# lines exactly as before. Presets carry no credential of any kind — only the env var's NAME.
+#
+# Per-TIER provider models (assay#1352): a provider's flat MODEL is what a window launches with when no
+# pin names a model, and what every tier alias maps to when nothing finer exists. A provider may
+# additionally name a DIFFERENT model for one tier — `MODEL_TOP` / `MODEL_MID` / `MODEL_FAST`,
+# same CELL_PROVIDER_<NAME>_<suffix> override family, preset first. `glm` ships one: MID (the
+# sonnet slot) maps to `glm-5.3-flash[1m]`, so a mid-tier window and everything inside any window
+# that asks for sonnet runs the flash variant instead of the full model; TOP (the-desk) keeps the
+# full `glm-5.3[1m]`, and FAST keeps the flat model until a ruling says otherwise.
+provider_preset(){ # <name> <BASE_URL|TOKEN_ENV|MODEL|MODEL_TOP|MODEL_MID|MODEL_FAST> → the compiled default, or nothing
+  case "$1:$2" in
+    kimi:BASE_URL)  printf '%s' 'https://api.kimi.com/coding' ;;
+    kimi:TOKEN_ENV) printf '%s' 'KIMI_API_KEY' ;;
+    kimi:MODEL)     printf '%s' 'k3[1m]' ;;
+    glm:BASE_URL)   printf '%s' 'https://api.z.ai/api/anthropic' ;;
+    glm:TOKEN_ENV)  printf '%s' 'ZAI_API_KEY' ;;
+    glm:MODEL)      printf '%s' 'glm-5.3[1m]' ;;
+    glm:MODEL_MID)  printf '%s' 'glm-5.3-flash[1m]' ;;
+  esac
+  return 0
+}
+# provider_value <name> <suffix>: sets PROVIDER_VALUE to the EFFECTIVE value (cell.env/env line,
+# else the preset, else empty) and PROVIDER_VALUE_SRC to where it came from (`cell.env`, `preset`,
+# `unset`). Globals rather than stdout, so the source survives — a `$(...)` would lose it.
+provider_value(){
+  local name="$1" suffix="$2" var
+  var="$(provider_var "$name" "$suffix")"; PROVIDER_VALUE="${!var:-}"
+  if [[ -n "$PROVIDER_VALUE" ]]; then PROVIDER_VALUE_SRC="cell.env"; return 0; fi
+  PROVIDER_VALUE="$(provider_preset "$name" "$suffix")"
+  if [[ -n "$PROVIDER_VALUE" ]]; then PROVIDER_VALUE_SRC="preset"; return 0; fi
+  PROVIDER_VALUE_SRC="unset"; return 0
+}
+# provider_alias_model <name> <OPUS|SONNET|HAIKU> — the per-tier model for one of the LAUNCH-TIME
+# tier ALIASES, via the provider's MODEL_<tier> value for the matching cellctl tier (TOP/MID/FAST).
+# Sets PROVIDER_VALUE to that model or leaves it empty (caller falls back to the flat provider
+# model). Pure alias→tier translation plus provider_value — no logic of its own.
+provider_alias_model(){
+  case "$2" in
+    OPUS)   provider_value "$1" MODEL_TOP ;;
+    SONNET) provider_value "$1" MODEL_MID ;;
+    HAIKU)  provider_value "$1" MODEL_FAST ;;
+    *)      PROVIDER_VALUE="" ;;
+  esac
+  return 0
+}
+resolve_provider(){
+  local name="$1" base_var token_var
+  base_var="$(provider_var "$name" BASE_URL)"; token_var="$(provider_var "$name" TOKEN_ENV)"
+  provider_value "$name" BASE_URL;  PROVIDER_BASE_URL="$PROVIDER_VALUE"
+  provider_value "$name" TOKEN_ENV; PROVIDER_TOKEN_ENV="$PROVIDER_VALUE"
+  provider_value "$name" MODEL;     PROVIDER_MODEL="$PROVIDER_VALUE"; PROVIDER_MODEL_SRC="$PROVIDER_VALUE_SRC"
+  [[ -n "$PROVIDER_BASE_URL" ]] || die "cell.env: $base_var is not set — declare it for provider '$name' (e.g. $base_var=https://api.$name.example)"
+  local upname; upname="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')"
+  [[ -n "$PROVIDER_TOKEN_ENV" ]] || die "cell.env: $token_var is not set — declare it for provider '$name' as the NAME of an env var carrying the token (never the token itself), e.g. $token_var=${upname}_API_KEY"
+  PROVIDER_TOKEN_VAL="${!PROVIDER_TOKEN_ENV:-}"
+  [[ -n "$PROVIDER_TOKEN_VAL" ]] || die "provider '$name': \$$PROVIDER_TOKEN_ENV (named by $token_var) is not set in this shell — export it before running cellctl, cellctl does not manage credential values"
+}
+
+
+# Optional operator-owned model policy. Embedded to keep cellctl a single release artifact.
+# The policy contains IDs and effort capabilities, never credentials or network lookups.
+model_policy(){
+  python3 -c '
+import fnmatch, hashlib, json, os, re, shlex, sys
+
+def fail(message):
+    print("model-policy: " + message, file=sys.stderr)
+    sys.exit(2)
+
+try:
+    action, path, provider_override, role, requested, launcher, harness_override = sys.argv[1:]
+    raw = open(path, "rb").read()
+    policy = json.loads(raw)
+    if policy.get("schema") != 1:
+        fail("unsupported schema (expected 1)")
+    if set(policy) - {"schema", "deny", "providers", "roles"}:
+        fail("unknown policy field")
+    banned = policy.get("deny", [])
+    if not isinstance(banned, list) or not all(isinstance(x, str) and x for x in banned):
+        fail("deny must contain nonempty model patterns")
+    # This policy version prohibits Opus 5, including direct IDs and context suffixes.
+    banned = banned + ["*opus-5*", "*opus5*"]
+    names = ("top", "strong", "mid", "fast")
+    aliases = {"fable": "top", "opus": "strong", "sonnet": "mid", "haiku": "fast"}
+    def base(value):
+        return re.sub(r"\[1m\]$", "", value, flags=re.I).lower()
+    def denied(value):
+        return any(fnmatch.fnmatchcase(base(value), x.lower()) for x in banned)
+    providers = policy["providers"]
+    for name, item in providers.items():
+        if not re.fullmatch(r"[a-z][a-z0-9_-]*", name):
+            fail("invalid provider name")
+        if set(item) != {"harness", "tiers"}:
+            fail("provider must contain harness and tiers")
+        harness = item["harness"]
+        if harness not in ("claude", "codex") or (harness == "codex") != (name == "codex"):
+            fail("codex provider requires codex harness; other providers require claude")
+        tiers = item["tiers"]
+        if set(tiers) != set(names):
+            fail(name + " must pin top, strong, mid and fast")
+        for tier, spec in tiers.items():
+            if set(spec) != {"model", "effort", "supported_efforts"}:
+                fail("tier must contain model, effort and supported_efforts")
+            value, effort, supported = spec["model"], spec["effort"], spec["supported_efforts"]
+            if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_.:/-]+(?:\[1m\])?", value):
+                fail("invalid exact model ID")
+            if base(value) in set(names) | set(aliases) | {"default", "best", "latest", "inherit", "opusplan"} or base(value).endswith("-latest"):
+                fail("tier targets must be exact IDs, not floating aliases")
+            if denied(value):
+                fail("tier map contains denied model " + value)
+            levels = {"minimal", "low", "medium", "high", "xhigh"} if harness == "codex" else {"low", "medium", "high", "xhigh", "max"}
+            if not isinstance(supported, list) or not supported or any(x not in levels for x in supported) or effort not in supported:
+                fail("unsupported effort for " + name + "/" + tier)
+            if (value.startswith("glm-5.3") or base(value) in ("k3", "k3-256k")) and any(x not in {"low", "high", "max"} for x in supported):
+                fail("GLM 5.3 and Kimi K3 support low, high or max effort")
+    roles = policy["roles"]
+    for name, assignment in roles.items():
+        if name not in ("the-desk", "worker-desk", "pr-review-desk", "verify-desk", "intake-desk"):
+            fail("unknown role " + name)
+        if set(assignment) != {"provider", "tier"}:
+            fail("role must contain provider and tier")
+        if assignment["provider"] not in providers or assignment["tier"] not in names:
+            fail("unknown provider or tier for " + name)
+    assignment = roles[role]
+    provider = provider_override or ("codex" if harness_override == "codex" else assignment["provider"])
+    entry = providers[provider]
+    harness = entry["harness"]
+    if harness_override and harness_override != harness:
+        fail("harness override disagrees with provider; select a matching --provider")
+    tiers = entry["tiers"]
+    def resolve(value):
+        if not isinstance(value, str) or not value:
+            fail("empty model request")
+        if denied(value):
+            fail("denied model " + value)
+        tier = aliases.get(base(value), base(value))
+        if tier in tiers:
+            spec = tiers[tier]
+            if value.lower().endswith("[1m]") and not spec["model"].lower().endswith("[1m]"):
+                fail("context suffix not pinned for " + value)
+            return spec
+        # Exact IDs must be exact: no implicit context-window upgrade.
+        matches = [spec for spec in tiers.values() if value == spec["model"]]
+        if matches:
+            if len({x["effort"] for x in matches}) != 1:
+                fail("ambiguous effort for model ID; request a tier instead")
+            return matches[0]
+        fail("unmapped model " + value + " for provider " + provider)
+    selected = resolve(requested) if requested else tiers[assignment["tier"]]
+    model, effort = selected["model"], selected["effort"]
+    if role == "the-desk" and harness == "claude" and "opus" in model.lower():
+        fail("the-desk requires a non-Opus top-tier model")
+    if action == "hook":
+        event = json.load(sys.stdin)
+        if event.get("hook_event_name") == "PreModelSwitch":
+            target = event.get("to_model", "")
+            if target not in [s["model"] for s in tiers.values()]:
+                fail("model switch outside pinned IDs: " + str(target))
+            resolve(target)
+        elif event.get("hook_event_name") == "PreToolUse" and event.get("tool_name") in ("Agent", "Task"):
+            value = event.get("tool_input", {}).get("model")
+            if value and value != "inherit":
+                target = resolve(value)
+                if effort not in target["supported_efforts"]:
+                    fail("child model does not support inherited effort " + effort)
+        else:
+            fail("unexpected hook event")
+        sys.exit(0)
+    if action not in ("resolve", "launch"):
+        fail("expected resolve, launch or hook")
+    digest = hashlib.sha256(raw).hexdigest()
+    env, settings = {}, {}
+    if harness == "claude":
+        env = {"ANTHROPIC_DEFAULT_" + alias.upper() + "_MODEL": tiers[tier]["model"] for alias, tier in aliases.items()}
+        env.update(ANTHROPIC_MODEL=model, CLAUDE_CODE_SUBAGENT_MODEL=model, CLAUDE_CODE_EFFORT_LEVEL=effort)
+        if provider == "anthropic":
+            env["ANTHROPIC_BASE_URL"] = "https://api.anthropic.com"
+        command = " ".join(shlex.quote(x) for x in (launcher, "model-policy", "hook", os.path.abspath(path), provider, role, requested, launcher, harness))
+        settings = {"env": env, "availableModels": sorted({s["model"] for s in tiers.values()}), "hooks": {
+            "PreModelSwitch": [{"hooks": [{"type": "command", "command": command}]}],
+            "PreToolUse": [{"matcher": "Agent|Task", "hooks": [{"type": "command", "command": command}]}]
+        }}
+    result = {"provider": provider, "harness": harness, "role": role, "model": model, "effort": effort, "policy_sha256": digest, "env": env, "settings": settings}
+    if action == "resolve":
+        print(json.dumps(result, sort_keys=True))
+    else:
+        for value in (harness, provider, model, effort, digest, json.dumps(settings, separators=(",", ":"))):
+            print(value)
+        for key, value in env.items():
+            print(key + "=" + value)
+except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+    fail(str(error))
+' "$@"
+}
+
+# Sets the callers model/provider/harness before credential selection or worktree writes.
+apply_model_policy(){ # <explicit-harness> <explicit-provider> <role> <explicit-model>
+  MODEL_POLICY_ENV=(); MODEL_POLICY_ARGS=(); MODEL_POLICY_SETTINGS=""
+  [[ -n "${CELL_MODEL_POLICY:-}" ]] || return 0
+  local file="$CELL_MODEL_POLICY" payload line index=0
+  [[ "$file" == /* ]] || file="$CELL_DIR/$file"
+  [[ "$CELL_KIND" != container && "$CELL_KIND" != scrubbed ]] \
+    || die "model policy currently requires a house or k8s cell; $CELL_KIND cannot apply it"
+  payload="$(model_policy launch "$file" "$2" "$3" "$4" "$SELF" "$1")" \
+    || die "model policy refused the launch"
+  while IFS= read -r line; do
+    case "$index" in
+      0) harness="$line" ;;
+      1) provider="$line"; MODEL_POLICY_PROVIDER="$line" ;;
+      2) model="$line" ;;
+      3) MODEL_POLICY_EFFORT="$line" ;;
+      4) MODEL_POLICY_SHA="$line" ;;
+      5) MODEL_POLICY_SETTINGS="$line" ;;
+      *) MODEL_POLICY_ENV+=("$line") ;;
+    esac
+    index=$((index+1))
+  done <<< "$payload"
+  if [[ "$harness" == claude ]]; then
+    MODEL_POLICY_ARGS=(--settings "$MODEL_POLICY_SETTINGS" --effort "$MODEL_POLICY_EFFORT")
+  else
+    MODEL_POLICY_ARGS=(-c 'model_provider="openai"' -c "model_reasoning_effort=\"$MODEL_POLICY_EFFORT\""
+      -c "agents.default_subagent_model=\"$model\""
+      -c "agents.default_subagent_reasoning_effort=\"$MODEL_POLICY_EFFORT\"")
+  fi
+  # Native providers do not use the Anthropic-compatible credential adapter.
+  [[ "$provider" != anthropic && "$provider" != codex ]] || provider=""
+  RESOLVED_MODEL_SRC="policy:$file@$MODEL_POLICY_SHA"
+}
+
+# Local settings arrays merge in Claude Code. Refuse a conflicting model allowlist
+# rather than let a user/project file widen the policy. Managed/cloud policy remains
+# an administrator boundary; this is launch validation, not a security sandbox.
+policy_claude_preflight(){ # <config-dir> <project-dir>
+  [[ -n "${CELL_MODEL_POLICY:-}" && "$harness" == claude ]] || return 0
+  local version
+  version="$(claude --version)" || die "cannot read Claude Code version for model policy"
+  python3 - "$MODEL_POLICY_SETTINGS" "$1" "$2" "$version" <<'PY_POLICY_SETTINGS'
+import json, pathlib, re, sys
+settings, config, project, version = sys.argv[1:]
+try:
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", version)
+    if not match or tuple(map(int, match.groups())) < (2, 1, 251):
+        raise ValueError("model policy requires Claude Code >=2.1.251")
+    wanted = json.loads(settings)
+    def base(value):
+        return value.lower().removesuffix("[1m]")
+    allowed = {base(x) for x in wanted["availableModels"]}
+    paths = [pathlib.Path(config)/"settings.json"]
+    directory = pathlib.Path(project).resolve()
+    for parent in [directory, *directory.parents]:
+        paths.extend(parent/".claude"/name for name in ("settings.json", "settings.local.json"))
+    for root in (pathlib.Path("/Library/Application Support/ClaudeCode"), pathlib.Path("/etc/claude-code")):
+        paths.append(root/"managed-settings.json")
+        paths.extend(sorted((root/"managed-settings.d").glob("*.json")))
+    for path in paths:
+        if not path.exists():
+            continue
+        data = json.loads(path.read_text())
+        if "availableModels" in data:
+            values = data["availableModels"]
+            if not isinstance(values, list) or not values or any(not isinstance(x,str) or base(x) not in allowed for x in values):
+                raise ValueError(str(path)+": availableModels conflicts with cell policy")
+        overrides = data.get("modelOverrides", {})
+        if overrides:
+            raise ValueError(str(path)+": modelOverrides must be removed or reconciled before using a cell policy")
+except (OSError, ValueError, TypeError, AttributeError) as error:
+    print("model-policy: "+str(error), file=sys.stderr)
+    sys.exit(2)
+PY_POLICY_SETTINGS
+}
+
+policy_preflight(){ (
+  # shellcheck disable=SC2030  # the policy vars are local to this subshell on purpose: a preflight must not leak them
+  local model="" provider="" harness="" MODEL_POLICY_EFFORT="" MODEL_POLICY_PROVIDER=""
+  apply_model_policy "$2" "$3" "$1" "$4"
+  [[ -z "$provider" ]] || resolve_provider "$provider"
+  command -v "$harness" >/dev/null || die "policy harness is not on PATH: $harness"
+  policy_claude_preflight "${5:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}" "$CELL_REPO" || exit $?
+  if [[ -e "$CELL_DIR/worktrees/$1/.git" ]]; then
+    policy_claude_preflight "${5:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}" "$CELL_DIR/worktrees/$1" || exit $?
+  fi
+  printf "[model-policy] role=%s provider=%s harness=%s model=%s effort=%s sha256=%s\n"     "$1" "$MODEL_POLICY_PROVIDER" "$harness" "$model" "$MODEL_POLICY_EFFORT" "$MODEL_POLICY_SHA"
+); }
+
+# ---------------------------------------------------------------- cellctl set
+# The cell.env keys `cellctl set` recognises without --force. Fixed keys plus the DESK_MODEL_<role>,
+# CODEX_MODEL_<role>, TIER_MODEL_<TIER>_<HARNESS>, and CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL}
+# families (a typo'd role/tier/provider name is refused rather than silently scaffolding a variable
+# nothing ever reads).
+CELL_ENV_KNOWN_KEYS="CELL CELL_KIND CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG \
+FORGE_API_BASE DESKD_ADDR DESKD_INDEX DESKD_APP_PEM DESKD_APP_ID_VAR ORGS GITLAB_GROUP \
+GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CODEX_MODEL_default \
+CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH CELL_MODEL_POLICY ASSAY_REPAIR_ADMISSION \
+TIER_MODEL_TOP_CLAUDE TIER_MODEL_MID_CLAUDE TIER_MODEL_FAST_CLAUDE \
+TIER_MODEL_TOP_CODEX TIER_MODEL_MID_CODEX TIER_MODEL_FAST_CODEX"
+
+# known_cell_env_key <key>: the fixed list above, DESK_MODEL_<role>/CODEX_MODEL_<role> for one of
+# the five roles (role name with `-` as `_` — the same family `resolve_role_model` reads per
+# harness), or CELL_PROVIDER_<NAME>_BASE_URL / CELL_PROVIDER_<NAME>_TOKEN_ENV for any provider name
+# (the family `resolve_provider` reads — the name itself is operator-chosen, so any shape is
+# accepted here).
+known_cell_env_key(){
+  local k="$1" w r
+  for w in $CELL_ENV_KNOWN_KEYS; do [[ "$k" == "$w" ]] && return 0; done
+  case "$k" in
+    DESK_MODEL_*)
+      r="${k#DESK_MODEL_}"
+      for w in $ROLES_DEFAULT; do [[ "$r" == "${w//-/_}" ]] && return 0; done
+      ;;
+    CODEX_MODEL_*)
+      r="${k#CODEX_MODEL_}"
+      for w in $ROLES_DEFAULT; do [[ "$r" == "${w//-/_}" ]] && return 0; done
+      ;;
+    CELL_PROVIDER_*_BASE_URL|CELL_PROVIDER_*_TOKEN_ENV|CELL_PROVIDER_*_MODEL|CELL_PROVIDER_*_MODEL_TOP|CELL_PROVIDER_*_MODEL_MID|CELL_PROVIDER_*_MODEL_FAST) return 0 ;;
+  esac
+  return 1
+}
+
+# validate_env_key <key> <value> <force> — everything that can be checked WITHOUT touching the
+# file: the key is a shell-identifier shape, is a known cell.env key unless force=1, and (for
+# DESK_MODEL_the_desk specifically) is not an Opus pin. Split out of set_env_key so a multi-key
+# `cellctl set` can validate every KEY=VALUE before writing the backup or touching the file —
+# a refusal on key 2 of 3 must leave cell.env exactly as it found it.
+validate_env_key(){
+  local key="$1" value="$2" force="$3"
+  [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "set: '$key' is not a valid KEY (letters, digits, underscore; must not start with a digit)"
+  if [[ "$force" != "1" ]]; then
+    known_cell_env_key "$key" || die "set: '$key' is not a known cell.env key — pass --force to set it anyway"
+  fi
+  [[ "$key" == "DESK_MODEL_the_desk" ]] && refuse_opus_for_the_desk "$value"
+  # A value check, same footing as the Opus rule above (never bypassable by --force, which only
+  # widens the KEY allowlist) — a persisted CELL_HARNESS that is neither harness would only surface
+  # as a refusal at the NEXT boot, which `set` can catch here instead. CELL_KIND and CELL_COCKPIT
+  # get the same treatment (#1303 scope 2): the value sets load_cell / cockpit_want accept.
+  if [[ "$key" == "CELL_HARNESS" ]]; then
+    case "$value" in
+      claude|codex) ;;
+      *) die "set: CELL_HARNESS must be claude or codex, got '$value'" ;;
+    esac
+  fi
+  if [[ "$key" == "CELL_KIND" ]]; then
+    # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
+    value_in "$value" $KIND_VALUES || die "set: CELL_KIND must be one of ${KIND_VALUES// /|}, got '$value'"
+  fi
+  if [[ "$key" == "CELL_COCKPIT" ]]; then
+    # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
+    value_in "$value" $COCKPIT_VALUES || die "set: CELL_COCKPIT must be one of ${COCKPIT_VALUES// /|}, got '$value'"
+  fi
+  # The dispatch-boundary repair-admission gate is a strict on/off opt-in (the gate enables ONLY
+  # on the literal "on"). A malformed value is refused here, on the same footing as the rules
+  # above — never bypassable by --force, which only widens the KEY allowlist.
+  if [[ "$key" == "ASSAY_REPAIR_ADMISSION" ]]; then
+    case "$value" in
+      on|off) ;;
+      *) die "set: ASSAY_REPAIR_ADMISSION must be 'on' or 'off', got '$value'" ;;
+    esac
+  fi
+  return 0
+}
+
+# ---------------------------------------------------------------- per-run overrides (#1303 scope 2)
+# The value sets a per-run `--kind` / `--cockpit` / `--harness` flag (and the matching cell.env key)
+# may take. One list each, read by validate_env_key, the flag parsers and `show`, so a new value is
+# added in exactly one place.
+KIND_VALUES="k8s house container scrubbed"
+COCKPIT_VALUES="auto tmux herdr orca"
+HARNESS_VALUES="claude codex"
+# Only prescan_kind_override in THIS process may set it — cleared here so a value inherited from a
+# launching shell (a nested cellctl inside a booted window) never re-kinds a cell silently.
+CELL_KIND_OVERRIDE=""
+value_in(){ local v="$1" w; shift; for w in "$@"; do [[ "$v" == "$w" ]] && return 0; done; return 1; }
+
+# env_file_value <envfile> <key>: the LAST active `KEY=` line's value in a cell.env, printed; returns
+# 1 (prints nothing) when the file carries no such line. File-level like active_harness_of, and for
+# the same reason: `set`/`show` must never source an operator-writable file to answer "what does
+# cell.env say" — and this is also how `show` tells a cell.env value from a compiled default.
+env_file_value(){
+  local envfile="$1" key="$2" line
+  line="$(grep -E "^${key}=" "$envfile" 2>/dev/null | tail -n1)" || true
+  [[ -n "$line" ]] || return 1
+  printf '%s\n' "${line#*=}"
+}
+
+# prescan_kind_override "$@": a `--kind <k>` anywhere in a verb's arguments is applied BEFORE
+# load_cell runs (the verbs parse their flags after loading the cell, but load_cell is where the
+# kind's own preconditions are asserted — CELL_ROOTS for house, CELL_CONTAINER_LAUNCHER for
+# container, CELL_REPO_SLUG for scrubbed — and where every kind-dependent default is set, so the
+# override has to be in force by then). Sets CELL_KIND_OVERRIDE, which load_cell honours over the
+# file's own CELL_KIND; an unknown value is refused here, before anything is loaded.
+prescan_kind_override(){
+  CELL_KIND_OVERRIDE=""
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "--kind" ]]; then
+      [[ -n "${2:-}" ]] || die "--kind needs a value (${KIND_VALUES// /|})"
+      # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
+      value_in "$2" $KIND_VALUES || die "--kind must be one of ${KIND_VALUES// /|}, got '$2'"
+      CELL_KIND_OVERRIDE="$2"; shift 2
+    else shift; fi
+  done
+  return 0
+}
+
+# validate_kind_change <envfile> <kind> [KEY=VALUE...]: the target kind's own precondition, checked
+# against the EFFECTIVE value of the key it needs — given in this same call's KEY=VALUE list, else
+# the file's current line — so `cellctl set <cell> CELL_KIND=house CELL_ROOTS=…` in one call passes
+# while `CELL_KIND=house` alone on a cell with no CELL_ROOTS refuses, naming the missing key, before
+# a backup or an edit is made. The check mirrors load_cell's own per-kind assertions: a kind change
+# that would make the next boot refuse is refused here instead.
+validate_kind_change(){
+  local envfile="$1" kind="$2"; shift 2
+  local need=""
+  case "$kind" in
+    container) need="CELL_CONTAINER_LAUNCHER" ;;
+    house)     need="CELL_ROOTS" ;;
+    scrubbed)  need="CELL_REPO_SLUG" ;;
+    *) return 0 ;;
+  esac
+  local v="" kv
+  for kv in "$@"; do [[ "${kv%%=*}" == "$need" ]] && v="${kv#*=}"; done
+  [[ -n "$v" ]] || v="$(env_file_value "$envfile" "$need" || true)"
+  # A line `cellctl new` wrote with %q may be shell-quoted (`CELL_ROOTS=''` on a container cell is
+  # the empty string once sourced, not two characters) — strip one matching pair of quotes so the
+  # file-level read agrees with what load_cell would see.
+  if [[ "$v" == \'*\' || "$v" == \"*\" ]]; then v="${v:1:${#v}-2}"; fi
+  [[ -n "$v" ]] || die "set: CELL_KIND=$kind needs $need, which is neither set in $envfile nor given in this call — a $kind cell cannot load without it (set both in one call, or $need first); nothing written"
+  if [[ "$kind" == "container" ]]; then
+    [[ "$v" == /* && -f "$v" && -x "$v" ]] || die "set: CELL_KIND=container needs an absolute executable CELL_CONTAINER_LAUNCHER, got '$v'; nothing written"
+  fi
+  return 0
+}
+
+# apply_env_kvs <envfile> <force> KEY=VALUE...: the ONE write path for every persisted change —
+# `cellctl set` (both forms) and `desk`/`up --set` alike. Pass 1 validates every pair (key shape,
+# known key unless force, the Opus rule, the harness/kind/cockpit value sets, the kind change's
+# precondition) and touches nothing on a refusal; pass 2 writes exactly one backup, then applies
+# each pair in order through set_env_key.
+apply_env_kvs(){
+  local envfile="$1" force="$2"; shift 2
+  local -a kvs=("$@")
+  [[ ${#kvs[@]} -gt 0 ]] || die "set: at least one KEY=VALUE is required (cellctl set <cell> KEY=VALUE [...])"
+  local kv key value
+  for kv in "${kvs[@]}"; do
+    key="${kv%%=*}"; value="${kv#*=}"
+    validate_env_key "$key" "$value" "$force"
+    [[ "$key" == "CELL_KIND" ]] && validate_kind_change "$envfile" "$value" "${kvs[@]}"
+  done
+  local ts; ts="$(date -u +%Y%m%dT%H%M%SZ)"
+  local backup="$envfile.bak-$ts"
+  cp "$envfile" "$backup"
+  echo "[set] backup written: $backup"
+  for kv in "${kvs[@]}"; do
+    key="${kv%%=*}"; value="${kv#*=}"
+    set_env_key "$envfile" "$key" "$value" "$force"
+  done
+}
+
+# set_env_key <envfile> <key> <value> <force> — the single-key rewrite/append `cmd_set` and
+# `cmd_desk --set` both call, after validate_env_key has already passed. Prints the before/after
+# value. The rewrite is line-for-line: an existing `KEY=...` line (not a `#`-commented one) is
+# replaced in place so comments and ordering are untouched; a key with no active line is appended.
+set_env_key(){
+  local envfile="$1" key="$2" value="$3" force="$4"
+  validate_env_key "$key" "$value" "$force"
+  local before=""
+  grep -qE "^${key}=" "$envfile" && before="$(grep -E "^${key}=" "$envfile" | head -n1)" && before="${before#*=}"
+  if grep -qE "^${key}=" "$envfile"; then
+    awk -v k="$key" -v v="$value" -F'=' '$1==k && !r {print k"="v; r=1; next} {print}' "$envfile" > "$envfile.cellctl-set.tmp"
+    mv "$envfile.cellctl-set.tmp" "$envfile"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$envfile"
+  fi
+  echo "[set] $key: ${before:-<unset>} -> $value"
+}
+
+# active_harness_of <envfile>: the LAST `CELL_HARNESS=` line in a cell.env, or `claude` when the
+# file carries none (a cell scaffolded before harness support, or with the line never written —
+# `load_cell`'s own compiled default). File-level, not `load_cell`, on purpose: `cmd_set` edits the
+# file directly and never sources it (sourcing an operator-writable cell.env as part of `set` would
+# execute arbitrary shell in it), so this reads the one line it needs by hand.
+active_harness_of(){
+  local envfile="$1" v
+  v="$(grep -E '^CELL_HARNESS=' "$envfile" | tail -n1)"; v="${v#*=}"
+  printf '%s\n' "${v:-claude}"
+}
+
+cmd_set(){
+  local usage_msg="cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force]  |  cellctl set <cell> <role> [--harness claude|codex] --model <m>  |  cellctl set <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]"
+  local cell="${1:?$usage_msg}"; shift || true
+  local d; d="$(cell_dir "$cell")"; d="$(cd "$d" && pwd)"
+  local envfile="$d/cell.env"
+  local force=0 role="" harness="" model="" kind="" cockpit="" provider=""
+  local -a kvs=() sugar=()
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --force) force=1; shift;;
+    --harness) harness="${2:?--harness needs a value (claude|codex)}"; shift 2;;
+    --model) model="${2:?--model needs a value}"; shift 2;;
+    # Sugar for the equivalent KEY=VALUE (#1303 scope 2): validated by the same validate_env_key
+    # rules as the long form, so an unknown kind/cockpit/harness is refused before anything is
+    # written, and a kind change is subject to validate_kind_change like any CELL_KIND=… pair.
+    --kind) kind="${2:?--kind needs a value (${KIND_VALUES// /|})}"; shift 2;;
+    --cockpit) cockpit="${2:?--cockpit needs a value (${COCKPIT_VALUES// /|})}"; shift 2;;
+    --provider) provider="${2:?--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
+    --*) die "set: unknown flag $1";;
+    *=*) kvs+=("$1"); shift;;
+    the-desk|worker-desk|pr-review-desk|verify-desk|intake-desk)
+      [[ -z "$role" ]] || die "set: '$1' — a role was already given ('$role'); only one role-sugar call at a time"
+      role="$1"; shift;;
+    *) die "set: '$1' is not KEY=VALUE (or a role name, with --model and optionally --harness)";;
+  esac; done
+  [[ -n "$kind" ]] && sugar+=("CELL_KIND=$kind")
+  [[ -n "$cockpit" ]] && sugar+=("CELL_COCKPIT=$cockpit")
+  [[ -n "$provider" ]] && sugar+=("CELL_PROVIDER=$provider")
+  if [[ -n "$role" ]]; then
+    # Role-sugar form: `cellctl set <cell> <role> [--harness claude|codex] --model <m>` — computes
+    # the model-pin KEY itself from the ACTIVE harness (the flag given here, else the cell's own
+    # CELL_HARNESS) so a codex-harness call writes CODEX_MODEL_<role>, never DESK_MODEL_<role>
+    # (#986) — the same namespace `cmd_desk --set` persists into for a live boot.
+    # With a role, --harness SELECTS the namespace and is not itself persisted (unchanged from #986);
+    # without one it is the CELL_HARNESS sugar below.
+    [[ -n "$model" ]] || die "set: '$role' needs --model <m> (role-sugar form: cellctl set <cell> <role> [--harness claude|codex] --model <m>)"
+    [[ ${#kvs[@]} -eq 0 ]] || die "set: the role-sugar form and KEY=VALUE pairs cannot be combined in one call"
+    case "${harness:-claude}" in claude|codex) ;; *) die "set: --harness must be claude or codex, got '$harness'";; esac
+    local active="${harness:-$(active_harness_of "$envfile")}"
+    local mvar; if [[ "$active" == "codex" ]]; then mvar="CODEX_MODEL_${role//-/_}"; else mvar="DESK_MODEL_${role//-/_}"; fi
+    kvs=("$mvar=$model")
+  else
+    [[ -z "$model" ]] || die "set: --model needs a role (cellctl set <cell> <role> --model <m>); the harness-wide default is the KEY=VALUE form (DESK_MODEL_DEFAULT / CODEX_MODEL_default)"
+    [[ -n "$harness" ]] && sugar+=("CELL_HARNESS=$harness")
+  fi
+  [[ ${#sugar[@]} -gt 0 ]] && kvs+=("${sugar[@]}")
+  apply_env_kvs "$envfile" "$force" "${kvs[@]}"
+}
+
+gen_shims(){
+  mkdir -p "$CELL_DIR/shim" "$CELL_DIR/shim-gh"
+  local b n rendered
+  # The shim body template. Single-quoted heredoc on purpose: everything here is LITERAL shell
+  # (evaluated when the generated shim itself runs, under the caller's REAL, un-swapped HOME —
+  # only the `env HOME=...` on the exec lines below swaps it for the wrapped verb) except the
+  # __TOKEN__ placeholders, substituted per-binary below via bash parameter expansion (never
+  # sed: a bin path or CELL name containing `&` or a regex metacharacter would otherwise corrupt
+  # the substitution).
+  #
+  # assay#1145: `gh`'s ambient credential (keychain on macOS, hosts.yml-adjacent elsewhere) is
+  # keyed to the REAL HOME, not the cell one — so a `gh` subprocess a shimmed verb shells out to
+  # silently loses auth once HOME is swapped. It is resolved HERE, before the swap.
+  #
+  # assay#1631: it is NOT handed to the verb as GH_TOKEN. Desk verbs read an inherited GH_TOKEN
+  # as the operator's EXPLICIT choice of credential (deskdispatch skipped its role-App mint on
+  # it), so exporting the human login there made every self-minting verb act as the human. The
+  # token travels as CELLCTL_GH_AMBIENT instead — a name no desk verb reads — and the only thing
+  # that turns it back into GH_TOKEN is the cell's `gh` wrapper (shim-gh/gh, prepended to the
+  # verb's PATH), which does so for a `gh` child with no GH_TOKEN of its own. So #1145's `gh`
+  # subprocess still authenticates, and no verb's own code ever sees the human credential as an
+  # override. An explicit GH_TOKEN/GH_ENTERPRISE_TOKEN in the caller's env still passes through
+  # untouched, and is never looked up against.
+  local body ghwrap
+  body="$(cat <<'SHIM_TEMPLATE'
+#!/usr/bin/env bash
+# cellctl shim (__CELL__): run this desk verb with the CELL config-home; the session keeps the
+# real HOME. the ambient gh credential is keyed to the real HOME, so it is resolved HERE (before
+# HOME is swapped below) and handed over as CELLCTL_GH_AMBIENT — never as GH_TOKEN, which desk
+# verbs read as an explicit operator override (assay#1631). Only the cell's gh wrapper, first on
+# the verb's PATH, turns it back into GH_TOKEN, for a `gh` child with none of its own (assay#1145).
+gh_token="${CELLCTL_GH_AMBIENT:-}"
+if [[ -z "$gh_token" && -z "${GH_TOKEN:-}" && -z "${GH_ENTERPRISE_TOKEN:-}" ]] && command -v gh >/dev/null 2>&1; then
+  gh_token="$(gh auth token 2>/dev/null || true)"
+fi
+if [[ -n "$gh_token" ]]; then
+  # exported, never an env(1) argument: argv is readable by other local users for as long as
+  # env runs, the environment is not.
+  export CELLCTL_GH_AMBIENT="$gh_token"
+  exec env HOME="__CELL_HOME__" PATH="__GH_WRAP__:$PATH" "__BIN__" "$@"
+else
+  exec env HOME="__CELL_HOME__" "__BIN__" "$@"
+fi
+SHIM_TEMPLATE
+)"
+  # The `gh` wrapper (assay#1631). It removes its own directory from PATH (every occurrence: a
+  # shimmed verb that runs another shimmed verb prepends it twice) so the `gh` it execs is the
+  # real one, never itself, and sets GH_TOKEN from CELLCTL_GH_AMBIENT only when the caller has
+  # no GH_TOKEN/GH_ENTERPRISE_TOKEN — a verb that hands its `gh` child its own role token keeps it.
+  ghwrap="$(cat <<'GH_WRAP_TEMPLATE'
+#!/usr/bin/env bash
+# cellctl gh wrapper (__CELL__): the ONE place the cell's ambient gh credential becomes GH_TOKEN,
+# and only for gh itself (assay#1631). A desk verb's own code never sees it as GH_TOKEN.
+wrap="__GH_WRAP__"
+p=":$PATH:"
+while [[ "$p" == *":$wrap:"* ]]; do p="${p//":$wrap:"/:}"; done
+p="${p#:}"; p="${p%:}"
+export PATH="$p"
+# gh gets the credential as GH_TOKEN and nothing else: CELLCTL_GH_AMBIENT is dropped from its
+# environment, and the value is exported rather than passed to env(1), so it is never in an argv.
+ambient="${CELLCTL_GH_AMBIENT:-}"
+unset CELLCTL_GH_AMBIENT
+if [[ -z "${GH_TOKEN:-}" && -z "${GH_ENTERPRISE_TOKEN:-}" && -n "$ambient" ]]; then
+  export GH_TOKEN="$ambient"
+fi
+unset ambient
+exec gh "$@"
+GH_WRAP_TEMPLATE
+)"
+  rendered="${ghwrap//__CELL__/$CELL}"
+  rendered="${rendered//__GH_WRAP__/$CELL_DIR/shim-gh}"
+  printf '%s\n' "$rendered" > "$CELL_DIR/shim-gh/gh"
+  chmod +x "$CELL_DIR/shim-gh/gh"
+  for b in "$DESK_TOOLS_BIN"/*; do
+    [[ -x "$b" && -f "$b" ]] || continue
+    n="$(basename "$b")"
+    rendered="${body//__CELL__/$CELL}"
+    rendered="${rendered//__CELL_HOME__/$CELL_HOME}"
+    rendered="${rendered//__GH_WRAP__/$CELL_DIR/shim-gh}"
+    rendered="${rendered//__BIN__/$b}"
+    printf '%s\n' "$rendered" > "$CELL_DIR/shim/$n"
+    chmod +x "$CELL_DIR/shim/$n"
+  done
+  # the cell's own deskd/deskcli come first on PATH too
+  if [[ -d "$CELL_DIR/bin" ]]; then
+    for b in "$CELL_DIR"/bin/*; do [[ -e "$b" ]] || continue; ln -sf "$b" "$CELL_DIR/shim/$(basename "$b")"; done
+  fi
+}
+
+# plugin_enabled: is the assay@assay plugin enabled for the checkout, as `claude plugin list`
+# reports it? Run from CELL_REPO because a project-scoped enable is keyed to the project path.
+plugin_enabled(){
+  command -v claude >/dev/null && command -v python3 >/dev/null || return 1
+  (cd "$CELL_REPO" && CLAUDE_CONFIG_DIR="$1" claude plugin list --json 2>/dev/null) | python3 -c '
+import sys, json
+try: ps = json.load(sys.stdin)
+except Exception: sys.exit(1)
+sys.exit(0 if any(p.get("id") == "assay@assay" and p.get("enabled") for p in ps) else 1)'
+}
+
+# ---------------------------------------------------------------- verbs
+# No cells yet is a legitimate state, not a failure: an unmatched glob and an empty root both
+# print nothing and exit 0.
+cmd_ls(){ local d; for d in "$CELLS_ROOT"/*/; do [[ -f "$d/cell.env" ]] && basename "$d"; done; return 0; }
+
+# cmd_show <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>] [--model <m>]: the
+# EFFECTIVE value of every per-run choice, one greppable `[show] KEY=VALUE (source)` line each,
+# where source is `flag` (given on this invocation), `cell.env` (the file's own line) or `default`
+# (cellctl's compiled fallback) — plus one `[show] model <role>=<m> (source)` line per role, the
+# same resolution a plain `desk` boot would make on the shown harness (an explicit --model shows
+# as `flag`, verbatim). A read: it launches nothing and writes nothing (#1303 scope 2). The same
+# flags `desk`/`up` take are accepted so "what would THIS invocation resolve to" is answerable
+# before booting it; a `--kind` the cell is not provisioned for refuses exactly as `desk` would.
+cmd_show(){
+  local usage_msg="cellctl show <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>] [--model <m>]"
+  local cell="${1:?$usage_msg}"; shift || true
+  prescan_kind_override "$@"
+  load_cell "$cell"
+  local envfile="$CELL_DIR/cell.env" harness_flag="" cockpit_flag="" provider_flag="" model_flag=""
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --kind) shift 2;;
+    --cockpit) cockpit_flag="${2:?--cockpit needs a value (${COCKPIT_VALUES// /|})}"; shift 2;;
+    --harness) harness_flag="${2:?--harness needs a value (${HARNESS_VALUES// /|})}"; shift 2;;
+    --provider) provider_flag="${2:?--provider needs a value}"; shift 2;;
+    --model) model_flag="${2:?--model needs a value}"; shift 2;;
+    --*) die "show: unknown flag $1";;
+    *) die "show: unexpected argument '$1'";;
+  esac; done
+  # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
+  [[ -z "$harness_flag" ]] || value_in "$harness_flag" $HARNESS_VALUES || die "show: --harness must be one of ${HARNESS_VALUES// /|}, got '$harness_flag'"
+  # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
+  [[ -z "$cockpit_flag" ]] || value_in "$cockpit_flag" $COCKPIT_VALUES || die "show: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
+  # show_line <key> <flag-value> <effective-value>: source is flag > cell.env line > default.
+  show_line(){
+    local key="$1" flag="$2" eff="$3" src
+    if [[ -n "$flag" ]]; then src="flag"
+    elif env_file_value "$envfile" "$key" >/dev/null; then src="cell.env"
+    else src="default"
+    fi
+    printf '[show] %s=%s (%s)\n' "$key" "$eff" "$src"
+  }
+  echo "[show] cell=$CELL dir=$CELL_DIR"
+  # Surface the repair-admission opt-in whenever cell.env carries it, on or off — so `show`
+  # answers "would a desk booted from this cell turn the dispatch gate on" the same way a
+  # DRY_RUN boot would. "on" is what the launch composes; anything else is identical absence.
+  local ra_val
+  if ra_val="$(env_file_value "$envfile" ASSAY_REPAIR_ADMISSION)"; then
+    if [[ "$ra_val" == "on" ]]; then
+      printf '[show] ASSAY_REPAIR_ADMISSION=%s (cell.env; composed into every desk launch)\n' "$ra_val"
+    else
+      printf '[show] ASSAY_REPAIR_ADMISSION=%s (cell.env; not composed — off/unset behaves identically to the deskdispatch gate)\n' "$ra_val"
+    fi
+  fi
+  show_line CELL_KIND "$CELL_KIND_OVERRIDE" "$CELL_KIND"
+  cockpit_want "$cockpit_flag"
+  show_line CELL_COCKPIT "$cockpit_flag" "$COCKPIT_WANT"
+  [[ -z "${CELL_MODEL_POLICY:-}" ]] || echo "[show] policy=$CELL_MODEL_POLICY (role rows supersede legacy cell defaults below)"
+  local harness="${harness_flag:-$CELL_HARNESS}"
+  show_line CELL_HARNESS "$harness_flag" "$harness"
+  local provider="${provider_flag:-${CELL_PROVIDER:-}}"
+  if [[ -n "$provider" ]]; then
+    show_line CELL_PROVIDER "$provider_flag" "$provider"
+    # The provider's effective endpoint, token env NAME (+ set/unset — never its value) and model,
+    # each tagged cell.env / preset / unset.
+    local pb pt pm pbs pts pms tokstate
+    provider_value "$provider" BASE_URL;  pb="$PROVIDER_VALUE"; pbs="$PROVIDER_VALUE_SRC"
+    provider_value "$provider" TOKEN_ENV; pt="$PROVIDER_VALUE"; pts="$PROVIDER_VALUE_SRC"
+    provider_value "$provider" MODEL;     pm="$PROVIDER_VALUE"; pms="$PROVIDER_VALUE_SRC"
+    tokstate="unset"; [[ -n "$pt" && -n "${!pt:-}" ]] && tokstate="set"
+    printf '[show] provider %s base_url=%s (%s)\n' "$provider" "${pb:-<unset>}" "$pbs"
+    printf '[show] provider %s token_env=%s (%s; %s in this shell)\n' "$provider" "${pt:-<unset>}" "$pts" "$tokstate"
+    printf '[show] provider %s model=%s (%s)\n' "$provider" "${pm:-<unset>}" "$pms"
+  else printf '[show] CELL_PROVIDER=%s (%s)\n' "unset" "default: anthropic"
+  fi
+  local r src
+  for r in $ROLES; do
+    if [[ -n "${CELL_MODEL_POLICY:-}" ]]; then
+      local model=""
+      apply_model_policy "$harness_flag" "$provider_flag" "$r" "$model_flag"
+      # shellcheck disable=SC2031  # read from apply_model_policy just above, in this shell (not the preflight subshell)
+      printf "[show] model %s=%s provider=%s harness=%s effort=%s (%s)\n" "$r" "$model" "$MODEL_POLICY_PROVIDER" "$harness" "$MODEL_POLICY_EFFORT" "$RESOLVED_MODEL_SRC"
+    elif [[ -n "$model_flag" ]]; then
+      printf '[show] model %s=%s (flag)\n' "$r" "$model_flag"
+    elif resolve_role_model "$r" "$harness"; then
+      case "$RESOLVED_MODEL_SRC" in
+        tier:*) src="default: $RESOLVED_MODEL_SRC" ;;
+        *) if env_file_value "$envfile" "$RESOLVED_MODEL_SRC" >/dev/null; then src="cell.env $RESOLVED_MODEL_SRC"; else src="default: $RESOLVED_MODEL_SRC"; fi ;;
+      esac
+      printf '[show] model %s=%s (%s)\n' "$r" "$RESOLVED_MODEL" "$src"
+    else
+      printf '[show] model %s=%s (%s)\n' "$r" "unresolved" "$RESOLVED_MODEL_SRC"
+    fi
+  done
+  return 0
+}
+
+# shellcheck disable=SC2016  # chk rows are eval strings, expanded at check time on purpose
+cmd_check(){
+  load_cell "$1"; local ok=1
+  if [[ -n "${CELL_MODEL_POLICY:-}" && ( "$CELL_KIND" == container || "$CELL_KIND" == scrubbed ) ]]; then
+    die "model policy currently requires a house or k8s cell"
+  fi
+  if [[ "$CELL_KIND" == "container" ]]; then
+    [[ -z "${2:-}" ]] || die "container check does not accept a host config directory"
+    local container_role
+    for container_role in $ROLES; do
+      resolve_role_model "$container_role" "$CELL_HARNESS" || die "$RESOLVED_MODEL_SRC"
+      [[ "$container_role" == "the-desk" && "$CELL_HARNESS" == "claude" ]] && refuse_opus_for_the_desk "$RESOLVED_MODEL"
+      printf '[model] role=%s harness=%s model=%s\n' "$container_role" "$CELL_HARNESS" "$RESOLVED_MODEL"
+    done
+    container_run check
+    return $?
+  fi
+  chk(){ if eval "$2"; then echo "  ok    $1"; else echo "  MISS  $1"; ok=0; fi; }
+  # A precondition that belongs to the OTHER kind or forge is reported n/a — it is stated, not
+  # silently skipped, so a half-provisioned or mis-kinded cell reads as such rather than clean.
+  na(){ echo "  n/a   $1"; }
+  # warn is VISIBLE but non-fatal: it names a condition that will degrade the desks without being
+  # a precondition cellctl can assert. Staying current with an upstream is an operator step (or
+  # CELL_FF_ROOTS=1 at boot), so it must not decide `check`'s exit code.
+  warn(){ echo "  warn  $1"; }
+  echo "[check] cell=$CELL dir=$CELL_DIR kind=$CELL_KIND forge=$CELL_FORGE"
+  # A scrubbed cell's whole point is that it never touches the operator's real config home — this
+  # row is n/a there (check_scrubbed proves the cell's OWN config home instead), unlike k8s/house
+  # where the cell's custody IS (a copy of, or a symlink to) this directory.
+  if [[ "$CELL_KIND" == "scrubbed" ]]; then
+    na "operator config home — not applicable on a scrubbed cell (it never reads $REAL_CONFIG_HOME; see the config-home rows below)"
+  else
+    chk "operator config home (symlink targets): $REAL_CONFIG_HOME" '[[ -d "$REAL_CONFIG_HOME" ]]'
+  fi
+  chk "roster: $CELL_CONFIG/roster.env" '[[ -f "$CELL_CONFIG/roster.env" ]]'
+  chk "App key symlinks resolve" '! find "$CELL_HOME/.config" -type l ! -exec test -e {} \; -print | grep -q .'
+  chk "forge endpoint ($CELL_FORGE): $FORGE_API_BASE" '[[ -n "$FORGE_API_BASE" ]]'
+  # the-desk's resolved model, same precedence cmd_desk uses (DESK_MODEL_the_desk, else
+  # DESK_MODEL_DEFAULT). An Opus pin is a MISS with the same refusal `cellctl desk` would print.
+  # `check` is deliberately never affected by --model / DESK_MODEL_OVERRIDE: it has no --model flag
+  # and does not read DESK_MODEL_OVERRIDE, so this row reports what a plain boot (no override)
+  # would resolve to, not the value a would-be override run would launch on.
+  if [[ -n "${CELL_MODEL_POLICY:-}" ]]; then
+    local policy_role
+    for policy_role in $ROLES; do
+      if policy_preflight "$policy_role" "" "" "" "${2:-}"; then
+        chk "model policy: $policy_role" true
+      else
+        chk "model policy: $policy_role" false
+      fi
+    done
+  else
+  local the_desk_model="${DESK_MODEL_the_desk:-$DESK_MODEL_DEFAULT}"
+  if is_opus_pin "$the_desk_model"; then
+    chk "the-desk model: the-desk runs on the top tier; an Opus pin is refused for the coordinator — resolved DESK_MODEL_the_desk=$the_desk_model (from DESK_MODEL_the_desk or DESK_MODEL_DEFAULT); set DESK_MODEL_the_desk=fable (or another non-Opus id) in cell.env" 'false'
+  else
+    chk "the-desk model: $the_desk_model" 'true'
+  fi
+  # Per-role harness + resolved-model rows (#986): what `cellctl desk <cell> <role>` (no --model)
+  # would resolve to on THIS cell's harness, for every role the cell runs — not the-desk alone —
+  # via the same namespace/tier chain `cmd_desk` itself uses (resolve_role_model). Uses the cell's
+  # pinned CELL_HARNESS, mirroring the the-desk-model row above: `check` has no --harness flag, so
+  # this reports what a plain boot resolves to, not a would-be `--harness` override. A role with no
+  # per-harness pin and no tier match is a MISS naming exactly what was checked, surfaced HERE
+  # rather than discovered as a startup failure.
+  local mp_role
+  for mp_role in $ROLES; do
+    if resolve_role_model "$mp_role" "$CELL_HARNESS"; then
+      if [[ "$mp_role" == "the-desk" && "$CELL_HARNESS" == "claude" ]] && is_opus_pin "$RESOLVED_MODEL"; then
+        chk "model pin: role=$mp_role harness=$CELL_HARNESS — the-desk runs on the top tier; an Opus pin is refused for the coordinator — resolved $RESOLVED_MODEL_SRC=$RESOLVED_MODEL; set DESK_MODEL_the_desk=fable (or another non-Opus id) in cell.env" 'false'
+      else
+        chk "model pin: role=$mp_role harness=$CELL_HARNESS model=$RESOLVED_MODEL (from $RESOLVED_MODEL_SRC)" 'true'
+      fi
+    else
+      chk "model pin: role=$mp_role harness=$CELL_HARNESS — $RESOLVED_MODEL_SRC" 'false'
+    fi
+  done
+  # The cell's DEFAULT provider (CELL_PROVIDER), same resolution `cellctl desk` uses absent an
+  # explicit --provider for the run. Unset is a legitimate n/a (Anthropic, cellctl's long-standing
+  # default) rather than a MISS — a provider is opt-in per cell.
+  # Values shown here are the endpoint, the token env var's NAME, the model and whether the named
+  # variable is set — never a token value (#1303). A preset (`kimi`/`glm`) fills what cell.env
+  # does not declare, and each row says which it was.
+  if [[ -n "${CELL_PROVIDER:-}" ]]; then
+    local pv_base pv_tokvar pv_base_val pv_tokvar_val pv_base_src pv_tok_src pv_model pv_model_src
+    pv_base="$(provider_var "$CELL_PROVIDER" BASE_URL)"; pv_tokvar="$(provider_var "$CELL_PROVIDER" TOKEN_ENV)"
+    provider_value "$CELL_PROVIDER" BASE_URL;  pv_base_val="$PROVIDER_VALUE";   pv_base_src="$PROVIDER_VALUE_SRC"
+    provider_value "$CELL_PROVIDER" TOKEN_ENV; pv_tokvar_val="$PROVIDER_VALUE"; pv_tok_src="$PROVIDER_VALUE_SRC"
+    provider_value "$CELL_PROVIDER" MODEL;     pv_model="$PROVIDER_VALUE";      pv_model_src="$PROVIDER_VALUE_SRC"
+    chk "provider $CELL_PROVIDER: $pv_base=${pv_base_val:-<unset>} ($pv_base_src)" '[[ -n "$pv_base_val" ]]'
+    chk "provider $CELL_PROVIDER: $pv_tokvar (names the token env var, never the token)${pv_tokvar_val:+=$pv_tokvar_val} ($pv_tok_src)" '[[ -n "$pv_tokvar_val" ]]'
+    if [[ -n "$pv_tokvar_val" ]]; then
+      chk "provider $CELL_PROVIDER: \$$pv_tokvar_val is set in this shell" '[[ -n "${!pv_tokvar_val:-}" ]]'
+    fi
+    if [[ -n "$pv_model" ]]; then
+      # Per-tier provider models (assay#1352) show in their own row when one differs from the flat
+      # model, so `cellctl check` answers "what would the sonnet slot run" without a launch.
+      local pv_mid pv_mid_src; provider_value "$CELL_PROVIDER" MODEL_MID; pv_mid="$PROVIDER_VALUE"; pv_mid_src="$PROVIDER_VALUE_SRC"
+      # Same predicate the launch applies (role arm + alias block): a PRESET tier model is
+      # suppressed when the flat model is operator-set — in that case the sonnet slot runs the
+      # flat model the model row already names, so no differing sonnet row is shown.
+      if [[ -n "$pv_mid" && "$pv_mid" != "$pv_model" && ! ( "$pv_model_src" == "cell.env" && "$pv_mid_src" == "preset" ) ]]; then
+        chk "provider $CELL_PROVIDER: model=$pv_model ($pv_model_src; exported as ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL at launch)" 'true'
+        chk "provider $CELL_PROVIDER: sonnet slot (MID tier)=$pv_mid ($PROVIDER_VALUE_SRC; ANTHROPIC_DEFAULT_SONNET_MODEL + mid-tier role launches)" 'true'
+      else
+        chk "provider $CELL_PROVIDER: model=$pv_model ($pv_model_src; exported as ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL at launch)" 'true'
+      fi
+    else
+      na "provider $CELL_PROVIDER: model — no $(provider_var "$CELL_PROVIDER" MODEL) and no preset; the role pin is exported as is"
+    fi
+  else
+    na "provider — CELL_PROVIDER unset (Anthropic, the default; set CELL_PROVIDER + CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env to switch it)"
+  fi
+  fi
+  if [[ -n "${CELL_MODEL_POLICY:-}" ]]; then
+    for policy_role in $ROLES; do
+      if (apply_model_policy "" "" "$policy_role" ""; [[ "$harness" == codex ]]); then
+        local CELL_HARNESS=codex
+        check_codex_harness
+        break
+      fi
+    done
+  else
+    check_codex_harness
+  fi
+  case "$CELL_KIND" in
+    house) check_house "${2:-}" ;;
+    scrubbed)
+      [[ -z "${2:-}" ]] || die "scrubbed check does not accept a host config directory"
+      check_scrubbed
+      ;;
+    *) check_k8s ;;
+  esac
+  # Stream-root drift. The roots are what the desk verbs READ, and nothing in cellctl advances
+  # them, so a root behind its upstream is the failure that presents as a permanently stale board
+  # rather than as an error anywhere. Reported per root, and never fatal (see warn above).
+  if [[ -n "${CELL_ROOTS:-}" ]]; then
+    local _e _p _name _st _b _up _ahead _behind _dirty
+    for _e in ${CELL_ROOTS//,/ }; do
+      _name="${_e%%=*}"; _p="${_e#*=}"
+      if ! _st="$(roots_state "$_p")"; then
+        na "root $_name — not comparable (missing, detached HEAD, or no upstream); drift unknown"
+        continue
+      fi
+      read -r _b _up _ahead _behind _dirty <<<"$_st"
+      if [[ "$_behind" != "0" ]]; then
+        warn "root $_name: $_b is $_behind commit(s) BEHIND $_up — the desks read this tree (fix: git -C $_p merge --ff-only $_up, or CELL_FF_ROOTS=1 in cell.env)"
+      else
+        chk "root $_name current with $_up (branch $_b)" 'true'
+      fi
+      [[ "$_ahead" == "0" ]] || warn "root $_name: $_b is $_ahead commit(s) ahead of $_up (unpushed work)"
+      [[ "$_dirty" == "0" ]] || warn "root $_name: $_dirty uncommitted change(s) in $_p"
+    done
+  fi
+  chk "tmux (the always-works cockpit, and every other cockpit's fallback)" 'command -v tmux >/dev/null'
+  # The COCKPIT row resolves exactly as `up` will and says why, so "which surface will my role
+  # windows appear in" is answerable before booting. An explicit CELL_COCKPIT that is not
+  # available is a MISS (it is what `up` would refuse on); `auto` can never MISS — it falls
+  # through to tmux — so its row records the choice and the reason.
+  cockpit_want ""
+  if resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC"; then
+    echo "  ok    cockpit: $COCKPIT ($COCKPIT_WHY)"
+    # The same resolved value is what every role window exports as ASSAY_COCKPIT — the worker-desk
+    # worktree-create arm — so the row says which arm that is, not only which surface.
+    if [[ "$CELL_KIND" != "scrubbed" ]]; then
+      local ck_arm="$COCKPIT worktree create"; [[ "$COCKPIT" == "tmux" ]] && ck_arm="plain git worktree add, no cockpit CLI needed"
+      echo "  ok    ASSAY_COCKPIT=$COCKPIT exported into every role window (worker-desk worktree arm: $ck_arm)"
+    fi
+  else
+    echo "  MISS  cockpit: $COCKPIT_ERR"; ok=0
+  fi
+  # Orca reachability is stated whenever orca is installed, whichever cockpit won: its CLI is a
+  # thin client of the desktop app, and an unreachable app is why `auto` passed orca over.
+  if command -v orca >/dev/null 2>&1; then
+    if orca_reachable; then echo "  ok    orca desktop app reachable (its CLI is a thin client)"
+    else echo "  n/a   orca on PATH but its desktop app is not reachable — auto passes it over; start the app (or 'orca serve') to use it"; fi
+  else
+    na "orca — not installed (auto uses herdr if present, else tmux)"
+  fi
+  if [[ "$DESKD" == "1" ]]; then
+    chk "deskd binary: $CELL_DIR/bin/deskd" '[[ -x "$CELL_DIR/bin/deskd" ]]'
+    chk "deskcli binary: $CELL_DIR/bin/deskcli" '[[ -x "$CELL_DIR/bin/deskcli" ]]'
+    chk "deskd up on $DESKD_ADDR" 'deskd_up'
+  else
+    na "deskd — not required on this $CELL_KIND cell with DESKD=0 (set DESKD=1 in cell.env to require one)"
+  fi
+  if [[ "$ok" == "1" ]]; then echo "[check] all preconditions met"; else echo "[check] fix the MISS rows first"; return 1; fi
+}
+
+# check_k8s: today's cell — its own deskd, its own roster and keys, a cells.yaml slice.
+# shellcheck disable=SC2016  # chk rows are eval strings, expanded at check time on purpose
+check_k8s(){
+  chk "cell.env CELL_REPO is a git checkout: $CELL_REPO" '[[ -d "$CELL_REPO/.git" ]]'
+  chk "cells config: $CELLS_CONFIG" '[[ -f "$CELLS_CONFIG" ]]'
+  if [[ -n "${CELL_ROOTS:-}" ]]; then
+    chk "CELL_ROOTS well-formed (exported as DESK_ROOTS at boot)" 'roots_valid "$CELL_ROOTS"'
+  else
+    na "CELL_ROOTS unset — role windows boot WITHOUT DESK_ROOTS (the verbs fall back to their compiled placeholder topology)"
+  fi
+  case "$CELL_FORGE" in
+    github)
+      chk "apps.env: $CELL_CONFIG/apps.env" '[[ -f "$CELL_CONFIG/apps.env" ]]'
+      chk "gh config linked: $CELL_HOME/.config/gh" '[[ -e "$CELL_HOME/.config/gh" ]]'
+      # The App key and the org list exist to mint deskd's per-org tokens, so they are
+      # preconditions only when this cell requires a deskd. Same gating as the gitlab arm.
+      if [[ "$DESKD" == "1" ]]; then
+        chk "deskd read App key: ${DESKD_APP_PEM:-unset}" '[[ -r "${DESKD_APP_PEM:-/nonexistent}" ]]'
+        chk "orgs to mint tokens for: ${ORGS:-unset}" '[[ -n "${ORGS:-}" ]]'
+      else
+        na "deskd read App key / orgs to mint — not applicable with DESKD=0 (no deskd on this cell)"
+      fi
+      na  "GitLab role token store — not applicable on a github cell"
+      ;;
+    gitlab)
+      chk "GitLab group: ${GITLAB_GROUP:-unset}" '[[ -n "${GITLAB_GROUP:-}" ]]'
+      chk "GitLab role token store: ${GITLAB_TOKEN_STORE:-unset}" '[[ -d "${GITLAB_TOKEN_STORE:-/nonexistent}" ]]'
+      # NOT gated on DESKD, unlike the github arm's App key. Despite the deskd- prefix,
+      # DESKD_GITLAB_TOKEN_FILE is ALSO the credential gitlab_cred_args feeds to the boot fetch in
+      # cmd_desk and to gitlab_fetch_reachable below — both run with DESKD=0. A gitlab cell needs
+      # this token to fetch CELL_REPO at all, so it is a precondition at every DESKD setting.
+      chk "GitLab cell token (0600, hand-provisioned; deskd read + boot fetch credential): ${DESKD_GITLAB_TOKEN_FILE:-unset}" '[[ -r "${DESKD_GITLAB_TOKEN_FILE:-/nonexistent}" ]]'
+      # CELL_REPO's own fetch transport, not just the API token: probes the SAME credential helper
+      # the boot fetch in cmd_desk uses, so a broken/missing token is a MISS here rather than a
+      # boot-time hang at an interactive Username prompt (issue-1080 sibling defect).
+      chk "GitLab fetch transport reachable (ls-remote, prompts disabled): $CELL_REPO" 'gitlab_fetch_reachable'
+      # GitHub-only preconditions on a GitLab cell are reported explicitly, never dropped: a
+      # stray App PEM is a MISS (a github artifact on a gitlab cell is a misconfiguration to
+      # surface), and the gh-config link is n/a (GitLab reads through the role token store).
+      if [[ -n "${DESKD_APP_PEM:-}" ]]; then
+        chk "stray GitHub App PEM on a gitlab cell (DESKD_APP_PEM should be unset): ${DESKD_APP_PEM:-}" 'false'
+      else
+        na "GitHub App PEM — not applicable on a gitlab cell"
+      fi
+      na "gh config link — not applicable on a gitlab cell (GitLab custody is the role token store)"
+      ;;
+    *) chk "known forge (github|gitlab): $CELL_FORGE" 'false' ;;
+  esac
+  chk "desk-tools: $DESK_TOOLS_BIN/deskboot" '[[ -x "$DESK_TOOLS_BIN/deskboot" ]]'
+}
+
+# check_house: the operator's own desks. What must hold is what a hand boot gets wrong: the
+# checkout is a real git checkout, the roster the desk verbs will read PARSES (not merely exists),
+# every stream root in the map is a checkout carrying docs/streams/, the desk verbs are installed,
+# and the assay plugin is enabled for the checkout the windows will open in.
+# shellcheck disable=SC2016  # chk rows are eval strings, expanded at check time on purpose
+check_house(){
+  local cfg; cfg="$(resolve_cfg "${1:-}")"
+  chk "cell.env CELL_REPO is a git checkout: $CELL_REPO" 'git -C "$CELL_REPO" rev-parse --git-dir >/dev/null 2>&1'
+  chk "config home linked to the operator's: $CELL_CONFIG -> $REAL_CONFIG_HOME" '[[ "$(readlink "$CELL_CONFIG" 2>/dev/null)" == "$REAL_CONFIG_HOME" ]]'
+  chk "gitconfig linked: $CELL_HOME/.gitconfig" '[[ -e "$CELL_HOME/.gitconfig" ]]'
+  chk "gh config linked: $CELL_HOME/.config/gh" '[[ -e "$CELL_HOME/.config/gh" ]]'
+  chk "roster parses under the cell home: deskroster repos --scope scan" 'env HOME="$CELL_HOME" "$DESK_TOOLS_BIN/deskroster" repos --scope scan >/dev/null 2>&1'
+  chk "CELL_ROOTS well-formed: $CELL_ROOTS" 'roots_valid "$CELL_ROOTS"'
+  local e p
+  for e in ${CELL_ROOTS//,/ }; do
+    p="${e#*=}"
+    chk "root ${e%%=*} exists: $p" '[[ -d "$p" ]]'
+    chk "root ${e%%=*} carries docs/streams/" '[[ -d "$p/docs/streams" ]]'
+  done
+  local v; for v in $HOUSE_VERBS; do chk "desk verb: $DESK_TOOLS_BIN/$v" '[[ -x "$DESK_TOOLS_BIN/$v" ]]'; done
+  chk "claude on PATH" 'command -v claude >/dev/null'
+  chk "plugin assay@assay enabled for $CELL_REPO (config $cfg)" 'plugin_enabled "$cfg"'
+  na "cells config / apps.env / deskd App key — not applicable on a house cell (the operator's own config home is used as is)"
+}
+
+# scrubbed_mode_is <path> <octal-mode>: the two-spelling `stat` probe every custody row in this
+# file already uses (the codex/BSD-vs-GNU `stat -f`/`stat -c` split `check_codex_harness` and the
+# existing PEM-adjacent rows try) — never a third spelling.
+scrubbed_mode_is(){
+  local p="$1" want="$2" m
+  m="$(stat -f '%Lp' "$p" 2>/dev/null || stat -c '%a' "$p" 2>/dev/null)" || return 1
+  [[ "$m" == "$want" ]]
+}
+
+# check_scrubbed: what a hand-composed environment gets wrong. Unlike check_house (which proves a
+# SYMLINK resolves), a scrubbed cell's whole point is that nothing is shared with the operator's
+# real config — so this proves the config home is a REAL directory at 0700, every PEM under it (or
+# named by its own apps.env) is a regular 0600 file, the roster scopes the cell to exactly one
+# repo, the harness is logged in under the CELL's own home (not the operator's), the roster
+# parses, every CELL_ROOTS entry resolves, the desk verbs are installed, and the lock/run
+# directory is writable. See brief desk-containers/09's facts for the exact custody claims.
+# shellcheck disable=SC2016  # chk rows are eval strings, expanded at check time on purpose
+check_scrubbed(){
+  chk "cell.env CELL_REPO is a git checkout: $CELL_REPO" 'git -C "$CELL_REPO" rev-parse --git-dir >/dev/null 2>&1'
+  chk "config home is a REAL directory (never a symlink): $CELL_CONFIG" '[[ -d "$CELL_CONFIG" && ! -L "$CELL_CONFIG" ]]'
+  chk "config home mode 0700: $CELL_CONFIG" 'scrubbed_mode_is "$CELL_CONFIG" 700'
+  # Every PEM the cell's apps.env names (a <ROLE>_PEM= line), plus every *-app.pem file present
+  # directly under the cell config home — de-duplicated, so a PEM named in apps.env AND present as
+  # a *-app.pem is checked once. None present yet is a legitimate n/a (the hand step from `new`'s
+  # README has not run), never a MISS.
+  local -a pems=() f
+  for f in "$CELL_CONFIG"/*-app.pem; do [[ -e "$f" || -L "$f" ]] && pems+=("$f"); done
+  if [[ -f "$CELL_CONFIG/apps.env" ]]; then
+    local line val
+    while IFS= read -r line; do
+      case "$line" in *_PEM=*) val="${line#*_PEM=}"; [[ -n "$val" ]] && pems+=("$val") ;; esac
+    done < "$CELL_CONFIG/apps.env"
+  fi
+  if [[ ${#pems[@]} -eq 0 ]]; then
+    na "role App PEMs — none present yet under $CELL_CONFIG (copy them in as regular 0600 files, per the cell's README)"
+  else
+    local -A seen=() ; local uniq=()
+    for f in "${pems[@]}"; do [[ -n "${seen[$f]:-}" ]] && continue; seen[$f]=1; uniq+=("$f"); done
+    for f in "${uniq[@]}"; do
+      if [[ -L "$f" ]]; then
+        chk "PEM $f is a regular file (not a symlink)" 'false'
+      elif [[ ! -f "$f" ]]; then
+        chk "PEM $f exists" 'false'
+      else
+        chk "PEM $f is regular, mode 0600" 'scrubbed_mode_is "$f" 600'
+      fi
+    done
+  fi
+  local allowed=""
+  [[ -f "$CELL_CONFIG/roster.env" ]] && allowed="$(grep -E '^ASSAY_ALLOWED_REPOS=' "$CELL_CONFIG/roster.env" | tail -n1)"
+  allowed="${allowed#*=}"
+  chk "roster ASSAY_ALLOWED_REPOS is exactly $CELL_REPO_SLUG (a scrubbed cell is scoped to one repo)" '[[ "$allowed" == "$CELL_REPO_SLUG" ]]'
+  if [[ "$CELL_HARNESS" == "codex" ]]; then
+    chk "harness login under the cell home: codex login status (CODEX_HOME=$CELL_HOME/.codex)" \
+      'env CODEX_HOME="$CELL_HOME/.codex" codex login status >/dev/null 2>&1 || env CODEX_HOME="$CELL_HOME/.codex" codex login status --json >/dev/null 2>&1'
+  else
+    chk "harness login under the cell home: $CELL_HOME/.claude present, claude --version (CLAUDE_CONFIG_DIR=$CELL_HOME/.claude)" \
+      '[[ -d "$CELL_HOME/.claude" ]] && env CLAUDE_CONFIG_DIR="$CELL_HOME/.claude" claude --version >/dev/null 2>&1'
+  fi
+  chk "roster parses under the cell home: deskroster repos --scope scan" 'env HOME="$CELL_HOME" "$DESK_TOOLS_BIN/deskroster" repos --scope scan >/dev/null 2>&1'
+  if [[ -n "${CELL_ROOTS:-}" ]]; then
+    chk "CELL_ROOTS well-formed: $CELL_ROOTS" 'roots_valid "$CELL_ROOTS"'
+    local e p
+    for e in ${CELL_ROOTS//,/ }; do
+      p="${e#*=}"
+      chk "root ${e%%=*} exists: $p" '[[ -d "$p" ]]'
+      chk "root ${e%%=*} carries docs/streams/" '[[ -d "$p/docs/streams" ]]'
+    done
+  else
+    na "CELL_ROOTS — unset (role windows boot WITHOUT DESK_ROOTS)"
+  fi
+  local v; for v in $HOUSE_VERBS; do chk "desk verb: $DESK_TOOLS_BIN/$v" '[[ -x "$DESK_TOOLS_BIN/$v" ]]'; done
+  chk "lock/run dir writable: $CELL_DIR/run" 'mkdir -p "$CELL_DIR/run" 2>/dev/null && [[ -w "$CELL_DIR/run" ]]'
+}
+
+cmd_deskd(){
+  load_cell "$1"
+  [[ "$CELL_KIND" != "container" ]] || die "container cells do not run host deskd"
+  # deskd stands live cross-org reads on freshly minted (GitHub) or hand-provisioned (GitLab)
+  # tokens. It is ATTENDED-ONLY: the operator starts it from their own shell, so a token act is
+  # never unattended.
+  [[ "${CELL_ATTENDED:-0}" == "1" ]] || die "deskd stands live cross-org reads — run from YOUR shell with CELL_ATTENDED=1"
+  [[ -x "$CELL_DIR/bin/deskd" ]] || die "no deskd at $CELL_DIR/bin/deskd"
+  # The per-forge credential step: GitHub MINTS installation tokens from the App PEM; GitLab
+  # does NOT mint — role tokens rotate by hand (forge-neutral/01), so its path VERIFIES the
+  # provisioned role token store and points deskd at the cell's configured GitLab endpoint.
+  case "$CELL_FORGE" in
+    github) deskd_mint_github ;;
+    gitlab) deskd_provision_gitlab ;;
+    *) die "cell.env: CELL_FORGE=$CELL_FORGE is not a known forge (github|gitlab)" ;;
+  esac
+  mkdir -p "$(dirname "$DESKD_INDEX")"
+  # Go/no-go BEFORE the persistent run: --once walks every slice once and exits non-zero on a bad
+  # config or a missing installation/token, so a broken cell fails here rather than serving stale reads.
+  echo "[deskd] go/no-go: --once across the cell repos (expect: all slices checked, no owner/group 404s)"
+  "$CELL_DIR/bin/deskd" --config "$CELLS_CONFIG" --index "$DESKD_INDEX" --once
+  echo "[deskd] standing on $DESKD_ADDR (index $DESKD_INDEX)"
+  exec "$CELL_DIR/bin/deskd" --config "$CELLS_CONFIG" --index "$DESKD_INDEX" --addr "$DESKD_ADDR"
+}
+
+# deskd_mint_github signs an App JWT and exchanges it for one installation token PER ORG. The
+# forge host is the cell's configured endpoint ($FORGE_API_BASE), never a literal, so a GitHub
+# Enterprise cell reaches its own host.
+deskd_mint_github(){
+  [[ -n "${DESKD_APP_PEM:-}" && -r "${DESKD_APP_PEM:-}" ]] || die "DESKD_APP_PEM not readable: ${DESKD_APP_PEM:-unset}"
+  [[ -n "${DESKD_APP_ID_VAR:-}" ]] || die "cell.env: DESKD_APP_ID_VAR is not set"
+  [[ -n "${ORGS:-}" ]] || die "cell.env: ORGS is not set"
+  # shellcheck source=/dev/null
+  source "$CELL_CONFIG/apps.env"
+  # The variable is looked up in the CELL home's apps.env, not the operator's — cell homes name
+  # their Apps by generic ROLE (DESK_APP_ID, REVIEWER_APP_ID, …), so the operator's own naming does
+  # not carry over. Name the cell's variable here rather than guessing.
+  local app_id="${!DESKD_APP_ID_VAR:-}"
+  [[ -n "$app_id" ]] || die "cell apps.env ($CELL_CONFIG/apps.env) has no $DESKD_APP_ID_VAR — set DESKD_APP_ID_VAR in cell.env to the variable name used THERE (cell homes use the generic role names, e.g. DESK_APP_ID)"
+  local t; for t in openssl curl python3; do command -v "$t" >/dev/null || die "$t missing"; done
+  b64url(){ openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+  local now hdr pl sig jwt; now=$(date +%s)
+  hdr=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
+  pl=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' $((now-30)) $((now+540)) "$app_id" | b64url)
+  sig=$(printf '%s.%s' "$hdr" "$pl" | openssl dgst -sha256 -sign "$DESKD_APP_PEM" | b64url)
+  jwt="$hdr.$pl.$sig"
+  api(){ curl -fsS -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$@"; }
+  local slug; slug=$(api "$FORGE_API_BASE/app" | python3 -c 'import sys,json;print(json.load(sys.stdin)["slug"])')
+  echo "[deskd] signing as App $app_id ($slug) against $FORGE_API_BASE"
+  # ONE installation token PER ORG. An installation token is scoped to its own installation, so a
+  # single org's token returns 404 for every other org's slice — which reads as "repo missing", not
+  # as "wrong token", and is the failure this loop exists to prevent.
+  local org iid tok var
+  for org in ${ORGS//,/ }; do
+    iid=$(api "$FORGE_API_BASE/app/installations" | python3 -c '
+import sys,json; o=sys.argv[1]
+for i in json.load(sys.stdin):
+    if i["account"]["login"].lower()==o.lower(): print(i["id"]); break' "$org")
+    [[ -n "$iid" ]] || die "App $slug has NO installation on $org — install it there first"
+    tok=$(api -X POST "$FORGE_API_BASE/app/installations/${iid}/access_tokens" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+    var="DESKD_GITHUB_TOKEN_$(echo "$org" | tr '[:lower:]-' '[:upper:]_')"
+    export "$var=$tok"
+  done
+  unset jwt
+  echo "[deskd] per-org tokens minted (${ORGS}) — 1h TTL, not echoed"
+}
+
+# deskd_provision_gitlab verifies the hand-provisioned role token store and points deskd at the
+# cell's GitLab endpoint. It MINTS NOTHING: GitLab role tokens rotate deliberately and by hand,
+# so this path only asserts the store is present and readable, and exports the endpoint deskkit's
+# GitLab custody reads (GITLAB_API_BASE). No JWT, no installation token, no PEM.
+deskd_provision_gitlab(){
+  [[ -n "${GITLAB_GROUP:-}" ]] || die "cell.env: GITLAB_GROUP is not set (the GitLab group this cell reads)"
+  [[ -n "${GITLAB_TOKEN_STORE:-}" && -d "${GITLAB_TOKEN_STORE:-}" ]] || die "cell.env: GITLAB_TOKEN_STORE is not a directory: ${GITLAB_TOKEN_STORE:-unset} — provision the role token store first"
+  [[ -r "${DESKD_GITLAB_TOKEN_FILE:-/nonexistent}" ]] || die "deskd GitLab read token not readable: ${DESKD_GITLAB_TOKEN_FILE:-unset} — place gitlab-deskd.token in the role token store (mode 0600); it is not minted for you"
+  export GITLAB_API_BASE="$FORGE_API_BASE"
+  echo "[deskd] GitLab cell: reading group $GITLAB_GROUP via $FORGE_API_BASE from role token store $GITLAB_TOKEN_STORE (no token minted — rotation is a hand step)"
+}
+
+# gitlab_cred_args: populates the global array GITLAB_CRED_ARGS with the `-c credential.helper=…`
+# flags that answer git's HTTPS auth for CELL_REPO's own fetch transport on a gitlab cell (issue
+# 1080's sibling defect — GITLAB_TOKEN_STORE/DESKD_GITLAB_TOKEN_FILE provision the API token, but
+# nothing wired a git credential for CELL_REPO's own fetch, so a private GitLab project stopped at
+# an interactive `Username for 'https://gitlab.com':` prompt, or `fatal: could not read Username`
+# with prompts disabled). The first `credential.helper=` clears any OS keychain helper that would
+# otherwise shadow this one; the inline function reads the hand-provisioned deskd read token from
+# its FILE and never a token in the URL, never persisted into the operator's git config. Shared
+# verbatim between the boot fetch below and the check-time ls-remote probe (gitlab_fetch_reachable)
+# so the two never drift apart.
+# shellcheck disable=SC2016  # the inline credential-helper function expands at git-invocation
+# time (inside git's own shell), not here — this string is a literal on purpose.
+gitlab_cred_args(){
+  GITLAB_CRED_ARGS=(-c credential.helper= -c credential.helper='!f(){ echo username=oauth2; printf "password=%s\n" "$(cat "$DESKD_GITLAB_TOKEN_FILE")"; }; f')
+}
+
+# gitlab_fetch_reachable: the check-time probe for the gitlab arm's fetch transport, proving a
+# broken/missing token is caught at `cellctl check` rather than as a boot hang. `ls-remote` never
+# mutates CELL_REPO; it only proves the same credential helper the boot fetch uses actually
+# authenticates.
+gitlab_fetch_reachable(){
+  gitlab_cred_args
+  GIT_TERMINAL_PROMPT=0 git "${GITLAB_CRED_ARGS[@]}" -C "$CELL_REPO" ls-remote --exit-code origin main >/dev/null 2>&1
+}
+
+# worktree_via_deskwt: when the installed desk-tools ship a `deskwt role-init` that supports the
+# role (probe: `deskwt role-init --help` exits 0), let IT create the role worktree so cellctl and
+# the desk skills agree on the worktree's name — its last output line is the path. cellctl's own
+# worktree path below stays the fallback, and CELLCTL_DESKWT=0 forces it. Prints the path, or
+# nothing when deskwt is absent, refuses the probe, or did not produce a worktree.
+worktree_via_deskwt(){
+  local role="$1" out
+  [[ "${CELLCTL_DESKWT:-1}" == "1" ]] || return 1
+  command -v deskwt >/dev/null 2>&1 || return 1
+  deskwt role-init --help >/dev/null 2>&1 || return 1
+  out="$(cd "$CELL_REPO" && deskwt role-init "$role" 2>/dev/null)" || return 1
+  out="${out##*$'\n'}"
+  [[ -n "$out" && -e "$out/.git" ]] || return 1
+  printf '%s\n' "$out"
+}
+
+# CELLCTL_GENERATED_FILES: the single-writer files main's CI regenerates (the board and the
+# findings view). On a boot merge they are taken from origin/main outright — never hand-merged,
+# never left conflicted — because a role worktree's copy is at best a local regen main has already
+# superseded. Space-separated repo-relative paths; overridable for a repo that generates others.
+CELLCTL_GENERATED_FILES="${CELLCTL_GENERATED_FILES:-STATUS.md docs/streams/FINDINGS.md}"
+is_generated_file(){ local g; for g in $CELLCTL_GENERATED_FILES; do [[ "$1" == "$g" ]] && return 0; done; return 1; }
+
+# merge_role_worktree <wt> <sha>: bring an EXISTING role worktree up to the fetched origin/main
+# (#1157). A real merge — a fast-forward when the tree carries nothing of its own, a two-parent
+# merge commit when it does — never a rebase (force-push is denied, and a rebase rewrites what a
+# reviewer saw), and never `--ff-only`-then-give-up: the old arm printed one NOTICE and booted
+# the desk on a tree that could be days behind main. A role worktree that ever carried a local
+# commit (its own merge of main, a discarded regen) can never fast-forward again, so every later
+# boot was stale and silent — the desk's first board read then said STALE:drift and its loop
+# refused every flip, with a remediation pointing at the shim, the side that was current.
+#
+# On a conflict the generated single-writer files (CELLCTL_GENERATED_FILES) are taken from main;
+# ANY other conflict STOPS the boot — merge aborted, tree left exactly as it was, the paths named,
+# nothing launched. A desk never starts on a half-merged or behind-main tree.
+merge_role_worktree(){
+  local wt="$1" sha="$2"
+  if git -C "$wt" merge-base --is-ancestor "$sha" HEAD 2>/dev/null; then
+    echo "[worktree] $wt already contains origin/main ${sha:0:8}"
+    return 0
+  fi
+  local before; before="$(git -C "$wt" rev-parse HEAD)"
+  local merge_out
+  if merge_out="$(git -C "$wt" merge --no-edit -m "merge origin/main ${sha:0:8} at cellctl desk boot" "$sha" 2>&1)"; then
+    if [[ "$(git -C "$wt" rev-parse HEAD)" == "$sha" ]]; then
+      echo "[worktree] fast-forwarded $wt to origin/main ${sha:0:8}"
+    else
+      echo "[worktree] merged origin/main ${sha:0:8} into $wt (two-parent merge; local commits kept)"
+    fi
+    return 0
+  fi
+  local conflicts; conflicts="$(git -C "$wt" diff --name-only --diff-filter=U 2>/dev/null || true)"
+  if [[ -z "$conflicts" ]]; then
+    # Not a conflict: git refused the merge outright (a dirty tree the merge would overwrite, no
+    # commit identity, …). Nothing is half-done, but the tree IS behind main — STOP, quoting git,
+    # rather than launching a desk on it.
+    git -C "$wt" merge --abort >/dev/null 2>&1 || true
+    die "desk: $wt is behind origin/main ${sha:0:8} and could not merge it — $(printf '%s' "$merge_out" | tail -n 3 | tr '\n' ' ')— boot STOPPED (nothing launched). Fix that, then re-run; or by hand: git -C $wt merge $sha (merge, never rebase)"
+  fi
+  local p remaining=()
+  while IFS= read -r p; do
+    [[ -n "$p" ]] || continue
+    if is_generated_file "$p"; then
+      # Main's side: `--theirs` in a merge is the branch being merged in. A path main deleted has
+      # no "theirs" to check out — dropping it is main's side too.
+      if git -C "$wt" checkout --theirs -- "$p" 2>/dev/null; then
+        git -C "$wt" add -- "$p"
+      else
+        git -C "$wt" rm -q --cached -- "$p" >/dev/null 2>&1 || true; rm -f "$wt/$p"
+      fi
+      echo "[worktree] $p taken from origin/main (generated, single-writer — never hand-merged)"
+    else
+      remaining+=("$p")
+    fi
+  done <<<"$conflicts"
+  if [[ ${#remaining[@]} -gt 0 ]]; then
+    git -C "$wt" merge --abort >/dev/null 2>&1 || git -C "$wt" reset -q --hard "$before"
+    die "desk: $wt conflicts with origin/main ${sha:0:8} on: ${remaining[*]} — boot STOPPED (merge aborted, tree left at ${before:0:8}, nothing launched). Resolve by hand: git -C $wt merge $sha (merge, never rebase; take main's side for generated files), then re-run cellctl desk"
+  fi
+  git -C "$wt" commit -q --no-edit >/dev/null 2>&1 \
+    || die "desk: $wt could not commit the boot merge of origin/main ${sha:0:8} after taking the generated files from main — boot STOPPED (nothing launched). Inspect: git -C $wt status"
+  echo "[worktree] merged origin/main ${sha:0:8} into $wt (two-parent merge; generated files taken from main)"
+}
+
+# ---------------------------------------------------------------- codex harness
+# codex_multi_agent_on: true when `[features] multi_agent = true` resolves in codex's effective
+# config. Probed via a `codex config get`-style verb where the installed build advertises one
+# (codex's exact config-read surface has moved across releases, per the codex-smoke-run findings —
+# never hard-coded to a single spelling); falling back to a literal read of the config.toml under
+# CODEX_HOME (default ~/.codex) since not every build ships a config-read verb. A `-c` override
+# given on the invocation itself is not visible here (an ephemeral CLI flag, never a persisted
+# config value) — the check row's own text says "or -c override applied" so an operator who
+# overrides per-run rather than persisting is not misread as a MISS.
+codex_multi_agent_on(){
+  # Two `local` lines, same reason `cmd_desk`'s mvar/model pair is split: in a single
+  # `local a=… b="$a"` the expansion of $a is resolved before `a` itself is assigned.
+  local home; home="${CODEX_HOME:-$HOME/.codex}"
+  local cfg="$home/config.toml" v
+  if help_has get codex config >/dev/null 2>&1; then
+    v="$(codex config get features.multi_agent 2>/dev/null || true)"
+    [[ "$v" == "true" ]] && return 0
+  fi
+  [[ -f "$cfg" ]] || return 1
+  awk '
+    /^\[features\]/ { insec=1; next }
+    /^\[/            { insec=0 }
+    insec && /^[[:space:]]*multi_agent[[:space:]]*=[[:space:]]*true[[:space:]]*$/ { found=1 }
+    END { exit(found ? 0 : 1) }
+  ' "$cfg"
+}
+
+# codex_skills_discoverable: either discovery arm documented in docs/adopting-assay.md "Running
+# Assay on Codex" satisfies invoke-by-name — arm A (marketplace plugin assay@assay installed) or
+# arm B (skills copied into the checkout's .agents/skills/). Checked against CELL_REPO, the
+# checkout the role worktree is cut from, since that is where the fragment/skills need to live.
+codex_skills_discoverable(){
+  if command -v codex >/dev/null 2>&1 && help_has list codex plugin >/dev/null 2>&1; then
+    (cd "$CELL_REPO" && codex plugin list 2>/dev/null) | grep -qi 'assay' && return 0
+  fi
+  [[ -d "$CELL_REPO/.agents/skills" ]] \
+    && find "$CELL_REPO/.agents/skills" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | grep -q .
+}
+
+# ensure_codex_resident_rules <worktree>: codex has no Claude-style SessionStart hook to carry the
+# resident operating rules, so on the codex arm they travel in AGENTS.md instead
+# (docs/adopting-assay.md "Running Assay on Codex" §2). Appends the pre-generated fragment
+# (plugins/assay/codex/AGENTS-assay.md, produced from resident-rules.md by `harnessgen resident`)
+# to the WORKTREE's AGENTS.md at boot, once — idempotent on a marker string unique to the fragment,
+# so a re-boot of the same worktree never duplicates it.
+ensure_codex_resident_rules(){
+  local wt="$1" frag="$CELL_REPO/plugins/assay/codex/AGENTS-assay.md" marker="Assay resident operating rules"
+  [[ -f "$frag" ]] || { echo "NOTICE: no resident-rules fragment at $frag — $wt/AGENTS.md not updated" >&2; return 0; }
+  local target="$wt/AGENTS.md"
+  if [[ -f "$target" ]] && grep -qF "$marker" "$target"; then
+    return 0
+  fi
+  # Decide whether a separating blank line is needed BEFORE opening the append redirection below,
+  # so the size check reads the file in one step and the write is a separate one (shellcheck SC2094).
+  local need_nl=0; [[ -s "$target" ]] && need_nl=1
+  { [[ "$need_nl" == "1" ]] && printf '\n'; cat "$frag"; } >> "$target"
+  echo "[codex] resident-rules fragment appended to $target"
+}
+
+# check_codex_harness: the preconditions Part 3 of issue-946 asks for, run only when this cell's
+# CELL_HARNESS is codex — a claude-only cell reports n/a, never silently skipped, mirroring every
+# other kind/forge-specific block in cmd_check.
+# shellcheck disable=SC2016
+check_codex_harness(){
+  if [[ "$CELL_HARNESS" != "codex" ]]; then
+    na "codex harness preconditions — CELL_HARNESS=$CELL_HARNESS (set CELL_HARNESS=codex in cell.env, or --harness codex per run, to require them)"
+    return
+  fi
+  chk "codex on PATH" 'command -v codex >/dev/null'
+  chk "codex --version" 'command -v codex >/dev/null && codex --version >/dev/null 2>&1'
+  chk "codex authenticated (codex login status, or equivalent)" \
+    'command -v codex >/dev/null && (codex login status >/dev/null 2>&1 || codex login status --json >/dev/null 2>&1)'
+  chk "[features] multi_agent = true (effective config, or a -c override applied)" 'codex_multi_agent_on'
+  chk "resident-rules fragment present: $CELL_REPO/AGENTS.md" 'grep -qF "Assay resident operating rules" "$CELL_REPO/AGENTS.md" 2>/dev/null'
+  chk "skills discoverable: marketplace plugin assay@assay, or .agents/skills/ placed" 'codex_skills_discoverable'
+}
+
+# ---------------------------------------------------------------- scrubbed cells (desk-containers/09)
+# A scrubbed cell's launch is COMPOSED, not filtered: `env -i` plus this exact allowlist — the
+# parent shell contributes nothing by default. This block is the SINGLE source the [plan] lines,
+# the live `env -i` launch, and docs/cellctl.md's env table all read (state it once; see the
+# brief's facts). The two harness-namespaced entries (CODEX_HOME / CLAUDE_CONFIG_DIR) are mutually
+# exclusive — only the active harness's var is ever exported — and DESK_ROOTS/TERM/LANG are
+# present only when the source they come from (cell.env CELL_ROOTS; the launching shell) carries
+# one.
+SCRUBBED_ENV_KEYS="HOME ZDOTDIR SHELL PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION DESK_LOOP DESK_SESSION DESK_ROOTS TERM LANG"
+
+# scrubbed_harness_path <harness>: resolves the harness binary ONCE, on the PARENT shell's PATH —
+# the one parent-derived element the composed PATH below keeps (named and pinned, never a bare
+# inherited PATH). Sets SCR_HARNESS_DIR; dies naming the harness when it cannot be found, since
+# nothing downstream can find it once the launch switches to `env -i`.
+scrubbed_harness_path(){
+  local h="$1" p
+  p="$(command -v "$h" 2>/dev/null)" || die "desk: '$h' not found on PATH — install it before booting a scrubbed cell"
+  SCR_HARNESS_DIR="$(cd "$(dirname "$p")" && pwd)"
+}
+
+# scrubbed_env_value <key> <role> <harness> <session> <composed_path>: the VALUE one allowlist KEY
+# resolves to for this launch, or the empty string when this key does not apply to this run (the
+# harness-conditional pair, or a source-dependent pass-through) — the caller skips an empty value
+# rather than exporting `KEY=`. This is the per-key half of scrubbed_compose_env's single source;
+# switching on $SCRUBBED_ENV_KEYS itself is what keeps the [plan] lines, the live launch and this
+# function from drifting apart (a KEY added to the list with no case arm here is a silent no-op,
+# caught by the plan-grammar Verify row diffing the two).
+scrubbed_env_value(){
+  local key="$1" role="$2" harness="$3" session="$4" composed_path="$5"
+  case "$key" in
+    HOME) printf '%s' "$CELL_HOME" ;;
+    ZDOTDIR) printf '%s' "$CELL_HOME" ;;
+    SHELL) printf '%s' "$BASH" ;;
+    PATH) printf '%s' "$composed_path" ;;
+    TMPDIR) printf '%s' "$CELL_DIR/tmp" ;;
+    KUBECONFIG) printf '%s' "/dev/null" ;;
+    ASSAY_CONFIG_HOME) printf '%s' "$CELL_CONFIG" ;;
+    GH_CONFIG_DIR) printf '%s' "$CELL_HOME/.config/gh" ;;
+    GIT_CONFIG_GLOBAL) printf '%s' "$CELL_HOME/.gitconfig" ;;
+    GIT_CONFIG_NOSYSTEM) printf '%s' "1" ;;
+    GIT_TERMINAL_PROMPT) printf '%s' "0" ;;
+    CODEX_HOME) [[ "$harness" == "codex" ]] && printf '%s' "$CELL_HOME/.codex" ;;
+    CLAUDE_CONFIG_DIR) [[ "$harness" == "claude" ]] && printf '%s' "$CELL_HOME/.claude" ;;
+    CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION) [[ "$harness" == "claude" ]] && printf false ;;
+    DESK_LOOP) printf '%s' "$role" ;;
+    DESK_SESSION) printf '%s' "$session" ;;
+    DESK_ROOTS) printf '%s' "${CELL_ROOTS:-}" ;;
+    TERM) printf '%s' "${TERM:-}" ;;
+    LANG) printf '%s' "${LANG:-}" ;;
+  esac
+  return 0
+}
+
+# scrubbed_compose_env <role> <harness> <session>: builds the composed-environment allowlist by
+# walking $SCRUBBED_ENV_KEYS — the single declared list the [plan] lines, the live `env -i`
+# launch and docs/cellctl.md's env table all trace back to. Sets SCR_ENV (KEY=VALUE pairs, the
+# array `env -i` is handed — order irrelevant there) and SCR_ENV_SORTED (the same entries,
+# KEY-sorted — what the [plan] lines print). CELL_PATH, when cell.env sets it, overrides only the
+# trailing system part of the composed PATH — the shim prefix and the resolved harness dir are
+# never overridden.
+scrubbed_compose_env(){
+  local role="$1" harness="$2" session="$3"
+  scrubbed_harness_path "$harness"
+  local tail="/usr/bin:/bin:/usr/sbin:/sbin"
+  [[ -n "${CELL_PATH:-}" ]] && tail="$CELL_PATH"
+  local composed_path="$CELL_DIR/shim:$DESK_TOOLS_BIN:$SCR_HARNESS_DIR:$tail"
+  SCR_ENV=()
+  local k v
+  for k in $SCRUBBED_ENV_KEYS; do
+    v="$(scrubbed_env_value "$k" "$role" "$harness" "$session" "$composed_path")"
+    [[ -n "$v" ]] && SCR_ENV+=("$k=$v")
+  done
+  local sorted; sorted="$(printf '%s\n' "${SCR_ENV[@]}" | sort)"
+  local IFS=$'\n'
+  # shellcheck disable=SC2206
+  SCR_ENV_SORTED=($sorted)
+}
+
+# scrubbed_print_plan <cwd> <argv...>: the [plan] lines — env (sorted), argv, cwd, lock. Printed
+# after the existing [dry-run] line under DRY_RUN=1, and this exact grammar is what
+# desk-containers/10's parity harness diffs, so it is part of the contract, not a courtesy.
+scrubbed_print_plan(){
+  local cwd="$1"; shift
+  local kv; for kv in "${SCR_ENV_SORTED[@]}"; do printf '[plan] env %s\n' "$kv"; done
+  local argv_q="" a
+  for a in "$@"; do argv_q="$argv_q $(printf '%q' "$a")"; done
+  printf '[plan] argv%s\n' "$argv_q"
+  printf '[plan] cwd %s\n' "$cwd"
+  printf '[plan] lock %s\n' "$CELL_DIR/run/lock.d"
+}
+
+# scrubbed_take_lock <lockdir> <session>: layer 2 of the session lock (mkdir, atomic; holds pid).
+# Refused with exit 4 and the exact message the brief pins ONLY when the held pid is still alive —
+# a stale lock (a dead pid, or an unreadable pid file) is taken over rather than left to wedge
+# every future boot; `status`/`down` are the tools that report/clear a stale lock explicitly for a
+# human who is just looking, not a precondition `desk` itself must wait on.
+scrubbed_take_lock(){
+  local lockdir="$1" session="$2"
+  if mkdir "$lockdir" 2>/dev/null; then
+    echo "$$" > "$lockdir/pid"
+    return 0
+  fi
+  local held; held="$(cat "$lockdir/pid" 2>/dev/null || true)"
+  if [[ -n "$held" ]] && kill -0 "$held" 2>/dev/null; then
+    echo "cellctl: cell $CELL is already running (pid $held, session $session); cellctl down $CELL to release" >&2
+    exit 4
+  fi
+  echo "$$" > "$lockdir/pid"
+  return 0
+}
+
+# scrubbed_desk_launch <role> <harness> <model> <session> <wt>: the live scrubbed launch. Takes
+# the session lock, then execs `env -i <allowlist> <harness argv>` as the sole command of a NEW
+# tmux session on this cell's PRIVATE SOCKET (`<cell>/run/tmux.sock`, session `<cell>-cell`) —
+# `env -i` inside that pane discards whatever ambient environment the private tmux SERVER itself
+# was started with, so nothing of the launching shell reaches the harness regardless. Attaches
+# when stdin is a tty; otherwise prints the attach line and returns (never blocks an unattended
+# caller).
+scrubbed_desk_launch(){
+  local role="$1" harness="$2" model="$3" session="$4" wt="$5"
+  command -v tmux >/dev/null || die "desk: tmux is required for a scrubbed cell (the private-socket session) and is not on PATH"
+  mkdir -p "$CELL_DIR/run"
+  local sockpath="$CELL_DIR/run/tmux.sock" sessname="${CELL}-cell" lockdir="$CELL_DIR/run/lock.d"
+  # Take the lock BEFORE the tmux new-session call — this is what a race between two concurrent
+  # `desk` invocations serialises on. The pid it holds is provisional ($$, this cellctl process)
+  # until the tmux pane exists, below, at which point it is rewritten to the PANE's pid — the
+  # process that actually outlives this invocation when it is not attaching.
+  scrubbed_take_lock "$lockdir" "$sessname"
+  if tmux -S "$sockpath" has-session -t "$sessname" 2>/dev/null; then
+    rm -rf "$lockdir"
+    die "desk: session $sessname is already running on the private socket ($sockpath) — cellctl down $CELL to release"
+  fi
+  scrubbed_compose_env "$role" "$harness" "$session"
+  local -a argv=()
+  if [[ "$harness" == "codex" ]]; then
+    argv=(codex --sandbox danger-full-access -C "$wt" -m "$model" "Invoke the \"assay:$role\" skill now.")
+  else
+    argv=(claude --name "$session" --model "$model" "/assay:$role")
+  fi
+  # `env -i` inside the pane discards whatever ambient environment the private tmux SERVER itself
+  # started with — the scrub holds regardless of what launched the socket.
+  local cmdline="env -i"
+  local kv; for kv in "${SCR_ENV[@]}"; do cmdline="$cmdline $(printf '%q' "$kv")"; done
+  local a; for a in "${argv[@]}"; do cmdline="$cmdline $(printf '%q' "$a")"; done
+  echo "[launch] $CELL/$role kind=scrubbed model=$model harness=$harness session=$sessname cwd=$wt (env -i composed — see docs/cellctl.md Scrubbed cells)"
+  tmux -S "$sockpath" new-session -d -s "$sessname" -c "$wt" "$cmdline"
+  # The lock's pid is what `status`/a concurrent `desk` judge "alive" — this cellctl invocation
+  # may itself return below (unattended), so the pid held has to be the PANE's, not $$.
+  local pane_pid; pane_pid="$(tmux -S "$sockpath" list-panes -t "$sessname" -F '#{pane_pid}' 2>/dev/null | head -n1)"
+  [[ -n "$pane_pid" ]] && echo "$pane_pid" > "$lockdir/pid"
+  if [[ -t 0 ]]; then
+    exec tmux -S "$sockpath" attach -t "$sessname"
+  else
+    echo "[cell] attach: tmux -S $sockpath attach -t $sessname   ·   down: cellctl down $CELL"
+    return 0
+  fi
+}
+
+cmd_desk(){
+  local usage_msg="cellctl desk <cell> <role> [--model <m>] [--set] [--provider <name>] [--harness <claude|codex>] [--kind <k>] [--cockpit <c>] [CLAUDE_CONFIG_DIR]"
+  local cell="${1:?$usage_msg}"; shift || true
+  local role="${1:?$usage_msg}"; shift || true
+  # --kind is applied BEFORE load_cell (see prescan_kind_override): the kind's preconditions and
+  # defaults are asserted there, so an override has to be in force by then.
+  prescan_kind_override "$@"
+  load_cell "$cell"
+  case "$role" in intake-desk|worker-desk|pr-review-desk|verify-desk|the-desk) ;; *) die "unknown role '$role'";; esac
+  # --model overrides the cell.env pin for THIS run only — it wins over DESK_MODEL_<role> and
+  # DESK_MODEL_DEFAULT below, but never touches cell.env. DESK_MODEL_OVERRIDE is the equivalent
+  # env form for a wrapper that cannot pass a flag; an explicit --model wins when both are given.
+  # --set is the sugar that ALSO persists it (`cellctl set <cell> DESK_MODEL_<role>=<m>`) — it
+  # needs a value to persist, so it is refused without --model/DESK_MODEL_OVERRIDE. --provider
+  # switches the ENDPOINT and CREDENTIAL a non-Anthropic model needs (--model only changes the
+  # model NAME) — see resolve_provider. --harness overrides cell.env CELL_HARNESS for THIS run
+  # only — it never touches cell.env. No env form (unlike --model's DESK_MODEL_OVERRIDE): the
+  # issue's ask is the flag plus the cell.env pin.
+  # #1303 scope 2 widens this to EVERY per-run choice: --kind (applied above), --cockpit (accepted
+  # and validated here so `--set` can persist it — a single `desk` window opens in the calling
+  # terminal and hosts no cockpit itself, but the RESOLVED value is exported to it as ASSAY_COCKPIT
+  # below, and `up` passes each window the cockpit it resolved), --harness and
+  # --provider join --model as things `--set` persists, each into its own cell.env key, through
+  # the same one-backup apply_env_kvs path `cellctl set` uses. A flag persists only when GIVEN:
+  # the cell's own values are never re-written by a `--set` that did not name them.
+  local model_override="${DESK_MODEL_OVERRIDE:-}" persist=0 cfg_in="" provider="" harness="$CELL_HARNESS"
+  local harness_flag="" cockpit_flag="" provider_flag=""
+  local tier_top="${CELL_TIER_MODEL_TOP:-}" tier_mid="${CELL_TIER_MODEL_MID:-}" tier_fast="${CELL_TIER_MODEL_FAST:-}"
+  local tier_top_src="" tier_mid_src="" tier_fast_src="" tier_flag=0
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --model) model_override="${2:?--model needs a value}"; shift 2;;
+    --set) persist=1; shift;;
+    --model-top) tier_top="${2:?--model-top needs a value}"; tier_top_src="flag"; tier_flag=1; shift 2;;
+    --model-mid) tier_mid="${2:?--model-mid needs a value}"; tier_mid_src="flag"; tier_flag=1; shift 2;;
+    --model-fast) tier_fast="${2:?--model-fast needs a value}"; tier_fast_src="flag"; tier_flag=1; shift 2;;
+    --provider) provider="${2:?--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; provider_flag="$provider"; shift 2;;
+    --harness) harness="${2:?--harness needs a value (claude|codex)}"; harness_flag="$harness"; shift 2;;
+    --kind) shift 2;;  # consumed by prescan_kind_override above; CELL_KIND already reflects it
+    --cockpit) cockpit_flag="${2:?--cockpit needs a value (${COCKPIT_VALUES// /|})}"; shift 2;;
+    --*) die "desk: unknown flag $1";;
+    *) cfg_in="$1"; shift;;
+  esac; done
+  # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
+  [[ -z "$cockpit_flag" ]] || value_in "$cockpit_flag" $COCKPIT_VALUES \
+    || die "desk: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
+  [[ "$persist" == "0" || -n "$model_override$harness_flag$provider_flag$CELL_KIND_OVERRIDE$cockpit_flag" || "$tier_flag" == "1" ]] \
+    || die "desk: --set needs --model <m> (or DESK_MODEL_OVERRIDE in the environment), --model-top/mid/fast, --harness, --provider, --kind or --cockpit — nothing to persist otherwise"
+  case "$harness" in claude|codex) ;; *) die "desk: --harness must be claude or codex, got '$harness'";; esac
+  local model="" MODEL_POLICY_SETTINGS="" MODEL_POLICY_SHA="" MODEL_POLICY_EFFORT="" MODEL_POLICY_PROVIDER=""
+  local -a MODEL_POLICY_ENV=() MODEL_POLICY_ARGS=() MODEL_POLICY_UNSET=()
+  if [[ -n "${CELL_MODEL_POLICY:-}" ]]; then
+    [[ "$persist" == 0 ]] || die "--set with a model policy is ambiguous; edit the policy file instead"
+    apply_model_policy "$harness_flag" "$provider_flag" "$role" "$model_override"
+    MODEL_POLICY_UNSET=(-u MAX_THINKING_TOKENS)
+  fi
+  local cfg=""
+  if [[ "$CELL_KIND" == "container" ]]; then
+    [[ -z "$cfg_in" && -z "$provider" && -z "${CELL_PROVIDER:-}" ]] \
+      || die "container desks do not accept host config directories or providers; configure credentials in the container launcher"
+    case " $ROLES " in *" $role "*) ;; *) die "role '$role' is not enabled in this container cell";; esac
+  elif [[ "$CELL_KIND" == "scrubbed" ]]; then
+    # A scrubbed cell's own config home is what CLAUDE_CONFIG_DIR/CODEX_HOME resolve to below —
+    # a host config dir or a provider from the launching shell would defeat the whole point.
+    [[ -z "$cfg_in" && -z "$provider" && -z "${CELL_PROVIDER:-}" ]] \
+      || die "scrubbed desks do not accept a host config directory or a provider — the cell composes its own"
+    case " $ROLES " in *" $role "*) ;; *) die "role '$role' is not enabled in this scrubbed cell";; esac
+  else
+    cfg="$(resolve_cfg "$cfg_in")"
+  fi
+  policy_claude_preflight "$cfg" "$CELL_REPO" || die "model policy settings preflight failed"
+  # The provider is an explicit --provider for this run, else cell.env's CELL_PROVIDER default
+  # (unset = Anthropic, cellctl's own long-standing default).
+  [[ -n "${CELL_MODEL_POLICY:-}" ]] || provider="${provider:-${CELL_PROVIDER:-}}"
+  # Per-tier provider models are provider-KEYED (CELL_PROVIDER_<NAME>_MODEL_<TIER>), so a tier
+  # flag with no provider to hang it on is refused rather than silently ignored — the operator
+  # naming a tier model is naming it FOR a provider.
+  # Any tier value reaching desk — a --model-* flag or a CELL_TIER_MODEL_* env (what up threads)
+  # — needs a provider to hang on; up refuses the same shape, so desk must too, not silently ignore.
+  if [[ -n "$tier_top$tier_mid$tier_fast" ]]; then
+    [[ -n "$provider" ]] || die "desk: --model-top/mid/fast (or a CELL_TIER_MODEL_TOP/MID/FAST in the environment) need a provider — pass --provider <name> (or set CELL_PROVIDER in cell.env); a tier model is provider-keyed (CELL_PROVIDER_<NAME>_MODEL_<TIER>)"
+  fi
+  local PROVIDER_BASE_URL="" PROVIDER_TOKEN_ENV="" PROVIDER_TOKEN_VAL="" PROVIDER_MODEL="" PROVIDER_MODEL_SRC=""
+  [[ -n "$provider" ]] && resolve_provider "$provider"
+  # ONE name for both surfaces: the roster beacon (DESK_SESSION) and the session's display name
+  # (--name), so the cell's coordinator sees "<cell>-<short role>" in its agent listing and in the
+  # roster alike. `${role%-desk}` would leave "the" for the-desk, hence the explicit case.
+  # A house cell stamps the boot time on: its windows are re-booted by hand across days, and the
+  # roster / claims should tell one boot from the next.
+  local short="${role%-desk}"; [[ "$role" == "the-desk" ]] && short="the-desk"
+  local wt="$CELL_DIR/worktrees/$role" session="${CELL}-${short}"
+  [[ "$CELL_KIND" == "house" || "$CELL_KIND" == "scrubbed" ]] && session="${CELL}-${role}-$(date -u +%Y%m%dT%H%M%SZ)"
+  # The harness is NOTED on the roster beacon/session name when it is not the claude default, so
+  # "which harness is this window on" is answerable from the roster the same way the model is.
+  [[ "$harness" == "codex" ]] && session="${session}-codex"
+  if [[ "$CELL_KIND" != "container" ]]; then
+    [[ -f "$CELL_CONFIG/roster.env" ]] || die "cell home has no roster: $CELL_CONFIG/roster.env"
+  fi
+  # The model is PINNED per role, never left to the CLI default, and PER HARNESS (#986): mvar is
+  # also what `--set` persists into below, so it must name the ACTIVE harness's own namespace —
+  # CODEX_MODEL_<role> on codex, DESK_MODEL_<role> on claude — never the other one, whichever
+  # harness this run resolves to.
+  local mvar; if [[ "$harness" == "codex" ]]; then mvar="CODEX_MODEL_${role//-/_}"; else mvar="DESK_MODEL_${role//-/_}"; fi
+  # What --set persists: every override GIVEN on this invocation, each to its own key (#1303
+  # scope 2). Built once here so the container, dry-run and live branches below agree.
+  local -a persist_kvs=()
+  [[ -n "$model_override" ]] && persist_kvs+=("$mvar=$model_override")
+  # Per-tier provider models persist to their provider-keyed keys — the "make it the cell's
+  # default" half of the tier flags (--set writes exactly what was given, like every other flag).
+  if [[ "$tier_flag" == "1" && -n "$provider" ]]; then
+    local tkey_pfx; tkey_pfx="$(printf '%s' "$provider" | tr '[:lower:]-' '[:upper:]_')"
+    [[ -n "$tier_top"  ]] && persist_kvs+=("CELL_PROVIDER_${tkey_pfx}_MODEL_TOP=$tier_top")
+    [[ -n "$tier_mid"  ]] && persist_kvs+=("CELL_PROVIDER_${tkey_pfx}_MODEL_MID=$tier_mid")
+    [[ -n "$tier_fast" ]] && persist_kvs+=("CELL_PROVIDER_${tkey_pfx}_MODEL_FAST=$tier_fast")
+  fi
+  [[ -n "$harness_flag" ]] && persist_kvs+=("CELL_HARNESS=$harness_flag")
+  [[ -n "$provider_flag" ]] && persist_kvs+=("CELL_PROVIDER=$provider_flag")
+  [[ -n "$CELL_KIND_OVERRIDE" ]] && persist_kvs+=("CELL_KIND=$CELL_KIND_OVERRIDE")
+  [[ -n "$cockpit_flag" ]] && persist_kvs+=("CELL_COCKPIT=$cockpit_flag")
+  # A provider is a claude-harness seam (ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN); codex has no
+  # equivalent here, so the combination is refused rather than silently launching codex against
+  # Anthropic with a provider the operator asked for.
+  [[ "$harness" == "codex" && -n "$provider" ]] \
+    && die "desk: --provider '$provider' is a claude-harness switch and has no codex equivalent — drop the provider or use --harness claude"
+  if [[ -n "${CELL_MODEL_POLICY:-}" ]]; then
+    : # Already resolved before selecting the harness and credential adapter.
+  elif [[ -n "$model_override" ]]; then
+    # An explicit --model (or DESK_MODEL_OVERRIDE) passes through VERBATIM to the selected harness
+    # — it is never run through the namespace/tier resolution below, on either harness.
+    model="$model_override"
+  elif [[ -n "$provider" && -z "${!mvar-}" && -n "${PROVIDER_MODEL:-}" ]]; then
+    # A provider's own model (CELL_PROVIDER_<NAME>_MODEL, or the preset's) is what a provider
+    # window runs when neither --model nor a PER-ROLE pin names one (#1303): the harness-wide
+    # DESK_MODEL_DEFAULT / tier fallback are Anthropic names the provider's endpoint would reject.
+    model="$PROVIDER_MODEL"; RESOLVED_MODEL_SRC="provider:$provider ($(provider_var "$provider" MODEL))"
+    # Per-tier provider model (assay#1352): a provider's MODEL_<TIER> (preset, or a cell.env line)
+    # re-points just this role's tier — the flat MODEL above stays the default. `glm` maps MID
+    # to glm-5.3-flash[1m], so mid-tier windows launch on the flash variant while the-desk (TOP)
+    # keeps the full model. A per-role pin or --model still wins over both. An operator-set flat
+    # MODEL (cell.env line) suppresses PRESET tier splits — an operator naming their own model
+    # owns every tier unless they also name the tier key — while an operator-set MODEL_<TIER>
+    # always applies.
+    local ptier; ptier="$(printf '%s' "$(role_tier "$role")" | tr '[:lower:]' '[:upper:]')"
+    local cli_tier="" cli_tier_src=""
+    case "$ptier" in
+      TOP)  cli_tier="$tier_top";  cli_tier_src="${tier_top_src:-env}" ;;
+      MID)  cli_tier="$tier_mid";  cli_tier_src="${tier_mid_src:-env}" ;;
+      FAST) cli_tier="$tier_fast"; cli_tier_src="${tier_fast_src:-env}" ;;
+    esac
+    provider_value "$provider" "MODEL_${ptier}"
+    if [[ -n "$cli_tier" ]]; then
+      # A CLI tier value beats the preset AND a cell.env tier line for this run (--set is what
+      # promotes it to the cell's default); it still loses to --model and per-role pins above.
+      # The source label says which surface it came from: a --model-* flag, or the
+      # CELL_TIER_MODEL_* env `up` threads.
+      model="$cli_tier"
+      if [[ "$cli_tier_src" == "flag" ]]; then
+        RESOLVED_MODEL_SRC="provider:$provider (tier $ptier: --model-$(printf '%s' "$ptier" | tr '[:upper:]' '[:lower:]') flag)"
+      else
+        RESOLVED_MODEL_SRC="provider:$provider (tier $ptier: env CELL_TIER_MODEL_${ptier}, up threading)"
+      fi
+    elif [[ -n "$PROVIDER_VALUE" && ! ( "$PROVIDER_MODEL_SRC" == "cell.env" && "$PROVIDER_VALUE_SRC" == "preset" ) ]]; then
+      model="$PROVIDER_VALUE"; RESOLVED_MODEL_SRC="provider:$provider (tier $ptier: $(provider_var "$provider" "MODEL_${ptier}") ${PROVIDER_VALUE_SRC})"
+    fi
+  else
+    resolve_role_model "$role" "$harness" \
+      || die "desk: $RESOLVED_MODEL_SRC — set $mvar in cell.env, or the harness default, or a tier fallback (docs/cellctl.md Pinned models), or pass --model explicitly"
+    model="$RESOLVED_MODEL"
+  fi
+  # The Opus refusal binds the RESOLVED model, override or pin alike, on the CLAUDE arm ONLY —
+  # an override is not an escape hatch from it, but Opus is a Claude-family alias/id with no
+  # meaning to codex (issue-946 Part 2): on codex this refuses nothing, it prints the resolved
+  # model as is.
+  [[ "$role" == "the-desk" && "$harness" == "claude" ]] && refuse_opus_for_the_desk "$model"
+  if [[ "$CELL_KIND" == "container" ]]; then
+    if [[ "$persist" == "1" && "${DRY_RUN:-0}" != "1" ]]; then
+      apply_env_kvs "$CELL_DIR/cell.env" 0 "${persist_kvs[@]}"
+    fi
+    container_run desk "$role" --harness "$harness" --model "$model"
+    return $?
+  fi
+  # model_disp is what every line below PRINTS: the resolved model, plus "(override)" when
+  # --model/DESK_MODEL_OVERRIDE is the reason, or the tier-map source when the namespace pin fell
+  # all the way through to it, so the source of the value is visible in the transcript and not just
+  # the name — `claude --model`/`codex -m` themselves always get the bare $model.
+  local model_disp="$model"
+  if [[ -n "$model_override" ]]; then model_disp="$model (override)"
+  elif [[ "${RESOLVED_MODEL_SRC:-}" == tier:* || "${RESOLVED_MODEL_SRC:-}" == provider:* || "${RESOLVED_MODEL_SRC:-}" == policy:* ]]; then model_disp="$model ($RESOLVED_MODEL_SRC)"
+  fi
+  # The stream-root map every desk verb reads. Exported when the cell carries one (REQUIRED on a
+  # house cell, load_cell refuses without it); a k8s cell without it boots as before and says so,
+  # because the verbs then fall back to their compiled placeholder topology and the failure
+  # presents as "this repo is not configured" rather than as a missing export.
+  local desk_roots="${CELL_ROOTS:-}"
+  if [[ -n "$desk_roots" ]]; then
+    roots_valid "$desk_roots" || die "cell.env: CELL_ROOTS is malformed"
+    # Opt-in: advance the roots the desks are about to read. Off by default — see ff_roots.
+    # Written as a full `if`, never `[[ … ]] && ff_roots`: under `set -e` that one-liner returns
+    # non-zero whenever the flag is unset (the default) and would abort the boot it guards.
+    if [[ "${CELL_FF_ROOTS:-0}" == "1" && "${DRY_RUN:-0}" != "1" ]]; then
+      ff_roots
+    fi
+  else
+    echo "NOTICE: cell.env has no CELL_ROOTS — the window boots WITHOUT DESK_ROOTS (desk verbs fall back to their compiled placeholder topology)" >&2
+  fi
+  # The dispatch-boundary repair-admission opt-in, composed into the launch below so a cell can
+  # turn the gate on DURABLY through its cell.env rather than only via a one-off `export`. Only
+  # the literal "on" composes the key; off/unset leaves it absent, which the deskdispatch
+  # consumer reads identically. Written as a full `if` (never `[[ … ]] && x=y`) so the unset
+  # default does not abort the boot under `set -e`.
+  local repair_admission=""
+  if [[ "${ASSAY_REPAIR_ADMISSION:-}" == "on" ]]; then repair_admission="on"; fi
+  # The cell's ONE cockpit value, exported as ASSAY_COCKPIT into the window so the worker-desk
+  # skill's worktree-create step cuts dispatched worktrees with the same cockpit the windows are
+  # hosted in (tmux = the plain `git worktree add` arm). Resolved exactly as `up` resolves it —
+  # --cockpit beats cell.env CELL_COCKPIT beats the `auto` default — and always to a CONCRETE value:
+  # `auto` never reaches the window, so the skill's PATH-order autodetect runs only where no cell
+  # launcher exported anything. An explicit cockpit that is not available is refused here, as `up`
+  # refuses it, never exported as some other value. A scrubbed cell composes its own environment
+  # and opens no cockpit, so it carries none.
+  local assay_cockpit="" assay_cockpit_why=""
+  if [[ "$CELL_KIND" != "scrubbed" ]]; then
+    cockpit_want "$cockpit_flag"
+    resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC" \
+      || die "desk: $COCKPIT_ERR — it is exported to the window as ASSAY_COCKPIT, so an unavailable explicit choice is refused rather than replaced; install it, or pass --cockpit tmux (or set CELL_COCKPIT)"
+    assay_cockpit="$COCKPIT"; assay_cockpit_why="$COCKPIT_WHY"
+  fi
+  if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    echo "[dry-run] cell=$CELL kind=$CELL_KIND${CELL_KIND_OVERRIDE:+ (override)} role=$role model=$model_disp effort=${MODEL_POLICY_EFFORT:-harness-default} provider=${MODEL_POLICY_PROVIDER:-${provider:-anthropic}} harness=$harness cfg=$cfg wt=$wt session=$session desk_roots=${desk_roots:-unset} shims→HOME=$CELL_HOME"
+    if [[ -n "$repair_admission" ]]; then
+      echo "[dry-run] env ASSAY_REPAIR_ADMISSION=$repair_admission (repair-admission dispatch gate opt-in)"
+    fi
+    if [[ -n "$assay_cockpit" ]]; then
+      echo "[dry-run] env ASSAY_COCKPIT=$assay_cockpit ($assay_cockpit_why)"
+    fi
+    if [[ "$harness" == "claude" && "$CELL_KIND" != "scrubbed" ]]; then
+      echo "[dry-run] env CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false"
+    fi
+    if [[ "$persist" == "1" ]]; then
+      local pkv; for pkv in "${persist_kvs[@]}"; do echo "[dry-run] --set: would persist $pkv into $CELL_DIR/cell.env (not written — dry run)"; done
+    fi
+    if [[ "$CELL_KIND" == "scrubbed" ]]; then
+      # The existing [dry-run] line above stays — this ADDS the plan grammar brief
+      # desk-containers/09 defines (and desk-containers/10 diffs against): one [plan] env line per
+      # exported variable (sorted by KEY), then argv, cwd, lock.
+      scrubbed_compose_env "$role" "$harness" "$session"
+      local -a scr_argv=()
+      if [[ "$harness" == "codex" ]]; then
+        scr_argv=(codex --sandbox danger-full-access -C "$wt" -m "$model" "Invoke the \"assay:$role\" skill now.")
+      else
+        scr_argv=(claude --name "$session" --model "$model" "/assay:$role")
+      fi
+      scrubbed_print_plan "$wt" "${scr_argv[@]}"
+    fi
+    return 0
+  fi
+  if [[ "$persist" == "1" ]]; then
+    apply_env_kvs "$CELL_DIR/cell.env" 0 "${persist_kvs[@]}"
+  fi
+  # Enabling the assay@assay plugin is a CLAUDE-specific action (it shells out to `claude plugin
+  # enable`) — skipped on the codex arm (skills are discovered per the codex harness check block)
+  # and on a scrubbed cell (there is no host $cfg here — the plugin state lives under the cell's
+  # own CLAUDE_CONFIG_DIR, which the operator enables during the cell's own hand-boot step).
+  if [[ "$harness" == "claude" && "$CELL_KIND" != "scrubbed" ]]; then
+    # A non-zero exit here is not always a real failure: `claude plugin enable` also exits 1
+    # when the plugin is already enabled (issue-1080's misleading-NOTICE bug), printing
+    # `Failed to enable plugin "assay@assay": Plugin "assay@assay" is already enabled` — so the
+    # NOTICE below fires only when the captured output does NOT match that already-enabled shape.
+    local plugin_out
+    plugin_out="$(CLAUDE_CONFIG_DIR="$cfg" claude plugin enable assay@assay 2>&1)" || {
+      [[ "$plugin_out" == *"already enabled"* ]] \
+        || echo "NOTICE: could not enable assay@assay in $cfg — inside the session: /plugin install assay@assay" >&2
+    }
+  fi
+  # Serialise the shared fetch: several windows boot at once against ONE .git, and concurrent
+  # fetches race on the same ref lock. The lock lives in the COMMON git dir, so a CELL_REPO that
+  # is itself a linked worktree (where .git is a file) still gets a lock rather than a 60s wait.
+  local gitdir; gitdir="$(git -C "$CELL_REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo "$CELL_REPO/.git")"
+  local lock="$gitdir/cellctl-fetch.lock"
+  local _i _held=0; for _i in $(seq 1 60); do mkdir "$lock" 2>/dev/null && { _held=1; break; }; sleep 1; done
+  # Pre-existing behaviour, kept: a lock still held after 60s is taken to be a dead boot's. This
+  # boot proceeds, and the release below removes that lock. If the holder is in fact alive,
+  # removing FETCH_HEAD under it makes ITS read fail — a refusal, never a stale boot.
+  [[ "$_held" -eq 1 ]] || echo "NOTICE: fetch lock $lock still held after 60s — proceeding without it" >&2
+  # A fetch that lost the ref-lock race still wrote FETCH_HEAD, and FETCH_HEAD is all that is used
+  # below — so a non-zero exit here is a notice, not a stop.
+  # FETCH_HEAD is removed before the fetch, so the one read below is always THIS fetch's. git
+  # truncates FETCH_HEAD itself before it contacts the remote, so a fetch that fails on auth or
+  # connect already leaves nothing to read. The removal is for the case git's own truncate cannot
+  # cover: a FETCH_HEAD git cannot open for writing (read-only file), where the fetch fails and the
+  # PREVIOUS boot's sha is left in place. And when the file cannot be removed either, the boot is
+  # refused (lock released first) — reading it would be that previous boot's main.
+  local fetch_head; fetch_head="$(git -C "$CELL_REPO" rev-parse --path-format=absolute --git-path FETCH_HEAD 2>/dev/null || true)"
+  if [[ -n "$fetch_head" ]] && ! rm -f "$fetch_head" 2>/dev/null; then
+    rmdir "$lock" 2>/dev/null || true
+    die "desk: cannot remove $fetch_head before the fetch — refusing to boot: a fetch that cannot rewrite it would leave a previous boot's main to read. Make it removable (check its permissions and its directory's), then re-run: cellctl desk $CELL $role"
+  fi
+  # On the gitlab arm, GITLAB_TOKEN_STORE/DESKD_GITLAB_TOKEN_FILE provision the API token, but
+  # nothing else wires a git credential for CELL_REPO's own fetch transport — on a private GitLab
+  # project over HTTPS this fetch otherwise stops at an interactive `Username for
+  # 'https://gitlab.com':` prompt (or `fatal: could not read Username` with prompts disabled). The
+  # github arm never hits this: the operator's `gh` credential helper already answers for it, so it
+  # keeps the plain fetch unchanged.
+  if [[ "$CELL_FORGE" == "gitlab" ]]; then
+    gitlab_cred_args
+    GIT_TERMINAL_PROMPT=0 git "${GITLAB_CRED_ARGS[@]}" -C "$CELL_REPO" fetch --no-tags origin main \
+      || echo "NOTICE: fetch returned non-zero — checking whether it wrote FETCH_HEAD" >&2
+  else
+    git -C "$CELL_REPO" fetch --no-tags origin main || echo "NOTICE: fetch returned non-zero — checking whether it wrote FETCH_HEAD" >&2
+  fi
+  local sha; sha="$(git -C "$CELL_REPO" rev-parse --verify -q FETCH_HEAD || true)"
+  rmdir "$lock" 2>/dev/null || true
+  # The refusal names the usual cause and the way out, because git's own output reads like a
+  # transient error: a credential helper answering with a dead token (an expired App token left in
+  # the checkout's shared config, say). The inspect command prints helper values verbatim, and an
+  # inline helper can carry that token — hence the warning not to paste it anywhere public.
+  [[ -n "$sha" ]] || die "desk: fetch of origin main in $CELL_REPO failed and wrote no FETCH_HEAD — refusing to boot on a stale main. An authentication refusal is the usual cause. See which credential helper answers for origin: git -C '$CELL_REPO' config --show-origin --get-regexp '^credential\.' (its output can contain a token — do not paste it into a PR or issue). Re-mint or replace the dead credential, or remove the stale helper entry, then re-run: cellctl desk $CELL $role"
+  mkdir -p "$CELL_DIR/worktrees"
+  if [[ -e "$wt/.git" ]]; then
+    # An existing tree is MERGED up to the fetched main, or the boot stops — never left behind
+    # with a notice (#1157). deskboot's own `worktree-current` step re-proves this inside the
+    # session; the two agree by construction because both read the same FETCH_HEAD.
+    merge_role_worktree "$wt" "$sha"
+  else
+    local dwt
+    if dwt="$(worktree_via_deskwt "$role")"; then
+      # deskwt named and created the tree; the cell's fixed path points at it so the next boot
+      # finds it and merges it up to main as usual.
+      ln -sfn "$dwt" "$wt"
+      echo "[worktree] created by deskwt role-init: $dwt (linked from $wt)"
+    else
+      git -C "$CELL_REPO" worktree add "$wt" -b "${CELL}-cell/${role}-$(date +%Y%m%d-%H%M%S)" "$sha"
+    fi
+  fi
+  # A live role window's tree is LOCKED, so a worktree prune never takes it from under the session.
+  # Re-locking an already-locked tree is a no-op here, not a failure.
+  git -C "$CELL_REPO" worktree lock --reason "cellctl $CELL/$role live session" "$wt" 2>/dev/null || true
+  echo "[worktree] $wt @ ${sha:0:8} (locked)"
+  if [[ "$DESKD" == "1" ]]; then
+    deskd_up || echo "NOTICE: cell deskd is NOT up on $DESKD_ADDR — in your shell: CELL_ATTENDED=1 cellctl deskd $CELL" >&2
+  fi
+  gen_shims
+  # Codex has no SessionStart hook to carry the resident operating rules — on this arm they travel
+  # in the worktree's AGENTS.md instead, appended idempotently at boot.
+  [[ "$harness" == "codex" ]] && ensure_codex_resident_rules "$wt"
+  if [[ "$CELL_KIND" == "scrubbed" ]]; then
+    scrubbed_desk_launch "$role" "$harness" "$model" "$session" "$wt"
+    return $?
+  fi
+  policy_claude_preflight "$cfg" "$wt" || die "model policy settings preflight failed"
+  cd "$wt"
+  [[ -z "$assay_cockpit" ]] || echo "[cockpit] ASSAY_COCKPIT=$assay_cockpit ($assay_cockpit_why)"
+  echo "[launch] $CELL/$role kind=$CELL_KIND model=$model_disp effort=${MODEL_POLICY_EFFORT:-harness-default} provider=${MODEL_POLICY_PROVIDER:-${provider:-anthropic}} harness=$harness session=$session config=$cfg cwd=$wt desk_roots=${desk_roots:-unset} (desk verbs → HOME=$CELL_HOME)"
+  if [[ "$harness" == "codex" ]]; then
+    # The same exported env the claude arm gets (DESK_LOOP, DESK_SESSION, DESK_ROOTS, shim PATH);
+    # CLAUDE_CONFIG_DIR is irrelevant on this arm, so it is not passed. `-C "$wt"` is redundant with
+    # the `cd` above (codex sets its own cwd from the flag) but kept explicit per the issue's spec.
+    # --provider is a claude/Anthropic-endpoint switch (ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN)
+    # and has no codex equivalent here, so it is not threaded onto this arm.
+    exec env PATH="$CELL_DIR/shim:$PATH" DESK_LOOP="$role" DESK_SESSION="$session" \
+      ${desk_roots:+DESK_ROOTS="$desk_roots"} \
+      ${repair_admission:+ASSAY_REPAIR_ADMISSION="$repair_admission"} \
+      ${assay_cockpit:+ASSAY_COCKPIT="$assay_cockpit"} \
+      codex "${MODEL_POLICY_ARGS[@]}" --sandbox danger-full-access -C "$wt" -m "$model" "Invoke the \"assay:$role\" skill now."
+  else
+    # A provider switches the ENDPOINT and CREDENTIAL the launched `claude` process talks to; the
+    # model NAME above is unaffected — `--model glm-5.3` alone (no provider) still talks to
+    # Anthropic and fails, which is exactly the gap this closes. Unset provider → none of the
+    # ANTHROPIC_* vars below is touched, and `claude` behaves exactly as it always has.
+    # With a provider (#1303): ANTHROPIC_API_KEY is UNSET first (an inherited API key wins over the
+    # auth token and silently routes to Anthropic), and ANTHROPIC_MODEL plus the three tier
+    # aliases ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL are pinned to the provider model so every
+    # alias this window or its subagents use resolves to a name the endpoint accepts. The tier
+    # aliases take the provider's own model (CELL_PROVIDER_<NAME>_MODEL / preset) when it has one,
+    # else the model this window launches with.
+    local pmodel="${PROVIDER_MODEL:-$model}"
+    # Per-tier alias models (assay#1352): each alias maps to the provider's MODEL_<TIER> for its own
+    # tier (preset or cell.env line, TOP/MID/FAST ← OPUS/SONNET/HAIKU), else the flat provider
+    # model — so a provider can run its flash variant for the sonnet slot without touching what
+    # an opus- or haiku-asker resolves to.
+    local pmodel_opus pmodel_sonnet pmodel_haiku
+    provider_alias_model "$provider" OPUS;   [[ -n "$PROVIDER_VALUE" && ! ( "$PROVIDER_MODEL_SRC" == "cell.env" && "$PROVIDER_VALUE_SRC" == "preset" ) ]] && pmodel_opus="$PROVIDER_VALUE"   || pmodel_opus="$pmodel"
+    provider_alias_model "$provider" SONNET; [[ -n "$PROVIDER_VALUE" && ! ( "$PROVIDER_MODEL_SRC" == "cell.env" && "$PROVIDER_VALUE_SRC" == "preset" ) ]] && pmodel_sonnet="$PROVIDER_VALUE" || pmodel_sonnet="$pmodel"
+    provider_alias_model "$provider" HAIKU;  [[ -n "$PROVIDER_VALUE" && ! ( "$PROVIDER_MODEL_SRC" == "cell.env" && "$PROVIDER_VALUE_SRC" == "preset" ) ]] && pmodel_haiku="$PROVIDER_VALUE"  || pmodel_haiku="$pmodel"
+    # CLI tier flags re-point their alias for this run — same precedence as the launch arm: flag
+    # > cell.env tier line > preset > flat, everything below --model and per-role pins.
+    [[ -n "$tier_top"  ]] && pmodel_opus="$tier_top"
+    [[ -n "$tier_mid"  ]] && pmodel_sonnet="$tier_mid"
+    [[ -n "$tier_fast" ]] && pmodel_haiku="$tier_fast"
+    exec env "${MODEL_POLICY_UNSET[@]}" ${provider:+-u ANTHROPIC_API_KEY} PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false DESK_LOOP="$role" DESK_SESSION="$session" \
+      ${desk_roots:+DESK_ROOTS="$desk_roots"} \
+      ${repair_admission:+ASSAY_REPAIR_ADMISSION="$repair_admission"} \
+      ${assay_cockpit:+ASSAY_COCKPIT="$assay_cockpit"} \
+      ${provider:+ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL"} ${provider:+ANTHROPIC_AUTH_TOKEN="$PROVIDER_TOKEN_VAL"} \
+      ${provider:+ANTHROPIC_MODEL="$model"} \
+      ${provider:+ANTHROPIC_DEFAULT_OPUS_MODEL="$pmodel_opus"} ${provider:+ANTHROPIC_DEFAULT_SONNET_MODEL="$pmodel_sonnet"} ${provider:+ANTHROPIC_DEFAULT_HAIKU_MODEL="$pmodel_haiku"} \
+      "${MODEL_POLICY_ENV[@]}" \
+      claude "${MODEL_POLICY_ARGS[@]}" --name "$session" --model "$model" "/assay:$role"
+  fi
+}
+
+# cmd_smoke <cell> [--harness <claude|codex>] [--model <m>]: a scrubbed-cell-only, one-shot,
+# tool-free, READ-ONLY readiness probe — the same composed environment `desk` uses, a prompt that
+# asks nothing of any tool, and a pass/fail on the harness's own literal answer. Never a Verify
+# row on a live harness (every row here runs a stub) — this is what an operator runs by hand to
+# prove a cell actually answers before trusting it with real work.
+cmd_smoke(){
+  local usage_msg="cellctl smoke <cell> [--harness <claude|codex>] [--model <m>]"
+  local cell="${1:?$usage_msg}"; shift || true
+  load_cell "$cell"
+  [[ "$CELL_KIND" == "scrubbed" ]] || die "smoke is only defined for a scrubbed cell (kind=$CELL_KIND, got '$cell')"
+  local harness="$CELL_HARNESS" model_override=""
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --harness) harness="${2:?--harness needs a value (claude|codex)}"; shift 2;;
+    --model) model_override="${2:?--model needs a value}"; shift 2;;
+    --*) die "smoke: unknown flag $1";;
+    *) die "smoke: unexpected argument '$1'";;
+  esac; done
+  case "$harness" in claude|codex) ;; *) die "smoke: --harness must be claude or codex, got '$harness'";; esac
+  local model
+  if [[ -n "$model_override" ]]; then
+    model="$model_override"
+  else
+    resolve_role_model "smoke" "$harness" || die "smoke: $RESOLVED_MODEL_SRC — pass --model explicitly"
+    model="$RESOLVED_MODEL"
+  fi
+  local prompt='Reply with the single word READY and nothing else.'
+  local session; session="${CELL}-smoke-$(date -u +%Y%m%dT%H%M%SZ)"; [[ "$harness" == "codex" ]] && session="${session}-codex"
+  scrubbed_compose_env "smoke" "$harness" "$session"
+  local -a argv=()
+  if [[ "$harness" == "codex" ]]; then
+    argv=(codex exec --ephemeral --sandbox read-only --skip-git-repo-check -m "$model" "$prompt")
+  else
+    argv=(claude -p --model "$model" "$prompt")
+  fi
+  if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    echo "[dry-run] cell=$CELL kind=scrubbed smoke harness=$harness model=$model"
+    scrubbed_print_plan "$CELL_REPO" "${argv[@]}"
+    return 0
+  fi
+  echo "[smoke] resolved model=$model harness=$harness (read-only, tool-free, one shot)"
+  local out rc=0
+  out="$(cd "$CELL_REPO" && env -i "${SCR_ENV[@]}" "${argv[@]}" 2>&1)" || rc=$?
+  local last; last="$(printf '%s\n' "$out" | awk 'NF{l=$0} END{print l}')"
+  if [[ "$rc" -eq 0 && "$last" == "READY" ]]; then
+    echo "READY"
+    return 0
+  fi
+  echo "smoke: not ready: $last"
+  return 1
+}
+
+# cmd_status <cell>: a scrubbed-cell-only READ — `running <session>` / `stopped` /
+# `stale-lock <pid>` — never a precondition check (that is `check`'s job), exit 0 in every case
+# that is not a load error.
+cmd_status(){
+  load_cell "${1:?cell}"
+  [[ "$CELL_KIND" == "scrubbed" ]] || die "status is only defined for a scrubbed cell (kind=$CELL_KIND)"
+  local sessname="${CELL}-cell" lockdir="$CELL_DIR/run/lock.d"
+  if [[ -d "$lockdir" ]]; then
+    local pid; pid="$(cat "$lockdir/pid" 2>/dev/null || true)"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      echo "running $sessname"
+    else
+      echo "stale-lock $pid"
+    fi
+  else
+    echo "stopped"
+  fi
+  return 0
+}
+
+# first_window sets FIRST_NAME / FIRST_CMD — the window that is NOT a role: the deskd watcher, the
+# deskd itself, or (on a cell with no deskd) a line saying so.
+#
+# STANDING deskd FROM `up` — the attended affirmation, and how far it carries.
+#
+# `cellctl deskd` mints installation tokens and so refuses without CELL_ATTENDED=1: the
+# affirmation is the operator saying "I am here, at my own shell". `up` is the one-command
+# cockpit, so it passes that affirmation to the deskd window it spawns — but it may only do so
+# when `up` is ITSELF attended, or the flag would be widened from "an operator ran this" to
+# "anything that ran cellctl at all", which is the opposite of what it is for.
+#
+# Attended means one of two positive signals: a terminal on stdin (an operator at a shell), or
+# CELL_ATTENDED=1 already set in the environment (the explicit form, for a wrapper that has its
+# own affirmation). A cron or CI invocation has neither, and there `up` stands the role windows
+# but NOT deskd, and says so. It is never silent in either direction.
+#
+# A house cell has no deskd unless DESKD=1: its first window is a plain shell in the cell
+# directory that says so, and the role windows follow.
+first_window(){
+  if [[ "$DESKD" != "1" ]]; then
+    FIRST_NAME=cell
+    FIRST_CMD="echo '[cell] $CELL is a $CELL_KIND cell with no deskd (DESKD=1 in cell.env to stand one)'"
+  elif deskd_up; then
+    FIRST_NAME=deskd
+    FIRST_CMD="echo '[deskd] already up on $DESKD_ADDR — watching /healthz every 60s'; while :; do date -u +%H:%MZ; curl -s --max-time 5 http://$DESKD_ADDR/healthz | head -c 240; echo; sleep 60; done"
+  elif [[ -t 0 || "${CELL_ATTENDED:-0}" == "1" ]]; then
+    echo "[cell] deskd is not up — standing it in-session, carrying YOUR attended affirmation (cellctl up ran attended)"
+    FIRST_NAME=deskd
+    FIRST_CMD="CELL_ATTENDED=1 '$SELF' deskd '$CELL'"
+  else
+    echo "[cell] deskd is not up, and this 'cellctl up' is UNATTENDED (no terminal on stdin, CELL_ATTENDED unset)." >&2
+    echo "[cell] role windows will open; deskd will NOT be stood, because minting tokens needs an affirmation this invocation cannot make." >&2
+    echo "[cell] stand it yourself: CELL_ATTENDED=1 cellctl deskd $CELL" >&2
+    FIRST_NAME=deskd
+    FIRST_CMD="echo '[deskd] NOT stood — cellctl up ran unattended. Run: CELL_ATTENDED=1 cellctl deskd $CELL'"
+  fi
+}
+
+# up_roles prints the role list `up` opens: ROLES, with the-desk prepended when a hand-edited
+# cell.env dropped it, or removed when --no-the-desk asked for the four loop roles alone.
+up_roles(){
+  local roles="$ROLES"
+  case " $roles " in *" the-desk "*) ;; *) roles="the-desk $roles";; esac
+  [[ "${1:-0}" == "1" ]] && roles="${roles//the-desk/}"
+  printf '%s\n' "$roles"
+}
+
+cmd_up(){
+  # --kind is applied BEFORE load_cell (prescan_kind_override, #1303 scope 2), same as `desk`.
+  local _up_cell="$1"; shift
+  prescan_kind_override "$@"
+  load_cell "$_up_cell"
+  if [[ "$CELL_KIND" == "container" ]]; then
+    [[ "$ROLES" == "the-desk" ]] || die "container up currently requires ROLES=the-desk; use desk for explicit roles"
+    cmd_desk "$CELL" the-desk "$@"
+    return $?
+  fi
+  if [[ "$CELL_KIND" == "scrubbed" ]]; then
+    # A scrubbed cell is single-occupancy by construction (one tmux session on its private
+    # socket, one mkdir lock) — `up` refuses when the cell is not `stopped` and otherwise boots
+    # this cell's first configured role, exactly what `desk` itself would; the attach-on-a-tty
+    # behaviour lives in scrubbed_desk_launch, so every entry point gets it identically.
+    local st; st="$(cmd_status "$CELL")"
+    [[ "$st" == "stopped" ]] || die "up: cell '$CELL' is not stopped (status: $st) — cellctl down $CELL first"
+    local first_role; first_role="${ROLES%% *}"
+    cmd_desk "$CELL" "$first_role" "$@"
+    return $?
+  fi
+  local no_the_desk=0 attach=1 cfg_in="" cockpit_flag="" automate="" model_override="" provider_flag="" harness_flag="" persist=0 tier_top_flag="" tier_mid_flag="" tier_fast_flag=""
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --no-the-desk) no_the_desk=1; shift;;
+    --with-the-desk) shift;;
+    --no-attach) attach=0; shift;;
+    --cockpit) cockpit_flag="${2:?--cockpit needs a value (auto|tmux|herdr|orca)}"; shift 2;;
+    --automate) automate="${2:?--automate needs a trigger (a 5-field cron string or a preset)}"; shift 2;;
+    --model) model_override="${2:?--model needs a value}"; shift 2;;
+    --provider) provider_flag="${2:?--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
+    --model-top) tier_top_flag="${2:?--model-top needs a value}"; shift 2;;
+    --model-mid) tier_mid_flag="${2:?--model-mid needs a value}"; shift 2;;
+    --model-fast) tier_fast_flag="${2:?--model-fast needs a value}"; shift 2;;
+    --harness) harness_flag="${2:?--harness needs a value (claude|codex)}"; shift 2;;
+    --kind) shift 2;;  # consumed by prescan_kind_override above; CELL_KIND already reflects it
+    --set) persist=1; shift;;
+    --*) die "up: unknown flag $1";;
+    *) cfg_in="$1"; shift;;
+  esac; done
+  case "$harness_flag" in ""|claude|codex) ;; *) die "up: --harness must be claude or codex, got '$harness_flag'";; esac
+  # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
+  [[ -z "$cockpit_flag" ]] || value_in "$cockpit_flag" $COCKPIT_VALUES \
+    || die "up: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
+  [[ "$persist" == "0" || -n "$model_override$harness_flag$provider_flag$CELL_KIND_OVERRIDE$cockpit_flag$tier_top_flag$tier_mid_flag$tier_fast_flag" ]] \
+    || die "up: --set needs --model, --model-top/mid/fast, --harness, --provider, --kind or --cockpit — nothing to persist otherwise"
+  # GLOBAL (not local): role_cmd, called below and by every up_* cockpit arm, reads these to
+  # thread --model / --harness / --provider onto each role's own `cellctl desk` invocation.
+  # Applies to EVERY role window this run opens, the-desk included — there is deliberately no
+  # per-role `--model-<role>`/`--harness-<role>`/`--provider-<role>` form; that case is already
+  # `cellctl desk <cell> <role> --model <m> --harness <h> --provider <p>` on the one window that
+  # needs it.
+  MODEL_OVERRIDE="$model_override"
+  HARNESS_OVERRIDE="$harness_flag"
+  up_provider="$provider_flag"
+  # Tier flags thread the same way --model does, via the env cmd_desk reads as its defaults —
+  # one value for EVERY role window this run opens (tier keys are provider-keyed, not per-role).
+  [[ -n "$tier_top_flag$tier_mid_flag$tier_fast_flag" && -z "$provider_flag" && -z "${CELL_PROVIDER:-}" ]] \
+    && die "up: --model-top/mid/fast need a provider — pass --provider <name> (or set CELL_PROVIDER in cell.env)"
+  CELL_TIER_MODEL_TOP="$tier_top_flag"; CELL_TIER_MODEL_MID="$tier_mid_flag"; CELL_TIER_MODEL_FAST="$tier_fast_flag"
+  export CELL_TIER_MODEL_TOP CELL_TIER_MODEL_MID CELL_TIER_MODEL_FAST
+  local cfg; cfg="$(resolve_cfg "$cfg_in")"
+  cockpit_want "$cockpit_flag"
+  resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC" || die "$COCKPIT_ERR"
+  echo "[cockpit] $COCKPIT ($COCKPIT_WHY)"
+  # GLOBAL, like up_provider: role_cmd threads it onto every window as `--cockpit <resolved>`.
+  up_cockpit="$COCKPIT"
+  [[ -z "$automate" || "$COCKPIT" == "orca" ]] \
+    || die "up: --automate is an orca-only shape (scheduled automations behind an exit-code precheck); the resolved cockpit is $COCKPIT"
+  local roles; roles="$(up_roles "$no_the_desk")"
+  if [[ -n "${CELL_MODEL_POLICY:-}" ]]; then
+    [[ "$persist" == 0 ]] || die "--set with a model policy is ambiguous; edit the policy file instead"
+    [[ -z "$automate" ]] || die "model policy is not supported by Orca automation launches"
+    local policy_role
+    for policy_role in $roles; do
+      policy_preflight "$policy_role" "$harness_flag" "$provider_flag" "$model_override" "$cfg"         || die "up: policy preflight failed; no role windows launched"
+    done
+  fi
+  # --set persists every override GIVEN on this invocation (#1303 scope 2) through the same
+  # one-backup apply_env_kvs path `cellctl set` uses: CELL_KIND / CELL_COCKPIT / CELL_HARNESS /
+  # CELL_PROVIDER to their own keys, and --model to the ACTIVE harness's <FAMILY>_MODEL_<role> for
+  # every role window this run opens (the-desk included unless --no-the-desk) — the per-role keys,
+  # because that is exactly the set of windows the override applied to. The the-desk Opus rule
+  # applies to the persisted pin as it does to the run itself.
+  local -a persist_kvs=()
+  if [[ "$persist" == "1" ]]; then
+    local eff_harness="${harness_flag:-$CELL_HARNESS}" prole pmvar
+    if [[ -n "$model_override" ]]; then
+      for prole in $roles; do
+        if [[ "$eff_harness" == "codex" ]]; then pmvar="CODEX_MODEL_${prole//-/_}"; else pmvar="DESK_MODEL_${prole//-/_}"; fi
+        persist_kvs+=("$pmvar=$model_override")
+      done
+    fi
+    [[ -n "$harness_flag" ]] && persist_kvs+=("CELL_HARNESS=$harness_flag")
+    [[ -n "$provider_flag" ]] && persist_kvs+=("CELL_PROVIDER=$provider_flag")
+    [[ -n "$CELL_KIND_OVERRIDE" ]] && persist_kvs+=("CELL_KIND=$CELL_KIND_OVERRIDE")
+    [[ -n "$cockpit_flag" ]] && persist_kvs+=("CELL_COCKPIT=$cockpit_flag")
+    # Tier flags persist to the same provider-keyed keys cmd_desk writes (--provider flag, else
+    # the cell.env CELL_PROVIDER the run resolved; up's guard already refused tier-without-provider).
+    if [[ -n "$tier_top_flag$tier_mid_flag$tier_fast_flag" ]]; then
+      local up_tier_provider tkey_pfx
+      up_tier_provider="${provider_flag:-${CELL_PROVIDER:-}}"
+      tkey_pfx="$(printf '%s' "$up_tier_provider" | tr '[:lower:]-' '[:upper:]_')"
+      [[ -n "$tier_top_flag"  ]] && persist_kvs+=("CELL_PROVIDER_${tkey_pfx}_MODEL_TOP=$tier_top_flag")
+      [[ -n "$tier_mid_flag"  ]] && persist_kvs+=("CELL_PROVIDER_${tkey_pfx}_MODEL_MID=$tier_mid_flag")
+      [[ -n "$tier_fast_flag" ]] && persist_kvs+=("CELL_PROVIDER_${tkey_pfx}_MODEL_FAST=$tier_fast_flag")
+    fi
+  fi
+  first_window
+  if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    echo "[dry-run] cell=$CELL kind=$CELL_KIND${CELL_KIND_OVERRIDE:+ (override)} cockpit=$COCKPIT session=$SESSION config=$cfg"
+    if [[ "$persist" == "1" ]]; then
+      local pkv; for pkv in "${persist_kvs[@]}"; do echo "[dry-run] --set: would persist $pkv into $CELL_DIR/cell.env (not written — dry run)"; done
+    fi
+    [[ -n "$MODEL_OVERRIDE" ]] && echo "[dry-run] model=$MODEL_OVERRIDE (override) — applied to every role window below"
+    [[ -n "$HARNESS_OVERRIDE" ]] && echo "[dry-run] harness=$HARNESS_OVERRIDE — applied to every role window below"
+    [[ -n "$up_provider" ]] && echo "[dry-run] provider=$up_provider (override) — applied to every role window below"
+    echo "[dry-run] $FIRST_NAME: $FIRST_CMD"
+    local r
+    for r in $roles; do
+      if [[ -n "$automate" ]]; then
+        echo "[dry-run] $r: orca automations create --name ${CELL}-${r} --repo path:$CELL_REPO --trigger '$automate' --precheck '$SELF check $CELL' --provider claude --prompt /assay:$r"
+      else
+        echo "[dry-run] $r: $(role_cmd "$r" "$cfg")"
+      fi
+    done
+    return 0
+  fi
+  if [[ "$persist" == "1" ]]; then
+    apply_env_kvs "$CELL_DIR/cell.env" 0 "${persist_kvs[@]}"
+  fi
+  case "$COCKPIT" in
+    tmux)  up_tmux  "$cfg" "$roles" "$attach" ;;
+    herdr) up_herdr "$cfg" "$roles" ;;
+    orca)  up_orca  "$cfg" "$roles" "$automate" ;;
+  esac
+}
+
+# ---------------------------------------------------------------- tmux arm (the always-works one)
+up_tmux(){
+  local cfg="$1" roles="$2" attach="$3"
+  command -v tmux >/dev/null || die "tmux not installed"
+  if tmux has-session -t "$SESSION" 2>/dev/null; then
+    echo "[cell] $SESSION already running — attaching"
+    [[ "$attach" == "1" ]] && exec tmux attach -t "$SESSION"
+    return 0
+  fi
+  tmux new-session -d -s "$SESSION" -n "$FIRST_NAME" -c "$CELL_DIR" "$FIRST_CMD; echo '[$FIRST_NAME] exited'; exec \$SHELL"
+  local role name
+  for role in $roles; do
+    case "$role" in pr-review-desk) name=review;; the-desk) name=the-desk;; *) name="${role%-desk}";; esac
+    tmux new-window -t "$SESSION" -n "$name" -c "$CELL_DIR" "$(role_cmd "$role" "$cfg"); echo '[$role] exited'; exec \$SHELL"
+    # Stagger the windows: each one fetches the shared .git, and starting them at once puts every
+    # window into the fetch lock's retry loop at the same moment.
+    sleep 2
+  done
+  tmux select-window -t "$SESSION:the-desk" 2>/dev/null || true
+  echo "[cell] $SESSION up: $FIRST_NAME +$roles (config=$cfg)"
+  echo "[cell] attach: tmux attach -t $SESSION   ·   down: cellctl down $CELL"
+  [[ "$attach" == "1" ]] && exec tmux attach -t "$SESSION"
+  return 0
+}
+
+# ---------------------------------------------------------------- herdr arm
+# One LABELLED tab per window, running the role's full command line — the same string the tmux
+# arm hands `tmux new-window` — so every cockpit runs identically, and herdr's own agent detection
+# on the pane's foreground process is what drives its sidebar per desk once `claude` is running.
+#
+# `herdr agent start <name> --kind <k> --pane <id> [-- AGENT_ARG...]` is NOT a "run this shell
+# command" verb, confirmed live against a real herdr 0.8.2: its AGENT_ARG list is appended
+# directly to the KIND's canonical executable (a bare `agent start foo --kind claude --pane <id>`
+# with no AGENT_ARG launches literally `claude` in the pane — visible via `pane read` as the
+# Claude Code startup banner), so `-- bash -lc "<cmd>"` does not run <cmd> as a wrapping shell; it
+# is appended as trailing arguments to `claude` itself. That cannot host cellctl's composite
+# command (fetch the shared repo, cut/fast-forward the worktree, generate shims, cd, THEN exec
+# claude with role-specific flags) — only the final `claude ...` step is a bare executable
+# invocation, and everything before it has to run first, in that pane, in order.
+# `herdr pane run <PANE_ID> <COMMAND>...` (verified live: sends the text, presses Enter, and the
+# command's real output reads back via `pane read`) is what actually hosts it, on the same
+# `tab create` → capture a pane id → drive it shape the design comment above described, just
+# through `pane run` instead of `agent start`.
+herdr_pane_id_from_tab_create(){
+  # stdin: the JSON `herdr tab create` printed. Prints result.root_pane.pane_id, or nothing.
+  python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d["result"]["root_pane"]["pane_id"])
+except Exception:
+    pass
+' 2>/dev/null
+}
+
+herdr_window(){
+  local label="$1" cmd="$2" wsid="${3:-}" out pane_id="" rc=0
+  if [[ -n "$wsid" ]]; then
+    out="$(herdr tab create --workspace "$wsid" --label "$label" 2>&1)" || rc=$?
+  else
+    out="$(herdr tab create --label "$label" 2>&1)" || rc=$?
+  fi
+  [[ "$rc" == "0" ]] && pane_id="$(herdr_pane_id_from_tab_create <<<"$out")"
+  if [[ -z "$pane_id" ]]; then
+    echo "NOTICE: 'herdr tab create --label $label' did not return a pane id — start it by hand: $cmd" >&2
+    return
+  fi
+  herdr pane run "$pane_id" "$cmd" >/dev/null 2>&1 \
+    || echo "NOTICE: 'herdr pane run' failed for $label (pane $pane_id) — start it by hand: $cmd" >&2
+}
+
+# herdr_window_id — the workspace_id `herdr workspace list` reports for the frontmost workspace it
+# already has open, or empty when herdr has no workspace open at all (server not running, or
+# running with zero workspaces — both mean "nowhere for a tab to land" to this cockpit). herdr's
+# own noun for what this file and #985's issue call a "herdr window" is "workspace" (verified live
+# against herdr 0.8.2: `herdr tab list`'s tab_id/workspace_id pairs, and `herdr workspace list`
+# itself) — the top-level container tabs live in, one level above the tab/pane nesting the rest of
+# this arm already drives. This is the herdr analogue of the tmux arm's `tmux has-session`.
+herdr_window_id(){
+  herdr workspace list 2>/dev/null | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+ws = d.get("result", {}).get("workspaces", [])
+if ws:
+    print(ws[0].get("workspace_id", ""))
+'
+}
+
+# herdr_start_window <label> — brings up a herdr window (a "workspace") when herdr_window_id found
+# none, the same trigger point and create-if-absent shape as the tmux arm's
+# `tmux has-session || tmux new-session`. Prints "<workspace_id>|<default_tab_id>" on success — one
+# line, split by the caller with `${started%%|*}` / `${started#*|}`, because this function is
+# called inside a `$(...)` command substitution (its own subshell): any plain variable it sets does
+# not survive back to up_herdr, so both results have to travel out via stdout, not a global.
+#
+# `herdr workspace create` always seeds the new workspace with one default, unlabelled tab of its
+# own (verified live: its JSON carries a "tab" alongside the "workspace") — the default_tab_id half
+# of the printed line is that tab's tab_id, so up_herdr can close it once the cell's own labelled
+# tabs exist in the same workspace. Closing it any earlier — before the workspace holds a second
+# tab — closes the whole workspace along with it (verified live), so it must never be closed up
+# front; a build/response that carries no tab_id just prints an empty second field, which leaves
+# that one default tab behind rather than risk closing the workspace.
+#
+# Fails closed (die), naming herdr and the exact command tried, when this build cannot create a
+# workspace at all or the command itself fails — never silently leaves the tabs nowhere to land.
+herdr_start_window(){
+  local label="$1" out wsid tab_id
+  help_has create herdr workspace \
+    || die "herdr is the resolved cockpit but no herdr window is open and this build's 'herdr workspace --help' advertises no 'create' — nothing can bring one up to host the role tabs (tried: herdr workspace create --label $label); re-run with --cockpit tmux"
+  out="$(herdr workspace create --label "$label" 2>&1)" \
+    || die "herdr is the resolved cockpit but no herdr window is open and 'herdr workspace create --label $label' failed to bring one up: $out; re-run with --cockpit tmux"
+  wsid="$(python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d["result"]["workspace"]["workspace_id"])
+except Exception:
+    pass
+' <<<"$out")"
+  [[ -n "$wsid" ]] \
+    || die "herdr is the resolved cockpit but 'herdr workspace create --label $label' did not return a workspace_id — nothing can host the role tabs: $out; re-run with --cockpit tmux"
+  tab_id="$(python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d["result"]["tab"]["tab_id"])
+except Exception:
+    pass
+' <<<"$out")"
+  printf '%s|%s\n' "$wsid" "$tab_id"
+}
+
+up_herdr(){
+  local cfg="$1" roles="$2"
+  help_has create herdr tab \
+    || die "herdr is the resolved cockpit but this build's 'herdr tab --help' advertises no 'create' — nothing can host a role window; re-run with --cockpit tmux"
+  help_has run herdr pane \
+    || die "herdr is the resolved cockpit but this build's 'herdr pane --help' advertises no 'run' — nothing can execute the role command in a tab; re-run with --cockpit tmux"
+  help_has list herdr workspace \
+    || die "herdr is the resolved cockpit but this build's 'herdr workspace --help' advertises no 'list' — cannot tell whether a herdr window is already open to host the role tabs; re-run with --cockpit tmux"
+  local new_wsid="" new_default_tab="" started=""
+  if [[ -z "$(herdr_window_id)" ]]; then
+    started="$(herdr_start_window "${CELL}-${FIRST_NAME}")"
+    new_wsid="${started%%|*}"
+    new_default_tab="${started#*|}"
+    echo "[cell] no herdr window was open — started one"
+  fi
+  herdr_window "${CELL}-${FIRST_NAME}" "$FIRST_CMD" "$new_wsid"
+  local role
+  for role in $roles; do
+    herdr_window "${CELL}-${role}" "$(role_cmd "$role" "$cfg")" "$new_wsid"
+    # Same stagger as the tmux arm: the role windows share one .git and one fetch lock.
+    sleep 2
+  done
+  # The freshly-created workspace's own default tab is never wanted — drop it now that the
+  # workspace holds the cell's own labelled tabs too (safe: see herdr_start_window above).
+  [[ -n "$new_default_tab" ]] && { herdr tab close "$new_default_tab" >/dev/null 2>&1 || true; }
+  echo "[cell] $CELL up in herdr: ${CELL}-${FIRST_NAME} +$roles (config=$cfg)"
+  echo "[cell] each window is the tab labelled <cell>-<role>   ·   down: cellctl down $CELL"
+}
+
+# ---------------------------------------------------------------- orca arm
+# Two shapes. Live: one terminal per role under the cell directory, running the same
+# `cellctl desk` command every other cockpit runs. Scheduled (--automate): one automation per
+# role on the given trigger, fronted by an exit-code precheck — `cellctl check <cell>`, which is
+# exit-code honest (0 when every precondition holds, 1 when one does not), so a tick on a cell
+# that is not fit to boot launches no model at all.
+#
+# Orca's CLI moves fast and its create-a-terminal surface is not the same on every build, so the
+# verb and its flags are probed from `--help` and an absent one is reported with the exact
+# command to run by hand — never guessed at.
+orca_by_hand(){
+  local why="$1" cfg="$2" roles="$3" role
+  echo "NOTICE: $why" >&2
+  echo "NOTICE: open these by hand (one terminal each, in $CELL_DIR):" >&2
+  for role in $roles; do echo "  $(role_cmd "$role" "$cfg")" >&2; done
+  die "orca is the resolved cockpit but this build cannot be driven to open the windows — the commands above are the whole of what a cockpit runs, and --cockpit tmux opens them for you"
+}
+
+orca_terminal_verb(){
+  local v; for v in create new open start run; do
+    help_has "$v" orca terminal && { printf '%s\n' "$v"; return 0; }
+  done
+  return 1
+}
+
+up_orca(){
+  local cfg="$1" roles="$2" automate="$3"
+  [[ -n "$automate" ]] && { orca_automate "$roles" "$automate"; return 0; }
+  local verb; verb="$(orca_terminal_verb)" \
+    || orca_by_hand "'orca terminal --help' advertises no create-like subcommand on this build" "$cfg" "$roles"
+  local h; h="$(orca terminal "$verb" --help 2>&1 || true)"
+  local cmdflag cwdflag nameflag wtflag=""
+  cmdflag="$(first_flag "$h" --command --cmd --exec --run)" \
+    || orca_by_hand "'orca terminal $verb --help' advertises no flag that carries a command" "$cfg" "$roles"
+  # A real orca's create-a-terminal flag for "where" is `--worktree <selector>`, not a bare path —
+  # confirmed live it takes `path:<abs path>` (its documented selector form: `--worktree
+  # path:/projects/myapp`), and that selector 404s (`selector_not_found`) until the path has been
+  # registered with `orca repo add --path <dir>` at least once (also confirmed live; `repo add` is
+  # idempotent — a second call on the same path is a harmless `ok`). `--cwd`/`--path`/`--directory`
+  # are kept as a fallback for a future/alternate orca build that takes a bare directory instead.
+  # Orca registers GIT REPOSITORIES only ("Not a valid git repository: <dir>" otherwise). The cell
+  # directory is config, not a checkout, so the cell's own checkout ($CELL_REPO) is what gets
+  # registered and selected; the role commands are absolute and carry the cell name themselves.
+  local orca_dir="${CELL_REPO:-$CELL_DIR}"
+  wtflag="$(first_flag "$h" --worktree)" || wtflag=""
+  if [[ -n "$wtflag" ]]; then
+    help_has add orca repo && { orca repo add --path "$orca_dir" >/dev/null 2>&1 \
+      || echo "NOTICE: 'orca repo add --path $orca_dir' failed — terminal create below may 404 with selector_not_found until $orca_dir is registered by hand ('orca repo add --path $orca_dir')" >&2; }
+  else
+    cwdflag="$(first_flag "$h" --cwd --path --directory)" || cwdflag=""
+  fi
+  nameflag="$(first_flag "$h" --name --title --label)" || nameflag=""
+  [[ -n "$wtflag" || -n "${cwdflag:-}" ]] \
+    || echo "NOTICE: 'orca terminal $verb' advertises no working-directory flag — the terminals open wherever orca puts them; the command itself is absolute either way" >&2
+  local role
+  for role in $roles; do
+    local -a args=(terminal "$verb")
+    if [[ -n "$wtflag" ]]; then args+=("$wtflag" "path:$orca_dir")
+    elif [[ -n "${cwdflag:-}" ]]; then args+=("$cwdflag" "$orca_dir")
+    fi
+    [[ -n "$nameflag" ]] && args+=("$nameflag" "${CELL}-${role}")
+    args+=("$cmdflag" "$(role_cmd "$role" "$cfg")")
+    orca "${args[@]}" >/dev/null 2>&1 \
+      || echo "NOTICE: 'orca ${args[*]}' failed — run it by hand: $(role_cmd "$role" "$cfg")" >&2
+    sleep 2
+  done
+  echo "[cell] $CELL up in orca: one terminal per role ($roles), config=$cfg"
+  echo "[cell] the first window's command is not opened in orca — run it yourself if you want it: $FIRST_CMD"
+  echo "[cell] down: cellctl down $CELL"
+}
+
+orca_automate(){
+  local roles="$1" trigger="$2"
+  local h; h="$(orca automations create --help 2>&1 || true)"
+  local f
+  for f in --name --repo --trigger --precheck --prompt; do
+    first_flag "$h" "$f" >/dev/null \
+      || die "orca --automate needs '$f' on 'orca automations create', and this build's help does not advertise it — the precheck-fronted schedule is the whole point of the shape, so it is not approximated"
+  done
+  local provider=""; provider="$(first_flag "$h" --provider --agent)" || provider=""
+  echo "NOTICE: a scheduled run is launched by orca, not by this script — it runs the role skill in a worktree orca cuts, so it does NOT carry the cell's shim PATH, DESK_ROOTS or pinned model. Use the live-terminal shape (drop --automate) where those matter." >&2
+  local role
+  for role in $roles; do
+    local -a args=(automations create --name "${CELL}-${role}" --repo "path:$CELL_REPO"
+                   --trigger "$trigger" --precheck "$SELF check $CELL" --prompt "/assay:$role")
+    [[ -n "$provider" ]] && args+=("$provider" claude)
+    orca "${args[@]}" >/dev/null 2>&1 \
+      || echo "NOTICE: 'orca ${args[*]}' failed — create that automation by hand" >&2
+  done
+  echo "[cell] $CELL scheduled in orca: one automation per role ($roles) on '$trigger', precheck '$SELF check $CELL'"
+  echo "[cell] a precheck that exits non-zero records a skipped run and launches no model"
+}
+
+# ---------------------------------------------------------------- down
+cmd_down(){
+  load_cell "$1"; shift
+  if [[ "$CELL_KIND" == "container" ]]; then
+    [[ $# == 0 ]] || die "container down does not accept host cockpit or deskd flags"
+    container_run down
+    return $?
+  fi
+  if [[ "$CELL_KIND" == "scrubbed" ]]; then
+    [[ $# == 0 ]] || die "scrubbed down does not accept host cockpit or deskd flags"
+    local sockpath="$CELL_DIR/run/tmux.sock" sessname="${CELL}-cell"
+    if [[ -S "$sockpath" ]] && tmux -S "$sockpath" has-session -t "$sessname" 2>/dev/null; then
+      tmux -S "$sockpath" kill-session -t "$sessname"
+      echo "[cell] $sessname killed (private socket)"
+    else
+      echo "[cell] no session $sessname"
+    fi
+    # The lock is cleared here — never on the harness process's own exit — and the worktrees
+    # under <cell>/worktrees/ are kept, exactly like every other kind's `down`.
+    rm -rf "$CELL_DIR/run/lock.d"
+    return 0
+  fi
+  local keep=0 cockpit_flag=""
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --keep-deskd) keep=1; shift;;
+    --cockpit) cockpit_flag="${2:?--cockpit needs a value (auto|tmux|herdr|orca)}"; shift 2;;
+    --*) die "down: unknown flag $1";;
+    *) die "down: unexpected argument '$1'";;
+  esac; done
+  cockpit_want "$cockpit_flag"
+  if resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC"; then
+    echo "[cockpit] $COCKPIT ($COCKPIT_WHY)"
+  else
+    echo "[cockpit] unresolved: $COCKPIT_ERR — tearing down the tmux session and this cell's deskd only" >&2
+    COCKPIT=tmux
+  fi
+  # The tmux session is torn down whichever cockpit is resolved now: a cell brought up in tmux and
+  # taken down after another cockpit was installed must still stop, and a `kill-session` on a name
+  # that does not exist is a no-op, not an error.
+  if tmux has-session -t "$SESSION" 2>/dev/null; then
+    tmux kill-session -t "$SESSION"; echo "[cell] $SESSION killed"
+  else
+    echo "[cell] no session $SESSION"
+  fi
+  case "$COCKPIT" in
+    herdr) down_herdr ;;
+    orca)  down_orca ;;
+  esac
+  if [[ "$keep" == "0" && "$DESKD" == "1" ]]; then
+    if pkill -f "deskd --config $CELLS_CONFIG" 2>/dev/null; then echo "[cell] deskd stopped"; else echo "[cell] no deskd for this cell running"; fi
+  fi
+}
+
+# A cockpit closes what it opened only where it offers a verb for it. Where it does not, the
+# windows are NAMED so they can be closed by hand — never left unsaid.
+# herdr_tab_id_for_label <label> — the tab_id `herdr tab list` reports for this label, or nothing.
+# `herdr tab close` takes a positional <tab_id> — verified live it advertises no `--label` at
+# all — so closing "the tab labelled <cell>-<role>" is a list-then-match, not a one-shot flag.
+herdr_tab_id_for_label(){
+  local label="$1"
+  herdr tab list 2>/dev/null | python3 -c '
+import sys, json
+try: d = json.load(sys.stdin)
+except Exception: sys.exit(0)
+label = sys.argv[1]
+for t in d.get("result", {}).get("tabs", []):
+    if t.get("label") == label:
+        print(t.get("tab_id")); break
+' "$label" 2>/dev/null
+}
+
+down_herdr(){
+  local roles; roles="$(up_roles 0)"
+  help_has close herdr tab || {
+    echo "[cell] this herdr build advertises no 'tab close' — close these tabs by hand:"
+    local r; for r in cell $roles; do echo "  ${CELL}-${r}"; done
+    return
+  }
+  local label tid total=0 closed=0
+  for label in "${CELL}-${FIRST_NAME:-cell}" $(for r in $roles; do echo "${CELL}-${r}"; done); do
+    total=$((total+1))
+    tid="$(herdr_tab_id_for_label "$label")"
+    [[ -n "$tid" ]] && herdr tab close "$tid" >/dev/null 2>&1 && closed=$((closed+1))
+  done
+  echo "[cell] herdr: closed $closed/$total tabs ('herdr tab list' → tab_id by label → 'herdr tab close <tab_id>')"
+}
+
+down_orca(){
+  local roles r; roles="$(up_roles 0)"
+  # `orca terminal close --worktree <selector> --all` stops every terminal orca owns for that
+  # worktree in one call — verified live against real orca that `--worktree path:<dir>` is a valid
+  # selector (the `up_orca` arm registers `$CELL_REPO` via `orca repo add` before ever creating a
+  # terminal there), so this is a real close, not a by-hand notice, whenever the build advertises it.
+  local h; h="$(orca terminal close --help 2>&1 || true)"
+  local wtflag allflag
+  wtflag="$(first_flag "$h" --worktree)" || wtflag=""
+  allflag="$(first_flag "$h" --all)" || allflag=""
+  if [[ -n "$wtflag" && -n "$allflag" ]]; then
+    if orca terminal close "$wtflag" "path:${CELL_REPO:-$CELL_DIR}" "$allflag" >/dev/null 2>&1; then
+      echo "[cell] orca: closed every terminal for ${CELL_REPO:-$CELL_DIR} ('orca terminal close $wtflag path:${CELL_REPO:-$CELL_DIR} $allflag')"
+    else
+      echo "[cell] 'orca terminal close $wtflag path:${CELL_REPO:-$CELL_DIR} $allflag' failed — close the ${CELL}-<role> terminals by hand:" >&2
+      for r in cell $roles; do echo "  ${CELL}-${r}"; done
+    fi
+  else
+    echo "[cell] this orca build advertises no worktree-scoped terminal close — close the ${CELL}-<role> terminals by hand ('orca terminal list --worktree path:${CELL_REPO:-$CELL_DIR}'):"
+    for r in cell $roles; do echo "  ${CELL}-${r}"; done
+  fi
+  # Scheduled automations OUTLIVE a `down` on purpose: `up --automate` is the run-while-away
+  # shape, and taking the windows down is not the same act as cancelling the schedule. They are
+  # named here so cancelling is one command away.
+  if help_has delete orca automations; then
+    echo "[cell] scheduled automations are NOT removed by down — cancel with: orca automations delete --name ${CELL}-<role>"
+  else
+    echo "[cell] scheduled automations are NOT removed by down — cancel the ${CELL}-<role> automations in orca"
+  fi
+}
+
+cmd_new(){
+  # --help before anything else, so `cellctl new --help` prints the kind- and forge-aware usage
+  # (which marks --deskd-app-pem as github-only) rather than dying on a missing cell name or flag.
+  local a
+  for a in "$@"; do [[ "$a" == "-h" || "$a" == "--help" ]] && usage 0; done
+  # DESK_APP_ID is the default because `cellctl deskd` reads the CELL home's apps.env, and cell
+  # homes name their Apps by generic role. Override only if this cell's apps.env names it otherwise.
+  #
+  # The cell name is a POSITIONAL that may appear anywhere among the flags (`new <cell> --forge …`
+  # is the common form, but the flags parse in any order). It is captured as the one bare token so
+  # that a missing CUSTODY input is diagnosed before a missing cell name — the forge-custody
+  # validation is the property the negative-path Verify rows assert, and it must fire whether or
+  # not a cell name was given.
+  local kind="k8s" forge="github" cell="" repo="" yaml="" orgs="" pem="" idvar="DESK_APP_ID" port=8787
+  local group="" gitlab_api_base="" token_store="" roots="" roles="$ROLES_DEFAULT" launcher="" roles_set=0
+  local repo_slug=""
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --kind) kind="$2"; shift 2;;
+    --launcher) launcher="${2:?--launcher needs an absolute executable}"; shift 2;;
+    --forge) forge="$2"; shift 2;;
+    --repo) repo="$2"; shift 2;; --cells-yaml) yaml="$2"; shift 2;; --orgs) orgs="$2"; shift 2;;
+    --repo-slug) repo_slug="${2:?--repo-slug needs a value (<owner>/<repo>)}"; shift 2;;
+    --deskd-app-pem) pem="$2"; shift 2;; --deskd-app-id-var) idvar="$2"; shift 2;; --port) port="$2"; shift 2;;
+    --group) group="$2"; shift 2;; --gitlab-api-base) gitlab_api_base="$2"; shift 2;;
+    --gitlab-token-store) token_store="$2"; shift 2;;
+    --roots) roots="$2"; shift 2;; --roles) roles="$2"; roles_set=1; shift 2;;
+    --*) die "new: unknown flag $1";;
+    *) [[ -z "$cell" ]] || die "new: unexpected extra argument '$1' (the cell name is '$cell')"; cell="$1"; shift;;
+  esac; done
+  if [[ "$kind" == "container" ]]; then
+    [[ "$roles_set" == "1" ]] || roles=the-desk
+    [[ -z "$yaml$orgs$pem$group$token_store" ]] || die "container new does not accept host credential or deskd configuration"
+    new_container "$cell" "$repo" "$launcher" "$roles" "$roots"
+    return
+  fi
+  if [[ "$kind" == "scrubbed" ]]; then
+    [[ -z "$yaml$orgs$pem$group$token_store$launcher" ]] || die "scrubbed new does not accept host credential, deskd or container-launcher configuration"
+    new_scrubbed "$cell" "$repo" "$repo_slug" "$roots" "$roles"
+    return
+  fi
+  [[ -z "$launcher" ]] || die "--launcher is only valid for --kind container"
+  case "$kind" in k8s) ;; house) new_house "$cell" "$repo" "$roots" "$roles" "$port"; return;; *) die "new: --kind must be k8s, house, container or scrubbed, got '$kind'";; esac
+  case "$forge" in github|gitlab) ;; *) die "new: --forge must be github or gitlab, got '$forge'";; esac
+  # Common requirements on BOTH forges.
+  [[ -n "$repo" && -n "$yaml" ]] || die "new: --repo and --cells-yaml are required (both forges)"
+  # Forge-specific custody inputs, asserted BEFORE the cell-name / yaml-is-a-file tests, so a
+  # missing custody input names ITSELF — and so the GitHub App requirement never fires on a GitLab
+  # cell, and the GitLab custody requirement never fires on a GitHub one.
+  if [[ "$forge" == "github" ]]; then
+    [[ -n "$orgs" && -n "$pem" ]] \
+      || die "new: on the github path --orgs and --deskd-app-pem are required (the App mints per-org installation tokens)"
+  else
+    [[ -n "$group" ]] \
+      || die "new: on the gitlab path --group is required (the GitLab group this cell reads); the role token store (gitlab-<role>.token) is a custody hand step, NOT an App PEM"
+  fi
+  [[ -n "$cell" ]] || die "new: a cell name is required (cellctl new <cell> …)"
+  [[ -f "$yaml" ]] || die "new: --cells-yaml is not a file: $yaml"
+  [[ -z "$roots" ]] || roots_valid "$roots" || die "new: --roots is malformed"
+  local d="$CELLS_ROOT/$cell"; [[ -e "$d" ]] && die "$d already exists"
+  mkdir -p "$d/home/.config/assay" "$d/bin" "$d/index" "$d/worktrees"
+  cp "$yaml" "$d/cells-$cell.yaml"
+  [[ -e "$HOME/.gitconfig" ]] && ln -s "$HOME/.gitconfig" "$d/home/.gitconfig"
+  chmod 700 "$d/home" "$d/home/.config" "$d/home/.config/assay"
+  local github_host="${GITHUB_HOST:-github.com}"
+  # CELL_ROOTS is optional on a k8s cell; when given it is written so every role window boots
+  # with DESK_ROOTS exported rather than on the verbs' compiled placeholder topology.
+  local roots_line="# CELL_ROOTS=<owner>/<repo>=<abs path>,...   (exported as DESK_ROOTS at boot; unset = placeholder topology)"
+  [[ -z "$roots" ]] || roots_line="CELL_ROOTS=$roots"
+  if [[ "$forge" == "github" ]]; then
+    # The gh CLI config is a GitHub custody artifact; link it only on a github cell.
+    [[ -e "$HOME/.config/gh" ]] && ln -s "$HOME/.config/gh" "$d/home/.config/gh"
+    # The endpoint is derived from the host, never spelled as a literal in this script (so the
+    # host-literal grep stays at zero); it expands INTO the generated cell.env below.
+    local forge_api_base="https://api.$github_host"
+    cat > "$d/cell.env" <<EOF
+# cellctl cell.env — $cell (k8s, github, scaffolded $(date -u +%F))
+CELL=$cell
+CELL_KIND=k8s
+CELL_FORGE=github
+CELL_REPO=$repo
+$roots_line
+CELLS_CONFIG=$d/cells-$cell.yaml
+FORGE_API_BASE=$forge_api_base
+DESKD_ADDR=127.0.0.1:$port
+DESKD_INDEX=$d/index/index.db
+DESKD_APP_PEM=$pem
+DESKD_APP_ID_VAR=$idvar
+ORGS=$orgs
+ROLES="$roles"
+# The cockpit \`cellctl up\` opens the role windows in: auto (herdr if on PATH, else orca if on
+# PATH and its desktop app answers, else tmux) | tmux | herdr | orca. Only the SURFACE changes.
+CELL_COCKPIT=auto
+# Pinned models (values \`claude --model\` accepts); the CLI default is never used.
+DESK_MODEL_DEFAULT=sonnet
+DESK_MODEL_the_desk=fable
+# The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
+# overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
+CELL_HARNESS=claude
+# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two
+# DESK_MODEL_* lines above are Claude-only and are never read on --harness codex. Absent here,
+# a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:
+# CODEX_MODEL_default=gpt-5.6-terra
+# CODEX_MODEL_the_desk=gpt-5.6-terra
+EOF
+    cat > "$d/README.md" <<EOF
+# $cell cell (github) — scaffolded by cellctl
+
+Four steps remain. Each is a custody act — it moves key material or states who this cell trusts —
+so \`cellctl new\` does not do them for you. Then run \`cellctl check $cell\`.
+
+1. \`home/.config/assay/roster.env\` — THIS cell's roster: \`ASSAY_TRUSTED_LOGINS\`,
+   \`ASSAY_BLESS_LOGIN\`, \`ASSAY_TRUSTED_BOT_SLUGS\` with forge-qualified \`role=github:<slug>:<id>\`
+   bindings to THIS cell's Apps (the forge-qualified grammar), \`ASSAY_REPO_FORGES\` binding
+   the cell's repos to \`github\`, and \`ASSAY_ALLOWED_REPOS\` / \`ASSAY_SCAN_REPOS\` naming the
+   cell's repos ONLY. Start from another cell's file as a template and replace every App — a
+   copied binding points this cell's writes at another cell's identity.
+2. \`home/.config/assay/apps.env\` — the cell's App ids under the generic role names
+   (\`$idvar\`, \`REVIEWER_APP_ID\`, …), plus one \`<role>-app.pem\` SYMLINK per role into your real
+   config home (\`$REAL_CONFIG_HOME\`). Symlink, never copy: one custody location for the private
+   keys. If this cell names its deskd App id something other than \`$idvar\`, set
+   \`DESKD_APP_ID_VAR\` in \`cell.env\` to the name used here.
+3. \`bin/deskd\`, \`bin/deskcli\` — from the desk console (build its \`cmd/deskd\` and
+   \`cmd/deskcli\`), or from the release tarball if your channel ships them.
+4. \`cells-$cell.yaml\` — the cell's slice of \`cells.yaml\` and nothing else; it must validate on
+   its own, and no other cell's repos may appear in it.
+
+Then: \`CELL_ATTENDED=1 cellctl deskd $cell\` once, and \`cellctl up $cell\` for the cockpit.
+EOF
+  else
+    local forge_api_base="${gitlab_api_base:-https://gitlab.com/api/v4}"
+    local store="${token_store:-$d/home/.config/assay}"
+    cat > "$d/cell.env" <<EOF
+# cellctl cell.env — $cell (k8s, gitlab, scaffolded $(date -u +%F))
+CELL=$cell
+CELL_KIND=k8s
+CELL_FORGE=gitlab
+CELL_REPO=$repo
+$roots_line
+CELLS_CONFIG=$d/cells-$cell.yaml
+FORGE_API_BASE=$forge_api_base
+GITLAB_API_BASE=$forge_api_base
+GITLAB_GROUP=$group
+GITLAB_TOKEN_STORE=$store
+DESKD_GITLAB_TOKEN_FILE=$store/gitlab-deskd.token
+DESKD_ADDR=127.0.0.1:$port
+DESKD_INDEX=$d/index/index.db
+ROLES="$roles"
+# The cockpit \`cellctl up\` opens the role windows in: auto (herdr if on PATH, else orca if on
+# PATH and its desktop app answers, else tmux) | tmux | herdr | orca. Only the SURFACE changes.
+CELL_COCKPIT=auto
+# Pinned models (values \`claude --model\` accepts); the CLI default is never used.
+DESK_MODEL_DEFAULT=sonnet
+DESK_MODEL_the_desk=fable
+# The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
+# overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
+CELL_HARNESS=claude
+# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two
+# DESK_MODEL_* lines above are Claude-only and are never read on --harness codex. Absent here,
+# a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:
+# CODEX_MODEL_default=gpt-5.6-terra
+# CODEX_MODEL_the_desk=gpt-5.6-terra
+EOF
+    cat > "$d/README.md" <<EOF
+# $cell cell (gitlab) — scaffolded by cellctl
+
+Four steps remain. Each is a custody act — it moves credential material or states who this cell
+trusts — so \`cellctl new\` does not do them for you, and it MINTS NOTHING: GitLab role tokens
+rotate by hand. Then run \`cellctl check $cell\`.
+
+1. \`home/.config/assay/roster.env\` — THIS cell's roster: \`ASSAY_TRUSTED_LOGINS\`,
+   \`ASSAY_BLESS_LOGIN\`, \`ASSAY_TRUSTED_BOT_SLUGS\` with forge-qualified \`role=gitlab:<slug>:<id>\`
+   bindings to THIS cell's bot accounts (the forge-qualified grammar — a bare slug is refused,
+   and a \`gitlab:\` entry against a github repo is refused), \`ASSAY_REPO_FORGES\` binding the
+   cell's repos to \`gitlab\`, and \`ASSAY_ALLOWED_REPOS\` / \`ASSAY_SCAN_REPOS\` naming the cell's
+   repos ONLY. A cell stood up for GitLab MUST write forge-qualified entries or the verbs refuse.
+2. The role token store — \`$store\` — holds one \`gitlab-<role>.token\` file per role (0600),
+   provisioned BY HAND: \`gitlab-deskd.token\` for the read daemon, plus one per write role
+   (\`gitlab-worker.token\`, \`gitlab-reviewer.token\`, …) per the role-token custody binding.
+   These are GitLab group/project access tokens you mint in GitLab and place here yourself;
+   cellctl never mints or rotates them. Lock each to 0600.
+3. \`bin/deskd\`, \`bin/deskcli\` — from the desk console (build its \`cmd/deskd\` and
+   \`cmd/deskcli\`), or from the release tarball if your channel ships them.
+4. \`cells-$cell.yaml\` — the cell's slice of \`cells.yaml\` and nothing else; it must validate on
+   its own, and no other cell's repos may appear in it.
+
+The GitLab endpoint is \`$forge_api_base\` (\`cell.env\`: \`FORGE_API_BASE\` / \`GITLAB_API_BASE\`);
+the group this cell reads is \`$group\`. Then: \`CELL_ATTENDED=1 cellctl deskd $cell\` once, and
+\`cellctl up $cell\` for the cockpit.
+EOF
+  fi
+  echo "[new] scaffolded $d ($forge cell) — see $d/README.md for the hand steps"
+}
+
+# Registration only: no daemon, host checkout, credential directory or symlink.
+new_container(){
+  local cell="$1" repo="$2" launcher="$3" roles="$4" roots="$5" role
+  [[ "$cell" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]] || die "new: invalid container cell name"
+  [[ -n "$repo" ]] || die "container new needs --repo <repo-id>"
+  [[ "$launcher" == /* && -f "$launcher" && -x "$launcher" ]] || die "container new needs --launcher <absolute-executable>"
+  [[ -n "$roles" ]] || die "container new needs at least one role"
+  for role in $roles; do case "$role" in intake-desk|worker-desk|pr-review-desk|verify-desk|the-desk) ;; *) die "unknown container role '$role'";; esac; done
+  local d="$CELLS_ROOT/$cell"
+  [[ ! -e "$d" ]] || die "$d already exists (cellctl new never overwrites a cell)"
+  mkdir -p "$CELLS_ROOT"
+  mkdir -m 700 "$d"
+  {
+    printf '# Container cell registration; the launcher owns runtime custody.\n'
+    printf 'CELL=%q\nCELL_KIND=container\nCELL_REPO=%q\n' "$cell" "$repo"
+    printf 'CELL_CONTAINER_LAUNCHER=%q\nROLES=%q\nCELL_ROOTS=%q\n' "$launcher" "$roles" "$roots"
+    printf 'CELL_HARNESS=claude\nDESK_MODEL_DEFAULT=sonnet\nDESK_MODEL_the_desk=fable\nDESKD=0\n'
+  } > "$d/cell.env"
+  chmod 600 "$d/cell.env"
+  echo "[new] registered $d (container) — cellctl check $cell, then cellctl up $cell"
+}
+
+# new_house scaffolds a HOUSE cell: the operator's own desks on the operator's own laptop. There
+# is no custody act to leave for a hand step — the cell home's .config/assay IS the operator's
+# config home, reached by ONE directory symlink (roster, apps.env and the <role>-app.pem files
+# resolve exactly as they do for a hand boot), gh config and gitconfig are linked as on a k8s cell,
+# and nothing is copied. What the scaffold fixes is what a hand boot gets wrong: the stream-root
+# map (CELL_ROOTS → DESK_ROOTS), the per-role worktree, and the pinned model.
+new_house(){
+  local cell="$1" repo="$2" roots="$3" roles="$4" port="$5"
+  [[ -n "$repo" && -n "$roots" ]] || die "new: --kind house needs --repo <checkout> and --roots '<owner>/<repo>=<abs path>,...'"
+  [[ -n "$cell" ]] || die "new: a cell name is required (cellctl new <cell> --kind house …)"
+  roots_valid "$roots" || die "new: --roots is malformed"
+  git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || die "new: --repo is not a git checkout: $repo"
+  local e p; for e in ${roots//,/ }; do p="${e#*=}"; [[ -d "$p" ]] || die "new: --roots path does not exist: $p (${e%%=*})"; done
+  [[ -d "$REAL_CONFIG_HOME" ]] || die "new: operator config home not found: $REAL_CONFIG_HOME (ASSAY_CONFIG_HOME to point elsewhere)"
+  local d="$CELLS_ROOT/$cell"; [[ -e "$d" ]] && die "$d already exists (cellctl new never overwrites a cell — remove it yourself, or pick another name)"
+  mkdir -p "$d/home/.config" "$d/worktrees" "$d/shim"
+  ln -s "$REAL_CONFIG_HOME" "$d/home/.config/assay"
+  [[ -e "$HOME/.config/gh" ]] && ln -s "$HOME/.config/gh" "$d/home/.config/gh"
+  [[ -e "$HOME/.gitconfig" ]] && ln -s "$HOME/.gitconfig" "$d/home/.gitconfig"
+  chmod 700 "$d/home" "$d/home/.config"
+  local github_host="${GITHUB_HOST:-github.com}"
+  cat > "$d/cell.env" <<EOF
+# cellctl cell.env — $cell (house, scaffolded $(date -u +%F))
+CELL=$cell
+CELL_KIND=house
+CELL_FORGE=github
+CELL_REPO=$repo
+# The stream-root map, exported to every role window as DESK_ROOTS.
+CELL_ROOTS=$roots
+FORGE_API_BASE=https://api.$github_host
+ROLES="$roles"
+# The cockpit \`cellctl up\` opens the role windows in: auto (herdr if on PATH, else orca if on
+# PATH and its desktop app answers, else tmux) | tmux | herdr | orca. Only the SURFACE changes.
+CELL_COCKPIT=auto
+# Pinned models (values \`claude --model\` accepts); the CLI default is never used.
+DESK_MODEL_DEFAULT=sonnet
+DESK_MODEL_the_desk=fable
+# The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
+# overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
+CELL_HARNESS=claude
+# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two
+# DESK_MODEL_* lines above are Claude-only and are never read on --harness codex. Absent here,
+# a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:
+# CODEX_MODEL_default=gpt-5.6-terra
+# CODEX_MODEL_the_desk=gpt-5.6-terra
+# Provider (optional; unset = Anthropic). \`--model\` alone only changes the model NAME — a
+# non-Anthropic model additionally needs its endpoint and credential switched, which a provider
+# does: uncomment and name a provider (any short slug), then declare its endpoint and the NAME of
+# an env var THIS SHELL will carry the token in (never the token value itself):
+# CELL_PROVIDER=zai
+# CELL_PROVIDER_ZAI_BASE_URL=https://api.z.ai/api/anthropic
+# CELL_PROVIDER_ZAI_TOKEN_ENV=ZAI_API_KEY
+# --provider <name> on \`cellctl desk\`/\`up\` overrides this for one run without editing cell.env.
+# No deskd on a house cell. DESKD=1 requires one, as on a k8s cell (then fill bin/deskd,
+# bin/deskcli and a cells-$cell.yaml slice, and stand it with CELL_ATTENDED=1 cellctl deskd $cell).
+DESKD=0
+DESKD_ADDR=127.0.0.1:$port
+EOF
+  cat > "$d/README.md" <<EOF
+# $cell cell (house) — scaffolded by cellctl
+
+A house cell is your own desks, on this laptop, booted the way a cell boots: one LOCKED
+worktree per role off a fresh \`origin/main\` of \`$repo\`, the stream-root map exported as
+\`DESK_ROOTS\`, the model pinned per role, and the roster beacon (\`DESK_SESSION\`) stamped with
+the boot time. Nothing was copied: \`home/.config/assay\` is a symlink to \`$REAL_CONFIG_HOME\`,
+so the desk verbs read the roster and App keys you already have.
+
+- \`cellctl check $cell\` — prove the preconditions (git checkout, roster parses, every root
+  carries \`docs/streams/\`, desk verbs installed, assay plugin enabled).
+- \`cellctl desk $cell <role>\` — one role window; \`cellctl up $cell\` — every role, in the
+  cockpit \`CELL_COCKPIT\` resolves to (auto: herdr, else a reachable orca, else tmux).
+- Edit \`cell.env\` to change \`CELL_ROOTS\`, \`ROLES\` or a pinned model.
+EOF
+  echo "[new] scaffolded $d (house cell) — cellctl check $cell, then cellctl desk $cell <role>"
+}
+
+# new_scrubbed scaffolds a SCRUBBED cell: the opposite custody shape from a house cell (#new_house
+# above) — nothing is linked from the operator's real config home, because the whole point is that
+# nothing of it reaches the harness. What IS created is a REAL (never symlinked) config home, a
+# roster scoped to exactly one repo, and the directories the composed launch needs
+# (`tmp/`, `run/`). Two hand steps remain, printed in the README: copy the role PEM(s) in as
+# regular 0600 files, and log the harness in under the cell's own home.
+new_scrubbed(){
+  local cell="$1" repo="$2" slug="$3" roots="$4" roles="$5"
+  [[ -n "$repo" ]] || die "new: --kind scrubbed needs --repo <checkout>"
+  [[ -n "$slug" ]] || die "new: --kind scrubbed needs --repo-slug <owner/repo>"
+  [[ "$slug" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]] || die "new: --repo-slug must be <owner>/<repo>, got '$slug'"
+  [[ -n "$cell" ]] || die "new: a cell name is required (cellctl new <cell> --kind scrubbed …)"
+  git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || die "new: --repo is not a git checkout: $repo"
+  [[ -z "$roots" ]] || roots_valid "$roots" || die "new: --roots is malformed"
+  local d="$CELLS_ROOT/$cell"; [[ -e "$d" ]] && die "$d already exists (cellctl new never overwrites a cell — remove it yourself, or pick another name)"
+  mkdir -p "$d/home/.config/assay" "$d/home/.config/gh" "$d/worktrees" "$d/tmp" "$d/run"
+  : > "$d/home/.gitconfig"
+  chmod 700 "$d/home" "$d/home/.config" "$d/home/.config/assay" "$d/tmp"
+  cat > "$d/home/.config/assay/roster.env" <<EOF
+# scrubbed cell roster — this cell is scoped to exactly one repo; a different or additional
+# ASSAY_ALLOWED_REPOS entry is a MISS at \`cellctl check\` by design.
+ASSAY_ALLOWED_REPOS=$slug
+# Fill in by hand: ASSAY_TRUSTED_LOGINS, ASSAY_BLESS_LOGIN, ASSAY_TRUSTED_BOT_SLUGS (this cell's
+# own App bindings — never copied from another cell), ASSAY_REPO_FORGES, ASSAY_SCAN_REPOS.
+EOF
+  chmod 600 "$d/home/.config/assay/roster.env"
+  local roots_line="# CELL_ROOTS=<owner>/<repo>=<abs path>,...   (exported as DESK_ROOTS at boot; unset = placeholder topology)"
+  [[ -z "$roots" ]] || roots_line="CELL_ROOTS=$roots"
+  cat > "$d/cell.env" <<EOF
+# cellctl cell.env — $cell (scrubbed, scaffolded $(date -u +%F))
+CELL=$cell
+CELL_KIND=scrubbed
+CELL_REPO=$repo
+CELL_REPO_SLUG=$slug
+$roots_line
+ROLES="$roles"
+# The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`smoke\`
+# \`--harness\` overrides it for one run without touching this line.
+CELL_HARNESS=claude
+# Pinned models (values \`claude --model\` accepts); the CLI default is never used.
+DESK_MODEL_DEFAULT=sonnet
+DESK_MODEL_the_desk=fable
+# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — absent
+# here, a role falls back to the tier map (docs/cellctl.md's Pinned models section):
+# CODEX_MODEL_default=gpt-5.6-terra
+# CODEX_MODEL_the_desk=gpt-5.6-terra
+# Scrubbed cells never run a host deskd.
+DESKD=0
+EOF
+  cat > "$d/README.md" <<EOF
+# $cell cell (scrubbed) — scaffolded by cellctl
+
+A host-local harness cell whose environment is COMPOSED, not inherited: the launch runs
+\`env -i\` plus an explicit allowlist — nothing from your shell leaks in (no real \`HOME\`, no
+SSH agent, no forge/model credentials, no cluster access; \`KUBECONFIG=/dev/null\` is part of
+the composed set). Two hand steps remain before \`cellctl check $cell\`:
+
+1. Copy the role App PEM(s) you need into \`home/.config/assay/\` as REGULAR, mode-0600 files
+   (\`<role>-app.pem\`) — never a symlink into your real config home. If this cell mints tokens,
+   add a new \`home/.config/assay/apps.env\` naming the App ids and \`<ROLE>_PEM=\` paths.
+2. Log the harness in UNDER THE CELL HOME — nothing is copied from your real harness login:
+   - codex:  \`CODEX_HOME=$d/home/.codex codex login\`
+   - claude: \`CLAUDE_CONFIG_DIR=$d/home/.claude claude\` (log in inside that session)
+
+Then: \`cellctl check $cell\`, \`cellctl smoke $cell\` (a one-shot, tool-free, read-only readiness
+probe — the harness answers \`READY\` or the verb says what it said instead), \`cellctl desk $cell
+<role>\`, \`cellctl status $cell\`, \`cellctl down $cell\`. The cell is single-occupancy: one
+private-socket tmux session (\`run/tmux.sock\`) and one session lock (\`run/lock.d\`) at a time —
+a second \`desk\` while one is live is refused, naming the live pid and session.
+EOF
+  echo "[new] scaffolded $d (scrubbed cell) — see $d/README.md for the hand steps"
+}
+
+# Every verb below that can take more than one trailing token forwards with the `shift; ... "${@:2}"`
+# shape `up` originated: it hands the callee exactly the arguments given, never a phantom empty
+# positional. `desk` and `down` used to pass a fixed `"${3:-}"` (`down` also `"${4:-}"`) instead —
+# an empty string IS an argument once quoted, so a bare `cellctl down <cell>` handed cmd_down one
+# ("") it could not tell from a real stray token, and `cmd_down "${2:?cell}" "${3:-}"` silently
+# dropped a `--cockpit <value>` pair's value beyond position 3 besides. `check` is left alone: its
+# second parameter really is a single optional positional (a config dir), not a flag set, so the
+# fixed-arity form does not have this failure mode.
+case "${1:-}" in
+  model-policy) shift; model_policy "$@" ;;
+  ls) cmd_ls ;;
+  check) cmd_check "${2:?cell}" "${3:-}" ;;
+  deskd) cmd_deskd "${2:?cell}" ;;
+  desk) shift; cmd_desk "${1:?cell}" "${@:2}" ;;
+  smoke) shift; cmd_smoke "${1:?cell}" "${@:2}" ;;
+  status) cmd_status "${2:?cell}" ;;
+  up) shift; cmd_up "${1:?cell}" "${@:2}" ;;
+  down) shift; cmd_down "${1:?cell}" "${@:2}" ;;
+  new) shift; cmd_new "$@" ;;
+  set) shift; cmd_set "${1:?cell}" "${@:2}" ;;
+  show) shift; cmd_show "${1:?cell}" "${@:2}" ;;
+  -h|--help|"") usage 0 ;;
+  *) die "unknown verb '$1' (try --help)" ;;
+esac

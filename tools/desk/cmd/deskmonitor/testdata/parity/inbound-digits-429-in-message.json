@@ -1,0 +1,123 @@
+{
+ "description": "Parity case class (#1640 review F1 round 3): the oracle's is_ratelimit greps only gh's stderr for `secondary rate limit|(http )?429|too many requests`, so the verb decides on the same text — the forge's status line, message and errors[] items — and on nothing else. THE BARE 429 ALTERNATIVE: `(http )?429` matches the digits anywhere in the text, so a primary-quota 403 whose installation id contains 429 stops the oracle's cycle. The verb reproduces that faithfully rather than diverging; retiring the oracle is where it gets fixed, for both.",
+ "kind": "inbound",
+ "env": {},
+ "repos": [
+  "example-org/tracker",
+  "example-org/agents",
+  "example-other/site"
+ ],
+ "cycles": [
+  {
+   "note": "arm",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-other/site": {
+     "issues": [
+      {
+       "number": 20,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "agents' primary-quota 403 names installation 4290; the cycle stops",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "status": 403,
+     "message": "API rate limit exceeded for installation ID 4290."
+    },
+    "example-other/site": {
+     "issues": [
+      {
+       "number": 20,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 21,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "recovery reports only what moved against retained baselines",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 3,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 11,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-other/site": {
+     "issues": [
+      {
+       "number": 20,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 21,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 22,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

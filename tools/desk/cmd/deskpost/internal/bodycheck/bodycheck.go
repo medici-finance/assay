@@ -1,13 +1,14 @@
-// Package bodycheck is deskpost's structural body validator. It layers
-// deskpost-specific structure on top of deskkit's shared secret scan — it does NOT
-// reimplement the secret scan; the shared scan comes from deskkit. The division of labour:
+// Package bodycheck is deskpost's structural body validator: the size cap (≤16 KiB) shared
+// by both verbs, PLUS the review verdict schema (a `## ` heading + a verdict line) that ONLY
+// review bodies carry.
 //
-//   - deskkit.BodyCheck  — the shared secret scan (token/PEM/JWT/AKIA/sops/high-entropy
-//     runs, 40/64-char lowercase-hex git SHAs exempted). Reused verbatim; every desk
-//     tool that writes to GitHub runs it.
-//   - this package       — the size cap (≤16 KiB) shared by both verbs, PLUS the review
-//     verdict schema (a `## ` heading + a verdict line) that ONLY review bodies carry.
-//     Plain comments get size + secret scan only.
+// It does NOT scan content. What a body may publish — credentials, the impersonated-ruling
+// guard, personal data and, on a public target, the self-containment and withheld-identifier
+// layers — is decided by deskkit's ONE outbound-write check (desktools-v2/10), which deskpost
+// runs as a pre-flight on the target repo before any network call and which the checking
+// Forge (and the raw GitHub client's two text writes) re-run at the write itself. The
+// credential arms that used to be delegated from here (the shared body scan) run inside that
+// check unchanged.
 //
 // The verdict schema is defined here and mirrored in tools/desk/README.md
 // (verdict-format section); the security-review
@@ -41,15 +42,14 @@ var h2Heading = regexp.MustCompile(`(?m)^##[ \t]+\S`)
 // the greppable record deskpost's ready gate (and deskboard) parse.
 var verdictLine = regexp.MustCompile(`(?mi)^[ \t]*(Verdict|Security-Review):[ \t]*(approve|request-changes|pass|fail)[ \t]*$`)
 
-// sizeAndScan applies the two checks common to every outward body: the size cap and the
-// shared deskkit secret scan. Returned errors are already *deskkit.DeskError (exit 5).
-func sizeAndScan(body []byte) error {
+// sizeCap applies the check common to every outward body: the size cap. Returned errors are
+// already *deskkit.DeskError (exit 5).
+func sizeCap(body []byte) error {
 	if len(body) > MaxBodyBytes {
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: body is %d bytes; the limit is %d (16 KiB)", len(body), MaxBodyBytes))
 	}
-	// Delegate the secret scan to deskkit — NOT reimplemented here.
-	return deskkit.BodyCheck(body)
+	return nil
 }
 
 // schemaTool and schemaCheckFlag name the verb these body checks belong to and its offline
@@ -60,16 +60,17 @@ const (
 	schemaCheckFlag = "--dry-run"
 )
 
-// Comment validates a plain PR comment body: size cap + secret scan only (no structure).
+// Comment validates a plain PR comment body: the size cap only (no structure). Its content is
+// the outbound-write check's (package doc).
 func Comment(body []byte) error {
-	return sizeAndScan(body)
+	return sizeCap(body)
 }
 
-// Review validates a review body: size cap + secret scan, PLUS the verdict schema — a
+// Review validates a review body: the size cap, PLUS the verdict schema — a
 // `## ` heading and a verdict line. A structurally-incomplete review body is refused
 // (exit 5) so a verdict never lands without its machine-checkable record.
 func Review(body []byte) error {
-	if err := sizeAndScan(body); err != nil {
+	if err := sizeCap(body); err != nil {
 		return err
 	}
 	s := string(body)

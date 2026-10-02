@@ -1,6 +1,6 @@
 package deskkit
 
-// principal.go — the `On-behalf-of: human:<login>` composite-identity trailer, and the
+// principal.go — the `On-behalf-of: human:<who>` composite-identity trailer, and the
 // resolver every writing desk verb calls before it acts.
 //
 // WHAT THIS IS. Every desk role shares one GitHub App across every session that ever
@@ -166,7 +166,7 @@ func (p Principal) Value() string {
 	return v
 }
 
-// Line renders the full trailer line — `On-behalf-of: human:<login>[ mode:unattended]`
+// Line renders the full trailer line — `On-behalf-of: human:<subject>[ mode:unattended]`
 // — suitable as a git commit trailer, a final line on an issue/PR comment, or (with the
 // prefix stripped by the caller) the `principal` field of a verify-outcomes.jsonl row.
 // Empty when unresolved.

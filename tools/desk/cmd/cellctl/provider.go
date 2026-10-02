@@ -1,6 +1,9 @@
 package main
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // providerVar is the cell.env variable name for a provider's BASE_URL/TOKEN_ENV/MODEL, e.g.
 // providerVar("zai", "BASE_URL") → CELL_PROVIDER_ZAI_BASE_URL. The name is upper-cased and its
@@ -55,21 +58,32 @@ type Provider struct {
 }
 
 func (c *Cell) resolveProvider(name string) Provider {
+	p, err := c.providerCredential(name)
+	if err != nil {
+		die("%s", err)
+	}
+	return p
+}
+
+// providerCredential is resolveProvider without the exit: the same three refusals, returned as
+// an error so a preflight loop (`up`/`check` under a model policy) can report every role before
+// deciding, instead of dying on the first.
+func (c *Cell) providerCredential(name string) (Provider, error) {
 	var p Provider
 	baseVar, tokenVar := providerVar(name, "BASE_URL"), providerVar(name, "TOKEN_ENV")
 	p.BaseURL, _ = c.providerValue(name, "BASE_URL")
 	p.TokenEnv, _ = c.providerValue(name, "TOKEN_ENV")
 	p.Model, _ = c.providerValue(name, "MODEL")
 	if p.BaseURL == "" {
-		die("cell.env: %s is not set — declare it for provider '%s' (e.g. %s=https://api.%s.example)", baseVar, name, baseVar, name)
+		return p, fmt.Errorf("cell.env: %s is not set — declare it for provider '%s' (e.g. %s=https://api.%s.example)", baseVar, name, baseVar, name)
 	}
 	if p.TokenEnv == "" {
 		up := strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
-		die("cell.env: %s is not set — declare it for provider '%s' as the NAME of an env var carrying the token (never the token itself), e.g. %s=%s_API_KEY", tokenVar, name, tokenVar, up)
+		return p, fmt.Errorf("cell.env: %s is not set — declare it for provider '%s' as the NAME of an env var carrying the token (never the token itself), e.g. %s=%s_API_KEY", tokenVar, name, tokenVar, up)
 	}
 	p.TokenVal = c.Env.Get(p.TokenEnv)
 	if p.TokenVal == "" {
-		die("provider '%s': $%s (named by %s) is not set in this shell — export it before running cellctl, cellctl does not manage credential values", name, p.TokenEnv, tokenVar)
+		return p, fmt.Errorf("provider '%s': $%s (named by %s) is not set in this shell — export it before running cellctl, cellctl does not manage credential values", name, p.TokenEnv, tokenVar)
 	}
-	return p
+	return p, nil
 }

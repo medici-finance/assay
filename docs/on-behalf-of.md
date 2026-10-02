@@ -37,7 +37,7 @@ It appears in three shapes, depending on the surface:
 |---|---|
 | A git commit (an Evidence row) | a trailing line in the commit message, blank-line separated |
 | An issue or PR comment / body | a trailing line in the body, blank-line separated |
-| A witness Runner cell (`## Evidence` table, `statusgen verifyrun`) | `on-behalf-of human:<login>` inside the cell's trailing parenthetical, e.g. `assay-verifier-app[bot] @ a1b2c3d (on-behalf-of human:ada) (ci-env)` |
+| A witness Runner cell (`## Evidence` table, `statusgen verifyrun`) | `on-behalf-of human:<who>` inside the cell's trailing parenthetical, e.g. `assay-verifier-app[bot] @ a1b2c3d (on-behalf-of human:ada) (ci-env)` |
 
 The witness-cell form omits the `On-behalf-of:` key (it is a table cell, not a
 line-oriented record) and is never suffixed with `mode:unattended` — `verifiedrunneragree.go`'s
@@ -65,6 +65,18 @@ that cannot be withdrawn. Every entry point therefore takes the target repo as a
 is going, and a package test (`TestEveryWriteVerbNamesItsTarget`) reads the verbs' source
 to hold that.
 
+**One renderer per module, held by a class guard.** The visibility split only protects a
+public repo if nothing ELSE renders the trailer. Two structural tests parse their module's
+non-test source and fail on any second route: `TestOnBehalfOfRenderedOnlyThroughTheResolver`
+(`tools/desk/internal/deskkit/principal_class_test.go`) and its statusgen twin
+`TestWitnessOnBehalfOfRenderedOnlyThroughTheRenderer` (`statusgen/principal_class_test.go`).
+Each reports a string literal that spells the trailer or the witness marker outside the one
+renderer file, a use of `OnBehalfOfPrefix` to compose one, and a literal repo handed to the
+resolver, and each holds every resolver call site to a reviewed allow-list keyed by file,
+function and repo argument. A new writer is a new allow-list line, added after confirming its
+repo argument is the repo the write lands in. Both guards carry a control test that plants
+one instance of each shape and must see it.
+
 **When the roster carries no neutral name** for the blessing authority, a public-target
 write **refuses** (exit 5) naming the `ASSAY_HUMAN_LOGIN_MAP` entry to add. The two
 alternatives were both rejected: stamping the login is the disclosure this split exists to
@@ -72,11 +84,18 @@ prevent, and writing with no trailer at all would retire the presence guarantee 
 check downstream is built on. The refusal text does not quote the login it is declining to
 disclose.
 
-**Not yet covered: the witness annotation.** The `statusgen` witness cell (below) is a
-separate module's read-only mirror and still renders the login. It lands in a brief's
-`## Evidence` table, so on a public repo it carries the same exposure; closing it means
-teaching the attribution lint to accept the neutral name as well, which is a change to the
-lint's contract rather than to this resolver, and is tracked separately.
+**The witness annotation follows the same split.** The `statusgen` witness cell (below)
+lands in a brief's `## Evidence` table, a file in the repository, so it names the neutral
+form too on any repo the roster does not state is `:private`. Its target is the `repo:`
+frontmatter of the brief's own stream README; a stream that states no repo takes the
+neutral form (fail-closed, the same direction as above). A git remote never selects the
+form, because a worktree's origin can name the checkout it was cut from rather than the repo
+the brief lands in. It can only veto the login form. Suppose the README states a `:private`
+repo but the checkout's origin resolves to a repo the roster does not state is `:private`,
+such as a stream moved between repos with its frontmatter left behind. The witness then
+takes the neutral form. An unreadable remote leaves the README's answer as it is. With no
+neutral name configured the witness writes no annotation rather than the login
+(statusgen never blocks a witness write; the lint then reports the unannotated row).
 
 ## Resolution
 
@@ -179,8 +198,12 @@ differently — read both before assuming either governs the other:
   missing-annotation signal (as PROBLEM or NOTICE per the row's own date), because
   detecting the *absence* of an annotation needs no human map to check against.
 - **Unrecognised annotation.** An Evidence row whose on-behalf-of annotation names a
-  login **not** in this repo's roster human map (`ASSAY_HUMAN_LOGIN_MAP` / the bless
-  login's own entry). This check IS roster-gated: with **no roster configured at all**,
+  principal the roster does not recognise: neither a login in its human set (the bless
+  login's own entry and the trusted humans) nor a neutral name `ASSAY_HUMAN_LOGIN_MAP` maps
+  onto such a login. Both forms are accepted because the writers stamp either, by target
+  visibility; a name is accepted only through the map, never as a free token. The
+  corroboration lanes strip the on-behalf-of marker before looking for sign-offs under the
+  same rule (a configured login or a configured name, whole and login-shaped). This check IS roster-gated: with **no roster configured at all**,
   it has no human map to validate against and says nothing (a repo that has not adopted
   the roster gets no signal from a check it cannot answer, rather than a manufactured
   problem). It carries no cutover — an annotation that exists at all was written by a
@@ -189,6 +212,37 @@ differently — read both before assuming either governs the other:
 
 A human-run row (`human:<name>`) is never checked by either shape — it already names its
 principal directly.
+
+## A relay is never a human's authority
+
+The corroboration lanes strip the on-behalf-of marker, so a relay needs nothing on the PR
+to corroborate. The offline readers of a human-authority key therefore remove the whole
+relay, marker and principal together, before they look for a `human:` token. Those keys are
+a finding's `authorized-by:`, its `parked-by:` (both the register gate and the alarm
+layer's shelving check), a deploy record's `authority:` and `rollback-approver:`, and a
+decision record's `decided-by:` (the design-approval authority). A value such as
+`authorized-by: on-behalf-of human:<name>` authorizes nothing, whichever form of the human
+it names. Without this removal, an App could write that line and pass both lanes without
+the human ever acting. A `human:<name>` written outside the relay authorizes offline and
+is gated online, the same as before.
+
+A decision record's online lane re-reads `decided-by:` from the record on disk for every
+record a PR adds or edits. That lane covers the same file set the register lint and the
+design gate read: every `.md` under `docs/streams/decisions/` except the README, whatever
+its file name. The design gate resolves a brief's `design:` by the record's frontmatter
+`id:`, so a record whose file name is not `DR-<slug>.md` is still one the gate accepts,
+and the online lane must see it.
+
+A README's Verified/Reviewed cells keep their existing reader. The online stamp lane
+strips a relay there too, so it is not what catches one. The branch lint's human-stamp
+gain guard is: it reads the raw cell and refuses any `human:<x>` a branch adds, relay
+included, so a relay in a cell still needs the human's own act.
+
+The tests are in `statusgen/principal_authority_test.go`.
+`TestOnlineExemptLineNeverAuthorizesOffline` pins the invariant that joins the two
+lanes: an added line the online lane records no stamp for never grants authority offline.
+It covers `decided-by:` in a record named `DR-<slug>.md` and in one that is not.
+`TestReadmeCellRelayCaughtByGainGuard` pins the README-cell dependency on the gain guard.
 
 ## What this does *not* prove
 

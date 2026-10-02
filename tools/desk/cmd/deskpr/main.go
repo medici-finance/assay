@@ -28,11 +28,11 @@ const usage = `deskpr — push a feature branch and open (or update) its pull re
 USAGE:
   deskpr create --title T (--body-file F | --body-min B) [--base main] [--check]
   deskpr update [--check]
-  deskpr edit --body-file F [--title T] [--check]
+  deskpr edit --body-file F [--title T] [--pr N] [--check]
   deskpr --version
 
 --check runs every LOCAL gate the write path runs — flag validity, branch state, the
-Brief:/Issue: trailer, the secret scan, the public-repo self-containment scan, the
+Brief:/Authors:/Issue: trailer, the secret scan, the public-repo self-containment scan, the
 push-transport gate — and stops BEFORE minting a token or opening any connection: exit 0
 only when every local gate passed, a failing gate returns its own refusal with its own
 exit code, so --check is a gate run early, never a preview that can disagree with the real
@@ -48,13 +48,38 @@ non-default branch. deskpr update pushes a follow-up to an EXISTING open PR on t
 branch — draft or ready-flipped. deskpr edit replaces that same open PR's body, and
 optionally its title, and pushes nothing: it refuses when the branch has no OPEN PR
 (which is also how a merged or closed one is refused), and it runs the trailer,
-secret-scan, self-containment, rate-limit and public-repo gates create runs. There is
+secret-scan, self-containment, rate-limit and public-repo gates create runs. edit --pr N
+names the PR instead of finding it by branch, for a worktree that cannot be on the PR's
+head branch (git allows one worktree per branch): it is admitted when the worktree's
+branch IS the PR's head branch or its HEAD commit IS EXACTLY the PR's head commit (any
+branch name, or a detached HEAD); a HEAD with unpushed commits on top of the head commit
+is refused until they are pushed, and a merged or closed PR is refused. deskreply applies
+the same own-PR rule. There is
 no ready/close/merge verb, and no verb can pass --force to git. Preconditions are
 re-verified in-tool; on any state it cannot positively verify it refuses.
 
-deskpr edit cannot change the body's link trailer. "Brief: <stream>/<NN>" / "Issue: #<N>"
-is the derived board's edge from the PR to its work item: the replacement body must carry
-exactly one, and when the PR's current body already has one, the replacement's must match
+LINK TRAILER. Every PR body carries exactly ONE link line, and which one says what the
+PR does to its work item:
+  Brief: <stream>/<NN>             the PR DELIVERS that brief (implements it). Also accepted:
+                                   <stream>:<NN>, <repo>:<stream>:<NN>, <cell>:<repo>:<stream>:<NN>.
+  Authors: <stream>/<NN>[, ...]    the PR only AUTHORS (writes the files of) the listed briefs
+                                   and delivers none of them — a briefs-authoring PR (#1339).
+  Issue: #<N>                      issue-only work with no brief.
+Every brief named by Brief: or Authors: must resolve to docs/streams/<stream>/brief-<NN>-*.md
+under --root. Brief: is read as DELIVERY by the dispatcher's phantom check, the planner and
+the derived board, so an authoring PR must not carry it: create REFUSES a Brief: line when
+the branch only authors that brief (it adds the brief's file and touches nothing but stream
+board READMEs, brief files and changelog fragments) and names the Authors: line to use.
+The mirror refusal: create REFUSES an Authors: line unless the branch diff is authoring-only
+for EVERY listed id, which includes ADDING each listed brief's file. A diff with a rename is
+refused under Authors: (its authoring shape cannot be proven from this local read), while
+Brief: leaves such a diff alone. deskflip re-checks the same claim against the PR's
+forge-served diff at flip time: an Authors: PR whose complete diff is not authoring-only for
+every listed id needs a security review before it can flip.
+
+deskpr edit cannot change the body's link trailer. "Brief: <stream>/<NN>" /
+"Authors: <stream>/<NN>[, ...]" / "Issue: #<N>" is the derived board's edge from the PR
+to its work item: the replacement body must carry exactly one, and when the PR's current body already has one, the replacement's must match
 it. A PR whose current body has NO trailer may gain one — that is the pre-trailer
 migration deskpr update tells you to perform. Because a body edit moves no head SHA,
 edit also posts one short comment naming what changed, so a head-keyed review monitor
@@ -101,9 +126,11 @@ an ssh:// or git@host:path one AND this session presents a bot identity ($DESK_L
 resolving to a role App). An SSH push authenticates with whatever key this machine's agent
 holds — a human's — so the forge records the HUMAN as the branch author and the App's
 permission envelope is bypassed, however the commits are authored. The refusal names the
-config key, the url, the acting App and the one-line remedy. Fetch over SSH stays allowed:
-remote.origin.pushurl is what is read whenever it is set, so an SSH fetch url with an https
-push override passes. edit is NOT gated — it pushes nothing. With $DESK_LOOP unset the gate
+config key, the url, the acting App and the remedy. The url judged is the one git
+will push to — "git remote get-url --push --all origin", a local read with url.<base>.insteadOf
+and pushInsteadOf applied — so an https remote a rewrite rule turns into SSH is refused, and
+the refusal names the rule. Fetch over SSH stays allowed: an SSH fetch url with an https push
+override passes. edit is NOT gated — it pushes nothing. With $DESK_LOOP unset the gate
 is inert (a human pushes under their own key). An https push url with no App credential
 helper configured is a stderr NOTICE, never a refusal.
 

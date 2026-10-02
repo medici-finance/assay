@@ -83,7 +83,7 @@ This is configuration correctness, not containment of an agent that can execute 
 | 2 | check:ci | `bash tools/cellctl/tests/provider.test.sh` | exit 0; existing provider credential and override behavior preserved without policy |
 | 3 | check:ci | `bash tools/cellctl/tests/harness.test.sh` | exit 0; existing Claude/Codex launch behavior preserved without policy |
 | 4 | check:ci | `bash tools/cellctl/tests/model-namespace.test.sh && bash tools/cellctl/tests/model-override.test.sh && bash tools/cellctl/tests/cell-set.test.sh` | all three suites exit 0; no legacy pin, override or persistence regression |
-| 5 | check:ci | `bash -n tools/cellctl/cellctl` | exit 0 |
+| 5 | check:ci | `bash -n tools/cellctl/testdata/cellctl-shell-oracle.sh` | exit 0 |
 
 Pre-mortem → detection: aliases drift to a prohibited model: direct/child/allowlist negative
 cases in row 1. Wrong credential adapter: recorded mixed-provider exec in row 1. Effort
@@ -93,6 +93,79 @@ configuration checks; actual provider inference remains a rollout check, never a
 ## Evidence
 
 Implementation-session local tests recorded in the draft PR. Independent verification pending.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `python3 tools/cellctl/tests/model-policy.test.py` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 874d56de38a7 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `bash tools/cellctl/tests/provider.test.sh` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 874d56de38a7 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `bash tools/cellctl/tests/harness.test.sh` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 874d56de38a7 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `bash tools/cellctl/tests/model-namespace.test.sh && bash tools/cellctl/tests/model-override.test.sh && bash tools/cellctl/tests/cell-set.test.sh` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 874d56de38a7 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `bash -n tools/cellctl/cellctl` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 874d56de38a7 (on-behalf-of human:ian) (forge-identity) |
+
+Verifier notes (2026-09-27, assay-verifier-app[bot], non-implementer, merged main 874d56de38a7; implementing commit ef102f7f7, PR #1388). The witness above is could-not-run for every row because check:ci rows need the Linux network-off sandbox and this host is darwin. The same five commands were also run by hand on the host, in a scrubbed environment (env -i keeping only HOME, PATH, TMPDIR, USER, LANG; KUBECONFIG=/dev/null):
+
+- Row 1: exit 0. "Ran 17 tests ... OK". The named tests include test_desk_show_and_up_agree_on_mixed_providers, test_real_exec_argv_and_env, test_child_mapping_allowlist_and_hooks, test_direct_and_alias_requests, test_ban_cannot_be_removed_by_omitting_deny, test_unsupported_efforts and test_competing_allowlist_refuses_before_launch.
+- Row 2: exit 0. 76 ok lines, "provider.test.sh: OK". In the unscrubbed parent agent-session shell the same suite exits 1 with 2 FAILED. The failing checks are "no provider: ANTHROPIC_BASE_URL is NOT exported" and "ANTHROPIC_API_KEY is left alone and no model vars are exported". The recorded launch env showed the caller's own ANTHROPIC_BASE_URL and ANTHROPIC_MODEL values passed through unchanged, because the suite's baseline arm does not unset ambient ANTHROPIC_* variables. That is a test-hermeticity gap from before this brief (both assertions come from earlier provider work), not a regression from it. CI runners do not carry those variables.
+- Row 3: exit 0. "harness.test.sh: OK".
+- Row 4: exit 0. model-namespace, model-override and cell-set each print OK.
+- Row 5: exit 0 with no output.
+
+Risk-bearing value enumeration (diff scope: tools/cellctl/cellctl policy arm, tools/cellctl/examples/model-policy.json, plus the brief Deliverables). Risk metadata is present with every field "no", so no trigger fires. The enumeration is recorded anyway:
+
+1. built-in ban = ["*opus-5*", "*opus5*"] @ tools/cellctl/cellctl:740. This is the brief's only hard prohibition. Reversible.
+2. the-desk rule = refuse any model containing "opus" @ tools/cellctl/cellctl:810. Reversible.
+3. example deny = "*opus-5" @ tools/cellctl/examples/model-policy.json:4. Commit 647202b63 changed it from "*opus-5*". Reversible.
+4. example strong tier = "claude-opus-4-8[1m]" @ tools/cellctl/examples/model-policy.json:44. Reversible.
+5. alias map = {fable: top, opus: strong, sonnet: mid, haiku: fast} @ tools/cellctl/cellctl:742. Reversible.
+6. effort level sets = claude {low, medium, high, xhigh, max} and codex {minimal, low, medium, high, xhigh} @ tools/cellctl/cellctl:769. The GLM 5.3 and Kimi K3 restriction {low, high, max} is @ tools/cellctl/cellctl:773. Reversible.
+7. anthropic base URL = "https://api.anthropic.com" @ tools/cellctl/cellctl:835. Set in policy mode only. Reversible.
+
+Every entry is an operator configuration value. An edit and a new release undo any of them.
+
+RISK-VALUE: DERIVED. banned += ["*opus-5*", "*opus5*"] @ tools/cellctl/cellctl:740. The brief says "Prohibit Opus 5, including explicit child requests". The patterns are matched with fnmatchcase against the lowercased ID with the [1m] suffix removed, so they catch claude-opus-5, its [1m] form, its -5-0 and -5.0 forms, and the compact opus5 spelling. The resolver checks them for tier maps, for direct and alias requests, and for PreModelSwitch and child requests. Row 1's test_ban_cannot_be_removed_by_omitting_deny covers the omitted-deny case.
+
+RISK-VALUE: NAMED, NOT DERIVED. the-desk non-Opus rule @ tools/cellctl/cellctl:810, and the same ban's trailing wildcard at :740. The brief text does not state either rule. Current main's model policy doc says the prohibition ends at the end of the token, so Opus 5.5 (claude-opus-5-5) is allowed and the-desk has a version floor at Opus 5.5. That describes the Go launcher after 647202b63. The bash launcher still matches claude-opus-5-5 against "*opus-5*" and still refuses every Opus model for the-desk. Open question for the desk: are the bash launcher and the doc meant to agree? This does not fail any Verify row.
+
+Observations:
+- Task 5 (live release and a parent/child transcript inspection) is a rollout check. It is not in the Verify table, and this offline pass did not perform it.
+- The changelog fragment named in the Context file list was folded into CHANGELOG.md by the v1.0.16 changelog roll-up. That is the expected lifecycle, not a missing deliverable.
+
+VERIFY: PASS. All five rows exited 0 on the host in a scrubbed environment. The statusgen witness is could-not-run on darwin, so it needs a Linux-runner witness if the flip requires a machine witness.
+### Verification — 2026-09-30 (assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) (on-behalf-of human:ian)) — 2026-09-30 claude-opus-5-5-verifier
+
+Non-implementer verification on merged main b0088804294b8b68ad8d06f341e6f0fd9dd2637d, gate: model, all four risk answers no. First table: the `statusgen verifyrun` execution witness, landed verbatim; it ran on Linux (golang:1.25-bookworm pinned by digest, `--network none`, `unshare --net` available), statusgen built in-container from a clone pinned to this SHA. Second table: the hand run.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `python3 tools/cellctl/tests/model-policy.test.py` | fail exit=1 | sha256:4c715e5f784d | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| 2 | `bash tools/cellctl/tests/provider.test.sh` | pass exit=0 | sha256:fa9017b35232 | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| 3 | `bash tools/cellctl/tests/harness.test.sh` | fail exit=1 | sha256:edf9abd91704 | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| 4 | `bash tools/cellctl/tests/model-namespace.test.sh && bash tools/cellctl/tests/model-override.test.sh && bash tools/cellctl/tests/cell-set.test.sh` | fail exit=1 | sha256:cef9c18e8b1d | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| 5 | `bash -n tools/cellctl/testdata/cellctl-shell-oracle.sh` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `python3 tools/cellctl/tests/model-policy.test.py` | named tests pass, incl. mixed-provider show/up/desk agreement and recording-harness exec arguments | exit 1. "Ran 17 tests ... FAILED (failures=1)". 16 ok; test_real_exec_argv_and_env FAIL with "cellctl: desk: fetch of origin main in (fixture repo) failed and wrote no FETCH_HEAD — refusing to boot on a stale main" (launcher exit 3). Same result at the parent of 3be9befd7 is OK (17/17); at 3be9befd7 (#1853) it is FAILED (1), so #1853 broke the fixture. With the fixture's fetch stub changed to write FETCH_HEAD (throwaway clone), 17/17 OK incl. test_real_exec_argv_and_env and test_desk_show_and_up_agree_on_mixed_providers | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ b0088804294b (on-behalf-of human:ian) |
+| 2 | `bash tools/cellctl/tests/provider.test.sh` | exit 0; provider credential and override behavior preserved without policy | exit 0. "provider.test.sh: OK" | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ b0088804294b (on-behalf-of human:ian) |
+| 3 | `bash tools/cellctl/tests/harness.test.sh` | exit 0; Claude/Codex launch behavior preserved without policy | exit 0. "harness.test.sh: OK" (darwin host has tmux on PATH) | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ b0088804294b (on-behalf-of human:ian) |
+| 4 | `bash tools/cellctl/tests/model-namespace.test.sh && bash tools/cellctl/tests/model-override.test.sh && bash tools/cellctl/tests/cell-set.test.sh` | all three suites exit 0 | exit 0. "model-namespace.test.sh: OK", "model-override.test.sh: OK", "cell-set.test.sh: OK" (darwin host has tmux and herdr on PATH) | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ b0088804294b (on-behalf-of human:ian) |
+| 5 | `bash -n tools/cellctl/testdata/cellctl-shell-oracle.sh` | exit 0 | exit 0, no output | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ b0088804294b (on-behalf-of human:ian) |
+
+RISK-VALUE: DERIVED — builtin ban (oracle) banned += ["*opus-5*", "*opus5*"] @ tools/cellctl/testdata/cellctl-shell-oracle.sh:755 — the brief says "Prohibit Opus 5, including explicit child requests"; fnmatch on the lowercased, [1m]-stripped ID with a trailing wildcard catches every Opus 5.x spelling, and row 1's test_ban_cannot_be_removed_by_omitting_deny passes on both hosts. It over-covers (also refuses Opus 5.5), which is the safe direction for a prohibition.
+RISK-VALUE: NAMED, NOT DERIVED — builtin ban (shipped Go launcher) m.Banned += "*opus-5", "*opus5", "*opus-5-0", "*opus-5.0" @ tools/desk/cmd/cellctl/policy.go:252 — this set is NOT exercised by any Verify row (all rows run the bash oracle), and its completeness against every Opus 5.0 ID form was not derived; question #1937.
+RISK-VALUE: NAMED, NOT DERIVED — example strong tier "model": "claude-opus-4-8[1m]" @ tools/cellctl/examples/model-policy.json:44 and example deny "*opus-5" @ tools/cellctl/examples/model-policy.json:4 — matches the brief's "map the example Opus tier to 4.8"; operator-editable example, reversible, no further derivation attempted; question #1938.
+
+Notes:
+- BLOCKED. Hand rows 2-5 pass; row 1 fails on merged main because the suite's fetch stub writes no FETCH_HEAD, which the launcher refuses since #1853 (the parent of that commit passes 17/17; with a stub that writes FETCH_HEAD, 17/17 pass): a test-fixture regression, bug #1936. The Linux witness passes rows 2 and 5; rows 3 and 4 fail there only because the suites need host tmux (and herdr), a hermeticity gap in the rows as authored, tracked with the other row re-authors at #1927. `statusgen brief --check-verified` with a hypothetical flip exits 1 against main's Evidence and with this witness appended. Two RISK-VALUE lines are NAMED, NOT DERIVED (questions #1937 and #1938); the Verify table covers only the bash oracle, not the shipped Go launcher.
+- Grounded expectation was written before reading tests: opt-in CELL_MODEL_POLICY, example mapping Opus to 4.8, offline policy suite, legacy suites unchanged, docs updated. Main drift since authoring: the bash launcher moved to tools/cellctl/testdata/cellctl-shell-oracle.sh (#1739) and the shipped launcher is now the Go program tools/desk/cmd/cellctl, which carries its own policy implementation (policy.go, policy_enforce.go) and Go tests that port the oracle cases.
+- Row 1 is a check-definition failure: it fails as authored on darwin and Linux because #1853 (3be9befd7, "refuse to boot on a stale FETCH_HEAD after a failed fetch") removes FETCH_HEAD before the fetch, and the suite's fetch stub exits 0 without writing it. Bisected: parent of 3be9befd7 is 17/17 OK, 3be9befd7 is FAILED (1). The policy substance passes when the stub writes FETCH_HEAD (17/17 OK). No CI workflow runs tools/cellctl/tests, which is why the regression landed unnoticed. Fix belongs in the test fixture (the stub fetch should write FETCH_HEAD), not in the launcher.
+- Rows 3 and 4 are hermeticity gaps in the check definition: the suites depend on host tmux (and herdr for cell-set) being on PATH. They pass on darwin because this host has both installed, and pass on Linux with no-op stubs. As authored they fail on a clean Linux runner, so the check:ci witness cannot go green without either provisioning those tools in the runner or stubbing them inside the suites.
+- Main's Evidence row 5 records the pre-#1739 command; check-verified correctly treats it as stale.
+- The Verify table proves the bash oracle only. The shipped Go launcher diverges from the oracle on the Opus ban pattern set and on the-desk (version floor at Opus 5.5 vs refusing every Opus). The docs describe the Go behaviour. No Verify row covers the Go policy arm; worth a follow-up row (for example the Go package's policy tests) so the verified claim covers what ships.
+- Task 5 (release, enable, inspect a parent and child transcript) is a rollout check outside the Verify table; this offline pass did not perform it and makes no claim about live adoption.
+- No credentials were minted or used; no forge writes; claim not released.
+
+VERIFY: BLOCKED
 
 ## Review
 

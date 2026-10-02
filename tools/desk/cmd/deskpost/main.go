@@ -10,7 +10,8 @@
 //     form error, not a head mismatch: see headFormError) — a verdict never lands on
 //     unreviewed code;
 //   - the ready flip happens ONLY when the App has APPROVED at the CURRENT head, CI is
-//     green, and (for risk-classed PRs) a Security-Review: pass verdict exists at head;
+//     green, (for risk-classed PRs) a Security-Review: pass verdict exists at head, and the
+//     desk-decided condition deskflip enforces holds (deskkit.DeskDecidedRefusal, #1694);
 //   - the security verdict is its own verb and its own REVIEW (`security-review`), because
 //     the flip gate reads reviews and never comments — a comment-shaped pass is invisible
 //     to it (#513 / #438);
@@ -252,13 +253,18 @@ type postFlagVals struct {
 	dryRun  *bool
 	wait    *string
 	explain *bool
+	// applyOverride validates --force-scan-override and records the outbound-write check's
+	// context for this verb (deskkit.RegisterOutboundOverride).
+	applyOverride func() error
 }
 
 // addPostFlags registers the cross-verb modifiers on a verb's FlagSet. They are registered
 // identically on every mutating verb so a caller never has to remember which verb accepts
 // which — an unknown flag is a usage error (exit 2), not a silent ignore.
 func addPostFlags(fs *flag.FlagSet) postFlagVals {
+	apply, _ := deskkit.RegisterOutboundOverride(fs, "deskpost", fs.Name())
 	return postFlagVals{
+		applyOverride: apply,
 		dryRun: fs.Bool("dry-run", false,
 			"run every check and STOP before the write; exit 0, audited dryrun, charges neither meter"),
 		wait: fs.String("wait", "",
@@ -279,6 +285,10 @@ const maxWait = 90 * time.Minute
 
 func (v postFlagVals) resolve() (postOpts, bool) {
 	var o postOpts
+	if err := v.applyOverride(); err != nil {
+		fmt.Fprintln(stderr, "deskpost: "+err.Error())
+		return o, false
+	}
 	o.dryRun = *v.dryRun
 	o.explain = *v.explain
 	if *v.wait != "" {

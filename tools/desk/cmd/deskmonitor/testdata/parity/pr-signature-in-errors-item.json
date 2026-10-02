@@ -1,0 +1,146 @@
+{
+ "description": "Parity case class (#1640 review F1 round 3): the oracle's is_ratelimit greps only gh's stderr for `secondary rate limit|(http )?429|too many requests`, so the verb decides on the same text — the forge's status line, message and errors[] items — and on nothing else. ERRORS[] ITEMS: gh prints each errors[] string on its own line after the message, and the oracle's grep reads every line — a signature there stops the cycle; an unrelated item does not.",
+ "kind": "pr",
+ "env": {},
+ "repos": [
+  "example-org/tracker",
+  "example-org/agents",
+  "example-other/site"
+ ],
+ "cycles": [
+  {
+   "note": "arm",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "t1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 7,
+       "headRefOid": "a1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s1",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "agents answers 403 Forbidden with a secondary-limit errors[] item; the cycle stops",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "t2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "status": 403,
+     "message": "Forbidden",
+     "errors": [
+      "You have exceeded a secondary rate limit."
+     ]
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "agents answers 422 with an unrelated errors[] item; the cycle goes on",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "t3",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "status": 422,
+     "message": "Validation Failed",
+     "errors": [
+      "state is invalid"
+     ]
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s3",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "recovery reports only what moved against retained baselines",
+   "reads": {
+    "example-org/tracker": {
+     "prs": [
+      {
+       "number": 1,
+       "headRefOid": "t4",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "prs": [
+      {
+       "number": 7,
+       "headRefOid": "a2",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    },
+    "example-other/site": {
+     "prs": [
+      {
+       "number": 20,
+       "headRefOid": "s4",
+       "isDraft": false,
+       "mergeStateStatus": "CLEAN"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

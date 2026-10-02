@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -105,6 +106,449 @@ func codeSpan(cell string) string {
 		return strings.TrimSpace(rest)
 	}
 	return strings.TrimSpace(rest[:end])
+}
+
+// ---------------------------------------------------------------------------
+// The explicit command marker — `cmd: <command>` (issue #1805)
+// ---------------------------------------------------------------------------
+//
+// codeSpan's rule — "the command is the FIRST code span" — is right for the
+// cell shape the corpus mostly uses (a cell that is one code span, or one span
+// followed by a parenthetical). It is WRONG for a prose cell that mentions a
+// token before the command: "In `PublicRepoGate` (`repovis.go`) change … then
+// `cd tools/desk && go test …`" lifts `PublicRepoGate`, and the execution
+// witness runs THAT — exit 127, recorded could-not-run, and the check the row
+// was written for is never witnessed on any runner.
+//
+// The fix is an explicit marker the author writes, never a guess the tool
+// makes: a code span whose content starts `cmd:` names the command, wherever it
+// sits in the cell, and verifyCommand prefers it over the first span:
+//
+//	| 3 | In `PublicRepoGate` change the check, then `cmd: cd tools/desk && go test ./internal/deskkit/ -count=1` | exit 1 |
+//
+// WHY `cmd:` AND NOT `run:`. `run:` is the GitHub Actions step key, and this
+// corpus quotes workflow lines inside Verify prose (a planted `run: echo …`
+// fixture line, "never inside `run:`"). A `run:` marker would turn every such
+// quotation into the command the witness executes — the #1805 defect again, by a
+// different door. `cmd:` appears in no code span in the corpus and is no CI
+// system's step key.
+//
+// WHY A MARKER RATHER THAN A SMARTER GUESS. Choosing "the span that looks most
+// like a command" would make the executed text a function of a heuristic that
+// can change under a row nobody edited — and the witness binds a recorded run to
+// the command text, so the command must be a property of what the author wrote.
+// The heuristic (proseLedCommandWhy) never selects WHICH command runs. It
+// decides only WHETHER the first span may run: the lint ADVISES the author to add
+// the marker, and a row it flags prose-led is not executed — verifyrun records it
+// could-not-run, the transcribe-verdict check:ci lane refuses it, and --check
+// does not audit an old pass witness on it as pass (#1808 review).
+//
+// COMPATIBILITY. A cell with no marked span lifts exactly what codeSpan lifts
+// today, byte for byte, so no row already on main changes command. A row the
+// lint flags prose-led does change outcome on its next run: whatever its witness
+// recorded, the new witness is could-not-run (no flagged row on main records a
+// pass). A cell that is one code span needs no marker; the marker is for cells
+// that mix prose and spans.
+const verifyCommandMarker = "cmd:"
+
+// codeSpans returns the content of every inline code span in cell, in order,
+// each trimmed. It uses codeSpan's own delimiter rule (a run of N backticks
+// closes at the next run of N) so its FIRST element is what codeSpan lifts
+// whenever the cell's first span is terminated. An unterminated span ends the
+// scan: its tail is a shredded cell (rule 8), not a span.
+func codeSpans(cell string) []string {
+	var out []string
+	s := cell
+	for {
+		start := strings.Index(s, "`")
+		if start < 0 {
+			return out
+		}
+		ticks := 0
+		for start+ticks < len(s) && s[start+ticks] == '`' {
+			ticks++
+		}
+		fence := strings.Repeat("`", ticks)
+		rest := s[start+ticks:]
+		end := strings.Index(rest, fence)
+		if end < 0 {
+			return out
+		}
+		out = append(out, strings.TrimSpace(rest[:end]))
+		s = rest[end+ticks:]
+	}
+}
+
+// proseOutsideSpans returns the cell's text with every terminated code span
+// removed, trimmed — "" for a cell that is nothing but code spans.
+func proseOutsideSpans(cell string) string {
+	var b strings.Builder
+	s := cell
+	for {
+		start := strings.Index(s, "`")
+		if start < 0 {
+			b.WriteString(s)
+			break
+		}
+		b.WriteString(s[:start])
+		ticks := 0
+		for start+ticks < len(s) && s[start+ticks] == '`' {
+			ticks++
+		}
+		rest := s[start+ticks:]
+		end := strings.Index(rest, strings.Repeat("`", ticks))
+		if end < 0 {
+			b.WriteString(s[start:])
+			break
+		}
+		s = rest[end+ticks:]
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// renderedCodeSpans returns every inline code span a Markdown renderer
+// DISPLAYS in cell, in order, each trimmed and with how it sits in the cell —
+// and plain=false when the cell's prose carries a construct that can hide text
+// from the rendered page or re-pair its backticks.
+//
+// It exists because the marker must never select text the reader of the
+// rendered Verify table cannot see (#1808 review, SR-1808-1). codeSpans reads
+// raw backticks, so a `cmd:` span inside an HTML comment, or between two
+// backslash-escaped backticks, would count as a marker there although the page
+// shows no code at all. This scan follows CommonMark instead:
+//
+//   - outside a span, a backslash escapes the ASCII punctuation after it (so
+//     "\`" is a literal backtick, never a span delimiter);
+//   - a run of N backticks is closed only by the next run of EXACTLY N, and an
+//     opener with no closer is literal text, not a span.
+//
+// Rather than model every construct that can carry hidden text (an HTML
+// comment, a tag's attribute, a link title, an image's alt text, a footnote), a
+// cell whose prose outside code spans carries an unescaped `<` or `[` is not
+// plain. Nor is one whose prose carries a `$` written any way — bare,
+// backslash-escaped, or as a character reference such as `&#36;`: GitHub
+// renders a span wrapped in dollar signs as math, not code, and it applies
+// math after escapes and references are resolved. Any character reference in
+// prose makes the cell not plain, whatever it names.
+//
+// A code span also has to stand clear of the prose around it. GitHub's
+// extended autolinks run through a backtick, and math, strikethrough and
+// references glue onto one, so a span whose opening run is fused to the text
+// before it may not render as the span this scan paired — and when one opener
+// is swallowed, every later pairing shifts. So a cell is not plain when any
+// span's opening run is preceded by anything but whitespace, the start of the
+// cell, or a run of `(` that itself follows whitespace or the start. The
+// marker span itself is held tighter (markedCommands): its opening run must
+// follow whitespace or the start of the cell, and its closing run must be at
+// the end of the cell or followed by whitespace or plain punctuation.
+//
+// markedCommands honours no marker in a cell that is not plain, and the lint
+// says why (ruleCmdMarkerNotHonoured). A cell with no marker never reaches this
+// rule's consequences — verifyCommand falls back to codeSpan exactly as before.
+//
+// The same rule is implemented for tools/desk's executors in
+// tools/desk/internal/verifycmd; both are held to one shared vector table,
+// testdata/cmd-marker-vectors.json.
+func renderedCodeSpans(cell string) (spans []renderedSpan, plain bool) {
+	plain = true
+	i := 0
+	for i < len(cell) {
+		c := cell[i]
+		switch {
+		case c == '\\' && i+1 < len(cell) && isASCIIPunct(cell[i+1]):
+			if cell[i+1] == '$' {
+				plain = false // an escaped dollar still opens math on GitHub
+			}
+			i += 2
+		case c == '<' || c == '[':
+			plain = false
+			i++
+		case c == '$':
+			plain = false
+			i++
+		case c == '&' && charRefRe.MatchString(cell[i:]):
+			plain = false
+			i++
+		case c == '`':
+			n := backtickRun(cell, i)
+			closeAt := -1
+			for j := i + n; j < len(cell); {
+				if cell[j] != '`' {
+					j++
+					continue
+				}
+				m := backtickRun(cell, j)
+				if m == n {
+					closeAt = j
+					break
+				}
+				j += m
+			}
+			if closeAt < 0 {
+				i += n // an unclosed opener is literal backticks
+				continue
+			}
+			if !parenLed(cell, i) {
+				plain = false // the opener is fused to the prose before it
+			}
+			spans = append(spans, renderedSpan{
+				text:     strings.TrimSpace(cell[i+n : closeAt]),
+				spaceLed: i == 0 || isSpaceByte(cell[i-1]),
+				cleanEnd: cleanSpanEnd(cell, closeAt+n),
+			})
+			i = closeAt + n
+		default:
+			i++
+		}
+	}
+	return spans, plain
+}
+
+// renderedSpan is one code span renderedCodeSpans found: its trimmed content,
+// and how it sits in the cell. spaceLed: the opening run is at the start of
+// the cell or right after whitespace. cleanEnd: the closing run is at the end
+// of the cell or right before whitespace or plain punctuation.
+type renderedSpan struct {
+	text     string
+	spaceLed bool
+	cleanEnd bool
+}
+
+// charRefRe matches a character reference at the start of a string — a named
+// one (`&dollar;`), a decimal one (`&#36;`) or a hex one (`&#x24;`).
+var charRefRe = regexp.MustCompile(`^&(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z][A-Za-z0-9]{1,31});`)
+
+// isSpaceByte reports whether b is a space or a tab.
+func isSpaceByte(b byte) bool { return b == ' ' || b == '\t' }
+
+// parenLed reports whether the backtick run at cell[i] follows whitespace or
+// the start of the cell, allowing a run of `(` between them: "(`x`)" stands
+// clear of the prose, "a/`x`" does not.
+func parenLed(cell string, i int) bool {
+	j := i
+	for j > 0 && cell[j-1] == '(' {
+		j--
+	}
+	return j == 0 || isSpaceByte(cell[j-1])
+}
+
+// cleanSpanEnd reports whether a code span's closing run, ending just before
+// cell[k], is at the end of the cell or followed by whitespace or plain
+// punctuation.
+func cleanSpanEnd(cell string, k int) bool {
+	return k == len(cell) || isSpaceByte(cell[k]) || strings.IndexByte(".,;:!?)", cell[k]) >= 0
+}
+
+// backtickRun is the length of the run of backticks starting at s[i].
+func backtickRun(s string, i int) int {
+	n := 0
+	for i+n < len(s) && s[i+n] == '`' {
+		n++
+	}
+	return n
+}
+
+// isASCIIPunct reports whether b is ASCII punctuation — the set a CommonMark
+// backslash escapes.
+func isASCIIPunct(b byte) bool {
+	return strings.IndexByte("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", b) >= 0
+}
+
+// markerContent returns the command a span names when it is a `cmd:` marker,
+// or ok=false. A span that is the bare marker with nothing after it is a
+// MENTION of the marker (as in this repo's own docs), not a marked command.
+// The match is a case-sensitive PREFIX: `CMD:` and `echo cmd: x` are not
+// markers.
+func markerContent(span string) (string, bool) {
+	if !strings.HasPrefix(span, verifyCommandMarker) {
+		return "", false
+	}
+	c := strings.TrimSpace(strings.TrimPrefix(span, verifyCommandMarker))
+	return c, c != ""
+}
+
+// markedCommands returns the command of every `cmd:`-marked span the RENDERED
+// cell shows as code (renderedCodeSpans), marker stripped and trimmed — and
+// none at all for a cell that is not plain, whose marker the reader of the
+// rendered table might not see. A marker span that does not stand clear of its
+// prose — opening run after anything but whitespace or the start of the cell,
+// or closing run before anything but whitespace, plain punctuation or the end
+// — makes the whole cell honour none: the rendered page may not show it as
+// code.
+func markedCommands(cell string) []string {
+	spans, plain := renderedCodeSpans(cell)
+	if !plain {
+		return nil
+	}
+	var out []string
+	for _, sp := range spans {
+		c, ok := markerContent(sp.text)
+		if !ok {
+			continue
+		}
+		if !sp.spaceLed {
+			return nil
+		}
+		if !sp.cleanEnd {
+			return nil
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// rawMarkerPresent reports whether a raw-backtick scan of cell finds a
+// `cmd:`-marked span — including one the rendered cell does not show as code.
+// It is the lint's half of the hidden-marker check: raw marker present, but
+// markedCommands empty, means the author wrote a marker verifyrun will not
+// honour.
+func rawMarkerPresent(cell string) bool {
+	for _, sp := range codeSpans(cell) {
+		if _, ok := markerContent(sp); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// markerOverridesCommandSpan returns the cell's first rendered code span when a
+// honoured marker overrides it AND that first span is itself command-shaped
+// (multi-word), or "" otherwise. The shape the marker exists for has one-token
+// MENTIONS ahead of it; a multi-word first span that the marker silently
+// replaces is what a reader of the rendered table would take for the command
+// (#1808 review, SR-1808-1).
+func markerOverridesCommandSpan(cell string) string {
+	if len(markedCommands(cell)) == 0 {
+		return ""
+	}
+	spans, _ := renderedCodeSpans(cell)
+	if len(spans) == 0 {
+		return ""
+	}
+	first := spans[0].text
+	if _, ok := markerContent(first); ok {
+		return ""
+	}
+	if !strings.ContainsAny(first, " \t") {
+		return ""
+	}
+	return first
+}
+
+// verifyCommand lifts the command a Verify row's Command cell names. It is the
+// ONE place a Verify command is lifted out of its cell — every site that runs,
+// re-executes, or lints the command goes through it (the class guard,
+// TestVerifyCommandLiftHasOneChokePoint, fails on a new site that calls codeSpan
+// on a Verify cell directly). The first `cmd:`-marked span wins; with no marked
+// span the result is codeSpan's, unchanged. A cell carrying more than one marked
+// span is ambiguous and the lint says so (ruleCmdMarkerAmbiguous); the first
+// still runs, so the row's behaviour never depends on the lint having been read.
+func verifyCommand(cell string) string {
+	if m := markedCommands(cell); len(m) > 0 {
+		return m[0]
+	}
+	return codeSpan(cell)
+}
+
+// ---------------------------------------------------------------------------
+// Rule 12 — a prose-led Command cell whose first span is not a command (#1805)
+// ---------------------------------------------------------------------------
+
+// nonExecExtensions are file extensions a bare command word never carries: a
+// source, doc or data file. A first span ending in one of these is a file the
+// prose MENTIONS. Script extensions (.sh, .py, .ps1, .exe, …) are deliberately
+// absent — a script path can be the command.
+var nonExecExtensions = map[string]bool{
+	".go": true, ".md": true, ".yaml": true, ".yml": true, ".json": true, ".jsonl": true,
+	".toml": true, ".txt": true, ".mod": true, ".sum": true, ".ts": true,
+	".tsx": true, ".js": true, ".html": true, ".css": true, ".csv": true, ".lock": true,
+	".xml": true, ".proto": true, ".rs": true, ".tf": true, ".svg": true, ".png": true,
+	".pdf": true,
+}
+
+// scriptExtensions are the extensions that keep a path-shaped span from being
+// read as a mere mention: `scripts/check.sh` can be the whole command.
+var scriptExtensions = map[string]bool{
+	".sh": true, ".bash": true, ".py": true, ".ps1": true, ".exe": true, ".rb": true, ".pl": true,
+}
+
+// codeIdentRe is a code identifier — `PublicRepoGate`, `runSupersededLane`,
+// `pkg.Func`, `Foo()` — as opposed to a command word. It only counts as one when
+// it carries an upper-case letter or a call's `()`: command names are lower case.
+var codeIdentRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*(\(\))?$`)
+
+// bareWordRe is a lone lower-case word — `release-runner`, `make`, `grep`.
+var bareWordRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+
+// proseLedCommandWhy reports why a Command cell's lifted command is a prose
+// MENTION rather than a command — returning that first span too, for the
+// NOTICE text, so the lint never re-lifts it with codeSpan — or two empty
+// strings when the cell is not flagged.
+//
+// It is deliberately CONSERVATIVE — a NOTICE that fires on a real command is
+// noise an author learns to skip, so every arm needs positive evidence the span
+// is not a command:
+//
+//   - the cell carries a `cmd:` marker → never flagged (the author said which);
+//   - the cell is ONE code span and nothing else → never flagged (the span is,
+//     unambiguously, what the author wrote as the command);
+//   - the first span has whitespace in it → never flagged (a multi-word span is
+//     read as a command line; judging it is the other rules' job).
+//
+// Otherwise a single-token first span is flagged when it is: a dotted extension
+// or dotfile (`.exe`); a file with a source/doc/data extension (`repovis.go`); a
+// relative path or `owner/repo` / `stream/NN` reference (`windows-port/00`); a
+// code identifier (`PublicRepoGate`, `Foo()`); or a lone lower-case word that a
+// LATER span in the same cell follows with a multi-word command (`release-runner`
+// … `cd tools/desk && go test …`) — that last arm needs the later span, so a
+// lone `make` in prose is never flagged on its own. A bare `cmd:` span ahead of
+// the command is flagged too: it is a mention of the marker, not a marker, so
+// verifyrun would run the text `cmd:` itself.
+func proseLedCommandWhy(cell string) (span, why string) {
+	if len(markedCommands(cell)) > 0 {
+		return "", ""
+	}
+	spans := codeSpans(cell)
+	if len(spans) == 0 {
+		return "", ""
+	}
+	if len(spans) == 1 && proseOutsideSpans(cell) == "" {
+		return "", ""
+	}
+	first := spans[0]
+	if first == "" || strings.ContainsAny(first, " \t") {
+		return "", ""
+	}
+	if w := proseLedShape(first, spans[1:]); w != "" {
+		return first, w
+	}
+	return "", ""
+}
+
+// proseLedShape is proseLedCommandWhy's shape test on a single-token first span.
+func proseLedShape(first string, later []string) string {
+	ext := strings.ToLower(filepath.Ext(first))
+	switch {
+	case first == verifyCommandMarker:
+		return "a bare mention of the `cmd:` marker (a marker needs a command after it)"
+	case strings.HasPrefix(first, ".") && !strings.HasPrefix(first, "./") && !strings.HasPrefix(first, "../") && first != ".":
+		return "a file extension or dotfile name"
+	case nonExecExtensions[ext]:
+		return "a " + ext + " file name"
+	case strings.Contains(first, "/") && !scriptExtensions[ext] &&
+		!strings.HasPrefix(first, "./") && !strings.HasPrefix(first, "../") &&
+		!strings.HasPrefix(first, "/") && !strings.HasPrefix(first, "~") && !strings.HasPrefix(first, "$"):
+		return "a path or `owner/repo` / `stream/NN` reference"
+	case codeIdentRe.MatchString(first) && (strings.ToLower(first) != first || strings.HasSuffix(first, "()")):
+		return "a code identifier"
+	case bareWordRe.MatchString(first):
+		for _, sp := range later {
+			if strings.ContainsAny(strings.TrimSpace(sp), " \t") {
+				return "a lone word mentioned ahead of the command span"
+			}
+		}
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------------------
@@ -1087,6 +1531,111 @@ func gnuOnlyConstructs(cmd string, toks []shellTok, greps []grepCall) []string {
 }
 
 // ---------------------------------------------------------------------------
+// Rule 11 — a `go test -run` selector with no `--- PASS` assertion (statusgen/14)
+// ---------------------------------------------------------------------------
+//
+// Rule 4 catches a `-run` pattern that matches NO test by construction (a `\|`
+// compiled as RE2 alternation). This rule catches the wider case: a `-run`
+// selector that COULD match a test, but the row never checks that it did. `go
+// test -run 'TestNoSuchName'` prints "testing: warning: no tests to run" and
+// exits 0 whether or not a test by that name exists — measured on this repo's
+// `qualgen` module (statusgen/14 facts): a row naming a test that was renamed
+// away kept exiting 0 forever. The row is silently green from the day the
+// deliverable ships to the day the test is renamed out from under it.
+//
+// The shape that closes it: anchor the selector, send the output to a file, and
+// chain a positive assertion on that test's `--- PASS:` line (`-v` is what makes
+// `go test` print one). A missing test prints no such line, so the grep exits 1
+// and the row goes red — the same "make it fail on the unfixed input" device
+// every rule in this file enforces on the CORPUS, applied here to the corpus's
+// own most common Go-test shape.
+//
+// This does NOT reimplement rule 4 (`rE2-literal-pipe`): the two are independent
+// and a `\|` selector with no assertion fires both.
+
+// testNameRe matches a plain Go test name — `Test` followed by letters, digits
+// and underscores. It is what makes a `-run` selector NAMED (one specific test,
+// checkable by name) rather than a GROUP token (`Cadence`, matching every test
+// whose name contains it) — the two need different assertions: a named selector
+// needs a `--- PASS: <name>` line, a group selector needs any `--- PASS` line.
+var testNameRe = regexp.MustCompile(`^Test[A-Za-z0-9_]*$`)
+
+// namedSelector strips one leading `^` and one trailing `$` from a `-run`
+// pattern and reports the bare test name when what remains is a plain Go test
+// name. ok is false for a group token, a partial anchor, an RE2 alternation, or
+// anything else that is not decidably one test's name.
+func namedSelector(pat string) (name string, ok bool) {
+	s := strings.TrimSuffix(strings.TrimPrefix(pat, "^"), "$")
+	if testNameRe.MatchString(s) {
+		return s, true
+	}
+	return "", false
+}
+
+// selectsNoTests reports whether a `-run` pattern is the literal `^$` idiom —
+// anchored to the empty string, so it matches no test name (every Go test name
+// is non-empty) and `go test` runs zero tests by design. This is deliberately
+// the exact literal string, not "empty after stripping one `^`/`$`": an
+// UNANCHORED empty pattern (`-run ''`) has the opposite meaning in Go — an
+// empty regexp matches every name as a substring, so it runs everything.
+func selectsNoTests(pat string) bool {
+	return pat == "^$"
+}
+
+// grepNegations reports, in the SAME order as grepCalls(toks), whether each
+// grep-family invocation is immediately negated with a leading `!` in its own
+// simple command (`! grep -q …`). A negated grep's exit status is inverted, so
+// its pattern matching is not evidence the pattern was found — see Rule 11.
+//
+// This walks the identical simple-command split grepCalls uses (flush on every
+// operator, skip leading `{`/`(`/`!` noise, match the same grep-family name
+// set) so the two slices line up index-for-index; it is command-splitting, not
+// a second tokenizer — every rule above that needs simple commands (grepCalls,
+// goTestRunPatterns, pipelineSwallowsExit, gnuOnlyConstructs) does its own.
+func grepNegations(toks []shellTok) []bool {
+	var out []bool
+	var cmd []shellTok
+	var cmds [][]shellTok
+	flush := func() {
+		if len(cmd) > 0 {
+			cmds = append(cmds, cmd)
+			cmd = nil
+		}
+	}
+	for _, t := range toks {
+		if t.op {
+			flush()
+			continue
+		}
+		cmd = append(cmd, t)
+	}
+	flush()
+
+	for _, c := range cmds {
+		k := 0
+		negated := false
+		for k < len(c) && (c[k].text == "{" || c[k].text == "!" || c[k].text == "(") {
+			if c[k].text == "!" {
+				negated = true
+			}
+			k++
+		}
+		if k >= len(c) {
+			continue
+		}
+		name := c[k].text
+		if name != "grep" && name != "egrep" && name != "fgrep" && name != "ggrep" && name != "rg" {
+			continue
+		}
+		if name == "rg" {
+			continue
+		}
+		out = append(out, negated)
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
 // The lint
 // ---------------------------------------------------------------------------
 
@@ -1169,14 +1718,46 @@ func verifyRowTable(section string, fn func(verifyRowCells)) {
 //
 // Correcting a CLOSED brief's row is not in scope for the backfill: the row is a
 // historical record of what was actually run. Note the defect in Evidence instead.
+//
+// CLOSED-BRIEF SCOPING — `gotest-run-vacuous` (statusgen/14) and `prose-led-command`. Measured
+// 2026-09-23: 233 of the 684 rows this rule's shape can hit already sit in 62
+// `done` briefs. Emitting one NOTICE per such row would swamp every real run
+// with historical rows nobody is about to rewrite (the same falsification the
+// paragraph above already rules out) and would drown the per-row notices on the
+// OPEN briefs this rule exists to catch before they close. So a brief whose
+// README status is `done` or `verified` emits NO per-row `gotest-run-vacuous`
+// notice; instead the whole run emits exactly ONE summary NOTICE counting the
+// rows and briefs it suppressed, so the class stays visible without being
+// unreadable. A brief absent from its stream's README table (no row at all)
+// counts as open — silence about a brief's status is never grounds to suppress
+// its notices. `prose-led-command` (#1805) is scoped the same way, for the same
+// reason (#1808 review: its advice to mark the command is not actionable on a
+// closed record). Every OTHER rule is unscoped by brief status; this scoping
+// applies to these two tags only.
 func unfailableRowNotices(streams []*Stream) []string {
 	var notices []string
+	closedRows := 0
+	closedBriefs := map[string]bool{}
+	closedProseRows := 0
+	closedProseBriefs := map[string]bool{}
 
 	for _, s := range streams {
+		statusByNum := map[string]string{}
+		for _, b := range s.Briefs {
+			statusByNum[b.Num] = b.Status
+		}
 		for _, path := range briefFilePaths(s) {
 			bf, ok, err := parseBriefFile(path)
 			if err != nil || !ok {
 				continue // malformed reported elsewhere; legacy/opted-out exempt
+			}
+			_, num, okName := expectedBriefID(path)
+			closed := false
+			briefID := path
+			if okName {
+				briefID = s.Name + "/" + num
+				status := statusByNum[num] // "" (no README row) reads as open
+				closed = status == "done" || status == "verified"
 			}
 			verifyRowTable(bf.Verify, func(r verifyRowCells) {
 				where := "a Verify row"
@@ -1184,10 +1765,26 @@ func unfailableRowNotices(streams []*Stream) []string {
 					where = "Verify row " + r.Num
 				}
 				for _, f := range rowFindings(r.Command, r.Expect) {
+					if closed && f.rule == ruleGoTestRunVacuous {
+						closedRows++
+						closedBriefs[briefID] = true
+						continue
+					}
+					if closed && f.rule == ruleProseLedCommand {
+						closedProseRows++
+						closedProseBriefs[briefID] = true
+						continue
+					}
 					notices = append(notices, fmt.Sprintf("%s: %s [%s] %s", path, where, f.rule, f.msg))
 				}
 			})
 		}
+	}
+	if closedRows > 0 {
+		notices = append(notices, fmt.Sprintf("[%s] %d Verify row(s) in %d closed brief(s) carry an unasserted go test -run selector — closed records are not rewritten; the per-row notice covers open briefs only", ruleGoTestRunVacuous, closedRows, len(closedBriefs)))
+	}
+	if closedProseRows > 0 {
+		notices = append(notices, fmt.Sprintf("[%s] %d Verify row(s) in %d closed brief(s) have a prose mention as their first code span — closed records are not rewritten, and verifyrun records such a row could-not-run; the per-row notice covers open briefs only", ruleProseLedCommand, closedProseRows, len(closedProseBriefs)))
 	}
 	sort.Strings(notices)
 	return notices
@@ -1213,7 +1810,56 @@ const (
 	ruleShreddedCell   = "shredded-cell"         // #374 — raw `|` cut the Command cell
 	ruleMovingRef      = "moving-ref"            // #639 — diff base on a moving ref
 	rulePortability    = "gnu-only"              // #650 — GNU-only construct
+	// ruleGoTestRunVacuous — statusgen/14 — a `go test -run` selector with no
+	// `--- PASS` assertion in the same command: a match-nothing selector and a
+	// mismatched selector both exit 0 the same way rule 4's `\|` does.
+	ruleGoTestRunVacuous = "gotest-run-vacuous"
+	// ruleProseLedCommand — #1805 — a prose Command cell whose FIRST code span
+	// (what the witness executes) is a mention, not a command.
+	ruleProseLedCommand = "prose-led-command"
+	// ruleCmdMarkerAmbiguous — #1805 — two `cmd:` markers in one Command cell.
+	ruleCmdMarkerAmbiguous = "cmd-marker-ambiguous"
+	// ruleCmdMarkerOverrides — #1808 review — a honoured `cmd:` marker replaces
+	// a first span that is itself command-shaped (multi-word).
+	ruleCmdMarkerOverrides = "cmd-marker-overrides-command"
+	// ruleCmdMarkerNotHonoured — #1808 review — a `cmd:` span the rendered cell
+	// may not show as code (escaped backticks, or `<` / `[` / `$` in the prose), so
+	// verifyrun ignores it and runs the first span.
+	ruleCmdMarkerNotHonoured = "cmd-marker-not-honoured"
+	// ruleCmdMarkerVacuous — #1808 review — the marked command cannot fail
+	// (`cmd: true`, `cmd: :`, `cmd: exit 0`), so the row passes whatever the
+	// tree holds.
+	ruleCmdMarkerVacuous = "cmd-marker-vacuous"
 )
+
+// isVacuousCommand reports a marked command that exits 0 without looking at
+// anything: one of vacuousCommands once a trailing `;` or `# comment` is
+// dropped, or a lone echo / printf with no shell operator (#1808 review A6). It
+// is a NOTICE heuristic, so it errs quiet: anything carrying a quote, pipe,
+// redirect, `&`, `;` mid-command or substitution is left alone.
+func isVacuousCommand(cmd string) bool {
+	c := strings.TrimSpace(cmd)
+	if strings.ContainsAny(c, "'\"`$|<>&()") {
+		return false
+	}
+	if i := strings.Index(c, " #"); i >= 0 {
+		c = c[:i]
+	}
+	c = strings.TrimSpace(strings.TrimRight(strings.TrimSpace(c), ";"))
+	if strings.Contains(c, ";") {
+		return false
+	}
+	f := strings.Fields(c)
+	if len(f) == 0 {
+		return false
+	}
+	return vacuousCommands[strings.Join(f, " ")] || f[0] == "echo" || f[0] == "printf"
+}
+
+// vacuousCommands are marked commands that exit 0 without looking at anything.
+var vacuousCommands = map[string]bool{
+	"true": true, ":": true, "exit": true, "exit 0": true, "/bin/true": true, "/usr/bin/true": true,
+}
 
 // rowFindings applies every row rule to one Verify row's Command and Expect
 // cells. It is the single implementation: unfailableRowNotices formats its
@@ -1232,7 +1878,27 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 		add(ruleShreddedCell, "the Command cell's code span is unterminated — a RAW `|` in the command was read as a table-cell delimiter, cutting the command at the pipe and shifting every column after it (the Expect cell shown is another fragment of the command, not an expectation). The brief therefore prints a command nobody can run, and every other row check goes blind past the cut. Escape shell pipes and regex alternations as `\\|` inside the table cell")
 	}
 
-	cmd := codeSpan(cmdCell)
+	// Rule 12 (#1805): the command the witness would execute is a prose mention.
+	// Judged on the CELL, before the lift, because the defect is in which span
+	// gets lifted — every rule below judges whatever the lift returned.
+	if first, why := proseLedCommandWhy(cmdCell); why != "" {
+		add(ruleProseLedCommand, "is a prose cell whose FIRST code span `%s` is %s, not a command — `statusgen verifyrun` executes the first code span of a Command cell, so verifyrun records the row could-not-run without executing `%s`, and the check this row describes is never witnessed. Mark the real command with the explicit marker: write it as a code span starting `cmd:` (e.g. `cmd: cd tools/desk && go test ./pkg/ -count=1`), which verifyrun prefers over the first span — or make the Command cell exactly one code span and move the prose to Expect. A row that names no command at all (a cold read, a human judgment) cannot be fixed with the marker; it stays could-not-run until it is re-authored with a command", first, why, first)
+	}
+	m := markedCommands(cmdCell)
+	if len(m) > 1 {
+		add(ruleCmdMarkerAmbiguous, "carries %d `cmd:`-marked code spans — the marker names THE command, so two of them leave the row ambiguous (verifyrun runs the first, `%s`). Join them into one marked span (`cmd: a && b`) or split the row", len(m), m[0])
+	}
+	if first := markerOverridesCommandSpan(cmdCell); first != "" {
+		add(ruleCmdMarkerOverrides, "has a `cmd:` marker that REPLACES its first code span `%s`, which reads as a command itself — verifyrun runs `%s`, not the span a reader of the table sees first. The marker is for cells whose earlier spans are mentions (a function, a file, a label); make the marked span the first span, or move the other command out of this row", first, m[0])
+	}
+	if len(m) > 0 && isVacuousCommand(m[0]) {
+		add(ruleCmdMarkerVacuous, "marks `%s` as its command, which exits 0 without looking at anything — the row passes whatever the tree holds. Mark the command that performs the check", m[0])
+	}
+	if len(m) == 0 && rawMarkerPresent(cmdCell) {
+		add(ruleCmdMarkerNotHonoured, "carries a `cmd:` span that verifyrun does NOT honour, so the row runs its first code span instead: a marker counts only in a cell whose rendered text shows it as code — not between backslash-escaped backticks, and not in a cell whose prose carries a `<` or `[` (raw HTML, an HTML comment, a link or an image, each of which can hide text from the rendered table) or a `$` in any spelling (bare, `\\$`, or a character reference such as `&#36;`; any character reference counts — GitHub renders a dollar-wrapped span as math, not code), and not in a cell where a code span is fused to the text before it (a URL, a dollar, `~~`; only whitespace, the start of the cell or a `(` may lead a span). The marker span itself must follow whitespace or the start of the cell, and end the cell or be followed by whitespace or punctuation. Remove the escapes, move the HTML/link/math/dollar out of the Command cell, and set the spans apart with spaces")
+	}
+
+	cmd := verifyCommand(cmdCell)
 	if cmd == "" {
 		return out
 	}
@@ -1295,6 +1961,66 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 	// Rule 10: GNU-only constructs — the row answers differently per platform.
 	for _, c := range gnuOnlyConstructs(cmd, toks, greps) {
 		add(rulePortability, "uses %s, which is GNU-only — the row is run by whoever verifies, on macOS desks as well as ubuntu CI, and it does not mean the same thing on both. Write it %s", c, gnuOnlySubstitute[c])
+	}
+
+	// Rule 11: a `go test -run` selector with no `--- PASS` assertion.
+	var runSelectors []goTestPattern
+	for _, p := range goTestRunPatterns(toks) {
+		if p.flag != "-run" { // -bench/-fuzz do not print `--- PASS:` lines — out of scope
+			continue
+		}
+		if selectsNoTests(p.pat) {
+			// `-run '^$'` is the standard idiom for running NO tests, paired with
+			// `-bench`/`-fuzz` (out of scope, same as those flags themselves): it
+			// deliberately matches no test name, so no `--- PASS:` line can ever
+			// exist to assert on, and the NOTICE's own rewrite would turn a
+			// correct benchmark/fuzz row into one that always fails.
+			continue
+		}
+		runSelectors = append(runSelectors, p)
+	}
+	if len(runSelectors) > 0 {
+		// A row-wide `|| true`/`|| echo`/`|| :` neutralises every assertion in it
+		// (same reading Rule 2 already gives that construct); a negated grep is
+		// excluded per-call below.
+		neutralised := forcesSuccess(toks)
+		negations := grepNegations(toks)
+		var passPatterns []string
+		if !neutralised {
+			for i, g := range greps {
+				if i < len(negations) && negations[i] {
+					continue // `! grep …` — an inverted match is not an assertion
+				}
+				for _, p := range g.patterns {
+					if strings.Contains(p, "--- PASS") {
+						passPatterns = append(passPatterns, p)
+					}
+				}
+			}
+		}
+		for _, rp := range runSelectors {
+			name, named := namedSelector(rp.pat)
+			asserted := false
+			if named {
+				want := "--- PASS: " + name
+				for _, pp := range passPatterns {
+					if strings.Contains(pp, want) {
+						asserted = true
+						break
+					}
+				}
+			} else {
+				asserted = len(passPatterns) > 0
+			}
+			if asserted {
+				continue
+			}
+			if named {
+				add(ruleGoTestRunVacuous, "runs `go test -run %q` with no `--- PASS: %s` assertion in the same command — `go test` exits 0 and prints \"no tests to run\" whether %s exists, is built, or was ever renamed away, so this row cannot tell a real pass from a vacuous one. ANCHOR the selector too (`-run '^%s$'`; an unanchored `-run %s` also matches any test whose name merely starts with %s) — redirect the output to a file and chain a positive assertion on its `--- PASS:` line: `go test -run '^%s$' -v ./pkg/... > \"${TMPDIR:-/tmp}/x.out\" 2>&1 && grep -F -e '--- PASS: %s' \"${TMPDIR:-/tmp}/x.out\"`", rp.pat, name, name, name, name, name, name, name)
+			} else {
+				add(ruleGoTestRunVacuous, "runs `go test -run %q` with no `--- PASS` assertion in the same command — `go test` exits 0 and prints \"no tests to run\" whether anything matching that selector exists, is built, or was ever renamed away, so this row cannot tell a real pass from a vacuous one. Redirect the output to a file and chain a positive assertion on a `--- PASS:` line: `go test -run %q -v ./pkg/... > \"${TMPDIR:-/tmp}/x.out\" 2>&1 && grep -F -e '--- PASS' \"${TMPDIR:-/tmp}/x.out\"`", rp.pat, rp.pat)
+			}
+		}
 	}
 
 	return out

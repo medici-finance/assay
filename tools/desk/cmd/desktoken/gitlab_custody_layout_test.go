@@ -14,6 +14,7 @@ package main
 // is left readable anywhere the custody path can resolve to.
 
 import (
+	"github.com/medici-finance/assay/tools/desk/internal/custodytest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -160,7 +161,7 @@ func redactToken(v string) string {
 // its bytes land: a regular file is its own target and reports unlinked; a symlink resolves to
 // the file it points at and reports linked, so the caller knows to assert the link survived.
 func TestGitLabCustodyWriteTargetResolvesLinks(t *testing.T) {
-	dir := t.TempDir()
+	dir := custodytest.PrivateTempDir(t)
 
 	plain := filepath.Join(dir, "gitlab-plain.token")
 	writeTokenCache(t, plain, glOldWorker)

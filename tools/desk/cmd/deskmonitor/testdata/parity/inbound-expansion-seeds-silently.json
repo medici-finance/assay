@@ -1,0 +1,102 @@
+{
+ "description": "A repo whose state file is absent while the others are armed seeds silently: no MONITOR-ARMED line, no INBOUND flood (the first cycle arms one repo; the fixture's repo list is the widened set from the start, the added repo failing its first read).",
+ "kind": "inbound",
+ "env": {},
+ "repos": [
+  "example-org/tracker",
+  "example-org/agents"
+ ],
+ "cycles": [
+  {
+   "note": "arm: agents seed read fails",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "status": 404,
+     "message": "Not Found"
+    }
+   }
+  },
+  {
+   "note": "agents recovers and seeds silently",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 5,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 6,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 7,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "agents reports its first real delta",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 5,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 6,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 7,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 8,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

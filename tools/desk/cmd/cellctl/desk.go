@@ -1,12 +1,14 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -41,9 +43,17 @@ func cmdDesk(cell string, args []string) {
 	cfgIn, provider := "", ""
 	harness := c.Harness
 	harnessFlag, cockpitFlag, providerFlag := "", "", ""
+	cadence, budget := c.Env.Get("CELL_CADENCE"), c.Env.Get("CELL_TICK_BUDGET")
+	cadenceFlag, budgetFlag := "", ""
 
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; a {
+		case "--cadence":
+			cadence = needFlagValue(args, &i, "--cadence needs a duration or off")
+			cadenceFlag = cadence
+		case "--tick-budget":
+			budget = needFlagValue(args, &i, "--tick-budget needs a duration")
+			budgetFlag = budget
 		case "--model":
 			modelOverride = needFlagValue(args, &i, "--model needs a value")
 		case "--set":
@@ -69,7 +79,7 @@ func cmdDesk(cell string, args []string) {
 	if cockpitFlag != "" && !valueIn(cockpitFlag, cockpitValues) {
 		die("desk: --cockpit must be one of %s, got '%s'", joinPipe(cockpitValues), cockpitFlag)
 	}
-	if persist && !anyGiven(modelOverride, harnessFlag, providerFlag, c.KindOverride, cockpitFlag) {
+	if persist && !anyGiven(modelOverride, harnessFlag, providerFlag, c.KindOverride, cockpitFlag, cadenceFlag, budgetFlag) {
 		die("desk: --set needs --model <m> (or DESK_MODEL_OVERRIDE in the environment), --harness, --provider, --kind or --cockpit — nothing to persist otherwise")
 	}
 	if !valueIn(harness, harnessValues) {
@@ -87,6 +97,9 @@ func cmdDesk(cell string, args []string) {
 		die("%s", err)
 	}
 	if policy != nil {
+		if harness == "cursor" {
+			die("model policy does not support cursor; configure Cursor model pins without a model policy")
+		}
 		if persist {
 			die("desk: --set with a model policy is ambiguous; edit the policy or provider defaults instead")
 		}
@@ -100,6 +113,13 @@ func cmdDesk(cell string, args []string) {
 		harness = policyRes.Harness
 	}
 
+	if harness == "cursor" && c.Kind != "house" {
+		die("cursor currently requires a house cell")
+	}
+	c.Cadence = resolveCadence(c.Kind, cadence, budget)
+	if harness == "cursor" && cfgIn != "" {
+		die("cursor does not accept a Claude config directory")
+	}
 	cfg := ""
 	switch c.Kind {
 	case "container":
@@ -120,16 +140,20 @@ func cmdDesk(cell string, args []string) {
 			die("role '%s' is not enabled in this scrubbed cell", role)
 		}
 	default:
-		cfg = resolveCfg(c.Env, cfgIn)
+		if harness == "cursor" && cfgIn == "" {
+			cfg = ""
+		} else {
+			cfg = resolveCfg(c.Env, cfgIn)
+		}
 	}
 
-	// The minimum-Claude-Code-version half of the oracle's policy_claude_preflight (the
-	// local/managed settings.json availableModels/modelOverrides conflict scan that same
-	// function also runs is NOT ported — see policy.go's header comment and the PR body).
-	if policyRes != nil && harness == "claude" {
-		if err := checkClaudeMinVersion(); err != nil {
-			die("%s", err)
-		}
+	// The oracle's policy_claude_preflight against the cell's checkout, BEFORE any worktree is
+	// cut (dry run included): the Claude Code version floor, then the user/project/managed
+	// settings scan that refuses an availableModels widening the policy or a local
+	// modelOverrides. deskLaunch re-runs it against the role worktree once that exists.
+	if err := claudePolicyPreflight(policyRes, cfg, c.Repo); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		die("model policy settings preflight failed")
 	}
 
 	if policyRes != nil {
@@ -176,8 +200,16 @@ func cmdDesk(cell string, args []string) {
 	mvar := "DESK_MODEL_" + underscore(role)
 	if harness == "codex" {
 		mvar = "CODEX_MODEL_" + underscore(role)
+	} else if harness == "cursor" {
+		mvar = "CURSOR_MODEL_" + underscore(role)
 	}
 	var persistKVs []string
+	if cadenceFlag != "" {
+		persistKVs = append(persistKVs, "CELL_CADENCE="+cadenceFlag)
+	}
+	if budgetFlag != "" {
+		persistKVs = append(persistKVs, "CELL_TICK_BUDGET="+budgetFlag)
+	}
 	if modelOverride != "" {
 		persistKVs = append(persistKVs, mvar+"="+modelOverride)
 	}
@@ -197,7 +229,7 @@ func cmdDesk(cell string, args []string) {
 	// A provider is a claude-harness seam (ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN); codex has
 	// no equivalent here, so the combination is refused rather than silently launching codex
 	// against Anthropic with a provider the operator asked for.
-	if harness == "codex" && provider != "" {
+	if (harness == "codex" || harness == "cursor") && provider != "" {
 		die("desk: --provider '%s' is a claude-harness switch and has no codex equivalent — drop the provider or use --harness claude", provider)
 	}
 
@@ -299,6 +331,9 @@ func cmdDesk(cell string, args []string) {
 	}
 
 	if dryRun {
+		if c.Cadence != nil {
+			fmt.Printf("[cadence] interval=%s budget=%s owner=cellctl (planned; not armed)\n", c.Cadence.Interval, c.Cadence.Budget)
+		}
 		kindShown := c.Kind
 		if c.KindOverride != "" {
 			kindShown += " (override)"
@@ -332,6 +367,35 @@ func cmdDesk(cell string, args []string) {
 		return
 	}
 
+	if c.Kind == "house" {
+		lease, err := cellcadence.Acquire(c.cadenceDir(role))
+		if err != nil {
+			die("desk: role already owned or cannot lock: %v", err)
+		}
+		defer lease.Close()
+		c.cadenceLease = lease
+		// An unfinished prior child may survive its supervisor. Never start even an
+		// interactive replacement until the operator has reconciled that child.
+		state, err := cellcadence.Read(c.cadenceDir(role))
+		if err != nil && !errors.Is(err, cellcadence.ErrNoState) {
+			die("desk: cadence state unreadable: %v", err)
+		}
+		if err == nil && (state.Cell != c.Name || state.Role != role) {
+			die("desk: cadence checkpoint belongs to another cell or role")
+		}
+		if state.Running {
+			die("desk: unfinished cadence pass; inspect and reconcile before restarting")
+		}
+	}
+	if c.Kind == "house" {
+		mode := "interactive"
+		if c.Cadence != nil {
+			mode = "cadence"
+		}
+		if err := writeRoleMode(c.cadenceDir(role), mode); err != nil {
+			die("desk: cannot record role ownership: %v", err)
+		}
+	}
 	c.deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider, prov, deskRoots, persist, persistKVs, policyRes, cockpit)
 }
 

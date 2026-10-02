@@ -1,0 +1,120 @@
+{
+ "description": "Property B (3/4): a read AT the --limit is a moving window \u2014 an established repo retains its baseline, and a truncated SEED establishes none (and suppresses the armed line).",
+ "kind": "inbound",
+ "env": {
+  "INBOUND_MONITOR_LIMIT": "3"
+ },
+ "repos": [
+  "example-org/tracker",
+  "example-org/agents"
+ ],
+ "cycles": [
+  {
+   "note": "tracker seeds under the limit; agents' seed is truncated",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 11,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 12,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 13,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "tracker reaches the limit; agents still truncated",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 3,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 11,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 12,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 13,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "note": "tracker drops back under; agents drops under and seeds",
+   "reads": {
+    "example-org/tracker": {
+     "issues": [
+      {
+       "number": 1,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 2,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    },
+    "example-org/agents": {
+     "issues": [
+      {
+       "number": 10,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 11,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

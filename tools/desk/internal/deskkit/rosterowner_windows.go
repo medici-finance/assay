@@ -35,9 +35,10 @@ func checkFileOwner(path string, _ os.FileInfo) error {
 // windowsFileACLModel reads a file's owner SID and DACL and decodes them into the
 // platform-independent rosterACLModel that the evaluateRosterACL (roster) and
 // evaluateCustodyACL (GitLab token custody, #667) decisions consume. Both need the
-// identical "who owns this file and who can write it" question answered from the
-// real security descriptor, so the Win32 decode lives here once rather than being
-// copied per caller. It never returns a silent nil model on a gap: a descriptor,
+// "who owns this file and who can access it" question answered from the real
+// security descriptor (the roster decision reads write access; the custody
+// decision reads read and write access), so the Win32 decode lives here once
+// rather than being copied per caller. It never returns a silent nil model on a gap: a descriptor,
 // owner, or ACE it cannot establish is a refusal, so the decision above it refuses
 // rather than reading past an undetermined permission as clean.
 func windowsFileACLModel(path string) (rosterACLModel, error) {
@@ -81,7 +82,7 @@ func windowsFileACLModel(path string) (rosterACLModel, error) {
 		if w, e := windows.StringToSid(world); e == nil {
 			world = w.String()
 		}
-		model.Entries = []rosterACE{{SID: world, Kind: rosterACEAllow, GrantsWrite: true}}
+		model.Entries = []rosterACE{{SID: world, Kind: rosterACEAllow, GrantsWrite: true, GrantsRead: true}}
 		return model, nil
 	}
 
@@ -93,7 +94,9 @@ func windowsFileACLModel(path string) (rosterACLModel, error) {
 		}
 		ace := rosterACE{
 			InheritOnly: raw.Header.AceFlags&windows.INHERIT_ONLY_ACE != 0,
+			Inherited:   raw.Header.AceFlags&windows.INHERITED_ACE != 0,
 			GrantsWrite: aceGrantsWrite(uint32(raw.Mask)),
+			GrantsRead:  aceGrantsRead(uint32(raw.Mask)),
 		}
 		switch raw.Header.AceType {
 		case windows.ACCESS_ALLOWED_ACE_TYPE:

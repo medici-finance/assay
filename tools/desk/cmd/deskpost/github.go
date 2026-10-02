@@ -461,6 +461,24 @@ type prInfo struct {
 	// ignores them — so carrying them here does not change any existing gate.
 	MergedAt       string `json:"merged_at"`
 	MergeCommitSHA string `json:"merge_commit_sha"`
+	// Labels are the label NAMES on the PR, read in the SAME payload as Body so the
+	// desk-decided condition's two halves (label and block) come from one read and cannot
+	// disagree by timing (#1694).
+	Labels []prLabel `json:"labels"`
+}
+
+// prLabel is one entry of the REST PR payload's `labels` array.
+type prLabel struct {
+	Name string `json:"name"`
+}
+
+// labelNames flattens the PR's labels to their names.
+func (p *prInfo) labelNames() []string {
+	out := make([]string, 0, len(p.Labels))
+	for _, l := range p.Labels {
+		out = append(out, l.Name)
+	}
+	return out
 }
 
 type reviewInfo struct {
@@ -629,16 +647,6 @@ func (c *ghClient) getIssueTyped(n int, kind deskkit.TargetKind) (*issueInfo, er
 func isNotFound(err error) bool {
 	var ae *apiError
 	return errors.As(err, &ae) && ae.status == http.StatusNotFound
-}
-
-// getPRHead is the light re-read used for the head-pin (review) and the TOCTOU re-read
-// (ready) — it fetches only the current head SHA.
-func (c *ghClient) getPRHead(pr int) (string, error) {
-	p, err := c.getPR(pr)
-	if err != nil {
-		return "", err
-	}
-	return p.Head.SHA, nil
 }
 
 // commitInfo is the subset of GET /repos/{o}/{r}/commits/{sha} the non-author verdict
@@ -866,17 +874,36 @@ func (c *ghClient) checkRunsAt(sha string) (*checkRunsResp, error) {
 
 // postReview submits a head-pinned review AS THE APP. event is APPROVE or
 // REQUEST_CHANGES; commit_id pins the verdict to the reviewed head.
+//
+// The body is run through the outbound-write check first: this raw client is not a Forge, so
+// the checking decorator does not wrap it, and a write that skipped the check here would be
+// the one seam a verb could publish through unchecked (desktools-v2/10).
 func (c *ghClient) postReview(pr int, head, event, body string) (string, error) {
+	if err := c.outboundCheck(deskkit.OutboundKindReview, pr, body); err != nil {
+		return "", err
+	}
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", c.owner, c.repo, pr)
 	in := map[string]any{"commit_id": head, "event": event, "body": body}
 	return "", c.doJSON(http.MethodPost, path, in, nil)
 }
 
-// postComment posts a plain issue comment AS THE APP.
+// postComment posts a plain issue comment AS THE APP, after the outbound-write check (see
+// postReview).
 func (c *ghClient) postComment(pr int, body string) error {
+	if err := c.outboundCheck(deskkit.OutboundKindComment, pr, body); err != nil {
+		return err
+	}
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/comments", c.owner, c.repo, pr)
 	in := map[string]any{"body": body}
 	return c.doJSON(http.MethodPost, path, in, nil)
+}
+
+// outboundCheck runs the outbound-write check over one text write this client makes, under
+// the reviewer App's custody. pr is the item it targets: the self-containment scan's
+// evidence for naming a bare `#N` above it (OutboundWrite.NumberHint).
+func (c *ghClient) outboundCheck(kind string, pr int, body string) error {
+	return deskkit.OutboundCheck(deskkit.OutboundWrite{Role: "reviewer", Repo: c.owner + "/" + c.repo,
+		Kind: kind, NumberHint: pr, Fields: []deskkit.OutboundField{{Name: "body", Text: body}}})
 }
 
 // The mechanical verdict-time labels (size + surface) are NOT written from this file. They
