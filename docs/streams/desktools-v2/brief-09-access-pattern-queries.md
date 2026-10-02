@@ -278,6 +278,17 @@ rows_passed=8 rows_total=8
 
 VERIFY: PASS — all eight Verify rows pass by hand and in the dry-run witness at cca9028244d9; the committed witness table still lacks rows 7 and 8.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test -timeout 10m ./internal/deskkit/` | pass exit=0 | sha256:fb2f5cc03d5a | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestAccessPatternSingleRoundTrip -v` | pass exit=0 | sha256:822a7c5c6cf5 | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeNoRawQueryInSignature -v` | pass exit=0 | sha256:49b43756b72f | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+| 5 | `sh -c 'for p in "calls before" "calls after" "points before" "points after"; do grep -qiF -- "$p" docs/streams/desktools-v2/query-cost.md; rc=$?; if [ "$rc" -ne 0 ]; then echo "MISSING $p"; exit 1; fi; done; echo all-present'` | pass exit=0 | sha256:6a62edb7cced | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+| 6 | `D="${D:-05c937307aa6}"; test -n "$D" && git rev-parse -q --verify "$D^1^{commit}" >/dev/null && git rev-parse -q --verify "$D^{commit}" >/dev/null && { n0=; n1=; for r in "$D^1" "$D"; do t=$(mktemp -d) && git archive -o "$t.tar" "$r" && tar -xf "$t.tar" -C "$t" && cp tools/desk/scripts/forge-ban.sh "$t/tools/desk/scripts/forge-ban.sh" && sh "$t/tools/desk/scripts/forge-ban.sh" > "$t.out" 2>&1; n=$(sed -n 's/.*reach-around sites: \([0-9][0-9]*\).*/\1/p' "$t.out"); rm -rf "$t" "$t.tar" "$t.out"; if [ -z "$n" ]; then echo "$r NO-COUNT"; exit 1; fi; echo "$r reach-around sites: $n"; if [ -z "$n0" ]; then n0=$n; else n1=$n; fi; done; if [ "$n1" -le "$n0" ]; then echo "NOT-HIGHER $n0 -> $n1"; else echo "HIGHER $n0 -> $n1"; exit 1; fi; }` | pass exit=0 | sha256:ecdef79cb26a | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestReadPatternBackends$' -v` | pass exit=0 | sha256:594cb4d6a4df | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+| 8 | `d=$(mktemp -d) && cd tools/desk && GOOS=windows GOARCH=amd64 go test -c -o "$d/accesspattern.test.exe" ./internal/deskkit/ && test -s "$d/accesspattern.test.exe"` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ b7121137cffc (on-behalf-of human:ian) (forge-identity) |
+
 ## Review
 Gate: model (all four risk answers no — read-only typed operations added behind the seam; no
 identity binding, no capability removed; the query documents stay inside the backends, which
