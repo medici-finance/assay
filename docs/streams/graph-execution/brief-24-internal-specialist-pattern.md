@@ -11,12 +11,13 @@ depends:
 unblocks:
 - graph-execution/25
 effort: M
-gate: model
+gate: human
 risk:
   regulatory: 'no'
   customer: 'no'
-  irreversible: 'no'
+  irreversible: 'yes'
   sensitive-data: 'no'
+gate-why: Enforces attempt budgets and the distinct-actor check on review verdicts; the owner confirms an implementer cannot satisfy its own review and that budget exhaustion holds rather than becoming approval.
 issues: []
 schema: brief-v2
 authored: 2026-10-02 by task-workflow authoring session
@@ -42,6 +43,8 @@ files: `workflow/internalreview/` (planned), `workflow/testdata/internalreview/`
 facts: The graph instance, admission and recovery contracts are the canonical source. The workflow module is new at the inspected revision. Existing role capabilities and human merge/verification gates remain binding. All named commands/tests below are implementation deliverables, not tests already run.
 
 single-point-of-failure: the distinct-actor check on internal review verdicts — behind it, 25's bridge, which re-validates independent actor and exact subject before any reviewer effect, and behind that the unchanged forge review.
+
+risk-answers: `irreversible: yes`, so `gate: human`, as for 14 and 16 in this stream. The pattern runs offline fixtures only, but it enforces budgets and the distinct-actor check that keeps an implementer from approving its own work: once it is implemented and verified, a human check skipped at verification cannot be recovered by a revert. Lowering the gate is a maintainer ruling, not an authoring choice.
 
 ## Read first
 
@@ -85,4 +88,4 @@ The plausible wrong implementations are the negative cases named in Verify: stal
 
 ## Review
 
-Gate: model. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.
+Gate: human. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.

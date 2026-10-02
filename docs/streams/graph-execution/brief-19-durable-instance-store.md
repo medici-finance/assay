@@ -28,7 +28,7 @@ exec-tier-why: Durable state, authority and cross-component failure cases requir
 domain: complicated
 consumers:
 - 'workflow/controller: follow-up graph-execution/21'
-- 'statusgen/coverage.go: follow-up graph-execution/19'
+- 'statusgen/coverage.go: follow-up graph-execution/19 (this brief; flips to fixed-here when the implementation edits the path)'
 - 'workflow/workspace: follow-up graph-execution/23'
 version: 1
 id: ead4e747-4d61-4ec6-abaf-332873c79b21
@@ -62,7 +62,7 @@ single-point-of-failure: the store's expected-version/generation predicate on ev
 1. Create the workflow Go module and a single-controller SQLite store with transactions, versioned migrations and content-addressed artifact references. Select and pin a maintained driver; document supported filesystem/durability assumptions. Persist canonical instance/node/attempt IDs, revisions, wait/stop state and artifact manifests. No second work identity or claim authority.
 2. Implement expected-version/generation transitions, complete export/import and restore validation. Reject missing artifacts, unsupported mandatory schema and stale ownership; never acknowledge a transition before durability. Restore is passive until the existing ownership authority fences the previous owner.
 3. Connect real instance-to-pattern-node bindings to coverage. Extract/export the existing pure validator/evaluator contract only where needed under statusgen/graphcontract; update existing callers without changing their semantics. Do not copy coverage logic into workflow. No binding found for a declared instance means held, not an unpatterned success.
-4. Add restart, version-conflict, missing-artifact and stale-acceptance flow fixtures. Wire cross-module CI paths for statusgen and workflow so consumer tests run on changes in either. Update lifecycle/storage documentation and the changelog.
+4. Add restart, version-conflict, missing-artifact and stale-acceptance flow fixtures, and one fixture that bypasses the store's expected-version predicate to show the ownership fence still refuses a stale writer. Wire cross-module CI paths for statusgen and workflow so consumer tests run on changes in either. Update lifecycle/storage documentation and the changelog.
 
 ## Interface contract
 
@@ -75,6 +75,7 @@ Pinned instance/attempt/subject and actor capability enter; typed state, evidenc
 | 1 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestWorkflowStoreRestartBinding$" ./... > "$routing_out" && grep -q -- "--- PASS: TestWorkflowStoreRestartBinding " "$routing_out")` | exit 0; named PASS; restart preserves work and all pattern obligations; missing binding holds; mutation: reload instances on restart without their pattern-obligation binding — the named test must fail |
 | 2 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestWorkflowStoreIncompleteRestoreDenied$" ./... > "$routing_out" && grep -q -- "--- PASS: TestWorkflowStoreIncompleteRestoreDenied " "$routing_out")` | exit 0; named PASS; missing artifact or tampered acceptance refuses restore; mutation: skip manifest validation on restore — the named test must fail |
 | 3 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestWorkflowStoreStaleTransitionDenied$" ./... > "$routing_out" && grep -q -- "--- PASS: TestWorkflowStoreStaleTransitionDenied " "$routing_out")` | exit 0; named PASS; two expected-version transitions cannot both advance; mutation: drop the expected-version predicate from the transition write — the named test must fail |
+| 4 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestStoreBypassFenced$" ./... > "$routing_out" && grep -q -- "--- PASS: TestStoreBypassFenced " "$routing_out")` | exit 0; named PASS; with the store's expected-version predicate bypassed, a stale owner generation's transition is still refused by the existing ownership authority's fence and no effect is recorded; mutation: accept a transition whose owner generation the ownership authority has fenced — the named test must fail |
 
 ## Pre-mortem and dispatch checks
 

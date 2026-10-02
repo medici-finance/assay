@@ -10,12 +10,13 @@ unblocks:
 - graph-execution/27
 - graph-execution/21
 effort: M
-gate: model
+gate: human
 risk:
   regulatory: 'no'
   customer: 'no'
-  irreversible: 'no'
+  irreversible: 'yes'
   sensitive-data: 'no'
+gate-why: Adds an authenticated launch endpoint and moves the process runner the process-launch audit scans; the owner confirms callers cannot change role, profile or limits and that the audit keeps sight of every exec site.
 issues: []
 schema: brief-v2
 authored: 2026-10-02 by task-workflow authoring session
@@ -28,9 +29,9 @@ domain: complicated
 consumers:
 - 'workflow/controller: follow-up graph-execution/21'
 - 'tools/desk/internal/loopengine: follow-up graph-execution/27'
-- 'tools/desk/internal/cellprocess: follow-up graph-execution/26 (moved into loopadmin/process)'
-- 'tools/desk/cmd/cellctl: follow-up graph-execution/26 (cadence path calls the moved runner)'
-- 'tools/desk/internal/forgeban: follow-up graph-execution/26 (process-launch audit also scans loopadmin)'
+- 'tools/desk/internal/cellprocess: follow-up graph-execution/26 (this brief; moved into loopadmin/process; flips to fixed-here when the implementation edits the path)'
+- 'tools/desk/cmd/cellctl: follow-up graph-execution/26 (this brief; cadence path calls the moved runner; flips to fixed-here when the implementation edits the path)'
+- 'tools/desk/internal/forgeban: follow-up graph-execution/26 (this brief; process-launch audit also scans loopadmin; flips to fixed-here when the implementation edits the path)'
 - 'operator lifecycle and cockpit: out-of-scope (adopter qualification)'
 version: 1
 id: bcbee0b0-8f12-4e7a-b028-0637b2bab0c3
@@ -46,7 +47,7 @@ facts: The new loopadmin module is bootstrapped by /20. At main 307fe1699 `tools
 
 single-point-of-failure: the caller-scoped launch endpoint (caller namespace, approved profile, role, generation, shared capacity) — behind it, the per-role cadence lease (27) and the role executors' own credentials, which a direct lower-boundary call still cannot obtain.
 
-risk-answers: all `no` because the supervisor runs offline fixtures only, enrolls no live desk, and holds no effect credential or operator administration; its endpoint is local and caller-scoped. It adds an authenticated launch endpoint and moves the process runner the process-launch audit scans, so the implementing change needs an independent security review before it is marked ready.
+risk-answers: `irreversible: yes`, so `gate: human`, as for 14 and 16 in this stream. The supervisor runs offline fixtures only, enrolls no live desk, and holds no effect credential or operator administration, but it adds an authenticated launch endpoint and moves the process runner the process-launch audit scans: once it is implemented and verified, a human check skipped at verification cannot be recovered by a revert. Lowering the gate is a maintainer ruling, not an authoring choice.
 
 ## Read first
 
@@ -66,7 +67,7 @@ risk-answers: all `no` because the supervisor runs offline fixtures only, enroll
 1. Move `tools/desk/internal/cellprocess` into `loopadmin/process` as the module's one process runner, without copying it: keep its process-tree containment and uncertain-cleanup result unchanged, delete the old package, and re-point cellctl's cadence path at the moved package through a `require` plus relative `replace` of the loopadmin module in `tools/desk/go.mod` (the pattern `tools/loopresolve/go.mod` uses for `cellconfig`); cellctl's existing cadence tests stay green unchanged, and the tools/desk release build must resolve the relative `replace`. Extend the process-launch audit so it also scans `loopadmin/` and re-key the runner's exec-site entry to the moved path; the audit must not lose sight of that exec site. Implement one shared process/session supervisor over /20 and that runner. Accept only authenticated caller-scoped, operator-approved launch profiles and validated assignment/reservation references. Support standing-desk and workflow-stage modes with identical adapter and lifecycle semantics. An operator may run separate per-role processes of the same binary; reuse does not imply a privileged all-role daemon.
 2. Persist launch intent before starting a child in an execution journal keyed by caller namespace, invocation ID and owner generation. Keep adapter receipts, lifecycle state, cancellation, limits, usage and checkpoints. This journal owns process facts only; desk queues and the instance store (19) retain authoritative work/acceptance state. Caller intent and journal receipt reconcile by stable request ID, including a crash between their separate commits; do not claim a transaction across stores.
 3. Implement start/observe/cancel/reconcile and idle session retention only when the adapter declares support. Duplicate input cannot launch twice; unknown launch/stop holds until reconciled; bounded restarts never create another unknown request. Recheck role/profile/generation and budget at every child launch and receipt delivery. Shared concurrency reservations bound all callers using this profile; preserve consumption after crash/restore.
-4. Keep runtime launch authority separate from operator profile/install/credential administration. A desk client may request an allowed child invocation through a bounded, capability-scoped endpoint, but cannot choose arbitrary argv, escalate role, raise limits or recursively create unconstrained agents. Effect credentials and operator admin are absent; any inference credential stays confined to its approved adapter boundary and is excluded from packets, artifacts and logs.
+4. Keep runtime launch authority separate from operator profile/install/credential administration. A desk client may request an allowed child invocation through a bounded, capability-scoped endpoint, but cannot choose arbitrary argv, escalate role, raise limits or recursively create unconstrained agents. Effect credentials and operator admin are absent; any inference credential stays confined to its approved adapter boundary and is excluded from packets, artifacts and logs. Fail closed: an unrecognised caller, an unreadable or missing profile or role-binding configuration, and an absent or unreadable budget each refuse the launch; none falls back to a default profile, role or limit.
 5. Export sanitized process/session status with mode, caller binding and optional canonical workflow references. Viewer attach/detach never starts a process. The default command uses offline fixtures; live profile activation is separate. Provide backup/restore of the execution journal with referenced artifacts, preserving pause/spend/unknowns; restore is passive. Document state ownership and refusal behavior.
 
 ## Interface contract
@@ -81,6 +82,7 @@ Caller/invocation/subject and validated actor capability enter; typed state, evi
 | 2 | check:ci +flow +mutation | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestLoopAdminUnknownRestartAndAccounting$" ./... > "$routing_out" && grep -q -- "--- PASS: TestLoopAdminUnknownRestartAndAccounting " "$routing_out")` | exit 0; named PASS; crash between caller intent and launch receipt reconciles once; unknown cancel blocks relaunch; usage and limits survive restart; mutation: relaunch on restart when the launch receipt is missing — the named test must fail |
 | 3 | check:ci +flow +mutation | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestLoopAdminCallerIsolationAndDirectBypass$" ./... > "$routing_out" && grep -q -- "--- PASS: TestLoopAdminCallerIsolationAndDirectBypass " "$routing_out")` | exit 0; named PASS; a direct lower-boundary call cannot change role/profile, reuse another caller receipt or exceed shared capacity; operator actions are unreachable; mutation: skip the caller-namespace check on receipt lookup — the named test must fail |
 | 4 | check:ci +flow +mutation | `(cd tools/desk && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestProcessLaunchAuditCoversLoopAdmin$" ./... > "$routing_out" && grep -q -- "--- PASS: TestProcessLaunchAuditCoversLoopAdmin " "$routing_out")` | exit 0; named PASS; the process-launch audit scans `loopadmin/` as well as `tools/desk`, finds the moved runner's exec site in its register, and fails on an unregistered exec site planted in a `loopadmin/` fixture; mutation: drop the `loopadmin/` root from the audit's scan — the named test must fail |
+| 5 | check:ci +flow +mutation | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestLoopAdminFailClosed$" ./... > "$routing_out" && grep -q -- "--- PASS: TestLoopAdminFailClosed " "$routing_out")` | exit 0; named PASS; an unrecognised caller, an unreadable profile or role-binding configuration and an absent budget each refuse the launch and start no child; mutation: treat an absent budget as unlimited — the named test must fail |
 
 ## Pre-mortem and dispatch checks
 
@@ -92,4 +94,4 @@ The plausible wrong implementations are the negative cases named in Verify: stal
 
 ## Review
 
-Gate: model. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.
+Gate: human. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.

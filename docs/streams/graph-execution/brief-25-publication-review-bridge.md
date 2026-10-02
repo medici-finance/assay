@@ -12,12 +12,13 @@ depends:
 unblocks:
 - graph-execution/18
 effort: M
-gate: model
+gate: human
 risk:
   regulatory: 'no'
   customer: 'no'
-  irreversible: 'no'
+  irreversible: 'yes'
   sensitive-data: 'no'
+gate-why: Can request a reviewer effect on the forge; the owner confirms only an independent actor's verdict on the exact current head crosses, and that activating the publishing profile stays a recorded human decision.
 issues: []
 schema: brief-v2
 authored: 2026-10-02 by task-workflow authoring session
@@ -44,7 +45,7 @@ facts: The graph instance, admission and recovery contracts are the canonical so
 
 single-point-of-failure: the reviewer-executor subject check (independent actor, exact current head, current policy, complete evidence) — behind it, the publishing profile ships disabled and only a recorded human decision activates it, and the forge's own review and human merge gates are unchanged.
 
-risk-answers: all `no` because the bridge ships report-only, the publishing profile ships disabled, and no live review policy, ready flip or merge is in scope. The publishing profile can request a reviewer effect, so the implementing change needs an independent security review before it is marked ready.
+risk-answers: `irreversible: yes`, so `gate: human`, as for 14 and 16 in this stream. The bridge ships report-only, the publishing profile ships disabled, and no live review policy, ready flip or merge is in scope, but the publishing profile can request a reviewer effect: once the bridge is implemented and verified, a human check skipped at verification cannot be recovered by a revert. Lowering the gate is a maintainer ruling, not an authoring choice.
 
 ## Read first
 
@@ -89,4 +90,4 @@ The plausible wrong implementations are the negative cases named in Verify: stal
 
 ## Review
 
-Gate: model. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.
+Gate: human. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.

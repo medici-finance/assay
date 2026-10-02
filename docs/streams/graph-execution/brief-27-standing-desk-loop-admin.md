@@ -9,12 +9,13 @@ depends:
 - graph-execution/22
 unblocks: []
 effort: M
-gate: model
+gate: human
 risk:
   regulatory: 'no'
   customer: 'no'
-  irreversible: 'no'
+  irreversible: 'yes'
   sensitive-data: 'no'
+gate-why: Transfers launch of the standing desk roles and edits shipped launch, lease, CI and role-skill files; the owner confirms one launcher per role, that existing stop controls still stop an enrolled role, and that credential custody does not change.
 issues: []
 schema: brief-v2
 authored: 2026-10-02 by task-workflow authoring session
@@ -25,9 +26,9 @@ exec-tier: strong
 exec-tier-why: Durable state, authority and cross-component failure cases require design judgment.
 domain: complicated
 consumers:
-- 'configured standing desks: follow-up graph-execution/27'
-- 'tools/desk/cmd/cellctl: follow-up graph-execution/27 (enrolled roles launch through loopadmin; legacy launch path kept for non-enrolled roles)'
-- 'tools/desk/internal/cellcadence: follow-up graph-execution/27 (enrolled roles hold the same per-role lease)'
+- 'configured standing desks: follow-up graph-execution/27 (this brief; flips to fixed-here when the implementation edits the path)'
+- 'tools/desk/cmd/cellctl: follow-up graph-execution/27 (this brief; enrolled roles launch through loopadmin; legacy launch path kept for non-enrolled roles; flips to fixed-here when the implementation edits the path)'
+- 'tools/desk/internal/cellcadence: follow-up graph-execution/27 (this brief; enrolled roles hold the same per-role lease; flips to fixed-here when the implementation edits the path)'
 - 'operator adoption: out-of-scope (per-role profile and custody qualification)'
 - 'workflow/controller: out-of-scope (separate caller delivered by graph-execution/21)'
 version: 1
@@ -44,7 +45,7 @@ facts: The new loopadmin module is bootstrapped by /20. At main 307fe1699 a stan
 
 single-point-of-failure: the per-role cadence lease that admits one launcher per role binding — behind it, 26's caller-scoped endpoint refusing role or profile mismatch, and the unchanged review/verify actors and effect executors.
 
-risk-answers: all `no` because the five-role run is an offline fixture, no live desk is enrolled, enrollment is per-role opt-in and reversible through the drain/reconcile/fence rollback, and credential custody does not change. It edits tools/desk launch code, CI and five role skills, so the implementing change needs an independent security review before it is marked ready.
+risk-answers: `irreversible: yes`, so `gate: human`, as for 14 and 16 in this stream. The five-role run is an offline fixture, no live desk is enrolled, enrollment is per-role opt-in and reversible through the drain/reconcile/fence rollback, and credential custody does not change, but the brief edits shipped launch and lease code, CI and five role skills: once it is implemented and verified, a human check skipped at verification cannot be recovered by a revert. Lowering the gate is a maintainer ruling, not an authoring choice.
 
 ## Read first
 
@@ -63,7 +64,7 @@ risk-answers: all `no` because the five-role run is an offline fixture, no live 
 
 1. Bind the five configured desk roles (coordinator, intake, worker, review and verify) as independent standing-desk clients of the shared /26 supervisor. Preserve each existing queue, claim, prompt/skill, model profile, review boundary and next-item policy. The existing desk skills and queues remain work owners. For engine-backed consumers, loopengine/engine.go, journal.go and recover.go retain that ownership; add a runner bridge rather than a second queue engine. The frozen loopengine.Loop interface (SelectQueue/TierPolicy/Dispatch/Land/OnIdle) is unchanged: adapt Dispatch/Handle, never add hooks. Skill-driven coordinator/intake/review desks use the same client without pretending they are engine-backed. No workflow store, pattern instance or workflow controller is required.
 2. Support a standing role session plus bounded child invocations where its profile permits them. Retain useful context only through declared adapter session capability; durable role/queue checkpoints survive loss of that session. Idle/no actionable input performs no new model request. A terminal is an optional attachment, not the identity or life-support of the desk. Reconnect and cockpit refresh never launch a duplicate.
-3. For an enrolled role, use one launch path — cellctl hands the role's resolved approved profile to the shared /26 supervisor through the /22 adapter — for both the standing role process and its delegated specialist children. Map existing desk claim/reservation/stop controls into the common envelope; reject role/profile mismatch and unsupported capability. Carry canonical work references for child tasks when available without fabricating graph instances. Preserve independent review/verification actors and existing effect executors; launch completion never declares work done.
+3. For an enrolled role, use one launch path — cellctl hands the role's resolved approved profile to the shared /26 supervisor through the /22 adapter — for both the standing role process and its delegated specialist children. Map existing desk claim/reservation/stop controls into the common envelope; reject role/profile mismatch and unsupported capability. Carry canonical work references for child tasks when available without fabricating graph instances. Preserve independent review/verification actors and existing effect executors; launch completion never declares work done. Fail closed: an unrecognised role binding, an unreadable profile or binding configuration and an absent budget refuse the launch, and an existing desk stop control set for an enrolled role holds every launch for that role.
 4. Implement explicit profile-selected opt-in with the legacy desk launch path (cellctl's `deskLaunch` → `runInteractiveHarness`/`runCadencedHarness`) retained unchanged for non-enrolled roles. For a given desk binding, only one launcher owns each generation: an enrolled role holds the same `cellcadence` per-role lease while the shared supervisor runs it, so a legacy launch of that role is refused, and an unfinished checkpoint maps to a held unknown stop rather than a relaunch. Transfer and rollback stop admission, reconcile old attempts/effects and fence before replacement; unknown stop cannot be treated as successful handback. Migrating the launcher does not itself authorize a credential-custody change.
 5. Run an offline five-role fixture through the actual loopengine bridge and common supervisor/adapter, including child work, next-item progress, idle behavior, cancellation and restart. Enroll no live desk. Document source/consumer CI paths and the separately qualified per-role adoption procedure.
 
@@ -78,6 +79,7 @@ Caller/invocation/subject and validated actor capability enter; typed state, evi
 | 1 | check:ci +flow +mutation | `(cd tools/desk && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestStandingDeskFiveRolesThroughLoopAdmin$" ./... > "$routing_out" && grep -q -- "--- PASS: TestStandingDeskFiveRolesThroughLoopAdmin " "$routing_out")` | exit 0; named PASS; all five role profiles and permitted child launches use the same shared supervisor with workflow controller/storage absent; mutation: route one enrolled role through the legacy cellctl launch path — the named test must fail |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestStandingDeskIdleAttachAndNextItem$" ./... > "$routing_out" && grep -q -- "--- PASS: TestStandingDeskIdleAttachAndNextItem " "$routing_out")` | exit 0; named PASS; idle/reconnect launches nothing; completed receipt reaches existing desk logic and only a new actionable item invokes again; mutation: launch a model request on viewer attach — the named test must fail |
 | 3 | check:ci +flow +mutation | `(cd tools/desk && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestStandingDeskLauncherTransferUnknown$" ./... > "$routing_out" && grep -q -- "--- PASS: TestStandingDeskLauncherTransferUnknown " "$routing_out")` | exit 0; named PASS; legacy and shared launchers cannot own the same binding generation — with an enrolled role running, a cellctl legacy launch of that role is refused by the cellcadence per-role lease; unknown stop holds rollback and direct role escalation is denied; mutation: skip the cellcadence per-role lease when the shared launcher starts an enrolled role — the named test must fail |
+| 4 | check:ci +flow +mutation | `(cd tools/desk && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestStandingDeskStopHolds$" ./... > "$routing_out" && grep -q -- "--- PASS: TestStandingDeskStopHolds " "$routing_out")` | exit 0; named PASS; with the existing desk stop control set for an enrolled role, the shared supervisor launches nothing for that role, standing or child, until the stop clears; mutation: drop the stop-control mapping into the common envelope — the named test must fail |
 
 ## Pre-mortem and dispatch checks
 
@@ -89,4 +91,4 @@ The plausible wrong implementations are the negative cases named in Verify: stal
 
 ## Review
 
-Gate: model. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.
+Gate: human. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.

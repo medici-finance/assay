@@ -25,7 +25,7 @@ sources:
   over motivating cases and holdouts → reviewed next version; outcome and permitted method scored independently)
   and §4 (one incident-derived improvement replayed over its motivating cases and unchanged holdouts)
 - graph-execution/05 (the eight fixtures and the `statusgen experiment` harness this brief replays through; the
-  failed run its replay fixture derives from) and graph-execution/02 (`spec/workflow-pattern-v1.md` (planned) —
+  failed run its replay fixture derives from) and graph-execution/02 (`spec/workflow-pattern-v1.md` —
   the `supersedes:` and `version:` keys a v2 pattern file carries)
 - 'schemas/desksupervise-status-v1.json (the JSON-schema convention this repo uses for a machine-readable contract:
   `$id` under schemas/, `additionalProperties: false`, every field three-state per docs/three-state-instrument-rule.md)
@@ -98,7 +98,7 @@ Implement the named failure/flow case below in the declared test surface. This a
 | 9 | check +flow | `cd statusgen && go run . experiment --root testdata/graph-execution/replay --records-dir /tmp/ge06-one > /dev/null; go run . replay --record /tmp/ge06-one/*.json --root testdata/graph-execution/replay; echo rc=$?` | `rc=0` — a record written by one run replays cleanly through the other subcommand: emit → validate → replay is one path, not three |
 | 10 | check +dereference | `grep -n -i 'promot' docs/lifecycle.md` | ≥ 1 line and it states the revision lands as a reviewed pull request; a lifecycle doc that describes an automatic promotion fails the reviewer's reading |
 | 11 | check:ci +flow | `cd statusgen && go test -count=1 -v -run TestRunRecordInstanceReferencesRoundTrip ./...` | exit 0; named test PASS; instance, subject and optional assessment references survive emit/validate/replay |
-| 12 | check:ci +flow +mutation | `(cd statusgen && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunRecordInternalAttemptAccounting$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunRecordInternalAttemptAccounting " "$routing_out")` | exit 0; named PASS; dropped failed attempt changes cost verdict; unbound role is rejected; a role binding supplied inside the record under validation is refused; mutation: omit failed internal attempts from the run record cost total — the named test must fail |
+| 12 | check:ci +flow +mutation | `(cd statusgen && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunRecordInternalAttemptAccounting$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunRecordInternalAttemptAccounting " "$routing_out")` | exit 0; named PASS; dropped failed attempt changes cost verdict; unbound role is rejected; a role binding supplied inside the record under validation is refused; mutation: omit failed internal attempts from the run record cost total — the named test must fail; second mutation: accept a role binding carried inside the record under validation — the named test must fail |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —

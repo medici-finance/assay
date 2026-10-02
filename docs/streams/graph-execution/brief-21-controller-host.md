@@ -13,12 +13,13 @@ unblocks:
 - graph-execution/05
 - graph-execution/24
 effort: M
-gate: model
+gate: human
 risk:
   regulatory: 'no'
   customer: 'no'
-  irreversible: 'no'
+  irreversible: 'yes'
   sensitive-data: 'no'
+gate-why: Dispatches attempts through the admission boundary and holds operator pause, drain and cancellation; the owner confirms a bypassed or stale controller cannot advance work or widen dispatch authority.
 issues: []
 schema: brief-v2
 authored: 2026-10-02 by task-workflow authoring session
@@ -45,6 +46,8 @@ files: `workflow/controller/` (planned), `workflow/cmd/assay-workflow/` (planned
 facts: The graph instance, admission and recovery contracts are the canonical source. The workflow module is new at the inspected revision. Existing role capabilities and human merge/verification gates remain binding. All named commands/tests below are implementation deliverables, not tests already run.
 
 single-point-of-failure: the controller's current-owner and acceptance recheck at each transition — behind it, the existing effect boundaries (04 receipts, 14 assignment recheck), which reject a stale generation when the controller is bypassed.
+
+risk-answers: `irreversible: yes`, so `gate: human`, as for 14 and 16 in this stream. The implementation runs offline fixtures only and holds no effect credential, but the controller dispatches through the admission boundary and holds pause, drain and cancellation: once such a control is implemented and verified, a human check skipped at verification cannot be recovered by a revert. Lowering the gate is a maintainer ruling, not an authoring choice.
 
 ## Read first
 
@@ -96,4 +99,4 @@ The plausible wrong implementations are the negative cases named in Verify: stal
 
 ## Review
 
-Gate: model. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.
+Gate: human. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.
