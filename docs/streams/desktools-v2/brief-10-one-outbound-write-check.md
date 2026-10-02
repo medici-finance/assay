@@ -267,8 +267,11 @@ What changed, and what did not:
   the form above.
 - Row 13 counts the tests that actually RAN under an anchored selector. Its test,
   TestOutboundWindowsMachinePaths, and the drive-letter/UNC scanner extension it exercises
-  belong to desktools-v2/12 (its Windows row) and do not exist yet, so row 13 is RED by design
-  until that brief lands. It is neither loosened nor dropped here.
+  belong to desktools-v2/12 (its Windows row). When this amendment was authored the test did
+  not exist and the row printed `rc=0 run=0 pass=0` and was red, where version 2 passed it on
+  "no tests to run". desktools-v2/12 has since landed the test (#2033), so the row now prints
+  `rc=0 run=1 pass=1` and is green; a selector that matches nothing, or a skipped test, turns
+  it red again. It is neither loosened nor dropped here.
 - Rows 1 and 10, every Expect property, the Task, the `consumers:` list, and the Evidence below
   are unchanged. The 2026-10-01 Evidence was recorded against version 2 rows, and so is any
   other Evidence block whose commands are the version 2 ones, whichever order it lands in
@@ -279,7 +282,7 @@ What changed, and what did not:
 
 Rows run from the root of `medici-finance/assay`. Rows 2–9 and 11–13 were re-authored in
 version 3 (#2027, see the Amendment above) so a missing selector or a false property turns the
-row red; row 13 is red until desktools-v2/12 lands its test. Row 11 needs `statusgen` on PATH
+row red; row 13 depends on the test desktools-v2/12 landed (#2033) and is red if it is missing or skipped. Row 11 needs `statusgen` on PATH
 and history back to e7e9f35d3 (not a depth-1 clone); without either it is red, never green.
 
 | # | Class | Command | Expect |
