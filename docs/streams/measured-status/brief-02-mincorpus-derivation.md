@@ -85,7 +85,7 @@ facts:
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd qualgen && go test ./riskscore/ -run TestMinCorpusDerivedFromFeatureCount -count=1` | exit 0; output contains "ok" | check +dereference |
-| 2 | `cd qualgen && go test ./riskscore/ -run TestMinCorpusGovernsLearnedSwitch -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (a corpus one below the derived floor stays heuristic-only/could-not-learn and one at the floor trains — the value actually governs the switch end to end) | check +flow |
+| 2 | `cd qualgen && go test ./riskscore/ -run TestMinCorpusGovernsLearnedSwitch -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusGovernsLearnedSwitch'` | exit 0 (a corpus one below the derived floor stays heuristic-only/could-not-learn and one at the floor trains — the value actually governs the switch end to end) | check +flow |
 | 3 | `cd qualgen && go build ./riskscore/` | exit 0 | check |
 | 4 | `grep -q 'Derivation:' qualgen/riskscore/learned.go` | exit 0 (a written derivation exists next to the value) | check |
 | 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:02` | exit 0; output does not contain "DISPROVED" (the fixed-here consumer routing is corroborated, not contradicted) | check |
@@ -110,6 +110,13 @@ copy (`cmp` identical) before the next:
 
 After restoring, the full package passes (`go test ./riskscore/ -count=1`: `ok`), and
 `go vet ./riskscore/` and `gofmt -l riskscore` are clean.
+
+Verify row 2 re-authored (check-definition fix, same assertion, narrower match): as first
+written, `... -v 2>&1 | grep -q 'PASS'` exits 141 on 3 of 3 runs under `bash -o pipefail`,
+the shell `verifyrun` runs every row in — `grep -q` exits at the first match and `go test`
+takes SIGPIPE. The row now reads the whole stream with `grep -c` and matches the test's own
+`--- PASS:` line: exit 0 on 3 of 3 runs at this head, and exit 1 with mutation B applied
+(prints `0`), so the row goes red when the switch is not governed by the floor.
 
 Implementer's run of the Verify table follows as an execution witness (`statusgen
 verifyrun`). The independent verifier re-runs on merged main; this record does not set
