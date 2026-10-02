@@ -84,7 +84,7 @@ func TestOutboundWindowsMachinePaths(t *testing.T) {
 	bs := `\`
 	refused := []struct{ name, path string }{
 		{"drive_backslash", `C:` + bs + `Users` + bs + `example` + bs + `src` + bs + `notes.md`},
-		{"drive_forward_slash", "D:/Users/example/AppData/Local/Temp/x"},
+		{"drive_forward_slash", "D:/" + "Users/example/AppData/Local/Temp/x"},
 		{"drive_lowercase", `c:` + bs + `users` + bs + `example`},
 		{"unc", bs + bs + `fileserver` + bs + `share` + bs + `team` + bs + `doc.md`},
 		{"unc_host_share_only", bs + bs + `fileserver` + bs + `share`},

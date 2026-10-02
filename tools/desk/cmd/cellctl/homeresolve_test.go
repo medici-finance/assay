@@ -19,9 +19,9 @@ import (
 // token store, and `check` reports the CLI config link as not applicable on that arm.
 func TestEnvResolution(t *testing.T) {
 	const (
-		profile = `C:\Users\example`
-		appdata = `C:\Users\example\AppData\Roaming`
-		bash    = "/c/Users/example-bash"
+		profile = `C:\Profiles\example`
+		appdata = `C:\Profiles\example\AppData\Roaming`
+		bash    = "/c/profiles/example-bash"
 	)
 	type want struct{ home, config, gh, claude, codex string }
 	under := func(h string, elem ...string) string { return filepath.Join(append([]string{h}, elem...)...) }
@@ -44,10 +44,10 @@ func TestEnvResolution(t *testing.T) {
 		{"windows", "home_only", map[string]string{"HOME": bash},
 			ptr(homeWant(bash, under(bash, ".config", "gh")))},
 		{"windows", "neither_set_refuses", map[string]string{}, nil},
-		{"linux", "home_set", map[string]string{"HOME": "/home/example"},
-			ptr(homeWant("/home/example", under("/home/example", ".config", "gh")))},
-		{"linux", "both_set", map[string]string{"HOME": "/home/example", "USERPROFILE": "/home/other"},
-			ptr(homeWant("/home/example", under("/home/example", ".config", "gh")))},
+		{"linux", "home_set", map[string]string{"HOME": "/srv/example-home"},
+			ptr(homeWant("/srv/example-home", under("/srv/example-home", ".config", "gh")))},
+		{"linux", "both_set", map[string]string{"HOME": "/srv/example-home", "USERPROFILE": "/srv/other-home"},
+			ptr(homeWant("/srv/example-home", under("/srv/example-home", ".config", "gh")))},
 		{"linux", "neither_set_refuses", map[string]string{"APPDATA": appdata}, nil},
 		{"darwin", "neither_set_refuses", map[string]string{}, nil},
 	}
