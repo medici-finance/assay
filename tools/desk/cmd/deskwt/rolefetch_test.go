@@ -225,6 +225,13 @@ func TestRoleFetchTLSPathContext(t *testing.T) {
 	var prefix []string
 	old := execCommand
 	execCommand = func(name string, args ...string) *exec.Cmd {
+		for _, arg := range args {
+			for _, value := range want {
+				if strings.Contains(arg, value) {
+					t.Error("TLS setting appears in child process arguments")
+				}
+			}
+		}
 		for i, arg := range args {
 			if name == "git" && arg == "fetch" {
 				prefix = append([]string{}, args[:i]...)

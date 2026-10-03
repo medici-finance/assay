@@ -58,7 +58,7 @@ func fetchRoleHTTPS(dir, role, origin, username, path string) error {
 	// Let Git select the setting for THIS endpoint before expanding its path.
 	// Expanding all scopes also evaluates irrelevant ~user paths, unlike a fetch.
 	// These are http.c's git_config_pathname TLS options (cookies are suppressed).
-	var tlsArgs []string
+	var tlsSettings [][2]string
 	for _, option := range []string{"sslcert", "sslkey", "sslcapath", "sslcainfo", "pinnedpubkey"} {
 		tls := deskkit.Run(deskkit.ToolCall{Name: "git", Args: []string{"config", "--null", "--path", "--includes", "--get-urlmatch", "http." + option, origin}, Dir: dir, Start: execCommand})
 		if tls.ExitCode == 1 { // no setting applies to this endpoint
@@ -69,7 +69,7 @@ func fetchRoleHTTPS(dir, role, origin, username, path string) error {
 		}
 		// An exact-endpoint override preserves the selected value despite more
 		// general raw settings in the snapshot or repository configuration.
-		tlsArgs = append(tlsArgs, "-c", "http."+origin+"."+option+"="+strings.TrimSuffix(tls.Stdout, "\x00"))
+		tlsSettings = append(tlsSettings, [2]string{"http." + origin + "." + option, strings.TrimSuffix(tls.Stdout, "\x00")})
 	}
 	home, err := os.MkdirTemp("", "deskwt-fetch-*")
 	if err != nil {
@@ -115,8 +115,12 @@ func fetchRoleHTTPS(dir, role, origin, username, path string) error {
 			}
 		}
 	}
+	// Keep selected values in the snapshot, after inherited entries so they win.
+	for _, setting := range tlsSettings {
+		env = append(env, "GIT_CONFIG_KEY_"+strconv.Itoa(count)+"="+setting[0], "GIT_CONFIG_VALUE_"+strconv.Itoa(count)+"="+setting[1])
+		count++
+	}
 	env = append(env, "GIT_CONFIG_COUNT="+strconv.Itoa(count))
-	args = append(args, tlsArgs...)
 	// Prove the explicit endpoint is not rewritten to a different transport/host.
 	resolved := deskkit.Run(deskkit.ToolCall{Name: "git", Args: append(append([]string{}, args...), "ls-remote", "--get-url", origin), Dir: dir, Env: env, Start: execCommand})
 	if resolved.Failed() {
