@@ -9,8 +9,9 @@
 # THE DEFECT (#2019, #2021). Under `bash -e`, `out="$(cmd)"` with a failing `cmd`
 # exits the step on that line, so the `rc=$?` that follows is never read and the
 # refusal classifier never runs: the step goes red with no classifier output, even
-# for refusals the classifier calls benign. THE CLASS: a command-substitution
-# assignment whose status is read by a later `$?` instead of being captured in
+# for refusals the classifier calls benign. THE CLASS: a potentially failing command
+# (including a command-substitution assignment) whose status is read by a later
+# `$?` instead of being captured in
 # the same AND-OR list (`… && rc=0 || rc=$?`) or inside a `set +e` region.
 #
 # FOUR PARTS
@@ -186,62 +187,101 @@ fi
 
 # ── 3 + 4. class guard over every run: block, with positive controls ─────────
 cat > "$WORK/guard.py" <<'PY'
-"""Flag a `run:` block that reads `$?` from a command-substitution assignment
-while errexit may still be on: the assignment itself would end the step first.
-Usage: guard.py FILE...   Prints `FILE: step 'NAME' line N: ...`; exit 1 on any."""
+"""Flag a command whose following status capture is unreachable under bash -e.
+This structural scan covers adjacent commands and semicolon-separated captures;
+AND/OR lists and explicit errexit-off regions are exempt.
+Usage: guard.py FILE... Prints FILE, step and line; exit 1 on any."""
 import re, sys
 
-ASSIGN = re.compile(r'^\s*[A-Za-z_]\w*=("?)\$\(')            # x=$(  /  x="$(
-RC_LINE = re.compile(r'^\s*[A-Za-z_]\w*="?\$\?"?\s*(?:;.*)?$')  # rc=$?
-ONE_LINE = re.compile(r'[A-Za-z_]\w*="?\$\(.*\)"?\s*;\s*[A-Za-z_]\w*="?\$\?')
+ASSIGN = re.compile(r'^\s*[A-Za-z_]\w*=("?)\$\(')
+RC_LINE = re.compile(r'^\s*[A-Za-z_]\w*="?\$\?"?\s*$')
 SET_OFF = re.compile(r'^\s*set\s+\+[a-z]*e')
 SET_ON = re.compile(r'^\s*set\s+-[a-z]*e')
+PURE_ASSIGN = re.compile(r'^[A-Za-z_]\w*=')
 
 def blocks(text):
     lines = text.split("\n")
     name = "(unnamed)"
+    step_start = 0
     i = 0
     while i < len(lines):
+        if re.match(r'^\s*- (?:name:|uses:|run:)', lines[i]):
+            step_start = i
+            name = "(unnamed)"
         n = re.match(r'^\s*- name:\s*(.+?)\s*$', lines[i])
         if n:
-            name = n.group(1).strip("'\"")
-        r = re.match(r'^(\s*)run:\s*[|>][-+]?\s*$', lines[i])
+            name = n.group(1).strip("\'\"")
+            step_start = i
+        r = re.match(r'^(\s*)(- )?run:\s*(.*?)\s*$', lines[i])
         if r:
-            ind = len(r.group(1))
+            ind = len(r.group(1)) + (2 if r.group(2) else 0)
             body, start = [], i + 2
             k = i + 1
-            while k < len(lines) and (lines[k].strip() == "" or len(lines[k]) - len(lines[k].lstrip()) > ind):
-                body.append(lines[k]); k += 1
-            yield name, start, body
+            if re.fullmatch(r'[|>][-+]?', r.group(3)):
+                while k < len(lines) and (lines[k].strip() == "" or len(lines[k]) - len(lines[k].lstrip()) > ind):
+                    body.append(lines[k]); k += 1
+            else:
+                body, start = [r.group(3).strip("\'\"")], i + 1
+            # shell can precede or follow run within the same step.
+            end = k
+            while end < len(lines):
+                ln = lines[end]
+                if ln.strip() and len(ln) - len(ln.lstrip()) < ind:
+                    break
+                end += 1
+            shell = None
+            for ln in lines[step_start:i] + lines[k:end]:
+                m = re.match(r'^\s*shell:\s*(.*?)\s*$', ln)
+                if m:
+                    shell = m.group(1).strip("\'\"")
+            yield name, start, body, shell
             i = k
             continue
         i += 1
 
+def unsafe_command(s):
+    s = s.strip()
+    if not s or s.startswith('! ') or '&&' in s or '||' in s:
+        return False
+    if re.match(r'^(?:set|if|elif|then|else|fi|for|while|until|do|done|case|esac)\b', s):
+        return False
+    # Literal assignments have no failing command, substitution assignments do.
+    if PURE_ASSIGN.match(s) and '$(' not in s and '`' not in s:
+        return False
+    return True
+
 def scan(path):
     found = []
-    for name, start, body in blocks(open(path).read()):
-        errexit_off = False
-        last = None   # index of the previous non-blank, non-comment line
+    for name, start, body, shell in blocks(open(path).read()):
+        if shell is not None and not re.match(r'^bash(?:\s|$)', shell):
+            continue
+        # Actions' unspecified shell is bash -e; bash {0} opts out until set -e.
+        errexit_off = shell is not None and '{0}' in shell and not re.search(r'\s-[a-z]*e', shell)
+        last = None
         for idx, ln in enumerate(body):
             s = ln.strip()
             if not s or s.startswith("#"):
                 continue
-            if SET_OFF.match(ln):
-                errexit_off = True
-            elif SET_ON.match(ln):
-                errexit_off = False
-            if not errexit_off:
+            # Each simple command can change errexit; rc capture on the same line
+            # obeys the same state as a capture on the next line.
+            for part in s.split(';'):
+                part = part.strip()
+                if not part:
+                    continue
+                if SET_OFF.match(part):
+                    errexit_off = True
+                elif SET_ON.match(part):
+                    errexit_off = False
                 hit = False
-                if ONE_LINE.search(ln):
-                    hit = True
-                elif RC_LINE.match(ln) and last is not None:
-                    prev = body[last].rstrip()
-                    if prev.endswith(')"') or prev.endswith(")"):
-                        back = body[max(0, last - 12):last + 1]
-                        hit = any(ASSIGN.match(b) for b in back)
+                if not errexit_off and RC_LINE.match(part) and last is not None:
+                    hit = unsafe_command(last)
+                    # Retain multiline command-substitution coverage.
+                    if last.endswith(')"') or last.endswith(")"):
+                        back = body[max(0, idx - 12):idx + 1]
+                        hit = hit or any(ASSIGN.match(b) for b in back)
                 if hit:
                     found.append("%s: step '%s' line %d: %s" % (path, name, start + idx, s))
-            last = idx
+                last = part
     return found
 
 hits = []
@@ -255,9 +295,9 @@ PY
 # The staged lane's own file, the promote-candidate copy, the LIVE workflows, and
 # every other staged workflow: any new `x="$(…)"; rc=$?` anywhere in them is red.
 guard_files=()
-for f in "$root"/ci/staged-workflows/*.yml "$root"/tools/ci-load/activation/*.yml "$root"/.github/workflows/*.yml; do
-  [ -f "$f" ] && guard_files+=("$f")
-done
+while IFS= read -r f; do
+  guard_files+=("$f")
+done < <(find "$root/ci/staged-workflows" "$root/tools/ci-load/activation" "$root/.github/workflows" -type f \( -name '*.yml' -o -name '*.yaml' \))
 guard_out="$(python3 "$WORK/guard.py" "${guard_files[@]}" 2>&1)"; guard_rc=$?
 if [ "$guard_rc" = 0 ]; then
   ok "CLASS GUARD: no bash -e capture-then-\$? shape in ${#guard_files[@]} staged/activation/live workflow files"
@@ -277,6 +317,41 @@ jobs:
           answer="$(curl -fsS https://example.invalid/x 2>&1)"
           rc=$?
           echo "rc=$rc"
+      - name: Bare command capture
+        run: |
+          false
+          rc=$?
+      - name: Same line bare capture
+        run: |
+          false; rc=$?
+      - name: Explicit shell capture is fine
+        shell: bash {0}
+        run: |
+          false
+          rc=$?
+      - name: Explicit shell reenables errexit
+        shell: bash {0}
+        run: |
+          set -e
+          false
+          rc=$?
+      - name: Bare scoped capture is fine
+        run: |
+          set +e
+          false
+          rc=$?
+      - name: Inline scoped capture is fine
+        run: |
+          set +e; false; rc=$?
+      - name: Bare or-list capture is fine
+        run: |
+          false && rc=0 || rc=$?
+      - name: Inline YAML capture
+        run: false; rc=$?
+      - run: |
+          set -eu
+          false
+          status=$?
       - name: Scoped capture is fine
         run: |
           set +e
@@ -289,8 +364,13 @@ jobs:
 YML
 planted_out="$(python3 "$WORK/guard.py" "$WORK/planted.yml" 2>&1)"; planted_rc=$?
 if [ "$planted_rc" = 1 ] && printf '%s' "$planted_out" | grep -q "step 'Some other step'" \
-   && ! printf '%s' "$planted_out" | grep -Eq "Scoped capture|Or-list capture"; then
-  ok "POSITIVE CONTROL: guard flags a planted second instance, naming 'Some other step', and passes the two safe shapes"
+   && printf '%s' "$planted_out" | grep -q "step 'Bare command capture'" \
+   && printf '%s' "$planted_out" | grep -q "step 'Same line bare capture'" \
+   && printf '%s' "$planted_out" | grep -q "step 'Explicit shell reenables errexit'" \
+   && printf '%s' "$planted_out" | grep -q "step '(unnamed)'" \
+   && printf '%s' "$planted_out" | grep -q "step 'Inline YAML capture'" \
+   && ! printf '%s' "$planted_out" | grep -Eq "Scoped capture|Or-list capture|Explicit shell capture is fine|Bare scoped capture|Inline scoped capture|Bare or-list"; then
+  ok "POSITIVE CONTROL: flags assignment, bare/inline commands and reenabled errexit; passes explicit shell, scoped and OR-list controls"
 else
   bad "POSITIVE CONTROL: guard did not flag exactly the planted instance (exit $planted_rc): $planted_out"
 fi
