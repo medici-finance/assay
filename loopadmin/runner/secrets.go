@@ -11,7 +11,7 @@ import (
 // one in. The check is deliberately conservative pattern matching; it is a
 // floor, not a scanner replacement.
 var credentialPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`),
+	regexp.MustCompile(`-{5}BEGIN [A-Z ]*PRIVATE KEY-{5}`),
 	regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{20,}`),
 	regexp.MustCompile(`\bgithub_pat_[A-Za-z0-9_]{20,}`),
 	regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{20,}`),

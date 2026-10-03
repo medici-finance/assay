@@ -91,7 +91,7 @@ func TestUsageUnknownStaysUnknown(t *testing.T) {
 func TestCredentialShapes(t *testing.T) {
 	yes := []string{
 		"gh" + "p_" + strings.Repeat("a1", 20),
-		"-----BEGIN " + "PRIVATE KEY-----",
+		strings.Repeat("-", 5) + "BEGIN " + "PRIVATE KEY" + strings.Repeat("-", 5),
 		"AKIA" + strings.Repeat("A", 16),
 		"Bearer " + strings.Repeat("a", 30),
 	}
