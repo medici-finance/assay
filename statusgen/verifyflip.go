@@ -13,9 +13,14 @@ package main
 // WHAT IT ACCEPTS — every condition below is fail-closed; a miss refuses with
 // NO write:
 //
+//   - Brief file: resolved as `statusgen brief --check-verified` resolves it —
+//     exactly one brief-<NN> file in the stream directory the key names, inside
+//     the board that carries the row.
 //   - Frontmatter: `gate: model`, and every `risk:` answer is `no`. A
 //     `gate: human` brief is closed by the human sign-off path, never here; an
 //     `irreversible: yes` (or any other `yes`) brief is never flipped by a model.
+//   - Verify rows: none classed `gate:human` (a person decides that row) and
+//     none of a class this binary does not know.
 //   - Board row: Status `implemented`, Verified cell empty.
 //   - Verdict: the LAST verdict token in Evidence (`VERIFY: <WORD>`, after the
 //     usual quotation hygiene) is PASS, and it is the strict bold marker
@@ -24,17 +29,23 @@ package main
 //   - Runner: the Date/Runner table rows recorded for THAT pass (the rows
 //     between the previous verdict token and the PASS line) all carry one date
 //     and one runner, the runner reads `<login> @ <sha> …`, and that login and
-//     sha match what the caller expects (--runner, --sha).
+//     sha match what the caller expects (--runner, --sha). No Date/Runner row
+//     follows the PASS. The date is a YYYY-MM-DD calendar date, not after today.
+//   - Provenance: git blame owns every line the stamp is built from (the PASS
+//     marker and those rows) to the roster's bound verifier or a roster human.
+//     No roster, a shallow clone or a failed blame is could-not-check.
 //   - No unrouted HELD/could-not-check line contradicts the pass, no FAIL is
-//     left unanswered, and every Verify row has a passing execution witness.
+//     left unanswered, and every Verify row has a passing execution witness
+//     inside the PASS run itself.
 //
 // WHAT IT WRITES — exactly two cells of one README row: Status → `verified`
 // and Verified → `<date> <runner>`, both from the recorded run. An
 // `(on-behalf-of human:<name>)` qualifier on the runner stays in the Evidence
 // and is left out of the stamp: verify-gate-close.yml is the sole writer of a
 // `human:` token into a Verified cell, so any other one left refuses. The Reviewed
-// cell and every other byte of the file are left as they were. It never
-// touches STATUS.md.
+// cell and every other byte of the file are left as they were — checked after
+// the rewrite against the header's own Status and Verified columns. The README
+// must be a regular file, never a link. It never touches STATUS.md.
 //
 // It does not commit, push or run the lint; the deskevidence `flip` verb wraps
 // it with the lint before/after and the verifier-identity commit on a branch.
@@ -45,9 +56,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 const (
@@ -63,10 +76,14 @@ Usage:
 
 Writes Status → verified and the Verified cell → "<date> <runner>" taken from the
 Date/Runner rows of the brief's latest strict **VERIFY: PASS**. Refuses (exit 1,
-no write) on: gate: human, any risk: yes (irreversible included), a latest verdict
-that is not PASS, a non-strict PASS, a recorded sha or runner that differs from
---sha / --runner, rows that disagree on date, sha or runner, an unrouted HELD row,
-or a Verify row without a passing witness. Exit 2 is could-not-check.
+no write) on: gate: human, any risk: yes (irreversible included), a Verify row
+classed gate:human or of an unknown class, a latest verdict that is not PASS, a
+non-strict PASS, a recorded sha or runner that differs from --sha / --runner, rows
+that disagree on date, sha or runner, rows after the PASS, a date that is not
+YYYY-MM-DD or is after today, a PASS line or row not committed by the bound
+verifier or a roster human, an unrouted HELD row, a Verify row without a passing
+witness in the PASS run, or a README that is not a regular file. Exit 2 is
+could-not-check (including an ambiguous brief file, no roster, a shallow clone).
 
 Flags:
   --brief <stream>/<NN>   the brief key (required)
@@ -101,6 +118,13 @@ var (
 	// flipRunnerRe reads `<login> @ <sha><rest>` from a Runner cell.
 	flipRunnerRe = regexp.MustCompile(`^(\S+) @ ([0-9a-fA-F]{7,40})\b(.*)$`)
 	flipShaRe    = regexp.MustCompile(`^[0-9a-fA-F]{7,40}$`)
+	flipDateRe   = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
+
+	// flipRewriteFn is the README rewrite (seam: the wiring test swaps in a
+	// bad rewrite to prove planVerifyFlip's diff guard refuses it).
+	flipRewriteFn = flipRowToVerified
+	// flipToday is today's date, UTC, as YYYY-MM-DD.
+	flipToday = func() string { return time.Now().UTC().Format("2006-01-02") }
 )
 
 // runVerifyflip is the `statusgen verifyflip` entry point.
@@ -149,10 +173,14 @@ func runVerifyflip(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "dry-run: nothing written")
 		return verifyflipExitOK
 	}
-	info, err := os.Stat(plan.Readme)
+	info, err := os.Lstat(plan.Readme)
 	if err != nil {
 		fmt.Fprintf(stderr, "statusgen verifyflip: could-not-check — %v\n", err)
 		return verifyflipExitCouldNotCheck
+	}
+	if !info.Mode().IsRegular() {
+		fmt.Fprintf(stderr, "statusgen verifyflip: %s: %v\n", *briefKey, refuseFlip("%s is not a regular file — the flip never writes through a link", plan.Readme))
+		return verifyflipExitRefused
 	}
 	if err := os.WriteFile(plan.Readme, plan.Updated, info.Mode().Perm()); err != nil {
 		fmt.Fprintf(stderr, "statusgen verifyflip: could-not-check — write %s: %v\n", plan.Readme, err)
@@ -177,20 +205,22 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 	if s == nil || row == nil {
 		return verifyFlipPlan{}, fmt.Errorf("brief %s is not on any stream board under %s", key, root)
 	}
-	var bf *BriefFile
-	for _, path := range briefFilePaths(s) {
-		if _, n, okName := expectedBriefID(path); !okName || n != num {
-			continue
-		}
-		p, okParse, perr := parseBriefFile(path)
-		if perr != nil || !okParse {
-			return verifyFlipPlan{}, fmt.Errorf("cannot parse brief file %s as brief-v1: %v", path, perr)
-		}
-		bf = p
-		break
+	// The brief file: resolved exactly as `statusgen brief --check-verified`
+	// (the deskevidence flip's closure check) resolves it — the stream
+	// DIRECTORY named by the key, exactly one brief-<NN> file in it. Zero or
+	// several files, or a key naming the stream by anything but that
+	// directory, is could-not-check, never a silent pick.
+	info, err := resolveBriefKey(root, key)
+	if err != nil {
+		return verifyFlipPlan{}, err
 	}
-	if bf == nil {
-		return verifyFlipPlan{}, fmt.Errorf("no brief-v1 file for %s", key)
+	path := filepath.Join(root, filepath.FromSlash(info.File))
+	if filepath.Clean(filepath.Dir(path)) != filepath.Clean(s.Dir) {
+		return verifyFlipPlan{}, fmt.Errorf("brief %s resolves to %s, outside the board at %s", key, info.File, s.Dir)
+	}
+	bf, okParse, perr := parseBriefFile(path)
+	if perr != nil || !okParse {
+		return verifyFlipPlan{}, fmt.Errorf("cannot parse brief file %s as brief-v1: %v", path, perr)
 	}
 
 	// Frontmatter: who may flip this brief at all.
@@ -222,7 +252,7 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 	}
 
 	// Verdict, and the run that recorded it.
-	stamp, err := flipStampFromEvidence(bf.Evidence, wantSHA, wantRunner)
+	stamp, run, marks, err := flipStampFromEvidence(bf.Evidence, wantSHA, wantRunner)
 	if err != nil {
 		return verifyFlipPlan{}, err
 	}
@@ -233,12 +263,27 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 		return verifyFlipPlan{}, &flipRefusal{err.Error()}
 	}
 
-	// Witness: every Verify row carries a passing execution witness.
-	art, ok := loadBriefArtifacts(s, num)
-	if !ok {
-		return verifyFlipPlan{}, fmt.Errorf("cannot read the brief file for %s", key)
+	// Witness: every Verify row carries a passing execution witness INSIDE the
+	// PASS run — the same lines the stamp comes from. A row witnessed only by
+	// an earlier run (at another sha, closed by another verdict) never ran at
+	// the stamped sha, so it does not count.
+	verify, _, err := briefSections(path)
+	if err != nil {
+		return verifyFlipPlan{}, fmt.Errorf("cannot read the brief file for %s: %w", key, err)
 	}
-	findings, refusal := closureWitnesses(art.Verify, art.Evidence)
+	// Row class: a gate: model brief can still carry a Verify row a HUMAN
+	// decides. Such a row is closed by a person, so the brief is never flipped
+	// here; a class this binary does not know cannot say who decides, so it
+	// refuses too.
+	for _, r := range briefVerifyRows(verify) {
+		switch {
+		case r.Class == classGateHuman:
+			return verifyFlipPlan{}, refuseFlip("gate-class: Verify row %s is classed gate:human — a human decides that row, so this verb never flips the brief", r.ID)
+		case !knownRowClasses[r.Class]:
+			return verifyFlipPlan{}, refuseFlip("gate-class: Verify row %s has unknown class %q — the verb cannot tell who decides it", r.ID, r.Class)
+		}
+	}
+	findings, refusal := closureWitnesses(verify, run)
 	if refusal != "" {
 		return verifyFlipPlan{}, refuseFlip("%s", refusal)
 	}
@@ -255,12 +300,24 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 		return verifyFlipPlan{}, refuseFlip("Verify row(s) lack a passing execution witness (%s)", strings.Join(bad, "; "))
 	}
 
+	// Provenance: the text says who ran it; git says who wrote it. Every line
+	// the stamp is built from must be owned by the bound verifier or a roster
+	// human.
+	if err := flipProvenance(path, bf.Evidence, marks); err != nil {
+		return verifyFlipPlan{}, err
+	}
+
 	readme := filepath.Join(s.Dir, "README.md")
+	if fi, lerr := os.Lstat(readme); lerr != nil {
+		return verifyFlipPlan{}, lerr
+	} else if !fi.Mode().IsRegular() {
+		return verifyFlipPlan{}, refuseFlip("%s is not a regular file — the flip never writes through a link", readme)
+	}
 	raw, err := os.ReadFile(readme)
 	if err != nil {
 		return verifyFlipPlan{}, err
 	}
-	updated, err := flipRowToVerified(string(raw), num, stamp)
+	updated, err := flipRewriteFn(string(raw), num, stamp)
 	if err == nil {
 		err = flipRowDiffCheck(string(raw), updated, num)
 	}
@@ -316,11 +373,15 @@ func flipVerdictTokens(lines []string) []flipVerdictTok {
 }
 
 // flipStampFromEvidence derives the Verified stamp from the latest strict PASS
-// and checks the recorded run against wantSHA / wantRunner.
-func flipStampFromEvidence(evidence, wantSHA, wantRunner string) (string, error) {
+// and checks the recorded run against wantSHA / wantRunner. run is that PASS's
+// own lines (comments stripped): the witness check reads them and nothing else.
+// marks are the line indices, in the comment-stripped Evidence, of every
+// Date/Runner row the stamp is built from and of the PASS marker itself: the
+// provenance check blames exactly those lines.
+func flipStampFromEvidence(evidence, wantSHA, wantRunner string) (stamp, run string, marks []int, err error) {
 	stripped, unterminated := stripRowComments(evidence)
 	if unterminated >= 0 {
-		return "", refuseFlip("Evidence carries an unterminated <!-- — the record cannot be read as written")
+		return "", "", nil, refuseFlip("Evidence carries an unterminated <!-- — the record cannot be read as written")
 	}
 	lines := strings.Split(stripped, "\n")
 	toks := flipVerdictTokens(lines)
@@ -331,14 +392,14 @@ func flipStampFromEvidence(evidence, wantSHA, wantRunner string) (string, error)
 		}
 	}
 	if li < 0 {
-		return "", refuseFlip("verdict mismatch: Evidence records no VERIFY verdict")
+		return "", "", nil, refuseFlip("verdict mismatch: Evidence records no VERIFY verdict")
 	}
 	last := toks[li]
 	if last.word != "PASS" {
-		return "", refuseFlip("verdict mismatch: the latest recorded verdict is VERIFY: %s, not PASS", last.word)
+		return "", "", nil, refuseFlip("verdict mismatch: the latest recorded verdict is VERIFY: %s, not PASS", last.word)
 	}
 	if !last.strict {
-		return "", refuseFlip("non-strict PASS: the latest verdict is not the strict **VERIFY: PASS** marker — record the canonical bold marker; the gate is not loosened")
+		return "", "", nil, refuseFlip("non-strict PASS: the latest verdict is not the strict **VERIFY: PASS** marker — record the canonical bold marker; the gate is not loosened")
 	}
 	start := 0
 	for i := li - 1; i >= 0; i-- {
@@ -347,41 +408,61 @@ func flipStampFromEvidence(evidence, wantSHA, wantRunner string) (string, error)
 			break
 		}
 	}
-	rows := flipDateRunnerRows(lines[start:last.line])
+	// Verdict-first layouts put a run's rows BELOW its verdict; there the
+	// rows above this PASS belong to the run before it. Rows after the latest
+	// PASS mean the convention does not hold here: refuse, never guess.
+	if after, _ := flipDateRunnerRows(lines[last.line+1:]); len(after) > 0 {
+		return "", "", nil, refuseFlip("runner mismatch: %d Date/Runner row(s) follow the latest PASS — record each run's rows after the previous verdict and before its own", len(after))
+	}
+	rows, at := flipDateRunnerRows(lines[start:last.line])
 	if len(rows) == 0 {
-		return "", refuseFlip("runner mismatch: no Date/Runner rows are recorded for the latest PASS")
+		return "", "", nil, refuseFlip("runner mismatch: no Date/Runner rows are recorded for the latest PASS")
 	}
 	date, runner := rows[0][0], rows[0][1]
+	if !flipDateRe.MatchString(date) {
+		return "", "", nil, refuseFlip("bad date: the latest PASS is dated %q, not YYYY-MM-DD", date)
+	}
+	if _, perr := time.Parse("2006-01-02", date); perr != nil {
+		return "", "", nil, refuseFlip("bad date: the latest PASS is dated %q, not a calendar date", date)
+	}
+	if today := flipToday(); date > today {
+		return "", "", nil, refuseFlip("bad date: the latest PASS is dated %s, after today (%s UTC)", date, today)
+	}
 	m0 := flipRunnerRe.FindStringSubmatch(runner)
 	for _, r := range rows {
 		if r[0] == "" || normalizeMark(r[0]) == "" || r[1] == "" {
-			return "", refuseFlip("runner mismatch: a row of the latest PASS has no Date or Runner")
+			return "", "", nil, refuseFlip("runner mismatch: a row of the latest PASS has no Date or Runner")
 		}
 		m := flipRunnerRe.FindStringSubmatch(r[1])
 		if m == nil {
-			return "", refuseFlip("sha mismatch: runner %q does not read <login> @ <sha>", r[1])
+			return "", "", nil, refuseFlip("sha mismatch: runner %q does not read <login> @ <sha>", r[1])
 		}
 		if r[0] != date {
-			return "", refuseFlip("date mismatch: rows of the latest PASS carry %q and %q", date, r[0])
+			return "", "", nil, refuseFlip("date mismatch: rows of the latest PASS carry %q and %q", date, r[0])
 		}
 		if m[1] != m0[1] {
-			return "", refuseFlip("runner mismatch: rows of the latest PASS name %q and %q", m0[1], m[1])
+			return "", "", nil, refuseFlip("runner mismatch: rows of the latest PASS name %q and %q", m0[1], m[1])
 		}
 		if !strings.EqualFold(m[2], m0[2]) {
-			return "", refuseFlip("sha mismatch: rows of the latest PASS name %s and %s", m0[2], m[2])
+			return "", "", nil, refuseFlip("sha mismatch: rows of the latest PASS name %s and %s", m0[2], m[2])
 		}
 		if r[1] != runner {
-			return "", refuseFlip("runner mismatch: rows of the latest PASS read %q and %q", runner, r[1])
+			return "", "", nil, refuseFlip("runner mismatch: rows of the latest PASS read %q and %q", runner, r[1])
 		}
 	}
 	rec, want := strings.ToLower(m0[2]), strings.ToLower(wantSHA)
 	if !strings.HasPrefix(rec, want) && !strings.HasPrefix(want, rec) {
-		return "", refuseFlip("sha mismatch: the latest PASS ran at %s, expected %s", m0[2], wantSHA)
+		return "", "", nil, refuseFlip("sha mismatch: the latest PASS ran at %s, expected %s", m0[2], wantSHA)
 	}
 	if m0[1] != wantRunner {
-		return "", refuseFlip("runner mismatch: the latest PASS was run by %q, expected %q", m0[1], wantRunner)
+		return "", "", nil, refuseFlip("runner mismatch: the latest PASS was run by %q, expected %q", m0[1], wantRunner)
 	}
-	return flipStamp(date, m0)
+	stamp, err = flipStamp(date, m0)
+	for _, i := range at {
+		marks = append(marks, start+i)
+	}
+	marks = append(marks, last.line)
+	return stamp, strings.Join(lines[start:last.line], "\n"), marks, err
 }
 
 // flipQualRe matches one trailing parenthetical qualifier of a Runner cell.
@@ -414,10 +495,9 @@ func flipStamp(date string, m []string) (string, error) {
 }
 
 // flipDateRunnerRows returns (date, runner) for every data row of every table
-// in lines whose header names Date and Runner. Like evidenceVerifierInfo it
+// in lines whose header names Date and Runner, and the index of each in lines. Like evidenceVerifierInfo it
 // reads the RIGHTMOST two cells, which survives an unescaped | in a command.
-func flipDateRunnerRows(lines []string) [][2]string {
-	var rows [][2]string
+func flipDateRunnerRows(lines []string) (rows [][2]string, at []int) {
 	inTable := false
 	for i := 0; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
@@ -450,14 +530,18 @@ func flipDateRunnerRows(lines []string) [][2]string {
 			continue
 		}
 		rows = append(rows, [2]string{strings.TrimSpace(cells[len(cells)-2]), strings.TrimSpace(cells[len(cells)-1])})
+		at = append(at, i)
 	}
-	return rows
+	return rows, at
 }
 
 // flipRowDiffCheck is the post-condition on the README rewrite (the rewrite
 // itself is transcribe-verdict's flipRowToVerified): exactly one line changed,
 // it is row num, it rebuilds byte-for-byte from its cells, and of its cells
-// only Status and Verified differ — the Reviewed cell is never touched.
+// only two differ — the Status and Verified columns, resolved by name from the
+// header row of the row's own table. Status must go implemented → verified and
+// Verified must have been empty; the Reviewed cell (empty or not) and every
+// other cell are never touched. A row whose header cannot be resolved refuses.
 func flipRowDiffCheck(before, after, num string) error {
 	bl, al := strings.Split(before, "\n"), strings.Split(after, "\n")
 	if len(bl) != len(al) {
@@ -482,6 +566,10 @@ func flipRowDiffCheck(before, after, num string) error {
 	if len(oc) != len(nc) || len(oc) < 2 || strings.TrimSpace(oc[0]) != num {
 		return fmt.Errorf("the rewrite touched a line that is not row #%s", num)
 	}
+	si, vi, err := flipHeaderCols(bl, changed, len(oc))
+	if err != nil {
+		return fmt.Errorf("row #%s: %w", num, err)
+	}
 	diff := 0
 	for j := range oc {
 		if oc[j] == nc[j] {
@@ -489,12 +577,141 @@ func flipRowDiffCheck(before, after, num string) error {
 		}
 		diff++
 		o, n := strings.TrimSpace(oc[j]), strings.TrimSpace(nc[j])
-		if !(o == "implemented" && n == "verified") && normalizeMark(o) != "" {
-			return fmt.Errorf("the rewrite changed cell %d of row #%s (%q → %q), which is neither Status nor an empty Verified cell", j, num, o, n)
+		switch {
+		case j == si && o == "implemented" && n == "verified":
+		case j == vi && normalizeMark(o) == "" && normalizeMark(n) != "":
+		default:
+			return fmt.Errorf("the rewrite changed cell %d of row #%s (%q → %q), which is neither Status implemented → verified nor the empty Verified cell", j, num, o, n)
 		}
 	}
 	if diff != 2 {
 		return fmt.Errorf("the rewrite changed %d cells of row #%s, want exactly Status and Verified", diff, num)
 	}
 	return nil
+}
+
+// flipHeaderCols walks up from data row `row` to the top of its table, and
+// returns the Status and Verified column indices named by the header row (the
+// line above the table's |---| separator). width is the data row's cell count;
+// a header of another width, a missing separator, or a missing column errs.
+func flipHeaderCols(lines []string, row, width int) (si, vi int, err error) {
+	top := row
+	for top > 0 && strings.HasPrefix(strings.TrimSpace(lines[top-1]), "|") {
+		top--
+	}
+	if top+1 >= row || !separatorRowRe.MatchString(strings.Trim(strings.TrimSpace(lines[top+1]), "|")) {
+		return 0, 0, fmt.Errorf("no header row with a |---| separator above it — the Status and Verified columns cannot be resolved")
+	}
+	hdr := splitRow(lines[top])
+	if len(hdr) != width {
+		return 0, 0, fmt.Errorf("the header has %d cells, the row %d — the columns cannot be resolved", len(hdr), width)
+	}
+	si, vi = -1, -1
+	for j, c := range hdr {
+		switch strings.ToLower(strings.TrimSpace(c)) {
+		case "status":
+			si = j
+		case "verified":
+			vi = j
+		}
+	}
+	if si < 0 || vi < 0 {
+		return 0, 0, fmt.Errorf("the header names no Status or no Verified column")
+	}
+	return si, vi, nil
+}
+
+// flipProvenance is the who-wrote-it check on the latest PASS. The Runner cell
+// is text, and whoever can edit the brief can type the verifier's login into
+// it; who committed a line is git metadata, not text. So the PASS marker and
+// every Date/Runner row the stamp is built from (marks: line indices in the
+// comment-stripped Evidence) are blamed, and each author is judged by the
+// Evidence-actor policy (evidenceactor.go): the bound verifier or a roster
+// human passes, anything else — another App, an unknown address, a line not
+// yet committed — refuses. This is stricter than the Evidence-actor lint,
+// which asks only whether ANY Evidence line is the verifier's: a verifier's
+// older FAIL above an appended PASS satisfies that lint, never this check.
+//
+// Could-not-check (never a pass): no roster or no bound verifier, a shallow
+// clone (blame cannot reach the commits behind the lines), an Evidence section
+// that cannot be mapped to file lines, or blame failing.
+func flipProvenance(path, evidence string, marks []int) error {
+	p := evidenceActorPolicyFromRoster()
+	if p.Unavailable != "" {
+		return fmt.Errorf("provenance: %s", p.Unavailable)
+	}
+	if len(marks) == 0 {
+		return fmt.Errorf("provenance: no PASS lines to blame")
+	}
+	dir, base := filepath.Dir(path), filepath.Base(path)
+	if isShallowRepository(dir) {
+		return fmt.Errorf("provenance: %s is in a shallow clone — blame cannot reach the commits behind the PASS", base)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	content := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	lines := strings.Split(content, "\n")
+	ev := strings.Split(evidence, "\n")
+	start, _, ok := evidenceLineRange(content)
+	if !ok || start-1+len(ev) > len(lines) || strings.Join(lines[start-1:start-1+len(ev)], "\n") != evidence {
+		return fmt.Errorf("provenance: the Evidence section of %s cannot be mapped to file lines", base)
+	}
+	spans, ok := flipStrippedSpans(evidence)
+	if !ok {
+		return fmt.Errorf("provenance: the comment-stripped Evidence of %s cannot be mapped to file lines", base)
+	}
+	args := []string{"-C", dir, "blame", "--line-porcelain"}
+	for _, m := range marks {
+		if m < 0 || m >= len(spans) {
+			return fmt.Errorf("provenance: PASS line %d is outside the Evidence of %s", m, base)
+		}
+		args = append(args, "-L", fmt.Sprintf("%d,%d", start+spans[m][0], start+spans[m][1]))
+	}
+	out, err := exec.Command("git", append(args, "--", base)...).Output()
+	if err != nil {
+		return fmt.Errorf("provenance: git blame %s: %v", base, err)
+	}
+	authors, _ := blamePorcelainAuthors(string(out))
+	if len(authors) == 0 {
+		return fmt.Errorf("provenance: blame of %s named no author for the PASS lines", base)
+	}
+	for _, a := range authors {
+		if v, why := p.classify(a.Name, a.Email); v != actorVerifier && v != actorHuman {
+			return refuseFlip("provenance: a line of the latest PASS (the marker or a Date/Runner row) is not owned by the bound verifier or a roster human — %s", why)
+		}
+	}
+	return nil
+}
+
+// flipStrippedSpans maps each line of stripRowComments(evidence) to the raw
+// evidence lines it came from, as an inclusive 0-based [first, last] range: a
+// comment that spans lines folds them into one stripped line, and blame must
+// see every raw line behind it. ok is false when the walk does not rebuild
+// stripRowComments' output exactly — then the mapping is not trusted.
+func flipStrippedSpans(evidence string) (spans [][2]int, ok bool) {
+	want, unterminated := stripRowComments(evidence)
+	if unterminated >= 0 {
+		return nil, false
+	}
+	var b strings.Builder
+	line, first, at := 0, 0, 0
+	for _, m := range append(htmlCommentClosedRe.FindAllStringIndex(evidence, -1), []int{len(evidence), len(evidence)}) {
+		for _, c := range []byte(evidence[at:m[0]]) {
+			b.WriteByte(c)
+			if c == '\n' {
+				spans = append(spans, [2]int{first, line})
+				line++
+				first = line
+			}
+		}
+		line += strings.Count(evidence[m[0]:m[1]], "\n")
+		at = m[1]
+	}
+	spans = append(spans, [2]int{first, line})
+	if b.String() != want || len(spans) != strings.Count(want, "\n")+1 {
+		return nil, false
+	}
+	return spans, true
 }
