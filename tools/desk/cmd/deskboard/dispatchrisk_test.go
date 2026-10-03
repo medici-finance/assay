@@ -19,6 +19,7 @@ func TestDispatchRiskBeforeVerdict(t *testing.T) {
 	}{
 		{name: "human brief", visibility: "private", body: "Brief: sample/01", brief: gateHumanBrief, path: "README.md", want: true},
 		{name: "public", visibility: "public", body: "Issue: #1", path: "README.md", want: true},
+		{name: "unknown visibility", visibility: "", body: "Issue: #1", path: "README.md", want: true},
 		{name: "pending CI", visibility: "public", body: "Issue: #1", path: "README.md", want: true},
 		{name: "failed CI", visibility: "public", body: "Issue: #1", path: "README.md", want: true},
 		{name: "ready draft flag", visibility: "public", body: "Issue: #1", path: "README.md", want: true},
