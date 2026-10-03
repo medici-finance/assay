@@ -1,0 +1,1 @@
+- Bound autonomy gate-share reads to the reporting window and fetch check rollups per pull request; capped, timed-out, or incomplete reads remain unmeasured.
