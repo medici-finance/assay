@@ -42,7 +42,7 @@ consumers:
   - "docs/streams/desktools-v2/README.md (the `## Regression floor` section): follow-up desktools-v2/14 (this brief)"
   - "every other desktools-v2 brief — the floor their PRs must keep green through the existing go test ./... in PR CI: out-of-scope (no edit to those briefs; the rule lives in the stream README where their implementers read it)"
   - "desktools-v2/12 (the platform compatibility suite): out-of-scope (sibling brief — 14 pins today's resolved behavior, 12 extends coverage to Windows/GitLab semantics; the two suites share no cases)"
-version: 3
+version: 4
 id: 4f2e1b7a-9c3d-4e5f-8a6b-1d2c3b4a5967
 ---
 
