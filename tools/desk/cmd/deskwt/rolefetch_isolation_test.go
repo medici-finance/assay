@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -14,7 +15,13 @@ import (
 // Real Git and a local TLS server prove which identity reaches the transport.
 // All credentials here are placeholders; no external endpoint is contacted.
 func TestRoleFetchCredentialIsolation(t *testing.T) {
-	for _, lane := range []string{"netrc", "header", "header-global", "header-env", "header-include", "cookie", "tls-home", "tls-home-scoped"} {
+	lanes := []string{"netrc", "header", "header-global", "header-env", "header-include", "cookie", "tls-home", "tls-home-scoped"}
+	for _, option := range []string{"sslCert", "sslKey", "sslCAPath", "sslCAInfo", "pinnedPubkey"} {
+		for _, scope := range []string{"host", "path", "port", "scheme", "user"} {
+			lanes = append(lanes, "unused-"+option+"-"+scope)
+		}
+	}
+	for _, lane := range lanes {
 		t.Run(lane, func(t *testing.T) {
 			work := newRepo(t)
 			withEnv(t, work)
@@ -49,6 +56,21 @@ func TestRoleFetchCredentialIsolation(t *testing.T) {
 			mustGit(t, work, "config", "--global", "http.sslCAInfo", cert)
 			mustGit(t, work, "remote", "set-url", "origin", srv.URL)
 			u, _ := url.Parse(srv.URL)
+			if strings.HasPrefix(lane, "unused-") {
+				option, scope, _ := strings.Cut(strings.TrimPrefix(lane, "unused-"), "-")
+				unused := "https://unused.invalid/"
+				switch scope {
+				case "path":
+					unused = srv.URL + "/unused/"
+				case "port":
+					unused = "https://" + u.Hostname() + ":1/"
+				case "scheme":
+					unused = "http://" + u.Host + "/"
+				case "user":
+					unused = "https://unused-user@" + u.Host + "/"
+				}
+				mustGit(t, work, "config", "--global", "http."+unused+"."+option, "~assay-fixture-no-such-user/ca.pem")
+			}
 			switch lane {
 			case "tls-home", "tls-home-scoped":
 				key := "http.sslCAInfo"

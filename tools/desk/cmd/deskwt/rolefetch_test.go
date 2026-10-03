@@ -201,25 +201,33 @@ func TestRoleFetchTLSPathContext(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
 	giveOriginHost(t, work)
-	want := map[string]string{}
+	const origin = "https://github.com/example-org/tracker.git"
+	options := []string{"sslCert", "sslKey", "sslCAPath", "sslCAInfo", "pinnedPubkey"}
 	for _, prefix := range []string{"http.", "http.https://github.com/example-org/."} {
-		for _, option := range []string{"sslCert", "sslKey", "sslCAPath", "sslCAInfo", "pinnedPubkey"} {
-			key := prefix + option
-			mustGit(t, work, "config", "--global", "--add", key, "~/earlier.pem")
-			mustGit(t, work, "config", "--global", "--add", key, "~/TLS material.pem")
-			want[key] = mustGit(t, work, "config", "--path", "--get", key)
+		for _, option := range options {
+			mustGit(t, work, "config", "--global", "--add", prefix+option, "~/earlier.pem")
+			mustGit(t, work, "config", "--global", "--add", prefix+option, "~/TLS material.pem")
 		}
 	}
-	// Git treats these as strings, including PKCS#11 URI and pin hash forms.
-	for key, value := range map[string]string{"http.proxySSLCert": "~/proxy-cert", "http.sslCert": "pkcs11:token=fixture", "http.pinnedPubkey": "sha256//fixture"} {
-		mustGit(t, work, "config", "--replace-all", key, value)
-		want[key] = mustGit(t, work, "config", "--get", key)
+	for key, value := range map[string]string{"proxySSLCert": "~/proxy-cert", "sslCert": "pkcs11:token=fixture", "pinnedPubkey": "sha256//fixture"} {
+		mustGit(t, work, "config", "http."+origin+"."+key, value)
+	}
+	options = append(options, "proxySSLCert")
+	want := map[string]string{}
+	for _, option := range options {
+		args := []string{"config", "--path", "--get-urlmatch", "http." + option, origin}
+		if option == "proxySSLCert" {
+			args = []string{"config", "--get-urlmatch", "http." + option, origin}
+		}
+		want[option] = mustGit(t, work, args...)
 	}
 	var fetch *exec.Cmd
+	var prefix []string
 	old := execCommand
 	execCommand = func(name string, args ...string) *exec.Cmd {
-		for _, arg := range args {
+		for i, arg := range args {
 			if name == "git" && arg == "fetch" {
+				prefix = append([]string{}, args[:i]...)
 				fetch = exec.Command("git", "rev-parse", "origin/main")
 				return fetch
 			}
@@ -232,16 +240,17 @@ func TestRoleFetchTLSPathContext(t *testing.T) {
 	if fetch == nil {
 		t.Fatal("no fetch")
 	}
-	for key, value := range want {
-		cmd := exec.Command("git", "config", "--path", "--get", key)
-		if key == "http.proxySSLCert" {
-			cmd = exec.Command("git", "config", "--get", key)
+	for option, value := range want {
+		args := append(append([]string{}, prefix...), "config", "--path", "--get-urlmatch", "http."+option, origin)
+		if option == "proxySSLCert" {
+			args = append(append([]string{}, prefix...), "config", "--get-urlmatch", "http."+option, origin)
 		}
+		cmd := exec.Command("git", args...)
 		cmd.Dir = work
 		cmd.Env = fetch.Env
 		out, err := cmd.CombinedOutput()
 		if err != nil || strings.TrimSpace(string(out)) != value {
-			t.Errorf("%s changed meaning: got %q, want %q, error %v", key, out, value, err)
+			t.Errorf("%s changed meaning: got %q, want %q, error %v", option, out, value, err)
 		}
 	}
 }

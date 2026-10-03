@@ -55,20 +55,21 @@ func fetchRoleHTTPS(dir, role, origin, username, path string) error {
 	if err != nil {
 		return err
 	}
-	// Ask Git to expand its path-valued TLS options in the ORIGINAL context.
-	// --path handles ~/ and ~user consistently with Git on every platform;
-	// relative paths retain their meaning because the command directory is unchanged.
-	// These are http.c's git_config_pathname options (cookieFile is suppressed).
-	tls := deskkit.Run(deskkit.ToolCall{Name: "git", Args: []string{"config", "--null", "--path", "--includes", "--get-regexp",
-		`^http\.(.*\.)?(sslcert|sslkey|sslcapath|sslcainfo|pinnedpubkey)$`}, Dir: dir, Start: execCommand})
-	if tls.Failed() && tls.ExitCode != 1 { // exit 1 means there are no matching settings
-		return tls.Fail(deskkit.ExitUnverifiable, "resolve role fetch TLS paths")
-	}
-	tlsPaths := map[string][]string{}
-	for _, record := range strings.Split(tls.Stdout, "\x00") {
-		if key, value, ok := strings.Cut(record, "\n"); ok {
-			tlsPaths[key] = append(tlsPaths[key], value)
+	// Let Git select the setting for THIS endpoint before expanding its path.
+	// Expanding all scopes also evaluates irrelevant ~user paths, unlike a fetch.
+	// These are http.c's git_config_pathname TLS options (cookies are suppressed).
+	var tlsArgs []string
+	for _, option := range []string{"sslcert", "sslkey", "sslcapath", "sslcainfo", "pinnedpubkey"} {
+		tls := deskkit.Run(deskkit.ToolCall{Name: "git", Args: []string{"config", "--null", "--path", "--includes", "--get-urlmatch", "http." + option, origin}, Dir: dir, Start: execCommand})
+		if tls.ExitCode == 1 { // no setting applies to this endpoint
+			continue
 		}
+		if tls.Failed() {
+			return tls.Fail(deskkit.ExitUnverifiable, "resolve role fetch TLS paths")
+		}
+		// An exact-endpoint override preserves the selected value despite more
+		// general raw settings in the snapshot or repository configuration.
+		tlsArgs = append(tlsArgs, "-c", "http."+origin+"."+option+"="+strings.TrimSuffix(tls.Stdout, "\x00"))
 	}
 	home, err := os.MkdirTemp("", "deskwt-fetch-*")
 	if err != nil {
@@ -95,10 +96,6 @@ func fetchRoleHTTPS(dir, role, origin, username, path string) error {
 		}
 		key, value, hasValue := strings.Cut(record, "\n")
 		lower := strings.ToLower(key)
-		if values := tlsPaths[key]; len(values) > 0 {
-			value = values[0]
-			tlsPaths[key] = values[1:]
-		}
 		if lower == "include.path" || (strings.HasPrefix(lower, "includeif.") && strings.HasSuffix(lower, ".path")) {
 			continue
 		}
@@ -119,6 +116,7 @@ func fetchRoleHTTPS(dir, role, origin, username, path string) error {
 		}
 	}
 	env = append(env, "GIT_CONFIG_COUNT="+strconv.Itoa(count))
+	args = append(args, tlsArgs...)
 	// Prove the explicit endpoint is not rewritten to a different transport/host.
 	resolved := deskkit.Run(deskkit.ToolCall{Name: "git", Args: append(append([]string{}, args...), "ls-remote", "--get-url", origin), Dir: dir, Env: env, Start: execCommand})
 	if resolved.Failed() {
