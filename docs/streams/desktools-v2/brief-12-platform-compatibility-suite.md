@@ -247,9 +247,20 @@ cases the existing tables genuinely lack, plus the temp-dir helper the tests nee
      so wherever the row exists `IsAbsFor` exists too. If brief 10 is already implemented when
      this brief lands, THIS brief creates the tests both new rows name, as for 09.
 
-## Cobra/Viper integration — extend the same platform fixtures
+## Cobra/Viper compatibility guidance — migration owners retain the CLI cases
 
-The compatibility fixture design must cover the spec §9 CLI contract: Windows/POSIX option forms and paths, explicit-empty versus unset keys, per-key configuration precedence and help without cell/config/credential reads. Reuse the shared harness delivered by desktools-v2/15 and add the platform cases to the cellctl migration and the bounded CLI owners that /15 authors. The custody/forge decision procedure remains authoritative below Cobra/Viper; config resolution is not a second custody procedure. This brief retains its existing platform scope, including the refusal fixtures; it does not absorb the entire CLI rollout.
+This brief retains its existing platform deliverables, refusal fixtures and Verify rows. It
+can execute before desktools-v2/15; it does not consume that future CLI harness or add CLI
+migration tests. Its custody/forge decision procedure remains authoritative below any later
+Cobra/Viper adapter; configuration resolution is not a second custody procedure.
+
+The new spec §9 CLI platform cases belong entirely to the migration chain: desktools-v2/15
+supplies the reusable fixtures and authors bounded children with executable platform Verify
+rows; /16 applies them to cellctl; those children apply them to the remaining tools; /17
+checks complete coverage. They cover Windows/POSIX option forms and paths, explicit-empty
+versus unset keys, per-key precedence and help without cell/config/credential reads. The
+migration owners preserve this brief's checks when present and own their CLI cases even if
+this brief has not landed. No dependency in either direction is introduced.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |

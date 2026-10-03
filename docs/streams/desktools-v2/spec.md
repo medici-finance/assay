@@ -407,6 +407,9 @@ foundation is complete, with inverse edges and waves recalculated together.
 The existing unfinished briefs /06, /08, /11 and /12 inherit this contract without taking
 ownership of a second CLI migration. They retain their original custody, forge-ban,
 callout and platform deliverables; the inventory routes their CLI consumers explicitly.
+In particular, /12 has compatibility guidance only and does not consume /15. All new CLI
+platform fixtures and executable checks belong to /15, /16, the migration children and
+/17; they cover both Windows/POSIX semantics regardless of whether /12 has landed.
 Completed/implemented briefs and their Evidence are not rewritten as if they already used
 Cobra/Viper. The regression floor of /14 remains binding; only explicit help differences
 are removed from obsolete shell-help comparisons, never unrelated behavior checks.

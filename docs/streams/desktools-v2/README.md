@@ -168,5 +168,9 @@ fixtures use local git repositories, local HTTP servers and fake CLI executables
 
 CLI critical path: `15 → 16 → longest remaining-tool child → 17`; /15 is the current
 verified head. Library selection is settled by #2111; implementation risk gates remain.
-The old forge path proceeds alongside this track. /06, /08, /11 and /12 incorporate
-configuration/CLI compatibility without retroactively reopening historical Evidence.
+The old forge path proceeds alongside this track. /06, /08 and /11 retain their original
+deliverables under the configuration/CLI contract. /12 carries compatibility guidance only:
+all new CLI platform fixtures and checks are owned by /15, /16, their migration children
+and /17. /12 does not consume /15 or block that chain; its existing platform/refusal checks
+and historical Evidence remain unchanged. The dependency waves and critical path above
+therefore need no additional edge for /12.
