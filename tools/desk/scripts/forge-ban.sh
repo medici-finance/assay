@@ -74,10 +74,20 @@ count_lines() {
 
 # ---------- class (a): gh subprocess ----------
 
-# Go: exec.Command("gh", …)
+# Go: a `gh` subprocess — exec.Command("gh", …), exec.CommandContext(ctx, "gh", …), and the
+# package-local wrapper shapes the desk tree routes them through (execCommand("gh", …),
+# runCmd("gh", …), runCmdIn(dir, "gh", …)). The wrapper shapes are matched because a wrapper
+# call IS the reach-around: before desktools-v2/03 the matcher saw only the literal
+# exec.Command form, so removing a wrapper-shaped site (cmd/deskmerge's runGH) could not lower
+# the count Verify row 5 measures. A string-literal "gh" counts only in the BINARY position —
+# first for the name-first forms, second (after the context / directory) for CommandContext
+# and runCmdIn — so a call naming another binary ("git", "desktoken") never matches. A line
+# that is wholly a // comment (prose naming the shape) is not an invocation and is dropped.
+GH_GO_RE='(exec\.Command|execCommand|runCmd)\("gh"[,)]|(exec\.CommandContext|runCmdIn)\([^,()]+, *"gh"[,)]'
 gh_go() {
   dir="$1"
-  grep -rEn 'exec\.Command\("gh"' "$dir" --include='*.go' 2>/dev/null \
+  grep -rEn "$GH_GO_RE" "$dir" --include='*.go' 2>/dev/null \
+    | grep -v -E ':[0-9]+:[[:space:]]*//' \
     | grep -v -E "$BACKEND_EXCLUDE" \
     | grep -v '_test\.go:' \
     | wc -l | tr -d ' '

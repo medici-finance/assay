@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -24,8 +23,9 @@ import (
 //	         GitHub serves it
 //	root/    a clone — the desk's local checkout
 //
-// Only the two things that genuinely cannot be local are stubbed: `gh` (the PR-state
-// read and the authorization fetch) and deskkit's write meter.
+// Only the two things that genuinely cannot be local are stubbed: the forge (the PR-state
+// read and the authorization fetch, through the forgeFor seam — deskmerge has no `gh`
+// subprocess left to stub) and deskkit's write meter.
 
 func TestMain(m *testing.M) {
 	cleanup, err := installFixtureRoster()
@@ -68,8 +68,14 @@ type world struct {
 	// push by some route the author did not imagine still fails the test.
 	pushes *[][]string
 	gitAll *[][]string
-	ghAll  *[][]string
-	audits *[]deskkit.Entry
+	// forgeOps records every forge operation the run issued, as [op, repo, number, kind].
+	// The stub forge embeds a nil deskkit.Forge, so any op it does not serve — every write
+	// among them — panics rather than passing silently.
+	forgeOps *[][]string
+	// signOff is the comment the stub forge serves on the sign-off thread; install sets the
+	// blessing authority's, a test may overwrite it before the run.
+	signOff *deskkit.Comment
+	audits  *[]deskkit.Entry
 }
 
 func git(t *testing.T, dir string, args ...string) string {
@@ -214,26 +220,75 @@ func (w *world) rulingsFile(t *testing.T, signOff string) string {
 // ---------------------------------------------------------------------------
 
 type prStub struct {
-	State             string
-	IsDraft           bool
-	IsCrossRepository bool
-	HeadRefName       string
-	HeadRefOid        string // "" -> the world's real head
+	State       string
+	IsDraft     bool
+	HeadRefName string
+	HeadRefOid  string // "" -> the world's real head
+	// CrossRepo is served verbatim, except "" -> deskkit.CrossRepoSame (the ordinary case) and
+	// crossRepoUnreported -> "" (the forge did not say where the head lives).
+	CrossRepo string
 }
+
+const crossRepoUnreported = "unreported"
 
 func defaultPR() prStub {
 	return prStub{State: "OPEN", IsDraft: true, HeadRefName: "pr-branch"}
 }
 
-// install wires the exec seams for one run and restores them afterwards. It records
-// EVERY git and gh argv, so the "zero pushes" assertions inspect what was actually
-// constructed rather than what the code meant.
+// stubForge serves deskmerge's two reads. It embeds a NIL deskkit.Forge: an op it does not
+// override panics, so a write (or any read the migration did not intend) cannot pass unseen.
+type stubForge struct {
+	deskkit.Forge
+	w      *world
+	pr     prStub
+	head   string
+	signed bool
+	ops    *[][]string
+}
+
+func (s *stubForge) GetPullRequest(r deskkit.ForgeRepo, n int) (*deskkit.PullRequest, error) {
+	*s.ops = append(*s.ops, []string{"GetPullRequest", r.Slug(), fmt.Sprint(n)})
+	out := &deskkit.PullRequest{
+		Number: n, Draft: s.pr.IsDraft, HeadRef: s.pr.HeadRefName, HeadSHA: s.head, BaseRef: "main",
+	}
+	switch strings.ToUpper(s.pr.State) {
+	case "MERGED":
+		out.State, out.Merged = "closed", true
+	default:
+		out.State = strings.ToLower(s.pr.State)
+	}
+	switch s.pr.CrossRepo {
+	case "":
+		out.CrossRepo = deskkit.CrossRepoSame
+	case crossRepoUnreported:
+		out.CrossRepo = ""
+	default:
+		out.CrossRepo = s.pr.CrossRepo
+	}
+	return out, nil
+}
+
+func (s *stubForge) ListCommentsTyped(r deskkit.ForgeRepo, n int, kind deskkit.TargetKind) ([]deskkit.Comment, error) {
+	*s.ops = append(*s.ops, []string{"ListCommentsTyped", r.Slug(), fmt.Sprint(n), string(kind)})
+	if !s.signed {
+		return nil, fmt.Errorf("no comment fetch expected on an unsigned world")
+	}
+	return []deskkit.Comment{*s.w.signOff}, nil
+}
+
+// install wires the exec and forge seams for one run and restores them afterwards. It
+// records EVERY git argv and forge op, so the "zero pushes" assertions inspect what was
+// actually constructed rather than what the code meant.
 func (w *world) install(t *testing.T, pr prStub, signed bool) {
 	t.Helper()
-	prevGit, prevGH, prevAllow, prevAudit := runGit, runGH, allowWrite, auditLog
-	var gitCalls, ghCalls, pushCalls [][]string
+	prevGit, prevForge, prevAllow, prevAudit := runGit, forgeFor, allowWrite, auditLog
+	var gitCalls, forgeOps, pushCalls [][]string
 	var audits []deskkit.Entry
-	w.gitAll, w.ghAll, w.pushes, w.audits = &gitCalls, &ghCalls, &pushCalls, &audits
+	w.gitAll, w.forgeOps, w.pushes, w.audits = &gitCalls, &forgeOps, &pushCalls, &audits
+	w.signOff = &deskkit.Comment{
+		DatabaseID: 5206838120, URL: signOffURL, Body: "accepted",
+		Author: deskkit.Account{Login: blessLogin, ID: blessID, Type: "User"},
+	}
 
 	runGit = func(dir string, args ...string) (string, error) {
 		gitCalls = append(gitCalls, append([]string{dir}, args...))
@@ -251,35 +306,15 @@ func (w *world) install(t *testing.T, pr prStub, signed bool) {
 	if head == "" {
 		head = w.headSHA
 	}
-	runGH = func(args ...string) (string, error) {
-		ghCalls = append(ghCalls, args)
-		switch {
-		case len(args) > 1 && args[0] == "pr" && args[1] == "view":
-			b, _ := json.Marshal(prInfo{
-				Number: testPR, State: pr.State, IsDraft: pr.IsDraft,
-				HeadRefName: pr.HeadRefName, HeadRefOid: head, BaseRefName: "main",
-				IsCrossRepository: pr.IsCrossRepository,
-			})
-			return string(b), nil
-		case len(args) > 0 && args[0] == "api":
-			if !signed {
-				return "", fmt.Errorf("no comment fetch expected on an unsigned world")
-			}
-			c := map[string]any{
-				"id": 5206838120, "html_url": signOffURL,
-				"issue_url": "https://api.github.com/repos/medici-finance/assay/issues/444",
-				"body":      "accepted",
-				"user":      map[string]any{"login": blessLogin, "id": blessID, "type": "User"},
-			}
-			b, _ := json.Marshal(c)
-			return string(b), nil
-		}
-		return "", fmt.Errorf("unexpected gh call: %v", args)
+	sf := &stubForge{w: w, pr: pr, head: head, signed: signed, ops: &forgeOps}
+	forgeFor = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+		owner, name, _ := strings.Cut(repo, "/")
+		return sf, deskkit.ForgeRepo{Owner: owner, Name: name}, nil
 	}
 	allowWrite = func(string, int) error { return nil }
 	auditLog = func(e deskkit.Entry) error { audits = append(audits, e); return nil }
 
-	t.Cleanup(func() { runGit, runGH, allowWrite, auditLog = prevGit, prevGH, prevAllow, prevAudit })
+	t.Cleanup(func() { runGit, forgeFor, allowWrite, auditLog = prevGit, prevForge, prevAllow, prevAudit })
 }
 
 // cli runs a verb and returns (exit code, stdout).
