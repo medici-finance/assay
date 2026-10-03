@@ -1,8 +1,13 @@
 package main
 
 import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -180,6 +185,126 @@ func TestVICComposeNoEnv(t *testing.T) {
 	if indexOf(composeDockerArgs(inv), "--env-file") >= 0 {
 		t.Errorf("argv must omit --env-file when none is supplied")
 	}
+}
+
+// TestVICComposeAttribEnv pins the #2092 fix: the launcher forwards the host's
+// attribution env (GITHUB_ACTIONS, GITHUB_ACTOR) into the container, NAME-ONLY, so
+// the inner verifyrun can attribute a CI run whose checkout carries no git identity
+// (before the fix it refused could-not-attribute, exit 2), and the value is never
+// rendered in the argv the launcher prints.
+func TestVICComposeAttribEnv(t *testing.T) {
+	inv := containerInvocation{
+		pin:      testPin(),
+		root:     "/r",
+		briefRel: "b.md",
+		inner:    buildInnerCommand("b.md", false, false, false, ""),
+		uid:      1000, gid: 1000,
+	}
+	argv := composeDockerArgs(inv)
+	joined := strings.Join(argv, " ")
+	for _, name := range []string{"GITHUB_ACTIONS", "GITHUB_ACTOR"} {
+		if !argvHasPair(argv, "-e", name) {
+			t.Errorf("argv missing name-only -e %s (the container cannot attribute a CI run without it): %q", name, joined)
+		}
+		if strings.Contains(joined, name+"=") {
+			t.Errorf("-e %s must be name-only (docker copies the host value); a KEY=VALUE form renders the value in the printed argv: %q", name, joined)
+		}
+	}
+	// Every forwarded name is a docker option, so it must precede the image ref.
+	refIdx := indexOf(argv, testPin().ref())
+	for i, a := range argv {
+		if a == "GITHUB_ACTOR" && i > refIdx {
+			t.Errorf("-e GITHUB_ACTOR lands after the image ref (it would reach the inner command, not docker): %q", joined)
+		}
+	}
+}
+
+// TestVICAttribEnvClass is the CLASS guard for #2092: an environment variable the
+// witness-runner derivation (executingRunner, verifyrun.go) reads that the launcher
+// does not carry into the container. It walks executingRunner's body for every
+// os.Getenv / os.LookupEnv call and fails naming any variable composeDockerArgs does
+// not forward by name — so the next env source added to the derivation is red here
+// before it can make `--in-container` refuse a run the host would have attributed.
+// A non-literal argument fails closed (the guard cannot resolve it).
+func TestVICAttribEnvClass(t *testing.T) {
+	// Positive control: the collector must flag a planted read, or a broken matcher
+	// would report the real function clean.
+	planted := "package main\nimport \"os\"\nfunc executingRunner(root string) (string, string, bool) {\n" +
+		"\tif os.Getenv(\"GITHUB_ACTIONS\") == \"true\" { _ = os.Getenv(\"PLANTED_ACTOR\") }\n" +
+		"\t_, _ = os.LookupEnv(\"PLANTED_LOOKUP\")\n\treturn \"\", \"\", false\n}\n"
+	got, err := runnerEnvReads(t, []byte(planted))
+	if err != nil {
+		t.Fatalf("positive control: %v", err)
+	}
+	if strings.Join(got, ",") != "GITHUB_ACTIONS,PLANTED_ACTOR,PLANTED_LOOKUP" {
+		t.Fatalf("positive control: collector found %v, want the three planted reads", got)
+	}
+
+	src, err := os.ReadFile("verifyrun.go")
+	if err != nil {
+		t.Fatalf("could-not-check: %v", err)
+	}
+	names, err := runnerEnvReads(t, src)
+	if err != nil {
+		t.Fatalf("could-not-check: %v", err)
+	}
+	if len(names) == 0 {
+		t.Fatalf("could-not-check: no env read found in executingRunner — the guard is not looking at the derivation")
+	}
+	argv := composeDockerArgs(containerInvocation{pin: testPin(), root: "/r", briefRel: "b.md", uid: -1, gid: -1})
+	for _, n := range names {
+		if !argvHasPair(argv, "-e", n) {
+			t.Errorf("executingRunner reads $%s but the launcher does not forward it into the container — add it to attributionEnvVars (verifyincontainer.go), or --in-container refuses a run the host would attribute (#2092)", n)
+		}
+	}
+}
+
+// runnerEnvReads returns, in source order, the literal names executingRunner passes
+// to os.Getenv / os.LookupEnv in src.
+func runnerEnvReads(t *testing.T, src []byte) ([]string, error) {
+	t.Helper()
+	f, err := parser.ParseFile(token.NewFileSet(), "src.go", src, 0)
+	if err != nil {
+		return nil, err
+	}
+	var fn *ast.FuncDecl
+	for _, d := range f.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Recv == nil && fd.Name.Name == "executingRunner" {
+			fn = fd
+		}
+	}
+	if fn == nil || fn.Body == nil {
+		return nil, fmt.Errorf("no executingRunner function in the source")
+	}
+	var names []string
+	var bad error
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		pkg, ok := sel.X.(*ast.Ident)
+		if !ok || pkg.Name != "os" || (sel.Sel.Name != "Getenv" && sel.Sel.Name != "LookupEnv") || len(call.Args) != 1 {
+			return true
+		}
+		lit, ok := call.Args[0].(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			bad = fmt.Errorf("executingRunner calls os.%s with a non-literal argument; extend this guard to resolve it", sel.Sel.Name)
+			return true
+		}
+		v, err := strconv.Unquote(lit.Value)
+		if err != nil {
+			bad = err
+			return true
+		}
+		names = append(names, v)
+		return true
+	})
+	return names, bad
 }
 
 func TestVICInnerFlags(t *testing.T) {
