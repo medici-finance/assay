@@ -1,0 +1,2 @@
+### Fixed
+- statusgen's HELD/could-not-check scan (verify-gate card, model autoflip, `--close-verify`) no longer reads the words inside an inline code span, so quoted tool output such as `` `no record is held under the data grant` `` stops suppressing a clean PASS. Spans follow CommonMark read fail-closed: an unterminated or mismatched backtick strips nothing, a span never crosses a table-cell pipe, and a span holding only `HELD` or `could-not-check` still counts (#2100).
