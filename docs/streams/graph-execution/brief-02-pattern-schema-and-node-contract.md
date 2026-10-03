@@ -10,7 +10,7 @@ why: >-
   something a reviewer can approve and a tool can refuse.
 wave: 0
 depends: []
-unblocks: ["graph-execution/03", "graph-execution/04", "graph-execution/05", "graph-execution/08"]
+unblocks: ["graph-execution/03", "graph-execution/04", "graph-execution/05", "graph-execution/08", "iso-9001/09"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -33,7 +33,7 @@ consumers:
   - "statusgen/main.go (the `patterns --lint` subcommand): fixed-here (the subcommand is wired in this change)"
   - "docs/lifecycle.md §Review gates (which pattern node a review gate is): fixed-here (the sentence is added in this change)"
   - "plugins/assay/skills/worker-desk/SKILL.md, pr-review-desk/SKILL.md, verify-desk/SKILL.md (the procedures the implementation pattern encodes): out-of-scope (the pattern file describes the existing procedure and changes none of it; a skill that later READS the pattern is graph-execution/05's report to propose)"
-version: 1
+version: 2
 id: ed7644f5-3b16-4050-955c-2e522e5dc257
 ---
 
