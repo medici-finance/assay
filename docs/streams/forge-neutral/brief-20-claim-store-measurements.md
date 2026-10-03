@@ -235,6 +235,35 @@ Ranked last, no verdict line: racers = 16 @ tools/desk/internal/deskkit/claim_te
 
 VERIFY: FAIL — row 5 (check-definition staleness: §3.1b omits three files whose only match is a code comment; #1606 open); rows 1–4 PASS.
 
+### 2026-10-03 desk dispatch — re-verify at merged main 03065900ca21: 4/5 pass, row 5 still fails (check-definition staleness, #1606)
+
+Non-implementer verifier re-run, 2026-10-03 (UTC, completed before 02:56Z), assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian), at merged main 03065900ca21 (confirmed against the forge's main head the same turn). Documents-only brief, run non-hermetically on darwin, offline (KUBECONFIG=/dev/null); the Go test and the witness ran under a throwaway HOME. Rows 4 and 5 have prose Expect cells, so each was decided by a mechanical membership check of the printed file list against the spec's section 3.1a / 3.1b text, not by exit status. Long tokens are abbreviated below: "the spec" = reviewer-write-boundary.md in this stream; the row 3 test is TestAcquireConcurrent...OneWinner (name shortened); file paths are given relative to tools/desk.
+
+| # | Command | Expect | Observed (exit + key output line) | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | Verify row 1 as written: grep -c for the S2 and S4 row prefixes in the spec | `2` | PASS — exit 0; printed `2` | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | Verify row 2 as written (row file written to a scratch path instead of the shared tmp dir; same greps) | exit 0, no line printed | PASS — exit 0; no line printed (S2 carries "1 of 16 succeeded" and COULD-NOT-CHECK for the network filesystem; S4 carries "determined") | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | The local-disk control recorded in the spec's S2 row: cd tools/desk and go test ./internal/deskkit/... with -run on the exactly-one-winner race test, -count=1 -v -timeout 60s | exactly one of N succeeded | PASS — exit 0; `--- PASS` for the race test (0.11s), package ok; 16 racers, the test's `wins != 1` assertion held. The Verify cell itself is prose, so the recorded command was executed directly | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | Verify row 4 as written: grep -rln for the reviewer ForgeFor call and ReviewDispatcherRole over cmd and internal, minus tests, sorted | every file listed appears in the reviewer write inventory | PASS — exit 0; 6 files (deskdispatch/dispatch.go, deskpost/claimliveness.go, deskpost/comment.go, deskpost/forgeclient.go, deskpost/label.go, deskkit/modelstamp.go); all 6 found in section 3.1a | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | Verify row 5 as written: grep -rln for ClaimRefsPrefix, ClaimRefPath and refs/dispatch over cmd and internal, minus tests, sorted | every file listed appears in the claim reader inventory or is the claim tool itself | FAIL — exit 0; 16 files; 13 found in section 3.1b, 3 absent: deskdispatch/repairadmission.go, desksupervise/status.go, deskkit/forge_github.go. Expected condition not met | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Execution witness (statusgen verifyrun --dry-run, tool v1.0.31, throwaway HOME, at 03065900ca21): row 1 pass (sha256:53c234e5e847), row 2 pass (sha256:e3b0c44298fc), row 3 could-not-run exit=127 (sha256:26b6e0457462; the Verify cell is prose, so the shell has nothing to execute), row 4 pass (sha256:5c3e60f74ab7), row 5 pass (sha256:d2556591d929). All five output hashes are identical to the 2026-09-27 and 2026-10-02 witnesses, so the row 4 and row 5 file lists are byte-for-byte unchanged. The witness's row 5 pass is exit-status only and does not decide the prose Expect; the membership check above does.
+
+What changed since the 2026-10-02 verdict (at 5a108baba705, landed by #2065), and why the verdict has not:
+
+- The wake receipt's hashed inputs that changed on main: deskkit/forge.go, deskkit/forge_github.go and deskkit/forge_gitlab.go, all by #2046 (deskmerge App-token reads: cross-repo pull-request head/base detection and a walk-to-end comment read). #2063 (sops-block refusal) touched none of the receipt's inputs. Every other hashed input, including the spec (sha256 8317b9eae90a...) and claim_test.go, is byte-identical. The brief file changed only by the Evidence block #2065 appended.
+- None of the #2046 edits adds or removes a claim-ref read; neither grep's output changed (same witness hashes).
+- Row 5 still fails on the same three files. grep -n with the row's three patterns on them prints one line each, every one a code comment: repairadmission.go:219 ("lives in the same refs/dispatch namespace as the item claims"), status.go:122 ("refs/dispatch claim, so it is session-influenced input"), forge_github.go:2435 (doc comment, "refs/dispatch/<key>), verbatim from the ref field"; moved from line 2377 by #2046). No claim read that goes around the claim tool was found; the pinned section 3.1b inventory has drifted from merged main. Check-definition staleness, tracked by #1606, which is still open. The earlier blocker holds unchanged.
+- Row 3 is unchanged: could-not-run in the witness (prose cell), PASS when the recorded command is executed directly, as on every earlier run.
+
+Risk-bearing values. Enumeration covered this brief's Deliverables and diff (documents only: spec sections 3.1a, 3.1b, 3.3, plus Evidence). Two literals, both unchanged since 2026-09-24:
+
+RISK-VALUE: DERIVED — wins != 1 (winners = 1) @ deskkit/claim_test.go:53 — the shipped primitive creates the claim with O_CREATE|O_EXCL (deskkit/claim.go:273) under one directory lock, which admits exactly one creator; every other racer gets EEXIST. Exactly one of N succeeds by construction, whatever N is: the "exactly one is the only passing count" the brief pins.
+
+Ranked last, no verdict line: racers = 16 @ deskkit/claim_test.go:22 — a reversible test knob that sets only how hard the concurrency exercise pushes.
+
+VERIFY: FAIL — row 5 (check-definition staleness: section 3.1b omits three files whose only match is a code comment; #1606 open); rows 1–4 PASS; status stays implemented.
+
 ## Review
 Gate: **model** (from frontmatter — all four risk answers no; documents only). Reviewer records
 verdict + date in the stream README table.
