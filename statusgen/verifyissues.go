@@ -464,23 +464,132 @@ func heldOccurrenceNegated(clean string, cuts []int, h []int) bool {
 	return false
 }
 
-// stripStruck removes struck-through spans from line, returning the cleaned
-// text and the offsets in it where a span was removed.
-func stripStruck(line string) (string, []int) {
-	locs := strikethroughRe.FindAllStringIndex(line, -1)
+// stripStruck removes struck-through spans from a line. The spans are located
+// on masked — the line with its inline code masked (maskInlineCode), so a "~~"
+// inside a code span never strikes anything, as in CommonMark, where code spans
+// bind tighter than strikethrough — and the same spans are cut from both
+// masked and line (masking preserves length, so the offsets agree). clean is
+// masked with the spans removed: the text the held scan reads. view is line
+// with the same spans removed and its inline code intact: the text routing
+// and the refusal message read. cuts are the offsets in both where a span was
+// removed.
+func stripStruck(line, masked string) (clean, view string, cuts []int) {
+	locs := strikethroughRe.FindAllStringIndex(masked, -1)
 	if locs == nil {
-		return line, nil
+		return masked, line, nil
 	}
-	var b strings.Builder
-	cuts := make([]int, 0, len(locs))
+	var c, v strings.Builder
+	cuts = make([]int, 0, len(locs))
 	prev := 0
 	for _, l := range locs {
-		b.WriteString(line[prev:l[0]])
-		cuts = append(cuts, b.Len())
+		c.WriteString(masked[prev:l[0]])
+		v.WriteString(line[prev:l[0]])
+		cuts = append(cuts, c.Len())
 		prev = l[1]
 	}
-	b.WriteString(line[prev:])
-	return b.String(), cuts
+	c.WriteString(masked[prev:])
+	v.WriteString(line[prev:])
+	return c.String(), v.String(), cuts
+}
+
+// inlineCodeMask overwrites every byte of an inline code span the held scan
+// excludes. It is the same byte as struckSentinel and, like it, sits on no
+// negation allowlist, so a masked span can never join a cue to a marker ("no
+// `see log` HELD") or stand in for what precedes a cue: the negation read is
+// unchanged or stricter wherever a span was.
+const inlineCodeMask = '\x00'
+
+// heldBareTokenRe is a code span holding nothing but the marker word (and
+// punctuation or emphasis around it): `HELD`, `could-not-check`, `**HELD:**`.
+// That is the verifier's own status token set in code formatting, not quoted
+// tool output, so maskInlineCode keeps it and the scan still reads it.
+var heldBareTokenRe = regexp.MustCompile(`(?i)^[^\pL\pN]*(?:held|could-not-check)[^\pL\pN]*$`)
+
+// maskInlineCode returns line with each inline code span overwritten byte for
+// byte by inlineCodeMask, so the held scan does not read a marker QUOTED in
+// one (#2100: quoted tool output is not a disposition, the same reason fenced
+// code is stripped). The returned string has the same length as line.
+//
+// Spans follow CommonMark, read FAIL-CLOSED — every departure masks less, never
+// more:
+//   - A span opens on a backtick run and closes on the next run of EXACTLY the
+//     same length; runs of other lengths in between are content. A run with no
+//     equal-length closer is literal text and scanning resumes after it.
+//   - A backslash-escaped backtick outside a span cannot open one; inside a
+//     span a backslash is literal.
+//   - A span never crosses a line: the caller passes one physical line, so an
+//     unterminated backtick strips nothing past it (CommonMark would join
+//     lines; reading each on its own masks less).
+//   - A span never crosses an unescaped "|". GFM splits a table row into cells
+//     before it reads inline code, so a span cannot swallow a neighbouring
+//     cell's disposition ("| `cmd | HELD | `ok` |"). The split is applied on
+//     every line, table or not, which is stricter than CommonMark in prose: a
+//     quoted pipeline (`grep held | wc -l`) outside a table is still read.
+//   - A span whose content is only the marker word (heldBareTokenRe) is kept.
+func maskInlineCode(line string) string {
+	if !strings.Contains(line, "`") {
+		return line
+	}
+	b := []byte(line)
+	start := 0
+	for i := 0; i < len(line); i++ {
+		switch line[i] {
+		case '\\':
+			i++ // an escaped character never delimits a cell
+		case '|':
+			maskCodeSpans(b, line, start, i)
+			start = i + 1
+		}
+	}
+	maskCodeSpans(b, line, start, len(line))
+	return string(b)
+}
+
+// maskCodeSpans masks, in b, the inline code spans of line[lo:hi] — one table
+// cell, or the whole of a pipe-free line — under maskInlineCode's rules.
+func maskCodeSpans(b []byte, line string, lo, hi int) {
+	tickRun := func(at int) int {
+		n := 0
+		for at+n < hi && line[at+n] == '`' {
+			n++
+		}
+		return n
+	}
+	for i := lo; i < hi; {
+		switch line[i] {
+		case '\\':
+			i += 2 // an escaped backtick is literal and cannot open a span
+			continue
+		case '`':
+		default:
+			i++
+			continue
+		}
+		open, n := i, tickRun(i)
+		i += n
+		closeAt := -1
+		for j := i; j < hi; {
+			if line[j] != '`' {
+				j++
+				continue
+			}
+			m := tickRun(j)
+			if m == n {
+				closeAt = j
+				break
+			}
+			j += m
+		}
+		if closeAt < 0 {
+			continue // no equal-length closer: the run is literal text
+		}
+		if !heldBareTokenRe.MatchString(line[i:closeAt]) {
+			for k := open; k < closeAt+n; k++ {
+				b[k] = inlineCodeMask
+			}
+		}
+		i = closeAt + n
+	}
 }
 
 // verifyPassHeldContradiction reports whether evidence both carries a strict
@@ -511,7 +620,10 @@ func stripStruck(line string) (string, []int) {
 //
 // Fenced code, blockquotes and struck-through spans are stripped first — the
 // same hygiene lastVerifyVerdict applies — so a marker QUOTED inside one of
-// those is not read as a live disposition.
+// those is not read as a live disposition. Inline code spans are excluded too
+// (#2100, maskInlineCode): a span is quoted tool output, not a verifier's
+// disposition. That exclusion is this scan's alone — lastVerifyVerdict and
+// verdictFailAfterStrictPass still read verdict tokens inside inline code.
 func verifyPassHeldContradiction(evidence string) (bool, string) {
 	if !hasVerifyPass(evidence) {
 		return false, ""
@@ -540,7 +652,12 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		if inFence || strings.HasPrefix(trimmed, ">") {
 			continue
 		}
-		clean, cuts := stripStruck(line)
+		// Inline code is masked (same length, so offsets agree) before the
+		// struck spans are cut: the marker is matched and the negation read
+		// on clean, where a quoted span is gone; routing and the refusal
+		// message read view, which keeps the code text — a reference written
+		// in code ("deferred to `stream/05`") still routes, as before.
+		clean, view, cuts := stripStruck(line, maskInlineCode(line))
 		heldLocs := heldOrCouldNotCheckRe.FindAllStringIndex(clean, -1)
 		if heldLocs == nil {
 			continue
@@ -568,8 +685,8 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		// independent claim the deferral could not have been about, and is
 		// refused exactly like an un-routed mention with no deferral at
 		// all. This is ordering, not bare same-line proximity.
-		keywordLocs := routingKeywordRe.FindAllStringIndex(clean, -1)
-		refLocs := routingRefRe.FindAllStringIndex(clean, -1)
+		keywordLocs := routingKeywordRe.FindAllStringIndex(view, -1)
+		refLocs := routingRefRe.FindAllStringIndex(view, -1)
 		for _, h := range heldLocs {
 			// A negated or zero-counted occurrence ("no could-not-check",
 			// "summary: 0 HELD") is not a live disposition at all — it is
@@ -597,7 +714,7 @@ func unroutedHeldLine(evidence string) (bool, string) {
 			if keywordAfter && refAfter {
 				continue // knowingly routed to a named follow-up — excluded from the PASS, not contradicting it
 			}
-			return true, strings.TrimSpace(clean)
+			return true, strings.TrimSpace(view)
 		}
 	}
 	return false, ""

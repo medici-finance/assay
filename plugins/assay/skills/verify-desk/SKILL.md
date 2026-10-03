@@ -408,7 +408,9 @@ earlier HELD/could-not-check text in `~~…~~` and name the run that settled it 
 runner online~~ superseded by the 2026-07-10 run below`). **Or formally defer it:** route it to a named
 follow-up with a reference (`deferred to <stream>/<NN>` or `#N`). A bare "deferred", or a row left
 HELD, is neither. The read is lexical: the words HELD and could-not-check anywhere in unstruck,
-unquoted Evidence prose count, so do not use them for status wording such as a run heading. Land
+unquoted Evidence prose count, so do not use them for status wording such as a run heading. Fenced
+code, blockquotes and inline code spans are quotation and do not count, except a span holding only
+the word itself (`HELD`), which reads as your own status token. Land
 `implemented → verified` only once every such line is cleared. The tooling refuses the same
 contradiction downstream: the model autoflip, the verify-gate card, and `statusgen --close-verify`
 from `verified` as well as from `implemented`. On the `verified` close the row's own status is the pass
