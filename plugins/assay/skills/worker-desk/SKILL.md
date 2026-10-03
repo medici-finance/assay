@@ -222,7 +222,7 @@ direction is visible from inside the file.
 
 | set | what it is | derived from |
 |---|---|---|
-| **BOARD ROOTS** | local checkouts carrying `docs/streams` — the dispatch queue | `deskroster repos --scope topology` rows carrying `root=`, **unioned** with a live `docs/streams` test over the siblings |
+| **BOARD ROOTS** | local checkouts carrying `docs/streams` — the dispatch queue | `deskroster repos --scope roots` rows carrying `root=`, **unioned** with a live `docs/streams` test over the siblings |
 | **SCAN REPOS** | `owner/repo` slugs swept for orphan PRs and un-briefed issues | `deskroster repos --scope scan` (`ASSAY_SCAN_REPOS`) |
 
 SCAN REPOS is deliberately wider (repos the desk fronts that carry no `docs/streams`); BOARD ROOTS is
@@ -234,7 +234,7 @@ The derivation itself — the `deskroster` read, the `docs/streams` + `--git-dir
 slug-keyed union — is [`references/dispatch-runbook.md`](references/dispatch-runbook.md) §Deriving THE
 REPO SET. Two rules from it bind here: **key on the repo slug, not the path**, and **a root in exactly
 one of the two lists is named in the report either way, never dropped** (declared-but-absent =
-could-not-check; observed-but-undeclared = a `topology.yaml` gap — dispatch it this cycle and file the
+could-not-check; observed-but-undeclared = a configured-root declaration gap — dispatch it this cycle and file the
 gap). A hard-coded list is the board-blind bug this replaces: written from one checkout it silently
 skips the largest board when the session is homed in another, and says nothing.
 
