@@ -280,7 +280,7 @@ func productionResolveBase(root, baseRef string) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("rev-parse HEAD: %w", err)
 	}
-	mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", baseRef).Output()
+	mb, err := gitMergeBaseOut(root, "HEAD", baseRef)
 	if err != nil {
 		return "", strings.TrimSpace(string(head)), fmt.Errorf("merge-base HEAD %s: %w", baseRef, err)
 	}
