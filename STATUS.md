@@ -11,25 +11,25 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-10-02 |  |
-| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 4/13 | 2026-10-02 |  |
-| [cellctl-windows](docs/streams/cellctl-windows/README.md) | P1 | active | 0/8 | 2026-10-02 |  |
-| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-10-02 |  |
-| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-10-02 |  |
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-10-02 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-10-02 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 7/26 | 2026-10-02 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-10-02 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-10-02 |  |
-| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/13 | 2026-10-02 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-10-02 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-10-02 |  |
-| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/18 | 2026-10-02 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-10-02 |  |
-| [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-10-02 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-10-02 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/14 | 2026-10-02 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 8/18 | 2026-10-02 |  |
+| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-10-03 |  |
+| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 4/13 | 2026-10-03 |  |
+| [cellctl-windows](docs/streams/cellctl-windows/README.md) | P1 | active | 0/8 | 2026-10-03 |  |
+| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-10-03 |  |
+| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-10-03 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-10-03 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-10-03 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 7/26 | 2026-10-03 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-10-03 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-10-03 |  |
+| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/13 | 2026-10-03 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-10-03 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-10-03 |  |
+| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/27 | 2026-10-03 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-10-03 |  |
+| [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-10-03 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-10-03 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/14 | 2026-10-03 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 8/18 | 2026-10-03 |  |
 
 ## Parked
 
@@ -37,13 +37,13 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Priority | Briefs | Last touched |
 |---|---|---|---|
-| [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-10-02 |
-| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-10-02 |
-| [brief-quality](docs/streams/brief-quality/README.md) | P1 | 0/9 | 2026-10-02 |
-| [continuing-operations](docs/streams/continuing-operations/README.md) | P2 | 0/0 | 2026-10-02 |
-| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-10-02 |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | 4/7 | 2026-10-02 |
-| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-10-02 |
+| [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-10-03 |
+| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-10-03 |
+| [brief-quality](docs/streams/brief-quality/README.md) | P1 | 0/9 | 2026-10-03 |
+| [continuing-operations](docs/streams/continuing-operations/README.md) | P2 | 0/0 | 2026-10-03 |
+| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-10-03 |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | 4/7 | 2026-10-03 |
+| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-10-03 |
 
 ## Next up
 
@@ -58,6 +58,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| graph-execution | 20 — Shared loop-admin runner protocol and offline conformance kit [exec:strong] | 0 | 8000 |
 | desktools-v2 | 03 — native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot) [exec:strong] | 3 | 1500 + 1500 (drive:desktools-v2) |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
 | desktools-v2 | 12 — platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS [exec:strong] | 2 | 1000 + 1500 (drive:desktools-v2) |
@@ -75,7 +76,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 2d1c4de 2026-10-03T07:50:05+10:00_
+_last regen: acc2949 2026-10-03T11:36:18+10:00_
 
 **Progress:** 5/13 brief items done.
 
@@ -98,7 +99,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 2d1c4de 2026-10-03T07:50:05+10:00_
+_last regen: acc2949 2026-10-03T11:36:18+10:00_
 
 **Progress:** 13/31 brief items done.
 
@@ -141,21 +142,21 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| graph-execution | 02 [exec:strong] | implemented | 7500 | 11 | — | — | — |
+| graph-execution | 02 [exec:strong] | implemented | 10000 | 16 | — | — | — |
+| graph-execution | 03 [exec:strong] | implemented | 7000 | 10 | — | — | — |
 | build-less-brittle | 02 [exec:strong] | implemented | 6500 | 7 | — | — | — |
+| graph-execution | 13 [exec:strong] | implemented | 6500 | 9 | — | — | — |
 | build-less-brittle | 04 [exec:strong] | implemented | 5500 | 5 | — | — | — |
 | cellctl-windows | 00 [exec:strong] | implemented | 5500 | 7 | — | — | — |
 | windows-port | 00 | implemented | 5500 | 9 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | build-less-brittle | 06 [exec:strong] | implemented | 4500 | 3 | — | — | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
-| graph-execution | 03 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | apps-installer | 02 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | build-less-brittle | 10 [exec:strong] | verified | 4000 | 2 | — | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
-| graph-execution | 13 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | contributor-trust | 06 | implemented | 2500 | 1 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
@@ -471,13 +472,13 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 05 mirror-freshness gate: fail the release/CI when a mirrored stamped value drifts from its source — todo (wave 0)
 - 06 reconcile ref-resolution across the brief-v2 id flag-day — todo (wave 0)
 
-### graph-execution (16 open)
+### graph-execution (25 open)
 
 - 02 Workflow-pattern schema, node contract, and the implementation and research patterns — implemented (wave 0)
 - 03 Evidence coverage rule and the observe evidence kind — implemented (wave 1)
 - 04 Recovery contract for effect-bearing nodes in drainloop — todo (wave 1)
-- 05 Offline two-pattern experiment on frozen fixtures — todo (wave 2)
-- 06 Run records and the replay/learning loop — todo (wave 3)
+- 05 Offline two-pattern experiment on frozen fixtures — todo (wave 5)
+- 06 Run records and the replay/learning loop — todo (wave 6)
 - 07 Flow instruments — service/wait split, CI-slot saturation, gate catch/override — implemented (wave 1)
 - 08 Signal-triggered pattern — incident and regression — todo (wave 1)
 - 09 Versioned workflow instances and shared identity — todo (wave 1)
@@ -485,10 +486,19 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 12 Reproducible decision evaluation and calibration manifests — todo (wave 2)
 - 13 Deterministic admission over facts and bounded probabilistic advice — implemented (wave 1)
 - 14 Bind admission and graph eligibility at the dispatch boundary — todo (wave 3)
-- 15 Control profiles and complete scoped evidence exports — todo (wave 4)
+- 15 Control profiles and complete scoped evidence exports — todo (wave 7)
 - 16 Cell ownership, cumulative budgets and restoration fencing — todo (wave 2)
-- 17 Graph-linked release and outcome records without new authority — todo (wave 4)
-- 18 Offline graph, advice and assurance integration proof — todo (wave 5)
+- 17 Graph-linked release and outcome records without new authority — todo (wave 7)
+- 18 Offline graph, advice and assurance integration proof — todo (wave 9)
+- 19 Durable instance store and production coverage binding — todo (wave 2)
+- 20 Shared loop-admin runner protocol and offline conformance kit — todo (wave 0)
+- 21 Deterministic task controller with durable dispatch and waits — todo (wave 4)
+- 22 First pinned local harness adapter and qualification fixtures — todo (wave 2)
+- 23 Immutable candidate workspaces and independent check inputs — todo (wave 3)
+- 24 Versioned author implement review pattern with bounded repair — todo (wave 7)
+- 25 Exact-candidate publication and independent review evidence bridge — todo (wave 8)
+- 26 Shared loop-admin launch supervision for desks and workflows — todo (wave 1)
+- 27 Standing desk clients for the shared loop-admin — todo (wave 3)
 
 ### harness-portability (12 open)
 
@@ -716,4 +726,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**26** streams (**19** active, **0** paused, **7** parked) · **104/311** briefs done · completed initiatives: see `docs/archive/`
+**26** streams (**19** active, **0** paused, **7** parked) · **104/320** briefs done · completed initiatives: see `docs/archive/`
