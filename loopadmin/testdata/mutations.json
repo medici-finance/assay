@@ -1,0 +1,37 @@
+[
+  {
+    "test": "TestRunnerConformanceUnknownLaunch",
+    "why": "map a lost launch acknowledgment to a definite failure",
+    "file": "runner/client.go",
+    "old": "if errors.Is(err, ErrDefiniteFailure) {",
+    "new": "if errors.Is(err, ErrDefiniteFailure) || errors.Is(err, ErrAckLost) {"
+  },
+  {
+    "test": "TestRunnerConformanceLateResultDenied",
+    "why": "skip the generation fence when accepting a result",
+    "file": "runner/client.go",
+    "old": "if cur != req.Authority.Generation {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerConformanceCredentialAndUsage",
+    "why": "default missing usage to zero",
+    "file": "runner/usage.go",
+    "old": "\tif a == nil || b == nil {\n\t\treturn nil\n\t}\n\treturn Int64(*a + *b)",
+    "new": "\tvar x, y int64\n\tif a != nil {\n\t\tx = *a\n\t}\n\tif b != nil {\n\t\ty = *b\n\t}\n\treturn Int64(x + y)"
+  },
+  {
+    "test": "TestRunnerBothModesWithoutGraph",
+    "why": "make canonical work references optional in workflow-stage mode",
+    "file": "runner/request.go",
+    "old": "if w == nil || w.WorkID == \"\" || w.NodeID == \"\" || w.AttemptID == \"\" {",
+    "new": "if false && (w == nil || w.WorkID == \"\" || w.NodeID == \"\" || w.AttemptID == \"\") {"
+  },
+  {
+    "test": "TestRunnerCallerRecheck",
+    "why": "accept the result in the caller without rechecking its claim generation",
+    "file": "runner/conformance/claims.go",
+    "old": "if cur != acc.Authority.Generation {",
+    "new": "if false {"
+  }
+]
