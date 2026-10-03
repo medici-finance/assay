@@ -225,3 +225,28 @@ Open hold, not a Verify row: the statusgen half of the floor is build/vet-only i
 Tracked at #2077: re-author row 8's Expect cell so the witness reads its required exit as 0.
 
 VERIFY: PASS — all 9 Verify rows pass by hand at b3677d6da; the execution witness scores row 8 fail on an Expect-cell parse (exits 0 not matched, prose exit 1 taken), so a witness-gated flip needs row 8's Expect re-authored first
+
+### 2026-10-03 desk dispatch — 9/9 Verify rows pass on merged main 37d5eb00c; execution witness exit 0, 9/9 pass (row 8 now parses after #2081)
+
+Run against merged main 37d5eb00c (matches forge main at run time). Offline, throwaway HOME, GOPROXY off, no GIT_DIR or token variables exported. Changes since the prior verdict at b3677d6da: #2081 (88d998068) re-authored row 8's Expect cell only (leads with exit 0); no test, script or README file under this brief's scope changed. Long test names and shas are abbreviated in this block.
+
+| # | Command | Expected | Observed | Date / Runner |
+| --- | --- | --- | --- | --- |
+| 1 | Verify row 1 as written (floor-go.sh go test, run TestRegressionManifest in the regression package, anchored PASS grep) | top-level PASS line, exit 0 | exit 0; "--- PASS: TestRegressionManifest (0.62s)" | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | Verify row 2 as written (floor-go.sh go test, run TestReg[0-9] over the regression package and cmd/deskclaim-ref, count vs MANIFEST) | pass=n manifest=m, equal, at least 1, exit 0 | exit 0; "pass=3 manifest=3" (TestReg786FleetHardening 28.01s, TestReg1145ShimCredential 4.05s, TestReg727WorktreeOrigin 0.10s) | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | Verify row 3 as written (four anchored statusgen go test runs through floor-go.sh) | exit 0, four top-level PASS lines | exit 0; four PASS lines: the shallow-clone consumed-fragment test (0.27s), the relPath separator-style test (0.00s), the native-forge scan-read test (0.55s), the WSL-launcher bootstrap witness test (0.27s) | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | Verify row 4 as written (awk seed-row count in MANIFEST vs Evidence-row count in this brief) | equal counts, at least 18, exit 0 | exit 0; "manifest=26 evidence=26" | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | grep for the Regression floor heading in the desktools-v2 README | exit 0 | exit 0; heading present | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | statusgen --consumers --root . | exit 0, no routing claim disproved | exit 0; "consumers: no brief files in the diff against 37d5eb00c ... nothing to corroborate" (vacuous on merged main). Supplemental: --base set to the parent of the #2081 merge, --brief desktools-v2/14: exit 0, "0 corroborated, 0 disproved, 5 unchecked" | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | bash check-floor.sh in the regression package | exit 0, seed passes=26 | exit 0; "seed passes=26"; 26 top-level PASS lines, 0 FAIL lines | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | Verify row 8 as written (mutate_guard.py in seven modes: manifest, ci, directories, deadline, gitenv, execenv, runnerenv) | exit 0, printing controls=7 | exit 0; "controls=7"; worktree git status clean before and after (every mutated file restored) | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | Verify row 9 as written (floor-go.sh go test, run TestFloor[RG] in the regression package, anchored PASS count) | pass=2, exit 0 | exit 0; "pass=2" (TestFloorRunnerGitIsolation 0.72s, TestFloorGoChokePoint 0.00s) | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Execution witness (statusgen v1.0.31 verifyrun --dry-run, throwaway HOME, at 37d5eb00c): exit 0; all 9 rows scored pass exit=0 (output hashes 5638d8de2619, ae6c3e1d0574, 3e67811c8dd1, d24141988b50, e3b0c44298fc, a029e6fdd396, 16dd5af0e4da, 4c85b0ebdf92, e79a64120720). Row 8, scored fail at the prior pass on the Expect-cell parse, now scores pass with the same output hash as before (4c85b0ebdf92), so only the Expect wording changed. Rows 4 and 9 are scored on exit status only (witness note: nothing else in the Expect cell is machine-decidable).
+
+Risk: gate model; risk metadata present, all four fields no; not irreversible. The diff since the prior verdict (#2081) changes Expect prose only and introduces no literal. Enumerated literals from the #2004 diff, re-confirmed on this main: commit-sha length 7 to 40 (manifest_test.go:17), new TestReg name ceiling 31 (manifest_test.go:64), seed-row floor 18 (Verify row 4), shell fixture deadline 60s (shell_test.go:23), floor runner per-test timeout 90s (check-floor.sh:31), git-isolation test deadline 120s (gitenv_test.go:256), mutation control timeouts 60s and 90s (mutate_guard.py:85, :87). All are reversible test knobs.
+RISK-VALUE: N/A — no irreversible literal in the #2004 or #2081 diffs; every literal enumerated above is a reversible test-harness bound (7 to 40 is short-to-full git sha; 31 is the brief's secret-scanner long-identifier ceiling).
+
+Open hold, not a Verify row: the statusgen half of the floor is still build/vet-only in PR CI; the staged CI patch for statusgen go test is present but not applied to the CI workflow (recorded on #1836). #2077 (row 8 Expect re-author) is resolved by #2081 but still reads open.
+
+VERIFY: PASS — all 9 Verify rows pass on merged main 37d5eb00c and the execution witness exits 0 with 9/9 rows pass
