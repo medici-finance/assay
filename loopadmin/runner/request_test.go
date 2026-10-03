@@ -150,19 +150,19 @@ func TestValidateRefusesBlankTool(t *testing.T) {
 func TestCredentialFloorFalsePositives(t *testing.T) {
 	longVal := "abcdefgh12"
 	for _, s := range []string{
-		"pallbearer=" + longVal,                  // an English compound, not a slot
-		"pallbearer: " + longVal,                 //
-		"cupbearer=" + longVal,                   // ... nor is this one
-		"auth: disabled",                         // a setting, not a secret
-		"auth=required",                          //
-		`{"auth":"external"}`,                    //
-		`{"auth":"disabled","note":"fine"}`,      // a setting followed by another field
-		"oauth: enabled",                         //
-		`{"note":"auth: disabled","k":"fine"}`,   // the string closes after the setting word
-		"http://git.example:8080?contact=a@b.io", // a port and an @ in the query
-		"http://git.example:8080#frag@x",         // ... or in the fragment
-		"http://git.example:8080/p?c=a@b.io",     // ... or after a path
-		"ssh://git@git.example:22/r",             // a user and a port, no password
+		"pallbearer=" + longVal,                         // an English compound, not a slot
+		"pallbearer: " + longVal,                        //
+		"cupbearer=" + longVal,                          // ... nor is this one
+		"auth: disabled",                                // a setting, not a secret
+		"auth=required",                                 //
+		`{"auth":"external"}`,                           //
+		`{"auth":"disabled","note":"fine"}`,             // a setting followed by another field
+		"oauth: enabled",                                //
+		`{"note":"auth: disabled","k":"fine"}`,          // the string closes after the setting word
+		"http://git.example:8080?contact=a@example.com", // a port and an @ in the query
+		"http://git.example:8080#frag@x",                // ... or in the fragment
+		"http://git.example:8080/p?c=a@example.com",     // ... or after a path
+		"ssh://git@git.example:22/r",                    // a user and a port, no password
 		"basic functionality only",
 		"basic aGVsbG93b3JsZA==", // base64 of text with no user:password pair
 		"Basic OnBhc3M=",         // base64 of ":pass": no user
@@ -358,8 +358,8 @@ func TestCredentialFloorVocabulary(t *testing.T) {
 		{"https://user:12345#q@git.example", false},
 		{"https://host?next=a:b@c.io", false},
 		{"https://host#a:b@c.io", false},
-		{"https://git.example:8080/path/a@b.io", false},
-		{"see https://host:80 then mail a@b.io", false},
+		{"https://git.example:8080/path/a@example.com", false},
+		{"see https://host:80 then mail a@example.com", false},
 		{"https://user:@git.example", false},
 	} {
 		if got := runner.LooksLikeCredential(u.url); got != u.cred {
