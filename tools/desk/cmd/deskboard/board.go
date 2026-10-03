@@ -2259,9 +2259,9 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 		}
 	}
 
-	// Risk classification (#216) only matters at the FLIP decision: bot
-	// APPROVED at head, CI green, still draft, not blocking. Fetch changed
-	// files there to test the path triggers.
+	// Risk classification feeds review dispatch as well as the FLIP decision.
+	// Compute it for every trusted action row, independently of reviews and CI;
+	// the ready gate still re-reads its own inputs before authorizing a flip.
 	// Resolve the owning brief from the PR body's `Brief:` trailer and read its own
 	// gate/risk frontmatter (deskkit.BriefRiskFromBody) — the authoritative owner edge and
 	// a risk term. Branch-as-claim is the fallback for a body that names no brief.
@@ -2269,37 +2269,39 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 
 	riskClassed := false
 	riskReason := ""
-	if rs.approved && rs.atHead && !rs.blocking && p.IsDraft && fail == 0 && pending == 0 {
-		// change-level: this PR's changed files, for the risk-path trigger scan. Reuse the
-		// EXISTING changed-files degrade shape rather than a second one — a hard read
-		// failure gets the same fail-closed treatment the `!complete` case below already
-		// gives a truncated diff, because both mean the same thing to this gate: the
-		// trigger it exists to catch might be in the part that could not be read.
-		files, complete, rcErr := fetchChangedFiles(repo, p.Number)
-		if rcErr != nil {
-			complete = false
-			degrade(fmt.Sprintf("could not read changed files for risk classification (%v) — "+
-				"fail closed to risk-classed", rcErr))
-		}
-		// UNION (only widens); the FIRST term that fires also names the reason the row shows.
-		// A diff we could not read in full — the trigger we did not see is exactly the one this
-		// gate exists to catch — OR a changed path in the trigger set OR the owning brief term
-		// (a frontmatter-declared sensitive change, or a DECLARED-but-unreadable brief, fail
-		// closed) OR the #587 trailer-absent-App anomaly: a role-App-authored PR with no
-		// Brief:/Issue: trailer is a change deskpr cannot produce, so it risk-classes and the
-		// board must say so rather than let the flip look clean. A body with no trailer leaves
-		// the brief term silent, which is exactly the gap the App term fills.
-		switch {
-		case !complete:
-			riskClassed, riskReason = true, "the diff could not be read in full — fail closed"
-		case anyRiskPath(repo, files):
-			riskClassed, riskReason = true, "touches a security path"
-		case briefRisk.RiskClassed:
-			riskClassed, riskReason = true, briefRisk.Reason
-		case deskkit.TrailerAbsentAppAnomaly(p.Author.Login, []byte(p.Body)):
-			riskClassed, riskReason = true, "trailer absent on App-authored PR"
-		}
+	// change-level: this PR's changed files, for the risk-path trigger scan. Reuse the
+	// EXISTING changed-files degrade shape rather than a second one — a hard read
+	// failure gets the same fail-closed treatment the `!complete` case below already
+	// gives a truncated diff, because both mean the same thing to this gate: the
+	// trigger it exists to catch might be in the part that could not be read.
+	files, complete, rcErr := fetchChangedFiles(repo, p.Number)
+	if rcErr != nil {
+		complete = false
+		degrade(fmt.Sprintf("could not read changed files for risk classification (%v) — "+
+			"fail closed to risk-classed", rcErr))
 	}
+	// UNION (only widens); the FIRST term that fires also names the reason the row shows.
+	// Public/unknown visibility OR a diff we could not read in full — the trigger
+	// we did not see is exactly the one this
+	// gate exists to catch — OR a changed path in the trigger set OR the owning brief term
+	// (a frontmatter-declared sensitive change, or a DECLARED-but-unreadable brief, fail
+	// closed) OR the #587 trailer-absent-App anomaly: a role-App-authored PR with no
+	// Brief:/Issue: trailer is a change deskpr cannot produce, so it risk-classes and the
+	// board must say so rather than let the flip look clean. A body with no trailer leaves
+	// the brief term silent, which is exactly the gap the App term fills.
+	switch {
+	case deskkit.VisibilityRiskClassed(repo):
+		riskClassed, riskReason = true, "public or unknown repository visibility"
+	case !complete:
+		riskClassed, riskReason = true, "the diff could not be read in full — fail closed"
+	case anyRiskPath(repo, files):
+		riskClassed, riskReason = true, "touches a security path"
+	case briefRisk.RiskClassed:
+		riskClassed, riskReason = true, briefRisk.Reason
+	case deskkit.TrailerAbsentAppAnomaly(p.Author.Login, []byte(p.Body)):
+		riskClassed, riskReason = true, "trailer absent on App-authored PR"
+	}
+
 	in.riskClassed = riskClassed
 	in.riskReason = riskReason
 
