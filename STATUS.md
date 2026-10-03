@@ -74,7 +74,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: ef8b1e2 2026-10-03T12:30:45+10:00_
+_last regen: 0dbe21e 2026-10-03T02:50:15Z_
 
 **Progress:** 5/13 brief items done.
 
@@ -97,7 +97,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: ef8b1e2 2026-10-03T12:30:45+10:00_
+_last regen: 0dbe21e 2026-10-03T02:50:15Z_
 
 **Progress:** 13/31 brief items done.
 
@@ -129,14 +129,14 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (56 desk-actionable of 90 total — 87 at implemented, 3 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 91 total — 88 at implemented, 3 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (56)
+### Desk-actionable (57)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -169,6 +169,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 19 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| desk-containers | 10 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 19 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -362,7 +363,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 07 multi-desk control layer — tmux/tmuxinator evaluation + cross-platform config — todo (wave 4)
 - 08 A tick contract: one bounded pass when the harness says `--tick`, so a loop pod can finish — implemented (wave 3)
 - 09 cellctl: host-local harness cell — scrubbed per-cell environment, `smoke`, `status`, session lock, stricter `check` — implemented (wave 0)
-- 10 cellctl in Go: `tools/desk/cmd/cellctl`, bash kept as the oracle until parity — todo (wave 1)
+- 10 cellctl in Go: `tools/desk/cmd/cellctl`, bash kept as the oracle until parity — implemented (wave 1)
 - 11 retire the out-of-tree bridge: migrate `CELL_KIND=local` registrations, remove the shell shim, one `cellctl` on PATH — todo (wave 2)
 - 12 Unattended mode for the cluster manifests — a Kustomize component that runs each desk as a tick-mode CronJob — todo (wave 4)
 - 13 Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release — todo (wave 5)

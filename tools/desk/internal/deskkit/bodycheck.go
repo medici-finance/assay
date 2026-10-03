@@ -276,6 +276,16 @@ var twoLetterWords = map[string]bool{
 	"We": true, "Id": true, "Ok": true,
 }
 
+// sopsCiteRemedy is appended to every sops-block refusal, on every surface (#2060). It is
+// the one sanctioned way to refer to sops material in prose: cite where it is and say what
+// is wrong with it. It is deliberately surface-agnostic — the same arm refuses a review
+// body, a comment, a PR body and a branch diff, and the remedy reads correctly on each — so
+// no caller has to classify its surface to get it. TestBodyCheckSopsCiteRemedy pins it on
+// every surface and every outbound kind.
+const sopsCiteRemedy = " — cite sops material by path:line and describe it in words; never " +
+	"quote its sops: footer or an ENC[…] envelope (a quotation is refused inside a code fence " +
+	"too). Committed sops content must be a complete encrypted document."
+
 // SurfaceBody is the default surface name — the PR/issue/comment body most callers scan.
 const SurfaceBody = "body"
 
@@ -481,8 +491,16 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 	// (full envelope grammar plus the document signature plus encrypted content outside the
 	// metadata block). A genuine encrypted-at-rest manifest therefore never reaches this
 	// arm, and everything wearing the shape without earning it still does.
+	//
+	// The refusal NAMES ITS REMEDY (sopsCiteRemedy, #2060), and the remedy is a citation,
+	// not a narrower rule. A reviewer whose verdict quotes sops material from the diff it
+	// reviews trips this arm by design — a review body is prose, and a quotation is exactly
+	// the pasted-envelope / bare-footer shape this arm exists to refuse — so the sanctioned
+	// way through is to point at the material (`path:line`) and describe it, never to
+	// reproduce it. No marker-only exemption was added for review surfaces: a footer quoted
+	// without a payload is the pos-sops-imitation shape, which must keep refusing.
 	case reSopsEncVal.MatchString(s) || (reSopsKey.MatchString(s) && reSopsField.MatchString(s)):
-		return RefusedFinding("refused: "+surface+" contains a sops-encrypted secret block or ENC[ marker",
+		return RefusedFinding("refused: "+surface+" contains a sops-encrypted secret block or ENC[ marker"+sopsCiteRemedy,
 			&ScanFinding{Rule: "sops-block", Line: sopsLine(s), Shape: "sops-marker"})
 	}
 	// A sops-ENCRYPTED value (ENC[AES256_GCM,…]) is no longer refused on sight (#778):
