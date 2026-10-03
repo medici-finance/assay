@@ -192,6 +192,8 @@ func TestAckUsageCorrectionWritesExactlyOneReceipt(t *testing.T) {
 		{"one two three four five six seven eight nine ten eleven twelve thirteen"},
 		{"start the worker desk", "--repo", "example-reconciler"},
 		{"--unknown", "start"},
+		{"start the desk", "-repo", "example-org/demo"},
+		{"start the desk", "-session=other"},
 		{},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {

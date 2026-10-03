@@ -367,7 +367,7 @@ func cmdRoleInit(args []string) (err error) {
 	// --no-fetch is the explicit opt-out for an offline checkout or a fixture whose origin is
 	// not reachable; it is never the default.
 	if !p.noFetch {
-		if ferr := fetchRoleBase(dir, p.role, repo, credUser); ferr != nil {
+		if ferr := fetchRoleBase(dir, p.role, repo, roleCredUser(p.role)); ferr != nil {
 			if deskkit.ExitCodeOf(ferr) != deskkit.ExitUnverifiable {
 				return ferr
 			}

@@ -65,7 +65,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	for _, arg := range fs.Args() {
-		if strings.HasPrefix(arg, "--repo") || strings.HasPrefix(arg, "--session") {
+		name, _, _ := strings.Cut(strings.TrimLeft(arg, "-"), "=")
+		if strings.HasPrefix(arg, "-") && (name == "repo" || name == "session") {
 			fmt.Fprintln(stderr, "usage: put --repo and --session BEFORE the quoted restatement; correct the command and re-run deskack")
 			return exitUsage
 		}

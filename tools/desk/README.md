@@ -2005,7 +2005,13 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
   (exit 6) — `--no-fetch` is the explicit opt-out, never the default. Before the first network
   fetch, the requested role's credential is refreshed and supplied through a command-scoped,
   host-scoped helper, replacing inherited helpers without editing the source checkout.
-  Network origins must be HTTPS without embedded credentials; local origins need no credential.
+  HTTPS origins must omit embedded credentials. SSH origins (including configured host aliases)
+  use the same derived HTTPS App endpoint as worktree provisioning. As with Git fetch, the first
+  origin URL selects the destination; additional URLs do not block local or network initialization.
+  The fetch isolates its home directory, suppresses inherited HTTP authentication and redirects,
+  and retains effective TLS/proxy settings. Source checkout configuration is unchanged.
+  An installed `deskwt` initialization failure stops `cellctl` and reports its diagnostic;
+  only a missing tool or explicit `CELLCTL_DESKWT=0` selects the legacy fallback.
   The shared checkout's index
   and `user.*` config are untouched; its only writes are enabling `extensions.worktreeConfig`
   (once) and the new branch's own tracking section. `deskboot`'s shared-checkout refusal prints

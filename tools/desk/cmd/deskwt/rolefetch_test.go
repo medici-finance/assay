@@ -71,7 +71,7 @@ func TestRoleFetchRefreshesBeforeFetchAndOverridesSourceCredentials(t *testing.T
 					t.Fatal("fetch ran before refreshing the role credential")
 				}
 				prefix = append([]string{}, args[:i]...)
-				if got := strings.Join(args[i:], " "); got != "fetch --no-tags --no-recurse-submodules origin main" {
+				if got := strings.Join(args[i:], " "); got != "fetch --no-tags --no-recurse-submodules https://github.com/example-org/tracker.git +refs/heads/main:refs/remotes/origin/main" {
 					t.Fatalf("unexpected fetch: %s", got)
 				}
 				// Exercise git's credential resolution offline instead of contacting a forge.
@@ -135,7 +135,6 @@ func TestRoleFetchRejectsUnsafeTransportBeforeCredentialResolution(t *testing.T)
 	for _, origin := range []string{
 		"http://github.com/example-org/tracker.git",
 		"https://embedded@example.invalid/example-org/tracker.git",
-		"git@github.com:example-org/tracker.git",
 	} {
 		t.Run(origin, func(t *testing.T) {
 			work := newRepo(t)
@@ -156,5 +155,42 @@ func TestRoleFetchRejectsUnsafeTransportBeforeCredentialResolution(t *testing.T)
 				}
 			}
 		})
+	}
+}
+
+func TestRoleFetchSupportedOrigins(t *testing.T) {
+	for _, origin := range []string{"git@github.com:example-org/tracker.git", "ssh://git@github.com/example-org/tracker.git", "https://github.com/example-org/tracker.git"} {
+		t.Run(origin, func(t *testing.T) {
+			work := newRepo(t)
+			withEnv(t, work)
+			mustGit(t, work, "remote", "set-url", "origin", origin)
+			mustGit(t, work, "config", "--add", "remote.origin.url", "https://unused.invalid/example-org/tracker.git")
+			old := execCommand
+			fetched := false
+			execCommand = func(name string, args ...string) *exec.Cmd {
+				for i, arg := range args {
+					if name == "git" && arg == "fetch" {
+						fetched = true
+						if !strings.HasPrefix(args[i+3], "https://github.com") {
+							t.Fatalf("non-HTTPS fetch: %v", args)
+						}
+						return exec.Command("git", "rev-parse", "origin/main")
+					}
+				}
+				return old(name, args...)
+			}
+			if err := fetchRoleBase(work, "verifier", "example-org/tracker", "x-access-token"); err != nil {
+				t.Fatal(err)
+			}
+			if !fetched {
+				t.Fatal("no fetch")
+			}
+		})
+	}
+	work := newRepo(t)
+	withEnv(t, work)
+	mustGit(t, work, "config", "--add", "remote.origin.url", "/unused/local")
+	if err := fetchRoleBase(work, "verifier", "example-org/tracker", "x-access-token"); err != nil {
+		t.Fatal(err)
 	}
 }
