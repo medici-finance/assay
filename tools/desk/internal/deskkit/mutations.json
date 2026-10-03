@@ -44,6 +44,12 @@
       "new": "\" contains a sops-encrypted secret block or ENC[ marker\","
     },
     {
+      "name": "#2060 — drop the remedy's PROHIBITION half (the refusal says cite, no longer says never quote)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "in words; never \" +\n\t\"quote its sops: footer or an ENC[…] envelope (a quotation is refused inside a code fence \" +\n\t\"too). Committed",
+      "new": "in words. Committed"
+    },
+    {
       "name": "#2060 — disarm the sops arm's ENVELOPE half (a short envelope quoted into a review body is admitted)",
       "file": "internal/deskkit/bodycheck.go",
       "old": "\tcase reSopsEncVal.MatchString(s) || (reSopsKey.MatchString(s) && reSopsField.MatchString(s)):",

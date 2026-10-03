@@ -24,6 +24,11 @@ import (
 // test, so a mutation that empties or rewords the remedy reddens here.
 const sopsCiteWant = "cite sops material by path:line"
 
+// sopsCiteNever is the remedy's prohibition half, pinned beside its opening words so a
+// mutation that keeps "cite" but drops "never quote" also reddens. The markers are split
+// for the same branch-diff reason as the fixtures below.
+const sopsCiteNever = "never quote its " + "sops" + ": footer or an " + "ENC" + "[…] envelope"
+
 // sopsQuotedShapes are the two quotation shapes a review body trips the arm with: a bare
 // footer (the reSopsKey + reSopsField half) and a short envelope (the reSopsEncVal half;
 // its payloads are under the high-entropy threshold, so only the sops arm sees it).
@@ -52,9 +57,11 @@ func TestBodyCheckSopsCiteRemedy(t *testing.T) {
 					t.Fatalf("a quoted sops %s on %q: want rule sops-block, got finding %+v (%v)",
 						shape, surface, f, err)
 				}
-				if !strings.Contains(err.Error(), sopsCiteWant) {
-					t.Fatalf("sops-block refusal on %q names no remedy (want %q): %v",
-						surface, sopsCiteWant, err)
+				for _, want := range []string{sopsCiteWant, sopsCiteNever} {
+					if !strings.Contains(err.Error(), want) {
+						t.Fatalf("sops-block refusal on %q lost its remedy (want %q): %v",
+							surface, want, err)
+					}
 				}
 			})
 		}
@@ -82,9 +89,11 @@ func TestBodyCheckSopsCiteOutbound(t *testing.T) {
 					t.Fatalf("%s write quoting a sops %s: refusal does not name secret.sops-block: %v",
 						kind, shape, err)
 				}
-				if !strings.Contains(err.Error(), sopsCiteWant) {
-					t.Fatalf("%s write: sops-block refusal names no remedy (want %q): %v",
-						kind, sopsCiteWant, err)
+				for _, want := range []string{sopsCiteWant, sopsCiteNever} {
+					if !strings.Contains(err.Error(), want) {
+						t.Fatalf("%s write: sops-block refusal lost its remedy (want %q): %v",
+							kind, want, err)
+					}
 				}
 			})
 		}
