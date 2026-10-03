@@ -195,7 +195,7 @@ func TestVICComposeNoEnv(t *testing.T) {
 func TestVICComposeAttribEnv(t *testing.T) {
 	inv := containerInvocation{
 		pin:      testPin(),
-		root:     "/home/me/checkout",
+		root:     "/r",
 		briefRel: "b.md",
 		inner:    buildInnerCommand("b.md", false, false, false, ""),
 		uid:      1000, gid: 1000,
