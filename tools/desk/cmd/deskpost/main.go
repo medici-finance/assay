@@ -479,6 +479,8 @@ the two verdict verbs (a risk-classed PR needs BOTH at the same head):
                    Submitted as APPROVE / REQUEST_CHANGES. Refuses a body carrying a
                    'Security-Review:' line — that verdict goes through security-review,
                    so a security pass can never land as APPROVED.
+                   A finding about an encrypted file CITES it by path:line and
+                   describes it; a quoted sops footer or envelope is refused (#2060).
   security-review  the SECURITY verdict. Body carries
                    'Security-Review: pass|fail'. A PASS is submitted as a COMMENT-event
                    review — state COMMENTED, so `+"`ready`"+`'s gate (e) can read it while the
