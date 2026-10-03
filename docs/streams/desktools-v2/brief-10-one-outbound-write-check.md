@@ -494,7 +494,7 @@ RISK-VALUE: NAMED, NOT DERIVED — pass-through set {OpenMergeHold, RunWorkflow,
 
 rows_passed=13 rows_total=13
 
-VERIFY: PASS — 13/13 version 3 rows pass on main b3677d6da493 and the witness agrees; Evidence only for a gate: human, sensitive-data item, so the status stays implemented for the human sign-off on #1912, with two NAMED, NOT DERIVED values routed via #1989
+**VERIFY: PASS — 13/13 version 3 rows pass on main b3677d6da493 and the witness agrees; Evidence only for a gate: human, sensitive-data item, so the status stays implemented for the human sign-off on #1912, with two NAMED, NOT DERIVED values routed via #1989**
 
 ## Review
 Gate: human (sensitive-data: yes — the brief decides what personal data and which withheld
