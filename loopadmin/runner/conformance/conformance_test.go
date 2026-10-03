@@ -199,3 +199,8 @@ func TestRunnerNoAliasing(t *testing.T) {
 	conformance.CaseNoAliasing(t, full)
 	conformance.CaseNoAliasing(t, minimal)
 }
+
+func TestRunnerNoAliasingRecord(t *testing.T) {
+	conformance.CaseNoAliasingRecord(t, full)
+	conformance.CaseNoAliasingRecord(t, minimal)
+}

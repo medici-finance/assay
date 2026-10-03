@@ -112,6 +112,104 @@ func TestCredentialShapes(t *testing.T) {
 	}
 }
 
+// TestValidateRefusesBlankTool: encoding/json decodes a null list element to
+// an empty string, so a request that reached Validate by any route that does
+// not run DecodeRequest's null check must not carry a blank tool name at any
+// position. The schema types each tool as a string, so a null that slipped
+// through would make the module accept a request the schema rejects.
+func TestValidateRefusesBlankTool(t *testing.T) {
+	for _, file := range []string{"standing-desk-request.json", "workflow-stage-request.json"} {
+		req, err := runner.DecodeRequest(fixture(t, file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Profile.Tools = []string{"read", "write", "exec"}
+		if err := req.Validate(); err != nil {
+			t.Fatalf("%s: positive control: %v", file, err)
+		}
+		for pos, i := range map[string]int{"first": 0, "middle": 1, "last": 2} {
+			for _, blank := range []string{"", " ", "\t"} {
+				r := req
+				r.Profile.Tools = []string{"read", "write", "exec"}
+				r.Profile.Tools[i] = blank
+				if err := r.Validate(); !errors.Is(err, runner.ErrInvalidRequest) {
+					t.Errorf("%s: blank tool %q at the %s position: got %v, want %v", file, blank, pos, err, runner.ErrInvalidRequest)
+				}
+			}
+		}
+	}
+}
+
+// TestCredentialFloorFalsePositives pins the floor's precision: text and keys
+// that merely contain a slot word are not credentials. Each negative sits
+// beside a positive control that differs only in what the negative lacks, so
+// loosening the floor to pass the negatives cannot go unseen.
+func TestCredentialFloorFalsePositives(t *testing.T) {
+	longVal := "abcdefgh12"
+	for _, s := range []string{
+		"pallbearer=" + longVal,                  // no left boundary: "bearer" inside a word
+		"pallbearer: " + longVal,                 //
+		"a1auth=" + longVal,                      // "auth" inside a word
+		"auth: disabled",                         // a setting, not a secret
+		"auth=required",                          //
+		`{"auth":"external"}`,                    //
+		"oauth: enabled",                         //
+		"http://git.example:8080?contact=a@b.io", // a port and an @ in the query
+		"http://git.example:8080#frag@x",         // ... or in the fragment
+		"http://git.example:8080/p?c=a@b.io",     // ... or after a path
+		"ssh://git@git.example:22/r",             // a user and a port, no password
+		"basic functionality only",
+		"basic aGVsbG93b3JsZA==", // base64 of text with no user:password pair
+		"Basic OnBhc3M=",         // base64 of ":pass": no user
+		"author: " + longVal,
+		"authority=" + longVal,
+	} {
+		if runner.LooksLikeCredential(s) {
+			t.Errorf("must not flag %q", s)
+		}
+	}
+	for _, s := range []string{
+		"Basic dXNlcjpwYXNzd29yZA==", // base64 of user:password
+		"auth=" + longVal,
+		"auth: disabled,realsecret1234", // a setting word does not excuse what follows it
+		"auth: " + longVal,
+		`{"auth": "` + longVal + `"}`,
+		"x-auth: " + longVal,
+		"basic_auth=" + longVal,
+		"oauth=" + longVal,
+		"bearer=" + longVal,
+		"privkey=" + longVal,
+		"access_key=" + longVal,
+		"aws_access_key_id=" + longVal,
+		"api_key=" + longVal,
+		"https://deploy:x9y8z7w6@git.example/r",
+		"https://deploy:x9y8z7w6@git.example:8443/r",
+		"https://deploy:x9y8z7w6@git.example",
+	} {
+		if !runner.LooksLikeCredential(s) {
+			t.Errorf("must flag %q", s)
+		}
+	}
+	for _, k := range []string{
+		"auth_method", "auth_required", "oauth_scopes", "bearer_format",
+		"access_key_rotation_days", "accessKeyRotationDays", "AuthMethod",
+		"author", "authority", "auth-mode", "oauth_provider",
+	} {
+		if runner.CredentialKey(k) {
+			t.Errorf("must not flag the key %q", k)
+		}
+	}
+	for _, k := range []string{
+		"auth", "x-auth", "basic_auth", "oauth", "bearer", "privkey",
+		"access_key", "access_key_id", "accessKeyId", "AWS_ACCESS_KEY_ID",
+		"accesskey", "auth_header", "Bearer", "x-bearer",
+	} {
+		if !runner.CredentialKey(k) {
+			t.Errorf("must flag the key %q", k)
+		}
+	}
+}
+
 func TestOptionalExtensionIsIgnoredMandatoryIsRefused(t *testing.T) {
 	req, err := runner.DecodeRequest(fixture(t, "standing-desk-request.json"))
 	if err != nil {

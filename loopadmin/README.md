@@ -42,7 +42,7 @@ GOWORK=off go test -count=1 ./...
 GOWORK=off go run ./mutate -map testdata/mutations.json
 ```
 
-The mutation gate copies the module to a scratch directory, applies one textual replacement from the map (the old text must match exactly once), and requires the named test to fail. Every guard the contract tests name has a mutation (60 in the map: the five Verify tests, plus one or more per review finding, including the source-level class guard `TestNoPayloadInErrors` and the gate's own file confinement); a test that stays green under its mutation does not guard what it names. A mutation must fail a test, not the build: a mutation that does not compile is reported as an error, not a kill. The module's CI job is staged at `ci/staged-workflows/loopadmin.yml` until a maintainer promotes it; the repository's `ci.yml` build-test job already builds and vets every module it finds.
+The mutation gate copies the module to a scratch directory, applies one textual replacement from the map (the old text must match exactly once), and requires the named test to fail. Every guard the contract tests name has a mutation (96 in the map: the five Verify tests, plus one or more per review finding, including the source-level class guard `TestNoPayloadInErrors` and the gate's own file confinement); a test that stays green under its mutation does not guard what it names. A mutation must fail a test, not the build: a mutation that does not compile is reported as an error, not a kill. The module's CI job is staged at `ci/staged-workflows/loopadmin.yml` until a maintainer promotes it; the repository's `ci.yml` build-test job already builds and vets every module it finds.
 
 ## What is not here
 

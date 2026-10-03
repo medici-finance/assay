@@ -161,7 +161,9 @@ func CaseCredentialShapes(t *testing.T, f Factory) {
 		"nested token key":     {"cfg": `{"retry":{"token":"abcdefgh12"}}`},
 		"nested authorization": {"cfg": `{"headers":{"Authorization":"x"}}`},
 		"basic credential":     {"cfg": `{"hdr":"` + basic + `"}`},
-		"escaped token":        {"cfg": `"g` + secret[1:] + `"`},
+		"escaped token":        {"cfg": `"\u0067` + secret[1:] + `"`},
+		"escaped nested token": {"cfg": `{"a":["x","\u0067` + secret[1:] + `"]}`},
+		"escaped nested key":   {"cfg": `{"\u0074oken":"x"}`},
 		"token in an array":    {"cfg": `[{"note":"` + secret + `"}]`},
 		"cookie key":           {"cookie": `"sid"`},
 		"session key":          {"session": `"s"`},
@@ -201,6 +203,10 @@ func CaseCredentialShapes(t *testing.T, f Factory) {
 	ok := StandingRequest("cred-clean")
 	ok.Extensions = map[string]json.RawMessage{"cfg": json.RawMessage(`{"retries":3,"note":"basic functionality only","author":"a","authority":"b","remote":"https://git.example/r"}`)}
 	ok.Workspace = "ssh://git@git.example/r"
+	// Settings that merely name a slot word are not slots, and neither is a
+	// port with an at-sign in the query.
+	ok.Extensions["settings"] = json.RawMessage(`{"auth_method":"oidc","auth_required":true,"oauth_scopes":"read","bearer_format":"jwt","access_key_rotation_days":90,"note":"auth: disabled","pallbearer":"pallbearer=ab12cd34ef"}`)
+	ok.Extensions["contact"] = json.RawMessage(`"https://git.example:8443?owner=a@b.example"`)
 	claims.Set(ok.Authority.Key, 1)
 	if _, _, err := c.Start(ctx, ok); err != nil {
 		t.Fatalf("a clean extension must start: %v", err)
@@ -333,6 +339,38 @@ func CaseStrictDecode(t *testing.T, f Factory) {
 		_, err := runner.DecodeRequest([]byte(doc))
 		wantErr(t, name, err, runner.ErrInvalidRequest)
 	}
+
+	// A null element of a string list is a null too: encoding/json would
+	// decode it to an empty string and every later check would pass it, yet
+	// the schema types each element as a string. It is refused at every
+	// position, in both modes, so nothing the module accepts fails the schema.
+	for mode, base := range map[string]runner.LaunchRequest{
+		"standing-desk":  StandingRequest("decode-null-tool"),
+		"workflow-stage": WorkflowRequest("decode-null-tool"),
+	} {
+		base.Profile.Tools = []string{"tool-a", "tool-b", "tool-c"}
+		doc := marshal(base)
+		list := `"tools":["tool-a","tool-b","tool-c"]`
+		if !strings.Contains(doc, list) {
+			t.Fatalf("%s: fixture edit did not apply", mode)
+		}
+		clean, err := runner.DecodeRequest([]byte(doc))
+		if err != nil {
+			t.Fatalf("%s: a request with three tools must decode: %v", mode, err)
+		}
+		if err := clean.Validate(); err != nil {
+			t.Fatalf("%s: a request with three tools must validate: %v", mode, err)
+		}
+		for pos, nulled := range map[string]string{
+			"first":  `"tools":[null,"tool-b","tool-c"]`,
+			"middle": `"tools":["tool-a",null,"tool-c"]`,
+			"last":   `"tools":["tool-a","tool-b",null]`,
+			"only":   `"tools":[null]`,
+		} {
+			_, err := runner.DecodeRequest([]byte(strings.Replace(doc, list, nulled, 1)))
+			wantErr(t, mode+" null tool, "+pos, err, runner.ErrInvalidRequest)
+		}
+	}
 }
 
 // CaseModelUnreported: a model nobody reported is unknown, never the pinned
@@ -374,11 +412,27 @@ func CaseResultIdentity(t *testing.T, f Factory) {
 	finish(t, s, c, bRef, GoodResult(a)) // the adapter cross-wired a's result
 	_, err = c.AcceptResult(ctx, bRef)
 	wantErr(t, "cross-wired result", err, runner.ErrResultIdentity)
+
+	// The same ID under another caller namespace is another invocation too.
+	other := StandingRequest("ident-c")
+	other.Authority.Key = "claim/ident-c"
+	claims.Set(other.Authority.Key, 1)
+	otherRef, _, err := c.Start(ctx, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := GoodResult(other)
+	res.Caller = "another-caller"
+	finish(t, s, c, otherRef, res)
+	_, err = c.AcceptResult(ctx, otherRef)
+	wantErr(t, "result echoing another caller", err, runner.ErrResultIdentity)
 }
 
 // CaseRequestRules: identity reuse, the workflow-stage desk exclusion, the
-// pinned tool list, the budget limits and blank workflow references are each
-// refused before any adapter is asked.
+// pinned tool list, the budget limits, blank references (a blank is trimmed
+// first, in the desk binding, each workflow reference and the resume session),
+// a resume pinned to another profile and a credential in any resume field are
+// each refused before any adapter is asked.
 func CaseRequestRules(t *testing.T, f Factory) {
 	_, _, claims, c := hsetup(t, f)
 	ctx := context.Background()
@@ -404,6 +458,30 @@ func CaseRequestRules(t *testing.T, f Factory) {
 			*r = WorkflowRequest(r.ID)
 			r.Work.WorkID = " "
 		}, runner.ErrModeFields},
+		"blank node id": {func(r *runner.LaunchRequest) {
+			*r = WorkflowRequest(r.ID)
+			r.Work.NodeID = " "
+		}, runner.ErrModeFields},
+		"blank attempt id": {func(r *runner.LaunchRequest) {
+			*r = WorkflowRequest(r.ID)
+			r.Work.AttemptID = "\t"
+		}, runner.ErrModeFields},
+		"blank desk binding": {func(r *runner.LaunchRequest) { r.Desk.BindingID = " " }, runner.ErrModeFields},
+		"blank resume session": {func(r *runner.LaunchRequest) {
+			r.Resume = &runner.SessionRef{SessionID: " ", Role: r.Packet.Role, ProfileID: r.Profile.ID}
+		}, runner.ErrInvalidRequest},
+		"resume pinned to another profile": {func(r *runner.LaunchRequest) {
+			r.Resume = &runner.SessionRef{SessionID: "sess-1", Role: r.Packet.Role, ProfileID: "profile-b"}
+		}, runner.ErrInvalidRequest},
+		"credential in the resume session": {func(r *runner.LaunchRequest) {
+			r.Resume = &runner.SessionRef{SessionID: secretShape(), Role: r.Packet.Role, ProfileID: r.Profile.ID}
+		}, runner.ErrCredential},
+		"credential in the resume role": {func(r *runner.LaunchRequest) {
+			r.Resume = &runner.SessionRef{SessionID: "sess-1", Role: secretShape(), ProfileID: r.Profile.ID}
+		}, runner.ErrCredential},
+		"credential in the resume profile": {func(r *runner.LaunchRequest) {
+			r.Resume = &runner.SessionRef{SessionID: "sess-1", Role: r.Packet.Role, ProfileID: secretShape()}
+		}, runner.ErrCredential},
 		"absent tool list": {func(r *runner.LaunchRequest) { r.Profile.Tools = nil }, runner.ErrInvalidRequest},
 		"no budget limit":  {func(r *runner.LaunchRequest) { r.Budget.MaxTokens, r.Budget.MaxCostMicros = 0, 0 }, runner.ErrInvalidRequest},
 		"negative tokens":  {func(r *runner.LaunchRequest) { r.Budget.MaxTokens, r.Budget.MaxCostMicros = -5, 1 }, runner.ErrInvalidRequest},
@@ -648,5 +726,93 @@ func CaseNoAliasing(t *testing.T, f Factory) {
 	}
 	if tot := c.Usage(req.Caller); !reflect.DeepEqual(tot, wantUsage) {
 		t.Fatalf("the usage total moved: got %+v", tot)
+	}
+}
+
+// rewriteAdapter rewrites the request it was handed after the real Start
+// returns, over every field a request shares by reference.
+type rewriteAdapter struct {
+	runner.Adapter
+	rewrite func(*runner.LaunchRequest)
+}
+
+func (r rewriteAdapter) Start(ctx context.Context, req runner.LaunchRequest) (runner.Receipt, error) {
+	rec, err := r.Adapter.Start(ctx, req)
+	r.rewrite(&req)
+	return rec, err
+}
+
+// capsAdapter declares capabilities the test still holds a handle on.
+type capsAdapter struct {
+	runner.Adapter
+	caps runner.Capabilities
+}
+
+func (a capsAdapter) Capabilities() runner.Capabilities { return a.caps }
+
+// CaseNoAliasingRecord: the record shares no slice, map or pointer of the
+// request with the caller or the adapter, field by field: the required
+// capabilities, each extension (the entry and its bytes), the desk, work and
+// resume references, and the capabilities the adapter declared. Rewriting any
+// of them after Start leaves the record as it was, so the pristine request is
+// still the same request (a repeat Start is a no-op, never an identity reuse)
+// and the declared capabilities still hold.
+func CaseNoAliasingRecord(t *testing.T, f Factory) {
+	ctx := context.Background()
+	s := f(t)
+	withResume := s.Adapter.Capabilities().Resume
+	pristine := func(mk func(string) runner.LaunchRequest) runner.LaunchRequest {
+		r := mk("alias-record")
+		r.Require = []string{string(runner.CapBudgetLaunch)}
+		r.Extensions = map[string]json.RawMessage{"note": json.RawMessage(`"keep"`), "bytes": json.RawMessage(`"abcd"`)}
+		if withResume {
+			r.Resume = &runner.SessionRef{SessionID: "sess-1", Role: r.Packet.Role, ProfileID: r.Profile.ID}
+		}
+		return r
+	}
+	rewrite := func(r *runner.LaunchRequest) {
+		r.Require[0] = "rewritten"
+		r.Extensions["note"] = json.RawMessage(`"rewritten"`)
+		r.Extensions["bytes"][1] = 'X'
+		if r.Desk != nil {
+			r.Desk.BindingID = "rewritten"
+		}
+		if r.Work != nil {
+			r.Work.NodeID = "rewritten"
+		}
+		if r.Resume != nil {
+			r.Resume.SessionID = "rewritten"
+		}
+	}
+	for name, mk := range map[string]func(string) runner.LaunchRequest{"standing-desk": StandingRequest, "workflow-stage": WorkflowRequest} {
+		claims := NewClaims()
+		c := runner.NewClient(rewriteAdapter{Adapter: NewHostile(s.Adapter), rewrite: rewrite}, claims)
+		req := pristine(mk)
+		claims.Set(req.Authority.Key, 1)
+		if _, _, err := c.Start(ctx, req); err != nil {
+			t.Fatalf("%s: start: %v", name, err)
+		}
+		// The adapter has rewritten its copy; now the caller rewrites its own.
+		rewrite(&req)
+		_, st, err := c.Start(ctx, pristine(mk))
+		if err != nil || st != runner.StateRunning {
+			t.Fatalf("%s: the recorded request moved: a repeat of the original start is state %q err %v", name, st, err)
+		}
+	}
+
+	// The adapter's declared capabilities are copied at NewClient: the adapter
+	// changing the slices it declared afterwards changes nothing.
+	caps := s.Adapter.Capabilities()
+	caps.BudgetScopes = []runner.BudgetScope{runner.BudgetLaunch}
+	caps.Extensions = []string{"hint"}
+	claims := NewClaims()
+	c := runner.NewClient(capsAdapter{Adapter: s.Adapter, caps: caps}, claims)
+	caps.BudgetScopes[0] = "rewritten"
+	caps.Extensions[0] = "rewritten"
+	req := StandingRequest("alias-caps")
+	req.Require = []string{"ext:hint", string(runner.CapBudgetLaunch)}
+	claims.Set(req.Authority.Key, 1)
+	if _, st, err := c.Start(ctx, req); err != nil || st != runner.StateRunning {
+		t.Fatalf("the declared capabilities moved after NewClient: state %q err %v", st, err)
 	}
 }

@@ -77,7 +77,7 @@
     "new": "\"authorization\", \"session\","
   },
   {
-    "test": "TestRunnerCredentialShapes",
+    "test": "TestCredentialFloorFalsePositives",
     "why": "SEC-2: never treat a Basic credential as one",
     "file": "runner/secrets.go",
     "old": "err == nil && bytes.IndexByte(b, ':') > 0",
@@ -150,8 +150,8 @@
     "test": "TestRunnerStrictDecode",
     "why": "B1: allow null for a defined field",
     "file": "runner/request.go",
-    "old": "if bytes.Equal(bytes.TrimSpace(v), []byte(\"null\")) {",
-    "new": "if false {"
+    "old": "\t\t\tif bytes.Equal(bytes.TrimSpace(v), []byte(\"null\")) {\n\t\t\t\treturn fmt.Errorf(\"%s is null\", sub)",
+    "new": "\t\t\tif false {\n\t\t\t\treturn fmt.Errorf(\"%s is null\", sub)"
   },
   {
     "test": "TestRunnerRequestRules",
@@ -378,45 +378,297 @@
     "new": "kept != nil && "
   },
   {
-    "test": "TestRunnerCredentialShapes",
-    "why": "A8: drop auth from the whole-word key tokens",
-    "file": "runner/secrets.go",
-    "old": "[]string{\"auth\", \"oauth\"}",
-    "new": "[]string{\"oauth\"}"
+    "test": "TestRunnerStrictDecode",
+    "why": "B3: allow a null element in a list",
+    "file": "runner/request.go",
+    "old": "\t\t\tif bytes.Equal(bytes.TrimSpace(v), []byte(\"null\")) {\n\t\t\t\treturn fmt.Errorf(\"%s is null\", path.index(i))",
+    "new": "\t\t\tif false {\n\t\t\t\treturn fmt.Errorf(\"%s is null\", path.index(i))"
   },
   {
-    "test": "TestRunnerCredentialShapes",
-    "why": "A8: drop bearer from the credential key list",
-    "file": "runner/secrets.go",
-    "old": "\"bearer\", \"privkey\", \"access_key\", \"accesskey\", \"access-key\",",
-    "new": "\"privkey\", \"access_key\", \"accesskey\", \"access-key\","
+    "test": "TestValidateRefusesBlankTool",
+    "why": "B3: accept a blank tool name at Validate",
+    "file": "runner/request.go",
+    "old": "if blank(tool) {",
+    "new": "if blank(tool) && false {"
   },
   {
-    "test": "TestRunnerCredentialShapes",
-    "why": "A8: drop privkey from the credential key list",
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A8: drop auth from the whole-word value form",
     "file": "runner/secrets.go",
-    "old": "\"bearer\", \"privkey\", \"access_key\", \"accesskey\", \"access-key\",",
-    "new": "\"bearer\", \"access_key\", \"accesskey\", \"access-key\","
+    "old": "(?:o?auth|bearer|",
+    "new": "(?:oauth|bearer|"
   },
   {
-    "test": "TestRunnerCredentialShapes",
-    "why": "A8: drop access_key from the credential key list",
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A8: drop bearer from the whole-word value form",
     "file": "runner/secrets.go",
-    "old": "\"bearer\", \"privkey\", \"access_key\", \"accesskey\", \"access-key\",",
-    "new": "\"bearer\", \"privkey\", \"accesskey\", \"access-key\","
+    "old": "o?auth|bearer|privkey|",
+    "new": "o?auth|privkey|"
   },
   {
-    "test": "TestRunnerCredentialShapes",
-    "why": "A8: drop the auth/bearer/private-key/access-key value form",
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A8: drop privkey from the whole-word value form",
     "file": "runner/secrets.go",
-    "old": "\tregexp.MustCompile(`(?i)(auth|bearer|privkey|access[_-]?key(?:[_-]?id)?)[\"']?\\s*[:=]\\s*\\S{8,}`),\n",
-    "new": ""
+    "old": "bearer|privkey|access",
+    "new": "bearer|access"
   },
   {
-    "test": "TestRunnerCredentialShapes",
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A8: drop access-key from the whole-word value form",
+    "file": "runner/secrets.go",
+    "old": "|privkey|access[_-]?key(?:[_-]?id)?)",
+    "new": "|privkey)"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A8: never flag the whole-word value form",
+    "file": "runner/secrets.go",
+    "old": "if !benignSlotValue(m[1]) {",
+    "new": "if !benignSlotValue(m[1]) && false {"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A8: flag a setting word as a secret",
+    "file": "runner/secrets.go",
+    "old": "if !benignSlotValue(m[1]) {",
+    "new": "if !benignSlotValue(m[1]) || true {"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A8: drop the left boundary of the value form",
+    "file": "runner/secrets.go",
+    "old": "(?:^|[^a-z0-9])(?:o?auth",
+    "new": "(?:o?auth"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A8: read a setting word past its closing quote",
+    "file": "runner/secrets.go",
+    "old": "if i := strings.IndexByte(v, '\"'); i >= 0 {",
+    "new": "if i := strings.IndexByte(v, '\"'); i >= 0 && false {"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
     "why": "A8: drop the URL-userinfo password form",
     "file": "runner/secrets.go",
-    "old": "\tregexp.MustCompile(`(?i)\\b[a-z][a-z0-9+.-]*://[^/\\s:@]+:[^/\\s@]+@`),\n",
+    "old": "\tregexp.MustCompile(`(?i)\\b[a-z][a-z0-9+.-]*://[^/\\s:@?#]+:[^/\\s@?#]+@`),\n",
     "new": ""
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A8: let URL userinfo run into the query",
+    "file": "runner/secrets.go",
+    "old": "[^/\\s:@?#]+:[^/\\s@?#]+@",
+    "new": "[^/\\s:@]+:[^/\\s@]+@"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A8: flag every qualified key",
+    "file": "runner/secrets.go",
+    "old": "if !benignKeyQualifiers[rest] {",
+    "new": "if !benignKeyQualifiers[rest] || true {"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A8: drop the bare slot-word key",
+    "file": "runner/secrets.go",
+    "old": "if i+len(slot) == len(words) {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A8: drop auth from the key slots",
+    "file": "runner/secrets.go",
+    "old": "{\"auth\"}, {\"oauth\"}, {\"bearer\"}, {\"privkey\"},",
+    "new": "{\"oauth\"}, {\"bearer\"}, {\"privkey\"},"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A8: drop bearer from the key slots",
+    "file": "runner/secrets.go",
+    "old": "{\"auth\"}, {\"oauth\"}, {\"bearer\"}, {\"privkey\"},",
+    "new": "{\"auth\"}, {\"oauth\"}, {\"privkey\"},"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A8: drop privkey from the key slots",
+    "file": "runner/secrets.go",
+    "old": "{\"auth\"}, {\"oauth\"}, {\"bearer\"}, {\"privkey\"},",
+    "new": "{\"auth\"}, {\"oauth\"}, {\"bearer\"},"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A8: drop access_key from the key slots",
+    "file": "runner/secrets.go",
+    "old": "{\"accesskey\"}, {\"accesskeyid\"}, {\"access\", \"key\"},",
+    "new": "{\"accesskey\"}, {\"accesskeyid\"},"
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "A6: skip the decoded walk of a JSON string",
+    "file": "runner/secrets.go",
+    "old": "\tcase string:\n\t\treturn LooksLikeCredential(t)",
+    "new": "\tcase string:\n\t\treturn false"
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "A6: skip the key check of a nested object key",
+    "file": "runner/secrets.go",
+    "old": "if CredentialKey(k) || LooksLikeCredential(k) || valueCarriesCredential(e) {",
+    "new": "if LooksLikeCredential(k) || valueCarriesCredential(e) {"
+  },
+  {
+    "test": "TestRunnerResultIdentity",
+    "why": "A6: accept a result echoing another caller",
+    "file": "runner/client.go",
+    "old": "res.Caller != ref.Caller || res.ID != ref.ID",
+    "new": "res.ID != ref.ID"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: accept a blank workflow node id",
+    "file": "runner/request.go",
+    "old": " || blank(w.NodeID)",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: accept a blank workflow attempt id",
+    "file": "runner/request.go",
+    "old": " || blank(w.AttemptID)",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: accept a whitespace desk binding",
+    "file": "runner/request.go",
+    "old": "strings.TrimSpace(r.Desk.BindingID) == \"\"",
+    "new": "r.Desk.BindingID == \"\""
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: accept a whitespace resume session",
+    "file": "runner/request.go",
+    "old": "strings.TrimSpace(r.Resume.SessionID) == \"\"",
+    "new": "r.Resume.SessionID == \"\""
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: accept a resume pinned to another profile",
+    "file": "runner/request.go",
+    "old": " || r.Resume.ProfileID != r.Profile.ID",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: skip the credential scan of the resume session",
+    "file": "runner/request.go",
+    "old": "r.Resume.SessionID, r.Resume.Role, r.Resume.ProfileID)",
+    "new": "r.Resume.Role, r.Resume.ProfileID)"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: skip the credential scan of the resume role",
+    "file": "runner/request.go",
+    "old": "r.Resume.SessionID, r.Resume.Role, r.Resume.ProfileID)",
+    "new": "r.Resume.SessionID, r.Resume.ProfileID)"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: skip the credential scan of the resume profile",
+    "file": "runner/request.go",
+    "old": "r.Resume.SessionID, r.Resume.Role, r.Resume.ProfileID)",
+    "new": "r.Resume.SessionID, r.Resume.Role)"
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share the required capabilities with the caller",
+    "file": "runner/clone.go",
+    "old": "\tr.Require = cloneSlice(r.Require)\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share the extension map with the caller",
+    "file": "runner/clone.go",
+    "old": "\tif r.Extensions != nil {",
+    "new": "\tif false {"
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share an extension value with the caller",
+    "file": "runner/clone.go",
+    "old": "ext[k] = cloneSlice(v)",
+    "new": "ext[k] = v"
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share the desk pointer with the caller",
+    "file": "runner/clone.go",
+    "old": "\tr.Desk = clonePtr(r.Desk)\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share the work pointer with the caller",
+    "file": "runner/clone.go",
+    "old": "\tr.Work = clonePtr(r.Work)\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share the resume pointer with the caller",
+    "file": "runner/clone.go",
+    "old": "\tr.Resume = clonePtr(r.Resume)\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: hand the adapter the recorded request",
+    "file": "runner/client.go",
+    "old": "c.adapter.Start(ctx, req.clone())",
+    "new": "c.adapter.Start(ctx, req)"
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: record the caller request uncopied",
+    "file": "runner/client.go",
+    "old": "\treq = req.clone() // checked, recorded and sent as this copy only\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: keep the adapter capabilities uncopied",
+    "file": "runner/client.go",
+    "old": "caps: a.Capabilities().clone(),",
+    "new": "caps: a.Capabilities(),"
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share declared budget scopes",
+    "file": "runner/clone.go",
+    "old": "\tc.BudgetScopes = cloneSlice(c.BudgetScopes)\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share declared extensions",
+    "file": "runner/clone.go",
+    "old": "\tc.Extensions = cloneSlice(c.Extensions)\n",
+    "new": ""
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A6: take any decoded Basic run for a credential",
+    "file": "runner/secrets.go",
+    "old": "err == nil && bytes.IndexByte(b, ':') > 0",
+    "new": "err == nil && len(b) >= 0"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A6: take a Basic run with no user for a credential",
+    "file": "runner/secrets.go",
+    "old": "bytes.IndexByte(b, ':') > 0",
+    "new": "bytes.IndexByte(b, ':') >= 0"
   }
 ]

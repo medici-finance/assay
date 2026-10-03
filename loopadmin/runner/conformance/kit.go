@@ -73,6 +73,7 @@ var Cases = []struct {
 	{"NegativeUsage", CaseNegativeUsage},
 	{"NoAdapterEcho", CaseNoAdapterEcho},
 	{"NoAliasing", CaseNoAliasing},
+	{"NoAliasingRecord", CaseNoAliasingRecord},
 }
 
 // RunAll runs every case as a subtest against fresh subjects.

@@ -306,14 +306,17 @@ func checkKeys(raw json.RawMessage, t reflect.Type, path fieldPath) error {
 			}
 		}
 	case reflect.Slice:
-		if t.Elem().Kind() != reflect.Struct && t.Elem().Kind() != reflect.Pointer {
-			return nil
-		}
 		var items []json.RawMessage
 		if err := json.Unmarshal(raw, &items); err != nil {
 			return fmt.Errorf("%s is not an array", path)
 		}
 		for i, v := range items {
+			// A null element is a null at every depth too: encoding/json
+			// decodes it to the element's zero value (an empty string), which
+			// every later check would take for a real entry.
+			if bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
+				return fmt.Errorf("%s is null", path.index(i))
+			}
 			if err := checkKeys(v, t.Elem(), path.index(i)); err != nil {
 				return err
 			}
@@ -355,6 +358,13 @@ func (r LaunchRequest) Validate() error {
 	}
 	if r.Profile.Tools == nil {
 		return fmt.Errorf("%w: profile.tools is required (an empty list pins no tools)", ErrInvalidRequest)
+	}
+	for i, tool := range r.Profile.Tools {
+		// encoding/json decodes a null element to "": a blank name is never a
+		// tool, and the schema types each element as a string.
+		if blank(tool) {
+			return fmt.Errorf("%w: %s is blank", ErrInvalidRequest, fieldPath("profile.tools").index(i))
+		}
 	}
 	switch r.Budget.Scope {
 	case BudgetLaunch, BudgetRequest:
