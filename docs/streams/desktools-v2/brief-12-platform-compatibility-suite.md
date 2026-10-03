@@ -23,6 +23,7 @@ schema: brief-v2
 outcome: none
 authored: 2026-09-29 by the desk, scoping trusted issue #1836
 sources:
+  - "#2111 — Cobra/Viper adoption; CLI compatibility amendment 2026-10-03 (spec §9)"
   - "#1836 — the full gap catalog this brief scopes: §1 cross-cutting findings, §2 per-brief gaps, §3 known issues, §4 the T1–T10 suite design, §5 acceptance"
   - "tools/desk/cmd/cellctl/cell.go:451-463 — rootsValid requires a leading '/'; the same HasPrefix shape sits at cell.go:317 (l), new.go:280 (launcher) and set.go:149 (v) — all four re-read 2026-09-30"
   - "tools/desk/cmd/cellctl/container.go:27 — the launcher is executed (exec.Command on CELL_CONTAINER_LAUNCHER), so the launcher check gates a binary cellctl runs; re-read 2026-09-30"
@@ -50,7 +51,7 @@ consumers:
   - "docs/streams/desktools-v2 briefs 03, 05, 08, 09, 10: follow-up desktools-v2/12 (this brief amends their Verify tables)"
   - "docs/streams/desktools-v2 brief 06 (row 4 re-target, Windows shim story, GitLab identity issues): follow-up desktools-v2/13 (the single owner of brief 06's re-derivation; this brief does not edit brief 06)"
   - "desktools-v2/13 (the CI legs, forge-ban symmetry and the lint half of #1836): out-of-scope (sibling brief; no dependency either way)"
-version: 3
+version: 4
 id: 968c76a1-05b5-4185-825c-c4464df1648e
 ---
 
@@ -245,6 +246,10 @@ cases the existing tables genuinely lack, plus the temp-dir helper the tests nee
      a `depends` edge on brief 10: this brief adds it in the same PR that lands deliverable 1,
      so wherever the row exists `IsAbsFor` exists too. If brief 10 is already implemented when
      this brief lands, THIS brief creates the tests both new rows name, as for 09.
+
+## Cobra/Viper integration — extend the same platform fixtures
+
+The compatibility fixture design must cover the spec §9 CLI contract: Windows/POSIX option forms and paths, explicit-empty versus unset keys, per-key configuration precedence and help without cell/config/credential reads. Reuse the shared harness delivered by desktools-v2/15 and add the platform cases to the cellctl migration and the bounded CLI owners that /15 authors. The custody/forge decision procedure remains authoritative below Cobra/Viper; config resolution is not a second custody procedure. This brief retains its existing platform scope, including the refusal fixtures; it does not absorb the entire CLI rollout.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
