@@ -29,7 +29,10 @@ package main
 //     left unanswered, and every Verify row has a passing execution witness.
 //
 // WHAT IT WRITES — exactly two cells of one README row: Status → `verified`
-// and Verified → `<date> <runner>`, both from the recorded run. The Reviewed
+// and Verified → `<date> <runner>`, both from the recorded run. An
+// `(on-behalf-of human:<name>)` qualifier on the runner stays in the Evidence
+// and is left out of the stamp: verify-gate-close.yml is the sole writer of a
+// `human:` token into a Verified cell, so any other one left refuses. The Reviewed
 // cell and every other byte of the file are left as they were. It never
 // touches STATUS.md.
 //
