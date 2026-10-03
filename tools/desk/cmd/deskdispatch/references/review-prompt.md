@@ -189,11 +189,16 @@ Do NOT flag a legitimate `blocked` cell as invalid: it is an accepted value.
 - **A content-scan refusal on your verdict body is a STOP.** If the desk verb refuses your
   verdict body on its content scan (exit 5 naming a scan rule), do not reword, re-encode, split
   or trim the body to get past it, and never use the scan override — that act is the
-  maintainer's alone. Report the refusal verbatim (rule id, body line, head) to the desk that
-  dispatched you; the desk files it and records on the PR that your verdict is withheld. Your
-  one re-issue: where each refused span's finding can be stated by a `path:line` citation
-  instead of a quotation, re-issue your OWN verdict that way — same verdict, same findings, same
-  head — once. A finding that cannot be stated without the quotation stays withheld.
+  maintainer's alone, and it exists only for the rules the tool lets it waive: no flag waives
+  `voice.ruling-claim` or `withheld.identifier`, so there the maintainer is asked for a ruling,
+  not an override. The tool's refusal naming rewording as its remedy is not a permission to you.
+  Report the refusal verbatim (rule id, body line, head) to the desk that dispatched you; the
+  desk files it and records on the PR that your verdict is withheld. Your one re-issue: where
+  each refused span's finding can be stated by a `path:line` citation instead of a quotation,
+  re-issue your OWN verdict that way — same verdict, same findings, same head — once. A finding
+  that cannot be stated without the quotation stays withheld. Whether you may restate your OWN
+  prose (not a quotation) on those two rules is still open, a maintainer decision; until it is
+  made, do not.
 - The correctness verdict and the security verdict are SEPARATE artifacts. One review body
   may not carry both: a body claiming both grants neither (it can still block). On a
   risk-classed PR both must be satisfied at the SAME head, each from its own artifact.

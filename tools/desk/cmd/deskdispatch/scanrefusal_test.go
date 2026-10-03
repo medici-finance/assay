@@ -26,11 +26,14 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 const (
 	scanRefusalSkillPath = "../../../../plugins/assay/skills/pr-review-desk/SKILL.md"
 	scanRefusalHeading   = "A scan refusal on a verdict body is a STOP — never reword it"
+	verdictFormatPath    = "../../../../plugins/assay/skills/pr-review-desk/references/verdict-format.md"
 	verdictMechanics     = "Verdict mechanics"
 )
 
@@ -44,12 +47,22 @@ type scanRule struct {
 var scanRules = []scanRule{
 	{"desk-repost", []string{"never edits a refused verdict body", "rewording", "re-encoding", "trimming", "Resending it unchanged is out too"}},
 	{"desk-split", []string{"no splitting it across posts"}},
-	{"override-not-maintainer", []string{"scan override is the maintainer's act alone"}},
+	{"override-not-maintainer", []string{"scan override is the maintainer's act alone", "it exists only for the rules the"}},
+	{"filing-asks-impossible-override", []string{"No flag waives", "The tool refuses the override", "the filing never asks for one there", "maintainer for a RULING instead", "the configured\n  withheld set", "that is not a permission to the desk"}},
 	{"not-filed-at-discovery", []string{"File at discovery", "scan rule id", "body line number", "full head SHA"}},
 	{"no-withheld-record", []string{"exists and is withheld"}},
 	{"dispatch-stopped", []string{"continue the queue", "One\n  refused post never stops dispatch"}},
-	{"reviewer-reword", []string{"Only the REVIEWER may re-issue, and only by citation", "`path:line` citation"}},
-	{"reviewer-changed-verdict", []string{"same verdict, same findings,\n  same head, once"}},
+	{"reviewer-reword", []string{"Only the REVIEWER may re-issue, and only by citation", "`path:line` citation", "Still open, not decided here:", "is a maintainer decision", "stays withheld"}},
+	{"reviewer-changed-verdict", []string{"same verdict, same findings, same head, once"}},
+	{"not-filed-at-discovery", []string{"The desk files and records whichever lands first"}},
+}
+
+// nonOverridable is the set of scan rules no flag waives, taken from the tool's own rule
+// ids so the judge and the skill section cannot drift from the tool: the section must name
+// each one, and a filing that asks for an override on one is a violation.
+var nonOverridable = map[string]bool{
+	deskkit.RuleVoiceRulingClaim:   true,
+	deskkit.RuleWithheldIdentifier: true,
 }
 
 // kitCues are the reviewer-half obligations the review kit's §12 must keep.
@@ -58,8 +71,13 @@ var kitCues = []string{
 	"do not reword, re-encode, split\n  or trim the body",
 	"never use the scan override",
 	"maintainer's alone",
+	"it exists only for the rules the tool lets it waive",
+	"no flag waives",
+	"the maintainer is asked for a ruling,\n  not an override",
+	"is not a permission to you",
 	"`path:line` citation",
-	"same verdict, same findings, same\n  head — once",
+	"same verdict, same findings, same head — once",
+	"is still open, a maintainer decision; until it is\n  made, do not",
 }
 
 // event is one transcript line: `<actor> <verb> key=value ... [-> outcome key=value ...]`.
@@ -146,6 +164,9 @@ func judgeScanRefusal(evs []event) []string {
 			if e.kv["rule"] == refused.kv["out.scan"] && e.kv["line"] == refused.kv["out.line"] && e.kv["head"] == head {
 				filed = true
 			}
+			if nonOverridable[refused.kv["out.scan"]] && e.kv["asks"] == "override" {
+				add("filing-asks-impossible-override")
+			}
 		case e.actor == "desk" && e.verb == "dispatch":
 			if !filed {
 				add("not-filed-at-discovery")
@@ -185,7 +206,15 @@ reviewer post-verdict pr=7 head=a1 verdict=request-changes body=b1 -> refused sc
 
 // The compliant tail: file at discovery, record the withheld verdict, continue the queue.
 const fileRecordContinue = `
-desk     file-issue   pr=7 rule=scan.rule-x line=38 head=a1 label=needs-decision
+desk     file-issue   pr=7 rule=scan.rule-x line=38 head=a1 label=needs-decision asks=override
+desk     post-comment pr=7 kind=withheld
+desk     dispatch     pr=8
+desk     dispatch     pr=9
+`
+
+// The compliant tail on a rule no flag waives: the filing asks for a ruling.
+const fileRulingContinue = `
+desk     file-issue   pr=7 rule=scan.rule-x line=38 head=a1 label=needs-decision asks=ruling
 desk     post-comment pr=7 kind=withheld
 desk     dispatch     pr=8
 desk     dispatch     pr=9
@@ -193,6 +222,12 @@ desk     dispatch     pr=9
 
 func TestScanRefusalScenarios(t *testing.T) {
 	section := scanRefusalSection(t)
+	for rule := range nonOverridable {
+		if !strings.Contains(section, "`"+rule+"`") {
+			t.Errorf("the tool refuses the override on %q but the skill section does not name it — "+
+				"a refusal on that rule would be filed as a request for an override nobody can grant", rule)
+		}
+	}
 	for _, r := range scanRules {
 		for _, c := range r.cues {
 			if !strings.Contains(section, c) {
@@ -205,51 +240,71 @@ func TestScanRefusalScenarios(t *testing.T) {
 	cases := []struct {
 		name, tail string
 		want       []string // violation ids that MUST be reported; empty = must be clean
+		rule       string   // the refusing scan rule; empty = an overridable placeholder
 	}{
 		{"reword after scan refusal (the field failure)", `
 desk     post-verdict pr=7 head=a1 verdict=request-changes body=b1-reworded -> posted
-`, []string{"desk-repost", "not-filed-at-discovery", "no-withheld-record", "dispatch-stopped"}},
+`, []string{"desk-repost", "not-filed-at-discovery", "no-withheld-record", "dispatch-stopped"}, ""},
 		{"re-encode the matched span", fileRecordContinue + `
 desk     post-verdict pr=7 head=a1 verdict=request-changes body=b1-escaped -> posted
-`, []string{"desk-repost"}},
+`, []string{"desk-repost"}, ""},
 		{"trim the matched span", fileRecordContinue + `
 desk     post-verdict pr=7 head=a1 verdict=request-changes body=b1-trimmed -> posted
-`, []string{"desk-repost"}},
+`, []string{"desk-repost"}, ""},
 		{"resend unchanged", fileRecordContinue + `
 desk     post-verdict pr=7 head=a1 verdict=request-changes body=b1 -> refused scan=scan.rule-x line=38
-`, []string{"desk-repost"}},
+`, []string{"desk-repost"}, ""},
 		{"split the findings into comments", fileRecordContinue + `
 desk     post-comment pr=7 kind=findings
-`, []string{"desk-split"}},
+`, []string{"desk-split"}, ""},
 		{"desk runs the scan override", fileRecordContinue + `
 desk     override     pr=7
-`, []string{"override-not-maintainer"}},
+`, []string{"override-not-maintainer"}, ""},
 		{"refusal stops dispatch", `
 desk     file-issue   pr=7 rule=scan.rule-x line=38 head=a1 label=needs-decision
 desk     post-comment pr=7 kind=withheld
-`, []string{"dispatch-stopped"}},
+`, []string{"dispatch-stopped"}, ""},
 		{"moves on before filing", `
 desk     dispatch     pr=8
 desk     file-issue   pr=7 rule=scan.rule-x line=38 head=a1 label=needs-decision
 desk     post-comment pr=7 kind=withheld
 desk     dispatch     pr=9
-`, []string{"not-filed-at-discovery"}},
+`, []string{"not-filed-at-discovery"}, ""},
 		{"reviewer rewords its own verdict", fileRecordContinue + `
 reviewer post-verdict pr=7 head=a1 verdict=request-changes body=b2 -> posted
-`, []string{"reviewer-reword"}},
+`, []string{"reviewer-reword"}, ""},
 		{"reviewer re-issue flips the verdict", fileRecordContinue + `
 reviewer post-verdict pr=7 head=a1 verdict=approve body=b2 cites=path:line -> posted
-`, []string{"reviewer-changed-verdict"}},
-		{"compliant: file, record, continue", fileRecordContinue, nil},
+`, []string{"reviewer-changed-verdict"}, ""},
+		{"compliant: file, record, continue", fileRecordContinue, nil, ""},
 		{"compliant: reviewer re-issues by citation", fileRecordContinue + `
 reviewer post-verdict pr=7 head=a1 verdict=request-changes body=b2 cites=path:line -> posted
-`, nil},
+`, nil, ""},
 		{"compliant: maintainer overrides", fileRecordContinue + `
 maintainer override   pr=7
-`, nil},
+`, nil, ""},
+		{"compliant: re-issue lands before the filing", `
+reviewer post-verdict pr=7 head=a1 verdict=request-changes body=b2 cites=path:line -> posted
+` + fileRecordContinue, nil, ""},
+		{"filing asks an override no flag waives (withheld)", fileRecordContinue,
+			[]string{"filing-asks-impossible-override"}, deskkit.RuleWithheldIdentifier},
+		{"filing asks an override no flag waives (voice)", fileRecordContinue,
+			[]string{"filing-asks-impossible-override"}, deskkit.RuleVoiceRulingClaim},
+		{"desk runs the override on a rule no flag waives", fileRulingContinue + `
+desk     override     pr=7
+`, []string{"override-not-maintainer"}, deskkit.RuleWithheldIdentifier},
+		{"reviewer restates own prose before the open ruling", fileRulingContinue + `
+reviewer post-verdict pr=7 head=a1 verdict=request-changes body=b2 -> posted
+`, []string{"reviewer-reword"}, deskkit.RuleVoiceRulingClaim},
+		{"compliant: filing asks a ruling (withheld)", fileRulingContinue, nil, deskkit.RuleWithheldIdentifier},
+		{"compliant: filing asks a ruling (voice)", fileRulingContinue, nil, deskkit.RuleVoiceRulingClaim},
 	}
 	for _, c := range cases {
-		got := judgeScanRefusal(parseTranscript(t, refusalOpening+c.tail))
+		src := refusalOpening + c.tail
+		if c.rule != "" {
+			src = strings.ReplaceAll(src, "scan.rule-x", c.rule)
+		}
+		got := judgeScanRefusal(parseTranscript(t, src))
 		if len(c.want) == 0 && len(got) != 0 {
 			t.Errorf("%s: compliant transcript judged %v — the rule over-reaches", c.name, got)
 		}
@@ -275,6 +330,35 @@ func TestReviewKitScanRefusalStop(t *testing.T) {
 		if !strings.Contains(body, c) {
 			t.Errorf("review kit §12 lost %q — a reviewer whose verdict is scan-refused has no "+
 				"rule telling it to stop rather than reword", c)
+		}
+	}
+}
+
+// verdictFormatCues are what the verdict-format reference must keep so it does not read as
+// permission to edit a refused body, or as promising an override on a rule no flag waives.
+var verdictFormatCues = []string{
+	"A CONTENT-SCAN refusal",
+	"it is a STOP",
+	"exists only for the rules the tool lets it waive",
+	"the filing asks the maintainer for a\nruling, not an override",
+	"still open, a maintainer decision",
+}
+
+func TestVerdictFormatScanRefusal(t *testing.T) {
+	raw, err := os.ReadFile(verdictFormatPath)
+	if err != nil {
+		t.Fatalf("cannot read the verdict-format reference (could-not-check is a failure): %v", err)
+	}
+	ref := string(raw)
+	for _, c := range verdictFormatCues {
+		if !strings.Contains(ref, c) {
+			t.Errorf("verdict-format reference lost %q — it would again point a refused body at "+
+				"an edit or at an override the tool refuses", c)
+		}
+	}
+	for rule := range nonOverridable {
+		if !strings.Contains(ref, "`"+rule+"`") {
+			t.Errorf("verdict-format reference does not name %q, a rule no flag waives", rule)
 		}
 	}
 }

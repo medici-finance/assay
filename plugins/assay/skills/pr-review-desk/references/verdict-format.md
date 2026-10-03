@@ -49,8 +49,10 @@ deskpost body-checks the file independently and refuses (exit 5) unless the body
 (refused/noop) open deskpost's circuit breaker — 15 minutes, blocking every deskpost writer
 (reviews, comments, ready flips), not only yours. Never retry a refused body unchanged: a
 SCHEMA refusal (rules 1–4 above) is fixed by the body's author first; the refusal reason is in the
-audit `detail`. A CONTENT-SCAN refusal is not a schema defect — it is a STOP (`SKILL.md` § "A scan
-refusal on a verdict body is a STOP — never reword it"). **Exit 5 is NEVER a fallback trigger** —
+audit `detail`. A CONTENT-SCAN refusal (`refused: <rule id> at body:<line>`) is not a schema
+defect — it is a STOP (`SKILL.md` § "A scan refusal on a verdict body is a STOP — never reword
+it"). Any other exit-5 refusal that names no scan rule — a malformed typed finding block, for
+one — is the body author's to fix, like a schema refusal. **Exit 5 is NEVER a fallback trigger** —
 fall back only on exit 3 (disabled) / 6 (unverifiable).
 
 ## When your ONLY finding is a red required check
@@ -136,8 +138,12 @@ or base64 blobs.
 
 That is authoring guidance for the FIRST post. Once the scan has refused a verdict body, the body
 is evidence: the desk never rewords, re-encodes, splits or trims it, the scan override is the
-maintainer's alone, and the one re-issue is the reviewer's own, restating each refused span as a
-`path:line` citation (`SKILL.md` § "A scan refusal on a verdict body is a STOP — never reword it").
+maintainer's alone and exists only for the rules the tool lets it waive — no flag waives
+`voice.ruling-claim` or `withheld.identifier`, so there the filing asks the maintainer for a
+ruling, not an override — and the one re-issue is the reviewer's own, restating each refused span
+as a `path:line` citation. Whether the reviewer may restate its OWN prose on those two rules is
+still open, a maintainer decision (`SKILL.md` § "A scan refusal on a verdict body is a STOP —
+never reword it").
 
 ## If a raw `gh pr review` is ever unavoidable
 

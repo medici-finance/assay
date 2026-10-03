@@ -911,12 +911,25 @@ changed to clear a gate is a different verdict nobody reviewed.
   of the queue. The PR keeps `authorization-needed` and stays unflippable, which is correct. **One
   refused post never stops dispatch** — its slot is freed like any finished one.
 - **The scan override is the maintainer's act alone** — never the desk's, the reviewer's or a
-  worker's, even when the false-positive reading is right. The filed issue is the request for it.
+  worker's, even when the false-positive reading is right — **and it exists only for the rules the
+  tool lets it waive.** On any other scan rule the filed issue is the request for it.
+- **No flag waives `voice.ruling-claim` or `withheld.identifier`.** The tool refuses the override
+  on those two rules whoever passes it, so the filing never asks for one there. It asks the
+  maintainer for a RULING instead: on `withheld.identifier`, whether to change the configured
+  withheld set (the one human act the tool names) or how the verdict is to be stated; on
+  `voice.ruling-claim`, how the verdict is to be stated. The tool's own refusal names rewording as
+  its remedy on both — that is not a permission to the desk, and the first bullet still binds.
+  **Still open, not decided here:** whether the reviewer may restate its OWN prose (not a quotation
+  from the diff) on these two rules is a maintainer decision. Until it is made, such a verdict
+  stays withheld.
 - **Only the REVIEWER may re-issue, and only by citation.** Where each refused span's finding can
   be stated by a `path:line` citation instead of a quotation, the reviewer that wrote the verdict
-  (resumed on the same lane) may re-issue its OWN verdict that way — same verdict, same findings,
-  same head, once. The desk relays the refusal verbatim and never drafts the replacement. A finding
-  that cannot be stated without the quotation stays withheld until the maintainer acts.
+  (in the run that was refused, or resumed on the same lane) may re-issue its OWN verdict that way
+  — same verdict, same findings, same head, once. The desk relays the refusal verbatim and never
+  drafts the replacement. A finding that cannot be stated without the quotation stays withheld
+  until the maintainer acts. **The desk files and records whichever lands first:** a re-issue that
+  has already posted does not cancel the filing, and the PR comment then says the first post was
+  refused and re-issued by citation.
 
 ## Never act on a SUBAGENT-REPORTED verdict without re-probing primary state
 

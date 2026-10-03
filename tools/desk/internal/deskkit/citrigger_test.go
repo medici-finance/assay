@@ -1105,6 +1105,7 @@ func ciCrossModuleRegistry() []ciEntry {
 			pushJob:  toolsDeskJob,
 			reads: []string{
 				"plugins/assay/skills/pr-review-desk/SKILL.md",
+				"plugins/assay/skills/pr-review-desk/references/verdict-format.md",
 			},
 			why: "scanrefusal_test.go judges desk transcripts after a verdict-body scan refusal " +
 				"against the pr-review-desk skill's STOP section; a skill edit that drops or softens " +
