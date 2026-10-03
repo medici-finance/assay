@@ -343,3 +343,55 @@ RISK-VALUE: DERIVED — desktools-v2/13 glab=0 gitlab-literal=45 @ forge-ban-bas
 Context files: all present at this SHA (forge-ban.sh, forge-ban-probe.sh, the baseline file, statusgen with verifyportability.go and its test, both workflows, brief 06, the desk-containers README, cellctl shims.go, the changelog fragment dtv2-13-platform-workflows.md).
 
 VERIFY: BLOCKED — 12 of 13 rows pass at b3677d6da; row 11 waits on act 3 of #2055 (human design record for desk-containers/10), status stays implemented
+
+### 2026-10-03 desk dispatch (second pass) — desktools-v2/13 re-verified on merged main 03065900ca21: 13 of 13 rows pass, requirements met
+
+Independent non-implementer pass on merged main 03065900ca21 (forge main confirmed equal at run time; later than the 0dbe21e42 named in the dispatch). Host darwin/arm64; every row run under bash from the repository root, rows 1 to 12 under a throwaway HOME, row 13 as read-only forge GETs. Commands are abbreviated below; the full text is the brief's Verify table. Changes since the prior pass (12 of 13, open Evidence PR #2076): #2075 flipped desk-containers board row 10 from todo to implemented, which is what row 11 was waiting on. #2064 (workflow patch applied by the human) and #2066 (row 7 tightened to match the step, not a comment) were already in the prior pass's tree.
+
+| # | Command | Expected | Observed (exit code + key output) | Date / Runner |
+|---|---|---|---|---|
+| 1 | grep -q -F GOOS=windows and grep -q -F 'go test -c' on .github/workflows/ci.yml | exit 0 | exit 0. Both strings are real steps in job desk-platform-compile of ci.yml (lines 44 to 46: windows/amd64 vet, per-package windows test-binary compile, darwin/arm64 vet); ci.yml triggers on push and pull_request | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | sh tools/desk/scripts/forge-ban.sh into a mktemp file; echo rc; grep the class e and class f lines | rc=0 and both class lines | exit 0. rc=0 / class e (glab subprocess): desk=0 statusgen=0 / class f (GitLab API literal): desk=45 statusgen=8 | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | sh (tools/desk/scripts) forge-ban-probe.sh | PROBE PASS, exit 0, tools/desk clean afterwards | exit 0. PROBE PASS; git status --porcelain tools/desk printed nothing afterwards | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | grep -E the desktools-v2/02 line and the desktools-v2/13 glab/gitlab-literal line in forge-ban-baseline.txt | both lines, exit 0 | exit 0. desktools-v2/02 63 / desktools-v2/13 glab=0 gitlab-literal=45 | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | cd statusgen; go test -run TestVerifyRowPortability -v into a mktemp file, grep the anchored top-level PASS line, then sh testdata/portability-mutation.sh | top-level PASS and MUTATION PASS, exit 0 | exit 0. --- PASS: TestVerifyRowPortability (0.00s); the mutation run shows the notice-flow, tmp, sh, bash, findstr and tmpdir-plus-hardcode subtests FAIL with the detector disabled, then MUTATION PASS: disabled detector was rejected; tree clean afterwards | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | cd statusgen; go build into a mktemp dir; run it with --root . --lint, output discarded; echo rc | rc=0 | exit 0, rc=0. Re-run with output kept: LINT: PASS with 183 NOTICE lines tagged verify-row-portability (the NOTICE baseline at this SHA; unchanged from the 2026-10-02 pass) | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | awk for a line 'cd tools/desk' followed on the next line by 'go test ./...' in windows-ci-leg.yml, and grep -q -F windows-latest | exit 0 | exit 0. Matched lines 78 and 79 of the step Native Windows desk suite in job desk-windows-tests (runs-on windows-latest, pwsh); a real test step, not a comment | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | grep -n 1145 / 1146 / 1223 in brief-06; test $? -eq 1 | exit 0, nothing printed | exit 0, nothing printed | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | brief-06 contains cmd/cellctl, a gate: human line, and both desktools-v2/13 trace markers | exit 0 | exit 0, no output | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | loop over the 24 section-3 issues, grep each for an owner row in brief-13 | exit 0, nothing printed | exit 0, nothing printed; 24 owner rows present | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | grep -q -E board row 10 of desk-containers README reading implemented, verified or done | exit 0 | exit 0. Row 10 (cellctl in Go) reads implemented, set by #2075 | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 12 | statusgen --consumers --root . | exit 0 | exit 0. consumers: no brief files in the diff against 03065900ca21 — nothing to corroborate (installed v1.0.31) | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 13 | loop over the 24 issues, gh api --paginate comments, select bodies containing the desktools-v2/13 triage marker | exit 0, nothing printed | exit 0, nothing printed; no READ FAILED and no NO TRIAGE COMMENT lines. Hand check: every one of the 24 carries a marked comment (12 by the worker App on 2026-10-01, 12 by the human driver on 2026-10-02 about 21:28Z), and each comment's named owner matches this brief's triage table, 24 of 24 | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Execution witness: statusgen verifyrun --dry-run (v1.0.31, throwaway HOME) exit 0, 13 of 13 rows pass exit=0 at 03065900ca21; nothing written back, tree clean.
+
+Vacuity and findings
+
+- Row 2 always prints rc=0 (the counter ends in an unconditional exit 0); the two greps carry the row. Row 6 always exits 0 and prints rc=0 on any tree; that the NOTICE fires is shown by row 5 and the 183-line count above, not by row 6.
+- Row 12 is vacuous on merged main: the diff has no brief files, so there is nothing to corroborate. It can only bite pre-merge.
+- Rows 1 and 7 are no longer vacuous: each matches the live workflow step, not a comment.
+- Deliverable 4 trigger: the human-applied workflow commit (#2064) kept windows-ci-leg.yml on tag push and workflow_dispatch only, with no pull_request trigger. The brief leaves that decision to the human. Consequence, as the brief states: the Windows proof (here and for desktools-v2/12 rows 1 to 3 and 8) is release-time only. The cross-compile gate in ci.yml does run on pull_request.
+- Row 4 side note: the desktools-v2/02 baseline reads 63, while the counter now prints forge reach-around sites: 69. Classes e and f are excluded from that total. The drift comes from class a to d growth elsewhere, not from this brief. It is advisory.
+- Class f self-count: 1 of the 45 is the probe script's own planted literal (heredoc). It has no carve-out in the header. Advisory, and reproducible as recorded.
+
+Risk-bearing value
+
+Risk metadata is present: regulatory, customer, irreversible and sensitive-data are all no, and the gate is model. The diff touches .github/workflows (via #2064), so the enumeration was done anyway. It covered the implementing change #1996 (the forge-ban counter, the probe, the baseline, the statusgen portability detector and its mutation script), the workflow commit #2064, and the row 7 edit #2066.
+
+- desktools-v2/13 glab=0 gitlab-literal=45 @ the stream forge-ban-baseline.txt:2. A recorded baseline. If it were wrong in the low direction it would hide growth. Reversible with --baseline.
+- GLAB_SUBCMDS = issue, mr, api, auth, repo, release, ci, label, schedule, snippet, variable @ forge-ban.sh:172. Reversible.
+- class f pattern = /api/v4 or gitlab.com @ forge-ban.sh:178 and :186. Reversible.
+- BACKEND_EXCLUDE = forge_github, forge_gitlab @ forge-ban.sh:66. Reversible.
+- detector regexes verifyOSMarker, verifyShellC, verifyFindstr and verifyTmpPath @ statusgen/verifyportability.go:11 to 14. Advisory NOTICE only. Reversible.
+- cross-compile targets GOOS=windows GOARCH=amd64 and GOOS=darwin GOARCH=arm64 @ ci.yml:44 to 46. Reversible.
+- GO_VERSION = "1.25.0" @ windows-ci-leg.yml:65 (pre-existing env, now also consumed by the new job). Operational.
+- action pins: actions/checkout v7.0.1 and actions/setup-go v5.5.0 (full commit SHAs, abbreviated here) @ windows-ci-leg.yml:71 and :72. Reversible.
+
+None of these is irreversible. The top-ranked entry is derived below.
+
+RISK-VALUE: DERIVED — desktools-v2/13 glab=0 gitlab-literal=45 @ the stream forge-ban-baseline.txt:2 — an independent recount, done with a separate script and not with the counter, gives 45. It counts lines matching /api/v4 or gitlab.com in .go and .sh files under tools/desk, tools/cellctl and plugins/assay, excluding the two forge backends, _test.go, .test.sh and the counter itself, and those lines span 21 files. The same recount finds 0 exec.Command("glab" in non-test Go and 8 statusgen literals. All three match the counter's output and the brief's definitions of classes e and f. Caveat: 1 of the 45 is the probe's own literal.
+
+Context files: all present at this SHA. That covers forge-ban.sh, forge-ban-probe.sh, forge-ban-baseline.txt, statusgen (with verifyportability.go), ci.yml, windows-ci-leg.yml, brief-06 and the desk-containers README. The changelog fragments dtv2-13-platform-workflows.md and feat--assay--issue-2055.md are both present.
+
+VERIFY: PASS — all 13 rows pass by exit code and by hand reading on merged main 03065900ca21, rows 1, 7 and 13 now non-vacuously; gate model, risk all no; the Windows test leg is release-time only by the human's recorded trigger choice
