@@ -170,8 +170,10 @@ var credentialKeyWords = []string{
 
 // slotWords name a credential slot only as whole words of the key (the key is
 // split on anything but a letter or digit, at a lower-to-upper camelCase step
-// and after an acronym run): "auth" is a slot in "x-auth", "basic_auth" or
-// "AWSAuthKey", but "author" and "authority" are not credentials.
+// and after an acronym run, and again on the lower-cased key split only on
+// anything but a letter or digit, so a case change inside the word cannot hide
+// it): "auth" is a slot in "x-auth", "basic_auth", "AWSAuthKey" or "aUth_header",
+// but "author" and "authority" are not credentials.
 var slotWords = map[string]bool{"auth": true, "oauth": true}
 
 // slotRuns name a credential slot wherever they occur in the key's words run
@@ -224,9 +226,30 @@ func keyWords(k string) []string {
 		}
 		b.WriteRune(r)
 	}
-	return strings.FieldsFunc(strings.ToLower(b.String()), func(r rune) bool {
-		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
-	})
+	return strings.FieldsFunc(strings.ToLower(b.String()), notAlnum)
+}
+
+// notAlnum is true for anything but an ASCII letter or digit: where a key splits.
+func notAlnum(r rune) bool {
+	return (r < 'a' || r > 'z') && (r < '0' || r > '9')
+}
+
+// slotWordIn reports whether a slot word stands in words with no qualifier-only
+// tail after it: a slot with a trailing word that is not a qualifier
+// ("auth_header") is a slot, "auth_method" only describes one.
+func slotWordIn(words []string) bool {
+	for i, w := range words {
+		if slotWords[w] && !describesOnly(words[i+1:]) {
+			return true
+		}
+	}
+	return false
+}
+
+// plainWords splits a key into lower-case words at anything but a letter or
+// digit, and nowhere else.
+func plainWords(k string) []string {
+	return strings.FieldsFunc(strings.ToLower(k), notAlnum)
 }
 
 // CredentialKey reports whether an extension key names a credential slot.
@@ -237,12 +260,16 @@ func CredentialKey(k string) bool {
 			return true
 		}
 	}
-	words := keyWords(k)
-	for i, w := range words {
-		if slotWords[w] && !describesOnly(words[i+1:]) {
-			return true
-		}
+	// The slot word is looked for in two splits of the key and either one
+	// counts: the camelCase-aware split (so "AWSAuthKey" has "auth") and the
+	// plain split, that cuts only at anything but a letter or digit and ignores
+	// case. A case boundary inside the slot word itself ("aUth", "OAUth") cuts
+	// it in the first split; the plain one still holds it whole, and the key
+	// stays a slot whatever its spelling.
+	if slotWordIn(keyWords(k)) || slotWordIn(plainWords(k)) {
+		return true
 	}
+	words := keyWords(k)
 	// ends[i] is where word i ends in the words run together.
 	ends := make([]int, len(words))
 	run := 0

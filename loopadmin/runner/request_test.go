@@ -356,8 +356,8 @@ func TestCredentialFloorVocabulary(t *testing.T) {
 		{"HTTPS://deploy:x9y8z7w6@git.example", true},
 		{"https://user:12345?q@git.example", false},
 		{"https://user:12345#q@git.example", false},
-		{"https://host?next=a:b@c.io", false},
-		{"https://host#a:b@c.io", false},
+		{"https://host?next=a:b@example.com", false},
+		{"https://host#a:b@example.com", false},
 		{"https://git.example:8080/path/a@example.com", false},
 		{"see https://host:80 then mail a@example.com", false},
 		{"https://user:@git.example", false},
@@ -570,5 +570,164 @@ func TestNoGraphDependency(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join("..", "..", "go.work")); err == nil {
 		t.Error("the repository root must carry no go.work")
+	}
+}
+
+// firstRevisionCredentialKey is the key rule the first revision shipped, kept
+// here as an oracle: the key lower-cased, split only at anything but a letter
+// or digit, refused if it holds one of the substrings or an auth or oauth word.
+func firstRevisionCredentialKey(k string) bool {
+	k = strings.ToLower(k)
+	for _, w := range []string{
+		"token", "secret", "password", "passwd", "passphrase", "credential",
+		"apikey", "api_key", "api-key", "private_key", "privatekey", "private-key",
+		"authorization", "cookie", "session",
+		"bearer", "privkey", "access_key", "accesskey", "access-key",
+	} {
+		if strings.Contains(k, w) {
+			return true
+		}
+	}
+	for _, w := range strings.FieldsFunc(k, func(r rune) bool { return (r < 'a' || r > 'z') && (r < '0' || r > '9') }) {
+		if w == "auth" || w == "oauth" {
+			return true
+		}
+	}
+	return false
+}
+
+// caseMasks returns every upper/lower spelling of w's letters.
+func caseMasks(w string) []string {
+	var at []int
+	for i := range w {
+		if w[i] >= 'a' && w[i] <= 'z' {
+			at = append(at, i)
+		}
+	}
+	out := make([]string, 0, 1<<len(at))
+	for m := 0; m < 1<<len(at); m++ {
+		b := []byte(w)
+		for j, i := range at {
+			if m>>j&1 == 1 {
+				b[i] -= 'a' - 'A'
+			}
+		}
+		out = append(out, string(b))
+	}
+	return out
+}
+
+// TestCredentialKeySpellingsStayRefused pins SEC-5 round 2 as a class, not as a
+// list: every key the first revision refused is refused now, whatever the
+// case spelling of its slot word (a case change in the middle of the word
+// included), the separators and words around it, and where the key sits (a
+// key of the extension map, a key nested in an object or an array, or the same
+// key written with JSON unicode escapes). The cross product is generated; the
+// first revision's rule is the oracle for what must be refused. A key whose
+// trailing words only describe the slot is the one declared way out, and is
+// pinned beside it.
+func TestCredentialKeySpellingsStayRefused(t *testing.T) {
+	slots := []string{"auth", "oauth", "bearer", "privkey", "accesskey", "access_key", "access-key"}
+	prefixes := []string{"", "x_", "X", "AWS", "9"}
+	suffixes := []string{"", "_header", "Header", "-x", "_id"}
+	escape := func(k string) string {
+		var b strings.Builder
+		for _, r := range k {
+			fmt.Fprintf(&b, `\u%04x`, r)
+		}
+		return b.String()
+	}
+	base, err := runner.DecodeRequest(fixture(t, "standing-desk-request.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inRequest := func(ext map[string]json.RawMessage) bool {
+		r := base
+		r.Extensions = ext
+		return errors.Is(r.Validate(), runner.ErrCredential)
+	}
+	cells := 0
+	for _, slot := range slots {
+		for mi, spelled := range caseMasks(slot) {
+			// The long slot words take every seventh spelling; the short ones all.
+			if len(slot) > 7 && mi%7 != 0 {
+				continue
+			}
+			for _, p := range prefixes {
+				for _, s := range suffixes {
+					k := p + spelled + s
+					if !firstRevisionCredentialKey(k) {
+						continue
+					}
+					cells++
+					if !runner.CredentialKey(k) {
+						t.Errorf("key %q was refused by the first revision and is accepted", k)
+						continue
+					}
+					nested, _ := json.Marshal(map[string]any{"cfg": []any{map[string]string{k: "v"}}})
+					for name, ext := range map[string]json.RawMessage{
+						"top level": json.RawMessage(`"v"`),
+						"nested":    nested,
+						"escaped":   json.RawMessage(`{"` + escape(k) + `":"v"}`),
+					} {
+						key := k
+						if name != "top level" {
+							key = "cfg"
+						}
+						if !inRequest(map[string]json.RawMessage{key: ext}) {
+							t.Errorf("key %q (%s) was refused by the first revision and is accepted", k, name)
+						}
+					}
+				}
+			}
+		}
+	}
+	if cells < 8000 {
+		t.Fatalf("the generated family shrank to %d cells", cells)
+	}
+	// The declared way out, beside it: a key whose trailing words only describe
+	// the slot, in the spellings a person writes.
+	for _, slot := range []string{"auth", "oauth", "bearer", "privkey", "access_key"} {
+		for _, q := range []string{"method", "scopes", "format", "rotation_days", "ttl", "version"} {
+			key := slot + "_" + q
+			for _, k := range []string{key, strings.ToUpper(key), strings.ToUpper(key[:1]) + key[1:]} {
+				if runner.CredentialKey(k) {
+					t.Errorf("key %q only describes a slot and must pass", k)
+				}
+			}
+		}
+	}
+}
+
+// TestQuotedSettingWordEndsAtItsQuote pins how a quoted setting word reads: in
+// a plain string field it ends at its closing quote, so a separator or closer
+// after the quote leaves a bare setting word and the unlabelled text after it
+// passes; any other character after the quote keeps the pair a secret. The same
+// pair inside an extension is read as JSON text, where the quote is escaped and
+// closes nothing, so it is refused there.
+func TestQuotedSettingWordEndsAtItsQuote(t *testing.T) {
+	base, err := runner.DecodeRequest(fixture(t, "standing-desk-request.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := "zq9x7k2m4p8w"
+	for _, slot := range []string{"auth", "oauth", "bearer", "privkey"} {
+		for _, sep := range []string{",", ";", ".", ")", "}", "]"} {
+			text := slot + `="disabled"` + sep + run
+			if runner.LooksLikeCredential(text) {
+				t.Errorf("%q: a quoted setting word ended by a separator must pass in a string field", text)
+			}
+			b, _ := json.Marshal(text)
+			r := base
+			r.Extensions = map[string]json.RawMessage{"cfg": b}
+			if !errors.Is(r.Validate(), runner.ErrCredential) {
+				t.Errorf("%q: the same pair in an extension must be refused", text)
+			}
+		}
+		for _, text := range []string{slot + `="disabled"` + run, slot + `="disabled` + run} {
+			if !runner.LooksLikeCredential(text) {
+				t.Errorf("%q: a setting word followed by anything else in its value is a secret", text)
+			}
+		}
 	}
 }

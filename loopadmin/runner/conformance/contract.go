@@ -157,7 +157,7 @@ func CaseCredentialShapes(t *testing.T, f Factory) {
 	ctx := context.Background()
 	secret := secretShape()
 	basic := "Basic " + "dXNlcjpwYXNzd29yZA=="
-	for name, ext := range map[string]map[string]string{
+	cases := map[string]map[string]string{
 		"nested token key":     {"cfg": `{"retry":{"token":"abcdefgh12"}}`},
 		"nested authorization": {"cfg": `{"headers":{"Authorization":"x"}}`},
 		"basic credential":     {"cfg": `{"hdr":"` + basic + `"}`},
@@ -182,7 +182,17 @@ func CaseCredentialShapes(t *testing.T, f Factory) {
 		"access key id key":    {"cfg": `{"aws_access_key_id":"x"}`},
 		"access key id value":  {"cfg": `"aws_access_key_id=abcdefgh12"`},
 		"url with a password":  {"cfg": `{"remote":"` + passwordURL() + `"}`},
-	} {
+	}
+	// A slot word is a slot in every case spelling: one letter of it raised in
+	// turn, as a key of the extension map and as a nested key with a word after.
+	for _, w := range []string{"auth", "oauth"} {
+		for i := range w {
+			k := w[:i] + strings.ToUpper(w[i:i+1]) + w[i+1:]
+			cases["case-spelled "+k+" key"] = map[string]string{k: `"x"`}
+			cases["case-spelled "+k+" nested"] = map[string]string{"cfg": `{"` + k + `_header":"x"}`}
+		}
+	}
+	for name, ext := range cases {
 		r := StandingRequest("cred-shape")
 		r.Extensions = map[string]json.RawMessage{}
 		for k, v := range ext {

@@ -1328,5 +1328,47 @@
     "file": "runner/secrets.go",
     "old": "bytes.IndexByte(b, ':') > 0",
     "new": "bytes.IndexByte(b, ':') >= 0"
+  },
+  {
+    "test": "TestCredentialKeySpellingsStayRefused",
+    "why": "R5: a slot word is looked for in the camelCase split only",
+    "file": "runner/secrets.go",
+    "old": "if slotWordIn(keyWords(k)) || slotWordIn(plainWords(k)) {",
+    "new": "if slotWordIn(keyWords(k)) {"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R5: a slot word is looked for in the plain split only",
+    "file": "runner/secrets.go",
+    "old": "if slotWordIn(keyWords(k)) || slotWordIn(plainWords(k)) {",
+    "new": "if slotWordIn(plainWords(k)) {"
+  },
+  {
+    "test": "TestCredentialKeySpellingsStayRefused",
+    "why": "R5: the plain split keeps the key's case",
+    "file": "runner/secrets.go",
+    "old": "return strings.FieldsFunc(strings.ToLower(k), notAlnum)",
+    "new": "return strings.FieldsFunc(k, notAlnum)"
+  },
+  {
+    "test": "TestCredentialKeySpellingsStayRefused",
+    "why": "R5: the plain split never cuts the key",
+    "file": "runner/secrets.go",
+    "old": "return strings.FieldsFunc(strings.ToLower(k), notAlnum)",
+    "new": "return []string{strings.ToLower(k)}"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R5: a slot word counts whatever words trail it",
+    "file": "runner/secrets.go",
+    "old": "if slotWords[w] && !describesOnly(words[i+1:]) {",
+    "new": "if slotWords[w] {"
+  },
+  {
+    "test": "TestCredentialKeySpellingsStayRefused",
+    "why": "R5: a slot word is a slot only when it ends the key",
+    "file": "runner/secrets.go",
+    "old": "if slotWords[w] && !describesOnly(words[i+1:]) {",
+    "new": "if slotWords[w] && len(words) == i+1 {"
   }
 ]
