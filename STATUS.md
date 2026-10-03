@@ -74,7 +74,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 0dbe21e 2026-10-03T02:50:15Z_
+_last regen: 53973bf 2026-10-03T13:57:37+10:00_
 
 **Progress:** 5/13 brief items done.
 
@@ -97,7 +97,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 0dbe21e 2026-10-03T02:50:15Z_
+_last regen: 53973bf 2026-10-03T13:57:37+10:00_
 
 **Progress:** 13/31 brief items done.
 
@@ -198,7 +198,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | quality | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting human gate (13)
+### Awaiting human gate (14)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -213,10 +213,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-neutral | 11 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | windows-port | 08 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| desktools-v2 | 10 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 | windows-port | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting implementer rework (21)
+### Awaiting implementer rework (20)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -228,7 +229,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-containers | 09 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | composability | 01 | implemented | 1500 | 1 | — | — | — |
-| desktools-v2 | 10 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
