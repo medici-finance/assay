@@ -1237,6 +1237,13 @@ func main() {
 		os.Exit(runVerifyclosure(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen verifyflip` — the sanctioned implemented → verified README flip
+	// for a gate: model brief, its Verified stamp derived from the recorded strict
+	// PASS (verifyflip.go, #2074). Own flag namespace, so intercepted here.
+	if len(os.Args) > 1 && os.Args[1] == "verifyflip" {
+		os.Exit(runVerifyflip(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen mergecheck` — the MERGE-TIME RE-CHECK (desk-hardening/05, #54).
 	// Re-asks "is this branch still correct?" against the TRIAL-MERGED tree rather
 	// than the branch's own, which is the only tree that can show a semantic merge
@@ -1475,7 +1482,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, verifyflip, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}

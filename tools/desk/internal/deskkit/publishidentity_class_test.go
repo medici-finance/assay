@@ -57,6 +57,9 @@ var publishIdentitySites = map[string]string{
 	// deskevidence's callers: its wrapper takes no tip at all.
 	"cmd/deskevidence/deskevidence.go|cmdEvidence|call|-":            "deskevidence wrapper fixes RemoteTip to \"\"",
 	"cmd/deskevidence/outcomerecord.go|cmdOutcomeRecordWrite|call|-": "deskevidence wrapper fixes RemoteTip to \"\"",
+	// flip (#2074) judges a fresh local branch before and after its commit: the
+	// wrapper's empty tip is the widest range, every commit not on the base.
+	"cmd/deskevidence/flip.go|runFlip|call|-": "deskevidence wrapper fixes RemoteTip to \"\"",
 }
 
 // publishIdentitySite is one place the gate is reached.
