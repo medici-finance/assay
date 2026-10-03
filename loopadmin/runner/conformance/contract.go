@@ -172,6 +172,13 @@ func CaseCredentialShapes(t *testing.T, f Factory) {
 		"oauth key":            {"oauth": `"x"`},
 		"bearer key":           {"cfg": `{"bearer":"x"}`},
 		"privkey key":          {"privkey": `"x"`},
+		"camelCase privkey":    {"cfg": `{"sshPrivKey":"x"}`},
+		"PrivKey key":          {"PrivKey": `"x"`},
+		"acronym access key":   {"cfg": `{"AWSAccessKeyId":"x"}`},
+		"run-together slot":    {"cfg": `{"myaccesskey":"x","userbearer":"y"}`},
+		"prefixed slot value":  {"cfg": `"userprivkey=abcdefgh12"`},
+		"slot after a setting": {"cfg": `"{\"auth\":\"disabled\",\"privkey\":\"abcdefgh12\"}"`},
+		"password with a hash": {"cfg": `"https://user:abc#def123@git.example"`},
 		"access key id key":    {"cfg": `{"aws_access_key_id":"x"}`},
 		"access key id value":  {"cfg": `"aws_access_key_id=abcdefgh12"`},
 		"url with a password":  {"cfg": `{"remote":"` + passwordURL() + `"}`},
@@ -206,6 +213,7 @@ func CaseCredentialShapes(t *testing.T, f Factory) {
 	// Settings that merely name a slot word are not slots, and neither is a
 	// port with an at-sign in the query.
 	ok.Extensions["settings"] = json.RawMessage(`{"auth_method":"oidc","auth_required":true,"oauth_scopes":"read","bearer_format":"jwt","access_key_rotation_days":90,"note":"auth: disabled","pallbearer":"pallbearer=ab12cd34ef"}`)
+	ok.Extensions["more"] = json.RawMessage(`{"cupbearer":"x","note":"auth: disabled","other":"fine"}`)
 	ok.Extensions["contact"] = json.RawMessage(`"https://git.example:8443?owner=a@b.example"`)
 	claims.Set(ok.Authority.Key, 1)
 	if _, _, err := c.Start(ctx, ok); err != nil {
@@ -482,10 +490,13 @@ func CaseRequestRules(t *testing.T, f Factory) {
 		"credential in the resume profile": {func(r *runner.LaunchRequest) {
 			r.Resume = &runner.SessionRef{SessionID: "sess-1", Role: r.Packet.Role, ProfileID: secretShape()}
 		}, runner.ErrCredential},
-		"absent tool list": {func(r *runner.LaunchRequest) { r.Profile.Tools = nil }, runner.ErrInvalidRequest},
-		"no budget limit":  {func(r *runner.LaunchRequest) { r.Budget.MaxTokens, r.Budget.MaxCostMicros = 0, 0 }, runner.ErrInvalidRequest},
-		"negative tokens":  {func(r *runner.LaunchRequest) { r.Budget.MaxTokens, r.Budget.MaxCostMicros = -5, 1 }, runner.ErrInvalidRequest},
-		"negative cost":    {func(r *runner.LaunchRequest) { r.Budget.MaxTokens, r.Budget.MaxCostMicros = 5, -1 }, runner.ErrInvalidRequest},
+		"blank tool name, first":  {func(r *runner.LaunchRequest) { r.Profile.Tools = []string{"", "read"} }, runner.ErrInvalidRequest},
+		"blank tool name, middle": {func(r *runner.LaunchRequest) { r.Profile.Tools = []string{"read", " ", "exec"} }, runner.ErrInvalidRequest},
+		"blank tool name, last":   {func(r *runner.LaunchRequest) { r.Profile.Tools = []string{"read", "\t"} }, runner.ErrInvalidRequest},
+		"absent tool list":        {func(r *runner.LaunchRequest) { r.Profile.Tools = nil }, runner.ErrInvalidRequest},
+		"no budget limit":         {func(r *runner.LaunchRequest) { r.Budget.MaxTokens, r.Budget.MaxCostMicros = 0, 0 }, runner.ErrInvalidRequest},
+		"negative tokens":         {func(r *runner.LaunchRequest) { r.Budget.MaxTokens, r.Budget.MaxCostMicros = -5, 1 }, runner.ErrInvalidRequest},
+		"negative cost":           {func(r *runner.LaunchRequest) { r.Budget.MaxTokens, r.Budget.MaxCostMicros = 5, -1 }, runner.ErrInvalidRequest},
 	} {
 		r := StandingRequest("rule")
 		r.Authority.Key = "claim/rules"
@@ -495,7 +506,15 @@ func CaseRequestRules(t *testing.T, f Factory) {
 		_, _, err := c.Start(ctx, r)
 		wantErr(t, name, err, tc.want)
 	}
-	// Positive control: an empty tool list pins no tools and is valid.
+	// Positive control: named tools start, and an empty tool list pins no tools.
+	named := StandingRequest("named-tools")
+	named.Authority.Key = "claim/named"
+	claims.Set(named.Authority.Key, 1)
+	named.Profile.Tools = []string{"read", "write", "exec"}
+	if _, _, err := c.Start(ctx, named); err != nil {
+		t.Fatalf("a request naming its tools must start: %v", err)
+	}
+	// An empty tool list pins no tools and is valid.
 	none := StandingRequest("no-tools")
 	none.Authority.Key = "claim/rules"
 	none.Profile.Tools = []string{}

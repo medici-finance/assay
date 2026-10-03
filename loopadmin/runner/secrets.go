@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // Credential exclusion. Packets, results and extensions never carry secrets:
@@ -24,17 +25,43 @@ var credentialPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{20,}`),
 	// key=value and "key": "value" forms, including a quoted JSON key.
 	regexp.MustCompile(`(?i)(api[_-]?key|secret|passw(or)?d|token|authorization|cookie)["']?\s*[:=]\s*\S{8,}`),
-	// A URL carrying a password in its userinfo: scheme://user:password@host.
-	// Userinfo ends at the first '/', '?' or '#' (RFC 3986), so a port and an
-	// '@' in a query or fragment is not a password.
-	regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]*://[^/\s:@?#]+:[^/\s@?#]+@`),
 }
 
-// slotValue is the key=value form for the slot words that are only slots as a
-// whole word: auth, oauth, bearer, privkey and access-key, left-bounded by
-// the start or a non-alphanumeric ("x-auth", "basic_auth", but not
-// "pallbearer"). Group 1 is the value.
-var slotValue = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:o?auth|bearer|privkey|access[_-]?key(?:[_-]?id)?)["']?\s*[:=]\s*(\S{8,})`)
+// userinfoURL finds scheme://user:password@. The user ends at the first '/',
+// '?' or '#'; the password may carry '?' or '#' (a password can), so
+// passwordInURL decides whether the run is a password or a port.
+var userinfoURL = regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]*://[^/\s:@?#]+:([^/\s@]+)@`)
+
+// passwordInURL reports whether the userinfo run after the user's colon is a
+// password. A run that is only digits up to its first '?' or '#' is a port with
+// an '@' in the query or fragment ("https://host:8080?owner=a@b.example"), not
+// a password; any other run is one, '?' and '#' included.
+func passwordInURL(run string) bool {
+	i := strings.IndexAny(run, "?#")
+	if i <= 0 {
+		return true
+	}
+	for _, r := range run[:i] {
+		if r < '0' || r > '9' {
+			return true
+		}
+	}
+	return false
+}
+
+// slotPrefix finds a slot word and its separator: auth, bearer, privkey and
+// access-key (with or without an id), wherever they occur in the text, so a
+// slot glued to a prefix ("sshauth=", "awsaccesskey=", "userbearer:") is still
+// a slot. The value is read separately, from the end of the match, so two slots
+// written back to back each carry their own value. Group 1 is the slot word.
+var slotPrefix = regexp.MustCompile(`(?i)(auth|bearer|privkey|access[_-]?key(?:[_-]?id)?)["']?\s*[:=]\s*`)
+
+// compoundBearer are the English words that end in "bearer": "pallbearer=..."
+// names a person, not a slot. Only these exact compounds are excused.
+var compoundBearer = map[string]bool{
+	"pall": true, "cup": true, "standard": true, "torch": true,
+	"flag": true, "sword": true, "ring": true,
+}
 
 // benignSlotValues are values that state a setting, never a secret, for the
 // slot words above ("auth: disabled").
@@ -48,15 +75,60 @@ var benignSlotValues = map[string]bool{
 // prose such as "basic functionality" is not a credential.
 var basicAuth = regexp.MustCompile(`(?i)\bbasic\s+([A-Za-z0-9+/]{4,}={0,2})`)
 
-// benignSlotValue reports whether the text after a slot word is a bare setting
-// word. In JSON text the value runs to its closing quote, so the word is read
-// up to the first double quote.
-func benignSlotValue(v string) bool {
-	v = strings.TrimLeft(v, `"'`)
-	if i := strings.IndexByte(v, '"'); i >= 0 {
+// slotValueOf returns the value that follows the slot word at s[start:end]'s
+// separator: the run up to the next whitespace, and whether it is long enough
+// to be a secret.
+func slotValueOf(s string, end int) (string, bool) {
+	v := s[end:]
+	if i := strings.IndexAny(v, " \t\n\f\r"); i >= 0 {
 		v = v[:i]
 	}
-	return benignSlotValues[strings.ToLower(strings.TrimRight(v, `,;.)}]'`))]
+	return v, utf8.RuneCountInString(v) >= 8
+}
+
+// benignSlotValue reports whether a slot's value is a bare setting word and
+// nothing else. A quoted value is the word between its quotes and may be
+// followed only by a separator ("disabled", then a comma or a closing brace),
+// so the next field of a JSON object is read as its own slot, never as part of
+// this value. An unquoted value may be followed only by closing punctuation.
+func benignSlotValue(v string) bool {
+	quote := byte(0)
+	if v != "" && (v[0] == '"' || v[0] == '\'') {
+		quote, v = v[0], v[1:]
+	}
+	end := 0
+	for end < len(v) && (v[end] >= 'a' && v[end] <= 'z' || v[end] >= 'A' && v[end] <= 'Z' || v[end] >= '0' && v[end] <= '9' || v[end] == '_' || v[end] == '-') {
+		end++
+	}
+	if !benignSlotValues[strings.ToLower(v[:end])] {
+		return false
+	}
+	rest := v[end:]
+	if quote != 0 {
+		if rest == "" || rest[0] != quote {
+			return false
+		}
+		rest = rest[1:]
+		return rest == "" || strings.IndexByte(",;.)}]", rest[0]) >= 0
+	}
+	if rest != "" && (rest[0] == '"' || rest[0] == '\'') {
+		// The word ends a string that opened before the slot (a JSON string
+		// that says "auth: disabled"): the quote closes it, so a separator or
+		// the end must follow, exactly as for a quoted value.
+		rest = rest[1:]
+		return rest == "" || strings.IndexByte(",;.)}]", rest[0]) >= 0
+	}
+	return strings.Trim(rest, ",;.)}]") == ""
+}
+
+// compoundBearerAt reports whether the slot word at s[start:] is the tail of
+// one of the excused compounds, the letters before it being exactly that word.
+func compoundBearerAt(s string, start int) bool {
+	i := start
+	for i > 0 && (s[i-1] >= 'a' && s[i-1] <= 'z' || s[i-1] >= 'A' && s[i-1] <= 'Z') {
+		i--
+	}
+	return i < start && compoundBearer[strings.ToLower(s[i:start])]
 }
 
 // LooksLikeCredential reports whether s contains credential-shaped content.
@@ -66,8 +138,18 @@ func LooksLikeCredential(s string) bool {
 			return true
 		}
 	}
-	for _, m := range slotValue.FindAllStringSubmatch(s, -1) {
-		if !benignSlotValue(m[1]) {
+	for _, m := range slotPrefix.FindAllStringSubmatchIndex(s, -1) {
+		v, long := slotValueOf(s, m[1])
+		if !long || benignSlotValue(v) {
+			continue
+		}
+		if strings.EqualFold(s[m[2]:m[3]], "bearer") && compoundBearerAt(s, m[2]) {
+			continue
+		}
+		return true
+	}
+	for _, m := range userinfoURL.FindAllStringSubmatch(s, -1) {
+		if passwordInURL(m[1]) {
 			return true
 		}
 	}
@@ -86,15 +168,17 @@ var credentialKeyWords = []string{
 	"authorization", "cookie", "session",
 }
 
-// credentialKeySlots name a credential slot only as whole words of the key (the
-// key is split on anything but a letter or digit, and at a lower-to-upper
-// camelCase step): "auth" is a slot in "x-auth" or "basic_auth", but "author"
-// and "authority" are not credentials, and "access_key" is a slot in
-// "aws_access_key_id" or "accessKeyId" but not in "access_key_rotation_days".
-var credentialKeySlots = [][]string{
-	{"auth"}, {"oauth"}, {"bearer"}, {"privkey"},
-	{"accesskey"}, {"accesskeyid"}, {"access", "key"},
-}
+// slotWords name a credential slot only as whole words of the key (the key is
+// split on anything but a letter or digit, at a lower-to-upper camelCase step
+// and after an acronym run): "auth" is a slot in "x-auth", "basic_auth" or
+// "AWSAuthKey", but "author" and "authority" are not credentials.
+var slotWords = map[string]bool{"auth": true, "oauth": true}
+
+// slotRuns name a credential slot wherever they occur in the key's words run
+// together, so a slot glued to a prefix or split by case or punctuation is
+// still a slot: "bearer", "userbearer"; "privkey", "privKey", "sshPrivKey",
+// "priv_key"; "accesskey", "access_key", "AWSAccessKeyId", "myaccesskey".
+var slotRuns = []string{"bearer", "privkey", "accesskey"}
 
 // benignKeyQualifiers are the words that, trailing a slot word, make the key
 // describe the slot rather than hold it: "auth_method", "oauth_scopes",
@@ -108,16 +192,37 @@ var benignKeyQualifiers = map[string]bool{
 	"version": true, "policy": true,
 }
 
-// keyWords splits a key into lower-case words.
+// describesOnly reports whether every word after a slot is a qualifier. A slot
+// with no word after it is the slot itself.
+func describesOnly(rest []string) bool {
+	if len(rest) == 0 {
+		return false
+	}
+	for _, w := range rest {
+		if !benignKeyQualifiers[w] {
+			return false
+		}
+	}
+	return true
+}
+
+// keyWords splits a key into lower-case words: at anything but a letter or
+// digit, where a lower-case letter or digit meets an upper-case letter
+// ("accessKey"), and where an acronym run meets a capitalised word ("AWSAccess"
+// is "aws" and "access").
 func keyWords(k string) []string {
+	rs := []rune(k)
 	var b strings.Builder
-	var prev rune
-	for _, r := range k {
-		if r >= 'A' && r <= 'Z' && prev >= 'a' && prev <= 'z' || r >= 'A' && r <= 'Z' && prev >= '0' && prev <= '9' {
-			b.WriteByte(' ')
+	for i, r := range rs {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			prev := rs[i-1]
+			lowerOrDigit := prev >= 'a' && prev <= 'z' || prev >= '0' && prev <= '9'
+			acronymEnd := prev >= 'A' && prev <= 'Z' && i+1 < len(rs) && rs[i+1] >= 'a' && rs[i+1] <= 'z'
+			if lowerOrDigit || acronymEnd {
+				b.WriteByte(' ')
+			}
 		}
 		b.WriteRune(r)
-		prev = r
 	}
 	return strings.FieldsFunc(strings.ToLower(b.String()), func(r rune) bool {
 		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
@@ -133,23 +238,44 @@ func CredentialKey(k string) bool {
 		}
 	}
 	words := keyWords(k)
-	for _, slot := range credentialKeySlots {
-	scan:
-		for i := 0; i+len(slot) <= len(words); i++ {
-			for j, w := range slot {
-				if words[i+j] != w {
-					continue scan
+	for i, w := range words {
+		if slotWords[w] && !describesOnly(words[i+1:]) {
+			return true
+		}
+	}
+	// ends[i] is where word i ends in the words run together.
+	ends := make([]int, len(words))
+	run := 0
+	for i, w := range words {
+		run += len(w)
+		ends[i] = run
+	}
+	joined := strings.Join(words, "")
+	for _, slot := range slotRuns {
+		for from := 0; from < len(joined); from++ {
+			j := strings.Index(joined[from:], slot)
+			if j < 0 {
+				break
+			}
+			from += j
+			end := from + len(slot)
+			last, first := -1, 0
+			for i, e := range ends {
+				if e == end {
+					last = i
+				}
+				if e <= from {
+					first = i + 1
 				}
 			}
-			for _, rest := range words[i+len(slot):] {
-				if !benignKeyQualifiers[rest] {
-					return true
-				}
+			if slot == "bearer" && last == first && from > ends[first]-len(words[first]) &&
+				compoundBearer[words[first][:from-(ends[first]-len(words[first]))]] {
+				continue // "pallbearer": the one word is an excused compound
 			}
-			if i+len(slot) == len(words) {
+			// A slot that ends inside a longer word ("accesskeyid") is a slot.
+			if last < 0 || !describesOnly(words[last+1:]) {
 				return true
 			}
-			// Every trailing word is a qualifier: the key describes the slot.
 		}
 	}
 	return false

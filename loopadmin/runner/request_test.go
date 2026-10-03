@@ -3,6 +3,7 @@ package runner_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -140,20 +141,24 @@ func TestValidateRefusesBlankTool(t *testing.T) {
 	}
 }
 
-// TestCredentialFloorFalsePositives pins the floor's precision: text and keys
-// that merely contain a slot word are not credentials. Each negative sits
-// beside a positive control that differs only in what the negative lacks, so
-// loosening the floor to pass the negatives cannot go unseen.
+// TestCredentialFloorFalsePositives pins the floor's precision and its recall
+// side by side: text and keys that merely contain a slot word are not
+// credentials, and every spelling the floor refused before the precision fixes
+// is still refused. Each negative sits beside a positive control that differs
+// only in what the negative lacks, so loosening the floor to pass the negatives
+// (SEC-5, B4) cannot go unseen.
 func TestCredentialFloorFalsePositives(t *testing.T) {
 	longVal := "abcdefgh12"
 	for _, s := range []string{
-		"pallbearer=" + longVal,                  // no left boundary: "bearer" inside a word
+		"pallbearer=" + longVal,                  // an English compound, not a slot
 		"pallbearer: " + longVal,                 //
-		"a1auth=" + longVal,                      // "auth" inside a word
+		"cupbearer=" + longVal,                   // ... nor is this one
 		"auth: disabled",                         // a setting, not a secret
 		"auth=required",                          //
 		`{"auth":"external"}`,                    //
+		`{"auth":"disabled","note":"fine"}`,      // a setting followed by another field
 		"oauth: enabled",                         //
+		`{"note":"auth: disabled","k":"fine"}`,   // the string closes after the setting word
 		"http://git.example:8080?contact=a@b.io", // a port and an @ in the query
 		"http://git.example:8080#frag@x",         // ... or in the fragment
 		"http://git.example:8080/p?c=a@b.io",     // ... or after a path
@@ -185,6 +190,26 @@ func TestCredentialFloorFalsePositives(t *testing.T) {
 		"https://deploy:x9y8z7w6@git.example/r",
 		"https://deploy:x9y8z7w6@git.example:8443/r",
 		"https://deploy:x9y8z7w6@git.example",
+		// A slot word glued to a prefix is a slot, whatever the prefix.
+		"userprivkey=" + longVal, "sshprivkey=" + longVal, "sshauth=" + longVal,
+		"myauth=" + longVal, "proxyauth=" + longVal, "awsoauth=" + longVal,
+		"awsaccesskey=" + longVal, "AWSAccessKeyId=" + longVal, "userbearer=" + longVal,
+		"9bearer=" + longVal, "a1auth=" + longVal,
+		// A setting word excuses only a value that is nothing else.
+		`{"auth":"disabled","privkey":"` + longVal + `"}`,
+		`{"auth":"disabled","bearer":"` + longVal + `"}`,
+		`{"auth":"disabled","oauth":"` + longVal + `"}`,
+		`{"auth":"disabled","access_key":"` + longVal + `"}`,
+		`{"auth":"disabled","accessKeyId":"` + longVal + `"}`,
+		`auth="disabled",privkey="` + longVal + `"`,
+		`auth=disabled,privkey=` + longVal,
+		`privkey:"disabled"` + longVal,
+		`auth=disabled"` + longVal,
+		"auth: disabled" + longVal,
+		// A URL password may carry a question mark or a hash.
+		"https://user:abc#def123@git.example",
+		"https://user:pa?ss12@git.example",
+		"https://deploy:x9y8z7w6#frag@git.example/r",
 	} {
 		if !runner.LooksLikeCredential(s) {
 			t.Errorf("must flag %q", s)
@@ -193,7 +218,8 @@ func TestCredentialFloorFalsePositives(t *testing.T) {
 	for _, k := range []string{
 		"auth_method", "auth_required", "oauth_scopes", "bearer_format",
 		"access_key_rotation_days", "accessKeyRotationDays", "AuthMethod",
-		"author", "authority", "auth-mode", "oauth_provider",
+		"author", "authority", "auth-mode", "oauth_provider", "pallbearer",
+		"AWSAccessKeyRotationDays", "privKeyVersion", "bearer_type",
 	} {
 		if runner.CredentialKey(k) {
 			t.Errorf("must not flag the key %q", k)
@@ -203,9 +229,204 @@ func TestCredentialFloorFalsePositives(t *testing.T) {
 		"auth", "x-auth", "basic_auth", "oauth", "bearer", "privkey",
 		"access_key", "access_key_id", "accessKeyId", "AWS_ACCESS_KEY_ID",
 		"accesskey", "auth_header", "Bearer", "x-bearer",
+		// camelCase, acronym runs and run-together spellings of a slot.
+		"privKey", "PrivKey", "sshPrivKey", "userPrivKey", "sshprivkey",
+		"privkeypem", "privKeyPem", "priv_key", "AWSAccessKeyId", "AWSAccessKey",
+		"awsaccesskey", "myaccesskey", "userbearer", "accessKey", "AccessKeyId",
+		"authKey", "AWSAuthKey", "xAuth", "pallbearerx", "pall_bearer",
 	} {
 		if !runner.CredentialKey(k) {
 			t.Errorf("must flag the key %q", k)
+		}
+	}
+}
+
+// TestCredentialFloorVocabulary walks each word the floor's lists name, one at
+// a time, so removing or misspelling any single entry is seen: every key word,
+// every qualifier that lets a slot key describe rather than hold, every setting
+// word that lets a slot value state rather than hold, every excused compound,
+// and the length and boundary cases of the value forms.
+func TestCredentialFloorVocabulary(t *testing.T) {
+	longVal := "abcdefgh12"
+	for _, w := range []string{
+		"token", "secret", "password", "passwd", "passphrase", "credential",
+		"apikey", "api_key", "api-key", "private_key", "privatekey", "private-key",
+		"authorization", "cookie", "session",
+	} {
+		if !runner.CredentialKey(strings.ToUpper("x_"+w+"_y")) || !runner.CredentialKey("x_"+w+"_y") {
+			t.Errorf("a key containing %q must be flagged", w)
+		}
+		if runner.CredentialKey("x_" + w[:len(w)-1]) {
+			t.Errorf("a key containing only %q must not be flagged", w[:len(w)-1])
+		}
+	}
+	for _, w := range []string{
+		"method", "methods", "required", "scope", "scopes", "format", "type", "mode",
+		"enabled", "rotation", "days", "ttl", "expiry", "timeout", "provider", "realm",
+		"version", "policy",
+	} {
+		for _, slot := range []string{"auth", "oauth", "bearer", "privkey", "access_key"} {
+			if runner.CredentialKey(slot + "_" + w) {
+				t.Errorf("the key %q only describes a slot", slot+"_"+w)
+			}
+			if !runner.CredentialKey(slot + "_" + w + "_header") {
+				t.Errorf("the key %q holds a slot", slot+"_"+w+"_header")
+			}
+		}
+	}
+	for _, k := range []string{"auth_method_header", "pallbearer_bearer", "pallbear_er", "pallprivkey", "ringaccesskey", "AUTH", "X-AUTH", "v2Auth", "oauth_header", "privkey_id", "accesskeyid"} {
+		if !runner.CredentialKey(k) {
+			t.Errorf("must flag the key %q", k)
+		}
+	}
+	for _, k := range []string{"oauth2", "oauth2_provider", "authz", "author_name", "access", "key"} {
+		if runner.CredentialKey(k) {
+			t.Errorf("must not flag the key %q", k)
+		}
+	}
+	for _, w := range []string{"disabled", "required", "optional", "external", "internal", "enabled", "inherit"} {
+		for _, text := range []string{
+			`{"auth":"` + w + `"}`, `{'auth':'` + w + `'}`, "auth='" + w + "'", "auth=" + strings.ToUpper(w),
+			`x='auth: ` + w + `', y`, "(auth: " + w + ")", "auth: " + w + ".", "auth: " + w + " for local runs",
+		} {
+			if runner.LooksLikeCredential(text) {
+				t.Errorf("must not flag the setting %q", text)
+			}
+		}
+		for _, text := range []string{
+			"auth=" + w + "x9y8z7w6", "auth=" + w + ",x9y8z7w6", `auth="` + w + `',x9y8z7w6`,
+			`auth="` + w, `auth="` + w + `"x9y8z7w6`, "auth=" + w + `"x9y8z7w6`,
+		} {
+			if !runner.LooksLikeCredential(text) {
+				t.Errorf("must flag %q", text)
+			}
+		}
+	}
+	for _, w := range []string{"pall", "cup", "standard", "torch", "flag", "sword", "ring"} {
+		for _, text := range []string{w + "bearer=" + longVal, strings.Title(w) + "bearer: " + longVal, strings.ToUpper(w) + "BEARER=" + longVal} {
+			if runner.LooksLikeCredential(text) {
+				t.Errorf("must not flag the compound %q", text)
+			}
+		}
+		if runner.CredentialKey(w + "bearer") {
+			t.Errorf("the key %qbearer is a compound word", w)
+		}
+		if !runner.LooksLikeCredential(w + "auth=" + longVal) {
+			t.Errorf("the compound excuse is for bearer only: %qauth", w)
+		}
+	}
+	for _, w := range []string{"api_key", "secret", "password", "passwd", "token", "authorization", "cookie"} {
+		if !runner.LooksLikeCredential(w + "=" + longVal) {
+			t.Errorf("must flag %s=value", w)
+		}
+		if !runner.LooksLikeCredential(w + "=abcdefgh") {
+			t.Errorf("a value of exactly eight characters is a secret: %s", w)
+		}
+		if runner.LooksLikeCredential(w + "=short") {
+			t.Errorf("a value of five characters is not a secret: %s=short", w)
+		}
+	}
+	for _, w := range []string{"auth", "bearer", "privkey", "access_key", "access-key", "accesskeyid", "access_key_id"} {
+		for _, text := range []string{w + "=abcdefgh", w + `":"abcdefgh`, w + " : abcdefgh"} {
+			if !runner.LooksLikeCredential(text) {
+				t.Errorf("a value of exactly eight characters is a secret: %q", text)
+			}
+		}
+		if runner.LooksLikeCredential(w + "=abcdefg") {
+			t.Errorf("a value of seven characters is not: %s", w)
+		}
+		if runner.LooksLikeCredential(w+"= abcdefghij") && w == "never" {
+			t.Fatal("unreachable")
+		}
+		if !runner.LooksLikeCredential("WITH " + strings.ToUpper(w) + "=" + longVal) {
+			t.Errorf("the match ignores case: %s", w)
+		}
+		// The value is the run up to the next space, so prose after it is not part of it.
+		if runner.LooksLikeCredential(w + "=short and then a longer sentence") {
+			t.Errorf("a short value followed by prose is short: %s", w)
+		}
+	}
+	for _, u := range []struct {
+		url  string
+		cred bool
+	}{
+		{"https://user:?abcd1234@git.example", true},
+		{"https://user:12-34#x@git.example", true},
+		{"https://user:1234abcd?x@git.example", true},
+		{"HTTPS://deploy:x9y8z7w6@git.example", true},
+		{"https://user:12345?q@git.example", false},
+		{"https://user:12345#q@git.example", false},
+		{"https://host?next=a:b@c.io", false},
+		{"https://host#a:b@c.io", false},
+		{"https://git.example:8080/path/a@b.io", false},
+		{"see https://host:80 then mail a@b.io", false},
+		{"https://user:@git.example", false},
+	} {
+		if got := runner.LooksLikeCredential(u.url); got != u.cred {
+			t.Errorf("%q: flagged %v, want %v", u.url, got, u.cred)
+		}
+	}
+}
+
+// TestCredentialSlotsInRequests carries the slot spellings through the request
+// itself: as an extension key at the top level, nested, and written with a
+// JSON unicode escape, and as text in the string fields a packet carries.
+func TestCredentialSlotsInRequests(t *testing.T) {
+	base, err := runner.DecodeRequest(fixture(t, "standing-desk-request.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused := func(edit func(*runner.LaunchRequest)) bool {
+		r := base
+		r.Extensions = nil
+		edit(&r)
+		return errors.Is(r.Validate(), runner.ErrCredential)
+	}
+	if refused(func(r *runner.LaunchRequest) {}) {
+		t.Fatal("positive control: the fixture request must pass the floor")
+	}
+	hex := strings.Repeat("ab", 32)
+	for _, key := range []string{
+		"privKey", "PrivKey", "sshPrivKey", "AWSAccessKeyId", "awsaccesskey",
+		"myaccesskey", "userbearer", "accessKeyId", "AWSAuthKey",
+	} {
+		esc := fmt.Sprintf(`\u%04x`, key[0]) + key[1:] // the first letter written as a JSON escape
+		for name, ext := range map[string]json.RawMessage{
+			"top level": json.RawMessage(`"` + hex + `"`),
+			"nested":    json.RawMessage(`{"cfg":{"` + key + `":"` + hex + `"}}`),
+			"escaped":   json.RawMessage(`{"` + esc + `":"x"}`),
+		} {
+			k := key
+			if name != "top level" {
+				k = "cfg"
+			}
+			if !refused(func(r *runner.LaunchRequest) { r.Extensions = map[string]json.RawMessage{k: ext} }) {
+				t.Errorf("an extension key %q (%s) must be refused", key, name)
+			}
+		}
+	}
+	for _, key := range []string{"auth_method", "oauth_scopes", "bearer_format", "access_key_rotation_days", "author", "pallbearer"} {
+		ext := map[string]json.RawMessage{"cfg": json.RawMessage(`{"` + key + `":"x"}`), key: json.RawMessage(`"x"`)}
+		if refused(func(r *runner.LaunchRequest) { r.Extensions = ext }) {
+			t.Errorf("an extension key %q only describes a slot and must pass", key)
+		}
+	}
+	for _, text := range []string{
+		"userprivkey=abcdefgh12", "AWSAccessKeyId=abcdefgh12", "myauth=abcdefgh12",
+		`{"auth":"disabled","privkey":"abcdefgh12"}`, `privkey:"disabled"abcdefgh12`,
+		"https://user:abc#def123@git.example",
+	} {
+		for name, edit := range map[string]func(*runner.LaunchRequest){
+			"packet ref": func(r *runner.LaunchRequest) { r.Packet.Ref = text },
+			"workspace":  func(r *runner.LaunchRequest) { r.Workspace = text },
+			"ext string": func(r *runner.LaunchRequest) {
+				b, _ := json.Marshal(text)
+				r.Extensions = map[string]json.RawMessage{"cfg": b}
+			},
+		} {
+			if !refused(edit) {
+				t.Errorf("the text %q in the %s must be refused", text, name)
+			}
 		}
 	}
 }
@@ -288,6 +509,50 @@ func TestSchemaMatchesGoTags(t *testing.T) {
 		if !reflect.DeepEqual(want, got) {
 			t.Errorf("%s: schema properties %v != Go json tags %v", p.name, want, got)
 		}
+	}
+}
+
+// TestSchemaRefusesBlankTool: the schema and Validate agree on a blank tool
+// name. The schema types each tool as a non-empty string, so the empty string
+// that decoding a null list element would otherwise produce is outside it, and
+// Validate refuses the empty string (and, being stricter, whitespace) too.
+func TestSchemaRefusesBlankTool(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "schemas", "loop-admin-runner-v1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s struct {
+		Props struct {
+			Profile struct {
+				Props struct {
+					Tools struct {
+						Items struct {
+							Type      string `json:"type"`
+							MinLength *int   `json:"minLength"`
+						} `json:"items"`
+					} `json:"tools"`
+				} `json:"properties"`
+			} `json:"profile"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(raw, &s); err != nil {
+		t.Fatal(err)
+	}
+	items := s.Props.Profile.Props.Tools.Items
+	if items.Type != "string" || items.MinLength == nil || *items.MinLength != 1 {
+		t.Fatalf("profile.tools.items must be a string with minLength 1, got %+v", items)
+	}
+	req, err := runner.DecodeRequest(fixture(t, "standing-desk-request.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Profile.Tools = []string{"read"}
+	if err := req.Validate(); err != nil {
+		t.Fatalf("positive control: %v", err)
+	}
+	req.Profile.Tools = []string{"read", ""}
+	if err := req.Validate(); !errors.Is(err, runner.ErrInvalidRequest) {
+		t.Fatalf("an empty tool name is outside the schema and must be refused, got %v", err)
 	}
 }
 

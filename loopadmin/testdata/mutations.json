@@ -393,115 +393,773 @@
   },
   {
     "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: drop auth from the whole-word value form",
+    "why": "R4: drop auth from the slot-value form",
     "file": "runner/secrets.go",
-    "old": "(?:o?auth|bearer|",
-    "new": "(?:oauth|bearer|"
+    "old": "(?i)(auth|bearer|privkey|",
+    "new": "(?i)(bearer|privkey|"
   },
   {
     "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: drop bearer from the whole-word value form",
+    "why": "R4: drop bearer from the slot-value form",
     "file": "runner/secrets.go",
-    "old": "o?auth|bearer|privkey|",
-    "new": "o?auth|privkey|"
+    "old": "(auth|bearer|privkey|access[_-]",
+    "new": "(auth|privkey|access[_-]"
   },
   {
     "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: drop privkey from the whole-word value form",
+    "why": "R4: drop privkey from the slot-value form",
     "file": "runner/secrets.go",
-    "old": "bearer|privkey|access",
-    "new": "bearer|access"
+    "old": "|privkey|access[_-]?key(?:",
+    "new": "|access[_-]?key(?:"
   },
   {
     "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: drop access-key from the whole-word value form",
+    "why": "R4: drop access-key from the slot-value form",
     "file": "runner/secrets.go",
-    "old": "|privkey|access[_-]?key(?:[_-]?id)?)",
-    "new": "|privkey)"
+    "old": "|access[_-]?key(?:[_-]?id)?)[\"']?",
+    "new": "|zzzz)[\"']?"
   },
   {
     "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: never flag the whole-word value form",
+    "why": "R4: anchor the slot-value form on a word boundary (SEC-5)",
     "file": "runner/secrets.go",
-    "old": "if !benignSlotValue(m[1]) {",
-    "new": "if !benignSlotValue(m[1]) && false {"
+    "old": "`(?i)(auth|bearer",
+    "new": "`(?i)\\b(auth|bearer"
   },
   {
     "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: flag a setting word as a secret",
+    "why": "R4: let the slot-value separator be a colon only",
     "file": "runner/secrets.go",
-    "old": "if !benignSlotValue(m[1]) {",
-    "new": "if !benignSlotValue(m[1]) || true {"
+    "old": "[\"']?\\s*[:=]\\s*`)\n\n// compoundBearer",
+    "new": "[\"']?\\s*[:]\\s*`)\n\n// compoundBearer"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: a secret needs nine characters, not eight",
+    "file": "runner/secrets.go",
+    "old": "RuneCountInString(v) >= 8",
+    "new": "RuneCountInString(v) >= 9"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: a secret needs one character, not eight",
+    "file": "runner/secrets.go",
+    "old": "RuneCountInString(v) >= 8",
+    "new": "RuneCountInString(v) >= 1"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: read a slot value past the next whitespace",
+    "file": "runner/secrets.go",
+    "old": "if i := strings.IndexAny(v, \" \\t\\n\\f\\r\"); i >= 0 {",
+    "new": "if i := strings.IndexAny(v, \" \\t\\n\\f\\r\"); i >= 0 && false {"
   },
   {
     "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: drop the left boundary of the value form",
+    "why": "R4: never read a quoted slot value as quoted",
     "file": "runner/secrets.go",
-    "old": "(?:^|[^a-z0-9])(?:o?auth",
-    "new": "(?:o?auth"
+    "old": "if v != \"\" && (v[0] == '\"' || v[0] == '\\'') {",
+    "new": "if v != \"\" && false {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: read only a double quote as a quote",
+    "file": "runner/secrets.go",
+    "old": "(v[0] == '\"' || v[0] == '\\'') {",
+    "new": "(v[0] == '\"') {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: match a setting word case-sensitively",
+    "file": "runner/secrets.go",
+    "old": "benignSlotValues[strings.ToLower(v[:end])]",
+    "new": "benignSlotValues[v[:end]]"
   },
   {
     "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: read a setting word past its closing quote",
+    "why": "R4: take any word for a setting word",
     "file": "runner/secrets.go",
-    "old": "if i := strings.IndexByte(v, '\"'); i >= 0 {",
-    "new": "if i := strings.IndexByte(v, '\"'); i >= 0 && false {"
+    "old": "\t\treturn false\n\t}\n\trest := v[end:]",
+    "new": "\t\treturn true\n\t}\n\trest := v[end:]"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: let a quote of the other kind close a quoted value",
+    "file": "runner/secrets.go",
+    "old": "if rest == \"\" || rest[0] != quote {",
+    "new": "if rest == \"\" || rest[0] != quote && rest[0] != '\\'' {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: accept an unclosed quoted value as a setting",
+    "file": "runner/secrets.go",
+    "old": "if rest == \"\" || rest[0] != quote {",
+    "new": "if rest != \"\" && rest[0] != quote {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: accept anything after a quoted setting",
+    "file": "runner/secrets.go",
+    "old": "return rest == \"\" || strings.IndexByte(\",;.)}]\", rest[0]) >= 0\n\t}\n\tif rest != \"\"",
+    "new": "return true\n\t}\n\tif rest != \"\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: accept anything after a string-closing quote",
+    "file": "runner/secrets.go",
+    "old": "return rest == \"\" || strings.IndexByte(\",;.)}]\", rest[0]) >= 0\n\t}\n\treturn strings.Trim",
+    "new": "return true\n\t}\n\treturn strings.Trim"
   },
   {
     "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: drop the URL-userinfo password form",
+    "why": "R4: never treat a closing quote after a bare setting as closing",
     "file": "runner/secrets.go",
-    "old": "\tregexp.MustCompile(`(?i)\\b[a-z][a-z0-9+.-]*://[^/\\s:@?#]+:[^/\\s@?#]+@`),\n",
-    "new": ""
-  },
-  {
-    "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: let URL userinfo run into the query",
-    "file": "runner/secrets.go",
-    "old": "[^/\\s:@?#]+:[^/\\s@?#]+@",
-    "new": "[^/\\s:@]+:[^/\\s@]+@"
-  },
-  {
-    "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: flag every qualified key",
-    "file": "runner/secrets.go",
-    "old": "if !benignKeyQualifiers[rest] {",
-    "new": "if !benignKeyQualifiers[rest] || true {"
-  },
-  {
-    "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: drop the bare slot-word key",
-    "file": "runner/secrets.go",
-    "old": "if i+len(slot) == len(words) {",
+    "old": "if rest != \"\" && (rest[0] == '\"' || rest[0] == '\\'') {",
     "new": "if false {"
   },
   {
-    "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: drop auth from the key slots",
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: treat only a double quote as closing a bare setting",
     "file": "runner/secrets.go",
-    "old": "{\"auth\"}, {\"oauth\"}, {\"bearer\"}, {\"privkey\"},",
-    "new": "{\"oauth\"}, {\"bearer\"}, {\"privkey\"},"
+    "old": "(rest[0] == '\"' || rest[0] == '\\'') {",
+    "new": "(rest[0] == '\"') {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop the dot from the closing punctuation",
+    "file": "runner/secrets.go",
+    "old": "strings.Trim(rest, \",;.)}]\") == \"\"",
+    "new": "strings.Trim(rest, \",;)}]\") == \"\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: accept anything after a bare setting",
+    "file": "runner/secrets.go",
+    "old": "return strings.Trim(rest, \",;.)}]\") == \"\"",
+    "new": "return true"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: accept only a bare setting that is followed by something",
+    "file": "runner/secrets.go",
+    "old": "return strings.Trim(rest, \",;.)}]\") == \"\"",
+    "new": "return strings.Trim(rest, \",;.)}]\") != \"\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop pall from the excused bearer compounds",
+    "file": "runner/secrets.go",
+    "old": "\"pall\": true,",
+    "new": "\"pallx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop cup from the excused bearer compounds",
+    "file": "runner/secrets.go",
+    "old": "\"cup\": true,",
+    "new": "\"cupx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop standard from the excused bearer compounds",
+    "file": "runner/secrets.go",
+    "old": "\"standard\": true,",
+    "new": "\"standardx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop torch from the excused bearer compounds",
+    "file": "runner/secrets.go",
+    "old": "\"torch\": true,",
+    "new": "\"torchx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop flag from the excused bearer compounds",
+    "file": "runner/secrets.go",
+    "old": "\"flag\": true,",
+    "new": "\"flagx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop sword from the excused bearer compounds",
+    "file": "runner/secrets.go",
+    "old": "\"sword\": true,",
+    "new": "\"swordx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop ring from the excused bearer compounds",
+    "file": "runner/secrets.go",
+    "old": "\"ring\": true,",
+    "new": "\"ringx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: match a compound case-sensitively",
+    "file": "runner/secrets.go",
+    "old": "compoundBearer[strings.ToLower(s[i:start])]",
+    "new": "compoundBearer[s[i:start]]"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: stop a compound at a lower-case letter",
+    "file": "runner/secrets.go",
+    "old": "s[i-1] >= 'a' && s[i-1] <= 'z' || s[i-1] >= 'A' && s[i-1] <= 'Z') {\n\t\ti--",
+    "new": "s[i-1] >= 'a' && s[i-1] <= 'z') {\n\t\ti--"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: excuse a compound before any slot word",
+    "file": "runner/secrets.go",
+    "old": "if strings.EqualFold(s[m[2]:m[3]], \"bearer\") && compoundBearerAt",
+    "new": "if compoundBearerAt"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop disabled from the setting words",
+    "file": "runner/secrets.go",
+    "old": "\"disabled\": true,",
+    "new": "\"disabledx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop required from the setting words",
+    "file": "runner/secrets.go",
+    "old": "\"required\": true, \"optional\"",
+    "new": "\"requiredx\": true, \"optional\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop optional from the setting words",
+    "file": "runner/secrets.go",
+    "old": "\"optional\": true,",
+    "new": "\"optionalx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop external from the setting words",
+    "file": "runner/secrets.go",
+    "old": "\"external\": true,",
+    "new": "\"externalx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop internal from the setting words",
+    "file": "runner/secrets.go",
+    "old": "\"internal\": true,",
+    "new": "\"internalx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop enabled from the setting words",
+    "file": "runner/secrets.go",
+    "old": "\"internal\": true, \"enabled\": true,",
+    "new": "\"internal\": true, \"enabledx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop inherit from the setting words",
+    "file": "runner/secrets.go",
+    "old": "\"inherit\": true,",
+    "new": "\"inheritx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: let a URL user run into the query or fragment",
+    "file": "runner/secrets.go",
+    "old": "[^/\\s:@?#]+:([^/\\s@]+)@",
+    "new": "[^/\\s:@]+:([^/\\s@]+)@"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: let a URL password run across a path",
+    "file": "runner/secrets.go",
+    "old": "([^/\\s@]+)@`)",
+    "new": "([^\\s@]+)@`)"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: let a URL password run across whitespace",
+    "file": "runner/secrets.go",
+    "old": "([^/\\s@]+)@`)",
+    "new": "([^/@]+)@`)"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: allow an empty URL password",
+    "file": "runner/secrets.go",
+    "old": "([^/\\s@]+)@`)",
+    "new": "([^/\\s@]*)@`)"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: match a URL scheme case-sensitively",
+    "file": "runner/secrets.go",
+    "old": "`(?i)\\b[a-z][a-z0-9+.-]*://",
+    "new": "`\\b[a-z][a-z0-9+.-]*://"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop the URL userinfo check",
+    "file": "runner/secrets.go",
+    "old": "if passwordInURL(m[1]) {",
+    "new": "if false && passwordInURL(m[1]) {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: read an empty-leading URL run as a port",
+    "file": "runner/secrets.go",
+    "old": "if i <= 0 {",
+    "new": "if i < 0 {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: read a URL run with a hash as always a password",
+    "file": "runner/secrets.go",
+    "old": "\tif i <= 0 {\n\t\treturn true\n\t}",
+    "new": "\tif i <= 0 || true {\n\t\treturn true\n\t}"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: read any non-digit above nine as a digit",
+    "file": "runner/secrets.go",
+    "old": "if r < '0' || r > '9' {\n\t\t\treturn true",
+    "new": "if r < '0' {\n\t\t\treturn true"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: read any non-digit below zero as a digit",
+    "file": "runner/secrets.go",
+    "old": "if r < '0' || r > '9' {\n\t\t\treturn true",
+    "new": "if r > '9' {\n\t\t\treturn true"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: read a numeric URL run as a password",
+    "file": "runner/secrets.go",
+    "old": "\t}\n\treturn false\n}\n\n// slotPrefix",
+    "new": "\t}\n\treturn true\n}\n\n// slotPrefix"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop token from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"token\"",
+    "new": "\"tokenx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop secret from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"secret\"",
+    "new": "\"secretx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop password from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"password\"",
+    "new": "\"passwordx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop passwd from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"passwd\"",
+    "new": "\"passwdx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop passphrase from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"passphrase\"",
+    "new": "\"passphrasex\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop credential from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"credential\"",
+    "new": "\"credentialx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop apikey from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"apikey\"",
+    "new": "\"apikeyx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop api_key from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"api_key\"",
+    "new": "\"api_keyx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop api-key from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"api-key\"",
+    "new": "\"api-keyx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop private_key from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"private_key\"",
+    "new": "\"private_keyx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop privatekey from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"privatekey\"",
+    "new": "\"privatekeyx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop private-key from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"private-key\"",
+    "new": "\"private-keyx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop session from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"session\"",
+    "new": "\"sessionx\""
   },
   {
     "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: drop bearer from the key slots",
+    "why": "R4: drop auth from the whole-word key slots",
     "file": "runner/secrets.go",
-    "old": "{\"auth\"}, {\"oauth\"}, {\"bearer\"}, {\"privkey\"},",
-    "new": "{\"auth\"}, {\"oauth\"}, {\"privkey\"},"
+    "old": "\"auth\": true,",
+    "new": "\"auth\": false,"
   },
   {
     "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: drop privkey from the key slots",
+    "why": "R4: drop oauth from the whole-word key slots",
     "file": "runner/secrets.go",
-    "old": "{\"auth\"}, {\"oauth\"}, {\"bearer\"}, {\"privkey\"},",
-    "new": "{\"auth\"}, {\"oauth\"}, {\"bearer\"},"
+    "old": "\"oauth\": true}",
+    "new": "\"oauth\": false}"
   },
   {
     "test": "TestCredentialFloorFalsePositives",
-    "why": "A8: drop access_key from the key slots",
+    "why": "R4: let a bare slot word describe itself",
     "file": "runner/secrets.go",
-    "old": "{\"accesskey\"}, {\"accesskeyid\"}, {\"access\", \"key\"},",
-    "new": "{\"accesskey\"}, {\"accesskeyid\"},"
+    "old": "if len(rest) == 0 {\n\t\treturn false",
+    "new": "if len(rest) == 0 {\n\t\treturn true"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: take a qualifier for no qualifier",
+    "file": "runner/secrets.go",
+    "old": "if !benignKeyQualifiers[w] {",
+    "new": "if benignKeyQualifiers[w] {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: judge only the first word after a slot",
+    "file": "runner/secrets.go",
+    "old": "if !benignKeyQualifiers[w] {\n\t\t\treturn false\n\t\t}",
+    "new": "if !benignKeyQualifiers[w] {\n\t\t\treturn false\n\t\t}\n\t\treturn true"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop method from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"method\": true,",
+    "new": "\"methodx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop methods from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"methods\": true,",
+    "new": "\"methodsx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop required from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"required\": true, \"scope\"",
+    "new": "\"requiredx\": true, \"scope\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop scope from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"scope\": true,",
+    "new": "\"scopex\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop scopes from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"scopes\": true,",
+    "new": "\"scopesx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop format from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"format\": true,",
+    "new": "\"formatx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop type from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"type\": true,",
+    "new": "\"typex\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop mode from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"mode\": true,",
+    "new": "\"modex\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop enabled from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"enabled\": true, \"rotation\"",
+    "new": "\"enabledx\": true, \"rotation\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop rotation from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"rotation\": true,",
+    "new": "\"rotationx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop days from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"days\": true,",
+    "new": "\"daysx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop ttl from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"ttl\": true,",
+    "new": "\"ttlx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop expiry from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"expiry\": true,",
+    "new": "\"expiryx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop timeout from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"timeout\": true,",
+    "new": "\"timeoutx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop provider from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"provider\": true,",
+    "new": "\"providerx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop realm from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"realm\": true,",
+    "new": "\"realmx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop version from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"version\": true,",
+    "new": "\"versionx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop policy from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"policy\": true,",
+    "new": "\"policyx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop bearer from the key slot runs",
+    "file": "runner/secrets.go",
+    "old": "[]string{\"bearer\", \"privkey\", \"accesskey\"}",
+    "new": "[]string{\"zzzz\", \"privkey\", \"accesskey\"}"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop privkey from the key slot runs",
+    "file": "runner/secrets.go",
+    "old": "[]string{\"bearer\", \"privkey\", \"accesskey\"}",
+    "new": "[]string{\"bearer\", \"zzzz\", \"accesskey\"}"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop accesskey from the key slot runs",
+    "file": "runner/secrets.go",
+    "old": "[]string{\"bearer\", \"privkey\", \"accesskey\"}",
+    "new": "[]string{\"bearer\", \"privkey\", \"zzzz\"}"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: lower the key before matching key words",
+    "file": "runner/secrets.go",
+    "old": "lk := strings.ToLower(k)",
+    "new": "lk := k"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: split key words only at punctuation",
+    "file": "runner/secrets.go",
+    "old": "if lowerOrDigit || acronymEnd {",
+    "new": "if false && (lowerOrDigit || acronymEnd) {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: split key words at lower case only, not a digit",
+    "file": "runner/secrets.go",
+    "old": "lowerOrDigit := prev >= 'a' && prev <= 'z' || prev >= '0' && prev <= '9'",
+    "new": "lowerOrDigit := prev >= 'a' && prev <= 'z'"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: split key words at a digit only, not lower case",
+    "file": "runner/secrets.go",
+    "old": "lowerOrDigit := prev >= 'a' && prev <= 'z' || prev >= '0' && prev <= '9'",
+    "new": "lowerOrDigit := prev >= '0' && prev <= '9'"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: never split an acronym run from the word after it",
+    "file": "runner/secrets.go",
+    "old": "if lowerOrDigit || acronymEnd {",
+    "new": "if lowerOrDigit || (false && acronymEnd) {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: split an acronym run before its last capital always",
+    "file": "runner/secrets.go",
+    "old": "prev >= 'A' && prev <= 'Z' && i+1 < len(rs) && rs[i+1] >= 'a' && rs[i+1] <= 'z'",
+    "new": "prev >= 'A' && prev <= 'Z'"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: split an acronym run without looking ahead",
+    "file": "runner/secrets.go",
+    "old": "prev >= 'A' && prev <= 'Z' && i+1 < len(rs) && rs[i+1] >= 'a' && rs[i+1] <= 'z'",
+    "new": "prev >= 'A' && prev <= 'Z' && rs[i+1] >= 'a' && rs[i+1] <= 'z'"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop digits from key words",
+    "file": "runner/secrets.go",
+    "old": "(r < 'a' || r > 'z') && (r < '0' || r > '9')",
+    "new": "(r < 'a' || r > 'z')"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: let a slot end inside a longer word describe itself",
+    "file": "runner/secrets.go",
+    "old": "if last < 0 || !describesOnly(words[last+1:]) {",
+    "new": "if last >= 0 && !describesOnly(words[last+1:]) {"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: judge a slot run by its first match only",
+    "file": "runner/secrets.go",
+    "old": "return true\n\t\t\t}\n\t\t}\n\t}\n\treturn false\n}\n\n// extensionCarriesCredential",
+    "new": "break\n\t\t\t}\n\t\t}\n\t}\n\treturn false\n}\n\n// extensionCarriesCredential"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: search for a slot run from its first letter only",
+    "file": "runner/secrets.go",
+    "old": "for from := 0; from < len(joined); from++ {",
+    "new": "for from := 0; from < 1; from++ {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: excuse a compound that spans two words",
+    "file": "runner/secrets.go",
+    "old": "last == first && from > ends[first]",
+    "new": "last >= first && from > ends[first]"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: excuse a compound slot in any key",
+    "file": "runner/secrets.go",
+    "old": "if slot == \"bearer\" && last == first",
+    "new": "if last == first"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop api[_-]?key from the key=value form",
+    "file": "runner/secrets.go",
+    "old": "api[_-]?key|",
+    "new": "zzzz|"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop secret from the key=value form",
+    "file": "runner/secrets.go",
+    "old": "|secret",
+    "new": "|zzzz"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop passw(or)?d from the key=value form",
+    "file": "runner/secrets.go",
+    "old": "|passw(or)?d",
+    "new": "|zzzz"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop token from the key=value form",
+    "file": "runner/secrets.go",
+    "old": "|token",
+    "new": "|zzzz"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop authorization from the key=value form",
+    "file": "runner/secrets.go",
+    "old": "|authorization",
+    "new": "|zzzz"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop cookie from the key=value form",
+    "file": "runner/secrets.go",
+    "old": "|cookie",
+    "new": "|zzzz"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: a key=value secret needs one character",
+    "file": "runner/secrets.go",
+    "old": "\\s*[:=]\\s*\\S{8,}`),\n}",
+    "new": "\\s*[:=]\\s*\\S{1,}`),\n}"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: a key=value secret needs nine characters",
+    "file": "runner/secrets.go",
+    "old": "\\s*[:=]\\s*\\S{8,}`),\n}",
+    "new": "\\s*[:=]\\s*\\S{9,}`),\n}"
   },
   {
     "test": "TestRunnerCredentialShapes",

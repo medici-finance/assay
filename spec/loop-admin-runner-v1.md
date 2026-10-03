@@ -25,7 +25,7 @@ A launch request is a JSON object, decoded strictly: a field this version does n
 
 - a key MUST match a defined field name exactly, including case (a decoder that matches case-insensitively would let `"Require"` silently overwrite `"require"`);
 - an object MUST NOT repeat a key;
-- a defined field MUST NOT be `null`, and no element of a list MAY be `null`;
+- a defined field MUST NOT be `null`, and no element of a list MAY be `null`; a decoder refuses a null at decode, before any validation runs;
 - nothing but whitespace MAY follow the request object.
 
 A request that breaks any of these is refused.
@@ -38,7 +38,7 @@ A request that breaks any of these is refused.
 | `desk` | `{binding_id}`. Required in standing-desk mode, forbidden in workflow-stage mode. |
 | `work` | `{work_id, node_id, attempt_id}`: references to the existing canonical identities, never replacements for them. Required, all three, in workflow-stage mode; forbidden in standing-desk mode. |
 | `packet` | `{role, ref, hash?, trust}`: the role packet by reference, with the trust of its source (`operator`, `caller` or `untrusted`). |
-| `profile` | `{id, model, skill?, tools}`: the operator-approved pinned profile. `tools` is the complete list the invocation may request; an empty list pins none and an absent list is invalid. A tool name MUST NOT be blank (empty or whitespace only). |
+| `profile` | `{id, model, skill?, tools}`: the operator-approved pinned profile. `tools` is the complete list the invocation may request; an empty list pins none and an absent list is invalid. A tool name MUST NOT be blank (empty or whitespace only): the empty string is outside the schema (`minLength` 1) and validation refuses it, and whitespace only, which the schema cannot express as a non-blank rule here, is refused by validation too. |
 | `workspace` | A workspace reference. |
 | `authority` | `{key, generation, validated_by}`: the externally validated claim or ownership generation (at least 1) the launch runs under. The contract neither mints nor validates it. |
 | `budget` | `{id, scope, max_tokens?, max_cost_micros?}`: a reference to the caller's reservation. `scope` is `launch` or `request`; no limit MAY be negative, and at least one MUST be positive. |
@@ -50,8 +50,8 @@ A request that breaks any of these is refused.
 
 **Credential exclusion.** No request field, extension key or extension value may carry credential material. Credentials are the adapter's own concern, supplied out of band; they never travel in a packet, a request or a result. A consumer runs this check before any other, and:
 
-- refuses a request in which any string field looks like a credential: a provider or forge token, a private key, a bearer or Basic authorization value, a URL carrying a password in its userinfo (`scheme://user:password@host`), or a `key=value` pair naming a secret or an auth, bearer, private-key or access-key slot (the slot word stands as a whole word, so `pallbearer=...` is not a slot, and a bare setting word as the value, as in `auth: disabled`, is not a secret). The userinfo of a URL ends at its first `/`, `?` or `#`, so a port and an `@` in a query is not a password;
-- decodes every extension value and walks it, so the check applies to every object key at every depth (a key naming a credential slot such as a token, secret, password, authorization, bearer, private key, access key, cookie or session, or carrying `auth` as a whole word, is refused; `author` and `authority` are not slots, and neither is a key whose trailing words only describe the slot, such as `auth_method`, `oauth_scopes`, `bearer_format` or `access_key_rotation_days`, while `auth_header` and `access_key_id` are) and to every string as decoded (a JSON-escaped token is seen as written);
+- refuses a request in which any string field looks like a credential: a provider or forge token, a private key, a bearer or Basic authorization value, a URL carrying a password in its userinfo (`scheme://user:password@host`), or a `key=value` pair naming a secret or an auth, bearer, private-key or access-key slot (the slot word counts wherever it occurs in the text, glued to a prefix as in `sshauth=...` or `AWSAccessKeyId=...` included; only the English compounds `pallbearer`, `cupbearer`, `standardbearer`, `torchbearer`, `flagbearer`, `swordbearer` and `ringbearer` are not a bearer slot, and a value that is only a setting word, as in `auth: disabled`, is not a secret, while a setting word followed by anything else is). A URL whose userinfo carries a password is refused whatever the password holds, `?` and `#` included; the one shape read the other way is a run of digits followed directly by `?` or `#`, taken as a port with an `@` in the query or fragment, so a password that is all digits before a `?` or `#` is not caught;
+- decodes every extension value and walks it, so the check applies to every object key at every depth (a key naming a credential slot such as a token, secret, password, authorization, cookie or session, or carrying `auth` or `oauth` as a whole word, or carrying `bearer`, `privkey` or `accesskey` however it is cased or split (`privKey`, `priv_key`, `AWSAccessKeyId`, `myaccesskey`), is refused; `author` and `authority` are not slots, and neither is a key whose trailing words only describe the slot, such as `auth_method`, `oauth_scopes`, `bearer_format` or `access_key_rotation_days`, while `auth_header` and `access_key_id` are) and to every string as decoded (a JSON-escaped token is seen as written);
 - refuses an extension value that is not valid JSON.
 
 This is a floor, not a scanner. It catches credential material written plainly or JSON-escaped. It does not claim to catch deliberate obfuscation, such as a credential split across fields or re-encoded.
