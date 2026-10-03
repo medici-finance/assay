@@ -29,6 +29,8 @@ import (
 //   - a worktree LOCK (cooperative half of the prune liveness guard);
 //   - the role's App commit identity as a PER-WORKTREE config (bot USER id, #638), scoped via
 //     extensions.worktreeConfig so it never bleeds into the primary checkout;
+//   - the role's App TRANSPORT, using the same provisioner as `add --role`: inherited
+//     fetch/push URLs are reset at worktree scope and read back before preflight (#1994);
 //   - the role's App CREDENTIAL HELPER as a per-worktree config too (#1309 item 7): the unscoped
 //     helper chain is reset at worktree scope and one inline helper reading the role's 0600 token
 //     file is added under the HOST-SCOPED key `credential.https://<origin-host>.helper` (#1374
@@ -296,13 +298,6 @@ func cmdRoleInit(args []string) (err error) {
 	if ierr != nil {
 		return ierr
 	}
-	// credUser is the username the inline credential helper answers with: GitHub App
-	// installation tokens authenticate as `x-access-token`; a GitLab PAT as `oauth2`. It is
-	// read from the SAME roster entry the identity was, so the two cannot disagree.
-	credUser := "x-access-token"
-	if ident, bound := deskkit.EffectiveConfig().RoleBotIdentity(p.role); bound && ident.Forge == deskkit.ForgeGitLab {
-		credUser = "oauth2"
-	}
 
 	dir, derr := roleRepoDir(p)
 	if derr != nil {
@@ -350,9 +345,9 @@ func cmdRoleInit(args []string) (err error) {
 		if serr := setCommitIdentity(p.target, botName, botEmail); serr != nil {
 			return serr
 		}
-		// Reuse re-wires the credential helper too: a reused worktree is exactly the one a
-		// sibling role's stale helper has had time to pollute (#1309 item 7).
-		if werr := wireRoleCredential(p.target, p.role, repo, credUser); werr != nil {
+		// Reuse provisions the same App transport as a new role worktree: an older
+		// role-init may have left the inherited push destination and helper in place.
+		if _, werr := wireRoleTransport(p.target, p.role, repo); werr != nil {
 			return werr
 		}
 		ac.successResult = deskkit.ResultNoop
@@ -423,7 +418,7 @@ func cmdRoleInit(args []string) (err error) {
 	if serr := setCommitIdentity(p.target, botName, botEmail); serr != nil {
 		return serr
 	}
-	if werr := wireRoleCredential(p.target, p.role, repo, credUser); werr != nil {
+	if _, werr := wireRoleTransport(p.target, p.role, repo); werr != nil {
 		return werr
 	}
 

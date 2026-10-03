@@ -7,6 +7,7 @@ unblocks: ["desk-containers/11"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
+design: DR-cellctl-go-port
 issues: []
 schema: brief-v2
 authored: 2026-09-16 by the-desk dispatch (issue #1193)

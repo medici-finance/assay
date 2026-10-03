@@ -103,6 +103,12 @@ func (e *Env) Put(k, v string) {
 // operator-writable, and `cellctl set`/`show` in the oracle already refuse to source it for
 // exactly that reason.
 func parseCellEnv(e *Env, path string) error {
+	return parseCellEnvFor(runtime.GOOS, e, path)
+}
+
+// parseCellEnvFor is parseCellEnv for an explicit goos, so the Windows reading of a `\` in a
+// path (cellenvpath.go) is table-tested on any host.
+func parseCellEnvFor(goos string, e *Env, path string) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -121,7 +127,7 @@ func parseCellEnv(e *Env, path string) error {
 		if !validEnvKeyShape(key) {
 			continue
 		}
-		e.Put(key, unquoteShellValue(s[i+1:], e))
+		e.Put(key, unquoteShellValueFor(goos, s[i+1:], e))
 	}
 	return nil
 }
@@ -144,7 +150,17 @@ func validEnvKeyShape(k string) bool {
 // are literal; double quotes honour \\, \", \$ and \` and expand $VAR/${VAR} against what has
 // been assigned so far; an unquoted value expands the same way. A trailing inline comment is
 // NOT stripped — bash does not strip one in an assignment either.
+//
+// One deliberate departure, on Windows only: an unquoted `\` before a byte bashQuote never
+// escapes there (a letter, a digit, `#%+-./:=@_~` mid-value, a non-ASCII byte) or at the end of
+// the value is a path separator and is kept, so `CELL_REPO=C:\src\x` loads as written instead
+// of as `C:srcx`, while every bashQuote-written value still loads as quoted
+// (cellEnvEscapableFor). Off Windows the rule is bash's.
 func unquoteShellValue(s string, e *Env) string {
+	return unquoteShellValueFor(runtime.GOOS, s, e)
+}
+
+func unquoteShellValueFor(goos, s string, e *Env) string {
 	var out strings.Builder
 	i := 0
 	for i < len(s) {
@@ -176,6 +192,11 @@ func unquoteShellValue(s string, e *Env) string {
 			}
 			i++
 		case '\\':
+			if goos == "windows" && (i+1 >= len(s) || !cellEnvEscapableFor(goos, s[i+1], i == 0)) {
+				out.WriteByte('\\')
+				i++
+				continue
+			}
 			if i+1 < len(s) {
 				out.WriteByte(s[i+1])
 				i += 2
@@ -262,7 +283,7 @@ func cellsRoot(e *Env) string {
 	}
 	xdg := e.Get("XDG_DATA_HOME")
 	if xdg == "" {
-		xdg = filepath.Join(e.Get("HOME"), ".local", "share")
+		xdg = filepath.Join(hostHome(e), ".local", "share")
 	}
 	return filepath.Join(xdg, "assay", "cells")
 }
@@ -277,10 +298,7 @@ func deskToolsBin(e *Env) string {
 // realConfigHome is the OPERATOR's config home — the one holding the App private keys a k8s or
 // house cell symlinks to. A scrubbed cell never reads it, by construction.
 func realConfigHome(e *Env) string {
-	if v := e.Get("ASSAY_CONFIG_HOME"); v != "" {
-		return v
-	}
-	return filepath.Join(e.Get("HOME"), ".config", "assay")
+	return mustResolve(configHomeFor(runtime.GOOS, e))
 }
 
 func cellDir(e *Env, name string) string {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -76,10 +77,16 @@ func cmdCheck(cell, cfgArg string) {
 	// A scrubbed cell's whole point is that it never touches the operator's real config home —
 	// this row is n/a there (checkScrubbed proves the cell's OWN config home instead), unlike
 	// k8s/house where the cell's custody IS (a copy of, or a symlink to) that directory.
-	real := realConfigHome(c.Env)
+	// A scrubbed cell needs no operator home at all, so an unresolvable one only changes the
+	// wording of its n/a row and never stops the check; the k8s/house arm still refuses.
 	if c.Kind == "scrubbed" {
+		real, err := configHomeFor(runtime.GOOS, c.Env)
+		if err != nil {
+			real = "the operator's config home"
+		}
 		k.na("operator config home — not applicable on a scrubbed cell (it never reads %s; see the config-home rows below)", real)
 	} else {
+		real := realConfigHome(c.Env)
 		k.chk(isDir(real), "operator config home (symlink targets): %s", real)
 	}
 	k.chk(isRegular(filepath.Join(c.Config, "roster.env")), "roster: %s/roster.env", c.Config)

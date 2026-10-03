@@ -75,7 +75,8 @@ func run(argv []string) int {
 	// `deskpost <verb> --help` — is a request for a help screen, not an invocation of the
 	// verb, and it returns HERE, before Guard, writing no audit row. HelpOnly matches only
 	// the unambiguous single-token shape, so a `--help` that is another flag's VALUE cannot
-	// be mistaken for one; every wider spelling falls through to the verb's own parse.
+	// be mistaken for one; every wider spelling falls through to the verb's own parse, which
+	// hands flag.ErrHelp to parseFailCode (tier two): usage on stderr, exit 0, no audit row.
 	if deskkit.HelpOnly(argv) {
 		usage()
 		return 0
@@ -187,7 +188,7 @@ func parseVerdictArgs(verb, verdictValues string, argv []string) (verdictArgs, i
 	bodyFile := fs.String("body-file", "", "path to the review body file (required)")
 	raw := addPostFlags(fs)
 	if err := fs.Parse(rest[2:]); err != nil {
-		return a, 2, false
+		return a, parseFailCode(err), false
 	}
 	opts, ok := raw.resolve()
 	if !ok {
@@ -246,6 +247,19 @@ mismatch — do not post a stale verdict:
 Preferred: sleep the stated retry-after and attempt ONCE more through deskpost, which
 pins the head itself.
 `, short(head), owner, name, pr, head, pr, owner, name, verdict, bodyFile)
+}
+
+// parseFailCode maps a verb's flag-parse error to the exit code to use. A help request
+// (`deskpost <verb> <owner/repo> <n> --help`, any spelling — TIER TWO, deskkit/helprequest.go)
+// is a successful read: it prints the verb screen and returns ExitOK, where every other
+// parse error is a usage error (exit 2). No verb has written an audit row by the time it
+// parses, so a help request leaves the ledger as it found it.
+func parseFailCode(err error) int {
+	if deskkit.IsHelpRequest(err) {
+		usage()
+		return deskkit.ExitOK
+	}
+	return 2
 }
 
 // postFlagVals holds the raw --dry-run / --wait / --explain values until fs.Parse has run.
@@ -370,7 +384,7 @@ func cmdComment(argv []string) int {
 		"have a match at this number; default resolves automatically")
 	raw := addPostFlags(fs)
 	if err := fs.Parse(rest[2:]); err != nil {
-		return 2
+		return parseFailCode(err)
 	}
 	opts, ok := raw.resolve()
 	if !ok {
@@ -425,7 +439,7 @@ func cmdReady(argv []string) int {
 	fs.SetOutput(stderr)
 	raw := addPostFlags(fs)
 	if err := fs.Parse(rest[2:]); err != nil {
-		return 2
+		return parseFailCode(err)
 	}
 	opts, ok := raw.resolve()
 	if !ok {
@@ -465,6 +479,8 @@ the two verdict verbs (a risk-classed PR needs BOTH at the same head):
                    Submitted as APPROVE / REQUEST_CHANGES. Refuses a body carrying a
                    'Security-Review:' line — that verdict goes through security-review,
                    so a security pass can never land as APPROVED.
+                   A finding about an encrypted file CITES it by path:line and
+                   describes it; a quoted sops footer or envelope is refused (#2060).
   security-review  the SECURITY verdict. Body carries
                    'Security-Review: pass|fail'. A PASS is submitted as a COMMENT-event
                    review — state COMMENTED, so `+"`ready`"+`'s gate (e) can read it while the

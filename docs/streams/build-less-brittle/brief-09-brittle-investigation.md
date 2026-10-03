@@ -17,7 +17,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 3
+version: 4
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; SOTA amendment)"
 sources:
   - "docs/streams/build-less-brittle/spec.md — 2026-09-30 pending scope amendment"
@@ -169,7 +169,7 @@ dereferences the command the template tells sessions to run, rows 7–8 are the 
 | 7 | `grep -c 'brittle-investigation-template' plugins/assay/skills/worker-desk/SKILL.md` | ≥ `1` |
 | 8 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/09$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 9 | `test -f docs/investigations/README.md && grep -c 'recommendation' docs/investigations/README.md` | ≥ `1` |
-| 10 | `statusgen --consumers --root . --brief build-less-brittle/09; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
+| 10 | `statusgen --consumers --root . --brief build-less-brittle/09; echo "exit=$?"` | output is `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). A disproved claim makes the command print `exit=1` and names the claim. Expect re-written 2026-10-03 (#1862). |
 | 11 | `f=docs/brittle-investigation-template.md; for key in source-revisions dependency-references unresolved-questions; do grep -qF "$key:" "$f" \|\| exit 1; done; awk '/^## / {p=($0 == "## Divergence")} p && /^### Intervening-change example$/ {found=1} END {exit !found}' "$f" && echo SOURCE-CHANGE-EXAMPLE` | `SOURCE-CHANGE-EXAMPLE` (presence/placement only; the review walks the policy-change case and checks revalidation) |
 
 ## Evidence

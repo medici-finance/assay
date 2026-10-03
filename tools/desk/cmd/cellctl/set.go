@@ -122,20 +122,16 @@ func envFileValue(envfile, key string) (string, bool) {
 // the key it needs — given in this same call's KEY=VALUE list, else the file's current line — so
 // `set <cell> CELL_KIND=house CELL_ROOTS=…` in one call passes while `CELL_KIND=house` alone on
 // a cell with no CELL_ROOTS refuses, naming the missing key, before a backup or an edit is made.
+//
+// The effective value is read through the ONE cell.env loader (effectiveCellEnv), never a
+// file-level re-parse of its own: a second reader that strips quotes or backslashes its own way
+// passes or refuses a value loadCell then reads differently (a Windows `C:\…` path, a %q-escaped
+// launcher). TestCellEnvValueReaders keeps it that way.
 func validateKindChange(envfile, kind string, kvs []string) {
 	need := ""
+	e := effectiveCellEnv(envfile, kvs)
 	switch kind {
 	case "container":
-		e := &Env{vals: map[string]string{}, set: map[string]bool{}}
-		if err := parseCellEnv(e, envfile); err != nil {
-			die("set: %v", err)
-		}
-		for _, kv := range kvs {
-			k, v, ok := splitKV(kv)
-			if ok {
-				e.Put(k, v)
-			}
-		}
 		if cfg := e.Get("CELL_CONTAINER_CONFIG"); cfg != "" {
 			if e.Get("CELL_CONTAINER_LAUNCHER") != "" {
 				die("set: clear CELL_CONTAINER_LAUNCHER when selecting native container configuration")
@@ -153,21 +149,9 @@ func validateKindChange(envfile, kind string, kvs []string) {
 	default:
 		return
 	}
-	v := ""
-	for _, kv := range kvs {
-		if k, val, ok := splitKV(kv); ok && k == need {
-			v = val
-		}
-	}
-	if v == "" {
-		v, _ = envFileValue(envfile, need)
-	}
 	// A line `cellctl new` wrote with %q may be shell-quoted (CELL_ROOTS='' on a container cell
-	// is the empty string once sourced, not two characters) — strip one matching pair of quotes
-	// so the file-level read agrees with what loadCell would see.
-	if len(v) >= 2 && ((v[0] == '\'' && v[len(v)-1] == '\'') || (v[0] == '"' && v[len(v)-1] == '"')) {
-		v = v[1 : len(v)-1]
-	}
+	// is the empty string once sourced, not two characters); the loader already reads it so.
+	v := e.Get(need)
 	if v == "" {
 		die("set: CELL_KIND=%s needs %s, which is neither set in %s nor given in this call — a %s cell cannot load without it (set both in one call, or %s first); nothing written", kind, need, envfile, kind, need)
 	}
@@ -179,6 +163,22 @@ func validateKindChange(envfile, kind string, kvs []string) {
 	if kind == "container" && !isExecFile(v) {
 		die("set: CELL_KIND=container needs an absolute executable CELL_CONTAINER_LAUNCHER, got '%s'; nothing written", v)
 	}
+}
+
+// effectiveCellEnv is what loadCell will see once this call's KEY=VALUE pairs are written: the
+// file read through the loader, then each pair overlaid exactly as the loader will read the raw
+// `KEY=VALUE` line setEnvKey writes for it.
+func effectiveCellEnv(envfile string, kvs []string) *Env {
+	e := &Env{vals: map[string]string{}, set: map[string]bool{}}
+	if err := parseCellEnv(e, envfile); err != nil {
+		die("set: %v", err)
+	}
+	for _, kv := range kvs {
+		if k, v, ok := splitKV(kv); ok {
+			e.Put(k, unquoteShellValue(v, e))
+		}
+	}
+	return e
 }
 
 func splitKV(kv string) (string, string, bool) {
@@ -227,15 +227,7 @@ func applyEnvKVs(e *Env, envfile string, force bool, kvs []string) {
 }
 
 func envWithFileForCursor(envfile string, kvs []string) *Env {
-	e := &Env{vals: map[string]string{}, set: map[string]bool{}}
-	if err := parseCellEnv(e, envfile); err != nil {
-		die("set: %v", err)
-	}
-	for _, kv := range kvs {
-		key, value, _ := splitKV(kv)
-		e.Put(key, value)
-	}
-	return e
+	return effectiveCellEnv(envfile, kvs)
 }
 
 // setEnvKey is the single-key rewrite/append, after validateEnvKey has already passed. The

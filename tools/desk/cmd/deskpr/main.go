@@ -101,8 +101,11 @@ This is the ONE place the categories are enumerated; the skill text points here 
 than restating them.
 
   REFUSED (exit 5) — the span is unambiguous:
-    * an absolute machine path (/Users/…, /home/…, /private/tmp/…, /tmp/tracker-…)
-    * a scratch worktree name (tracker-…)
+    * an absolute machine path under a machine-local root (/Users/, /home/, /private/tmp/,
+      /tmp/tracker-; on Windows a drive-letter path under the Users root, or a UNC path
+      naming a host and a share)
+    * a scratch worktree name (tracker-…) at the start of a token or a path segment;
+      the same word inside a hyphenated compound is not one
     * a session id (a hex UUID) or an agent id (agent-…)
     * an owner/name slug, with or without #N, naming a repo the roster marks PRIVATE
     * alias#N where the alias resolves to such a repo

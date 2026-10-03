@@ -44,7 +44,7 @@ consumers:
   - "tools/desk/cmd/deskflip: fixed-here (the ready-flip decision reads an ABSENT required leak-gate verdict as could-not-check, never a pass — task 1's three-state contract, verify row 10)"
   - "the private control-based sweep that posts the verdict: out-of-scope (it is house-side publication infrastructure, absent from this tree by design — this brief specifies the VERDICT SURFACE it must post to on a merge request, not the sweep)"
   - "plugins/assay/skills/install/SKILL.md: follow-up forge-neutral/11 (the install prose names the optional CLI per forge; cellctl's own prerequisites are fixed here)"
-version: 1
+version: 2
 id: a7231cc4-611d-44e3-8a14-ce5a0d9fe3f0
 ---
 
@@ -147,7 +147,7 @@ facts:
 | 4 | `tools/cellctl/testdata/cellctl-shell-oracle.sh new --forge gitlab --repo example/tracking --cells-yaml /tmp/cells.yaml 2>&1; echo $?` | **negative path**: exits non-zero naming the GitLab custody inputs it needs, and does NOT demand an App PEM; the row fails if the GitHub-only requirement still fires |
 | 5 | `tools/cellctl/testdata/cellctl-shell-oracle.sh new --forge github --repo example/tracking --cells-yaml /tmp/cells.yaml --orgs example-org 2>&1; echo $?` | **negative path**: still exits non-zero without `--deskd-app-pem` — the existing requirement survives on the forge where it applies |
 | 6 | `tools/cellctl/testdata/cellctl-shell-oracle.sh check --cell` — run against a cell whose configured forge is GitLab (manual: the verifier names the cell) | reports per-precondition ok/MISS for the GitLab preconditions; a GitHub-only precondition appears as MISS or as not-applicable, never as silently absent — read as text |
-| 7 | `grep -rn -e 'api.github.com' tools/cellctl/testdata/cellctl-shell-oracle.sh \| wc -l` | prints `0` — the host comes from the cell's configured forge endpoint, not a literal |
+| 7 | `{ grep -rn -e 'api.github.com' tools/cellctl/testdata/cellctl-shell-oracle.sh \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0` — the host comes from the cell's configured forge endpoint, not a literal. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. |
 | 8 | `grep -c 'gitlab' docs/cellctl.md` | ≥ 3 — the verb table and the custody hand-steps carry the GitLab shape |
 | 9 | `grep -c 'leak' docs/adopting-assay-gitlab.md` | ≥ 1 — the CI leak-sweep half the pilot found missing is in the runbook |
 | 10 | `cd tools/desk && go test ./cmd/deskflip/... -run TestMissingLeakGateIsCouldNotCheck -count=1 -v` | **negative path**: a change whose leak-gate verdict is ABSENT is treated as could-not-check by the ready-flip decision, not as a pass; the row fails if absence is silently tolerated |

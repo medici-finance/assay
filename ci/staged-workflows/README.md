@@ -35,6 +35,11 @@ reviewable artifact, not a run.
   on a daily schedule, reporting three-state. **Already live** — promoted to
   `.github/workflows/truth-suite.yml` on 2026-09-10; this directory no longer carries a copy,
   so a change to it is authored here first and re-promoted by a maintainer commit.
+- `loopadmin.yml` — the loopadmin module's test job (graph-execution/20): `gofmt`, `go vet`,
+  `go test` and the mutation gate (`go run ./mutate`) from `loopadmin/`, on path triggers for the
+  module, `spec/loop-admin-runner-v1.md` and `schemas/loop-admin-runner-v1.json`. **Staged, not
+  live** — a maintainer promotes it to `.github/workflows/loopadmin.yml`. Until then `ci.yml`'s
+  build-test job still builds and vets the module (it discovers every `go.mod`) but runs no tests.
 - `winparity.yml` — the Windows-build ↔ Makefile target-parity gate (#665). Runs
   `cd tools/winparity && go run . --root ../..` on the self-hosted `medici-builder-public` runner
   (hand-installed Go, no `make`), asserting that `scripts/build-windows.ps1`'s declared target set

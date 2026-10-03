@@ -123,10 +123,40 @@ var (
 	// one component. So the one shape the scan must tolerate is exactly the one that carries
 	// no information.
 	reAbsMachinePath = regexp.MustCompile(`(?:/Users/|/home/|/private/tmp/|/private/var/folders/|/tmp/tracker-)[^\s"'` + "`" + `)\]>,;]+`)
+	// reWinUsersPath and reWinUNCPath are the Windows half of the same class
+	// (desktools-v2/12): a drive-letter path under the Users root (`C:` + `\Users\` or its
+	// forward-slash form, any case — every profile, AppData and temp directory lives there)
+	// and a UNC path naming a host and a share. Each candidate is confirmed with
+	// IsAbsFor("windows", …) before it refuses, so the class has ONE definition of
+	// "absolute" on both sides of the seam.
+	//
+	// The #380 lesson holds here too, by requiring a component that starts with a letter or
+	// digit: the bare root, a `…` placeholder after it, and a `<host>`/`<share>` placeholder
+	// carry no information and are what documentation of this check spells. A UNC host needs
+	// two characters so a regex escape pair (a backslash pair, a letter, a backslash, a
+	// letter) is not read as a host and share.
+	//
+	// The UNC matcher takes separators the way the drive matcher does: either direction and
+	// any run of them, both before the host and between host and share. IsAbsFor accepts any
+	// two leading separators, and Windows itself resolves `//host/share` and a mixed
+	// `\\host/share` to the same share, so each is the same leak; a body that went through a
+	// JSON or Go string escape doubles every backslash, and must not slip past by that alone.
+	// findAbsMachinePath drops the two shapes that are not UNC at all: a run after `:` (a URL
+	// scheme's `//`) and a run after a letter or digit (a doubled separator inside a path).
+	reWinUsersPath = regexp.MustCompile(`(?i)\b[a-z]:[\\/]+users[\\/]+[\p{L}\p{N}_$][^\s"'` + "`" + `)\]>,;]*`)
+	reWinUNCPath   = regexp.MustCompile(`[\\/]{2,}[\p{L}\p{N}][\p{L}\p{N}._$-]+[\\/]+[\p{L}\p{N}_$][^\s"'` + "`" + `)\]>,;]*`)
 	// reWorktreeName matches a scratch worktree directory name written WITHOUT its leading
 	// path — `tracker-<item>` — which is how it most often reaches a body (a command line, a
 	// "my worktree is …" sentence). deskwt mints exactly this shape (cmd/deskwt).
-	reWorktreeName = regexp.MustCompile(`\btracker-[A-Za-z0-9][A-Za-z0-9._-]*`)
+	//
+	// The leading group is the token boundary (#2080): the name starts the text, or follows
+	// a byte that is NOT a letter, digit, `_` or `-`. That covers a `/` path segment,
+	// whitespace and punctuation, which is everywhere a minted name can appear, and it
+	// leaves a hyphenated compound alone. The old `\b` boundary also held after `-`, so the
+	// prefix word in the middle of a compound (a finding-block class label) refused a body
+	// that named no worktree. RE2 has no lookbehind, so the boundary byte is part of the
+	// match; group 1 is the name, and worktreeNameFinder reports only that.
+	reWorktreeName = regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])(tracker-[A-Za-z0-9][A-Za-z0-9._-]*)`)
 	// reSessionUUID matches the session id shape the agent tooling mints (a lowercase hex
 	// UUID). Anchored on the full 8-4-4-4-12 grouping so an ordinary hyphenated word or a
 	// git SHA cannot match it.
@@ -365,6 +395,76 @@ func selfContainRefusal(surface string, f scFinding) string {
 		surface, f.category, f.span, f.why)
 }
 
+// findAbsMachinePath returns the earliest absolute machine path in s — a POSIX path under a
+// machine-local root, or a Windows drive-letter path under the Users root or UNC path that
+// IsAbsFor confirms absolute on windows — or nil.
+func findAbsMachinePath(s string) []int {
+	var best []int
+	if loc := reAbsMachinePath.FindStringIndex(s); loc != nil {
+		best = loc
+	}
+	for _, re := range [...]*regexp.Regexp{reWinUsersPath, reWinUNCPath} {
+		for _, loc := range re.FindAllStringIndex(s, -1) {
+			if best != nil && loc[0] >= best[0] {
+				break
+			}
+			if re == reWinUNCPath && loc[0] > 0 && notUNCLead(s[loc[0]-1]) {
+				continue
+			}
+			if IsAbsFor("windows", s[loc[0]:loc[1]]) {
+				best = loc
+				break
+			}
+		}
+	}
+	return best
+}
+
+// machineShapeFinder is what the machine-shape arm of selfContainFindings loops over: a
+// compiled regexp satisfies it as is, and absMachinePathFinder adapts findAbsMachinePath so
+// the absolute-path category shares the loop (and its all-matches exemption walk) with the
+// other three. worktreeNameFinder adapts reWorktreeName the same way, trimming its boundary
+// byte from the span.
+type machineShapeFinder interface {
+	FindAllStringIndex(s string, n int) [][]int
+}
+
+// absMachinePathFinder reports at most the earliest absolute machine path, which is all the
+// arm reads (it refuses on the first non-exempt match). Like a regexp, n == 0 matches
+// nothing.
+type absMachinePathFinder struct{}
+
+func (absMachinePathFinder) FindAllStringIndex(s string, n int) [][]int {
+	if n == 0 {
+		return nil
+	}
+	if loc := findAbsMachinePath(s); loc != nil {
+		return [][]int{loc}
+	}
+	return nil
+}
+
+// worktreeNameFinder reports reWorktreeName's group 1, the worktree name without the
+// boundary byte in front of it, so a refusal names exactly the span the author has to edit.
+// The name's trailing run is greedy, so the byte after a match is never a name byte; when
+// that byte is the boundary of a following candidate, the previous match has not consumed it.
+type worktreeNameFinder struct{}
+
+func (worktreeNameFinder) FindAllStringIndex(s string, n int) [][]int {
+	var out [][]int
+	for _, m := range reWorktreeName.FindAllStringSubmatchIndex(s, n) {
+		out = append(out, m[2:4])
+	}
+	return out
+}
+
+// notUNCLead reports whether the byte before a UNC-shaped separator run means the run is not
+// a UNC prefix: a `:` ends a URL scheme (`https://host/path`), and a letter or digit means
+// the run is a doubled separator inside a path (`dir//sub/file`).
+func notUNCLead(c byte) bool {
+	return c == ':' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
 // selfContainFindings is the collector behind selfContainScan: EVERY refusing finding, in
 // category order, plus the notice lines. The outbound-write check (outbound.go) reads the
 // whole list, because whether a write may be overridden depends on whether ANY finding is
@@ -397,12 +497,12 @@ func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFin
 	// and every surface that is not a brief file's content has no exempt line at all.
 	exemptLine := briefIDExemptLine(o.FilePath, o.FileSource, s)
 	for _, m := range [...]struct {
-		re       *regexp.Regexp
+		re       machineShapeFinder
 		category string
 		why      string
 	}{
-		{reAbsMachinePath, "absolute machine path", "resolves only on the machine that wrote it"},
-		{reWorktreeName, "scratch worktree name", "names a throwaway directory nobody else has"},
+		{absMachinePathFinder{}, "absolute machine path", "resolves only on the machine that wrote it"},
+		{worktreeNameFinder{}, "scratch worktree name", "names a throwaway directory nobody else has"},
 		{reSessionUUID, "session id", "identifies an agent session, not anything a reader can look up"},
 		{reAgentID, "agent id", "identifies an agent session, not anything a reader can look up"},
 	} {

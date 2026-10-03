@@ -32,7 +32,7 @@ consumers:
   - "statusgen/briefv2.go (the 'reserved, not gating' NOTICE retires): follow-up graph-execution/01 (this brief)"
   - "docs/dependency-graph-design.md §3.6 (schema note says gating is deferred): follow-up graph-execution/01 (this brief; the section gains the executed semantics)"
   - "plugins/assay/skills/worker-desk/SKILL.md and the-desk/SKILL.md (read Next-up; gain the held/notice vocabulary): out-of-scope (no procedure changes — the board output they read carries the new reason text; a skill wording pass is deferred to graph-execution/05's report)"
-version: 1
+version: 2
 id: a3481c87-1900-4962-9d9e-94726547bc08
 ---
 
@@ -76,7 +76,7 @@ facts:
 | 2 | check:ci +mutation | `cd statusgen && go test -run 'TestEligibilityDeclarationChangesDispatch' -v ./...` | exit 0; the `-v` output shows the first run's verdict for `example-a/02` as `held` and the second run's as `eligible`, with the fixture diff being one `gates:` line |
 | 3 | check:ci +mutation | `cd statusgen && go test -run 'TestEligibilityCouldNotCheckHolds' ./...` | exit 0; a `gates:` entry on an `unpublished: true` alias yields `state: could-not-check` and `verdict: held`; the same ref under `feathers:` yields `eligible-with-notice` |
 | 4 | check | `statusgen --eligibility --json --root . \| python3 -c 'import json,sys; d=json.load(sys.stdin); print(sorted({b["verdict"] for b in d}))'` | exit 0; the printed set is a subset of `['eligible', 'eligible-with-notice', 'held']` |
-| 5 | check +dereference | `statusgen --root . --lint 2>&1 \| grep -c 'reserved, not gating'` | count 0 — the NOTICE this brief retires no longer fires on the tree that carries `gates:`/`feathers:` today |
+| 5 | check +dereference | `out=$(statusgen --root . --lint 2>&1) && printf '%s\n' "$out" \| { grep -c 'reserved, not gating' \|\| [ $? -eq 1 ]; }` | output is `0` — the NOTICE this brief retires no longer fires on the tree that carries `gates:`/`feathers:` today. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. The lint itself must run to completion before its notices are counted. |
 | 6 | check +flow | `statusgen --next-up --root . > /tmp/ge01-nu.txt; statusgen --eligibility --root . \| awk '$2=="held"{print $1}' > /tmp/ge01-held.txt; grep -c -F -f /tmp/ge01-held.txt /tmp/ge01-nu.txt` | count 0 — no brief the evaluator holds appears on the Next-up board (an empty held list also yields 0 and is acceptable only if row 2 passed) |
 | 7 | check:ci +neighbour | `cd statusgen && go test -run TestDriveFrontier ./... && go test -run TestNextUp ./...` | exit 0 — the frontier and Next-up still agree after both read the evaluator |
 | 8 | check +dereference | `grep -c 'eligible-with-notice' docs/dependency-graph-design.md docs/lifecycle.md docs/enforcement-model.md` | each file count >= 1 |

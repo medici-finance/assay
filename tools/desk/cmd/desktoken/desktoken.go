@@ -94,6 +94,12 @@ func (a *auditCtx) log(result, detail string) {
 
 // finalize maps the terminal error (or success) to exactly one audit result.
 func (a *auditCtx) finalize(err error) {
+	// A help screen is not an invocation of the verb, so it appends NO row. The ledger this
+	// would land in is append-only, never rotated, and counted per tool for the write budget
+	// and the circuit breaker (deskkit/audit.go, ratelimit.go) — see helprequest.go.
+	if deskkit.IsHelpRequest(err) {
+		return
+	}
 	if err == nil {
 		if a.suppress {
 			return // a cache reuse performed no act — see auditCtx.suppress
@@ -632,7 +638,8 @@ func run(args []string) int {
 	// measured on one operating desk host over 32 days). It returns HERE, before Guard, and
 	// writes nothing. HelpOnly matches only the unambiguous single-token shape, so a `--help`
 	// that is another flag's VALUE cannot be mistaken for one; every wider spelling falls
-	// through to the subcommand's own parse, where flag.ErrHelp is recognised instead.
+	// through to cmdToken / cmdCoverage's own parse, which hands flag.ErrHelp to
+	// deskkit.IsHelpRequest (tier two): it prints usage, exits 0, and the finalizer writes no row.
 	if deskkit.HelpOnly(args) {
 		fmt.Fprintln(os.Stderr, usage)
 		return deskkit.ExitOK
@@ -653,11 +660,20 @@ func run(args []string) int {
 	// unambiguous.
 	if args[0] == "coverage" {
 		cerr := cmdCoverage(args[1:])
+		if deskkit.IsHelpRequest(cerr) {
+			fmt.Fprintln(os.Stderr, usage)
+			return deskkit.ExitOK
+		}
 		deskkit.ReportError(os.Stderr, cerr)
 		return deskkit.ExitCodeOf(cerr)
 	}
 
 	err := cmdToken(args)
+	if deskkit.IsHelpRequest(err) {
+		// TIER TWO terminus: print the help screen the operator asked for, exit 0.
+		fmt.Fprintln(os.Stderr, usage)
+		return deskkit.ExitOK
+	}
 	// The shared exit path. With DESK_TRACE off this is byte-identical to the
 	// fmt.Fprintln(os.Stderr, err.Error()) it replaces.
 	deskkit.ReportError(os.Stderr, err)
@@ -679,6 +695,11 @@ func cmdToken(args []string) (err error) {
 
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
+		// TIER TWO: `-h`/`--help` in any spelling reaches the parser as flag.ErrHelp. A help
+		// screen is not a refusal and writes no audit row (deskkit/helprequest.go).
+		if deskkit.IsHelpRequest(perr) {
+			return deskkit.ErrHelpRequested
+		}
 		return deskkit.Refused("bad flags: " + perr.Error())
 	}
 	if len(positionals) != 1 {

@@ -53,7 +53,7 @@ consumers:
   - "docs/telemetry.md: fixed-here (the contract for what `--lint` may reach)"
   - "tools/desk/internal/deskkit/forge.go: out-of-scope (this brief adds NO operation — every read it needs is already enumerated and already has both backends, so the freeze rule is satisfied by consuming the surface rather than widening it)"
   - "tools/desk/internal/forgeban/allowlist.go: out-of-scope (statusgen is a separate module and has never had a permit row; the register counts desk-tools call sites, and this brief adds none)"
-version: 1
+version: 2
 id: 6ccc64a7-c32b-48ba-b6ac-d3a8165f15f9
 ---
 
@@ -342,7 +342,7 @@ presence, `+flow` a row that exercises the cross-component path end to end.
 |---|-------|---------|--------|
 | 1 | check:ci | `cd statusgen && go build ./... && go test ./... -count=1` | exit 0 |
 | 2 | check:ci | `cd tools/desk && go build ./... && go test ./... -count=1` | exit 0 |
-| 3 | check +dereference | `grep -rn 'exec.Command("gh"' statusgen/ --include='*.go' \| grep -v _test.go \| wc -l` | prints `0` — statusgen shells no forge CLI. Measured at the freshness base: 26 sites across 15 non-test files |
+| 3 | check +dereference | `test -d statusgen/ && { grep -rn 'exec.Command("gh"' statusgen/ --include='*.go' \|\| [ $? -eq 1 ]; } \| { grep -v _test.go \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0` — statusgen shells no forge CLI. Measured at the freshness base: 26 sites across 15 non-test files. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. The `test -d` leg covers BSD grep, which stays silent on an absent directory under `--include`. |
 | 4 | check:ci +flow | `cd statusgen && go test ./... -run TestLintOfflineMakesNoNetworkCall -count=1 -v` | **negative path**: a full `--lint` with no `--forge`, run against a harness whose network dial hook FAILS the test on any attempt and whose `PATH` contains no `gh` and no `deskread`, completes with the same verdict as a networked run. Fails if any connection is attempted or any forge process is started |
 | 5 | check:ci +mutation | `cd statusgen && go test ./... -run TestForgeBackedChecksReportCouldNotCheckOffline -count=1 -v` | **negative path**: with the offline reader wired, every forge-backed check renders could-not-check AS ITSELF. The test fails if any of them renders clean, and it enumerates the checks so a newly-added one that forgets is caught rather than skipped |
 | 6 | check:ci +mutation | `cd statusgen && go test ./... -run TestIssueDebtNoticeOptInOnly -count=1 -v` | **negative path**: `--lint` alone emits no issue-debt line and starts no process; `--lint --forge` emits it from the verb's JSON. The test fails if the notice appears without `--forge` |

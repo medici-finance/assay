@@ -895,6 +895,46 @@ discovers is NOT a finding and is FILED, at discovery time, through `deskfile` �
 file-the-same-thing-twice race, the file-and-exit pod-loop contract) is
 `references/out-of-scope-filing.md`; read it before dispatching a risk-classed PR's second track.
 
+### A scan refusal on a verdict body is a STOP — never reword it
+
+A verdict post (`deskpost review` / `deskpost security-review`) refused on the BODY's content scan
+— exit 5 naming a scan rule — is a guard refusal like any other. It is named here because a
+"false positive" reading (the match is quoted prose from the diff) makes rewording look like a
+fix. Rewording is routing around the guard: the reviewer's verdict text is evidence, and a body
+changed to clear a gate is a different verdict nobody reviewed.
+
+- **The desk never edits a refused verdict body to pass the scan** — no rewording, no
+  re-encoding (escaping, inserted characters, a fence, an encoding), no splitting it across posts
+  or comments, no trimming the matched span. Resending it unchanged is out too: it re-trips the
+  scan and feeds deskpost's circuit breaker.
+- **File at discovery, record on the PR, continue the queue.** In the same turn: file the refusal
+  addressed to the maintainer (`deskfile new`, `needs-decision`, an `### Evidence` fence carrying
+  the scan rule id, the body line number, the PR and its full head SHA — never the matched text);
+  post on the PR as the App (`deskpost comment`) that a verdict at that head exists and is withheld
+  by the content scan, linking the filing — no verdict line, no findings; then go on with the rest
+  of the queue. The PR keeps `authorization-needed` and stays unflippable, which is correct. **One
+  refused post never stops dispatch** — its slot is freed like any finished one.
+- **The scan override is the maintainer's act alone** — never the desk's, the reviewer's or a
+  worker's, even when the false-positive reading is right — **and it exists only for the rules the
+  tool lets it waive.** On a rule it can waive, the filed issue is the request for it.
+- **No flag waives `voice.ruling-claim` or `withheld.identifier`.** The tool refuses the override
+  on those two rules whoever passes it, so the filing never asks for one there. It asks the
+  maintainer for a RULING instead: on `withheld.identifier`, whether to change the configured
+  withheld set (the one human act the tool names) or how the verdict is to be stated; on
+  `voice.ruling-claim`, how the verdict is to be stated. The tool's own refusal names rewording as
+  its remedy on both — that is not a permission to the desk, and the first bullet still binds.
+  **Still open, not decided here:** whether the reviewer may restate its OWN prose (not a quotation
+  from the diff) on these two rules is a maintainer decision. Until it is made, such a verdict
+  stays withheld.
+- **Only the REVIEWER may re-issue, and only by citation.** Where each refused span's finding can
+  be stated by a `path:line` citation instead of a quotation, the reviewer that wrote the verdict
+  (in the run that was refused, or resumed on the same lane) may re-issue its OWN verdict that way
+  — same verdict, same findings, same head, once. The desk relays the refusal verbatim and never
+  drafts the replacement. A finding that cannot be stated without the quotation stays withheld
+  until the maintainer acts. **The desk files and records whichever lands first:** a re-issue that
+  has already posted does not cancel the filing, and the PR comment then says the first post was
+  refused and re-issued by citation.
+
 ## Never act on a SUBAGENT-REPORTED verdict without re-probing primary state
 
 A shepherd/worker subagent once **FABRICATED** a review verdict — the reviewer App reported

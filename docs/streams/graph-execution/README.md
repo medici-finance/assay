@@ -70,7 +70,9 @@ catch/override rate with environment identity stamped on every number.
    precondition, not delivered here.
 
 **Out of scope:** a graph database, a trained router, a new orchestration platform, a
-PID-tuned controller; any real-work trial (an adopter's own brief, in the adopter's tree);
+PID-tuned controller (the orchestration-platform exclusion is narrowed 2026-10-02 for the
+routed execution host only — see "Task workflow execution routing" below); any real-work trial
+(an adopter's own brief, in the adopter's tree);
 admission-control policy values (an adopter's ruling from its own measured demand); moving
 or removing any human gate (spec §5 states the divergence).
 
@@ -83,8 +85,8 @@ or removing any human gate (spec §5 states the divergence).
 | 02 | [Workflow-pattern schema, node contract, and the implementation and research patterns](brief-02-pattern-schema-and-node-contract.md) | 0 | L | implemented | — | — |
 | 03 | [Evidence coverage rule and the observe evidence kind](brief-03-evidence-coverage-rule.md) | 1 | L | implemented | — | — |
 | 04 | [Recovery contract for effect-bearing nodes in drainloop](brief-04-recovery-contract.md) | 1 | L | todo | — | — |
-| 05 | [Offline two-pattern experiment on frozen fixtures](brief-05-offline-experiment.md) | 2 | L | todo | — | — |
-| 06 | [Run records and the replay/learning loop](brief-06-run-records-and-replay.md) | 3 | L | todo | — | — |
+| 05 | [Offline two-pattern experiment on frozen fixtures](brief-05-offline-experiment.md) | 5 | L | todo | — | — |
+| 06 | [Run records and the replay/learning loop](brief-06-run-records-and-replay.md) | 6 | L | todo | — | — |
 | 07 | [Flow instruments — service/wait split, CI-slot saturation, gate catch/override](brief-07-flow-instruments.md) | 1 | M | implemented | — | — |
 | 08 | [Signal-triggered pattern — incident and regression](brief-08-signal-triggered-pattern.md) | 1 | M | todo | — | — |
 | 09 | [Versioned workflow instances and shared identity](brief-09-instance-contract.md) | 1 | M | todo | — | — |
@@ -93,17 +95,27 @@ or removing any human gate (spec §5 states the divergence).
 | 12 | [Reproducible decision evaluation and calibration manifests](brief-12-decision-evaluation.md) | 2 | M | todo | — | — |
 | 13 | [Deterministic admission over facts and bounded probabilistic advice](brief-13-agentic-admission.md) | 1 | M | implemented | — | — |
 | 14 | [Bind admission and graph eligibility at the dispatch boundary](brief-14-admission-dispatch-binding.md) | 3 | M | todo | — | — |
-| 15 | [Control profiles and complete scoped evidence exports](brief-15-control-evidence.md) | 4 | L | todo | — | — |
+| 15 | [Control profiles and complete scoped evidence exports](brief-15-control-evidence.md) | 7 | L | todo | — | — |
 | 16 | [Cell ownership, cumulative budgets and restoration fencing](brief-16-cell-ownership-budgets.md) | 2 | L | todo | — | — |
-| 17 | [Graph-linked release and outcome records without new authority](brief-17-lifecycle-links.md) | 4 | M | todo | — | — |
-| 18 | [Offline graph, advice and assurance integration proof](brief-18-assurance-experiment.md) | 5 | M | todo | — | — |
+| 17 | [Graph-linked release and outcome records without new authority](brief-17-lifecycle-links.md) | 7 | M | todo | — | — |
+| 18 | [Offline graph, advice and assurance integration proof](brief-18-assurance-experiment.md) | 9 | M | todo | — | — |
+| 19 | [Durable instance store and production coverage binding](brief-19-durable-instance-store.md) | 2 | M | todo | — | — |
+| 20 | [Shared loop-admin runner protocol and offline conformance kit](brief-20-runner-contract.md) | 0 | M | implemented | — | — |
+| 21 | [Deterministic task controller with durable dispatch and waits](brief-21-controller-host.md) | 4 | M | todo | — | — |
+| 22 | [First pinned local harness adapter and qualification fixtures](brief-22-local-harness-adapter.md) | 2 | M | todo | — | — |
+| 23 | [Immutable candidate workspaces and independent check inputs](brief-23-candidate-workspaces.md) | 3 | M | todo | — | — |
+| 24 | [Versioned author implement review pattern with bounded repair](brief-24-internal-specialist-pattern.md) | 7 | M | todo | — | — |
+| 25 | [Exact-candidate publication and independent review evidence bridge](brief-25-publication-review-bridge.md) | 8 | M | todo | — | — |
+| 26 | [Shared loop-admin launch supervision for desks and workflows](brief-26-shared-loop-admin.md) | 1 | M | todo | — | — |
+| 27 | [Standing desk clients for the shared loop-admin](brief-27-standing-desk-loop-admin.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Structured-work amendment (2026-09-30)
 
 [The amendment](work-input-amendment.md) assigns packet views to 09, applicability to 03,
 dispatch/coalescing to 14, cumulative accounting to 16, and connected replay/measurement to
-18. Existing waves and activation gates are unchanged. 02 and 07's implemented delivery
+18. Existing waves and activation gates were unchanged by that amendment; waves have since
+been recalculated by the 2026-10-02 routing below, and the authoring table is current. 02 and 07's implemented delivery
 records are retained; their consumers own compatible extensions. The first runnable proof
 uses offline fixtures; real provider savings need a separately authorized adopting pilot.
 
@@ -156,7 +168,8 @@ it does not commission another runtime. 01 is now done; 02 retains its implement
 starting-state prose above is historical; source presence is not deployed verification.
 Existing 03–06 gain shared-contract amendments; their statuses remain todo.
 
-Waves: 0 = 10; 1 = 09, 11, 13 alongside existing 03/04/07/08;
+Waves as of that amendment (historical — the authoring table above is current, after the
+2026-10-02 routing moved 05/06/15/17/18): 0 = 10; 1 = 09, 11, 13 alongside existing 03/04/07/08;
 2 = 12, 16 and existing 05; 3 = 14 and existing 06;
 4 = 15, 17; 5 = 18. Existing 05 additionally depends on 09.
 
@@ -180,3 +193,41 @@ receipt. Do not add both the old migration package estimate and its graph equiva
 
 Source refresh 2026-09-19: public Assay `e4109205751a219330b954f75855c05b4be2a5c8`;
 01 verification is now recorded. No changes to the proposed 09–18 target seams were found.
+
+## Task workflow execution routing — 2026-10-02
+
+[The execution extension](task-workflow-program.md) is routed into **19–27**, all todo.
+It permits one thin controller host over existing contracts, and two local embedded stores
+and no other: the single-controller embedded SQLite store of the existing instance/node/attempt
+record family (19), and each loop-admin supervisor's own execution journal (26), a per-supervisor,
+process-facts-only record of invocations, receipts, lifecycle, limits and usage on the
+supervisor's own filesystem, whose embedded engine is qualified in 26 (SQLite is the expected
+choice). Neither is a shared or distributed store, and the journal never holds work, decisions
+or acceptance. The earlier platform exclusion still prohibits a graph database or graph-store service, a
+distributed or shared store or lease service, a message bus, a credential broker, a new rule
+engine, a second scheduler authority and a duplicate evaluator.
+Existing 04/05/06/09/14/16/18 carry consumer/flow amendments. Implemented and completed records
+01/02/03/07/10/13 remain intact. New source scopes/tests are deliverables, not executed evidence.
+
+The current execution path supersedes the historical critical-path prose above for this extension:
+
+```
+02 -> 09 + 03 -> 19 store/binding
+20 shared runner contract -> 26 shared supervisor
+20 -> 26 -> 22 first adapter over the supervisor and its one process runner; 26 + 22 -> 27 standing desk clients
+04 + 09 -> 16
+10 -> 13 -> 14 (also 01,09,16)
+19 + 20 + 26 + 04 + 14 -> 21 workflow controller -> 05 experiment -> 06 records
+19 + 20 -> 23 immutable workspace
+21 + 23 + 06 -> 24 internal loop -> 25 publication -> 18 integrated proof
+```
+
+The offline host does not wait for live adoption. The verified public experiment/record/flow
+and assurance contracts remain prerequisites for an adopter's live trial as declared there.
+The shared execution path starts at 20 without graph prerequisites, then 26, then 22, then 27.
+The workflow branch starts at 09 and 04 with pure admission 13 alongside them. Model invocation
+alone does not supply recovery or ownership. 22 is qualified without graph storage (it needs 20 and 26, not 19); no production
+provider calls, automatic fallback or live authority changes are commissioned by these briefs.
+
+Dependency waves (including the existing graph/advice branches) are the authoring table above;
+`wave` is recalculated from in-repo `depends`, while adopter gates remain outside this graph.

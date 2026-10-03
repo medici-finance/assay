@@ -35,7 +35,7 @@ sources:
 consumers:
   - ".github/workflows/ (a windows leg — a new job or a matrix OS axis): fixed-here"
   - "docs/adopting-assay.md: follow-up windows-port/05 (the doc points at the green Windows CI as the 'CI-proven' evidence)"
-version: 1
+version: 2
 id: 570ade9d-9904-423e-95fc-2c25344fe236
 ---
 
@@ -121,7 +121,7 @@ result, and do not block the amd64 leg waiting on it. Record the runner-eligibil
 | 2 | The leg runs `statusgen --lint`: `grep -rEA30 'runs-on: *windows-latest' .github/workflows/ \| grep -qE 'statusgen([.]exe)? +.*--lint'; echo $?` | `0` |
 | 3 | The leg runs a desk-verb smoke: `grep -rEA40 'runs-on: *windows-latest' .github/workflows/ \| grep -qiE -e 'smoke' -e '--version' -e '--help' -e 'dry-run' -e 'validate'; echo $?` | `0` |
 | 4 | **Offline envelope** — the smoke names no live-forge verb: `grep -rEA40 'runs-on: *windows-latest' .github/workflows/ \| grep -qiE -e 'deskpost' -e 'deskpr' -e 'gh pr create' -e 'gh pr comment' -e 'gh issue create' -e 'gh issue comment' -e 'git push'; echo $?` | `1` (no mutating/network verb in the smoke) |
-| 5 | **Dereferencing — statusgen genuinely lints clean on a windows-built binary** (proves the leg's assertion is real, run from any host via cross-build + a linux `--lint` as a proxy, plus the workflow's own windows run is the true check): `cd statusgen && go build -o /tmp/wp04-sg . && /tmp/wp04-sg --root .. --lint; echo "exit=$?"` | `exit=0` — statusgen lints the stream tree clean, resolving `docs/streams` under the repo `--root` (the windows leg runs the same command on the windows binary) |
+| 5 | **Dereferencing — statusgen genuinely lints clean on a windows-built binary** (proves the leg's assertion is real, run from any host via cross-build + a linux `--lint` as a proxy, plus the workflow's own windows run is the true check): `cd statusgen && go build -o /tmp/wp04-sg . && /tmp/wp04-sg --root .. --lint; echo "exit=$?"` | output is `exit=0` — statusgen lints the stream tree clean, resolving `docs/streams` under the repo `--root` (the windows leg runs the same command on the windows binary). Expect re-written 2026-10-03 (#1862). |
 | 6 | The native-arm64 row is present and BLOCKED, not greened: `grep -qiE -e 'arm64.*BLOCKED' -e 'BLOCKED.*arm64' -e 'windows-11-arm' .github/workflows/*.yml docs/streams/windows-port/brief-04-windows-ci-leg.md; echo $?` | `0` — the arm64 native smoke is explicitly held with its reason |
 | 6a | **Positive control for row 6** — arm64 is NOT falsely marked passing: `grep -riE -e 'windows.?arm64 .*PASS' -e 'windows.?arm64 .*green' -e 'windows.?arm64 .*verified' .github/workflows/ docs/streams/windows-port/brief-04-windows-ci-leg.md; echo $?` | `1` |
 | 7 | **Consumers routing corroborated by the diff** (run on the implementer's branch): `statusgen --root . --consumers windows-port/04; echo $?` | `0` — the Windows CI leg (fixed-here) is proved by the branch diff |

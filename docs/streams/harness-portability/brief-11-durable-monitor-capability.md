@@ -31,7 +31,7 @@ exec-tier-why: >-
   refuse instead of degrade, weakens a guardrail while every token-lint still passes.
   The convenience-vs-guarantee classification and the verbatim-degradation discipline
   need care.
-version: 1
+version: 2
 id: f0fe4b8c-e52a-48de-b008-6ef2379354e1
 ---
 
@@ -203,9 +203,9 @@ present). Every absence-assertion below pairs a positive control (stream README 
 | 2 | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bindings plugins/assay/references; echo $?` | `0` — every capability in the closed set (now incl. `durable-monitor`) resolves in BOTH binding files and every skill has a degradation cell |
 | 2a | `grep -lc 'capability:durable-monitor' plugins/assay/references/claude-code.md plugins/assay/references/codex.md \| wc -l \| tr -d ' '` | `2` — positive control: the row is present in both files, not merely "closure didn't complain" |
 | 3 | `GOWORK=off go build -C tools/harnesslint -o /tmp/hl870 . && /tmp/hl870 bodies plugins/assay/skills; echo $?` | `0` — bodies still checked-clean (capability refs all in vocab, no banned tokens) |
-| 4 | `grep -rn -e 'Monitor' -e 'persistent: true' -e 'TaskList' plugins/assay/skills/*/SKILL.md; echo "exit=$?"` | `exit=1` — grep (case-sensitive, separate `-e` patterns so no cell-shredding pipe) finds NO remaining capital-`Monitor` / `persistent: true` / `TaskList` harness token in any body. `durable-monitor` (lowercase, hyphenated) and lowercase prose "monitor" do NOT match, so the capability name and neutral prose are untouched |
+| 4 | `grep -rn -e 'Monitor' -e 'persistent: true' -e 'TaskList' plugins/assay/skills/*/SKILL.md; echo "exit=$?"` | output is `exit=1` — grep (case-sensitive, separate `-e` patterns so no cell-shredding pipe) finds NO remaining capital-`Monitor` / `persistent: true` / `TaskList` harness token in any body. `durable-monitor` (lowercase, hyphenated) and lowercase prose "monitor" do NOT match, so the capability name and neutral prose are untouched. Expect re-written 2026-10-03 (#1862). |
 | 4a | `grep -rc 'capability:durable-monitor' plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/intake-desk/SKILL.md plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/verify-desk/SKILL.md \| awk -F: '{s+=$2} END{print s}'` | `>= 8` — positive control for row 4: the durable-monitor sites were REWRITTEN to the capability, not merely deleted |
-| 5 | `grep -rn 'EnterWorktree' plugins/assay/skills/*/SKILL.md; echo "exit=$?"` | `exit=1` — no EnterWorktree token remains |
+| 5 | `grep -rn 'EnterWorktree' plugins/assay/skills/*/SKILL.md; echo "exit=$?"` | output is `exit=1` — no EnterWorktree token remains. Expect re-written 2026-10-03 (#1862). |
 | 5a | `grep -rc 'capability:isolate-workspace' plugins/assay/skills/verify-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md \| awk -F: '{s+=$2} END{print (s>=2)}'` | `1` — positive control for row 5: both former EnterWorktree sites now carry `capability:isolate-workspace` |
 | 6 | **Recurrence guard (OPTIONAL hardening) — the lint now CATCHES a reintroduced token.** `GOWORK=off go build -C tools/harnesslint -o /tmp/hl11 .; f=plugins/assay/skills/the-desk/SKILL.md; cp "$f" /tmp/hp11.bak; printf '\nProbe line arming a persistent: true monitor.\n' >> "$f"; /tmp/hl11 bodies plugins/assay/skills; echo "exit=$?"; cp /tmp/hp11.bak "$f"` | `exit=1` (built binary, so harnesslint's checked-failed=1 is unambiguous — a compile failure would have failed `go build` first), output names `plugins/assay/skills/the-desk/SKILL.md` with the banned `persistent: true` token; after restore, row 3 returns `0` — the red was the plant (planted `persistent: true` avoids the nested-backtick a `Monitor` plant would need in this cell; SKIP this row if the Task 5 hardening was not taken, and say so in Evidence) |
 | 7 | `grep -c 'never degrade' plugins/assay/references/codex.md` | `>= 1` — the non-negotiable floor (isolation / evidence / gates never degrade) is intact after the edit; durable-monitor sits BELOW it as a convenience |

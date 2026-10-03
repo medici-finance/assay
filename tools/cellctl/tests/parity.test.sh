@@ -14,8 +14,9 @@
 #
 # Matrix: kinds {k8s, house, container, scrubbed} × harness {claude, codex} × cockpit
 # {tmux, herdr, orca} × verbs {check, desk, up, down, set, ls, smoke, status}, plus `new` per kind
-# × forge {github, gitlab}. `new` has no dry run — parity there is the byte-diff of the tree each
-# implementation scaffolds into its own CELLS_ROOT, mode bits included.
+# × forge {github, gitlab}, plus one nested-name `new` (`team/fresh`) per kind in NESTED_KINDS.
+# `new` has no dry run — parity there is the byte-diff of the tree each implementation scaffolds
+# into its own CELLS_ROOT, mode bits included.
 #
 # `deskd` is DELIBERATELY absent: it has no DRY_RUN plan path in the oracle, so there is nothing
 # to diff, and giving it one would mean editing the oracle (which this brief forbids). Its port is
@@ -426,9 +427,13 @@ cell_case(){
   rm -rf "$rootA" "$rootB"
 }
 
-# new_case <kind> <forge> — `new` has no dry run, so parity is the tree each side scaffolds.
+# new_case <kind> <forge> [<cell>] — `new` has no dry run, so parity is the tree each side
+# scaffolds. <cell> defaults to `fresh`; a NESTED name (`team/fresh`) is its own cell, because the
+# oracle makes a nested cell's parents with `mkdir -p` and a port that creates the cell directory
+# non-recursively refuses it — the tree diffed is then the top-level entry, parents included.
 new_case(){
-  local kind="$1" forge="$2" id="$kind/$forge/-/new"
+  local kind="$1" forge="$2" cell="${3:-fresh}" id="$1/$2/-/new"
+  [[ "$cell" == fresh ]] || id="$kind/$forge/-/new-nested"
   [[ -z "$ONLY" || "$id" == *"$ONLY"* ]] || return 0
   local rootA="$T/a/$cells" rootB="$T/b/$cells"
   mkdir -p "$rootA" "$rootB"
@@ -437,12 +442,12 @@ new_case(){
   fixture_ok "$id" "$rootA" "$rootB" || return 0
   local -a args=()
   case "$kind" in
-    k8s)       args=(new fresh --kind k8s --forge "$forge" --repo "REPO" --cells-yaml "ROOT/cells/cell/cells-cell.yaml")
+    k8s)       args=(new "$cell" --kind k8s --forge "$forge" --repo "REPO" --cells-yaml "ROOT/cells/cell/cells-cell.yaml")
                if [[ "$forge" == github ]]; then args+=(--orgs example-org --deskd-app-pem "ROOT/cells/cell/home/.config/assay/deskd-app.pem")
                else args+=(--group example-group); fi ;;
-    house)     args=(new fresh --kind house --repo "REPO" --roots "example-org/example-repo=REPO") ;;
-    container) args=(new fresh --kind container --repo example-org/example-repo --launcher "ROOT/bin/launcher") ;;
-    scrubbed)  args=(new fresh --kind scrubbed --repo "REPO" --repo-slug example-org/example-repo --roots "example-org/example-repo=REPO") ;;
+    house)     args=(new "$cell" --kind house --repo "REPO" --roots "example-org/example-repo=REPO") ;;
+    container) args=(new "$cell" --kind container --repo example-org/example-repo --launcher "ROOT/bin/launcher") ;;
+    scrubbed)  args=(new "$cell" --kind scrubbed --repo "REPO" --repo-slug example-org/example-repo --roots "example-org/example-repo=REPO") ;;
   esac
   # Two substitutions per argument, into a scalar, THEN appended. Never `arr[-1]=`: a negative
   # array subscript is bash 4.2+, and macOS ships bash 3.2 as /bin/bash — where that line is a
@@ -458,8 +463,8 @@ new_case(){
   done
   run_impl "$rootA" "$CELLCTL_A" "$T/outA" "${argsA[@]}"
   run_impl "$rootB" "$CELLCTL_B" "$T/outB" "${argsB[@]}"
-  tree_manifest "$rootA" "$CELLCTL_A" "$rootA/cells/fresh" >> "$T/outA"
-  tree_manifest "$rootB" "$CELLCTL_B" "$rootB/cells/fresh" >> "$T/outB"
+  tree_manifest "$rootA" "$CELLCTL_A" "$rootA/cells/${cell%%/*}" >> "$T/outA"
+  tree_manifest "$rootB" "$CELLCTL_B" "$rootB/cells/${cell%%/*}" >> "$T/outB"
   cells=$((cells+1))
   verdict "$id"
   rm -rf "$rootA" "$rootB"
@@ -471,12 +476,18 @@ HARNESSES="claude codex"
 COCKPITS="tmux herdr orca"
 VERBS="check desk up down set ls smoke status"
 FORGES="github gitlab"
+# k8s is left out of the nested `new` cells: both implementations refuse `team/fresh` at the same
+# step with the same tree (its `cells-<cell>.yaml` copy cannot take a `/`), but with different
+# refusal text and exit codes (the oracle's raw `cp` error and exit 1, the port's die and exit 3).
+# That divergence predates the house-scaffold change these cells were added for, and is tracked
+# as its own follow-up rather than reddening this matrix.
+NESTED_KINDS="house container scrubbed"
 # The count the matrix DECLARES, computed from the same lists the loops walk — never a literal,
 # which would drift the moment an axis grows.
 n_kinds=$(set -- $KINDS; echo $#); n_harn=$(set -- $HARNESSES; echo $#)
 n_cock=$(set -- $COCKPITS; echo $#); n_verbs=$(set -- $VERBS; echo $#)
-n_forges=$(set -- $FORGES; echo $#)
-EXPECTED_CELLS=$(( n_kinds * n_harn * n_cock * n_verbs + n_kinds * n_forges ))
+n_forges=$(set -- $FORGES; echo $#); n_nested=$(set -- $NESTED_KINDS; echo $#)
+EXPECTED_CELLS=$(( n_kinds * n_harn * n_cock * n_verbs + n_kinds * n_forges + n_nested ))
 
 echo "parity: A=$CELLCTL_A"
 echo "parity: B=$CELLCTL_B"
@@ -502,6 +513,11 @@ for kind in $KINDS; do
     # gitlab leg is the SAME call and proves the flag is refused/ignored identically.
     new_case "$kind" "$forge"
   done
+done
+# One nested-name `new` per kind in NESTED_KINDS (forge-independent: the parents are made before
+# any forge branch). A kind that refuses a nested name must refuse it identically on both sides.
+for kind in $NESTED_KINDS; do
+  new_case "$kind" github team/fresh
 done
 
 echo "parity: $cells cells, $divergent divergent"
