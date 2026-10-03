@@ -6,7 +6,9 @@
 // usage stays unknown, the two modes share one set of checks, a cancel
 // request is not a confirmed stop, terminal states are absorbing, refusals
 // never echo their payload, decoding is strict, an unreported model is not the
-// pinned model and a result must echo its own invocation's identity.
+// pinned model, a result must echo its own invocation's identity, an adapter's
+// or fence's error never reaches an error's text, and nothing the caller or
+// the adapter keeps a handle on can rewrite the Client's record.
 package conformance
 
 import (
@@ -69,6 +71,8 @@ var Cases = []struct {
 	{"RequestRules", CaseRequestRules},
 	{"ReconcileRules", CaseReconcileRules},
 	{"NegativeUsage", CaseNegativeUsage},
+	{"NoAdapterEcho", CaseNoAdapterEcho},
+	{"NoAliasing", CaseNoAliasing},
 }
 
 // RunAll runs every case as a subtest against fresh subjects.

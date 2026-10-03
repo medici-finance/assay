@@ -58,4 +58,25 @@ var (
 	ErrModelUnreported = errors.New("runner: observed model was not reported")
 	// ErrResultIdentity: the result echoes another invocation's identity.
 	ErrResultIdentity = errors.New("runner: result echoes another invocation's identity")
+	// ErrCancelFailed: the adapter returned an error for a cancel request, so
+	// the request may not have been taken. The recorded state is unchanged.
+	ErrCancelFailed = errors.New("runner: the adapter failed the cancel request")
 )
+
+// opaque carries an error from outside the contract (an adapter, a fence)
+// behind one of the contract's sentinels. Its text is the sentinel's alone:
+// whatever the outside error says, a caller that logs the refusal logs only
+// the contract's own words. Unwrap keeps both in the chain, so errors.Is
+// matches the sentinel and anything the outside error wraps (a definite
+// failure, a lost acknowledgment, a context deadline).
+//
+// Build it with a composite literal whose sentinel is a package sentinel; the
+// source guard TestNoPayloadInErrors checks every literal and that Error never
+// reads cause.
+type opaque struct {
+	sentinel error
+	cause    error
+}
+
+func (e *opaque) Error() string   { return e.sentinel.Error() }
+func (e *opaque) Unwrap() []error { return []error{e.sentinel, e.cause} }

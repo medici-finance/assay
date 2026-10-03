@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -251,10 +252,29 @@ func scanValue(dec *json.Decoder) error {
 	return nil
 }
 
+// fieldPath names a place in a request by the contract's own definition: a
+// constant, a json tag of a defined struct field, or an array index. It is the
+// one non-constant string a refusal may format, and nothing from a request can
+// become one: the source guard (TestNoPayloadInErrors) refuses a conversion to
+// it outside these methods unless it converts a constant, and these methods
+// take a type and an index, never a string.
+type fieldPath string
+
+// field extends the path by the json tag of t's i-th field.
+func (p fieldPath) field(t reflect.Type, i int) fieldPath {
+	tag, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+	return p + "." + fieldPath(tag)
+}
+
+// index extends the path by an array index.
+func (p fieldPath) index(i int) fieldPath {
+	return p + fieldPath("["+strconv.Itoa(i)+"]")
+}
+
 // checkKeys refuses a key that is not EXACTLY a json tag of the struct it
 // decodes into, and a null for a defined field, at every depth of the defined
 // shape. A map field (ext) takes any key; its values are checked elsewhere.
-func checkKeys(raw json.RawMessage, t reflect.Type, path string) error {
+func checkKeys(raw json.RawMessage, t reflect.Type, path fieldPath) error {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
@@ -264,25 +284,24 @@ func checkKeys(raw json.RawMessage, t reflect.Type, path string) error {
 		if err := json.Unmarshal(raw, &obj); err != nil {
 			return fmt.Errorf("%s is not an object", path)
 		}
-		fields := map[string]reflect.Type{}
+		fields := map[string]int{}
 		for i := 0; i < t.NumField(); i++ {
 			tag, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
 			if tag != "" && tag != "-" {
-				fields[tag] = t.Field(i).Type
+				fields[tag] = i
 			}
 		}
 		for k, v := range obj {
-			ft, ok := fields[k]
+			fi, ok := fields[k]
 			if !ok {
 				return fmt.Errorf("%s carries a key %s does not define", path, Version)
 			}
-			// k is now known to be a defined tag, so the path names only
-			// defined fields.
-			sub := path + "." + k
+			// The path is built from the defined field, never from k.
+			sub := path.field(t, fi)
 			if bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
 				return fmt.Errorf("%s is null", sub)
 			}
-			if err := checkKeys(v, ft, sub); err != nil {
+			if err := checkKeys(v, t.Field(fi).Type, sub); err != nil {
 				return err
 			}
 		}
@@ -295,7 +314,7 @@ func checkKeys(raw json.RawMessage, t reflect.Type, path string) error {
 			return fmt.Errorf("%s is not an array", path)
 		}
 		for i, v := range items {
-			if err := checkKeys(v, t.Elem(), fmt.Sprintf("%s[%d]", path, i)); err != nil {
+			if err := checkKeys(v, t.Elem(), path.index(i)); err != nil {
 				return err
 			}
 		}
@@ -315,7 +334,7 @@ func (r LaunchRequest) Validate() error {
 	if r.Version != Version {
 		return ErrUnsupportedVersion
 	}
-	for name, v := range map[string]string{
+	for name, v := range map[fieldPath]string{
 		"caller": r.Caller, "id": r.ID, "packet.role": r.Packet.Role,
 		"packet.ref": r.Packet.Ref, "profile.id": r.Profile.ID,
 		"profile.model": r.Profile.Model, "workspace": r.Workspace,

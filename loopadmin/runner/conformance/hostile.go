@@ -18,6 +18,7 @@ type Hostile struct {
 	startErr     error
 	startForward bool
 	observeErr   error
+	cancelErr    error
 	blankModel   bool
 	reports      map[string]runner.Observation
 }
@@ -42,6 +43,14 @@ func (h *Hostile) FailNextStart(err error, forward bool) {
 func (h *Hostile) FailNextObserve(err error) {
 	h.mu.Lock()
 	h.observeErr = err
+	h.mu.Unlock()
+}
+
+// FailNextCancel makes the next Cancel return err without asking the wrapped
+// adapter.
+func (h *Hostile) FailNextCancel(err error) {
+	h.mu.Lock()
+	h.cancelErr = err
 	h.mu.Unlock()
 }
 
@@ -76,6 +85,18 @@ func (h *Hostile) Start(ctx context.Context, req runner.LaunchRequest) (runner.R
 		rec.ActualModel = ""
 	}
 	return rec, err
+}
+
+// Cancel implements runner.Adapter.
+func (h *Hostile) Cancel(ctx context.Context, ref runner.Ref) (runner.CancelAck, error) {
+	h.mu.Lock()
+	err := h.cancelErr
+	h.cancelErr = nil
+	h.mu.Unlock()
+	if err != nil {
+		return runner.CancelAck{}, err
+	}
+	return h.Adapter.Cancel(ctx, ref)
 }
 
 // Observe implements runner.Adapter.

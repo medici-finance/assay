@@ -24,6 +24,9 @@ var credentialPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{20,}`),
 	// key=value and "key": "value" forms, including a quoted JSON key.
 	regexp.MustCompile(`(?i)(api[_-]?key|secret|passw(or)?d|token|authorization|cookie)["']?\s*[:=]\s*\S{8,}`),
+	regexp.MustCompile(`(?i)(auth|bearer|privkey|access[_-]?key(?:[_-]?id)?)["']?\s*[:=]\s*\S{8,}`),
+	// A URL carrying a password in its userinfo: scheme://user:password@host.
+	regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]*://[^/\s:@]+:[^/\s@]+@`),
 }
 
 // basicAuth finds an HTTP Basic credential: the scheme word followed by a
@@ -51,7 +54,13 @@ var credentialKeyWords = []string{
 	"token", "secret", "password", "passwd", "passphrase", "credential",
 	"apikey", "api_key", "api-key", "private_key", "privatekey", "private-key",
 	"authorization", "cookie", "session",
+	"bearer", "privkey", "access_key", "accesskey", "access-key",
 }
+
+// credentialKeyTokens name a credential slot only as a whole word of the key
+// (split on anything but a letter or digit): "auth" is a slot in "x-auth" or
+// "basic_auth", but "author" and "authority" are not credentials.
+var credentialKeyTokens = []string{"auth", "oauth"}
 
 // CredentialKey reports whether an extension key names a credential slot.
 func CredentialKey(k string) bool {
@@ -59,6 +68,16 @@ func CredentialKey(k string) bool {
 	for _, w := range credentialKeyWords {
 		if strings.Contains(k, w) {
 			return true
+		}
+	}
+	words := strings.FieldsFunc(k, func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
+	})
+	for _, w := range words {
+		for _, tok := range credentialKeyTokens {
+			if w == tok {
+				return true
+			}
 		}
 	}
 	return false

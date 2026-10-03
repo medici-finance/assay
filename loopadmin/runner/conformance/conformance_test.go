@@ -189,3 +189,13 @@ func TestRunnerReconcileRules(t *testing.T) {
 func TestRunnerNegativeUsage(t *testing.T) {
 	conformance.CaseNegativeUsage(t, full)
 }
+
+func TestRunnerNoAdapterEcho(t *testing.T) {
+	conformance.CaseNoAdapterEcho(t, full)
+	conformance.CaseNoAdapterEcho(t, minimal)
+}
+
+func TestRunnerNoAliasing(t *testing.T) {
+	conformance.CaseNoAliasing(t, full)
+	conformance.CaseNoAliasing(t, minimal)
+}

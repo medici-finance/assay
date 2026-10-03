@@ -13,6 +13,13 @@ import (
 // It keeps invocation state in memory only; durable launch journaling belongs
 // to the supervisor, which wraps this contract. A Client serializes its own
 // calls.
+//
+// An error an adapter or a fence returns reaches the caller only inside the
+// error chain, behind one of the contract's sentinels (errors.Is matches both),
+// never in the returned error's text: an adapter error may carry request,
+// result or credential content, and a caller that logs refusals must not log
+// it. The Client also keeps deep copies of what it records and returns copies,
+// so no one sharing a slice, map or pointer with it can rewrite its state.
 type Client struct {
 	adapter Adapter
 	caps    Capabilities
@@ -36,7 +43,7 @@ type invocation struct {
 // generation; a nil fence is a programming error and refuses every acceptance.
 func NewClient(a Adapter, f Fence) *Client {
 	return &Client{
-		adapter: a, caps: a.Capabilities(), fence: f,
+		adapter: a, caps: a.Capabilities().clone(), fence: f,
 		inv: map[string]*invocation{}, held: map[string]string{},
 	}
 }
@@ -59,6 +66,7 @@ type Accepted struct {
 // unknown and refuses all further launches under that authority until it is
 // reconciled.
 func (c *Client) Start(ctx context.Context, req LaunchRequest) (Ref, State, error) {
+	req = req.clone() // checked, recorded and sent as this copy only
 	if err := req.Validate(); err != nil {
 		return Ref{}, "", err
 	}
@@ -86,13 +94,13 @@ func (c *Client) Start(ctx context.Context, req LaunchRequest) (Ref, State, erro
 	in := &invocation{req: req, state: StateUnknown}
 	c.inv[ref.key()] = in
 	c.held[req.Authority.Key] = ref.key()
-	rec, err := c.adapter.Start(ctx, req)
-	if err != nil {
-		if errors.Is(err, ErrDefiniteFailure) {
+	rec, aerr := c.adapter.Start(ctx, req.clone())
+	if aerr != nil {
+		if errors.Is(aerr, ErrDefiniteFailure) {
 			in.state = StateFailed
-			return ref, in.state, err
+			return ref, in.state, &opaque{sentinel: ErrDefiniteFailure, cause: aerr}
 		}
-		return ref, in.state, fmt.Errorf("%w: %v", ErrReconcileRequired, err)
+		return ref, in.state, &opaque{sentinel: ErrReconcileRequired, cause: aerr}
 	}
 	in.state = StateRunning
 	// A receipt that names no model is not yet a fallback: the model is
@@ -123,12 +131,13 @@ func (c *Client) look(ctx context.Context, ref Ref, q func(context.Context, Ref)
 	if err != nil {
 		return Observation{}, err
 	}
-	obs, err := q(ctx, ref)
+	obs, aerr := q(ctx, ref)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if err != nil {
-		return Observation{}, fmt.Errorf("%w: could not check: %v", ErrReconcileRequired, err)
+	if aerr != nil {
+		return Observation{}, &opaque{sentinel: ErrReconcileRequired, cause: aerr}
 	}
+	obs = obs.clone() // the adapter keeps no handle on what is recorded
 	if obs.State == StateAbsent {
 		if c.caps.LaunchDedupe && in.state == StateUnknown {
 			in.state = StateFailed
@@ -151,7 +160,7 @@ func (c *Client) look(ctx context.Context, ref Ref, q func(context.Context, Ref)
 			return Observation{}, ErrStateRegression
 		}
 		if in.obs != nil {
-			return *in.obs, nil
+			return in.obs.clone(), nil
 		}
 		return obs, nil
 	}
@@ -163,8 +172,8 @@ func (c *Client) look(ctx context.Context, ref Ref, q func(context.Context, Ref)
 		obs.Usage = Usage{}
 	}
 	obs.Usage = obs.Usage.readings()
-	in.usage = obs.Usage
-	kept := obs
+	kept := obs.clone() // the caller gets obs, which shares nothing with kept
+	in.usage = kept.Usage
 	in.obs = &kept
 	if obs.ActualModel != "" && obs.ActualModel != in.req.Profile.Model {
 		in.fellBack = true
@@ -176,16 +185,19 @@ func (c *Client) look(ctx context.Context, ref Ref, q func(context.Context, Ref)
 // Cancel requests a stop. The acknowledgment is reported only when the adapter
 // declares cancel-ack, and either way the invocation is CancelRequested, never
 // stopped: only an observation of a stopped invocation confirms a stop.
+//
+// An adapter error leaves the recorded state unchanged and returns
+// ErrCancelFailed: the request may not have been taken.
 func (c *Client) Cancel(ctx context.Context, ref Ref) (CancelAck, error) {
 	in, err := c.get(ref)
 	if err != nil {
 		return CancelAck{}, err
 	}
-	ack, err := c.adapter.Cancel(ctx, ref)
+	ack, aerr := c.adapter.Cancel(ctx, ref)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if err != nil {
-		return CancelAck{}, err
+	if aerr != nil {
+		return CancelAck{}, &opaque{sentinel: ErrCancelFailed, cause: aerr}
 	}
 	in.cancelled = true
 	if in.state == StateRunning {
@@ -225,6 +237,10 @@ func (c *Client) AcceptResult(ctx context.Context, ref Ref) (Accepted, error) {
 	}
 	c.mu.Lock()
 	state, obs, req, fellBack := in.state, in.obs, in.req, in.fellBack
+	if obs != nil {
+		kept := obs.clone() // the Accepted below shares nothing with the record
+		obs = &kept
+	}
 	c.mu.Unlock()
 	if state != StateFinished || obs == nil || obs.Result == nil {
 		return Accepted{}, ErrNotFinished
@@ -232,9 +248,9 @@ func (c *Client) AcceptResult(ctx context.Context, ref Ref) (Accepted, error) {
 	if c.fence == nil {
 		return Accepted{}, ErrFenceUnavailable
 	}
-	cur, err := c.fence.CurrentGeneration(ctx, req.Authority.Key)
-	if err != nil {
-		return Accepted{}, fmt.Errorf("%w: %v", ErrFenceUnavailable, err)
+	cur, ferr := c.fence.CurrentGeneration(ctx, req.Authority.Key)
+	if ferr != nil {
+		return Accepted{}, &opaque{sentinel: ErrFenceUnavailable, cause: ferr}
 	}
 	if cur != req.Authority.Generation {
 		return Accepted{}, fmt.Errorf("%w: attempt ran under %d, current is %d", ErrFenced, req.Authority.Generation, cur)

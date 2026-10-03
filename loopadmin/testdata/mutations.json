@@ -3,8 +3,8 @@
     "test": "TestRunnerConformanceUnknownLaunch",
     "why": "map a lost launch acknowledgment to a definite failure",
     "file": "runner/client.go",
-    "old": "if errors.Is(err, ErrDefiniteFailure) {",
-    "new": "if errors.Is(err, ErrDefiniteFailure) || errors.Is(err, ErrAckLost) {"
+    "old": "if errors.Is(aerr, ErrDefiniteFailure) {",
+    "new": "if errors.Is(aerr, ErrDefiniteFailure) || errors.Is(aerr, ErrAckLost) {"
   },
   {
     "test": "TestRunnerConformanceLateResultDenied",
@@ -143,8 +143,8 @@
     "test": "TestRunnerStrictDecode",
     "why": "B1: match keys case-insensitively",
     "file": "runner/request.go",
-    "old": "ft, ok := fields[k]",
-    "new": "ft, ok := fields[strings.ToLower(k)]"
+    "old": "fi, ok := fields[k]",
+    "new": "fi, ok := fields[strings.ToLower(k)]"
   },
   {
     "test": "TestRunnerStrictDecode",
@@ -206,8 +206,8 @@
     "test": "TestRunnerReconcileRules",
     "why": "A1: read an adapter error on observe as running",
     "file": "runner/client.go",
-    "old": "\t\treturn Observation{}, fmt.Errorf(\"%w: could not check: %v\", ErrReconcileRequired, err)",
-    "new": "\t\tin.state = StateRunning\n\t\treturn Observation{}, fmt.Errorf(\"%w: could not check: %v\", ErrReconcileRequired, err)"
+    "old": "\t\treturn Observation{}, &opaque{sentinel: ErrReconcileRequired, cause: aerr}",
+    "new": "\t\tin.state = StateRunning\n\t\treturn Observation{}, &opaque{sentinel: ErrReconcileRequired, cause: aerr}"
   },
   {
     "test": "TestRunnerResultIdentity",
@@ -228,6 +228,195 @@
     "why": "a negative usage figure passes as a reading",
     "file": "runner/client.go",
     "old": "\tobs.Usage = obs.Usage.readings()\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAdapterEcho",
+    "why": "SEC-3: echo the adapter error text on start, definite",
+    "file": "runner/client.go",
+    "old": "return ref, in.state, &opaque{sentinel: ErrDefiniteFailure, cause: aerr}",
+    "new": "return ref, in.state, fmt.Errorf(\"%w: %w\", ErrDefiniteFailure, aerr)"
+  },
+  {
+    "test": "TestRunnerNoAdapterEcho",
+    "why": "SEC-3: echo the adapter error text on start, unknown",
+    "file": "runner/client.go",
+    "old": "return ref, in.state, &opaque{sentinel: ErrReconcileRequired, cause: aerr}",
+    "new": "return ref, in.state, fmt.Errorf(\"%w: %v\", ErrReconcileRequired, aerr)"
+  },
+  {
+    "test": "TestRunnerNoAdapterEcho",
+    "why": "SEC-3: echo the adapter error text on observe and reconcile",
+    "file": "runner/client.go",
+    "old": "return Observation{}, &opaque{sentinel: ErrReconcileRequired, cause: aerr}",
+    "new": "return Observation{}, fmt.Errorf(\"%w: could not check: %v\", ErrReconcileRequired, aerr)"
+  },
+  {
+    "test": "TestRunnerNoAdapterEcho",
+    "why": "SEC-3: echo the adapter error text on cancel",
+    "file": "runner/client.go",
+    "old": "return CancelAck{}, &opaque{sentinel: ErrCancelFailed, cause: aerr}",
+    "new": "return CancelAck{}, aerr"
+  },
+  {
+    "test": "TestRunnerNoAdapterEcho",
+    "why": "SEC-3: echo the adapter error text on the fence read",
+    "file": "runner/client.go",
+    "old": "return Accepted{}, &opaque{sentinel: ErrFenceUnavailable, cause: ferr}",
+    "new": "return Accepted{}, fmt.Errorf(\"%w: %v\", ErrFenceUnavailable, ferr)"
+  },
+  {
+    "test": "TestRunnerNoAdapterEcho",
+    "why": "SEC-3: the sealed error appends the adapter text",
+    "file": "runner/errors.go",
+    "old": "func (e *opaque) Error() string   { return e.sentinel.Error() }",
+    "new": "func (e *opaque) Error() string   { return e.sentinel.Error() + \": \" + e.cause.Error() }"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3: echo the adapter error text on start, definite",
+    "file": "runner/client.go",
+    "old": "return ref, in.state, &opaque{sentinel: ErrDefiniteFailure, cause: aerr}",
+    "new": "return ref, in.state, fmt.Errorf(\"%w: %w\", ErrDefiniteFailure, aerr)"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3: echo the adapter error text on start, unknown",
+    "file": "runner/client.go",
+    "old": "return ref, in.state, &opaque{sentinel: ErrReconcileRequired, cause: aerr}",
+    "new": "return ref, in.state, fmt.Errorf(\"%w: %v\", ErrReconcileRequired, aerr)"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3: echo the adapter error text on observe and reconcile",
+    "file": "runner/client.go",
+    "old": "return Observation{}, &opaque{sentinel: ErrReconcileRequired, cause: aerr}",
+    "new": "return Observation{}, fmt.Errorf(\"%w: could not check: %v\", ErrReconcileRequired, aerr)"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3: echo the adapter error text on cancel",
+    "file": "runner/client.go",
+    "old": "return CancelAck{}, &opaque{sentinel: ErrCancelFailed, cause: aerr}",
+    "new": "return CancelAck{}, aerr"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3: echo the adapter error text on the fence read",
+    "file": "runner/client.go",
+    "old": "return Accepted{}, &opaque{sentinel: ErrFenceUnavailable, cause: ferr}",
+    "new": "return Accepted{}, fmt.Errorf(\"%w: %v\", ErrFenceUnavailable, ferr)"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3: the sealed error appends the adapter text",
+    "file": "runner/errors.go",
+    "old": "func (e *opaque) Error() string   { return e.sentinel.Error() }",
+    "new": "func (e *opaque) Error() string   { return e.sentinel.Error() + \": \" + e.cause.Error() }"
+  },
+  {
+    "test": "TestRunnerNoAdapterEcho",
+    "why": "SEC-3: drop the adapter error from the chain",
+    "file": "runner/errors.go",
+    "old": "return []error{e.sentinel, e.cause}",
+    "new": "return []error{e.sentinel}"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3: the guard trusts a call through an interface",
+    "file": "runner/errfmt_test.go",
+    "old": "\t\t\tif r := fn.Type().(*types.Signature).Recv(); r != nil && types.IsInterface(r.Type()) {\n\t\t\t\treturn nil\n\t\t\t}\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasing",
+    "why": "A6: record the caller's request without a copy",
+    "file": "runner/client.go",
+    "old": "req = req.clone() // checked, recorded and sent as this copy only",
+    "new": "// checked, recorded and sent as this copy only"
+  },
+  {
+    "test": "TestRunnerNoAliasing",
+    "why": "A6: hand the adapter the recorded request",
+    "file": "runner/client.go",
+    "old": "rec, aerr := c.adapter.Start(ctx, req.clone())",
+    "new": "rec, aerr := c.adapter.Start(ctx, req)"
+  },
+  {
+    "test": "TestRunnerNoAliasing",
+    "why": "A6: keep the adapter's observation without a copy",
+    "file": "runner/client.go",
+    "old": "\tobs = obs.clone() // the adapter keeps no handle on what is recorded\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasing",
+    "why": "A6: record the observation the caller gets",
+    "file": "runner/client.go",
+    "old": "kept := obs.clone() // the caller gets obs, which shares nothing with kept",
+    "new": "kept := obs // the caller gets obs, which shares nothing with kept"
+  },
+  {
+    "test": "TestRunnerNoAliasing",
+    "why": "A6: return the record on a terminal re-report",
+    "file": "runner/client.go",
+    "old": "return in.obs.clone(), nil",
+    "new": "return *in.obs, nil"
+  },
+  {
+    "test": "TestRunnerNoAliasing",
+    "why": "A6: return the record from AcceptResult",
+    "file": "runner/client.go",
+    "old": "kept := obs.clone() // the Accepted below shares nothing with the record",
+    "new": "kept := *obs // the Accepted below shares nothing with the record"
+  },
+  {
+    "test": "TestRunnerTerminalAbsorbs",
+    "why": "A7: drop the model arm of sameOutcome",
+    "file": "runner/client.go",
+    "old": "kept != nil && kept.ActualModel == obs.ActualModel && ",
+    "new": "kept != nil && "
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "A8: drop auth from the whole-word key tokens",
+    "file": "runner/secrets.go",
+    "old": "[]string{\"auth\", \"oauth\"}",
+    "new": "[]string{\"oauth\"}"
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "A8: drop bearer from the credential key list",
+    "file": "runner/secrets.go",
+    "old": "\"bearer\", \"privkey\", \"access_key\", \"accesskey\", \"access-key\",",
+    "new": "\"privkey\", \"access_key\", \"accesskey\", \"access-key\","
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "A8: drop privkey from the credential key list",
+    "file": "runner/secrets.go",
+    "old": "\"bearer\", \"privkey\", \"access_key\", \"accesskey\", \"access-key\",",
+    "new": "\"bearer\", \"access_key\", \"accesskey\", \"access-key\","
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "A8: drop access_key from the credential key list",
+    "file": "runner/secrets.go",
+    "old": "\"bearer\", \"privkey\", \"access_key\", \"accesskey\", \"access-key\",",
+    "new": "\"bearer\", \"privkey\", \"accesskey\", \"access-key\","
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "A8: drop the auth/bearer/private-key/access-key value form",
+    "file": "runner/secrets.go",
+    "old": "\tregexp.MustCompile(`(?i)(auth|bearer|privkey|access[_-]?key(?:[_-]?id)?)[\"']?\\s*[:=]\\s*\\S{8,}`),\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "A8: drop the URL-userinfo password form",
+    "file": "runner/secrets.go",
+    "old": "\tregexp.MustCompile(`(?i)\\b[a-z][a-z0-9+.-]*://[^/\\s:@]+:[^/\\s@]+@`),\n",
     "new": ""
   }
 ]

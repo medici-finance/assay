@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -36,9 +37,14 @@ func finish(t *testing.T, s Subject, c *runner.Client, ref runner.Ref, res runne
 // the tree looks like one.
 func secretShape() string { return "gh" + "p_" + strings.Repeat("a1", 20) }
 
+// passwordURL builds a URL whose userinfo carries a password, at run time.
+func passwordURL() string {
+	return "https://" + "deploy" + ":" + "x9" + "y8z7w6" + "@" + "git.example/r"
+}
+
 // CaseTerminalAbsorbs: failed, stopped and finished are absorbing. An adapter
 // that later reports a failed or stopped attempt running, or a finished one
-// with another result, is refused as a contract violation; the recorded state
+// with another result or under another model, is refused as a contract violation; the recorded state
 // and the accepted result do not move, so a revived attempt can never sit
 // beside its replacement or swap the result already accepted.
 func CaseTerminalAbsorbs(t *testing.T, f Factory) {
@@ -108,6 +114,16 @@ func CaseTerminalAbsorbs(t *testing.T, f Factory) {
 	if _, err := c.AcceptResult(ctx, finRef); err != nil {
 		t.Fatalf("accept: %v", err)
 	}
+	// The same result re-reported is not a regression; the same result under
+	// another model is.
+	same := GoodResult(fin)
+	h.Report(finRef, runner.Observation{State: runner.StateFinished, ActualModel: fin.Profile.Model, Result: &same})
+	if _, err := c.Observe(ctx, finRef); err != nil {
+		t.Fatalf("the recorded outcome re-reported: %v", err)
+	}
+	h.Report(finRef, runner.Observation{State: runner.StateFinished, ActualModel: "model-b", Result: &same})
+	_, err = c.Observe(ctx, finRef)
+	wantErr(t, "finished attempt reported under another model", err, runner.ErrStateRegression)
 	other := GoodResult(fin)
 	other.Summary = "a different result"
 	h.Report(finRef, runner.Observation{State: runner.StateFinished, ActualModel: fin.Profile.Model, Result: &other})
@@ -131,9 +147,11 @@ func wantStateOf(t *testing.T, c *runner.Client, ref runner.Ref, want runner.Sta
 }
 
 // CaseCredentialShapes: credential exclusion reads extension values decoded,
-// at every depth: a nested credential slot, an authorization or cookie key, a
-// Basic credential and a JSON-escaped token are refused. Prose that merely
-// says "basic" is not.
+// at every depth: a nested credential slot, an authorization, auth, bearer,
+// private-key, access-key, cookie or session key, a Basic credential, a
+// JSON-escaped token and a URL carrying a password are refused. Prose that
+// merely says "basic", a key that merely starts with "auth" (author,
+// authority) and a URL without a password are not.
 func CaseCredentialShapes(t *testing.T, f Factory) {
 	_, _, claims, c := hsetup(t, f)
 	ctx := context.Background()
@@ -147,6 +165,14 @@ func CaseCredentialShapes(t *testing.T, f Factory) {
 		"token in an array":    {"cfg": `[{"note":"` + secret + `"}]`},
 		"cookie key":           {"cookie": `"sid"`},
 		"session key":          {"session": `"s"`},
+		"auth key":             {"auth": `"x"`},
+		"auth word in a key":   {"cfg": `{"x-auth":"x"}`},
+		"oauth key":            {"oauth": `"x"`},
+		"bearer key":           {"cfg": `{"bearer":"x"}`},
+		"privkey key":          {"privkey": `"x"`},
+		"access key id key":    {"cfg": `{"aws_access_key_id":"x"}`},
+		"access key id value":  {"cfg": `"aws_access_key_id=abcdefgh12"`},
+		"url with a password":  {"cfg": `{"remote":"` + passwordURL() + `"}`},
 	} {
 		r := StandingRequest("cred-shape")
 		r.Extensions = map[string]json.RawMessage{}
@@ -165,9 +191,16 @@ func CaseCredentialShapes(t *testing.T, f Factory) {
 	_, _, err := c.Start(ctx, bad)
 	wantErr(t, "undecodable extension", err, runner.ErrInvalidRequest)
 
-	// Positive control: an extension with no credential in it starts.
+	ws := StandingRequest("cred-workspace")
+	ws.Workspace = passwordURL()
+	_, _, err = c.Start(ctx, ws)
+	wantErr(t, "workspace URL with a password", err, runner.ErrCredential)
+
+	// Positive control: an extension with no credential in it starts, and so
+	// does a workspace URL with a user but no password.
 	ok := StandingRequest("cred-clean")
-	ok.Extensions = map[string]json.RawMessage{"cfg": json.RawMessage(`{"retries":3,"note":"basic functionality only"}`)}
+	ok.Extensions = map[string]json.RawMessage{"cfg": json.RawMessage(`{"retries":3,"note":"basic functionality only","author":"a","authority":"b","remote":"https://git.example/r"}`)}
+	ok.Workspace = "ssh://git@git.example/r"
 	claims.Set(ok.Authority.Key, 1)
 	if _, _, err := c.Start(ctx, ok); err != nil {
 		t.Fatalf("a clean extension must start: %v", err)
@@ -454,5 +487,166 @@ func CaseNegativeUsage(t *testing.T, f Factory) {
 	}
 	if obs.Usage.InputTokens != nil || c.Usage(req.Caller).InputTokens != nil {
 		t.Fatalf("a negative figure must read unknown, got %+v", obs.Usage)
+	}
+}
+
+// CaseNoAdapterEcho: an error an adapter or a fence returns never reaches the
+// text of the error the Client returns, through any verb: a definite and an
+// unknown launch failure, an observe, a reconcile, a cancel and a fence read.
+// The adapter's error stays in the chain, so errors.Is still matches it beside
+// the contract's sentinel.
+func CaseNoAdapterEcho(t *testing.T, f Factory) {
+	s, h, claims, c := hsetup(t, f)
+	ctx := context.Background()
+	marker := "m4rk3r-adapter-text"
+	cause := errors.New("hostile adapter: " + marker + " " + secretShape())
+	check := func(what string, err, sentinel error) {
+		t.Helper()
+		if !errors.Is(err, sentinel) {
+			t.Fatalf("%s: got %v, want %v", what, err, sentinel)
+		}
+		if !errors.Is(err, cause) {
+			t.Fatalf("%s: the adapter's error must stay in the chain", what)
+		}
+		if msg := err.Error(); strings.Contains(msg, marker) || strings.Contains(msg, secretShape()) {
+			t.Fatalf("%s: the error text echoes the adapter's error", what)
+		}
+	}
+
+	definite := StandingRequest("adapter-echo-definite")
+	definite.Authority.Key = "claim/adapter-echo-a"
+	claims.Set(definite.Authority.Key, 1)
+	h.FailNextStart(errors.Join(runner.ErrDefiniteFailure, cause), false)
+	_, st, err := c.Start(ctx, definite)
+	check("start, definite failure", err, runner.ErrDefiniteFailure)
+	wantState(t, "start, definite failure", st, runner.StateFailed)
+
+	unknown := StandingRequest("adapter-echo-unknown")
+	unknown.Authority.Key = "claim/adapter-echo-b"
+	claims.Set(unknown.Authority.Key, 1)
+	h.FailNextStart(cause, true)
+	ref, st, err := c.Start(ctx, unknown)
+	check("start, unknown outcome", err, runner.ErrReconcileRequired)
+	wantState(t, "start, unknown outcome", st, runner.StateUnknown)
+
+	h.FailNextObserve(cause)
+	_, err = c.Observe(ctx, ref)
+	check("observe", err, runner.ErrReconcileRequired)
+	h.FailNextObserve(cause)
+	_, err = c.Reconcile(ctx, ref)
+	check("reconcile", err, runner.ErrReconcileRequired)
+	h.FailNextCancel(cause)
+	_, err = c.Cancel(ctx, ref)
+	check("cancel", err, runner.ErrCancelFailed)
+	wantStateOf(t, c, ref, runner.StateUnknown)
+
+	fenced := runner.NewClient(h, runner.FenceFunc(func(context.Context, string) (uint64, error) {
+		return 0, cause
+	}))
+	req := StandingRequest("adapter-echo-fence")
+	req.Authority.Key = "claim/adapter-echo-c"
+	fRef, _, err := fenced.Start(ctx, req)
+	if err != nil {
+		t.Fatalf("start under the failing fence: %v", err)
+	}
+	s.Control.Complete(fRef, GoodResult(req), FullUsage())
+	if _, err := fenced.Observe(ctx, fRef); err != nil {
+		t.Fatalf("observe under the failing fence: %v", err)
+	}
+	_, err = fenced.AcceptResult(ctx, fRef)
+	check("fence read", err, runner.ErrFenceUnavailable)
+}
+
+// rewriter is an adapter that rewrites the request it was handed after it
+// returns, as a hostile or careless adapter keeping a reference might.
+type rewriter struct{ runner.Adapter }
+
+func (r rewriter) Start(ctx context.Context, req runner.LaunchRequest) (runner.Receipt, error) {
+	rec, err := r.Adapter.Start(ctx, req)
+	req.Profile.Tools[1] = "deploy"
+	return rec, err
+}
+
+// CaseNoAliasing: the Client's record shares nothing with the request the
+// caller passed or the adapter was handed, the observation the adapter
+// returned, or anything the Client hands back. Rewriting any of them after the
+// call leaves the record, and so every later acceptance and usage total, as it
+// was.
+func CaseNoAliasing(t *testing.T, f Factory) {
+	s := f(t)
+	h := NewHostile(s.Adapter)
+	claims := NewClaims()
+	c := runner.NewClient(rewriter{h}, claims)
+	ctx := context.Background()
+	req := StandingRequest("aliasing")
+	claims.Set(req.Authority.Key, 1)
+	ref, _, err := c.Start(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The caller rewrites its request after Start: the pinned tools stand.
+	req.Profile.Tools[0] = "deploy"
+
+	res := GoodResult(req)
+	res.ToolRequests = []runner.ToolRequest{{Name: "read"}, {Name: "write"}}
+	usage := FullUsage()
+	h.Report(ref, runner.Observation{State: runner.StateFinished, ActualModel: req.Profile.Model, Usage: usage, Result: &res})
+	obs, err := c.Observe(ctx, ref)
+	if err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	// The adapter rewrites what it returned; the caller rewrites what it got.
+	res.Summary = "rewritten by the adapter"
+	res.Artifacts[0].Trust = runner.TrustOperator
+	res.ToolRequests[0].Name = "deploy"
+	*usage.InputTokens = 999
+	if obs.Result.Summary != "done" || obs.Result.ToolRequests[0].Name != "read" {
+		t.Fatalf("the adapter rewrote what Observe returned: %+v", *obs.Result)
+	}
+	obs.Result.Summary = "rewritten by the caller"
+	obs.Result.Artifacts[0].Name = "rewritten"
+	if obs.Usage.OutputTokens != nil {
+		*obs.Usage.OutputTokens = 999
+	}
+
+	first, err := c.AcceptResult(ctx, ref)
+	if err != nil {
+		t.Fatalf("the recorded result must still be accepted: %v", err)
+	}
+	// The caller rewrites the accepted result; a second acceptance is unchanged.
+	first.Result.Summary = "rewritten after acceptance"
+	first.Result.Artifacts[0].Ref = "rewritten"
+	first.Result.ToolRequests[0].Name = "rewritten"
+	if first.Usage.CostMicros != nil {
+		*first.Usage.CostMicros = 999
+	}
+	// A terminal re-report returns the record; the caller rewrites that too.
+	want := GoodResult(StandingRequest("aliasing"))
+	want.ToolRequests = []runner.ToolRequest{{Name: "read"}, {Name: "write"}}
+	fresh := want
+	fresh.Artifacts = append([]runner.Artifact(nil), want.Artifacts...)
+	fresh.ToolRequests = append([]runner.ToolRequest(nil), want.ToolRequests...)
+	h.Report(ref, runner.Observation{State: runner.StateFinished, ActualModel: req.Profile.Model, Usage: FullUsage(), Result: &fresh})
+	re, err := c.Observe(ctx, ref)
+	if err != nil {
+		t.Fatalf("terminal re-report: %v", err)
+	}
+	re.Result.Artifacts[0].Hash = "rewritten"
+	again, err := c.AcceptResult(ctx, ref)
+	if err != nil {
+		t.Fatalf("second acceptance: %v", err)
+	}
+	if !reflect.DeepEqual(again.Result, want) {
+		t.Fatalf("the recorded result moved: got %+v, want %+v", again.Result, want)
+	}
+	if h.Capabilities().Telemetry == runner.TelemetryNone {
+		return // usage is unknown throughout; nothing to rewrite
+	}
+	wantUsage := FullUsage()
+	if !reflect.DeepEqual(again.Usage, wantUsage) {
+		t.Fatalf("the recorded usage moved: got %+v", again.Usage)
+	}
+	if tot := c.Usage(req.Caller); !reflect.DeepEqual(tot, wantUsage) {
+		t.Fatalf("the usage total moved: got %+v", tot)
 	}
 }
