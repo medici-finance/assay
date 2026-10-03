@@ -78,7 +78,7 @@ func TestNoAmbientEnvTokenRead(t *testing.T) {
 		seen[key] = true
 		if _, ok := ambientTokenReadPermits[key]; !ok {
 			t.Errorf("%s reads a forge token from the process environment. A desk read authenticates as a "+
-				"MINTED, repo-scoped App token through deskkit.ForgeFor (cmd/deskread/forge.go is the shape) — "+
+				"MINTED App token (minted for the repository's installation and valid for all of it) through deskkit.ForgeFor (cmd/deskread/forge.go is the shape) — "+
 				"never as whatever GH_TOKEN/GITHUB_TOKEN the shell inherited (#628, desktools-v2/03).", key)
 		}
 	}

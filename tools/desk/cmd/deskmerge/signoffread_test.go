@@ -279,3 +279,50 @@ func TestSignOffReadFromIssueThread(t *testing.T) {
 		})
 	}
 }
+
+// TestSignOffAbsentOnIssueThread — SEC-A2: an /issues/N permalink whose number IS a real issue,
+// read in full, with no comment carrying the permalink's id, is REFUSED (exit 5) on the issue
+// read alone. The fall-back to a change read is reserved for an issue read that could not check
+// (the number names a pull request); a refusal from the issue read is the answer and is never
+// retried as a change, which would turn "this sign-off is not on its item" into a could-not-check.
+//
+// FAIL-FIRST: with fetchComment's retry condition widened from deskkit.IsUnverifiable(err) to
+// err != nil, the read retries as a change, sends a pull-request query, and exits 6.
+func TestSignOffAbsentOnIssueThread(t *testing.T) {
+	issueURL := strings.Replace(signOffURL, "/pull/444", "/issues/450", 1)
+	ts := threadsEnv(t, &threadServer{issues: map[int][]gqlComment{450: others(3, 1000)}})
+	c, err := fetchComment(issueURL)
+	if err == nil {
+		t.Fatalf("an id absent from the issue thread authorized comment %d (%q)", c.ID, c.Body)
+	}
+	if code := deskkit.ExitCodeOf(err); code != deskkit.ExitRefused {
+		t.Fatalf("absent id on a real issue: exit %d, want refused (%d): %v", code, deskkit.ExitRefused, err)
+	}
+	if n := ts.asked("pullRequest"); n != 0 {
+		t.Errorf("%d pull-request quer(ies) sent after the issue read refused — a refusal is never retried as a change", n)
+	}
+}
+
+// TestSignOffAuthorIDAbsent — SEC-A2: the sign-off read returns the roster human's login and
+// type User but NO numeric author id. The author check is the strict one (login AND id, both
+// present), so a read that dropped the id is refused rather than admitted on the login alone.
+//
+// FAIL-FIRST: with verifyHumanAuthor calling deskkit.IsBlessAuthorityID (the id==0 compatibility
+// form) instead of IsBlessAuthorityIDStrict, the comment is accepted.
+func TestSignOffAuthorIDAbsent(t *testing.T) {
+	signOffEnv(t, map[int][]gqlComment{444: {mkComment(signOffCID, blessLogin, 0, "User", "accepted")}})
+	c, err := fetchComment(signOffURL)
+	if err != nil {
+		t.Fatalf("sign-off read: %v", err)
+	}
+	if c.ID != signOffCID {
+		t.Fatalf("read returned comment %d, want %d", c.ID, signOffCID)
+	}
+	err = verifyHumanAuthor(c, "sign-off")
+	if err == nil {
+		t.Fatalf("a sign-off with the roster login and no author id was accepted on the login alone")
+	}
+	if code := deskkit.ExitCodeOf(err); code != deskkit.ExitRefused {
+		t.Fatalf("absent author id: exit %d, want refused (%d): %v", code, deskkit.ExitRefused, err)
+	}
+}

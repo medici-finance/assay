@@ -222,6 +222,18 @@
       "file": "cmd/deskmerge/authority.go",
       "old": "\tkind := deskkit.TargetIssue\n\tif m[3] == \"pull\" {\n\t\tkind = deskkit.TargetChange\n\t}\n\tc, err := fetchCommentKinded(url, m, kind)",
       "new": "\tkind := deskkit.TargetChange\n\tc, err := fetchCommentKinded(url, m, kind)"
+    },
+    {
+      "name": "retry an issue-thread sign-off read as a change on ANY error (a sign-off absent from a real issue becomes could-not-check, not refused) \u2014 SEC-A2-low-survivors",
+      "file": "cmd/deskmerge/authority.go",
+      "old": "\tif kind == deskkit.TargetIssue && deskkit.IsUnverifiable(err) {\n",
+      "new": "\tif kind == deskkit.TargetIssue && err != nil {\n"
+    },
+    {
+      "name": "check the sign-off author through the non-strict id form (the roster login with no author id is admitted on the login alone) \u2014 SEC-A2-low-survivors",
+      "file": "cmd/deskmerge/authority.go",
+      "old": "\tif !deskkit.IsBlessAuthorityIDStrict(c.User.Login, c.User.ID) {\n",
+      "new": "\tif !deskkit.IsBlessAuthorityID(c.User.Login, c.User.ID) {\n"
     }
   ]
 }
