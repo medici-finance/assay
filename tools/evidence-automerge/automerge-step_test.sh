@@ -18,7 +18,7 @@
 #                   classifier and exit the way the classifier decides.
 #   2. mutation   — the same step with the fix reverted on the fly must FAIL part 1
 #                   (so the part-1 cases really observe the defect).
-#   3. class guard — a scan of every `run:` block in the staged / activation
+#   3. class guard — a scan of every `run:` block in the staged / activation / live
 #                   workflow copies for the defect shape; clean on the real files.
 #   4. positive control — the scan must flag a PLANTED second instance (a step the
 #                   fix does not touch) and the reverted fix, naming the step.
@@ -252,15 +252,15 @@ for h in hits:
 sys.exit(1 if hits else 0)
 PY
 
-# The staged lane's own file and the promote-candidate copy, plus every other
-# staged workflow: any new `x="$(…)"; rc=$?` anywhere in them is red.
+# The staged lane's own file, the promote-candidate copy, the LIVE workflows, and
+# every other staged workflow: any new `x="$(…)"; rc=$?` anywhere in them is red.
 guard_files=()
-for f in "$root"/ci/staged-workflows/*.yml "$root"/tools/ci-load/activation/*.yml; do
+for f in "$root"/ci/staged-workflows/*.yml "$root"/tools/ci-load/activation/*.yml "$root"/.github/workflows/*.yml; do
   [ -f "$f" ] && guard_files+=("$f")
 done
 guard_out="$(python3 "$WORK/guard.py" "${guard_files[@]}" 2>&1)"; guard_rc=$?
 if [ "$guard_rc" = 0 ]; then
-  ok "CLASS GUARD: no bash -e capture-then-\$? shape in ${#guard_files[@]} staged/activation workflow files"
+  ok "CLASS GUARD: no bash -e capture-then-\$? shape in ${#guard_files[@]} staged/activation/live workflow files"
 else
   bad "CLASS GUARD: capture-then-\$? shape found"
   printf '%s\n' "$guard_out" | sed 's/^/       | /'
