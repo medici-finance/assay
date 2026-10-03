@@ -39,7 +39,7 @@ component list, build/run topology, and open questions.
 | 07 | [multi-desk control layer — tmux/tmuxinator evaluation + cross-platform config](brief-07-desk-control-layer.md) | 4 | M | todo | — | — |
 | 08 | [A tick contract: one bounded pass when the harness says `--tick`, so a loop pod can finish](brief-08-tick-contract-for-desk-skills.md) | 3 | M | implemented | — | — |
 | 09 | [cellctl: host-local harness cell — scrubbed per-cell environment, `smoke`, `status`, session lock, stricter `check`](brief-09-scrubbed-host-cell.md) | 0 | M | implemented | — | — |
-| 10 | [cellctl in Go: `tools/desk/cmd/cellctl`, bash kept as the oracle until parity](brief-10-cellctl-go-port.md) | 1 | L | todo | — | — |
+| 10 | [cellctl in Go: `tools/desk/cmd/cellctl`, bash kept as the oracle until parity](brief-10-cellctl-go-port.md) | 1 | L | implemented | — | — |
 | 11 | [retire the out-of-tree bridge: migrate `CELL_KIND=local` registrations, remove the shell shim, one `cellctl` on PATH](brief-11-retire-bridge.md) | 2 | S | todo | — | — |
 | 12 | [Unattended mode for the cluster manifests — a Kustomize component that runs each desk as a tick-mode CronJob](brief-12-unattended-tick-mode-cronjob-component.md) | 4 | M | todo | — | — |
 | 13 | [Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release](brief-13-argo-cd-install-example.md) | 5 | M | todo | — | — |

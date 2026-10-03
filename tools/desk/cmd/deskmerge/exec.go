@@ -110,11 +110,6 @@ var gitcoreCommit = func(dir string, opts gitcore.CommitOpts) (string, error) {
 	return repo.Commit(opts)
 }
 
-// runGH runs a gh subcommand under the AMBIENT gh identity, for READS only. deskmerge
-// makes no mutating gh call on any path — its only write is a `git push` of the PR's
-// own branch. There is no `gh pr merge`, no `gh pr ready`, no `gh api -X`.
-var runGH = func(args ...string) (string, error) { return runCmdIn("", "gh", args...) }
-
 // allowWrite is deskkit's outward-write meter, behind a variable so tests can inject a
 // real exit-4 without manufacturing ten audit lines.
 var allowWrite = func(repo string, pr int) error { return deskkit.AllowWrite(toolName, repo, pr) }

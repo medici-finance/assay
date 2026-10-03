@@ -1,8 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -38,17 +38,19 @@ type grant struct {
 	AuthorLogin string
 }
 
-// ghComment is the subset of a GitHub comment the authorization check consumes.
+// ghComment is the subset of a comment the authorization check consumes. It is populated
+// from Forge.ListCommentsTyped, which carries the author's login, numeric id AND actor type
+// (deskkit.Account.Type — empty where the forge did not report one, which verifyHumanAuthor
+// refuses rather than reading as "User").
 type ghComment struct {
-	ID       int64  `json:"id"`
-	HTMLURL  string `json:"html_url"`
-	IssueURL string `json:"issue_url"`
-	Body     string `json:"body"`
-	User     struct {
-		Login string `json:"login"`
-		ID    int64  `json:"id"`
-		Type  string `json:"type"`
-	} `json:"user"`
+	ID      int64
+	HTMLURL string
+	Body    string
+	User    struct {
+		Login string
+		ID    int64
+		Type  string
+	}
 }
 
 // fetchComment retrieves the comment a permalink names.
@@ -57,6 +59,11 @@ type ghComment struct {
 // not come back is Unverifiable (exit 6) with ZERO merges performed. COULD-NOT-CHECK IS
 // NOT AUTHORIZATION — a tool that proceeds because it failed to reach the artifact has
 // exactly the authorization of one that never looked.
+//
+// The kind of thread is derived from the permalink: `/pull/<N>` proves a change; `/issues/<N>`
+// is read as an issue first and, only when that is could-not-check because the number names a
+// change, retried as a change (the forge redirects a PR comment linked under `/issues/`). Which
+// thread it was found on never widens what it authorizes — the id match below does.
 func fetchComment(url string) (ghComment, error) {
 	m := deskkit.CommentPermalinkRe.FindStringSubmatch(strings.TrimSpace(url))
 	if m == nil {
@@ -65,32 +72,62 @@ func fetchComment(url string) (ghComment, error) {
 				"(want https://github.com/<owner>/<repo>/issues|pull/<N>#issuecomment-<id>). " +
 				"A link to a thread is not an authorization: a thread is written by whoever shows up.")
 	}
-	owner, repo, cid := m[1], m[2], m[5]
-	raw, err := runGH("api", "-H", "Accept: application/vnd.github+json",
-		fmt.Sprintf("repos/%s/%s/issues/comments/%s", owner, repo, cid))
+	kind := deskkit.TargetIssue
+	if m[3] == "pull" {
+		kind = deskkit.TargetChange
+	}
+	c, err := fetchCommentKinded(url, m, kind)
+	if kind == deskkit.TargetIssue && deskkit.IsUnverifiable(err) {
+		return fetchCommentKinded(url, m, deskkit.TargetChange)
+	}
+	return c, err
+}
+
+// fetchCommentKinded lists the comments on the item the permalink names, of the stated kind,
+// and returns the one whose database id matches. Listing on the NAMED item makes the old
+// issue_url cross-check inherent: a comment id that is not on that item is refused, so a
+// doctored link cannot display one thread while authorizing from a comment on another.
+func fetchCommentKinded(url string, m []string, kind deskkit.TargetKind) (ghComment, error) {
+	owner, repo, itemStr, cidStr := m[1], m[2], m[4], m[5]
+	itemN, ierr := strconv.Atoi(itemStr)
+	if ierr != nil || itemN <= 0 {
+		return ghComment{}, deskkit.Refused("refused: " + deskkit.StripControl(url) + " names an invalid item number")
+	}
+	cid, cerr := strconv.ParseInt(cidStr, 10, 64)
+	if cerr != nil || cid <= 0 {
+		return ghComment{}, deskkit.Refused("refused: " + deskkit.StripControl(url) + " names an invalid comment id")
+	}
+	fg, fr, ferr := forgeFor(owner + "/" + repo)
+	if ferr != nil {
+		return ghComment{}, deskkit.Unverifiable(
+			"could-not-check: the authorizing comment at "+deskkit.StripControl(url)+
+				" could not be fetched — deskmerge refuses. An unreadable authorization is not an "+
+				"authorization; zero merges were performed", ferr)
+	}
+	comments, err := fg.ListCommentsTyped(fr, itemN, kind)
 	if err != nil {
 		return ghComment{}, deskkit.Unverifiable(
 			"could-not-check: the authorizing comment at "+deskkit.StripControl(url)+
 				" could not be fetched — deskmerge refuses. An unreadable authorization is not an "+
 				"authorization; zero merges were performed", err)
 	}
-	var c ghComment
-	if jerr := json.Unmarshal([]byte(raw), &c); jerr != nil {
-		return ghComment{}, deskkit.Unverifiable(
-			"could-not-check: the authorizing comment at "+deskkit.StripControl(url)+
-				" did not parse as a GitHub comment", jerr)
+	for _, c := range comments {
+		if c.DatabaseID != cid {
+			continue
+		}
+		out := ghComment{ID: c.DatabaseID, HTMLURL: c.URL, Body: c.Body}
+		out.User.Login = c.Author.Login
+		out.User.ID = c.Author.ID
+		out.User.Type = c.Author.Type
+		if out.HTMLURL == "" {
+			out.HTMLURL = deskkit.StripControl(url)
+		}
+		return out, nil
 	}
-	// The permalink's own item path must match the comment's issue_url. Without this a
-	// doctored link could display one thread while authorizing from a comment on
-	// another.
-	wantItem := fmt.Sprintf("/repos/%s/%s/issues/%s", owner, repo, m[4])
-	if !strings.HasSuffix(strings.TrimSuffix(c.IssueURL, "/"), wantItem) {
-		return ghComment{}, deskkit.Refused(
-			"refused: the authorization permalink names " + deskkit.StripControl(owner+"/"+repo+"#"+m[4]) +
-				" but the comment it resolves to lives on " + deskkit.StripControl(c.IssueURL) +
-				" — the link and the artifact disagree")
-	}
-	return c, nil
+	return ghComment{}, deskkit.Refused(
+		"refused: the authorization permalink names comment " + deskkit.StripControl(cidStr) +
+			" on " + deskkit.StripControl(owner+"/"+repo+"#"+itemStr) +
+			", but no such comment is on that item — the link and the artifact disagree, or the comment was deleted")
 }
 
 // verifyHumanAuthor is the load-bearing identity check, and it is deliberately made of

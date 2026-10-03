@@ -180,6 +180,60 @@
       "file": "cmd/deskmerge/merge.go",
       "old": "\tif len(dests) != 1 {",
       "new": "\tif false && len(dests) != 1 {"
+    },
+    {
+      "name": "plant an ambient fallback in the read minter (an unminted read runs as GH_TOKEN) \u2014 desktools-v2/03",
+      "file": "cmd/deskmerge/forge.go",
+      "old": "import (\n\t\"strings\"\n\n\t\"github.com/medici-finance/assay/tools/desk/internal/deskkit\"\n)\n\nvar (\n\t// mintTokenFn is the per-repo token-lookup seam, swapped in tests for a stub returning a\n\t// fake token. Production binds it to the shared resolver.\n\tmintTokenFn = deskkit.GitHubRoleToken\n\t// forgeAPIBase redirects the resolved GitHub backend's API host at an httptest server in\n\t// tests; empty in production means the real host.\n\tforgeAPIBase string\n\t// sessionRoleFn resolves this session's App role, swapped in tests.\n\tsessionRoleFn = deskkit.SessionTokenRole\n)\n\nfunc init() {\n\tdeskkit.SetGitHubCustodyMinter(func(role string, repo deskkit.ForgeRepo) (token, baseURL string, err error) {\n\t\ttok, _, merr := mintTokenFn(role, repo.Slug())\n\t\tif merr != nil {\n\t\t\treturn \"\", \"\", merr\n\t\t}\n\t\treturn tok, forgeAPIBase, nil\n\t})\n}\n",
+      "new": "import (\n\t\"os\"\n\t\"strings\"\n\n\t\"github.com/medici-finance/assay/tools/desk/internal/deskkit\"\n)\n\nvar (\n\t// mintTokenFn is the per-repo token-lookup seam, swapped in tests for a stub returning a\n\t// fake token. Production binds it to the shared resolver.\n\tmintTokenFn = deskkit.GitHubRoleToken\n\t// forgeAPIBase redirects the resolved GitHub backend's API host at an httptest server in\n\t// tests; empty in production means the real host.\n\tforgeAPIBase string\n\t// sessionRoleFn resolves this session's App role, swapped in tests.\n\tsessionRoleFn = deskkit.SessionTokenRole\n)\n\nfunc init() {\n\tdeskkit.SetGitHubCustodyMinter(func(role string, repo deskkit.ForgeRepo) (token, baseURL string, err error) {\n\t\ttok, _, merr := mintTokenFn(role, repo.Slug())\n\t\tif merr != nil || strings.TrimSpace(tok) == \"\" {\n\t\t\ttok, merr = os.Getenv(\"GH_TOKEN\"), nil\n\t\t}\n\t\treturn tok, forgeAPIBase, nil\n\t})\n}\n"
+    },
+    {
+      "name": "derive the read installation from the environment (mint for GH_REPO, not the repo read) \u2014 desktools-v2/03",
+      "file": "cmd/deskmerge/forge.go",
+      "old": "import (\n\t\"strings\"\n\n\t\"github.com/medici-finance/assay/tools/desk/internal/deskkit\"\n)\n\nvar (\n\t// mintTokenFn is the per-repo token-lookup seam, swapped in tests for a stub returning a\n\t// fake token. Production binds it to the shared resolver.\n\tmintTokenFn = deskkit.GitHubRoleToken\n\t// forgeAPIBase redirects the resolved GitHub backend's API host at an httptest server in\n\t// tests; empty in production means the real host.\n\tforgeAPIBase string\n\t// sessionRoleFn resolves this session's App role, swapped in tests.\n\tsessionRoleFn = deskkit.SessionTokenRole\n)\n\nfunc init() {\n\tdeskkit.SetGitHubCustodyMinter(func(role string, repo deskkit.ForgeRepo) (token, baseURL string, err error) {\n\t\ttok, _, merr := mintTokenFn(role, repo.Slug())\n\t\tif merr != nil {\n\t\t\treturn \"\", \"\", merr\n\t\t}\n\t\treturn tok, forgeAPIBase, nil\n\t})\n}\n",
+      "new": "import (\n\t\"os\"\n\t\"strings\"\n\n\t\"github.com/medici-finance/assay/tools/desk/internal/deskkit\"\n)\n\nvar (\n\t// mintTokenFn is the per-repo token-lookup seam, swapped in tests for a stub returning a\n\t// fake token. Production binds it to the shared resolver.\n\tmintTokenFn = deskkit.GitHubRoleToken\n\t// forgeAPIBase redirects the resolved GitHub backend's API host at an httptest server in\n\t// tests; empty in production means the real host.\n\tforgeAPIBase string\n\t// sessionRoleFn resolves this session's App role, swapped in tests.\n\tsessionRoleFn = deskkit.SessionTokenRole\n)\n\nfunc init() {\n\tdeskkit.SetGitHubCustodyMinter(func(role string, repo deskkit.ForgeRepo) (token, baseURL string, err error) {\n\t\ttok, _, merr := mintTokenFn(role, os.Getenv(\"GH_REPO\"))\n\t\tif merr != nil {\n\t\t\treturn \"\", \"\", merr\n\t\t}\n\t\treturn tok, forgeAPIBase, nil\n\t})\n}\n"
+    },
+    {
+      "name": "drop the sign-off id match (the first comment on the permalink's thread is taken as the sign-off) \u2014 F2-signoff-binding-unpinned",
+      "file": "cmd/deskmerge/authority.go",
+      "old": "\t\tif c.DatabaseID != cid {\n",
+      "new": "\t\tif false && c.DatabaseID != cid {\n"
+    },
+    {
+      "name": "stop walking the typed change-thread read (a sign-off past comment 100 reads as deleted) \u2014 F1-signoff-first-100",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tcase next != nil:\n\t\tquery = ghChangeCommentsWalkQuery\n",
+      "new": "\tcase next != nil:\n\t\tquery = ghCommentsQuery\n"
+    },
+    {
+      "name": "map a fork head to same in ghCrossRepo (a fork pull request passes the fork refusal) \u2014 SEC-F1-fork-mapping-unpinned",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\treturn CrossRepoFork\n",
+      "new": "\treturn CrossRepoSame\n"
+    },
+    {
+      "name": "ignore the forge's merged flag when naming a pull request's state \u2014 SEC-A2-low-survivors",
+      "file": "cmd/deskmerge/github.go",
+      "old": "\tif pr.Merged || pr.MergedAt != \"\" {",
+      "new": "\tif pr.MergedAt != \"\" {"
+    },
+    {
+      "name": "read every sign-off permalink as a pull request (an issue-thread sign-off reads as no such pull request) \u2014 A3-issue-thread-signoff-unpinned",
+      "file": "cmd/deskmerge/authority.go",
+      "old": "\tkind := deskkit.TargetIssue\n\tif m[3] == \"pull\" {\n\t\tkind = deskkit.TargetChange\n\t}\n\tc, err := fetchCommentKinded(url, m, kind)",
+      "new": "\tkind := deskkit.TargetChange\n\tc, err := fetchCommentKinded(url, m, kind)"
+    },
+    {
+      "name": "retry an issue-thread sign-off read as a change on ANY error (a sign-off absent from a real issue becomes could-not-check, not refused) \u2014 SEC-A2-low-survivors",
+      "file": "cmd/deskmerge/authority.go",
+      "old": "\tif kind == deskkit.TargetIssue && deskkit.IsUnverifiable(err) {\n",
+      "new": "\tif kind == deskkit.TargetIssue && err != nil {\n"
+    },
+    {
+      "name": "check the sign-off author through the non-strict id form (the roster login with no author id is admitted on the login alone) \u2014 SEC-A2-low-survivors",
+      "file": "cmd/deskmerge/authority.go",
+      "old": "\tif !deskkit.IsBlessAuthorityIDStrict(c.User.Login, c.User.ID) {\n",
+      "new": "\tif !deskkit.IsBlessAuthorityID(c.User.Login, c.User.ID) {\n"
     }
   ]
 }
