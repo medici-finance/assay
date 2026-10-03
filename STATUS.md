@@ -58,7 +58,6 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| graph-execution | 20 — Shared loop-admin runner protocol and offline conformance kit [exec:strong] | 0 | 8000 |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
 | desktools-v2 | 12 — platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS [exec:strong] | 2 | 1000 + 1500 (drive:desktools-v2) |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
@@ -74,7 +73,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 347b2e7 2026-10-03T16:20:00+10:00_
+_last regen: 2a865d7 2026-10-03T16:54:50+10:00_
 
 **Progress:** 5/13 brief items done.
 
@@ -97,7 +96,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 347b2e7 2026-10-03T16:20:00+10:00_
+_last regen: 2a865d7 2026-10-03T16:54:50+10:00_
 
 **Progress:** 13/31 brief items done.
 
@@ -129,18 +128,19 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (57 desk-actionable of 91 total — 88 at implemented, 3 verified awaiting review)
+## Awaiting verification / review (58 desk-actionable of 92 total — 89 at implemented, 3 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (57)
+### Desk-actionable (58)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | graph-execution | 02 [exec:strong] | implemented | 10000 | 16 | — | — | — |
+| graph-execution | 20 [exec:strong] | implemented | 8000 | 12 | — | — | — |
 | graph-execution | 03 [exec:strong] | implemented | 7000 | 10 | — | — | — |
 | build-less-brittle | 02 [exec:strong] | implemented | 6500 | 7 | — | — | — |
 | graph-execution | 13 [exec:strong] | implemented | 6500 | 9 | — | — | — |
@@ -492,7 +492,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 17 Graph-linked release and outcome records without new authority — todo (wave 7)
 - 18 Offline graph, advice and assurance integration proof — todo (wave 9)
 - 19 Durable instance store and production coverage binding — todo (wave 2)
-- 20 Shared loop-admin runner protocol and offline conformance kit — todo (wave 0)
+- 20 Shared loop-admin runner protocol and offline conformance kit — implemented (wave 0)
 - 21 Deterministic task controller with durable dispatch and waits — todo (wave 4)
 - 22 First pinned local harness adapter and qualification fixtures — todo (wave 2)
 - 23 Immutable candidate workspaces and independent check inputs — todo (wave 3)
