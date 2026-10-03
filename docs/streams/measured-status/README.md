@@ -79,7 +79,7 @@ scope (they are not derive-not-assert / independence-enforcement changes).
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Derive the deskkit exit-code table — record the convention ExitOK/Disabled/RateLimited/Refused/Unverifiable follow, and pin it with a test](brief-01-exit-code-derivation.md) | 0 | S | todo | — | — |
-| 02 | [Derive MinCorpus for the learned riskscore model against its 15-feature events-per-variable floor, or record the rationale — and pin it with a test](brief-02-mincorpus-derivation.md) | 0 | M | todo | — | — |
+| 02 | [Derive MinCorpus for the learned riskscore model against its 15-feature events-per-variable floor, or record the rationale — and pin it with a test](brief-02-mincorpus-derivation.md) | 0 | M | implemented | — | — |
 | 03 | [Derive the commsloop router's risk field from the envelope instead of hardcoding false, or record why false is sound — restore the risk:yes->tier:human backstop](brief-03-commsloop-risk-derivation.md) | 0 | M | implemented | — | — |
 | 04 | [statusgen --lint: derive stale-FAIL vs missing-card from commit dates, and route each state to the verify desk instead of nudging a worker to hand-file a sign-off](brief-04-stale-fail-lint-derivation.md) | 0 | M | todo | — | — |
 | 05 | [attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish](brief-05-attribution-hard-reject.md) | 1 | M | todo | — | — |
