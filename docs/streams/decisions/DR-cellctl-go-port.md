@@ -9,9 +9,9 @@ alternatives:
   - "Keep bash and only fold the verbs in — the other answer the decision issue put to the operator (#1193 `## What is needed`, item 2: 'proceed, or keep bash and only fold the verbs in'). Ruled out by the ruling, which chose the port. The case against it is the issue author's, set out in #1193 `## Why a Go port rather than more bash` (the ruling comments give no reasons of their own): `tools/cellctl/cellctl` is ~2,100 lines of bash that one laptop already runs as three divergent copies; `deskkit` already carries the forge resolver, role-token custody, roster parsing and the writeguard that bash cellctl re-implements slices of, and the bridge exists because extending the bash was harder than wrapping it; and the windows-port stream needs a native-Windows cellctl that bash cannot reach."
 accepted:
   - "The bash script stays in the tree as the oracle until parity (now at `tools/cellctl/testdata/cellctl-shell-oracle.sh`): for the life of the port two implementations of the launcher coexist, and the Go side is held to byte-parity with the bash on a dry-run matrix (brief desk-containers/10 `## Context`, the oracle and parity-harness facts). Its removal is a later brief."
-  - "The replacement is irreversible once shipped (brief desk-containers/10 `gate-why`): once a release ships the Go binary under the tarball's `cellctl` entry, every pinned install that upgrades runs the port, and a boot that goes wrong goes wrong on every cell at once. That cutover stays a separate human sign-off on the brief; this record does not decide it."
+  - "The replacement is irreversible once shipped (brief desk-containers/10 `gate-why`): every pinned install that upgrades to a release carrying the Go binary under the tarball's `cellctl` entry runs the port, and a boot that goes wrong goes wrong on every cell at once. The tree already ships the binary that way (see 'The tree's present condition' below); the brief's cutover sign-off is a separate human gate with no recorded answer, and this record does not decide it."
   - "The port is bound to `deskkit`: forge resolution, role-token custody and roster parsing are called from `deskkit`, and the write guard from the `tools/desk/cmd/writeguard` package, never re-derived (brief desk-containers/10 `## Context`, 'deskkit reuse is a requirement, not a preference')."
-  - "Building the Go cellctl needs a Go toolchain; once a cutover ships the binary, `docs/cellctl.md` §Install's 'It is a shell script, not a Go build … It does not need a Go toolchain' retires (brief desk-containers/10 `sources:`)."
+  - "Building the Go cellctl from a checkout needs a Go toolchain; a tarball install does not. `docs/cellctl.md` §Install already says so: it describes a Go program built per platform, and the earlier 'It is a shell script, not a Go build … It does not need a Go toolchain' sentences were removed by #1377."
   - "Native Windows is a named consequence, not delivered here: `deskkit` does not compile for `GOOS=windows` until windows-port/00 lands, so a Go cellctl inherits that dependency and the windows-port stream owns building and proving a Windows cellctl (brief desk-containers/10 `## Context`)."
 ---
 
@@ -38,18 +38,32 @@ in" to the operator.
 brief's plan, not part of the ruling: `docs/streams/desk-containers/brief-10-cellctl-go-port.md`
 places it at `tools/desk/cmd/cellctl`, following the shape #1193 `## Why a Go port rather than
 more bash` (first bullet) proposed — a Go binary shipped in the desk-tools tarball and pinned by
-sha256 like every other desk verb. Whether the binary ships in the tarball at all, and when, is
-the brief's open human decision (its `## Human decision`, whose options include keeping the
-binary out of the tarball until a later ruling).
+sha256 like every other desk verb. That plan is not what this record rules.
+
+**The tree's present condition (an observation, not a ruling).** The port and its packaging
+change merged in #1377 (2026-09-20), before this record. At the head this record was written
+against, `docs/cellctl.md` §Install (lines 100-104) describes `cellctl` as a Go program
+(`tools/desk/cmd/cellctl`) cross-compiled per platform and shipped inside
+`desk-tools-<platform>.tar.gz`; `.github/workflows/release.yml` (lines 1129-1138) stamps and
+builds `cmd/cellctl` like every other verb and notes that the earlier shell-script packaging
+exception is gone; both are present at release tag v1.0.31. Separately from that, the brief's
+`## Human decision` (when the tarball's `cellctl` entry switches from the script to the
+binary, as a sign-off at close) has no recorded answer and its board row is `todo`. This record
+states the first as a fact about the tree and does not decide the second.
 
 **The constraint behind it.** One laptop already runs three divergent copies of the shell
 launcher, and the first cell it could not express grew a fourth implementation in a fourth
 language. Every other desk verb is a Go binary in one tarball, built on the same `deskkit` the
 launcher re-implements slices of by hand (brief desk-containers/10 `why:`).
 
+**The consequence level.** `consequence: major` is not in the ruling comment, which states no
+level. It is a desk default declared in the PR that added this record (its `## Desk-decided`
+section), amendable by the maintainer; it is not part of what the operator ruled.
+
 **What this record does not decide.** It scopes to the port only. It does not decide the
-CUTOVER — whether and when the tarball's `cellctl` entry switches from the script to the
-binary — which stays the human gate on brief desk-containers/10 (its `## Human decision`). It
+cutover sign-off — the brief's human confirmation, at close, that the parity proofs held at
+the SHA that shipped — which stays the human gate on brief desk-containers/10 (its
+`## Human decision`) whatever the tree already ships. It
 does not decide the fold-in of the host-local cell verbs or the bridge's retirement, which #1193
 also asked for and which are their own briefs. And, per the register's own limits, it records that the
 alternatives were weighed and names a human approver; whether the port is correct is the review
