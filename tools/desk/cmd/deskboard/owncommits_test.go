@@ -97,13 +97,28 @@ func compareGuard(src []byte) []string {
 		if !ok {
 			continue
 		}
+		comparisons := map[string]bool{}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			if assign, ok := n.(*ast.AssignStmt); ok {
+				for _, rhs := range assign.Rhs {
+					if call, ok := rhs.(*ast.CallExpr); ok {
+						if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "CompareRefs" && len(assign.Lhs) > 0 {
+							if id, ok := assign.Lhs[0].(*ast.Ident); ok {
+								comparisons[id.Name] = true
+							}
+						}
+					}
+				}
+			}
+			return true
+		})
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
 			if sel, ok := n.(*ast.SelectorExpr); ok {
 				if sel.Sel.Name == "CompareRefs" && fn.Name.Name != "changedFilesBetween" && fn.Name.Name != "fetchBehindMain" {
 					bad = append(bad, fn.Name.Name+": raw compare consumer")
 				}
 				if sel.Sel.Name == "Files" {
-					if id, ok := sel.X.(*ast.Ident); ok && id.Name == "cmp" {
+					if id, ok := sel.X.(*ast.Ident); ok && comparisons[id.Name] {
 						bad = append(bad, fn.Name.Name+": aggregate files")
 					}
 				}
@@ -130,7 +145,7 @@ func TestCompareClassGuard(t *testing.T) {
 			t.Fatalf("%s: %v", e.Name(), bad)
 		}
 	}
-	plant := []byte(`package main;func second(f Forge){cmp,_:=f.CompareRefs(repo,base,head);_ = cmp.Files}`)
+	plant := []byte(`package main;func second(f Forge){delta,_:=f.CompareRefs(repo,base,head);_ = delta.Files}`)
 	bad := compareGuard(plant)
 	if len(bad) != 2 {
 		t.Fatalf("planted second consumer not detected: %v", bad)
