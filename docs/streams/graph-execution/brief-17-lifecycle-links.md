@@ -2,7 +2,7 @@
 brief: assay:assay:graph-execution:17
 title: Graph-linked release and outcome records without new authority
 why: A completed brief does not tell an operator whether its artifact was released or whether the intended result occurred. Shared links preserve those distinctions without inventing deployment permission.
-wave: 4
+wave: 7
 depends:
 - graph-execution/06
 unblocks:
