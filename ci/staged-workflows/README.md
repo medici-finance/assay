@@ -169,3 +169,23 @@ promoted with the rest of this file; a green `windows-bootstrap-smoke` run is th
 the brief's row 8 (record its run URL). The job hands the pinned tag **and** sha256 to
 `scripts/windows-bootstrap-hashcheck-smoke.ps1` (`-Tag`/`-RealSha256`), so the untampered path
 downloads the real published asset while a tampered checksum still REFUSES.
+
+## Declared changes and drift guard
+
+`declared-changes.json` inventories every staged YAML file. `identical` means no
+pending change: the file must equal its live counterpart byte for byte. `pending`
+classifies an intentional proposal documented above; its promotion requires a
+separate review of the full `diff -u` against live. Pending proposals are excluded
+from the parity check, rather than certified as drift-free or activated here.
+The manifest records the sibling scope decisions, without pinning unrelated bases.
+
+The Windows leg currently has no pending difference: its staged copy includes
+`desk-windows-tests` and the bootstrap pull-request guard already present live.
+`go test ./internal/deskkit -run '^TestStagedDrift'` from `tools/desk` checks every
+staged YAML has a classification and every identical twin equals live. New staged
+files require explicit classification: either a manifest entry or a nonempty
+`<filename>.pending` companion stating the proposal and pending promotion, which
+lets parallel proposals avoid editing one shared inventory. A manifest entry takes
+precedence over a companion, so a parity twin cannot be exempted by adding one.
+The existing unconditional `ci.yml`
+build-test job runs this guard on every PR and main push.

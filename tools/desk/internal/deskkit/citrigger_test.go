@@ -221,6 +221,14 @@ func ciCrossModuleRegistry() []ciEntry {
 
 	registry := []ciEntry{
 		{
+			test:   "tools/desk/internal/deskkit/stageddrift_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"ci/staged-workflows", ".github/workflows"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "every staged workflow and live base must trigger the undeclared drift guard",
+		},
+		{
 			test:   "tools/desk/internal/regression/manifest_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",
 			prJob: floorJob, pushJob: floorJob,
