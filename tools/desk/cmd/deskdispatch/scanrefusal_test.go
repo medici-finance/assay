@@ -47,7 +47,7 @@ type scanRule struct {
 var scanRules = []scanRule{
 	{"desk-repost", []string{"never edits a refused verdict body", "rewording", "re-encoding", "trimming", "Resending it unchanged is out too"}},
 	{"desk-split", []string{"no splitting it across posts"}},
-	{"override-not-maintainer", []string{"scan override is the maintainer's act alone", "it exists only for the rules the"}},
+	{"override-not-maintainer", []string{"scan override is the maintainer's act alone", "it exists only for the rules the", "On a rule it can waive, the filed issue is the request for it."}},
 	{"filing-asks-impossible-override", []string{"No flag waives", "The tool refuses the override", "the filing never asks for one there", "maintainer for a RULING instead", "the configured\n  withheld set", "that is not a permission to the desk"}},
 	{"not-filed-at-discovery", []string{"File at discovery", "scan rule id", "body line number", "full head SHA"}},
 	{"no-withheld-record", []string{"exists and is withheld"}},
@@ -227,6 +227,13 @@ func TestScanRefusalScenarios(t *testing.T) {
 			t.Errorf("the tool refuses the override on %q but the skill section does not name it — "+
 				"a refusal on that rule would be filed as a request for an override nobody can grant", rule)
 		}
+	}
+	// The override sentence's referent once read inverted: "any other scan rule" after "the
+	// rules the tool lets it waive" names the rules it CANNOT waive, so the filing on those
+	// became the override request. Keep that wording out of the section.
+	if strings.Contains(section, "On any other scan rule") {
+		t.Errorf("the skill section says the filing on \"any other scan rule\" is the override " +
+			"request — after \"the rules the tool lets it waive\" that names the rules no flag waives")
 	}
 	for _, r := range scanRules {
 		for _, c := range r.cues {

@@ -912,7 +912,7 @@ changed to clear a gate is a different verdict nobody reviewed.
   refused post never stops dispatch** — its slot is freed like any finished one.
 - **The scan override is the maintainer's act alone** — never the desk's, the reviewer's or a
   worker's, even when the false-positive reading is right — **and it exists only for the rules the
-  tool lets it waive.** On any other scan rule the filed issue is the request for it.
+  tool lets it waive.** On a rule it can waive, the filed issue is the request for it.
 - **No flag waives `voice.ruling-claim` or `withheld.identifier`.** The tool refuses the override
   on those two rules whoever passes it, so the filing never asks for one there. It asks the
   maintainer for a RULING instead: on `withheld.identifier`, whether to change the configured
