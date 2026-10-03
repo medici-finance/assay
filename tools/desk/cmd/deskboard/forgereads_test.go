@@ -156,7 +156,10 @@ func TestFetchCombinedStatusTotal_ReadsChecksAtHeadTotal(t *testing.T) {
 func TestChangedFilesBetween_MapsCompareFiles(t *testing.T) {
 	stubForgeHooks(t, forgeHookSet{
 		compare: func(_, base, head string) (*deskkit.RefComparison, error) {
-			return &deskkit.RefComparison{Status: "behind", Files: []deskkit.ChangedFile{{Filename: "a.go"}, {Filename: "b.go"}}}, nil
+			return &deskkit.RefComparison{Status: "behind", CommitsComplete: true, Commits: []deskkit.RepoCommit{{SHA: "fix", Parents: []string{base}}}}, nil
+		},
+		getCommit: func(_, sha string) (*deskkit.RepoCommit, error) {
+			return &deskkit.RepoCommit{SHA: sha, FilesComplete: true, Files: []deskkit.ChangedFile{{Filename: "a.go"}, {Filename: "b.go"}}}, nil
 		},
 	})
 	set, err := changedFilesBetween("example-org/tracker", "main", "abc")

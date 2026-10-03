@@ -160,8 +160,10 @@ func TestPinnedShasStillCompareForMergeCurr(t *testing.T) {
 					"the reviewed sha to the current head", base, head, reviewed, unpinnedHead)
 			}
 			return &deskkit.RefComparison{
-				Status: "ahead",
-				Files:  []deskkit.ChangedFile{{Filename: "docs/elsewhere.md"}},
+				Status:          "ahead",
+				CommitsComplete: true,
+				Commits:         []deskkit.RepoCommit{{SHA: "keepcurrent", Parents: []string{"review", "main"}}},
+				Files:           []deskkit.ChangedFile{{Filename: "docs/elsewhere.md"}},
 			}, nil
 		},
 	})
