@@ -136,6 +136,12 @@ charset and the run inside stays contiguous. Break the identifier or shorten the
 the numeric review `id` from `gh api repos/<slug>/pulls/<N>/reviews`; never paste prefixed digests
 or base64 blobs.
 
+Cite sops material, never quote it. A finding about an encrypted file names it by `path:line`
+and describes it in words: the `sops` footer, its `mac` or `lastmodified` field, an `ENC[…]`
+envelope missing its `iv`. A quoted footer or envelope is refused on every surface, inside a
+code fence too. The audited `--force-scan-override` is a human act, and a reviewer never passes
+it to get a verdict through.
+
 That is authoring guidance for the FIRST post. Once the scan has refused a verdict body, the body
 is evidence: the desk never rewords, re-encodes, splits or trims it, the scan override is the
 maintainer's alone and exists only for the rules the tool lets it waive — no flag waives

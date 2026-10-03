@@ -170,7 +170,22 @@ type PullRequest struct {
 	// `mergeable` condition (the forge-gitlab merge-hold brief; freeze rule binds METHODS, not fields, so this
 	// addition changes no method count).
 	GitLabMergeStatus string `json:",omitempty"`
+	// CrossRepo is the forge's own answer to "does the head branch live in a DIFFERENT
+	// repository from the base?" — CrossRepoSame, CrossRepoFork, or EMPTY where the read did
+	// not establish it (GitHub reports head.repo as null once a fork is deleted; GitLab reports
+	// a zero project id). Empty is could-not-check, never "same". Consumer: cmd/deskmerge's
+	// eligibility gate, which pushes only to a branch in the base repository and refuses a fork
+	// head (desktools-v2/03 moved that read off `gh pr view --json isCrossRepository`).
+	// omitempty keeps every change read that predates this field byte-identical in the forge
+	// golden corpus.
+	CrossRepo string `json:",omitempty"`
 }
+
+// The two values PullRequest.CrossRepo takes when the forge answered.
+const (
+	CrossRepoSame = "same"
+	CrossRepoFork = "fork"
+)
 
 // The three values PullRequest.Mergeable takes. They are constants rather than free strings
 // because a caller SWITCHES on them, and a switch over free strings falls through to its
@@ -1507,7 +1522,10 @@ type Forge interface {
 	// which is exactly how an unread precondition becomes a satisfied one. This op routes
 	// on the stated kind, so an issue's thread is read from the issue. Consumer:
 	// cmd/deskclose's two-role superseded lane (freeze rule: it lands with that call site).
-	// An unknown kind is refused rather than defaulted.
+	// An unknown kind is refused rather than defaulted. Unlike ListComments, it returns the
+	// WHOLE thread of either kind or an error — never a first page presented as the thread —
+	// so an id lookup on the result (cmd/deskmerge's R-5 and cmd/deskclose's R-1 sign-off
+	// reads) can read "not found" as absence.
 	ListCommentsTyped(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error)
 	// RepoVisibility returns the repo's visibility (private | public | internal | ...).
 	RepoVisibility(repo ForgeRepo) (string, error)

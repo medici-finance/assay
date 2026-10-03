@@ -38,6 +38,42 @@
       "new": "\tif false && !sopsDocument(s) {"
     },
     {
+      "name": "#2060 — drop the cite-never-quote remedy from the sops-block refusal (a writer is handed the bare refusal again)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\" contains a sops-encrypted secret block or ENC[ marker\"+sopsCiteRemedy,",
+      "new": "\" contains a sops-encrypted secret block or ENC[ marker\","
+    },
+    {
+      "name": "#2060 — drop the remedy's PROHIBITION half (the refusal says cite, no longer says never quote)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "in words; never \" +\n\t\"quote its sops: footer or an ENC[…] envelope (a quotation is refused inside a code fence \" +\n\t\"too). Committed",
+      "new": "in words. Committed"
+    },
+    {
+      "name": "#2060 — disarm the sops arm's ENVELOPE half (a short envelope quoted into a review body is admitted)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tcase reSopsEncVal.MatchString(s) || (reSopsKey.MatchString(s) && reSopsField.MatchString(s)):",
+      "new": "\tcase false && reSopsEncVal.MatchString(s) || (reSopsKey.MatchString(s) && reSopsField.MatchString(s)):"
+    },
+    {
+      "name": "#2060 — disarm the sops arm's FOOTER half (a bare footer quoted into a review body is admitted)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tcase reSopsEncVal.MatchString(s) || (reSopsKey.MatchString(s) && reSopsField.MatchString(s)):",
+      "new": "\tcase reSopsEncVal.MatchString(s) || (false && reSopsKey.MatchString(s) && reSopsField.MatchString(s)):"
+    },
+    {
+      "name": "#2060 — un-anchor the envelope marker from its data: field (a cited ENC[AES256_GCM,…] mention refuses)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "reSopsEncVal = regexp.MustCompile(`ENC\\[AES256_GCM,data:`)",
+      "new": "reSopsEncVal = regexp.MustCompile(`ENC\\[AES256_GCM`)"
+    },
+    {
+      "name": "#2060 — un-anchor the sops: key and its metadata field from line start (a cited inline `sops:`/`mac:` mention refuses)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "reSopsKey    = regexp.MustCompile(`(?m)^\\s*\"?sops\"?\\s*:`)\n\treSopsField  = regexp.MustCompile(`(?m)^\\s*\"?(mac|",
+      "new": "reSopsKey    = regexp.MustCompile(`\"?sops\"?\\s*:`)\n\treSopsField  = regexp.MustCompile(`\"?(mac|"
+    },
+    {
       "name": "open the armor-label allowlist (an unknown label stops being secret-bearing)",
       "file": "internal/deskkit/structured.go",
       "old": "return !armorCiphertextOrPublicLabels[strings.TrimSpace(m[1])]",
