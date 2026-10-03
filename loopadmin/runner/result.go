@@ -29,6 +29,12 @@ const (
 	StateAbsent State = "absent"
 )
 
+// terminal reports whether the state is absorbing: once recorded, no later
+// adapter report may move the invocation out of it.
+func (s State) terminal() bool {
+	return s == StateFinished || s == StateFailed || s == StateStopped
+}
+
 // holds reports whether an invocation in this state may still be running and
 // so still owns its authority: no replacement may start under it.
 func (s State) holds() bool {
@@ -58,9 +64,13 @@ type ToolRequest struct {
 	Note string `json:"note,omitempty"`
 }
 
-// Result is the adapter's terminal report. Generation is the authority
-// generation the attempt ran under, echoed back by the adapter.
+// Result is the adapter's terminal report. Caller, ID and Generation echo the
+// invocation identity and the authority generation the attempt ran under, so a
+// result delivered for the wrong invocation is refused even when both ran
+// under the same generation number.
 type Result struct {
+	Caller       string        `json:"caller"`
+	ID           string        `json:"id"`
 	Generation   uint64        `json:"generation"`
 	Outcome      Outcome       `json:"outcome"`
 	Summary      string        `json:"summary,omitempty"`
@@ -91,27 +101,35 @@ type CancelAck struct {
 
 var sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
-// Validate checks a result's shape and credential exclusion.
+// Validate checks a result's credential exclusion first, then its shape.
+// Every field of a result is adapter-reported and so untrusted: no refusal
+// formats one into its error, only an index.
 func (r Result) Validate() error {
+	if err := r.rejectCredentials(); err != nil {
+		return err
+	}
 	if r.Generation == 0 {
 		return fmt.Errorf("%w: generation is required", ErrMalformedResult)
+	}
+	if strings.TrimSpace(r.Caller) == "" || strings.TrimSpace(r.ID) == "" {
+		return fmt.Errorf("%w: caller and id are required", ErrMalformedResult)
 	}
 	switch r.Outcome {
 	case OutcomeSuccess, OutcomeFailure:
 	default:
-		return fmt.Errorf("%w: outcome %q", ErrMalformedResult, r.Outcome)
+		return fmt.Errorf("%w: outcome is not a defined outcome", ErrMalformedResult)
 	}
 	for i, a := range r.Artifacts {
 		if strings.TrimSpace(a.Name) == "" || strings.TrimSpace(a.Ref) == "" {
 			return fmt.Errorf("%w: artifact %d needs a name and a ref", ErrMalformedResult, i)
 		}
 		if !sha256Hex.MatchString(a.Hash) {
-			return fmt.Errorf("%w: artifact %q hash is not a sha256", ErrMalformedResult, a.Name)
+			return fmt.Errorf("%w: artifact %d hash is not a sha256", ErrMalformedResult, i)
 		}
 		// Model output is untrusted until a caller's own check accepts it; an
 		// adapter cannot raise it.
 		if a.Trust != TrustUntrusted {
-			return fmt.Errorf("%w: artifact %q claims trust %q", ErrMalformedResult, a.Name, a.Trust)
+			return fmt.Errorf("%w: artifact %d claims a trust other than untrusted", ErrMalformedResult, i)
 		}
 	}
 	for i, t := range r.ToolRequests {
@@ -119,13 +137,13 @@ func (r Result) Validate() error {
 			return fmt.Errorf("%w: tool request %d has no name", ErrMalformedResult, i)
 		}
 	}
-	return r.rejectCredentials()
+	return nil
 }
 
 func (r Result) rejectCredentials() error {
-	fields := []string{r.Summary}
+	fields := []string{r.Caller, r.ID, string(r.Outcome), r.Summary}
 	for _, a := range r.Artifacts {
-		fields = append(fields, a.Name, a.Ref)
+		fields = append(fields, a.Name, a.Ref, a.Hash, string(a.Trust))
 	}
 	for _, t := range r.ToolRequests {
 		fields = append(fields, t.Name, t.Note)

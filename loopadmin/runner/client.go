@@ -78,7 +78,7 @@ func (c *Client) Start(ctx context.Context, req LaunchRequest) (Ref, State, erro
 		return ref, prev.state, nil
 	}
 	if holder, ok := c.held[req.Authority.Key]; ok && c.inv[holder].state.holds() {
-		return Ref{}, "", fmt.Errorf("%w: %s still holds authority %q", ErrReconcileRequired, c.inv[holder].req.ID, req.Authority.Key)
+		return Ref{}, "", fmt.Errorf("%w: another invocation still holds this authority", ErrReconcileRequired)
 	}
 	// Intent first: the invocation exists as unknown before the adapter is
 	// asked, so a crash or a lost acknowledgment can never leave a launch the
@@ -95,6 +95,8 @@ func (c *Client) Start(ctx context.Context, req LaunchRequest) (Ref, State, erro
 		return ref, in.state, fmt.Errorf("%w: %v", ErrReconcileRequired, err)
 	}
 	in.state = StateRunning
+	// A receipt that names no model is not yet a fallback: the model is
+	// unknown, and acceptance refuses a result whose model stays unreported.
 	if rec.ActualModel != "" && rec.ActualModel != req.Profile.Model {
 		in.fellBack = true
 		return ref, in.state, ErrModelFallback
@@ -139,6 +141,20 @@ func (c *Client) look(ctx context.Context, ref Ref, q func(context.Context, Ref)
 		// A state the contract does not define is not an outcome.
 		obs.State = StateUnknown
 	}
+	if in.state.terminal() {
+		// Terminal states are absorbing. A failed or stopped attempt reported
+		// running again, or a finished one reported with another result, would
+		// put a second holder back on an authority already handed to a
+		// replacement, or swap an accepted result. Refuse the report and keep
+		// the recorded state and observation.
+		if obs.State != in.state || (in.state == StateFinished && !sameOutcome(in.obs, obs)) {
+			return Observation{}, ErrStateRegression
+		}
+		if in.obs != nil {
+			return *in.obs, nil
+		}
+		return obs, nil
+	}
 	in.state = obs.State
 	if in.cancelled && obs.State == StateRunning {
 		in.state = StateCancelRequested
@@ -146,6 +162,7 @@ func (c *Client) look(ctx context.Context, ref Ref, q func(context.Context, Ref)
 	if c.caps.Telemetry == TelemetryNone {
 		obs.Usage = Usage{}
 	}
+	obs.Usage = obs.Usage.readings()
 	in.usage = obs.Usage
 	kept := obs
 	in.obs = &kept
@@ -210,7 +227,7 @@ func (c *Client) AcceptResult(ctx context.Context, ref Ref) (Accepted, error) {
 	state, obs, req, fellBack := in.state, in.obs, in.req, in.fellBack
 	c.mu.Unlock()
 	if state != StateFinished || obs == nil || obs.Result == nil {
-		return Accepted{}, fmt.Errorf("%w: state is %s", ErrNotFinished, state)
+		return Accepted{}, ErrNotFinished
 	}
 	if c.fence == nil {
 		return Accepted{}, ErrFenceUnavailable
@@ -225,6 +242,13 @@ func (c *Client) AcceptResult(ctx context.Context, ref Ref) (Accepted, error) {
 	if fellBack {
 		return Accepted{}, ErrModelFallback
 	}
+	// Unknown stays unknown: a model nobody reported is not the pinned model.
+	if obs.ActualModel == "" {
+		return Accepted{}, ErrModelUnreported
+	}
+	if obs.ActualModel != req.Profile.Model {
+		return Accepted{}, ErrModelFallback
+	}
 	res := *obs.Result
 	if err := res.Validate(); err != nil {
 		return Accepted{}, err
@@ -232,9 +256,12 @@ func (c *Client) AcceptResult(ctx context.Context, ref Ref) (Accepted, error) {
 	if res.Generation != req.Authority.Generation {
 		return Accepted{}, fmt.Errorf("%w: result echoes generation %d, attempt ran under %d", ErrFenced, res.Generation, req.Authority.Generation)
 	}
-	for _, t := range res.ToolRequests {
+	if res.Caller != ref.Caller || res.ID != ref.ID {
+		return Accepted{}, ErrResultIdentity
+	}
+	for i, t := range res.ToolRequests {
 		if !contains(req.Profile.Tools, t.Name) {
-			return Accepted{}, fmt.Errorf("%w: %q", ErrUnauthorizedTool, t.Name)
+			return Accepted{}, fmt.Errorf("%w: tool request %d", ErrUnauthorizedTool, i)
 		}
 	}
 	return Accepted{
@@ -255,6 +282,12 @@ func (c *Client) Usage(caller string) Usage {
 		}
 	}
 	return total
+}
+
+// sameOutcome reports whether a later finished observation repeats the
+// recorded one: the same result and the same reported model.
+func sameOutcome(kept *Observation, obs Observation) bool {
+	return kept != nil && kept.ActualModel == obs.ActualModel && reflect.DeepEqual(kept.Result, obs.Result)
 }
 
 func contains(list []string, s string) bool {

@@ -32,6 +32,7 @@ func WorkflowRequest(id string) runner.LaunchRequest {
 // GoodResult builds a well-formed success result for a request.
 func GoodResult(req runner.LaunchRequest) runner.Result {
 	return runner.Result{
+		Caller: req.Caller, ID: req.ID,
 		Generation: req.Authority.Generation, Outcome: runner.OutcomeSuccess,
 		Summary: "done",
 		Artifacts: []runner.Artifact{{

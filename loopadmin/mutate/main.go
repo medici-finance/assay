@@ -88,7 +88,10 @@ func apply(m mutation) (killed bool, out string, err error) {
 	if err := copyTree(".", dir); err != nil {
 		return false, "", err
 	}
-	target := filepath.Join(dir, filepath.FromSlash(m.File))
+	target, err := confine(dir, m.File)
+	if err != nil {
+		return false, "", err
+	}
 	src, err := os.ReadFile(target)
 	if err != nil {
 		return false, "", err
@@ -116,6 +119,18 @@ func apply(m mutation) (killed bool, out string, err error) {
 		return false, out, fmt.Errorf("go test failed without a test failure:\n%s", out)
 	}
 	return true, out, nil
+}
+
+// confine resolves a map entry's file inside the scratch copy. An absolute
+// path, or one that climbs out of the copy, is refused: a mutation only ever
+// edits the module under test.
+func confine(dir, file string) (string, error) {
+	rel := filepath.Clean(filepath.FromSlash(file))
+	if file == "" || filepath.IsAbs(rel) || filepath.VolumeName(rel) != "" ||
+		rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("file %q is not a path inside the module", file)
+	}
+	return filepath.Join(dir, rel), nil
 }
 
 func copyTree(from, to string) error {

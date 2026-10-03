@@ -24,8 +24,8 @@
     "test": "TestRunnerBothModesWithoutGraph",
     "why": "make canonical work references optional in workflow-stage mode",
     "file": "runner/request.go",
-    "old": "if w == nil || w.WorkID == \"\" || w.NodeID == \"\" || w.AttemptID == \"\" {",
-    "new": "if false && (w == nil || w.WorkID == \"\" || w.NodeID == \"\" || w.AttemptID == \"\") {"
+    "old": "if w == nil || blank(w.WorkID) || blank(w.NodeID) || blank(w.AttemptID) {",
+    "new": "if false && (w == nil || blank(w.WorkID) || blank(w.NodeID) || blank(w.AttemptID)) {"
   },
   {
     "test": "TestRunnerCallerRecheck",
@@ -33,5 +33,201 @@
     "file": "runner/conformance/claims.go",
     "old": "if cur != acc.Authority.Generation {",
     "new": "if false {"
+  },
+  {
+    "test": "TestRunnerTerminalAbsorbs",
+    "why": "SEC-1: let a later report move an invocation out of a terminal state",
+    "file": "runner/client.go",
+    "old": "if in.state.terminal() {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerRevivalNoFence",
+    "why": "SEC-1: same, with the fence and the caller check both bypassed",
+    "file": "runner/client.go",
+    "old": "if in.state.terminal() {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerTerminalAbsorbs",
+    "why": "SEC-1: let a finished report swap its result",
+    "file": "runner/client.go",
+    "old": "if obs.State != in.state || (in.state == StateFinished && !sameOutcome(in.obs, obs)) {",
+    "new": "if obs.State != in.state {"
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "SEC-2: check extension values as raw text only, not decoded and walked",
+    "file": "runner/secrets.go",
+    "old": "return valueCarriesCredential(x)\n}",
+    "new": "return false\n}"
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "SEC-2: drop authorization from the credential key list",
+    "file": "runner/secrets.go",
+    "old": "\"authorization\", \"cookie\", \"session\",",
+    "new": "\"cookie\", \"session\","
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "SEC-2: drop cookie from the credential key list",
+    "file": "runner/secrets.go",
+    "old": "\"authorization\", \"cookie\", \"session\",",
+    "new": "\"authorization\", \"session\","
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "SEC-2: never treat a Basic credential as one",
+    "file": "runner/secrets.go",
+    "old": "err == nil && bytes.IndexByte(b, ':') > 0",
+    "new": "err == nil && b == nil"
+  },
+  {
+    "test": "TestRunnerConformanceCredentialAndUsage",
+    "why": "SEC-A3: credential pattern matching always says no",
+    "file": "runner/secrets.go",
+    "old": "func LooksLikeCredential(s string) bool {\n",
+    "new": "func LooksLikeCredential(s string) bool {\n\tif len(s) >= 0 {\n\t\treturn false\n\t}\n"
+  },
+  {
+    "test": "TestRunnerNoPayloadEcho",
+    "why": "SEC-3: run no credential check on a result before its shape checks",
+    "file": "runner/result.go",
+    "old": "\tif err := r.rejectCredentials(); err != nil {\n\t\treturn err\n\t}\n\tif r.Generation == 0 {",
+    "new": "\tif r.Generation == 0 {"
+  },
+  {
+    "test": "TestRunnerNoPayloadEcho",
+    "why": "SEC-3: echo the adapter's outcome in the refusal",
+    "file": "runner/result.go",
+    "old": "return fmt.Errorf(\"%w: outcome is not a defined outcome\", ErrMalformedResult)",
+    "new": "return fmt.Errorf(\"%w: outcome %q is not a defined outcome\", ErrMalformedResult, r.Outcome)"
+  },
+  {
+    "test": "TestRunnerNoPayloadEcho",
+    "why": "SEC-3: echo a credential-shaped extension key in the refusal",
+    "file": "runner/request.go",
+    "old": "return fmt.Errorf(\"%w: in an extension\", ErrCredential)",
+    "new": "return fmt.Errorf(\"%w: extension %q\", ErrCredential, k)"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3 class guard: format request content into a refusal",
+    "file": "runner/request.go",
+    "old": "return fmt.Errorf(\"%w: mode is not a defined mode\", ErrInvalidRequest)",
+    "new": "return fmt.Errorf(\"%w: mode %q\", ErrInvalidRequest, r.Mode)"
+  },
+  {
+    "test": "TestRunnerModelUnreported",
+    "why": "SEC-4: accept a finished observation that names no model",
+    "file": "runner/client.go",
+    "old": "\tif obs.ActualModel == \"\" {\n\t\treturn Accepted{}, ErrModelUnreported\n\t}\n\tif obs.ActualModel != req.Profile.Model {\n\t\treturn Accepted{}, ErrModelFallback\n\t}\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerStrictDecode",
+    "why": "B1: allow an object to repeat a key",
+    "file": "runner/request.go",
+    "old": "if seen[k] {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestScanStrictTrailing",
+    "why": "B1: allow data after the request object (the token scan alone; the key check behind it also refuses)",
+    "file": "runner/request.go",
+    "old": "if _, err := dec.Token(); err != io.EOF {",
+    "new": "if _, err := dec.Token(); err != io.EOF && false {"
+  },
+  {
+    "test": "TestRunnerStrictDecode",
+    "why": "B1: match keys case-insensitively",
+    "file": "runner/request.go",
+    "old": "ft, ok := fields[k]",
+    "new": "ft, ok := fields[strings.ToLower(k)]"
+  },
+  {
+    "test": "TestRunnerStrictDecode",
+    "why": "B1: allow null for a defined field",
+    "file": "runner/request.go",
+    "old": "if bytes.Equal(bytes.TrimSpace(v), []byte(\"null\")) {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "B3: allow a negative budget limit",
+    "file": "runner/request.go",
+    "old": "if r.Budget.MaxTokens < 0 || r.Budget.MaxCostMicros < 0 {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A1: accept a reused (caller, id) with different content",
+    "file": "runner/client.go",
+    "old": "if !reflect.DeepEqual(prev.req, req) {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A1: accept a desk binding in a workflow-stage request",
+    "file": "runner/request.go",
+    "old": "if r.Desk != nil {\n\t\t\treturn fmt.Errorf(\"%w: workflow-stage mode takes no desk binding\"",
+    "new": "if false {\n\t\t\treturn fmt.Errorf(\"%w: workflow-stage mode takes no desk binding\""
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A1: accept an absent tool list",
+    "file": "runner/request.go",
+    "old": "if r.Profile.Tools == nil {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A1: accept a budget with no positive limit",
+    "file": "runner/request.go",
+    "old": "if r.Budget.MaxTokens == 0 && r.Budget.MaxCostMicros == 0 {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A3: accept a blank work id",
+    "file": "runner/request.go",
+    "old": "blank(w.WorkID)",
+    "new": "w.WorkID == \"\""
+  },
+  {
+    "test": "TestRunnerReconcileRules",
+    "why": "A1: settle absent as failed without launch-dedupe",
+    "file": "runner/client.go",
+    "old": "if c.caps.LaunchDedupe && in.state == StateUnknown {",
+    "new": "if in.state == StateUnknown {"
+  },
+  {
+    "test": "TestRunnerReconcileRules",
+    "why": "A1: read an adapter error on observe as running",
+    "file": "runner/client.go",
+    "old": "\t\treturn Observation{}, fmt.Errorf(\"%w: could not check: %v\", ErrReconcileRequired, err)",
+    "new": "\t\tin.state = StateRunning\n\t\treturn Observation{}, fmt.Errorf(\"%w: could not check: %v\", ErrReconcileRequired, err)"
+  },
+  {
+    "test": "TestRunnerResultIdentity",
+    "why": "SEC-A1: accept a result echoing another invocation",
+    "file": "runner/client.go",
+    "old": "if res.Caller != ref.Caller || res.ID != ref.ID {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestMutateConfinesFile",
+    "why": "SEC-A5: let a map entry climb out of the scratch copy",
+    "file": "mutate/main.go",
+    "old": "rel == \"..\" || strings.HasPrefix(rel, \"..\"+string(filepath.Separator)) {",
+    "new": "false {"
+  },
+  {
+    "test": "TestRunnerNegativeUsage",
+    "why": "a negative usage figure passes as a reading",
+    "file": "runner/client.go",
+    "old": "\tobs.Usage = obs.Usage.readings()\n",
+    "new": ""
   }
 ]

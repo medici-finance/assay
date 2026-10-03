@@ -27,6 +27,17 @@ func (u Usage) Add(o Usage) Usage {
 	}
 }
 
+// readings drops a negative figure: it is not a measurement, so it is unknown.
+func (u Usage) readings() Usage {
+	keep := func(p *int64) *int64 {
+		if p == nil || *p < 0 {
+			return nil
+		}
+		return p
+	}
+	return Usage{InputTokens: keep(u.InputTokens), OutputTokens: keep(u.OutputTokens), CostMicros: keep(u.CostMicros)}
+}
+
 func addKnown(a, b *int64) *int64 {
 	if a == nil || b == nil {
 		return nil

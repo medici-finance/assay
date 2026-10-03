@@ -49,4 +49,13 @@ var (
 	ErrFenced = errors.New("runner: result is from a fenced authority generation")
 	// ErrFenceUnavailable: the current generation could not be read. Fail closed.
 	ErrFenceUnavailable = errors.New("runner: authority generation could not be checked")
+	// ErrStateRegression: the adapter reported an invocation leaving a terminal
+	// state (finished, failed, stopped), or a finished invocation with a
+	// different result. The report is a contract violation and is not recorded.
+	ErrStateRegression = errors.New("runner: adapter reported an invocation leaving a terminal state")
+	// ErrModelUnreported: the finished observation names no model. An
+	// unreported model is unknown, and unknown is not the pinned model.
+	ErrModelUnreported = errors.New("runner: observed model was not reported")
+	// ErrResultIdentity: the result echoes another invocation's identity.
+	ErrResultIdentity = errors.New("runner: result echoes another invocation's identity")
 )

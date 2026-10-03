@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://medici-finance.github.io/assay/schemas/loop-admin-runner-v1.json",
   "title": "loop-admin-runner-v1 launch request",
-  "description": "Machine-readable contract for the launch request of the shared loop-admin runner protocol (spec/loop-admin-runner-v1.md). The root is the LaunchRequest; $defs carries the adapter-side shapes (observation, result, capabilities, usage). The contract is DESCRIPTIVE of shape: required fields, field types and closed value sets. It deliberately does NOT encode the cross-field rules the runner module enforces at start (standing-desk mode requires a desk binding and no workflow reference, workflow-stage mode requires work, node and attempt references and no desk binding, a resume session must be pinned to the request's role and profile, a mandatory requirement the adapter does not declare refuses the request, credential-shaped content is refused); those need the whole request resolved against an adapter. Where the two disagree the schema is the LOOSER of the two on purpose. A usage figure that is absent is UNKNOWN, never zero.",
+  "description": "Machine-readable contract for the launch request of the shared loop-admin runner protocol (spec/loop-admin-runner-v1.md). The root is the LaunchRequest; $defs carries the adapter-side shapes (observation, result, capabilities, usage). The contract is DESCRIPTIVE of shape: required fields, field types and closed value sets. It deliberately does NOT encode the cross-field rules the runner module enforces at start (standing-desk mode requires a desk binding and no workflow reference, workflow-stage mode requires work, node and attempt references and no desk binding, a resume session must be pinned to the request's role and profile, a mandatory requirement the adapter does not declare refuses the request, a budget carries at least one positive limit, credential-shaped content is refused at any depth of an extension, an object repeats no key); those need the whole request resolved, or are beyond what JSON Schema expresses. Where the two disagree the schema is the LOOSER of the two on purpose: every request the runner module accepts validates here, and keys match exactly, case included, with no null for a defined field. A usage figure that is absent is UNKNOWN, never zero.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "caller", "id", "mode", "packet", "profile", "workspace", "authority", "budget"],
@@ -69,7 +69,7 @@
       }
     },
     "budget": {
-      "description": "A reference to the caller's budget reservation, with the scope the adapter must enforce and at least one limit.",
+      "description": "A reference to the caller's budget reservation, with the scope the adapter must enforce. No limit may be negative and at least one must be positive.",
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "scope"],
@@ -97,13 +97,13 @@
       "items": { "type": "string", "minLength": 1 }
     },
     "ext": {
-      "description": "Optional extensions, ignored unless named in require as ext:<name>. Never a place for credentials.",
+      "description": "Optional extensions, ignored unless named in require as ext:<name>. Never a place for credentials: every value is decoded and walked, and a credential-shaped string or a key naming a credential slot, at any depth, refuses the request.",
       "type": "object"
     }
   },
   "$defs": {
     "usage": {
-      "description": "Token and cost accounting. An absent field is unknown, never zero; a measured 0 is a real reading.",
+      "description": "Token and cost accounting. An absent field is unknown, never zero; a measured 0 is a real reading; a consumer treats a negative figure as unknown.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -133,11 +133,13 @@
       }
     },
     "result": {
-      "description": "The adapter's terminal report. generation is the authority generation the attempt ran under; it is NOT acceptance.",
+      "description": "The adapter's terminal report. caller and id echo the invocation identity, and generation the authority generation the attempt ran under; a result echoing another invocation is refused. It is NOT acceptance.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["generation", "outcome"],
+      "required": ["caller", "id", "generation", "outcome"],
       "properties": {
+        "caller": { "type": "string", "minLength": 1 },
+        "id": { "type": "string", "minLength": 1 },
         "generation": { "type": "integer", "minimum": 1 },
         "outcome": { "enum": ["success", "failure"] },
         "summary": { "type": "string" },
@@ -146,6 +148,7 @@
       }
     },
     "observation": {
+      "description": "One adapter report. finished, failed and stopped are absorbing: a later report leaving one, or a finished report with another result or model, is refused and recorded nowhere. A finished observation with no actual_model is not accepted: an unreported model is unknown, not the pinned one.",
       "type": "object",
       "additionalProperties": false,
       "required": ["state", "usage"],

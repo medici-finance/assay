@@ -3,8 +3,10 @@
 // returns a fresh Subject per case; the kit drives the contract's Client over it
 // and asserts the outcomes the contract promises: an unknown launch needs
 // reconcile, a fenced result is refused, credentials are rejected, missing
-// usage stays unknown, the two modes share one set of checks, and a cancel
-// request is not a confirmed stop.
+// usage stays unknown, the two modes share one set of checks, a cancel
+// request is not a confirmed stop, terminal states are absorbing, refusals
+// never echo their payload, decoding is strict, an unreported model is not the
+// pinned model and a result must echo its own invocation's identity.
 package conformance
 
 import (
@@ -58,6 +60,15 @@ var Cases = []struct {
 	{"CancelStillRunning", CaseCancelStillRunning},
 	{"ResumeUnsupported", CaseResumeUnsupported},
 	{"ModelFallback", CaseModelFallback},
+	{"TerminalAbsorbs", CaseTerminalAbsorbs},
+	{"CredentialShapes", CaseCredentialShapes},
+	{"NoPayloadEcho", CaseNoPayloadEcho},
+	{"StrictDecode", CaseStrictDecode},
+	{"ModelUnreported", CaseModelUnreported},
+	{"ResultIdentity", CaseResultIdentity},
+	{"RequestRules", CaseRequestRules},
+	{"ReconcileRules", CaseReconcileRules},
+	{"NegativeUsage", CaseNegativeUsage},
 }
 
 // RunAll runs every case as a subtest against fresh subjects.
@@ -343,6 +354,7 @@ func CaseMalformedResult(t *testing.T, f Factory) {
 		"bad artifact":     func(r *runner.Result) { r.Artifacts[0].Hash = "not-a-hash" },
 		"raised trust":     func(r *runner.Result) { r.Artifacts[0].Trust = runner.TrustOperator },
 		"unnamed artifact": func(r *runner.Result) { r.Artifacts[0].Name = "" },
+		"no identity":      func(r *runner.Result) { r.Caller = "" },
 	} {
 		s, claims, c := setup(t, f)
 		ctx := context.Background()

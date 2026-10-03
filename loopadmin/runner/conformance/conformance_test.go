@@ -117,3 +117,75 @@ func TestRunnerKitRunAll(t *testing.T) {
 	t.Run("full", func(t *testing.T) { conformance.RunAll(t, full) })
 	t.Run("minimal", func(t *testing.T) { conformance.RunAll(t, minimal) })
 }
+
+// The cases below each prove one contract rule on the Client alone: no caller
+// check runs, so the contract is the layer that refuses.
+
+func TestRunnerTerminalAbsorbs(t *testing.T) {
+	conformance.CaseTerminalAbsorbs(t, full)
+	conformance.CaseTerminalAbsorbs(t, minimal)
+}
+
+// TestRunnerRevivalNoFence bypasses BOTH the contract's generation fence (a
+// fixture that calls every generation current) and the caller's own check
+// (none runs): the revived attempt shares its replacement's key and
+// generation, so neither generation compare could tell them apart anyway. The
+// terminal-state rule alone refuses the revival.
+func TestRunnerRevivalNoFence(t *testing.T) {
+	ctx := context.Background()
+	a := fake.New(fake.FullCapabilities())
+	h := conformance.NewHostile(a)
+	c := runner.NewClient(h, conformance.StaleFence{Generation: 1})
+	dead := conformance.StandingRequest("dead")
+	h.FailNextStart(errors.Join(runner.ErrDefiniteFailure, errors.New("reported failed")), true)
+	ref, _, err := c.Start(ctx, dead)
+	if !errors.Is(err, runner.ErrDefiniteFailure) {
+		t.Fatalf("start: %v", err)
+	}
+	if _, _, err := c.Start(ctx, conformance.StandingRequest("live")); err != nil {
+		t.Fatalf("replacement: %v", err)
+	}
+	a.Complete(ref, conformance.GoodResult(dead), conformance.FullUsage())
+	if _, err := c.Observe(ctx, ref); !errors.Is(err, runner.ErrStateRegression) {
+		t.Fatalf("revived attempt: got %v, want %v", err, runner.ErrStateRegression)
+	}
+	if _, err := c.AcceptResult(ctx, ref); !errors.Is(err, runner.ErrNotFinished) {
+		t.Fatalf("revived attempt accepted with fence and caller check bypassed: %v", err)
+	}
+}
+
+func TestRunnerCredentialShapes(t *testing.T) {
+	conformance.CaseCredentialShapes(t, full)
+	conformance.CaseCredentialShapes(t, minimal)
+}
+
+func TestRunnerNoPayloadEcho(t *testing.T) {
+	conformance.CaseNoPayloadEcho(t, full)
+	conformance.CaseNoPayloadEcho(t, minimal)
+}
+
+func TestRunnerStrictDecode(t *testing.T) {
+	conformance.CaseStrictDecode(t, full)
+}
+
+func TestRunnerModelUnreported(t *testing.T) {
+	conformance.CaseModelUnreported(t, full)
+	conformance.CaseModelUnreported(t, minimal)
+}
+
+func TestRunnerResultIdentity(t *testing.T) {
+	conformance.CaseResultIdentity(t, full)
+}
+
+func TestRunnerRequestRules(t *testing.T) {
+	conformance.CaseRequestRules(t, full)
+}
+
+func TestRunnerReconcileRules(t *testing.T) {
+	conformance.CaseReconcileRules(t, full)
+	conformance.CaseReconcileRules(t, minimal)
+}
+
+func TestRunnerNegativeUsage(t *testing.T) {
+	conformance.CaseNegativeUsage(t, full)
+}
