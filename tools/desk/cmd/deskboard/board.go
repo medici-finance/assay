@@ -489,8 +489,10 @@ func fetchChangedFiles(repo string, num int) (files map[string]bool, complete bo
 	return set, complete, nil
 }
 
-// changedFilesBetween returns files changed between two commits (compare API), for the
-// MERGE-CURR benign-merge check. Unlike v1 this fails CLOSED: a compare error is exit 6.
+// changedFilesBetween unions files touched by every commit after the reviewed
+// head. Non-merge edits cannot disappear behind a merge or a revert. Merge
+// conflict resolutions retain their existing re-review trigger as well.
+// Missing history or files degrades CLOSED.
 func changedFilesBetween(repo, base, head string) (map[string]bool, error) {
 	if base == "" || head == "" {
 		return nil, deskkit.Unverifiable("compare needs both base and head", nil)
@@ -503,10 +505,28 @@ func changedFilesBetween(repo, base, head string) (map[string]bool, error) {
 	if err != nil {
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot compare %s %s...%s", repo, short(base), short(head)), err)
 	}
+	if cmp == nil || !cmp.CommitsComplete {
+		return nil, deskkit.Unverifiable("the reviewed-head interval's commit list is incomplete", nil)
+	}
 	set := map[string]bool{}
-	for _, cf := range cmp.Files {
-		if cf.Filename != "" {
-			set[cf.Filename] = true
+	for _, commit := range cmp.Commits {
+		if commit.Parents == nil || commit.SHA == "" {
+			return nil, deskkit.Unverifiable("interval commit has no SHA or parent evidence", nil)
+		}
+		detail, err := f.GetCommit(fr, commit.SHA)
+		if err != nil {
+			return nil, deskkit.Unverifiable("cannot read interval commit "+short(commit.SHA), err)
+		}
+		if detail == nil || !detail.FilesComplete {
+			return nil, deskkit.Unverifiable("interval commit's file list is incomplete", nil)
+		}
+		for _, cf := range detail.Files {
+			if cf.Filename != "" {
+				set[cf.Filename] = true
+			}
+			if cf.PreviousFilename != "" {
+				set[cf.PreviousFilename] = true
+			}
 		}
 	}
 	return set, nil
