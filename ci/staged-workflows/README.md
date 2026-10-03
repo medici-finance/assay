@@ -22,6 +22,12 @@ reviewable artifact, not a run.
 
 ## Contents
 
+- `evidence-automerge-tests.yml` — offline refusal-classifier and step-shell suites,
+  including the errexit status-capture class guard across staged, activation and live
+  workflow copies. Runs on the self-hosted runner for changes under any of those
+  workflow directories or `tools/evidence-automerge/`. **Staged, not live**; promote it
+  to `.github/workflows/evidence-automerge-tests.yml` to enforce the guard on PRs.
+
 - `evidence-automerge.yml` — the Evidence-PR auto-merge lane. Unlike the other files here
   this one is **already live**: it was promoted, and the copy in this directory is kept
   byte-identical to `.github/workflows/evidence-automerge.yml` as the reviewable edit
