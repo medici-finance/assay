@@ -194,3 +194,54 @@ func TestRoleFetchSupportedOrigins(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Every Git path-valued TLS option keeps its original meaning, including scoped
+// keys and repeated values. Non-path TLS strings must not be path-expanded.
+func TestRoleFetchTLSPathContext(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	giveOriginHost(t, work)
+	want := map[string]string{}
+	for _, prefix := range []string{"http.", "http.https://github.com/example-org/."} {
+		for _, option := range []string{"sslCert", "sslKey", "sslCAPath", "sslCAInfo", "pinnedPubkey"} {
+			key := prefix + option
+			mustGit(t, work, "config", "--global", "--add", key, "~/earlier.pem")
+			mustGit(t, work, "config", "--global", "--add", key, "~/TLS material.pem")
+			want[key] = mustGit(t, work, "config", "--path", "--get", key)
+		}
+	}
+	// Git treats these as strings, including PKCS#11 URI and pin hash forms.
+	for key, value := range map[string]string{"http.proxySSLCert": "~/proxy-cert", "http.sslCert": "pkcs11:token=fixture", "http.pinnedPubkey": "sha256//fixture"} {
+		mustGit(t, work, "config", "--replace-all", key, value)
+		want[key] = mustGit(t, work, "config", "--get", key)
+	}
+	var fetch *exec.Cmd
+	old := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		for _, arg := range args {
+			if name == "git" && arg == "fetch" {
+				fetch = exec.Command("git", "rev-parse", "origin/main")
+				return fetch
+			}
+		}
+		return old(name, args...)
+	}
+	if err := fetchRoleBase(work, "verifier", "example-org/tracker", "x-access-token"); err != nil {
+		t.Fatal(err)
+	}
+	if fetch == nil {
+		t.Fatal("no fetch")
+	}
+	for key, value := range want {
+		cmd := exec.Command("git", "config", "--path", "--get", key)
+		if key == "http.proxySSLCert" {
+			cmd = exec.Command("git", "config", "--get", key)
+		}
+		cmd.Dir = work
+		cmd.Env = fetch.Env
+		out, err := cmd.CombinedOutput()
+		if err != nil || strings.TrimSpace(string(out)) != value {
+			t.Errorf("%s changed meaning: got %q, want %q, error %v", key, out, value, err)
+		}
+	}
+}

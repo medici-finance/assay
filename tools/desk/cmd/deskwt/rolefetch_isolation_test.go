@@ -14,7 +14,7 @@ import (
 // Real Git and a local TLS server prove which identity reaches the transport.
 // All credentials here are placeholders; no external endpoint is contacted.
 func TestRoleFetchCredentialIsolation(t *testing.T) {
-	for _, lane := range []string{"netrc", "header", "header-global", "header-env", "header-include", "cookie"} {
+	for _, lane := range []string{"netrc", "header", "header-global", "header-env", "header-include", "cookie", "tls-home", "tls-home-scoped"} {
 		t.Run(lane, func(t *testing.T) {
 			work := newRepo(t)
 			withEnv(t, work)
@@ -40,6 +40,9 @@ func TestRoleFetchCredentialIsolation(t *testing.T) {
 			}))
 			defer srv.Close()
 			cert := filepath.Join(t.TempDir(), "ca.pem")
+			if lane == "tls-home" || lane == "tls-home-scoped" {
+				cert = filepath.Join(os.Getenv("HOME"), "review-ca.pem")
+			}
 			if err := os.WriteFile(cert, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -47,6 +50,12 @@ func TestRoleFetchCredentialIsolation(t *testing.T) {
 			mustGit(t, work, "remote", "set-url", "origin", srv.URL)
 			u, _ := url.Parse(srv.URL)
 			switch lane {
+			case "tls-home", "tls-home-scoped":
+				key := "http.sslCAInfo"
+				if lane == "tls-home-scoped" {
+					key = "http." + srv.URL + ".sslCAInfo"
+				}
+				mustGit(t, work, "config", "--global", key, "~/review-ca.pem")
 			case "netrc":
 				writeFile(t, filepath.Join(os.Getenv("HOME"), ".netrc"), "machine "+u.Hostname()+" login ambient password placeholder\n")
 			case "header":
