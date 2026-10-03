@@ -117,7 +117,7 @@ func cmdDesk(cell string, args []string) {
 	if harness == "cursor" && c.Kind != "house" {
 		die("cursor currently requires a house cell")
 	}
-	c.Cadence = resolveCadence(c.Kind, cadence, budget)
+	c.Cadence = resolveDeskCadence(c.Kind, harness, cadence, budget)
 	if harness == "cursor" && cfgIn != "" {
 		die("cursor does not accept a Claude config directory")
 	}
