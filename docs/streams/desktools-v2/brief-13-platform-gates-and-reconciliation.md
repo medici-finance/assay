@@ -231,3 +231,73 @@ comments cannot be posted by the worker attach verb and remain human acts. Workf
 | #1794 | out-of-scope (verify-outcomes) | Live-credential Verify row execution and offline witness policy |
 
 Local portability calibration is in [staged/portability-baseline.md](staged/portability-baseline.md); it is an author observation, not an independent witness.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -q -F -e 'GOOS=windows' .github/workflows/ci.yml && grep -q -F -e 'go test -c' .github/workflows/ci.yml` | fail exit=1 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 2 | `d=$(mktemp -d) && sh tools/desk/scripts/forge-ban.sh > "$d/r2.out"; echo rc=$?; grep -F -e 'class e (glab subprocess):' "$d/r2.out" && grep -F -e 'class f (GitLab API literal):' "$d/r2.out"` | pass exit=0 | sha256:abf4e9ac77f9 | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 3 | `sh tools/desk/scripts/forge-ban-probe.sh` | pass exit=0 | sha256:406d6e54ba92 | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -E -e '^desktools-v2/02 [0-9]+$' docs/streams/desktools-v2/forge-ban-baseline.txt && grep -E -e '^desktools-v2/13 glab=[0-9]+ gitlab-literal=[0-9]+$' docs/streams/desktools-v2/forge-ban-baseline.txt` | pass exit=0 | sha256:df26954dfed8 | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 5 | `d=$(mktemp -d) && cd statusgen && go test -run '^TestVerifyRowPortability$' -v . > "$d/r5.out" 2>&1 && grep -E -e '^--- PASS: TestVerifyRowPortability \(' "$d/r5.out" && sh testdata/portability-mutation.sh` | pass exit=0 | sha256:8577ff00fb88 | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 6 | `d=$(mktemp -d) && cd statusgen && go build -o "$d/statusgen" . && cd .. && "$d/statusgen" --root . --lint >/dev/null 2>&1; echo rc=$?` | pass exit=0 | sha256:93ff7811a209 | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -q -F -e 'windows-latest' .github/workflows/windows-ci-leg.yml && grep -q -F -e 'tools/desk' .github/workflows/windows-ci-leg.yml` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 8 | `grep -n -e 1145 -e 1146 -e 1223 docs/streams/desktools-v2/brief-06-*.md; test $? -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 9 | `f=$(ls docs/streams/desktools-v2/brief-06-*.md); grep -q -F -e 'cmd/cellctl' "$f" && grep -q -E -e '^gate: human$' "$f" && grep -q -F -e '(desktools-v2/13 GitLab row)' "$f" && grep -q -F -e '(desktools-v2/13 Windows row)' "$f"` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 10 | `miss=0; for n in 641 642 1604 1621 1418 1424 1805 1435 1644 678 1569 1693 1573 1203 655 676 677 1477 1411 1412 1415 865 1667 1794; do grep -q -E -e "^[\|] #$n [\|] desktools-v2/[0-9]+" -e "^[\|] #$n [\|] out-of-scope" docs/streams/desktools-v2/brief-13-platform-gates-and-reconciliation.md \|\| { echo "UNOWNED #$n"; miss=1; }; done; test $miss -eq 0` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 11 | `grep -q -E -e '^[\|] 10 [\|].*[\|] implemented [\|]' -e '^[\|] 10 [\|].*[\|] verified [\|]' -e '^[\|] 10 [\|].*[\|] done [\|]' docs/streams/desk-containers/README.md` | fail exit=1 | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 12 | `statusgen --consumers --root .` | pass exit=0 | sha256:7d36278df6bf | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+| 13 | `miss=0; for n in 641 642 1604 1621 1418 1424 1805 1435 1644 678 1569 1693 1573 1203 655 676 677 1477 1411 1412 1415 865 1667 1794; do c=$(gh api --paginate "repos/{owner}/{repo}/issues/$n/comments" --jq '.[] \| select(.body \| contains("(desktools-v2/13 triage)")) \| .id') \|\| { echo "READ FAILED #$n"; miss=1; continue; }; test -n "$c" \|\| { echo "NO TRIAGE COMMENT #$n"; miss=1; }; done; test $miss -eq 0` | fail exit=1 | sha256:75ca79222361 | 2026-10-02 | assay-verifier-app[bot] @ 6e419774479f (on-behalf-of human:ian) (forge-identity) |
+
+### Independent verification — 2026-10-02 (non-implementer, merged main 6e419774479f)
+
+Runner for every row below: assay-verifier-app[bot] @ 6e419774479f (claude-opus-5-5, on-behalf-of human:ian). Host darwin/arm64; rows run under bash from the repository root. The table above is the execution witness from the same run (10 pass, 3 fail by exit status); this block is the hand reading of each row. The implementing change (#1996) was read only after the rows ran.
+
+| # | command | exit | observed output | result |
+|---|---------|------|-----------------|--------|
+| 1 | grep -q -F -e 'GOOS=windows' .github/workflows/ci.yml && grep -q -F -e 'go test -c' .github/workflows/ci.yml | 1 | no output; ci.yml contains neither string. The cross-compile job exists only as a staged patch (staged/platform-workflows.patch, lines 25-28), not applied to the workflow | FAIL |
+| 2 | d=$(mktemp -d) && sh tools/desk/scripts/forge-ban.sh > "$d/r2.out"; echo rc=$?; grep -F -e 'class e (glab subprocess):' "$d/r2.out" && grep -F -e 'class f (GitLab API literal):' "$d/r2.out" | 0 | rc=0 / class e (glab subprocess): desk=0 statusgen=0 / class f (GitLab API literal): desk=45 statusgen=8 | PASS |
+| 3 | sh tools/desk/scripts/forge-ban-probe.sh | 0 | PROBE PASS; git status --porcelain tools/desk empty afterwards | PASS |
+| 4 | grep -E -e '^desktools-v2/02 [0-9]+$' …forge-ban-baseline.txt && grep -E -e '^desktools-v2/13 glab=[0-9]+ gitlab-literal=[0-9]+$' …forge-ban-baseline.txt | 0 | desktools-v2/02 63 / desktools-v2/13 glab=0 gitlab-literal=45 | PASS |
+| 5 | d=$(mktemp -d) && cd statusgen && go test -run '^TestVerifyRowPortability$' -v . > "$d/r5.out" 2>&1 && grep -E -e '^--- PASS: TestVerifyRowPortability \(' "$d/r5.out" && sh testdata/portability-mutation.sh | 0 | --- PASS: TestVerifyRowPortability (0.00s), 11 subtests PASS; mutation run shows tmp/sh/bash/findstr/tmpdir-plus-hardcode subtests FAIL with the detector disabled, then MUTATION PASS: disabled detector was rejected; detector source restored (tree clean) | PASS |
+| 6 | d=$(mktemp -d) && cd statusgen && go build -o "$d/statusgen" . && cd .. && "$d/statusgen" --root . --lint >/dev/null 2>&1; echo rc=$? | 0 | rc=0. Re-run with output kept: LINT: PASS, 183 NOTICE lines tagged [verify-row-portability] at this SHA (author calibration file records 184 at an earlier main) | PASS |
+| 7 | grep -q -F -e 'windows-latest' .github/workflows/windows-ci-leg.yml && grep -q -F -e 'tools/desk' .github/workflows/windows-ci-leg.yml | 0 | exit 0, but the only 'tools/desk' match is a comment (line 79, naming a Linux byte-guard test) added by #1578 on 2026-10-02, after this brief was implemented (#1996); before #1578 the row exited 1. The workflow has no tools/desk go test step and no pull_request trigger. Requirement NOT met — vacuous pass | FAIL (requirement unmet; row exit 0 is vacuous) |
+| 8 | grep -n -e 1145 -e 1146 -e 1223 docs/streams/desktools-v2/brief-06-*.md; test $? -eq 1 | 0 | nothing printed | PASS |
+| 9 | f=$(ls docs/streams/desktools-v2/brief-06-*.md); grep -q -F -e 'cmd/cellctl' "$f" && grep -q -E -e '^gate: human$' "$f" && grep -q -F -e '(desktools-v2/13 GitLab row)' "$f" && grep -q -F -e '(desktools-v2/13 Windows row)' "$f" | 0 | no output; brief 06 line 13 reads gate: human, rows 7 and 8 carry the two trace markers | PASS |
+| 10 | miss=0; for n in <24 issues>; do grep -q -E … brief-13 … done; test $miss -eq 0 | 0 | nothing printed; 24 triage rows present | PASS |
+| 11 | grep -q -E -e '^[|] 10 [|].*[|] implemented [|]' -e '… verified …' -e '… done …' docs/streams/desk-containers/README.md | 1 | no match; row 10 of that board still reads todo | FAIL |
+| 12 | statusgen --consumers --root . | 0 | consumers: no brief files in the diff against 6e419774479f — nothing to corroborate (same result from the installed v1.0.31 binary and a tree-built binary) | PASS (vacuous on merged main, see findings) |
+| 13 | miss=0; for n in <24 issues>; do c=$(gh api --paginate "repos/{owner}/{repo}/issues/$n/comments" --jq …) … done; test $miss -eq 0 | 1 | 12 lines NO TRIAGE COMMENT for #641 #642 #655 #676 #677 #678 #865 #1203 #1411 #1415 #1418 #1805; no READ FAILED lines (all 24 reads succeeded; read-only forge GET) | FAIL |
+
+Result: FAIL — 9 of 13 rows. Rows 1, 11 and 13 fail by exit code; row 7 exits 0 but its requirement is unmet (see below), which is why the hand count is one lower than the witness. None of the four is a defect in the code that merged: each waits on an act held for a human, tracked in #2055. Status stays `implemented`.
+
+**Vacuity findings**
+
+1. Row 7 — FALSE GREEN. 'tools/desk' matches a comment that #1578 added to windows-ci-leg.yml on 2026-10-02, an unrelated change that landed after this brief was authored (#1878) and implemented (#1996); on those trees the file had no 'tools/desk' match and the row exited 1. 'windows-latest' was already there. Since #1578 the row passes on a tree without the work. Deliverable 4 (tools/desk go test on windows-latest, proposed pull_request trigger) is present only in the staged patch. The brief says rows 1 and 7 "pass after the human-applied workflow commit"; row 7 already passes without it, so it cannot detect that commit. Suggested tightening: match the step itself, e.g. a 'cd tools/desk' line followed by 'go test ./...'.
+2. Row 12 — vacuous on merged main: the consumers check diffs against HEAD, finds no brief files in the diff, and reports "nothing to corroborate". It can only bite pre-merge.
+3. Row 6 — the command discards all output and ends in `echo rc=$?`, so the row's exit status is always 0 and the only oracle is the printed rc=0. It would print rc=0 on a tree without the lint. It shows "the tree still lints clean", not "the NOTICE fires"; the latter was confirmed separately by hand (183 notices) and by row 5.
+4. Row 2 — `echo rc=$?` after a script that ends in an unconditional `exit 0` is always rc=0; the two greps carry the row. Not vacuous for the class lines.
+5. Row 4 — the 02 line is 63 while the counter at this SHA prints `forge reach-around sites: 65`. Not this brief's doing (the 13 commit added only the second line, and an earlier change stopped rows comparing against it), but the recorded a–d baseline is stale by 2.
+
+**Other findings**
+
+- The class f baseline of 45 includes one self-count: the probe script's own heredoc line containing the /api/v4 literal. The counter excludes itself in shell but not the probe script, and the header declares no carve-out for it. It also counts 4 lines in the cellctl shell-oracle test fixture. Advisory only; the baseline is reproducible as recorded.
+- Row 5's command was edited by the implementing PR itself (the mutation step and `+mutation` class were added). It is a strengthening, but the implementer changed its own oracle.
+- No human-runsheet file for the workflow patch was found under the stream directory (the delivery mechanic names one). Not checked elsewhere — could-not-check, not absent.
+- The changelog fragment added by the implementing commit is no longer present at this SHA under its original name (presumably rolled up by a later release); not a Verify row.
+
+**Risk-bearing value**
+
+Brief risk metadata is present and all four answers are "no"; gate is model. Enumeration over the implementing commit (forge-ban.sh, forge-ban-probe.sh, forge-ban-baseline.txt, verifyportability.go, enforcementstatus.go, main.go, portability-mutation.sh, the staged patch):
+
+- `desktools-v2/13 glab=0 gitlab-literal=45` @ docs/streams/desktools-v2/forge-ban-baseline.txt:2 — a recorded baseline a later brief compares against; wrong in the low direction would hide growth. Reversible by re-running --baseline.
+- class f pattern `/api/v4|gitlab\.com` @ tools/desk/scripts/forge-ban.sh:168 and :176 — reversible.
+- `GLAB_SUBCMDS='issue|mr|api|auth|repo|release|ci|label|schedule|snippet|variable'` @ forge-ban.sh:162 — reversible; a glab subcommand outside the list is not counted in shell.
+- detector regexes verifyOSMarker / verifyShellC / verifyFindstr / verifyTmpPath @ statusgen/verifyportability.go:11-14 — advisory NOTICE, reversible.
+- `"verify-row-portability" … StatusAdvisory` @ statusgen/enforcementstatus.go (added line) — reversible.
+- `-timeout 45s` @ statusgen/testdata/portability-mutation.sh:17 — operational knob.
+
+None is irreversible. Top-ranked entry derived:
+
+RISK-VALUE: DERIVED — desktools-v2/13 glab=0 gitlab-literal=45 @ docs/streams/desktools-v2/forge-ban-baseline.txt:2 — an independent line count (separate script, not the counter) of `/api/v4` or `gitlab.com` matching lines in .go/.sh files under tools/desk, tools/cellctl and plugins/assay, excluding the two forge backends, _test.go, .test.sh and the counter itself, gives 45; `exec.Command("glab"` occurrences in non-test Go give 0. The value matches the brief's definition of classes e and f. Caveat: 1 of the 45 is the probe script's own literal.
+
+**Correction, 2026-10-02 (after review of this record).** The row 7 reading and vacuity finding 1 first said the matching comment predated the brief. Repository history shows otherwise and both now say so: the comment arrived with #1578, after the implementation merged, which is when row 7 turned from exit 1 to a false green. The row 7 verdict is unchanged. Row 13 is recorded as of this run (2026-10-02T11:32Z); the reviewer's later re-run reports that the twelve missing triage comments were posted at about 21:28Z the same day and that the row then exits 0. This run did not re-check that. Rows 1, 7 and 11 still hold the brief.
