@@ -71,6 +71,13 @@ Actions, not by you. The safety contract behind the last column — `Guard`, the
 line, the two meters, the configured repo scope — is in
 [Guard, the two meters, and repo scope](#guard-the-two-meters-and-repo-scope).
 
+`deskroster repos --scope roots` reports sorted `<owner>/<repo>\troot=<path>` rows from
+`ConfiguredRoots`: an explicit `DESK_ROOTS` replaces the compiled defaults; unset uses those
+defaults. Malformed, duplicate or disallowed entries refuse the whole inventory (exit 5),
+before printing any rows. This read checks the mapping, not checkout existence or board contents.
+`--scope topology` retains the stated compiled topology. The default `--scope all` retains its
+write, scan and topology inventories; request `roots` explicitly for board-root coverage.
+
 ## Your first hour with desk-tools
 
 Read this once, in order. It is the operator on-ramp; every rule it states is specified
