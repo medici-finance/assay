@@ -318,7 +318,7 @@ Independent re-run by a non-implementer at merged main b3677d6da (forge main was
 | 8 | grep -n for 1145, 1146, 1223 in brief 06; test status is 1 | exit 0, nothing printed | exit 0, nothing printed | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
 | 9 | brief 06 carries cmd/cellctl, gate: human, and both trace markers | exit 0 | exit 0, no output | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
 | 10 | 24-issue loop over this brief's triage table | exit 0, nothing printed | exit 0, nothing printed; all 24 rows present | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
-| 11 | grep desk-containers README row 10 for implemented, verified or done | exit 0 | exit 1, no match. Row 10 still reads todo. BLOCKED, not a code defect: act 3 of #2055 (a human design record for desk-containers/10, which is gate human and irreversible; the lifecycle lint refuses the implemented flip without one) has not landed | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | grep desk-containers README row 10 for implemented, verified or done | exit 0 | exit 1, no match. Row 10 still reads todo. BLOCKED, not a code defect: act 3 of #2055, the desk-containers README row 10 flip, has not landed. (Correction: the design record DR-cellctl-go-port that desk-containers/10 needs had already landed in #2069, so the flip was lint-clean at this SHA; the hold was the board flip alone.) | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
 | 12 | statusgen --consumers --root . | exit 0, nothing disproved | exit 0. consumers: no brief files in the diff against b3677d6da — nothing to corroborate (installed v1.0.31 and a tree-built binary agree). Supplemental, with --base set to the parent of the implementing commit (#1996): exit 0, 79 briefs, 36 corroborated, 0 disproved, 287 unchecked | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
 | 13 | 24-issue loop reading each issue's comments for the triage marker (read-only GET) | exit 0, nothing printed | exit 0, nothing printed; no READ FAILED and no NO TRIAGE COMMENT lines. Spot check: the marker comments on #641 and #1805 are by the maintainer (2026-10-02 21:28Z), on #1604 by the worker App (2026-10-01) | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
 
@@ -342,7 +342,7 @@ RISK-VALUE: DERIVED — desktools-v2/13 glab=0 gitlab-literal=45 @ forge-ban-bas
 
 Context files: all present at this SHA (forge-ban.sh, forge-ban-probe.sh, the baseline file, statusgen with verifyportability.go and its test, both workflows, brief 06, the desk-containers README, cellctl shims.go, the changelog fragment dtv2-13-platform-workflows.md).
 
-VERIFY: BLOCKED — 12 of 13 rows pass at b3677d6da; row 11 waits on act 3 of #2055 (human design record for desk-containers/10), status stays implemented
+VERIFY: BLOCKED — 12 of 13 rows pass at b3677d6da; row 11 waits on act 3 of #2055 (the desk-containers README row 10 flip), status stays implemented
 
 ### 2026-10-03 desk dispatch (second pass) — desktools-v2/13 re-verified on merged main 03065900ca21: 13 of 13 rows pass, requirements met
 

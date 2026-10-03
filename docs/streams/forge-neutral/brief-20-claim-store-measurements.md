@@ -235,9 +235,9 @@ Ranked last, no verdict line: racers = 16 @ tools/desk/internal/deskkit/claim_te
 
 VERIFY: FAIL — row 5 (check-definition staleness: §3.1b omits three files whose only match is a code comment; #1606 open); rows 1–4 PASS.
 
-### 2026-10-02 desk dispatch — re-verify at merged main 03065900ca21: 4/5 pass, row 5 still fails (check-definition staleness, #1606)
+### 2026-10-03 desk dispatch — re-verify at merged main 03065900ca21: 4/5 pass, row 5 still fails (check-definition staleness, #1606)
 
-Non-implementer verifier re-run, 2026-10-03T UTC, assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian), at merged main 03065900ca21 (confirmed against the forge's main head the same turn). Documents-only brief, run non-hermetically on darwin, offline (KUBECONFIG=/dev/null); the Go test and the witness ran under a throwaway HOME. Rows 4 and 5 have prose Expect cells, so each was decided by a mechanical membership check of the printed file list against the spec's section 3.1a / 3.1b text, not by exit status. Long tokens are abbreviated below: "the spec" = reviewer-write-boundary.md in this stream; the row 3 test is TestAcquireConcurrent...OneWinner (name shortened); file paths are given relative to tools/desk.
+Non-implementer verifier re-run, 2026-10-03 (UTC, completed before 02:56Z), assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian), at merged main 03065900ca21 (confirmed against the forge's main head the same turn). Documents-only brief, run non-hermetically on darwin, offline (KUBECONFIG=/dev/null); the Go test and the witness ran under a throwaway HOME. Rows 4 and 5 have prose Expect cells, so each was decided by a mechanical membership check of the printed file list against the spec's section 3.1a / 3.1b text, not by exit status. Long tokens are abbreviated below: "the spec" = reviewer-write-boundary.md in this stream; the row 3 test is TestAcquireConcurrent...OneWinner (name shortened); file paths are given relative to tools/desk.
 
 | # | Command | Expect | Observed (exit + key output line) | Date | Runner |
 |---|---|---|---|---|---|

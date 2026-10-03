@@ -431,7 +431,7 @@ rows_passed=12 rows_total=13
 
 VERIFY: FAIL
 
-### 2026-10-02 desk dispatch — 13/13 version 3 Verify rows pass on main @ b3677d6da493; Evidence only (gate: human, sensitive-data)
+### 2026-10-03 desk dispatch — 13/13 version 3 Verify rows pass on main @ b3677d6da493; Evidence only (gate: human, sensitive-data)
 
 Merged SHA run on: main @ b3677d6da493 (the forge's main head at run time is 829185322 and differs from it only in STATUS.md). The tree contains the implementing merge b69252cc8e30 (#1919), the Windows machine-path work (#2033), the brief-frontmatter id exemption (#2024) and the version 3 Verify rows (#2044). Read-only in a detached worktree cut from the fetched main, go1.27.1 darwin/arm64, statusgen v1.0.31, KUBECONFIG=/dev/null, every command under a throwaway HOME, no forge writes. The worktree was clean (git status empty) after every run, including the mutation harness.
 

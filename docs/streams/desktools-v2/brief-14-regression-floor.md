@@ -197,7 +197,7 @@ The correction is recorded on issue #1836. No live workflow was edited. This rec
 implementation evidence, not independent verification or a claim that the staged CI
 change is live.
 
-### 2026-10-02 desk dispatch — 9/9 Verify rows pass by hand on merged main b3677d6da; execution witness misreads row 8 Expect (exit 1 parsed from prose)
+### 2026-10-03 desk dispatch — 9/9 Verify rows pass by hand on merged main b3677d6da; execution witness misreads row 8 Expect (exit 1 parsed from prose)
 
 Run against merged main b3677d6da (forge main has since advanced one commit, 8291853224, a STATUS.md regen only; no file under this brief's scope changed). Offline, throwaway HOME, no GIT_DIR or token variables exported. Long test names and shas are abbreviated in this block.
 
@@ -221,5 +221,7 @@ Risk: gate model; risk metadata present, all four fields no; not irreversible; d
 RISK-VALUE: N/A — no irreversible literal in the #2004 diff; every literal enumerated above is a reversible test-harness bound (the 31-character name ceiling is derived in the brief from secret-scanner long-identifier heuristics; the 7 to 40 range is short-to-full git sha). Advisory: the 60s shell deadline at shell_test.go:23 is commented as headroom over an observed 23s, but TestReg786FleetHardening took 45.52s in row 2 under load average about 11 (26.92s in row 7), so the margin is thinner than stated.
 
 Open hold, not a Verify row: the statusgen half of the floor is build/vet-only in PR CI until the staged CI patch for statusgen go test is applied by a maintainer (recorded by the implementer on #1836). The desk half rides the existing CI go test.
+
+Tracked at #2077: re-author row 8's Expect cell so the witness reads its required exit as 0.
 
 VERIFY: PASS — all 9 Verify rows pass by hand at b3677d6da; the execution witness scores row 8 fail on an Expect-cell parse (exits 0 not matched, prose exit 1 taken), so a witness-gated flip needs row 8's Expect re-authored first
