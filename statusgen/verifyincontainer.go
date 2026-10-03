@@ -98,6 +98,13 @@ const (
 	pairedVersionsRel = "plugins/assay/paired-versions.yaml"
 )
 
+// attributionEnvVars are the process-environment sources executingRunner
+// (verifyrun.go) reads to derive the witness runner. The launcher forwards each by
+// NAME into the container so the inner verifyrun attributes the run exactly as the
+// host would (#2092). A new env source in executingRunner that is not listed here
+// fails TestVICAttribEnvClass.
+var attributionEnvVars = []string{"GITHUB_ACTIONS", "GITHUB_ACTOR"}
+
 // pinDigestRe is the ONLY accepted digest shape: a full sha256. A placeholder
 // (`PENDING-HARVEST`), a truncated hash, or an upper-cased one all fail it, so the
 // wrapper refuses rather than run an unpinned or hand-invented reference.
@@ -198,6 +205,19 @@ func composeDockerArgs(inv containerInvocation) []string {
 	argv = append(argv, "-e", "GIT_CONFIG_COUNT=1")
 	argv = append(argv, "-e", "GIT_CONFIG_KEY_0=safe.directory")
 	argv = append(argv, "-e", "GIT_CONFIG_VALUE_0="+containerWorkDir)
+	// Carry the host's attribution environment into the container (#2092). The
+	// inner verifyrun derives the witness runner from the process (executingRunner,
+	// verifyrun.go); without these the container sees no GITHUB_ACTOR, and on a
+	// runner whose checkout carries no git identity it refuses could-not-attribute
+	// (exit 2) where the host itself would have attributed the run. NAME-ONLY form
+	// (`-e NAME`): docker copies the value from the launcher's own environment and
+	// leaves the variable unset in the container when the host has none, so this
+	// never invents an identity, and the value is never rendered in the printed
+	// argv. The set is pinned to executingRunner's env reads by
+	// TestVICAttribEnvClass.
+	for _, name := range attributionEnvVars {
+		argv = append(argv, "-e", name)
+	}
 	// --user maps container writes to the host user so the Evidence the container
 	// appends lands host-owned, not root-owned. Omitted when there is no POSIX
 	// uid (Windows: os.Getuid() == -1), where Docker Desktop maps ownership to the
