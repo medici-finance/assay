@@ -100,7 +100,7 @@ or removing any human gate (spec §5 states the divergence).
 | 17 | [Graph-linked release and outcome records without new authority](brief-17-lifecycle-links.md) | 7 | M | todo | — | — |
 | 18 | [Offline graph, advice and assurance integration proof](brief-18-assurance-experiment.md) | 9 | M | todo | — | — |
 | 19 | [Durable instance store and production coverage binding](brief-19-durable-instance-store.md) | 2 | M | todo | — | — |
-| 20 | [Shared loop-admin runner protocol and offline conformance kit](brief-20-runner-contract.md) | 0 | M | todo | — | — |
+| 20 | [Shared loop-admin runner protocol and offline conformance kit](brief-20-runner-contract.md) | 0 | M | implemented | — | — |
 | 21 | [Deterministic task controller with durable dispatch and waits](brief-21-controller-host.md) | 4 | M | todo | — | — |
 | 22 | [First pinned local harness adapter and qualification fixtures](brief-22-local-harness-adapter.md) | 2 | M | todo | — | — |
 | 23 | [Immutable candidate workspaces and independent check inputs](brief-23-candidate-workspaces.md) | 3 | M | todo | — | — |
