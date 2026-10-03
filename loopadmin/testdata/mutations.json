@@ -1050,7 +1050,7 @@
     "new": "if lowerOrDigit || (false && acronymEnd) {"
   },
   {
-    "test": "TestCredentialFloorVocabulary",
+    "test": "TestCredentialKeySpellingsStayRefused",
     "why": "R4: split an acronym run before its last capital always",
     "file": "runner/secrets.go",
     "old": "prev >= 'A' && prev <= 'Z' && i+1 < len(rs) && rs[i+1] >= 'a' && rs[i+1] <= 'z'",
@@ -1362,7 +1362,7 @@
     "why": "R5: a slot word counts whatever words trail it",
     "file": "runner/secrets.go",
     "old": "if slotWords[w] && !describesOnly(words[i+1:]) {",
-    "new": "if slotWords[w] {"
+    "new": "if slotWords[w] || i < 0 {"
   },
   {
     "test": "TestCredentialKeySpellingsStayRefused",

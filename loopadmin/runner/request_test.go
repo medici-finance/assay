@@ -690,7 +690,12 @@ func TestCredentialKeySpellingsStayRefused(t *testing.T) {
 	for _, slot := range []string{"auth", "oauth", "bearer", "privkey", "access_key"} {
 		for _, q := range []string{"method", "scopes", "format", "rotation_days", "ttl", "version"} {
 			key := slot + "_" + q
-			for _, k := range []string{key, strings.ToUpper(key), strings.ToUpper(key[:1]) + key[1:]} {
+			// The qualifier may also be an upper-case run joined by a case change.
+			spellings := []string{key, strings.ToUpper(key), strings.ToUpper(key[:1]) + key[1:]}
+			if !strings.Contains(q, "_") {
+				spellings = append(spellings, slot+strings.ToUpper(q), strings.ToUpper(slot[:1])+slot[1:]+strings.ToUpper(q))
+			}
+			for _, k := range spellings {
 				if runner.CredentialKey(k) {
 					t.Errorf("key %q only describes a slot and must pass", k)
 				}
