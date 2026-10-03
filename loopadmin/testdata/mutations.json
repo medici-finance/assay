@@ -1,0 +1,1374 @@
+[
+  {
+    "test": "TestRunnerConformanceUnknownLaunch",
+    "why": "map a lost launch acknowledgment to a definite failure",
+    "file": "runner/client.go",
+    "old": "if errors.Is(aerr, ErrDefiniteFailure) {",
+    "new": "if errors.Is(aerr, ErrDefiniteFailure) || errors.Is(aerr, ErrAckLost) {"
+  },
+  {
+    "test": "TestRunnerConformanceLateResultDenied",
+    "why": "skip the generation fence when accepting a result",
+    "file": "runner/client.go",
+    "old": "if cur != req.Authority.Generation {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerConformanceCredentialAndUsage",
+    "why": "default missing usage to zero",
+    "file": "runner/usage.go",
+    "old": "\tif a == nil || b == nil {\n\t\treturn nil\n\t}\n\treturn Int64(*a + *b)",
+    "new": "\tvar x, y int64\n\tif a != nil {\n\t\tx = *a\n\t}\n\tif b != nil {\n\t\ty = *b\n\t}\n\treturn Int64(x + y)"
+  },
+  {
+    "test": "TestRunnerBothModesWithoutGraph",
+    "why": "make canonical work references optional in workflow-stage mode",
+    "file": "runner/request.go",
+    "old": "if w == nil || blank(w.WorkID) || blank(w.NodeID) || blank(w.AttemptID) {",
+    "new": "if false && (w == nil || blank(w.WorkID) || blank(w.NodeID) || blank(w.AttemptID)) {"
+  },
+  {
+    "test": "TestRunnerCallerRecheck",
+    "why": "accept the result in the caller without rechecking its claim generation",
+    "file": "runner/conformance/claims.go",
+    "old": "if cur != acc.Authority.Generation {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerTerminalAbsorbs",
+    "why": "SEC-1: let a later report move an invocation out of a terminal state",
+    "file": "runner/client.go",
+    "old": "if in.state.terminal() {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerRevivalNoFence",
+    "why": "SEC-1: same, with the fence and the caller check both bypassed",
+    "file": "runner/client.go",
+    "old": "if in.state.terminal() {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerTerminalAbsorbs",
+    "why": "SEC-1: let a finished report swap its result",
+    "file": "runner/client.go",
+    "old": "if obs.State != in.state || (in.state == StateFinished && !sameOutcome(in.obs, obs)) {",
+    "new": "if obs.State != in.state {"
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "SEC-2: check extension values as raw text only, not decoded and walked",
+    "file": "runner/secrets.go",
+    "old": "return valueCarriesCredential(x)\n}",
+    "new": "return false\n}"
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "SEC-2: drop authorization from the credential key list",
+    "file": "runner/secrets.go",
+    "old": "\"authorization\", \"cookie\", \"session\",",
+    "new": "\"cookie\", \"session\","
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "SEC-2: drop cookie from the credential key list",
+    "file": "runner/secrets.go",
+    "old": "\"authorization\", \"cookie\", \"session\",",
+    "new": "\"authorization\", \"session\","
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "SEC-2: never treat a Basic credential as one",
+    "file": "runner/secrets.go",
+    "old": "err == nil && bytes.IndexByte(b, ':') > 0",
+    "new": "err == nil && b == nil"
+  },
+  {
+    "test": "TestRunnerConformanceCredentialAndUsage",
+    "why": "SEC-A3: credential pattern matching always says no",
+    "file": "runner/secrets.go",
+    "old": "func LooksLikeCredential(s string) bool {\n",
+    "new": "func LooksLikeCredential(s string) bool {\n\tif len(s) >= 0 {\n\t\treturn false\n\t}\n"
+  },
+  {
+    "test": "TestRunnerNoPayloadEcho",
+    "why": "SEC-3: run no credential check on a result before its shape checks",
+    "file": "runner/result.go",
+    "old": "\tif err := r.rejectCredentials(); err != nil {\n\t\treturn err\n\t}\n\tif r.Generation == 0 {",
+    "new": "\tif r.Generation == 0 {"
+  },
+  {
+    "test": "TestRunnerNoPayloadEcho",
+    "why": "SEC-3: echo the adapter's outcome in the refusal",
+    "file": "runner/result.go",
+    "old": "return fmt.Errorf(\"%w: outcome is not a defined outcome\", ErrMalformedResult)",
+    "new": "return fmt.Errorf(\"%w: outcome %q is not a defined outcome\", ErrMalformedResult, r.Outcome)"
+  },
+  {
+    "test": "TestRunnerNoPayloadEcho",
+    "why": "SEC-3: echo a credential-shaped extension key in the refusal",
+    "file": "runner/request.go",
+    "old": "return fmt.Errorf(\"%w: in an extension\", ErrCredential)",
+    "new": "return fmt.Errorf(\"%w: extension %q\", ErrCredential, k)"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3 class guard: format request content into a refusal",
+    "file": "runner/request.go",
+    "old": "return fmt.Errorf(\"%w: mode is not a defined mode\", ErrInvalidRequest)",
+    "new": "return fmt.Errorf(\"%w: mode %q\", ErrInvalidRequest, r.Mode)"
+  },
+  {
+    "test": "TestRunnerModelUnreported",
+    "why": "SEC-4: accept a finished observation that names no model",
+    "file": "runner/client.go",
+    "old": "\tif obs.ActualModel == \"\" {\n\t\treturn Accepted{}, ErrModelUnreported\n\t}\n\tif obs.ActualModel != req.Profile.Model {\n\t\treturn Accepted{}, ErrModelFallback\n\t}\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerStrictDecode",
+    "why": "B1: allow an object to repeat a key",
+    "file": "runner/request.go",
+    "old": "if seen[k] {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestScanStrictTrailing",
+    "why": "B1: allow data after the request object (the token scan alone; the key check behind it also refuses)",
+    "file": "runner/request.go",
+    "old": "if _, err := dec.Token(); err != io.EOF {",
+    "new": "if _, err := dec.Token(); err != io.EOF && false {"
+  },
+  {
+    "test": "TestRunnerStrictDecode",
+    "why": "B1: match keys case-insensitively",
+    "file": "runner/request.go",
+    "old": "fi, ok := fields[k]",
+    "new": "fi, ok := fields[strings.ToLower(k)]"
+  },
+  {
+    "test": "TestRunnerStrictDecode",
+    "why": "B1: allow null for a defined field",
+    "file": "runner/request.go",
+    "old": "\t\t\tif bytes.Equal(bytes.TrimSpace(v), []byte(\"null\")) {\n\t\t\t\treturn fmt.Errorf(\"%s is null\", sub)",
+    "new": "\t\t\tif false {\n\t\t\t\treturn fmt.Errorf(\"%s is null\", sub)"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "B3: allow a negative budget limit",
+    "file": "runner/request.go",
+    "old": "if r.Budget.MaxTokens < 0 || r.Budget.MaxCostMicros < 0 {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A1: accept a reused (caller, id) with different content",
+    "file": "runner/client.go",
+    "old": "if !reflect.DeepEqual(prev.req, req) {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A1: accept a desk binding in a workflow-stage request",
+    "file": "runner/request.go",
+    "old": "if r.Desk != nil {\n\t\t\treturn fmt.Errorf(\"%w: workflow-stage mode takes no desk binding\"",
+    "new": "if false {\n\t\t\treturn fmt.Errorf(\"%w: workflow-stage mode takes no desk binding\""
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A1: accept an absent tool list",
+    "file": "runner/request.go",
+    "old": "if r.Profile.Tools == nil {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A1: accept a budget with no positive limit",
+    "file": "runner/request.go",
+    "old": "if r.Budget.MaxTokens == 0 && r.Budget.MaxCostMicros == 0 {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A3: accept a blank work id",
+    "file": "runner/request.go",
+    "old": "blank(w.WorkID)",
+    "new": "w.WorkID == \"\""
+  },
+  {
+    "test": "TestRunnerReconcileRules",
+    "why": "A1: settle absent as failed without launch-dedupe",
+    "file": "runner/client.go",
+    "old": "if c.caps.LaunchDedupe && in.state == StateUnknown {",
+    "new": "if in.state == StateUnknown {"
+  },
+  {
+    "test": "TestRunnerReconcileRules",
+    "why": "A1: read an adapter error on observe as running",
+    "file": "runner/client.go",
+    "old": "\t\treturn Observation{}, &opaque{sentinel: ErrReconcileRequired, cause: aerr}",
+    "new": "\t\tin.state = StateRunning\n\t\treturn Observation{}, &opaque{sentinel: ErrReconcileRequired, cause: aerr}"
+  },
+  {
+    "test": "TestRunnerResultIdentity",
+    "why": "SEC-A1: accept a result echoing another invocation",
+    "file": "runner/client.go",
+    "old": "if res.Caller != ref.Caller || res.ID != ref.ID {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestMutateConfinesFile",
+    "why": "SEC-A5: let a map entry climb out of the scratch copy",
+    "file": "mutate/main.go",
+    "old": "rel == \"..\" || strings.HasPrefix(rel, \"..\"+string(filepath.Separator)) {",
+    "new": "false {"
+  },
+  {
+    "test": "TestRunnerNegativeUsage",
+    "why": "a negative usage figure passes as a reading",
+    "file": "runner/client.go",
+    "old": "\tobs.Usage = obs.Usage.readings()\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAdapterEcho",
+    "why": "SEC-3: echo the adapter error text on start, definite",
+    "file": "runner/client.go",
+    "old": "return ref, in.state, &opaque{sentinel: ErrDefiniteFailure, cause: aerr}",
+    "new": "return ref, in.state, fmt.Errorf(\"%w: %w\", ErrDefiniteFailure, aerr)"
+  },
+  {
+    "test": "TestRunnerNoAdapterEcho",
+    "why": "SEC-3: echo the adapter error text on start, unknown",
+    "file": "runner/client.go",
+    "old": "return ref, in.state, &opaque{sentinel: ErrReconcileRequired, cause: aerr}",
+    "new": "return ref, in.state, fmt.Errorf(\"%w: %v\", ErrReconcileRequired, aerr)"
+  },
+  {
+    "test": "TestRunnerNoAdapterEcho",
+    "why": "SEC-3: echo the adapter error text on observe and reconcile",
+    "file": "runner/client.go",
+    "old": "return Observation{}, &opaque{sentinel: ErrReconcileRequired, cause: aerr}",
+    "new": "return Observation{}, fmt.Errorf(\"%w: could not check: %v\", ErrReconcileRequired, aerr)"
+  },
+  {
+    "test": "TestRunnerNoAdapterEcho",
+    "why": "SEC-3: echo the adapter error text on cancel",
+    "file": "runner/client.go",
+    "old": "return CancelAck{}, &opaque{sentinel: ErrCancelFailed, cause: aerr}",
+    "new": "return CancelAck{}, aerr"
+  },
+  {
+    "test": "TestRunnerNoAdapterEcho",
+    "why": "SEC-3: echo the adapter error text on the fence read",
+    "file": "runner/client.go",
+    "old": "return Accepted{}, &opaque{sentinel: ErrFenceUnavailable, cause: ferr}",
+    "new": "return Accepted{}, fmt.Errorf(\"%w: %v\", ErrFenceUnavailable, ferr)"
+  },
+  {
+    "test": "TestRunnerNoAdapterEcho",
+    "why": "SEC-3: the sealed error appends the adapter text",
+    "file": "runner/errors.go",
+    "old": "func (e *opaque) Error() string   { return e.sentinel.Error() }",
+    "new": "func (e *opaque) Error() string   { return e.sentinel.Error() + \": \" + e.cause.Error() }"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3: echo the adapter error text on start, definite",
+    "file": "runner/client.go",
+    "old": "return ref, in.state, &opaque{sentinel: ErrDefiniteFailure, cause: aerr}",
+    "new": "return ref, in.state, fmt.Errorf(\"%w: %w\", ErrDefiniteFailure, aerr)"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3: echo the adapter error text on start, unknown",
+    "file": "runner/client.go",
+    "old": "return ref, in.state, &opaque{sentinel: ErrReconcileRequired, cause: aerr}",
+    "new": "return ref, in.state, fmt.Errorf(\"%w: %v\", ErrReconcileRequired, aerr)"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3: echo the adapter error text on observe and reconcile",
+    "file": "runner/client.go",
+    "old": "return Observation{}, &opaque{sentinel: ErrReconcileRequired, cause: aerr}",
+    "new": "return Observation{}, fmt.Errorf(\"%w: could not check: %v\", ErrReconcileRequired, aerr)"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3: echo the adapter error text on cancel",
+    "file": "runner/client.go",
+    "old": "return CancelAck{}, &opaque{sentinel: ErrCancelFailed, cause: aerr}",
+    "new": "return CancelAck{}, aerr"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3: echo the adapter error text on the fence read",
+    "file": "runner/client.go",
+    "old": "return Accepted{}, &opaque{sentinel: ErrFenceUnavailable, cause: ferr}",
+    "new": "return Accepted{}, fmt.Errorf(\"%w: %v\", ErrFenceUnavailable, ferr)"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3: the sealed error appends the adapter text",
+    "file": "runner/errors.go",
+    "old": "func (e *opaque) Error() string   { return e.sentinel.Error() }",
+    "new": "func (e *opaque) Error() string   { return e.sentinel.Error() + \": \" + e.cause.Error() }"
+  },
+  {
+    "test": "TestRunnerNoAdapterEcho",
+    "why": "SEC-3: drop the adapter error from the chain",
+    "file": "runner/errors.go",
+    "old": "return []error{e.sentinel, e.cause}",
+    "new": "return []error{e.sentinel}"
+  },
+  {
+    "test": "TestNoPayloadInErrors",
+    "why": "SEC-3: the guard trusts a call through an interface",
+    "file": "runner/errfmt_test.go",
+    "old": "\t\t\tif r := fn.Type().(*types.Signature).Recv(); r != nil && types.IsInterface(r.Type()) {\n\t\t\t\treturn nil\n\t\t\t}\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasing",
+    "why": "A6: record the caller's request without a copy",
+    "file": "runner/client.go",
+    "old": "req = req.clone() // checked, recorded and sent as this copy only",
+    "new": "// checked, recorded and sent as this copy only"
+  },
+  {
+    "test": "TestRunnerNoAliasing",
+    "why": "A6: hand the adapter the recorded request",
+    "file": "runner/client.go",
+    "old": "rec, aerr := c.adapter.Start(ctx, req.clone())",
+    "new": "rec, aerr := c.adapter.Start(ctx, req)"
+  },
+  {
+    "test": "TestRunnerNoAliasing",
+    "why": "A6: keep the adapter's observation without a copy",
+    "file": "runner/client.go",
+    "old": "\tobs = obs.clone() // the adapter keeps no handle on what is recorded\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasing",
+    "why": "A6: record the observation the caller gets",
+    "file": "runner/client.go",
+    "old": "kept := obs.clone() // the caller gets obs, which shares nothing with kept",
+    "new": "kept := obs // the caller gets obs, which shares nothing with kept"
+  },
+  {
+    "test": "TestRunnerNoAliasing",
+    "why": "A6: return the record on a terminal re-report",
+    "file": "runner/client.go",
+    "old": "return in.obs.clone(), nil",
+    "new": "return *in.obs, nil"
+  },
+  {
+    "test": "TestRunnerNoAliasing",
+    "why": "A6: return the record from AcceptResult",
+    "file": "runner/client.go",
+    "old": "kept := obs.clone() // the Accepted below shares nothing with the record",
+    "new": "kept := *obs // the Accepted below shares nothing with the record"
+  },
+  {
+    "test": "TestRunnerTerminalAbsorbs",
+    "why": "A7: drop the model arm of sameOutcome",
+    "file": "runner/client.go",
+    "old": "kept != nil && kept.ActualModel == obs.ActualModel && ",
+    "new": "kept != nil && "
+  },
+  {
+    "test": "TestRunnerStrictDecode",
+    "why": "B3: allow a null element in a list",
+    "file": "runner/request.go",
+    "old": "\t\t\tif bytes.Equal(bytes.TrimSpace(v), []byte(\"null\")) {\n\t\t\t\treturn fmt.Errorf(\"%s is null\", path.index(i))",
+    "new": "\t\t\tif false {\n\t\t\t\treturn fmt.Errorf(\"%s is null\", path.index(i))"
+  },
+  {
+    "test": "TestValidateRefusesBlankTool",
+    "why": "B3: accept a blank tool name at Validate",
+    "file": "runner/request.go",
+    "old": "if blank(tool) {",
+    "new": "if blank(tool) && false {"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: drop auth from the slot-value form",
+    "file": "runner/secrets.go",
+    "old": "(?i)(auth|bearer|privkey|",
+    "new": "(?i)(bearer|privkey|"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: drop bearer from the slot-value form",
+    "file": "runner/secrets.go",
+    "old": "(auth|bearer|privkey|access[_-]",
+    "new": "(auth|privkey|access[_-]"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: drop privkey from the slot-value form",
+    "file": "runner/secrets.go",
+    "old": "|privkey|access[_-]?key(?:",
+    "new": "|access[_-]?key(?:"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: drop access-key from the slot-value form",
+    "file": "runner/secrets.go",
+    "old": "|access[_-]?key(?:[_-]?id)?)[\"']?",
+    "new": "|zzzz)[\"']?"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: anchor the slot-value form on a word boundary (SEC-5)",
+    "file": "runner/secrets.go",
+    "old": "`(?i)(auth|bearer",
+    "new": "`(?i)\\b(auth|bearer"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: let the slot-value separator be a colon only",
+    "file": "runner/secrets.go",
+    "old": "[\"']?\\s*[:=]\\s*`)\n\n// compoundBearer",
+    "new": "[\"']?\\s*[:]\\s*`)\n\n// compoundBearer"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: a secret needs nine characters, not eight",
+    "file": "runner/secrets.go",
+    "old": "RuneCountInString(v) >= 8",
+    "new": "RuneCountInString(v) >= 9"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: a secret needs one character, not eight",
+    "file": "runner/secrets.go",
+    "old": "RuneCountInString(v) >= 8",
+    "new": "RuneCountInString(v) >= 1"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: read a slot value past the next whitespace",
+    "file": "runner/secrets.go",
+    "old": "if i := strings.IndexAny(v, \" \\t\\n\\f\\r\"); i >= 0 {",
+    "new": "if i := strings.IndexAny(v, \" \\t\\n\\f\\r\"); i >= 0 && false {"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: never read a quoted slot value as quoted",
+    "file": "runner/secrets.go",
+    "old": "if v != \"\" && (v[0] == '\"' || v[0] == '\\'') {",
+    "new": "if v != \"\" && false {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: read only a double quote as a quote",
+    "file": "runner/secrets.go",
+    "old": "(v[0] == '\"' || v[0] == '\\'') {",
+    "new": "(v[0] == '\"') {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: match a setting word case-sensitively",
+    "file": "runner/secrets.go",
+    "old": "benignSlotValues[strings.ToLower(v[:end])]",
+    "new": "benignSlotValues[v[:end]]"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: take any word for a setting word",
+    "file": "runner/secrets.go",
+    "old": "\t\treturn false\n\t}\n\trest := v[end:]",
+    "new": "\t\treturn true\n\t}\n\trest := v[end:]"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: let a quote of the other kind close a quoted value",
+    "file": "runner/secrets.go",
+    "old": "if rest == \"\" || rest[0] != quote {",
+    "new": "if rest == \"\" || rest[0] != quote && rest[0] != '\\'' {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: accept an unclosed quoted value as a setting",
+    "file": "runner/secrets.go",
+    "old": "if rest == \"\" || rest[0] != quote {",
+    "new": "if rest != \"\" && rest[0] != quote {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: accept anything after a quoted setting",
+    "file": "runner/secrets.go",
+    "old": "return rest == \"\" || strings.IndexByte(\",;.)}]\", rest[0]) >= 0\n\t}\n\tif rest != \"\"",
+    "new": "return true\n\t}\n\tif rest != \"\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: accept anything after a string-closing quote",
+    "file": "runner/secrets.go",
+    "old": "return rest == \"\" || strings.IndexByte(\",;.)}]\", rest[0]) >= 0\n\t}\n\treturn strings.Trim",
+    "new": "return true\n\t}\n\treturn strings.Trim"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: never treat a closing quote after a bare setting as closing",
+    "file": "runner/secrets.go",
+    "old": "if rest != \"\" && (rest[0] == '\"' || rest[0] == '\\'') {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: treat only a double quote as closing a bare setting",
+    "file": "runner/secrets.go",
+    "old": "(rest[0] == '\"' || rest[0] == '\\'') {",
+    "new": "(rest[0] == '\"') {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop the dot from the closing punctuation",
+    "file": "runner/secrets.go",
+    "old": "strings.Trim(rest, \",;.)}]\") == \"\"",
+    "new": "strings.Trim(rest, \",;)}]\") == \"\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: accept anything after a bare setting",
+    "file": "runner/secrets.go",
+    "old": "return strings.Trim(rest, \",;.)}]\") == \"\"",
+    "new": "return true"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: accept only a bare setting that is followed by something",
+    "file": "runner/secrets.go",
+    "old": "return strings.Trim(rest, \",;.)}]\") == \"\"",
+    "new": "return strings.Trim(rest, \",;.)}]\") != \"\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop pall from the excused bearer compounds",
+    "file": "runner/secrets.go",
+    "old": "\"pall\": true,",
+    "new": "\"pallx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop cup from the excused bearer compounds",
+    "file": "runner/secrets.go",
+    "old": "\"cup\": true,",
+    "new": "\"cupx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop standard from the excused bearer compounds",
+    "file": "runner/secrets.go",
+    "old": "\"standard\": true,",
+    "new": "\"standardx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop torch from the excused bearer compounds",
+    "file": "runner/secrets.go",
+    "old": "\"torch\": true,",
+    "new": "\"torchx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop flag from the excused bearer compounds",
+    "file": "runner/secrets.go",
+    "old": "\"flag\": true,",
+    "new": "\"flagx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop sword from the excused bearer compounds",
+    "file": "runner/secrets.go",
+    "old": "\"sword\": true,",
+    "new": "\"swordx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop ring from the excused bearer compounds",
+    "file": "runner/secrets.go",
+    "old": "\"ring\": true,",
+    "new": "\"ringx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: match a compound case-sensitively",
+    "file": "runner/secrets.go",
+    "old": "compoundBearer[strings.ToLower(s[i:start])]",
+    "new": "compoundBearer[s[i:start]]"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: stop a compound at a lower-case letter",
+    "file": "runner/secrets.go",
+    "old": "s[i-1] >= 'a' && s[i-1] <= 'z' || s[i-1] >= 'A' && s[i-1] <= 'Z') {\n\t\ti--",
+    "new": "s[i-1] >= 'a' && s[i-1] <= 'z') {\n\t\ti--"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: excuse a compound before any slot word",
+    "file": "runner/secrets.go",
+    "old": "if strings.EqualFold(s[m[2]:m[3]], \"bearer\") && compoundBearerAt",
+    "new": "if compoundBearerAt"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop disabled from the setting words",
+    "file": "runner/secrets.go",
+    "old": "\"disabled\": true,",
+    "new": "\"disabledx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop required from the setting words",
+    "file": "runner/secrets.go",
+    "old": "\"required\": true, \"optional\"",
+    "new": "\"requiredx\": true, \"optional\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop optional from the setting words",
+    "file": "runner/secrets.go",
+    "old": "\"optional\": true,",
+    "new": "\"optionalx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop external from the setting words",
+    "file": "runner/secrets.go",
+    "old": "\"external\": true,",
+    "new": "\"externalx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop internal from the setting words",
+    "file": "runner/secrets.go",
+    "old": "\"internal\": true,",
+    "new": "\"internalx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop enabled from the setting words",
+    "file": "runner/secrets.go",
+    "old": "\"internal\": true, \"enabled\": true,",
+    "new": "\"internal\": true, \"enabledx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop inherit from the setting words",
+    "file": "runner/secrets.go",
+    "old": "\"inherit\": true,",
+    "new": "\"inheritx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: let a URL user run into the query or fragment",
+    "file": "runner/secrets.go",
+    "old": "[^/\\s:@?#]+:([^/\\s@]+)@",
+    "new": "[^/\\s:@]+:([^/\\s@]+)@"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: let a URL password run across a path",
+    "file": "runner/secrets.go",
+    "old": "([^/\\s@]+)@`)",
+    "new": "([^\\s@]+)@`)"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: let a URL password run across whitespace",
+    "file": "runner/secrets.go",
+    "old": "([^/\\s@]+)@`)",
+    "new": "([^/@]+)@`)"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: allow an empty URL password",
+    "file": "runner/secrets.go",
+    "old": "([^/\\s@]+)@`)",
+    "new": "([^/\\s@]*)@`)"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: match a URL scheme case-sensitively",
+    "file": "runner/secrets.go",
+    "old": "`(?i)\\b[a-z][a-z0-9+.-]*://",
+    "new": "`\\b[a-z][a-z0-9+.-]*://"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop the URL userinfo check",
+    "file": "runner/secrets.go",
+    "old": "if passwordInURL(m[1]) {",
+    "new": "if false && passwordInURL(m[1]) {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: read an empty-leading URL run as a port",
+    "file": "runner/secrets.go",
+    "old": "if i <= 0 {",
+    "new": "if i < 0 {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: read a URL run with a hash as always a password",
+    "file": "runner/secrets.go",
+    "old": "\tif i <= 0 {\n\t\treturn true\n\t}",
+    "new": "\tif i <= 0 || true {\n\t\treturn true\n\t}"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: read any non-digit above nine as a digit",
+    "file": "runner/secrets.go",
+    "old": "if r < '0' || r > '9' {\n\t\t\treturn true",
+    "new": "if r < '0' {\n\t\t\treturn true"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: read any non-digit below zero as a digit",
+    "file": "runner/secrets.go",
+    "old": "if r < '0' || r > '9' {\n\t\t\treturn true",
+    "new": "if r > '9' {\n\t\t\treturn true"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: read a numeric URL run as a password",
+    "file": "runner/secrets.go",
+    "old": "\t}\n\treturn false\n}\n\n// slotPrefix",
+    "new": "\t}\n\treturn true\n}\n\n// slotPrefix"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop token from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"token\"",
+    "new": "\"tokenx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop secret from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"secret\"",
+    "new": "\"secretx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop password from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"password\"",
+    "new": "\"passwordx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop passwd from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"passwd\"",
+    "new": "\"passwdx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop passphrase from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"passphrase\"",
+    "new": "\"passphrasex\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop credential from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"credential\"",
+    "new": "\"credentialx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop apikey from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"apikey\"",
+    "new": "\"apikeyx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop api_key from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"api_key\"",
+    "new": "\"api_keyx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop api-key from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"api-key\"",
+    "new": "\"api-keyx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop private_key from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"private_key\"",
+    "new": "\"private_keyx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop privatekey from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"privatekey\"",
+    "new": "\"privatekeyx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop private-key from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"private-key\"",
+    "new": "\"private-keyx\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop session from the credential key words",
+    "file": "runner/secrets.go",
+    "old": "\"session\"",
+    "new": "\"sessionx\""
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: drop auth from the whole-word key slots",
+    "file": "runner/secrets.go",
+    "old": "\"auth\": true,",
+    "new": "\"auth\": false,"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: drop oauth from the whole-word key slots",
+    "file": "runner/secrets.go",
+    "old": "\"oauth\": true}",
+    "new": "\"oauth\": false}"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: let a bare slot word describe itself",
+    "file": "runner/secrets.go",
+    "old": "if len(rest) == 0 {\n\t\treturn false",
+    "new": "if len(rest) == 0 {\n\t\treturn true"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: take a qualifier for no qualifier",
+    "file": "runner/secrets.go",
+    "old": "if !benignKeyQualifiers[w] {",
+    "new": "if benignKeyQualifiers[w] {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: judge only the first word after a slot",
+    "file": "runner/secrets.go",
+    "old": "if !benignKeyQualifiers[w] {\n\t\t\treturn false\n\t\t}",
+    "new": "if !benignKeyQualifiers[w] {\n\t\t\treturn false\n\t\t}\n\t\treturn true"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop method from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"method\": true,",
+    "new": "\"methodx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop methods from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"methods\": true,",
+    "new": "\"methodsx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop required from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"required\": true, \"scope\"",
+    "new": "\"requiredx\": true, \"scope\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop scope from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"scope\": true,",
+    "new": "\"scopex\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop scopes from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"scopes\": true,",
+    "new": "\"scopesx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop format from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"format\": true,",
+    "new": "\"formatx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop type from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"type\": true,",
+    "new": "\"typex\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop mode from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"mode\": true,",
+    "new": "\"modex\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop enabled from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"enabled\": true, \"rotation\"",
+    "new": "\"enabledx\": true, \"rotation\""
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop rotation from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"rotation\": true,",
+    "new": "\"rotationx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop days from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"days\": true,",
+    "new": "\"daysx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop ttl from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"ttl\": true,",
+    "new": "\"ttlx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop expiry from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"expiry\": true,",
+    "new": "\"expiryx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop timeout from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"timeout\": true,",
+    "new": "\"timeoutx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop provider from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"provider\": true,",
+    "new": "\"providerx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop realm from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"realm\": true,",
+    "new": "\"realmx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop version from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"version\": true,",
+    "new": "\"versionx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop policy from the key qualifiers",
+    "file": "runner/secrets.go",
+    "old": "\"policy\": true,",
+    "new": "\"policyx\": true,"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop bearer from the key slot runs",
+    "file": "runner/secrets.go",
+    "old": "[]string{\"bearer\", \"privkey\", \"accesskey\"}",
+    "new": "[]string{\"zzzz\", \"privkey\", \"accesskey\"}"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop privkey from the key slot runs",
+    "file": "runner/secrets.go",
+    "old": "[]string{\"bearer\", \"privkey\", \"accesskey\"}",
+    "new": "[]string{\"bearer\", \"zzzz\", \"accesskey\"}"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop accesskey from the key slot runs",
+    "file": "runner/secrets.go",
+    "old": "[]string{\"bearer\", \"privkey\", \"accesskey\"}",
+    "new": "[]string{\"bearer\", \"privkey\", \"zzzz\"}"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: lower the key before matching key words",
+    "file": "runner/secrets.go",
+    "old": "lk := strings.ToLower(k)",
+    "new": "lk := k"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: split key words only at punctuation",
+    "file": "runner/secrets.go",
+    "old": "if lowerOrDigit || acronymEnd {",
+    "new": "if false && (lowerOrDigit || acronymEnd) {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: split key words at lower case only, not a digit",
+    "file": "runner/secrets.go",
+    "old": "lowerOrDigit := prev >= 'a' && prev <= 'z' || prev >= '0' && prev <= '9'",
+    "new": "lowerOrDigit := prev >= 'a' && prev <= 'z'"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: split key words at a digit only, not lower case",
+    "file": "runner/secrets.go",
+    "old": "lowerOrDigit := prev >= 'a' && prev <= 'z' || prev >= '0' && prev <= '9'",
+    "new": "lowerOrDigit := prev >= '0' && prev <= '9'"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: never split an acronym run from the word after it",
+    "file": "runner/secrets.go",
+    "old": "if lowerOrDigit || acronymEnd {",
+    "new": "if lowerOrDigit || (false && acronymEnd) {"
+  },
+  {
+    "test": "TestCredentialKeySpellingsStayRefused",
+    "why": "R4: split an acronym run before its last capital always",
+    "file": "runner/secrets.go",
+    "old": "prev >= 'A' && prev <= 'Z' && i+1 < len(rs) && rs[i+1] >= 'a' && rs[i+1] <= 'z'",
+    "new": "prev >= 'A' && prev <= 'Z'"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: split an acronym run without looking ahead",
+    "file": "runner/secrets.go",
+    "old": "prev >= 'A' && prev <= 'Z' && i+1 < len(rs) && rs[i+1] >= 'a' && rs[i+1] <= 'z'",
+    "new": "prev >= 'A' && prev <= 'Z' && rs[i+1] >= 'a' && rs[i+1] <= 'z'"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop digits from key words",
+    "file": "runner/secrets.go",
+    "old": "(r < 'a' || r > 'z') && (r < '0' || r > '9')",
+    "new": "(r < 'a' || r > 'z')"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: let a slot end inside a longer word describe itself",
+    "file": "runner/secrets.go",
+    "old": "if last < 0 || !describesOnly(words[last+1:]) {",
+    "new": "if last >= 0 && !describesOnly(words[last+1:]) {"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R4: judge a slot run by its first match only",
+    "file": "runner/secrets.go",
+    "old": "return true\n\t\t\t}\n\t\t}\n\t}\n\treturn false\n}\n\n// extensionCarriesCredential",
+    "new": "break\n\t\t\t}\n\t\t}\n\t}\n\treturn false\n}\n\n// extensionCarriesCredential"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: search for a slot run from its first letter only",
+    "file": "runner/secrets.go",
+    "old": "for from := 0; from < len(joined); from++ {",
+    "new": "for from := 0; from < 1; from++ {"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: excuse a compound that spans two words",
+    "file": "runner/secrets.go",
+    "old": "last == first && from > ends[first]",
+    "new": "last >= first && from > ends[first]"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: excuse a compound slot in any key",
+    "file": "runner/secrets.go",
+    "old": "if slot == \"bearer\" && last == first",
+    "new": "if last == first"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop api[_-]?key from the key=value form",
+    "file": "runner/secrets.go",
+    "old": "api[_-]?key|",
+    "new": "zzzz|"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop secret from the key=value form",
+    "file": "runner/secrets.go",
+    "old": "|secret",
+    "new": "|zzzz"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop passw(or)?d from the key=value form",
+    "file": "runner/secrets.go",
+    "old": "|passw(or)?d",
+    "new": "|zzzz"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop token from the key=value form",
+    "file": "runner/secrets.go",
+    "old": "|token",
+    "new": "|zzzz"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop authorization from the key=value form",
+    "file": "runner/secrets.go",
+    "old": "|authorization",
+    "new": "|zzzz"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: drop cookie from the key=value form",
+    "file": "runner/secrets.go",
+    "old": "|cookie",
+    "new": "|zzzz"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: a key=value secret needs one character",
+    "file": "runner/secrets.go",
+    "old": "\\s*[:=]\\s*\\S{8,}`),\n}",
+    "new": "\\s*[:=]\\s*\\S{1,}`),\n}"
+  },
+  {
+    "test": "TestCredentialFloorVocabulary",
+    "why": "R4: a key=value secret needs nine characters",
+    "file": "runner/secrets.go",
+    "old": "\\s*[:=]\\s*\\S{8,}`),\n}",
+    "new": "\\s*[:=]\\s*\\S{9,}`),\n}"
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "A6: skip the decoded walk of a JSON string",
+    "file": "runner/secrets.go",
+    "old": "\tcase string:\n\t\treturn LooksLikeCredential(t)",
+    "new": "\tcase string:\n\t\treturn false"
+  },
+  {
+    "test": "TestRunnerCredentialShapes",
+    "why": "A6: skip the key check of a nested object key",
+    "file": "runner/secrets.go",
+    "old": "if CredentialKey(k) || LooksLikeCredential(k) || valueCarriesCredential(e) {",
+    "new": "if LooksLikeCredential(k) || valueCarriesCredential(e) {"
+  },
+  {
+    "test": "TestRunnerResultIdentity",
+    "why": "A6: accept a result echoing another caller",
+    "file": "runner/client.go",
+    "old": "res.Caller != ref.Caller || res.ID != ref.ID",
+    "new": "res.ID != ref.ID"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: accept a blank workflow node id",
+    "file": "runner/request.go",
+    "old": " || blank(w.NodeID)",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: accept a blank workflow attempt id",
+    "file": "runner/request.go",
+    "old": " || blank(w.AttemptID)",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: accept a whitespace desk binding",
+    "file": "runner/request.go",
+    "old": "strings.TrimSpace(r.Desk.BindingID) == \"\"",
+    "new": "r.Desk.BindingID == \"\""
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: accept a whitespace resume session",
+    "file": "runner/request.go",
+    "old": "strings.TrimSpace(r.Resume.SessionID) == \"\"",
+    "new": "r.Resume.SessionID == \"\""
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: accept a resume pinned to another profile",
+    "file": "runner/request.go",
+    "old": " || r.Resume.ProfileID != r.Profile.ID",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: skip the credential scan of the resume session",
+    "file": "runner/request.go",
+    "old": "r.Resume.SessionID, r.Resume.Role, r.Resume.ProfileID)",
+    "new": "r.Resume.Role, r.Resume.ProfileID)"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: skip the credential scan of the resume role",
+    "file": "runner/request.go",
+    "old": "r.Resume.SessionID, r.Resume.Role, r.Resume.ProfileID)",
+    "new": "r.Resume.SessionID, r.Resume.ProfileID)"
+  },
+  {
+    "test": "TestRunnerRequestRules",
+    "why": "A6: skip the credential scan of the resume profile",
+    "file": "runner/request.go",
+    "old": "r.Resume.SessionID, r.Resume.Role, r.Resume.ProfileID)",
+    "new": "r.Resume.SessionID, r.Resume.Role)"
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share the required capabilities with the caller",
+    "file": "runner/clone.go",
+    "old": "\tr.Require = cloneSlice(r.Require)\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share the extension map with the caller",
+    "file": "runner/clone.go",
+    "old": "\tif r.Extensions != nil {",
+    "new": "\tif false {"
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share an extension value with the caller",
+    "file": "runner/clone.go",
+    "old": "ext[k] = cloneSlice(v)",
+    "new": "ext[k] = v"
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share the desk pointer with the caller",
+    "file": "runner/clone.go",
+    "old": "\tr.Desk = clonePtr(r.Desk)\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share the work pointer with the caller",
+    "file": "runner/clone.go",
+    "old": "\tr.Work = clonePtr(r.Work)\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share the resume pointer with the caller",
+    "file": "runner/clone.go",
+    "old": "\tr.Resume = clonePtr(r.Resume)\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: hand the adapter the recorded request",
+    "file": "runner/client.go",
+    "old": "c.adapter.Start(ctx, req.clone())",
+    "new": "c.adapter.Start(ctx, req)"
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: record the caller request uncopied",
+    "file": "runner/client.go",
+    "old": "\treq = req.clone() // checked, recorded and sent as this copy only\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: keep the adapter capabilities uncopied",
+    "file": "runner/client.go",
+    "old": "caps: a.Capabilities().clone(),",
+    "new": "caps: a.Capabilities(),"
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share declared budget scopes",
+    "file": "runner/clone.go",
+    "old": "\tc.BudgetScopes = cloneSlice(c.BudgetScopes)\n",
+    "new": ""
+  },
+  {
+    "test": "TestRunnerNoAliasingRecord",
+    "why": "A6: share declared extensions",
+    "file": "runner/clone.go",
+    "old": "\tc.Extensions = cloneSlice(c.Extensions)\n",
+    "new": ""
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A6: take any decoded Basic run for a credential",
+    "file": "runner/secrets.go",
+    "old": "err == nil && bytes.IndexByte(b, ':') > 0",
+    "new": "err == nil && len(b) >= 0"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "A6: take a Basic run with no user for a credential",
+    "file": "runner/secrets.go",
+    "old": "bytes.IndexByte(b, ':') > 0",
+    "new": "bytes.IndexByte(b, ':') >= 0"
+  },
+  {
+    "test": "TestCredentialKeySpellingsStayRefused",
+    "why": "R5: a slot word is looked for in the camelCase split only",
+    "file": "runner/secrets.go",
+    "old": "if slotWordIn(keyWords(k)) || slotWordIn(plainWords(k)) {",
+    "new": "if slotWordIn(keyWords(k)) {"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R5: a slot word is looked for in the plain split only",
+    "file": "runner/secrets.go",
+    "old": "if slotWordIn(keyWords(k)) || slotWordIn(plainWords(k)) {",
+    "new": "if slotWordIn(plainWords(k)) {"
+  },
+  {
+    "test": "TestCredentialKeySpellingsStayRefused",
+    "why": "R5: the plain split keeps the key's case",
+    "file": "runner/secrets.go",
+    "old": "return strings.FieldsFunc(strings.ToLower(k), notAlnum)",
+    "new": "return strings.FieldsFunc(k, notAlnum)"
+  },
+  {
+    "test": "TestCredentialKeySpellingsStayRefused",
+    "why": "R5: the plain split never cuts the key",
+    "file": "runner/secrets.go",
+    "old": "return strings.FieldsFunc(strings.ToLower(k), notAlnum)",
+    "new": "return []string{strings.ToLower(k)}"
+  },
+  {
+    "test": "TestCredentialFloorFalsePositives",
+    "why": "R5: a slot word counts whatever words trail it",
+    "file": "runner/secrets.go",
+    "old": "if slotWords[w] && !describesOnly(words[i+1:]) {",
+    "new": "if slotWords[w] || i < 0 {"
+  },
+  {
+    "test": "TestCredentialKeySpellingsStayRefused",
+    "why": "R5: a slot word is a slot only when it ends the key",
+    "file": "runner/secrets.go",
+    "old": "if slotWords[w] && !describesOnly(words[i+1:]) {",
+    "new": "if slotWords[w] && len(words) == i+1 {"
+  }
+]
