@@ -290,12 +290,28 @@ jobs:
           # included. This step only gathers the two facts that decision needs:
           # what the mutation answered, and — when it refused — which checks are
           # currently failing on the PR.
+          #
+          # NOT `out="$(gh …)"` followed by `rc=$?`. With no `shell:` key this
+          # step runs under `bash -e {0}`, and `set -uo pipefail` above does not
+          # switch -e off: an assignment whose command substitution exits non-zero
+          # takes the step down on that very line, so `rc=$?` is never read and
+          # the refusal script below — the thing that decides whether a refusal
+          # is benign — never runs (#2019). `&& rc=0 || rc=$?` makes the
+          # assignment part of an AND-OR list, which -e exempts, and records the
+          # real status either way.
           out="$(gh api graphql \
             -f query='mutation($pr:ID!){enablePullRequestAutoMerge(input:{pullRequestId:$pr,mergeMethod:MERGE}){pullRequest{number autoMergeRequest{enabledAt}}}}' \
-            -F pr="$PR_NODE_ID" 2>&1)"
-          rc=$?
-          printf '%s\n' "$out"
-          printf '%s\n' "$out" > "${RUNNER_TEMP}/automerge-out.txt"
+            -F pr="$PR_NODE_ID" 2>&1)" && rc=0 || rc=$?
+          # Record what GitHub answered to the log BEFORE the refusal-script
+          # decides, so a run that later greens on a benign refusal ("unstable
+          # status", "clean status", …) still carries the exact mutation text
+          # that produced the decision — the log is the only place a reader can
+          # see WHY the step skipped rather than merged (#586). `tee` writes the
+          # combined output to the file the decision reads and echoes it in one
+          # pass, so the log and the decision input can never diverge.
+          echo "::group::enablePullRequestAutoMerge answer (rc=${rc})"
+          printf '%s\n' "$out" | tee "${RUNNER_TEMP}/automerge-out.txt"
+          echo "::endgroup::"
 
           # Read only on a refusal, and never fatal here: an unreadable rollup is
           # could-not-check, and the script — not this step — is what refuses to
