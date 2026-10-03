@@ -489,9 +489,10 @@ func fetchChangedFiles(repo string, num int) (files map[string]bool, complete bo
 	return set, complete, nil
 }
 
-// changedFilesBetween unions files touched by every non-merge commit after the
-// reviewed head. Aggregate diffs can hide an edit followed by a revert, and merge
-// diffs include unrelated main changes. Missing history or files degrades CLOSED.
+// changedFilesBetween unions files touched by every commit after the reviewed
+// head. Non-merge edits cannot disappear behind a merge or a revert. Merge
+// conflict resolutions retain their existing re-review trigger as well.
+// Missing history or files degrades CLOSED.
 func changedFilesBetween(repo, base, head string) (map[string]bool, error) {
 	if base == "" || head == "" {
 		return nil, deskkit.Unverifiable("compare needs both base and head", nil)
@@ -512,15 +513,12 @@ func changedFilesBetween(repo, base, head string) (map[string]bool, error) {
 		if commit.Parents == nil || commit.SHA == "" {
 			return nil, deskkit.Unverifiable("interval commit has no SHA or parent evidence", nil)
 		}
-		if len(commit.Parents) > 1 {
-			continue
-		}
 		detail, err := f.GetCommit(fr, commit.SHA)
 		if err != nil {
-			return nil, deskkit.Unverifiable("cannot read non-merge commit "+short(commit.SHA), err)
+			return nil, deskkit.Unverifiable("cannot read interval commit "+short(commit.SHA), err)
 		}
 		if detail == nil || !detail.FilesComplete {
-			return nil, deskkit.Unverifiable("non-merge commit's file list is incomplete", nil)
+			return nil, deskkit.Unverifiable("interval commit's file list is incomplete", nil)
 		}
 		for _, cf := range detail.Files {
 			if cf.Filename != "" {

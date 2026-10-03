@@ -166,6 +166,9 @@ func TestPinnedShasStillCompareForMergeCurr(t *testing.T) {
 				Files:           []deskkit.ChangedFile{{Filename: "docs/elsewhere.md"}},
 			}, nil
 		},
+		getCommit: func(_, sha string) (*deskkit.RepoCommit, error) {
+			return &deskkit.RepoCommit{SHA: sha, FilesComplete: true, Files: []deskkit.ChangedFile{{Filename: "docs/elsewhere.md"}}}, nil
+		},
 	})
 
 	out, err := classifyPR(unpinnedHeadRepo, greenRollupPR(5, unpinnedHead), false, nil, nil, nil, time.Now())

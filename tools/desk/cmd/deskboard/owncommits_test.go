@@ -33,8 +33,8 @@ func TestOwnCommitHistory(t *testing.T) {
 					}, nil
 				},
 				getCommit: func(_, sha string) (*deskkit.RepoCommit, error) {
-					if sha != "fix" {
-						t.Fatalf("must skip merge commit, got %s", sha)
+					if sha == "merge" {
+						return &deskkit.RepoCommit{SHA: sha, FilesComplete: true, Files: []deskkit.ChangedFile{{Filename: "main.go"}}}, nil
 					}
 					return &deskkit.RepoCommit{SHA: sha, Parents: []string{"merge"}, Files: tc.files, FilesComplete: true}, nil
 				},
@@ -188,5 +188,23 @@ func TestMergeFixRoutesReview(t *testing.T) {
 				t.Fatalf("row=%+v want %s", out.row, want)
 			}
 		})
+	}
+}
+
+func TestMergeOwnEditStillReviews(t *testing.T) {
+	stubForgeHooks(t, forgeHookSet{
+		compare: func(_, _, _ string) (*deskkit.RefComparison, error) {
+			return &deskkit.RefComparison{CommitsComplete: true, Commits: []deskkit.RepoCommit{{SHA: "merge", Parents: []string{"review", "main"}}}, Files: []deskkit.ChangedFile{{Filename: "own.go"}}}, nil
+		},
+		getCommit: func(_, sha string) (*deskkit.RepoCommit, error) {
+			return &deskkit.RepoCommit{SHA: sha, FilesComplete: true, Files: []deskkit.ChangedFile{{Filename: "own.go"}}}, nil
+		},
+	})
+	changed, err := changedFilesBetween("example-org/tracker", "review", "head")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ownFilesChanged(map[string]bool{"own.go": true}, true, changed) {
+		t.Fatal("own-file conflict resolution in a merge must retain RE-REVIEW")
 	}
 }
