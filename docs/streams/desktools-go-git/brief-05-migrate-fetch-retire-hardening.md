@@ -29,7 +29,7 @@ why: >-
   injection, upload-pack override, remote helpers, insteadOf, PATH trust. gitcore.Fetch
   executes none of them. Migrating the three fetch sites is what lets the old hardening
   code be deleted and the deskadvisory askpass-to-disk pattern disappear.
-version: 1
+version: 2
 id: 7d8455f5-acc2-477a-9d89-3facc6c7de7e
 ---
 
@@ -94,8 +94,8 @@ facts:
 | 1 | `cd tools/desk && go build ./cmd/deskgit/ ./cmd/deskadvisory/ ./cmd/deskmerge/ && go vet ./cmd/deskgit/ ./cmd/deskadvisory/ ./cmd/deskmerge/` | exit 0 |
 | 2 | `cd tools/desk && go test ./cmd/deskgit/ ./cmd/deskadvisory/ ./cmd/deskmerge/` | exit 0; fetch + advisory goldens pass |
 | 3 | `cd tools/desk && go test ./cmd/deskgit/ -run DisallowedOriginRefused` | exit 0; a disallowed origin is still REFUSED after migration (the allowed-repo gate survived — mutation-style row) |
-| 4 | `cd tools/desk && grep -crE -e 'GIT_ASKPASS' -e 'credential.helper' cmd/deskadvisory/advisory.go` | exit 0; count 0 (the askpass file + helper-suppression path is gone) |
-| 5 | `cd tools/desk && grep -crE -e 'upload-pack' -e 'refmap' cmd/deskgit/` | exit 0; count 0 (the moot argv-hardening flags are deleted) |
+| 4 | `grep -cE -e 'GIT_ASKPASS' -e 'credential.helper' tools/desk/cmd/deskadvisory/advisory.go` | exit 1 (grep exits 1 when nothing matches); output is `0` (the askpass file + helper-suppression path is gone). Command and Expect re-written 2026-10-03 (#1862): the path is named from the repository root with no `cd`, because a failed `cd` exits 1, the status this Expect requires; a missing file now exits 2 and fails the row. |
+| 5 | `test -d tools/desk/cmd/deskgit && { grep -rnE -e 'upload-pack' -e 'refmap' tools/desk/cmd/deskgit/ \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0` (the moot argv-hardening flags are deleted). Command and Expect re-written 2026-10-03 (#1862): the earlier form began with `cd tools/desk &&` and was decided by exit status alone, so a failed `cd` (status 1, the one a no-match grep also returns) passed it; the directory is now named from the repository root behind a `test -d` leg (an absent directory leaves no output line and exits 1, which fails the row), and the matching lines are counted. |
 | 6 | `sh tools/desk/scripts/count-git-exec.sh` | prints `git-exec sites: <N>`; N below the count recorded before this brief |
 
 ## Evidence

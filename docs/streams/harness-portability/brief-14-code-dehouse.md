@@ -41,7 +41,7 @@ exec-tier-why: >-
   every moved path must satisfy commands this brief does not contain; and the
   neutralisation must be complete across all 7 affected files at once, since one missed
   instance fails the whole gate.
-version: 1
+version: 2
 id: f176c2e5-d180-420a-a96c-84a8befcda4b
 ---
 
@@ -263,7 +263,7 @@ both live outside this repository and are named, not embedded, on purpose.
 | 9 | `statusgen --lint --root .; echo $?` | `0` — PASS, with no PROBLEM. Build `statusgen` from this repo's own `statusgen/` directory rather than trusting a binary on `PATH`: a locally installed statusgen older than `plugins/assay/paired-versions.yaml`'s pinned tag is a stale oracle and its PROBLEMs cannot be trusted |
 | 10 | **The acceptance row — the five held briefs become runnable here.** For each of briefs 01, 02, 06, 07 and 12, extract every repository-relative path literal appearing in its Verify table and resolve it against this tree: `n=0; for p in $(sed -n '/^## Verify/,/^## Evidence/p' docs/streams/harness-portability/brief-0{1,2,6,7}-*.md docs/streams/harness-portability/brief-12-*.md \| grep -oE '(tools\|plugins\|docs\|statusgen)/[A-Za-z0-9._/-]+' \| sed 's/[.,)]*$//' \| sort -u); do case "$p" in *codex-smoke-runs*) continue;; esac; test -e "$p" \|\| { echo "UNRESOLVED $p"; n=$((n+1)); }; done; echo "unresolved=$n"` | `unresolved=0`. `docs/codex-smoke-runs/` is excluded by name and by name only: it is brief 07 row 7's BLOCKED live-run output, which no de-house can produce. Any other unresolved path is a file this brief failed to list, and it is reported by name |
 | 11 | **Brief 02's corrected rows still discriminate**: `sed -n '/^## Verify/,/^## Evidence/p' docs/streams/harness-portability/brief-02-drift-debt-authority-flip.md > /tmp/hp14r11.txt; grep -c 'commit: \[0-9a-f\]{40}' /tmp/hp14r11.txt; a=$(grep -cE '^ +commit: [0-9a-f]{40}$' plugins/assay/SOURCES.yaml \|\| true); echo "actual-pins=$a"` | the grep count is `>= 2` (rows 2 and 2a both still carry a structural count assertion — neither was deleted) and `actual-pins=0` matches what row 2 now expects. A row rewritten to assert whatever the file happens to contain is only honest while it can still go red: adding a `source:` block with a `commit:` line to a scratch copy must move the count |
-| 12 | `git grep -n '<<<<<<<' -- . \| wc -l` and `git diff --stat origin/main...HEAD -- ':(exclude)docs/streams/harness-portability'` | `0` conflict markers; the diffstat touches **only** the paths this brief declares under `files:` — no incidental edit rode along in a 44-file copy |
+| 12 | `{ git grep -n '^<<<<<<< ' -- . ':(exclude)*/testdata/*' \|\| [ $? -eq 1 ]; } \| wc -l` and `git diff --stat origin/main...HEAD -- ':(exclude)docs/streams/harness-portability'` | output is `0` (line-start `<<<<<<< ` markers outside `testdata/` fixtures; the unanchored `<<<<<<<` also matched prose, Verify rows and test strings that merely quote the marker); the diffstat touches **only** the paths this brief declares under `files:` — no incidental edit rode along in a 44-file copy. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. |
 
 ## Evidence
 
