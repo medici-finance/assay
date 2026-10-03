@@ -49,12 +49,14 @@ package main
 // The Goodhart clause is carried in the report header, same as --dora / flow.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -389,7 +391,7 @@ func computeAutonomy(in autonomyInputs) AutonomyReport {
 	// Axis 4 — deterministic-gate share (merged-PR status-check rollups).
 	gate := AutonomyAxis{
 		Key: "deterministic_gate_share", Name: "Deterministic-gate share (code gate vs model-judgment-only)",
-		Source: "gh pr list --state merged --json number,mergedAt,statusCheckRollup",
+		Source: fmt.Sprintf("gh pr list --state merged --search merged:%s..%s --limit 500 --json number,mergedAt; gh pr view <in-window-number> --json statusCheckRollup", in.Since.UTC().Format("2006-01-02"), in.Until.UTC().Format("2006-01-02")),
 	}
 	if in.GateOK {
 		total := len(in.GateData)
@@ -414,7 +416,7 @@ func computeAutonomy(in autonomyInputs) AutonomyReport {
 	} else {
 		gate.Value = "unmeasured"
 		gate.Reason = "gh-unreadable"
-		gate.Detail = "gh merged-PR status-check rollups could not be read (offline / unauthenticated)"
+		gate.Detail = "gh merged-PR status-check rollups could not be read completely (offline / unauthenticated / timeout / listing cap)"
 	}
 	rep.Axes = append(rep.Axes, gate)
 
@@ -476,22 +478,30 @@ var autonomyMergedAuthors = func(root string, since, until time.Time) ([]autonom
 // autonomyGates lists merged PRs (in window) with their status-check rollup
 // context names for the gate-share axis. ok=false on any gh failure.
 var autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR, bool) {
-	out, err := exec.Command("gh", "pr", "list", "--state", "merged",
-		"--limit", "500", "--json", "number,mergedAt,statusCheckRollup").Output()
+	// Keep the nested rollup out of the bulk query. The date search reduces
+	// listing weight; exact timestamps below preserve the reporting window.
+	// One deadline bounds the whole read, not 500 independent timeouts.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	run := func(args ...string) ([]byte, error) {
+		cmd := exec.CommandContext(ctx, "gh", args...)
+		cmd.Dir = root
+		return cmd.Output()
+	}
+	const limit = 500
+	search := fmt.Sprintf("merged:%s..%s", since.UTC().Format("2006-01-02"), until.UTC().Format("2006-01-02"))
+	out, err := run("pr", "list", "--state", "merged", "--search", search,
+		"--limit", strconv.Itoa(limit), "--json", "number,mergedAt")
 	if err != nil {
 		return nil, false
 	}
 	var raw []struct {
 		Number   int       `json:"number"`
 		MergedAt time.Time `json:"mergedAt"`
-		// gh returns a heterogeneous array: CheckRun entries carry .name,
-		// StatusContext entries carry .context. Capture both.
-		StatusCheckRollup []struct {
-			Name    string `json:"name"`
-			Context string `json:"context"`
-		} `json:"statusCheckRollup"`
 	}
-	if err := json.Unmarshal(out, &raw); err != nil {
+	if err := json.Unmarshal(out, &raw); err != nil || raw == nil || len(raw) >= limit {
+		// A full listing cannot prove completeness. Never classify its prefix
+		// as the whole window, even when all returned PRs have readable checks.
 		return nil, false
 	}
 	var out2 []autonomyGatePR
@@ -499,8 +509,25 @@ var autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR,
 		if p.MergedAt.IsZero() || p.MergedAt.Before(since) || p.MergedAt.After(until) {
 			continue
 		}
+		if p.Number <= 0 {
+			return nil, false
+		}
+		out, err := run("pr", "view", strconv.Itoa(p.Number), "--json", "statusCheckRollup")
+		if err != nil {
+			return nil, false
+		}
+		var detail struct {
+			// A missing/null field is unreadable, not a PR with zero checks.
+			StatusCheckRollup *[]struct {
+				Name    string `json:"name"`
+				Context string `json:"context"`
+			} `json:"statusCheckRollup"`
+		}
+		if err := json.Unmarshal(out, &detail); err != nil || detail.StatusCheckRollup == nil {
+			return nil, false
+		}
 		var names []string
-		for _, c := range p.StatusCheckRollup {
+		for _, c := range *detail.StatusCheckRollup {
 			if c.Name != "" {
 				names = append(names, c.Name)
 			}
