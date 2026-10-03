@@ -935,10 +935,11 @@ const forgeFileCommitsMax = 100
 // Consumers: cmd/deskboard's fetchHeadCommit (the stall clock reads CommittedDate and the
 // committer/author login) and fetchRecentCommits (branch-health reads only SHA) — freeze
 // rule: these land with their call sites.
+// Review-history evidence is internal; it must not expand existing JSON result contracts.
 type RepoCommit struct {
-	Parents        []string // nil means the parent list was not read
-	Files          []ChangedFile
-	FilesComplete  bool // a complete per-commit file read, including renames
+	Parents        []string      `json:"-"` // nil means the parent list was not read
+	Files          []ChangedFile `json:"-"`
+	FilesComplete  bool          `json:"-"` // a complete per-commit file read, including renames
 	SHA            string
 	CommittedDate  string // RFC3339, "" when the forge reported none
 	AuthorLogin    string // rendered account login, "" when unattributed / not resolved
@@ -954,8 +955,8 @@ type RepoCommit struct {
 // benign-merge check reads complete commit history) and fetchBehindMain (the close-candidate hint reads BehindBy
 // and refuses on an empty Status) — freeze rule: this lands with its call sites.
 type RefComparison struct {
-	Commits         []RepoCommit // commits reachable from head but not base
-	CommitsComplete bool         // all commits in the interval were read
+	Commits         []RepoCommit `json:"-"` // commits reachable from head but not base
+	CommitsComplete bool         `json:"-"` // all commits in the interval were read
 	Files           []ChangedFile
 	AheadBy         int
 	BehindBy        int
