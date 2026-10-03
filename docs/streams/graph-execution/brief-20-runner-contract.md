@@ -91,6 +91,35 @@ The plausible wrong implementations are the negative cases named in Verify: stal
 
 <!-- Independent verifier records command, exit, named result, subject/environment and date. -->
 
+### 2026-10-03 desk dispatch — 5/5 Verify rows pass on merged main d18adcd974d1, every named mutation killed
+
+Subject: merged main d18adcd974d1 (git HEAD equals the forge API main head), loopadmin module landed by #2082. Each row ran its brief command verbatim from the loopadmin module directory with GOWORK=off. Test names are abbreviated below: TRC stands for TestRunnerConformance and TR for TestRunner. Host: darwin/arm64, go1.27.1. Linux witness: golang:1.25-bookworm (go1.25.14), network none, read-only mount.
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---|---|---|---|
+| 1 | Verify row 1 command (go test -run the TRC UnknownLaunch test, grep for its named PASS) | exit 0; named PASS; lost ack mapped to definite failure turns it red | exit 0; `--- PASS: TRC UnknownLaunch`. Mutation map entry (lost ack read as definite failure) KILLED. Independent mutation (every adapter Start error becomes definite failure) KILLED: the test reports that a lost ack got launch definitely failed, wanting reconcile required | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | Verify row 2 command (TRC LateResultDenied) | exit 0; named PASS; skipping the generation fence turns it red | exit 0; `--- PASS: TRC LateResultDenied`. Map entry (fence compare replaced by false) KILLED. Independent mutation (fence compare weakened from not-equal to less-than, so an older attempt passes) KILLED: late output from a fenced attempt got nil, wanting the fenced-generation refusal | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | Verify row 3 command (TRC CredentialAndUsage) | exit 0; named PASS; missing usage defaulted to zero turns it red | exit 0; `--- PASS: TRC CredentialAndUsage`. Map entry (usage sum treats a nil figure as 0) KILLED. Independent mutation at a different site (the observation reading step maps a nil figure to 0) KILLED: missing cost must stay unknown, got known=true | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | Verify row 4 command (TR BothModesWithoutGraph) | exit 0; named PASS; optional workflow references turn it red | exit 0; `--- PASS: TR BothModesWithoutGraph`. Map entry (workflow reference check disabled) KILLED. Independent mutation (only the work ID required, node and attempt IDs dropped) KILLED: a workflow request missing a canonical reference was not refused with the references error | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | Verify row 5 command (TR CallerRecheck) | exit 0; named PASS; caller accepting without the claim recheck turns it red | exit 0; `--- PASS: TR CallerRecheck`. Map entry (caller recheck replaced by false) KILLED. Independent mutation (caller recheck weakened from not-equal to less-than) KILLED: the caller's own claim-generation check must refuse the fenced result, got nil | 2026-10-03 assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Supporting checks, same subject:
+- Implementer mutation gate (go run ./mutate -map testdata/mutations.json, run in a scratch copy): exit 0, 196 of 196 mutations KILLED, none survived or errored.
+- Independent mutations (five, written by this verifier, different spellings and sites from the map) applied to a scratch copy of the module: 5 of 5 KILLED. The worktree stayed clean afterwards.
+- Whole module: gofmt -l lists nothing; go vet ./... exit 0; go test -count=1 ./... exit 0 across mutate, runner and runner/conformance.
+- Linux network-off rerun of all five row commands in the container: 5 of 5 exit 0 with the named PASS.
+- Witness, statusgen verifyrun --brief on this brief with --dry-run under a throwaway HOME. The pinned v1.0.31 binary on the darwin host does not execute check:ci rows, by design: its network sandbox uses unshare --net, which is Linux-only. A statusgen built offline from main d18adcd974d1 source then ran the same dry-run in the Linux container (network none, SYS_ADMIN for unshare, read-only scratch clone at the same head): rows 1 to 5 pass exit=0, runner assay-verifier-app[bot] @ d18adcd974d1, exit 0. Nothing was written back.
+- Context files: loopadmin/runner, loopadmin/testdata/runner, spec/loop-admin-runner-v1.md, schemas/loop-admin-runner-v1.json, loopadmin/README.md, the changelog fragment for this brief (changelog directory, graph-execution-20 runner-contract) and loopadmin/go.mod all exist on main. There is no go.work at the repository root, as the brief requires. The module test job is at ci/staged-workflows/loopadmin.yml, staged for maintainer promotion because no App here can push workflow files. It is not yet live at .github/workflows/loopadmin.yml, so no CI job runs these five tests yet: ci.yml only builds and vets the module. The changelog fragment and the staged-workflows README both say this.
+- Vacuity: every row drives the production runner.Client against the in-memory fake adapter, and each one turns red under its mutation. Row 5's caller is the kit's ReferenceCaller fixture. Spec section 8 states that this proves the reference caller only, and each real consumer (26, 21) must prove its own recheck.
+
+Risk-bearing value: the trigger did not fire. Risk metadata is present and every field is 'no', none of the diff paths match a glob in .assay-surfaces (the staged workflow sits outside .github/workflows), and no repo-pinned hard value changed. Enumeration over the runner package, for the record:
+- RISK-VALUE: DERIVED — Version = "loop-admin-runner/v1" @ loopadmin/runner/request.go:15 — matches the spec's version field rule (spec line 35) and the schema const (schema line 12) exactly. Any other value is refused, and the version can be changed by an edit plus a re-release.
+- RISK-VALUE: DERIVED — authority.generation zero refused (Generation == 0) @ loopadmin/runner/request.go:351 and loopadmin/runner/result.go:111 — the spec requires a generation of at least 1 (spec line 43). Zero is Go's value for an omitted field, so refusing it keeps an absent authority generation from passing as a real claim.
+- RISK-VALUE: NAMED, NOT DERIVED — credential-floor minimum lengths {20,} / {10,} / {8,} @ loopadmin/runner/secrets.go:20-27 — these are heuristic token-shape thresholds. Spec line 57 declares the check a floor, not a scanner, and no first-principles length bound exists to derive from. All of them are reversible by an edit.
+- Reversible knobs, ranked last and not derived: the mutation and CI per-test timeout of 120s, and go 1.25.0 in go.mod.
+
+**VERIFY: PASS — all 5 Verify rows exit 0 with their named PASS on merged main d18adcd974d1 (darwin and Linux network-off), and each row's named mutation plus an independent one turns its test red**
+
 ## Review
 
 Gate: model. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.
