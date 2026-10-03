@@ -3,9 +3,10 @@ brief: assay:assay:graph-execution:22
 title: First pinned local harness adapter and qualification fixtures
 why: A fake runner proves contracts but cannot execute useful model work; a narrow adapter connects one harness
   without multiplying orchestration implementations.
-wave: 1
+wave: 2
 depends:
 - graph-execution/20
+- graph-execution/26
 unblocks:
 - graph-execution/27
 effort: M
@@ -26,7 +27,6 @@ exec-tier: strong
 exec-tier-why: Durable state, authority and cross-component failure cases require design judgment.
 domain: complicated
 consumers:
-- 'loopadmin/supervisor: follow-up graph-execution/26'
 - 'standing desk bindings: follow-up graph-execution/27'
 - 'workflow/controller: follow-up graph-execution/21'
 - 'tools/desk/cmd/cellctl: follow-up graph-execution/27 (supplies its resolved Claude launch profile)'
@@ -41,7 +41,7 @@ id: 97c5ef2b-7f1c-4d7b-9484-dcfc042926d1
 
 files: `loopadmin/adapters/localharness/` (planned), `loopadmin/testdata/localharness/` (planned), `loopadmin/README.md` (planned), `docs/workflow-runner-qualification.md` (planned), `changelog/graph-execution-22-local-harness-adapter.md` (planned).
 
-facts: The graph instance, admission and recovery contracts are the canonical source. The shared loopadmin module is bootstrapped by /20 and must remain usable without the instance store (19). At main 307fe1699 cellctl already builds and launches Claude, Codex and Cursor harness argv (`tools/desk/cmd/cellctl/launch.go`, `cadence.go`, `launch_tick.go`, `cursor.go`) through `tools/desk/internal/cellprocess`. This adapter wraps that: its input is the resolved, operator-approved Claude profile cellctl already builds, and it adds no second argv builder or process runner. Existing role capabilities and human merge/verification gates remain binding. All named commands/tests below are implementation deliverables, not tests already run.
+facts: The graph instance, admission and recovery contracts are the canonical source. The shared loopadmin module is bootstrapped by /20 and must remain usable without the instance store (19). This brief depends on /26: the supervisor and the module's one process runner (moved from `tools/desk/internal/cellprocess` by /26) must already exist, because Go's `internal` visibility rule keeps `loopadmin/` from importing the old package and a copy of the runner or a direct exec site here would sit outside the process-launch audit that /26 extends to `loopadmin/`. At main 307fe1699 cellctl already builds and launches Claude, Codex and Cursor harness argv (`tools/desk/cmd/cellctl/launch.go`, `cadence.go`, `launch_tick.go`, `cursor.go`) through `tools/desk/internal/cellprocess`. This adapter wraps that: its input is the resolved, operator-approved Claude profile cellctl already builds, and it adds no second argv builder or process runner. Existing role capabilities and human merge/verification gates remain binding. All named commands/tests below are implementation deliverables, not tests already run.
 
 single-point-of-failure: the launcher argv/environment boundary — the adapter launches only the supplied operator-approved profile argv with a sanitized environment; behind it, 26's caller-scoped launch endpoint refuses a profile the caller is not bound to, and role credentials are absent from the child domain.
 

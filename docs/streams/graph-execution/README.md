@@ -102,12 +102,12 @@ or removing any human gate (spec §5 states the divergence).
 | 19 | [Durable instance store and production coverage binding](brief-19-durable-instance-store.md) | 2 | M | todo | — | — |
 | 20 | [Shared loop-admin runner protocol and offline conformance kit](brief-20-runner-contract.md) | 0 | M | todo | — | — |
 | 21 | [Deterministic task controller with durable dispatch and waits](brief-21-controller-host.md) | 4 | M | todo | — | — |
-| 22 | [First pinned local harness adapter and qualification fixtures](brief-22-local-harness-adapter.md) | 1 | M | todo | — | — |
+| 22 | [First pinned local harness adapter and qualification fixtures](brief-22-local-harness-adapter.md) | 2 | M | todo | — | — |
 | 23 | [Immutable candidate workspaces and independent check inputs](brief-23-candidate-workspaces.md) | 3 | M | todo | — | — |
 | 24 | [Versioned author implement review pattern with bounded repair](brief-24-internal-specialist-pattern.md) | 7 | M | todo | — | — |
 | 25 | [Exact-candidate publication and independent review evidence bridge](brief-25-publication-review-bridge.md) | 8 | M | todo | — | — |
 | 26 | [Shared loop-admin launch supervision for desks and workflows](brief-26-shared-loop-admin.md) | 1 | M | todo | — | — |
-| 27 | [Standing desk clients for the shared loop-admin](brief-27-standing-desk-loop-admin.md) | 2 | M | todo | — | — |
+| 27 | [Standing desk clients for the shared loop-admin](brief-27-standing-desk-loop-admin.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Structured-work amendment (2026-09-30)
@@ -197,20 +197,24 @@ Source refresh 2026-09-19: public Assay `e4109205751a219330b954f75855c05b4be2a5c
 ## Task workflow execution routing — 2026-10-02
 
 [The execution extension](task-workflow-program.md) is routed into **19–27**, all todo.
-It permits one thin controller host over existing contracts, and one store: a single-controller,
-local, embedded SQLite store of the existing instance/node/attempt record family (19). The
-earlier platform exclusion still prohibits a graph database or graph-store service, a
+It permits one thin controller host over existing contracts, and two local embedded stores
+and no other: the single-controller embedded SQLite store of the existing instance/node/attempt
+record family (19), and each loop-admin supervisor's own execution journal (26), a per-supervisor,
+process-facts-only record of invocations, receipts, lifecycle, limits and usage on the
+supervisor's own filesystem, whose embedded engine is qualified in 26 (SQLite is the expected
+choice). Neither is a shared or distributed store, and the journal never holds work, decisions
+or acceptance. The earlier platform exclusion still prohibits a graph database or graph-store service, a
 distributed or shared store or lease service, a message bus, a credential broker, a new rule
 engine, a second scheduler authority and a duplicate evaluator.
 Existing 04/05/06/09/14/16/18 carry consumer/flow amendments. Implemented and completed records
-01/02/03/07/10 remain intact. New source scopes/tests are deliverables, not executed evidence.
+01/02/03/07/10/13 remain intact. New source scopes/tests are deliverables, not executed evidence.
 
 The current execution path supersedes the historical critical-path prose above for this extension:
 
 ```
 02 -> 09 + 03 -> 19 store/binding
 20 shared runner contract -> 26 shared supervisor
-20 -> 22 first adapter; 26 + 22 -> 27 standing desk clients
+20 -> 26 -> 22 first adapter over the supervisor and its one process runner; 26 + 22 -> 27 standing desk clients
 04 + 09 -> 16
 10 -> 13 -> 14 (also 01,09,16)
 19 + 20 + 26 + 04 + 14 -> 21 workflow controller -> 05 experiment -> 06 records
@@ -220,9 +224,9 @@ The current execution path supersedes the historical critical-path prose above f
 
 The offline host does not wait for live adoption. The verified public experiment/record/flow
 and assurance contracts remain prerequisites for an adopter's live trial as declared there.
-The shared execution path starts at 20 without graph prerequisites, then 26/22 and 27.
+The shared execution path starts at 20 without graph prerequisites, then 26, then 22, then 27.
 The workflow branch starts at 09 and 04 with pure admission 13 alongside them. Model invocation
-alone does not supply recovery or ownership. 22 is independently qualified; no production
+alone does not supply recovery or ownership. 22 is qualified without graph storage (it needs 20 and 26, not 19); no production
 provider calls, automatic fallback or live authority changes are commissioned by these briefs.
 
 Dependency waves (including the existing graph/advice branches) are the authoring table above;

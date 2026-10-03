@@ -7,6 +7,7 @@ wave: 1
 depends:
 - graph-execution/20
 unblocks:
+- graph-execution/22
 - graph-execution/27
 - graph-execution/21
 effort: M
@@ -28,6 +29,7 @@ exec-tier-why: Durable state, authority and cross-component failure cases requir
 domain: complicated
 consumers:
 - 'workflow/controller: follow-up graph-execution/21'
+- 'loopadmin/adapters: follow-up graph-execution/22 (consumes the supervisor and the moved process runner)'
 - 'tools/desk/internal/loopengine: follow-up graph-execution/27'
 - 'tools/desk/internal/cellprocess: follow-up graph-execution/26 (this brief; moved into loopadmin/process; flips to fixed-here when the implementation edits the path)'
 - 'tools/desk/cmd/cellctl: follow-up graph-execution/26 (this brief; cadence path calls the moved runner; flips to fixed-here when the implementation edits the path)'
@@ -65,7 +67,7 @@ risk-answers: `irreversible: yes`, so `gate: human`, as for 14 and 16 in this st
 ## Task
 
 1. Move `tools/desk/internal/cellprocess` into `loopadmin/process` as the module's one process runner, without copying it: keep its process-tree containment and uncertain-cleanup result unchanged, delete the old package, and re-point cellctl's cadence path at the moved package through a `require` plus relative `replace` of the loopadmin module in `tools/desk/go.mod` (the pattern `tools/loopresolve/go.mod` uses for `cellconfig`); cellctl's existing cadence tests stay green unchanged, and the tools/desk release build must resolve the relative `replace`. Extend the process-launch audit so it also scans `loopadmin/` and re-key the runner's exec-site entry to the moved path; the audit must not lose sight of that exec site. Implement one shared process/session supervisor over /20 and that runner. Accept only authenticated caller-scoped, operator-approved launch profiles and validated assignment/reservation references. Support standing-desk and workflow-stage modes with identical adapter and lifecycle semantics. An operator may run separate per-role processes of the same binary; reuse does not imply a privileged all-role daemon.
-2. Persist launch intent before starting a child in an execution journal keyed by caller namespace, invocation ID and owner generation. Keep adapter receipts, lifecycle state, cancellation, limits, usage and checkpoints. This journal owns process facts only; desk queues and the instance store (19) retain authoritative work/acceptance state. Caller intent and journal receipt reconcile by stable request ID, including a crash between their separate commits; do not claim a transaction across stores.
+2. Persist launch intent before starting a child in an execution journal keyed by caller namespace, invocation ID and owner generation. Keep adapter receipts, lifecycle state, cancellation, limits, usage and checkpoints. The journal is the second local embedded store the program's scope exception permits (a per-supervisor record on the supervisor's own filesystem; this brief selects and qualifies its embedded engine, with SQLite the expected choice, and loopadmin takes no dependency on workflow/); it is not a shared or distributed store. This journal owns process facts only; desk queues and the instance store (19) retain authoritative work/acceptance state. Caller intent and journal receipt reconcile by stable request ID, including a crash between their separate commits; do not claim a transaction across stores.
 3. Implement start/observe/cancel/reconcile and idle session retention only when the adapter declares support. Duplicate input cannot launch twice; unknown launch/stop holds until reconciled; bounded restarts never create another unknown request. Recheck role/profile/generation and budget at every child launch and receipt delivery. Shared concurrency reservations bound all callers using this profile; preserve consumption after crash/restore.
 4. Keep runtime launch authority separate from operator profile/install/credential administration. A desk client may request an allowed child invocation through a bounded, capability-scoped endpoint, but cannot choose arbitrary argv, escalate role, raise limits or recursively create unconstrained agents. Effect credentials and operator admin are absent; any inference credential stays confined to its approved adapter boundary and is excluded from packets, artifacts and logs. Fail closed: an unrecognised caller, an unreadable or missing profile or role-binding configuration, and an absent or unreadable budget each refuse the launch; none falls back to a default profile, role or limit.
 5. Export sanitized process/session status with mode, caller binding and optional canonical workflow references. Viewer attach/detach never starts a process. The default command uses offline fixtures; live profile activation is separate. Provide backup/restore of the execution journal with referenced artifacts, preserving pause/spend/unknowns; restore is passive. Document state ownership and refusal behavior.
