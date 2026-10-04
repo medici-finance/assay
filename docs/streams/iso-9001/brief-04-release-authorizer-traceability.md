@@ -13,7 +13,7 @@ why: >-
   body, and one source-coupling test so it cannot be dropped, closes it.
 wave: 1
 depends: ["iso-9001/01"]
-unblocks: ["iso-9001/06"]
+unblocks: ["iso-9001/06", "iso-9001/09"]
 effort: S
 exec-tier: strong
 exec-tier-why: >-
