@@ -115,8 +115,39 @@ func TestUpdateByPRRefusals(t *testing.T) {
 		name  string
 		setup func(t *testing.T, work string)
 		args  []string
-		want  int // 0 = ExitRefused
+		want  int  // 0 = ExitRefused
+		moved bool // setup itself moved the remote head branch; only "no push" is asserted
 	}{
+		// S1/F1: a fork PR's head ref names a branch in the FORK; pushing it to origin (the base
+		// repository) would create or fast-forward a same-named base-repo branch.
+		{name: "fork head", setup: func(t *testing.T, _ string) { t.Setenv("FAKEGH_PR_CROSS", "fork") }, args: []string{"--pr", "42"}},
+		{name: "fork head via --branch", setup: func(t *testing.T, _ string) {
+			t.Setenv("FAKEGH_LIST_HAS_PR", "1")
+			t.Setenv("FAKEGH_PR_CROSS", "fork")
+		}, args: []string{"--branch", heldBranch}},
+		{name: "head repository not reported", setup: func(t *testing.T, _ string) { t.Setenv("FAKEGH_PR_CROSS", "unknown") }, args: []string{"--pr", "42"}, want: deskkit.ExitUnverifiable},
+		// The forge says same-repo, but the push destination holds no such branch: the push
+		// would create one rather than update the PR.
+		{name: "head ref absent on the push destination", setup: func(t *testing.T, _ string) { t.Setenv("FAKEGH_PR_HEAD", "patch-1") }, args: []string{"--pr", "42"}},
+		{
+			name: "push destination's head differs from the forge's",
+			setup: func(t *testing.T, work string) {
+				mustGit(t, work, "checkout", "-q", "-b", "side", "HEAD~1")
+				writeFile(t, filepath.Join(work, "side.txt"), "side\n")
+				mustGit(t, work, "add", "side.txt")
+				mustGit(t, work, "commit", "-m", "moved the remote head")
+				mustGit(t, work, "push", "-f", "origin", "HEAD:refs/heads/"+heldBranch)
+				mustGit(t, work, "checkout", "-q", "neutral-rework")
+			},
+			args: []string{"--pr", "42"}, moved: true,
+		},
+		// A2: a PR whose head is already in the default branch carries nothing of its own. The
+		// remote and the forge agree on that head, so only the containment rule stands in the way.
+		{name: "PR head already in the default branch", setup: func(t *testing.T, work string) {
+			mainSHA := mustGit(t, work, "rev-parse", "refs/remotes/origin/main")
+			mustGit(t, work, "push", "-f", "origin", mainSHA+":refs/heads/"+heldBranch)
+			t.Setenv("FAKEGH_PR_OID", mainSHA)
+		}, args: []string{"--pr", "42"}, moved: true},
 		{name: "closed PR", setup: func(t *testing.T, _ string) { t.Setenv("FAKEGH_PR_STATE", "closed") }, args: []string{"--pr", "42"}},
 		{name: "head not reported", setup: func(t *testing.T, _ string) { t.Setenv("FAKEGH_PR_OID", "") }, args: []string{"--pr", "42"}},
 		{name: "head ref not reported", setup: func(t *testing.T, _ string) { t.Setenv("FAKEGH_PR_HEAD", "") }, args: []string{"--pr", "42"}, want: deskkit.ExitUnverifiable},
@@ -156,13 +187,35 @@ func TestUpdateByPRRefusals(t *testing.T) {
 			if rc := run(append([]string{"update"}, tc.args...)); rc != want {
 				t.Fatalf("rc = %d, want %d", rc, want)
 			}
-			if got := remoteRef(t, bare, "refs/heads/"+heldBranch); got != c1 {
+			if got := remoteRef(t, bare, "refs/heads/"+heldBranch); !tc.moved && got != c1 {
 				t.Fatalf("a refused update moved the PR head: %s, want %s", got, c1)
+			}
+			if got := mustGit(t, bare, "for-each-ref", "refs/heads/patch-1"); got != "" {
+				t.Fatalf("a refused update created a branch on the base repository: %s", got)
 			}
 			if anyCall(gitCalls(*calls), "push") {
 				t.Fatalf("pushed: %v", gitCalls(*calls))
 			}
 		})
+	}
+}
+
+// TestUpdateByPRScansHeadRef — the named-PR path secret-scans the PR's OWN head ref (the
+// branch name the push publishes), not only the local branch name. The remote holds the
+// tripping ref at the PR head, so the scan is the only gate standing between it and a push.
+func TestUpdateByPRScansHeadRef(t *testing.T) {
+	work, calls, bare, c1 := namedPRFixture(t)
+	tripping := "feature/gh" + "p_tripwire" // built at runtime: no literal token prefix in source
+	mustGit(t, work, "push", "origin", c1+":refs/heads/"+tripping)
+	t.Setenv("FAKEGH_PR_HEAD", tripping)
+	if rc := run([]string{"update", "--pr", "42"}); rc != deskkit.ExitRefused {
+		t.Fatalf("update --pr onto a head ref that trips the secret scan rc = %d, want 5", rc)
+	}
+	if got := remoteRef(t, bare, "refs/heads/"+tripping); got != c1 {
+		t.Fatalf("the refused update moved the head ref: %s, want %s", got, c1)
+	}
+	if anyCall(gitCalls(*calls), "push") {
+		t.Fatalf("pushed: %v", gitCalls(*calls))
 	}
 }
 

@@ -164,6 +164,15 @@ func (f *envForge) GetPullRequest(repo deskkit.ForgeRepo, number int) (*deskkit.
 	if state == "" {
 		state = "open"
 	}
+	// FAKEGH_PR_CROSS shapes PullRequest.CrossRepo (#2085): unset serves a same-repo head,
+	// "fork" a fork head, and "unknown" the forge's empty could-not-check answer.
+	cross := deskkit.CrossRepoSame
+	switch os.Getenv("FAKEGH_PR_CROSS") {
+	case "fork":
+		cross = deskkit.CrossRepoFork
+	case "unknown":
+		cross = ""
+	}
 	return &deskkit.PullRequest{
 		Number:    number,
 		URL:       fmt.Sprintf("https://github.com/%s/pull/%d", repo.Slug(), number),
@@ -174,6 +183,7 @@ func (f *envForge) GetPullRequest(repo deskkit.ForgeRepo, number int) (*deskkit.
 		Labels:    labels,
 		HeadRef:   os.Getenv("FAKEGH_PR_HEAD"),
 		HeadSHA:   os.Getenv("FAKEGH_PR_OID"),
+		CrossRepo: cross,
 	}, nil
 }
 

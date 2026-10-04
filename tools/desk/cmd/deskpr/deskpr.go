@@ -692,11 +692,24 @@ func cmdUpdate(args []string) (err error) {
 		if *remoteBranch != "" && pushDest != *remoteBranch {
 			return deskkit.Refused(fmt.Sprintf("refused: the open PR #%d's head branch is %q, not %q", pr.Number, pushDest, *remoteBranch))
 		}
+		// The head ref is a bare branch NAME and origin is the BASE repository, so the push
+		// lands on the PR only when the PR's head lives in the base repository. A fork PR's
+		// head ref names a branch in the fork: pushing that name to origin would create a stray
+		// base-repo branch, or fast-forward a same-named branch backing a DIFFERENT PR.
+		if cerr := requireSameRepoHead(full.CrossRepo, pr.Number); cerr != nil {
+			return cerr
+		}
 		if serr := scanWrite(&gitFacts{dir: facts.dir, branch: pushDest, defaultRef: facts.defaultRef, repo: facts.repo}, "", "update", *scanOverride); serr != nil {
 			return serr
 		}
-		if lerr := requireDescendsFromPRHead(facts.dir, full.HeadSHA, pr.Number, pushDest); lerr != nil {
+		if lerr := requireDescendsFromPRHead(facts.dir, full.HeadSHA, pr.Number, pushDest, facts.defaultRef); lerr != nil {
 			return lerr
+		}
+		// Second, independent layer: the push destination itself must hold the head ref at
+		// the head commit the forge reported. This catches a forge read that is wrong or stale
+		// (a head ref the base repository does not hold) on a signal git reads, not the forge.
+		if rerr := requireRemoteHoldsHead(facts.dir, pushDest, full.HeadSHA, pr.Number); rerr != nil {
+			return rerr
 		}
 	}
 
@@ -757,7 +770,11 @@ func cmdUpdate(args []string) (err error) {
 // checkout's HEAD must be the PR's current head commit or a descendant of it, so the push is a
 // pure fast-forward of that PR's head branch. An unreported head, a head this checkout has not
 // fetched, and a HEAD that does not descend from it all refuse — never a guess.
-func requireDescendsFromPRHead(dir, headSHA string, prNum int, headRef string) error {
+//
+// It also refuses a PR head that is already contained in the default branch (defaultRef): such
+// a PR carries nothing of its own, so a HEAD descending from it says nothing about whether this
+// is the PR the caller meant — a mistyped --pr naming a stale PR would otherwise pass.
+func requireDescendsFromPRHead(dir, headSHA string, prNum int, headRef, defaultRef string) error {
 	if strings.TrimSpace(headSHA) == "" {
 		return deskkit.Refused(fmt.Sprintf("refused: the forge reported no head commit for PR #%d — cannot prove HEAD descends from it", prNum))
 	}
@@ -773,6 +790,65 @@ func requireDescendsFromPRHead(dir, headSHA string, prNum int, headRef string) e
 	if !ok {
 		return deskkit.Refused(fmt.Sprintf("refused: HEAD does not descend from PR #%d's head commit %s on %q — "+
 			"merge origin/%s into this branch (never rebase), then re-run", prNum, shortSHA(headSHA), headRef, headRef))
+	}
+	inDefault, derr := r.IsAncestor(headSHA, defaultRef)
+	if derr != nil {
+		return deskkit.Unverifiable(fmt.Sprintf("cannot check whether PR #%d's head commit is already in %s", prNum, defaultRef), derr)
+	}
+	if inDefault {
+		return deskkit.Refused(fmt.Sprintf("refused: PR #%d's head commit %s is already contained in %s — the PR carries "+
+			"nothing of its own, so descending from it does not show this is the PR you meant; check the PR number",
+			prNum, shortSHA(headSHA), defaultRef))
+	}
+	return nil
+}
+
+// requireSameRepoHead refuses a named-PR push unless the forge established that the PR's head
+// branch lives in the BASE repository (#2085). A fork head is refused; an EMPTY answer (the
+// forge did not say — e.g. a deleted fork) is could-not-check and refuses too, never read as
+// "same". Same rule, same reading of the empty value, as deskmerge's eligibility gate.
+func requireSameRepoHead(crossRepo string, prNum int) error {
+	switch crossRepo {
+	case deskkit.CrossRepoSame:
+		return nil
+	case deskkit.CrossRepoFork:
+		return deskkit.Refused(fmt.Sprintf("refused: PR #%d's head branch lives in a fork — deskpr update pushes only "+
+			"to a PR whose head branch is in the base repository", prNum))
+	default:
+		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: PR #%d did not report which repository its head "+
+			"branch lives in — deskpr update pushes only to a branch it has established is in the base repository", prNum), nil)
+	}
+}
+
+// requireRemoteHoldsHead reads the push destination's own copy of refs/heads/<headRef> and
+// requires it to be EXACTLY the head commit the forge reported (#2085). Absent → the push
+// would CREATE a branch rather than update the PR; a different commit → the forge read is
+// stale or names a different branch. Both refuse. The destination is read from the same push
+// URL the push uses (already pinned to one URL by the push-destination gate).
+func requireRemoteHoldsHead(dir, headRef, headSHA string, prNum int) error {
+	dest, uerr := git(dir, "remote", "get-url", "--push", "origin")
+	if uerr != nil || strings.TrimSpace(dest) == "" {
+		return deskkit.Unverifiable("cannot resolve origin's push URL to read the PR head branch", uerr)
+	}
+	ref := "refs/heads/" + headRef
+	out, lerr := git(dir, "ls-remote", "--refs", strings.TrimSpace(dest), ref)
+	if lerr != nil {
+		return deskkit.Unverifiable(fmt.Sprintf("cannot read %s from the push destination", ref), lerr)
+	}
+	got := ""
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 2 && f[1] == ref {
+			got = f[0]
+		}
+	}
+	if got == "" {
+		return deskkit.Refused(fmt.Sprintf("refused: the push destination holds no %s, the head branch the forge reports "+
+			"for PR #%d — pushing would create a new branch rather than update the PR", ref, prNum))
+	}
+	if !strings.EqualFold(got, strings.TrimSpace(headSHA)) {
+		return deskkit.Refused(fmt.Sprintf("refused: the push destination's %s is at %s but the forge reports PR #%d's "+
+			"head as %s — re-run once they agree (fetch, merge, never rebase)", ref, shortSHA(got), prNum, shortSHA(headSHA)))
 	}
 	return nil
 }
