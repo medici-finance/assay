@@ -12,6 +12,7 @@ import (
 )
 
 func TestRoleEndpointPreserved(t *testing.T) {
+	requireGitListReset(t)
 	for _, mode := range []string{"fresh", "reuse", "add"} {
 		for _, tc := range []struct {
 			scheme, port string

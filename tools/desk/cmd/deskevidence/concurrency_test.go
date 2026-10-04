@@ -16,12 +16,28 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/gitversion"
 )
 
 // gitEmptyTreeSHA is git's well-known empty-tree object id — passed to `--attr-source=` so
 // merge-tree reads NO .gitattributes from any tree, the same attribute-free proxy the brief's
 // facts verified against the forge's own verdict.
 const gitEmptyTreeSHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+// mergeTreeConflictExit is the exit code `git merge-tree --write-tree` returns when the merge
+// has conflicts (0 is clean). Any OTHER non-zero code — 129 for a usage error such as an
+// unknown `--attr-source` on git older than 2.40, 128 for a fatal error — means the proxy did
+// not run, so it is never read as "conflict".
+const mergeTreeConflictExit = 1
+
+// requireAttrSource skips the proxy tests, naming why, on a git older than 2.40: the
+// attribute-free proxy needs the top-level `--attr-source` option, and an older git rejects
+// it as a usage error (exit 129) before merge-tree runs at all.
+func requireAttrSource(t *testing.T) {
+	t.Helper()
+	gitversion.RequireGit(t, 2, 40, "merge-tree --attr-source")
+}
 
 func concurrencyGitIn(t *testing.T, dir string, args ...string) string {
 	t.Helper()
@@ -52,7 +68,8 @@ func concurrencyWriteAndAdd(t *testing.T, dir, rel, content string) {
 }
 
 // mergeTreeExitCode runs the attribute-free merge-tree proxy and returns its exit code: 0 clean,
-// 1 conflict. Any other failure (a bad ref, git itself missing) still fails the test outright.
+// 1 conflict. Any other outcome (a usage error, a bad ref, git itself missing) fails the test
+// outright, so neither caller can mistake "the proxy did not run" for a verdict.
 func mergeTreeExitCode(t *testing.T, dir, base, head string) int {
 	t.Helper()
 	cmd := exec.Command("git", "-c", "core.attributesFile=/dev/null", "--attr-source="+gitEmptyTreeSHA,
@@ -63,8 +80,8 @@ func mergeTreeExitCode(t *testing.T, dir, base, head string) int {
 	if err == nil {
 		return 0
 	}
-	if ee, ok := err.(*exec.ExitError); ok {
-		return ee.ExitCode()
+	if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == mergeTreeConflictExit {
+		return mergeTreeConflictExit
 	}
 	t.Fatalf("merge-tree %s %s: %v\n%s", base, head, err, out)
 	return -1
@@ -72,6 +89,7 @@ func mergeTreeExitCode(t *testing.T, dir, base, head string) int {
 
 // TestOutcomeRecordsConcurrentLandingsMergeable is Verify row 6.
 func TestOutcomeRecordsConcurrentLandingsMergeable(t *testing.T) {
+	requireAttrSource(t)
 	t.Run("per-file records: B stays mergeable after A lands, with NO merge driver", func(t *testing.T) {
 		dir := t.TempDir()
 		concurrencyGitIn(t, dir, "init", "-q", "-b", "main")
@@ -131,10 +149,11 @@ func TestOutcomeRecordsConcurrentLandingsMergeable(t *testing.T) {
 		concurrencyGitIn(t, dir, "checkout", "-q", "main")
 		concurrencyGitIn(t, dir, "merge", "-q", "--no-edit", "branchA")
 
-		if code := mergeTreeExitCode(t, dir, "main", "branchB"); code == 0 {
-			t.Fatalf("negative control: two branches appending to one shared log with NO merge driver " +
-				"should CONFLICT (this is the exact defect class #882 retires) — the proxy reported clean, " +
-				"which means it cannot distinguish the old shape from the new one")
+		if code := mergeTreeExitCode(t, dir, "main", "branchB"); code != mergeTreeConflictExit {
+			t.Fatalf("negative control: two branches appending to one shared log with NO merge driver "+
+				"should CONFLICT (merge-tree exit %d; this is the exact defect class #882 retires) — the proxy "+
+				"reported exit %d, which means it cannot distinguish the old shape from the new one",
+				mergeTreeConflictExit, code)
 		}
 	})
 }
