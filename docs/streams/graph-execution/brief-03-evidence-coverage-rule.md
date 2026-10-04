@@ -39,7 +39,7 @@ consumers:
   - "spec/workflow-pattern-v1.md (the `observe` kind's fields): fixed-here"
   - ".github/workflows/verify-gate-open.yml and verify-gate-close.yml (the human sign-off pair): out-of-scope (unchanged — a human sign-off is a `decision` node; coverage governs the model lane's transitions and reports for the human lane)"
   - "statusgen/evidenceactor.go (attribution stays advisory): out-of-scope (this brief adds no identity gate; attribution and coverage are different questions and stay separate rules)"
-version: 4
+version: 3
 id: d94aa822-65e3-44ad-ba9a-479ddcb47fdc
 ---
 

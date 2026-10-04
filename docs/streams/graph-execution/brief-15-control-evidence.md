@@ -30,7 +30,7 @@ consumers:
 - 'statusgen: fixed-here'
 - 'docs/evidence-bundle.md: fixed-here'
 - 'docs/streams/iso-9001: out-of-scope (existing 03/04 own effectiveness and authorizer implementation)'
-version: 2
+version: 1
 id: 1699cd1a-941a-4d9a-920c-67ef5d1411d8
 ---
 

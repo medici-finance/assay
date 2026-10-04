@@ -2,7 +2,7 @@
 brief: assay:assay:iso-9001:11
 title: Qualify project assurance preparation on an offline corpus
 why: A well-formed review packet can still make unsupported claims or miss the useful next action. A frozen task corpus and independently reviewed rubric make those limits visible before a project relies on the procedure.
-wave: 7
+wave: 10
 depends:
 - iso-9001/10
 unblocks: []
@@ -28,7 +28,7 @@ consumers:
 - 'statusgen: follow-up iso-9001/11'
 - 'docs/assurance-review-qualification.md: follow-up iso-9001/11'
 - 'spec: out-of-scope (qualification consumes the approved contracts)'
-version: 2
+version: 1
 id: 57bfe550-f444-44d6-bc93-4f31cd8cbae3
 ---
 
@@ -38,9 +38,20 @@ id: 57bfe550-f444-44d6-bc93-4f31cd8cbae3
 
 files: `statusgen/projectreview_qualification_test.go` (planned), `statusgen/testdata/projectreview/qualification/` (planned), `docs/assurance-review-qualification.md` (planned), `docs/streams/iso-9001/qualification-report.md` (planned), `changelog/iso-9001-11-assurance-review-qualification.md` (planned)
 
-facts: The public task corpus is synthetic. LAB-style work-product evaluation motivates the protocol, but no legal benchmark score or unrun vendor comparison counts as qualification for this procedure.
+facts:
+- corpus: the public task corpus is synthetic and offline
+- provider: a stub candidate-analysis provider only; no vendor or live infrastructure call
+- claim-scope: fixture success establishes contract boundaries, not vendor performance or a compliance assessment
+- motivation: published work-product evaluations of legal AI agents motivate the protocol; no benchmark score or unrun vendor comparison counts as qualification here
 
-single-point-of-failure: trusting the candidate analysis would allow a plausible summary to impersonate evidence. The input permission/authority boundary and an independent packet/fixture reader must fail on different evidence, with negative tests of each.
+design-fit:
+  owner: the production paths of 08–10; this brief adds only a corpus, a test and a report
+  contract: none — qualification consumes the approved contracts and defines no shared meaning
+  retires: []
+  weight: verbs 0, flags 0, refusals 0, rule-text lines 0
+  why-add: n/a (no ratcheted growth)
+
+single-point-of-failure: the independent expected-population check, the one place a dropped case is caught. Behind it, each case's expected outcome is stored apart from generated packets (row 1), and the unsupported-claims check fails on fabricated citations whatever the summary says (row 2).
 
 ## Read first
 
@@ -54,11 +65,12 @@ Decision-trigger: spec. At pickup, prepare the concrete contract and negative-pa
 
 ## Ground rules
 
-- Isolated branch and draft PR; no merge, deployment, external provider or live infrastructure access.
+- Never git push, trigger workflows or run mutating infrastructure commands unless explicitly instructed. Feature branch and draft PR only; no merge, deployment, external provider or live infrastructure access.
 - Keep the stream's parked state; prioritization is a separate owner decision.
 - Public examples and fixtures are synthetic. No licensed normative text or adopter records.
 - Stop at implemented; independent verification and normal review own later states.
 - Unknown or missing evidence never becomes a pass. Required upstream behavior must be independently verified before operational reliance.
+- If an instruction is unclear or contradicts the repository state, report NEEDS_CONTEXT rather than guess.
 
 ## Task
 
@@ -78,15 +90,16 @@ These commands are future implementation obligations. No execution evidence is a
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +flow +dereference | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestProjectAssuranceQualificationCorpus$" .` | exit 0; named TestProjectAssuranceQualificationCorpus executes, with no [no tests to run]; A1–A12 enumerated and exercised by production paths; a dropped case fails the independent expected-population check |
-| 2 | check:ci +mutation | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestProjectAssuranceUnsupportedClaims$" .` | exit 0; named TestProjectAssuranceUnsupportedClaims executes, with no [no tests to run]; A10: fabricated citations and missing organizational acts stay unsupported despite plausible summaries |
-| 3 | check:ci +mutation | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestProjectAssuranceProviderChange$" .` | exit 0; named TestProjectAssuranceProviderChange executes, with no [no tests to run]; A11–A12: results preserve baseline/assisted identity and do not inherit qualification after provider change |
+| 1 | check:ci +flow +dereference | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestAssuranceQualCorpus$" .` | exit 0; named TestAssuranceQualCorpus executes, with no [no tests to run]; A1–A12 enumerated and exercised by production paths; a dropped case fails the independent expected-population check |
+| 2 | check:ci +mutation | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestAssuranceUnsupported$" .` | exit 0; named TestAssuranceUnsupported executes, with no [no tests to run]; A10: fabricated citations and missing organizational acts stay unsupported despite plausible summaries |
+| 3 | check:ci +mutation | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestAssuranceProviderChange$" .` | exit 0; named TestAssuranceProviderChange executes, with no [no tests to run]; A11–A12: results preserve baseline/assisted identity and do not inherit qualification after provider change |
 
 ## Pre-mortem and detection
 
-- Plausible but unsupported outcome: rows 1–2 exercise production inputs and independent expected records.
-- Silent omission or stale identity: row 3 exercises the named refusal/qualification boundary.
-- Semantically wrong but correctly cited interpretation: review-only; the qualified reviewer must inspect the source and record disagreement. A presence check cannot settle it.
+- A dropped or silently skipped case: row 1 fails the independent expected-population check.
+- A plausible conclusion with a fabricated citation or missing organizational act: row 2.
+- Qualification inherited after a provider change: row 3.
+- Semantic adequacy of an interpretation: review-only; human adjudication recorded as a real act.
 
 ## Evidence
 

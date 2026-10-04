@@ -34,7 +34,7 @@ sources:
   - "depends iso-9001/01: the per-control evidence row shape — the control, the injected error, the verdict, the date, the tool version — is defined there. This brief reuses it for a finding's effectiveness record rather than inventing a second shape for the same idea."
   - "The standard-side reading: the corrective-action clause asks the organisation to evaluate the need to eliminate the cause, determine whether similar nonconformities exist or could occur elsewhere, review the EFFECTIVENESS of the action taken, and retain records of the nature of the nonconformity, the actions taken and THE RESULTS. The most-written finding against it is a correction recorded as a corrective action, followed by a record closed on the day the action was implemented with no later effectiveness check."
   - "freshness-checked 2026-08-25 @ 6871a3b (origin/main) — `git grep -n effectiveness -- statusgen/registerentries.go statusgen/findingcontrol.go` returns nothing; the field does not exist."
-version: 2
+version: 1
 id: 4001327b-51c1-4468-8ea9-3c471ce5f177
 ---
 

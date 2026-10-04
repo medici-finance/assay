@@ -104,7 +104,7 @@ Qualification reports rubric version, corpus manifest, expected and included cas
 
 ## 7. Delivery sequence and real blockers
 
-New chain: **08 → 09 → 10 → 11**. Local waves: 0, 5, 6, 7, because 09 also depends on graph-execution/15 (wave 4), graph-execution/02–03 and iso-9001/03–04. 08 can be built with synthetic sources and existing requirements without Harvey, licensed standards or graph execution. It has no dependency on a new data grant.
+New chain: **08 → 09 → 10 → 11**. Local waves: 0, 8, 9, 10, because 09 also depends on graph-execution/15 (wave 7), graph-execution/02–03 and iso-9001/03–04. 08 can be built with synthetic sources and existing requirements without any vendor product, licensed standards or graph execution. It has no dependency on a new data grant.
 
 The end-to-end path is held by existing graph work: `graph-execution/02 → 09 → 05 → 06 → 15`, with coverage/recovery branches into 05, plus iso-9001/03's effectiveness mechanism. Those dependencies were read at the baseline; their outstanding work cannot be replaced by a simulated green report. The ISO stream's parked status is a separate prioritization hold. This authoring neither bypasses it nor restarts release-by-merge brief 07.
 

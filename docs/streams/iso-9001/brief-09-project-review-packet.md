@@ -2,7 +2,7 @@
 brief: assay:assay:iso-9001:09
 title: Prepare project assurance reviews from canonical evidence
 why: Evidence exports still leave a reviewer to reconstruct applicability, omissions and required acts. A repeatable preparation procedure can reduce that effort while keeping machine evidence, model assessments and human decisions distinct.
-wave: 5
+wave: 8
 depends:
 - iso-9001/08
 - iso-9001/03
@@ -34,7 +34,7 @@ consumers:
 - 'statusgen: follow-up iso-9001/09'
 - 'spec: follow-up iso-9001/09'
 - 'docs/evidence-bundle.md: follow-up iso-9001/09'
-version: 2
+version: 1
 id: 8e2dce79-e393-4c6c-88fb-f31aaa6b4cbe
 ---
 
@@ -44,9 +44,22 @@ id: 8e2dce79-e393-4c6c-88fb-f31aaa6b4cbe
 
 files: `spec/project-assurance-review-v1.md` (planned), `spec/workflow-patterns/project-assurance-v1.yaml` (planned), `statusgen/projectreview.go` (planned), `statusgen/projectreview_test.go` (planned), `statusgen/testdata/projectreview/` (planned), `statusgen/main.go` (existing contract; extend), `docs/evidence-bundle.md` (existing contract; extend), `spec/control-assurance-v1.md` (planned), `changelog/iso-9001-09-project-review-packet.md` (planned)
 
-facts: At the source baseline, statusgen/auditpack.go exists and its tests check omitted backing evidence. graph-execution/15 names spec/control-assurance-v1.md and statusgen/controlassurance.go as planned; do not implement their substitutes while that dependency remains open.
+facts:
+- auditpack: `statusgen/auditpack.go` exists at the source baseline and its tests detect omitted backing evidence (row 4)
+- control-export: graph-execution/15 names `spec/control-assurance-v1.md` (planned) and `statusgen/controlassurance.go` (planned) as its deliverables; no substitute is built here while that dependency is open
+- source-links: source and applicability records come from iso-9001/08
+- authority: the packet grants no merge, release or vendor-upload authority and sends no notifications
 
-single-point-of-failure: trusting the candidate analysis would allow a plausible summary to impersonate evidence. The input permission/authority boundary and an independent packet/fixture reader must fail on different evidence, with negative tests of each.
+layering: `domain-core`. Packet assembly and completeness rules are pure over explicit inputs (request, canonical exports, decisions, optional candidate analysis); file I/O and the CLI flag are the adapter, and the independent packet reader is a separate check over the emitted packet. Task 2, 4 and 5 name the boundary; rows 1–2 check it.
+
+design-fit:
+  owner: graph-execution/15's control export owns evidence meaning and `statusgen/auditpack.go` owns release collection; this brief owns only the review-request and packet contract
+  contract: S-decision-acceptance for the source decisions it resolves; none for the packet itself — the semantic-owner index has no review-preparation row, and this brief adds no second owner of an indexed meaning
+  retires: []
+  weight: verbs 0, flags 0, refusals 0, rule-text lines 0 in the ratcheted `tools/desk` set; statusgen gains one CLI flag (`--prepare-assurance-review`) outside it
+  why-add: the flag is the offline entry point for packet preparation. auditpack and the control export each collect one population and neither joins source applicability to it; folding the join into either would make it a second owner of review semantics. A separate reader over their unchanged outputs was chosen over adding a mode to the existing `--export-audit-pack` flag
+
+single-point-of-failure: the permission filter in front of candidate analysis. Behind it, the canonical population/provenance reader re-checks the emitted packet on its own evidence (row 2 offers an unauthorized payload directly to that reader with the filter bypassed), and the completeness result stays non-success on a missing population or wrong revision (row 1).
 
 ## Read first
 
@@ -60,11 +73,12 @@ Decision-trigger: spec. At pickup, prepare the concrete contract and negative-pa
 
 ## Ground rules
 
-- Isolated branch and draft PR; no merge, deployment, external provider or live infrastructure access.
+- Never git push, trigger workflows or run mutating infrastructure commands unless explicitly instructed. Feature branch and draft PR only; no merge, deployment, external provider or live infrastructure access.
 - Keep the stream's parked state; prioritization is a separate owner decision.
 - Public examples and fixtures are synthetic. No licensed normative text or adopter records.
 - Stop at implemented; independent verification and normal review own later states.
 - Unknown or missing evidence never becomes a pass. Required upstream behavior must be independently verified before operational reliance.
+- If an instruction is unclear or contradicts the repository state, report NEEDS_CONTEXT rather than guess.
 
 ## Task
 
@@ -85,15 +99,16 @@ These commands are future implementation obligations. No execution evidence is a
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +flow +dereference | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestProjectAssurancePacketFlow$" .` | exit 0; named TestProjectAssurancePacketFlow executes, with no [no tests to run]; A4: request → canonical exports → independently read packet; missing population and wrong revision remain incomplete |
-| 2 | check:ci +mutation | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestProjectAssurancePermissionBoundary$" .` | exit 0; named TestProjectAssurancePermissionBoundary executes, with no [no tests to run]; A5: denied payload and embedded instructions cannot cross the export/decision boundary, including direct reader bypass |
-| 3 | check:ci +mutation | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestProjectAssuranceEffectivenessAndNoModel$" .` | exit 0; named TestProjectAssuranceEffectivenessAndNoModel executes, with no [no tests to run]; A8–A9: correction remains open without effectiveness; no-model factual packet works |
+| 1 | check:ci +flow +dereference | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestAssurancePacketFlow$" .` | exit 0; named TestAssurancePacketFlow executes, with no [no tests to run]; A4: request → canonical exports → independently read packet; missing population and wrong revision remain incomplete |
+| 2 | check:ci +mutation | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestAssurancePermissionBoundary$" .` | exit 0; named TestAssurancePermissionBoundary executes, with no [no tests to run]; A5: denied payload and embedded instructions cannot cross the export/decision boundary, including direct reader bypass |
+| 3 | check:ci +mutation | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestAssuranceEffectNoModel$" .` | exit 0; named TestAssuranceEffectNoModel executes, with no [no tests to run]; A8–A9: correction remains open without effectiveness; no-model factual packet works |
 | 4 | check:ci +neighbour | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestAuditPackCoverageAgreementCatchesDroppedBacking$" .` | exit 0; existing independent audit-pack omission detection still executes |
 
 ## Pre-mortem and detection
 
-- Plausible but unsupported outcome: rows 1–2 exercise production inputs and independent expected records.
-- Silent omission or stale identity: row 3 exercises the named refusal/qualification boundary.
+- Plausible but incomplete packet: row 1 compares it with an independently enumerated population and fails on a missing record or wrong revision.
+- Unauthorized content or embedded instructions crossing into analysis: row 2, including a direct bypass of the filter.
+- Correction reported closed without effectiveness, or no packet when the model is absent: row 3.
 - Semantically wrong but correctly cited interpretation: review-only; the qualified reviewer must inspect the source and record disagreement. A presence check cannot settle it.
 
 ## Evidence
