@@ -69,6 +69,8 @@ var requiredEnv = []string{
 // EnvEnable == "1" — there is no zero-value Config a caller could accidentally
 // serve with.
 type Config struct {
+	LocalOnly    bool
+	Repo         string
 	Cell         string
 	QueueDir     string
 	Socket       string
@@ -89,7 +91,15 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 		getenv = os.Getenv
 	}
 	var missing []string
-	for _, k := range requiredEnv {
+	local := getenv("ASSAY_COMMS_LOCAL_ONLY")
+	if local != "" && local != "1" {
+		return Config{}, refusedf("commsgw: ASSAY_COMMS_LOCAL_ONLY must be unset or 1")
+	}
+	required := requiredEnv
+	if local == "1" {
+		required = []string{EnvEnable, EnvCell, EnvQueueDir, EnvSocket, EnvTrustStore}
+	}
+	for _, k := range required {
 		if strings.TrimSpace(getenv(k)) == "" {
 			missing = append(missing, k)
 		}
@@ -107,6 +117,8 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 			EnvEnable, v)
 	}
 	return Config{
+		LocalOnly:    local == "1",
+		Repo:         getenv("ASSAY_COMMS_REPO"),
 		Cell:         getenv(EnvCell),
 		QueueDir:     getenv(EnvQueueDir),
 		Socket:       getenv(EnvSocket),

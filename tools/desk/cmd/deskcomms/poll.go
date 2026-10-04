@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 func cmdPoll(d *deps, args []string) (*outcome, error) {
 	fs := flag.NewFlagSet("poll", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
+	full := fs.Bool("json", false, "return complete notices, including payloads, as JSON")
 	if err := fs.Parse(args); err != nil {
 		return &outcome{detail: "bad arguments"}, deskkit.Refused("poll: " + err.Error())
 	}
@@ -39,8 +41,17 @@ func cmdPoll(d *deps, args []string) (*outcome, error) {
 		return oc, deskkit.Refused("refused: " + err.Error())
 	}
 
-	for _, n := range notices {
-		fmt.Fprintf(d.stdout, "%s\t%s/%s\t%s\t%s\n", n.ID, n.From.Cell, n.From.Role, n.Verb, n.Class)
+	if *full {
+		if notices == nil {
+			notices = []Notice{}
+		}
+		if err := json.NewEncoder(d.stdout).Encode(notices); err != nil {
+			return oc, err
+		}
+	} else {
+		for _, n := range notices {
+			fmt.Fprintf(d.stdout, "%s\t%s/%s\t%s\t%s\n", n.ID, n.From.Cell, n.From.Role, n.Verb, n.Class)
+		}
 	}
 	oc.detail = fmt.Sprintf("polled %s/%s: %d notice(s)", d.cell, d.self, len(notices))
 	return oc, nil

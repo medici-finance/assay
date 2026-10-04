@@ -118,6 +118,11 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	}
 	env = envSet(env, "DESK_LOOP", role)
 	env = envSet(env, "DESK_SESSION", session)
+	var commsErr error
+	env, commsErr = c.deskCommsEnv(role, env)
+	if commsErr != nil {
+		die("desk comms: %v", commsErr)
+	}
 	if deskRoots != "" {
 		env = envSet(env, "DESK_ROOTS", deskRoots)
 	}

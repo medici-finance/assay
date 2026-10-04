@@ -41,7 +41,7 @@ const usage = `deskcomms — client preflight onto the local cell gateway.
 USAGE:
   deskcomms send --to <role> [--to-cell <cell>] --verb <verb> [--class routine|sensitive] [--ref <id>]...
                  < payload            # preflight, sign, and submit one message (payload on stdin)
-  deskcomms poll                      # read this session's own per-role mailbox
+  deskcomms poll [--json]             # --json includes complete hand-off payloads
   deskcomms ack <id>                  # acknowledge one notice (moves, never deletes)
   deskcomms --version
 
