@@ -12,7 +12,11 @@ it under **bash**: zsh does not word-split an unquoted `$VAR`, so a `for R in $O
 collapses the whole thing to a single root.
 
 ```bash
-DECLARED=$(deskroster repos --scope topology 2>/dev/null \
+DECLARED_ROWS=$(deskroster repos --scope roots) || {
+  echo "could-not-check: configured board roots could not be read" >&2
+  exit 6
+}
+DECLARED=$(printf '%s\n' "$DECLARED_ROWS" \
            | awk -F'\t' '{for (i=1;i<=NF;i++) if ($i ~ /^root=/) { sub(/^root=/,"",$i); print $i }}')
 # observed: siblings carrying docs/streams. The --git-dir test keeps only real clones — a LINKED
 # WORKTREE answers with an absolute path, a clone answers ".git". Without it a sibling glob returns
@@ -29,6 +33,10 @@ ROOTS=$(printf '%s\n' "$DECLARED" "$OBSERVED" | grep -v '^$' | while read -r R; 
 done | sort -u | awk -F'\t' '!seen[$1]++')          # one line per repo: <slug>\t<path>
 ```
 
+`roots` uses the same `ConfiguredRoots` resolver as queue readers: an explicit `DESK_ROOTS`
+replaces the compiled defaults, and a malformed or disallowed entry refuses the whole read.
+The `topology` inventory continues to describe the compiled topology and is not a board-root read.
+
 **Key on the repo slug, not the path** — two clones of one repo are one queue, and the boards are read
 out of `refs/remotes/origin/main`, so which clone the dedupe keeps does not change the board you get.
 Slug order is also what makes the interleave reproducible across machines whose local directory names
@@ -36,7 +44,7 @@ differ.
 
 **The union is the non-narrowing direction, and a root in exactly one list is named in the report
 either way — never dropped.** Declared-but-absent = could-not-check (the checkout is not on this
-machine), not an empty queue. Observed-but-undeclared = a `topology.yaml` gap: dispatch it anyway this
+machine), not an empty queue. Observed-but-undeclared = a configured-root declaration gap: dispatch it anyway this
 cycle and file the gap, because refusing to dispatch a real queue to punish a missing declaration
 starves the queue.
 
