@@ -21,7 +21,9 @@ on:
   pull_request:
     # `edited` is listed so a base retarget re-runs the corroborate job (a
     # register transition judged against the old base proves nothing about the
-    # new one); every other job skips `edited`.
+    # new one). The PR jobs run on every `edited` event, title and body edits
+    # included: a job skipped by its `if:` still posts a `skipped` check run on
+    # the same head, which would sit beside, and hide, an earlier red.
     types: [opened, synchronize, reopened, edited]
     # Fire on anything --lint reads: the stream docs, STATUS.md itself, the
     # statusgen source (the lint binary is built from it), and this workflow.
@@ -66,7 +68,7 @@ env:
 
 jobs:
   lint:
-    if: github.event_name == 'pull_request' && github.event.action != 'edited'
+    if: github.event_name == 'pull_request'
     runs-on: medici-builder-public
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -96,10 +98,12 @@ jobs:
   # GITHUB_ENV/GITHUB_PATH, and the lint job above builds and runs the PR's own
   # statusgen. Here the only binary executed is built from the base commit;
   # the PR tree is read as data. Every step fails closed (set -e) — an
-  # unreadable base, a stale merge ref or a base mismatch reds the check, never
-  # skips it.
+  # unreadable base, a base mismatch or a retarget mid-run reds the check,
+  # never skips it. Residual: under pull_request this workflow file itself
+  # comes from the PR merge commit, so a PR that edits it can change this job;
+  # human review of workflow edits is what catches that.
   corroborate:
-    if: github.event_name == 'pull_request' && (github.event.action != 'edited' || github.event.changes.base)
+    if: github.event_name == 'pull_request'
     runs-on: medici-builder-public
     # --corroborate reads the PR's reviews, comments and file list.
     permissions:
@@ -110,12 +114,14 @@ jobs:
         with:
           fetch-depth: 0 # the merge-base check below needs full history
           persist-credentials: false
-      # HEAD is the PR merge commit and HEAD^1 its base parent. The guard
-      # resolves its own merge-base from the remote base ref, so tie all three
-      # together: HEAD^1 must be the base sha GitHub put in this event (a stale
-      # merge ref after a push or retarget fails here), and merge-base(base ref,
-      # HEAD) must be HEAD^1 — the commit the guard is built from is the commit
-      # it compares against.
+      # HEAD is the PR merge commit and HEAD^1 its base parent: the base-branch
+      # tip GitHub merged against, which moves with the base branch (the
+      # payload's base.sha does not). The guard is built from HEAD^1 and
+      # resolves its own merge-base from the remote base ref, so tie them:
+      # merge-base(base ref, HEAD) must be HEAD^1 — the commit the guard is
+      # built from is the commit it compares against. The payload's base.sha
+      # must be an ancestor of HEAD^1 (a sanity check, not an equality: the
+      # base branch may have moved since the PR was opened or last pushed).
       - name: Tie the compared base to the merge commit
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -123,8 +129,8 @@ jobs:
         run: |
           set -euo pipefail
           parent="$(git rev-parse --verify 'HEAD^1^{commit}')"
-          if [ "$parent" != "$BASE_SHA" ]; then
-            echo "::error::merge commit base parent ${parent} is not the event's base sha ${BASE_SHA} (stale merge ref) — re-run once GitHub has recomputed it"
+          if ! git merge-base --is-ancestor "$BASE_SHA" "$parent"; then
+            echo "::error::the event's base sha ${BASE_SHA} is not an ancestor of the merge commit's base parent ${parent}"
             exit 1
           fi
           tip="$(git rev-parse --verify "refs/remotes/origin/${BASE_REF}^{commit}")"
@@ -152,12 +158,16 @@ jobs:
             echo "GOMODCACHE=${RUNNER_TEMP}/gopath/pkg/mod"
             echo "GOFLAGS="
           } >> "${GITHUB_ENV}"
+      # Built from HEAD^1, the base the tie step verified. `git archive` reads
+      # the tree without registering a worktree, so a runner reused across jobs
+      # carries no stale worktree entry into the next run.
       - name: Build the corroboration guard from the base commit
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          git worktree add --detach "${RUNNER_TEMP}/base" "$BASE_SHA"
+          parent="$(git rev-parse --verify 'HEAD^1^{commit}')"
+          rm -rf "${RUNNER_TEMP}/base"
+          mkdir -p "${RUNNER_TEMP}/base"
+          git archive "$parent" statusgen | tar -x -C "${RUNNER_TEMP}/base"
           ( cd "${RUNNER_TEMP}/base/statusgen" && go build -o "${RUNNER_TEMP}/statusgen-base" . )
       # Always the pinned tarball, never a gh already on PATH: the guard's review
       # and comment reads go through it.
@@ -181,11 +191,22 @@ jobs:
           # register transition is MISSING-CORROBORATION. Fails closed.
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
-          if [ -z "$(git diff --no-ext-diff --no-textconv --name-only HEAD^1 HEAD -- docs/streams/findings/)" ]; then
+          # Assign first, then test: a failing git diff must red the step, not
+          # read as "no findings touched".
+          changed="$(git diff --no-ext-diff --no-textconv --name-only HEAD^1 HEAD -- docs/streams/findings/)"
+          if [ -z "$changed" ]; then
             echo "PR touches no docs/streams/findings/ entry — register-transition check not applicable"
             exit 0
+          fi
+          # The guard reads the base name live; the tie step checked the event's.
+          # A retarget between the two would compare against an untied base.
+          live="$(gh pr view "${PR_NUMBER}" --json baseRefName --jq .baseRefName)"
+          if [ "$live" != "$BASE_REF" ]; then
+            echo "::error::PR base is now ${live}, not ${BASE_REF} as tied above (retargeted mid-run) — the retarget's own run judges it"
+            exit 1
           fi
           "${RUNNER_TEMP}/statusgen-base" --root . --corroborate --pr "${PR_NUMBER}"
 
