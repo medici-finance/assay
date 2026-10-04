@@ -354,10 +354,10 @@ func TestHeldScanPseudoFence(t *testing.T) {
 	})
 }
 
-// TestHeldScanBlankIsASCII: CommonMark treats a line as blank only when it
+// TestHeldScanBlankLine: CommonMark treats a line as blank only when it
 // holds spaces and tabs alone. A line of other whitespace continues the
 // paragraph, and with it a span left open above.
-func TestHeldScanBlankIsASCII(t *testing.T) {
+func TestHeldScanBlankLine(t *testing.T) {
 	const pass = "**VERIFY: PASS**\n\n"
 	runHeldScanCases(t, []heldScanCase{
 		{"no-break-space line",
