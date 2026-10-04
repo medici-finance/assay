@@ -1,0 +1,30 @@
+name: evidence-automerge-tests
+# Staged only. A maintainer promotes this to .github/workflows/ to activate it.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'ci/staged-workflows/**'
+      - 'tools/ci-load/activation/**'
+      - 'tools/evidence-automerge/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - 'ci/staged-workflows/**'
+      - 'tools/ci-load/activation/**'
+      - 'tools/evidence-automerge/**'
+permissions:
+  contents: read
+jobs:
+  automerge-shell-tests:
+    runs-on: medici-builder-public
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test refusal classification
+        run: bash tools/evidence-automerge/automerge-refusal_test.sh
+      - name: Test errexit capture and workflow class guard
+        run: bash tools/evidence-automerge/automerge-step_test.sh
