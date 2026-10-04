@@ -1,0 +1,2 @@
+### Fixed
+- The body/diff scanner's decrypted-Kubernetes-Secret rule now scopes each `data:`/`stringData:` mapping to its own manifest document (split at `---`, diff hunk headers and markdown fences). A branch diff that adds a correctly sops-encrypted Secret beside an ordinary ConfigMap is no longer refused on the ConfigMap's plaintext `data:`; a decrypted Secret value still refuses in every arrangement, including a List, kubectl's sorted output, and a Secret hunk whose own `kind:` line fell outside the diff context.

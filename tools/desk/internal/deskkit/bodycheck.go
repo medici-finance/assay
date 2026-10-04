@@ -1093,12 +1093,16 @@ func k8sLine(s string) int {
 		return 0
 	}
 	lines := strings.Split(s, "\n")
+	diff := reHunkHeaderLine.MatchString(s)
 	for i, line := range lines {
 		m := reK8sSecretData.FindStringSubmatch(strings.TrimRight(line, " \t\r"))
 		if m == nil {
 			continue
 		}
 		mapIndent, sawEntry := len(m[1]), false
+		if k8sMappingOwnedByOtherKind(lines, i, diff) {
+			continue // this mapping's own document is a ConfigMap (or other non-Secret kind)
+		}
 		for j := i + 1; j < len(lines); j++ {
 			body := strings.TrimRight(lines[j], " \t\r")
 			if strings.TrimSpace(strings.TrimLeft(body, "+- ")) == "" {
@@ -1126,6 +1130,97 @@ func k8sLine(s string) int {
 		}
 	}
 	return 0
+}
+
+// reK8sAnyKind matches a `kind: <Name>` line of ANY kind, in the same surface spellings
+// reK8sSecretKind tolerates (diff marker, sequence dash, JSON quoting, trailing comma or
+// comment). Group 1 is the kind's name; the key's column is read by k8sKeyColumn.
+var reK8sAnyKind = regexp.MustCompile(`^[+\- ]?\s*(?:-\s+)?"?kind"?\s*:\s*["']?([A-Za-z][A-Za-z0-9]*)["']?\s*,?\s*(?:#.*)?$`)
+
+// reHunkHeaderLine detects a unified diff: deskpr keeps each hunk's `@@ -a,b +c,d @@`
+// range line, so its presence anywhere means every content line carries a marker column.
+var reHunkHeaderLine = regexp.MustCompile(`(?m)^@@ -[0-9]+(?:,[0-9]+)? \+[0-9]+(?:,[0-9]+)? @@`)
+
+// reK8sDocBoundary matches a line that ends one manifest and starts the next on the
+// surfaces this rule reads: a YAML document separator (`---`, diff-marked or not), a
+// unified-diff hunk header (deskpr strips the file headers but keeps `@@ -a,b +c,d @@`,
+// so every file in a branch diff starts at one), and a markdown fence line.
+var reK8sDocBoundary = regexp.MustCompile(`^(?:[+\- ]?---\s*$|@@ -[0-9]|[+\- ]?\s*(?:` + "```" + `|~~~))`)
+
+// k8sMappingOwnedByOtherKind reports whether the data/stringData mapping at lines[at]
+// provably belongs to a manifest that is NOT a Secret, so its values are not Secret
+// values at all.
+//
+// The rule arms on a `kind: Secret` ANYWHERE in the text, and deskpr hands it a whole
+// multi-file branch diff as one string. Without this, one correctly sops-encrypted Secret
+// and any ConfigMap in the same PR refused on the ConfigMap's `data:` — a backup
+// restore-test PR adding two encrypted Secrets beside five ConfigMaps could not be opened
+// at all without an audited override. The fix scopes each mapping to its
+// own DOCUMENT — the run of lines between two reK8sDocBoundary lines — and passes it only
+// on POSITIVE evidence, all three of which must hold:
+//
+//   - the document carries no Secret kind line at any depth (reK8sSecretKind, or a
+//     reK8sAnyKind line naming Secret), so a List holding a Secret, or a Secret whose
+//     `kind:` sits below its `data:` (kubectl's sorted output), is still read;
+//   - the document carries a `kind:` line naming another kind;
+//   - that line's key column is at or left of the mapping's own, i.e. it is a sibling or
+//     ancestor key of the mapping. A deeper `kind:` (an ownerReferences entry inside a
+//     Secret hunk whose own `kind: Secret` line fell outside the diff context) is not
+//     evidence about the mapping and does not count.
+//
+// A document with no kind line at all is NOT evidence either way, so its mapping is
+// still read whenever a Secret kind appears elsewhere — the pre-fix behaviour, kept: this
+// only ever narrows a refusal where the mapping's own manifest names a different kind.
+func k8sMappingOwnedByOtherKind(lines []string, at int, diff bool) bool {
+	mapCol := k8sKeyColumn(lines[at], diff)
+	start, end := at, at+1
+	for start > 0 && !reK8sDocBoundary.MatchString(lines[start-1]) {
+		start--
+	}
+	for end < len(lines) && !reK8sDocBoundary.MatchString(lines[end]) {
+		end++
+	}
+	otherKind := false
+	for _, ln := range lines[start:end] {
+		ln = strings.TrimRight(ln, " \t\r")
+		if reK8sSecretKind.MatchString(ln) {
+			return false
+		}
+		k := reK8sAnyKind.FindStringSubmatch(ln)
+		if k == nil {
+			continue
+		}
+		if k[1] == "Secret" {
+			return false
+		}
+		if k8sKeyColumn(ln, diff) <= mapCol {
+			otherKind = true
+		}
+	}
+	return otherKind
+}
+
+// k8sKeyColumn is the column at which a line's key starts, measured the same way for a
+// `kind:` line and a `data:` line so the two can be compared. On a unified diff (diff is
+// true) every content line opens with exactly one marker column — `+`, `-` or a space for
+// context — and that column is dropped first, so an added line and a context line in the
+// same hunk measure alike. Leading whitespace and any YAML sequence dashes (`- `) then
+// count as indentation: in a List's `- kind: ConfigMap` the key sits at the column after
+// the dash, where its sibling `data:` does.
+func k8sKeyColumn(line string, diff bool) int {
+	if diff && line != "" && strings.ContainsRune("+- ", rune(line[0])) {
+		line = line[1:]
+	}
+	col := 0
+	for {
+		n := len(line) - len(strings.TrimLeft(line, " \t"))
+		col, line = col+n, line[n:]
+		if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "-\t") {
+			col, line = col+1, line[1:]
+			continue
+		}
+		return col
+	}
 }
 
 // isBlockScalarIndicator reports whether a YAML scalar value is empty or one of the
