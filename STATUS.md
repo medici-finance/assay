@@ -74,9 +74,9 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: dbde59d 2026-10-05T08:32:04+11:00_
+_last regen: ac8cc32 2026-10-05T09:17:48+11:00_
 
-**Progress:** 5/13 brief items done.
+**Progress:** 6/13 brief items done.
 
 **In-flight:**
 
@@ -84,7 +84,6 @@ _none_
 
 **Blocked on review:**
 
-- build-less-brittle/02
 - build-less-brittle/04
 - build-less-brittle/06
 
@@ -97,7 +96,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: dbde59d 2026-10-05T08:32:04+11:00_
+_last regen: ac8cc32 2026-10-05T09:17:48+11:00_
 
 **Progress:** 14/71 brief items done.
 
@@ -130,7 +129,7 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (57 desk-actionable of 93 total — 87 at implemented, 6 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 93 total — 86 at implemented, 7 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -146,7 +145,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | graph-execution | 20 [exec:strong] | implemented | 9500 | 15 | — | — | — |
 | graph-execution | 03 [exec:strong] | implemented | 8500 | 13 | — | — | — |
 | graph-execution | 13 [exec:strong] | implemented | 8000 | 12 | — | — | — |
-| build-less-brittle | 02 [exec:strong] | implemented | 6500 | 7 | — | — | — |
+| build-less-brittle | 02 [exec:strong] | verified | 6500 | 7 | — | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | build-less-brittle | 04 [exec:strong] | implemented | 5500 | 5 | — | — | — |
 | cellctl-windows | 00 [exec:strong] | implemented | 5500 | 7 | — | — | — |
 | windows-port | 00 | implemented | 5500 | 9 | — | — | — |
@@ -310,7 +309,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 ### build-less-brittle (9 open)
 
-- 02 design-fit: in every new brief — owner, contract, retires, weight, why-add — implemented (wave 1)
+- 02 design-fit: in every new brief — owner, contract, retires, weight, why-add — verified (wave 1)
 - 04 Intake files by error class; a recurring class triggers a design brief, not another point fix — implemented (wave 2)
 - 05 Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight — todo (wave 3)
 - 06 Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision — implemented (wave 2)
