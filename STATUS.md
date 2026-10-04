@@ -73,7 +73,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: afe5fe9 2026-10-04T10:29:46Z_
+_last regen: 8278ab2 2026-10-05T07:41:03+11:00_
 
 **Progress:** 5/13 brief items done.
 
@@ -96,7 +96,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: afe5fe9 2026-10-04T10:29:46Z_
+_last regen: 8278ab2 2026-10-05T07:41:03+11:00_
 
 **Progress:** 13/71 brief items done.
 
@@ -129,7 +129,7 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (57 desk-actionable of 93 total — 90 at implemented, 3 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 93 total — 89 at implemented, 4 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -172,7 +172,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 19 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| desk-supervision | 19 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| desk-supervision | 19 [exec:strong] | verified | 1500 | 1 | — | 2026-10-04 assay-verifier-app[bot] @ 70deba75a577 (claude-opus-5-5) | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 13 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -384,7 +384,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 15 Local supervisor host + multi-cell vitals aggregation — todo (wave 4)
 - 17 Verification failures create durable worker repair obligations — implemented (wave 1)
 - 18 Enforce repair reservations at worker dispatch — implemented (wave 2)
-- 19 Persist review findings and apply the existing round cap across sessions — implemented (wave 0)
+- 19 Persist review findings and apply the existing round cap across sessions — verified (wave 0)
 - 20 Review scope and first-pass completeness — implemented (wave 0)
 - 21 Reverify changed external prerequisites without a synthetic push — implemented (wave 1)
 - 22 Configure provider, model and effort per cell role — implemented (wave 0)
