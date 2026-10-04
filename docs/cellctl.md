@@ -1574,6 +1574,8 @@ cells, whose launch is delegated to the operator's own launcher.
 
 ## Host desk cadence
 
-For Herdr/Codex and Orca/Cursor sessions, `--cadence` makes Go cellctl own repeated
-bounded role passes. See [Host desk cadence](cellctl-cadence.md) for setup, status,
+Codex house desks default to repeated bounded passes owned by Go cellctl, with a
+five-minute interval and 20-minute pass budget. `--cadence off` selects interactive
+mode; explicit intervals and budgets override the defaults. Other harnesses retain
+their existing defaults; Orca/Cursor can opt in with `--cadence`. See [Host desk cadence](cellctl-cadence.md) for setup, status,
 stop/recovery and process-lifetime limits.

@@ -1,0 +1,1 @@
+- Add `deskroster repos --scope roots` to report the configured board-root map, and use it for worker-desk boot coverage so an explicit `DESK_ROOTS` override reaches both inventory and queue readers.

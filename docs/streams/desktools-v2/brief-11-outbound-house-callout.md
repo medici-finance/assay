@@ -20,6 +20,7 @@ issues: []
 schema: brief-v2
 authored: 2026-09-17 by desktools-v2 authoring session
 sources:
+  - "#2111 — Cobra/Viper adoption; CLI compatibility amendment 2026-10-03 (spec §9)"
   - "docs/streams/desktools-v2/spec.md §8.3 — deployment-specific vocabulary is never compiled in; the callout contract; what the forge never sees"
   - "docs/streams/desktools-v2/brief-10-one-outbound-write-check.md (desktools-v2/10, brief id assay:assay:desktools-v2:10, whose consumers list routes the house callout here) — OutboundCheck and OutboundWrite, which this brief extends at its END"
   - "tools/desk/internal/deskkit/callout.go — the shared plumbing: :46 DefaultCalloutTimeout = 5s, :51 calloutWaitDelay, :56 maxCalloutOutput = 64 KiB, Callout.Run (absolute path, regular file, executable, not group/world-writable, no shell, error on every unanswered case). Run sets no cmd.Env, so a callout inherits the caller's whole environment"
@@ -47,7 +48,7 @@ consumers:
   - "tools/desk/internal/deskkit/callout.go: follow-up desktools-v2/11 (this brief; an explicit-environment option on Callout — the three existing callers keep today's behaviour)"
   - "tools/desk/README.md and the adopter-facing callout documentation: follow-up desktools-v2/11 (this brief; the stdin contract and an example executable using invented values)"
   - "every deployment's own callout executable and token map: out-of-scope (supplied by the deployment; nothing of the kind is added to this repository)"
-version: 1
+version: 2
 id: be893ed6-782f-4000-9675-c03ddff205b2
 ---
 
@@ -186,6 +187,10 @@ Default if no answer: none — blocks until answered.
 | H5 | REQUIRED=`public`, key unset | clean body, public and unknown | refused; the same body to a private target passes |
 | H6 | callout dumps its environment; caller holds a token variable | any | the dump carries no token variable |
 | H7 | callout answers `block` | a commit message, on the push path | refused before any push |
+
+## Cobra/Viper integration — callout settings retain restricted sources
+
+The new callout keys remain validated by the existing roster parser and fail-closed callout boundary. The bounded CLI owners authored by desktools-v2/15 bind only admissible sources through Viper; no blanket environment binding, config search or CLI flag may silently override these protected settings. Help/version must neither invoke the callout nor read its secret-bearing input. Record all consuming commands in cli-migration.json when /15 lands; this brief retains ownership of callout policy and does not fork the parser migration.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
