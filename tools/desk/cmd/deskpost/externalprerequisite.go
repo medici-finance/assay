@@ -113,8 +113,18 @@ func clearedByExternalPrereq(reviews []reviewInfo, head string, securityFail boo
 // review records and reports whether any blocking code/content finding is still open. This
 // is the "mixed findings still block" guard's second half: the CR's own block is checked
 // by ParsePrereqDeclaration, and this catches a content blocker raised on a DIFFERENT
-// reviewer record. A malformed block anywhere fails closed — an unreadable ledger can
-// never certify the content lane clean.
+// reviewer record. It fails closed — reports an open defect — whenever it cannot read the
+// ledger positively, because an unreadable ledger can never certify the content lane clean:
+//
+//   - a malformed block, or one that breaks the reviewer write gate's rules
+//     (deskkit.FindingBlockV1.Validate: an unknown lane word, the key separator in an id or
+//     class, ...) — a review the App posted outside deskpost is read by the same rules
+//     deskpost would have refused it under;
+//   - a record whose lane could not be established (reviewLane returned "") — a lane-less
+//     reviewer record would take its block's lane, which is how one body could speak for a
+//     lane it is not;
+//   - any record the fold itself reports Blind (a block naming another lane, a stale-head
+//     resolution, ...) — ambiguity resolves toward blocking.
 func hasOpenContentDefect(reviews []reviewInfo) bool {
 	var recs []deskkit.ForgeRecord
 	for i, r := range reviews {
@@ -128,20 +138,28 @@ func hasOpenContentDefect(reviews []reviewInfo) bool {
 		if !present {
 			continue
 		}
+		if block.Validate(deskkit.RoleReviewer) != nil {
+			return true // a block the write gate would refuse → fail closed
+		}
+		lane := reviewLane(r.Body)
+		if lane == "" {
+			return true // a lane-less record would take its block's lane → fail closed
+		}
 		recs = append(recs, deskkit.ForgeRecord{
 			Seq:   i,
 			Kind:  deskkit.RecordReview,
 			Role:  deskkit.RoleReviewer,
 			Actor: r.User.Login,
 			Head:  r.CommitID,
-			Lane:  reviewLane(r.Body),
+			Lane:  lane,
 			Block: block,
 		})
 	}
 	if len(recs) == 0 {
 		return false
 	}
-	return len(deskkit.DeriveLedger(recs).ContentDefects()) > 0
+	l := deskkit.DeriveLedger(recs)
+	return len(l.Blind) > 0 || len(l.ContentDefects()) > 0
 }
 
 // reviewLane names the ledger lane a review body was written in. The two lanes number their
@@ -150,16 +168,21 @@ func hasOpenContentDefect(reviews []reviewInfo) bool {
 // adds nothing of its own:
 //
 //   - laneSecurity → the security lane; laneCorrectness → the correctness lane.
-//   - laneBoth (one body claiming both verdicts) → no lane. Its findings key by their bare
-//     id, apart from both lanes, so such a body can still raise an open finding but can
-//     never resolve either lane's finding — ambiguity resolves toward blocking, as it does
-//     for the verdict itself.
+//   - laneBoth (one body claiming both verdicts) → deskkit.LaneAmbiguous, the reserved
+//     record lane no block can name. The fold keys such a record's findings under that lane
+//     and ignores whatever lane its block states (reporting a stated one as could-not-check,
+//     which hasOpenContentDefect treats as blocking), so the body can still raise an open
+//     finding but can never resolve either lane's finding — ambiguity resolves toward
+//     blocking, as it does for the verdict itself.
+//
+// It never returns an empty lane: a lane-less reviewer record takes its block's lane (and
+// hasOpenContentDefect fails closed on one, should a later edit introduce it).
 func reviewLane(body string) string {
 	switch classifyLane(body) {
 	case laneSecurity:
 		return deskkit.LaneSecurity.Name
 	case laneBoth:
-		return ""
+		return deskkit.LaneAmbiguous
 	default:
 		return deskkit.LaneCorrectness.Name
 	}

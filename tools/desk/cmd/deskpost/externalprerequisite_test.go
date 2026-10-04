@@ -320,28 +320,33 @@ func TestExternalPrerequisiteRestartAndCheckOnly(t *testing.T) {
 // TestContentDefectLaneSplit — the deskpost content-defect gate reads the ledger with each
 // review's lane taken from its body. The correctness and security reviewers each number
 // their own findings, so a security-lane resolution of its A3 must not clear the
-// correctness lane's A3, and a body claiming both verdicts resolves neither lane.
+// correctness lane's A3, and a body claiming both verdicts resolves neither lane — whether
+// or not its block states a lane.
 func TestContentDefectLaneSplit(t *testing.T) {
 	plantForgeRoster(t)
 	login, ok := deskkit.RoleAppLogin("reviewer")
 	if !ok {
 		t.Fatal("test roster binds no reviewer App")
 	}
-	finding := func(class, state string) string {
+	finding := func(id, class, state, lane string) string {
 		return deskkit.RenderFindingBlock(deskkit.FindingBlockV1{Findings: []deskkit.Finding{{
-			ID: "A3", Class: class, Severity: deskkit.SeverityBlocking, Blocker: deskkit.BlockerCodeContent,
+			ID: id, Lane: lane, Class: class, Severity: deskkit.SeverityBlocking, Blocker: deskkit.BlockerCodeContent,
 			State: deskkit.FindingState(state), OriginHead: "h", EvidenceHead: "h", Failure: "repro"}}})
 	}
-	review := func(marker, class, state string) reviewInfo {
-		r := reviewInfo{CommitID: "h", Body: marker + "\n\n" + finding(class, state)}
+	reviewL := func(marker, class, state, lane string) reviewInfo {
+		r := reviewInfo{CommitID: "h", Body: marker + "\n\n" + finding("A3", class, state, lane)}
 		r.User.Login = login
 		return r
 	}
+	review := func(marker, class, state string) reviewInfo { return reviewL(marker, class, state, "") }
+	const both = "Security-Review: pass\nVerdict: approve"
 	corOpen := review("Verdict: request-changes", "stale-dir", "open")
 	corDone := review("Verdict: approve", "stale-dir", "resolved")
 	secOpen := review("Security-Review: fail", "read-scopes", "open")
 	secDone := review("Security-Review: pass", "read-scopes", "resolved")
-	bothDone := review("Security-Review: pass\nVerdict: approve", "read-scopes", "resolved")
+	bothDone := review(both, "read-scopes", "resolved")
+	bothDoneSec := reviewL(both, "read-scopes", "resolved", "security")
+	bothDoneCor := reviewL(both, "stale-dir", "resolved", "correctness")
 
 	cases := []struct {
 		name    string
@@ -352,10 +357,69 @@ func TestContentDefectLaneSplit(t *testing.T) {
 		{"correctness resolution leaves the security A3 open", []reviewInfo{secOpen, corOpen, corDone}, true},
 		{"both lanes resolved", []reviewInfo{corOpen, secOpen, secDone, corDone}, false},
 		{"a body claiming both verdicts resolves neither lane", []reviewInfo{secOpen, bothDone}, true},
+		{"a both-verdict body stating lane security cannot resolve the security A3", []reviewInfo{secOpen, bothDoneSec}, true},
+		{"a both-verdict body stating lane correctness cannot resolve the correctness A3", []reviewInfo{corOpen, bothDoneCor}, true},
 	}
 	for _, tc := range cases {
 		if got := hasOpenContentDefect(tc.reviews); got != tc.want {
 			t.Errorf("%s: hasOpenContentDefect = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestContentDefectReadGate — the gate re-applies the reviewer write gate's rules on read,
+// so a review the App posted outside deskpost cannot slip a block deskpost would have
+// refused past the content-defect check, and any record the fold reports could-not-check
+// blocks too. Each body below carries only a RESOLVED finding, so a reader that skipped
+// these rules would report no open defect.
+func TestContentDefectReadGate(t *testing.T) {
+	plantForgeRoster(t)
+	login, ok := deskkit.RoleAppLogin("reviewer")
+	if !ok {
+		t.Fatal("test roster binds no reviewer App")
+	}
+	body := func(id, lane string, sev deskkit.Severity) reviewInfo {
+		r := reviewInfo{CommitID: "h", Body: "Verdict: approve\n\n" + deskkit.RenderFindingBlock(deskkit.FindingBlockV1{
+			Findings: []deskkit.Finding{{ID: id, Lane: lane, Class: "c", Severity: sev,
+				Blocker: deskkit.BlockerCodeContent, State: deskkit.StateResolved, OriginHead: "h", EvidenceHead: "h"}}})}
+		r.User.Login = login
+		return r
+	}
+	adv := deskkit.SeverityAdvisory
+	cases := []struct {
+		name string
+		r    reviewInfo
+		want bool
+	}{
+		{"a clean advisory reads clean", body("A1", "", adv), false},
+		{"an unknown lane word fails closed", body("A1", "sec", adv), true},
+		{"the reserved ambiguous lane fails closed", body("A1", deskkit.LaneAmbiguous, adv), true},
+		{"the key separator in an id fails closed", body("security/A1", "", adv), true},
+		// Pins the read-side Validate on its own: the fold reads this record cleanly.
+		{"a blocking finding with no basis fails closed", body("A1", "", deskkit.SeverityBlocking), true},
+		// Pins the fold's could-not-check on its own: Validate accepts a published lane.
+		{"a correctness record stating lane security fails closed", body("A1", "security", adv), true},
+	}
+	for _, tc := range cases {
+		if got := hasOpenContentDefect([]reviewInfo{tc.r}); got != tc.want {
+			t.Errorf("%s: hasOpenContentDefect = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestReviewLaneNeverEmpty — every body classification maps to a non-empty ledger lane, and
+// a body claiming both verdicts maps to the reserved lane no block can name. A lane-less
+// reviewer record would take its block's lane.
+func TestReviewLaneNeverEmpty(t *testing.T) {
+	cases := []struct{ body, want string }{
+		{"Verdict: approve", deskkit.LaneCorrectness.Name},
+		{"prose with no verdict line", deskkit.LaneCorrectness.Name},
+		{"Security-Review: pass", deskkit.LaneSecurity.Name},
+		{"Security-Review: fail\nVerdict: request-changes", deskkit.LaneAmbiguous},
+	}
+	for _, tc := range cases {
+		if got := reviewLane(tc.body); got != tc.want {
+			t.Errorf("reviewLane(%q) = %q, want %q", tc.body, got, tc.want)
 		}
 	}
 }

@@ -105,6 +105,34 @@ func securityShapeFor(verdictFlag string) (reviewShape, bool) {
 	return reviewShape{}, false
 }
 
+// findingLaneRefusal refuses a review body whose finding block names a lane the posting
+// verb does not speak for: `security-review` posts the security lane, so every lane its
+// block states must be `security`; `review` posts the correctness lane (into which the
+// deep-set lanes fold), so its block may not state `security`. A block stating no lane, or
+// a body with no block, passes — the record's lane is established from the body.
+func findingLaneRefusal(body []byte, wantKind string) error {
+	b, present, err := deskkit.ParseFindingBlock(string(body))
+	if err != nil || !present {
+		return err
+	}
+	sec := deskkit.LaneSecurity.Name
+	for _, f := range b.Findings {
+		got := f.StatedLane()
+		if got == "" {
+			continue
+		}
+		if wantKind == bodycheck.KindSecurity && got != sec {
+			return deskkit.Refused(fmt.Sprintf("refused: `security-review` posts the security lane, but finding %s states lane %q — a reviewer speaks only for its own lane; drop the lane or state %q",
+				f.ID, got, sec))
+		}
+		if wantKind == bodycheck.KindCorrectness && got == sec {
+			return deskkit.Refused(fmt.Sprintf("refused: `review` posts the correctness lane, but finding %s states lane %q — post security findings with `deskpost security-review`",
+				f.ID, got))
+		}
+	}
+	return nil
+}
+
 // postVerdictReview is the one write path both verdict verbs run. Extracting it is what
 // keeps `security-review` from becoming a second, drifting copy of the hardening in
 // `review` (#197 head pinning, #73 cross-session dedup, #220 kinded keys, #238/#239
@@ -228,6 +256,14 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 						"'Security-Review:' line must agree, or the posted artifact misstates its own verdict",
 					verdictFlag, secVerdictName(got)))), dig)
 			}
+		}
+		// A finding block speaks for the lane of the verb that posts it. The ledger already
+		// keys a reviewer record's findings under the record's own lane whatever the block
+		// says; refusing a block that names another lane here catches the confusion at the
+		// write, a second and independent point, before it becomes a could-not-check entry
+		// in every later fold.
+		if err := findingLaneRefusal(body, kind); err != nil {
+			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
 		}
 		verb := reviewVerbFor(kind, verdictFlag)
 		// Idempotency BEFORE any network: --head is the caller-provided reviewed SHA, so

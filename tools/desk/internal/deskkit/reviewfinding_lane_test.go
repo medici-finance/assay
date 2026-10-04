@@ -155,6 +155,7 @@ func TestLaneKeyFieldsRefused(t *testing.T) {
 		{"separator in id", "security/A3", "c", "", false},
 		{"separator in class", "A3", "security/c", "", false},
 		{"unknown lane word", "A3", "c", "sec", false},
+		{"the reserved ambiguous lane", "A3", "c", LaneAmbiguous, false},
 		{"published lane", "A3", "c", "security", true},
 		{"published lane, other case", "A3", "c", "Fact-Check", true},
 		{"no lane", "A3", "c", "", true},
@@ -265,6 +266,111 @@ func TestLaneCaseFolded(t *testing.T) {
 	if len(l.Findings) != 1 || l.Findings["security/A3"] == nil {
 		t.Fatalf("lane case or spacing forked the finding: %v", l.FindingIDs())
 	}
+}
+
+// TestAmbiguousLaneResolvesNothing: a reviewer record whose lane is LaneAmbiguous (one body
+// claiming both verdicts) speaks only for that reserved lane. A block that states a published
+// lane is reported and ignored, so the record can raise a finding but never resolve one of a
+// published lane.
+func TestAmbiguousLaneResolvesNothing(t *testing.T) {
+	for _, target := range []string{"correctness", "security"} {
+		r := blockingFinding("A3", "c", "resolved")
+		r.Lane = target
+		r.EvidenceHead = "h"
+		l := DeriveLedger([]ForgeRecord{
+			laneRec(1, RoleReviewer, target, "h", blockingFinding("A3", "c", "open")),
+			laneRec(2, RoleReviewer, LaneAmbiguous, "h", r),
+		})
+		if got := l.Findings[target+"/A3"].State; got != StateOpen {
+			t.Errorf("a both-verdict record stating lane %s resolved that lane's A3: %s", target, got)
+		}
+		if len(l.Blind) != 1 || !strings.Contains(l.Blind[0], "speaks only for its own lane") {
+			t.Errorf("lane %s: the stated block lane was not reported as itself: %v", target, l.Blind)
+		}
+		if got := l.ContentDefects(); len(got) != 1 || got[0] != target+"/A3" {
+			t.Errorf("lane %s: content defects = %v, want [%s/A3]", target, got, target)
+		}
+	}
+}
+
+// TestReadSideKeyRules: the fold re-applies the write gate's key rules to a record that
+// bypassed it. A block lane outside the vocabulary is not honoured (so no block writes into
+// the reserved ambiguous space), and an id carrying the key separator is not keyed (so a
+// lane-less "security/A3" cannot land on the security lane's A3).
+func TestReadSideKeyRules(t *testing.T) {
+	inject := blockingFinding("A3", "c", "resolved")
+	inject.Lane = LaneAmbiguous
+	inject.EvidenceHead = "h"
+	l := DeriveLedger([]ForgeRecord{
+		laneRec(1, RoleReviewer, LaneAmbiguous, "h", blockingFinding("A3", "c", "open")),
+		laneRec(2, RoleReviewer, "", "h", inject),
+	})
+	if got := l.Findings[LaneAmbiguous+"/A3"].State; got != StateOpen {
+		t.Errorf("a block naming the reserved lane resolved its finding: %s", got)
+	}
+	if !blindHas(l, "not a published lane") {
+		t.Errorf("unknown block lane not reported: %v", l.Blind)
+	}
+
+	slash := blockingFinding("security/A3", "c", "resolved")
+	slash.EvidenceHead = "h"
+	l = DeriveLedger([]ForgeRecord{
+		laneRec(1, RoleReviewer, "security", "h", blockingFinding("A3", "c", "open")),
+		laneRec(2, RoleReviewer, "", "h", slash),
+	})
+	if got := l.Findings["security/A3"].State; got != StateOpen {
+		t.Errorf("a lane-less id carrying the separator resolved the security lane's A3: %s", got)
+	}
+	if !blindHas(l, "would collide") {
+		t.Errorf("separator in an id not reported: %v", l.Blind)
+	}
+}
+
+// TestMixedLanesReported is the class guard over lane-less reviewer records: a payload that
+// sets the lane on some reviewer records and not others is reported Blind, whichever producer
+// built it. A thread laned throughout, or lane-less throughout, is not.
+func TestMixedLanesReported(t *testing.T) {
+	f := func() Finding { return blockingFinding("A3", "c", "open") }
+	mixed := DeriveLedger([]ForgeRecord{laneRec(1, RoleReviewer, "security", "h", f()), laneRec(2, RoleReviewer, "", "h", f())})
+	if !blindHas(mixed, "mix laned (seq 1) and lane-less (seq 2)") {
+		t.Fatalf("mixed laned/lane-less reviewer records not reported: %v", mixed.Blind)
+	}
+	for name, recs := range map[string][]ForgeRecord{
+		"laned":     {laneRec(1, RoleReviewer, "security", "h", f()), laneRec(2, RoleReviewer, "correctness", "h", f())},
+		"lane-less": {laneRec(1, RoleReviewer, "", "h", f()), laneRec(2, RoleReviewer, "", "h", f())},
+		"worker":    {laneRec(1, RoleReviewer, "security", "h", f()), laneRec(2, RoleWorker, "", "h", f())},
+	} {
+		if l := DeriveLedger(recs); len(l.Blind) != 0 {
+			t.Errorf("%s thread reported blind: %v", name, l.Blind)
+		}
+	}
+}
+
+// TestClassKeyFollowsLatest: a finding's class is the one its latest record names, so its
+// lane-scoped class key — and the round counter it mirrors — follows a class change.
+func TestClassKeyFollowsLatest(t *testing.T) {
+	for _, lane := range []string{"", "security"} {
+		l := DeriveLedger([]ForgeRecord{
+			laneRec(1, RoleReviewer, lane, "h", blockingFinding("A1", "c", "open")),
+			laneRec(2, RoleReviewer, lane, "h", blockingFinding("A1", "d", "open")),
+		})
+		lf := l.Findings[ledgerKey(lane, "A1")]
+		if want := ledgerKey(lane, "d"); lf == nil || lf.ClassKey != want {
+			t.Fatalf("lane %q: class key did not follow the class change: %+v, want %s", lane, lf, want)
+		}
+		if got := l.findingsInClass(ledgerKey(lane, "c")); len(got) != 0 {
+			t.Fatalf("lane %q: the finding still counts in its old class: %v", lane, got)
+		}
+	}
+}
+
+func blindHas(l *FindingLedger, sub string) bool {
+	for _, b := range l.Blind {
+		if strings.Contains(b, sub) {
+			return true
+		}
+	}
+	return false
 }
 
 // laneLessLiterals returns the position of every ForgeRecord composite literal

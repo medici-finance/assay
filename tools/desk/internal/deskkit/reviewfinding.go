@@ -129,9 +129,10 @@ type Finding struct {
 	// LaneSecurity, ...). It is normally taken from the review record the finding was read
 	// off (ForgeRecord.Lane). A worker has no lane of its own: a worker reply names the lane
 	// here whenever the ID is held by more than one lane, and a block lane wins over a worker
-	// record's. A reviewer record with an established lane speaks only for that lane: a block
-	// lane naming another is reported and keyed under the record's lane. Validate refuses any
-	// word that is not a published lane name (reviewlanes.go).
+	// record's. A reviewer record with an established lane — including LaneAmbiguous — speaks
+	// only for that lane: a block lane naming another is reported and keyed under the record's
+	// lane. Validate refuses any word that is not a published lane name (reviewlanes.go), and
+	// the fold ignores one on read.
 	Lane string `json:"lane,omitempty"`
 	// Class is the claim class the finding belongs to. The round cap is per class: fixing
 	// one sentence of a class never resets the class, and a sibling occurrence retains it.
@@ -166,6 +167,10 @@ type Finding struct {
 }
 
 func (f Finding) blocking() bool { return f.Severity == SeverityBlocking }
+
+// StatedLane is the lane the finding's block states, case-folded and trimmed the way the
+// ledger compares lanes; empty when the block states none.
+func (f Finding) StatedLane() string { return normLane(f.Lane) }
 
 // hasConcreteBasis reports whether a blocking finding carries a concrete reproduction or an
 // explicit evidence-based explanation, as the interface contract requires.
@@ -354,7 +359,9 @@ type ForgeRecord struct {
 	// single-lane thread. A worker reply may leave it empty; its findings are then matched to
 	// the one lane that holds the ID, or reported Blind when more than one does. A producer
 	// sets it on every record of a thread or on none: a payload that mixes lane-less and
-	// laned reviewer records for one ID splits that finding in two.
+	// laned reviewer records for one ID splits that finding in two, so DeriveLedger reports
+	// such a payload Blind. A reviewer record that cannot be attributed to one published
+	// lane carries LaneAmbiguous, never an empty lane, so that it never takes its block's lane.
 	Lane string
 	// Block — the typed finding block, or nil for a legacy record.
 	Block *FindingBlockV1
@@ -364,6 +371,16 @@ type ForgeRecord struct {
 // lanes (reviewlanes.go). Every lane keys its own identity space, so an open vocabulary
 // would let a typo fork a finding; Validate refuses any other word.
 var findingLanes = []Lane{LaneCorrectness, LaneSecurity, LaneFactCheck, LaneFailFirst}
+
+// LaneAmbiguous is the reserved RECORD lane for a reviewer record whose lane cannot be
+// attributed to exactly one published lane — a single review body claiming both the
+// correctness and the security verdict. It is deliberately outside findingLanes: Validate
+// refuses it in a block and the fold never honours it as a block lane, so no block can name
+// it. A record carrying it takes the reviewer-record branch of the fold, which ignores the
+// block's own lane, so its findings key into an identity space of their own: such a record
+// can still raise an open finding, but it can never resolve a finding of any published lane.
+// The parentheses keep it from ever colliding with a published lane name.
+const LaneAmbiguous = "(ambiguous)"
 
 func knownFindingLane(lane string) bool {
 	for _, l := range findingLanes {
@@ -384,9 +401,12 @@ func findingLaneNames() []string {
 
 // laneSep joins a lane to an ID or class in a ledger key. Validate refuses it in a finding's
 // id and class (and a lane is one of the published lane names, none of which carries it), so
-// every key written through the write gate is unambiguous. A record that bypassed the gate
-// can still collide only when a payload mixes lane-less and laned records for one thread,
-// which a producer avoids by setting the lane on every record or on none.
+// every key written through the write gate is unambiguous. The fold re-applies the same
+// rules on READ for a record that reached the forge without the gate: a finding whose id or
+// class carries the separator, or whose block names a word outside the vocabulary, is
+// reported Blind rather than keyed (see applyFinding), and a thread that mixes lane-less and
+// laned reviewer records is reported Blind too (see DeriveLedger). The deskpost
+// content-defect gate goes further and fails closed on any of these.
 const laneSep = "/"
 
 // ledgerKey is a finding's identity in the ledger: (lane, id). An empty lane keys by the
@@ -599,6 +619,25 @@ func DeriveLedger(records []ForgeRecord) *FindingLedger {
 	copy(ordered, records)
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Seq < ordered[j].Seq })
 
+	// A thread whose reviewer records are partly laned and partly lane-less splits a finding
+	// two lanes' ids could name, and a lane-less reviewer record takes its block's lane — so
+	// the mix is reported as itself rather than silently keyed both ways.
+	var laned, laneless []string
+	for _, r := range ordered {
+		if r.Role != RoleReviewer || r.Block == nil || strings.TrimSpace(r.Head) == "" {
+			continue
+		}
+		if normLane(r.Lane) == "" {
+			laneless = append(laneless, strconv.Itoa(r.Seq))
+		} else {
+			laned = append(laned, strconv.Itoa(r.Seq))
+		}
+	}
+	if len(laned) > 0 && len(laneless) > 0 {
+		l.Blind = append(l.Blind, fmt.Sprintf("reviewer records mix laned (seq %s) and lane-less (seq %s) — a lane-less reviewer record takes its block's lane, so its findings cannot be attributed safely; set the lane on every reviewer record of a thread or on none",
+			strings.Join(laned, ","), strings.Join(laneless, ",")))
+	}
+
 	for _, r := range ordered {
 		// A record whose authenticated role or head could not be established is
 		// could-not-check: it never clears a finding and never counts a round.
@@ -641,7 +680,23 @@ func (l *FindingLedger) applyFinding(classes map[string]*classState, arbFiled ma
 		l.Blind = append(l.Blind, fmt.Sprintf("record seq %d carries a finding with no id/class — cannot track it", r.Seq))
 		return
 	}
+	// The write gate's key rules, re-applied on read for a record that reached the forge
+	// without the gate: an id or class carrying the key separator would collide with another
+	// lane's key, so it is reported and not keyed at all.
+	if strings.Contains(f.ID, laneSep) || strings.Contains(f.Class, laneSep) {
+		l.Blind = append(l.Blind, fmt.Sprintf("record seq %d: finding %q has an id or class containing %q — it would collide with another lane's ledger key; ignored",
+			r.Seq, f.ID, laneSep))
+		return
+	}
 	lane, recLane, blockLane := "", normLane(r.Lane), normLane(f.Lane)
+	if blockLane != "" && !knownFindingLane(blockLane) {
+		// A block lane outside the closed vocabulary — a typo, or the reserved LaneAmbiguous —
+		// is never honoured: it would fork the finding into an identity space of its own, or
+		// write into the space reserved for unattributable reviewer records.
+		l.Blind = append(l.Blind, fmt.Sprintf("record seq %d: finding %s states lane %q, which is not a published lane — the block lane is ignored",
+			r.Seq, f.ID, f.Lane))
+		blockLane = ""
+	}
 	switch {
 	case r.Role == RoleReviewer && recLane != "":
 		// A reviewer record speaks only for its own lane. A block lane that names a
@@ -656,7 +711,9 @@ func (l *FindingLedger) applyFinding(classes map[string]*classState, arbFiled ma
 		}
 	default:
 		// A worker has no lane of its own, so the lane its block states wins over whatever
-		// the record carries; a reviewer record with no established lane takes the block's.
+		// the record carries. A reviewer record with no established lane at all takes the
+		// block's — the single-lane, pre-lane shape; a reviewer whose lane is ambiguous
+		// carries LaneAmbiguous and so never reaches this branch.
 		lane = firstNonEmpty(blockLane, recLane)
 	}
 	if lane == "" && r.Role == RoleWorker {

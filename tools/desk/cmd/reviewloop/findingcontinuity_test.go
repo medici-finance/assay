@@ -428,3 +428,29 @@ func TestCompactRecordRekeys(t *testing.T) {
 		t.Fatalf("plan rendering folds the lane into the id or class:\n%s", plan)
 	}
 }
+
+// TestArbiterLineBare — the ARBITER PACKETS lines print each held finding by its bare id,
+// with the lane in its own field, never the lane-scoped ledger key.
+func TestArbiterLineBare(t *testing.T) {
+	laned := func(r deskkit.ForgeRecord) deskkit.ForgeRecord { r.Lane = "security"; return r }
+	disp := blockingCode("A1", "c", "h", "disputed", "ev")
+	disp.Lane = "security"
+	recs := []deskkit.ForgeRecord{laned(reviewerRec(1, "h", "request-changes", blk(blockingCode("A1", "c", "h", "open", "ev"))))}
+	seq := 1
+	for i := 0; i <= deskkit.RoundCap; i++ {
+		seq++
+		recs = append(recs, workerRec(seq, "h", blk(disp)))
+		seq++
+		recs = append(recs, laned(reviewerRec(seq, "h", "request-changes", blk(blockingCode("A1", "c", "h", "open", "ev")))))
+	}
+	l := DeriveContinuity(recs)
+	if len(l.Arbiter) != 1 {
+		t.Fatalf("arbiter packets = %d, want 1", len(l.Arbiter))
+	}
+	var b strings.Builder
+	RenderFindings(&b, &FindingRecordsReport{Repo: "o/r", PR: 1, CurrentHead: "h"}, l)
+	out := b.String()
+	if !strings.Contains(out, "- lane=security class=c rounds=3 findings=A1\n") || strings.Contains(out, "security/") {
+		t.Fatalf("arbiter line does not print the bare id with its lane in its own field:\n%s", out)
+	}
+}
