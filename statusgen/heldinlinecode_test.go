@@ -271,3 +271,87 @@ func TestHeldScanStrikeNeverWidens(t *testing.T) {
 			pass + "~~row 2 HELD — no runner~~ `rerun` green\n", false},
 	})
 }
+
+// TestHeldScanLinkConstruct: CommonMark reads an inline link's destination
+// and title, and a full reference's label, when it reaches "](" or "][", so a
+// backtick inside them is literal and cannot pair with a later one. The scan
+// skips such a tail whole only when it closes on the line with nothing in it
+// that could change where it ends or hold a backtick; any other "](" or "]["
+// masks nothing from there and marks the paragraph open (a title can wrap).
+func TestHeldScanLinkConstruct(t *testing.T) {
+	const pass = "**VERIFY: PASS**\n\n"
+	runHeldScanCases(t, []heldScanCase{
+		{"backtick in a link destination",
+			pass + "See [log](/runs/a`b) row 3 HELD `z`\n", true},
+		{"backtick in a link title",
+			pass + "See [log](/runs \"t`\") row 3 HELD `z`\n", true},
+		{"backtick in an image destination",
+			pass + "See ![shot](/i/a`b.png) row 3 HELD `z`\n", true},
+		{"backtick in a pointy destination",
+			pass + "See [log](</runs/a`b>) row 3 HELD `z`\n", true},
+		{"backtick in a parenthesised destination",
+			pass + "See [log](/runs/(a`b)) row 3 HELD `z`\n", true},
+		{"backtick in a parenthesised title",
+			pass + "See [log](/runs (t`)) row 3 HELD `z`\n", true},
+		{"title wraps onto the next line",
+			pass + "See [log](/runs \"first\nsecond`b\") row 3 HELD `z`\n", true},
+		{"link in a table cell",
+			heldEv("see [log](/runs/a`b) row 3 HELD `z`"), true},
+		{"backtick in a full reference label",
+			pass + "See [log][r`x] row 3 HELD `z`\n\n[r`x]: https://x.example/runs\n", true},
+		{"plain link before a span still masks",
+			heldEv("ok — [run](https://x.example/runs/7) printed `no record is held`"), false},
+		{"plain full reference before a span still masks",
+			pass + "ok — [run][r] printed `no record is held`\n\n[r]: https://x.example/runs/7\n", false},
+		{"shortcut reference: the span wins",
+			pass + "ok — [checker `no record is held`] printed\n", false},
+	})
+}
+
+// TestHeldScanStopLeavesTicks: when masking stops early at a "<", a backtick
+// or a link tail after the stop is never examined, so it may open a span (or a
+// title) that a later line closes. The paragraph is marked open.
+func TestHeldScanStopLeavesTicks(t *testing.T) {
+	const pass = "**VERIFY: PASS**\n\n"
+	runHeldScanCases(t, []heldScanCase{
+		{"backtick after a closed comment",
+			pass + "Ran it <!-- note --> `open\nclose` row 3 HELD `z`\n", true},
+		{"wrapping title after a closed comment",
+			pass + "Ran it <!-- note --> [log](/runs \"t\nx`\") row 3 HELD `z`\n", true},
+	})
+}
+
+// TestHeldScanPseudoFence: a line the scan toggles a fence on, but that
+// CommonMark reads as paragraph text (a backtick fence whose info string
+// holds a backtick), never reaches the masker, so its backticks are invisible
+// to the paragraph state. Such a line marks the paragraph open.
+func TestHeldScanPseudoFence(t *testing.T) {
+	const pass = "**VERIFY: PASS**\n\n"
+	runHeldScanCases(t, []heldScanCase{
+		{"backtick in a backtick fence's info string",
+			pass + "```a`\n```b`\nclose` row 3 HELD `z`\n", true},
+		{"valid backtick fence leaves masking on",
+			pass + "```sh\nrow HELD\n```\nchecker printed `no record is held`\n", false},
+		{"backtick in a tilde fence's info string is valid",
+			pass + "~~~a`\nrow HELD\n~~~\nchecker printed `no record is held`\n", false},
+	})
+}
+
+// TestHeldScanBlankIsASCII: CommonMark treats a line as blank only when it
+// holds spaces and tabs alone. A line of other whitespace continues the
+// paragraph, and with it a span left open above.
+func TestHeldScanBlankIsASCII(t *testing.T) {
+	const pass = "**VERIFY: PASS**\n\n"
+	runHeldScanCases(t, []heldScanCase{
+		{"no-break-space line",
+			pass + "printed `partial\n \nclose` row 3 HELD — no runner `z`\n", true},
+		{"ideographic-space line",
+			pass + "printed `partial\n　\nclose` row 3 HELD — no runner `z`\n", true},
+		{"form-feed line",
+			pass + "printed `partial\n\f\nclose` row 3 HELD — no runner `z`\n", true},
+		{"spaces-and-tab line is blank",
+			pass + "printed `partial\n \t \nchecker printed `no record is held` ok\n", false},
+		{"CRLF blank line is blank",
+			pass + "printed `partial\r\n\r\nchecker printed `no record is held` ok\r\n", false},
+	})
+}

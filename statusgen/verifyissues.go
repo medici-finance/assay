@@ -539,8 +539,23 @@ var heldBareTokenRe = regexp.MustCompile(`(?i)^[^\pL\pN]*(?:held|could-not-check
 //     CommonMark looks for it. Nothing from that run to the end of the line is
 //     masked, and the paragraph is marked open: every later line masks
 //     nothing, because a backtick on it might CLOSE a span rather than open
-//     one. Only a blank line ends the paragraph and clears the mark. Fences
-//     and blockquotes do not clear it (a stricter reading, never a looser one).
+//     one. Only a blank line ends the paragraph and clears the mark, and a
+//     line is blank only when it holds spaces and tabs alone, as CommonMark
+//     defines it (a no-break space or form feed continues the paragraph).
+//     Fences and blockquotes do not clear it (a stricter reading, never a
+//     looser one). A line the caller toggles a fence on that CommonMark does
+//     not read as a fence (fenceLine) is paragraph text the masker never
+//     sees, so it marks the paragraph open.
+//   - An inline link's destination and title, and a full reference's label,
+//     are read when CommonMark reaches "](" or "][", before a backtick inside
+//     them, so that backtick is literal. A tail that closes on the same line
+//     with no backtick, "<", backslash, quote or opening bracket inside is
+//     skipped whole: whether or not it forms a link, it ends at that closer
+//     and holds nothing that pairs. Any other "](" or "][" is uncertain:
+//     nothing is masked from it to the end of the line, and the paragraph is
+//     marked open (a title can run onto the next line).
+//   - When masking stops early, a backtick or "]" after the stop is never
+//     examined, so the paragraph is marked open whenever one remains.
 //   - An autolink or raw HTML outranks a code span that starts after it, so a
 //     backtick inside one is literal, and an HTML block is not read as inline
 //     text at all. The scan does not parse HTML: from a "<" that could open
@@ -563,6 +578,39 @@ type inlineCodeScan struct {
 // htmlEnd does not end at a blank line.
 func (s *inlineCodeScan) blank() { s.paraOpen = false }
 
+// isBlankLine reports whether line is blank as CommonMark defines it: empty,
+// or spaces and tabs alone (a trailing "\r" from a CRLF ending is ignored).
+// strings.TrimSpace is wider: it also strips a no-break space, an ideographic
+// space or a form feed, which CommonMark reads as paragraph text.
+func isBlankLine(line string) bool { return strings.Trim(line, " \t\r") == "" }
+
+// fenceLine records a line the caller treats as a fence toggle. One that
+// CommonMark does not read as a fence (fenceLineValid) is paragraph text whose
+// backticks the masker never sees, so the paragraph is marked open.
+func (s *inlineCodeScan) fenceLine(line string) {
+	if !fenceLineValid(line) {
+		s.paraOpen = true
+	}
+}
+
+// fenceLineValid reports whether line opens a fence as CommonMark reads it:
+// at most three spaces of indentation, a run of three or more backticks or
+// tildes, and, for a backtick fence, no backtick after the run.
+func fenceLineValid(line string) bool {
+	i := 0
+	for i < len(line) && line[i] == ' ' {
+		i++
+	}
+	if i > 3 || i >= len(line) || line[i] != '`' && line[i] != '~' {
+		return false
+	}
+	c, n := line[i], 0
+	for i+n < len(line) && line[i+n] == c {
+		n++
+	}
+	return n >= 3 && (c == '~' || strings.IndexByte(line[i+n:], '`') < 0)
+}
+
 // mask returns line with each certain inline code span overwritten byte for
 // byte by inlineCodeMask, and records what the line leaves uncertain.
 func (s *inlineCodeScan) mask(line string) string {
@@ -575,7 +623,7 @@ func (s *inlineCodeScan) mask(line string) string {
 		}
 		return line
 	}
-	if !strings.ContainsAny(line, "`<") {
+	if !strings.ContainsAny(line, "`<]") {
 		return line
 	}
 	if s.paraOpen {
@@ -595,7 +643,9 @@ func (s *inlineCodeScan) mask(line string) string {
 			}
 		}
 		if stop := maskCodeSpans(b, line, start, i); stop >= 0 {
-			if line[stop] == '`' {
+			// The stop itself is an unpaired run or an uncertain link tail,
+			// or a "<" with a backtick or "]" left after it unexamined.
+			if line[stop] != '<' || strings.ContainsAny(line[stop:], "`]") {
 				s.paraOpen = true
 			}
 			s.noteAngles(line, stop)
@@ -675,11 +725,34 @@ func angleMayOpen(line string, i int) bool {
 		strings.IndexByte("/!?.#$%&'*+=^_`{|}~-", c) >= 0
 }
 
+// linkTailEnd returns the offset of the closer of the link tail that opens at
+// line[open] — a "(" after "]" (a destination and title) or a "[" after "]"
+// (a full reference's label) — when that tail is certain: its closer is the
+// first ")" or "]" before hi, and nothing in between could hold a backtick or
+// move the closer (a backtick, "<", backslash, quote or opening bracket). It
+// returns -1 for any other tail.
+func linkTailEnd(line string, open, hi int) int {
+	closer := byte(')')
+	if line[open] == '[' {
+		closer = ']'
+	}
+	for j := open + 1; j < hi; j++ {
+		switch line[j] {
+		case closer:
+			return j
+		case '`', '<', '\\', '"', '\'', '(', '[':
+			return -1
+		}
+	}
+	return -1
+}
+
 // maskCodeSpans masks, in b, the inline code spans of line[lo:hi] — one table
 // cell, or the whole of a pipe-free line — under inlineCodeScan's rules. It
 // returns -1 when every span in the cell was certain, or the offset of the
-// first uncertainty (an unpaired backtick run, or a "<" that may open an
-// autolink or raw HTML); spans before that offset are masked, nothing after.
+// first uncertainty (an unpaired backtick run, a "<" that may open an
+// autolink or raw HTML, or a "](" or "][" whose tail linkTailEnd cannot
+// settle); spans before that offset are masked, nothing after.
 func maskCodeSpans(b []byte, line string, lo, hi int) int {
 	tickRun := func(at int) int {
 		n := 0
@@ -696,6 +769,17 @@ func maskCodeSpans(b []byte, line string, lo, hi int) int {
 		case '<':
 			if angleMayOpen(line, i) {
 				return i
+			}
+			i++
+			continue
+		case ']':
+			if i+1 < hi && (line[i+1] == '(' || line[i+1] == '[') {
+				end := linkTailEnd(line, i+1, hi)
+				if end < 0 {
+					return i
+				}
+				i = end + 1
+				continue
 			}
 			i++
 			continue
@@ -788,13 +872,16 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
 			inFence = !inFence
+			codeScan.fenceLine(line)
 			continue
 		}
 		if inFence {
 			continue
 		}
 		if trimmed == "" {
-			codeScan.blank()
+			if isBlankLine(line) {
+				codeScan.blank()
+			}
 			continue
 		}
 		// Inline code is masked (same length, so offsets agree) before the
