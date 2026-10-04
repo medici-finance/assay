@@ -16,6 +16,8 @@ against, never the launcher (see [Parity with the shell oracle](#parity-with-the
 `cellctl` is **optional**, in the same sense as the desk-tools binaries: it automates a pipeline you
 can also stand up by hand. Nothing else in Assay depends on it.
 
+For local messages between desk roles, see [Host desk communications](cellctl-comms.md).
+
 For an existing container deployment, the **container** kind provides registration and lifecycle
 delegation instead of host worktrees and credential symlinks. See [Container cells](#container-cells).
 For a harness that must run on the host but must NOT inherit the launching shell's credentials, the

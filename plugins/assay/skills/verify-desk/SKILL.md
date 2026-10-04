@@ -408,7 +408,10 @@ earlier HELD/could-not-check text in `~~…~~` and name the run that settled it 
 runner online~~ superseded by the 2026-07-10 run below`). **Or formally defer it:** route it to a named
 follow-up with a reference (`deferred to <stream>/<NN>` or `#N`). A bare "deferred", or a row left
 HELD, is neither. The read is lexical: the words HELD and could-not-check anywhere in unstruck,
-unquoted Evidence prose count, so do not use them for status wording such as a run heading. Land
+unquoted Evidence prose count, so do not use them for status wording such as a run heading. Fenced
+code, blockquotes and inline code spans are quotation and do not count, except a span holding only
+the word itself (`HELD`), which reads as your own status token; a disposition of yours inside a
+longer span is not read, so keep it out of code formatting. Land
 `implemented → verified` only once every such line is cleared. The tooling refuses the same
 contradiction downstream: the model autoflip, the verify-gate card, and `statusgen --close-verify`
 from `verified` as well as from `implemented`. On the `verified` close the row's own status is the pass
@@ -840,7 +843,7 @@ read from the gateway and roster instruments, not from a message. The lane is th
 ROUTINE hand-offs; the tracker is for DURABLE state — `deskfile new --to <role> …` files the
 issue the receiving desk's sweep leads with — and a spent filing budget never pushes a routine
 relay onto the tracker, nor does a durable escalation ride the lane alone. With comms enabled, read your own lane
-every sweep: `deskcomms poll`, then `deskcomms ack <id>` once acted on (ack moves, never deletes;
+every sweep: `deskcomms poll --json` (includes message payloads), then `deskcomms ack <id>` once acted on (ack moves, never deletes;
 an unacked item is still owed). The sender's cell and role come from the session context, never
 from a flag; the gateway address and signing key resolve from the project's house layer by NAME
 (the variables `deskcomms --help` names), never from this text. ENFORCEMENT IS GATEWAY-SIDE: the

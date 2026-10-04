@@ -58,14 +58,14 @@ func grandfatheredIDs(root string) map[string]bool {
 	if hasNoGitDir(root) {
 		return out // not a git checkout — no legacy to freeze against
 	}
-	mb, err := gitMergeBaseOut(root, "HEAD", remoteMainRef)
-	if err != nil || strings.TrimSpace(string(mb)) == "" {
+	mb := mergeBaseExact(root, remoteMainRef)
+	if mb == "" {
 		// T9: fail-closed — origin/main unresolvable, treat all IDs as new.
 		// The old fallback to base=HEAD grandfathered the brand-new numeric ID
 		// the check exists to reject.
 		return out
 	}
-	base := strings.TrimSpace(string(mb))
+	base := mb
 	for _, dir := range []string{"docs/streams/intake", "docs/streams/findings"} {
 		// List all .md files at the merge-base.
 		lsCmd := exec.Command("git", "-C", root, "ls-tree", "--name-only", "-r", base, dir+"/")
@@ -118,8 +118,7 @@ func grandfatheredBaseFallbackNotices(root string) []string {
 	case hasNoGitDir(root):
 		cause = "this tree has no .git directory at all (e.g. a `git archive` export), so no register-ID grandfathering could be determined and the numeric-regression rule was skipped entirely rather than mis-fire against every pre-existing legacy-numeric entry"
 	default:
-		mb, err := gitMergeBaseOut(root, "HEAD", remoteMainRef)
-		if err == nil && strings.TrimSpace(string(mb)) != "" {
+		if mergeBaseExact(root, remoteMainRef) != "" {
 			return nil // origin/main resolved — no fallback needed
 		}
 		cause = "origin/main could not be resolved, so the grandfathered set is empty and all register entries are treated as new — legitimately-landed legacy numeric entries will fire numeric-regression PROBLEMs whose messages do not name this as the cause"

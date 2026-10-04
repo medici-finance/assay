@@ -5,14 +5,10 @@ package deskkit
 // only the desk session itself can know, written onto the SAME roster beacon deskroster
 // and deskack already co-own (ackbeacon.go's AppendAck is this write's sibling).
 //
-// WHY A SEPARATE MERGE FUNCTION, NOT A NEW FIELD ON deskroster's TYPED Beacon.
-// deskroster's cmdSet/loadBeacon/saveBeacon round-trip through a typed Go struct; adding a
-// field there is one more place that has to remember to preserve it on every future
-// rewrite. This write instead follows AppendAck's shape exactly: load the beacon as raw
-// JSON keys, touch only `resource` (and `session`, on a first write), and leave every
-// other key — acks, open_work, role, updated — byte-for-byte as found. Two independent
-// writers (deskack, this) both proven not to clobber deskroster's fields is a stronger
-// property than one typed struct trusted to remember five fields forever.
+// Like AppendAck and deskroster, this writer uses MutateRosterBeacon to load the current
+// raw JSON object under a shared lock, update only owned fields, and atomically replace
+// the beacon. Its owned field is `resource` (plus `session`, on a first write); receipts,
+// work entries, and unknown future fields survive concurrent updates.
 //
 // THREE-STATE, NEVER A FABRICATED ZERO (docs/three-state-instrument-rule.md). Each field
 // on ResourceVitals is a *VitalField: nil (the Go zero value — a flag simply not passed)
@@ -23,8 +19,6 @@ package deskkit
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -106,46 +100,16 @@ func ValidSessionSegment(name string) bool {
 // exactly: load the beacon as raw keys, touch only `resource` and `session`, and fail
 // closed on a parse error rather than silently blanking another writer's fields.
 func MergeResourceVitals(session string, v ResourceVitals) (path string, err error) {
-	path, err = AckBeaconPath(session)
-	if err != nil {
-		return "", err
-	}
-
-	obj := map[string]json.RawMessage{}
-	if data, rerr := os.ReadFile(path); rerr == nil {
-		if len(data) > 0 {
-			if uerr := json.Unmarshal(data, &obj); uerr != nil {
-				return path, Unverifiable("cannot parse the roster beacon at "+path+
-					" — refusing to overwrite it and lose another writer's fields", uerr)
-			}
+	return MutateRosterBeacon(session, func(obj map[string]json.RawMessage) (BeaconAction, error) {
+		resRaw, err := json.Marshal(v)
+		if err != nil {
+			return BeaconKeep, Unverifiable("cannot encode the resource vitals block", err)
 		}
-	} else if !os.IsNotExist(rerr) {
-		return path, Unverifiable("cannot read the roster beacon at "+path, rerr)
-	}
-
-	resRaw, merr := json.Marshal(v)
-	if merr != nil {
-		return path, Unverifiable("cannot encode the resource vitals block", merr)
-	}
-	obj["resource"] = resRaw
-	// Keep the session field present so a beacon this write creates is well-formed for
-	// deskroster's reader (which keys the file by its session name anyway) — the same
-	// reasoning AppendAck's own session-stamp uses.
-	if _, ok := obj["session"]; !ok {
-		sraw, _ := json.Marshal(session)
-		obj["session"] = sraw
-	}
-
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return path, Unverifiable("cannot create the roster directory "+dir, err)
-	}
-	out, merr := json.MarshalIndent(obj, "", "  ")
-	if merr != nil {
-		return path, Unverifiable("cannot encode the roster beacon", merr)
-	}
-	if werr := os.WriteFile(path, append(out, '\n'), 0o600); werr != nil {
-		return path, Unverifiable("cannot write the roster beacon at "+path, werr)
-	}
-	return path, nil
+		obj["resource"] = resRaw
+		if _, ok := obj["session"]; !ok {
+			sraw, _ := json.Marshal(session)
+			obj["session"] = sraw
+		}
+		return BeaconWrite, nil
+	})
 }

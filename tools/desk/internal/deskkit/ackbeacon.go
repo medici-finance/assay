@@ -17,12 +17,11 @@ package deskkit
 // updated/open_work; deskack: acks). If either rewrote the object from its own struct it
 // would drop the other's fields on the floor — so the write here merges into the raw
 // JSON object (a map of RawMessage) and touches only `acks` and `session`, leaving every
-// other key byte-for-byte as it found it. deskroster carries the acks field as an opaque
-// RawMessage for the same reason: to round-trip it through ITS writes untouched.
+// other key's value intact. All beacon writers use MutateRosterBeacon so loading the
+// object, changing owned fields, and publishing the replacement form one transaction.
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -41,6 +40,9 @@ type AckRecord struct {
 // AckBeaconPath is the beacon file a session's receipts append to. It is the SAME file
 // deskroster stores a session's open-work in, under <StateDir>/roster/<session>.json.
 func AckBeaconPath(session string) (string, error) {
+	if !validRosterSession(session) {
+		return "", Refused("roster session must be a safe filename segment")
+	}
 	base, err := StateDir()
 	if err != nil {
 		return "", err
@@ -74,20 +76,9 @@ func LastAckWithin(session string, window time.Duration, now time.Time) (*AckRec
 	if err != nil {
 		return nil, err
 	}
-	data, rerr := os.ReadFile(path)
-	if rerr != nil {
-		if os.IsNotExist(rerr) {
-			return nil, nil // no beacon yet is a definite "no receipt", not a read failure
-		}
-		return nil, Unverifiable("cannot read the roster beacon at "+path, rerr)
-	}
-	if len(data) == 0 {
-		return nil, nil
-	}
-	obj := map[string]json.RawMessage{}
-	if uerr := json.Unmarshal(data, &obj); uerr != nil {
-		return nil, Unverifiable("cannot parse the roster beacon at "+path+
-			" — refusing to treat a corrupt beacon as an absence of receipts", uerr)
+	obj, err := ReadRosterBeacon(session)
+	if err != nil {
+		return nil, err
 	}
 	raw, ok := obj["acks"]
 	if !ok || len(raw) == 0 {
@@ -120,55 +111,23 @@ func AppendAck(session string, rec AckRecord) (path string, err error) {
 	if rec.TS == "" {
 		rec.TS = time.Now().UTC().Format(time.RFC3339)
 	}
-	path, err = AckBeaconPath(session)
-	if err != nil {
-		return "", err
-	}
-	// Load the existing object as raw keys so no field this binary does not know about is
-	// dropped on write. A missing file is an empty object; a malformed one is an error
-	// (fail closed — never silently blank another writer's beacon).
-	obj := map[string]json.RawMessage{}
-	if data, rerr := os.ReadFile(path); rerr == nil {
-		if len(data) > 0 {
-			if uerr := json.Unmarshal(data, &obj); uerr != nil {
-				return path, Unverifiable("cannot parse the roster beacon at "+path+
-					" — refusing to overwrite it and lose another writer's fields", uerr)
+	return MutateRosterBeacon(session, func(obj map[string]json.RawMessage) (BeaconAction, error) {
+		var acks []AckRecord
+		if raw, ok := obj["acks"]; ok {
+			if err := json.Unmarshal(raw, &acks); err != nil {
+				return BeaconKeep, Unverifiable("cannot parse the acks array in the roster beacon", err)
 			}
 		}
-	} else if !os.IsNotExist(rerr) {
-		return path, Unverifiable("cannot read the roster beacon at "+path, rerr)
-	}
-
-	// Decode the existing acks array (absent → empty), append, re-encode.
-	var acks []AckRecord
-	if raw, ok := obj["acks"]; ok && len(raw) > 0 {
-		if uerr := json.Unmarshal(raw, &acks); uerr != nil {
-			return path, Unverifiable("cannot parse the acks array in the roster beacon at "+path, uerr)
+		acks = append(acks, rec)
+		acksRaw, err := json.Marshal(acks)
+		if err != nil {
+			return BeaconKeep, Unverifiable("cannot encode the acks array", err)
 		}
-	}
-	acks = append(acks, rec)
-	acksRaw, merr := json.Marshal(acks)
-	if merr != nil {
-		return path, Unverifiable("cannot encode the acks array", merr)
-	}
-	obj["acks"] = acksRaw
-	// Keep the session field present so a beacon deskack creates is well-formed for
-	// deskroster's reader (which keys the file by its session name anyway).
-	if _, ok := obj["session"]; !ok {
-		sraw, _ := json.Marshal(session)
-		obj["session"] = sraw
-	}
-
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return path, Unverifiable("cannot create the roster directory "+dir, err)
-	}
-	out, merr := json.MarshalIndent(obj, "", "  ")
-	if merr != nil {
-		return path, Unverifiable("cannot encode the roster beacon", merr)
-	}
-	if werr := os.WriteFile(path, append(out, '\n'), 0o600); werr != nil {
-		return path, Unverifiable("cannot write the roster beacon at "+path, werr)
-	}
-	return path, nil
+		obj["acks"] = acksRaw
+		if _, ok := obj["session"]; !ok {
+			sraw, _ := json.Marshal(session)
+			obj["session"] = sraw
+		}
+		return BeaconWrite, nil
+	})
 }
