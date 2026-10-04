@@ -139,6 +139,50 @@ RISK-VALUE: DERIVED — repairObligationLeaseTTL = 45 * time.Minute @ tools/desk
 
 VERIFY: PASS — every Verify row's named PASS line was observed with exit 0 by host execution at merged main 9585b4b6cc2e. The statusgen hermetic witness is could-not-run on this darwin host (no `unshare --net`), and that replay is owed on a Linux runner if the gate requires it. The observations above are routed to the desk and do not fail any row.
 
+### Non-implementer verifier re-run: 2026-10-02T22:04:20Z (UTC), assay-verifier-app[bot] (claude-opus-5-5[1m]) (on-behalf-of human:ian), merged main e1d99484ffd91b649ea45e10a1cecf4ba2a4924b
+
+Runner is not the implementer (implementing PR #1400). Own detached worktree off origin/main; offline envelope (KUBECONFIG=/dev/null); no production services touched; nothing written to the tree (working tree clean after the pass). The pass was dispatched against cf31c32418ba49f93c679913813768542db1c072; the worktree head is two commits later (e1d99484ffd9), and the tools, plugins and desk-supervision stream trees are byte-identical between the two, so every result below holds for both SHAs.
+
+Each row was run by hand exactly as authored, on a darwin/arm64 host with go1.27.1. Disclosures: the commands ran under a throwaway HOME (the desk tests otherwise write to the live audit log) with the Go build and module caches pointed at the real caches, and with the system temp directory redirected into the verifier's own scratch directory.
+
+| # | Command | Expect | Observed (exit + key output line) | Date / runner |
+|---|---|---|---|---|
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/deskdispatch/ -run ^TestRepairAdmissionDirectDispatch$ -v -count=1` | exit 0; named PASS for TestRepairAdmissionDirectDispatch | exit 0; `--- PASS: TestRepairAdmissionDirectDispatch (0.00s)`; log line `admission OK (policy repair-admission-v1): rework admitted — rework admitted: reserved work fills its own reservation (2/3 slots occupied)` | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/deskdispatch/ -run ^TestRepairAdmissionConcurrentAndCrash$ -v -count=1` | exit 0; named PASS for TestRepairAdmissionConcurrentAndCrash | exit 0; `--- PASS: TestRepairAdmissionConcurrentAndCrash (0.00s)`; log lines `fresh admitted: 1 free slot(s) above the reserved floor (0)` and twice `fresh admitted: 2 free slot(s) above the reserved floor (0)` | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/deskdispatch/ -run ^TestRepairAdmissionUnknownAndExternalWait$ -v -count=1` | exit 0; named PASS for TestRepairAdmissionUnknownAndExternalWait | exit 0; `--- PASS: TestRepairAdmissionUnknownAndExternalWait (0.00s)`; `ok github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 0.285s` | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/deskdispatch/ -run ^TestRepairAdmissionFullCycleRestart$ -v -count=1` | exit 0; named PASS for TestRepairAdmissionFullCycleRestart | exit 0; `--- PASS: TestRepairAdmissionFullCycleRestart (0.00s)`; `ok github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 0.157s` | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+By hand: 4 of 4 rows observed exit 0 with their named PASS line.
+
+**Execution witness.** `statusgen verifyrun --brief <this brief> --dry-run` (statusgen v1.0.31), run from the worktree root: exit 2, 0 of 4 rows witnessed. All four rows report the same line: `could-not-run (exit=-, sha256:e3b0c44298fc) — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses unshare --net, a Linux facility, and this host is darwin`. The dry run wrote nothing to the brief. The container witness path was not attempted, per the dispatch instruction. This is the instrument reporting could-not-check; it is neither a row failure nor a pass.
+
+**What changed since the 2026-09-27 record (outcome blocked at 9585b4b6cc2e).**
+- Witness rows 1-4: unchanged, still could-not-run for the same reason (host is darwin, no network-off sandbox). The tool moved from v1.0.27 to v1.0.31 and the result is identical. The cited blocker #1491 is still OPEN (labels bug, needs-decision; last updated 2026-10-01). Note that #1491 describes the container witness path's defects; the direct cause observed here is the absence of a Linux network-off sandbox on this host, which only a Linux runner or a working container witness removes.
+- Hand rows 1-4: passed on 2026-09-27 and pass again now.
+- Declared inputs that changed on main since the record: the deskdispatch dispatch.go wiring, the deskkit widthstore, the worker-desk skill body and the desk tools README (commits include #1631/#1650, #1803, #1822, #1918, #1919, #2000, #2009, #2010, #2023, #2036). None of those commits adds or removes an admission or reservation line in dispatch.go or widthstore. The admission sources themselves (deskkit repairadmission.go, deskdispatch repairadmission.go and its test file, fanoutloop main.go and repair.go) are byte-identical to the hashes in the 2026-09-27 record, and the four rows still pass against the changed wiring.
+- Scope gap (Task 1, planner preview): NOT closed. fanoutloop main.go and repair.go are unchanged since the record, and a search of the fanoutloop command for any reference to the admission evaluator finds none (the one match for the word is unrelated prose in its dispatch prompt text). The planner still does not preview the admission decision or name the waiting repair, although the brief's consumers list marks fanoutloop fixed-here. No issue tracking this gap was found by search. No Verify row tests it, so it fails no row; it remains a routed finding.
+
+**Findings carried forward, unchanged from the 2026-09-27 notes (sources unchanged):** row 2 exercises only the crash before the item claim; row 4 drives obligation-record transitions against an injected backend rather than a fake-forge fixture that kills a dispatcher process at each boundary (Task 4 wording); enforcement needs both the env opt-in and a rework reservation above 0; the occupancy count excludes any claim id ending in the admission suffix, not only the lease key.
+
+**Risk-bearing values: enumeration over the implementing diff (deskkit and deskdispatch repairadmission sources, the dispatch.go wiring, docs).** Risk metadata is present and every field is "no"; gate is model; nothing is irreversible. Enumeration re-done at this head; every literal is at the same line as on 2026-09-27.
+- EnvRepairAdmission = "ASSAY_REPAIR_ADMISSION" @ tools/desk/internal/deskkit/repairadmission.go:39
+- RepairAdmissionPolicyVersion = "repair-admission-v1" @ tools/desk/internal/deskkit/repairadmission.go:46
+- repairAdmissionOn = "on" @ tools/desk/internal/deskkit/repairadmission.go:51
+- pool-full hold `free <= 0` @ tools/desk/internal/deskkit/repairadmission.go:134
+- fresh-hold boundary `free <= floor` @ tools/desk/internal/deskkit/repairadmission.go:154
+- admissionLoop = "worker-desk" @ tools/desk/cmd/deskdispatch/repairadmission.go:60
+- repairObligationLeaseTTL = 45 * time.Minute @ tools/desk/cmd/deskdispatch/repairadmission.go:66
+- repairSidecarRel = docs/streams/repair-obligations.jsonl @ tools/desk/cmd/deskdispatch/repairadmission.go:71
+- lease-key suffix "--admission" @ tools/desk/cmd/deskdispatch/repairadmission.go:223 and :277
+
+Ranking: all reversible (the gate ships off; rollback is unsetting one env var or pinning the previous binary, no state to unwind). Highest ranked, because they decide admission: the two hold boundaries and the lease TTL.
+
+RISK-VALUE: DERIVED — fresh-hold boundary `free <= floor` @ tools/desk/internal/deskkit/repairadmission.go:154 — admitting fresh work at free == floor would leave floor-1 free slots, fewer than the reserved floor; holding at free <= floor and admitting only when free > floor leaves at least floor slots free after admission, which is exactly the no-steal condition.
+RISK-VALUE: DERIVED — pool-full hold `free <= 0` @ tools/desk/internal/deskkit/repairadmission.go:134 — with no free slot any admission pushes occupancy past the width ceiling.
+RISK-VALUE: DERIVED — repairObligationLeaseTTL = 45 * time.Minute @ tools/desk/cmd/deskdispatch/repairadmission.go:66 — must equal the rework source's repairLeaseTTL = 45 * time.Minute @ tools/desk/cmd/fanoutloop/repair.go:46 so the gate and the planner agree on which obligations are assignable; equal today, but a duplicated literal rather than a shared constant, so the two can drift.
+
+VERIFY: BLOCKED — all four Verify rows pass by hand (4/4, exit 0, named PASS lines observed), but the execution witness could not run any of the four check:ci rows on this darwin host (0/4, no network-off sandbox); the verdict is unchanged from 2026-09-27 and #1491 is still open. Status stays implemented. Separately, the Task 1 planner-preview scope gap is still open and untracked.
+
 ## Review
 
 Gate: model. Review the negative paths, migration compatibility and limits of enforcement. Any newly discovered need to alter authority is separate human-gated scope, not an implicit part of this brief.

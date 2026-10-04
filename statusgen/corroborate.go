@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -246,9 +247,10 @@ var acceptedApprovalPhrases = []string{
 //
 // This is a HEURISTIC BLOCKLIST, not a decision procedure. It catches common
 // negated and conditional phrasings but will miss novel or indirect negations.
-// hasApprovalPhrase has one caller, --corroborate, which is now a LIVE gate — wired
-// into the pull_request lint job of .github/workflows/statusgen.yml, where an
-// unmatched refusal that reads as approval would let a self-issued human stamp pass.
+// hasApprovalPhrase has one caller, --corroborate, a gate wherever a pull_request
+// job runs `statusgen --corroborate --pr <pr>` (this repo's own workflows do not
+// run it yet); there an unmatched refusal that reads as approval would let a
+// self-issued human stamp pass.
 // The pattern should keep being tightened toward a broader negation grammar as new
 // refusal phrasings are observed.
 //
@@ -827,23 +829,34 @@ var briefRowsAtRef = func(root, ref, path string) (map[string]string, map[string
 // prMergeBaseSHA resolves the PR's merge-base commit against the local HEAD (the
 // PR head in CI), so `git show <merge-base>:<path>` reads the base version of a
 // board file. It reads the PR's base branch name from the API, then resolves the
-// merge-base locally. "" on any failure — the caller then exempts nothing.
+// merge-base locally. "" on any failure — the stamp lane then exempts nothing
+// and the register lane falls back to its fail-closed no-merge-base path.
+//
+// The base is read ONLY from the fully-qualified remote-tracking ref
+// refs/remotes/origin/<base>, never a short name: git resolves a short name
+// through refs/tags/ and refs/heads/ before refs/remotes/, so a tag named
+// `origin/main` (tag creation needs only write access) or a local branch named
+// `main` placed on the PR's own commit would make the merge-base the PR itself,
+// and every lane keyed on it would compare the PR with itself. There is no
+// bare-name fallback for the same reason — the same rule as remoteMainRef.
+//
+// Spelling the name in full is not enough on its own: when that exact ref is
+// ABSENT, git still expands the full name through refs/, refs/tags/, refs/heads/
+// and refs/remotes/, so a ref such as refs/tags/refs/remotes/origin/main on an
+// earlier commit of the PR would become the base. mergeBaseExact therefore shows
+// the exact ref exists and runs merge-base on its object id; an absent ref is
+// unresolvable ("").
 func prMergeBaseSHA(root, repo string, pr int) string {
-	baseRef := ghPRBaseRef(repo, pr)
+	baseRef := ghPRBaseRefFn(repo, pr)
 	if baseRef == "" {
 		return ""
 	}
-	for _, ref := range []string{"origin/" + baseRef, baseRef} {
-		out, err := exec.Command("git", "-C", root, "merge-base", ref, "HEAD").Output()
-		if err != nil {
-			continue
-		}
-		if s := strings.TrimSpace(string(out)); s != "" {
-			return s
-		}
-	}
-	return ""
+	return mergeBaseExact(root, "refs/remotes/origin/"+baseRef)
 }
+
+// ghPRBaseRefFn is the forge read of the PR's base branch name — a package seam
+// so a test drives the real merge-base resolver against a git fixture.
+var ghPRBaseRefFn = ghPRBaseRef
 
 // ghPRBaseRef returns the PR's base branch name (e.g. "main").
 func ghPRBaseRef(repo string, pr int) string {
@@ -1091,6 +1104,10 @@ func (v verdict) String() string {
 type ghPRFile struct {
 	Filename string `json:"filename"`
 	Patch    string `json:"patch"`
+	// PreviousFilename is set on a rename: the path the file moved FROM. The
+	// findings-register transition lane reads both names so a renamed entry is
+	// still a touched entry.
+	PreviousFilename string `json:"previous_filename,omitempty"`
 }
 
 // prFilesToDiff reconstructs a unified-diff string (parseable by stampsInDiff)
@@ -1112,25 +1129,57 @@ func prFilesToDiff(files []ghPRFile) string {
 // fetchPRDiff returns a unified diff of the given repo's PR, reconstructed from
 // the paginated "List pull request files" REST API.
 func fetchPRDiff(repo string, pr int) (string, error) {
+	files, err := fetchPRFiles(repo, pr)
+	if err != nil {
+		return "", err
+	}
+	return prFilesToDiff(files), nil
+}
+
+// fetchPRFiles returns the given repo's PR file list from the paginated "List
+// pull request files" REST API — the structured form every --corroborate lane
+// reads (the diff lanes through prFilesToDiff, the register-transition lane
+// through the file names).
+func fetchPRFiles(repo string, pr int) ([]ghPRFile, error) {
 	// gh pr diff caps at 300 files (HTTP 406 on larger PRs). The paginated
-	// "List PR files" API has no such cap; reconstruct a unified diff from the
-	// per-file patch fields.
+	// "List PR files" API reaches further but still stops at 3000 files with no
+	// error, so a caller that decides anything from the ABSENCE of a path must
+	// check the listing's completeness (fetchPRChangedFiles) or derive the
+	// answer locally — the register-transition lane does both.
 	cmd := exec.Command("gh", "api", "--paginate", "--slurp",
 		fmt.Sprintf("repos/%s/pulls/%d/files", repo, pr))
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("gh api pulls/%d/files: %w", pr, err)
+		return nil, fmt.Errorf("gh api pulls/%d/files: %w", pr, err)
 	}
 	// --slurp + --paginate yields an array of per-page arrays: [[...],[...]].
 	var pages [][]ghPRFile
 	if err := json.Unmarshal(out, &pages); err != nil {
-		return "", fmt.Errorf("unmarshal PR %d files: %w", pr, err)
+		return nil, fmt.Errorf("unmarshal PR %d files: %w", pr, err)
 	}
 	var files []ghPRFile
 	for _, p := range pages {
 		files = append(files, p...)
 	}
-	return prFilesToDiff(files), nil
+	return files, nil
+}
+
+// fetchPRChangedFiles returns the forge's own count of a PR's changed files
+// (the REST `pulls/{n}` changed_files field). The "List pull request files"
+// listing stops at 3000 entries with no error, so a listing is shown complete
+// only when its length equals this count — the same refusal shapeFromListing
+// applies to the model-autoflip lane.
+func fetchPRChangedFiles(repo string, pr int) (int, error) {
+	out, err := exec.Command("gh", "api", fmt.Sprintf("repos/%s/pulls/%d", repo, pr),
+		"--jq", ".changed_files").Output()
+	if err != nil {
+		return 0, fmt.Errorf("gh api pulls/%d: %w", pr, err)
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return 0, fmt.Errorf("PR %d changed_files %q: %w", pr, strings.TrimSpace(string(out)), err)
+	}
+	return n, nil
 }
 
 // ghPRData holds the subset of `gh pr view --json reviews,comments` that this check
@@ -1334,6 +1383,19 @@ func reviewURL(repo string, pr int, r ghReview) string {
 // (markPreExisting): that stamp was authored and corroborated on its own PR, so a
 // board migration that re-emits whole tables does not re-gate it here. PRE-EXISTING,
 // like CORROBORATED, does not fail the run.
+// The forge/git reads runCorroborate makes, as package seams so a test can drive
+// the whole command — every lane and the exit code — against a git fixture with no
+// network. Production values are the real readers.
+var (
+	corroborateRepoFn      = repoFromOrigin
+	corroborateFilesFn     = fetchPRFiles
+	corroborateDataFn      = fetchPRData
+	corroborateMergeBaseFn = prMergeBaseSHA
+	// corroborateChangedFilesFn reads the forge's own changed-file count, the
+	// completeness check for the PR file listing (see fetchPRChangedFiles).
+	corroborateChangedFilesFn = fetchPRChangedFiles
+)
+
 func runCorroborate(prsArg string) int {
 	if prsArg == "" {
 		fmt.Fprintln(os.Stderr, "statusgen: --corroborate requires at least one PR number (comma-separated)")
@@ -1341,7 +1403,7 @@ func runCorroborate(prsArg string) int {
 	}
 
 	// Discover the repo from git remote.
-	repo := repoFromOrigin()
+	repo := corroborateRepoFn()
 	if repo == "" {
 		fmt.Fprintln(os.Stderr, "statusgen: cannot determine GitHub repo from git remote origin")
 		return 1
@@ -1357,6 +1419,7 @@ func runCorroborate(prsArg string) int {
 	var allResults []corroborateResult
 	var allCitationResults []citationResult
 	var allQuotedNotices []string
+	var allRegisterResults []registerTransitionResult
 	anyMissing := false
 
 	for _, prStr := range prStrs {
@@ -1371,10 +1434,34 @@ func runCorroborate(prsArg string) int {
 		}
 		// Fetch the PR diff ONCE and reuse it for both the stamp scan and the
 		// prose/commit acceptance-citation scan.
-		diff, err := fetchPRDiff(repo, pr)
+		files, err := corroborateFilesFn(repo, pr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "statusgen: PR #%d: %v\n", pr, err)
 			return 1
+		}
+		diff := prFilesToDiff(files)
+		// The PR's reviews/comments and its merge-base are read at most once per
+		// PR, and only by a lane that needs them.
+		var (
+			prData    *ghPRData
+			prDataErr error
+			prDataOK  bool
+			mb        string
+			mbOK      bool
+		)
+		getData := func() (*ghPRData, error) {
+			if !prDataOK {
+				prData, prDataErr = corroborateDataFn(repo, pr)
+				prDataOK = true
+			}
+			return prData, prDataErr
+		}
+		getMergeBase := func() string {
+			if !mbOK {
+				mb = corroborateMergeBaseFn(".", repo, pr)
+				mbOK = true
+			}
+			return mb
 		}
 
 		// --- human:<name> STAMP corroboration ---
@@ -1396,7 +1483,7 @@ func runCorroborate(prsArg string) int {
 		if len(stamps) == 0 {
 			fmt.Printf("PR #%d: no human:<name> stamps found in diff — clean\n", pr)
 		} else {
-			data, err := fetchPRData(repo, pr)
+			data, err := getData()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "statusgen: PR #%d: %v\n", pr, err)
 				return 1
@@ -1414,7 +1501,7 @@ func runCorroborate(prsArg string) int {
 			// PR; a board migration that re-emits whole tables must not re-gate it
 			// here. A merge-base that cannot be resolved (or a base file that cannot
 			// be read) exempts nothing — the fail-closed direction.
-			mb := prMergeBaseSHA(".", repo, pr)
+			mb := getMergeBase()
 			baseRowsByFile := map[string]map[string]string{}
 			baseHeadersByFile := map[string]map[string]int{}
 			for i := range stamps {
@@ -1431,6 +1518,32 @@ func runCorroborate(prsArg string) int {
 				if r.Verdict == verdictMissing {
 					anyMissing = true
 				}
+			}
+		}
+
+		// --- findings-register TRANSITION lane (statusgen/06 §B) ---
+		// A PR that touches a findings entry has every caution-removing field
+		// transition re-derived against its merge-base and corroborated against
+		// the humans named in the entry's authorizing keys — including a key that
+		// was already on the entry and so adds no diff line for the stamp lane.
+		// The lane runs on EVERY PR: whether the PR touches the register is
+		// decided from the local tree against the merge-base, not from the
+		// forge listing (which truncates silently) — see registerTransitionLane.
+		{
+			countFn := func() (int, error) { return corroborateChangedFilesFn(repo, pr) }
+			rs, err := registerTransitionLane(".", repo, pr, files, getMergeBase(), countFn, getData)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "statusgen: PR #%d: %v\n", pr, err)
+				return 1
+			}
+			for i := range rs {
+				if rs[i].Rel == "" {
+					rs[i].Rel = fmt.Sprintf("PR #%d", pr)
+				}
+			}
+			allRegisterResults = append(allRegisterResults, rs...)
+			if registerTransitionsFail(rs) {
+				anyMissing = true
 			}
 		}
 
@@ -1490,6 +1603,21 @@ func runCorroborate(prsArg string) int {
 		fmt.Println("# (a negation or conditional in the same comment voids it — a refusal")
 		fmt.Println("#  such as \"not lgtm\" / \"cannot lgtm\" / \"nack\" / \"non-lgtm\", or a REQUEST")
 		fmt.Println("#  for approval such as \"is this lgtm?\" / \"please lgtm\", is not a sign-off)")
+	}
+
+	// --- findings-register transition section (statusgen/06 §B) ---
+	if len(allRegisterResults) > 0 {
+		fmt.Println()
+		fmt.Println("# findings-register transitions")
+		fmt.Println("# Scope: every caution-removing move of a finding's resolved/affects/ack/")
+		fmt.Println("# parked-until since the PR merge-base needs a human named in the entry's")
+		fmt.Println("# authorizing key (authorized-by; for a park, parked-by only) to have")
+		fmt.Println("# ACTED on this PR — whether or not this PR wrote that key. A park set or")
+		fmt.Printf("# extended more than %d days past its commit is MISSING whoever approved it.\n", parkHorizonDays)
+		fmt.Println()
+		for _, r := range allRegisterResults {
+			fmt.Println(registerReportLine(r))
+		}
 	}
 
 	// --- acceptance/ruling CITATION section ---

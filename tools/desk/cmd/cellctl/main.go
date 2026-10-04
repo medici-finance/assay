@@ -126,6 +126,8 @@ func run() (code int) {
 		cmdDeskd(needCell(rest))
 	case "cadence":
 		cmdCadence(needCell(rest), rest[1:])
+	case "comms":
+		cmdComms(needCell(rest), rest[1:])
 	case "desk":
 		cmdDesk(needCell(rest), rest[1:])
 	case "smoke":

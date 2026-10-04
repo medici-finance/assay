@@ -37,7 +37,7 @@ value; see `dispatch_native.go`'s doc and
 | `ASSAY_COMMS_GATEWAY_ENABLE` | must be exactly `1` |
 | `ASSAY_COMMS_CELL` | this gateway's own cell name |
 | `ASSAY_COMMS_QUEUE_DIR` | durable accepted-queue + mailboxes root |
-| `ASSAY_COMMS_SOCKET` | within-cell loopback Unix-domain socket path |
+| `ASSAY_COMMS_SOCKET` | within-cell loopback endpoint: an absolute Unix socket path inside an owner-only directory, or a local named pipe on Windows |
 | `ASSAY_COMMS_LISTEN` | cross-cell A2A network listen address |
 | `ASSAY_COMMS_TLS_CERT` / `ASSAY_COMMS_TLS_KEY` | this gateway's own mTLS identity |
 | `ASSAY_COMMS_CLIENT_CA` | house trust store verifying a peer gateway's client cert |
@@ -164,3 +164,33 @@ never dropped.
 `Quarantine = held mailbox + a filed issue via deskfile` (the silent-desk
 rule). The held write is unconditional; a filing failure is reported but never
 undoes it — the message stays held either way.
+
+## Host-local service
+
+For Claude and Codex desks on one host, [cellctl comms](../../../../docs/cellctl-comms.md)
+supervises this gateway and the drain from one private manifest. Its explicit
+`ASSAY_COMMS_LOCAL_ONLY=1` mode requires enable, cell, queue, socket and trust
+settings, accepts only that cell, and starts no A2A listener. Without that flag,
+the existing network/TLS requirements above still apply. Windows uses a
+current-user-only local named pipe.
+
+## Local endpoint access
+
+The loopback endpoint is this transport's access control, in every mode,
+standalone deployments included:
+
+- **Unix.** The gateway refuses to bind unless the socket's parent is a
+  directory owned by the gateway's user with no group or other permission bits
+  (for example 0700), and it sets the socket itself to 0600. Clients
+  (`deskcomms`) check the same parent, and that the socket is a socket owned by
+  their own user, before writing a byte.
+- **Windows.** The gateway creates the pipe with the current user as owner and
+  as the only DACL entry. Pipe names are host-global, so a client also reads
+  the connected pipe's owner and refuses one not owned by its own user.
+- **Stop and restart.** A clean stop closes the listener and removes the
+  socket, so the same gateway can start again. A standalone gateway reclaims a
+  socket left by a crashed run only after a dial to it is refused; it never
+  unlinks a socket a live gateway still serves. A local-only gateway never
+  removes an existing endpoint: `cellctl comms <cell> recover
+  --confirm-stopped` does that after the operator confirms the prior processes
+  have stopped.
