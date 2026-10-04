@@ -369,7 +369,7 @@ Could not check: label provisioning on the forge (offline envelope; outside the 
 - Target: merged main d6662bbc6b4fc64be615baf14a010da126aef16a, in a detached worktree of the repo (the verifier's home worktree), offline (KUBECONFIG=/dev/null). Host: darwin. statusgen v1.0.31 as installed on the runner's PATH (not built from the target SHA).
 - Brief frontmatter: gate: model; risk: regulatory no, customer no, irreversible no, sensitive-data no. No Verify row is risk-bearing (all four risk answers are no and no row touches a risk-classed path), so the per-row isolation rule for four or more risk-bearing rows does not apply.
 - Grounding: the expected deliverables were written down from the brief text and main before any diff was read: the intake-desk step 1 class decision (attach, kind, incident-group, module:, only confirmed-defect and false-positive count), the trigger (3 counted instances or the 2nd merged fix; first instance in a brittle-marked module), the parking carve-out (production-down/security stay todo, bleed un-parks), the seven work-input labels and the worked-case heading, the pr-review-desk Recurrence-promotion paragraph routed to error-class, the worker-desk design-owed dispatch at strong tier with a brief as deliverable, net ≤ 0 lines per skill, and a changelog fragment. All are present on merged main.
-- Delivering changes: #1876 (squash 23ebf3fc7bf0, carries the Brief trailer; the three skills and the changelog fragment) and #1943 (squash 8611850ab, the work-input amendment on the intake-desk skill, no Brief trailer). #2030 re-authored Verify rows 7–10 in the brief only.
+- Delivering changes: #1876 (squash 23ebf3fc7bf0, carries the Brief trailer; the three skills and the changelog fragment) and #1943 (squash 8611850ab, the work-input amendment on the intake-desk skill, no Brief trailer). #2030 re-authored Verify row 10 in the brief only (rows 7–9 are unchanged by it).
 - Every row ran by hand, each in a fresh bash -c at the worktree root, then through statusgen verifyrun (writing form, tool exit 0).
 
 | Verify row discharged | Command | Expect | Observed | Result | Date | Runner |
@@ -434,7 +434,7 @@ rows_passed=13 rows_total=13
 
 VERIFY: PASS
 
-Could not check: label provisioning (error-class, design-owed) on each repo in scope, which is out of scope per the brief's consumers line and needs a live forge read (offline envelope). Task step 1's scanner probe (the implementer's T1 row) is not a Verify row and was not repeated. This is a model verdict on a gate: model brief with no risk flag; the verifier records Evidence and does not set the status.
+Could not check: label provisioning (error-class, design-owed) on each repo in scope, which is out of scope per the brief's consumers line and needs a live forge read (offline envelope). Task step 1's scanner probe (the implementer's T1 row) is not a Verify row and was not repeated. This is a model verdict on a gate: model brief with no risk flag; the verifier records Evidence and, on this PASS, flips the README row implemented → verified; the verified → done flip stays with main CI.
 
 ## Review
 Gate: model (from frontmatter). Rows 7–9 compare each skill at this brief's own change against
