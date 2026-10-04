@@ -15,7 +15,9 @@ import (
 // with placeholder digests derived from d so two tags' digests differ. The
 // darwin-arm64 assets are listed FIRST on purpose (assay#2201): the bare, CI-facing
 // `statusgen` / `desk-tools` lines must still take the linux-amd64 asset's digest,
-// chosen by name, never the first entry and never this host's asset.
+// chosen by name, never the first entry and never this host's asset. A
+// linux-arm64 asset sits ahead of each linux-amd64 one so a pick on the `-linux`
+// prefix alone (os without arch) cannot pass either.
 func checksumsFor(d byte) string {
 	return checksumsWithout(d, "")
 }
@@ -31,6 +33,8 @@ func checksumsWithout(d byte, omit string) string {
 		sum(3) + "  qualgen-plan9-mips",
 		sum(4) + "  desk-tools-linux-amd64.tar.gz",
 		sum(5) + "  desk-tools-plan9-mips.tar.gz",
+		sum(8) + "  statusgen-linux-arm64",
+		sum(9) + "  desk-tools-linux-arm64.tar.gz",
 		sum(6) + "  statusgen-linux-amd64",
 	} {
 		if omit != "" && strings.HasSuffix(l, "  "+omit) {
@@ -260,17 +264,24 @@ func TestDigestFor_BareLineByName(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := func(n string) string { return strings.Repeat("2", 63) + n }
-	for name, want := range map[string]string{
+	cases := map[string]string{
 		"statusgen":                      d("6"),
 		"statusgen-darwin-arm64":         d("1"),
 		"statusgen-linux-amd64":          d("6"),
+		"statusgen-linux-arm64":          d("8"),
 		"desk-tools":                     d("4"),
 		"desk-tools-darwin-arm64":        d("7"),
 		"desk-tools-darwin-arm64.tar.gz": d("7"),
-	} {
-		got, err := digestFor(name, deskkit.ComponentOf(name), comp, nil)
-		if err != nil || got != want {
-			t.Errorf("digestFor(%s) = %q, %v; want %q", name, got, err, want)
+		"desk-tools-linux-arm64":         d("9"),
+	}
+	// Repeated so a pick that depends on map iteration order (a prefix scan over
+	// AssetSHA256) cannot pass by luck: the selection must be one exact-name lookup.
+	for i := 0; i < 64; i++ {
+		for name, want := range cases {
+			got, err := digestFor(name, deskkit.ComponentOf(name), comp, nil)
+			if err != nil || got != want {
+				t.Fatalf("digestFor(%s) = %q, %v; want %q", name, got, err, want)
+			}
 		}
 	}
 	if _, err := digestFor("qualgen", "qualgen", comp, nil); !errors.Is(err, errBarePinAssetMissing) {
@@ -291,5 +302,30 @@ func TestSplitTrailingComment(t *testing.T) {
 		if data != c.data || comment != c.comment {
 			t.Errorf("splitTrailingComment(%q) = (%q, %q), want (%q, %q)", c.in, data, comment, c.data, c.comment)
 		}
+	}
+}
+
+// TestDerived_CarryForwardWarnsOnce — a pin line the target composition cannot
+// digest is carried forward with ONE warning on apply (the up-front refusal probe
+// prints nothing), and a dry-run, which writes nothing, prints none.
+func TestDerived_CarryForwardWarnsOnce(t *testing.T) {
+	root := writeDerivedFixture(t)
+	p := filepath.Join(root, ".assay-versions")
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	extra := "statusgen-windows-arm64.exe v0.12.0 " + strings.Repeat("e", 64) + "\n"
+	if err := os.WriteFile(p, append(raw, extra...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	warn := "no sha256 for statusgen-windows-arm64.exe"
+	code, out := run2(t, "--root", root, "--to", "v0.13.0", "--dry-run")
+	if code != exitOK || strings.Count(out, warn) != 0 {
+		t.Errorf("dry-run: exit %d, %d carry-forward warnings, want 0:\n%s", code, strings.Count(out, warn), out)
+	}
+	code, out = run2(t, "--root", root, "--to", "v0.13.0")
+	if code != exitOK || strings.Count(out, warn) != 1 {
+		t.Errorf("apply: exit %d, %d carry-forward warnings, want exactly 1:\n%s", code, strings.Count(out, warn), out)
 	}
 }

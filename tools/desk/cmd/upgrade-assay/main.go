@@ -75,7 +75,9 @@
 //	8  refused: the target names no published umbrella release (unsupported /
 //	            could-not — never a nearest-match guess)
 //	9  refused: the target resolves but its artifacts are unavailable (an older
-//	            release pruned from the cache and no longer fetchable)
+//	            release pruned from the cache and no longer fetchable), or its
+//	            checksums.txt lists no <artifact>-linux-amd64 asset for a bare pin
+//	            line the pin file carries (errBarePinAssetMissing)
 //	10 refused: a local write to .assay-versions failed (a filesystem refusal in
 //	            the adopter's own repo — not an artifacts-availability problem)
 //
@@ -320,7 +322,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// Compute the re-pin up front (writing nothing) so a target whose checksums.txt
 	// cannot digest a bare CI-facing line refuses BEFORE any migration runs — in a
 	// dry-run and an apply alike — rather than after the migrations have committed.
-	if _, _, err := repinContent(*root, relDir, target, toComp); errors.Is(err, errBarePinAssetMissing) {
+	// The probe passes io.Discard: apply's real re-pin prints the carry-forward warnings
+	// once, and a dry-run (which writes nothing) prints none.
+	if _, _, err := repinContent(*root, relDir, target, toComp, io.Discard); errors.Is(err, errBarePinAssetMissing) {
 		fmt.Fprintf(stderr, "upgrade-assay: refusing — %v; nothing was migrated or re-pinned.\n", err)
 		return exitArtifactsGone
 	}
@@ -397,7 +401,7 @@ func apply(stdout, stderr io.Writer, root, relDir, from, target string, forward 
 
 	// ── Re-pin LAST — advance the version marker only now that the migrations have
 	// all committed.
-	if err := repin(root, relDir, target, toComp); err != nil {
+	if err := repin(root, relDir, target, toComp, stderr); err != nil {
 		fmt.Fprintf(stderr, "upgrade-assay: refusing — the migrations applied but the local write to %s failed: %v\n", deskkit.AssayVersionsFile, err)
 		return exitLocalWriteFailed
 	}
@@ -586,8 +590,8 @@ var errBarePinAssetMissing = errors.New("checksums.txt lists no linux-amd64 asse
 // forward with a warning (the tool never fabricates a digest silently). Comments,
 // blank lines and lines the composition does not name are preserved verbatim, and a
 // rewritten line keeps its trailing `# …` comment.
-func repin(root, relDir, target string, toComp deskkit.Composition) error {
-	path, out, err := repinContent(root, relDir, target, toComp)
+func repin(root, relDir, target string, toComp deskkit.Composition, warn io.Writer) error {
+	path, out, err := repinContent(root, relDir, target, toComp, warn)
 	if err != nil {
 		return err
 	}
@@ -596,7 +600,9 @@ func repin(root, relDir, target string, toComp deskkit.Composition) error {
 
 // repinContent computes the re-pinned .assay-versions WITHOUT writing it, so the
 // caller can surface a refusal (errBarePinAssetMissing) before any migration runs.
-func repinContent(root, relDir, target string, toComp deskkit.Composition) (string, []byte, error) {
+// Carry-forward warnings go to warn; the up-front probe passes io.Discard so each
+// warning is printed once, by the real re-pin.
+func repinContent(root, relDir, target string, toComp deskkit.Composition, warn io.Writer) (string, []byte, error) {
 	path := filepath.Join(root, deskkit.AssayVersionsFile)
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -647,7 +653,7 @@ func repinContent(root, relDir, target string, toComp deskkit.Composition) (stri
 		if s != "" {
 			sha = s
 		} else {
-			fmt.Fprintf(os.Stderr, "upgrade-assay: warning — target composition names no sha256 for %s; carrying the existing digest forward (refresh it from the release home's published sha256).\n", name)
+			fmt.Fprintf(warn, "upgrade-assay: warning — target composition names no sha256 for %s; carrying the existing digest forward (refresh it from the release home's published sha256).\n", name)
 		}
 		lines[i] = fmt.Sprintf("%s %s %s", name, newTag, sha) + comment
 	}

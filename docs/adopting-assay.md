@@ -394,11 +394,14 @@ the one an adopting team should actually run:
   below), refuse rather than guess when the line is absent, keep each pinned artifact name distinct
   from any CI-job name, and re-pin (never edit in place) on an upgrade so the bump shows in a diff.
   **Also carry the bare line** — `statusgen <tag> <sha256>` (same tag; the digest of the
-  `statusgen-linux-amd64` asset, the CI-facing pin, which is what `upgrade-assay` re-pins it to). It is the line the desk tools (`deskboard` and friends) read first; `statusgen
-  init` scaffolds it alongside the per-platform lines. When it is absent the desk tools fall back to
-  the host platform's `statusgen-<os>-<arch>` line (`.exe` on Windows), so a per-platform-only file
-  still resolves — but a malformed bare line refuses rather than falling back. CI keeps selecting
-  by platform with the trailing space, so the bare line changes no CI behaviour.
+  `statusgen-linux-amd64` asset). Linux-amd64 is the CI-runner platform, so a CI that reads the
+  bare line verifies the right binary; `assay-install.sh pin` and `upgrade-assay` both fill it from
+  that asset by name, whatever host they run on. It is the line the desk tools (`deskboard` and
+  friends) read first; `statusgen init` scaffolds it alongside the per-platform lines. When it is
+  absent the desk tools fall back to the host platform's `statusgen-<os>-<arch>` line (`.exe` on
+  Windows), so a per-platform-only file still resolves — but a malformed bare line refuses rather
+  than falling back. The CI that `statusgen init` scaffolds selects by platform with the trailing
+  space, so for that CI the bare line is additive.
 
 **Verify:** the pin line for the **fully detected platform** exists — match os *and* arch, not the
 os family, or a `darwin-amd64`-only pin file passes on a `darwin-arm64` host while the install

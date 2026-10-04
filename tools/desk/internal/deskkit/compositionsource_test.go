@@ -66,12 +66,14 @@ func TestParseChecksums_DerivesComposition(t *testing.T) {
 
 func TestParseChecksums_FailClosed(t *testing.T) {
 	for name, body := range map[string]string{
-		"short digest":    "abc  statusgen-linux-amd64\n",
-		"uppercase hex":   strings.ToUpper(strings.Repeat("a", 64)) + "  statusgen-linux-amd64\n",
-		"wrong fields":    strings.Repeat("a", 64) + "\n",
-		"duplicate asset": strings.Repeat("a", 64) + "  statusgen-linux-amd64\n" + strings.Repeat("b", 64) + "  statusgen-linux-amd64\n",
-		"no component":    strings.Repeat("a", 64) + "  checksums.txt\n",
-		"empty":           "",
+		"short digest":                      "abc  statusgen-linux-amd64\n",
+		"uppercase hex":                     strings.ToUpper(strings.Repeat("a", 64)) + "  statusgen-linux-amd64\n",
+		"wrong fields":                      strings.Repeat("a", 64) + "\n",
+		"duplicate asset":                   strings.Repeat("a", 64) + "  statusgen-linux-amd64\n" + strings.Repeat("b", 64) + "  statusgen-linux-amd64\n",
+		"no component":                      strings.Repeat("a", 64) + "  checksums.txt\n",
+		"pin-name collision, tarball last":  strings.Repeat("a", 64) + "  desk-tools-linux-amd64\n" + strings.Repeat("b", 64) + "  desk-tools-linux-amd64.tar.gz\n",
+		"pin-name collision, tarball first": strings.Repeat("b", 64) + "  desk-tools-linux-amd64.tar.gz\n" + strings.Repeat("a", 64) + "  desk-tools-linux-amd64\n",
+		"empty":                             "",
 	} {
 		if _, err := ParseChecksums("v1.0.8", []byte(body)); err == nil || !IsUnverifiable(err) {
 			t.Errorf("%s: want an Unverifiable refusal, got %v", name, err)
