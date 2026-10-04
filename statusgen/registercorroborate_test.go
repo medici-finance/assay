@@ -687,7 +687,8 @@ func TestRegAbsentRefDecoyFails(t *testing.T) {
 // function, so TestFixedBaseNotHandedToHelpers separately fails on a fixed ref
 // passed as an argument into one of the listed helpers.
 var mergeBaseAllow = map[string]string{
-	"mergeBaseExact":         "the choke point: resolves the fixed ref exactly, then runs merge-base on its object id",
+	"resolveMergeBaseExact":  "the choke point (mergeBaseExact's uncached body): resolves the fixed ref exactly, then runs merge-base on its object id",
+	"gitMergeBaseOut":        "per-run memo of a by-name merge-base for an operator-supplied revision (TestFixedBaseNotHandedToHelpers fails on a fixed ref passed in)",
 	"consumerEntriesAtBase":  "operator-supplied --base revision",
 	"pinConsumerBase":        "operator-supplied --base revision (its only caller passes the --base value; TestFixedBaseNotHandedToHelpers fails on a fixed ref passed in)",
 	"productionResolveBase":  "operator-supplied base revision",
@@ -777,8 +778,8 @@ func TestMergeBaseChokePoint(t *testing.T) {
 			}
 		}
 	}
-	if !seen["mergeBaseExact"] {
-		t.Errorf("the choke point mergeBaseExact runs no merge-base the guard can see")
+	if !seen["resolveMergeBaseExact"] {
+		t.Errorf("the choke point resolveMergeBaseExact runs no merge-base the guard can see")
 	}
 }
 
@@ -786,6 +787,7 @@ func TestMergeBaseChokePoint(t *testing.T) {
 // git by NAME. They are fine for an operator-supplied value and wrong for a
 // fixed ref, which must go through mergeBaseExact.
 var byNameBaseHelpers = map[string]bool{
+	"gitMergeBaseOut":       true,
 	"pinConsumerBase":       true,
 	"consumerEntriesAtBase": true,
 	"productionResolveBase": true,
@@ -872,5 +874,29 @@ func TestBranchChangedSetExactBase(t *testing.T) {
 	set, ok := branchChangedSet(root)
 	if !ok || !set["other.txt"] {
 		t.Errorf("control with the exact ref present: branchChangedSet = %v, %v; want other.txt in the set", set, ok)
+	}
+}
+
+// TestMergeBaseExactRunMemo pins that mergeBaseExact is memoised for ONE run's
+// git read session only: inside a session a second call returns the first
+// answer even after the ref is deleted, and once the session ends the next call
+// re-resolves (and now finds the ref absent). The memo keeps the fixed-base
+// callers of one --lint to one resolution; it must never cross a run.
+func TestMergeBaseExactRunMemo(t *testing.T) {
+	root := decoyAfterGut(t, "")
+	gitRun(t, root, "update-ref", "refs/remotes/origin/main", "HEAD~2")
+	end := beginGitReadSession()
+	first := mergeBaseExact(root, remoteMainRef)
+	if first == "" {
+		end()
+		t.Fatal("control: the exact ref is present, so a merge-base must resolve")
+	}
+	gitRun(t, root, "update-ref", "-d", "refs/remotes/origin/main")
+	if again := mergeBaseExact(root, remoteMainRef); again != first {
+		t.Errorf("inside one session the answer must be memoised: got %q, want %q", again, first)
+	}
+	end()
+	if after := mergeBaseExact(root, remoteMainRef); after != "" {
+		t.Errorf("after the session ends the ref must be re-resolved (now absent): got %q", after)
 	}
 }

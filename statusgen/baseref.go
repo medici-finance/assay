@@ -49,7 +49,28 @@ func exactRefCommit(root, ref string) string {
 // TestMergeBaseChokePoint fails on any `git merge-base` call outside its
 // allow-list, and TestFixedBaseNotHandedToHelpers on a fixed ref passed into one
 // of that allow-list's by-name helpers.
+//
+// Inside a run's git read session (gitbatch.go) the answer is memoised per root
+// and ref for that run only, so the fixed-base callers of one --lint resolve the
+// ref once rather than once each; outside a session every call resolves afresh.
 func mergeBaseExact(root, ref string) string {
+	s := activeGitReads
+	if s == nil {
+		return resolveMergeBaseExact(root, ref)
+	}
+	key := root + "\x00" + ref
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if mb, ok := s.exactBases[key]; ok {
+		return mb
+	}
+	mb := resolveMergeBaseExact(root, ref)
+	s.exactBases[key] = mb
+	return mb
+}
+
+// resolveMergeBaseExact is mergeBaseExact's uncached body.
+func resolveMergeBaseExact(root, ref string) string {
 	oid := exactRefCommit(root, ref)
 	if oid == "" {
 		return ""
