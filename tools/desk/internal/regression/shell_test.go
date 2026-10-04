@@ -78,7 +78,7 @@ func TestShellGitIsolation(t *testing.T) {
 		t.Skip("POSIX fixture")
 	}
 	victim := HostileGitDir(t)
-	before := TreeDigest(t, victim)
+	before := SnapshotTree(t, victim)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "plant.sh")
 	script := "#!/usr/bin/env bash\nset -eu\nexport GIT_CONFIG_NOSYSTEM=1\n" +
@@ -91,8 +91,8 @@ func TestShellGitIsolation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	out, err := runShellFixture(ctx, path, dir)
-	if after := TreeDigest(t, victim); after != before {
-		t.Fatalf("shell fixture wrote to the GIT_DIR-named repository %s\n%s", victim, out)
+	if changes := before.Changes(SnapshotTree(t, victim)); changes != "" {
+		t.Fatalf("shell fixture wrote to the GIT_DIR-named repository\n%s\n%s", changes, out)
 	}
 	if err != nil {
 		t.Fatalf("planted fixture failed in its own repository: %v\n%s", err, out)

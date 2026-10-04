@@ -1448,8 +1448,10 @@ func TestMergeNow_ApprovedAge(t *testing.T) {
 	t.Setenv("DESKBOARD_GH_PR_REPO", repo)
 	t.Setenv("DESKBOARD_GH_PRLIST_JSON",
 		`[{"number":42,"title":"merge now test","isDraft":false,"author":{"login":"shared-agent"},"headRefOid":"`+head+`","mergeStateStatus":"CLEAN","statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"ci"}]}]`)
+	// #2158: the row is risk-classed in this fixture, and a risk-classed row needs a
+	// security pass at head before MERGE-NOW whether it is draft or ready.
 	t.Setenv("DESKBOARD_GH_REVIEWS_JSON",
-		`[{"user":{"login":"`+reviewerBotDisplay()+`"},"state":"APPROVED","commit_id":"`+head+`","body":"looks good","submitted_at":"`+reviewTS+`"}]`)
+		`[{"user":{"login":"`+reviewerBotDisplay()+`"},"state":"APPROVED","commit_id":"`+head+`","body":"looks good\n\nSecurity-Review: pass","submitted_at":"`+reviewTS+`"}]`)
 
 	var out, errb bytes.Buffer
 	code := run([]string{"actions", "--merge-now-threshold", "1h"}, &out, &errb)
@@ -1490,8 +1492,10 @@ func TestMergeNow_DecayBanner(t *testing.T) {
 	t.Setenv("DESKBOARD_GH_PR_REPO", repo)
 	t.Setenv("DESKBOARD_GH_PRLIST_JSON",
 		`[{"number":42,"title":"decay test","isDraft":false,"author":{"login":"shared-agent"},"headRefOid":"`+head+`","mergeStateStatus":"CLEAN","statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"ci"}]}]`)
+	// #2158: the row is risk-classed in this fixture, and a risk-classed row needs a
+	// security pass at head before MERGE-NOW whether it is draft or ready.
 	t.Setenv("DESKBOARD_GH_REVIEWS_JSON",
-		`[{"user":{"login":"`+reviewerBotDisplay()+`"},"state":"APPROVED","commit_id":"`+head+`","body":"looks good","submitted_at":"`+reviewTS+`"}]`)
+		`[{"user":{"login":"`+reviewerBotDisplay()+`"},"state":"APPROVED","commit_id":"`+head+`","body":"looks good\n\nSecurity-Review: pass","submitted_at":"`+reviewTS+`"}]`)
 
 	var out, errb bytes.Buffer
 	code := run([]string{"actions", "--merge-now-threshold", "10m"}, &out, &errb)

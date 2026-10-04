@@ -439,7 +439,8 @@ func expectedAction(rf rollupFixture, mv mergeVerdict, rs reviewState,
 		}
 		return actCIUnverified
 	case rs.approved && ciGreen && !blocked:
-		if draft && riskClassed && !rs.securityPass {
+		// #2158: draft OR ready — no draft-only exemption.
+		if riskClassed && !rs.securityPass {
 			return actSecReview
 		}
 		if humanGate {

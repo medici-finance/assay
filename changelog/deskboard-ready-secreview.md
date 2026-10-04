@@ -1,0 +1,2 @@
+### Fixed
+- Deskboard no longer shows MERGE-NOW for a ready, risk-classed PR that has a correctness approval at head but no `Security-Review: pass` at head. The security hold used to apply only to drafts, so a ready PR that took a new head and a correctness re-approval, with no fresh security pass, read MERGE-NOW. Such a row now reads SECURITY-REVIEW-REQUIRED whether it is draft or ready, and the note says the review is required "before FLIP or merge". A security pass recorded at an older head still does not count.
