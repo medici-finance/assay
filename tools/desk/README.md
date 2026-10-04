@@ -181,9 +181,9 @@ how you notice you are on a stale binary.
 `gh pr create` argv it builds, so there is no `--draft` flag for *you* to pass — passing
 one is an unexpected argument and exits 5. The git argv is likewise built literally so no
 force-push flag can be emitted, and there is no ready/close/merge verb anywhere in this
-tree. `deskpr update` takes no PR text, only `[--root DIR] [--explain]
-[--force-scan-override REASON] [--check]`: it pushes follow-up commits and never
-touches the description. Correcting the description is `deskpr edit`'s job — it replaces
+tree. `deskpr update` takes no PR text, only `[--pr N | --branch B] [--root DIR]
+[--explain] [--force-scan-override REASON] [--check]`: it pushes follow-up commits and
+never touches the description. Correcting the description is `deskpr edit`'s job — it replaces
 the body (and optionally the title) of the branch's open PR and pushes nothing. Flipping
 a PR ready and merging it are somebody else's decision, and the tools cannot make them
 for you.
@@ -984,9 +984,9 @@ desk decision; that is the reviewer's question, and the reviewer kit (`cmd/deskd
 references/review-prompt.md` §15) asks it on every review. A reviewer who judges that the
 diff took an undeclared reversible default names it in the verdict with the fixed line
 `Undeclared-desk-decision: <one line>`, and the flip refuses while that line stands at the
-CURRENT head — cleared by `deskpr edit --decided` and a fresh DECISIVE verdict (APPROVE or
-REQUEST_CHANGES) at the same head, in the same lane, that omits the line; no new commit
-required. The two review lanes are read separately, because the correctness and security
+CURRENT head — cleared by `deskpr edit --body-file <the PR's current body> --decided F`
+and a fresh DECISIVE verdict (APPROVE or REQUEST_CHANGES) at the same head, in the same
+lane, that omits the line; no new commit required. The two review lanes are read separately, because the correctness and security
 verdicts are posted by the same reviewer App in parallel: a `Security-Review:` verdict never
 clears a correctness-lane finding (nor the reverse), and a COMMENTED note that is not a
 verdict clears nothing — so the answer never depends on which lane posted last. The

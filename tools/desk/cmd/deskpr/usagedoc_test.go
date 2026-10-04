@@ -47,9 +47,12 @@ var flagNameConsts = map[string]string{
 }
 
 // verbFlagsInSource parses one Go source and returns, per verb, the flags registered on the
-// flag set created by flag.NewFlagSet("<verb>", ...). It returns an error string (never
-// a silent skip) for any registration it cannot resolve: an unknown method on a flag set,
-// a non-constant name, or a flag set handed to another function that might register more.
+// flag set created by flag.NewFlagSet("<verb>", ...) inside a function, whether bound by
+// `fs := ...`, `fs = ...` or `var fs = ...`. It returns an error string (never a silent
+// skip) for any registration it cannot resolve: an unknown method on a flag set, a
+// non-constant name, a flag set handed to another function that might register more, or a
+// flag.NewFlagSet call it did not bind to a function-local identifier (a package-level
+// var, a struct field, a call result used inline).
 func verbFlagsInSource(name, src string) (map[string]map[string]bool, []string) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, name, src, 0)
@@ -58,6 +61,9 @@ func verbFlagsInSource(name, src string) (map[string]map[string]bool, []string) 
 	}
 	out := map[string]map[string]bool{}
 	var problems []string
+	// seen records every flag.NewFlagSet call pass 1 accounted for (bound, or already reported),
+	// so the final sweep can report any call it never reached instead of skipping it.
+	seen := map[*ast.CallExpr]bool{}
 	for _, decl := range f.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
 		if !ok || fn.Body == nil {
@@ -65,25 +71,42 @@ func verbFlagsInSource(name, src string) (map[string]map[string]bool, []string) 
 		}
 		// Pass 1: which identifiers in this function hold which verb's flag set.
 		sets := map[string]string{}
-		ast.Inspect(fn.Body, func(n ast.Node) bool {
-			as, ok := n.(*ast.AssignStmt)
-			if !ok || len(as.Lhs) != 1 || len(as.Rhs) != 1 {
-				return true
+		bind := func(lhs, rhs ast.Expr) {
+			call, ok := rhs.(*ast.CallExpr)
+			if !ok || exprString(call.Fun) != "flag.NewFlagSet" {
+				return
 			}
-			call, ok := as.Rhs[0].(*ast.CallExpr)
-			if !ok || exprString(call.Fun) != "flag.NewFlagSet" || len(call.Args) == 0 {
-				return true
+			seen[call] = true
+			id, ok := lhs.(*ast.Ident)
+			var lit *ast.BasicLit
+			lok := false
+			if len(call.Args) > 0 {
+				lit, lok = call.Args[0].(*ast.BasicLit)
 			}
-			id, ok := as.Lhs[0].(*ast.Ident)
-			lit, lok := call.Args[0].(*ast.BasicLit)
 			if !ok || !lok {
 				problems = append(problems, fset.Position(call.Pos()).String()+": flag.NewFlagSet with a non-literal verb or target")
-				return true
+				return
 			}
 			verb, _ := strconv.Unquote(lit.Value)
 			sets[id.Name] = verb
 			if out[verb] == nil {
 				out[verb] = map[string]bool{}
+			}
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			switch x := n.(type) {
+			case *ast.AssignStmt:
+				if len(x.Lhs) == len(x.Rhs) {
+					for i := range x.Lhs {
+						bind(x.Lhs[i], x.Rhs[i])
+					}
+				}
+			case *ast.ValueSpec:
+				if len(x.Names) == len(x.Values) {
+					for i := range x.Names {
+						bind(x.Names[i], x.Values[i])
+					}
+				}
 			}
 			return true
 		})
@@ -136,6 +159,14 @@ func verbFlagsInSource(name, src string) (map[string]map[string]bool, []string) 
 			return true
 		})
 	}
+	// Final sweep: a flag.NewFlagSet call pass 1 never bound — a package-level var, a struct
+	// field, an inline call result — has registrations this scan cannot attribute to a verb.
+	ast.Inspect(f, func(n ast.Node) bool {
+		if call, ok := n.(*ast.CallExpr); ok && exprString(call.Fun) == "flag.NewFlagSet" && !seen[call] {
+			problems = append(problems, fset.Position(call.Pos()).String()+": flag.NewFlagSet not bound to a function-local identifier — its registrations are invisible to this scan")
+		}
+		return true
+	})
 	return out, problems
 }
 
@@ -301,6 +332,24 @@ func c(name string) {
 }`)
 	if len(problems) != 3 {
 		t.Errorf("want 3 unresolvable-registration problems, got %d: %v", len(problems), problems)
+	}
+	// A `var fs = flag.NewFlagSet(...)` binding is read like `fs :=`; a flag set the scanner
+	// cannot bind to a function-local identifier is a problem, never a silent skip.
+	flags, problems = verbFlagsInSource("planted3.go", `package p
+import "flag"
+var pkgFS = flag.NewFlagSet("fourth", flag.ContinueOnError)
+type holder struct{ fs *flag.FlagSet }
+func d() {
+	var fs = flag.NewFlagSet("update", flag.ContinueOnError)
+	fs.Bool("dry-run", false, "")
+	h := holder{}
+	h.fs = flag.NewFlagSet("fifth", flag.ContinueOnError)
+}`)
+	if !flags["update"]["dry-run"] {
+		t.Errorf("scanner missed a flag registered on a var-declared flag set: got %v", flags)
+	}
+	if len(problems) != 2 {
+		t.Errorf("want 2 unbound-flag-set problems (package-level var, struct field), got %d: %v", len(problems), problems)
 	}
 }
 
