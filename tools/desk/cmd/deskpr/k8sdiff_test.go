@@ -59,11 +59,11 @@ func TestBranchDiffK8sSecretOwnership(t *testing.T) {
 		diff   []string
 		refuse bool
 	}{
-		{"encrypted Secret file + ConfigMap file",
+		{"encrypted Secret file and ConfigMap file",
 			append(gitNewFile("deploy/secret.enc.yaml", encrypted), gitNewFile("deploy/cm.yaml", configMap)...), false},
-		{"DECRYPTED Secret file + ConfigMap file",
+		{"DECRYPTED Secret file and ConfigMap file",
 			append(gitNewFile("deploy/secret.yaml", decrypted), gitNewFile("deploy/cm.yaml", configMap)...), true},
-		{"template Secret file + List edit carrying a DECRYPTED value",
+		{"template Secret file and List edit carrying a DECRYPTED value",
 			append(gitNewFile("deploy/tmpl.yaml", template), listEdit...), true},
 	}
 	for _, c := range cases {
