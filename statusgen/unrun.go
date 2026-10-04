@@ -467,11 +467,10 @@ var closedAtBase = func(root string, streams []*Stream) (set map[string]bool, ok
 	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
 		return nil, false
 	}
-	mb, err := gitMergeBaseOut(root, "HEAD", remoteMainRef)
-	if err != nil || strings.TrimSpace(string(mb)) == "" {
+	base := mergeBaseExact(root, remoteMainRef)
+	if base == "" {
 		return nil, false
 	}
-	base := strings.TrimSpace(string(mb))
 	set = map[string]bool{}
 	for _, s := range streams {
 		rel, relErr := filepath.Rel(root, s.Dir)

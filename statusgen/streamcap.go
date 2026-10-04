@@ -80,11 +80,7 @@ var streamBaseIsActive = func(root, relpath string) bool {
 // (no git, a shallow clone missing the ref, the file absent on base) returns
 // false — treat as diff-introduced.
 func productionStreamBaseIsActive(root, relpath string) bool {
-	mb, err := gitMergeBaseOut(root, "HEAD", remoteMainRef)
-	if err != nil {
-		return false
-	}
-	base := strings.TrimSpace(string(mb))
+	base := mergeBaseExact(root, remoteMainRef)
 	if base == "" {
 		return false
 	}
