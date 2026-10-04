@@ -439,11 +439,13 @@ func TestEditActorNeverMisnamesItself(t *testing.T) {
 	}
 }
 
-// TestEditByPROwnHeadCommit is #1901's acceptance for `deskpr edit --pr N`: a worker whose
-// worktree sits on the PR's head commit under a differently-named branch (or a detached
-// HEAD) — because git would not let it check out the PR head branch another worktree holds —
-// may correct that PR's body. The guard's intent survives: a checkout at a different commit
-// on a different branch, and a merged/closed PR, still refuse with nothing written.
+// TestEditByPROwnHeadCommit is #1901's acceptance for `deskpr edit --pr N`, widened by #2085:
+// a worktree on a differently-named branch (or a detached HEAD) — because git would not let it
+// check out the PR head branch another worktree holds — may correct that PR's body. Since
+// #2085 the worktree's commit no longer matters either (edit pushes nothing; the PR is
+// resolved from its own head ref), so a checkout at a DIFFERENT commit, a descendant of the PR
+// head, or one with no commits ahead of the default branch also succeeds. A merged/closed PR
+// still refuses with nothing written.
 func TestEditByPROwnHeadCommit(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -460,19 +462,26 @@ func TestEditByPROwnHeadCommit(t *testing.T) {
 			prHead: "feature/held-elsewhere", oidOf: "HEAD", want: deskkit.ExitOK,
 		},
 		{
-			name:   "different branch, HEAD != headRefOid",
+			name:   "different branch, HEAD != headRefOid (#2085)",
 			setup:  func(t *testing.T, w string) { mustGit(t, w, "checkout", "-b", "neutral-rework") },
-			prHead: "feature/held-elsewhere", oidOf: "", want: deskkit.ExitRefused,
+			prHead: "feature/held-elsewhere", oidOf: "", want: deskkit.ExitOK,
 		},
 		{
-			name: "different branch, HEAD is a descendant of headRefOid",
+			name: "desk worktree with no commits ahead of main (#2085)",
+			setup: func(t *testing.T, w string) {
+				mustGit(t, w, "checkout", "-b", "desk-window", "refs/remotes/origin/main")
+			},
+			prHead: "feature/held-elsewhere", oidOf: "", want: deskkit.ExitOK,
+		},
+		{
+			name: "different branch, HEAD is a descendant of headRefOid (#2085)",
 			setup: func(t *testing.T, w string) {
 				mustGit(t, w, "checkout", "-b", "neutral-rework")
 				writeFile(t, filepath.Join(w, "next.txt"), "unpushed\n")
 				mustGit(t, w, "add", "next.txt")
 				mustGit(t, w, "commit", "-m", "unpushed on top of the PR head")
 			},
-			prHead: "feature/held-elsewhere", oidOf: "HEAD~1", want: deskkit.ExitRefused,
+			prHead: "feature/held-elsewhere", oidOf: "HEAD~1", want: deskkit.ExitOK,
 		},
 		{
 			name:   "detached HEAD at headRefOid",

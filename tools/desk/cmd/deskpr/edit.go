@@ -144,7 +144,9 @@ func cmdEdit(args []string) (err error) {
 	// empty base keeps preflight's ahead-count pinned to origin/HEAD, exactly as update.
 	// --pr (#1901) admits a detached HEAD: the PR is named, so no branch is needed to find it,
 	// and the own-PR guard below admits a detached checkout only at that PR's head commit.
-	facts, perr := preflightMode(dir, "", *prNum > 0, editDetachedRefusal)
+	// --pr (#2085) also drops the commits-ahead precondition: edit pushes nothing, so a worktree
+	// with no work of its own (a desk window) may correct a PR whose branch another worktree holds.
+	facts, perr := preflightOpts(dir, "", *prNum > 0, editDetachedRefusal, *prNum == 0)
 	if perr != nil {
 		return perr
 	}
@@ -413,11 +415,15 @@ func findEditTarget(fg deskkit.Forge, fr deskkit.ForgeRepo, facts *gitFacts, prN
 		if terr != nil {
 			return nil, nil, deskkit.Unverifiable(fmt.Sprintf("cannot read PR #%d", prNum), terr)
 		}
-		if _, oerr := deskkit.CheckOwnPR("deskpr edit",
-			deskkit.OwnPRLocal{Branch: facts.branch, Head: facts.head},
-			deskkit.OwnPRRemote{Number: prNum, State: cur.State, HeadRef: cur.HeadRef, HeadOid: cur.HeadSHA},
-		); oerr != nil {
-			return nil, nil, oerr
+		// #2085: the PR is NAMED and edit pushes nothing, so the PR's own head ref — read from
+		// the forge, never the cwd branch — is what is checked: it must be OPEN. The former
+		// checkout-must-be-the-PR's-own rule (#1901) guarded a push-adjacent reading of "my
+		// PR"; for a text-only edit the worktree is irrelevant, and it refused a desk worktree
+		// correcting a worker's PR (the evidence in #2085). Everything the edit publishes still
+		// runs the same trailer, secret-scan, self-containment, rate-limit and public-repo gates.
+		if !strings.EqualFold(strings.TrimSpace(cur.State), "open") {
+			return nil, nil, deskkit.Refused(fmt.Sprintf(
+				"refused: PR #%d is %s, not OPEN — deskpr edit only writes to open PRs", prNum, cur.State))
 		}
 		return cur, cur, nil
 	}
