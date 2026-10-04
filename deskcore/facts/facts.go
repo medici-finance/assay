@@ -15,7 +15,6 @@
 package facts
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -81,45 +80,44 @@ type Bundle struct {
 
 var snapshotRe = regexp.MustCompile(`^[0-9a-f]{12,128}$`)
 
-// Required JSON keys. Presence is checked separately from value because a JSON decoder fills an
-// absent field with its zero value, and an absent pagination_done must not read as a proven
-// false any more than an absent collection_errors may read as "no errors".
-var (
-	bundleKeys = []string{"schema", "snapshot_id", "collected_at", "policy_digest", "graph_revision", "pattern_digest", "sources", "collection_errors", "facts"}
-	sourceKeys = []string{"identity", "revision", "collected_at", "completeness", "pagination_done"}
-	factKeys   = []string{"id", "source", "kind", "subject", "observed_at"}
-)
+// RequiredKeys lists the keys a bundle's JSON object must carry. Presence is checked separately
+// from value because a JSON decoder fills an absent field with its zero value, and an absent
+// collection_errors must not read as "no errors".
+func (Bundle) RequiredKeys() []string {
+	return []string{"schema", "snapshot_id", "collected_at", "policy_digest", "graph_revision", "pattern_digest", "sources", "collection_errors", "facts"}
+}
 
-// Load reads one bundle from r, refusing an unknown schema, an unknown or missing field,
-// trailing data, and any bundle that fails Validate.
+// RequiredKeys lists the keys a source's JSON object must carry: an absent pagination_done must
+// not read as a proven false.
+func (Source) RequiredKeys() []string {
+	return []string{"identity", "revision", "collected_at", "completeness", "pagination_done"}
+}
+
+// RequiredKeys lists the keys a collection error's JSON object must carry.
+func (CollectionError) RequiredKeys() []string { return []string{"source", "cause"} }
+
+// MaxBundleBytes is the largest bundle Load reads. A larger input is refused rather than read
+// into memory without bound.
+const MaxBundleBytes = 16 << 20
+
+// Load reads one bundle from r, refusing an input larger than MaxBundleBytes, an unknown
+// schema, and anything domain.DecodeStrict refuses: a key that is not a field (compared
+// exactly, case included), a key given twice, a missing or null required key, and trailing
+// data. A bundle that decodes must then pass Validate.
 func Load(r io.Reader) (*Bundle, error) {
-	data, err := io.ReadAll(r)
+	data, err := io.ReadAll(io.LimitReader(r, MaxBundleBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read fact bundle: %w", err)
 	}
-	var head struct {
-		Schema *string `json:"schema"`
+	if len(data) > MaxBundleBytes {
+		return nil, fmt.Errorf("read fact bundle: input is larger than %d bytes", MaxBundleBytes)
 	}
-	if err := json.Unmarshal(data, &head); err != nil {
-		return nil, fmt.Errorf("parse fact bundle: %w", err)
-	}
-	if head.Schema == nil {
-		return nil, fmt.Errorf("%w: no schema field", ErrUnknownSchema)
-	}
-	if *head.Schema != SchemaV1 {
-		return nil, fmt.Errorf("%w: %q (this reader accepts only %q)", ErrUnknownSchema, *head.Schema, SchemaV1)
-	}
-	if err := checkKeys(data); err != nil {
+	if err := peekSchema(data); err != nil {
 		return nil, err
 	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
 	var b Bundle
-	if err := dec.Decode(&b); err != nil {
+	if err := domain.DecodeStrict(data, &b); err != nil {
 		return nil, fmt.Errorf("parse fact bundle: %w", err)
-	}
-	if dec.More() {
-		return nil, errors.New("parse fact bundle: trailing data after the bundle")
 	}
 	if err := b.Validate(); err != nil {
 		return nil, err
@@ -127,38 +125,23 @@ func Load(r io.Reader) (*Bundle, error) {
 	return &b, nil
 }
 
-func checkKeys(data []byte) error {
-	var top map[string]json.RawMessage
-	if err := json.Unmarshal(data, &top); err != nil {
+// peekSchema reports an unknown or missing schema value before the strict decode, so that a
+// bundle of another version is refused as such rather than for the fields it does not share.
+// It only routes the error: every bundle it lets through is then decoded strictly.
+func peekSchema(data []byte) error {
+	var head struct {
+		Schema *string `json:"schema"`
+	}
+	if err := json.Unmarshal(data, &head); err != nil {
 		return fmt.Errorf("parse fact bundle: %w", err)
 	}
-	var errs []error
-	errs = append(errs, missing("bundle", top, bundleKeys)...)
-	var nested struct {
-		Sources []map[string]json.RawMessage `json:"sources"`
-		Facts   []map[string]json.RawMessage `json:"facts"`
+	if head.Schema == nil {
+		return fmt.Errorf("%w: no schema field", ErrUnknownSchema)
 	}
-	if err := json.Unmarshal(data, &nested); err != nil {
-		return fmt.Errorf("parse fact bundle: %w", err)
+	if *head.Schema != SchemaV1 {
+		return fmt.Errorf("%w: %q (this reader accepts only %q)", ErrUnknownSchema, *head.Schema, SchemaV1)
 	}
-	for i, s := range nested.Sources {
-		errs = append(errs, missing(fmt.Sprintf("sources[%d]", i), s, sourceKeys)...)
-	}
-	for i, f := range nested.Facts {
-		errs = append(errs, missing(fmt.Sprintf("facts[%d]", i), f, factKeys)...)
-	}
-	return errors.Join(errs...)
-}
-
-func missing(where string, m map[string]json.RawMessage, keys []string) []error {
-	var errs []error
-	for _, k := range keys {
-		v, ok := m[k]
-		if !ok || string(v) == "null" {
-			errs = append(errs, fmt.Errorf("fact bundle: %s: required field %q is missing", where, k))
-		}
-	}
-	return errs
+	return nil
 }
 
 // Validate reports every structural defect in b.
@@ -282,8 +265,9 @@ const (
 	// Stale: the source was collected longer ago than the freshness bound allows. A stale
 	// answer carries any matching facts, but it is neither present nor a known negative.
 	Stale State = "stale"
-	// CouldNotCheck: the bundle cannot answer, because the source is absent, failed, or was
-	// not read completely and the fact was not found in the part that was read.
+	// CouldNotCheck: the bundle cannot answer, because the source is absent, failed, was
+	// collected after the caller's "now", or was not read completely and the fact was not
+	// found in the part that was read.
 	CouldNotCheck State = "could-not-check"
 )
 
@@ -327,7 +311,11 @@ func (b *Bundle) Query(q Query, now time.Time) Answer {
 			found = append(found, f)
 		}
 	}
-	if age := now.Sub(src.CollectedAt); age > q.MaxAge {
+	age, ok := ageAt(now, src.CollectedAt)
+	if !ok || b.CollectedAt.After(now) {
+		return Answer{State: CouldNotCheck, Reason: fmt.Sprintf("source %q or its bundle was collected after now (%s); a future time cannot prove freshness", q.Source, now.Format(time.RFC3339))}
+	}
+	if age > q.MaxAge {
 		return Answer{State: Stale, Facts: found, Reason: fmt.Sprintf("source %q was collected %s ago, beyond the %s bound", q.Source, age.Round(time.Second), q.MaxAge)}
 	}
 	if len(found) > 0 {
@@ -337,6 +325,16 @@ func (b *Bundle) Query(q Query, now time.Time) Answer {
 		return Answer{State: KnownNegative, Reason: fmt.Sprintf("source %q was read completely and holds no such fact", q.Source)}
 	}
 	return Answer{State: CouldNotCheck, Reason: fmt.Sprintf("source %q was read only in part and the fact was not in the part read", q.Source)}
+}
+
+// ageAt is the one place an age is computed from a timestamp. It reports false when t is after
+// now: a negative age would pass every freshness bound, so a future time proves nothing. No skew
+// tolerance is allowed.
+func ageAt(now, t time.Time) (time.Duration, bool) {
+	if t.After(now) {
+		return 0, false
+	}
+	return now.Sub(t), true
 }
 
 func (b *Bundle) hasError(source string) bool {

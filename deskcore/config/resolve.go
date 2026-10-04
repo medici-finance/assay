@@ -196,7 +196,7 @@ func Resolve(env map[string]string, file KnobFile, table []Knob) (*Resolved, err
 			continue
 		}
 		if !perRole {
-			st.envGlobal = parse(st.knob, "", raw, LayerEnv, name, &errs)
+			assign(&st.envGlobal, parse(st.knob, "", raw, LayerEnv, name, &errs), st.knob.Name, "", &errs)
 			continue
 		}
 		role, err := envRole(roleRaw)
@@ -208,7 +208,7 @@ func Resolve(env map[string]string, file KnobFile, table []Knob) (*Resolved, err
 			errs = append(errs, &UnknownKnobError{Name: name, Layer: LayerEnv, Source: name, Reason: reason})
 			continue
 		}
-		st.envRole[role] = parse(st.knob, role, raw, LayerEnv, name, &errs)
+		assignRole(st.envRole, role, parse(st.knob, role, raw, LayerEnv, name, &errs), st.knob.Name, &errs)
 	}
 
 	for name, raw := range file.Knobs {
@@ -218,7 +218,7 @@ func Resolve(env map[string]string, file KnobFile, table []Knob) (*Resolved, err
 			errs = append(errs, &UnknownKnobError{Name: name, Layer: LayerConfig, Source: src, Reason: "names no knob"})
 			continue
 		}
-		st.cfgGlobal = parse(st.knob, "", raw, LayerConfig, src, &errs)
+		assign(&st.cfgGlobal, parse(st.knob, "", raw, LayerConfig, src, &errs), st.knob.Name, "", &errs)
 	}
 	for role, set := range file.Roles {
 		if err := domain.Role(role).Validate(); err != nil {
@@ -234,7 +234,7 @@ func Resolve(env map[string]string, file KnobFile, table []Knob) (*Resolved, err
 			case !st.knob.PerRole:
 				errs = append(errs, &UnknownKnobError{Name: name, Layer: LayerConfig, Source: src, Reason: fmt.Sprintf("knob %s is not set per role", name)})
 			default:
-				st.cfgRole[role] = parse(st.knob, role, raw, LayerConfig, src, &errs)
+				assignRole(st.cfgRole, role, parse(st.knob, role, raw, LayerConfig, src, &errs), st.knob.Name, &errs)
 			}
 		}
 	}
@@ -261,12 +261,57 @@ func (r *Resolved) crossCheck() error {
 	return nil
 }
 
+// envRole maps a variable's role suffix to its role. Only the canonical spelling is accepted
+// (the role upper-cased, hyphens written as underscores), so each role has exactly one variable
+// per knob and no two variables can name the same setting.
 func envRole(raw string) (string, error) {
 	role := strings.ReplaceAll(strings.ToLower(raw), "_", "-")
 	if err := domain.Role(role).Validate(); err != nil {
 		return "", fmt.Errorf("role suffix %q: %v", raw, err)
 	}
+	if raw != upperUnderscore(role) {
+		return "", fmt.Errorf("role suffix %q is not canonical; write it as %q", raw, upperUnderscore(role))
+	}
 	return role, nil
+}
+
+// DuplicateSettingError refuses a second setting for a knob (and role) within one layer.
+// Which of the two would win is not defined by the input, so neither is used.
+type DuplicateSettingError struct {
+	Knob, Role    string
+	Layer         Layer
+	First, Second string
+}
+
+func (e *DuplicateSettingError) Error() string {
+	return fmt.Sprintf("knob %s%s: set twice in the %s layer, by %s and by %s; remove one",
+		e.Knob, roleSuffix(e.Role), e.Layer, e.First, e.Second)
+}
+
+// assign stores s in *slot, the one place a layer's setting is recorded. A slot that is already
+// set is refused, naming both sources in a fixed order, and keeps neither value in play.
+func assign(slot **setting, s *setting, knob, role string, errs *[]error) {
+	if s == nil {
+		return
+	}
+	if prev := *slot; prev != nil {
+		a, b := prev.source, s.source
+		if b < a {
+			a, b = b, a
+		}
+		*errs = append(*errs, &DuplicateSettingError{Knob: knob, Role: role, Layer: s.layer, First: a, Second: b})
+		return
+	}
+	*slot = s
+}
+
+// assignRole is assign for a per-role slot.
+func assignRole(m map[string]*setting, role string, s *setting, knob string, errs *[]error) {
+	slot := m[role]
+	assign(&slot, s, knob, role, errs)
+	if slot != nil {
+		m[role] = slot
+	}
 }
 
 func parse(k Knob, role, raw string, layer Layer, source string, errs *[]error) *setting {

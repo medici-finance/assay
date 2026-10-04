@@ -5,10 +5,11 @@
 // that evaluate a request against a policy come later. Authority lives here and nowhere else:
 // none of these settings is a tunable knob, and nothing in deskcore/config can raise them.
 //
-// The package is pure: it parses nothing from disk and loads nothing by itself. A policy is
-// admitted only as an Approved value whose digest matches the exact bytes it was decoded from,
-// and the caller is responsible for reading those bytes from an operator-approved reference
-// rather than from an agent's workspace.
+// The package is pure: it reads nothing from disk and loads nothing by itself. A policy is
+// admitted only as an Approved value, which NewApproved builds by decoding the very bytes whose
+// digest it checked; no other way to build one exists outside this package. The caller is
+// responsible for reading those bytes from an operator-approved reference rather than from an
+// agent's workspace.
 package policy
 
 import (
@@ -49,17 +50,35 @@ type Document struct {
 	Grants   []RoleGrant     `json:"grants"`
 }
 
-// Approved is a policy document admitted by the operator: the document, the digest of the exact
-// bytes it was decoded from, and the immutable reference those bytes were read at.
-type Approved struct {
-	Document  Document
-	Digest    domain.Digest
-	Reference string
+// RequiredKeys lists the keys a policy document's JSON object must carry (see
+// domain.DecodeStrict).
+func (Document) RequiredKeys() []string { return []string{"schema", "revision", "grants"} }
+
+// RequiredKeys lists the keys a grant's JSON object must carry.
+func (RoleGrant) RequiredKeys() []string {
+	return []string{"role", "operations", "targets", "hosts", "required_checks"}
 }
 
-// NewApproved admits doc as approved when raw (the bytes doc was decoded from) hashes to want.
-// It refuses a digest mismatch, an empty reference and a structurally invalid document.
-func NewApproved(doc Document, raw []byte, want domain.Digest, reference string) (Approved, error) {
+// RequiredKeys lists the keys a target pattern's JSON object must carry.
+func (TargetPattern) RequiredKeys() []string {
+	return []string{"forge_instance_id", "repository_id", "object_kind"}
+}
+
+// Approved is a policy document admitted by the operator: the document decoded from the exact
+// bytes whose digest was approved, that digest, and the immutable reference the bytes were read
+// at. Its fields are unexported, so NewApproved is the only way to build one; the zero value
+// grants nothing.
+type Approved struct {
+	doc       Document
+	digest    domain.Digest
+	reference string
+}
+
+// NewApproved admits the policy document in raw when raw hashes to want. It decodes raw itself,
+// strictly (domain.DecodeStrict), so the admitted document is always the one the approved bytes
+// hold. It refuses a malformed digest, a digest mismatch, an empty reference, bytes that do not
+// decode strictly, and a structurally invalid document.
+func NewApproved(raw []byte, want domain.Digest, reference string) (Approved, error) {
 	if err := want.Validate(); err != nil {
 		return Approved{}, fmt.Errorf("policy approval: %w", err)
 	}
@@ -69,20 +88,52 @@ func NewApproved(doc Document, raw []byte, want domain.Digest, reference string)
 	if strings.TrimSpace(reference) == "" {
 		return Approved{}, errors.New("policy approval: the immutable reference is empty")
 	}
+	var doc Document
+	if err := domain.DecodeStrict(raw, &doc); err != nil {
+		return Approved{}, fmt.Errorf("policy approval: %w", err)
+	}
 	if err := doc.Validate(); err != nil {
 		return Approved{}, err
 	}
-	return Approved{Document: doc, Digest: want, Reference: reference}, nil
+	return Approved{doc: doc, digest: want, reference: reference}, nil
 }
 
-// Grant returns the grant for role, if the policy has one. A role with no grant may do nothing.
+// Document returns a copy of the approved document; changing the copy changes nothing here.
+func (a Approved) Document() Document {
+	d := a.doc
+	d.Grants = make([]RoleGrant, len(a.doc.Grants))
+	for i, g := range a.doc.Grants {
+		d.Grants[i] = g.clone()
+	}
+	if a.doc.Grants == nil {
+		d.Grants = nil
+	}
+	return d
+}
+
+// Digest returns the digest of the approved bytes.
+func (a Approved) Digest() domain.Digest { return a.digest }
+
+// Reference returns the immutable reference the approved bytes were read at.
+func (a Approved) Reference() string { return a.reference }
+
+// Grant returns a copy of the grant for role, if the policy has one. A role with no grant may do
+// nothing.
 func (a Approved) Grant(role domain.Role) (RoleGrant, bool) {
-	for _, g := range a.Document.Grants {
+	for _, g := range a.doc.Grants {
 		if g.Role == role {
-			return g, true
+			return g.clone(), true
 		}
 	}
 	return RoleGrant{}, false
+}
+
+func (g RoleGrant) clone() RoleGrant {
+	g.Operations = append([]Operation(nil), g.Operations...)
+	g.Targets = append([]TargetPattern(nil), g.Targets...)
+	g.Hosts = append([]string(nil), g.Hosts...)
+	g.RequiredChecks = append([]string(nil), g.RequiredChecks...)
+	return g
 }
 
 // Validate reports every structural defect in d.

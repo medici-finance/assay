@@ -1,0 +1,12 @@
+// Package direct starts a process and replaces itself without importing os/exec.
+package direct
+
+import (
+	"os"
+	"syscall"
+)
+
+func Run() {
+	_, _ = os.StartProcess("/bin/sh", nil, &os.ProcAttr{})
+	_ = syscall.Exec("/bin/sh", nil, nil)
+}

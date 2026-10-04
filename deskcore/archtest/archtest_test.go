@@ -21,6 +21,7 @@ func deskcorePolicy(mod string, pure ...string) Policy {
 		Pure:              pure,
 		ForbiddenStd:      []string{"os/exec", "net", "net/http/..."},
 		ForbiddenInternal: []string{"ports", "collect", "adapters", "custody", "identity", "runtime", "witness"},
+		ForbiddenDirect:   []string{"os", "syscall", "os/signal", "os/user", "io/ioutil", "plugin", "unsafe"},
 	}
 }
 
@@ -75,7 +76,8 @@ var purePackages = []string{module + "/domain", module + "/facts", module + "/po
 
 // TestPurePackagesHaveNoEffectfulTransitiveImports: domain, facts, policy and config reach no
 // process, network or HTTP package, no effectful module package and no third-party package, by
-// any transitive path.
+// any transitive path, and import no effect-capable standard package (os, syscall and the rest
+// of ForbiddenDirect) themselves.
 func TestPurePackagesHaveNoEffectfulTransitiveImports(t *testing.T) {
 	pkgs := goList(t, "..", "./domain", "./facts", "./policy", "./config")
 	for _, v := range Check(pkgs, deskcorePolicy(module, purePackages...)) {
@@ -104,25 +106,28 @@ func TestArchtestCatchesPlantedImport(t *testing.T) {
 	const mod = "example.com/planted"
 	dir := fixture(t, "planted")
 	pkgs := goList(t, dir, "./...")
-	got := Check(pkgs, deskcorePolicy(mod, mod+"/domain", mod+"/facts", mod+"/policy", mod+"/clean"))
-	want := map[string]string{
-		mod + "/domain": mod + "/domain -> " + mod + "/mid -> os/exec",
-		mod + "/facts":  mod + "/facts -> " + mod + "/witness",
-		mod + "/policy": mod + "/policy -> net/http/httptest",
+	got := Check(pkgs, deskcorePolicy(mod, mod+"/domain", mod+"/facts", mod+"/policy", mod+"/clean",
+		mod+"/direct", mod+"/viahelper"))
+	want := map[string]bool{
+		mod + "/domain -> " + mod + "/mid -> os/exec": true,
+		mod + "/facts -> " + mod + "/witness":         true,
+		mod + "/policy -> net/http/httptest":          true,
+		// os.StartProcess and syscall.Exec, with no os/exec import anywhere.
+		mod + "/direct -> os":      true,
+		mod + "/direct -> syscall": true,
+		// A clean pure package whose module helper writes a file.
+		mod + "/viahelper -> " + mod + "/helper -> os": true,
 	}
-	seen := map[string]bool{}
 	for _, v := range got {
 		c := strings.Join(v.Chain, " -> ")
-		if want[v.Pure] != c {
+		if !want[c] {
 			t.Errorf("unexpected violation %s", v)
 			continue
 		}
-		seen[v.Pure] = true
+		delete(want, c)
 	}
-	for p, c := range want {
-		if !seen[p] {
-			t.Errorf("planted reach not caught: %s", c)
-		}
+	for c := range want {
+		t.Errorf("planted reach not caught: %s", c)
 	}
 }
 
@@ -132,6 +137,11 @@ func TestArchtestCatchesCycleAndLoadErrors(t *testing.T) {
 	got := Check(goList(t, dir, "./..."), deskcorePolicy(mod, mod+"/a"))
 	if len(got) == 0 {
 		t.Fatal("an import cycle passed the check")
+	}
+	for _, v := range got {
+		if !strings.Contains(v.Why, "import cycle") {
+			t.Errorf("the cycle fixture produced a violation that does not name the cycle: %s", v)
+		}
 	}
 	// A graph assembled by hand, which the go tool never vetted.
 	pkgs := []Package{
@@ -204,5 +214,118 @@ func TestKnobReadLintCatchesStrayRead(t *testing.T) {
 	}
 	for file, w := range want {
 		t.Errorf("missed %s in %s", w, file)
+	}
+}
+
+var pureDirs = []string{"domain", "facts", "policy", "config"}
+
+// deskcoreRules are the call rules the pure packages live by.
+func deskcoreRules() []Rule {
+	return []Rule{
+		{
+			Pkg:   "time",
+			Funcs: []string{"Now", "Since", "Until", "After", "AfterFunc", "Tick", "NewTimer", "NewTicker", "Sleep"},
+			Why:   "a pure package reads no clock; the caller passes the time in",
+		},
+		{
+			Pkg:   "encoding/json",
+			Funcs: []string{"Unmarshal", "NewDecoder"},
+			Allow: []string{"domain/strict.go:DecodeStrict", "domain/domain.go:OutcomeKind.UnmarshalJSON", "facts/facts.go:peekSchema"},
+			Why:   "untrusted JSON is decoded only through domain.DecodeStrict",
+		},
+		{
+			Method: "Sub",
+			Allow:  []string{"facts/facts.go:ageAt"},
+			Why:    "an age is computed only by facts.ageAt, which refuses a future time",
+		},
+	}
+}
+
+// TestPurePackagesFollowTheCallRules: no clock read in a pure package, one strict JSON decoder,
+// and one age computation.
+func TestPurePackagesFollowTheCallRules(t *testing.T) {
+	found, err := ScanRules(os.DirFS(".."), pureDirs, deskcoreRules())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range found {
+		t.Errorf("%s", f)
+	}
+}
+
+// TestCallRulesCatchPlantedCalls is the positive control for ScanRules.
+func TestCallRulesCatchPlantedCalls(t *testing.T) {
+	fsys := os.DirFS(fixture(t, "rules"))
+	rules := []Rule{
+		deskcoreRules()[0],
+		{Pkg: "encoding/json", Funcs: []string{"Unmarshal"}, Allow: []string{"decode/decode.go:Strict"}, Why: "one decoder"},
+		{Method: "Sub", Allow: []string{"age/age.go:ageAt"}, Why: "one age"},
+	}
+	found, err := ScanRules(fsys, []string{"clock", "dotclock", "decode", "age"}, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"clock/clock.go:8: time.Since at package level":       true,
+		"clock/clock.go:11: time.Sleep in Wait":               true,
+		"clock/clock.go:12: time.Now in Wait":                 true,
+		"dotclock/dotclock.go:3: dot-import of time":          true,
+		"decode/decode.go:9: encoding/json.Unmarshal in Load": true,
+		"age/age.go:10: call of method Sub in window.Fresh":   true,
+	}
+	for _, f := range found {
+		key := ""
+		for w := range want {
+			if strings.HasPrefix(f.String(), w) {
+				key = w
+			}
+		}
+		if key == "" {
+			t.Errorf("unexpected finding %s", f)
+			continue
+		}
+		delete(want, key)
+	}
+	for w := range want {
+		t.Errorf("planted call not caught: %s", w)
+	}
+	if _, err := ScanRules(fsys, []string{"missing"}, rules); err == nil {
+		t.Error("a directory that does not exist was scanned as clean")
+	}
+	stale := []Rule{{Method: "Sub", Allow: []string{"age/age.go:ageAt", "age/age.go:gone"}, Why: "one age"}}
+	if _, err := ScanRules(fsys, []string{"age"}, stale); err == nil || !strings.Contains(err.Error(), "age/age.go:gone") {
+		t.Errorf("a stale allow entry was not refused: %v", err)
+	}
+}
+
+// TestNoForgeableConstructedTypes: no pure package has a type whose constructor a composite
+// literal could skip.
+func TestNoForgeableConstructedTypes(t *testing.T) {
+	found, err := ScanForgeable(os.DirFS(".."), pureDirs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range found {
+		t.Errorf("%s", f)
+	}
+}
+
+// TestForgeableLintCatchesExportedFields is the positive control for ScanForgeable.
+func TestForgeableLintCatchesExportedFields(t *testing.T) {
+	found, err := ScanForgeable(os.DirFS(fixture(t, "forgeable")), []string{"open", "ptr", "sealed", "plain"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"open/open.go": "type Grant", "ptr/ptr.go": "type Lease"}
+	if len(found) != len(want) {
+		t.Errorf("got %d findings, want %d: %v", len(found), len(want), found)
+	}
+	for _, f := range found {
+		if w, ok := want[f.File]; !ok || !strings.HasPrefix(f.What, w) {
+			t.Errorf("unexpected finding %s", f)
+		}
+	}
+	if _, err := ScanForgeable(os.DirFS(fixture(t, "forgeable")), []string{"missing"}); err == nil {
+		t.Error("a directory that does not exist was scanned as clean")
 	}
 }

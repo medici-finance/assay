@@ -286,3 +286,61 @@ func TestEnvFromList(t *testing.T) {
 		t.Errorf("EnvFromList = %v", got)
 	}
 }
+
+// Only the canonical role suffix names a per-role variable, so two variables can never set the
+// same (knob, role): a case or separator variant is refused, and the answer is the same on every
+// run whatever order the environment map is walked in.
+func TestEnvRoleSuffixIsCanonical(t *testing.T) {
+	for _, name := range []string{
+		"ASSAY_DESK_AUTOLANE_DAILY_CAP__worker",
+		"ASSAY_DESK_AUTOLANE_DAILY_CAP__Worker",
+		"ASSAY_DESK_AUTOLANE_DAILY_CAP__PR-REVIEW",
+		"ASSAY_DESK_AUTOLANE_DAILY_CAP__pr_review",
+	} {
+		_, err := Resolve(map[string]string{name: "5"}, KnobFile{}, Table())
+		var unknown *UnknownKnobError
+		if !errors.As(err, &unknown) {
+			t.Errorf("%s: want UnknownKnobError, got %v", name, err)
+		}
+	}
+	colliding := map[string]string{
+		"ASSAY_DESK_AUTOLANE_DAILY_CAP__WORKER": "5",
+		"ASSAY_DESK_AUTOLANE_DAILY_CAP__worker": "0",
+	}
+	for i := 0; i < 200; i++ {
+		if r, err := Resolve(colliding, KnobFile{}, Table()); err == nil {
+			t.Fatalf("run %d: two variables for one setting were accepted; worker reads %s", i, get(t, r, "autolane.daily_cap", "worker"))
+		}
+	}
+	r := resolve(t, map[string]string{"ASSAY_DESK_AUTOLANE_DAILY_CAP__PR_REVIEW": "7"}, KnobFile{})
+	if v := get(t, r, "autolane.daily_cap", "pr-review"); v.Value != 7 {
+		t.Errorf("canonical suffix not applied: %s", v)
+	}
+}
+
+// assign is the one place a layer's setting is recorded. A second setting for a slot is refused
+// naming both sources, whichever arrives first, and neither value is kept in play.
+func TestAssignRefusesASecondSetting(t *testing.T) {
+	a := &setting{layer: LayerEnv, source: "VAR_A", value: 5}
+	b := &setting{layer: LayerEnv, source: "VAR_B", value: 0}
+	for _, order := range [][2]*setting{{a, b}, {b, a}} {
+		var slot *setting
+		var errs []error
+		assign(&slot, order[0], "k", "", &errs)
+		assign(&slot, order[1], "k", "", &errs)
+		var dup *DuplicateSettingError
+		if len(errs) != 1 || !errors.As(errs[0], &dup) {
+			t.Fatalf("want one DuplicateSettingError, got %v", errs)
+		}
+		if dup.First != "VAR_A" || dup.Second != "VAR_B" {
+			t.Errorf("sources not named in a fixed order: %s", dup)
+		}
+	}
+	m := map[string]*setting{}
+	var errs []error
+	assignRole(m, "worker", a, "k", &errs)
+	assignRole(m, "worker", b, "k", &errs)
+	if len(errs) != 1 {
+		t.Errorf("assignRole: want one refusal, got %v", errs)
+	}
+}

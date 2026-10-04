@@ -3,8 +3,11 @@
 //
 // It imports only the standard library and performs no effect. Nothing here reads the process
 // environment, the filesystem, the network or a clock; a caller that needs "now" passes it in.
-// The archtest package enforces both properties over the transitive import graph, so a later
-// change that pulls an effectful package into this one fails the build rather than a review.
+// The archtest package's tests check this: no process, network or effectful package along any
+// import chain, no direct import of os, syscall or the other effect-capable packages it lists,
+// no environment read, and no clock read. A change that breaks one of those fails `go test` in
+// deskcore/archtest. CI does not run that suite yet (medici-finance/assay#2208), so until it
+// does the check holds only where the suite is run.
 package domain
 
 import (
@@ -297,4 +300,9 @@ type Fact struct {
 	Revision   Revision        `json:"revision,omitempty"`
 	ObservedAt time.Time       `json:"observed_at"`
 	Value      json.RawMessage `json:"value,omitempty"`
+}
+
+// RequiredKeys lists the keys a fact's JSON object must carry (see DecodeStrict).
+func (Fact) RequiredKeys() []string {
+	return []string{"id", "source", "kind", "subject", "observed_at"}
 }

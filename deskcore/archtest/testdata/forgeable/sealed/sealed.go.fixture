@@ -1,0 +1,9 @@
+package sealed
+
+type Sealed struct {
+	doc string
+}
+
+func NewSealed(doc string) Sealed { return Sealed{doc: doc} }
+
+func (s Sealed) Doc() string { return s.doc }

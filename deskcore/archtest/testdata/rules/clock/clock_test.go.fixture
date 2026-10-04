@@ -1,0 +1,5 @@
+package clock
+
+import "time"
+
+var _ = time.Now()

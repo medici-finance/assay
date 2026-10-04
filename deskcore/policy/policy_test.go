@@ -1,6 +1,8 @@
 package policy
 
 import (
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/deskcore/domain"
@@ -50,12 +52,20 @@ func TestDocumentValidate(t *testing.T) {
 	}
 }
 
+const approvedDoc = `{"schema":"desk-policy-v1","revision":"rev-1","grants":[` +
+	`{"role":"worker","operations":["change.open","change.push"],` +
+	`"targets":[{"forge_instance_id":"forge-1","repository_id":"1001","object_kind":"*"}],` +
+	`"hosts":["forge.example"],"required_checks":[]}]}`
+
 func TestNewApprovedBindsDigest(t *testing.T) {
-	raw := []byte(`{"schema":"desk-policy-v1"}`)
+	raw := []byte(approvedDoc)
 	want := domain.DigestOf(raw)
-	a, err := NewApproved(validDoc(), raw, want, "refs/policy@abc")
+	a, err := NewApproved(raw, want, "refs/policy@abc")
 	if err != nil {
 		t.Fatalf("NewApproved: %v", err)
+	}
+	if a.Digest() != want || a.Reference() != "refs/policy@abc" || a.Document().Revision != "rev-1" {
+		t.Errorf("approved value does not carry its inputs: %s %s %+v", a.Digest(), a.Reference(), a.Document())
 	}
 	if _, ok := a.Grant("worker"); !ok {
 		t.Error("granted role not found")
@@ -63,18 +73,79 @@ func TestNewApprovedBindsDigest(t *testing.T) {
 	if _, ok := a.Grant("reviewer"); ok {
 		t.Error("an ungranted role was found")
 	}
-	if _, err := NewApproved(validDoc(), append(raw, ' '), want, "refs/policy@abc"); err == nil {
+	if _, err := NewApproved(append(raw, ' '), want, "refs/policy@abc"); err == nil {
 		t.Error("a digest mismatch was admitted")
 	}
-	if _, err := NewApproved(validDoc(), raw, want, " "); err == nil {
+	if _, err := NewApproved(raw, want, " "); err == nil {
 		t.Error("an empty reference was admitted")
 	}
-	if _, err := NewApproved(validDoc(), raw, "sha256:bad", "refs/policy@abc"); err == nil {
+	if _, err := NewApproved(raw, "sha256:bad", "refs/policy@abc"); err == nil {
 		t.Error("a malformed digest was admitted")
 	}
-	bad := validDoc()
-	bad.Schema = ""
-	if _, err := NewApproved(bad, raw, want, "refs/policy@abc"); err == nil {
+	bad := []byte(strings.Replace(approvedDoc, `"schema":"desk-policy-v1"`, `"schema":""`, 1))
+	if _, err := NewApproved(bad, domain.DigestOf(bad), "refs/policy@abc"); err == nil {
 		t.Error("an invalid document was admitted")
+	}
+}
+
+// The admitted document is always the one the approved bytes hold: bytes that grant nothing
+// grant nothing, whatever else the caller has to hand.
+func TestApprovedBytesAreWhatGrants(t *testing.T) {
+	raw := []byte(`{"schema":"desk-policy-v1","revision":"rev-2","grants":[]}`)
+	a, err := NewApproved(raw, domain.DigestOf(raw), "refs/policy@def")
+	if err != nil {
+		t.Fatalf("NewApproved: %v", err)
+	}
+	if g, ok := a.Grant("worker"); ok {
+		t.Errorf("approved bytes grant nothing, yet worker was granted %+v", g)
+	}
+	var zero Approved
+	if _, ok := zero.Grant("worker"); ok {
+		t.Error("the zero Approved granted a role")
+	}
+}
+
+// Approved has no exported field, so outside this package NewApproved is the only way to build
+// one, and the returned document is a copy.
+func TestApprovedIsUnforgeable(t *testing.T) {
+	rt := reflect.TypeFor[Approved]()
+	for i := 0; i < rt.NumField(); i++ {
+		if rt.Field(i).IsExported() {
+			t.Errorf("Approved.%s is exported", rt.Field(i).Name)
+		}
+	}
+	raw := []byte(approvedDoc)
+	a, err := NewApproved(raw, domain.DigestOf(raw), "refs/policy@abc")
+	if err != nil {
+		t.Fatalf("NewApproved: %v", err)
+	}
+	d := a.Document()
+	d.Grants[0].Role = "reviewer"
+	d.Grants[0].Operations[0] = "change.merge"
+	g, _ := a.Grant("worker")
+	g.Operations[1] = "change.merge"
+	again, ok := a.Grant("worker")
+	if !ok || again.Operations[0] != "change.open" || again.Operations[1] != "change.push" {
+		t.Errorf("changing a returned copy changed the approval: %+v", again)
+	}
+}
+
+// A policy document is decoded strictly: a key that differs only in case, a key given twice, or
+// a missing required key is refused even when the digest matches.
+func TestNewApprovedDecodesStrictly(t *testing.T) {
+	cases := map[string]string{
+		"case variant": strings.Replace(approvedDoc, `"grants":[`, `"Grants":[`, 1),
+		"duplicate":    strings.Replace(approvedDoc, `"role":"worker"`, `"role":"reader","role":"worker"`, 1),
+		"missing key":  strings.Replace(approvedDoc, `,"required_checks":[]`, ``, 1),
+		"unknown key":  strings.Replace(approvedDoc, `"revision":"rev-1"`, `"revision":"rev-1","admin":true`, 1),
+	}
+	for name, doc := range cases {
+		if doc == approvedDoc {
+			t.Fatalf("%s: the fixture edit did not apply", name)
+		}
+		raw := []byte(doc)
+		if _, err := NewApproved(raw, domain.DigestOf(raw), "refs/policy@abc"); err == nil {
+			t.Errorf("%s: NewApproved admitted %s", name, doc)
+		}
 	}
 }

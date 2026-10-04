@@ -1,16 +1,24 @@
-// Package archtest enforces deskcore's architecture as tests rather than review comments.
+// Package archtest states deskcore's architecture as checks that its tests run, so a change that
+// breaks a rule fails `go test` in this directory. CI does not run this suite yet
+// (medici-finance/assay#2208); until it does, a rule holds only where the suite is run.
 //
-// Two checks live here:
+// The checks:
 //
 //   - Check walks a package graph (the JSON stream "go list -e -json -deps" prints) and reports
 //     every pure package that reaches a forbidden package by any transitive path: a process,
 //     network or HTTP package from the standard library, an effectful package of the module
-//     itself, or any third-party package. Each violation carries the import chain that reaches
-//     the forbidden package, so the fix is obvious.
+//     itself, or any third-party package. It also reports every module package, reachable from a
+//     pure one, that directly imports an effect-capable standard package such as os or syscall,
+//     which the standard library itself reaches and a transitive ban therefore cannot cover. Each
+//     violation carries the import chain, so the fix is obvious.
 //   - ScanKnobReads parses Go source and reports every read of the process environment, and
 //     every hard-coded copy of a knob's earlier literal value, outside the config package. A
 //     knob has exactly one reader; a second one would let the resolver's precedence and bounds
 //     be bypassed.
+//   - ScanRules reports calls a rule forbids outside the functions it allows: a clock read in a
+//     pure package, or a second place that decodes untrusted JSON or computes a time difference.
+//   - ScanForgeable reports a struct type that has a constructor and an exported field, so a
+//     composite literal could build one without the constructor's checks.
 //
 // The package itself runs no process and reads no environment: the tests run "go list" and hand
 // the output and a file system to these functions.
@@ -72,6 +80,12 @@ type Policy struct {
 	// ForbiddenInternal lists module-relative directories (for example "adapters") a pure
 	// package may not reach, including every package below them.
 	ForbiddenInternal []string
+	// ForbiddenDirect lists standard-library packages that neither a pure package nor any module
+	// package it reaches may import directly. The standard library reaches these itself (fmt
+	// imports os, os imports syscall), so a transitive ban cannot cover them; a direct import is
+	// what would let a package start a process, open a socket or write a file without os/exec
+	// or net.
+	ForbiddenDirect []string
 }
 
 // Violation is one broken rule.
@@ -127,6 +141,14 @@ func Check(pkgs []Package, p Policy) []Violation {
 			if cp == nil {
 				continue
 			}
+			if isInternal(cur, p.Module) {
+				for _, imp := range cp.Imports {
+					if contains(p.ForbiddenDirect, imp) {
+						out = append(out, Violation{Pure: root, Bad: imp, Chain: append(chain(parent, cur), imp),
+							Why: "imports effect-capable standard package " + imp + " directly"})
+					}
+				}
+			}
 			for _, imp := range cp.Imports {
 				if _, seen := parent[imp]; !seen {
 					parent[imp] = cur
@@ -138,10 +160,22 @@ func Check(pkgs []Package, p Policy) []Violation {
 	return out
 }
 
+func isInternal(imp, module string) bool {
+	return imp == module || strings.HasPrefix(imp, module+"/")
+}
+
+func contains(list []string, s string) bool {
+	for _, e := range list {
+		if e == s {
+			return true
+		}
+	}
+	return false
+}
+
 func forbidden(imp string, pkg *Package, p Policy) string {
-	internal := imp == p.Module || strings.HasPrefix(imp, p.Module+"/")
 	switch {
-	case internal:
+	case isInternal(imp, p.Module):
 		rel := strings.TrimPrefix(strings.TrimPrefix(imp, p.Module), "/")
 		for _, f := range p.ForbiddenInternal {
 			if rel == f || strings.HasPrefix(rel, f+"/") {
@@ -347,4 +381,273 @@ func scanFile(name string, src []byte, knobs []Knob) ([]Finding, error) {
 		return true
 	})
 	return out, nil
+}
+
+// Rule forbids a call in the scanned directories except inside the functions it allows.
+type Rule struct {
+	// Pkg and Funcs name package-level functions, for example "time" and Now. A use is matched
+	// under any import name, called or not; a dot-import of Pkg is itself a finding.
+	Pkg   string
+	Funcs []string
+	// Method, set instead of Pkg, matches every call of a method with this name, x.Method(...),
+	// where x is not an imported package. Without type information the receiver is not known,
+	// so the rule fails closed on every method of that name.
+	Method string
+	// Allow lists the functions the use may appear in, as "dir/file.go:Func" or
+	// "dir/file.go:Recv.Method", relative to the root of the scanned file system.
+	Allow []string
+	// Why explains the rule in each finding.
+	Why string
+}
+
+func (r Rule) label(sel string) string {
+	if r.Method != "" {
+		return "call of method " + sel
+	}
+	return r.Pkg + "." + sel
+}
+
+// ScanRules reports every use a rule forbids in the non-test Go files directly inside dirs
+// (slash-separated, relative to the root of fsys). A directory that cannot be read is an error,
+// since a lint that silently scans nothing proves nothing, and so is an Allow entry that allowed
+// no use, so an allow-list cannot outlive the code it names.
+func ScanRules(fsys fs.FS, dirs []string, rules []Rule) ([]Finding, error) {
+	var out []Finding
+	used := map[string]bool{}
+	for _, dir := range dirs {
+		files, err := parseDir(fsys, dir)
+		if err != nil {
+			return nil, err
+		}
+		for _, pf := range files {
+			out = append(out, scanRulesFile(pf, rules, used)...)
+		}
+	}
+	var stale []error
+	for _, r := range rules {
+		for _, a := range r.Allow {
+			if !used[a] {
+				stale = append(stale, fmt.Errorf("allow entry %s for %s allowed nothing; remove it", a, r.Why))
+			}
+		}
+	}
+	if len(stale) > 0 {
+		return nil, errors.Join(stale...)
+	}
+	sortFindings(out)
+	return out, nil
+}
+
+func scanRulesFile(pf parsedFile, rules []Rule, used map[string]bool) []Finding {
+	var out []Finding
+	at := func(pos token.Pos, what string) {
+		out = append(out, Finding{File: pf.name, Line: pf.fset.Position(pos).Line, What: what})
+	}
+	pkgNames := map[string]bool{} // every local name of an imported package
+	local := map[string]string{}  // local name -> import path
+	for _, imp := range pf.file.Imports {
+		path, _ := strconv.Unquote(imp.Path.Value)
+		n := path[strings.LastIndex(path, "/")+1:]
+		if imp.Name != nil {
+			n = imp.Name.Name
+		}
+		if n == "." {
+			for _, r := range rules {
+				if r.Pkg == path {
+					at(imp.Pos(), fmt.Sprintf("dot-import of %s hides %s", path, r.Why))
+				}
+			}
+			continue
+		}
+		pkgNames[n] = true
+		local[n] = path
+	}
+	check := func(fn string, body ast.Node) {
+		ast.Inspect(body, func(n ast.Node) bool {
+			var sel *ast.SelectorExpr
+			isCall := false
+			switch x := n.(type) {
+			case *ast.CallExpr:
+				sel, _ = x.Fun.(*ast.SelectorExpr)
+				isCall = true
+			case *ast.SelectorExpr:
+				sel = x
+			}
+			if sel == nil {
+				return true
+			}
+			id, isIdent := sel.X.(*ast.Ident)
+			for _, r := range rules {
+				var hit bool
+				switch {
+				case r.Method != "":
+					hit = isCall && sel.Sel.Name == r.Method && !(isIdent && pkgNames[id.Name])
+				default:
+					hit = !isCall && isIdent && local[id.Name] == r.Pkg && contains(r.Funcs, sel.Sel.Name)
+				}
+				if !hit {
+					continue
+				}
+				key := pf.name + ":" + fn
+				if fn != "" && contains(r.Allow, key) {
+					used[key] = true
+					continue
+				}
+				where := "at package level"
+				if fn != "" {
+					where = "in " + fn
+				}
+				at(sel.Pos(), fmt.Sprintf("%s %s: %s", r.label(sel.Sel.Name), where, r.Why))
+			}
+			return true
+		})
+	}
+	for _, d := range pf.file.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok {
+			check(funcName(fd), fd)
+		} else {
+			check("", d)
+		}
+	}
+	return out
+}
+
+func funcName(fd *ast.FuncDecl) string {
+	if fd.Recv == nil || len(fd.Recv.List) == 0 {
+		return fd.Name.Name
+	}
+	return typeName(fd.Recv.List[0].Type) + "." + fd.Name.Name
+}
+
+// typeName returns the name of a (possibly pointer or generic) type expression, or "".
+func typeName(e ast.Expr) string {
+	switch x := e.(type) {
+	case *ast.StarExpr:
+		return typeName(x.X)
+	case *ast.IndexExpr:
+		return typeName(x.X)
+	case *ast.IndexListExpr:
+		return typeName(x.X)
+	case *ast.Ident:
+		return x.Name
+	}
+	return ""
+}
+
+// ScanForgeable reports every struct type, in the non-test Go files directly inside dirs, that
+// has a constructor (a function named New<Type> whose first result is the type or a pointer to
+// it) and an exported field. A composite literal can set such a field and so build a value the
+// constructor would have refused.
+func ScanForgeable(fsys fs.FS, dirs []string) ([]Finding, error) {
+	var out []Finding
+	for _, dir := range dirs {
+		files, err := parseDir(fsys, dir)
+		if err != nil {
+			return nil, err
+		}
+		type open struct {
+			file  parsedFile
+			pos   token.Pos
+			field string
+		}
+		exported := map[string]open{}
+		ctors := map[string]bool{}
+		for _, pf := range files {
+			for _, d := range pf.file.Decls {
+				switch x := d.(type) {
+				case *ast.GenDecl:
+					for _, sp := range x.Specs {
+						ts, ok := sp.(*ast.TypeSpec)
+						if !ok {
+							continue
+						}
+						st, ok := ts.Type.(*ast.StructType)
+						if !ok {
+							continue
+						}
+						if f := exportedField(st); f != "" {
+							exported[ts.Name.Name] = open{file: pf, pos: ts.Pos(), field: f}
+						}
+					}
+				case *ast.FuncDecl:
+					if x.Recv == nil && x.Type.Results != nil && len(x.Type.Results.List) > 0 {
+						t := typeName(x.Type.Results.List[0].Type)
+						if t != "" && x.Name.Name == "New"+t {
+							ctors[t] = true
+						}
+					}
+				}
+			}
+		}
+		for t, o := range exported {
+			if ctors[t] {
+				out = append(out, Finding{File: o.file.name, Line: o.file.fset.Position(o.pos).Line,
+					What: fmt.Sprintf("type %s has constructor New%s and exported field %s; a composite literal skips the constructor", t, t, o.field)})
+			}
+		}
+	}
+	sortFindings(out)
+	return out, nil
+}
+
+func exportedField(st *ast.StructType) string {
+	for _, f := range st.Fields.List {
+		if len(f.Names) == 0 {
+			if n := typeName(f.Type); n != "" && ast.IsExported(n) {
+				return n
+			}
+			continue
+		}
+		for _, n := range f.Names {
+			if n.IsExported() {
+				return n.Name
+			}
+		}
+	}
+	return ""
+}
+
+type parsedFile struct {
+	name string
+	fset *token.FileSet
+	file *ast.File
+}
+
+// parseDir parses the non-test Go files directly inside dir.
+func parseDir(fsys fs.FS, dir string) ([]parsedFile, error) {
+	entries, err := fs.ReadDir(fsys, dir)
+	if err != nil {
+		return nil, fmt.Errorf("scan %s: %w", dir, err)
+	}
+	var out []parsedFile
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || path.Ext(name) != ".go" || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		p := path.Join(dir, name)
+		src, err := fs.ReadFile(fsys, p)
+		if err != nil {
+			return nil, err
+		}
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, p, src, parser.SkipObjectResolution)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s: %w", p, err)
+		}
+		out = append(out, parsedFile{name: p, fset: fset, file: f})
+	}
+	return out, nil
+}
+
+func sortFindings(out []Finding) {
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].File != out[j].File {
+			return out[i].File < out[j].File
+		}
+		if out[i].Line != out[j].Line {
+			return out[i].Line < out[j].Line
+		}
+		return out[i].What < out[j].What
+	})
 }

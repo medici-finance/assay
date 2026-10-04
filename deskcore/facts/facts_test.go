@@ -217,10 +217,10 @@ func TestSchemaMatchesGoTypes(t *testing.T) {
 			t.Errorf("%s: schema required %v, Load presence check %v", name, sorted(required), sorted(presence))
 		}
 	}
-	check("bundle", Bundle{}, s.Properties, s.Required, bundleKeys)
-	check("source", Source{}, s.Defs["source"].Properties, s.Defs["source"].Required, sourceKeys)
-	check("fact", domain.Fact{}, s.Defs["fact"].Properties, s.Defs["fact"].Required, factKeys)
-	check("collection error", CollectionError{}, errItem.Items.Properties, errItem.Items.Required, []string{"source", "cause"})
+	check("bundle", Bundle{}, s.Properties, s.Required, Bundle{}.RequiredKeys())
+	check("source", Source{}, s.Defs["source"].Properties, s.Defs["source"].Required, Source{}.RequiredKeys())
+	check("fact", domain.Fact{}, s.Defs["fact"].Properties, s.Defs["fact"].Required, domain.Fact{}.RequiredKeys())
+	check("collection error", CollectionError{}, errItem.Items.Properties, errItem.Items.Required, CollectionError{}.RequiredKeys())
 }
 
 func keysOf(m map[string]json.RawMessage) []string {
@@ -246,4 +246,61 @@ func sorted(s []string) []string {
 	c := append([]string(nil), s...)
 	sort.Strings(c)
 	return c
+}
+
+// TestLoadRefusesKeyVariants: a key that differs from the contract only in case, or a key given
+// twice, is refused at every level. encoding/json alone folds case and keeps the last duplicate,
+// so without this a bundle the schema refuses could decode as complete.
+func TestLoadRefusesKeyVariants(t *testing.T) {
+	src0 := `{"identity": "repo-a/issues", "revision": "etag-1", "collected_at": "2026-10-01T11:59:00Z", "completeness": "complete", "pagination_done": true}`
+	cases := map[string]string{
+		"source case variant overrides": strings.Replace(sample, src0,
+			`{"identity": "repo-e/issues", "revision": "", "collected_at": "2026-10-01T11:59:00Z", "completeness": "partial", "pagination_done": false, "Completeness": "complete", "PAGINATION_DONE": true}`+",\n    "+src0, 1),
+		"source duplicate key": strings.Replace(sample, src0,
+			`{"identity": "repo-e/issues", "revision": "", "collected_at": "2026-10-01T11:59:00Z", "completeness": "partial", "pagination_done": false, "completeness": "complete", "pagination_done": true}`+",\n    "+src0, 1),
+		"bundle case variant": strings.Replace(sample, `"graph_revision": "abc123",`, `"graph_revision": "abc123", "Graph_Revision": "x",`, 1),
+		"bundle duplicate":    strings.Replace(sample, `"graph_revision": "abc123",`, `"graph_revision": "abc123", "graph_revision": "def456",`, 1),
+		"fact case variant":   strings.Replace(sample, `"subject": "9",`, `"subject": "9", "Subject": "10",`, 1),
+		"error case variant":  strings.Replace(sample, `"cause": "permission denied"`, `"cause": "permission denied", "Cause": "x"`, 1),
+		"error duplicate":     strings.Replace(sample, `"cause": "permission denied"`, `"cause": "permission denied", "cause": "x"`, 1),
+		"value duplicate":     strings.Replace(sample, `"value": {"title": "x"}`, `"value": {"title": "x", "title": "y"}`, 1),
+	}
+	for name, s := range cases {
+		if s == sample {
+			t.Fatalf("%s: the fixture edit did not apply", name)
+		}
+		if _, err := Load(strings.NewReader(s)); err == nil {
+			t.Errorf("%s: Load accepted a bundle with a non-contract key", name)
+		}
+	}
+}
+
+// TestFutureDatedSourceIsNotFresh: a source or bundle collected after the caller's "now" cannot
+// answer present or known-negative. A negative age must never pass a freshness bound.
+func TestFutureDatedSourceIsNotFresh(t *testing.T) {
+	b := load(t, sample)
+	q := Query{"repo-a/issues", "issue.open", "8", time.Hour}
+	before := t0.Add(-time.Hour) // now is before the source was collected
+	if got := b.Query(q, before); got.State != CouldNotCheck {
+		t.Errorf("source collected after now: %s (%s), want could-not-check", got.State, got.Reason)
+	}
+	if got := b.Query(Query{"repo-a/issues", "issue.open", "7", time.Hour}, before); got.State != CouldNotCheck {
+		t.Errorf("present fact from a source collected after now: %s, want could-not-check", got.State)
+	}
+	// The bundle itself dated after now, with its source just before now: still not answerable.
+	future := edit(t, func(m map[string]any) { m["collected_at"] = "2076-10-01T12:00:00Z" })
+	fb := load(t, future)
+	if got := fb.Query(q, t0.Add(time.Minute)); got.State != CouldNotCheck {
+		t.Errorf("bundle collected after now: %s, want could-not-check", got.State)
+	}
+}
+
+// TestLoadRefusesOversizedInput: Load reads at most MaxBundleBytes and refuses anything larger,
+// so an unbounded input cannot exhaust memory.
+func TestLoadRefusesOversizedInput(t *testing.T) {
+	padded := strings.Repeat(" ", 16<<20) + sample
+	_, err := Load(strings.NewReader(padded))
+	if err == nil || !strings.Contains(err.Error(), "larger than") {
+		t.Fatalf("an oversized bundle: got %v, want a size refusal", err)
+	}
 }
