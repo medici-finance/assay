@@ -64,10 +64,15 @@ func ReadRosterBeacon(session string) (map[string]json.RawMessage, error) {
 }
 
 func readRosterBeacon(path string) (map[string]json.RawMessage, error) {
-	data, err := os.ReadFile(path)
+	f, err := openRosterBeaconFile(path, false)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
+	if err != nil {
+		return nil, Unverifiable("cannot read the roster beacon at "+path, err)
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return nil, Unverifiable("cannot read the roster beacon at "+path, err)
 	}
@@ -135,7 +140,7 @@ func MutateRosterBeacon(session string, fn func(map[string]json.RawMessage) (Bea
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return path, Unverifiable("cannot create the roster directory", err)
 	}
-	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	lock, err := openRosterBeaconFile(path+".lock", true)
 	if err != nil {
 		return path, Unverifiable("cannot open the roster beacon lock", err)
 	}
