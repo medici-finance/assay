@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -357,4 +359,72 @@ func jsonString(s string) string {
 	}
 	b.WriteByte('"')
 	return b.String()
+}
+
+// TestReadRecordsCarriesLane — two review lanes that both number a finding A3 stay two
+// findings when the records payload names each record's lane.
+func TestReadRecordsCarriesLane(t *testing.T) {
+	body := func(class string) string {
+		return deskkit.RenderFindingBlock(*blk(blockingCode("A3", class, "h", "open", "ev")))
+	}
+	rec := func(seq int, lane, class string) FindingRecord {
+		return FindingRecord{Seq: seq, Kind: "review", Role: "reviewer", Actor: "a", Head: "h",
+			Lane: lane, Verdict: "request-changes", Body: body(class)}
+	}
+	rep := FindingRecordsReport{Repo: "o/r", PR: 1, CurrentHead: "h", Records: []FindingRecord{
+		rec(1, "security", "read-scopes"), rec(2, "correctness", "stale-streak")}}
+	raw, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, recs, err := ReadRecords(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := DeriveContinuity(recs)
+	if len(l.Findings) != 2 || l.Findings["security/A3"] == nil || l.Findings["correctness/A3"] == nil {
+		t.Fatalf("lanes merged through the records payload: %v", l.FindingIDs())
+	}
+}
+
+// TestCompactRecordRekeys — a successor copies the rendered ledger's id, lane and class into
+// its own record. Copied as printed, they must re-key to the SAME finding and the SAME class
+// counter: the lane prints in its own field, never folded into the id or class.
+func TestCompactRecordRekeys(t *testing.T) {
+	laned := func(r deskkit.ForgeRecord, lane string) deskkit.ForgeRecord { r.Lane = lane; return r }
+	disp := blockingCode("A3", "c", "h", "disputed", "ev")
+	disp.Lane = "security" // A3 is held by two lanes, so the worker names its lane
+	recs := []deskkit.ForgeRecord{
+		laned(reviewerRec(1, "h", "request-changes", blk(blockingCode("A3", "c", "h", "open", "ev"))), "security"),
+		laned(reviewerRec(2, "h", "request-changes", blk(blockingCode("A3", "d", "h", "open", "ev"))), "correctness"),
+		workerRec(3, "h", blk(disp)),
+	}
+	out := CompactRecord(DeriveContinuity(recs))
+	if strings.Contains(out, "security/") || strings.Contains(out, "correctness/") {
+		t.Fatalf("a lane-scoped ledger key was rendered where an id or class belongs:\n%s", out)
+	}
+	m := regexp.MustCompile(`- (\S+) \[lane=security class=(\S+) `).FindStringSubmatch(out)
+	if m == nil {
+		t.Fatalf("no security-lane finding line with its lane in its own field:\n%s", out)
+	}
+	if !strings.Contains(out, `class "c" (lane security): 0/3 rounds`) {
+		t.Fatalf("class line does not print the bare class with its lane:\n%s", out)
+	}
+
+	// A replacement security reviewer re-reviews, reusing what was printed.
+	again := blockingCode(m[1], m[2], "h", "open", "ev")
+	l := DeriveContinuity(append(recs, laned(reviewerRec(4, "h", "request-changes", blk(again)), "security")))
+	if got := l.FindingIDs(); len(got) != 2 || got[0] != "correctness/A3" || got[1] != "security/A3" {
+		t.Fatalf("reusing the printed id/class forked a finding: %v", got)
+	}
+	if l.Rounds["security/c"] != 1 || len(l.Rounds) != 2 {
+		t.Fatalf("reusing the printed class did not continue the round counter: %v", l.Rounds)
+	}
+
+	var b strings.Builder
+	RenderFindings(&b, &FindingRecordsReport{Repo: "o/r", PR: 1, CurrentHead: "h"}, l)
+	plan := b.String()
+	if strings.Contains(plan, "security/") || !strings.Contains(plan, "A3         lane=security class=c ") {
+		t.Fatalf("plan rendering folds the lane into the id or class:\n%s", plan)
+	}
 }
