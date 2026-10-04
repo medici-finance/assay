@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/tools/desk/cmd/deskpost/internal/bodycheck"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -421,5 +422,87 @@ func TestReviewLaneNeverEmpty(t *testing.T) {
 		if got := reviewLane(tc.body); got != tc.want {
 			t.Errorf("reviewLane(%q) = %q, want %q", tc.body, got, tc.want)
 		}
+	}
+}
+
+// TestLaneGatesAgree is the class guard over the write and read lane gates: for every lane a
+// block may name, and for each verdict verb, the write gate admits a block stating that lane
+// exactly when the content-defect check reads a lone RESOLVED advisory stating it as clean.
+// A lane the write gate admits but the read side reports could-not-check would leave a
+// permanent could-not-check entry on any PR whose review stated it. The vocabulary is read
+// from deskkit, so a lane added there is covered here without an edit.
+func TestLaneGatesAgree(t *testing.T) {
+	plantForgeRoster(t)
+	login, ok := deskkit.RoleAppLogin("reviewer")
+	if !ok {
+		t.Fatal("test roster binds no reviewer App")
+	}
+	verbs := []struct{ kind, marker string }{
+		{bodycheck.KindCorrectness, "Verdict: approve"},
+		{bodycheck.KindSecurity, "Security-Review: pass"},
+	}
+	for _, v := range verbs {
+		for _, lane := range append([]string{""}, deskkit.FindingLaneNames()...) {
+			body := v.marker + "\n\n" + deskkit.RenderFindingBlock(deskkit.FindingBlockV1{Findings: []deskkit.Finding{{
+				ID: "A1", Lane: lane, Class: "c", Severity: deskkit.SeverityAdvisory, Blocker: deskkit.BlockerCodeContent,
+				State: deskkit.StateResolved, OriginHead: "h", EvidenceHead: "h"}}})
+			admitted := findingLaneRefusal([]byte(body), v.kind) == nil
+			r := reviewInfo{CommitID: "h", Body: body}
+			r.User.Login = login
+			readClean := !hasOpenContentDefect([]reviewInfo{r})
+			if admitted != readClean {
+				t.Errorf("%s verb, block lane %q: write gate admits = %v, read side clean = %v — the gates disagree",
+					v.kind, lane, admitted, readClean)
+			}
+		}
+	}
+}
+
+// TestContentDefectEmptyLane pins the empty-lane fail-closed on its own: a record whose lane
+// could not be established reads as an open defect even when its only finding is a clean,
+// resolved advisory that the fold would otherwise read as clean.
+func TestContentDefectEmptyLane(t *testing.T) {
+	plantForgeRoster(t)
+	login, ok := deskkit.RoleAppLogin("reviewer")
+	if !ok {
+		t.Fatal("test roster binds no reviewer App")
+	}
+	r := reviewInfo{CommitID: "h", Body: "Verdict: approve\n\n" + deskkit.RenderFindingBlock(deskkit.FindingBlockV1{
+		Findings: []deskkit.Finding{{ID: "A1", Class: "c", Severity: deskkit.SeverityAdvisory,
+			Blocker: deskkit.BlockerCodeContent, State: deskkit.StateResolved, OriginHead: "h", EvidenceHead: "h"}}})}
+	r.User.Login = login
+	if contentDefectBy([]reviewInfo{r}, reviewLane) {
+		t.Fatal("control: a clean advisory with an established lane read as an open defect")
+	}
+	if !contentDefectBy([]reviewInfo{r}, func(string) string { return "" }) {
+		t.Error("a record with no established lane did not fail closed")
+	}
+}
+
+// TestContentDefectBlindNeverRetired pins the documented cost of failing closed: a
+// could-not-check entry anywhere in the PR's reviewer history keeps the exemption withheld,
+// even after the finding it concerns is resolved again at the current head.
+func TestContentDefectBlindNeverRetired(t *testing.T) {
+	plantForgeRoster(t)
+	login, ok := deskkit.RoleAppLogin("reviewer")
+	if !ok {
+		t.Fatal("test roster binds no reviewer App")
+	}
+	rev := func(marker, state, evidence string) reviewInfo {
+		r := reviewInfo{CommitID: "h2", Body: marker + "\n\n" + deskkit.RenderFindingBlock(deskkit.FindingBlockV1{
+			Findings: []deskkit.Finding{{ID: "C1", Class: "c", Severity: deskkit.SeverityBlocking,
+				Blocker: deskkit.BlockerCodeContent, State: deskkit.FindingState(state), OriginHead: "h1",
+				EvidenceHead: evidence, Failure: "repro"}}})}
+		r.User.Login = login
+		return r
+	}
+	opened := rev("Verdict: request-changes", "open", "h2")
+	fresh := rev("Verdict: approve", "resolved", "h2")
+	stale := rev("Verdict: approve", "resolved", "h1")
+	if hasOpenContentDefect([]reviewInfo{opened, fresh}) {
+		t.Fatal("control: a finding resolved at the current head still reads open")
+	}
+	if !hasOpenContentDefect([]reviewInfo{opened, stale, fresh}) {
+		t.Error("a superseded stale-head resolution was retired; the documented behaviour keeps it blocking")
 	}
 }

@@ -125,7 +125,19 @@ func clearedByExternalPrereq(reviews []reviewInfo, head string, securityFail boo
 //     lane it is not;
 //   - any record the fold itself reports Blind (a block naming another lane, a stale-head
 //     resolution, ...) — ambiguity resolves toward blocking.
+//
+// A could-not-check entry is never retired: the fold reads the PR's whole reviewer history,
+// so one entry anywhere in it — a resolution once recorded against a stale head and later
+// repeated at the current head, or a historical block a newer write rule would refuse —
+// withholds the exemption on that PR from then on, and the PR clears only through the
+// ordinary review path. That is the accepted cost of failing closed.
 func hasOpenContentDefect(reviews []reviewInfo) bool {
+	return contentDefectBy(reviews, reviewLane)
+}
+
+// contentDefectBy is hasOpenContentDefect with the lane reader passed in, so the empty-lane
+// fail-closed can be exercised even though reviewLane never returns an empty lane today.
+func contentDefectBy(reviews []reviewInfo, laneOf func(string) string) bool {
 	var recs []deskkit.ForgeRecord
 	for i, r := range reviews {
 		if !isReviewerBot(r.User.Login) {
@@ -141,7 +153,7 @@ func hasOpenContentDefect(reviews []reviewInfo) bool {
 		if block.Validate(deskkit.RoleReviewer) != nil {
 			return true // a block the write gate would refuse → fail closed
 		}
-		lane := reviewLane(r.Body)
+		lane := laneOf(r.Body)
 		if lane == "" {
 			return true // a lane-less record would take its block's lane → fail closed
 		}

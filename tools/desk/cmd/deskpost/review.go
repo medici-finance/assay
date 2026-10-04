@@ -106,29 +106,39 @@ func securityShapeFor(verdictFlag string) (reviewShape, bool) {
 }
 
 // findingLaneRefusal refuses a review body whose finding block names a lane the posting
-// verb does not speak for: `security-review` posts the security lane, so every lane its
-// block states must be `security`; `review` posts the correctness lane (into which the
-// deep-set lanes fold), so its block may not state `security`. A block stating no lane, or
-// a body with no block, passes — the record's lane is established from the body.
+// verb does not speak for: `security-review` posts the security lane and `review` posts the
+// correctness lane, so every lane a block states must be that verb's own. The deep-set lanes
+// (`fact-check`, `fail-first`) are refused on both verbs: the record `review` writes carries
+// the correctness lane, and the ledger keys a reviewer finding under its record's lane, so a
+// block stating a deep-set lane would be keyed under correctness anyway and reported
+// could-not-check in every later fold — which the content-defect check reads as blocking. A
+// block stating no lane, or a body with no block, passes — the record's lane is established
+// from the body.
 func findingLaneRefusal(body []byte, wantKind string) error {
+	var verb, own string
+	switch wantKind {
+	case bodycheck.KindSecurity:
+		verb, own = "security-review", deskkit.LaneSecurity.Name
+	case bodycheck.KindCorrectness:
+		verb, own = "review", deskkit.LaneCorrectness.Name
+	default:
+		return nil
+	}
 	b, present, err := deskkit.ParseFindingBlock(string(body))
 	if err != nil || !present {
 		return err
 	}
-	sec := deskkit.LaneSecurity.Name
 	for _, f := range b.Findings {
 		got := f.StatedLane()
-		if got == "" {
+		if got == "" || got == own {
 			continue
 		}
-		if wantKind == bodycheck.KindSecurity && got != sec {
-			return deskkit.Refused(fmt.Sprintf("refused: `security-review` posts the security lane, but finding %s states lane %q — a reviewer speaks only for its own lane; drop the lane or state %q",
-				f.ID, got, sec))
+		hint := fmt.Sprintf("drop the lane or state %q", own)
+		if got == deskkit.LaneSecurity.Name {
+			hint = "post security findings with `deskpost security-review`"
 		}
-		if wantKind == bodycheck.KindCorrectness && got == sec {
-			return deskkit.Refused(fmt.Sprintf("refused: `review` posts the correctness lane, but finding %s states lane %q — post security findings with `deskpost security-review`",
-				f.ID, got))
-		}
+		return deskkit.Refused(fmt.Sprintf("refused: `%s` posts the %s lane, but finding %s states lane %q — a reviewer speaks only for its own lane, and the record this verb writes carries only the %s lane; %s",
+			verb, own, f.ID, got, own, hint))
 	}
 	return nil
 }

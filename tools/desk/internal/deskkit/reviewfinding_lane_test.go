@@ -296,7 +296,8 @@ func TestAmbiguousLaneResolvesNothing(t *testing.T) {
 // TestReadSideKeyRules: the fold re-applies the write gate's key rules to a record that
 // bypassed it. A block lane outside the vocabulary is not honoured (so no block writes into
 // the reserved ambiguous space), and an id carrying the key separator is not keyed (so a
-// lane-less "security/A3" cannot land on the security lane's A3).
+// lane-less "security/A3" cannot land on the security lane's A3). The class half of the
+// separator rule and an unknown RECORD lane are re-checked the same way.
 func TestReadSideKeyRules(t *testing.T) {
 	inject := blockingFinding("A3", "c", "resolved")
 	inject.Lane = LaneAmbiguous
@@ -323,6 +324,25 @@ func TestReadSideKeyRules(t *testing.T) {
 	}
 	if !blindHas(l, "would collide") {
 		t.Errorf("separator in an id not reported: %v", l.Blind)
+	}
+
+	// The class half of the same rule: a class carrying the separator would share another
+	// lane's round counter, so the finding is reported and not keyed.
+	l = DeriveLedger([]ForgeRecord{laneRec(1, RoleReviewer, "", "h", blockingFinding("B1", "security/c", "open"))})
+	if _, keyed := l.Findings["B1"]; keyed || !blindHas(l, "would collide") {
+		t.Errorf("separator in a class: keyed = %v, blind = %v; want unkeyed and reported", keyed, l.Blind)
+	}
+
+	// A record lane outside the vocabulary is not attributed: its findings are not keyed
+	// under an identity space of their own, and the record is reported.
+	l = DeriveLedger([]ForgeRecord{laneRec(1, RoleReviewer, "securty", "h", blockingFinding("A3", "c", "open"))})
+	if len(l.Findings) != 0 || !blindHas(l, "not a published lane") {
+		t.Errorf("unknown record lane: findings = %v, blind = %v; want none keyed and reported", l.Findings, l.Blind)
+	}
+	// The reserved ambiguous record lane is not an unknown lane.
+	l = DeriveLedger([]ForgeRecord{laneRec(1, RoleReviewer, LaneAmbiguous, "h", blockingFinding("A3", "c", "open"))})
+	if len(l.Blind) != 0 {
+		t.Errorf("the reserved ambiguous record lane was reported: %v", l.Blind)
 	}
 }
 

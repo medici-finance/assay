@@ -259,7 +259,7 @@ func (b *FindingBlockV1) Validate(role ActorRole) error {
 		}
 		if l := normLane(f.Lane); l != "" && !knownFindingLane(l) {
 			return Refused("review-finding: finding " + id + " names an unknown lane " + strconv.Quote(f.Lane) +
-				" — a lane is one of " + strings.Join(findingLaneNames(), ", ") + " (an unknown word would fork the finding into an identity space of its own)")
+				" — a lane is one of " + strings.Join(FindingLaneNames(), ", ") + " (an unknown word would fork the finding into an identity space of its own)")
 		}
 		if !f.Severity.known() {
 			return Refused("review-finding: finding " + id + " has an unknown severity " + string(f.Severity))
@@ -391,7 +391,10 @@ func knownFindingLane(lane string) bool {
 	return false
 }
 
-func findingLaneNames() []string {
+// FindingLaneNames is the closed lane vocabulary a finding block may name, in order. A
+// consumer that checks a write gate against the read side enumerates it, so a lane added
+// here is covered by that check without the check being edited.
+func FindingLaneNames() []string {
 	out := make([]string, 0, len(findingLanes))
 	for _, l := range findingLanes {
 		out = append(out, l.Name)
@@ -647,6 +650,13 @@ func DeriveLedger(records []ForgeRecord) *FindingLedger {
 		}
 		if strings.TrimSpace(r.Head) == "" {
 			l.Blind = append(l.Blind, fmt.Sprintf("record seq %d by %s has no head SHA — cannot pin its assertion", r.Seq, r.Role))
+			continue
+		}
+		if rl := normLane(r.Lane); rl != "" && rl != LaneAmbiguous && !knownFindingLane(rl) {
+			// A record lane outside the published vocabulary (a producer's typo, or a payload
+			// that bypassed the readers) would fork its findings into an identity space of
+			// their own, so the record is not attributed at all.
+			l.Blind = append(l.Blind, fmt.Sprintf("record seq %d carries lane %q, which is not a published lane — cannot attribute its findings; ignored", r.Seq, r.Lane))
 			continue
 		}
 		if r.Block == nil {
