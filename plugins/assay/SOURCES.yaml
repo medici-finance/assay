@@ -156,6 +156,12 @@ unported:
       carries no upstream source block, so there is no drift baseline to hold —
       declared here so coverage accounts for it rather than reporting it
       unaccounted.
+  - path: skills/cut-release/SKILL.md
+    reason: >-
+      Authored in this repo as the release-cutting verb, rewritten against this
+      bundle's own umbrella-tag release and re-homed here next to its subject.
+      It documents THIS repo's release workflow and pin manifests, so it has no
+      upstream to port from and no drift baseline to hold.
   - path: skills/human-runsheet/SKILL.md
     reason: >-
       Authored in this repo (desk-skills/04) as the runsheet-writing utility
