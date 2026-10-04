@@ -869,3 +869,187 @@ func TestVflipCheckVerifiedLayer(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// flip-verdict-provenance, round 3: every line the verb reads, and every
+// change made after the PASS was recorded.
+// ---------------------------------------------------------------------------
+
+// vfEdit replaces the first old with new in the fixture brief.
+func vfEdit(t *testing.T, root, old, new string) {
+	t.Helper()
+	raw, err := os.ReadFile(vfBrief(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), old) {
+		t.Fatalf("fixture brief does not contain %q", old)
+	}
+	if err := os.WriteFile(vfBrief(root), []byte(strings.Replace(string(raw), old, new, 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// vfNoDateHdr is a witness table whose header names neither Date nor Runner:
+// the witness reader still takes its rows (last two cells), the Date/Runner
+// reader does not.
+const vfNoDateHdr = "| # | Command | Result | Output | When | Who |\n|---|---|---|---|---|---|\n"
+
+// TestVflipRunRowNoDateHdr: a witness row in a table without Date/Runner
+// columns, committed by another App inside the PASS run BEFORE the verifier
+// recorded the PASS. Only blame of the whole run sees it: no commit follows
+// the PASS, and the marker and the Date/Runner row are the verifier's.
+func TestVflipRunRowNoDateHdr(t *testing.T) {
+	o := vfDefaults()
+	o.evidence = witnessTableFor(vfRow1)
+	root, readme := vfFixture(t, o)
+	vfAppend(t, root, "\n\n"+vfNoDateHdr+vfRow2)
+	vfCommit(t, root, vfMailWorker)
+	vfAppend(t, root, "\n\n"+vfPass)
+	vfCommit(t, root, vfMailVerifier)
+	vfExpect(t, root, readme, verifyflipExitRefused, "provenance")
+}
+
+// TestVflipRunRowAfterPass is the reviewer's shape: the same table inserted
+// above the verifier's PASS by a later commit of another App.
+func TestVflipRunRowAfterPass(t *testing.T) {
+	o := vfDefaults()
+	o.evidence = witnessTableFor(vfRow1) + "\n\n" + vfPass
+	root, readme := vfFixture(t, o)
+	if code, _, _ := runVF(t, root, "--dry-run"); code != verifyflipExitRefused {
+		t.Fatalf("baseline: exit = %d, want the unwitnessed row 2 refused", code)
+	}
+	vfEdit(t, root, "\n"+vfPass, "\n"+vfNoDateHdr+vfRow2+"\n\n"+vfPass)
+	vfCommit(t, root, vfMailWorker)
+	vfExpect(t, root, readme, verifyflipExitRefused, "provenance")
+}
+
+// vfLaterFail is a verifier FAIL recorded after the verifier's PASS.
+const vfLaterFail = "**VERIFY: FAIL** — row 2 regressed on re-check at " + vfSHA + "."
+
+// vfFailAfterPass commits the verifier's PASS, then the verifier's later
+// FAIL, and returns the fixture.
+func vfFailAfterPass(t *testing.T) (root, readme string) {
+	t.Helper()
+	root, readme = vfFixture(t, vfDefaults())
+	vfAppend(t, root, "\n\n"+vfLaterFail)
+	vfCommit(t, root, vfMailVerifier)
+	if code, _, errOut := runVF(t, root, "--dry-run"); code != verifyflipExitRefused || !strings.Contains(errOut, "verdict mismatch") {
+		t.Fatalf("control: exit = %d err=%q, want the later FAIL refused", code, errOut)
+	}
+	return root, readme
+}
+
+// TestVflipLaterFailEdited: another App neutralises the verifier's later FAIL
+// — deleting it, striking it, quoting it — so the earlier PASS reads as the
+// latest verdict again. Each refuses.
+func TestVflipLaterFailEdited(t *testing.T) {
+	for _, c := range []struct{ name, repl string }{
+		{"deleted", ""},
+		{"struck", "~~" + vfLaterFail + "~~"},
+		{"blockquoted", "> " + vfLaterFail},
+		{"blanked", " "},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root, readme := vfFailAfterPass(t)
+			vfEdit(t, root, "\n\n"+vfLaterFail, "\n\n"+c.repl)
+			vfCommit(t, root, vfMailWorker)
+			vfExpect(t, root, readme, verifyflipExitRefused, "provenance")
+		})
+	}
+}
+
+// TestVflipLaterRunDeleted: the verifier recorded a whole later FAIL run (a
+// new witness table, then the FAIL); another App deleted the block.
+func TestVflipLaterRunDeleted(t *testing.T) {
+	root, readme := vfFixture(t, vfDefaults())
+	later := "\n\n" + strings.ReplaceAll(witnessTableFor(vfRow1, vfRow2), vfSHA, "0123456789ab") +
+		"\n\n**VERIFY: FAIL** — row 2 failed at 0123456789ab."
+	vfAppend(t, root, later)
+	vfCommit(t, root, vfMailVerifier)
+	vfEdit(t, root, later, "")
+	vfCommit(t, root, vfMailWorker)
+	vfExpect(t, root, readme, verifyflipExitRefused, "provenance")
+}
+
+// TestVflipUncommittedDelete: a deletion nobody committed has no blame record
+// and no commit; the working tree's Evidence must match HEAD's.
+func TestVflipUncommittedDelete(t *testing.T) {
+	root, readme := vfFailAfterPass(t)
+	vfEdit(t, root, "\n\n"+vfLaterFail, "")
+	vfExpect(t, root, readme, verifyflipExitRefused, "provenance")
+}
+
+// TestVflipEveryRunLine is the class guard for flip-verdict-provenance: every
+// line of the PASS run, re-authored by another App before the verifier
+// recorded the PASS, refuses. The edit adds one trailing space, which no
+// reader sees, so provenance is the only thing that can refuse it. The run's
+// lines are enumerated from the fixture, so a new line the verb reads is
+// covered without editing this list.
+func TestVflipEveryRunLine(t *testing.T) {
+	run := strings.Split(witnessTableFor(vfRow1, vfRow2), "\n")
+	for i, line := range run {
+		t.Run(fmt.Sprintf("line%d", i), func(t *testing.T) {
+			o := vfDefaults()
+			o.evidence = witnessTableFor(vfRow1, vfRow2)
+			root, readme := vfFixture(t, o)
+			vfEdit(t, root, "\n"+line+"\n", "\n"+line+" \n")
+			vfCommit(t, root, vfMailWorker)
+			vfAppend(t, root, "\n\n"+vfPass)
+			vfCommit(t, root, vfMailVerifier)
+			vfExpect(t, root, readme, verifyflipExitRefused, "provenance")
+		})
+	}
+	// Positive control: the same history with the verifier making the edit
+	// flips, so the refusals above are about who edited, not what.
+	o := vfDefaults()
+	o.evidence = witnessTableFor(vfRow1, vfRow2)
+	root, readme := vfFixture(t, o)
+	vfEdit(t, root, "\n"+run[0]+"\n", "\n"+run[0]+" \n")
+	vfCommit(t, root, vfMailVerifier)
+	vfAppend(t, root, "\n\n"+vfPass)
+	vfCommit(t, root, vfMailVerifier)
+	vfExpect(t, root, readme, verifyflipExitOK, "flipped")
+}
+
+// TestVflipMergeNotJudged: a merge commit another App made, whose Evidence is
+// one parent's verbatim, changed nothing in Evidence and is not judged; the
+// verifier's own post-PASS note passes. The template comment the brief's
+// author wrote before the run is not content and is not judged either.
+func TestVflipMergeNotJudged(t *testing.T) {
+	o := vfDefaults()
+	o.evidence = "<!-- appended at implementation time -->"
+	o.author = vfMailWorker
+	root, readme := vfFixture(t, o)
+	runGitEnv(t, root, nil, "checkout", "-q", "-b", "side")
+	vfAppend(t, root, "\n\n"+witnessTableFor(vfRow1, vfRow2)+"\n\n"+vfPass)
+	vfCommit(t, root, vfMailVerifier)
+	runGitEnv(t, root, nil, "checkout", "-q", "main")
+	if err := os.WriteFile(filepath.Join(root, "other.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	vfCommit(t, root, vfMailWorker)
+	vfGit(t, root, vfMailWorker, "merge", "-q", "--no-ff", "--no-edit", "side")
+	vfAppend(t, root, "\n\nverifier note: re-read at "+vfSHA+", nothing changed.")
+	vfCommit(t, root, vfMailVerifier)
+	vfExpect(t, root, readme, verifyflipExitOK, "flipped")
+}
+
+// TestBlameLinesCommit pins the commit id the porcelain reader records per
+// line: the history layer walks from the PASS marker's commit, so a reader that
+// dropped or misread it would walk from the wrong place. A content line that
+// happens to look like a header (it is TAB-prefixed in porcelain) must not
+// overwrite it.
+func TestBlameLinesCommit(t *testing.T) {
+	a := strings.Repeat("a", 40)
+	b := strings.Repeat("b", 64)
+	out := a + " 3 3 1\nauthor V\nauthor-mail <v@x>\nfilename f\n\t" + strings.Repeat("c", 40) + " 1 1\n" +
+		b + " 4 4\nauthor W\nauthor-mail <w@x>\nfilename f\n\tsecond\n"
+	got := blamePorcelainLines(out)
+	if len(got) != 2 || got[0].Commit != a || got[1].Commit != b {
+		t.Fatalf("commits = %+v, want %s then %s", got, a[:8], b[:8])
+	}
+	if got[0].Content != strings.Repeat("c", 40)+" 1 1" {
+		t.Fatalf("content = %q", got[0].Content)
+	}
+}

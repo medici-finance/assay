@@ -625,13 +625,19 @@ func blamePorcelainAuthors(out string) (authors []blameAuthor, sawBoundary bool)
 }
 
 // blameLine is one blamed line of `git blame --line-porcelain` output: its
-// author, its content (the text after the leading TAB, trimmed), and whether
-// the owning commit carried the `boundary` header.
+// author, its content (the text after the leading TAB, trimmed), whether the
+// owning commit carried the `boundary` header, and that commit's id (empty when
+// the record's header line did not name one).
 type blameLine struct {
 	Author   blameAuthor
 	Content  string
 	Boundary bool
+	Commit   string
 }
+
+// blameHeaderRe is the first line of a --line-porcelain record:
+// `<commit> <orig-line> <final-line>[ <group-size>]`.
+var blameHeaderRe = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64}) [0-9]+ [0-9]+( [0-9]+)?$`)
 
 // blamePorcelainLines parses `git blame --line-porcelain` output into ONE
 // record per blamed line, in output order, with no filtering. A line whose
@@ -651,6 +657,8 @@ func blamePorcelainLines(out string) []blameLine {
 			cur.Author.Email = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "author-mail ")), "<>")
 		case line == "boundary":
 			cur.Boundary = true
+		case blameHeaderRe.MatchString(line):
+			cur.Commit = line[:strings.IndexByte(line, ' ')]
 		case strings.HasPrefix(line, "\t"):
 			// The blamed line's own content, verbatim after the leading TAB.
 			cur.Content = strings.TrimSpace(line[1:])

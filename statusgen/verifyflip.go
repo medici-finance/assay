@@ -32,8 +32,12 @@ package main
 //     sha match what the caller expects (--runner, --sha). No Date/Runner row
 //     follows the PASS. The date is a YYYY-MM-DD calendar date, not after today.
 //   - Provenance: git blame owns every line the stamp is built from (the PASS
-//     marker and those rows) to the roster's bound verifier or a roster human.
-//     No roster, a shallow clone or a failed blame is could-not-check.
+//     marker and those rows), and every content line from the PASS run's first
+//     line to the end of Evidence, to the roster's bound verifier or a roster
+//     human. Every commit that changed the Evidence section after the PASS was
+//     recorded is theirs too (blame cannot see a deleted later FAIL), and the
+//     working tree's Evidence is HEAD's. No roster, a shallow clone or a failed
+//     git read is could-not-check.
 //   - No unrouted HELD/could-not-check line contradicts the pass, no FAIL is
 //     left unanswered, and every Verify row has a passing execution witness
 //     inside the PASS run itself.
@@ -80,9 +84,11 @@ no write) on: gate: human, any risk: yes (irreversible included), a Verify row
 classed gate:human or of an unknown class, a latest verdict that is not PASS, a
 non-strict PASS, a recorded sha or runner that differs from --sha / --runner, rows
 that disagree on date, sha or runner, rows after the PASS, a date that is not
-YYYY-MM-DD or is after today, a PASS line or row not committed by the bound
-verifier or a roster human, an unrouted HELD row, a Verify row without a passing
-witness in the PASS run, or a README that is not a regular file. Exit 2 is
+YYYY-MM-DD or is after today, a PASS line, row or other content line of the PASS
+run or after it not committed by the bound verifier or a roster human, a commit
+by anyone else that changed Evidence after the PASS was recorded, uncommitted
+Evidence changes, an unrouted HELD row, a Verify row without a passing witness
+in the PASS run, or a README that is not a regular file. Exit 2 is
 could-not-check (including an ambiguous brief file, no roster, a shallow clone).
 
 Flags:
@@ -252,7 +258,7 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 	}
 
 	// Verdict, and the run that recorded it.
-	stamp, run, marks, err := flipStampFromEvidence(bf.Evidence, wantSHA, wantRunner)
+	stamp, run, marks, runStart, err := flipStampFromEvidence(bf.Evidence, wantSHA, wantRunner)
 	if err != nil {
 		return verifyFlipPlan{}, err
 	}
@@ -301,9 +307,10 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 	}
 
 	// Provenance: the text says who ran it; git says who wrote it. Every line
-	// the stamp is built from must be owned by the bound verifier or a roster
-	// human.
-	if err := flipProvenance(path, bf.Evidence, marks); err != nil {
+	// the stamp is built from, every content line from the PASS run's first
+	// line to the end of Evidence, and every commit that changed Evidence after
+	// the PASS was recorded must be the bound verifier's or a roster human's.
+	if err := flipProvenance(path, bf.Evidence, marks, runStart); err != nil {
 		return verifyFlipPlan{}, err
 	}
 
@@ -376,12 +383,15 @@ func flipVerdictTokens(lines []string) []flipVerdictTok {
 // and checks the recorded run against wantSHA / wantRunner. run is that PASS's
 // own lines (comments stripped): the witness check reads them and nothing else.
 // marks are the line indices, in the comment-stripped Evidence, of every
-// Date/Runner row the stamp is built from and of the PASS marker itself: the
-// provenance check blames exactly those lines.
-func flipStampFromEvidence(evidence, wantSHA, wantRunner string) (stamp, run string, marks []int, err error) {
+// Date/Runner row the stamp is built from and of the PASS marker itself (the
+// marker last): the provenance check judges those lines strictly. runStart is
+// the index of the run's first line: the provenance check judges every content
+// line from there to the end of Evidence, because the witness reader consumes
+// the whole run and the verdict choice depends on every line after the PASS.
+func flipStampFromEvidence(evidence, wantSHA, wantRunner string) (stamp, run string, marks []int, runStart int, err error) {
 	stripped, unterminated := stripRowComments(evidence)
 	if unterminated >= 0 {
-		return "", "", nil, refuseFlip("Evidence carries an unterminated <!-- — the record cannot be read as written")
+		return "", "", nil, 0, refuseFlip("Evidence carries an unterminated <!-- — the record cannot be read as written")
 	}
 	lines := strings.Split(stripped, "\n")
 	toks := flipVerdictTokens(lines)
@@ -392,14 +402,14 @@ func flipStampFromEvidence(evidence, wantSHA, wantRunner string) (stamp, run str
 		}
 	}
 	if li < 0 {
-		return "", "", nil, refuseFlip("verdict mismatch: Evidence records no VERIFY verdict")
+		return "", "", nil, 0, refuseFlip("verdict mismatch: Evidence records no VERIFY verdict")
 	}
 	last := toks[li]
 	if last.word != "PASS" {
-		return "", "", nil, refuseFlip("verdict mismatch: the latest recorded verdict is VERIFY: %s, not PASS", last.word)
+		return "", "", nil, 0, refuseFlip("verdict mismatch: the latest recorded verdict is VERIFY: %s, not PASS", last.word)
 	}
 	if !last.strict {
-		return "", "", nil, refuseFlip("non-strict PASS: the latest verdict is not the strict **VERIFY: PASS** marker — record the canonical bold marker; the gate is not loosened")
+		return "", "", nil, 0, refuseFlip("non-strict PASS: the latest verdict is not the strict **VERIFY: PASS** marker — record the canonical bold marker; the gate is not loosened")
 	}
 	start := 0
 	for i := li - 1; i >= 0; i-- {
@@ -412,57 +422,57 @@ func flipStampFromEvidence(evidence, wantSHA, wantRunner string) (stamp, run str
 	// rows above this PASS belong to the run before it. Rows after the latest
 	// PASS mean the convention does not hold here: refuse, never guess.
 	if after, _ := flipDateRunnerRows(lines[last.line+1:]); len(after) > 0 {
-		return "", "", nil, refuseFlip("runner mismatch: %d Date/Runner row(s) follow the latest PASS — record each run's rows after the previous verdict and before its own", len(after))
+		return "", "", nil, 0, refuseFlip("runner mismatch: %d Date/Runner row(s) follow the latest PASS — record each run's rows after the previous verdict and before its own", len(after))
 	}
 	rows, at := flipDateRunnerRows(lines[start:last.line])
 	if len(rows) == 0 {
-		return "", "", nil, refuseFlip("runner mismatch: no Date/Runner rows are recorded for the latest PASS")
+		return "", "", nil, 0, refuseFlip("runner mismatch: no Date/Runner rows are recorded for the latest PASS")
 	}
 	date, runner := rows[0][0], rows[0][1]
 	if !flipDateRe.MatchString(date) {
-		return "", "", nil, refuseFlip("bad date: the latest PASS is dated %q, not YYYY-MM-DD", date)
+		return "", "", nil, 0, refuseFlip("bad date: the latest PASS is dated %q, not YYYY-MM-DD", date)
 	}
 	if _, perr := time.Parse("2006-01-02", date); perr != nil {
-		return "", "", nil, refuseFlip("bad date: the latest PASS is dated %q, not a calendar date", date)
+		return "", "", nil, 0, refuseFlip("bad date: the latest PASS is dated %q, not a calendar date", date)
 	}
 	if today := flipToday(); date > today {
-		return "", "", nil, refuseFlip("bad date: the latest PASS is dated %s, after today (%s UTC)", date, today)
+		return "", "", nil, 0, refuseFlip("bad date: the latest PASS is dated %s, after today (%s UTC)", date, today)
 	}
 	m0 := flipRunnerRe.FindStringSubmatch(runner)
 	for _, r := range rows {
 		if r[0] == "" || normalizeMark(r[0]) == "" || r[1] == "" {
-			return "", "", nil, refuseFlip("runner mismatch: a row of the latest PASS has no Date or Runner")
+			return "", "", nil, 0, refuseFlip("runner mismatch: a row of the latest PASS has no Date or Runner")
 		}
 		m := flipRunnerRe.FindStringSubmatch(r[1])
 		if m == nil {
-			return "", "", nil, refuseFlip("sha mismatch: runner %q does not read <login> @ <sha>", r[1])
+			return "", "", nil, 0, refuseFlip("sha mismatch: runner %q does not read <login> @ <sha>", r[1])
 		}
 		if r[0] != date {
-			return "", "", nil, refuseFlip("date mismatch: rows of the latest PASS carry %q and %q", date, r[0])
+			return "", "", nil, 0, refuseFlip("date mismatch: rows of the latest PASS carry %q and %q", date, r[0])
 		}
 		if m[1] != m0[1] {
-			return "", "", nil, refuseFlip("runner mismatch: rows of the latest PASS name %q and %q", m0[1], m[1])
+			return "", "", nil, 0, refuseFlip("runner mismatch: rows of the latest PASS name %q and %q", m0[1], m[1])
 		}
 		if !strings.EqualFold(m[2], m0[2]) {
-			return "", "", nil, refuseFlip("sha mismatch: rows of the latest PASS name %s and %s", m0[2], m[2])
+			return "", "", nil, 0, refuseFlip("sha mismatch: rows of the latest PASS name %s and %s", m0[2], m[2])
 		}
 		if r[1] != runner {
-			return "", "", nil, refuseFlip("runner mismatch: rows of the latest PASS read %q and %q", runner, r[1])
+			return "", "", nil, 0, refuseFlip("runner mismatch: rows of the latest PASS read %q and %q", runner, r[1])
 		}
 	}
 	rec, want := strings.ToLower(m0[2]), strings.ToLower(wantSHA)
 	if !strings.HasPrefix(rec, want) && !strings.HasPrefix(want, rec) {
-		return "", "", nil, refuseFlip("sha mismatch: the latest PASS ran at %s, expected %s", m0[2], wantSHA)
+		return "", "", nil, 0, refuseFlip("sha mismatch: the latest PASS ran at %s, expected %s", m0[2], wantSHA)
 	}
 	if m0[1] != wantRunner {
-		return "", "", nil, refuseFlip("runner mismatch: the latest PASS was run by %q, expected %q", m0[1], wantRunner)
+		return "", "", nil, 0, refuseFlip("runner mismatch: the latest PASS was run by %q, expected %q", m0[1], wantRunner)
 	}
 	stamp, err = flipStamp(date, m0)
 	for _, i := range at {
 		marks = append(marks, start+i)
 	}
 	marks = append(marks, last.line)
-	return stamp, strings.Join(lines[start:last.line], "\n"), marks, err
+	return stamp, strings.Join(lines[start:last.line], "\n"), marks, start, err
 }
 
 // flipQualRe matches one trailing parenthetical qualifier of a Runner cell.
@@ -623,20 +633,38 @@ func flipHeaderCols(lines []string, row, width int) (si, vi int, err error) {
 
 // flipProvenance is the who-wrote-it check on the latest PASS. The Runner cell
 // is text, and whoever can edit the brief can type the verifier's login into
-// it; who committed a line is git metadata, not text. So the PASS marker and
-// every Date/Runner row the stamp is built from (marks: line indices in the
-// comment-stripped Evidence) are blamed, every raw file line behind them is
-// accounted for (flipJudgeBlame), and each line's author is judged by the
-// Evidence-actor policy (evidenceactor.go): the bound verifier or a roster
-// human passes, anything else — another App, an unknown address, a line not
-// yet committed — refuses. This is stricter than the Evidence-actor lint,
-// which asks only whether ANY Evidence line is the verifier's: a verifier's
-// older FAIL above an appended PASS satisfies that lint, never this check.
+// it; who committed a line is git metadata, not text. Three layers, each
+// judged by the Evidence-actor policy (evidenceactor.go) — the bound verifier
+// or a roster human passes, anything else (another App, an unknown address, a
+// line not yet committed) refuses:
+//
+//  1. The stamp's own lines. The PASS marker and every Date/Runner row the
+//     stamp is built from (marks: line indices in the comment-stripped
+//     Evidence) are blamed, every raw file line behind them is accounted for,
+//     and every one is judged, comment-only lines included (flipJudgeBlame).
+//  2. Everything the verb reads. The witness reader consumes every line of the
+//     PASS run, whatever its table header says, and which PASS is "latest"
+//     depends on every line after it. So every raw line from the run's first
+//     line (runStart) to the end of Evidence is blamed and accounted for, and
+//     every CONTENT line among them is judged (flipJudgeExtent). Blank and
+//     comment-only lines are structure: the brief template's contract comment
+//     sits there, owned by whoever created the file.
+//  3. What blame cannot see. A deleted line leaves no blame record, so a later
+//     verifier FAIL removed by another App would leave a clean blame. Every
+//     commit since the one that wrote the PASS marker that changed the
+//     Evidence section must be the verifier's or a roster human's
+//     (flipJudgeHistory); a merge whose Evidence is one parent's verbatim
+//     changed nothing. And the working tree's Evidence must be HEAD's: an
+//     uncommitted deletion has neither a blame record nor a commit.
+//
+// This is stricter than the Evidence-actor lint, which asks only whether ANY
+// Evidence line is the verifier's: a verifier's older FAIL above an appended
+// PASS satisfies that lint, never this check.
 //
 // Could-not-check (never a pass): no roster or no bound verifier, a shallow
-// clone (blame cannot reach the commits behind the lines), an Evidence section
-// that cannot be mapped to file lines, or blame failing.
-func flipProvenance(path, evidence string, marks []int) error {
+// clone (blame and history cannot reach the commits behind the lines), an
+// Evidence section that cannot be mapped to file lines, or git failing.
+func flipProvenance(path, evidence string, marks []int, runStart int) error {
 	p := evidenceActorPolicyFromRoster()
 	if p.Unavailable != "" {
 		return fmt.Errorf("provenance: %s", p.Unavailable)
@@ -663,6 +691,8 @@ func flipProvenance(path, evidence string, marks []int) error {
 	if !ok {
 		return fmt.Errorf("provenance: the comment-stripped Evidence of %s cannot be mapped to file lines", base)
 	}
+
+	// Layer 1: the stamp's own lines.
 	args := []string{"-C", dir, "blame", "--line-porcelain"}
 	want := 0
 	for _, m := range marks {
@@ -676,7 +706,44 @@ func flipProvenance(path, evidence string, marks []int) error {
 	if err != nil {
 		return fmt.Errorf("provenance: git blame %s: %v", base, err)
 	}
-	return flipJudgeBlame(p, string(out), want, base)
+	if err := flipJudgeBlame(p, string(out), want, base); err != nil {
+		return err
+	}
+
+	// The working tree's Evidence is HEAD's: layers 2 and 3 read history, and
+	// an uncommitted deletion is in neither.
+	head, err := flipEvidenceAt(dir, "HEAD", base)
+	if err != nil {
+		return fmt.Errorf("provenance: %v", err)
+	}
+	if head != extractEvidence(content) {
+		return refuseFlip("provenance: the Evidence section of %s differs from HEAD — an uncommitted change has no author to judge; commit it as the verifier or discard it", base)
+	}
+
+	// Layer 2: every line the verb reads, from the run's first line to the end
+	// of Evidence.
+	if runStart < 0 || runStart >= len(spans) {
+		return fmt.Errorf("provenance: the PASS run starts outside the Evidence of %s", base)
+	}
+	first, last := start+spans[runStart][0], start+len(ev)-1
+	out, err = exec.Command("git", "-C", dir, "blame", "--line-porcelain",
+		"-L", fmt.Sprintf("%d,%d", first, last), "--", base).Output()
+	if err != nil {
+		return fmt.Errorf("provenance: git blame %s: %v", base, err)
+	}
+	recs, err := flipJudgeExtent(p, string(out), last-first+1, base)
+	if err != nil {
+		return err
+	}
+
+	// Layer 3: every commit since the PASS marker was written that changed
+	// Evidence. The marker's raw lines sit at a known offset in the extent.
+	mk := marks[len(marks)-1]
+	var since []string
+	for i := start + spans[mk][0]; i <= start+spans[mk][1]; i++ {
+		since = append(since, recs[i-first].Commit)
+	}
+	return flipJudgeHistory(p, dir, base, since)
 }
 
 // flipJudgeBlame judges the blame of the PASS lines line by line. Coverage is
@@ -734,4 +801,114 @@ func flipStrippedSpans(evidence string) (spans [][2]int, ok bool) {
 		return nil, false
 	}
 	return spans, true
+}
+
+// flipJudgeExtent judges the blame of every raw line from the PASS run's first
+// line to the end of Evidence. Coverage is established as in flipJudgeBlame:
+// exactly want records, each with an author and a commit. Every CONTENT line
+// (text outside HTML comments, blameLineBearsContent, with the comment state
+// carried from line to line; the extent opens outside a comment because a
+// stripped line never begins inside one) must be the bound verifier's or a
+// roster human's. The records are returned so the caller can read the PASS
+// marker's commit.
+func flipJudgeExtent(p evidenceActorPolicy, out string, want int, base string) ([]blameLine, error) {
+	recs := blamePorcelainLines(out)
+	if want <= 0 || len(recs) != want {
+		return nil, fmt.Errorf("provenance: blame of %s returned %d line(s) for the %d line(s) of the PASS run and after", base, len(recs), want)
+	}
+	inComment := false
+	for _, bl := range recs {
+		if (bl.Author.Name == "" && bl.Author.Email == "") || bl.Commit == "" {
+			return nil, fmt.Errorf("provenance: blame of %s named no author or commit for a line of the PASS run", base)
+		}
+		var bearing bool
+		bearing, inComment = blameLineBearsContent(bl.Content, inComment)
+		if !bearing {
+			continue
+		}
+		if v, why := p.classify(bl.Author.Name, bl.Author.Email); v != actorVerifier && v != actorHuman {
+			return nil, refuseFlip("provenance: a content line of the latest PASS run or after it (%q) is not owned by the bound verifier or a roster human — %s", bl.Content, why)
+		}
+	}
+	return recs, nil
+}
+
+// flipZeroCommit is the id blame gives a line not yet committed.
+var flipZeroCommit = regexp.MustCompile(`^0+$`)
+
+// flipJudgeHistory judges every commit reachable from HEAD, and not from the
+// commit(s) that wrote the PASS marker, that touched the brief file: one that
+// changed the Evidence section — its Evidence differs from every parent's —
+// must be authored by the bound verifier or a roster human. A merge whose
+// Evidence equals one parent's brought that parent's text, whose own commits
+// are judged in the same walk. Blame sees only lines that are still there;
+// this sees the deletion of a later verdict, or of a whole later run.
+func flipJudgeHistory(p evidenceActorPolicy, dir, base string, since []string) error {
+	seen := map[string]bool{}
+	var commits []string
+	for _, c := range since {
+		if c == "" || flipZeroCommit.MatchString(c) {
+			return fmt.Errorf("provenance: the PASS marker of %s has no commit to walk history from", base)
+		}
+		out, err := exec.Command("git", "-C", dir, "rev-list", c+"..HEAD", "--", base).Output()
+		if err != nil {
+			return fmt.Errorf("provenance: git rev-list %s..HEAD %s: %v", c, base, err)
+		}
+		for _, h := range strings.Fields(string(out)) {
+			if !seen[h] {
+				seen[h] = true
+				commits = append(commits, h)
+			}
+		}
+	}
+	for _, h := range commits {
+		out, err := exec.Command("git", "-C", dir, "log", "-1", "--format=%an%x00%ae%x00%P", h).Output()
+		if err != nil {
+			return fmt.Errorf("provenance: git log %s: %v", h, err)
+		}
+		f := strings.SplitN(strings.TrimRight(string(out), "\n"), "\x00", 3)
+		if len(f) != 3 || (f[0] == "" && f[1] == "") {
+			return fmt.Errorf("provenance: commit %s of %s names no author", h, base)
+		}
+		ev, err := flipEvidenceAt(dir, h, base)
+		if err != nil {
+			return fmt.Errorf("provenance: %v", err)
+		}
+		changed := true
+		for _, parent := range strings.Fields(f[2]) {
+			pev, err := flipEvidenceAt(dir, parent, base)
+			if err != nil {
+				return fmt.Errorf("provenance: %v", err)
+			}
+			if pev == ev {
+				changed = false
+				break
+			}
+		}
+		if !changed {
+			continue
+		}
+		if v, why := p.classify(f[0], f[1]); v != actorVerifier && v != actorHuman {
+			return refuseFlip("provenance: commit %.12s changed the Evidence section of %s after the latest PASS was recorded and is not the bound verifier's or a roster human's — %s", h, base, why)
+		}
+	}
+	return nil
+}
+
+// flipEvidenceAt returns the Evidence section of base (a file in dir) at rev.
+// A revision where the file does not exist yields a sentinel no Evidence text
+// can equal; any other git failure is an error.
+func flipEvidenceAt(dir, rev, base string) (string, error) {
+	cmd := exec.Command("git", "-C", dir, "cat-file", "-e", rev+":./"+base)
+	if cmd.Run() != nil {
+		if exec.Command("git", "-C", dir, "rev-parse", "--verify", "--quiet", rev+"^{commit}").Run() != nil {
+			return "", fmt.Errorf("git cannot resolve %s in %s", rev, dir)
+		}
+		return "\x00absent", nil
+	}
+	out, err := exec.Command("git", "-C", dir, "show", rev+":./"+base).Output()
+	if err != nil {
+		return "", fmt.Errorf("git show %s:%s: %v", rev, base, err)
+	}
+	return extractEvidence(strings.ReplaceAll(string(out), "\r\n", "\n")), nil
 }
