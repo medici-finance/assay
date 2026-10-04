@@ -559,7 +559,7 @@ Merged main ade741f44372ccdc0986c2b0973f621745fbced7. Runner != implementer. Own
 | 10 | cd statusgen; go run . --root .. --lint; echo $? | 0; no PROBLEM line naming desk-supervision/09 or anything under tools/ci-load | 0; last line "LINT: PASS"; zero lines beginning PROBLEM. The only line naming this brief is the NOTICE [risk-files-crossread] that the brief's Review section anticipates. MET | 2026-10-04 claude-opus-5-5-verifier |
 | 11 | cd statusgen; go run . --root .. --consumers, then grep -A6 desk-supervision/09 | exit 0; all four consumers entries; activation/*.yml CORROBORATED | grep exit 1 with no output; the tool itself exits 0 with "consumers: no brief files in the diff against ade741f44372… — nothing to corroborate", because on merged main the default base equals HEAD. NOT MET as authored. Completed by dereference: implementing commit 162c07b75 adds only the changelog fragment, the stream README row, this brief, the activation set and pathsemantics.py. It touches no zeroci.go, no flip.go and no landed workflow, so the CORROBORATED routing and the three out-of-scope routings hold at landing | 2026-10-04 claude-opus-5-5-verifier |
 
-**By hand: 7 of 12 rows meet their expectation with substance (2, 3, 3b, 6, 7, 9, 10). Row 4 meets it literally but vacuously. Rows 1, 5 and 8 show the pre-activation state. Row 11 cannot produce its block on merged main and is completed by dereference. No row shows a defect in the reviewed change itself.**
+**By hand: 6 of 12 rows meet their expectation with substance (2, 3, 3b, 6, 9, 10). Rows 4 and 7 meet it literally but vacuously (row 7 measures the pre-activation rollup), so both are held. Rows 1, 5 and 8 show the pre-activation state. Row 11 cannot produce its block on merged main and is completed by dereference. No row shows a defect in the reviewed change itself.**
 
 **Execution witness** (statusgen v1.0.31, statusgen verifyrun --brief on this brief, appended to the brief in this worktree). The witness checks exit codes only:
 
@@ -580,7 +580,7 @@ Merged main ade741f44372ccdc0986c2b0973f621745fbced7. Runner != implementer. Own
 
 **verifyrun --check summary:** "brief-09-ci-fanout-per-push.md: 4 pass, 2 fail, 6 could-not-run/missing (of 12 Verify rows)" (exit 2). The exit-code-only witness reads differently from the hand runs in several places:
 
-- Rows 3, 6, 9, 10 and 11 are could-not-run. The check:ci network-off sandbox needs `unshare --net`, which is Linux-only, and this host is darwin.
+- Rows 3, 6, 9, 10 and 11 are could-not-run. The check:ci network-off sandbox needs `unshare --net`, which is Linux-only, and this host is darwin (medici-finance/assay#1800). The brief's blocker stays medici-finance/assay#1185.
 - Row 3b is could-not-run because its command is written as prose: the first code span is the identifier skipped().
 - Rows 1 and 5 show pass because they exited 0, but their output does not meet the Expect column.
 - Row 2's pass and row 7's fail both happen because PR is unset in each row's fresh subshell (the brief sets it in row 1 and only abbreviates it afterwards). They do not reflect the change.
