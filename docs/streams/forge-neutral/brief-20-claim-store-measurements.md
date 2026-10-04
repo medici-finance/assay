@@ -305,6 +305,60 @@ Execution witness for this run (statusgen verifyrun, non-dry, 2026-10-04):
 | 4 | `cd tools/desk && grep -rln -e 'ForgeFor(.*"reviewer")' -e 'ReviewDispatcherRole' --include='*.go' cmd internal \| grep -v _test.go \| sort` | pass exit=0 | sha256:5c3e60f74ab7 | 2026-10-04 | assay-verifier-app[bot] @ 556aa2a914e3 (on-behalf-of human:ian) (forge-identity) |
 | 5 | `cd tools/desk && grep -rln -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' --include='*.go' cmd internal \| grep -v _test.go \| sort` | pass exit=0 | sha256:d2556591d929 | 2026-10-04 | assay-verifier-app[bot] @ 556aa2a914e3 (on-behalf-of human:ian) (forge-identity) |
 
+### Non-implementer verifier re-run — VERIFY: FAIL — 2026-10-04 claude-opus-5-5-verifier
+
+Runner is not the implementer. Documents-only brief, run non-hermetically on darwin (go1.27.1 darwin/arm64)
+at merged main 4aac3271b3b4c61ff921e83782e7c991f9407ae4, offline (`KUBECONFIG=/dev/null`, `GOPROXY=off`).
+The Go test ran with its build cache and TMPDIR inside the verifier's worktree (local APFS, the same
+volume class as the recorded control). Rows 4 and 5 have prose Expect cells. Each was decided by a
+mechanical membership check of the printed file list against the spec's section 3.1a / 3.1b text, not
+by exit status. File paths below are relative to tools/desk.
+
+| # | Command | Expect | Observed | Date Runner |
+|---|---|---|---|---|
+| 1 | Verify row 1 as written: grep -c for the S2 and S4 row prefixes in the spec | `2`, both work-list rows still present | PASS: exit 0; printed `2` | 2026-10-04 claude-opus-5-5-verifier (hand, darwin) |
+| 2 | Verify row 2 as written (row file written to a scratch path inside the verifier's worktree instead of the shared tmp dir; same greps) | exit 0 and no line printed | PASS: exit 0; no line printed. The S2 row carries "1 of 16 succeeded" and COULD-NOT-CHECK for the network filesystem; the S4 row carries "determined" | 2026-10-04 claude-opus-5-5-verifier (hand, darwin) |
+| 3 | The local-disk control recorded in the spec's S2 row: cd tools/desk and go test ./internal/deskkit/... with -run on the exactly-one-winner race test, -count=1 -v | exactly one of N succeeded | PASS: exit 0; `--- PASS` for the race test (0.46s), deskkit package ok. There are 16 racers (claim_test.go:22) and the test's `wins != 1` assertion (claim_test.go:53) held, so exactly 1 of 16 succeeded. The Verify cell is prose, so the recorded command was run directly | 2026-10-04 claude-opus-5-5-verifier (hand, darwin) |
+| 4 | Verify row 4 as written: grep -rln for the reviewer ForgeFor call and ReviewDispatcherRole over cmd and internal, minus tests, sorted | every file listed appears in the reviewer write inventory | PASS: exit 0; 6 files (deskdispatch/dispatch.go, deskpost/claimliveness.go, deskpost/comment.go, deskpost/forgeclient.go, deskpost/label.go, deskkit/modelstamp.go), all 6 found in section 3.1a | 2026-10-04 claude-opus-5-5-verifier (hand, darwin) |
+| 5 | Verify row 5 as written: grep -rln for ClaimRefsPrefix, ClaimRefPath and refs/dispatch over cmd and internal, minus tests, sorted | every file listed appears in the claim reader inventory or is the claim tool itself | FAIL: exit 0; 16 files (output sha256:d2556591d929); 13 found in section 3.1b and 3 absent: deskdispatch/repairadmission.go, desksupervise/status.go, deskkit/forge_github.go. Expected condition not met | 2026-10-04 claude-opus-5-5-verifier (hand, darwin) |
+
+Held rows and notes:
+
+- Row 5 (FAIL, held). These are the same three files as on 2026-09-24, 09-27, 10-02, 10-03 and the earlier 10-04 run. Running grep -n with the row's three patterns on them prints one line each, and every line is a code comment:
+  - repairadmission.go:219: "lives in the same refs/dispatch namespace as the item claims"
+  - status.go:122: "refs/dispatch claim, so it is session-influenced input"
+  - forge_github.go:2459: a doc comment, "refs/dispatch/<key>"), verbatim from the `ref` field"
+
+  None of them reads a claim around the claim tool. The pinned section 3.1b inventory has drifted from merged main. This is check-definition staleness, tracked by medici-finance/assay#1606, which is still OPEN (read from the forge 2026-10-04).
+- Row 3 (PASS when run directly). The witness records it as could-not-run, exit 127, because its Verify cell is prose. This is the same on every run.
+- Why this brief was re-listed: since the 556aa2a914e3 receipt, deskkit/forge.go changed on main through medici-finance/assay#2138 (deskpr update/edit --pr resolve the PR from its head ref). In forge.go the change only rewords the `HeadRef` field's doc comment on PullRequest (+5/-3 lines, around line 120). It adds and removes no ClaimRefsPrefix, ClaimRefPath, refs/dispatch, reviewer ForgeFor or ReviewDispatcherRole reference. Its only effect on any row is a +2 line shift of the two forge.go refs/dispatch comment matches, from 1626/1632 to 1628/1634. forge.go is still listed in section 3.1b, but its stated range there is now stale. Membership is per file, so the row outcome does not change.
+  - The row 5 file set from `git grep` is identical at 556aa2a914e3 and 4aac3271b (16 files).
+  - The row 4 and row 5 output hashes (5c3e60f74ab7, d2556591d929) match the 2026-09-27, 10-02, 10-03 and earlier 10-04 witnesses.
+  - The spec (sha256 8317b9eae90a…), claim.go and claim_test.go are byte-identical between the two SHAs.
+  - **medici-finance/assay#2138 changes no row's outcome.**
+- Row 2 as written writes its row file to the shared tmp dir. The witness run below ran it verbatim.
+- The witness runner stamp reads `4aac3271b3b4+dirty` because of the verifier's untracked scratch directory in the worktree when it ran. No tracked file differed from 4aac3271b at that point.
+
+Risk-bearing values. The enumeration covered this brief's Deliverables and diff (documents only: spec sections 3.1a, 3.1b and 3.3, plus Evidence). It found two literals, both unchanged since 2026-09-24:
+
+RISK-VALUE: DERIVED — wins != 1 (winners = 1) @ deskkit/claim_test.go:53 — the shipped primitive creates the claim with O_CREATE|O_EXCL (deskkit/claim.go:273) under one directory lock, which admits exactly one creator; every other racer gets EEXIST. Exactly one of N succeeds by construction, whatever N is: the "exactly one is the only passing count" the brief pins.
+
+Ranked last, no verdict line: racers = 16 @ deskkit/claim_test.go:22. This is a reversible test knob. It sets only how hard the concurrency exercise pushes.
+
+VERIFY: FAIL — row 5 (check-definition staleness: section 3.1b omits three files whose only match is a code comment; medici-finance/assay#1606 open); rows 1–4 PASS; the forge.go change (medici-finance/assay#2138) moves no row; status stays implemented.
+
+Execution witness for this run (statusgen verifyrun v1.0.31, non-dry, 2026-10-04):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -c -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md` | pass exit=0 | sha256:53c234e5e847 | 2026-10-04 | assay-verifier-app[bot] @ 4aac3271b3b4+dirty (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md > /tmp/fn20-rows.txt && ! grep -v -e 'of [0-9][0-9]* succeeded' -e 'determined' -e 'COULD-NOT-CHECK' /tmp/fn20-rows.txt` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-04 | assay-verifier-app[bot] @ 4aac3271b3b4+dirty (on-behalf-of human:ian) (forge-identity) |
+| 3 | `Re-run the local-disk control of Task 3 from the recorded command text` | could-not-run exit=127 — the shell could not execute the command (exit 127) | sha256:26b6e0457462 | 2026-10-04 | assay-verifier-app[bot] @ 4aac3271b3b4+dirty (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && grep -rln -e 'ForgeFor(.*"reviewer")' -e 'ReviewDispatcherRole' --include='*.go' cmd internal \| grep -v _test.go \| sort` | pass exit=0 | sha256:5c3e60f74ab7 | 2026-10-04 | assay-verifier-app[bot] @ 4aac3271b3b4+dirty (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && grep -rln -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' --include='*.go' cmd internal \| grep -v _test.go \| sort` | pass exit=0 | sha256:d2556591d929 | 2026-10-04 | assay-verifier-app[bot] @ 4aac3271b3b4+dirty (on-behalf-of human:ian) (forge-identity) |
+
+`statusgen verifyrun --check`: docs/streams/forge-neutral/brief-20-claim-store-measurements.md: 4 pass, 0 fail, 1 could-not-run/missing (of 5 Verify rows) (exit 2; row 3 could-not-run because its cell is prose). The witness's row 5 "pass" checks exit status only and does not decide the prose Expect. The membership check above does.
+
 ## Review
 Gate: **model** (from frontmatter — all four risk answers no; documents only). Reviewer records
 verdict + date in the stream README table.
