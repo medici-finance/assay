@@ -269,6 +269,9 @@ func cmdDesk(cell string, args []string) {
 	}
 
 	dryRun := c.Env.Get("DRY_RUN") == "1"
+	if _, err := c.deskCommsEnv(role, nil); err != nil {
+		die("desk comms: %v", err)
+	}
 
 	if c.Kind == "container" {
 		if persist && !dryRun {

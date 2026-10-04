@@ -3,6 +3,7 @@ module github.com/medici-finance/assay/tools/desk
 go 1.25.0
 
 require (
+	github.com/Microsoft/go-winio v0.6.2
 	github.com/a2aproject/a2a-go/v2 v2.5.0
 	github.com/cli/go-gh/v2 v2.13.0
 	github.com/go-git/go-billy/v5 v5.9.0
@@ -22,7 +23,6 @@ require (
 
 require (
 	dario.cat/mergo v1.0.1 // indirect
-	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/cli/safeexec v1.0.0 // indirect

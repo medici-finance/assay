@@ -237,6 +237,9 @@ func cmdUp(cell string, args []string) {
 	o.roleCadence = make(map[string]*cadenceOptions, len(roles))
 	for _, role := range roles {
 		harness := effectiveHarness
+		if _, err := c.deskCommsEnv(role, nil); err != nil {
+			die("up comms: %v; no role windows launched", err)
+		}
 		if policy != nil {
 			route, err := policy.Resolve(role, o.Provider, o.Model, o.Harness)
 			if err != nil {

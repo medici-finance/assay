@@ -190,7 +190,7 @@ installed where you are aiming it.
 **Mechanism.** A hand-off to another desk is addressed to that role's LANE at the cell gateway,
 through the client verbs `deskcomms send` (payload on stdin; `--to <role>`, `--verb <verb>`,
 `--ref <id>` repeatable, `--class routine|sensitive`, `--to-cell <cell>` for the coordinator's
-cross-cell sends only), `deskcomms poll` (this session's own per-role mailbox) and
+cross-cell sends only), `deskcomms poll --json` (this session's own per-role mailbox, including payloads) and
 `deskcomms ack <id>` (moves, never deletes). The sender's `{cell, role}` come from the session
 context the launcher exports — the cell marker and the role marker `deskcomms --help` names —
 never from an argument: a caller says who a message is FOR, never who it is FROM. The gateway's
@@ -216,9 +216,13 @@ then ONE send with the kind on the payload's first line:
 ```
 printf '%s\n' 'request-act' '<the one action, plus its evidence pointers>' \
   | deskcomms send --to <role> --verb handoff --ref <issue-or-pr-id>
-deskcomms poll            # every sweep after cutover: read your own lane
+deskcomms poll --json     # every sweep after cutover: read your own lane and payloads
 deskcomms ack <id>        # once acted on
 ```
+
+`poll --json` needs a `deskcomms` from a desk-tools release that ships the flag; an older
+binary refuses it as an unknown flag. Install matching binaries rather than reading plain
+`poll` output, which omits payloads.
 
 Select the transport from the project's recorded cutover state before invoking a comms verb.
 The shared "Cross-desk hand-offs — the lane verbs" skill block owns the pre-cutover branch,
