@@ -5,8 +5,8 @@ why: >-
   A cellctl-only migration would leave inconsistent behavior in the rest of the suite. Close
   the rollout only when every maintained entrypoint is migrated or deliberately retired and
   executable compatibility checks prevent new custom parsers from returning.
-wave: 3
-depends: ["desktools-v2/16"]
+wave: 5
+depends: ["desktools-v2/16", "desktools-v2/18", "desktools-v2/19", "desktools-v2/20", "desktools-v2/21", "desktools-v2/22", "desktools-v2/23", "desktools-v2/24", "desktools-v2/25", "desktools-v2/26", "desktools-v2/27", "desktools-v2/28", "desktools-v2/29", "desktools-v2/30", "desktools-v2/31", "desktools-v2/32", "desktools-v2/33", "desktools-v2/34", "desktools-v2/35", "desktools-v2/36", "desktools-v2/37", "desktools-v2/38", "desktools-v2/39", "desktools-v2/40", "desktools-v2/41", "desktools-v2/42", "desktools-v2/43", "desktools-v2/44", "desktools-v2/45", "desktools-v2/46", "desktools-v2/47", "desktools-v2/48", "desktools-v2/49", "desktools-v2/50", "desktools-v2/51", "desktools-v2/52", "desktools-v2/53", "desktools-v2/54"]
 unblocks: []
 effort: "L"
 gate: "model"
@@ -46,7 +46,8 @@ files:
 - `changelog/cli-suite-conformance.md` (planned).
 
 facts:
-- /15 must land exhaustive source discovery plus a concrete migration brief for every remaining entrypoint and add those children to THIS brief's depends before /15 completes. The current /16 edge is the pilot, not permission to close a partial rollout.
+- /15 landed exhaustive source discovery (`tools/desk/internal/clicontract`, TestCLIInventory) and a concrete migration brief for every remaining entrypoint: children /18–/54, all in this brief's depends alongside the /16 reference. `cli-migration.json` routes every discovered entrypoint to one of them; /29 waits on /45 and /54 on /30, which puts this brief in wave 5.
+- `TestCLIOwnerMigrated` (from /15) is each child's own completion check; this brief's TestCLIComplete is the suite-wide one.
 - `tools/desk/cmd/*` alone misses statusgen, qualgen and module-local operator/maintenance CLIs. The registry must be checked against independent discovery and release/build declarations.
 - Existing tools use different output/exit contracts; uniform libraries do not authorize replacing those contracts with Cobra defaults.
 
