@@ -222,7 +222,7 @@ direction is visible from inside the file.
 
 | set | what it is | derived from |
 |---|---|---|
-| **BOARD ROOTS** | local checkouts carrying `docs/streams` — the dispatch queue | `deskroster repos --scope topology` rows carrying `root=`, **unioned** with a live `docs/streams` test over the siblings |
+| **BOARD ROOTS** | local checkouts carrying `docs/streams` — the dispatch queue | `deskroster repos --scope roots` rows carrying `root=`, **unioned** with a live `docs/streams` test over the siblings |
 | **SCAN REPOS** | `owner/repo` slugs swept for orphan PRs and un-briefed issues | `deskroster repos --scope scan` (`ASSAY_SCAN_REPOS`) |
 
 SCAN REPOS is deliberately wider (repos the desk fronts that carry no `docs/streams`); BOARD ROOTS is
@@ -234,7 +234,7 @@ The derivation itself — the `deskroster` read, the `docs/streams` + `--git-dir
 slug-keyed union — is [`references/dispatch-runbook.md`](references/dispatch-runbook.md) §Deriving THE
 REPO SET. Two rules from it bind here: **key on the repo slug, not the path**, and **a root in exactly
 one of the two lists is named in the report either way, never dropped** (declared-but-absent =
-could-not-check; observed-but-undeclared = a `topology.yaml` gap — dispatch it this cycle and file the
+could-not-check; observed-but-undeclared = a configured-root declaration gap — dispatch it this cycle and file the
 gap). A hard-coded list is the board-blind bug this replaces: written from one checkout it silently
 skips the largest board when the session is homed in another, and says nothing.
 
@@ -651,8 +651,12 @@ issue list. Two states:
    flight, label + comment THAT item rather than filing a duplicate. **The filed issue IS the
    escalation.**
 3. **Receipt on a human-typed message.** After ANY human-typed message, the FIRST line of your turn
-   is `deskack "<your one-line reading>"` (role from `$DESK_LOOP`; add `--repo <repo>` when it
-   concerns one), then act. It is the ONE acknowledgement line the floor above permits — not
+   is `deskack --repo <repo> "<your reading in at most 12 words>"`
+   (role from `$DESK_LOOP`; omit `--repo <repo>` when no repo is named), then act.
+   Put flags before the quoted text. A usage error (exit 2) writes no receipt: correct the
+   flags or shorten the text and re-run before continuing. Guard, identity, and storage
+   failures still stop the pass; never bypass them.
+   It is the ONE acknowledgement line the floor above permits — not
    narration, and a second acknowledgement line is a violation. Say what you UNDERSTOOD, never a
    quote, so a misread is corrected on your next turn. To hand work to another desk, address its
    LANE — `deskcomms send --to <role> --verb <verb>` for a routine hand-off (§Cross-desk
