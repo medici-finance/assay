@@ -1,0 +1,72 @@
+name: loopadmin
+# The loopadmin module's own test job: the runner contract's conformance kit,
+# unit tests and the mutation gate (graph-execution/20).
+#
+# The module is independent: its own go.mod, no go.work at the repository root, no
+# dependency on the workflow module or the instance store. ci.yml's build-test
+# job already builds and vets it (it discovers every go.mod); this job adds what
+# that job deliberately does not run, the tests, and the mutation gate that proves
+# each Verify test turns red when the behaviour it guards is removed.
+#
+# PATH TRIGGERS — only a change to the module, its protocol text, its schema, or
+# this file runs it. GOWORK=off is set so a stray go.work can never widen it.
+#
+# WHERE THIS RUNS — the self-hosted `medici-builder-public` runner; Go is
+# hand-installed from go.dev/dl exactly as ci.yml documents. The module has no
+# third-party dependency, so nothing is fetched beyond the toolchain.
+#
+# ── STAGED, PENDING HUMAN PROMOTION ──
+# No bot or App in this repo holds workflow-push permission (GitHub hard-rejects an
+# App push that creates or updates a `.github/workflows/*` file), so this file is
+# STAGED here and a maintainer PROMOTES it to .github/workflows/loopadmin.yml to
+# activate it. Until promoted it runs nowhere. See ci/staged-workflows/README.md.
+
+on:
+  push:
+    paths:
+      - "loopadmin/**"
+      - "spec/loop-admin-runner-v1.md"
+      - "schemas/loop-admin-runner-v1.json"
+      - ".github/workflows/loopadmin.yml"
+  pull_request:
+    paths:
+      - "loopadmin/**"
+      - "spec/loop-admin-runner-v1.md"
+      - "schemas/loop-admin-runner-v1.json"
+      - ".github/workflows/loopadmin.yml"
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25.0"
+  GOWORK: "off"
+
+jobs:
+  loopadmin:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      - name: Format, vet, test
+        working-directory: loopadmin
+        run: |
+          set -euo pipefail
+          go version
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test -count=1 -timeout 120s ./...
+
+      - name: Mutation gate
+        working-directory: loopadmin
+        run: go run ./mutate -map testdata/mutations.json

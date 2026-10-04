@@ -86,7 +86,12 @@ type Allowance struct {
 // internal/deskkit/preflight.go::ambientLoginProbe::gh (the ambient-identity preflight,
 // #1528) and cmd/deskapps/identity.go::runGH::gh (deskapps init's pre-token identity read,
 // the driver-ruled exception on #1260). No other permit is authorized by that raise.
-const allowedInvocationCeiling = 7
+//
+// 6 = desktools-v2/03 (#2025, under the ruling on #1911) migrated cmd/deskmerge's reads — the
+// PR-state read onto GetPullRequest and the R-5 sign-off read onto ListCommentsTyped — through
+// a token minted for the repository's installation, and DELETED its runGH reach-around in the same change, so its
+// permit came off and the ceiling went down with it.
+const allowedInvocationCeiling = 6
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
 var AllowedInvocations = []Allowance{
@@ -115,7 +120,10 @@ var AllowedInvocations = []Allowance{
 	{
 		Key: "cmd/deskdigest/exec.go::runGH::gh",
 		Reason: "TODO(forge-surface): identity, the same documented ambient-credential contract as deskclose. " +
-			"Its read verbs also include `issue list`, which has no enumerated op.",
+			"Its read verbs also include `issue list`, which has no enumerated op. Left in place by " +
+			"desktools-v2/03: the tool's reads and its post share ONE ambient posting identity by design (it " +
+			"never mints), so moving only the reads onto a minted App token needs an App role for a tool run " +
+			"outside any desk loop — a custody decision the read-path ruling on #1911 does not make.",
 	},
 	{
 		Key: "cmd/deskdisposition/exec.go::gh::gh",
@@ -124,11 +132,6 @@ var AllowedInvocations = []Allowance{
 			"GitLab project at all. What is left is `set`: `pr comment` maps to PostComment and the label " +
 			"verbs now map to ApplyLabels, but `label list` still has no enumerated op and the verb mints no " +
 			"token, so routing its writes through the seam is a token-custody decision.",
-	},
-	{
-		Key: "cmd/deskmerge/exec.go::runGH::gh",
-		Reason: "TODO(forge-surface): read-only (`pr view --json`, one `gh api` read of the merge-authority " +
-			"surface). The pr view half maps to GetPullRequest; the authority read has no enumerated op.",
 	},
 	{
 		Key: "cmd/deskpushguard/main.go::fetchPR::gh",

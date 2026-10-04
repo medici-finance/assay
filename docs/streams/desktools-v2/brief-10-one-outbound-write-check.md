@@ -55,7 +55,7 @@ consumers:
   - "tools/desk/internal/forgeban: follow-up desktools-v2/10 (this brief; the ban that proves no write path is built around the check)"
   - "statusgen, tools/cellctl: out-of-scope (neither writes to a forge through a Forge; statusgen's writes are local files)"
   - "the house callout for this check: follow-up desktools-v2/11"
-version: 2
+version: 3
 id: 72fc4a5f-6e8f-4c4e-807d-608df5501950
 ---
 
@@ -229,22 +229,79 @@ on could-not-check. Raw API writers that never hold a `Forge` (fleet provisionin
 the label names and descriptions it publishes from its compiled label table; the release
 tagger's tag refs) are outside this brief's "Outward writes" inventory and are not covered.
 
+## Amendment (#2027, 2026-10-02, brief stays `implemented`)
+
+Verify rows 2–9 and 11–13 are re-authored in version 3 so each one fails when the property it
+names is false. As written in version 2 they could not: rows 2–9, 12 and 13 stated an "output
+contains `--- PASS: …`" expectation the runner never checks, so each passed on the `go test`
+exit status alone, and a `-run` selector that matches nothing (a renamed, deleted or not yet
+written test) prints "no tests to run" and exits 0. Row 11 ran `statusgen --consumers` with no
+base, which on merged main has no diff naming this brief and cannot check anything. Row 11's
+property is narrower than the others' (no routing claim in the `consumers:` list is disproved);
+what it can and cannot see is stated in its bullet below and in its Expect.
+
+What changed, and what did not:
+
+- Every `go test` row now captures the run, counts the anchored top-level `--- PASS: <name> (`
+  line itself and prints one decidable line (`rc=0 pass=1` and its variants), and the closing
+  assertion (the run's status, then a grep for each named `--- PASS:` line) fails the row unless
+  the run succeeded and every named test passed; the printed line pins each count to one. `-count=1`
+  defeats the test cache. The selectors and packages are the version 2 ones, anchored to the
+  exact name where the row names one test; row 2 keeps its prefix selector, which runs every outbound test in the package.
+- Row 5 also counts the `pushes != 0` assertion inside its test, the ZERO-pushes property its
+  Expect names. Row 7 counts both structural tests. Row 8 reads the mutation harness's own
+  healthy line and Totals line and requires the four named mutation classes to be CAUGHT.
+- Row 11 judges the brief as it stands in the tree under test, against a fixed base: the parent
+  of e7e9f35d3, the commit that first added this brief file (#1229). At that base the file does
+  not exist, so no entry is inherited and six of the seven entries are judged — a `follow-up` must
+  name a brief that exists and references back, a `fixed-here` path must exist and appear in the
+  diff. The seventh, the `out-of-scope` entry, stays UNCHECKED: it names directories (`statusgen`,
+  `tools/cellctl`) and the tool's `out-of-scope` check is not directory-aware, so an edit under
+  `statusgen/` does not turn this row red. The command asserts the exact summary line as
+  well as the exit status, so a run that judges nothing (every entry UNCHECKED, exit 0), a run
+  that cannot reach the base, and a disproved entry are all red. It cannot see consumer wiring
+  removed from the code: five entries route `follow-up desktools-v2/10` to this brief itself, and
+  a self-route corroborates on the brief's own text. With the decorator removed from both
+  `ResolveForge` returns, row 11 stays green while rows 2, 6, 7 and 8 turn red.
+- Row 11's first version-3 form, a clone pinned at #1919's squash with a pinned base, read no
+  part of the tree under test and printed the same all-UNCHECKED line for every state of the
+  repository; review of #2044 showed it green on three planted false states. It is replaced by
+  the form above.
+- Row 13 counts the tests that actually RAN under an anchored selector. Its test,
+  TestOutboundWindowsMachinePaths, and the drive-letter/UNC scanner extension it exercises
+  belong to desktools-v2/12 (its Windows row). When this amendment was authored the test did
+  not exist and the row printed `rc=0 run=0 pass=0` and was red, where version 2 passed it on
+  "no tests to run". desktools-v2/12 has since landed the test (#2033), so the row now prints
+  `rc=0 run=1 pass=1` and is green; a selector that matches nothing, or a skipped test, turns
+  it red again. It is neither loosened nor dropped here.
+- Rows 1 and 10, every Expect property, the Task, the `consumers:` list, and the Evidence below
+  are unchanged. The 2026-10-01 Evidence was recorded against version 2 rows, and so is any
+  other Evidence block whose commands are the version 2 ones, whichever order it lands in
+  relative to this amendment: such a block is not evidence for the version 3 rows, which need
+  a fresh run.
+
 ## Verify (executable — no prose-only DoD items)
+
+Rows run from the root of `medici-finance/assay`. Rows 2–9 and 11–13 were re-authored in
+version 3 (#2027, see the Amendment above) so a missing selector or a false property turns the
+row red; row 13 is red if its test (added in #2033) is missing or skipped. Row 11 needs `statusgen` on PATH
+and history back to e7e9f35d3 (not a depth-1 clone); without either it is red, never green.
+
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check | `cd tools/desk && go build ./... && go vet ./internal/deskkit/ ./internal/forgeban/` | exit 0 |
-| 2 | check | `cd tools/desk && go test -timeout 10m ./internal/deskkit/ -run 'TestOutbound' -v` | output contains the literal line `--- PASS: TestOutboundConformance` (assert on that line, not the exit status — a `-run` selector matching nothing exits 0) |
-| 3 | check | `cd tools/desk && go test ./cmd/deskfile/ -run TestNewRefusesWithheldIdentifierOnPublicTarget -v` | output contains `--- PASS: TestNewRefusesWithheldIdentifierOnPublicTarget`. Fail-first: on the unfixed code `deskfile new` FILES the issue (the fake forge records one `FileIssue`) — quote that red run in the PR body |
-| 4 | check | `cd tools/desk && go test ./cmd/deskfile/ -run TestNewPassesSameBodyOnPrivateTarget -v` | output contains `--- PASS: TestNewPassesSameBodyOnPrivateTarget` — the same text, private target, one `FileIssue` recorded |
-| 5 | check | `cd tools/desk && go test ./cmd/deskpr/ -run TestPushRefusesWithheldNameInAddedTestComment -v` | output contains `--- PASS: TestPushRefusesWithheldNameInAddedTestComment` and the test asserts the push seam recorded ZERO pushes. Fail-first: on the unfixed code the push proceeds |
-| 6 | check | `cd tools/desk && go test ./internal/deskkit/ -run TestOutboundForgeWrapsEveryWriteMethod -v` | output contains `--- PASS: TestOutboundForgeWrapsEveryWriteMethod` — the completeness layer, independent of the conformance fixtures |
-| 7 | check | `cd tools/desk && go test -timeout 10m ./internal/forgeban/ ./internal/deskkit/ -run 'Test(ForgeSingleConstructionSite)$' -v && go test ./internal/forgeban/ -run TestNoBackendTypeOutsideDeskkit -v` | output contains BOTH `--- PASS: TestForgeSingleConstructionSite` and `--- PASS: TestNoBackendTypeOutsideDeskkit` — the structural layer: one construction site, and no cmd package can name a backend type to build or unwrap one |
-| 8 | check +mutation | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/deskkit/outbound-mutations.json` | the harness's own Totals line reports every mutation KILLED and none survived; `internal/deskkit/outbound-mutations.json` (planned) carries at least: the decorator removed from `ResolveForge`'s return, one text-carrying method dropped from the decorator, the visibility test inverted, and the e-mail allow-list emptied — the fail-first evidence a reviewer re-runs. (`go run` flattens the exit code, so assert on the Totals line, not the status) |
-| 9 | check | `cd tools/desk && go test ./internal/deskkit/ -run TestOverrideAuditRowHoldsDigestNotText -v` | output contains `--- PASS: TestOverrideAuditRowHoldsDigestNotText` |
+| 2 | check | `o=$(cd tools/desk && go test -count=1 -timeout 10m ./internal/deskkit/ -run 'TestOutbound' -v 2>&1); rc=$?; p=$(grep -c -e '^--- PASS: TestOutboundConformance (' <<<"$o"); echo "rc=$rc pass=$p"; test "$rc" = 0 && grep -q -e '^--- PASS: TestOutboundConformance (' <<<"$o"` | exit 0; output is `rc=0 pass=1`. The command counts the top-level `--- PASS: TestOutboundConformance (` line itself and fails unless the run succeeded AND that line appears once, so a `-run` selector matching nothing, a skipped test or a renamed test prints `pass=0` and the row is red. Every other `TestOutbound*` test in the package must pass too: the run's own status is part of the witness |
+| 3 | check | `o=$(cd tools/desk && go test -count=1 -timeout 10m ./cmd/deskfile/ -run '^TestNewRefusesWithheldIdentifierOnPublicTarget$' -v 2>&1); rc=$?; p=$(grep -c -e '^--- PASS: TestNewRefusesWithheldIdentifierOnPublicTarget (' <<<"$o"); echo "rc=$rc pass=$p"; test "$rc" = 0 && grep -q -e '^--- PASS: TestNewRefusesWithheldIdentifierOnPublicTarget (' <<<"$o"` | exit 0; output is `rc=0 pass=1`: the refusal test ran and passed at top level. It asserts the fake forge filed nothing on the public target, the refusal names the withheld-identifier rule, and a written override reason does not take it through. The fail-first red run on the unfixed code (`deskfile new` FILES the issue, one recorded `FileIssue`) was the implementer's PR-body obligation; it is not part of this row's verdict |
+| 4 | check | `o=$(cd tools/desk && go test -count=1 -timeout 10m ./cmd/deskfile/ -run '^TestNewPassesSameBodyOnPrivateTarget$' -v 2>&1); rc=$?; p=$(grep -c -e '^--- PASS: TestNewPassesSameBodyOnPrivateTarget (' <<<"$o"); echo "rc=$rc pass=$p"; test "$rc" = 0 && grep -q -e '^--- PASS: TestNewPassesSameBodyOnPrivateTarget (' <<<"$o"` | exit 0; output is `rc=0 pass=1`: the same text, private target, one `FileIssue` recorded (the test fails when the private target records no `FileIssue`) |
+| 5 | check | `o=$(cd tools/desk && go test -count=1 -timeout 10m ./cmd/deskpr/ -run '^TestPushRefusesWithheldNameInAddedTestComment$' -v 2>&1); rc=$?; p=$(grep -c -e '^--- PASS: TestPushRefusesWithheldNameInAddedTestComment (' <<<"$o"); b=$(sed -n -e '/^func TestPushRefusesWithheldNameInAddedTestComment(/,/^}/p' tools/desk/cmd/deskpr/outbound_test.go); z=$(grep -c -e 'if pushes != 0 {' <<<"$b"); echo "rc=$rc pass=$p zero=$z"; test "$rc" = 0 && grep -q -e '^--- PASS: TestPushRefusesWithheldNameInAddedTestComment (' <<<"$o" && test "$z" = 1` | exit 0; output is `rc=0 pass=1 zero=1`: the test passed at top level AND its body still carries the `if pushes != 0 {` assertion that the push seam recorded ZERO pushes (`zero=` counts that assertion inside the test function, so deleting it turns the row red although the test would still pass). The fail-first run (the push proceeds on the unfixed code) was the implementer's PR-body obligation; it is not part of this row's verdict |
+| 6 | check | `o=$(cd tools/desk && go test -count=1 -timeout 10m ./internal/deskkit/ -run '^TestOutboundForgeWrapsEveryWriteMethod$' -v 2>&1); rc=$?; p=$(grep -c -e '^--- PASS: TestOutboundForgeWrapsEveryWriteMethod (' <<<"$o"); echo "rc=$rc pass=$p"; test "$rc" = 0 && grep -q -e '^--- PASS: TestOutboundForgeWrapsEveryWriteMethod (' <<<"$o"` | exit 0; output is `rc=0 pass=1` — the completeness layer, independent of the conformance fixtures |
+| 7 | check | `o=$(cd tools/desk && go test -count=1 -timeout 10m ./internal/forgeban/ ./internal/deskkit/ -run '^TestForgeSingleConstructionSite$' -v 2>&1 && go test -count=1 -timeout 10m ./internal/forgeban/ -run '^TestNoBackendTypeOutsideDeskkit$' -v 2>&1); rc=$?; s=$(grep -c -e '^--- PASS: TestForgeSingleConstructionSite (' <<<"$o"); n=$(grep -c -e '^--- PASS: TestNoBackendTypeOutsideDeskkit (' <<<"$o"); echo "rc=$rc site=$s ban=$n"; test "$rc" = 0 && grep -q -e '^--- PASS: TestForgeSingleConstructionSite (' <<<"$o" && grep -q -e '^--- PASS: TestNoBackendTypeOutsideDeskkit (' <<<"$o"` | exit 0; output is `rc=0 site=1 ban=1`: BOTH structural tests ran and passed at top level — one construction site, and no cmd package can name a backend type to build or unwrap one. Either test missing, skipped or renamed prints a zero and the row is red |
+| 8 | check +mutation | `o=$(cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/deskkit/outbound-mutations.json 2>&1); h=$(grep -c -x -e 'Harness healthy: baseline GREEN, positive control CAUGHT.' <<<"$o"); q=$(grep -c -e '^  CAUGHT  *the decorator removed from ResolveForge' -e '^  CAUGHT  *one text-carrying method dropped from the decorator' -e '^  CAUGHT  *the visibility test inverted' -e '^  CAUGHT  *the e-mail allow-list emptied' <<<"$o"); t=$(sed -n -e 's/^Totals: [0-9]* caught, \([0-9]*\) NOT CAUGHT, \([0-9]*\) could-not-mutate\.$/survived=\1 couldnot=\2/p' <<<"$o"); echo "healthy=$h required=$q $t"; test "$h" = 1 && test "$q" = 5 && test "$t" = 'survived=0 couldnot=0'` | exit 0; output is `healthy=1 required=5 survived=0 couldnot=0`. `healthy=1`: the harness printed its own healthy line (baseline green, positive control caught); a broken harness prints no verdicts. `survived=` and `couldnot=` are read from the harness's Totals line, so a mutation that survived, one that could not be applied, or a missing Totals line breaks the match. `required=5` counts the CAUGHT lines of the mutations this row requires `internal/deskkit/outbound-mutations.json` to carry: the decorator removed from `ResolveForge`'s return (two mutants, the GitHub and the GitLab return), one text-carrying method dropped from the decorator, the visibility test inverted, and the e-mail allow-list emptied — the fail-first evidence a reviewer re-runs. `go run` flattens the exit status, so the row asserts on the printed lines and the closing `test` gives the row its status |
+| 9 | check | `o=$(cd tools/desk && go test -count=1 -timeout 10m ./internal/deskkit/ -run '^TestOverrideAuditRowHoldsDigestNotText$' -v 2>&1); rc=$?; p=$(grep -c -e '^--- PASS: TestOverrideAuditRowHoldsDigestNotText (' <<<"$o"); echo "rc=$rc pass=$p"; test "$rc" = 0 && grep -q -e '^--- PASS: TestOverrideAuditRowHoldsDigestNotText (' <<<"$o"` | exit 0; output is `rc=0 pass=1` |
 | 10 | check | `grep -rn --include='*.go' --exclude='*_test.go' -e 'deskkit.ScanSurface' -e 'deskkit.BodyCheck' -e 'deskkit.SelfContainCheck' tools/desk/cmd/deskfile tools/desk/cmd/deskpost tools/desk/cmd/deskreply tools/desk/cmd/deskevidence; test $? -eq 1` | exit 0 and no line printed — the per-verb scan calls are GONE from the verbs whose writes all cross the decorator (the removal, not just the addition). `deskpr` is excluded by design: its `--check` pre-flight is the recorded second caller |
-| 11 | check | `statusgen --consumers --root .` | exit 0; no routing claim in this brief is disproved by the diff |
-| 12 | check | `cd tools/desk && go test ./internal/deskkit/ -run '^TestOutboundGitLab' -v` | output must contain the named top-level or subtest `--- PASS:` line (a missing selector is failure); both top-level tests PASS; GitLab.com no-reply and reserved documentation-host shapes (generic self-managed recognition remains pending scope on issue 1836), internal target and explicit MR note route; refusal sends no request (desktools-v2/12 GitLab row) |
-| 13 | check | `cd tools/desk && go test ./internal/deskkit/ -run '^TestOutboundWindowsMachinePaths$' -v` | output must contain the named top-level or subtest `--- PASS:` line (a missing selector is failure); named top-level TestOutboundWindowsMachinePaths PASS; public drive-letter and UNC machine paths refuse using IsAbsFor. PENDING owner scope clarification on issue 1836: this test and production scanner extension are not supplied by the incomplete preparation (desktools-v2/12 Windows row) |
+| 11 | check | `o=$(statusgen --consumers --root . --brief desktools-v2/10 --base e7e9f35d3~1); rc=$?; l=$(grep -e '^summary: ' <<<"$o"); echo "rc=$rc $l"; test "$rc" = 0 && test "$l" = 'summary: 6 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing'` | exit 0; output is `rc=0 summary: 6 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing`. The tool judges this brief's `consumers:` list as it stands in the tree under test, against the diff from the parent of e7e9f35d3 (the commit that first added this file, #1229), so none is inherited and six of the seven entries are judged. The row is red when any routing claim is DISPROVED (a `follow-up` naming a brief that does not exist, a `fixed-here` path that is absent or not in the diff: the tool exits 1 and the summary shows `1 disproved` or more), when the tool cannot run (no `statusgen`, history too shallow to reach the base: a nonzero `rc`), and when it judges nothing: a summary of `0 corroborated, 0 disproved, 7 unchecked` exits 0 from the tool but is NOT a pass, and the closing `test` on the exact summary line turns it red. Of the six corroborations, five are entries that route `follow-up desktools-v2/10` to this brief itself and corroborate on its own text; the sixth is desktools-v2/11 referencing back. The one UNCHECKED entry is the `out-of-scope` exclusion of statusgen and tools/cellctl, whose reason is the reviewer's call; it names directories and the tool's `out-of-scope` check (an edited site contradicts it) is not directory-aware, so editing a file under statusgen/ does NOT turn this row red. LIMIT: this row cannot see consumer wiring removed from the code. With the decorator removed from both `ResolveForge` returns this row stays green; rows 2, 6, 7 and 8 turn red |
+| 12 | check | `o=$(cd tools/desk && go test -count=1 -timeout 10m ./internal/deskkit/ -run '^TestOutboundGitLab' -v 2>&1); rc=$?; a=$(grep -c -e '^--- PASS: TestOutboundGitLabTypedNotes (' <<<"$o"); b=$(grep -c -e '^--- PASS: TestOutboundGitLabNoReply (' <<<"$o"); echo "rc=$rc notes=$a noreply=$b"; test "$rc" = 0 && grep -q -e '^--- PASS: TestOutboundGitLabTypedNotes (' <<<"$o" && grep -q -e '^--- PASS: TestOutboundGitLabNoReply (' <<<"$o"` | exit 0; output is `rc=0 notes=1 noreply=1`: both named top-level tests ran and passed (a missing, skipped or renamed test prints a zero and the row is red); GitLab.com no-reply and reserved documentation-host shapes (generic self-managed recognition remains pending scope on issue 1836), internal target and explicit MR note route; refusal sends no request (desktools-v2/12 GitLab row) |
+| 13 | check | `o=$(cd tools/desk && go test -count=1 -timeout 10m ./internal/deskkit/ -run '^TestOutboundWindowsMachinePaths$' -v 2>&1); rc=$?; r=$(grep -c -x -e '=== RUN   TestOutboundWindowsMachinePaths' <<<"$o"); p=$(grep -c -e '^--- PASS: TestOutboundWindowsMachinePaths (' <<<"$o"); echo "rc=$rc run=$r pass=$p"; test "$rc" = 0 && test "$r" = 1 && grep -q -e '^--- PASS: TestOutboundWindowsMachinePaths (' <<<"$o"` | exit 0; output is `rc=0 run=1 pass=1`: the named top-level test actually RAN once and passed; public drive-letter and UNC machine paths refuse using IsAbsFor. A selector that matches nothing prints `run=0 pass=0` and the row is red, never green on "no tests to run". The test and the scanner extension it exercises landed with #2033 (desktools-v2/12's Windows row), so the row is green now; it is red again if the test is deleted or renamed (the selector then matches nothing) or if it is skipped. Scope of the Windows machine-path rule is still pending owner clarification on issue 1836 |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
@@ -373,6 +430,71 @@ RISK-VALUE: NAMED, NOT DERIVED — pass-through set {OpenMergeHold, RunWorkflow,
 rows_passed=12 rows_total=13
 
 VERIFY: FAIL
+
+### 2026-10-03 desk dispatch — 13/13 version 3 Verify rows pass on main @ b3677d6da493; Evidence only (gate: human, sensitive-data)
+
+Merged SHA run on: main @ b3677d6da493 (the forge's main head at run time is 829185322 and differs from it only in STATUS.md). The tree contains the implementing merge b69252cc8e30 (#1919), the Windows machine-path work (#2033), the brief-frontmatter id exemption (#2024) and the version 3 Verify rows (#2044). Read-only in a detached worktree cut from the fetched main, go1.27.1 darwin/arm64, statusgen v1.0.31, KUBECONFIG=/dev/null, every command under a throwaway HOME, no forge writes. The worktree was clean (git status empty) after every run, including the mutation harness.
+
+**This brief is gate: human with risk: sensitive-data: yes. This run is EVIDENCE ONLY: a model does not sign it off and does not flip its status. The README row stays implemented and the human closes the gate (decision issue #1912).**
+
+**What moved since the last verdict (2026-10-02 @ cd435f006a68, 12/13, FAIL).** (1) #2033 landed TestOutboundWindowsMachinePaths and the Windows drive-letter and UNC arms of the machine-path scan, so the earlier row 13 failure and its "behaviour absent" finding are closed. (2) #2044 re-authored rows 2-9 and 11-13 as version 3: each command now asserts its own named PASS line, and row 11 judges against a fixed base. This closes the earlier false-green and vacuous-row findings. (3) #2024 added one exemption to the session-id arm, for the brief-v2 frontmatter id line of a brief file (outbound.go, outboundforge.go, outboundpush.go, selfcontain.go). The phone-separator gap and the wider pass-through set are carried unchanged. #1989 tracks both.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | Verify row 1 as authored: go build and go vet over deskkit and forgeban, in tools/desk | exit 0 | exit 0; build and vet printed nothing. | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | Verify row 2 as authored (version 3): go test -count=1 over deskkit with the TestOutbound prefix selector, counting the Conformance PASS line | exit 0; rc=0 pass=1 | exit 0; printed rc=0 pass=1. A detail rerun of the same go test shows nine top-level TestOutbound tests, all PASS (Conformance 0.93s, plus ForgeWrapsEveryWriteMethod, the two GitLab tests, WindowsMachinePaths and four others), 229 PASS lines, 0 FAIL, 0 SKIP. | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | Verify row 3 as authored (version 3): the anchored deskfile withheld-identifier public-target refusal test | exit 0; rc=0 pass=1 | exit 0; printed rc=0 pass=1. | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | Verify row 4 as authored (version 3): the anchored deskfile same-body private-target test | exit 0; rc=0 pass=1 | exit 0; printed rc=0 pass=1. | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | Verify row 5 as authored (version 3): the anchored deskpr added-test-comment push refusal test, plus the count of the zero-pushes assertion in its body | exit 0; rc=0 pass=1 zero=1 | exit 0; printed rc=0 pass=1 zero=1. | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | Verify row 6 as authored (version 3): the anchored completeness test over the Forge interface | exit 0; rc=0 pass=1 | exit 0; printed rc=0 pass=1. Falsifiability probe: the same command with the test name changed to one that does not exist printed rc=0 pass=0 and exited 1. | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | Verify row 7 as authored (version 3): the single-construction-site test and the backend-type ban test | exit 0; rc=0 site=1 ban=1 | exit 0; printed rc=0 site=1 ban=1. | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | Verify row 8 as authored (version 3): go run of muhar -j 1 over the outbound-mutations.json spec, asserting the healthy line, the five required CAUGHT lines and the Totals line | exit 0; healthy=1 required=5 survived=0 couldnot=0 | exit 0; printed healthy=1 required=5 survived=0 couldnot=0. Detail rerun: Harness healthy: baseline GREEN, positive control CAUGHT. Totals: 14 caught, 0 NOT CAUGHT, 0 could-not-mutate. The required mutants (decorator removed from the GitHub and the GitLab return of ResolveForge, PostReview dropped from the decorator, visibility test inverted, e-mail allow-list emptied) are all CAUGHT, as are ApplyLabels dropped, the withheld register made overridable, the audit row carrying the text, both push-path blindings and four item-number mutants. | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | Verify row 9 as authored (version 3): the anchored digest-not-text override audit row test | exit 0; rc=0 pass=1 | exit 0; printed rc=0 pass=1. | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | Verify row 10 as authored: grep for the three per-verb scan calls in deskfile, deskpost, deskreply and deskevidence, expecting grep status 1 | exit 0, nothing printed | exit 0; grep printed no line. | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | Verify row 11 as authored (version 3): statusgen --consumers for this brief against base e7e9f35d3~1, asserting the exact summary line | exit 0; rc=0 summary: 6 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing | exit 0; printed rc=0 summary: 6 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing. Falsifiability probe: the same command with base HEAD printed rc=2 and an empty summary, and exited 1. As the row states, it cannot see consumer wiring removed from the code; rows 2, 6, 7 and 8 cover that. | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 12 | Verify row 12 as authored (version 3): the two TestOutboundGitLab tests | exit 0; rc=0 notes=1 noreply=1 | exit 0; printed rc=0 notes=1 noreply=1. | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 13 | Verify row 13 as authored (version 3): the anchored TestOutboundWindowsMachinePaths test, counting its RUN and PASS lines | exit 0; rc=0 run=1 pass=1 | exit 0; printed rc=0 run=1 pass=1. Overlay probe (go test -overlay, tree never written): a drive-letter path under the Users root written with backslashes, and a UNC host-and-share path, are both found by the machine-path scan, and an https URL is not. | 2026-10-03 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+**Witness dry-run.** statusgen verifyrun --dry-run --brief on this brief, from the worktree root under a throwaway HOME: exit 0; 13 rows, 13 pass exit=0, 0 fail; the closing line says the table was NOT written to the brief. Output hashes: row 1 e3b0c44298fc, 2-4 70d9c12f19f5, 5 4b527b57f117, 6 70d9c12f19f5, 7 afe8c5fe9b59, 8 12fe8626451f, 9 70d9c12f19f5, 10 e3b0c44298fc, 11 209b0c111963, 12 171440e11a18, 13 9a11c543eb8e. The witness count (13/13) and the hand count (13/13) agree. Because every version 3 command asserts its own property, the witness's exit-status judgement now carries that property.
+
+**Tags.** Row 8 is the only tagged row (+mutation). The dry-run ran it in the worktree, and the harness restored every file. No row carries +flow, +dereference or +neighbour.
+
+**Context files.** Every planned NEW file exists at this head: outbound.go, outboundforge.go, personaldata.go (and outboundpush.go) and outbound-mutations.json under tools/desk/internal/deskkit, plus backendtype.go in forgeban. The named existing files (forgeresolve.go, forgeresolve_test.go, deskpr.go, the deskpushguard directory) exist too. The per-PR changelog fragment has been folded into CHANGELOG.md.
+
+**Findings.**
+
+- F1 (carried, tracked #1989). The international phone pattern allows only one separator character between digits. An overlay probe at this head shows the conformance fixture shape (single spaces) is refused as pii.phone. A number with a parenthesised area code, a number with a parenthesised trunk zero, and a number with doubled spaces all return no finding, so no refusal and no notice. personaldata.go has no commit since the prior verdict.
+- F2 (carried, tracked #1989). The decorator's pass-through set is wider than the brief's five no-text families. It adds OpenMergeHold, RunWorkflow and ApproveGate, and only a code comment and the completeness test record that choice.
+- F3 (new since the prior verdict, #2024). The session-id arm now skips exactly one line: the brief-v2 frontmatter id line of a file under docs/streams whose name matches brief-*.md, when the id is a lowercase dashed UUID and the frontmatter has a single id key. Each condition fails closed. This narrows an existing self-containment category for one line shape. The narrowing came from a separate merged change, not from this brief.
+- F4 (housekeeping). #2027 (the Verify-row falsifiability report) is still open, although #2044 merged the re-authored rows that this run exercises.
+
+**Risk-bearing value enumeration.** Trigger: sensitive-data: yes. Scope: every literal the outbound check introduced in #1919, plus what #2033 and #2024 added to it since the prior verdict. Every line number was re-read at b3677d6da493. Paths are under tools/desk/internal/deskkit.
+
+| Rank | Literal @ file:line | If wrong | Undo by edit + redeploy? |
+|---|---|---|---|
+| 1 | overridable() = f.rule != RuleVoiceRulingClaim && f.rule != RuleWithheldIdentifier @ outbound.go:220; rule ids "voice.ruling-claim" @ outbound.go:63, "withheld.identifier" @ outbound.go:74 | a written reason publishes a withheld identifier to a public repository | no |
+| 2 | outboundPublicLayers = SelfContainApplies @ outbound.go:226, which is RepoVisibility(repo) != VisibilityPrivate @ config.go:198, behind a not-Configured early return false @ selfcontain.go:314-315 | the public layers are skipped on a public or unstated target | no |
+| 3 | reAbsMachinePath (five unix roots) @ selfcontain.go:125; reWinUsersPath (drive letter, colon, Users root) @ selfcontain.go:146; reWinUNCPath (two or more separators, a host of at least two characters, a share) @ selfcontain.go:147; each Windows match confirmed by IsAbsFor windows @ selfcontain.go:406 | a machine path reaches a public target | no |
+| 4 | reBriefFrontmatterID (a top-level id key followed by a lowercase dashed UUID, bare or double-quoted, anchored at both ends) @ selfcontain.go:173-174; single-key rule keys != 1 in briefIDExemptLine | a session UUID passes on a brief's id line | no |
+| 5 | rePhoneE164 = \+[0-9](?:[ .()-]?[0-9]){5,20} @ personaldata.go:34; digit bounds n < 8 or n > 15 in personalDataScan; rePhoneGrouped @ personaldata.go:37 | an international phone number reaches any target | no |
+| 6 | emailAllowedDomains (two forge no-reply domains, three reserved example domains) @ personaldata.go:42-48; emailAllowedTLDs = example, invalid, test @ personaldata.go:51; emailAllowedExact (the GitHub no-reply address) @ personaldata.go:54 | a personal address passes as allowed | no |
+| 7 | pass-through classification adding OpenMergeHold, RunWorkflow, ApproveGate @ outboundforge.go:18-21 | text carried by a workflow input leaves without a check | no, if a workflow publishes it |
+| 8 | withheldMarker = "withheld register identifier" @ scanoverride.go:158 | the pre-flight path would accept the override, though the seam still refuses | yes |
+| 9 | minOverrideReason = 12 @ scanoverride.go:54 | weaker forensic reasons | yes; a reversible knob, so it ranks last |
+
+Verdict lines (file paths are under tools/desk/internal):
+
+RISK-VALUE: DERIVED — overridable() = f.rule != RuleVoiceRulingClaim && f.rule != RuleWithheldIdentifier @ deskkit/outbound.go:220 — the option-1 ruling on #1319 recorded in this brief: credential, personal-data and self-containment refusals are overridable; a withheld identifier and a ruling claim are not. The mutant that makes the withheld register overridable is CAUGHT (row 8).
+RISK-VALUE: DERIVED — RepoVisibility(repo) != VisibilityPrivate @ deskkit/config.go:198 (via outbound.go:226) — the brief's "public AND unknown" key: fail-closed, no network read. The inverted-visibility mutant is CAUGHT. Carried note: with no configured roster (selfcontain.go:314-315) the public layers are skipped entirely. That behaviour predates #1919.
+RISK-VALUE: DERIVED — reWinUsersPath / reWinUNCPath @ deskkit/selfcontain.go:146-147 — row 13's stated property (public drive-letter and UNC machine paths refuse, using IsAbsFor) is met. Each candidate is confirmed by IsAbsFor windows, so the class has one definition of absolute. The overlay probe finds both shapes and does not flag an https URL.
+RISK-VALUE: DERIVED — reBriefFrontmatterID @ deskkit/selfcontain.go:173-174 — a brief-v2 frontmatter id is a public identifier the board resolves (this brief carries one), not a session. The exemption needs a brief path, a fenced frontmatter, exactly one id key, a lowercase dashed UUID, and the same line at the same number in the scanned text. Every other UUID in the same text still refuses. Residual: a session UUID typed into a brief's id line would pass that one line.
+RISK-VALUE: NAMED, NOT DERIVED — rePhoneE164 = \+[0-9](?:[ .()-]?[0-9]){5,20} @ deskkit/personaldata.go:34 — the 8-15 digit bound is derived from the brief's rule table and the E.164 maximum. The one-separator-per-gap rule contradicts the brief's "optional separators": a parenthesised area code passes on every target (probe, F1). Missing: a pattern that admits grouped separators, and a conformance row for that shape (#1989).
+RISK-VALUE: DERIVED — emailAllowedDomains / emailAllowedTLDs / emailAllowedExact @ deskkit/personaldata.go:42-54 — this is the brief's compiled allow-list, entry for entry ("Nothing else"). The emptied-list mutant is CAUGHT.
+RISK-VALUE: NAMED, NOT DERIVED — pass-through set {OpenMergeHold, RunWorkflow, ApproveGate} @ deskkit/outboundforge.go:18-21 — wider than the brief's five pass-through families. No brief or design-record line states it, so there is nothing to derive it from (#1989).
+
+rows_passed=13 rows_total=13
+
+**VERIFY: PASS — 13/13 version 3 rows pass on main b3677d6da493 and the witness agrees; Evidence only for a gate: human, sensitive-data item, so the status stays implemented for the human sign-off on #1912, with two NAMED, NOT DERIVED values routed via #1989**
 
 ## Review
 Gate: human (sensitive-data: yes — the brief decides what personal data and which withheld

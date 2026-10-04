@@ -59,6 +59,10 @@ func TestReadyMissingPEMExit6(t *testing.T) {
 // not ship in source, a public-repo security review). The single REVIEWER_INSTALL_ID override is cleared
 // so the per-owner <ROLE>_INSTALL_ID_<OWNER> keys are what answer.
 func TestInstallForOwner(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv(deskkit.EnvConfigHome, "")
 	t.Setenv("REVIEWER_INSTALL_ID", "")
 	t.Setenv("REVIEWER_INSTALL_ID_EXAMPLE_ORG", "100000002")
 	t.Setenv("REVIEWER_INSTALL_ID_MEDICI_FINANCE", "100000001")
@@ -73,6 +77,10 @@ func TestInstallForOwner(t *testing.T) {
 // TestInstallForOwnerFailsClosed — with no override and no per-owner key, mint has no
 // installation to target and must refuse rather than guess (fail closed, a public-repo security review).
 func TestInstallForOwnerFailsClosed(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv(deskkit.EnvConfigHome, "")
 	t.Setenv("REVIEWER_INSTALL_ID", "")
 	t.Setenv("REVIEWER_INSTALL_ID_EXAMPLE_ORG", "")
 	if _, err := installForOwner("example-org"); err == nil {

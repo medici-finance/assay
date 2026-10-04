@@ -331,7 +331,8 @@ func TestProviderDefaultsCodexLaunch(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeCatalogJSON(t, filepath.Join(f.cellDir, "providers.json"), map[string]any{"roles": map[string]string{"worker-desk": "codex"}})
-	r := f.run(t, []string{"CELLCTL_DESKWT=0"}, "desk", "example", "worker-desk")
+	// This test inspects one interactive argv; cadence repetition is tested separately.
+	r := f.run(t, []string{"CELLCTL_DESKWT=0"}, "desk", "example", "worker-desk", "--cadence", "off")
 	if r.code != 0 {
 		t.Fatalf("codex launch: %+v", r)
 	}

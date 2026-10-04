@@ -1,0 +1,16 @@
+# corpus: a review verdict that CITES sops material by path:line instead of quoting it
+# expect: clean
+# refs:   #2060
+# shape:  prose naming the ENC[AES256{{+}}_GCM,…] marker and the sops:/mac: keys inline, every finding anchored on a path:line
+# why:    cite-never-quote is the sanctioned way to state a sops finding in a review body; the inline marker and key names carry no payload
+Verdict: request-changes
+
+Findings:
+
+1. `deploy/apps/billing/secrets.enc.yaml:41` — the `sops:` footer carries a `mac:` and a
+   `lastmodified:` field but no encrypted value sits outside it, so the file is a footer
+   with no ciphertext. Re-encrypt the whole document and commit the result.
+2. `deploy/apps/billing/secrets.enc.yaml:12` — the `password` value is an
+   ENC[AES256{{+}}_GCM,…] envelope with no `iv:` field; it was hand-edited after encryption.
+   Cited, not quoted: the envelope itself stays in the diff.
+3. `.sops.yaml:3` — the creation rule for this path names no `age:` recipient.

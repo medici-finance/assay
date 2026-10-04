@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/loop-admin-runner-v1.json",
+  "title": "loop-admin-runner-v1 launch request",
+  "description": "Machine-readable contract for the launch request of the shared loop-admin runner protocol (spec/loop-admin-runner-v1.md). The root is the LaunchRequest; $defs carries the adapter-side shapes (observation, result, capabilities, usage). The contract is DESCRIPTIVE of shape: required fields, field types and closed value sets. It deliberately does NOT encode the cross-field rules the runner module enforces at start (standing-desk mode requires a desk binding and no workflow reference, workflow-stage mode requires work, node and attempt references and no desk binding, a resume session must be pinned to the request's role and profile, a mandatory requirement the adapter does not declare refuses the request, a budget carries at least one positive limit, credential-shaped content is refused at any depth of an extension, an object repeats no key); those need the whole request resolved, or are beyond what JSON Schema expresses. Where the two disagree the schema is the LOOSER of the two on purpose: every request the runner module accepts validates here, and keys match exactly, case included, with no null for a defined field or a list element (a decoder refuses a null at decode), and a tool name is a non-empty string. A usage figure that is absent is UNKNOWN, never zero.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "caller", "id", "mode", "packet", "profile", "workspace", "authority", "budget"],
+  "properties": {
+    "version": {
+      "description": "The protocol version; exactly loop-admin-runner/v1. A consumer refuses any other value.",
+      "const": "loop-admin-runner/v1"
+    },
+    "caller": { "description": "The caller namespace. (caller, id) is the stable request identity.", "type": "string", "minLength": 1 },
+    "id": { "description": "The caller-scoped invocation id.", "type": "string", "minLength": 1 },
+    "mode": { "enum": ["standing-desk", "workflow-stage"] },
+    "desk": {
+      "description": "Standing-desk mode only: the desk binding.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["binding_id"],
+      "properties": { "binding_id": { "type": "string", "minLength": 1 } }
+    },
+    "work": {
+      "description": "Workflow-stage mode only: references to the existing canonical identities, never replacements for them.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["work_id", "node_id", "attempt_id"],
+      "properties": {
+        "work_id": { "type": "string", "minLength": 1 },
+        "node_id": { "type": "string", "minLength": 1 },
+        "attempt_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "packet": {
+      "description": "The role packet, by reference, with the trust of its source. It never carries credentials.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "ref", "trust"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "ref": { "type": "string", "minLength": 1 },
+        "hash": { "type": "string" },
+        "trust": { "enum": ["operator", "caller", "untrusted"] }
+      }
+    },
+    "profile": {
+      "description": "The operator-approved pinned model, skill and tool profile. tools is the complete list the invocation may request; an empty list pins none. There is no fallback model field: a different model is refused, never substituted.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "model", "tools"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "skill": { "type": "string" },
+        "tools": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "workspace": { "description": "A workspace reference.", "type": "string", "minLength": 1 },
+    "authority": {
+      "description": "The externally validated claim or ownership generation the launch runs under. The runner does not mint or validate it; validated_by names what did.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "generation", "validated_by"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "generation": { "type": "integer", "minimum": 1 },
+        "validated_by": { "type": "string", "minLength": 1 }
+      }
+    },
+    "budget": {
+      "description": "A reference to the caller's budget reservation, with the scope the adapter must enforce. No limit may be negative and at least one must be positive.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "scope"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "scope": { "enum": ["launch", "request"] },
+        "max_tokens": { "type": "integer", "minimum": 0 },
+        "max_cost_micros": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "resume": {
+      "description": "Optional session to resume, pinned to the request's role and profile. An adapter that does not declare resume refuses; a fresh session is never substituted.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["session_id", "role", "profile_id"],
+      "properties": {
+        "session_id": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "minLength": 1 },
+        "profile_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "require": {
+      "description": "Mandatory capabilities and extensions. A capability name (resume, cancel-ack, budget-launch, budget-request, telemetry, snapshot, launch-dedupe) or ext:<name>. A consumer that does not provide, or does not define, a listed name refuses the request.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "ext": {
+      "description": "Optional extensions, ignored unless named in require as ext:<name>. Never a place for credentials: every value is decoded and walked, and a credential-shaped string or a key naming a credential slot, at any depth, refuses the request.",
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "usage": {
+      "description": "Token and cost accounting. An absent field is unknown, never zero; a measured 0 is a real reading; a consumer treats a negative figure as unknown.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "cost_micros": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "ref", "hash", "trust"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "ref": { "type": "string", "minLength": 1 },
+        "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "trust": { "description": "Model output is untrusted until a caller's own check accepts it; an adapter cannot raise it.", "const": "untrusted" }
+      }
+    },
+    "toolRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "note": { "description": "The model's own text. It carries no authority.", "type": "string" }
+      }
+    },
+    "result": {
+      "description": "The adapter's terminal report. caller and id echo the invocation identity, and generation the authority generation the attempt ran under; a result echoing another invocation is refused. It is NOT acceptance.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caller", "id", "generation", "outcome"],
+      "properties": {
+        "caller": { "type": "string", "minLength": 1 },
+        "id": { "type": "string", "minLength": 1 },
+        "generation": { "type": "integer", "minimum": 1 },
+        "outcome": { "enum": ["success", "failure"] },
+        "summary": { "type": "string" },
+        "artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifact" } },
+        "tool_requests": { "type": "array", "items": { "$ref": "#/$defs/toolRequest" } }
+      }
+    },
+    "observation": {
+      "description": "One adapter report. finished, failed and stopped are absorbing: a later report leaving one, or a finished report with another result or model, is refused and recorded nowhere. A finished observation with no actual_model is not accepted: an unreported model is unknown, not the pinned one.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "usage"],
+      "properties": {
+        "state": { "enum": ["unknown", "running", "finished", "failed", "cancel-requested", "stopped", "absent"] },
+        "actual_model": { "type": "string" },
+        "usage": { "$ref": "#/$defs/usage" },
+        "result": { "$ref": "#/$defs/result" }
+      }
+    },
+    "capabilities": {
+      "description": "What an adapter declares. The zero value declares nothing; every optional facility is opt-in.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resume", "cancel_ack", "budget_scopes", "telemetry", "snapshot", "launch_dedupe"],
+      "properties": {
+        "resume": { "type": "boolean" },
+        "cancel_ack": { "type": "boolean" },
+        "budget_scopes": { "type": "array", "items": { "enum": ["launch", "request"] } },
+        "telemetry": { "enum": ["none", "partial", "complete"] },
+        "snapshot": { "type": "boolean" },
+        "launch_dedupe": { "type": "boolean" },
+        "extensions": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

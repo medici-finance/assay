@@ -104,6 +104,10 @@ func cmdCoverage(args []string) (err error) {
 
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
+		// TIER TWO: see cmdToken — a help request writes no audit row.
+		if deskkit.IsHelpRequest(perr) {
+			return deskkit.ErrHelpRequested
+		}
 		return deskkit.Refused("bad flags: " + perr.Error())
 	}
 	if len(positionals) != 1 {

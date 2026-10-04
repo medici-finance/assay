@@ -721,6 +721,8 @@ func setupFake(t *testing.T) (*fakeGH, *bytes.Buffer) {
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv(deskkit.EnvConfigHome, "")
 	plantFixtureRoster(t, home)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
 	t.Setenv("CLAUDE_SESSION_ID", "deskpost-test")
