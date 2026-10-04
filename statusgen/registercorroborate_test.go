@@ -181,13 +181,14 @@ func TestRegSelfResolveFails(t *testing.T) {
 	}
 }
 
-// TestRegSelfParkFails / Approved: a park to 2099 named to a mapped
+// TestRegSelfParkFails / Approved: an in-horizon park named to a mapped
 // human fails until that human acts, then passes; an approval COMMENT counts.
 func TestRegSelfParkFails(t *testing.T) {
+	pinParkNow(t, "2026-07-20")
 	root, path := gutFixture(t, landedOpenFinding)
 	mutateFinding(t, path, landedOpenFinding, "resolved: false",
-		"resolved: false\nparked-until: \"2099-01-01\"\nparked-by: human:alex\nparked-reason: deferred")
-	files := findingFiles("+parked-until: \"2099-01-01\"", "+parked-by: human:alex", "+parked-reason: deferred")
+		"resolved: false\nparked-until: \"2026-09-01\"\nparked-by: human:alex\nparked-reason: deferred")
+	files := findingFiles("+parked-until: \"2026-09-01\"", "+parked-by: human:alex", "+parked-reason: deferred")
 	st := &corroborateStub{files: files, mergeBase: originMain(t, root)}
 	if rc := runCorroborateOn(t, root, st); rc != 1 {
 		t.Fatalf("a self-park must fail; rc=%d", rc)
@@ -195,10 +196,11 @@ func TestRegSelfParkFails(t *testing.T) {
 }
 
 func TestRegParkApprovedComment(t *testing.T) {
+	pinParkNow(t, "2026-07-20")
 	root, path := gutFixture(t, landedOpenFinding)
 	mutateFinding(t, path, landedOpenFinding, "resolved: false",
-		"resolved: false\nparked-until: \"2099-01-01\"\nparked-by: human:alex\nparked-reason: deferred")
-	files := findingFiles("+parked-until: \"2099-01-01\"", "+parked-by: human:alex", "+parked-reason: deferred")
+		"resolved: false\nparked-until: \"2026-09-01\"\nparked-by: human:alex\nparked-reason: deferred")
+	files := findingFiles("+parked-until: \"2026-09-01\"", "+parked-by: human:alex", "+parked-reason: deferred")
 	st := &corroborateStub{
 		files:     files,
 		mergeBase: originMain(t, root),
@@ -335,11 +337,83 @@ const landedParkAnchored = "---\n" +
 // already on the entry adds no human: line; with nobody acting on the PR the
 // park category itself must fail it.
 func TestRegReusedParkExtendFails(t *testing.T) {
+	pinParkNow(t, "2026-11-01")
 	root, path := gutFixture(t, landedParkAnchored)
-	mutateFinding(t, path, landedParkAnchored, `parked-until: "2026-12-01"`, `parked-until: "2099-01-01"`)
-	st := &corroborateStub{files: findingFiles(`-parked-until: "2026-12-01"`, `+parked-until: "2099-01-01"`), mergeBase: originMain(t, root)}
+	mutateFinding(t, path, landedParkAnchored, `parked-until: "2026-12-01"`, `parked-until: "2027-01-15"`)
+	st := &corroborateStub{files: findingFiles(`-parked-until: "2026-12-01"`, `+parked-until: "2027-01-15"`), mergeBase: originMain(t, root)}
 	if rc := runCorroborateOn(t, root, st); rc != 1 {
 		t.Fatalf("a park extension authorized only by a pre-existing parked-by must fail; rc=%d", rc)
+	}
+}
+
+// TestRegReusedParkExtendOK: the same in-horizon extension passes once the
+// parked-by human approves the PR — the control for the two tests below.
+func TestRegReusedParkExtendOK(t *testing.T) {
+	pinParkNow(t, "2026-11-01")
+	root, path := gutFixture(t, landedParkAnchored)
+	mutateFinding(t, path, landedParkAnchored, `parked-until: "2026-12-01"`, `parked-until: "2027-01-15"`)
+	st := &corroborateStub{
+		files:     findingFiles(`-parked-until: "2026-12-01"`, `+parked-until: "2027-01-15"`),
+		mergeBase: originMain(t, root),
+		data:      approvedBy("ada"),
+	}
+	if rc := runCorroborateOn(t, root, st); rc != 0 {
+		t.Fatalf("an in-horizon extension the parked-by human approved must pass; rc=%d", rc)
+	}
+}
+
+// TestRegParkHorizonFails: a park added past the 90-day horizon is MISSING even
+// when its parked-by human approved the PR — no approval authorizes it (#2012
+// ruling, item 1).
+func TestRegParkHorizonFails(t *testing.T) {
+	pinParkNow(t, "2026-07-20")
+	root, path := gutFixture(t, landedOpenFinding)
+	mutateFinding(t, path, landedOpenFinding, "resolved: false",
+		"resolved: false\nparked-until: \"2099-01-01\"\nparked-by: human:alex\nparked-reason: deferred")
+	st := &corroborateStub{
+		files:     findingFiles("+parked-until: \"2099-01-01\"", "+parked-by: human:alex", "+parked-reason: deferred"),
+		mergeBase: originMain(t, root),
+		data:      approvedBy("ada"),
+	}
+	if rc := runCorroborateOn(t, root, st); rc != 1 {
+		t.Fatalf("an approved park past the horizon must fail online; rc=%d", rc)
+	}
+}
+
+// TestRegExtendHorizonFails: the planted second instance online — an approved
+// EXTENSION that crosses the 90 days fails too.
+func TestRegExtendHorizonFails(t *testing.T) {
+	pinParkNow(t, "2026-11-01") // + 90 days = 2027-01-30
+	root, path := gutFixture(t, landedParkAnchored)
+	mutateFinding(t, path, landedParkAnchored, `parked-until: "2026-12-01"`, `parked-until: "2027-02-01"`)
+	st := &corroborateStub{
+		files:     findingFiles(`-parked-until: "2026-12-01"`, `+parked-until: "2027-02-01"`),
+		mergeBase: originMain(t, root),
+		data:      approvedBy("ada"),
+	}
+	if rc := runCorroborateOn(t, root, st); rc != 1 {
+		t.Fatalf("an approved extension past the horizon must fail online; rc=%d", rc)
+	}
+}
+
+// TestRegAuthByNotParkOnline: online, a park is corroborated only through
+// parked-by (#2012 ruling, item 2). The landed park names an unmapped account
+// under parked-by; the PR extends it and adds the mapped human under
+// authorized-by, who approves the PR. The stamp lane is satisfied (the added
+// stamp's human acted), so only the register lane can fail it: still MISSING.
+func TestRegAuthByNotParkOnline(t *testing.T) {
+	pinParkNow(t, "2026-07-20")
+	root, path := gutFixture(t, landedParkedFinding) // parked-until 2026-08-01, parked-by human:bot
+	mutateFinding(t, path, landedParkedFinding, `parked-until: "2026-08-01"`,
+		"authorized-by: human:alex\nparked-until: \"2026-09-01\"")
+	st := &corroborateStub{
+		files: findingFiles("+authorized-by: human:alex",
+			`-parked-until: "2026-08-01"`, `+parked-until: "2026-09-01"`),
+		mergeBase: originMain(t, root),
+		data:      approvedBy("ada"),
+	}
+	if rc := runCorroborateOn(t, root, st); rc != 1 {
+		t.Fatalf("authorized-by must not corroborate a park online; rc=%d", rc)
 	}
 }
 
@@ -898,5 +972,29 @@ func TestMergeBaseExactRunMemo(t *testing.T) {
 	end()
 	if after := mergeBaseExact(root, remoteMainRef); after != "" {
 		t.Errorf("after the session ends the ref must be re-resolved (now absent): got %q", after)
+	}
+	// A SECOND session starts with an empty memo: it must not inherit the first
+	// session's answer.
+	end2 := beginGitReadSession()
+	defer end2()
+	if next := mergeBaseExact(root, remoteMainRef); next != "" {
+		t.Errorf("a new session must re-resolve (ref now absent): got %q", next)
+	}
+}
+
+// TestMergeBaseMemoPerRoot pins the root half of the memo key: inside one
+// session, two trees asking for the same ref get their own answers — one whose
+// exact ref is present resolves, one whose ref is absent stays unresolved.
+func TestMergeBaseMemoPerRoot(t *testing.T) {
+	withRef := decoyAfterGut(t, "")
+	gitRun(t, withRef, "update-ref", "refs/remotes/origin/main", "HEAD~2")
+	noRef := decoyAfterGut(t, "")
+	end := beginGitReadSession()
+	defer end()
+	if mb := mergeBaseExact(withRef, remoteMainRef); mb == "" {
+		t.Fatal("control: the tree with the exact ref must resolve a merge-base")
+	}
+	if mb := mergeBaseExact(noRef, remoteMainRef); mb != "" {
+		t.Errorf("another root in the same session must not reuse the first answer: got %q", mb)
 	}
 }

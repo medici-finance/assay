@@ -1611,8 +1611,9 @@ func runCorroborate(prsArg string) int {
 		fmt.Println("# findings-register transitions")
 		fmt.Println("# Scope: every caution-removing move of a finding's resolved/affects/ack/")
 		fmt.Println("# parked-until since the PR merge-base needs a human named in the entry's")
-		fmt.Println("# authorizing key (authorized-by; for a park, parked-by or authorized-by) to")
-		fmt.Println("# have ACTED on this PR — whether or not this PR wrote that key.")
+		fmt.Println("# authorizing key (authorized-by; for a park, parked-by only) to have")
+		fmt.Println("# ACTED on this PR — whether or not this PR wrote that key. A park set or")
+		fmt.Printf("# extended more than %d days past its commit is MISSING whoever approved it.\n", parkHorizonDays)
 		fmt.Println()
 		for _, r := range allRegisterResults {
 			fmt.Println(registerReportLine(r))

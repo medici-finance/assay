@@ -131,11 +131,14 @@ func registerAuthorityNames(raw []byte, keys ...string) []string {
 
 // corroborateRegisterTransitions judges each transition against the PR's reviews
 // and comments. A finding's resolve/affects/ack moves need a human named under
-// `authorized-by:`; its park add/extend needs one named under `parked-by:` or
-// `authorized-by:` — the same key sets the offline gate accepts, so the two halves
-// agree on WHO may authorize and differ only in that this half requires the person
-// to have acted on THIS PR. Each category is judged on its own; a finding passes
-// only when every category it moved is corroborated.
+// `authorized-by:`; its park add/extend needs one named under `parked-by:` and
+// only there — `authorized-by:` never authorizes a park (#2012 ruling, item 2).
+// These are the same keys the offline gate accepts, so the two halves agree on WHO
+// may authorize and differ only in that this half requires the person to have
+// acted on THIS PR. Each category is judged on its own; a finding passes only when
+// every category it moved is corroborated. A park past the horizon
+// (parkHorizonDays, #2012 ruling item 1) is MISSING whoever approved it: no
+// approval can authorize it.
 func corroborateRegisterTransitions(ts []registerTransition, data *ghPRData, repo string, pr int) []registerTransitionResult {
 	var out []registerTransitionResult
 	for _, tr := range ts {
@@ -145,9 +148,13 @@ func corroborateRegisterTransitions(ts []registerTransition, data *ghPRData, rep
 		}
 		cats := []category{
 			{tr.guts, []string{"authorized-by"}},
-			{tr.parkGuts, []string{"parked-by", "authorized-by"}},
+			{tr.parkGuts, []string{"parked-by"}},
 		}
 		var allMoves, evidence, missing []string
+		if tr.horizon != "" {
+			missing = append(missing, fmt.Sprintf("park beyond the %d-day horizon: %s — no approval can authorize it",
+				parkHorizonDays, tr.horizon))
+		}
 		for _, c := range cats {
 			if len(c.moves) == 0 {
 				continue
