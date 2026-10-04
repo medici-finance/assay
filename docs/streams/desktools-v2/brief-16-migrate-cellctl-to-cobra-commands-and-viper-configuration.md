@@ -7,7 +7,7 @@ why: >-
   keeping launch plans, model selection and credential boundaries compatible.
 wave: 2
 depends: ["desktools-v2/15"]
-unblocks: ["desktools-v2/17"]
+unblocks: ["desktools-v2/17", "desktools-v2/18", "desktools-v2/19", "desktools-v2/20", "desktools-v2/21", "desktools-v2/22", "desktools-v2/23", "desktools-v2/24", "desktools-v2/25", "desktools-v2/26", "desktools-v2/27", "desktools-v2/28", "desktools-v2/29", "desktools-v2/30", "desktools-v2/31", "desktools-v2/32", "desktools-v2/33", "desktools-v2/34", "desktools-v2/35", "desktools-v2/36", "desktools-v2/37", "desktools-v2/38", "desktools-v2/39", "desktools-v2/40", "desktools-v2/41", "desktools-v2/42", "desktools-v2/43", "desktools-v2/44", "desktools-v2/45", "desktools-v2/46", "desktools-v2/47", "desktools-v2/48", "desktools-v2/49", "desktools-v2/50", "desktools-v2/51", "desktools-v2/52", "desktools-v2/53", "desktools-v2/54"]
 effort: "L"
 gate: "human"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "yes"}
@@ -49,6 +49,7 @@ decision-trigger: "spec"
 files:
 - `tools/desk/cmd/cellctl/` — main/command construction, per-verb argument loops, `cell.go`, `help.go`, `usage.go`, `usage.txt`, tests and fixtures.
 - `tools/cellctl/tests/`, `tools/cellctl/testdata/cellctl-shell-oracle.sh` — retained behavior comparisons and explicit help differences.
+- `tools/desk/internal/clicontract/testdata/mutations/desktools-v2-16.json` (planned) — muhar mutation spec for cellctl.
 - `tools/desk/internal/clicontract/` — cellctl black-box cases and migration state in `docs/streams/desktools-v2/cli-migration.json`.
 - `docs/cellctl.md`, `docs/cellctl-cadence.md`, `docs/cellctl-model-policy.md`, `docs/cellctl-windows.md`.
 - `changelog/cellctl-cobra-viper.md` (planned).
@@ -102,6 +103,7 @@ claims that they already exist.
 | 5 | check +flow | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/cellctl -run '^TestCLINonHelpParity$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLINonHelpParity " "$f"` | exit 0 with TestCLINonHelpParity PASS; current Go binary matches the pre-migration Go fixture transcripts for non-help commands through the existing fake/DRY_RUN harness, with no live launch or oracle-versus-itself comparison |
 | 6 | check | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; every inherited floor seed still runs and passes |
 | 7 | check | `statusgen --root . --consumers` | exit 0; no declared consumer routing disproved by the change |
+| 8 | check +mutation | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-16.json` | exit 0 and the last line reads `Totals: N caught, 0 NOT CAUGHT, 0 could-not-mutate.` with N equal to the spec's mutation count; the harness proves the baseline green and its positive control caught, then plants: help running after the roster echo or cell load, an undeclared config key binding, one legacy flag form dropped, and a refusal moved out of the domain check into the adapter; each reddens the cellctl owner tests |
 
 ## Pre-mortem
 
@@ -110,6 +112,7 @@ Viper changes an empty pin or credential source: rows 2–3 compare before/after
 Required flags intercept help or a child suppresses the parent's guard: rows 1 and 3 cover both.
 Only imports change while manual loops remain: source/command-tree inspection is a review obligation,
 backed by /17's independent migration coverage check.
+The owner tests pass on the happy path but miss a broken guard: row 8 plants each break and requires it to redden.
 
 ## Evidence
 <!-- Independent verifier records actual command, exit, output, date and runner. -->

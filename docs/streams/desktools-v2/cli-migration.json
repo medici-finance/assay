@@ -1,0 +1,2093 @@
+{
+  "schema": "cli-migration/v1",
+  "contract": "docs/streams/desktools-v2/cli-contract.md",
+  "stream": "desktools-v2",
+  "reference": "desktools-v2/16",
+  "final_gate": "desktools-v2/17",
+  "measured_at": "3ad1ad83c871",
+  "exclusion_rules": [
+    {
+      "class": "test",
+      "pattern": "**/*.test.sh",
+      "reason": "test suite for a script; CI runs it, it is never an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "**/*_test.sh",
+      "reason": "test suite for a script; CI runs it, it is never an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "**/*.test.py",
+      "reason": "test suite; CI runs it, it is never an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "**/*.harness.mjs",
+      "reason": "workflow fixture harness: executes committed workflow text against mocks"
+    },
+    {
+      "class": "test",
+      "pattern": "providers/laya/tests/**",
+      "reason": "provider adapter tests and their mutation scripts"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/desk/scripts/forge-ban-probe.sh",
+      "reason": "positive control for forge-ban.sh; plants a probe file and asserts the counter moves"
+    },
+    {
+      "class": "fixture",
+      "pattern": "**/testdata/**",
+      "reason": "Go testdata convention: the go tool ignores these packages; they are inputs to tests"
+    },
+    {
+      "class": "fixture",
+      "pattern": "tools/skillbench/fixtures/**",
+      "reason": "skill-benchmark fixture checks executed by skillbench, not by operators"
+    },
+    {
+      "class": "library",
+      "pattern": "providers/laya/assay_laya/**",
+      "reason": "importable Python package: no __main__ guard and no shebang"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/fleet-gitlab-roles.sh",
+      "reason": "role table sourced by the two GitLab fleet scripts; no shebang, never executed"
+    }
+  ],
+  "entrypoints": [
+    {
+      "executable": "demo",
+      "path": "drainloop/cmd/demo",
+      "kind": "go",
+      "module": "drainloop",
+      "release": "module-local; no release or workflow build declaration",
+      "consumers": [
+        "drainloop/README.md"
+      ],
+      "parser": "no arguments",
+      "complexity": "simple",
+      "basis": "62 LOC, ~0 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "",
+      "state": "excluded",
+      "class": "demo",
+      "reason": "illustrative demo of the drainloop library; not built by release.yml or the Makefile, not documented as an operator command"
+    },
+    {
+      "executable": "mutate",
+      "path": "loopadmin/mutate",
+      "kind": "go",
+      "module": "loopadmin",
+      "release": "module-local; no release or workflow build declaration",
+      "consumers": [
+        "loopadmin/README.md"
+      ],
+      "parser": "Go flag: global FlagSet",
+      "complexity": "simple",
+      "basis": "158 LOC, ~0 verbs, ~2 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/48",
+      "state": "pending"
+    },
+    {
+      "executable": "qualgen",
+      "path": "qualgen",
+      "kind": "go",
+      "module": "qualgen",
+      "release": "release.yml standalone binary assets (qualgen-<os>-<arch>)",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        ".github/workflows/assay-qualgen.yml",
+        "tools/ci-load/activation/assay-qualgen.yml",
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml",
+        "docs/report-packs.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "complex",
+      "basis": "8654 LOC, ~7 verbs, ~22 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/19",
+      "state": "pending"
+    },
+    {
+      "executable": "statusgen",
+      "path": "statusgen",
+      "kind": "go",
+      "module": "statusgen",
+      "release": "release.yml standalone binary assets (statusgen-<os>-<arch>)",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "docs/adopting-assay.md",
+        "tools/desk/README.md",
+        "docs/contracts.md",
+        "plugins/assay/scripts/assay-install.sh",
+        "plugins/assay/skills/install/SKILL.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "complex",
+      "basis": "74140 LOC, ~85 verbs, ~171 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/18",
+      "state": "pending"
+    },
+    {
+      "executable": "bugs-gc",
+      "path": "tools/bugs-gc",
+      "kind": "go",
+      "module": "tools/bugs-gc",
+      "release": "module-local; no release or workflow build declaration",
+      "consumers": [
+        "Dockerfile",
+        "docs/iso9001-mapping.md",
+        "tools/desk/README.md"
+      ],
+      "parser": "Go flag: global FlagSet",
+      "complexity": "simple",
+      "basis": "106 LOC, ~0 verbs, ~2 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/48",
+      "state": "pending"
+    },
+    {
+      "executable": "claimguard",
+      "path": "tools/claimguard",
+      "kind": "go",
+      "module": "tools/claimguard",
+      "release": "module-local; no release or workflow build declaration",
+      "consumers": [
+        "none in-repo (operator-invoked)"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "344 LOC, ~0 verbs, ~2 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/32",
+      "state": "pending"
+    },
+    {
+      "executable": "cellctl",
+      "path": "tools/desk/cmd/cellctl",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/cellctl.md",
+        "docs/cellctl-cadence.md",
+        "docs/cellctl-model-policy.md",
+        "docs/cellctl-provider-defaults.md",
+        "tools/cellctl/tests/provider.test.sh",
+        "tools/cellctl/tests/parity.test.sh"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "complex",
+      "basis": "8889 LOC, ~34 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/16",
+      "state": "pending"
+    },
+    {
+      "executable": "clusterguard",
+      "path": "tools/desk/cmd/clusterguard",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md",
+        "docs/adopting-assay.md"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "simple",
+      "basis": "557 LOC, ~1 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/32",
+      "state": "pending"
+    },
+    {
+      "executable": "commsgw",
+      "path": "tools/desk/cmd/commsgw",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "topology.yaml"
+      ],
+      "parser": "no argv; environment only",
+      "complexity": "simple",
+      "basis": "1835 LOC, ~3 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/42",
+      "state": "pending"
+    },
+    {
+      "executable": "commsloop",
+      "path": "tools/desk/cmd/commsloop",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/contracts.md",
+        "tools/desk/cmd/commsgw/README.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "2763 LOC, ~5 verbs, ~3 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/42",
+      "state": "pending"
+    },
+    {
+      "executable": "deskack",
+      "path": "tools/desk/cmd/deskack",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/codex-smoke-runs/2026-09-13-codex-0.154.0-step5-rerun.md",
+        "docs/codex-smoke-runs/2026-09-12-codex-0.154.0.md",
+        "plugins/assay/skills/intake-desk/SKILL.md",
+        "plugins/assay/skills/pr-review-desk/SKILL.md",
+        "plugins/assay/skills/the-desk/SKILL.md",
+        "plugins/assay/skills/verify-desk/SKILL.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "191 LOC, ~0 verbs, ~2 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/38",
+      "state": "pending"
+    },
+    {
+      "executable": "deskadvisory",
+      "path": "tools/desk/cmd/deskadvisory",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "docs/contracts.md"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "simple",
+      "basis": "781 LOC, ~1 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/39",
+      "state": "pending"
+    },
+    {
+      "executable": "deskapps",
+      "path": "tools/desk/cmd/deskapps",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/desk-tools/deskapps.md",
+        "tools/desk/README.md",
+        "docs/desk-tools/deskavatar.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "complex",
+      "basis": "1397 LOC, ~8 verbs, ~8 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/25",
+      "state": "pending"
+    },
+    {
+      "executable": "deskaudit",
+      "path": "tools/desk/cmd/deskaudit",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "simple",
+      "basis": "162 LOC, ~2 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/47",
+      "state": "pending"
+    },
+    {
+      "executable": "deskautolane",
+      "path": "tools/desk/cmd/deskautolane",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "1608 LOC, ~0 verbs, ~7 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/36",
+      "state": "pending"
+    },
+    {
+      "executable": "deskavatar",
+      "path": "tools/desk/cmd/deskavatar",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/desk-tools/deskavatar.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "129 LOC, ~0 verbs, ~5 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/39",
+      "state": "pending"
+    },
+    {
+      "executable": "deskboard",
+      "path": "tools/desk/cmd/deskboard",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "tools/desk/README.md",
+        "docs/adopting-assay.md",
+        "plugins/assay/scripts/assay-inbox.sh",
+        "plugins/assay/skills/worker-desk/SKILL.md",
+        "plugins/assay/skills/pr-review-desk/SKILL.md"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "complex",
+      "basis": "8975 LOC, ~19 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/20",
+      "state": "pending"
+    },
+    {
+      "executable": "deskboot",
+      "path": "tools/desk/cmd/deskboot",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md",
+        "docs/adopting-assay-gitlab.md",
+        "plugins/assay/skills/pr-review-desk/SKILL.md",
+        "docs/codex-smoke-runs/2026-09-12-codex-0.154.0.md",
+        "docs/codex-smoke-runs/2026-09-13-codex-0.154.0-step5-rerun.md",
+        "plugins/assay/skills/the-desk/SKILL.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "1116 LOC, ~0 verbs, ~4 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/33",
+      "state": "pending"
+    },
+    {
+      "executable": "deskcalibrate",
+      "path": "tools/desk/cmd/deskcalibrate",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "plugins/assay/skills/pr-review-desk/SKILL.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "461 LOC, ~2 verbs, ~9 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/44",
+      "state": "pending"
+    },
+    {
+      "executable": "deskclaim",
+      "path": "tools/desk/cmd/deskclaim",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md",
+        "docs/quality/QUALITY.md",
+        "tools/desk/internal/loopengine/README.md",
+        "docs/contracts.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "686 LOC, ~4 verbs, ~8 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/33",
+      "state": "pending"
+    },
+    {
+      "executable": "deskclaim-ref",
+      "path": "tools/desk/cmd/deskclaim-ref",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/contracts.md",
+        "tools/desk/README.md",
+        "plugins/assay/skills/worker-desk/SKILL.md",
+        "plugins/assay/skills/pr-shepherd/SKILL.md",
+        "plugins/assay/scripts/inbound-monitor.sh",
+        "plugins/assay/skills/worker-desk/references/dispatch-runbook.md"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "simple",
+      "basis": "1265 LOC, ~6 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/33",
+      "state": "pending"
+    },
+    {
+      "executable": "deskclose",
+      "path": "tools/desk/cmd/deskclose",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "tools/desk/README.md",
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml",
+        "docs/contracts.md",
+        "plugins/assay/skills/worker-desk/SKILL.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "complex",
+      "basis": "3703 LOC, ~9 verbs, ~19 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/26",
+      "state": "pending"
+    },
+    {
+      "executable": "deskcomms",
+      "path": "tools/desk/cmd/deskcomms",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "plugins/assay/skills/the-desk/SKILL.md",
+        ".claude/guardrails/GUARDRAILS.md",
+        "plugins/assay/skills/intake-desk/SKILL.md",
+        "plugins/assay/skills/pr-review-desk/SKILL.md",
+        "plugins/assay/skills/pr-shepherd/SKILL.md",
+        "plugins/assay/skills/verify-desk/SKILL.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "919 LOC, ~3 verbs, ~5 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/42",
+      "state": "pending"
+    },
+    {
+      "executable": "deskdigest",
+      "path": "tools/desk/cmd/deskdigest",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "1753 LOC, ~0 verbs, ~8 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/43",
+      "state": "pending"
+    },
+    {
+      "executable": "deskdisable",
+      "path": "tools/desk/cmd/deskdisable",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/component.yaml"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "624 LOC, ~2 verbs, ~4 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/47",
+      "state": "pending"
+    },
+    {
+      "executable": "deskdispatch",
+      "path": "tools/desk/cmd/deskdispatch",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "tools/desk/README.md",
+        "docs/contracts.md",
+        "plugins/assay/skills/worker-desk/SKILL.md",
+        "plugins/assay/skills/pr-review-desk/SKILL.md",
+        "tools/desk/internal/regression/MANIFEST.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "complex",
+      "basis": "4627 LOC, ~5 verbs, ~15 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/21",
+      "state": "pending"
+    },
+    {
+      "executable": "deskdisposition",
+      "path": "tools/desk/cmd/deskdisposition",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "plugins/assay/skills/worker-desk/references/dispatch-runbook.md",
+        "tools/desk/README.md",
+        "plugins/assay/skills/worker-desk/SKILL.md",
+        "docs/brief-rules.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "652 LOC, ~3 verbs, ~13 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/39",
+      "state": "pending"
+    },
+    {
+      "executable": "deskevidence",
+      "path": "tools/desk/cmd/deskevidence",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "tools/desk/README.md",
+        "plugins/assay/skills/verify-desk/SKILL.md",
+        "migrations/0004-v1.0.27-to-v1.0.28-per-file-verify-outcomes.md",
+        "docs/adopting-assay-gitlab.md",
+        "docs/adopting-assay.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "3041 LOC, ~6 verbs, ~8 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/37",
+      "state": "pending"
+    },
+    {
+      "executable": "deskfile",
+      "path": "tools/desk/cmd/deskfile",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md",
+        "plugins/assay/skills/pr-review-desk/references/out-of-scope-filing.md",
+        "plugins/assay/skills/pr-review-desk/SKILL.md",
+        "docs/adopting-assay.md",
+        "plugins/assay/skills/intake-desk/SKILL.md",
+        "plugins/assay/skills/worker-desk/SKILL.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "1885 LOC, ~3 verbs, ~16 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/39",
+      "state": "pending"
+    },
+    {
+      "executable": "deskfleet",
+      "path": "tools/desk/cmd/deskfleet",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "plugins/assay/skills/install/SKILL.md",
+        "docs/adopting-assay.md",
+        "docs/adopting-assay-gitlab.md",
+        "tools/desk/README.md",
+        "tools/desk/internal/regression/MANIFEST.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "complex",
+      "basis": "1980 LOC, ~8 verbs, ~15 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/23",
+      "state": "pending"
+    },
+    {
+      "executable": "deskflip",
+      "path": "tools/desk/cmd/deskflip",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "docs/contracts.md",
+        "tools/desk/README.md",
+        "plugins/assay/skills/pr-review-desk/SKILL.md",
+        "docs/adopting-assay.md",
+        "docs/on-behalf-of.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "2412 LOC, ~0 verbs, ~4 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/37",
+      "state": "pending"
+    },
+    {
+      "executable": "deskgit",
+      "path": "tools/desk/cmd/deskgit",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md",
+        "docs/quality/QUALITY.md",
+        "docs/contracts.md",
+        "plugins/assay/references/desk-shell.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "1455 LOC, ~2 verbs, ~5 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/34",
+      "state": "pending"
+    },
+    {
+      "executable": "deskinbox",
+      "path": "tools/desk/cmd/deskinbox",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "plugins/assay/commands/inbox.md",
+        "plugins/assay/skills/ask-decision/SKILL.md",
+        "plugins/assay/scripts/assay-inbox.sh"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "simple",
+      "basis": "3009 LOC, ~7 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/45",
+      "state": "pending"
+    },
+    {
+      "executable": "deskinstall",
+      "path": "tools/desk/cmd/deskinstall",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/adopting-assay.md",
+        "plugins/assay/skills/install/SKILL.md",
+        "scripts/bootstrap-windows.ps1",
+        ".github/workflows/windows-ci-leg.yml",
+        "ci/staged-workflows/windows-ci-leg.yml",
+        "docs/cellctl-cadence.md"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "simple",
+      "basis": "1057 LOC, ~2 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/35",
+      "state": "pending"
+    },
+    {
+      "executable": "desklabel",
+      "path": "tools/desk/cmd/desklabel",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/adopting-assay.md",
+        "plugins/assay/skills/pr-review-desk/SKILL.md",
+        "plugins/assay/skills/worker-desk/SKILL.md",
+        "tools/desk/README.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "745 LOC, ~3 verbs, ~2 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/38",
+      "state": "pending"
+    },
+    {
+      "executable": "deskmanifest",
+      "path": "tools/desk/cmd/deskmanifest",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "components/KEYS.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "861 LOC, ~1 verbs, ~2 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/46",
+      "state": "pending"
+    },
+    {
+      "executable": "deskmerge",
+      "path": "tools/desk/cmd/deskmerge",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml",
+        "docs/contracts.md",
+        "tools/desk/README.md",
+        ".github/workflows/truth-suite.yml"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "2072 LOC, ~0 verbs, ~6 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/36",
+      "state": "pending"
+    },
+    {
+      "executable": "deskmigrate",
+      "path": "tools/desk/cmd/deskmigrate",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "plugins/assay/skills/upgrade-assay/SKILL.md",
+        "docs/quality/QUALITY.md",
+        "docs/distribution.md",
+        "docs/iso9001-mapping.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "242 LOC, ~0 verbs, ~6 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/47",
+      "state": "pending"
+    },
+    {
+      "executable": "deskmonitor",
+      "path": "tools/desk/cmd/deskmonitor",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/cellctl-cadence.md"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "simple",
+      "basis": "1225 LOC, ~2 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/41",
+      "state": "pending"
+    },
+    {
+      "executable": "deskpathguard",
+      "path": "tools/desk/cmd/deskpathguard",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/protected-paths.md",
+        "plugins/assay/skills/verify-desk/SKILL.md",
+        "plugins/assay/skills/pr-review-desk/SKILL.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "924 LOC, ~5 verbs, ~4 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/31",
+      "state": "pending"
+    },
+    {
+      "executable": "deskpins",
+      "path": "tools/desk/cmd/deskpins",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/contracts.md",
+        "docs/distribution.md",
+        "docs/adopting-assay.md",
+        "docs/quality/QUALITY.md",
+        "docs/iso9001-mapping.md",
+        "tools/desk/README.md"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "simple",
+      "basis": "115 LOC, ~0 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/46",
+      "state": "pending"
+    },
+    {
+      "executable": "deskpost",
+      "path": "tools/desk/cmd/deskpost",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "tools/desk/README.md",
+        "docs/contracts.md",
+        "plugins/assay/skills/pr-review-desk/SKILL.md",
+        "plugins/assay/skills/pr-review-desk/references/verdict-format.md",
+        ".github/workflows/windows-ci-leg.yml"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "complex",
+      "basis": "4914 LOC, ~15 verbs, ~9 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/27",
+      "state": "pending"
+    },
+    {
+      "executable": "deskpr",
+      "path": "tools/desk/cmd/deskpr",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "tools/desk/README.md",
+        "docs/contracts.md",
+        "tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md",
+        "tools/desk/cmd/deskdispatch/references/worker-prompt.md",
+        "docs/desk-tools/deskpr.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "2741 LOC, ~7 verbs, ~18 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/38",
+      "state": "pending"
+    },
+    {
+      "executable": "deskpreflight",
+      "path": "tools/desk/cmd/deskpreflight",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "tools/desk/README.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "746 LOC, ~0 verbs, ~2 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/34",
+      "state": "pending"
+    },
+    {
+      "executable": "deskprovenance",
+      "path": "tools/desk/cmd/deskprovenance",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/contributor-provenance.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "268 LOC, ~0 verbs, ~7 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/46",
+      "state": "pending"
+    },
+    {
+      "executable": "deskpushguard",
+      "path": "tools/desk/cmd/deskpushguard",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "scripts/build-windows.ps1",
+        "tools/desk/README.md",
+        "Makefile",
+        "tools/desk/cmd/deskmerge/mutations.json",
+        "topology.yaml"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "simple",
+      "basis": "1784 LOC, ~0 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/31",
+      "state": "pending"
+    },
+    {
+      "executable": "deskread",
+      "path": "tools/desk/cmd/deskread",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/statusgen-lint-reach.md",
+        "statusgen/bench/lintbench.sh"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "simple",
+      "basis": "605 LOC, ~2 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/45",
+      "state": "pending"
+    },
+    {
+      "executable": "deskrebaseline",
+      "path": "tools/desk/cmd/deskrebaseline",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/rebaseline.md",
+        "docs/brief-rules.md",
+        "plugins/assay/skills/verify-desk/SKILL.md",
+        "statusgen/README.md"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "simple",
+      "basis": "1283 LOC, ~0 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/46",
+      "state": "pending"
+    },
+    {
+      "executable": "deskreconcile",
+      "path": "tools/desk/cmd/deskreconcile",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/contracts.md",
+        "tools/desk/README.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "663 LOC, ~3 verbs, ~7 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/44",
+      "state": "pending"
+    },
+    {
+      "executable": "deskrelease",
+      "path": "tools/desk/cmd/deskrelease",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md",
+        "docs/quality/QUALITY.md",
+        "ci/staged-workflows/release-on-merge.yml",
+        "docs/adopting-assay.md",
+        "statusgen/README.md",
+        "topology.yaml"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "simple",
+      "basis": "1154 LOC, ~3 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/46",
+      "state": "pending"
+    },
+    {
+      "executable": "deskreply",
+      "path": "tools/desk/cmd/deskreply",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "tools/desk/README.md",
+        "tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md",
+        "tools/desk/cmd/deskdispatch/references/worker-prompt.md",
+        "docs/contracts.md",
+        "plugins/assay/skills/pr-shepherd/SKILL.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "1034 LOC, ~0 verbs, ~4 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/38",
+      "state": "pending"
+    },
+    {
+      "executable": "deskrestamp",
+      "path": "tools/desk/cmd/deskrestamp",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "none in-repo (operator-invoked)"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "684 LOC, ~0 verbs, ~1 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/39",
+      "state": "pending"
+    },
+    {
+      "executable": "deskroster",
+      "path": "tools/desk/cmd/deskroster",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "tools/desk/README.md",
+        "plugins/assay/skills/worker-desk/SKILL.md",
+        "docs/adopting-assay-gitlab.md",
+        "tools/cellctl/tests/house-cell.test.sh",
+        "docs/adopting-assay.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "complex",
+      "basis": "1725 LOC, ~11 verbs, ~28 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/28",
+      "state": "pending"
+    },
+    {
+      "executable": "deskrun",
+      "path": "tools/desk/cmd/deskrun",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/adopting-assay.md",
+        "docs/adopting-assay-gitlab.md",
+        "tools/desk/README.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "491 LOC, ~2 verbs, ~5 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/34",
+      "state": "pending"
+    },
+    {
+      "executable": "deskscanbody",
+      "path": "tools/desk/cmd/deskscanbody",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "docs/brief-rules.md",
+        "docs/desk-tools/deskpr.md",
+        "tools/desk/README.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "243 LOC, ~5 verbs, ~5 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/32",
+      "state": "pending"
+    },
+    {
+      "executable": "deskscanuntrusted",
+      "path": "tools/desk/cmd/deskscanuntrusted",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "fixtures/untrusted-corpus/exfil-178/corpus.yaml",
+        "fixtures/untrusted-corpus/benign/corpus.yaml",
+        "fixtures/untrusted-corpus/code-exec/corpus.yaml",
+        "fixtures/untrusted-corpus/injection-unicode/corpus.yaml"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "simple",
+      "basis": "320 LOC, ~2 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/32",
+      "state": "pending"
+    },
+    {
+      "executable": "desksourceguard",
+      "path": "tools/desk/cmd/desksourceguard",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md",
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml",
+        "docs/quality/QUALITY.md",
+        "docs/adopting-assay.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "308 LOC, ~2 verbs, ~3 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/31",
+      "state": "pending"
+    },
+    {
+      "executable": "desksupervise",
+      "path": "tools/desk/cmd/desksupervise",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/contracts.md",
+        "docs/desk-tools/hooks.md",
+        "plugins/assay/skills/worker-desk/SKILL.md",
+        "schemas/desksupervise-status-v1.json",
+        "tools/desk/README.md",
+        "plugins/assay/references/claude-code.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "complex",
+      "basis": "2341 LOC, ~8 verbs, ~20 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/24",
+      "state": "pending"
+    },
+    {
+      "executable": "desktick",
+      "path": "tools/desk/cmd/desktick",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/cellctl-cadence.md"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "simple",
+      "basis": "108 LOC, ~3 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/43",
+      "state": "pending"
+    },
+    {
+      "executable": "desktoken",
+      "path": "tools/desk/cmd/desktoken",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "tools/desk/README.md",
+        "docs/adopting-assay-gitlab.md",
+        "docs/adopting-assay.md",
+        "plugins/assay/references/desk-shell.md",
+        "plugins/assay/skills/pr-review-desk/SKILL.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "2479 LOC, ~2 verbs, ~8 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/33",
+      "state": "pending"
+    },
+    {
+      "executable": "deskverdict",
+      "path": "tools/desk/cmd/deskverdict",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "none in-repo (operator-invoked)"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "568 LOC, ~4 verbs, ~11 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/36",
+      "state": "pending"
+    },
+    {
+      "executable": "deskversion",
+      "path": "tools/desk/cmd/deskversion",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "plugins/assay/skills/upgrade-assay/SKILL.md",
+        "docs/distribution.md",
+        "docs/quality/QUALITY.md",
+        "docs/adopting-assay.md",
+        "docs/iso9001-mapping.md",
+        "examples/adopter-scaffold/releases/v0.28.0.yaml"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "120 LOC, ~0 verbs, ~5 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/47",
+      "state": "pending"
+    },
+    {
+      "executable": "deskwt",
+      "path": "tools/desk/cmd/deskwt",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md",
+        "docs/quality/QUALITY.md",
+        "tools/cellctl/tests/house-cell.test.sh",
+        "docs/desk-tools/hooks.md",
+        "tools/desk/internal/deskkit/pushtransport-mutations.json",
+        "docs/cellctl.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "complex",
+      "basis": "4684 LOC, ~7 verbs, ~18 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/22",
+      "state": "pending"
+    },
+    {
+      "executable": "fanoutloop",
+      "path": "tools/desk/cmd/fanoutloop",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "docs/contracts.md",
+        "plugins/assay/skills/worker-desk/SKILL.md",
+        "tools/desk/README.md",
+        "docs/desk-tools/deskpr.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "2471 LOC, ~5 verbs, ~3 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/43",
+      "state": "pending"
+    },
+    {
+      "executable": "issueboard",
+      "path": "tools/desk/cmd/issueboard",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "plugins/assay/skills/intake-desk/SKILL.md",
+        "docs/quality/QUALITY.md",
+        "tools/desk/README.md",
+        "plugins/assay/skills/worker-desk/SKILL.md",
+        "docs/adopting-assay-gitlab.md",
+        "topology.yaml"
+      ],
+      "parser": "manual os.Args parsing",
+      "complexity": "simple",
+      "basis": "1314 LOC, ~4 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/45",
+      "state": "pending"
+    },
+    {
+      "executable": "muhar",
+      "path": "tools/desk/cmd/muhar",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS; also run by release.yml gate steps",
+      "consumers": [
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml",
+        "tools/desk/README.md",
+        "docs/quality/QUALITY.md",
+        ".github/workflows/truth-suite.yml",
+        "docs/iso9001-mapping.md"
+      ],
+      "parser": "Go flag: global FlagSet",
+      "complexity": "simple",
+      "basis": "695 LOC, ~0 verbs, ~3 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/44",
+      "state": "pending"
+    },
+    {
+      "executable": "opmetrics",
+      "path": "tools/desk/cmd/opmetrics",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "tools/desk/README.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "1840 LOC, ~2 verbs, ~10 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/44",
+      "state": "pending"
+    },
+    {
+      "executable": "repohardenguard",
+      "path": "tools/desk/cmd/repohardenguard",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/adopting-assay-gitlab.md",
+        "docs/adopting-assay.md",
+        "docs/quality/QUALITY.md",
+        "plugins/assay/skills/adopt/SKILL.md",
+        "plugins/assay/skills/install/SKILL.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "1062 LOC, ~0 verbs, ~3 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/32",
+      "state": "pending"
+    },
+    {
+      "executable": "reviewloop",
+      "path": "tools/desk/cmd/reviewloop",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "plugins/assay/skills/pr-review-desk/SKILL.md",
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml",
+        "docs/contracts.md",
+        "tools/desk/README.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "1201 LOC, ~1 verbs, ~5 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/40",
+      "state": "pending"
+    },
+    {
+      "executable": "scanloop",
+      "path": "tools/desk/cmd/scanloop",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "plugins/assay/skills/intake-desk/SKILL.md",
+        "docs/contracts.md",
+        "docs/adopting-assay-gitlab.md",
+        "docs/on-behalf-of.md",
+        "tools/desk/README.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "3516 LOC, ~7 verbs, ~14 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/41",
+      "state": "pending"
+    },
+    {
+      "executable": "untrustcorpus",
+      "path": "tools/desk/cmd/untrustcorpus",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "none in-repo (operator-invoked)"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "115 LOC, ~2 verbs, ~1 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/34",
+      "state": "pending"
+    },
+    {
+      "executable": "upgrade-assay",
+      "path": "tools/desk/cmd/upgrade-assay",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "plugins/assay/skills/upgrade-assay/SKILL.md",
+        "docs/distribution.md",
+        "docs/adopting-assay.md",
+        "docs/codex-smoke-runs/2026-09-12-codex-0.154.0.md",
+        "docs/quality/QUALITY.md",
+        "test/fixtures/adopter-repo/migrations/0001-v0.12.0-to-v0.13.0-record-upgrade-note.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "670 LOC, ~0 verbs, ~7 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/34",
+      "state": "pending"
+    },
+    {
+      "executable": "verifyloop",
+      "path": "tools/desk/cmd/verifyloop",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "plugins/assay/skills/verify-desk/SKILL.md",
+        "tools/desk/README.md",
+        "docs/contracts.md",
+        "Dockerfile",
+        "docs/brief-rules.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "3455 LOC, ~6 verbs, ~11 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/40",
+      "state": "pending"
+    },
+    {
+      "executable": "writeguard",
+      "path": "tools/desk/cmd/writeguard",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md",
+        "docs/research/jcode-desk-harness-capabilities.md",
+        "docs/quality/QUALITY.md",
+        "Dockerfile",
+        "docs/adopting-assay.md",
+        "docs/docker.md"
+      ],
+      "parser": "no argv; stdin hook protocol",
+      "complexity": "simple",
+      "basis": "2540 LOC, ~3 verbs, ~0 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/31",
+      "state": "pending"
+    },
+    {
+      "executable": "freshness",
+      "path": "tools/freshness",
+      "kind": "go",
+      "module": "tools/freshness",
+      "release": "module-local; no release or workflow build declaration",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "docs/iso9001-mapping.md",
+        "freshness.yaml",
+        "README.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "286 LOC, ~0 verbs, ~3 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/48",
+      "state": "pending"
+    },
+    {
+      "executable": "harnessgen",
+      "path": "tools/harnessgen",
+      "kind": "go",
+      "module": "tools/harnessgen",
+      "release": "built and run by release.yml (tools/harnessgen)",
+      "consumers": [
+        "plugins/assay/SOURCES.yaml",
+        ".github/workflows/ci.yml",
+        "plugins/assay/scripts/stamp-plugin-version.sh",
+        "components/harness-cursor/component.yaml",
+        "plugins/assay/PARITY.md",
+        "plugins/assay/codex/packaging.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "988 LOC, ~6 verbs, ~8 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/49",
+      "state": "pending"
+    },
+    {
+      "executable": "harnesslint",
+      "path": "tools/harnesslint",
+      "kind": "go",
+      "module": "tools/harnesslint",
+      "release": "module-local; run by ci.yml",
+      "consumers": [
+        ".github/workflows/ci.yml",
+        "plugins/assay/SOURCES.yaml",
+        "plugins/assay/PARITY.md",
+        "plugins/assay/references/claude-code.md",
+        "plugins/assay/references/cursor.md",
+        "plugins/assay/references/desk-common.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "471 LOC, ~2 verbs, ~1 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/49",
+      "state": "pending"
+    },
+    {
+      "executable": "loopresolve",
+      "path": "tools/loopresolve",
+      "kind": "go",
+      "module": "tools/loopresolve",
+      "release": "module-local; no release or workflow build declaration",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "loopadmin/README.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "128 LOC, ~0 verbs, ~4 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/48",
+      "state": "pending"
+    },
+    {
+      "executable": "metrics-harvest",
+      "path": "tools/metrics-harvest",
+      "kind": "go",
+      "module": "tools/metrics-harvest",
+      "release": "module-local; no release or workflow build declaration",
+      "consumers": [
+        "docs/quality/QUALITY.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "2027 LOC, ~0 verbs, ~6 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/51",
+      "state": "pending"
+    },
+    {
+      "executable": "pairedversions",
+      "path": "tools/pairedversions",
+      "kind": "go",
+      "module": "tools/pairedversions",
+      "release": "module-local; run by plugin-drift.yml",
+      "consumers": [
+        ".github/workflows/plugin-drift.yml",
+        "tools/ci-load/activation/plugin-drift.yml",
+        "Makefile",
+        "docs/distribution.md",
+        "scripts/build-windows.ps1",
+        "tools/winparity/README.md"
+      ],
+      "parser": "Go flag: global FlagSet",
+      "complexity": "simple",
+      "basis": "585 LOC, ~0 verbs, ~1 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/49",
+      "state": "pending"
+    },
+    {
+      "executable": "plugindrift",
+      "path": "tools/plugindrift",
+      "kind": "go",
+      "module": "tools/plugindrift",
+      "release": "module-local; run by ci.yml",
+      "consumers": [
+        "plugins/assay/PARITY.md",
+        "plugins/assay/SOURCES.yaml",
+        ".github/workflows/ci.yml",
+        "plugins/assay/RELEASE-NOTES.md"
+      ],
+      "parser": "Go flag: global FlagSet",
+      "complexity": "simple",
+      "basis": "1090 LOC, ~3 verbs, ~6 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/50",
+      "state": "pending"
+    },
+    {
+      "executable": "skillbench",
+      "path": "tools/skillbench",
+      "kind": "go",
+      "module": "tools/skillbench",
+      "release": "module-local; no release or workflow build declaration",
+      "consumers": [
+        "docs/quality/QUALITY.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "688 LOC, ~2 verbs, ~4 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/50",
+      "state": "pending"
+    },
+    {
+      "executable": "skillslint",
+      "path": "tools/skillslint",
+      "kind": "go",
+      "module": "tools/skillslint",
+      "release": "module-local; run by ci.yml",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        ".github/workflows/ci.yml",
+        "tools/ci-load/activation/ci.yml",
+        "scripts/build-windows.ps1",
+        "Makefile",
+        ".claude/guardrails/GUARDRAILS.md"
+      ],
+      "parser": "Go flag: global FlagSet",
+      "complexity": "simple",
+      "basis": "2878 LOC, ~0 verbs, ~4 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/50",
+      "state": "pending"
+    },
+    {
+      "executable": "toolvalidation",
+      "path": "tools/toolvalidation",
+      "kind": "go",
+      "module": "tools/toolvalidation",
+      "release": "built and run by release.yml (tools/toolvalidation)",
+      "consumers": [
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "820 LOC, ~0 verbs, ~5 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/49",
+      "state": "pending"
+    },
+    {
+      "executable": "winparity",
+      "path": "tools/winparity",
+      "kind": "go",
+      "module": "tools/winparity",
+      "release": "module-local; run by winparity.yml",
+      "consumers": [
+        "scripts/build-windows.ps1",
+        ".github/workflows/winparity.yml",
+        "ci/staged-workflows/winparity.yml",
+        "ci/staged-workflows/README.md",
+        "Makefile",
+        "tools/desk/README.md"
+      ],
+      "parser": "Go flag: global FlagSet",
+      "complexity": "simple",
+      "basis": "287 LOC, ~0 verbs, ~1 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/48",
+      "state": "pending"
+    },
+    {
+      "executable": "entrypoint.sh",
+      "path": "containers/entrypoint.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by docker-publish.yml",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        ".github/workflows/docker-publish.yml"
+      ],
+      "parser": "bash positional arguments",
+      "complexity": "simple",
+      "basis": "133 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/54",
+      "state": "pending"
+    },
+    {
+      "executable": "layer-secret-scan.sh",
+      "path": "containers/scripts/layer-secret-scan.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by docker-publish.yml",
+      "consumers": [
+        ".github/workflows/docker-publish.yml",
+        "docs/iso9001-mapping.md",
+        "docs/docker.md",
+        "docs/quality/QUALITY.md"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "256 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/54",
+      "state": "pending"
+    },
+    {
+      "executable": "inject-board-state.sh",
+      "path": "plugins/assay/hooks/inject-board-state.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "plugin bundle (plugins/assay)",
+      "consumers": [
+        "docs/iso9001-mapping.md",
+        "docs/adopting-assay.md",
+        "docs/quality/QUALITY.md"
+      ],
+      "parser": "no arguments (wrapper)",
+      "complexity": "simple",
+      "basis": "35 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/51",
+      "state": "pending"
+    },
+    {
+      "executable": "inject-resident-rules.sh",
+      "path": "plugins/assay/hooks/inject-resident-rules.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "plugin bundle (plugins/assay)",
+      "consumers": [
+        "docs/adopting-assay.md",
+        "docs/iso9001-mapping.md",
+        "plugins/assay/PARITY.md",
+        "plugins/assay/SOURCES.yaml",
+        "plugins/assay/resident-rules.md"
+      ],
+      "parser": "no arguments (wrapper)",
+      "complexity": "simple",
+      "basis": "23 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/51",
+      "state": "pending"
+    },
+    {
+      "executable": "assay-inbox.sh",
+      "path": "plugins/assay/scripts/assay-inbox.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "plugin bundle (plugins/assay)",
+      "consumers": [
+        "docs/quality/QUALITY.md",
+        "plugins/assay/commands/inbox.md",
+        ".github/workflows/ci.yml",
+        "tools/ci-load/activation/ci.yml"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "complex",
+      "basis": "1844 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/29",
+      "state": "pending"
+    },
+    {
+      "executable": "assay-install.sh",
+      "path": "plugins/assay/scripts/assay-install.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "plugin bundle (plugins/assay)",
+      "consumers": [
+        "plugins/assay/skills/install/SKILL.md",
+        "docs/adopting-assay.md"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "473 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/35",
+      "state": "pending"
+    },
+    {
+      "executable": "check-paired-versions.sh",
+      "path": "plugins/assay/scripts/check-paired-versions.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "plugin bundle (plugins/assay)",
+      "consumers": [
+        "plugins/assay/paired-versions.yaml",
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "151 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/49",
+      "state": "pending"
+    },
+    {
+      "executable": "inbound-monitor.sh",
+      "path": "plugins/assay/scripts/inbound-monitor.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "plugin bundle (plugins/assay)",
+      "consumers": [
+        "tools/desk/README.md",
+        ".github/workflows/ci.yml",
+        "docs/quality/QUALITY.md",
+        "docs/research/jcode-desk-harness-capabilities.md",
+        "tools/ci-load/activation/ci.yml"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "485 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/41",
+      "state": "pending"
+    },
+    {
+      "executable": "pdfingest.sh",
+      "path": "plugins/assay/scripts/pdfingest.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "plugin bundle (plugins/assay)",
+      "consumers": [
+        "plugins/assay/skills/pdfingest/SKILL.md",
+        "plugins/assay/skills/pdfingest/SETUP.md"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "71 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/51",
+      "state": "pending"
+    },
+    {
+      "executable": "pr-monitor.sh",
+      "path": "plugins/assay/scripts/pr-monitor.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "plugin bundle (plugins/assay)",
+      "consumers": [
+        "tools/desk/README.md",
+        "plugins/assay/skills/pr-review-desk/SKILL.md"
+      ],
+      "parser": "bash positional arguments",
+      "complexity": "simple",
+      "basis": "374 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/41",
+      "state": "pending"
+    },
+    {
+      "executable": "stamp-plugin-version.sh",
+      "path": "plugins/assay/scripts/stamp-plugin-version.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "plugin bundle (plugins/assay)",
+      "consumers": [
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml",
+        "ci/staged-workflows/release-on-merge.yml",
+        "docs/distribution.md",
+        "tools/release/check-spec-header-version.sh"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "299 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/51",
+      "state": "pending"
+    },
+    {
+      "executable": "tick-summary.sh",
+      "path": "plugins/assay/scripts/tick-summary.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "plugin bundle (plugins/assay)",
+      "consumers": [
+        "plugins/assay/references/tick-contract.md"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "184 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/43",
+      "state": "pending"
+    },
+    {
+      "executable": "bootstrap-windows.ps1",
+      "path": "scripts/bootstrap-windows.ps1",
+      "kind": "script",
+      "module": "pwsh",
+      "release": "repo tooling; run by windows-ci-leg.yml",
+      "consumers": [
+        "docs/adopting-assay.md",
+        ".github/workflows/windows-ci-leg.yml",
+        "ci/staged-workflows/windows-ci-leg.yml",
+        "ci/staged-workflows/README.md",
+        "plugins/assay/skills/install/SKILL.md"
+      ],
+      "parser": "PowerShell param block",
+      "complexity": "simple",
+      "basis": "131 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/35",
+      "state": "pending"
+    },
+    {
+      "executable": "build-windows.ps1",
+      "path": "scripts/build-windows.ps1",
+      "kind": "script",
+      "module": "pwsh",
+      "release": "run by release.yml or Makefile",
+      "consumers": [
+        "tools/winparity/README.md",
+        "tools/desk/README.md",
+        "docs/adopting-assay.md",
+        ".github/workflows/winparity.yml",
+        "Makefile",
+        "ci/staged-workflows/README.md"
+      ],
+      "parser": "PowerShell param block",
+      "complexity": "simple",
+      "basis": "485 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/35",
+      "state": "pending"
+    },
+    {
+      "executable": "windows-bootstrap-hashcheck-smoke.ps1",
+      "path": "scripts/windows-bootstrap-hashcheck-smoke.ps1",
+      "kind": "script",
+      "module": "pwsh",
+      "release": "repo tooling; run by windows-ci-leg.yml",
+      "consumers": [
+        "ci/staged-workflows/README.md",
+        ".github/workflows/windows-ci-leg.yml",
+        "ci/staged-workflows/windows-ci-leg.yml",
+        "docs/adopting-assay.md"
+      ],
+      "parser": "PowerShell param block",
+      "complexity": "simple",
+      "basis": "177 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/35",
+      "state": "pending"
+    },
+    {
+      "executable": "lintbench.sh",
+      "path": "statusgen/bench/lintbench.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; operator-invoked",
+      "consumers": [
+        "none in-repo (operator-invoked)"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "130 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/53",
+      "state": "pending"
+    },
+    {
+      "executable": "aggregate.py",
+      "path": "tools/changelog/aggregate.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "run by release.yml or Makefile",
+      "consumers": [
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml"
+      ],
+      "parser": "Python sys.argv",
+      "complexity": "simple",
+      "basis": "562 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/52",
+      "state": "pending"
+    },
+    {
+      "executable": "check.sh",
+      "path": "tools/changelog/check.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by changelog-check.yml",
+      "consumers": [
+        ".github/workflows/changelog-check.yml",
+        "tools/release/check-spec-header-version.sh"
+      ],
+      "parser": "bash positional arguments",
+      "complexity": "simple",
+      "basis": "246 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/52",
+      "state": "pending"
+    },
+    {
+      "executable": "credit-identity.sh",
+      "path": "tools/changelog/credit-identity.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "run by release.yml or Makefile",
+      "consumers": [
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "145 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/52",
+      "state": "pending"
+    },
+    {
+      "executable": "pathsemantics.py",
+      "path": "tools/ci-load/pathsemantics.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "repo tooling; operator-invoked",
+      "consumers": [
+        "none in-repo (operator-invoked)"
+      ],
+      "parser": "Python, no arguments",
+      "complexity": "simple",
+      "basis": "106 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/53",
+      "state": "pending"
+    },
+    {
+      "executable": "create-fleet-gitlab.sh",
+      "path": "tools/create-fleet-gitlab.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; operator-invoked",
+      "consumers": [
+        "docs/adopting-assay-gitlab.md",
+        "docs/adopting-assay.md",
+        "plugins/assay/skills/install/SKILL.md",
+        "plugins/assay/skills/adopt/SKILL.md"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "complex",
+      "basis": "1166 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/30",
+      "state": "pending"
+    },
+    {
+      "executable": "pre-push",
+      "path": "tools/desk/hooks/pre-push",
+      "kind": "script",
+      "module": "bash",
+      "release": "run by release.yml or Makefile",
+      "consumers": [
+        "Makefile",
+        "tools/desk/README.md"
+      ],
+      "parser": "bash positional arguments",
+      "complexity": "simple",
+      "basis": "6 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/31",
+      "state": "pending"
+    },
+    {
+      "executable": "check-floor.sh",
+      "path": "tools/desk/internal/regression/check-floor.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; operator-invoked",
+      "consumers": [
+        "none in-repo (operator-invoked)"
+      ],
+      "parser": "bash positional arguments",
+      "complexity": "simple",
+      "basis": "40 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/53",
+      "state": "pending"
+    },
+    {
+      "executable": "floor-go.sh",
+      "path": "tools/desk/internal/regression/floor-go.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; operator-invoked",
+      "consumers": [
+        "none in-repo (operator-invoked)"
+      ],
+      "parser": "bash positional arguments",
+      "complexity": "simple",
+      "basis": "19 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/53",
+      "state": "pending"
+    },
+    {
+      "executable": "count-git-exec.sh",
+      "path": "tools/desk/scripts/count-git-exec.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; operator-invoked",
+      "consumers": [
+        "docs/quality/QUALITY.md"
+      ],
+      "parser": "no arguments (wrapper)",
+      "complexity": "simple",
+      "basis": "35 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/53",
+      "state": "pending"
+    },
+    {
+      "executable": "forge-ban.sh",
+      "path": "tools/desk/scripts/forge-ban.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by forge-surface-control.yml",
+      "consumers": [
+        ".github/workflows/forge-surface-control.yml"
+      ],
+      "parser": "bash positional arguments",
+      "complexity": "simple",
+      "basis": "223 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/54",
+      "state": "pending"
+    },
+    {
+      "executable": "automerge-refusal.sh",
+      "path": "tools/evidence-automerge/automerge-refusal.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by evidence-automerge.yml",
+      "consumers": [
+        ".github/workflows/evidence-automerge.yml",
+        "ci/staged-workflows/evidence-automerge.yml",
+        "tools/ci-load/activation/evidence-automerge.yml"
+      ],
+      "parser": "no arguments (wrapper)",
+      "complexity": "simple",
+      "basis": "165 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/54",
+      "state": "pending"
+    },
+    {
+      "executable": "lint-human-decision-defaults.sh",
+      "path": "tools/lint-human-decision-defaults.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; operator-invoked",
+      "consumers": [
+        "none in-repo (operator-invoked)"
+      ],
+      "parser": "bash positional arguments",
+      "complexity": "simple",
+      "basis": "143 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/52",
+      "state": "pending"
+    },
+    {
+      "executable": "check-spec-header-version.sh",
+      "path": "tools/release/check-spec-header-version.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; operator-invoked",
+      "consumers": [
+        "none in-repo (operator-invoked)"
+      ],
+      "parser": "bash positional arguments",
+      "complexity": "simple",
+      "basis": "74 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/52",
+      "state": "pending"
+    },
+    {
+      "executable": "renew-fleet-gitlab-tokens.sh",
+      "path": "tools/renew-fleet-gitlab-tokens.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; operator-invoked",
+      "consumers": [
+        "docs/adopting-assay-gitlab.md",
+        "docs/adopting-assay.md",
+        "plugins/assay/skills/install/SKILL.md"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "714 lines at 3ad1ad83c871",
+      "owner": "desktools-v2/54",
+      "state": "pending"
+    }
+  ]
+}
