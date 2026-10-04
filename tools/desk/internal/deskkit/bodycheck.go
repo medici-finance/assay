@@ -1093,12 +1093,19 @@ func k8sLine(s string) int {
 		return 0
 	}
 	lines := strings.Split(s, "\n")
+	var owners *k8sOwnerIndex // built on first use: most texts never reach a data mapping
 	for i, line := range lines {
 		m := reK8sSecretData.FindStringSubmatch(strings.TrimRight(line, " \t\r"))
 		if m == nil {
 			continue
 		}
 		mapIndent, sawEntry := len(m[1]), false
+		if owners == nil {
+			owners = newK8sOwnerIndex(lines)
+		}
+		if owners.ownedByOtherKind(i, m[2]) {
+			continue // a YAML parse proves this mapping's owning object is not a Secret
+		}
 		for j := i + 1; j < len(lines); j++ {
 			body := strings.TrimRight(lines[j], " \t\r")
 			if strings.TrimSpace(strings.TrimLeft(body, "+- ")) == "" {

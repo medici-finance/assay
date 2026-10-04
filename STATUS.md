@@ -73,7 +73,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: b71b96b 2026-10-04T19:53:14+11:00_
+_last regen: 2489589 2026-10-04T20:47:54Z_
 
 **Progress:** 5/13 brief items done.
 
@@ -96,7 +96,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: b71b96b 2026-10-04T19:53:14+11:00_
+_last regen: 2489589 2026-10-04T20:47:54Z_
 
 **Progress:** 13/71 brief items done.
 
@@ -129,7 +129,7 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (57 desk-actionable of 93 total — 90 at implemented, 3 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 93 total — 88 at implemented, 5 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -156,7 +156,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | build-less-brittle | 10 [exec:strong] | verified | 4000 | 2 | — | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
-| harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| harness-portability | 06 [exec:strong] | verified | 3500 | 5 | — | 2026-10-04 assay-verifier-app[bot] @ bed1a31ba875 (claude-opus-5-5) | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | contributor-trust | 06 | implemented | 2500 | 1 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
@@ -172,7 +172,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 19 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| desk-supervision | 19 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| desk-supervision | 19 [exec:strong] | verified | 1500 | 1 | — | 2026-10-04 assay-verifier-app[bot] @ 70deba75a577 (claude-opus-5-5) | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 13 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -384,7 +384,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 15 Local supervisor host + multi-cell vitals aggregation — todo (wave 4)
 - 17 Verification failures create durable worker repair obligations — implemented (wave 1)
 - 18 Enforce repair reservations at worker dispatch — implemented (wave 2)
-- 19 Persist review findings and apply the existing round cap across sessions — implemented (wave 0)
+- 19 Persist review findings and apply the existing round cap across sessions — verified (wave 0)
 - 20 Review scope and first-pass completeness — implemented (wave 0)
 - 21 Reverify changed external prerequisites without a synthetic push — implemented (wave 1)
 - 22 Configure provider, model and effort per cell role — implemented (wave 0)
@@ -547,7 +547,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 - 03 Ruling: target harnesses, delivery channel, degradation matrix — implemented (wave 1)
 - 04 Neutral-core skill bodies + per-harness binding files + neutrality lint — implemented (wave 2)
-- 06 Codex packaging — generated manifest, coverage rule, install path — implemented (wave 3)
+- 06 Codex packaging — generated manifest, coverage rule, install path — verified (wave 3)
 - 07 Adoption docs, freshness registration, live Codex smoke protocol + first run — implemented (wave 4)
 - 09 jcode desk-harness spike — measured parity + fleet-density for driving desks — implemented (wave 0)
 - 10 SpecMem portable-memory spike — one stream's registers across Claude Code and a second harness — implemented (wave 0)

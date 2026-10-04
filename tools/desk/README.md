@@ -181,8 +181,9 @@ how you notice you are on a stale binary.
 `gh pr create` argv it builds, so there is no `--draft` flag for *you* to pass — passing
 one is an unexpected argument and exits 5. The git argv is likewise built literally so no
 force-push flag can be emitted, and there is no ready/close/merge verb anywhere in this
-tree. `deskpr update` takes only `[--as-app]`: it pushes follow-up commits and never
-touches the description. Correcting the description is `deskpr edit`'s job — it replaces
+tree. `deskpr update` takes no PR text, only `[--pr N | --branch B] [--root DIR]
+[--explain] [--force-scan-override REASON] [--check]`: it pushes follow-up commits and
+never touches the description. Correcting the description is `deskpr edit`'s job — it replaces
 the body (and optionally the title) of the branch's open PR and pushes nothing. Flipping
 a PR ready and merging it are somebody else's decision, and the tools cannot make them
 for you.
@@ -478,6 +479,39 @@ and start a fresh session with a distinct identity; account for the old session'
 work explicitly. Do not replace a damaged beacon with an empty object, delete it to
 bypass the refusal, or remove a lock file as a recovery step. An OS lock is released
 when its holding process exits.
+
+### Beacon file boundary and retention
+
+Beacon reads and lock opens refuse leaf symlinks, Windows reparse points, and
+non-regular files using handle-based checks. Unix FIFO opens are nonblocking.
+The state directory and its ancestors must remain private and trusted: this is
+not protection against parent replacement or hard links, and it does not change
+Windows ACLs. The supervisor's resource join uses the same strict beacon reader;
+malformed or duplicate-key state yields `could-not-check` resource vitals.
+
+`deskroster list` still prints valid snapshot rows when a beacon read or automatic
+prune fails, then exits 6 with the failed operation. Open PRs with uncertain roster
+coverage are labelled ownership unverified, not unclaimed. The table is a snapshot,
+not proof that pruning committed or that an unreadable session has no work.
+
+**Retention defaults to preservation.** No age-based cleanup of beacons, receipts,
+resource data, unknown fields, stable `.json.lock` files or abandoned
+`.roster-beacon-*` publication files is performed. A timestamp, absent heartbeat,
+or successfully acquired lock cannot establish that a file is safe to delete.
+In particular, a waiting process may already have opened the old lock inode even
+when another process can acquire it. Never unlink or rotate a stable lock file.
+
+Before considering space recovery, an operator must first stop every participant sharing the
+state directory, disable all launchers/restarts, and verify their processes and
+handles have exited. If that cannot be established, retain the files. While
+quiescent, make and verify a complete restricted-access archive outside the live
+roster directory, including receipts, resource data, unknown fields and abandoned
+temporaries; preserve original paths and bytes. A temporary is an uncommitted
+candidate, never automatically a newer or valid recovery source. Reconcile open
+work and identify an authoritative committed snapshot before any session resumes.
+Copying an archive is not permission to remove live records: deletion needs a
+separate operator-approved retention policy and recovery test. Stable locks stay
+in place even after archiving. There is intentionally no cleanup command or TTL.
 
 ## Trust gate (deskkit/trust.go)
 
@@ -983,9 +1017,9 @@ desk decision; that is the reviewer's question, and the reviewer kit (`cmd/deskd
 references/review-prompt.md` §15) asks it on every review. A reviewer who judges that the
 diff took an undeclared reversible default names it in the verdict with the fixed line
 `Undeclared-desk-decision: <one line>`, and the flip refuses while that line stands at the
-CURRENT head — cleared by `deskpr edit --decided` and a fresh DECISIVE verdict (APPROVE or
-REQUEST_CHANGES) at the same head, in the same lane, that omits the line; no new commit
-required. The two review lanes are read separately, because the correctness and security
+CURRENT head — cleared by `deskpr edit --body-file <the PR's current body> --decided F`
+and a fresh DECISIVE verdict (APPROVE or REQUEST_CHANGES) at the same head, in the same
+lane, that omits the line; no new commit required. The two review lanes are read separately, because the correctness and security
 verdicts are posted by the same reviewer App in parallel: a `Security-Review:` verdict never
 clears a correctness-lane finding (nor the reverse), and a COMMENTED note that is not a
 verdict clears nothing — so the answer never depends on which lane posted last. The
