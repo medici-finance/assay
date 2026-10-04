@@ -58,6 +58,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| desktools-v2 | 16 — Migrate cellctl to Cobra commands and Viper configuration [exec:strong] | 2 | 20000 + 1500 (drive:desktools-v2) |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
 | desktools-v2 | 12 — platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS [exec:strong] | 2 | 1000 + 1500 (drive:desktools-v2) |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
@@ -73,7 +74,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: f109d7a 2026-10-04T20:54:24Z_
+_last regen: dbde59d 2026-10-05T08:32:04+11:00_
 
 **Progress:** 5/13 brief items done.
 
@@ -96,9 +97,9 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: f109d7a 2026-10-04T20:54:24Z_
+_last regen: dbde59d 2026-10-05T08:32:04+11:00_
 
-**Progress:** 13/71 brief items done.
+**Progress:** 14/71 brief items done.
 
 **In-flight:**
 
@@ -110,7 +111,6 @@ _none_
 - desktools-v2/10
 - desktools-v2/13
 - desktools-v2/14
-- desktools-v2/15
 - windows-port/00
 - windows-port/01
 - windows-port/03
@@ -122,6 +122,7 @@ _none_
 **Frontier next:**
 
 - desktools-v2/12
+- desktools-v2/16
 
 
 
@@ -129,7 +130,7 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (57 desk-actionable of 93 total — 88 at implemented, 5 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 93 total — 87 at implemented, 6 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -140,7 +141,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| desktools-v2 | 15 [exec:strong] | implemented | 20500 | 39 | — | — | — |
+| desktools-v2 | 15 [exec:strong] | verified | 20500 | 39 | — | 2026-10-04 assay-verifier-app[bot] @ 5f5072d89b11 (claude-opus-5-5) | — |
 | graph-execution | 02 [exec:strong] | implemented | 11500 | 19 | — | — | — |
 | graph-execution | 20 [exec:strong] | implemented | 9500 | 15 | — | — | — |
 | graph-execution | 03 [exec:strong] | implemented | 8500 | 13 | — | — | — |
@@ -429,7 +430,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 12 platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS — todo (wave 2)
 - 13 platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage — implemented (wave 2)
 - 14 regression floor — the behavior the desk tools pass today, pinned as tests seeded from resolved issues, which desktools-v2 must keep green — implemented (wave 2)
-- 15 Cobra and Viper foundation and complete CLI migration routing — implemented (wave 1)
+- 15 Cobra and Viper foundation and complete CLI migration routing — verified (wave 1)
 - 16 Migrate cellctl to Cobra commands and Viper configuration — todo (wave 2)
 - 17 Enforce complete Cobra and Viper adoption across the tool suite — todo (wave 5)
 - 18 Migrate statusgen to Cobra and Viper — todo (wave 3)
