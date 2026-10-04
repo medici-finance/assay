@@ -706,7 +706,7 @@ func flipProvenance(path, evidence string, marks []int, runStart int) error {
 	}
 
 	// Layer 1: the stamp's own lines.
-	args := []string{"-C", dir, "blame", "--line-porcelain"}
+	args := []string{"blame", "--line-porcelain"}
 	want := 0
 	for _, m := range marks {
 		if m < 0 || m >= len(spans) {
@@ -715,7 +715,7 @@ func flipProvenance(path, evidence string, marks []int, runStart int) error {
 		args = append(args, "-L", fmt.Sprintf("%d,%d", start+spans[m][0], start+spans[m][1]))
 		want += spans[m][1] - spans[m][0] + 1
 	}
-	out, err := exec.Command("git", append(args, "--", base)...).Output()
+	out, err := historyGit(dir, append(args, "--", base)...).Output()
 	if err != nil {
 		return fmt.Errorf("provenance: git blame %s: %v", base, err)
 	}
@@ -743,7 +743,7 @@ func flipProvenance(path, evidence string, marks []int, runStart int) error {
 		return fmt.Errorf("provenance: the PASS run starts outside the Evidence of %s", base)
 	}
 	first, last := start+spans[runStart][0], start+len(ev)-1
-	out, err = exec.Command("git", "-C", dir, "blame", "--line-porcelain",
+	out, err = historyGit(dir, "blame", "--line-porcelain",
 		"-L", fmt.Sprintf("%d,%d", first, last), "--", base).Output()
 	if err != nil {
 		return fmt.Errorf("provenance: git blame %s: %v", base, err)
@@ -904,7 +904,7 @@ func flipJudgeHistory(p evidenceActorPolicy, dir, base string, since []string) e
 			seen[c] = true
 			commits = append(commits, c)
 		}
-		out, err := exec.Command("git", "-C", dir, "rev-list", "--full-history", c+"..HEAD", "--", base).Output()
+		out, err := historyGit(dir, "rev-list", "--full-history", c+"..HEAD", "--", base).Output()
 		if err != nil {
 			return fmt.Errorf("provenance: git rev-list %s..HEAD %s: %v", c, base, err)
 		}
@@ -916,7 +916,7 @@ func flipJudgeHistory(p evidenceActorPolicy, dir, base string, since []string) e
 		}
 	}
 	for _, h := range commits {
-		out, err := exec.Command("git", "-C", dir, "log", "-1", "--format=%P", h).Output()
+		out, err := historyGit(dir, "log", "-1", "--format=%P", h).Output()
 		if err != nil {
 			return fmt.Errorf("provenance: git log %s: %v", h, err)
 		}
@@ -1001,8 +1001,20 @@ func flipEvidenceChanged(dir, ev string, parents []string, evAt func(string) (st
 
 // flipMergeBases lists every merge base of a and b. Unrelated histories have
 // none (git exits 1 with no output); any other failure is an error.
+//
+// It runs `git merge-base` itself, so it is on TestMergeBaseChokePoint's
+// allow-list: both operands are full commit object ids (the %P parents of a
+// commit rev-list yielded), never a ref handed over by name. That is enforced
+// here, not assumed: anything but an object id is refused before git runs,
+// and --end-of-options stops either operand reading as an option. The call is
+// spelled out (not through historyGit) so the choke-point guard sees it; it
+// carries historyGit's isolation all the same.
 func flipMergeBases(dir, a, b string) ([]string, error) {
-	out, err := exec.Command("git", "-C", dir, "merge-base", "--all", a, b).Output()
+	if !isObjectID(a) || !isObjectID(b) {
+		return nil, fmt.Errorf("git merge-base: operands must be commit object ids, got %q and %q", a, b)
+	}
+	out, err := historyGitEnv(exec.Command("git", "--no-replace-objects", "-c", "diff.algorithm=myers",
+		"-C", dir, "merge-base", "--all", "--end-of-options", a, b)).Output()
 	if err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && ee.ExitCode() == 1 && len(strings.TrimSpace(string(out))) == 0 {
@@ -1021,14 +1033,13 @@ const flipAbsent = "\x00absent"
 // A revision where the file does not exist yields a sentinel no Evidence text
 // can equal; any other git failure is an error.
 func flipEvidenceAt(dir, rev, base string) (string, error) {
-	cmd := exec.Command("git", "-C", dir, "cat-file", "-e", rev+":./"+base)
-	if cmd.Run() != nil {
-		if exec.Command("git", "-C", dir, "rev-parse", "--verify", "--quiet", rev+"^{commit}").Run() != nil {
+	if historyGit(dir, "cat-file", "-e", rev+":./"+base).Run() != nil {
+		if historyGit(dir, "rev-parse", "--verify", "--quiet", rev+"^{commit}").Run() != nil {
 			return "", fmt.Errorf("git cannot resolve %s in %s", rev, dir)
 		}
 		return flipAbsent, nil
 	}
-	out, err := exec.Command("git", "-C", dir, "show", rev+":./"+base).Output()
+	out, err := historyGit(dir, "show", rev+":./"+base).Output()
 	if err != nil {
 		return "", fmt.Errorf("git show %s:%s: %v", rev, base, err)
 	}

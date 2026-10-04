@@ -177,6 +177,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 // noreplyEmailRe matches GitHub's noreply commit address,
@@ -715,7 +716,7 @@ func blameLineBearsContent(content string, inComment bool) (bearing, stillInComm
 // Uncommitted lines come back owned by git's `not.committed.yet` address, which
 // pins no GitHub account and therefore cannot back a row.
 func blameEvidenceAuthors(root, rel string, start, end int) (authors []blameAuthor, sawBoundary bool, err error) {
-	cmd := exec.Command("git", "-C", root, "blame", "--line-porcelain",
+	cmd := historyGit(root, "blame", "--line-porcelain",
 		"-L", fmt.Sprintf("%d,%d", start, end), "--", rel)
 	out, cerr := cmd.Output()
 	if cerr != nil {
@@ -770,37 +771,103 @@ var rawCommitAuthors sync.Map
 
 // rawCommitAuthor returns the author name and address written in commit c's
 // object header (`author <name> <<email>> <time> <tz>`), read with
-// `git cat-file commit`, which applies no identity mapping.
+// `git cat-file commit` (historyGit: no replacement object, no graft), which
+// applies no identity mapping.
+//
+// The header must be UNAMBIGUOUS, or the read is an error (could-not-check,
+// never a verdict): another reader of the same commit — `git log`'s %an/%ae,
+// which the publish-identity gate uses — must not be able to see a different
+// identity. git log re-encodes a header from the commit's declared `encoding`
+// and splits at the first `<` and `>` without trimming, while this reader
+// takes the bytes as stored, so it refuses: an `encoding` header other than
+// UTF-8; more than one `author` header; a header that is not exactly
+// `author <name> <<email>> <digits> <+|-><4 digits>`; a name or address with
+// surrounding whitespace, an address with any whitespace, or either holding a
+// `<`, a `>`, a control character or invalid UTF-8.
 func rawCommitAuthor(dir, c string) (blameAuthor, error) {
 	if a, ok := rawCommitAuthors.Load(c); ok {
 		return a.(blameAuthor), nil
 	}
-	out, err := exec.Command("git", "-C", dir, "cat-file", "commit", c).Output()
+	out, err := historyGit(dir, "cat-file", "commit", c).Output()
 	if err != nil {
 		return blameAuthor{}, fmt.Errorf("git cat-file commit %.12s: %v", c, err)
 	}
-	head, _, _ := strings.Cut(string(out), "\n\n")
-	for _, line := range strings.Split(head, "\n") {
-		rest, ok := strings.CutPrefix(line, "author ")
-		if !ok {
-			continue
-		}
-		gt := strings.LastIndexByte(rest, '>')
-		lt := -1
-		if gt > 0 {
-			lt = strings.LastIndexByte(rest[:gt], '<')
-		}
-		if lt < 0 {
-			return blameAuthor{}, fmt.Errorf("commit %.12s: unreadable author header", c)
-		}
-		a := blameAuthor{Name: strings.TrimSpace(rest[:lt]), Email: strings.TrimSpace(rest[lt+1 : gt])}
-		if a.Name == "" && a.Email == "" {
-			return blameAuthor{}, fmt.Errorf("commit %.12s: empty author header", c)
-		}
-		rawCommitAuthors.Store(c, a)
-		return a, nil
+	a, err := parseRawAuthor(string(out))
+	if err != nil {
+		return blameAuthor{}, fmt.Errorf("commit %.12s: %v", c, err)
 	}
-	return blameAuthor{}, fmt.Errorf("commit %.12s: no author header", c)
+	rawCommitAuthors.Store(c, a)
+	return a, nil
+}
+
+// rawAuthorLineRe is the one author header shape parseRawAuthor accepts: a
+// name and an address with no surrounding whitespace, separated by exactly
+// one space, then the timestamp and zone.
+var rawAuthorLineRe = regexp.MustCompile(`^author ([^\s<>](?:[^<>]*[^\s<>])?) <([^\s<>]+)> [0-9]+ [+-][0-9]{4}$`)
+
+// parseRawAuthor reads the author from a raw commit object (see
+// rawCommitAuthor for what makes a header ambiguous).
+func parseRawAuthor(obj string) (blameAuthor, error) {
+	head, _, _ := strings.Cut(obj, "\n\n")
+	var authors []string
+	for _, line := range strings.Split(head, "\n") {
+		if rest, ok := strings.CutPrefix(line, "encoding "); ok {
+			if e := strings.ToLower(strings.TrimSpace(rest)); e != "utf-8" && e != "utf8" {
+				return blameAuthor{}, fmt.Errorf("ambiguous author: the commit declares encoding %q, which other readers re-encode", rest)
+			}
+		}
+		if strings.HasPrefix(line, "author ") {
+			authors = append(authors, line)
+		}
+	}
+	switch len(authors) {
+	case 0:
+		return blameAuthor{}, fmt.Errorf("no author header")
+	case 1:
+	default:
+		return blameAuthor{}, fmt.Errorf("ambiguous author: %d author headers", len(authors))
+	}
+	m := rawAuthorLineRe.FindStringSubmatch(authors[0])
+	if m == nil || !utf8.ValidString(m[1]+m[2]) || strings.IndexFunc(m[1]+m[2], isRawAuthorControl) >= 0 {
+		return blameAuthor{}, fmt.Errorf("ambiguous or unreadable author header")
+	}
+	return blameAuthor{Name: m[1], Email: m[2]}, nil
+}
+
+// isRawAuthorControl reports a control character, which no identity holds.
+func isRawAuthorControl(r rune) bool { return r < 0x20 || r == 0x7f }
+
+// historyGitPrefix is the argument prefix of every provenance git read. The
+// reads must be independent of the runner's own checkout: none of this state
+// travels with a fetch, but whoever can write the runner's checkout or its
+// user-level configuration could otherwise change what the provenance layers
+// see. --no-replace-objects reads the object store's own commits, never a
+// refs/replace/ substitution (statusgen/coverage.go's precedent), and
+// diff.algorithm is pinned to git's default so configuration cannot move a
+// line between commits. `-c` outranks every configuration file and the
+// environment.
+func historyGitPrefix(dir string) []string {
+	return []string{"--no-replace-objects", "-c", "diff.algorithm=myers", "-C", dir}
+}
+
+// historyGitEnv also points git at an empty graft file, so a runner-local
+// .git/info/grafts cannot rewrite a commit's parents.
+func historyGitEnv(cmd *exec.Cmd) *exec.Cmd {
+	cmd.Env = append(os.Environ(), "GIT_GRAFT_FILE="+os.DevNull)
+	return cmd
+}
+
+// historyGit is the git command for a provenance read in dir (see
+// historyGitPrefix). A blame also gets --no-ignore-revs-file: a configured
+// blame.ignoreRevsFile (at any level) makes blame skip the listed commits and
+// hand their lines to an earlier commit's author, and an empty `-c` value does
+// not clear it. TestHistoryGitIsolated fails on a provenance read that
+// bypasses this.
+func historyGit(dir string, args ...string) *exec.Cmd {
+	if len(args) > 0 && args[0] == "blame" {
+		args = append([]string{"blame", "--no-ignore-revs-file"}, args[1:]...)
+	}
+	return historyGitEnv(exec.Command("git", append(historyGitPrefix(dir), args...)...))
 }
 
 // isShallowRepository reports whether the object DB behind root is shallow or
