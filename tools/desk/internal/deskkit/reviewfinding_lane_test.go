@@ -143,12 +143,127 @@ func TestNoLaneKeysByBareID(t *testing.T) {
 	}
 }
 
-func TestLaneSeparatorRefused(t *testing.T) {
-	f := blockingFinding("A", "c", "open")
-	f.Lane = "sec/urity"
-	b := &FindingBlockV1{Schema: FindingBlockSchema, Findings: []Finding{f}}
-	if err := b.Validate(RoleReviewer); err == nil {
-		t.Fatal("a lane containing the key separator was accepted")
+// TestLaneKeyFieldsRefused: the write gate refuses the key separator in a lane, an id or a
+// class, and any lane word that is not a published lane, so a key written through the gate
+// is never ambiguous and a typo cannot fork a finding.
+func TestLaneKeyFieldsRefused(t *testing.T) {
+	cases := []struct {
+		name, id, class, lane string
+		ok                    bool
+	}{
+		{"separator in lane", "A", "c", "sec/urity", false},
+		{"separator in id", "security/A3", "c", "", false},
+		{"separator in class", "A3", "security/c", "", false},
+		{"unknown lane word", "A3", "c", "sec", false},
+		{"published lane", "A3", "c", "security", true},
+		{"published lane, other case", "A3", "c", "Fact-Check", true},
+		{"no lane", "A3", "c", "", true},
+	}
+	for _, tc := range cases {
+		f := blockingFinding(tc.id, tc.class, "open")
+		f.Lane = tc.lane
+		b := &FindingBlockV1{Schema: FindingBlockSchema, Findings: []Finding{f}}
+		err := b.Validate(RoleReviewer)
+		if tc.ok && err != nil {
+			t.Errorf("%s: refused: %v", tc.name, err)
+		}
+		if !tc.ok && err == nil {
+			t.Errorf("%s: accepted", tc.name)
+		}
+	}
+}
+
+// TestLaneArbiterPacket: a laned class driven to the cap yields exactly one packet, keyed by
+// the lane-scoped class and holding only that lane's finding; the other lane's same-named
+// class is neither held nor counted into it.
+func TestLaneArbiterPacket(t *testing.T) {
+	sec := blockingFinding("A1", "c", "open")
+	cor := blockingFinding("A1", "c", "open")
+	disp := blockingFinding("A1", "c", "disputed")
+	disp.Lane = "security" // a worker names the lane: A1 is held by two lanes
+	seq := 0
+	next := func() int { seq++; return seq }
+	recs := []ForgeRecord{
+		laneRec(next(), RoleReviewer, "security", "h", sec),
+		laneRec(next(), RoleReviewer, "correctness", "h", cor),
+	}
+	for i := 0; i <= RoundCap; i++ {
+		recs = append(recs, laneRec(next(), RoleWorker, "", "h", disp))
+		recs = append(recs, laneRec(next(), RoleReviewer, "security", "h", sec))
+	}
+	l := DeriveLedger(recs)
+	if len(l.Arbiter) != 1 {
+		t.Fatalf("arbiter packets = %d, want 1: %+v", len(l.Arbiter), l.Arbiter)
+	}
+	p := l.Arbiter[0]
+	if p.Class != "security/c" || len(p.FindingIDs) != 1 || p.FindingIDs[0] != "security/A1" {
+		t.Fatalf("packet = class %q findings %v, want security/c holding [security/A1]", p.Class, p.FindingIDs)
+	}
+	if !strings.Contains(p.Summary, `class "c" (lane security)`) || !strings.Contains(p.Summary, "1 finding(s)") {
+		t.Fatalf("packet summary does not name the bare class, its lane and one finding: %q", p.Summary)
+	}
+	if !l.Held["security/c"] || l.Held["correctness/c"] {
+		t.Fatalf("held = %v, want only security/c", l.Held)
+	}
+	if l.Rounds["correctness/c"] != 0 || l.Findings["correctness/A1"].State != StateOpen {
+		t.Fatalf("the correctness lane was counted into the security cap: rounds=%v state=%s",
+			l.Rounds, l.Findings["correctness/A1"].State)
+	}
+	if ref := l.ClassOf(p.Class); ref.Lane != "security" || ref.Class != "c" {
+		t.Fatalf("ClassOf(%q) = %+v, want lane security class c", p.Class, ref)
+	}
+}
+
+// TestLanePrecedence: a worker has no lane of its own, so its block lane wins over the
+// record's; a reviewer record with an established lane speaks only for that lane, so a block
+// lane naming another is reported and keyed under the record's lane — one lane's verdict can
+// never resolve the other lane's finding.
+func TestLanePrecedence(t *testing.T) {
+	base := func() []ForgeRecord {
+		return []ForgeRecord{
+			laneRec(1, RoleReviewer, "security", "h", blockingFinding("A3", "sc", "open")),
+			laneRec(2, RoleReviewer, "correctness", "h", blockingFinding("A3", "cc", "open")),
+		}
+	}
+
+	w := blockingFinding("A3", "cc", "fixed-awaiting-review")
+	w.Lane = "correctness"
+	l := DeriveLedger(append(base(), laneRec(3, RoleWorker, "security", "h", w)))
+	if l.Findings["correctness/A3"].State != StateFixedAwaitingReview || l.Findings["security/A3"].State != StateOpen {
+		t.Fatalf("worker block lane did not win over the record lane: sec=%s cor=%s",
+			l.Findings["security/A3"].State, l.Findings["correctness/A3"].State)
+	}
+
+	r := blockingFinding("A3", "sc", "resolved")
+	r.Lane = "security"
+	r.EvidenceHead = "h"
+	l = DeriveLedger(append(base(), laneRec(3, RoleReviewer, "correctness", "h", r)))
+	if l.Findings["security/A3"].State != StateOpen {
+		t.Fatalf("a correctness-lane record resolved the security finding via its block lane: %s", l.Findings["security/A3"].State)
+	}
+	if l.Findings["correctness/A3"].State != StateResolved {
+		t.Fatalf("the reviewer assertion was not keyed under the record's own lane: %s", l.Findings["correctness/A3"].State)
+	}
+	if len(l.Blind) != 1 || !strings.Contains(l.Blind[0], "speaks only for its own lane") {
+		t.Fatalf("lane mismatch not reported as itself: %v", l.Blind)
+	}
+
+	// A reviewer record with no established lane takes the block's.
+	l = DeriveLedger([]ForgeRecord{laneRec(1, RoleReviewer, "", "h", r)})
+	if l.Findings["security/A3"] == nil {
+		t.Fatalf("lane-less reviewer record did not take the block lane: %v", l.FindingIDs())
+	}
+}
+
+// TestLaneCaseFolded: lane names compare case-insensitively, so "Security" and "security"
+// are one lane, not two identity spaces.
+func TestLaneCaseFolded(t *testing.T) {
+	l := DeriveLedger([]ForgeRecord{
+		laneRec(1, RoleReviewer, "Security", "h", blockingFinding("A3", "c", "open")),
+		laneRec(2, RoleReviewer, "security ", "h", blockingFinding("A3", "c", "open")),
+	})
+	if len(l.Findings) != 1 || l.Findings["security/A3"] == nil {
+		t.Fatalf("lane case or spacing forked the finding: %v", l.FindingIDs())
 	}
 }
 

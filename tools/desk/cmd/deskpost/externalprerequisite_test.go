@@ -316,3 +316,46 @@ func TestExternalPrerequisiteRestartAndCheckOnly(t *testing.T) {
 		}
 	})
 }
+
+// TestContentDefectLaneSplit — the deskpost content-defect gate reads the ledger with each
+// review's lane taken from its body. The correctness and security reviewers each number
+// their own findings, so a security-lane resolution of its A3 must not clear the
+// correctness lane's A3, and a body claiming both verdicts resolves neither lane.
+func TestContentDefectLaneSplit(t *testing.T) {
+	plantForgeRoster(t)
+	login, ok := deskkit.RoleAppLogin("reviewer")
+	if !ok {
+		t.Fatal("test roster binds no reviewer App")
+	}
+	finding := func(class, state string) string {
+		return deskkit.RenderFindingBlock(deskkit.FindingBlockV1{Findings: []deskkit.Finding{{
+			ID: "A3", Class: class, Severity: deskkit.SeverityBlocking, Blocker: deskkit.BlockerCodeContent,
+			State: deskkit.FindingState(state), OriginHead: "h", EvidenceHead: "h", Failure: "repro"}}})
+	}
+	review := func(marker, class, state string) reviewInfo {
+		r := reviewInfo{CommitID: "h", Body: marker + "\n\n" + finding(class, state)}
+		r.User.Login = login
+		return r
+	}
+	corOpen := review("Verdict: request-changes", "stale-dir", "open")
+	corDone := review("Verdict: approve", "stale-dir", "resolved")
+	secOpen := review("Security-Review: fail", "read-scopes", "open")
+	secDone := review("Security-Review: pass", "read-scopes", "resolved")
+	bothDone := review("Security-Review: pass\nVerdict: approve", "read-scopes", "resolved")
+
+	cases := []struct {
+		name    string
+		reviews []reviewInfo
+		want    bool
+	}{
+		{"security resolution leaves the correctness A3 open", []reviewInfo{corOpen, secOpen, secDone}, true},
+		{"correctness resolution leaves the security A3 open", []reviewInfo{secOpen, corOpen, corDone}, true},
+		{"both lanes resolved", []reviewInfo{corOpen, secOpen, secDone, corDone}, false},
+		{"a body claiming both verdicts resolves neither lane", []reviewInfo{secOpen, bothDone}, true},
+	}
+	for _, tc := range cases {
+		if got := hasOpenContentDefect(tc.reviews); got != tc.want {
+			t.Errorf("%s: hasOpenContentDefect = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
