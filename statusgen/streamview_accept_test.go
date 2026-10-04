@@ -358,13 +358,53 @@ func TestStreamViewNegative(t *testing.T) {
 		t.Fatalf("ASSERT-FAIL[negative-version]: %v", err)
 	}
 	future := strings.Replace(string(enc), `"contract": "`+streamview.Version+`"`, `"contract": "`+e.Unsupported+`"`, 1)
-	svCheck(t, "negative-version", future != string(enc), "version substitution did not apply")
+	svCheck(t, "negative-version-fixture", future != string(enc), "version substitution did not apply")
 	_, err = streamview.Decode([]byte(future))
 	var uv *streamview.UnsupportedVersionError
 	svCheck(t, "negative-version", errors.As(err, &uv) && uv.Got == e.Unsupported, "decode of %q: %v", e.Unsupported, err)
 	missing := strings.Replace(string(enc), `"contract": "`+streamview.Version+`",`, "", 1)
 	_, err = streamview.Decode([]byte(missing))
 	svCheck(t, "negative-version", errors.As(err, &uv) && uv.Got == "", "decode with no contract field: %v", err)
+}
+
+// TestStreamViewLintRun — Verify row 3, end to end: an invalid mission block
+// fails the real `--lint` run (run(root, "lint", ...)) with its PROBLEM line,
+// not just the missionProblems helper. The positive control is the same root
+// with the defect corrected: it must lint clean, so the failure is the
+// mission's and nothing else in the minimal root.
+func TestStreamViewLintRun(t *testing.T) {
+	fx := svFixtures(t)
+	raw, err := os.ReadFile(filepath.Join(fx, "negative", "unknown-key", "README.md"))
+	if err != nil {
+		t.Fatalf("ASSERT-FAIL[fixture-read]: %v", err)
+	}
+	lint := func(readme string) (int, string) {
+		t.Helper()
+		root := t.TempDir()
+		dir := filepath.Join(root, "docs", "streams", "unknown-key")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(readme), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		var code int
+		var stderr string
+		stdout := captureStdout(t, func() {
+			stderr = captureStderr(t, func() { code = run(root, "lint", nil, nil, "") })
+		})
+		return code, stdout + stderr
+	}
+	code, out := lint(string(raw))
+	svCheck(t, "negative-lint-run", code != 0 && strings.Contains(out, `PROBLEM: unknown-key: invalid mission metadata — mission: unknown key "sucess"`),
+		"--lint on an invalid mission block exited %d, want nonzero with its PROBLEM line:\n%s", code, out)
+	fixed := strings.Replace(string(raw), "  sucess:", "  success:", 1)
+	if fixed == string(raw) {
+		t.Fatal("ASSERT-FAIL[fixture-read]: unknown-key fixture no longer carries the misspelled key")
+	}
+	code, out = lint(fixed)
+	svCheck(t, "negative-lint-control", code == 0 && !strings.Contains(out, "invalid mission metadata"),
+		"--lint on the corrected block exited %d, want 0 with no mission PROBLEM:\n%s", code, out)
 }
 
 // TestStreamViewFlow — Verify row 4: authored mission and evidence refs,

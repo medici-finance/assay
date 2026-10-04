@@ -125,6 +125,34 @@ func TestValidateRules(t *testing.T) {
 			v.Mission.Success[0].Evidence[0] = EvidenceRef{Kind: EvidenceURL, URL: "http://example.org/x"}
 		}, "https"},
 		{"evidence path escapes", func(v *StreamView) { v.Mission.Success[0].Evidence[0].Path = "../x.md" }, ".."},
+		{"evidence path control char", func(v *StreamView) { v.Mission.Success[0].Evidence[0].Path = "docs/a\x00b\nc.md" }, "control character"},
+		{"evidence url markdown breakout", func(v *StreamView) {
+			v.Mission.Success[0].Evidence[0] = EvidenceRef{Kind: EvidenceURL, URL: "https://a.example/x) [y](javascript:alert(1)"}
+		}, "percent-encoded"},
+		{"evidence url newline", func(v *StreamView) {
+			v.Mission.Success[0].Evidence[0] = EvidenceRef{Kind: EvidenceURL, URL: "https://a.example/x\n<script>"}
+		}, "percent-encoded"},
+		{"evidence url no host", func(v *StreamView) {
+			v.Mission.Success[0].Evidence[0] = EvidenceRef{Kind: EvidenceURL, URL: "https:///path"}
+		}, "with a host"},
+		{"evidence url user info", func(v *StreamView) {
+			v.Mission.Success[0].Evidence[0] = EvidenceRef{Kind: EvidenceURL, URL: "https://user@a.example/x"}
+		}, "no user info"},
+		{"key repo traversal", func(v *StreamView) { v.Identity.Key.Repo = "../.." }, "repo"},
+		{"source repo dot segment", func(v *StreamView) { v.Mission.Provenance.Sources[0].Repo = "owner/." }, "repo"},
+		{"evidence path absolute", func(v *StreamView) { v.Mission.Success[0].Evidence[0].Path = "/etc/report.md" }, "repository-relative"},
+		{"decision revision is a branch", func(v *StreamView) {
+			v.NeedsYou.Provenance = v.Mission.Provenance
+			v.NeedsYou.Decisions = []Decision{{ID: "d1", Revision: "main"}}
+		}, `decisions[0] revision "main" is not a full commit id`},
+		{"evidence item revision abbreviated", func(v *StreamView) {
+			v.Evidence.Provenance = v.Mission.Provenance
+			v.Evidence.Items = []EvidenceItem{{Claim: "c", Ref: v.Mission.Success[0].Evidence[0], Revision: "abc123", ObservedAt: testNow, Verification: "unverified"}}
+		}, `items[0] revision "abc123" is not a full commit id`},
+		{"window not at observation", func(v *StreamView) { v.Changes.Window = TrailingWindow(testNow.Add(-72 * time.Hour)) }, "not at generated_at"},
+		{"forge ref traversal", func(v *StreamView) {
+			v.Mission.Success[0].Evidence[0] = EvidenceRef{Kind: EvidenceForge, Repo: "../..", Number: 5}
+		}, "forge ref"},
 	}
 	if err := validView().Validate(); err != nil {
 		t.Fatalf("baseline view invalid: %v", err)
@@ -139,6 +167,46 @@ func TestValidateRules(t *testing.T) {
 		if _, encErr := Encode(v); encErr == nil {
 			t.Errorf("%s: Encode accepted an invalid view", c.name)
 		}
+	}
+}
+
+// TestPinnedRevisionsAccepted is the positive control for the revision cases
+// above: full commit ids on a decision and an evidence item validate.
+func TestPinnedRevisionsAccepted(t *testing.T) {
+	v := validView()
+	v.NeedsYou.Provenance = v.Mission.Provenance
+	v.NeedsYou.Decisions = []Decision{{ID: "d1", Revision: testRev}}
+	v.Evidence.Provenance = v.Mission.Provenance
+	v.Evidence.Items = []EvidenceItem{{Claim: "c", Ref: v.Mission.Success[0].Evidence[0], Revision: testRev, ObservedAt: testNow, Verification: "verified"}}
+	if err := v.Validate(); err != nil {
+		t.Fatalf("full commit ids must validate: %v", err)
+	}
+}
+
+// TestEmptyCountsRoundTrip: a read stream with no briefs carries an empty
+// count map, and it must decode back as an empty map, not as nil.
+func TestEmptyCountsRoundTrip(t *testing.T) {
+	v := validView()
+	v.CurrentState.Counts = map[string]int{}
+	enc, err := Encode(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dec, err := Decode(enc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dec.CurrentState.Counts == nil || len(dec.CurrentState.Counts) != 0 {
+		t.Fatalf("empty counts decoded as %#v, want an empty map", dec.CurrentState.Counts)
+	}
+	none := validView()
+	none.CurrentState = CurrentState{Provenance: Provenance{Availability: CouldNotCheck, ObservedAt: testNow, Reason: "unread"}}
+	enc, err = Encode(none)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dec, err = Decode(enc); err != nil || dec.CurrentState.Counts != nil {
+		t.Fatalf("absent counts must stay nil: %#v, %v", dec, err)
 	}
 }
 

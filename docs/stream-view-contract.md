@@ -106,15 +106,22 @@ Every section carries a `provenance` object:
 
 **Missing never reads as a value.** A could-not-check or not-assessed section
 that carries content is invalid — an unread decision source is not "nothing
-needs you", an unread history is not "nothing changed". Source revisions are
-full commit ids, never abbreviations or branch names, so every recorded value
-can be re-read at exactly the revision it came from.
+needs you", an unread history is not "nothing changed". Every recorded
+revision — a section source's, and a decision's or evidence item's pinned
+`revision` when set — is a full commit id, never an abbreviation or a branch
+name, so every recorded value can be re-read at exactly the revision it came
+from. A source may name a repository other than the stream's (a decision
+recorded in another repository, say); it is dereferenced in the repository
+it names.
 
 The sections are `mission`, `current_state`, `changes`, `needs_you`,
 `evidence` and `outcomes`. `current_state` copies the stream status and every
-brief's number and status **verbatim** from the source (brief id =
-`<slug>/<num>`), with per-status counts; it never normalises or re-derives a
-status. Frontier and holds need the eligibility evaluator; a producer that
+brief's number and status **verbatim** from statusgen's parsed model (brief
+id = `<slug>/<num>`), with per-status counts; it never re-derives a status.
+The one normalisation is statusgen's own: its brief parser lowercases the
+status cell, so "verbatim" is relative to the model, not the raw file.
+`counts` is `null` when the section has no content and `{}` for a read
+stream with no briefs. Frontier and holds need the eligibility evaluator; a producer that
 does not run it marks the section `partial` with that reason.
 
 ## Mission metadata
@@ -146,7 +153,7 @@ mission:
 
 | Key | Required | Shape |
 |---|---|---|
-| `version` | yes | integer; `1` is the only supported mission version |
+| `version` | yes | a plain YAML integer (`1`, not `"1"`); `1` is the only supported mission version |
 | `outcome` | yes | non-empty string |
 | `success` | no | list of `{criterion, evidence}`; `criterion` required |
 | `commitments` | no | list of strings |
@@ -154,9 +161,15 @@ mission:
 
 An evidence entry is a string (a path, an `owner/name#N` forge reference, or
 an `https://` URL) or a `{path, planned}` mapping. A path must be
-repository-relative with no `..` segment; it is qualified with the stream's
-owning repo in the view. A bare `#N`, a non-https scheme or an absolute path
-is rejected.
+repository-relative with no empty, `.` or `..` segment and no control
+character; it is qualified with the stream's owning repo in the view. A repo
+(in a key, a source or a forge reference) is `owner/name` and neither segment
+may be `.` or `..`. A URL must parse as `https` with a host and no user info,
+and may not contain raw whitespace, control characters or the delimiters
+`<` `>` `(` `)` `[` `]` `{` `}` `"` `'` `\` `|` `^` or a backtick —
+percent-encode them. A bare `#N`, a
+non-https scheme or an absolute path is rejected. A key repeated at any
+level of the block is a defect, never last-wins.
 
 ### Diagnostics
 
@@ -166,10 +179,11 @@ reported as a statusgen lint **PROBLEM** of the form
 
 - `mission: must be a mapping …`
 - `mission: unknown key "sucess" …` — a misspelled key is never dropped silently
-- `mission.version: is required …` / `unsupported mission version 2 …`
+- `mission.version: is required …` / `must be the integer 1` / `unsupported mission version 2 …`
 - `mission.outcome: is empty`
 - `mission.success: must be a list …` / `mission.success[0].criterion: is required`
 - `… evidence[0]: bare "#12" is ambiguous …` / `only https URLs …`
+- `mission: duplicate key "outcome"`
 
 In the view, an invalid block yields a mission section with availability
 `could-not-check`, the diagnostics, and no content.
@@ -179,7 +193,8 @@ In the view, an invalid block yields a mission section with availability
 `changes.window` is always stated, whatever the section's availability, so an
 unread window is never mistaken for a quiet one. v1 supports exactly one
 window: kind `trailing`, label `last 24 hours`, spanning exactly 24 hours and
-ending at the view's observation time (`streamview.TrailingWindow`). A
+ending at the view's observation time (`streamview.TrailingWindow`); a
+window whose end is not the view's `generated_at` is invalid. A
 "since your last visit" window needs per-reader state, which v1 does not
 define; any other kind, label or span is invalid.
 
@@ -189,7 +204,7 @@ define; any other kind, label or span is invalid.
 path, optionally `planned`), `forge` (repo + number) and `url` (https).
 
 `streamview.CheckBindings(view, resolver)` dereferences every binding a view
-records against its **owning** repository through a caller-supplied
+records in the repository that binding names through a caller-supplied
 `Resolver` (the package ships none, so it stays offline):
 
 - each section source must name a resolvable repo, a revision present in it
@@ -203,6 +218,13 @@ records against its **owning** repository through a caller-supplied
   never a pass.
 
 ## Consumer
+
+**Every text field is untrusted input.** Outcome, criteria, commitments,
+exclusions, display name, brief titles, reasons, diagnostics and URLs come
+from repository content. The contract's validation narrows their shape (no
+control characters in paths, no delimiters in URLs) but does not make them
+safe to interpolate: a renderer must escape every one for its output format
+(HTML, markdown table, terminal).
 
 ```go
 v, err := streamview.Decode(data)          // or Decode(data, "stream-view/v1")
@@ -244,6 +266,7 @@ found); rows marked `planned` must still be absent.
 | `statusgen/roadmap_streampage.go` | `func streamOutcome(` | existing |
 | `statusgen/multiroot.go` | `func rootRepo(` | existing |
 | `statusgen/main.go` | `missionProblems(streams)` | existing |
+| `statusgen/streamview_accept_test.go` | `func TestStreamViewLintRun(` | existing |
 | `statusgen/main.go` | `"stream-view"` | planned |
 | `statusgen/streamview/resolver_git.go` | — | planned |
 

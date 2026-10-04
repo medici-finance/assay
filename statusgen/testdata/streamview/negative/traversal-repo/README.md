@@ -1,14 +1,14 @@
 ---
-stream: abs-path
+stream: traversal-repo
 status: active
 priority: P2
 mission:
   version: 1
   outcome: An outcome.
   success:
-    - criterion: A criterion citing an absolute path.
+    - criterion: A forge reference must name a real repository.
       evidence:
-        - /etc/report.md
+        - ../..#5
 ---
 
 # Negative Stream — legacy prose that must not replace a broken mission.

@@ -196,7 +196,7 @@ case_mutation() {
 	done
 	[ "$observed" -eq "${#mutations[@]}" ] || fail "observed $observed of ${#mutations[@]} mutations"
 	log="$work/genuine.log"
-	local all=(TestStreamViewLegacy TestStreamViewIdentity TestStreamViewNegative TestStreamViewFlow TestStreamViewDereference)
+	local all=(TestStreamViewLegacy TestStreamViewIdentity TestStreamViewNegative TestStreamViewLintRun TestStreamViewFlow TestStreamViewDereference)
 	run_tests "$fixtures" "$log" "${all[@]}"
 	rc=$?
 	[ "$rc" -eq 0 ] || { cat "$log" >&2; fail "genuine fixtures did not pass (exit $rc)"; }
@@ -213,12 +213,12 @@ identity)
 	case_unit '^(TestIdentityHelpers)$' TestIdentityHelpers
 	;;
 negative)
-	case_tests negative TestStreamViewNegative
-	case_unit '^(TestDecodeVersionHandling|TestNegotiate|TestValidateRules)$' TestDecodeVersionHandling TestNegotiate TestValidateRules
+	case_tests negative TestStreamViewNegative TestStreamViewLintRun
+	case_unit '^(TestDecodeVersionHandling|TestNegotiate|TestValidateRules|TestPinnedRevisionsAccepted)$' TestDecodeVersionHandling TestNegotiate TestValidateRules TestPinnedRevisionsAccepted
 	;;
 flow)
 	case_tests flow TestStreamViewFlow
-	case_unit '^(TestEncodeDecodeRoundTrip)$' TestEncodeDecodeRoundTrip
+	case_unit '^(TestEncodeDecodeRoundTrip|TestEmptyCountsRoundTrip)$' TestEncodeDecodeRoundTrip TestEmptyCountsRoundTrip
 	;;
 dereference)
 	case_tests dereference TestStreamViewDereference

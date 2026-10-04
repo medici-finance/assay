@@ -1,14 +1,11 @@
 ---
-stream: abs-path
+stream: duplicate-key
 status: active
 priority: P2
 mission:
   version: 1
-  outcome: An outcome.
-  success:
-    - criterion: A criterion citing an absolute path.
-      evidence:
-        - /etc/report.md
+  outcome: The first outcome.
+  outcome: A second outcome that must not silently win.
 ---
 
 # Negative Stream — legacy prose that must not replace a broken mission.

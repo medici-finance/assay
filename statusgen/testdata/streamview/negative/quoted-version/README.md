@@ -1,14 +1,14 @@
 ---
-stream: abs-path
+stream: quoted-version
 status: active
 priority: P2
 mission:
-  version: 1
+  version: "1"
   outcome: An outcome.
   success:
-    - criterion: A criterion citing an absolute path.
+    - criterion: A criterion that is otherwise valid.
       evidence:
-        - /etc/report.md
+        - docs/report.md
 ---
 
 # Negative Stream — legacy prose that must not replace a broken mission.

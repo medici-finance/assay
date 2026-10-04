@@ -344,13 +344,28 @@ func parseMissionBlock(n *yaml.Node) (*streamview.Mission, []string) {
 		}
 		return out
 	}
+	// dup reports a repeated key at one mapping level: decoding into a raw
+	// node is last-wins with no error, which would silently drop a field.
+	dup := func(where string, seen map[string]bool, key string) bool {
+		if seen[key] {
+			bad("%s: duplicate key %q", where, key)
+			return true
+		}
+		seen[key] = true
+		return false
+	}
+	seenTop := map[string]bool{}
 	for i := 0; i+1 < len(n.Content); i += 2 {
 		key, val := n.Content[i].Value, n.Content[i+1]
+		if dup("mission", seenTop, key) {
+			continue
+		}
 		switch key {
 		case "version":
 			sawVersion = true
+			// A plain YAML integer only: a quoted "1" is text, not the version.
 			v, err := strconv.Atoi(strings.TrimSpace(val.Value))
-			if val.Kind != yaml.ScalarNode || err != nil {
+			if val.Kind != yaml.ScalarNode || val.ShortTag() != "!!int" || err != nil {
 				bad("mission.version: must be the integer %d", missionVersion)
 			} else if v != missionVersion {
 				bad("mission.version: unsupported mission version %d (this statusgen reads version %d)", v, missionVersion)
@@ -373,8 +388,12 @@ func parseMissionBlock(n *yaml.Node) (*streamview.Mission, []string) {
 				}
 				var sc streamview.SuccessCriterion
 				sawCriterion := false
+				seenItem := map[string]bool{}
 				for k := 0; k+1 < len(c.Content); k += 2 {
 					ck, cv := c.Content[k].Value, c.Content[k+1]
+					if dup(where, seenItem, ck) {
+						continue
+					}
 					switch ck {
 					case "criterion":
 						sawCriterion = true
@@ -430,8 +449,14 @@ func parseMissionEvidence(where string, n *yaml.Node, bad func(string, ...any)) 
 		raw = strings.TrimSpace(n.Value)
 	case yaml.MappingNode:
 		sawPath := false
+		seen := map[string]bool{}
 		for k := 0; k+1 < len(n.Content); k += 2 {
 			key, val := n.Content[k].Value, n.Content[k+1]
+			if seen[key] {
+				bad("%s: duplicate key %q", where, key)
+				return streamview.EvidenceRef{}, false
+			}
+			seen[key] = true
 			switch key {
 			case "path":
 				sawPath = true
@@ -482,7 +507,12 @@ func parseMissionEvidence(where string, n *yaml.Node, bad func(string, ...any)) 
 			return streamview.EvidenceRef{}, false
 		}
 		num, _ := strconv.Atoi(mm[2])
-		return streamview.EvidenceRef{Kind: streamview.EvidenceForge, Repo: mm[1], Number: num}, true
+		ref := streamview.EvidenceRef{Kind: streamview.EvidenceForge, Repo: mm[1], Number: num}
+		if err := ref.Validate(); err != nil {
+			bad("%s: %v", where, err)
+			return streamview.EvidenceRef{}, false
+		}
+		return ref, true
 	}
 	// A path: validate its form against a placeholder repo; the real owning
 	// repo is attached by the stream-view identity.

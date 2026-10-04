@@ -32,9 +32,14 @@
       {"readme": "negative/empty-outcome/README.md", "diag": "mission.outcome: is empty"},
       {"readme": "negative/bare-ref/README.md", "diag": "is ambiguous"},
       {"readme": "negative/bad-scheme/README.md", "diag": "only https URLs"},
-      {"readme": "negative/abs-path/README.md", "diag": "'..' segment"},
+      {"readme": "negative/parent-path/README.md", "diag": "'..' segment"},
+      {"readme": "negative/abs-path/README.md", "diag": "\"/etc/report.md\" is not repository-relative"},
+      {"readme": "negative/quoted-version/README.md", "diag": "mission.version: must be the integer 1"},
       {"readme": "negative/success-shape/README.md", "diag": "mission.success: must be a list"},
-      {"readme": "negative/no-criterion/README.md", "diag": "mission.success[0].criterion: is required"}
+      {"readme": "negative/no-criterion/README.md", "diag": "mission.success[0].criterion: is required"},
+      {"readme": "negative/duplicate-key/README.md", "diag": "mission: duplicate key \"outcome\""},
+      {"readme": "negative/traversal-repo/README.md", "diag": "want <owner>/<name>#<number>"},
+      {"readme": "negative/control-path/README.md", "diag": "contains a control character"}
     ],
     "unsupported_contract": "stream-view/v2"
   },
