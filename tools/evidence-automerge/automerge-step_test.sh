@@ -194,30 +194,37 @@ Usage: guard.py FILE... Prints FILE, step and line; exit 1 on any."""
 import re, sys
 
 ASSIGN = re.compile(r'^\s*[A-Za-z_]\w*=("?)\$\(')
-RC_LINE = re.compile(r'^\s*[A-Za-z_]\w*="?\$\?"?\s*$')
-SET_OFF = re.compile(r'^\s*set\s+\+[a-z]*e')
-SET_ON = re.compile(r'^\s*set\s+-[a-z]*e')
+RC_LINE = re.compile(r'^\s*(?:(?:export|declare|local|readonly|typeset)(?:\s+-\w+)*\s+)?'
+                     r'[A-Za-z_]\w*="?\$\?"?\s*(?:#.*)?$')
+SET_OFF = re.compile(r'^\s*set\s+(?:\+[a-z]*e|\+o\s+errexit\b)')
+SET_ON = re.compile(r'^\s*set\s+(?:-[a-z]*e|-o\s+errexit\b)')
+# Any list item that opens with a key starts a new step: - name:, - id:, - if:, ...
+STEP_ITEM = re.compile(r'^(\s*)- ([A-Za-z][\w-]*):')
 PURE_ASSIGN = re.compile(r'^[A-Za-z_]\w*=')
 
 def blocks(text):
     lines = text.split("\n")
     name = "(unnamed)"
     step_start = 0
+    key_ind = None
     i = 0
     while i < len(lines):
-        if re.match(r'^\s*- (?:name:|uses:|run:)', lines[i]):
+        item = STEP_ITEM.match(lines[i])
+        if item:
+            # Reset on every step item, so a step never inherits the previous
+            # step's name or shell: (whatever its first key is).
             step_start = i
             name = "(unnamed)"
-        n = re.match(r'^\s*- name:\s*(.+?)\s*$', lines[i])
-        if n:
-            name = n.group(1).strip("\'\"")
-            step_start = i
+            key_ind = len(item.group(1)) + 2
+        n = re.match(r'^(\s*)(- )?name:\s*(.+?)\s*$', lines[i])
+        if n and (n.group(2) or len(n.group(1)) == key_ind):
+            name = n.group(3).strip("\'\"")
         r = re.match(r'^(\s*)(- )?run:\s*(.*?)\s*$', lines[i])
         if r:
             ind = len(r.group(1)) + (2 if r.group(2) else 0)
             body, start = [], i + 2
             k = i + 1
-            if re.fullmatch(r'[|>][-+]?', r.group(3)):
+            if re.fullmatch(r'[|>][-+]?\d*\s*(?:#.*)?', r.group(3)):
                 while k < len(lines) and (lines[k].strip() == "" or len(lines[k]) - len(lines[k].lstrip()) > ind):
                     body.append(lines[k]); k += 1
             else:
@@ -253,9 +260,10 @@ def unsafe_command(s):
 def scan(path):
     found = []
     for name, start, body, shell in blocks(open(path).read()):
-        if shell is not None and not re.match(r'^bash(?:\s|$)', shell):
+        if shell is not None and not re.match(r'^(?:bash|sh)(?:\s|$)', shell):
             continue
-        # Actions' unspecified shell is bash -e; bash {0} opts out until set -e.
+        # Actions runs an unspecified shell as bash -e and "sh" as sh -e;
+        # an explicit "bash {0}" / "sh {0}" opts out until set -e.
         errexit_off = shell is not None and '{0}' in shell and not re.search(r'\s-[a-z]*e', shell)
         last = None
         for idx, ln in enumerate(body):
@@ -361,18 +369,78 @@ jobs:
       - name: Or-list capture is fine
         run: |
           answer="$(false)" || rc=$?
+      - name: Explicit shell before key-first steps
+        shell: bash {0}
+        run: echo hi
+      - id: id-first
+        name: Id first capture
+        run: |
+          answer="$(curl -fsS https://example.invalid/x 2>&1)"
+          rc=$?
+      - if: always()
+        name: If first capture
+        run: |
+          false
+          rc=$?
+      - env:
+          A: b
+        name: Env first capture
+        run: false; rc=$?
+      - id: id-first-safe
+        name: Id first explicit shell is fine
+        shell: bash {0}
+        run: |
+          false
+          rc=$?
+      - name: Long errexit reenable
+        shell: bash {0}
+        run: |
+          set -o errexit
+          false
+          rc=$?
+      - name: Long errexit scope is fine
+        run: |
+          set +o errexit
+          false
+          rc=$?
+      - name: Commented capture
+        run: |
+          false
+          rc=$?  # keep the status
+      - name: Exported capture
+        run: |
+          false
+          export rc=$?
+      - name: Commented block header
+        run: | # header note
+          false
+          rc=$?
+      - name: Sh errexit capture
+        shell: sh
+        run: |
+          false
+          rc=$?
+      - name: Sh explicit capture is fine
+        shell: sh {0}
+        run: |
+          false
+          rc=$?
 YML
 planted_out="$(python3 "$WORK/guard.py" "$WORK/planted.yml" 2>&1)"; planted_rc=$?
-if [ "$planted_rc" = 1 ] && printf '%s' "$planted_out" | grep -q "step 'Some other step'" \
-   && printf '%s' "$planted_out" | grep -q "step 'Bare command capture'" \
-   && printf '%s' "$planted_out" | grep -q "step 'Same line bare capture'" \
-   && printf '%s' "$planted_out" | grep -q "step 'Explicit shell reenables errexit'" \
-   && printf '%s' "$planted_out" | grep -q "step '(unnamed)'" \
-   && printf '%s' "$planted_out" | grep -q "step 'Inline YAML capture'" \
-   && ! printf '%s' "$planted_out" | grep -Eq "Scoped capture|Or-list capture|Explicit shell capture is fine|Bare scoped capture|Inline scoped capture|Bare or-list"; then
-  ok "POSITIVE CONTROL: flags assignment, bare/inline commands and reenabled errexit; passes explicit shell, scoped and OR-list controls"
+planted_must=('Some other step' 'Bare command capture' 'Same line bare capture'
+  'Explicit shell reenables errexit' '(unnamed)' 'Inline YAML capture'
+  'Id first capture' 'If first capture' 'Env first capture' 'Long errexit reenable'
+  'Commented capture' 'Exported capture' 'Commented block header' 'Sh errexit capture')
+planted_missed=()
+for want in "${planted_must[@]}"; do
+  printf '%s' "$planted_out" | grep -qF "step '$want'" || planted_missed+=("$want")
+done
+planted_safe='Scoped capture|Or-list capture|Explicit shell capture is fine|Bare scoped capture|Inline scoped capture|Bare or-list|Explicit shell before|is fine'
+if [ "$planted_rc" = 1 ] && [ "${#planted_missed[@]}" = 0 ] \
+   && ! printf '%s' "$planted_out" | grep -Eq "$planted_safe"; then
+  ok "POSITIVE CONTROL: flags ${#planted_must[@]} planted capture shapes (any step-first key, long-form errexit, comments, export, sh); passes explicit shell, scoped and OR-list controls"
 else
-  bad "POSITIVE CONTROL: guard did not flag exactly the planted instance (exit $planted_rc): $planted_out"
+  bad "POSITIVE CONTROL: guard did not flag exactly the planted instances (exit $planted_rc; missed: ${planted_missed[*]:-none}): $planted_out"
 fi
 
 # Positive control 2: the reverted fix, in the real file's own text.

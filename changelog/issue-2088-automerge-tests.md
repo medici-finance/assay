@@ -1,2 +1,2 @@
 ### Fixed
-- The evidence auto-merge shell guard detects bare-command status captures under errexit, with controls for explicit shells and scoped capture. A staged CI workflow runs both offline shell suites when workflow copies or their tests change.
+- The evidence auto-merge shell guard detects bare-command status captures under errexit, with controls for explicit shells and scoped capture. Every workflow step now starts its own scan context whatever its first key, so a step never inherits the previous step's `shell:`; long-form `set -o errexit`, `shell: sh`, commented or exported captures and commented block headers are covered too. A staged CI workflow runs both offline shell suites when workflow copies or their tests change.
