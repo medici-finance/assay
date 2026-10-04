@@ -1095,6 +1095,24 @@ func ciCrossModuleRegistry() []ciEntry {
 				"tools/desk lets that recur silently",
 		},
 		{
+			// #2061: the scan-refusal scenario test reads the pr-review-desk
+			// skill's STOP section (outside this module) and binds its
+			// transcript judge to that text.
+			test:     "tools/desk/cmd/deskdispatch/scanrefusal_test.go",
+			module:   "tools/desk",
+			workflow: ".github/workflows/tools.yml",
+			prJob:    toolsDeskJob,
+			pushJob:  toolsDeskJob,
+			reads: []string{
+				"plugins/assay/skills/pr-review-desk/SKILL.md",
+				"plugins/assay/skills/pr-review-desk/references/verdict-format.md",
+			},
+			why: "scanrefusal_test.go judges desk transcripts after a verdict-body scan refusal " +
+				"against the pr-review-desk skill's STOP section; a skill edit that drops or softens " +
+				"that section without running tools/desk would leave the reword-after-refusal " +
+				"scenario pinning a rule the skill no longer states",
+		},
+		{
 			// #20 (F-34/F-35): writeguard was built and unit-tested in this
 			// module but was never actually wired into a live PreToolUse hook
 			// for sessions working in THIS repo's own shared checkout — only
@@ -1985,7 +2003,8 @@ func globToRegexp(g string) (*regexp.Regexp, error) {
 // gone, or that the scanner no longer flags, is a hard failure — so the list
 // cannot rot into a blanket suppression.
 var ciRegistryOptOut = map[string]string{
-	"tools/desk/internal/gitcore/ackguard_test.go": `filepath.Join("..", "..") from internal/gitcore resolves to tools/desk. The receive-pack reference inventory reads only non-test Go files in this same module; tools/** already triggers its CI job`,
+	"tools/desk/internal/deskkit/appisolation_test.go": `WalkDir("../..") from internal/deskkit reads only tools/desk test sources, within its own module; tools/** already covers every observed edit`,
+	"tools/desk/internal/gitcore/ackguard_test.go":     `filepath.Join("..", "..") from internal/gitcore resolves to tools/desk. The receive-pack reference inventory reads only non-test Go files in this same module; tools/** already triggers its CI job`,
 	"tools/harnesslint/lint_test.go": `filepath.Join(refs, "..", "skills") joins ".." onto a t.TempDir() ` +
 		`returned by copyRefs, deliberately pointing at a NONEXISTENT sibling of the temp dir to exercise the ` +
 		`absent-roster could-not-check path (TestCheckBindings_ClosureFailsWithoutRoster / ` +

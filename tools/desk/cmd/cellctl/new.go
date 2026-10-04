@@ -82,6 +82,16 @@ func cmdNew(args []string) {
 		}
 	}
 
+	// Every path below is written bare into cell.env, where a Windows `\` would read back as a
+	// shell escape: emit it with forward slashes on Windows (cellenvpath.go; identity elsewhere).
+	// A container cell's --repo is a repo id, not a path, so it is left as given.
+	if kind != "container" {
+		repo = cellEnvPathFor(runtime.GOOS, repo)
+	}
+	roots = cellEnvRootsFor(runtime.GOOS, roots)
+	pem = cellEnvPathFor(runtime.GOOS, pem)
+	tokenStore = cellEnvPathFor(runtime.GOOS, tokenStore)
+
 	root := cellsRoot(e)
 	if containerConfig != "" && kind != "container" {
 		die("--container-config is only valid for --kind container")
@@ -168,6 +178,9 @@ func cmdNew(args []string) {
 		rootsLine = "CELL_ROOTS=" + roots
 	}
 	today := time.Now().UTC().Format("2006-01-02")
+	// The cell dir is host-derived (filepath.Join), so on Windows it is native: written into
+	// cell.env with forward slashes like every other path (cellenvpath.go; identity elsewhere).
+	dEnv := cellEnvPathFor(runtime.GOOS, d)
 
 	if forge == "github" {
 		// The gh CLI config is a GitHub custody artifact; linked only on a github cell.
@@ -188,7 +201,7 @@ DESKD_APP_PEM=%s
 DESKD_APP_ID_VAR=%s
 ORGS=%s
 ROLES="%s"
-`+cockpitBlock+pinnedBlock, cell, today, cell, repo, rootsLine, d, cell, forgeAPIBase, port, d, pem, idvar, orgs, roles))
+`+cockpitBlock+pinnedBlock, cell, today, cell, repo, rootsLine, dEnv, cell, forgeAPIBase, port, dEnv, pem, idvar, orgs, roles))
 		writeFile(filepath.Join(d, "README.md"), fmt.Sprintf(githubReadme, cell, cell, idvar, cfgHome, idvar, cell, cell, cell))
 	} else {
 		forgeAPIBase := gitlabAPIBase
@@ -214,7 +227,7 @@ DESKD_GITLAB_TOKEN_FILE=%s/gitlab-deskd.token
 DESKD_ADDR=127.0.0.1:%s
 DESKD_INDEX=%s/index/index.db
 ROLES="%s"
-`+cockpitBlock+pinnedBlock, cell, today, cell, repo, rootsLine, d, cell, forgeAPIBase, forgeAPIBase, group, store, store, port, d, roles))
+`+cockpitBlock+pinnedBlock, cell, today, cell, repo, rootsLine, dEnv, cell, forgeAPIBase, forgeAPIBase, group, cellEnvPathFor(runtime.GOOS, store), cellEnvPathFor(runtime.GOOS, store), port, dEnv, roles))
 		writeFile(filepath.Join(d, "README.md"), fmt.Sprintf(gitlabReadme, cell, cell, store, cell, forgeAPIBase, group, cell, cell))
 	}
 	fmt.Printf("[new] scaffolded %s (%s cell) — see %s/README.md for the hand steps\n", d, forge, d)
@@ -358,19 +371,26 @@ func newHouse(e *Env, root, cell, repo, roots, roles, port string) {
 	if exists(d) {
 		die("%s already exists (cellctl new never overwrites a cell — remove it yourself, or pick another name)", d)
 	}
+	// From here every step is journaled: a failure (a link a Windows host without the symlink
+	// privilege cannot make, above all) removes exactly what this run created and nothing else,
+	// so a retry is not blocked by a half-made cell (newlink.go).
 	// Resolved before the first directory is created, like realCfg above: a refusal here must
 	// leave no half-built cell behind.
 	home := hostHome(e)
-	mustMkdirAll(filepath.Join(d, "home", ".config"), filepath.Join(d, "worktrees"), filepath.Join(d, "shim"))
-	if err := os.Symlink(realCfg, filepath.Join(d, "home", ".config", "assay")); err != nil {
-		die("new: cannot link the config home: %v", err)
+	mustMkdirAll(root)
+	l := newLinker()
+	s, err := beginCellScaffold(l.goos, d)
+	if err != nil {
+		die("new: %v", err)
 	}
-	linkIfPresent(filepath.Join(home, ghConfigRelPath), filepath.Join(d, "home", ghConfigRelPath))
-	linkIfPresent(filepath.Join(home, ".gitconfig"), filepath.Join(d, "home", ".gitconfig"))
-	chmod700(filepath.Join(d, "home"), filepath.Join(d, "home", ".config"))
+	s.must(s.mkdir(filepath.Join(d, "home"), filepath.Join(d, "home", ".config"), filepath.Join(d, "worktrees"), filepath.Join(d, "shim")))
+	s.must(s.link(l, realCfg, filepath.Join(d, "home", ".config", "assay"), "the config home"))
+	s.must(s.linkIfPresent(l, ghLinkSource(runtime.GOOS, e, home), filepath.Join(d, "home", ghConfigRelPath), "the gh config"))
+	s.must(s.linkIfPresent(l, filepath.Join(home, ".gitconfig"), filepath.Join(d, "home", ".gitconfig"), "the gitconfig"))
+	s.must(s.chmod700(filepath.Join(d, "home"), filepath.Join(d, "home", ".config")))
 	githubHost := e.GetOr("GITHUB_HOST", "github.com")
 	today := time.Now().UTC().Format("2006-01-02")
-	writeFile(filepath.Join(d, "cell.env"), fmt.Sprintf(`# cellctl cell.env — %s (house, scaffolded %s)
+	s.write(filepath.Join(d, "cell.env"), fmt.Sprintf(`# cellctl cell.env — %s (house, scaffolded %s)
 CELL=%s
 CELL_KIND=house
 CELL_FORGE=github
@@ -380,7 +400,7 @@ CELL_ROOTS=%s
 FORGE_API_BASE=https://api.%s
 ROLES="%s"
 `+houseCellEnvTail, cell, today, cell, repo, roots, githubHost, roles, cell, cell, port))
-	writeFile(filepath.Join(d, "README.md"), fmt.Sprintf(houseReadme, cell, repo, realCfg, cell, cell, cell))
+	s.write(filepath.Join(d, "README.md"), fmt.Sprintf(houseReadme, cell, repo, realCfg, cell, cell, cell))
 	fmt.Printf("[new] scaffolded %s (house cell) — cellctl check %s, then cellctl desk %s <role>\n", d, cell, cell)
 }
 
@@ -554,10 +574,13 @@ func copyFile(src, dst string) {
 }
 
 // linkIfPresent mirrors the oracle's `[[ -e <src> ]] && ln -s <src> <dst>`: absent is not an
-// error, it simply leaves the link unmade.
+// error, it simply leaves the link unmade. It links through newLinker, so on a Windows host
+// without the symlink privilege a directory is linked by junction and a file by hardlink
+// (newlink.go); it never replaces an existing dst. A k8s cell treats the link as best-effort,
+// as it always has — `cellctl check` names a missing one.
 func linkIfPresent(src, dst string) {
 	if !exists(src) {
 		return
 	}
-	_ = os.Symlink(src, dst)
+	_, _ = newLinker().link(src, dst)
 }

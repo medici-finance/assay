@@ -205,7 +205,38 @@ RISK-VALUE: DERIVED — runs-per-task-per-arm = 3 @ docs/streams/desk-supervisio
 
 VERIFY: FAIL — 6/9 pass, 2 fail, 1 could-not-check. The result matches the 2026-09-20 and 2026-09-23 runs. Rows 2 and 5 fail as written, and row 9 is structurally could-not-check after merge. All three are Verify-table defects tracked at #1363 (still open). Every underlying deliverable property holds. Row 8 is red in the witness only because verifyrun misparses "1 or more"; the direct run passes. The input changes since the last receipt did not touch the rows' failure causes. Evidence only; status stays implemented.
 
+### Non-implementer verifier re-run: 2026-10-02T21:25:43Z (UTC), assay-verifier-app[bot] (claude-opus-5-5[1m]) (on-behalf-of human:ian), merged main 5a108baba705c5f9b458501065fc52a12557c969
 
+Every row was run by hand as authored, from the root of a detached worktree at the merged head. Rows 1 and 2 ran with a throwaway HOME holding a read-only copy of the roster, so the desk tools could not write to a live audit log; nothing else about the commands was altered.
+
+| # | Command | Expect | Observed (exit + key output line) | Date / runner |
+|---|---------|--------|-----------------------------------|---------------|
+| 1 | cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --kits | exit 0; output contains worker-objective | PASS — exit 0; kit list is review, verifier, worker, worker-objective | 2026-10-02 assay-verifier-app[bot] |
+| 2 | cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --dry-run --kit worker-objective --root . assay/desk-supervision/08 \| grep -c 'KUBECONFIG=/dev/null' | output is 1 or more | FAIL — grep count 0, pipeline exit 1. deskdispatch refuses with "deskdispatch: first argument must be the <item-key>, not a flag (--dry-run)" (go run reports exit status 5) and prints no prompt. Supplementary, not the row as written: with the item key placed first the same command exits 0 and the count is 2, so the common clauses are present in the rendered kit | 2026-10-02 assay-verifier-app[bot] |
+| 3 | cd tools/desk/cmd/deskdispatch/references && awk '/<!-- common-clauses:begin -->/,/<!-- common-clauses:end -->/' worker-prompt-objective.md \| diff - common-clauses.md | exit 0 (byte-identical inclusion) | PASS — diff exit 0, empty output | 2026-10-02 assay-verifier-app[bot] |
+| 4 | ls tools/skillbench/fixtures/worker-kit/ \| wc -l | output is 5 | PASS — exit 0; 5 (01-observable-probe, 02-run-stop-signal, 03-eligibility-reconcile, 05-per-class-caps, 06-workpad-upsert) | 2026-10-02 assay-verifier-app[bot] |
+| 5 | cd tools/skillbench && GOWORK=off go run . --arms ../../docs/streams/desk-supervision/08-arms \| grep -c 'check_pass_rate' | output is 1 or more | FAIL — grep count 0, pipeline exit 1; skillbench itself exits 0. Its stdout is empty; the only line is on stderr: "skillbench: wrote reports/skillbench/2026-10-02-08-arms.md". The written report carries the safety floor as prose: "Safety floor (task-check pass rate): held — with-overlay pass rate 100% >= without-overlay 100%". The generated report was removed afterwards | 2026-10-02 assay-verifier-app[bot] |
+| 6 | for a in with-overlay without-overlay; do ls docs/streams/desk-supervision/08-arms/$a \| wc -l; done | each line is 15 or more | PASS — exit 0; 15 and 15 | 2026-10-02 assay-verifier-app[bot] |
+| 7 | grep -E -e '^decision: adopt-candidate — ' -e '^decision: reject — ' docs/streams/desk-supervision/08-report.md | exit 0; exactly one line | PASS — exit 0; one line: "decision: adopt-candidate — check_pass_rate 100%/15 vs 100%/15 (equal), wedges 0/15 vs 0/15 (equal), wall_seconds 31.7 vs 23.7 (+33.8%, cost-side regression), diff_lines 8.3 vs 8.1 (+2.5%, cost-side regression)" | 2026-10-02 assay-verifier-app[bot] |
+| 8 | grep -c 'wedges' docs/streams/desk-supervision/08-report.md | output is 1 or more | PASS — exit 0; count 7 | 2026-10-02 assay-verifier-app[bot] |
+| 9 | statusgen --root . --consumers --brief desk-supervision/08 | exit 0; output does not contain DISPROVED | COULD-NOT-CHECK — exit 2 (statusgen v1.0.31): "--consumers: COULD-NOT-CHECK: assay:assay:desk-supervision:08 is not in the diff against 5a108baba705... no entry was corroborated and none was disproved". The output has no DISPROVED, but the exit-0 expectation is not met. The row is authored for the implementing branch and has no diff to read on merged main | 2026-10-02 assay-verifier-app[bot] |
+
+Execution witness (statusgen verifyrun v1.0.31, same head): 5/9 pass, command exit 1. Rows 1, 3, 4, 6, 7 pass. Row 2 fail (exit 1, expected 0); row 5 fail (exit 1, expected 0); row 9 fail (exit 2, expected 0); row 8 fail with exit 0 and "no output line equals 1". The row 8 witness result is an expectation-parse artifact: the witness reads "1 or more" as "a line equals 1", while the direct run returns 7 and satisfies the row as written. The witness's write to this file was discarded.
+
+Findings:
+- The verdict has not changed since 2026-09-25: 6/9 pass, rows 2 and 5 fail as written, row 9 is could-not-check.
+- The Verify table is unchanged, and so is the whole brief file apart from Evidence: its content hash equals the one in the 2026-09-25 outcome record. Rows 2, 5 and 9 are therefore the same commands that failed before.
+- What did change on main since the last verdict does not touch any failing row. The objective kit file changed by one line in #1879, inside the common-clauses block together with common-clauses.md, and row 3 still shows the two byte-identical. The dispatcher sources changed in #1650, #1727, #1919, #2000 and #2009; the item-key-first refusal that fails row 2 is still present (now at dispatch.go:177). The skillbench entry point, the arms directory, the fixtures and the report are unchanged.
+- Row 2: still failing. The cause is the argument order in the row, not the kit.
+- Row 5: still failing. skillbench writes its report to a file and a notice to stderr, never stdout, and the literal string check_pass_rate does not appear in the rendered report.
+- Row 9: still could-not-check, and it stays that way on any merged head.
+- Every underlying deliverable property holds (kit registered, common clauses byte-identical and rendered, five fixtures, 15 runs per arm, safety floor held at 100% in both arms, one numeric decision line, wedge counts reported).
+- All three are Verify-table defects tracked at #1363, which is still open with no re-specification landed. The consumers-marker routing question raised there is also unanswered.
+- Risk-bearing values: the frontmatter marks all four risk fields no and the item is not irreversible, so the fail-safe trigger does not fire on this pass. No deliverable constant changed since the 2026-09-25 enumeration above, which stands (task-count = 5 named, not derived; runs-per-task-per-arm = 3 derived).
+
+Status is left at implemented. Re-running this item before rows 2, 5 and 9 are re-specified will reproduce this result.
+
+VERIFY: FAIL — 6/9 pass; rows 2 and 5 fail as written and row 9 is could-not-check on merged main; all three are check-definition defects tracked at #1363 (open), and no deliverable property is failing.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

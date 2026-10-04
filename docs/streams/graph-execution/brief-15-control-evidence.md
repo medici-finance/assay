@@ -2,7 +2,7 @@
 brief: assay:assay:graph-execution:15
 title: Control profiles and complete scoped evidence exports
 why: An auditor cannot distinguish complete evidence from a selected set of passing examples without knowing the expected population and omissions. A scope-aware export makes missing controls visible and records what the evidence actually proves.
-wave: 4
+wave: 7
 depends:
 - graph-execution/06
 - iso-9001/01

@@ -1,0 +1,17 @@
+# corpus: a review verdict that QUOTES a sops footer from the diff inside a code fence
+# expect: refused
+# refs:   #2060, #778
+# shape:  a fenced sops: mapping with metadata fields and no payload, inside an otherwise valid verdict body
+# why:    cite-never-quote exempts nothing: a quoted bare footer is the imitation shape, fenced or not, and must keep refusing
+Verdict: request-changes
+
+The footer this PR adds at the end of the manifest reads:
+
+```yaml
+sops{{+}}:
+    kms: []
+    lastmodified: "2026-09-30T10:00:00Z"
+    version: 3.8.1
+```
+
+It carries no encrypted value, so the file is not an encrypted document.

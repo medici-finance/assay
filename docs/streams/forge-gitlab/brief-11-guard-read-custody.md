@@ -66,7 +66,7 @@ consumers:
   - "tools/desk/cmd/deskroster/*.go: out-of-scope (delivered by #841, open at authoring; absorbed into this brief only if #841 closes unmerged — the custody answer for those two reads, the session's own role token, is decided here either way)"
   - "the adopter's hardening checklist document (its Read cells): out-of-scope (it lives outside this tree; its `gh api <endpoint>` cells move to the `read <kind>` vocabulary when the adopter re-pins — the parser refuses the old form by name, never silently)"
   - "GitLab hardening kinds (protected branches, protected tags, push rules, approvals) + per-forge checklist rows: follow-up forge-gitlab/12"
-version: 1
+version: 2
 id: 20cb61a4-6f57-4722-8d52-812b6dd8c989
 ---
 
@@ -356,7 +356,7 @@ recorded ruling).
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd tools/desk && go build ./... && go test ./...` | exit 0 | check:ci |
-| 2 | `grep -rnE -e 'exec\.Command(Context)?\([^)]*"gh"' -e 'exec\.Command(Context)?\([^)]*"glab"' tools/desk --include='*.go' \| grep -v _test.go \| wc -l` | `0` — fg/08 row 3, verbatim, now closed | check +neighbour |
+| 2 | `test -d tools/desk && { grep -rnE -e 'exec\.Command(Context)?\([^)]*"gh"' -e 'exec\.Command(Context)?\([^)]*"glab"' tools/desk --include='*.go' \|\| [ $? -eq 1 ]; } \| { grep -v _test.go \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0` — fg/08 row 3, verbatim, now closed. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. The `test -d` leg covers BSD grep, which stays silent on an absent directory under `--include`. | check +neighbour |
 | 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestNoForgeCLIShellout -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v && go test ./internal/deskkit/ -run TestForgeGithubGolden -v` | exit 0; output contains `PASS` — the ratchet reconciles at the lowered ceiling, op 40 passes the name and no-endpoint-argument checks, the inventory reflects 40 methods, every kind has a golden | check:ci |
 | 4 | `grep -cE -e 'Key: +"cmd/repohardenguard/' -e 'Key: +"cmd/deskroster/' tools/desk/internal/forgeban/allowlist.go; test "$(grep -oE 'allowedInvocationCeiling = [0-9]+' tools/desk/internal/forgeban/allowlist.go \| grep -oE '[0-9]+$')" -le 6` | first line `0`; exit 0 — no permit row for either tool, ceiling at or below 6 | check |
 | 5 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGithubGolden/hardening_read_unknown_kind -v` | exit 0; output contains `PASS` (`hardening_read_unknown_kind` (planned)) and the golden records ZERO requests — the kind validator refuses before a request exists | check +mutation |

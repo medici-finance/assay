@@ -148,7 +148,15 @@ var (
 	// reWorktreeName matches a scratch worktree directory name written WITHOUT its leading
 	// path — `tracker-<item>` — which is how it most often reaches a body (a command line, a
 	// "my worktree is …" sentence). deskwt mints exactly this shape (cmd/deskwt).
-	reWorktreeName = regexp.MustCompile(`\btracker-[A-Za-z0-9][A-Za-z0-9._-]*`)
+	//
+	// The leading group is the token boundary (#2080): the name starts the text, or follows
+	// a byte that is NOT a letter, digit, `_` or `-`. That covers a `/` path segment,
+	// whitespace and punctuation, which is everywhere a minted name can appear, and it
+	// leaves a hyphenated compound alone. The old `\b` boundary also held after `-`, so the
+	// prefix word in the middle of a compound (a finding-block class label) refused a body
+	// that named no worktree. RE2 has no lookbehind, so the boundary byte is part of the
+	// match; group 1 is the name, and worktreeNameFinder reports only that.
+	reWorktreeName = regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])(tracker-[A-Za-z0-9][A-Za-z0-9._-]*)`)
 	// reSessionUUID matches the session id shape the agent tooling mints (a lowercase hex
 	// UUID). Anchored on the full 8-4-4-4-12 grouping so an ordinary hyphenated word or a
 	// git SHA cannot match it.
@@ -415,7 +423,8 @@ func findAbsMachinePath(s string) []int {
 // machineShapeFinder is what the machine-shape arm of selfContainFindings loops over: a
 // compiled regexp satisfies it as is, and absMachinePathFinder adapts findAbsMachinePath so
 // the absolute-path category shares the loop (and its all-matches exemption walk) with the
-// other three.
+// other three. worktreeNameFinder adapts reWorktreeName the same way, trimming its boundary
+// byte from the span.
 type machineShapeFinder interface {
 	FindAllStringIndex(s string, n int) [][]int
 }
@@ -433,6 +442,20 @@ func (absMachinePathFinder) FindAllStringIndex(s string, n int) [][]int {
 		return [][]int{loc}
 	}
 	return nil
+}
+
+// worktreeNameFinder reports reWorktreeName's group 1, the worktree name without the
+// boundary byte in front of it, so a refusal names exactly the span the author has to edit.
+// The name's trailing run is greedy, so the byte after a match is never a name byte; when
+// that byte is the boundary of a following candidate, the previous match has not consumed it.
+type worktreeNameFinder struct{}
+
+func (worktreeNameFinder) FindAllStringIndex(s string, n int) [][]int {
+	var out [][]int
+	for _, m := range reWorktreeName.FindAllStringSubmatchIndex(s, n) {
+		out = append(out, m[2:4])
+	}
+	return out
 }
 
 // notUNCLead reports whether the byte before a UNC-shaped separator run means the run is not
@@ -479,7 +502,7 @@ func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFin
 		why      string
 	}{
 		{absMachinePathFinder{}, "absolute machine path", "resolves only on the machine that wrote it"},
-		{reWorktreeName, "scratch worktree name", "names a throwaway directory nobody else has"},
+		{worktreeNameFinder{}, "scratch worktree name", "names a throwaway directory nobody else has"},
 		{reSessionUUID, "session id", "identifies an agent session, not anything a reader can look up"},
 		{reAgentID, "agent id", "identifies an agent session, not anything a reader can look up"},
 	} {

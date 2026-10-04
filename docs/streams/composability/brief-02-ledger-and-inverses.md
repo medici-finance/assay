@@ -34,7 +34,7 @@ consumers:
   - "docs/adopting-assay.md §3: follow-up composability/05 (the runbook gains the removal path in the adopter-doc delta)"
   - "tools/desk/cmd/deskinstall: fixed-here (the binary installer writes its ledger line)"
   - "tools/desk/cmd/clusterguard shim-off-PATH note: fixed-here (superseded by the shim's inverse)"
-version: 1
+version: 2
 id: 3c7ab933-8f9d-4de7-831f-dabc170095dc
 ---
 
@@ -103,7 +103,7 @@ facts:
 
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `grep -rn 'TODO composability/02' --include=component.yaml . \| wc -l` | 0 |
+| 1 | `{ grep -rn 'TODO composability/02' --include=component.yaml . \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. |
 | 2 | in a throwaway fixture repo: `git stash -u; tar cf /tmp/pre.tar .` then scripted install of `assay/streams-scaffold`, `assay/main-guard` (inside steps only), then `deskdisable assay/main-guard --yes && deskdisable assay/streams-scaffold --yes`, then `tar df /tmp/pre.tar` | empty diff (tree byte-identical) |
 | 3 | after row 2's install step, before disable: `wc -l .assay/ledger.jsonl` and `grep -c '"kind":"label"' .assay/ledger.jsonl` | one ledger line per outside step executed (labels created in the fixture) |
 | 4 | `deskdisable assay/labels --dry-run` in the fixture | exit 0; prints a plan; every label line says `list-for-human`; nothing deleted (`gh label list` unchanged) |

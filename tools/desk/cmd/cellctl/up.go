@@ -16,11 +16,12 @@ import (
 // there is deliberately no per-role `--model-<role>` form, because that case is already
 // `cellctl desk <cell> <role> --model <m>` on the one window that needs it.
 type upOverrides struct {
-	Model      string
-	Harness    string
-	Provider   string
-	Cadence    string
-	TickBudget string
+	Model       string
+	Harness     string
+	Provider    string
+	Cadence     string
+	TickBudget  string
+	roleCadence map[string]*cadenceOptions // resolved per role, including mixed-harness policies
 	// Cockpit is the cockpit `up` RESOLVED (never `auto`), threaded onto every window so each
 	// exports the same ASSAY_COCKPIT as the surface it was opened in — even when `up --cockpit`
 	// overrode cell.env for this run only.
@@ -33,12 +34,16 @@ type upOverrides struct {
 func (c *Cell) roleCmd(role, cfg string, o upOverrides) string {
 	// Cockpits accept a command string today. Quote every argument independently;
 	// no model, path or configuration value is executable shell syntax.
-	if c.Cadence != nil {
-		o.Cadence = c.Cadence.Interval.String()
-		o.TickBudget = c.Cadence.Budget.String()
+	cadence := c.Cadence
+	if o.roleCadence != nil {
+		cadence = o.roleCadence[role]
+	}
+	if cadence != nil {
+		o.Cadence = cadence.Interval.String()
+		o.TickBudget = cadence.Budget.String()
 	}
 	out := cockpitQuote(selfPath())
-	if c.Cadence != nil || o.Cadence != "" {
+	if cadence != nil || o.Cadence != "" {
 		out += " --cells-root " + cockpitQuote(filepath.Dir(c.Dir))
 	}
 	out += " desk " + cockpitQuote(c.Name) + " " + cockpitQuote(role)
@@ -176,10 +181,6 @@ func cmdUp(cell string, args []string) {
 	if budget == "" {
 		budget = c.Env.Get("CELL_TICK_BUDGET")
 	}
-	c.Cadence = resolveCadence(c.Kind, cadence, budget)
-	if automate != "" && (c.Cadence != nil || effectiveHarness != "claude") {
-		die("up: --automate cannot preserve this cell launch; use --cadence with cockpit terminals")
-	}
 	if effectiveHarness == "cursor" && cfgIn != "" {
 		die("cursor does not accept a Claude config directory")
 	}
@@ -230,10 +231,13 @@ func cmdUp(cell string, args []string) {
 		if persist {
 			die("up: --set with a model policy is ambiguous; edit the policy or provider defaults instead")
 		}
-		// Every selected role is resolved AND preflighted (credential, harness on PATH, Claude
-		// version floor, settings conflict scan) before any window opens, so one bad role never
-		// leaves half a cell running.
-		for _, role := range roles {
+	}
+	// Resolve the cadence with each role's actual harness, not the cell-wide fallback.
+	// In a mixed policy, defaulting Codex must not schedule the Claude roles too.
+	o.roleCadence = make(map[string]*cadenceOptions, len(roles))
+	for _, role := range roles {
+		harness := effectiveHarness
+		if policy != nil {
 			route, err := policy.Resolve(role, o.Provider, o.Model, o.Harness)
 			if err != nil {
 				die("%s", err)
@@ -242,7 +246,12 @@ func cmdUp(cell string, args []string) {
 				fmt.Fprintln(os.Stderr, err)
 				die("up: policy preflight failed; no role windows launched")
 			}
+			harness = route.Harness
 			fmt.Printf("[policy] role=%s provider=%s model=%s effort=%s source=%s sha256=%s\n", role, route.Provider, route.Model, route.Effort, policySource, policy.SHA256)
+		}
+		o.roleCadence[role] = resolveDeskCadence(c.Kind, harness, cadence, budget)
+		if automate != "" && (o.roleCadence[role] != nil || harness != "claude") {
+			die("up: --automate cannot preserve this cell launch; use --cadence with cockpit terminals")
 		}
 	}
 

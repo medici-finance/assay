@@ -294,6 +294,18 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\t\tif gitlabIsTransientMissingSourceBranch(mapped) && attempt < gitlabCreateMRAttempts {",
       "new": "\t\tif gitlabIsTransientMissingSourceBranch(mapped) && attempt < gitlabCreateMRAttempts+1 {"
+    },
+    {
+      "name": "SEC-F1-fork-mapping-unpinned — never map a merge request to fork in GetPullRequest (a fork MR reads as same-project and passes the fork refusal)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif mr.SourceProjectID != mr.TargetProjectID {\n",
+      "new": "\t\tif false {\n"
+    },
+    {
+      "name": "SEC-F1-fork-mapping-unpinned — invert the source/target project-id comparison in GetPullRequest (a fork MR reads as same, a same-project MR as fork)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif mr.SourceProjectID != mr.TargetProjectID {\n",
+      "new": "\t\tif mr.SourceProjectID == mr.TargetProjectID {\n"
     }
   ]
 }

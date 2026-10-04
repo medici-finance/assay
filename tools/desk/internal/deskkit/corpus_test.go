@@ -197,6 +197,9 @@ func TestBodycheckCorpusCoversEveryCataloguedShape(t *testing.T) {
 		"pos-aws-key-slash-layout-synthetic.txt":   "the measured residual population",
 		"pos-pem-private-key.txt":                  "private-key armor must stay refused",
 		"pos-secret-hidden-in-a-sops-document.txt": "the sops exemption must stay scoped",
+		"neg-review-cites-sops-material.txt":       "#2060 — a verdict citing sops material by path:line",
+		"pos-review-quotes-sops-footer.txt":        "#2060 — a quoted footer stays refused on a review",
+		"pos-review-quotes-sops-envelope.txt":      "#2060 — a quoted short envelope stays refused",
 	}
 	present := map[string]bool{}
 	for _, a := range loadCorpus(t) {

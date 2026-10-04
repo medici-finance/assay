@@ -56,6 +56,17 @@ package main
 // values, so they ride as inline `-e KEY=VALUE`, not through the credential
 // env-file (whose contents the wrapper keeps opaque).
 //
+// HOST GIT IDENTITY — RESOLVED ON THE HOST, CARRIED NAME-ONLY (#2097). The inner
+// verifyrun derives the witness runner from git `user.name`/`user.email`. The bind
+// mount carries the checkout's LOCAL config, never the host's global config — and a
+// global-only identity is the common Windows setup — so the launcher resolves those
+// keys on the host (the value a native host run would read) and carries them as
+// further GIT_CONFIG_KEY_<n>/GIT_CONFIG_VALUE_<n> slots. The KEY is inline; the
+// VALUE is name-only (`-e GIT_CONFIG_VALUE_<n>`) and lives only in the docker
+// client's env, so the identity never appears in the printed argv or a log line.
+// A value with a control character is refused on the host. The home directory and
+// the global config file are never mounted.
+//
 // BIND-MOUNT CAVEATS (windows-port/10 deliverable 2), documented so a reader of a
 // could-not-run row knows the cause:
 //   - NTFS MTIME IS COARSE. A bind-mounted tree carries the host filesystem's
@@ -81,6 +92,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -97,6 +109,83 @@ const (
 	// pairedVersionsRel is the harness-image pin's home, relative to the repo root.
 	pairedVersionsRel = "plugins/assay/paired-versions.yaml"
 )
+
+// attributionEnvVars are the process-environment sources executingRunner
+// (verifyrun.go) reads to derive the witness runner. The launcher forwards each by
+// NAME into the container so the inner verifyrun attributes the run exactly as the
+// host would (#2092). A new env source in executingRunner that is not listed here
+// fails TestVICAttribEnvClass.
+var attributionEnvVars = []string{"GITHUB_ACTIONS", "GITHUB_ACTOR"}
+
+// identityConfigKeys are the git-config keys the witness-runner derivation
+// (executingRunner and forgeRoleRunner, verifyrun.go) reads. The container sees
+// the checkout's LOCAL config through the bind mount but never the host's global
+// or system config, so a host whose identity lives only in global config (the
+// common Windows setup) attributed nothing inside the container (#2097). The
+// launcher resolves each key ON THE HOST, through the same gitConfigValue the
+// derivation uses (local, then global, then system — the value a native host run
+// would read), and carries it across as an ephemeral GIT_CONFIG_KEY_<n>/
+// GIT_CONFIG_VALUE_<n> pair. A git-config key the derivation reads that is not
+// listed here fails TestVICAttribEnvClass.
+var identityConfigKeys = []string{"user.name", "user.email"}
+
+// identityPair is one host-resolved git-config entry carried into the container.
+type identityPair struct {
+	key, value string
+}
+
+// hostGitIdentity resolves identityConfigKeys on the host for the checkout at
+// root. An unset or empty key is skipped — the launcher never invents an identity,
+// and with nothing resolved the inner run still refuses could-not-attribute. A
+// value carrying a control character (newline, carriage return, backspace, …)
+// cannot be carried across intact and could forge a line in anything that renders
+// it, so it is REFUSED here, on the host, before docker runs; the error names the
+// key and never the value.
+func hostGitIdentity(root string) ([]identityPair, error) {
+	var out []identityPair
+	for _, key := range identityConfigKeys {
+		v := gitConfigValue(root, key)
+		if v == "" {
+			continue
+		}
+		if strings.IndexFunc(v, unicode.IsControl) >= 0 {
+			return nil, fmt.Errorf("the host git identity `%s` contains a control character, so it cannot be carried into the container intact — fix `git config %s` and re-run (the value is not printed)", key, key)
+		}
+		out = append(out, identityPair{key: key, value: v})
+	}
+	return out, nil
+}
+
+// identityValueVar is the container env var that carries identity pair i. Slot 0
+// is the safe.directory pair, so identity pairs start at 1.
+func identityValueVar(i int) string { return fmt.Sprintf("GIT_CONFIG_VALUE_%d", i+1) }
+
+// dockerClientEnv is the environment the docker CLIENT runs with: base plus one
+// GIT_CONFIG_VALUE_<n>=<value> per identity pair, replacing any same-named entry
+// in base. composeDockerArgs names those variables name-only (`-e NAME`), so docker
+// copies the values from here into the container and they never appear in the
+// argv — which the launcher prints — or in any log line. PURE, like
+// composeDockerArgs, so a test can pin it without a real docker.
+func dockerClientEnv(base []string, identity []identityPair) []string {
+	if len(identity) == 0 {
+		return base
+	}
+	set := map[string]string{}
+	for i, p := range identity {
+		set[identityValueVar(i)] = p.value
+	}
+	env := make([]string, 0, len(base)+len(set))
+	for _, kv := range base {
+		k, _, _ := strings.Cut(kv, "=")
+		if _, dup := set[k]; !dup {
+			env = append(env, kv)
+		}
+	}
+	for i := range identity {
+		env = append(env, identityValueVar(i)+"="+set[identityValueVar(i)])
+	}
+	return env
+}
 
 // pinDigestRe is the ONLY accepted digest shape: a full sha256. A placeholder
 // (`PENDING-HARVEST`), a truncated hash, or an upper-cased one all fail it, so the
@@ -176,6 +265,9 @@ type containerInvocation struct {
 	envFile  string   // role env-file path, or "" to omit --env-file
 	inner    []string // the command run inside the container
 	uid, gid int      // host uid/gid, or <0 to omit --user (Windows)
+	// identity is the host-resolved git identity (hostGitIdentity). Only its KEYS
+	// reach the argv; its values ride in the docker client env (dockerClientEnv).
+	identity []identityPair
 }
 
 // composeDockerArgs builds the `docker run …` argv. It is PURE (no I/O, no
@@ -195,9 +287,32 @@ func composeDockerArgs(inv containerInvocation) []string {
 	// every tree the container sees. Passed as inline `-e KEY=VALUE` (not through
 	// the credential env-file, which is contents-opaque) precisely because these
 	// are non-secret, per-run config values.
-	argv = append(argv, "-e", "GIT_CONFIG_COUNT=1")
+	argv = append(argv, "-e", fmt.Sprintf("GIT_CONFIG_COUNT=%d", 1+len(inv.identity)))
 	argv = append(argv, "-e", "GIT_CONFIG_KEY_0=safe.directory")
 	argv = append(argv, "-e", "GIT_CONFIG_VALUE_0="+containerWorkDir)
+	// Carry the host-resolved git identity (#2097) in the same ephemeral config
+	// slots. The KEY is a fixed name from identityConfigKeys and rides inline; the
+	// VALUE is NAME-ONLY (`-e GIT_CONFIG_VALUE_<n>`), copied by docker from the
+	// client env dockerClientEnv builds, so the identity never appears in this argv
+	// — which the launcher prints — and a value shaped like an option (`--x`) or
+	// carrying `=` can never be parsed as anything but a value.
+	for i, p := range inv.identity {
+		argv = append(argv, "-e", fmt.Sprintf("GIT_CONFIG_KEY_%d=%s", i+1, p.key))
+		argv = append(argv, "-e", identityValueVar(i))
+	}
+	// Carry the host's attribution environment into the container (#2092). The
+	// inner verifyrun derives the witness runner from the process (executingRunner,
+	// verifyrun.go); without these the container sees no GITHUB_ACTOR, and on a
+	// runner whose checkout carries no git identity it refuses could-not-attribute
+	// (exit 2) where the host itself would have attributed the run. NAME-ONLY form
+	// (`-e NAME`): docker copies the value from the launcher's own environment and
+	// leaves the variable unset in the container when the host has none, so this
+	// never invents an identity, and the value is never rendered in the printed
+	// argv. The set is pinned to executingRunner's env reads by
+	// TestVICAttribEnvClass.
+	for _, name := range attributionEnvVars {
+		argv = append(argv, "-e", name)
+	}
 	// --user maps container writes to the host user so the Evidence the container
 	// appends lands host-owned, not root-owned. Omitted when there is no POSIX
 	// uid (Windows: os.Getuid() == -1), where Docker Desktop maps ownership to the
@@ -284,6 +399,15 @@ func runInContainer(briefPath, root, envFile string, check, dryRun, ci bool, tim
 		return verifyrunExitCouldNot
 	}
 
+	// Resolve the host's git identity (#2097) before docker runs, so a value that
+	// cannot cross intact is refused here rather than as could-not-attribute inside
+	// the container.
+	identity, err := hostGitIdentity(absRoot)
+	if err != nil {
+		fmt.Fprintln(stderr, "statusgen verifyrun --in-container: refusing to run —", err)
+		return verifyrunExitCouldNot
+	}
+
 	inv := containerInvocation{
 		pin:      pin,
 		root:     absRoot,
@@ -292,6 +416,7 @@ func runInContainer(briefPath, root, envFile string, check, dryRun, ci bool, tim
 		inner:    buildInnerCommand(briefRel, check, dryRun, ci, timeout),
 		uid:      hostUID(),
 		gid:      hostGID(),
+		identity: identity,
 	}
 	argv := composeDockerArgs(inv)
 
@@ -302,6 +427,7 @@ func runInContainer(briefPath, root, envFile string, check, dryRun, ci bool, tim
 	fmt.Fprintf(stdout, "docker %s\n", strings.Join(argv, " "))
 
 	cmd := exec.Command(dockerPath, argv...)
+	cmd.Env = dockerClientEnv(os.Environ(), identity)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	cmd.Stdin = nil

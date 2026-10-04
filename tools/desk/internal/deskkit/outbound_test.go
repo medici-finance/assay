@@ -233,6 +233,10 @@ func (p *obPushRepo) git(args ...string) {
 	full := append([]string{
 		"-c", "user.name=Row Fixture", "-c", "user.email=row" + "@" + "example.com",
 		"-c", "commit.gpgsign=false", "-c", "core.hooksPath=" + os.DevNull,
+		// No post-commit auto-maintenance: a detached gc/maintenance child outliving the
+		// command can still be writing .git/objects when t.TempDir's cleanup runs, which
+		// fails the test with "directory not empty" under CI load.
+		"-c", "gc.auto=0", "-c", "maintenance.auto=false",
 	}, args...)
 	cmd := exec.Command("git", full...)
 	cmd.Dir = p.dir
