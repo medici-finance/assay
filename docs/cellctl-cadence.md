@@ -6,7 +6,7 @@ starts a bounded role pass, waits for completion, then waits the configured inte
 Herdr and Orca supply the terminal. Codex and Cursor supply the agent pass.
 
 ```sh
-cellctl up house --cockpit herdr --harness codex --cadence 30m --tick-budget 20m
+cellctl up house --cockpit herdr --harness codex
 cellctl up example --cockpit orca --harness cursor --cadence 30m --tick-budget 20m
 ```
 
@@ -25,12 +25,38 @@ cellctl set house CELL_CADENCE=30m CELL_TICK_BUDGET=20m
 cellctl cadence house status
 ```
 
-The cadence is opt-in. Existing interactive launches retain their execution mode.
-`--cadence off` overrides a saved cadence. A budget includes the role's exit reserve;
+House desks whose resolved harness is Codex default to a five-minute interval and the
+existing 20-minute pass budget. This applies to `desk` and each role opened by `up`,
+including harnesses selected by model policy. Claude, Cursor and non-house cells keep
+their existing defaults. Explicit `--cadence` / `CELL_CADENCE` values take precedence;
+`--cadence off` or saved `CELL_CADENCE=off` selects an interactive Codex session.
+`--tick-budget` / `CELL_TICK_BUDGET` overrides the budget independently for a defaulted
+Codex cadence. Defaults are resolved at launch and are not written to cell.env.
+Already-running interactive sessions retain their execution mode until restarted.
+
+A budget includes the role's exit reserve;
 its minimum is 61 seconds and default is 20 minutes. Choose a budget that also fits
 the actual work; a review may need substantially more time. Every pass receives
 `ASSAY_TICK=1` and `ASSAY_TICK_DEADLINE` in seconds, so it performs one sweep and exits.
 The supervisor sends no periodic keystrokes or prompts into a busy interactive turn.
+
+## Switching an existing interactive house
+
+Finish or hand off active work, then exit each Codex desk cleanly so its ownership
+checkpoint records completion. Close the old cockpit with `cellctl down house --cockpit herdr`. After the roles have stopped, clear local stop requests and launch:
+
+```sh
+cellctl cadence house resume
+cellctl up house --cockpit herdr --harness codex --cadence 5m --tick-budget 20m
+cellctl cadence house status
+```
+
+The explicit cadence also works on older installations where Codex cadence is opt-in.
+After installing this default, the `--cadence` and `--tick-budget` flags may be omitted.
+`supervisor=active` identifies a cadence owner; `supervisor=interactive` does not.
+If status instead reports `unfinished`, follow the recovery procedure below only after
+confirming the old harness and all children have stopped. Do not delete locks or
+checkpoints to force a second owner. A launch never clears a stop flag itself.
 
 ## Configuration and ownership
 
