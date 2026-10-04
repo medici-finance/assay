@@ -55,7 +55,9 @@ adoption by upserting the PR's workpad: `deskreply <owner/repo> <N> --workpad --
 never a fresh plain comment for this (`## Notes` is where the hand-off note belongs).
 Write that body file fresh every time (`>`), never by appending (`>>`), and never re-read
 the old workpad into the new body — `deskreply` refuses a body over the forge's 65,536
-character comment limit or carrying the marker line more than once.
+character comment limit or carrying the marker line more than once. The body's shape is
+the dispatch kit's C6a, and `deskreply --help` (WORKPAD BODY) carries the copyable template;
+rehearse with `--dry-run` before the real upsert.
 
 ## 2. Get on the branch, current with main
 

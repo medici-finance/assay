@@ -5,19 +5,17 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 func main() {
-	data, err := io.ReadAll(os.Stdin)
+	// Workpad has no json tags, so a misspelt key would silently render "_none yet_".
+	dec := json.NewDecoder(os.Stdin)
+	dec.DisallowUnknownFields()
 	var w deskkit.Workpad
-	if err == nil {
-		err = json.Unmarshal(data, &w)
-	}
-	if err != nil {
+	if err := dec.Decode(&w); err != nil {
 		fmt.Fprintln(os.Stderr, "workpad JSON:", err)
 		os.Exit(1)
 	}

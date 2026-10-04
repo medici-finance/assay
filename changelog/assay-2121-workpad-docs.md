@@ -1,2 +1,2 @@
 ### Fixed
-- Worker prompts and reply help now include the exact workpad marker, a copyable installed-binary template and a source-only example of the canonical renderer.
+- Dispatch kits now state the exact workpad marker and the four section headings, and point to a copyable template in `deskreply --help`; the `--workpad` marker refusal points to that template instead of an internal library. A source-checkout renderer example now rejects unknown JSON keys.

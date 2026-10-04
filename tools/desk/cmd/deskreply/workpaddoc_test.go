@@ -69,25 +69,54 @@ func TestDocWorkpadDryRun(t *testing.T) {
 
 // The documentation defect class is an incomplete body-construction protocol
 // on any shipped instruction surface, rather than a relaxed body validator.
+// The help holds the one copyable template; the kits carry the shape and point at it.
 func TestWorkpadDocSurfaces(t *testing.T) {
 	helpBody, ok := documentedWorkpad(usage)
 	if !ok {
 		t.Fatal("help omits template")
+	}
+	for _, heading := range []string{"## Plan", "## Acceptance criteria", "## Validation", "## Notes"} {
+		if !strings.Contains(helpBody, "\n"+heading+"\n") {
+			t.Errorf("help template omits %q", heading)
+		}
+	}
+	for _, phrase := range []string{"requires a source checkout", "./examples/workpad-render", "--dry-run", "DESK_LOOP=worker-desk"} {
+		if !strings.Contains(usage, phrase) {
+			t.Errorf("help: missing %q", phrase)
+		}
 	}
 	for _, path := range []string{"../deskdispatch/references/common-clauses.md", "../deskdispatch/references/worker-prompt-objective.md"} {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		body, ok := documentedWorkpad(string(data))
-		if !ok || body != helpBody {
-			t.Errorf("%s: workpad template missing or differs from help", path)
+		if _, dup := documentedWorkpad(string(data)); dup {
+			t.Errorf("%s: carries a second copy of the help template", path)
 		}
-		for _, phrase := range []string{"requires a source checkout", "./examples/workpad-render", "--dry-run", "DESK_LOOP=worker-desk"} {
+		for _, phrase := range []string{"`" + deskkit.WorkpadMarker + "`", "`deskreply --help`", "WORKPAD BODY", "`## Acceptance criteria`", "--dry-run"} {
 			if !strings.Contains(string(data), phrase) {
 				t.Errorf("%s: missing %q", path, phrase)
 			}
 		}
+	}
+}
+
+// The refusal is the surface a worker reads at the moment it fails (#2122 review F1): it
+// must send the caller to the installed-binary template, never to the internal library.
+func TestWorkpadRefusalNamesHelp(t *testing.T) {
+	work := newBaseFixture(t)
+	withEnv(t, work)
+	bf := bodyFileWith(t, "an ordinary reply body with no workpad marker")
+	out := captureStderr(t, func() {
+		if rc := run([]string{"example-org/tracker", "7", "--workpad", "--body-file", bf}); rc != deskkit.ExitRefused {
+			t.Fatalf("rc = %d, want refused", rc)
+		}
+	})
+	if !strings.Contains(out, "deskreply --help") || !strings.Contains(out, "WORKPAD BODY") {
+		t.Errorf("refusal does not name the help template: %s", out)
+	}
+	if strings.Contains(out, "deskkit.") {
+		t.Errorf("refusal points at an internal library: %s", out)
 	}
 }
 
@@ -103,5 +132,11 @@ func TestSourceWorkpadRender(t *testing.T) {
 	want := deskkit.Render(deskkit.Workpad{Stamp: "example@abc1234", Plan: "- one", Acceptance: "- two", Validation: "not run", Notes: "none"})
 	if string(out) != want {
 		t.Fatalf("renderer output differs: %s", out)
+	}
+	bad := exec.Command("go", "run", "./examples/workpad-render")
+	bad.Dir, bad.Env = cmd.Dir, cmd.Env
+	bad.Stdin = strings.NewReader(`{"Acceptance criteria":"- two"}`)
+	if out, err := bad.CombinedOutput(); err == nil {
+		t.Fatalf("unknown JSON key accepted: %s", out)
 	}
 }
