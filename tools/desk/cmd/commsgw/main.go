@@ -27,6 +27,15 @@ func main() {
 // run is main's testable body: it never calls os.Exit itself, so a test can
 // assert on the returned code directly.
 func run(getenv func(string) string) int {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	return runContext(ctx, getenv)
+}
+
+// runContext serves until ctx ends or a listener fails. On every exit path it
+// waits for the socket server to close its listener, so a clean stop leaves no
+// socket behind to block the next start.
+func runContext(ctx context.Context, getenv func(string) string) int {
 	cfg, err := LoadConfig(getenv)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -44,7 +53,11 @@ func run(getenv func(string) string) int {
 		return exitCodeOf(err)
 	}
 
-	filer := DeskfileIssueFiler{Repo: "medici-finance/assay"}
+	repo := cfg.Repo
+	if repo == "" {
+		repo = "medici-finance/assay"
+	} // retain the existing standalone default
+	filer := DeskfileIssueFiler{Repo: repo}
 
 	// The outbound prose gate is consulted on every send (socket.go). Its
 	// contained advisor is wired from the pinned decider runner entry (brief
@@ -58,25 +71,34 @@ func run(getenv func(string) string) int {
 	}
 
 	agent := GatewayAgent{Root: cfg.QueueDir, Cell: cfg.Cell, Deps: deps, Emitter: NoOpInboxEmitter{}, Filer: filer}
-	sock := SocketServer{Root: cfg.QueueDir, Cell: cfg.Cell, Deps: deps, Emitter: agent.Emitter, Filer: filer, Gate: gate}
+	sock := SocketServer{Root: cfg.QueueDir, Cell: cfg.Cell, Deps: deps, Emitter: agent.Emitter, Filer: filer, Gate: gate, LocalOnly: cfg.LocalOnly}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	errCh := make(chan error, 2)
-	go func() { errCh <- sock.ListenAndServe(cfg.Socket) }()
-	go func() { errCh <- ListenAndServeA2A(ctx, cfg, agent) }()
+	sockCh := make(chan error, 1)
+	a2aCh := make(chan error, 1)
+	go func() { sockCh <- sock.ListenAndServeContext(ctx, cfg.Socket) }()
+	if !cfg.LocalOnly {
+		go func() { a2aCh <- ListenAndServeA2A(ctx, cfg, agent) }()
+	}
 
+	var failure error
 	select {
 	case <-ctx.Done():
+		<-sockCh
 		return 0
-	case err := <-errCh:
-		if err != nil && !errors.Is(err, context.Canceled) {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
-		}
-		return 0
+	case failure = <-sockCh:
+		cancel()
+	case failure = <-a2aCh:
+		cancel()
+		<-sockCh
 	}
+	if failure != nil && !errors.Is(failure, context.Canceled) {
+		fmt.Fprintln(os.Stderr, failure)
+		return 1
+	}
+	return 0
 }
 
 // exitCodeOf maps a deskkit typed error to its canonical exit code (0 ok, 3
