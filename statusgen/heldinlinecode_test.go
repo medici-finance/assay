@@ -349,6 +349,8 @@ func TestHeldScanPseudoFence(t *testing.T) {
 			pass + "```a`\n```b`\nclose` row 3 HELD `z`\n", true},
 		{"valid backtick fence leaves masking on",
 			pass + "```sh\nrow HELD\n```\nchecker printed `no record is held`\n", false},
+		{"fence indented four spaces inside a paragraph",
+			pass + "text\n    ~~~\n`open\n    ~~~\nclose` row 3 HELD `z`\n", true},
 		{"backtick in a tilde fence's info string is valid",
 			pass + "~~~a`\nrow HELD\n~~~\nchecker printed `no record is held`\n", false},
 	})
@@ -370,5 +372,78 @@ func TestHeldScanBlankLine(t *testing.T) {
 			pass + "printed `partial\n \t \nchecker printed `no record is held` ok\n", false},
 		{"CRLF blank line is blank",
 			pass + "printed `partial\r\n\r\nchecker printed `no record is held` ok\r\n", false},
+	})
+}
+
+// TestHeldScanExtendedLink: GitHub recognises a bare URL (a scheme then "://")
+// or a "www." domain as an extended autolink when it reaches the trigger, so a
+// backtick later in the same whitespace-delimited run is a literal part of the
+// link and cannot open a span. Such a backtick masks nothing from there and
+// marks the paragraph open. A backtick that opens a span BEFORE the trigger
+// still wins, as in GFM.
+func TestHeldScanExtendedLink(t *testing.T) {
+	const pass = "**VERIFY: PASS**\n\n"
+	runHeldScanCases(t, []heldScanCase{
+		{"backtick in a bare https URL",
+			pass + "See https://x.example/a`b row 3 HELD `z`\n", true},
+		{"backtick in a bare http URL",
+			pass + "See http://x.example/`b row 3 HELD `z`\n", true},
+		{"backtick in a bare ftp URL",
+			pass + "See ftp://x.example/`b row 3 HELD `z`\n", true},
+		{"backtick in a www domain",
+			pass + "See www.x.example/a`b row 3 HELD `z`\n", true},
+		{"backtick in a www domain after a paren",
+			pass + "See (www.x.example/`b) row 3 HELD `z`\n", true},
+		{"upper-case scheme",
+			pass + "See HTTPS://X.example/`b row 3 HELD `z`\n", true},
+		{"URL runs through a pipe in prose",
+			pass + "See https://x.example/a|`b row 3 HELD `z`\n", true},
+		{"backtick in a bare URL in a table cell",
+			heldEv("see https://x.example/a`b row 3 HELD `z`"), true},
+		{"backtick in a mailto URI (fail-closed choice)",
+			pass + "See mailto:ops@x.example`b row 3 HELD `z`\n", true},
+		{"URL then a span after a space still masks",
+			heldEv("ok — see https://x.example/runs/7 then `no record is held` printed"), false},
+		{"URL inside a span still masks",
+			heldEv("ok — `curl https://x.example/runs` printed `no record is held`"), false},
+	})
+}
+
+// TestHeldScanBareCR: a carriage return not followed by a line feed is a line
+// ending in CommonMark, so a line holding one before its last byte is several
+// lines to a renderer: a blank line or a heading inside it ends the paragraph.
+// Such a line masks nothing and leaves the paragraph open. A trailing "\r"
+// (a CRLF ending) is not a bare CR.
+func TestHeldScanBareCR(t *testing.T) {
+	const pass = "**VERIFY: PASS**\n\n"
+	runHeldScanCases(t, []heldScanCase{
+		{"bare-CR blank line",
+			pass + "ok `a\r\rrow 3 HELD — no runner `\n", true},
+		{"bare-CR space-only blank line",
+			pass + "ok `a\r \rrow 3 HELD — no runner `\n", true},
+		{"bare-CR line opens a heading",
+			pass + "ok `a\r# row 3 HELD — no runner `\n", true},
+		{"bare-CR paragraph left open",
+			pass + "p `a\r\rq` r\nclose` row 3 HELD `z`\n", true},
+		{"CRLF line ending is not a bare CR",
+			pass + "checker printed `no record is held` ok\r\nsecond line\r\n", false},
+	})
+}
+
+// TestHeldScanLinkDefTitle: a link reference definition's title is not
+// rendered as text, so a backtick inside it pairs with nothing. A line that
+// may be a definition masks nothing and leaves the paragraph open (a title can
+// wrap onto the next line).
+func TestHeldScanLinkDefTitle(t *testing.T) {
+	const pass = "**VERIFY: PASS**\n\n"
+	runHeldScanCases(t, []heldScanCase{
+		{"backticks in a definition title",
+			pass + "[x]: /u \"a ` row 3 HELD ` b\"\n", true},
+		{"definition title wraps onto the next line",
+			pass + "[x]: /u \"a `\nrow 3 HELD ` b\"\n", true},
+		{"definition-like line that is paragraph text",
+			pass + "[x]: /u \"a ` b\" junk\nclose` row 3 HELD `z`\n", true},
+		{"definition then a blank line still masks",
+			pass + "[r]: https://x.example/runs/7\n\nok — `no record is held` printed\n", false},
 	})
 }

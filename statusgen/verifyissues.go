@@ -539,11 +539,12 @@ var heldBareTokenRe = regexp.MustCompile(`(?i)^[^\pL\pN]*(?:held|could-not-check
 //     CommonMark looks for it. Nothing from that run to the end of the line is
 //     masked, and the paragraph is marked open: every later line masks
 //     nothing, because a backtick on it might CLOSE a span rather than open
-//     one. Only a blank line ends the paragraph and clears the mark, and a
-//     line is blank only when it holds spaces and tabs alone, as CommonMark
-//     defines it (a no-break space or form feed continues the paragraph).
-//     Fences and blockquotes do not clear it (a stricter reading, never a
-//     looser one). A line the caller toggles a fence on that CommonMark does
+//     one. Only a blank line the caller sees (between "\n" endings) ends the
+//     paragraph and clears the mark, and a line is blank only when it holds
+//     spaces and tabs alone, as CommonMark defines it (a no-break space or
+//     form feed continues the paragraph). Fences, blockquotes and a blank
+//     line inside a bare-CR line do not clear it (a stricter reading, never
+//     a looser one). A line the caller toggles a fence on that CommonMark does
 //     not read as a fence (fenceLine) is paragraph text the masker never
 //     sees, so it marks the paragraph open.
 //   - An inline link's destination and title, and a full reference's label,
@@ -567,6 +568,20 @@ var heldBareTokenRe = regexp.MustCompile(`(?i)^[^\pL\pN]*(?:held|could-not-check
 //     a processing instruction, a declaration, CDATA) masks nothing until the
 //     line that holds that block's end marker. A "<" inside a masked span is
 //     code and does not count.
+//   - GitHub recognises a bare URL ("://"), a "www." domain, and a "mailto:"
+//     or "xmpp:" URI as an extended autolink when it reaches the trigger, and
+//     the link runs to the next whitespace, so a backtick later in that run is
+//     literal (extendedLinkBefore). Such a backtick is uncertain, the same as
+//     an unpaired run: nothing is masked from it, and the paragraph is marked
+//     open. A span that opens before the trigger still wins, as in GFM.
+//   - A carriage return not followed by a line feed is a CommonMark line
+//     ending, but the caller splits on "\n" alone, so a line holding one
+//     before its last byte is several lines to a renderer, and a blank line or
+//     a heading among them ends the paragraph (hasBareCR). Such a line masks
+//     nothing and marks the paragraph open.
+//   - A line that may be a link reference definition ("[" first, then "]:")
+//     masks nothing and marks the paragraph open: its title is not rendered as
+//     text, and can run onto the next line (linkDefLine).
 //   - A span whose content is only the marker word (heldBareTokenRe) is kept.
 type inlineCodeScan struct {
 	paraOpen bool   // a backtick or "<" earlier in this paragraph may still be open
@@ -622,6 +637,9 @@ func (s *inlineCodeScan) mask(line string) string {
 			s.noteAngles(line, from)
 		}
 		return line
+	}
+	if hasBareCR(line) || linkDefLine(line) {
+		s.paraOpen = true
 	}
 	if !strings.ContainsAny(line, "`<]") {
 		return line
@@ -712,6 +730,45 @@ func (s *inlineCodeScan) noteAngles(line string, from int) {
 
 func isASCIILetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
 
+// hasBareCR reports whether line holds a carriage return anywhere but its last
+// byte. CommonMark reads a CR not followed by a line feed as a line ending, so
+// such a line is several lines to a renderer, and a blank line or a heading
+// among them ends the paragraph. The caller splits on "\n" alone; a trailing
+// "\r" is a CRLF ending.
+func hasBareCR(line string) bool {
+	return strings.IndexByte(strings.TrimSuffix(line, "\r"), '\r') >= 0
+}
+
+// linkDefLine reports whether line may be a link reference definition: a "["
+// after leading spaces and tabs, and a "]:" later on. Its title is not
+// rendered as text, so a backtick inside it pairs with nothing, and the title
+// can run onto the next line.
+func linkDefLine(line string) bool {
+	t := strings.TrimLeft(line, " \t")
+	return strings.HasPrefix(t, "[") && strings.Contains(t, "]:")
+}
+
+// extendedLinkBefore reports whether the backtick at line[at] may sit inside
+// a GFM extended autolink: the whitespace-delimited run that leads up to it
+// holds "://" (a bare URL), "www." (a www domain), or "mailto:" or "xmpp:",
+// ignoring case. GitHub recognises such a link when it reaches the trigger,
+// before the backtick, and the link runs to the next whitespace, so the
+// backtick is literal. The run is not cut at a "|" or a "<": a URL in prose
+// runs through both, and reading further back is the stricter choice.
+func extendedLinkBefore(line string, at int) bool {
+	start := at
+	for start > 0 && strings.IndexByte(" \t\v\f\r\n", line[start-1]) < 0 {
+		start--
+	}
+	run := strings.ToLower(line[start:at])
+	for _, trigger := range []string{"://", "www.", "mailto:", "xmpp:"} {
+		if strings.Contains(run, trigger) {
+			return true
+		}
+	}
+	return false
+}
+
 // angleMayOpen reports whether line[i] is a "<" that could start an autolink
 // (a scheme letter, or an email local-part character) or a raw HTML tag (a
 // letter, "/", "!" or "?"). A "<" at line end or before a space, "<", ">" or
@@ -750,9 +807,10 @@ func linkTailEnd(line string, open, hi int) int {
 // maskCodeSpans masks, in b, the inline code spans of line[lo:hi] — one table
 // cell, or the whole of a pipe-free line — under inlineCodeScan's rules. It
 // returns -1 when every span in the cell was certain, or the offset of the
-// first uncertainty (an unpaired backtick run, a "<" that may open an
-// autolink or raw HTML, or a "](" or "][" whose tail linkTailEnd cannot
-// settle); spans before that offset are masked, nothing after.
+// first uncertainty (an unpaired backtick run, a backtick that may sit inside
+// an extended autolink, a "<" that may open an autolink or raw HTML, or a
+// "](" or "][" whose tail linkTailEnd cannot settle); spans before that
+// offset are masked, nothing after.
 func maskCodeSpans(b []byte, line string, lo, hi int) int {
 	tickRun := func(at int) int {
 		n := 0
@@ -784,6 +842,9 @@ func maskCodeSpans(b []byte, line string, lo, hi int) int {
 			i++
 			continue
 		case '`':
+			if extendedLinkBefore(line, i) {
+				return i // may be literal inside a link, or open a span if not
+			}
 		default:
 			i++
 			continue
