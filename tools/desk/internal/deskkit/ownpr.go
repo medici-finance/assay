@@ -3,7 +3,10 @@ package deskkit
 // ownpr.go — the ONE own-PR checkout guard the worker-side write verbs share (#1901).
 //
 // A worker may write to a pull request only from a checkout of THAT pull request: deskreply
-// replies on it, and `deskpr edit --pr N` corrects its body. The guard used to be a bare
+// replies on it, and `deskpr edit --pr N` corrects its body. (`deskpr edit --pr N` has one
+// further, narrower admission for any other checkout — a same-repository PR whose current
+// body already carries a link trailer, which the edit cannot change; see cmd/deskpr/edit.go
+// requireLinkedSameRepoPR, #2085.) The guard used to be a bare
 // branch-NAME compare (`the worktree's branch == the PR's head branch`), which refused a
 // worktree sitting exactly on the PR's head commit under a differently-named branch. Git
 // allows one worktree per branch, so a rework worker whose PR head branch is still checked

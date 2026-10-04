@@ -49,8 +49,10 @@ var publishIdentitySites = map[string]string{
 	// deskpr's callers.
 	`cmd/deskpr/deskpr.go|cmdCreate|call|""`: "create opens a NEW change: no PR head exists to anchor on, and no forge " +
 		"branch-head read exists to confirm a local ref — the whole range is judged",
-	"cmd/deskpr/deskpr.go|cmdUpdate|call|remoteTrackingTip(facts.branch)": "offline/--check stage: a local estimate, " +
-		"used only if it resolves and is an ancestor of HEAD, and re-judged by the live stage before any push",
+	"cmd/deskpr/deskpr.go|cmdUpdate|call|offlineTip": "offline/--check stage: remoteTrackingTip(facts.branch), a local " +
+		"estimate used only if it resolves and is an ancestor of HEAD, re-judged by the live stage before any push; " +
+		"under `update --pr N` the PR's head ref is unknown offline, so offlineTip is \"\" and the whole range is judged " +
+		"(stricter, never narrower)",
 	"cmd/deskpr/deskpr.go|cmdUpdate|call|full.HeadSHA": "live stage: the forge's own PR head, judged immediately before " +
 		"the plain (never forced) push; unknown or non-ancestor widens to the whole range",
 
