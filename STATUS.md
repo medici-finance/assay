@@ -42,7 +42,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | [brief-quality](docs/streams/brief-quality/README.md) | P1 | 0/9 | 2026-10-04 |
 | [continuing-operations](docs/streams/continuing-operations/README.md) | P2 | 0/0 | 2026-10-04 |
 | [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-10-04 |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | 4/7 | 2026-10-04 |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | 4/11 | 2026-10-04 |
 | [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-10-04 |
 
 ## Next up
@@ -74,7 +74,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 565346c 2026-10-04T03:24:47Z_
+_last regen: a2be943 2026-10-04T06:22:09Z_
 
 **Progress:** 5/13 brief items done.
 
@@ -97,7 +97,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 565346c 2026-10-04T03:24:47Z_
+_last regen: a2be943 2026-10-04T06:22:09Z_
 
 **Progress:** 13/34 brief items done.
 
@@ -130,22 +130,22 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (58 desk-actionable of 92 total — 89 at implemented, 3 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 92 total — 89 at implemented, 3 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (58)
+### Desk-actionable (57)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| graph-execution | 02 [exec:strong] | implemented | 10000 | 16 | — | — | — |
-| graph-execution | 20 [exec:strong] | implemented | 8000 | 12 | — | — | — |
-| graph-execution | 03 [exec:strong] | implemented | 7000 | 10 | — | — | — |
+| graph-execution | 02 [exec:strong] | implemented | 11500 | 19 | — | — | — |
+| graph-execution | 20 [exec:strong] | implemented | 9500 | 15 | — | — | — |
+| graph-execution | 03 [exec:strong] | implemented | 8500 | 13 | — | — | — |
+| graph-execution | 13 [exec:strong] | implemented | 8000 | 12 | — | — | — |
 | build-less-brittle | 02 [exec:strong] | implemented | 6500 | 7 | — | — | — |
-| graph-execution | 13 [exec:strong] | implemented | 6500 | 9 | — | — | — |
 | build-less-brittle | 04 [exec:strong] | implemented | 5500 | 5 | — | — | — |
 | cellctl-windows | 00 [exec:strong] | implemented | 5500 | 7 | — | — | — |
 | windows-port | 00 | implemented | 5500 | 9 | — | — | — |
@@ -175,7 +175,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 19 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| desktools-v2 | 03 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 13 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 17 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -200,7 +199,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | quality | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting human gate (14)
+### Awaiting human gate (15)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -215,6 +214,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-neutral | 11 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | windows-port | 08 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| desktools-v2 | 03 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desktools-v2 | 10 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 | windows-port | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -521,11 +521,15 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 17 Skill frontmatter conformance lint — Codex / agentskills hard limits fail CI — implemented (wave 0)
 - 18 Skill description routing check — TF-IDF collision NOTICE plus a rank-1 routing fixture with a ratchet — todo (wave 1)
 
-### iso-9001 (3 open)
+### iso-9001 (7 open)
 
 - 03 A finding closes on a fired control — the corrective-action effectiveness record — todo (wave 1)
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
 - 07 Release by merge — the human merge is the cut and the authorizer — blocked (wave 2)
+- 08 Versioned source obligations and project applicability — todo (wave 0)
+- 09 Prepare project assurance reviews from canonical evidence — todo (wave 8)
+- 10 Reassess affected project reviews after source changes — todo (wave 9)
+- 11 Qualify project assurance preparation on an offline corpus — todo (wave 10)
 
 ### measured-status (6 open)
 
@@ -732,4 +736,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**26** streams (**19** active, **0** paused, **7** parked) · **104/323** briefs done · completed initiatives: see `docs/archive/`
+**26** streams (**19** active, **0** paused, **7** parked) · **104/327** briefs done · completed initiatives: see `docs/archive/`

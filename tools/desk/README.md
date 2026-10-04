@@ -71,6 +71,13 @@ Actions, not by you. The safety contract behind the last column — `Guard`, the
 line, the two meters, the configured repo scope — is in
 [Guard, the two meters, and repo scope](#guard-the-two-meters-and-repo-scope).
 
+`deskroster repos --scope roots` reports sorted `<owner>/<repo>\troot=<path>` rows from
+`ConfiguredRoots`: an explicit `DESK_ROOTS` replaces the compiled defaults; unset uses those
+defaults. Malformed, duplicate or disallowed entries refuse the whole inventory (exit 5),
+before printing any rows. This read checks the mapping, not checkout existence or board contents.
+`--scope topology` retains the stated compiled topology. The default `--scope all` retains its
+write, scan and topology inventories; request `roots` explicitly for board-root coverage.
+
 ## Your first hour with desk-tools
 
 Read this once, in order. It is the operator on-ramp; every rule it states is specified
@@ -602,6 +609,14 @@ One computation, `deskkit.RiskPathTriggered(repo, changedFiles)`, consumed by
 answers TRUE on every uncertain input; the ONLY way to get a waiver is a repo in the
 compiled-in allowed set, compiled in as `VisibilityPrivate`, with a complete, readable
 changed-file list matching none of that repo's triggers.
+
+`deskboard actions` exports `riskClassed` on every trusted PR row, including
+NEEDS-REVIEW, RE-REVIEW and BLOCKED, before an approval or green checks. Review
+dispatch can therefore select correctness and security lanes concurrently. Public or
+unknown visibility, the owning brief's gate/risk, unreadable or incomplete changed
+paths, path triggers and the trailer-absent App anomaly only widen classification.
+The action still follows its review/CI precedence; the ready gate independently
+re-reads the change before authorizing a flip.
 
 Adopting this gate for your own repositories (the three modes, the callout JSON/exit
 contract, and the fail-closed guarantees) is documented in
