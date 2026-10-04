@@ -11,6 +11,7 @@ import (
 )
 
 func TestRoleInitRefreshesCredentialBeforeItsFirstFetch(t *testing.T) {
+	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	giveOriginHost(t, work)
