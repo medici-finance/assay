@@ -166,6 +166,10 @@ func TestHeldScanSpanVsTableRow(t *testing.T) {
 			heldEv("ok — `grep held \\| wc -l` printed 0"), false},
 		{"pipe in a prose span is a stated residual: still refuses",
 			"**VERIFY: PASS** — the checker's `grep held | wc -l` printed 0.\n", true},
+		// In prose the first span DOES cross the pipe, so the next backtick
+		// closes it; pairing the cells on their own would mask the HELD.
+		{"prose span across a pipe, then HELD",
+			"**VERIFY: PASS** — ran `x | y` HELD — no runner online `z`.\n", true},
 	})
 }
 
@@ -209,5 +213,61 @@ func TestHeldScanPriorHygieneKept(t *testing.T) {
 			"**VERIFY: PASS**\n\n```\nok\n```\nrow 2 HELD — no runner online\n", true},
 		{"strike markers inside code do not strike",
 			heldEv("`~~` HELD — no runner online `~~`"), true},
+	})
+}
+
+// TestHeldScanSpanAcrossLines: a span may run across the lines of one
+// paragraph (CommonMark joins them before reading code spans), so a backtick
+// on a later line can CLOSE a span rather than open one. A line that may begin
+// inside such a span masks nothing, and neither does any later line of the
+// paragraph; a blank line ends the paragraph and the state with it.
+func TestHeldScanSpanAcrossLines(t *testing.T) {
+	const pass = "**VERIFY: PASS**\n\n"
+	runHeldScanCases(t, []heldScanCase{
+		{"closer of a span opened on the line above",
+			pass + "row 2 printed `partial\noutput` then HELD — no runner online `x`\n", true},
+		{"state carries through the paragraph",
+			pass + "a `b\nc` d `e\nf` HELD — no runner online `g`\n", true},
+		{"table row after an open prose line",
+			pass + "printed `partial\n| 3 | x` HELD — no runner `ok` |\n", true},
+		{"blank line ends the paragraph",
+			pass + "printed `partial\n\nchecker printed `no record is held` ok\n", false},
+	})
+}
+
+// TestHeldScanAngleConstruct: an autolink or raw HTML tag outranks a code span
+// when it starts first, so a backtick inside one is literal. The scan does not
+// parse HTML: it masks nothing from a "<" that could open one, and nothing on
+// any later line (an HTML block can run across blank lines).
+func TestHeldScanAngleConstruct(t *testing.T) {
+	const pass = "**VERIFY: PASS**\n\n"
+	runHeldScanCases(t, []heldScanCase{
+		{"backtick inside an autolink",
+			pass + "see <https://x.example/a`b> then HELD — no runner online `c`\n", true},
+		{"backtick inside a raw HTML tag",
+			pass + "<span title=\"`\">HELD — no runner online</span> `x`\n", true},
+		{"HTML block across a blank line",
+			pass + "<pre>\n\n`checker: row HELD` printed\n</pre>\n", true},
+		{"angle bracket inside a span still masks",
+			heldEv("ok — `checker <tenant>: no record is held` printed"), false},
+		{"a less-than that opens nothing",
+			heldEv("ok — 3 < 5 and `no record is held` printed"), false},
+		{"one-line HTML comment right above a table",
+			"**VERIFY: PASS**\n\n<!-- contract comment -->\n| 2 | `grantcheck` | ok — `no record is held` |\n", false},
+		{"multi-line HTML comment ends at its marker",
+			"**VERIFY: PASS**\n\n<!-- contract\ncomment -->\n\n| 2 | `grantcheck` | ok — `no record is held` |\n", false},
+	})
+}
+
+// TestHeldScanStrikeNeverWidens: a struck span is honoured only where the
+// line reads as struck both with and without its code masked, so masking a
+// "~" inside code never forms a strike the unmasked line did not have.
+func TestHeldScanStrikeNeverWidens(t *testing.T) {
+	const pass = "**VERIFY: PASS**\n\n"
+	runHeldScanCases(t, []heldScanCase{
+		{"tilde in code no longer breaks a strike",
+			pass + "~~ `~` HELD — no runner online ~~\n", true},
+		{"plain strike still strikes",
+			pass + "~~row 2 HELD — no runner~~ `rerun` green\n", false},
 	})
 }

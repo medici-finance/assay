@@ -410,7 +410,8 @@ follow-up with a reference (`deferred to <stream>/<NN>` or `#N`). A bare "deferr
 HELD, is neither. The read is lexical: the words HELD and could-not-check anywhere in unstruck,
 unquoted Evidence prose count, so do not use them for status wording such as a run heading. Fenced
 code, blockquotes and inline code spans are quotation and do not count, except a span holding only
-the word itself (`HELD`), which reads as your own status token. Land
+the word itself (`HELD`), which reads as your own status token; a disposition of yours inside a
+longer span is not read, so keep it out of code formatting. Land
 `implemented → verified` only once every such line is cleared. The tooling refuses the same
 contradiction downstream: the model autoflip, the verify-gate card, and `statusgen --close-verify`
 from `verified` as well as from `implemented`. On the `verified` close the row's own status is the pass

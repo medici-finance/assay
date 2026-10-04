@@ -464,17 +464,30 @@ func heldOccurrenceNegated(clean string, cuts []int, h []int) bool {
 	return false
 }
 
-// stripStruck removes struck-through spans from a line. The spans are located
-// on masked — the line with its inline code masked (maskInlineCode), so a "~~"
-// inside a code span never strikes anything, as in CommonMark, where code spans
-// bind tighter than strikethrough — and the same spans are cut from both
-// masked and line (masking preserves length, so the offsets agree). clean is
-// masked with the spans removed: the text the held scan reads. view is line
-// with the same spans removed and its inline code intact: the text routing
-// and the refusal message read. cuts are the offsets in both where a span was
-// removed.
+// stripStruck removes struck-through spans from a line. A span is cut only
+// where strikethroughRe finds it, at the same offsets, on BOTH line and masked
+// (the line with its inline code masked, inlineCodeScan): a "~~" inside a code
+// span never strikes anything, as in CommonMark, where code spans bind tighter
+// than strikethrough, and masking a "~" inside code never forms a strike the
+// unmasked line did not have. Cutting only what both readings agree on strikes
+// less, never more, than either alone. The cuts apply to both strings
+// (masking preserves length, so the offsets agree). clean is masked with the
+// spans removed: the text the held scan reads. view is line with the same
+// spans removed and its inline code intact: the text routing and the refusal
+// message read. cuts are the offsets in both where a span was removed.
 func stripStruck(line, masked string) (clean, view string, cuts []int) {
-	locs := strikethroughRe.FindAllStringIndex(masked, -1)
+	var locs [][]int
+	if raw := strikethroughRe.FindAllStringIndex(line, -1); raw != nil {
+		onLine := make(map[[2]int]bool, len(raw))
+		for _, l := range raw {
+			onLine[[2]int{l[0], l[1]}] = true
+		}
+		for _, l := range strikethroughRe.FindAllStringIndex(masked, -1) {
+			if onLine[[2]int{l[0], l[1]}] {
+				locs = append(locs, l)
+			}
+		}
+	}
 	if locs == nil {
 		return masked, line, nil
 	}
@@ -502,52 +515,172 @@ const inlineCodeMask = '\x00'
 // heldBareTokenRe is a code span holding nothing but the marker word (and
 // punctuation or emphasis around it): `HELD`, `could-not-check`, `**HELD:**`.
 // That is the verifier's own status token set in code formatting, not quoted
-// tool output, so maskInlineCode keeps it and the scan still reads it.
+// tool output, so inlineCodeScan keeps it and the scan still reads it.
 var heldBareTokenRe = regexp.MustCompile(`(?i)^[^\pL\pN]*(?:held|could-not-check)[^\pL\pN]*$`)
 
-// maskInlineCode returns line with each inline code span overwritten byte for
-// byte by inlineCodeMask, so the held scan does not read a marker QUOTED in
+// inlineCodeScan masks inline code spans out of Evidence lines, one line at a
+// time in document order, so the held scan does not read a marker QUOTED in
 // one (#2100: quoted tool output is not a disposition, the same reason fenced
-// code is stripped). The returned string has the same length as line.
+// code is stripped). mask returns a string the same length as its line.
 //
-// Spans follow CommonMark, read FAIL-CLOSED — every departure masks less, never
-// more:
+// Spans follow CommonMark, read FAIL-CLOSED: a span is masked only where it is
+// certain to render as inline code, and every uncertainty masks nothing.
 //   - A span opens on a backtick run and closes on the next run of EXACTLY the
-//     same length; runs of other lengths in between are content. A run with no
-//     equal-length closer is literal text and scanning resumes after it.
+//     same length; runs of other lengths in between are content.
 //   - A backslash-escaped backtick outside a span cannot open one; inside a
 //     span a backslash is literal.
-//   - A span never crosses a line: the caller passes one physical line, so an
-//     unterminated backtick strips nothing past it (CommonMark would join
-//     lines; reading each on its own masks less).
 //   - A span never crosses an unescaped "|". GFM splits a table row into cells
 //     before it reads inline code, so a span cannot swallow a neighbouring
 //     cell's disposition ("| `cmd | HELD | `ok` |"). The split is applied on
 //     every line, table or not, which is stricter than CommonMark in prose: a
 //     quoted pipeline (`grep held | wc -l`) outside a table is still read.
+//   - A run with no equal-length closer in its cell is uncertain: in prose it
+//     may close in a later cell or on a later line of the paragraph, where
+//     CommonMark looks for it. Nothing from that run to the end of the line is
+//     masked, and the paragraph is marked open: every later line masks
+//     nothing, because a backtick on it might CLOSE a span rather than open
+//     one. Only a blank line ends the paragraph and clears the mark. Fences
+//     and blockquotes do not clear it (a stricter reading, never a looser one).
+//   - An autolink or raw HTML outranks a code span that starts after it, so a
+//     backtick inside one is literal, and an HTML block is not read as inline
+//     text at all. The scan does not parse HTML: from a "<" that could open
+//     either, nothing is masked to the end of the line. The paragraph is then
+//     marked open as above (inline HTML can run onto the next line, and an
+//     HTML block runs to the next blank line), except after an HTML comment
+//     closed on the same line. A "<" that opens one of the HTML blocks that
+//     run ACROSS blank lines (<pre>, <script>, <style>, <textarea>, a comment,
+//     a processing instruction, a declaration, CDATA) masks nothing until the
+//     line that holds that block's end marker. A "<" inside a masked span is
+//     code and does not count.
 //   - A span whose content is only the marker word (heldBareTokenRe) is kept.
-func maskInlineCode(line string) string {
-	if !strings.Contains(line, "`") {
+type inlineCodeScan struct {
+	paraOpen bool   // a backtick or "<" earlier in this paragraph may still be open
+	htmlEnd  string // inside an HTML block that ends at the line holding this marker
+}
+
+// blank records a blank line: the paragraph ends, and a backtick before it
+// can no longer pair with one after it. An HTML block of the kinds tracked in
+// htmlEnd does not end at a blank line.
+func (s *inlineCodeScan) blank() { s.paraOpen = false }
+
+// mask returns line with each certain inline code span overwritten byte for
+// byte by inlineCodeMask, and records what the line leaves uncertain.
+func (s *inlineCodeScan) mask(line string) string {
+	if s.htmlEnd != "" {
+		if at := strings.Index(strings.ToLower(line), s.htmlEnd); at >= 0 {
+			from := at + len(s.htmlEnd)
+			s.htmlEnd = ""
+			s.paraOpen = true
+			s.noteAngles(line, from)
+		}
+		return line
+	}
+	if !strings.ContainsAny(line, "`<") {
+		return line
+	}
+	if s.paraOpen {
+		s.noteAngles(line, 0)
 		return line
 	}
 	b := []byte(line)
 	start := 0
-	for i := 0; i < len(line); i++ {
-		switch line[i] {
-		case '\\':
-			i++ // an escaped character never delimits a cell
-		case '|':
-			maskCodeSpans(b, line, start, i)
-			start = i + 1
+	for i := 0; i <= len(line); i++ {
+		if i < len(line) {
+			if line[i] == '\\' {
+				i++ // an escaped character never delimits a cell
+				continue
+			}
+			if line[i] != '|' {
+				continue
+			}
 		}
+		if stop := maskCodeSpans(b, line, start, i); stop >= 0 {
+			if line[stop] == '`' {
+				s.paraOpen = true
+			}
+			s.noteAngles(line, stop)
+			return string(b)
+		}
+		start = i + 1
 	}
-	maskCodeSpans(b, line, start, len(line))
 	return string(b)
 }
 
+// htmlBlockEnds maps the opening of each HTML block kind that runs across
+// blank lines (CommonMark HTML block types 1, 2, 3 and 5; type 4, a
+// declaration, is handled in noteAngles) to its end marker, lower case. A
+// type-1 opener must be followed by a space, a tab, ">" or the line end.
+var htmlBlockEnds = []struct{ open, end string }{
+	{"<pre", "</pre>"}, {"<script", "</script>"}, {"<style", "</style>"},
+	{"<textarea", "</textarea>"}, {"<!--", "-->"}, {"<?", "?>"},
+	{"<![cdata[", "]]>"},
+}
+
+// noteAngles records every "<" in line[from:] that could open an autolink,
+// raw HTML or an HTML block: each marks the paragraph open, except an HTML
+// comment closed later on the same line; one that opens an HTML block running
+// across blank lines enters that block unless its end marker follows on the
+// same line.
+func (s *inlineCodeScan) noteAngles(line string, from int) {
+	lower := strings.ToLower(line)
+	for i := from; i < len(line); i++ {
+		if !angleMayOpen(line, i) {
+			continue
+		}
+		end := ""
+		for _, k := range htmlBlockEnds {
+			if !strings.HasPrefix(lower[i:], k.open) {
+				continue
+			}
+			if k.end[1] == '/' { // type 1: the tag name must end here
+				if n := i + len(k.open); n < len(line) && strings.IndexByte(" \t>", line[n]) < 0 {
+					continue
+				}
+			}
+			end = k.end
+			break
+		}
+		if end == "" && i+2 < len(line) && line[i+1] == '!' && isASCIILetter(line[i+2]) {
+			end = ">" // a declaration, type 4
+		}
+		if end == "" {
+			s.paraOpen = true
+			continue
+		}
+		at := strings.Index(lower[i+2:], end)
+		if at < 0 {
+			s.htmlEnd = end
+			s.paraOpen = true
+			return
+		}
+		if end != "-->" {
+			s.paraOpen = true
+		}
+		i += 2 + at + len(end) - 1
+	}
+}
+
+func isASCIILetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
+
+// angleMayOpen reports whether line[i] is a "<" that could start an autolink
+// (a scheme letter, or an email local-part character) or a raw HTML tag (a
+// letter, "/", "!" or "?"). A "<" at line end or before a space, "<", ">" or
+// other punctuation outside those sets can open neither.
+func angleMayOpen(line string, i int) bool {
+	if line[i] != '<' || i+1 >= len(line) {
+		return false
+	}
+	c := line[i+1]
+	return isASCIILetter(c) || c >= '0' && c <= '9' ||
+		strings.IndexByte("/!?.#$%&'*+=^_`{|}~-", c) >= 0
+}
+
 // maskCodeSpans masks, in b, the inline code spans of line[lo:hi] — one table
-// cell, or the whole of a pipe-free line — under maskInlineCode's rules.
-func maskCodeSpans(b []byte, line string, lo, hi int) {
+// cell, or the whole of a pipe-free line — under inlineCodeScan's rules. It
+// returns -1 when every span in the cell was certain, or the offset of the
+// first uncertainty (an unpaired backtick run, or a "<" that may open an
+// autolink or raw HTML); spans before that offset are masked, nothing after.
+func maskCodeSpans(b []byte, line string, lo, hi int) int {
 	tickRun := func(at int) int {
 		n := 0
 		for at+n < hi && line[at+n] == '`' {
@@ -559,6 +692,12 @@ func maskCodeSpans(b []byte, line string, lo, hi int) {
 		switch line[i] {
 		case '\\':
 			i += 2 // an escaped backtick is literal and cannot open a span
+			continue
+		case '<':
+			if angleMayOpen(line, i) {
+				return i
+			}
+			i++
 			continue
 		case '`':
 		default:
@@ -581,7 +720,7 @@ func maskCodeSpans(b []byte, line string, lo, hi int) {
 			j += m
 		}
 		if closeAt < 0 {
-			continue // no equal-length closer: the run is literal text
+			return open // no closer in this cell: it may close further on
 		}
 		if !heldBareTokenRe.MatchString(line[i:closeAt]) {
 			for k := open; k < closeAt+n; k++ {
@@ -590,6 +729,7 @@ func maskCodeSpans(b []byte, line string, lo, hi int) {
 		}
 		i = closeAt + n
 	}
+	return -1
 }
 
 // verifyPassHeldContradiction reports whether evidence both carries a strict
@@ -621,7 +761,7 @@ func maskCodeSpans(b []byte, line string, lo, hi int) {
 // Fenced code, blockquotes and struck-through spans are stripped first — the
 // same hygiene lastVerifyVerdict applies — so a marker QUOTED inside one of
 // those is not read as a live disposition. Inline code spans are excluded too
-// (#2100, maskInlineCode): a span is quoted tool output, not a verifier's
+// (#2100, inlineCodeScan): a span is quoted tool output, not a verifier's
 // disposition. That exclusion is this scan's alone — lastVerifyVerdict and
 // verdictFailAfterStrictPass still read verdict tokens inside inline code.
 func verifyPassHeldContradiction(evidence string) (bool, string) {
@@ -643,21 +783,33 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 // whether) the marker was written.
 func unroutedHeldLine(evidence string) (bool, string) {
 	inFence := false
+	var codeScan inlineCodeScan
 	for _, line := range strings.Split(evidence, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
 			inFence = !inFence
 			continue
 		}
-		if inFence || strings.HasPrefix(trimmed, ">") {
+		if inFence {
+			continue
+		}
+		if trimmed == "" {
+			codeScan.blank()
 			continue
 		}
 		// Inline code is masked (same length, so offsets agree) before the
 		// struck spans are cut: the marker is matched and the negation read
 		// on clean, where a quoted span is gone; routing and the refusal
 		// message read view, which keeps the code text — a reference written
-		// in code ("deferred to `stream/05`") still routes, as before.
-		clean, view, cuts := stripStruck(line, maskInlineCode(line))
+		// in code ("deferred to `stream/05`") still routes, as before. A
+		// blockquote line is not scanned but still passes through the
+		// masker, so a backtick or "<" in it leaves the scan as uncertain as
+		// it is in the rendered text.
+		masked := codeScan.mask(line)
+		if strings.HasPrefix(trimmed, ">") {
+			continue
+		}
+		clean, view, cuts := stripStruck(line, masked)
 		heldLocs := heldOrCouldNotCheckRe.FindAllStringIndex(clean, -1)
 		if heldLocs == nil {
 			continue
