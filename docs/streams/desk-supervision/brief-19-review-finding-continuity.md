@@ -225,6 +225,50 @@ RISK-VALUE: DERIVED — RoundCap = 3 @ tools/desk/internal/deskkit/reviewfinding
 
 VERIFY: PASS
 
+### Non-implementer verifier re-run — VERIFY: PASS — 2026-10-04 claude-opus-5-5-verifier
+
+Non-implementer re-run on merged main 70deba75a5775d50574695d2fb24efeb757c552f, 2026-10-04T09:19Z, assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian). gate: model; all four risk answers no; irreversible no. README row 19 reads `implemented`. Expectations were derived from the brief's Context, Interface contract, Task and Verify sections before the earlier Evidence was read.
+
+Why this re-run: the 2026-09-27 receipt (blocked at 874d56de3 on #1800) went stale because five declared inputs moved: this brief, the pr-review-desk skill, the tools/desk README, the review and worker prompt references, and the tool version (v1.0.27 to v1.0.31). None of those changes touches the review-finding-continuity behaviour or text this brief verifies. The code under test is byte-identical since 874d56de3: `git diff 874d56de3 70deba75a` is empty for tools/desk/cmd/reviewloop/findingcontinuity.go, findingcontinuity_test.go and tools/desk/internal/deskkit/reviewfinding.go (and its test). The brief diff is Evidence-only (one hunk, after the Verify table). In review-prompt.md the only finding-related change renumbers a cross-reference from clause 13 to clause 14, which is correct because a new clause 13 was inserted; clause 14 ("Persist findings so the round survives your replacement") still carries the review-finding/v1 contract. The skill's only cap-related edit is a rewording of an unrelated intake sentence, and "Default cap N = 3" is unchanged. worker-prompt.md and README.md have no finding-related changed lines. The reviewer-role ValidateReviewFindingBlock gate (deskpost review.go:149) and the worker-role gate (deskreply.go:194) are both still present.
+
+Hand run: darwin/arm64, go1.27.1, offline (KUBECONFIG=/dev/null), worktree detached at the sha above. Each row was run exactly as authored with `-timeout 300s` added.
+
+| # | Command | Expect | Observed (exit + key output line) | Date / runner |
+|---|---------|--------|-----------------------------------|---------------|
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingContinuityAcrossHeads$ -v -count=1` | exit 0; named PASS; A keeps ID and evidence; follow-up targets fix and changed surface; no stale approval | exit 0; `--- PASS: TestReviewFindingContinuityAcrossHeads (0.00s)`; `ok github.com/medici-finance/assay/tools/desk/cmd/reviewloop`. The test asserts A keeps class claimA and evidence ev-A1 from h1 to h2, A is not resolved at h2, B is present, and both A and B are in OpenBlocking | 2026-10-04 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingCannotSelfResolve$ -v -count=1` | exit 0; named PASS; worker self-resolution, wrong-head evidence, malformed legacy prose cannot clear a blocker | exit 0; `--- PASS: TestReviewFindingCannotSelfResolve (0.00s)` plus 3 subtest PASS lines: worker_cannot_self-resolve, wrong-head_evidence_cannot_resolve, legacy_prose_cannot_resolve | 2026-10-04 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingCapSurvivesRestart$ -v -count=1` | exit 0; named PASS; 3 rounds survive restart; one arbiter packet, no refile; unrelated class separate; sibling keeps class | exit 0; `--- PASS: TestReviewFindingCapSurvivesRestart (0.00s)`. The test asserts classC rounds equal RoundCap and the class is held, exactly 1 packet, the same result on re-derive, no refile on a duplicate sweep, C-sibling awaiting-arbitration, classD at 0 rounds and not held, and 0 rounds from reviewer polls | 2026-10-04 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingSharedCIBlocker$ -v -count=1` | exit 0; named PASS; one shared repair, no invented content defects; ready-flip still needs checks | exit 0; `--- PASS: TestReviewFindingSharedCIBlocker (0.00s)`. The test asserts the shared-CI finding is absent from ContentDefects on both PRs, PR one's own defect is kept, there is 1 distinct shared repair, and the shared blocker stays in OpenBlocking on both PRs | 2026-10-04 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+
+Hand result: 4 of 4 rows pass, each with its named PASS line.
+
+Execution witness (`statusgen verifyrun --brief <this brief> --timeout 300s`). On the darwin host (statusgen v1.0.31), all 4 rows came out could-not-run (no `unshare --net`; #1800), exit 2. That table is NOT the one carried here. The table below ran on Linux in the locally cached image golang:1.25-bookworm, pinned by digest sha256:3b4a11519ad929d1e1d261a12cff056f0c85b735253d7d861346b9c6f8b36437 (no pull; `--pull never`). The container ran with `--network none`, GOPROXY=off, GOTOOLCHAIN=local (go1.25.14 linux/arm64), and the host module cache mounted read-only. statusgen was built in the container from a clone pinned to 70deba75a, so its version string reads "dev". The clone's git identity was set to the verifier App, and the roster file was mounted read-only. Disclosure: the first container attempt under Docker's default seccomp profile was refused (`unshare: unshare failed: Operation not permitted`; all 4 rows could-not-run). The run below used `--security-opt seccomp=unconfined`, still with `--network none`. Inside the container `unshare --net --map-root-user` succeeded, and the only interface was `lo`.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingContinuityAcrossHeads$ -v -count=1` | pass exit=0 | sha256:1a1378e8ea56 | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingCannotSelfResolve$ -v -count=1` | pass exit=0 | sha256:fd9e790952e6 | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingCapSurvivesRestart$ -v -count=1` | pass exit=0 | sha256:3888f11e47aa | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/reviewloop/ -run ^TestReviewFindingSharedCIBlocker$ -v -count=1` | pass exit=0 | sha256:1891a8bb0020 | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+
+`statusgen verifyrun --check` on the Linux clone with the table above appended: exit 0; "row 1..4: pass — witness matches the row and passed"; summary line: 4 pass, 0 fail, 0 could-not-run/missing (of 4 Verify rows). On the darwin worktree, where the darwin could-not-run table is the newest, `--check` exits 2 with 0 pass, 0 fail, 4 could-not-run/missing (of 4 Verify rows). Land the Linux table above, not the darwin one.
+
+Risk-bearing value enumeration (risk metadata is present and all "no"; done anyway because the change encodes a threshold the canonical skill pins). The implementing code is unchanged since the last run, so these are the same literals, re-read at this sha:
+
+- RoundCap = 3 @ tools/desk/internal/deskkit/reviewfinding.go:340. It decides when a finding class is held and goes to the human lane. A wrong value escalates one round early or late. An edit plus a redeploy undoes it.
+- FindingBlockSchema = "review-finding/v1" @ tools/desk/internal/deskkit/reviewfinding.go:40, plus the block-opener marker at line 47. These are wire-format markers: a wrong value stops older records parsing. An edit plus a migration undoes it.
+- The role strings the write gate keys on (reviewer / worker). A wrong value refuses or mis-gates a role at write time. An edit plus a redeploy undoes it.
+
+Nothing here is irreversible. RoundCap ranks first.
+
+RISK-VALUE: DERIVED — RoundCap = 3 @ tools/desk/internal/deskkit/reviewfinding.go:340 — it equals the pre-existing canonical cap, "Default cap N = 3 full verdict→fix→re-review rounds on the SAME finding class", in the pr-review-desk skill (line 504 at this sha). That text predates the brief. The brief's facts and Task 5 forbid a second cap or a changed threshold, and this sha changes neither the constant nor the skill text.
+
+Notes:
+- Blocker #1800 (darwin host has no network-off sandbox) is still OPEN and still true of this host. It no longer holds this brief, because the Linux network-off witness above passes 4 of 4 at the current sha.
+- Scope limits carried forward, failing no row. Row 4's ready-flip clause is proven at the ledger level (the shared blocker stays in OpenBlocking), not by driving the ready-flip verb. The derivation reads role and head from a records payload. The skill calls the cap adopter-tunable, but RoundCap is a compile-time constant.
+
+VERIFY: PASS
+
 ## Review
 
 Gate: model. Review the negative paths, migration compatibility and limits of enforcement. Any newly discovered need to alter authority is separate human-gated scope, not an implicit part of this brief.
