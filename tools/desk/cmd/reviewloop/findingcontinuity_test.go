@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -357,4 +358,30 @@ func jsonString(s string) string {
 	}
 	b.WriteByte('"')
 	return b.String()
+}
+
+// TestReadRecordsCarriesLane — two review lanes that both number a finding A3 stay two
+// findings when the records payload names each record's lane.
+func TestReadRecordsCarriesLane(t *testing.T) {
+	body := func(class string) string {
+		return deskkit.RenderFindingBlock(*blk(blockingCode("A3", class, "h", "open", "ev")))
+	}
+	rec := func(seq int, lane, class string) FindingRecord {
+		return FindingRecord{Seq: seq, Kind: "review", Role: "reviewer", Actor: "a", Head: "h",
+			Lane: lane, Verdict: "request-changes", Body: body(class)}
+	}
+	rep := FindingRecordsReport{Repo: "o/r", PR: 1, CurrentHead: "h", Records: []FindingRecord{
+		rec(1, "security", "read-scopes"), rec(2, "correctness", "stale-streak")}}
+	raw, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, recs, err := ReadRecords(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := DeriveContinuity(recs)
+	if len(l.Findings) != 2 || l.Findings["security/A3"] == nil || l.Findings["correctness/A3"] == nil {
+		t.Fatalf("lanes merged through the records payload: %v", l.FindingIDs())
+	}
 }

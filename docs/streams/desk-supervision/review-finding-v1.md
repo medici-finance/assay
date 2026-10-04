@@ -48,6 +48,7 @@ clean finding set is **never inferred from unparseable prose**.
 | Field | Meaning |
 |---|---|
 | `id` | Stable identity across heads and agents. A newly discovered **occurrence** of the same proposition **reuses** this id; only a genuinely new proposition gets a new one. |
+| `lane` | Optional. The review lane (`correctness`, `security`, ...) the finding belongs to. Ids are unique only **within a lane** — each lane numbers its own findings — so the ledger identity is `(lane, id)`, rendered `lane/id`. The lane is normally taken from the review record the block was read off; a block may state it (a worker reply answering another lane's finding should), and that wins. A lane-less worker reply attaches to the one lane holding the id, and is reported could-not-check when two lanes hold it. Round counters are per lane too. |
 | `class` | The claim class. The round cap is **per class**: fixing one sentence never resets the class, and a sibling occurrence retains it. |
 | `severity` | `blocking` or `advisory`. Only a reviewer may promote `advisory`→`blocking`, with changed impact or new evidence. |
 | `blocker` | `code-content` (a defect in this branch) or `external-prerequisite` (a shared-CI leg or upstream fact — one shared repair, not a per-PR defect). |

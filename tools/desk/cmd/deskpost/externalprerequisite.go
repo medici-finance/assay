@@ -134,6 +134,7 @@ func hasOpenContentDefect(reviews []reviewInfo) bool {
 			Role:  deskkit.RoleReviewer,
 			Actor: r.User.Login,
 			Head:  r.CommitID,
+			Lane:  reviewLane(r.Body),
 			Block: block,
 		})
 	}
@@ -141,6 +142,16 @@ func hasOpenContentDefect(reviews []reviewInfo) bool {
 		return false
 	}
 	return len(deskkit.DeriveLedger(recs).ContentDefects()) > 0
+}
+
+// reviewLane names the lane a review body was written in. A security-lane verdict carries a
+// `Security-Review:` marker; every other reviewer record is the correctness lane. The two
+// lanes number their findings independently, so the ledger must key them apart.
+func reviewLane(body string) string {
+	if deskkit.HasSecurityReviewPass(body) || deskkit.HasSecurityReviewFail(body) {
+		return deskkit.LaneSecurity.Name
+	}
+	return deskkit.LaneCorrectness.Name
 }
 
 // prRefPattern matches a referenced-PR object of the form "<owner>/<repo>#<n>", the one

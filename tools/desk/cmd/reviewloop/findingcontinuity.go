@@ -33,12 +33,13 @@ import (
 // body that parses here parses there.
 type FindingRecord struct {
 	Seq     int    `json:"seq"`
-	Kind    string `json:"kind"`    // "review" | "reply"
-	Role    string `json:"role"`    // "reviewer" | "worker" — from the authenticated event
-	Actor   string `json:"actor"`   // authenticated login
-	Head    string `json:"head"`    // head SHA the record was authored against
-	Verdict string `json:"verdict"` // review records: approve | request-changes | comment
-	Body    string `json:"body"`    // the raw forge body carrying the finding block (if any)
+	Kind    string `json:"kind"`           // "review" | "reply"
+	Role    string `json:"role"`           // "reviewer" | "worker" — from the authenticated event
+	Actor   string `json:"actor"`          // authenticated login
+	Lane    string `json:"lane,omitempty"` // review lane ("correctness" | "security"); empty = not established
+	Head    string `json:"head"`           // head SHA the record was authored against
+	Verdict string `json:"verdict"`        // review records: approve | request-changes | comment
+	Body    string `json:"body"`           // the raw forge body carrying the finding block (if any)
 }
 
 // FindingRecordsReport is the injected records payload for one PR's review thread.
@@ -89,6 +90,7 @@ func ReadRecords(data []byte) (*FindingRecordsReport, []deskkit.ForgeRecord, err
 			Actor:   r.Actor,
 			Head:    r.Head,
 			Verdict: deskkit.Verdict(r.Verdict),
+			Lane:    r.Lane,
 			Block:   block,
 		})
 	}
@@ -117,7 +119,7 @@ func CompactRecord(l *deskkit.FindingLedger) string {
 	}
 	for _, id := range open {
 		f := l.Findings[id]
-		fmt.Fprintf(&b, "  - %s [class=%s state=%s blocker=%s rounds=%d/%d]", id, f.Class, f.State, f.Blocker, l.Rounds[f.Class], deskkit.RoundCap)
+		fmt.Fprintf(&b, "  - %s [class=%s state=%s blocker=%s rounds=%d/%d]", id, f.ClassKey, f.State, f.Blocker, l.Rounds[f.ClassKey], deskkit.RoundCap)
 		if f.Blocker == deskkit.BlockerExternalPrereq && f.SharedRepair != "" {
 			fmt.Fprintf(&b, " sharedRepair=%s", f.SharedRepair)
 		}
@@ -158,7 +160,7 @@ func RenderFindings(w io.Writer, rep *FindingRecordsReport, l *deskkit.FindingLe
 			}
 		}
 		fmt.Fprintf(w, "    - %-10s class=%-16s state=%-22s rounds=%d/%d%s\n",
-			id, f.Class, f.State, l.Rounds[f.Class], deskkit.RoundCap, note)
+			id, f.ClassKey, f.State, l.Rounds[f.ClassKey], deskkit.RoundCap, note)
 	}
 
 	if repairs := l.SharedRepairs(); len(repairs) > 0 {
