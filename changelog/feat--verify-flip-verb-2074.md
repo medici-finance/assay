@@ -4,3 +4,6 @@
 
 ### Changed
 - `statusgen brief --check-verified` now refuses a verified closure of a brief with a Verify row classed `gate:human` unless the Verified cell names a `human:<name>`.
+
+### Fixed
+- The `git blame` reader behind the Evidence-actor lint now counts a line as content when text precedes two or more HTML comments on it (for example `text <!-- a --> <!-- b -->`). Before, the second comment reset the verdict and the line's author dropped out of the attributed set. `statusgen verifyflip` no longer reads that filtered set at all: it checks every file line behind the PASS marker and its Date/Runner rows, one by one.

@@ -605,62 +605,94 @@ type blameAuthor struct {
 // commit (verified against a real shallow clone), so it is read per line-group.
 func blamePorcelainAuthors(out string) (authors []blameAuthor, sawBoundary bool) {
 	seen := map[string]bool{}
-	name, mail := "", ""
-	boundary := false
 	inComment := false
-	for _, line := range strings.Split(out, "\n") {
-		switch {
-		case strings.HasPrefix(line, "author "):
-			name = strings.TrimSpace(strings.TrimPrefix(line, "author "))
-		case strings.HasPrefix(line, "author-mail "):
-			mail = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "author-mail ")), "<>")
-		case line == "boundary":
-			boundary = true
-		case strings.HasPrefix(line, "\t"):
-			// The blamed line's own content, verbatim after the leading TAB.
-			content := strings.TrimSpace(line[1:])
-			bearing := content != "" && !inComment
-			// Track HTML-comment spans across lines. A line that OPENS a comment
-			// carries no evidence past the marker, and one that closes it may.
-			for rest := content; ; {
-				if inComment {
-					_, after, found := strings.Cut(rest, "-->")
-					if !found {
-						break
-					}
-					inComment = false
-					rest = after
-					if strings.TrimSpace(rest) != "" {
-						bearing = true
-					}
-					continue
-				}
-				before, after, found := strings.Cut(rest, "<!--")
-				if !found {
-					break
-				}
-				if strings.TrimSpace(before) == "" {
-					bearing = false
-				}
-				inComment = true
-				rest = after
-			}
-			if !bearing {
-				name, mail, boundary = "", "", false
-				continue
-			}
-			if boundary {
-				sawBoundary = true
-			}
-			key := name + "\x00" + mail
-			if !seen[key] {
-				seen[key] = true
-				authors = append(authors, blameAuthor{Name: name, Email: mail})
-			}
-			name, mail, boundary = "", "", false
+	for _, bl := range blamePorcelainLines(out) {
+		var bearing bool
+		bearing, inComment = blameLineBearsContent(bl.Content, inComment)
+		if !bearing {
+			continue
+		}
+		if bl.Boundary {
+			sawBoundary = true
+		}
+		key := bl.Author.Name + "\x00" + bl.Author.Email
+		if !seen[key] {
+			seen[key] = true
+			authors = append(authors, bl.Author)
 		}
 	}
 	return authors, sawBoundary
+}
+
+// blameLine is one blamed line of `git blame --line-porcelain` output: its
+// author, its content (the text after the leading TAB, trimmed), and whether
+// the owning commit carried the `boundary` header.
+type blameLine struct {
+	Author   blameAuthor
+	Content  string
+	Boundary bool
+}
+
+// blamePorcelainLines parses `git blame --line-porcelain` output into ONE
+// record per blamed line, in output order, with no filtering. A line whose
+// group carried no author header comes back with an empty Author — never with
+// the previous line's. It is the unfiltered layer under blamePorcelainAuthors:
+// a caller that must account for EVERY line it asked about (the verify flip's
+// provenance check) counts these records against the lines it requested,
+// rather than inferring coverage from a content-filtered author set.
+func blamePorcelainLines(out string) []blameLine {
+	var lines []blameLine
+	var cur blameLine
+	for _, line := range strings.Split(out, "\n") {
+		switch {
+		case strings.HasPrefix(line, "author "):
+			cur.Author.Name = strings.TrimSpace(strings.TrimPrefix(line, "author "))
+		case strings.HasPrefix(line, "author-mail "):
+			cur.Author.Email = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "author-mail ")), "<>")
+		case line == "boundary":
+			cur.Boundary = true
+		case strings.HasPrefix(line, "\t"):
+			// The blamed line's own content, verbatim after the leading TAB.
+			cur.Content = strings.TrimSpace(line[1:])
+			lines = append(lines, cur)
+			cur = blameLine{}
+		}
+	}
+	return lines
+}
+
+// blameLineBearsContent reports whether a line carries any non-space text
+// OUTSIDE HTML comments, given whether a comment is already open when the
+// line starts, and returns whether one is still open when it ends. A line
+// that only opens, continues or closes a comment carries no evidence; text
+// before an opening marker or after a closing one does.
+//
+// The answer ACCUMULATES across the whole line: once any portion outside a
+// comment is content, a later comment on the same line never takes it back.
+// (The earlier inline form reset the verdict at each `<!--` preceded by
+// blanks, so `text <!-- a --> <!-- b -->` read as non-bearing and its author
+// dropped out of the set — the flip-verdict-provenance gap on assay#2095.)
+func blameLineBearsContent(content string, inComment bool) (bearing, stillInComment bool) {
+	for rest := content; ; {
+		if inComment {
+			_, after, found := strings.Cut(rest, "-->")
+			if !found {
+				return bearing, true
+			}
+			inComment = false
+			rest = after
+			continue
+		}
+		before, after, found := strings.Cut(rest, "<!--")
+		if strings.TrimSpace(before) != "" {
+			bearing = true
+		}
+		if !found {
+			return bearing, false
+		}
+		inComment = true
+		rest = after
+	}
 }
 
 // blameEvidenceAuthors blames one Evidence line range and returns its authors.

@@ -230,6 +230,45 @@ func TestBlamePorcelainAuthorsIgnoresNonContentLines(t *testing.T) {
 	}
 }
 
+// TestBlameLineBearsContent pins the same-line comment class: text outside a
+// comment anywhere on the line makes it content, whatever comments come after
+// it. The first shape is the one that dropped an author from the set.
+func TestBlameLineBearsContent(t *testing.T) {
+	cases := []struct {
+		content       string
+		open, bearing bool
+		openAfter     bool
+	}{
+		{"text <!-- a --> <!-- b -->", false, true, false},
+		{"text <!-- a --> <!-- b", false, true, true},
+		{"<!-- a --> text <!-- b -->", false, true, false},
+		{"<!-- a --> <!-- b --> text", false, true, false},
+		{"<!-- a --> <!-- b -->", false, false, false},
+		{"<!-- a -->", false, false, false},
+		{"text <!-- open", false, true, true},
+		{"<!-- open", false, false, true},
+		{"still inside", true, false, true},
+		{"end --> text <!-- c -->", true, true, false},
+		{"end --> <!-- c --> <!-- d -->", true, false, false},
+		{"text", false, true, false},
+		{"", false, false, false},
+	}
+	for _, c := range cases {
+		b, o := blameLineBearsContent(c.content, c.open)
+		if b != c.bearing || o != c.openAfter {
+			t.Errorf("blameLineBearsContent(%q, open=%v) = (%v, %v), want (%v, %v)", c.content, c.open, b, o, c.bearing, c.openAfter)
+		}
+	}
+	entry := func(n int, name, email, content string) string {
+		return fmt.Sprintf("aaa %d %d 1\nauthor %s\nauthor-mail <%s>\n\t%s\n", n, n, name, email, content)
+	}
+	out := entry(1, fixtureVerifierName, fixtureVerifierEmail, "| 1 | row |") +
+		entry(2, fixtureWorkerName, fixtureWorkerEmail, "**VERIFY: PASS** <!-- a --> <!-- b -->")
+	if got, _ := blamePorcelainAuthors(out); len(got) != 2 {
+		t.Fatalf("authors = %+v, want both: the marker line before two comments is content", got)
+	}
+}
+
 // TestBlamePorcelainAuthorsBoundaryOnlyOnContentLines pins the graft-detection
 // half: a `boundary` header (git's marker for a commit whose parents blame could
 // not walk to — the graft point in a shallow clone) sets sawBoundary ONLY when it

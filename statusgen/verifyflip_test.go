@@ -2,6 +2,11 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
@@ -620,6 +625,142 @@ func TestVflipNotARepo(t *testing.T) {
 		t.Fatal(err)
 	}
 	vfExpect(t, root, readme, verifyflipExitCouldNotCheck, "provenance")
+}
+
+// TestVflipMarkerTwoComments: the verifier's rows, another App's PASS marker
+// carrying two trailing comments. The marker line is content; its author must
+// be judged, however many comments follow the text on the same line.
+func TestVflipMarkerTwoComments(t *testing.T) {
+	o := vfDefaults()
+	o.evidence = witnessTableFor(vfRow1, vfRow2)
+	root, readme := vfFixture(t, o)
+	vfAppend(t, root, "\n\n"+vfPass+" <!-- first --> <!-- second -->")
+	vfCommit(t, root, vfMailWorker)
+	vfExpect(t, root, readme, verifyflipExitRefused, "provenance")
+}
+
+// vfBlameEntry is one --line-porcelain record.
+func vfBlameEntry(n int, name, email, content string) string {
+	s := fmt.Sprintf("aaaa %d %d 1\n", n, n)
+	if name != "" || email != "" {
+		s += "author " + name + "\nauthor-mail <" + email + ">\n"
+	}
+	return s + "\t" + content + "\n"
+}
+
+// TestVflipBlameCoverage pins that the provenance judgement accounts for every
+// PASS line it asked about: a missing record or a record with no author is
+// could-not-check, never a pass on the authors that remain.
+func TestVflipBlameCoverage(t *testing.T) {
+	p := evidenceActorPolicyFromRoster()
+	if p.Unavailable != "" {
+		t.Fatalf("fixture roster unavailable: %s", p.Unavailable)
+	}
+	v := vfBlameEntry(1, fixtureVerifierName, fixtureVerifierEmail, vfPass)
+	w := vfBlameEntry(2, fixtureWorkerName, fixtureWorkerEmail, vfRow1)
+	cases := []struct {
+		name, out string
+		want      int
+		refused   bool // false: could-not-check (a plain error)
+	}{
+		{"one record for two lines", v, 2, false},
+		{"no records", "", 1, false},
+		{"record with no author", v + vfBlameEntry(2, "", "", vfRow1), 2, false},
+		{"worker line", v + w, 2, true},
+		{"worker comment-only line", v + vfBlameEntry(2, fixtureWorkerName, fixtureWorkerEmail, "<!-- x -->"), 2, true},
+	}
+	for _, c := range cases {
+		err := flipJudgeBlame(p, c.out, c.want, "brief.md")
+		var r *flipRefusal
+		switch {
+		case err == nil:
+			t.Errorf("%s: judged clean, want a refusal or could-not-check", c.name)
+		case c.refused != errors.As(err, &r):
+			t.Errorf("%s: err = %v (refusal=%v), want refusal=%v", c.name, err, errors.As(err, &r), c.refused)
+		}
+	}
+	if err := flipJudgeBlame(p, v+vfBlameEntry(2, fixtureVerifierName, fixtureVerifierEmail, vfRow1), 2, "brief.md"); err != nil {
+		t.Fatalf("every line verifier-owned: err = %v, want nil", err)
+	}
+}
+
+// vfBlameCallers returns every function in src that calls name.
+func vfBlameCallers(t *testing.T, fset *token.FileSet, file string, src any, name string) []string {
+	t.Helper()
+	f, err := parser.ParseFile(fset, file, src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			if call, ok := n.(*ast.CallExpr); ok {
+				if id, ok := call.Fun.(*ast.Ident); ok && id.Name == name {
+					out = append(out, fn.Name.Name)
+				}
+			}
+			return true
+		})
+	}
+	return out
+}
+
+// TestVflipBlameCallers is the class guard for flip-verdict-provenance: the
+// content-filtered, deduplicated author set may answer only the Evidence-actor
+// lint's any-line question. A caller that turns blame into authority must
+// count per-line records (blamePorcelainLines), so any new caller of
+// blamePorcelainAuthors outside the allow-list fails here. A planted caller
+// is the positive control: a matcher that stopped matching would fail it.
+func TestVflipBlameCallers(t *testing.T) {
+	allowed := map[string]bool{"blamePorcelainAuthors": true, "blameEvidenceAuthors": true}
+	fset := token.NewFileSet()
+	plant := "package main\nfunc plantedJudge(out string) { blamePorcelainAuthors(out) }\n"
+	if got := vfBlameCallers(t, fset, "plant.go", plant, "blamePorcelainAuthors"); len(got) != 1 || got[0] != "plantedJudge" {
+		t.Fatalf("positive control: callers = %v, want [plantedJudge]", got)
+	}
+	files, err := filepath.Glob("*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no package sources found (err=%v)", err)
+	}
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		for _, caller := range vfBlameCallers(t, fset, f, nil, "blamePorcelainAuthors") {
+			if !allowed[caller] {
+				t.Errorf("%s: %s calls blamePorcelainAuthors — a filtered author set cannot establish per-line provenance; use blamePorcelainLines and count the records", f, caller)
+			}
+		}
+	}
+}
+
+// TestVflipLintTwoComments is the lower-layer pair for the shared parser fix:
+// the Evidence-actor lint reads a line with text before two comments as
+// content, so a verifier who owns only such a line still backs the closure.
+func TestVflipLintTwoComments(t *testing.T) {
+	o := vfDefaults()
+	o.evidence = witnessTableFor(vfRow1, vfRow2)
+	o.author = vfMailWorker
+	root, readme := vfFixture(t, o)
+	vfAppend(t, root, "\n\nverifier note <!-- a --> <!-- b -->")
+	raw, _ := os.ReadFile(readme)
+	flipped := strings.Replace(string(raw), "| implemented | — |", "| verified | "+vfStamp+" |", 1)
+	if err := os.WriteFile(readme, []byte(flipped), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	vfCommit(t, root, vfMailVerifier)
+	withBaseClosures(t, map[string]bool{}, true)
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if problems, _ := evidenceActorGate(root, streams); len(problems) != 0 {
+		t.Fatalf("lint problems = %v, want none: the verifier's line before two comments is content", problems)
+	}
 }
 
 // TestVflipStrippedSpans pins the stripped-line → file-line map.

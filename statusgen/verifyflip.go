@@ -625,7 +625,8 @@ func flipHeaderCols(lines []string, row, width int) (si, vi int, err error) {
 // is text, and whoever can edit the brief can type the verifier's login into
 // it; who committed a line is git metadata, not text. So the PASS marker and
 // every Date/Runner row the stamp is built from (marks: line indices in the
-// comment-stripped Evidence) are blamed, and each author is judged by the
+// comment-stripped Evidence) are blamed, every raw file line behind them is
+// accounted for (flipJudgeBlame), and each line's author is judged by the
 // Evidence-actor policy (evidenceactor.go): the bound verifier or a roster
 // human passes, anything else — another App, an unknown address, a line not
 // yet committed — refuses. This is stricter than the Evidence-actor lint,
@@ -663,22 +664,41 @@ func flipProvenance(path, evidence string, marks []int) error {
 		return fmt.Errorf("provenance: the comment-stripped Evidence of %s cannot be mapped to file lines", base)
 	}
 	args := []string{"-C", dir, "blame", "--line-porcelain"}
+	want := 0
 	for _, m := range marks {
 		if m < 0 || m >= len(spans) {
 			return fmt.Errorf("provenance: PASS line %d is outside the Evidence of %s", m, base)
 		}
 		args = append(args, "-L", fmt.Sprintf("%d,%d", start+spans[m][0], start+spans[m][1]))
+		want += spans[m][1] - spans[m][0] + 1
 	}
 	out, err := exec.Command("git", append(args, "--", base)...).Output()
 	if err != nil {
 		return fmt.Errorf("provenance: git blame %s: %v", base, err)
 	}
-	authors, _ := blamePorcelainAuthors(string(out))
-	if len(authors) == 0 {
-		return fmt.Errorf("provenance: blame of %s named no author for the PASS lines", base)
+	return flipJudgeBlame(p, string(out), want, base)
+}
+
+// flipJudgeBlame judges the blame of the PASS lines line by line. Coverage is
+// established, never inferred: the output must hold exactly want line records
+// (every raw file line behind the marker and the Date/Runner rows), each with
+// an author, and every one of them must be the bound verifier or a roster
+// human. It deliberately does NOT use blamePorcelainAuthors: that set is
+// filtered to content-bearing lines and deduplicated, which is right for the
+// Evidence-actor lint's any-line question and wrong here — a filter that drops
+// a selected line would leave the remaining authors looking complete. A record
+// count or an author that cannot be read is could-not-check; an author outside
+// the accepted set refuses.
+func flipJudgeBlame(p evidenceActorPolicy, out string, want int, base string) error {
+	lines := blamePorcelainLines(out)
+	if want <= 0 || len(lines) != want {
+		return fmt.Errorf("provenance: blame of %s returned %d line(s) for the %d PASS line(s) asked about", base, len(lines), want)
 	}
-	for _, a := range authors {
-		if v, why := p.classify(a.Name, a.Email); v != actorVerifier && v != actorHuman {
+	for _, bl := range lines {
+		if bl.Author.Name == "" && bl.Author.Email == "" {
+			return fmt.Errorf("provenance: blame of %s named no author for a PASS line", base)
+		}
+		if v, why := p.classify(bl.Author.Name, bl.Author.Email); v != actorVerifier && v != actorHuman {
 			return refuseFlip("provenance: a line of the latest PASS (the marker or a Date/Runner row) is not owned by the bound verifier or a roster human — %s", why)
 		}
 	}
