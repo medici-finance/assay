@@ -43,6 +43,10 @@ import (
 //	          relationship to it (owned | upstream). It is not an authorisation
 //	          set and confers no access.
 //
+//	roots     ConfiguredRoots — the board-root map, DESK_ROOTS when set,
+//	          otherwise the compiled defaults. It confers no access.
+//	          Explicit-only: all retains its existing three inventories.
+//
 // THE ANNOTATION LANDS ON THE THIRD SET ONLY, and that placement is the point.
 // `relationship: owned` says this cell is the repo's owner;
 // it does NOT say a tool may write to it. Write authorisation is
@@ -61,7 +65,7 @@ import (
 func cmdRepos(args []string) error {
 	fs := flag.NewFlagSet("repos", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	scope := fs.String("scope", "all", "which set to print: write | scan | topology | all")
+	scope := fs.String("scope", "all", "which set to print: write | scan | topology | roots | all")
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused("refused: " + err.Error())
 	}
@@ -69,9 +73,26 @@ func cmdRepos(args []string) error {
 		return deskkit.Refused(fmt.Sprintf("refused: `repos` takes no positional arguments (got %q)", fs.Arg(0)))
 	}
 	switch *scope {
-	case "write", "scan", "topology", "all":
+	case "write", "scan", "topology", "roots", "all":
 	default:
-		return deskkit.Refused(fmt.Sprintf("refused: unknown --scope %q (want write|scan|topology|all)", *scope))
+		return deskkit.Refused(fmt.Sprintf("refused: unknown --scope %q (want write|scan|topology|roots|all)", *scope))
+	}
+
+	if *scope == "roots" {
+		// Resolve the complete map before printing: invalid overrides must not
+		// leave a partial inventory that a caller could mistake for coverage.
+		roots, err := deskkit.ConfiguredRoots()
+		if err != nil {
+			return err
+		}
+		if len(roots) == 0 {
+			return deskkit.Unverifiable("COULD-NOT-CHECK: configured board-root map is empty", nil)
+		}
+		fmt.Printf("# configured board roots (%s overrides compiled defaults) — not an authorisation set\n", deskkit.RootsEnv)
+		for _, root := range roots {
+			fmt.Printf("%s\troot=%s\n", root.Repo, root.Path)
+		}
+		return nil
 	}
 
 	cfg := deskkit.EffectiveConfig()
