@@ -379,6 +379,106 @@ Open questions: none about the guard. Two items need an owner: #1800 (a Linux ne
 
 VERIFY: BLOCKED — 0 of 14 rows witnessed: the execution witness cannot run check:ci rows on this darwin host (#1800, still open). The hand run agrees on 13 of 14 rows; row 12 exits 1 on an unrelated 60-second test deadline in internal/regression. Status stays `implemented`.
 
+### Non-implementer verifier re-run — VERIFY: FAIL — 2026-10-04 claude-opus-5-5-verifier
+
+Re-verify on merged main at 70deba75a5775d50574695d2fb24efeb757c552f. The previous receipt was 2026-10-02, BLOCKED at cf31c3241 and citing #1800, because the darwin execution witness has no network-off sandbox. The runner is not the implementer (implementation PR #357, row-11 fix #363). The run used its own detached worktree at the merged head and was offline: KUBECONFIG=/dev/null, GOPROXY=off, every go invocation under a throwaway HOME, and every subprocess reached fixture /bin/sh binaries only. No real cluster was contacted. The host was Go darwin/arm64 with git 2.56.0.
+
+Why this re-run: main moved 93 commits since cf31c3241. In the deliverable scope, only two files changed besides this brief's own Evidence. The tools/desk README hunks never mention clusterguard. The forgeban allowlist change ratchets the ceiling 7 → 6 and drops the deskmerge permit, and the clusterguard UnresolvedArgv ledger entry is unchanged. Neither change touches exec-shim behaviour, so the guard code under test matches the 2026-10-02 receipt. What is new is the instrument. This run produced a real network-off Linux witness from a locally cached image, which retires #1800 as the gating issue for this brief. It also includes an adversarial probe of the read-only tier, which turned up the defect below.
+
+Hand run of each row's literal command (direct, not network-off; the witness table further down is the decisive instrument):
+
+| # | command | expected | observed | YYYY-MM-DD runner |
+|---|---------|----------|----------|-------------------|
+| 1 | row 1 literal (module build + vet) | exit 0 | exit 0; build and vet print nothing | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
+| 2 | row 2 literal (clusterguard package tests) | exit 0 | exit 0; ok cmd/clusterguard 5.523s | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
+| 3 | row 3 literal (TestRefusesWithoutOptIn -v) | exit 0, refusal exit 5 naming guard + opt-in, fixture not run | exit 0; --- PASS: TestRefusesWithoutOptIn | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
+| 4 | row 4 literal (TestRefusesScriptWrappedCall) | exit 0 | exit 0; --- PASS: TestRefusesScriptWrappedCall | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
+| 5 | row 5 literal (two pass-through tests) | exit 0 | exit 0; PASS for TestPassesThroughWithOptIn and TestPassThroughSkipsTheShimDirectory | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
+| 6 | row 6 literal (TestSymlinkNameDispatch -v) | exit 0, five subtests | exit 0; five subtest PASS lines (kubectl, flux, helm, talosctl, k9s) | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
+| 7 | row 7 literal (verb classification + read-only tier) | exit 0 | exit 0; PASS for TestVerbClassification and TestReadOnlyTierRefusesMutatingVerbs. The tests pass, but the Expect claim is false for an input class the tests omit. See the finding below | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
+| 8 | row 8 literal (invalid opt-in, no real binary, unknown name) | exit 0 | exit 0; three PASS lines | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
+| 9 | row 9 literal (TestStopFlagRefusesEvenWithOptIn) | exit 0 | exit 0; --- PASS: TestStopFlagRefusesEvenWithOptIn | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
+| 10 | row 10 literal (absolute-path bypass, log verdicts, log redaction) | exit 0 | exit 0; three PASS lines | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
+| 11 | row 11 literal (built binary usage text) | exit 0 | exit 0 (rc=0, g1=0, g2=0) | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
+| 12 | row 12 literal (whole tools/desk module) | exit 0 | 103 packages, all ok across these runs. 95 packages ran together: 93 ok/no-test-files; deskmerge and deskpr hit the 300 s timeout under host load (four sibling verifier sessions were running). Each was re-run alone and passed: ok cmd/deskmerge 91.683s, ok cmd/deskpr 141.388s. The other 8 packages ran one at a time and all passed: clusterguard, deskevidence, deskgit, desksourceguard, deskwt, deskkit, forgeban, regression | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
+| 13 | row 13 literal (gofmt on the clusterguard package) | exit 0, no unformatted file | exit 0; empty listing | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
+| 14 | row 14 literal (statusgen lint) | 0 | 0; LINT: PASS (NOTICEs name other streams only) | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
+
+Hand result: all 14 row commands exit 0 as written (row 12 covered package by package rather than as one invocation, for the load reasons above). Row 7 is the deciding row: its command passes, but the adversarial probe below shows its Expect ("the per-CLI read-only table holds") does not hold, so 13 of 14 rows meet their Expect (#2179).
+
+Execution witness (statusgen verifyrun built from 70deba75a source). darwin has no `unshare --net`, so the witness ran in a locally cached golang:1.26-bookworm image (no pull). The container was linux/arm64, Go 1.26.8, git 2.39.5, with `--network none`, GOPROXY=off, and `--security-opt seccomp=unconfined`; unshare needs that last flag inside Docker. It ran against a clone pinned to 70deba75a. Attribution comes from the clone's git identity (verifier App) plus the roster bless, copied into the container HOME with modes 700/600:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/clusterguard/... -count=1` | pass exit=0 | sha256:679cb11f7902 | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestRefusesWithoutOptIn$' -count=1 -v` | pass exit=0 | sha256:479326a98a04 | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestRefusesScriptWrappedCall$' -count=1` | pass exit=0 | sha256:0d6b0f591d97 | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestPassesThroughWithOptIn$' -count=1 && go test ./cmd/clusterguard/ -run '^TestPassThroughSkipsTheShimDirectory$' -count=1` | pass exit=0 | sha256:80142df303b4 | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestSymlinkNameDispatch$' -count=1 -v` | pass exit=0 | sha256:5e1fed79678b | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestVerbClassification$' -count=1 && go test ./cmd/clusterguard/ -run '^TestReadOnlyTierRefusesMutatingVerbs$' -count=1` | pass exit=0 | sha256:1e712986b68e | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestUnrecognisedOptInValueRefuses$' -count=1 && go test ./cmd/clusterguard/ -run '^TestNoRealBinaryIsUnverifiable$' -count=1 && go test ./cmd/clusterguard/ -run '^TestUnknownInvocationNameIsUnverifiable$' -count=1` | pass exit=0 | sha256:8cc854a368b6 | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestStopFlagRefusesEvenWithOptIn$' -count=1` | pass exit=0 | sha256:05bc8a4d242f | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestAbsolutePathInvocationBypassesTheShim$' -count=1 && go test ./cmd/clusterguard/ -run '^TestLogRecordsBothVerdicts$' -count=1 && go test ./cmd/clusterguard/ -run '^TestLogRedactsCredentialArguments$' -count=1` | pass exit=0 | sha256:dd2939b7640f | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && d=$(mktemp -d) && go build -o "$d/clusterguard" ./cmd/clusterguard && "$d/clusterguard" > "$d/usage.out" 2>&1; rc=$?; grep -q 'ASSAY_ALLOW_CLUSTER' "$d/usage.out"; g1=$?; grep -q 'talosctl' "$d/usage.out"; g2=$?; [ "$rc" -eq 0 ] && [ "$g1" -eq 0 ] && [ "$g2" -eq 0 ]` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd tools/desk && go test ./... -count=1` | fail exit=1 | sha256:5b313ab68943 | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `gofmt -l tools/desk/cmd/clusterguard > /tmp/cg-fmt.out; test ! -s /tmp/cg-fmt.out` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 14 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 | sha256:a87e1804b5d6 | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+
+Witness row 12 diagnosis: the failure is environmental and none of it is in this brief's packages. In the container, cmd/clusterguard and internal/forgeban are both ok. The failures fall into three groups:
+- deskevidence (TestOutcomeRecordsConcurrentLandingsMergeable), deskgit (two worktree-scoped-URL fetch tests), deskwt (TestRoleEndpointPreserved and the TestRoleInit* family) and internal/deskkit fail under the image's git 2.39.5. The same tests pass on darwin git 2.56.0, and they also passed in a locally cached trixie image with git 2.47.3. The tests depend on newer git behaviour.
+- desksourceguard TestDefaultPlatform fails because linux/arm64 is not a published platform.
+- internal/regression TestReg786FleetHardening fails because jq is absent from the image (fixture rc=2).
+
+The witness row is still recorded as it ran: fail.
+
+FINDING (decisive): the read-only tier passes a mutating call through an unlisted value-consuming flag. verbOf (shim.go:138-157) treats any dash-token that has no "=" and is not in valueFlags (shim.go:59-69) as a boolean flag, so it never consumes that flag's value. When an unlisted value-taking flag is followed by a read-only verb word, verbOf takes that word as the verb, isReadOnly approves, and the real CLI runs with the mutating verb. The real CLI parses the word as the flag's value and runs the next token as the subcommand. Reproduced against a guard binary built from 70deba75a, symlinked as kubectl in front of a fixture that echoes its argv, under a throwaway HOME, with KUBECONFIG=/dev/null and ASSAY_ALLOW_CLUSTER=1 (read-only tier):
+- kubectl delete pod x → exit 5, "refused … "delete" is not on kubectl's read-only allowlist" (control).
+- kubectl -n get delete pod x → exit 5 (control: a listed value flag is consumed correctly).
+- kubectl --username get delete pod x → exit 0, FIXTURE-REACHED argv: --username get delete pod x.
+- kubectl --log-file get delete pod x → exit 0, FIXTURE-REACHED.
+- kubectl --profile-output get delete pod x → exit 0, FIXTURE-REACHED.
+
+The real CLI's parse was confirmed with spf13/pflag v1.0.10, kubectl's flag library. A string flag "username" given argv `--username get delete pod x` parses to username="get" and positional [delete pod x]. The real kubectl would therefore run `delete pod x`.
+
+This contradicts three statements:
+- the valueFlags comment at shim.go:55-58: "Unknown flag values still fail closed … it can never create a false pass"
+- the brief's fail-closed read-only contract
+- row 7's Expect: "the read-only tier refuses a mutating verb with exit 5 without reaching the CLI"
+
+No test in cmd/clusterguard covers an unlisted value flag placed before a read-only word. The opt-in, default-refuse, invalid-refuse, stop-flag, logging and pass-through behaviour all hold; the hole is confined to the read-only tier (ASSAY_ALLOW_CLUSTER=1/ro/read-only/readonly). Fix directions, for the implementer to choose: in the read-only tier, refuse any unlisted flag that has no "=" (the conservative option); or make valueFlags exhaustive per CLI and add a regression test for unlisted-flag-then-read-only-word. Filed by the desk as #2179.
+
+Risk-bearing value. Enumeration covered cmd/clusterguard's gate literals and tables, the opt-in declaration in deskkit rosterconfig, and the deskkit exit codes:
+- default tier → refuse: `v.code = deskkit.ExitRefused` @ shim.go:222
+- invalid opt-in → refuse: `return tierInvalid` @ shim.go:127, ExitRefused @ shim.go:213-214
+- read-only tier mutating → refuse: ExitRefused @ shim.go:205
+- k9s read-only allowlist `{}` @ shim.go:51
+- verb-extraction tables: valueFlags @ shim.go:59-69 plus verbOf's unknown-flag-is-boolean rule @ shim.go:145-151
+- exit codes ExitDisabled = 3, ExitRefused = 5, ExitUnverifiable = 6 @ exitcodes.go:44,51,55
+- EnvAllowCluster = "ASSAY_ALLOW_CLUSTER" @ rosterconfig.go:243 (recognised @ rosterconfig.go:583), read only via os.LookupEnv @ shim.go:410
+- reversible knobs: shimmedCLIs @ shim.go:33, credentialFlags @ shim.go:74, log perms 0o700 @ shim.go:331 and 0o600 @ shim.go:335
+
+Ranked by irreversibility, the fail-closed gate literals and the tables that decide what reaches a live cluster come first. A wrong entry there lets a guarded session mutate a cluster, which an edit and a redeploy cannot undo. The reversible knobs rank last.
+
+RISK-VALUE: DERIVED — default tier → ExitRefused @ shim.go:222. The brief says "absent → every shimmed CLI refused (exit 5)", and decide has no default-allow arm. Right value.
+RISK-VALUE: DERIVED — invalid opt-in → tierInvalid @ shim.go:127, refused @ shim.go:214. The brief says "any other value → refused (exit 5)". Right value.
+RISK-VALUE: DERIVED — `"k9s": {}` @ shim.go:51 with isReadOnly false for an empty allowlist. The brief says k9s carries an empty allowlist on purpose. Right value.
+RISK-VALUE: DERIVED — exit codes 3/5/6 @ exitcodes.go:44,51,55 match the brief's exit-code contract. Right values.
+RISK-VALUE: DERIVED — EnvAllowCluster @ rosterconfig.go:243 is declared and recognised but never applied from the roster, and it is read only through LookupEnv @ shim.go:410. Right value.
+RISK-VALUE: NOT DERIVED (shown WRONG) — valueFlags @ shim.go:59-69 together with verbOf's unknown-flag-is-boolean rule @ shim.go:145-151. The read-only tier is sound only if that table lists every value-consuming flag of each CLI, and it does not:
+- kubectl lacks --username, --password, --certificate-authority, --client-certificate, --client-key, --profile, --profile-output, --log-file, --vmodule, --log-flush-frequency and --as-uid
+- helm lacks --kube-as-user, --kube-as-group, --kube-ca-file, --burst-limit, --qps and others
+The demo above shows the resulting false pass. Wrong value, and it is fail-open.
+Reversible knobs (shimmedCLIs, credentialFlags, log perms) rank last and need no derivation.
+
+verifyrun --check summary:
+- Linux witness (on the clone brief carrying the table above): 13 pass, 1 fail, 0 could-not-run/missing (of 14 Verify rows).
+- darwin worktree (host witness): 0 pass, 0 fail, 14 could-not-run/missing (of 14 Verify rows). On darwin the witness again could not run: `unshare --net` is Linux-only.
+
+Note to the landing desk: the darwin `verifyrun` appended its could-not-run table to the worktree copy of the brief. That table is superseded; land the Linux witness table above instead.
+
+VERIFY: FAIL — the read-only tier passes a mutating kubectl call when an unlisted value-consuming flag is followed by a read-only verb word (e.g. `--username get delete pod x` reaches the CLI with exit 0 under ASSAY_ALLOW_CLUSTER=1). This contradicts row 7's Expect and the code's own "can never create a false pass" claim. By hand, all 14 row commands exit 0, and row 7 is the deciding row: the probe contradicts its Expect, so 13 of 14 rows meet their Expect. The Linux witness shows 13 pass and 1 fail (row 12, environmental: image git 2.39.5, an unpublished arm64 platform, missing jq). #1800 no longer gates this brief. The read-only-tier false pass is filed as #2179. Status stays `implemented`.
+
 ## Review
 
 Gate: model (all four risk answers no). The reviewer records verdict + date in the stream README
