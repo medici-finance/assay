@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/medici-finance/assay/statusgen/streamview"
 	"gopkg.in/yaml.v3"
 )
 
@@ -27,6 +28,11 @@ type frontmatter struct {
 	Board         string  `yaml:"board"`          // optional; "generated" opts the Briefs table into the marker-wrapped generated region (derived-board/04).
 	Traced        *bool   `yaml:"traced"`         // optional; true opts the stream INTO the untraced-brief traceability check (registers-v1 §6.5). nil/false = out (the default): the check never fires over a corpus that has not opted in.
 	Spec          string  `yaml:"spec"`           // optional; the repo-relative scoping doc this stream was scaffolded FROM (attention-budget/04). An active stream must cite one whose §8.1 header is `**Status:** approved` (the `stream-source` lint); a parked stream may cite a draft.
+	// Mission is the optional authored mission block, kept as a raw node so a
+	// malformed block never fails the README parse (the board must keep
+	// working); parseMissionBlock validates it and returns diagnostics.
+	// Kind == 0 when the key is absent.
+	Mission yaml.Node `yaml:"mission"`
 }
 
 // splitFrontmatter is the SINGLE canonical frontmatter splitter for the whole
@@ -250,23 +256,240 @@ func parseStreamREADME(path string) (*Stream, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	mission, missionDiags := parseMissionBlock(&fm.Mission)
 	return &Stream{
-		Name:          fm.Stream,
-		Dir:           filepath.Dir(path),
-		Status:        fm.Status,
-		Priority:      fm.Priority,
-		Track:         fm.Track,
-		Issues:        fm.Issues,
-		External:      fm.External,
-		Tiering:       fm.Tiering,
-		MaxConcurrent: fm.MaxConcurrent,
-		Serves:        fm.Serves,
-		Theme:         strings.TrimSpace(fm.Theme),
-		Owner:         fm.Owner,
-		Repo:          strings.TrimSpace(fm.Repo),
-		Board:         strings.TrimSpace(fm.Board),
-		Traced:        fm.Traced != nil && *fm.Traced,
-		Spec:          strings.TrimSpace(fm.Spec),
-		Briefs:        briefs,
+		Name:               fm.Stream,
+		Dir:                filepath.Dir(path),
+		Status:             fm.Status,
+		Priority:           fm.Priority,
+		Track:              fm.Track,
+		Issues:             fm.Issues,
+		External:           fm.External,
+		Tiering:            fm.Tiering,
+		MaxConcurrent:      fm.MaxConcurrent,
+		Serves:             fm.Serves,
+		Theme:              strings.TrimSpace(fm.Theme),
+		Owner:              fm.Owner,
+		Repo:               strings.TrimSpace(fm.Repo),
+		Board:              strings.TrimSpace(fm.Board),
+		Traced:             fm.Traced != nil && *fm.Traced,
+		Spec:               strings.TrimSpace(fm.Spec),
+		Mission:            mission,
+		MissionDiagnostics: missionDiags,
+		Briefs:             briefs,
 	}, nil
+}
+
+// missionVersion is the one authored mission-block version this statusgen
+// reads. Any other value is diagnosed, never read best-effort.
+const missionVersion = 1
+
+var (
+	missionForgeRefRe = regexp.MustCompile(`^([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)#([1-9][0-9]*)$`)
+	missionSchemeRe   = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
+)
+
+// parseMissionBlock validates the optional `mission:` frontmatter block.
+//
+//	mission:
+//	  version: 1                 # required; any other value is refused
+//	  outcome: <text>            # required, non-empty
+//	  success:                   # optional; authored order is preserved
+//	    - criterion: <text>      # required per entry
+//	      evidence:              # optional
+//	        - docs/report.md                  # repository-relative path
+//	        - <owner>/<name>#<number>         # issue or pull request
+//	        - https://example.org/page        # https only
+//	        - {path: docs/later.md, planned: true}
+//	  commitments: [<text>, ...] # optional
+//	  exclusions: [<text>, ...]  # optional
+//
+// It returns (nil, nil) when the block is absent, (mission, nil) when it is
+// valid, and (nil, diagnostics) when it is present but invalid — every
+// defect found, not just the first. Unknown keys are defects: a typo must not
+// silently drop an authored field.
+func parseMissionBlock(n *yaml.Node) (*streamview.Mission, []string) {
+	if n == nil || n.Kind == 0 {
+		return nil, nil
+	}
+	var diags []string
+	bad := func(format string, a ...any) { diags = append(diags, fmt.Sprintf(format, a...)) }
+	if n.Kind != yaml.MappingNode {
+		return nil, []string{"mission: must be a mapping with version, outcome and optional success/commitments/exclusions"}
+	}
+	m := &streamview.Mission{Origin: streamview.OriginAuthored}
+	sawVersion, sawOutcome := false, false
+	scalarText := func(where string, v *yaml.Node) (string, bool) {
+		if v.Kind != yaml.ScalarNode || v.Tag == "!!null" {
+			bad("%s: must be text", where)
+			return "", false
+		}
+		t := strings.TrimSpace(v.Value)
+		if t == "" {
+			bad("%s: is empty", where)
+			return "", false
+		}
+		return t, true
+	}
+	textList := func(where string, v *yaml.Node) []string {
+		if v.Kind != yaml.SequenceNode {
+			bad("%s: must be a list of text", where)
+			return nil
+		}
+		var out []string
+		for i, item := range v.Content {
+			if t, ok := scalarText(fmt.Sprintf("%s[%d]", where, i), item); ok {
+				out = append(out, t)
+			}
+		}
+		return out
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		key, val := n.Content[i].Value, n.Content[i+1]
+		switch key {
+		case "version":
+			sawVersion = true
+			v, err := strconv.Atoi(strings.TrimSpace(val.Value))
+			if val.Kind != yaml.ScalarNode || err != nil {
+				bad("mission.version: must be the integer %d", missionVersion)
+			} else if v != missionVersion {
+				bad("mission.version: unsupported mission version %d (this statusgen reads version %d)", v, missionVersion)
+			}
+		case "outcome":
+			sawOutcome = true
+			if t, ok := scalarText("mission.outcome", val); ok {
+				m.Outcome = t
+			}
+		case "success":
+			if val.Kind != yaml.SequenceNode {
+				bad("mission.success: must be a list of {criterion, evidence}")
+				continue
+			}
+			for ci, c := range val.Content {
+				where := fmt.Sprintf("mission.success[%d]", ci)
+				if c.Kind != yaml.MappingNode {
+					bad("%s: must be a mapping with criterion and optional evidence", where)
+					continue
+				}
+				var sc streamview.SuccessCriterion
+				sawCriterion := false
+				for k := 0; k+1 < len(c.Content); k += 2 {
+					ck, cv := c.Content[k].Value, c.Content[k+1]
+					switch ck {
+					case "criterion":
+						sawCriterion = true
+						if t, ok := scalarText(where+".criterion", cv); ok {
+							sc.Criterion = t
+						}
+					case "evidence":
+						if cv.Kind != yaml.SequenceNode {
+							bad("%s.evidence: must be a list", where)
+							continue
+						}
+						for ei, ev := range cv.Content {
+							if ref, ok := parseMissionEvidence(fmt.Sprintf("%s.evidence[%d]", where, ei), ev, bad); ok {
+								sc.Evidence = append(sc.Evidence, ref)
+							}
+						}
+					default:
+						bad("%s: unknown key %q (want criterion, evidence)", where, ck)
+					}
+				}
+				if !sawCriterion {
+					bad("%s.criterion: is required", where)
+				}
+				m.Success = append(m.Success, sc)
+			}
+		case "commitments":
+			m.Commitments = textList("mission.commitments", val)
+		case "exclusions":
+			m.Exclusions = textList("mission.exclusions", val)
+		default:
+			bad("mission: unknown key %q (want version, outcome, success, commitments, exclusions)", key)
+		}
+	}
+	if !sawVersion {
+		bad("mission.version: is required (version: %d)", missionVersion)
+	}
+	if !sawOutcome {
+		bad("mission.outcome: is required")
+	}
+	if len(diags) > 0 {
+		return nil, diags
+	}
+	return m, nil
+}
+
+// parseMissionEvidence classifies one authored evidence reference. Path refs
+// are returned with an empty Repo — the stream-view identity qualifies them.
+func parseMissionEvidence(where string, n *yaml.Node, bad func(string, ...any)) (streamview.EvidenceRef, bool) {
+	planned := false
+	raw := ""
+	switch n.Kind {
+	case yaml.ScalarNode:
+		raw = strings.TrimSpace(n.Value)
+	case yaml.MappingNode:
+		sawPath := false
+		for k := 0; k+1 < len(n.Content); k += 2 {
+			key, val := n.Content[k].Value, n.Content[k+1]
+			switch key {
+			case "path":
+				sawPath = true
+				raw = strings.TrimSpace(val.Value)
+			case "planned":
+				b, err := strconv.ParseBool(strings.TrimSpace(val.Value))
+				if val.Kind != yaml.ScalarNode || err != nil {
+					bad("%s.planned: must be true or false", where)
+					return streamview.EvidenceRef{}, false
+				}
+				planned = b
+			default:
+				bad("%s: unknown key %q (want path, planned)", where, key)
+				return streamview.EvidenceRef{}, false
+			}
+		}
+		if !sawPath {
+			bad("%s.path: is required in the mapping form", where)
+			return streamview.EvidenceRef{}, false
+		}
+	default:
+		bad("%s: must be a reference string or {path, planned}", where)
+		return streamview.EvidenceRef{}, false
+	}
+	if raw == "" {
+		bad("%s: is empty", where)
+		return streamview.EvidenceRef{}, false
+	}
+	isPath := n.Kind == yaml.MappingNode
+	switch {
+	case !isPath && strings.HasPrefix(raw, "https://"):
+		ref := streamview.EvidenceRef{Kind: streamview.EvidenceURL, URL: raw}
+		if err := ref.Validate(); err != nil {
+			bad("%s: %v", where, err)
+			return streamview.EvidenceRef{}, false
+		}
+		return ref, true
+	case missionSchemeRe.MatchString(raw):
+		bad("%s: %q — only https URLs, <owner>/<name>#<number> and repository-relative paths are accepted", where, raw)
+		return streamview.EvidenceRef{}, false
+	case strings.HasPrefix(raw, "#"):
+		bad("%s: bare %q is ambiguous — qualify it as <owner>/<name>%s", where, raw, raw)
+		return streamview.EvidenceRef{}, false
+	case !isPath && strings.Contains(raw, "#"):
+		mm := missionForgeRefRe.FindStringSubmatch(raw)
+		if mm == nil {
+			bad("%s: %q is not <owner>/<name>#<number>", where, raw)
+			return streamview.EvidenceRef{}, false
+		}
+		num, _ := strconv.Atoi(mm[2])
+		return streamview.EvidenceRef{Kind: streamview.EvidenceForge, Repo: mm[1], Number: num}, true
+	}
+	// A path: validate its form against a placeholder repo; the real owning
+	// repo is attached by the stream-view identity.
+	probe := streamview.EvidenceRef{Kind: streamview.EvidencePath, Repo: "owner/name", Path: raw, Planned: planned}
+	if err := probe.Validate(); err != nil {
+		bad("%s: %v", where, err)
+		return streamview.EvidenceRef{}, false
+	}
+	return streamview.EvidenceRef{Kind: streamview.EvidencePath, Path: raw, Planned: planned}, true
 }

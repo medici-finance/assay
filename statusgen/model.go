@@ -1,6 +1,10 @@
 package main
 
-import "time"
+import (
+	"time"
+
+	"github.com/medici-finance/assay/statusgen/streamview"
+)
 
 type Stream struct {
 	Name string
@@ -59,7 +63,19 @@ type Stream struct {
 	// briefs that predate the requirement register is noise, and §4.5 says a new
 	// check lands opt-in, advisory-first.
 	Traced bool
-	Briefs []Brief
+	// Mission is the optional authored `mission:` frontmatter block — outcome,
+	// success criteria with evidence references, commitments and exclusions —
+	// parsed by parseMissionBlock. nil when the block is absent (every legacy
+	// stream: no migration is required) AND when it is present but invalid;
+	// the two are told apart by MissionDiagnostics, which is non-empty exactly
+	// when the block is present and invalid. An invalid block is never
+	// replaced by legacy README prose: precedence is authored > legacy prose >
+	// absent, and a broken authored block is diagnosed, not substituted
+	// (docs/stream-view-contract.md). Path evidence refs are stored with an
+	// empty Repo; the stream-view identity qualifies them.
+	Mission            *streamview.Mission
+	MissionDiagnostics []string
+	Briefs             []Brief
 	// Placeholders are the issue-loop placeholder rows (schema: placeholder-v1)
 	// parsed from this stream's issue-<NN>.md files. Each is also appended to
 	// Briefs as a synthetic row so the whole Next-up pipeline treats it as a
