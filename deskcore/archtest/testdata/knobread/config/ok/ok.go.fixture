@@ -1,0 +1,6 @@
+package ok
+
+import "os"
+
+// The config package is the one reader.
+func F() string { return os.Getenv("ASSAY_DESK_LEASE_TTL") }

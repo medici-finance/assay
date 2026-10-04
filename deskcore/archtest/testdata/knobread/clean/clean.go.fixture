@@ -1,0 +1,8 @@
+// Package clean uses os without reading the environment, and the number 20 without naming a knob.
+package clean
+
+import "os"
+
+const twenty = 20
+
+func F() ([]byte, error) { return os.ReadFile("x") }
