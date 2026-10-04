@@ -127,7 +127,7 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 16 | [Verification wake conditions — stop repeating unchanged blocked checks](brief-16-verification-wake-conditions.md) | 0 | M | done | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1396 @ e78d34ef8482d8daa0423f231fda1a06f6e3b959) |
 | 17 | [Verification failures create durable worker repair obligations](brief-17-verification-repair-obligations.md) | 1 | M | implemented | — | — |
 | 18 | [Enforce repair reservations at worker dispatch](brief-18-repair-admission.md) | 2 | M | implemented | — | — |
-| 19 | [Persist review findings and apply the existing round cap across sessions](brief-19-review-finding-continuity.md) | 0 | M | implemented | — | — |
+| 19 | [Persist review findings and apply the existing round cap across sessions](brief-19-review-finding-continuity.md) | 0 | M | verified | 2026-10-04 assay-verifier-app[bot] @ 70deba75a577 (claude-opus-5-5) | — |
 | 20 | [Review scope and first-pass completeness](brief-20-review-scope-and-first-pass.md) | 0 | M | implemented | — | — |
 | 21 | [Reverify changed external prerequisites without a synthetic push](brief-21-external-prerequisite-reverification.md) | 1 | M | implemented | — | — |
 | 22 | [Configure provider, model and effort per cell role](brief-22-cell-model-policy.md) | 0 | M | implemented | — | — |
