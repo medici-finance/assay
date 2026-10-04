@@ -71,7 +71,39 @@ const (
 	customTagKind = "apiVersion: v1\nkind: !custom Secret\nmetadata:\n  annotations:\n    kind: ConfigMap\n    data:\n      password: aHVudGVyMg==\n"
 	// `data:` text inside a ConfigMap's block scalar: the line is no parsed key at all.
 	scalarDataText = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\n  annotations:\n    note: |\n      data:\n        password: aHVudGVyMg==\n"
+	// A ConfigMap carrying a second, tagged key that the Kubernetes decoder resolves to
+	// `kind` (base64 of the word) with the value Secret: Kubernetes decodes a Secret.
+	binaryKindKey = "apiVersion: v1\nkind: ConfigMap\n!!binary a2luZA==: Secret\ndata:\n  password: aHVudGVyMg==\n"
+	// The typed JSON decoder matches field names case-insensitively, the last key winning.
+	foldedKindJSON = "{\n  \"apiVersion\": \"v1\",\n  \"kind\": \"ConfigMap\",\n  \"Kind\": \"Secret\",\n  \"data\": {\n    \"password\": \"aHVudGVyMg==\"\n  }\n}\n"
+	// A typed list decodes every item as its element type, whatever the item declares.
+	secretListItem = "apiVersion: v1\nkind: SecretList\nitems:\n- apiVersion: v1\n  kind: ConfigMap\n  data:\n    password: aHVudGVyMg==\n"
+	// A merge key with no anchor or alias: the earlier mapping in the merge list wins, so
+	// the merged object is a Secret carrying the ConfigMap item's data.
+	aliasFreeMerge = "apiVersion: v1\nkind: List\nitems:\n- <<:\n  - kind: Secret\n  - kind: ConfigMap\n    data:\n      password: aHVudGVyMg==\n"
+	// Two kind keys, neither Secret: what the mapping encloses is not proven.
+	duplicateKindEnclosing = "apiVersion: v1\nkind: Wrapper\nkind: Template\nspec:\n  object:\n    kind: ConfigMap\n    data:\n      password: aHVudGVyMg==\n"
 )
+
+// utf16le encodes an ASCII string as UTF-16LE.
+func utf16le(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		b.WriteByte(s[i])
+		b.WriteByte(0)
+	}
+	return b.String()
+}
+
+// bomPolyglot is one text read two ways. Split on LF, its line 1 is a decrypted Secret's
+// `data:` mapping. To yaml.v3, which a leading UTF-16LE byte-order mark switches to
+// UTF-16, lines 0-2 are one comment (every byte pair is a printable code unit, and the
+// first LF that pairs with a NUL ends it), and the UTF-16 text after it files a
+// ConfigMap's `data` key under line 1.
+func bomPolyglot() string {
+	return "\xff\xfe" + "#\x00" + "x\n" + "data:\n  password: aHVudGVyMg==\n" + "\x00" +
+		utf16le("data:\n  MODE: weekly\nkind: ConfigMap\n")
+}
 
 // lineShifted builds a text that the YAML parser numbers differently from a split on
 // LF: br, repeated, sits in a leading comment, so every parsed key is filed six lines
@@ -214,6 +246,26 @@ func TestK8sSecretDocScope(t *testing.T) {
 		// A `data:` line the parser holds no key for is could-not-check, not a pass.
 		{"data: text in a ConfigMap block scalar beside a Secret",
 			encryptedSecretFixture + "---\n" + scalarDataText, true},
+		// A key the Kubernetes decoder can read as `kind` without the parse seeing a kind
+		// key — a tagged key, or one that differs only in case — leaves the owner unproven.
+		{"tagged key that decodes to kind beside a Secret",
+			encryptedSecretFixture + "---\n" + binaryKindKey, true},
+		{"diff: tagged key that decodes to kind, new file",
+			newFileHunk(encryptedSecretFixture) + newFileHunk(binaryKindKey), true},
+		{"fence: tagged key that decodes to kind",
+			"```yaml\n" + encryptedSecretFixture + "```\n\n```yaml\n" + binaryKindKey + "```\n", true},
+		{"diff: JSON kind and Kind keys, new file",
+			newFileHunk(encryptedSecretFixture) + newFileHunk(foldedKindJSON), true},
+		{"SecretList item declaring another kind",
+			encryptedSecretFixture + "---\n" + secretListItem, true},
+		{"merge key with no anchor or alias",
+			encryptedSecretFixture + "---\n" + aliasFreeMerge, true},
+		{"duplicate non-Secret kinds enclosing another kind",
+			encryptedSecretFixture + "---\n" + duplicateKindEnclosing, true},
+		// A byte-order mark that switches the parser to UTF-16 makes it parse a text no
+		// line of the LF split holds: no reading is taken from it.
+		{"diff: UTF-16 byte-order mark in a new file",
+			newFileHunk(encryptedSecretFixture) + newFileHunk(bomPolyglot()), true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -263,5 +315,57 @@ func TestK8sForeignBreakCoversYAML(t *testing.T) {
 	}
 	if k8sForeignBreak(strings.Split("a: 1\r\nb: 2\r\n", "\n")) {
 		t.Errorf("CRLF line endings flagged: they are one break to both counters")
+	}
+}
+
+// TestK8sParseAlignment is the class guard for the parser reading a different text from
+// the one k8sLine reads, whatever the mechanism (an encoding switch, a skipped mark, a
+// line break the LF split does not count). It does not trust a list of known causes: for
+// every two-byte prefix, ahead of a mapping spelled in UTF-8, UTF-16LE and UTF-16BE, it
+// builds the owner index and fails naming any key a reading files under a line whose
+// text does not hold that key's name.
+func TestK8sParseAlignment(t *testing.T) {
+	const doc = "alpha: 1\nkind: ConfigMap\n"
+	utf16be := func(s string) string {
+		var b strings.Builder
+		for i := 0; i < len(s); i++ {
+			b.WriteByte(0)
+			b.WriteByte(s[i])
+		}
+		return b.String()
+	}
+	bodies := map[string]string{"UTF-8": doc, "UTF-16LE": utf16le(doc), "UTF-16BE": utf16be(doc)}
+	filed, misfiled := 0, 0
+	for p := 0; p < 1<<16; p++ {
+		prefix := string([]byte{byte(p >> 8), byte(p)})
+		for enc, body := range bodies {
+			text := prefix + body
+			lines := strings.Split(text, "\n")
+			for _, r := range newK8sOwnerIndex(lines).readings {
+				for _, c := range r.chunks {
+					if !c.ok {
+						continue
+					}
+					for ln, recs := range c.keys {
+						for _, k := range recs {
+							filed++
+							if ln < 0 || ln >= len(lines) || !strings.Contains(lines[ln], k.name) {
+								misfiled++
+								if misfiled <= 5 {
+									t.Errorf("prefix %q + %s mapping: key %q filed under line %d, whose text does not hold it", prefix, enc, k.name, ln)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if misfiled > 5 {
+		t.Errorf("... %d misfiled keys in all", misfiled)
+	}
+	// Positive control: the sweep must see readings at all, or it proves nothing.
+	if filed == 0 {
+		t.Fatal("no reading filed any key: the sweep checked nothing")
 	}
 }

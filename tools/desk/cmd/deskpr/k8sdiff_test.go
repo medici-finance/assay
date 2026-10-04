@@ -62,6 +62,14 @@ func TestBranchDiffK8sSecretOwnership(t *testing.T) {
 	shifted := "#" + strings.Repeat("\u2028", 6) + "\napiVersion: v1\nkind: ConfigMap\ndata: {MODE: weekly}\n---\n" +
 		"kind: !!str Secret\nmetadata: {name: h}\n---\napiVersion: v1\ndata:\n  password: aHVudGVyMg==\n" +
 		"kind: Secret\nmetadata:\n  name: app-creds\n"
+	// One text read two ways: split on LF, line 1 is a decrypted Secret's data; to the YAML
+	// parser, switched to UTF-16 by the leading byte-order mark, it is a ConfigMap's.
+	var u16 strings.Builder
+	for _, b := range []byte("data:\n  MODE: weekly\nkind: ConfigMap\n") {
+		u16.WriteByte(b)
+		u16.WriteByte(0)
+	}
+	bom := "\xff\xfe#\x00x\ndata:\n  password: aHVudGVyMg==\n\x00" + u16.String()
 	cases := []struct {
 		name   string
 		diff   []string
@@ -77,6 +85,8 @@ func TestBranchDiffK8sSecretOwnership(t *testing.T) {
 			gitNewFile("deploy/list.yaml", merged), true},
 		{"encrypted Secret file and a line-shifted DECRYPTED Secret file",
 			append(gitNewFile("deploy/secret.enc.yaml", encrypted), gitNewFile("deploy/shifted.yaml", shifted)...), true},
+		{"encrypted Secret file and a UTF-16 byte-order-mark file",
+			append(gitNewFile("deploy/secret.enc.yaml", encrypted), gitNewFile("deploy/bom.yaml", bom)...), true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

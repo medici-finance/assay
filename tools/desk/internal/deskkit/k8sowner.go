@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 )
@@ -13,10 +14,12 @@ import (
 // YAML parse PROVE that the data/stringData mapping on a given line belongs to an object
 // that is not a Secret? Only a yes narrows the rule. Every other answer — the text does
 // not parse, the line sits in a diff hunk that is not a whole new file, the owner has no
-// kind or more than one, a Secret (or a kind the parse cannot read) encloses it, the
-// chunk uses an anchor, alias or merge key, the text holds a line break the parser and a
-// split on LF count differently — is could-not-check, and the mapping is read exactly as
-// it was before ownership was considered.
+// kind or more than one, the owner carries a key that might decode as another kind (a
+// tagged key, or one differing from `kind` only in case), a Secret, a typed list or a
+// kind the parse cannot read encloses it, the chunk uses an anchor, alias or merge key,
+// the text holds a line break the parser and a split on LF count differently, or the text
+// is not valid UTF-8 or holds a NUL — is could-not-check, and the mapping is read exactly
+// as it was before ownership was considered.
 //
 // Why it exists. The rule arms on a `kind: Secret` ANYWHERE in the text, and deskpr hands
 // it a whole multi-file branch diff as one string, so one correctly sops-encrypted Secret
@@ -47,13 +50,24 @@ import (
 //     (indent of at most three, same character, closer at least as long), each block
 //     parsed on its own. Used only when the text is not a diff.
 //
-// Two conditions bind the parse itself. A chunk carrying any anchor, alias or `<<` merge
+// Three conditions bind the parse itself. A chunk carrying any anchor, alias or `<<` merge
 // key is could-not-check as a whole: one parsed node can then belong to several mappings
 // (a ConfigMap item anchored and merged into a Secret item, a data value aliased as a
 // Secret's data), so the textual parent of a key proves nothing about its owner. And a
 // text holding any character the parser counts as a line break while a split on LF does
 // not (k8sForeignBreak) gets no reading at all: the parser's line numbers would no longer
 // name the lines k8sLine reads, and a proof taken on one line would be applied to another.
+// Nor does a text that is not valid UTF-8 or holds a NUL (k8sForeignEncoding): a UTF-16
+// byte-order mark makes the parser decode, and file keys for, a text the scanner never
+// reads.
+//
+// Ownership itself is read the way the Kubernetes decoders read it, not only the way the
+// YAML parser does. A key that is tagged (`!!binary` of the word decodes to `kind`) or
+// that differs from `kind` only in case (the typed JSON decoder matches field names
+// case-insensitively, last key winning) leaves its mapping unproven. So does an item of a
+// typed list (`SecretList` and the like), which the typed decoder reads as the list's
+// element type whatever kind the item declares; a bare `List` decodes each item by its
+// own kind, so its items are still provable.
 //
 // One more condition binds every reading: every line that declares a Secret kind must
 // be, in that same reading, the `kind` key of a parsed Secret mapping. A chunk boundary
@@ -63,11 +77,12 @@ import (
 //
 // The cost of erring this way, stated rather than hidden: a mapping in a modification
 // hunk always refuses beside a Secret elsewhere; so does any mapping in a chunk that uses
-// anchors or merge keys, and a `data:` line the parser holds no key for (text inside a
-// block scalar); so does a ConfigMap whose new-file hunk
-// lies inside the over-estimated reach of a modification hunk just above it; and editing
-// an EXISTING Secret (its `kind:` line in a modification hunk) beside a new ConfigMap
-// keeps the pre-fix refusal for the whole diff.
+// anchors or merge keys, any item of a typed list, the data of any object that carries a
+// non-string key, and a `data:` line the parser holds no key for (text inside a block
+// scalar); so does a ConfigMap whose new-file hunk lies inside the over-estimated reach
+// of a modification hunk just above it; and editing an EXISTING Secret (its `kind:` line
+// in a modification hunk) beside a new ConfigMap keeps the pre-fix refusal for the whole
+// diff.
 type k8sOwnerIndex struct {
 	readings []*k8sReading
 }
@@ -112,7 +127,7 @@ var (
 
 func newK8sOwnerIndex(lines []string) *k8sOwnerIndex {
 	idx := &k8sOwnerIndex{}
-	if k8sForeignBreak(lines) {
+	if k8sForeignBreak(lines) || k8sForeignEncoding(lines) {
 		return idx // no reading: every mapping is read as before ownership was considered
 	}
 	diff := false
@@ -281,6 +296,24 @@ func k8sForeignBreak(lines []string) bool {
 	return false
 }
 
+// k8sForeignEncoding reports whether the parser could decode the text as something other
+// than the UTF-8 bytes k8sLine matches against. yaml.v3 picks its input encoding from a
+// leading byte-order mark: `FF FE` or `FE FF` switches it to UTF-16, and the keys it then
+// files describe a decoded text that no line of the LF split holds. Neither mark is valid
+// UTF-8, so any text that is not valid UTF-8 gets no reading. A NUL gets none either: the
+// parser in use refuses one as unprintable, so this is a second wall for a parser that
+// someday accepts it, not a verdict-changing check today. TestK8sParseAlignment pins
+// the property itself — every key a reading files is text on the line it is filed under —
+// across every two-byte prefix ahead of a mapping in three encodings.
+func k8sForeignEncoding(lines []string) bool {
+	for _, ln := range lines {
+		if !utf8.ValidString(ln) || strings.IndexByte(ln, 0) >= 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func hunkCount(s string) (int, error) {
 	if s == "" {
 		return 1, nil
@@ -384,11 +417,16 @@ func (c *k8sChunk) index(n *yaml.Node, base int, underSecret bool) {
 			if k.Anchor != "" || k.Tag == "!!merge" || k.Value == "<<" {
 				c.aliased = true // the mapping's keys can come from, or reach, another node
 			}
-			if k.Kind != yaml.ScalarNode {
-				unsure = true // a complex key could carry another kind
+			if k.Kind != yaml.ScalarNode || k.Tag != "!!str" {
+				// A complex key could carry another kind, and so could a tagged one: the
+				// Kubernetes decoder resolves a `!!binary` key to the string it encodes.
+				unsure = true
 				continue
 			}
 			if k.Value != "kind" {
+				if strings.EqualFold(k.Value, "kind") {
+					unsure = true // the typed JSON decoder matches field names case-insensitively
+				}
 				continue
 			}
 			kinds++
@@ -405,7 +443,11 @@ func (c *k8sChunk) index(n *yaml.Node, base int, underSecret bool) {
 		other := proven && !underSecret
 		// What a mapping encloses is not proven unless the mapping itself is provably not
 		// a Secret: a kind the parse cannot read as a plain string may still be Secret.
-		enclosing := underSecret || isSecret || unsure || (kinds > 0 && !proven)
+		// A typed list (SecretList, ConfigMapList, …) decodes every item as its element
+		// type whatever kind the item declares, so nothing under it is proven either. A
+		// bare List is the exception: its items are decoded each by its own kind.
+		typedList := proven && own != "List" && strings.HasSuffix(own, "List")
+		enclosing := underSecret || isSecret || unsure || typedList || (kinds > 0 && !proven)
 		for i := 0; i+1 < len(n.Content); i += 2 {
 			k, v := n.Content[i], n.Content[i+1]
 			if k.Kind == yaml.ScalarNode {
