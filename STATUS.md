@@ -29,7 +29,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-10-04 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-10-04 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/14 | 2026-10-04 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 8/18 | 2026-10-04 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 9/18 | 2026-10-04 |  |
 
 ## Parked
 
@@ -74,7 +74,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: ac8cc32 2026-10-05T09:17:48+11:00_
+_last regen: 56ed2b7 2026-10-04T23:26:48Z_
 
 **Progress:** 6/13 brief items done.
 
@@ -96,9 +96,9 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: ac8cc32 2026-10-05T09:17:48+11:00_
+_last regen: 56ed2b7 2026-10-04T23:26:48Z_
 
-**Progress:** 14/71 brief items done.
+**Progress:** 15/71 brief items done.
 
 **In-flight:**
 
@@ -111,7 +111,6 @@ _none_
 - desktools-v2/13
 - desktools-v2/14
 - windows-port/00
-- windows-port/01
 - windows-port/03
 - windows-port/08
 - windows-port/10
@@ -129,7 +128,7 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (57 desk-actionable of 93 total — 86 at implemented, 7 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 92 total — 85 at implemented, 7 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -148,8 +147,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | build-less-brittle | 02 [exec:strong] | verified | 6500 | 7 | — | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | build-less-brittle | 04 [exec:strong] | implemented | 5500 | 5 | — | — | — |
 | cellctl-windows | 00 [exec:strong] | implemented | 5500 | 7 | — | — | — |
-| windows-port | 00 | implemented | 5500 | 9 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
+| windows-port | 00 | implemented | 5000 | 8 | — | — | — |
 | build-less-brittle | 06 [exec:strong] | implemented | 4500 | 3 | — | — | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
 | apps-installer | 02 [exec:strong] | implemented | 4000 | 4 | — | — | — |
@@ -198,7 +197,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | quality | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting human gate (15)
+### Awaiting human gate (14)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -207,7 +206,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | harness-portability | 03 | implemented | 4500 | 7 | — | — | — |
 | forge-neutral | 07 [exec:strong] | implemented | 4000 | 4 | — | — | — |
-| windows-port | 01 | implemented | 4000 | 6 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-neutral | 13 [exec:strong] | implemented | 2500 | 1 | — | — | — |
@@ -597,10 +595,9 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 06 Findings register becomes a corroborated state machine — bounded shelving (parked) + transition guard on resolved/affects/parked — implemented (wave 1)
 - 09 Opt-in statusgen telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
 
-### windows-port (10 open)
+### windows-port (9 open)
 
 - 00 Build-tag split for the unix-only syscall sites in statusgen and desk-tools — implemented (wave 0)
-- 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — implemented (wave 1)
 - 03 Windows install path — PowerShell-vs-Go-installer fork, then build — implemented (wave 2)
 - 08 Go-native GitLab fleet provisioning — retire the bash+curl+jq script's Windows dependency — implemented (wave 1)
 - 10 Verify in the harness container: the supported execution-witness runner on Windows — implemented (wave 3)
@@ -760,8 +757,9 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 13 Cadenced roadmap artifacts — `--cadence weekly\|monthly` window computation reusing the roadmap renderer, a `theme:` render rule, config-driven priority order and brand — done (wave 1)
 - 14 `--lint`: flag a Verify row whose `go test -run` selector can pass on "no tests to run" (vacuous-selector rule) — done (wave 1)
 
-### windows-port (8 done)
+### windows-port (9 done)
 
+- 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — done (wave 1)
 - 02 Portability audit — enumerate + triage the shell-assuming surfaces — done (wave 0)
 - 04 Windows CI leg — statusgen --lint + a desk-verb smoke on Windows — done (wave 2)
 - 05 Adoption-doc delta — the Windows adopter walkthrough — done (wave 3)
@@ -773,4 +771,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**26** streams (**19** active, **0** paused, **7** parked) · **104/364** briefs done · completed initiatives: see `docs/archive/`
+**26** streams (**19** active, **0** paused, **7** parked) · **105/364** briefs done · completed initiatives: see `docs/archive/`

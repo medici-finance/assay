@@ -100,7 +100,7 @@ process result alone:
 | 6 | **undetermined version** | names the missing/unreadable record (e.g. `.assay-versions`), prints no version, and uses no "assuming latest" wording |
 | 7 | **not a bare umbrella version** | a `<component>/`-prefixed per-artifact tag, or a malformed version — "this verb moves the whole umbrella; name a bare umbrella version, e.g. `v0.13.0`" |
 | 8 | **no such published release** | a bare `vX.Y.Z` that names no published umbrella — no manifest, no materialised `checksums.txt`, and none at the release home (or no `--fetch`, in which case the refusal names the flag); the refusal names where it looked. Unsupported / could-not-resolve, **never a nearest-match guess** |
-| 9 | **artifacts unavailable** | the target resolves but its artifacts can no longer be fetched (a release pruned from the cache) |
+| 9 | **artifacts unavailable** | the target resolves but its artifacts can no longer be fetched (a release pruned from the cache), or its `checksums.txt` lists no `<artifact>-linux-amd64` asset for a bare pin line the pin file carries — the refusal names the missing asset, and nothing is migrated or re-pinned |
 
 The `refus`-al wording never contains "assuming", "nearest", or "latest" on the undetermined and
 unknown-target paths — those words are how a guess sneaks in.
