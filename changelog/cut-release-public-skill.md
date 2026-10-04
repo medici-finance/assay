@@ -1,0 +1,3 @@
+### Added
+
+- `assay:cut-release` — a release-cutting skill in the public bundle, written against the single `vX.Y.Z` umbrella release. It sets the order of the chain: four live preconditions, a dry run first, the gated publish handed to the driver as exact commands, hashes taken only from the published `checksums.txt`, then a re-pin of every consumer. The chain is done only when every consumer is green on the new pin. A bad release is fixed forward; a tag is never moved. Adopters cutting their own releases use the same skill. It is registered in the skills README, SOURCES.yaml, the Codex and Cursor packaging rosters, the per-harness capability tables, and the Codex smoke protocol's skill list.
