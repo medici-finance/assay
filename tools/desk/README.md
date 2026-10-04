@@ -455,6 +455,30 @@ mv ~/.claude/desk-tools/* ~/.config/assay/ 2>/dev/null; rmdir ~/.claude/desk-too
 The audit ledger, roster beacons, and any active `STOP`/`DISABLED` flags carry over. New
 installs start clean — no migration needed.
 
+### Roster beacon writes and recovery
+
+`deskack` receipts, `deskroster` role/work changes and resource-vitals updates share
+`<state>/roster/<session>.json`. They serialize the complete read-modify-write operation
+with a per-session OS file lock, then publish a complete replacement from a temporary
+file in the same directory. Roster pruning uses the same transaction and preserves
+updates made after its scan. Writers preserve fields they do not own. The lock file
+stays in place: removing it while a process holds it could create two independent locks.
+
+Install the fixed desk-tools version for **all** writers sharing a state directory and
+restart them. An older binary does not participate in the lock protocol. The change
+prevents partial writes and lost concurrent updates; it cannot reconstruct data already
+lost from a damaged beacon.
+
+If a beacon is already malformed, the tools refuse to overwrite it. Stop the affected
+session's writers, retain a byte-for-byte backup of the damaged file, and restore a
+known-good complete beacon for that same session while the writers remain stopped.
+Validate the JSON and reconcile its role, open work, receipts and resource fields before
+restarting. If no trustworthy copy exists, retain the damaged file for reconciliation
+and start a fresh session with a distinct identity; account for the old session's open
+work explicitly. Do not replace a damaged beacon with an empty object, delete it to
+bypass the refusal, or remove a lock file as a recovery step. An OS lock is released
+when its holding process exits.
+
 ## Trust gate (deskkit/trust.go)
 
 With example-org/example-k8s public, desk scanning loops read repos where arbitrary

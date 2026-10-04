@@ -39,14 +39,13 @@ type Beacon struct {
 	Acks     json.RawMessage `json:"acks,omitempty"`
 	// Resource is example-stream/13's self-reported vitals block, owned by
 	// deskkit.MergeResourceVitals — carried here as an opaque RawMessage for the SAME
-	// reason Acks is: so a typed rewrite through loadBeacon/saveBeacon (the role/work-entry
-	// path below) round-trips it untouched rather than silently dropping it on the floor.
+	// reason Acks is: display readers can inspect it without owning its schema.
+	// Writes preserve every non-roster raw field through the shared transaction.
 	Resource json.RawMessage `json:"resource,omitempty"`
 }
 
-// hasAcks reports whether a beacon carries at least one receipt record — used so a beacon
-// is not deleted merely because it has no open work, when it still holds receipt history
-// a metric has not yet read.
+// hasAcks reports whether a displayed beacon carries at least one receipt record.
+// Mutation deletion is more conservative: every foreign field preserves the file.
 func (b *Beacon) hasAcks() bool {
 	s := strings.TrimSpace(string(b.Acks))
 	return s != "" && s != "[]" && s != "null"
@@ -119,61 +118,96 @@ func resolveSession(sessionFlag string) (string, error) {
 
 // ---- beacon I/O ----
 
-func loadBeacon(session string) (*Beacon, error) {
-	path, err := beaconPath(session)
+func decodeBeacon(session string, fields map[string]json.RawMessage) (*Beacon, error) {
+	data, err := json.Marshal(fields)
 	if err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return &Beacon{Session: session}, nil
-		}
-		return nil, fmt.Errorf("cannot read beacon %s: %w", path, err)
-	}
 	var b Beacon
 	if err := json.Unmarshal(data, &b); err != nil {
-		return nil, fmt.Errorf("malformed beacon %s: %w", path, err)
+		return nil, fmt.Errorf("malformed beacon: %w", err)
 	}
-	if b.OpenWork == nil {
-		b.OpenWork = []WorkEntry{}
-	}
+	// The filename selects the session; a stored field never redirects writes.
+	b.Session = session
 	return &b, nil
 }
 
-func saveBeacon(b *Beacon) error {
-	dir, err := rosterDir()
+func loadBeacon(session string) (*Beacon, error) {
+	fields, err := deskkit.ReadRosterBeacon(session)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("cannot create roster dir: %w", err)
-	}
-	b.Updated = time.Now().UTC().Format(time.RFC3339)
-	path, err := beaconPath(b.Session)
-	if err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(b, "", "  ")
-	if err != nil {
-		return fmt.Errorf("cannot marshal beacon: %w", err)
-	}
-	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
-		return fmt.Errorf("cannot write beacon: %w", err)
-	}
-	return nil
+	return decodeBeacon(session, fields)
 }
 
-// removeBeaconFile removes the beacon file if it has no work and no role (clean up empty beacons).
-func removeBeaconFile(session string) error {
-	path, err := beaconPath(session)
-	if err != nil {
-		return err
+// mutateBeacon decodes and changes only deskroster's fields under the shared
+// beacon lock. Unknown fields belong to other writers and survive every update.
+// Returning false leaves the current file untouched, including a missing file.
+func mutateBeacon(session string, update func(*Beacon) bool) (deleted bool, err error) {
+	_, err = deskkit.MutateRosterBeacon(session, func(fields map[string]json.RawMessage) (deskkit.BeaconAction, error) {
+		b, err := decodeBeacon(session, fields)
+		if err != nil {
+			return deskkit.BeaconKeep, err
+		}
+		if !update(b) {
+			return deskkit.BeaconKeep, nil
+		}
+		// Delete only a beacon wholly owned by deskroster. Even empty foreign
+		// fields are not ours to discard (acks, resource, and future extensions).
+		onlyRoster := true
+		for key := range fields {
+			switch key {
+			case "session", "role", "updated", "open_work":
+			default:
+				onlyRoster = false
+			}
+		}
+		if len(b.OpenWork) == 0 && b.Role == "" && onlyRoster {
+			deleted = true
+			return deskkit.BeaconDelete, nil
+		}
+		b.Updated = time.Now().UTC().Format(time.RFC3339)
+		data, err := json.Marshal(b)
+		if err != nil {
+			return deskkit.BeaconKeep, err
+		}
+		var owned map[string]json.RawMessage
+		if err := json.Unmarshal(data, &owned); err != nil {
+			return deskkit.BeaconKeep, err
+		}
+		for _, key := range []string{"session", "role", "updated", "open_work"} {
+			if value, ok := owned[key]; ok {
+				fields[key] = value
+			} else {
+				delete(fields, key)
+			}
+		}
+		return deskkit.BeaconWrite, nil
+	})
+	return deleted, err
+}
+
+// pruneBeacon removes only exact entries proven closed before acquiring the lock.
+// A concurrent upsert with a different description is new work, not that evidence.
+func pruneBeacon(session string, closed []WorkEntry) error {
+	candidates := make(map[WorkEntry]bool, len(closed))
+	for _, entry := range closed {
+		candidates[entry] = true
 	}
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("cannot remove beacon %s: %w", path, err)
-	}
-	return nil
+	_, err := mutateBeacon(session, func(b *Beacon) bool {
+		changed := false
+		kept := b.OpenWork[:0]
+		for _, entry := range b.OpenWork {
+			if candidates[entry] {
+				changed = true
+			} else {
+				kept = append(kept, entry)
+			}
+		}
+		b.OpenWork = kept
+		return changed
+	})
+	return err
 }
 
 // ---- claims loading ----
@@ -429,38 +463,28 @@ func cmdSet(args []string) error {
 	}
 
 	if role != "" || workSet {
-		b, err := loadBeacon(sess)
-		if err != nil {
-			return deskkit.Unverifiable("cannot load beacon", err)
-		}
-
-		// Set role if provided.
-		if role != "" {
-			b.Role = role
-		}
-
-		// Upsert the work entry (idempotent on (repo,pr)).
-		if workSet {
-			found := false
-			for i, w := range b.OpenWork {
-				if w.Repo == repo && w.PR == pr {
-					b.OpenWork[i].What = what
-					found = true
-					break
-				}
+		_, err := mutateBeacon(sess, func(b *Beacon) bool {
+			if role != "" {
+				b.Role = role
 			}
-			if !found {
+			if workSet {
+				for i, w := range b.OpenWork {
+					if w.Repo == repo && w.PR == pr {
+						b.OpenWork[i].What = what
+						return true
+					}
+				}
 				b.OpenWork = append(b.OpenWork, WorkEntry{Repo: repo, PR: pr, What: what})
 			}
-		}
-
-		if err := saveBeacon(b); err != nil {
-			return deskkit.Unverifiable("cannot save beacon", err)
+			return true
+		})
+		if err != nil {
+			return deskkit.Unverifiable("cannot update beacon", err)
 		}
 	}
 
 	// Vitals: an independent field-preserving raw-key merge (deskkit.MergeResourceVitals),
-	// never the typed loadBeacon/saveBeacon path above — see vitals.go's header for why a
+	// using the same beacon transaction as role/work mutations — see vitals.go for why a
 	// second, dedicated writer is the safer property than one struct trusted to remember
 	// every co-owned field forever.
 	if vitalsSet {
@@ -521,41 +545,29 @@ func cmdDrop(args []string) error {
 		return err
 	}
 
-	b, err := loadBeacon(sess)
-	if err != nil {
-		return deskkit.Unverifiable("cannot load beacon", err)
-	}
-
-	// Remove the entry.
-	filtered := b.OpenWork[:0]
 	found := false
-	for _, w := range b.OpenWork {
-		if w.Repo == repo && w.PR == pr {
-			found = true
-			continue
+	deleted, err := mutateBeacon(sess, func(b *Beacon) bool {
+		filtered := b.OpenWork[:0]
+		for _, w := range b.OpenWork {
+			if w.Repo == repo && w.PR == pr {
+				found = true
+				continue
+			}
+			filtered = append(filtered, w)
 		}
-		filtered = append(filtered, w)
+		b.OpenWork = filtered
+		return found
+	})
+	if err != nil {
+		return deskkit.Unverifiable("cannot update beacon", err)
 	}
-	b.OpenWork = filtered
-
 	if !found {
 		fmt.Printf("deskroster: %s has no entry for PR #%d (%s) — nothing to drop\n", sess, pr, repo)
 		return nil
 	}
-
-	// If no work left, no role, and no receipt history, remove the file entirely. A beacon
-	// that still holds acks is KEPT (saved below) so a receipt a metric has not yet read is
-	// not deleted along with the last PR entry.
-	if len(b.OpenWork) == 0 && b.Role == "" && !b.hasAcks() {
-		if err := removeBeaconFile(sess); err != nil {
-			return deskkit.Unverifiable("cannot remove beacon file", err)
-		}
+	if deleted {
 		fmt.Printf("deskroster: dropped PR #%d (%s) from %s (beacon removed — no remaining work)\n", pr, repo, sess)
 		return nil
-	}
-
-	if err := saveBeacon(b); err != nil {
-		return deskkit.Unverifiable("cannot save beacon", err)
 	}
 
 	fmt.Printf("deskroster: dropped PR #%d (%s) from %s\n", pr, repo, sess)
@@ -594,19 +606,11 @@ func cmdList() error {
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 				continue
 			}
-			path := filepath.Join(dir, e.Name())
-			data, err := os.ReadFile(path)
+			b, err := loadBeacon(strings.TrimSuffix(e.Name(), ".json"))
 			if err != nil {
 				continue
 			}
-			var b Beacon
-			if err := json.Unmarshal(data, &b); err != nil {
-				continue
-			}
-			if b.OpenWork == nil {
-				b.OpenWork = []WorkEntry{}
-			}
-			beacons = append(beacons, b)
+			beacons = append(beacons, *b)
 		}
 	}
 	// If dir doesn't exist, beacons stays empty.
@@ -633,7 +637,7 @@ func cmdList() error {
 		state   string // LIVE, MERGED, CLOSED, or "?" on gh failure
 	}
 	var rows []beaconRow
-	modifiedBeacons := make(map[string]*Beacon) // session -> potentially modified beacon
+	closedEntries := make(map[string][]WorkEntry) // exact entries checked outside the lock
 
 	for i := range beacons {
 		b := &beacons[i]
@@ -666,6 +670,7 @@ func cmdList() error {
 			// Auto-prune merged/closed entries (self-healing).
 			if info != nil && (info.State == "MERGED" || info.State == "CLOSED") {
 				changed = true
+				closedEntries[b.Session] = append(closedEntries[b.Session], w)
 				continue
 			}
 			surviving = append(surviving, w)
@@ -674,17 +679,13 @@ func cmdList() error {
 
 		if changed {
 			b.OpenWork = surviving
-			modifiedBeacons[b.Session] = b
 		}
 	}
 
-	// Flush modified beacons (auto-pruned from merged/closed). A beacon keeps its file while
-	// it still holds a role OR receipt history, even with no open work left.
-	for _, b := range modifiedBeacons {
-		if len(b.OpenWork) == 0 && b.Role == "" && !b.hasAcks() {
-			_ = removeBeaconFile(b.Session)
-		} else {
-			_ = saveBeacon(b)
+	// Apply checked removals to the latest beacon, preserving concurrent writers.
+	for session, closed := range closedEntries {
+		if err := pruneBeacon(session, closed); err != nil {
+			return deskkit.Unverifiable("cannot auto-prune beacon", err)
 		}
 	}
 
