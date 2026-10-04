@@ -1,0 +1,3 @@
+### Fixed
+- `upgrade-assay` now fills each bare, CI-facing pin line (`statusgen <tag> <sha256>`, a bare `desk-tools` line, …) with the `<artifact>-linux-amd64` asset's digest, chosen by asset name. It used to take the digest of the platform it ran on, so a re-pin run on an Apple-silicon machine wrote the darwin-arm64 digest into the line CI verifies and turned CI's checksum step red. If the release's `checksums.txt` has no linux-amd64 asset for a bare line, the verb now refuses before migrating or writing anything instead of borrowing another platform's digest.
+- `upgrade-assay` keeps the trailing `# …` comment on every pin line it rewrites; it used to drop it.
