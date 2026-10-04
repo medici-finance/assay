@@ -333,6 +333,53 @@ rows_passed=10 rows_total=11
 
 VERIFY: BLOCKED — rows 1, 2, 2a, 3, 3a, 4, 4a, 5, 6 and 7 pass at merged main 024c87b01aba, and the two FAILs from 2026-09-27 are cleared by #1817 and #1813. Row 8 (live Claude Code loop cycle) is could-not-check for a dispatched offline verifier and stays BLOCKED on a human or live-session run. The item stays at implemented.
 
+### 2026-10-02 non-implementer verifier re-run — VERIFY: BLOCKED (rows 1–7 pass; row 8 needs a live session) — 2026-10-02T22:56:45Z, merged main e1d99484ffd9
+
+Header: run at 2026-10-02T22:56:45Z (UTC) against merged main e1d99484ffd9, in a detached worktree, with a throwaway HOME and an empty environment apart from PATH and the Go caches. Toolchain go1.27.1 darwin/arm64 (the module pins go 1.25.0). Runner is not the implementer. Every row was executed by hand as authored, from the repo root. Rows whose command ends in "; echo $?" always return shell exit 0, so the verdict for those rows is the printed value, shown beside the exit.
+
+**What moved since the last recorded outcome (2026-09-27, verify-fail on rows 3, 7 and 8, blocker #1703):** #1703 is now CLOSED. #1817 added the system-demo cell to the Claude Code binding (row 3) and #1813 wired harnesslint into the ci workflow (row 7). Since the 2026-10-01 block above, the only changes under this brief's inputs are edits to three skill bodies (author-brief, pr-review-desk and two of its reference notes), a one-line stream README change, and this brief's own Evidence. The Verify table is unchanged, and the bodies lint is still clean over the edited bodies (row 2).
+
+| # | Command | Exit | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | harnesslint module test suite, as authored (go test ./... with GOFLAGS=-buildvcs=false, output captured, exit echoed) | 0 (printed 0) | "ok" for the harnesslint package in 1.040s. A supplementary verbose run with -count=1 showed 21 of 21 top-level tests PASS, none FAIL, including the per-banned-token red test, the unknown-capability, missing-capability and missing-skill-cell red tests, and the could-not-check tests. | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | build harnesslint with GOWORK=off, run "bodies" over the shipped skills directory | 0 (printed 0) | "checked-clean: bodies — no violations" (14 skill bodies) | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2a | mutation, as authored: copy the skills tree, append a line with backticked Agent and SendMessage to the adopt body copy, run "bodies" over the copy, remove the copy | 0 (printed 1; non-zero expected) | two violations at line 122 of the adopt copy: banned harness token "SendMessage" and banned harness token backticked Agent; then "checked-failed: bodies — 2 violation(s)". Names the adopt file and both tokens. | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | build harnesslint, run "bindings" over the shipped references directory | 0 (printed 0) | four files skipped by their own declared non-matrix-reference reason (desk-common, desk-shell, standing-note, tick-contract), then "checked-clean: bindings — no violations". The Claude Code binding carries the system-demo row at line 58. | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3a | mutation, as authored: copy the references directory, replace the codex copy with one stripped of every dispatch-worker line, run "bindings" over the copy, remove the copy | 0 (printed 1; non-zero expected) | codex copy: capability "dispatch-worker" does not resolve — no capability:dispatch-worker binding present; then "checked-failed: bindings — 1 violation(s)" | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | git grep for SendMessage under the skills tree into a file, assert the file is empty | 0 (printed 0) | the output file is 0 bytes | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4a | positive control: git grep -c for SendMessage in the Claude Code binding file | 0 | count 2 (at least 1), so the empty result in row 4 means clean, not blind | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | loop over the five original capability names, grep each in the Claude Code and Codex binding files, assert nothing is reported missing | 0 (printed 0) | the output file is 0 bytes. Control: the same loop with no-such-cap appended printed 1 and the line "MISSING no-such-cap". | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | neighbour row: plugindrift with GOWORK=off and --root at the repo root | 0 (printed 0) | "coverage: 14 bundled skills/*/SKILL.md — 0 pinned, 6 canonical, 8 unported, 0 unaccounted"; "PLUGINDRIFT: CLEAN (0 origins …)" | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | grep -rl for harnesslint under the workflows directory, assert a match | 0 (printed 0) | one match, the ci workflow: a build-test case that runs the harnesslint test suite, plus a dedicated harnesslint job that runs "bodies" and "bindings" over the real tree | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | (prose row, no executable command) one full loop cycle, fanout a trivial brief → review → verify, driven from the rewritten skills in a real Claude Code session | unrun | could-not-check. The row needs an interactive live session that opens a worker PR, posts a review and lands Evidence; a dispatched read-only verifier cannot do that. No non-implementer live-session record exists in this Evidence section. Tracked in #1834 (open, help wanted). | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+**Execution witness (dry run, nothing written):** statusgen v1.0.31 verifyrun over this brief exited 1 with 10 of 11 rows recorded pass and row 8 recorded fail exit=2 (a shell parse failure on the prose row, not a regression). The witness is weak evidence for rows 1–3a, 4, 5, 6 and 7: each ends in "; echo $?", so it records pass at exit 0 whatever the tool returned. The by-hand printed values above are the real result. This table has no check:ci row.
+
+**Vacuity check.**
+- Rows 1, 2, 2a, 3, 3a discriminate. The harnesslint module and both binding files were added by this stream's work, so each row errors without them. Rows 2a and 3a are live mutations. Two further mutations in a scratch copy of the module: disabling the banned-token match turned the per-banned-token test red; disabling the capability-resolution check turned three bindings tests red (missing capability, undeclared reference, closure without roster).
+- Row 3 failed on real drift on 2026-09-16 and 2026-09-27, and row 7 failed until #1813, so both have been observed red.
+- Row 5 discriminates only on the file existing and containing the five strings anywhere. It covers 5 of the 8 live capabilities and 2 of the 3 binding files. Row 3 carries full closure.
+- Row 6 is non-discriminating for this brief, as its own Expect cell says: the plain exit is 0 regardless of drift.
+- Row 7 matches any mention of the word in a workflow, a comment included. Reading the ci workflow confirms a real job runs the lint.
+- Rows 4 and 4a are a weak pair: row 4 checks one token only, which the bodies lint (row 2) already covers.
+
+**Risk-bearing value enumeration.** Risk metadata is present and all "no"; gate is model; no risk-classed path is touched. Enumerated over the harnesslint module, the two binding files and the stream README vocabulary block:
+
+| Rank | Identifier = literal | Location | Irreversibility |
+|---|---|---|---|
+| 1 | exitClean = 0, exitFailed = 1, exitCannot = 2, exitUsage = 2 | tools/harnesslint/lint.go lines 36–39 | The three-state exit contract the CI job gates on. Reversible by an edit and redeploy. |
+| 2 | capability vocabulary = 8 entries (dispatch-worker, message-agent, isolate-workspace, invoke-skill, session-notifications, durable-monitor, stop-worker, cadence-tick) | stream README lines 410–419 | Closed set, amended in the README by design. Reversible. |
+| 3 | banned-token list | tools/harnesslint/banned-tokens.md | Lint config knob. Reversible. |
+| 4 | defaultReadmePath and the three marker strings | tools/harnesslint/lint.go lines 48, 53, 56, 75 | Lookup knobs; an empty read routes to exit 2. Reversible. |
+
+RISK-VALUE: DERIVED — exitClean = 0 / exitFailed = 1 / exitCannot = 2 / exitUsage = 2 @ tools/harnesslint/lint.go:36-39 — the brief's ground rule requires parse error, unreadable file or empty vocabulary to be non-zero and distinct from a violation; 0, 1 and 2 keep the three states apart, and usage errors fold onto could-not-check so no fourth state exists. Exit 0 and 1 were exercised live in rows 2, 2a, 3 and 3a.
+RISK-VALUE: DERIVED — capability vocabulary = the 8-entry set @ the stream README lines 410–419 — the brief's decided seam keeps one closed set in the stream README and the lint reads it from there; the five entries this brief introduced are all present, and the three later entries arrived by the intended amend-in-README path. Row 3 enforces closure over all 8.
+Ranks 3 and 4 are reversible lint-config knobs, ranked last and not derived.
+
+rows_passed=10 rows_total=11
+
+VERIFY: BLOCKED — rows 1, 2, 2a, 3, 3a, 4, 4a, 5, 6 and 7 pass by hand at merged main e1d99484ffd9. Row 8 (a live Claude Code loop cycle) is could-not-check for a dispatched verifier and needs a human-run live session, tracked in #1834. The item stays at implemented.
+
 ## Review
 
 Gate: **model** (from frontmatter). Review priority: the diff of the seven bodies,

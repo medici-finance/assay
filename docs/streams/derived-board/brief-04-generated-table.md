@@ -392,6 +392,35 @@ rows_passed=6 rows_total=8
 
 VERIFY: FAIL — Rows 1, 2, 3, 4, 7 and 8 pass on shipped code. Rows 5 and 6 are checked-failed: the instrument looked, and the schedule trigger and the pull-requests/issues read scopes are absent from the statusgen workflow on merged main. Earlier passes recorded this same observation as could-not-check or BLOCKED, but a check that ran and found the property missing is a fail. The cause has not changed. It is the unlanded, human-gated workflow-file half (an App cannot push .github/workflows), already tracked at #1175, not a regression in shipped code. Status stays `implemented`; no flip.
 
+### 2026-10-02 non-implementer verifier run — 2026-10-02T22:56Z — 6/8 pass by hand, 2 fail (rows 5-6: the workflow-file half is still unlanded) — merged main e1d99484ffd9
+
+Runner is not the implementer. Detached worktree at merged main e1d99484ffd9, left clean. Throwaway HOME; statusgen built from source at that sha (go1.27.1, darwin). `gate: model`; risk answers all `no`. Stream README row 04 reads `implemented`, Verified and Reviewed cells empty. Commands are the Verify table's rows as authored; long paths are named in words here.
+
+| # | Command | Exit | Observed | Date | Runner |
+| --- | --- | --- | --- | --- | --- |
+| 1 | cd statusgen && go test . -run ReadmeTable -count=1 | 0 | `ok` for the statusgen package in 0.893s (seven ReadmeTable tests) | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | row 2 as authored: regen --readmes --root . --offline from statusgen, then git diff --stat on this stream's README; plus the Expect cell's non-table-line count | 0 | regen printed nothing, diff --stat empty, non-table changed lines = 0. Non-discriminating as authored: --root . resolves to the statusgen directory, which carries no docs tree, so nothing is rendered. Supplementary run with --root .. (the repo root): rc=0, zero files changed, the README on main is already canonical | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | row 3 as authored: the same regen twice, then git status --porcelain docs/streams piped to wc -l | 0 | `0`, with a git warning that statusgen/docs does not exist. Same non-discriminating --root . form as row 2; the supplementary --root .. run is idempotent (zero porcelain lines) | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | row 4 as authored: sed -i '' edit of row 01's title cell in this stream's README, then go run . --lint --root .. from statusgen, echo rc, git checkout of the README | 0 | With the system (BSD) sed first on PATH: `rc=1` and `PROBLEM: derived-board README: hand edit to a generated table — row 01 authoring cells (title/wave/effort) differ from the brief frontmatter`, then `LINT: FAIL 1 problem(s)`; README restored, tree clean. Unmutated baseline: `LINT: PASS`, rc=0. With GNU sed 4.10 first on PATH the literal -i '' form fails (sed exit 2, then git checkout exits 128 from the repo root) — a check-definition portability defect, not a code defect | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | row 5 as authored: python3 yaml load of the statusgen workflow, assert a schedule trigger | 1 | `KeyError: 'on'` — the workflow's triggers are pull_request and push only; no schedule trigger on merged main. Checked and failed | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | row 6 as authored: grep -c for `pull-requests: read` and `issues: read` in the statusgen workflow | 1 | `0` (expected `2`) — the only permission lines are `contents: read`. Checked and failed | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | grep -c 'statusgen:briefs:begin' on this stream's README | 0 | `1` | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | row 8 as authored: cd statusgen && go run . init --dry-run on the row's throwaway target, grep -c 'reconcile' | 0 | `1` (expected at least 1); the dry run created no directory | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Execution witness (`statusgen verifyrun --dry-run`, nothing written): 5 of 8 rows proven, exit 1. Rows 1, 2, 3, 7, 8 pass; rows 5 and 6 fail on exit 1; row 4 fails on exit 2 because the row's unescaped pipes shred the command cell to `sed -i '' 's/^` before it reaches the shell. The table has no `check:ci` row and no `--consumers` row.
+
+Vacuity. Rows 1, 4, 7 and 8 discriminate: the ReadmeTable tests, the hand-edit PROBLEM string, the briefs markers and the `reconcile` text in the init scaffold all first appear in the implementing commit bad7f5324 (the scaffold had zero `reconcile` matches and no --dry-run flag before it), and row 4's unmutated baseline lints clean. Row 8 is weak: its one match is a commented, opt-in step in the scaffold. Rows 2 and 3 are non-discriminating as authored (the --root . form renders nothing, so they would pass with the feature absent); the --root .. form is the one that exercises the code.
+
+Since the 2026-09-27 outcome record (blocked, 3 of 8 witnessed, at 9585b4b6): the workflow file, readmetable.go, regen.go, parse.go, init.go, the tests and this README are unchanged; main.go and the brief-rules doc changed without affecting any row; the brief gained Evidence only. #1175 is still open (help wanted; triaged 2026-10-01 as watching, waiting on a maintainer). The witness now proves rows 2 and 3 as well (5 of 8, was 3 of 8).
+
+RISK-VALUE: DERIVED — commit marker = "chore(status): regenerate [skip-status-regen]" @ the statusgen workflow line 161 — the regen job commits with this literal and both push-triggered jobs' `if:` guards (lines 92 and 203) exclude any head commit containing it, so the job cannot re-trigger on its own commit; the same literal is in the init scaffold (statusgen/init.go:560 and :772). A mismatch would loop CI. Reversible by an edit.
+
+RISK-VALUE: N/A — enumeration over readmetable.go, regen.go, parse.go and the init.go changes found no bound, threshold, tolerance, timeout or limit. The remaining literals are the two briefs markers (readmetable.go:45-46), the `generated` opt-in (parse.go:27) and the canonical column offsets 4/5/6/7 (readmetable.go:256, overridden by a header row); all are reversible and fail safe. The hourly schedule and the two read scopes the Deliverables name are not on merged main, so there is no landed literal to derive.
+
+A model cannot advance this brief: rows 5 and 6 need a workflow-file change that an App cannot push. Status stays `implemented`.
+
+VERIFY: FAIL — 6/8 pass by hand (rows 1, 2, 3, 4, 7, 8; rows 2-3 non-discriminating as authored), 2 checked-failed (rows 5-6: no schedule trigger and no pull-requests/issues read scopes in the statusgen workflow on merged main). Cause is the unlanded human-gated workflow-file half, tracked at #1175 (open); not a shipped-code defect. Witness 5/8.
+
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
 Reviewer question: can the scheduled job and the push-to-main job race on the same

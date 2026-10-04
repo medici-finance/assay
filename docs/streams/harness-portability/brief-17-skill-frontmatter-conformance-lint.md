@@ -197,6 +197,56 @@ RISK-VALUE: DERIVED — maxDescriptionChars = 1024 @ tools/skillslint/conformanc
 
 VERIFY: BLOCKED — blocker #1657 (Verify row 12's self-referential BASE); row 9 needs a live Codex session
 
+### 2026-10-02 desk dispatch — Verification re-run (non-implementer verifier, 2026-10-02T22:55Z, darwin/arm64, go1.27.1) — merged main @ e1d99484ffd9
+
+Every row ran from the repo root with a throwaway HOME and the default system temp dir. Rows 1–8, 10, 12 and 13 are the authored commands verbatim; the cells below shorten the scratch-binary prefix to `skillslint-hp17` and `statusgen-hp17` (both built from this checkout).
+
+| # | Command | Exit | Observed | Date | Runner |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `go build` in tools/skillslint, then `skillslint-hp17 --skills-dir` on the desc-1025 fixture | 1 | stderr: `skill/SKILL.md: description is 1025 characters, over the 1024-character hard limit (...)`, then `SKILLSLINT: FAIL — 1 issue(s) across 1 skill file(s)`. Both `1025` and `1024` are present | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | same build, `--skills-dir` on the desc-1024-multibyte fixture | 0 | `SKILLSLINT: PASS — 1 skill file(s) under --skills-dir, structural + conformance checks clean`; stderr empty. The fixture file is 2775 bytes, so a byte count would have failed it | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | same build, `--skills-dir` on the name-mismatch fixture | 1 | stderr: `the-desk/SKILL.md: frontmatter name "not-the-desk" != directory "the-desk" — a skill must declare the id it is invoked under` | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | same build, `--skills-dir` on the name-pattern fixture | 1 | stderr: ``Bad--Name/SKILL.md: name "Bad--Name" does not match the agentskills name pattern `^[a-z0-9]+(-[a-z0-9]+)*$` (...)`` | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | same build, `--skills-dir` on the budget-over fixture | 0 | stdout `SKILLSLINT: PASS — 9 skill file(s) under --skills-dir`; stderr `skillslint: NOTICE: bundle: 9 skill(s), summed description characters 8100 exceeds the 8000-character budget (...)` | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | same build, `skillslint-hp17 --root ../..` | 0 | `SKILLSLINT: PASS — 14 skill file(s) under ../..`; every other half also PASS. stderr carries only soft-budget NOTICE lines; no description Issue for `install` or `pr-review-desk` | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | build, write the `install` skill file as of e284ba9b8 into a scratch skills dir, `--skills-dir` on it | 1 | stderr: `install/SKILL.md: description is 1103 characters, over the 1024-character hard limit (...)`, then `SKILLSLINT: FAIL — 1 issue(s) across 1 skill file(s)` | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | `cd tools/skillslint && go test ./... -count=1` | 0 | `ok` for the tools/skillslint package in 9.209s. A `-v` re-run shows 89 passing tests, 20 of them the conformance and `--skills-dir` tests | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | Live Codex probe: `codex exec` asking for the last level-2 heading of the pr-review-desk skill | — | could-not-check: this row did not execute. It needs a live Codex session with the plugin installed, which is a billed external model call outside this pass's offline envelope. No claim is made either way about the 8000-byte body truncation | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | `curl` of render.rs at openai/codex 30fc6864cc13, then `grep -c` for the three cited constants | 0 | prints `3` | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | `gh api` check-runs for `skillslint` on main, `--jq '.check_runs[0].conclusion'` | 0 | prints `success`; the run is on head e1d99484ffd9, completed 2026-10-02T21:51:48Z | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 12a | `statusgen-hp17 --consumers --brief harness-portability/17 --root . --base "$(git merge-base origin/main HEAD)"` | 2 | `COULD-NOT-CHECK: assay:assay:harness-portability:17 is not in the diff against e1d99484ffd9..., so this run carries no evidence about its claims`. On merged main the merge-base is HEAD, so the diff is empty; the row as authored cannot pass here (#1657) | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 12b | Corrected form, in a scratch clone: check out the implementing commit aa1cc0e36, same command with `--base` set to its parent be4380ce5 | 0 | `summary: 3 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing`. The three `fixed-here` entries are corroborated; the two `out-of-scope` entries are unchecked. The authoring commit 5e04d34d8 against its own parent gives the same summary line, exit 0 | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 13 | `go build -C statusgen`, then `statusgen-hp17 --lint --root .` | 0 | `LINT: PASS`; 0 lines start with `PROBLEM`. Lines naming this brief are advisory NOTICEs only (verify-row-portability on rows 1–7 and 10) | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+**Execution witness.** `statusgen verifyrun --brief <this brief> --dry-run` exited 2 with 10 of 13 rows proven (1–8, 10, 13). Row 9 was could-not-run (exit 127: the row is prose, not a command). Row 11 exited 4 only because the throwaway HOME holds no forge credential; by hand it prints `success`. Row 12 exited 2, as in 12a.
+
+**Vacuity check** (mutations in a scratch clone, never on the verified checkout).
+- Rows 1–5 and 7 discriminate: built from the implementing commit's parent, the tool exits 2 on each with `flag provided but not defined: -skills-dir`.
+- Raising the description limit to 2048 turns row 1 to exit 0 and row 8 red (two tests fail). Counting bytes instead of code points turns row 2 to exit 1 and row 8 red (one test fails).
+- Row 6 discriminates only on the description half: restoring the pre-fix pr-review-desk description makes it exit 1 (`description is 1187 characters`). Built from the implementing commit's parent it also exits 0, so it does not prove the rule exists; row 7 carries that.
+- Row 8's bare exit code is non-discriminating (the package's tests passed before this work too); the mutations above show the new tests are what give it force.
+- Rows 10, 11 and 13 pass with or without this brief's work. Row 10 checks the cited upstream constants, row 11 checks a CI job that predates the brief, row 13 is the board lint. They are honest guards, not proof of the implementation.
+
+**Risk-bearing value.** Gate is `model` and every risk answer is `no`; the diff touches no risk-classed path. Enumeration over the literals the implementing commit aa1cc0e36 introduced in conformance.go (tools/skillslint):
+- `maxDescriptionChars = 1024` @ conformance.go:69 (hard, exit 1)
+- `maxNameChars = 64` @ conformance.go:71 (hard, exit 1)
+- `namePattern = ^[a-z0-9]+(-[a-z0-9]+)*$` @ conformance.go:76 (hard, exit 1)
+- `bodyByteBudget = 8000` @ :83, `bodyLineBudget = 500` @ :85, `bodyTokenBudget = 5000` @ :88, `approxBytesPerToken = 4` @ :92, `bundleDescriptionBudget = 8000` @ :99 (advisory NOTICE only)
+
+Ranking: all are lint thresholds, undone by an edit and a re-release; none is irreversible. The advisory budgets never move the exit code and rank last. The hard limits rank first.
+- RISK-VALUE: DERIVED — maxDescriptionChars = 1024 @ conformance.go:69 — the agentskills specification (fetched 2026-10-02) says "Max 1024 characters" / "Must be 1-1024 characters", and the Codex catalog description constant reads `1_024` at the pinned upstream SHA (row 10). The check counts code points, matching the spec's unit (row 2).
+- RISK-VALUE: DERIVED — maxNameChars = 64 @ conformance.go:71 — the agentskills specification (fetched 2026-10-02) says "Max 64 characters. Lowercase letters, numbers, and hyphens only" / "Must be 1-64 characters"; the pattern at :76 encodes the same rule (row 4).
+
+**Findings.**
+- Row 12 as authored cannot be satisfied on merged main; this brief is one of those listed in #1657, which is still OPEN. The corrected anchor shows the claims hold (3 corroborated, 0 disproved). The fix belongs in the Verify row.
+- Row 9 needs a driver-run or otherwise sanctioned live Codex probe.
+- The changelog fragment named in Context is no longer in the tree: it was folded into the v1.0.28 changelog aggregation, which is the expected lifecycle.
+- Nothing under tools/skillslint's conformance files, the two shortened skill descriptions, or this brief's Verify table changed since the 2026-10-01 run; results match that run row for row.
+
+rows_passed=11 rows_total=13 (row 9: could-not-check, needs a live Codex session; row 12: exit 2 as authored, #1657 — passes only in the corrected form 12b)
+
+VERIFY: BLOCKED — row 12 as authored exits 2 on merged main (check-definition, #1657 open); row 9 needs a live Codex session; the other 11 rows pass
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table and
 answers: are the shortened descriptions' opening sentences still the trigger text a harness
