@@ -655,6 +655,99 @@ Status stays at implemented.
 
 VERIFY: BLOCKED — 16 of 17 rows pass by hand (rows 1-16); row 17 exits 2 as authored on merged main; the execution witness proves 2 of 17 on this host (#1800, open), and rows 16 and 17 need re-authoring (#1281, open) before any witness can pass
 
+### Non-implementer verifier re-run — VERIFY: BLOCKED — 2026-10-04 claude-opus-5-5-verifier
+
+Context: gate: model; risk: regulatory no, customer no, irreversible no, sensitive-data no. Verified against merged main fe12ee0c9. Hand runs used the darwin-arm64 host (go1.27.1, with go1.25.0 for one cross-check), offline: GOPROXY=off, GOFLAGS=-mod=readonly, KUBECONFIG=/dev/null, no forge calls. statusgen was built from source at fe12ee0c9. Expectations were derived from the brief's Verify table before the earlier Evidence was read.
+
+Why this re-run: since the last run (e1d99484f), two inputs changed: brief forge-neutral/13 and the deskkit forge.go file. Neither touches the widened deskclose lanes.
+- brief-13 went from version 1 to 2. Only its rows 8 and 9 grep commands changed, re-authored for decidability (#1862).
+- forge.go gained additive fields: PullRequest.CrossRepo, the RepoCommit Parents/Files fields and the RefComparison Commits fields. It also has doc changes for ListCommentsTyped and GetCommit. The GitHub backend now paginates ListCommentsTyped over change threads. The GitLab backend derives CrossRepo in GetPullRequest.
+- The deskclose command directory has no diff since e1d99484f. ReopenIssue and CloseIssue are unchanged on both backends, and so are the inventory and the verify-gate-close workflow.
+- The lanes code reads none of the changed surfaces. ListCommentsTyped is used only by the pre-existing modes (authority, superseded, triage), and row 2 covers those. GetPullRequest gains a field that the lane does not read.
+
+#### Hand run (by hand, against fe12ee0c9)
+
+| # | Command | Expect | Observed (exit + key output line) | Date / runner |
+|---|---------|--------|-----------------------------------|---------------|
+| 1 | build + full desk-tools test suite | exit 0 | go build: exit 0. Full test run: exit 1 at host load average ~35 on 16 CPUs (93 packages ok). Six packages failed, all outside this brief: commsloop, deskmerge, deskpr, deskwt, loopengine, regression. Re-run alone, each exits 0: commsloop ok 11.5s, deskmerge ok 121.3s, deskpr ok 162.2s, loopengine ok 19.7s. deskwt and regression timed out alone at load ~34; at load ~7-10 they pass, deskwt ok 122.7s and regression ok 32.4s (go1.27.1), and also under the CI pin go1.25.0 (116.6s and 35.8s). PASS by hand, with the load timeouts disclosed. | 2026-10-04 assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config), darwin host |
+| 2 | deskclose package, count=1 | exit 0, existing modes green alongside the new ones | exit 0; ok deskclose 59.5s | same |
+| 3 | TestSelfWithdrawSucceedsOnOwnDraft | exit 0 | exit 0; PASS with 5 subtests (abandoned; superseded --by; superseded --by typed change; already-closed no-op; dry-run) | same |
+| 4 | TestSelfWithdrawRefusesNonAuthor | exit 0, refused | exit 0; PASS | same |
+| 5 | TestSelfWithdrawRefusesNonDraft | exit 0, refused | exit 0; PASS | same |
+| 6 | TestSelfWithdrawRefusesDecisionLabelled | exit 0, refused | exit 0; PASS | same |
+| 7 | TestSelfWithdrawIDPinRejectsLoginOnlyMatch | exit 0, login-only match refused | exit 0; PASS with 2 subtests (login matches but id does not; roster pins no id) | same |
+| 8 | TestSelfWithdrawIgnoresUnsignedRuling | exit 0 | exit 0; PASS | same |
+| 9 | TestVerifyGateRefireSucceedsAsVerifier | exit 0 | exit 0; PASS with 2 subtests | same |
+| 10 | TestVerifyGateRefireRefusesNonVerifier | exit 0, refused | exit 0; PASS (5 PASS lines) | same |
+| 11 | TestVerifyGateRefireRefusesUnlabelledItem | exit 0, refused | exit 0; PASS (5 PASS lines) | same |
+| 12 | TestVerifyGateRefireIgnoresUnsignedRuling | exit 0 | exit 0; PASS | same |
+| 13 | grep count of sender.type plus gh issue reopen in the verify-gate-close workflow | at least 2 | exit 0; count 4. The workflow is unchanged since e1d99484f, and implementing commit 5f906464a touched no workflow path. | same |
+| 14 | ReopenIssue op on both backends, plus the GitHub golden, GitLab golden and GitLab coverage tests | exit 0 | exit 0. TestReopenIssueOpBothBackends github and gitlab subtests PASS. The reopen_issue golden case PASSes on both backends. 4 ok lines, 0 "no tests to run". (I added -v to all four chained commands so the subtests show; this is the only deviation.) | same |
+| 15 | grep counts of self-withdraw and verify-gate-refire in the deskclose main and the forge-gitlab inventory | each total at least 1 | exit 0; self-withdraw total 2 (main 2, inventory 0); verify-gate-refire total 5 (main 2, inventory 3) | same |
+| 16 | mutation: disable the id comparison in the self-withdraw pin (lanes line 239) | mutant: TestSelfWithdrawIDPinRejectsLoginOnlyMatch fails; restored: exit 0 | Done in a separate scratch clone at fe12ee0c9, with line 239 set to "if false && pr.Author.ID != self.id". Mutant: exit 1. Only TestSelfWithdrawIDPinRejectsLoginOnlyMatch fails, in subtest "login matches, id does not", with "want exit 5, got 0"; 18 other PASS lines. Restored: 0-byte diff, exit 0. PASS | same |
+| 17 | statusgen consumers check for forge-neutral/16 | exit 0 | As authored on merged main: exit 2, "COULD-NOT-CHECK: assay:assay:forge-neutral:16 is not in the diff against fe12ee0c9". Re-scoped to the authoring commit d97abb672 with its parent as base (scratch clone): exit 0, "4 corroborated, 0 disproved, 1 unchecked" (the workflow entry is out of scope). FAIL as authored (#1281 class); the substance holds. | same |
+
+Rows passing by hand: 16 of 17 (rows 1-16). Row 17 fails as authored.
+
+#### Execution witness (Linux, network-off)
+
+The witness was produced by "statusgen verifyrun" in a throwaway container. Its setup:
+- Image: golang:1.25-trixie, already cached locally and never pulled; digest sha256:2c4c60ef415fbfa5e90300722293bef36c5e63fae17570ce18f580af933dbd73.
+- Inside the container: go1.25.14 linux/arm64, git 2.47.3, unshare present.
+- Isolation: run with --network none, GOPROXY=off, GOFLAGS=-mod=readonly and the host module cache mounted read-only.
+- Checkout: a scratch clone pinned to fe12ee0c9, with its origin/main also pinned to fe12ee0c9.
+- Disclosure: the container ran with --security-opt seccomp=unconfined, which the desk allowed for this throwaway, network-off container only, so that unshare can create the network namespace. It ran as root.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | fail exit=1 | sha256:b7461bd9fb76 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 2 | `cd tools/desk && go test ./cmd/deskclose/... -count=1` | pass exit=0 | sha256:a5c46a21fda1 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 3 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawSucceedsOnOwnDraft -count=1 -v` | pass exit=0 | sha256:ab5c4f0c002e | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 4 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawRefusesNonAuthor -count=1 -v` | pass exit=0 | sha256:6806c50c3e5e | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 5 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawRefusesNonDraft -count=1 -v` | pass exit=0 | sha256:c02fcf872558 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 6 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawRefusesDecisionLabelled -count=1 -v` | pass exit=0 | sha256:685d3f13bc28 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 7 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawIDPinRejectsLoginOnlyMatch -count=1 -v` | pass exit=0 | sha256:7a2cce322453 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 8 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawIgnoresUnsignedRuling -count=1 -v` | pass exit=0 | sha256:43df403486e1 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 9 | `cd tools/desk && go test ./cmd/deskclose/... -run TestVerifyGateRefireSucceedsAsVerifier -count=1 -v` | pass exit=0 | sha256:8a8ca605f77b | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 10 | `cd tools/desk && go test ./cmd/deskclose/... -run TestVerifyGateRefireRefusesNonVerifier -count=1 -v` | pass exit=0 | sha256:2255758837f9 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 11 | `cd tools/desk && go test ./cmd/deskclose/... -run TestVerifyGateRefireRefusesUnlabelledItem -count=1 -v` | pass exit=0 | sha256:b00870f6638b | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 12 | `cd tools/desk && go test ./cmd/deskclose/... -run TestVerifyGateRefireIgnoresUnsignedRuling -count=1 -v` | pass exit=0 | sha256:c6a3b2950922 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 13 | `grep -cE -e 'sender\.type' -e 'gh issue reopen' .github/workflows/verify-gate-close.yml` | pass exit=0 | sha256:7de1555df0c2 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 14 | `cd tools/desk && go test ./internal/deskkit/ -run TestReopenIssueOpBothBackends -count=1 -v && go test ./internal/deskkit/ -run TestForgeGithubGolden -count=1 && go test ./internal/deskkit/ -run TestForgeGitlabGolden -count=1 && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -count=1` | pass exit=0 | sha256:04b13600c301 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 15 | `grep -c 'self-withdraw' docs/streams/forge-gitlab/inventory.md tools/desk/cmd/deskclose/main.go; grep -c 'verify-gate-refire' docs/streams/forge-gitlab/inventory.md tools/desk/cmd/deskclose/main.go` | pass exit=0 | sha256:edaa14e07dff | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 16 | `pr.Author.ID` | could-not-run exit=- — prose-led-command: not executed; the first span pr.Author.ID is a code identifier, not a command. Mark the command with a cmd: code span | sha256: | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 17 | `statusgen --root . --consumers --brief forge-neutral/16` | fail exit=2 | sha256:bb4da900044c | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+
+verifyrun exit 2. "statusgen verifyrun --check" summary, exit 2: **14 pass, 2 fail, 1 could-not-run/missing (of 17 Verify rows)**.
+
+A darwin-host witness was also taken. It gave exit 2, "2 pass, 0 fail, 15 could-not-run/missing (of 17 Verify rows)": the check:ci rows could not run because this host has no network-off sandbox (#1800). It was discarded in favour of the Linux table above.
+
+#### Findings
+
+- **Witness rows 2 and 14 now pass.** The 2026-09-30 Linux witness failed them. statusgen at fe12ee0c9 brings loopback up inside the namespace (#1925 fixed in source). The trixie image's git 2.47.3 avoids the old-git failure (#1926).
+- **Witness row 1 fails for container-only reasons.** No failure is in brief-16 code, and deskclose and deskkit are green. Targeted re-runs in the same image showed:
+  - desktoken (2 tests) and scanloop (1 test) fail only because the container ran as root, which defeats their unwritable or unreadable fixtures. Both pass as uid 1000.
+  - desksourceguard TestDefaultPlatform fails because linux-arm64 is not a platform desk-tools publishes. This is the same as the prior run.
+  - deskdispatch: 8 stamp-identity and review-fresh tests exit 6, because the model-stamp step cannot resolve which forge serves medici-finance/assay.
+  - regression TestReg786FleetHardening fails because the create-fleet-gitlab fixture's T1 and T2 checks fail in the container.
+  - deskdispatch and regression both pass on the darwin host, so their container failures look environmental (the scratch clone's origin is a local path, and the network is off). I did not root-cause them further. The desk may want to file the deskdispatch and create-fleet-gitlab container failures as a test-hermeticity issue; under this brief's hard limits I did not file anything.
+- **Row 16** is a check-definition gap: its Command cell opens with prose, so verifyrun cannot run it. The mutation itself proves the id pin live.
+- **Row 17** is the #1281 class: the brief (#996) and its implementation (#1172) never share one diff, so the consumers check cannot corroborate on merged main. Re-scoped to the authoring commit, all in-scope claims corroborate.
+- No row showed a defect in the shipped lanes.
+
+#### Risk-bearing values (enumerate, rank, derive)
+
+All three were enumerated with file:line in the deskclose lanes, deskkit trust and roletoken sources, and the verify-gate-close workflow. They are ranked by blast radius: the authorship pin first, because a wrong value lets any App close another App's draft.
+1. Authorship id pin: lanes.go:239 compares pr.Author.ID with the roster-pinned id. The login pin is at lanes.go:229, and id 0 is refused at lanes.go:160. Row 16's mutation proves it live.
+2. Verifier role literal: "verifier" at lanes.go:48. It matches the verify-desk to verifier mapping at roletoken.go:45 and is gated at lanes.go:345.
+3. verify-gate label: VerifyGateLabel = "verify-gate" at trust.go:298, checked at lanes.go:412. It matches the workflow's label condition at verify-gate-close.yml:57.
+
+RISK-VALUE DERIVED: pr.Author.ID != self.id @ lanes.go:239 — rows 7 and 16 show the login-only match is refused, and that the mutant lets it through.
+RISK-VALUE DERIVED: roleVerifier = "verifier" @ lanes.go:48 — equals the roletoken verify-desk mapping at roletoken.go:45; row 10 refuses non-verifier roles.
+RISK-VALUE DERIVED: VerifyGateLabel = "verify-gate" @ trust.go:298 — equals the label the verify-gate-close workflow keys on (line 57); row 11 refuses unlabelled items.
+
+VERIFY: BLOCKED — 16 of 17 rows pass by hand (rows 1-16). Row 17 exits 2 as authored on merged main (#1281, open). The Linux network-off witness proves 14 of 17. Witness row 1 fails only on container environment limits outside this brief. Row 16 (prose-led command) and row 17 (consumers) need re-authoring, tracked at #1927, before the witness can pass. #1800 remains open for the darwin host.
+
 ## Review
 Gate: **model** (from frontmatter — all four risk answers `no`; see gate-why for the reasoning that
 each widened lane stays inside the identity/authority model `forge-neutral/13` already put a human
