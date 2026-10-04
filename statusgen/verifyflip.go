@@ -35,9 +35,11 @@ package main
 //     marker and those rows), and every content line from the PASS run's first
 //     line to the end of Evidence, to the roster's bound verifier or a roster
 //     human. Every commit that changed the Evidence section after the PASS was
-//     recorded is theirs too (blame cannot see a deleted later FAIL), and the
-//     working tree's Evidence is HEAD's. No roster, a shallow clone or a failed
-//     git read is could-not-check.
+//     recorded is theirs too (blame cannot see a deleted later FAIL), walked
+//     with every side of every merge, and a merge that dropped what another
+//     parent's side added counts as a change. The working tree's Evidence is
+//     HEAD's. No roster, a shallow clone, a brief not at the same path since
+//     the PASS was recorded, or a failed git read is could-not-check.
 //   - No unrouted HELD/could-not-check line contradicts the pass, no FAIL is
 //     left unanswered, and every Verify row has a passing execution witness
 //     inside the PASS run itself.
@@ -86,10 +88,12 @@ non-strict PASS, a recorded sha or runner that differs from --sha / --runner, ro
 that disagree on date, sha or runner, rows after the PASS, a date that is not
 YYYY-MM-DD or is after today, a PASS line, row or other content line of the PASS
 run or after it not committed by the bound verifier or a roster human, a commit
-by anyone else that changed Evidence after the PASS was recorded, uncommitted
-Evidence changes, an unrouted HELD row, a Verify row without a passing witness
-in the PASS run, or a README that is not a regular file. Exit 2 is
-could-not-check (including an ambiguous brief file, no roster, a shallow clone).
+by anyone else that changed Evidence after the PASS was recorded (a merge that
+dropped Evidence one side added included), uncommitted Evidence changes, an
+unrouted HELD row, a Verify row without a passing witness in the PASS run, or a
+README that is not a regular file. Exit 2 is could-not-check (including an
+ambiguous brief file, no roster, a shallow clone, a brief moved or removed since
+the PASS was recorded).
 
 Flags:
   --brief <stream>/<NN>   the brief key (required)
@@ -653,9 +657,13 @@ func flipHeaderCols(lines []string, row, width int) (si, vi int, err error) {
 //     verifier FAIL removed by another App would leave a clean blame. Every
 //     commit since the one that wrote the PASS marker that changed the
 //     Evidence section must be the verifier's or a roster human's
-//     (flipJudgeHistory); a merge whose Evidence is one parent's verbatim
-//     changed nothing. And the working tree's Evidence must be HEAD's: an
-//     uncommitted deletion has neither a blame record nor a commit.
+//     (flipJudgeHistory). The walk follows every parent of every merge, and a
+//     merge changed nothing only when it is the trivial result — its Evidence
+//     is one parent's, and no other parent's side added anything since their
+//     merge base (flipEvidenceChanged). A brief not at the same path since the
+//     PASS was recorded is could-not-check. And the working tree's Evidence
+//     must be HEAD's: an uncommitted deletion has neither a blame record nor a
+//     commit.
 //
 // This is stricter than the Evidence-actor lint, which asks only whether ANY
 // Evidence line is the verifier's: a verifier's older FAIL above an appended
@@ -837,20 +845,46 @@ func flipJudgeExtent(p evidenceActorPolicy, out string, want int, base string) (
 var flipZeroCommit = regexp.MustCompile(`^0+$`)
 
 // flipJudgeHistory judges every commit reachable from HEAD, and not from the
-// commit(s) that wrote the PASS marker, that touched the brief file: one that
-// changed the Evidence section — its Evidence differs from every parent's —
-// must be authored by the bound verifier or a roster human. A merge whose
-// Evidence equals one parent's brought that parent's text, whose own commits
-// are judged in the same walk. Blame sees only lines that are still there;
-// this sees the deletion of a later verdict, or of a whole later run.
+// commit(s) that wrote the PASS marker, that touched the brief file. The walk
+// is --full-history: git's default simplification follows only a merge's
+// TREESAME parent and prunes the other side, so a merge that kept the side
+// WITHOUT a later verifier FAIL would hide both itself and the FAIL. A commit
+// that changed the Evidence section (flipEvidenceChanged) must be authored by
+// the bound verifier or a roster human. Blame sees only lines that are still
+// there; this sees the deletion of a later verdict, or of a whole later run,
+// including one done by a merge resolution.
+//
+// The brief must sit at the same path in every commit judged and in the
+// commit(s) that wrote the marker: blame follows a rename, a path-limited walk
+// does not, so a change made under an earlier name would never be walked. A
+// moved or removed brief is could-not-check.
 func flipJudgeHistory(p evidenceActorPolicy, dir, base string, since []string) error {
+	cache := map[string]string{}
+	evAt := func(rev string) (string, error) {
+		if s, ok := cache[rev]; ok {
+			return s, nil
+		}
+		s, err := flipEvidenceAt(dir, rev, base)
+		if err != nil {
+			return "", err
+		}
+		cache[rev] = s
+		return s, nil
+	}
 	seen := map[string]bool{}
 	var commits []string
 	for _, c := range since {
 		if c == "" || flipZeroCommit.MatchString(c) {
 			return fmt.Errorf("provenance: the PASS marker of %s has no commit to walk history from", base)
 		}
-		out, err := exec.Command("git", "-C", dir, "rev-list", c+"..HEAD", "--", base).Output()
+		ev, err := evAt(c)
+		if err != nil {
+			return fmt.Errorf("provenance: %v", err)
+		}
+		if ev == flipAbsent {
+			return fmt.Errorf("provenance: %s is not at this path in commit %.12s, which wrote the PASS marker — history across a move cannot be judged", base, c)
+		}
+		out, err := exec.Command("git", "-C", dir, "rev-list", "--full-history", c+"..HEAD", "--", base).Output()
 		if err != nil {
 			return fmt.Errorf("provenance: git rev-list %s..HEAD %s: %v", c, base, err)
 		}
@@ -870,20 +904,16 @@ func flipJudgeHistory(p evidenceActorPolicy, dir, base string, since []string) e
 		if len(f) != 3 || (f[0] == "" && f[1] == "") {
 			return fmt.Errorf("provenance: commit %s of %s names no author", h, base)
 		}
-		ev, err := flipEvidenceAt(dir, h, base)
+		ev, err := evAt(h)
 		if err != nil {
 			return fmt.Errorf("provenance: %v", err)
 		}
-		changed := true
-		for _, parent := range strings.Fields(f[2]) {
-			pev, err := flipEvidenceAt(dir, parent, base)
-			if err != nil {
-				return fmt.Errorf("provenance: %v", err)
-			}
-			if pev == ev {
-				changed = false
-				break
-			}
+		if ev == flipAbsent {
+			return fmt.Errorf("provenance: %s is not at this path in commit %.12s, after the latest PASS — history across a move or removal cannot be judged", base, h)
+		}
+		changed, err := flipEvidenceChanged(dir, ev, strings.Fields(f[2]), evAt)
+		if err != nil {
+			return fmt.Errorf("provenance: %v", err)
 		}
 		if !changed {
 			continue
@@ -895,6 +925,78 @@ func flipJudgeHistory(p evidenceActorPolicy, dir, base string, since []string) e
 	return nil
 }
 
+// flipEvidenceChanged reports whether a commit whose Evidence is ev, with the
+// given parents, changed the Evidence section. A commit with one parent
+// changed it when the two differ; a root commit always did. A merge changed
+// nothing only when it is the trivial result: its Evidence equals some parent
+// X's, and every other parent Y brought nothing X lacks — Y's Evidence equals
+// X's, or equals the Evidence at every merge base of X and Y (Y's side made no
+// net change). A merge that equals one parent but dropped what another parent's
+// side added — a later verifier FAIL resolved away — changed Evidence, and its
+// author is judged like any other.
+func flipEvidenceChanged(dir, ev string, parents []string, evAt func(string) (string, error)) (bool, error) {
+	pev := make([]string, len(parents))
+	for i, par := range parents {
+		s, err := evAt(par)
+		if err != nil {
+			return false, err
+		}
+		pev[i] = s
+	}
+	for x := range parents {
+		if pev[x] != ev {
+			continue
+		}
+		trivial := true
+		for y := range parents {
+			if y == x || pev[y] == ev {
+				continue
+			}
+			bases, err := flipMergeBases(dir, parents[x], parents[y])
+			if err != nil {
+				return false, err
+			}
+			if len(bases) == 0 {
+				trivial = false
+			}
+			for _, b := range bases {
+				bev, err := evAt(b)
+				if err != nil {
+					return false, err
+				}
+				if bev != pev[y] {
+					trivial = false
+				}
+			}
+			if !trivial {
+				break
+			}
+		}
+		if trivial {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// flipMergeBases lists every merge base of a and b. Unrelated histories have
+// none (git exits 1 with no output); any other failure is an error.
+func flipMergeBases(dir, a, b string) ([]string, error) {
+	out, err := exec.Command("git", "-C", dir, "merge-base", "--all", a, b).Output()
+	if err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && ee.ExitCode() == 1 && len(strings.TrimSpace(string(out))) == 0 {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("git merge-base %s %s: %v", a, b, err)
+	}
+	return strings.Fields(string(out)), nil
+}
+
+// flipAbsent is what flipEvidenceAt returns for a revision where the file does
+// not exist: no Evidence text can equal it.
+const flipAbsent = "\x00absent"
+
 // flipEvidenceAt returns the Evidence section of base (a file in dir) at rev.
 // A revision where the file does not exist yields a sentinel no Evidence text
 // can equal; any other git failure is an error.
@@ -904,7 +1006,7 @@ func flipEvidenceAt(dir, rev, base string) (string, error) {
 		if exec.Command("git", "-C", dir, "rev-parse", "--verify", "--quiet", rev+"^{commit}").Run() != nil {
 			return "", fmt.Errorf("git cannot resolve %s in %s", rev, dir)
 		}
-		return "\x00absent", nil
+		return flipAbsent, nil
 	}
 	out, err := exec.Command("git", "-C", dir, "show", rev+":./"+base).Output()
 	if err != nil {

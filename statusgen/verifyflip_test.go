@@ -1013,9 +1013,12 @@ func TestVflipEveryRunLine(t *testing.T) {
 }
 
 // TestVflipMergeNotJudged: a merge commit another App made, whose Evidence is
-// one parent's verbatim, changed nothing in Evidence and is not judged; the
-// verifier's own post-PASS note passes. The template comment the brief's
-// author wrote before the run is not content and is not judged either.
+// one parent's verbatim while the other parent's side changed nothing since
+// their merge base, is the trivial merge: it changed nothing in Evidence and is
+// not judged. The full-history walk lists it (it differs from its first
+// parent), so this reaches flipEvidenceChanged's exemption. The verifier's own
+// post-PASS note passes. The template comment the brief's author wrote before
+// the run is not content and is not judged either.
 func TestVflipMergeNotJudged(t *testing.T) {
 	o := vfDefaults()
 	o.evidence = "<!-- appended at implementation time -->"
@@ -1033,6 +1036,123 @@ func TestVflipMergeNotJudged(t *testing.T) {
 	vfAppend(t, root, "\n\nverifier note: re-read at "+vfSHA+", nothing changed.")
 	vfCommit(t, root, vfMailVerifier)
 	vfExpect(t, root, readme, verifyflipExitOK, "flipped")
+}
+
+// vfOther commits an unrelated file as mail, so a branch has a commit of its
+// own that leaves the brief alone.
+func vfOther(t *testing.T, root, name, mail string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(root, name), []byte(name+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	vfCommit(t, root, mail)
+}
+
+// vfBriefRel is the fixture brief's path relative to the repo root.
+const vfBriefRel = "docs/streams/vf/brief-01-flip.md"
+
+// TestVflipMergeDropsFail: the verifier's PASS lands; another App cuts a
+// branch from it; the verifier then records a later FAIL on main; the App
+// merges main into its branch but keeps its own brief bytes, so the merge
+// resolution drops the FAIL; the branch lands on main. No commit after the FAIL
+// edits Evidence as a plain commit. A default-simplified walk follows each
+// merge's TREESAME parent and never sees the dropping merge, and an exemption
+// for "Evidence equals one parent" would skip it anyway. Each variant refuses,
+// whoever lands the branch.
+func TestVflipMergeDropsFail(t *testing.T) {
+	for _, c := range []struct{ name, keep, land, lander string }{
+		{"ours-noff", "ours", "--no-ff", vfMailHuman},
+		{"checkout-noff", "checkout", "--no-ff", vfMailHuman},
+		{"checkout-ff", "checkout", "--ff-only", vfMailWorker},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root, readme := vfFixture(t, vfDefaults())
+			runGitEnv(t, root, nil, "checkout", "-q", "-b", "wk")
+			vfOther(t, root, "other.txt", vfMailWorker)
+			runGitEnv(t, root, nil, "checkout", "-q", "main")
+			vfAppend(t, root, "\n\n"+vfLaterFail)
+			vfCommit(t, root, vfMailVerifier)
+			if code, _, errOut := runVF(t, root, "--dry-run"); code != verifyflipExitRefused || !strings.Contains(errOut, "verdict mismatch") {
+				t.Fatalf("control: exit = %d err=%q, want the later FAIL refused", code, errOut)
+			}
+			runGitEnv(t, root, nil, "checkout", "-q", "wk")
+			switch c.keep {
+			case "ours":
+				vfGit(t, root, vfMailWorker, "merge", "-q", "-s", "ours", "--no-edit", "main")
+			case "checkout":
+				vfGit(t, root, vfMailWorker, "merge", "-q", "--no-commit", "--no-ff", "main")
+				vfGit(t, root, vfMailWorker, "checkout", "HEAD", "--", vfBriefRel)
+				vfGit(t, root, vfMailWorker, "commit", "-q", "--no-edit")
+			}
+			runGitEnv(t, root, nil, "checkout", "-q", "main")
+			vfGit(t, root, c.lander, "merge", "-q", c.land, "--no-edit", "wk")
+			vfExpect(t, root, readme, verifyflipExitRefused, "provenance")
+		})
+	}
+}
+
+// TestVflipBaseMergedIn is the positive control that reaches the trivial-merge
+// exemption from the other side: another App's branch merges main into itself
+// and so brings the verifier's later Evidence in; the branch lands. The merge
+// equals the parent that carries the verifier's note, the branch's own side
+// changed nothing since the merge base, and the flip goes through.
+func TestVflipBaseMergedIn(t *testing.T) {
+	root, readme := vfFixture(t, vfDefaults())
+	runGitEnv(t, root, nil, "checkout", "-q", "-b", "wk")
+	vfOther(t, root, "other.txt", vfMailWorker)
+	runGitEnv(t, root, nil, "checkout", "-q", "main")
+	vfAppend(t, root, "\n\nverifier note: re-read at "+vfSHA+", nothing changed.")
+	vfCommit(t, root, vfMailVerifier)
+	runGitEnv(t, root, nil, "checkout", "-q", "wk")
+	vfGit(t, root, vfMailWorker, "merge", "-q", "--no-ff", "--no-edit", "main")
+	vfOther(t, root, "other2.txt", vfMailWorker)
+	runGitEnv(t, root, nil, "checkout", "-q", "main")
+	vfGit(t, root, vfMailWorker, "merge", "-q", "--no-ff", "--no-edit", "wk")
+	vfExpect(t, root, readme, verifyflipExitOK, "flipped")
+}
+
+// TestVflipRenamedBrief: another App deletes the verifier's later FAIL, then a
+// roster human renames the brief. Blame follows the rename back to the
+// verifier's lines; a walk limited to the new path sees only the human's
+// rename and never the deletion made under the old name. A brief that is not
+// at the same path in the commit that wrote the PASS is could-not-check.
+func TestVflipRenamedBrief(t *testing.T) {
+	root, readme := vfFailAfterPass(t)
+	vfEdit(t, root, "\n\n"+vfLaterFail, "")
+	vfCommit(t, root, vfMailWorker)
+	vfGit(t, root, vfMailHuman, "mv", vfBriefRel, "docs/streams/vf/brief-01-moved.md")
+	raw, err := os.ReadFile(readme)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(readme, bytes.Replace(raw, []byte("brief-01-flip.md"), []byte("brief-01-moved.md"), 1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	vfCommit(t, root, vfMailHuman)
+	vfExpect(t, root, readme, verifyflipExitCouldNotCheck, "move")
+}
+
+// TestVflipMovedAndBack: the brief is at the same path in the PASS commit and
+// at HEAD, but a roster human moved it away and back, and another App deleted
+// the later FAIL while it sat under the other name. The path-limited walk
+// lists only the two moves; the move away leaves the brief absent at its path,
+// which is could-not-check rather than a commit that "changed" Evidence.
+func TestVflipMovedAndBack(t *testing.T) {
+	root, readme := vfFailAfterPass(t)
+	moved := "docs/streams/vf/brief-01-away.md"
+	vfGit(t, root, vfMailHuman, "mv", vfBriefRel, moved)
+	vfCommit(t, root, vfMailHuman)
+	raw, err := os.ReadFile(filepath.Join(root, moved))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, moved), bytes.Replace(raw, []byte("\n\n"+vfLaterFail), nil, 1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	vfCommit(t, root, vfMailWorker)
+	vfGit(t, root, vfMailHuman, "mv", moved, vfBriefRel)
+	vfCommit(t, root, vfMailHuman)
+	vfExpect(t, root, readme, verifyflipExitCouldNotCheck, "move or removal")
 }
 
 // TestBlameLinesCommit pins the commit id the porcelain reader records per
