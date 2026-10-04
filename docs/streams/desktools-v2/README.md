@@ -43,6 +43,11 @@ per verb, and not carried as prose in a skill.
 Boundaries with the sibling streams (`forge-neutral`, `desktools-go-git`, `desk-tools`) and the
 open questions for the approver are in [spec.md](spec.md) §4/§7.
 
+The 2026-10-03 request [#2111](https://github.com/medici-finance/assay/issues/2111)
+adds **Cobra and Viper across every maintained CLI**, including cellctl and standalone
+modules. [Spec §9](spec.md#9-standard-command-parsing-configuration-and-help--2026-10-03)
+is the one contract; /15–/17 own its foundation, rollout and completion.
+
 ## Briefs
 
 <!-- statusgen:briefs:begin -->
@@ -61,6 +66,9 @@ open questions for the approver are in [spec.md](spec.md) §4/§7.
 | 12 | [platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS](brief-12-platform-compatibility-suite.md) | 2 | L | todo | — | — |
 | 13 | [platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage](brief-13-platform-gates-and-reconciliation.md) | 2 | M | implemented | — | — |
 | 14 | [regression floor — the behavior the desk tools pass today, pinned as tests seeded from resolved issues, which desktools-v2 must keep green](brief-14-regression-floor.md) | 2 | M | implemented | — | — |
+| 15 | [Cobra and Viper foundation and complete CLI migration routing](brief-15-cobra-and-viper-foundation-and-complete-cli-migration-routing.md) | 1 | L | todo | — | — |
+| 16 | [Migrate cellctl to Cobra commands and Viper configuration](brief-16-migrate-cellctl-to-cobra-commands-and-viper-configuration.md) | 2 | L | todo | — | — |
+| 17 | [Enforce complete Cobra and Viper adoption across the tool suite](brief-17-enforce-complete-cobra-and-viper-adoption-across-the-tool-suite.md) | 3 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -74,13 +82,12 @@ second chain runs beside it and is the one the 2026-09-17 direction added:
 `desktools-v2/01` -> `desktools-v2/10` (one outbound-write check — **human gate**) ->
 `desktools-v2/11` (the house callout for it — **human gate**).
 
-**The real blocker at the head, verified rather than assumed.** Two things stand in front of
-brief 01, and neither is a brief. First, this stream is `parked` behind a `draft` spec: nothing
-is dispatchable until a human rules the spec `approved`. Second, inside the stream the head is
-**01**, and that was checked against the tree: `forge_github.go` already runs on `go-gh` with a
-minted token and refuses an empty one, `TestForgeSingleConstructionSite` already pins the one
-place a `Forge` is built, and every outward verb already obtains its `Forge` there — so neither
-chain is waiting on a foundation that does not exist.
+**Current heads, rechecked 2026-10-03 at b165003865f6.** The stream is active and its
+spec approved; /01 and /02 are done, so the historical parked/draft prerequisite no longer
+blocks it. The forge chain's remaining implementation and human gates retain their own
+ownership. The new CLI chain can start with /15: the current cellctl parser remains manual
+and the desk module has no Cobra/Viper dependency. Its smallest unblocking move is the
+shared contract/inventory plus bounded remaining-tool owners, followed by /16's real pilot.
 
 An earlier draft of this README put a different chain here — promote `deskkit` to an importable
 library, then port statusgen onto it. That was the tempting-but-wrong first step: it was derived
@@ -121,7 +128,8 @@ Critical path: `01 → 02 → 03 → 06`, with the outbound-write chain `01 → 
 - **`desktools-go-git`** owns *git*-transport migration; v2 owns the forge-assumption half of
   the push-guard fixes (#1201/#884) and coordinates the transport half.
 - **`desk-tools`** is the general planning board for the current suite; v2 is the
-  architectural successor for the forge-abstraction slice only.
+  architectural successor for forge abstraction and, since #2111, the shared CLI contract.
+  Existing CLI work is reconciled by /15 rather than duplicated.
 
 ## Regression floor
 
@@ -145,3 +153,24 @@ For a bounded local check, run `bash tools/desk/internal/regression/check-floor.
 from the repository root. It runs every named seed in its owning package and
 requires its top-level PASS line; missing selections and failures are red. The
 fixtures use local git repositories, local HTTP servers and fake CLI executables.
+
+## Cobra/Viper migration track
+
+- **Wave 1 — /15:** shared command/configuration adapter and conformance fixtures, complete
+  maintained-entrypoint inventory, and bounded migration briefs for all remaining tools.
+- **Wave 2 — /16:** cellctl reference migration, preserving launch/custody behavior while
+  making root and nested help work offline without configuration or credentials.
+- **Subsequent waves:** the child briefs authored by /15 migrate the other tools in bounded
+  independent batches after /16. /15 adds every child to /17's depends and recomputes the
+  final wave. The generated /17 wave is provisional until those owners exist.
+- **Final — /17:** zero pending/unowned entrypoints, executed binary/configuration tests,
+  generated reference help and a proven PR CI gate. It does not perform an omnibus port.
+
+CLI critical path: `15 → 16 → longest remaining-tool child → 17`; /15 is the current
+verified head. Library selection is settled by #2111; implementation risk gates remain.
+The old forge path proceeds alongside this track. /06, /08 and /11 retain their original
+deliverables under the configuration/CLI contract. /12 carries compatibility guidance only:
+all new CLI platform fixtures and checks are owned by /15, /16, their migration children
+and /17. /12 does not consume /15 or block that chain; its existing platform/refusal checks
+and historical Evidence remain unchanged. The dependency waves and critical path above
+therefore need no additional edge for /12.

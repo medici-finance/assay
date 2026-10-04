@@ -7,8 +7,7 @@ depends:
 - graph-execution/06
 - iso-9001/01
 - iso-9001/05
-unblocks:
-- graph-execution/18
+unblocks: ["graph-execution/18", "iso-9001/09"]
 effort: L
 gate: human
 risk:
