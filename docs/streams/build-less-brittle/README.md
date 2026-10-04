@@ -77,7 +77,7 @@ M1–M6/C1–C4 and implemented-brief status remain unchanged.
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Semantic-owner index in docs/contracts.md — one meaning, one home](brief-01-semantic-owner-index.md) | 0 | M | done | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1671 @ d44d6ef3292216341ec8b82741cfc925e3e1c79c) |
-| 02 | [design-fit: in every new brief — owner, contract, retires, weight, why-add](brief-02-design-fit-in-briefs.md) | 1 | M | implemented | — | — |
+| 02 | [design-fit: in every new brief — owner, contract, retires, weight, why-add](brief-02-design-fit-in-briefs.md) | 1 | M | verified | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | 03 | [Weight counter and CI ratchet (a Go test, not a verb)](brief-03-weight-ratchet.md) | 0 | M | done | 2026-09-25 assay-verifier-app[bot] @ 7aa3835d7f33 (claude-opus-5-5) | 2026-09-27 assay-reviewer-app[bot] (approved PR #1672 @ 0662681ce2588e4a156968be794de94595c53952) |
 | 04 | [Intake files by error class; a recurring class triggers a design brief, not another point fix](brief-04-intake-by-error-class.md) | 2 | M | implemented | — | — |
 | 05 | [Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight](brief-05-worker-two-strikes-and-weight.md) | 3 | M | todo | — | — |
