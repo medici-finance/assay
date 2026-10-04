@@ -102,44 +102,23 @@ func blindResource() StatusResource {
 // liveness reading.
 type resourceSource func(holder string) StatusResource
 
-// beaconResourceOnly reads only the `resource` key of a beacon file (live or fixture) —
-// the rest of the beacon (acks, open_work, role) is not this reader's business.
-type beaconResourceOnly struct {
-	Resource *StatusResource `json:"resource"`
-}
-
-// liveResourceSource reads <StateDir>/roster/<holder>.json for its `resource` key. A
-// missing StateDir, missing/unreadable file, or one naming no resource block at all is
-// BLIND — never null, never an aborted snapshot (facts: "a claim whose holder session has
-// no beacon ... renders every resource field could-not-check").
+// liveResourceSource joins only the resource key, using the same portable session,
+// no-follow and strict JSON-object boundary as every roster-beacon writer. A missing,
+// malformed or unreadable beacon blinds only this independent resource plane.
 func liveResourceSource() resourceSource {
 	return func(holder string) StatusResource {
 		if strings.TrimSpace(holder) == "" || holder == notApplicable {
 			return blindResource()
 		}
-		// Security S-1 (see deskkit.ValidSessionSegment): holder is the claim's
-		// Owner field, an `\S+`-unconstrained string parsed from a remote
-		// refs/dispatch claim, so it is session-influenced input. Bind it to a
-		// single path segment before the join — a holder carrying `/` or `..`
-		// renders BLIND (as a no-beacon holder does), never a read outside the
-		// roster directory. This mirrors deskroster set's write-side refusal.
-		if !deskkit.ValidSessionSegment(holder) {
+		obj, err := deskkit.ReadRosterBeacon(holder)
+		if err != nil || obj == nil {
 			return blindResource()
 		}
-		stateDir, err := deskkit.StateDir()
-		if err != nil {
+		var resource *StatusResource
+		if err := json.Unmarshal(obj["resource"], &resource); err != nil || resource == nil {
 			return blindResource()
 		}
-		path := filepath.Join(stateDir, "roster", holder+".json")
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return blindResource()
-		}
-		var raw beaconResourceOnly
-		if err := json.Unmarshal(data, &raw); err != nil || raw.Resource == nil {
-			return blindResource()
-		}
-		return *raw.Resource
+		return *resource
 	}
 }
 
