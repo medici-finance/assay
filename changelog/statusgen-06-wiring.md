@@ -1,0 +1,2 @@
+### Added
+- CI now runs the findings-register transition check: `statusgen --corroborate` in the PR lint job of `assay-statusgen.yml` (statusgen/06 deliverable 7, #1855). The guard binary is built from the PR's base side (the merge commit's first parent), so a PR cannot change the code that judges it. The step runs only on PRs that touch `docs/streams/findings/`, and it fails closed when the base side cannot be read or no human-login map is configured.
