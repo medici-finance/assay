@@ -1,0 +1,4 @@
+### Fixed
+- `deskack` reports malformed receipts as correctable usage errors (exit 2), preserves the 12-word cap, and detects misplaced receipt flags. Desk skills explain correction before continuing; guard and identity failures still stop the pass.
+- `deskwt role-init` refreshes the requested role's credential before the initial HTTPS fetch and overrides inherited helpers for that command without changing source checkout configuration. SSH origins use a derived HTTPS App endpoint; multiple fetch URLs retain Git's first-URL behavior. The fetch isolates inherited authentication while preserving TLS/proxy settings. Local and explicit offline initialization remain supported.
+- `cellctl` stops and surfaces failures from an installed `deskwt role-init` instead of silently creating an unwired worktree.
