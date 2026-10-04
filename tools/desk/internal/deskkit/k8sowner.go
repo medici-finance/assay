@@ -13,8 +13,10 @@ import (
 // YAML parse PROVE that the data/stringData mapping on a given line belongs to an object
 // that is not a Secret? Only a yes narrows the rule. Every other answer — the text does
 // not parse, the line sits in a diff hunk that is not a whole new file, the owner has no
-// kind or more than one, a Secret encloses it — is could-not-check, and the mapping is read
-// exactly as it was before ownership was considered.
+// kind or more than one, a Secret (or a kind the parse cannot read) encloses it, the
+// chunk uses an anchor, alias or merge key, the text holds a line break the parser and a
+// split on LF count differently — is could-not-check, and the mapping is read exactly as
+// it was before ownership was considered.
 //
 // Why it exists. The rule arms on a `kind: Secret` ANYWHERE in the text, and deskpr hands
 // it a whole multi-file branch diff as one string, so one correctly sops-encrypted Secret
@@ -45,6 +47,14 @@ import (
 //     (indent of at most three, same character, closer at least as long), each block
 //     parsed on its own. Used only when the text is not a diff.
 //
+// Two conditions bind the parse itself. A chunk carrying any anchor, alias or `<<` merge
+// key is could-not-check as a whole: one parsed node can then belong to several mappings
+// (a ConfigMap item anchored and merged into a Secret item, a data value aliased as a
+// Secret's data), so the textual parent of a key proves nothing about its owner. And a
+// text holding any character the parser counts as a line break while a split on LF does
+// not (k8sForeignBreak) gets no reading at all: the parser's line numbers would no longer
+// name the lines k8sLine reads, and a proof taken on one line would be applied to another.
+//
 // One more condition binds every reading: every line that declares a Secret kind must
 // be, in that same reading, the `kind` key of a parsed Secret mapping. A chunk boundary
 // that falls inside an open scalar or flow collection leaves the chunk unparseable, so
@@ -52,7 +62,9 @@ import (
 // off for the whole text instead of passing its data.
 //
 // The cost of erring this way, stated rather than hidden: a mapping in a modification
-// hunk always refuses beside a Secret elsewhere; so does a ConfigMap whose new-file hunk
+// hunk always refuses beside a Secret elsewhere; so does any mapping in a chunk that uses
+// anchors or merge keys, and a `data:` line the parser holds no key for (text inside a
+// block scalar); so does a ConfigMap whose new-file hunk
 // lies inside the over-estimated reach of a modification hunk just above it; and editing
 // an EXISTING Secret (its `kind:` line in a modification hunk) beside a new ConfigMap
 // keeps the pre-fix refusal for the whole diff.
@@ -66,11 +78,14 @@ type k8sReading struct {
 	valid  bool
 }
 
-// k8sChunk is a run of lines [start,end) parsed as one YAML stream. ok is false when it
-// did not parse or was never a candidate for parsing (a modification hunk).
+// k8sChunk is a run of lines [start,end) parsed as one YAML stream. parsed is true when
+// the stream is valid YAML. ok is true only when it is also free of anchors, aliases and
+// merge keys; it is false for a chunk that was never a candidate (a modification hunk).
 type k8sChunk struct {
 	start, end int
+	parsed     bool
 	ok         bool
+	aliased    bool
 	keys       map[int][]k8sKeyRec // absolute 0-based line -> scalar keys starting on it
 }
 
@@ -78,8 +93,8 @@ type k8sChunk struct {
 type k8sKeyRec struct {
 	name string
 	// otherOwner: the key's own mapping has exactly one `kind`, a plain identifier that
-	// is not Secret; no merge key or complex key could add another; and no enclosing
-	// mapping is a Secret.
+	// is not Secret; no complex key could add another; and no enclosing mapping is a
+	// Secret or carries a kind the parse cannot read as a plain name.
 	otherOwner bool
 	// secretKind: the key is `kind` and its value is the string Secret.
 	secretKind bool
@@ -97,6 +112,9 @@ var (
 
 func newK8sOwnerIndex(lines []string) *k8sOwnerIndex {
 	idx := &k8sOwnerIndex{}
+	if k8sForeignBreak(lines) {
+		return idx // no reading: every mapping is read as before ownership was considered
+	}
 	diff := false
 	for _, ln := range lines {
 		if reK8sHunkRange.MatchString(ln) {
@@ -109,7 +127,10 @@ func newK8sOwnerIndex(lines []string) *k8sOwnerIndex {
 	} else if r := k8sFenceReading(lines); r != nil {
 		idx.readings = append(idx.readings, r)
 	}
-	if c := parseK8sChunk(lines, 0, len(lines)); c.ok {
+	// A text that is not YAML at all (a diff, a markdown body) has no whole-text reading.
+	// One that IS YAML always has one, even when the parse cannot prove anything (an
+	// anchor, alias or merge key): that reading then fails, and with it the narrowing.
+	if c := parseK8sChunk(lines, 0, len(lines)); c.parsed {
 		idx.readings = append(idx.readings, &k8sReading{chunks: []*k8sChunk{c}, valid: true})
 	}
 	for _, r := range idx.readings {
@@ -246,6 +267,20 @@ func k8sDiffReading(lines []string) *k8sReading {
 	return r
 }
 
+// k8sForeignBreak reports whether the text holds a character the YAML parser counts as a
+// line break that strings.Split(s, "\n") does not: NEL (U+0085), LINE SEPARATOR
+// (U+2028), PARAGRAPH SEPARATOR (U+2029), or a CR that does not end its line (CRLF is one
+// break to both). TestK8sForeignBreakCoversYAML derives the parser's break set and pins
+// that this function covers every member of it.
+func k8sForeignBreak(lines []string) bool {
+	for _, ln := range lines {
+		if strings.ContainsAny(strings.TrimSuffix(ln, "\r"), "\r\u0085\u2028\u2029") {
+			return true
+		}
+	}
+	return false
+}
+
 func hunkCount(s string) (int, error) {
 	if s == "" {
 		return 1, nil
@@ -306,7 +341,8 @@ func isK8sFenceClose(line, fence string) bool {
 }
 
 // parseK8sChunk parses lines[start:end] as one YAML stream and indexes every scalar
-// mapping key by absolute line.
+// mapping key by absolute line. A stream that uses an anchor, an alias or a merge key
+// parses but is not ok: nothing in it is proven.
 func parseK8sChunk(lines []string, start, end int) *k8sChunk {
 	c := &k8sChunk{start: start, end: end, keys: map[int][]k8sKeyRec{}}
 	dec := yaml.NewDecoder(strings.NewReader(strings.Join(lines[start:end], "\n")))
@@ -322,11 +358,20 @@ func parseK8sChunk(lines []string, start, end int) *k8sChunk {
 		}
 		c.index(&doc, start, false)
 	}
+	c.parsed = true
+	if c.aliased {
+		c.keys = map[int][]k8sKeyRec{}
+		return c
+	}
 	c.ok = true
 	return c
 }
 
 func (c *k8sChunk) index(n *yaml.Node, base int, underSecret bool) {
+	if n.Anchor != "" || n.Kind == yaml.AliasNode {
+		c.aliased = true
+		return
+	}
 	switch n.Kind {
 	case yaml.DocumentNode, yaml.SequenceNode:
 		for _, ch := range n.Content {
@@ -336,8 +381,11 @@ func (c *k8sChunk) index(n *yaml.Node, base int, underSecret bool) {
 		kinds, unsure, isSecret, own := 0, false, false, ""
 		for i := 0; i+1 < len(n.Content); i += 2 {
 			k, v := n.Content[i], n.Content[i+1]
-			if k.Kind != yaml.ScalarNode || k.Tag == "!!merge" || k.Value == "<<" {
-				unsure = true // a complex or merge key could carry another kind
+			if k.Anchor != "" || k.Tag == "!!merge" || k.Value == "<<" {
+				c.aliased = true // the mapping's keys can come from, or reach, another node
+			}
+			if k.Kind != yaml.ScalarNode {
+				unsure = true // a complex key could carry another kind
 				continue
 			}
 			if k.Value != "kind" {
@@ -353,7 +401,11 @@ func (c *k8sChunk) index(n *yaml.Node, base int, underSecret bool) {
 				isSecret = true
 			}
 		}
-		other := kinds == 1 && !unsure && !underSecret && own != "Secret" && reK8sKindName.MatchString(own)
+		proven := kinds == 1 && !unsure && own != "Secret" && reK8sKindName.MatchString(own)
+		other := proven && !underSecret
+		// What a mapping encloses is not proven unless the mapping itself is provably not
+		// a Secret: a kind the parse cannot read as a plain string may still be Secret.
+		enclosing := underSecret || isSecret || unsure || (kinds > 0 && !proven)
 		for i := 0; i+1 < len(n.Content); i += 2 {
 			k, v := n.Content[i], n.Content[i+1]
 			if k.Kind == yaml.ScalarNode {
@@ -364,9 +416,9 @@ func (c *k8sChunk) index(n *yaml.Node, base int, underSecret bool) {
 					secretKind: k.Value == "kind" && v.Kind == yaml.ScalarNode && v.Value == "Secret",
 				})
 			} else {
-				c.index(k, base, underSecret || isSecret)
+				c.index(k, base, enclosing)
 			}
-			c.index(v, base, underSecret || isSecret)
+			c.index(v, base, enclosing)
 		}
 	}
 }

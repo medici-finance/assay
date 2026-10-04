@@ -4,6 +4,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
+
+	"gopkg.in/yaml.v3"
 )
 
 // newFileHunk renders a manifest as one new file's hunk on the surface deskpr really
@@ -57,7 +60,29 @@ const (
 	duplicateKind = "apiVersion: v1\nkind: ConfigMap\nkind: Secret\ndata:\n  password: aHVudGVyMg==\n"
 	// An unrelated modification hunk elsewhere in the same diff.
 	readmeHunk = "@@ -10,3 +10,4 @@\n line one\n line two\n line three\n line four\n"
+	// A ConfigMap item anchored and merged into a Secret item: the parser's parent of the
+	// `data:` key is the ConfigMap, yet the same node is also the Secret's data.
+	mergedIntoSecret = "apiVersion: v1\nkind: List\nitems:\n- &cm\n  apiVersion: v1\n  kind: ConfigMap\n  data:\n    password: aHVudGVyMg==\n- <<: *cm\n  apiVersion: v1\n  kind: Secret\n"
+	// The same through a bare root sequence rather than a List.
+	rootSeqMerge = "- &cm\n  kind: ConfigMap\n  data:\n    password: aHVudGVyMg==\n- <<: *cm\n  kind: Secret\n"
+	// A ConfigMap's data VALUE anchored on its own line and aliased as a Secret's data.
+	aliasedData = "apiVersion: v1\nkind: List\nitems:\n- apiVersion: v1\n  kind: ConfigMap\n  data:\n    &d\n    password: aHVudGVyMg==\n- apiVersion: v1\n  kind: Secret\n  data: *d\n"
+	// A Secret whose kind carries a custom tag holds a mapping that names another kind.
+	customTagKind = "apiVersion: v1\nkind: !custom Secret\nmetadata:\n  annotations:\n    kind: ConfigMap\n    data:\n      password: aHVudGVyMg==\n"
+	// `data:` text inside a ConfigMap's block scalar: the line is no parsed key at all.
+	scalarDataText = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\n  annotations:\n    note: |\n      data:\n        password: aHVudGVyMg==\n"
 )
+
+// lineShifted builds a text that the YAML parser numbers differently from a split on
+// LF: br, repeated, sits in a leading comment, so every parsed key is filed six lines
+// below the line it is on. The decrypted Secret's `data:` (line 9) then lands on the
+// ConfigMap's data key (line 3), and its `kind: Secret` (line 11) on a data-less helper
+// Secret's kind (line 5), spelled with a tag so it is no declaration line of its own.
+func lineShifted(br string, n int) string {
+	return "#" + strings.Repeat(br, n) + "\napiVersion: v1\nkind: ConfigMap\ndata: {MODE: weekly}\n---\n" +
+		"kind: !!str Secret\nmetadata: {name: h}\n---\napiVersion: v1\ndata:\n  password: aHVudGVyMg==\n" +
+		"kind: Secret\nmetadata:\n  name: app-creds\n"
+}
 
 // TestK8sSecretDocScope pins the ownership scoping of the decrypted-k8s-secret rule (the
 // multi-document false-positive shape): the rule arms on a `kind: Secret` anywhere in the
@@ -158,6 +183,37 @@ func TestK8sSecretDocScope(t *testing.T) {
 		// outside every hunk, so the text is not a well-formed diff and proves nothing.
 		{"diff: hunk count short of its content",
 			newFileHunk(templateSecret) + "@@ -0,0 +1,3 @@\napiVersion: v1\nkind: ConfigMap\ndata:\n  password: aHVudGVyMg==\n", true},
+		// Anchors, aliases and merge keys let one parsed node belong to more than one
+		// mapping, so its textual parent is no proof of its owner: could-not-check.
+		{"List: ConfigMap item merged into a Secret item", mergedIntoSecret, true},
+		{"diff: ConfigMap item merged into a Secret item", newFileHunk(mergedIntoSecret), true},
+		{"root sequence: ConfigMap merged into a Secret", rootSeqMerge, true},
+		{"List: ConfigMap data aliased as a Secret's data", aliasedData, true},
+		{"fence: ConfigMap data aliased as a Secret's data", "```yaml\n" + aliasedData + "```\n", true},
+		// Fence lines that are also YAML content: each fence proves its own object, but
+		// the whole text is one YAML sequence whose second item merges the first. A
+		// stream that parses always counts as a reading, so its alias still refuses.
+		{"fences that are also YAML, ConfigMap merged into a Secret",
+			"- &cm\n  ~~~: x\n  kind: ConfigMap\n  data:\n    password: aHVudGVyMg==\n  note: |\n   ~~~\n" +
+				"- <<: *cm\n  ~~~: y\n  kind: Secret\n  note: |\n   ~~~\n", true},
+		// A kind the parse cannot read as a plain string may still be Secret, so what it
+		// encloses is not proven either.
+		{"custom-tagged Secret kind enclosing another kind",
+			encryptedSecretFixture + "---\n" + customTagKind, true},
+		// Characters the parser counts as line breaks and a split on LF does not shift
+		// every parsed key off the line it is filed under.
+		{"LINE SEPARATOR run shifts parsed lines", lineShifted("\u2028", 6), true},
+		{"NEXT LINE run shifts parsed lines", lineShifted("\u0085", 6), true},
+		{"PARAGRAPH SEPARATOR run shifts parsed lines", lineShifted("\u2029", 6), true},
+		{"lone CR run shifts parsed lines", lineShifted("\r", 7), true},
+		{"diff: LINE SEPARATOR run in a new file", newFileHunk(lineShifted("\u2028", 6)), true},
+		{"fence: PARAGRAPH SEPARATOR run", "```yaml\n" + lineShifted("\u2029", 6) + "```\n", true},
+		// A fence proves only what it holds: a Secret pasted outside every fence is read.
+		{"fenced ConfigMap, DECRYPTED Secret outside any fence",
+			"```yaml\n" + configMapFixture + "```\n\n" + decryptedSecretFixture, true},
+		// A `data:` line the parser holds no key for is could-not-check, not a pass.
+		{"data: text in a ConfigMap block scalar beside a Secret",
+			encryptedSecretFixture + "---\n" + scalarDataText, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -173,5 +229,39 @@ func TestK8sSecretDocScope(t *testing.T) {
 				t.Fatalf("ScanSurfaceSecrets decrypted-k8s-secret hit = %v, want %v (err=%v)", hit, c.refuse, err)
 			}
 		})
+	}
+}
+
+// TestK8sForeignBreakCoversYAML is the class guard for line misalignment between the
+// parser and k8sLine. It does not trust a hand-kept list: it asks the parser itself which
+// runes end a line, by placing each one in a comment and reading back the line of the key
+// that follows, and fails naming any rune the parser breaks on that k8sForeignBreak does
+// not flag. A parser upgrade that adds a break character turns this red.
+func TestK8sForeignBreakCoversYAML(t *testing.T) {
+	breaks := 0
+	for r := rune(1); r <= 0x10FFFF; r++ {
+		if r == '\n' || !utf8.ValidRune(r) || (r > 0xFFFF && r&0xFFF != 0) {
+			continue // LF is the split itself; astral planes are sampled, not swept
+		}
+		text := "a: 1 # x" + string(r) + "# y\nb: 2\n"
+		var doc yaml.Node
+		if yaml.Unmarshal([]byte(text), &doc) != nil || len(doc.Content) == 0 {
+			continue // not valid YAML with this rune: no reading is taken from it
+		}
+		m := doc.Content[0]
+		if m.Kind != yaml.MappingNode || len(m.Content) < 4 || m.Content[2].Line == 2 {
+			continue
+		}
+		breaks++
+		if !k8sForeignBreak(strings.Split(text, "\n")) {
+			t.Errorf("the parser breaks a line on %U but k8sForeignBreak does not flag it", r)
+		}
+	}
+	// Positive control: the probe must see the parser's known breaks, or it proves nothing.
+	if breaks < 4 {
+		t.Fatalf("probe found %d parser line breaks besides LF, want at least 4 (CR, NEL, LS, PS)", breaks)
+	}
+	if k8sForeignBreak(strings.Split("a: 1\r\nb: 2\r\n", "\n")) {
+		t.Errorf("CRLF line endings flagged: they are one break to both counters")
 	}
 }

@@ -54,6 +54,14 @@ func TestBranchDiffK8sSecretOwnership(t *testing.T) {
 		"   kind: ConfigMap",
 		"   data:",
 	}
+	// A ConfigMap item anchored and merged into a Secret item: one data node, two owners.
+	merged := "apiVersion: v1\nkind: List\nitems:\n- &cm\n  apiVersion: v1\n  kind: ConfigMap\n  data:\n" +
+		"    password: aHVudGVyMg==\n- <<: *cm\n  apiVersion: v1\n  kind: Secret\n"
+	// A LINE SEPARATOR run in a leading comment shifts the parser's line numbers six lines
+	// past a split on LF, lining the decrypted Secret's data up with the ConfigMap's.
+	shifted := "#" + strings.Repeat("\u2028", 6) + "\napiVersion: v1\nkind: ConfigMap\ndata: {MODE: weekly}\n---\n" +
+		"kind: !!str Secret\nmetadata: {name: h}\n---\napiVersion: v1\ndata:\n  password: aHVudGVyMg==\n" +
+		"kind: Secret\nmetadata:\n  name: app-creds\n"
 	cases := []struct {
 		name   string
 		diff   []string
@@ -65,6 +73,10 @@ func TestBranchDiffK8sSecretOwnership(t *testing.T) {
 			append(gitNewFile("deploy/secret.yaml", decrypted), gitNewFile("deploy/cm.yaml", configMap)...), true},
 		{"template Secret file and List edit carrying a DECRYPTED value",
 			append(gitNewFile("deploy/tmpl.yaml", template), listEdit...), true},
+		{"List file merging a ConfigMap item into a Secret item",
+			gitNewFile("deploy/list.yaml", merged), true},
+		{"encrypted Secret file and a line-shifted DECRYPTED Secret file",
+			append(gitNewFile("deploy/secret.enc.yaml", encrypted), gitNewFile("deploy/shifted.yaml", shifted)...), true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
