@@ -414,7 +414,7 @@ Run at 2026-10-04 09:10–09:23 UTC against merged main `70deba75a5775d50574695d
 
 Why this re-run: three declared inputs changed on main after `e1d99484ffd9`: the verify-desk skill, the pr-review-desk skill and the desk-tools README (10 commits, for example #2062, #2117, #2126, #2138, #2141 and #2135). None of them touches the per-file outcome text this brief verifies. The verify-desk diff changes the deskack wording, the comms cutover wording and the inline-code status rule. The pr-review-desk diff changes the scan-refusal STOP, deskack and comms. The README diff changes deskpr, deskroster, the roster beacon and comms. The brief-24 text is still in place: verify-desk describes the receipt refusal and the outcome-record paragraph, and says an Evidence PR on the per-file layout "no longer conflicts on outcomes". pr-review-desk says a CONFLICTING per-file Evidence PR "now means a real content conflict". The README keeps its `--outcome-record` section and the verifyloop read. The brief's code paths are byte-identical between `e1d99484ffd9` and `70deba75a577`: the deskevidence command, the deskkit verify-outcomes and verify-wake files, the verifyloop command, statusgen's verify-outcomes, outcomes-split and load files. The input change is therefore wake noise for this brief.
 
-What changed in this run: the execution witness ran in a Linux container, so the check:ci rows no longer depend on the darwin host (#1800). Row 6's negative control runs on git 2.47, which accepts `--attr-source`. The exit-129 shape tracked on #1926 therefore does not apply to this witness. The witness proves 14 of 15 rows. Only row 10 fails, because of the check-definition defect tracked on #1927.
+What changed in this run: the execution witness ran in a Linux container, so the check:ci rows no longer depend on the darwin host (#1800). Row 6's negative control runs on git 2.47, which accepts `--attr-source`. The exit-129 shape tracked on #1926 therefore does not apply to this witness. The witness proves 13 of 15 rows. Row 12 passes only vacuously on merged main (nothing to corroborate), so it is held, not proven (#1281 / #1927). Row 10 fails, because of the check-definition defect tracked on #1927.
 
 | # | Command | Exit | Observed | Date | Runner |
 |---|---|---|---|---|---|
@@ -468,7 +468,7 @@ RISK-VALUE (the trigger fires on the deskkit security path; no entry is irrevers
 
 Open items still outstanding: #1338 is open (its code half is met at c248703b0). The Task step 8 retirement was not taken (#1802). #1800 is open but no longer gates this brief's witness, because the Linux container clears it.
 
-VERIFY: BLOCKED — all 15 rows pass by hand at `70deba75a577`, and the Linux execution witness proves 14 of 15. Row 10's witness fails on the check-definition defect, and row 12 passes only vacuously on merged main. Both are tracked on medici-finance/assay#1927, which is still OPEN. Status stays implemented.
+VERIFY: BLOCKED — all 15 rows pass by hand at `70deba75a577`, and the Linux execution witness proves 13 of 15. Row 10's witness fails on the check-definition defect, and row 12 passes only vacuously on merged main. Both are tracked on medici-finance/assay#1927, which is still OPEN. Status stays implemented.
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the
