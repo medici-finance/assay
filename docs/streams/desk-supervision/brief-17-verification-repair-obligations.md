@@ -232,10 +232,10 @@ Execution witness: `statusgen verifyrun --dry-run`, run inside golang:1.25-bookw
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
-| 1 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationFailToWorker$ -v -count=1` | pass exit=0 | sha256:97a0a12cb9ac | 2026-10-04 | assay-verifier-app[bot] @ ade741f44372 (git-config) |
-| 2 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationRestartAndDuplicate$ -v -count=1` | pass exit=0 | sha256:b8c9eb00dccc | 2026-10-04 | assay-verifier-app[bot] @ ade741f44372 (git-config) |
-| 3 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationMergeIsNotResolved$ -v -count=1` | pass exit=0 | sha256:7d6b4ea5341b | 2026-10-04 | assay-verifier-app[bot] @ ade741f44372 (git-config) |
-| 4 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationCrossRepoFollowUp$ -v -count=1` | pass exit=0 | sha256:7eccfe7123ca | 2026-10-04 | assay-verifier-app[bot] @ ade741f44372 (git-config) |
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationFailToWorker$ -v -count=1` | pass exit=0 | sha256:97a0a12cb9ac | 2026-10-04 | assay-verifier-app[bot] @ ade741f44372 (on-behalf-of human:ian) (git-config) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationRestartAndDuplicate$ -v -count=1` | pass exit=0 | sha256:b8c9eb00dccc | 2026-10-04 | assay-verifier-app[bot] @ ade741f44372 (on-behalf-of human:ian) (git-config) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationMergeIsNotResolved$ -v -count=1` | pass exit=0 | sha256:7d6b4ea5341b | 2026-10-04 | assay-verifier-app[bot] @ ade741f44372 (on-behalf-of human:ian) (git-config) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationCrossRepoFollowUp$ -v -count=1` | pass exit=0 | sha256:7eccfe7123ca | 2026-10-04 | assay-verifier-app[bot] @ ade741f44372 (on-behalf-of human:ian) (git-config) |
 
 On the darwin host, `statusgen verifyrun --brief` (v1.0.31, write mode) produced 4 could-not-run rows (exit 2): check:ci hermetic execution needs `unshare --net`, which is Linux-only. That host table is NOT the witness to land. `verifyrun --check` reads the newest witness table. On the brief with the darwin table appended, it reports "0 pass, 0 fail, 4 could-not-run/missing (of 4 Verify rows)", exit 2. That darwin table would shadow both the 2026-09-30 Linux witness and this one.
 
