@@ -27,7 +27,7 @@ const usage = `deskpr — push a feature branch and open (or update) its pull re
 
 USAGE:
   deskpr create --title T (--body-file F | --body-min B) [--base main] [--check]
-  deskpr update [--check]
+  deskpr update [--pr N | --branch B] [--check]
   deskpr edit --body-file F [--title T] [--pr N] [--check]
   deskpr --version
 
@@ -49,12 +49,29 @@ branch — draft or ready-flipped. deskpr edit replaces that same open PR's body
 optionally its title, and pushes nothing: it refuses when the branch has no OPEN PR
 (which is also how a merged or closed one is refused), and it runs the trailer,
 secret-scan, self-containment, rate-limit and public-repo gates create runs. edit --pr N
-names the PR instead of finding it by branch, for a worktree that cannot be on the PR's
-head branch (git allows one worktree per branch): it is admitted when the worktree's
-branch IS the PR's head branch or its HEAD commit IS EXACTLY the PR's head commit (any
-branch name, or a detached HEAD); a HEAD with unpushed commits on top of the head commit
-is refused until they are pushed, and a merged or closed PR is refused. deskreply applies
-the same own-PR rule. There is
+names the PR instead of finding it by branch (#1901, #2085). It runs from a different
+feature branch, a detached HEAD, or a checkout with no commits ahead of the default branch,
+because it pushes nothing; a checkout ON the default branch, or one with staged changes, is
+still refused. The PR must be OPEN, and then either this checkout is the PR's own (its
+branch is the PR's head branch, or its HEAD is exactly the PR's head commit), or the PR's
+head branch is in this repository and its current body already carries a link trailer —
+which the edit then cannot change. A fork PR or a trailer-less PR is edited only from its
+own checkout.
+
+deskpr update pushes the worktree's branch to its PR by default. update --pr N (or --branch B,
+the PR's head branch name on the remote) names the PR instead, for a worktree whose local
+branch name differs from the PR's head branch (git allows one worktree per branch): HEAD is
+pushed to the head branch the forge reports for that PR (git push origin HEAD:<head-branch>),
+and that head branch name is secret-scanned before the push. The PR must be OPEN, its head
+branch must be in this repository (a fork PR, or one whose head repository the forge does
+not report, is refused), and the push destination must already hold that branch at the
+head commit the forge reports. The checkout is admitted by lineage: HEAD must be the PR's
+current head commit or a descendant of it (a pure fast-forward; merge, never rebase), and a
+PR head already contained in the default branch is refused. The default branch is never a
+destination. With --pr N the offline publish-identity stage judges the whole range from the
+default branch (the PR's head is unknown until the forge is read), so a PR whose head
+already carries another identity's commits is refused there. deskreply keeps its own
+checkout-must-be-the-PR's rule. There is
 no ready/close/merge verb, and no verb can pass --force to git. Preconditions are
 re-verified in-tool; on any state it cannot positively verify it refuses.
 

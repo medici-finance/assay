@@ -66,9 +66,46 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 12 | [platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS](brief-12-platform-compatibility-suite.md) | 2 | L | todo | — | — |
 | 13 | [platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage](brief-13-platform-gates-and-reconciliation.md) | 2 | M | implemented | — | — |
 | 14 | [regression floor — the behavior the desk tools pass today, pinned as tests seeded from resolved issues, which desktools-v2 must keep green](brief-14-regression-floor.md) | 2 | M | implemented | — | — |
-| 15 | [Cobra and Viper foundation and complete CLI migration routing](brief-15-cobra-and-viper-foundation-and-complete-cli-migration-routing.md) | 1 | L | todo | — | — |
+| 15 | [Cobra and Viper foundation and complete CLI migration routing](brief-15-cobra-and-viper-foundation-and-complete-cli-migration-routing.md) | 1 | L | implemented | — | — |
 | 16 | [Migrate cellctl to Cobra commands and Viper configuration](brief-16-migrate-cellctl-to-cobra-commands-and-viper-configuration.md) | 2 | L | todo | — | — |
-| 17 | [Enforce complete Cobra and Viper adoption across the tool suite](brief-17-enforce-complete-cobra-and-viper-adoption-across-the-tool-suite.md) | 3 | L | todo | — | — |
+| 17 | [Enforce complete Cobra and Viper adoption across the tool suite](brief-17-enforce-complete-cobra-and-viper-adoption-across-the-tool-suite.md) | 5 | L | todo | — | — |
+| 18 | [Migrate statusgen to Cobra and Viper](brief-18-migrate-statusgen-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 19 | [Migrate qualgen to Cobra and Viper](brief-19-migrate-qualgen-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 20 | [Migrate deskboard to Cobra and Viper](brief-20-migrate-deskboard-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 21 | [Migrate deskdispatch to Cobra and Viper](brief-21-migrate-deskdispatch-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 22 | [Migrate deskwt to Cobra and Viper](brief-22-migrate-deskwt-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 23 | [Migrate deskfleet to Cobra and Viper](brief-23-migrate-deskfleet-to-cobra-and-viper.md) | 3 | M | todo | — | — |
+| 24 | [Migrate desksupervise to Cobra and Viper](brief-24-migrate-desksupervise-to-cobra-and-viper.md) | 3 | M | todo | — | — |
+| 25 | [Migrate deskapps to Cobra and Viper](brief-25-migrate-deskapps-to-cobra-and-viper.md) | 3 | M | todo | — | — |
+| 26 | [Migrate deskclose to Cobra and Viper](brief-26-migrate-deskclose-to-cobra-and-viper.md) | 3 | M | todo | — | — |
+| 27 | [Migrate deskpost to Cobra and Viper](brief-27-migrate-deskpost-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 28 | [Migrate deskroster to Cobra and Viper](brief-28-migrate-deskroster-to-cobra-and-viper.md) | 3 | M | todo | — | — |
+| 29 | [Port the assay-inbox launcher onto deskinbox](brief-29-port-the-assay-inbox-launcher-onto-deskinbox.md) | 4 | M | todo | — | — |
+| 30 | [Port the GitLab fleet provisioner to a Go command](brief-30-port-the-gitlab-fleet-provisioner-to-a-go-command.md) | 3 | M | todo | — | — |
+| 31 | [Migrate the push and write guards to Cobra and Viper](brief-31-migrate-the-push-and-write-guards-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 32 | [Migrate the scan and cluster guards to Cobra and Viper](brief-32-migrate-the-scan-and-cluster-guards-to-cobra-and-viper.md) | 3 | M | todo | — | — |
+| 33 | [Migrate the token and claim custody verbs to Cobra and Viper](brief-33-migrate-the-token-and-claim-custody-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 34 | [Migrate the preflight and git transport verbs to Cobra and Viper](brief-34-migrate-the-preflight-and-git-transport-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 35 | [Migrate the install path to Cobra and Viper](brief-35-migrate-the-install-path-to-cobra-and-viper.md) | 3 | M | todo | — | — |
+| 36 | [Migrate the merge authority verbs to Cobra and Viper](brief-36-migrate-the-merge-authority-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 37 | [Migrate deskflip and deskevidence to Cobra and Viper](brief-37-migrate-deskflip-and-deskevidence-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 38 | [Migrate the PR writer verbs to Cobra and Viper](brief-38-migrate-the-pr-writer-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 39 | [Migrate the issue writer verbs to Cobra and Viper](brief-39-migrate-the-issue-writer-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 40 | [Migrate verifyloop and reviewloop to Cobra and Viper](brief-40-migrate-verifyloop-and-reviewloop-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 41 | [Migrate the scan and monitor loops to Cobra and Viper](brief-41-migrate-the-scan-and-monitor-loops-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 42 | [Migrate the comms verbs to Cobra and Viper](brief-42-migrate-the-comms-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 43 | [Migrate fanoutloop, desktick and deskdigest to Cobra and Viper](brief-43-migrate-fanoutloop-desktick-and-deskdigest-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 44 | [Migrate the metrics and calibration verbs to Cobra and Viper](brief-44-migrate-the-metrics-and-calibration-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 45 | [Migrate the board reader verbs to Cobra and Viper](brief-45-migrate-the-board-reader-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 46 | [Migrate the release and provenance verbs to Cobra and Viper](brief-46-migrate-the-release-and-provenance-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 47 | [Migrate the small admin verbs to Cobra and Viper](brief-47-migrate-the-small-admin-verbs-to-cobra-and-viper.md) | 3 | M | todo | — | — |
+| 48 | [Migrate the small standalone module CLIs to Cobra and Viper](brief-48-migrate-the-small-standalone-module-clis-to-cobra-and-viper.md) | 3 | M | todo | — | — |
+| 49 | [Migrate the harness and version guard CLIs to Cobra and Viper](brief-49-migrate-the-harness-and-version-guard-clis-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 50 | [Migrate the skill lint CLIs to Cobra and Viper](brief-50-migrate-the-skill-lint-clis-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 51 | [Migrate metrics-harvest and the plugin hook scripts](brief-51-migrate-metrics-harvest-and-the-plugin-hook-scripts.md) | 3 | M | todo | — | — |
+| 52 | [Port the changelog and release check scripts](brief-52-port-the-changelog-and-release-check-scripts.md) | 3 | M | todo | — | — |
+| 53 | [Port the CI and regression floor scripts](brief-53-port-the-ci-and-regression-floor-scripts.md) | 3 | M | todo | — | — |
+| 54 | [Port the security control scripts](brief-54-port-the-security-control-scripts.md) | 4 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -160,14 +197,25 @@ fixtures use local git repositories, local HTTP servers and fake CLI executables
   maintained-entrypoint inventory, and bounded migration briefs for all remaining tools.
 - **Wave 2 — /16:** cellctl reference migration, preserving launch/custody behavior while
   making root and nested help work offline without configuration or credentials.
-- **Subsequent waves:** the child briefs authored by /15 migrate the other tools in bounded
-  independent batches after /16. /15 adds every child to /17's depends and recomputes the
-  final wave. The generated /17 wave is provisional until those owners exist.
-- **Final — /17:** zero pending/unowned entrypoints, executed binary/configuration tests,
-  generated reference help and a proven PR CI gate. It does not perform an omnibus port.
+- **Wave 3 — /18–/28, /30–/53:** the migration children authored by /15, each depending
+  only on /16's reference adapter. One complex entrypoint per child (statusgen, qualgen,
+  deskboard, deskdispatch, deskwt, deskfleet, desksupervise, deskapps, deskclose, deskpost,
+  deskroster, the GitLab fleet provisioner) or at most five simple ones (guards, custody,
+  transport, install, merge authority, writers, loops, comms, metrics, readers, release,
+  admin, standalone modules, lints, plugin scripts, changelog and CI scripts). Human-gated
+  children: /25–/28, /30–/37, /42, /54 — each carries credentials, refusals or authority.
+- **Wave 4 — /29, /54:** /29 ports the assay-inbox launcher onto deskinbox after /45 migrates
+  it; /54 adds token renewal to the GitLab command /30 creates.
+- **Routing:** [cli-migration.json](cli-migration.json) maps every discovered entrypoint to its
+  owning brief or to a classified exclusion; [cli-contract.md](cli-contract.md) is the shared
+  command and configuration contract. TestCLIInventory fails on any unrouted, orphaned or
+  over-budget row.
+- **Final — wave 5, /17:** depends on /16 and every child; zero pending/unowned entrypoints,
+  executed binary/configuration tests, generated reference help and a proven PR CI gate. It
+  does not perform an omnibus port.
 
-CLI critical path: `15 → 16 → longest remaining-tool child → 17`; /15 is the current
-verified head. Library selection is settled by #2111; implementation risk gates remain.
+CLI critical path: `15 → 16 → 45 → 29 → 17` (tied with `15 → 16 → 30 → 54 → 17`, which
+carries two human gates and so paces in practice); /16 is the next head once /15 lands. Library selection is settled by #2111; implementation risk gates remain.
 The old forge path proceeds alongside this track. /06, /08 and /11 retain their original
 deliverables under the configuration/CLI contract. /12 carries compatibility guidance only:
 all new CLI platform fixtures and checks are owned by /15, /16, their migration children

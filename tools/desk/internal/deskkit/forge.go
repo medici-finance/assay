@@ -117,9 +117,11 @@ type PullRequest struct {
 	// the reply's location and records it in the audit detail.
 	URL string
 	// HeadRef is the SOURCE branch name (GitHub head.ref ↔ GitLab source_branch), as
-	// distinct from HeadSHA. Consumer: the own-PR guard deskkit.CheckOwnPR (cmd/deskreply,
-	// `deskpr edit --pr`), which refuses when the worktree's checked-out branch is not the
-	// branch the change is built from AND its HEAD is not the change's head commit (#1901).
+	// distinct from HeadSHA. Consumers: the own-PR guard deskkit.CheckOwnPR (cmd/deskreply,
+	// and `deskpr edit --pr`'s first admission rule), which refuses when the worktree's
+	// checked-out branch is not the branch the change is built from AND its HEAD is not the
+	// change's head commit (#1901); and `deskpr update --pr/--branch`, which pushes HEAD to
+	// this branch once CrossRepo says it is in the base repository (#2085).
 	HeadRef string
 	// BaseRef is the TARGET branch name (GitHub base.ref ↔ GitLab target_branch) — the branch
 	// whose protection rules gate the merge. Consumer: cmd/deskflip's checks-green condition,
