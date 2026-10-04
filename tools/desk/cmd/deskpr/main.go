@@ -26,29 +26,39 @@ var version string
 const usage = `deskpr — push a feature branch and open (or update) its pull request.
 
 USAGE:
-  deskpr create --title T (--body-file F | --body-min B) [--base main] [--decided F] [--check]
-  deskpr update [--check]
-  deskpr edit --body-file F [--title T] [--pr N] [--decided F] [--check]
+  deskpr create --title T (--body-file F | --body-min B) [--base main] [--decided F]
+      [--root DIR] [--explain] [--force-scan-override REASON] [--check]
+  deskpr update [--root DIR] [--explain] [--force-scan-override REASON] [--check]
+  deskpr edit --body-file F [--title T] [--pr N] [--decided F]
+      [--root DIR] [--explain] [--force-scan-override REASON] [--check]
   deskpr --version
 
-Also accepted by create and edit: --root DIR, --explain, --force-scan-override REASON
-(--force-scan-override is the audited secret-scan bypass; --explain adds a scan-explain
-line to a secret-scan refusal).
+Each verb's USAGE line above lists every flag that verb accepts, and no other. The three
+shared by all three verbs: --root DIR is the repo root the Brief: trailer resolves against;
+--force-scan-override REASON is the audited secret-scan bypass (it demands a reason and
+writes an audit row); --explain adds a scan-explain line to a secret-scan refusal.
 
---decided F declares a desk-taken REVERSIBLE default (the driver holds merge, so such a
-choice needs no ruling first — it needs the PR to say so). F is a file of numbered items,
-each carrying all three fields, one per line:
+--decided F (create and edit only) declares a desk-taken REVERSIBLE default (the driver
+holds merge, so such a choice needs no ruling first — it needs the PR to say so). A one-way
+or human-gated call (merge, weakening a security control, identity/auth, money movement,
+durable-data deletion, a release, anything leaving the repo) is never eligible: that stops
+for the driver instead. F is a file of numbered items, each carrying all three fields, one
+per line:
   1. decision: <what was chosen>
      alternative: <the option not taken>
      cost: <what reversing it costs the driver>
 The tool writes (or, on edit, replaces in place) a "## Desk-decided" section in the PR
 body and applies the "desk-decided" label together; never write either by hand. An empty
-file, an unparsable one, or an item missing a field refuses (exit 5) before any PR call;
-create also refuses a body that already carries a hand-written "## Desk-decided" heading.
-A PR that only transcribes rulings already recorded elsewhere passes no --decided and
-carries neither the section nor the label. deskflip refuses the ready-flip (condition
-desk-decided) when the label and the section disagree, and the remedy for that is
-"deskpr edit --decided F" on the PR's own branch.
+file, an unparsable one, or an item missing a field refuses (exit 5) before any PR call.
+With --decided, create also refuses a body that already carries a hand-written
+"## Desk-decided" heading (without --decided it does not look). A PR that only transcribes
+rulings already recorded elsewhere passes no --decided and carries neither the section nor
+the label. deskflip refuses the ready-flip (condition desk-decided) when the section does
+not parse, when the label and the section disagree, or while the reviewer's latest verdict
+in either lane at the current head carries an "Undeclared-desk-decision:" line. The remedy
+for each is "deskpr edit --body-file <the PR's current body> --decided F" on the PR's own
+branch (an unchanged body still applies a missing label); the last also needs a fresh
+verdict at that head without the line.
 
 --check runs every LOCAL gate the write path runs — flag validity, branch state, the
 Brief:/Authors:/Issue: trailer, the secret scan, the public-repo self-containment scan, the

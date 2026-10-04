@@ -181,7 +181,8 @@ how you notice you are on a stale binary.
 `gh pr create` argv it builds, so there is no `--draft` flag for *you* to pass — passing
 one is an unexpected argument and exits 5. The git argv is likewise built literally so no
 force-push flag can be emitted, and there is no ready/close/merge verb anywhere in this
-tree. `deskpr update` takes only `[--as-app]`: it pushes follow-up commits and never
+tree. `deskpr update` takes no PR text, only `[--root DIR] [--explain]
+[--force-scan-override REASON] [--check]`: it pushes follow-up commits and never
 touches the description. Correcting the description is `deskpr edit`'s job — it replaces
 the body (and optionally the title) of the branch's open PR and pushes nothing. Flipping
 a PR ready and merging it are somebody else's decision, and the tools cannot make them
