@@ -293,6 +293,23 @@ func TestHeldScanLinkConstruct(t *testing.T) {
 			pass + "See [log](/runs/(a`b)) row 3 HELD `z`\n", true},
 		{"backtick in a parenthesised title",
 			pass + "See [log](/runs (t`)) row 3 HELD `z`\n", true},
+		// Each case below puts a ")" inside the tail ahead of its real
+		// closer, then a backtick: a tail cut at its first ")" would pair
+		// that backtick with a later one and mask the HELD.
+		{"paren pair in a destination, then a backtick",
+			pass + "See [log](/runs/(a)b`c) row 3 HELD `z`\n", true},
+		{"paren in a double-quoted title, then a backtick",
+			pass + "See [log](/runs \"t)`\") row 3 HELD `z`\n", true},
+		{"paren in a single-quoted title, then a backtick",
+			pass + "See [log](/runs 't)`') row 3 HELD `z`\n", true},
+		{"escaped paren in a parenthesised title, then a backtick",
+			pass + "See [log](/runs (t\\)`)) row 3 HELD `z`\n", true},
+		{"escaped paren in a destination, then a backtick",
+			pass + "See [log](/runs/a\\)b`c) row 3 HELD `z`\n", true},
+		{"paren in a pointy destination, then a backtick",
+			pass + "See [log](</a)b`c>) row 3 HELD `z`\n", true},
+		{"backtick in a tail that is not a link",
+			pass + "See [log](a b`c) d` row 3 HELD `z`\n", true},
 		{"title wraps onto the next line",
 			pass + "See [log](/runs \"first\nsecond`b\") row 3 HELD `z`\n", true},
 		{"link in a table cell",

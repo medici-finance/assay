@@ -549,8 +549,8 @@ var heldBareTokenRe = regexp.MustCompile(`(?i)^[^\pL\pN]*(?:held|could-not-check
 //   - An inline link's destination and title, and a full reference's label,
 //     are read when CommonMark reaches "](" or "][", before a backtick inside
 //     them, so that backtick is literal. A tail that closes on the same line
-//     with no backtick, "<", backslash, quote or opening bracket inside is
-//     skipped whole: whether or not it forms a link, it ends at that closer
+//     with no backtick, "<", backslash, quote or "(" inside is skipped whole
+//     (linkTailEnd): whether or not it forms a link, it ends at that closer
 //     and holds nothing that pairs. Any other "](" or "][" is uncertain:
 //     nothing is masked from it to the end of the line, and the paragraph is
 //     marked open (a title can run onto the next line).
@@ -729,8 +729,8 @@ func angleMayOpen(line string, i int) bool {
 // line[open] — a "(" after "]" (a destination and title) or a "[" after "]"
 // (a full reference's label) — when that tail is certain: its closer is the
 // first ")" or "]" before hi, and nothing in between could hold a backtick or
-// move the closer (a backtick, "<", backslash, quote or opening bracket). It
-// returns -1 for any other tail.
+// move the closer (a backtick, "<", backslash, quote or "("). It returns -1
+// for any other tail.
 func linkTailEnd(line string, open, hi int) int {
 	closer := byte(')')
 	if line[open] == '[' {
@@ -740,7 +740,7 @@ func linkTailEnd(line string, open, hi int) int {
 		switch line[j] {
 		case closer:
 			return j
-		case '`', '<', '\\', '"', '\'', '(', '[':
+		case '`', '<', '\\', '"', '\'', '(':
 			return -1
 		}
 	}
