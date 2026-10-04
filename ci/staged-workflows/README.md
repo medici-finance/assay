@@ -56,8 +56,8 @@ reviewable artifact, not a run.
   POSIX shell-out). It runs NO mutating/forge verb. The native windows/arm64 smoke is held
   BLOCKED (`arm64-native-smoke`, `if: false`) pending a `windows-11-arm` runner and is never
   inferred from the amd64 result. A `workflow_dispatch` input `failfirst=true` runs the
-  fail-first demonstration (the leg must redden on a bogus verb). The staged copy also adds a
-  **Windows PowerShell 5.1 parse check** to `windows-smoke` (#1569, pending promotion): under
+  fail-first demonstration (the leg must redden on a bogus verb). The leg also carries a
+  **Windows PowerShell 5.1 parse check** in `windows-smoke` (#1569, now live): under
   `shell: powershell` it runs `[System.Management.Automation.Language.Parser]::ParseFile` over
   every tracked `*.ps1` (case-insensitive pathspec) and fails on any parse error, with a
   `failfirst` twin that plants a BOM-less em dash and a PowerShell 7 `? :` ternary and
@@ -65,19 +65,19 @@ reviewable artifact, not a run.
   no promotion: `TestPS1EncodingIs51Safe` in `tools/desk/internal/deskkit`
   (run by `ci.yml`'s build-test job) fails any `*.ps1` carrying a byte above 0x7F without a
   UTF-8 BOM. It is a byte scan, not a parser: any other 5.1-only parse error (a PowerShell 7
-  operator such as the `? :` ternary, for example) is caught only by this staged step, so
-  until it is promoted nothing gates that class.
+  operator such as the `? :` ternary, for example) is caught only by this step, which runs on
+  the leg's version-tag and on-demand triggers, not at PR time.
 
   **Already live, like `evidence-automerge.yml` above** — this copy is kept as the reviewable
   edit surface for `.github/workflows/windows-ci-leg.yml`, no App may push a workflow-file
   change. The `windows-bootstrap-smoke` job resolves the pinned `windows-amd64` tag **and** its
   sha256 from `plugins/assay/paired-versions.yaml` and hands both to
   `scripts/windows-bootstrap-hashcheck-smoke.ps1` (`-Tag`/`-RealSha256`), exercising the sha256
-  hash-verify at Windows runtime. **This staged copy has been re-based onto the live file so a
-  promotion is a byte-for-byte copy that only ADDS** — the live file's later changes (the
-  version-tag trigger and the lint job's `fetch-depth: 0`) are already present here, so promoting
-  no longer reverts them (the #1187-class drift the caveat below warns about). **Pending
-  promotion** — a maintainer re-promotes by copying this file over the live one:
+  hash-verify at Windows runtime. **This staged copy is byte-identical to the live file**
+  (declared `identical` in `declared-changes.json`, enforced by the drift guard below), so it
+  carries no pending change and cannot silently revert a later live fix (the #1187-class drift
+  the caveat below warns about). A later change lands here first; a maintainer then re-promotes
+  it by copying this file over the live one:
   ```
   cp ci/staged-workflows/windows-ci-leg.yml .github/workflows/windows-ci-leg.yml
   git commit -m "ci: promote windows-ci-leg.yml"
@@ -122,8 +122,8 @@ reviewable artifact, not a run.
 Already activated (`windows-port/04`) — see "Already live" above for how a later change to
 this file is promoted now that it exists at `.github/workflows/windows-ci-leg.yml`.
 
-**`windows-port/10` adds two jobs to this file** (pending re-promotion by a maintainer copying
-this staged copy over the live one, exactly as `windows-port/06` was):
+**`windows-port/10` added two jobs to this file**, since promoted (both are present in the live
+file, re-promoted by a maintainer copy exactly as `windows-port/06` was):
 - `verify-in-container` — the execution-witness runner leg. On `ubuntu-latest` it builds
   `statusgen`, asserts the wrapper REFUSES an un-digest-pinned harness image (the fail-closed pin
   control, green on promotion), and — once a maintainer harvests and pins the harness image's real
@@ -136,14 +136,14 @@ this staged copy over the live one, exactly as `windows-port/06` was):
   awaits a Windows runner configured with one. Never inferred from the ubuntu result — the same
   "blocked is a state" contract `arm64-native-smoke` uses.
 
-**Landing-mechanism caveat — read before promoting.** This staged CI-leg addition rides the same
-staged-copy → maintainer-hand-copy pattern `windows-port/04`/`/06` used. That pattern is the
-subject of an OPEN, unratified decision record (`docs/streams/decisions/DR-workflow-app-landing.md`)
+**Landing-mechanism caveat — read before promoting a later change.** Any later change to this
+leg rides the same staged-copy → maintainer-hand-copy pattern `windows-port/04`/`/06`/`/10`
+used. That pattern is the subject of an OPEN, unratified decision record (`docs/streams/decisions/DR-workflow-app-landing.md`)
 and an in-flight retirement brief (`docs/streams/desk-supervision/brief-12-...`), which cite real
 drift (a staged copy authored against one base silently reverts intervening fixes when the live
 file moves — #1187) and indefinite stalls (a hand-copy step sitting `BLOCKED-ON-HUMAN` 9+ days —
-#1175/#1185). Whoever promotes this addition should check `desk-supervision/12`'s current state
-first: if the workflow-App PR path has landed, this change should travel through THAT path (a
+#1175/#1185). Whoever promotes such a change should check `desk-supervision/12`'s current state
+first: if the workflow-App PR path has landed, the change should travel through THAT path (a
 single workflow-only PR the workflow App authors) rather than a verbatim hand-copy — and this
 staged copy may itself be reduced to a pointer by that brief.
 
@@ -165,7 +165,7 @@ check-removed copy installs the tampered asset (so the refusal is non-vacuous). 
 downloads a release asset (`Invoke-WebRequest` to the GitHub release CDN), so this job is
 deliberately kept SEPARATE from `windows-smoke` — the download is decision #508's sanctioned
 live-forge exception and does not weaken the offline invariant of the `windows-smoke` job. It is
-promoted with the rest of this file; a green `windows-bootstrap-smoke` run is the evidence for
+live with the rest of this file; a green `windows-bootstrap-smoke` run is the evidence for
 the brief's row 8 (record its run URL). The job hands the pinned tag **and** sha256 to
 `scripts/windows-bootstrap-hashcheck-smoke.ps1` (`-Tag`/`-RealSha256`), so the untampered path
 downloads the real published asset while a tampered checksum still REFUSES.
@@ -186,6 +186,8 @@ staged YAML has a classification and every identical twin equals live. New stage
 files require explicit classification: either a manifest entry or a nonempty
 `<filename>.pending` companion stating the proposal and pending promotion, which
 lets parallel proposals avoid editing one shared inventory. A manifest entry takes
-precedence over a companion, so a parity twin cannot be exempted by adding one.
+precedence over a companion, so a parity twin cannot be exempted by adding one. A
+companion whose YAML file is gone, a manifest entry with no staged file, an empty
+pending reason and an unknown mode each fail the guard.
 The existing unconditional `ci.yml`
 build-test job runs this guard on every PR and main push.

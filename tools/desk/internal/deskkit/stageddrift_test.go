@@ -36,6 +36,14 @@ func stagedDrift(root string) error {
 	seen := map[string]bool{}
 	for _, file := range files {
 		name := file.Name()
+		if base, ok := strings.CutSuffix(name, ".pending"); ok {
+			// A companion whose YAML is gone classifies nothing; flag it so a
+			// stale rationale cannot sit beside a later file of the same name.
+			if _, err := os.Stat(filepath.Join(dir, base)); err != nil {
+				return fmt.Errorf("%s: pending companion without staged file", name)
+			}
+			continue
+		}
 		if filepath.Ext(name) != ".yml" && filepath.Ext(name) != ".yaml" {
 			continue
 		}
@@ -130,5 +138,79 @@ func TestStagedDriftPlant(t *testing.T) {
 	write(filepath.Join(stage, "unlisted.yaml.pending"), "  \n")
 	if stagedDrift(r) == nil {
 		t.Fatal("empty pending classification was accepted")
+	}
+}
+
+// Each control starts from a clean, passing fixture (one identical twin)
+// and plants exactly one manifest or companion defect the guard must reject.
+func TestStagedDriftControls(t *testing.T) {
+	cases := []struct {
+		name     string
+		manifest string
+		staged   string
+		extra    map[string]string
+	}{
+		{
+			name:     "companion cannot exempt identical twin",
+			manifest: `{"twin.yml":{"mode":"identical"}}`,
+			staged:   "jobs: drifted\n",
+			extra:    map[string]string{"twin.yml.pending": "Claimed proposal.\n"},
+		},
+		{
+			name:     "manifest pending with empty reason",
+			manifest: `{"twin.yml":{"mode":"pending","reason":"  "}}`,
+			staged:   "jobs: drifted\n",
+		},
+		{
+			name:     "invalid declaration mode",
+			manifest: `{"twin.yml":{"mode":"same"}}`,
+			staged:   "jobs: live\n",
+		},
+		{
+			name:     "declaration without staged file",
+			manifest: `{"twin.yml":{"mode":"identical"},"gone.yml":{"mode":"identical"}}`,
+			staged:   "jobs: live\n",
+		},
+		{
+			name:     "orphan pending companion",
+			manifest: `{"twin.yml":{"mode":"identical"}}`,
+			staged:   "jobs: live\n",
+			extra:    map[string]string{"gone.yml.pending": "Stale rationale.\n"},
+		},
+	}
+	build := func(t *testing.T, manifest, staged string, extra map[string]string) string {
+		t.Helper()
+		r := t.TempDir()
+		stage := filepath.Join(r, "ci", "staged-workflows")
+		live := filepath.Join(r, ".github", "workflows")
+		files := map[string]string{
+			filepath.Join(stage, "declared-changes.json"): manifest,
+			filepath.Join(stage, "twin.yml"):              staged,
+			filepath.Join(live, "twin.yml"):               "jobs: live\n",
+		}
+		for name, text := range extra {
+			files[filepath.Join(stage, name)] = text
+		}
+		for p, text := range files {
+			if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte(text), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return r
+	}
+	// Positive control: the unplanted fixture is accepted, so every rejection
+	// below is caused by its plant and not by a broken fixture.
+	if err := stagedDrift(build(t, `{"twin.yml":{"mode":"identical"}}`, "jobs: live\n", nil)); err != nil {
+		t.Fatalf("clean fixture rejected: %v", err)
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if stagedDrift(build(t, c.manifest, c.staged, c.extra)) == nil {
+				t.Fatalf("%s was accepted", c.name)
+			}
+		})
 	}
 }
