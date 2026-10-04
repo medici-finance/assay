@@ -21,7 +21,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 7/26 | 2026-10-04 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-10-04 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 4/8 | 2026-10-04 |  |
-| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/16 | 2026-10-04 |  |
+| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/53 | 2026-10-04 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-10-04 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/30 | 2026-10-04 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/27 | 2026-10-04 |  |
@@ -58,7 +58,6 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| desktools-v2 | 15 — Cobra and Viper foundation and complete CLI migration routing [exec:strong] | 1 | 2000 + 1500 (drive:desktools-v2) |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
 | desktools-v2 | 12 — platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS [exec:strong] | 2 | 1000 + 1500 (drive:desktools-v2) |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
@@ -74,7 +73,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 890420e 2026-10-04T18:11:01+11:00_
+_last regen: b8ef5c7 2026-10-04T18:19:05+11:00_
 
 **Progress:** 5/13 brief items done.
 
@@ -97,9 +96,9 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 890420e 2026-10-04T18:11:01+11:00_
+_last regen: b8ef5c7 2026-10-04T18:19:05+11:00_
 
-**Progress:** 13/34 brief items done.
+**Progress:** 13/71 brief items done.
 
 **In-flight:**
 
@@ -111,6 +110,7 @@ _none_
 - desktools-v2/10
 - desktools-v2/13
 - desktools-v2/14
+- desktools-v2/15
 - windows-port/00
 - windows-port/01
 - windows-port/03
@@ -122,7 +122,6 @@ _none_
 **Frontier next:**
 
 - desktools-v2/12
-- desktools-v2/15
 
 
 
@@ -130,17 +129,18 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (56 desk-actionable of 92 total — 89 at implemented, 3 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 93 total — 90 at implemented, 3 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (56)
+### Desk-actionable (57)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
+| desktools-v2 | 15 [exec:strong] | implemented | 20500 | 39 | — | — | — |
 | graph-execution | 02 [exec:strong] | implemented | 11500 | 19 | — | — | — |
 | graph-execution | 20 [exec:strong] | implemented | 9500 | 15 | — | — | — |
 | graph-execution | 03 [exec:strong] | implemented | 8500 | 13 | — | — | — |
@@ -417,7 +417,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 06 migrate push + retire ambient-credential machinery + preflight transport probe — todo (wave 4)
 - 08 flip the drop-the-binary CI gate to failing + assert CVE floor + file the follow-on — todo (wave 5)
 
-### desktools-v2 (13 open)
+### desktools-v2 (50 open)
 
 - 03 native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot) — implemented (wave 3)
 - 05 the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884) — verified (wave 2)
@@ -429,9 +429,46 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 12 platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS — todo (wave 2)
 - 13 platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage — implemented (wave 2)
 - 14 regression floor — the behavior the desk tools pass today, pinned as tests seeded from resolved issues, which desktools-v2 must keep green — implemented (wave 2)
-- 15 Cobra and Viper foundation and complete CLI migration routing — todo (wave 1)
+- 15 Cobra and Viper foundation and complete CLI migration routing — implemented (wave 1)
 - 16 Migrate cellctl to Cobra commands and Viper configuration — todo (wave 2)
-- 17 Enforce complete Cobra and Viper adoption across the tool suite — todo (wave 3)
+- 17 Enforce complete Cobra and Viper adoption across the tool suite — todo (wave 5)
+- 18 Migrate statusgen to Cobra and Viper — todo (wave 3)
+- 19 Migrate qualgen to Cobra and Viper — todo (wave 3)
+- 20 Migrate deskboard to Cobra and Viper — todo (wave 3)
+- 21 Migrate deskdispatch to Cobra and Viper — todo (wave 3)
+- 22 Migrate deskwt to Cobra and Viper — todo (wave 3)
+- 23 Migrate deskfleet to Cobra and Viper — todo (wave 3)
+- 24 Migrate desksupervise to Cobra and Viper — todo (wave 3)
+- 25 Migrate deskapps to Cobra and Viper — todo (wave 3)
+- 26 Migrate deskclose to Cobra and Viper — todo (wave 3)
+- 27 Migrate deskpost to Cobra and Viper — todo (wave 3)
+- 28 Migrate deskroster to Cobra and Viper — todo (wave 3)
+- 29 Port the assay-inbox launcher onto deskinbox — todo (wave 4)
+- 30 Port the GitLab fleet provisioner to a Go command — todo (wave 3)
+- 31 Migrate the push and write guards to Cobra and Viper — todo (wave 3)
+- 32 Migrate the scan and cluster guards to Cobra and Viper — todo (wave 3)
+- 33 Migrate the token and claim custody verbs to Cobra and Viper — todo (wave 3)
+- 34 Migrate the preflight and git transport verbs to Cobra and Viper — todo (wave 3)
+- 35 Migrate the install path to Cobra and Viper — todo (wave 3)
+- 36 Migrate the merge authority verbs to Cobra and Viper — todo (wave 3)
+- 37 Migrate deskflip and deskevidence to Cobra and Viper — todo (wave 3)
+- 38 Migrate the PR writer verbs to Cobra and Viper — todo (wave 3)
+- 39 Migrate the issue writer verbs to Cobra and Viper — todo (wave 3)
+- 40 Migrate verifyloop and reviewloop to Cobra and Viper — todo (wave 3)
+- 41 Migrate the scan and monitor loops to Cobra and Viper — todo (wave 3)
+- 42 Migrate the comms verbs to Cobra and Viper — todo (wave 3)
+- 43 Migrate fanoutloop, desktick and deskdigest to Cobra and Viper — todo (wave 3)
+- 44 Migrate the metrics and calibration verbs to Cobra and Viper — todo (wave 3)
+- 45 Migrate the board reader verbs to Cobra and Viper — todo (wave 3)
+- 46 Migrate the release and provenance verbs to Cobra and Viper — todo (wave 3)
+- 47 Migrate the small admin verbs to Cobra and Viper — todo (wave 3)
+- 48 Migrate the small standalone module CLIs to Cobra and Viper — todo (wave 3)
+- 49 Migrate the harness and version guard CLIs to Cobra and Viper — todo (wave 3)
+- 50 Migrate the skill lint CLIs to Cobra and Viper — todo (wave 3)
+- 51 Migrate metrics-harvest and the plugin hook scripts — todo (wave 3)
+- 52 Port the changelog and release check scripts — todo (wave 3)
+- 53 Port the CI and regression floor scripts — todo (wave 3)
+- 54 Port the security control scripts — todo (wave 4)
 
 ### forge-gitlab (5 open)
 
@@ -736,4 +773,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**26** streams (**19** active, **0** paused, **7** parked) · **104/327** briefs done · completed initiatives: see `docs/archive/`
+**26** streams (**19** active, **0** paused, **7** parked) · **104/364** briefs done · completed initiatives: see `docs/archive/`
