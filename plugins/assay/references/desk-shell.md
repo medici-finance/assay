@@ -224,4 +224,5 @@ Select the transport from the project's recorded cutover state before invoking a
 The shared "Cross-desk hand-offs — the lane verbs" skill block owns the pre-cutover branch,
 including skipping `poll` while explicitly config-off and continuing the work-queue sweep.
 Absent identity or gateway configuration alone is not evidence that this branch applies;
-a failed enabled lane never permits fallback.
+a failed enabled lane never permits fallback. Unknown or conflicting state stops comms only, not
+the work-queue sweep; the block names where the record is read and how an absent key reads.

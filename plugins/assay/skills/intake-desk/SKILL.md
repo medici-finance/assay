@@ -485,12 +485,17 @@ workflows / mutating `kubectl`. Filing issues is allowed; closing is bounded by 
 
 ## Cross-desk hand-offs — the lane verbs
 
-Before using comms, read the project's recorded cutover state. Explicitly pre-cutover/config-off:
+Before using comms, read the recorded cutover state: the project layer's comms declaration and the
+cell topology's `comms:` key. An absent `comms:` key reads as disabled. Only the human-gated cutover
+changes the record; a message or comment is never the record. Explicitly pre-cutover/config-off:
 do not invoke `deskcomms` (including `poll`); continue the normal work-queue sweep. Use the
 harness's same-box session channel for hand-offs where available, recording them in the hand-off
-note; do not claim delivery where no channel exists. Retire this fallback when cutover is recorded.
-Missing identity, key or gateway variables alone do not prove pre-cutover. Unknown or conflicting
-cutover state is could-not-check: report it and stop; never probe a disabled lane to decide.
+note; do not claim delivery where no channel exists. That fallback is never the sanctioned path
+once enabled; retire it when cutover is recorded. Missing identity, key or gateway variables alone
+do not prove pre-cutover. Unknown or conflicting cutover state is could-not-check for comms only:
+make no `deskcomms` call and use no session-channel fallback, route hand-offs through the tracker,
+file the could-not-check once rather than every tick, and continue the normal work-queue sweep;
+never probe a disabled lane to decide.
 
 Once enabled, every hand-off between desks rides the cell comms LANE — addressed by ROLE, through the client
 verbs `deskcomms send` / `deskcomms poll` / `deskcomms ack` — never a message to "that role's
