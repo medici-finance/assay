@@ -329,6 +329,56 @@ WITNESS: could-not-run (darwin host, no `unshare --net`) — re-run verifyrun on
 
 VERIFY: PASS
 
+### 2026-10-02 desk dispatch — re-run on merged main e1d99484ffd9: 16 of 17 rows meet Expect by hand, row 12 as authored exits 2, witness 0/17 on a darwin host
+
+What moved since the 2026-10-01 pass (landed by #1982 at 3da1cf5901f5): nothing under the deskapps command directory or the deskapps doc. The only change in the brief's `files:` scope is to the desk tools README, and none of those edits touch its deskapps section. The stream README still shows this brief as `implemented`. #1800 (no network-off sandbox on the darwin verify host) and #1915 (post-merge `--consumers` rows without `--base` can never pass) are both still OPEN.
+
+How the rows were run: from the repo root of a temporary worktree detached at the merged head, with a throwaway HOME, `KUBECONFIG=/dev/null`, no forge token in the environment, and the default system temp dir. Every conversion and `gh` call in the package goes through a test double. Nothing contacted GitHub: no App was created and no browser was opened. Commands whose test names are too long to quote here are described by the test they select. Each one ran exactly as the Verify table states it.
+
+| # | Command | Exit | Observed output | Date | Runner |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `cd tools/desk && go build ./... && go test ./cmd/deskapps/ -count=1` | 0 | `ok` for the deskapps package (0.38s) | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | row 2 as authored: build deskapps to a temp path, run `init --tier team --org example --no-browser --dry-run`, then `grep -cE` the URL and both App names | 0 | count 3. Raw output: `would serve at http://127.0.0.1:41873/`, planned Apps `example-read` and `example-act`, tier=team owner=org:example prefix=example | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | `go test ./cmd/deskapps/ -run 'TestManifest' -count=1 -v 2>&1 \| grep -cE ...` (three patterns as authored) | 0 | count 3: `family tier: 6 manifests`, `team tier: 2 manifests`, `requiredDuties covered by every family manifest`. 9 tests ran, all PASS | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | `go test ./cmd/deskapps/ -run 'TestNoSecretInPage' -count=1` | 0 | `ok`. A `-v` rerun shows the test PASS | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | `go test ./cmd/deskapps/ -run 'TestNoSecretInLogs' -count=1` | 0 | `ok`, PASS. The hand-applied response-body-log mutant turns it FAIL (secret material on stdout) | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | `go test ./cmd/deskapps/ -run 'TestCallbackBadState' -count=1` | 0 | `ok`, PASS. The hand-applied state-check-drop mutant turns it FAIL (nil-pointer panic in the handler, exit 1) | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | `go test ./cmd/deskapps/ -run 'TestBindLoopbackOnly' -count=1` | 0 | `ok`. Both subtests PASS (requested port free, and busy port falls back to a free one). A hand mutant binding all interfaces turns it FAIL | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | `go test ./cmd/deskapps/ -run 'TestPemMode' -count=1` | 0 | `ok`. The mode test and its companion test for a pre-existing file both PASS. A hand mutant that chmods to 0644 turns both FAIL | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | `go test ./cmd/deskapps/ -run 'TestBindingsWritten' -count=1 -v 2>&1 \| grep -cE ...` (three patterns as authored) | 0 | count 3. Logged apps.env lines: `READ_APP=example-read`, `REVIEWER_APP=example-act`, `WORKER_APP=example-act`. The team and family tests both PASS | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | `grep -cE -e '^## Measured' docs/desk-tools/deskapps.md && grep -cE -e 'throttle' -e 'org owner' -e 'Enterprise Server' docs/desk-tools/deskapps.md` | 0 | counts 1, then 8. The section says all three facts were NOT measured and are "Assumed, pending measurement" | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | `go test ./cmd/deskapps/ -run 'Mutation' -count=1` | 0 | `ok`. Both corpus-presence tests PASS. As authored, this row only proves that the mutant text matches the source. Both mutants were also applied by hand in a scratch clone, and each one was caught (rows 5 and 6 above) | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 12 | `statusgen --root . --consumers --brief apps-installer/02` | 2 | `COULD-NOT-CHECK: assay:assay:apps-installer:02 is not in the diff against` the merged head, so no entry was corroborated and none was disproved. The Expect is exit 0, so this row as authored does not meet Expect on merged main (#1915). Scratch clone: at the implementing squash with `--base` set to its parent, exit 0 with 0 corroborated, 0 disproved and 4 UNCHECKED ("unchanged since the merge-base"). At the authoring commit with `--base` set to its parent, exit 1 with 2 DISPROVED (the README and the deskapps doc were declared fixed-here before either existed). A hand check of all 4 claims at the merged head holds: the README has a deskapps section, the deskapps doc exists, records.go writes the APP_ID, CLIENT_ID, WEBHOOK_SECRET and READ_APP / role lines, and brief 07 exists | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 13 | row 13 as authored: `go test ./cmd/deskapps/ -run` on the test that refuses manifest-plus-tier, `-count=1 -v` | 0 | one test `--- PASS`, `ok` | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 14 | row 14 as authored: `go test ./cmd/deskapps/ -run` with a two-test alternation (the loader's redirect_url refusal test and the bad-manifest-file end-to-end test), `-count=1 -v` | 0 | With the table's escaped pipe kept as a literal backslash-pipe, Go reads it as a literal pipe character: `testing: warning: no tests to run`, `ok [no tests to run]`. That exit 0 proves nothing. With the pipe as rendered (a regex alternation), both tests `--- PASS`, `ok` | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 15 | row 15 as authored: `go test ./cmd/deskapps/ -run` on the loader's hook_attributes.url refusal test, `-count=1 -v` | 0 | one test `--- PASS`, `ok`. A hand mutant that skips the hook_attributes presence check turns it FAIL | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 16 | `go test ./cmd/deskapps/ -run 'OmitsHookAttr' -count=1 -v` | 0 | three tests `--- PASS` (tier path, manifest path, unset), `ok`. A hand mutant that always posts a url-less hook_attributes turns it FAIL | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 17 | row 17 as authored: `go test ./cmd/deskapps/ -run` on the org-owner-mismatch no-PEM test, `-count=1 -v` | 0 | one test `--- PASS`, `ok`. Two hand mutants each turn it FAIL with "a PEM was written despite an org-owner mismatch": one disables the owner comparison, the other restores the old personal-only check | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Execution witness: `statusgen verifyrun --brief` on this brief with `--dry-run` (statusgen v1.0.31), exit 2. Rows proven: 0 of 17. Every row is check:ci and could-not-run on this darwin host, because the network-off sandbox needs Linux `unshare --net` (#1800). This is a host limit, not a code result. Nothing was written to the brief.
+
+Vacuity:
+- Row 14 as authored is vacuous if the backslash reaches Go: it matches no test and still exits 0. The same finding is in the 2026-10-01 pass and is still unfixed.
+- Row 12 does not discriminate on merged main. It exits 2 whatever the code does. With a `--base`, all four claims come back UNCHECKED, so exit 0 there corroborates nothing.
+- Row 11 checks that the mutant text is present, not that the mutants are caught. Hand mutants supplied that proof.
+- Row 10 is keyword-only. It passes on a Measured section that records all three design questions as not measured.
+- Every other row depends on this brief's work. The package and the doc do not exist at the squash parent, and each guard test fails under a targeted hand mutant.
+
+The test gap from the prior pass is still open: no owner-mismatch test asserts the role-binding lines. The code at this head orders the writes correctly.
+
+Risk-bearing values. The deskapps code is unchanged since the 2026-10-01 enumeration, and every location below was re-read at this head. Paths are relative to the deskapps command directory.
+RISK-VALUE: DERIVED — file mode = 0o600 @ records.go:50 (chmod again at :53) — owner-only read/write is the minimum mode that still lets the owner use the key. It matches the desktoken 0600 discipline (desktoken.go:563 write, :895 check).
+RISK-VALUE: DERIVED — dir mode = 0o700 @ records.go:39 (chmod at :42) — owner-only traversal is the narrowest mode that still reaches the files.
+RISK-VALUE: DERIVED — bind = 127.0.0.1 @ server.go:390 and :395, redirect @ server.go:161 — design.md serves the page only on 127.0.0.1, which keeps the nonce-serving /run page off every non-loopback interface.
+RISK-VALUE: DERIVED — nonce = 24 bytes from crypto/rand @ records.go:28 — 192 bits, above the 128-bit floor for an unguessable bearer state value.
+RISK-VALUE: DERIVED — branchProtectionRead = "administration:read" @ manifest.go:33 — the brief's facts derive it (#1020): the legacy endpoint is the only reader of required checks, and read is the whole grant. A manifest test refuses administration:write.
+RISK-VALUE: DERIVED — Public = false on the tier path @ manifest.go:198 — the brief's facts say `public: false`. These are the operator's own credential Apps.
+The remaining entries are reversible knobs and rank last: the 20s conversion timeout, the 1 MiB body cap, the 10-minute throttle, the 15s poll and the default port 41873.
+
+Gate is model and every risk answer is no, so a model may sign this off once the rows hold. They do not hold as authored: row 12 exits 2 against an Expect of exit 0 on merged main. That is a check-definition defect tracked in #1915, not a code failure. The witness cannot prove any row on this host (#1800).
+
+VERIFY: BLOCKED — 16 of 17 rows meet Expect by hand (row 14 only in its rendered form); row 12 as authored exits 2 on merged main (check-definition, #1915 open); witness 0/17 could-not-run on darwin (#1800 open)
+
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table. Reviewer answers the two
 core-system questions: (1) the single control between a foreign callback and a written key is the

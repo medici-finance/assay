@@ -382,6 +382,7 @@ labelled, so it STOPs for the driver instead, and a reviewer blocks a PR that de
 
 If a reviewer's verdict later names `Undeclared-desk-decision: <one line>` on this PR, that is
 a finding against YOU, not a note to dispute: reply against it by ID (clause 13, above) and
-fix it with `deskpr edit --decided` — the same reply-then-fix discipline as any other finding.
+fix it with `deskpr edit --body-file <the PR's current body> --decided <file>` — the same
+reply-then-fix discipline as any other finding.
 Disagree with the finding itself only through clause 8's escalate-durably rule, never by
 silently omitting the declaration.
