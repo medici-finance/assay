@@ -3,6 +3,7 @@ package deskkit
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -14,6 +15,7 @@ import (
 func TestAppendAckCreatesAndAppends(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	if _, err := AppendAck("s1", AckRecord{Role: "worker-desk", Repo: "at", Restatement: "first message"}); err != nil {
 		t.Fatalf("AppendAck 1: %v", err)
@@ -51,6 +53,7 @@ func TestAppendAckCreatesAndAppends(t *testing.T) {
 func TestAppendAckPreservesForeignFields(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	path, _ := AckBeaconPath("s2")
 	if err := os.MkdirAll(dirOf(path), 0o700); err != nil {
@@ -101,6 +104,7 @@ func TestAppendAckPreservesForeignFields(t *testing.T) {
 func TestAppendAckMalformedBeaconFailsClosed(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	path, _ := AckBeaconPath("s3")
 	if err := os.MkdirAll(dirOf(path), 0o700); err != nil {
 		t.Fatal(err)
@@ -114,10 +118,5 @@ func TestAppendAckMalformedBeaconFailsClosed(t *testing.T) {
 }
 
 func dirOf(p string) string {
-	for i := len(p) - 1; i >= 0; i-- {
-		if p[i] == '/' {
-			return p[:i]
-		}
-	}
-	return "."
+	return filepath.Dir(p)
 }
