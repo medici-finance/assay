@@ -208,31 +208,38 @@ func lastLines(s string, n int) string {
 
 // worktreeViaDeskwt lets `deskwt role-init` create the role worktree when the installed
 // desk-tools ship one that supports the role, so cellctl and the desk skills agree on the
-// worktree's name. cellctl's own worktree path stays the fallback, and CELLCTL_DESKWT=0 forces
-// it.
+// worktree's name. The fallback is only for an absent tool or CELLCTL_DESKWT=0.
+// An installed tool's refusal must never turn into an unwired worktree.
+var deskwtLookPath = exec.LookPath
+var deskwtCommand = exec.Command
+
 func (c *Cell) worktreeViaDeskwt(role string) (string, bool) {
 	if c.Env.GetOr("CELLCTL_DESKWT", "1") != "1" {
 		return "", false
 	}
-	if _, err := exec.LookPath("deskwt"); err != nil {
+	if _, err := deskwtLookPath("deskwt"); err != nil {
 		return "", false
 	}
-	if exec.Command("deskwt", "role-init", "--help").Run() != nil {
-		return "", false
+	help := deskwtCommand("deskwt", "role-init", "--help")
+	help.Dir = c.Repo
+	if out, err := help.CombinedOutput(); err != nil {
+		die("desk: installed deskwt cannot initialize the role: %v — %s; boot STOPPED", err, strings.TrimSpace(string(out)))
 	}
-	cmd := exec.Command("deskwt", "role-init", role)
+	cmd := deskwtCommand("deskwt", "role-init", role)
 	cmd.Dir = c.Repo
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return "", false
+		die("desk: deskwt role-init %s failed: %v — %s; boot STOPPED", role, err, strings.TrimSpace(stderr.String()))
 	}
 	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
 	last := strings.TrimSpace(lines[len(lines)-1])
 	if last == "" {
-		return "", false
+		die("desk: deskwt role-init returned no worktree; boot STOPPED")
 	}
 	if _, serr := os.Stat(filepath.Join(last, ".git")); serr != nil {
-		return "", false
+		die("desk: deskwt role-init returned an invalid worktree: %v; boot STOPPED", serr)
 	}
 	return last, true
 }
