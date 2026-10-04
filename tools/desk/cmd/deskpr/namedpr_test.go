@@ -47,10 +47,10 @@ func remoteRef(t *testing.T, bare, ref string) string {
 	return mustGit(t, bare, "rev-parse", "--verify", "--quiet", ref)
 }
 
-// TestUpdateByPRPushesToTheHeadBranch — the issue's case: the worktree's branch name is not
+// TestUpdateByPRPushesHead — the issue's case: the worktree's branch name is not
 // the PR's head branch, and update --pr 42 pushes HEAD onto the PR's own head branch, with an
 // explicit refspec and without re-pointing upstream. Pre-fix: rc 5 (unknown flag).
-func TestUpdateByPRPushesToTheHeadBranch(t *testing.T) {
+func TestUpdateByPRPushesHead(t *testing.T) {
 	work, calls, bare, _ := namedPRFixture(t)
 	head := mustGit(t, work, "rev-parse", "HEAD")
 	if rc := run([]string{"update", "--pr", "42"}); rc != deskkit.ExitOK {
@@ -84,8 +84,8 @@ func TestUpdateByPRFromDetachedHead(t *testing.T) {
 	}
 }
 
-// TestUpdateByBranchPushesToTheHeadBranch — --branch B names the PR by its remote head branch.
-func TestUpdateByBranchPushesToTheHeadBranch(t *testing.T) {
+// TestUpdateByBranchPushes — --branch B names the PR by its remote head branch.
+func TestUpdateByBranchPushes(t *testing.T) {
 	work, calls, bare, _ := namedPRFixture(t)
 	t.Setenv("FAKEGH_LIST_HAS_PR", "1")
 	head := mustGit(t, work, "rev-parse", "HEAD")
