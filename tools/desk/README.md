@@ -610,6 +610,14 @@ answers TRUE on every uncertain input; the ONLY way to get a waiver is a repo in
 compiled-in allowed set, compiled in as `VisibilityPrivate`, with a complete, readable
 changed-file list matching none of that repo's triggers.
 
+`deskboard actions` exports `riskClassed` on every trusted PR row, including
+NEEDS-REVIEW, RE-REVIEW and BLOCKED, before an approval or green checks. Review
+dispatch can therefore select correctness and security lanes concurrently. Public or
+unknown visibility, the owning brief's gate/risk, unreadable or incomplete changed
+paths, path triggers and the trailer-absent App anomaly only widen classification.
+The action still follows its review/CI precedence; the ready gate independently
+re-reads the change before authorizing a flip.
+
 Adopting this gate for your own repositories (the three modes, the callout JSON/exit
 contract, and the fail-closed guarantees) is documented in
 [`docs/desk-tools/risk-classification.md`](../../docs/desk-tools/risk-classification.md).
