@@ -211,7 +211,7 @@ func TestBlamePorcelainAuthorsIgnoresNonContentLines(t *testing.T) {
 		entry("bbb", 3, fixtureWorkerName, fixtureWorkerEmail, "| 1 | `true` | pass |") +
 		entry("bbb", 4, fixtureWorkerName, fixtureWorkerEmail, "| 2 | `true` | pass |")
 
-	got, sawBoundary := blamePorcelainAuthors(out)
+	got, sawBoundary := blamePorcelainAuthors(blamePorcelainLines(out))
 	if len(got) != 1 || got[0].Email != fixtureWorkerEmail {
 		t.Fatalf("only the content-bearing rows count; got %+v, want just the worker", got)
 	}
@@ -224,7 +224,7 @@ func TestBlamePorcelainAuthorsIgnoresNonContentLines(t *testing.T) {
 	multi := entry("aaa", 1, fixtureVerifierName, fixtureVerifierEmail, "<!-- contract") +
 		entry("aaa", 2, fixtureVerifierName, fixtureVerifierEmail, "still inside the comment") +
 		entry("aaa", 3, fixtureVerifierName, fixtureVerifierEmail, "--> | 1 | real row |")
-	got, _ = blamePorcelainAuthors(multi)
+	got, _ = blamePorcelainAuthors(blamePorcelainLines(multi))
 	if len(got) != 1 || got[0].Email != fixtureVerifierEmail {
 		t.Fatalf("content after a comment closes must count; got %+v", got)
 	}
@@ -264,7 +264,7 @@ func TestBlameLineBearsContent(t *testing.T) {
 	}
 	out := entry(1, fixtureVerifierName, fixtureVerifierEmail, "| 1 | row |") +
 		entry(2, fixtureWorkerName, fixtureWorkerEmail, "**VERIFY: PASS** <!-- a --> <!-- b -->")
-	if got, _ := blamePorcelainAuthors(out); len(got) != 2 {
+	if got, _ := blamePorcelainAuthors(blamePorcelainLines(out)); len(got) != 2 {
 		t.Fatalf("authors = %+v, want both: the marker line before two comments is content", got)
 	}
 }
@@ -286,13 +286,13 @@ func TestBlamePorcelainAuthorsBoundaryOnlyOnContentLines(t *testing.T) {
 	// A boundary marker over ONLY a blank line — structure, not evidence.
 	blankBoundary := entryB("aaa", 1, fixtureWorkerName, fixtureWorkerEmail, "", true) +
 		entryB("bbb", 2, fixtureWorkerName, fixtureWorkerEmail, "| 1 | `true` | pass |", false)
-	if _, saw := blamePorcelainAuthors(blankBoundary); saw {
+	if _, saw := blamePorcelainAuthors(blamePorcelainLines(blankBoundary)); saw {
 		t.Error("a boundary marker over a blank line must not set sawBoundary")
 	}
 
 	// A boundary marker over a real content line — the graft shape.
 	contentBoundary := entryB("aaa", 1, fixtureWorkerName, fixtureWorkerEmail, "| 1 | `true` | pass |", true)
-	if _, saw := blamePorcelainAuthors(contentBoundary); !saw {
+	if _, saw := blamePorcelainAuthors(blamePorcelainLines(contentBoundary)); !saw {
 		t.Error("a boundary marker over a content-bearing line must set sawBoundary")
 	}
 }

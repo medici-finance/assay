@@ -603,10 +603,13 @@ type blameAuthor struct {
 // graft-induced unreachability, never on a genuine root commit in a full clone.
 // --line-porcelain repeats the `boundary` header for every line of the boundary
 // commit (verified against a real shallow clone), so it is read per line-group.
-func blamePorcelainAuthors(out string) (authors []blameAuthor, sawBoundary bool) {
+//
+// It takes records that already went through blameRawLines: the author fields
+// blame prints are not the commit's own (see blameRawLines).
+func blamePorcelainAuthors(lines []blameLine) (authors []blameAuthor, sawBoundary bool) {
 	seen := map[string]bool{}
 	inComment := false
-	for _, bl := range blamePorcelainLines(out) {
+	for _, bl := range lines {
 		var bearing bool
 		bearing, inComment = blameLineBearsContent(bl.Content, inComment)
 		if !bearing {
@@ -718,8 +721,86 @@ func blameEvidenceAuthors(root, rel string, start, end int) (authors []blameAuth
 	if cerr != nil {
 		return nil, false, fmt.Errorf("git blame -L %d,%d %s: %w", start, end, rel, cerr)
 	}
-	authors, sawBoundary = blamePorcelainAuthors(string(out))
+	lines, rerr := blameRawLines(root, string(out))
+	if rerr != nil {
+		return nil, false, fmt.Errorf("git blame -L %d,%d %s: %w", start, end, rel, rerr)
+	}
+	authors, sawBoundary = blamePorcelainAuthors(lines)
 	return authors, sawBoundary, nil
+}
+
+// blameRawLines parses `git blame --line-porcelain` output (blamePorcelainLines)
+// and replaces every record's author with the author recorded in that line's
+// COMMIT OBJECT. It is the only way blame output may become an identity.
+//
+// Why: the author fields blame prints are not the commit's. Blame rewrites them
+// through the repository's identity-mapping configuration, which any commit to
+// the repository can change, and it has no switch to turn that off. Judged
+// as printed, a line committed by one identity can read as another's while
+// every commit object stays truthful. The commit object's own author header is
+// what the commit says, and only that is judged.
+//
+// A record whose commit is the all-zero id (not committed yet) gets git's fixed
+// not-committed-yet identity whatever blame printed, so it can never read as an
+// accepted actor. A record naming no commit keeps an empty author, which every
+// caller treats as could-not-check. A commit that cannot be read is an error.
+func blameRawLines(dir, out string) ([]blameLine, error) {
+	lines := blamePorcelainLines(out)
+	for i := range lines {
+		c := lines[i].Commit
+		switch {
+		case c == "":
+			lines[i].Author = blameAuthor{}
+		case strings.Trim(c, "0") == "":
+			lines[i].Author = blameAuthor{Name: "Not Committed Yet", Email: "not.committed.yet"}
+		default:
+			a, err := rawCommitAuthor(dir, c)
+			if err != nil {
+				return nil, err
+			}
+			lines[i].Author = a
+		}
+	}
+	return lines, nil
+}
+
+// rawCommitAuthors caches rawCommitAuthor by commit id. A commit id names its
+// content, so one id has one author header in any repository.
+var rawCommitAuthors sync.Map
+
+// rawCommitAuthor returns the author name and address written in commit c's
+// object header (`author <name> <<email>> <time> <tz>`), read with
+// `git cat-file commit`, which applies no identity mapping.
+func rawCommitAuthor(dir, c string) (blameAuthor, error) {
+	if a, ok := rawCommitAuthors.Load(c); ok {
+		return a.(blameAuthor), nil
+	}
+	out, err := exec.Command("git", "-C", dir, "cat-file", "commit", c).Output()
+	if err != nil {
+		return blameAuthor{}, fmt.Errorf("git cat-file commit %.12s: %v", c, err)
+	}
+	head, _, _ := strings.Cut(string(out), "\n\n")
+	for _, line := range strings.Split(head, "\n") {
+		rest, ok := strings.CutPrefix(line, "author ")
+		if !ok {
+			continue
+		}
+		gt := strings.LastIndexByte(rest, '>')
+		lt := -1
+		if gt > 0 {
+			lt = strings.LastIndexByte(rest[:gt], '<')
+		}
+		if lt < 0 {
+			return blameAuthor{}, fmt.Errorf("commit %.12s: unreadable author header", c)
+		}
+		a := blameAuthor{Name: strings.TrimSpace(rest[:lt]), Email: strings.TrimSpace(rest[lt+1 : gt])}
+		if a.Name == "" && a.Email == "" {
+			return blameAuthor{}, fmt.Errorf("commit %.12s: empty author header", c)
+		}
+		rawCommitAuthors.Store(c, a)
+		return a, nil
+	}
+	return blameAuthor{}, fmt.Errorf("commit %.12s: no author header", c)
 }
 
 // isShallowRepository reports whether the object DB behind root is shallow or

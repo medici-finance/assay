@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -670,7 +671,7 @@ func TestVflipBlameCoverage(t *testing.T) {
 		{"worker comment-only line", v + vfBlameEntry(2, fixtureWorkerName, fixtureWorkerEmail, "<!-- x -->"), 2, true},
 	}
 	for _, c := range cases {
-		err := flipJudgeBlame(p, c.out, c.want, "brief.md")
+		err := flipJudgeBlame(p, blamePorcelainLines(c.out), c.want, "brief.md")
 		var r *flipRefusal
 		switch {
 		case err == nil:
@@ -679,7 +680,7 @@ func TestVflipBlameCoverage(t *testing.T) {
 			t.Errorf("%s: err = %v (refusal=%v), want refusal=%v", c.name, err, errors.As(err, &r), c.refused)
 		}
 	}
-	if err := flipJudgeBlame(p, v+vfBlameEntry(2, fixtureVerifierName, fixtureVerifierEmail, vfRow1), 2, "brief.md"); err != nil {
+	if err := flipJudgeBlame(p, blamePorcelainLines(v+vfBlameEntry(2, fixtureVerifierName, fixtureVerifierEmail, vfRow1)), 2, "brief.md"); err != nil {
 		t.Fatalf("every line verifier-owned: err = %v, want nil", err)
 	}
 }
@@ -1171,5 +1172,245 @@ func TestBlameLinesCommit(t *testing.T) {
 	}
 	if got[0].Content != strings.Repeat("c", 40)+" 1 1" {
 		t.Fatalf("content = %q", got[0].Content)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// flip-verdict-provenance, round 5: identity is the commit object's own.
+// ---------------------------------------------------------------------------
+
+// vfMailmap commits, as the worker, a repository identity map that rewrites
+// the worker's address to the verifier's. Every commit object stays truthful;
+// only what `git blame` prints changes.
+func vfMailmap(t *testing.T, root string) {
+	t.Helper()
+	m := fixtureVerifierName + " <" + vfMailVerifier + "> <" + vfMailWorker + ">\n"
+	if err := os.WriteFile(filepath.Join(root, ".mailmap"), []byte(m), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	vfCommit(t, root, vfMailWorker)
+}
+
+// TestVflipMailmapPassRun: the verifier recorded a later FAIL; another App
+// maps its own address to the verifier's and appends a whole new PASS run.
+// Blame prints the verifier for every line of that run; the commits say
+// otherwise, and the verb judges the commits. (Layer 1: the stamp's lines.)
+func TestVflipMailmapPassRun(t *testing.T) {
+	root, readme := vfFailAfterPass(t)
+	vfMailmap(t, root)
+	vfAppend(t, root, "\n\n"+strings.ReplaceAll(witnessTableFor(vfRow1, vfRow2), "2026-08-13", "2026-08-14")+
+		"\n\n**VERIFY: PASS** — re-run, both rows green.")
+	vfCommit(t, root, vfMailWorker)
+	vfExpect(t, root, readme, verifyflipExitRefused, "provenance")
+}
+
+// TestVflipMailmapRunRow: the same identity map, and another App's witness row
+// inside the run BEFORE the verifier recorded the PASS — the marker and the
+// Date/Runner row are the verifier's, no commit follows the PASS, so only
+// layer 2 can see the row, and only by the commit's own author.
+func TestVflipMailmapRunRow(t *testing.T) {
+	o := vfDefaults()
+	o.evidence = witnessTableFor(vfRow1)
+	root, readme := vfFixture(t, o)
+	vfMailmap(t, root)
+	vfAppend(t, root, "\n\n"+vfNoDateHdr+vfRow2)
+	vfCommit(t, root, vfMailWorker)
+	vfAppend(t, root, "\n\n"+vfPass)
+	vfCommit(t, root, vfMailVerifier)
+	vfExpect(t, root, readme, verifyflipExitRefused, "provenance")
+}
+
+// TestVflipMailmapLint is the lower-layer pair: with the verb bypassed (the
+// row flipped by hand) and the identity map committed, the Evidence-actor
+// lint still names a closure whose Evidence no verifier committed.
+func TestVflipMailmapLint(t *testing.T) {
+	o := vfDefaults()
+	o.author = vfMailWorker
+	root, readme := vfFixture(t, o)
+	vfMailmap(t, root)
+	raw, _ := os.ReadFile(readme)
+	flipped := strings.Replace(string(raw), "| implemented | — |", "| verified | "+vfStamp+" |", 1)
+	if err := os.WriteFile(readme, []byte(flipped), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	vfCommit(t, root, vfMailWorker)
+	withBaseClosures(t, map[string]bool{}, true)
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	problems, _ := evidenceActorGate(root, streams)
+	if len(problems) != 1 || !strings.Contains(problems[0], "vf/01") {
+		t.Fatalf("lint problems = %v, want one naming vf/01", problems)
+	}
+}
+
+// TestBlameRawLines pins the choke point. Its positive control proves the
+// fixture really does rewrite what blame prints — a fixture git ignored would
+// make the assertions below vacuous. A line not committed yet gets the fixed
+// not-committed-yet identity even when the map rewrites that address too.
+func TestBlameRawLines(t *testing.T) {
+	root, _ := vfFixture(t, vfDefaults())
+	vfAppend(t, root, "\n\nworker line")
+	vfCommit(t, root, vfMailWorker)
+	m := fixtureVerifierName + " <" + vfMailVerifier + "> <" + vfMailWorker + ">\n" +
+		fixtureVerifierName + " <" + vfMailVerifier + "> <not.committed.yet>\n"
+	if err := os.WriteFile(filepath.Join(root, ".mailmap"), []byte(m), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	vfAppend(t, root, "\n\nuncommitted line")
+	out, err := exec.Command("git", "-C", filepath.Dir(vfBrief(root)), "blame", "--line-porcelain", "--", "brief-01-flip.md").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	printed := map[string]string{}
+	for _, bl := range blamePorcelainLines(string(out)) {
+		printed[bl.Content] = bl.Author.Email
+	}
+	if printed["worker line"] != vfMailVerifier || printed["uncommitted line"] != vfMailVerifier {
+		t.Fatalf("positive control: blame printed %q / %q, want the map applied (%s)", printed["worker line"], printed["uncommitted line"], vfMailVerifier)
+	}
+	lines, err := blameRawLines(filepath.Dir(vfBrief(root)), string(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, bl := range lines {
+		got[bl.Content] = bl.Author.Email
+	}
+	if got["worker line"] != vfMailWorker {
+		t.Errorf("worker line: author %q, want the commit's own %q", got["worker line"], vfMailWorker)
+	}
+	if got["uncommitted line"] != "not.committed.yet" {
+		t.Errorf("uncommitted line: author %q, want not.committed.yet", got["uncommitted line"])
+	}
+	if got[vfPass] != vfMailVerifier {
+		t.Errorf("PASS line: author %q, want %q", got[vfPass], vfMailVerifier)
+	}
+}
+
+// TestVflipHistoryJudgesMarker: layer 3 judges the commit that wrote the PASS
+// marker itself, by its commit object, independently of the blame layers.
+func TestVflipHistoryJudgesMarker(t *testing.T) {
+	o := vfDefaults()
+	o.author = vfMailWorker
+	root, _ := vfFixture(t, o)
+	p := evidenceActorPolicyFromRoster()
+	if p.Unavailable != "" {
+		t.Fatalf("fixture roster unavailable: %s", p.Unavailable)
+	}
+	dir := filepath.Dir(vfBrief(root))
+	head, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = flipJudgeHistory(p, dir, "brief-01-flip.md", []string{strings.TrimSpace(string(head))})
+	var r *flipRefusal
+	if !errors.As(err, &r) {
+		t.Fatalf("err = %v, want a refusal naming the marker commit's author", err)
+	}
+	// Positive control: the verifier's marker commit is accepted.
+	root, _ = vfFixture(t, vfDefaults())
+	dir = filepath.Dir(vfBrief(root))
+	head, _ = exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err := flipJudgeHistory(p, dir, "brief-01-flip.md", []string{strings.TrimSpace(string(head))}); err != nil {
+		t.Fatalf("verifier marker commit: err = %v, want nil", err)
+	}
+}
+
+// TestVflipUnrelatedMerge: the verifier's later FAIL lives on a history
+// unrelated to main's (no merge base); another App merges it in keeping
+// main's Evidence. With no merge base there is nothing to show the other side
+// made no net change, so the merge changed Evidence and is judged.
+func TestVflipUnrelatedMerge(t *testing.T) {
+	for _, c := range []struct {
+		name, merger string
+		code         int
+		want         string
+	}{
+		{"worker", vfMailWorker, verifyflipExitRefused, "provenance"},
+		{"human", vfMailHuman, verifyflipExitOK, "flipped"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root, readme := vfFixture(t, vfDefaults())
+			runGitEnv(t, root, nil, "checkout", "-q", "--orphan", "solo")
+			vfAppend(t, root, "\n\n"+vfLaterFail)
+			vfCommit(t, root, vfMailVerifier)
+			runGitEnv(t, root, nil, "checkout", "-q", "main")
+			vfGit(t, root, c.merger, "merge", "-q", "-s", "ours", "--allow-unrelated-histories", "--no-edit", "solo")
+			vfExpect(t, root, readme, c.code, c.want)
+		})
+	}
+}
+
+// vfIdentityLeaks lists, for one source file, every way an identity can reach
+// the provenance judgement without the commit object: a function other than
+// blameRawLines calling blamePorcelainLines (blame's printed authors), and,
+// in a file that calls a classify method, a string literal holding a git
+// format placeholder for author identity (%an, %ae, %aN, %aE, %al, %aL).
+func vfIdentityLeaks(t *testing.T, fset *token.FileSet, file string, src any) []string {
+	t.Helper()
+	f, err := parser.ParseFile(fset, file, src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out, lits []string
+	classifies := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.CallExpr:
+			if s, ok := x.Fun.(*ast.SelectorExpr); ok && s.Sel.Name == "classify" {
+				classifies = true
+			}
+		case *ast.BasicLit:
+			if x.Kind == token.STRING {
+				for _, ph := range []string{"%an", "%ae", "%aN", "%aE", "%al", "%aL"} {
+					if strings.Contains(x.Value, ph) {
+						lits = append(lits, fmt.Sprintf("%s: format literal %s", fset.Position(x.Pos()), x.Value))
+						break
+					}
+				}
+			}
+		}
+		return true
+	})
+	for _, caller := range vfBlameCallers(t, fset, file, src, "blamePorcelainLines") {
+		if caller != "blameRawLines" {
+			out = append(out, file+": "+caller+" calls blamePorcelainLines")
+		}
+	}
+	if classifies {
+		out = append(out, lits...)
+	}
+	return out
+}
+
+// TestVflipRawIdentity is the class guard for identity read through
+// repository-controlled mapping: no provenance judgement may take an author
+// from blame's printed fields or from a log format placeholder; only
+// blameRawLines / rawCommitAuthor (the commit object) may supply one. The
+// planted sources are the positive control: a matcher that stopped matching
+// would fail here instead of reporting clean.
+func TestVflipRawIdentity(t *testing.T) {
+	fset := token.NewFileSet()
+	for _, plant := range []string{
+		"package main\nfunc plantedJudge(out string) { _ = blamePorcelainLines(out) }\n",
+		"package main\nfunc plantedHist(p evidenceActorPolicy) { _ = \"--format=%an\"; p.classify(\"\", \"\") }\n",
+	} {
+		if got := vfIdentityLeaks(t, fset, "plant.go", plant); len(got) != 1 {
+			t.Fatalf("positive control: leaks = %v, want exactly one for %q", got, plant)
+		}
+	}
+	files, err := filepath.Glob("*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no package sources found (err=%v)", err)
+	}
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		for _, leak := range vfIdentityLeaks(t, fset, f, nil) {
+			t.Errorf("%s — judge the commit object's author (blameRawLines / rawCommitAuthor), never a mapped identity", leak)
+		}
 	}
 }

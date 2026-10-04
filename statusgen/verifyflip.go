@@ -31,11 +31,13 @@ package main
 //     and one runner, the runner reads `<login> @ <sha> …`, and that login and
 //     sha match what the caller expects (--runner, --sha). No Date/Runner row
 //     follows the PASS. The date is a YYYY-MM-DD calendar date, not after today.
-//   - Provenance: git blame owns every line the stamp is built from (the PASS
-//     marker and those rows), and every content line from the PASS run's first
-//     line to the end of Evidence, to the roster's bound verifier or a roster
-//     human. Every commit that changed the Evidence section after the PASS was
-//     recorded is theirs too (blame cannot see a deleted later FAIL), walked
+//   - Provenance: git blame traces every line the stamp is built from (the
+//     PASS marker and those rows), and every content line from the PASS run's
+//     first line to the end of Evidence, to a commit whose own author (the
+//     commit object's header, never blame's printed identity) is the roster's
+//     bound verifier or a roster human. The commit that wrote the PASS marker
+//     and every commit that changed the Evidence section after it are theirs
+//     too (blame cannot see a deleted later FAIL), walked
 //     with every side of every merge, and a merge that dropped what another
 //     parent's side added counts as a change. The working tree's Evidence is
 //     HEAD's. No roster, a shallow clone, a brief not at the same path since
@@ -640,7 +642,10 @@ func flipHeaderCols(lines []string, row, width int) (si, vi int, err error) {
 // it; who committed a line is git metadata, not text. Three layers, each
 // judged by the Evidence-actor policy (evidenceactor.go) — the bound verifier
 // or a roster human passes, anything else (another App, an unknown address, a
-// line not yet committed) refuses:
+// line not yet committed) refuses. Every identity judged is the author header
+// of a commit object (blameRawLines, rawCommitAuthor), never the author fields
+// blame prints: blame rewrites those through repository-controlled identity
+// mapping, so a line could read as an identity that never committed it.
 //
 //  1. The stamp's own lines. The PASS marker and every Date/Runner row the
 //     stamp is built from (marks: line indices in the comment-stripped
@@ -654,10 +659,10 @@ func flipHeaderCols(lines []string, row, width int) (si, vi int, err error) {
 //     comment-only lines are structure: the brief template's contract comment
 //     sits there, owned by whoever created the file.
 //  3. What blame cannot see. A deleted line leaves no blame record, so a later
-//     verifier FAIL removed by another App would leave a clean blame. Every
-//     commit since the one that wrote the PASS marker that changed the
-//     Evidence section must be the verifier's or a roster human's
-//     (flipJudgeHistory). The walk follows every parent of every merge, and a
+//     verifier FAIL removed by another App would leave a clean blame. The
+//     commit that wrote the PASS marker, and every commit since it that
+//     changed the Evidence section, must be the verifier's or a roster
+//     human's (flipJudgeHistory). The walk follows every parent of every merge, and a
 //     merge changed nothing only when it is the trivial result — its Evidence
 //     is one parent's, and no other parent's side added anything since their
 //     merge base (flipEvidenceChanged). A brief not at the same path since the
@@ -714,7 +719,11 @@ func flipProvenance(path, evidence string, marks []int, runStart int) error {
 	if err != nil {
 		return fmt.Errorf("provenance: git blame %s: %v", base, err)
 	}
-	if err := flipJudgeBlame(p, string(out), want, base); err != nil {
+	stamp, err := blameRawLines(dir, string(out))
+	if err != nil {
+		return fmt.Errorf("provenance: %s: %v", base, err)
+	}
+	if err := flipJudgeBlame(p, stamp, want, base); err != nil {
 		return err
 	}
 
@@ -739,7 +748,11 @@ func flipProvenance(path, evidence string, marks []int, runStart int) error {
 	if err != nil {
 		return fmt.Errorf("provenance: git blame %s: %v", base, err)
 	}
-	recs, err := flipJudgeExtent(p, string(out), last-first+1, base)
+	extent, err := blameRawLines(dir, string(out))
+	if err != nil {
+		return fmt.Errorf("provenance: %s: %v", base, err)
+	}
+	recs, err := flipJudgeExtent(p, extent, last-first+1, base)
 	if err != nil {
 		return err
 	}
@@ -754,7 +767,8 @@ func flipProvenance(path, evidence string, marks []int, runStart int) error {
 	return flipJudgeHistory(p, dir, base, since)
 }
 
-// flipJudgeBlame judges the blame of the PASS lines line by line. Coverage is
+// flipJudgeBlame judges the blame of the PASS lines line by line, as records
+// from blameRawLines (each author is its commit object's own). Coverage is
 // established, never inferred: the output must hold exactly want line records
 // (every raw file line behind the marker and the Date/Runner rows), each with
 // an author, and every one of them must be the bound verifier or a roster
@@ -764,8 +778,7 @@ func flipProvenance(path, evidence string, marks []int, runStart int) error {
 // a selected line would leave the remaining authors looking complete. A record
 // count or an author that cannot be read is could-not-check; an author outside
 // the accepted set refuses.
-func flipJudgeBlame(p evidenceActorPolicy, out string, want int, base string) error {
-	lines := blamePorcelainLines(out)
+func flipJudgeBlame(p evidenceActorPolicy, lines []blameLine, want int, base string) error {
 	if want <= 0 || len(lines) != want {
 		return fmt.Errorf("provenance: blame of %s returned %d line(s) for the %d PASS line(s) asked about", base, len(lines), want)
 	}
@@ -819,8 +832,7 @@ func flipStrippedSpans(evidence string) (spans [][2]int, ok bool) {
 // stripped line never begins inside one) must be the bound verifier's or a
 // roster human's. The records are returned so the caller can read the PASS
 // marker's commit.
-func flipJudgeExtent(p evidenceActorPolicy, out string, want int, base string) ([]blameLine, error) {
-	recs := blamePorcelainLines(out)
+func flipJudgeExtent(p evidenceActorPolicy, recs []blameLine, want int, base string) ([]blameLine, error) {
 	if want <= 0 || len(recs) != want {
 		return nil, fmt.Errorf("provenance: blame of %s returned %d line(s) for the %d line(s) of the PASS run and after", base, len(recs), want)
 	}
@@ -844,8 +856,9 @@ func flipJudgeExtent(p evidenceActorPolicy, out string, want int, base string) (
 // flipZeroCommit is the id blame gives a line not yet committed.
 var flipZeroCommit = regexp.MustCompile(`^0+$`)
 
-// flipJudgeHistory judges every commit reachable from HEAD, and not from the
-// commit(s) that wrote the PASS marker, that touched the brief file. The walk
+// flipJudgeHistory judges the commit(s) that wrote the PASS marker and every
+// commit reachable from HEAD, and not from them, that touched the brief file,
+// each by its commit object's own author (rawCommitAuthor). The walk
 // is --full-history: git's default simplification follows only a merge's
 // TREESAME parent and prunes the other side, so a merge that kept the side
 // WITHOUT a later verifier FAIL would hide both itself and the FAIL. A commit
@@ -884,6 +897,13 @@ func flipJudgeHistory(p evidenceActorPolicy, dir, base string, since []string) e
 		if ev == flipAbsent {
 			return fmt.Errorf("provenance: %s is not at this path in commit %.12s, which wrote the PASS marker — history across a move cannot be judged", base, c)
 		}
+		// The commit that wrote the marker is judged too, not only the
+		// commits after it: this layer then reaches the marker's author
+		// without going through blame at all.
+		if !seen[c] {
+			seen[c] = true
+			commits = append(commits, c)
+		}
 		out, err := exec.Command("git", "-C", dir, "rev-list", "--full-history", c+"..HEAD", "--", base).Output()
 		if err != nil {
 			return fmt.Errorf("provenance: git rev-list %s..HEAD %s: %v", c, base, err)
@@ -896,13 +916,13 @@ func flipJudgeHistory(p evidenceActorPolicy, dir, base string, since []string) e
 		}
 	}
 	for _, h := range commits {
-		out, err := exec.Command("git", "-C", dir, "log", "-1", "--format=%an%x00%ae%x00%P", h).Output()
+		out, err := exec.Command("git", "-C", dir, "log", "-1", "--format=%P", h).Output()
 		if err != nil {
 			return fmt.Errorf("provenance: git log %s: %v", h, err)
 		}
-		f := strings.SplitN(strings.TrimRight(string(out), "\n"), "\x00", 3)
-		if len(f) != 3 || (f[0] == "" && f[1] == "") {
-			return fmt.Errorf("provenance: commit %s of %s names no author", h, base)
+		author, err := rawCommitAuthor(dir, h)
+		if err != nil {
+			return fmt.Errorf("provenance: %s: %v", base, err)
 		}
 		ev, err := evAt(h)
 		if err != nil {
@@ -911,15 +931,15 @@ func flipJudgeHistory(p evidenceActorPolicy, dir, base string, since []string) e
 		if ev == flipAbsent {
 			return fmt.Errorf("provenance: %s is not at this path in commit %.12s, after the latest PASS — history across a move or removal cannot be judged", base, h)
 		}
-		changed, err := flipEvidenceChanged(dir, ev, strings.Fields(f[2]), evAt)
+		changed, err := flipEvidenceChanged(dir, ev, strings.Fields(string(out)), evAt)
 		if err != nil {
 			return fmt.Errorf("provenance: %v", err)
 		}
 		if !changed {
 			continue
 		}
-		if v, why := p.classify(f[0], f[1]); v != actorVerifier && v != actorHuman {
-			return refuseFlip("provenance: commit %.12s changed the Evidence section of %s after the latest PASS was recorded and is not the bound verifier's or a roster human's — %s", h, base, why)
+		if v, why := p.classify(author.Name, author.Email); v != actorVerifier && v != actorHuman {
+			return refuseFlip("provenance: commit %.12s changed the Evidence section of %s, writing the latest PASS or after it, and is not the bound verifier's or a roster human's — %s", h, base, why)
 		}
 	}
 	return nil
