@@ -82,7 +82,7 @@ func TestDeskCommsRoleContext(t *testing.T) {
 }
 
 func TestDeskCommsPreflightRefusesIncompleteConfig(t *testing.T) {
-	for _, kind := range []string{"wrong-cell", "unknown-mode", "full", "missing-role", "no-decider", "uncontained", "missing-key", "unknown-field", "extra-object", "relative-custody"} {
+	for _, kind := range []string{"wrong-cell", "unknown-mode", "full", "missing-role", "no-decider", "uncontained", "missing-key", "unknown-field", "extra-object", "relative-custody", "not-house"} {
 		t.Run(kind, func(t *testing.T) {
 			c, cfg, path := commsFixture(t)
 			switch kind {
@@ -102,6 +102,8 @@ func TestDeskCommsPreflightRefusesIncompleteConfig(t *testing.T) {
 				cfg.SigningKeys["the-desk"] = filepath.Join(filepath.Dir(path), "absent")
 			case "relative-custody":
 				cfg.TrustStore = "relative.json"
+			case "not-house":
+				c.Kind = "product"
 			}
 			writeCommsFixture(t, path, cfg)
 			if kind == "unknown-field" {
@@ -118,6 +120,40 @@ func TestDeskCommsPreflightRefusesIncompleteConfig(t *testing.T) {
 				t.Fatal("bad comms configuration accepted")
 			}
 		})
+	}
+}
+
+// The fixture itself must load, or every refusal case above passes vacuously.
+func TestDeskCommsFixtureLoads(t *testing.T) {
+	c, _, _ := commsFixture(t)
+	if cfg, err := c.loadDeskComms(); err != nil || cfg == nil {
+		t.Fatalf("positive control: valid comms configuration refused: %v", err)
+	}
+}
+
+func TestCommsBinaryCheck(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "commsgw")
+	if err := os.WriteFile(exe, []byte("fixture"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := commsBinary(exe); err != nil {
+		t.Fatalf("present binary refused: %v", err)
+	}
+	if err := commsBinary(filepath.Join(dir, "absent")); err == nil {
+		t.Fatal("absent binary accepted")
+	}
+	if err := commsBinary(dir); err == nil {
+		t.Fatal("directory accepted as a binary")
+	}
+	if runtime.GOOS != "windows" {
+		plain := filepath.Join(dir, "plain")
+		if err := os.WriteFile(plain, []byte("fixture"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := commsBinary(plain); err == nil {
+			t.Fatal("non-executable file accepted as a binary")
+		}
 	}
 }
 

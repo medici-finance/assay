@@ -22,8 +22,10 @@ import (
 // trust boundary (filesystem permissions on the socket path gate who may
 // dial it) — there is no second, per-connection credential to check the way
 // mTLS supplies one for the network path, so PreCheckInput.PeerAuthenticated
-// is always true here. The socket path itself (0700, owned by the gateway's
-// operating user) IS this transport's access control.
+// is always true here. The endpoint itself IS this transport's access control:
+// on Unix a 0600 socket inside an owner-only directory owned by the gateway's
+// operating user; on Windows a named pipe whose owner and only DACL entry are
+// that user (commstransport). Clients check the same ownership before writing.
 
 // gwRequest / gwResponse / socketReceipt / socketNotice mirror
 // cmd/deskcomms/gateway.go's gwRequest / gwResponse / Receipt / Notice.
@@ -84,17 +86,36 @@ func (s SocketServer) clock() time.Time {
 	return time.Now().UTC()
 }
 
-// ListenAndServe binds the protected host-local endpoint. It never unlinks
-// another gateway's socket to claim ownership.
+// ListenAndServe serves until the listener fails; see ListenAndServeContext.
 func (s SocketServer) ListenAndServe(path string) error {
+	return s.ListenAndServeContext(context.Background(), path)
+}
+
+// ListenAndServeContext binds the protected host-local endpoint and serves
+// until ctx ends, then closes the listener, which removes the socket so the
+// next start can bind. It never unlinks a live gateway's socket. A standalone
+// gateway first reclaims a socket left by a crashed run, but only after a dial
+// is refused (commstransport.RemoveStale). A local-only gateway leaves any
+// existing endpoint to cellctl's operator recovery.
+func (s SocketServer) ListenAndServeContext(ctx context.Context, path string) error {
+	if !s.LocalOnly {
+		if err := commstransport.RemoveStale(path); err != nil {
+			return fmt.Errorf("commsgw: cannot reclaim socket %s: %w", path, err)
+		}
+	}
 	ln, err := commstransport.Listen(path)
 	if err != nil {
 		return fmt.Errorf("commsgw: cannot bind socket %s: %w", path, err)
 	}
+	stop := context.AfterFunc(ctx, func() { _ = ln.Close() })
+	defer stop()
 	defer ln.Close()
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
 			return err
 		}
 		go s.handle(conn)

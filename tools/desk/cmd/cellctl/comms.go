@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -215,7 +214,7 @@ func cmdComms(cell string, args []string) {
 			suffix = ".exe"
 		}
 		path := filepath.Join(deskToolsBin(c.Env), name+suffix)
-		if _, err := exec.LookPath(path); err != nil {
+		if err := commsBinary(path); err != nil {
 			die("comms: %v", err)
 		}
 		commands = append(commands, []string{path})
@@ -270,17 +269,42 @@ func cmdComms(cell string, args []string) {
 	fmt.Printf("[comms] cell=%s mode=interim endpoint=%s; starting gateway and mailbox drain\n", c.Name, cfg.Socket)
 	err = lease.RunInteractive(ctx, c.Name, "comms", func(ctx context.Context) cellcadence.Result {
 		result := runCommsPair(ctx, commands, c.commsServiceEnv(cfg))
-		if !result.Uncertain && runtime.GOOS != "windows" {
-			if fi, err := os.Lstat(cfg.Socket); err == nil && fi.Mode()&os.ModeSocket != 0 {
-				_ = os.Remove(cfg.Socket)
-			}
-		}
+		removeStoppedEndpoint(result, cfg.Socket)
 		return result
 	})
 	// A joined cancellation can also contain a storage or child-cleanup error.
 	// Never turn that uncertainty into a successful shutdown.
 	if err != nil {
 		die("comms stopped: %v", err)
+	}
+}
+
+// commsBinary checks that a supervised service is present in the cell's own
+// desk-tools directory. The path is fixed by the cell, never searched on PATH.
+func commsBinary(path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !fi.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", path)
+	}
+	if runtime.GOOS != "windows" && fi.Mode().Perm()&0111 == 0 {
+		return fmt.Errorf("%s is not executable", path)
+	}
+	return nil
+}
+
+// removeStoppedEndpoint removes the gateway socket once both services have
+// certainly stopped. The supervisor kills its children, so a gateway never
+// gets to close its own listener here. After an uncertain stop, where a child
+// may still be serving, the socket stays for recover --confirm-stopped.
+func removeStoppedEndpoint(result cellcadence.Result, socket string) {
+	if result.Uncertain || runtime.GOOS == "windows" {
+		return
+	}
+	if fi, err := os.Lstat(socket); err == nil && fi.Mode()&os.ModeSocket != 0 {
+		_ = os.Remove(socket)
 	}
 }
 

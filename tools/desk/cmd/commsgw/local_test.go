@@ -3,8 +3,10 @@ package main
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/tools/desk/internal/comms"
 	"github.com/medici-finance/assay/tools/desk/internal/commsqueue"
 )
 
@@ -97,5 +99,65 @@ func TestLocalGatewayQueuePollAck(t *testing.T) {
 	}
 	if got := exchange(gwRequest{Op: "ack", Cell: "cell-b", Role: "the-desk", ID: e.ID}); got.Error == "" {
 		t.Fatal("foreign ack accepted")
+	}
+}
+
+// The local-only branches are tested against requests the pre-existing
+// pipeline accepts: each control runs the same request on a gateway without
+// local-only mode and must succeed, so only the new branch can refuse it.
+func TestLocalOnlyRefusesCrossCellSubmit(t *testing.T) {
+	legal := func(g *bypassGateway, id string) []byte {
+		return g.signedEnvelope(t, id, "cell-a", "the-desk", "cell-b", "the-desk", "status", `{"note":"lane-legal"}`)
+	}
+	control := newBypassGateway(t)
+	cs := control.server()
+	cs.Cell = "cell-a"
+	if got := socketSubmit(t, startSocketServer(t, cs), legal(control, "xcell-control")); got.Receipt == nil || !got.Receipt.Accepted {
+		t.Fatalf("control: the pre-existing pipeline should accept this cross-cell send: %+v", got)
+	}
+	g := newBypassGateway(t)
+	s := g.server()
+	s.Cell, s.LocalOnly = "cell-a", true
+	got := socketSubmit(t, startSocketServer(t, s), legal(g, "xcell-local"))
+	if got.Receipt == nil || got.Receipt.Accepted || !strings.Contains(got.Receipt.Detail, "local-only") {
+		t.Fatalf("local-only gateway did not refuse a cross-cell send: %+v", got)
+	}
+	if items, err := commsqueue.ListAccepted(g.root); err != nil || len(items) != 0 {
+		t.Fatalf("cross-cell send reached the accepted queue: %+v %v", items, err)
+	}
+}
+
+func TestLocalOnlyRefusesForeignAck(t *testing.T) {
+	plant := func(g *bypassGateway) commsqueue.Notice {
+		n := commsqueue.Notice{ID: "foreign-entry", From: comms.SenderID{Cell: "cell-b", Role: "worker-desk"}, Verb: "status", Class: "routine", Payload: json.RawMessage(`{}`), Sent: g.f.now}
+		if err := commsqueue.DeliverToMailbox(g.root, "cell-b", "the-desk", n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	ack := func(endpoint, id string) gwResponse {
+		b, _ := json.Marshal(gwRequest{Op: "ack", Cell: "cell-b", Role: "the-desk", ID: id})
+		var out gwResponse
+		if err := json.Unmarshal([]byte(socketRawLine(t, endpoint, string(b)+"\n")), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	control := newBypassGateway(t)
+	n := plant(control)
+	cs := control.server()
+	cs.Cell = "cell-a"
+	if got := ack(startSocketServer(t, cs), n.ID); got.Error != "" {
+		t.Fatalf("control: the existing entry should be ackable without local-only mode: %s", got.Error)
+	}
+	g := newBypassGateway(t)
+	n = plant(g)
+	s := g.server()
+	s.Cell, s.LocalOnly = "cell-a", true
+	if got := ack(startSocketServer(t, s), n.ID); !strings.Contains(got.Error, "local-only") {
+		t.Fatalf("local-only gateway did not refuse another cell's ack: %+v", got)
+	}
+	if ok, err := commsqueue.IsAcked(g.root, "cell-b", "the-desk", n.ID); err != nil || ok {
+		t.Fatalf("another cell's entry was acknowledged: %v %v", ok, err)
 	}
 }
