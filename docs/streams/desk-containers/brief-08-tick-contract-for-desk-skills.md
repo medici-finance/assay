@@ -644,7 +644,7 @@ RISK-VALUE: DERIVED — ASSAY_TICK = "1" @ plugins/assay/references/tick-contrac
 RISK-VALUE: DERIVED — COUNT = '([0-9]+|-)' @ plugins/assay/scripts/tick-summary.sh:67 and OUTCOMES = "ok noop refused could-not-check" @ plugins/assay/scripts/tick-summary.sh:59 — together they enforce the three-state rule. "-" is the only spelling of an unknown count, and the outcome set is closed. Both row-7 mutations redden, so both literals are load-bearing.
 RISK-VALUE: NAMED, NOT DERIVED — R = 60 @ plugins/assay/references/tick-contract.md:99 — R must cover the exit-path forge writes (claim release, continuity update, summary line). Whether 60 s is enough depends on cell network latency, which cannot be measured offline. Online row 11 is the test. This is a reversible operator default.
 
-VERIFY: BLOCKED — the state is unchanged from 2026-10-02, and 0 rows fail. Rows 1 to 8, 13 and 14 pass on substance by hand. Two things are still owed. First, the six check:ci rows (1, 3, 6, 8, 13, 14) lack the hermetic Linux network-off witness: blocker medici-finance/assay#1491 is still OPEN (labels bug, needs-decision; last updated 2026-10-01). Second, rows 9 to 12 are UNRUN online-lane rows that need a cell tick pass against the loop image. Status stays implemented.
+VERIFY: BLOCKED — the state is unchanged from 2026-10-02, and 0 rows fail. Rows 1 to 8, 13 and 14 pass on substance by hand. Two things are still owed. First, the six check:ci rows (1, 3, 6, 8, 13, 14) lack the hermetic Linux network-off witness: blocker medici-finance/assay#1800 is still OPEN (the darwin verify host has no `unshare --net`; read 2026-10-04). Second, rows 9 to 12 are UNRUN online-lane rows that need a cell tick pass against the loop image. Status stays implemented.
 
 ## Review
 
