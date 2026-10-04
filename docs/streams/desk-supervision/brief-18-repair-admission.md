@@ -211,7 +211,7 @@ Run by hand, 4 of 4 rows exited 0 and printed their named PASS line. Supplementa
 
 **`statusgen verifyrun --check docs/streams/desk-supervision/brief-18-repair-admission.md`**: exit 2. Summary line: `docs/streams/desk-supervision/brief-18-repair-admission.md: 0 pass, 0 fail, 4 could-not-run/missing (of 4 Verify rows)`. Each row reports `could-not-run — the witness records could-not-run — the row produced no verdict`. This is could-not-check, not a pass and not a failure.
 
-**Blocker.** medici-finance/assay#1491 is still OPEN (labels bug, raised-by:verifier, needs-decision; last updated 2026-10-01T05:08:07Z). It covers the defects in the container witness path. The direct cause on this host is that darwin has no network-off sandbox (`unshare --net`). Either a Linux runner or a working container witness would clear it.
+**Blocker.** medici-finance/assay#1800 is still OPEN (read 2026-10-04): the darwin verify host has no network-off sandbox (`unshare --net`) for the check:ci witness, and a Linux runner clears it. The earlier receipt cited #1491, which tracks in-container witness defects rather than this host gap.
 
 **Findings, independently re-observed at this head. None fails a Verify row, all are routed to the desk.** The sources are unchanged since 2026-09-27.
 1. Task 1 planner preview is not done, and no issue tracks it. A search of the fanoutloop command for the admission evaluator or the dispatch gate returns nothing. The planner does not preview the admission decision or name the waiting repair, even though the consumers list marks fanoutloop as fixed-here.
@@ -237,7 +237,7 @@ RISK-VALUE: DERIVED — fresh-hold boundary `free <= floor` @ tools/desk/interna
 RISK-VALUE: DERIVED — pool-full hold `free <= 0` @ tools/desk/internal/deskkit/repairadmission.go:134 — with free = width − occupancy at or below 0, any admission would push occupancy past the width ceiling, whatever the class.
 RISK-VALUE: DERIVED — repairObligationLeaseTTL = 45 * time.Minute @ tools/desk/cmd/deskdispatch/repairadmission.go:66 — it must equal the planner's rework-source repairLeaseTTL = 45 * time.Minute @ tools/desk/cmd/fanoutloop/repair.go:46, so the gate and the planner agree on which obligations are assignable. They are equal today. The value is a duplicated literal rather than a shared constant, so the two can drift apart.
 
-VERIFY: BLOCKED — all four Verify rows passed by hand at ade741f44 (4/4, exit 0, named PASS lines observed). The execution witness recorded 0/4: every check:ci row is could-not-run because this darwin host has no network-off sandbox. Blocker medici-finance/assay#1491 is still OPEN. The outcome is unchanged from e1d99484f, and the status stays implemented. The Task 1 planner-preview gap is still open and untracked.
+VERIFY: BLOCKED — all four Verify rows passed by hand at ade741f44 (4/4, exit 0, named PASS lines observed). The execution witness recorded 0/4: every check:ci row is could-not-run because this darwin host has no network-off sandbox. Blocker medici-finance/assay#1800 is still OPEN. The outcome is unchanged from e1d99484f, and the status stays implemented. The Task 1 planner-preview gap is still open and untracked.
 
 ## Review
 
