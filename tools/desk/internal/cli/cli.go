@@ -99,7 +99,15 @@ func Run(build func() *cobra.Command, args []string, opts Options) int {
 			root.SetVersionTemplate(opts.VersionTemplate)
 		}
 	}
-	wrapHandlers(root)
+	// Cobra's help subcommand is runnable, unlike --help, and ordinarily inherits
+	// persistent hooks. Identify that command before wrapping so help cannot load
+	// configuration or credentials through a parent hook (including traversal mode).
+	root.InitDefaultHelpCmd()
+	help, _, helpErr := root.Find([]string{"help"})
+	if helpErr != nil || help == root {
+		help = nil
+	}
+	wrapHandlers(root, help)
 	if args == nil {
 		args = []string{}
 	}
@@ -128,25 +136,40 @@ func Run(build func() *cobra.Command, args []string, opts Options) int {
 
 // wrapHandlers marks every handler error in the tree. Hooks Cobra runs after parsing
 // (pre-run, run, post-run) are handlers; argument validation and flag parsing are not.
-func wrapHandlers(c *cobra.Command) {
-	wrap := func(f func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+func wrapHandlers(c, help *cobra.Command) {
+	wrap := func(f func(*cobra.Command, []string) error, persistent bool) func(*cobra.Command, []string) error {
 		if f == nil {
 			return nil
 		}
 		return func(cmd *cobra.Command, args []string) error {
+			if persistent && cmd == help {
+				return nil
+			}
 			if err := f(cmd, args); err != nil {
 				return handlerError{err}
 			}
 			return nil
 		}
 	}
-	c.PersistentPreRunE = wrap(c.PersistentPreRunE)
-	c.PreRunE = wrap(c.PreRunE)
-	c.RunE = wrap(c.RunE)
-	c.PostRunE = wrap(c.PostRunE)
-	c.PersistentPostRunE = wrap(c.PersistentPostRunE)
+	wrapPersistent := func(f func(*cobra.Command, []string)) func(*cobra.Command, []string) {
+		if f == nil {
+			return nil
+		}
+		return func(cmd *cobra.Command, args []string) {
+			if cmd != help {
+				f(cmd, args)
+			}
+		}
+	}
+	c.PersistentPreRunE = wrap(c.PersistentPreRunE, true)
+	c.PersistentPreRun = wrapPersistent(c.PersistentPreRun)
+	c.PreRunE = wrap(c.PreRunE, false)
+	c.RunE = wrap(c.RunE, false)
+	c.PostRunE = wrap(c.PostRunE, false)
+	c.PersistentPostRunE = wrap(c.PersistentPostRunE, true)
+	c.PersistentPostRun = wrapPersistent(c.PersistentPostRun)
 	for _, sub := range c.Commands() {
-		wrapHandlers(sub)
+		wrapHandlers(sub, help)
 	}
 }
 

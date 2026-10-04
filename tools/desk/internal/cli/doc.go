@@ -17,9 +17,10 @@
 //
 //   - Fresh per invocation: Run builds a new command tree and Resolve a new Viper instance on
 //     every call; nothing is package-level mutable, and the Viper global is never touched.
-//   - Help and version first: both are answered by Cobra before any RunE, so a config loader,
-//     credential read or effect placed in a handler cannot run for -h, --help, help <cmd> or
-//     --version, even when the config it would read is missing or malformed.
+//   - Help and version first: Cobra answers flags before handlers, and the adapter keeps
+//     the help command out of persistent hooks. A config loader, credential read or effect
+//     placed in a handler cannot run for -h, --help, help <cmd> or --version, even when the
+//     config it would read is missing or malformed.
 //   - Allowlist only: a setting is resolved only from the sources its Binding names — a flag
 //     spelling, explicit environment variable names, the caller's config map, a default. No
 //     AutomaticEnv, no config-file search, no remote config.

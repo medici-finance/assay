@@ -19,6 +19,8 @@ import (
 // effects instruments everything a fixture handler can do past parsing. Help and version
 // must leave every counter at zero.
 type effects struct {
+	preRuns    int // persistent hooks may load config or credentials too
+	postRuns   int
 	loads      int // config loader calls (stands in for cell/credential reads)
 	admissions int // calls into the existing admission layer
 	acts       int // external effects (a forge write, a file write)
@@ -66,6 +68,8 @@ func admit(o *opts) error {
 
 func (f *fixture) build() *cobra.Command {
 	root := NewRoot("fixt", "fixture tool for the adapter contract")
+	root.PersistentPreRunE = func(*cobra.Command, []string) error { f.fx.preRuns++; return nil }
+	root.PersistentPostRunE = func(*cobra.Command, []string) error { f.fx.postRuns++; return nil }
 	run := &cobra.Command{
 		Use:   "run [target]",
 		Short: "resolve settings and act",
@@ -149,7 +153,7 @@ func TestCLIHelpNoEffects(t *testing.T) {
 				if code != 0 {
 					t.Fatalf("exit %d, want 0; stderr=%q", code, errs)
 				}
-				if f.fx.loads+f.fx.admissions+f.fx.acts != 0 {
+				if f.fx.preRuns+f.fx.postRuns+f.fx.loads+f.fx.admissions+f.fx.acts != 0 {
 					t.Fatalf("help reached effects: %+v", *f.fx)
 				}
 				// Generated from the tree: the usage line and a flag or subcommand it defines.
@@ -173,7 +177,7 @@ func TestCLIHelpNoEffects(t *testing.T) {
 			if code != 0 || !strings.Contains(out, "v9.9.9-fixt") {
 				t.Fatalf("exit %d out %q", code, out)
 			}
-			if f.fx.loads+f.fx.admissions+f.fx.acts != 0 {
+			if f.fx.preRuns+f.fx.postRuns+f.fx.loads+f.fx.admissions+f.fx.acts != 0 {
 				t.Fatalf("version reached effects: %+v", *f.fx)
 			}
 		})
@@ -190,9 +194,74 @@ func TestCLIHelpNoEffects(t *testing.T) {
 			t.Fatalf("completion exit %d, want %d", code, ExitUsage)
 		}
 	})
+	for _, traverse := range []bool{false, true} {
+		for _, errorHooks := range []bool{false, true} {
+			t.Run(fmt.Sprintf("persistent-hooks/traverse=%v/errors=%v", traverse, errorHooks), func(t *testing.T) {
+				previous := cobra.EnableTraverseRunHooks
+				cobra.EnableTraverseRunHooks = traverse
+				t.Cleanup(func() { cobra.EnableTraverseRunHooks = previous })
+				for _, args := range append(clicontract.HelpForms("run"), []string{"--version"}, []string{"run"}) {
+					f := &fixture{fx: &effects{}}
+					build := func() *cobra.Command {
+						root := f.build()
+						if !errorHooks {
+							root.PersistentPreRunE, root.PersistentPostRunE = nil, nil
+							root.PersistentPreRun = func(*cobra.Command, []string) { f.fx.preRuns++ }
+							root.PersistentPostRun = func(*cobra.Command, []string) { f.fx.postRuns++ }
+						}
+						return root
+					}
+					if code := Run(build, args, Options{Version: "fixture"}); code != 0 {
+						t.Fatalf("%v: exit %d", args, code)
+					}
+					want := 0
+					if reflect.DeepEqual(args, []string{"run"}) {
+						want = 1 // The fix must retain hooks for ordinary execution.
+					}
+					if f.fx.preRuns != want || f.fx.postRuns != want {
+						t.Fatalf("%v: pre=%d post=%d, want %d each", args, f.fx.preRuns, f.fx.postRuns, want)
+					}
+				}
+			})
+		}
+	}
 }
 
 func TestCLIConfigFlow(t *testing.T) {
+	t.Run("string-array-never-splits", func(t *testing.T) {
+		for _, source := range []Source{Env, Config} {
+			t.Run(source.String(), func(t *testing.T) {
+				set := Declare(NewRoot("array", ""), Binding{Key: "labels", Kind: StringArray, Env: []string{"LABELS"}, Config: true})
+				in := Inputs{LookupEnv: func(string) (string, bool) { return "", false }}
+				if source == Env {
+					in.LookupEnv = func(string) (string, bool) { return "one,two three", true }
+				} else {
+					in.Config = map[string]any{"labels": "one,two three"}
+				}
+				v, err := set.Resolve(in)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := v.Strings("labels"); !reflect.DeepEqual(got, []string{"one,two three"}) || v.Source("labels") != source {
+					t.Fatalf("labels=%#v from %s, want one unsplit %s element", got, v.Source("labels"), source)
+				}
+			})
+		}
+	})
+	t.Run("uncoded-handler-error", func(t *testing.T) {
+		build := func() *cobra.Command {
+			root := NewRoot("plain", "")
+			root.RunE = func(*cobra.Command, []string) error { return errors.New("handler failed") }
+			return root
+		}
+		var stderr bytes.Buffer
+		if code := Run(build, nil, Options{IO: IO{Err: &stderr}}); code != 1 {
+			t.Fatalf("uncoded handler error: exit %d, want 1", code)
+		}
+		if stderr.Len() != 0 {
+			t.Fatalf("handler error was printed as a parse error: %q", stderr.String())
+		}
+	})
 	t.Run("precedence", func(t *testing.T) {
 		if len(clicontract.Precedence) == 0 {
 			t.Fatal("empty precedence matrix")

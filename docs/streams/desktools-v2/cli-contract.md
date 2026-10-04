@@ -41,6 +41,13 @@ Every migrated command, in the desk module or a standalone module:
 
 A tool with no configuration binds only its declared flags and defaults.
 
+For a legacy **first non-empty** environment fallback, declare each variable as
+a separate binding and retain the existing fallback in the typed handler. An
+`Env` list selects the first **present** variable, even when empty; it does not
+implement a non-empty fallback. For example, bind `GH_TOKEN` and `GITHUB_TOKEN`
+separately as secrets when preserving a command that skips an empty first token.
+The owner's compatibility tests must cover both absent and present-empty values.
+
 ## 3. Fixture cases every migrated package copies
 
 The reusable tables live in `tools/desk/internal/clicontract/fixtures.go`. Desk-module

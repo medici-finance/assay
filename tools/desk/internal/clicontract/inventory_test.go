@@ -262,6 +262,11 @@ func TestCLIRoutingMutations(t *testing.T) {
 		{name: "empty-test-selector",
 			files: map[string]string{child.File: child.Text + "\n| 99 | check | `cd tools/desk && go test -count=1 -run '' ./x` | exit 0 |\n"},
 			want:  "owner " + victimOwner + " has an empty or non-test -run selector"},
+		{name: "owner-without-cli-test",
+			// Keep valid anchored selectors, but select only non-CLI tests. This must
+			// fail the owner coverage check, not the malformed-selector check above.
+			files: map[string]string{child.File: strings.ReplaceAll(child.Text, "TestCLI", "TestOther")},
+			want:  "owner " + victimOwner + " selects no TestCLI test in its Verify rows"},
 	}
 	if len(cases) == 0 {
 		t.Fatal("no mutation cases")
