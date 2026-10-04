@@ -12,8 +12,12 @@ import (
 
 // maxRestatementWords is the receipt cap. A receipt states what the desk UNDERSTOOD in a
 // handful of words; anything longer is drifting toward a transcript (which defeats the
-// point — a re-quote cannot be corrected as a misreading) and is refused.
+// point — a re-quote cannot be corrected as a misreading).
 const maxRestatementWords = 12
+
+// A malformed receipt is correctable CLI input, not a guard refusal. Keep this
+// separate from exit 5 so a standing desk does not stop over a word-count error.
+const exitUsage = 2
 
 const usage = `deskack — print and record a desk's receipt for a human-typed message.
 
@@ -30,7 +34,10 @@ and appends a {ts, role, repo, restatement} record to this session's roster beac
 (<state>/roster/<session>.json). Run it as the FIRST line of the desk's turn after ANY
 human-typed message, then act — it is the one line the silent-output contract permits.
 
-Exit: 0 ok · 3 disabled · 5 refused · 6 unverifiable.`
+Put flags BEFORE the restatement. Exit 2 writes no receipt: correct the input
+and re-run deskack before continuing. Guard and identity failures are not usage errors.
+
+Exit: 0 ok · 2 invalid receipt/flags · 3 disabled · 5 refused · 6 unverifiable.`
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
@@ -54,20 +61,27 @@ func run(args []string, stdout, stderr io.Writer) int {
 	repo := fs.String("repo", "", "repo the message concerns (short name or owner/repo); its roster alias renders as <repo-short>")
 	session := fs.String("session", "", "session name (env: $DESK_SESSION or $CLAUDE_SESSION_ID)")
 	if perr := fs.Parse(args); perr != nil {
-		fmt.Fprintln(stderr, "refused: bad flags: "+perr.Error())
-		return deskkit.ExitRefused
+		fmt.Fprintln(stderr, "usage: bad flags: "+perr.Error()+"; correct the flags and re-run deskack")
+		return exitUsage
+	}
+	for _, arg := range fs.Args() {
+		name, _, _ := strings.Cut(strings.TrimLeft(arg, "-"), "=")
+		if strings.HasPrefix(arg, "-") && (name == "repo" || name == "session") {
+			fmt.Fprintln(stderr, "usage: put --repo and --session BEFORE the quoted restatement; correct the command and re-run deskack")
+			return exitUsage
+		}
 	}
 
 	restatement := strings.TrimSpace(strings.Join(fs.Args(), " "))
 	if restatement == "" {
-		fmt.Fprintln(stderr, "refused: a restatement is required — the desk's own one-line reading of the "+
-			"message (at most 12 words). Quote nothing; say what you UNDERSTOOD, so a misread can be corrected.")
-		return deskkit.ExitRefused
+		fmt.Fprintln(stderr, "usage: a restatement is required — the desk's own one-line reading of the "+
+			"message (at most 12 words). Supply it and re-run deskack; no receipt was written.")
+		return exitUsage
 	}
 	if n := len(strings.Fields(restatement)); n > maxRestatementWords {
-		fmt.Fprintf(stderr, "refused: restatement is %d words; the receipt cap is %d. A receipt is a "+
-			"confirmation of what you UNDERSTOOD, not a transcript — shorten it.\n", n, maxRestatementWords)
-		return deskkit.ExitRefused
+		fmt.Fprintf(stderr, "usage: restatement is %d words; the receipt cap is %d. No receipt was written; "+
+			"shorten the restatement and re-run deskack before continuing.\n", n, maxRestatementWords)
+		return exitUsage
 	}
 
 	// Role from $DESK_LOOP. It is the desk loop this session presents (also what a human
