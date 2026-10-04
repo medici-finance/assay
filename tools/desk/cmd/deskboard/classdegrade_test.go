@@ -71,7 +71,9 @@ func TestSweepDegradesOneRowNotTheBoard(t *testing.T) {
 				return []deskkit.Review{{
 					Author: deskkit.Account{Login: "gl-reviewer", ID: 41987965},
 					State:  "APPROVED", CommitID: headApproved,
-					Body: "Verdict: approve", SubmittedAt: "2026-09-14T16:00:00Z",
+					// #2158: the row is risk-classed, so MERGE-NOW needs a security pass at
+					// head whether the PR is draft or ready.
+					Body: "Verdict: approve\n\nSecurity-Review: pass", SubmittedAt: "2026-09-14T16:00:00Z",
 				}}, nil
 			case prEmptySHA:
 				return approvalWithNoSHA(), nil

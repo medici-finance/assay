@@ -194,6 +194,65 @@ Notes:
 
 VERIFY: BLOCKED
 
+### Non-implementer verifier re-run: 2026-10-02T22:19:01Z (UTC), assay-verifier-app[bot] (claude-opus-5-5[1m]) (on-behalf-of human:ian), merged main e1d99484ffd91b649ea45e10a1cecf4ba2a4924b
+
+Hand run of every Verify row, exactly as authored, on a darwin/arm64 host (go1.27.1), in a detached worktree at the sha above. Every `go test` ran under a throwaway HOME. Row 8's `/tmp/a.json` was redirected to a private scratch path for the hand run; nothing else was altered. No tracked file was modified (worktree status clean before and after).
+
+| # | Command | Expect | Observed (exit + key output line) | Date / runner |
+|---|---------|--------|-----------------------------------|---------------|
+| 1 | `grep -n -e 'mktemp' -e '/tmp/' -e '~/.config' plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/pr-shepherd/SKILL.md plugins/assay/skills/worker-desk/SKILL.md \| grep -vc 'desk-shell.md' \|\| true` | `0` | exit 0, prints `0`. The single raw hit is worker-desk SKILL.md line 871, the config-home line, which names desk-shell.md §Config home. Expect met on observed output. The execution witness still marks this row fail (it reads an expected exit 1 out of the Expect cell's parenthetical): check-definition defect, unchanged | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | `grep -c -e '## Scratch files' -e '## Config home' plugins/assay/references/desk-shell.md` | `2` | exit 0, prints `2`. PASS | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | `deskboard actions --help 2>&1 \| grep -c -- '--out'` | `>= 1` | exit 0, prints `3` with the installed deskboard on PATH, and `3` again with deskboard built from this head. Usage line: `--out <path>  write the primary output (the JSON, or the table when --table is ...`. PASS | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | `cd tools/desk && go test -count=1 -run 'TestHookInstallUnix' ./cmd/deskpushguard/` | PASS | exit 0, `ok  github.com/medici-finance/assay/tools/desk/cmd/deskpushguard 1.626s`; with -v added: `--- PASS: TestHookInstallUnix (0.01s)`. PASS | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | `cd tools/desk && GOOS=windows go test -count=1 -run 'TestHookInstallWindows' ./cmd/deskpushguard/` | PASS | UNRUN on this host: the row needs a native Windows host and none is available. As authored on darwin: exit 1, `fork/exec <tmp>/deskpushguard.test.exe: exec format error` (the Windows test binary builds, then cannot execute here). Supporting only: the same test run for the host target prints `--- PASS: TestHookInstallWindows (0.05s)` (the test is target-parameterised). The row's other route, the Windows CI leg, still has no instrument on merged main: the Windows CI leg workflow at this sha runs the PowerShell parse check, the statusgen build, lint and version smoke, and the bootstrap hash-check, and no step runs the deskpushguard package. Could-not-check, not a pass | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | `git grep -n '"/opt/desk-tools' HEAD -- 'tools/desk/**/*.go' \| grep -vc _test.go \|\| true` | `1` | exit 0, prints `1`. The only non-test hit is tools/desk/cmd/cellctl/cell.go line 274 (the `DESK_TOOLS_BIN`-overridable default); deskrelease has none. PASS | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | `cd tools/skillslint && go test -count=1 -run 'TestPosixTokenRow' ./...` | PASS (fail-first fixture) | exit 0, `ok  github.com/medici-finance/assay/tools/skillslint 0.686s`; with -v added: `--- PASS: TestPosixTokenRow (0.03s)` plus `_UnixExampleFenceExempt` and `_CleanSkillNoNotices`. PASS | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | `deskboard actions --out /tmp/a.json && reviewloop plan --actions /tmp/a.json --dry-run; echo rc=$?` | `rc=0` | Shell exit 0, prints `rc=6`: Expect NOT met. `deskboard actions` fails closed on the open-PR read of one private watched repo (`cannot read open PRs for <repo>: review-queue GraphQL error: Resource not accessible by integration`), so no actions file is written and `reviewloop plan` is never reached. Output path redirected to a scratch file for this run; GH_TOKEN unset, the tool resolved its own identity. Could-not-check: the flow needs an identity holding open-PR read on every watched repo. The witness `pass` on this row is vacuous, because `; echo rc=$?` always exits 0 | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | `statusgen --root . --consumers windows-port/12; echo $?` | `0` | exit 0, prints `consumers: no brief files in the diff against e1d99484ffd91b649ea45e10a1cecf4ba2a4924b — nothing to corroborate` then `0`. Expect met; the row is vacuous on merged main (empty diff, and the trailing `echo $?` always exits 0) | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | `statusgen --root . --lint` | `0` PROBLEMs | Host run (statusgen v1.0.31, darwin, network on): exit 0, 0 lines starting PROBLEM, final line `LINT: PASS`. Expect met on the host. This is a host observation, not the network-off check:ci execution: the witness reports could-not-run for this row on darwin (no `unshare --net`). NOTICEs naming this brief: 1 risk-files-crossread, 3 gotest-run-vacuous (rows 4, 7, 11), 2 verify-row-portability (rows 1, 8), 2 one-sided depends edges (to windows-port/02 and windows-port/03) | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | `cd tools/desk && go test -count=1 -run 'TestHookInstallIdempotentAndForeignRefusal' ./cmd/deskpushguard/` | PASS | exit 0, `ok  github.com/medici-finance/assay/tools/desk/cmd/deskpushguard 2.131s`; with -v added: `--- PASS: TestHookInstallIdempotentAndForeignRefusal (0.19s)`. PASS. The mutation half was not re-applied in this pass (the 2026-09-30 pass recorded the test reddening with the refusal disabled; the source file is unchanged since) | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+**Execution witness** — `statusgen verifyrun --brief docs/streams/windows-port/brief-12-deposix-skill-prose-and-constants.md --dry-run` (statusgen v1.0.31, darwin host, throwaway HOME, nothing written to the brief): exit 2; 8 of 11 rows pass.
+
+- pass: rows 2, 3, 4, 6, 7, 8, 9, 11 (all exit 0; rows 2, 4, 6, 7, 8, 9, 11 are judged on exit status only).
+- fail: row 1 (`exit 0, expected 1`), row 5 (`exit 1, expected 0`).
+- could-not-run: row 10 (check:ci needs a network-off sandbox; `unshare --net` is a Linux facility and this host is darwin).
+- The witness ran row 8 with its authored `/tmp/a.json` path; no file was created there (deskboard refused before writing).
+
+**What moved since the 2026-09-27 record (blocked, environment):**
+
+- Row 10 (Linux network-off witness): not re-run network-off in this pass (darwin host). The 2026-09-30 Evidence above records a Linux network-off witness pass at b0088804294b; on this head the host run is clean (0 PROBLEMs). No new network-off observation at e1d99484.
+- Row 5 (native-Windows run of the hook-install test): NOT moved. On merged main the Windows CI leg still does not run the deskpushguard tests, and its last completed run on main predates this brief's implementation. An open, unmerged draft change (#2064) proposes a native-Windows `go test ./...` job over tools/desk; its latest run is red on other packages, and the portion of the log this verifier could read shows no deskpushguard package line, so it gives no observation of `TestHookInstallWindows` either way. #1942 is open.
+- Row 8 (board-reading identity): NOT moved. Same refusal, `rc=6`.
+- Rows 1 and 8 (re-authoring for the exit-code witness): NOT moved. The Verify table text for both rows is unchanged; the witness still fails row 1 on the Expect-cell parse and still passes row 8 vacuously. #1927 is open.
+- Declared inputs that changed on main since the record (the three skill bodies, desk-shell.md, cellctl/cell.go, the brief itself) changed no row outcome: row 1's surviving hit moved to line 871 and row 6's to cell.go line 274, both still as the Expect cells describe. deskrelease/github.go, deskpushguard/hookinstall.go and skillslint/posixtoken.go are unchanged since 9585b4b6cc2e.
+- Cited issues, all read today: #1491 open, #1433 open, #1927 open, #1940 open, #1941 open, #1942 open.
+
+**Findings:**
+
+- Hand result: 9 of 11 rows meet their Expect on observed output (1, 2, 3, 4, 6, 7, 9, 10, 11). Row 5 is UNRUN (no Windows host, no CI instrument). Row 8 does not meet its Expect (`rc=6`) and is could-not-check for want of an identity, not an observed product defect.
+- Check-definition defects persist: row 1 (witness reads an expected exit 1), row 8 and row 9 (trailing `echo` makes the exit status always 0), rows 4, 7, 11 (no `--- PASS:` assertion in the command; lint gotest-run-vacuous).
+- The brief answers all four risk questions "no" and carries gate: model, while lint raises risk-files-crossread on tools/desk/cmd/deskpushguard (#1941, open). Per the verifier clauses a risk-classed path is not signed off by a model alone.
+
+**Risk-bearing values.** Trigger: the diff touches a risk-classed path (tools/desk/cmd/deskpushguard) and changes an authority binding (the identity-mint binary deskrelease executes). Enumeration over the implementing change #1501 (hookinstall.go, deskrelease/github.go, deskboard/main.go, skillslint/posixtoken.go), re-read at this head:
+
+- `name = "desktoken"` / `"desktoken.exe"` @ tools/desk/cmd/deskrelease/github.go:70,72; sibling-of-os.Executable() resolution @ github.go:74; `exec.LookPath(name)` fallback @ github.go:80.
+- `hookMarker = "deskpushguard"` @ tools/desk/cmd/deskpushguard/hookinstall.go:66.
+- unix shim target `exec "$(command -v deskpushguard)" "$@"` @ hookinstall.go:49; Windows shim target `deskpushguard.exe %*` @ hookinstall.go:59.
+- modes `0o755` @ hookinstall.go:79,84 and `0o644` @ hookinstall.go:94.
+- `posixTokenPattern = mktemp|/tmp/|~/\.config` @ tools/skillslint/posixtoken.go:34; `unixExampleFenceMarker = "unix"` @ posixtoken.go:42.
+
+Ranked: (1) the desktoken binding: a wrong binary receives the identity-mint call during a release, and a leaked credential is not undone by a redeploy; (2) hookMarker: decides overwrite versus idempotent skip of an existing hook; (3) shim exec targets: a wrong target means the push guard does not run. Modes and the advisory lint pattern are reversible knobs and rank last.
+
+RISK-VALUE: DERIVED — desktoken sibling = filepath.Dir(os.Executable()) + "desktoken" @ tools/desk/cmd/deskrelease/github.go:74 — both shipped installers place every tools/desk/cmd binary into one directory in one step, so in an installed layout the sibling is the installed desktoken, and substituting it needs write access to the directory that already holds the running deskrelease: the same threat model the removed absolute literal defended.
+RISK-VALUE: NAMED, NOT DERIVED — desktoken fallback = exec.LookPath("desktoken") @ tools/desk/cmd/deskrelease/github.go:80 — reached only when no co-located sibling exists; any absolute PATH directory ahead of the real install then decides which binary gets the identity-mint call. Whether a PATH fallback is acceptable for a privileged, identity-minting maintainer tool, versus refusing, is a policy call for a human, not a derivation; question #1940 (open).
+RISK-VALUE: DERIVED — hookMarker = "deskpushguard" @ tools/desk/cmd/deskpushguard/hookinstall.go:66 — both shims contain the tool name, so a re-run is an idempotent skip and any hook without it is refused unless --force is given (row 11 observes the refusal and the --force overwrite). Advisory residual: the match is a plain substring, so a foreign hook that only mentions the name is treated as installed.
+RISK-VALUE: DERIVED — unixShim exec target = "$(command -v deskpushguard)" @ tools/desk/cmd/deskpushguard/hookinstall.go:49 — the brief requires PATH resolution with no /opt literal; with the binary absent `exec ""` fails non-zero and git aborts the push, so the shim fails closed. The .cmd shim (`deskpushguard.exe %*` @ hookinstall.go:59) likewise exits non-zero when the binary is absent.
+
+No commit, push, post, filing, dispatch or claim change was made by this verifier.
+
+VERIFY: BLOCKED — unchanged from the prior verdict: row 5 is UNRUN (needs a native Windows host; the Windows CI leg on merged main still does not run the deskpushguard tests, #1942 open); row 8 prints rc=6 (needs a board-reading identity with open-PR read on every watched repo); rows 1 and 8 are still not re-authored for the exit-code witness (#1927 open); row 10 has no network-off witness at this sha; one risk-bearing value is NAMED, NOT DERIVED (#1940 open) and the risk-path question is open (#1941).
+
 ## Review
 Gate: **model**. Reviewer's questions: (1) is the prose diff a pure how-rename — same steps, same
 order? (2) does the unix hook still work from a linked worktree (core.hooksPath resolution)?

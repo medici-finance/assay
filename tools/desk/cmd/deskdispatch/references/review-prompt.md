@@ -370,13 +370,13 @@ should have declared one" by itself. That question is yours. On every review:
   `Blocked-On-Body:`), because the fix is a body edit and an untyped same-head CR can only be
   cleared by a new commit. A security reviewer who spots one may carry the line on the
   security verdict instead.
-- **What clears it.** The fix is `deskpr edit --decided` — it writes the block and applies the
-  label together, and moves no head. The finding is then cleared by a fresh DECISIVE verdict
-  (APPROVE or REQUEST_CHANGES) at the SAME head, in the SAME lane, that omits the line; no new
-  commit is required, since nothing about the CODE was in question. The gate reads the two
-  lanes separately: a `Security-Review:` verdict never clears a correctness-lane finding, a
-  correctness verdict never clears a security-lane one, and a COMMENTED note that is not a
-  verdict clears nothing.
+- **What clears it.** The fix is `deskpr edit --body-file <the PR's current body> --decided F`
+  — it writes the block and applies the label together, and moves no head. The finding is
+  then cleared by a fresh DECISIVE verdict (APPROVE or REQUEST_CHANGES) at the SAME head, in
+  the SAME lane, that omits the line; no new commit is required, since nothing about the CODE
+  was in question. The gate reads the two lanes separately: a `Security-Review:` verdict never
+  clears a correctness-lane finding, a correctness verdict never clears a security-lane one,
+  and a COMMENTED note that is not a verdict clears nothing.
 - Do not raise this finding merely because a PR carries no `## Desk-decided` block: absence
   alone is never the finding. A PR that only transcribes rulings already recorded elsewhere
   correctly declares nothing, and the label/block pair exists to be worn only when it is
