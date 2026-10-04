@@ -162,7 +162,7 @@ func TestPinnedShasStillCompareForMergeCurr(t *testing.T) {
 			return &deskkit.RefComparison{
 				Status:          "ahead",
 				CommitsComplete: true,
-				Commits:         []deskkit.RepoCommit{{SHA: "keepcurrent", Parents: []string{"review", "main"}}},
+				Commits:         []deskkit.RepoCommit{{SHA: head, Parents: []string{base, "main"}}},
 				Files:           []deskkit.ChangedFile{{Filename: "docs/elsewhere.md"}},
 			}, nil
 		},
