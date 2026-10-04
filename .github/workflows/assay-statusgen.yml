@@ -19,6 +19,10 @@ name: statusgen-board
 # fetched by hand from go.dev/dl rather than actions/setup-go.
 on:
   pull_request:
+    # `edited` is listed so a base retarget re-runs the corroborate job (a
+    # register transition judged against the old base proves nothing about the
+    # new one); every other job skips `edited`.
+    types: [opened, synchronize, reopened, edited]
     # Fire on anything --lint reads: the stream docs, STATUS.md itself, the
     # statusgen source (the lint binary is built from it), and this workflow.
     paths:
@@ -62,12 +66,8 @@ env:
 
 jobs:
   lint:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.action != 'edited'
     runs-on: medici-builder-public
-    # --corroborate reads the PR's reviews, comments and file list.
-    permissions:
-      contents: read
-      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -89,21 +89,81 @@ jobs:
       - name: statusgen --lint
         run: |
           "${RUNNER_TEMP}/statusgen" --root . --lint
-      # Findings-register transition corroboration (statusgen/06, deliverable 7).
-      # The guard that judges a PR is built from code the PR cannot edit: HEAD is
-      # the PR merge commit, HEAD^1 the base tip. If HEAD^1 cannot be read this
-      # step fails (set -e), so the check fails closed and never skips.
-      - name: Build the corroboration guard from the base side
+
+  # Findings-register transition corroboration (statusgen/06, deliverable 7).
+  # A job of its own, so no PR-authored code runs before or beside the guard:
+  # steps in one job share the workspace, .git, the toolchain and
+  # GITHUB_ENV/GITHUB_PATH, and the lint job above builds and runs the PR's own
+  # statusgen. Here the only binary executed is built from the base commit;
+  # the PR tree is read as data. Every step fails closed (set -e) — an
+  # unreadable base, a stale merge ref or a base mismatch reds the check, never
+  # skips it.
+  corroborate:
+    if: github.event_name == 'pull_request' && (github.event.action != 'edited' || github.event.changes.base)
+    runs-on: medici-builder-public
+    # --corroborate reads the PR's reviews, comments and file list.
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the merge-base check below needs full history
+          persist-credentials: false
+      # HEAD is the PR merge commit and HEAD^1 its base parent. The guard
+      # resolves its own merge-base from the remote base ref, so tie all three
+      # together: HEAD^1 must be the base sha GitHub put in this event (a stale
+      # merge ref after a push or retarget fails here), and merge-base(base ref,
+      # HEAD) must be HEAD^1 — the commit the guard is built from is the commit
+      # it compares against.
+      - name: Tie the compared base to the merge commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
-          git worktree add --detach "${RUNNER_TEMP}/base" HEAD^1
-          ( cd "${RUNNER_TEMP}/base/statusgen" && go build -o "${RUNNER_TEMP}/statusgen-base" . )
-      - name: Ensure gh CLI is available (pinned, checksum-verified)
-        run: |
-          set -euo pipefail
-          if command -v gh >/dev/null 2>&1; then
-            echo "gh present: $(gh --version | head -1)"; exit 0
+          parent="$(git rev-parse --verify 'HEAD^1^{commit}')"
+          if [ "$parent" != "$BASE_SHA" ]; then
+            echo "::error::merge commit base parent ${parent} is not the event's base sha ${BASE_SHA} (stale merge ref) — re-run once GitHub has recomputed it"
+            exit 1
           fi
+          tip="$(git rev-parse --verify "refs/remotes/origin/${BASE_REF}^{commit}")"
+          mb="$(git merge-base --end-of-options "$tip" HEAD)"
+          if [ "$mb" != "$parent" ]; then
+            echo "::error::merge-base(origin/${BASE_REF}, HEAD) is ${mb}, not HEAD^1 ${parent} — the guard would compare against a different base"
+            exit 1
+          fi
+      # Go and every Go cache live under RUNNER_TEMP, never $HOME: if a runner
+      # outlives one job, a toolchain or cache left by an earlier job that ran
+      # PR code must not reach the guard build. GOFLAGS is cleared for the same
+      # reason.
+      - name: Install Go (job-local toolchain and caches)
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${RUNNER_TEMP}/go-toolchain"
+          tar -C "${RUNNER_TEMP}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${RUNNER_TEMP}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+          {
+            echo "GOPATH=${RUNNER_TEMP}/gopath"
+            echo "GOCACHE=${RUNNER_TEMP}/gocache"
+            echo "GOMODCACHE=${RUNNER_TEMP}/gopath/pkg/mod"
+            echo "GOFLAGS="
+          } >> "${GITHUB_ENV}"
+      - name: Build the corroboration guard from the base commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach "${RUNNER_TEMP}/base" "$BASE_SHA"
+          ( cd "${RUNNER_TEMP}/base/statusgen" && go build -o "${RUNNER_TEMP}/statusgen-base" . )
+      # Always the pinned tarball, never a gh already on PATH: the guard's review
+      # and comment reads go through it.
+      - name: Install gh CLI (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
           url="https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz"
           want="912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00"
           curl -fsSL "$url" -o "${RUNNER_TEMP}/gh.tar.gz"
@@ -123,7 +183,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          if [ -z "$(git diff --name-only HEAD^1 HEAD -- docs/streams/findings/)" ]; then
+          if [ -z "$(git diff --no-ext-diff --no-textconv --name-only HEAD^1 HEAD -- docs/streams/findings/)" ]; then
             echo "PR touches no docs/streams/findings/ entry — register-transition check not applicable"
             exit 0
           fi
