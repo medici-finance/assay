@@ -7,6 +7,7 @@ package regression
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -67,6 +68,17 @@ func fixedGitEnv(home string) []string {
 	return env
 }
 
+// victimSetupGit cannot leave automatic maintenance running after the setup
+// command returns. The options and literal environment apply only to setup,
+// never to a fixture's Git invocation or the repository's persistent config.
+func victimSetupGit(home string, args ...string) *exec.Cmd {
+	args = append([]string{"-c", "maintenance.auto=false", "-c", "gc.auto=0",
+		"-c", "maintenance.autoDetach=false", "-c", "gc.autoDetach=false"}, args...)
+	cmd := exec.Command("git", args...) // literal argv[0]: the forge-CLI ban resolves it
+	cmd.Env = fixedGitEnv(home)
+	return cmd
+}
+
 // HostileGitDir builds a committed repository outside the fixture under test and
 // exports GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE naming it for the rest of t. It
 // returns the repository's directory for TreeDigest. A fixture that leaks the
@@ -83,8 +95,7 @@ func HostileGitDir(t testing.TB) string {
 		{"-C", victim, "-c", "user.name=Victim", "-c", "user.email=victim@example.invalid",
 			"-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "victim"},
 	} {
-		cmd := exec.Command("git", args...) // literal argv[0]: the forge-CLI ban resolves it
-		cmd.Env = fixedGitEnv(base)
+		cmd := victimSetupGit(base, args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("victim git %v: %v\n%s", args, err, out)
 		}
@@ -95,11 +106,19 @@ func HostileGitDir(t testing.TB) string {
 	return victim
 }
 
-// TreeDigest hashes every path, mode, symlink target and file body under dir, so
-// two equal digests mean the tree is byte-unchanged.
-func TreeDigest(t testing.TB, dir string) string {
+// TreeSnapshot records every path, mode, symlink target hash and file body hash
+// under a directory, including every .git entry. No metadata is excluded.
+// Hashes, rather than file bodies or symlink targets, are safe failure diagnostics.
+type TreeSnapshot map[string]treeEntry
+
+type treeEntry struct {
+	Mode fs.FileMode
+	Hash string
+}
+
+func SnapshotTree(t testing.TB, dir string) TreeSnapshot {
 	t.Helper()
-	var rows []string
+	entries := TreeSnapshot{}
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -112,27 +131,69 @@ func TreeDigest(t testing.TB, dir string) string {
 		if err != nil {
 			return err
 		}
-		row := filepath.ToSlash(rel) + "\x00" + info.Mode().String()
+		entry := treeEntry{Mode: info.Mode()}
+		var body []byte
 		switch {
 		case d.Type()&fs.ModeSymlink != 0:
 			target, err := os.Readlink(path)
 			if err != nil {
 				return err
 			}
-			row += "\x00" + target
+			body = []byte(target)
 		case d.Type().IsRegular():
-			body, err := os.ReadFile(path)
+			body, err = os.ReadFile(path)
 			if err != nil {
 				return err
 			}
-			sum := sha256.Sum256(body)
-			row += "\x00" + hex.EncodeToString(sum[:])
 		}
-		rows = append(rows, row)
+		if d.Type()&fs.ModeSymlink != 0 || d.Type().IsRegular() {
+			sum := sha256.Sum256(body)
+			entry.Hash = hex.EncodeToString(sum[:])
+		}
+		entries[filepath.ToSlash(rel)] = entry
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	return entries
+}
+
+// Changes reports sorted added, removed and changed paths, modes and hashes.
+// A nonempty result always fails the isolation assertion, including .git changes.
+func (before TreeSnapshot) Changes(after TreeSnapshot) string {
+	paths := make(map[string]bool, len(before)+len(after))
+	for path := range before {
+		paths[path] = true
+	}
+	for path := range after {
+		paths[path] = true
+	}
+	var changes []string
+	for path := range paths {
+		old, had := before[path]
+		next, has := after[path]
+		switch {
+		case !had:
+			changes = append(changes, fmt.Sprintf("added %q: mode=%s sha256=%s", path, next.Mode, next.Hash))
+		case !has:
+			changes = append(changes, fmt.Sprintf("removed %q: mode=%s sha256=%s", path, old.Mode, old.Hash))
+		case old != next:
+			changes = append(changes, fmt.Sprintf("changed %q: mode=%s sha256=%s -> mode=%s sha256=%s", path, old.Mode, old.Hash, next.Mode, next.Hash))
+		}
+	}
+	sort.Strings(changes)
+	return strings.Join(changes, "\n")
+}
+
+// TreeDigest hashes every path, mode, symlink target and file body under dir, so
+// two equal digests mean the tree is byte-unchanged.
+func TreeDigest(t testing.TB, dir string) string {
+	t.Helper()
+	snapshot := SnapshotTree(t, dir)
+	var rows []string
+	for path, entry := range snapshot {
+		rows = append(rows, path+"\x00"+entry.Mode.String()+"\x00"+entry.Hash)
 	}
 	sort.Strings(rows)
 	sum := sha256.Sum256([]byte(strings.Join(rows, "\n")))
