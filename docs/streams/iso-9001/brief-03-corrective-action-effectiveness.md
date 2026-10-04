@@ -13,7 +13,7 @@ why: >-
   it.
 wave: 1
 depends: ["iso-9001/01"]
-unblocks: ["iso-9001/06"]
+unblocks: ["iso-9001/06", "iso-9001/09"]
 effort: M
 exec-tier: strong
 exec-tier-why: >-
