@@ -48,7 +48,7 @@ clean finding set is **never inferred from unparseable prose**.
 | Field | Meaning |
 |---|---|
 | `id` | Stable identity across heads and agents. A newly discovered **occurrence** of the same proposition **reuses** this id; only a genuinely new proposition gets a new one. |
-| `lane` | Optional. The review lane (`correctness`, `security`, ...) the finding belongs to. Ids are unique only **within a lane** — each lane numbers its own findings — so the ledger identity is `(lane, id)`, rendered `lane/id`. The lane is normally taken from the review record the block was read off; a block may state it (a worker reply answering another lane's finding should), and that wins. A lane-less worker reply attaches to the one lane holding the id, and is reported could-not-check when two lanes hold it. Round counters are per lane too. |
+| `lane` | Optional. One of the published lanes — `correctness`, `security`, `fact-check`, `fail-first` (case and surrounding space fold; any other word is refused, since it would fork the finding into an identity space of its own). Ids are unique only **within a lane** — each lane numbers its own findings — so the ledger identity is `(lane, id)`. Which lane a block speaks for: a **reviewer** record whose lane is established speaks only for that lane — a block naming a different lane is reported could-not-check and keyed under the record's lane, so one lane's reviewer can never resolve another lane's finding. A **worker** reply may state the lane of the finding it answers, and that wins over the record's lane; it must state it whenever the id is held by more than one lane (a lane-less worker reply attaches to the one lane holding the id, and is reported could-not-check when two lanes hold it). A lane-less record takes the block's lane. A producer sets the lane on every record of a thread or on none — in a thread that mixes the two, a lane-less reviewer record keys its findings apart from every lane. Round counters are per lane too. `/` is refused in `id`, `class` and `lane`: the ledger joins lane and id with it internally, and that key is never rendered where an id or class belongs. |
 | `class` | The claim class. The round cap is **per class**: fixing one sentence never resets the class, and a sibling occurrence retains it. |
 | `severity` | `blocking` or `advisory`. Only a reviewer may promote `advisory`→`blocking`, with changed impact or new evidence. |
 | `blocker` | `code-content` (a defect in this branch) or `external-prerequisite` (a shared-CI leg or upstream fact — one shared repair, not a per-PR defect). |
@@ -98,4 +98,8 @@ missing its authenticated role or head, a worker record that tried to clear a
 blocker). "No findings" and "could not read the findings" stay distinct — an
 unreadable thread is exit 6, never an empty finding set. The compact ledger is
 what the desk injects into the reviewer and worker prompts so a replacement agent
-resumes from it.
+resumes from it. Each record in the `--records` payload may carry an optional `lane` (the lane the
+review record was written in). The rendered findings and the compact ledger print
+the **bare** `id` and `class` with the lane as a separate `lane=<name>` field, so a
+successor that copies a printed id or class into a new record reuses the finding
+rather than forking a new one.
