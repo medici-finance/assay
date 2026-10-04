@@ -236,6 +236,17 @@ func ciCrossModuleRegistry() []ciEntry {
 			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
 			why:        "the floor runs offline shell fixtures outside the desk module; script changes must run the entry points",
 		},
+		{
+			test:   "tools/desk/internal/clicontract/inventory_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: floorJob, pushJob: floorJob,
+			reads: []string{
+				"docs/streams/desktools-v2/cli-migration.json", "docs/streams",
+				".github/workflows/release.yml", "Makefile", "plugins", "tools", "statusgen",
+			},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the CLI routing inventory discovers every entrypoint in the tree and checks owner briefs; a new command or brief edit anywhere must run it (desktools-v2/15)",
+		},
 
 		{
 			// Registered with the guard it enforces (#392 review

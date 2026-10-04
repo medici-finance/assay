@@ -456,6 +456,30 @@ mv ~/.claude/desk-tools/* ~/.config/assay/ 2>/dev/null; rmdir ~/.claude/desk-too
 The audit ledger, roster beacons, and any active `STOP`/`DISABLED` flags carry over. New
 installs start clean — no migration needed.
 
+### Roster beacon writes and recovery
+
+`deskack` receipts, `deskroster` role/work changes and resource-vitals updates share
+`<state>/roster/<session>.json`. They serialize the complete read-modify-write operation
+with a per-session OS file lock, then publish a complete replacement from a temporary
+file in the same directory. Roster pruning uses the same transaction and preserves
+updates made after its scan. Writers preserve fields they do not own. The lock file
+stays in place: removing it while a process holds it could create two independent locks.
+
+Install the fixed desk-tools version for **all** writers sharing a state directory and
+restart them. An older binary does not participate in the lock protocol. The change
+prevents partial writes and lost concurrent updates; it cannot reconstruct data already
+lost from a damaged beacon.
+
+If a beacon is already malformed, the tools refuse to overwrite it. Stop the affected
+session's writers, retain a byte-for-byte backup of the damaged file, and restore a
+known-good complete beacon for that same session while the writers remain stopped.
+Validate the JSON and reconcile its role, open work, receipts and resource fields before
+restarting. If no trustworthy copy exists, retain the damaged file for reconciliation
+and start a fresh session with a distinct identity; account for the old session's open
+work explicitly. Do not replace a damaged beacon with an empty object, delete it to
+bypass the refusal, or remove a lock file as a recovery step. An OS lock is released
+when its holding process exits.
+
 ## Trust gate (deskkit/trust.go)
 
 With example-org/example-k8s public, desk scanning loops read repos where arbitrary
@@ -611,6 +635,14 @@ answers TRUE on every uncertain input; the ONLY way to get a waiver is a repo in
 compiled-in allowed set, compiled in as `VisibilityPrivate`, with a complete, readable
 changed-file list matching none of that repo's triggers.
 
+`deskboard actions` exports `riskClassed` on every trusted PR row, including
+NEEDS-REVIEW, RE-REVIEW and BLOCKED, before an approval or green checks. Review
+dispatch can therefore select correctness and security lanes concurrently. Public or
+unknown visibility, the owning brief's gate/risk, unreadable or incomplete changed
+paths, path triggers and the trailer-absent App anomaly only widen classification.
+The action still follows its review/CI precedence; the ready gate independently
+re-reads the change before authorizing a flip.
+
 Adopting this gate for your own repositories (the three modes, the callout JSON/exit
 contract, and the fail-closed guarantees) is documented in
 [`docs/desk-tools/risk-classification.md`](../../docs/desk-tools/risk-classification.md).
@@ -690,11 +722,27 @@ job is fixing text.
 **`--pr N` names the PR instead (#1901).** Git allows one worktree per branch, so a rework
 worker whose PR head branch is still checked out elsewhere works on a neutral branch or a
 detached HEAD and pushes by explicit refspec. From there `edit --pr N` reads PR #N and
-applies the shared own-PR guard (`deskkit.CheckOwnPR`, the same rule `deskreply` uses): the
-PR must be OPEN, and the worktree's branch must BE the PR's head branch or its HEAD commit
-must be EXACTLY the PR's head commit. A HEAD with unpushed commits on top of the head commit
-is refused until they are pushed. Without `--pr`, a detached HEAD is refused (exit 6) with a
-message that points at `--pr N`.
+admits the checkout by one of two rules. The PR must be OPEN first, whatever the checkout.
+Rule 1 is the shared own-PR guard (`deskkit.CheckOwnPR`, the same rule `deskreply` uses): the
+worktree's branch is the PR's head branch, or its HEAD commit is EXACTLY the PR's head
+commit. Rule 2 (#2085) admits any other checkout — a desk window, a neutral branch with no
+commits ahead of the default branch — only when the PR's head branch is in this repository
+(a fork PR, or one whose head repository the forge does not report, is refused) and the PR's
+current body already carries a link trailer, which the trailer-immutability rule below then
+holds fixed. A trailer-less PR (a human's, a pre-trailer one) is therefore edited only from
+its own checkout. Preflight still refuses a checkout on the default branch or with staged
+changes, `--pr` or not. Without `--pr`, a detached HEAD is refused (exit 6) with a message
+that points at `--pr N`.
+
+**`update --pr N` / `--branch B` (#2085)** push HEAD to the head branch the forge reports for
+that PR (`git push origin HEAD:refs/heads/<head-branch>`, no `-u`), for a worktree whose local
+branch name differs from the PR's head branch. Before the push: the PR must be OPEN; its
+head branch must be in this repository (fork or unreported → refused); the head branch name
+is secret-scanned; HEAD must be the PR's head commit or descend from it; a PR head already
+contained in the default branch is refused; and the push destination must already hold the
+head branch at the head commit the forge reports (absent or different → refused). With
+`--pr N` the offline publish-identity stage judges the whole range from the default branch,
+so a PR whose head already carries another identity's commits is refused there.
 
 **The link trailer is not editable.** `Brief: <stream>/<NN>` / `Authors: <stream>/<NN>[, …]` /
 `Issue: #<N>` is the

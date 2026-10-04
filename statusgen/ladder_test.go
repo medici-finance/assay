@@ -173,8 +173,8 @@ func TestRunLadderPublicDegradeNoDayFile(t *testing.T) {
 	autonomyMergedAuthors = func(root string, since, until time.Time) ([]autonomyAuthor, bool) {
 		return []autonomyAuthor{{Login: "assay-worker-app[bot]", IsBot: true}}, true
 	}
-	autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR, bool) {
-		return []autonomyGatePR{{Number: 1, CheckNames: []string{"go-test"}}}, true
+	autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR, bool, string) {
+		return []autonomyGatePR{{Number: 1, CheckNames: []string{"go-test"}}}, true, ""
 	}
 	nowFunc = func() time.Time { return mustTime(t, "2026-07-15T00:00:00Z") }
 

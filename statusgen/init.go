@@ -466,7 +466,14 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
+      # Full history, not the default one-commit checkout: --lint compares the
+      # findings register with the version at the merge-base of HEAD and
+      # refs/remotes/origin/main, and refuses register transitions (one PROBLEM)
+      # when that ref is absent. fetch-depth: 0 fetches every branch into
+      # refs/remotes/origin/*, so the base resolves.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Install pinned statusgen (channel E — sha256-verified release binary)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -725,6 +732,13 @@ statusgen-lint:
   # tags: [REPLACE_WITH_YOUR_RUNNER_TAG]
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  # Full history, not a shallow clone: --lint compares the findings register with
+  # the version at the merge-base of HEAD and refs/remotes/origin/main, and
+  # refuses register transitions (one PROBLEM) when that ref is absent. A
+  # merge-request pipeline fetches only the pipeline ref, so the script fetches
+  # main into refs/remotes/origin/main before statusgen runs.
+  variables:
+    GIT_DEPTH: "0"
   script:
     - *statusgen-install
     # A freshly-init'd tree ships an example stream, so docs/streams/ is never
@@ -733,6 +747,9 @@ statusgen-lint:
     # to the line below for that transitional window ONLY — do not leave it on, or
     # the empty-root PROBLEM can never fire for a genuine regression.
     - *statusgen-roster
+    # If the project has no main branch the fetch fails and the job goes on:
+    # statusgen then decides, refusing register transitions when findings exist.
+    - git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main" || echo "NOTICE - could not fetch main into refs/remotes/origin/main, and statusgen --lint refuses findings-register transitions without it"
     - statusgen --lint
 
 statusgen-regen:

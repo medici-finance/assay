@@ -49,6 +49,7 @@ type gitReadSession struct {
 	batches    map[string]*catFileBatch // per root; nil entry = could not start, use exec
 	objects    map[string]gitReadResult // root + "\x00" + spec
 	mergeBases map[string]gitReadResult // root + "\x00" + a + "\x00" + b
+	exactBases map[string]string        // root + "\x00" + ref -> mergeBaseExact answer ("" = unresolved)
 }
 
 // activeGitReads is the session run() opened, or nil outside one.
@@ -62,6 +63,7 @@ func beginGitReadSession() (end func()) {
 		batches:    map[string]*catFileBatch{},
 		objects:    map[string]gitReadResult{},
 		mergeBases: map[string]gitReadResult{},
+		exactBases: map[string]string{},
 	}
 	activeGitReads = s
 	return func() {

@@ -39,6 +39,7 @@ import (
 	"flag"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -62,7 +63,7 @@ func cmdEdit(args []string) (err error) {
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	decided := fs.String("decided", "", "path to a file declaring desk-taken decisions (decision:/alternative:/cost: triples, one item per numbered line) — writes/replaces the `## Desk-decided` block in the replacement body and applies the desk-decided label")
-	prNum := fs.Int("pr", 0, "edit THIS open PR instead of the one whose head branch is this worktree's branch (#1901): admitted when the worktree's branch is the PR's head branch OR its HEAD commit is exactly the PR's head commit — a neutral branch or a detached HEAD at the head commit a rework worker pushed")
+	prNum := fs.Int("pr", 0, "edit THIS open PR instead of the one whose head branch is this worktree's branch: admitted when this checkout is the PR's own (its branch is the PR's head branch, or its HEAD commit is exactly the PR's head commit — #1901), or, from any other feature branch or detached HEAD, when the PR's head branch is in this repository and its current body already carries a link trailer (#2085)")
 	check := fs.Bool("check", false, "run every LOCAL gate (flags, the secret scan, the replacement body's Brief:/Authors:/Issue: trailer grammar, branch state) and stop BEFORE minting a token or opening any connection; the trailer-IMMUTABILITY compare and the self-containment scan's bare-#N hint both need the PR's CURRENT body from the forge and are reported not checked, by name")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
@@ -142,9 +143,12 @@ func cmdEdit(args []string) (err error) {
 
 	// edit has no --base: it never opens a PR, so there is no base to open against. An
 	// empty base keeps preflight's ahead-count pinned to origin/HEAD, exactly as update.
-	// --pr (#1901) admits a detached HEAD: the PR is named, so no branch is needed to find it,
-	// and the own-PR guard below admits a detached checkout only at that PR's head commit.
-	facts, perr := preflightMode(dir, "", *prNum > 0, editDetachedRefusal)
+	// --pr (#1901) admits a detached HEAD: the PR is named, so no branch is needed to find it.
+	// --pr (#2085) also drops the commits-ahead precondition: edit pushes nothing, so a worktree
+	// with no work of its own (a desk window) may correct a PR whose branch another worktree holds.
+	// Which PR such a checkout may write to is decided after the forge read, in findEditTarget.
+	// The default-branch and staged-changes refusals still apply, --pr or not.
+	facts, perr := preflightOpts(dir, "", *prNum > 0, editDetachedRefusal, *prNum == 0)
 	if perr != nil {
 		return perr
 	}
@@ -162,11 +166,11 @@ func cmdEdit(args []string) (err error) {
 	if *check {
 		ac.successResult = deskkit.ResultDryRun
 		ac.detail = "check: every local gate passed"
-		// With --pr N the forge read that is skipped is PR #N's state and head (the own-PR
-		// guard's inputs), not a by-branch lookup, so the line names that instead.
+		// With --pr N the forge read that is skipped is PR #N's own record (the admission
+		// rules' inputs), not a by-branch lookup, so the line names that instead.
 		prCheck := "whether an open PR exists for this branch"
 		if *prNum > 0 {
-			prCheck = fmt.Sprintf("PR #%d's state and head (the own-PR guard)", *prNum)
+			prCheck = fmt.Sprintf("PR #%d's state, head, repository and current link trailer (whether this checkout may edit it)", *prNum)
 		}
 		fmt.Println("check: ok — every local gate passed; no connection opened, nothing pushed. " +
 			"Not checked (needs the forge, not run here): trailer-immutability against the existing " +
@@ -402,22 +406,44 @@ func editActor() string {
 // this branch. OpenChangeForBranch returns none for a merged or closed PR — one refusal covers
 // "no PR", "already merged" and "closed", and none of the three can be edited.
 //
-// With --pr N (#1901) the named PR is read directly and must pass the shared own-PR guard,
-// deskkit.CheckOwnPR: it must be OPEN, and this checkout must be its own — on its head branch,
-// or with HEAD exactly at its head commit. That second rule is what lets a rework worker whose
-// PR head branch is checked out by another worktree (git allows one worktree per branch)
-// correct the body from the neutral branch or detached HEAD it pushed the head commit from.
+// With --pr N the named PR is read directly. It must be OPEN, and then one of two rules admits
+// the checkout:
+//
+//   - rule 1 (#1901), the shared own-PR guard deskkit.CheckOwnPR: this checkout is the PR's own —
+//     on its head branch, or with HEAD exactly at its head commit (a rework worker on a neutral
+//     branch or detached HEAD at the head commit it pushed);
+//   - rule 2 (#2085), requireLinkedSameRepoPR: from any other checkout, the PR's head branch is
+//     in this repository and its current body already carries a link trailer, which trailer
+//     immutability then holds fixed — so a desk window can correct a worker's PR, but a
+//     trailer-less PR (a human's, a pre-trailer one) or a fork PR is editable only from its own
+//     checkout.
 func findEditTarget(fg deskkit.Forge, fr deskkit.ForgeRepo, facts *gitFacts, prNum int) (pr, cur *deskkit.PullRequest, err error) {
 	if prNum > 0 {
 		cur, terr := fg.GetPullRequest(fr, prNum)
 		if terr != nil {
 			return nil, nil, deskkit.Unverifiable(fmt.Sprintf("cannot read PR #%d", prNum), terr)
 		}
+		// The PR must be OPEN, whatever the checkout: checked FIRST, so neither admission rule
+		// below can be read as licence to write to a merged or closed PR.
+		if !strings.EqualFold(strings.TrimSpace(cur.State), "open") {
+			return nil, nil, deskkit.Refused(fmt.Sprintf(
+				"refused: PR #%d is %s, not OPEN — deskpr edit only writes to open PRs", prNum, cur.State))
+		}
+		// Rule 1 (#1901): this checkout is the PR's own — on its head branch, or with HEAD
+		// exactly at its head commit (deskkit.CheckOwnPR, the guard deskreply shares).
 		if _, oerr := deskkit.CheckOwnPR("deskpr edit",
 			deskkit.OwnPRLocal{Branch: facts.branch, Head: facts.head},
 			deskkit.OwnPRRemote{Number: prNum, State: cur.State, HeadRef: cur.HeadRef, HeadOid: cur.HeadSHA},
-		); oerr != nil {
-			return nil, nil, oerr
+		); oerr == nil {
+			return cur, cur, nil
+		}
+		// Rule 2 (#2085): from any other checkout (a desk window, a worktree on a neutral branch
+		// with no commits ahead), the PR must be bound to its work item already — its head branch
+		// in THIS repository and its current body carrying a link trailer. Trailer immutability
+		// (cmdEdit) then pins the replacement body to that same link, so a mistyped --pr naming
+		// an unrelated PR refuses unless that PR carries the very link the replacement carries.
+		if lerr := requireLinkedSameRepoPR(cur, prNum); lerr != nil {
+			return nil, nil, lerr
 		}
 		return cur, cur, nil
 	}
@@ -436,4 +462,31 @@ func findEditTarget(fg deskkit.Forge, fr deskkit.ForgeRepo, facts *gitFacts, prN
 		return nil, nil, deskkit.Unverifiable("cannot read the PR's current body/title", terr)
 	}
 	return pr, cur, nil
+}
+
+// requireLinkedSameRepoPR is `deskpr edit --pr N`'s admission rule for a checkout that is NOT
+// the PR's own (#2085): the PR's head branch must live in the base repository (a fork PR, or
+// a PR whose head repository the forge did not report, is not admitted — the empty value is
+// could-not-check, never "same"), and its CURRENT body must already carry a link trailer. A
+// PR with no trailer — a human's PR, a pre-trailer PR — is editable only from its own
+// checkout (rule 1), because without a link there is nothing binding the replacement to it.
+func requireLinkedSameRepoPR(cur *deskkit.PullRequest, prNum int) error {
+	own := "this worktree is not PR #" + strconv.Itoa(prNum) + "'s own (its branch is not the PR's head branch and its " +
+		"HEAD is not the PR's head commit)"
+	switch cur.CrossRepo {
+	case deskkit.CrossRepoSame:
+	case deskkit.CrossRepoFork:
+		return deskkit.Refused("refused: " + own + ", and the PR's head branch lives in a fork — from another checkout " +
+			"deskpr edit --pr writes only to a same-repository PR; run it from a checkout of the PR's head")
+	default:
+		return deskkit.Unverifiable("could-not-check: "+own+", and the forge did not report which repository the PR's "+
+			"head branch lives in — from another checkout deskpr edit --pr writes only to a PR it has established "+
+			"is in this repository", nil)
+	}
+	if _, linked := trailerLink([]byte(cur.Body)); !linked {
+		return deskkit.Refused("refused: " + own + ", and the PR's current body carries no Brief:/Authors:/Issue: link " +
+			"trailer — from another checkout deskpr edit --pr writes only to a PR already linked to its work item " +
+			"(the link then cannot change). Run it from a checkout of the PR's head, or check the PR number")
+	}
+	return nil
 }

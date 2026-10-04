@@ -6,13 +6,23 @@ package main
 // park does not shelve and raises a hard --lint PROBLEM) and the GUARD half
 // (adding or extending a parked-until on a landed finding is a guarded mutation
 // exactly like a resolve/affects gut, authorized only by a mapped human under
-// parked-by/authorized-by).
+// parked-by — never authorized-by — and never past the 90-day horizon).
 
 import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
+
+// pinParkNow pins the park-horizon clock to day (YYYY-MM-DD) for one test.
+func pinParkNow(t *testing.T, day string) {
+	t.Helper()
+	at := mustTime(t, day)
+	old := parkHorizonNow
+	parkHorizonNow = func() time.Time { return at }
+	t.Cleanup(func() { parkHorizonNow = old })
+}
 
 // parkedFinding constructs a finding carrying a bounded park.
 func parkedFinding(id, date, title, until, by, reason string) Finding {
@@ -214,9 +224,10 @@ func TestGuttedParkAddedUnauthorized(t *testing.T) {
 // The same park add WITH a mapped human under parked-by (its authorizing party)
 // passes the offline guard — parked-by is the park's authorized-by.
 func TestGuttedParkAddedAuthorizedByParkedBy(t *testing.T) {
+	pinParkNow(t, "2026-07-20")
 	root, path := gutFixture(t, landedOpenFinding)
 	gutted := strings.Replace(landedOpenFinding, "resolved: false",
-		"resolved: false\nparked-until: \"2099-01-01\"\nparked-by: human:alex\nparked-reason: waiting", 1)
+		"resolved: false\nparked-until: \"2026-09-01\"\nparked-by: human:alex\nparked-reason: waiting", 1)
 	if err := os.WriteFile(path, []byte(gutted), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -256,14 +267,141 @@ func TestGuttedParkExtendedUnauthorized(t *testing.T) {
 
 // Extending WITH a mapped human under parked-by passes.
 func TestGuttedParkExtendedAuthorized(t *testing.T) {
+	pinParkNow(t, "2026-07-20")
 	root, path := gutFixture(t, landedParkedFinding)
 	gutted := strings.Replace(landedParkedFinding, "parked-until: \"2026-08-01\"\nparked-by: human:bot",
-		"parked-until: \"2099-01-01\"\nparked-by: human:alex", 1)
+		"parked-until: \"2026-09-01\"\nparked-by: human:alex", 1)
 	if err := os.WriteFile(path, []byte(gutted), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if p := guttedRegisterFields(root); len(p) != 0 {
 		t.Fatalf("park extend WITH parked-by: human:alex must pass; got %v", p)
+	}
+}
+
+// ----- #2012 ruling, item 2: only parked-by authorizes a park -----
+
+// An `authorized-by` anchor naming a mapped human does NOT authorize a park add:
+// the park's authority is its own parked-by, and here that names an unmapped
+// account. Before the ruling the guard took either key, so this passed.
+func TestParkAuthorizedByNotPark(t *testing.T) {
+	pinParkNow(t, "2026-07-20")
+	root, path := gutFixture(t, landedOpenFinding)
+	gutted := strings.Replace(landedOpenFinding, "resolved: false",
+		"resolved: false\nauthorized-by: human:alex\nparked-until: \"2026-09-01\"\nparked-by: human:bot\nparked-reason: waiting", 1)
+	if err := os.WriteFile(path, []byte(gutted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := guttedRegisterFields(root)
+	if !containsSubstr(p, "field-gutting (unauthorized)") || !containsSubstr(p, "parked-until added") {
+		t.Fatalf("authorized-by must not authorize a park add; got %v", p)
+	}
+}
+
+// The second instance: an EXTENSION carried by authorized-by alone (parked-by
+// still the landed, unmapped name) is unauthorized too.
+func TestParkExtendAuthByNotPark(t *testing.T) {
+	pinParkNow(t, "2026-07-20")
+	root, path := gutFixture(t, landedParkedFinding)
+	gutted := strings.Replace(landedParkedFinding, "parked-until: \"2026-08-01\"",
+		"authorized-by: human:alex\nparked-until: \"2026-09-01\"", 1)
+	if err := os.WriteFile(path, []byte(gutted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := guttedRegisterFields(root)
+	if !containsSubstr(p, "parked-until extended") {
+		t.Fatalf("authorized-by must not authorize a park extend; got %v", p)
+	}
+}
+
+// ----- #2012 ruling, item 1: the 90-day park horizon -----
+
+// A park added more than 90 days past the day it is set is a PROBLEM even with a
+// mapped parked-by: no authorization stretches the horizon. Day 90 itself passes.
+func TestParkHorizonAddFails(t *testing.T) {
+	pinParkNow(t, "2026-07-20") // + 90 days = 2026-10-18
+	for _, tc := range []struct {
+		until string
+		fires bool
+	}{{"2026-10-18", false}, {"2026-10-19", true}, {"2099-01-01", true}} {
+		root, path := gutFixture(t, landedOpenFinding)
+		gutted := strings.Replace(landedOpenFinding, "resolved: false",
+			"resolved: false\nparked-until: \""+tc.until+"\"\nparked-by: human:alex\nparked-reason: waiting", 1)
+		if err := os.WriteFile(path, []byte(gutted), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		p := guttedRegisterFields(root)
+		if got := containsSubstr(p, "beyond the 90-day horizon"); got != tc.fires {
+			t.Errorf("park add until %s: horizon PROBLEM = %v, want %v; got %v", tc.until, got, tc.fires, p)
+		}
+		if containsSubstr(p, "field-gutting (unauthorized)") {
+			t.Errorf("park add until %s is authorized by parked-by; got %v", tc.until, p)
+		}
+	}
+}
+
+// The planted second instance: an EXTENSION of a landed, in-horizon park that
+// crosses the 90 days is a PROBLEM too, however it is authorized.
+func TestParkHorizonExtendFails(t *testing.T) {
+	pinParkNow(t, "2026-07-20")
+	root, path := gutFixture(t, landedParkedFinding) // landed parked-until 2026-08-01
+	gutted := strings.Replace(landedParkedFinding, "parked-until: \"2026-08-01\"\nparked-by: human:bot",
+		"parked-until: \"2026-11-01\"\nparked-by: human:alex", 1)
+	if err := os.WriteFile(path, []byte(gutted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := guttedRegisterFields(root)
+	if !containsSubstr(p, "beyond the 90-day horizon") || !containsSubstr(p, "latest allowed: 2026-10-18") {
+		t.Fatalf("an extension crossing 90 days must fire; got %v", p)
+	}
+}
+
+// The horizon is measured from the date of the COMMIT that sets the park, not
+// from today: a park committed on 2026-05-01 may run to 2026-07-30 at most, even
+// though today (2026-07-20) + 90 days would allow it.
+func TestParkHorizonFromCommit(t *testing.T) {
+	pinParkNow(t, "2026-07-20")
+	root, path := gutFixture(t, landedOpenFinding)
+	gutted := strings.Replace(landedOpenFinding, "resolved: false",
+		"resolved: false\nparked-until: \"2026-08-15\"\nparked-by: human:alex\nparked-reason: waiting", 1)
+	if err := os.WriteFile(path, []byte(gutted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, root, "add", "-A")
+	runGitEnv(t, root, []string{"GIT_COMMITTER_DATE=2026-05-01T12:00:00Z"},
+		"commit", "-q", "-m", "park it")
+	p := guttedRegisterFields(root)
+	if !containsSubstr(p, "after 2026-05-01") || !containsSubstr(p, "latest allowed: 2026-07-30") {
+		t.Fatalf("the horizon must run from the setting commit's date; got %v", p)
+	}
+}
+
+// A commit date in the FUTURE counts as today: a committer cannot stretch the
+// horizon by post-dating the commit that sets the park.
+func TestParkHorizonFutureCommit(t *testing.T) {
+	pinParkNow(t, "2026-07-20")
+	root, path := gutFixture(t, landedOpenFinding)
+	gutted := strings.Replace(landedOpenFinding, "resolved: false",
+		"resolved: false\nparked-until: \"2027-02-01\"\nparked-by: human:alex\nparked-reason: waiting", 1)
+	if err := os.WriteFile(path, []byte(gutted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, root, "add", "-A")
+	runGitEnv(t, root, []string{"GIT_COMMITTER_DATE=2027-01-01T12:00:00Z"},
+		"commit", "-q", "-m", "park it")
+	p := guttedRegisterFields(root)
+	if !containsSubstr(p, "latest allowed: 2026-10-18") {
+		t.Fatalf("a post-dated commit must count as today; got %v", p)
+	}
+}
+
+// A landed park that is NOT moved is not re-judged against the horizon, and a
+// narrowed one only shortens the snooze.
+func TestParkHorizonUnmovedQuiet(t *testing.T) {
+	pinParkNow(t, "2030-01-01") // landed park long past any horizon from here
+	root, _ := gutFixture(t, landedParkedFinding)
+	if p := guttedRegisterFields(root); containsSubstr(p, "horizon") {
+		t.Fatalf("an unmoved landed park must not be re-judged; got %v", p)
 	}
 }
 

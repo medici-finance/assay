@@ -99,7 +99,7 @@ func TestCorroborateIsWiredIntoStatusgenWorkflow(t *testing.T) {
 
 				// It must run against a PR number the event provides, not a hardcoded
 				// one — a literal `--pr 223` would corroborate one frozen PR forever.
-				if !strings.Contains(step.Run, "--pr ${{ github.event.pull_request.number }}") {
+				if !prBoundToEvent(step.Run, step.Env) {
 					t.Errorf("%s: `--corroborate` is present but not bound to github.event.pull_request.number — "+
 						"it must corroborate THIS PR's diff, not a hardcoded PR", filepath.Base(wfPath))
 				}
@@ -138,6 +138,58 @@ func TestCorroborateIsWiredIntoStatusgenWorkflow(t *testing.T) {
 	if !found {
 		t.Skip("no workflow invokes `--corroborate --pr <pr>` — the human-stamp corroboration " +
 			"gate is not adopted in this repo's CI; nothing to pin")
+	}
+}
+
+// eventPRNumber is the expression for the triggering PR's own number.
+const eventPRNumber = "${{ github.event.pull_request.number }}"
+
+var prFromEnv = regexp.MustCompile(`--pr\s+"?\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?"?(\s|$)`)
+
+// prBoundToEvent reports whether a --corroborate run line passes the event's
+// own PR number to --pr. Two forms bind it: the expression inline, or a shell
+// variable the step's env sets to exactly that expression (the form GitHub
+// recommends, since nothing is interpolated into the script). A variable the
+// script itself assigns is refused, because the assignment could replace the
+// event's number before the guard runs.
+func prBoundToEvent(run string, env map[string]string) bool {
+	if strings.Contains(run, "--pr "+eventPRNumber) {
+		return true
+	}
+	m := prFromEnv.FindStringSubmatch(run)
+	if m == nil || env[m[1]] != eventPRNumber {
+		return false
+	}
+	reassigned := regexp.MustCompile(`(^|[\s;&|(])(export\s+|readonly\s+|declare\s+(-\S+\s+)*)?` + m[1] + `=`)
+	return !reassigned.MatchString(run)
+}
+
+// TestPRBindingForms pins prBoundToEvent: both binding forms pass, and a frozen
+// number, an env var bound to anything else, or a variable the script
+// reassigns all fail.
+func TestPRBindingForms(t *testing.T) {
+	ev := map[string]string{"PR_NUMBER": eventPRNumber}
+	cases := []struct {
+		name string
+		run  string
+		env  map[string]string
+		want bool
+	}{
+		{"inline expression", "statusgen --corroborate --pr " + eventPRNumber, nil, true},
+		{"env quoted braces", `statusgen --corroborate --pr "${PR_NUMBER}"`, ev, true},
+		{"env bare", "statusgen --corroborate --pr $PR_NUMBER", ev, true},
+		{"frozen number", "statusgen --corroborate --pr 223", ev, false},
+		{"env unset", `statusgen --corroborate --pr "${PR_NUMBER}"`, nil, false},
+		{"env frozen", `statusgen --corroborate --pr "${PR_NUMBER}"`, map[string]string{"PR_NUMBER": "223"}, false},
+		{"env other event field", `statusgen --corroborate --pr "${PR_NUMBER}"`, map[string]string{"PR_NUMBER": "${{ github.event.number }}x"}, false},
+		{"script reassigns", "PR_NUMBER=223\nstatusgen --corroborate --pr \"${PR_NUMBER}\"", ev, false},
+		{"script exports", "export PR_NUMBER=223; statusgen --corroborate --pr $PR_NUMBER", ev, false},
+		{"other var named", `statusgen --corroborate --pr "${PR}"`, ev, false},
+	}
+	for _, c := range cases {
+		if got := prBoundToEvent(c.run, c.env); got != c.want {
+			t.Errorf("%s: prBoundToEvent = %v, want %v", c.name, got, c.want)
+		}
 	}
 }
 

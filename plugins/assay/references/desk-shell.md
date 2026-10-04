@@ -210,17 +210,19 @@ established` (the cell or role marker is missing from THIS shell); a gateway-unr
 (the plane is not enabled here, or the address is unset). Exit **3** disabled · **4**
 rate-limited · **5** refused · **6** unverifiable.
 
-**Correct form.** Export the markers in the SAME chain as the verb (§Loop and session markers),
+**Correct form (enabled lane only).** Export the markers in the SAME chain as the verb (§Loop and session markers),
 then ONE send with the kind on the payload's first line:
 
 ```
 printf '%s\n' 'request-act' '<the one action, plus its evidence pointers>' \
   | deskcomms send --to <role> --verb handoff --ref <issue-or-pr-id>
-deskcomms poll            # every sweep: read your own lane
+deskcomms poll            # every sweep after cutover: read your own lane
 deskcomms ack <id>        # once acted on
 ```
 
-Before the cell's comms plane is enabled (a human-gated cutover; config-off until then) every
-verb refuses, and the harness's same-box session channel is the pre-cutover fallback only: a
-hand-off it carried is recorded in the hand-off note, and the channel is retired the moment the
-cutover is recorded.
+Select the transport from the project's recorded cutover state before invoking a comms verb.
+The shared "Cross-desk hand-offs — the lane verbs" skill block owns the pre-cutover branch,
+including skipping `poll` while explicitly config-off and continuing the work-queue sweep.
+Absent identity or gateway configuration alone is not evidence that this branch applies;
+a failed enabled lane never permits fallback. Unknown or conflicting state stops comms only, not
+the work-queue sweep; the block names where the record is read and how an absent key reads.

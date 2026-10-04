@@ -329,14 +329,16 @@ func presentObligations(verifySection string) map[string]bool {
 }
 
 // branchChangedSet computes this branch's three-dot diff against origin/main,
-// reusing the consumer-routing helpers (pinConsumerBase + changedPathsSince) so
-// no new diff machinery is added. Returns (set, true) on success; (nil, false)
-// when the diff is UNAVAILABLE — no git dir, an unresolvable base, a shallow
+// reusing the consumer-routing diff helper (changedPathsSince) so no new diff
+// machinery is added; the base comes from mergeBaseExact. Returns (set, true)
+// on success; (nil, false) when the diff is UNAVAILABLE — no git dir, an unresolvable base, a shallow
 // clone. A false is a COULD-NOT-CHECK, never "nothing changed". A package-level
 // var so tests can inject a diff (or a could-not-check) without a git fixture.
 var branchChangedSet = func(root string) (map[string]bool, bool) {
-	base, err := pinConsumerBase(root, remoteMainRef)
-	if err != nil {
+	// A FIXED base: resolved through mergeBaseExact, never handed to git by
+	// name (an absent exact ref would otherwise expand into another namespace).
+	base := mergeBaseExact(root, remoteMainRef)
+	if base == "" {
 		return nil, false
 	}
 	paths, err := changedPathsSince(root, base)
