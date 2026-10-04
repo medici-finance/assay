@@ -16,6 +16,7 @@ issues: [628, 1573, 1203, 655, 676, 677]
 schema: brief-v2
 authored: 2026-09-16 by desktools-v2 authoring session
 sources:
+  - "#2111 — Cobra/Viper adoption; CLI compatibility amendment 2026-10-03 (spec §9)"
   - "docs/streams/desktools-v2/spec.md §2 Principle 1 CUSTODY — explicit role credentials, per-repo identity, no ambient fallback"
   - "tools/desk/cmd/cellctl/shims.go — Go-generated POSIX wrappers resolve CELLCTL_GH_AMBIENT before HOME swap; observed 2026-10-01"
   - "tools/desk/cmd/deskdispatch/inheritedtokengitlab_test.go — custody PAT chosen over inherited non-role PAT; unreadable custody refuses before claim"
@@ -36,7 +37,7 @@ consumers:
   - "native Windows cellctl wrappers: out-of-scope (cellctl-windows owns native host wrappers; this brief pins credential selection semantics without claiming POSIX shims run on Windows)"
   - "token minting/authentication: out-of-scope (forge-neutral owns HOW credentials authenticate; this brief owns WHICH repository/role they target)"
   - "earlier repaired shim and dispatch regressions: follow-up desktools-v2/14 (regression floor; closed reports are not this brief's premise)"
-version: 3
+version: 4
 id: 2808921b-f587-499f-abe8-e87b63dddea6
 ---
 
@@ -104,6 +105,10 @@ requires ambient fallback or weakens refuse-if-unminted, STOP and file needs-dec
    use a hermetic Go seam, not a POSIX runtime. Keep existing GitLab refusal tests.
 6. Add a class guard covering all credential-selection sites, with a planted second ambient
    fallback that must fail. Report migrated surfaces and the same-script ban count before/after.
+
+## Cobra/Viper integration — existing custody remains authoritative
+
+Keep repo/role and credential-source selection in deskkit and the explicit shim/dispatch custody paths. CLI migration is owned by the concrete children authored by desktools-v2/15 and by desktools-v2/16 for cellctl. Record these consumers in cli-migration.json when /15 lands. Viper may resolve permitted inputs but must never let ambient environment/config override a file-only roster decision or revive the fallback this brief removes. Carry the existing GitHub/GitLab negative custody cases through the new command adapter; do not create a parallel parser to deliver this brief.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |

@@ -693,8 +693,12 @@ human ruling re-derived from scratch each time.
 ## Rules (inherited)
 
 - **Receipt on a human-typed message.** After ANY human-typed message, the FIRST line of your turn is
-  `deskack "<your one-line reading>"` (role from `$DESK_LOOP`; add `--repo <repo>` when it concerns
-  one), then act. It is the ONE acknowledgement line the silent output floor permits — not narration,
+  `deskack --repo <repo> "<your reading in at most 12 words>"`
+  (role from `$DESK_LOOP`; omit `--repo <repo>` when no repo is named), then act.
+  Put flags before the quoted text. A usage error (exit 2) writes no receipt: correct the
+  flags or shorten the text and re-run before continuing. Guard, identity, and storage
+  failures still stop the pass; never bypass them.
+  It is the ONE acknowledgement line the silent output floor permits — not narration,
   and a second acknowledgement line is a violation. Say what you UNDERSTOOD, never a quote, so a
   misread is corrected on your next turn. To hand work to another desk, address its LANE —
   `deskcomms send --to <role> --verb <verb>` for a routine hand-off (§Cross-desk hand-offs),
