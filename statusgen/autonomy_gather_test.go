@@ -171,7 +171,7 @@ func TestAutonomyGatesEmptyWindow(t *testing.T) {
 
 // An explicit empty rollup is a PR with no code gates (counted against the
 // gated share), not an unreadable one.
-func TestAutonomyGatesExplicitEmptyRollup(t *testing.T) {
+func TestAutonomyGatesEmptyRollup(t *testing.T) {
 	root, _ := autonomyGHFixture(t, `[{"number":11,"mergedAt":"2026-07-03T12:00:00Z"}]`, `{"statusCheckRollup":[]}`)
 	since, until := autonomyWindow(t)
 	prs, ok, cause := autonomyGates(root, since, until)
