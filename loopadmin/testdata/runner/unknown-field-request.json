@@ -1,0 +1,13 @@
+{
+  "version": "loop-admin-runner/v1",
+  "caller": "desk-worker",
+  "id": "inv-0004",
+  "mode": "standing-desk",
+  "desk": { "binding_id": "binding-1" },
+  "packet": { "role": "worker", "ref": "packets/worker-v1", "trust": "operator" },
+  "profile": { "id": "profile-a", "model": "model-a", "tools": [] },
+  "workspace": "workspaces/w1",
+  "authority": { "key": "claim/desk-1", "generation": 1, "validated_by": "claim-store" },
+  "budget": { "id": "res-1", "scope": "launch", "max_tokens": 10 },
+  "must_honor": true
+}

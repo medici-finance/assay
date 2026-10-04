@@ -198,7 +198,7 @@ Runner ≠ implementer. Own temp worktree off origin/main, `KUBECONFIG=/dev/null
 `RISK-VALUE: DERIVED` — placeholder-sha256 = 64 zero-hex-digits @ examples/adopter-scaffold/.assay-versions (as merged in this brief's own PR, currently absent from main — see row 7 FAIL) — correct by construction: an all-zero digest cannot collide with any real release hash, and the brief's own ground rules require a clearly-marked placeholder here, never a real hash. This is illustrative documentation only (never read by an install/verify path), so it carries no operational risk on its own; the actual irreversible act this brief's `gate: human`/`irreversible: yes` answers is the human-only publish of the two new release assets under the existing pinned-hash contract, which this diff does not itself perform.
 
 **VERIFY: FAIL — row 7.** Rows 1-6, 4a all PASS. Row 8 is only meaningful run on the implementer's own branch (recording as could-not-meaningfully-check on a post-merge worktree, not a real pass or fail). Per frontmatter `gate: human`, `irreversible: yes`: this verifier does not sign off and status does not change regardless of the FAIL. Status stays `implemented`; re-run row 7 once the pin-restoration fix lands.
-### Verify pass 2026-09-22 (non-implementer, VERIFY: PASS — gate:human irreversible, held at implemented, routes to human gate #322)
+### Verify pass 2026-09-22 (non-implementer, VERIFY: PASS — gate:human irreversible, ~~held at implemented, routes to human gate #322~~; correction 2026-10-03: #322 is the closed cross-compile defect, not a gate — the gate:human sign-off is the verify-gate card)
 
 Runner: `claude-opus-4-8[1m]` (non-implementer). Merged main `6204bb4f1eacc0229f2a86c8e0dce59edabdd22a`. Offline (`KUBECONFIG=/dev/null`; build/grep only, no release run). gate: human, risk {irreversible: yes}.
 
@@ -318,7 +318,7 @@ Notes:
 - The rows 2 and 5 check-definition defect from the 2026-09-28 pass is gone: after the 2026-09-27 re-authoring the witness runs every row as written. Row 8 now reports 5 corroborated, 0 disproved, 0 unchecked.
 - Published release v1.0.29 (read-only): 6 windows assets (statusgen, qualgen, desk-tools; amd64 and arm64). All 6 were downloaded; each passes `shasum -c` against checksums.txt and equals the API digest, and plugins/assay/paired-versions.yaml lines 42-43 and 67-68 pin exactly those digests.
 - For the driver: both go/no-go decision issues (#452 "ratified", #1148 "go") were closed by a human account acting as itself. The frontmatter records no `decision-issue:`, so lint prints a NOTICE; adding `decision-issue: 1148` clears it (metadata only).
-- For the driver: windows/arm64 is build-only per the brief. The arm64 assets are proven built, named and sha256-matched, but none has run on a native Windows-on-ARM host (the native smoke job is held with `if: false`).
+- For the driver: windows/arm64 is build-only per the brief. The arm64 assets are proven built, named and sha256-matched, but none has run on a native Windows-on-ARM host (the native smoke job is held with `if: false`, tracked by #2091).
 
 VERIFY: PASS
 

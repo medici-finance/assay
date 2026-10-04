@@ -23,7 +23,7 @@ sources:
 consumers:
   - "plugins/assay/skills/worker-desk/SKILL.md (task spec: body carries the trailer): follow-up derived-board/05"
   - "plugins/assay/skills/pr-review-desk/SKILL.md (bounce a PR without a trailer): follow-up derived-board/05"
-version: 1
+version: 2
 id: 2cac023b-d17a-4f97-a440-546d95a5f5de
 ---
 
@@ -78,7 +78,7 @@ facts:
 | 3 | `cd statusgen && go test . -run PRLink -count=1` | `ok` |
 | 4 | `printf 'body with no trailer\n' > /tmp/b.md; cd tools/desk && go run ./cmd/deskpr create --title t --body-file /tmp/b.md --root ../..; echo rc=$?` | `rc=5`; stderr contains `Brief: <stream>/<NN>` |
 | 5 | `printf 'Brief: derived-board/02\nBrief: derived-board/03\n' > /tmp/b.md; cd tools/desk && go run ./cmd/deskpr create --title t --body-file /tmp/b.md --root ../..; echo rc=$?` | `rc=5`; stderr mentions duplicate |
-| 6 | `grep -rn -E -e '--no-brief' -e 'SKIP_TRAILER' -e 'skip-trailer' tools/desk/ \| wc -l` | `0` (no bypass surface) — mutation row: add one and row 2 must fail |
+| 6 | `{ grep -rn -E -e '--no-brief' -e 'SKIP_TRAILER' -e 'skip-trailer' tools/desk/ \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0` (no bypass surface) — mutation row: add one and row 2 must fail. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. |
 | 7 | `grep -n 'Brief:' docs/desk-tools/deskpr.md` | documented |
 
 ## Evidence

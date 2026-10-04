@@ -79,8 +79,7 @@ func grandfatheredIDs(root string) map[string]bool {
 				continue
 			}
 			// Read the file's YAML frontmatter from the merge-base git tree.
-			showCmd := exec.Command("git", "-C", root, "show", base+":"+line)
-			showOut, err := showCmd.Output()
+			showOut, err := gitShowObject(root, base, line)
 			if err != nil {
 				continue
 			}

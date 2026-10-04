@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -85,7 +84,7 @@ func productionStreamBaseIsActive(root, relpath string) bool {
 	if base == "" {
 		return false
 	}
-	out, err := exec.Command("git", "-C", root, "show", base+":"+relpath).Output()
+	out, err := gitShowObject(root, base, relpath)
 	if err != nil {
 		return false
 	}

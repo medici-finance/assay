@@ -235,3 +235,133 @@ func TestGlobalCellRegistryKeepsHookDeadline(t *testing.T) {
 		}
 	}
 }
+
+// Exercise the actual launch entrypoints and policy routing, without starting desks.
+func TestBinaryCodexCadenceDefault(t *testing.T) {
+	f := newPolicyFixture(t, "2.1.278")
+	for _, tc := range []struct {
+		name, role string
+		args       []string
+		want       string
+	}{
+		{"policy-codex", "intake-desk", nil, "interval=5m0s budget=20m0s"},
+		{"policy-claude", "pr-review-desk", nil, ""},
+		{"off", "intake-desk", []string{"--cadence", "off"}, ""},
+		{"override", "intake-desk", []string{"--cadence", "9m", "--tick-budget", "40m"}, "interval=9m0s budget=40m0s"},
+		{"budget-only", "intake-desk", []string{"--tick-budget", "40m"}, "interval=5m0s budget=40m0s"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := f.dryRunDesk(t, tc.role, tc.args...)
+			if r.code != 0 {
+				t.Fatalf("exit=%d: %s%s", r.code, r.stdout, r.stderr)
+			}
+			if tc.want == "" {
+				if strings.Contains(r.stdout, "[cadence]") {
+					t.Fatalf("unexpected cadence: %s", r.stdout)
+				}
+			} else if !strings.Contains(r.stdout, tc.want) {
+				t.Fatalf("missing %q: %s", tc.want, r.stdout)
+			}
+		})
+	}
+	// Saved opt-out has the same precedence as an explicit one; a flag can override it.
+	path := filepath.Join(f.cellDir, "cell.env")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(b, []byte("CELL_CADENCE=off\nCELL_TICK_BUDGET=40m\n")...), 0600); err != nil {
+		t.Fatal(err)
+	}
+	r := f.dryRunDesk(t, "intake-desk")
+	if r.code != 0 || strings.Contains(r.stdout, "[cadence]") {
+		t.Fatalf("saved off: %+v", r)
+	}
+	r = f.dryRunDesk(t, "intake-desk", "--cadence", "7m")
+	if r.code != 0 || !strings.Contains(r.stdout, "interval=7m0s budget=40m0s") {
+		t.Fatalf("flag precedence: %+v", r)
+	}
+}
+
+func TestBinaryUpCadenceFollowsEachPolicyHarness(t *testing.T) {
+	f := newPolicyFixture(t, "2.1.278")
+	for _, name := range []string{"codex", "tmux"} {
+		if err := os.WriteFile(filepath.Join(f.binDir, name), []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := f.run(t, []string{"DRY_RUN=1"}, "up", "example", "--cockpit", "tmux")
+	if r.code != 0 {
+		t.Fatalf("up: %+v", r)
+	}
+	for _, role := range knownRoles {
+		found := false
+		for _, line := range strings.Split(r.stdout, "\n") {
+			if !strings.HasPrefix(line, "[dry-run] "+role+":") {
+				continue
+			}
+			found = true
+			if role == "intake-desk" {
+				for _, want := range []string{"--cadence '5m0s'", "--tick-budget '20m0s'", "--cells-root " + cockpitQuote(f.cellsRoot)} {
+					if !strings.Contains(line, want) {
+						t.Errorf("missing %q: %s", want, line)
+					}
+				}
+			} else if strings.Contains(line, "--cadence") {
+				t.Errorf("changed non-Codex role: %s", line)
+			}
+		}
+		if !found {
+			t.Errorf("missing role %s: %s", role, r.stdout)
+		}
+	}
+}
+
+func TestDeskCadenceDefaultsStayScoped(t *testing.T) {
+	for _, kind := range []string{"house", "container", "scrubbed", "k8s"} {
+		for _, harness := range []string{"codex", "claude", "cursor"} {
+			c := resolveDeskCadence(kind, harness, "", "")
+			want := kind == "house" && harness == "codex"
+			if (c != nil) != want {
+				t.Errorf("%s/%s cadence=%+v", kind, harness, c)
+			}
+		}
+	}
+}
+
+func TestBinaryLegacyCodexCadenceDefault(t *testing.T) {
+	f := newPolicyFixture(t, "2.1.278")
+	if err := os.WriteFile(filepath.Join(f.binDir, "herdr"), []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(f.cellDir, "cell.env")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = []byte(strings.ReplaceAll(string(b), "CELL_MODEL_POLICY=model-policy.json\n", "") + "CELL_HARNESS=codex\nCODEX_MODEL_default=gpt-6.1-sol\n")
+	if err := os.WriteFile(path, b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	r := f.dryRunDesk(t, "worker-desk")
+	if r.code != 0 || !strings.Contains(r.stdout, "interval=5m0s budget=20m0s") {
+		t.Fatalf("saved harness: %+v", r)
+	}
+	r = f.dryRunDesk(t, "worker-desk", "--harness", "claude", "--model", "claude-sonnet-4-6")
+	if r.code != 0 || strings.Contains(r.stdout, "[cadence]") {
+		t.Fatalf("explicit other harness: %+v", r)
+	}
+	r = f.run(t, []string{"DRY_RUN=1"}, "up", "example", "--cockpit", "herdr", "--harness", "codex")
+	if r.code != 0 {
+		t.Fatalf("explicit Codex up: %+v", r)
+	}
+	for _, line := range strings.Split(r.stdout, "\n") {
+		if strings.HasPrefix(line, "[dry-run]") && strings.Contains(line, " desk ") && !strings.Contains(line, "--cadence '5m0s'") {
+			t.Errorf("unscheduled role: %s", line)
+		}
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || string(after) != string(b) {
+		t.Fatal("default resolution changed cell.env")
+	}
+}

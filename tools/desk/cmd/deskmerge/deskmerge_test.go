@@ -103,8 +103,8 @@ func TestConflictRefusal(t *testing.T) {
 			t.Fatalf("check must name the conflict:\n%s", out)
 		}
 		w.assertNoPush(t)
-		for _, c := range *w.ghAll {
-			if len(c) > 0 && c[0] == "api" {
+		for _, c := range *w.forgeOps {
+			if len(c) > 0 && c[0] == "ListCommentsTyped" {
 				t.Fatalf("check fetched an authorization artifact — reading is not authorship "+
 					"and must not consult the ruling gate: %v", c)
 			}
@@ -453,23 +453,14 @@ func TestRulingGateRefusesANonHumanSignOff(t *testing.T) {
 		{"an App artifact", "assay-desk-app[bot]", 300000001, "Bot"},
 		{"a trusted automation account reporting type=User", "shared-agent", 2002, "User"},
 		{"the right login with the wrong id", blessLogin, 9999, "User"},
+		{"an actor type the forge did not report (could-not-check, never User)", blessLogin, blessID, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			withScratchTemp(t)
 			w := newWorld(t, map[string]string{"pr.txt": "a\n"}, map[string]string{"main.txt": "b\n"})
 			w.install(t, defaultPR(), true)
-			inner := runGH
-			runGH = func(args ...string) (string, error) {
-				if len(args) > 0 && args[0] == "api" {
-					return `{"id":1,"html_url":"` + signOffURL + `",` +
-						`"issue_url":"https://api.github.com/repos/medici-finance/assay/issues/444",` +
-						`"body":"accepted","user":{"login":"` + tc.login + `","id":` +
-						itoa(tc.id) + `,"type":"` + tc.typ + `"}}`, nil
-				}
-				return inner(args...)
-			}
-			t.Cleanup(func() { runGH = inner })
+			w.signOff.Author = deskkit.Account{Login: tc.login, ID: int64(tc.id), Type: tc.typ}
 			rul := w.rulingsFile(t, signOffURL)
 
 			code, out := cli(verbMerge, "-R", testRepo, "7", "--repo-root", w.root, "--rulings", rul)
@@ -523,12 +514,9 @@ func TestNeverMergesToMainOrCallsGhMerge(t *testing.T) {
 		if code, out := cli(verbMerge, "-R", testRepo, "7", "--repo-root", w.root, "--rulings", rul); code != 0 {
 			t.Fatalf("want exit 0, got %d\n%s", code, out)
 		}
-		for _, c := range *w.ghAll {
-			joined := strings.Join(c, " ")
-			for _, forbidden := range []string{"merge", "ready", "-X", "--method"} {
-				if strings.Contains(joined, forbidden) {
-					t.Fatalf("deskmerge made a mutating gh call (%q): %v", forbidden, c)
-				}
+		for _, c := range *w.forgeOps {
+			if len(c) == 0 || (c[0] != "GetPullRequest" && c[0] != "ListCommentsTyped") {
+				t.Fatalf("deskmerge issued a forge op outside its two reads: %v", c)
 			}
 		}
 		if got := w.remoteBranchSHA(t, "main"); got != w.baseSHA {
@@ -554,8 +542,11 @@ func TestFlipBoundAndClosedPRs(t *testing.T) {
 		{"closed", prStub{State: "CLOSED", IsDraft: true, HeadRefName: "pr-branch"}, deskkit.ExitRefused},
 		{"an unrecognised state is could-not-check, not open",
 			prStub{State: "WEIRD", IsDraft: true, HeadRefName: "pr-branch"}, deskkit.ExitUnverifiable},
-		{"a fork head", prStub{State: "OPEN", IsDraft: true, IsCrossRepository: true, HeadRefName: "pr-branch"},
+		{"a fork head", prStub{State: "OPEN", IsDraft: true, CrossRepo: deskkit.CrossRepoFork, HeadRefName: "pr-branch"},
 			deskkit.ExitRefused},
+		{"an unreported head repository is could-not-check, not same-repo",
+			prStub{State: "OPEN", IsDraft: true, CrossRepo: crossRepoUnreported, HeadRefName: "pr-branch"},
+			deskkit.ExitUnverifiable},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1224,19 +1215,10 @@ func TestRulingGateEdgeCases(t *testing.T) {
 		withScratchTemp(t)
 		w := newWorld(t, map[string]string{"pr.txt": "a\n"}, map[string]string{"main.txt": "b\n"})
 		w.install(t, defaultPR(), true)
-		inner := runGH
-		runGH = func(args ...string) (string, error) {
-			if len(args) > 0 && args[0] == "api" {
-				// login AND id are the blessing authority's; only the TYPE says App.
-				// Without the type check this authorizes, which is why the two
-				// conditions are independent rather than one.
-				return `{"id":1,"html_url":"` + signOffURL + `",` +
-					`"issue_url":"https://api.github.com/repos/medici-finance/assay/issues/444",` +
-					`"body":"accepted","user":{"login":"` + blessLogin + `","id":2001,"type":"Bot"}}`, nil
-			}
-			return inner(args...)
-		}
-		t.Cleanup(func() { runGH = inner })
+		// login AND id are the blessing authority's; only the TYPE says App. Without the
+		// type check this authorizes, which is why the two conditions are independent
+		// rather than one.
+		w.signOff.Author = deskkit.Account{Login: blessLogin, ID: 2001, Type: "Bot"}
 		rul := w.rulingsFile(t, signOffURL)
 		code, out := cli(verbMerge, "-R", testRepo, "7", "--repo-root", w.root, "--rulings", rul)
 		if code != deskkit.ExitRefused {

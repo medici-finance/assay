@@ -1,0 +1,13 @@
+{
+  "version": "loop-admin-runner/v1",
+  "caller": "controller",
+  "id": "inv-0002",
+  "mode": "workflow-stage",
+  "work": { "work_id": "work-7", "node_id": "node-3", "attempt_id": "attempt-1" },
+  "packet": { "role": "reviewer", "ref": "packets/reviewer-v1", "trust": "operator" },
+  "profile": { "id": "profile-a", "model": "model-a", "tools": ["read"] },
+  "workspace": "workspaces/w2",
+  "authority": { "key": "attempt/work-7/node-3", "generation": 1, "validated_by": "admission" },
+  "budget": { "id": "res-2", "scope": "request", "max_cost_micros": 500000 },
+  "require": ["cancel-ack"]
+}
