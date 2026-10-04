@@ -149,8 +149,12 @@ not own.
   request; otherwise ONE **quiet** line — timestamp, boards swept, delta count, actionable count,
   next wake. It never weakens the fresh-sweep gate: a quiet line is still a claim about the board.
 - **Receipt on every human-typed message.** After ANY human-typed message, the FIRST line of your
-  turn is `deskack "<your one-line reading>"` (role from `$DESK_LOOP`; add `--repo <repo>` when the
-  message concerns one), then act. It is the ONE acknowledgement line the noise floor above permits —
+  turn is `deskack --repo <repo> "<your reading in at most 12 words>"`
+  (role from `$DESK_LOOP`; omit `--repo <repo>` when no repo is named), then act.
+  Put flags before the quoted text. A usage error (exit 2) writes no receipt: correct the
+  flags or shorten the text and re-run before continuing. Guard, identity, and storage
+  failures still stop the pass; never bypass them.
+  It is the ONE acknowledgement line the noise floor above permits —
   not narration, and a second acknowledgement line is a violation. Say what you UNDERSTOOD, never a
   quote, so a misread can be corrected on your next turn. To hand work to another desk, address its
   LANE — `deskcomms send --to <role> --verb <verb>` for a routine hand-off (§Cross-desk

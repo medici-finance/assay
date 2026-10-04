@@ -367,7 +367,10 @@ func cmdRoleInit(args []string) (err error) {
 	// --no-fetch is the explicit opt-out for an offline checkout or a fixture whose origin is
 	// not reachable; it is never the default.
 	if !p.noFetch {
-		if _, ferr := runGit(dir, "fetch", "--no-tags", "origin", "main"); ferr != nil {
+		if ferr := fetchRoleBase(dir, p.role, repo, roleCredUser(p.role)); ferr != nil {
+			if deskkit.ExitCodeOf(ferr) != deskkit.ExitUnverifiable {
+				return ferr
+			}
 			return deskkit.Unverifiable("cannot fetch origin/main for "+dir+" — a role worktree starts from a "+
 				"FRESH origin/main; fix the fetch, or pass --no-fetch to cut it from the local origin/main as-is", ferr)
 		}

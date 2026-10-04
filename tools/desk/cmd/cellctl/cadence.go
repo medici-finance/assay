@@ -19,6 +19,15 @@ import (
 
 type cadenceOptions struct{ Interval, Budget time.Duration }
 
+// Defaults apply only after the role's model policy has selected its harness.
+// Explicit durations and "off" retain precedence; other harnesses/kinds are unchanged.
+func resolveDeskCadence(kind, harness, interval, budget string) *cadenceOptions {
+	if kind == "house" && harness == "codex" && interval == "" {
+		interval = "5m"
+	}
+	return resolveCadence(kind, interval, budget)
+}
+
 func resolveCadence(kind, interval, budget string) *cadenceOptions {
 	if interval == "" || interval == "off" {
 		if budget != "" && interval != "off" {
