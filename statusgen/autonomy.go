@@ -63,6 +63,44 @@ import (
 
 const defaultAutonomyWindowDays = 28
 
+// The gate-share read is bounded: a metadata listing capped at
+// autonomyGateListLimit rows, then one rollup read per in-window PR, all under
+// one shared autonomyGateDeadline (a var so tests can drive the deadline path).
+const autonomyGateListLimit = 500
+
+var autonomyGateDeadline = 2 * time.Minute
+
+// Causes autonomyGates names when it cannot return the complete window. Each
+// one surfaces as its OWN unmeasured reason, so "the window is too big for the
+// reader" never reads the same as "the token is wrong".
+const (
+	gateCauseListingCap = "listing-cap"
+	gateCauseDeadline   = "deadline"
+	gateCauseGHFailed   = "gh-failed"
+	gateCauseMalformed  = "malformed"
+)
+
+// gateCauses is the closed set of named causes. Every ok=false return in
+// autonomyGates must name a member (pinned by TestGateFailuresNameCause).
+var gateCauses = []string{gateCauseListingCap, gateCauseDeadline, gateCauseGHFailed, gateCauseMalformed}
+
+// gateUnmeasured maps a gate-read cause to the reason code and detail that both
+// consumers (the --autonomy axis and the --ladder rung) report.
+func gateUnmeasured(cause string, since, until time.Time) (reason, detail string) {
+	switch cause {
+	case gateCauseListingCap:
+		return cause, fmt.Sprintf("the merged-PR listing for %s..%s returned its full %d-row cap, so the window cannot be proven complete and is not classified; narrow the window with --since",
+			since.UTC().Format("2006-01-02"), until.UTC().Format("2006-01-02"), autonomyGateListLimit)
+	case gateCauseDeadline:
+		return cause, fmt.Sprintf("the merged-PR status-check rollups (one gh read per in-window PR) were not all read inside the %s deadline; narrow the window with --since", autonomyGateDeadline)
+	case gateCauseGHFailed:
+		return cause, "a gh command failed before the deadline (offline / unauthenticated / API error)"
+	case gateCauseMalformed:
+		return cause, "gh output did not have the expected shape (invalid JSON, a null listing, a missing statusCheckRollup field, or a non-positive PR number)"
+	}
+	return "gh-unreadable", "gh merged-PR status-check rollups could not be read completely (the reader named no cause)"
+}
+
 const autonomyAntiGamingNote = "Autonomy / token / gate-share are DIAGNOSTIC, per-project, for " +
 	"continuous improvement — never a target, an individual scorecard, or a cross-team comparison " +
 	"(Goodhart's law: a measure that becomes a target ceases to be a good measure). Token budgets " +
@@ -150,6 +188,7 @@ type autonomyInputs struct {
 	HumanLogins       map[string]bool
 	GateData          []autonomyGatePR
 	GateOK            bool
+	GateCause         string     // when !GateOK: a gateCauses member naming why
 	DayFile           *opDayFile // nil = no day-file found
 	DayFileDate       string     // the date of the day-file consumed (for self-citing)
 }
@@ -391,7 +430,7 @@ func computeAutonomy(in autonomyInputs) AutonomyReport {
 	// Axis 4 — deterministic-gate share (merged-PR status-check rollups).
 	gate := AutonomyAxis{
 		Key: "deterministic_gate_share", Name: "Deterministic-gate share (code gate vs model-judgment-only)",
-		Source: fmt.Sprintf("gh pr list --state merged --search merged:%s..%s --limit 500 --json number,mergedAt; gh pr view <in-window-number> --json statusCheckRollup", in.Since.UTC().Format("2006-01-02"), in.Until.UTC().Format("2006-01-02")),
+		Source: fmt.Sprintf("gh pr list --state merged --search %s --limit %d --json number,mergedAt; gh pr view <in-window-number> --json statusCheckRollup", gateSearch(in.Since, in.Until), autonomyGateListLimit),
 	}
 	if in.GateOK {
 		total := len(in.GateData)
@@ -415,8 +454,7 @@ func computeAutonomy(in autonomyInputs) AutonomyReport {
 		}
 	} else {
 		gate.Value = "unmeasured"
-		gate.Reason = "gh-unreadable"
-		gate.Detail = "gh merged-PR status-check rollups could not be read completely (offline / unauthenticated / timeout / listing cap)"
+		gate.Reason, gate.Detail = gateUnmeasured(in.GateCause, in.Since, in.Until)
 	}
 	rep.Axes = append(rep.Axes, gate)
 
@@ -475,34 +513,52 @@ var autonomyMergedAuthors = func(root string, since, until time.Time) ([]autonom
 	return authors, true
 }
 
+// gateSearch is the merged-date search qualifier for the gate-share listing:
+// full UTC timestamps (no reliance on the forge's day boundaries), widened to
+// whole seconds so it is a superset of [since, until]. The exact-timestamp
+// filter in autonomyGates then narrows it back to the window.
+func gateSearch(since, until time.Time) string {
+	lo := since.UTC().Truncate(time.Second)
+	hi := until.UTC().Truncate(time.Second)
+	if hi.Before(until.UTC()) {
+		hi = hi.Add(time.Second)
+	}
+	return fmt.Sprintf("merged:%s..%s", lo.Format(time.RFC3339), hi.Format(time.RFC3339))
+}
+
 // autonomyGates lists merged PRs (in window) with their status-check rollup
-// context names for the gate-share axis. ok=false on any gh failure.
-var autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR, bool) {
+// context names for the gate-share axis. On an incomplete read it returns
+// ok=false and a gateCauses member naming why — never a bare false.
+var autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR, bool, string) {
 	// Keep the nested rollup out of the bulk query. The date search reduces
 	// listing weight; exact timestamps below preserve the reporting window.
 	// One deadline bounds the whole read, not 500 independent timeouts.
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), autonomyGateDeadline)
 	defer cancel()
 	run := func(args ...string) ([]byte, error) {
 		cmd := exec.CommandContext(ctx, "gh", args...)
 		cmd.Dir = root
 		return cmd.Output()
 	}
-	const limit = 500
-	search := fmt.Sprintf("merged:%s..%s", since.UTC().Format("2006-01-02"), until.UTC().Format("2006-01-02"))
-	out, err := run("pr", "list", "--state", "merged", "--search", search,
-		"--limit", strconv.Itoa(limit), "--json", "number,mergedAt")
+	out, err := run("pr", "list", "--state", "merged", "--search", gateSearch(since, until),
+		"--limit", strconv.Itoa(autonomyGateListLimit), "--json", "number,mergedAt")
 	if err != nil {
-		return nil, false
+		if ctx.Err() != nil {
+			return nil, false, gateCauseDeadline
+		}
+		return nil, false, gateCauseGHFailed
 	}
 	var raw []struct {
 		Number   int       `json:"number"`
 		MergedAt time.Time `json:"mergedAt"`
 	}
-	if err := json.Unmarshal(out, &raw); err != nil || raw == nil || len(raw) >= limit {
+	if err := json.Unmarshal(out, &raw); err != nil || raw == nil {
+		return nil, false, gateCauseMalformed
+	}
+	if len(raw) >= autonomyGateListLimit {
 		// A full listing cannot prove completeness. Never classify its prefix
 		// as the whole window, even when all returned PRs have readable checks.
-		return nil, false
+		return nil, false, gateCauseListingCap
 	}
 	var out2 []autonomyGatePR
 	for _, p := range raw {
@@ -510,11 +566,14 @@ var autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR,
 			continue
 		}
 		if p.Number <= 0 {
-			return nil, false
+			return nil, false, gateCauseMalformed
 		}
 		out, err := run("pr", "view", strconv.Itoa(p.Number), "--json", "statusCheckRollup")
 		if err != nil {
-			return nil, false
+			if ctx.Err() != nil {
+				return nil, false, gateCauseDeadline
+			}
+			return nil, false, gateCauseGHFailed
 		}
 		var detail struct {
 			// A missing/null field is unreadable, not a PR with zero checks.
@@ -524,7 +583,7 @@ var autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR,
 			} `json:"statusCheckRollup"`
 		}
 		if err := json.Unmarshal(out, &detail); err != nil || detail.StatusCheckRollup == nil {
-			return nil, false
+			return nil, false, gateCauseMalformed
 		}
 		var names []string
 		for _, c := range *detail.StatusCheckRollup {
@@ -537,7 +596,7 @@ var autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR,
 		}
 		out2 = append(out2, autonomyGatePR{Number: p.Number, CheckNames: names})
 	}
-	return out2, true
+	return out2, true, ""
 }
 
 // loadOpDayFile finds the most recent opmetrics day-file on or before `until`
@@ -606,7 +665,7 @@ func gatherAutonomyInputs(root string, since, until, now time.Time) autonomyInpu
 	}
 	in := autonomyInputs{Since: since, Until: until, Now: now, HumanLogins: humans}
 	in.MergedAuthors, in.AuthorsOK = autonomyMergedAuthors(root, since, until)
-	in.GateData, in.GateOK = autonomyGates(root, since, until)
+	in.GateData, in.GateOK, in.GateCause = autonomyGates(root, since, until)
 	in.DayFile, in.DayFileDate = loadOpDayFile(root, until)
 	return in
 }
