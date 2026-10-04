@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -402,14 +404,14 @@ func jsonEqual(a, b interface{}) bool {
 // carrying a traversal (`..`) or separator renders BLIND — never a read of a file outside the roster
 // directory. holder is the claim Owner field, an `\S+`-unconstrained string parsed from a remote
 // dispatch claim, so it is session-influenced input; this is the read twin of deskroster set's
-// ValidSessionSegment write-side refusal.
+// portable roster-beacon write-side refusal.
 //
-// Fail-first: removing the `if !deskkit.ValidSessionSegment(holder)` guard in liveResourceSource
-// makes the `../decoy` holder read the decoy beacon and return its model ("leaked-model") instead
-// of could-not-check, and this test goes red. See scripts/mutate/desk-supervision-13.sh.
+// Replacing the shared reader with an unchecked path read makes ../decoy expose
+// its model instead of could-not-check, and this test goes red.
 func TestLiveResourceSourceRejectsHolderTraversal(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	rosterDir := home + "/.config/assay/roster"
 	if err := os.MkdirAll(rosterDir, 0o755); err != nil {
 		t.Fatalf("mkdir roster: %v", err)
@@ -443,5 +445,40 @@ func TestLiveResourceSourceRejectsHolderTraversal(t *testing.T) {
 	}
 	if got := src("worker-42"); string(got.Model) != `"real-model"` {
 		t.Errorf("valid holder: Model = %s, want %q", got.Model, "real-model")
+	}
+}
+
+func TestLiveResourceSourceStrictBeaconBoundary(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	dir := filepath.Join(home, ".config", "assay", "roster")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, input := range []string{`{"resource":{"model":"first"},"resource":{"model":"last"}}`, `{"resource":`, `null`, `[]`, `{"resource":{"model":"model"}} {}`} {
+		path := filepath.Join(dir, "holder.json")
+		if err := os.WriteFile(path, []byte(input), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if got := liveResourceSource()("holder"); string(got.Model) != string(couldNotCheckRaw) {
+			t.Fatalf("corrupt beacon accepted: %s: %+v", input, got)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil || string(data) != input {
+			t.Fatalf("beacon altered: %q %v", data, err)
+		}
+	}
+	// Names ordinary POSIX paths accept but the portable beacon boundary refuses.
+	for _, holder := range []string{"COM1", "holder.", "holder ", "holder:stream"} {
+		path := filepath.Join(dir, holder+".json")
+		if runtime.GOOS != "windows" {
+			if err := os.WriteFile(path, []byte(`{"resource":{"model":"must-not-read"}}`), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := liveResourceSource()(holder); string(got.Model) != string(couldNotCheckRaw) {
+			t.Fatalf("nonportable holder %q accepted: %+v", holder, got)
+		}
 	}
 }

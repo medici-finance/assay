@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -601,19 +602,24 @@ func cmdList() error {
 	}
 	entries, readErr := os.ReadDir(dir)
 	var beacons []Beacon
+	var snapshotErrors []error
 	if readErr == nil {
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			if !strings.HasSuffix(e.Name(), ".json") {
 				continue
 			}
 			b, err := loadBeacon(strings.TrimSuffix(e.Name(), ".json"))
 			if err != nil {
+				snapshotErrors = append(snapshotErrors, fmt.Errorf("cannot read beacon %s: %w", e.Name(), err))
 				continue
 			}
 			beacons = append(beacons, *b)
 		}
 	}
-	// If dir doesn't exist, beacons stays empty.
+	// An absent directory is empty; every other failure remains visible after the table.
+	if readErr != nil && !os.IsNotExist(readErr) {
+		snapshotErrors = append(snapshotErrors, fmt.Errorf("cannot read roster directory: %w", readErr))
+	}
 
 	// 2. Load claims.
 	claims, err := loadClaims()
@@ -685,12 +691,14 @@ func cmdList() error {
 	// Apply checked removals to the latest beacon, preserving concurrent writers.
 	for session, closed := range closedEntries {
 		if err := pruneBeacon(session, closed); err != nil {
-			return deskkit.Unverifiable("cannot auto-prune beacon", err)
+			snapshotErrors = append(snapshotErrors, fmt.Errorf("cannot auto-prune beacon %s: %w", session, err))
 		}
 	}
 
 	// 4. Print main table.
-	if len(rows) == 0 {
+	if len(rows) == 0 && len(snapshotErrors) > 0 {
+		fmt.Println("(registered work could-not-check; roster snapshot incomplete)")
+	} else if len(rows) == 0 {
 		fmt.Println("(no registered work)")
 	} else {
 		fmt.Printf("%-12s %-6s %-8s %s\n", "SESSION", "PR", "STATE", "WHAT")
@@ -764,7 +772,11 @@ func cmdList() error {
 
 	if len(unclaimed) > 0 {
 		fmt.Println()
-		fmt.Println("--- unclaimed (no session registered) ---")
+		if len(snapshotErrors) > 0 {
+			fmt.Println("--- ownership unverified (roster snapshot incomplete) ---")
+		} else {
+			fmt.Println("--- unclaimed (no session registered) ---")
+		}
 		fmt.Printf("%-12s %-6s %-8s %s\n", "SESSION", "PR", "STATE", "TITLE (repo)")
 		fmt.Printf("%-12s %-6s %-8s %s\n", "-------", "----", "------", "------------")
 		// Sort by PR number (they will all be unclaimed, ordering doesn't matter as much).
@@ -777,10 +789,17 @@ func cmdList() error {
 			if pr.IsDraft {
 				state = "draft"
 			}
-			fmt.Printf("%-12s #%-5d %-8s %s\n", "(none)", pr.Number, state, pr.Title)
+			owner := "(none)"
+			if len(snapshotErrors) > 0 {
+				owner = "(unknown)"
+			}
+			fmt.Printf("%-12s #%-5d %-8s %s\n", owner, pr.Number, state, pr.Title)
 		}
 	}
 
+	if len(snapshotErrors) > 0 {
+		return deskkit.Unverifiable("roster snapshot incomplete or pruning could-not-check", errors.Join(snapshotErrors...))
+	}
 	return nil
 }
 
