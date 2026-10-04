@@ -2,6 +2,8 @@ package streamview
 
 import (
 	"errors"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -132,6 +134,12 @@ func TestValidateRules(t *testing.T) {
 		{"evidence url newline", func(v *StreamView) {
 			v.Mission.Success[0].Evidence[0] = EvidenceRef{Kind: EvidenceURL, URL: "https://a.example/x\n<script>"}
 		}, "percent-encoded"},
+		{"evidence url raw parenthesis", func(v *StreamView) {
+			v.Mission.Success[0].Evidence[0] = EvidenceRef{Kind: EvidenceURL, URL: "https://a.example/x)[y](javascript:alert(1))"}
+		}, "percent-encoded"},
+		{"evidence url raw angle bracket", func(v *StreamView) {
+			v.Mission.Success[0].Evidence[0] = EvidenceRef{Kind: EvidenceURL, URL: "https://a.example/<script>"}
+		}, "percent-encoded"},
 		{"evidence url no host", func(v *StreamView) {
 			v.Mission.Success[0].Evidence[0] = EvidenceRef{Kind: EvidenceURL, URL: "https:///path"}
 		}, "with a host"},
@@ -180,6 +188,67 @@ func TestPinnedRevisionsAccepted(t *testing.T) {
 	v.Evidence.Items = []EvidenceItem{{Claim: "c", Ref: v.Mission.Success[0].Evidence[0], Revision: testRev, ObservedAt: testNow, Verification: "verified"}}
 	if err := v.Validate(); err != nil {
 		t.Fatalf("full commit ids must validate: %v", err)
+	}
+}
+
+// TestValidURLsAccepted is the positive control for the URL cases above: an
+// https URL with a host, query and fragment, and one with its delimiters
+// percent-encoded, validate — so each rejection is the named rule firing.
+func TestValidURLsAccepted(t *testing.T) {
+	for _, u := range []string{
+		"https://example.org/streams/shared?x=1#top",
+		"https://example.org/wiki/A_%28b%29",
+	} {
+		v := validView()
+		v.Mission.Success[0].Evidence[0] = EvidenceRef{Kind: EvidenceURL, URL: u}
+		if err := v.Validate(); err != nil {
+			t.Errorf("%s: want valid, got %v", u, err)
+		}
+	}
+}
+
+// checkedRevisionFields is the allow-list for TestRevisionFieldsAreChecked:
+// every field named Revision anywhere in StreamView, each of which Validate
+// runs through ValidRevision and TestValidateRules corrupts.
+var checkedRevisionFields = []string{
+	"Decision.Revision",
+	"EvidenceItem.Revision",
+	"SourceRef.Revision",
+}
+
+// TestRevisionFieldsAreChecked is the class guard for "a revision the doc
+// says is a full commit id, but Validate never checks". It walks the
+// StreamView type graph and fails on any Revision field not on the
+// allow-list, so a new revision-bearing type cannot ship without its check
+// and its negative case.
+func TestRevisionFieldsAreChecked(t *testing.T) {
+	got := map[string]bool{}
+	seen := map[reflect.Type]bool{}
+	var walk func(reflect.Type)
+	walk = func(ty reflect.Type) {
+		for ty.Kind() == reflect.Slice || ty.Kind() == reflect.Pointer || ty.Kind() == reflect.Map {
+			ty = ty.Elem()
+		}
+		if ty.Kind() != reflect.Struct || seen[ty] {
+			return
+		}
+		seen[ty] = true
+		for i := 0; i < ty.NumField(); i++ {
+			f := ty.Field(i)
+			if f.Name == "Revision" {
+				got[ty.Name()+"."+f.Name] = true
+			}
+			walk(f.Type)
+		}
+	}
+	walk(reflect.TypeOf(StreamView{}))
+	found := make([]string, 0, len(got))
+	for k := range got {
+		found = append(found, k)
+	}
+	sort.Strings(found)
+	if !reflect.DeepEqual(found, checkedRevisionFields) {
+		t.Fatalf("revision-bearing fields %v, allow-list %v: check each new one with ValidRevision in Validate, add a negative case to TestValidateRules, then list it", found, checkedRevisionFields)
 	}
 }
 

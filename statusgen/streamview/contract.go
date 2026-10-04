@@ -383,8 +383,10 @@ func (m Mission) validate() []error {
 	return errs
 }
 
-// BriefRef is one brief as the source records it. Num and Status are copied
-// verbatim from the source — never normalised or re-derived.
+// BriefRef is one brief as statusgen's model records it. Num is copied
+// verbatim; Status is the value statusgen's brief parser produced (the table
+// cell trimmed and lower-cased, the same value the board uses) — never
+// re-derived.
 type BriefRef struct {
 	// ID is the stream-qualified brief id, "<slug>/<num>"; the repository is
 	// the view's Key.Repo.

@@ -214,7 +214,7 @@ identity)
 	;;
 negative)
 	case_tests negative TestStreamViewNegative TestStreamViewLintRun
-	case_unit '^(TestDecodeVersionHandling|TestNegotiate|TestValidateRules|TestPinnedRevisionsAccepted)$' TestDecodeVersionHandling TestNegotiate TestValidateRules TestPinnedRevisionsAccepted
+	case_unit '^(TestDecodeVersionHandling|TestNegotiate|TestValidateRules|TestPinnedRevisionsAccepted|TestValidURLsAccepted|TestRevisionFieldsAreChecked)$' TestDecodeVersionHandling TestNegotiate TestValidateRules TestPinnedRevisionsAccepted TestValidURLsAccepted TestRevisionFieldsAreChecked
 	;;
 flow)
 	case_tests flow TestStreamViewFlow
