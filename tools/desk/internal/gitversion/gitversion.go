@@ -1,7 +1,7 @@
 // Package gitversion is the shared git-version guard for tests that depend on a git feature
 // newer than the oldest git a supported host (or a Linux verify witness image) may ship.
 //
-// A test that needs, say, `git --attr-source` (git 2.40) or the empty-entry multi-valued
+// A test that needs, say, `git --attr-source` (git 2.41) or the empty-entry multi-valued
 // config reset (git 2.46) fails on an older git for the WRONG reason: a usage error or a
 // silently-ignored config entry, not the behaviour under test. RequireGit turns that into a
 // SKIP that names the feature, the version it needs and the version installed, so a skip is
@@ -79,7 +79,7 @@ func InstalledGitVersion(t testing.TB) GitVersion {
 // RequireGit skips the test, with a named reason, when the installed git is older than
 // major.minor. feature names what the test needs that version for, e.g.
 // "merge-tree --attr-source". The skip message reads
-// "needs git >= 2.40 for merge-tree --attr-source; have 2.39.5".
+// "needs git >= 2.43 for merge-tree --attr-source; have 2.39.5".
 func RequireGit(t testing.TB, major, minor int, feature string) {
 	t.Helper()
 	v := InstalledGitVersion(t)

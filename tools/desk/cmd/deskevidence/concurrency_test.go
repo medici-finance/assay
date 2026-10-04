@@ -27,16 +27,21 @@ const gitEmptyTreeSHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 // mergeTreeConflictExit is the exit code `git merge-tree --write-tree` returns when the merge
 // has conflicts (0 is clean). Any OTHER non-zero code — 129 for a usage error such as an
-// unknown `--attr-source` on git older than 2.40, 128 for a fatal error — means the proxy did
+// unknown `--attr-source` on git older than 2.41, 128 for a fatal error — means the proxy did
 // not run, so it is never read as "conflict".
 const mergeTreeConflictExit = 1
 
-// requireAttrSource skips the proxy tests, naming why, on a git older than 2.40: the
-// attribute-free proxy needs the top-level `--attr-source` option, and an older git rejects
-// it as a usage error (exit 129) before merge-tree runs at all.
+// requireAttrSource skips the proxy tests, naming why, on a git older than 2.43. Two git
+// releases set that floor (both from git's own RelNotes):
+//   - 2.41.0 added the top-level `git --attr-source=<tree>` option. An older git rejects it
+//     as a usage error (exit 129) before merge-tree runs at all.
+//   - 2.43.0 fixed `git merge-tree` segfaulting when `--attr-source` is used. On 2.41 and
+//     2.42 the proxy can die by signal on the negative control's conflicting merge.
+//
+// A floor set too high only over-skips; one set too low fails the test for the wrong reason.
 func requireAttrSource(t *testing.T) {
 	t.Helper()
-	gitversion.RequireGit(t, 2, 40, "merge-tree --attr-source")
+	gitversion.RequireGit(t, 2, 43, "merge-tree --attr-source")
 }
 
 func concurrencyGitIn(t *testing.T, dir string, args ...string) string {
