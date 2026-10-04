@@ -53,8 +53,11 @@ on:
 # main shows red runs indistinguishable from a real regen failure.
 # cancel-in-progress is deliberately FALSE: queue, never cancel — a cancelled
 # regen throws away that push's board rather than merely delaying it.
+# pull_request runs get a group of their own per run: a group holds one
+# pending run, so a newer event (a title edit) would otherwise cancel a pending
+# synchronize or retarget run of the corroborate guard.
 concurrency:
-  group: statusgen-board-${{ github.ref }}
+  group: statusgen-board-${{ github.event_name == 'pull_request' && format('pr-run-{0}', github.run_id) || github.ref }}
   cancel-in-progress: false
 
 # Least-privilege default: the PR lint job needs only read. The push-to-main
@@ -65,6 +68,9 @@ permissions:
 
 env:
   GO_VERSION: "1.25.0"
+  # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl; the corroborate
+  # job refuses any other tarball. Bump both together.
+  GO_LINUX_AMD64_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
 
 jobs:
   lint:
@@ -109,6 +115,12 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    # GOENV=off: Go's per-user env file (written by `go env -w`, which an
+    # earlier job on a reused runner could have run) is ignored. GOTOOLCHAIN=local:
+    # the job-local toolchain builds, never one a go.mod line asks to download.
+    env:
+      GOENV: "off"
+      GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -141,14 +153,20 @@ jobs:
           fi
       # Go and every Go cache live under RUNNER_TEMP, never $HOME: if a runner
       # outlives one job, a toolchain or cache left by an earlier job that ran
-      # PR code must not reach the guard build. GOFLAGS is cleared for the same
-      # reason.
-      - name: Install Go (job-local toolchain and caches)
+      # PR code must not reach the guard build. GOFLAGS is cleared, and GOENV
+      # and GOTOOLCHAIN are pinned in the job env, for the same reason. The
+      # tarball is checksum-pinned.
+      - name: Install Go (job-local toolchain and caches, checksum-verified)
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
           echo "fetching $url"
           curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/go.tar.gz" | cut -d' ' -f1)"
+          if [ "$GO_LINUX_AMD64_SHA256" != "$got" ]; then
+            echo "::error::Go tarball sha256 mismatch — want ${GO_LINUX_AMD64_SHA256}, got ${got}; refusing to extract"
+            exit 1
+          fi
           mkdir -p "${RUNNER_TEMP}/go-toolchain"
           tar -C "${RUNNER_TEMP}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
           echo "${RUNNER_TEMP}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
