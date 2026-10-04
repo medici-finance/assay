@@ -1,2 +1,0 @@
-### Fixed
-- `statusgen verifyrun --in-container` no longer refuses `could-not-attribute` on a host whose git identity is set only in global config (the common Windows setup). The launcher resolves `user.name`/`user.email` on the host and carries them into the container as ephemeral git-config env, name-only, so the identity never appears in the printed `docker` argv; a value containing a control character is refused on the host before docker runs.

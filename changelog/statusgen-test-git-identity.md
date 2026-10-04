@@ -1,2 +1,0 @@
-### Fixed
-- statusgen's fixture commits no longer depend on the machine's git identity (#2181). The `runGitEnv` test helper now defaults a fixed author and committer identity, which a caller can still override, so `TestParkHorizonFromCommit` and `TestParkHorizonFutureCommit` pass on a runner with no global `user.name` / `user.email`. Before this, the release workflow's `test (statusgen)` job failed there with "Author identity unknown". Test-only; no change to the statusgen binary.

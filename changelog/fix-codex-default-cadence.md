@@ -1,1 +1,0 @@
-- Codex house desks now run under the Go cadence supervisor by default (five-minute interval, 20-minute pass budget), including per-role model-policy routing. Explicit cadence settings and interactive opt-out retain precedence; other harnesses keep their defaults.

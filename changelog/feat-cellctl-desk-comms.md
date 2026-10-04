@@ -1,2 +1,0 @@
-- Add opt-in Go supervision and launcher context for within-cell desk communications, Windows named-pipe transport, and `deskcomms poll --json` with full message payloads. See `docs/cellctl-comms.md` for provisioning and cutover prerequisites.
-- Harden the local comms endpoint: the gateway requires an owner-only socket directory and a 0600 socket (a current-user-owned pipe on Windows), clients verify the endpoint's owner before writing, and a clean gateway stop removes the socket so it can restart. Standalone gateways now also require the owner-only socket directory.
