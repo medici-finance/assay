@@ -489,8 +489,15 @@ func fetchChangedFiles(repo string, num int) (files map[string]bool, complete bo
 	return set, complete, nil
 }
 
-// changedFilesBetween returns files changed between two commits (compare API), for the
-// MERGE-CURR benign-merge check. Unlike v1 this fails CLOSED: a compare error is exit 6.
+// changedFilesBetween unions the files touched by each commit on the branch's
+// FIRST-PARENT chain from head back to the reviewed head. A non-merge edit on
+// that chain cannot disappear behind a later merge or revert, and a merge on it
+// is read against its first parent, so its main-side delta and any own-file
+// conflict resolution stay visible. Commits reachable only through a merge's
+// second parent (main's own history, including other branches' catch-up merges)
+// are never read: their changes reach the branch only through that merge.
+// Missing history or files, or a chain that does not reach the reviewed head
+// (a rewind, a force-push, a merge with main as first parent), degrades CLOSED.
 func changedFilesBetween(repo, base, head string) (map[string]bool, error) {
 	if base == "" || head == "" {
 		return nil, deskkit.Unverifiable("compare needs both base and head", nil)
@@ -503,13 +510,59 @@ func changedFilesBetween(repo, base, head string) (map[string]bool, error) {
 	if err != nil {
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot compare %s %s...%s", repo, short(base), short(head)), err)
 	}
+	if cmp == nil || !cmp.CommitsComplete {
+		return nil, deskkit.Unverifiable("the reviewed-head interval's commit list is incomplete", nil)
+	}
+	chain, err := firstParentChain(cmp.Commits, base, head)
+	if err != nil {
+		return nil, err
+	}
 	set := map[string]bool{}
-	for _, cf := range cmp.Files {
-		if cf.Filename != "" {
-			set[cf.Filename] = true
+	for _, sha := range chain {
+		detail, err := f.GetCommit(fr, sha)
+		if err != nil {
+			return nil, deskkit.Unverifiable("cannot read interval commit "+short(sha), err)
+		}
+		if detail == nil || !detail.FilesComplete {
+			return nil, deskkit.Unverifiable("interval commit's file list is incomplete", nil)
+		}
+		for _, cf := range detail.Files {
+			if cf.Filename != "" {
+				set[cf.Filename] = true
+			}
+			if cf.PreviousFilename != "" {
+				set[cf.PreviousFilename] = true
+			}
 		}
 	}
 	return set, nil
+}
+
+// firstParentChain walks head's first parents through the compare interval until
+// it reaches base, returning the SHAs walked (head first). It uses only the parent
+// lists the compare already returned. A commit without SHA or parent evidence, or a
+// walk that leaves the interval before reaching base, is could-not-check.
+func firstParentChain(commits []deskkit.RepoCommit, base, head string) ([]string, error) {
+	byID := make(map[string]deskkit.RepoCommit, len(commits))
+	for _, c := range commits {
+		if c.Parents == nil || c.SHA == "" {
+			return nil, deskkit.Unverifiable("interval commit has no SHA or parent evidence", nil)
+		}
+		byID[c.SHA] = c
+	}
+	var chain []string
+	for cur := head; cur != base; {
+		c, ok := byID[cur]
+		if !ok || len(chain) >= len(byID) {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("first-parent chain from %s does not reach the reviewed head %s", short(head), short(base)), nil)
+		}
+		if len(c.Parents) == 0 {
+			return nil, deskkit.Unverifiable("first-parent chain reached a root commit before the reviewed head", nil)
+		}
+		chain = append(chain, cur)
+		cur = c.Parents[0]
+	}
+	return chain, nil
 }
 
 // isResolutionLabel reports whether a label name plausibly RESOLVES a standing review
