@@ -479,6 +479,39 @@ work explicitly. Do not replace a damaged beacon with an empty object, delete it
 bypass the refusal, or remove a lock file as a recovery step. An OS lock is released
 when its holding process exits.
 
+### Beacon file boundary and retention
+
+Beacon reads and lock opens refuse leaf symlinks, Windows reparse points, and
+non-regular files using handle-based checks. Unix FIFO opens are nonblocking.
+The state directory and its ancestors must remain private and trusted: this is
+not protection against parent replacement or hard links, and it does not change
+Windows ACLs. The supervisor's resource join uses the same strict beacon reader;
+malformed or duplicate-key state yields `could-not-check` resource vitals.
+
+`deskroster list` still prints valid snapshot rows when a beacon read or automatic
+prune fails, then exits 6 with the failed operation. Open PRs with uncertain roster
+coverage are labelled ownership unverified, not unclaimed. The table is a snapshot,
+not proof that pruning committed or that an unreadable session has no work.
+
+**Retention defaults to preservation.** No age-based cleanup of beacons, receipts,
+resource data, unknown fields, stable `.json.lock` files or abandoned
+`.roster-beacon-*` publication files is performed. A timestamp, absent heartbeat,
+or successfully acquired lock cannot establish that a file is safe to delete.
+In particular, a waiting process may already have opened the old lock inode even
+when another process can acquire it. Never unlink or rotate a stable lock file.
+
+Before considering space recovery, an operator must first stop every participant sharing the
+state directory, disable all launchers/restarts, and verify their processes and
+handles have exited. If that cannot be established, retain the files. While
+quiescent, make and verify a complete restricted-access archive outside the live
+roster directory, including receipts, resource data, unknown fields and abandoned
+temporaries; preserve original paths and bytes. A temporary is an uncommitted
+candidate, never automatically a newer or valid recovery source. Reconcile open
+work and identify an authoritative committed snapshot before any session resumes.
+Copying an archive is not permission to remove live records: deletion needs a
+separate operator-approved retention policy and recovery test. Stable locks stay
+in place even after archiving. There is intentionally no cleanup command or TTL.
+
 ## Trust gate (deskkit/trust.go)
 
 With example-org/example-k8s public, desk scanning loops read repos where arbitrary
