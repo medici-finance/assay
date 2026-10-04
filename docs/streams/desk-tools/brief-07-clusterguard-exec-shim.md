@@ -404,7 +404,7 @@ Hand run of each row's literal command (direct, not network-off; the witness tab
 | 13 | row 13 literal (gofmt on the clusterguard package) | exit 0, no unformatted file | exit 0; empty listing | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
 | 14 | row 14 literal (statusgen lint) | 0 | 0; LINT: PASS (NOTICEs name other streams only) | 2026-10-04 claude-opus-5-5-verifier, darwin/arm64 |
 
-Hand result: 14 of 14 rows exit as their Expect requires. Row 12 was covered package by package rather than as one invocation, for the load reasons above.
+Hand result: all 14 row commands exit 0 as written (row 12 covered package by package rather than as one invocation, for the load reasons above). Row 7 is the deciding row: its command passes, but the adversarial probe below shows its Expect ("the per-CLI read-only table holds") does not hold, so 13 of 14 rows meet their Expect (#2179).
 
 Execution witness (statusgen verifyrun built from 70deba75a source). darwin has no `unshare --net`, so the witness ran in a locally cached golang:1.26-bookworm image (no pull). The container was linux/arm64, Go 1.26.8, git 2.39.5, with `--network none`, GOPROXY=off, and `--security-opt seccomp=unconfined`; unshare needs that last flag inside Docker. It ran against a clone pinned to 70deba75a. Attribution comes from the clone's git identity (verifier App) plus the roster bless, copied into the container HOME with modes 700/600:
 
@@ -446,7 +446,7 @@ This contradicts three statements:
 - the brief's fail-closed read-only contract
 - row 7's Expect: "the read-only tier refuses a mutating verb with exit 5 without reaching the CLI"
 
-No test in cmd/clusterguard covers an unlisted value flag placed before a read-only word. The opt-in, default-refuse, invalid-refuse, stop-flag, logging and pass-through behaviour all hold; the hole is confined to the read-only tier (ASSAY_ALLOW_CLUSTER=1/ro/read-only/readonly). Fix directions, for the implementer to choose: in the read-only tier, refuse any unlisted flag that has no "=" (the conservative option); or make valueFlags exhaustive per CLI and add a regression test for unlisted-flag-then-read-only-word. The bug issue still needs to be filed; this verifier is barred from filing.
+No test in cmd/clusterguard covers an unlisted value flag placed before a read-only word. The opt-in, default-refuse, invalid-refuse, stop-flag, logging and pass-through behaviour all hold; the hole is confined to the read-only tier (ASSAY_ALLOW_CLUSTER=1/ro/read-only/readonly). Fix directions, for the implementer to choose: in the read-only tier, refuse any unlisted flag that has no "=" (the conservative option); or make valueFlags exhaustive per CLI and add a regression test for unlisted-flag-then-read-only-word. Filed by the desk as #2179.
 
 Risk-bearing value. Enumeration covered cmd/clusterguard's gate literals and tables, the opt-in declaration in deskkit rosterconfig, and the deskkit exit codes:
 - default tier → refuse: `v.code = deskkit.ExitRefused` @ shim.go:222
@@ -477,7 +477,7 @@ verifyrun --check summary:
 
 Note to the landing desk: the darwin `verifyrun` appended its could-not-run table to the worktree copy of the brief. That table is superseded; land the Linux witness table above instead.
 
-VERIFY: FAIL — the read-only tier passes a mutating kubectl call when an unlisted value-consuming flag is followed by a read-only verb word (e.g. `--username get delete pod x` reaches the CLI with exit 0 under ASSAY_ALLOW_CLUSTER=1). This contradicts row 7's Expect and the code's own "can never create a false pass" claim. By hand, 14/14 rows exit as expected. The Linux witness shows 13 pass and 1 fail (row 12, environmental: image git 2.39.5, an unpublished arm64 platform, missing jq). #1800 no longer gates this brief. A new bug issue for the read-only-tier false pass is needed (desk to file). Status stays `implemented`.
+VERIFY: FAIL — the read-only tier passes a mutating kubectl call when an unlisted value-consuming flag is followed by a read-only verb word (e.g. `--username get delete pod x` reaches the CLI with exit 0 under ASSAY_ALLOW_CLUSTER=1). This contradicts row 7's Expect and the code's own "can never create a false pass" claim. By hand, all 14 row commands exit 0, and row 7 is the deciding row: the probe contradicts its Expect, so 13 of 14 rows meet their Expect. The Linux witness shows 13 pass and 1 fail (row 12, environmental: image git 2.39.5, an unpublished arm64 platform, missing jq). #1800 no longer gates this brief. The read-only-tier false pass is filed as #2179. Status stays `implemented`.
 
 ## Review
 
