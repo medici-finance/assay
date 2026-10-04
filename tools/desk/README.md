@@ -689,11 +689,27 @@ job is fixing text.
 **`--pr N` names the PR instead (#1901).** Git allows one worktree per branch, so a rework
 worker whose PR head branch is still checked out elsewhere works on a neutral branch or a
 detached HEAD and pushes by explicit refspec. From there `edit --pr N` reads PR #N and
-applies the shared own-PR guard (`deskkit.CheckOwnPR`, the same rule `deskreply` uses): the
-PR must be OPEN, and the worktree's branch must BE the PR's head branch or its HEAD commit
-must be EXACTLY the PR's head commit. A HEAD with unpushed commits on top of the head commit
-is refused until they are pushed. Without `--pr`, a detached HEAD is refused (exit 6) with a
-message that points at `--pr N`.
+admits the checkout by one of two rules. The PR must be OPEN first, whatever the checkout.
+Rule 1 is the shared own-PR guard (`deskkit.CheckOwnPR`, the same rule `deskreply` uses): the
+worktree's branch is the PR's head branch, or its HEAD commit is EXACTLY the PR's head
+commit. Rule 2 (#2085) admits any other checkout — a desk window, a neutral branch with no
+commits ahead of the default branch — only when the PR's head branch is in this repository
+(a fork PR, or one whose head repository the forge does not report, is refused) and the PR's
+current body already carries a link trailer, which the trailer-immutability rule below then
+holds fixed. A trailer-less PR (a human's, a pre-trailer one) is therefore edited only from
+its own checkout. Preflight still refuses a checkout on the default branch or with staged
+changes, `--pr` or not. Without `--pr`, a detached HEAD is refused (exit 6) with a message
+that points at `--pr N`.
+
+**`update --pr N` / `--branch B` (#2085)** push HEAD to the head branch the forge reports for
+that PR (`git push origin HEAD:refs/heads/<head-branch>`, no `-u`), for a worktree whose local
+branch name differs from the PR's head branch. Before the push: the PR must be OPEN; its
+head branch must be in this repository (fork or unreported → refused); the head branch name
+is secret-scanned; HEAD must be the PR's head commit or descend from it; a PR head already
+contained in the default branch is refused; and the push destination must already hold the
+head branch at the head commit the forge reports (absent or different → refused). With
+`--pr N` the offline publish-identity stage judges the whole range from the default branch,
+so a PR whose head already carries another identity's commits is refused there.
 
 **The link trailer is not editable.** `Brief: <stream>/<NN>` / `Authors: <stream>/<NN>[, …]` /
 `Issue: #<N>` is the

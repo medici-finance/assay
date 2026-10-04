@@ -441,11 +441,20 @@ func TestEditActorNeverMisnamesItself(t *testing.T) {
 
 // TestEditByPROwnHeadCommit is #1901's acceptance for `deskpr edit --pr N`, widened by #2085:
 // a worktree on a differently-named branch (or a detached HEAD) — because git would not let it
-// check out the PR head branch another worktree holds — may correct that PR's body. Since
-// #2085 the worktree's commit no longer matters either (edit pushes nothing; the PR is
-// resolved from its own head ref), so a checkout at a DIFFERENT commit, a descendant of the PR
-// head, or one with no commits ahead of the default branch also succeeds. A merged/closed PR
-// still refuses with nothing written.
+// check out the PR head branch another worktree holds — may correct that PR's body.
+//
+// Two admission rules. Rule 1 (#1901, deskkit.CheckOwnPR): the checkout is the PR's own — its
+// branch is the head branch or its HEAD is exactly the head commit — whatever the PR's body or
+// repository. Rule 2 (#2085): any other checkout (a different commit, a descendant, a desk
+// window with no commits ahead) is admitted only for a same-repository PR whose current body
+// already carries a link trailer, which immutability then holds fixed. A trailer-less PR, a
+// fork PR, or a PR whose head repository the forge does not report refuses from a foreign
+// checkout, as does a merged/closed PR from any checkout — each with nothing written.
+//
+// FAIL-FIRST (S2): before rule 2 existed, three of the "foreign checkout" refusals below
+// (trailer-less, fork, head repository not reported) ran to rc 0 with the body replaced —
+// findEditTarget checked only that the PR was open. The fourth (a PR linked to a different
+// work item) is the misdirect rule 2 relies on trailer immutability to catch; it pins that.
 func TestEditByPROwnHeadCommit(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -453,6 +462,8 @@ func TestEditByPROwnHeadCommit(t *testing.T) {
 		prHead string // FAKEGH_PR_HEAD
 		oidOf  string // "HEAD" | "HEAD~1" | "" (a foreign commit)
 		state  string // FAKEGH_PR_STATE ("" = open)
+		body   string // FAKEGH_PR_BODY, the PR's CURRENT body ("" = linked to fixture/01)
+		cross  string // FAKEGH_PR_CROSS ("" = same repository; "fork"; "unknown")
 		want   int
 	}{
 		{name: "branch equal", prHead: "feature/test-branch", oidOf: "", want: deskkit.ExitOK},
@@ -493,6 +504,42 @@ func TestEditByPROwnHeadCommit(t *testing.T) {
 			setup:  func(t *testing.T, w string) { mustGit(t, w, "checkout", "-b", "neutral-rework") },
 			prHead: "feature/held-elsewhere", oidOf: "HEAD", state: "closed", want: deskkit.ExitRefused,
 		},
+		// Rule 1 holds whatever the PR's body or repository.
+		{name: "own branch, trailer-less PR", prHead: "feature/test-branch", body: "a pre-trailer body\n", want: deskkit.ExitOK},
+		{
+			name:   "own head commit, fork PR",
+			setup:  func(t *testing.T, w string) { mustGit(t, w, "checkout", "-b", "neutral-rework") },
+			prHead: "feature/held-elsewhere", oidOf: "HEAD", cross: "fork", want: deskkit.ExitOK,
+		},
+		// Rule 2's refusals: a foreign checkout (a desk window) naming a PR it is not bound to.
+		{
+			name: "foreign checkout, trailer-less PR (S2)",
+			setup: func(t *testing.T, w string) {
+				mustGit(t, w, "checkout", "-b", "desk-window", "refs/remotes/origin/main")
+			},
+			prHead: "feature/held-elsewhere", body: "a human's PR, no link line\n", want: deskkit.ExitRefused,
+		},
+		{
+			name: "foreign checkout, fork PR (S2)",
+			setup: func(t *testing.T, w string) {
+				mustGit(t, w, "checkout", "-b", "desk-window", "refs/remotes/origin/main")
+			},
+			prHead: "feature/held-elsewhere", cross: "fork", want: deskkit.ExitRefused,
+		},
+		{
+			name: "foreign checkout, head repository not reported (S2)",
+			setup: func(t *testing.T, w string) {
+				mustGit(t, w, "checkout", "-b", "desk-window", "refs/remotes/origin/main")
+			},
+			prHead: "feature/held-elsewhere", cross: "unknown", want: deskkit.ExitUnverifiable,
+		},
+		{
+			name: "foreign checkout, PR linked to a different work item (S2)",
+			setup: func(t *testing.T, w string) {
+				mustGit(t, w, "checkout", "-b", "desk-window", "refs/remotes/origin/main")
+			},
+			prHead: "feature/held-elsewhere", body: "someone else's PR\nIssue: #77\n", want: deskkit.ExitRefused,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -510,7 +557,14 @@ func TestEditByPROwnHeadCommit(t *testing.T) {
 			if tc.state != "" {
 				t.Setenv("FAKEGH_PR_STATE", tc.state)
 			}
-			t.Setenv("FAKEGH_PR_BODY", "the original body\nBrief: fixture/01\n")
+			body := tc.body
+			if body == "" {
+				body = "the original body\nBrief: fixture/01\n"
+			}
+			t.Setenv("FAKEGH_PR_BODY", body)
+			if tc.cross != "" {
+				t.Setenv("FAKEGH_PR_CROSS", tc.cross)
+			}
 			bodyPath := writeTempFile(t, "the corrected body\nBrief: fixture/01\n")
 
 			rc := run([]string{"edit", "--pr", "42", "--body-file", bodyPath})

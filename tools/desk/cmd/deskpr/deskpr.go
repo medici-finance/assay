@@ -869,12 +869,14 @@ const detachedRefusal = "detached HEAD — check out a feature branch first"
 // detached rework worker hits exactly this refusal, and for edit the remedy is not a branch:
 // it is naming the PR, so the message points at --pr N.
 const editDetachedRefusal = "detached HEAD — deskpr edit finds its PR by branch; name the PR with --pr N " +
-	"(admitted when HEAD is exactly that PR's head commit), or check out the PR's head branch"
+	"(admitted when HEAD is exactly that PR's head commit, or when that PR is in this repository and " +
+	"already carries a link trailer), or check out the PR's head branch"
 
 // preflightMode is preflight with one switch: allowDetached admits a detached HEAD, recorded
 // as branch "". Only `deskpr edit --pr N` passes true (#1901) — it pushes nothing and names
-// its PR explicitly, and deskkit.CheckOwnPR then admits the detached checkout ONLY when HEAD
-// is exactly that PR's head commit. create and update push the branch and keep refusing.
+// its PR explicitly, and findEditTarget then decides whether this checkout may edit that PR
+// (deskkit.CheckOwnPR, or a same-repo PR already carrying a link trailer — #2085). create and
+// update push the branch and keep refusing.
 // detachedMsg is the exit-6 message used when a detached HEAD is refused.
 func preflightMode(dir, base string, allowDetached bool, detachedMsg string) (*gitFacts, error) {
 	return preflightOpts(dir, base, allowDetached, detachedMsg, true)

@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ ./cmd/deskreply/ ./cmd/deskpr/ -count=1 -timeout 300s -run 'CheckOwnPR|OwnPRByHeadCommit|EditByPROwnHeadCommit|EditDetachedNeedsPR|ReplyNotMyOwnBranch|ReplyPRNotOpen'",
+  "test": "go test ./internal/deskkit/ ./cmd/deskreply/ ./cmd/deskpr/ -count=1 -timeout 300s -run 'CheckOwnPR|OwnPRByHeadCommit|EditByPROwnHeadCommit|EditDetachedNeedsPR|ReplyNotMyOwnBranch|ReplyPRNotOpen|UpdateByPR'",
   "control": {
     "name": "CONTROL — the own-PR guard is branch-name-only again (the pre-#1901 rule: a worktree at the PR's head commit on another branch name is refused)",
     "file": "internal/deskkit/ownpr.go",
@@ -52,14 +52,56 @@
     {
       "name": "deskpr edit's detached-HEAD refusal (no --pr) loses its --pr N remedy (the create/update message again)",
       "file": "cmd/deskpr/edit.go",
-      "old": "preflightMode(dir, \"\", *prNum > 0, editDetachedRefusal)",
-      "new": "preflightMode(dir, \"\", *prNum > 0, detachedRefusal)"
+      "old": "preflightOpts(dir, \"\", *prNum > 0, editDetachedRefusal, *prNum == 0)",
+      "new": "preflightOpts(dir, \"\", *prNum > 0, detachedRefusal, *prNum == 0)"
     },
     {
-      "name": "deskpr edit --pr no longer enforces the own-PR guard",
+      "name": "deskpr edit --pr loses rule 1, the own-PR guard (its own branch or head commit no longer admits a trailer-less or fork PR)",
       "file": "cmd/deskpr/edit.go",
-      "old": "\t\t); oerr != nil {\n\t\t\treturn nil, nil, oerr\n",
-      "new": "\t\t); false && oerr != nil {\n\t\t\treturn nil, nil, oerr\n"
+      "old": "\t\t); oerr == nil {\n\t\t\treturn cur, cur, nil\n",
+      "new": "\t\t); false && oerr == nil {\n\t\t\treturn cur, cur, nil\n"
+    },
+    {
+      "name": "deskpr edit --pr no longer refuses a merged/closed PR before the admission rules",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\t\tif !strings.EqualFold(strings.TrimSpace(cur.State), \"open\") {\n",
+      "new": "\t\tif false {\n"
+    },
+    {
+      "name": "deskpr edit --pr rule 2 admits a trailer-less PR from a foreign checkout",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\tif _, linked := trailerLink([]byte(cur.Body)); !linked {\n",
+      "new": "\tif _, linked := trailerLink([]byte(cur.Body)); false && !linked {\n"
+    },
+    {
+      "name": "deskpr edit --pr rule 2 reads every PR as same-repository (fork and unreported admitted)",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\tswitch cur.CrossRepo {\n",
+      "new": "\tswitch deskkit.CrossRepoSame {\n"
+    },
+    {
+      "name": "deskpr update --pr pushes to a fork PR's head ref name on the base repository",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "if cerr := requireSameRepoHead(full.CrossRepo, pr.Number); cerr != nil {",
+      "new": "if cerr := requireSameRepoHead(full.CrossRepo, pr.Number); false && cerr != nil {"
+    },
+    {
+      "name": "deskpr update --pr no longer checks the push destination holds the head ref at the forge's head commit",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "if rerr := requireRemoteHoldsHead(facts.dir, pushDest, full.HeadSHA, pr.Number); rerr != nil {",
+      "new": "if rerr := requireRemoteHoldsHead(facts.dir, pushDest, full.HeadSHA, pr.Number); false && rerr != nil {"
+    },
+    {
+      "name": "deskpr update --pr admits a PR whose head is already in the default branch",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\tif inDefault {\n",
+      "new": "\tif false && inDefault {\n"
+    },
+    {
+      "name": "deskpr update --pr secret-scans the local branch name instead of the PR's head ref",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "scanWrite(&gitFacts{dir: facts.dir, branch: pushDest,",
+      "new": "scanWrite(&gitFacts{dir: facts.dir, branch: facts.branch,"
     }
   ]
 }
