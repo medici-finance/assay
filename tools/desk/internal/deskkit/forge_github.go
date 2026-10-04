@@ -1976,7 +1976,11 @@ const forgeSearchPerPage = 200
 // top-level author/committer are the GitHub ACCOUNTS GitHub resolved the commit to (an identity
 // comparable to a change author's login); commit.committer.date is the committed date.
 type ghCommitWire struct {
-	SHA    string `json:"sha"`
+	Parents []struct {
+		SHA string `json:"sha"`
+	} `json:"parents"`
+	Files  []ghFileWire `json:"files"`
+	SHA    string       `json:"sha"`
 	Author *struct {
 		Login string `json:"login"`
 	} `json:"author"`
@@ -1992,6 +1996,18 @@ type ghCommitWire struct {
 
 func (w ghCommitWire) toRepoCommit() RepoCommit {
 	rc := RepoCommit{SHA: w.SHA, CommittedDate: w.Commit.Committer.Date}
+	if w.Parents != nil {
+		rc.Parents = []string{}
+		for _, p := range w.Parents {
+			rc.Parents = append(rc.Parents, p.SHA)
+		}
+	}
+	for _, f := range w.Files {
+		rc.Files = append(rc.Files, ChangedFile{Filename: f.Filename, PreviousFilename: f.PreviousFilename, Status: f.Status})
+	}
+	// GitHub returns at most 300 files on the unpaginated commit read. A full
+	// window cannot prove completeness; consumers must degrade rather than guess.
+	rc.FilesComplete = w.Files != nil && len(w.Files) < 300
 	if w.Author != nil {
 		rc.AuthorLogin = w.Author.Login
 	}
@@ -2088,10 +2104,12 @@ func (g *GitHubForge) ListCommitChanges(repo ForgeRepo, sha string) ([]int, erro
 
 // ghCompareWire is the compare-API read shape (only the fields consumed).
 type ghCompareWire struct {
-	Status   string       `json:"status"` // identical | ahead | behind | diverged
-	AheadBy  int          `json:"ahead_by"`
-	BehindBy int          `json:"behind_by"`
-	Files    []ghFileWire `json:"files"`
+	TotalCommits *int           `json:"total_commits"`
+	Commits      []ghCommitWire `json:"commits"`
+	Status       string         `json:"status"` // identical | ahead | behind | diverged
+	AheadBy      int            `json:"ahead_by"`
+	BehindBy     int            `json:"behind_by"`
+	Files        []ghFileWire   `json:"files"`
 }
 
 // CompareRefs compares base...head via the compare API, returning the differing files plus the
@@ -2106,6 +2124,12 @@ func (g *GitHubForge) CompareRefs(repo ForgeRepo, base, head string) (*RefCompar
 		return nil, err
 	}
 	out := &RefComparison{Status: w.Status, AheadBy: w.AheadBy, BehindBy: w.BehindBy}
+	for _, c := range w.Commits {
+		out.Commits = append(out.Commits, c.toRepoCommit())
+	}
+	// The unpaginated compare can stop at 250 commits. The count is evidence,
+	// never treat a missing count or a short read as an empty interval.
+	out.CommitsComplete = w.TotalCommits != nil && len(w.Commits) == *w.TotalCommits
 	for _, f := range w.Files {
 		out.Files = append(out.Files, ChangedFile{
 			Filename: f.Filename, PreviousFilename: f.PreviousFilename, Status: f.Status,

@@ -505,6 +505,8 @@ func cmdUpdate(args []string) (err error) {
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the secret scan, the push-transport gate, the publish-identity gate) and stop BEFORE minting a token or opening any connection; the Brief:/Authors:/Issue: trailer lives on the EXISTING PR's forge-held body and is reported not checked, by name, rather than skipped silently")
+	prNum := fs.Int("pr", 0, "push HEAD to THIS open PR's head branch instead of the PR whose head branch is this worktree's branch (#2085): for a worktree that cannot be on the PR's head branch (git allows one worktree per branch). HEAD must descend from the PR's current head commit")
+	remoteBranch := fs.String("branch", "", "push HEAD to the open PR whose head branch is this REMOTE branch name instead of this worktree's branch (#2085); same admission rule as --pr")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -518,6 +520,21 @@ func cmdUpdate(args []string) (err error) {
 	if fs.NArg() != 0 {
 		return deskkit.Refused("refused: update takes no arguments")
 	}
+	if *prNum < 0 {
+		return deskkit.Refused(fmt.Sprintf("refused: --pr must be a positive PR number, got %d", *prNum))
+	}
+	if *prNum > 0 && *remoteBranch != "" {
+		return deskkit.Refused("refused: --pr and --branch both name the target PR — give one")
+	}
+	if *remoteBranch != "" && !baseRe.MatchString(*remoteBranch) {
+		return deskkit.Refused("refused: --branch " + fmt.Sprintf("%q", *remoteBranch) + " is not a valid branch name")
+	}
+	// override is true when the target PR is NAMED (--pr / --branch) rather than found by the
+	// worktree's own branch. Only then does the push destination come from the PR's head ref.
+	override := *prNum > 0 || *remoteBranch != ""
+	if isDefaultName(*remoteBranch) {
+		return deskkit.Refused("refused: --branch names the default branch (" + *remoteBranch + ") — deskpr only pushes feature branches")
+	}
 	if *scanOverride != "" {
 		if verr := deskkit.ValidateScanOverride(*scanOverride); verr != nil {
 			return verr
@@ -530,11 +547,21 @@ func cmdUpdate(args []string) (err error) {
 	// update has no --base flag: it refreshes an EXISTING PR's body, so the ahead-count
 	// stays pinned to the repo default (origin/HEAD) exactly as before — an empty base
 	// selects that default inside preflight.
-	facts, perr := preflight(dir, "")
+	// With --pr N the PR is named, so a detached HEAD is admitted (the local branch name plays
+	// no part in finding the PR or choosing the destination).
+	facts, perr := preflightMode(dir, "", *prNum > 0, detachedRefusal)
 	if perr != nil {
 		return perr
 	}
 	ac.repo, ac.head = facts.repo, facts.head
+	// --branch B: the REMOTE branch is known offline, so every offline stage below judges B
+	// where the default path judges the local branch name — the secret scan of the branch name
+	// and the publish-identity anchor (#2085). With --pr N the head ref is only known from the
+	// forge, so the offline stage keeps the local branch name for the scan and judges the
+	// whole range; the live stage below re-judges both against the PR's own head ref.
+	if *remoteBranch != "" {
+		facts.branch = *remoteBranch
+	}
 
 	// PUSH-destination gate (#1623): git's own resolved push URL list must be exactly one https
 	// URL naming facts.repo. It asks git where the push will actually go (pushurl from every
@@ -561,7 +588,11 @@ func cmdUpdate(args []string) (err error) {
 	// the local remote-tracking ref for the branch — absent, unresolvable, or not an ancestor
 	// of HEAD, it falls back to the whole range. It is an estimate of the remote, so the live
 	// stage below re-judges against the forge's own PR head before anything is pushed.
-	if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, remoteTrackingTip(facts.branch)); ierr != nil {
+	offlineTip := remoteTrackingTip(facts.branch)
+	if *prNum > 0 {
+		offlineTip = "" // head ref unknown offline: judge the whole range, fail closed
+	}
+	if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, offlineTip); ierr != nil {
 		return ierr
 	}
 
@@ -595,12 +626,27 @@ func cmdUpdate(args []string) (err error) {
 		return ferr
 	}
 
-	pr, lerr := fg.OpenChangeForBranch(fr, facts.branch)
-	if lerr != nil {
-		return deskkit.Unverifiable("cannot check for an open PR on the branch", lerr)
-	}
-	if pr == nil {
-		return deskkit.Refused("refused: no open PR for " + facts.branch + " — run `deskpr create` first")
+	var pr *deskkit.PullRequest
+	if *prNum > 0 {
+		// --pr N (#2085): read the named PR directly. It must be OPEN; the lineage rule that
+		// replaces the branch-name compare is enforced below, once the head ref is known.
+		named, nerr := fg.GetPullRequest(fr, *prNum)
+		if nerr != nil {
+			return deskkit.Unverifiable(fmt.Sprintf("cannot read PR #%d", *prNum), nerr)
+		}
+		if !strings.EqualFold(strings.TrimSpace(named.State), "open") {
+			return deskkit.Refused(fmt.Sprintf("refused: PR #%d is %s, not OPEN — deskpr update only pushes to open PRs", *prNum, named.State))
+		}
+		pr = named
+	} else {
+		var lerr error
+		pr, lerr = fg.OpenChangeForBranch(fr, facts.branch)
+		if lerr != nil {
+			return deskkit.Unverifiable("cannot check for an open PR on the branch", lerr)
+		}
+		if pr == nil {
+			return deskkit.Refused("refused: no open PR for " + facts.branch + " — run `deskpr create` first")
+		}
 	}
 	// #788: a ready-flipped (non-draft) OPEN PR is accepted here too. The draft-only
 	// refusal that used to sit here was an artifact of update being written for the
@@ -625,6 +671,46 @@ func cmdUpdate(args []string) (err error) {
 	// PR being updated (pr.Number), which is the reactions surface for an update.
 	if _, terr := requireTrailer([]byte(full.Body), *root, dir); terr != nil {
 		return terr
+	}
+
+	// Named-PR push destination (#2085). When the PR was named (--pr / --branch), the branch
+	// pushed to is the PR's OWN head branch as the forge reports it — never the worktree's
+	// local branch name, which may differ because git lets only one worktree hold a branch.
+	// The checkout is admitted by LINEAGE, not by name: HEAD must descend from the PR's
+	// current head commit, so the push is a fast-forward of that PR and nothing else (git
+	// would refuse a non-fast-forward anyway; this names the reason). Fail closed on a head
+	// the forge did not report or this checkout has not fetched.
+	pushDest := facts.branch
+	if override {
+		if full.HeadRef == "" {
+			return deskkit.Unverifiable("the forge did not report PR #"+strconv.Itoa(pr.Number)+"'s head branch — cannot choose a push destination", nil)
+		}
+		pushDest = full.HeadRef
+		if isDefaultName(pushDest) {
+			return deskkit.Refused("refused: PR #" + strconv.Itoa(pr.Number) + "'s head branch is the default branch (" + pushDest + ") — deskpr only pushes feature branches")
+		}
+		if *remoteBranch != "" && pushDest != *remoteBranch {
+			return deskkit.Refused(fmt.Sprintf("refused: the open PR #%d's head branch is %q, not %q", pr.Number, pushDest, *remoteBranch))
+		}
+		// The head ref is a bare branch NAME and origin is the BASE repository, so the push
+		// lands on the PR only when the PR's head lives in the base repository. A fork PR's
+		// head ref names a branch in the fork: pushing that name to origin would create a stray
+		// base-repo branch, or fast-forward a same-named branch backing a DIFFERENT PR.
+		if cerr := requireSameRepoHead(full.CrossRepo, pr.Number); cerr != nil {
+			return cerr
+		}
+		if serr := scanWrite(&gitFacts{dir: facts.dir, branch: pushDest, defaultRef: facts.defaultRef, repo: facts.repo}, "", "update", *scanOverride); serr != nil {
+			return serr
+		}
+		if lerr := requireDescendsFromPRHead(facts.dir, full.HeadSHA, pr.Number, pushDest, facts.defaultRef); lerr != nil {
+			return lerr
+		}
+		// Second, independent layer: the push destination itself must hold the head ref at
+		// the head commit the forge reported. This catches a forge read that is wrong or stale
+		// (a head ref the base repository does not hold) on a signal git reads, not the forge.
+		if rerr := requireRemoteHoldsHead(facts.dir, pushDest, full.HeadSHA, pr.Number); rerr != nil {
+			return rerr
+		}
 	}
 
 	// PUBLISH-identity gate, LIVE stage (#1967). The offline stage above anchored the range on
@@ -660,7 +746,13 @@ func cmdUpdate(args []string) (err error) {
 		return gerr
 	}
 
-	if _, pushErr := git(facts.dir, "push", "-u", "origin", facts.branch); pushErr != nil {
+	pushArgs := []string{"push", "-u", "origin", facts.branch}
+	if override {
+		// Explicit refspec: HEAD onto the PR's head branch. No -u — the worktree's own branch
+		// has a different name and must not be re-pointed at the PR head's upstream.
+		pushArgs = []string{"push", "origin", "HEAD:refs/heads/" + pushDest}
+	}
+	if _, pushErr := git(facts.dir, pushArgs...); pushErr != nil {
 		return deskkit.Unverifiable("git push failed", pushErr)
 	}
 	// Post-update mergeable check (#1264): the push moved the head, so GitHub recomputes
@@ -671,6 +763,93 @@ func cmdUpdate(args []string) (err error) {
 	detail += warnIfConflicting(fg, fr, pr.Number)
 	ac.detail = detail
 	fmt.Println(pr.URL)
+	return nil
+}
+
+// requireDescendsFromPRHead is `deskpr update --pr/--branch`'s lineage rule (#2085): the
+// checkout's HEAD must be the PR's current head commit or a descendant of it, so the push is a
+// pure fast-forward of that PR's head branch. An unreported head, a head this checkout has not
+// fetched, and a HEAD that does not descend from it all refuse — never a guess.
+//
+// It also refuses a PR head that is already contained in the default branch (defaultRef): such
+// a PR carries nothing of its own, so a HEAD descending from it says nothing about whether this
+// is the PR the caller meant — a mistyped --pr naming a stale PR would otherwise pass.
+func requireDescendsFromPRHead(dir, headSHA string, prNum int, headRef, defaultRef string) error {
+	if strings.TrimSpace(headSHA) == "" {
+		return deskkit.Refused(fmt.Sprintf("refused: the forge reported no head commit for PR #%d — cannot prove HEAD descends from it", prNum))
+	}
+	r, oerr := gitcore.Open(dir)
+	if oerr != nil {
+		return deskkit.Unverifiable("cannot open the repository to check PR head lineage", oerr)
+	}
+	ok, aerr := r.IsAncestor(headSHA, "HEAD")
+	if aerr != nil {
+		return deskkit.Refused(fmt.Sprintf("refused: cannot prove HEAD descends from PR #%d's head commit %s (%v) — "+
+			"`git fetch origin %s` and merge it into this branch, then re-run", prNum, shortSHA(headSHA), aerr, headRef))
+	}
+	if !ok {
+		return deskkit.Refused(fmt.Sprintf("refused: HEAD does not descend from PR #%d's head commit %s on %q — "+
+			"merge origin/%s into this branch (never rebase), then re-run", prNum, shortSHA(headSHA), headRef, headRef))
+	}
+	inDefault, derr := r.IsAncestor(headSHA, defaultRef)
+	if derr != nil {
+		return deskkit.Unverifiable(fmt.Sprintf("cannot check whether PR #%d's head commit is already in %s", prNum, defaultRef), derr)
+	}
+	if inDefault {
+		return deskkit.Refused(fmt.Sprintf("refused: PR #%d's head commit %s is already contained in %s — the PR carries "+
+			"nothing of its own, so descending from it does not show this is the PR you meant; check the PR number",
+			prNum, shortSHA(headSHA), defaultRef))
+	}
+	return nil
+}
+
+// requireSameRepoHead refuses a named-PR push unless the forge established that the PR's head
+// branch lives in the BASE repository (#2085). A fork head is refused; an EMPTY answer (the
+// forge did not say — e.g. a deleted fork) is could-not-check and refuses too, never read as
+// "same". Same rule, same reading of the empty value, as deskmerge's eligibility gate.
+func requireSameRepoHead(crossRepo string, prNum int) error {
+	switch crossRepo {
+	case deskkit.CrossRepoSame:
+		return nil
+	case deskkit.CrossRepoFork:
+		return deskkit.Refused(fmt.Sprintf("refused: PR #%d's head branch lives in a fork — deskpr update pushes only "+
+			"to a PR whose head branch is in the base repository", prNum))
+	default:
+		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: PR #%d did not report which repository its head "+
+			"branch lives in — deskpr update pushes only to a branch it has established is in the base repository", prNum), nil)
+	}
+}
+
+// requireRemoteHoldsHead reads the push destination's own copy of refs/heads/<headRef> and
+// requires it to be EXACTLY the head commit the forge reported (#2085). Absent → the push
+// would CREATE a branch rather than update the PR; a different commit → the forge read is
+// stale or names a different branch. Both refuse. The destination is read from the same push
+// URL the push uses (already pinned to one URL by the push-destination gate).
+func requireRemoteHoldsHead(dir, headRef, headSHA string, prNum int) error {
+	dest, uerr := git(dir, "remote", "get-url", "--push", "origin")
+	if uerr != nil || strings.TrimSpace(dest) == "" {
+		return deskkit.Unverifiable("cannot resolve origin's push URL to read the PR head branch", uerr)
+	}
+	ref := "refs/heads/" + headRef
+	out, lerr := git(dir, "ls-remote", "--refs", strings.TrimSpace(dest), ref)
+	if lerr != nil {
+		return deskkit.Unverifiable(fmt.Sprintf("cannot read %s from the push destination", ref), lerr)
+	}
+	got := ""
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 2 && f[1] == ref {
+			got = f[0]
+		}
+	}
+	if got == "" {
+		return deskkit.Refused(fmt.Sprintf("refused: the push destination holds no %s, the head branch the forge reports "+
+			"for PR #%d — pushing would create a new branch rather than update the PR", ref, prNum))
+	}
+	if !strings.EqualFold(got, strings.TrimSpace(headSHA)) {
+		return deskkit.Refused(fmt.Sprintf("refused: the push destination's %s is at %s but the forge reports PR #%d's "+
+			"head as %s — re-run once they agree (fetch, merge, never rebase)", ref, shortSHA(got), prNum, shortSHA(headSHA)))
+	}
 	return nil
 }
 
@@ -690,14 +869,24 @@ const detachedRefusal = "detached HEAD — check out a feature branch first"
 // detached rework worker hits exactly this refusal, and for edit the remedy is not a branch:
 // it is naming the PR, so the message points at --pr N.
 const editDetachedRefusal = "detached HEAD — deskpr edit finds its PR by branch; name the PR with --pr N " +
-	"(admitted when HEAD is exactly that PR's head commit), or check out the PR's head branch"
+	"(admitted when HEAD is exactly that PR's head commit, or when that PR is in this repository and " +
+	"already carries a link trailer), or check out the PR's head branch"
 
 // preflightMode is preflight with one switch: allowDetached admits a detached HEAD, recorded
 // as branch "". Only `deskpr edit --pr N` passes true (#1901) — it pushes nothing and names
-// its PR explicitly, and deskkit.CheckOwnPR then admits the detached checkout ONLY when HEAD
-// is exactly that PR's head commit. create and update push the branch and keep refusing.
+// its PR explicitly, and findEditTarget then decides whether this checkout may edit that PR
+// (deskkit.CheckOwnPR, or a same-repo PR already carrying a link trailer — #2085). create and
+// update push the branch and keep refusing.
 // detachedMsg is the exit-6 message used when a detached HEAD is refused.
 func preflightMode(dir, base string, allowDetached bool, detachedMsg string) (*gitFacts, error) {
+	return preflightOpts(dir, base, allowDetached, detachedMsg, true)
+}
+
+// preflightOpts is preflightMode with the commits-ahead precondition switchable. requireAhead
+// false is only for `deskpr edit --pr N` (#2085): edit pushes nothing, so the checkout it runs
+// from needs no work of its own — a desk worktree with no commits ahead of the default branch
+// may correct a body — and the ahead-count measures a branch the verb never publishes.
+func preflightOpts(dir, base string, allowDetached bool, detachedMsg string, requireAhead bool) (*gitFacts, error) {
 	gitRepo, gerr := gitcore.Open(dir)
 	if gerr != nil || !gitRepo.InsideWorkTree() {
 		return nil, deskkit.Unverifiable("not inside a git worktree", gerr)
@@ -792,12 +981,14 @@ func preflightMode(dir, base string, allowDetached bool, detachedMsg string) (*g
 		return nil, deskkit.Unverifiable(
 			"base ref "+baseRef+" does not resolve — fetch the base branch (`git fetch origin`) first", verr)
 	}
-	cnt, cerr := gitRepo.AheadCount(baseRef, "HEAD")
-	if cerr != nil {
-		return nil, deskkit.Unverifiable("cannot count commits ahead of "+baseRef, cerr)
-	}
-	if cnt == 0 {
-		return nil, deskkit.Refused("refused: branch has no commits ahead of " + baseRef)
+	if requireAhead {
+		cnt, cerr := gitRepo.AheadCount(baseRef, "HEAD")
+		if cerr != nil {
+			return nil, deskkit.Unverifiable("cannot count commits ahead of "+baseRef, cerr)
+		}
+		if cnt == 0 {
+			return nil, deskkit.Refused("refused: branch has no commits ahead of " + baseRef)
+		}
 	}
 
 	headHash, herr := gitRepo.Resolve("HEAD")

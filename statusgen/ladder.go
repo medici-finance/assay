@@ -266,7 +266,7 @@ func ladderRungsFromAutonomy(in autonomyInputs) []ladderRung {
 			r2.Reason = "no-merged-prs"
 		}
 	} else {
-		r2.Reason = "gh-unreadable"
+		r2.Reason, _ = gateUnmeasured(in.GateCause, in.Since, in.Until)
 	}
 	rungs = append(rungs, r2)
 
