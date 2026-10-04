@@ -63,13 +63,20 @@ optional and selects the reader's Claude login directory; each desk's login
 directory remains the final positional argument to `cellctl desk`.
 The manifest, trust store and signing files must pass owner-only custody
 checks (0600 files on Unix; protected current-user ACLs on Windows), with no
-symlink/reparse-point substitution. Keep the queue and endpoint directory
-private too. Do not put keys inline in the manifest, in argv, or in git.
+symlink/reparse-point substitution. Keep the queue directory private too. On
+Unix the socket's parent directory must be owned by the operating user with no
+group or other permission bits (for example 0700): the gateway refuses to bind
+otherwise and sets the socket to 0600, and `deskcomms` refuses to write to a
+socket outside such a directory or owned by another user. Do not put keys
+inline in the manifest, in argv, or in git.
 
 On Windows, use absolute Windows paths and a local pipe, for example the JSON
 value `"socket": "\\\\.\\pipe\\assay-example-comms"`. Remote pipe addresses are
 refused. Provision owner-only ACLs using the same custody procedure as the
 cell's other credentials; Unix chmod alone does not establish Windows custody.
+The gateway creates the pipe with the current user as its owner and only DACL
+entry. Because pipe names are host-global, `deskcomms` also checks the
+connected pipe's owner and refuses a pipe another account created first.
 
 Set the absolute manifest path and check it:
 
@@ -114,3 +121,5 @@ cellctl comms example run
 
 Recovery removes the service checkpoint and a stale Unix socket, preserving
 queued, held and acknowledged messages. It never takes over an active lease.
+A clean stop already removes the socket, so `run` can start again without
+recovery. The local-only gateway never removes an existing endpoint itself.
