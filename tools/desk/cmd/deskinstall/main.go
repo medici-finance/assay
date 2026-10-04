@@ -11,7 +11,15 @@
 //	    desk-tools-windows-<arch>.tar.gz) for that tag
 //	  → compute sha256 and compare; a mismatch is a hard REFUSE, not a warning,
 //	    so no unverified bytes are ever placed
+//	  → download the asset's Sigstore attestation bundle (<asset>.sigstore.json)
+//	    and verify it attests THESE bytes as built by this repo's release
+//	    workflow at the pinned tag; any failure is a hard REFUSE (attest.go)
 //	  → place the verified binaries on a PATH-resolvable dir.
+//
+// The attestation check is a second control that fails for a different reason
+// than the sha256 check: the pin proves the bytes are the bytes the manifest
+// names, the attestation proves the bytes the manifest names came out of the
+// release workflow. No flag or option skips it.
 //
 // The sha256-verify-or-refuse step is the single load-bearing control on this
 // surface: it is the one thing standing between a substituted release asset and
@@ -41,7 +49,7 @@ import (
 // installer never resolves a floating or rolling release ref.
 const manifestName = "paired-versions.yaml"
 
-const usage = `deskinstall — Go-native, version-pinned, sha256-verified toolchain installer.
+const usage = `deskinstall — Go-native, version-pinned, sha256- and attestation-verified toolchain installer.
 
 usage:
   deskinstall --manifest <paired-versions.yaml> --dest <dir> [--platform <os-arch>]
@@ -52,8 +60,11 @@ usage:
 MODE 1 — acquire, verify, place (the pinned toolchain binaries). It resolves the
 pinned tag + per-platform sha256 from the manifest (a pinned repo tag, never a
 floating ref), downloads the release assets for the detected platform, VERIFIES
-their sha256 and REFUSES on any mismatch (nothing is placed), then installs the
-verified binaries into --dest.
+their sha256 and REFUSES on any mismatch, then VERIFIES each asset's build
+attestation (<asset>.sigstore.json from the same release: SLSA provenance signed
+by this repo's release workflow at the pinned tag, logged in the transparency
+log) and REFUSES on any failure, then installs the verified binaries into --dest.
+Any refusal places nothing. The attestation check is mandatory — no flag skips it.
 
 Windows assets (from the release build matrix):
   statusgen-windows-amd64.exe      / statusgen-windows-arm64.exe

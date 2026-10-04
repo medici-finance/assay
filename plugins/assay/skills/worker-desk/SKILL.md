@@ -741,6 +741,13 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
 - **The out-of-repo surface (files outside any repo) is serialized, never parallel** — max one
   in-flight item, staged as diffs in the PR and applied to the live files only as the last step
   before `implemented`.
+- **New dependency, plugin or MCP server — risk summary first, install second.** Before adding
+  one (to a manifest, a lockfile, the harness or the agent environment), file an issue carrying an
+  agent-generated **risk summary**: *source* (publisher, repo, exact version, release date),
+  *permissions* (network, filesystem, credentials or scopes it reads), and *persistence* (hooks,
+  background processes, auto-update, files written outside its own directory). The PR cites the
+  issue; no issue, no install. Minimum release age is **7 days** — a younger release needs the
+  risk-summary issue PLUS a driver `bless` on it before install, never the worker's own judgment.
 - **Insight-routing:** a systemic/process insight produced in passing (a wrap-up, a dispatch or drain
   note, an Evidence aside, a "this keeps recurring" observation) MUST also be filed as an issue in the
   project's own toolkit/methodology repo — commentary is not a register. Include the triggering

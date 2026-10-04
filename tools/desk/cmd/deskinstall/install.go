@@ -32,6 +32,9 @@ type Options struct {
 	Platform     string  // "windows-amd64" etc.; empty => detect from this host
 	Fetch        Fetcher // nil => httpFetch
 	Out          io.Writer
+	// TrustedRoot is a Sigstore trusted_root.json the attestation check trusts;
+	// nil => the embedded public-good root. Tests inject a throwaway root.
+	TrustedRoot []byte
 }
 
 // componentManifest is one component's (statusgen / desk-tools) pin block in the
@@ -114,9 +117,11 @@ func verifySHA256(got []byte, wantHex string) error {
 }
 
 // Install runs the full acquire→verify→place flow. It is two-phase by design:
-// EVERY component is fetched and sha256-verified FIRST; only if all verify does
-// anything get written to DestDir. A mismatch on any component therefore leaves
-// nothing installed — the negative-path guarantee the security row asserts.
+// EVERY component is fetched, sha256-verified AND attestation-verified FIRST;
+// only if all verify does anything get written to DestDir. A failure of either
+// check on any component therefore leaves nothing installed — the negative-path
+// guarantee the security rows assert. The attestation check (attest.go) is
+// mandatory: no option or flag skips it.
 func Install(opts Options) error {
 	out := opts.Out
 	if out == nil {
@@ -129,6 +134,15 @@ func Install(opts Options) error {
 	fetch := opts.Fetch
 	if fetch == nil {
 		fetch = httpFetch
+	}
+
+	trust := opts.TrustedRoot
+	if trust == nil {
+		trust = embeddedTrustedRoot
+	}
+	tm, err := parseTrustedRoot(trust)
+	if err != nil {
+		return fmt.Errorf("attestation: %w", err)
 	}
 
 	raw, err := os.ReadFile(opts.ManifestPath)
@@ -152,7 +166,8 @@ func Install(opts Options) error {
 		resolved = append(resolved, p)
 	}
 
-	// Phase 1 — fetch + VERIFY every component. Nothing is written yet.
+	// Phase 1 — fetch + VERIFY (sha256 pin, then attestation) every component.
+	// Nothing is written yet.
 	type verified struct {
 		pin   pin
 		bytes []byte
@@ -167,10 +182,22 @@ func Install(opts Options) error {
 			// Load-bearing refusal: FIRST post-download step, before any placement.
 			return fmt.Errorf("%s (%s): %w", p.component, p.asset, err)
 		}
+		// Second, independent check: the pinned bytes must be the bytes this
+		// repo's release workflow attested at the pinned tag. A re-pin to
+		// substituted bytes passes the sha256 check and fails here.
+		bundle, err := fetch(assetURL(p) + bundleAssetExt)
+		if err != nil {
+			return fmt.Errorf("%s (%s): attestation: downloading %s%s: %w — refusing to install bytes without a verifiable attestation",
+				p.component, p.asset, p.asset, bundleAssetExt, err)
+		}
+		if err := verifyAttestation(bundle, p.sha256, releasePolicy(p.tag), tm); err != nil {
+			return fmt.Errorf("%s (%s): attestation: %w — refusing to install", p.component, p.asset, err)
+		}
 		staged = append(staged, verified{pin: p, bytes: body})
 	}
 
-	// Phase 2 — place only verified bytes. Reached only when every hash matched.
+	// Phase 2 — place only verified bytes. Reached only when every hash matched
+	// and every attestation verified.
 	if err := os.MkdirAll(opts.DestDir, 0o755); err != nil {
 		return fmt.Errorf("creating dest dir %s: %w", opts.DestDir, err)
 	}
