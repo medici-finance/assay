@@ -1,0 +1,23 @@
+{
+  "evidence-automerge.yml": {
+    "mode": "identical"
+  },
+  "loopadmin.yml": {
+    "mode": "pending",
+    "reason": "New loopadmin test workflow; pending maintainer activation (README Contents)."
+  },
+  "release-on-merge.yml": {
+    "mode": "pending",
+    "reason": "New release-by-merge detector; pending maintainer activation (README Contents)."
+  },
+  "release.yml": {
+    "mode": "pending",
+    "reason": "Intentional release-by-merge tag authorizer proposal (README Contents)."
+  },
+  "windows-ci-leg.yml": {
+    "mode": "identical"
+  },
+  "winparity.yml": {
+    "mode": "identical"
+  }
+}
