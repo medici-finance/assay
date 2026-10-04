@@ -1,0 +1,1 @@
+- Add opt-in Go supervision and launcher context for within-cell desk communications, Windows named-pipe transport, and `deskcomms poll --json` with full message payloads. See `docs/cellctl-comms.md` for provisioning and cutover prerequisites.

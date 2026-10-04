@@ -44,7 +44,11 @@ func run(getenv func(string) string) int {
 		return exitCodeOf(err)
 	}
 
-	filer := DeskfileIssueFiler{Repo: "medici-finance/assay"}
+	repo := cfg.Repo
+	if repo == "" {
+		repo = "medici-finance/assay"
+	} // retain the existing standalone default
+	filer := DeskfileIssueFiler{Repo: repo}
 
 	// The outbound prose gate is consulted on every send (socket.go). Its
 	// contained advisor is wired from the pinned decider runner entry (brief
@@ -58,14 +62,16 @@ func run(getenv func(string) string) int {
 	}
 
 	agent := GatewayAgent{Root: cfg.QueueDir, Cell: cfg.Cell, Deps: deps, Emitter: NoOpInboxEmitter{}, Filer: filer}
-	sock := SocketServer{Root: cfg.QueueDir, Cell: cfg.Cell, Deps: deps, Emitter: agent.Emitter, Filer: filer, Gate: gate}
+	sock := SocketServer{Root: cfg.QueueDir, Cell: cfg.Cell, Deps: deps, Emitter: agent.Emitter, Filer: filer, Gate: gate, LocalOnly: cfg.LocalOnly}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	errCh := make(chan error, 2)
 	go func() { errCh <- sock.ListenAndServe(cfg.Socket) }()
-	go func() { errCh <- ListenAndServeA2A(ctx, cfg, agent) }()
+	if !cfg.LocalOnly {
+		go func() { errCh <- ListenAndServeA2A(ctx, cfg, agent) }()
+	}
 
 	select {
 	case <-ctx.Done():

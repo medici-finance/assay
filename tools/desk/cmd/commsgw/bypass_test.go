@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -29,6 +30,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/acp"
 	"github.com/medici-finance/assay/tools/desk/internal/comms"
+	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/runnertable"
 )
@@ -362,6 +364,9 @@ func startSocketServer(t *testing.T, s SocketServer) string {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
 	path := filepath.Join(dir, "gw.sock")
+	if runtime.GOOS == "windows" {
+		path = fmt.Sprintf(`\\.\pipe\assay-gw-test-%d-%d`, os.Getpid(), time.Now().UnixNano())
+	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	errCh := make(chan error, 1)
 	go func() { errCh <- s.ListenAndServe(path) }()
@@ -372,7 +377,7 @@ func startSocketServer(t *testing.T, s SocketServer) string {
 			t.Fatalf("SocketServer.ListenAndServe exited early: %v", err)
 		default:
 		}
-		if c, err := net.Dial("unix", path); err == nil {
+		if c, err := commstransport.Dial(path, 100*time.Millisecond); err == nil {
 			_ = c.Close()
 			return path
 		}
@@ -384,7 +389,7 @@ func startSocketServer(t *testing.T, s SocketServer) string {
 
 func socketSubmit(t *testing.T, path string, raw []byte) gwResponse {
 	t.Helper()
-	conn, err := net.DialTimeout("unix", path, 2*time.Second)
+	conn, err := commstransport.Dial(path, 2*time.Second)
 	if err != nil {
 		t.Fatalf("dial gateway socket: %v", err)
 	}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/comms"
+	"github.com/medici-finance/assay/tools/desk/internal/custodytest"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -151,7 +152,7 @@ func writeCustodyKey(t *testing.T) (path string, pub ed25519.PublicKey) {
 	if err != nil {
 		t.Fatalf("generating keypair: %v", err)
 	}
-	path = filepath.Join(t.TempDir(), "comms.key")
+	path = filepath.Join(custodytest.PrivateTempDir(t), "comms.key")
 	if err := os.WriteFile(path, []byte(hex.EncodeToString(priv.Seed())), 0o600); err != nil {
 		t.Fatalf("writing custody key: %v", err)
 	}

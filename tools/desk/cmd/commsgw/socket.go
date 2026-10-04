@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"os"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/comms"
+	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
 )
 
 // socket.go — the within-cell loopback transport: a Unix-domain socket server
@@ -60,7 +60,8 @@ type socketNotice struct {
 // socket, dispatching accepted "submit"s through the same PreCheck pipeline
 // a2a.go's cross-cell path uses.
 type SocketServer struct {
-	Root string
+	LocalOnly bool
+	Root      string
 	// Cell is this gateway's own cell, stamped on every refusal journal line
 	// (refusal.go) so the cell's sweep scopes a refusal even when the
 	// presented from/to are empty or forged.
@@ -83,19 +84,14 @@ func (s SocketServer) clock() time.Time {
 	return time.Now().UTC()
 }
 
-// ListenAndServe binds the Unix socket at path (removing a stale socket file
-// first — a leftover file from a crashed prior run must never make a fresh
-// bind silently fail) and serves connections until the listener is closed.
+// ListenAndServe binds the protected host-local endpoint. It never unlinks
+// another gateway's socket to claim ownership.
 func (s SocketServer) ListenAndServe(path string) error {
-	_ = os.Remove(path) // stale socket from a prior crash; ignore "not exist".
-	ln, err := net.Listen("unix", path)
+	ln, err := commstransport.Listen(path)
 	if err != nil {
 		return fmt.Errorf("commsgw: cannot bind socket %s: %w", path, err)
 	}
 	defer ln.Close()
-	if err := os.Chmod(path, 0o700); err != nil {
-		return fmt.Errorf("commsgw: cannot chmod socket %s: %w", path, err)
-	}
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -139,6 +135,14 @@ func (s SocketServer) handle(conn net.Conn) {
 
 func (s SocketServer) handleSubmit(req gwRequest) gwResponse {
 	now := s.clock()
+	if s.LocalOnly {
+		env, err := comms.ParseEnvelope(req.Message)
+		if err == nil && (env.From.Cell != s.Cell || env.To.Cell != s.Cell) {
+			err = fmt.Errorf("%w: local-only gateway accepts its own cell only", ErrCrossCellPair)
+			jerr := journalRefusal(s.Root, s.Cell, req.Message, err, now)
+			return gwResponse{Receipt: &socketReceipt{Accepted: false, Detail: refusalDetail(err, jerr)}}
+		}
+	}
 	// The send flows through the ONE outbound pipeline: deterministic pre-checks
 	// first, then — only on accept — the prose gate. A deterministic refusal is
 	// terminal (the gate is never consulted); a non-clean gate verdict has
@@ -166,6 +170,9 @@ func (s SocketServer) handleSubmit(req gwRequest) gwResponse {
 }
 
 func (s SocketServer) handlePoll(req gwRequest) gwResponse {
+	if s.LocalOnly && req.Cell != s.Cell {
+		return gwResponse{Error: "commsgw: local-only gateway refuses another cell's mailbox"}
+	}
 	if req.Cell == "" || req.Role == "" {
 		return gwResponse{Error: "commsgw: poll needs cell and role"}
 	}
@@ -181,6 +188,9 @@ func (s SocketServer) handlePoll(req gwRequest) gwResponse {
 }
 
 func (s SocketServer) handleAck(req gwRequest) gwResponse {
+	if s.LocalOnly && req.Cell != s.Cell {
+		return gwResponse{Error: "commsgw: local-only gateway refuses another cell's mailbox"}
+	}
 	if req.Cell == "" || req.Role == "" || req.ID == "" {
 		return gwResponse{Error: "commsgw: ack needs cell, role and id"}
 	}

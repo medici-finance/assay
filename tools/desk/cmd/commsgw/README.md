@@ -164,3 +164,12 @@ never dropped.
 `Quarantine = held mailbox + a filed issue via deskfile` (the silent-desk
 rule). The held write is unconditional; a filing failure is reported but never
 undoes it — the message stays held either way.
+
+## Host-local service
+
+For Claude and Codex desks on one host, [cellctl comms](../../../../docs/cellctl-comms.md)
+supervises this gateway and the drain from one private manifest. Its explicit
+`ASSAY_COMMS_LOCAL_ONLY=1` mode requires enable, cell, queue, socket and trust
+settings, accepts only that cell, and starts no A2A listener. Without that flag,
+the existing network/TLS requirements above still apply. Windows uses a
+current-user-only local named pipe.
