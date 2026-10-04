@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/comms"
+	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
 )
 
 // gateway.go — the local cell gateway's loopback CLIENT surface, and the two
@@ -85,13 +85,12 @@ type gwResponse struct {
 	Error   string   `json:"error,omitempty"`
 }
 
-// socketGateway is the real loopback client: it dials a Unix-domain socket the
+// socketGateway is the real loopback client: it dials the protected local endpoint the
 // local gateway listens on, writes one JSON request line, and reads one JSON
 // response line. The address is operator config (see client.go); this type holds
 // no default endpoint, because a guessed endpoint is a message sent somewhere
 // nobody is listening.
 type socketGateway struct {
-	network string        // "unix" (loopback only)
 	addr    string        // socket path
 	timeout time.Duration // per-exchange dial+IO budget
 }
@@ -108,7 +107,7 @@ func (g socketGateway) exchange(req gwRequest) (gwResponse, error) {
 	if to <= 0 {
 		to = dialTimeout
 	}
-	conn, err := net.DialTimeout(g.network, g.addr, to)
+	conn, err := commstransport.Dial(g.addr, to)
 	if err != nil {
 		// A dial failure is unreachable, full stop — never a fallback to a local
 		// queue. This is the fail-closed branch the GatewayDown test pins.

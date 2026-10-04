@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/comms"
 	"github.com/medici-finance/assay/tools/desk/internal/commsqueue"
+	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
 )
 
 // refusal_test.go — the finer contracts of the refusal journal (#1165) that
@@ -155,23 +155,7 @@ func TestRefusalJournalSocketCarrierMalformed(t *testing.T) {
 	f := newFixture(t)
 	root := t.TempDir()
 	s := SocketServer{Root: root, Cell: "cell-a", Deps: f.deps, Now: func() time.Time { return f.now }}
-	// A short path: Unix socket paths are capped at ~104 bytes on macOS, and
-	// t.TempDir() names can exceed that.
-	dir, err := os.MkdirTemp("", "gwr")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	path := filepath.Join(dir, "gw.sock")
-	go func() { _ = s.ListenAndServe(path) }()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if c, err := net.Dial("unix", path); err == nil {
-			_ = c.Close()
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	path := startSocketServer(t, s)
 	resp := socketRawLine(t, path, "{{{ not a request\n")
 	if !strings.Contains(resp, "undecodable request") {
 		t.Fatalf("want an undecodable-request error, got %q", resp)
@@ -187,7 +171,7 @@ func TestRefusalJournalSocketCarrierMalformed(t *testing.T) {
 // (a typed client could never send a line that does not decode).
 func socketRawLine(t *testing.T, path, line string) string {
 	t.Helper()
-	conn, err := net.Dial("unix", path)
+	conn, err := commstransport.Dial(path, 2*time.Second)
 	if err != nil {
 		t.Fatalf("dial %s: %v", path, err)
 	}

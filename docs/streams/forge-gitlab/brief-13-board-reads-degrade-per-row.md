@@ -251,6 +251,53 @@ as cleared when nobody read it). The separator and the timeouts rank last.
 
 VERIFY: PASS — every Verify expectation was observed. The witness genuinely proves rows 2, 3, 4, 6 and 8. Row 1 passed by hand; its witness record is could-not-run pending a Linux runner (medici-finance/assay#1800). Row 5 was proven fail-first by hand. Row 7 exits 0 but is vacuous on merged main. Not witness-complete, so hold rows 1, 5 and 7.
 
+### Non-implementer verifier re-run: 2026-10-02T22:09:24Z (UTC), assay-verifier-app[bot] (claude-opus-5-5[1m]) (on-behalf-of human:ian), merged main cf31c32418ba49f93c679913813768542db1c072
+
+Host: darwin/arm64, go1.27.1, statusgen v1.0.31. Every go command ran with a throwaway HOME and with the temp directory redirected into the verifier's own scratch directory (module and build caches left at their real location). No credential was minted and no live forge was called; the deskboard tests serve fixtures on loopback.
+
+| # | Command | Expect | Observed (exit + key output line) | Date / runner |
+|---|---------|--------|-----------------------------------|---------------|
+| 1 | `cd tools/desk && go build ./... && go test ./cmd/deskboard/... -timeout 300s` | exit 0 | By hand: exit 0, `ok  github.com/medici-finance/assay/tools/desk/cmd/deskboard 78.780s`; repeated with `-count=1` to defeat the test cache: exit 0, `ok … 55.605s`. The execution witness records could-not-run for this row on this host (check:ci needs a network-off sandbox, #1800). | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && go test ./cmd/deskboard/ -run TestSweepDegradesOneRowNotTheBoard -v -timeout 120s` | exit 0; output contains `PASS` | exit 0, `--- PASS: TestSweepDegradesOneRowNotTheBoard (0.00s)` | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && go test ./cmd/deskboard/ -run TestDegradedRowNeverReadsBenign -v -timeout 120s` | exit 0; output contains `PASS` | exit 0, `--- PASS: TestDegradedRowNeverReadsBenign (0.00s)` with subtests `own-files_read_fails` and `compare_read_fails` both PASS | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | `cd tools/desk && grep -cE -e 'change-level' -e 'repo-level' cmd/deskboard/board.go` | `5` or more | exit 0, output `7` (one repo-level label, five change-level labels, one unrelated worker-pool comment) | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | `cd tools/desk && go test ./cmd/deskboard/ -run TestSweepDegradesOneRowNotTheBoard -count=1 -timeout 120s` against the pre-fix tree | exit non-zero; the failure names the whole-sweep refusal | Mutation half applied to scratch copies, never to the tracked tree. (a) Tree of the implementing commit 12087009339a with the classifier file put back to its parent a7393d1dec0b: exit 1, `--- FAIL: TestSweepDegradesOneRowNotTheBoard`, `sweepActionsRepo returned cannot read reviews for example-org/tracker#52: simulated: cannot read reviews — one PR … must degrade its OWN row, never fail the whole sweep`. (b) Merged-main tree with the reviews-read degrade put back to a whole-sweep return: exit 1, same failure line. Code span as written on the unmodified merged-main tree: exit 0. | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | `cd tools/desk && go test ./cmd/deskboard/ -run TestDegradedRowCarriesItsReason -v -timeout 120s` | exit 0; output contains `PASS` | exit 0, `--- PASS: TestDegradedRowCarriesItsReason (0.00s)` | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | `statusgen --root . --consumers` | exit 0 | exit 0, `consumers: no brief files in the diff against cf31c32418ba… — nothing to corroborate` (exits 0 but corroborates nothing on merged main) | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | `statusgen --root . --lint` | exit 0; output contains `LINT: PASS` | exit 0, `LINT: PASS`, 0 lines beginning PROBLEM | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+**Execution witness** (`statusgen verifyrun --brief … --dry-run`, v1.0.31, nothing written to the brief): overall exit 2; 7 of 8 rows pass, 1 could-not-run.
+- row 1: could-not-run (exit=-, sha256:e3b0c44298fc) — check:ci hermetic execution requires a network-off sandbox; the sandbox uses `unshare --net`, a Linux facility, and this host is darwin.
+- row 2: pass (exit=0, sha256:0184a9359a86)
+- row 3: pass (exit=0, sha256:36603f7749b2)
+- row 4: pass (exit=0, sha256:10159baf262b) — exit-status only
+- row 5: pass (exit=0, sha256:064eb0ffddd0) — exit-status only; the witness executes the code span on the fixed tree, so this pass does not show the fail-first half (shown by hand above)
+- row 6: pass (exit=0, sha256:f3bb483e5da7)
+- row 7: pass (exit=0, sha256:28cc4c1449d6)
+- row 8: pass (exit=0, sha256:71a986d6d12a)
+
+Disclosure: the witness dry-run executed the brief's go test rows itself under the ordinary HOME, not the throwaway one used for the by-hand runs. A read of the audit log afterwards showed no fixture-shaped rows in the witness window.
+
+**What changed since the 2026-09-28 record (blocked, #1800).**
+- Declared inputs that changed on main: the classifier and two of its test files, by #1851 (review-queue snapshot read) and #2040 (trusted humans' changes are reviewed; the HUMAN-OWNED class is retired). The brief, the sweep test file and the stream README are byte-identical to the recorded hashes.
+- Row 1: unchanged. Still passes by hand; the witness still records could-not-run on darwin. #1800 is OPEN (read at this run), so the blocker stands.
+- Row 5: unchanged in kind. The witness pass is still on the fixed tree; fail-first re-proven by hand on both the implementing commit and the current merged-main classifier, so the test still observes the defect after the two later changes.
+- Row 7: unchanged. Exit 0, nothing to corroborate on merged main.
+- Rows 2, 3, 4, 6, 8: pass by hand and in the witness, as before.
+
+**Findings (not Verify failures).**
+- The trust-gate blessing read for an untrusted author is still a whole-sweep return with no repo-level / change-level label (the only remaining `return prOutcome{}, <err>` in the per-change path, board.go:2123). The Review question about it is still open.
+- The earlier observation that a failed reviews read on a trusted human's change landed HUMAN-OWNED is superseded: #2040 retired that class; the classifier now carries one comment mentioning the retired arm and no such outcome, so the no-verdict degrade routes to the classifier's ordinary no-verdict arm for every author. The resulting row class for a trusted human author was read from the code, not separately exercised in this pass.
+- The lint carries NOTICE lines for this brief: `risk-files-crossread` (all four risk answers "no" while the declared path sits under a security-path trigger), `gotest-run-vacuous` on rows 2, 3, 5 and 6 (unanchored `-run` selectors with no `--- PASS:` assertion; the by-hand runs above confirm each named test exists and ran), and a one-sided depends edge to forge-gitlab/02.
+
+**Risk-bearing value enumeration.** Trigger: the diff touches a risk-classed path. Scope: the classifier hunks of the implementing commit, read at their current lines on merged main. The fix adds no numeric constant; the literals are the degrade-direction bindings and the rendered marker, all in tools/desk/cmd/deskboard/board.go: `in.ownFilesChanged = true` @ :2242 and :2250 (new; :2231 is the #1068 arm); `complete = false` @ :2280; `var rs reviewState` zero value (ever=false) @ :2147; the separator `" — DEGRADED: "` @ :2316. Verify timeouts (120s / 300s) and the row-4 floor `5` are check-definition knobs. Ranking: all are undone by an edit and a redeploy — the board is a read-only classifier and performs no irreversible act. The three direction bindings rank first because a wrong value fails open; the separator and the knobs rank last.
+
+- RISK-VALUE: DERIVED — in.ownFilesChanged = true @ tools/desk/cmd/deskboard/board.go:2242,2250 — the benign-merge outcome asserts the change's own files did not change since review; after a failed own-files or compare read that fact is not established, so `true` (re-review) is the only value that asserts nothing unobserved. It matches the existing truncation contract and spec §3 (could-not-check, never fail open).
+- RISK-VALUE: DERIVED — complete = false @ tools/desk/cmd/deskboard/board.go:2280 — the risk gate only widens; a diff that could not be read may contain the trigger, and the incomplete arm sets risk-classed, the same fail-closed arm a truncated diff takes.
+- RISK-VALUE: DERIVED — rs = reviewState{} zero value (ever=false) @ tools/desk/cmd/deskboard/board.go:2147 — any other value would invent a verdict nobody gave; ever=false routes through the existing no-verdict arm to NEEDS-REVIEW, which is not a cleared state.
+
+VERIFY: BLOCKED — all eight Verify expectations were observed by hand (row 5's fail-first half on a scratch copy; row 7 exits 0 with nothing to corroborate), but the execution witness is 7 of 8: row 1 (check:ci) is could-not-run on this darwin host for want of a network-off sandbox, and #1800 is still open. Environment blocker; clears on a Linux runner.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
 Reviewer answers: for each site the audit labelled repo-level, is a whole-sweep refusal really

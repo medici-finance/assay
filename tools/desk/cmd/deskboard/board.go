@@ -1396,7 +1396,7 @@ func classify(in classifyInput) (action, note string) {
 		// SEC-REVIEW-REQUIRED regardless of the CI-zero reason.
 		if in.riskClassed && !in.securityPass {
 			return actSecReview, "risk-classed (" + secReviewReason(in.riskReason) + ") and no '" + securityPassMarker +
-				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP"
+				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP or merge"
 		}
 		switch in.zeroCI {
 		case zeroCINeverRan:
@@ -1415,7 +1415,11 @@ func classify(in classifyInput) (action, note string) {
 			"so CI green is NOT established; deskpost `ready` refuses this same state (exit 6). Confirm the " +
 			"checks actually ran before any flip"
 	// approved at head + CI green → MERGE-NOW (ranks above READY/FLIP).
-	// Risk-classed drafts without security pass stay blocked (SEC-REVIEW-REQUIRED).
+	// A risk-classed row without a security pass at head stays blocked
+	// (SECURITY-REVIEW-REQUIRED), draft OR ready (#2158): a ready PR that took a new head
+	// and a correctness re-approval there, but no fresh security pass, must not read
+	// MERGE-NOW. securityPass is head-bound by reduceReviews (sameHead), so a pass
+	// recorded at an older head never satisfies this check.
 	case in.approvedAtHead && in.ciGreen && !in.mergeConflict:
 		// #400 N9: "CI green" is a VERDICT, and on a repo the policy marks as running no
 		// PR CI (deskkit.CIRequired false) with nothing in the rollup, no check ran to
@@ -1426,9 +1430,9 @@ func classify(in classifyInput) (action, note string) {
 		if in.pass == 0 {
 			ciPhrase = "no PR CI configured for this repo and nothing ran (not a green verdict)"
 		}
-		if in.draft && in.riskClassed && !in.securityPass {
+		if in.riskClassed && !in.securityPass {
 			return actSecReview, "risk-classed (" + secReviewReason(in.riskReason) + ") and no '" + securityPassMarker +
-				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP"
+				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP or merge"
 		}
 		// #1652: on a CI-less repo with a probed no-checks zero the green is
 		// vacuous — say so, so "CI green" never silently includes it.
