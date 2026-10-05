@@ -807,7 +807,7 @@ func cmdNew(args []string) (err error) {
 		"passed; refuses if no receipt was recorded in the last "+skillBugReceiptWindow.String()+")")
 	section := fs.String("section", "", "the skill + section the desk was following (composed into the skill-bug body; requires --correction)")
 	reading := fs.String("reading", "", "the desk's one-line reading of what the skill should have said (composed into the skill-bug body; requires --correction)")
-	forceNew := fs.Bool("force-new", false, "bypass the DEDUPE search, the blocker-evidence gate AND the human-only act gate, all three on the one --reason (escape hatch; requires --reason)")
+	forceNew := fs.Bool("force-new", false, "bypass the DEDUPE search, the blocker-evidence gate, the fork-test gate (needs-decision filings) AND the human-only act gate, all on the one --reason (escape hatch; requires --reason)")
 	forceFile := fs.Bool("force-file", false, "raise the new-issue RATE for this ONE filing so it files even when the "+
 		"rate is spent (escape hatch; requires --reason). Distinct from --force-new, which bypasses dedupe; "+
 		"--force-file does NOT weaken dedupe and does NOT reset the rate count (the filing is still audited and charged).")
@@ -1157,7 +1157,8 @@ func cmdNew(args []string) (err error) {
 					"or, for a browser step, a fenced ```url block with the one URL and the field values — the " +
 					"Act block the ask-decision skill defines. A prose description of the act makes the driver " +
 					"reconstruct the command. Override with --force-new --reason only if the act genuinely " +
-					"cannot be written as a block (audited; it also waives the dedupe search and the blocker-evidence gate).")
+					"cannot be written as a block (audited; it also waives the dedupe search, the blocker-evidence gate and, " +
+					"on a needs-decision filing, the fork-test gate).")
 		}
 		ac.actGate = actGateBypassNote
 	}

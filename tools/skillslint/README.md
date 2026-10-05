@@ -322,17 +322,24 @@ or `shell` fence that defines a function named `driver_act…`) to four rules:
 3. the act function has a per-act name, `driver_act_<id>`, never the bare
    `driver_act`, so a block that fails to parse leaves no earlier act's
    function under the name the driver is told to type;
-4. every `read` clears its variable first and stops on a failed read
-   (`NAME=; read -rs NAME || { ...; exit 1; }`): a shell whose `read` has no
-   `-s` fails without assigning, and an inherited value would pass as the
-   secret.
+4. every `read` is the whole safe shape on one line,
+   `NAME=; read -rs NAME || exit N` or `NAME=; read -rs NAME || { ...; exit N; }`:
+   the clear comes first in command position (never after `&&` or `||`, nor
+   inside a same-line subshell), the read carries `-r` and `-s` and no other
+   option, and the failure branch ends with `exit N`, `N` non-zero. A shell
+   whose `read` has no `-s` fails without assigning, and an inherited value
+   would pass as the secret. Any unquoted word `read` on a code line counts
+   as a read wherever it sits (after `if`, `!`, `while`, a pipe or a
+   backtick), so the rule errs strict; words inside quotes do not count.
 
 A violation is exit 1, naming the file and line. Finding no act block at all is
 could-not-check (exit 2), never a pass: the `ask-decision` example must exist.
 The check reads only the examples the plugin ships. An act block a desk writes
 at run time gets no lint. Its fence finder matches the opening character and a
 closing run at least as long, but applies no indentation or list rule, so a
-four-space-indented example is still checked, which errs strict.
+four-space-indented example is still checked, which errs strict. The read rule
+reads one line at a time: an `exit` inside a subshell opened on an earlier line
+ends only that subshell, and the lint does not see that.
 
 ## Fixtures
 

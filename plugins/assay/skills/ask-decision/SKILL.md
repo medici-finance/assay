@@ -210,8 +210,12 @@ restate it.
 
 This plugin's own skill lint checks the shipped example below against the plain-text comment
 rule (full-line and trailing), the guard line, the per-act name and the secret-read shape, in
-every `sh`, `bash`, `zsh` or `shell` fence that defines an act function. A block a desk
-composes at run time gets no lint; it rests on these rules alone.
+every `sh`, `bash`, `zsh` or `shell` fence that defines an act function. For the read, it
+accepts only the whole shape on one line: the clear first, `read` with `-r` and `-s` and no
+other option, and a failure branch that ends in a non-zero `exit`; any other unquoted `read`
+is flagged. It reads one line at a time, so it does not see whether an `exit` sits in a
+subshell opened on an earlier line. A block a desk composes at run time gets no lint; it rests
+on these rules alone.
 
 ```sh
 [ -n "${ZSH_VERSION-}" ] && setopt interactive_comments
@@ -272,8 +276,8 @@ composed at run time rest on the rules above alone. And it fires only on those t
 another label, or a marker that sits in the title or after an opening paragraph, gets no tool
 backstop, and the Act block there rests on the skill rule alone. The only bypass is
 `--force-new --reason`, and the filing's audit line records it. That one flag also waives the
-dedupe search and the blocker-evidence gate, so it is a last resort, not the way through for
-one gate. A pure ruling the desk then carries out has no act to run, so it is not a
+dedupe search, the blocker-evidence gate and, on a `needs-decision` filing, the fork-test gate,
+so it is a last resort, not the way through for one gate. A pure ruling the desk then carries out has no act to run, so it is not a
 `BLOCKED-ON-HUMAN` hand-off: file it as `needs-decision` with its `### Evidence`, and do not open
 its body with the marker or label it `human-only`; a marker-led body with no act passes only by
 `--force-new`. The `human-runsheet` skill's `! <command>` entry carries an act in a session's

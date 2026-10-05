@@ -159,10 +159,47 @@ func TestActBlockLintFlagsUnsafeRead(t *testing.T) {
 		{"stop but no clear", `  read -rs T || exit 1`},
 		{"clears a different name", `  U=; read -rs T || exit 1`},
 		{"read after then", `  if true; then read -r T; fi`},
+		{"failure branch continues", `  T=; read -rs T || true`},
+		{"failure branch only echoes", `  T=; read -rs T || echo failed`},
+		{"no silent option", `  T=; read -r T || exit 1`},
+		{"extra option", `  T=; read -rs -p x T || exit 1`},
+		{"negated read after if", `  if ! read -rs T; then exit 1; fi`},
+		{"read after if", `  if read -rs T; then :; fi`},
+		{"read after while", `  while read -rs T; do :; done`},
+		{"read in a pipe", `  echo x | read -rs T`},
+		{"exit 0 on failure", `  T=; read -rs T || exit 0`},
+		{"exit piped away", `  T=; read -rs T || exit 1 | cat`},
+		{"group with no exit", `  T=; read -rs T || { echo failed; }`},
+		{"group not ending in exit", `  T=; read -rs T || { exit 1 && true; }`},
+		{"clear is conditional", `  false && T=; read -rs T || exit 1`},
+		{"stop only leaves a subshell", `  (T=; read -rs T || exit 1)`},
+		{"clear glued to a keyword", `  doT=; read -rs T || exit 1`},
+		{"read in a backtick span", "  X=`read -rs T`"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, issues := lintOne(t, "sh", withLine(4, c.line))
 			wantOneAt(t, issues, cleanActLine(4), "NAME=; read -rs NAME ||")
+		})
+	}
+}
+
+// TestActBlockLintSafeReadForms — the documented read shape passes in each of
+// its spellings, and the word read inside quotes or a longer word is no read.
+func TestActBlockLintSafeReadForms(t *testing.T) {
+	for _, line := range []string{
+		`  T=; read -rs T || exit 1`,
+		`  T=; read -sr T || exit 2`,
+		`  T=; read -r -s T || exit 1; [ -n "$T" ] || exit 1`,
+		`  T=; read -rs T || { echo; echo "no token read; nothing changed" >&2; exit 1; }`,
+		`  echo "would read it; read -r X"`,
+		`  echo 'read T'`,
+		`  run gh api repos/o/r/readme --jq .already_read`,
+	} {
+		t.Run(line, func(t *testing.T) {
+			_, issues := lintOne(t, "sh", withLine(4, line))
+			if len(issues) != 0 {
+				t.Fatalf("issues=%+v, want none", issues)
+			}
 		})
 	}
 }

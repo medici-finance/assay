@@ -24,9 +24,14 @@
 //     function under the name the driver is told to type;
 //  3. every full-line comment holds only allowed characters, and no code line
 //     carries a trailing comment;
-//  4. every read in the block clears its variable first and stops on a failed
-//     read (NAME=; read -rs NAME || …), since a shell whose read has no -s
-//     fails without assigning and an inherited value would pass as the secret.
+//  4. every read in the block is the whole shape NAME=; read -rs NAME || exit N
+//     or NAME=; read -rs NAME || { …; exit N; } on one line (N non-zero; -r and
+//     -s both given, no other option; the clear in command position), since a
+//     shell whose read has no -s fails without assigning and an inherited value
+//     would pass as the secret. Any unquoted word read on a code line counts as
+//     a read, wherever it sits, so the check errs strict. It reads one line at
+//     a time: an exit inside a subshell opened on an earlier line ends only that
+//     subshell, and the lint does not see it.
 //
 // An act block is recognised as an sh, bash, zsh or shell fence whose body
 // defines an act function (actFuncRe). HARD check: a violation is exit 1.
@@ -64,12 +69,46 @@ var actShellLangs = map[string]bool{"sh": true, "bash": true, "zsh": true, "shel
 // a trailing comment, which a first zsh paste passes to the command as words.
 var actTrailingCommentRe = regexp.MustCompile(`[ \t]#`)
 
-// actReadCmdRe finds a read builtin in command position: at the line start or
-// after ; & | { ( or the keywords then, else, do. Group 1 ends just before read.
-var actReadCmdRe = regexp.MustCompile(`(^|[;&|{(]|\bthen|\belse|\bdo)\s*\bread\b`)
+// actReadWordRe finds every word read on a quote-blanked code line: the word
+// after the line start, a blank or one of ; & | { ( ! and before a blank, ; or
+// the line end; a backtick opens a word too. Wherever it sits, it is treated
+// as a read, which errs strict. Group 2 is the word.
+var actReadWordRe = regexp.MustCompile("(^|[\\s;&|{(!`])(read)(?:[\\s;]|$)")
 
-// actReadSafeRe is the safe read shape: NAME=; read [-opts] NAME ||
-var actReadSafeRe = regexp.MustCompile(`\b([A-Za-z_][A-Za-z0-9_]*)=;\s*(read)((?:\s+-[A-Za-z]+)*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\|\|`)
+// actReadSafeRe is the whole safe read shape on a quote-blanked code line. The
+// clear sits at the line start or after ; { or the keywords then, else, do, so
+// it always runs (never after && or ||, nor in a same-line subshell, whose exit
+// would leave only that subshell). The read carries -r and -s and no other
+// option. The failure branch is exit N, N non-zero, ending at ; or the line
+// end, or a { …; exit N; } group whose last command is that exit. Groups: 1 the
+// cleared name, 2 the read word, 3 the options, 4 the read name.
+var actReadSafeRe = regexp.MustCompile(`(?:^\s*|[;{]\s*|\b(?:then|else|do)\s+)([A-Za-z_][A-Za-z0-9_]*)=;\s*(read)((?:\s+-[rs]+)+)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\|\|\s*(?:exit\s+[1-9][0-9]*\s*(?:;|$)|\{(?:[^{}]*;)?\s*exit\s+[1-9][0-9]*\s*;\s*\})`)
+
+// actBlankQuotes returns t with every character inside a quoted span replaced
+// by x, quotes kept, so a read word inside a string is no read and a ; inside
+// one ends nothing. A backslash outside single quotes escapes the next
+// character. A quote still open at the line end blanks to the end.
+func actBlankQuotes(t string) string {
+	b := []byte(t)
+	var q byte
+	for i := 0; i < len(b); i++ {
+		c := b[i]
+		switch {
+		case q == 0 && (c == '\'' || c == '"'):
+			q = c
+		case q == 0 && c == '\\' && i+1 < len(b):
+			i++
+		case q == c:
+			q = 0
+		case q == '"' && c == '\\' && i+1 < len(b):
+			b[i], b[i+1] = 'x', 'x'
+			i++
+		case q != 0:
+			b[i] = 'x'
+		}
+	}
+	return string(b)
+}
 
 // actCommentAllowed reports whether r may appear in an act block's comment
 // line: letters, digits, space, tab and a short list of punctuation no shell
@@ -85,21 +124,31 @@ func actCommentAllowed(r rune) bool {
 // actCommentRuleText names the allowed set in every comment-rule issue.
 const actCommentRuleText = "a comment line holds only letters, digits, spaces, tabs and . , : - / _ + = #"
 
-// unsafeReads returns the byte offsets of every read in command position on
-// code line t that is not in the safe shape NAME=; read [-opts] NAME ||.
+// unsafeReads returns the byte offsets of every read word on code line t that
+// is not the read of a whole safe shape (actReadSafeRe) clearing the name it
+// reads and carrying both -r and -s.
 func unsafeReads(t string) []int {
+	t = actBlankQuotes(t)
 	safe := map[int]bool{}
 	for _, m := range actReadSafeRe.FindAllStringSubmatchIndex(t, -1) {
-		if t[m[2]:m[3]] == t[m[8]:m[9]] {
+		opts := t[m[6]:m[7]]
+		if t[m[2]:m[3]] == t[m[8]:m[9]] && strings.Contains(opts, "r") && strings.Contains(opts, "s") {
 			safe[m[4]] = true
 		}
 	}
 	var bad []int
-	for _, m := range actReadCmdRe.FindAllStringIndex(t, -1) {
-		at := strings.LastIndex(t[m[0]:m[1]], "read") + m[0]
+	// A read word's trailing blank can be the next one's leading blank, so scan
+	// from each match's word end rather than its full end.
+	for from := 0; from < len(t); {
+		m := actReadWordRe.FindStringSubmatchIndex(t[from:])
+		if m == nil {
+			break
+		}
+		at := from + m[4]
 		if !safe[at] {
 			bad = append(bad, at)
 		}
+		from = from + m[5]
 	}
 	return bad
 }
@@ -211,7 +260,7 @@ func actBlockLines(rel, raw string) (int, []Issue) {
 				add(l.n, "act block code line carries a trailing # comment — put the comment on its own line (%s); a first zsh paste passes trailing text to the command", actCommentRuleText)
 			}
 			if len(unsafeReads(t)) > 0 {
-				add(l.n, "act block read is not in the shape NAME=; read -rs NAME || { ...; exit 1; } — clear the variable first and stop on a failed read, or a shell whose read has no -s keeps an inherited value as the secret")
+				add(l.n, "act block read is not in the shape NAME=; read -rs NAME || exit 1, or NAME=; read -rs NAME || { ...; exit 1; }, on one line — clear the variable first, read with -r and -s only, and end the failure branch with a non-zero exit, or a shell whose read has no -s keeps an inherited value as the secret")
 			}
 		}
 	}
