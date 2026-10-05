@@ -258,13 +258,13 @@ const round6TrailingSubjectBlockBase = validForkTestBlock
 // EOF): every one of the four probes below showed HasSubject=true with the trailing text
 // read as the subject:
 //
-//	--- FAIL: TestParseForkTestSectionBoundedAgainstTrailingContent/fenced-subject-outside-block
+//	--- FAIL: TestParseForkTestSectionBoundedAgainstTrailingContent (subtest fenced-subject-outside-block)
 //	    HasSubject = true (Subject = "Re: typo in the README"), want false
-//	--- FAIL: TestParseForkTestSectionBoundedAgainstTrailingContent/indented-subject-outside-block
+//	--- FAIL: TestParseForkTestSectionBoundedAgainstTrailingContent (subtest indented-subject-outside-block)
 //	    HasSubject = true (Subject = "Re: typo in the README"), want false
-//	--- FAIL: TestParseForkTestSectionBoundedAgainstTrailingContent/setext-heading-then-subject
+//	--- FAIL: TestParseForkTestSectionBoundedAgainstTrailingContent (subtest setext-heading-then-subject)
 //	    HasSubject = true (Subject = "fix a typo"), want false
-//	--- FAIL: TestParseForkTestSectionBoundedAgainstTrailingContent/prose-subject-outside-block
+//	--- FAIL: TestParseForkTestSectionBoundedAgainstTrailingContent (subtest prose-subject-outside-block)
 //	    HasSubject = true (Subject = "Re: typo in the README"), want false
 func TestParseForkTestSectionBoundedAgainstTrailingContent(t *testing.T) {
 	for _, tc := range []struct{ name, trailer string }{

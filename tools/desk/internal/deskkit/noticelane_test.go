@@ -428,14 +428,14 @@ func TestNoticeLaneVerdictRound7HyphenVariantsNormalized(t *testing.T) {
 	}
 }
 
-// TestNoticeLaneVerdictRefusesNonASCIISubject — round 7.1 (security review sec-1688-S1
+// TestNoticeLaneRefusesNonAsciiSubject — round 7.1 (security review sec-1688-S1
 // advisory): normalizeHyphens only ever widens to a FINITE list of Unicode hyphen/dash
 // look-alikes, so enumerating more code points chases the same class one variant at a time.
 // This subject carries a genuine, otherwise-admitting content needle ("docs wording") plus one
 // trailing zero-width space (U+200B, invisible in any renderer) nowhere near the needle itself
 // — proving the refusal below is the non-ASCII gate, not a needle match broken by the extra
 // character.
-func TestNoticeLaneVerdictRefusesNonASCIISubject(t *testing.T) {
+func TestNoticeLaneRefusesNonAsciiSubject(t *testing.T) {
 	ascii := "fix the docs wording of the --sla-days help text"
 	admitASCII, whyASCII := NoticeLaneVerdict(ascii, "", ascii, nil)
 	if !admitASCII {

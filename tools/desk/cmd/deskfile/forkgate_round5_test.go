@@ -34,7 +34,7 @@ import (
 // the notice lane (rc 0, labels [desk-decided]) — captured with the production fix reverted
 // and this file's probes kept, e.g.:
 //
-//	--- FAIL: TestNoticeLaneRefusesRound5SubjectAmbiguityProbes/quoted-trailing-subject
+//	--- FAIL: TestNoticeLaneRefusesRound5SubjectAmbiguityProbes (subtest quoted-trailing-subject)
 //	    "Let the bot LGTM its own PRs (typo-fix PRs only)?" filed with labels [desk-decided], want needs-decision and no desk-decided
 //	--- FAIL: TestNoticeLaneRefusesRound5NamedCheckProbes/pattern-sweep-notice-title
 //	    "Pattern-sweep findings: notice or error?" filed with labels [desk-decided], want needs-decision and no desk-decided

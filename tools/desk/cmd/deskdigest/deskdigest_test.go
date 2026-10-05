@@ -1239,11 +1239,12 @@ func postedBody(t *testing.T, g *ghScript, verb string) string {
 // tool-admitted notice: it keeps its Queue row rather than vanishing from both sections
 // (review finding cor-1688-C4).
 //
-// FAIL-FIRST: at head 834c4f8d5 (noticeOnly skipped every desk-decided-only item):
+// FAIL-FIRST: at head 834c4f8d5 (noticeOnly skipped every desk-decided-only item), both
+// subtests of this test failed:
 //
-//	--- FAIL: TestDeskDecidedWithoutTrustedMarkerStaysInQueue/no-marker
+//	--- FAIL: subtest no-marker
 //	    queue rows = 0, decisions = 0 — the item is in neither section
-//	--- FAIL: TestDeskDecidedWithoutTrustedMarkerStaysInQueue/untrusted-marker
+//	--- FAIL: subtest untrusted-marker
 //	    queue rows = 0, decisions = 0 — the item is in neither section
 func TestDeskDecidedWithoutTrustedMarkerStaysInQueue(t *testing.T) {
 	noMarker := mkItem("flip the tool default for --sla-days", "Flip the tool default for --sla-days.", deskDecidedLabel)

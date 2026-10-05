@@ -36,7 +36,7 @@ var reversibleSubjectOneWayTitles = []struct{ name, title string }{
 //
 //	--- FAIL: TestNoticeLaneRefusesReversibleSubjectOneWay/main-push
 //	    "Flip the tool default of the commit guard: allow commits straight to main without a PR?" filed with labels [desk-decided], want needs-decision and no desk-decided
-//	--- FAIL: TestNoticeLaneRefusesReversibleSubjectOneWay/2fa
+//	--- FAIL: TestNoticeLaneRefusesReversibleSubjectOneWay (subtest 2fa)
 //	    "Tool default: stop requiring 2FA for bot accounts?" filed with labels [desk-decided], want needs-decision and no desk-decided
 func TestNoticeLaneRefusesReversibleSubjectOneWay(t *testing.T) {
 	for _, tc := range reversibleSubjectOneWayTitles {
