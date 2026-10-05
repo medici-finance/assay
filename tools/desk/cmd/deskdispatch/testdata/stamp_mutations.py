@@ -9,13 +9,16 @@ import subprocess
 pkg = Path(__file__).resolve().parents[1]
 module = pkg.parents[1]
 mutations = [
+    ("verifier-admission", "../../internal/deskkit/verifierattestation.go", 'if state != ModelStamped || stamp.Model != r.Binding.Model || stamp.Tier != r.Binding.Tier {', 'if false && (state != ModelStamped || stamp.Model != r.Binding.Model || stamp.Tier != r.Binding.Tier) {', "TestVerifierDispatchAdmissionEndToEnd"),
+    ("verifier-issuer", "verifierattestation.go", 'receipt, err := deskkit.RecoverVerifierAttestation(home)', 'receipt, err := deskkit.VerifierReceipt{}, error(nil)', "TestVerifierDispatchAdmissionEndToEnd"),
+    ("worker-handoff", "prompt.go", 'to the coordinator desk (the-desk), which runs:', 'to the worker itself, which runs:', "TestWorkerDeskPostOpenCoordinatorHandoff"),
     ("caller", "stamponly.go", 'if role != stampRoleForKit(o.kit) {', 'if false {', "TestStampOnlyCaller"),
     ("preview", "dispatch.go", 'if o.dryRun {\n\t\treturn fmt.Sprintf("PLAN:', 'if false {\n\t\treturn fmt.Sprintf("PLAN:', "TestStampOnlyDryRun"),
-    ("readback", "dispatch.go", 'if err := verifyStamp(fg, fr, o.pr, labels); err != nil {', 'if err := error(nil); err != nil {', "TestStampReadbackBothPaths|TestStampOnlyFailure|TestStampOnlyAudit"),
+    ("readback", "../../internal/deskkit/stampapply.go", 'if state != ModelStamped || got != expected {', 'if false {', "TestStampReadbackBothPaths|TestStampOnlyFailure|TestStampOnlyAudit"),
     # A second false-success path, planted in the new entry independently of stepStamp.
     ("second-success", "stamponly.go", 'line, e := stepStamp(o, o.repo)', 'line, e := "OK: skipped", error(nil)', "TestStampOnlyRoundTrip|TestStampOnlyRepair|TestStampOnlyGitLab"),
     ("args", "stamponly.go", 'fs.StringVar(&o.tier, "tier", "",', 'fs.StringVar(&o.tier, "tier", "any",', "TestStampOnlyRejectsArgs"),
-    ("pending", "dispatch.go", 'dispatcher runs deskdispatch --stamp-only', 'dispatcher runs obsolete-command', "TestPendingStampCommand"),
+    ("pending", "dispatch.go", 'coordinator runs deskdispatch --stamp-only', 'coordinator runs obsolete-command', "TestPendingStampCommand"),
     # Plant an otherwise-successful child process in the bounded path. The recorder
     # must reject it even though the resulting stamp is completely correct.
     ("extra-child", "stamponly.go", 'line, e := stepStamp(o, o.repo)', 'runCmd(".", "deskwt", "add", "unwanted")\n\tline, e := stepStamp(o, o.repo)', "TestStampOnlyRoundTrip|TestStampOnlyReview"),

@@ -280,6 +280,7 @@ func TestVerifyWakePartialRows(t *testing.T) {
 	for _, verdict := range []string{loopengine.VerdictBlocked, loopengine.VerdictFail} {
 		cap := &captureDurable{}
 		vl := &VerifyLoop{DurableSink: cap, Now: fixedClock("2026-09-20T12:00:00Z"), RunnerID: "assay-verifier-app[bot]"}
+		admitFixture(vl, it)
 		if err := vl.Land(loopengine.Result{Item: it, Verdict: verdict, RunnerID: "assay-verifier-app[bot]",
 			Rows: []loopengine.EvidenceRow{{Command: "go test -run T1", Exit: 0, Output: "ok"}}}); err != nil {
 			t.Fatalf("Land(%s): %v", verdict, err)

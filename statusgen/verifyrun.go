@@ -1688,6 +1688,20 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return verifyrunExitUsageError
 	}
 
+	attestation := ""
+	if !*checkMode {
+		admissionRoot := *rootDir
+		if admissionRoot == "" {
+			admissionRoot = repoRootFor(path)
+		}
+		var admissionErr error
+		attestation, admissionErr = verifierAdmission(admissionRoot, path)
+		if admissionErr != nil {
+			fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
+			return verifyrunExitCouldNot
+		}
+	}
+
 	// --in-container hands the whole run off to a `statusgen verifyrun` inside the
 	// pinned harness container (windows-port/10). The host does no Verify-row
 	// execution and does not need to parse the brief here — the inner run reads it
@@ -1745,6 +1759,9 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		ws[i].Repo = target
 	}
 	table := witnessTable(ws)
+	if attestation != "" {
+		table += "\n" + attestation + "\n"
+	}
 
 	worst := verifyrunExitPass
 	for _, w := range ws {

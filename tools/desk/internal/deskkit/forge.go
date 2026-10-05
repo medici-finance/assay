@@ -916,9 +916,11 @@ type IssueSummary struct {
 // not (it moves on unrelated events). Consumers: cmd/deskboard (prBlessed/issueBlessed),
 // cmd/issueboard (the trust gate + escalation clock), cmd/scanloop (the queueing trust gate).
 type TrustPayload struct {
-	BodyEdited time.Time
-	Events     []ContentEvent
-	Complete   bool
+	// BodyHistoryKnown distinguishes explicit provider provenance from omitted fields.
+	BodyHistoryKnown bool `json:"-"`
+	BodyEdited       time.Time
+	Events           []ContentEvent
+	Complete         bool
 }
 
 // forgeFileCommitsMax is the one-page ceiling of ListFileCommits (and the page size of
@@ -1513,11 +1515,13 @@ type Forge interface {
 	// IssueReactions returns the reactions/awards on an issue or PR (the admission gate
 	// surface: reaction ↔ award emoji).
 	IssueReactions(repo ForgeRepo, number int) ([]Reaction, error)
-	// ListLabelEvents returns the change's label-APPLICATION events — the label name AND
+	// ListLabelEvents returns the change's label application/removal events — the label name AND
 	// the actor that applied it. The applier is the whole point: it is what separates a
 	// dispatcher's attestation from a self-applied stamp, so a read that returned only the
 	// names would make the model-capability floor unenforceable.
 	ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error)
+	// ListIssueLabelEvents reads issue stamp provenance without conflating an issue with a change.
+	ListIssueLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error)
 	// ListComments returns the comments/notes on a change or issue, oldest first.
 	ListComments(repo ForgeRepo, number int) ([]Comment, error)
 	// ListCommentsTyped is ListComments for a caller that has STATED which kind of object

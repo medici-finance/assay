@@ -4905,15 +4905,18 @@ ends prose-vs-binary drift — prose → CLI → engine — and it is what lets 
 internals (and even its module home) change without a rewrite anywhere else.
 
 **Stamp after the PR opens.** A worker dispatched before its PR exists leaves the model
-stamp PENDING. The original dispatcher supplies the actual selection after receiving the
-new PR number:
+stamp PENDING. The dispatching worker-desk sends the new PR number and the actual selected
+model/tier from its real dispatch receipt to the coordinator desk (`the-desk`). The coordinator
+runs the following command; both worker-desk and its child worker are refused directly:
 
 ```sh
 deskdispatch --stamp-only --repo example-org/project --pr 42 --model gpt-6.1-sol --tier strong
 ```
 
 Pass the original `--kit` for a non-default kit. The session's bound dispatcher role must
-match that kit's dispatcher; worker sessions cannot self-attest. This path acquires no
+match that kit's stamp writer; worker sessions cannot self-attest. Sharing a `DESK_SESSION`
+for claim custody does not establish dispatcher authority. Never change session identity to
+make this command pass. This path acquires no
 claim, allocates no worktree, invokes no lifecycle hook, registers no roster entry and
 launches no worker. It does not revive a released review claim. `--model` and `--tier`
 are explicit, never inferred from an old stamp or a model-name lookup.
@@ -4936,6 +4939,43 @@ repo, PR, requested model/tier/kit and the verified result or refusal. The downs
 capability floor (including review posting and ready-flip) and auto-lane reader retain
 their existing shared applier-aware semantics. Legacy `deskrestamp` remains the separate,
 cutoff-gated migration that preserves existing content; its provenance rules are unchanged.
+
+**Verifier pre-work admission.** A verifier has no result yet and needs no PR to start.
+`deskdispatch <item> --kit verifier --model gpt-6-astra --tier strong --brief <path>`
+creates a typed, dispatcher-authored attestation issue for the allocated detached worktree.
+Its immutable body binds a random run identifier digest, repository, exact merged-main
+commit, brief/content digest and selected model/tier. Existing desk custody owns both
+issue creation and the shared stamp applier; the verifier desk and child may share the
+verifier App, but that App never becomes stamp authority. Configurations binding desk
+and verifier to the same actor refuse this attestation. Existing PR self-stamp rules stay
+unchanged. No record claims execution surveillance or a verification result.
+
+Successful readback closes the record before the prompt is emitted. `ListOpenIssues`
+excludes its reserved typed title from issueboard, deskread, deskinbox, deskmonitor and
+deskboard intake/work scans, including the create-to-close window. Direct typed reads
+and exact-run recovery search remain available for audit. The record uses the existing
+model/tier labels, not a second model vocabulary.
+
+Before any Verify row, run `deskdispatch --check-verifier --root <home> --brief <path>`.
+`statusgen verifyrun` does this automatically in a verifier session or an attested worktree;
+its dry-run still executes commands and therefore needs admission. `--check` only audits
+existing witnesses. The native verifier adapter gates before spawning; the interim adapter
+requires an already-attested worktree before invoking its feeder. Both check again before
+landing. `deskevidence` also reads the same binding before any outcome or Evidence write,
+and carries `Verification-Attestation` into its Evidence draft. Evidence edits and stream
+index status edits preserve admission; changing the source commit or Verify commands does
+not. Missing tools, absent/PENDING stamps, stale sources, edited records and unreadable
+provenance are non-success. Container verification needs the same readable worktree binding;
+no environment override or caller-supplied receipt bypasses it.
+
+Failed dispatch emits no verifier prompt, releases the claim and retains the worktree and
+run metadata for recovery. The coordinator can run `deskdispatch --attest-verifier --root
+<home>` without claim acquisition, allocation or launch. It reuses the exact record and
+selection. A lost create response is recovered by the persisted run identifier; if that
+record is not yet readable, recovery refuses instead of creating a duplicate. Recover,
+reacquire the original claim, then admit and launch the same run. Abandoning a failed run
+requires reconciling its typed record before deleting the retained worktree. `--dry-run`
+mutates nothing and grants no admission. A genuinely new pass gets a new run identifier.
 
 **Re-review preserves earlier evidence.** Every `deskdispatch --kit review` allocates a
 fresh detached worktree with a bounded random directory suffix, even in the same desk session.

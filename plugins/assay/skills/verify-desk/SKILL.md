@@ -117,12 +117,34 @@ exit reserve) and the summary-line grammar are stated once in
 executable form at `../../scripts/tick-summary.sh`. This section states no rule that file does
 not own.
 
+## Pre-work admission
+
+A verifier starts only after the dispatcher has produced a successful pre-work stamp
+receipt for its exact run. `deskdispatch --kit verifier` creates a typed attestation
+record before emitting the prompt; it uses the existing desk custody even when this
+standing desk and its child both use the verifier App. The record is dispatch provenance,
+never verification evidence. Do not stamp an unrelated implementation PR or wait for
+a future Evidence PR to establish admission. PENDING is not admission.
+
+Before any Verify row or model-attested result, the verifier runs `deskdispatch
+--check-verifier --root <home> --brief <path>` and requires success. The witness runner
+and Evidence verb enforce the same check. Retain the returned exact run/source/model/tier
+binding in Evidence and the Evidence draft handoff. An edited record, changed source or
+changed Verify commands stops the run. Evidence and stream-index status edits are allowed.
+
+On failed pre-work stamping, no verifier prompt is emitted and the claim is released.
+Keep the retained worktree for recovery; return its real dispatch receipt to the coordinator
+desk, which runs `deskdispatch --attest-verifier --root <home>`. This creates no replacement
+claim, worktree or worker. Recover the same record, reacquire the original claim, then
+check admission before launching. If an uncertain create cannot be found, hold recovery;
+never create a new run to evade the missing receipt. Do not change identity to recover it.
+
 ## The loop
 
 1. **`verifyloop plan --root <repo>`** from `$WT`: the deterministic scheduler prints the Awaiting
    queue, each item's tier, and the exact dispatch instruction (or human-route note). It spawns nothing
    and writes nothing. **Do not hand-compute the queue** — the plan IS the worklist.
-2. **Dispatch what it prints**, one verifier per item, via `deskdispatch <item-key> --kit verifier`
+2. **Dispatch what it prints**, one verifier per item, via `deskdispatch <item-key> --kit verifier --model <actual-model> --tier <selected-tier> --brief <path>`
    (claim → worktree → roster → decision gate → model stamp → prompt). Tier 1 (`implemented`, empty
    Evidence) before Tier 2 (`verified → done` closes), oldest-first within a tier; Tier 2 is never
    hidden — a filtered-out free close becomes permanent debt. A brief whose Verify table carries ≥4

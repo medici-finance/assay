@@ -175,6 +175,7 @@ func TestLand_PassFlipsWithAttributedEvidence(t *testing.T) {
 		RunnerID: "local:glm-verifier",
 		Rows:     []loopengine.EvidenceRow{{Command: "go test ./...", Exit: 0, Output: "ok"}},
 	}
+	admitFixture(v, r.Item)
 	if err := v.Land(r); err != nil {
 		t.Fatalf("Land: %v", err)
 	}
@@ -202,6 +203,7 @@ func TestLand_IrreversibleWritesEvidenceNoFlipCheckpoint(t *testing.T) {
 		RunnerID: "local:glm",
 		Rows:     []loopengine.EvidenceRow{{Command: "go test", Exit: 0, Output: "ok"}},
 	}
+	admitFixture(v, r.Item)
 	if err := v.Land(r); err != nil {
 		t.Fatalf("Land: %v", err)
 	}
@@ -225,6 +227,7 @@ func TestLand_FailFilesBugNoFlip(t *testing.T) {
 		RunnerID: "local:glm",
 		Rows:     []loopengine.EvidenceRow{{Command: "go test", Exit: 1, Output: "FAIL"}},
 	}
+	admitFixture(v, r.Item)
 	_ = v.Land(r)
 	if rec.flipped["x/01"] {
 		t.Fatal("a FAIL flipped status")

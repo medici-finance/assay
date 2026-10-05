@@ -573,3 +573,11 @@ before the first sweep, the fresh re-sweep every tick, relay acknowledgement, de
 when a window may stand down — is stated once for every desk role in
 [`../../references/desk-common.md`](../../references/desk-common.md) §Liveness contract; read it at
 boot, before the first sweep.
+
+### Verification attestation records
+
+Issues with the reserved `[verification-attestation] ` title are dispatcher run records,
+not intake or work items. The typed issue-list tools exclude them even before they close.
+If inspecting raw forge results, keep these records out of intake and work scans; use a
+direct issue read only to audit or recover the exact dispatch. Closing a record attests
+the pre-work stamp, never that the brief was verified.

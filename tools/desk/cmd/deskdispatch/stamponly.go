@@ -66,25 +66,3 @@ func cmdStampOnly(args []string) (err error) {
 	fmt.Fprintln(os.Stdout, "deskdispatch: stamp-only "+line)
 	return nil
 }
-
-// Both dispatch entry points use the same reader as the capability floor. A 2xx
-// label write is not evidence that the requested, attributable pair is standing.
-func verifyStamp(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int, want []string) error {
-	expected, _ := deskkit.ModelStampOf(want)
-	change, err := fg.GetPullRequest(fr, pr)
-	if err != nil {
-		return deskkit.Unverifiable("model-stamp: post-write change read failed; stamp is NOT verified", err)
-	}
-	if change == nil {
-		return deskkit.Unverifiable("model-stamp: post-write change missing; stamp is NOT verified", nil)
-	}
-	events, err := fg.ListLabelEvents(fr, pr)
-	if err != nil {
-		return deskkit.Unverifiable("model-stamp: post-write timeline read failed; stamp is NOT verified", err)
-	}
-	stamp, state := deskkit.AttestedModelStampOf(deskkit.StampTimeline{Present: change.Labels, Events: events}, deskkit.IsStampAuthorityLogin)
-	if state != deskkit.ModelStamped || stamp != expected {
-		return deskkit.Unverifiable(fmt.Sprintf("model-stamp: post-write stamp is NOT verified (state=%s); requested model=%s tier=%s", state, expected.Model, expected.Tier), nil)
-	}
-	return nil
-}

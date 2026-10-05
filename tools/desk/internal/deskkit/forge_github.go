@@ -1047,7 +1047,7 @@ func (g *GitHubForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 		for _, is := range chunk {
 			// The REST /issues endpoint serves PRs too, distinguished by a non-nil
 			// pull_request member — the issue lane wants issues only, so a change is dropped.
-			if is.PullRequest != nil {
+			if is.PullRequest != nil || IsVerifierAttestation(is.Title) {
 				continue
 			}
 			labels := make([]string, 0, len(is.Labels))
@@ -1470,7 +1470,7 @@ func (g *GitHubForge) IssueReactions(repo ForgeRepo, number int) ([]Reaction, er
 	return reactions, nil
 }
 
-// ListLabelEvents walks the issue/PR TIMELINE and returns its `labeled` events with the
+// ListLabelEvents walks the issue/PR TIMELINE and returns its `labeled`/`unlabeled` events with the
 // login that applied each one.
 //
 // It reads the timeline rather than the current label set on purpose: the current set says
@@ -1491,16 +1491,20 @@ func (g *GitHubForge) ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent,
 			return nil, err
 		}
 		for _, e := range chunk {
-			if e.Event != "labeled" {
+			if e.Event != "labeled" && e.Event != "unlabeled" {
 				continue
 			}
-			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.Actor.Login, CreatedAt: e.CreatedAt})
+			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.Actor.Login, CreatedAt: e.CreatedAt, Removed: e.Event == "unlabeled"})
 		}
 		if len(chunk) < forgeFilePerPage {
-			break
+			return out, nil
 		}
 	}
-	return out, nil
+	return nil, fmt.Errorf("label timeline exceeded page bound")
+}
+
+func (g *GitHubForge) ListIssueLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
+	return g.ListLabelEvents(repo, number)
 }
 
 // ghCommentsQuery reads a change's comments with the two properties REST does not carry: the

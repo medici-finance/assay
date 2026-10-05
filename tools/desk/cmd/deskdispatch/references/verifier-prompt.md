@@ -24,6 +24,17 @@ is removed when the pass ends.
 Any PR a verifier opens (a fix PR, say) goes through the desk write verbs, and any reply on
 its own PR through the reply verb — never a raw forge call.
 
+## 0. Pre-work dispatcher attestation
+
+Before any Verify row or model-attested result, require a successful `deskdispatch
+--check-verifier --root <home> --brief <path>` receipt for this exact detached run. It
+re-reads the dispatcher-owned pre-work record and stamp, binding repository, merged
+source, brief inputs, actual model and tier. PENDING, absent, refused, mismatched or
+unreadable means no admission. Never substitute an implementation PR, self-stamp, or
+write a verification result to obtain admission. Carry the returned
+`Verification-Attestation` binding into Evidence and check it again before landing;
+Evidence/status edits do not change the attested source or Verify commands.
+
 ## 2. Run every row — command, exit code, real output
 
 - The prompt carries the item path, its Verify table (the exact commands), and the merged

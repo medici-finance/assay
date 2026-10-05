@@ -74,6 +74,8 @@ func refuseAppendedOutcomesLog(targetRepoPath string) error {
 // It is called ONLY from runOutward, which owns the audit lock and the single
 // deferred audit line (`ac`). Adding a second entry point without the lock would
 // re-open #227.
+var verifierEvidenceAdmissionFn = deskkit.CheckVerifierEvidence
+
 func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// Skip the tool name prefix that run() already removed.
 	rest := args
@@ -170,6 +172,12 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	if oerr := applyOverride(); oerr != nil {
 		return oerr
 	}
+
+	receipt, aerr := verifierEvidenceAdmissionFn(*root, repoSlug)
+	if aerr != nil {
+		return aerr
+	}
+	ac.attestation = receipt.EvidenceBinding()
 
 	// --outcome-record is a SEPARATE landing shape from --evidence-file/--brief-path: it
 	// commits a brand-new per-file verify-outcome record at the path RecordName derives,
@@ -425,6 +433,9 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// The scan is the ONE outbound-write check (desktools-v2/10), run here as a pre-flight on
 	// the bytes this landing adds; the checking Forge re-runs it on the same added lines at
 	// the write itself.
+	if err := receipt.CheckEvidenceContent(targetRepoPath, commitContent); err != nil {
+		return err
+	}
 	if berr := evidenceOutboundCheck(repoSlug, targetRepoPath, scanTarget, commitContent); berr != nil {
 		return withAddedOrigin(berr, scanTarget, localContent)
 	}
@@ -660,7 +671,7 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 		Title: "Evidence: " + target,
 		Body: "Verification Evidence row for `" + target + "`, landed on branch `" + side + "` and opened " +
 			"as a draft change because the default branch `" + base + "` takes no direct write on this forge. " +
-			"A reviewer verdict lands the row.",
+			"A reviewer verdict lands the row.\n\n" + ac.attestation,
 		Head: side,
 		Base: base,
 	})
@@ -801,6 +812,7 @@ func addedLines(older, newer []byte) []byte {
 // auditCtx accumulates fields for the ONE audit line per invocation.
 // finalize is deferred so exactly one line is written.
 type auditCtx struct {
+	attestation   string
 	verb          string
 	repo          string
 	file          string

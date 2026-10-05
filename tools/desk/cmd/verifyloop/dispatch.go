@@ -73,6 +73,7 @@ type dispatchRequirement struct {
 // Bound worth stating plainly: enforcement is clause-granular, so wording drift strictly
 // inside one clause still passes.
 var dispatchRequirements = []dispatchRequirement{
+	{ID: "pre-work-dispatcher-attestation", Anchors: []string{"pre-work dispatcher attestation", "no admission"}, How: carriedByEngine, Note: "attestRun gates native spawn, interim feeder and Land against the shared immutable run record"},
 	{
 		// Kit § "The common clauses come first".
 		ID: "isolation-own-private-tmp-worktree",
