@@ -295,6 +295,11 @@ issue has no human ruling, a change that:
 A brief is matched across the base and the change by EITHER its board id
 (`<stream>/<NN>`, any spelling of the number) OR its permanent frontmatter `id:`, so a
 change has to alter both keys to lose the match, and either key alone carries the hold.
+Matching decides SCOPE only; it never lends a ruling. A base brief's recorded ruling
+counts for the brief after the change only when the two are the same brief: the same
+board id, or a renumber (the base brief's board id is gone after the change, and the
+changed brief's board id was not on the base board). A brief that takes another brief's
+permanent `id:` is therefore in scope, but must carry a ruling of its own.
 A row already at or past its new status at the base is not a move; a pin bump that
 introduces the hold therefore turns no landed row red, which is this rule's forward-only
 mechanism (section 4.4, "Grandfathering").
@@ -311,6 +316,10 @@ decided, never what they decided.
   or drop is a PROBLEM unless the brief records a `decision-issue:` and a well-formed
   `ruling:` issue-comment URL pointing at that issue. This layer cannot tell who wrote the
   linked comment, and its refusal MUST say that it checked only for a well-formed link.
+  Where the base revision cannot be resolved or its board cannot be read, this layer
+  MUST fail closed (a PROBLEM) while any `gate: human` brief after the change sits at
+  `implemented` or later, and MAY report a notice otherwise. A relabel or drop judged
+  against an unreadable base is left to layer two.
 - **Layer two (network).** The linked comment is fetched and MUST pass every condition of
   the design-decision ruling-link check (`registers-v1.md` §7.5): an unedited comment by a
   login mapped to a human, never a bot, on the brief's recorded decision issue. The issue

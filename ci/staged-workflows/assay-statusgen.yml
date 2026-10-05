@@ -247,11 +247,11 @@ jobs:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
-          changed="$(git diff --no-ext-diff --no-textconv --name-only HEAD^1 HEAD -- docs/streams/)"
-          if [ -z "$changed" ]; then
-            echo "PR touches no docs/streams/ file — decision-gate hold not applicable"
-            exit 0
-          fi
+          # No path pre-filter here: the hold guards docs/archive/ as well as
+          # docs/streams/, and the binary already decides from the PR's own
+          # file listing whether the board was touched (and fails closed when
+          # that listing cannot be shown complete). A shell filter could only
+          # drift from that path set.
           # The guard is built from the base. Until the base carries the hold
           # (the PR that introduces it), there is nothing to run: say so.
           help="$("${RUNNER_TEMP}/statusgen-base" --help 2>&1 || true)"

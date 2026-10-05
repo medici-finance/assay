@@ -674,8 +674,9 @@ func TestDecisionGateBadBaseFailsClosed(t *testing.T) {
 	}
 }
 
-// Layer one with no resolvable origin/main emits a NOTICE, never a pass that
-// looks like a clean run.
+// Layer one with no resolvable origin/main and nothing to guard (the only
+// gate: human brief is at todo) emits a NOTICE, never a pass that looks like a
+// clean run.
 func TestDecisionGateLayerOneUnresolvedBaseNotice(t *testing.T) {
 	root := dhFixture(t, unruledBase())
 	gitRun(t, root, "update-ref", "-d", "refs/remotes/origin/main")
@@ -683,6 +684,118 @@ func TestDecisionGateLayerOneUnresolvedBaseNotice(t *testing.T) {
 	if len(problems) != 0 || len(notices) != 1 || !strings.Contains(notices[0], "did not run") {
 		t.Fatalf("got problems %v notices %v, want one did-not-run notice", problems, notices)
 	}
+}
+
+// Layer one with no resolvable origin/main fails CLOSED while a gate: human
+// brief is at implemented or later: without the base, a committed move would be
+// compared with itself and pass (the register field-gutting guard's rule).
+func TestDecisionGateLayerOneUnresolvedBaseFailsClosed(t *testing.T) {
+	root := dhFixture(t, map[string]string{
+		dhReadmePath: dhReadme(dhRow("18", "todo")),
+		dhBriefPath:  dhFM("gate: human", "decision-issue: 41\n"),
+	})
+	dhWrite(t, root, map[string]string{dhReadmePath: dhReadme(dhRow("18", "implemented"))})
+	gitRun(t, root, "commit", "-q", "-am", "unruled move, committed")
+	gitRun(t, root, "update-ref", "-d", "refs/remotes/origin/main")
+	problems, notices := decisionGateHoldProblems(root)
+	if len(problems) != 1 || len(notices) != 0 {
+		t.Fatalf("got problems %v notices %v, want one fail-closed problem", problems, notices)
+	}
+	wantContains(t, "fail-closed refusal", problems[0], "fail-closed", "brief "+dhBoardID, remoteMainRef)
+}
+
+// dhBrief19 is a second gate: human brief, sdlc/19, with decision issue #42.
+func dhBrief19(extra string) string {
+	return strings.Replace(dhFM("gate: human", extra+"decision-issue: 42\n"), dhBoardID, "sdlc/19", 1)
+}
+
+const dhBrief19Path = "docs/streams/" + dhStream + "/brief-19.md"
+
+// A ruling recorded for one brief cannot lift the hold on another by moving its
+// permanent id: onto it. Base: sdlc/18 ruled on #41 with id P; sdlc/19 unruled
+// on #42. The change gives sdlc/19 the id P and a fresh id to sdlc/18, and moves
+// sdlc/19 to implemented. Both board ids exist on both sides, so this is not a
+// renumber and sdlc/19 is judged by its own record — refused by both layers,
+// even though the forge would confirm sdlc/18's ruling.
+func TestDecisionGatePermIDSwapCannotBorrowRuling(t *testing.T) {
+	dhSeams(t, dhForge("Option 1 for "+dhBoardID+"."))
+	root := dhFixture(t, map[string]string{
+		dhReadmePath:  dhReadme(dhRow("18", "todo"), dhRow("19", "todo")),
+		dhBriefPath:   dhFM("gate: human", "id: "+dhPermID+"\n"+dhRuledLines()),
+		dhBrief19Path: dhBrief19("id: other-example-id\n"),
+	})
+	dhWrite(t, root, map[string]string{
+		dhReadmePath:  dhReadme(dhRow("18", "todo"), dhRow("19", "implemented")),
+		dhBriefPath:   dhFM("gate: human", "id: fresh-example-id\n"+dhRuledLines()),
+		dhBrief19Path: dhBrief19("id: " + dhPermID + "\n"),
+	})
+	p := dhLayerOne(t, root)
+	if len(p) != 1 {
+		t.Fatalf("layer one: %d problems, want 1: %v", len(p), p)
+	}
+	wantContains(t, "layer-one refusal", p[0], "sdlc/19", "decision issue #42 has no recorded ruling")
+	code, out := dhGate(t, root)
+	if code == 0 {
+		t.Fatalf("sdlc/19 borrowed sdlc/18's ruling through its permanent id:\n%s", out)
+	}
+	wantContains(t, "--decision-gate report", out, "sdlc/19 REFUSED")
+}
+
+// The same borrow with the ruled brief deleted: sdlc/18 is removed and sdlc/19,
+// whose board id already existed, takes its permanent id. The id match keeps
+// sdlc/18's gate and status on sdlc/19 (scope), but this is not a renumber, so
+// sdlc/18's ruling does not stand for it: sdlc/19 is refused on its own record.
+func TestDecisionGatePermIDTakenFromDroppedBriefCannotBorrowRuling(t *testing.T) {
+	dhSeams(t, dhForge("Option 1 for "+dhBoardID+"."))
+	root := dhFixture(t, map[string]string{
+		dhReadmePath:  dhReadme(dhRow("18", "todo"), dhRow("19", "todo")),
+		dhBriefPath:   dhFM("gate: human", "id: "+dhPermID+"\n"+dhRuledLines()),
+		dhBrief19Path: dhBrief19("id: other-example-id\n"),
+	})
+	dhWrite(t, root, map[string]string{
+		dhReadmePath:  dhReadme(dhRow("19", "implemented")),
+		dhBriefPath:   "",
+		dhBrief19Path: dhBrief19("id: " + dhPermID + "\n"),
+	})
+	faults := judgeDecisionGate(mustGateAtRev(t, root), gateSnapshotOnDisk(root))
+	if len(faults) != 1 || faults[0].Head == nil || len(faults[0].Base) != 2 {
+		t.Fatalf("want one move fault for sdlc/19 matching both base briefs (scope), got %+v", faults)
+	}
+	for _, c := range faults[0].candidates() {
+		if c.Key == dhBoardID {
+			t.Errorf("the removed %s is a ruling candidate for sdlc/19; only the same brief may be", dhBoardID)
+		}
+	}
+	code, out := dhGate(t, root)
+	if code == 0 {
+		t.Fatalf("sdlc/19 borrowed the removed sdlc/18's ruling:\n%s", out)
+	}
+	wantContains(t, "--decision-gate report", out, "sdlc/19 REFUSED")
+}
+
+// Scope is unchanged by the borrow fix: a gate: model brief that takes a
+// gate: human brief's permanent id is in scope (the ratified matching rule —
+// either key carries the hold, even when the other key matches a different base
+// brief), so moving it is refused while it has no ruling of its own — the
+// ruling recorded on the brief whose id it took does not lend (before the fix,
+// it did: this move passed layer one on sdlc/18's ruling).
+func TestDecisionGatePermIDMatchStillCarriesScope(t *testing.T) {
+	dhSeams(t, nil)
+	root := dhFixture(t, map[string]string{
+		dhReadmePath:  dhReadme(dhRow("18", "todo"), dhRow("19", "todo")),
+		dhBriefPath:   dhFM("gate: human", "id: "+dhPermID+"\n"+dhRuledLines()),
+		dhBrief19Path: strings.Replace(dhFM("gate: model", "id: other-example-id\n"), dhBoardID, "sdlc/19", 1),
+	})
+	dhWrite(t, root, map[string]string{
+		dhReadmePath:  dhReadme(dhRow("18", "todo"), dhRow("19", "implemented")),
+		dhBriefPath:   dhFM("gate: human", "id: fresh-example-id\n"+dhRuledLines()),
+		dhBrief19Path: strings.Replace(dhFM("gate: model", "id: "+dhPermID+"\n"), dhBoardID, "sdlc/19", 1),
+	})
+	p := dhLayerOne(t, root)
+	if len(p) != 1 {
+		t.Fatalf("layer one: %d problems, want 1: %v", len(p), p)
+	}
+	wantContains(t, "layer-one refusal", p[0], "sdlc/19", "no decision issue is recorded")
 }
 
 func mustGateAtRev(t *testing.T, root string) gateSnapshot {

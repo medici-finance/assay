@@ -280,6 +280,28 @@ jobs:
                 echo "close-verify refused on retry $attempt — a prior attempt already advanced $brief; treating as success"
                 exit 0
               fi
+              # Decision-gate hold (lifecycle-v1 §4.5). statusgen judged the
+              # close against the board as it stands and found the brief is
+              # gate: human with no human ruling it could confirm on its
+              # decision issue. The close lands on main with no pull request,
+              # so this is the only network check that sees it. Same shape as
+              # the floor branch that follows: relay the refusal, REOPEN the card so
+              # the human can close it again once the ruling is recorded, and
+              # commit nothing. The keyed phrase is the literal
+              # "decision-gate hold" closeVerifyDecisionGate always emits (a Go
+              # test pins it). $out goes to a body FILE, never a script line.
+              if printf '%s' "$out" | grep -q 'decision-gate hold'; then
+                body_file="${RUNNER_TEMP}/verify-gate-decision-refusal.md"
+                {
+                  printf '%s\n\n' "verify-gate close REFUSED for \`$brief\` — it is \`gate: human\` and no human ruling on its decision issue could be confirmed (decision-gate hold, lifecycle-v1 §4.5). Reopened; no change committed."
+                  printf '%s\n%s\n%s\n\n' '```' "$out" '```'
+                  printf '%s\n' "Remedy: record the brief's decision issue in its frontmatter \`decision-issue:\` and the link to the human's ruling comment in \`ruling:\`. The ruling must be an unedited comment on that issue, by a login mapped to a human (never a bot or app), whose own text names the brief by its board id (\`$brief\`). Land that change, then close this card again."
+                } > "$body_file"
+                gh issue reopen "$ISSUE" --repo "$REPO"
+                gh issue comment "$ISSUE" --repo "$REPO" --body-file "$body_file"
+                echo "::error::close-verify refused for $brief — decision-gate hold; card reopened, nothing committed"
+                exit 1
+              fi
               # Verifier-floor refusal (two-stamp model, #1170). statusgen read
               # the Verified cell the done row would carry — the README cell,
               # or on the implemented→done path the cell it stamps from the
@@ -297,28 +319,6 @@ jobs:
               # $out is statusgen's stderr over content already on main; it is
               # written to a body FILE via printf '%s' (never interpolated into
               # a script line) and posted with --body-file.
-              # Decision-gate hold (lifecycle-v1 §4.5). statusgen judged the
-              # close against the board as it stands and found the brief is
-              # gate: human with no human ruling it could confirm on its
-              # decision issue. The close lands on main with no pull request,
-              # so this is the only network check that sees it. Same shape as
-              # the floor branch below: relay the refusal, REOPEN the card so
-              # the human can close it again once the ruling is recorded, and
-              # commit nothing. The keyed phrase is the literal
-              # "decision-gate hold" closeVerifyDecisionGate always emits (a Go
-              # test pins it). $out goes to a body FILE, never a script line.
-              if printf '%s' "$out" | grep -q 'decision-gate hold'; then
-                body_file="${RUNNER_TEMP}/verify-gate-decision-refusal.md"
-                {
-                  printf '%s\n\n' "verify-gate close REFUSED for \`$brief\` — it is \`gate: human\` and no human ruling on its decision issue could be confirmed (decision-gate hold, lifecycle-v1 §4.5). Reopened; no change committed."
-                  printf '%s\n%s\n%s\n\n' '```' "$out" '```'
-                  printf '%s\n' "Remedy: record the brief's decision issue in its frontmatter \`decision-issue:\` and the link to the human's ruling comment in \`ruling:\`. The ruling must be an unedited comment on that issue, by a login mapped to a human (never a bot or app), whose own text names the brief by its board id (\`$brief\`). Land that change, then close this card again."
-                } > "$body_file"
-                gh issue reopen "$ISSUE" --repo "$REPO"
-                gh issue comment "$ISSUE" --repo "$REPO" --body-file "$body_file"
-                echo "::error::close-verify refused for $brief — decision-gate hold; card reopened, nothing committed"
-                exit 1
-              fi
               if printf '%s' "$out" | grep -q 'verifier floor'; then
                 body_file="${RUNNER_TEMP}/verify-gate-floor-refusal.md"
                 {

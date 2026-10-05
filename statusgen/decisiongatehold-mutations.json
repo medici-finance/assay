@@ -126,6 +126,24 @@
       "file": "corroborate.go",
       "old": "if decisionGateRefused(gs) {\n\t\t\t\tanyMissing = true",
       "new": "if false && decisionGateRefused(gs) {\n\t\t\t\tanyMissing = true"
+    },
+    {
+      "name": "a permanent-id match is honoured between two board ids that both exist (one brief borrows another's ruling)",
+      "file": "decisiongatehold.go",
+      "old": "return head[b.Key] == nil && base[h.Key] == nil",
+      "new": "return true"
+    },
+    {
+      "name": "a renumber onto a board id that already existed is honoured (the dropped brief's ruling is borrowed)",
+      "file": "decisiongatehold.go",
+      "old": "return head[b.Key] == nil && base[h.Key] == nil",
+      "new": "return head[b.Key] == nil"
+    },
+    {
+      "name": "layer one fails open on an unresolved base (a committed unruled move passes)",
+      "file": "decisiongatehold.go",
+      "old": "if b := s[k]; b.Gate == gateHumanValue && gateStatusRank(b.Status) >= 1 {",
+      "new": "if b := s[k]; false && b.Gate == gateHumanValue && gateStatusRank(b.Status) >= 1 {"
     }
   ]
 }

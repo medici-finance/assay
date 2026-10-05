@@ -20,8 +20,16 @@ package main
 //     board id (<stream>/<NN>) or its permanent frontmatter `id:` (a DROP).
 //
 // A brief is matched across the base and the change by EITHER key, so a change
-// has to alter both to lose the match. A row already at or past its new status at
-// the base is left alone, so a pin bump turns nothing red that has already landed.
+// has to alter both to lose the match, and either key alone puts a brief in
+// scope. A row already at or past its new status at the base is left alone, so
+// a pin bump turns nothing red that has already landed.
+//
+// Matching decides SCOPE; it never lends a ruling. A ruling recorded for a base
+// brief stands for the brief after the change only when they are the same brief:
+// the same board id, or a RENUMBER (the base brief's board id is gone after the
+// change AND the other board id is new in it — isGateRenumber). So moving a
+// ruled brief's permanent id: onto another brief puts that brief in scope but
+// cannot hand it the ruling.
 //
 // WHAT COUNTS AS RULED. The brief records its decision issue (`decision-issue:`)
 // and a link to the ruling comment (`ruling:`) in its frontmatter. Two layers:
@@ -319,6 +327,7 @@ type gateFault struct {
 	Move, Relabel, Drop bool
 	Head                *gateBrief   // the brief after the change (nil for a drop)
 	Base                []*gateBrief // the base briefs it matches (for a drop, the dropped one)
+	RulingBase          []*gateBrief // the matched base briefs that are the SAME brief (isGateRenumber); nil for a drop
 	From                string       // the lowest matched base status ("" = not on the board)
 }
 
@@ -332,15 +341,16 @@ func (f gateFault) primary() *gateBrief {
 }
 
 // candidates are the records whose recorded ruling may lift the hold: the brief
-// after the change first, then the base briefs it matches. They are the same
-// brief by the matching rule, so a ruling recorded on any of them is that
-// brief's ruling.
+// after the change first, then only those matched base briefs that are the same
+// brief (same board id, or a renumber — isGateRenumber), so a ruling recorded on
+// any of them is that brief's ruling. A base brief matched only by a permanent
+// id: that moved between two existing board ids is never a candidate. For a
+// drop, the dropped brief's own record.
 func (f gateFault) candidates() []*gateBrief {
-	var out []*gateBrief
-	if f.Head != nil {
-		out = append(out, f.Head)
+	if f.Head == nil {
+		return f.Base
 	}
-	return append(out, f.Base...)
+	return append([]*gateBrief{f.Head}, f.RulingBase...)
 }
 
 // boardNames is every board-id spelling a ruling comment may name: the brief's
@@ -450,6 +460,11 @@ func judgeDecisionGate(base, head gateSnapshot) []gateFault {
 			continue // not in scope on either side
 		}
 		f := gateFault{Head: h, Base: ms}
+		for _, b := range ms {
+			if isGateRenumber(base, head, b, h) {
+				f.RulingBase = append(f.RulingBase, b)
+			}
+		}
 		if hr := gateStatusRank(h.Status); hr >= 1 {
 			if len(ms) == 0 {
 				f.Move = true
@@ -483,6 +498,20 @@ func judgeDecisionGate(base, head gateSnapshot) []gateFault {
 		}
 	}
 	return faults
+}
+
+// isGateRenumber reports whether base brief b and brief h after the change are
+// the same brief for the purpose of a recorded ruling: the same board id, or a
+// renumber — b's board id is gone after the change and h's board id is new in
+// it. Only then may a ruling recorded for b stand for h. Anything else — an id:
+// moved or copied onto a brief whose own board id already existed, or taken
+// from a brief still on the board — keeps h in scope (the match stands) but
+// leaves h to be ruled on its own record.
+func isGateRenumber(base, head gateSnapshot, b, h *gateBrief) bool {
+	if b.Key == h.Key {
+		return true // the same board id: already matched by key
+	}
+	return head[b.Key] == nil && base[h.Key] == nil
 }
 
 func sortedGateKeys(s gateSnapshot) []string {
@@ -554,17 +583,35 @@ func layerOneRefusal(f gateFault, missing string) string {
 // with nothing changed against the base there is nothing to judge — so an
 // uncommitted status write on main (a landing tool's staged change) is judged
 // too.
+//
+// In a real checkout whose base cannot be resolved or read, layer one fails
+// CLOSED while the board has anything to guard — a gate: human brief at
+// implemented or later — the same rule the register field-gutting guard follows
+// (guttedRegisterFieldsEntries): without the base, a committed move would be
+// compared with itself and pass. Only a tree with no .git at all (a `git
+// archive` export, which nothing merges into) is reported as a did-not-run
+// NOTICE, and so is a real checkout whose board has nothing to guard. Residual:
+// a relabel or drop leaves no gate: human brief behind to count, so with the
+// base unreadable only layer two, which fails closed on its own base, sees it.
 func decisionGateHoldProblems(root string) (problems, notices []string) {
 	if hasNoGitDir(root) {
 		return nil, []string{"decision-gate hold (" + decisionGateSpecRef + ") did not run: .git is absent, so there is no base to judge a status move against"}
 	}
 	base, resolved := registerLandedBase(root)
 	if !resolved {
-		return nil, []string{"decision-gate hold (" + decisionGateSpecRef + ") did not run: origin/main could not be resolved, so a gate: human brief's status move cannot be judged against its base. If this is CI, fetch origin/main before the lint step; the network pass (statusgen --decision-gate) fails closed in the same case"}
+		if guarded := gateGuardedBriefs(gateSnapshotOnDisk(root)); len(guarded) > 0 {
+			return []string{fmt.Sprintf("decision-gate hold (%s) refused (fail-closed): the exact ref %s could not be resolved to a merge-base with HEAD, so %s — gate: human at implemented or later — cannot be judged against the board it merges onto, and a committed move would compare with itself and pass. Fetch the base branch into %s (actions/checkout fetch-depth: 0, or `git fetch origin main`) and re-run; a clone with no origin remote cannot pass this check",
+				decisionGateSpecRef, remoteMainRef, gateBriefList(guarded), remoteMainRef)}, nil
+		}
+		return nil, []string{"decision-gate hold (" + decisionGateSpecRef + ") did not run: origin/main could not be resolved, so a gate: human brief's status move cannot be judged against its base; no gate: human brief is at implemented or later, so there is nothing to refuse. If this is CI, fetch origin/main before the lint step"}
 	}
 	baseSnap, err := gateSnapshotAtRev(root, base)
 	if err != nil {
-		return nil, []string{fmt.Sprintf("decision-gate hold (%s) could not check: the board at the base %s could not be read (%v)", decisionGateSpecRef, base, err)}
+		if guarded := gateGuardedBriefs(gateSnapshotOnDisk(root)); len(guarded) > 0 {
+			return []string{fmt.Sprintf("decision-gate hold (%s) refused (fail-closed): the board at the base %s could not be read (%v), so %s — gate: human at implemented or later — cannot be judged against it",
+				decisionGateSpecRef, base, err, gateBriefList(guarded))}, nil
+		}
+		return nil, []string{fmt.Sprintf("decision-gate hold (%s) could not check: the board at the base %s could not be read (%v); no gate: human brief is at implemented or later, so there is nothing to refuse", decisionGateSpecRef, base, err)}
 	}
 	for _, f := range judgeDecisionGate(baseSnap, gateSnapshotOnDisk(root)) {
 		if _, ok, missing := offlineRuling(f); !ok {
@@ -572,6 +619,38 @@ func decisionGateHoldProblems(root string) (problems, notices []string) {
 		}
 	}
 	return problems, nil
+}
+
+// gateGuardedBriefs is what layer one guards when it cannot read the base: every
+// brief on the board that is gate: human at implemented or later, by key.
+func gateGuardedBriefs(s gateSnapshot) []*gateBrief {
+	var out []*gateBrief
+	for _, k := range sortedGateKeys(s) {
+		if b := s[k]; b.Gate == gateHumanValue && gateStatusRank(b.Status) >= 1 {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+// gateBriefList names up to five briefs and counts the rest.
+func gateBriefList(bs []*gateBrief) string {
+	const show = 5
+	var names []string
+	for i, b := range bs {
+		if i == show {
+			break
+		}
+		names = append(names, b.Board)
+	}
+	s := strings.Join(names, ", ")
+	if len(bs) > show {
+		s += fmt.Sprintf(" and %d more", len(bs)-show)
+	}
+	if len(bs) == 1 {
+		return "brief " + s
+	}
+	return fmt.Sprintf("%d briefs (%s)", len(bs), s)
 }
 
 // ---- layer two ---------------------------------------------------------------
