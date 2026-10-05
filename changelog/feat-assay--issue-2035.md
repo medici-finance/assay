@@ -1,2 +1,0 @@
-### Fixed
-- `cellctl new --kind house` works on a Windows host without the symlink privilege: when a symlink is refused for lack of it, a directory is linked by junction and a file by hardlink, and the gh CLI config is linked from `%APPDATA%\GitHub CLI`. A scaffold that still fails now removes exactly the paths it created, so a retry is no longer blocked by a half-made cell, and ends with a one-line remediation. A cell directory that already existed is never cleaned up.

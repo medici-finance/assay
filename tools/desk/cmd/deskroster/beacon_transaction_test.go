@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -171,11 +172,57 @@ func TestListPruneReportsConcurrentCorruption(t *testing.T) {
 		}
 	}}
 	forgeFor = func(string) (deskkit.Forge, deskkit.ForgeRepo, error) { return f, deskkit.ForgeRepo{}, nil }
-	if err := cmdList(); deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable {
-		t.Fatalf("want unverifiable prune, got %v", err)
+	var listErr error
+	out := captureStdout(t, func() { listErr = cmdList() })
+	if deskkit.ExitCodeOf(listErr) != deskkit.ExitUnverifiable {
+		t.Fatalf("want unverifiable prune, got %v", listErr)
+	}
+	if !strings.Contains(out, "shared") || !strings.Contains(out, "MERGED") || !strings.Contains(out, "old") {
+		t.Fatalf("valid snapshot missing after failed prune: %q", out)
 	}
 	got, err := os.ReadFile(path)
 	if err != nil || string(got) != `{"partial":` {
 		t.Fatalf("corrupt input replaced: %q, %v", got, err)
+	}
+}
+
+func TestListRetainsValidRowsWhenBeaconCorrupt(t *testing.T) {
+	for _, mode := range []string{"duplicate", "directory"} {
+		t.Run(mode, func(t *testing.T) {
+			home := rosterSetup(t)
+			writeTestBeacon(t, home, Beacon{Session: "valid", Role: "worker-desk"})
+			path, _ := beaconPath("broken")
+			const bad = `{"role":"worker-desk","role":"verify-desk"}`
+			if mode == "directory" {
+				if err := os.Mkdir(path, 0700); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.WriteFile(path, []byte(bad), 0600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("FAKEGH_LIST_PRS", "99:true:possibly owned")
+			var listErr error
+			out := captureStdout(t, func() { listErr = cmdList() })
+			if deskkit.ExitCodeOf(listErr) != deskkit.ExitUnverifiable || !strings.Contains(listErr.Error(), "broken.json") {
+				t.Fatalf("corruption hidden: %v", listErr)
+			}
+			if !strings.Contains(out, "valid") || !strings.Contains(out, "standing sessions") || strings.Contains(out, "(no registered work)") {
+				t.Fatalf("misleading/incomplete output: %q", out)
+			}
+			if strings.Contains(out, "unclaimed (no session registered)") || !strings.Contains(out, "ownership unverified") || strings.Contains(out, "(none)") || !strings.Contains(out, "(unknown)") {
+				t.Fatalf("unverified ownership reported as absent: %q", out)
+			}
+			if mode == "directory" {
+				info, err := os.Stat(path)
+				if err != nil || !info.IsDir() {
+					t.Fatalf("directory changed: %v %v", info, err)
+				}
+			} else {
+				data, err := os.ReadFile(path)
+				if err != nil || string(data) != bad {
+					t.Fatalf("corrupt data changed: %q %v", data, err)
+				}
+			}
+		})
 	}
 }

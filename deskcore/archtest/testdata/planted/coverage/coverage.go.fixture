@@ -1,0 +1,6 @@
+// Package coverage writes files through runtime/coverage, with no os import.
+package coverage
+
+import "runtime/coverage"
+
+func Write(dir string) error { return coverage.WriteMetaDir(dir) }

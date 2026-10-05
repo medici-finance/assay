@@ -12,17 +12,35 @@ import (
 )
 
 // checksumsFor builds a checksums.txt in the release's published shape for tag,
-// with placeholder digests derived from d so two tags' digests differ. The host's
-// own statusgen asset is included so the bare `statusgen` line can take its digest.
+// with placeholder digests derived from d so two tags' digests differ. The
+// darwin-arm64 assets are listed FIRST on purpose (assay#2201): the bare, CI-facing
+// `statusgen` / `desk-tools` lines must still take the linux-amd64 asset's digest,
+// chosen by name, never the first entry and never this host's asset. A
+// linux-arm64 asset sits ahead of each linux-amd64 one so a pick on the `-linux`
+// prefix alone (os without arch) cannot pass either.
 func checksumsFor(d byte) string {
+	return checksumsWithout(d, "")
+}
+
+// checksumsWithout is checksumsFor with one asset left out ("" leaves none out).
+func checksumsWithout(d byte, omit string) string {
 	sum := func(n int) string { return strings.Repeat(string(d), 63) + fmt.Sprint(n%10) }
-	host := deskkit.HostPlatformAssets("statusgen")[0]
-	lines := []string{
-		sum(1) + "  " + host,
-		sum(2) + "  statusgen-plan9-mips",
+	lines := []string{}
+	for _, l := range []string{
+		sum(1) + "  statusgen-darwin-arm64",
+		sum(7) + "  desk-tools-darwin-arm64.tar.gz",
+		sum(2) + "  statusgen-darwin-amd64",
 		sum(3) + "  qualgen-plan9-mips",
 		sum(4) + "  desk-tools-linux-amd64.tar.gz",
 		sum(5) + "  desk-tools-plan9-mips.tar.gz",
+		sum(8) + "  statusgen-linux-arm64",
+		sum(9) + "  desk-tools-linux-arm64.tar.gz",
+		sum(6) + "  statusgen-linux-amd64",
+	} {
+		if omit != "" && strings.HasSuffix(l, "  "+omit) {
+			continue
+		}
+		lines = append(lines, l)
 	}
 	return strings.Join(lines, "\n") + "\n"
 }
@@ -43,12 +61,13 @@ func writeDerivedFixture(t *testing.T) string {
 			t.Fatal(err)
 		}
 	}
-	host := deskkit.HostPlatformAssets("statusgen")[0]
 	write(".assay-versions", ""+
 		"# adopter pin file\n"+
 		"assay v0.12.0\n"+
-		"statusgen v0.12.0 "+strings.Repeat("a", 64)+"\n"+
-		host+" v0.12.0 "+strings.Repeat("a", 64)+"  # this host\n"+
+		"statusgen v0.12.0 "+strings.Repeat("a", 64)+"  # linux-amd64 (CI-built)\n"+
+		"statusgen-darwin-arm64 v0.12.0 "+strings.Repeat("a", 64)+"  # a laptop\n"+
+		"statusgen-linux-amd64 v0.12.0 "+strings.Repeat("a", 64)+"\n"+
+		"desk-tools v0.12.0 "+strings.Repeat("b", 64)+"\n"+
 		"desk-tools-linux-amd64 v0.12.0 "+strings.Repeat("b", 64)+"  # CI runners\n"+
 		"desk-tools-source v0.12.0 "+strings.Repeat("c", 40)+"\n")
 	write("releases/v0.12.0.checksums.txt", checksumsFor('1'))
@@ -58,7 +77,6 @@ func writeDerivedFixture(t *testing.T) string {
 
 func TestDerived_DryRunAndApply(t *testing.T) {
 	root := writeDerivedFixture(t)
-	host := deskkit.HostPlatformAssets("statusgen")[0]
 
 	code, out := run2(t, "--root", root, "--to", "v0.13.0", "--dry-run")
 	if code != exitOK {
@@ -80,13 +98,15 @@ func TestDerived_DryRunAndApply(t *testing.T) {
 		t.Fatal("apply must rewrite the pin file")
 	}
 	got := string(after)
-	hostDigest := strings.Repeat("2", 63) + "1"
+	d := func(n string) string { return strings.Repeat("2", 63) + n }
 	for _, want := range []string{
 		"assay v0.13.0\n",
-		"statusgen v0.13.0 " + hostDigest + "\n",                            // bare line: this host's asset digest
-		host + " v0.13.0 " + hostDigest + "\n",                              // platform line: its own asset digest
-		"desk-tools-linux-amd64 v0.13.0 " + strings.Repeat("2", 63) + "4\n", // tarball digest, .tar.gz stripped
-		"desk-tools-source v0.12.0 " + strings.Repeat("c", 40) + "\n",       // source pin untouched
+		"statusgen v0.13.0 " + d("6") + "  # linux-amd64 (CI-built)\n",  // bare line: the linux-amd64 asset, by name, comment kept
+		"statusgen-darwin-arm64 v0.13.0 " + d("1") + "  # a laptop\n",   // platform line: its own asset digest
+		"statusgen-linux-amd64 v0.13.0 " + d("6") + "\n",                // platform line: its own asset digest
+		"desk-tools v0.13.0 " + d("4") + "\n",                           // bare tarball line: linux-amd64, not darwin-arm64 (listed first)
+		"desk-tools-linux-amd64 v0.13.0 " + d("4") + "  # CI runners\n", // tarball digest, .tar.gz stripped, comment kept
+		"desk-tools-source v0.12.0 " + strings.Repeat("c", 40) + "\n",   // source pin untouched
 		"# adopter pin file\n",
 	} {
 		if !strings.Contains(got, want) {
@@ -199,5 +219,113 @@ func TestNoFetchByDefault(t *testing.T) {
 	}
 	if code, _ := run2(t, "--root", root, "--dry-run"); code != exitOK {
 		t.Errorf("latest from local materialisation without --fetch: exit %d", code)
+	}
+}
+
+// TestDerived_BarePinMissingLinuxAssetRefuses — assay#2201: a target checksums.txt
+// with no `<component>-linux-amd64` asset cannot digest the bare, CI-facing line.
+// The verb refuses with the named error (dry-run and apply alike), writes nothing,
+// and never falls back to another platform's digest.
+func TestDerived_BarePinMissingLinuxAssetRefuses(t *testing.T) {
+	for _, omit := range []string{"statusgen-linux-amd64", "desk-tools-linux-amd64.tar.gz"} {
+		t.Run(omit, func(t *testing.T) {
+			root := writeDerivedFixture(t)
+			if err := os.WriteFile(filepath.Join(root, "releases", "v0.13.0.checksums.txt"), []byte(checksumsWithout('2', omit)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := os.ReadFile(filepath.Join(root, ".assay-versions"))
+			wantAsset := strings.TrimSuffix(omit, ".tar.gz")
+			for _, args := range [][]string{
+				{"--root", root, "--to", "v0.13.0", "--dry-run"},
+				{"--root", root, "--to", "v0.13.0"},
+			} {
+				code, out := run2(t, args...)
+				if code != exitArtifactsGone {
+					t.Fatalf("%v: exit %d, want %d\n%s", args, code, exitArtifactsGone, out)
+				}
+				if !strings.Contains(out, errBarePinAssetMissing.Error()) || !strings.Contains(out, wantAsset) {
+					t.Errorf("%v: refusal must carry the named error and the missing asset %s:\n%s", args, wantAsset, out)
+				}
+			}
+			after, _ := os.ReadFile(filepath.Join(root, ".assay-versions"))
+			if string(after) != string(before) {
+				t.Errorf("a refused re-pin must write nothing:\n%s", after)
+			}
+		})
+	}
+}
+
+// TestDigestFor_BareLineByName pins the selection rule directly: the bare line
+// takes the linux-amd64 asset whatever the map also holds; a platform line takes
+// its own asset; a missing linux-amd64 asset is errBarePinAssetMissing.
+func TestDigestFor_BareLineByName(t *testing.T) {
+	comp, err := deskkit.ParseChecksums("v0.13.0", []byte(checksumsFor('2')))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := func(n string) string { return strings.Repeat("2", 63) + n }
+	cases := map[string]string{
+		"statusgen":                      d("6"),
+		"statusgen-darwin-arm64":         d("1"),
+		"statusgen-linux-amd64":          d("6"),
+		"statusgen-linux-arm64":          d("8"),
+		"desk-tools":                     d("4"),
+		"desk-tools-darwin-arm64":        d("7"),
+		"desk-tools-darwin-arm64.tar.gz": d("7"),
+		"desk-tools-linux-arm64":         d("9"),
+	}
+	// Repeated so a pick that depends on map iteration order (a prefix scan over
+	// AssetSHA256) cannot pass by luck: the selection must be one exact-name lookup.
+	for i := 0; i < 64; i++ {
+		for name, want := range cases {
+			got, err := digestFor(name, deskkit.ComponentOf(name), comp, nil)
+			if err != nil || got != want {
+				t.Fatalf("digestFor(%s) = %q, %v; want %q", name, got, err, want)
+			}
+		}
+	}
+	if _, err := digestFor("qualgen", "qualgen", comp, nil); !errors.Is(err, errBarePinAssetMissing) {
+		t.Errorf("bare qualgen with only qualgen-plan9-mips published: err = %v, want errBarePinAssetMissing", err)
+	}
+}
+
+// TestSplitTrailingComment — a rewritten pin line keeps its `# …` comment and the
+// spacing before it; a `#` inside a field is data.
+func TestSplitTrailingComment(t *testing.T) {
+	for _, c := range []struct{ in, data, comment string }{
+		{"statusgen v1 abc  # linux-amd64 (CI-built)", "statusgen v1 abc", "  # linux-amd64 (CI-built)"},
+		{"statusgen v1 abc\t# tab", "statusgen v1 abc", "\t# tab"},
+		{"statusgen v1 abc", "statusgen v1 abc", ""},
+		{"statusgen v1 ab#c", "statusgen v1 ab#c", ""},
+	} {
+		data, comment := splitTrailingComment(c.in)
+		if data != c.data || comment != c.comment {
+			t.Errorf("splitTrailingComment(%q) = (%q, %q), want (%q, %q)", c.in, data, comment, c.data, c.comment)
+		}
+	}
+}
+
+// TestDerived_CarryForwardWarnsOnce — a pin line the target composition cannot
+// digest is carried forward with ONE warning on apply (the up-front refusal probe
+// prints nothing), and a dry-run, which writes nothing, prints none.
+func TestDerived_CarryForwardWarnsOnce(t *testing.T) {
+	root := writeDerivedFixture(t)
+	p := filepath.Join(root, ".assay-versions")
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	extra := "statusgen-windows-arm64.exe v0.12.0 " + strings.Repeat("e", 64) + "\n"
+	if err := os.WriteFile(p, append(raw, extra...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	warn := "no sha256 for statusgen-windows-arm64.exe"
+	code, out := run2(t, "--root", root, "--to", "v0.13.0", "--dry-run")
+	if code != exitOK || strings.Count(out, warn) != 0 {
+		t.Errorf("dry-run: exit %d, %d carry-forward warnings, want 0:\n%s", code, strings.Count(out, warn), out)
+	}
+	code, out = run2(t, "--root", root, "--to", "v0.13.0")
+	if code != exitOK || strings.Count(out, warn) != 1 {
+		t.Errorf("apply: exit %d, %d carry-forward warnings, want exactly 1:\n%s", code, strings.Count(out, warn), out)
 	}
 }

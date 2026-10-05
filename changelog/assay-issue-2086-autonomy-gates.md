@@ -1,2 +1,0 @@
-- Bound autonomy gate-share reads to the reporting window and fetch check rollups per pull request; capped, timed-out, or incomplete reads remain unmeasured.
-- An unmeasured gate-share axis or ladder rung now names its cause (`listing-cap`, `deadline`, `gh-failed`, `malformed`) instead of the generic `gh-unreadable`, so a window too large for the reader no longer reads as an authentication failure.

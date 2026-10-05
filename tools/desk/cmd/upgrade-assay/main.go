@@ -75,7 +75,9 @@
 //	8  refused: the target names no published umbrella release (unsupported /
 //	            could-not — never a nearest-match guess)
 //	9  refused: the target resolves but its artifacts are unavailable (an older
-//	            release pruned from the cache and no longer fetchable)
+//	            release pruned from the cache and no longer fetchable), or its
+//	            checksums.txt lists no <artifact>-linux-amd64 asset for a bare pin
+//	            line the pin file carries (errBarePinAssetMissing)
 //	10 refused: a local write to .assay-versions failed (a filesystem refusal in
 //	            the adopter's own repo — not an artifacts-availability problem)
 //
@@ -90,6 +92,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -316,6 +319,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
+	// Compute the re-pin up front (writing nothing) so a target whose checksums.txt
+	// cannot digest a bare CI-facing line refuses BEFORE any migration runs — in a
+	// dry-run and an apply alike — rather than after the migrations have committed.
+	// The probe passes io.Discard: apply's real re-pin prints the carry-forward warnings
+	// once, and a dry-run (which writes nothing) prints none.
+	if _, _, err := repinContent(*root, relDir, target, toComp, io.Discard); errors.Is(err, errBarePinAssetMissing) {
+		fmt.Fprintf(stderr, "upgrade-assay: refusing — %v; nothing was migrated or re-pinned.\n", err)
+		return exitArtifactsGone
+	}
+
 	if *dryRun {
 		return dryRunReport(stdout, *root, from, target, forward, deltas, selected)
 	}
@@ -388,7 +401,7 @@ func apply(stdout, stderr io.Writer, root, relDir, from, target string, forward 
 
 	// ── Re-pin LAST — advance the version marker only now that the migrations have
 	// all committed.
-	if err := repin(root, relDir, target, toComp); err != nil {
+	if err := repin(root, relDir, target, toComp, stderr); err != nil {
 		fmt.Fprintf(stderr, "upgrade-assay: refusing — the migrations applied but the local write to %s failed: %v\n", deskkit.AssayVersionsFile, err)
 		return exitLocalWriteFailed
 	}
@@ -545,6 +558,20 @@ func cmpSemver(a, b [3]int) int {
 
 // ── re-pin ──────────────────────────────────────────────────────────────────────
 
+// ciPinPlatform is the platform a BARE pin line (`statusgen <tag> <sha256>`, no
+// platform suffix) is the digest of. The bare line is the CI-facing pin: CI's
+// download-and-verify step checks it against the linux-amd64 asset (the adopter
+// scaffold marks it `# linux-amd64 (CI-built)`), so its digest is always that asset's,
+// whatever host the verb happens to run on.
+const ciPinPlatform = "linux-amd64"
+
+// errBarePinAssetMissing is the named refusal for a derived composition whose
+// checksums.txt lists no `<component>-linux-amd64` asset for a component the pin
+// file carries a bare line for. The bare line is never filled from another
+// platform's digest — a wrong digest there turns CI red (or, worse, verifies the
+// wrong binary), so the verb refuses before it writes anything.
+var errBarePinAssetMissing = errors.New("checksums.txt lists no linux-amd64 asset for a bare (CI-facing) pin line")
+
 // repin rewrites <root>/.assay-versions so the umbrella line names target and each
 // artifact line the target composition names carries the target's tag. A line is
 // matched to a composition component through deskkit.ComponentOf, so a per-platform
@@ -554,16 +581,32 @@ func cmpSemver(a, b [3]int) int {
 // The digest (field 3) is sourced, in order: a DERIVED composition's per-asset
 // sha256 for that exact pin-line name (the value checksums.txt publishes for that
 // asset — the only correct digest for a platform line, since each platform's asset
-// hashes differently); for a bare line, a hand-authored manifest's per-component
-// `sha256:` field, else the derived digest of THIS host's platform asset; and when
-// none of those names a digest, the adopter's existing digest is carried forward
-// with a warning (the tool never fabricates a digest silently). Comments, blank
-// lines and lines the composition does not name are preserved verbatim.
-func repin(root, relDir, target string, toComp deskkit.Composition) error {
+// hashes differently). A BARE line is the CI-facing pin, so under a derived
+// composition it takes the `<component>-linux-amd64` asset's digest, selected by
+// NAME — never by position in checksums.txt and never by this host's platform — and
+// a checksums.txt without that asset is the errBarePinAssetMissing refusal. Under a
+// hand-authored manifest a bare line takes the manifest's per-component `sha256:`.
+// When none of those names a digest, the adopter's existing digest is carried
+// forward with a warning (the tool never fabricates a digest silently). Comments,
+// blank lines and lines the composition does not name are preserved verbatim, and a
+// rewritten line keeps its trailing `# …` comment.
+func repin(root, relDir, target string, toComp deskkit.Composition, warn io.Writer) error {
+	path, out, err := repinContent(root, relDir, target, toComp, warn)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0o644)
+}
+
+// repinContent computes the re-pinned .assay-versions WITHOUT writing it, so the
+// caller can surface a refusal (errBarePinAssetMissing) before any migration runs.
+// Carry-forward warnings go to warn; the up-front probe passes io.Discard so each
+// warning is printed once, by the real re-pin.
+func repinContent(root, relDir, target string, toComp deskkit.Composition, warn io.Writer) (string, []byte, error) {
 	path := filepath.Join(root, deskkit.AssayVersionsFile)
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return path, nil, err
 	}
 	shas, _ := readShas(relDir, target) // best-effort; empty on any read/parse miss
 
@@ -581,13 +624,14 @@ func repin(root, relDir, target string, toComp deskkit.Composition) error {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		fields := strings.Fields(trimmed)
+		data, comment := splitTrailingComment(trimmed)
+		fields := strings.Fields(data)
 		if len(fields) == 0 {
 			continue
 		}
 		name := fields[0]
 		if name == deskkit.UmbrellaArtifact {
-			lines[i] = deskkit.UmbrellaArtifact + " " + target
+			lines[i] = deskkit.UmbrellaArtifact + " " + target + comment
 			continue
 		}
 		if strings.HasSuffix(name, "-source") {
@@ -602,37 +646,57 @@ func repin(root, relDir, target string, toComp deskkit.Composition) error {
 		if len(fields) >= 3 {
 			sha = fields[2]
 		}
-		if s := digestFor(name, component, toComp, shas); s != "" {
+		s, derr := digestFor(name, component, toComp, shas)
+		if derr != nil {
+			return path, nil, derr
+		}
+		if s != "" {
 			sha = s
 		} else {
-			fmt.Fprintf(os.Stderr, "upgrade-assay: warning — target composition names no sha256 for %s; carrying the existing digest forward (refresh it from the release home's published sha256).\n", name)
+			fmt.Fprintf(warn, "upgrade-assay: warning — target composition names no sha256 for %s; carrying the existing digest forward (refresh it from the release home's published sha256).\n", name)
 		}
-		lines[i] = fmt.Sprintf("%s %s %s", name, newTag, sha)
+		lines[i] = fmt.Sprintf("%s %s %s", name, newTag, sha) + comment
 	}
-	out := strings.Join(lines, "\n")
-	return os.WriteFile(path, []byte(out), 0o644)
+	return path, []byte(strings.Join(lines, "\n")), nil
+}
+
+// splitTrailingComment splits a pin line into its data part and its trailing
+// `# …` comment. The comment is returned WITH the whitespace that separated it
+// from the data, so a rewritten line keeps the adopter's spacing; a line with no
+// comment returns ("line", ""). A `#` counts only at the start of a whitespace-
+// separated field — a `#` inside a field is data, not a comment.
+func splitTrailingComment(line string) (data, comment string) {
+	for i := 0; i < len(line); i++ {
+		if line[i] != '#' || (i > 0 && line[i-1] != ' ' && line[i-1] != '\t') {
+			continue
+		}
+		j := i
+		for j > 0 && (line[j-1] == ' ' || line[j-1] == '\t') {
+			j--
+		}
+		return line[:j], line[j:]
+	}
+	return line, ""
 }
 
 // digestFor picks the digest a re-pinned line carries (see repin for the order).
 // A per-platform line takes ONLY its own asset's derived digest — a component-level
 // `sha256:` from a hand-authored manifest is some one platform's digest and would be
-// wrong for every other platform's line.
-func digestFor(name, component string, toComp deskkit.Composition, manifestShas map[string]string) string {
-	if s := toComp.AssetSHA256[name]; s != "" {
-		return s
-	}
+// wrong for every other platform's line. A bare line under a derived composition
+// takes ONLY the `<component>-linux-amd64` asset's digest, by name; its absence is
+// errBarePinAssetMissing, never a fall-back to another platform's digest.
+func digestFor(name, component string, toComp deskkit.Composition, manifestShas map[string]string) (string, error) {
 	if name != component {
-		return "" // a platform line with no per-asset digest: carry forward
+		return toComp.AssetSHA256[name], nil // a platform line: its own asset, or carry forward
 	}
-	if s := manifestShas[component]; s != "" {
-		return s
-	}
-	for _, host := range deskkit.HostPlatformAssets(component) {
-		if s := toComp.AssetSHA256[host]; s != "" {
-			return s
+	if toComp.Derived {
+		ciAsset := component + "-" + ciPinPlatform
+		if s := toComp.AssetSHA256[ciAsset]; s != "" {
+			return s, nil
 		}
+		return "", fmt.Errorf("%w: the bare `%s` line needs %s, which the %s checksums.txt does not list", errBarePinAssetMissing, component, ciAsset, toComp.Umbrella)
 	}
-	return ""
+	return manifestShas[component], nil
 }
 
 // compForShas is a supplementary read of the composition manifest for its per-artifact

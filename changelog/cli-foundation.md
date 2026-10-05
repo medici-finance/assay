@@ -1,4 +1,0 @@
-### Added
-- Desk CLI adapter (`tools/desk/internal/cli`): a fresh Cobra tree and command-local Viper per invocation, help and version answered before any config, credential or effect, allowlisted configuration sources with unset kept apart from empty, no secrets on argv, and parse errors exiting 2 (desktools-v2/15).
-- CLI routing registry (`docs/streams/desktools-v2/cli-migration.json`) and its check (`tools/desk/internal/clicontract`): every Go command and script launcher in the tree is discovered independently and routed to an owning migration brief or a classified exclusion; TestCLIInventory fails on an unrouted, stale, orphaned or over-budget row, and TestCLIOwnerMigrated runs each migrated package's contract tests.
-- The shared CLI contract (`docs/streams/desktools-v2/cli-contract.md`) and migration briefs desktools-v2/18–54, one complex command or up to five simple ones each, with desktools-v2/17 now depending on all of them.

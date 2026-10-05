@@ -1,0 +1,9 @@
+package decode
+
+import "encoding/json"
+
+// Strict is the allowed decoder.
+func Strict(b []byte, v any) error { return json.Unmarshal(b, v) }
+
+// Load is a second decoder, which the rule refuses.
+func Load(b []byte, v any) error { return json.Unmarshal(b, v) }
