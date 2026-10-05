@@ -83,19 +83,42 @@ Set the absolute manifest path and check it:
 ```text
 cellctl set example CELL_COMMS_CONFIG=/absolute/path/to/comms.json
 cellctl comms example check
-cellctl comms example run
+cellctl up example --no-attach
 ```
 
 `check` checks manifest structure, custody, required role paths, reader entry
 and service binary availability. It does not probe model credentials, verify
 the installed reader version, parse signing/trust material, or prove delivery.
 The service validates trust material at boot and senders validate keys on send.
-Run the service in its own terminal or supervisor; `up` does not start it.
+`up` validates the manifest, service binaries, existing private storage and prior
+service ownership before opening windows. For `mode: interim` it opens one
+`<cell>-comms-<generation>` window/tab/terminal in tmux, Herdr or Orca, running
+`cellctl --cells-root <absolute-root> comms <cell> run`. Repeated `up` reuses a
+live owned supervisor. An unfinished checkpoint or an unconfirmed earlier
+launch refuses a duplicate; inspect it before recovery. `cellctl comms <cell> run`
+remains available for an explicitly managed standalone terminal.
 Keep the existing recorded comms cutover decision aligned with this manifest
 before asking desks to poll. A release or a missing environment variable is
 not a cutover decision.
 
-Then launch each desk with its selected harness and login directory. Existing
+Pass a path with spaces as one shell argument, for example:
+
+```text
+cellctl set example "CELL_COMMS_CONFIG=/absolute/path with spaces/comms.json"
+```
+
+This setting stores a literal path using the existing cell.env quoting grammar;
+apostrophes, dollar signs and backslashes survive reload. Protect shell
+metacharacters from your invoking shell as usual. Clear the setting with
+`cellctl set example CELL_COMMS_CONFIG=`. No second configuration format is used.
+
+The service starts with `--no-the-desk` and `--no-attach` too. A role cadence
+starts only the roles on its ticks; comms runs once outside that schedule.
+Orca `--automate` opens one persistent comms terminal alongside the role
+automations. `DRY_RUN=1 cellctl up <cell>` prints that command and starts nothing;
+`DRY_RUN=1 cellctl down <cell>` leaves services and surfaces alone.
+
+Launch each desk with its selected harness and login directory. Existing
 sessions must restart through `cellctl` to acquire the new context. When no
 manifest is configured, or its mode is `disabled`, no gateway is started and
 ambient comms identity is removed from child launches.
@@ -111,15 +134,34 @@ the drain still applies its contained routing consultation. An idle drain
 checks again after one minute.
 
 If either service exits, `cellctl` stops its peer and owns child-tree cleanup.
+`cellctl down <cell>` requests cancellation through that supervisor, waits for
+its lease and clean checkpoint, then closes its recorded surface. It uses the
+recorded cockpit even if the selected cockpit or manifest changed. It preserves
+queued, held and acknowledged data. A failed/uncertain shutdown or a terminal
+whose identity changed returns nonzero and retains its receipt for inspection;
+it does not authorize closing an unrelated terminal. Stopping desks with
+`--keep-deskd` still stops comms. Orca role automations remain scheduled, as before.
+
 A crash or uncertain cleanup leaves an unfinished checkpoint that blocks
-restart. Inspect and stop the prior gateway, drain and their children before:
+restart. Inspect and stop the prior gateway, drain and their children, and close
+the prior comms surface (including any delayed startup command), before:
 
 ```text
 cellctl comms example recover --confirm-stopped
 cellctl comms example run
 ```
 
-Recovery removes the service checkpoint and a stale Unix socket, preserving
+Recovery removes the service checkpoint, startup receipt and a stale Unix socket, preserving
 queued, held and acknowledged messages. It never takes over an active lease.
 A clean stop already removes the socket, so `run` can start again without
 recovery. The local-only gateway never removes an existing endpoint itself.
+
+## Cockpit compatibility
+
+Orca must advertise JSON terminal creation and single-terminal close. The adapter
+records its runtime ID and terminal handle, then checks both and the unique
+launch title through `terminal show --json` before closing. Missing or changed
+identity fails closed. On Windows, Orca must also support selecting PowerShell.
+The fixture follows the [upstream terminal contract](https://github.com/stablyai/orca/blob/2b0ce175145ca6779dcc0dfaa1a8300658b0e6e7/src/shared/runtime-terminal-contracts.ts).
+Offline fixtures prove command construction and owned-process cleanup; they do
+not certify an installed native Orca/Herdr release or Windows terminal runtime.

@@ -175,7 +175,11 @@ func effectiveCellEnv(envfile string, kvs []string) *Env {
 	}
 	for _, kv := range kvs {
 		if k, v, ok := splitKV(kv); ok {
-			e.Put(k, unquoteShellValue(v, e))
+			if k == "CELL_COMMS_CONFIG" {
+				e.Put(k, v)
+			} else {
+				e.Put(k, unquoteShellValue(v, e))
+			}
 		}
 	}
 	return e
@@ -239,6 +243,12 @@ func setEnvKey(envfile, key, value string, force bool) {
 	if err != nil {
 		die("set: cannot read %s: %v", envfile, err)
 	}
+	// The comms argument is a literal manifest path. Encode it in the existing
+	// cell.env grammar so apostrophes, dollars and backslashes survive reload.
+	stored := value
+	if key == "CELL_COMMS_CONFIG" {
+		stored = cockpitQuote(value)
+	}
 	trailingNewline := strings.HasSuffix(string(raw), "\n")
 	lines := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 	before, has := "", false
@@ -254,12 +264,12 @@ func setEnvKey(envfile, key, value string, force bool) {
 		replaced := false
 		for i, l := range lines {
 			if !replaced && strings.HasPrefix(l, key+"=") {
-				lines[i] = key + "=" + value
+				lines[i] = key + "=" + stored
 				replaced = true
 			}
 		}
 	} else {
-		lines = append(lines, key+"="+value)
+		lines = append(lines, key+"="+stored)
 	}
 	out := strings.Join(lines, "\n")
 	if trailingNewline || !has {
