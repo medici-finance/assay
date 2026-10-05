@@ -132,6 +132,48 @@
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\tStartBranch: base,\n\t\tAppendOnly:  appendOnly,\n\t\tAllowShrink: allowShrink,\n\t\tExpectedSHA: rowScopeSHA,\n\t})",
       "new": "\t\tStartBranch: base,\n\t\tAppendOnly:  appendOnly,\n\t\tAllowShrink: allowShrink,\n\t\tExpectedSHA: \"\",\n\t})"
+    },
+    {
+      "name": "decision-gate hold not consulted on a landing (the network layer of lifecycle-v1 §4.5 is skipped; a bot-written ruling link lands a status move)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\tif len(gateRefused) > 0 {",
+      "new": "\tif false && len(gateRefused) > 0 {"
+    },
+    {
+      "name": "decision-gate could-not-check swallowed (statusgen missing or too old lets a landing through unchecked)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\tif gerr != nil {\n\t\treturn gerr\n\t}",
+      "new": "\tif false && gerr != nil {\n\t\treturn gerr\n\t}"
+    },
+    {
+      "name": "decision-gate diff reports pre-existing refusals as introduced (every landing on a board with an old fault is refused)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\tif had[l] || seen[l] {",
+      "new": "\t\tif seen[l] {"
+    },
+    {
+      "name": "decision-gate stage never reverted (the check leaves the landing's bytes in the local worktree)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\tif existed {\n\t\t\t_ = os.WriteFile(abs, orig, 0o644)",
+      "new": "\t\tif false {\n\t\t\t_ = os.WriteFile(abs, orig, 0o644)"
+    },
+    {
+      "name": "an old statusgen without --decision-gate read as clean (the flag error is not recognised as could-not-check)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\tif strings.Contains(out, \"flag provided but not defined\") {\n\t\treturn nil, deskkit.Unverifiable(",
+      "new": "\tif strings.Contains(out, \"flag provided but not defined\") {\n\t\treturn nil, nil\n\t\treturn nil, deskkit.Unverifiable("
+    },
+    {
+      "name": "a whole-change (board) refusal diffed like a brief refusal (an unresolvable base cancels out and the landing passes)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\t\tif strings.HasPrefix(l, decisionGateWholeChange) {",
+      "new": "\t\t\tif false && strings.HasPrefix(l, decisionGateWholeChange) {"
+    },
+    {
+      "name": "decision-gate judged against some other revision than the landing worktree's HEAD (the uncommitted write is no longer exactly what is judged)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\"--decision-gate-base\", \"HEAD\")",
+      "new": "\"--decision-gate-base\", \"HEAD~0x\")"
     }
   ]
 }

@@ -201,6 +201,15 @@ func cmdCreate(args []string) (err error) {
 	if terr != nil {
 		return terr
 	}
+	// Decision-gate banner (lifecycle-v1 §4.5): a PR delivering a gate: human brief
+	// carries a fixed banner naming its decision issue and whether it is ruled. Inserted
+	// when missing; it informs and never refuses. Its text is fixed apart from the
+	// trailer's own brief id and an issue number, and the public-repo self-containment
+	// scan below reads the body WITH it.
+	if nb, added := withDecisionGateBanner(body, *root, dir); added {
+		body = nb
+		fmt.Fprintln(deskprStderr, "deskpr: added the gate: human decision banner to the PR body (lifecycle-v1 §4.5; informs, blocks nothing)")
+	}
 	facts, perr := preflight(dir, *base)
 	if perr != nil {
 		return perr

@@ -1,0 +1,1 @@
+Decision-gate hold network layer (lifecycle-v1 §4.5): adds issues: read and a statusgen --decision-gate step to the corroborate job. Pending maintainer promotion over .github/workflows/assay-statusgen.yml (README Contents).

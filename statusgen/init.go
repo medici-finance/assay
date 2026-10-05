@@ -570,6 +570,58 @@ jobs:
             git commit -m 'chore(status): regenerate [skip-status-regen]'
             git push
           fi
+  # DECISION-GATE HOLD (spec/lifecycle-v1.md section 4.5), the network layer. A
+  # gate: human brief this PR moves to implemented, verified or done, relabels
+  # away from human, or drops needs a ruling: link to an unedited comment, on its
+  # decision issue, by a login ASSAY_HUMAN_LOGIN_MAP maps to a human (never a bot
+  # or app), naming the brief by its board id. --lint above carries the offline
+  # layer, which checks only that a well-formed link is there. This job is what
+  # tells a desk relay from a human ruling, so it binds a merge only once a
+  # repository admin makes it a REQUIRED status check (Settings > Branches >
+  # branch protection, or a ruleset). Merging this workflow does not do that.
+  # It never runs at a PR's ready-flip. With ASSAY_HUMAN_LOGIN_MAP unset every
+  # ruling is refused (fail-closed).
+  decision-gate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      # Full history: the hold judges the PR against its merge-base.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install pinned statusgen (channel E — sha256-verified release binary)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          plat="$(uname -s | tr A-Z a-z)-$(uname -m | sed 's/^x86_64$/amd64/; s/^aarch64$/arm64/')"
+          line="$(grep "^statusgen-$plat " .assay-versions || true)"
+          if [ -z "$line" ]; then
+            echo "::error::no .assay-versions pin for platform $plat — refusing rather than guessing"
+            exit 1
+          fi
+          tag="$(printf '%s' "$line" | awk '{print $2}')"
+          sha="$(printf '%s' "$line" | awk '{print $3}')"
+          gh release download "$tag" --repo medici-finance/assay --pattern "statusgen-$plat" -O /tmp/statusgen
+          echo "${sha}  /tmp/statusgen" | shasum -a 256 -c -
+          sudo install -m 0755 /tmp/statusgen /usr/local/bin/statusgen
+      - name: statusgen --decision-gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # A pinned statusgen older than the hold has no such flag: that is
+          # could-not-check, so the job fails rather than passing unchecked.
+          if ! statusgen --help 2>&1 | grep -q -- '-decision-gate'; then
+            echo "::error::the pinned statusgen predates the decision-gate hold — re-pin .assay-versions to a release that has --decision-gate"
+            exit 1
+          fi
+          statusgen --root . --decision-gate --pr "$PR_NUMBER"
 `
 
 // initGitlabCI is the GitLab equivalent of initWorkflow, scaffolded when the
@@ -660,6 +712,14 @@ const initGitlabCI = `# statusgen CI — the two-half single-writer shape on Git
 # rather than handing the same brief to two sessions. Read it as work possibly
 # hidden, never as a clean board. See docs/adopting-assay-gitlab.md, section
 # "Dead-claim decay credential".
+#
+# DECISION-GATE HOLD (spec/lifecycle-v1.md section 4.5). The offline layer runs
+# inside --lint below: a gate: human brief moved to implemented, verified or done,
+# relabelled or dropped needs a well-formed decision-issue: and ruling: link. The
+# network layer (statusgen --decision-gate), which reads WHO wrote the ruling and
+# refuses a bot's, reads GitHub issues only and is not scaffolded here. On GitLab
+# the hold is therefore the well-formed-link check alone; review must catch a
+# relayed ruling.
 #
 # RUNNER — a GitLab pipeline needs a runner that will PICK UP these jobs, and Assay
 # neither installs nor configures one for you. Unlike GitHub's hosted
@@ -846,9 +906,13 @@ or team. They are the floor, not the whole manual.
 3. Regenerate the board on main only: the push-to-main half runs
    ` + "`statusgen --root .`" + ` and commits STATUS.md. STATUS.md has a SINGLE writer —
    never commit it on a branch.
+4. Run ` + "`statusgen --decision-gate --pr <N>`" + ` on every pull request (GitHub): the
+   network layer of the decision-gate hold, which reads who wrote a ` + "`gate: human`" + `
+   brief's ruling. It binds only once a repository admin makes it a REQUIRED
+   status check; a merged workflow does not do that.
 
-The scaffolded workflow already does all three. If you rewrite it, keep those
-three properties; they are what make the board derived rather than declared.
+The scaffolded workflow already does all four. If you rewrite it, keep those
+four properties; they are what make the board derived rather than declared.
 
 ## This repo's bindings — fill these in
 

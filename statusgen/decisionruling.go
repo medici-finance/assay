@@ -226,6 +226,39 @@ func rulingStampResult(s stamp, o rulingOutcome) corroborateResult {
 // "<stream>/<NN>" ids of briefs whose `design:` cites rec.ID. It reads nothing
 // global and fails CLOSED in every direction: a pass needs every condition.
 func resolveRuling(c *ghClient, prRepo string, rec decisionRecordStamp, humanLogins map[string]string, citingBriefs []string) rulingOutcome {
+	return resolveRulingOn(c, prRepo, rec, humanLogins, rulingIssueBinding{
+		what: rec.ID + " or for a brief whose design: cites it",
+		rules: func(iss rulingIssue, link rulingLink) bool {
+			if !issueRulesOnRecord(iss.Body, rec.ID, link.Repo, citingBriefs) {
+				return false
+			}
+			return true
+		},
+	})
+}
+
+// rulingIssue is the part of the linked decision issue a rulingIssueBinding reads.
+type rulingIssue struct {
+	Body string
+}
+
+// rulingIssueBinding is condition 6 of the ruling-link check — "the issue is a
+// decision issue for THIS record" — as a parameter, because what ties an issue to
+// its record differs by record kind: a design-decision record is tied through its
+// DR-<slug> id or a brief whose design: cites it (issueRulesOnRecord), a gate:human
+// brief through its own decision-gate marker (briefIssueRulesOn, decisiongatehold.go).
+// what names the expected marker in the refusal; rules decides.
+type rulingIssueBinding struct {
+	what  string
+	rules func(iss rulingIssue, link rulingLink) bool
+}
+
+// resolveRulingOn is resolveRuling with condition 6 supplied by the caller. Every
+// other condition — the link grammar, the repository, the comment's existence,
+// its parent issue, its being unedited, a bot never ruling, the author mapping to
+// a human, the comment naming rec.ID, the issue not being a pull request — is the
+// same code for every record kind.
+func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanLogins map[string]string, binding rulingIssueBinding) rulingOutcome {
 	out := rulingOutcome{Present: true, Names: rec.Names}
 	refuse := func(r rulingReason, format string, a ...any) rulingOutcome {
 		out.Reason = r
@@ -368,8 +401,8 @@ func resolveRuling(c *ghClient, prRepo string, rec decisionRecordStamp, humanLog
 	if len(iss.PullRequest) > 0 && string(iss.PullRequest) != "null" {
 		return refuse(rulingUnrelatedIssue, "%s#%d is a pull request, not a decision issue", link.Repo, link.Issue)
 	}
-	if !issueRulesOnRecord(iss.Body, rec.ID, link.Repo, citingBriefs) {
-		return refuse(rulingUnrelatedIssue, "%s#%d carries no decision-gate marker for %s or for a brief whose design: cites it — the comment is not on this record's decision issue", link.Repo, link.Issue, rec.ID)
+	if !binding.rules(rulingIssue{Body: iss.Body}, link) {
+		return refuse(rulingUnrelatedIssue, "%s#%d carries no decision-gate marker for %s — the comment is not on this record's decision issue", link.Repo, link.Issue, binding.what)
 	}
 
 	out.Reason = rulingOK

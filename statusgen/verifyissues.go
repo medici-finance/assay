@@ -1507,7 +1507,24 @@ func closeVerify(root, briefID string, now time.Time) error {
 // every refusal, and returns the README path, its flipped content and the local
 // <stream>/<NN> it resolved to. `statusgen verify-gate-close --dry-run` stops
 // here; closeVerify writes the result.
+//
+// The decision-gate hold (lifecycle-v1 §4.5) runs last, over the README the close
+// would write: a gate: human brief reaches done only with a human ruling on its
+// decision issue. The close lands on the default branch with no pull request, so
+// this is the only network check that sees it.
 func closeVerifyPlan(root, briefID string, now time.Time) (readme string, updated []byte, local string, err error) {
+	readme, updated, local, err = closeVerifyFlipPlan(root, briefID, now)
+	if err != nil {
+		return "", nil, "", err
+	}
+	if gerr := closeVerifyDecisionGateFn(root, readme, updated); gerr != nil {
+		return "", nil, "", gerr
+	}
+	return readme, updated, local, nil
+}
+
+// closeVerifyFlipPlan is closeVerifyPlan before the decision-gate hold.
+func closeVerifyFlipPlan(root, briefID string, now time.Time) (readme string, updated []byte, local string, err error) {
 	// Accept either brief-key form: a brief-v1 <stream>/<NN> id or a brief-v2
 	// <cell>:<repo>:<stream>:<NN> id (issue #804), plus the reference grammar's
 	// <alias>:<stream>/<NN> and <cell>:<alias>:<stream>/<NN> forms. Any repo

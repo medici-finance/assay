@@ -52,9 +52,16 @@ type BriefFile struct {
 	Risk          map[string]string
 	Issues        []int
 	DecisionIssue int // optional; the GitHub issue # for the open needs-decision issue
-	Schema        string
-	Authored      string
-	Sources       []string
+	// Ruling is the optional `ruling:` key: the link to the comment on the
+	// decision issue that records the human's ruling, in the issue-comment URL
+	// grammar of registers-v1 §7.5 (decisionruling.go rulingURLGrammar). "" when
+	// absent. Only its TYPE is checked at parse; whether it is well formed, points
+	// at decision-issue, and (online) was written by a mapped human who names the
+	// brief is the gate:human transition check's business (decisiongatehold.go).
+	Ruling   string
+	Schema   string
+	Authored string
+	Sources  []string
 	// ExecTier is the optional brief-v1 `exec-tier:` field — "any" or "strong";
 	// "" when absent (treated as "any"). Signals a minimum execution-model tier
 	// to the dispatcher; a marker in Next-up, never a score input.
@@ -991,6 +998,17 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 			bf.DecisionIssue = int(n)
 		default:
 			addBad("decision-issue must be an integer")
+		}
+	}
+	// ruling is an OPTIONAL but KNOWN key (lifecycle-v1 §4.5): the link to the
+	// comment that records the human ruling on decision-issue. A wrong TYPE is a
+	// parse error; the link's shape and what it must resolve to are checked only
+	// where the gate:human transition check needs a ruling (decisiongatehold.go).
+	if v, ok := data["ruling"]; ok {
+		if s, isStr := v.(string); isStr {
+			bf.Ruling = strings.TrimSpace(s)
+		} else {
+			addBad("ruling must be a string (an issue-comment URL)")
 		}
 	}
 	// brief-v2 reserved keys (derived-board/03). Parsed only for a v2 file; a v1

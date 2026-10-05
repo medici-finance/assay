@@ -1,0 +1,8 @@
+### Added
+- Decision-gate hold (`spec/lifecycle-v1.md` §4.5): a `gate: human` brief can no longer move to `implemented`, `verified` or `done`, or have its gate relabelled or the brief dropped, until a human has ruled on its decision issue. A brief records the ruling as a new optional `ruling:` link next to `decision-issue:`. Any ruling lifts the hold, including one that declines the brief.
+- `statusgen --lint` gains the hold's offline layer: such a change without a well-formed `ruling:` link is a PROBLEM. The finding says it checked only for a well-formed link, not who wrote the comment.
+- `statusgen --decision-gate --pr <N>` (and `--decision-gate-base <rev>`) is the hold's network layer. It fetches the linked comment and requires an unedited comment by a human login on the brief's own decision issue that names the brief. `--corroborate --pr` and `--close-verify` run the same check. Exit 0 clean, 1 refused, 2 usage.
+- `deskevidence` refuses a landing that would introduce a decision-gate refusal, and reports could-not-check (exit 6) when `statusgen` is missing or predates `--decision-gate`.
+- `deskpr create` prepends an informational banner to a PR that delivers a `gate: human` brief, naming its decision issue and whether a ruling is linked. The banner blocks nothing.
+- `statusgen init` scaffolds a `decision-gate` pull-request job. Making it a required check is a repository-admin act; `docs/adopting-assay.md` says so. The hold never runs at a PR's ready-flip.
+- This repository's own workflow changes for the hold (a `--decision-gate` step in `assay-statusgen.yml`, a refusal branch in `verify-gate-close.yml`) are staged under `ci/staged-workflows/` pending maintainer promotion.

@@ -450,6 +450,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		hp, hn := humanStampProblems(root, streams)
 		problems = append(problems, hp...)
 		notices = append(notices, hn...)
+		// Decision-gate hold, layer one (lifecycle-v1 §4.5): a gate: human brief
+		// moved to implemented/verified/done, relabelled, or dropped against the
+		// merge-base needs a well-formed ruling: link to a comment on its recorded
+		// decision issue. Offline; who wrote the comment is layer two's to check
+		// (--decision-gate, and the same lane in --corroborate / --close-verify).
+		dgp, dgn := decisionGateHoldProblems(root)
+		problems = append(problems, dgp...)
+		notices = append(notices, dgn...)
 		// Stale-issue alarm (methodology-metrics/28): a NOTICE + board line when
 		// an open issue has been sitting past the threshold, mirroring the intake-
 		// debt alarm applied to issues. OPT-IN: it reads through the run's
@@ -1676,7 +1684,9 @@ func main() {
 	consumersBase := flag.String("base", remoteMainRef, "--consumers: base ref for the three-dot diff")
 	consumersBrief := flag.String("brief", "", "--consumers: check only this brief (<stream>/<NN>); default = every brief file in the diff")
 	corroborateMode := flag.Bool("corroborate", false, "check human:<name> stamps against PR reviews/comments for corroboration (requires --pr)")
-	corroboratePRs := flag.String("pr", "", "comma-separated PR numbers (required with --corroborate)")
+	corroboratePRs := flag.String("pr", "", "comma-separated PR numbers (required with --corroborate; with --decision-gate, the PRs to judge)")
+	decisionGateMode := flag.Bool("decision-gate", false, "the decision-gate hold, both layers (lifecycle-v1 §4.5): refuse a gate: human brief moved to implemented/verified/done, relabelled, or dropped without a human ruling on its decision issue. Needs --pr <N> or --decision-gate-base <rev>")
+	decisionGateBase := flag.String("decision-gate-base", "", "with --decision-gate: judge the working tree against this local revision (e.g. HEAD, for an uncommitted landing) instead of a PR's merge-base")
 	// Daily factory-floor bottleneck report: per-stage
 	// WIP + dwell, constraint location, shift detection, prescribed ToC action.
 	// Self-contained diagnostic sub-command — never reads or writes STATUS.md.
@@ -1807,6 +1817,7 @@ func main() {
 			"--transcribe-scan-delta": *transcribeScanDeltaMode,
 			"--transcribe-verdict":    *transcribeVerdictMode,
 			"--close-verify":          *closeVerifyID != "",
+			"--decision-gate":         *decisionGateMode,
 			"--auto-flip-model":       *autoFlipModelMode,
 			"--alarms":                *alarmsMode,
 			"--verif-backlog":         *verifBacklogMode,
@@ -2074,6 +2085,9 @@ func main() {
 			period = "weekly"
 		}
 		os.Exit(runCynefin(*root, period, *doraJSON))
+	}
+	if *decisionGateMode {
+		os.Exit(runDecisionGate(*root, *corroboratePRs, *decisionGateBase))
 	}
 	if *corroborateMode {
 		os.Exit(runCorroborate(*corroboratePRs))
