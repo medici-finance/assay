@@ -3201,7 +3201,10 @@ way).
   becomes a single space before comparing, so `lint_level`, `lint-level`, `lint.level` and a
   doubled space all compare equal to the needle `lint level` as written. Before this, a
   different separator spelling had to be enumerated as its own needle (`port-or-drop` next to
-  `port or drop`) and still missed whatever spelling was not enumerated.
+  `port or drop`) and still missed whatever spelling was not enumerated. The CI check/job
+  backstop (`ciCheckOrJobRe`) reads the collapsed subject too, not only the raw one
+  (`deskkit.namesCICheckOrJob`, round 7.2), so `leak_sweep`, `leak.sweep` and `ci_checks` are
+  caught alongside `leak-sweep`.
 
   **Any non-ASCII character anywhere in the subject fails closed, before any needle or
   `ciCheckOrJobRe` check runs** (`deskkit.hasNonASCIIByte`, round 7.1, security review

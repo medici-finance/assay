@@ -46,7 +46,8 @@
   line; none or several admit nothing. A shape-only needle (`lint level`, `lint severity`,
   `notice or error`, `port-or-drop`) never admits and vetoes any content needle beside it.
   Needles match on word boundaries, with runs of spaces, underscores, dots, slashes and
-  hyphens treated as one space, and any non-ASCII character in the subject fails closed.
+  hyphens treated as one space. The CI check/job backstop reads the subject the same way, and
+  any non-ASCII character in the subject fails closed.
 
 ### Changed
 - The R-3 human-only and reversible keyword lists moved from `cmd/deskdigest` into

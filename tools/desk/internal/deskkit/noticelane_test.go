@@ -299,7 +299,7 @@ func TestNoticeLaneVerdictRefusesNamedCheckByLintOrPortNeedle(t *testing.T) {
 		"govulncheck findings: notice or error?",
 		"lint level for the CodeQL scan: notice or error?",
 	} {
-		if ciCheckOrJobRe.MatchString(strings.ToLower(subject)) {
+		if namesCICheckOrJob(strings.ToLower(subject)) {
 			t.Fatalf("fixture %q matches ciCheckOrJobRe — it must pin the shape-only floor alone, not the CI-noun backstop", subject)
 		}
 		if admit, why := NoticeLaneVerdict(subject, "", subject, nil); admit {
@@ -352,11 +352,11 @@ func TestNoticeLaneVerdictWordBoundaryOnWording(t *testing.T) {
 // ("pattern-sweep"), so only the ciCheckOrJobRe backstop — not the shape-only veto — refuses
 // it.
 //
-// FAIL-FIRST (mutation ME — the `if ciCheckOrJobRe.MatchString(subject) { return nil }` early
-// return in FirstNoticeLaneSignal disarmed): this subject admitted via the "typo" needle.
+// FAIL-FIRST (mutation ME — the `if namesCICheckOrJob(subject) { return nil }` early
+// return in FirstNoticeLaneSignal disarmed; it read ciCheckOrJobRe directly before round 7.2): this subject admitted via the "typo" needle.
 func TestNoticeLaneVerdictCICheckBackstopCatchesContentNeedle(t *testing.T) {
 	subject := "fix the typo in the pattern-sweep job message"
-	if ciCheckOrJobRe.MatchString(subject) == false {
+	if !namesCICheckOrJob(subject) {
 		t.Fatalf("fixture %q does not match ciCheckOrJobRe — it must pin the backstop, not the shape-only floor", subject)
 	}
 	for _, n := range NoticeLaneShapeOnlyNeedles {
@@ -457,13 +457,30 @@ func TestNoticeLaneRefusesNonAsciiSubject(t *testing.T) {
 // a doubled space used to slip past both the veto AND the shape-only exclusion, admitting
 // through a paired content needle the veto is supposed to outrank. collapseSeparators closes
 // the whole separator alphabet at once rather than enumerating each spelling as its own needle.
+//
+// Round 7.2 correction (cor-1688-C14's class): every subject here used to end in "notice or
+// error", itself a shape-only needle spelled with plain spaces, so the veto fired on that phrase
+// whatever "lint level" looked like and the test passed with collapseSeparators disarmed. The
+// subjects now carry "lint level" as their ONLY shape-only phrase, next to the content needle
+// "wording", and the fixture check below proves the veto is the only thing refusing them.
+//
+// FAIL-FIRST (mutation: collapseSeparators reduced to `return s`): the underscore, dot and
+// doubled-space rows admit through "wording".
 func TestNoticeLaneShapeOnlyNeedleCollapsesSeparators(t *testing.T) {
 	for _, subject := range []string{
-		"wording of the pin-consistency lint level: notice or error",
-		"wording of the pin-consistency lint_level: notice or error",
-		"wording of the pin-consistency lint.level: notice or error",
-		"wording of the pin-consistency lint  level: notice or error",
+		"wording of the pin-consistency lint level",
+		"wording of the pin-consistency lint_level",
+		"wording of the pin-consistency lint.level",
+		"wording of the pin-consistency lint  level",
 	} {
+		if namesCICheckOrJob(subject) {
+			t.Fatalf("fixture %q names a CI check or job — it must pin the shape-only veto alone", subject)
+		}
+		for _, n := range NoticeLaneShapeOnlyNeedles {
+			if n != "lint level" && subjectContainsNeedle(subject, n) {
+				t.Fatalf("fixture %q matches shape-only needle %q — only %q may veto it", subject, n, "lint level")
+			}
+		}
 		if admit, why := NoticeLaneVerdict(subject, "", subject, nil); admit {
 			t.Errorf("NoticeLaneVerdict(%q) admitted (%s), want refused — the shape-only 'lint level' veto must match regardless of separator spelling", subject, why)
 		}
@@ -522,5 +539,34 @@ func TestStripDeskDecidedBlockReadsMarkerVariants(t *testing.T) {
 	body := "Kept.\n\n## Desk-decided\n\n<!--DESK-R3-DECISION V1-->\ndecision: keep\ncost: draft-pr\n"
 	if got := StripDeskDecidedBlock(body); strings.Contains(got, "cost:") {
 		t.Errorf("a variant-marker block was not stripped:\n%s", got)
+	}
+}
+
+// TestNoticeLaneCICheckBackstopCollapsesSeparators — round 7.2 (security review sec-1688-S1
+// advisory): the needle scans collapse ASCII separators, but the CI check/job backstop read the
+// raw subject only, so a check name spelled with an underscore or a dot ("leak_sweep" — an
+// underscore is a word character, so `\b` never fires inside it) slipped past it while the
+// content needle beside it ("typo") still admitted. Each subject is first shown to be missed
+// by the raw regexp, so the refusal below is the collapsed reading, nothing else.
+//
+// FAIL-FIRST (mutation: namesCICheckOrJob reduced to the raw ciCheckOrJobRe.MatchString): every
+// row admits through "typo".
+func TestNoticeLaneCICheckBackstopCollapsesSeparators(t *testing.T) {
+	for _, subject := range []string{
+		"fix the typo in the leak_sweep message",
+		"fix the typo in the leak.sweep message",
+		"fix the typo in the ci_checks message",
+	} {
+		if ciCheckOrJobRe.MatchString(subject) {
+			t.Fatalf("fixture %q already matches the raw regexp — it must pin the collapsed reading", subject)
+		}
+		for _, n := range NoticeLaneShapeOnlyNeedles {
+			if subjectContainsNeedle(subject, n) {
+				t.Fatalf("fixture %q matches shape-only needle %q — it must pin the backstop alone", subject, n)
+			}
+		}
+		if admit, why := NoticeLaneVerdict(subject, "", subject, nil); admit {
+			t.Errorf("NoticeLaneVerdict(%q) admitted (%s), want refused — the CI check/job backstop must match regardless of separator spelling", subject, why)
+		}
 	}
 }

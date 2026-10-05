@@ -363,9 +363,21 @@ func subjectContainsNeedle(subject, needle string) bool {
 // item staying on the driver's queue.
 var ciCheckOrJobRe = regexp.MustCompile(`(?i)\b\w+[- ](?:sweep|check)\b|\b(?:checks?|jobs?|workflows?|pipelines?)\b`)
 
+// namesCICheckOrJob is ciCheckOrJobRe read twice: on subject as given, and on subject with
+// collapseSeparators applied. Round 7.2 (security review sec-1688-S1 advisory): the needle
+// scans already collapse every ASCII separator run to one space, but this regexp read only the
+// raw subject, so "leak_sweep", "leak.sweep" or "ci_checks" (an underscore is a word character,
+// so `\b` never fires inside it) slipped past the backstop while the needle beside it still
+// matched. Reading the collapsed form too closes the whole ASCII separator alphabet at once,
+// the same way subjectContainsNeedle does; reading the raw form as well keeps every subject
+// the regexp already caught.
+func namesCICheckOrJob(subject string) bool {
+	return ciCheckOrJobRe.MatchString(subject) || ciCheckOrJobRe.MatchString(collapseSeparators(subject))
+}
+
 // FirstNoticeLaneSignal returns the first ReversibleSignals entry that may admit the notice
 // lane — a content-bearing needle, never one of NoticeLaneShapeOnlyNeedles, and never when
-// subject names a CI check or job (ciCheckOrJobRe) — whose needle occurs in subject, or nil.
+// subject names a CI check or job (namesCICheckOrJob) — whose needle occurs in subject, or nil.
 // subject must already be lower-cased and hyphen-normalised (NoticeLaneVerdict does both
 // before calling this). subject is the filing's declared subject alone (a `### Fork test`
 // block's `subject:` line), never title+body — see the file comment and NoticeLaneVerdict.
@@ -381,7 +393,7 @@ var ciCheckOrJobRe = regexp.MustCompile(`(?i)\b\w+[- ](?:sweep|check)\b|\b(?:che
 // matches, means a shape-only phrase can never be outvoted by a second needle in the same
 // subject.
 func FirstNoticeLaneSignal(subject string) *Signal {
-	if ciCheckOrJobRe.MatchString(subject) {
+	if namesCICheckOrJob(subject) {
 		return nil
 	}
 	for _, n := range NoticeLaneShapeOnlyNeedles {
@@ -430,7 +442,7 @@ func NoticeLaneVerdict(title, body, subject string, labels []string) (admit bool
 	if s := FirstNoticeLaneSignal(subj); s != nil {
 		return true, "reversible: " + s.Category + " (`" + s.Needle + "`)"
 	}
-	if ciCheckOrJobRe.MatchString(subj) {
+	if namesCICheckOrJob(subj) {
 		return false, "the subject names a CI check or job: an R-3 reversible example applied to it is a " +
 			"classification decision about that check, not a reversible edit to it (fails closed: stays with the human)"
 	}
