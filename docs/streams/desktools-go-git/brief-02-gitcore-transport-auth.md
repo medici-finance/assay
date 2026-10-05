@@ -117,6 +117,75 @@ All six Verify rows pass on merged main at short SHA `86c7d62c`. Deliverables co
 `tools/desk/internal/gitcore/gitcore_test.go` (plus `auth_test.go`), the `tools/desk/go.mod` and
 `tools/desk/go.sum` pin, and the ticked op families in
 `docs/streams/desktools-go-git/inventory.md`.
+### 2026-10-06 re-verification on current merged main (3012e2be)
+
+**VERIFY: PASS — 6/6 Verify rows on merged main 3012e2be**
+
+A non-implementer re-verified the brief on current merged main, full SHA `3012e2bed680aa63ee9d378e99b199043f3d3f99`. That SHA was confirmed equal to the forge's `main` head at run time. The goal was to confirm that the 2026-09-11 PASS (taken at `86c7d62c`) still holds before the human sign-off is recorded. Toolchain: go1.27.1 darwin/arm64. Every row was run fresh (`-count=1`, no test cache). The execution witness was `statusgen verifyrun --dry-run` (statusgen v1.0.32, throwaway HOME). It reported `row 1..6: pass (exit=0)` at `3012e2bed680` and wrote nothing back to the brief.
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---------|----------|----------|---------------|
+| 1 | `cd tools/desk && go build ./... && go vet ./internal/gitcore/` | exit 0 | exit 0. Build and vet printed no diagnostics (witness output hash sha256:e3b0c44298fc, the empty-output digest) | 2026-10-06 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && go test ./internal/gitcore/` | exit 0; transport + auth + read-helper goldens pass | exit 0: `ok github.com/medici-finance/assay/tools/desk/internal/gitcore 36.267s`. A verbose re-run gave 76 top-level PASS and 0 FAIL. All 12 brief-02 tests pass by name. Auth: TestTokenNeverLeaves. Transport: TestFetchOutcomeMatchesServer, TestPushOutcomeMatchesLocal, TestListMatchesForEachRef. Read-helper goldens: TestGoldenResolveHead, TestGoldenDiffAfterChange, TestRefsMatchesForEachRef, TestFileAtMatchesCatFile, TestFilesMatchesLsTree, TestLogMatchesRevList, TestDiffNamesRenameMatchesGit, TestMergeBaseAndIsAncestor | 2026-10-06 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && go mod verify` | exit 0; `all modules verified` | exit 0: `all modules verified` | 2026-10-06 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | `grep -cE -e 'go-git/v5 v5\.1[3-9]' -e 'go-git/v5 v5\.[2-9][0-9]' tools/desk/go.mod` | exit 0; count >= 1 | exit 0, count `1`. The matched line is `github.com/go-git/go-git/v5 v5.19.2`. The selected version is the same: `go list -m github.com/go-git/go-git/v5` gives `v5.19.2`, and go.sum carries v5.19.2 only | 2026-10-06 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | `grep -cE -e 'x-access-token' -e 'BasicAuth' tools/desk/internal/gitcore/auth.go` | exit 0; count >= 2 | exit 0, count `14`. The builder returns a go-git HTTP BasicAuth whose Username is the named constant equal to `x-access-token` and whose Password is the in-memory token | 2026-10-06 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | `cd tools/desk && go test ./internal/gitcore/ -run TokenNeverLeaves` | exit 0; token-containment test passes | exit 0: `--- PASS: TestTokenNeverLeaves (0.11s)`, `ok ... 0.229s`. The test source is byte-identical to the 2026-09-11 head, so the six containment assertions recorded then still apply | 2026-10-06 assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+**Drift since 2026-09-11 (`86c7d62c` to `3012e2be`).**
+- The auth builder and its test are byte-identical between the two heads, and the go-git pin is still v5.19.2.
+- The gitcore package grew by about 5.3k lines across 11 commits:
+  - the brief 03, 04 and 07 seam migrations;
+  - alternate object stores (alternates.go);
+  - a commit-graph RefsContaining walk (contains.go);
+  - a local commit writer (write.go);
+  - claim-ref acknowledgment checks that fail closed, plus surfacing of server refusal text (claimack.go, and changes to claimref.go).
+- go.mod gained direct dependencies through other streams: the Cobra/Viper CLI foundation (cobra, pflag, viper, cast, plus their transitives) and cellctl (go-winio, go-billy and x/term, promoted from indirect to direct). The go-git version and the x/crypto version (v0.53.0) did not change.
+- The full gitcore suite includes one opt-in timing benchmark, TestRefsContainingRealRepoTiming. It runs only when a benchmark repository is configured through an environment variable. It belongs to the later RefsContaining work and is outside brief 02's surface.
+
+**Security substance checks, repeated on the larger package (all PASS).**
+1. *No insteadOf, credential helper, askpass or GIT_\* environment.* Across all seven non-test files, those terms appear only in comments asserting their absence. There is no `os.Setenv`/`Getenv`/`Environ`/`LookupEnv` call and no `exec.Command` in non-test code. Package-level state is two sentinel errors, one internal error and one diff-options value. None of it is credential state.
+2. *Each transport verb takes its own Auth.* `FetchOpts`, `PushOpts` and `ListOpts` each carry an `Auth transport.AuthMethod` that is passed per call. The new claim-ref entry points (ref update, `DeleteRef`, `FetchTagPayload`) also take an explicit per-call auth argument.
+3. *Force is off by default.* `Force bool` has zero value false. `buildRefSpecs` prepends `+` only when force is true. As recorded on 2026-09-11, a caller can still pass a refspec that already starts with `+`, which is equally explicit.
+4. *The CVE floor holds at the resolved version.* The resolved version is v5.19.2, which is at or above the v5.13 fix line for CVE-2025-21613 and CVE-2025-21614.
+5. *No token in error text or logs (static sweep repeated).* Every `Errorf`/`Sprintf` site in the package was enumerated. None interpolates an auth value, password, token or request URL; one site interpolates a remote *name* only. The new HTTP observer (`ackTransport`) reads only the response's request-id header, bounded to 128 characters of `[A-Za-z0-9:-_.]`, plus the receive-pack response body. It never reads request headers. Server refusal text is stripped of control characters and bounded to 2048 bytes. The claim client refuses custom TLS or proxy options rather than silently bypassing the observer.
+- The vulnerability-scanner cross-check is an extra beyond the brief, not a Verify row, and it is absent this pass: no Go vulnerability scanner is installed on this runner. Items 4 and 5 rest on the resolved version and a source read. The 2026-09-11 scanner finding (no advisory against go-git) is not re-asserted here.
+
+**Risk-bearing values.** Enumerated over brief 02's deliverables (auth.go, the gitcore transport verbs, and the go.mod pin) plus the literals added to the package since the last verify:
+- `appUsername = "x-access-token"` @ tools/desk/internal/gitcore/auth.go:13
+- `GitLabGitUsername = "oauth2"` @ tools/desk/internal/gitcore/auth.go:48
+- `github.com/go-git/go-git/v5 v5.19.2` @ tools/desk/go.mod:10 (brief floor v5.13)
+- force marker `"+"` @ tools/desk/internal/gitcore/gitcore.go:483 (gated on `Force`, zero value false)
+- `transientRemoteName = "origin"` @ tools/desk/internal/gitcore/gitcore.go:54
+- `EmptyBlobHash = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"` @ tools/desk/internal/gitcore/claimref.go:43
+- `maxRemoteMessageBytes = 2048` @ tools/desk/internal/gitcore/claimref.go:314
+- `maxWireAck = 1024 * 1024` @ tools/desk/internal/gitcore/claimack.go:59
+- `maxAckData = 64 * 1024` @ tools/desk/internal/gitcore/claimack.go:60
+
+Ranking:
+- The go-git pin ranks highest. A version below the fix line would ship known-exploitable transport code. A bump undoes it, but only for binaries released after the bump.
+- The two usernames come next. A wrong username fails authentication closed, which is reversible and does not leak.
+- The force marker comes next. Its default decides whether a push can rewrite history. It is reversible only as far as the remote's reflog allows.
+- The empty-blob hash, the remote name and the three byte bounds are reversible operational values and rank last.
+
+- RISK-VALUE: DERIVED — go-git/v5 = v5.19.2 @ tools/desk/go.mod:10 — The brief's stated constraint is v5.13 or later, because CVE-2025-21613 (argument injection) and CVE-2025-21614 (denial of service) are fixed at the v5.13 line. v5.19.2 is above that, and it is both the selected build version and the only go-git version in go.sum.
+- RISK-VALUE: DERIVED — appUsername = "x-access-token" @ tools/desk/internal/gitcore/auth.go:13 — GitHub's documented username for a GitHub App installation token over git-over-HTTPS basic auth. It also matches the house's existing in-process REST callers.
+- RISK-VALUE: DERIVED — GitLabGitUsername = "oauth2" @ tools/desk/internal/gitcore/auth.go:48 — GitLab's documented basic-auth username for an OAuth token password. Personal access tokens also accept it.
+- RISK-VALUE: DERIVED — force marker "+" @ tools/desk/internal/gitcore/gitcore.go:483 — `+` is git's refspec force prefix. It is added only when `Force` is true, and a Go bool defaults to false, so a caller gets no force unless it asks.
+- EmptyBlobHash is the SHA-1 of the empty blob. It matches `git hash-object -t blob /dev/null` on the runner.
+
+**Human security review of record:** the driver approved this brief as briefed at https://github.com/medici-finance/assay/issues/903#issuecomment-6004017052. That approval covers the BasicAuth auth path and the go-git dependency tree. The advisory note's x/crypto items stay with desktools-go-git/08. This re-verification fills Evidence only. The human gate and the Reviewed cell stay with the human.
+
+**Execution witness** (`statusgen verifyrun`, real run, same SHA; the tool stamps the UTC date):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./internal/gitcore/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-05 | assay-verifier-app[bot] @ 3012e2bed680 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/gitcore/` | pass exit=0 | sha256:c6633e51de72 | 2026-10-05 | assay-verifier-app[bot] @ 3012e2bed680 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go mod verify` | pass exit=0 | sha256:b4537ed75f53 | 2026-10-05 | assay-verifier-app[bot] @ 3012e2bed680 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -cE -e 'go-git/v5 v5\.1[3-9]' -e 'go-git/v5 v5\.[2-9][0-9]' tools/desk/go.mod` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-05 | assay-verifier-app[bot] @ 3012e2bed680 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -cE -e 'x-access-token' -e 'BasicAuth' tools/desk/internal/gitcore/auth.go` | pass exit=0 | sha256:9a92adbc0cee | 2026-10-05 | assay-verifier-app[bot] @ 3012e2bed680 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./internal/gitcore/ -run TokenNeverLeaves` | pass exit=0 | sha256:0f81e831b9c8 | 2026-10-05 | assay-verifier-app[bot] @ 3012e2bed680 (on-behalf-of human:ian) (forge-identity) |
 
 ## Security substance checks
 
