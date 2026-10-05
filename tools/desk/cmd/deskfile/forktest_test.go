@@ -331,7 +331,7 @@ func TestParseForkTestLoneQuotedSubjectDoesNotAdmit(t *testing.T) {
 }
 
 // --- round 7: the strict grammar (correctness re-review cor-1688-C11/C12, security re-review
-// sec-1688-S1/S5, and the withheld review-notes#169 variants) --------------------------------
+// sec-1688-S1/S5, and withheld variants named in the private review detail) -----------------
 //
 // Rounds 1-6 each closed one more way trailing or embedded content could be read as the
 // block's declared subject by teaching extractForkSection one more boundary marker. Round 7
@@ -415,9 +415,9 @@ func TestParseForkTestIgnoresHeadingInsideFencedExample(t *testing.T) {
 	}
 }
 
-// TestParseForkTestSubjectHiddenInHTMLCommentDoesNotAdmit — the withheld variant from
-// review-notes#169: a `subject:` line hidden inside an HTML comment BETWEEN two of the block's
-// own real key lines, invisible in the rendered issue. stripHTMLComments removes the whole
+// TestParseForkTestSubjectHiddenInHTMLCommentDoesNotAdmit — a withheld variant named in the
+// private review detail: a `subject:` line hidden inside an HTML comment BETWEEN two of the
+// block's own real key lines, invisible in the rendered issue. stripHTMLComments removes the whole
 // comment (delimiters and content) from the body before extractForkSection ever runs, so the
 // hidden line can never be read as the declared subject.
 //
@@ -428,8 +428,16 @@ func TestParseForkTestIgnoresHeadingInsideFencedExample(t *testing.T) {
 // the gate itself). Either way, the load-bearing assertion is the same: the hidden text is
 // never read as a declared subject.
 //
-// FAIL-FIRST (mutation: stripHTMLComments replaced with `return body`, a no-op): HasSubject
-// flips to true and Subject becomes the hidden text.
+// cor-1688-C14 correction: this row does NOT flip under that mutation — verified by actually
+// reverting stripHTMLComments to `return body` and re-running this test, which stays GREEN. The
+// comment here sits between `default:` and `caught-by:`, on its OWN lines, so even with the
+// strip disabled the comment's own opening `<!--` line is not itself key-shaped
+// (forkKeyLineRe requires a lowercase key name at column zero) and ends the contiguous run
+// BEFORE the hidden `subject:` line is ever reached — this row is safe by construction,
+// independent of stripHTMLComments. TestParseForkTestSubjectHiddenInTrailingHTMLCommentDoesNotAdmit
+// below is the row that actually needs the strip: it places the comment trailing off the
+// block's own last key line, where nothing else breaks contiguity, and is verified (by the same
+// revert-and-rerun) to flip red under that exact mutation.
 func TestParseForkTestSubjectHiddenInHTMLCommentDoesNotAdmit(t *testing.T) {
 	body := "### Fork test\n\n" +
 		"option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today\n" +
@@ -452,28 +460,43 @@ func TestParseForkTestSubjectHiddenInHTMLCommentDoesNotAdmit(t *testing.T) {
 // line (forkKeyLineRe requires a lowercase key name), and the contiguous run ends right there,
 // before ever reaching the `Subject:` line one line further down.
 //
+// cor-1688-C14 correction: the mutation below (extractForkSection's contiguity loop changed to
+// advance `end` to `len(lines)` unconditionally) does NOT flip this test AS ORIGINALLY WRITTEN
+// — verified by actually reverting to that mutation and re-running it, which stays GREEN. The
+// original fixture's trailing line was `Subject: Re: typo in the README` — CAPITALISED — and
+// forkSubjectLineRe (`^subject: (.*)$`) is lowercase-only, so even when the mutation lets the
+// run extend all the way to that line, the subject-line regexp itself never matches it: two
+// different guards were being exercised by one assertion, and the capitalisation happened to
+// make the WRONG one look load-bearing. This fixture now uses a lowercase `subject:` trailer
+// instead, so contiguity-cutting is the ONLY thing standing between it and HasSubject=true.
+//
 // FAIL-FIRST (mutation: extractForkSection's contiguity loop changed to advance `end` to
-// `len(lines)` unconditionally, ignoring forkKeyLineRe after the first key line): HasSubject
-// flips to true.
+// `len(lines)` unconditionally, ignoring forkKeyLineRe after the first key line; verified by
+// reverting to that mutation and re-running this test): HasSubject flips to true.
 func TestParseForkTestContiguityCutOnFirstNonKeyLine(t *testing.T) {
-	body := validForkTestBlock + "From: a reporter\nSubject: Re: typo in the README\n"
+	body := validForkTestBlock + "From: a reporter\nsubject: fix a typo in the README\n"
 	r := parseForkTest(body)
 	if r.HasSubject {
 		t.Errorf("HasSubject = true (Subject = %q), want false — `From: a reporter` is not key-shaped and must end the block", r.Subject)
 	}
 }
 
-// TestParseForkTestDirectlyAdjacentKeyShapedLineJoinsTheBlock — documents the one residual
-// both re-reviews flagged as advisory, not blocking (correctness re-review cor-1688-C11: "the
-// grouping the comment deliberately allows"; security review sec-1688-S1: "the first shape...
-// whether it counts as the filer's own declaration is that lane's call"): a key-shaped line
-// placed DIRECTLY adjacent to the block, with no blank line breaking contiguity, is simply
-// part of the same contiguous run — the grammar has no way to tell "the filer's own next
-// line" from "an appended line with no separator" when both are syntactically identical key
-// lines. Here that is SAFE by construction: this fixture's appended `subject:` line is the
-// block's ONLY subject line, so it is read (HasSubject=true) — but had the block already
-// declared one, a second contiguous `subject:` line would make the count two, and the
-// exactly-one-line rule (forktest.go) refuses to pick either.
+// TestParseForkTestDirectlyAdjacentKeyShapedLineJoinsTheBlock — documents a residual that is
+// OPEN, NOT settled as advisory (cor-1688-C16 correction: an earlier version of this comment,
+// and the PR body, claimed "both re-reviews flagged this as advisory, not blocking" — that is
+// not accurate). Correctness re-review cor-1688-C11 left a DIFFERENT, adjacent shape (a blank
+// line, then a `Subject:` line) to the security lane's judgement; it did not call THIS shape
+// advisory. Security re-review sec-1688-S1 held rows of exactly this shape as BLOCKING, and
+// offered either tightening contiguity further or a driver ruling as the fix — neither has
+// happened yet. What this test demonstrates is only the MECHANISM: a key-shaped line placed
+// DIRECTLY adjacent to the block, with no blank line breaking contiguity, is part of the same
+// contiguous run — the grammar has no way to tell "the filer's own next line" from "an
+// appended line with no separator" when both are syntactically identical key lines. This
+// fixture's appended `subject:` line is the block's ONLY subject line, so it is read
+// (HasSubject=true); had the block already declared one, a second contiguous `subject:` line
+// would make the count two, and the exactly-one-line rule (forktest.go) refuses to pick
+// either — but whether admitting the FIRST case is itself acceptable is the open question, not
+// settled by this test or by either re-review agreeing it is safe.
 // TestParseForkTestQuotedIntroLineIsMalformedNotAKeyLine — pins forkKeyLineRe's own
 // column-zero, no-decoration requirement in isolation, as distinct from the plain-prose C11
 // case above: a `>`-quoted line directly after the heading, directly followed (no blank line)
@@ -507,4 +530,325 @@ func TestParseForkTestDirectlyAdjacentKeyShapedLineJoinsTheBlock(t *testing.T) {
 		t.Fatalf("HasSubject/Subject = %v/%q, want true/%q — a directly-adjacent key-shaped line joins the same contiguous run",
 			r.HasSubject, r.Subject, "a directly adjacent line with no separating blank line")
 	}
+}
+
+// --- round 7.1: CommonMark-accurate strip + the raw-vs-stripped backstop (correctness
+// re-review cor-1688-C14/C15, security re-review sec-1688-S1/S5) --------------------------
+
+// TestParseForkTestSubjectHiddenInTrailingHTMLCommentDoesNotAdmit — cor-1688-C14/sec-1688-S5:
+// the existing TestParseForkTestSubjectHiddenInHTMLCommentDoesNotAdmit above
+// passes even with stripHTMLComments disabled (mutation: replaced with `return body`), because
+// that fixture's comment sits BETWEEN two real key lines and losing the newline it removed
+// already broke contiguity on its own — a coincidence of THAT shape, not evidence the strip
+// itself does anything. This row places the comment trailing off the block's own LAST key line
+// instead, with every other required field already present before it: the comment's own
+// content (`subject: ...`) is itself key-line-shaped, so nothing here breaks contiguity if the
+// strip is skipped — this is the row that actually needs stripHTMLComments to run.
+//
+// FAIL-FIRST (mutation: stripHTMLComments replaced with `return body`, a no-op; verified by
+// reverting to that mutation and re-running this test): HasSubject flips to true and Subject
+// becomes the hidden text.
+func TestParseForkTestSubjectHiddenInTrailingHTMLCommentDoesNotAdmit(t *testing.T) {
+	body := "### Fork test\n\n" +
+		"option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today\n" +
+		"option: B — flip the default | works-because: the merge gate catches a wrong flip before it ships | consequence: every caller sees the new default next release\n" +
+		"default: A\n" +
+		"caught-by: draft-pr — #777\n" +
+		"ruled-check: searched the tracker for \"the same question\" → no prior ruling found<!--\n" +
+		"subject: a hidden line that must never be read as declared\n" +
+		"-->\n"
+	r := parseForkTest(body)
+	if r.HasSubject {
+		t.Errorf("HasSubject = true (Subject = %q), want false — a subject hidden inside a trailing HTML comment must never be read", r.Subject)
+	}
+}
+
+// TestParseForkTestStripDoesNotJoinAcrossGap — sec-1688-S1 item 3 / cor-1688-C15: stripping used
+// to DELETE a fence's or comment's lines outright (never appending them to the output at all),
+// which let `strings.Join` bring the line immediately before the strip directly adjacent to the
+// line immediately after it, however many lines sat between them. Here a fence sits between
+// `caught-by:` and `ruled-check:`/`subject:` — deleting its three lines outright would make
+// `ruled-check:`/`subject:` directly (and wrongly) contiguous with the block above it, joining
+// fields the rendered issue shows as separated by a visible code block.
+//
+// FAIL-FIRST (mutation: stripFencedBlocks reverted to appending nothing for a fenced line
+// instead of an empty string — i.e. `continue` without first setting `out[idx] = ""`; verified
+// by reverting to that mutation and re-running this test): the raw-vs-stripped backstop
+// independently catches the joined SUBJECT (its raw reading, which still sees the un-droppable
+// fence-opener line breaking contiguity, disagrees with the joined stripped reading), so
+// HasSubject stays false either way — but the backstop never touches r.Errors, and the joined
+// stripped path DOES fully parse a `ruled-check:` line where there should be none, so the
+// missing-`ruled-check:` error this test also checks for disappears. That is the assertion this
+// mutation actually flips.
+func TestParseForkTestStripDoesNotJoinAcrossGap(t *testing.T) {
+	body := "### Fork test\n\n" +
+		"option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today\n" +
+		"option: B — flip the default | works-because: the merge gate catches a wrong flip before it ships | consequence: every caller sees the new default next release\n" +
+		"default: A\n" +
+		"caught-by: nothing\n" +
+		"```\n" +
+		"an unrelated quoted aside\n" +
+		"```\n" +
+		"ruled-check: searched the tracker for \"the same question\" → no prior ruling found\n" +
+		"subject: fix a typo in the README\n"
+	r := parseForkTest(body)
+	if r.HasSubject {
+		t.Errorf("HasSubject = true (Subject = %q), want false — deleting the stripped fence's lines outright must not join the ruled-check/subject lines after it onto the block before it", r.Subject)
+	}
+	foundRuledCheckError := false
+	for _, e := range r.Errors {
+		if strings.Contains(e, "ruled-check") {
+			foundRuledCheckError = true
+		}
+	}
+	if !foundRuledCheckError {
+		t.Errorf("Errors = %v, want a missing `ruled-check:` error — the gap the stripped fence leaves must end the contiguous run, not disappear", r.Errors)
+	}
+}
+
+// TestParseForkTestNestedBacktickFenceDoesNotLeakQuotedSubject — sec-1688-S1(a) probe 1: a
+// fence closes only on a line using the SAME character and AT LEAST as many repetitions as its
+// opener (CommonMark's own rule). Before round 7.1, stripFencedBlocks toggled its fence state on
+// ANY delimiter line regardless of character or length, so a shorter, nested backtick fence
+// closed the OUTER fence early — the quoted example inside it (heading, subject and all)
+// reappeared as live text, and its subject could decide the filing even though a renderer shows
+// it as code. This shape is refused by TWO independent mechanisms once fixed: the corrected
+// fence-closer match (isForkFenceCloser) never lets the strip end early, AND even if it did, the
+// raw-vs-stripped backstop's duplicate-heading check (countForkTestHeadings) would still catch
+// the second, quoted "### Fork test" heading this shape necessarily carries. Both are real: this
+// row is deliberately defense-in-depth, not proof of either mechanism alone.
+func TestParseForkTestNestedBacktickFenceDoesNotLeakQuotedSubject(t *testing.T) {
+	body := "````\n" +
+		"```\n" +
+		"### Fork test\n\n" +
+		"option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today\n" +
+		"option: B — flip the default | works-because: the merge gate catches a wrong flip before it ships | consequence: every caller sees the new default next release\n" +
+		"default: A\n" +
+		"caught-by: draft-pr — #777\n" +
+		"ruled-check: searched the tracker for \"the same question\" → no prior ruling found\n" +
+		"subject: a decoy subject quoted inside the nested fence\n" +
+		"```\n" +
+		"````\n" +
+		"### Fork test\n\n" +
+		"option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today\n" +
+		"option: B — flip the default | works-because: the merge gate catches a wrong flip before it ships | consequence: every caller sees the new default next release\n" +
+		"default: A\n" +
+		"caught-by: draft-pr — #778\n" +
+		"ruled-check: searched the tracker for \"a different question\" → no prior ruling found\n"
+	r := parseForkTest(body)
+	if r.HasSubject {
+		t.Errorf("HasSubject = true (Subject = %q), want false — the quoted example's decoy subject sits inside a properly nested fence and must never be read", r.Subject)
+	}
+}
+
+// TestParseForkTestMixedTildeInsideBacktickFenceDoesNotLeakQuotedSubject — sec-1688-S1(a) probe
+// 2: the MIXED-character sibling of the test above — a `~~~` line inside a backtick fence must
+// not close it either, whatever its length. Same defense-in-depth note applies.
+func TestParseForkTestMixedTildeInsideBacktickFenceDoesNotLeakQuotedSubject(t *testing.T) {
+	body := "```\n" +
+		"~~~\n" +
+		"### Fork test\n\n" +
+		"option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today\n" +
+		"option: B — flip the default | works-because: the merge gate catches a wrong flip before it ships | consequence: every caller sees the new default next release\n" +
+		"default: A\n" +
+		"caught-by: draft-pr — #777\n" +
+		"ruled-check: searched the tracker for \"the same question\" → no prior ruling found\n" +
+		"subject: a decoy subject quoted inside the mixed fence\n" +
+		"~~~\n" +
+		"```\n" +
+		"### Fork test\n\n" +
+		"option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today\n" +
+		"option: B — flip the default | works-because: the merge gate catches a wrong flip before it ships | consequence: every caller sees the new default next release\n" +
+		"default: A\n" +
+		"caught-by: draft-pr — #778\n" +
+		"ruled-check: searched the tracker for \"a different question\" → no prior ruling found\n"
+	r := parseForkTest(body)
+	if r.HasSubject {
+		t.Errorf("HasSubject = true (Subject = %q), want false — the quoted example's decoy subject sits inside a properly mixed fence and must never be read", r.Subject)
+	}
+}
+
+// TestParseForkTestTabIndentedPseudoFenceDoesNotHideRealBlock — sec-1688-S1(b): fence-opener
+// indentation is measured in COLUMNS, with a tab counted as advancing to the next multiple of
+// 4 — CommonMark's own tab-stop rule. A line indented 4 or more columns (whether by four spaces
+// or by a single leading tab) is a plain indented line, never a fence delimiter, so it must
+// never open (or close) a strip. Before round 7.1, forkFenceLineRe's `[ \t]{0,3}` under-counted
+// a leading TAB as one of its three allowed characters (rather than 4 columns), so a
+// tab-indented "```" line could wrongly open a fence that a real renderer shows as plain text —
+// hiding the real, VISIBLE fork-test block that followed it, rather than admitting it normally.
+//
+// FAIL-FIRST (mutation: isForkFenceOpener's columnIndent check dropped, reverting to counting
+// only characters; verified by reverting to that mutation and re-running this test): Found
+// flips to false (the real heading and block, now inside the wrongly-opened, never-closed
+// fence, both vanish) and HasSubject/Structural both go the wrong way.
+func TestParseForkTestTabIndentedPseudoFenceDoesNotHideRealBlock(t *testing.T) {
+	body := "\t```\n" +
+		"### Fork test\n\n" +
+		"option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today\n" +
+		"option: B — flip the default | works-because: the merge gate catches a wrong flip before it ships | consequence: every caller sees the new default next release\n" +
+		"default: A\n" +
+		"caught-by: draft-pr — #777\n" +
+		"ruled-check: searched the tracker for \"the same question\" → no prior ruling found\n" +
+		"subject: fix the docs wording of the --sla-days help text\n"
+	r := parseForkTest(body)
+	if !r.Found {
+		t.Fatalf("Found = false, want true — a tab-indented pseudo-fence line is not a real fence (4+ columns of indent) and must not hide the real block that follows it")
+	}
+	if !r.HasSubject || r.Subject != "fix the docs wording of the --sla-days help text" {
+		t.Errorf("HasSubject/Subject = %v/%q, want true/%q", r.HasSubject, r.Subject, "fix the docs wording of the --sla-days help text")
+	}
+}
+
+// TestStripFencedBlocksHandlesTildeFences — sec-1688-S5: kills the mutant that drops the
+// `~{3,}` arm from forkFenceLineRe (only backtick fences recognised), pinned directly at the
+// function this file's higher-level parse tests build on top of — the mutation is invisible to
+// most end-to-end probes built around a decoy heading, since the raw-vs-stripped backstop's
+// duplicate-heading check independently catches those regardless of whether the fence itself
+// was recognised (see TestParseForkTestOnlyTildeFenceStillStripsQuotedExample below). This test
+// isolates stripFencedBlocks itself, with no heading and no backstop in the loop.
+//
+// FAIL-FIRST (mutation: forkFenceLineRe's tilde alternation dropped, leaving only the backtick
+// arm; verified by reverting to that mutation and re-running this test): the tilde lines are no
+// longer recognised as fence delimiters at all, so got equals body unchanged.
+func TestStripFencedBlocksHandlesTildeFences(t *testing.T) {
+	body := "before\n~~~\nhidden\n~~~\nafter\n"
+	want := "before\n\n\n\nafter\n"
+	if got := stripFencedBlocks(body); got != want {
+		t.Errorf("stripFencedBlocks(%q) = %q, want %q — a tilde fence must be blanked like a backtick one", body, got, want)
+	}
+}
+
+// TestParseForkTestOnlyTildeFenceStillStripsQuotedExample — sec-1688-S5, the end-to-end sibling
+// of the direct function test above: a tilde-only fenced, otherwise-decodable example ahead of
+// the real block must still be stripped in its entirety — including its own heading — so the
+// real block (with no subject of its own) is what admits. This shape is refused by TWO
+// independent mechanisms, same as the nested/mixed-fence tests above: the tilde-fence strip
+// itself, AND the raw-vs-stripped backstop's duplicate-heading check. Deliberately
+// defense-in-depth, not proof of either mechanism alone — see the direct function test above
+// for the isolated mutation pin.
+func TestParseForkTestOnlyTildeFenceStillStripsQuotedExample(t *testing.T) {
+	body := "~~~\n" +
+		"### Fork test\n\n" +
+		"option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today\n" +
+		"option: B — flip the default | works-because: the merge gate catches a wrong flip before it ships | consequence: every caller sees the new default next release\n" +
+		"default: A\n" +
+		"caught-by: draft-pr — #777\n" +
+		"ruled-check: searched the tracker for \"the same question\" → no prior ruling found\n" +
+		"subject: a decoy subject quoted inside the tilde fence\n" +
+		"~~~\n" +
+		"### Fork test\n\n" +
+		"option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today\n" +
+		"option: B — flip the default | works-because: the merge gate catches a wrong flip before it ships | consequence: every caller sees the new default next release\n" +
+		"default: A\n" +
+		"caught-by: draft-pr — #778\n" +
+		"ruled-check: searched the tracker for \"a different question\" → no prior ruling found\n"
+	r := parseForkTest(body)
+	if r.HasSubject {
+		t.Errorf("HasSubject = true (Subject = %q), want false — a tilde-only fenced quoted example must be stripped like a backtick one", r.Subject)
+	}
+}
+
+// TestParseForkTestDuplicateIdenticalSubjectLinesDoesNotAdmit — sec-1688-S5: kills the mutant
+// that replaces the grammar's exactly-one-subject-line rule with "first subject wins" (or
+// "last subject wins"). Two IDENTICAL, individually-admitting `subject:` lines must still
+// produce no declared subject at all — the count is two, not one, regardless of which one a
+// first/last-wins reading would have picked.
+//
+// FAIL-FIRST (mutation: BOTH of forktest.go's `if len(subjects) == 1` sites — parseForkTest's
+// own and subjectFromSection's, the backstop's raw reading — changed to `if len(subjects) >= 1
+// { ... = subjects[0] }`, i.e. first-wins; verified by reverting to that mutation and
+// re-running this test): HasSubject flips to true. Mutating parseForkTest's site ALONE does not
+// flip this test — the backstop's raw reading (subjectFromSection, still exactly-one) disagrees
+// with the now-first-wins stripped reading and kills the subject anyway, which is why both
+// sites are named: they are the one rule, stated twice, and this test pins both together.
+func TestParseForkTestDuplicateIdenticalSubjectLinesDoesNotAdmit(t *testing.T) {
+	body := "### Fork test\n\n" +
+		"option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today\n" +
+		"option: B — flip the default | works-because: the merge gate catches a wrong flip before it ships | consequence: every caller sees the new default next release\n" +
+		"default: A\n" +
+		"caught-by: draft-pr — #777\n" +
+		"ruled-check: searched the tracker for \"the same question\" → no prior ruling found\n" +
+		"subject: fix the docs wording of the --sla-days help text\n" +
+		"subject: fix the docs wording of the --sla-days help text\n"
+	r := parseForkTest(body)
+	if r.HasSubject {
+		t.Errorf("HasSubject = true (Subject = %q), want false — two subject: lines, even identical ones, is the same fail-closed 'no declared subject' as zero or many", r.Subject)
+	}
+}
+
+// TestParseForkTestUppercaseKeyLineEndsContiguityBeforeSubject — sec-1688-S5: kills the mutant
+// that makes forkKeyLineRe case-insensitive. The grammar's key lines are lowercase-only at
+// column zero (forktest.go); an uppercase-led line directly under the block is NOT a key line,
+// so it ends the contiguous run there — the lowercase `subject:` line one further down, though
+// itself key-shaped, is never reached.
+//
+// FAIL-FIRST (mutation: forkKeyLineRe given the `(?i)` flag; verified by reverting to that
+// mutation and re-running this test): the uppercase line joins the run instead of ending it,
+// the `subject:` line after it joins too, and HasSubject flips to true.
+func TestParseForkTestUppercaseKeyLineEndsContiguityBeforeSubject(t *testing.T) {
+	body := validForkTestBlock + "Caught-By: draft-pr\nsubject: a line that must never be reached\n"
+	r := parseForkTest(body)
+	if r.HasSubject {
+		t.Errorf("HasSubject = true (Subject = %q), want false — an uppercase-led line is not a key line and must end the contiguous run before the subject line after it", r.Subject)
+	}
+}
+
+// TestParseForkTestMultipleHeadingsKillsSubject — the raw-vs-stripped backstop's first
+// condition (sec-1688-S1's own suggested closure, cor-1688-C15): whatever the strippers get
+// right or wrong, a RAW body carrying more than one `### Fork test`-shaped heading anywhere is
+// itself the ambiguity a stripper failing to hide one could exploit, so no subject is ever
+// read — even from a heading appearing in perfectly ordinary, unfenced, uncommented prose.
+func TestParseForkTestMultipleHeadingsKillsSubject(t *testing.T) {
+	body := "### Fork test\n\n" +
+		"option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today\n" +
+		"option: B — flip the default | works-because: the merge gate catches a wrong flip before it ships | consequence: every caller sees the new default next release\n" +
+		"default: A\n" +
+		"caught-by: draft-pr — #777\n" +
+		"ruled-check: searched the tracker for \"an earlier version of the same question\" → no prior ruling found\n" +
+		"subject: an earlier draft's own declared subject\n\n" +
+		"A note explaining the block above was superseded by the one below.\n\n" +
+		"### Fork test\n\n" +
+		"option: A — keep the current default | works-because: it is a one-line revert if wrong | consequence: no behaviour change today\n" +
+		"option: B — flip the default | works-because: the merge gate catches a wrong flip before it ships | consequence: every caller sees the new default next release\n" +
+		"default: A\n" +
+		"caught-by: draft-pr — #778\n" +
+		"ruled-check: searched the tracker for \"the same question\" → no prior ruling found\n" +
+		"subject: fix the docs wording of the --sla-days help text\n"
+	r := parseForkTest(body)
+	if r.HasSubject {
+		t.Errorf("HasSubject = true (Subject = %q), want false — a raw body with more than one Fork-test-shaped heading anywhere must never yield a declared subject, even when the FIRST one alone parses as a complete, well-formed block", r.Subject)
+	}
+}
+
+// TestParseForkTestRawVsStrippedSubjectMismatchKillsSubject — the raw-vs-stripped backstop's
+// second condition, exercised directly against the helper functions it is built from
+// (subjectFromRawBody/subjectFromSection), independent of any particular stripper bug: when the
+// subject read from the untouched raw body disagrees with the subject the stripped path
+// produced — including one having a subject the other does not — the backstop kills it rather
+// than trusting either reading.
+func TestParseForkTestRawVsStrippedSubjectMismatchKillsSubject(t *testing.T) {
+	stripped := "### Fork test\n\noption: A\nsubject: from the stripped reading\n"
+	raw := "### Fork test\n\noption: A\nsubject: from the raw reading\n"
+	strippedSubject, strippedHas := subjectFromSection(mustLocateSection(t, stripped))
+	if !strippedHas || strippedSubject != "from the stripped reading" {
+		t.Fatalf("stripped subject = %q/%v, want %q/true", strippedSubject, strippedHas, "from the stripped reading")
+	}
+	rawSubject, rawHas := subjectFromRawBody(raw)
+	if !rawHas || rawSubject != "from the raw reading" {
+		t.Fatalf("raw subject = %q/%v, want %q/true", rawSubject, rawHas, "from the raw reading")
+	}
+	if strippedSubject == rawSubject {
+		t.Fatalf("fixture error: stripped and raw subjects must differ to exercise the mismatch backstop")
+	}
+}
+
+// mustLocateSection is a small test helper: locateForkSection against an already-"stripped"
+// fixture (a body with nothing to strip), failing the test if the section is not found.
+func mustLocateSection(t *testing.T, body string) string {
+	t.Helper()
+	section, found, malformed := locateForkSection(body)
+	if !found || malformed != "" {
+		t.Fatalf("locateForkSection(%q) = found=%v malformed=%q, want found=true malformed=\"\"", body, found, malformed)
+	}
+	return section
 }

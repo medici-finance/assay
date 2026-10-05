@@ -85,13 +85,48 @@
   content shape, the plain-trailing-line-after-one-blank-line residual security review
   5332392502 found still open, the fence-arm gap that had no test able to fail
   (cor-1688-C12/sec-1688-S5), the intro-prose-before-the-first-key-line case
-  (cor-1688-C11), and the withheld hidden-HTML-comment-subject variant from
-  review-notes#169. The dedicated `>`-quote exclusion and per-shape boundary markers
+  (cor-1688-C11), and a withheld hidden-HTML-comment-subject variant from the private
+  review detail. The dedicated `>`-quote exclusion and per-shape boundary markers
   (fence/heading/blank-run tracking) are retired: a decorated or indented line was never a key
   line under the new grammar, so it can neither start nor extend the block.
 - The Unicode hyphen/dash normaliser (round 6) widens to four further look-alikes named in the
-  withheld review-notes#169 detail: U+FF0D FULLWIDTH HYPHEN-MINUS, U+FE63 SMALL HYPHEN-MINUS,
+  withheld review detail: U+FF0D FULLWIDTH HYPHEN-MINUS, U+FE63 SMALL HYPHEN-MINUS,
   U+00AD SOFT HYPHEN (which renders as no visible character at all), and U+2043 HYPHEN BULLET.
+- **Round 7's "closes, at once" claim was not quite true: the strip itself had three further
+  gaps (round 7.1, correctness re-review cor-1688-C15, security re-review sec-1688-S1).** A
+  fence used to close on ANY delimiter line regardless of character, length, or indentation —
+  CommonMark closes one only on the SAME character, a closer at least as long as the opener,
+  and under 4 columns of indentation (a tab counts as 4) — so a nested or mixed fence, or a
+  tab-indented pseudo-fence, could end the strip early or hide a real block a renderer would
+  show as plain text. An unclosed line-start HTML comment used to be left as parser-visible
+  text; a renderer hides it and everything after it to EOF instead. And stripping used to
+  DELETE a fenced or commented line outright rather than blanking it, which could remove the
+  separation between whatever came before it and whatever came after — joining a `subject:`
+  line onto a block it was never part of. All three are fixed: a fence and an unclosed comment
+  are now matched and blanked the way a renderer actually treats them, and a stripped line
+  becomes an empty one, never disappears. A backstop also kills any subject when the RAW,
+  never-stripped body carries more than one `### Fork test`-shaped heading, or when re-deriving
+  the subject from that raw body disagrees with the stripped reading — whatever the strip
+  itself still gets wrong.
+- **The comment-stripping mechanism (round 7) had no test that could fail on its own (round
+  7.1, correctness re-review cor-1688-C14).** Every existing test for it happened to also be
+  covered by a side effect of the shape it used (a blank line the strip's removal left behind,
+  or a capitalised trailing line the subject regexp would not have read anyway), so disabling
+  the strip outright left every test green. A new test places the hidden `subject:` line
+  trailing off the block's own last key line, where nothing else breaks contiguity, and only
+  passes when the strip actually runs. Two existing FAIL-FIRST test comments that described a
+  red-before/green-after sequence which did not actually reproduce (re-verified by reverting to
+  the named mutation and re-running each test) are corrected to describe what they actually
+  pin.
+- Needle matching against the fork-test subject (both the shape-only veto and the
+  content-bearing scan) now collapses runs of whitespace, underscore, dot, slash and hyphen to
+  a single space before comparing (round 7.1, security review sec-1688-S1 advisory), so
+  `lint_level`, `lint-level`, `lint.level` and a doubled space all match the needle `lint level`
+  as written, instead of each spelling needing its own enumerated needle. Any non-ASCII
+  character anywhere in the subject now fails closed before any needle or `ciCheckOrJobRe`
+  check runs, closing the class of Unicode hyphen/dash look-alikes and invisible characters
+  (non-breaking space, zero-width characters, …) beyond the four `normalizeHyphens` widened to
+  by name.
 
 ### Changed
 - The R-3 human-only and reversible keyword lists moved from `cmd/deskdigest` into

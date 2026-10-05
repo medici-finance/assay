@@ -252,8 +252,8 @@ var NoticeLaneShapeOnlyNeedles = []string{
 // name or phrase typed with a "fancy" hyphen — a smart-quote editor's autocorrect, a pasted em
 // dash — would otherwise silently miss both (security review sec-1688-S1, round 6 advisory:
 // "fix the typo in the pattern‑sweep message", U+2011, got past `ciCheckOrJobRe`; round 7 widens
-// the set with the further look-alikes review-notes#169 named, including the soft hyphen, which
-// renders as no visible character at all).
+// the set with further look-alikes named in the withheld review detail, including the soft
+// hyphen, which renders as no visible character at all).
 var hyphenVariantReplacer = strings.NewReplacer(
 	"‐", "-",
 	"‑", "-",
@@ -270,6 +270,18 @@ var hyphenVariantReplacer = strings.NewReplacer(
 // normalizeHyphens rewrites every Unicode hyphen/dash look-alike hyphenVariantReplacer lists
 // to the ASCII hyphen.
 func normalizeHyphens(s string) string { return hyphenVariantReplacer.Replace(s) }
+
+// hasNonASCIIByte reports whether s contains any byte >= 0x80 — true for any UTF-8 encoded
+// non-ASCII rune (a Unicode hyphen/dash look-alike beyond the four normalizeHyphens widens, a
+// non-breaking space, a zero-width character, or anything else outside plain ASCII).
+func hasNonASCIIByte(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return true
+		}
+	}
+	return false
+}
 
 // isWordByte reports whether b is an ASCII word character (letter, digit or underscore) — the
 // same class regexp's `\w`/`\b` use, applied by hand so wordBoundaryContains needs no
@@ -309,6 +321,33 @@ func wordBoundaryContains(hay, needle string) bool {
 	}
 }
 
+// separatorRunRe matches a RUN of one or more whitespace, underscore, dot, slash or hyphen
+// characters — the separator alphabet a subject's own spelling of a multi-word needle might
+// use in place of the plain space every ReversibleSignals/NoticeLaneShapeOnlyNeedles entry is
+// written with ("lint_level", "lint-level", "lint.level", "lint  level" for "lint level").
+var separatorRunRe = regexp.MustCompile(`[\s_./-]+`)
+
+// collapseSeparators rewrites every RUN of separatorRunRe's alphabet to a single space, so a
+// needle and a hay written with different (or doubled) separators still compare equal. Round
+// 7.1 (security review sec-1688-S1 advisory, veto evasion): before this, "port-or-drop" and
+// "port or drop" had to be enumerated as two SEPARATE NoticeLaneShapeOnlyNeedles entries (and
+// still missed "port_or_drop", a doubled space, or any other separator spelling) — collapsing
+// once, on both sides of the comparison, closes the whole class instead of one spelling at a
+// time.
+func collapseSeparators(s string) string {
+	return separatorRunRe.ReplaceAllString(s, " ")
+}
+
+// subjectContainsNeedle is wordBoundaryContains with collapseSeparators applied to BOTH sides
+// first — used only for matching a fork-test subject against the shape-only veto and
+// content-bearing needle lists in FirstNoticeLaneSignal, never for the broader HumanOnlySignals
+// scan over title+body prose (OneWay), which keeps ordinary wordBoundaryContains: collapsing
+// separators there would risk widening what counts as a one-way TERM in free-form prose, which
+// is not this fix's target.
+func subjectContainsNeedle(subject, needle string) bool {
+	return wordBoundaryContains(collapseSeparators(subject), collapseSeparators(needle))
+}
+
 // ciCheckOrJobRe names a CI check or job by the nouns this codebase's own CI surfaces use
 // (check/checks, job/jobs, workflow/workflows, pipeline/pipelines) and the "<word>-sweep" /
 // "<word> check" compounds those surfaces are actually named with (leak-sweep, control-sweep,
@@ -346,13 +385,13 @@ func FirstNoticeLaneSignal(subject string) *Signal {
 		return nil
 	}
 	for _, n := range NoticeLaneShapeOnlyNeedles {
-		if wordBoundaryContains(subject, n) {
+		if subjectContainsNeedle(subject, n) {
 			return nil
 		}
 	}
 	for i := range ReversibleSignals {
 		s := &ReversibleSignals[i]
-		if wordBoundaryContains(subject, s.Needle) {
+		if subjectContainsNeedle(subject, s.Needle) {
 			return s
 		}
 	}
@@ -375,6 +414,18 @@ func NoticeLaneVerdict(title, body, subject string, labels []string) (admit bool
 	if subj == "" {
 		return false, "no declared subject (fails closed: the reversible signal is read only from the fork-test " +
 			"block's `subject:` line, and none was given)"
+	}
+	// Round 7.1 (security review sec-1688-S1 advisory): normalizeHyphens above closes the four
+	// Unicode hyphen/dash look-alikes round 7 named, but that is inherently a finite list —
+	// eleven further hyphen/dash code points, plus a non-breaking space, a zero-width character
+	// or any other non-ASCII look-alike, still slip past a check/needle scan built on ASCII
+	// literals. Rather than enumerate more code points, ANY non-ASCII byte in the subject fails
+	// closed here, before ciCheckOrJobRe or FirstNoticeLaneSignal ever run: a subject the driver
+	// typed in plain ASCII never trips this, and one that did not is exactly the shape a
+	// look-alike or invisible-character evasion needs.
+	if hasNonASCIIByte(subj) {
+		return false, "the subject contains a non-ASCII character (fails closed: a look-alike or " +
+			"invisible character could otherwise change what a check/keyword scan reads — stays with the human)"
 	}
 	if s := FirstNoticeLaneSignal(subj); s != nil {
 		return true, "reversible: " + s.Category + " (`" + s.Needle + "`)"

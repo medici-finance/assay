@@ -23,8 +23,9 @@ import (
 // block's declared subject (a fence, an indent, a setext heading, a `>`-quote, a second
 // `subject:` line, a blank-then-key-line run-on...) by teaching extractForkSection one more
 // boundary marker or teaching parseForkTest one more exclusion. Security review sec-1688-S1
-// (round 6 residual) and the withheld variants in review-notes#169 kept finding the next shape
-// the marker list had not enumerated (a plain trailing line after one blank line; an HTML
+// (round 6 residual) and further withheld variants named in the private review detail kept
+// finding the next shape the marker list had not enumerated (a plain trailing line after one
+// blank line; an HTML
 // comment hidden inside the block itself). The fix is not a seventh marker: it is dropping the
 // whole "scan forward for a boundary marker" design in favour of three rules that need no
 // enumeration —
@@ -50,6 +51,32 @@ import (
 // never enter the run at all: forkKeyLineRe requires column zero and a lowercase key name, so
 // the round-5/6 quote and indent exclusions are now a CONSEQUENCE of the grammar rather than a
 // bolt-on check parseForkTest had to run.
+//
+// ROUND 7.1 (cor-1688-C15/C16/C17, sec-1688-S1/S5/S6) closes gaps in rule 1's own "strip
+// first" step, and adds a defense-in-depth backstop:
+//
+//   - The strip does not follow Markdown as closely as round 7's comment claimed. A fence
+//     closes on ANY delimiter line in round 7, regardless of character, length or indentation
+//     — CommonMark requires the SAME character, a closer at least as long as the opener, and
+//     under 4 columns of indentation (a tab counts as 4). stripFencedBlocks and
+//     isForkFenceCloser now match that. An unclosed line-start `<!--` used to be left as plain
+//     text; a renderer instead hides it and everything after it to EOF, so
+//     truncateAtUnclosedComment now does too.
+//   - Stripping used to DELETE lines outright, which could remove the separation a fence or
+//     comment provided — joining a `subject:` line that came after it onto a block that came
+//     before it. stripFencedBlocks and stripHTMLComments now replace a stripped line with an
+//     EMPTY one instead, preserving position: a blank line can never be part of the contiguous
+//     run, so the separation survives the strip.
+//   - As a backstop for whatever the strip still gets wrong: parseForkTest additionally kills
+//     any subject when the RAW, never-stripped body carries more than one line matching the
+//     heading regexp anywhere, or when re-deriving the subject from that raw body (no
+//     stripping at all) disagrees with the subject the stripped path produced. Either
+//     condition is itself the ambiguity a stripper failing to hide something would create.
+//
+// A leak-sweep finding from this same round (cor-1688-C17/sec-1688-S6) is unrelated to the
+// grammar: it was a withheld internal reference added to comments and tests, since replaced
+// with a generic description, and is noted here only so the round-7.1 label in nearby comments
+// has one place explaining what it covers.
 
 // forkTestHeadingRe matches the block's heading, any level (`#` through `######`), the same
 // tolerant shape isEvidenceHeading uses above for "### Evidence" — a filer who writes
@@ -433,6 +460,27 @@ func parseForkTest(body string) forkTestResult {
 		r.Subject = subjects[0]
 	}
 
+	// Backstop (round 7.1, cor-1688-C15/sec-1688-S1): whatever stripFencedBlocks and
+	// stripHTMLComments get wrong, a discrepancy between reading the subject from the RAW body
+	// and reading it from the STRIPPED body is itself a red flag — the two should never
+	// disagree on a well-formed filing, so any disagreement kills the subject rather than
+	// trusting either reading. Two conditions, either one sufficient:
+	//   1. The RAW body carries more than one line matching the heading regexp anywhere — a
+	//      second `### Fork test`-shaped heading (quoted or real) is exactly the ambiguity a
+	//      stripper failing to hide it would exploit.
+	//   2. The subject read from the RAW, never-stripped body differs at all from the subject
+	//      the stripped path above just computed — including one having a subject the other
+	//      does not.
+	// This never touches r.Options/r.Default/r.CaughtBy/r.RuledCheck — only the subject, so a
+	// filing this catches still lands on needs-decision rather than being refused outright.
+	if r.HasSubject {
+		if countForkTestHeadings(body) > 1 {
+			r.HasSubject, r.Subject = false, ""
+		} else if rawSubject, rawHas := subjectFromRawBody(body); !rawHas || rawSubject != r.Subject {
+			r.HasSubject, r.Subject = false, ""
+		}
+	}
+
 	if len(r.Options) == 0 {
 		r.Errors = append(r.Errors, "no `option:` lines found (need at least two counted options)")
 	}
@@ -470,39 +518,119 @@ func parseForkTest(body string) forkTestResult {
 	return r
 }
 
-// forkFenceLineRe matches a fenced-code delimiter line (three or more backticks or tildes),
-// allowed up to 3 leading spaces (a fence may be indented up to 3 columns and still open, per
-// CommonMark). Used by stripFencedBlocks (round 7) to remove every fenced block, delimiters and
-// content both, from the whole body before any of the rest of this file runs.
-var forkFenceLineRe = regexp.MustCompile("^[ \t]{0,3}(```+|~~~+)")
+// forkFenceLineRe matches a POTENTIAL fenced-code delimiter line (three or more backticks or
+// tildes, any amount of leading space/tab). Whether it actually opens or closes a fence also
+// depends on columnIndent(ln) < 4 — see isForkFenceOpener and isForkFenceCloser, which are the
+// only two callers; nothing else in this file should read this regexp's leading whitespace as
+// meaningful on its own.
+var forkFenceLineRe = regexp.MustCompile("^[ \t]*(`{3,}|~{3,})")
+
+// columnIndent returns the visual column width of ln's leading whitespace, counting a tab as
+// advancing to the next multiple of 4 — CommonMark's own tab-stop rule for block-level
+// indentation (round 7.1, sec-1688-S1(b)). A line indented 4 or more columns is a plain
+// indented line (or indented code), never a fence delimiter, whether the 4 columns come from
+// spaces, a tab, or a mix: `^[ \t]{0,3}` in the round-7 regexp under-counted a leading TAB as
+// one of its three allowed characters, when it is really worth 4 columns on its own — a
+// tab-indented pseudo-fence line could then wrongly open (or close) a strip that a real
+// renderer would show as a plain, un-fenced line, hiding (or failing to hide) real content the
+// parser and a human reviewer would then disagree about.
+func columnIndent(ln string) int {
+	col := 0
+	for i := 0; i < len(ln); i++ {
+		switch ln[i] {
+		case ' ':
+			col++
+		case '\t':
+			col += 4 - (col % 4)
+		default:
+			return col
+		}
+	}
+	return col
+}
+
+// isForkFenceOpener reports whether ln opens a fence: forkFenceLineRe matches AND its leading
+// indentation is under 4 columns (columnIndent). On a match, fenceChar/fenceLen name the
+// delimiter isForkFenceCloser must later match.
+func isForkFenceOpener(ln string) (fenceChar byte, fenceLen int, ok bool) {
+	m := forkFenceLineRe.FindStringSubmatch(ln)
+	if m == nil || columnIndent(ln) >= 4 {
+		return 0, 0, false
+	}
+	return m[1][0], len(m[1]), true
+}
+
+// isForkFenceCloser reports whether ln closes a fence that was opened with fenceLen repetitions
+// of fenceChar. CommonMark's own rule (round 7.1, cor-1688-C15/sec-1688-S1(a), from the private
+// review detail): a closer must use the SAME character as the opener, at least as many
+// repetitions, under 4 columns of leading indentation (columnIndent, S1(b)), and nothing else
+// on the line but the fence characters and trailing whitespace — no info string on a closer. A
+// shorter run, a run of the OTHER fence character, or a run indented 4+ columns is therefore
+// fence CONTENT, never a closer: a three-backtick line inside a four-backtick fence, or a
+// `~~~` line inside a backtick fence (or the reverse), cannot end the strip early.
+func isForkFenceCloser(ln string, fenceChar byte, fenceLen int) bool {
+	if columnIndent(ln) >= 4 {
+		return false
+	}
+	trimmed := strings.TrimLeft(ln, " \t")
+	i := 0
+	for i < len(trimmed) && trimmed[i] == fenceChar {
+		i++
+	}
+	return i >= fenceLen && strings.TrimSpace(trimmed[i:]) == ""
+}
 
 // stripFencedBlocks removes every fenced code block in body — the opening delimiter, every
-// line inside it, and the closing delimiter — entirely, by toggling in/out of "fence" state on
-// each line matching forkFenceLineRe and dropping every line seen while in that state
-// (delimiters included). Round 7: this is what closes cor-1688-C12/sec-1688-S5's fence-arm gap
+// line inside it, and the closing delimiter — by replacing each such line with an EMPTY line,
+// never by deleting it. Round 7: this is what closes cor-1688-C12/sec-1688-S5's fence-arm gap
 // and the sibling case the security review noted (a `### Fork test` heading quoted inside an
 // EARLIER fenced example is now gone before the heading search in extractForkSection ever
 // runs) — a fence's contents are unreadable to the parser at all, rather than the parser
 // trying to notice where a fence starts and stops while also scanning for key lines.
 //
-// An UNTERMINATED fence (no closing delimiter before EOF) drops everything after it to the end
+// Round 7.1 (cor-1688-C15/sec-1688-S1) closes two further gaps:
+//
+//  1. Closing is matched the CommonMark way (isForkFenceCloser), not by toggling on any
+//     delimiter line regardless of character, length or indentation. The earlier toggle let a
+//     NESTED or MIXED fence — a shorter, differently-indented, or different-character delimiter
+//     line sitting inside an outer fence — close the strip early, so the outer fence's own
+//     quoted content (a heading, a subject) reappeared as live text and could decide the
+//     filing. Matching the closer to the opener's character, length and indentation means a
+//     fence can only ever be closed by a line that would genuinely close it in a rendered
+//     preview too.
+//  2. A stripped line becomes BLANK, never disappears. Deleting a fenced block's lines outright
+//     used to remove the newlines that separated it from whatever came before and after — so a
+//     `subject:` line that followed a fence, separated from the block only by that fence, would
+//     become directly adjacent to the block once the fence's lines vanished, and JOIN its
+//     contiguous run. A blank line can never be part of that run (forkKeyLineRe never matches
+//     one), so replacing rather than deleting preserves exactly the separation a fence (or an
+//     HTML comment, see stripHTMLComments) provided in the rendered document.
+//
+// An UNTERMINATED fence (no matching closer before EOF) blanks everything after it to the end
 // of the body. That is the fail-closed reading of a malformed fence: the alternative, treating
 // an unterminated fence as if it were never opened, would let whatever comes after it — options,
 // defaults, a subject — parse as if the stray ``` had never been typed, which is the wrong
 // direction to fail in a gate whose whole job is refusing to guess.
 func stripFencedBlocks(body string) string {
 	lines := strings.Split(body, "\n")
-	out := make([]string, 0, len(lines))
+	out := make([]string, len(lines))
 	inFence := false
-	for _, ln := range lines {
-		if forkFenceLineRe.MatchString(ln) {
-			inFence = !inFence
-			continue
-		}
+	var fenceChar byte
+	var fenceLen int
+	for idx, ln := range lines {
 		if inFence {
+			if isForkFenceCloser(ln, fenceChar, fenceLen) {
+				inFence = false
+			}
+			out[idx] = ""
 			continue
 		}
-		out = append(out, ln)
+		if ch, n, ok := isForkFenceOpener(ln); ok {
+			fenceChar, fenceLen, inFence = ch, n, true
+			out[idx] = ""
+			continue
+		}
+		out[idx] = ln
 	}
 	return strings.Join(out, "\n")
 }
@@ -512,15 +640,68 @@ func stripFencedBlocks(body string) string {
 // regardless of the non-greedy `.*?`, so this is linear even on an adversarial body.
 var htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
 
-// stripHTMLComments removes every HTML comment in body entirely, delimiters included. Round 7:
-// this is what closes the withheld review-notes#169 variant of a `subject:` line hidden inside
-// an HTML comment BETWEEN two of the block's own real key lines — invisible in the rendered
-// issue, but previously still read as a key line by parseForkTest, which never cared what
-// Markdown construct a key-shaped line sat inside. An UNTERMINATED `<!--` (no `-->` anywhere in
-// the rest of the body) is left as plain text: it was never actually hidden from a renderer
-// either, so there is nothing to fail closed about.
+// htmlCommentOpenLineRe matches a line that OPENS an HTML comment at the line's own start,
+// under 4 columns of leading indentation (columnIndent, sec-1688-S1(b) — a tab or 4+ spaces
+// ahead of `<!--` makes it a plain indented line, never the trigger) — CommonMark's "HTML
+// block type 2" trigger.
+var htmlCommentOpenLineRe = regexp.MustCompile(`^[ \t]*<!--`)
+
+// isHTMLCommentOpenLine reports whether ln opens an HTML comment at column zero (under 4
+// columns of indentation) per htmlCommentOpenLineRe and columnIndent.
+func isHTMLCommentOpenLine(ln string) bool {
+	return htmlCommentOpenLineRe.MatchString(ln) && columnIndent(ln) < 4
+}
+
+// stripHTMLComments removes every HTML comment in body, delimiters included, by replacing each
+// one with exactly as many blank lines as it spanned — never by deleting it. Round 7: this is
+// what closes the withheld variant (named in the private review detail) of a `subject:` line
+// hidden inside an HTML comment BETWEEN two of the block's own real key lines — invisible in
+// the rendered issue, but previously still read as a key line by parseForkTest, which never
+// cared what Markdown construct a key-shaped line sat inside.
+//
+// Round 7.1 (cor-1688-C15/sec-1688-S1) closes two further gaps:
+//
+//  1. An UNTERMINATED `<!--` that opens a line (no `-->` anywhere in the rest of the body,
+//     truncateAtUnclosedComment) now blanks that line and everything after it to the end of the
+//     body, rather than being left as plain text. A renderer treats such a comment as a raw
+//     HTML block that runs to the end of the document — hidden, not merely un-decorated — so
+//     leaving it as parser-visible text let a real `### Fork test` heading and its subject,
+//     sitting AFTER the unclosed `<!--`, still decide the filing even though no renderer would
+//     ever show them. Blanking to EOF is the fail-closed reading: it matches what the renderer
+//     actually hides, rather than guessing that an unclosed comment was harmless.
+//  2. A CLOSED comment is replaced with the SAME number of blank lines it spanned, not deleted
+//     outright — the same reasoning as stripFencedBlocks' item 2: deleting the lines would
+//     remove the separation between whatever came before the comment and whatever came after
+//     it, letting the two sides JOIN into one contiguous run when neither the comment's opener
+//     nor its content is itself a key line.
 func stripHTMLComments(body string) string {
-	return htmlCommentRe.ReplaceAllString(body, "")
+	body = truncateAtUnclosedComment(body)
+	return htmlCommentRe.ReplaceAllStringFunc(body, func(m string) string {
+		return strings.Repeat("\n", strings.Count(m, "\n"))
+	})
+}
+
+// truncateAtUnclosedComment finds the first line that opens an HTML comment
+// (isHTMLCommentOpenLine) whose `<!--` has no matching `-->` anywhere in the rest of the body,
+// and BLANKS that line and everything after it — same line count, so nothing after the blanked
+// run can join onto anything before it (see stripHTMLComments item 2). A comment that DOES
+// close later is left alone here — it is removed by the ordinary htmlCommentRe pass in
+// stripHTMLComments instead.
+func truncateAtUnclosedComment(body string) string {
+	lines := strings.Split(body, "\n")
+	for i, ln := range lines {
+		if !isHTMLCommentOpenLine(ln) {
+			continue
+		}
+		rest := strings.Join(lines[i:], "\n")
+		if !strings.Contains(rest, "-->") {
+			for j := i; j < len(lines); j++ {
+				lines[j] = ""
+			}
+			return strings.Join(lines, "\n")
+		}
+	}
+	return body
 }
 
 // extractForkSection locates the "### Fork test" block per the round-7 grammar (see the file
@@ -539,7 +720,15 @@ func stripHTMLComments(body string) string {
 //     forkKeyLineRe. It ends at the first line that does not match, blank or not — nothing
 //     past that line is ever part of the section, however the rest of the body reads.
 func extractForkSection(body string) (section string, found bool, malformed string) {
-	body = stripHTMLComments(stripFencedBlocks(body))
+	return locateForkSection(stripHTMLComments(stripFencedBlocks(body)))
+}
+
+// locateForkSection is extractForkSection's rules 2-4, run directly against whatever body it is
+// given — the stripped body in the ordinary path (extractForkSection), or the RAW,
+// never-stripped body in the raw-vs-stripped backstop (subjectFromRawBody, round 7.1,
+// sec-1688-S1). Splitting this out means both paths walk the exact same boundary logic; only
+// what they strip first differs.
+func locateForkSection(body string) (section string, found bool, malformed string) {
 	lines := strings.Split(body, "\n")
 
 	start := -1
@@ -569,6 +758,45 @@ func extractForkSection(body string) (section string, found bool, malformed stri
 		end++
 	}
 	return strings.Join(lines[i:end], "\n"), true, ""
+}
+
+// countForkTestHeadings reports how many lines in body match forkTestHeadingRe — used by the
+// raw-vs-stripped backstop below against the RAW, never-stripped body.
+func countForkTestHeadings(body string) int {
+	n := 0
+	for _, ln := range strings.Split(body, "\n") {
+		if forkTestHeadingRe.MatchString(ln) {
+			n++
+		}
+	}
+	return n
+}
+
+// subjectFromSection scans section (an already-bounded fork-test block, as extractForkSection
+// or locateForkSection returns it) for `subject:` lines and applies the grammar's own
+// exactly-one rule: zero or more than one is "no declared subject", the same fail-closed
+// default parseForkTest itself applies.
+func subjectFromSection(section string) (subject string, hasSubject bool) {
+	var subjects []string
+	for _, ln := range strings.Split(section, "\n") {
+		if m := forkSubjectLineRe.FindStringSubmatch(ln); m != nil {
+			subjects = append(subjects, strings.TrimSpace(m[1]))
+		}
+	}
+	if len(subjects) == 1 {
+		return subjects[0], true
+	}
+	return "", false
+}
+
+// subjectFromRawBody re-derives a subject from body with NO stripping applied at all — the
+// backstop's other reading, compared against the subject the ordinary (stripped) path produced.
+func subjectFromRawBody(body string) (subject string, hasSubject bool) {
+	section, found, _ := locateForkSection(body)
+	if !found {
+		return "", false
+	}
+	return subjectFromSection(section)
 }
 
 // forkTestErrorMessage renders parseForkTest's Errors as the refused-filing message body,

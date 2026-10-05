@@ -10,8 +10,8 @@ import (
 // forkgate_round7_test.go — the seventh round: a strict, fail-closed grammar replaces five
 // rounds of shape-by-shape patches (see the file comment in forktest.go). These are the
 // end-to-end probes, through `deskfile new` itself, for the shapes that used to need their own
-// boundary marker plus the withheld review-notes#169 variants; the pure-parser-level pins for
-// the grammar's three rules live in forktest_test.go.
+// boundary marker plus the withheld variants named in the private review detail; the
+// pure-parser-level pins for the grammar's three rules live in forktest_test.go.
 
 // TestNoticeLaneRefusesFencedTrailingSubjectDirectlyUnderBlock — cor-1688-C12/sec-1688-S5: a
 // fenced `Subject:` line placed DIRECTLY under a no-subject block (no blank line — the shape
@@ -39,7 +39,8 @@ func TestNoticeLaneRefusesFencedTrailingSubjectDirectlyUnderBlock(t *testing.T) 
 	}
 }
 
-// TestNewRefusesSubjectHiddenInHTMLComment — the withheld review-notes#169 variant: a
+// TestNewRefusesSubjectHiddenInHTMLComment — a withheld variant named in the private review
+// detail: a
 // `subject:` line hidden inside an HTML comment BETWEEN two of the block's own real key lines,
 // invisible in the rendered issue. stripHTMLComments removes the whole comment (delimiters and
 // content) before the section is even located, so the hidden line can never be read as the

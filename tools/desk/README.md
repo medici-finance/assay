@@ -2852,11 +2852,21 @@ comment — and each round closed the one shape named. Round 7 replaces that who
 three rules that need no further enumeration:
 
 1. **Strip first.** Before anything else runs, every FENCED code block and every HTML comment
-   is removed from the whole body — delimiters, content, and all. Nothing inside either can
-   ever be read as a `### Fork test` heading or a key line: a quoted example (heading and all)
-   earlier in the body vanishes before the heading search runs, and a `subject:` line hidden
-   inside an HTML comment — even one sitting BETWEEN two of the block's own real key lines —
-   vanishes before the block is parsed at all.
+   is removed from the whole body, each stripped line replaced with an EMPTY one (never
+   deleted — deleting could join whatever came before a strip onto whatever came after it,
+   round 7.1, cor-1688-C15/sec-1688-S1 item 3). A fence closes only on a line using the SAME
+   delimiter character, AT LEAST as many repetitions as the opener, and under 4 columns of
+   indentation (a tab counts as 4) — CommonMark's own closing rule, so a shorter or
+   different-character delimiter nested inside a fence is fence CONTENT, never a closer, and
+   cannot end the strip early (round 7.1, sec-1688-S1(a)/S1(b)). An HTML comment that never
+   closes (no `-->` anywhere in the rest of the body) is blanked from its opening line to the
+   end of the body, matching how a renderer hides such a comment too, rather than being left as
+   parser-visible text (round 7.1, sec-1688-S1 item 2). With all of that true, nothing inside a
+   fence or comment, and nothing from an unclosed comment onward, can ever be read as a
+   `### Fork test` heading or a key line: a quoted example (heading and all) earlier in the
+   body vanishes before the heading search runs, and a `subject:` line hidden inside an HTML
+   comment — even one sitting BETWEEN two of the block's own real key lines, or one that never
+   closes — vanishes before the block is parsed at all.
 2. **The heading must be followed DIRECTLY by the block.** Blank lines between the heading and
    the first key line are fine (the well-formed shape above has one); anything else — a
    sentence of context, a leftover note — is a MALFORMED block, refused by naming that specific
@@ -2869,6 +2879,17 @@ three rules that need no further enumeration:
    was never a key line to begin with, so it can neither start the block nor extend it — the
    round-5/6 quote and indent exclusions are now a consequence of this one rule rather than a
    dedicated check.
+
+**A backstop, for whatever rule 1's strip still gets wrong (round 7.1, cor-1688-C15/sec-1688-S1).**
+Whatever a `subject:` reading above the bounded run computes, it is DISCARDED (treated as no
+declared subject) when either holds: the RAW, never-stripped body carries more than one line
+matching the `### Fork test` heading pattern anywhere, fenced or not; or re-deriving the subject
+from that raw body (no stripping at all) disagrees with the subject the stripped path produced —
+including one reading having a subject the other does not. Either condition is itself the
+ambiguity a stripper failing to hide something would create, so neither reading is trusted over
+the other. This never touches the block's other required fields (`option:`/`default:`/
+`caught-by:`/`ruled-check:`) — only the subject — so a filing this catches still lands on
+`needs-decision` rather than being refused outright.
 
 An `option:` line with an empty `works-because` or `consequence` is not COUNTED — an option
 the filer believes cannot work is not written as an option; it belongs in the prose as a
@@ -2969,6 +2990,23 @@ way).
   — the subject-only read below, and the shape-only exclusion, are deskfile's admission gate
   ONLY: the classifier's "reversible" display class and deskfile's notice-lane admission can
   disagree on the same item).
+
+  **Every needle match — shape-only veto and content-bearing alike — collapses separators
+  first** (`deskkit.collapseSeparators`, round 7.1, security review sec-1688-S1 advisory): a
+  run of whitespace, underscore, dot, slash or hyphen in either the subject or the needle
+  becomes a single space before comparing, so `lint_level`, `lint-level`, `lint.level` and a
+  doubled space all compare equal to the needle `lint level` as written. Before this, a
+  different separator spelling had to be enumerated as its own needle (`port-or-drop` next to
+  `port or drop`) and still missed whatever spelling was not enumerated.
+
+  **Any non-ASCII character anywhere in the subject fails closed, before any needle or
+  `ciCheckOrJobRe` check runs** (`deskkit.hasNonASCIIByte`, round 7.1, security review
+  sec-1688-S1 advisory). `normalizeHyphens` (round 6/7) widens to a fixed list of Unicode
+  hyphen/dash look-alikes, but a fixed list is inherently finite — a look-alike outside it, a
+  non-breaking space, or a zero-width character, still slips past a check-name or needle scan
+  built on ASCII literals. Refusing the whole class at once, rather than enumerating further
+  code points, is the fail-closed direction this file's own design already takes everywhere
+  else.
 
   **The reversible signal is read from `subject:` alone, never the title or body prose**
   (`deskkit.NoticeLaneVerdict`, security review sec-1688-S1, round 4). A title routinely

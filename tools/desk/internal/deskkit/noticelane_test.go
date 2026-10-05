@@ -399,8 +399,8 @@ func TestNoticeLaneVerdictHyphenVariantsNormalized(t *testing.T) {
 }
 
 // TestNoticeLaneVerdictRound7HyphenVariantsNormalized — round 7 widens hyphenVariantReplacer
-// with the further Unicode hyphen/dash look-alikes named in the withheld review-notes#169
-// detail: FULLWIDTH HYPHEN-MINUS, SMALL HYPHEN-MINUS, SOFT HYPHEN (which renders as no visible
+// with further Unicode hyphen/dash look-alikes named in the withheld review detail:
+// FULLWIDTH HYPHEN-MINUS, SMALL HYPHEN-MINUS, SOFT HYPHEN (which renders as no visible
 // character at all), and HYPHEN BULLET. Same isolation discipline as
 // TestNoticeLaneVerdictHyphenVariantsNormalized: no bare "job"/"check"/"workflow"/"pipeline"
 // noun elsewhere in the sentence, so only the "<word>-sweep" compound's own hyphen is being
@@ -424,6 +424,63 @@ func TestNoticeLaneVerdictRound7HyphenVariantsNormalized(t *testing.T) {
 		admitVariant, why := NoticeLaneVerdict(variant, "", variant, nil)
 		if admitVariant != admitASCII {
 			t.Errorf("NoticeLaneVerdict(%q) admitted=%v (%s), want the same as the ASCII-hyphen spelling (admitted=%v)", variant, admitVariant, why, admitASCII)
+		}
+	}
+}
+
+// TestNoticeLaneVerdictRefusesNonASCIISubject — round 7.1 (security review sec-1688-S1
+// advisory): normalizeHyphens only ever widens to a FINITE list of Unicode hyphen/dash
+// look-alikes, so enumerating more code points chases the same class one variant at a time.
+// This subject carries a genuine, otherwise-admitting content needle ("docs wording") plus one
+// trailing zero-width space (U+200B, invisible in any renderer) nowhere near the needle itself
+// — proving the refusal below is the non-ASCII gate, not a needle match broken by the extra
+// character.
+func TestNoticeLaneVerdictRefusesNonASCIISubject(t *testing.T) {
+	ascii := "fix the docs wording of the --sla-days help text"
+	admitASCII, whyASCII := NoticeLaneVerdict(ascii, "", ascii, nil)
+	if !admitASCII {
+		t.Fatalf("fixture: NoticeLaneVerdict(%q) refused (%s), want admitted — fixture is not isolating the non-ASCII gate", ascii, whyASCII)
+	}
+	withZeroWidth := ascii + "​"
+	admit, why := NoticeLaneVerdict(withZeroWidth, "", withZeroWidth, nil)
+	if admit {
+		t.Errorf("NoticeLaneVerdict(%q) admitted (%s), want refused — a non-ASCII character anywhere in the subject must fail closed", withZeroWidth, why)
+	}
+	if !strings.Contains(why, "non-ASCII") {
+		t.Errorf("why = %q, want it to name the non-ASCII character as the refusal reason", why)
+	}
+}
+
+// TestNoticeLaneShapeOnlyNeedleCollapsesSeparators — round 7.1 (security review sec-1688-S1
+// advisory, veto evasion): the shape-only veto's needles are written with a plain space
+// ("lint level"), so a subject spelling the same phrase with an underscore, a hyphen, a dot or
+// a doubled space used to slip past both the veto AND the shape-only exclusion, admitting
+// through a paired content needle the veto is supposed to outrank. collapseSeparators closes
+// the whole separator alphabet at once rather than enumerating each spelling as its own needle.
+func TestNoticeLaneShapeOnlyNeedleCollapsesSeparators(t *testing.T) {
+	for _, subject := range []string{
+		"wording of the pin-consistency lint level: notice or error",
+		"wording of the pin-consistency lint_level: notice or error",
+		"wording of the pin-consistency lint.level: notice or error",
+		"wording of the pin-consistency lint  level: notice or error",
+	} {
+		if admit, why := NoticeLaneVerdict(subject, "", subject, nil); admit {
+			t.Errorf("NoticeLaneVerdict(%q) admitted (%s), want refused — the shape-only 'lint level' veto must match regardless of separator spelling", subject, why)
+		}
+	}
+}
+
+// TestNoticeLaneContentNeedleCollapsesSeparators — the content-admitting sibling of the veto
+// test above: a genuinely reversible needle ("docs wording") must still admit when the subject
+// spells it with a different separator than the needle list uses.
+func TestNoticeLaneContentNeedleCollapsesSeparators(t *testing.T) {
+	for _, subject := range []string{
+		"fix the docs wording of the --sla-days help text",
+		"fix the docs_wording of the --sla-days help text",
+		"fix the docs.wording of the --sla-days help text",
+	} {
+		if admit, why := NoticeLaneVerdict(subject, "", subject, nil); !admit {
+			t.Errorf("NoticeLaneVerdict(%q) refused (%s), want admitted — 'docs wording' must match regardless of separator spelling", subject, why)
 		}
 	}
 }
