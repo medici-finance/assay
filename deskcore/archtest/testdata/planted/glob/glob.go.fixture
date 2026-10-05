@@ -1,0 +1,6 @@
+// Package glob reads a directory listing through path/filepath, with no os import.
+package glob
+
+import "path/filepath"
+
+func List() ([]string, error) { return filepath.Glob("/etc/*") }

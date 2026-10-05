@@ -1,0 +1,4 @@
+// Package literal hard-codes the per-change write rate (write.rate.per_pr_hour).
+package literal
+
+const perPRHour = 20

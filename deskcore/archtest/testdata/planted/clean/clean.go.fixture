@@ -1,0 +1,6 @@
+package clean
+
+import (
+	_ "fmt"
+	_ "strings"
+)
