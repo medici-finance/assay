@@ -46,7 +46,26 @@ func RunInteractive(ctx context.Context, argv, env []string, dir string, stdin *
 	})
 }
 
+// RunInteractiveObserved enrolls a child before accepting its completion.
+func RunInteractiveObserved(ctx context.Context, argv, env []string, dir string, stdin *os.File, stdout, stderr io.Writer, started func(int) error) (int, bool, error) {
+	return runObserved(ctx, argv, env, dir, stdout, stderr, func(cmd *exec.Cmd) (processTree, error) {
+		if stdin != nil {
+			cmd.Stdin = stdin
+		}
+		return newInteractiveProcessTree(cmd)
+	}, started)
+}
+
+// RunObserved persists child identity for conservative crash recovery.
+func RunObserved(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, started func(int) error) (int, bool, error) {
+	return runObserved(ctx, argv, env, dir, stdout, stderr, newProcessTree, started)
+}
+
 func run(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, setup func(*exec.Cmd) (processTree, error)) (int, bool, error) {
+	return runObserved(ctx, argv, env, dir, stdout, stderr, setup, nil)
+}
+
+func runObserved(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, setup func(*exec.Cmd) (processTree, error), started func(int) error) (int, bool, error) {
 	if ctx == nil || len(argv) == 0 || argv[0] == "" {
 		return -1, false, errors.New("process launch requires a context and executable")
 	}
@@ -75,6 +94,9 @@ func run(ctx context.Context, argv, env []string, dir string, stdout, stderr io.
 		return -1, false, errors.Join(err, tree.close())
 	}
 	startErr := tree.started(cmd.Process)
+	if startErr == nil && started != nil {
+		startErr = started(cmd.Process.Pid)
+	}
 	close(ready)
 	var abortErr error
 	if startErr != nil {

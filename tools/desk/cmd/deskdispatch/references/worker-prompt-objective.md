@@ -510,4 +510,23 @@ edit cannot represent — a distinct finding reply, an announcement of adoption 
 stay visible in the thread on its own. Everything that is this agent's own running state —
 what it intends to do, what it has verified, what is blocking it — belongs in the ONE
 workpad, edited, never appended as a new comment.
+
+## C7. Managed task scratch and evidence handoff
+
+Use the runtime's owned scratch environment for disposable bodies, snapshots and build
+output; keep source changes in the assigned Git worktree. House-cell launches enroll
+scratch automatically. For a bounded standalone command, use `cellctl scratch <cell> run`
+with its source revision, snapshot/input budget and command. Never recursively copy a
+working directory containing generated output; use the bounded tracked snapshot and
+explicit required inputs. Git worktree pruning remains with `deskwt`.
+
+Before the final completion message, persist required outcomes/evidence at their canonical
+destination and read them back. If this session owns `ASSAY_SCRATCH_ID`, and every task
+sharing it has finished, call `cellctl scratch <ASSAY_SCRATCH_CELL> ack --id
+<ASSAY_SCRATCH_ID> --receipt <canonical-evidence-reference>`. Do not acknowledge a parent's
+scratch from a delegated worker. Pending evidence and resumable tasks remain protected;
+acknowledgment never overrides live ownership. The runtime alone reclaims disposable data
+and bounds failed-run diagnostics. No role adds a shell deletion hook. Older unmarked or
+harness-private scratch remains inventory-only until its ownership and evidence are proved.
+See `docs/cellctl-scratch.md` and the shipped desk-shell reference, "Managed task scratch".
 <!-- common-clauses:end -->

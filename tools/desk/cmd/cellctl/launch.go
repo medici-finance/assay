@@ -118,6 +118,8 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	}
 	env = envSet(env, "DESK_LOOP", role)
 	env = envSet(env, "DESK_SESSION", session)
+	env = envSet(env, "ASSAY_SOURCE_REVISION", sha)
+	env = envSet(env, "ASSAY_HARNESS", harness)
 	var commsErr error
 	env, commsErr = c.deskCommsEnv(role, env)
 	if commsErr != nil {

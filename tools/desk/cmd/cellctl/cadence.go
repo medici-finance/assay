@@ -64,8 +64,21 @@ func (c *Cell) runInteractiveHarness(role string, argv, env []string, wt string)
 	err := c.cadenceLease.RunInteractive(ctx, c.Name, role, func(child context.Context) cellcadence.Result {
 		var uncertain bool
 		var err error
-		code, uncertain, err = cellprocess.RunInteractive(child, argv, env, wt, os.Stdin, os.Stdout, os.Stderr)
-		return cellcadence.Result{ExitCode: code, Uncertain: uncertain, Err: err}
+		scratch, childEnv, beginErr := c.beginScratch(role, env)
+		if beginErr != nil {
+			return cellcadence.Result{ExitCode: -1, Err: beginErr}
+		}
+		harness := ""
+		for _, kv := range env {
+			if strings.HasPrefix(kv, "ASSAY_HARNESS=") {
+				harness = strings.TrimPrefix(kv, "ASSAY_HARNESS=")
+			}
+		}
+		childArgs := scratchArgv(harness, argv, childEnv)
+		code, uncertain, err = cellprocess.RunInteractiveObserved(child, childArgs, childEnv, wt, os.Stdin, io.MultiWriter(os.Stdout, scratch.tail), io.MultiWriter(os.Stderr, scratch.tail), scratch.run.Started)
+		result := cellcadence.Result{ExitCode: code, Uncertain: uncertain, Err: err}
+		scratch.finish(&result)
+		return result
 	})
 	if errors.Is(err, cellcadence.ErrUnfinished) {
 		die("interactive cleanup: %v", err)
@@ -119,7 +132,13 @@ func (c *Cell) cadenceGuard(role string) error {
 	return nil
 }
 
-func (c *Cell) executeCadencePass(ctx context.Context, role, harness string, args, env []string, wt string) cellcadence.Result {
+func (c *Cell) executeCadencePass(ctx context.Context, role, harness string, args, env []string, wt string) (result cellcadence.Result) {
+	scratch, env, scratchErr := c.beginScratch(role, env)
+	if scratchErr != nil {
+		return cellcadence.Result{Outcome: "could-not-check", ExitCode: -1, Err: scratchErr}
+	}
+	defer scratch.finish(&result)
+	args = scratchArgv(harness, args, env)
 	out := &tailWriter{limit: 64 * 1024}
 	runArgs := append([]string(nil), args...)
 	resultFile := ""
@@ -129,17 +148,16 @@ func (c *Cell) executeCadencePass(ctx context.Context, role, harness string, arg
 		if capacityErr != nil {
 			return cellcadence.Result{Outcome: "could-not-check", ExitCode: -1, Err: capacityErr}
 		}
-		f, err := os.CreateTemp(c.cadenceDir(role), "last-message-*")
+		f, err := os.CreateTemp(scratch.run.Work(), "last-message-*")
 		if err != nil {
 			return cellcadence.Result{Outcome: "could-not-check", ExitCode: -1, Err: err}
 		}
 		resultFile = f.Name()
 		f.Close()
-		defer os.Remove(resultFile)
 		runArgs = append(runArgs[:len(runArgs)-1], "--output-last-message", resultFile, runArgs[len(runArgs)-1])
 	}
-	exit, uncertain, err := cellprocess.Run(ctx, runArgs, env, wt, io.MultiWriter(os.Stdout, out), os.Stderr)
-	result := cellcadence.Result{Outcome: "could-not-check", ExitCode: exit, Uncertain: uncertain, Err: err}
+	exit, uncertain, err := cellprocess.RunObserved(ctx, runArgs, env, wt, io.MultiWriter(os.Stdout, out, scratch.tail), io.MultiWriter(os.Stderr, scratch.tail), scratch.run.Started)
+	result = cellcadence.Result{Outcome: "could-not-check", ExitCode: exit, Uncertain: uncertain, Err: err}
 	if err != nil || exit != 0 || uncertain {
 		return result
 	}

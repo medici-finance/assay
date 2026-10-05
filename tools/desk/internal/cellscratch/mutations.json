@@ -1,0 +1,113 @@
+{
+  "test": "go test ./internal/cellscratch ./cmd/cellctl ./internal/cellprocess -run 'TestScratch|TestObserved' -count=1 -timeout=30s",
+  "control": {
+    "name": "skip successful disposal",
+    "file": "internal/cellscratch/store.go",
+    "old": "if !apply {",
+    "new": "if true {"
+  },
+  "mutations": [
+    {
+      "name": "discard pending evidence",
+      "file": "internal/cellscratch/store.go",
+      "old": "case receiptErr != nil:",
+      "new": "case false && receiptErr != nil:"
+    },
+    {
+      "name": "discard resumable work",
+      "file": "internal/cellscratch/store.go",
+      "old": "case r.State == \"resumable\":",
+      "new": "case false && r.State == \"resumable\":"
+    },
+    {
+      "name": "delete Git worktrees",
+      "file": "internal/cellscratch/store.go",
+      "old": "case git || allGit:",
+      "new": "case false && (git || allGit):"
+    },
+    {
+      "name": "accept foreign owner",
+      "file": "internal/cellscratch/store.go",
+      "old": " || r.Owner != s.owner",
+      "new": ""
+    },
+    {
+      "name": "skip child liveness proof",
+      "file": "internal/cellscratch/store.go",
+      "old": "inactive := r.Reaped",
+      "new": "inactive := true"
+    },
+    {
+      "name": "disable crash recovery",
+      "file": "internal/cellscratch/group_unix.go",
+      "old": "return true, nil",
+      "new": "return false, nil"
+    },
+    {
+      "name": "lose failure result",
+      "file": "internal/cellscratch/store.go",
+      "old": "r.Record.ExitCode = code",
+      "new": "r.Record.ExitCode = 0"
+    },
+    {
+      "name": "drop selected output tail",
+      "file": "internal/cellscratch/output.go",
+      "old": "p = p[len(p)-TailLimit:]",
+      "new": "p = p[:0]"
+    },
+    {
+      "name": "ignore partial deletion",
+      "file": "internal/cellscratch/store.go",
+      "old": "rep.Partial = len(errs) > 0",
+      "new": "rep.Partial = false"
+    },
+    {
+      "name": "skip sweep exclusion",
+      "file": "internal/cellscratch/store.go",
+      "old": "if err = deskkit.TryLockExclusive(f); err != nil {",
+      "new": "if err = deskkit.TryLockExclusive(f); false {"
+    },
+    {
+      "name": "unbounded snapshots",
+      "file": "internal/cellscratch/snapshot.go",
+      "old": " || size > maxBytes-total",
+      "new": ""
+    },
+    {
+      "name": "recursive output import",
+      "file": "internal/cellscratch/inputs.go",
+      "old": "if filepath.IsLocal(rel) || rel == \".\" {",
+      "new": "if false && (filepath.IsLocal(rel) || rel == \".\") {"
+    },
+    {
+      "name": "omit Codex scratch environment",
+      "file": "cmd/cellctl/scratch_launch.go",
+      "old": "if harness != \"codex\" || len(args) == 0 {",
+      "new": "if true {"
+    },
+    {
+      "name": "plant second raw deletion site",
+      "file": "internal/cellscratch/store.go",
+      "old": "const TailLimit = 64 * 1024",
+      "new": "const TailLimit = 64 * 1024\nvar plantedRawDelete = os.RemoveAll"
+    },
+    {
+      "name": "disconnect launcher cleanup",
+      "file": "cmd/cellctl/cadence.go",
+      "old": "defer scratch.finish(&result)",
+      "new": "defer func(){ scratch.run.Close(); scratch.store.Close() }()"
+    },
+    {
+      "name": "ignore configured storage budget",
+      "file": "cmd/cellctl/scratch_launch.go",
+      "old": "p.MaxBytes = value",
+      "new": "p.MaxBytes = cellscratch.DefaultPolicy().MaxBytes"
+    },
+    {
+      "name": "skip enrollment failure",
+      "file": "internal/cellprocess/run.go",
+      "old": "startErr = started(cmd.Process.Pid)",
+      "new": "_ = started(cmd.Process.Pid)"
+    }
+  ]
+}
