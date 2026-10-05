@@ -53,7 +53,7 @@ func TestDefectClassClauseIsOneWordingAcrossImplementerKits(t *testing.T) {
 			t.Fatalf("kit %q carries no %q clause — a worker dispatched on it fixes the instance and "+
 				"leaves the class open", kit, defectClassHeading)
 		}
-		for _, must := range []string{"## Defect class", "unrepresentable", "PLANTED SECOND", "## Fail-first"} {
+		for _, must := range []string{"## Defect class", "unrepresentable", "REMOVING the hazardous path", "PLANTED SECOND", "## Fail-first"} {
 			if !strings.Contains(body, must) {
 				t.Errorf("kit %q defect-class clause lost %q — one of its three obligations is gone", kit, must)
 			}
