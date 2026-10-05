@@ -42,6 +42,11 @@
       "reason": "positive control for forge-ban.sh; plants a probe file and asserts the counter moves"
     },
     {
+      "class": "test",
+      "pattern": "tools/desk/internal/cellcache/mutate.py",
+      "reason": "cellcache developer mutation runner for issue #2228; temporarily mutates source in an isolated checkout and runs bounded Go tests, not an installed operator CLI"
+    },
+    {
       "class": "fixture",
       "pattern": "**/testdata/**",
       "reason": "Go testdata convention: the go tool ignores these packages; they are inputs to tests"

@@ -58,14 +58,14 @@
     {
       "name": "deskdispatch cuts the verifier worktree without --role (the dispatch path never reaches the transport writer)",
       "file": "cmd/deskdispatch/reviewworktree.go",
-      "old": "\targs = append(args, \"--base\", worktreeBase(o, plan.branch), \"--role\", plan.identityRole)",
-      "new": "\targs = append(args, \"--base\", worktreeBase(o, plan.branch))\n\tif !(verifierKit(o.kit)) {\n\t\targs = append(args, \"--role\", plan.identityRole)\n\t}"
+      "old": "\targs = append(args, \"--base\", base, \"--role\", plan.identityRole)",
+      "new": "\targs = append(args, \"--base\", base)\n\tif !(verifierKit(o.kit)) {\n\t\targs = append(args, \"--role\", plan.identityRole)\n\t}"
     },
     {
       "name": "deskdispatch cuts the worker worktree without --role",
       "file": "cmd/deskdispatch/reviewworktree.go",
-      "old": "\targs = append(args, \"--base\", worktreeBase(o, plan.branch), \"--role\", plan.identityRole)",
-      "new": "\targs = append(args, \"--base\", worktreeBase(o, plan.branch))\n\tif !(!plan.detached) {\n\t\targs = append(args, \"--role\", plan.identityRole)\n\t}"
+      "old": "\targs = append(args, \"--base\", base, \"--role\", plan.identityRole)",
+      "new": "\targs = append(args, \"--base\", base)\n\tif !(!plan.detached) {\n\t\targs = append(args, \"--role\", plan.identityRole)\n\t}"
     },
     {
       "name": "class guard no longer detects credential-only references (positive control must fail)",

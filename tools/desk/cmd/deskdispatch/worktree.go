@@ -29,44 +29,21 @@ import (
 // and exits 0.
 const mainlineRef = "refs/remotes/origin/main"
 
-// worktreeBase returns the ref the agent's worktree is cut from.
-//
-// A FRESH dispatch cuts from the mainline: there is nothing else to cut from.
-//
-// A RESUME — `--pr <N>`, an already-open change whose branch exists on the forge — cuts
-// from THAT BRANCH's own remote ref. Cutting a resume from the mainline is the defect this
-// exists to close: `deskwt` creates the branch with `-b <branch> <base>`, so with the
-// mainline as base the new worktree's branch sat at MAIN's tip while the change's commits
-// existed only on `refs/remotes/origin/<branch>`. Nothing said so — the branch name and the
-// PR were right, only the commit was wrong — so a resuming agent that did not compare its
-// HEAD against the change's reported head either lost the existing work or produced a diff
-// that read as a full rewrite of it.
-//
-// The branch's remote tip is REFRESHED first: a remote-tracking ref this checkout last
-// fetched hours ago is not the change's real tip either. The fetch is best-effort — it
-// touches exactly one ref, and a failure (offline, no such branch) falls through to the
-// checks below rather than failing a dispatch over a refresh.
-//
-// A READ-ONLY lane carries `--pr` as the change it is READING, not as a branch to resume:
-// a reviewer checks the change's head out itself, as a detached HEAD, and a verifier reads
-// merged main. Both keep the mainline as their start point.
-//
-// Every arm falls back to the mainline, so a `--pr` whose branch cannot be resolved here is
-// the behaviour this verb has always had, never a base `deskwt` would refuse.
-func worktreeBase(o dispatchOpts, branch string) string {
-	if o.pr <= 0 || reviewKit(o.kit) || verifierKit(o.kit) {
-		return mainlineRef
-	}
+// worktreeBase refreshes the source branch and verifies its tip against the forge
+// read. A resume never falls back to main or trusts a stale ref after a failed fetch.
+// Return the verified commit, so a concurrent fetch cannot move the allocation base.
+func worktreeBase(o dispatchOpts, branch, head string) (string, error) {
 	ref := "refs/remotes/origin/" + branch
-	// Constructed argv, no shell: the branch name is already bounded by branchNameRe, and
-	// the refspec is built from it rather than from any caller-supplied ref.
-	_ = runCmd(o.root, "git", "fetch", "--quiet", "origin",
+	fetched := runCmd(o.root, "git", "fetch", "--quiet", "origin",
 		"+refs/heads/"+branch+":"+ref)
-	r := runCmd(o.root, "git", "rev-parse", "--verify", "--quiet", ref+"^{commit}")
-	if r.err != nil || strings.TrimSpace(r.stdout) == "" {
-		return mainlineRef
+	if fetched.err != nil {
+		return "", fetched.run.Fail(deskkit.ExitUnverifiable, "cannot refresh resume source branch %s; nothing was claimed", branch)
 	}
-	return ref
+	r := runCmd(o.root, "git", "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+	if r.err != nil || strings.TrimSpace(r.stdout) != head {
+		return "", deskkit.Unverifiable("resume source branch does not resolve to the forge head; nothing was claimed — refresh and retry", r.err)
+	}
+	return head, nil
 }
 
 // worktreeTmpBase is the parent of the sanctioned `tracker-*` worktree prefix. It is a

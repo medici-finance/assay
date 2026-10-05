@@ -370,6 +370,7 @@ func cmdAdd(args []string) (err error) {
 	branch := fs.String("branch", "", "new branch name for the worktree (default: the worktree name)")
 	detach := fs.Bool("detach", false, "check the base out as a DETACHED HEAD — no branch created or touched (the verifier shape)")
 	base := fs.String("base", "origin/main", "start-point ref for the new worktree")
+	upstream := fs.String("upstream", "", "with a full commit --base: the fully qualified remote branch to track; its tip must match the commit")
 	role := fs.String("role", "", "stamp this desk role's App commit identity (token role or loop name) into the new "+
 		"worktree's own config; omitted, the new worktree's user.name/user.email are CLEARED so it can never inherit "+
 		"the shared checkout's identity")
@@ -405,6 +406,12 @@ func cmdAdd(args []string) (err error) {
 	}
 	if !refRe.MatchString(*base) || strings.Contains(*base, "..") {
 		return deskkit.Refused("refused: --base must be a plain ref (no leading dash, no '..')")
+	}
+
+	if *upstream != "" {
+		if *detach || !pinnedHeadRe.MatchString(*base) || !strings.HasPrefix(*upstream, "refs/remotes/") || !refRe.MatchString(*upstream) || strings.Contains(*upstream, "..") {
+			return deskkit.Refused("refused: --upstream requires a full commit --base and a fully qualified remote branch, without --detach")
+		}
 	}
 
 	// Resolve the commit identity to STAMP now, BEFORE any worktree exists, so an unbound
@@ -486,6 +493,12 @@ func cmdAdd(args []string) (err error) {
 		return deskkit.Unverifiable("refused: --base "+*base+" does not resolve to a commit", verr)
 	}
 
+	if *upstream != "" {
+		if err := checkPinnedUpstream(dir, *base, *upstream); err != nil {
+			return err
+		}
+	}
+
 	guard, perr := newPathGuard(dir)
 	if perr != nil {
 		return perr
@@ -531,6 +544,18 @@ func cmdAdd(args []string) (err error) {
 	if *detach {
 		if _, aerr := runGit(dir, "worktree", "add", "--detach", target, *base); aerr != nil {
 			return deskkit.Unverifiable("git worktree add --detach failed: could not check out "+*base+" at "+target, aerr)
+		}
+	} else if *upstream != "" {
+		// Checkout uses the immutable commit; tracking is configured separately.
+		// --no-track also overrides branch.autoSetupMerge from operator config.
+		if _, aerr := runGit(dir, "worktree", "add", "--no-track", "-b", br, target, *base); aerr != nil {
+			return deskkit.Unverifiable("git worktree add failed at pinned commit "+*base, aerr)
+		}
+		if _, uerr := runGit(target, "branch", "--set-upstream-to", *upstream, br); uerr != nil {
+			if rerr := removeWorktreeDir(guard, dir, resolvePath(target)); rerr != nil {
+				return fmt.Errorf("%w; rollback failed: %v", uerr, rerr)
+			}
+			return deskkit.Unverifiable("cannot set pinned worktree upstream; worktree rolled back", uerr)
 		}
 	} else if _, aerr := runGit(dir, "worktree", "add", "--track", "-b", br, target, *base); aerr != nil {
 		// Name what was attempted. A failure here is the operator's work item, and a message

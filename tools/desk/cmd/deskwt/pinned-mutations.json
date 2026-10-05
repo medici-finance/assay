@@ -1,0 +1,47 @@
+{
+  "test": "go test ./cmd/deskwt ./cmd/deskdispatch -run '^TestPinned|^TestResumeRealAllocator$|^TestResumeSource$' -count=1 -timeout 90s",
+  "control": {
+    "name": "raw commit requests automatic tracking",
+    "file": "cmd/deskwt/deskwt.go",
+    "old": "\"worktree\", \"add\", \"--no-track\", \"-b\", br, target, *base",
+    "new": "\"worktree\", \"add\", \"--track\", \"-b\", br, target, *base"
+  },
+  "mutations": [
+    {
+      "name": "upstream check skipped",
+      "file": "cmd/deskwt/pinnedbase.go",
+      "old": "if err != nil || tip != head {",
+      "new": "if false && (err != nil || tip != head) {"
+    },
+    {
+      "name": "checkout follows moving ref",
+      "file": "cmd/deskwt/deskwt.go",
+      "old": "\"worktree\", \"add\", \"--no-track\", \"-b\", br, target, *base",
+      "new": "\"worktree\", \"add\", \"--no-track\", \"-b\", br, target, *upstream"
+    },
+    {
+      "name": "tracking setup omitted",
+      "file": "cmd/deskwt/deskwt.go",
+      "old": "if _, uerr := runGit(target, \"branch\", \"--set-upstream-to\", *upstream, br); uerr != nil {",
+      "new": "if _, uerr := \"\", error(nil); uerr != nil {"
+    },
+    {
+      "name": "tracking failure leaves worktree",
+      "file": "cmd/deskwt/deskwt.go",
+      "old": "if rerr := removeWorktreeDir(guard, dir, resolvePath(target)); rerr != nil {\n\t\t\t\treturn fmt.Errorf(\"%w; rollback failed: %v\", uerr, rerr)",
+      "new": "if rerr := error(nil); rerr != nil {\n\t\t\t\treturn fmt.Errorf(\"%w; rollback failed: %v\", uerr, rerr)"
+    },
+    {
+      "name": "upstream flag restrictions ignored",
+      "file": "cmd/deskwt/deskwt.go",
+      "old": "if *detach || !pinnedHeadRe.MatchString(*base) ||",
+      "new": "if false && *detach || false && !pinnedHeadRe.MatchString(*base) ||"
+    },
+    {
+      "name": "dispatch omits upstream",
+      "file": "cmd/deskdispatch/reviewworktree.go",
+      "old": "if workerResume(o) {",
+      "new": "if false && workerResume(o) {"
+    }
+  ]
+}
