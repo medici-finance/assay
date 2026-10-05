@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+var failHeadingRe = regexp.MustCompile(`^#{3,6}[ \t]`)
 var failDateRe = regexp.MustCompile(`\b\d{4}-\d{2}-\d{2}\b`)
 var fixIssueRe = regexp.MustCompile(`(?i)\b(?:fix(?:es|ed)?|repair(?:s|ed)?)(?:\s+issue)?\s+#([0-9]+)\b`)
 
@@ -40,18 +41,21 @@ func failEvidenceDate(evidence string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	start, end := last, len(lines)
-	for start > 0 {
+	for start > 0 && !failHeadingRe.MatchString(strings.TrimSpace(lines[start])) {
 		previous := lines[start-1]
+		// A heading begins THIS run even when it repeats its closing verdict.
+		// Include its date, but never cross it into an earlier run.
+		if failHeadingRe.MatchString(strings.TrimSpace(previous)) {
+			start--
+			break
+		}
 		if verifyVerdictRe.MatchString(previous) {
 			break
 		}
 		start--
-		if strings.HasPrefix(strings.TrimSpace(previous), "### ") {
-			break
-		}
 	}
 	for i := last + 1; i < len(lines); i++ {
-		if strings.HasPrefix(strings.TrimSpace(lines[i]), "### ") {
+		if failHeadingRe.MatchString(strings.TrimSpace(lines[i])) {
 			end = i
 			break
 		}
@@ -86,7 +90,9 @@ func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
 	var newest time.Time
 	sha := ""
 	read := func(extra []string, issue *regexp.Regexp) bool {
-		args := []string{"-C", root, "log", ref, "--format=%ct%x00%h%x00%B%x00%x1e"}
+		// First-parent path history measures when the main tree changed, including
+		// a merge whose feature-side repair predates the failed main run.
+		args := []string{"-C", root, "log", "--first-parent", ref, "--format=%ct%x00%h%x00%B%x00%P%x00%x1e"}
 		args = append(args, extra...)
 		out, err := exec.Command("git", args...).Output()
 		if err != nil {
@@ -94,10 +100,7 @@ func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
 		}
 		for _, record := range strings.Split(string(out), "\x1e") {
 			fields := strings.Split(strings.TrimSpace(record), "\x00")
-			if len(fields) < 3 {
-				continue
-			}
-			if issue != nil && !issue.MatchString(fields[2]) {
+			if len(fields) < 4 {
 				continue
 			}
 			sec, err := strconv.ParseInt(fields[0], 10, 64)
@@ -105,10 +108,27 @@ func newestFailFix(root string, bf *BriefFile, date time.Time) (string, bool) {
 				return false
 			}
 			when := time.Unix(sec, 0).UTC()
-			if !when.Before(date.AddDate(0, 0, 1)) && when.After(newest) {
-				newest = when
-				sha = fields[1]
+			if when.Before(date.AddDate(0, 0, 1)) || !when.After(newest) {
+				continue
 			}
+			if issue != nil && !issue.MatchString(fields[2]) {
+				parents := strings.Fields(fields[3])
+				if len(parents) < 2 {
+					continue
+				}
+				// A merge need not repeat the issue named by the repair it
+				// introduces. Attribute those newly reachable issue references
+				// to the landing commit, without consulting unmerged branches.
+				messages, err := exec.Command("git", "-C", root, "log", parents[0]+".."+fields[1], "--format=%B").Output()
+				if err != nil {
+					return false
+				}
+				if !issue.Match(messages) {
+					continue
+				}
+			}
+			newest = when
+			sha = fields[1]
 		}
 		return true
 	}

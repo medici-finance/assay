@@ -111,7 +111,7 @@ func TestFailNoticeClass(t *testing.T) {
 }
 
 func TestFailHistoryRoutes(t *testing.T) {
-	for _, name := range []string{"model", "linked-card", "fix-issue", "unrelated", "same-day", "head-only", "unavailable", "undated", "newest", "superseded", "quoted-pass"} {
+	for _, name := range []string{"model", "linked-card", "fix-issue", "unrelated", "same-day", "head-only", "unavailable", "undated", "newest", "superseded", "quoted-pass", "repeated-heading"} {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
 			if err := os.CopyFS(root, os.DirFS("testdata/stale-fail")); err != nil {
@@ -124,6 +124,9 @@ func TestFailHistoryRoutes(t *testing.T) {
 			}
 			body := string(data)
 			switch name {
+			case "repeated-heading":
+				body = strings.Replace(body, "## Evidence", "## Evidence\n### Run — VERIFY: FAIL — 2026-08-01", 1)
+				body = strings.Replace(body, "| 2026-08-01 |", "| undated |", 1)
 			case "model":
 				body = strings.Replace(body, "gate: human", "gate: model", 1)
 			case "linked-card":
@@ -201,6 +204,78 @@ func TestFailHistoryRoutes(t *testing.T) {
 			}
 			if want != "stale FAIL" && want != "could-not-check stale FAIL" && strings.Contains(got, "stale FAIL") {
 				t.Errorf("false stale route: %s", got)
+			}
+		})
+	}
+}
+
+func TestFailRunDate(t *testing.T) {
+	for _, tc := range []struct{ name, evidence, want string }{
+		{"repeated-heading", "### Run — VERIFY: FAIL — 2026-08-01\n| 1 | FAIL |\n**VERIFY: FAIL**", "2026-08-01"},
+		{"deeper-heading", "#### Run — VERIFY: FAIL — 2026-08-01\n| 1 | FAIL |\n**VERIFY: FAIL**", "2026-08-01"},
+		{"separate-run", "### Run 2026-08-01\n**VERIFY: FAIL**\n### New run\n**VERIFY: FAIL**", ""},
+		{"heading-is-verdict", "### Run 2026-08-01\n| 1 | FAIL |\n### New run VERIFY: FAIL", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			date, ok := failEvidenceDate(tc.evidence)
+			got := ""
+			if ok {
+				got = date.Format("2006-01-02")
+			}
+			if got != tc.want {
+				t.Errorf("run date = %q; want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFailMergeLanding(t *testing.T) {
+	for _, mode := range []string{"path", "issue", "unrelated", "unmerged"} {
+		t.Run(mode, func(t *testing.T) {
+			root := t.TempDir()
+			attrGitInit(t, root)
+			runGit(t, root, "checkout", "-b", "main")
+			write := func(name, body string) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			commit := func(day, message string) {
+				t.Helper()
+				runGit(t, root, "add", "check.go", "other.go")
+				runGitEnv(t, root, []string{"GIT_AUTHOR_DATE=" + day + "T12:00:00Z", "GIT_COMMITTER_DATE=" + day + "T12:00:00Z"}, "commit", "-m", message)
+			}
+			write("check.go", "broken")
+			write("other.go", "base")
+			commit("2026-07-30", "Base")
+			runGit(t, root, "checkout", "-b", "repair")
+			target := "check.go"
+			if mode == "unrelated" {
+				target = "other.go"
+			}
+			write(target, "repaired")
+			commit("2026-08-01", "Fix #72")
+			runGit(t, root, "checkout", "main")
+			if mode != "unmerged" {
+				runGitEnv(t, root, []string{"GIT_AUTHOR_DATE=2026-08-04T12:00:00Z", "GIT_COMMITTER_DATE=2026-08-04T12:00:00Z"}, "merge", "--no-ff", "repair", "-m", "Land repair")
+			}
+			sha, err := exec.Command("git", "-C", root, "rev-parse", "--short", "HEAD").Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			bf := &BriefFile{Brief: "check/01", Gate: "human", DeclaredEntriesRaw: []string{"check.go"}, Evidence: "**VERIFY: FAIL** — 2026-08-02"}
+			if mode == "issue" {
+				bf.DeclaredEntriesRaw = nil
+				bf.Body = "fix issue #72"
+			}
+			got := waitingBriefNotice(root, "brief-01-check.md", bf, "implemented")
+			if mode == "path" || mode == "issue" {
+				if !strings.Contains(got, "stale FAIL") || !strings.Contains(got, strings.TrimSpace(string(sha))) || strings.Contains(got, "no decision-issue") {
+					t.Errorf("want stale FAIL naming main landing %s; got %s", strings.TrimSpace(string(sha)), got)
+				}
+			} else if !strings.Contains(got, "no decision-issue") || strings.Contains(got, "stale FAIL") {
+				t.Errorf("unrelated/unmerged repair must not supersede FAIL: %s", got)
 			}
 		})
 	}

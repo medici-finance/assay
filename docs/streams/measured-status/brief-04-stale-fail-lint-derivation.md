@@ -114,5 +114,20 @@ History reads use the local remote-tracking main ref, falling back to local main
 missing or shallow history is reported as could-not-check without network access.
 
 
+### Review repair validation (2026-10-05)
+
+- `pr2238-C1`: before the repair, `TestFailRunDate` failed for a dated run
+  heading repeating its closing FAIL (`run date = ""; want "2026-08-01"`).
+  A separate undated heading also incorrectly borrowed the previous run's date.
+  Run headings now bound the date search and remain included even when they
+  contain the same verdict; nested headings and separate-run controls are covered.
+- `pr2238-C2`: before the repair, `TestFailMergeLanding` failed for both path-
+  and issue-linked repairs: an August 1 repair merged August 4 after an August 2
+  FAIL retained the decision-issue route. First-parent history now names the
+  main landing; merge-introduced issue references are read from its added history.
+  Unrelated merges and unmerged repairs retain the conservative route.
+- Red runs at `7f1ff61d` exited 1. The repaired date, landing, existing state,
+  history and class tests exited 0 with `-count=1 -timeout=60s`.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
