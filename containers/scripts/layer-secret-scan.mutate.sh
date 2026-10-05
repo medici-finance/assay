@@ -1,6 +1,6 @@
 #!/bin/sh
 # layer-secret-scan.mutate.sh — the negative controls for the layered fixtures
-# (E, F, G, #2256) and the fail-closed fixtures (H to O) in
+# (E, F, G, #2256) and the fail-closed fixtures (H to R) in
 # layer-secret-scan.test.sh.
 #
 # Each mutant is a copy of layer-secret-scan.sh with one defect planted. The
@@ -22,6 +22,9 @@
 #   nolayer    goes on with no layer extracted.
 #   compressed raw-greps a compressed blob tar cannot list.
 #   unread     skips making the extracted files readable.
+#   unreadfind goes on past a file the readability check lists.
+#   grepwalk   goes on after grep errors on the layer walk.
+#   grepblob   goes on after grep errors on a non-tar blob.
 #   newline    goes on past a path with a newline in its name.
 #   signal     cleans up on TERM but does not exit.
 #
@@ -67,6 +70,9 @@ CLOSED on truncated gzip fixture —
 CLOSED on zstd blob fixture —
 CLOSED on newline name fixture —
 CLOSED on signal fixture —
+CLOSED on grep walk error fixture —
+CLOSED on grep blob error fixture —
+CLOSED on unreadable backstop fixture —
 RED on unreadable fixture —"
 
 # --- build the mutants ---------------------------------------------------------
@@ -139,6 +145,15 @@ mutated "$WORK/merged.sh" "$?"
   swap unread \
     'if ! chmod -R u+rX "$WORK/layers" 2>"$WORK/err"; then' \
     'if false; then'
+  swap unreadfind \
+    'if [ -s "$WORK/unreadable" ]; then' \
+    'if false; then'
+  swap grepwalk \
+    '  if [ "$rc" -gt 1 ]; then' \
+    '  if false; then'
+  swap grepblob \
+    '        *) cannot_scan "grep could not read ${blob#"$WORK/img/"}" ;;' \
+    '        *) ;;'
   swap newline \
     'if [ -s "$WORK/nlpaths" ]; then' \
     'if false; then'
@@ -212,6 +227,9 @@ run_mutant nolayer "CLOSED on no layer fixture —"
 run_mutant compressed "CLOSED on truncated gzip fixture —
 CLOSED on zstd blob fixture —"
 run_mutant unread "RED on unreadable fixture —"
+run_mutant unreadfind "CLOSED on unreadable backstop fixture —"
+run_mutant grepwalk "CLOSED on grep walk error fixture —"
+run_mutant grepblob "CLOSED on grep blob error fixture —"
 run_mutant newline "CLOSED on newline name fixture —"
 run_mutant signal "CLOSED on signal fixture —"
 

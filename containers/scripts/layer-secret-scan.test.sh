@@ -15,13 +15,15 @@
 # key. layer-secret-scan.mutate.sh runs this test against a merged-view mutant
 # of the scan and requires every one of those fixtures to fail under it.
 #
-# The fail-closed fixtures (H to O) hold the scan to its exit-2 contract: an
+# The fail-closed fixtures (H to R) hold the scan to its exit-2 contract: an
 # image it cannot read in full is never reported clean. Most are fed through a
 # stand-in `docker` on PATH, since docker itself will not build or save them;
 # a stand-in clean image is the control that the stand-in alone reads clean.
 # Fixture N (unreadable modes) is a real BuildKit build and must go RED with
-# the hidden keys named. layer-secret-scan.mutate.sh reverts each fail-closed
-# step on its own and requires its fixture, and only its fixture, to fail.
+# the hidden keys named. P, Q and R reach the backstop checks, each of which an
+# earlier step normally pre-empts, by standing in for that step (a stand-in
+# grep or chmod). layer-secret-scan.mutate.sh reverts each fail-closed step on
+# its own and requires its fixture, and only its fixture, to fail.
 #
 # The synthetic secrets are CONSTRUCTED AT RUNTIME (the PEM fence and the key
 # prefix are assembled from fragments), so no real-looking key material is ever
@@ -53,6 +55,7 @@ OVERWRITE_NS="1 2 3 4 5 6"   # fixture E variants
 SANDWICH_NS="1 2 3"          # fixture F variants
 DIRSWAP="${TAG}-dirswap:test" # fixture G
 UNREAD="${TAG}-unreadable:test" # fixture N
+UNREADF="${TAG}-unreadfile:test" # fixture R
 ow_tag() { printf '%s-overwrite-%s:test' "$TAG" "$1"; }
 sw_tag() { printf '%s-sandwich-%s:test' "$TAG" "$1"; }
 
@@ -61,7 +64,7 @@ WORK=$(mktemp -d 2>/dev/null || mktemp -d -t layerscantest)
 cleanup() {
   chmod -R u+rwX "$WORK" 2>/dev/null
   rm -rf "$WORK"
-  docker rmi -f "$BAKED_LAYER" "$BAKED_ENV" "$CLEAN" "$FALSEPOS" "$DIRSWAP" "$UNREAD" >/dev/null 2>&1 || true
+  docker rmi -f "$BAKED_LAYER" "$BAKED_ENV" "$CLEAN" "$FALSEPOS" "$DIRSWAP" "$UNREAD" "$UNREADF" >/dev/null 2>&1 || true
   for _n in $OVERWRITE_NS; do docker rmi -f "$(ow_tag "$_n")" >/dev/null 2>&1 || true; done
   for _n in $SANDWICH_NS; do docker rmi -f "$(sw_tag "$_n")" >/dev/null 2>&1 || true; done
 }
@@ -352,9 +355,33 @@ cat > "$SIGSTUB/sort" <<'SH'
 kill -TERM "$PPID"
 exec "$REAL_SORT" "$@"
 SH
-chmod +x "$STUB/docker" "$SIGSTUB/sort"
+# The backstop fixtures' stand-ins (P, Q, R). The scan's grep calls differ by
+# their first argument: -aErl walks the layers, -aEq reads one non-tar blob.
+# $GREP_STUB picks the call to fail (walk-error, blob-error) or the call whose
+# read errors to hide (walk-mask: a grep that skips what it cannot open). The
+# stand-in chmod does nothing, so what the extraction left unreadable stays so.
+GREPSTUB="$WORK/grepstub"
+CHMODSTUB="$WORK/chmodstub"
+mkdir -p "$GREPSTUB" "$CHMODSTUB"
+cat > "$GREPSTUB/grep" <<'SH'
+#!/bin/sh
+case "${GREP_STUB:-}:$1" in
+  walk-error:-?Erl|blob-error:-?Eq)
+    echo "grep: stand-in read error" >&2
+    exit 2 ;;
+  walk-mask:-?Erl)
+    "$REAL_GREP" "$@" 2>/dev/null
+    _rc=$?
+    [ "$_rc" -gt 1 ] && exit 1
+    exit "$_rc" ;;
+esac
+exec "$REAL_GREP" "$@"
+SH
+printf '#!/bin/sh\nexit 0\n' > "$CHMODSTUB/chmod"
+chmod +x "$STUB/docker" "$SIGSTUB/sort" "$GREPSTUB/grep" "$CHMODSTUB/chmod"
 REAL_SORT=$(command -v sort)
-export REAL_SORT
+REAL_GREP=$(command -v grep)
+export REAL_SORT REAL_GREP
 
 pem_to() { # <file>: write the fake PEM there
   mkdir -p "$(dirname "$1")"
@@ -450,6 +477,23 @@ build "$UNREAD" "$WORK/n"
 
 # O — a signal mid-scan (the stand-in sort, over the clean H0 image).
 
+# P, Q, R — the backstops. Each check below sits behind an earlier step that
+# normally catches its case first, so it only fires when that step is stood in
+# for. P: grep errors on the layer walk (over H0). Q: grep errors on a non-tar
+# blob (over H0). R: a key in a mode-000 file, with chmod doing nothing and the
+# layer walk's read errors hidden; the readability check must still exit 2.
+# R has its own image: no untraversable directory, so the walk that lists
+# unreadable paths runs to the end and the check itself decides.
+mkdir -p "$WORK/r"
+printf 'not a key\n' > "$WORK/r/readme.txt"
+pem_to "$WORK/r/secret.txt"
+cat > "$WORK/r/Dockerfile" <<'DF'
+FROM scratch
+COPY readme.txt /app/readme.txt
+COPY --chmod=000 secret.txt /app/key.pem
+DF
+build "$UNREADF" "$WORK/r"
+
 # --- run the scan against each fixture ----------------------------------------
 sh "$SCAN" "$BAKED_LAYER" > "$WORK/out.baked-layer" 2>&1; RC_BAKED_LAYER=$?
 sh "$SCAN" "$BAKED_ENV"   > "$WORK/out.baked-env"   2>&1; RC_BAKED_ENV=$?
@@ -479,6 +523,17 @@ stub_scan k "$WORK/k.save.tar"
 stub_scan l "$WORK/l.save.tar"
 stub_scan m "$WORK/m.save.tar"
 stub_scan o "$WORK/h0.save.tar" "$SIGSTUB"
+GREP_STUB=walk-error; export GREP_STUB
+stub_scan p "$WORK/h0.save.tar" "$GREPSTUB"
+GREP_STUB=blob-error
+stub_scan q "$WORK/h0.save.tar" "$GREPSTUB"
+# R's scan cannot clean up what its no-op chmod left unreadable, so its
+# TMPDIR sits under $WORK, which this test's own cleanup makes removable.
+mkdir -p "$WORK/rtmp"
+GREP_STUB=walk-mask PATH="$GREPSTUB:$CHMODSTUB:$PATH" TMPDIR="$WORK/rtmp" \
+  sh "$SCAN" "$UNREADF" > "$WORK/out.r" 2>&1
+echo "$?" > "$WORK/rc.r"
+unset GREP_STUB
 
 fail=0
 
@@ -610,6 +665,9 @@ closed k "truncated gzip fixture"
 closed l "zstd blob fixture"
 closed m "newline name fixture"
 closed o "signal fixture"
+closed p "grep walk error fixture"
+closed q "grep blob error fixture"
+closed r "unreadable backstop fixture"
 
 # N: both unreadable keys are read and named — detection, not just exit 2.
 printf '  unreadable fixture         -> scan exit %s\n' "$RC_UNREAD"
