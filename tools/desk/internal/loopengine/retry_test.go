@@ -544,7 +544,7 @@ func TestRetryBoundsAreDeclaredNotSilent(t *testing.T) {
 
 // runRefusal calls Run expecting it to REFUSE the config and return promptly. Run's normal
 // state is an endless idle-poll, so a guard that stops refusing does not fail this test — it
-// would WEDGE it. The deadline turns that into a fast, readable failure instead of a suite
+// would WEDGE it. The deadline turns that into a bounded, readable failure instead of a suite
 // that hangs until the package timeout.
 func runRefusal(t *testing.T, deskDir string, cfg Config) error {
 	t.Helper()
@@ -553,7 +553,7 @@ func runRefusal(t *testing.T, deskDir string, cfg Config) error {
 	select {
 	case err := <-done:
 		return err
-	case <-time.After(2 * time.Second):
+	case <-time.After(engineTestTimeout):
 	}
 	// Not refused: Run entered its endless idle-poll. Plant a STOP flag so the drain exits
 	// instead of leaking a spinning goroutine into the rest of the suite, then report the
@@ -563,7 +563,7 @@ func runRefusal(t *testing.T, deskDir string, cfg Config) error {
 	}
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(engineTestTimeout):
 		t.Fatal("Run neither refused the config nor honoured a STOP flag")
 	}
 	_ = os.Remove(filepath.Join(deskDir, "STOP"))

@@ -20,7 +20,7 @@ func runUntil(t *testing.T, cfg Config, loop Loop, deskDir string, stopWhen func
 	done := make(chan error, 1)
 	go func() { done <- Run(cfg, loop) }()
 
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(engineTestTimeout)
 	planted := false
 	tick := time.NewTicker(2 * time.Millisecond)
 	defer tick.Stop()
@@ -243,7 +243,7 @@ func TestRun_UnregisteredLoopNameIsRefused(t *testing.T) {
 	var err error
 	select {
 	case err = <-done:
-	case <-time.After(10 * time.Second):
+	case <-time.After(engineTestTimeout):
 		t.Fatal("Run did not return for an unregistered DESK_LOOP — it entered the loop and is " +
 			"running with NO per-loop stop protection, which is exactly the silent failure " +
 			"this guards")
