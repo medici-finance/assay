@@ -267,6 +267,70 @@ fire on planted secrets. The defect is precision, not sensitivity — the scan
 catches real baked keys AND everything else, and its fail-closed design converts
 that imprecision into an unusable gate. Filed as a bug; status stays
 `implemented`.
+### 2026-10-06 re-verify on merged main 3012e2bed680 (non-implementer)
+**VERIFY: FAIL — row 5 as written exits 1 (build-context defect in the row's command), row 6 could not check, and an independent probe found a recall regression in the shipped scanner: a key file in an earlier layer, overwritten at the same path by a later layer, is missed (5 of 6 fixtures)**
+
+Run on merged main `3012e2bed680aa63ee9d378e99b199043f3d3f99`, the forge's `main` head at run time, by a verifier that wrote none of this brief's deliverables. The run covers the scanner as amended by the false-positive fix in #1011. Host: Docker 29.4.0 (daemon available), ShellCheck 0.11.0, statusgen v1.0.32.
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---------|----------|----------|---------------|
+| 1 | `grep -c 'ASSAY_APP_PEM_FILE' containers/secrets.md` | exit 0; count ≥ 1 | exit 0; `5` | 2026-10-06 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | `grep -c '/run/secrets/assay/app.pem' containers/secrets.md` | exit 0; count ≥ 1 | exit 0; `6` | 2026-10-06 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | `grep -ci 'no secret in any image layer' containers/secrets.md` | exit 0; count ≥ 1 | exit 0; `3` | 2026-10-06 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | `sh containers/scripts/layer-secret-scan.test.sh` | exit 0; prints `RED on baked-key fixture` and `GREEN on clean fixture` | exit 0. Fixture exits: baked PEM-in-layer 1, baked key-in-ENV 1, clean 0, false-positive fixture 1. Printed `RED on baked-key fixture`, `GREEN on clean fixture`, `RED on false-positive fixture's real secret (/opt/app/leaked.pem) — no bypass`, `GREEN on all five allowlisted-path mimics (Go src, npm docs, gpgv, libssh2, gh) — none reported`, `RED on the generic sk--in-binary regression fixture (/opt/app/vendored-tool)` | 2026-10-06 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | `docker build -t assay-desk-base:dev containers/base && sh containers/scripts/layer-secret-scan.sh assay-desk-base:dev` | exit 0: the real base image scans clean | **FAIL, exit 1.** The pinned desk-tools parent now pulls, but the build stops at `COPY plugins/assay/ /opt/assay/plugin/` with `"/plugins/assay": not found`. The base Dockerfile needs the repository root as build context, and this row passes the containers/base directory. The scan never ran. **Supplementary run, outside the row's literal command:** the documented form from containers/README.md, `docker build --platform linux/amd64 -f containers/base/Dockerfile -t <tag> .`, built with exit 0. `--platform linux/amd64` was needed because this host is arm64 and the Dockerfile defaults TARGETARCH to amd64; without it the amd64 Node tarball fails to execute (exit 255). Scanning that real 24-layer base image exited 0: `clean: no key-shaped material found`. So the #1011 fix removed all 16 false positives recorded on 2026-09-11. The row's command form still needs correcting | 2026-10-06 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | `statusgen --consumers --brief desk-containers/02 --root .` | exit 0; the four follow-up entries (03/04/05/06) listed | **COULD-NOT-CHECK, exit 2.** `COULD-NOT-CHECK: assay:assay:desk-containers:02 is not in the diff against 3012e2bed680…`. By design, `--consumers` judges only claims made inside the diff under test. The qualified id gives the same result. **Supplementary run, outside the row's literal command:** pointing `--base` at the parent of the commit that authored the brief (`statusgen --consumers --brief assay:assay:desk-containers:02 --base 709c223ef^ --root .`) exited 0 with `4 corroborated, 0 disproved, 0 unchecked`, covering all four follow-ups (03/04/05/06) | 2026-10-06 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | `shellcheck containers/scripts/layer-secret-scan.sh` | exit 0 | exit 0, no findings. The test script is also clean | 2026-10-06 assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+**Execution witness.** The `statusgen verifyrun` witness table that follows this fragment was written by a statusgen binary built from this SHA's own statusgen source tree, run in a clean throwaway tree at this SHA under a throwaway HOME. Its verdicts match the table above: rows 1, 2, 3, 4 and 7 pass (exit 0); row 5 fails (exit 1); row 6 fails (exit 2). Its cells are the tool's own, with no hand edits. It stamps the UTC date 2026-10-05, which is the same run as the 2026-10-06 local date above. The output hashes for rows 5 and 6 differ between runs because the docker build and statusgen output carry per-run detail; rows 1-4 and 7 reproduced byte-for-byte in an earlier `--dry-run` pass.
+
+**Independent probe: scanner recall regression, write-then-overwrite across layers.** Contract §6 forbids leaving a credential in an earlier layer that a later step removes, because the earlier layer still contains it. The scanner extracts every layer tar into one shared rootfs. Since #1011 it no longer greps the raw layer tars, a change made to stop double-counting hits. The result: when a later layer overwrites the same path with benign content, whichever layer extracts last decides what gets scanned, and the extraction order follows blob-digest order, which has nothing to do with layer order. Fixtures used a synthetic, self-labelled fake key: COPY the key to one path, then overwrite that path in a later layer.
+- `FROM scratch`, COPY key, then COPY a benign file to the same path: current scanner exit 0 (`clean`), three runs out of three. The scanner from the implementing commit exit 1. A manual `docker save` confirmed the fake key is still present in the earlier layer blob.
+- `FROM debian:bookworm-slim`, COPY key, then `RUN echo scrubbed-N > <same path>`, six variants: current scanner exit 0 on 5 of 6, exit 1 on 1 of 6. The scanner from the implementing commit exit 1 on 6 of 6.
+- Same base, COPY key, then `RUN rm <path>`: both scanners exit 1. The whiteout leaves the original file in place.
+
+A key-bearing image therefore passes the gate depending on content hashes. That breaks the Definition of Done's claim that "the scan enforces it mechanically". Row 4's mutation test does not cover this vector. The fix is to restore raw scanning of the earlier layers, or to extract each layer into its own directory, and to add an overwrite fixture to row 4. The fix is reversible, but until it lands this layer of the three-control design has a blind spot.
+
+**Risk-bearing values.** The trigger fires: `risk.sensitive-data: yes`, and the change under review is a security scanner plus a credential contract. The enumeration covers the three deliverables at the verified SHA, including the #1011 changes. File:line references point to that SHA.
+
+| Literal | Location | Rank / reversibility |
+|---|---|---|
+| `PEM = 'BEGIN[A-Z0-9 _-]*PRIVATE KEY'` | containers/scripts/layer-secret-scan.sh:91 | top: a gap lets a baked key ship in a public image, and a published layer cannot be recalled |
+| `GHTOK = 'gh[ps]_[A-Za-z0-9]{20,}\|github_pat_[A-Za-z0-9_]{20,}'` | layer-secret-scan.sh:92 | top: same |
+| `MODELKEY_ANT = 'sk-ant-[A-Za-z0-9_-]{10,}'` | layer-secret-scan.sh:93 | top: same |
+| `MODELKEY_GENERIC = 'sk-[A-Za-z0-9]{20,}'` | layer-secret-scan.sh:94 | high: same exposure; precision trade-off |
+| allowlist `"$WORK"/rootfs/usr/local/go/src/*` | layer-secret-scan.sh:117 | high: an exemption is a recall hole at that prefix |
+| allowlist `"$WORK"/rootfs/usr/local/lib/node_modules/npm/*` | layer-secret-scan.sh:124 | high: same |
+| allowlist `"$WORK"/rootfs/usr/bin/gpgv` | layer-secret-scan.sh:137 | medium: single exact path |
+| allowlist `"$WORK"/rootfs/usr/lib/*/libssh2.so*` | layer-secret-scan.sh:138 | medium: narrow glob |
+| allowlist `"$WORK"/rootfs/usr/lib/*/libgnutls.so*` | layer-secret-scan.sh:139 | medium: narrow glob |
+| allowlist `"$WORK"/rootfs/usr/local/bin/gh` | layer-secret-scan.sh:148 | medium: single exact path |
+| hit exit `exit 1` | layer-secret-scan.sh:252 | medium: gate semantics, reversible |
+| could-not-scan exit `exit 2` | layer-secret-scan.sh:60, :65, :162, :168, :174 | medium: fail-closed semantics, reversible |
+| mask width `'%.4s'` | layer-secret-scan.sh:227 | low: prints at most 4 leading chars of a hit (a public prefix) |
+| PEM mount path `/run/secrets/assay/app.pem` | containers/secrets.md:39, :55 | medium: a contract constant, reversible by edit |
+| PEM path env name `ASSAY_APP_PEM_FILE` | containers/secrets.md:57 | medium: a contract constant, reversible |
+| PEM file mode `mode: 0400` / `defaultMode: 0400` | containers/secrets.md:144, :171 | low: operational; fails closed (unreadable PEM ⇒ exit), reversible |
+
+- RISK-VALUE: DERIVED — PEM = `BEGIN[A-Z0-9 _-]*PRIVATE KEY` @ containers/scripts/layer-secret-scan.sh:91. Every PEM private-key armor header (PKCS#1 `RSA`, SEC1 `EC`, `OPENSSH`, PKCS#8 plain and `ENCRYPTED`, and the PGP private-key block) has the form BEGIN, then an uppercase/space/hyphen label, then `PRIVATE KEY`, and the character class accepts all of them. Leaving out the dashed fence costs no recall, because every real key carries the header.
+- RISK-VALUE: DERIVED — GHTOK = `gh[ps]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}` @ layer-secret-scan.sh:92. It covers the brief's required minimum (`ghp_`, `ghs_`, `github_pat_`). Real token bodies are well over 20 characters (36 for classic and installation tokens, longer for fine-grained), so `{20,}` is a safe lower bound that catches every real token and skips bare prefix mentions. NAMED, NOT DERIVED part: the `gho_`, `ghu_` and `ghr_` prefixes (OAuth, user-to-server and refresh tokens) are not covered. Whether a desk container can ever hold one depends on how `gh` is authenticated at runtime, and confirming that for every desk is outside this pass. It is above the brief's minimum and a candidate for the human pattern review.
+- RISK-VALUE: DERIVED — MODELKEY_ANT = `sk-ant-[A-Za-z0-9_-]{10,}` @ layer-secret-scan.sh:93. Anthropic API keys carry the `sk-ant-` prefix followed by a long URL-safe body (letters, digits, `_`, `-`). The class matches that alphabet, and `{10,}` is far below the real body length, so recall is complete for this key family.
+- RISK-VALUE: NAMED, NOT DERIVED — MODELKEY_GENERIC = `sk-[A-Za-z0-9]{20,}` @ layer-secret-scan.sh:94. It is a deliberately loose catch-all, and its precision/recall trade-off has no first-principles bound. Its one proven false positive is handled by a single exact-path exemption (line 148), not by weakening the pattern. Row 4's binary-regression fixture confirms it still fires inside binaries.
+- RISK-VALUE: NAMED, NOT DERIVED — allowlist prefixes @ layer-secret-scan.sh:117 and :124. These are justified as wholly upstream-populated trees, and this pass confirmed the real base image is clean with them in place. Proving that no later desk image step ever writes a credential under those prefixes would require auditing every per-desk Dockerfile, which this pass did not do.
+
+**Human review of record:** the driver's ratification at https://github.com/medici-finance/assay/issues/900#issuecomment-6004016520 approves the contract, the fail-closed behaviour and the #1011-amended pattern set. This verifier did not reverse that ruling. The overwrite-blind-spot finding above is new input for that gate.
+
+**Status:** stays `implemented`. Row 5's command form and the scanner's overwrite blind spot both need a fix before this brief can advance.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -c 'ASSAY_APP_PEM_FILE' containers/secrets.md` | pass exit=0 | sha256:f0b5c2c2211c | 2026-10-05 | assay-verifier-app[bot] @ 3012e2bed680 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -c '/run/secrets/assay/app.pem' containers/secrets.md` | pass exit=0 | sha256:06e9d52c1720 | 2026-10-05 | assay-verifier-app[bot] @ 3012e2bed680 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `grep -ci 'no secret in any image layer' containers/secrets.md` | pass exit=0 | sha256:1121cfccd591 | 2026-10-05 | assay-verifier-app[bot] @ 3012e2bed680 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `sh containers/scripts/layer-secret-scan.test.sh` | pass exit=0 | sha256:ab6e61478cee | 2026-10-05 | assay-verifier-app[bot] @ 3012e2bed680 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `docker build -t assay-desk-base:dev containers/base && sh containers/scripts/layer-secret-scan.sh assay-desk-base:dev` | fail exit=1 | sha256:b02d91ad75a6 | 2026-10-05 | assay-verifier-app[bot] @ 3012e2bed680 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --consumers --brief desk-containers/02 --root .` | fail exit=2 | sha256:d556ff5a51a3 | 2026-10-05 | assay-verifier-app[bot] @ 3012e2bed680 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `shellcheck containers/scripts/layer-secret-scan.sh` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-05 | assay-verifier-app[bot] @ 3012e2bed680 (on-behalf-of human:ian) (forge-identity) |
 
 ## Review
 Gate: human (sensitive-data: yes — App-PEM custody design; see gate-why). Reviewer

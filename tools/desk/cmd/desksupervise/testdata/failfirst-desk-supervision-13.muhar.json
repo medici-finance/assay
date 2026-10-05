@@ -9,10 +9,10 @@
   },
   "mutations": [
     {
-      "name": "S-1 read guard removed (status.go liveResourceSource) -> TestLiveResourceSourceRejectsHolderTraversal",
-      "file": "cmd/desksupervise/status.go",
-      "old": "if !deskkit.ValidSessionSegment(holder) {",
-      "new": "if false && !deskkit.ValidSessionSegment(holder) {"
+      "name": "S-1 read guard removed (liveResourceSource reads via ReadRosterBeacon; the segment guard is AckBeaconPath's since #2155) -> TestLiveResourceSourceRejectsHolderTraversal",
+      "file": "internal/deskkit/ackbeacon.go",
+      "old": "\tif !validRosterSession(session) {\n\t\treturn \"\", Refused(\"roster session must be a safe filename segment\")",
+      "new": "\tif false && !validRosterSession(session) {\n\t\treturn \"\", Refused(\"roster session must be a safe filename segment\")"
     },
     {
       "name": "S-1 write guard removed (deskroster set) -> TestSetRefusesMultiSegmentSessionName",
@@ -27,10 +27,10 @@
       "new": "\tif f.CouldNotCheck || f.Value == int64(0) {\n\t\treturn json.Marshal(\"could-not-check\")\n\t}"
     },
     {
-      "name": "MergeResourceVitals stops preserving existing beacon fields -> TestMergeResourceVitalsPreservesAcks",
-      "file": "internal/deskkit/vitals.go",
-      "old": "if data, rerr := os.ReadFile(path); rerr == nil {",
-      "new": "if data, rerr := os.ReadFile(path); rerr != nil {"
+      "name": "MergeResourceVitals stops preserving existing beacon fields (the read-merge is MutateRosterBeacon's since #2162) -> TestMergeResourceVitalsPreservesAcks",
+      "file": "internal/deskkit/rosterbeacon.go",
+      "old": "\tif obj == nil {\n\t\tobj = make(map[string]json.RawMessage)\n\t}",
+      "new": "\tif obj == nil || true {\n\t\tobj = make(map[string]json.RawMessage)\n\t}"
     }
   ]
 }
