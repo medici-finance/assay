@@ -28,6 +28,19 @@ func TestResumeSource(t *testing.T) {
 					if forge == "gitlab" {
 						installGLStamp(t, home)
 						repo = glProject
+					} else {
+						// Forge selection belongs to the fixture, not the enclosing checkout.
+						path := filepath.Join(home, ".config", "assay", "roster.env")
+						contents, err := os.ReadFile(path)
+						if err != nil {
+							t.Fatal(err)
+						}
+						contents = append(contents, []byte("\nASSAY_REPO_FORGES="+repo+"=github\n")...)
+						if err := os.WriteFile(path, contents, 0600); err != nil {
+							t.Fatal(err)
+						}
+						deskkit.ReloadConfig()
+						t.Cleanup(deskkit.ReloadConfig)
 					}
 					reads := 0
 					server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +90,7 @@ func TestResumeSource(t *testing.T) {
 						}
 					} else {
 						argv := deskwtAddArgv(s)
-						if !strings.Contains(argv, "--branch fix/resume-evidence") || !strings.Contains(argv, "--base "+resumeSHA) {
+						if !strings.Contains(argv, "--branch fix/resume-evidence") || !strings.Contains(argv, "--base "+resumeSHA) || !strings.Contains(argv, "--upstream refs/remotes/origin/fix/resume-evidence") {
 							t.Fatalf("wrong resume allocation: %s", argv)
 						}
 					}

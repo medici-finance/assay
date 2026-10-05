@@ -187,7 +187,9 @@ WORKER RESUME. --pr reads the open change through the resolved forge, including 
 dry run. Its source branch supplies --branch; an explicit different --branch is refused.
 The source must be confirmed in the target repository, with a readable full head SHA.
 A real dispatch refreshes that origin branch and requires its tip to match the forge head
-before claiming anything, then allocates from the verified commit. Missing, stale or
+before claiming anything, then passes the verified commit as --base and the source
+remote ref as --upstream to deskwt. The allocator checks the pair and sets tracking
+separately from the pinned checkout. Missing, stale or
 unreadable source/head never falls back to main. Review/verifier lanes remain detached.
 
 --kits lists the prompt kits this binary carries and exits 0.

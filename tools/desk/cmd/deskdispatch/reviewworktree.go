@@ -35,6 +35,9 @@ func createDispatchWorktree(o dispatchOpts, plan dispatchPlan) runResult {
 	} else {
 		args = append(args, "--branch", plan.branch)
 	}
+	if workerResume(o) {
+		args = append(args, "--upstream", "refs/remotes/origin/"+plan.branch)
+	}
 	args = append(args, "--base", base, "--role", plan.identityRole)
 	return runCmd(o.root, "deskwt", args...)
 }
