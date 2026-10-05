@@ -39,7 +39,9 @@
 // desk window (no ambient `gh` login) failed closed on every fresh claim while its other
 // steps minted their own role token and succeeded. Now the claim step mints (or reuses)
 // the dispatching role's token through the same seam the model stamp uses and passes it in
-// the tool's own shape; an explicit GH_TOKEN already in the environment wins; a mint
+// the tool's own shape; an explicit GH_TOKEN already in the environment wins only once it is
+// verified to BE the dispatching role's App (issue 1631 — otherwise it is ignored with a NOTICE,
+// and one whose identity cannot be read refuses); a mint
 // failure is the refusal, never a fall-back to whatever `gh` is logged in as. The decision
 // gate's script shells out to the forge CLI too, so it is handed the SAME credential in
 // environment shape from that one resolution (issue 1146) — keyed on what the child does, not
@@ -83,6 +85,9 @@ claim calls only — the repo's short label (configured alias, else the repo bas
 prefixed and "/" becomes "--" — by a fixed rule, so every desk derives the SAME claim key
 for the same item and the claims collide. The worktree name, branch, brief path, and the
 prompt's item key stay on the ORIGINAL key.
+For review kits with --pr N, the resulting claim key must be <configured-alias>--pr-N
+or <repo-basename>--pr-N, optionally followed by --<lane>. Unknown historical aliases
+and keys for another PR are refused before claim acquisition; accepted keys are unchanged.
 
 STEPS, in order. Each prints one line; the first red one stops the dispatch and NAMES itself.
 
@@ -97,7 +102,11 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       mints (or reuses) that role's App token exactly as the model-stamp step
                       does and hands it over as --token-file <0600 path> (deskclaim-ref) or
                       GH_TOKEN in the child's environment (the script); a GH_TOKEN already
-                      exported wins and nothing is minted; a mint failure is exit 6 with NO
+                      exported wins and nothing is minted ONLY when it is verified to be the
+                      dispatching role's App (a GitHub viewer read vs the roster binding; on
+                      GitLab, equal to the role's PAT custody) — any other identity is ignored
+                      with a NOTICE and the role token minted, and one whose identity cannot
+                      be read is exit 5/6 with NO claim attempted; a mint failure is exit 6 with NO
                       claim attempted — the tool is never run on the ambient gh login. Exit 5
                       there with a READABLE holder = a LIVE holder owns it: this verb prints
                       the holder and exits 5; it never steals. Exit 5 with no readable holder
@@ -112,6 +121,10 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       inherits the dispatching desk's identity and misattributes Evidence
                       Runner cells; a --kit whose role has no roster identity is refused
                       pre-claim (exit 5). The OK line prints identity=<slug> <bot-user-id>.
+                      Review kits allocate DETACHED with a fresh per-dispatch directory;
+                      --branch is refused. The canonical claim key stays unchanged.
+                      Prior review worktrees and evidence are preserved; no cleanup is
+                      required to renew the normal trusted dispatch ceremony.
   3 roster-register   ` + "`deskroster set`" + ` for the work entry when --pr is known; without
                       it the registration is the AGENT's first act after its PR opens, and
                       the exact command is emitted into the prompt.

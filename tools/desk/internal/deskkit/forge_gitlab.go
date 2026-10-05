@@ -532,6 +532,14 @@ func (g *GitLabForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 		HeadRef:           mr.SourceBranch,
 		BaseRef:           mr.TargetBranch,
 	}
+	// CrossRepo from GitLab's own source/target project ids: a fork MR's source project is not
+	// its target. A zero id on either side is could-not-check (EMPTY), never "same".
+	if mr.SourceProjectID != 0 && mr.TargetProjectID != 0 {
+		out.CrossRepo = CrossRepoSame
+		if mr.SourceProjectID != mr.TargetProjectID {
+			out.CrossRepo = CrossRepoFork
+		}
+	}
 	if mr.Author != nil {
 		out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
 	}
@@ -852,6 +860,30 @@ func (g *GitLabForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 		Cap:            gitlabOpenChangesCap,
 		TruncatedAtCap: len(changes) >= gitlabOpenChangesCap,
 	}, nil
+}
+
+// ReviewQueueSnapshot on GitLab is DEGRADED, and says so per change: it returns exactly
+// ListOpenChanges' population with every change ReviewsComplete=false and no reviews, so a
+// consumer reads each MR's verdicts with ReviewsAtHead — the read it made before this op
+// existed, output unchanged.
+//
+// It is not a one-document read because GitLab's head-pinned review answer is not one
+// document: ReviewsAtHead reconciles the project's reset-approvals-on-push setting, the
+// diff-version arrival times, the approval system notes and the verdict notes (see its doc),
+// and folding that into a single GraphQL query is a new approximation surface that must be
+// proven against a live instance before it can replace a golden-pinned read. Reporting the
+// snapshot incomplete is the fail-closed direction: a caller can never mistake a missing
+// review set for an empty one.
+func (g *GitLabForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) {
+	oc, err := g.ListOpenChanges(repo)
+	if err != nil {
+		return nil, err
+	}
+	changes := make([]QueuedChange, 0, len(oc.Changes))
+	for _, c := range oc.Changes {
+		changes = append(changes, QueuedChange{OpenChange: c, ReviewsComplete: false})
+	}
+	return &ReviewQueue{Changes: changes, TruncatedAtCap: oc.TruncatedAtCap, Cap: oc.Cap}, nil
 }
 
 // gitlabChangeState maps a GitLab MR state word to the seam's uppercased lifecycle state,

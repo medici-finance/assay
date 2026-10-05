@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/tools/desk/internal/custodytest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -373,8 +374,8 @@ type harness struct {
 
 func newHarness(t *testing.T, f *fakeForge) *harness {
 	t.Helper()
-	h := &harness{out: &bytes.Buffer{}, err: &bytes.Buffer{}, dir: t.TempDir(), forge: f}
-	h.ownerFile = filepath.Join(t.TempDir(), "owner.token")
+	h := &harness{out: &bytes.Buffer{}, err: &bytes.Buffer{}, dir: custodytest.PrivateTempDir(t), forge: f}
+	h.ownerFile = filepath.Join(custodytest.PrivateTempDir(t), "owner.token")
 	if err := os.WriteFile(h.ownerFile, []byte(fakeOwnerToken+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

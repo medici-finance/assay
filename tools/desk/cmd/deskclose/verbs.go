@@ -122,6 +122,9 @@ type common struct {
 	// the correct answer on a forge with one number sequence and a refusal on one without.
 	kindFlag string
 	kind     deskkit.TargetKind
+	// applyOverride records --force-scan-override for the outbound-write check every close
+	// comment crosses (desktools-v2/10); called once the flags are parsed.
+	applyOverride func() error
 }
 
 func (c *common) bind(fs *flag.FlagSet) {
@@ -131,6 +134,7 @@ func (c *common) bind(fs *flag.FlagSet) {
 	fs.StringVar(&c.kindFlag, "kind", "",
 		"which kind of object the item number names: issue | mr (pr is an alias of mr). "+
 			"Equivalent to writing the number as `!N`; required only where a project carries both kinds at one number")
+	c.applyOverride, _ = deskkit.RegisterOutboundOverride(fs, "deskclose", fs.Name())
 }
 
 // statedTargetKind resolves the kind of a TARGET reference from its own sigil and its kind
@@ -321,6 +325,9 @@ func parseItemVerb(fs *flag.FlagSet, args []string, c *common) (int, error) {
 	flags, pos := splitPositionals(args)
 	if err := fs.Parse(flags); err != nil {
 		return 0, deskkit.Refused(fs.Name() + ": " + err.Error())
+	}
+	if err := c.applyOverride(); err != nil {
+		return 0, err
 	}
 	pos = append(pos, fs.Args()...)
 	if len(pos) != 1 {

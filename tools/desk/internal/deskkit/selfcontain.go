@@ -41,6 +41,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"regexp"
 	"sort"
 	"strconv"
@@ -97,6 +98,13 @@ type SelfContainOpts struct {
 	// Notices is where NOTICE lines are written. nil means os.Stderr. Desks run silent on
 	// stdout, so notices go to stderr exactly as PublicRepoGate's bless notice does.
 	Notices io.Writer
+	// FilePath and FileSource are set ONLY by the outbound check for a kind-`file` field
+	// (OutboundWrite.FileSources): the repo-relative path the scanned text was taken from,
+	// and that file's FULL new-side content. They feed exactly one decision —
+	// briefIDExemptLine — and FileSource is never scanned itself. Both empty (every body,
+	// commit message, ref and title) means no exemption: the scan is what it always was.
+	FilePath   string
+	FileSource string
 }
 
 var (
@@ -115,10 +123,40 @@ var (
 	// one component. So the one shape the scan must tolerate is exactly the one that carries
 	// no information.
 	reAbsMachinePath = regexp.MustCompile(`(?:/Users/|/home/|/private/tmp/|/private/var/folders/|/tmp/tracker-)[^\s"'` + "`" + `)\]>,;]+`)
+	// reWinUsersPath and reWinUNCPath are the Windows half of the same class
+	// (desktools-v2/12): a drive-letter path under the Users root (`C:` + `\Users\` or its
+	// forward-slash form, any case — every profile, AppData and temp directory lives there)
+	// and a UNC path naming a host and a share. Each candidate is confirmed with
+	// IsAbsFor("windows", …) before it refuses, so the class has ONE definition of
+	// "absolute" on both sides of the seam.
+	//
+	// The #380 lesson holds here too, by requiring a component that starts with a letter or
+	// digit: the bare root, a `…` placeholder after it, and a `<host>`/`<share>` placeholder
+	// carry no information and are what documentation of this check spells. A UNC host needs
+	// two characters so a regex escape pair (a backslash pair, a letter, a backslash, a
+	// letter) is not read as a host and share.
+	//
+	// The UNC matcher takes separators the way the drive matcher does: either direction and
+	// any run of them, both before the host and between host and share. IsAbsFor accepts any
+	// two leading separators, and Windows itself resolves `//host/share` and a mixed
+	// `\\host/share` to the same share, so each is the same leak; a body that went through a
+	// JSON or Go string escape doubles every backslash, and must not slip past by that alone.
+	// findAbsMachinePath drops the two shapes that are not UNC at all: a run after `:` (a URL
+	// scheme's `//`) and a run after a letter or digit (a doubled separator inside a path).
+	reWinUsersPath = regexp.MustCompile(`(?i)\b[a-z]:[\\/]+users[\\/]+[\p{L}\p{N}_$][^\s"'` + "`" + `)\]>,;]*`)
+	reWinUNCPath   = regexp.MustCompile(`[\\/]{2,}[\p{L}\p{N}][\p{L}\p{N}._$-]+[\\/]+[\p{L}\p{N}_$][^\s"'` + "`" + `)\]>,;]*`)
 	// reWorktreeName matches a scratch worktree directory name written WITHOUT its leading
 	// path — `tracker-<item>` — which is how it most often reaches a body (a command line, a
 	// "my worktree is …" sentence). deskwt mints exactly this shape (cmd/deskwt).
-	reWorktreeName = regexp.MustCompile(`\btracker-[A-Za-z0-9][A-Za-z0-9._-]*`)
+	//
+	// The leading group is the token boundary (#2080): the name starts the text, or follows
+	// a byte that is NOT a letter, digit, `_` or `-`. That covers a `/` path segment,
+	// whitespace and punctuation, which is everywhere a minted name can appear, and it
+	// leaves a hyphenated compound alone. The old `\b` boundary also held after `-`, so the
+	// prefix word in the middle of a compound (a finding-block class label) refused a body
+	// that named no worktree. RE2 has no lookbehind, so the boundary byte is part of the
+	// match; group 1 is the name, and worktreeNameFinder reports only that.
+	reWorktreeName = regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])(tracker-[A-Za-z0-9][A-Za-z0-9._-]*)`)
 	// reSessionUUID matches the session id shape the agent tooling mints (a lowercase hex
 	// UUID). Anchored on the full 8-4-4-4-12 grouping so an ordinary hyphenated word or a
 	// git SHA cannot match it.
@@ -135,7 +173,90 @@ var (
 	reBareRef = regexp.MustCompile(`(^|[\s(\[,;])#([0-9]+)\b`)
 	// reBriefID matches a `<slug>/<NN>` brief id.
 	reBriefID = regexp.MustCompile(`\b([a-z0-9][a-z0-9-]*)/([0-9]{1,3})\b`)
+	// reBriefFrontmatterID is the ONE line shape the session-id arm exempts (#2022): a
+	// brief-v2 frontmatter `id:` line whose WHOLE value is a lowercase hex UUID, bare or
+	// double-quoted (the two spellings the brief files carry). Anchored on both ends of the
+	// raw line, so leading indentation (a nested key), a trailing comment or any text after
+	// the UUID, a CR, an uppercase or undashed UUID, or any other key all fall outside it.
+	reBriefFrontmatterID = regexp.MustCompile(
+		`^id: (?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")$`)
+	// reFrontmatterIDKey matches ANY top-level `id` key line, however spelled (quoted key,
+	// space before the colon). It counts keys, so a frontmatter carrying a second `id`
+	// key — a duplicate YAML key — earns no exemption at all.
+	reFrontmatterIDKey = regexp.MustCompile(`^["']?id["']?\s*:`)
 )
+
+// briefIDExemptLine returns the 1-based line of scanned that the session-id arm exempts, or
+// 0 for none. It is the whole of the #2022 exemption, and every condition FAILS CLOSED —
+// any one not established means 0, and the arm refuses exactly as before:
+//
+//   - filePath is a brief file, `docs/streams/**/brief-*.md` (isBriefPath);
+//   - source, the file's FULL new-side content, opens with a `---` fence on its first line
+//     and closes it on a later line (the frontmatter statusgen reads);
+//   - that frontmatter holds exactly ONE top-level `id` key, and its line is exactly
+//     reBriefFrontmatterID;
+//   - scanned — the added-lines view the check actually reads, placed at real line
+//     numbers — carries that very line, byte-identical, at the same line number.
+//
+// The last condition is why the full content is needed and is not enough on its own: the
+// added-lines view alone cannot show that a line sits between the fences (a modified file's
+// fences are unchanged context, so they are blank in it), and the full content alone cannot
+// show which line the scan is looking at. A caller whose view is not line-aligned with
+// source (a compacted diff) gets no exemption, never a misplaced one.
+func briefIDExemptLine(filePath, source, scanned string) int {
+	if source == "" || !isBriefPath(filePath) {
+		return 0
+	}
+	src := strings.Split(source, "\n")
+	if len(src) < 3 || strings.TrimSpace(src[0]) != "---" {
+		return 0
+	}
+	closeAt := -1
+	for i := 1; i < len(src); i++ {
+		if strings.TrimSpace(src[i]) == "---" {
+			closeAt = i
+			break
+		}
+	}
+	if closeAt < 0 {
+		return 0 // unterminated: there is no frontmatter to be inside
+	}
+	idx, keys := -1, 0
+	for i := 1; i < closeAt; i++ {
+		if reFrontmatterIDKey.MatchString(src[i]) {
+			keys++
+			if reBriefFrontmatterID.MatchString(src[i]) {
+				idx = i
+			}
+		}
+	}
+	if keys != 1 || idx < 0 {
+		return 0
+	}
+	got := strings.Split(scanned, "\n")
+	if idx >= len(got) || got[idx] != src[idx] {
+		return 0
+	}
+	return idx + 1
+}
+
+// isBriefPath reports whether p, a repo-relative slash path, is `docs/streams/**/brief-*.md`.
+// Every segment must be a real name (no empty, `.` or `..` segment), so the prefix cannot
+// be reached by a path that resolves elsewhere.
+func isBriefPath(p string) bool {
+	rest, ok := strings.CutPrefix(p, "docs/streams/")
+	if !ok || strings.Contains(p, `\`) {
+		return false
+	}
+	segs := strings.Split(rest, "/")
+	for _, s := range segs {
+		if s == "" || s == "." || s == ".." {
+			return false
+		}
+	}
+	ok, err := path.Match("brief-*.md", segs[len(segs)-1])
+	return ok && err == nil
+}
 
 // WithheldIdentifiers returns the house-configured withheld register identifiers for
 // EnvWithheldIdentifiers, lowercased, split on commas and trimmed, with empties dropped.
@@ -239,7 +360,116 @@ func SelfContainCheck(surface string, content []byte, o SelfContainOpts) error {
 // selfContainScan is the pure half: it returns the refusal message (empty when clean) and
 // the notice lines, with no I/O and no configuration reads of its own beyond the roster
 // accessors. Split out so tests can assert on both halves without capturing streams.
+//
+// The refusal is the FIRST finding selfContainFindings reports, so the precedence the
+// categories have always had (machine-shaped spans first, then private slugs, then the
+// withheld register) is unchanged.
 func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, notices []string) {
+	findings, notices := selfContainFindings(surface, s, o)
+	if len(findings) > 0 {
+		refusal = selfContainRefusal(surface, findings[0])
+	}
+	return refusal, notices
+}
+
+// scFinding is one refusing self-containment match.
+type scFinding struct {
+	// category is the category's own noun phrase ("private repository name", …).
+	category string
+	// span is the offending text as the scan saw it.
+	span string
+	// why is the category's reason clause.
+	why string
+	// withheld marks the withheld-register category, whose refusal is not overridable
+	// from a verb (scanoverride.go).
+	withheld bool
+	// line is the 1-based line of the span on the scanned surface.
+	line int
+}
+
+// selfContainRefusal renders one finding as the refusal message SelfContainCheck returns.
+func selfContainRefusal(surface string, f scFinding) string {
+	return fmt.Sprintf("refused: %s is not self-contained — %s %q %s. "+
+		"A public body must stand alone for a reader outside this house; reword the span "+
+		"(see `deskpr --help`, PUBLIC-REPO SELF-CONTAINMENT, for the categories)",
+		surface, f.category, f.span, f.why)
+}
+
+// findAbsMachinePath returns the earliest absolute machine path in s — a POSIX path under a
+// machine-local root, or a Windows drive-letter path under the Users root or UNC path that
+// IsAbsFor confirms absolute on windows — or nil.
+func findAbsMachinePath(s string) []int {
+	var best []int
+	if loc := reAbsMachinePath.FindStringIndex(s); loc != nil {
+		best = loc
+	}
+	for _, re := range [...]*regexp.Regexp{reWinUsersPath, reWinUNCPath} {
+		for _, loc := range re.FindAllStringIndex(s, -1) {
+			if best != nil && loc[0] >= best[0] {
+				break
+			}
+			if re == reWinUNCPath && loc[0] > 0 && notUNCLead(s[loc[0]-1]) {
+				continue
+			}
+			if IsAbsFor("windows", s[loc[0]:loc[1]]) {
+				best = loc
+				break
+			}
+		}
+	}
+	return best
+}
+
+// machineShapeFinder is what the machine-shape arm of selfContainFindings loops over: a
+// compiled regexp satisfies it as is, and absMachinePathFinder adapts findAbsMachinePath so
+// the absolute-path category shares the loop (and its all-matches exemption walk) with the
+// other three. worktreeNameFinder adapts reWorktreeName the same way, trimming its boundary
+// byte from the span.
+type machineShapeFinder interface {
+	FindAllStringIndex(s string, n int) [][]int
+}
+
+// absMachinePathFinder reports at most the earliest absolute machine path, which is all the
+// arm reads (it refuses on the first non-exempt match). Like a regexp, n == 0 matches
+// nothing.
+type absMachinePathFinder struct{}
+
+func (absMachinePathFinder) FindAllStringIndex(s string, n int) [][]int {
+	if n == 0 {
+		return nil
+	}
+	if loc := findAbsMachinePath(s); loc != nil {
+		return [][]int{loc}
+	}
+	return nil
+}
+
+// worktreeNameFinder reports reWorktreeName's group 1, the worktree name without the
+// boundary byte in front of it, so a refusal names exactly the span the author has to edit.
+// The name's trailing run is greedy, so the byte after a match is never a name byte; when
+// that byte is the boundary of a following candidate, the previous match has not consumed it.
+type worktreeNameFinder struct{}
+
+func (worktreeNameFinder) FindAllStringIndex(s string, n int) [][]int {
+	var out [][]int
+	for _, m := range reWorktreeName.FindAllStringSubmatchIndex(s, n) {
+		out = append(out, m[2:4])
+	}
+	return out
+}
+
+// notUNCLead reports whether the byte before a UNC-shaped separator run means the run is not
+// a UNC prefix: a `:` ends a URL scheme (`https://host/path`), and a letter or digit means
+// the run is a doubled separator inside a path (`dir//sub/file`).
+func notUNCLead(c byte) bool {
+	return c == ':' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
+// selfContainFindings is the collector behind selfContainScan: EVERY refusing finding, in
+// category order, plus the notice lines. The outbound-write check (outbound.go) reads the
+// whole list, because whether a write may be overridden depends on whether ANY finding is
+// in a non-overridable category, not only on the first.
+func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFinding, notices []string) {
 	// The workpad marker line (workpad.go) is exempt from every
 	// category below by EXACT LINE match — see StripWorkpadMarkerLine's own comment. It is
 	// a fixed, content-free string with no slash, no `#N`, no path and no session/agent
@@ -248,13 +478,10 @@ func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, noti
 	// the credential scan.
 	s = StripWorkpadMarkerLine(s)
 	priv, privShort := privateRepoNames(o.Repo)
-	refuse := func(category, span, why string) {
-		if refusal == "" {
-			refusal = fmt.Sprintf("refused: %s is not self-contained — %s %q %s. "+
-				"A public body must stand alone for a reader outside this house; reword the span "+
-				"(see `deskpr --help`, PUBLIC-REPO SELF-CONTAINMENT, for the categories)",
-				surface, category, span, why)
-		}
+	refuse := func(category, span, why string, at int, withheld bool) {
+		findings = append(findings, scFinding{
+			category: category, span: span, why: why, withheld: withheld, line: lineOf(s, at),
+		})
 	}
 
 	// --- category: machine-local absolute paths, worktree names, session and agent ids ---
@@ -262,18 +489,29 @@ func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, noti
 	// These are the unambiguous half of the scan: every shape here is minted by tooling and
 	// none of them can be a legitimate part of a public body. They are checked FIRST so the
 	// refusal a worker sees names the span that is easiest to fix.
+	//
+	// ONE exemption, on the session-id arm only (#2022): the brief-v2 frontmatter `id:` line
+	// of a brief file, established against the file's full content by briefIDExemptLine. A
+	// brief id is a public identifier the board resolves, not a session. The arm still
+	// refuses every other UUID in the same text — the first NON-exempt match is reported —
+	// and every surface that is not a brief file's content has no exempt line at all.
+	exemptLine := briefIDExemptLine(o.FilePath, o.FileSource, s)
 	for _, m := range [...]struct {
-		re       *regexp.Regexp
+		re       machineShapeFinder
 		category string
 		why      string
 	}{
-		{reAbsMachinePath, "absolute machine path", "resolves only on the machine that wrote it"},
-		{reWorktreeName, "scratch worktree name", "names a throwaway directory nobody else has"},
+		{absMachinePathFinder{}, "absolute machine path", "resolves only on the machine that wrote it"},
+		{worktreeNameFinder{}, "scratch worktree name", "names a throwaway directory nobody else has"},
 		{reSessionUUID, "session id", "identifies an agent session, not anything a reader can look up"},
 		{reAgentID, "agent id", "identifies an agent session, not anything a reader can look up"},
 	} {
-		if loc := m.re.FindString(s); loc != "" {
-			refuse(m.category, loc, m.why)
+		for _, loc := range m.re.FindAllStringIndex(s, -1) {
+			if m.re == reSessionUUID && exemptLine > 0 && lineOf(s, loc[0]) == exemptLine {
+				continue
+			}
+			refuse(m.category, s[loc[0]:loc[1]], m.why, loc[0], false)
+			break
 		}
 	}
 
@@ -282,22 +520,23 @@ func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, noti
 	// A QUALIFIED `owner/name` slug is unambiguous, so it refuses whether or not it carries
 	// a `#N`. The slug alone is the disclosure — #203's report is about a body naming a
 	// house repo, not only about the issue number hanging off it.
-	for _, m := range reQualifiedRef.FindAllStringSubmatch(s, -1) {
-		slug := strings.ToLower(m[1])
+	for _, idx := range reQualifiedRef.FindAllStringSubmatchIndex(s, -1) {
+		slug := strings.ToLower(s[idx[2]:idx[3]])
 		if !priv[slug] {
 			continue
 		}
-		if m[2] != "" {
-			refuse("cross-repo reference", m[0], "points into a repository the roster marks PRIVATE")
+		whole := s[idx[0]:idx[1]]
+		if idx[4] >= 0 && idx[5] > idx[4] {
+			refuse("cross-repo reference", whole, "points into a repository the roster marks PRIVATE", idx[0], false)
 			continue
 		}
-		refuse("private repository name", m[0], "names a repository the roster marks PRIVATE")
+		refuse("private repository name", whole, "names a repository the roster marks PRIVATE", idx[0], false)
 	}
 	// An `alias#N` cross-repo reference resolves through the roster's own alias map, so it
 	// refuses on exactly the aliases the deployment configured and on nothing else.
-	for _, m := range reShortRef.FindAllStringSubmatch(s, -1) {
-		if privShort[strings.ToLower(m[1])] {
-			refuse("cross-repo reference", m[0], "points into a repository the roster marks PRIVATE")
+	for _, idx := range reShortRef.FindAllStringSubmatchIndex(s, -1) {
+		if privShort[strings.ToLower(s[idx[2]:idx[3]])] {
+			refuse("cross-repo reference", s[idx[0]:idx[1]], "points into a repository the roster marks PRIVATE", idx[0], false)
 		}
 	}
 
@@ -324,20 +563,21 @@ func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, noti
 		// the author has to edit — a refusal that under-reports its own span costs a round
 		// trip, which is #328's lesson about surface naming applied one level down.
 		lower := strings.ToLower(s)
-		for _, m := range reBriefID.FindAllStringSubmatch(s, -1) {
+		for _, idx := range reBriefID.FindAllStringSubmatchIndex(s, -1) {
 			for _, id := range withheld {
-				if strings.ToLower(m[1]) == id {
-					refuse("withheld register identifier", m[0],
-						"names a brief in a register this deployment does not publish")
+				if strings.ToLower(s[idx[2]:idx[3]]) == id {
+					refuse("withheld register identifier", s[idx[0]:idx[1]],
+						"names a brief in a register this deployment does not publish", idx[0], true)
 				}
 			}
 		}
 		for _, id := range withheld {
-			if !containsToken(lower, id) {
+			at := tokenIndex(lower, id)
+			if at < 0 {
 				continue
 			}
 			refuse("withheld register identifier", id,
-				"names an entry in a register this deployment does not publish")
+				"names an entry in a register this deployment does not publish", at, true)
 		}
 	}
 
@@ -367,7 +607,7 @@ func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, noti
 		}
 	}
 	sort.Strings(notices)
-	return refusal, notices
+	return findings, notices
 }
 
 // bareRefNotices reports bare `#N` references the body's own repo cannot plausibly own.
@@ -445,23 +685,27 @@ func privateRepoNames(self string) (slugs map[string]bool, shorts map[string]boo
 // containsToken reports whether lowered carries tok as a whole token — bounded on both
 // sides by something other than a letter, digit, `-` or `_`. A substring match would fire on
 // any word that happens to contain a short name.
-func containsToken(lowered, tok string) bool {
+func containsToken(lowered, tok string) bool { return tokenIndex(lowered, tok) >= 0 }
+
+// tokenIndex is containsToken returning WHERE: the byte offset of the first whole-token
+// occurrence of tok in lowered, or -1.
+func tokenIndex(lowered, tok string) int {
 	if tok == "" {
-		return false
+		return -1
 	}
 	for i := 0; ; {
 		j := strings.Index(lowered[i:], tok)
 		if j < 0 {
-			return false
+			return -1
 		}
 		start := i + j
 		end := start + len(tok)
 		if !isTokenByte(lowered, start-1) && !isTokenByte(lowered, end) {
-			return true
+			return start
 		}
 		i = start + 1
 		if i >= len(lowered) {
-			return false
+			return -1
 		}
 	}
 }

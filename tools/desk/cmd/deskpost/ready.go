@@ -84,8 +84,9 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		// unstamped (claimLiveness → deskkit review-claim family). This is the SAME shared reader
 		// the verdict path uses (review.go), so a flip and a verdict clear the floor on identical
 		// evidence; every uncertain path is Unknown, which leaves the stamp exactly as it stood.
-		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged(),
-			client.claimLiveness(repo, pr))
+		claim := client.claimLiveness(repo, pr)
+		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsStampAuthorityLogin, deskkit.ModelFloorOverrideEngaged(), claim)
+		fd.Message += claimReleaseNote(repo, pr, claim)
 		switch fd.Outcome {
 		case deskkit.FloorRefuse:
 			return refused("ready", repo, pr, head, fd.Message)
@@ -395,6 +396,7 @@ func ciReadErr(what, head string, err error) error {
 // real flip; admitting them to the SECURITY lane would let an unreadable body satisfy a
 // security gate, which is the direction that must never be guessed. Fail-closed here means
 // "an unreadable verdict blocks a flip it should have blocked", not "it grants one".
+// semantic: S-review-verdict
 func latestAppVerdict(reviews []reviewInfo) (state, head string, found, noOpApproval bool) {
 	var lastCommit string
 	var commitBlocked bool // a CHANGES_REQUESTED stands at lastCommit with no push since

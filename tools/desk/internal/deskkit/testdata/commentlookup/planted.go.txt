@@ -1,0 +1,20 @@
+package planted
+
+// planted.go.txt — the POSITIVE CONTROL for TestNoIDLookupOnFirstPage. It holds one planted
+// instance of the defect class: an id lookup over ListComments, the read that returns a
+// GitHub pull-request thread's first 100 comments as if they were all of it. The guard must
+// flag findSignOff; a guard whose matcher stopped matching would report this file clean.
+// (The .txt suffix keeps it out of every Go build and out of the shipped-tree scan.)
+
+func findSignOff(fg forge, n int, cid int64) (comment, bool) {
+	comments, err := fg.ListComments(repo, n)
+	if err != nil {
+		return comment{}, false
+	}
+	for _, c := range comments {
+		if c.DatabaseID == cid {
+			return c, true
+		}
+	}
+	return comment{}, false
+}

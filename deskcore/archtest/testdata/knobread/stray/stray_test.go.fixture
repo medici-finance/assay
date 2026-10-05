@@ -1,0 +1,8 @@
+package stray
+
+import (
+	"os"
+	"testing"
+)
+
+func TestX(t *testing.T) { _ = os.Getenv("X") }

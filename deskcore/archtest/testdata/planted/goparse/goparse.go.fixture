@@ -1,0 +1,9 @@
+// Package goparse reads a file through go/parser, with no os import.
+package goparse
+
+import "go/parser"
+
+func Read() error {
+	_, err := parser.ParseFile(nil, "/etc/hosts", nil, 0)
+	return err
+}

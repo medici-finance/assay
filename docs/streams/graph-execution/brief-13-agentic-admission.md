@@ -14,6 +14,7 @@ risk:
   customer: no
   irreversible: no
   sensitive-data: no
+design: DR-graph-exec-13
 gate-why: The owner confirms the proposed admission policy preserves mandatory controls and existing human authority.
 decision-trigger: spec
 issues: []
@@ -45,7 +46,23 @@ single-point-of-failure: the new contract or policy alone cannot establish safe 
 
 ## Human decision
 
-Decision-trigger: spec. At implementation pickup, prepare concrete policy choices and negative-path evidence, then file a self-contained decision issue. No response permits no activation; schema/test work may proceed within the declared scope.
+Decision-trigger: spec. What is being decided is the admission policy values the owner adopts before anything consults the evaluator. The schema, the validator and the tests ship either way. Nothing is activated by this decision.
+
+Three values are open:
+
+- **Failed readiness checks.** Each one caps at human-led, except a missing acceptance definition, which caps at discovery-only. Validation already refuses any agent lane here.
+- **Disposition to risk-input mapping.** Bounded maps to standard, supervised to elevated, and everything else to human. Gates are always unioned with the brief's own verdict.
+- **Absent or uncalibrated advice.** It changes nothing: the facts-only result stands, so the owner's category ceiling is the only lane-opener.
+
+Why it matters: these values decide how much an agent may do without a human, and only the owner can rule on them.
+
+Options:
+
+1. Adopt the three values above as the starting policy, with every category's ceiling set by its owner when that category is admitted. (Recommended.)
+2. A stricter start: cap every category at supervised-agent until a bounded lane has been separately approved.
+3. Rework: name the values to change, and they come back as a revised policy before any activation.
+
+Default if no answer: nothing activates. The evaluator stays unconsulted, and no admission policy is adopted.
 
 ## Read first
 
@@ -84,6 +101,43 @@ The flow row must call production contract code across the seam; isolated serial
 ## Evidence
 
 <!-- Independent verifier records command, exit, key output/digest, subject revision, environment and date. No implementation or execution evidence is asserted by this authoring change. -->
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestAgenticAdmission" ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 75fc02522bd9 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestAgenticAdmissionConfidenceCannotAuthorize" ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 75fc02522bd9 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestAgenticAdmissionRiskInputUnion" ./...` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-02 | assay-verifier-app[bot] @ 75fc02522bd9 (on-behalf-of human:ian) (forge-identity) |
+
+### Verification — graph-execution/13 — first independent pass, 2026-10-02
+
+**VERIFY: BLOCKED (witness owed) — rows 1 to 3 pass by hand at 75fc02522bd9 (contains the implementation, #2014), but all three are `check:ci` rows and no network-off witness has run, so this is not a pass verdict. Evidence only — the brief is `gate: human`, `regulatory: yes`; no status change is made here and no model signs it off.** Run by a non-implementer in an isolated worktree, with an isolated home directory for every Go command.
+
+| # | Command | Exit | Observed | Verdict | Runner |
+|---|---------|------|----------|---------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestAgenticAdmission" ./...` | 0 | PASS for all 8 matched top-level tests (Fixtures, PolicyValidation, ConfidenceCannotAuthorize, RiskInputUnion, MalformedInput, ScopeBoundary, GateSeamBounds, SubjectNotEchoed); 69 subtest PASS lines, 0 FAIL; the owning package (internal/deskkit) prints `ok` with no no-tests marker | match | claude-sonnet-5-5-verifier @ 75fc02522bd9 (on-behalf-of human:ian) |
+| 2 | same, `-run "^TestAgenticAdmissionConfidenceCannotAuthorize"` | 0 | `--- PASS: TestAgenticAdmissionConfidenceCannotAuthorize`; owning package `ok`, no no-tests marker | match | claude-sonnet-5-5-verifier @ 75fc02522bd9 (on-behalf-of human:ian) |
+| 3 | same, `-run "^TestAgenticAdmissionRiskInputUnion"` | 0 | `--- PASS: TestAgenticAdmissionRiskInputUnion`; owning package `ok`, no no-tests marker | match | claude-sonnet-5-5-verifier @ 75fc02522bd9 (on-behalf-of human:ian) |
+
+**Mutation check (row 2).** Two production mutations were applied in turn to the advice fold in tools/desk/internal/deskkit/admission.go and then reverted: (a) let an advice label replace the cap unconditionally; (b) let it replace the cap only when its probability is at least 0.95. Row 2 went red both times (exit 1, admission_test.go:349, "widened \"supervised-agent\" to \"bounded-agent-work\""). After the revert the tree was clean and row 2 was green again. Both mutants were caught at the first fixture that tripped them; the missing-verifier fixture alone was not isolated.
+
+**Flow seam (row 3).** The test loads the shipped workflow-pattern tables through the production loader and calls the production gate mapping and evaluator for every brief verdict, disposition and fixture; for the shipped pattern the expected gate sets come from the shipped tables, not a hand-built expected document. The union case is the exception: it loads a test-only pattern with non-nested gate lists and compares the result against two literal gate lists written in the test (admission_test.go:467-477). Defective tables and an unmapped verdict are refused at the seam. No production caller of the evaluator or the gate mapping exists outside admission.go and its tests at this commit — wiring is graph-execution/14's scope, so the flow beyond loader and shipped table has no execution evidence yet.
+
+**Risk-bearing values (regulatory: yes)**
+
+| Value | Where | Basis |
+|-------|-------|-------|
+| disposition → risk input map (standard / elevated / human) | admission.go:126-132 | derived: the brief's Human decision text and the owner decision recorded in DR-graph-exec-13 |
+| human-floor operations (merge, release, deploy) | admission.go:416 | derived: the brief's "preserve human merge/release floors" |
+| readiness-fail ceiling may not sit below human-led | admission.go:474 | derived: the brief's "failed readiness checks cap at human-led" |
+| input bounds 256 / 16 / 32 / 16 and a 1 MiB pattern cap | admission.go:332-336 | named, not derived: the spec and schema state the same numbers without a rationale; they fail closed |
+| reason-token grammar, 64-character cap | admission.go:343 | named, not derived |
+| fact and advice age of 24h | testdata/admission/policy.json:59-60 | fixture example only; the code requires only a positive value |
+
+No confidence threshold exists in the code: no probability cutoff literal appears in the change.
+
+**Execution witness.** The witness table above records all three rows as could-not-run: they are `check:ci` rows and the runner's network-off sandbox is a Linux facility, absent on this darwin host. A Linux witness is still owed before any stamp.
+
+**Remaining for the human gate:** the sign-off itself; the real per-category policy values (ceilings, readiness-fail ceilings, fact and advice age) when a category is admitted; acceptance of, or a rationale for, the two named-not-derived bounds.
 
 ## Review
 

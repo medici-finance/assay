@@ -1,7 +1,7 @@
 {
-  "test": "go test ./cmd/deskwt/ ./cmd/deskdispatch/ -count=1 -timeout 300s -run 'TestAddRole|TestAddWith|TestAddSsh|TestAddSSH|TestWorktreeCreatePassesTheDispatchedRole'",
+  "test": "go test ./cmd/deskwt/ ./cmd/deskdispatch/ -count=1 -timeout 300s -run 'TestRoleEndpoint|TestRoleInit|TestTransport|TestAddRole|TestAddWith|TestAddSsh|TestAddSSH|TestWorktreeCreatePassesTheDispatchedRole'",
   "control": {
-    "name": "CONTROL — drop the explicit :443 (a global `url.<ssh>.insteadOf = https://<host>/` rewrites the App URL straight back to SSH)",
+    "name": "CONTROL \u2014 drop the explicit :443 (a global `url.<ssh>.insteadOf = https://<host>/` rewrites the App URL straight back to SSH)",
     "file": "cmd/deskwt/transport.go",
     "old": "\thttpsURL := \"https://\" + host + \":443/\" + repo + \".git\"",
     "new": "\thttpsURL := \"https://\" + host + \"/\" + repo + \".git\""
@@ -10,8 +10,8 @@
     {
       "name": "write only the pushurl, leave remote.origin.url inherited (fetch keeps authenticating with the operator's SSH key)",
       "file": "cmd/deskwt/transport.go",
-      "old": "\tfor _, key := range []string{\"remote.origin.pushurl\", \"remote.origin.url\"} {",
-      "new": "\tfor _, key := range []string{\"remote.origin.pushurl\"} {"
+      "old": "var transportURLKeys = []string{\"remote.origin.pushurl\", \"remote.origin.url\"}",
+      "new": "var transportURLKeys = []string{\"remote.origin.pushurl\"}"
     },
     {
       "name": "append the worktree-scoped URL without the empty-entry reset (the field shape: git keeps the shared SSH url first and the sentinel pushurl alongside)",
@@ -20,7 +20,7 @@
       "new": "\t\tif _, werr := \"\", error(nil); werr != nil {"
     },
     {
-      "name": "trust the config write — skip the read-back of what git resolves (an insteadOf or an older git leaves the inherited transport in play, reported as success)",
+      "name": "trust the config write \u2014 skip the read-back of what git resolves (an insteadOf or an older git leaves the inherited transport in play, reported as success)",
       "file": "cmd/deskwt/transport.go",
       "old": "\t\tif len(got) != 1 || got[0] != httpsURL {",
       "new": "\t\tif false {"
@@ -46,8 +46,8 @@
     {
       "name": "refuse but do not roll back (the role worktree is left on disk with the inherited transport)",
       "file": "cmd/deskwt/deskwt.go",
-      "old": "\t\ttransportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)\n\t\tif terr != nil {\n\t\t\t_ = removeWorktreeDir(guard, dir, resolvePath(target))\n",
-      "new": "\t\ttransportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)\n\t\tif terr != nil {\n"
+      "old": "transportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)\n\t\tif terr != nil {\n\t\t\tif rerr := removeWorktreeDir(guard, dir, resolvePath(target)); rerr != nil {\n\t\t\t\treturn fmt.Errorf(\"%w; rollback failed: %v\", terr, rerr)\n\t\t\t}\n\t\t\tfmt.Fprintln(os.Stderr, \"deskwt: worktree ROLLED BACK\")\n\t\t\treturn terr\n\t\t}",
+      "new": "transportDetail, terr := wireRoleTransport(resolvePath(target), roleKey, repo)\n\t\tif terr != nil {\n\t\t\treturn terr\n\t\t}"
     },
     {
       "name": "a --role add never wires the transport at all (the worktree inherits the shared checkout's)",
@@ -57,15 +57,69 @@
     },
     {
       "name": "deskdispatch cuts the verifier worktree without --role (the dispatch path never reaches the transport writer)",
-      "file": "cmd/deskdispatch/dispatch.go",
-      "old": "\t\twt = runCmd(o.root, \"deskwt\", \"add\", wtName, \"--detach\", \"--base\", worktreeBase(o, branch),\n\t\t\t\"--role\", plan.identityRole)",
-      "new": "\t\twt = runCmd(o.root, \"deskwt\", \"add\", wtName, \"--detach\", \"--base\", worktreeBase(o, branch))"
+      "file": "cmd/deskdispatch/reviewworktree.go",
+      "old": "\targs = append(args, \"--base\", worktreeBase(o, plan.branch), \"--role\", plan.identityRole)",
+      "new": "\targs = append(args, \"--base\", worktreeBase(o, plan.branch))\n\tif !(verifierKit(o.kit)) {\n\t\targs = append(args, \"--role\", plan.identityRole)\n\t}"
     },
     {
       "name": "deskdispatch cuts the worker worktree without --role",
-      "file": "cmd/deskdispatch/dispatch.go",
-      "old": "\t\twt = runCmd(o.root, \"deskwt\", \"add\", wtName, \"--branch\", branch, \"--base\", worktreeBase(o, branch),\n\t\t\t\"--role\", plan.identityRole)",
-      "new": "\t\twt = runCmd(o.root, \"deskwt\", \"add\", wtName, \"--branch\", branch, \"--base\", worktreeBase(o, branch))"
+      "file": "cmd/deskdispatch/reviewworktree.go",
+      "old": "\targs = append(args, \"--base\", worktreeBase(o, plan.branch), \"--role\", plan.identityRole)",
+      "new": "\targs = append(args, \"--base\", worktreeBase(o, plan.branch))\n\tif !(!plan.detached) {\n\t\targs = append(args, \"--role\", plan.identityRole)\n\t}"
+    },
+    {
+      "name": "class guard no longer detects credential-only references (positive control must fail)",
+      "file": "cmd/deskwt/transportguard_test.go",
+      "old": "if ok && id.Name == \"wireRoleCredential\" {",
+      "new": "if ok && id.Name == \"unusedCredentialName\" {"
+    },
+    {
+      "name": "new role-init installs credentials without transport",
+      "file": "cmd/deskwt/roleinit.go",
+      "old": "\n\tif _, werr := wireRoleTransport(p.target, p.role, repo); werr != nil {",
+      "new": "\n\tif werr := wireRoleCredential(p.target, p.role, repo, roleCredUser(p.role)); werr != nil {"
+    },
+    {
+      "name": "reused role-init installs credentials without transport",
+      "file": "cmd/deskwt/roleinit.go",
+      "old": "\n\t\tif _, werr := wireRoleTransport(p.target, p.role, repo); werr != nil {",
+      "new": "\n\t\tif werr := wireRoleCredential(p.target, p.role, repo, roleCredUser(p.role)); werr != nil {"
+    },
+    {
+      "name": "name-only exemption hides unrelated receiver methods",
+      "file": "cmd/deskwt/transportguard_test.go",
+      "old": "if fn.Recv == nil && fn.Name.Name == \"wireRoleTransport\" {",
+      "new": "if fn.Name.Name == \"wireRoleTransport\" {"
+    },
+    {
+      "name": "admit unsupported HTTP(S) service ports for provisioning",
+      "file": "cmd/deskwt/transport.go",
+      "old": "if port := u.Port(); port != \"\" && (strings.EqualFold(u.Scheme, \"http\") || port != \"443\") {",
+      "new": "if port := u.Port(); false && port != \"\" && (strings.EqualFold(u.Scheme, \"http\") || port != \"443\") {"
+    },
+    {
+      "name": "validate HTTPS authorities only",
+      "file": "cmd/deskwt/transport.go",
+      "old": "if strings.HasPrefix(lower, \"https://\") || strings.HasPrefix(lower, \"http://\") {",
+      "new": "if strings.HasPrefix(lower, \"https://\") {"
+    },
+    {
+      "name": "accept empty explicit HTTP(S) service ports",
+      "file": "cmd/deskwt/transport.go",
+      "old": "if strings.HasSuffix(u.Host, \":\") {",
+      "new": "if false && strings.HasSuffix(u.Host, \":\") {"
+    },
+    {
+      "name": "a failure after the URL writes leaves them in place (the retained role-init worktree pushes to the App URL)",
+      "file": "cmd/deskwt/transport.go",
+      "old": "if rerr := restoreWorktreeValues(target, saved); rerr != nil {",
+      "new": "if rerr := error(nil); rerr != nil {"
+    },
+    {
+      "name": "keep the inherited helper chain until the credential step (an ambient credential answers for the App URL on failure)",
+      "file": "cmd/deskwt/transport.go",
+      "old": "\tif _, rerr := runGit(target, \"config\", \"--worktree\", \"--replace-all\", \"credential.helper\", \"\"); rerr != nil {\n\t\treturn \"\", deskkit.Unverifiable(\"cannot reset the worktree-scoped credential helper chain at \"+target, rerr)\n\t}\n\tprovisioned := false",
+      "new": "\tprovisioned := false"
     }
   ]
 }

@@ -131,6 +131,145 @@ Observations:
 - The changelog fragment named in the Context file list was folded into CHANGELOG.md by the v1.0.16 changelog roll-up. That is the expected lifecycle, not a missing deliverable.
 
 VERIFY: PASS. All five rows exited 0 on the host in a scrubbed environment. The statusgen witness is could-not-run on darwin, so it needs a Linux-runner witness if the flip requires a machine witness.
+### Verification — 2026-09-30 (assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) (on-behalf-of human:ian)) — 2026-09-30 claude-opus-5-5-verifier
+
+Non-implementer verification on merged main b0088804294b8b68ad8d06f341e6f0fd9dd2637d, gate: model, all four risk answers no. First table: the `statusgen verifyrun` execution witness, landed verbatim; it ran on Linux (golang:1.25-bookworm pinned by digest, `--network none`, `unshare --net` available), statusgen built in-container from a clone pinned to this SHA. Second table: the hand run.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `python3 tools/cellctl/tests/model-policy.test.py` | fail exit=1 | sha256:4c715e5f784d | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| 2 | `bash tools/cellctl/tests/provider.test.sh` | pass exit=0 | sha256:fa9017b35232 | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| 3 | `bash tools/cellctl/tests/harness.test.sh` | fail exit=1 | sha256:edf9abd91704 | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| 4 | `bash tools/cellctl/tests/model-namespace.test.sh && bash tools/cellctl/tests/model-override.test.sh && bash tools/cellctl/tests/cell-set.test.sh` | fail exit=1 | sha256:cef9c18e8b1d | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+| 5 | `bash -n tools/cellctl/testdata/cellctl-shell-oracle.sh` | pass exit=0 | sha256:e3b0c44298fc | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `python3 tools/cellctl/tests/model-policy.test.py` | named tests pass, incl. mixed-provider show/up/desk agreement and recording-harness exec arguments | exit 1. "Ran 17 tests ... FAILED (failures=1)". 16 ok; test_real_exec_argv_and_env FAIL with "cellctl: desk: fetch of origin main in (fixture repo) failed and wrote no FETCH_HEAD — refusing to boot on a stale main" (launcher exit 3). Same result at the parent of 3be9befd7 is OK (17/17); at 3be9befd7 (#1853) it is FAILED (1), so #1853 broke the fixture. With the fixture's fetch stub changed to write FETCH_HEAD (throwaway clone), 17/17 OK incl. test_real_exec_argv_and_env and test_desk_show_and_up_agree_on_mixed_providers | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ b0088804294b (on-behalf-of human:ian) |
+| 2 | `bash tools/cellctl/tests/provider.test.sh` | exit 0; provider credential and override behavior preserved without policy | exit 0. "provider.test.sh: OK" | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ b0088804294b (on-behalf-of human:ian) |
+| 3 | `bash tools/cellctl/tests/harness.test.sh` | exit 0; Claude/Codex launch behavior preserved without policy | exit 0. "harness.test.sh: OK" (darwin host has tmux on PATH) | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ b0088804294b (on-behalf-of human:ian) |
+| 4 | `bash tools/cellctl/tests/model-namespace.test.sh && bash tools/cellctl/tests/model-override.test.sh && bash tools/cellctl/tests/cell-set.test.sh` | all three suites exit 0 | exit 0. "model-namespace.test.sh: OK", "model-override.test.sh: OK", "cell-set.test.sh: OK" (darwin host has tmux and herdr on PATH) | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ b0088804294b (on-behalf-of human:ian) |
+| 5 | `bash -n tools/cellctl/testdata/cellctl-shell-oracle.sh` | exit 0 | exit 0, no output | 2026-09-30 | assay-verifier-app[bot] (claude-opus-5-5) @ b0088804294b (on-behalf-of human:ian) |
+
+RISK-VALUE: DERIVED — builtin ban (oracle) banned += ["*opus-5*", "*opus5*"] @ tools/cellctl/testdata/cellctl-shell-oracle.sh:755 — the brief says "Prohibit Opus 5, including explicit child requests"; fnmatch on the lowercased, [1m]-stripped ID with a trailing wildcard catches every Opus 5.x spelling, and row 1's test_ban_cannot_be_removed_by_omitting_deny passes on both hosts. It over-covers (also refuses Opus 5.5), which is the safe direction for a prohibition.
+RISK-VALUE: NAMED, NOT DERIVED — builtin ban (shipped Go launcher) m.Banned += "*opus-5", "*opus5", "*opus-5-0", "*opus-5.0" @ tools/desk/cmd/cellctl/policy.go:252 — this set is NOT exercised by any Verify row (all rows run the bash oracle), and its completeness against every Opus 5.0 ID form was not derived; question #1937.
+RISK-VALUE: NAMED, NOT DERIVED — example strong tier "model": "claude-opus-4-8[1m]" @ tools/cellctl/examples/model-policy.json:44 and example deny "*opus-5" @ tools/cellctl/examples/model-policy.json:4 — matches the brief's "map the example Opus tier to 4.8"; operator-editable example, reversible, no further derivation attempted; question #1938.
+
+Notes:
+- BLOCKED. Hand rows 2-5 pass; row 1 fails on merged main because the suite's fetch stub writes no FETCH_HEAD, which the launcher refuses since #1853 (the parent of that commit passes 17/17; with a stub that writes FETCH_HEAD, 17/17 pass): a test-fixture regression, bug #1936. The Linux witness passes rows 2 and 5; rows 3 and 4 fail there only because the suites need host tmux (and herdr), a hermeticity gap in the rows as authored, tracked with the other row re-authors at #1927. `statusgen brief --check-verified` with a hypothetical flip exits 1 against main's Evidence and with this witness appended. Two RISK-VALUE lines are NAMED, NOT DERIVED (questions #1937 and #1938); the Verify table covers only the bash oracle, not the shipped Go launcher.
+- Grounded expectation was written before reading tests: opt-in CELL_MODEL_POLICY, example mapping Opus to 4.8, offline policy suite, legacy suites unchanged, docs updated. Main drift since authoring: the bash launcher moved to tools/cellctl/testdata/cellctl-shell-oracle.sh (#1739) and the shipped launcher is now the Go program tools/desk/cmd/cellctl, which carries its own policy implementation (policy.go, policy_enforce.go) and Go tests that port the oracle cases.
+- Row 1 is a check-definition failure: it fails as authored on darwin and Linux because #1853 (3be9befd7, "refuse to boot on a stale FETCH_HEAD after a failed fetch") removes FETCH_HEAD before the fetch, and the suite's fetch stub exits 0 without writing it. Bisected: parent of 3be9befd7 is 17/17 OK, 3be9befd7 is FAILED (1). The policy substance passes when the stub writes FETCH_HEAD (17/17 OK). No CI workflow runs tools/cellctl/tests, which is why the regression landed unnoticed. Fix belongs in the test fixture (the stub fetch should write FETCH_HEAD), not in the launcher.
+- Rows 3 and 4 are hermeticity gaps in the check definition: the suites depend on host tmux (and herdr for cell-set) being on PATH. They pass on darwin because this host has both installed, and pass on Linux with no-op stubs. As authored they fail on a clean Linux runner, so the check:ci witness cannot go green without either provisioning those tools in the runner or stubbing them inside the suites.
+- Main's Evidence row 5 records the pre-#1739 command; check-verified correctly treats it as stale.
+- The Verify table proves the bash oracle only. The shipped Go launcher diverges from the oracle on the Opus ban pattern set and on the-desk (version floor at Opus 5.5 vs refusing every Opus). The docs describe the Go behaviour. No Verify row covers the Go policy arm; worth a follow-up row (for example the Go package's policy tests) so the verified claim covers what ships.
+- Task 5 (release, enable, inspect a parent and child transcript) is a rollout check outside the Verify table; this offline pass did not perform it and makes no claim about live adoption.
+- No credentials were minted or used; no forge writes; claim not released.
+
+VERIFY: BLOCKED
+
+### Non-implementer verifier run: 2026-10-02T22:39:33Z (UTC), assay-verifier-app[bot] (claude-opus-5-5[1m]) (on-behalf-of human:ian), merged main e1d99484ffd91b649ea45e10a1cecf4ba2a4924b
+
+Hand run on a darwin host in a scrubbed environment (env -i keeping HOME, PATH, USER, LANG; KUBECONFIG=/dev/null; TMPDIR redirected to a scratch directory outside the checkout). Gate: model; all four risk answers no. Every row was executed exactly as authored.
+
+| # | Command | Expect | Observed (exit + key output line) | Date / runner |
+|---|---------|--------|-----------------------------------|---------------|
+| 1 | `python3 tools/cellctl/tests/model-policy.test.py` | named tests pass, including mixed-provider show/up/desk agreement and recording-harness exec arguments | exit 0. "Ran 19 tests ... OK". With -v, 19 of 19 print "ok", including test_desk_show_and_up_agree_on_mixed_providers, test_real_exec_argv_and_env, test_ban_cannot_be_removed_by_omitting_deny, test_child_mapping_allowlist_and_hooks, test_unsupported_efforts and test_competing_allowlist_refuses_before_launch | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | `bash tools/cellctl/tests/provider.test.sh` | exit 0; existing provider credential and override behavior preserved without policy | exit 0. "provider.test.sh: OK" (76 ok lines, no FAIL) | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | `bash tools/cellctl/tests/harness.test.sh` | exit 0; existing Claude/Codex launch behavior preserved without policy | exit 0. "harness.test.sh: OK" (host has tmux on PATH; with tmux removed from PATH the same suite exits 1, "harness.test.sh: 6 FAILED") | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | `bash tools/cellctl/tests/model-namespace.test.sh && bash tools/cellctl/tests/model-override.test.sh && bash tools/cellctl/tests/cell-set.test.sh` | all three suites exit 0; no legacy pin, override or persistence regression | exit 0. "model-namespace.test.sh: OK", "model-override.test.sh: OK", "cell-set.test.sh: OK" (host has tmux and herdr on PATH; with both removed from PATH the chain exits 1 at the first suite, "model-namespace.test.sh: 2 FAILED") | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | `bash -n tools/cellctl/testdata/cellctl-shell-oracle.sh` | exit 0 | exit 0, no output | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Execution witness (`statusgen verifyrun --brief ... --dry-run`, statusgen v1.0.31, throwaway HOME, exit 2), per row:
+
+- Row 1: could not be executed on this host. check:ci rows need the network-off sandbox (`unshare --net`, a Linux facility); this host is darwin.
+- Row 2: could not be executed on this host, same reason.
+- Row 3: could not be executed on this host, same reason.
+- Row 4: could not be executed on this host, same reason.
+- Row 5: could not be executed on this host, same reason.
+
+Witness result: 0 of 5 rows executed. The dry run wrote nothing to the brief and left no untracked file in the worktree.
+
+Findings:
+
+- By hand, 5 of 5 rows pass as authored on this host. That is a change from the 2026-09-30 run, where row 1 failed.
+- Row 1 is fixed on main. Commit 20864edfd (#1944) made the suite's fetch stub write FETCH_HEAD and added two tests (test_fetch_stub_writes_fetch_head, test_no_fetch_stub_exits_without_fetch_head), so the suite is now 19 tests, up from 17. Bug #1936 is still open although its fix is merged; it looks closable, which is the desk's call.
+- Rows 3 and 4 still pass only because the host has tmux and herdr installed. Re-run with a PATH that has neither, row 3 exits 1 (6 FAILED) and row 4 exits 1 (model-namespace 2 FAILED); row 1 still passes 19/19 on that PATH. So a clean Linux runner would still fail rows 3 and 4, as the 2026-09-30 Linux witness recorded. This is tracked as an open checklist item on #1927 (open).
+- No row passes vacuously. Row 1's named tests were confirmed individually with -v. Rows 2 to 4 print per-assertion ok/FAIL lines and no skips. Row 5 is a syntax check of the bash oracle only; the file reached its current path in b227b4076 (#1739), a rename of the launcher added by the implementing commit ef102f7f7, so the row proves the oracle parses and nothing more.
+- The Verify table still covers only the bash oracle. The shipped Go launcher has its own policy arm and no row runs it (open question #1937; open checklist item on #1927).
+- No workflow under .github/workflows references tools/cellctl/tests, so none of these suites run in CI.
+- The changelog fragment named in the Context file list is absent on main; the 2026-09-27 notes record it as folded into CHANGELOG.md by a release roll-up.
+- Task 5 (release, enable, inspect a parent and child transcript) is a rollout check outside the Verify table; this offline pass did not perform it.
+- Blocker #1800 (darwin host has no network-off sandbox) is open and unchanged. #1491 (in-container witness defects) is open.
+
+Inputs changed since the 2026-09-27 outcome record (sha 874d56de38a7): every declared input differs. All eleven file inputs have a different sha256 (the brief, docs/cellctl-model-policy.md, docs/cellctl.md, the example model-policy.json, and the seven suites cell-set, harness, model-namespace, model-override, model-policy, provider, scrubbed-cell), and the tool moved from v1.0.27 to v1.0.31. Changes on those paths since that sha: #1739 (oracle moved to testdata), #1760, #1762, #1631/#1650, #1853, #1944, #1945, #1981, #2007, plus the two Evidence landings on the brief (#1783, #1950).
+
+Risk-bearing values. Risk metadata is present with every field "no" and irreversible "no"; no trigger fires. Enumeration re-checked at this sha (scope: bash oracle policy arm, example policy file, Go launcher policy arm):
+
+1. oracle built-in ban: banned + ["*opus-5*", "*opus5*"] @ tools/cellctl/testdata/cellctl-shell-oracle.sh:757. Reversible by an edit and a release.
+2. example deny: "*opus-5" @ tools/cellctl/examples/model-policy.json:4. Operator-editable example. Reversible.
+3. example strong tier: "claude-opus-4-8[1m]" @ tools/cellctl/examples/model-policy.json:44. Reversible.
+4. Go alias map: {fable: top, opus: strong, sonnet: mid, haiku: fast} @ tools/desk/cmd/cellctl/policy.go:32. Reversible.
+5. Go built-in ban: since #1945 this is no longer a pattern list. It is the version match in isBannedOpus50 @ tools/desk/cmd/cellctl/model.go:61, applied to every value. Reversible.
+
+RISK-VALUE: DERIVED — oracle ban banned + ["*opus-5*", "*opus5*"] @ tools/cellctl/testdata/cellctl-shell-oracle.sh:757 — the brief says "Prohibit Opus 5, including explicit child requests"; the trailing wildcard on the lowercased ID catches every Opus 5 spelling, and row 1's test_ban_cannot_be_removed_by_omitting_deny passes. It over-covers (also refuses Opus 5.5), the safe direction for a prohibition.
+RISK-VALUE: NAMED, NOT DERIVED — Go built-in ban isBannedOpus50 @ tools/desk/cmd/cellctl/model.go:61 — replaced the four-pattern list the 2026-09-30 run named; no Verify row executes it and its completeness was not derived here; question #1937 (open).
+RISK-VALUE: NAMED, NOT DERIVED — example strong tier "claude-opus-4-8[1m]" @ tools/cellctl/examples/model-policy.json:44 and example deny "*opus-5" @ tools/cellctl/examples/model-policy.json:4 — matches the brief's "map the example Opus tier to 4.8"; no further derivation attempted; question #1938 (open).
+
+No credentials were minted or used; no forge writes; claim left in place.
+
+VERIFY: BLOCKED — 5 of 5 rows pass by hand on darwin, but the check:ci execution witness executed 0 of 5 rows on this host (#1800, open), and rows 3 and 4 depend on host tmux/herdr so they would still fail on a clean Linux runner (#1927, open)
+
+### Non-implementer verifier re-run — VERIFY: BLOCKED — 2026-10-04 claude-opus-5-5-verifier
+
+Non-implementer verification on merged main 70deba75a5775d50574695d2fb24efeb757c552f, by assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian). Gate: model; all four risk answers no.
+
+Why this re-run: the 2026-10-02 receipt (outcome blocked at e1d99484f, blocker #1800) went stale because its declared input docs/cellctl.md changed on main. Between e1d99484f and 70deba75a that file gained three prose changes: a pointer to the host desk communications page (#2141), a paragraph on Windows path escaping in cell.env (#2043), and a rewrite of the "Host desk cadence" section saying Codex house desks now default to bounded cadence passes (#2124). None of these touches the cell model-policy text this brief verifies. The only other in-scope change in the window is tools/cellctl/tests/parity.test.sh (a nested-name `new` case), which no Verify row runs. docs/cellctl-model-policy.md, the example policy, the bash oracle and the Go policy files (policy.go, model.go, policy_enforce.go) are byte-identical across the window. Expectations were written down from the brief's Verify table before the existing Evidence was read: rows 1-5 exit 0, row 1 with the named policy tests passing.
+
+Execution witness (`statusgen verifyrun --brief`). Linux, run in a container: golang:1.25-bookworm pinned by digest sha256:3b4a11519ad9…, already cached locally (nothing pulled), `--network none`, `unshare --net` available via `--cap-add SYS_ADMIN`, GOPROXY=off. The checkout was a clone pinned to 70deba75a with a clean tree. statusgen was built from that clone's statusgen/ at the pinned sha (GOOS=linux, GOPROXY=off; it reports version "dev"). The witness was appended to the clone's copy of the brief and then audited there.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `python3 tools/cellctl/tests/model-policy.test.py` | pass exit=0 | sha256:db306961d02c | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `bash tools/cellctl/tests/provider.test.sh` | pass exit=0 | sha256:fa9017b35232 | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `bash tools/cellctl/tests/harness.test.sh` | fail exit=1 | sha256:f6c727d29bed | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `bash tools/cellctl/tests/model-namespace.test.sh && bash tools/cellctl/tests/model-override.test.sh && bash tools/cellctl/tests/cell-set.test.sh` | fail exit=1 | sha256:54825d01cdae | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `bash -n tools/cellctl/testdata/cellctl-shell-oracle.sh` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+
+`statusgen verifyrun --check` on the clone carrying this witness exits 1 with "3 pass, 2 fail, 0 could-not-run/missing (of 5 Verify rows)". Run against main's current Evidence (the worktree brief, unmodified), the same check exits 1 with "2 pass, 3 fail, 0 could-not-run/missing (of 5 Verify rows)", because it reads the 2026-09-30 Linux witness, where row 1 failed. On this darwin host, `statusgen verifyrun --dry-run` (v1.0.31) lists all five rows as could-not-run (check:ci needs `unshare --net`; #1800). That darwin table is superseded by the Linux table above and is not carried.
+
+Hand run on the darwin host in a scrubbed environment: env -i keeping PATH, LANG and TERM; a throwaway HOME; KUBECONFIG=/dev/null; a fixed placeholder git identity. Every row ran exactly as authored.
+
+| # | Command | Expect | Observed (exit + key output line) | Date / runner |
+|---|---------|--------|-----------------------------------|---------------|
+| 1 | `python3 tools/cellctl/tests/model-policy.test.py` | named tests pass, including mixed-provider show/up/desk agreement and recording-harness exec arguments | exit 0. "Ran 19 tests ... OK". With -v, all 19 print ok, including test_desk_show_and_up_agree_on_mixed_providers, test_real_exec_argv_and_env, test_ban_cannot_be_removed_by_omitting_deny, test_child_mapping_allowlist_and_hooks, test_direct_and_alias_requests, test_unsupported_efforts, test_competing_allowlist_refuses_before_launch and test_up_preflights_all_roles_before_windows. The Linux witness also passes. | 2026-10-04 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 2 | `bash tools/cellctl/tests/provider.test.sh` | exit 0; existing provider credential and override behavior preserved without policy | exit 0. "provider.test.sh: OK", with 76 ok lines and no FAIL. The Linux witness also passes. In the unscrubbed agent shell the suite exits 1 with "2 FAILED" (the no-provider arm asserts on ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY/ANTHROPIC_MODEL). The cause is the caller's own ANTHROPIC_* variables leaking into the baseline arm. That is a hermeticity gap from before this brief, already recorded 2026-09-27; it is not a regression. | 2026-10-04 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 3 | `bash tools/cellctl/tests/harness.test.sh` | exit 0; existing Claude/Codex launch behavior preserved without policy | exit 0. "harness.test.sh: OK", with 60 ok lines and no FAIL. The host has tmux on PATH. The Linux witness fails: with no tmux in the image, the container shows "harness.test.sh: 6 FAILED" (the check and up cases). With no-op tmux and herdr stubs on PATH in the same container it exits 0. | 2026-10-04 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 4 | `bash tools/cellctl/tests/model-namespace.test.sh && bash tools/cellctl/tests/model-override.test.sh && bash tools/cellctl/tests/cell-set.test.sh` | all three suites exit 0; no legacy pin, override or persistence regression | exit 0. "model-namespace.test.sh: OK" (26 ok), "model-override.test.sh: OK" (24 ok), "cell-set.test.sh: OK" (92 ok). The host has tmux and herdr on PATH. The Linux witness fails at the first suite: in the container "model-namespace.test.sh: 2 FAILED" (both are check cases). With no-op tmux and herdr stubs the whole chain exits 0. | 2026-10-04 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 5 | `bash -n tools/cellctl/testdata/cellctl-shell-oracle.sh` | exit 0 | exit 0, no output. The Linux witness also passes. | 2026-10-04 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+
+Risk-bearing values. Risk metadata is present, every field is "no" and irreversible is "no", so no trigger fires. The enumeration was re-checked at 70deba75a over the bash oracle's policy arm, the example policy file and the Go launcher's policy arm. None of these changed since e1d99484f.
+
+1. Oracle built-in ban: banned + ["*opus-5*", "*opus5*"] at tools/cellctl/testdata/cellctl-shell-oracle.sh:757. Reversible by an edit and a release.
+2. Example deny: "*opus-5" at tools/cellctl/examples/model-policy.json:4. This is an operator-editable example. Reversible.
+3. Example strong tier: "claude-opus-4-8[1m]" at tools/cellctl/examples/model-policy.json:44. Reversible.
+4. Go alias map: {fable: top, opus: strong, sonnet: mid, haiku: fast} at tools/desk/cmd/cellctl/policy.go:32. Reversible.
+5. Go built-in ban: the version match in isBannedOpus50 at tools/desk/cmd/cellctl/model.go:61. Reversible.
+
+RISK-VALUE: DERIVED — oracle ban banned + ["*opus-5*", "*opus5*"] @ tools/cellctl/testdata/cellctl-shell-oracle.sh:757 — the brief says "Prohibit Opus 5, including explicit child requests". The trailing wildcard, matched against the lowercased ID with [1m] stripped, catches every Opus 5 spelling. Row 1's test_ban_cannot_be_removed_by_omitting_deny passes on both darwin and Linux. The ban over-covers (it also refuses Opus 5.5), which is the safe direction for a prohibition.
+RISK-VALUE: NAMED, NOT DERIVED — Go built-in ban isBannedOpus50 @ tools/desk/cmd/cellctl/model.go:61 — no Verify row executes the Go policy path, and its completeness was not derived here. Question #1937 is open.
+RISK-VALUE: NAMED, NOT DERIVED — example strong tier "claude-opus-4-8[1m]" @ tools/cellctl/examples/model-policy.json:44 and example deny "*opus-5" @ tools/cellctl/examples/model-policy.json:4 — these match the brief's "map the example Opus tier to 4.8". No further derivation was attempted. Question #1938 is open.
+
+Findings:
+
+- By hand, 5 of 5 rows pass as authored on darwin in a scrubbed environment. The result is unchanged from 2026-10-02.
+- The Linux check:ci witness now exists at this sha: 3 rows pass and 2 fail. Row 1 is green on Linux for the first time; on 2026-09-30 it failed on the FETCH_HEAD stub, which #1944 fixed. Rows 3 and 4 fail only because the suites need tmux (and herdr) on PATH. The same container with no-op stubs passes both. This is a hermeticity gap in the check definition, tracked on #1927 (open). It is not a policy regression.
+- #1800 (darwin has no network-off sandbox) is still open. This run worked around it with the cached Linux image, so it no longer stops a witness from being produced. The blocker that stops a green witness is now #1927.
+- Bug #1936 (the model-policy fetch stub wrote no FETCH_HEAD) is still open even though its fix (#1944) is on main and row 1 passes 19/19 on both hosts. It looks closable; that is the desk's call.
+- The Verify table covers the bash oracle only. The shipped Go launcher's policy arm has no row (#1937, plus the open checklist item on #1927).
+- Task 5 (release, enable, and inspect a parent and child transcript) is a rollout check outside the Verify table. This offline pass did not perform it and makes no claim about live adoption.
+- No credentials were minted or used. There were no forge writes, the worktree brief is unmodified, and the claim was left in place.
+
+VERIFY: BLOCKED — 5 of 5 rows pass by hand on darwin. The Linux check:ci witness at 70deba75a is 3 pass / 2 fail: rows 3 and 4 depend on host tmux/herdr and fail on a clean runner (#1927, open). #1800 remains open for darwin witnesses.
 
 ## Review
 

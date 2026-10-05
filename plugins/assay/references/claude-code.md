@@ -47,6 +47,7 @@ binding ([`cursor.md`](./cursor.md)) that carry the `degrades`/`refuses` cells.
 | `adopt` | runs |
 | `ask-decision` | runs |
 | `author-brief` | runs |
+| `cut-release` | runs |
 | `dailies` | runs |
 | `human-runsheet` | runs |
 | `install` | runs |
@@ -55,6 +56,7 @@ binding ([`cursor.md`](./cursor.md)) that carry the `degrades`/`refuses` cells.
 | `pdfingest` | runs |
 | `pr-review-desk` | runs |
 | `pr-shepherd` | runs |
+| `system-demo` | runs |
 | `the-desk` | runs |
 | `upgrade-assay` | runs |
 | `verify-desk` | runs |

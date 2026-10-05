@@ -49,34 +49,35 @@ func in(xs []string, x string) bool {
 	return false
 }
 
-// sidecarBase is a small, realistic verify-outcomes.jsonl already on the branch.
-const sidecarBase = `{"ts":"2026-09-07T01:00:00Z","brief":"example-stream/01","outcome":"verify-fail","rows_passed":4,"rows_total":5,"sha":"0000001"}
-`
+// These four tests used to land their fixture as an APPENDED line in
+// docs/streams/verify-outcomes.jsonl via --evidence-file. #882 retires that
+// whole-file append model: a verify-outcome now lands as its own brand-new file via
+// --outcome-record, and gateVerifiedSidecarLanding applies to it exactly as it did to an added
+// log line (isVerifyOutcomesSidecar recognises the new per-file record shape too) — so each
+// fixture below is now ONE record file, landed via --outcome-record, rather than one more line
+// appended to a shared log.
 
 // TestVerifiedSidecarRefusedWhenClosureNotAccepted is the fail-first regression guard for #1309:
-// a landing that APPENDS an `"outcome":"verified"` row for a brief whose tree does NOT present a
+// a landing that adds an `"outcome":"verified"` record for a brief whose tree does NOT present a
 // lint-valid verified closure (Evidence filled, but no witness / board still implemented) is
 // refused, and NOTHING is written. Before this gate existed the row landed unconditionally and
 // verifyloop then bucketed the mismatch as a stuck-flip review had to refuse.
 func TestVerifiedSidecarRefusedWhenClosureNotAccepted(t *testing.T) {
 	f, errBuf := setupFake(t)
 
-	// The tree does not accept a verified closure for the appended brief.
+	// The tree does not accept a verified closure for the brief.
 	var askedFor []string
 	verifiedClosureCheckFn = func(root, brief string) (closureVerdict, string, error) {
 		askedFor = append(askedFor, brief)
 		return closureNotAccepted, "example-stream/14: NOT accepted — Status is \"implemented\", not verified/done", nil
 	}
 
-	evidencePath := "docs/streams/verify-outcomes.jsonl"
-	appended := sidecarBase +
-		`{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verified","rows_passed":5,"rows_total":5,"sha":"0000002"}` + "\n"
-	root := rootWithFile(t, evidencePath, appended)
-	f.setFile(evidencePath, sidecarBase)
+	line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verified","rows_passed":5,"rows_total":5,"sha":"0000002"}`
+	recFile := writeRepoFile(t, "record.json", line+"\n")
 
-	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
+	code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile})
 	if code != deskkit.ExitRefused {
-		t.Fatalf("verified-without-closure sidecar landing exit = %d, want %d (stderr %q)", code, deskkit.ExitRefused, errBuf.String())
+		t.Fatalf("verified-without-closure record landing exit = %d, want %d (stderr %q)", code, deskkit.ExitRefused, errBuf.String())
 	}
 	if len(f.hits) != 1 || !strings.HasPrefix(f.hits[0], "GET ") {
 		t.Fatalf("refusal must not write: hits = %v (want a single GET, no PUT)", f.hits)
@@ -93,7 +94,7 @@ func TestVerifiedSidecarRefusedWhenClosureNotAccepted(t *testing.T) {
 }
 
 // TestVerifiedSidecarAllowedWhenClosureAccepted is the AFTER-fix companion: a genuinely
-// lint-valid verified closure still appends `"outcome":"verified"` exactly as before.
+// lint-valid verified closure still lands the `"outcome":"verified"` record exactly as before.
 func TestVerifiedSidecarAllowedWhenClosureAccepted(t *testing.T) {
 	f, errBuf := setupFake(t)
 
@@ -101,15 +102,12 @@ func TestVerifiedSidecarAllowedWhenClosureAccepted(t *testing.T) {
 		return closureAccepted, "", nil
 	}
 
-	evidencePath := "docs/streams/verify-outcomes.jsonl"
-	appended := sidecarBase +
-		`{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verified","rows_passed":5,"rows_total":5,"sha":"0000002"}` + "\n"
-	root := rootWithFile(t, evidencePath, appended)
-	f.setFile(evidencePath, sidecarBase)
+	line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verified","rows_passed":5,"rows_total":5,"sha":"0000002"}`
+	recFile := writeRepoFile(t, "record.json", line+"\n")
 
-	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
+	code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile})
 	if code != deskkit.ExitOK {
-		t.Fatalf("accepted verified sidecar landing exit = %d, want 0 (stderr %q)", code, errBuf.String())
+		t.Fatalf("accepted verified record landing exit = %d, want 0 (stderr %q)", code, errBuf.String())
 	}
 	if f.putCalls != 1 {
 		t.Fatalf("expected exactly 1 write, got %d", f.putCalls)
@@ -120,24 +118,21 @@ func TestVerifiedSidecarAllowedWhenClosureAccepted(t *testing.T) {
 }
 
 // TestVerifyFailSidecarRowNeverGated proves the gate is scoped to `verified`: a landing that
-// appends only a `verify-fail` row never consults the closure check and lands unchanged.
+// adds only a `verify-fail` record never consults the closure check and lands unchanged.
 func TestVerifyFailSidecarRowNeverGated(t *testing.T) {
 	f, errBuf := setupFake(t)
 
 	verifiedClosureCheckFn = func(root, brief string) (closureVerdict, string, error) {
-		t.Fatalf("closure check must NOT run for a verify-fail-only landing (brief %q)", brief)
+		t.Fatalf("closure check must NOT run for a verify-fail record (brief %q)", brief)
 		return closureCouldNotErr, "", nil
 	}
 
-	evidencePath := "docs/streams/verify-outcomes.jsonl"
-	appended := sidecarBase +
-		`{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","rows_passed":2,"rows_total":5,"sha":"0000002"}` + "\n"
-	root := rootWithFile(t, evidencePath, appended)
-	f.setFile(evidencePath, sidecarBase)
+	line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","rows_passed":2,"rows_total":5,"sha":"0000002"}`
+	recFile := writeRepoFile(t, "record.json", line+"\n")
 
-	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
+	code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile})
 	if code != deskkit.ExitOK {
-		t.Fatalf("verify-fail sidecar landing exit = %d, want 0 (stderr %q)", code, errBuf.String())
+		t.Fatalf("verify-fail record landing exit = %d, want 0 (stderr %q)", code, errBuf.String())
 	}
 	if f.putCalls != 1 {
 		t.Fatalf("expected exactly 1 write, got %d", f.putCalls)
@@ -154,15 +149,12 @@ func TestVerifiedSidecarCouldNotCheckRefusesUnverifiable(t *testing.T) {
 		return closureCouldNotErr, "", deskkit.Unverifiable("statusgen verifyclosure could not evaluate "+brief, nil)
 	}
 
-	evidencePath := "docs/streams/verify-outcomes.jsonl"
-	appended := sidecarBase +
-		`{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verified","rows_passed":5,"rows_total":5,"sha":"0000002"}` + "\n"
-	root := rootWithFile(t, evidencePath, appended)
-	f.setFile(evidencePath, sidecarBase)
+	line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verified","rows_passed":5,"rows_total":5,"sha":"0000002"}`
+	recFile := writeRepoFile(t, "record.json", line+"\n")
 
-	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
+	code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile})
 	if code != deskkit.ExitUnverifiable {
-		t.Fatalf("could-not-check verified sidecar landing exit = %d, want %d (stderr %q)", code, deskkit.ExitUnverifiable, errBuf.String())
+		t.Fatalf("could-not-check verified record landing exit = %d, want %d (stderr %q)", code, deskkit.ExitUnverifiable, errBuf.String())
 	}
 	if f.putCalls != 0 {
 		t.Fatalf("could-not-check still wrote %d time(s)", f.putCalls)

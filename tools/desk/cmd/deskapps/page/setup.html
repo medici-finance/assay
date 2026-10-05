@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>deskapps — details</title>
+<style>{{.CSS}}</style>
+</head>
+<body>
+<h1>deskapps</h1>
+<div class="chips">
+  <span class="chip">Tier</span>
+  <span class="chip current">Details</span>
+  <span class="chip">Create</span>
+  <span class="chip">Install</span>
+  <span class="chip">Prove</span>
+</div>
+
+<div class="identity-strip">
+{{/* S-5: no <img src="{{.Identity.AvatarURL}}"> — that is a live third-party fetch to
+     avatars.githubusercontent.com from the loopback page, which the brief's Ground rules
+     ("the page makes no third-party request") forbid. The operator's avatar is cosmetic and
+     App avatars are brief example-stream/06's job; the login/email below identify the account. */}}
+<div>
+  <div><strong>{{.Identity.Login}}</strong> &lt;{{.Identity.Email}}&gt;</div>
+  <div>Your browser must be signed in to this same GitHub account. We check after Create.</div>
+</div>
+</div>
+
+{{if .Mismatch}}
+<div class="banner" style="border-color: var(--danger); background: #ffebe9; color: var(--danger);">
+  The browser that clicked Create was signed in as a different account than {{.Identity.Login}}. Nothing was written. Switch accounts in your browser, then Create again.
+</div>
+{{end}}
+
+<p><strong>Owner:</strong> {{if eq .OwnerKind "me"}}personal-owned — an App created under a personal account leaves with that account.{{else}}org-owned: {{.Org}} (requires org owner).{{end}}</p>
+
+<p><strong>App names</strong> ({{.Tier}} tier, prefix {{.Prefix}}):</p>
+<table>
+  <tr><th>App</th><th>Permissions</th><th>Roles bound</th></tr>
+  {{range .Specs}}
+  <tr>
+    <td>{{.Name}}</td>
+    <td>{{range $i, $p := .Permissions}}{{if $i}}, {{end}}{{$p}}{{end}}</td>
+    <td>{{if .ReadOnly}}READ_APP (index/read paths){{else}}{{range $i, $r := .Roles}}{{if $i}}, {{end}}{{$r}}{{end}}{{end}}</td>
+  </tr>
+  {{end}}
+</table>
+<p>Permissions are fixed at creation by the manifest; any later widening needs GitHub's UI plus re-consent on every installation.</p>
+
+<p>Avatars: generated per App, previewed once brief example-stream/06 wires this step in — not shown here yet.</p>
+
+<p><a href="/run">Continue to Create →</a></p>
+<p class="footer-note">Nothing is sent to GitHub until you click Create on GitHub's own page.</p>
+</body>
+</html>

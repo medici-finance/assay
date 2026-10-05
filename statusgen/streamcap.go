@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -81,15 +80,11 @@ var streamBaseIsActive = func(root, relpath string) bool {
 // (no git, a shallow clone missing the ref, the file absent on base) returns
 // false — treat as diff-introduced.
 func productionStreamBaseIsActive(root, relpath string) bool {
-	mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output()
-	if err != nil {
-		return false
-	}
-	base := strings.TrimSpace(string(mb))
+	base := mergeBaseExact(root, remoteMainRef)
 	if base == "" {
 		return false
 	}
-	out, err := exec.Command("git", "-C", root, "show", base+":"+relpath).Output()
+	out, err := gitShowObject(root, base, relpath)
 	if err != nil {
 		return false
 	}

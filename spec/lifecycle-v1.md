@@ -91,6 +91,67 @@ grandfathered to a NOTICE — the inherited corpus is not retroactively falsifie
 conforming implementation MUST NOT describe a POST-pin `verified`/`done` closure with
 no witness as adequately attested.
 
+**The evidence coverage condition (graph-execution/03).** `verified` additionally
+requires that the brief's evidence **coverage** be `released`: the set of mandatory
+claims — every Verify row, plus a bound workflow-pattern-v1 node's own
+`evidence[].mandatory: true` entries when one applies — each resolve `pass` at the
+item's revision. The item's revision is the tree the evaluation runs at, resolved offline
+(the checked-out `HEAD`): the PR head on an open PR's branch, and on the model-lane
+`verified`→`done` flip the main tip that flip runs at — generally LATER than the brief's
+merge SHA, not the merge SHA itself. A witness counts at the item's revision when its tree
+names that revision exactly, or names a commit that shares history with the item's
+revision (the two have a common ancestor) and whose tree does not differ from the item's
+in any path the witness speaks for. That is a content comparison of the two trees: the
+witness commit need not be an ancestor of the item's revision, because a squash merge
+discards the branch commit a witness names without changing a byte the check read. An
+implementation MAY instead require the witness commit to be an ancestor (crediting only
+merged history), and MUST NOT accept a witness while a path it speaks for differs. Content
+equality is all the comparison shows: not that the witness commit was merged or reviewed,
+and not that its run happened — the Evidence row remains the only record of the run. A
+witness commit absent from the evaluating clone (an unfetched squash-merged branch commit,
+a hand-edited sha), or an item revision that names no commit, leaves the comparison
+without footing, and the witness is not credited. Reusing another tree's
+result needs an explicit applicability derivation (the work-input amendment): a `files:` declaration by itself never narrows
+what a witness speaks for, because file non-overlap alone is not proof. Without a
+complete work-input dependency manifest for the brief, a witness speaks for every path
+outside the board's own bookkeeping (`docs/streams/**` and the generated `STATUS.md`),
+and the derivation is that none of those paths changed. Only a complete manifest licenses
+a narrower scope: the brief's declared `files:` entries plus the claim's source
+dependencies (a declared directory covers everything under it), taken as the union of the
+declaration now and as it stood at the witness's commit, so narrowing `files:` after the
+run never shrinks it. Even then, if any declared entry does not resolve to a real path at
+the witness's commit or the item's revision (a brace form, `.`, prose, a bare sibling
+name, a `**` inside a glob), the conservative scope applies. An entry that names nothing
+never narrows the scope to nothing, and every word of a `files:` value counts as an entry,
+so prose can only widen the scope. A manifest's policy, build and environment dependencies
+are fingerprinted at the witness's commit and at the item's revision. A changed one holds
+only the claims that depend on it, as `wrong-revision` naming it; one that cannot be
+fingerprinted is `could-not-check`. A reused `pass` states the revision it is reused at
+and its derivation, and keeps the witness's own revision: an old receipt is never
+retargeted to the new subject. A witness never
+speaks for the files verify and regeneration necessarily write — the generated
+`STATUS.md`, the verify-outcomes log, a stream `README.md`, and brief files — even when
+`files:` names them (any other declared `docs/streams/` artifact stays guarded), and never
+for the brief's own file, whose Verify rows are bound separately (below). Changed paths are
+compared with rename detection off, so a renamed or moved path counts as a change to its
+old path. A change to a path the witness speaks for, after it ran, is `wrong-revision`. A witness recorded
+over an uncommitted working tree (`+dirty`, or `+unknown`) is compared by its base commit;
+that tolerance is a declared residual of the witness-trust gap (the token cannot say what
+was dirty), not a guarantee the uncommitted edits landed. Any
+mandatory claim that is `missing`, `error`, `could-not-check`, `wrong-revision`, or an
+outright `fail` HOLDS coverage, and a conforming implementation MUST NOT promote
+`verified` (or the `verified`→`done` flip) while coverage is not released — this is a
+DEMOTION exactly like the stale-witness-version case above, read off a different
+signal. A pattern node MAY declare an `observe` evidence entry — a signal watched over
+a window after a change lands, filled from a named source; an unreadable source is
+`could-not-check`, never `pass`. A conforming implementation MUST NOT treat a model's
+own textual assessment of a row as an execution witness satisfying a mandatory claim,
+and MUST invalidate a witness whose bound Verify-row text has since changed (the claim
+resolves `error`, not `pass`) — a witness answers the question it was asked, not
+whatever the row now asks. A witness whose bound Verify row cannot be read as it stood at
+the witness's revision (the brief, or that row, did not exist there) MUST resolve
+`could-not-check`, never `pass`.
+
 ### 2.5 `done`
 
 The brief additionally carries the recorded review verdict. A `gate: human` brief

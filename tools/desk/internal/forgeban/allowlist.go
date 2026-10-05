@@ -81,6 +81,16 @@ type Allowance struct {
 // fails when the permit list is longer (a new forge-CLI call site landed) AND when it is
 // shorter (a call site was migrated but the gain was not locked in). Lowering it is the
 // second half of every migration; raising it is a decision a reviewer sees as a diff.
+//
+// 7 = the five pre-existing permits plus two reviewed widenings, each its own row below:
+// internal/deskkit/preflight.go::ambientLoginProbe::gh (the ambient-identity preflight,
+// #1528) and cmd/deskapps/identity.go::runGH::gh (deskapps init's pre-token identity read,
+// the driver-ruled exception on #1260). No other permit is authorized by that raise.
+//
+// 6 = desktools-v2/03 (#2025, under the ruling on #1911) migrated cmd/deskmerge's reads — the
+// PR-state read onto GetPullRequest and the R-5 sign-off read onto ListCommentsTyped — through
+// a token minted for the repository's installation, and DELETED its runGH reach-around in the same change, so its
+// permit came off and the ceiling went down with it.
 const allowedInvocationCeiling = 6
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
@@ -93,9 +103,27 @@ var AllowedInvocations = []Allowance{
 			"method it could move to.",
 	},
 	{
+		Key: "cmd/deskapps/identity.go::runGH::gh",
+		Reason: "Exception granted by the driver's ruling on #1260 " +
+			"(https://github.com/medici-finance/assay/pull/1260#issuecomment-5737886839): deskapps init's " +
+			"manifest-flow installer runs before any App token can exist, so the design §8 identity-mismatch " +
+			"check (`ghIdentity`) reads the signed-in `gh auth` login via `gh api user` — the ONE verb this " +
+			"row permits, read-only, never a write and never a token mint of its own. The ruling's own three " +
+			"options were (A) rewrite the check off the manifest-conversion response, (B) register the call " +
+			"and raise the ceiling, (C) park until re-scoped; the driver picked (B), so this row is the " +
+			"decision, not a placeholder for one. TODO(forge-surface): retires only if a future brief " +
+			"re-sources the identity-mismatch check from the manifest-conversion response instead (the " +
+			"declined option A) — until then this permit stands as the ruling-authorized exception. " +
+			"`ghOwnedOrgs`, the other `gh` shell-out this file held, was dead code (zero call sites) and " +
+			"was removed rather than registered — see the identity.go file header.",
+	},
+	{
 		Key: "cmd/deskdigest/exec.go::runGH::gh",
 		Reason: "TODO(forge-surface): identity, the same documented ambient-credential contract as deskclose. " +
-			"Its read verbs also include `issue list`, which has no enumerated op.",
+			"Its read verbs also include `issue list`, which has no enumerated op. Left in place by " +
+			"desktools-v2/03: the tool's reads and its post share ONE ambient posting identity by design (it " +
+			"never mints), so moving only the reads onto a minted App token needs an App role for a tool run " +
+			"outside any desk loop — a custody decision the read-path ruling on #1911 does not make.",
 	},
 	{
 		Key: "cmd/deskdisposition/exec.go::gh::gh",
@@ -104,11 +132,6 @@ var AllowedInvocations = []Allowance{
 			"GitLab project at all. What is left is `set`: `pr comment` maps to PostComment and the label " +
 			"verbs now map to ApplyLabels, but `label list` still has no enumerated op and the verb mints no " +
 			"token, so routing its writes through the seam is a token-custody decision.",
-	},
-	{
-		Key: "cmd/deskmerge/exec.go::runGH::gh",
-		Reason: "TODO(forge-surface): read-only (`pr view --json`, one `gh api` read of the merge-authority " +
-			"surface). The pr view half maps to GetPullRequest; the authority read has no enumerated op.",
 	},
 	{
 		Key: "cmd/deskpushguard/main.go::fetchPR::gh",
@@ -122,15 +145,34 @@ var AllowedInvocations = []Allowance{
 			"`gh api user` to learn WHICH login a tool fall-through would silently act as, which is the exact " +
 			"opposite of routing through the interface: both Forge backends refuse to construct a client without " +
 			"an explicitly minted App token, so the enumerated seam can NEVER observe the ambient credential this " +
-			"check exists to catch. There is no Forge method it could move to — the whole point is to read the " +
-			"identity the interface deliberately excludes (inventory delta D2). Retiring it would mean deleting " +
-			"the check, not migrating it.",
+			"check exists to catch. When `gh api user` answers \"not logged in\", the same func also runs `gh auth " +
+			"token` — a LOCAL read of a stored credential (an OS-keyring login behind an empty config dir), no " +
+			"network call — and only tests the answer for being empty, so a credential still reachable behind " +
+			"\"not logged in\" is could-not-check rather than clean. There is no Forge method either call could " +
+			"move to — the whole point is to read the identity the interface deliberately excludes (inventory " +
+			"delta D2). Retiring it would mean deleting the check, not migrating it.",
 	},
 }
 
 // unresolvedRegister records every exec site whose argv[0] the checker cannot resolve. It is
 // a LEDGER of blind spots, not a permit — see the file header.
 var UnresolvedArgv = []Allowance{
+	{
+		Key: "internal/deskkit/layaadvisor.go::LayaAdvisor.Predict::<unresolved>",
+		Reason: "runs an explicitly approved operator-selected local inference executable, never wired into " +
+			"default routing; receives a JSON assessment and an offline-only environment without inherited " +
+			"forge credentials. Intended as a local model process, not a forge CLI. The configurable argv[0] " +
+			"cannot be proven by this scanner: retain could-not-check until an owner-approved executable " +
+			"and network-denying/read-only sandbox are available. This row registers the blind spot, grants " +
+			"no forge permit or runtime activation, and leaves the owner gate in place.",
+	},
+	{
+		Key: "internal/cellprocess/run.go::run::<unresolved>",
+		Reason: "the bounded host-harness runner. Its production caller is cellctl's cadence supervisor, " +
+			"which supplies the resolved claude, codex, or Cursor agent argv from the registered harness " +
+			"launch builders. It executes that argv directly with process-tree containment, never a shell " +
+			"or a forge CLI; tests supply compiled process fixtures.",
+	},
 	// cmd/cellctl — the cell launcher (the Go port of the bash script now kept only as a test
 	// oracle, tools/cellctl/testdata/cellctl-shell-oracle.sh). It reaches NO forge at all: its one
 	// credential path goes through deskkit.RoleTokenForRepo, and its own brief asserts at the
@@ -161,6 +203,12 @@ var UnresolvedArgv = []Allowance{
 		Reason: "runs the operator-registered container launcher named by CELL_CONTAINER_LAUNCHER, which " +
 			"cell.env must give as an absolute executable path. Executable argv, never eval; the launcher " +
 			"is trusted host code that owns its own runtime custody.",
+	},
+	{
+		Key: "cmd/cellctl/cursor.go::cursorHeadlessPreflight::<unresolved>",
+		Reason: "runs the Cursor agent executable with --help under a five-second deadline to verify " +
+			"its documented noninteractive permission flags. Production passes agent; tests pass a " +
+			"compiled local fixture. It launches no model session and is not a forge CLI.",
 	},
 	{
 		Key: "cmd/cellctl/deskd.go::cmdDeskd::<unresolved>",
@@ -255,8 +303,10 @@ var UnresolvedArgv = []Allowance{
 		Key: "internal/deskkit/preflight.go::ambientLoginProbe::<unresolved>",
 		Reason: "runs the `gh` path resolved one line earlier by exec.LookPath (the AllowedInvocations row for " +
 			"this func covers the forge-CLI permit); argv[0] is the resolved variable, so it lands here as a " +
-			"blind-spot ledger row. It launches `gh api user` to read the ambient identity — the D2 identity " +
-			"layer, deliberately outside the interface — never a write.",
+			"blind-spot ledger row. It launches `gh api user` to read the ambient identity and, after a " +
+			"\"not logged in\" answer, `gh auth token` to see whether a stored credential is still readable " +
+			"(the answer is only tested for being empty) — the D2 identity layer, deliberately outside the " +
+			"interface — never a write.",
 	},
 	{
 		Key: "cmd/deskrelease/github.go::resolveDeskTokenPath::<unresolved>",

@@ -175,17 +175,8 @@ func TestCrossModuleTestsAreTriggeredByWhatTheyRead(t *testing.T) {
 
 				// HALF (2) — coverage. Every read must be matched by a glob.
 				globs := workflowEventPaths(t, content, e.workflow, event)
-				for _, read := range e.reads {
-					if _, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(read))); err != nil {
-						t.Errorf("registry is stale: %s reads %s, which does not exist (%v)", e.test, read, err)
-						continue
-					}
-					if !anyGlobMatches(t, globs, read) {
-						t.Errorf("%s (%s) reads %s, but %s's on.%s.paths does not cover it (globs: %v).\n"+
-							"A cross-module guard whose trigger excludes what it reads is ADVISORY, not enforced — %s.\n"+
-							"Fix the FILTER (add a glob covering %s); do NOT weaken or delete the test (#199).",
-							e.test, job.check, read, e.workflow, event, globs, e.why, read)
-					}
+				for _, fault := range ciReadCoverage(t, repoRoot, globs, e.reads) {
+					t.Errorf("%s (%s), %s on.%s.paths: %s; fix the filter, never weaken the guard (#199)", e.test, job.check, e.workflow, event, fault)
 				}
 			}
 		})
@@ -196,6 +187,8 @@ func TestCrossModuleTestsAreTriggeredByWhatTheyRead(t *testing.T) {
 // read outside their own Go module. Both tests in this file consume it: the
 // trigger/reachability guard above, and the staleness scanner below.
 func ciCrossModuleRegistry() []ciEntry {
+	floorJob := ciJobRef{id: "build-test", check: "build-test"}
+
 	toolsDeskJob := ciJobRef{
 		id:          "test",
 		matrixValue: "tools/desk",
@@ -227,6 +220,42 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{
+			test:   "tools/desk/internal/deskkit/stageddrift_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"ci/staged-workflows", ".github/workflows"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "every staged workflow and live base must trigger the undeclared drift guard",
+		},
+		{
+			test:   "tools/desk/internal/regression/manifest_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"tools/desk", "statusgen"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the manifest dereferences test declarations in both modules; edits in either must run the desk manifest guard",
+		},
+		{
+			test:   "tools/desk/internal/regression/shell_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"tools/create-fleet-gitlab.sh", "tools/create-fleet-gitlab_test.sh", "tools/cellctl"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the floor runs offline shell fixtures outside the desk module; script changes must run the entry points",
+		},
+		{
+			test:   "tools/desk/internal/clicontract/inventory_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: floorJob, pushJob: floorJob,
+			reads: []string{
+				"docs/streams/desktools-v2/cli-migration.json", "docs/streams",
+				".github/workflows/release.yml", "Makefile", "plugins", "tools", "statusgen",
+			},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the CLI routing inventory discovers every entrypoint in the tree and checks owner briefs; a new command or brief edit anywhere must run it (desktools-v2/15)",
+		},
+
 		{
 			// Registered with the guard it enforces (#392 review
 			// B3): closecheck's entire advisory guarantee — that it cannot
@@ -333,7 +362,7 @@ func ciCrossModuleRegistry() []ciEntry {
 				"topology.yaml",
 				"topology.example.yaml",
 			},
-			why: "the 2026-08-13 publication ruling withholds topology.yaml permanently and ships " +
+			why: "the publication ruling withholds topology.yaml permanently and ships " +
 				"topology.example.yaml in its place, relocated to topology.yaml at staging. A withheld " +
 				"real file plus a hand-written public twin is the second-copy defect this test " +
 				"exists to kill, and this shape diff is the ONLY thing closing it — a schema change to " +
@@ -1085,6 +1114,24 @@ func ciCrossModuleRegistry() []ciEntry {
 				"tools/desk lets that recur silently",
 		},
 		{
+			// #2061: the scan-refusal scenario test reads the pr-review-desk
+			// skill's STOP section (outside this module) and binds its
+			// transcript judge to that text.
+			test:     "tools/desk/cmd/deskdispatch/scanrefusal_test.go",
+			module:   "tools/desk",
+			workflow: ".github/workflows/tools.yml",
+			prJob:    toolsDeskJob,
+			pushJob:  toolsDeskJob,
+			reads: []string{
+				"plugins/assay/skills/pr-review-desk/SKILL.md",
+				"plugins/assay/skills/pr-review-desk/references/verdict-format.md",
+			},
+			why: "scanrefusal_test.go judges desk transcripts after a verdict-body scan refusal " +
+				"against the pr-review-desk skill's STOP section; a skill edit that drops or softens " +
+				"that section without running tools/desk would leave the reword-after-refusal " +
+				"scenario pinning a rule the skill no longer states",
+		},
+		{
 			// #20 (F-34/F-35): writeguard was built and unit-tested in this
 			// module but was never actually wired into a live PreToolUse hook
 			// for sessions working in THIS repo's own shared checkout — only
@@ -1139,25 +1186,27 @@ func ciCrossModuleRegistry() []ciEntry {
 		},
 		{
 			// Registered by the release-stamp guard. version_test.go's
-			// TestVersionStampedFromReleaseWorkflow reads release-desk.yml and
-			// fails if the `-X …deskkit.ReleaseTag=$RELEASE_TAG` stamp is
-			// removed — the stamp that maps a running desk-tools binary back to
-			// its desk-tools/vX.Y.Z. A release-desk.yml-only edit dropping the
+			// TestVersionStampedFromReleaseWorkflow reads release.yml (the umbrella
+			// release that builds desk-tools; it once read a release-desk.yml this
+			// repository never carried, and skipped) and fails if the
+			// `-X …deskkit.ReleaseTag=$RELEASE_TAG` stamp is removed from the
+			// desk-tools build step — the stamp that maps a running desk-tools
+			// binary back to its release. A release.yml-only edit dropping the
 			// stamp is exactly the diff this guard catches, so scoped to tools/**
 			// alone it would be the one diff that does not run it (mirrors
-			// statusgen/version_test.go for release-statusgen.yml).
+			// statusgen/version_test.go).
 			test:     "tools/desk/internal/deskkit/version_test.go",
 			module:   "tools/desk",
 			workflow: ".github/workflows/tools.yml",
 			prJob:    toolsDeskJob,
 			pushJob:  toolsDeskJob,
 			reads: []string{
-				".github/workflows/release-desk.yml",
+				".github/workflows/release.yml",
 			},
 			why: "TestVersionStampedFromReleaseWorkflow proves the release build still stamps " +
 				"-X …deskkit.ReleaseTag=$RELEASE_TAG; an unstamped release ships desk-tools binaries " +
 				"that answer \"dev\" and cannot be mapped back to their desk-tools/vX.Y.Z, silently " +
-				"defeating pin checks. A release-desk.yml-only edit that drops the stamp must run this test",
+				"defeating pin checks. A release.yml-only edit that drops the stamp must run this test",
 		},
 		{
 			// Registered by the raised-by label guard. raisedbyskills_test.go is the DIFF
@@ -1973,6 +2022,8 @@ func globToRegexp(g string) (*regexp.Regexp, error) {
 // gone, or that the scanner no longer flags, is a hard failure — so the list
 // cannot rot into a blanket suppression.
 var ciRegistryOptOut = map[string]string{
+	"tools/desk/internal/deskkit/appisolation_test.go": `WalkDir("../..") from internal/deskkit reads only tools/desk test sources, within its own module; tools/** already covers every observed edit`,
+	"tools/desk/internal/gitcore/ackguard_test.go":     `filepath.Join("..", "..") from internal/gitcore resolves to tools/desk. The receive-pack reference inventory reads only non-test Go files in this same module; tools/** already triggers its CI job`,
 	"tools/harnesslint/lint_test.go": `filepath.Join(refs, "..", "skills") joins ".." onto a t.TempDir() ` +
 		`returned by copyRefs, deliberately pointing at a NONEXISTENT sibling of the temp dir to exercise the ` +
 		`absent-roster could-not-check path (TestCheckBindings_ClosureFailsWithoutRoster / ` +
@@ -2332,4 +2383,124 @@ runs:
 			}
 		}
 	})
+}
+
+// TestRegressionCIEntrypoints checks the published workflow directly. The
+// legacy house registry test intentionally skips without tools.yml; these
+// public entries must not inherit that skip.
+func TestRegressionCIEntrypoints(t *testing.T) {
+	count := 0
+	for _, e := range ciCrossModuleRegistry() {
+		if !strings.HasPrefix(e.test, "tools/desk/internal/regression/") {
+			continue
+		}
+		count++
+		raw, err := os.ReadFile(filepath.Join("../../../..", e.workflow))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, event := range []string{"pull_request", "push"} {
+			job := e.prJob
+			if event == "push" {
+				job = e.pushJob
+			}
+			ciAssertEventReachesJob(t, string(raw), e.workflow, e.module, event, job, e.runInvokes, e.test, e.why)
+			globs, filtered := ciOnEventKey(t, string(raw), e.workflow, event, "paths")
+			if !filtered {
+				if _, ignored := ciOnEventKey(t, string(raw), e.workflow, event, "paths-ignore"); ignored {
+					t.Fatalf("floor workflow %s has paths-ignore; enumerate its coverage before trusting it", e.workflow)
+				}
+				globs = []string{"**"}
+			} // ci.yml deliberately runs on every change; reachability above still checks the event and job
+			for _, fault := range ciReadCoverage(t, "../../../..", globs, e.reads) {
+				t.Errorf("%s %s: %s", e.workflow, event, fault)
+			}
+		}
+	}
+	if count != 2 {
+		t.Fatalf("floor has %d CI registry entries, want 2", count)
+	}
+}
+
+// ciReadCoverage expands directory readers to actual files. GitHub paths
+// filters see changed files, never the directory names in this registry.
+func ciReadCoverage(t *testing.T, root string, globs, reads []string) []string {
+	t.Helper()
+	var faults []string
+	for _, read := range reads {
+		count := 0
+		err := filepath.WalkDir(filepath.Join(root, filepath.FromSlash(read)), func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			count++
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			rel = filepath.ToSlash(rel)
+			if !anyGlobMatches(t, globs, rel) {
+				faults = append(faults, "uncovered read: "+rel)
+			}
+			return nil
+		})
+		if err != nil {
+			faults = append(faults, fmt.Sprintf("cannot enumerate %s: %v", read, err))
+		} else if count == 0 {
+			faults = append(faults, "read has no files: "+read)
+		}
+	}
+	return faults
+}
+
+func TestCIReadTreeCoverage(t *testing.T) {
+	root := t.TempDir()
+	entries := []string{"tools/desk", "statusgen", "tools/cellctl"}
+	for _, dir := range entries {
+		path := filepath.Join(root, dir, "nested", "read.go")
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("fixture"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, event := range []string{"pull_request", "push"} {
+		for _, dir := range entries {
+			t.Run(event+"/"+dir, func(t *testing.T) {
+				raw := "on:\n  " + event + ":\n    paths:\n      - '" + dir + "'\n"
+				globs, found := ciOnEventKey(t, raw, "fixture.yml", event, "paths")
+				if !found {
+					t.Fatal("fixture paths not parsed")
+				}
+				faults := ciReadCoverage(t, root, globs, []string{dir})
+				if len(faults) == 0 {
+					t.Fatal("directory-only filter admitted descendant read")
+				}
+				if !strings.Contains(strings.Join(faults, "\n"), dir+"/nested/read.go") {
+					t.Fatalf("descendant not named: %v", faults)
+				}
+				if faults := ciReadCoverage(t, root, []string{dir + "/**"}, []string{dir}); len(faults) > 0 {
+					t.Fatalf("healthy broad filter: %v", faults)
+				}
+			})
+		}
+	}
+	// A distinct planted reader is neither module nor shell subtree from the finding.
+	dir := "new-reader"
+	if err := os.MkdirAll(filepath.Join(root, dir, "deep"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, dir, "deep", "second.txt"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if faults := ciReadCoverage(t, root, []string{dir}, []string{dir}); len(faults) == 0 {
+		t.Fatal("second directory-only plant was missed")
+	}
+	if faults := ciReadCoverage(t, root, []string{dir + "/**"}, []string{dir}); len(faults) > 0 {
+		t.Fatal(faults)
+	}
 }

@@ -10,7 +10,9 @@ pr-review-desk reviews and flips ready → **human:<name> merges** → **verify-
 window) runs each merged brief's Verify table on merged main as a NON-implementer, fills Evidence,
 advances `implemented → verified → done`. Merging is deployment frequency, not completion, and an
 unwatched Awaiting queue is how briefs rot at `implemented`; this loop is the **Change Lead Time** fix
-and the **Change Failure Rate** sensor (`verify-outcomes.jsonl` is its input). It does not run the
+and the **Change Failure Rate** sensor (the `docs/streams/verify-outcomes/` record directory is its
+input — one file per outcome, since #882; a legacy `verify-outcomes.jsonl` line still counts for as
+long as that log is not yet retired). It does not run the
 PR event watcher (`capability:durable-monitor`) — that is pr-review-desk's.
 
 **The stream board is a derived, generated surface** — this
@@ -202,6 +204,11 @@ PRs one at a time (#882 records the pattern). Get them right before the row land
   not such an edit: never re-hash over it. If that merge changed the brief, the receipt fires when it
   lands, which is correct, because the brief changed after the verify run.
 
+Since #882, `deskevidence --outcome-record` REFUSES (exit 5, naming the field) a receipt that
+breaks any of these three rules — writer-side enforcement of what was, until then, a review-time
+catch. The three rules above are unchanged; get them right at write time and the writer's own
+gate never fires.
+
 **Sibling repos are in scope** (human:<name>, 2026-07-10, F-23): a brief whose deliverables land
 cross-repo is verified in the sibling checkout — read the set from `deskroster repos`, never a
 hardcoded list; an uncloned repo is **could-not-check** for that row, never a fail. Resync the
@@ -340,16 +347,17 @@ sets and the PR shape.
 
 Otherwise the brief does NOT advance. File a `bug` immediately (`deskfile new -R <owner/repo> --raised-by verifier
 --label bug`) with the failing command and its real output, then **continue the drain** — the filed issue
-IS the report. **In addition** append one row to the append-only sidecar
-`docs/streams/verify-outcomes.jsonl` (single-writer = this desk; the `VERIFY FAIL` commit-subject
-convention is grep-fragile, so bounce-back rate is not computable from prose). On PASS append the same
-row with `"outcome":"verified"` only AFTER the Evidence, execution witnesses, Status
-`verified` (or `done`), and dated Verified stamp have landed on the target branch and
-`statusgen --lint` accepts that same tree. Refresh the local checkout before appending;
-`deskevidence` checks the closure and compares the brief and stream README with the target
-branch. Evidence-only landings that leave Status `implemented` MUST NOT append a verified
-outcome. A PASS awaiting a closure gate is not yet a completed verification; `verify-fail`
-recording is unchanged.
+IS the report. **In addition** write one outcome record with `deskevidence --outcome-record` (since
+#882: one NEW file per outcome under `docs/streams/verify-outcomes/<stream>/`, single-writer = this
+desk; the `VERIFY FAIL` commit-subject convention is grep-fragile, so bounce-back rate is not
+computable from prose). On PASS write the same row's shape with `"outcome":"verified"` only AFTER
+the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
+landed on the target branch and `statusgen --lint` accepts that same tree. Refresh the local
+checkout before writing; `deskevidence` checks the closure and compares the brief and stream README
+with the target branch. Evidence-only landings that leave Status `implemented` MUST NOT record a
+verified outcome. A PASS awaiting a closure gate is not yet a completed verification; `verify-fail`
+recording is unchanged. Records are immutable — a correction is a NEW record (a fresh `ts`), never an
+edit of one already landed.
 
 ```
 {"ts":"<ISO8601Z>","brief":"<stream>/<NN>","outcome":"verify-fail","rows_passed":<n>,"rows_total":<N>,"sha":"<merged-head-sha>"}
@@ -400,7 +408,10 @@ earlier HELD/could-not-check text in `~~…~~` and name the run that settled it 
 runner online~~ superseded by the 2026-07-10 run below`). **Or formally defer it:** route it to a named
 follow-up with a reference (`deferred to <stream>/<NN>` or `#N`). A bare "deferred", or a row left
 HELD, is neither. The read is lexical: the words HELD and could-not-check anywhere in unstruck,
-unquoted Evidence prose count, so do not use them for status wording such as a run heading. Land
+unquoted Evidence prose count, so do not use them for status wording such as a run heading. Fenced
+code, blockquotes and inline code spans are quotation and do not count, except a span holding only
+the word itself (`HELD`), which reads as your own status token; a disposition of yours inside a
+longer span is not read, so keep it out of code formatting. Land
 `implemented → verified` only once every such line is cleared. The tooling refuses the same
 contradiction downstream: the model autoflip, the verify-gate card, and `statusgen --close-verify`
 from `verified` as well as from `implemented`. On the `verified` close the row's own status is the pass
@@ -469,14 +480,28 @@ a branch as the target instead of `main`:
    merge follows the reviewer's approval and the required status with no further action; where it has
    not, the PR waits on a human merge. Either way the brief's row is `verified` the moment the Evidence
    PR merges, and the `gate: model` verified→done flip stays CI's (see below).
-4. **Keep a reviewed Evidence PR mergeable: every state has exactly one owner.** Expect an open
-   Evidence PR to go `CONFLICTING` whenever a sibling Evidence PR lands. Every landing appends to the
-   same outcomes log, and the forge computes mergeability and performs the merge server-side, where a
-   `.gitattributes` merge driver is never applied: the log's `merge=union` resolves a LOCAL merge
-   only. (This conflict class is tracked in #882.) Read each of your open Evidence PRs against the
-   table below and act on the rows this desk owns. Merge main locally, where the union driver
-   applies, merge-never-rebase, then push. A conflict in any file other than the outcomes log is
-   authored work: resolve it and say so on the PR.
+4. **Keep a reviewed Evidence PR mergeable: every state has exactly one owner.** Since #882, an
+   Evidence PR that writes ONLY the per-file layout no longer conflicts on outcomes: each writes
+   one NEW file under `docs/streams/verify-outcomes/<stream>/`, named by a pure function of its own
+   content, so two PRs only ever add the same path when they carry byte-identical content, and two
+   identical adds merge cleanly with no driver. (Before #882, every Evidence PR appended to one
+   shared outcomes log, and the forge computed mergeability and performed the merge server-side
+   with no `.gitattributes` driver applied — the log's `merge=union` resolved a LOCAL merge only —
+   so an open Evidence PR went `CONFLICTING` whenever a sibling landed. That class is closed FOR
+   NEW WORK using the per-file layout.) For such a PR, a `CONFLICTING` verdict now means a REAL
+   content conflict — two PRs editing the same brief's `## Evidence` section, or an unrelated file
+   — never the outcomes shape.
+
+   **Transition window:** the shared `docs/streams/verify-outcomes.jsonl` log stays on disk,
+   unretired, until every open PR still touching it has landed (#882's follow-up, #1802) — a PR
+   still appending to it still conflicts with every sibling PR that also touches it, exactly as
+   before #882. Resolve that the pre-#882 way: merge main locally and push (the `merge=union`
+   driver resolves a LOCAL merge). A receipt correction on such a PR is a NEW `--outcome-record`
+   record with a later `ts`, never an edit of the existing log line.
+
+   Read each of your open Evidence PRs against the table below and act on the rows this desk owns:
+   merge main and push, merge-never-rebase, resolve whatever conflicts for real (or, for a
+   still-on-the-shared-log PR, resolve via the local merge above), and say so on the PR.
 
 A PR's state is three facts. **Verdict:** `none` (some required review lane has never given a
 verdict and none is blocking), `blocking` (any lane's latest verdict is a CHANGES_REQUESTED, an open
@@ -634,9 +659,9 @@ implementer**, because it needs an external API key, meters real billed spend, o
 session (the triggering case: a live Anthropic ACP session — adapter negotiation, metered cost, negotiated
 params). Unlike a cluster row it has **no online hand-off lane**: no second non-implementer runner holds the
 credential or can be charged the spend. Left under the plain Verify contract (a non-implementer re-runs
-every row) such a brief rots at `implemented` forever and needs a bespoke human ruling — the class that
-stranded loop-engine/14 at `implemented` and recurs across desk-console-saas/04-05, desk-console-2/01,
-desk-apps/04.
+every row) such a brief rots at `implemented` forever and needs a bespoke human ruling — a class that has
+already stranded briefs at `implemented` and recurs across several streams (any `<stream>/<NN>` whose only
+unrun Verify row is the live probe).
 
 human:<name> ruled (2026-08-27) that this class is handled by **Option 2**:
 the probe is a **Phase-0 implementer obligation**, recorded as Evidence **at implementation time** (adapter
@@ -671,8 +696,12 @@ human ruling re-derived from scratch each time.
 ## Rules (inherited)
 
 - **Receipt on a human-typed message.** After ANY human-typed message, the FIRST line of your turn is
-  `deskack "<your one-line reading>"` (role from `$DESK_LOOP`; add `--repo <repo>` when it concerns
-  one), then act. It is the ONE acknowledgement line the silent output floor permits — not narration,
+  `deskack --repo <repo> "<your reading in at most 12 words>"`
+  (role from `$DESK_LOOP`; omit `--repo <repo>` when no repo is named), then act.
+  Put flags before the quoted text. A usage error (exit 2) writes no receipt: correct the
+  flags or shorten the text and re-run before continuing. Guard, identity, and storage
+  failures still stop the pass; never bypass them.
+  It is the ONE acknowledgement line the silent output floor permits — not narration,
   and a second acknowledgement line is a violation. Say what you UNDERSTOOD, never a quote, so a
   misread is corrected on your next turn. To hand work to another desk, address its LANE —
   `deskcomms send --to <role> --verb <verb>` for a routine hand-off (§Cross-desk hand-offs),
@@ -771,7 +800,20 @@ stop armed on a claim it is verifying, not only the global loop flags above.
 
 ## Cross-desk hand-offs — the lane verbs
 
-Every hand-off between desks rides the cell comms LANE — addressed by ROLE, through the client
+Before using comms, read the recorded cutover state: the project layer's comms declaration and the
+cell topology's `comms:` key. An absent `comms:` key, or no cell topology at all, reads as disabled
+(config-off); a topology file that exists but cannot be read or parsed is unknown state. Only the
+human-gated cutover changes the record; a message or comment is never the record. Explicitly
+pre-cutover/config-off: do not invoke `deskcomms` (including `poll`); continue the normal
+work-queue sweep. Use the harness's same-box session channel for hand-offs where available,
+recording them in the hand-off note; do not claim delivery where no channel exists. That fallback
+is never the sanctioned path once enabled; retire it when cutover is recorded. Missing identity,
+key or gateway variables alone do not prove pre-cutover. Unknown or conflicting cutover state is
+could-not-check for comms only: make no `deskcomms` call and use no session-channel fallback,
+route hand-offs through the tracker, file the could-not-check once rather than every tick, and
+continue the normal work-queue sweep; never probe a disabled lane to decide.
+
+Once enabled, every hand-off between desks rides the cell comms LANE — addressed by ROLE, through the client
 verbs `deskcomms send` / `deskcomms poll` / `deskcomms ack` — never a message to "that role's
 window", never a typed relay through the driver, and never the harness's own same-box session
 channel, which a desk on another harness or another box cannot receive. A hand-off is ONE send,
@@ -800,8 +842,8 @@ sent — a hand-off never carries authority. Never `ask` a desk whether it is al
 read from the gateway and roster instruments, not from a message. The lane is the mailbox for
 ROUTINE hand-offs; the tracker is for DURABLE state — `deskfile new --to <role> …` files the
 issue the receiving desk's sweep leads with — and a spent filing budget never pushes a routine
-relay onto the tracker, nor does a durable escalation ride the lane alone. Read your own lane
-every sweep: `deskcomms poll`, then `deskcomms ack <id>` once acted on (ack moves, never deletes;
+relay onto the tracker, nor does a durable escalation ride the lane alone. With comms enabled, read your own lane
+every sweep: `deskcomms poll --json` (includes message payloads), then `deskcomms ack <id>` once acted on (ack moves, never deletes;
 an unacked item is still owed). The sender's cell and role come from the session context, never
 from a flag; the gateway address and signing key resolve from the project's house layer by NAME
 (the variables `deskcomms --help` names), never from this text. ENFORCEMENT IS GATEWAY-SIDE: the
@@ -812,11 +854,8 @@ through the gateway API directly. The verbs run silent inside this desk's noise 
 per invocation. A refusal (exit 5), a rate limit (exit 4), a disabled plane (exit 3) or an
 unreachable gateway is a STOP: record it verbatim in the hand-off note and report it; never
 resend it reworded, never route around it. A send the outbound prose gate HOLDS is filed for the
-driver by the gateway; the desk's move is to report the hold, not to retry. Until the cell's
-comms plane is enabled — a human-gated cutover; config-off before it — the harness's same-box
-session channel is the PRE-CUTOVER FALLBACK only: use it where the lane is not yet live, record
-every hand-off it carried in the hand-off note, and treat it as retired the moment the cutover is
-recorded. It is never the sanctioned path.
+driver by the gateway; the desk's move is to report the hold, not to retry. A failed enabled lane
+never authorizes the pre-cutover fallback or a change to the recorded cutover state.
 
 ## Liveness contract (binding)
 

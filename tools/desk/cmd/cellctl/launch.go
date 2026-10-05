@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -53,7 +54,7 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		}
 	}
 
-	sha := c.fetchMainUnderLock()
+	sha := c.fetchMainUnderLock(role)
 	_ = os.MkdirAll(filepath.Join(c.Dir, "worktrees"), 0o755)
 	if _, err := os.Stat(filepath.Join(wt, ".git")); err == nil {
 		// An existing tree is MERGED up to the fetched main, or the boot stops — never left
@@ -79,7 +80,11 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	if c.Deskd == "1" && !c.deskdUp() {
 		fmt.Fprintf(os.Stderr, "NOTICE: cell deskd is NOT up on %s — in your shell: CELL_ATTENDED=1 cellctl deskd %s\n", c.DeskdAddr, c.Name)
 	}
-	c.genShims()
+	// Codex composes command environments natively; other harnesses retain
+	// their existing shim contract, including the separate scrubbed path.
+	if harness != "codex" || c.Kind == "scrubbed" {
+		c.genShims()
+	}
 	if harness == "codex" {
 		c.ensureCodexResidentRules(wt)
 	}
@@ -108,9 +113,16 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		c.Name, role, c.Kind, modelDisp, effortDisp, orDefault(providerDisp, "anthropic"), harness, session, cfg, wt, orDefault(deskRoots, "unset"), c.Home)
 
 	env := os.Environ()
-	env = envSet(env, "PATH", filepath.Join(c.Dir, "shim")+":"+c.Env.Get("PATH"))
+	if harness != "codex" {
+		env = envSet(env, "PATH", filepath.Join(c.Dir, "shim")+string(filepath.ListSeparator)+c.Env.Get("PATH"))
+	}
 	env = envSet(env, "DESK_LOOP", role)
 	env = envSet(env, "DESK_SESSION", session)
+	var commsErr error
+	env, commsErr = c.deskCommsEnv(role, env)
+	if commsErr != nil {
+		die("desk comms: %v", commsErr)
+	}
 	if deskRoots != "" {
 		env = envSet(env, "DESK_ROOTS", deskRoots)
 	}
@@ -138,8 +150,33 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		if policyRes != nil {
 			argv = append(argv, policyRes.CodexArgs...)
 		}
+		commandArgs, err := c.codexEnvironmentArgs(env)
+		if err != nil {
+			die("desk: %v", err)
+		}
+		argv = append(argv, commandArgs...)
+		capacityArgs, err := c.codexCapacityArgs(role)
+		if err != nil {
+			die("desk: Codex capacity: %v", err)
+		}
+		argv = append(argv, capacityArgs...)
+		bash, err := codexBashPath()
+		if err != nil {
+			die("desk: %v", err)
+		}
 		argv = append(argv, "--sandbox", "danger-full-access", "-C", wt, "-m", model,
-			fmt.Sprintf("Invoke the %q skill now.", "assay:"+role))
+			codexRolePrompt(role, runtime.GOOS, bash))
+	} else if harness == "cursor" {
+		if err := c.prepareCursorWorkspace(role, wt); err != nil {
+			die("cursor workspace: %v", err)
+		}
+		if c.Cadence != nil {
+			if err := cursorHeadlessPreflight("agent"); err != nil {
+				die("cursor cadence: %v", err)
+			}
+		}
+		argv = cursorLaunchArgv(role, model, session, wt)
+		env = cursorLaunchEnv(env)
 	} else {
 		env = envSet(env, "CLAUDE_CONFIG_DIR", cfg)
 		// Automated desks do not need the extra next-prompt generation request.
@@ -189,6 +226,14 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 			}
 			argv = []string{"claude", "--effort", policyRes.Effort, "--settings", settings, "--name", session, "--model", model, "/assay:" + role}
 		}
+	}
+	if c.Cadence != nil {
+		c.runCadencedHarness(role, harness, argv, env, wt)
+		return
+	}
+	if c.cadenceLease != nil {
+		c.runInteractiveHarness(role, argv, env, wt)
+		return
 	}
 	runForeground(argv, env, wt)
 }
@@ -260,7 +305,8 @@ func runForeground(argv []string, env []string, dir string) {
 func envSet(env []string, k, v string) []string {
 	out := env[:0:0]
 	for _, kv := range env {
-		if !strings.HasPrefix(kv, k+"=") {
+		key, _, _ := strings.Cut(kv, "=")
+		if key != k && !(runtime.GOOS == "windows" && strings.EqualFold(key, k)) {
 			out = append(out, kv)
 		}
 	}
@@ -270,7 +316,8 @@ func envSet(env []string, k, v string) []string {
 func envUnset(env []string, k string) []string {
 	out := env[:0:0]
 	for _, kv := range env {
-		if !strings.HasPrefix(kv, k+"=") {
+		key, _, _ := strings.Cut(kv, "=")
+		if key != k && !(runtime.GOOS == "windows" && strings.EqualFold(key, k)) {
 			out = append(out, kv)
 		}
 	}

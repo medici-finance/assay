@@ -299,7 +299,7 @@ const (
 	// EnvGitLabSessionEmails is the SESSION / implementer commit-author allowlist for
 	// a GitLab worktree, comma-separated EXACT emails (#643). It exists because on
 	// GitLab the desk runs TWO distinct identities: the SESSION / implementer identity
-	// (a real GitLab user, e.g. `ih-bot`) authors the worktree's commits under its own
+	// (a real GitLab user, e.g. `qa-bot`) authors the worktree's commits under its own
 	// user.name / user.email, while the role SERVICE ACCOUNT (e.g. `assay-worker-bot`)
 	// is the analog of the GitHub role App and is used only for minted API writes.
 	// The commit-identity preflight (preflight.go) was written for the GitHub model,
@@ -354,6 +354,15 @@ const (
 	// not applied. KEEP IN SYNC with statusgen/rosterconfig.go's scanEnvStreamCap.
 	EnvStreamCap = "ASSAY_STREAM_CAP"
 
+	// EnvCriticalStampAuthorities (ASSAY_CRITICAL_STAMP_AUTHORITIES) is the
+	// STATUSGEN-only ratified authority set for the drives critical tier's
+	// stamped-security arm. statusgen consumes it; deskkit does not — but it lives
+	// in the SAME shared roster.env, so it must be RECOGNISED here or a roster that
+	// configures the authority set collapses the whole desk-tools configuration on
+	// the unknown-ASSAY_-key refusal. Recognised, not applied. KEEP IN SYNC with
+	// statusgen/rosterconfig.go's scanEnvCriticalStampAuthorities.
+	EnvCriticalStampAuthorities = "ASSAY_CRITICAL_STAMP_AUTHORITIES"
+
 	// EnvReviewerVendor (ASSAY_REVIEWER_VENDOR) records the model VENDOR the
 	// reviewer role's App runs on (verify-integrity/10). It is the reference the
 	// reviewer-calibration SPOF is measured against: deskcalibrate refuses a
@@ -389,11 +398,12 @@ const (
 	//	                                     token on GitLab); <shape> is the gate shape
 	//	                                     (environment | manual-job) GitLab needs
 	//
-	// This key chooses WHICH credential starts a release, so it takes ASSAY_REPO_FORGES'
-	// strict grammar: a bare basename, an unknown value, or a repo bound twice is
-	// ExtInvalid and the whole binding set resets to empty — every repo then reads as
-	// UNBOUND, which deskrun refuses as a configuration gap. Never a partial binding.
-	// Unset is complete: no repo is bound and deskrun dispatches nothing.
+	// This key chooses WHICH credential starts a release, so it is a TRUST key, not an
+	// extension key (a driver ruling): a bare basename, an unknown value, or a repo bound
+	// twice lands in Config.Problems and refuses the WHOLE roster, exactly as a malformed
+	// ASSAY_TRUSTED_LOGINS does — no binding survives and every desk tool refuses until it
+	// is fixed. Never a partial binding. Unset is complete: no repo is bound and deskrun
+	// dispatches nothing.
 	EnvRunCredentials = "ASSAY_RUN_CREDENTIALS"
 	// EnvClaimStore (ASSAY_CLAIM_STORE) names where this cell keeps its DISPATCH CLAIMS:
 	// `file` or `service` — one value for the cell, or comma-separated
@@ -454,6 +464,38 @@ const (
 	// consumes nothing. KEEP IN SYNC with statusgen's scanEnvAutoApproveSignOffThread and the
 	// coupling vector.
 	EnvAutoApproveSignOffThread = "ASSAY_AUTOAPPROVE_SIGNOFF_THREAD"
+
+	// EnvStampTrustedLogins (ASSAY_STAMP_TRUSTED_LOGINS) is the STAMP-AUTHORITY ALLOWANCE
+	// (#336): the trusted HUMAN logins whose standing application of a dispatched-*
+	// label the model-floor's actor check honours IN ADDITION TO the bound dispatcher
+	// slugs. Comma-separated `login[:id]`, the same grammar as ASSAY_TRUSTED_LOGINS. It exists because a legitimately dispatched PR whose stamp was
+	// applied by a trusted human (an attended, hand-run dispatch) read Indeterminate and was
+	// refused a verdict; the human ruling on #336 widened the actor check to those logins —
+	// gated behind THIS explicit roster key, never a silent default over the whole
+	// trusted-login set.
+	//
+	// Three rules, all load-bearing:
+	//
+	//	EXPLICIT ONLY    UNSET is a complete configuration and means the allowance is EMPTY:
+	//	                 only the dispatcher slugs vouch. Membership in ASSAY_TRUSTED_LOGINS
+	//	                 alone confers NO stamp authority — the widening is always a separate,
+	//	                 deliberate roster act.
+	//	NEVER CREATES    every entry must ALSO appear in ASSAY_TRUSTED_LOGINS (the allowance
+	//	TRUST            widens stamp authority for an already-trusted login; it never makes
+	//	                 an untrusted login trusted). An entry that names a login the
+	//	                 trusted-human set does not carry — or one that renders as a
+	//	                 bot/App account (App identities get authority through a role=
+	//	                 binding in ASSAY_TRUSTED_BOT_SLUGS, never here) — refuses the WHOLE
+	//	                 configuration like any other roster error.
+	//	FAIL-CLOSED      an unconfigured roster vouches for nobody, exactly as before; the
+	//	                 reader (IsStampAuthorityLogin) derives the set from the parsed
+	//	                 config, and write-class tools read it from the config-home FILE only
+	//	                 (the same ClassWrite rule as the rest of the trust surface).
+	//
+	// CONSUMED here: parseConfig lands it on cfg.StampLogins. statusgen recognises it and
+	// consumes nothing. KEEP IN SYNC with statusgen/rosterconfig.go's
+	// scanEnvStampTrustedLogins and the coupling vector.
+	EnvStampTrustedLogins = "ASSAY_STAMP_TRUSTED_LOGINS"
 )
 
 // autoLaneKeys is the four auto-approve lane keys, in one place, so parseConfig's
@@ -497,6 +539,7 @@ func knownRosterKeys() []string {
 		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
 		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo,
 		EnvWriteguardCallout, EnvContributorLedger, EnvRosterSchema,
+		EnvStampTrustedLogins,
 		// STATUSGEN-only keys: recognised so a shared roster.env that configures
 		// statusgen does not collapse deskkit's configuration; not consumed here.
 		EnvHomeRepo, EnvScanRepos, EnvAuthorizedAuthors,
@@ -544,6 +587,10 @@ func knownRosterKeys() []string {
 		// collapse the desk tools' configuration. Bound to statusgen's
 		// scanEnvStreamCap by the shared key list.
 		EnvStreamCap,
+		// EnvCriticalStampAuthorities (ASSAY_CRITICAL_STAMP_AUTHORITIES) is
+		// STATUSGEN-only (the drives critical tier's stamped-security authority set):
+		// recognised and ignored here, bound to statusgen's key by the shared list.
+		EnvCriticalStampAuthorities,
 		// EnvReviewerVendor (ASSAY_REVIEWER_VENDOR) is CONSUMED by cmd/deskcalibrate
 		// (the reviewer-calibration SPOF vendor check) via a direct os.Getenv, and
 		// EnvVerifierVendor (ASSAY_VERIFIER_VENDOR) is a documented policy key no tool
@@ -637,6 +684,14 @@ type Config struct {
 	Bless Identity
 	// Humans maps a lowercased human login to its pinned id (0 = unpinned).
 	Humans map[string]int64
+	// StampLogins is the STAMP-AUTHORITY ALLOWANCE parsed from
+	// ASSAY_STAMP_TRUSTED_LOGINS (#336): the lowercased trusted-human logins whose
+	// standing application of a dispatched-* label the model-floor's actor check honours
+	// in addition to the bound dispatcher slugs. Every entry is also in Humans — the
+	// allowance never creates trust, it widens stamp authority for logins already
+	// trusted. Empty when unset, and that is a complete configuration: only the
+	// dispatcher slugs vouch. Read through IsStampAuthorityLogin, never directly.
+	StampLogins map[string]int64
 	// Bots maps a lowercased GitHub App slug to its BOT USER id (0 = unpinned). It
 	// carries GITHUB entries only — the github-slug-keyed shape trust.go's GitHub
 	// paths read. A GitLab identity lives in BotIdents (and its username in Logins),
@@ -778,8 +833,8 @@ type Config struct {
 	// Problems are the loud, human-readable reasons the TRUST surface refused
 	// (ASSAY_BLESS_LOGIN, ASSAY_TRUSTED_LOGINS, ASSAY_TRUSTED_BOT_SLUGS,
 	// ASSAY_ALLOWED_REPOS, ASSAY_HUMAN_LOGIN_MAP — the component-manifest spec §6.2's
-	// "trust surface does not change"). Extension-key problems never land
-	// here as of this brief: see Ext.
+	// "trust surface does not change" — and ASSAY_RUN_CREDENTIALS, which chooses the
+	// credential a desk write runs as). Extension-key problems never land here: see Ext.
 	Problems []string
 }
 
@@ -819,7 +874,10 @@ type ExtKeyResult struct {
 // ASSAY_HOME_REPO are STATUSGEN-only (recognised, never parsed, here — see
 // their own const comments): this loader has no shape to validate for either,
 // so their status can only ever be ExtOK (present) or ExtUnset (absent),
-// never ExtInvalid.
+// never ExtInvalid. ASSAY_RUN_CREDENTIALS is deliberately ABSENT: it chooses
+// which credential a desk write runs as, so it is a trust key whose problems
+// refuse the whole roster (a driver ruling). extcatalogue_test.go pins this
+// catalogue to a committed allow-list and fails on any trust key reaching it.
 var extKeyNames = map[string]string{
 	EnvRiskCallout:        "risk-callout",
 	EnvWriteguardCallout:  "writeguard-callout",
@@ -827,7 +885,6 @@ var extKeyNames = map[string]string{
 	EnvReleaseRepo:        "release-repo",
 	EnvScanRepos:          "scan-repos",
 	EnvRepoForges:         "repo-forges",
-	EnvRunCredentials:     "run-credentials",
 	EnvChannelDriftTarget: "channel-drift-target",
 	EnvHomeRepo:           "home-repo",
 }
@@ -1007,7 +1064,7 @@ func readRawConfig(class ToolClass) (map[string]string, string, []string) {
 		EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs,
 		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
 		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo, EnvWriteguardCallout,
-		EnvContributorLedger, EnvRosterSchema,
+		EnvContributorLedger, EnvRosterSchema, EnvStampTrustedLogins,
 		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost,
 	}
 	fromEnv := func() map[string]string {
@@ -1188,6 +1245,7 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		Class:       class,
 		Source:      source,
 		Humans:      map[string]int64{},
+		StampLogins: map[string]int64{},
 		Bots:        map[string]int64{},
 		BotIdents:   map[string]BotIdentity{},
 		RoleBots:    map[string]string{},
@@ -1311,6 +1369,34 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		}
 		cfg.Humans[login] = id
 		cfg.Logins[login] = true
+	}
+
+	// --- the stamp-authority allowance (parsed AFTER the trusted humans: membership in
+	// that set is a precondition, so the check needs it complete) ---
+	// Every entry must be an ALREADY-trusted human login — the allowance widens stamp
+	// authority for logins the roster already trusts and never creates trust. A bot-shaped
+	// entry is refused for the same reason as in the human roster: an App identity's stamp
+	// authority flows through a role= binding (the dispatcher slugs), never through here.
+	for _, entry := range splitList(vals[EnvStampTrustedLogins]) {
+		login, id, ok := splitIdentity(entry)
+		if !ok {
+			bad("%s: cannot parse entry %q — expected login[:id] with a positive numeric id, "+
+				"the same grammar as %s", EnvStampTrustedLogins, entry, EnvTrustedLogins)
+			continue
+		}
+		if looksLikeBot(login) {
+			bad("%s lists %q, which renders as a bot/App account. An App identity's stamp "+
+				"authority comes from a dispatcher role= binding in %s, never from this key",
+				EnvStampTrustedLogins, login, EnvTrustedBotSlugs)
+			continue
+		}
+		if _, trusted := cfg.Humans[login]; !trusted {
+			bad("%s lists %q, which %s does not carry — the allowance widens stamp authority "+
+				"for an ALREADY-trusted login and never creates trust. Add the login to %s first, "+
+				"or strike it here", EnvStampTrustedLogins, login, EnvTrustedLogins, EnvTrustedLogins)
+			continue
+		}
+		cfg.StampLogins[login] = id
 	}
 
 	// --- the single blessing authority ---
@@ -1587,11 +1673,11 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	}
 	recordExt(&cfg, EnvRepoForges, vals[EnvRepoForges], repoForgesIssue)
 
-	// --- run-credential binding (ASSAY_RUN_CREDENTIALS), an EXTENSION key
-	// (forge-neutral brief 14) — parsed by parseRunCredentials (runcredential.go). ---
-	var runCredsIssue extAccumulator
-	cfg.RunCredentials = parseRunCredentials(vals[EnvRunCredentials], &runCredsIssue)
-	recordExt(&cfg, EnvRunCredentials, vals[EnvRunCredentials], runCredsIssue)
+	// --- run-credential binding (ASSAY_RUN_CREDENTIALS), a TRUST key — parsed by
+	// parseRunCredentials (runcredential.go). It decides which credential a desk write runs as,
+	// so a malformed value refuses the whole roster via bad, never just this one feature (a
+	// driver ruling reclassified it from the extension catalogue). ---
+	cfg.RunCredentials = parseRunCredentials(vals[EnvRunCredentials], bad)
 
 	// --- auto-approve lane keys (ASSAY_AUTOAPPROVE_*) — passed through RAW. ---
 	// Deliberately NOT validated here: a malformed lane key must close the lane and nothing
@@ -1961,6 +2047,10 @@ func (c Config) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: class=%s source=%s configured=%t", c.Class, c.Source, c.Configured()),
 		fmt.Sprintf("assay-config: %s=%s", EnvBlessLogin, blessStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvTrustedLogins, sortedIdents(c.Humans)),
+		// The stamp-authority allowance WIDENS the model-floor's actor check, so it
+		// renders its full sorted set here (never a count) — a widening on an identity
+		// gate must be as visible in the run as the role bindings below (#336).
+		fmt.Sprintf("assay-config: %s=%s", EnvStampTrustedLogins, sortedIdents(c.StampLogins)),
 		fmt.Sprintf("assay-config: %s=%s", EnvTrustedBotSlugs, c.sortedBotIdents()),
 		fmt.Sprintf("assay-config: role-bindings=%s", rolesStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvAllowedRepos, reposStr),

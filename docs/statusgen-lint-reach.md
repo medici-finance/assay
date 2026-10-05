@@ -16,6 +16,7 @@ change if nothing states, in one place, what the offline default actually guaran
 | **Zero forge processes started.** No `gh`, no `deskread`, nothing on `PATH` is invoked for a forge-backed read. | `deskread` is started — once per read kind per repo SET, never once per repo (forge-neutral/18 Task 1). |
 | Every forge-backed check reads **could-not-check**, rendered as itself — never rounded up to a clean pass. | Every forge-backed check reads live data, or could-not-check per repo when `deskread` reports a `partial` result. |
 | `docs/streams/.history.jsonl`, brief frontmatter, and the working tree are read normally — these are **local, not forge**. | Same, unchanged. |
+| **Claims are not read.** Origin's branch heads (`git ls-remote --heads origin`) are a network read and dead-claim decay is a forge read (`gh pr list`, or the GitLab API), so neither runs; the claim set reads could-not-check (`claim filtering UNAVAILABLE — could-not-check: --lint ran offline …`), and `--require-claims` fails rather than passing blind. No PROBLEM depends on the claim set, so the verdict is unchanged. | The claim read and its decay run as they do when regenerating the board. |
 
 `--forge` is the ONLY thing that swaps the reader. There is no environment variable, no
 ambient-credential fallback, and no "try the forge, degrade on error" path: the default reader
@@ -59,8 +60,15 @@ finds it convenient; the CI gate always runs the full, unscoped `statusgen --roo
 
 ## Auditing this contract
 
-1. `PATH=<dir with no gh, no deskread> statusgen --root . --lint` — must complete with the same
-   verdict as a networked run, having started no forge process and opened no socket.
+1. `statusgen --root . --lint` with every forge/network tool on `PATH` replaced by a shim that
+   records its argv and fails (`gh`, `glab`, `deskread`, `curl`, …), `git` wrapped to record
+   its argv — must complete with the same verdict, with no shim invoked and no `git`
+   subcommand that contacts a remote (`ls-remote`, `fetch`, …). Removing the tools from
+   `PATH` is NOT this audit: a call site that looks a tool up, fails, and degrades to
+   could-not-check passes that check while still being a forge read wherever the tool is
+   installed. `statusgen/lintoffline_test.go` runs this audit over a whole `--lint`, plus a
+   refusing `http.DefaultTransport`, and a positive control that shows the shims DO record
+   the claim read and decay once forge reads are opted in.
 2. `grep -rn 'exec.Command("gh"' statusgen/ --include='*.go' | grep -v _test.go | wc -l` — the
    completion test for forge-neutral/18 in full: `0` means every read in `statusgen/` is on this
    table or does not exist yet.

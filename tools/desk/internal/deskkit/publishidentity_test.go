@@ -33,8 +33,8 @@ const (
 
 // seam returns a Commits reader that yields the given commits verbatim, so the identity
 // logic is exercised without building a repository per case.
-func seam(commits ...PublishCommit) func(string, string) ([]PublishCommit, error) {
-	return func(string, string) ([]PublishCommit, error) { return commits, nil }
+func seam(commits ...PublishCommit) func(string, PublishRange) ([]PublishCommit, error) {
+	return func(string, PublishRange) ([]PublishCommit, error) { return commits, nil }
 }
 
 func workerCommit(sha, subject, authorEmail, committerEmail string) PublishCommit {
@@ -166,7 +166,7 @@ func TestPublishIdentityUnpinnedGitHubIDUnverifiable(t *testing.T) {
 // address is accepted, the service-account noreply SHAPE is accepted, and a GitHub-shaped
 // address for a GitLab role is refused (the cross-forge case).
 func TestPublishIdentityGitLab(t *testing.T) {
-	const sessionEmail = "ih-bot@example.org"
+	const sessionEmail = "qa-bot@example.org"
 	const saEmail = "service_account_group_9619193_abcdef@noreply.gitlab.example.org"
 	withRoster(t, map[string]string{
 		EnvBlessLogin:          "ada:2001",
@@ -236,7 +236,7 @@ func TestDefaultPublishCommitsReadsRange(t *testing.T) {
 	git("add", "feature.txt")
 	git("commit", "-m", "feature work")
 
-	commits, err := defaultPublishCommits(dir, "main")
+	commits, err := defaultPublishCommits(dir, resolvePublishRange(dir, "main", ""))
 	if err != nil {
 		t.Fatalf("defaultPublishCommits: %v", err)
 	}

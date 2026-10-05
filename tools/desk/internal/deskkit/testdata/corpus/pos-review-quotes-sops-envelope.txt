@@ -1,0 +1,10 @@
+# corpus: a review verdict that QUOTES a short sops envelope from the diff inline
+# expect: refused
+# refs:   #2060, #778
+# shape:  ENC[AES256{{+}}_GCM,data:…] with payloads too short for the high-entropy loop, in backticks in a verdict body
+# why:    only the sops arm sees a short envelope; a review surface earns no exemption for one, so the quotation must keep refusing
+Verdict: request-changes
+
+The password value in the manifest is
+`ENC[AES256{{+}}_GCM,data:c2VjcmV0,iv:aXZpdg==,tag:dGFnZw==,type:str]`, which was
+hand-edited after encryption.

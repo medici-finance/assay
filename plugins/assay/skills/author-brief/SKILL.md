@@ -132,7 +132,7 @@ decision-trigger: creation | start | spec   # OPTIONAL, gate: human only (absent
                                     # well-formed after the pickup-time design/plan step — the executor
                                     # authors `## Human decision` from that step, and THAT files it.
 exec-tier: any | strong             # OPTIONAL (absent = any) — minimum execution-model tier.
-                                    # DERIVED from three complexity questions (see rule 9); any yes → strong.
+                                    # DERIVED from four complexity questions (see rule 9); any yes → strong.
 exec-tier-why: <one line>           # Recommended when exec-tier: strong — which question(s) it answered yes.
 domain: clear | complicated | complex | chaotic   # OPTIONAL (absent = complicated) — the work's Cynefin
                                     # domain. Governs which diagnostic to reach for: Ordered
@@ -173,14 +173,15 @@ layering: <REQUIRED for a new component/service/tool or a substantial boundary c
 (domain extraction/dissolution, added adapter/entrypoint, logic crossing a process or
 trust boundary); omit otherwise. One or two lines: simplest justified structure +
 meaningful rules vs external effects (or why no extraction is warranted) + current
-reason + Task/Verify references. Defaults: domain-core for independently meaningful
-rules, flat tool for bounded orchestration; justified alternatives allowed. Adapter
-count triggers reconsideration, not mandatory extraction. Interfaces need a current
-purpose, not a second implementation. Dependency provenance does not establish purity:
-keep infrastructure and implicit effects outside a pure core. In Task/Verify, name and
-check the actual boundary and the checks' limits; test core rules without external
-services. A flat tool verifies behavior/failure paths without inventing a boundary.
-See brief-v1 §4.1; do not justify abstractions only by hypothetical future needs.>
+reason + Task/Verify references. The defaults (domain-core / flat tool), the interface
+and purity rules, and what Task/Verify must check at the boundary: brief-v1 §4.1.>
+design-fit:                  # REQUIRED on every NEW brief; its two rules: brief-v1 §4.1
+  owner: <the one module that owns the meaning this brief touches, or n/a>
+  contract: <S-<slug> row id of the semantic-owner index, or none — <why>>
+  retires: [<mechanism/refusal/flag/test this brief removes>, ...]   # [] is an answer
+  weight: <signed delta per dimension: verbs, flags, refusals, rule-text lines>
+  why-add: <required when any delta > 0: why it cannot live in the owner, and what
+           removal was considered instead; n/a otherwise>
 
 ## Human decision
 <!-- gate: human only — omit the section entirely otherwise. Lifted VERBATIM into the
@@ -357,13 +358,15 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
    check is light; the waste it prevents (re-writing a fix that already landed, claiming a vuln
    closed that was never open) is heavy.
 9. **exec-tier: complexity signals a minimum execution-model tier.** `exec-tier` is DERIVED,
-   not chosen (mirror of the gate/risk rule). The author answers three complexity questions;
+   not chosen (mirror of the gate/risk rule). The author answers four complexity questions;
    any yes → `exec-tier: strong` (absent/any-no → `any`, the default):
    (a) Does the Task require design decisions the facts do not fully pre-specify?
    (b) Does correctness depend on cross-component/cross-artifact reasoning (shared values,
        end-to-end flows, sweeping a pattern across sites)?
    (c) Is it code where a subtle implementation error survives the brief's own tests (auth,
        funds, concurrency, safety plumbing)?
+   (d) Is this a design brief raised by an error-class trigger? (A recurring defect class, not
+       one symptom, has accrued enough counted instances or merged fixes to be owed a design.)
    `strong` SHOULD carry a one-line `exec-tier-why` naming which question(s). `statusgen --lint`
    PROBLEMs an unrecognized value, NOTICEs a missing `exec-tier-why`. **Honest limitation:**
    statusgen never verifies which model actually ran — pickup-side compliance is honor-system
@@ -414,14 +417,9 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
     command TEXT and are enforced by `statusgen --lint`; this one needs to know what the deliverable
     claims, so no lint enforces it. A row can pass every one of them and still measure only presence.
 
-    Triggering evidence (anonymized): a brief delivering a third-party-app setup guide shipped an
-    8-row Verify table, every row a grep-presence count — all 8 passed, and the guide was factually
-    wrong in four places, one load-bearing (it asserted a platform enforcement property that does not
-    exist). The sibling failure mode: a market-analysis brief whose citation links were present but
-    never resolved, carrying an invented competitor name. A proposed link-resolution lint would be a
-    partial, automated instance of *this* rule — it covers link-shaped dereferencing only; a
-    command-output check or a live-ID check dereferences just as validly and isn't a link at all.
-    Don't wait for such a lint to exist before writing the row this rule asks for.
+    The triggering evidence (an all-presence table that passed 8/8 on a factually wrong guide) and
+    why a link-resolution lint would cover only link-shaped dereferencing are in the brief-rules
+    reference, rule 43. Don't wait for such a lint to exist before writing the row this rule asks for.
 12. **Sizing limits — L is the hard ceiling; prefer M for strong-tier / risk-gated work.** The
     `effort:` scale is closed at S | M | L, and the top of it is a rule, not a convention: **no
     brief may be larger than L. A unit of work that would be XL (or bigger) MUST be split into
@@ -526,6 +524,10 @@ it is an authoring convention only.
 | rule | what it checks | status |
 | --- | --- | --- |
 | `bre-alternation` | a pipe in a basic-regex grep pattern (no `-E`/`-P`) is an ordinary character, so the pattern matches the Verify row itself | advisory |
+| `cmd-marker-ambiguous` | a Command cell carrying more than one `cmd:`-marked code span, so which command the row names is ambiguous | advisory |
+| `cmd-marker-not-honoured` | a `cmd:` span verifyrun ignores because the rendered cell may not show it as code (backslash-escaped backticks; raw HTML, a link, an image, a dollar in any spelling or a character reference in the cell's prose; a span fused to the text before it; or a marker not set apart by whitespace), so the row runs its first span | advisory |
+| `cmd-marker-overrides-command` | a `cmd:` marker that replaces a first code span which reads as a command itself (multi-word), so the row runs something other than the span a reader sees first | advisory |
+| `cmd-marker-vacuous` | a `cmd:`-marked command that cannot fail (`true`, `:`, `exit 0`, a lone `echo`), so the row passes whatever the tree holds | advisory |
 | `consumers-flow-verify-row` | that a shared-value brief's Verify table carries at least one row exercising the cross-component flow end-to-end — a judgement call no lint decides | not enforced |
 | `consumers-followup-missing-brief` | a `consumers: follow-up <stream>/<NN>` whose target is not a brief in any stream README — the routing claim is false | fatal |
 | `consumers-followup-no-target` | a `follow-up` routing that names no `<stream>/<NN>` target — a deferral with no holder | advisory |
@@ -548,11 +550,13 @@ it is an authoring convention only.
 | `pattern-review-same-role` | a pattern node whose evidence includes a review claim but shares its role with the node that produced its input — the implementer<->reviewer separation is not machine-checked | fatal |
 | `pattern-risk-input-missing-verdict` | a pattern's `risk-input` omits one of the four risk-class verdicts (low/standard/elevated/human) — an instance of that risk class has no declared mandatory gates | fatal |
 | `pipeline-exit-sunk` | a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail | advisory |
+| `prose-led-command` | a prose Command cell whose first code span — the text the lift returns — is a mention (a file, a path, an `owner/repo`, a code identifier, a word ahead of the real command), not a command; verifyrun records the row could-not-run until the command is marked with a `cmd:` code span | advisory |
 | `rE2-literal-pipe` | a `\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation | advisory |
 | `shredded-cell` | a raw `|` in the Command cell is read as a table delimiter, truncating the command and shifting every later column | advisory |
 | `stream-cap` | a change that adds an active stream past the per-root active-stream cap (ASSAY_STREAM_CAP) with no offsetting park — no net new streams past the cap | fatal |
 | `stream-source` | a change that adds an active stream README citing no `spec:`, or a `spec:` whose header is not `**Status:** approved` — a stream is scaffolded only from an approved spec | fatal |
 | `unsubstituted-metavar` | an unsubstituted `<metavar>` placeholder left in the Command cell, so the row cannot be run as written | advisory |
+| `verify-row-portability` | a Verify row hardcodes /tmp, sh/bash -c or findstr without an explicit OS marker (TMPDIR fallback is exempt) | advisory |
 
 ## Before dispatch — mistake-proofing the brief itself
 
@@ -601,7 +605,8 @@ DISPATCH CHECKLIST — brief authored, before dispatch
 [ ] 5. `gate-why` is substantive — names what about THIS brief trips the wire.
 [ ] 6. Effort and exec-tier honest. Not an L wearing an M; not `any` on work that needs `strong`.
 [ ] 7. Shared value → a FLOW row, not only a site row, and `consumers:` enumerated (rule 6).
-[ ] 8. New or re-layered component → `layering:` records structure, boundary and current
+[ ] 8. Every new brief → `design-fit:` answered; any weight delta > 0 → `why-add` names what
+       removal was considered. New component → `layering:` records structure, boundary, current
        reason; Task/Verify check the claimed separation (or flat-tool behavior), not its label.
 [ ] 9. Pre-mortem run; every failure mode has a row or a recorded review-only reason.
 ```

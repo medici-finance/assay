@@ -8,6 +8,7 @@ import (
 
 // TestAppIDEnvHit — an exported <ROLE>_APP_ID wins, no file needed.
 func TestAppIDEnvHit(t *testing.T) {
+	isolateAppConfig(t)
 	t.Setenv("REVIEWER_APP_ID", "111111")
 	got, err := AppID("reviewer")
 	if err != nil {
@@ -20,6 +21,7 @@ func TestAppIDEnvHit(t *testing.T) {
 
 // TestAppIDRoleEnvName — dashed roles map to underscored env names.
 func TestAppIDRoleEnvName(t *testing.T) {
+	isolateAppConfig(t)
 	if got := roleEnvName("issue-loop"); got != "ISSUE_LOOP_APP_ID" {
 		t.Fatalf("roleEnvName = %q, want ISSUE_LOOP_APP_ID", got)
 	}
@@ -36,11 +38,9 @@ func TestAppIDRoleEnvName(t *testing.T) {
 // TestAppIDFileHit — with the env var unset, the value is read from apps.env
 // (leading `export `, quotes, and comment lines all handled).
 func TestAppIDFileHit(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	cfgDir := isolateAppConfig(t)
 	t.Setenv("REVIEWER_APP_ID", "")
 
-	cfgDir := filepath.Join(home, ".config", "assay")
 	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -60,8 +60,7 @@ func TestAppIDFileHit(t *testing.T) {
 
 // TestAppIDNeither — env unset and no file line for the role → a clear error naming both fixes.
 func TestAppIDNeither(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	isolateAppConfig(t)
 	t.Setenv("REVIEWER_APP_ID", "")
 
 	_, err := AppID("reviewer")
@@ -72,6 +71,7 @@ func TestAppIDNeither(t *testing.T) {
 
 // TestInstallIDSingleOverride — a single <ROLE>_INSTALL_ID wins for every owner.
 func TestInstallIDSingleOverride(t *testing.T) {
+	isolateAppConfig(t)
 	t.Setenv("REVIEWER_INSTALL_ID", "100000009")
 	for _, owner := range []string{"example-org", "medici-finance", "anything"} {
 		got, err := InstallID("reviewer", owner)
@@ -84,6 +84,7 @@ func TestInstallIDSingleOverride(t *testing.T) {
 // TestInstallIDPerOwner — with the single override unset, the per-owner key answers, and
 // the env-var name derives from role+owner (dashes → underscores, upper-cased).
 func TestInstallIDPerOwner(t *testing.T) {
+	isolateAppConfig(t)
 	if got := ownerInstallEnvName("reviewer", "medici-finance"); got != "REVIEWER_INSTALL_ID_MEDICI_FINANCE" {
 		t.Fatalf("ownerInstallEnvName = %q", got)
 	}
@@ -100,11 +101,9 @@ func TestInstallIDPerOwner(t *testing.T) {
 
 // TestInstallIDFromFile — with all env unset the id is read from apps.env, per-owner key.
 func TestInstallIDFromFile(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	cfgDir := isolateAppConfig(t)
 	t.Setenv("REVIEWER_INSTALL_ID", "")
 	t.Setenv("REVIEWER_INSTALL_ID_EXAMPLE_ORG", "")
-	cfgDir := filepath.Join(home, ".config", "assay")
 	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -120,8 +119,7 @@ func TestInstallIDFromFile(t *testing.T) {
 
 // TestInstallIDFailsClosed — no override, no per-owner key → an error naming both fixes.
 func TestInstallIDFailsClosed(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	isolateAppConfig(t)
 	t.Setenv("REVIEWER_INSTALL_ID", "")
 	t.Setenv("REVIEWER_INSTALL_ID_EXAMPLE_ORG", "")
 	if _, err := InstallID("reviewer", "example-org"); err == nil {

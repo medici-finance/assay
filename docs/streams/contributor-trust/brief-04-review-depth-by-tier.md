@@ -131,5 +131,87 @@ contract only requires that every claim it does extract carries a state.
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanes' -count=1` | pass exit=0 | sha256:1d28d7abce26 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesUnknownTier' -count=1 -v` | pass exit=0 | sha256:e810c326c4dc | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesContributorTier' -count=1 -v` | pass exit=0 | sha256:8224ef7de39d | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ClaimStateUnverifiedIsRepresentable' -count=1 -v` | pass exit=0 | sha256:6e93c1cff359 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ClaimEveryClaimCarriesAState' -count=1 -v` | pass exit=0 | sha256:c179bd682b79 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -n 'unverified' tools/desk/cmd/deskdispatch/references/review-lanes.md` | pass exit=0 | sha256:affec666f7bd | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -n 'merge base' tools/desk/cmd/deskdispatch/references/review-lanes.md` | pass exit=0 | sha256:fb5b5d540866 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && GOWORK=off go build ./... && GOWORK=off go vet ./internal/deskkit/` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/skillslint && go run . --root ../..; echo rc=$?` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesReferenceMatchesTable' -count=1 -v` | pass exit=0 | sha256:211b5cfcb106 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesDispatchEndToEnd' -count=1 -v` | pass exit=0 | sha256:d6b6c1ac458c | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+| 12 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:04` | fail exit=2 | sha256:d76e499494f5 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e+dirty (on-behalf-of human:ian) (forge-identity) |
+
+Verifier observations, 2026-09-27, claude-opus-5-5 (dispatched non-implementer verifier), against merged
+main 9585b4b6cc2ea8d35d367fb912e7c8216a765ba3; implementing change: squash commit 2083064fd
+(medici-finance/assay#1367). Offline envelope. The witness table above is the per-row record; the key
+output line behind each row:
+
+- Row 1: exit 0, `ok  github.com/medici-finance/assay/tools/desk/internal/deskkit`.
+- Row 2: exit 0, `--- PASS: TestReviewLanesUnknownTierGetsTheDeepSet`; logged lanes security, fact-check, fail-first.
+- Row 3: exit 0, `--- PASS: TestReviewLanesContributorTierKeepsTheStandardPath`; lanes correctness and security only, zero fail-first. Mutation probe (contributor row given LaneFailFirst): exit 1, `LanesFor(contributor) = [correctness security fail-first], want the standard path` — mutant killed, source restored.
+- Row 4: exit 0, `--- PASS: TestClaimStateUnverifiedIsRepresentable`. Mutation probe (extraction seeds ClaimConfirmed): exit 1, `extracted at state confirmed — extraction must start every claim unverified, never confirm it` — mutant killed, source restored.
+- Row 5: exit 0, `--- PASS: TestClaimEveryClaimCarriesAState` (6 claims extracted from the sample body).
+- Row 6: exit 0, 4 matching lines in the dispatch reference, first at line 63.
+- Row 7: exit 0, 2 matching lines, line 93 `Base, failing. Run the reported failing case at the merge base`.
+- Row 8: the witness's hermetic network-off re-execution needs a Linux runner (this host is darwin); the same command executed directly on the host: exit 0, no output. Hermetic re-execution belongs to CI.
+- Row 9: as row 8 for the witness; executed directly on the host: `rc=0`, `HOUSE-VALUES: PASS — 39 markdown file(s) under plugins/`.
+- Row 10: exit 0, `--- PASS: TestReviewLanesReferenceMatchesTable`.
+- Row 11: exit 0, `--- PASS: TestReviewLanesDispatchEndToEnd`; absent ledger resolves tier=unknown with lanes [correctness security fact-check fail-first]; roster identity resolves tier=maintainer with lanes [correctness security].
+- Row 12: exit 2 (statusgen v1.0.27), `COULD-NOT-CHECK: assay:assay:contributor-trust:04 is not in the diff against 9585b4b6…`. This is the known post-merge `--consumers` class tracked at medici-finance/assay#1281: on merged main the brief's own diff is empty, so this command form cannot corroborate. Supporting evidence — the same corroboration re-run at the implementing commit (head 2083064fd, base its parent cabdc0b84): exit 0, `summary: 3 corroborated, 0 disproved, 1 unchecked`; the one unchecked entry is the out-of-scope trusttier.go consumer, unchanged by design.
+
+RISK-VALUE: DERIVED — laneTable TierUnknown/TierBlessedOnce = {strongTier(LaneCorrectness), LaneSecurity, LaneFactCheck, LaneFailFirst}; TierContributor/TierMaintainer = {LaneCorrectness, LaneSecurity} @ tools/desk/internal/deskkit/reviewlanes.go:119-122 — matches the brief's "Lane set by tier" fact verbatim (deep set for the two lowest tiers, today's standard path for known tiers); only adds review for low tiers, reversible by edit + redeploy.
+RISK-VALUE: DERIVED — out-of-range tier fallback `set = laneTable[TierUnknown]` @ tools/desk/internal/deskkit/reviewlanes.go:137 — fail-closed to the deepest set, consistent with the brief's "inert until a ledger exists: every external identity is unknown" and the spec's more-scrutiny-on-doubt direction; an empty set would dispatch no review.
+RISK-VALUE: DERIVED — ExecTier = "strong" @ tools/desk/internal/deskkit/reviewlanes.go:80, :88, :96, :105 — the brief pins "correctness at strong tier" for the deep set and the security lane is unchanged from existing strong-tier dispatch; reversible knob.
+RISK-VALUE: NAMED, NOT DERIVED — claimMarkerRe (assertion-marker word list) @ tools/desk/internal/deskkit/reviewlanes.go:232 — extraction recall is explicitly a review-gate judgement per the brief's pre-mortem; every extracted claim starts unverified, so a miss narrows the starting list but never confirms a claim. Reversible.
+
+**Open question (claimMarkerRe).** The assertion-marker word list is named but not derived: no spec
+or brief fixes which verbs mark a body sentence as a claim, and no row measures extraction recall.
+Whether the list is sufficient is left to the review gate / a human reader, and is routed, not closed,
+by this verification.
+
+VERIFY: FAIL — row 12 only, and stale-shaped (check-definition): the row's command runs corroboration against merged main, where the brief is not in the diff, so it structurally returns COULD-NOT-CHECK exit 2 (the post-merge `--consumers` class, medici-finance/assay#1281). The substantive consumers claim corroborates at the implementing diff (3 corroborated, 0 disproved, 1 out-of-scope unchecked). All other rows pass on merged main; two mutation probes killed.
+
+### Non-implementer verifier re-run: 2026-10-02 21:26 (UTC), assay-verifier-app[bot] (claude-opus-5-5[1m]) (on-behalf-of human:ian), merged main 5a108baba705c5f9b458501065fc52a12557c969
+
+Re-run triggered by a changed declared input (the pr-review-desk skill body) since the 2026-09-27 verify-fail. Every row executed by hand on the host (darwin/arm64, go1.27.1, statusgen v1.0.31), offline envelope; the Go test rows ran under a throwaway HOME.
+
+| # | Command | Expect | Observed (exit + key output line) | Date / Runner |
+|---|---------|--------|-----------------------------------|---------------|
+| 1 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanes' -count=1` | exit 0; contains `ok` | exit 0; `ok  github.com/medici-finance/assay/tools/desk/internal/deskkit 0.409s` | 2026-10-02 assay-verifier-app[bot] |
+| 2 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesUnknownTier' -count=1 -v` | exit 0; contains `fact-check`, `fail-first`, `security` | exit 0; `--- PASS: TestReviewLanesUnknownTierGetsTheDeepSet`; logged lanes correctness, security, fact-check, fail-first | 2026-10-02 assay-verifier-app[bot] |
+| 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesContributorTier' -count=1 -v` | exit 0; no `fail-first` | exit 0; `--- PASS: TestReviewLanesContributorTierKeepsTheStandardPath`; logged lanes correctness and security only, zero occurrences of fail-first | 2026-10-02 assay-verifier-app[bot] |
+| 4 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ClaimStateUnverifiedIsRepresentable' -count=1 -v` | exit 0; contains `PASS` | exit 0; `--- PASS: TestClaimStateUnverifiedIsRepresentable` | 2026-10-02 assay-verifier-app[bot] |
+| 5 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ClaimEveryClaimCarriesAState' -count=1 -v` | exit 0; contains `PASS` | exit 0; `--- PASS: TestClaimEveryClaimCarriesAState`; `extracted 6 claims from the sample body` | 2026-10-02 assay-verifier-app[bot] |
+| 6 | `grep -n 'unverified' tools/desk/cmd/deskdispatch/references/review-lanes.md` | exit 0; at least one line | exit 0; 4 matching lines (63, 70, 82, 101); line 63 reads "unverified — it could not be checked from the change alone." | 2026-10-02 assay-verifier-app[bot] |
+| 7 | `grep -n 'merge base' tools/desk/cmd/deskdispatch/references/review-lanes.md` | exit 0; at least one line | exit 0; 2 matching lines (93, 99); line 93 reads "Base, failing. Run the reported failing case at the merge base of the" | 2026-10-02 assay-verifier-app[bot] |
+| 8 | `cd tools/desk && GOWORK=off go build ./... && GOWORK=off go vet ./internal/deskkit/` | exit 0 | exit 0; no output (direct host execution; the witness's network-off re-execution of this check:ci row needs a Linux runner, see witness below) | 2026-10-02 assay-verifier-app[bot] |
+| 9 | `cd tools/skillslint && go run . --root ../..; echo rc=$?` | contains `rc=0` | exit 0; `rc=0`; `HOUSE-VALUES: PASS — 39 markdown file(s) under plugins/`; advisory soft-budget NOTICE lines only (direct host execution; witness as row 8) | 2026-10-02 assay-verifier-app[bot] |
+| 10 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesReferenceMatchesTable' -count=1 -v` | exit 0; contains `PASS` | exit 0; `--- PASS: TestReviewLanesReferenceMatchesTable` | 2026-10-02 assay-verifier-app[bot] |
+| 11 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesDispatchEndToEnd' -count=1 -v` | exit 0; contains `PASS` | exit 0; `--- PASS: TestReviewLanesDispatchEndToEnd`; absent ledger gives tier=unknown lanes=[correctness security fact-check fail-first]; roster identity gives tier=maintainer lanes=[correctness security] | 2026-10-02 assay-verifier-app[bot] |
+| 12 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:04` | exit 0; no `DISPROVED`; no `COULD-NOT-CHECK`; contains `corroborated` | **FAIL** — exit 2; `statusgen: --consumers: COULD-NOT-CHECK: assay:assay:contributor-trust:04 is not in the diff against 5a108baba705…, so this run carries no evidence about its claims — no entry was corroborated and none was disproved.` | 2026-10-02 assay-verifier-app[bot] |
+
+**Execution witness** (`statusgen verifyrun --brief`, v1.0.31, exit 2): 9 of 12 rows pass (1–7, 10, 11). Rows 8 and 9: could-not-run — the witness re-executes check:ci rows network-off via `unshare --net`, a Linux facility, and this host is darwin; both pass by direct host execution above, and the hermetic re-execution belongs to a Linux runner. Row 12: fail exit=2, expected 0. The witness table was captured and its write to this brief discarded.
+
+**Findings.**
+
+- The verdict is unchanged from 2026-09-27. The only previously failing row, row 12, still fails with the same shape: on merged main the brief is not in the diff, so the command as authored structurally answers COULD-NOT-CHECK and exits 2. statusgen moved v1.0.27 → v1.0.31 between the two runs; the behaviour of this command form on a merged brief did not change. #1281 is still OPEN.
+- The input change that woke this re-run does not bear on row 12. Between the two verified heads the pr-review-desk skill body changed (unrelated review-desk edits) and this brief gained its Evidence; the lane table source, its test and the dispatch reference are byte-unchanged. The skill body still carries the tier-keyed paragraph (line 354) and row 9's skill lint stays green over the edited body.
+- Supporting evidence for the substantive consumers claim, not a substitute for the row: the same corroboration at the implementing commit 2083064fd against its parent cabdc0b84 exits 0 with `summary: 3 corroborated, 0 disproved, 1 unchecked`; the one unchecked entry is the declared out-of-scope trusttier.go consumer, unchanged by design.
+- Row 12 will keep failing on merged main until either the row is re-baselined to a form that can run post-merge (pinning the implementing commit and its base) or #1281 changes what the command does for a merged brief. This is a check-definition blocker, not an implementation defect.
+- No mutation probes were re-run in this pass (read-only pass; the 2026-09-27 probes for rows 3 and 4 stand against an unchanged source file).
+
+Risk-bearing values: the source file holding them is byte-unchanged since the 2026-09-27 pass, so the enumeration there stands and was re-read at this head:
+
+RISK-VALUE: DERIVED — laneTable TierUnknown/TierBlessedOnce = {strongTier(LaneCorrectness), LaneSecurity, LaneFactCheck, LaneFailFirst}; TierContributor/TierMaintainer = {LaneCorrectness, LaneSecurity} @ tools/desk/internal/deskkit/reviewlanes.go:119-122 — matches the brief's "Lane set by tier" fact verbatim; only adds review for the two lowest tiers; reversible by edit and redeploy.
+RISK-VALUE: DERIVED — out-of-range tier fallback set = laneTable[TierUnknown] @ tools/desk/internal/deskkit/reviewlanes.go:137 — fail-closed to the deepest set, consistent with "with no ledger every external identity is unknown".
+RISK-VALUE: NAMED, NOT DERIVED — claimMarkerRe (assertion-marker word list) @ tools/desk/internal/deskkit/reviewlanes.go:232 — no spec or brief fixes which verbs mark a sentence as a claim and no row measures extraction recall; the brief's pre-mortem leaves extraction quality to the review gate. Every extracted claim starts unverified, so a miss narrows the list but never confirms a claim. Reversible. Still an open question, routed not closed.
+
+VERIFY: FAIL — row 12 only (check-definition): `statusgen --consumers --brief` on merged main returns COULD-NOT-CHECK exit 2 because the brief is not in the diff (#1281, open). Rows 1–11 pass on merged main 5a108baba705 by direct execution; rows 8–9 lack a hermetic witness on this host. Status stays implemented.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

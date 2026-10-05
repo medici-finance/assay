@@ -423,6 +423,26 @@ func TestDeletedFileIntegrityNoOriginFallsClosed(t *testing.T) {
 	}
 }
 
+// TestDeletedNoBaseCommittedFires pins why the tombstone guard keeps its HEAD
+// fallback under the #2012 no-base ruling: unlike the field-gutting guard, a
+// COMMITTED deletion is not compared against itself there. The add is still in
+// HEAD's first-parent history and the file is gone from the tree, so it fires.
+func TestDeletedNoBaseCommittedFires(t *testing.T) {
+	root := t.TempDir()
+	gitRun(t, root, "init", "-q")
+	fdir := filepath.Join(root, "docs", "streams", "findings")
+	mustMkdirAll(t, fdir)
+	writeTemp(t, fdir, "2026-07-08-f01.md",
+		"---\nid: F-01\ndate: \"2026-07-08\"\ntitle: F01\naffects: []\nresolved: true\n---\n\nBody.")
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "add F-01")
+	gitRun(t, root, "rm", "-q", "docs/streams/findings/2026-07-08-f01.md")
+	gitRun(t, root, "commit", "-q", "-m", "delete F-01")
+	if d := deletedRegisterFiles(root); len(d) == 0 || !strings.Contains(strings.Join(d, " "), "f01") {
+		t.Errorf("a committed deletion with no resolvable base must still fire; got %v", d)
+	}
+}
+
 // TestDeletedFileIntegrityRename — T8: a landed register file that is RENAMED
 // (same ID, new filename) must NOT leave its old path as a permanent false
 // tombstone. The old path is tracked by register ID, not by frozen path.
@@ -1242,28 +1262,64 @@ func TestAuthorizedByVerifiedHumanScope(t *testing.T) {
 	}
 }
 
-// ----- base=HEAD fail-open NOTICE -----
+// ----- no-base fails closed (#2012 ruling, item 3) -----
 
-// TestRegisterBaseFallbackNoticeFires: with origin/main unresolvable the guard
-// runs degraded (committed gutting compares against itself) — say so.
-func TestRegisterBaseFallbackNoticeFires(t *testing.T) {
-	root, _ := gutFixture(t, landedOpenFinding)
+// TestNoBaseRefusesTransitions: with the exact origin/main unresolvable, --lint
+// refuses register transitions as a PROBLEM instead of comparing against HEAD —
+// where a COMMITTED gutting compares with itself and passes. The refusal carries
+// no path, so the --changed gate can never scope it away; and the old degraded
+// NOTICE is gone (the case is no longer a NOTICE).
+func TestNoBaseRefusesTransitions(t *testing.T) {
+	root, path := gutFixture(t, landedOpenFinding)
 	gitRun(t, root, "update-ref", "-d", "refs/remotes/origin/main")
-	n := registerBaseFallbackNotices(root)
-	if !containsSubstr(n, "running degraded") {
-		t.Fatalf("unresolvable origin/main must emit the degraded NOTICE; got %v", n)
-	}
-	// And prove the fail-open it warns about is real: commit the gutting, and
-	// the guard sees nothing.
-	path := filepath.Join(root, "docs", "streams", "findings", "2026-07-17-f-gut.md")
 	if err := os.WriteFile(path, []byte(strings.Replace(landedOpenFinding,
 		"resolved: false", "resolved: true", 1)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	gitRun(t, root, "add", "-A")
 	gitRun(t, root, "commit", "-q", "-m", "gut it")
+
+	ps := guttedRegisterFieldsEntries(root)
+	if len(ps) != 1 || !strings.Contains(ps[0].msg, "register transitions refused (fail-closed)") {
+		t.Fatalf("an unresolvable base must refuse register transitions; got %+v", ps)
+	}
+	if len(ps[0].paths) != 0 {
+		t.Fatalf("the refusal must carry no path, so --changed cannot scope it away; got %v", ps[0].paths)
+	}
+	if n := registerBaseFallbackNotices(root); len(n) != 0 {
+		t.Fatalf("an unresolvable base is a PROBLEM now, not a NOTICE; got %v", n)
+	}
+}
+
+// TestNoBaseDecoyRefRefused: the planted second instance of the no-base class. The
+// exact ref is absent but a branch whose name is the full ref sits on the PR's own
+// commit — the decoy git's short-name rules would read as the base. The guard
+// resolves the ref exactly (mergeBaseExact), so it is still unresolved and still
+// refused, not compared with the PR's own commit.
+func TestNoBaseDecoyRefRefused(t *testing.T) {
+	root, path := gutFixture(t, landedOpenFinding)
+	gitRun(t, root, "update-ref", "-d", "refs/remotes/origin/main")
+	if err := os.WriteFile(path, []byte(strings.Replace(landedOpenFinding,
+		"resolved: false", "resolved: true", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "gut it")
+	gitRun(t, root, "update-ref", "refs/heads/refs/remotes/origin/main", "HEAD")
+
+	p := guttedRegisterFields(root)
+	if !containsSubstr(p, "register transitions refused (fail-closed)") {
+		t.Fatalf("a decoy ref must not stand in for the missing base; got %v", p)
+	}
+}
+
+// TestNoBaseNoFindingsSilent: nothing to guard, nothing to refuse.
+func TestNoBaseNoFindingsSilent(t *testing.T) {
+	root := t.TempDir()
+	gitRun(t, root, "init", "-q")
+	mustMkdirAll(t, filepath.Join(root, "docs", "streams", "findings"))
 	if p := guttedRegisterFields(root); len(p) != 0 {
-		t.Fatalf("premise broken: committed gutting under base=HEAD should be invisible; got %v", p)
+		t.Fatalf("no findings entries => no refusal; got %v", p)
 	}
 }
 
@@ -1308,8 +1364,8 @@ func TestRegisterBaseFallbackNoticeFiresWithNoGitAtAll(t *testing.T) {
 	if !containsSubstr(n, "no .git directory") {
 		t.Fatalf("a tree with no .git directory and findings to guard must emit a NOTICE naming that cause; got %v", n)
 	}
-	// And the guard really did skip outright (distinct from the base=HEAD
-	// fail-open, which still compares — just against itself).
+	// And the guard really did skip outright (distinct from a real checkout with
+	// no resolvable base, which refuses register transitions as a PROBLEM).
 	if p := guttedRegisterFields(root); len(p) != 0 {
 		t.Fatalf("guttedRegisterFields must skip outright with no .git directory; got %v", p)
 	}

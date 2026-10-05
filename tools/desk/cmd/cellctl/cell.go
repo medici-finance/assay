@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -24,7 +26,7 @@ const houseVerbs = "deskboot deskroster deskwt deskboard deskdispatch deskpr des
 var (
 	kindValues    = []string{"k8s", "house", "container", "scrubbed"}
 	cockpitValues = []string{"auto", "tmux", "herdr", "orca"}
-	harnessValues = []string{"claude", "codex"}
+	harnessValues = []string{"claude", "codex", "cursor"}
 	knownRoles    = []string{"intake-desk", "worker-desk", "pr-review-desk", "verify-desk", "the-desk"}
 )
 
@@ -53,9 +55,16 @@ func newEnvFromProcess() *Env {
 	e := &Env{vals: map[string]string{}, set: map[string]bool{}}
 	for _, kv := range os.Environ() {
 		if i := strings.IndexByte(kv, '='); i > 0 {
-			e.vals[kv[:i]] = kv[i+1:]
-			e.set[kv[:i]] = true
+			key := kv[:i]
+			if runtime.GOOS == "windows" {
+				key = strings.ToUpper(key)
+			}
+			e.vals[key] = kv[i+1:]
+			e.set[key] = true
 		}
+	}
+	if runtime.GOOS == "windows" && e.Get("HOME") == "" {
+		e.Put("HOME", e.Get("USERPROFILE"))
 	}
 	return e
 }
@@ -94,6 +103,12 @@ func (e *Env) Put(k, v string) {
 // operator-writable, and `cellctl set`/`show` in the oracle already refuse to source it for
 // exactly that reason.
 func parseCellEnv(e *Env, path string) error {
+	return parseCellEnvFor(runtime.GOOS, e, path)
+}
+
+// parseCellEnvFor is parseCellEnv for an explicit goos, so the Windows reading of a `\` in a
+// path (cellenvpath.go) is table-tested on any host.
+func parseCellEnvFor(goos string, e *Env, path string) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -112,7 +127,7 @@ func parseCellEnv(e *Env, path string) error {
 		if !validEnvKeyShape(key) {
 			continue
 		}
-		e.Put(key, unquoteShellValue(s[i+1:], e))
+		e.Put(key, unquoteShellValueFor(goos, s[i+1:], e))
 	}
 	return nil
 }
@@ -135,7 +150,17 @@ func validEnvKeyShape(k string) bool {
 // are literal; double quotes honour \\, \", \$ and \` and expand $VAR/${VAR} against what has
 // been assigned so far; an unquoted value expands the same way. A trailing inline comment is
 // NOT stripped — bash does not strip one in an assignment either.
+//
+// One deliberate departure, on Windows only: an unquoted `\` before a byte bashQuote never
+// escapes there (a letter, a digit, `#%+-./:=@_~` mid-value, a non-ASCII byte) or at the end of
+// the value is a path separator and is kept, so `CELL_REPO=C:\src\x` loads as written instead
+// of as `C:srcx`, while every bashQuote-written value still loads as quoted
+// (cellEnvEscapableFor). Off Windows the rule is bash's.
 func unquoteShellValue(s string, e *Env) string {
+	return unquoteShellValueFor(runtime.GOOS, s, e)
+}
+
+func unquoteShellValueFor(goos, s string, e *Env) string {
 	var out strings.Builder
 	i := 0
 	for i < len(s) {
@@ -167,6 +192,11 @@ func unquoteShellValue(s string, e *Env) string {
 			}
 			i++
 		case '\\':
+			if goos == "windows" && (i+1 >= len(s) || !cellEnvEscapableFor(goos, s[i+1], i == 0)) {
+				out.WriteByte('\\')
+				i++
+				continue
+			}
 			if i+1 < len(s) {
 				out.WriteByte(s[i+1])
 				i += 2
@@ -221,7 +251,9 @@ func expandVar(s string, e *Env) (int, string) {
 // Cell is everything `load_cell` leaves in scope: the resolved directory, the kind/forge
 // defaults it asserts, and the variable environment every later step reads.
 type Cell struct {
-	Env *Env
+	Cadence      *cadenceOptions
+	cadenceLease *cellcadence.Lease
+	Env          *Env
 
 	Name       string
 	Dir        string
@@ -251,20 +283,22 @@ func cellsRoot(e *Env) string {
 	}
 	xdg := e.Get("XDG_DATA_HOME")
 	if xdg == "" {
-		xdg = filepath.Join(e.Get("HOME"), ".local", "share")
+		xdg = filepath.Join(hostHome(e), ".local", "share")
 	}
 	return filepath.Join(xdg, "assay", "cells")
 }
 
-func deskToolsBin(e *Env) string { return e.GetOr("DESK_TOOLS_BIN", "/opt/desk-tools/bin") }
+func deskToolsBin(e *Env) string {
+	if runtime.GOOS == "windows" {
+		return e.GetOr("DESK_TOOLS_BIN", filepath.Join(e.Get("LOCALAPPDATA"), "Assay", "bin"))
+	}
+	return e.GetOr("DESK_TOOLS_BIN", "/opt/desk-tools/bin")
+}
 
 // realConfigHome is the OPERATOR's config home — the one holding the App private keys a k8s or
 // house cell symlinks to. A scrubbed cell never reads it, by construction.
 func realConfigHome(e *Env) string {
-	if v := e.Get("ASSAY_CONFIG_HOME"); v != "" {
-		return v
-	}
-	return filepath.Join(e.Get("HOME"), ".config", "assay")
+	return mustResolve(configHomeFor(runtime.GOOS, e))
 }
 
 func cellDir(e *Env, name string) string {
@@ -314,7 +348,16 @@ func loadCell(name string) *Cell {
 		}
 		c.Deskd = "0"
 		l := e.Get("CELL_CONTAINER_LAUNCHER")
-		if !strings.HasPrefix(l, "/") || !isExecFile(l) {
+		if cfg := e.Get("CELL_CONTAINER_CONFIG"); cfg != "" {
+			if l != "" {
+				die("set only CELL_CONTAINER_CONFIG or CELL_CONTAINER_LAUNCHER, not both")
+			}
+			if !filepath.IsAbs(cfg) || !isRegular(cfg) {
+				die("CELL_CONTAINER_CONFIG must be an absolute configuration file")
+			}
+		} else if err := cellPathCheck(runtime.GOOS, l); err != nil {
+			die("container launcher: %v", err)
+		} else if !isExecFile(l) {
 			die("container cell needs an absolute executable CELL_CONTAINER_LAUNCHER")
 		}
 	case "house":
@@ -375,7 +418,10 @@ func loadCell(name string) *Cell {
 
 	c.Harness = e.GetOr("CELL_HARNESS", "claude")
 	if !valueIn(c.Harness, harnessValues) {
-		die("cell.env: CELL_HARNESS=%s is not a known harness (claude|codex)", c.Harness)
+		die("cell.env: CELL_HARNESS=%s is not a known harness (%s)", c.Harness, joinPipe(harnessValues))
+	}
+	if c.Harness == "cursor" && c.Kind != "house" {
+		die("cursor currently requires a house cell; %s is unsupported", c.Kind)
 	}
 
 	// Model TIER map compiled defaults (#986). `-` (not `:-`) on purpose: cell.env can set one
@@ -401,9 +447,15 @@ func loadCell(name string) *Cell {
 }
 
 func isExecFile(p string) bool {
+	if runtime.GOOS == "windows" && filepath.Ext(p) == "" {
+		p += ".exe"
+	}
 	st, err := os.Stat(p)
 	if err != nil || st.IsDir() {
 		return false
+	}
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(filepath.Ext(p), ".exe")
 	}
 	return st.Mode()&0o111 != 0
 }
@@ -456,9 +508,13 @@ func rootsValid(v string) bool {
 			return false
 		}
 		name, path := entry[:eq], entry[eq+1:]
+		if err := cellPathCheck(runtime.GOOS, path); err != nil {
+			fmt.Fprintf(os.Stderr, "malformed CELL_ROOTS path: %v\n", err)
+			return false
+		}
 		parts := strings.Split(name, "/")
 		bad := len(parts) != 2 || parts[0] == "" || parts[1] == "" ||
-			strings.ContainsAny(name, " \t=") || !strings.HasPrefix(path, "/") || strings.Contains(path, ",")
+			strings.ContainsAny(name, " \t=") || cellPathCheck(runtime.GOOS, path) != nil || strings.Contains(path, ",")
 		if bad {
 			fmt.Fprintf(os.Stderr, "malformed CELL_ROOTS entry '%s' (want <owner>/<repo>=<abs path>)\n", entry)
 			return false

@@ -65,6 +65,20 @@ env:
   GO_VERSION: "1.25.0"
 
 jobs:
+  desk-windows-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Native Windows desk suite
+        shell: pwsh
+        run: |
+          cd tools/desk
+          go test ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   windows-smoke:
     runs-on: windows-latest
     steps:
@@ -184,6 +198,8 @@ jobs:
   # exception decision #508 requires; isolating it in this job keeps windows-smoke's offline
   # invariant intact rather than quietly widening it.
   windows-bootstrap-smoke:
+    # Preserve online bootstrap coverage on its existing tag/dispatch events.
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -240,6 +256,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Go
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
@@ -253,21 +271,68 @@ jobs:
           cd statusgen
           go build -o "${RUNNER_TEMP}/statusgen" .
 
-      - name: Fail-closed control — the wrapper REFUSES an un-digest-pinned image
+      - name: Fail-closed control — the wrapper REFUSES an un-digest-pinned image (scratch placeholder pin)
         shell: bash
         run: |
           set -uo pipefail
-          # The committed harness pin (plugins/assay/paired-versions.yaml `harness:`)
-          # carries a PLACEHOLDER digest until a maintainer harvests the real registry
-          # digest. The wrapper MUST refuse it — an un-digest-pinned image is never run.
-          # Invert the assertion: the job FAILS unless the wrapper refuses. This step is
-          # green the moment the leg is promoted; it does not wait on the digest harvest.
-          if "${RUNNER_TEMP}/statusgen" verifyrun --in-container --root . \
-               --brief docs/streams/windows-port/brief-10-verify-in-container.md; then
-            echo "::error::the wrapper accepted an un-digest-pinned image — the fail-closed pin control is broken"
+          # The committed harness pin (plugins/assay/paired-versions.yaml `harness:`) now
+          # carries a REAL registry digest, so running the wrapper against it no longer
+          # exercises the pin control at all. The control is therefore run against a
+          # SCRATCH root: a copy of the manifest whose `digest:` is swapped for a
+          # placeholder, plus a one-row fixture brief. The wrapper MUST refuse it — an
+          # un-digest-pinned image is never run.
+          #
+          # "Refused" means the pin control's own refusal (exit 2 AND its `refusing to run`
+          # line), never merely "exited non-zero": a docker/daemon failure or an inner
+          # Verify failure is NOT a refusal, and reading one as a refusal is the false
+          # green this step exists to rule out.
+          #
+          # DOCKER_HOST names a socket that does not exist, so no image is pulled or run
+          # here even if the control ever stops refusing — the wrapper then fails at the
+          # docker connect, which this step reports as a broken control (red).
+          #
+          # Discrimination control: the SAME scratch root carrying the COMMITTED digest
+          # must get PAST the pin control (the wrapper prints the digest-pinned reference
+          # it would run, then fails only at the absent daemon). A harness that refused
+          # every input — a wrong root, a missing manifest — would fail here, so a green
+          # from the placeholder half is a real refusal, not a scratch-setup accident.
+          sg="${RUNNER_TEMP}/statusgen"
+          scratch="${RUNNER_TEMP}/failclosed"
+          nodaemon="unix://${RUNNER_TEMP}/no-such-docker.sock"
+          rm -rf "${scratch}"
+          mkdir -p "${scratch}/plugins/assay"
+          # shellcheck disable=SC2016 # the backticks are literal markdown code-span delimiters
+          printf '## Verify\n| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |\n' > "${scratch}/brief.md"
+          digest=$(grep -E '^[[:space:]]*digest:' plugins/assay/paired-versions.yaml | head -1 | awk '{print $2}')
+          image=$(grep -E '^[[:space:]]*image:' plugins/assay/paired-versions.yaml | head -1 | awk '{print $2}')
+          test -n "${digest}" && test -n "${image}" || { echo "::error::could-not-check: no harness image/digest found in paired-versions.yaml"; exit 1; }
+
+          # 1) Placeholder pin: MUST be refused by the pin control.
+          sed -E 's/^([[:space:]]*digest:).*/\1 PENDING-HARVEST-scratch-placeholder/' \
+            plugins/assay/paired-versions.yaml > "${scratch}/plugins/assay/paired-versions.yaml"
+          grep -qE '^[[:space:]]*digest: PENDING-HARVEST-scratch-placeholder$' "${scratch}/plugins/assay/paired-versions.yaml" \
+            || { echo "::error::could-not-check: the scratch manifest does not carry the placeholder digest"; exit 1; }
+          rc=0
+          DOCKER_HOST="${nodaemon}" "${sg}" verifyrun --in-container --root "${scratch}" \
+            --brief "${scratch}/brief.md" > "${scratch}/placeholder.out" 2>&1 || rc=$?
+          cat "${scratch}/placeholder.out"
+          if [ "${rc}" -ne 2 ] || ! grep -q 'refusing to run' "${scratch}/placeholder.out"; then
+            echo "::error::the wrapper did not refuse a placeholder digest (exit ${rc}) — the fail-closed pin control is broken"
             exit 1
           fi
-          echo "fail-closed OK — the wrapper refused the placeholder digest (an un-digest-pinned image is never run)"
+          echo "fail-closed OK — the wrapper refused the placeholder digest (exit 2; an un-digest-pinned image is never run)"
+
+          # 2) Committed (real) pin: MUST pass the pin control — the discrimination half.
+          cp plugins/assay/paired-versions.yaml "${scratch}/plugins/assay/paired-versions.yaml"
+          rc=0
+          DOCKER_HOST="${nodaemon}" "${sg}" verifyrun --in-container --root "${scratch}" \
+            --brief "${scratch}/brief.md" > "${scratch}/pinned.out" 2>&1 || rc=$?
+          cat "${scratch}/pinned.out"
+          if grep -q 'refusing to run' "${scratch}/pinned.out" || ! grep -qF -- "--in-container: ${image}@${digest}" "${scratch}/pinned.out"; then
+            echo "::error::the wrapper did not accept the committed digest pin (exit ${rc}) — the control refuses everything, or the committed pin is not a real digest"
+            exit 1
+          fi
+          echo "discrimination OK — the committed pin passed the control (exit ${rc} at the absent daemon, never refused)"
 
       - name: Witness lands through the pinned container (live; runs once the real digest is pinned)
         shell: bash

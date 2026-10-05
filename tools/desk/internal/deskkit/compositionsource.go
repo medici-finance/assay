@@ -121,7 +121,9 @@ func HTTPFetch(url string) ([]byte, error) {
 // (`desk-tools-windows-amd64.tar.gz`, the form the Windows docs show).
 //
 // Fail-closed: a line with the wrong field count, a digest that is not 64 lowercase
-// hex, or a duplicate asset refuses the whole file; a file that yields no component
+// hex, a duplicate asset, or two assets that pin under one name (a raw
+// `desk-tools-linux-amd64` beside `desk-tools-linux-amd64.tar.gz`, where list order
+// would otherwise pick the digest) refuses the whole file; a file that yields no component
 // is refused as well — an empty composition would let the marker report "known"
 // on nothing.
 func ParseChecksums(umbrellaTag string, raw []byte) (Composition, error) {
@@ -157,6 +159,10 @@ func ParseChecksums(umbrellaTag string, raw []byte) (Composition, error) {
 		}
 		components[component] = true
 		pinName := strings.TrimSuffix(asset, ".tar.gz")
+		if _, dup := c.AssetSHA256[pinName]; dup {
+			return Composition{}, Unverifiable(fmt.Sprintf(
+				"checksums for %s: asset %q pins as %q, which another asset already pins as", umbrellaTag, asset, pinName), nil)
+		}
 		c.AssetSHA256[pinName] = digest
 		c.AssetSHA256[asset] = digest
 	}

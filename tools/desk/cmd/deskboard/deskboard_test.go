@@ -312,6 +312,9 @@ func installFakeForge(t *testing.T) {
 type fakeForge struct {
 	deskkit.Forge
 	repo string
+	// intervalHead is the head of the last legacy compare fixture this forge served;
+	// GetCommit returns that fixture's files for it (one non-merge commit).
+	intervalHead string
 }
 
 func (f *fakeForge) ListOpenChanges(deskkit.ForgeRepo) (*deskkit.OpenChanges, error) {
@@ -386,6 +389,41 @@ func (f *listFnForge) ListOpenChanges(deskkit.ForgeRepo) (*deskkit.OpenChanges, 
 	return f.list(f.repo)
 }
 
+func (f *listFnForge) ReviewQueueSnapshot(fr deskkit.ForgeRepo) (*deskkit.ReviewQueue, error) {
+	oc, err := f.list(f.repo)
+	return f.queueFrom(oc, err)
+}
+
+// ReviewQueueSnapshot serves the actions sweep's one-read queue from the SAME fixture
+// ListOpenChanges reads. By default every change is ReviewsComplete=false, so the sweep
+// reads each PR's reviews per-item through ReviewsAtHead — the pre-snapshot path every
+// existing fixture and fail-injection test was written against. forgeHooks.queueReviews
+// makes the snapshot carry each change's reviews as complete, which is the path the
+// snapshot-identity test drives.
+func (f *fakeForge) ReviewQueueSnapshot(fr deskkit.ForgeRepo) (*deskkit.ReviewQueue, error) {
+	oc, err := f.ListOpenChanges(fr)
+	return f.queueFrom(oc, err)
+}
+
+func (f *fakeForge) queueFrom(oc *deskkit.OpenChanges, err error) (*deskkit.ReviewQueue, error) {
+	if err != nil {
+		return nil, err
+	}
+	q := &deskkit.ReviewQueue{Cap: oc.Cap, TruncatedAtCap: oc.TruncatedAtCap}
+	for _, c := range oc.Changes {
+		qc := deskkit.QueuedChange{OpenChange: c}
+		if forgeHooks.queueReviews != nil {
+			rv, rerr := forgeHooks.queueReviews(f.repo, c.Number)
+			if rerr != nil {
+				return nil, rerr
+			}
+			qc.Reviews, qc.ReviewsComplete = rv, true
+		}
+		q.Changes = append(q.Changes, qc)
+	}
+	return q, nil
+}
+
 func (f *fakeForge) PRTrustEvents(_ deskkit.ForgeRepo, _ int) (*deskkit.TrustPayload, error) {
 	return f.trustFromFixture(true)
 }
@@ -442,6 +480,11 @@ type forgeHookSet struct {
 	// GetPullRequest could be failed programmatically, so no test could isolate a
 	// ListChangedFiles-only failure on the risk-classification call.
 	changedFiles func(repo string, num int) ([]deskkit.ChangedFile, error)
+	// queueReviews, when set, makes the fake's ReviewQueueSnapshot carry every change's
+	// reviews in full (ReviewsComplete=true), read from THIS hook — kept separate from
+	// `reviews` (the per-item ReviewsAtHead hook) so a test can count per-item reads alone.
+	// Nil keeps the default per-item fallback shape.
+	queueReviews func(repo string, num int) ([]deskkit.Review, error)
 }
 
 var forgeHooks forgeHookSet
@@ -571,6 +614,11 @@ func (f *fakeForge) CompareRefs(_ deskkit.ForgeRepo, base, head string) (*deskki
 	}
 	envJSON(f.tb(), "DESKBOARD_GH_COMPARE_JSON", &w)
 	out := &deskkit.RefComparison{Status: w.Status, BehindBy: w.BehindBy}
+	// Legacy compare fixtures describe one non-merge commit (head, child of base), not an
+	// aggregate history.
+	out.CommitsComplete = true
+	out.Commits = []deskkit.RepoCommit{{SHA: head, Parents: []string{base}}}
+	f.intervalHead = head
 	for _, c := range w.Files {
 		out.Files = append(out.Files, deskkit.ChangedFile{Filename: c.Filename})
 	}
@@ -622,6 +670,13 @@ func (f *fakeForge) ListLabelEvents(_ deskkit.ForgeRepo, num int) ([]deskkit.Lab
 func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCommit, error) {
 	if forgeHooks.getCommit != nil {
 		return forgeHooks.getCommit(f.repo, sha)
+	}
+	if sha != "" && sha == f.intervalHead {
+		var w struct {
+			Files []deskkit.ChangedFile `json:"files"`
+		}
+		envJSON(f.tb(), "DESKBOARD_GH_COMPARE_JSON", &w)
+		return &deskkit.RepoCommit{SHA: sha, Files: w.Files, FilesComplete: true}, nil
 	}
 	if err := f.failFor(fmt.Sprintf("/repos/%s/commits/%s", f.repo, sha), "/commits/"); err != nil {
 		return nil, err
@@ -1393,8 +1448,10 @@ func TestMergeNow_ApprovedAge(t *testing.T) {
 	t.Setenv("DESKBOARD_GH_PR_REPO", repo)
 	t.Setenv("DESKBOARD_GH_PRLIST_JSON",
 		`[{"number":42,"title":"merge now test","isDraft":false,"author":{"login":"shared-agent"},"headRefOid":"`+head+`","mergeStateStatus":"CLEAN","statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"ci"}]}]`)
+	// #2158: the row is risk-classed in this fixture, and a risk-classed row needs a
+	// security pass at head before MERGE-NOW whether it is draft or ready.
 	t.Setenv("DESKBOARD_GH_REVIEWS_JSON",
-		`[{"user":{"login":"`+reviewerBotDisplay()+`"},"state":"APPROVED","commit_id":"`+head+`","body":"looks good","submitted_at":"`+reviewTS+`"}]`)
+		`[{"user":{"login":"`+reviewerBotDisplay()+`"},"state":"APPROVED","commit_id":"`+head+`","body":"looks good\n\nSecurity-Review: pass","submitted_at":"`+reviewTS+`"}]`)
 
 	var out, errb bytes.Buffer
 	code := run([]string{"actions", "--merge-now-threshold", "1h"}, &out, &errb)
@@ -1435,8 +1492,10 @@ func TestMergeNow_DecayBanner(t *testing.T) {
 	t.Setenv("DESKBOARD_GH_PR_REPO", repo)
 	t.Setenv("DESKBOARD_GH_PRLIST_JSON",
 		`[{"number":42,"title":"decay test","isDraft":false,"author":{"login":"shared-agent"},"headRefOid":"`+head+`","mergeStateStatus":"CLEAN","statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"ci"}]}]`)
+	// #2158: the row is risk-classed in this fixture, and a risk-classed row needs a
+	// security pass at head before MERGE-NOW whether it is draft or ready.
 	t.Setenv("DESKBOARD_GH_REVIEWS_JSON",
-		`[{"user":{"login":"`+reviewerBotDisplay()+`"},"state":"APPROVED","commit_id":"`+head+`","body":"looks good","submitted_at":"`+reviewTS+`"}]`)
+		`[{"user":{"login":"`+reviewerBotDisplay()+`"},"state":"APPROVED","commit_id":"`+head+`","body":"looks good\n\nSecurity-Review: pass","submitted_at":"`+reviewTS+`"}]`)
 
 	var out, errb bytes.Buffer
 	code := run([]string{"actions", "--merge-now-threshold", "10m"}, &out, &errb)

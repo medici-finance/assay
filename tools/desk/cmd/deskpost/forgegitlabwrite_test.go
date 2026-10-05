@@ -79,7 +79,7 @@ func (g *glReviewFake) ListChangedFiles(deskkit.ForgeRepo, int) ([]deskkit.Chang
 	return []deskkit.ChangedFile{{Filename: "docs/desk-tools.md"}}, nil
 }
 func (g *glReviewFake) RepoVisibility(deskkit.ForgeRepo) (string, error) {
-	return "private", nil // the public-repo +1 gate is a no-op on a private repo
+	return "private", nil // the public-repo write gate passes a private repo
 }
 func (g *glReviewFake) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCommit, error) {
 	return &deskkit.RepoCommit{SHA: sha, AuthorLogin: g.commitLogin}, nil
@@ -140,7 +140,7 @@ ASSAY_REPO_FORGES=gl-group/gl-repo=gitlab
 	t.Setenv("DESK_LOOP", "pr-review-desk")
 
 	oldFor := forgeForReviewer
-	forgeForReviewer = func(deskkit.ForgeRepo) (deskkit.Forge, error) { return f, nil }
+	forgeForReviewer = func(deskkit.ForgeRepo) (deskkit.Forge, error) { return deskkit.OutboundChecked(f, "reviewer"), nil }
 	t.Cleanup(func() { forgeForReviewer = oldFor })
 
 	var errBuf bytes.Buffer

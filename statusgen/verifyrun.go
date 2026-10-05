@@ -223,8 +223,38 @@ func (w witness) row() string {
 	if w.RunnerSource != "" {
 		runnerCell += " (" + w.RunnerSource + ")"
 	}
-	return fmt.Sprintf("| %s | `%s` | %s | sha256:%s | %s | %s |",
-		w.ID, w.Command, result, w.OutHash, w.Date, runnerCell)
+	return fmt.Sprintf("| %s | %s | %s | sha256:%s | %s | %s |",
+		w.ID, codeSpanOf(w.Command), result, w.OutHash, w.Date, runnerCell)
+}
+
+// codeSpanOf writes cmd as ONE inline code span that witnessCommandOf lifts back
+// whole (#1808 review A4). A command with no backtick keeps the single-backtick
+// form every existing witness row has, byte for byte. A command that contains
+// backticks (authored inside a longer backtick fence) is fenced with a run one longer
+// than its longest backtick run, padded with a space where it starts or ends
+// with a backtick, as CommonMark requires; a single-backtick fence would close
+// at the first inner backtick and the witness would record a truncated command.
+func codeSpanOf(cmd string) string {
+	longest, run := 0, 0
+	for i := 0; i < len(cmd); i++ {
+		if cmd[i] == '`' {
+			run++
+			if run > longest {
+				longest = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	if longest == 0 {
+		return "`" + cmd + "`"
+	}
+	fence := strings.Repeat("`", longest+1)
+	body := cmd
+	if strings.HasPrefix(body, "`") || strings.HasSuffix(body, "`") {
+		body = " " + body + " "
+	}
+	return fence + body + fence
 }
 
 // exitCell renders the exit code, or `-` when nothing ran. `exit=-1` would read
@@ -251,6 +281,7 @@ const (
 	witnessCellCommand = 1
 	witnessCellResult  = 2
 	witnessCellOutput  = 3
+	witnessCellRunner  = 5
 	witnessCellCount   = 6
 )
 
@@ -308,6 +339,30 @@ func witnessCommandOf(text string) string {
 		return ""
 	}
 	return codeSpan(cells[witnessCellCommand])
+}
+
+// witnessTreeRe lifts the tree token that follows the Runner cell's ` @ `
+// marker (witness.row() writes `<runner> @ <tree>`, optionally followed by one
+// or more parenthetical qualifiers). It stops at the first space or `(` so a
+// trailing on-behalf-of/RunnerSource parenthetical is never swallowed into the
+// tree token.
+var witnessTreeRe = regexp.MustCompile(`@\s*([^\s(]+)`)
+
+// witnessTreeOf lifts the tree SHA (possibly `+dirty`/`+unknown`-suffixed, or
+// `no-git`) a witness row recorded — graph-execution/03's coverage rule reads
+// this to compare against the item's revision. Returns "" when the row is
+// malformed or carries no tree marker, which the caller treats as "nothing to
+// compare", never as a match.
+func witnessTreeOf(text string) string {
+	cells := witnessCells(text)
+	if cells == nil {
+		return ""
+	}
+	m := witnessTreeRe.FindStringSubmatch(cells[witnessCellRunner])
+	if m == nil {
+		return ""
+	}
+	return m[1]
 }
 
 // ---------------------------------------------------------------------------
@@ -703,12 +758,26 @@ func runHermetically(root, command string, timeout time.Duration) runResult {
 // is the row's declared shell (issue #1424); check:ci rows are POSIX-shaped in
 // the corpus, so this is `sh` in practice, but it is threaded through faithfully.
 func runHermeticallyWith(root, command string, timeout time.Duration, plan shellPlan, shell string) runResult {
-	wrapper, ok, why := networkOffWrapper()
+	wrapper, ok, why := networkOffWrapperFn()
 	if !ok {
 		return runResult{exit: -1, couldNotRun: true,
 			reason: "check:ci hermetic execution requires a network-off sandbox, unavailable on this host: " + why + ". check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net`"}
 	}
-	return runVerifyCommandWith(root, command, timeout, wrapper, plan, shell)
+	return runSandboxed(root, command, timeout, wrapper, plan, shell)
+}
+
+// networkOffWrapperFn is the sandbox source runHermeticallyWith reads. It is
+// networkOffWrapper in production; it is a variable only so a test can drive
+// runHermeticallyWith's two outcomes — sandbox unavailable, helper refusal — on
+// every host (TestNetnsHermeticPathClassifies), pinning that neither ever runs
+// the row outside the sandbox or records a refusal as the row's own exit.
+var networkOffWrapperFn = networkOffWrapper
+
+// runSandboxed runs one row under a network-off wrapper and reclassifies a
+// sandbox-helper refusal (netns.go) as could-not-run: the row never ran, so it
+// has no verdict, and it is NEVER retried without the sandbox.
+func runSandboxed(root, command string, timeout time.Duration, wrapper []string, plan shellPlan, shell string) runResult {
+	return classifyNetnsRefusal(runVerifyCommandWith(root, command, timeout, wrapper, plan, shell))
 }
 
 // runVerifyCommandWith executes one Verify command, optionally under a wrapper
@@ -745,9 +814,10 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// The wrapper (e.g. `unshare --net --map-root-user`) prefixes the shell
-	// invocation, so the network namespace is entered before any of the row's
-	// own shell runs.
+	// The wrapper (netnsWrapperArgv: `unshare --net --map-root-user` + the
+	// statusgen lo-up/isolation helper) prefixes the shell invocation, so the
+	// network namespace is entered — and loopback brought up — before any of the
+	// row's own shell runs.
 	//
 	// For an `sh` row the shell is `bash -o pipefail`, NOT plain `sh`. Without
 	// pipefail, a pipeline reports only its LAST stage's exit status, so a row
@@ -864,32 +934,66 @@ func winCmdLine(argv []string) string {
 // namespace isolated, and whether such a facility exists on this host.
 //
 // The facility is `unshare --net --map-root-user`: a new, empty network
-// namespace (only loopback, no route off-box) entered via an unprivileged user
-// namespace, which is the sandbox GitHub's Linux runner images provide and the
-// verdict runner (verdict-lane/04) will use. `--map-root-user` is what makes the
-// namespace creatable WITHOUT root; the process's real uid is unchanged outside
-// the namespace, so the Go build/module caches (owned by the invoking user)
-// remain readable.
+// namespace (no route off-box) entered via an unprivileged user namespace, which
+// is the sandbox GitHub's Linux runner images provide and the verdict runner
+// (verdict-lane/04) will use. `--map-root-user` is what makes the namespace
+// creatable WITHOUT root; the process's real uid is unchanged outside the
+// namespace, so the Go build/module caches (owned by the invoking user) remain
+// readable. The namespace's first process is the statusgen helper (netns.go),
+// which brings loopback up — a fresh namespace's `lo` starts DOWN, which made
+// every local-server row fail (issue #1925) — proves isolation, then execs the
+// row's shell.
 //
 // ok is false — with a human-legible reason — off Linux, when `unshare` is
-// absent, or when a live probe of unprivileged net-namespace creation fails
-// (user namespaces disabled). The caller renders that as could-not-run: a
-// hermetic row that cannot be run hermetically must never be recorded pass.
+// absent, when a live probe of unprivileged net-namespace creation fails (user
+// namespaces disabled), or when the helper refuses in a live probe (lo could not
+// be brought up, or the namespace is not isolated). The caller renders that as
+// could-not-run: a hermetic row that cannot be run hermetically must never be
+// recorded pass.
 func networkOffWrapper() (prefix []string, ok bool, why string) {
+	path, ok, why := netnsFacility()
+	if !ok {
+		return nil, false, why
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return nil, false, "cannot locate the statusgen executable to run the in-namespace helper: " + err.Error()
+	}
+	parentNS, err := os.Readlink("/proc/self/ns/net")
+	if err != nil {
+		return nil, false, "cannot read this process's network namespace id: " + err.Error()
+	}
+	prefix = netnsWrapperArgv(path, self, parentNS)
+	// Probe the WHOLE sandbox, helper included, so a host where loopback cannot be
+	// brought up (or the namespace is not isolated) is could-not-run up front with
+	// the helper's own reason, rather than surfacing per row.
+	if out, err := exec.Command(prefix[0], append(prefix[1:], "true")...).CombinedOutput(); err != nil {
+		return nil, false, "the network-off sandbox helper failed its probe (" + err.Error() + "): " + strings.TrimSpace(string(out))
+	}
+	return prefix, true, ""
+}
+
+// netnsFacility reports whether this host can create an unprivileged network
+// namespace at all (`unshare --net --map-root-user true`), returning the
+// `unshare` path. It is the raw facility check, separate from the helper probe in
+// networkOffWrapper, so tests can skip ONLY where the facility is absent and
+// still FAIL when the facility works but the helper does not.
+func netnsFacility() (unsharePath string, ok bool, why string) {
 	if runtime.GOOS != "linux" {
-		return nil, false, "the network sandbox uses `unshare --net`, a Linux facility, and this host is " + runtime.GOOS
+		return "", false, "the network sandbox uses `unshare --net`, a Linux facility, and this host is " + runtime.GOOS
 	}
 	path, err := exec.LookPath("unshare")
 	if err != nil {
-		return nil, false, "`unshare` is not on PATH"
+		return "", false, "`unshare` is not on PATH"
 	}
 	// Probe: on a host with user namespaces disabled `unshare` exists but fails
 	// at run time. Detecting that here keeps a sandbox-setup failure from being
 	// mislabelled as the row's own failure.
-	if err := exec.Command(path, "--net", "--map-root-user", "true").Run(); err != nil {
-		return nil, false, "`unshare --net --map-root-user` failed on this host (" + err.Error() + ") — unprivileged user namespaces may be disabled"
+	probe := netnsWrapperArgv(path, "", "")[:3] // unshare --net --map-root-user
+	if err := exec.Command(probe[0], append(probe[1:], "true")...).Run(); err != nil {
+		return "", false, "`unshare --net --map-root-user` failed on this host (" + err.Error() + ") — unprivileged user namespaces may be disabled"
 	}
-	return []string{path, "--net", "--map-root-user"}, true, ""
+	return path, true, ""
 }
 
 // hashOutput is the output fingerprint: the first 12 hex of sha256 over the
@@ -1083,13 +1187,27 @@ type verifyRow struct {
 	// whole inherited corpus), cmd, or pwsh. runWitnesses dispatches the row to
 	// this shell; a shell unavailable on the runner's OS is could-not-run.
 	Shell string
+	// Obligations are the row's KNOWN `+`-prefixed obligation tokens
+	// (rowclass.go's splitRowClassCell / verifyRowCells.obligations) — mutation,
+	// flow, dereference, neighbour. graph-execution/03's coverage rule reads
+	// `flow` here for the pattern join's integration check (Task item 2): a
+	// `+flow` row is the one obligation token that proves a Verify row exercises
+	// the cross-component path, as opposed to a site-local check.
+	Obligations []string
+	// ProseLed is set when the row's Command cell is one the lint flags as
+	// prose-led-command (#1805): its first code span, the text the lift returns,
+	// is a mention (a file, an identifier, a lone word) rather than a command.
+	// runWitnesses records such a row could-not-run WITHOUT executing it, because
+	// running the mention can exit 0 (`gh` with no arguments does) and record a
+	// pass for a check that never ran. The value is the NOTICE's reason text.
+	ProseLed string
 }
 
 func briefVerifyRows(verifySection string) []verifyRow {
 	var rows []verifyRow
 	ordinal := 0
 	verifyRowTable(verifySection, func(r verifyRowCells) {
-		cmd := codeSpan(r.Command)
+		cmd := verifyCommand(r.Command)
 		if strings.TrimSpace(cmd) == "" && strings.TrimSpace(r.Expect) == "" {
 			return
 		}
@@ -1098,7 +1216,11 @@ func briefVerifyRows(verifySection string) []verifyRow {
 		if v := normalizeRowID(r.Num); v != "" {
 			id = v
 		}
-		rows = append(rows, verifyRow{ID: id, Command: cmd, Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell()})
+		row := verifyRow{ID: id, Command: cmd, Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell(), Obligations: r.obligations()}
+		if first, why := proseLedCommandWhy(r.Command); why != "" {
+			row.ProseLed = "first span " + strings.ReplaceAll(first, "|", "\\|") + " is " + why
+		}
+		rows = append(rows, row)
 	})
 	return rows
 }
@@ -1159,6 +1281,19 @@ func runWitnesses(root string, rows []verifyRow, runner, runnerSource, tree, dat
 			})
 			continue
 		}
+		// A prose-led row (#1805, #1808 review A1) is never executed: its lifted
+		// command is a mention, and running it measures nothing — it exits 127
+		// (could-not-run anyway) or, for a word like `gh`, exits 0 and would record
+		// a pass for a check that never ran. Recorded could-not-run with the lint's
+		// rule tag, so the Evidence says why; a `cmd:` marker clears it.
+		if r.ProseLed != "" {
+			out = append(out, witness{
+				ID: r.ID, Command: r.Command, State: stateCouldNotRun, Exit: -1,
+				Date: date, Runner: runner, RunnerSource: runnerSource, Tree: tree,
+				Note: proseLedNote(r.ProseLed),
+			})
+			continue
+		}
 		var res runResult
 		if r.Class == classCheckCI {
 			res = runHermeticallyWith(root, r.Command, timeout, plan, r.Shell)
@@ -1193,6 +1328,12 @@ func runWitnesses(root string, rows []verifyRow, runner, runnerSource, tree, dat
 		})
 	}
 	return out
+}
+
+// proseLedNote is the could-not-run note for a prose-led row: the lint's
+// stable rule tag first (greppable in Evidence), then the reason and the fix.
+func proseLedNote(reason string) string {
+	return ruleProseLedCommand + ": not executed; the " + reason + ", not a command. Mark the command with a cmd: code span"
 }
 
 // witnessTable renders a full Evidence table for a run.
@@ -1306,6 +1447,13 @@ func checkWitnesses(verifySection, evidenceSection string) []checkFinding {
 		default:
 			switch witnessStateOf(latest) {
 			case statePass:
+				// A pass recorded (by an older binary) on a row now flagged
+				// prose-led (#1808 review A2) measured the mention, not a check:
+				// verifyrun would not run it today, so the pass proves nothing.
+				if r.ProseLed != "" {
+					out = append(out, checkFinding{r.ID, stateCouldNotRun, proseLedNote(r.ProseLed)})
+					break
+				}
 				out = append(out, checkFinding{r.ID, statePass, "witness matches the row and passed"})
 			case stateFail:
 				out = append(out, checkFinding{r.ID, stateFail, "the witness records a failure"})
@@ -1637,7 +1785,13 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 
 // runVerifyrunCheck is the `--check` half: audit, never execute.
 func runVerifyrunCheck(path, verify, evidence string, stdout *os.File) int {
-	findings := checkWitnesses(verify, evidence)
+	// The audit does not run the lint, so it refuses an unterminated `<!--`
+	// itself (#1939) rather than report rows the rendered page may hide.
+	findings, refusal := closureWitnesses(verify, evidence)
+	if refusal != "" {
+		fmt.Fprintf(stdout, "%s: refused — %s\n", path, refusal)
+		return verifyrunExitCouldNot
+	}
 	if len(findings) == 0 {
 		fmt.Fprintf(stdout, "%s: no Verify rows to check\n", path)
 		return verifyrunExitCouldNot

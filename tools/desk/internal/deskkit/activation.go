@@ -48,6 +48,10 @@ import (
 // what it requires or optionally accepts. Version ranges, apply/intercept and
 // config are deskmanifest lint's business, not this file's.
 type componentManifest struct {
+	// path is where DiscoverManifests read this manifest from (root-relative,
+	// slash-separated) — the deterministic tie-break between two manifests
+	// that declare the same component id. Empty for a manifest built in memory.
+	path      string
 	Component string   `yaml:"component"`
 	Provides  []string `yaml:"provides"`
 	Inject    struct {
@@ -68,6 +72,19 @@ type manifestInjectKey struct {
 // loudly on a broken manifest; a caller here getting a partial view because
 // one manifest is malformed is still more useful than refusing every
 // component's activation over it.
+//
+// ONLY root's own tree is read. A directory BELOW root that carries its own
+// `.git` entry — a nested clone (`.git` directory), a linked worktree or a
+// submodule (`.git` file) — is a different checkout, and its manifests are
+// not this tree's: reading them let an untracked nested worktree change the
+// parent checkout's activation. Such a directory is skipped whole and named in
+// skipped. root itself carrying `.git` is, of course, the normal case.
+//
+// The result is DETERMINISTIC. Manifests are ordered by component id, then by
+// root-relative path; when two manifests declare the same component id the
+// one at the lexicographically first path is kept and every later one is
+// named in skipped as a duplicate (`deskmanifest lint` reports the duplicate
+// as a problem; activation must still not depend on walk or sort order).
 func DiscoverManifests(root string) (manifests []componentManifest, skipped []string, err error) {
 	info, statErr := os.Stat(root)
 	if statErr != nil {
@@ -82,6 +99,10 @@ func DiscoverManifests(root string) (manifests []componentManifest, skipped []st
 		}
 		if d.IsDir() {
 			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			if path != root && hasGitEntry(path) {
+				skipped = append(skipped, relSlash(root, path)+": nested checkout (carries .git), not this tree")
 				return filepath.SkipDir
 			}
 			return nil
@@ -103,15 +124,48 @@ func DiscoverManifests(root string) (manifests []componentManifest, skipped []st
 			skipped = append(skipped, path+": carries no component: name")
 			return nil
 		}
+		m.path = relSlash(root, path)
 		manifests = append(manifests, m)
 		return nil
 	})
 	if walkErr != nil {
 		return nil, skipped, fmt.Errorf("could not walk %s: %w", root, walkErr)
 	}
-	sort.Slice(manifests, func(i, j int) bool { return manifests[i].Component < manifests[j].Component })
+	sort.SliceStable(manifests, func(i, j int) bool {
+		if manifests[i].Component != manifests[j].Component {
+			return manifests[i].Component < manifests[j].Component
+		}
+		return manifests[i].path < manifests[j].path
+	})
+	kept := manifests[:0]
+	for _, m := range manifests {
+		if n := len(kept); n > 0 && kept[n-1].Component == m.Component {
+			skipped = append(skipped, m.path+": duplicate component id "+m.Component+
+				" (kept "+kept[n-1].path+")")
+			continue
+		}
+		kept = append(kept, m)
+	}
+	manifests = kept
 	sort.Strings(skipped)
 	return manifests, skipped, nil
+}
+
+// hasGitEntry reports whether dir carries a `.git` entry of either kind — a
+// directory (a clone) or a file (a linked worktree or a submodule).
+func hasGitEntry(dir string) bool {
+	_, err := os.Lstat(filepath.Join(dir, ".git"))
+	return err == nil
+}
+
+// relSlash is path relative to root, slash-separated; path itself when it is
+// not under root.
+func relSlash(root, path string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return filepath.ToSlash(path)
+	}
+	return filepath.ToSlash(rel)
 }
 
 // ActivationResult is one component's computed state (the component-manifest
@@ -158,9 +212,11 @@ func ComputeActivation(manifests []componentManifest, ext map[string]ExtKeyResul
 			}
 		}
 	}
-	byName := map[string]*componentManifest{}
+	byName := map[string]*componentManifest{} // FIRST declaration wins, like providers
 	for i := range manifests {
-		byName[manifests[i].Component] = &manifests[i]
+		if _, dup := byName[manifests[i].Component]; !dup {
+			byName[manifests[i].Component] = &manifests[i]
+		}
 	}
 
 	results := map[string]ActivationResult{}
@@ -265,6 +321,12 @@ func VerbComponent(manifests []componentManifest) string {
 //   - manifests could not be discovered under root (a verb run outside a
 //     checkout degrades to "no activation information", never a refusal the
 //     mechanism cannot see the reason for).
+//
+// The refusal names the component by its id EXACTLY as its manifest declares
+// it. Component ids already carry their namespace (`assay/desk-tools`), so the
+// brief's `assay/<component>` shape is the id itself; prefixing another
+// `assay/` printed `assay/assay/desk-tools`, and would mislabel a component
+// from any other namespace.
 func VerbActivationRefusal(root string) string {
 	manifests, _, err := DiscoverManifests(root)
 	if err != nil || len(manifests) == 0 {
@@ -288,7 +350,7 @@ func VerbActivationRefusal(root string) string {
 	if reason == "" {
 		reason = "inactive"
 	}
-	return fmt.Sprintf("could-not-check: assay/%s inactive — %s %s", component, key, reason)
+	return fmt.Sprintf("could-not-check: %s inactive — %s %s", component, key, reason)
 }
 
 // verbActivationRoot resolves the tree root CheckVerbActivation discovers

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -393,6 +394,10 @@ func duplicateIDs(entries []keyedEntry) []string {
 //
 // Falls back to HEAD when origin/main can't be resolved (main's own CI after the
 // fetch/reset, where HEAD IS the authoritative tip, or a fixture with no remote).
+// That fallback is STRICTER, not weaker, so the #2012 no-base ruling (item 3) does
+// not refuse here: every add in HEAD's first-parent history counts as landed, a
+// committed deletion still fires (TestDeletedNoBaseCommittedFires), and a branch's
+// own add-then-delete over-fires rather than passing.
 //
 // "Landed" is measured on main's FIRST-PARENT line (--first-parent in the add
 // enumeration below), so post-merge strictness holds regardless of squash vs
@@ -416,10 +421,11 @@ func deletedRegisterFiles(root string) []string {
 
 	// Cut at the merge-base of HEAD and origin/main: files added up to that
 	// shared point are landed; files added on either side after it are not
-	// violations. Fall back to HEAD when origin/main can't be resolved.
+	// violations. Fall back to HEAD when origin/main can't be resolved — the
+	// exact ref, never a decoy git would read its full name as (mergeBaseExact).
 	base := "HEAD"
-	if mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output(); err == nil && strings.TrimSpace(string(mb)) != "" {
-		base = strings.TrimSpace(string(mb))
+	if mb := mergeBaseExact(root, remoteMainRef); mb != "" {
+		base = mb
 	}
 
 	var deleted []string
@@ -493,8 +499,7 @@ func deletedRegisterFiles(root string) []string {
 			// T8: the file is gone from its old path, but if a file with the
 			// same register ID exists in the current tree, it was RENAMED —
 			// not deleted. Parse the ID from the landed base tree.
-			showCmd := exec.Command("git", "-C", root, "show", base+":"+f)
-			showOut, showErr := showCmd.Output()
+			showOut, showErr := gitShowObject(root, base, f)
 			if showErr == nil {
 				landedID := extractIDFromYAMLFrontmatter(showOut)
 				if landedID != "" && idInTree[landedID] {
@@ -513,62 +518,59 @@ func deletedRegisterFiles(root string) []string {
 // registerLandedBase returns the git ref whose tree holds the LANDED version of a
 // register entry: the merge-base of HEAD and origin/main (mirroring
 // deletedRegisterFiles). The second return reports whether that merge-base
-// actually resolved. When it did NOT, the returned base is "HEAD" — a FAIL-OPEN
-// fallback: a mutation that is already COMMITTED is then compared against itself,
-// diffs to nothing, and passes silently. Callers that gate on the result must
-// surface that (see registerBaseFallbackNotices).
+// actually resolved. When it did NOT, the returned base is "HEAD", and a mutation
+// that is already COMMITTED would be compared against itself and pass — so a
+// caller that gates on the result must not judge against it: the offline gutting
+// guard refuses register transitions instead (#2012 ruling item 3), and the online
+// lane fails closed on its own base. The merge-base is taken only from the exact
+// remote-tracking ref (mergeBaseExact): with that ref absent, a decoy git would
+// read its full name as is not a base, so it is unresolved too.
 func registerLandedBase(root string) (base string, resolved bool) {
-	if mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output(); err == nil && strings.TrimSpace(string(mb)) != "" {
-		return strings.TrimSpace(string(mb)), true
+	if mb := mergeBaseExact(root, remoteMainRef); mb != "" {
+		return mb, true
 	}
 	return "HEAD", false
 }
 
-// registerBaseFallbackNotices emits a NOTICE when the field-gutting guard is
-// running against the fail-open base=HEAD fallback while there are findings to
-// guard.
+// registerBaseFallbackNotices emits a NOTICE when the field-gutting guard did not
+// run at all because the tree has NO .git directory (a `git archive` export) while
+// there are findings to guard. guttedRegisterFields skips outright there — it has
+// no ref to compare with, so nothing is silently compared against itself — but the
+// guard still did not run, and a silent difference in which checks ran is what
+// makes a differential lint comparison across two trees unsound.
 //
-// Why this exists (carried from the security review, which recorded it as
-// a NOTE rather than a fix): with base == HEAD a COMMITTED gutting is compared
-// against itself and silently passes. In the upstream repo that is unreachable because its lint
-// workflow runs `git fetch --no-tags origin main` BEFORE the lint step, so
-// origin/main always resolves — but nothing tests that ordering, so a future
-// workflow edit that drops the fetch disables the control with no failing test and
-// no signal at all.
-//
-// This repo's own .github/workflows/statusgen.yml is WEAKER on exactly that point:
-// its explicit `git fetch --no-tags origin main` is in the STATUS.md-guard step
-// AFTER `go run . --root .. --lint`, so the lint step's origin/main resolution
-// rests entirely on actions/checkout's implicit fetch-depth: 0 refspec. That is an
-// implementation detail of a third-party action, not a guarantee this repo states.
-// Hence a NOTICE rather than silence: if the ref is not there, the run says so.
-//
-// Advisory only — never a hard problem. A local clone or a fixture legitimately
-// has no origin/main, and the guard still catches WORKING-TREE gutting there; only
-// already-committed gutting escapes.
-//
-// A tree with NO .git directory at all (a `git archive` export) is
-// a third case, distinct from "origin/main unresolvable": guttedRegisterFields
-// skips outright rather than falling back to base=HEAD (it has no ref to fall
-// back to), so nothing is silently compared against itself — but the guard
-// still did not run, and that absence deserves the same NOTICE for the same
-// reason: a silent difference in which checks ran is what makes a differential
-// lint comparison across two trees unsound.
+// A real checkout whose exact origin/main does not resolve is NOT reported here
+// any more. It used to be: the guard then fell back to base=HEAD, where a
+// COMMITTED gutting is compared against itself and passes, and this NOTICE was
+// the only signal. Under the #2012 ruling (item 3) that case fails CLOSED instead —
+// guttedRegisterFieldsEntries returns a PROBLEM refusing the register transitions —
+// so a CI lint job that stops fetching the base branch goes red rather than quiet.
 func registerBaseFallbackNotices(root string) []string {
-	var cause string
-	switch {
-	case hasNoGitDir(root):
-		cause = "this tree has no .git directory at all (e.g. a `git archive` export), so the guard could not read a landed base at all and was skipped entirely"
-	default:
-		if _, resolved := registerLandedBase(root); resolved {
-			return nil
-		}
-		cause = "origin/main could not be resolved, so the landed base fell back to HEAD and finding entries are compared against themselves — already-COMMITTED gutting cannot be detected in this run (working-tree gutting still is)"
+	// An unresolvable base in a real checkout is no longer a NOTICE: the guard
+	// refuses register transitions there as a PROBLEM (guttedRegisterFieldsEntries,
+	// #2012 ruling item 3). Only the no-.git case, where the guard is skipped
+	// outright rather than compared against HEAD, is still reported here.
+	if !hasNoGitDir(root) {
+		return nil
 	}
+	cause := "this tree has no .git directory at all (e.g. a `git archive` export), so the guard could not read a landed base at all and was skipped entirely"
 	// Only worth saying when there is actually a findings register to guard.
+	n := findingsEntryCount(root)
+	if n == 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"register field-gutting guard is running degraded: %s (%d finding entr%s affected). If this is CI, fetch origin/main before the lint step; if this is a git-archive export, lint a real worktree instead (`git worktree add`) for a result comparable to CI.",
+		cause, n, map[bool]string{true: "y is", false: "ies are"}[n == 1])}
+}
+
+// findingsEntryCount returns how many findings-register entry files (.md directly
+// under docs/streams/findings/) the tree at root holds; 0 when there is no such
+// directory.
+func findingsEntryCount(root string) int {
 	files, err := os.ReadDir(filepath.Join(root, "docs", "streams", "findings"))
 	if err != nil {
-		return nil
+		return 0
 	}
 	n := 0
 	for _, f := range files {
@@ -576,12 +578,7 @@ func registerBaseFallbackNotices(root string) []string {
 			n++
 		}
 	}
-	if n == 0 {
-		return nil
-	}
-	return []string{fmt.Sprintf(
-		"register field-gutting guard is running degraded: %s (%d finding entr%s affected). If this is CI, fetch origin/main before the lint step; if this is a git-archive export, lint a real worktree instead (`git worktree add`) for a result comparable to CI.",
-		cause, n, map[bool]string{true: "y is", false: "ies are"}[n == 1])}
+	return n
 }
 
 // guttedRegisterFields flags any finding entry whose LOAD-BEARING fields were
@@ -607,17 +604,24 @@ func registerBaseFallbackNotices(root string) []string {
 //
 // HARD GATE (human-gate lineage): a detected gutting is a lint PROBLEM
 // unless the CURRENT entry carries a verified-human anchor in its frontmatter
-// `authorized-by:` key (see authorizedByVerifiedHuman). An unknown name or a bare
-// agent-written justification does NOT authorize.
+// `authorized-by:` key (see authorizedByVerifiedHuman) — or, for a park add/extend,
+// in its `parked-by:` key and only there (parkAuthorizedByVerifiedHuman). An unknown
+// name or a bare agent-written justification does NOT authorize. A park added or
+// extended past parkHorizonDays after the commit that sets it is a PROBLEM however
+// it is authorized.
 //
-// That anchor is now verified online at PR time. `statusgen --corroborate <pr>` —
-// which checks a human:<name> token ADDED in a PR diff against that account's on-PR
-// action — is wired into the pull_request lint job of
-// .github/workflows/statusgen.yml: a PR that adds an
-// `authorized-by: human:<name>` frontmatter line lands that token on an ADDED diff
-// line, so --corroborate picks it up and fails CI unless the named human ACTED on
-// the PR (an APPROVED review or an approval comment from their own account). The
-// residual is stated here rather than omitted because a reader needs the gate's
+// That anchor is verified online at PR time only where a pull_request job runs
+// `statusgen --corroborate --pr <pr>`; this offline check cannot tell whether one
+// does, and a repo whose CI does not run it gets no online verification at all
+// (TestCorroborateIsWiredIntoStatusgenWorkflow pins the wiring wherever a workflow
+// carries it). Where it runs, it gates the anchor in TWO lanes: the stamp lane
+// checks a human:<name> token ADDED in the PR diff, and the register-transition
+// lane (corroborateRegisterTransitions, statusgen/06) re-derives every transition
+// this function detects against the PR merge-base and requires a human named in
+// the authorizing key to have ACTED on the PR (an APPROVED review or an approval
+// comment from their own account) — so an anchor that was ALREADY on the entry
+// before the PR, which adds no diff line for the stamp lane to see, cannot be
+// reused to authorize a fresh gutting. The residual is stated here rather than omitted because a reader needs the gate's
 // real reach: corroboration proves the human acted on the PR, not that they
 // executed whatever deferred live check the sign-off MEANS, and — like --lint — it
 // runs against the adopter-configured ASSAY_HUMAN_LOGIN_MAP, so an unmapped name is
@@ -640,10 +644,11 @@ func registerBaseFallbackNotices(root string) []string {
 // the base is a not-yet-landed add (not a mutation of landed history) and is
 // skipped, and a deleted entry (absent from the working tree) is left to
 // deletedRegisterFiles — this function never double-reports it. Only meaningful in
-// a git checkout; silently skips otherwise. When origin/main is unresolvable the
-// base is HEAD, so committed mutations can't be diffed — that fail-open is
-// reported as a NOTICE by registerBaseFallbackNotices; working-tree gutting is
-// still caught.
+// a git checkout; skips otherwise (a tree with no .git is reported as a degraded
+// NOTICE by registerBaseFallbackNotices). When the exact origin/main ref does not
+// resolve to a merge-base in a real checkout, the guard fails CLOSED: it refuses
+// register transitions with one PROBLEM rather than comparing the working tree
+// against HEAD, which would pass any committed mutation (#2012 ruling item 3).
 //
 // Two further fail-opens are documented but NOT fixed here, both carried from the
 // review:
@@ -670,8 +675,181 @@ func guttedRegisterFieldsEntries(root string) []registerProblem {
 	if _, err := os.Stat(filepath.Join(root, ".git")); os.IsNotExist(err) {
 		return nil
 	}
-	base, _ := registerLandedBase(root)
+	base, resolved := registerLandedBase(root)
+	if !resolved {
+		// No-base fails CLOSED (#2012 ruling, item 3; #1855 F3). Without the exact
+		// landed base the only comparison left is the working tree against HEAD,
+		// which compares a COMMITTED transition with itself and passes it. So the
+		// transitions are refused outright rather than judged against HEAD. Only
+		// worth saying when there is a findings register to guard. No path: this
+		// is not attributable to one changed file, so --changed never scopes it
+		// away.
+		if n := findingsEntryCount(root); n > 0 {
+			problems := []registerProblem{{msg: fmt.Sprintf(
+				"register transitions refused (fail-closed): the exact ref %s could not be resolved to a merge-base with HEAD, so the %d findings-register entr%s cannot be compared with the version landed at the merge-base, and a committed resolve/affects/ack/park change would compare with itself and pass. Fetch the base branch into %s (actions/checkout fetch-depth: 0, or `git fetch origin main`) and re-run; a `git archive` export or a clone with no origin remote cannot pass this check.",
+				remoteMainRef, n, map[bool]string{true: "y", false: "ies"}[n == 1], remoteMainRef)}}
+			return problems
+		}
+		return nil
+	}
 
+	var problems []registerProblem
+	for _, tr := range registerFieldTransitions(root, base) {
+		// The park horizon binds whoever authorizes the park: a parked-until past
+		// it is a PROBLEM on its own, authorized or not (#2012 ruling, item 1).
+		if tr.horizon != "" {
+			problems = append(problems, registerProblem{
+				msg: fmt.Sprintf(
+					"register park beyond the %d-day horizon: %s — %s. A park is a bounded snooze, not a mute: set parked-until no later than %d days after the commit that sets or extends it, and extend it again (a fresh, authorized transition) if it is still needed when it expires.",
+					parkHorizonDays, tr.rel, tr.horizon, parkHorizonDays),
+				paths: []string{tr.rel},
+			})
+		}
+		// Authorization is field-specific: a resolve/affects/ack gut needs an
+		// `authorized-by: human:<name>` anchor; a park add/extend needs its own
+		// `parked-by: human:<name>` (the authorizing party of the park) and NOTHING
+		// else — `authorized-by` never authorizes a park (#2012 ruling, item 2;
+		// #1855 F4). Both keys require a name mapped in ASSAY_HUMAN_LOGIN_MAP. Each
+		// category is judged against its own authority, so an `authorized-by`
+		// anchor for a resolve does not silently also authorize an unattributed
+		// park in the same edit, and vice versa.
+		var unauthorized []string
+		if len(tr.guts) > 0 && !authorizedByVerifiedHuman(tr.curRaw) {
+			unauthorized = append(unauthorized, tr.guts...)
+		}
+		if len(tr.parkGuts) > 0 && !parkAuthorizedByVerifiedHuman(tr.curRaw) {
+			unauthorized = append(unauthorized, tr.parkGuts...)
+		}
+		if len(unauthorized) == 0 {
+			continue
+		}
+		problems = append(problems, registerProblem{
+			msg: fmt.Sprintf(
+				"register field-gutting (unauthorized): %s — %s vs the version landed at the merge-base with origin/main, with no verified-human authorization. In-place gutting of a finding's load-bearing fields silently unblocks the brief it demoted, and adding/extending a park silently mutes its standing alarm. This is a HUMAN gate: add an `authorized-by: human:<name>` key (for a park, a `parked-by: human:<name>` key; `authorized-by` does not authorize a park) to the entry's YAML frontmatter whose name is mapped in the configured ASSAY_HUMAN_LOGIN_MAP; an agent-written justification is not sufficient. Know what this check does and does not do before you add that key: this offline --lint check does NOT itself read the PR. The authority is corroborated online only where `statusgen --corroborate --pr <pr>` runs in a pull_request job, and this check cannot tell whether yours does. Where it runs, it re-derives this same transition against the PR merge-base and fails the PR unless a human named in the authorizing key ACTED on the PR (an APPROVED review or an approval comment from their own account) — whether the key was written in this PR or was already on the entry. If your own CI runs --corroborate on PRs, writing the key on your own authority will NOT quietly pass; if it does not, this gutting gate is all that stands here — either way, get the named human to authorize the change.",
+				tr.rel, strings.Join(unauthorized, "; ")),
+			paths: []string{tr.rel},
+		})
+	}
+	sort.Slice(problems, func(i, j int) bool { return problems[i].msg < problems[j].msg })
+	return problems
+}
+
+// registerTransition is one finding whose load-bearing fields moved in the
+// caution-REMOVING direction between a base commit and the working tree. guts are
+// the resolve/affects/ack moves (authorized by `authorized-by:`); parkGuts are the
+// park add/extend moves (authorized by `parked-by:` ONLY — #2012 ruling, item 2).
+// horizon is non-empty when that park add/extend sets a parked-until past the
+// park horizon (parkHorizonDays after the date of the commit that sets it): no
+// authority can authorize that, so both halves fail it outright. curRaw is the
+// entry as it stands now — where the authorizing key is read from.
+type registerTransition struct {
+	rel      string
+	guts     []string
+	parkGuts []string
+	horizon  string
+	curRaw   []byte
+}
+
+// parkHorizonDays is the longest a park may run: parked-until may be at most this
+// many days after the date of the commit that sets or extends it (decision gate
+// #2012, item 1). A park is a bounded snooze; a longer one has to be re-decided
+// (extended again) when it expires, which is a fresh, corroborated transition.
+const parkHorizonDays = 90
+
+// parkHorizonNow is the clock the park horizon reads: the date an uncommitted
+// park is set on, and the ceiling on a commit's own date. A package seam so tests
+// pin it.
+var parkHorizonNow = func() time.Time { return time.Now().UTC() }
+
+// parkSetDate returns the UTC calendar date of the commit that set the entry's
+// current parked-until value `until` — the newest run of commits in base..HEAD
+// (path-limited to rel, ancestry order) that all carry that value, oldest of the
+// run. A value not yet committed (the working tree differs from HEAD) is set
+// today. A commit date LATER than today counts as today: a commit date is the
+// committer's own claim, so a future-dated commit could otherwise stretch the
+// horizon. A back-dated commit only shortens it, the safe direction.
+func parkSetDate(root, base, rel, until string) time.Time {
+	now := parkHorizonNow().UTC()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	untilAt := func(rev string) (string, bool) {
+		raw, err := gitShowObject(root, rev, rel)
+		if err != nil {
+			return "", false
+		}
+		e, err := parseFindingFile(raw)
+		if err != nil {
+			return "", false
+		}
+		return strings.TrimSpace(e.ParkedUntil), true
+	}
+	if v, ok := untilAt("HEAD"); !ok || v != until {
+		return today // uncommitted: set by this working tree, today
+	}
+	out, err := exec.Command("git", "-C", root, "log", "--topo-order", "--format=%H %ct",
+		"--end-of-options", base+"..HEAD", "--", rel).Output()
+	if err != nil {
+		return today
+	}
+	var setAt int64
+	found := false
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		f := strings.Fields(line)
+		if len(f) != 2 {
+			break
+		}
+		if v, ok := untilAt(f[0]); !ok || v != until {
+			break
+		}
+		ts, perr := strconv.ParseInt(f[1], 10, 64)
+		if perr != nil {
+			break
+		}
+		setAt, found = ts, true
+	}
+	if !found {
+		return today
+	}
+	t := time.Unix(setAt, 0).UTC()
+	d := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+	if d.After(today) {
+		return today
+	}
+	return d
+}
+
+// parkHorizonViolation returns why a park add/extend to `until` breaks the
+// horizon, or "" when it does not. An unparseable date fails closed here too (the
+// malformed-park check PROBLEMs it separately offline; the online lane has no
+// other place that would catch it).
+func parkHorizonViolation(root, base, rel, until string) string {
+	u, err := time.Parse("2006-01-02", until)
+	if err != nil {
+		return fmt.Sprintf("parked-until [%s] is not a YYYY-MM-DD date, so the %d-day park horizon cannot be checked", until, parkHorizonDays)
+	}
+	set := parkSetDate(root, base, rel, until)
+	limit := set.AddDate(0, 0, parkHorizonDays)
+	if !u.After(limit) {
+		return ""
+	}
+	return fmt.Sprintf("parked-until [%s] is more than %d days after %s, the date of the commit that sets it (latest allowed: %s)",
+		until, parkHorizonDays, set.Format("2006-01-02"), limit.Format("2006-01-02"))
+}
+
+// registerFieldTransitions diffs every working-tree finding against its version
+// at base and returns the entries whose resolved/affects/ack/parked-until moved in
+// the caution-removing direction. It makes NO authorization judgement: the
+// offline --lint gate (guttedRegisterFieldsEntries) judges the transitions against
+// the frontmatter anchor, and the online --corroborate lane
+// (corroborateRegisterTransitions) judges the SAME transitions against the PR's
+// reviews and comments. One detector for both halves, so the two cannot disagree
+// about what counts as a transition.
+//
+// base is any commit-ish: the offline gate passes the merge-base with origin/main
+// (registerLandedBase); the online lane passes the PR merge-base. An entry absent
+// at base by path AND by register ID is a not-yet-landed add and is skipped; a
+// deleted entry is never listed (the walk is over the working tree) and is left to
+// deletedRegisterFiles.
+func registerFieldTransitions(root, base string) []registerTransition {
 	const dir = "docs/streams/findings"
 	fsDir := filepath.Join(root, "docs", "streams", "findings")
 	files, err := os.ReadDir(fsDir)
@@ -698,8 +876,7 @@ func guttedRegisterFieldsEntries(root string) []registerProblem {
 			if line == "" || !strings.HasSuffix(line, ".md") {
 				continue
 			}
-			showCmd := exec.Command("git", "-C", root, "show", base+":"+line)
-			showOut, showErr := showCmd.Output()
+			showOut, showErr := gitShowObject(root, base, line)
 			if showErr != nil {
 				continue
 			}
@@ -710,7 +887,7 @@ func guttedRegisterFieldsEntries(root string) []registerProblem {
 		}
 	}
 
-	var problems []registerProblem
+	var out []registerTransition
 	for _, f := range files {
 		if f.IsDir() || !strings.HasSuffix(f.Name(), ".md") {
 			continue
@@ -736,7 +913,7 @@ func guttedRegisterFieldsEntries(root string) []registerProblem {
 		// file may have been RENAMED — resolve by register ID via the
 		// landedByID index (T8: closes the rename+gut bypass).
 		var baseE *findingEntry
-		baseRaw, pathErr := exec.Command("git", "-C", root, "show", base+":"+rel).Output()
+		baseRaw, pathErr := gitShowObject(root, base, rel)
 		if pathErr == nil {
 			baseE, err = parseFindingFile(baseRaw)
 			if err != nil {
@@ -782,39 +959,22 @@ func guttedRegisterFieldsEntries(root string) []registerProblem {
 		} else if baseUntil != "" && curUntil != "" && curUntil > baseUntil {
 			parkGuts = append(parkGuts, fmt.Sprintf("parked-until extended [%s -> %s] (mutes the standing alarm longer)", baseUntil, curUntil))
 		}
+		// The park horizon (#2012 item 1) binds exactly the moves above: a park
+		// that is added or extended may run at most parkHorizonDays past the date
+		// of the commit that sets it. A landed park left as it is was judged when
+		// it was set, and a narrowed one only shortens the snooze.
+		var horizon string
+		if len(parkGuts) > 0 {
+			horizon = parkHorizonViolation(root, base, rel, curUntil)
+		}
 
 		if len(guts) == 0 && len(parkGuts) == 0 {
 			continue
 		}
-
-		// Authorization is field-specific: a resolve/affects/ack gut needs an
-		// `authorized-by: human:<name>` anchor; a park add/extend is authorized by
-		// its own `parked-by: human:<name>` (the authorizing party of the park) OR
-		// an `authorized-by:` anchor. Both keys require a name mapped in
-		// ASSAY_HUMAN_LOGIN_MAP. Each category is judged against its own authority,
-		// so an `authorized-by` anchor for a resolve does not silently also
-		// authorize an unattributed park in the same edit, and vice versa.
-		var unauthorized []string
-		if len(guts) > 0 && !authorizedByVerifiedHuman(curRaw) {
-			unauthorized = append(unauthorized, guts...)
-		}
-		if len(parkGuts) > 0 &&
-			!authorizedByVerifiedHuman(curRaw) &&
-			!parkAuthorizedByVerifiedHuman(curRaw) {
-			unauthorized = append(unauthorized, parkGuts...)
-		}
-		if len(unauthorized) == 0 {
-			continue
-		}
-		problems = append(problems, registerProblem{
-			msg: fmt.Sprintf(
-				"register field-gutting (unauthorized): %s — %s vs the version landed at the merge-base with origin/main, with no verified-human authorization. In-place gutting of a finding's load-bearing fields silently unblocks the brief it demoted, and adding/extending a park silently mutes its standing alarm. This is a HUMAN gate: add an `authorized-by: human:<name>` key (or, for a park, a `parked-by: human:<name>` key) to the entry's YAML frontmatter whose name is mapped in the configured ASSAY_HUMAN_LOGIN_MAP; an agent-written justification is not sufficient. Know what this check does and does not do before you add that key: this offline --lint check does NOT itself read the PR. The anchor gets corroborated online only where `statusgen --corroborate <pr>` is wired into a pull_request job — the toolkit's reference CI wires it into the lint job of .github/workflows/assay-statusgen.yml, where the added `human:<name>` line lands on an ADDED diff line and fails that PR's CI unless the named human ACTED on the PR (an APPROVED review or an approval comment from their own account). If your own CI runs --corroborate on PRs, writing the key on your own authority will NOT quietly pass; if it does not, this gutting gate is all that stands here — either way, get the named human to authorize the change.",
-				rel, strings.Join(unauthorized, "; ")),
-			paths: []string{rel},
-		})
+		out = append(out, registerTransition{rel: rel, guts: guts, parkGuts: parkGuts, horizon: horizon, curRaw: curRaw})
 	}
-	sort.Slice(problems, func(i, j int) bool { return problems[i].msg < problems[j].msg })
-	return problems
+	sort.Slice(out, func(i, j int) bool { return out[i].rel < out[j].rel })
+	return out
 }
 
 // removedAffects returns the affects entries present in base but absent from cur —
@@ -898,10 +1058,12 @@ func authorizedByVerifiedHuman(raw []byte) bool {
 // ADD/EXTEND exactly as `authorized-by` authorizes a resolve/affects gut. Same
 // fail-closed discipline as authorizedByVerifiedHuman: unparseable frontmatter, a
 // missing key, a non-scalar value, or a bare/unmapped name all return false. The
-// ONLINE half (statusgen --corroborate, wired into CI) reads the ADDED
-// `parked-by: human:<name>` diff line and requires that human to have ACTED on the
-// PR — so writing the key on one's own authority does not silently pass where the
-// gate runs. An agent cannot self-park.
+// ONLINE half (statusgen --corroborate --pr) re-derives the park add/extend against
+// the PR merge-base and requires a human named in `parked-by` (and only there —
+// `authorized-by` never authorizes a park, #2012 ruling item 2) to have ACTED on
+// the PR (corroborateRegisterTransitions) — so writing the key on
+// one's own authority, or reusing one already on the entry, does not silently pass
+// where the gate runs. An agent cannot self-park.
 func parkAuthorizedByVerifiedHuman(raw []byte) bool {
 	fm, _, err := splitFrontmatter(string(raw))
 	if err != nil {

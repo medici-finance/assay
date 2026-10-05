@@ -167,6 +167,7 @@ func cmdDispatch(args []string) error {
 		"already-existing home worktree instead of the not-yet-known placeholder. Refused on a real dispatch")
 	rework := fs.Bool("rework", false, "the row awaits implementer REWORK (implemented, last verdict FAIL): a MERGED PR "+
 		"for the brief makes this a FOLLOW-UP on a new branch, never a resume (worker kit, no --pr)")
+	applyOverride, _ := deskkit.RegisterOutboundOverride(fs, "deskdispatch", "dispatch")
 
 	if len(args) == 0 {
 		return deskkit.Refused("deskdispatch requires an <item-key>")
@@ -177,6 +178,9 @@ func cmdDispatch(args []string) error {
 	}
 	if err := fs.Parse(args[1:]); err != nil {
 		return deskkit.Refused("deskdispatch: bad flags: " + err.Error())
+	}
+	if err := applyOverride(); err != nil {
+		return err
 	}
 	if fs.NArg() != 0 {
 		return deskkit.Refused("deskdispatch: unexpected extra arguments after <item-key>: " + strings.Join(fs.Args(), " "))
@@ -220,7 +224,7 @@ func dispatch(o dispatchOpts) error {
 		}
 		shownBranch := branch
 		if plan.detached {
-			shownBranch = "(detached off origin/main — verifier touches no branch)"
+			shownBranch = fmt.Sprintf("(detached off origin/main — %s touches no branch)", o.kit)
 		}
 		fmt.Printf("deskdispatch: PLAN (dry run — nothing touched) item=%s repo=%s tier=%s kit=%s branch=%s%s\n",
 			o.item, repo, o.tier, o.kit, shownBranch, wtBanner)
@@ -360,14 +364,7 @@ func dispatch(o dispatchOpts) error {
 	// that role App's own worktree-scoped https transport and credential helper, refusing when
 	// git does not then resolve exactly that (#861). Without it the worktree fetched with the
 	// operator's SSH key and pushed to wherever the shared config pointed.
-	var wt runResult
-	if plan.detached {
-		wt = runCmd(o.root, "deskwt", "add", wtName, "--detach", "--base", worktreeBase(o, branch),
-			"--role", plan.identityRole)
-	} else {
-		wt = runCmd(o.root, "deskwt", "add", wtName, "--branch", branch, "--base", worktreeBase(o, branch),
-			"--role", plan.identityRole)
-	}
+	wt := createDispatchWorktree(o, plan)
 	if wt.err != nil {
 		// The durable claim was placed one step ago and this dispatch is now aborting, so
 		// RELEASE it — exactly as the before_run failure path below does — rather than leave it
@@ -381,14 +378,8 @@ func dispatch(o dispatchOpts) error {
 		// worktree holds it, what to do). Not toolMessage(wt.stderr): that strips only the
 		// `assay-config:` preamble and never scrubs, and this message reaches the operator
 		// verbatim via FailVerbatim on every DESK_TRACE setting, on or off. The wrapper no
-		// longer frames this as a transient tree fault to "fix and re-run"; instead it names
-		// the commonest cause, which DIFFERS BY KIT and so must be selected by kit (#851). The
-		// brief-lane hint — the brief's `feat/<id>` branch already existing — is meaningless on
-		// the review lane, which has no brief and no feat branch; sending a reviewer to "look
-		// for a merged/open PR" explains nothing. The review-lane hint points instead at the
-		// reviewer-worktree lifecycle: a review kit checks the PR head out as a DETACHED HEAD,
-		// so the earlier reviewer worktree for this PR must be reclaimed before a re-dispatch
-		// on the same lane key can create its own.
+		// longer guesses that a retained reviewer tree caused this failure: each
+		// review pass gets a fresh detached home, so earlier evidence stays intact.
 		said := wt.run.SaidAll()
 		msg := fmt.Sprintf(
 			"step %s: `deskwt add %s` failed in %s. The claim was %s. %s deskwt said:\n%s",
@@ -461,7 +452,7 @@ func dispatch(o dispatchOpts) error {
 		idSuffix = " identity=" + deskkit.RoleIdentityLabel(plan.identityRole)
 	}
 	if plan.detached {
-		o.say("%s OK: %s detached off origin/main (verifier: no branch)%s", stepWorktreeCreate, home, idSuffix)
+		o.say("%s OK: %s detached off origin/main (%s: no branch)%s", stepWorktreeCreate, home, o.kit, idSuffix)
 	} else {
 		o.say("%s OK: %s on %s%s", stepWorktreeCreate, home, branch, idSuffix)
 	}
@@ -580,9 +571,8 @@ type dispatchPlan struct {
 	// validateOperatorWorktree — an empty value renders the not-yet-known placeholder, so a
 	// real dispatch, which never sets it, is unaffected.
 	home string
-	// detached is set for a VERIFIER dispatch (#1309 item 6): the worktree is cut as a detached
-	// HEAD off origin/main under a `verify-<item>` name (`deskwt add --detach`), branch is empty,
-	// and no feature branch is created, named, or collided with.
+	// Review and verifier kits start detached off mainline without creating,
+	// reclaiming, or naming a feature branch.
 	detached bool
 	// identityRole is the DISPATCHED agent's own desk role — the one whose App commit
 	// identity its worktree must carry (kitRole: worker/worker-objective→worker,
@@ -649,6 +639,10 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 			"step %s: --worktree is accepted only with --dry-run. A real dispatch names the home worktree "+
 				"deskwt printed and nothing else; an operator-stated path must not override that placement.",
 			stepWorktreeCreate))
+	}
+
+	if reviewKit(o.kit) && strings.TrimSpace(o.branch) != "" {
+		return plan, deskkit.Refused("--branch is not accepted with --kit review: reviewer worktrees are detached")
 	}
 
 	if !itemKeyRe.MatchString(o.item) {
@@ -765,6 +759,12 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		}
 	}
 
+	if reviewKit(o.kit) && o.pr > 0 {
+		if err := deskkit.ValidateReviewClaimKey(plan.claimKey, repo, o.pr); err != nil {
+			return plan, err
+		}
+	}
+
 	// WHERE the claim is kept is the resolver's answer, read from the roster
 	// and never from a flag. A configured store that cannot be used is a refusal HERE — exit 6,
 	// before any child process, any worktree and any credential mint — and is never replaced by
@@ -797,17 +797,13 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		plan.forgeKind = kind
 	}
 
-	// A VERIFIER dispatch names no branch (#1309 item 6): its worktree is cut DETACHED off
-	// origin/main under its own `verify-<item>` name and never touches the brief's feature
-	// branch — a delivered brief's `feat/<id>` still sitting in a stale worker worktree used to
-	// refuse the verifier with "already delivered or in progress", which is true of the brief
-	// and irrelevant to a verify pass against merged main. An explicit --branch on a verifier
-	// dispatch contradicts that shape and is refused here, pre-claim.
-	if verifierKit(o.kit) {
+	// Read-only kits allocate detached. A reviewer checks out the PR head
+	// afterward; no disposable feature branch or upstream is needed.
+	if verifierKit(o.kit) || reviewKit(o.kit) {
 		if strings.TrimSpace(o.branch) != "" {
 			return plan, deskkit.Refused(fmt.Sprintf(
-				"step %s: --branch is not accepted with --kit verifier — a verifier's worktree is cut DETACHED "+
-					"off origin/main under its own name and never touches a feature branch.", stepWorktreeCreate))
+				"step %s: --branch is not accepted with --kit %s — its worktree is cut DETACHED "+
+					"off origin/main and never touches a feature branch.", stepWorktreeCreate, o.kit))
 		}
 		plan.detached = true
 	} else {
@@ -837,7 +833,7 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// worktree-name grammar, falls back to the bare item-derived name (the pre-session
 	// behaviour), so this never turns a usable name unusable.
 	base := sanitizeSegment(o.item)
-	if plan.detached {
+	if verifierKit(o.kit) {
 		// The verifier's OWN name: a worker worktree for the same item (tracker-<item>-<sess>)
 		// must never be the dir a verifier lands in or is refused by.
 		base = "verify-" + base
@@ -851,6 +847,14 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	if sess := dispatchSessionSuffix(); sess != "" {
 		if scoped := base + "-" + sess; worktreeNameRe.MatchString(scoped) {
 			plan.wtName = scoped
+		}
+	}
+
+	if reviewKit(o.kit) {
+		var err error
+		plan.wtName, err = freshReviewName(base)
+		if err != nil {
+			return plan, deskkit.Unverifiable("cannot allocate a fresh reviewer worktree name; nothing was claimed", err)
 		}
 	}
 
@@ -1155,10 +1159,13 @@ type claimAuth struct {
 // because the claim runs four steps before the stamp — which reads its own credential inside
 // deskkit.ResolveForge.
 //
-// PRECEDENCE. An explicit GH_TOKEN already in the environment wins outright and nothing is
-// minted: an operator who exported a credential chose it, and both tools already read it —
-// the Go binary via its env fallback (no --token-file is passed, because that flag would
-// outrank the export inside the binary). Otherwise the role token is minted and handed over
+// PRECEDENCE. An explicit GH_TOKEN already in the environment wins and nothing is minted —
+// but only once verifyInheritedToken shows it IS the dispatching role's credential (issue
+// 1631: a launcher exported the operator's ambient login there, and the claim ran as the
+// human). A verified export is read as-is by both tools — the Go binary via its env fallback
+// (no --token-file is passed, because that flag would outrank the export inside the binary).
+// Any other identity is ignored with a NOTICE and the role token minted; an unreadable one
+// refuses. Otherwise the role token is minted and handed over
 // in the tool's own shape: `--token-file <path>` for the binary (the minter's 0600 cache file,
 // never a copy written anywhere new) and GH_TOKEN in the child environment for the script.
 //
@@ -1177,10 +1184,6 @@ type claimAuth struct {
 // hold for both — a forge that cannot be resolved refuses here, before any claim, rather than
 // guessing.
 func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, isScript bool) (claimAuth, error) {
-	if strings.TrimSpace(os.Getenv("GH_TOKEN")) != "" {
-		const explicit = "the GH_TOKEN already exported in this environment"
-		return claimAuth{source: explicit, scriptSource: explicit}, nil
-	}
 	role := stampRoleForKit(o.kit)
 	// forgeKind is pre-resolved by planClaim for a review dispatch (its prompt is forge-shaped);
 	// a worker dispatch leaves it empty, so resolve it HERE, at execution time — after every
@@ -1194,6 +1197,22 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 			return claimAuth{}, ferr
 		}
 	}
+	// ISSUE 1631. An inherited GH_TOKEN wins only once it is shown to BE the dispatching role's
+	// credential. A launcher (a cell shim) exported the operator's ambient gh login there, and
+	// this verb took it for a deliberate override: no mint, and the claim went out under the
+	// human's identity. A token that is not the role's is dropped from this process — so neither
+	// the claim child nor any later child inherits it — and the role token is minted below as if
+	// nothing had been exported. One whose identity cannot be read refuses (verifyInheritedToken).
+	if inherited := strings.TrimSpace(os.Getenv("GH_TOKEN")); inherited != "" {
+		honoured, source, verr := o.verifyInheritedToken(role, repo, kind, inherited)
+		if verr != nil {
+			return claimAuth{}, verr
+		}
+		if honoured {
+			return claimAuth{source: source, scriptSource: source}, nil
+		}
+		_ = os.Unsetenv("GH_TOKEN")
+	}
 	if kind == deskkit.ForgeGitLab {
 		return resolveClaimAuthGitLab(role, repo, isScript)
 	}
@@ -1204,7 +1223,7 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 				"identity the claim would be taken under cannot be established. NO claim was attempted: the "+
 				"claim tool is never run on the ambient `gh` credential (nothing at all in a sandboxed desk "+
 				"window, or a human login with no write on the target — the two ways this step failed before "+
-				"it minted its own token). Export GH_TOKEN to override the mint deliberately.",
+				"it minted its own token). Export the role App's own token as GH_TOKEN to override the mint deliberately.",
 			stepClaimAcquire, role, deskkit.OwnerOf(repo), tokenPathForMessage(tokPath), err), err)
 	}
 	scriptEnv := append(os.Environ(), "GH_TOKEN="+tok)
@@ -1226,6 +1245,78 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 	}, nil
 }
 
+// verifyInheritedToken decides whether an inherited GH_TOKEN may stand in for the role mint
+// (issue 1631). It answers one of three ways:
+//
+//   - honoured (true, source): the token IS the dispatching role's credential — on GitHub, the
+//     account it acts as (one GraphQL viewer read, tokenIdentityFn) is the role's App as the
+//     roster binds it, login and pinned bot USER id alike; on GitLab, it is byte-equal to the
+//     role's PAT custody file. The operator's deliberate override keeps working exactly as before.
+//     The GitHub read is built by the forge resolver for the TARGET repo and the origin read from
+//     --root (deskkit.GitHubTokenIdentityForRepo), so the inherited token is offered only to the
+//     host the role's own GitHub credential would be — a non-github.com origin refuses unsent.
+//   - ignored (false, "", nil): it is readably SOMEONE ELSE — a human login, another role's App, a
+//     different PAT. A NOTICE says so on stderr and the caller mints the role token instead.
+//   - refused (error): whose it is cannot be established — the probe failed (transport, 401), the
+//     roster binds no identity to the role, or the GitLab custody is unreadable. Nothing is
+//     claimed: the claim is never taken under a credential whose identity is unknown, and it is
+//     never silently swapped for one either. Unsetting GH_TOKEN is always the way through.
+//
+// The token VALUE never appears in any message; the login it acts as, and paths, do.
+func (o dispatchOpts) verifyInheritedToken(role, repo string, kind deskkit.ForgeKind, tok string) (bool, string, error) {
+	if kind == deskkit.ForgeGitLab {
+		custody, custodyPath, err := deskkit.GitLabRoleToken(role)
+		if err != nil {
+			return false, "", deskkit.RefusedWithCause(fmt.Sprintf(
+				"step %s: a GH_TOKEN is exported in this environment, but on a GitLab repo it is honoured only "+
+					"when it IS the %s role's GitLab PAT, and that custody could not be read to compare against (%v). "+
+					"The export was NOT used, and NO claim was attempted. Provision the role's GitLab PAT custody "+
+					"file, or unset GH_TOKEN.", stepClaimAcquire, role, err), err)
+		}
+		if strings.TrimSpace(custody) == tok {
+			return true, fmt.Sprintf("the GH_TOKEN exported in this environment (verified: it is the %s GitLab role PAT, %s)",
+				role, tokenPathForMessage(custodyPath)), nil
+		}
+		noticeIgnoredToken(role, "is not the "+role+" GitLab role PAT ("+tokenPathForMessage(custodyPath)+")")
+		return false, "", nil
+	}
+	expected := deskkit.RoleAppLoginOrEmpty(role)
+	owner, name, _ := strings.Cut(repo, "/")
+	id, err := tokenIdentityFn(deskkit.ForgeRepo{Owner: owner, Name: name}, o.targetOriginURL(), tok)
+	if err != nil {
+		return false, "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: a GH_TOKEN is exported in this environment, but the account it acts as could not be read "+
+				"(%v). It is honoured only when it is the %s App's own token (%s), so it was NOT used, and NO claim "+
+				"was attempted — the claim is never taken under a credential whose identity cannot be established. "+
+				"Unset GH_TOKEN to let this verb mint the %s App token itself.",
+			stepClaimAcquire, err, role, expected, role), err)
+	}
+	login := deskkit.StripControl(id.Login)
+	match, bound := id.ActsAsRole(role)
+	if !bound {
+		return false, "", deskkit.Refused(fmt.Sprintf(
+			"step %s: a GH_TOKEN is exported in this environment (it acts as %s), but the roster binds no App "+
+				"identity to the %s role, so whether it is that role's App cannot be checked. It was NOT used, and "+
+				"NO claim was attempted. Bind the role in %s, or unset GH_TOKEN.",
+			stepClaimAcquire, login, role, deskkit.EnvTrustedBotSlugs))
+	}
+	if match {
+		return true, fmt.Sprintf("the GH_TOKEN exported in this environment (verified: it acts as %s, the %s App)", login, role), nil
+	}
+	noticeIgnoredToken(role, fmt.Sprintf("acts as %s, not the %s App (%s)", login, role, expected))
+	return false, "", nil
+}
+
+// noticeIgnoredToken is the one line an ignored inherited GH_TOKEN earns: it is not an error (the
+// dispatch goes ahead under the role's own token), but a silent swap would hide a launcher that is
+// putting the wrong credential in front of every desk verb.
+func noticeIgnoredToken(role, why string) {
+	fmt.Fprintf(os.Stderr, "deskdispatch: NOTICE — step %s: the GH_TOKEN inherited by this process %s. It is "+
+		"NOT treated as an operator override and is IGNORED; the %s role token is minted instead (issue 1631: a "+
+		"launcher can export an ambient human login there). Export the %s App's own token to override the mint.\n",
+		stepClaimAcquire, why, role, role)
+}
+
 // resolveClaimAuthGitLab is resolveClaimAuth's GitLab branch: it reads the role's already-
 // provisioned GitLab PAT custody file (deskkit.GitLabRoleToken — the same custody
 // deskpost/deskflip act under, NEVER the GitHub App minter) and hands it to the claim child in
@@ -1242,7 +1333,7 @@ func resolveClaimAuthGitLab(role, repo string, isScript bool) (claimAuth, error)
 			"step %s: the %s GitLab role PAT for %s could not be read (%s) — so the identity the claim "+
 				"would be taken under cannot be established. NO claim was attempted: the claim tool is never "+
 				"run on the ambient credential. Provision the role's GitLab PAT custody file, or export "+
-				"GH_TOKEN to override deliberately.",
+				"the role's own GitLab PAT as GH_TOKEN to override deliberately.",
 			stepClaimAcquire, role, deskkit.OwnerOf(repo), err), err)
 	}
 	scriptEnv := append(os.Environ(), "GH_TOKEN="+tok, "GITLAB_TOKEN="+tok)
@@ -1496,7 +1587,7 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			stepModelStamp, repo, o.pr, forge, firstLine(eerr.Error())), eerr)
 	}
 	tl := deskkit.StampTimeline{Present: change.Labels, Events: events}
-	stale := deskkit.ReStampRemovals(tl, labels, deskkit.IsDispatcherLogin)
+	stale := deskkit.ReStampRemovals(tl, labels, deskkit.IsStampAuthorityLogin)
 	if len(stale) == 0 && labelsPresent(change.Labels, labels) {
 		// An IDENTICAL stamp already standing under the dispatcher is a no-op: nothing is
 		// removed and nothing is re-applied, so a re-dispatch neither churns the label
@@ -1805,15 +1896,21 @@ func (o dispatchOpts) resolveTargetForgeKind(repo string) (deskkit.ForgeKind, er
 			"step %s: %q does not parse to an owner/name, so the forge serving it cannot be resolved.",
 			stepClaimAcquire, repo), nil)
 	}
-	originURL := ""
-	if r := runCmd(o.root, "git", "remote", "get-url", "origin"); r.err == nil {
-		originURL = r.stdout
-	}
-	res, err := deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, originURL)
+	res, err := deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, o.targetOriginURL())
 	if err != nil {
 		return "", err
 	}
 	return res.Kind, nil
+}
+
+// targetOriginURL reads the TARGET checkout's origin remote (o.root) through the runCmd seam, or
+// "" when it cannot be read — deskkit then answers from the roster alone. The raw URL is handed
+// to deskkit and never printed (an https origin can carry userinfo).
+func (o dispatchOpts) targetOriginURL() string {
+	if r := runCmd(o.root, "git", "remote", "get-url", "origin"); r.err == nil {
+		return r.stdout
+	}
+	return ""
 }
 
 func (o dispatchOpts) say(format string, args ...any) {

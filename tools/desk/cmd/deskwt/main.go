@@ -43,10 +43,11 @@ path under /private/tmp/tracker-*, a uniquely-named branch cut from a FRESHLY FE
 origin/main (so the preflight landing probe is green and the session does not start behind
 main), a worktree lock, and the role's App commit identity set PER-WORKTREE (bot USER id,
 #638) so concurrent sessions cannot race each other's identity via shared config, plus the
-role's App CREDENTIAL HELPER set per-worktree (chain reset, one inline helper reading the
+role's App fetch/push TRANSPORT and CREDENTIAL HELPER set per-worktree (URL list and helper
+chain reset, one inline helper reading the
 role's 0600 token file — never a token in argv or a URL), and finally the role's own
 PREFLIGHT run against the provisioned worktree (red = exit 6, the path is still printed). An
-existing valid worktree is reused (helper re-wired, so a polluted chain is scrubbed); a
+existing valid worktree is reused (transport and helper re-wired, existing files preserved); a
 foreign-repo path is refused, never re-pointed. The
 LAST line on stdout is the worktree's absolute path — the launcher contract:
 ` + "`cd \"$(deskwt role-init <role> --repo-root <checkout>)\"`" + `.
@@ -73,21 +74,28 @@ committing under an unrelated inherited identity. The shared checkout's config i
 touched either way. The identity (or the cleared state) is echoed to stderr; stdout stays the
 bare worktree path.
 
-add --role GIVES the new worktree the role App's OWN TRANSPORT instead of the one it would
+add --role and role-init GIVE the worktree the role App's OWN TRANSPORT instead of the one it would
 inherit (an SSH origin, an operator's pushurl sentinel). At worktree scope it writes
 remote.origin.pushurl and remote.origin.url as an empty entry (git's list reset, git 2.46+)
 followed by https://<host>:443/<owner>/<name>.git — the explicit port keeps a global
 https-to-SSH insteadOf from rewriting it — plus the role App's host-scoped credential helper
 (the same one role-init writes). An SSH host alias is resolved to its real host with
 ` + "`ssh -G`" + ` (no connection). It then reads back what git itself resolves for fetch and push, and
-REFUSES (exit 5), rolling the worktree back, unless both are exactly that one URL. An origin on
+REFUSES (exit 5) unless both are exactly that one URL. add rolls back its new worktree;
+role-init retains its worktree for repair and stops before preflight. On any failure after
+the URL writes (that refusal, or a credential that cannot be resolved) the worktree-scoped URL
+lists are restored, and the inherited credential helper chain, cleared before the first URL
+write, stays cleared. An origin on
 git's local transport (a path) carries no key and is left as it is, unless it pushes over SSH.
+An explicit HTTP service port, an HTTPS port other than 443, or an empty HTTP(S)
+port is refused before URL or credential provisioning. Omitted HTTP ports retain
+the established HTTPS migration.
 
 Without --role, add REFUSES an SSH PUSH REMOTE under a bot identity. A worktree inherits this
 checkout's remote, so an ssh:// or git@host:path PUSH url here is one in every worktree cut
 from it — and a session whose $DESK_LOOP resolves to a role App would push under whatever key
 this machine's agent holds, a human's, while its commits read as the App's. The refusal names
-the url and the one-line remedy. Fetch over SSH stays allowed (remote.origin.pushurl is what is
+the url and the remedy. Fetch over SSH stays allowed (remote.origin.pushurl is what is
 read whenever it is set), and with $DESK_LOOP unset the gate is inert — a human pushes under
 their own key, which is what the SSH remote is for.
 

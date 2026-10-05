@@ -1,0 +1,47 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -timeout 120s -run '^Test(ContractConformance|ReadPatternBackends|NativeReadBackendCustodyNegative|OutboundGitLabNoReply|OutboundGitLabTypedNotes|GitLabPushRewriteRefusesSSH)$'",
+  "control": {
+    "name": "GitLab REST population falsely claims complete reviews",
+    "file": "internal/deskkit/forge_gitlab.go",
+    "old": "QueuedChange{OpenChange: c, ReviewsComplete: false}",
+    "new": "QueuedChange{OpenChange: c, ReviewsComplete: true}"
+  },
+  "mutations": [
+    {
+      "name": "GitHub HTTP failures become an empty successful answer",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "return nil, &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path,\n\t\t\t\tMessage: he.Message, RateLimited: ghHTTPErrorRateLimited(he)}",
+      "new": "return nil, nil"
+    },
+    {
+      "name": "GitLab unminted read bypasses credential floor",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "func (g *GitLabForge) client() (*gitlab.Client, error) {\n\tif g.Token == \"\" {",
+      "new": "func (g *GitLabForge) client() (*gitlab.Client, error) {\n\tif g.Token == \"\" && false {"
+    },
+    {
+      "name": "Compiled no-reply domains are refused",
+      "file": "internal/deskkit/personaldata.go",
+      "old": "if domain == d || strings.HasSuffix(domain, \".\"+d) {",
+      "new": "if (domain == d || strings.HasSuffix(domain, \".\"+d)) && false {"
+    },
+    {
+      "name": "Typed MR note is routed to issue instead",
+      "file": "internal/deskkit/outboundforge.go",
+      "old": "return o.Forge.PostCommentTyped(repo, number, kind, body)",
+      "new": "return o.Forge.PostCommentTyped(repo, number, TargetIssue, body)"
+    },
+    {
+      "name": "SSH rewrite is treated as admissible",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\t\tif !isSSHTransport(u) {\n\t\t\tcontinue\n\t\t}",
+      "new": "\t\tif !isSSHTransport(u) || true {\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "GitLab API error loses rejection message",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "&ForgeAPIError{Status: status, Method: method, Path: path, Body: body}",
+      "new": "&ForgeAPIError{Status: status, Method: method, Path: path, Body: strings.Repeat(body, 0)}"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,6 +92,9 @@ func (s *stub) install(t *testing.T) (home, root string) {
 //     minter (stubMint overrides it);
 //   - GH_TOKEN is cleared, so the explicit-export precedence is never inherited from the
 //     developer's shell (a test that wants it sets it).
+//   - the inherited-GH_TOKEN identity probe (issue 1631) is bound to a stub that FAILS, so no
+//     test reaches a forge and a test that exports GH_TOKEN without saying whose it is fails
+//     closed (stubTokenIdentity binds the identity a test means).
 //
 // Every harness that runs a real dispatch — install, and the hand-rolled ones — calls this.
 func isolateClaimTool(t *testing.T, home string) {
@@ -105,6 +109,12 @@ func isolateClaimTool(t *testing.T, home string) {
 		return stubMintedToken, stubMintedTokenPath(t, home), nil
 	}
 	t.Cleanup(func() { mintTokenFn = oldMint })
+
+	oldProbe := tokenIdentityFn
+	tokenIdentityFn = func(deskkit.ForgeRepo, string, string) (deskkit.TokenIdentity, error) {
+		return deskkit.TokenIdentity{}, errors.New("example: no forge in tests — bind stubTokenIdentity")
+	}
+	t.Cleanup(func() { tokenIdentityFn = oldProbe })
 }
 
 // stubMintedToken is the token value the harness's default mint hands the claim step. It is
@@ -1000,9 +1010,12 @@ func TestPlanItemKeyTranslationIsKitIndependent(t *testing.T) {
 			if !acquired {
 				t.Fatal("the claim tool was never invoked")
 			}
-			// Worktree DIR is session-scoped (install sets DESK_SESSION=deskdispatch-test); the
-			// branch stays bare on the ORIGINAL item key, not the translated claim key.
-			if !s.ran("deskwt add education-10-deskdispatch-test --branch feat/education-10") {
+			// Allocation names retain the ORIGINAL item key, not the translated claim key.
+			if c.kit == "review" {
+				if !s.ran("deskwt add review-education-10-") || !s.ran("--detach --base refs/remotes/origin/main --role reviewer") {
+					t.Error("review allocation did not retain the original key in a fresh detached home")
+				}
+			} else if !s.ran("deskwt add education-10-deskdispatch-test --branch feat/education-10") {
 				t.Error("the worktree/branch were not derived from the ORIGINAL item key")
 			}
 		})

@@ -30,11 +30,22 @@ func cmdLs() {
 	}
 }
 
-// cmdStatus is a scrubbed-cell-only READ — `running <session>` / `stopped` / `stale-lock <pid>`
+// cmdStatus delegates native container state to Docker; scrubbed cells use a READ — `running <session>` / `stopped` / `stale-lock <pid>`
 // — never a precondition check (that is `check`'s job), exit 0 in every case that is not a load
 // error.
 func cmdStatus(cell string) {
 	c := loadCell(cell)
+	// Only the native runtime answers status; the external launcher contract has no status verb.
+	if c.Kind == "container" && c.Env.Get("CELL_CONTAINER_CONFIG") != "" {
+		c.containerRun("status")
+		return
+	}
+	if c.Kind == "house" {
+		for _, role := range knownRoles {
+			c.printCadenceStatus(role)
+		}
+		return
+	}
 	if c.Kind != "scrubbed" {
 		die("status is only defined for a scrubbed cell (kind=%s)", c.Kind)
 	}

@@ -8,6 +8,7 @@ depends:
 - graph-execution/09
 unblocks:
 - graph-execution/14
+- graph-execution/25
 effort: L
 gate: human
 risk:
@@ -21,15 +22,21 @@ issues: []
 schema: brief-v2
 authored: 2026-09-19 by Codex (author-brief)
 sources:
+- docs/streams/graph-execution/work-input-amendment.md
+- freshness-checked 2026-09-30 @ 8485778515c041fc87966902a14eb9d195492be3 (pending scope, not implementation)
 - docs/streams/graph-execution/admission-assurance-spec.md
 - freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
+- docs/streams/graph-execution/task-workflow-program.md — execution routing amendment 2026-10-02
+- freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
 exec-tier: strong
 exec-tier-why: Cross-component contracts and independent failure controls must agree; the implementation requires design judgment.
 domain: complicated
 consumers:
 - 'drainloop: fixed-here'
 - 'tools/desk: follow-up graph-execution/14'
-version: 1
+- 'workflow/store: follow-up graph-execution/19'
+- 'workflow/controller: follow-up graph-execution/21'
+version: 3
 id: db922112-28f0-44c0-b120-9d6c4f56e103
 ---
 
@@ -59,6 +66,26 @@ Decision-trigger: spec. At implementation pickup, prepare concrete policy choice
 - Existing authority and human gates remain binding. Missing prerequisite evidence is could-not-check.
 - Public fixtures use example-org and synthetic data; do not copy adopter evidence.
 
+## Work-input amendment — 2026-09-30
+
+Implement WI-3/WI-4 by extending this brief's durable reservation seam, not by adding a meter
+service. Persist account/provider unit, model/pricing identity, attempt/request lineage,
+raw usage, uncertainty and outstanding reservations. Charge preparation, summaries, failed
+attempts, fallback and verification to the original work. Preserve missing telemetry as
+unknown and budgets/stops across restart; test concurrent admission against one balance.
+
+Keep quota units separate and make rolling/longer-period constraints and operator headroom
+expressible. Fake-provider fixtures prove accounting/concurrency semantics only. Actual
+model adapters and plan calibration remain adopting-pilot work. State whether a runner can
+limit requests or only launches; a late alarm is not hard enforcement. No live provider
+calls, fixed commercial rates or silent cross-provider fallback are added here.
+
+## Task workflow amendment — 2026-10-02
+
+Persist backend ownership/transfer generation, outstanding launch reservations, spend and stop state. Handback requires drain/reconciliation and independently fenced old writers. Missing confirmation of an old effect blocks conflicting admission. Use the existing ownership authority across hosts; a local workflow database is not a second lease authority.
+
+Implement the named failure/flow case below in the declared test surface. This amendment does not record implementation evidence or authorize live activation.
+
 ## Task
 
 1. Define durable reservation and ownership-generation seams, cancellation intent, cumulative attempt budgets and stop/override retention. Use existing storage where possible; adapter conformance must reject non-durable required stores.
@@ -79,6 +106,10 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 1 | check:ci | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnership" ./...` | exit 0; output includes PASS for TestCellOwnership, with no [no tests to run] for its owning package |
 | 2 | check:ci +mutation | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnershipStaleWriterDenied" ./...` | exit 0; output includes PASS for TestCellOwnershipStaleWriterDenied, with no [no tests to run] for its owning package |
 | 3 | check:ci +flow | `cd drainloop && GOWORK=off go test -count=1 -v -run "^TestCellOwnershipRestoreBudgetPause" ./...` | exit 0; output includes PASS for TestCellOwnershipRestoreBudgetPause, with no [no tests to run] for its owning package |
+| 4 | check:ci +mutation | `(cd drainloop && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCellBudgetConcurrentReservations.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellBudgetConcurrentReservations$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCellBudgetConcurrentReservations " "$wi_out")` | exit 0; named PASS; concurrent admissions cannot spend the same available allowance; mutation: exclude outstanding reservations from available allowance — the named test must fail |
+| 5 | check:ci +flow | `(cd drainloop && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCellBudgetRestoreAllAttempts.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellBudgetRestoreAllAttempts$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCellBudgetRestoreAllAttempts " "$wi_out")` | exit 0; named PASS; failed-attempt spend, reservations, unknown usage and stop state survive restore |
+| 6 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestOwnershipBackendHandbackUnknown$" ./... > "$routing_out" && grep -q -- "--- PASS: TestOwnershipBackendHandbackUnknown " "$routing_out")` | exit 0; named PASS; transfer with unknown effect holds, restore retains usage/stop, stale backend cannot write; mutation: release ownership on handback while an effect is unknown — the named test must fail |
+
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.
 
@@ -87,5 +118,9 @@ The flow row must call production contract code across the seam; isolated serial
 <!-- Independent verifier records command, exit, key output/digest, subject revision, environment and date. No implementation or execution evidence is asserted by this authoring change. -->
 
 ## Review
+
+Review a usage-record fixture through persistence and restore: a synthetic credential
+must be rejected or replaced with an authorized reference, while numeric usage-token
+counts survive unchanged. Check the WI-1 source-trust binding referenced by WI-4.
 
 Gate: human. Confirm scope, consumer routing, negative-path independence and exact-subject evidence; a confidence score cannot enlarge permission.

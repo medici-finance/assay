@@ -96,19 +96,33 @@ func withAddedOrigin(err error, surface, local []byte) error {
 // the operator who sees a bare secret-shaped value in the brief is told, in the same
 // transcript, that the scan saw it too and where, instead of isolating it by hand.
 //
-// The secrets-only scan (no impersonated-ruling arm) is the right instrument: the question
+// The outbound-write check's secret layer alone (no impersonated-ruling arm) is the right instrument: the question
 // is "does the branch copy carry a run the scan would refuse", and a ruling-claim marker
 // on a merged brief is neither a run nor this landing's concern.
 func preexistingNotice(w io.Writer, target string, remote []byte) {
-	err := deskkit.ScanSurfaceSecrets("target", remote)
-	if err == nil {
-		return
-	}
-	var f *deskkit.ScanFinding
-	if !errors.As(err, &f) || f == nil {
+	f := deskkit.OutboundSecretRun(remote)
+	if f == nil {
 		return
 	}
 	fmt.Fprintf(w, "deskevidence: notice: the branch copy of %s already carries a secret-shaped run "+
 		"(rule %s) — pre-existing in %s:%d; it was merged before this landing and is outside its "+
 		"scope, so only the bytes this landing adds were scanned\n", target, f.Rule, target, f.Line)
+}
+
+// evidenceOutboundCheck runs the outbound-write check (desktools-v2/10) over the bytes a
+// landing adds to target on repo, as a pre-flight before any write-budget spend. The checking
+// Forge re-runs the same check at WriteFile; this call is what lets the refusal name the
+// origin line (withAddedOrigin) before anything else happens.
+//
+// full is the content the landing commits, handed over as the field's FileSources entry —
+// the same evidence the Forge's own WriteFile check carries, so this pre-flight and the seam
+// agree on the session-id arm's one brief-frontmatter exemption (#2022) instead of the
+// pre-flight refusing a write the seam would pass. It is never scanned; where added is not
+// line-aligned with it (a compacted diff) the exemption simply does not apply.
+func evidenceOutboundCheck(repo, target string, added, full []byte) error {
+	return deskkit.OutboundCheck(deskkit.OutboundWrite{
+		Role: "verifier", Repo: repo, Kind: deskkit.OutboundKindFile,
+		Fields:      []deskkit.OutboundField{{Name: "path", Text: target}, {Name: target, Text: string(added)}},
+		FileSources: map[string]string{target: string(full)},
+	})
 }

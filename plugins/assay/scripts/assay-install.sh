@@ -38,7 +38,8 @@
 #       [--platform <os-arch>]
 #       Write the platform's channel-E line from the manifest into the pin file. An identical
 #       line is left untouched; EVERY scaffold placeholder line of that kind (`statusgen init`
-#       writes several, plus the bare `statusgen` line) is filled from the manifest, or the
+#       writes several, plus the bare `statusgen` line, which always takes the manifest's
+#       `statusgen-linux-amd64` digest whatever --platform is) is filled from the manifest, or the
 #       step refuses naming the ones it cannot fill; a DIFFERENT real line refuses (a re-pin is
 #       a reviewed change, never an in-place edit). A refusal leaves the pin file untouched.
 #   acquire --pins <.assay-versions> --dest <bindir> [--kind statusgen|desk-tools]
@@ -247,13 +248,20 @@ manifest_home() {
   ' "$1"
 }
 
-# pin_fill <manifest> <kind> <key> <host-sha> — the filled line for a placeholder keyed <key>,
-# or empty when the manifest cannot fill it. The bare `statusgen` line takes the HOST's digest
-# (the shape `statusgen init` documents for it).
+# pin_fill <manifest> <kind> <key> — the filled line for a placeholder keyed <key>, or empty
+# when the manifest cannot fill it. The bare `statusgen` line takes the digest of the
+# manifest's `statusgen-linux-amd64` line, selected by that exact name whatever platform the
+# installer runs on (the shape `statusgen init` documents for it, and the rule `upgrade-assay`
+# re-pins it by). A manifest with no such line cannot fill the bare line, which the caller
+# reports as unfillable; it is never filled from another platform's digest.
 pin_fill() {
-  local manifest="$1" kind="$2" key="$3" hostsha="$4" p ml
+  local manifest="$1" kind="$2" key="$3" p ml
   if [ "$kind" = statusgen ] && [ "$key" = statusgen ]; then
-    printf 'statusgen %s %s' "$(manifest_tag "$manifest" statusgen)" "$hostsha"
+    ml=$(manifest_line "$manifest" statusgen linux-amd64)
+    [ -n "$ml" ] || return 0
+    [ "$(printf '%s\n' "$ml" | awk '{print $1}')" = statusgen-linux-amd64 ] || return 0
+    is_sha256 "$(printf '%s\n' "$ml" | awk '{print $3}')" || return 0
+    printf '%s\n' "$ml" | awk '{printf "statusgen %s %s", $2, $3}'
     return 0
   fi
   case "$key" in "$kind"-*) ;; *) return 0 ;; esac
@@ -263,13 +271,6 @@ pin_fill() {
   [ "$(printf '%s\n' "$ml" | awk '{print $1}')" = "$key" ] || return 0
   is_sha256 "$(printf '%s\n' "$ml" | awk '{print $3}')" || return 0
   printf '%s\n' "$ml" | awk '{printf "%s %s %s", $1, $2, $3}'
-}
-
-manifest_tag() {
-  awk -v s="$2" '
-    /^[A-Za-z0-9_-]+:/ { sec = $1; sub(/:$/, "", sec); next }
-    sec == s && $1 == "tag:" { print $2; exit }
-  ' "$1"
 }
 
 cmd_pin() {
@@ -317,7 +318,7 @@ cmd_pin() {
       if [ -z "$key" ]; then printf '%s\n' "$l" >> "$tmpf"; continue; fi
       tag=$(printf '%s\n' "$l" | awk '{print $2}')
       if is_placeholder "$tag"; then
-        fill=$(pin_fill "$manifest" "$kind" "$key" "$msha")
+        fill=$(pin_fill "$manifest" "$kind" "$key")
         if [ -n "$fill" ]; then
           printf '%s\n' "$fill" >> "$tmpf"
           notes="${notes}pinned (replaced the scaffold placeholder): $fill
@@ -328,7 +329,7 @@ cmd_pin() {
         fi
         case "$key" in
           "$kind"-*) unfillable="${unfillable:+$unfillable, }$key" ;;
-          statusgen) [ "$kind" = statusgen ] && unfillable="${unfillable:+$unfillable, }$key" ;;
+          statusgen) [ "$kind" = statusgen ] && unfillable="${unfillable:+$unfillable, }$key (the bare line needs the manifest's statusgen-linux-amd64 line)" ;;
         esac
       fi
       [ "$key" = "$asset" ] && hostdone=1

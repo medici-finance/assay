@@ -69,7 +69,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -207,10 +206,12 @@ func parseVerifyItems(section string) []verifyItem {
 // keyed by row ID. An Evidence section may hold SEVERAL tables (an implementer
 // run, then an independent re-run, then a re-verify at a later SHA); every one
 // is read and the results are unioned, so a row run by any pass counts as run.
-// HTML comments are stripped first — the contract comment is not evidence.
+// Complete HTML comments are stripped first — the contract comment is not
+// evidence. An unterminated opener is left in place (stripRowComments), so the
+// rows after it are still read; the lint reports the opener itself (#1939).
 func parseEvidenceRows(section string) map[string][]evidenceRow {
 	out := map[string][]evidenceRow{}
-	stripped := htmlCommentRe.ReplaceAllString(section, "")
+	stripped, _ := stripRowComments(section)
 	lines := strings.Split(stripped, "\n")
 	numIdx, dateIdx, runnerIdx := -1, -1, -1
 	ordinal := 0
@@ -466,19 +467,17 @@ var closedAtBase = func(root string, streams []*Stream) (set map[string]bool, ok
 	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
 		return nil, false
 	}
-	mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output()
-	if err != nil || strings.TrimSpace(string(mb)) == "" {
+	base := mergeBaseExact(root, remoteMainRef)
+	if base == "" {
 		return nil, false
 	}
-	base := strings.TrimSpace(string(mb))
 	set = map[string]bool{}
 	for _, s := range streams {
 		rel, relErr := filepath.Rel(root, s.Dir)
 		if relErr != nil {
 			continue
 		}
-		out, showErr := exec.Command("git", "-C", root, "show",
-			base+":"+filepath.ToSlash(filepath.Join(rel, "README.md"))).Output()
+		out, showErr := gitShowObject(root, base, filepath.ToSlash(filepath.Join(rel, "README.md")))
 		if showErr != nil {
 			continue // stream did not exist at base: every row in it is new
 		}

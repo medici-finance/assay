@@ -154,9 +154,6 @@ type fakeGH struct {
 	// Defaults to "private" so the public-repo gate does not block existing tests.
 	repoVisibility string
 
-	// repoReactions is the reaction list returned for GET .../reactions.
-	repoReactions []deskkit.Reaction
-
 	// labelEvents is the PR's label timeline — the dispatcher-attestation the model-
 	// capability floor reads on a verdict write. nil serves an empty timeline, which the
 	// floor reads as UNATTESTED (a NOTICE, not a refusal), so pre-floor tests run unchanged.
@@ -211,7 +208,6 @@ var (
 	reChecks       = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
 	reCommit       = regexp.MustCompile(`/commits/[^/]+$`)
 	reRepo         = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
-	reReactions    = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
 	reTimeline     = regexp.MustCompile(`/issues/[0-9]+/timeline$`)
 	reRepoLabels   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/labels$`)
 	reIssueLabels  = regexp.MustCompile(`/issues/[0-9]+/labels$`)
@@ -545,13 +541,6 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(out)
 
-	case r.Method == http.MethodGet && reReactions.MatchString(path):
-		if f.repoReactions != nil {
-			writeJSON(f.repoReactions)
-		} else {
-			writeJSON([]deskkit.Reaction{})
-		}
-
 	case r.Method == http.MethodPost && reRepoLabels.MatchString(path):
 		// Ensure-label. Record the create; return 201. (A real repo 422s on an existing
 		// label; the client swallows that, so returning 201 unconditionally is a superset.)
@@ -732,6 +721,8 @@ func setupFake(t *testing.T) (*fakeGH, *bytes.Buffer) {
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv(deskkit.EnvConfigHome, "")
 	plantFixtureRoster(t, home)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
 	t.Setenv("CLAUDE_SESSION_ID", "deskpost-test")

@@ -13,60 +13,51 @@ import (
 
 const (
 	toolName = "deskevidence"
-	maxBytes = 256 * 1024 // generous but bounded; brief files are ~a few KB
-
-	// verifyOutcomesMaxBytes is the override cap for the verify-outcomes.jsonl append-only
-	// AGGREGATE sidecar and its future date-sharded rotation files (see
-	// verifyOutcomesGlobPattern below) — kept as its own named constant, sitting next to its
-	// own justification, the same pattern deskevidenceUnnumberedCap already uses
-	// (internal/deskkit/ratelimit.go) for a per-tool override that must not read as an
-	// unexplained magic number beside the general cap it overrides.
-	//
-	// #1338: maxBytes was sized for a BRIEF file — one file per stream item, a few KB — and
-	// was never meant to bound this file's shape. verify-outcomes.jsonl is a single
-	// fleet-wide log that every verify-desk flip, across every stream in every consuming
-	// repo, appends exactly one row to; it grows monotonically with no natural per-write
-	// ceiling. At 291722 bytes the general cap already refused every further append,
-	// fleet-wide, with no route through except raising THIS file's own ceiling.
-	//
-	// 4 MiB is a throughput-derived CEILING, not a measurement of the file's eventual
-	// steady-state size (same honesty as the ratelimit.go constants this mirrors): at
-	// roughly 100-200 bytes/row it holds on the order of 20,000-40,000 verify-outcome rows —
-	// comfortably past the 291722-byte trigger that filed #1338 — while still refusing an
-	// unbounded write (a corrupted or hostile evidence file cannot grow this one sidecar past
-	// 4 MiB in a single commit). It is NOT a substitute for rotation: see
-	// verifyOutcomesGlobPattern and statusgen/verifyoutcomes_union_test.go for the read-side
-	// support a future rotation needs BEFORE the forge's write-path shrink-refusal
-	// (write_file_shrink_refused) is ever exercised against this file. Lowering this
-	// constant is the safe direction to be wrong in; raising it further needs the kind of
-	// argument this comment gives, not a bare bump.
-	verifyOutcomesMaxBytes = 4 * 1024 * 1024
+	maxBytes = 256 * 1024 // generous but bounded; brief files (and a single outcome record) are ~a few KB
 )
 
-// verifyOutcomesGlobPattern is the ONE glob shape that names the aggregate verify-outcomes
-// sidecar AND every future rotation shard of it. It deliberately matches both the canonical
-// unsharded file (docs/streams/verify-outcomes.jsonl) and any dated shard a future rotation
-// creates (docs/streams/verify-outcomes-2026-10.jsonl, …) with a single pattern, so the write
-// side (the raised cap below) and the read side (statusgen's shard-glob union, which must use
-// this identical literal — the two live in separate Go modules and cannot share the constant
-// directly) never drift onto two different naming rules. #1338 part 2: the reader must exist
-// BEFORE any rotation is attempted, because the forge write path refuses shrinking a file at
-// all (the write_file_shrink_refused golden) — a rotation that shrinks the unsharded file with
-// no shard-aware reader in place would make an already-written row invisible to every reader
-// at the moment it lands.
-const verifyOutcomesGlobPattern = "verify-outcomes*.jsonl"
+// legacySidecarGlob names the RETIRED shared verify-outcomes log and any rotation shard of it,
+// directly under docs/streams/ (#882). #1338's raised write-size override for this log, and its
+// naming constant, are RETIRED with it: the class guard below now refuses writing this shape at
+// all, so no write ever reaches a size check against it, and a single per-file outcome record is
+// nowhere near the general maxBytes cap that now applies uniformly. The glob is kept, under this
+// fresh name, ONLY so isVerifyOutcomesSidecar below still recognises the shape for the
+// verified-outcome closure gates (guardVerifiedOutcomes, gateVerifiedSidecarLanding) if it is
+// ever addressed directly.
+const legacySidecarGlob = "verify-outcomes*.jsonl"
 
-// isVerifyOutcomesSidecar reports whether repoPath (already known to be underDocsStreams)
-// names the aggregate verify-outcomes sidecar or one of its rotation shards, directly under
-// docs/streams/ — not a same-named file nested in a stream subdirectory, which would be a
-// different, unrelated artifact this override must not reach.
+// isVerifyOutcomesSidecar reports whether repoPath names a verify-outcome record: the
+// #882 per-file layout (docs/streams/verify-outcomes/<stream>/<file>.json) or the
+// retired shared log/rotation shard directly under docs/streams/. The verified-outcome closure
+// gates (guardVerifiedOutcomes, gateVerifiedSidecarLanding) key on this to decide whether a
+// landing carries a verify-outcome row to check — not a same-named file nested one level deeper
+// in a stream subdirectory, which is a different, unrelated artifact.
 func isVerifyOutcomesSidecar(repoPath string) bool {
 	cleaned := path.Clean(repoPath)
-	if path.Dir(cleaned) != "docs/streams" {
-		return false
+	dir := path.Dir(cleaned)
+	if dir == "docs/streams" {
+		matched, err := path.Match(legacySidecarGlob, path.Base(cleaned))
+		return err == nil && matched
 	}
-	matched, err := path.Match(verifyOutcomesGlobPattern, path.Base(cleaned))
-	return err == nil && matched
+	return path.Dir(dir) == deskkit.OutcomeRecordsDir && strings.HasSuffix(cleaned, ".json")
+}
+
+// refuseAppendedOutcomesLog is the #882 class guard: deskevidence never writes to
+// a shared appended docs/streams/*.jsonl log again — not verify-outcomes.jsonl (retired to the
+// per-file layout below), and not any sibling log a future sink might try to append to (the
+// repair-obligation projection included). A record that concurrent PRs each add, stored as lines
+// appended to ONE shared file, is exactly the shape whose server-side merge (the forge applies no
+// merge driver) conflicts every sibling PR that touches it concurrently; this refuses the class
+// at its one write chokepoint rather than one log at a time.
+func refuseAppendedOutcomesLog(targetRepoPath string) error {
+	cleaned := path.Clean(targetRepoPath)
+	if path.Dir(cleaned) == "docs/streams" && strings.HasSuffix(cleaned, ".jsonl") {
+		return deskkit.Refused("refused: " + targetRepoPath +
+			" is a shared appended docs/streams/*.jsonl log — #882 retired that class " +
+			"(concurrent writers must not reopen it); verify outcomes now land one file per record under " +
+			deskkit.OutcomeRecordsDir + "/, via --outcome-record")
+	}
+	return nil
 }
 
 // cmdEvidence implements the evidence-commit logic. Flow:
@@ -133,8 +124,13 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 
 	fs := flag.NewFlagSet("deskevidence", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
-	evidenceFile := fs.String("evidence-file", "", "repo-relative path to the evidence/brief file (required)")
+	evidenceFile := fs.String("evidence-file", "", "repo-relative path to the evidence/brief file (required, unless --outcome-record is given)")
 	briefPath := fs.String("brief-path", "", "if set, merge evidence into this brief file instead of committing evidence-file directly")
+	// --outcome-record (#882) commits ONE new verify-outcome record at the
+	// path RecordName derives from its bytes, retiring the shared appended
+	// docs/streams/verify-outcomes.jsonl log this flag replaces. Mutually exclusive with
+	// --evidence-file/--brief-path.
+	outcomeRecord := fs.String("outcome-record", "", "local JSON file holding ONE new verify-outcome record to commit at the path RecordName derives (mutually exclusive with --evidence-file/--brief-path)")
 	// --root binds the LOCAL read of a repo-relative --evidence-file to an explicit
 	// checkout, instead of the current working directory. #1709: a writeguard can reset a
 	// session's cwd to a SHARED checkout between shell calls, so a deskevidence run that did
@@ -167,9 +163,26 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	var rowFlags stringSliceFlag
 	fs.Var(&rowFlags, "row", "brief-table row number this landing may touch (repeatable); "+
 		"required when the target's remote content carries the generated-table markers")
+	applyOverride, _ := deskkit.RegisterOutboundOverride(fs, "deskevidence", "land")
 	if perr := fs.Parse(flagArgs); perr != nil {
 		return deskkit.Refused("bad flags: " + perr.Error())
 	}
+	if oerr := applyOverride(); oerr != nil {
+		return oerr
+	}
+
+	// --outcome-record is a SEPARATE landing shape from --evidence-file/--brief-path: it
+	// commits a brand-new per-file verify-outcome record at the path RecordName derives,
+	// rather than merging into or replacing an existing whole file. Checked (and mutual
+	// exclusivity enforced) BEFORE --evidence-file is required below, so this branch never
+	// needs one.
+	if *outcomeRecord != "" {
+		if *evidenceFile != "" || *briefPath != "" {
+			return deskkit.Refused("refused: --outcome-record is mutually exclusive with --evidence-file/--brief-path")
+		}
+		return cmdOutcomeRecordWrite(*outcomeRecord, repoSlug, owner, name, branch, *root, ac)
+	}
+
 	if *evidenceFile == "" {
 		return deskkit.Refused("--evidence-file is required")
 	}
@@ -185,6 +198,13 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		if p != "" && path.Base(p) == "STATUS.md" {
 			return deskkit.Refused("refused: " + p +
 				" is generated — main's CI is its single writer; regenerate locally, never commit it")
+		}
+		// Class guard (#882, Task step 5): refuse ANY write to a shared
+		// appended docs/streams/*.jsonl log, before any network call.
+		if p != "" {
+			if cerr := refuseAppendedOutcomesLog(p); cerr != nil {
+				return cerr
+			}
 		}
 	}
 
@@ -225,19 +245,13 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	if rerr != nil {
 		return deskkit.Unverifiable("cannot read --evidence-file "+localReadPath, rerr)
 	}
-	// The general per-file cap is sized for a brief file, not the verify-outcomes aggregate
-	// sidecar (or a future rotation shard of it) — see verifyOutcomesMaxBytes's comment for
-	// why that file needs its own, larger ceiling (#1338). Keyed on evidenceRepoPath (the
-	// path localContent was actually read from) rather than targetRepoPath: with --brief-path
-	// set, evidenceRepoPath names the small evidence snippet being merged in, not the brief
-	// it lands in, and this override must never widen the cap for an unrelated snippet just
-	// because it happens to land inside a big brief.
-	effectiveMaxBytes := maxBytes
-	if isVerifyOutcomesSidecar(evidenceRepoPath) {
-		effectiveMaxBytes = verifyOutcomesMaxBytes
-	}
-	if len(localContent) > effectiveMaxBytes {
-		return deskkit.Refused(fmt.Sprintf("refused: evidence file exceeds %d bytes (%d)", effectiveMaxBytes, len(localContent)))
+	// The general per-file cap is sized for a brief file — a few KB. #1338's raised override
+	// for the verify-outcomes aggregate sidecar is RETIRED (#882): that file's
+	// unbounded fleet-wide growth was the reason it needed one, and the class guard above now
+	// refuses writing that shape at all, so no evidence-file/brief-path write ever reaches
+	// this check for it. The general cap applies uniformly.
+	if len(localContent) > maxBytes {
+		return deskkit.Refused(fmt.Sprintf("refused: evidence file exceeds %d bytes (%d)", maxBytes, len(localContent)))
 	}
 
 	// docs/streams/ scoping guard (deskevidence: refuse a landing that adds a statusgen
@@ -407,7 +421,11 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// the line of the file the caller wrote — and the branch copy's own secret-shaped runs,
 	// which this landing does not own and never refuses on, are NAMED on stderr as
 	// `pre-existing in <target>:<line>` (#1161). Neither message carries the span.
-	if berr := deskkit.BodyCheck(scanTarget); berr != nil {
+	//
+	// The scan is the ONE outbound-write check (desktools-v2/10), run here as a pre-flight on
+	// the bytes this landing adds; the checking Forge re-runs it on the same added lines at
+	// the write itself.
+	if berr := evidenceOutboundCheck(repoSlug, targetRepoPath, scanTarget, commitContent); berr != nil {
 		return withAddedOrigin(berr, scanTarget, localContent)
 	}
 	if remoteExists {

@@ -393,12 +393,15 @@ the one an adopting team should actually run:
   above; the load-bearing rules are: match the **full** platform (os *and* arch, per the Verify
   below), refuse rather than guess when the line is absent, keep each pinned artifact name distinct
   from any CI-job name, and re-pin (never edit in place) on an upgrade so the bump shows in a diff.
-  **Also carry the bare line** — `statusgen <tag> <sha256>` (same tag; the digest of the platform
-  the desk runs on). It is the line the desk tools (`deskboard` and friends) read first; `statusgen
-  init` scaffolds it alongside the per-platform lines. When it is absent the desk tools fall back to
-  the host platform's `statusgen-<os>-<arch>` line (`.exe` on Windows), so a per-platform-only file
-  still resolves — but a malformed bare line refuses rather than falling back. CI keeps selecting
-  by platform with the trailing space, so the bare line changes no CI behaviour.
+  **Also carry the bare line** — `statusgen <tag> <sha256>` (same tag; the digest of the
+  `statusgen-linux-amd64` asset). Linux-amd64 is the CI-runner platform, so a CI that reads the
+  bare line verifies the right binary; `assay-install.sh pin` and `upgrade-assay` both fill it from
+  that asset by name, whatever host they run on. It is the line the desk tools (`deskboard` and
+  friends) read first; `statusgen init` scaffolds it alongside the per-platform lines. When it is
+  absent the desk tools fall back to the host platform's `statusgen-<os>-<arch>` line (`.exe` on
+  Windows), so a per-platform-only file still resolves — but a malformed bare line refuses rather
+  than falling back. The CI that `statusgen init` scaffolds selects by platform with the trailing
+  space, so for that CI the bare line is additive.
 
 **Verify:** the pin line for the **fully detected platform** exists — match os *and* arch, not the
 os family, or a `darwin-amd64`-only pin file passes on a `darwin-arm64` host while the install
@@ -670,11 +673,14 @@ Two consequences worth stating before you debug them:
   red on briefs the roster change never touched.
 
 **A bad TRUST value still refuses everything; a bad EXTENSION value now refuses only its own
-dependents.** The five fail-closed trust surfaces — `ASSAY_BLESS_LOGIN`, `ASSAY_TRUSTED_LOGINS`,
-`ASSAY_TRUSTED_BOT_SLUGS`, `ASSAY_ALLOWED_REPOS`, `ASSAY_HUMAN_LOGIN_MAP` — are unchanged: unset or
-malformed, every acting command refuses exactly as described above. The adopter-extension
+dependents.** The six fail-closed trust surfaces — `ASSAY_BLESS_LOGIN`, `ASSAY_TRUSTED_LOGINS`,
+`ASSAY_TRUSTED_BOT_SLUGS`, `ASSAY_ALLOWED_REPOS`, `ASSAY_HUMAN_LOGIN_MAP`, `ASSAY_RUN_CREDENTIALS` —
+refuse on a malformed value: every acting command refuses exactly as described above.
+`ASSAY_RUN_CREDENTIALS` is a trust surface because it chooses which credential a desk write runs
+as; a malformed entry refuses the whole roster, not only `deskrun` (unset stays valid: no repo is
+bound and `deskrun` dispatches nothing). The adopter-extension
 surfaces — `ASSAY_REPO_ALIASES`, `ASSAY_REPO_FORGES`, `ASSAY_RISK_CALLOUT`,
-`ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS`, `ASSAY_RUN_CREDENTIALS` — no longer collapse the
+`ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS` — no longer collapse the
 whole roster when one of them is malformed: the loader records the rejection against that ONE
 key, the key's own feature falls back to its shipped default (exactly the unset behaviour), and
 only the desk unit that actually declares a dependency on that key deactivates and reports why —
@@ -2271,7 +2277,11 @@ per-asset digests channel E pins — the same values you would copy from `checks
 the trust boundary is unchanged (the download is still hash-verified against the pin at install).
 Components you never installed (say, the quality report pack) are reported as *not pinned here*,
 not as a disagreement. Re-pinning rewrites your `<artifact>-<platform>` lines with **that asset's**
-digest, and the bare `statusgen` line with this host's; a line the composition cannot digest is
+digest, and each bare line (`statusgen`, `desk-tools`, …) — the CI-facing pin — with the
+`<artifact>-linux-amd64` asset's digest, chosen by asset name, whatever host you run it on. If the
+release's `checksums.txt` lists no `<artifact>-linux-amd64` asset for a bare line you carry, the
+verb refuses before migrating or writing anything; it never fills that line from another platform.
+A rewritten line keeps its trailing `# …` comment. A line the composition cannot digest is
 carried forward with a warning, never fabricated. "Latest stable" resolves from what is
 materialised under `releases/`, or — under `--fetch` — from the release the release home marks
 latest.

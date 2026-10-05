@@ -260,6 +260,7 @@ func LatestRunPerName[T any](entries []T, groupKey func(T) string, recencyKey fu
 // An empty head ("") forces Stale for any decisive review: a verdict's "at head" status
 // is unverifiable when the head itself is unknown, and "I don't know the head" must not
 // collapse to "the verdict is current".
+// semantic: S-review-verdict
 func ReduceAppVerdict(appBotLogin string, reviews []AppReview, head string) AppVerdict {
 	var decisive []AppReview
 	for _, r := range reviews {

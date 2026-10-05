@@ -174,7 +174,7 @@ func glStampRun(t *testing.T, s *stub, root string, extra ...string) int {
 		{match: "remote get-url origin", stdout: "git@gitlab.com:" + glProject + ".git"},
 		{match: "deskwt add", stdout: "/private/tmp/worker-home"},
 	}
-	args := []string{"item-1", "--root", root, "--repo", glProject, "--pr", glMRIID,
+	args := []string{"example-project--pr-7", "--root", root, "--repo", glProject, "--pr", glMRIID,
 		"--model", "example-model-1", "--tier", "strong",
 		"--prompt-file", filepath.Join(t.TempDir(), "p.md")}
 	return run(append(args, extra...))

@@ -33,6 +33,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -83,6 +84,18 @@ type GuardrailReport struct {
 	// Unchecked are could-not-check outcomes: the source, a site file, or a
 	// block's anchor could not be read or located. NEVER treat as clean.
 	Unchecked []Issue
+	// Notes are advisory-only and fire in exactly one case: --allow-ambiguous-
+	// extent was passed and SyncGuardrails took the longest-match guess over
+	// an ambiguous extent anyway. By DEFAULT an ambiguous extent is refused — it
+	// is reported in Unchecked, not here, and that block is not written (other
+	// blocks in the same file still can be) — so Notes is no
+	// longer the safety mechanism for that case (medici-finance/assay#1692,
+	// round 3: it used to be exactly that, and a reviewer showed the "note
+	// only" behaviour still let an ambiguous rewrite delete a local rule with
+	// only a note that fires on every ordinary edit too). Notes now exists
+	// purely so a caller who deliberately opted into the guess still gets an
+	// audit trail rather than total silence. See matchExtent's doc comment.
+	Notes []string
 }
 
 // Clean reports whether the run is checked-clean: at least one comparison
@@ -109,7 +122,16 @@ func ParseGuardrailSource(root string) (*GuardrailSource, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could-not-check: cannot read the declared guardrail source %s: %w", guardrailSourcePath, err)
 	}
+	return parseGuardrailBytes(raw)
+}
 
+// parseGuardrailBytes is the byte-level half of ParseGuardrailSource, split out
+// so a PREVIOUS revision of the source (fetched from git, not the working
+// tree) can be parsed the same way SyncGuardrails parses the current one — see
+// priorGuardrailSources and the `prior` parameter of SyncGuardrails, which use
+// earlier texts of a block to prove where its copy ends
+// (medici-finance/assay#1690).
+func parseGuardrailBytes(raw []byte) (*GuardrailSource, error) {
 	src := &GuardrailSource{}
 	lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
 
@@ -425,30 +447,136 @@ func guardrailDiff(want, got string) string {
 // It can only rewrite a block it can locate. A site whose anchor is missing or
 // ambiguous is returned as an unchecked Issue and left untouched — silently
 // guessing where a rule belongs is worse than failing.
-func SyncGuardrails(root string) (changed []string, rep GuardrailReport, err error) {
+//
+// It can only rewrite a block whose EXTENT it can prove (medici-finance/assay#1690).
+// A copy carries no end marker (see locateBlock), so the anchor says where a
+// block starts but not where it stops. The only safe answer is by content: the
+// lines at the anchor must equal, byte-for-byte, a text this block is KNOWN to
+// have had at that site — the current canonical text (the copy is already
+// synced: no write) or its text in one of `prior`, earlier revisions of the
+// declared source (in production, every committed and staged revision, via
+// priorGuardrailSources). The removal is exactly the matched text's length;
+// the new text is inserted in its place. When no known text matches — no
+// history, a history that never held the copy's text, a hand-drifted copy —
+// the site is could-not-check and its file is not written. A length is never
+// invented out of thin air: guessing from the NEW text's length is what
+// swallowed trailing content on growth and left stale lines on shrink, and
+// guessing from HEAD's length alone did the same on a re-run or when the
+// source edit was committed before the sync.
+//
+// This still leaves one narrower ambiguity content alone cannot resolve
+// (#1692): when the longest known text matching at the anchor is NOT also the
+// newest one matching there. Matching texts always nest, so that means a
+// newer known text is a strict prefix of an older one — the block's history
+// holds a prefix-shrink (the current text counts as the newest revision) —
+// and the copy still matches both sides of it. The bytes then cannot tell a
+// copy still genuinely at the older, longer text apart from a copy at the
+// newer, shorter text followed by unrelated trailing content — possibly a
+// local, site-specific rule someone added right after the block — that
+// happens to equal the longer text's own tail. See matchExtent for the exact
+// condition, and for why a grow history (older text a prefix of a newer one)
+// is not ambiguous. Round 2 of this issue tried "take the longest match, but
+// report the tie in rep.Notes so it is never silent"; round 3's review showed
+// that does not work: the identical note fired on every ordinary edit as well
+// as the genuinely ambiguous one, so it cannot act as a control, and the local
+// rule is deleted anyway with only a stderr line to show for it. So by DEFAULT
+// (allowAmbiguous == false) an ambiguous block is REFUSED outright:
+// could-not-check, naming the file, the two lengths that matched and the exact
+// span that would have been removed; that block is not written (another,
+// unambiguous block in the same file still is). This does mean the ordinary
+// "committed a prefix-shrink, then never synced" case refuses by default, and
+// so does every later edit of that block while the copy still matches both
+// texts — that case is structurally indistinguishable from the harmful one, so
+// refusing it too is the point, not a gap. A caller who has checked by hand
+// that the longer match is correct can pass allowAmbiguous == true (the CLI's
+// --allow-ambiguous-extent) to take the longest match anyway, exactly as
+// round 2 always did; SyncGuardrails still records that override in
+// rep.Notes so it is visible, never silent, even when allowed.
+//
+// This ambiguity default (refuse, with an explicit opt-in) and the recency
+// condition that decides what is ambiguous are reversible defaults chosen in
+// this change, not rulings made elsewhere.
+//
+// Separately, a shrink of an uncommitted, unstaged edit that is never itself
+// committed or staged (so no revision of it is ever KNOWN) is could-not-check
+// only when nothing at the anchor matches at all; when the shrunk text still
+// matches as a prefix of what is on disk, the copy reads as already synced
+// and the trailing, no-longer-declared lines are left in place rather than
+// guessed away.
+//
+// Every site file this run touches is read exactly ONCE, and every proven
+// extent — used to decide both what to remove and what to write — comes from
+// that single read; the write itself is then re-checked against a fresh read
+// of the same path immediately before it happens, and refused rather than
+// applied if the file changed underneath it, and performed via a temp file
+// plus atomic rename rather than an in-place truncate-then-write. This closes
+// a read-compute-write race a reviewer demonstrated with parallel syncs
+// corrupting the file (medici-finance/assay#1692, round 3:
+// F-1692-prove-apply-race) — see atomicWriteFile.
+func SyncGuardrails(root string, prior []*GuardrailSource, allowAmbiguous bool) (changed []string, rep GuardrailReport, err error) {
 	src, perr := ParseGuardrailSource(root)
 	if perr != nil {
 		rep.Unchecked = append(rep.Unchecked, Issue{Path: guardrailSourcePath, Msg: perr.Error()})
 		return nil, rep, perr
 	}
 
-	// Group by file so a file with two blocks is written once.
+	// Group by file so a file with two blocks is written once. Every located
+	// block is recorded — including an already-synced one that needs no write —
+	// so overlapping extents in one file can be refused before anything moves.
 	type edit struct {
-		at    int
-		lines []string
+		id     string
+		at     int
+		oldLen int      // the PROVEN length of the text being replaced
+		lines  []string // nil: already carries the canonical text, no write
 	}
 	perFile := map[string][]edit{}
 
+	// Every site file this run touches is read AT MOST ONCE, cached by path.
+	// The same read is what every block's extent is proven against below AND
+	// what the write for that path is built from further down — there is no
+	// second, later read standing between proving the extent and using it, so
+	// a stale proof can no longer be spliced into content the tool has not
+	// actually looked at (medici-finance/assay#1692, round 3:
+	// F-1692-prove-apply-race). The write loop below still re-reads the file
+	// once more, but only to VERIFY nothing changed since this read — never to
+	// source the splice.
+	type loadedFile struct {
+		raw   string // normalised (CRLF -> LF), exactly as read
+		lines []string
+		mode  os.FileMode
+		err   error
+	}
+	cache := map[string]*loadedFile{}
+	load := func(rel string) *loadedFile {
+		if l, ok := cache[rel]; ok {
+			return l
+		}
+		l := &loadedFile{mode: 0o644}
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		raw, rerr := os.ReadFile(abs)
+		if rerr != nil {
+			l.err = rerr
+		} else {
+			l.raw = strings.ReplaceAll(string(raw), "\r\n", "\n")
+			l.lines = strings.Split(l.raw, "\n")
+			if info, serr := os.Stat(abs); serr == nil {
+				l.mode = info.Mode().Perm()
+			}
+		}
+		cache[rel] = l
+		return l
+	}
+
 	for _, b := range src.Blocks {
 		for _, site := range b.Sites {
-			raw, rerr := os.ReadFile(filepath.Join(root, filepath.FromSlash(site.Path)))
-			if rerr != nil {
-				rep.Unchecked = append(rep.Unchecked, Issue{Path: site.Path, Msg: fmt.Sprintf("could-not-check: %v", rerr)})
+			l := load(site.Path)
+			if l.err != nil {
+				rep.Unchecked = append(rep.Unchecked, Issue{Path: site.Path, Msg: fmt.Sprintf("could-not-check: %v", l.err)})
 				continue
 			}
-			fileLines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
 			want := src.expected(b, site)
-			at, hits := locateBlock(fileLines, want)
+			wantLines := strings.Split(want, "\n")
+			at, hits := locateBlock(l.lines, want)
 			if hits != 1 {
 				rep.Unchecked = append(rep.Unchecked, Issue{
 					Path: site.Path,
@@ -456,7 +584,49 @@ func SyncGuardrails(root string) (changed []string, rep GuardrailReport, err err
 				})
 				continue
 			}
-			perFile[site.Path] = append(perFile[site.Path], edit{at: at, lines: strings.Split(want, "\n")})
+			// Newest first: want, then prior in the order it was given.
+			known := append([]string{want}, priorSiteTexts(prior, b.ID, site)...)
+			matched, newest, ok, ambiguous := matchExtent(l.lines, at, known)
+			if !ok {
+				rep.Unchecked = append(rep.Unchecked, Issue{
+					Path: site.Path,
+					Msg: fmt.Sprintf("could-not-check: guardrail %q at line %d matches neither the current canonical text nor any of the %d earlier revision(s) of it available from %s, so where the copy ends cannot be proven — not rewritten.\n"+
+						"  If the copy holds an earlier UNCOMMITTED edit of the source, restore it (`git checkout -- %s`) or `git add` that source edit before re-running; if it was hand-edited, replace it by hand with the canonical text.",
+						b.ID, at+1, len(known)-1, guardrailSourcePath, site.Path),
+				})
+				continue
+			}
+			matchedLines := strings.Split(matched, "\n")
+			// Name the newer, shorter text that matched truthfully: it is the
+			// current canonical text only when that is what matched.
+			newerDesc := "a more recent revision's"
+			if newest == want {
+				newerDesc = "the current canonical text's"
+			}
+			newestLen := len(strings.Split(newest, "\n"))
+			if ambiguous && !allowAmbiguous {
+				rep.Unchecked = append(rep.Unchecked, Issue{
+					Path: site.Path,
+					Msg: fmt.Sprintf("could-not-check: guardrail %q — the removal extent at %s:%d is AMBIGUOUS: both an older revision's %d line(s) and %s %d line(s) match at this anchor (the block once shrank to a prefix of itself). Content alone cannot tell a copy still genuinely at the older, longer text apart from a copy at the newer, shorter text followed by unrelated content — possibly a local, site-specific rule — that happens to equal the longer text's own tail. Refusing rather than guessing; this block is not rewritten.\n"+
+						"  Ambiguous span: %s:%d-%d (the %d line(s) the longest-match rule would remove).\n"+
+						"  Verify by hand (`git diff -- %s`); if the longer match is genuinely correct here, re-run with --allow-ambiguous-extent to take it. This refusal recurs on every sync of this block for as long as the copy matches both texts.",
+						b.ID, site.Path, at+1, len(matchedLines), newerDesc, newestLen, site.Path, at+1, at+len(matchedLines), len(matchedLines), site.Path),
+				})
+				continue
+			}
+			if ambiguous {
+				// allowAmbiguous is set: the caller explicitly opted into the
+				// longest-match guess. Still never silent about it — see
+				// GuardrailReport.Notes.
+				rep.Notes = append(rep.Notes, fmt.Sprintf(
+					"guardrail %q at %s:%d: --allow-ambiguous-extent took the longest match, removing %d line(s) (an older revision's length), though %s %d line(s) also matched at the same anchor. Verify the removed lines by hand (`git diff -- %s`).",
+					b.ID, site.Path, at+1, len(matchedLines), newerDesc, newestLen, site.Path))
+			}
+			e := edit{id: b.ID, at: at, oldLen: len(matchedLines)}
+			if matched != want {
+				e.lines = wantLines
+			}
+			perFile[site.Path] = append(perFile[site.Path], e)
 		}
 	}
 
@@ -467,44 +637,262 @@ func SyncGuardrails(root string) (changed []string, rep GuardrailReport, err err
 	sort.Strings(paths)
 
 	for _, p := range paths {
-		abs := filepath.Join(root, filepath.FromSlash(p))
-		raw, rerr := os.ReadFile(abs)
-		if rerr != nil {
-			rep.Unchecked = append(rep.Unchecked, Issue{Path: p, Msg: fmt.Sprintf("could-not-check: %v", rerr)})
+		edits := perFile[p]
+		// Apply from the bottom up so earlier indices stay valid.
+		sort.Slice(edits, func(i, j int) bool { return edits[i].at > edits[j].at })
+		overlap := false
+		for i := 1; i < len(edits); i++ {
+			if lo, hi := edits[i], edits[i-1]; lo.at+lo.oldLen > hi.at {
+				rep.Unchecked = append(rep.Unchecked, Issue{
+					Path: p,
+					Msg:  fmt.Sprintf("could-not-check: guardrails %q (line %d) and %q (line %d) overlap — not rewritten", lo.id, lo.at+1, hi.id, hi.at+1),
+				})
+				overlap = true
+			}
+		}
+		if overlap {
 			continue
 		}
-		before := strings.ReplaceAll(string(raw), "\r\n", "\n")
-		fileLines := strings.Split(before, "\n")
-		edits := perFile[p]
-		// Apply from the bottom up so earlier indices stay valid; every block
-		// here is the same length as what it replaces, but bottom-up costs
-		// nothing and survives a future variable-length block.
-		sort.Slice(edits, func(i, j int) bool { return edits[i].at > edits[j].at })
+
+		// Build the new content from the SAME read every edit above was
+		// proven against — not a fresh read. See the cache comment above.
+		l := cache[p]
+		before := l.raw
+		fileLines := append([]string(nil), l.lines...)
 		for _, e := range edits {
-			end := e.at + len(e.lines)
-			if end > len(fileLines) {
-				rep.Unchecked = append(rep.Unchecked, Issue{Path: p, Msg: "could-not-check: block runs past end of file — not rewritten"})
+			if e.lines == nil {
 				continue
 			}
-			out := make([]string, 0, len(fileLines))
+			out := make([]string, 0, len(fileLines)-e.oldLen+len(e.lines))
 			out = append(out, fileLines[:e.at]...)
 			out = append(out, e.lines...)
-			out = append(out, fileLines[end:]...)
+			out = append(out, fileLines[e.at+e.oldLen:]...)
 			fileLines = out
 		}
 		after := strings.Join(fileLines, "\n")
 		if after == before {
 			continue
 		}
-		info, serr := os.Stat(abs)
-		mode := os.FileMode(0o644)
-		if serr == nil {
-			mode = info.Mode().Perm()
+
+		// Re-check, immediately before writing, that the file on disk still
+		// holds exactly the bytes this rewrite was proven against. The
+		// extent for every edit above was proven against `before` (one read,
+		// cached); a concurrent sync (or any other writer) racing this one
+		// could have rewritten the file since. Applying this rewrite's
+		// splice to content that has since changed is exactly the stale-proof
+		// bug a reviewer demonstrated corrupting files under parallel syncs
+		// (medici-finance/assay#1692, round 3: F-1692-prove-apply-race) —
+		// refuse instead of guessing the file still matches.
+		abs := filepath.Join(root, filepath.FromSlash(p))
+		freshRaw, rerr := os.ReadFile(abs)
+		if rerr != nil {
+			rep.Unchecked = append(rep.Unchecked, Issue{Path: p, Msg: fmt.Sprintf("could-not-check: %v", rerr)})
+			continue
 		}
-		if werr := os.WriteFile(abs, []byte(after), mode); werr != nil {
+		if strings.ReplaceAll(string(freshRaw), "\r\n", "\n") != before {
+			rep.Unchecked = append(rep.Unchecked, Issue{
+				Path: p,
+				Msg:  "could-not-check: the file changed on disk between proving the removal extent and writing (a concurrent sync or edit) — not rewritten to avoid applying a stale proof; re-run sync",
+			})
+			continue
+		}
+
+		if werr := atomicWriteFile(abs, []byte(after), l.mode); werr != nil {
 			return changed, rep, fmt.Errorf("rewriting %s: %w", p, werr)
 		}
 		changed = append(changed, p)
 	}
 	return changed, rep, nil
+}
+
+// atomicWriteFile writes data to a temp file created in path's own directory,
+// then renames it over path — the same temp-file-plus-rename shape this
+// repo's other in-place regenerators use for exactly this reason (for
+// example tools/desk/cmd/desksupervise/status.go's writeStatusJSON,
+// tools/desk/cmd/deskmonitor/state.go, tools/desk/internal/commsqueue's
+// queue.go): a reader, or a concurrent writer of the same path, always sees
+// either the whole old file or the whole new one, never bytes from both. The
+// in-place os.WriteFile this replaced does an OS-level truncate-then-write,
+// which is exactly what let two concurrent `--sync` runs interleave their
+// writes into a single corrupted file (medici-finance/assay#1692, round 3:
+// F-1692-prove-apply-race, reproduced with parallel syncs before this fix).
+func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".skillslint-tmp-*")
+	if err != nil {
+		return fmt.Errorf("cannot create a temp file in %s: %w", dir, err)
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("cannot write %s: %w", tmpName, err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("cannot close %s: %w", tmpName, err)
+	}
+	if err := os.Chmod(tmpName, mode); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("cannot chmod %s: %w", tmpName, err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("cannot rename %s to %s: %w", tmpName, path, err)
+	}
+	return nil
+}
+
+// priorSiteTexts returns every distinct text block `blockID` had at `site` in
+// the prior revisions, each rendered with that revision's own scrub table.
+func priorSiteTexts(prior []*GuardrailSource, blockID string, site GuardrailSite) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, old := range prior {
+		if old == nil {
+			continue
+		}
+		for _, ob := range old.Blocks {
+			if ob.ID != blockID {
+				continue
+			}
+			for _, osite := range ob.Sites {
+				if osite.Path != site.Path {
+					continue
+				}
+				if t := old.expected(ob, osite); !seen[t] {
+					seen[t] = true
+					out = append(out, t)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// matchExtent returns the LONGEST of `known` whose lines appear verbatim in
+// fileLines starting at `at`. Longest wins because a shorter known text can be
+// a prefix of a longer one: after a grow is synced, the copy begins with the
+// old, shorter text too, and removing only that would duplicate the new
+// block's tail; before a prefix-shrink is synced, the copy begins with the new
+// text too, and treating it as synced would leave the old tail behind.
+//
+// `known` must be ordered NEWEST FIRST: `want` (the current canonical text) at
+// index 0, then the earlier revisions as priorGuardrailSources returns them
+// (staged, then commits in `git log` order). NEWEST is the first of them that
+// matches at the anchor.
+//
+// AMBIGUOUS reports the one case "longest wins" cannot get right by content
+// alone: the longest match is not also the newest match. Two matching texts
+// always nest (the shorter is a prefix of the longer), so this happens exactly
+// when a NEWER known text is a strict prefix of an OLDER one, that is, when
+// the block's history has a prefix-shrink in it (current text included) and
+// the copy still matches both sides of it. Then a copy genuinely still at the
+// older, longer text is indistinguishable, byte for byte, from a copy at the
+// newer, shorter text followed by unrelated content — possibly a local,
+// site-specific rule — that happens to equal the longer text's own tail
+// (#1692). When the newer, shorter text is `want` this is the unsynced or
+// committed-first prefix-shrink; when it is an earlier revision, the block has
+// been edited again since a committed prefix-shrink. Either way the caller
+// (SyncGuardrails) refuses by default, naming the file, the two lengths that
+// matched and the span that would have been removed, and takes the longest
+// match only when the caller has explicitly opted in (--allow-ambiguous-extent).
+//
+// A grow history is NOT ambiguous: after a committed append-grow the older,
+// shorter text is a prefix of the newer, longer one, so both match at a copy
+// synced to the newer text — but the longest match is also the newest, which
+// is what a synced copy holds. Counting that as a tie (as an earlier draft
+// did, by flagging any two matching lengths) refused every later edit of a
+// block that had ever grown. What this re-admits, deliberately: content right
+// under a copy that exactly repeats the lines a later grow added is taken as
+// part of the block and replaced by a later edit. Two routes lead there: a
+// copy that MISSED a sync, still at an older text (at least two revisions
+// behind the source); and, more ordinarily, a site-local line that a later
+// grow promoted verbatim into the canonical block. After such a grow the copy
+// is byte-identical to the grown text, so CheckGuardrails reports it synced,
+// and the next edit replaces the promoted line. That is defensible (the line
+// became canonical), but it is no longer the site's own text.
+//
+// See SyncGuardrails' doc comment for the full history: round 2 tried
+// reporting the tie instead of refusing it, and round 3's review showed that
+// did not actually protect anything, because the same note fired on every
+// ordinary edit too.
+func matchExtent(fileLines []string, at int, known []string) (matched, newest string, ok, ambiguous bool) {
+	for _, k := range known {
+		kl := strings.Split(k, "\n")
+		if at+len(kl) > len(fileLines) || strings.Join(fileLines[at:at+len(kl)], "\n") != k {
+			continue
+		}
+		if !ok {
+			newest = k
+		}
+		if !ok || len(kl) > len(strings.Split(matched, "\n")) {
+			matched, ok = k, true
+		}
+	}
+	ambiguous = ok && matched != newest
+	return matched, newest, ok, ambiguous
+}
+
+// priorGuardrailSources is SyncGuardrails' `prior` in production: every
+// revision of the declared source git knows about under `root` — the staged
+// copy plus every commit that touched it, newest first — each parsed with the
+// same parser as the working tree. These are only CANDIDATE texts: a revision
+// is used for a site only when its text matches the copy on disk exactly, so a
+// wrong or stale revision cannot cause a write, and an unparseable one is
+// skipped (and noted) rather than turned into a guessed length.
+//
+// Paths are passed as `./`-relative so git resolves them against `root`, not
+// the repository top. No history (not a git checkout, no commits, git absent)
+// returns nil plus a note; SyncGuardrails then rewrites only copies it can
+// prove from the current text, and reports every other as could-not-check.
+func priorGuardrailSources(root string) (prior []*GuardrailSource, notes []string) {
+	gitOut := func(args ...string) ([]byte, error) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		return cmd.Output()
+	}
+	rel := "./" + guardrailSourcePath
+
+	var revs []string
+	if _, err := gitOut("rev-parse", "--verify", "-q", "HEAD"); err != nil {
+		notes = append(notes, fmt.Sprintf("no git history for %s under %s — only copies already carrying the current canonical text can be proven", guardrailSourcePath, root))
+	} else {
+		out, err := gitOut("log", "--format=%H", "--", rel)
+		if err != nil {
+			notes = append(notes, fmt.Sprintf("git log of %s failed (%v) — earlier revisions unavailable", guardrailSourcePath, err))
+		} else {
+			revs = strings.Fields(string(out))
+		}
+	}
+
+	skipped := 0
+	seen := map[string]bool{}
+	load := func(spec string, required bool) {
+		raw, err := gitOut("show", spec)
+		if err != nil {
+			if required {
+				skipped++
+			}
+			return
+		}
+		if seen[string(raw)] {
+			return
+		}
+		seen[string(raw)] = true
+		src, perr := parseGuardrailBytes(raw)
+		if perr != nil {
+			skipped++
+			return
+		}
+		prior = append(prior, src)
+	}
+	load(":"+rel, false) // the staged copy, if any
+	for _, h := range revs {
+		load(h+":"+rel, true)
+	}
+	if skipped > 0 {
+		notes = append(notes, fmt.Sprintf("skipped %d revision(s) of %s that could not be read or parsed", skipped, guardrailSourcePath))
+	}
+	return prior, notes
 }

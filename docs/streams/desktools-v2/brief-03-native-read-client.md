@@ -17,6 +17,8 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
+design: DR-desktools-v2-03
+decision-issue: 1911
 authored: 2026-09-16 by desktools-v2 authoring session
 sources:
   - "docs/streams/desktools-v2/spec.md §2 Principle 1 (CUSTODY) — the framing this brief's contract codifies: explicit minted-token only, key-presence is the custody boundary, desktop-as-locked-container"
@@ -45,6 +47,7 @@ consumers:
   - "tools/desk/internal/deskkit: follow-up desktools-v2/03 (this brief; the native read client + its refuse-if-unminted contract — flips to fixed-here when the implementation lands)"
   - "the read verbs named by the inventory as gh-shelling reads: follow-up desktools-v2/03 (this brief; each routed onto the client and its gh reach-around removed in the same change)"
   - "token minting / installation resolution: out-of-scope (forge-neutral/01 owns minting and custody; this brief consumes a minted token per forge.go's existing contract)"
+version: 3
 ---
 
 # Brief 03 — native read-path installation-token client (#1223 pilot)
@@ -146,16 +149,73 @@ proceed on silence).
 5. Record in the PR body which inventory read rows were migrated and which remain.
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd tools/desk && go build ./... && go vet ./internal/deskkit/` | exit 0 |
-| 2 | `cd tools/desk && go test ./internal/deskkit/` | exit 0; native read-client + negative-path tests pass |
-| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestNativeReadClientRefusesUnmintedToken -v` | exit 0; the named test runs (`--- PASS`) and proves an empty/unminted token is REFUSED (not resolved to an ambient identity) — the negative-path row for the transport-floor layer |
-| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestNativeReadClientInstallationFromRepoNotEnv -v` | exit 0; the named test runs (`--- PASS`) and proves an ambient GH_TOKEN/HOME does not redirect the read's installation — the negative-path row for the identity-floor layer |
-| 5 | `sh tools/desk/scripts/forge-ban.sh > /tmp/dv2-fb3.txt 2>&1; grep -oE 'reach-around sites: [0-9]+' /tmp/dv2-fb3.txt` | exit 0; prints a count STRICTLY LOWER than the `desktools-v2/02` line in `docs/streams/desktools-v2/forge-ban-baseline.txt` (the migrated reads' gh reach-arounds are gone — the dereferencing check that the old path was removed, not left dormant; this row needs brief 02's script, which is why 02 is in `depends:`) |
+| # | Class | Command | Expect |
+|---|-------|---------|--------|
+| 1 | check | `cd tools/desk && go build ./... && go vet ./internal/deskkit/` | exit 0 |
+| 2 | check | `cd tools/desk && go test ./internal/deskkit/` | exit 0; native read-client + negative-path tests pass |
+| 3 | check | `cd tools/desk && go test ./internal/deskkit/ -run TestNativeReadClientRefusesUnmintedToken -v` | exit 0; the named test runs (`--- PASS`) and proves an empty/unminted token is REFUSED (not resolved to an ambient identity) — the negative-path row for the transport-floor layer |
+| 4 | check | `cd tools/desk && go test ./internal/deskkit/ -run TestNativeReadClientInstallationFromRepoNotEnv -v` | exit 0; the named test runs (`--- PASS`) and proves an ambient GH_TOKEN/HOME does not redirect the read's installation — the negative-path row for the identity-floor layer |
+| 5 | check | `test -n "$D" && git rev-parse -q --verify "$D^1^{commit}" >/dev/null && git rev-parse -q --verify "$D^{commit}" >/dev/null && { n0=; n1=; for r in "$D^1" "$D"; do t=$(mktemp -d) && git archive -o "$t.tar" "$r" && tar -xf "$t.tar" -C "$t" && cp tools/desk/scripts/forge-ban.sh "$t/tools/desk/scripts/forge-ban.sh" && sh "$t/tools/desk/scripts/forge-ban.sh" > "$t.out" 2>&1; n=$(sed -n 's/.*reach-around sites: \([0-9][0-9]*\).*/\1/p' "$t.out"); rm -rf "$t" "$t.tar" "$t.out"; if [ -z "$n" ]; then echo "$r NO-COUNT"; exit 1; fi; echo "$r reach-around sites: $n"; if [ -z "$n0" ]; then n0=$n; else n1=$n; fi; done; if [ "$n1" -lt "$n0" ]; then echo "LOWER $n0 -> $n1"; else echo "NOT-LOWER $n0 -> $n1"; exit 1; fi; }` — run from a main checkout with `D` set to this brief's delivering commit on main | exit 0; prints three lines, `<D>^1 reach-around sites: N0`, `<D> reach-around sites: N1`, then `LOWER N0 -> N1`, with N1 STRICTLY LOWER than N0 (the migrated reads' gh reach-arounds are gone — the dereferencing check that the old path was removed, not left dormant). The command decides the verdict itself: it exits 1 on `NOT-LOWER`, on a tree that prints no count, and on a `D` that is unset or does not resolve to a commit with a parent. Both trees are measured with the SAME current script, and the reference is the count at the delivering commit's own merge parent, not a frozen integer, so sites other PRs add or remove before or after cannot move the verdict (#1529). Evidence cites `D`, the parent sha, N0 and N1. This row needs brief 02's script, which is why 02 is in `depends:` |
+| 6 | check | `cd tools/desk && go test ./internal/deskkit/ -run '^TestNativeReadBackendCustodyNegative$' -v` | output must contain the named top-level or subtest `--- PASS:` line (a missing selector is failure); top-level TestNativeReadBackendCustodyNegative PASS; both github and gitlab subtests refuse an unminted read before any request (desktools-v2/12 GitLab row) |
+| 7 | check | `cd tools/desk && go test ./internal/deskkit/ -run '^TestAmbientDecoyMatrix$' -v` | output must contain the named top-level or subtest `--- PASS:` line (a missing selector is failure); top-level TestAmbientDecoyMatrix PASS with HOME, USERPROFILE and APPDATA decoys; on Windows run the same row (desktools-v2/12 Windows row) |
+| 8 | check +mutation | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskmerge/readcustody-mutations.json` | exit 0 — baseline GREEN, positive control CAUGHT, `Totals: 2 caught, 0 NOT CAUGHT`: planting an ambient fallback in the read minter (an unminted or empty mint resolves to GH_TOKEN) reddens `TestReadRefusesUnmintedToken`, and minting for GH_REPO instead of the repo being read reddens `TestReadInstallationFromRepo` — the two layers of the read path each proven to catch their own fault (added by the delivering PR for #2025) |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
+
+### Non-implementer verifier run (evidence-only) — VERIFY: PASS — 2026-10-04 claude-opus-5-5-verifier
+
+Target SHA: 3ad1ad83c871b5e2693702810f81e58d8ef085e8 (merged main, equal to the remote main head at run time). Evidence-only pass: the item is sensitive-data: yes and gate: human, so this run records Evidence and leaves the status where it is; the human closes the gate on the two points in the Human decision section. Delivering commit for row 5: D = ef8b1e203b45 (medici-finance/assay#2046, for medici-finance/assay#2025), merge parent 8291853224bb. No Verify row is classed check:ci, so no row needed a network-off run and medici-finance/assay#1800 does not apply. No live credential was minted, read or printed; every forge interaction ran against an in-process test server.
+
+| # | Command | Expected | Observed | Date / runner |
+|---|---------|----------|----------|---------------|
+| 1 | cd tools/desk && go build ./... && go vet ./internal/deskkit/ — discharges Verify row 1 | exit 0 | exit 0; no output | 2026-10-04 claude-opus-5-5-verifier |
+| 2 | cd tools/desk && go test ./internal/deskkit/ — discharges Verify row 2 | exit 0; native read-client and negative-path tests pass | exit 0; ok github.com/medici-finance/assay/tools/desk/internal/deskkit 167.446s | 2026-10-04 claude-opus-5-5-verifier |
+| 3 | cd tools/desk && go test ./internal/deskkit/ -run TestNativeReadClientRefusesUnmintedToken -v — discharges Verify row 3 | exit 0; named test PASS; unminted token refused | exit 0; --- PASS: TestNativeReadClientRefusesUnmintedToken with subtests empty_token_refused_before_any_request, minted_token_is_the_one_sent (positive control) and empty_mint_refused_by_resolver all PASS; the test plants GH_TOKEN, GITHUB_TOKEN, GH_ENTERPRISE_TOKEN, GH_REPO and a gh hosts file under HOME and GH_CONFIG_DIR, and asserts zero requests reach the server for an empty token | 2026-10-04 claude-opus-5-5-verifier |
+| 4 | cd tools/desk && go test ./internal/deskkit/ -run TestNativeReadClientInstallationFromRepoNotEnv -v — discharges Verify row 4 | exit 0; named test PASS; ambient GH_TOKEN/HOME does not redirect the installation | exit 0; --- PASS: TestNativeReadClientInstallationFromRepoNotEnv; mints for two repos in two accounts with the ambient decoys planted | 2026-10-04 claude-opus-5-5-verifier |
+| 5 | Verify row 5 ratchet command, verbatim, with D=ef8b1e203b453a22913a53b6255b8ed38ebc8c6d — discharges Verify row 5 | exit 0; three lines; N1 strictly lower than N0 | exit 0; ef8b1e203b45^1 reach-around sites: 70 / ef8b1e203b45 reach-around sites: 69 / LOWER 70 -> 69 (N0=70 at parent 8291853224bb, N1=69 at D). For reference only: the earlier stream delivery e7e9f35d3e6f (medici-finance/assay#1229) measures NOT-LOWER 57 -> 57 under the same script, so the strict drop comes from medici-finance/assay#2046 | 2026-10-04 claude-opus-5-5-verifier |
+| 6 | cd tools/desk && go test ./internal/deskkit/ -run '^TestNativeReadBackendCustodyNegative$' -v — discharges Verify row 6 | named --- PASS line; github and gitlab subtests refuse an unminted read before any request | exit 0; --- PASS: TestNativeReadBackendCustodyNegative; --- PASS: .../github; --- PASS: .../gitlab | 2026-10-04 claude-opus-5-5-verifier |
+| 7 | cd tools/desk && go test ./internal/deskkit/ -run '^TestAmbientDecoyMatrix$' -v — discharges Verify row 7 | named --- PASS line; HOME, USERPROFILE and APPDATA decoys | exit 0; --- PASS: TestAmbientDecoyMatrix; --- PASS: .../github; --- PASS: .../gitlab. The test sets HOME, USERPROFILE, APPDATA, GH_CONFIG_DIR and GLAB_CONFIG_DIR decoys plus four token decoys, and puts trap gh/glab binaries on PATH. Windows arm: this darwin host could not check it | 2026-10-04 claude-opus-5-5-verifier |
+| 8 | cd tools/desk && go run ./cmd/muhar -spec cmd/deskmerge/readcustody-mutations.json — discharges Verify row 8 | exit 0; baseline GREEN, control CAUGHT, Totals: 2 caught, 0 NOT CAUGHT | exit 0; Harness healthy: baseline GREEN, positive control CAUGHT; both mutants CAUGHT (ambient GH_TOKEN fallback reddens TestReadRefusesUnmintedToken; GH_REPO-keyed mint reddens TestReadInstallationFromRepo); Totals: 2 caught, 0 NOT CAUGHT, 0 could-not-mutate | 2026-10-04 claude-opus-5-5-verifier |
+
+Supplementary, not a Verify row: go run ./cmd/muhar -spec internal/deskkit/nativeread-mutations.json exits 0 with Totals: 4 caught, 0 NOT CAUGHT, 1 could-not-mutate. The mutant "resolver hands the client the environment's GH_TOKEN instead of the mint" no longer applies because its old text is not found in the resolver source. Its spec text has drifted from the source, so that one guard went unexercised by this harness. The Verify table does not depend on it.
+
+Risk-bearing value enumeration covered the delivering diff of medici-finance/assay#2046 (non-test Go plus the forge-ban script) and the Deliverables the brief names (the go-gh REST client in forge_github.go and the resolver it reads through). Entries found:
+- g.Token == "" (refuse condition) @ tools/desk/internal/deskkit/forge_github.go:84
+- strings.TrimSpace(tok) == "" (resolver refusal) @ tools/desk/internal/deskkit/forgeresolve.go:328
+- mintTokenFn(role, repo.Slug()) (installation key) @ tools/desk/cmd/deskmerge/forge.go:40
+- host := "github.com" (token-attach host default) @ tools/desk/internal/deskkit/forge_github.go:91
+- toolName = "deskmerge" (session App role selector, resolved through the DESK_LOOP loop variable) @ tools/desk/cmd/deskmerge/main.go:73
+- allowedInvocationCeiling = 6 @ tools/desk/internal/forgeban/allowlist.go:94
+- comments(first: 100, after: $after) @ tools/desk/internal/deskkit/forge_github.go:1552
+- forgeMaxEventPages = 20 @ tools/desk/internal/deskkit/forge_github.go:1092
+
+Ranking: the refuse condition, the installation key and the host binding rank top, because a wrong value makes a read run as an identity nobody chose. That is a disclosure, so even though an edit can fix it, what was read cannot be un-read. The role selector ranks next. The ratchet ceiling, the page size and the page cap are reversible operational knobs, and a capped walk returns could-not-check, so they need no derivation.
+
+RISK-VALUE: DERIVED — g.Token == "" @ tools/desk/internal/deskkit/forge_github.go:84 — go-gh v2.13.0 optionsNeedResolution returns true, and resolveOptions then reads auth.TokenForHost (the ambient env and keyring), exactly when opts.AuthToken == "". Refusing on the empty string is therefore the precise boundary that stops ambient resolution. A whitespace-only token is not resolved ambiently by go-gh, and the resolver layer refuses it one layer up (TrimSpace check at forgeresolve.go:328, exercised by the deskmerge whitespace-token subtest).
+RISK-VALUE: DERIVED — mintTokenFn(role, repo.Slug()) @ tools/desk/cmd/deskmerge/forge.go:40 — the installation key is the repo coordinate of the read itself, which is what the brief facts require (medici-finance/assay#628: an inherited GH_TOKEN must not determine the installation). Row 8 proves that keying on GH_REPO instead turns the custody test red.
+RISK-VALUE: DERIVED — host := "github.com" @ tools/desk/internal/deskkit/forge_github.go:91 — the host is overridden by the parsed BaseURL hostname. go-gh's header round-tripper attaches Authorization only when isSameDomain(request host, Host) holds, so the minted token is sent only to the configured API host.
+RISK-VALUE: NAMED, NOT DERIVED — toolName = "deskmerge" @ tools/desk/cmd/deskmerge/main.go:73 — this selects WHICH App role mints the read token, through the DESK_LOOP session variable (roletoken.go SessionTokenRole). Whether the role a session runs under is the correct read identity for deskmerge is a custody-policy judgement that the brief and its design record leave to the human. No first-principles derivation was available to this verifier.
+
+Open questions for the human, named, not derived:
+1. Installation override in the minter. The read minter shells the token minter with the environment inherited. The minter honours a role-named install-id environment override (tools/desk/cmd/desktoken/desktoken.go:789), which answers which installation a token is minted for. The deskmerge forge.go header states this is out of scope (minting belongs to forge-neutral/01). Even so, Human decision point 2 ("installation derived from the repository being read, never inherited from the environment") holds only while that override is unset. Please confirm the carve-out is acceptable for this gate, or route it to forge-neutral/01 or desktools-v2/06.
+2. Token breadth. The minted token is the role App's installation token for the repository's ACCOUNT, so it is valid for every repo of that installation. The forge.go header defers narrowing to desktools-v2/06. Please confirm that deferral is acceptable for the read path.
+3. Supplementary mutation spec drift (see the supplementary note above). One resolver mutant in internal/deskkit/nativeread-mutations.json reports could-not-mutate. It is outside this brief's Verify table and is raised for routing only.
+
+VERIFY: PASS — 8 of 8 Verify rows pass on merged main 3ad1ad83c871 (the Windows arm of row 7 could not be checked on this darwin host). Evidence-only: status is left at implemented for the human gate (sensitive-data).
+
+Execution witness (statusgen verifyrun, verbatim):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./internal/deskkit/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-04 | assay-verifier-app[bot] @ 3ad1ad83c871 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/` | pass exit=0 | sha256:abacdc3b0089 | 2026-10-04 | assay-verifier-app[bot] @ 3ad1ad83c871 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestNativeReadClientRefusesUnmintedToken -v` | pass exit=0 | sha256:fb981183df6e | 2026-10-04 | assay-verifier-app[bot] @ 3ad1ad83c871 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestNativeReadClientInstallationFromRepoNotEnv -v` | pass exit=0 | sha256:3e373986819e | 2026-10-04 | assay-verifier-app[bot] @ 3ad1ad83c871 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `test -n "$D" && git rev-parse -q --verify "$D^1^{commit}" >/dev/null && git rev-parse -q --verify "$D^{commit}" >/dev/null && { n0=; n1=; for r in "$D^1" "$D"; do t=$(mktemp -d) && git archive -o "$t.tar" "$r" && tar -xf "$t.tar" -C "$t" && cp tools/desk/scripts/forge-ban.sh "$t/tools/desk/scripts/forge-ban.sh" && sh "$t/tools/desk/scripts/forge-ban.sh" > "$t.out" 2>&1; n=$(sed -n 's/.*reach-around sites: \([0-9][0-9]*\).*/\1/p' "$t.out"); rm -rf "$t" "$t.tar" "$t.out"; if [ -z "$n" ]; then echo "$r NO-COUNT"; exit 1; fi; echo "$r reach-around sites: $n"; if [ -z "$n0" ]; then n0=$n; else n1=$n; fi; done; if [ "$n1" -lt "$n0" ]; then echo "LOWER $n0 -> $n1"; else echo "NOT-LOWER $n0 -> $n1"; exit 1; fi; }` | pass exit=0 | sha256:a3b00267930a | 2026-10-04 | assay-verifier-app[bot] @ 3ad1ad83c871 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestNativeReadBackendCustodyNegative$' -v` | pass exit=0 | sha256:79338a18246c | 2026-10-04 | assay-verifier-app[bot] @ 3ad1ad83c871 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestAmbientDecoyMatrix$' -v` | pass exit=0 | sha256:cf81b05fcbbb | 2026-10-04 | assay-verifier-app[bot] @ 3ad1ad83c871 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskmerge/readcustody-mutations.json` | pass exit=0 | sha256:ff25461c25dc | 2026-10-04 | assay-verifier-app[bot] @ 3ad1ad83c871 (on-behalf-of human:ian) (forge-identity) |
 
 ## Review
 Gate: human (sensitive-data: yes — the brief changes how a desk read obtains and scopes its

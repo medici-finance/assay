@@ -10,6 +10,8 @@ depends:
 - graph-execution/16
 unblocks:
 - graph-execution/18
+- graph-execution/21
+- graph-execution/25
 effort: M
 gate: human
 risk:
@@ -23,8 +25,12 @@ issues: []
 schema: brief-v2
 authored: 2026-09-19 by Codex (author-brief)
 sources:
+- docs/streams/graph-execution/work-input-amendment.md
+- freshness-checked 2026-09-30 @ 8485778515c041fc87966902a14eb9d195492be3 (pending scope, not implementation)
 - docs/streams/graph-execution/admission-assurance-spec.md
 - freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
+- docs/streams/graph-execution/task-workflow-program.md — execution routing amendment 2026-10-02
+- freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
 exec-tier: strong
 exec-tier-why: Cross-component contracts and independent failure controls must agree; the implementation requires design judgment.
 domain: complicated
@@ -32,7 +38,8 @@ consumers:
 - 'tools/desk/cmd/deskdispatch: fixed-here'
 - 'tools/desk/internal/loopengine: fixed-here'
 - 'operator clients: out-of-scope (consume records through their own authorized APIs)'
-version: 1
+- 'workflow/controller: follow-up graph-execution/21'
+version: 3
 id: 00bb0ac0-ea54-437e-9274-629839c91ada
 ---
 
@@ -62,6 +69,28 @@ Decision-trigger: spec. At implementation pickup, prepare concrete policy choice
 - Existing authority and human gates remain binding. Missing prerequisite evidence is could-not-check.
 - Public fixtures use example-org and synthetic data; do not copy adopter evidence.
 
+## Work-input amendment — 2026-09-30
+
+Implement WI-1/WI-2/WI-3 in the existing opt-in cohort only. Resolve known facts once, project
+09's contract into the role packet, and record a dispatch reason and input fingerprint.
+Coalesce duplicate events/ticks under the existing claim authority; no actionable change
+means no model call. A failed launch can retry as a new attempt without losing the work.
+The deterministic parent owns waiting; productive task-agent continuity is allowed.
+
+Recheck instance/acceptance/head before dispatch and before accepting a result. The latter
+must be atomic or fenced at the authoritative transition, not a read followed by an
+unconditional write. If it moved, preserve artifacts and queue revalidation; never carry a
+stale PASS or replay an unknown effect. Preserve independent review/verification and the
+per-role capability boundary. Prompt/context/model profiles are explicit inputs, not a
+second scheduler or an automatic provider switch. Extend the declared graphadmission tests;
+retain this brief's human activation gate.
+
+## Task workflow amendment — 2026-10-02
+
+Expose one callable admission/dispatch seam to existing desk callers and the new host. Assignment names a backend, work/node, fingerprint, lease and generation at the existing authority. Only the assigned backend launches; queue exclusion is not the security boundary. Recheck current assignment and capabilities at effect/result admission; no all-role broker.
+
+Implement the named failure/flow case below in the declared test surface. This amendment does not record implementation evidence or authorize live activation.
+
 ## Task
 
 1. Add an opt-in cohort binding that consumes the existing eligibility verdict plus 13 admission and 16 ownership/budget reservation before dispatch. CLI and loop callers use the same implementation; defaults remain current behavior outside the cohort.
@@ -81,6 +110,10 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 1 | check:ci | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestGraphAdmission" ./...` | exit 0; output includes PASS for TestGraphAdmission, with no [no tests to run] for its owning package |
 | 2 | check:ci +mutation | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDirectBypassDenied" ./...` | exit 0; output includes PASS for TestGraphAdmissionDirectBypassDenied, with no [no tests to run] for its owning package |
 | 3 | check:ci +flow | `cd tools/desk && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDispatchReceipt" ./...` | exit 0; output includes PASS for TestGraphAdmissionDispatchReceipt, with no [no tests to run] for its owning package |
+| 4 | check:ci +flow | `(cd tools/desk && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestGraphAdmissionDuplicateAndRetry.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDuplicateAndRetry$" ./... > "$wi_out" && grep -q -- "--- PASS: TestGraphAdmissionDuplicateAndRetry " "$wi_out")` | exit 0; named PASS; duplicate same-state events launch once; a failed launch retries under a new attempt |
+| 5 | check:ci +mutation | `(cd tools/desk && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestGraphAdmissionMovedHeadAtAcceptance.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionMovedHeadAtAcceptance$" ./... > "$wi_out" && grep -q -- "--- PASS: TestGraphAdmissionMovedHeadAtAcceptance " "$wi_out")` | exit 0; named PASS; head movement after launch prevents stale result acceptance at the lower boundary; mutation: bypass the acceptance-boundary head comparison — the named test must fail |
+| 6 | check:ci +flow +mutation | `(cd tools/desk && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDeskProgramRace$" ./... > "$routing_out" && grep -q -- "--- PASS: TestGraphAdmissionDeskProgramRace " "$routing_out")` | exit 0; named PASS; concurrent desk/program claims permit one owner and one launch; direct stale invocation is denied; mutation: skip the claim-generation compare on the program path — the named test must fail |
+
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.
 
@@ -89,5 +122,9 @@ The flow row must call production contract code across the seam; isolated serial
 <!-- Independent verifier records command, exit, key output/digest, subject revision, environment and date. No implementation or execution evidence is asserted by this authoring change. -->
 
 ## Review
+
+Review the assembled-packet fixture at the dispatch boundary: credential material must
+remain excluded, and copied reporter text must not override the source trust-gate result.
+Exercise missing and spoofed dispositions; neither may grant authority.
 
 Gate: human. Confirm scope, consumer routing, negative-path independence and exact-subject evidence; a confidence score cannot enlarge permission.

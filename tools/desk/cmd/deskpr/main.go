@@ -26,10 +26,40 @@ var version string
 const usage = `deskpr — push a feature branch and open (or update) its pull request.
 
 USAGE:
-  deskpr create --title T (--body-file F | --body-min B) [--base main] [--check]
-  deskpr update [--check]
-  deskpr edit --body-file F [--title T] [--check]
+  deskpr create --title T (--body-file F | --body-min B) [--base main] [--decided F]
+      [--root DIR] [--explain] [--force-scan-override REASON] [--check]
+  deskpr update [--pr N | --branch B]
+      [--root DIR] [--explain] [--force-scan-override REASON] [--check]
+  deskpr edit --body-file F [--title T] [--pr N] [--decided F]
+      [--root DIR] [--explain] [--force-scan-override REASON] [--check]
   deskpr --version
+
+Each verb's USAGE line above lists every flag that verb accepts, and no other. The three
+shared by all three verbs: --root DIR is the repo root the Brief: trailer resolves against;
+--force-scan-override REASON is the audited secret-scan bypass (it demands a reason and
+writes an audit row); --explain adds a scan-explain line to a secret-scan refusal.
+
+--decided F (create and edit only) declares a desk-taken REVERSIBLE default (the driver
+holds merge, so such a choice needs no ruling first — it needs the PR to say so). A one-way
+or human-gated call (merge, weakening a security control, identity/auth, money movement,
+durable-data deletion, a release, anything leaving the repo) is never eligible: that stops
+for the driver instead. F is a file of numbered items, each carrying all three fields, one
+per line:
+  1. decision: <what was chosen>
+     alternative: <the option not taken>
+     cost: <what reversing it costs the driver>
+The tool writes (or, on edit, replaces in place) a "## Desk-decided" section in the PR
+body and applies the "desk-decided" label together; never write either by hand. An empty
+file, an unparsable one, or an item missing a field refuses (exit 5) before any PR call.
+With --decided, create also refuses a body that already carries a hand-written
+"## Desk-decided" heading (without --decided it does not look). A PR that only transcribes
+rulings already recorded elsewhere passes no --decided and carries neither the section nor
+the label. deskflip refuses the ready-flip (condition desk-decided) when the section does
+not parse, when the label and the section disagree, or while the reviewer's latest verdict
+in either lane at the current head carries an "Undeclared-desk-decision:" line. The remedy
+for each is "deskpr edit --body-file <the PR's current body> --decided F" on the PR's own
+branch (an unchanged body still applies a missing label); the last also needs a fresh
+verdict at that head without the line.
 
 --check runs every LOCAL gate the write path runs — flag validity, branch state, the
 Brief:/Authors:/Issue: trailer, the secret scan, the public-repo self-containment scan, the
@@ -48,7 +78,30 @@ non-default branch. deskpr update pushes a follow-up to an EXISTING open PR on t
 branch — draft or ready-flipped. deskpr edit replaces that same open PR's body, and
 optionally its title, and pushes nothing: it refuses when the branch has no OPEN PR
 (which is also how a merged or closed one is refused), and it runs the trailer,
-secret-scan, self-containment, rate-limit and public-repo gates create runs. There is
+secret-scan, self-containment, rate-limit and public-repo gates create runs. edit --pr N
+names the PR instead of finding it by branch (#1901, #2085). It runs from a different
+feature branch, a detached HEAD, or a checkout with no commits ahead of the default branch,
+because it pushes nothing; a checkout ON the default branch, or one with staged changes, is
+still refused. The PR must be OPEN, and then either this checkout is the PR's own (its
+branch is the PR's head branch, or its HEAD is exactly the PR's head commit), or the PR's
+head branch is in this repository and its current body already carries a link trailer —
+which the edit then cannot change. A fork PR or a trailer-less PR is edited only from its
+own checkout.
+
+deskpr update pushes the worktree's branch to its PR by default. update --pr N (or --branch B,
+the PR's head branch name on the remote) names the PR instead, for a worktree whose local
+branch name differs from the PR's head branch (git allows one worktree per branch): HEAD is
+pushed to the head branch the forge reports for that PR (git push origin HEAD:<head-branch>),
+and that head branch name is secret-scanned before the push. The PR must be OPEN, its head
+branch must be in this repository (a fork PR, or one whose head repository the forge does
+not report, is refused), and the push destination must already hold that branch at the
+head commit the forge reports. The checkout is admitted by lineage: HEAD must be the PR's
+current head commit or a descendant of it (a pure fast-forward; merge, never rebase), and a
+PR head already contained in the default branch is refused. The default branch is never a
+destination. With --pr N the offline publish-identity stage judges the whole range from the
+default branch (the PR's head is unknown until the forge is read), so a PR whose head
+already carries another identity's commits is refused there. deskreply keeps its own
+checkout-must-be-the-PR's rule. There is
 no ready/close/merge verb, and no verb can pass --force to git. Preconditions are
 re-verified in-tool; on any state it cannot positively verify it refuses.
 
@@ -95,8 +148,11 @@ This is the ONE place the categories are enumerated; the skill text points here 
 than restating them.
 
   REFUSED (exit 5) — the span is unambiguous:
-    * an absolute machine path (/Users/…, /home/…, /private/tmp/…, /tmp/tracker-…)
-    * a scratch worktree name (tracker-…)
+    * an absolute machine path under a machine-local root (/Users/, /home/, /private/tmp/,
+      /tmp/tracker-; on Windows a drive-letter path under the Users root, or a UNC path
+      naming a host and a share)
+    * a scratch worktree name (tracker-…) at the start of a token or a path segment;
+      the same word inside a hyphenated compound is not one
     * a session id (a hex UUID) or an agent id (agent-…)
     * an owner/name slug, with or without #N, naming a repo the roster marks PRIVATE
     * alias#N where the alias resolves to such a repo
@@ -120,9 +176,11 @@ an ssh:// or git@host:path one AND this session presents a bot identity ($DESK_L
 resolving to a role App). An SSH push authenticates with whatever key this machine's agent
 holds — a human's — so the forge records the HUMAN as the branch author and the App's
 permission envelope is bypassed, however the commits are authored. The refusal names the
-config key, the url, the acting App and the one-line remedy. Fetch over SSH stays allowed:
-remote.origin.pushurl is what is read whenever it is set, so an SSH fetch url with an https
-push override passes. edit is NOT gated — it pushes nothing. With $DESK_LOOP unset the gate
+config key, the url, the acting App and the remedy. The url judged is the one git
+will push to — "git remote get-url --push --all origin", a local read with url.<base>.insteadOf
+and pushInsteadOf applied — so an https remote a rewrite rule turns into SSH is refused, and
+the refusal names the rule. Fetch over SSH stays allowed: an SSH fetch url with an https push
+override passes. edit is NOT gated — it pushes nothing. With $DESK_LOOP unset the gate
 is inert (a human pushes under their own key). An https push url with no App credential
 helper configured is a stderr NOTICE, never a refusal.
 

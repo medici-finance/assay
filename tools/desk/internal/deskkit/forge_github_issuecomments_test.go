@@ -103,9 +103,10 @@ func TestGitHubIssueCommentsRefuseCursorlessNextPage(t *testing.T) {
 	}
 }
 
-// TestGitHubChangeCommentsStaySingleRequest pins that the walk is ISSUE-only: the change read
-// is still the one first-100 request the golden corpus pins, with no cursor variable.
-func TestGitHubChangeCommentsStaySingleRequest(t *testing.T) {
+// TestListCommentsSingleRequest pins that the UNTYPED change read is still the one
+// first-100 request the golden corpus pins, with no cursor variable. The TYPED change read walks
+// (forge_github_typedwalk_test.go); ListComments does not.
+func TestListCommentsSingleRequest(t *testing.T) {
 	var requests int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -119,8 +120,8 @@ func TestGitHubChangeCommentsStaySingleRequest(t *testing.T) {
 	defer srv.Close()
 
 	gh := &GitHubForge{Token: "stub", BaseURL: srv.URL}
-	if _, err := gh.ListCommentsTyped(ForgeRepo{Owner: "o", Name: "r"}, 21, TargetChange); err != nil {
-		t.Fatalf("ListCommentsTyped(change): %v", err)
+	if _, err := gh.ListComments(ForgeRepo{Owner: "o", Name: "r"}, 21); err != nil {
+		t.Fatalf("ListComments: %v", err)
 	}
 	if requests != 1 {
 		t.Errorf("change read made %d requests, want 1", requests)

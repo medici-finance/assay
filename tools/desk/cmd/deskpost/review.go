@@ -105,6 +105,44 @@ func securityShapeFor(verdictFlag string) (reviewShape, bool) {
 	return reviewShape{}, false
 }
 
+// findingLaneRefusal refuses a review body whose finding block names a lane the posting
+// verb does not speak for: `security-review` posts the security lane and `review` posts the
+// correctness lane, so every lane a block states must be that verb's own. The deep-set lanes
+// (`fact-check`, `fail-first`) are refused on both verbs: the record `review` writes carries
+// the correctness lane, and the ledger keys a reviewer finding under its record's lane, so a
+// block stating a deep-set lane would be keyed under correctness anyway and reported
+// could-not-check in every later fold — which the content-defect check reads as blocking. A
+// block stating no lane, or a body with no block, passes — the record's lane is established
+// from the body.
+func findingLaneRefusal(body []byte, wantKind string) error {
+	var verb, own string
+	switch wantKind {
+	case bodycheck.KindSecurity:
+		verb, own = "security-review", deskkit.LaneSecurity.Name
+	case bodycheck.KindCorrectness:
+		verb, own = "review", deskkit.LaneCorrectness.Name
+	default:
+		return nil
+	}
+	b, present, err := deskkit.ParseFindingBlock(string(body))
+	if err != nil || !present {
+		return err
+	}
+	for _, f := range b.Findings {
+		got := f.StatedLane()
+		if got == "" || got == own {
+			continue
+		}
+		hint := fmt.Sprintf("drop the lane or state %q", own)
+		if got == deskkit.LaneSecurity.Name {
+			hint = "post security findings with `deskpost security-review`"
+		}
+		return deskkit.Refused(fmt.Sprintf("refused: `%s` posts the %s lane, but finding %s states lane %q — a reviewer speaks only for its own lane, and the record this verb writes carries only the %s lane; %s",
+			verb, own, f.ID, got, own, hint))
+	}
+	return nil
+}
+
 // postVerdictReview is the one write path both verdict verbs run. Extracting it is what
 // keeps `security-review` from becoming a second, drifting copy of the hardening in
 // `review` (#197 head pinning, #73 cross-session dedup, #220 kinded keys, #238/#239
@@ -123,9 +161,21 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		if !deskkit.IsAllowedRepo(repo) {
 			return refused(preVerb, repo, pr, "", "repo "+repo+" is not in the fixed desk repo set")
 		}
-		// Body validation (verdict schema + secret scan) BEFORE any network — a bad
-		// body must refuse with zero side effects.
+		// Body validation BEFORE any network — a bad body must refuse with zero side
+		// effects: the size cap and verdict schema, then the ONE outbound-write check
+		// (desktools-v2/10) on this target. A review body is the densest evidence surface
+		// the desk writes — it quotes paths, cites issues across repos and names streams —
+		// which is precisely why it is also the likeliest to carry a span that resolves only
+		// inside the house; the check's public layers (self-containment, withheld register)
+		// run on any target not stated private, and its credential arms, impersonation guard
+		// and personal-data pass run everywhere. The checking Forge and the raw client re-run
+		// it at the write itself.
 		if err := bodycheck.Review(body); err != nil {
+			deskkit.MaybeExplain(stderr, opts.explain, err)
+			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
+		}
+		if err := deskkit.OutboundCheck(deskkit.OutboundWrite{Repo: repo, Kind: deskkit.OutboundKindReview, NumberHint: pr,
+			Fields: []deskkit.OutboundField{{Name: "body", Text: string(body)}}}); err != nil {
 			deskkit.MaybeExplain(stderr, opts.explain, err)
 			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
 		}
@@ -135,14 +185,6 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		// — a blocking finding with no concrete reproduction/evidence, an unknown state — is a
 		// refusal with zero side effects, the same as every other pre-network body check.
 		if err := deskkit.ValidateReviewFindingBlock(body, deskkit.RoleReviewer); err != nil {
-			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
-		}
-		// #203: the PUBLIC-REPO SELF-CONTAINMENT scan. A review body is the densest
-		// evidence surface the desk writes — it quotes paths, cites issues across repos and
-		// names streams — which is precisely why it is also the likeliest to carry a span
-		// that resolves only inside the house. No-op on a known-private repo.
-		if err := deskkit.SelfContainCheck("review body", body,
-			deskkit.SelfContainOpts{Repo: repo, NumberHint: pr}); err != nil {
 			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
 		}
 		// On-behalf-of trailer (multi-principal/01): resolved before any network call,
@@ -225,6 +267,14 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 					verdictFlag, secVerdictName(got)))), dig)
 			}
 		}
+		// A finding block speaks for the lane of the verb that posts it. The ledger already
+		// keys a reviewer record's findings under the record's own lane whatever the block
+		// says; refusing a block that names another lane here catches the confusion at the
+		// write, a second and independent point, before it becomes a could-not-check entry
+		// in every later fold.
+		if err := findingLaneRefusal(body, kind); err != nil {
+			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
+		}
 		verb := reviewVerbFor(kind, verdictFlag)
 		// Idempotency BEFORE any network: --head is the caller-provided reviewed SHA, so
 		// a repeat of the same verdict at the same head is a no-op with ZERO HTTP calls
@@ -272,7 +322,7 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		// PR reads unstamped (claimLiveness → deskkit review-claim family). Every uncertain path is
 		// Unknown and changes nothing.
 		claim := client.claimLiveness(repo, pr)
-		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged(), claim)
+		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsStampAuthorityLogin, deskkit.ModelFloorOverrideEngaged(), claim)
 		// Ruling 3: the floor is RISK-CONDITIONAL on an UNSTAMPED PR. A review verdict is a
 		// security-review-bearing write, so on a risk-classed PR it must carry a trustable
 		// strong-tier attestation; an unstamped NON-risk PR still proceeds with a NOTICE. Only
@@ -292,9 +342,10 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 						"read in full, so the risk-class determination behind the model floor is unverifiable",
 						len(prFiles), info.ChangedFiles, pr), nil), dig)
 			}
-			fd = deskkit.ModelCapabilityFloorRiskAware(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged(),
+			fd = deskkit.ModelCapabilityFloorRiskAware(tl, deskkit.IsStampAuthorityLogin, deskkit.ModelFloorOverrideEngaged(),
 				claim, deskkit.FloorRiskOf(repo, prFilePaths(prFiles)))
 		}
+		fd.Message += claimReleaseNote(repo, pr, claim)
 		switch fd.Outcome {
 		case deskkit.FloorRefuse:
 			return withDigest(refused(verb, repo, pr, curHead, fd.Message), dig)

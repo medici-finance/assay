@@ -19,6 +19,7 @@ issues: []
 schema: brief-v2
 authored: 2026-09-17 by desktools-v2 authoring session (re-scoped from the withdrawn statusgen-migration draft)
 sources:
+  - "#2111 — Cobra/Viper adoption; CLI compatibility amendment 2026-10-03 (spec §9)"
   - "docs/streams/desktools-v2/spec.md §2 Principle 2 — statusgen reaches the seam across the deskread verb boundary; v2 contributes enforcement and proof, not migration"
   - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md (forge-neutral/18, in-progress) — OWNS the migration; its Verify row 3 (zero forge-CLI sites in statusgen/) is its completion test. This brief starts where that one ends"
   - "statusgen/forgeread.go — the forgeReader seam: offlineReader is the default, deskreadReader runs the verb once per repo set, every repo lands in exactly one of data / unavailable"
@@ -31,7 +32,7 @@ consumers:
   - "statusgen/**: out-of-scope (forge-neutral/18 edits these files; this brief adds one test file and changes no read)"
 exec-tier: any
 domain: clear
-version: 1
+version: 3
 id: 0a18147e-5225-4ba4-91ab-b3bcd92bc00d
 ---
 
@@ -88,6 +89,10 @@ facts:
 4. Show the test failing first: run it against a reader that shells `gh` (the pre-migration
    `ghIssueLister` shape) and quote the red line in the PR body under `## Fail-first`.
 
+## Cobra/Viper integration — preserve the statusgen module boundary
+
+Statusgen receives a dedicated bounded CLI migration owner from desktools-v2/15. This brief still owns holding its forge-CLI count at zero, not its command-tree rewrite. Preserve all existing invocation and machine-output consumers while that owner adopts Cobra/Viper; statusgen continues to call deskread rather than import deskkit. Source discovery and CLI completion must include statusgen even though it is a separate module. Never treat library imports or a CLI refactor as proof of the existing forge-ban Verify rows.
+
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
@@ -96,6 +101,8 @@ facts:
 | 3 | `sh -c 'f=statusgen/zz_banprobe.go; printf "package main\nimport \"os/exec\"\nvar _ = exec.Command(\"gh\", \"api\")\n" > "$f"; sh tools/desk/scripts/forge-ban.sh >/dev/null 2>&1; rc=$?; rm -f "$f"; echo "rc=$rc"; test "$rc" -ne 0'` | exit 0; prints a non-zero `rc=` — the negative-path row: a re-added `gh` shell-out in statusgen makes the counter FAIL, and the probe file is removed whatever the result |
 | 4 | `cd statusgen && go test -timeout 5m -run TestScanNeverEmptyWithoutForgeBinary -v .` | output contains the literal line `--- PASS: TestScanNeverEmptyWithoutForgeBinary` (assert on that line, not the exit status — a `-run` selector matching nothing exits 0) |
 | 5 | `grep -q 'tools/desk' statusgen/go.mod; test $? -eq 1` | exit 0 (grep found no match — statusgen still imports nothing from desk-tools; the verb boundary held) |
+| 6 | `cd statusgen && go test -run '^TestScanNeverEmptyWithoutForgeBinary/gitlab$' -v .` | output must contain the named top-level or subtest `--- PASS:` line (a missing selector is failure); named GitLab-bound scan subtest PASS; brief 08 creates it with ASSAY_REPO_FORGES selecting GitLab (desktools-v2/12 GitLab row) |
+| 7 | `cd statusgen && go test -run '^TestScanNeverEmptyWithoutForgeBinary/windows$' -v .` | output must contain the named top-level or subtest `--- PASS:` line (a missing selector is failure); named Windows PATH/PATHEXT subtest PASS; brief 08 creates it using an .exe stub (desktools-v2/12 Windows row) |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->

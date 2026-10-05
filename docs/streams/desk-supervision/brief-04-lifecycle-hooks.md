@@ -41,7 +41,7 @@ consumers:
   - "tools/desk/cmd/desksupervise/actions.go: fixed-here (after_run when a claim is released or landed by the observer — the runAction seam lives in actions.go, not main.go)"
   - "tools/desk/cmd/deskdispatch/references/common-clauses.md KUBECONFIG clause: fixed-here (the clause stays as the agent-facing rule; the shipped before_run hook makes it checked, not remembered)"
   - "plugins/assay/skills/worker-desk/SKILL.md §Boot 'two residues': follow-up desk-supervision/04 (the residue paragraph shrinks to a pointer at the hooks file in the implementation PR, after the hooks are proven)"
-version: 1
+version: 2
 id: 9896223f-e63f-4fe6-a7c9-f7e935a2e884
 ---
 
@@ -118,7 +118,7 @@ facts:
 | 5 | `cd tools/desk && GOWORK=off go test ./cmd/deskdispatch/ -run TestBeforeRunFailureAbortsAndReleases -v -count=1` | exit 0; output contains `--- PASS: TestBeforeRunFailureAbortsAndReleases` |
 | 6 | `cd tools/desk && GOWORK=off go test ./cmd/deskwt/ -run 'TestAfterCreateRunsOnceForNewPath\|TestBeforeRemoveFailureStillRemoves' -v -count=1` | exit 0; output contains two `--- PASS:` lines |
 | 7 | `test -f tools/desk/hooks.example.yaml && grep -c 'KUBECONFIG' tools/desk/hooks.example.yaml` | output is `1` or more |
-| 8 | `grep -rn -- '--hooks' tools/desk/cmd tools/desk/internal/deskkit/hooks.go \| wc -l` | output is `0` (no path argument exists — the source rule has no override) |
+| 8 | `{ grep -rn -- '--hooks' tools/desk/cmd tools/desk/internal/deskkit/hooks.go \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0` (no path argument exists — the source rule has no override). Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. |
 | 9 | `statusgen --root . --consumers --brief desk-supervision/04` | exit 0; output does not contain `DISPROVED` (run on the implementing branch: corroborates the `consumers:` routing against the diff) |
 
 Pre-mortem → detection: "an untrusted head ships a hooks.yaml and it runs" → rows 2, 8;

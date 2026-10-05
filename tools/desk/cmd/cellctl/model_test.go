@@ -1,6 +1,15 @@
 package main
 
-import "testing"
+import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+)
 
 func envWith(kv map[string]string) *Env {
 	e := &Env{vals: map[string]string{}, set: map[string]bool{}}
@@ -75,6 +84,77 @@ func TestOpusRefusalBindsTheDeskOnly(t *testing.T) {
 	refuseOpusForTheDesk("claude-opus-5-5[1m]") // the [1m] variant too
 	refuseOpusForTheDesk("claude-opus-5-6")     // above the floor — must not refuse
 	refuseOpusForTheDesk("claude-opus-6-0")     // above the floor — must not refuse
+}
+
+// TestTheDeskFloorSuffixedOpus50 is the-desk floor's half of the suffixed-ID coverage: a date or
+// other tail on the Opus 5.0 id must not be read as a minor version (`claude-opus-5-20260101` is
+// Opus 5.0, not Opus 5.20260101), so the floor refuses it like `claude-opus-5`, while a dated id
+// AT or above the floor still passes. It shares opus50Suffixed / opus5xAllowed (policy_test.go)
+// with the ban-set test, so both sites are held to one list of spellings.
+func TestTheDeskFloorSuffixedOpus50(t *testing.T) {
+	for _, m := range opus50Suffixed {
+		if strings.Contains(strings.ToLower(m), "claude-opus") && !isOpusPin(m) {
+			t.Errorf("isOpusPin(%q) = false, want true (a suffixed Opus 5.0 id)", m)
+		}
+	}
+	for _, m := range []string{"claude-opus-5-5-20260101", "claude-opus-5-6-20260101", "claude-opus-6-20270101", "claude-opus-5-10"} {
+		if isOpusPin(m) {
+			t.Errorf("isOpusPin(%q) = true, want false (at or above the 5.5 floor)", m)
+		}
+	}
+	assertDies(t, "dated opus-5 for the-desk", func() { refuseOpusForTheDesk("claude-opus-5-20260101") })
+}
+
+// opusVersionLitRe spots a string literal that spells an opus VERSION (`opus-5`, `opus5`,
+// `opus.5`, a `*opus-5` glob …): the shape of a hand-rolled, fixed-spelling opus tier match.
+var opusVersionLitRe = regexp.MustCompile(`(?i)opus[-.]?[0-9]`)
+
+// opusVersionLits returns file:line for every string literal in src that spells an opus version.
+func opusVersionLits(t *testing.T, name string, src any) []string {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, name, src, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", name, err)
+	}
+	var hits []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING && opusVersionLitRe.MatchString(lit.Value) {
+			hits = append(hits, fmt.Sprintf("%s: %s", fset.Position(lit.Pos()), lit.Value))
+		}
+		return true
+	})
+	return hits
+}
+
+// TestOpusTierParsedInOnePlace is the CLASS guard for fixed-spelling opus tier matching: a
+// literal such as `*opus-5` matches only the spellings it names, so a suffixed id (a date, a
+// provider tail) slips past it. Every opus-tier decision in this package must go through the one
+// version parser, opusVersion (model.go), so no non-test source here may carry an opus-version
+// string literal; the allow-list is empty. The planted fixture is the positive control — a guard
+// whose matcher stopped matching fails here instead of reporting clean.
+func TestOpusTierParsedInOnePlace(t *testing.T) {
+	planted := "package x\n\nvar ban = []string{\"*opus-5\"}\n"
+	if hits := opusVersionLits(t, "planted.go", planted); len(hits) != 1 {
+		t.Fatalf("positive control: want 1 hit on the planted literal, got %v", hits)
+	}
+	files, err := filepath.Glob("*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("could-not-check: no package sources found (%v)", err)
+	}
+	scanned := 0
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		scanned++
+		for _, h := range opusVersionLits(t, f, nil) {
+			t.Errorf("opus-version literal outside opusVersion (match the tier via opusVersion instead): %s", h)
+		}
+	}
+	if scanned == 0 {
+		t.Fatal("could-not-check: no non-test sources scanned")
+	}
 }
 
 func TestRoleTier(t *testing.T) {

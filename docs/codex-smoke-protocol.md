@@ -53,11 +53,12 @@ evidence is the run log the human gate signs.
 
 ## The steps
 
-Minimum coverage is the seven steps below. (The bundle currently ships **thirteen**
-skills — `adopt`, `ask-decision`, `author-brief`, `human-runsheet`, `install`,
-`intake-desk`, `pdfingest`, `pr-review-desk`, `pr-shepherd`, `the-desk`,
-`upgrade-assay`, `verify-desk`, `worker-desk`; Step 3 iterates over all of them, and
-Steps 5/6 probe the specific skills whose matrix cell is not a bare `runs`.)
+Minimum coverage is the seven steps below. (The bundle ships one skill per
+`plugins/assay/skills/*/SKILL.md`, each named in Step 3's list; Step 3 iterates over all
+of them, and Steps 5/6 probe the specific skills whose matrix cell is not a bare `runs`.
+Step 3's list is the one roster in this file, and `tools/harnessgen`'s
+`TestSmokeRosterMatchesDisk` holds it equal to the skills tree, so a skill added to or
+removed from the bundle without the same change here reddens CI.)
 
 #### Step 1 — Fresh install per the adopt path
 
@@ -68,8 +69,8 @@ the Assay Codex bundle exactly as the adoption path in
 deviate from the documented commands; if a documented command fails, that is the finding.
 
 Expect: the documented install commands complete without error; `codex` reports the
-`assay` plugin present and the thirteen skills discoverable (a `skills`/plugin listing
-shows each of the thirteen names). A deviation from the runbook needed to make install
+`assay` plugin present and every bundled skill discoverable (a `skills`/plugin listing
+shows each name in Step 3's list). A deviation from the runbook needed to make install
 succeed is a FAIL routed to harness-portability/06 (packaging/install path).
 
 #### Step 2 — Resident rules present WITHOUT manual pasting
@@ -87,14 +88,14 @@ harness-portability/05 (resident-rules delivery).
 
 #### Step 3 — Invoke each skill by name → body loads
 
-Action: For **each** of the thirteen bundled skills, invoke it by its namespaced name
-(`assay:adopt`, `assay:ask-decision`, `assay:author-brief`, `assay:human-runsheet`,
-`assay:install`, `assay:intake-desk`, `assay:pdfingest`, `assay:pr-review-desk`,
-`assay:pr-shepherd`, `assay:the-desk`, `assay:upgrade-assay`, `assay:verify-desk`,
-`assay:worker-desk`) and confirm the full SKILL.md body loads (not merely the
-description). Paste one identifying line from each loaded body.
+Action: For **each** bundled skill, invoke it by its namespaced name
+(`assay:adopt`, `assay:ask-decision`, `assay:author-brief`, `assay:cut-release`,
+`assay:human-runsheet`, `assay:install`, `assay:intake-desk`, `assay:pdfingest`, `assay:pr-review-desk`,
+`assay:pr-shepherd`, `assay:system-demo`, `assay:the-desk`, `assay:upgrade-assay`,
+`assay:verify-desk`, `assay:worker-desk`) and confirm the full SKILL.md body loads (not
+merely the description). Paste one identifying line from each loaded body.
 
-Expect: all thirteen bodies load on by-name invocation (invoke-by-name is the
+Expect: every listed body loads on by-name invocation (invoke-by-name is the
 availability floor, `references/codex.md` §`capability:invoke-skill`). Any skill whose
 body does not load is a FAIL routed to harness-portability/06 (packaging coverage).
 
@@ -211,7 +212,7 @@ against the owning brief's surface.
 Runner: <account/name — must be Ian or a session Ian sanctioned>
 Codex version: <codex --version output>
 Sandbox postures exercised: workspace-write, danger-full-access
-Bundle version under test: <plugins/assay/.claude-plugin/plugin.json version>
+Bundle version under test: <plugins/assay/SOURCES.yaml bundle-version> (plugin manifest <plugins/assay/.claude-plugin/plugin.json version>)
 
 Step 1: Fresh install per the adopt path
   Action taken: ...
@@ -228,7 +229,7 @@ Step 2: Resident rules present without manual pasting
   Issue (if FAIL): owner/repo#<n> (harness-portability/05)
 
 Step 3: Invoke each skill by name -> body loads
-  Action taken: invoked all thirteen assay:* skills by name
+  Action taken: invoked every assay:* skill in Step 3's list by name
   Transcript excerpt:
     <paste one identifying line per loaded body>
   Result: PASS | FAIL | BLOCKED
@@ -270,12 +271,20 @@ Human gate sign-off: <account> confirms — real Codex, version as listed, an ex
 step, degradations observed match the ruled matrix, failures routed to issues.
 ```
 
-## Status of the first run
+## Status of the runs
 
-**BLOCKED — no live Codex environment.** This document is the protocol; the first
-executed run log (`docs/codex-smoke-runs/<date>-<codex-version>.md`) is authored when Ian
-provides or sanctions a Codex-capable runner. Rows 1–6 of the brief's Verify table can
-green from the artifacts in this PR; the brief's acceptance row (the run log) stays
-BLOCKED until that environment exists, and the stream is **not done** until it is signed —
-"ready for the live run" is the honest state, and calling it done from the protocol text
-alone is the vacuous-green failure this stream forbids.
+- **First run — 2026-09-12, codex-cli 0.154.0**
+  ([`codex-smoke-runs/2026-09-12-codex-0.154.0.md`](codex-smoke-runs/2026-09-12-codex-0.154.0.md)):
+  Steps 1–4, 6 and 7 PASS; Step 5 BLOCKED (the `multi_agent=false` precondition was
+  unfalsifiable on that CLI — the #939 finding). Its Step 3 loaded twelve bodies;
+  `human-runsheet` and `system-demo` were not among them.
+- **Step 5 re-run — 2026-09-13**
+  ([`codex-smoke-runs/2026-09-13-codex-0.154.0-step5-rerun.md`](codex-smoke-runs/2026-09-13-codex-0.154.0-step5-rerun.md)):
+  PASS under the claim-gated Step 5 form, which the 2026-09-17 re-baseline (#939 ruling)
+  has since replaced with the concurrency-cap floor above.
+- **Outstanding — BLOCKED on a live Codex environment.** The current Step 5 (forced
+  `agents.max_concurrent_threads_per_session=1`) has not yet been run live, and no run has
+  covered Step 3's full current skill list. Both need a runner Ian provides or sanctions;
+  the next run log records the CLI version it actually uses. Until that run is signed, the
+  honest state is "ready for the live run" — calling the stream done from the protocol text
+  alone is the vacuous-green failure this stream forbids.

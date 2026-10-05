@@ -2,7 +2,7 @@
 brief: assay:assay:build-less-brittle:11
 title: "Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge"
 why: >-
-  Every fix already has to show its test failing first (worker kit §9, review kit §3, the
+  Every fix already has to show its test failing first (worker kit §9, review kit §4, the
   fail-first review lane), and every check needs a mutation row (brief-rules 16). Those prove
   the test can fail on the day it lands. Nothing holds the test in place afterwards. Between
   2026-09-17 and 2026-09-24 five test functions were deleted from the public tree and none of
@@ -19,12 +19,12 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; third-pass amendment)"
 sources:
   - "docs/streams/build-less-brittle/spec.md §3 row 13, §4.11, §11"
   - "tools/desk/cmd/deskdispatch/references/worker-prompt.md §9 (fail-first evidence, line 175 at f7bde6bfa) and §14 (defect class, line 315); worker-prompt-objective.md carries §9 verbatim (line 247)"
-  - "tools/desk/cmd/deskdispatch/references/review-prompt.md §3 (line 36) and review-lanes.md §'The fail-first reproduction's two required records' (line 87): the fail-first lane every unknown or blessed-once author gets"
+  - "tools/desk/cmd/deskdispatch/references/review-prompt.md §4 (line 51) and review-lanes.md §'The fail-first reproduction's two required records' (line 87): the fail-first lane every unknown or blessed-once author gets"
   - "plugins/assay/skills/pr-review-desk/SKILL.md: the finding-class register (`test-evidence (fail-first / mutation) | blocking`, line 524) and the fail-first paragraph (line 735)"
   - "docs/brief-rules.md rule 16 (a brief that adds a check carries a mutation-test row); the committed mutation maps (`tools/desk/internal/deskkit/mutations.json` and 10 siblings)"
   - "#1581 (proposal: a TestRegression_ prefix, a count-can't-drop CI gate, a vacuous-selector gate) — this brief takes the tag and the report and declines both gates; #1580 (fix the class, regression-of:); #1306 (renamed tests leave a Verify row running zero tests); #1657 (the vacuous-row class); #1343 (a deleted Verify row is invisible to the integrity gate: the sibling class, not this brief's)"
@@ -36,7 +36,7 @@ domain: complicated
 consumers:
   - "tools/desk/cmd/deskdispatch/references/worker-prompt.md §9: follow-up build-less-brittle/11 (this brief)"
   - "tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md §Fail-first evidence: follow-up build-less-brittle/11 (this brief)"
-  - "tools/desk/cmd/deskdispatch/references/review-prompt.md §3: follow-up build-less-brittle/11 (this brief)"
+  - "tools/desk/cmd/deskdispatch/references/review-prompt.md §4: follow-up build-less-brittle/11 (this brief)"
   - "plugins/assay/skills/pr-review-desk/SKILL.md fail-first paragraph: follow-up build-less-brittle/11 (this brief)"
   - "docs/contracts.md §Rule register row R-retires-test: follow-up build-less-brittle/11 (this brief; the register exists from 07)"
   - "build-less-brittle/12 (the oracle's failure-mode section reads the tags): follow-up build-less-brittle/12"
@@ -51,7 +51,7 @@ consumers:
 files:
 - `tools/desk/cmd/deskdispatch/references/worker-prompt.md`: §9, the tag rule and the trailer (≤ 6 lines, offset).
 - `tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md`: its verbatim copy of §9.
-- `tools/desk/cmd/deskdispatch/references/review-prompt.md`: §3, the three rubric questions for a reported line (≤ 4 lines, offset).
+- `tools/desk/cmd/deskdispatch/references/review-prompt.md`: §4, the three rubric questions for a reported line (≤ 4 lines, offset).
 - `plugins/assay/skills/pr-review-desk/SKILL.md`: the fail-first paragraph, the report command and the rubric pointer (≤ 2 lines, offset).
 - `tools/desk/internal/testledger/ledger.go` (planned): NEW. Pure functions: `Tests(fsys) []TestFunc` (name, package, tag, body hash) via `go/parser`; `Diff(base, head) Report` (deleted, renamed, added); `ParseTrailers(msgs) []Retirement`; `RowsNaming(fsys, name) []Row` over `docs/streams/**/brief-*.md`.
 - `tools/desk/internal/testledger/ledger_test.go` (planned): NEW. `TestLedgerFixture` (planned), `TestTrailerGrammar` (planned), `TestReportTestLedger` (planned) (test-only flags `-base`, `-head`: a revision via `git archive`, or a directory), `TestUnresolvableBaseIsCouldNotCheck` (planned).
@@ -62,9 +62,9 @@ files:
 
 facts:
 - **What already exists, and where.** Fail-first is the worker's obligation in kit §9 ("show
-  the check failing before you claim it passes", quoted verbatim from review kit §3) and the
+  the check failing before you claim it passes", quoted verbatim from review kit §4) and the
   class version in §14.3 ("show the class guard failing against a PLANTED SECOND instance").
-  It is the reviewer's rule in review kit §3, a lane (`fail-first`) for every unknown or
+  It is the reviewer's rule in review kit §4, a lane (`fail-first`) for every unknown or
   blessed-once author in `review-lanes.md`, and the `test-evidence` finding class in the
   pr-review-desk register, status `blocking`. Mutation rows are brief-rules rule 16, and 11
   committed mutation maps exist. This brief adds nothing to any of that. It adds what happens
@@ -98,7 +98,7 @@ facts:
   `go test ./...` and shows nothing on a pass; the reviewer runs it with `-v` against the
   PR's merge-base and quotes it. A trailed retirement is not reported; a retirement of an
   untagged test is reported without the bracket, so the reviewer weighs a tagged one harder.
-- **What the reviewer does with a line** (review kit §3, three questions): is the behaviour
+- **What the reviewer does with a line** (review kit §4, three questions): is the behaviour
   it pinned still pinned, and by which test; did the reason land as a trailer; if renamed,
   are the Verify rows re-pointed. A departure the reviewer judges unjustified is a
   `test-evidence` finding, the existing blocking class. No new basis, no new class, no new
@@ -109,7 +109,7 @@ facts:
   why, and the report puts that in front of the reviewer. One control per time-scale, and
   neither substitutes: a test with a mutation entry and no tag can vanish silently (the five
   deletions), and a tagged test with no mutation entry can be green for the wrong reason (the
-  shapes review kit §3 lists). The oracle (12) consumes the tag: each failure mode maps to
+  shapes review kit §4 lists). The oracle (12) consumes the tag: each failure mode maps to
   its regression test by `git grep 'regression: .*#<N>'`.
 - **Self-referential base.** `git merge-base origin/main HEAD` is `HEAD` on a merged
   checkout (#1657), so the report takes an explicit `-base`, and every Verify row below pins
@@ -184,7 +184,7 @@ are net ≤ 0 rows.
 | 4 | `d=$(mktemp -d) && cp -R . "$d/tree" && t=$(git grep -l '^// regression: #' -- '*_test.go' \| head -1) && n=$(grep -A1 '^// regression: #' "$t" \| grep -oE 'func (Test[A-Za-z0-9_]+)' \| head -1 \| cut -d' ' -f2) && sed "s/func $n(/func ${n}Renamed(/" "$t" > "$d/tree/$t" && cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -count=1 -v -args -base="$(git rev-parse --show-toplevel)" -head="$d/tree" \| grep -c "renamed-untrailed: .*$n → ${n}Renamed"` | `1` (a planted rename with an identical body is reported as a rename, not a deletion plus an addition) |
 | 5 | `cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -count=1 -v -args -base=c16e2dc55~1 -head=c16e2dc55 \| grep -c 'retired-untrailed: .*TestRoleInitWiresWorktreeScopedCredentialHelper'` | `1` (dereference: a real untrailed deletion from the evidence window is reported) |
 | 6 | `cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -count=1 -v -args -base=7af5d2b6c~1 -head=7af5d2b6c \| grep -c 'retired-untrailed: .*TestClaimLivenessIsUnknown'` | `2` (both deletions in #1498's commit) |
-| 7 | `cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -count=1 -args -base=7af5d2b6c~1 -head=7af5d2b6c > /tmp/bl11-r7.out 2>&1; echo "exit=$?"` | `exit=0` (the report passes with two findings: it never blocks by itself) |
+| 7 | `cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -count=1 -args -base=7af5d2b6c~1 -head=7af5d2b6c > /tmp/bl11-r7.out 2>&1; echo "exit=$?"` | output is `exit=0` (the report passes with two findings: it never blocks by itself). Expect re-written 2026-10-03 (#1862). |
 | 8 | `cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -count=1 -v -args -base=b7a82c025~1 -head=b7a82c025 \| grep -c 'verify-rows-naming: TestDedupeSearchOutageNamesTheAPIStatus → docs/streams/desk-tools/brief-21'` | `1` (dereference: the #1306 rename names the Verify row that went vacuous. In b7a82c025 the old test's body also changed and no tags existed yet, so the ledger sees a deletion, not a rename: `RowsNaming` fires on every untrailed departure, deletions as well as renames, and this row depends on that) |
 | 9 | `cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -count=1 -v -args -base=deadbeefdeadbeef -head=HEAD \| grep -c 'could-not-check'` | `1` (an unresolvable base is could-not-check, never `clean`) |
 | 10 | `n=$(git grep -c '^// regression: #' -- '*_test.go' \| awk -F: '{s+=$2} END{print s+0}'); test "$n" -ge 5 && echo "tags=$n"` | `tags=` ≥ 5 (seeded, so rows 3–4 cannot pass vacuously) |
@@ -194,7 +194,7 @@ are net ≤ 0 rows.
 | 14 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/11$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" && test "$(git show "$tip:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 15 | `grep -cE '^[\|] *R-retires-test .*S-review-verdict' docs/contracts.md && grep -c 'TestLedgerFixture' docs/contracts.md` | `1`, then ≥ `1` (registered, serving an existing S- row, with a catch source that can fire) |
 | 16 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/11$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git diff --name-only "$base" "$tip" -- tools/desk/cmd \| grep -v _test.go \| grep -v '/references/' \| wc -l \| tr -d ' ')" = 0 && echo NO-CMD-CHANGE` | `NO-CMD-CHANGE` (no shipped verb or flag changed; kit text under `references/` is the one allowed edit; base derived, never `HEAD~1`) |
-| 17 | `statusgen --consumers --root . --brief build-less-brittle/11; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
+| 17 | `statusgen --consumers --root . --brief build-less-brittle/11; echo "exit=$?"` | output is `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). A disproved claim makes the command print `exit=1` and names the claim. Expect re-written 2026-10-03 (#1862). |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,

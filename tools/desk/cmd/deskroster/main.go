@@ -30,7 +30,7 @@ USAGE:
   deskroster list
   deskroster mine  [--session NAME]
   deskroster width --role LOOP [--verbose]
-  deskroster repos [--scope write|scan|topology|all]
+  deskroster repos [--scope write|scan|topology|roots|all]
   deskroster apps
   deskroster preflight --role R [--root DIR] [--repo OWNER/NAME] [--remote NAME] [--branch NAME]
   deskroster liveness --repo OWNER/NAME
@@ -48,6 +48,10 @@ A set width DECAYS: it is honoured for one hour and then the loop reads its ship
 default again, so a coordinator that died cannot leave a pool permanently wide.
 Defaults live in ONE place (internal/deskkit/width.go) — the skill bodies point at
 that table rather than stating a number that could drift from it.
+
+"repos --scope roots" prints the configured board-root map: DESK_ROOTS replaces
+the compiled defaults, with malformed or disallowed entries refused before output.
+"topology" stays the compiled inventory; "all" retains write, scan and topology.
 
 "repos" and "apps" PRINT THE LIVE SETS the tools actually use, so a skill, a
 runbook or a session can READ them instead of carrying its own list. Carrying a

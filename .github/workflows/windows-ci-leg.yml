@@ -65,12 +65,78 @@ env:
   GO_VERSION: "1.25.0"
 
 jobs:
+  desk-windows-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Native Windows desk suite
+        shell: pwsh
+        run: |
+          cd tools/desk
+          go test ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   windows-smoke:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # this job runs `statusgen --lint`, whose consumedFragmentIndex needs changelog/ history — a shallow clone reads a consumed fragment as a false PROBLEM (#999)
+
+      - name: Windows PowerShell 5.1 parse check (every tracked .ps1)
+        # #1569: pwsh 7 reads a BOM-less .ps1 as UTF-8, but powershell.exe (5.1) reads it in
+        # the ANSI code page, where an em dash's 0x94 byte is a string delimiter. Only a real
+        # 5.1 parse catches that class (and any other 5.1-only parse error) end to end;
+        # the Linux byte guard (tools/desk TestPS1EncodingIs51Safe)
+        # is the PR-time half of the ENCODING class only. It is a byte scan, so any other
+        # 5.1-only parse error (a PowerShell 7 operator such as the `? :` ternary) is caught
+        # here and nowhere else. `shell: powershell` IS Windows PowerShell 5.1 on
+        # windows-latest; the edition check keeps this step from going vacuously green.
+        # The pathspec is case-insensitive, matching the byte guard (a `.PS1` is checked too).
+        # Offline: parses files on disk, contacts nothing.
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host "PSVersion $($PSVersionTable.PSVersion) edition $($PSVersionTable.PSEdition)"
+          if ($PSVersionTable.PSEdition -ne 'Desktop') { throw "not Windows PowerShell 5.1 (Desktop edition); the 5.1 parse check would be vacuous" }
+          $files = @(git ls-files -- ':(icase)*.ps1')
+          if ($files.Count -eq 0) { throw "could-not-check: git ls-files found no tracked .ps1" }
+          $bad = 0
+          foreach ($f in $files) {
+            $tokens = $null; $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f).Path, [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $bad++
+              foreach ($e in $errors) { Write-Host "::error file=$f,line=$($e.Extent.StartLineNumber)::$($e.Message)" }
+            } else {
+              Write-Host "parse OK (5.1): $f"
+            }
+          }
+          if ($bad -gt 0) { throw "$bad .ps1 file(s) fail to parse under Windows PowerShell 5.1" }
+
+      - name: Fail-first demonstration (opt-in; the 5.1 parse check MUST reject a BOM-less em dash and a PS7 ternary)
+        if: ${{ inputs.failfirst }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = Join-Path $env:RUNNER_TEMP 'emdash-failfirst.ps1'
+          # BOM-less UTF-8, an em dash inside a double-quoted string: the #1569 shape.
+          [IO.File]::WriteAllText($p, "throw `"a $([char]0x2014) b`"`n", (New-Object System.Text.UTF8Encoding($false)))
+          $tokens = $null; $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($p, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -eq 0) { throw "fail-first BROKEN: 5.1 parsed a BOM-less em dash cleanly; the parse check would be vacuous" }
+          Write-Host "fail-first OK: 5.1 rejected the planted em dash ($($errors[0].Message))"
+          # Pure ASCII, a PowerShell 7-only ternary in a param() default: the shape the byte
+          # guard cannot see, so only this parse check catches it.
+          $q = Join-Path $env:RUNNER_TEMP 'ternary-failfirst.ps1'
+          [IO.File]::WriteAllText($q, "param([string]`$A = (`$true ? 'x' : 'y'))`n", (New-Object System.Text.UTF8Encoding($false)))
+          $tokens = $null; $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($q, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -eq 0) { throw "fail-first BROKEN: 5.1 parsed a PowerShell 7 ternary cleanly; the parse check would be vacuous for that class" }
+          Write-Host "fail-first OK: 5.1 rejected the planted ternary ($($errors[0].Message))"
 
       - name: Install Go
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
@@ -132,6 +198,8 @@ jobs:
   # exception decision #508 requires; isolating it in this job keeps windows-smoke's offline
   # invariant intact rather than quietly widening it.
   windows-bootstrap-smoke:
+    # Preserve online bootstrap coverage on its existing tag/dispatch events.
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -169,4 +237,155 @@ jobs:
       - name: BLOCKED — native windows/arm64 smoke awaits a windows-11-arm runner
         run: |
           echo "native windows/arm64 smoke is BLOCKED: no windows-11-arm runner available"
+          exit 1
+
+  # verify-in-container: windows-port/10 — the EXECUTION-WITNESS runner leg. It proves
+  # `statusgen verifyrun --in-container` runs a real fixture Verify table THROUGH the
+  # pinned harness container and the witness lands in Evidence, host-owned.
+  #
+  # RUNS ON ubuntu-latest, and that is deliberate, not a dodge of Windows. The harness
+  # image is a LINUX image whichever host launches it; the Windows value is that a
+  # Windows adopter USES this container BECAUSE a native pipefail `bash` is unreliable
+  # there (#1418 — verifyrun records could-not-run, never a false fail, when no POSIX
+  # shell bootstraps). The container path is identical on any host with a
+  # Linux-container Docker backend, so ubuntu-latest — which has one — is the substrate
+  # that can actually run it. The NATIVE-Windows-host proof (Docker Desktop on Windows
+  # with its Linux-container backend) is the held `windows-verify-in-container` job
+  # below; it is NEVER inferred from this ubuntu result.
+  verify-in-container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build statusgen
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd statusgen
+          go build -o "${RUNNER_TEMP}/statusgen" .
+
+      - name: Fail-closed control — the wrapper REFUSES an un-digest-pinned image (scratch placeholder pin)
+        shell: bash
+        run: |
+          set -uo pipefail
+          # The committed harness pin (plugins/assay/paired-versions.yaml `harness:`) now
+          # carries a REAL registry digest, so running the wrapper against it no longer
+          # exercises the pin control at all. The control is therefore run against a
+          # SCRATCH root: a copy of the manifest whose `digest:` is swapped for a
+          # placeholder, plus a one-row fixture brief. The wrapper MUST refuse it — an
+          # un-digest-pinned image is never run.
+          #
+          # "Refused" means the pin control's own refusal (exit 2 AND its `refusing to run`
+          # line), never merely "exited non-zero": a docker/daemon failure or an inner
+          # Verify failure is NOT a refusal, and reading one as a refusal is the false
+          # green this step exists to rule out.
+          #
+          # DOCKER_HOST names a socket that does not exist, so no image is pulled or run
+          # here even if the control ever stops refusing — the wrapper then fails at the
+          # docker connect, which this step reports as a broken control (red).
+          #
+          # Discrimination control: the SAME scratch root carrying the COMMITTED digest
+          # must get PAST the pin control (the wrapper prints the digest-pinned reference
+          # it would run, then fails only at the absent daemon). A harness that refused
+          # every input — a wrong root, a missing manifest — would fail here, so a green
+          # from the placeholder half is a real refusal, not a scratch-setup accident.
+          sg="${RUNNER_TEMP}/statusgen"
+          scratch="${RUNNER_TEMP}/failclosed"
+          nodaemon="unix://${RUNNER_TEMP}/no-such-docker.sock"
+          rm -rf "${scratch}"
+          mkdir -p "${scratch}/plugins/assay"
+          # shellcheck disable=SC2016 # the backticks are literal markdown code-span delimiters
+          printf '## Verify\n| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |\n' > "${scratch}/brief.md"
+          digest=$(grep -E '^[[:space:]]*digest:' plugins/assay/paired-versions.yaml | head -1 | awk '{print $2}')
+          image=$(grep -E '^[[:space:]]*image:' plugins/assay/paired-versions.yaml | head -1 | awk '{print $2}')
+          test -n "${digest}" && test -n "${image}" || { echo "::error::could-not-check: no harness image/digest found in paired-versions.yaml"; exit 1; }
+
+          # 1) Placeholder pin: MUST be refused by the pin control.
+          sed -E 's/^([[:space:]]*digest:).*/\1 PENDING-HARVEST-scratch-placeholder/' \
+            plugins/assay/paired-versions.yaml > "${scratch}/plugins/assay/paired-versions.yaml"
+          grep -qE '^[[:space:]]*digest: PENDING-HARVEST-scratch-placeholder$' "${scratch}/plugins/assay/paired-versions.yaml" \
+            || { echo "::error::could-not-check: the scratch manifest does not carry the placeholder digest"; exit 1; }
+          rc=0
+          DOCKER_HOST="${nodaemon}" "${sg}" verifyrun --in-container --root "${scratch}" \
+            --brief "${scratch}/brief.md" > "${scratch}/placeholder.out" 2>&1 || rc=$?
+          cat "${scratch}/placeholder.out"
+          if [ "${rc}" -ne 2 ] || ! grep -q 'refusing to run' "${scratch}/placeholder.out"; then
+            echo "::error::the wrapper did not refuse a placeholder digest (exit ${rc}) — the fail-closed pin control is broken"
+            exit 1
+          fi
+          echo "fail-closed OK — the wrapper refused the placeholder digest (exit 2; an un-digest-pinned image is never run)"
+
+          # 2) Committed (real) pin: MUST pass the pin control — the discrimination half.
+          cp plugins/assay/paired-versions.yaml "${scratch}/plugins/assay/paired-versions.yaml"
+          rc=0
+          DOCKER_HOST="${nodaemon}" "${sg}" verifyrun --in-container --root "${scratch}" \
+            --brief "${scratch}/brief.md" > "${scratch}/pinned.out" 2>&1 || rc=$?
+          cat "${scratch}/pinned.out"
+          if grep -q 'refusing to run' "${scratch}/pinned.out" || ! grep -qF -- "--in-container: ${image}@${digest}" "${scratch}/pinned.out"; then
+            echo "::error::the wrapper did not accept the committed digest pin (exit ${rc}) — the control refuses everything, or the committed pin is not a real digest"
+            exit 1
+          fi
+          echo "discrimination OK — the committed pin passed the control (exit ${rc} at the absent daemon, never refused)"
+
+      - name: Witness lands through the pinned container (live; runs once the real digest is pinned)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # LIVE proof — apply-gated on the digest harvest, not fakeable here. It runs
+          # ONLY when the committed harness digest is a real `sha256:<64hex>` (i.e. a
+          # maintainer has harvested and pinned the published image's registry digest).
+          # Until then it is skipped and reported, never greened from the control above.
+          digest=$(grep -E '^[[:space:]]*digest:' plugins/assay/paired-versions.yaml | head -1 | awk '{print $2}')
+          case "${digest}" in
+            sha256:*)
+              # A fixture brief with one trivial, offline Verify row; run it THROUGH the
+              # container and assert the witness landed AND is owned by the runner user
+              # (the --user host-ownership mapping), not root.
+              fix="${RUNNER_TEMP}/fixture"
+              mkdir -p "${fix}"
+              cp -r plugins "${fix}/plugins"
+              cp -r .git "${fix}/.git" 2>/dev/null || true
+              cat > "${fix}/brief.md" <<'BRIEF'
+          ## Verify
+          | # | Command | Expect |
+          |---|---------|--------|
+          | 1 | `echo witness-lands` | output is `witness-lands` |
+
+          ## Evidence
+          BRIEF
+              "${RUNNER_TEMP}/statusgen" verifyrun --in-container --root "${fix}" --brief "${fix}/brief.md"
+              grep -q 'sha256:' "${fix}/brief.md" || { echo "::error::no witness row landed in Evidence"; exit 1; }
+              owner=$(stat -c %u "${fix}/brief.md")
+              test "${owner}" = "$(id -u)" || { echo "::error::witness file is owned by ${owner}, not the host user $(id -u) — the --user mapping did not apply"; exit 1; }
+              echo "witness landed host-owned through the pinned container"
+              ;;
+            *)
+              echo "held: the harness digest is a placeholder (${digest}); the live witness-lands proof runs once a maintainer harvests and pins the real registry digest. Not greened from the fail-closed control."
+              ;;
+          esac
+
+  # windows-verify-in-container: the NATIVE-Windows-host proof — Docker Desktop on
+  # Windows with its Linux-container backend runs the SAME wrapper. HELD BLOCKED
+  # (`if: false`): GitHub-hosted `windows-latest` provides the Windows-container moby
+  # engine only, with no Linux-container backend, so it cannot pull/run the Linux
+  # harness image. This needs a Windows runner configured with Docker Desktop's
+  # Linux-container backend (or a self-hosted equivalent). Held with its reason, never
+  # inferred from the ubuntu `verify-in-container` result — the same "blocked is a
+  # state, not a failure" contract the `arm64-native-smoke` row above uses. Flip it to
+  # such a runner when one is available; the harness image itself is Linux regardless.
+  windows-verify-in-container:
+    if: false
+    runs-on: windows-latest
+    steps:
+      - name: BLOCKED — native-Windows container run awaits a Linux-container Docker backend
+        shell: bash
+        run: |
+          echo "native-Windows verify-in-container is BLOCKED: windows-latest has no Linux-container Docker backend to run the Linux harness image"
           exit 1

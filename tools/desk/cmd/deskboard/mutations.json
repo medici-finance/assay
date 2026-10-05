@@ -90,6 +90,102 @@
       "file": "cmd/deskboard/board.go",
       "old": "applyBodyEditReverification(rs, reviews, p.HeadRefOid, p.Body, p.LastEditedAt)",
       "new": "applyBodyEditReverification(rs, reviews, p.HeadRefOid, p.Body, \"9999-01-01T00:00:00Z\")"
+    },
+    {
+      "name": "drive worker floor — the cross-root merge stops re-applying driveWorkerCap against the SUMMED in-flight drive work (each root's own headroom stacks past the shared pool)",
+      "file": "cmd/deskboard/dispatch.go",
+      "old": "\tif rep.DriveWorkerCap <= 0 {\n\t\treturn rep.Rows\n\t}",
+      "new": "\tif true {\n\t\treturn rep.Rows\n\t}"
+    },
+    {
+      "name": "drive worker floor — the cross-root merge drops the critical-tier sort key, so higher-scored routine drive rows take the shared headroom ahead of a critical row",
+      "file": "cmd/deskboard/dispatch.go",
+      "old": "ac, bc := a.CriticalArm != \"\", b.CriticalArm != \"\"; ac != bc",
+      "new": "ac, bc := a.CriticalArm != \"\", b.CriticalArm != \"\"; false && ac != bc"
+    },
+    {
+      "name": "#2028 trust gate — treat every author as trusted (an unblessed author is promoted to dispatch)",
+      "file": "cmd/deskboard/board.go",
+      "old": "authorTrusted := deskkit.TrustedAuthor(p.Author.Login)",
+      "new": "authorTrusted := true"
+    },
+    {
+      "name": "#2028 trust gate — also trust an author whose PR TITLE names a trusted login (trust by attacker free text, the display-name analogue)",
+      "file": "cmd/deskboard/board.go",
+      "old": "authorTrusted := deskkit.TrustedAuthor(p.Author.Login)",
+      "new": "authorTrusted := deskkit.TrustedAuthor(p.Author.Login) || deskkit.TrustedAuthor(p.Title)"
+    },
+    {
+      "name": "#2028 trust gate — admit an unblessed outsider instead of quarantining it",
+      "file": "cmd/deskboard/board.go",
+      "old": "\t\tif !blessed {\n\t\t\treturn prOutcome{id: id, external:",
+      "new": "\t\tif false && !blessed {\n\t\t\treturn prOutcome{id: id, external:"
+    },
+    {
+      "name": "#2028 trust gate — an unreadable trust read admits the PR (fail OPEN) instead of failing the sweep",
+      "file": "cmd/deskboard/board.go",
+      "old": "if berr != nil {\n\t\t\treturn prOutcome{}, berr\n\t\t}",
+      "new": "if berr != nil {\n\t\t\tblessed = true\n\t\t}"
+    },
+    {
+      "name": "#2028 trust gate — an overflowed (incomplete) trust thread is read as complete, so a page-1 blessing admits despite unread later events",
+      "file": "cmd/deskboard/board.go",
+      "old": "\tif !tp.Complete {\n\t\treturn false, nil // overflowed",
+      "new": "\tif false && !tp.Complete {\n\t\treturn false, nil // overflowed"
+    },
+    {
+      "name": "#2028 `prs` verb trust gate — admit an unblessed outsider into the `prs` rows",
+      "file": "cmd/deskboard/board.go",
+      "old": "\t\t\tif !blessed {\n\t\t\t\tpart.external",
+      "new": "\t\t\tif false && !blessed {\n\t\t\t\tpart.external"
+    },
+    {
+      "name": "#2028 class — reintroduce the #177 HUMAN-OWNED shape: a trusted human's admitted PR gets no ACTION row",
+      "file": "cmd/deskboard/board.go",
+      "old": "\t\t}\n\t}\n\n\t// degradeReasons collects",
+      "new": "\t\t}\n\t}\n\tif deskkit.TrustedHumanAuthor(p.Author.Login) {\n\t\treturn prOutcome{id: id}, nil\n\t}\n\n\t// degradeReasons collects"
+    },
+    {
+      "name": "#2028 TrustedAuthor — the EMPTY login is trusted",
+      "file": "internal/deskkit/trust.go",
+      "old": "func TrustedAuthor(login string) bool {\n\tif login == \"\" {\n\t\treturn false",
+      "new": "func TrustedAuthor(login string) bool {\n\tif login == \"\" {\n\t\treturn true"
+    },
+    {
+      "name": "#2028 TrustedAuthor — an unconfigured / unreadable roster fails OPEN (every non-empty login trusted)",
+      "file": "internal/deskkit/trust.go",
+      "old": "\tc := EffectiveConfig()\n\tif !c.Configured() {\n\t\treturn false\n\t}\n\treturn c.Logins[strings.ToLower(login)]\n}",
+      "new": "\tc := EffectiveConfig()\n\tif !c.Configured() {\n\t\treturn login != \"\"\n\t}\n\treturn c.Logins[strings.ToLower(login)]\n}"
+    },
+    {
+      "name": "#2028 TrustedAuthor — strip a `[bot]` suffix (a human login rendered as a bot is trusted as the human)",
+      "file": "internal/deskkit/trust.go",
+      "old": "\tc := EffectiveConfig()\n\tif !c.Configured() {\n\t\treturn false\n\t}\n\treturn c.Logins[strings.ToLower(login)]\n}",
+      "new": "\tc := EffectiveConfig()\n\tif !c.Configured() {\n\t\treturn false\n\t}\n\treturn c.Logins[strings.ToLower(login)] || c.Logins[strings.ToLower(strings.TrimSuffix(login, \"[bot]\"))]\n}"
+    },
+    {
+      "name": "#2028 TrustedAuthor — accept a role App's BARE slug (the username-squat shape)",
+      "file": "internal/deskkit/trust.go",
+      "old": "\tc := EffectiveConfig()\n\tif !c.Configured() {\n\t\treturn false\n\t}\n\treturn c.Logins[strings.ToLower(login)]\n}",
+      "new": "\tc := EffectiveConfig()\n\tif !c.Configured() {\n\t\treturn false\n\t}\n\treturn c.Logins[strings.ToLower(login)] || c.Logins[\"app/\"+strings.ToLower(login)]\n}"
+    },
+    {
+      "name": "#2028 TrustedAuthor — trim surrounding whitespace before the lookup",
+      "file": "internal/deskkit/trust.go",
+      "old": "\tc := EffectiveConfig()\n\tif !c.Configured() {\n\t\treturn false\n\t}\n\treturn c.Logins[strings.ToLower(login)]\n}",
+      "new": "\tc := EffectiveConfig()\n\tif !c.Configured() {\n\t\treturn false\n\t}\n\treturn c.Logins[strings.ToLower(strings.TrimSpace(login))]\n}"
+    },
+    {
+      "name": "#2028 TrustedAuthor — PREFIX match (a login that starts with a trusted login is trusted)",
+      "file": "internal/deskkit/trust.go",
+      "old": "\tc := EffectiveConfig()\n\tif !c.Configured() {\n\t\treturn false\n\t}\n\treturn c.Logins[strings.ToLower(login)]\n}",
+      "new": "\tc := EffectiveConfig()\n\tif !c.Configured() {\n\t\treturn false\n\t}\n\tfor k := range c.Logins {\n\t\tif strings.HasPrefix(strings.ToLower(login), k) {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}"
+    },
+    {
+      "name": "#2028 TrustedAuthor — SUBSTRING match (a login containing a trusted login is trusted)",
+      "file": "internal/deskkit/trust.go",
+      "old": "\tc := EffectiveConfig()\n\tif !c.Configured() {\n\t\treturn false\n\t}\n\treturn c.Logins[strings.ToLower(login)]\n}",
+      "new": "\tc := EffectiveConfig()\n\tif !c.Configured() {\n\t\treturn false\n\t}\n\tfor k := range c.Logins {\n\t\tif strings.Contains(strings.ToLower(login), k) {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}"
     }
   ]
 }

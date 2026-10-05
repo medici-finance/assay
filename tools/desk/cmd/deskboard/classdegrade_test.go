@@ -25,8 +25,9 @@ import (
 
 // classDegradeRoster binds the GitLab-shaped reviewer role (gl-reviewer, no [bot] suffix)
 // and separates the bless authority/accountable-human set (ada) from a merely-trusted,
-// non-human author (shared-agent) — needed so a PR with NO review at all reaches
-// actNeedsReview rather than actHumanOwned (#177), which only exempts accountable humans.
+// non-human author (shared-agent). Since #2028 both reach actNeedsReview on a PR with NO
+// review at all (the #177 HUMAN-OWNED exemption is retired); the split is kept so the
+// unreadable-reviews row still exercises a non-bless-authority author.
 const classDegradeRoster = `ASSAY_BLESS_LOGIN=ada:2001
 ASSAY_TRUSTED_LOGINS=ada:2001,shared-agent:2002
 ASSAY_TRUSTED_BOT_SLUGS=reviewer=gitlab:gl-reviewer:41987965
@@ -70,7 +71,9 @@ func TestSweepDegradesOneRowNotTheBoard(t *testing.T) {
 				return []deskkit.Review{{
 					Author: deskkit.Account{Login: "gl-reviewer", ID: 41987965},
 					State:  "APPROVED", CommitID: headApproved,
-					Body: "Verdict: approve", SubmittedAt: "2026-09-14T16:00:00Z",
+					// #2158: the row is risk-classed, so MERGE-NOW needs a security pass at
+					// head whether the PR is draft or ready.
+					Body: "Verdict: approve\n\nSecurity-Review: pass", SubmittedAt: "2026-09-14T16:00:00Z",
 				}}, nil
 			case prEmptySHA:
 				return approvalWithNoSHA(), nil
@@ -276,9 +279,9 @@ func TestRiskClassificationFailsClosedOnReadFailure(t *testing.T) {
 		t.Fatal("classifyPR produced no row — a degraded PR must still be classified, on the safe side")
 	}
 	if !out.row.RiskClassed {
-		t.Fatalf("RiskClassed = false — a changed-files read failure on the risk-classification call "+
-			"must fail CLOSED to risk-classed; reading false here is exactly the risk-classification "+
-			"bypass this test exists to catch (a risk-classed PR silently losing its human gate on a "+
+		t.Fatalf("RiskClassed = false — a changed-files read failure on the risk-classification call " +
+			"must fail CLOSED to risk-classed; reading false here is exactly the risk-classification " +
+			"bypass this test exists to catch (a risk-classed PR silently losing its human gate on a " +
 			"read failure)")
 	}
 	if out.row.Action == actMergeNow || out.row.Action == actFlip {

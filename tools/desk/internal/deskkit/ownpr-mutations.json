@@ -1,0 +1,107 @@
+{
+  "test": "go test ./internal/deskkit/ ./cmd/deskreply/ ./cmd/deskpr/ -count=1 -timeout 300s -run 'CheckOwnPR|OwnPRByHeadCommit|EditByPROwnHeadCommit|EditDetachedNeedsPR|ReplyNotMyOwnBranch|ReplyPRNotOpen|UpdateByPR'",
+  "control": {
+    "name": "CONTROL — the own-PR guard is branch-name-only again (the pre-#1901 rule: a worktree at the PR's head commit on another branch name is refused)",
+    "file": "internal/deskkit/ownpr.go",
+    "old": "\tif sameCommit(local.Head, remote.HeadOid) {\n\t\treturn OwnPRByHead, nil\n\t}\n",
+    "new": "\tif false && sameCommit(local.Head, remote.HeadOid) {\n\t\treturn OwnPRByHead, nil\n\t}\n"
+  },
+  "mutations": [
+    {
+      "name": "admit ANY head commit (the equality is dropped — a different branch at a different commit passes)",
+      "file": "internal/deskkit/ownpr.go",
+      "old": "\tif sameCommit(local.Head, remote.HeadOid) {\n",
+      "new": "\tif local.Head != \"\" {\n"
+    },
+    {
+      "name": "admit an abbreviated SHA as a prefix match (length check dropped, prefix compare)",
+      "file": "internal/deskkit/ownpr.go",
+      "old": "\tif a == \"\" || b == \"\" || len(a) != len(b) {\n\t\treturn false\n\t}\n\treturn strings.EqualFold(a, b)\n",
+      "new": "\tif a == \"\" || b == \"\" {\n\t\treturn false\n\t}\n\treturn strings.HasPrefix(strings.ToLower(b), strings.ToLower(a))\n"
+    },
+    {
+      "name": "the head-commit compare is case-sensitive (upper-case hex from a tool no longer matches the forge's lower-case oid)",
+      "file": "internal/deskkit/ownpr.go",
+      "old": "\treturn strings.EqualFold(a, b)\n",
+      "new": "\treturn a == b\n"
+    },
+    {
+      "name": "two absent SHAs compare equal (no local head + a forge that reported no head oid)",
+      "file": "internal/deskkit/ownpr.go",
+      "old": "\tif a == \"\" || b == \"\" || len(a) != len(b) {\n",
+      "new": "\tif len(a) != len(b) {\n"
+    },
+    {
+      "name": "a detached HEAD (branch \"\") matches a PR whose head ref was not reported",
+      "file": "internal/deskkit/ownpr.go",
+      "old": "\tif local.Branch != \"\" && local.Branch == remote.HeadRef {\n",
+      "new": "\tif local.Branch == remote.HeadRef {\n"
+    },
+    {
+      "name": "a merged/closed PR is no longer refused",
+      "file": "internal/deskkit/ownpr.go",
+      "old": "\tif !strings.EqualFold(strings.TrimSpace(remote.State), \"OPEN\") {\n",
+      "new": "\tif false {\n"
+    },
+    {
+      "name": "deskreply no longer enforces the own-PR guard",
+      "file": "cmd/deskreply/deskreply.go",
+      "old": "\t); oerr != nil {\n\t\treturn oerr\n\t}\n\tac.head = view.HeadRefOid\n",
+      "new": "\t); false && oerr != nil {\n\t\treturn oerr\n\t}\n\tac.head = view.HeadRefOid\n"
+    },
+    {
+      "name": "deskpr edit's detached-HEAD refusal (no --pr) loses its --pr N remedy (the create/update message again)",
+      "file": "cmd/deskpr/edit.go",
+      "old": "preflightOpts(dir, \"\", *prNum > 0, editDetachedRefusal, *prNum == 0)",
+      "new": "preflightOpts(dir, \"\", *prNum > 0, detachedRefusal, *prNum == 0)"
+    },
+    {
+      "name": "deskpr edit --pr loses rule 1, the own-PR guard (its own branch or head commit no longer admits a trailer-less or fork PR)",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\t\t); oerr == nil {\n\t\t\treturn cur, cur, nil\n",
+      "new": "\t\t); false && oerr == nil {\n\t\t\treturn cur, cur, nil\n"
+    },
+    {
+      "name": "deskpr edit --pr no longer refuses a merged/closed PR before the admission rules",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\t\tif !strings.EqualFold(strings.TrimSpace(cur.State), \"open\") {\n",
+      "new": "\t\tif false {\n"
+    },
+    {
+      "name": "deskpr edit --pr rule 2 admits a trailer-less PR from a foreign checkout",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\tif _, linked := trailerLink([]byte(cur.Body)); !linked {\n",
+      "new": "\tif _, linked := trailerLink([]byte(cur.Body)); false && !linked {\n"
+    },
+    {
+      "name": "deskpr edit --pr rule 2 reads every PR as same-repository (fork and unreported admitted)",
+      "file": "cmd/deskpr/edit.go",
+      "old": "\tswitch cur.CrossRepo {\n",
+      "new": "\tswitch deskkit.CrossRepoSame {\n"
+    },
+    {
+      "name": "deskpr update --pr pushes to a fork PR's head ref name on the base repository",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "if cerr := requireSameRepoHead(full.CrossRepo, pr.Number); cerr != nil {",
+      "new": "if cerr := requireSameRepoHead(full.CrossRepo, pr.Number); false && cerr != nil {"
+    },
+    {
+      "name": "deskpr update --pr no longer checks the push destination holds the head ref at the forge's head commit",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "if rerr := requireRemoteHoldsHead(facts.dir, pushDest, full.HeadSHA, pr.Number); rerr != nil {",
+      "new": "if rerr := requireRemoteHoldsHead(facts.dir, pushDest, full.HeadSHA, pr.Number); false && rerr != nil {"
+    },
+    {
+      "name": "deskpr update --pr admits a PR whose head is already in the default branch",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\tif inDefault {\n",
+      "new": "\tif false && inDefault {\n"
+    },
+    {
+      "name": "deskpr update --pr secret-scans the local branch name instead of the PR's head ref",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "scanWrite(&gitFacts{dir: facts.dir, branch: pushDest,",
+      "new": "scanWrite(&gitFacts{dir: facts.dir, branch: facts.branch,"
+    }
+  ]
+}

@@ -85,7 +85,11 @@
                   "enum": ["command", "review", "witness", "observe"]
                 },
                 "claim": { "type": "string" },
-                "mandatory": { "type": "boolean" }
+                "mandatory": { "type": "boolean" },
+                "signal": { "type": "string", "description": "kind: observe ONLY — the named signal watched over `window` after a change lands (e.g. an error-rate metric, an alert). Meaningless for any other kind; a conforming implementation declares `observe` only where a deploy exists (spec/workflow-pattern-v1.md §4.1) — where none exists the kind is omitted, never recorded with these fields empty as \"n/a\"." },
+                "band": { "type": "string", "description": "kind: observe ONLY — the acceptable range/threshold the signal must stay within for the claim to resolve `pass` (e.g. \"error rate < 1%\")." },
+                "window": { "type": "string", "description": "kind: observe ONLY — how long after the change lands the signal is watched (e.g. \"PT1H\", \"24h\")." },
+                "source": { "type": "string", "description": "kind: observe ONLY — where the coverage rule reads the signal FROM. An unreadable source resolves the claim to could-not-check, never pass (graph-execution/03)." }
               }
             }
           },

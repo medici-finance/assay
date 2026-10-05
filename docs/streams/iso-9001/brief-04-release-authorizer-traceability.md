@@ -13,7 +13,7 @@ why: >-
   body, and one source-coupling test so it cannot be dropped, closes it.
 wave: 1
 depends: ["iso-9001/01"]
-unblocks: ["iso-9001/06"]
+unblocks: ["iso-9001/06", "iso-9001/09"]
 effort: S
 exec-tier: strong
 exec-tier-why: >-
@@ -141,6 +141,55 @@ facts:
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `git grep -n 'authorized-by' -- .github/workflows/release.yml` | pass exit=0 | sha256:42786216b980 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 2 | `git grep -nF 'dispatched by $ACTOR' -- .github/workflows/release.yml` | pass exit=0 | sha256:37136a715503 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 3 | `git grep -nF 'environment: release' -- .github/workflows/release.yml` | pass exit=0 | sha256:75351e5faacf | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -count=1 -run TestReleaseAuthorizerStampedFromReleaseWorkflow` | pass exit=0 | sha256:a21b2ad93413 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -count=1 -run TestVersionStampedFromReleaseWorkflow` | pass exit=0 | sha256:a3bef04956e3 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./internal/deskkit/ -count=1 -run TestReleaseAuthorizerStampMissingIsCaught` | pass exit=0 | sha256:b3dd5b308c2c | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 7 | `git grep -cE -e 'signature' -e 'attestation' -- .github/workflows/release.yml` | pass exit=0 | sha256:fc243c9201d7 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 8 | `git grep -c 'NOT CAUGHT' -- .github/workflows/release.yml` | pass exit=0 | sha256:766ac6b3bacc | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./internal/deskkit/ -count=1` | pass exit=0 | sha256:b84457c53aca | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd statusgen && go run . --root .. --lint` | pass exit=0 | sha256:2d1c8d84c917 | 2026-09-27 | assay-verifier-app[bot] @ 9585b4b6cc2e (on-behalf-of human:ian) (forge-identity) |
+
+**Verifier notes** (2026-09-27, opus-5.5 verifier, non-implementer; merged main 9585b4b6cc2e; implemented by cb7682396, PR #1364).
+
+Key output per row:
+- Row 1: two hits, release.yml lines 1335 (comment) and 1342 (the notes helper carrying the labelled `authorized-by: ` line). Inverted dereference holds: absent at authoring, present now.
+- Row 2: release.yml line 211, `emit message "assay $v (dispatched by $ACTOR)"`, unchanged; the new authorizer emit at line 216 reuses the same `$ACTOR` (one source).
+- Row 3: release.yml line 790, `environment: release`, untouched by the diff.
+- Row 4: `-v` shows `--- PASS: TestReleaseAuthorizerStampedFromReleaseWorkflow` (ran, not skipped).
+- Row 5: exit 0 as specified, but `-v` shows `--- SKIP: TestVersionStampedFromReleaseWorkflow` with "fixture ../../../../.github/workflows/release-desk.yml not present in this tree". That test reads release-desk.yml, a file this repository has never carried (absent at authoring 6871a3b and on main), so it skips on every run; the row's instrument did not look at release.yml. The claim the row exists to make was re-checked with other instruments: the `deskkit.ReleaseTag=${RELEASE_TAG}` stamp is at release.yml line 1137, with a count of 1 both at cb7682396^ and at main, and the diff touches no line near it; `TestCellctlPackagedInReleaseWorkflow`, which does read release.yml, reports `--- PASS`. This is a check-definition defect: the brief's source bullet says the test reads release.yml, which it does not, and the workflow comment at release.yml line 1110 says the same test reddens if the stamp is dropped. It is a pre-existing guard that never fires, not a defect in this item's deliverable.
+- Row 6: `-v` shows `--- PASS: TestReleaseAuthorizerStampMissingIsCaught`. Read the test: it runs a positive control on the intact file, then removes each of the six guarded strings in turn and requires a reported problem for each one; there is also an explicit refusal of a blank emit.
+- Row 7: count 2 (line 1339 comment, line 1342 notes body); the count was 0 at cb7682396^, so both hits come from this change.
+- Row 8: count 7; also 7 at cb7682396^, so the mutation assertions are untouched (the brief requires at least 6).
+- Row 9: `ok ... deskkit 51.1s`; 18 tests SKIP in the package under `-v` (fixture-absent guards, row 5's test among them).
+- Row 10: `LINT: PASS`, exit 0; only NOTICE lines naming other streams.
+- Supplementary check (offline, no workflow dispatched, no tag cut): ran the line-1342 python3 notes helper locally with both authorizer values. The body line renders as `authorized-by: octocat (dispatch actor)` and `authorized-by: not recorded (tag-push path: ...)`. Neither is blank.
+- Diff shape: 34 insertions, 1 deletion in release.yml. The one removed line is the notes helper, replaced by the same helper with the authorizer added. No step moved. The login enters through `env:` at line 1295 and is read with `os.environ` at line 1342; `outputs.authorizer` appears only at lines 163 and 1295, never in a `run:` splice. The body is JSON-encoded with `json.dumps`.
+
+Risk-bearing value enumeration (diff scope: release.yml and the new release_authorizer_test.go; no numeric constant, threshold, timeout or limit is introduced or changed):
+1. dispatch-path authorizer = `"$ACTOR (dispatch actor)"` @ .github/workflows/release.yml:216, sourced from `ACTOR: ${{ github.actor }}` @ .github/workflows/release.yml:173 (authority binding, pre-existing source reused).
+2. tag-push-path authorizer = `"not recorded (tag-push path: the tag pre-exists the run, so there is no dispatch actor)"` @ .github/workflows/release.yml:239.
+3. job output `authorizer: ${{ steps.tag.outputs.authorizer }}` @ .github/workflows/release.yml:163.
+4. env binding `RELEASE_AUTHORIZER: ${{ needs.resolve.outputs.authorizer }}` @ .github/workflows/release.yml:1295.
+5. body label `authorized-by: ` @ .github/workflows/release.yml:1342.
+6. six coupling-test guard strings @ tools/desk/internal/deskkit/release_authorizer_test.go:49-69, mirrored at :135-140.
+
+Ranking: entries 1 and 2 rank highest. A published release body is editable, so a wrong authorizer can be corrected by an edit. It would still be a false record of who authorized the release until someone corrects it. Entries 3-5 are wiring; if any is wrong the body line is missing or blank, which is caught by entry 6. Entry 6 is test text and fully reversible.
+
+- RISK-VALUE: DERIVED — authorizer (dispatch) = `"$ACTOR (dispatch actor)"` @ .github/workflows/release.yml:216 — the brief requires reusing the `$ACTOR` the tag message already carries (derive-or-diff: one source, not two). On workflow_dispatch, `github.actor` is the login that started the run; GitHub keeps it as the original dispatcher on a re-run, while `triggering_actor` would be the re-runner, so it answers "who dispatched the cut". The `(dispatch actor)` suffix names the path, so the line cannot be read as naming the environment approver. The body also says the environment approval is the authority.
+- RISK-VALUE: DERIVED — authorizer (tag-push) = `"not recorded (tag-push path: ...)"` @ .github/workflows/release.yml:239 — the brief requires a value that is never blank and never the pushing token's identity. On a tag push the tag exists before the run starts, so there is no dispatch actor. An explicit not-recorded value is the most the workflow can truthfully say.
+- RISK-VALUE: DERIVED — `RELEASE_AUTHORIZER` env binding @ .github/workflows/release.yml:1295 — a login is user-controlled text that the tag-format gate does not cover. Passing it through `env:`, reading it with `os.environ` and JSON-encoding the body with `json.dumps` keeps it out of shell and JSON interpolation. This matches how `RELEASE_TAG` and `DESK_IMAGE_REF` are already handled.
+
+Observation (not blocking): the line-1342 sentence ends "the human approval in the gated release environment (not this line) is the authorization it names", while the value names the dispatch actor, who may not be the same person as the environment approver. The `(dispatch actor)` suffix discloses this. A later wording pass could make the sentence say it outright.
+
+Finding to route: `TestVersionStampedFromReleaseWorkflow` points at release-desk.yml, which this repository does not have, so it always skips. The `deskkit.ReleaseTag` stamp in release.yml is therefore not guarded by the test that the release.yml comment names.
+
+VERIFY: PASS
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). The `irreversible: no` answer is

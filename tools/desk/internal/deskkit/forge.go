@@ -117,8 +117,11 @@ type PullRequest struct {
 	// the reply's location and records it in the audit detail.
 	URL string
 	// HeadRef is the SOURCE branch name (GitHub head.ref ↔ GitLab source_branch), as
-	// distinct from HeadSHA. Consumer: cmd/deskreply's preflight, which refuses when the
-	// worktree's checked-out branch is not the branch the change is built from.
+	// distinct from HeadSHA. Consumers: the own-PR guard deskkit.CheckOwnPR (cmd/deskreply,
+	// and `deskpr edit --pr`'s first admission rule), which refuses when the worktree's
+	// checked-out branch is not the branch the change is built from AND its HEAD is not the
+	// change's head commit (#1901); and `deskpr update --pr/--branch`, which pushes HEAD to
+	// this branch once CrossRepo says it is in the base repository (#2085).
 	HeadRef string
 	// BaseRef is the TARGET branch name (GitHub base.ref ↔ GitLab target_branch) — the branch
 	// whose protection rules gate the merge. Consumer: cmd/deskflip's checks-green condition,
@@ -169,7 +172,22 @@ type PullRequest struct {
 	// `mergeable` condition (the forge-gitlab merge-hold brief; freeze rule binds METHODS, not fields, so this
 	// addition changes no method count).
 	GitLabMergeStatus string `json:",omitempty"`
+	// CrossRepo is the forge's own answer to "does the head branch live in a DIFFERENT
+	// repository from the base?" — CrossRepoSame, CrossRepoFork, or EMPTY where the read did
+	// not establish it (GitHub reports head.repo as null once a fork is deleted; GitLab reports
+	// a zero project id). Empty is could-not-check, never "same". Consumer: cmd/deskmerge's
+	// eligibility gate, which pushes only to a branch in the base repository and refuses a fork
+	// head (desktools-v2/03 moved that read off `gh pr view --json isCrossRepository`).
+	// omitempty keeps every change read that predates this field byte-identical in the forge
+	// golden corpus.
+	CrossRepo string `json:",omitempty"`
 }
+
+// The two values PullRequest.CrossRepo takes when the forge answered.
+const (
+	CrossRepoSame = "same"
+	CrossRepoFork = "fork"
+)
 
 // The three values PullRequest.Mergeable takes. They are constants rather than free strings
 // because a caller SWITCHES on them, and a switch over free strings falls through to its
@@ -755,6 +773,38 @@ type OpenChanges struct {
 	Cap int
 }
 
+// ReviewQueue is the typed result of ReviewQueueSnapshot: a repo's open-change population
+// AND each change's reviews, read as ONE snapshot. It is the first access-pattern operation
+// (spec Principle 3): a consumer that used to read ListOpenChanges and then ReviewsAtHead once
+// per change (N+1 calls) reads this instead, and gets a head and a review set that cannot
+// straddle a push — N sequential reads can see the list at one head and a change's reviews
+// after a newer head landed. Truncation carries the SAME meaning as OpenChanges.
+type ReviewQueue struct {
+	// Changes are the open changes, newest first, up to Cap of them, each with its reviews.
+	Changes []QueuedChange
+	// TruncatedAtCap is true when the read returned exactly Cap changes (see OpenChanges).
+	TruncatedAtCap bool
+	// Cap is the page cap the read was bounded to.
+	Cap int
+}
+
+// QueuedChange is one open change of a ReviewQueue: the same fields ListOpenChanges reports,
+// plus the change's reviews when the snapshot carries all of them.
+//
+// ReviewsComplete is three-state honesty in a bool. TRUE means Reviews is the change's WHOLE
+// review set, in ReviewsAtHead's ascending order, read in the same round-trip as HeadSHA.
+// FALSE means the snapshot does NOT carry the full set — the change has more reviews than the
+// snapshot's per-change bound, or the backend cannot serve this change's reviews inside the
+// one query (see each backend) — and Reviews is then EMPTY. It never means "no reviews": the
+// caller reads that change per-item with ReviewsAtHead, so a missing or partial set can never
+// reduce to a verdict (the last-verdict-wins reductions would read a truncated set as a
+// different answer).
+type QueuedChange struct {
+	OpenChange
+	Reviews         []Review
+	ReviewsComplete bool
+}
+
 // ChangeStates is the set of change lifecycle states a ListChanges read is scoped to. It is a
 // struct of booleans rather than a slice so an EMPTY request is a compile-visible zero value
 // the op refuses (rather than a nil slice that could read as "all"): a states-less read is a
@@ -887,7 +937,11 @@ const forgeFileCommitsMax = 100
 // Consumers: cmd/deskboard's fetchHeadCommit (the stall clock reads CommittedDate and the
 // committer/author login) and fetchRecentCommits (branch-health reads only SHA) — freeze
 // rule: these land with their call sites.
+// Review-history evidence is internal; it must not expand existing JSON result contracts.
 type RepoCommit struct {
+	Parents        []string      `json:"-"` // nil means the parent list was not read
+	Files          []ChangedFile `json:"-"`
+	FilesComplete  bool          `json:"-"` // a complete per-commit file read, including renames
 	SHA            string
 	CommittedDate  string // RFC3339, "" when the forge reported none
 	AuthorLogin    string // rendered account login, "" when unattributed / not resolved
@@ -900,13 +954,15 @@ type RepoCommit struct {
 // is the forge's own divergence word (GitHub: identical | ahead | behind | diverged) — EMPTY
 // where the forge does not report one, which a caller reads as could-not-check rather than
 // inventing a verdict. Consumers: cmd/deskboard's changedFilesBetween (the MERGE-CURR
-// benign-merge check reads Files) and fetchBehindMain (the close-candidate hint reads BehindBy
+// benign-merge check reads complete commit history) and fetchBehindMain (the close-candidate hint reads BehindBy
 // and refuses on an empty Status) — freeze rule: this lands with its call sites.
 type RefComparison struct {
-	Files    []ChangedFile
-	AheadBy  int
-	BehindBy int
-	Status   string // "" when the forge reported none
+	Commits         []RepoCommit `json:"-"` // commits reachable from head but not base
+	CommitsComplete bool         `json:"-"` // all commits in the interval were read
+	Files           []ChangedFile
+	AheadBy         int
+	BehindBy        int
+	Status          string // "" when the forge reported none
 }
 
 // ChangeSearchResult is one open change (PR ↔ MR) found by an owner-wide search, carrying the
@@ -1425,6 +1481,17 @@ type Forge interface {
 	// verdict may be superseded by any dated one and may never supersede one, which is the
 	// fail-closed placement.
 	ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error)
+	// ReviewQueueSnapshot reads a repo's OPEN changes together with each change's reviews
+	// as ONE snapshot (see ReviewQueue): the access-pattern operation that replaces
+	// ListOpenChanges + one ReviewsAtHead per change. The caller passes only the typed repo
+	// coordinate — the query document is private to each backend, and nothing about it
+	// crosses this interface. The change fields are exactly ListOpenChanges'; the reviews,
+	// where QueuedChange.ReviewsComplete, are exactly ReviewsAtHead's (same fields, same
+	// ascending order); where not complete, the caller falls back to ReviewsAtHead for that
+	// change alone. A read failure fails the whole snapshot, like ListOpenChanges.
+	// Consumer: cmd/deskboard's actions sweep (sweepActionsRepo — freeze rule: this op lands
+	// with the call site that consumes it).
+	ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error)
 	// ListChangedFiles returns a change's file entries (paginated, rename-aware). The
 	// caller reconciles len against PullRequest.ChangedFiles before trusting it complete.
 	ListChangedFiles(repo ForgeRepo, number int) ([]ChangedFile, error)
@@ -1463,7 +1530,10 @@ type Forge interface {
 	// which is exactly how an unread precondition becomes a satisfied one. This op routes
 	// on the stated kind, so an issue's thread is read from the issue. Consumer:
 	// cmd/deskclose's two-role superseded lane (freeze rule: it lands with that call site).
-	// An unknown kind is refused rather than defaulted.
+	// An unknown kind is refused rather than defaulted. Unlike ListComments, it returns the
+	// WHOLE thread of either kind or an error — never a first page presented as the thread —
+	// so an id lookup on the result (cmd/deskmerge's R-5 and cmd/deskclose's R-1 sign-off
+	// reads) can read "not found" as absence.
 	ListCommentsTyped(repo ForgeRepo, number int, kind TargetKind) ([]Comment, error)
 	// RepoVisibility returns the repo's visibility (private | public | internal | ...).
 	RepoVisibility(repo ForgeRepo) (string, error)
@@ -1482,10 +1552,12 @@ type Forge interface {
 	// failure the caller surfaces as could-not-check. Consumer: cmd/deskboard's
 	// fetchRecentCommits (freeze rule).
 	ListRecentCommits(repo ForgeRepo, limit int) ([]RepoCommit, error)
-	// GetCommit reads ONE commit's committed date and attributed author/committer accounts
+	// GetCommit reads ONE commit's committed date, attributed author/committer accounts,
+	// and (where available) parents and complete file paths for review currency.
 	// (GitHub `/repos/{o}/{r}/commits/{sha}` ↔ GitLab `/projects/:id/repository/commits/:sha`).
 	// The account-login fields are a per-field could-not-check where the forge resolves no
-	// account (see RepoCommit). Consumer: cmd/deskboard's fetchHeadCommit (freeze rule).
+	// account (see RepoCommit). Consumers: cmd/deskboard's fetchHeadCommit and
+	// changedFilesBetween (freeze rule).
 	GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error)
 	// ListFileCommits returns up to limit commits reachable from ref that touched file, newest
 	// first (GitHub `/repos/{o}/{r}/commits?sha=&path=` ↔ GitLab `/projects/:id/repository/

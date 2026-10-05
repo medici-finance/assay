@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ ./cmd/deskpr/ ./cmd/deskwt/ -count=1 -timeout 300s -run 'PushGate|SSHTransport|HTTPSEquivalent|ParseConfigZ|SSHPushRemote|SshFetch|NoAppHelper|EditIsNot|AddSsh'",
+  "test": "go test ./internal/deskkit/ ./cmd/deskpr/ ./cmd/deskwt/ -count=1 -timeout 300s -run 'PushGate|PushTransport|SSHTransport|HTTPSEquivalent|ParseConfigZ|SSHPushRemote|SshFetch|NoAppHelper|EditIsNot|AddSsh'",
   "control": {
     "name": "CONTROL — stop refusing an SSH push url under a bot identity (the whole fault: the push goes out under a human's key while the commits read as the App's)",
     "file": "internal/deskkit/pushtransport.go",
@@ -8,10 +8,10 @@
   },
   "mutations": [
     {
-      "name": "read remote.<name>.url and ignore pushurl (the fetch-url-only reading the fault hides behind: `remote -v`'s first line looks clean)",
+      "name": "quote remote.<name>.url and ignore pushurl (the refusal then names the fetch url that `remote -v`'s first line shows, not the pushurl key that actually carries the SSH value)",
       "file": "internal/deskkit/pushtransport.go",
-      "old": "\tkey := \"remote.\" + remote + \".pushurl\"\n\turls := cfg[key]\n\tif len(urls) == 0 {\n\t\tkey = \"remote.\" + remote + \".url\"\n\t\turls = cfg[key]\n\t}",
-      "new": "\tkey := \"remote.\" + remote + \".url\"\n\turls := cfg[key]"
+      "old": "\tkey := \"remote.\" + remote + \".pushurl\"\n\tconfigured := cfg[key]\n\texplicitPush := len(configured) > 0\n\tif !explicitPush {\n\t\tkey = \"remote.\" + remote + \".url\"\n\t\tconfigured = cfg[key]\n\t}",
+      "new": "\tkey := \"remote.\" + remote + \".url\"\n\tconfigured := cfg[key]\n\texplicitPush := false"
     },
     {
       "name": "check only the FIRST push url (a push fans out to every pushurl, so a clean first value is not a pass)",
@@ -28,7 +28,7 @@
     {
       "name": "round a remote with NO url at all up to a pass (nothing was examined, so nothing can have been cleared)",
       "file": "internal/deskkit/pushtransport.go",
-      "old": "\tif len(urls) == 0 {\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"%s: remote %q has no url or pushurl configured in %s",
+      "old": "\tif len(urls) == 0 || (allBlank(configured) && len(urls) == 1 && urls[0] == remote) {\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"%s: remote %q has no url or pushurl configured in %s",
       "new": "\tif false {\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"%s: remote %q has no url or pushurl configured in %s"
     },
     {
@@ -50,6 +50,42 @@
       "new": "\traw := strings.TrimSpace(os.Getenv(loopEnv))"
     },
     {
+      "name": "decide from the CONFIGURED push url instead of git's resolved one (#884: an https url that url.<base>.insteadOf / pushInsteadOf rewrites to SSH passes)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\turls := splitURLLines(rawURLs)",
+      "new": "\turls := configured\n\t_ = splitURLLines(rawURLs)"
+    },
+    {
+      "name": "fall back to the configured url when no push-url resolver is wired (a caller that forgets the resolver silently reinstates #884)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\tif in.PushURLs == nil {\n\t\treturn Unverifiable(",
+      "new": "\tif in.PushURLs == nil {\n\t\tin.PushURLs = func() (string, error) { return strings.Join(configured, \"\\n\"), nil }\n\t}\n\tif false {\n\t\treturn Unverifiable("
+    },
+    {
+      "name": "round a failed push-url resolve into the no-url could-not-check (same exit code, wrong story: the operator is sent to configure a remote that is configured)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\trawURLs, perr := in.PushURLs()\n\tif perr != nil {",
+      "new": "\trawURLs, perr := in.PushURLs()\n\tif perr != nil && false {"
+    },
+    {
+      "name": "stop attributing an insteadOf rewrite (the refusal no longer names the rule that turned https into SSH)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\t\tif base, prefix, out, ok := longestRewrite(rules, c); ok && out == effective {",
+      "new": "\t\tif base, prefix, out, ok := longestRewrite(rules, c); ok && out == effective && false {"
+    },
+    {
+      "name": "stop attributing a pushInsteadOf rewrite",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\t\t\t\tif out == effective {",
+      "new": "\t\t\t\tif out == effective && false {"
+    },
+    {
+      "name": "give an insteadOf refusal the pushInsteadOf remedy wording (it tells the operator the pushurl escapes because pushInsteadOf never applies to one — the wrong rule kind for an insteadOf refusal)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\t\t\treturn rewriteTrace{ruleKey: \"url.\" + base + \".insteadOf\", prefix: prefix, from: c}",
+      "new": "\t\t\treturn rewriteTrace{ruleKey: \"url.\" + base + \".insteadOf\", prefix: prefix, from: c, push: true}"
+    },
+    {
       "name": "deskpr create no longer runs the push-transport gate (the wiring, not the gate: a correct gate nobody calls)",
       "file": "cmd/deskpr/deskpr.go",
       "old": "\tif terr := pushTransportGate(facts.dir, \"create\"); terr != nil {\n\t\treturn terr\n\t}",
@@ -66,6 +102,90 @@
       "file": "cmd/deskwt/deskwt.go",
       "old": "\t\tif terr := pushTransportGate(dir, \"add\"); terr != nil {\n\t\t\treturn terr\n\t\t}",
       "new": "\t\t_ = pushTransportGate"
+    },
+    {
+      "name": "deskpr wires no push-url resolver (the gate then cannot see git's resolved url)",
+      "file": "cmd/deskpr/exec.go",
+      "old": "\t\tPushURLs: func() (string, error) { return git(dir, \"remote\", \"get-url\", \"--push\", \"--all\", \"origin\") },",
+      "new": "\t\tPushURLs: nil,"
+    },
+    {
+      "name": "deskwt wires no push-url resolver",
+      "file": "cmd/deskwt/exec.go",
+      "old": "\t\tPushURLs: func() (string, error) { return runGit(dir, \"remote\", \"get-url\", \"--push\", \"--all\", \"origin\") },",
+      "new": "\t\tPushURLs: nil,"
+    },
+    {
+      "name": "the remedy says remove-the-rule for every rewrite, whatever the https target (the SSH-to-SSH insteadOf regression: a set-url remedy that would work is called useless, and removing the rule leaves the SSH url)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "urlRewriteRules(cfg, false), target); ok && isSSHTransport(out) {",
+      "new": "urlRewriteRules(cfg, false), target); ok || !ok {"
+    },
+    {
+      "name": "the remedy never checks whether insteadOf rewrites the proposed https target back to SSH (it proposes a set-url --push that leaves the refusal standing)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "urlRewriteRules(cfg, false), target); ok && isSSHTransport(out) {",
+      "new": "urlRewriteRules(cfg, false), target); ok && isSSHTransport(out) && false {"
+    },
+    {
+      "name": "the remedy's https target is derived from the EFFECTIVE url, not the configured one (an ssh alias host such as ssh.<host>:443 is proposed as a web host)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\tif t := httpsEquivalent(configured); t != \"\" {",
+      "new": "\tif t := httpsEquivalent(configured); t != \"\" && false {"
+    },
+    {
+      "name": "attribute a rewrite to the FIRST matching prefix instead of git's longest (the refusal names a rule git did not apply)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\t\t\tif !ok || len(p) > len(prefix) {",
+      "new": "\t\t\tif !ok {"
+    },
+    {
+      "name": "trace insteadOf on top of a url that has a pushInsteadOf alias (git pushes to the alias only; the refusal blames the wrong url)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\t\t\t\tcontinue // git pushes to the alias; insteadOf does not apply on top of it",
+      "new": "\t\t\t\t// continue dropped"
+    },
+    {
+      "name": "apply pushInsteadOf attribution to an explicit pushurl (git never does; the insteadOf rule git really applied goes unnamed)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\t\tif !explicitPush {\n\t\t\tif base, prefix, out, ok := longestRewrite(pushRules, c); ok {",
+      "new": "\t\tif true {\n\t\t\tif base, prefix, out, ok := longestRewrite(pushRules, c); ok {"
+    },
+    {
+      "name": "deskwt reads only the FIRST push url (drops --all: a clean first pushurl hides an SSH second one, and `deskwt add` without --role cuts a worktree that pushes to both)",
+      "file": "cmd/deskwt/exec.go",
+      "old": "return runGit(dir, \"remote\", \"get-url\", \"--push\", \"--all\", \"origin\") },",
+      "new": "return runGit(dir, \"remote\", \"get-url\", \"--push\", \"origin\") },"
+    },
+    {
+      "name": "a remote with no url resolved by real git to its bare NAME passes (drops the no-configured-url + [remote] condition: exit 0 where it is could-not-check)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "if len(urls) == 0 || (allBlank(configured) && len(urls) == 1 && urls[0] == remote) {",
+      "new": "if len(urls) == 0 {"
+    },
+    {
+      "name": "the no-url check ignores the configured value (a url configured as a local path spelled like the remote name is refused as could-not-check)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "if len(urls) == 0 || (allBlank(configured) && len(urls) == 1 && urls[0] == remote) {",
+      "new": "if len(urls) == 0 || (len(urls) == 1 && urls[0] == remote) {"
+    },
+    {
+      "name": "the insteadOf-rule remedy always claims removing the rule is enough (a pushInsteadOf alias, or an SSH configured url, still sends the push over SSH: two rounds)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\t\tif ruleAlone {\n\t\t\treturn msg\n\t\t}",
+      "new": "\t\tif ruleAlone || true {\n\t\t\treturn msg\n\t\t}"
+    },
+    {
+      "name": "a pushInsteadOf-attributed refusal counts the insteadOf rule removal as the whole remedy (drops !rw.push)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "ruleAlone := !rw.push && rw.from == target",
+      "new": "ruleAlone := rw.from == target"
+    },
+    {
+      "name": "the set-url remedy ignores a multi-valued pushurl (prints the plain form git refuses with \"has multiple values\")",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\tif len(pushurls) < 2 {\n\t\treturn cmd\n\t}",
+      "new": "\tif len(pushurls) < 2 || true {\n\t\treturn cmd\n\t}"
     }
   ]
 }

@@ -1,0 +1,41 @@
+{
+  "test": "go test ./cmd/cellctl ./internal/cellcadence ./internal/cellprocess -run 'TestCadence|TestCrash|TestMissingSummary|TestUncertain' -count=1 -timeout=30s",
+  "control": {
+    "name": "omit tick environment contract",
+    "file": "cmd/cellctl/launch_tick.go",
+    "old": "\"ASSAY_TICK=1\"",
+    "new": "\"ASSAY_TICK=0\""
+  },
+  "mutations": [
+    {
+      "name": "allow unfinished restart",
+      "file": "internal/cellcadence/cadence.go",
+      "old": "if s.Running {\n\t\t\treturn ErrUnfinished",
+      "new": "if false && s.Running {\n\t\t\treturn ErrUnfinished"
+    },
+    {
+      "name": "discard cleanup uncertainty",
+      "file": "internal/cellcadence/cadence.go",
+      "old": "if result.Uncertain {",
+      "new": "if false && result.Uncertain {"
+    },
+    {
+      "name": "report missing summary as success",
+      "file": "internal/cellcadence/cadence.go",
+      "old": " || result.Summary == \"\"",
+      "new": ""
+    },
+    {
+      "name": "accept another roles completion",
+      "file": "cmd/cellctl/cadence.go",
+      "old": "if fields[1] != \"role=\"+role {",
+      "new": "if false && fields[1] != \"role=\"+role {"
+    },
+    {
+      "name": "second unintegrated harness added to registry",
+      "file": "cmd/cellctl/cell.go",
+      "old": "harnessValues = []string{\"claude\", \"codex\", \"cursor\"}",
+      "new": "harnessValues = []string{\"claude\", \"codex\", \"cursor\", \"unwired\"}"
+    }
+  ]
+}

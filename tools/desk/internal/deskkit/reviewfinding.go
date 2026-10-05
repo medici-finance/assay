@@ -31,6 +31,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -121,8 +122,18 @@ const (
 type Finding struct {
 	// ID is the stable identity of the finding across heads and agents. A newly discovered
 	// OCCURRENCE of the same proposition reuses this ID; only a genuinely new proposition
-	// gets a new one.
+	// gets a new one. An ID is unique only WITHIN a lane: the correctness and security
+	// reviewers each number their own findings, so the ledger identity is (Lane, ID).
 	ID string `json:"id"`
+	// Lane optionally names the review lane the finding belongs to (LaneCorrectness,
+	// LaneSecurity, ...). It is normally taken from the review record the finding was read
+	// off (ForgeRecord.Lane). A worker has no lane of its own: a worker reply names the lane
+	// here whenever the ID is held by more than one lane, and a block lane wins over a worker
+	// record's. A reviewer record with an established lane — including LaneAmbiguous — speaks
+	// only for that lane: a block lane naming another is reported and keyed under the record's
+	// lane. Validate refuses any word that is not a published lane name (reviewlanes.go), and
+	// the fold ignores one on read.
+	Lane string `json:"lane,omitempty"`
 	// Class is the claim class the finding belongs to. The round cap is per class: fixing
 	// one sentence of a class never resets the class, and a sibling occurrence retains it.
 	Class string `json:"class"`
@@ -156,6 +167,10 @@ type Finding struct {
 }
 
 func (f Finding) blocking() bool { return f.Severity == SeverityBlocking }
+
+// StatedLane is the lane the finding's block states, case-folded and trimmed the way the
+// ledger compares lanes; empty when the block states none.
+func (f Finding) StatedLane() string { return normLane(f.Lane) }
 
 // hasConcreteBasis reports whether a blocking finding carries a concrete reproduction or an
 // explicit evidence-based explanation, as the interface contract requires.
@@ -237,6 +252,14 @@ func (b *FindingBlockV1) Validate(role ActorRole) error {
 		seen[id] = true
 		if strings.TrimSpace(f.Class) == "" {
 			return Refused("review-finding: finding " + id + " has no class — the round cap is per class")
+		}
+		if strings.Contains(f.ID, laneSep) || strings.Contains(f.Class, laneSep) {
+			return Refused("review-finding: finding " + id + " has an id or class containing '" + laneSep +
+				"' — the ledger joins a lane to an id or class with it, so an id or class carrying one would collide with another lane's finding")
+		}
+		if l := normLane(f.Lane); l != "" && !knownFindingLane(l) {
+			return Refused("review-finding: finding " + id + " names an unknown lane " + strconv.Quote(f.Lane) +
+				" — a lane is one of " + strings.Join(FindingLaneNames(), ", ") + " (an unknown word would fork the finding into an identity space of its own)")
 		}
 		if !f.Severity.known() {
 			return Refused("review-finding: finding " + id + " has an unknown severity " + string(f.Severity))
@@ -329,9 +352,77 @@ type ForgeRecord struct {
 	Head string
 	// Verdict — for review records.
 	Verdict Verdict
+	// Lane is the review lane the record belongs to (a Lane.Name such as "correctness" or "security"),
+	// established from the record itself (the review's stamp / verdict block), never from a
+	// finding's prose. Empty means the lane could not be established: the record's findings
+	// then key by their bare ID, which is the pre-lane behaviour and is unambiguous only on a
+	// single-lane thread. A worker reply may leave it empty; its findings are then matched to
+	// the one lane that holds the ID, or reported Blind when more than one does. A producer
+	// sets it on every record of a thread or on none: a payload that mixes lane-less and
+	// laned reviewer records for one ID splits that finding in two, so DeriveLedger reports
+	// such a payload Blind. A reviewer record that cannot be attributed to one published
+	// lane carries LaneAmbiguous, never an empty lane, so that it never takes its block's lane.
+	Lane string
 	// Block — the typed finding block, or nil for a legacy record.
 	Block *FindingBlockV1
 }
+
+// findingLanes is the closed lane vocabulary a finding block may name: the published review
+// lanes (reviewlanes.go). Every lane keys its own identity space, so an open vocabulary
+// would let a typo fork a finding; Validate refuses any other word.
+var findingLanes = []Lane{LaneCorrectness, LaneSecurity, LaneFactCheck, LaneFailFirst}
+
+// LaneAmbiguous is the reserved RECORD lane for a reviewer record whose lane cannot be
+// attributed to exactly one published lane — a single review body claiming both the
+// correctness and the security verdict. It is deliberately outside findingLanes: Validate
+// refuses it in a block and the fold never honours it as a block lane, so no block can name
+// it. A record carrying it takes the reviewer-record branch of the fold, which ignores the
+// block's own lane, so its findings key into an identity space of their own: such a record
+// can still raise an open finding, but it can never resolve a finding of any published lane.
+// The parentheses keep it from ever colliding with a published lane name.
+const LaneAmbiguous = "(ambiguous)"
+
+func knownFindingLane(lane string) bool {
+	for _, l := range findingLanes {
+		if l.Name == lane {
+			return true
+		}
+	}
+	return false
+}
+
+// FindingLaneNames is the closed lane vocabulary a finding block may name, in order. A
+// consumer that checks a write gate against the read side enumerates it, so a lane added
+// here is covered by that check without the check being edited.
+func FindingLaneNames() []string {
+	out := make([]string, 0, len(findingLanes))
+	for _, l := range findingLanes {
+		out = append(out, l.Name)
+	}
+	return out
+}
+
+// laneSep joins a lane to an ID or class in a ledger key. Validate refuses it in a finding's
+// id and class (and a lane is one of the published lane names, none of which carries it), so
+// every key written through the write gate is unambiguous. The fold re-applies the same
+// rules on READ for a record that reached the forge without the gate: a finding whose id or
+// class carries the separator, or whose block names a word outside the vocabulary, is
+// reported Blind rather than keyed (see applyFinding), and a thread that mixes lane-less and
+// laned reviewer records is reported Blind too (see DeriveLedger). The deskpost
+// content-defect gate goes further and fails closed on any of these.
+const laneSep = "/"
+
+// ledgerKey is a finding's identity in the ledger: (lane, id). An empty lane keys by the
+// bare id, so a single-lane thread reads exactly as it did before lanes existed.
+func ledgerKey(lane, id string) string {
+	lane = normLane(lane)
+	if lane == "" {
+		return id
+	}
+	return lane + laneSep + id
+}
+
+func normLane(lane string) string { return strings.ToLower(strings.TrimSpace(lane)) }
 
 // RoundCap is the existing per-class round cap. It is NOT introduced or changed by this
 // brief: the canonical pr-review-desk skill already caps full verdict/fix/re-review rounds
@@ -342,6 +433,13 @@ const RoundCap = 3
 // LedgerFinding is a finding's derived, current state in the ledger.
 type LedgerFinding struct {
 	Finding
+	// Key is the finding's ledger identity — (lane, id) rendered as "lane/id", or the bare ID
+	// when no lane is established — and the key it holds in FindingLedger.Findings.
+	Key string
+	// ClassKey is the finding's class scoped to its lane — the key it holds in
+	// FindingLedger.Rounds and FindingLedger.Held. Two lanes that happen to name a class the
+	// same way run independent round counters.
+	ClassKey string
 	// FirstHead is the head the finding was first raised against.
 	FirstHead string
 	// LastReviewerHead is the head of the most recent REVIEWER record touching the finding —
@@ -351,9 +449,15 @@ type LedgerFinding struct {
 	Rounds int
 }
 
+// Label is the finding as a reader should name it in prose: its bare ID, with its lane in
+// parentheses when one is established ("A3 (lane security)"). The ledger key is an internal
+// identity, never something a successor should copy into the id field of a new record.
+func (f *LedgerFinding) Label() string { return f.ID + laneNote(f.Lane) }
+
 // classState accumulates the per-class round machine during a fold.
 type classState struct {
 	class    string
+	ref      ClassRef // the lane and bare class the lane-scoped key stands for
 	rounds   int
 	severity Severity
 	blocker  BlockerKind
@@ -374,21 +478,54 @@ type classState struct {
 // package never files it and never overrules a reviewer. Exactly one is produced per class
 // that hits the cap, no matter how many times the records are re-derived.
 type ArbiterPacket struct {
+	// Class is the lane-scoped class key (see LedgerFinding.ClassKey); FindingIDs are ledger
+	// keys. FindingLedger.Classes and LedgerFinding.Label give the bare forms to print.
 	Class      string
 	Rounds     int
 	FindingIDs []string
 	Summary    string
 }
 
+// ClassRef is the (lane, class) pair a lane-scoped class key stands for.
+type ClassRef struct {
+	Lane  string
+	Class string
+}
+
+// Label is the class as a reader should name it in prose: the bare class, with its lane in
+// parentheses when one is established.
+func (c ClassRef) Label() string { return c.Class + laneNote(c.Lane) }
+
+// laneNote is the " (lane <name>)" suffix a label carries when a lane is established.
+func laneNote(lane string) string {
+	if lane == "" {
+		return ""
+	}
+	return " (lane " + lane + ")"
+}
+
+// ClassOf returns the lane and bare class a lane-scoped class key stands for. A key the fold
+// never produced reads as a lane-less class of that name.
+func (l *FindingLedger) ClassOf(classKey string) ClassRef {
+	if ref, ok := l.Classes[classKey]; ok {
+		return ref
+	}
+	return ClassRef{Class: classKey}
+}
+
 // FindingLedger is the whole derived state of a fold: the current findings, the per-class
 // round counts, the arbiter packets, and the could-not-check reasons.
 type FindingLedger struct {
-	// Findings is the current state of each finding, keyed by ID.
+	// Findings is the current state of each finding, keyed by (lane, ID) — see ledgerKey.
 	Findings map[string]*LedgerFinding
-	// Rounds is the per-class round count.
+	// Rounds is the per-class round count, keyed by the lane-scoped class (see
+	// LedgerFinding.ClassKey).
 	Rounds map[string]int
-	// Held is the set of classes held at the cap (awaiting arbitration).
+	// Held is the set of lane-scoped classes held at the cap (awaiting arbitration).
 	Held map[string]bool
+	// Classes maps each lane-scoped class key (a key of Rounds and Held, an ArbiterPacket.Class)
+	// to the lane and bare class it stands for — what a reader prints and a successor reuses.
+	Classes map[string]ClassRef
 	// Arbiter is one packet per class that reached the cap.
 	Arbiter []ArbiterPacket
 	// Blind names every record the fold could not positively interpret — a record missing
@@ -397,7 +534,7 @@ type FindingLedger struct {
 	Blind []string
 }
 
-// FindingIDs returns the ledger's finding IDs, sorted, for deterministic output.
+// FindingIDs returns the ledger's finding keys ((lane, ID), see ledgerKey), sorted, for deterministic output.
 func (l *FindingLedger) FindingIDs() []string {
 	out := make([]string, 0, len(l.Findings))
 	for id := range l.Findings {
@@ -453,7 +590,7 @@ func (l *FindingLedger) SharedRepairs() []string {
 	return out
 }
 
-// ResolvedAtHead reports whether finding id is resolved AND its resolution was pinned to
+// ResolvedAtHead reports whether the finding with ledger key id is resolved AND its resolution was pinned to
 // currentHead. A resolution recorded at a stale head is not carried across a change: the
 // finding reads unresolved at the new head, which is what "no stale approval" means.
 func (l *FindingLedger) ResolvedAtHead(id, currentHead string) bool {
@@ -474,6 +611,7 @@ func DeriveLedger(records []ForgeRecord) *FindingLedger {
 		Findings: map[string]*LedgerFinding{},
 		Rounds:   map[string]int{},
 		Held:     map[string]bool{},
+		Classes:  map[string]ClassRef{},
 	}
 	classes := map[string]*classState{}
 	arbFiled := map[string]bool{}
@@ -484,6 +622,25 @@ func DeriveLedger(records []ForgeRecord) *FindingLedger {
 	copy(ordered, records)
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Seq < ordered[j].Seq })
 
+	// A thread whose reviewer records are partly laned and partly lane-less splits a finding
+	// two lanes' ids could name, and a lane-less reviewer record takes its block's lane — so
+	// the mix is reported as itself rather than silently keyed both ways.
+	var laned, laneless []string
+	for _, r := range ordered {
+		if r.Role != RoleReviewer || r.Block == nil || strings.TrimSpace(r.Head) == "" {
+			continue
+		}
+		if normLane(r.Lane) == "" {
+			laneless = append(laneless, strconv.Itoa(r.Seq))
+		} else {
+			laned = append(laned, strconv.Itoa(r.Seq))
+		}
+	}
+	if len(laned) > 0 && len(laneless) > 0 {
+		l.Blind = append(l.Blind, fmt.Sprintf("reviewer records mix laned (seq %s) and lane-less (seq %s) — a lane-less reviewer record takes its block's lane, so its findings cannot be attributed safely; set the lane on every reviewer record of a thread or on none",
+			strings.Join(laned, ","), strings.Join(laneless, ",")))
+	}
+
 	for _, r := range ordered {
 		// A record whose authenticated role or head could not be established is
 		// could-not-check: it never clears a finding and never counts a round.
@@ -493,6 +650,13 @@ func DeriveLedger(records []ForgeRecord) *FindingLedger {
 		}
 		if strings.TrimSpace(r.Head) == "" {
 			l.Blind = append(l.Blind, fmt.Sprintf("record seq %d by %s has no head SHA — cannot pin its assertion", r.Seq, r.Role))
+			continue
+		}
+		if rl := normLane(r.Lane); rl != "" && rl != LaneAmbiguous && !knownFindingLane(rl) {
+			// A record lane outside the published vocabulary (a producer's typo, or a payload
+			// that bypassed the readers) would fork its findings into an identity space of
+			// their own, so the record is not attributed at all.
+			l.Blind = append(l.Blind, fmt.Sprintf("record seq %d carries lane %q, which is not a published lane — cannot attribute its findings; ignored", r.Seq, r.Lane))
 			continue
 		}
 		if r.Block == nil {
@@ -507,6 +671,7 @@ func DeriveLedger(records []ForgeRecord) *FindingLedger {
 	}
 
 	for c, cs := range classes {
+		l.Classes[c] = cs.ref
 		l.Rounds[c] = cs.rounds
 		if cs.held {
 			l.Held[c] = true
@@ -514,7 +679,7 @@ func DeriveLedger(records []ForgeRecord) *FindingLedger {
 	}
 	// Mirror each class's round count onto its findings for holders of a single finding.
 	for _, lf := range l.Findings {
-		lf.Rounds = l.Rounds[lf.Class]
+		lf.Rounds = l.Rounds[lf.ClassKey]
 	}
 	return l
 }
@@ -525,16 +690,79 @@ func (l *FindingLedger) applyFinding(classes map[string]*classState, arbFiled ma
 		l.Blind = append(l.Blind, fmt.Sprintf("record seq %d carries a finding with no id/class — cannot track it", r.Seq))
 		return
 	}
-	cs := classes[f.Class]
+	// The write gate's key rules, re-applied on read for a record that reached the forge
+	// without the gate: an id or class carrying the key separator would collide with another
+	// lane's key, so it is reported and not keyed at all.
+	if strings.Contains(f.ID, laneSep) || strings.Contains(f.Class, laneSep) {
+		l.Blind = append(l.Blind, fmt.Sprintf("record seq %d: finding %q has an id or class containing %q — it would collide with another lane's ledger key; ignored",
+			r.Seq, f.ID, laneSep))
+		return
+	}
+	lane, recLane, blockLane := "", normLane(r.Lane), normLane(f.Lane)
+	if blockLane != "" && !knownFindingLane(blockLane) {
+		// A block lane outside the closed vocabulary — a typo, or the reserved LaneAmbiguous —
+		// is never honoured: it would fork the finding into an identity space of its own, or
+		// write into the space reserved for unattributable reviewer records.
+		l.Blind = append(l.Blind, fmt.Sprintf("record seq %d: finding %s states lane %q, which is not a published lane — the block lane is ignored",
+			r.Seq, f.ID, f.Lane))
+		blockLane = ""
+	}
+	switch {
+	case r.Role == RoleReviewer && recLane != "":
+		// A reviewer record speaks only for its own lane. A block lane that names a
+		// different one is NOT honoured: honouring it would let one lane's verdict resolve
+		// another lane's finding. Keying the assertion under the record's own lane keeps it
+		// (an open finding still counts, a resolution clears only that lane's finding) and
+		// the mismatch is reported as itself.
+		lane = recLane
+		if blockLane != "" && blockLane != recLane {
+			l.Blind = append(l.Blind, fmt.Sprintf("record seq %d: reviewer finding %s states lane %q but the record is the %q lane — a reviewer speaks only for its own lane; keyed under %q",
+				r.Seq, f.ID, blockLane, recLane, recLane))
+		}
+	default:
+		// A worker has no lane of its own, so the lane its block states wins over whatever
+		// the record carries. A reviewer record with no established lane at all takes the
+		// block's — the single-lane, pre-lane shape; a reviewer whose lane is ambiguous
+		// carries LaneAmbiguous and so never reaches this branch.
+		lane = firstNonEmpty(blockLane, recLane)
+	}
+	if lane == "" && r.Role == RoleWorker {
+		// A worker reply need not name a lane: attach it to the one lane that holds the ID.
+		// Two lanes holding it is exactly the ambiguity this ledger exists to refuse to
+		// guess at, so it is reported as itself and asserts nothing.
+		var holders, holderLanes []string
+		for k, lf := range l.Findings {
+			if lf.ID == f.ID {
+				holders = append(holders, k)
+			}
+		}
+		sort.Strings(holders)
+		for _, k := range holders {
+			holderLanes = append(holderLanes, firstNonEmpty(l.Findings[k].Lane, "(none)"))
+		}
+		switch {
+		case len(holders) > 1:
+			l.Blind = append(l.Blind, fmt.Sprintf("record seq %d: worker finding %s names no lane and the id is held by lanes %s — cannot tell which lane it answers; ignored (state the lane in the block)",
+				r.Seq, f.ID, strings.Join(holderLanes, ", ")))
+			return
+		case len(holders) == 1:
+			lane = l.Findings[holders[0]].Lane
+		}
+	}
+	f.Lane = lane
+	key := ledgerKey(lane, f.ID)
+	classKey := ledgerKey(lane, f.Class)
+
+	cs := classes[classKey]
 	if cs == nil {
-		cs = &classState{class: f.Class, state: StateOpen}
-		classes[f.Class] = cs
+		cs = &classState{class: classKey, ref: ClassRef{Lane: lane, Class: f.Class}, state: StateOpen}
+		classes[classKey] = cs
 	}
 
-	lf := l.Findings[f.ID]
+	lf := l.Findings[key]
 	if lf == nil {
-		lf = &LedgerFinding{Finding: f, FirstHead: firstNonEmpty(f.OriginHead, r.Head)}
-		l.Findings[f.ID] = lf
+		lf = &LedgerFinding{Finding: f, Key: key, ClassKey: classKey, FirstHead: firstNonEmpty(f.OriginHead, r.Head)}
+		l.Findings[key] = lf
 	} else {
 		// A newly discovered OCCURRENCE reuses the ID and keeps the class and round history.
 		// Preserve the accumulated evidence across records (a fix that changes one head must
@@ -547,6 +775,8 @@ func (l *FindingLedger) applyFinding(classes map[string]*classState, arbFiled ma
 		first := lf.FirstHead
 		lf.Finding = merged
 		lf.FirstHead = first
+		// The finding's class is the one its latest record names, so its class key follows.
+		lf.ClassKey = classKey
 	}
 	if cs.blocker == "" {
 		cs.blocker = f.Blocker
@@ -569,7 +799,7 @@ func (l *FindingLedger) applyFinding(classes map[string]*classState, arbFiled ma
 // arbitrates a class.
 func (l *FindingLedger) applyReviewer(cs *classState, arbFiled map[string]bool, r ForgeRecord, lf *LedgerFinding) {
 	lf.LastReviewerHead = r.Head
-	cs.findingID = lf.ID
+	cs.findingID = lf.Key
 
 	// A resolution only lands from a reviewer, and only with current-head evidence: the
 	// EvidenceHead of the asserting record must be the head it was authored against. A
@@ -580,7 +810,7 @@ func (l *FindingLedger) applyReviewer(cs *classState, arbFiled map[string]bool, 
 			// Stale-head resolution: refuse to carry it. Leave the finding open.
 			lf.State = StateFixedAwaitingReview
 			l.Blind = append(l.Blind, fmt.Sprintf("finding %s: reviewer resolution at seq %d carries evidence head %s != record head %s — not cleared",
-				lf.ID, r.Seq, short12(evHead), short12(r.Head)))
+				lf.Label(), r.Seq, short12(evHead), short12(r.Head)))
 			cs.state = lf.State
 			return
 		}
@@ -622,8 +852,8 @@ func (l *FindingLedger) applyReviewer(cs *classState, arbFiled map[string]bool, 
 				Class:      cs.class,
 				Rounds:     cs.rounds,
 				FindingIDs: l.findingsInClass(cs.class),
-				Summary: fmt.Sprintf("class %q reached the %d-round cap; %d finding(s) held for the human decision lane",
-					cs.class, RoundCap, len(l.findingsInClass(cs.class))),
+				Summary: fmt.Sprintf("class %q%s reached the %d-round cap; %d finding(s) held for the human decision lane",
+					cs.ref.Class, laneNote(cs.ref.Lane), RoundCap, len(l.findingsInClass(cs.class))),
 			})
 		}
 		cs.held = true
@@ -653,12 +883,12 @@ func (l *FindingLedger) applyWorker(cs *classState, r ForgeRecord, lf *LedgerFin
 		// fixed-awaiting-review and report the attempt.
 		lf.State = StateFixedAwaitingReview
 		l.Blind = append(l.Blind, fmt.Sprintf("finding %s: worker record seq %d asserted 'resolved' on a blocking finding — a worker cannot clear a blocker; held as fixed-awaiting-review",
-			lf.ID, r.Seq))
+			lf.Label(), r.Seq))
 	}
 	if lf.State == StateAwaitingArbitration {
 		// A worker cannot hand-assert the cap either.
 		lf.State = StateFixedAwaitingReview
-		l.Blind = append(l.Blind, fmt.Sprintf("finding %s: worker record seq %d asserted 'awaiting-arbitration' — the cap is derived, not asserted; held as fixed-awaiting-review", lf.ID, r.Seq))
+		l.Blind = append(l.Blind, fmt.Sprintf("finding %s: worker record seq %d asserted 'awaiting-arbitration' — the cap is derived, not asserted; held as fixed-awaiting-review", lf.Label(), r.Seq))
 	}
 	// A worker response to a still-open class arms the middle leg of a round.
 	if cs.raised && cs.state != StateResolved {
@@ -672,7 +902,7 @@ func (l *FindingLedger) applyWorker(cs *classState, r ForgeRecord, lf *LedgerFin
 func (l *FindingLedger) findingsInClass(class string) []string {
 	var out []string
 	for _, id := range l.FindingIDs() {
-		if l.Findings[id].Class == class {
+		if l.Findings[id].ClassKey == class {
 			out = append(out, id)
 		}
 	}

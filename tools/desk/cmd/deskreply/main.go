@@ -92,7 +92,8 @@ func run(args []string) int {
 	// measured on one operating desk host over 32 days). It returns HERE, before Guard, and
 	// writes nothing. HelpOnly matches only the unambiguous single-token shape, so a `--help`
 	// that is another flag's VALUE cannot be mistaken for one; every wider spelling falls
-	// through to the subcommand's own parse, where flag.ErrHelp is recognised instead.
+	// through to cmdReply's own parse, which hands flag.ErrHelp to deskkit.IsHelpRequest
+	// (tier two): it prints usage, exits 0, and the finalizer writes no row.
 	if deskkit.HelpOnly(args) {
 		fmt.Fprintln(os.Stderr, usage)
 		return deskkit.ExitOK
@@ -119,6 +120,11 @@ func run(args []string) int {
 	deskkit.WarnIfUnpinned(os.Stderr)
 
 	err := cmdReply(args)
+	if deskkit.IsHelpRequest(err) {
+		// TIER TWO terminus: print the help screen the operator asked for, exit 0.
+		fmt.Fprintln(os.Stderr, usage)
+		return deskkit.ExitOK
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 	}

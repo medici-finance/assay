@@ -24,9 +24,11 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 3
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; third-pass amendment)"
 sources:
+  - "docs/streams/build-less-brittle/spec.md — 2026-09-30 pending scope amendment"
+  - "freshness-checked 2026-09-30 @ 8485778515c041fc87966902a14eb9d195492be3: amend unfinished scope; no implementation claim"
   - "docs/streams/build-less-brittle/spec.md §3 row 14, §4.12, §6 (the redesign soft link), §11"
   - "docs/streams/build-less-brittle/spec.md §11 (Fowler: refactor first, strangler seam, 'when it's easier to rewrite'; Ousterhout: complexity, deep modules; Metz: inline the wrong abstraction and re-extract; spec-first for agent code is practice guidance, not a result; Wang et al. ICSE 2026: 7.8% of 'solved' patches fail the developer suite, so passing generated tests overstate correctness)"
   - "Fowler, Refactoring 2nd ed. (2018) ch. 2 'Self-testing code' and ch. 4; Feathers, Working Effectively with Legacy Code (2004) ch. 13 'Characterization tests' and the legacy code change algorithm; Ousterhout, A Philosophy of Software Design (2018) ch. 4–6 on interfaces, deep modules and invariants"
@@ -77,8 +79,8 @@ facts:
 - **The four parts, and where each comes from.** The oracle is one file,
   `docs/investigations/<yyyy-mm-dd>-<module-slug>-oracle.md`, beside the investigation:
   1. **Intent.** The owning brief(s) and `DR-` record, quoted; the investigation's
-     `divergence:` and its reconciled reading of the intent against what the code does now.
-     Source: 09's file (the oracle never re-derives it).
+     `divergence:` and its reconciled reading of intent at the cited revisions.
+     Source: 09's file; reuse, supersede or revalidate it under the work-input amendment below.
   2. **Failure modes.** Every incident in the class issue and every findings entry whose
      `affects:` names the module, each mapped to its regression test by
      `git grep -n 'regression: .*#<N>' -- '*_test.go'` (11). A failure mode with no test is a
@@ -136,6 +138,26 @@ design-fit:
 - Public tree: mechanisms and public issue numbers only.
 - Never make `unknown` a landable verdict to go green. An oracle with an `unknown` row is a refusal to land, by construction.
 
+## Work-input amendment — 2026-09-30
+
+Bind the oracle to the investigation revision, acceptance version, source/dependency
+fingerprints and environment where relevant. Reusing reconciled intent means reuse for
+those inputs, not an immutable claim about all future code. Before coding and acceptance,
+compare relevant changes; preserve historical triage and supersede/revalidate affected
+assumptions when another brief changes them. Unknown applicability cannot satisfy a keep
+row. Final test evidence still names the candidate revision.
+
+Extend the declared fictional example with an intervening policy/API change and an
+unrelated edit. The acceptance/read commands must expose the pinned versus candidate
+sources; the reviewer checks that the example cannot carry a stale PASS forward. Explicitly
+identify semantic relevance as review-only where no deterministic proof exists. The oracle
+remains required only for redesign, with no dependency on graph tooling or a new document
+for ordinary tasks. In the template, label the bindings `pinned-source:` and
+`candidate-source:` and place `### Intervening-change example` under `## 1. Intent`,
+before `## 2. Failure modes`. Put both worked changes there without adding triage or
+acceptance rows; sections 3 and 5 retain their existing counted tables.
+Fit the skill/kit wording into the existing net-zero budget.
+
 ## Task
 
 1. `docs/refactor-oracle-template.md` (planned): frontmatter (`module`, `s-row`, `investigation`,
@@ -179,7 +201,8 @@ wiring and net ≤ 0 rows.
 | 9 | `grep -c 'oracle' docs/brittle-investigation-template.md && grep -c 'oracle.md' docs/investigations/README.md` | two counts, each ≥ `1` |
 | 10 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/12$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && grep -c 'oracle:' plugins/assay/skills/author-brief/SKILL.md && test "$(git show "$tip:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/author-brief/SKILL.md" \| wc -l)" && echo NET-OK` | ≥ `1`, then `NET-OK` |
 | 11 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/12$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && s=$(sed -n '/^## [0-9]*\. Design fit first/,/^## [0-9]*\. /p' tools/desk/cmd/deskdispatch/references/review-prompt.md); echo "$s" \| grep -c 'oracle' && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" && echo NET-OK` | ≥ `1`, then `NET-OK` |
-| 12 | `statusgen --consumers --root . --brief build-less-brittle/12; echo "exit=$?"` | `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). Exit 1 names the disproved claim |
+| 12 | `statusgen --consumers --root . --brief build-less-brittle/12; echo "exit=$?"` | output is `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). A disproved claim makes the command print `exit=1` and names the claim. Expect re-written 2026-10-03 (#1862). |
+| 13 | `grep -q "pinned-source:" docs/refactor-oracle-template.md && grep -q "candidate-source:" docs/refactor-oracle-template.md && awk '/^## / {p=($0 == "## 1. Intent")} p && /^### Intervening-change example$/ {found=1} END {exit !found}' docs/refactor-oracle-template.md && echo SOURCE-BINDINGS` | `SOURCE-BINDINGS` (presence only; the review below checks the read commands and stale-result behavior) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,
@@ -196,3 +219,9 @@ the triage grammar let a real behaviour be recorded as `unknown` without inventi
 A template that only works on the worked example is a finding. The reviewer also confirms
 the acceptance rows refuse on an `unknown` and on a failure mode with an empty test cell:
 an oracle that can land with a hole in it is the drift this brief exists to stop.
+
+The reviewer also runs the template's read/acceptance commands over its pinned and candidate
+example sources, records both revisions, and walks the policy/API change and unrelated edit.
+The relevant change must require revalidation; unchanged analysis may be reused only with an
+applicability basis, never by retargeting old PASS evidence. Record source links, outputs and
+semantic relevance judgment in the review; row 13's presence checks alone do not satisfy this.

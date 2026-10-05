@@ -178,7 +178,9 @@ fall. The conference evidence motivates the experiment; it does not pre-approve 
 ## 5. Non-goals and the divergence stated
 
 Not prerequisites, and not in scope: a graph database, a trained router, a new orchestration
-platform, a PID-tuned controller, or a full rollout of any private platform design. A derived
+platform, a PID-tuned controller, or a full rollout of any private platform design (the
+orchestration-platform item is narrowed by the routed task execution amendment of 2026-10-02
+below; the graph-database item stands). A derived
 index over reviewed files and execution facts is enough for the first experiment. Inferred
 knowledge relationships are not authorized dependencies: hard gates hold work when
 unavailable; informational feathers stay visible without blocking.
@@ -204,3 +206,19 @@ description of the direction are the adopter's own briefs, in the adopter's tree
 routed amendment. It keeps this stream as the execution foundation and adds briefs
 09–18; it does not change deployed behavior, remove human gates or require Laya for
 the original offline experiment. Existing 03–06 are revised only at shared contracts.
+
+## Structured inputs and measured execution — 2026-09-30 amendment
+
+[Work-input amendment](work-input-amendment.md) routes packet views, dependency freshness,
+event coalescing, durable resource accounting and matched measurement into unfinished
+briefs 03, 09, 14, 16 and 18. It keeps one evaluator, record family and reservation seam.
+The deterministic parent performs observation/dispatch; models perform scoped work.
+No universal prefix/turn limit is introduced, and existing activation gates remain.
+
+
+## Routed task execution amendment — 2026-10-02
+
+[Task workflow program](task-workflow-program.md) permits a thin executable host over the existing contracts and routes it to 19–27. This is the narrow exception to the original new-orchestration-platform exclusion. It permits two local embedded stores and no other: a single-controller, embedded SQLite store of the existing instance/node/attempt record family (19), and each loop-admin supervisor's own execution journal (26), a per-supervisor, process-facts-only record of invocations, receipts, lifecycle, limits and usage on the supervisor's own filesystem, whose embedded engine is qualified in 26 (SQLite is the expected choice). Neither is a shared or distributed store, and the journal never holds work, decisions or acceptance. It still excludes a graph database or graph-store service, a distributed or shared store or lease service, a message bus, a credential broker, a new rule engine, a second scheduler authority and a duplicate evaluator, and it authorizes no live trial and no change to human gates. Existing consumers remain compatible.
+
+
+The shared loop-admin runtime serves existing standing desks and workflow-stage callers. Standing mode must work without the instance store or controller; cellctl retains operator administration. The harness-process runner and per-role cadence lease already on main (cellctl's cadence path) are reused, not duplicated: see the program's "Existing launch path" section. See the routed task workflow specification for module and state ownership.

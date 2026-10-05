@@ -1,2 +1,0 @@
-### Changed
-- commsloop router: the hardcoded `risk = false` passed to `Assign` now carries a `// Derivation:` block proving why the literal is sound today (the cellmsg-v1 envelope has no risk field for a sender to set), with the envelope wiring that would let the value be derived tracked as a follow-up issue — the `risk: yes -> tier: human` backstop's silent disablement is now on record rather than implicit.

@@ -1,0 +1,73 @@
+{
+  "legacy": {
+    "readme": "legacy/docs/streams/legacy-stream/README.md",
+    "default_repo": "example-org/legacy",
+    "key": "example-org/legacy:legacy-stream",
+    "display_name": "Legacy Stream",
+    "status": "active",
+    "briefs": [
+      {"id": "legacy-stream/01", "status": "done", "verified": "2026-01-02", "reviewed": "reviewer"},
+      {"id": "legacy-stream/02", "status": "blocked", "verified": "", "reviewed": ""},
+      {"id": "legacy-stream/03", "status": "todo", "verified": "", "reviewed": ""}
+    ],
+    "origin": "legacy-prose",
+    "outcome": "Keep the legacy board readable.",
+    "success_count": 0
+  },
+  "identity": {
+    "streams": [
+      {"readme": "repo-a/docs/streams/shared/README.md", "default_repo": "", "key": "example-org/repo-a:shared"},
+      {"readme": "repo-b/docs/streams/shared/README.md", "default_repo": "example-org/repo-b", "key": "example-org/repo-b:shared"},
+      {"readme": "repo-a/docs/streams/shared-v2/README.md", "default_repo": "", "key": "example-org/repo-a:shared-v2"}
+    ],
+    "distinct_keys": 3,
+    "conflict_default_repo": "example-org/repo-z"
+  },
+  "negative": {
+    "cases": [
+      {"readme": "negative/not-mapping/README.md", "diag": "mission: must be a mapping"},
+      {"readme": "negative/unknown-key/README.md", "diag": "unknown key \"sucess\""},
+      {"readme": "negative/missing-version/README.md", "diag": "mission.version: is required"},
+      {"readme": "negative/future-version/README.md", "diag": "unsupported mission version 2"},
+      {"readme": "negative/empty-outcome/README.md", "diag": "mission.outcome: is empty"},
+      {"readme": "negative/bare-ref/README.md", "diag": "is ambiguous"},
+      {"readme": "negative/bad-scheme/README.md", "diag": "only https URLs"},
+      {"readme": "negative/parent-path/README.md", "diag": "'..' segment"},
+      {"readme": "negative/abs-path/README.md", "diag": "\"/etc/report.md\" is not repository-relative"},
+      {"readme": "negative/quoted-version/README.md", "diag": "mission.version: must be the integer 1"},
+      {"readme": "negative/success-shape/README.md", "diag": "mission.success: must be a list"},
+      {"readme": "negative/no-criterion/README.md", "diag": "mission.success[0].criterion: is required"},
+      {"readme": "negative/duplicate-key/README.md", "diag": "mission: duplicate key \"outcome\""},
+      {"readme": "negative/traversal-repo/README.md", "diag": "want <owner>/<name>#<number>"},
+      {"readme": "negative/control-path/README.md", "diag": "contains a control character"}
+    ],
+    "unsupported_contract": "stream-view/v2"
+  },
+  "flow": {
+    "readme": "repo-a/docs/streams/shared/README.md",
+    "repo": "example-org/repo-a",
+    "outcome": "A returning reader can tell what this stream is for and how success is shown.",
+    "success": [
+      {"criterion": "The acceptance report records a passing run at a pinned revision.",
+       "evidence": ["path:example-org/repo-a:docs/evidence/acceptance.md", "forge:example-org/repo-a#12"]},
+      {"criterion": "The follow-up report is published.",
+       "evidence": ["planned:example-org/repo-a:docs/evidence/follow-up.md", "url:https://example.org/streams/shared"]}
+    ],
+    "commitments": ["Keep the stream readable without the chat history."],
+    "exclusions": ["No overall progress percentage."]
+  },
+  "dereference": {
+    "repos": {"example-org/repo-a": "repo-a", "example-org/repo-b": "repo-b"},
+    "views": [
+      {"readme": "repo-a/docs/streams/shared/README.md", "repo": "example-org/repo-a"},
+      {"readme": "repo-b/docs/streams/shared/README.md", "repo": "example-org/repo-b"}
+    ],
+    "resolved": [
+      "mission: example-org/repo-a:docs/streams/shared/README.md",
+      "mission.success[0].evidence[0]: example-org/repo-a:docs/evidence/acceptance.md",
+      "mission: example-org/repo-b:docs/streams/shared/README.md"
+    ],
+    "planned": ["mission.success[1].evidence[0]: example-org/repo-a:docs/evidence/follow-up.md"],
+    "unchecked": ["mission.success[0].evidence[1]: example-org/repo-a#12", "mission.success[1].evidence[1]: https://example.org/streams/shared"]
+  }
+}

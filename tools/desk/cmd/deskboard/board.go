@@ -210,46 +210,88 @@ func fetchOpenPRs(repo string) (prs []prBase, truncated bool, err error) {
 	}
 	prs = make([]prBase, 0, len(oc.Changes))
 	for _, c := range oc.Changes {
-		pb := prBase{
-			Number:           c.Number,
-			Title:            c.Title,
-			Body:             c.Body,
-			State:            c.State,
-			IsDraft:          c.Draft,
-			CreatedAt:        c.CreatedAt,
-			LastEditedAt:     c.LastEditedAt,
-			HeadRefOid:       c.HeadSHA,
-			HeadRefName:      c.HeadRef,
-			BaseRefName:      c.BaseRef,
-			MergeStateStatus: c.MergeStateStatus,
-		}
-		pb.Author.Login = c.Author.Login
-		for _, l := range c.Labels {
-			pb.Labels = append(pb.Labels, struct {
-				Name string `json:"name"`
-			}{Name: l})
-		}
-		for _, r := range c.Rollup {
-			pb.StatusCheckRollup = append(pb.StatusCheckRollup, check{
-				Status:      r.Status,
-				Conclusion:  r.Conclusion,
-				Name:        r.Name,
-				State:       r.State,
-				Context:     r.Context,
-				TypeName:    r.Typename,
-				StartedAt:   r.StartedAt,
-				CompletedAt: r.CompletedAt,
-				CreatedAt:   r.CreatedAt,
-			})
-		}
-		prs = append(prs, pb)
+		prs = append(prs, prBaseFromChange(c))
 	}
-	if oc.TruncatedAtCap {
-		truncated = true
+	return prs, warnTruncated(repo, len(prs), oc.TruncatedAtCap, oc.Cap), nil
+}
+
+// warnTruncated emits the open-PR cap banner (#80) and returns whether the read truncated.
+func warnTruncated(repo string, n int, truncated bool, limit int) bool {
+	if truncated {
 		fmt.Fprintf(os.Stderr, "deskboard: WARNING %s returned %d open PRs at the first:%d cap — "+
-			"the board may be TRUNCATED; widen prListLimit or paginate (#80)\n", repo, len(prs), oc.Cap)
+			"the board may be TRUNCATED; widen prListLimit or paginate (#80)\n", repo, n, limit)
 	}
-	return prs, truncated, nil
+	return truncated
+}
+
+// prBaseFromChange maps one typed open change onto the board's prBase — the ONE mapping both
+// open-PR reads (fetchOpenPRs and fetchReviewQueue) share, so the two cannot classify a
+// change from different fields.
+func prBaseFromChange(c deskkit.OpenChange) prBase {
+	pb := prBase{
+		Number:           c.Number,
+		Title:            c.Title,
+		Body:             c.Body,
+		State:            c.State,
+		IsDraft:          c.Draft,
+		CreatedAt:        c.CreatedAt,
+		LastEditedAt:     c.LastEditedAt,
+		HeadRefOid:       c.HeadSHA,
+		HeadRefName:      c.HeadRef,
+		BaseRefName:      c.BaseRef,
+		MergeStateStatus: c.MergeStateStatus,
+	}
+	pb.Author.Login = c.Author.Login
+	for _, l := range c.Labels {
+		pb.Labels = append(pb.Labels, struct {
+			Name string `json:"name"`
+		}{Name: l})
+	}
+	for _, r := range c.Rollup {
+		pb.StatusCheckRollup = append(pb.StatusCheckRollup, check{
+			Status:      r.Status,
+			Conclusion:  r.Conclusion,
+			Name:        r.Name,
+			State:       r.State,
+			Context:     r.Context,
+			TypeName:    r.Typename,
+			StartedAt:   r.StartedAt,
+			CompletedAt: r.CompletedAt,
+			CreatedAt:   r.CreatedAt,
+		})
+	}
+	return pb
+}
+
+// fetchReviewQueue is the actions sweep's open-PR read: the typed ReviewQueueSnapshot
+// access-pattern op, which returns every open change AND its reviews in one backend
+// round-trip (desktools-v2 brief 09) instead of fetchOpenPRs followed by one fetchReviews
+// per change. The changes map through the same prBaseFromChange as fetchOpenPRs; reviews
+// maps each change the snapshot carried IN FULL to its reviews, in the same rendering
+// fetchReviews produces. A change absent from reviews (ReviewsComplete=false — more reviews
+// than the snapshot bounds, or a backend that does not carry them) is read per-item by
+// classifyPR exactly as before; absence NEVER means "no reviews".
+//
+// A failure fails the whole run, named for the repo, exactly as fetchOpenPRs does — the
+// error text is the same so the out-of-installation scoping check still recognizes it.
+func fetchReviewQueue(repo string) (prs []prBase, reviews map[int][]review, truncated bool, err error) {
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return nil, nil, false, ferr
+	}
+	q, qerr := f.ReviewQueueSnapshot(fr)
+	if qerr != nil {
+		return nil, nil, false, deskkit.Unverifiable("cannot read open PRs for "+repo, qerr)
+	}
+	prs = make([]prBase, 0, len(q.Changes))
+	reviews = make(map[int][]review, len(q.Changes))
+	for _, c := range q.Changes {
+		prs = append(prs, prBaseFromChange(c.OpenChange))
+		if c.ReviewsComplete {
+			reviews[c.Number] = reviewsFromForge(c.Reviews)
+		}
+	}
+	return prs, reviews, warnTruncated(repo, len(prs), q.TruncatedAtCap, q.Cap), nil
 }
 
 // outOfInstallationMarkers are the phrases GitHub uses when the authenticated identity
@@ -371,6 +413,13 @@ func fetchReviews(repo string, num int) ([]review, error) {
 	if err != nil {
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot read reviews for %s#%d", repo, num), err)
 	}
+	return reviewsFromForge(rs), nil
+}
+
+// reviewsFromForge maps typed forge reviews onto the board's review rows — shared by the
+// per-item read (fetchReviews) and the snapshot read (fetchReviewQueue). Never nil, so a
+// complete-but-empty review set is distinguishable from an absent one.
+func reviewsFromForge(rs []deskkit.Review) []review {
 	all := make([]review, 0, len(rs))
 	for _, r := range rs {
 		var rv review
@@ -381,7 +430,7 @@ func fetchReviews(repo string, num int) ([]review, error) {
 		rv.SubmittedAt = r.SubmittedAt
 		all = append(all, rv)
 	}
-	return all, nil
+	return all
 }
 
 // maxFilePages bounds the changed-files walk (100/page). Exceeding it leaves the entry
@@ -440,8 +489,15 @@ func fetchChangedFiles(repo string, num int) (files map[string]bool, complete bo
 	return set, complete, nil
 }
 
-// changedFilesBetween returns files changed between two commits (compare API), for the
-// MERGE-CURR benign-merge check. Unlike v1 this fails CLOSED: a compare error is exit 6.
+// changedFilesBetween unions the files touched by each commit on the branch's
+// FIRST-PARENT chain from head back to the reviewed head. A non-merge edit on
+// that chain cannot disappear behind a later merge or revert, and a merge on it
+// is read against its first parent, so its main-side delta and any own-file
+// conflict resolution stay visible. Commits reachable only through a merge's
+// second parent (main's own history, including other branches' catch-up merges)
+// are never read: their changes reach the branch only through that merge.
+// Missing history or files, or a chain that does not reach the reviewed head
+// (a rewind, a force-push, a merge with main as first parent), degrades CLOSED.
 func changedFilesBetween(repo, base, head string) (map[string]bool, error) {
 	if base == "" || head == "" {
 		return nil, deskkit.Unverifiable("compare needs both base and head", nil)
@@ -454,13 +510,59 @@ func changedFilesBetween(repo, base, head string) (map[string]bool, error) {
 	if err != nil {
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot compare %s %s...%s", repo, short(base), short(head)), err)
 	}
+	if cmp == nil || !cmp.CommitsComplete {
+		return nil, deskkit.Unverifiable("the reviewed-head interval's commit list is incomplete", nil)
+	}
+	chain, err := firstParentChain(cmp.Commits, base, head)
+	if err != nil {
+		return nil, err
+	}
 	set := map[string]bool{}
-	for _, cf := range cmp.Files {
-		if cf.Filename != "" {
-			set[cf.Filename] = true
+	for _, sha := range chain {
+		detail, err := f.GetCommit(fr, sha)
+		if err != nil {
+			return nil, deskkit.Unverifiable("cannot read interval commit "+short(sha), err)
+		}
+		if detail == nil || !detail.FilesComplete {
+			return nil, deskkit.Unverifiable("interval commit's file list is incomplete", nil)
+		}
+		for _, cf := range detail.Files {
+			if cf.Filename != "" {
+				set[cf.Filename] = true
+			}
+			if cf.PreviousFilename != "" {
+				set[cf.PreviousFilename] = true
+			}
 		}
 	}
 	return set, nil
+}
+
+// firstParentChain walks head's first parents through the compare interval until
+// it reaches base, returning the SHAs walked (head first). It uses only the parent
+// lists the compare already returned. A commit without SHA or parent evidence, or a
+// walk that leaves the interval before reaching base, is could-not-check.
+func firstParentChain(commits []deskkit.RepoCommit, base, head string) ([]string, error) {
+	byID := make(map[string]deskkit.RepoCommit, len(commits))
+	for _, c := range commits {
+		if c.Parents == nil || c.SHA == "" {
+			return nil, deskkit.Unverifiable("interval commit has no SHA or parent evidence", nil)
+		}
+		byID[c.SHA] = c
+	}
+	var chain []string
+	for cur := head; cur != base; {
+		c, ok := byID[cur]
+		if !ok || len(chain) >= len(byID) {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("first-parent chain from %s does not reach the reviewed head %s", short(head), short(base)), nil)
+		}
+		if len(c.Parents) == 0 {
+			return nil, deskkit.Unverifiable("first-parent chain reached a root commit before the reviewed head", nil)
+		}
+		chain = append(chain, cur)
+		cur = c.Parents[0]
+	}
+	return chain, nil
 }
 
 // isResolutionLabel reports whether a label name plausibly RESOLVES a standing review
@@ -1049,22 +1151,9 @@ const (
 	actFlip        = "FLIP"
 	actReReview    = "RE-REVIEW"
 	actNeedsReview = "NEEDS-REVIEW"
-	// actHumanOwned (#177) is a trusted human maintainer's OWN open PR with no
-	// reviewer-App verdict at head — e.g. the closure artifact of a human-gated
-	// brief, which the review desk deliberately does NOT dispatch a model reviewer
-	// on (a model reviewing the human's own ratified ruling inverts the gate). It is
-	// a distinct TERMINAL state, never NEEDS-REVIEW: without it such a PR read as
-	// desk-review neglect and tripped the UNREVIEWED neglect alarm every sweep, a
-	// false alarm that recurs for every human-gated closure. It is kept OUT of the
-	// NEEDS-REVIEW/RE-REVIEW dispatch gate (delta_extractors.go) and the UNREVIEWED
-	// count (the author owns and merges it, so it is not desk neglect) — but the
-	// row's CI/mergeability columns still render, so the human sees the PR's real
-	// state. Only the ACCOUNTABLE-human set qualifies (deskkit.TrustedHumanAuthor):
-	// App-authored and shared-machine-account PRs stay NEEDS-REVIEW.
-	actHumanOwned = "HUMAN-OWNED"
-	actMergeCurr  = "MERGE-CURR"
-	actReady      = "READY"
-	actCheck      = "CHECK"
+	actMergeCurr   = "MERGE-CURR"
+	actReady       = "READY"
+	actCheck       = "CHECK"
 )
 
 // guardArmMarker is the distinct phrase the fail-loud guard arm (#400 R2) puts in its
@@ -1201,12 +1290,6 @@ type classifyInput struct {
 	// verdict's submitted time is AFTER the label/edit, so the signal clears — no loop.
 	nonCommitResolution     bool
 	nonCommitResolutionNote string
-	// authorTrustedHuman (#177): the PR's author is an ACCOUNTABLE trusted human
-	// (deskkit.TrustedHumanAuthor) — a maintainer's own PR, not a role App's nor a
-	// shared machine account's. Consulted ONLY in the no-verdict-at-head arm, to
-	// route it to HUMAN-OWNED instead of NEEDS-REVIEW so the neglect alarm measures
-	// only PRs the desk is responsible for reviewing.
-	authorTrustedHuman bool
 }
 
 // classify reproduces deskboard v1's ACTION semantics exactly, with the single #216
@@ -1215,18 +1298,13 @@ type classifyInput struct {
 func classify(in classifyInput) (action, note string) {
 	switch {
 	case !in.ever:
-		// #177: a trusted human maintainer's OWN PR with no reviewer verdict is not
-		// desk neglect — the review desk declines to review a human's own ratified
-		// ruling (a model reviewing it inverts the human gate) and the author merges
-		// it. Route it to HUMAN-OWNED so it stays out of the NEEDS-REVIEW dispatch
-		// gate and the UNREVIEWED neglect alarm. App-authored and shared-machine
-		// PRs do NOT qualify (authorTrustedHuman is the accountable-human set) and
-		// stay NEEDS-REVIEW.
-		if in.authorTrustedHuman {
-			return actHumanOwned, "authored by a trusted human maintainer with no desk review at head — the " +
-				"review desk declines to review a human's own ratified ruling (that would invert the human " +
-				"gate); the author owns and merges this. NOT desk-review neglect (#177)"
-		}
+		// #2028: authorship is NOT a reason to skip review. The trust gate in
+		// classifyPRFrom (deskkit.TrustedAuthor, then a current blessing) is the ONE
+		// authorship filter: an unblessed author never reaches classify (quarantined in
+		// EXTERNAL / UNBLESSED), and every author it admits — a trusted human, a trusted
+		// shared login, a role App, a blessed outsider — is dispatched alike. The retired
+		// #177 HUMAN-OWNED arm skipped a trusted human's own PR here; a reintroduction of
+		// that shape is held by TestAuthorSkipClassGuard.
 		return actNeedsReview, "no bot APPROVED/CHANGES_REQUESTED at head — dispatch a reviewer"
 	case !in.atHead:
 		if !in.ownFilesChanged {
@@ -1318,7 +1396,7 @@ func classify(in classifyInput) (action, note string) {
 		// SEC-REVIEW-REQUIRED regardless of the CI-zero reason.
 		if in.riskClassed && !in.securityPass {
 			return actSecReview, "risk-classed (" + secReviewReason(in.riskReason) + ") and no '" + securityPassMarker +
-				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP"
+				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP or merge"
 		}
 		switch in.zeroCI {
 		case zeroCINeverRan:
@@ -1337,7 +1415,11 @@ func classify(in classifyInput) (action, note string) {
 			"so CI green is NOT established; deskpost `ready` refuses this same state (exit 6). Confirm the " +
 			"checks actually ran before any flip"
 	// approved at head + CI green → MERGE-NOW (ranks above READY/FLIP).
-	// Risk-classed drafts without security pass stay blocked (SEC-REVIEW-REQUIRED).
+	// A risk-classed row without a security pass at head stays blocked
+	// (SECURITY-REVIEW-REQUIRED), draft OR ready (#2158): a ready PR that took a new head
+	// and a correctness re-approval there, but no fresh security pass, must not read
+	// MERGE-NOW. securityPass is head-bound by reduceReviews (sameHead), so a pass
+	// recorded at an older head never satisfies this check.
 	case in.approvedAtHead && in.ciGreen && !in.mergeConflict:
 		// #400 N9: "CI green" is a VERDICT, and on a repo the policy marks as running no
 		// PR CI (deskkit.CIRequired false) with nothing in the rollup, no check ran to
@@ -1348,9 +1430,9 @@ func classify(in classifyInput) (action, note string) {
 		if in.pass == 0 {
 			ciPhrase = "no PR CI configured for this repo and nothing ran (not a green verdict)"
 		}
-		if in.draft && in.riskClassed && !in.securityPass {
+		if in.riskClassed && !in.securityPass {
 			return actSecReview, "risk-classed (" + secReviewReason(in.riskReason) + ") and no '" + securityPassMarker +
-				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP"
+				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP or merge"
 		}
 		// #1652: on a CI-less repo with a probed no-checks zero the green is
 		// vacuous — say so, so "CI green" never silently includes it.
@@ -1513,9 +1595,6 @@ func buildClassifyInput(p prBase, rs reviewState, ciRequired bool, zeroCI string
 		zeroCI:                 zeroCI,
 		suspectNoOp:            rs.suspectNoOp,
 		externalPrereqDeclared: rs.externalPrereqDeclared,
-		// #177: the author is derived from the PR payload, with no extra network read
-		// — the same roster the trust gate already consulted for this PR.
-		authorTrustedHuman: deskkit.TrustedHumanAuthor(p.Author.Login),
 	}
 }
 
@@ -2026,17 +2105,21 @@ type prOutcome struct {
 // (lowest-index PR first).
 func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time) (actionsPartial, error) {
 	var part actionsPartial
-	// repo-level: fetchOpenPRs lists ALL open PRs for the repo in one read — nothing about
-	// the repo can be classified without it, so failing the whole run here is correct
-	// (contrast classifyPR below, whose five per-change reads are the opposite kind).
-	prs, truncated, err := fetchOpenPRs(repo)
+	// repo-level: fetchReviewQueue lists ALL open PRs for the repo AND their reviews in one
+	// read — nothing about the repo can be classified without it, so failing the whole run
+	// here is correct (contrast classifyPR below, whose per-change reads are the opposite
+	// kind). The reviews it carries replace classifyPR's per-PR review read (N+1 → 1, and
+	// the head and its reviews come from one consistent instant); a PR it did not carry in
+	// full is read per-item as before.
+	prs, queued, truncated, err := fetchReviewQueue(repo)
 	if err != nil {
 		return actionsPartial{}, err // fail the whole run, name the repo
 	}
 	part.truncated = truncated
 	ciRequired := deskkit.CIRequired(repo)
 	outcomes, err := sweepConcurrent(prs, sweepConcurrency, func(p prBase) (prOutcome, error) {
-		return classifyPR(repo, p, ciRequired, briefScore, knownBriefs, redBases, now)
+		rv, have := queued[p.Number]
+		return classifyPRFrom(repo, p, rv, have, ciRequired, briefScore, knownBriefs, redBases, now)
 	})
 	if err != nil {
 		return actionsPartial{}, err
@@ -2060,6 +2143,15 @@ func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []stri
 // shared mutable state — it returns a prOutcome — so it is safe to run for many PRs at
 // once. All gh reads inside it fail CLOSED, naming the repo/PR.
 func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time) (prOutcome, error) {
+	return classifyPRFrom(repo, p, nil, false, ciRequired, briefScore, knownBriefs, redBases, now)
+}
+
+// classifyPRFrom is classifyPR with the PR's reviews optionally supplied by the caller's
+// snapshot read: haveReviews=true means snapReviews is this PR's COMPLETE review set, read at
+// the same instant as p's head, and the per-PR review read is skipped; haveReviews=false
+// reads them per-PR (fetchReviews) exactly as classifyPR always has. Everything downstream
+// of the review set is the same code either way.
+func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews bool, ciRequired bool, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time) (prOutcome, error) {
 	id := fmt.Sprintf("%s#%d", repo, p.Number)
 
 	// Trust gate (deskkit/trust.go): untrusted author + no current blessing → quarantine.
@@ -2107,11 +2199,13 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	// change-level: this PR's own reviews. A read failure here is a fact about ONE PR, not
 	// the repo, so it degrades to "no verdict established" — reviewState{}'s zero value
 	// (ever=false) — rather than failing the sweep. That routes through classify()'s
-	// existing !ever arm to NEEDS-REVIEW (or HUMAN-OWNED for a trusted human author,
-	// #177 — also not a cleared state), reusing the existing contract instead of a second
-	// degrade mechanism.
+	// existing !ever arm to NEEDS-REVIEW (never a cleared state), reusing the existing
+	// contract instead of a second degrade mechanism.
 	var rs reviewState
-	reviews, err := fetchReviews(repo, p.Number)
+	reviews, err := snapReviews, error(nil)
+	if !haveReviews {
+		reviews, err = fetchReviews(repo, p.Number)
+	}
 	if err != nil {
 		degrade(fmt.Sprintf("could not read reviews (%v) — degrading to no verdict "+
 			"established rather than failing the sweep", err))
@@ -2222,9 +2316,9 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 		}
 	}
 
-	// Risk classification (#216) only matters at the FLIP decision: bot
-	// APPROVED at head, CI green, still draft, not blocking. Fetch changed
-	// files there to test the path triggers.
+	// Risk classification feeds review dispatch as well as the FLIP decision.
+	// Compute it for every trusted action row, independently of reviews and CI;
+	// the ready gate still re-reads its own inputs before authorizing a flip.
 	// Resolve the owning brief from the PR body's `Brief:` trailer and read its own
 	// gate/risk frontmatter (deskkit.BriefRiskFromBody) — the authoritative owner edge and
 	// a risk term. Branch-as-claim is the fallback for a body that names no brief.
@@ -2232,37 +2326,39 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 
 	riskClassed := false
 	riskReason := ""
-	if rs.approved && rs.atHead && !rs.blocking && p.IsDraft && fail == 0 && pending == 0 {
-		// change-level: this PR's changed files, for the risk-path trigger scan. Reuse the
-		// EXISTING changed-files degrade shape rather than a second one — a hard read
-		// failure gets the same fail-closed treatment the `!complete` case below already
-		// gives a truncated diff, because both mean the same thing to this gate: the
-		// trigger it exists to catch might be in the part that could not be read.
-		files, complete, rcErr := fetchChangedFiles(repo, p.Number)
-		if rcErr != nil {
-			complete = false
-			degrade(fmt.Sprintf("could not read changed files for risk classification (%v) — "+
-				"fail closed to risk-classed", rcErr))
-		}
-		// UNION (only widens); the FIRST term that fires also names the reason the row shows.
-		// A diff we could not read in full — the trigger we did not see is exactly the one this
-		// gate exists to catch — OR a changed path in the trigger set OR the owning brief term
-		// (a frontmatter-declared sensitive change, or a DECLARED-but-unreadable brief, fail
-		// closed) OR the #587 trailer-absent-App anomaly: a role-App-authored PR with no
-		// Brief:/Issue: trailer is a change deskpr cannot produce, so it risk-classes and the
-		// board must say so rather than let the flip look clean. A body with no trailer leaves
-		// the brief term silent, which is exactly the gap the App term fills.
-		switch {
-		case !complete:
-			riskClassed, riskReason = true, "the diff could not be read in full — fail closed"
-		case anyRiskPath(repo, files):
-			riskClassed, riskReason = true, "touches a security path"
-		case briefRisk.RiskClassed:
-			riskClassed, riskReason = true, briefRisk.Reason
-		case deskkit.TrailerAbsentAppAnomaly(p.Author.Login, []byte(p.Body)):
-			riskClassed, riskReason = true, "trailer absent on App-authored PR"
-		}
+	// change-level: this PR's changed files, for the risk-path trigger scan. Reuse the
+	// EXISTING changed-files degrade shape rather than a second one — a hard read
+	// failure gets the same fail-closed treatment the `!complete` case below already
+	// gives a truncated diff, because both mean the same thing to this gate: the
+	// trigger it exists to catch might be in the part that could not be read.
+	files, complete, rcErr := fetchChangedFiles(repo, p.Number)
+	if rcErr != nil {
+		complete = false
+		degrade(fmt.Sprintf("could not read changed files for risk classification (%v) — "+
+			"fail closed to risk-classed", rcErr))
 	}
+	// UNION (only widens); the FIRST term that fires also names the reason the row shows.
+	// Public/unknown visibility OR a diff we could not read in full — the trigger
+	// we did not see is exactly the one this
+	// gate exists to catch — OR a changed path in the trigger set OR the owning brief term
+	// (a frontmatter-declared sensitive change, or a DECLARED-but-unreadable brief, fail
+	// closed) OR the #587 trailer-absent-App anomaly: a role-App-authored PR with no
+	// Brief:/Issue: trailer is a change deskpr cannot produce, so it risk-classes and the
+	// board must say so rather than let the flip look clean. A body with no trailer leaves
+	// the brief term silent, which is exactly the gap the App term fills.
+	switch {
+	case deskkit.VisibilityRiskClassed(repo):
+		riskClassed, riskReason = true, "public or unknown repository visibility"
+	case !complete:
+		riskClassed, riskReason = true, "the diff could not be read in full — fail closed"
+	case anyRiskPath(repo, files):
+		riskClassed, riskReason = true, "touches a security path"
+	case briefRisk.RiskClassed:
+		riskClassed, riskReason = true, briefRisk.Reason
+	case deskkit.TrailerAbsentAppAnomaly(p.Author.Login, []byte(p.Body)):
+		riskClassed, riskReason = true, "trailer absent on App-authored PR"
+	}
+
 	in.riskClassed = riskClassed
 	in.riskReason = riskReason
 

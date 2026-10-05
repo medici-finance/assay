@@ -138,6 +138,65 @@ A bare `-run` would print `no tests to run` and exit 0 (the vacuous pass statusg
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
+### Non-implementer verifier run — VERIFY: PASS on behaviour, held — 1/7 witness-clear, rows 1–6 held (#1800) — 2026-09-30 claude-opus-5-5-verifier
+
+Runner is not the implementer. Isolated worktree at merged main `b89b3957225e227e69d5b5ec7949344f580d9966` (HEAD == the forge's `commits/main`, cross-checked), host darwin/arm64, go1.27.1, `KUBECONFIG=/dev/null`. Implementing merge: #1658 (136f670eb). `gate: model`, all four risk answers `no`. Status stays `implemented`: rows 1–6 are `check:ci` and their network-off witness cannot run on a darwin host (#1800). All direct runs below are non-hermetic and supporting.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd qualgen && go build ./... && go vet ./...` | exit 0 | HELD (#1800) — direct run exit 0, no output | 2026-09-30 | claude-opus-5-5-verifier |
+| 2 | Verify row 2 command verbatim (`-run` anchored on the regression-of-link counted test) | exit 0 + named PASS line | HELD (#1800) — direct run exit 0; `--- PASS` for Test Refix_RegressionOfLink_Counted | 2026-09-30 | claude-opus-5-5-verifier |
+| 3 | Verify row 3 command verbatim (same-defect-class counted test) | exit 0 + named PASS line | HELD (#1800) — direct run exit 0; `--- PASS` for Test Refix_SameDefectClass_Counted | 2026-09-30 | claude-opus-5-5-verifier |
+| 4 | Verify row 4 command verbatim (earlier-fix-after-inducer not counted) + mutation | exit 0; mutant red | HELD (#1800) — direct run exit 0, `--- PASS`; verifier's own mutation (`et.Before(earliestInducing)` at qualgen/refix.go:371 forced true) → exit 1, `refix_test.go:154 expected refix_count measured-zero … got {State:measured Value:1}` (mutant killed) | 2026-09-30 | claude-opus-5-5-verifier |
+| 5 | Verify row 5 command verbatim (no linkage configured → could-not-measure) | exit 0 + named PASS line | HELD (#1800) — direct run exit 0; `--- PASS` for Test Refix_NoLinkageConfigured_CouldNotMeasure | 2026-09-30 | claude-opus-5-5-verifier |
+| 6 | Verify row 6 command verbatim (report refix section renders) | exit 0 + named PASS line | HELD (#1800) — direct run exit 0; `--- PASS`; asserts "PR #4242", "PR #4100" and "0.25" in the rendered view | 2026-09-30 | claude-opus-5-5-verifier |
+| 7 | `cd qualgen && go build -o $TMPDIR/qualgen19 . && $TMPDIR/qualgen19 report --out .. > $TMPDIR/quality19.md && grep -F 'Re-fix rate' $TMPDIR/quality19.md` | exit 0; section present | PASS — exit 0; `## Re-fix rate (regression-suite effectiveness)`, next line `not measured — populated once the defects table is traced … Never rendered as 0.` | 2026-09-30 | claude-opus-5-5-verifier |
+
+Ground checks: `regression-of` present in author-brief SKILL.md (lines 102, 469, 493, 503); the implementing diff touches neither qualgen/fixlinkage.go nor qualgen/szz.go (frozen fields intact); no threshold, budget or alarm added; `MetricRefix = "refix"` unique; an equal-time fix is not counted (strict `Before`).
+
+RISK-VALUE (trigger does not fire — risk all `no`, not irreversible, no risk-classed path; enumerated anyway):
+
+- RISK-VALUE: DERIVED — `shaPattern` min length 7 @ qualgen/regressionlink.go:83 — git's default minimum abbreviation; matched only against the identified-fix set, so a false prefix match is ~4e-5 at 10^4 fixes, and bounded by the ordering rule. Reversible (report-only metric).
+- RISK-VALUE: N/A — `MetricRefix`, the path/trailer regexes and the empty default class prefix are identifiers or format bindings; the only comparator (strict `Before`, refix.go:371) matches the brief's "a later or concurrent E is not a re-fix".
+
+Findings: F1 filed as #1844 — with every traced fix issue-less, no `regression-of:` and no class prefix, the window renders measured-zero where the brief says could-not-measure (outside every Verify row). F2 (minor): the planned `qualgen/testdata/refix/` fixtures were written inline in the tests instead. F3 (minor): row 6 checks a planted pre-computed rate is echoed, not derived through `ComputeRefix`.
+
+### 2026-10-02 desk dispatch — re-verify at e1d99484ffd9: all 7 rows pass by hand, witness 1/7 (check:ci rows 1–6 held on #1800), inputs unchanged since the 2026-09-30 record
+
+The runner is not the implementer. It used an isolated detached worktree at merged main `e1d99484ffd9`, darwin/arm64, go1.27.1, with a throwaway HOME, `KUBECONFIG=/dev/null`, `GOPROXY=off` and no forge token in the environment. The implementing merge is #1658. The brief is `gate: model` and all four risk answers are `no`. Every Verify command was run verbatim from the repo root. Each input the 2026-09-30 outcome record hashed is byte-identical at this sha: the brief, the regression-link and re-fix sources and tests, and the report renderer. Since that record, no commit has touched the qualgen re-fix code.
+
+| # | Command | Exit | Observed | Date | Runner |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `cd qualgen && go build ./... && go vet ./...` | 0 | No output. Witness: could-not-run, because a darwin host has no network-off sandbox (#1800) | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | Verify row 2 command verbatim (anchored run of the regression-of-link counted test, output captured, PASS line grepped) | 0 | `--- PASS` line for the regression-of-link counted test (0.00s). Witness: could-not-run on darwin (#1800) | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | Verify row 3 command verbatim (anchored run of the same-defect-class counted test) | 0 | `--- PASS` line for the same-defect-class counted test (0.00s). Witness: could-not-run on darwin (#1800) | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | Verify row 4 command verbatim (anchored run of the earlier-fix-after-inducer not-counted test) | 0 | `--- PASS` line for the earlier-fix-after-inducer not-counted test (0.00s). Witness: could-not-run on darwin (#1800) | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | Verify row 5 command verbatim (anchored run of the no-linkage-configured could-not-measure test) | 0 | `--- PASS` line for the no-linkage-configured could-not-measure test (0.00s). Witness: could-not-run on darwin (#1800) | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | Verify row 6 command verbatim (anchored run of the report re-fix section renders test) | 0 | `--- PASS` line for the report re-fix section renders test (0.02s). Witness: could-not-run on darwin (#1800) | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | Verify row 7 command verbatim: build qualgen into the temp dir, run `report --out ..`, then grep `Re-fix rate` | 0 | `## Re-fix rate (regression-suite effectiveness)`, then `not measured — populated once the defects table is traced (quality/06–07) and a RegressionLinkage adapter is configured. Never rendered as 0.` Witness: pass | 2026-10-02 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Execution witness: `statusgen verifyrun --dry-run` (v1.0.31) exited 2 with 1 of 7 rows proven. Row 7 passed. Rows 1–6 are `check:ci`, and their network-off re-execution needs `unshare --net`, which exists only on Linux (#1800, open). These rows clear on a Linux runner.
+
+Vacuity check, run in a scratch clone and never in the verify worktree:
+
+- **Row 1 is non-discriminating.** At the parent of the implementing commit, row 1 also exits 0.
+- **Rows 2, 6 and 7 fail at that parent:** exit 1, 1 and 1. The tests and the heading do not exist there. Rows 3–5 fail the same way, since their tests also first appear in #1658.
+- **Mutations against the current code:**
+  - Row 2: disabling the regression-of match makes the test fail at line 79.
+  - Row 3: forcing the class path to "no class" makes the test fail.
+  - Row 4: forcing the ordering comparison true makes the test fail at line 154.
+  - Row 5: removing the could-not-measure guard makes the test fail at line 196 (`measured-zero`).
+  - Row 6 checks a planted, pre-computed rate. A mutation of the rate formula in the re-fix join survives row 6 but is caught by row 2 (line 117).
+- **Surviving mutant.** Changing the strict "before" comparison at the ordering rule to "at or before" passes rows 2–6 and every Refix, Report and Regression test. No test pins the brief's rule that a concurrent earlier fix is not a re-fix. The code (a strict comparison) is correct as written; only the test coverage of that boundary is missing.
+
+Open finding #1844 still reproduces at this sha. A scratch probe ran a window where the only traced fix is issue-less, with no `regression-of:` and an unconfigured class prefix. It returned `measured-zero` for both rate and coverage, where the brief's facts say could-not-measure. This lies outside every Verify row.
+
+- RISK-VALUE: DERIVED — `shaPattern` = `^[0-9a-fA-F]{7,40}$` @ qualgen/regressionlink.go:83 — 7 is git's default minimum abbreviation and 40 is a full SHA-1 hex id. A match is only resolved against the identified-fix set, and the ordering rule bounds it. The metric is report-only and reversible by an edit. A SHA-256 object-format repo's 64-hex ids would not classify; that is not reachable on SHA-1 repos.
+- RISK-VALUE: N/A for the rest — the enumeration covered the implementing diff of the re-fix join, the regression link, the report renderer and the artifact table. It found no threshold, budget, alarm or timeout. The remaining literals are zero-length guards, the metric name, and path, trailer and ref regexes. The 4-significant-figure rate formatting predates this brief.
+
+The brief is `gate: model` with all risk answers `no`, so a model sign-off is permitted. It is held only on the environment witness.
+
+VERIFY: BLOCKED — all 7 rows pass by hand at e1d99484ffd9; witness 1/7, check:ci rows 1–6 need the Linux network-off witness (#1800); finding #1844 still open; new coverage gap: concurrent-fix boundary not pinned by any test
 
 ## Review
 Gate: model — all four risk answers are no. It is a read-only metric over committed

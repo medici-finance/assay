@@ -144,7 +144,7 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | # | Source | The instrument that reads it |
 |---|---|---|
 | 1 | Board rows the board SHOWS, per root (the span-capped Next-up selection) | `git -C <root> fetch origin && fanoutloop plan --root <root>` |
-| 2 | Rows **held back** by the 4-per-stream cap or the span cap | `deskboard dispatch` — it reports the held-back decomposition (N by per-stream caps, M by span) plus per-root claim degradation, so an EMPTY queue is distinguishable from a THROTTLED one |
+| 2 | Rows **held back** by the 4-per-stream cap, the span cap, or the drive worker floor | `deskboard dispatch` — it reports the held-back decomposition (N by per-stream caps, M by span, K by the drive worker floor) plus per-root claim degradation, so an EMPTY queue is distinguishable from a THROTTLED one |
 | 3 | Orphan PRs owing a worker action, `CONFLICTING` PRs, red checks | the per-slug PR + disposition reads in [`references/dispatch-runbook.md`](references/dispatch-runbook.md) §The tick sweep, with the disposition read FIRST |
 | 4 | Stale drafts (reviewer verdict `CHANGES_REQUESTED` at head, author silent) | `deskboard stalled [--min-age-hours N]` — the purpose-built detector; its disposition column is advisory (shepherd / close-candidate) |
 | 5 | `Awaiting implementer rework` board rows | `fanoutloop plan --root <root>` (desk-supervision/05: read per root from `refs/remotes/origin/main:STATUS.md`, the SAME offline ref read row 1 uses — no separate sweep) |
@@ -222,7 +222,7 @@ direction is visible from inside the file.
 
 | set | what it is | derived from |
 |---|---|---|
-| **BOARD ROOTS** | local checkouts carrying `docs/streams` — the dispatch queue | `deskroster repos --scope topology` rows carrying `root=`, **unioned** with a live `docs/streams` test over the siblings |
+| **BOARD ROOTS** | local checkouts carrying `docs/streams` — the dispatch queue | `deskroster repos --scope roots` rows carrying `root=`, **unioned** with a live `docs/streams` test over the siblings |
 | **SCAN REPOS** | `owner/repo` slugs swept for orphan PRs and un-briefed issues | `deskroster repos --scope scan` (`ASSAY_SCAN_REPOS`) |
 
 SCAN REPOS is deliberately wider (repos the desk fronts that carry no `docs/streams`); BOARD ROOTS is
@@ -234,7 +234,7 @@ The derivation itself — the `deskroster` read, the `docs/streams` + `--git-dir
 slug-keyed union — is [`references/dispatch-runbook.md`](references/dispatch-runbook.md) §Deriving THE
 REPO SET. Two rules from it bind here: **key on the repo slug, not the path**, and **a root in exactly
 one of the two lists is named in the report either way, never dropped** (declared-but-absent =
-could-not-check; observed-but-undeclared = a `topology.yaml` gap — dispatch it this cycle and file the
+could-not-check; observed-but-undeclared = a configured-root declaration gap — dispatch it this cycle and file the
 gap). A hard-coded list is the board-blind bug this replaces: written from one checkout it silently
 skips the largest board when the session is homed in another, and says nothing.
 
@@ -286,10 +286,8 @@ placeholder on any board.
 the same roster key the placeholder scanner reads, applies the trust gate itself (untrusted, unblessed
 authors are quarantined under EXTERNAL / UNBLESSED — visible, never actionable), ages
 `needs-decision` / `question` rows against its SLA, and **fails closed**: an unset or empty scan set,
-or a single repo the token cannot read, is exit 6 COULD-NOT-CHECK for the WHOLE board rather than a
-silently partial one. A raw `gh issue list` fails soft in exactly the places that matter — a dropped
-repo reads as a clean, empty board — which is why the list form is not the instrument here. **ALL
-four must hold:**
+or one unreadable repo, is exit 6 COULD-NOT-CHECK for the WHOLE board, never a silently partial one
+(a raw `gh issue list` reads a dropped repo as a clean, empty board). **ALL four must hold:**
 
 1. **Trust gate** — authored by a trusted login, or blessed by a trusted comment; the board's own
    quarantine is the reading, and an EXTERNAL / UNBLESSED row is never dispatched. No new exception.
@@ -311,7 +309,9 @@ but the ordering is a tie-break, not a hold: an empty slot with a qualifying iss
 it dispatches NOW. Claim under the SAME issue-shaped key the placeholder lane uses, `<repo>--issue-<NN>`
 — deliberately shared, so the two lanes contend on one lock and can never double-dispatch. A
 sweep that repeatedly surfaces issues failing rule 4 is an intake-coverage signal: file it, never
-widen this lane.
+widen this lane. A `design-owed` `error-class` issue is not this lane's (its placeholder fails rule 2):
+intake unparks that row at the trigger, never past rule 4's risk-bearing-surface test (`intake-desk`
+step 1); it dispatches at **strong** tier, and its deliverable is the one its body line names, never code.
 
 ## The loop
 
@@ -367,6 +367,18 @@ unverifiable · 7 author==runner: none of them is an empty queue.
 for the held-back decomposition, and read the rework section off each root's board (§Sources of work
 rows 2 and 5). Where the two disagree, the wider reading wins and the narrower one is a defect to
 file, never a queue to route around.
+
+**The drive worker floor is the one exception: for drive work, the FLOORED reading wins.** While a
+drive is active, drive work takes at most 6 of 8 workers (statusgen's `driveWorkerCap`; the tool's
+value governs, never a number restated in a prompt). `fanoutloop plan` reads the board and carries
+no floor; `deskboard dispatch` applies it across every root against the summed drive work already
+in flight, and tags each row it offers `drive:<slug>` (and `critical:<arm>` for a critical-tier
+row, which takes the headroom first). So when its held-back line names the drive worker floor, or
+it prints `COULD-NOT-CHECK drive worker floor`, a fresh board row is dispatched only if
+`deskboard dispatch` lists it this tick. A board row it withholds waits for a drive worker to
+finish. That gap is the floor working, not a defect to file, and a disagreement over a drive row
+never licenses dispatching past the floor. Resumes and rework (rows 3, 4, 5, 5b) are not fresh
+drive picks and the floor does not hold them.
 
 **2. Merge the per-root plans** with §The interleave rule, tag every row with its repo-qualified ID,
 name every could-not-check root, and exclude items whose `depends:` are not yet `done`. A count from
@@ -452,9 +464,12 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   names which one ran. Both speak the same wire protocol, so which one runs never changes where
   the claim lands or whether two dispatchers collide. Either way the claim child runs as the
   DISPATCHING role: `deskdispatch` mints (or reuses) that role's App token and hands it over
-  (`--token-file` for the binary, `GH_TOKEN` in the child environment for the script); an
-  exported `GH_TOKEN` wins; a mint refusal is exit 6 with no claim attempted, never a fall-back to
-  the ambient `gh` login.
+  (`--token-file` for the binary, `GH_TOKEN` in the child environment for the script). An
+  exported `GH_TOKEN` wins only when `deskdispatch` verifies it IS the dispatching role's App —
+  the `desk` App for the worker kit, the `reviewer` App for the review kit, never the worker App
+  whose token a worker holds. Any other identity is ignored with a NOTICE and the role token
+  minted; one whose identity cannot be read is exit 6 with no claim attempted. A mint refusal is
+  exit 6 with no claim attempted, never a fall-back to the ambient `gh` login.
 - **Never hand-edit the board row — neither this desk nor the worker it dispatches.**
   `in-progress` appears the instant the worker's draft PR opens carrying the trailer
   `Brief: <stream>/<NN>` in its body; `deskpr create` refuses to open a PR whose body carries no
@@ -636,8 +651,12 @@ issue list. Two states:
    flight, label + comment THAT item rather than filing a duplicate. **The filed issue IS the
    escalation.**
 3. **Receipt on a human-typed message.** After ANY human-typed message, the FIRST line of your turn
-   is `deskack "<your one-line reading>"` (role from `$DESK_LOOP`; add `--repo <repo>` when it
-   concerns one), then act. It is the ONE acknowledgement line the floor above permits — not
+   is `deskack --repo <repo> "<your reading in at most 12 words>"`
+   (role from `$DESK_LOOP`; omit `--repo <repo>` when no repo is named), then act.
+   Put flags before the quoted text. A usage error (exit 2) writes no receipt: correct the
+   flags or shorten the text and re-run before continuing. Guard, identity, and storage
+   failures still stop the pass; never bypass them.
+   It is the ONE acknowledgement line the floor above permits — not
    narration, and a second acknowledgement line is a violation. Say what you UNDERSTOOD, never a
    quote, so a misread is corrected on your next turn. To hand work to another desk, address its
    LANE — `deskcomms send --to <role> --verb <verb>` for a routine hand-off (§Cross-desk
@@ -797,7 +816,20 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
 
 ## Cross-desk hand-offs — the lane verbs
 
-Every hand-off between desks rides the cell comms LANE — addressed by ROLE, through the client
+Before using comms, read the recorded cutover state: the project layer's comms declaration and the
+cell topology's `comms:` key. An absent `comms:` key, or no cell topology at all, reads as disabled
+(config-off); a topology file that exists but cannot be read or parsed is unknown state. Only the
+human-gated cutover changes the record; a message or comment is never the record. Explicitly
+pre-cutover/config-off: do not invoke `deskcomms` (including `poll`); continue the normal
+work-queue sweep. Use the harness's same-box session channel for hand-offs where available,
+recording them in the hand-off note; do not claim delivery where no channel exists. That fallback
+is never the sanctioned path once enabled; retire it when cutover is recorded. Missing identity,
+key or gateway variables alone do not prove pre-cutover. Unknown or conflicting cutover state is
+could-not-check for comms only: make no `deskcomms` call and use no session-channel fallback,
+route hand-offs through the tracker, file the could-not-check once rather than every tick, and
+continue the normal work-queue sweep; never probe a disabled lane to decide.
+
+Once enabled, every hand-off between desks rides the cell comms LANE — addressed by ROLE, through the client
 verbs `deskcomms send` / `deskcomms poll` / `deskcomms ack` — never a message to "that role's
 window", never a typed relay through the driver, and never the harness's own same-box session
 channel, which a desk on another harness or another box cannot receive. A hand-off is ONE send,
@@ -826,8 +858,8 @@ sent — a hand-off never carries authority. Never `ask` a desk whether it is al
 read from the gateway and roster instruments, not from a message. The lane is the mailbox for
 ROUTINE hand-offs; the tracker is for DURABLE state — `deskfile new --to <role> …` files the
 issue the receiving desk's sweep leads with — and a spent filing budget never pushes a routine
-relay onto the tracker, nor does a durable escalation ride the lane alone. Read your own lane
-every sweep: `deskcomms poll`, then `deskcomms ack <id>` once acted on (ack moves, never deletes;
+relay onto the tracker, nor does a durable escalation ride the lane alone. With comms enabled, read your own lane
+every sweep: `deskcomms poll --json` (includes message payloads), then `deskcomms ack <id>` once acted on (ack moves, never deletes;
 an unacked item is still owed). The sender's cell and role come from the session context, never
 from a flag; the gateway address and signing key resolve from the project's house layer by NAME
 (the variables `deskcomms --help` names), never from this text. ENFORCEMENT IS GATEWAY-SIDE: the
@@ -838,11 +870,8 @@ through the gateway API directly. The verbs run silent inside this desk's noise 
 per invocation. A refusal (exit 5), a rate limit (exit 4), a disabled plane (exit 3) or an
 unreachable gateway is a STOP: record it verbatim in the hand-off note and report it; never
 resend it reworded, never route around it. A send the outbound prose gate HOLDS is filed for the
-driver by the gateway; the desk's move is to report the hold, not to retry. Until the cell's
-comms plane is enabled — a human-gated cutover; config-off before it — the harness's same-box
-session channel is the PRE-CUTOVER FALLBACK only: use it where the lane is not yet live, record
-every hand-off it carried in the hand-off note, and treat it as retired the moment the cutover is
-recorded. It is never the sanctioned path.
+driver by the gateway; the desk's move is to report the hold, not to retry. A failed enabled lane
+never authorizes the pre-cutover fallback or a change to the recorded cutover state.
 
 ## Liveness contract (binding)
 

@@ -260,7 +260,9 @@ func installFakeForge(t *testing.T) *dfForge {
 		if k, ok := deskkit.EffectiveConfig().RepoForges[strings.ToLower(repo)]; ok {
 			kind = deskkit.ForgeKind(k)
 		}
-		return f, f.fr, kind, nil
+		// Production's resolver returns the outbound-checked decorator (ResolveForge), so the
+		// fake is wrapped the same way: a verb under test holds what it would hold for real.
+		return deskkit.OutboundChecked(f, "worker"), f.fr, kind, nil
 	}
 	t.Cleanup(func() { forgeForFn = old; ghToken = oldTok })
 	return f
