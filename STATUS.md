@@ -59,6 +59,8 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | desktools-v2 | 16 — Migrate cellctl to Cobra commands and Viper configuration [exec:strong] | 2 | 20000 + 1500 (drive:desktools-v2) |
+| build-less-brittle | 05 — Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight [exec:strong] | 3 | 4500 + 1500 (drive:build-less-brittle) |
+| build-less-brittle | 09 — Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept [exec:strong] | 3 | 4000 + 1500 (drive:build-less-brittle) |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
 | desktools-v2 | 12 — platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS [exec:strong] | 2 | 1000 + 1500 (drive:desktools-v2) |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 2500 |
@@ -72,11 +74,11 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 ## Drive: `build-less-brittle`
 
-**State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
+**State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 897dedc 2026-10-05T11:02:30+11:00_
+_last regen: 6e47cee 2026-10-05T11:27:35+11:00_
 
-**Progress:** 7/13 brief items done.
+**Progress:** 8/13 brief items done.
 
 **In-flight:**
 
@@ -84,18 +86,19 @@ _none_
 
 **Blocked on review:**
 
-- build-less-brittle/04
+_none_
 
 **Frontier next:**
 
-_none_
+- build-less-brittle/05
+- build-less-brittle/09
 
 
 ## Drive: `desktools-v2`
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 897dedc 2026-10-05T11:02:30+11:00_
+_last regen: 6e47cee 2026-10-05T11:27:35+11:00_
 
 **Progress:** 15/71 brief items done.
 
@@ -127,7 +130,7 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (57 desk-actionable of 92 total — 84 at implemented, 8 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 92 total — 83 at implemented, 9 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -144,7 +147,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | graph-execution | 03 [exec:strong] | implemented | 8500 | 13 | — | — | — |
 | graph-execution | 13 [exec:strong] | implemented | 8000 | 12 | — | — | — |
 | build-less-brittle | 02 [exec:strong] | verified | 6500 | 7 | — | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
-| build-less-brittle | 04 [exec:strong] | implemented | 5500 | 5 | — | — | — |
+| build-less-brittle | 04 [exec:strong] | verified | 5500 | 5 | — | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | cellctl-windows | 00 [exec:strong] | implemented | 5500 | 7 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | windows-port | 00 | implemented | 5000 | 8 | — | — | — |
@@ -307,7 +310,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 ### build-less-brittle (9 open)
 
 - 02 design-fit: in every new brief — owner, contract, retires, weight, why-add — verified (wave 1)
-- 04 Intake files by error class; a recurring class triggers a design brief, not another point fix — implemented (wave 2)
+- 04 Intake files by error class; a recurring class triggers a design brief, not another point fix — verified (wave 2)
 - 05 Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight — todo (wave 3)
 - 06 Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision — verified (wave 2)
 - 09 Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept — todo (wave 3)
