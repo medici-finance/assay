@@ -3072,8 +3072,8 @@ covers the case where its reading and a raw reading disagree:
 3. **The block is the CONTIGUOUS run of key lines that follows.** A key line is
    `<lowercase-key>: <content>` at column zero — no leading whitespace, no bullet, blockquote,
    or emphasis marker, no indentation, nothing before the key name. The run ends at the FIRST
-   line that does not match this shape, blank or not, and nothing past that line is EVER read
-   as part of the block, however the rest of the body is shaped. A `>`-quoted or bulleted line
+   line that does not match this shape, blank or not, and nothing past that line of the
+   STRIPPED body (rule 1) is read as part of the block. A `>`-quoted or bulleted line
    was never a key line to begin with, so it can neither start the block nor extend it — the
    round-5/6 quote and indent exclusions are now a consequence of this one rule rather than a
    dedicated check.

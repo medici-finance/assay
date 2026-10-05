@@ -721,7 +721,7 @@ func truncateAtUnclosedComment(body string) string {
 //     (cor-1688-C11: a heading was found, but no block could be located after it).
 //  4. From that first key line, the section is the CONTIGUOUS run of lines matching
 //     forkKeyLineRe. It ends at the first line that does not match, blank or not — nothing
-//     past that line is ever part of the section, however the rest of the body reads.
+//     past that line of the stripped body is ever part of the section.
 func extractForkSection(body string) (section string, found bool, malformed string) {
 	return locateForkSection(stripHTMLComments(stripFencedBlocks(body)))
 }
