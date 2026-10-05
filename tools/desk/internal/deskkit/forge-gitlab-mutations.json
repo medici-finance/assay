@@ -166,8 +166,8 @@
     {
       "name": "count the mapped pipeline entry outside the asserted status total (the caller's short-read reconcile misreads the rollup)",
       "file": "internal/deskkit/forge_gitlab.go",
-      "old": "\t\tout.StatusTotalCount++",
-      "new": "\t\tout.StatusTotalCount += 0"
+      "old": "\tout.StatusTotalCount++",
+      "new": "\tout.StatusTotalCount += 0"
     },
     {
       "name": "redden an allow_failure job's failure (a job the forge does not gate on contradicts the green pipeline it belongs to)",

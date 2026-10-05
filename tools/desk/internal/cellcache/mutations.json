@@ -1,5 +1,11 @@
 {
   "test": "go test ./internal/cellcache ./internal/cellprocess ./cmd/cellctl ./cmd/deskdispatch -run 'TestCache|TestStorage' -count=1 -timeout=60s",
+  "control": {
+    "name": "CONTROL — an invalid CELL_GO_CACHE mode is accepted as off",
+    "file": "internal/cellcache/policy.go",
+    "old": "\t\treturn nil, fmt.Errorf(\"CELL_GO_CACHE must be on or off\")",
+    "new": "\t\treturn nil, nil"
+  },
   "mutations": [
     {
       "name": "wrong default budget",
