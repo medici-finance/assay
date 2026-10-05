@@ -1976,6 +1976,24 @@
       "state": "pending"
     },
     {
+      "executable": "workpad-render",
+      "path": "tools/desk/examples/workpad-render",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "module-local; no release or workflow build declaration",
+      "consumers": [
+        "tools/desk/cmd/deskreply/main.go",
+        "tools/desk/cmd/deskreply/workpaddoc_test.go"
+      ],
+      "parser": "no arguments; JSON on stdin",
+      "complexity": "simple",
+      "basis": "23 LOC, ~0 verbs, ~0 flags at 72fa7841d218",
+      "owner": "",
+      "state": "excluded",
+      "class": "demo",
+      "reason": "source-checkout example of the workpad renderer, named in deskreply --help; not built by release.yml or the Makefile, renders stdin to stdout and never posts"
+    },
+    {
       "executable": "check-floor.sh",
       "path": "tools/desk/internal/regression/check-floor.sh",
       "kind": "script",
