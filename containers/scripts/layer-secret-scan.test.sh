@@ -8,16 +8,28 @@
 # a model key in an ENV default — so a scan that checked only one surface would
 # fail here.
 #
+# Three further fixture sets (E, F, G, #2256) bake a key into an EARLIER layer
+# and then hide it from a merged view of the image with a LATER layer: an
+# overwrite at the same path, a sandwiched overwrite, and a replacement by a
+# directory. Each must still go RED, because the earlier layer still ships the
+# key. layer-secret-scan.mutate.sh runs this test against a merged-view mutant
+# of the scan and requires every one of those fixtures to fail under it.
+#
 # The synthetic secrets are CONSTRUCTED AT RUNTIME (the PEM fence and the key
 # prefix are assembled from fragments), so no real-looking key material is ever
 # committed to this file — the repository leak-sweep sees only the fragments.
-# The fixtures build `FROM scratch`, so the test pulls nothing.
+# The fixtures build `FROM scratch` (or are assembled and `docker load`ed
+# locally), so the test pulls nothing.
 #
 # Run:  sh containers/scripts/layer-secret-scan.test.sh
+#
+# LAYER_SECRET_SCAN=<path> runs the fixtures against another copy of the scan.
+# It exists for layer-secret-scan.mutate.sh (and for a fail-first run against
+# an older revision); the Verify row runs without it.
 set -u
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-SCAN="$HERE/layer-secret-scan.sh"
+SCAN="${LAYER_SECRET_SCAN:-$HERE/layer-secret-scan.sh}"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "FAIL: docker is required to run the layer-secret-scan mutation test" >&2
@@ -29,12 +41,19 @@ BAKED_LAYER="${TAG}-baked-layer:test"
 BAKED_ENV="${TAG}-baked-env:test"
 CLEAN="${TAG}-clean:test"
 FALSEPOS="${TAG}-falsepos:test"
+OVERWRITE_NS="1 2 3 4 5 6"   # fixture E variants
+SANDWICH_NS="1 2 3"          # fixture F variants
+DIRSWAP="${TAG}-dirswap:test" # fixture G
+ow_tag() { printf '%s-overwrite-%s:test' "$TAG" "$1"; }
+sw_tag() { printf '%s-sandwich-%s:test' "$TAG" "$1"; }
 
 WORK=$(mktemp -d 2>/dev/null || mktemp -d -t layerscantest)
 # shellcheck disable=SC2329  # invoked indirectly via trap
 cleanup() {
   rm -rf "$WORK"
-  docker rmi -f "$BAKED_LAYER" "$BAKED_ENV" "$CLEAN" "$FALSEPOS" >/dev/null 2>&1 || true
+  docker rmi -f "$BAKED_LAYER" "$BAKED_ENV" "$CLEAN" "$FALSEPOS" "$DIRSWAP" >/dev/null 2>&1 || true
+  for _n in $OVERWRITE_NS; do docker rmi -f "$(ow_tag "$_n")" >/dev/null 2>&1 || true; done
+  for _n in $SANDWICH_NS; do docker rmi -f "$(sw_tag "$_n")" >/dev/null 2>&1 || true; done
 }
 trap cleanup EXIT INT TERM
 
@@ -201,11 +220,114 @@ COPY other/vendored-tool /opt/app/vendored-tool
 DF
 build "$FALSEPOS" "$WORK/d"
 
+# --- fixtures E/F/G: a key in an EARLIER layer, hidden by a LATER one (#2256) --
+# containers/secrets.md section 6 forbids a credential left in an earlier layer,
+# because that layer ships in the image whatever later layers do to the path.
+# A scan that merges every layer into ONE tree before grepping sees only the
+# last writer of each path, so it misses all three shapes below. Worse, the
+# order it merged in was the blob discovery order, not the layer order, so the
+# same image passed or failed depending on content hashes — which is why E and
+# F build several variants that differ only in the benign content: a merged
+# scan that happens to extract the key's layer last for one variant still
+# misses another. G does not depend on order at all: a regular file cannot
+# replace a non-empty directory, and a directory replaces a file, so in either
+# order a merged tree ends up without the key.
+#
+# E — the reported shape: COPY the key, then COPY a benign file over it.
+for n in $OVERWRITE_NS; do
+  mkdir -p "$WORK/e$n"
+  {
+    printf '%s\n' "$PEM_HDR"
+    printf '%s\n' "$PEM_BODY"
+    printf '%s\n' "$PEM_FTR"
+  } > "$WORK/e$n/secret.txt"
+  printf 'scrubbed-%s\n' "$n" > "$WORK/e$n/benign.txt"
+  cat > "$WORK/e$n/Dockerfile" <<'DF'
+FROM scratch
+COPY secret.txt /app/key.pem
+COPY benign.txt /app/key.pem
+DF
+  build "$(ow_tag "$n")" "$WORK/e$n"
+done
+
+# F — the key sandwiched between two benign writes of the same path, so a
+# merged scan misses it whether it extracts in layer order or in reverse.
+for n in $SANDWICH_NS; do
+  mkdir -p "$WORK/f$n"
+  printf 'placeholder-before\n' > "$WORK/f$n/before.txt"
+  {
+    printf '%s\n' "$PEM_HDR"
+    printf '%s\n' "$PEM_BODY"
+    printf '%s\n' "$PEM_FTR"
+  } > "$WORK/f$n/secret.txt"
+  printf 'scrubbed-after-%s\n' "$n" > "$WORK/f$n/after.txt"
+  cat > "$WORK/f$n/Dockerfile" <<'DF'
+FROM scratch
+COPY before.txt /app/key.pem
+COPY secret.txt /app/key.pem
+COPY after.txt /app/key.pem
+DF
+  build "$(sw_tag "$n")" "$WORK/f$n"
+done
+
+# G — layer 1 writes the key at /app/key.pem (and a second key at
+# /app/gone.pem); layer 2 replaces /app/key.pem with a non-empty DIRECTORY and
+# deletes /app/gone.pem with a whiteout entry. A Dockerfile cannot express the
+# directory swap without pulling a base image to RUN in, so the two layer tars
+# and a minimal docker-archive are assembled here and `docker load`ed.
+# /app/gone.pem is the control inside G: a whiteout is only a marker file, so
+# even a merged scan still sees the deleted key; /app/key.pem is the case a
+# merged scan loses.
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1
+  fi
+}
+G="$WORK/g"
+mkdir -p "$G/l1/app" "$G/l2/app/key.pem" "$G/arc/l1" "$G/arc/l2"
+{
+  printf '%s\n' "$PEM_HDR"
+  printf '%s\n' "$PEM_BODY"
+  printf '%s\n' "$PEM_FTR"
+} > "$G/l1/app/key.pem"
+cp "$G/l1/app/key.pem" "$G/l1/app/gone.pem"
+printf 'not a key\n' > "$G/l2/app/key.pem/readme.txt"
+: > "$G/l2/app/.wh.gone.pem"
+# COPYFILE_DISABLE keeps macOS tar from adding AppleDouble ._* members.
+COPYFILE_DISABLE=1 tar -cf "$G/arc/l1/layer.tar" -C "$G/l1" app
+COPYFILE_DISABLE=1 tar -cf "$G/arc/l2/layer.tar" -C "$G/l2" app
+G_ARCH=$(docker version --format '{{.Server.Arch}}' 2>/dev/null)
+if [ -z "$G_ARCH" ]; then
+  echo "FAIL: could not read the docker server architecture for fixture G" >&2
+  exit 2
+fi
+printf '{"architecture":"%s","os":"linux","config":{},"rootfs":{"type":"layers","diff_ids":["sha256:%s","sha256:%s"]}}\n' \
+  "$G_ARCH" "$(sha256_of "$G/arc/l1/layer.tar")" "$(sha256_of "$G/arc/l2/layer.tar")" > "$G/arc/config.json"
+printf '[{"Config":"config.json","RepoTags":["%s"],"Layers":["l1/layer.tar","l2/layer.tar"]}]\n' \
+  "$DIRSWAP" > "$G/arc/manifest.json"
+COPYFILE_DISABLE=1 tar -cf "$G/image.tar" -C "$G/arc" manifest.json config.json l1 l2
+if ! docker load -i "$G/image.tar" > "$WORK/load.log" 2>&1; then
+  echo "FAIL: could not load fixture image $DIRSWAP" >&2
+  cat "$WORK/load.log" >&2
+  exit 2
+fi
+
 # --- run the scan against each fixture ----------------------------------------
 sh "$SCAN" "$BAKED_LAYER" > "$WORK/out.baked-layer" 2>&1; RC_BAKED_LAYER=$?
 sh "$SCAN" "$BAKED_ENV"   > "$WORK/out.baked-env"   2>&1; RC_BAKED_ENV=$?
 sh "$SCAN" "$CLEAN"       > "$WORK/out.clean"       2>&1; RC_CLEAN=$?
 sh "$SCAN" "$FALSEPOS"    > "$WORK/out.falsepos"    2>&1; RC_FALSEPOS=$?
+sh "$SCAN" "$DIRSWAP"     > "$WORK/out.dirswap"     2>&1; RC_DIRSWAP=$?
+for n in $OVERWRITE_NS; do
+  sh "$SCAN" "$(ow_tag "$n")" > "$WORK/out.overwrite-$n" 2>&1
+  echo "$?" > "$WORK/rc.overwrite-$n"
+done
+for n in $SANDWICH_NS; do
+  sh "$SCAN" "$(sw_tag "$n")" > "$WORK/out.sandwich-$n" 2>&1
+  echo "$?" > "$WORK/rc.sandwich-$n"
+done
 
 fail=0
 
@@ -214,6 +336,13 @@ printf '  baked PEM-in-layer fixture -> scan exit %s\n' "$RC_BAKED_LAYER"
 printf '  baked key-in-ENV  fixture  -> scan exit %s\n' "$RC_BAKED_ENV"
 printf '  clean fixture              -> scan exit %s\n' "$RC_CLEAN"
 printf '  false-positive fixture     -> scan exit %s\n' "$RC_FALSEPOS"
+for n in $OVERWRITE_NS; do
+  printf '  overwrite fixture %s        -> scan exit %s\n' "$n" "$(cat "$WORK/rc.overwrite-$n")"
+done
+for n in $SANDWICH_NS; do
+  printf '  sandwich fixture %s         -> scan exit %s\n' "$n" "$(cat "$WORK/rc.sandwich-$n")"
+done
+printf '  directory-swap fixture     -> scan exit %s\n' "$RC_DIRSWAP"
 
 # The mutation assertion: BOTH baked-secret fixtures must be detected (non-zero).
 if [ "$RC_BAKED_LAYER" -ne 0 ] && [ "$RC_BAKED_ENV" -ne 0 ]; then
@@ -272,6 +401,33 @@ else
     cat "$WORK/out.falsepos" >&2
     fail=1
   fi
+fi
+
+# --- E/F/G (#2256): a key in an earlier layer is caught whatever a later layer
+# did to its path. Each variant must exit 1 (a hit — not 2, could-not-scan) AND
+# name /app/key.pem, so a RED for some other reason does not count.
+layered_red() { # <label> <rc> <output-file>
+  if [ "$2" -eq 1 ] && grep -q 'layer file: /app/key\.pem ' "$3"; then
+    echo "RED on $1 — an earlier layer's /app/key.pem was caught"
+  else
+    echo "FAIL: $1 — the key an earlier layer wrote at /app/key.pem was NOT caught (scan exit $2)" >&2
+    cat "$3" >&2
+    fail=1
+  fi
+}
+for n in $OVERWRITE_NS; do
+  layered_red "overwrite fixture $n" "$(cat "$WORK/rc.overwrite-$n")" "$WORK/out.overwrite-$n"
+done
+for n in $SANDWICH_NS; do
+  layered_red "sandwich fixture $n" "$(cat "$WORK/rc.sandwich-$n")" "$WORK/out.sandwich-$n"
+done
+layered_red "directory-swap fixture" "$RC_DIRSWAP" "$WORK/out.dirswap"
+if grep -q 'layer file: /app/gone\.pem ' "$WORK/out.dirswap"; then
+  echo "RED on directory-swap fixture's whited-out /app/gone.pem"
+else
+  echo "FAIL: directory-swap fixture — the key at /app/gone.pem, deleted by a later layer's whiteout, was NOT caught" >&2
+  cat "$WORK/out.dirswap" >&2
+  fail=1
 fi
 
 exit "$fail"

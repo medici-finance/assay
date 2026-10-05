@@ -228,11 +228,19 @@ material. Concretely, an image-producing change must not:
   `ASSAY_APP_PEM_FILE` is allowed; a key value is not).
 - Leave a credential in layer history via a `RUN` step that wrote then deleted
   it (the earlier layer still contains it).
+- Write a credential in one layer and overwrite that path in a later layer,
+  for example by a second `COPY` or by replacing the file with a directory.
+  The earlier layer still contains the credential.
 
 `scripts/layer-secret-scan.sh <image>` walks `docker history`, the image config
 environment, and every layer's filesystem for PEM blocks, GitHub token prefixes
 (`ghp_`, `ghs_`, `github_pat_`), and model API-key shapes (`sk-ant-`, `sk-`),
-exiting non-zero on any hit. `scripts/layer-secret-scan.test.sh` is its mutation
-proof: it bakes an obviously-fake key into a throwaway fixture image and asserts
+exiting non-zero on any hit. It extracts and scans each layer on its own, never
+a merged view of the image, so whatever a later layer does to a path cannot
+hide what an earlier layer wrote there. `scripts/layer-secret-scan.test.sh` is
+its mutation proof: it bakes an obviously-fake key into throwaway fixture
+images, including keys that a later layer overwrites or replaces, and asserts
 the scan goes red, so the scan is known to fire and is not a control that only
-ever passes.
+ever passes. `scripts/layer-secret-scan.mutate.sh` runs that test against a
+merged-view copy of the scan and requires every one of the overwrite fixtures
+to fail there.

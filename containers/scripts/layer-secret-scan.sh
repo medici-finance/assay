@@ -11,6 +11,11 @@
 #   1. `docker history --no-trunc`  — build-arg echoes, ENV instructions.
 #   2. the image config             — ENV value defaults, labels.
 #   3. every layer's filesystem     — a COPYed / RUN-written credential file.
+#      Each layer is extracted into its OWN directory and scanned there, never
+#      merged into one shared tree (#2256): in a merged tree a later layer that
+#      overwrites a path, replaces it with a directory, or deletes it hides the
+#      earlier layer's file from the scan, although that earlier layer still
+#      ships in the image with the key in it.
 #
 # Patterns (key material actually held by this project):
 #   * PEM private-key blocks (App signing key, mounted GCP/WIF key files).
@@ -104,9 +109,25 @@ PAT="${STRICT}|${LOOSE}"
 # (see the PR for the reproduction); nothing here is a guess.
 #
 # Applies ONLY to the layer-filesystem surface (never build history or the
-# image config — a hit on either of those is never allowlisted).
-allow_path() {
+# image config — a hit on either of those is never allowlisted). Each entry is
+# matched against the file's path INSIDE the image (see image_path below), the
+# same in every layer: the per-layer extraction (#2256) changes where a file
+# lands on the scanner's disk, never which image paths are exempt.
+#
+# image_path <scanner-path>: for a file under $WORK/layers/<n>/, print its path
+# inside the image (/usr/bin/gpgv); any other scanner path (build history, the
+# image config, a raw non-tar blob) is not a layer file, so return 1.
+image_path() {
   case "$1" in
+    "$WORK"/layers/*/*) ;;
+    *) return 1 ;;
+  esac
+  _r="${1#"$WORK"/layers/}"
+  printf '/%s\n' "${_r#*/}"
+}
+allow_path() {
+  _p="$(image_path "$1")" || return 1
+  case "$_p" in
     # Go's own standard-library source tree, downloaded from go.dev/dl at the
     # pinned GO_VERSION. Every hit here to date is Go's own published test or
     # example fixture (crypto/tls/testdata/example-key.pem, the platform-verifier
@@ -114,14 +135,14 @@ allow_path() {
     # inline ExampleX509KeyPair cert+key) — verified by checking each file is
     # referenced only from a sibling *_test.go. Nothing this Dockerfile does
     # writes into /usr/local/go/src; it is the untouched upstream tree.
-    "$WORK"/rootfs/usr/local/go/src/*) return 0 ;;
+    /usr/local/go/src/*) return 0 ;;
     # The npm CLI bundled with the pinned Node.js tarball (nodejs.org/dist),
     # not a project node_modules tree. Every hit here is npm's own published
     # documentation of its `ca`/`cert`/`key` config options, which illustrates
     # the PEM shape with the literal placeholder body `XXXX` (config.7,
     # config.md, docs/output/.../config.html, and the shared source of all
     # three, @npmcli/config/lib/definitions/definitions.js) — never a real key.
-    "$WORK"/rootfs/usr/local/lib/node_modules/npm/*) return 0 ;;
+    /usr/local/lib/node_modules/npm/*) return 0 ;;
     # Distro-packaged (apt-get) crypto tooling whose compiled artifact embeds
     # the literal PEM armor text as a format string, not a key:
     #   * gpgv — GnuPG's own PGP-armor header/footer strings, used to recognize
@@ -134,9 +155,9 @@ allow_path() {
     #     bodies, compiled in as GnuTLS's own FIPS-140 power-on self-test
     #     vectors (known-answer tests run at library init), not project key
     #     material — a well-documented upstream behavior of this exact package.
-    "$WORK"/rootfs/usr/bin/gpgv) return 0 ;;
-    "$WORK"/rootfs/usr/lib/*/libssh2.so*) return 0 ;;
-    "$WORK"/rootfs/usr/lib/*/libgnutls.so*) return 0 ;;
+    /usr/bin/gpgv) return 0 ;;
+    /usr/lib/*/libssh2.so*) return 0 ;;
+    /usr/lib/*/libgnutls.so*) return 0 ;;
     # The `gh` CLI binary (installed by this Dockerfile's install-agent-cli
     # step), matched by the generic `sk-[A-Za-z0-9]{20,}` alternative against
     # one unrelated identifier string in its compiled string table
@@ -145,7 +166,7 @@ allow_path() {
     # plausible secret body follows it). Exempting only this exact path
     # (never a glob) restores full `sk-` coverage for every other binary in
     # the image, including any other toolchain binary at any other path.
-    "$WORK"/rootfs/usr/local/bin/gh) return 0 ;;
+    /usr/local/bin/gh) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -173,19 +194,36 @@ if ! docker save "$IMG" -o "$WORK/img.tar" 2>"$WORK/err"; then
   echo "layer-secret-scan: cannot save '$IMG' — $(cat "$WORK/err")" >&2
   exit 2
 fi
-mkdir -p "$WORK/img" "$WORK/rootfs"
+mkdir -p "$WORK/img" "$WORK/layers"
 tar -xf "$WORK/img.tar" -C "$WORK/img" 2>/dev/null || true
 # Extract every nested layer tar (docker save nests each layer as its own tar,
-# gzipped or not — tar auto-detects) into rootfs. A blob that IS a layer tar is
-# recorded only via its extracted rootfs contents from here on — scanning the
-# raw tar too would report the same file twice (#908: "each filesystem hit is
-# reported twice, once as layer file: and once as image blob:"). Blobs that are
-# NOT a tar (the config/manifest JSON, where ENV defaults live) are listed in
-# nontar-blobs and scanned raw below, since they have no rootfs counterpart.
+# gzipped or not — tar auto-detects) into a directory of its OWN,
+# $WORK/layers/<n>/, numbered in discovery order. A blob that IS a layer tar is
+# recorded only via its extracted contents from here on — scanning the raw tar
+# too would report the same file twice (#908: "each filesystem hit is reported
+# twice, once as layer file: and once as image blob:"). Blobs that are NOT a
+# tar (the config/manifest JSON, where ENV defaults live) are listed in
+# nontar-blobs and scanned raw below, since they have no extracted counterpart.
+#
+# One directory per layer, never one merged tree (#2256). Merging the layers
+# into a single tree lets whichever blob is extracted last win every path they
+# share: a key an earlier layer wrote at /app/key.pem is overwritten by a later
+# layer's file at the same path, or removed when a later layer puts a directory
+# there, and is then never scanned — although the earlier layer still ships in
+# the image with the key in it. The blob discovery order is not even the layer
+# order (it follows the save's on-disk listing), so a merged scan passed or
+# failed the same image depending on content hashes. Each layer extracted alone
+# has nothing to collide with, so every file every layer carries is scanned.
+# layer-index maps each <n> back to its blob, for the hit report.
 : > "$WORK/nontar-blobs"
+: > "$WORK/layer-index"
+n=0
 find "$WORK/img" -type f 2>/dev/null | while IFS= read -r blob; do
   if tar -tf "$blob" >/dev/null 2>&1; then
-    tar -xf "$blob" -C "$WORK/rootfs" 2>/dev/null || true
+    n=$((n + 1))
+    mkdir -p "$WORK/layers/$n"
+    tar -xf "$blob" -C "$WORK/layers/$n" 2>/dev/null || true
+    printf '%s\t%s\n' "$n" "${blob#"$WORK/img/"}" >> "$WORK/layer-index"
   else
     printf '%s\n' "$blob" >> "$WORK/nontar-blobs"
   fi
@@ -202,14 +240,14 @@ done
 # skipping binary scanning for a whole pattern class (see the corrected
 # comments above and the PR #1011 review that caught the prior blanket -I
 # gating as a coverage regression).
-# history.txt/inspect.json/rootfs are searched recursively (-r); nontar-blobs
+# history.txt/inspect.json/layers are searched recursively (-r); nontar-blobs
 # has no directory to recurse (see the extraction step above), so each listed
 # blob is checked individually.
 : > "$WORK/hitfiles"
 collect() { # <grep binary-handling flag: a|I> <pattern>
   bf="$1" pat="$2"
   grep "-${bf}Erl" "$pat" \
-    "$WORK/history.txt" "$WORK/inspect.json" "$WORK/rootfs" \
+    "$WORK/history.txt" "$WORK/inspect.json" "$WORK/layers" \
     2>/dev/null >> "$WORK/hitfiles" || true
   if [ -s "$WORK/nontar-blobs" ]; then
     while IFS= read -r blob; do
@@ -228,11 +266,18 @@ mask() {
 }
 
 label() {
-  # Human-readable surface name for a hit path.
+  # Human-readable surface name for a hit path. A layer file names its path in
+  # the image AND the layer blob that carries it, since one path may now be
+  # reported once per layer that wrote key material there (#2256). The blob's
+  # sha256 is cut to 12 hex digits — enough to find it in `docker save` output.
   case "$1" in
     "$WORK/history.txt") echo "build history" ;;
     "$WORK/inspect.json") echo "image config" ;;
-    "$WORK"/rootfs/*) echo "layer file: ${1#"$WORK/rootfs"}" ;;
+    "$WORK"/layers/*/*)
+      _r="${1#"$WORK"/layers/}"
+      _blob="$(awk -F '\t' -v n="${_r%%/*}" '$1 == n { print $2; exit }' "$WORK/layer-index" \
+        | sed 's/\([0-9a-f]\{12\}\)[0-9a-f]\{52\}/\1/')"
+      echo "layer file: $(image_path "$1") (layer blob: ${_blob:-unknown})" ;;
     *) echo "image blob: ${1#"$WORK/img/"}" ;;
   esac
 }

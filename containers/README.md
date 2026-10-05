@@ -19,6 +19,8 @@ land, the per-desk images and launch surfaces.
 | `the-desk/Dockerfile` | Thin per-desk image for the coordinator `the-desk`. |
 | `entrypoint.sh` | Shared interactive boot baked into all five desk images: fail-closed credential preflight, then desk identity + skill pointer, then the interactive session. |
 | `scripts/layer-secret-scan.sh` | Fails a built image that carries key-shaped material in any layer/config/history. |
+| `scripts/layer-secret-scan.test.sh` | Mutation proof for the scan: fixture images with baked fake keys must go red, a clean one green. |
+| `scripts/layer-secret-scan.mutate.sh` | Negative control: runs the test against a merged-view copy of the scan and requires each overwritten-key fixture to fail there. |
 | `secrets.md` | Runtime credential-injection contract (normative). |
 | `README.md` | This map. |
 
