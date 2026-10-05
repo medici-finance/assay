@@ -38,7 +38,7 @@ the monthly pass, so the trigger is that pass's output, never a CI event.
 **Bounds.** Strong tier, read-only on the code, one file out. The history table in
 `## What happened` holds the window's fix commits plus the originating commits, and nothing
 else. **NEEDS_CONTEXT rule:** when the originating brief cannot be found (no `Brief:` trailer
-on the first commits, none on the PR that merged them, no brief file), write no investigation
+on the first commits, none named by the PR that merged them, no brief file), write no investigation
 file: report `NEEDS_CONTEXT` on the class issue, naming each read that came back empty. Never
 reconstruct an intent from the code; the code is what the intent is being checked against.
 
@@ -68,7 +68,9 @@ reconstruct an intent from the code; the code is what the intent is being checke
 
 - `reconcile` — bring the code back to the intent. Next act: one fix brief whose `retires:`
   lists every layer the fixes added that the intent does not need (the deletion bundle).
-  Owner: the stream that owns the module's `S-` row. Fowler's refactor-first default.
+  Owner: the stream that owns the module's `S-` row. Fowler's refactor-first default. A
+  bundle entry that is a security control or its CI assertion is human-gated: name it in a
+  `needs-decision` issue beside the fix brief; it never retires on the owner's lane alone.
 - `redesign` — the intent must change. Next act: a DR amendment and a design brief (title
   given here), preferring a strangler seam over a rewrite; a rewrite is proposed only when this
   investigation shows the seam cannot be cut (Foote & Yoder's "Reconstruction" is the last
@@ -77,8 +79,8 @@ reconstruct an intent from the code; the code is what the intent is being checke
 - `accept` — the drift is the better design. Next act: amend the DR and the `S-` row so the
   record matches the code, and clear the mark. Nothing is coded. Owner: the DR's
   design-approval authority.
-- `clear` — only with divergence `none`. Next act: none; the mark clears by the
-  §Brittle marks clearing rule. Owner: the monthly pass, which reads the `end-state:` line.
+- `clear` — only with divergence `none`. Next act: `clear` (nothing is authored); the mark
+  clears by the §Brittle marks clearing rule. Owner: the monthly pass, which reads the `end-state:` line.
 
 `accept` and `clear` code nothing, and they are real outcomes, not consolation prizes: an
 investigation that can only recommend work is a patch generator with extra steps. Choose
@@ -114,16 +116,26 @@ record and the `S-` row, and quote them; never paraphrase. Reads, in order:
 1. Originating commits, for each file the mark row names (the nominated file first):
    `git log --follow --reverse --format='%H %s' -- <path> | head -3`
 2. The `Brief:` trailer on each: `git show -s --format=%B <sha> | grep -E '^Brief:'`. None
-   there: find the PR that merged it with
-   `git log --first-parent --ancestry-path --format='%H %s' <sha>..refs/remotes/origin/main | tail -1`
-   and read the trailer from that PR's body (`gh pr view <N> --json body --jq .body`, or the
-   forge's equivalent).
+   there (a squash merge usually keeps the trailer only in the PR body): find the PR `<N>` that
+   merged it with the forge's commit-to-PR lookup,
+   `gh api repos/<owner>/<repo>/commits/<sha>/pulls --jq '.[0].number'` (or the forge's
+   equivalent), and read the trailer from that PR's body:
+   `gh pr view <N> --json body --jq .body | grep -E '^Brief:'`. Offline, take `<N>` from the
+   subject: the `(#N)` suffix when `<sha>` is itself on `git rev-list --first-parent refs/remotes/origin/main`
+   (a squash commit), else the `Merge pull request #N` subject of the oldest merge commit in
+   `git log --first-parent --ancestry-path --merges --format='%H %s' <sha>..refs/remotes/origin/main`.
+   A PR body with no `Brief:` line may still name the brief: a `<stream>/<NN>` id in the PR
+   title, or an `Issue:` trailer whose issue names it. Record which of these the id came from.
+   No PR resolves, or the PR names no brief: an `evidence-gaps:` entry for that commit, never a guess.
 3. The brief file: `ls docs/streams/<stream>/brief-<NN>-*.md`. Quote its `why:` and the facts
    of its `## Context` that state what the module must do.
-4. The last redesign brief: list every brief that touched the file with
-   `git log --format='%h %ad %(trailers:key=Brief,valueonly,separator=%x2C)' --date=short refs/remotes/origin/main -- <path> | awk 'NF>2'`;
-   the newest listed brief whose `design-fit:` `owner:` names this module is the last
-   redesign. None: record `last-redesign: none`, and the originating brief is the intent.
+4. The last redesign brief: list every commit that touched the file, with its trailer, by
+   `git log --format='%h %ad %(trailers:key=Brief,valueonly,separator=%x2C)' --date=short refs/remotes/origin/main -- <path>`.
+   A line with no brief (two fields) is not dropped: resolve its PR and the brief it names as
+   in read 2, and a commit that still resolves to no brief is an `evidence-gaps:` entry, so the
+   list's gaps are visible. The newest brief on the resolved list whose
+   `design-fit:` `owner:` names this module is the last redesign. None: record
+   `last-redesign: none`, and the originating brief is the intent.
 5. The `S-` row: `grep -n '^| S-' docs/contracts.md | grep -F '<module path>'`; then the
    `DR-<slug>` record it names, `docs/streams/decisions/DR-<slug>.md`.
 
@@ -177,8 +189,10 @@ What has happened to the module since? Observations only here; what they mean go
 - **The class instances.** `gh issue view <class-issue> --comments`, or the forge's
   equivalent. One row per `incident-group`: `kind`, counted or not (only `confirmed-defect`
   and `false-positive` count, deduped by `incident-group`), `known-scope`, `state` with its
-  `checked-at`, `introduced-by` with its evidence level, `source-revisions`. Copy `unknown` as
-  `unknown`. A success at a different `known-scope` is another scope, not recovery; only a
+  `checked-at`, `introduced-by` with its evidence level, `source-revisions`, `trust-disposition`.
+  Copy `unknown` as `unknown`. A block the trust gate did not clear (quarantined, or no
+  `trust-disposition:` yet) is copied as data only: it is never counted and never drives a
+  conclusion. A success at a different `known-scope` is another scope, not recovery; only a
   same-scope block reading `state: recovered` with a `recovery-ref` is recovery.
 - **The window's fix commits.** The mark row's figures come from the hotspot report
   (`cd tools/desk && go test ./internal/hotspot/ -run TestPrintHotspots -count=1 -v -args -since=<window start> -until=<mark-date>`);
@@ -201,11 +215,11 @@ a refusal, a branch or a layer), and whether that addition sits inside the owner
 **Worked example.** Window 2025-10-07 to 2026-01-05. Class `#0`, mechanism "a refreshed token
 is not re-read":
 
-| incident-group | kind | counted | known-scope | state | introduced-by | source-revisions |
-|---|---|---|---|---|---|---|
-| g1 | confirmed-defect | yes | r3, operation `post` | unknown (checked-at 2025-12-20) | r2 (introduced-by-commit) | r3 |
-| g2 | confirmed-defect | yes | r6, operation `post` | active (checked-at 2026-01-04) | r2 (shared-mechanism) | r6 |
-| g3 | intended-control | no | r6, the stale-cache refusal's text | — | — | r6 |
+| incident-group | kind | counted | known-scope | state | introduced-by | source-revisions | trust-disposition |
+|---|---|---|---|---|---|---|---|
+| g1 | confirmed-defect | yes | r3, operation `post` | unknown (checked-at 2025-12-20) | r2 (introduced-by-commit) | r3 | trusted |
+| g2 | confirmed-defect | yes | r6, operation `post` | active (checked-at 2026-01-04) | r2 (shared-mechanism) | r6 | trusted |
+| g3 | intended-control | no | r6, the stale-cache refusal's text | — | — | r6 | trusted |
 
 observed: g1's block also records a success at r5 on operation `edit`. That is another
 `known-scope`, not recovery; no same-scope re-check of `post` at r3 exists, so g1 stays
@@ -304,7 +318,9 @@ bundle**: every layer in the history table that the intent does not need, with i
 - `clear`: not available; the divergence is not `none`.
 
 C3: the deletion bundle is {`cmd/example/cache.go` (r2), the 401 refresh branch (r4), the
-`--no-cache` flag and the stale-cache refusal (r6)}. Rests on: the history table, C1.
+`--no-cache` flag and the stale-cache refusal (r6)}. Rests on: the history table, C1, and C2
+through A1 (the cache may go only while the budget holds without it). The stale-cache refusal
+guards only the cache retired with it, so it is no security control and needs no `needs-decision`.
 
 ## Recommendation
 
