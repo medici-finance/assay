@@ -3021,6 +3021,321 @@ credential is the filing identity and no App token is ever minted. Repo scope co
 `deskkit.IsAllowedRepo` — there is no second repo list, and a test parses the sources to
 prove it.
 
+### The `### Fork test` block — the decision filing gate
+
+A `needs-decision` label is a claim that the driver has a real choice to make. Without a
+check on the SHAPE of the question, `deskfile new` accepts items that hold no choice at all —
+a technical question whose only workable answer is already known, or a note that a piece of
+work belongs in a different repository — and each one costs the driver a decision slot. This
+gate makes the shape binding: a filing labelled `needs-decision` must carry a `### Fork test`
+section (any heading level) with these lines, in any order —
+
+```
+option: <letter> — <what it is> | works-because: <why this can actually be carried out> | consequence: <what follows if chosen>
+option: <letter> — <what it is> | works-because: <...> | consequence: <...>
+default: <letter>            (or `default: <letter> — <text>`)
+caught-by: <draft-pr | flip | issue-close | nothing> — <which one, e.g. the PR number>
+ruled-check: <the search that was run> → <what it returned>
+subject: <one line naming what is actually being decided>   (OPTIONAL)
+```
+
+**The block's grammar (round 7) is strict and fail-closed, on purpose.** Six rounds of security
+review each found one more shape of trailing or embedded content that could be misread as part
+of the block — a fence, an indent, a setext heading, a `>`-quote, a second `subject:` line, a
+comment — and each round closed the one shape named. Round 7 replaces the boundary-marker list
+with three rules that bound the block by its own grammar. Rule 1's strip still models specific
+Markdown constructs, so it is the one place a new shape can still matter; the backstop below
+covers the case where its reading and a raw reading disagree:
+
+1. **Strip first.** Before anything else runs, every FENCED code block and every HTML comment
+   is removed from the whole body, each stripped line replaced with an EMPTY one (never
+   deleted — deleting could join whatever came before a strip onto whatever came after it,
+   round 7.1, cor-1688-C15/sec-1688-S1 item 3). A fence closes only on a line using the SAME
+   delimiter character, AT LEAST as many repetitions as the opener, and under 4 columns of
+   indentation (a tab counts as 4) — CommonMark's own closing rule, so a shorter or
+   different-character delimiter nested inside a fence is fence CONTENT, never a closer, and
+   cannot end the strip early (round 7.1, sec-1688-S1(a)/S1(b)). An HTML comment that never
+   closes (no `-->` anywhere after its `<!--`) is blanked from the line that holds the `<!--`
+   to the end of the body, wherever on that line the `<!--` sits — at the line's start, after
+   other text, after a closed comment on the same line, or indented — since a renderer hides
+   an unclosed comment and everything after it (round 7.1, sec-1688-S1 item 2; widened from
+   line-start openers only in round 7.3, cor-1688-C18). So a quoted example (heading
+   and all) earlier in the body is blanked before the heading search runs, and a `subject:`
+   line hidden inside an HTML comment — between two of the block's own real key lines, trailing
+   off the last one, or never closed — is blanked before the block is parsed. The strip models
+   exactly these two constructs. It does not model everything a renderer or sanitizer may hide
+   or show differently (for example raw HTML elements a sanitizer drops, or a `<!--` inside an
+   inline code span, which a renderer shows but the strip removes — and, if no `-->` follows
+   it, blanks to the end of the body, so a block after it is not found); those are not claimed
+   covered by rule 1. Where the strip over-hides, the gate reads less, never more: it fails
+   closed.
+2. **The heading must be followed DIRECTLY by the block.** Blank lines between the heading and
+   the first key line are fine (none are required); anything else — a
+   sentence of context, a leftover note — is a MALFORMED block, refused by naming that specific
+   problem, never silently treated as an empty one.
+3. **The block is the CONTIGUOUS run of key lines that follows.** A key line is
+   `<lowercase-key>: <content>` at column zero — no leading whitespace, no bullet, blockquote,
+   or emphasis marker, no indentation, nothing before the key name. The run ends at the FIRST
+   line that does not match this shape, blank or not, and nothing past that line of the
+   STRIPPED body (rule 1) is read as part of the block. A `>`-quoted or bulleted line
+   was never a key line to begin with, so it can neither start the block nor extend it — the
+   round-5/6 quote and indent exclusions are now a consequence of this one rule rather than a
+   dedicated check.
+
+**A backstop, for whatever rule 1's strip still gets wrong (round 7.1, cor-1688-C15/sec-1688-S1).**
+Whatever a `subject:` reading above the bounded run computes, it is DISCARDED (treated as no
+declared subject) when either holds: the RAW, never-stripped body carries more than one line
+matching the `### Fork test` heading pattern anywhere, fenced or not; or re-deriving the subject
+from that raw body (no stripping at all) disagrees with the subject the stripped path produced —
+including one reading having a subject the other does not. Either condition is itself the
+ambiguity a stripper failing to hide something would create, so neither reading is trusted over
+the other. A third condition (round 7.3, sec-1688-A1) covers a hiding construct both readings
+see the same way: the raw body contains, anywhere, the opener of one of the three raw-HTML
+block kinds a renderer drops whole — a processing instruction (`<?`), a declaration (`<!`
+followed by an ASCII letter), or a CDATA section (`<![CDATA[`). A filing has no use for any of
+them, and a whole fork-test block wrapped in one would be invisible in the issue. This never
+touches the block's other required fields (`option:`/`default:`/
+`caught-by:`/`ruled-check:`) — only the subject — so a filing this catches still lands on
+`needs-decision` rather than being refused outright. Beyond those three openers the backstop
+catches DISAGREEMENT only: any other line that both readings see the same way but a renderer
+or sanitizer hides (a raw HTML element, for example) is not caught by it.
+
+**Known limit.** A key-shaped `subject:` line placed directly under the block's last line,
+with no blank line between, is part of the contiguous run (rule 3), so it is read as the
+block's subject. That line is visible in the rendered block and cannot be told apart from the
+documented subject-last form, and the gate reads the body once, at filing time, so a later edit
+to the issue does not change the outcome. It is stated here as a limit of the grammar, not
+claimed fixed.
+
+An `option:` line with an empty `works-because` or `consequence` is not COUNTED — an option
+the filer believes cannot work is not written as an option; it belongs in the prose as a
+rejected alternative. Each option needs its own letter: two `option:` lines with the same
+letter (case-insensitive on the LETTER; the `option:` key itself must be exactly lowercase, per
+the grammar above) are refused, since one option written twice is still one option.
+`default:` names a counted option by its bare letter, optionally followed by ` — <text>`; a
+value that does not open with a letter is reported as malformed, not as missing. `caught-by`
+is the human-held gate that would catch a wrong guess on the default (a draft PR awaiting
+merge, a flip CI still runs, an issue close still to happen, or `nothing`, meaning no gate
+catches it) — the KEY is case-bound, but its enum VALUE (`draft-pr`/`flip`/`issue-close`/
+`nothing`) still reads case-insensitively. `ruled-check` records the search for an existing
+ruling on the same question — the item's own thread and the tracker for the item id — so a
+filer cannot skip checking whether it was already decided. Name the search by its SUBJECT, e.g.
+`ruled-check: searched this item's thread and the tracker for "sla-days help text" → nothing on record`;
+that line reads clean. The line is read for one-way terms (below), so a line naming a
+driver-owned act — "searched closed needs-decision issues → nothing" matches the auto-close
+pattern — keeps the item on `needs-decision`: the safe direction, but a needless one. The arrow accepts `→` or `->`, and the dash before "what it
+is" accepts an em dash, en dash, or a plain hyphen. `subject:` is OPTIONAL and never checked
+for structural well-formedness — a missing or ambiguous one is never refused — but it is the
+ONLY line the notice lane's positive reversible-signal test reads (below), and only when the
+BOUNDED, CONTIGUOUS block (rule 3 above) carries EXACTLY ONE `subject:` line: a filing with no
+`subject:` line, or more than one, simply never admits (the same fail-closed default either
+way).
+
+**Outcomes, in this precedence:**
+
+1. **No block, an unparseable block, a missing or malformed line, a duplicate option letter,
+   or a `default` naming no counted option** → **exit 5**, naming every problem found.
+   `--force-new --reason` is the only bypass, as for every refusal in this tool; it files
+   the item under `needs-decision`.
+2. **Fewer than two counted options** → **exit 5**. For an item that is NOT one-way (below),
+   the refusal names the three `--no-fork` re-routes: a genuinely single-option question is a
+   work item, never a decision. For a ONE-WAY item the refusal names no re-route — every
+   `--no-fork` value files off the driver's queue — and offers only `--force-new --reason`,
+   which files it under `needs-decision`.
+3. **Two or more counted options and `caught-by: nothing`** → filed under `needs-decision`.
+4. **Two or more counted options, a `caught-by` gate, and the notice-lane test passes** →
+   the **notice lane**: the issue is labelled `desk-decided` and a `## Desk-decided` block is
+   appended — the fixed heading, the SAME `<!-- desk-r3-decision v1 -->` marker
+   `deskdigest`'s R-3 veto surface already reads (see "Classification (R-3)" above), then
+   `decision:` (the default's text), `alternative:` (the other counted options) and `cost:`
+   (the `caught-by` gate). The filer proceeds on the default; the item never parks.
+   Otherwise → filed under `needs-decision`.
+
+**The notice-lane test fails CLOSED** (`internal/deskkit/noticelane.go`,
+`deskkit.NoticeLaneVerdict`). An item is admitted only when ALL of these hold:
+
+- no caller label marks it one-way: `human-only`, `security`, `gate:human`;
+- no one-way term appears in the title or body — neither a `deskkit.HumanOnlySignals` needle
+  (the list `deskdigest`'s classifier uses) nor a `deskkit.OneWayPatterns` match. The
+  patterns are word-bounded and cover: merge; ready-flip; push to main and force-push;
+  tag/release/ship and version numbers; disabling, weakening, bypassing or loosening a
+  control, branch protection, rulesets, the leak sweep, guardrails; keys, signing, custody,
+  PII, passwords, certificates, rotation, encryption; money, funds, payment, vaults,
+  settlement, pricing, fees, refunds; identity, auth, login/sign-in, SSO/OAuth/OIDC/SAML,
+  realms, impersonation; delete, overwrite, wipe, purge, truncate, destroy, erase, drop of
+  durable data; public, publish, external, vendors, third parties, send, email, announce,
+  customers, partners, upload, export; infrastructure, deploy, prod, live, clusters, DNS,
+  databases, migrations, servers, runners; GitHub App permissions, `actions: write`,
+  read/write/admin access, grants, installations, admin, privilege, approval, self-review,
+  sign-off, ratification, veto, CODEOWNERS; `gate:human` / `human gate` / `human-only` in
+  any spelling; a commit or write straight/directly to main and anything "without a PR" or
+  "without review"; taking a PR out of draft or from draft to ready; required reviewers and
+  dismissing reviews; 2FA/MFA/two-factor; `--no-verify`, hooks, unsigned commits and
+  signatures; the trust gate, trusted lists, the roster, "anyone" and "any commenter"; owners,
+  roles, maintainers, members; archiving, transferring, visibility, private, moving to
+  another org, renaming a repo or org; auto-closing, or closing `needs-decision` /
+  `human-only` items; charges, cards, credit, purchases, subscriptions, billing; and a
+  control-verb class — turn off, switch off, stop requiring, no longer require, skip, opt
+  out, remove, relax, waive, suppress, silence, "allow … without", drop … requirement —
+  within a few words of a control noun (check, scan, gate, guard, hook, review, requirement,
+  protection, lint, test, CI, verification, assertion, signing, policy, rule, control, alert),
+  in either order;
+- a POSITIVE, CONTENT-BEARING R-3 reversible signal is present in the fork-test block's
+  DECLARED SUBJECT — the `subject:` line, and nothing else (`deskkit.FirstNoticeLaneSignal`:
+  docs wording, typo, phrasing, a table column). The SHAPE-only needles in
+  `deskkit.ReversibleSignals` (`deskkit.NoticeLaneShapeOnlyNeedles`) never admit on their own,
+  for two different reasons:
+  - `tool default`, `default value`, `flag default`, `rename the` name the SHAPE of a change
+    and nothing about what it governs ("tool default: build untrusted fork heads in CI"), so
+    as an admission signal they admitted every one-way act the keyword list had not named
+    (round 3).
+  - `lint level`, `lint severity`, `notice or error`, `port-or-drop`/`port or drop` are, BY
+    CONSTRUCTION, always a classification question about SOME check or job, named in the
+    subject or not — a lint level is the level of some check — so an admission rule keyed on
+    a check/job NOUN (below) only ever caught the phrasings it enumerated, never a check
+    named by its own name ("lint level for pin-consistency: notice or error?" admitted until
+    round 5, since `pin-consistency` names no noun the noun scan recognises).
+
+  A match on any of these nine is a VETO, checked BEFORE the content-needle scan: an item
+  whose subject pairs a shape-only phrase with an unrelated, otherwise-admitting needle
+  ("wording of the pin-consistency lint level: notice or error" — "wording" is a real
+  `ReversibleSignals` needle) still stays on `needs-decision` (round 6) — the shape-only phrase
+  is never outvoted by a second needle in the same subject. An item whose only reversible
+  signal is one of these nine, paired or not, stays on `needs-decision`.
+  `deskdigest`'s display classifier still reads every one of them (from title+body, unchanged
+  — the subject-only read below, and the shape-only exclusion, are deskfile's admission gate
+  ONLY: the classifier's "reversible" display class and deskfile's notice-lane admission can
+  disagree on the same item).
+
+  **Every needle match — shape-only veto and content-bearing alike — collapses separators
+  first** (`deskkit.collapseSeparators`, round 7.1, security review sec-1688-S1 advisory): a
+  run of whitespace, underscore, dot, slash or hyphen in either the subject or the needle
+  becomes a single space before comparing, so `lint_level`, `lint-level`, `lint.level` and a
+  doubled space all compare equal to the needle `lint level` as written. Before this, a
+  different separator spelling had to be enumerated as its own needle (`port-or-drop` next to
+  `port or drop`) and still missed whatever spelling was not enumerated. The CI check/job
+  backstop (`ciCheckOrJobRe`) reads the collapsed subject too, not only the raw one
+  (`deskkit.namesCICheckOrJob`, round 7.2), so `leak_sweep`, `leak.sweep` and `ci_checks` are
+  caught alongside `leak-sweep`. The veto also matches each shape-only needle's plural
+  (`lint levels`, `tool defaults`; `deskkit.subjectContainsVetoNeedle`, round 7.2) — the `-s`
+  and `-es` forms, and for a needle ending in `y` the `-ies` form (`lint severities`, round
+  7.3) — so a plural spelling cannot slip past it to a paired content needle.
+
+  **Any non-ASCII character anywhere in the subject fails closed, before any needle or
+  `ciCheckOrJobRe` check runs** (`deskkit.hasNonASCIIByte`, round 7.1, security review
+  sec-1688-S1 advisory). `normalizeHyphens` (round 6/7) widens to a fixed list of Unicode
+  hyphen/dash look-alikes, but a fixed list is inherently finite — a look-alike outside it, a
+  non-breaking space, or a zero-width character, still slips past a check-name or needle scan
+  built on ASCII literals. Refusing the whole class at once, rather than enumerating further
+  code points, is the fail-closed direction this file's own design already takes everywhere
+  else.
+
+  **The reversible signal is read from `subject:` alone, never the title or body prose**
+  (`deskkit.NoticeLaneVerdict`, security review sec-1688-S1, round 4). A title routinely
+  carries more than one clause — "Tool default: let the desk commit to main when CI is green?
+  Fix the help-text wording too." is a one-way governance question PLUS an incidental
+  "wording" fix tacked on — and a scan of the whole string admits on whichever clause happens
+  to carry a reversible needle, not on what the filing is actually about. The filer states, in
+  `subject:`, what is actually being decided; only that line is read for the reversible
+  signal, and only when the fork-test section carries EXACTLY ONE `subject:` line and it is
+  not `>`-quoted (round 5, below). No usable `subject:` line at all means no reversible
+  signal, ever — the same fail-closed default as an item on neither list.
+
+  A subject that names a real CI check or job by a GENERIC noun is refused independently of
+  the shape-only exclusion above: `deskkit.ciCheckOrJobRe` matches the
+  "check"/"job"/"workflow"/"pipeline" nouns, and this codebase's own `<word>-sweep` /
+  `<word> check` compounds — leak-sweep, control-sweep, pattern-sweep, "the leak check" — and
+  refuses admission on ANY reversible needle when the subject names one of these, not only the
+  four shape-only needles ("lint level for the control-sweep check: notice or error?",
+  "port-or-drop the pattern-sweep job?"). It is a backstop now, not the only guard on the
+  round-4 shape: a longer noun list here was tried and kept missing checks named by their own
+  name rather than a generic noun (pin-consistency, skillslint, forge-surface, build-test,
+  govulncheck, CodeQL — security review sec-1688-S1, round 5), which is why the four
+  lint-level/port-or-drop needles moved to the unconditional shape-only exclusion above
+  instead of growing this noun list further. `forkgate_round4_test.go` pins the round-4
+  mechanisms against the arbiter packet's twelve probes plus its control case
+  (issuecomment-5840449031); `forkgate_round5_test.go` pins the round-5 fix against the
+  security re-review's clause-1/clause-2 probes and the named-check subjects
+  (medici-finance/assay#1688).
+
+  **The declared subject itself must be unambiguous** (`parseForkTest`, security review
+  sec-1688-S1). Rounds 5-6 found that prose after the block with no heading in between was
+  still read as part of the section — including a `>`-quoted line, and a plain trailing line
+  separated only by a blank line — and that when two or more `subject:` lines appeared, the
+  parser used to keep only the LAST one, so an honest first subject could be silently
+  overridden by an incidental second line or a leftover template placeholder. Round 7's strict
+  grammar (above) closes the whole class at once: the section is the bounded, contiguous run of
+  key lines, so nothing past a blank line, a fence, a heading, or any other non-key line is ever
+  part of it regardless of what it looks like, and a `>`-quoted or bulleted line was never a key
+  line to begin with. `parseForkTest` reads a declared subject only when that bounded run has
+  exactly one `subject:` line; zero or more than one leaves no declared subject, the same
+  fail-closed default either way.
+
+An item that matches neither list stays on `needs-decision`: the absence of a one-way term is
+not evidence that an item is reversible, and a reversible signal never outranks a one-way
+term: "the docs wording for the trust gate" is one-way, because what the wording is about is
+a control. The one-way check reads the whole title and body, the `ruled-check:` and `subject:` lines
+included — `ruled-check:` is where a filer names the subject of the SEARCH (not to be
+confused with the block's own `subject:` line, which names the subject of the DECISION). The
+one exemption is
+the `ruling` needle on that line alone, whose wording is the grammar's own record of a search
+for a prior ruling (it would otherwise trip on every filing); every other needle and pattern
+still reads it (`deskkit.OneWayExempting`). The reversible signal is never read from the
+`ruled-check:` line, so that line can keep a filing on the queue but never admit it. The list is
+deliberately broad: a false one-way costs one item staying on the driver's queue; a miss
+costs a decision taken without them. A keyword list is still only a keyword list — review
+of the filing remains the layer above it, and the notice lane's own record (the digest's
+seven-day veto window) is the layer after it.
+
+**`--no-fork <brief-contradicts-artifact | wrong-repo | tool-false-positive>`** re-routes the
+fewer-than-two-options refusal by filing the item WITHOUT the `needs-decision` label:
+
+| value | title prefix | addressed | body must carry |
+|---|---|---|---|
+| `brief-contradicts-artifact` | `amend brief:` | `--to desk` (the coordinator's authoring work) | the brief id it amends and, backtick-quoted, the artifact it contradicts |
+| `wrong-repo` | `re-dispatch:` | `--to worker` (`--to` shares `--raised-by`'s roster vocabulary — the skill's own name `worker-desk` is never a valid role here) | an `owner/repo` token naming where the work belongs |
+| `tool-false-positive` | — | — (label `bug`) | the tool's refusal text in a fenced block |
+
+`--no-fork` refuses a one-way item (the same check as the notice lane's first two bullets):
+it is a route off the driver's queue, and a one-way item never takes one. `--no-fork` and
+`--label needs-decision` are mutually exclusive. The title prefix and addressee for the first
+two values are composed by the tool, not trusted to free text; the content requirement for
+each is checked against its shape (a repo token, a brief-id-shaped token plus a quoted path,
+a fenced block) rather than parsed for meaning — review still judges whether the content
+actually says what the shape requires.
+
+**Label writes are add-first.** The issue is created, then ONE label write applies the
+caller's labels — `needs-decision` included — plus, on the notice lane, `desk-decided`; only
+after that write lands does a SECOND write take `needs-decision` off. A failure of the second
+write exits 6 with the issue carrying both labels, so it is still on the driver's queue (and
+`deskdigest` keeps it as a Queue row). A failure of the FIRST write exits 6 with the issue
+carrying no labels — the same unlabelled state any `deskfile new` filing is left in when its
+label write fails — and the exit code is the signal to re-label it by hand.
+`desk-decided` is created on first use through `deskkit`'s `LabelChange` ensure-exists path
+(the one `deskflip` and `deskpost`'s mechanical labels use), with the one colour and
+description `deskkit` declares for it (`deskpr --decided` creates it with the same spec on a
+PR). It is never a caller `--label`: `deskfile new --label desk-decided` is refused (exit 5),
+`--force-new` included, and so is a caller body that already carries the
+`<!-- desk-r3-decision v1 -->` marker in ANY spelling — any case, any whitespace inside the
+comment, any version (`deskkit.HasDeskDecidedMarkerClaim`, a strict superset of
+`deskkit.DeskDecidedMarkerRe`, the one pattern `deskdigest` reads the marker with). The marker
+in an issue body is the notice lane's record that the gate admitted the filing, and only the
+tool writes it.
+
+**Audit.** Every `new` filing that reaches the gate records its route on the local audit
+line: `lane=desk-decided (<the reversible signal>)`, `lane=needs-decision (<why it stayed>)`,
+or `no-fork=<value>`.
+
+**In the digest.** `deskdigest` collects `desk-decided` alongside `needs-decision` and
+`human-only`, lists each notice once — in the desk-decisions section, with its veto date —
+and does not list that notice as a Queue row. The Queue skips a `desk-decided` item ONLY when
+the desk-decisions section actually lists it (a trusted author's marker): a `desk-decided`
+label with no marker, or with a marker from an author off the roster, keeps its Queue row
+rather than vanishing from both sections. An item that carries `desk-decided` AND still
+carries `needs-decision` or `human-only` keeps its Queue row too. The classifier strips the
+tool-written `## Desk-decided` block before matching, so a notice is never classified on the
+tool's own field names.
+
 ## deskclose — the issue-CLOSING gate (issue-flow brief 03)
 
 `cmd/deskclose` is the counterpart to `deskfile`. Filing is cheap and closing was
