@@ -16,8 +16,10 @@ import (
 // TestNoticeLaneRefusesFencedTrailingSubjectDirectlyUnderBlock — cor-1688-C12/sec-1688-S5: a
 // fenced `Subject:` line placed DIRECTLY under a no-subject block (no blank line — the shape
 // the round-6 fence-arm mutation (MF/MG in both re-reviews) showed had no test that could
-// fail). stripFencedBlocks removes the fence and its content entirely before the section is
-// even located, so there is nothing left to read.
+// fail). stripFencedBlocks blanks the fence and its content before the section is located.
+// Round 7.2 note: this row is ALSO held by contiguity — the bare ``` line is not a key line, so
+// the run ends there with or without the strip — so it does not pin stripFencedBlocks on its
+// own. The isolated fence pins are the TestStripFencedBlocks tests in forktest_test.go.
 func TestNoticeLaneRefusesFencedTrailingSubjectDirectlyUnderBlock(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
@@ -44,9 +46,9 @@ func TestNoticeLaneRefusesFencedTrailingSubjectDirectlyUnderBlock(t *testing.T) 
 // `subject:` line hidden inside an HTML comment BETWEEN two of the block's own real key lines,
 // invisible in the rendered issue. stripHTMLComments removes the whole comment (delimiters and
 // content) before the section is even located, so the hidden line can never be read as the
-// declared subject. Here the comment sits between `default:` and `caught-by:`, so stripping it
-// also removes the newline that separated real fields, leaving a blank line in their place —
-// the block loses structural completeness as a SAFE side effect: this filing is refused
+// declared subject. Here the comment sits between `default:` and `caught-by:`, on lines of its
+// own; the strip replaces it with blank lines, so the contiguous run ends at `default:` and the
+// block loses structural completeness as a SAFE side effect: this filing is refused
 // outright (never silently admitted), and the audited `--force-new --reason` bypass is the
 // only way past it, exactly like any other malformed block. The load-bearing assertion either
 // way is that the hidden text never appears anywhere in what gets filed.
@@ -78,15 +80,20 @@ func TestNewRefusesSubjectHiddenInHTMLComment(t *testing.T) {
 
 // TestNoticeLaneRefusesSubjectHiddenInTrailingHTMLComment — the same withheld variant, placed
 // AFTER every required field instead of splitting two of them: the block stays structurally
-// complete (every required line is present before the comment), so this isolates the security
-// property cleanly — the hidden `subject:` line is stripped along with its comment before
-// parsing, so the filing has no declared subject at all and stays on needs-decision, never
-// desk-decided.
+// complete (every required line is present before the comment). The comment OPENS at the end of
+// the last key line (round 7.2 correction, cor-1688-C14's class: an earlier version opened it
+// on a line of its own, where the bare `<!--` line ends the contiguous run with or without the
+// strip, so this test did not depend on stripHTMLComments at all). Opened inline, nothing but
+// the strip stands between the hidden `subject:` line and the run, so the filing has no
+// declared subject and stays on needs-decision, never desk-decided.
+//
+// FAIL-FIRST (mutation: stripHTMLComments reduced to `return body`): the hidden line is read as
+// the declared subject, the filing admits the notice lane, and the label assertion fails.
 func TestNoticeLaneRefusesSubjectHiddenInTrailingHTMLComment(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
-	block := noticeLaneBlock + "<!--\nsubject: " + reversibleTitle + "\n-->\n"
+	block := strings.TrimSuffix(noticeLaneBlock, "\n") + "<!--\nsubject: " + reversibleTitle + "\n-->\n"
 	body := bodyFileWith(t, neutralEvidence+"\n"+block)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,

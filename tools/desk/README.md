@@ -3042,8 +3042,10 @@ subject: <one line naming what is actually being decided>   (OPTIONAL)
 **The block's grammar (round 7) is strict and fail-closed, on purpose.** Six rounds of security
 review each found one more shape of trailing or embedded content that could be misread as part
 of the block — a fence, an indent, a setext heading, a `>`-quote, a second `subject:` line, a
-comment — and each round closed the one shape named. Round 7 replaces that whole approach with
-three rules that need no further enumeration:
+comment — and each round closed the one shape named. Round 7 replaces the boundary-marker list
+with three rules that bound the block by its own grammar. Rule 1's strip still models specific
+Markdown constructs, so it is the one place a new shape can still matter; the backstop below
+covers the case where its reading and a raw reading disagree:
 
 1. **Strip first.** Before anything else runs, every FENCED code block and every HTML comment
    is removed from the whole body, each stripped line replaced with an EMPTY one (never
@@ -3054,15 +3056,17 @@ three rules that need no further enumeration:
    different-character delimiter nested inside a fence is fence CONTENT, never a closer, and
    cannot end the strip early (round 7.1, sec-1688-S1(a)/S1(b)). An HTML comment that never
    closes (no `-->` anywhere in the rest of the body) is blanked from its opening line to the
-   end of the body, matching how a renderer hides such a comment too, rather than being left as
-   parser-visible text (round 7.1, sec-1688-S1 item 2). With all of that true, nothing inside a
-   fence or comment, and nothing from an unclosed comment onward, can ever be read as a
-   `### Fork test` heading or a key line: a quoted example (heading and all) earlier in the
-   body vanishes before the heading search runs, and a `subject:` line hidden inside an HTML
-   comment — even one sitting BETWEEN two of the block's own real key lines, or one that never
-   closes — vanishes before the block is parsed at all.
+   end of the body, as a CommonMark renderer hides an unclosed comment block, rather than being
+   left as parser-visible text (round 7.1, sec-1688-S1 item 2). So a quoted example (heading
+   and all) earlier in the body is blanked before the heading search runs, and a `subject:`
+   line hidden inside an HTML comment — between two of the block's own real key lines, trailing
+   off the last one, or never closed — is blanked before the block is parsed. The strip models
+   exactly these two constructs. It does not model everything a renderer or sanitizer may hide
+   or show differently (for example raw HTML elements a sanitizer drops, or a `<!--` inside an
+   inline code span, which a renderer shows but the strip removes); those are not claimed
+   covered by rule 1.
 2. **The heading must be followed DIRECTLY by the block.** Blank lines between the heading and
-   the first key line are fine (the well-formed shape above has one); anything else — a
+   the first key line are fine (none are required); anything else — a
    sentence of context, a leftover note — is a MALFORMED block, refused by naming that specific
    problem, never silently treated as an empty one.
 3. **The block is the CONTIGUOUS run of key lines that follows.** A key line is
@@ -3083,7 +3087,13 @@ including one reading having a subject the other does not. Either condition is i
 ambiguity a stripper failing to hide something would create, so neither reading is trusted over
 the other. This never touches the block's other required fields (`option:`/`default:`/
 `caught-by:`/`ruled-check:`) — only the subject — so a filing this catches still lands on
-`needs-decision` rather than being refused outright.
+`needs-decision` rather than being refused outright. The backstop catches DISAGREEMENT only: a
+line that both readings see the same way but a renderer hides is not caught by it.
+
+**Open residual.** A key-shaped `subject:` line placed directly under the block's last line,
+with no blank line between, is part of the contiguous run (rule 3), so it is read as the
+block's subject even when someone other than the filer appended it. Security review holds
+this shape as open; it is neither fixed nor accepted here.
 
 An `option:` line with an empty `works-because` or `consequence` is not COUNTED — an option
 the filer believes cannot work is not written as an option; it belongs in the prose as a

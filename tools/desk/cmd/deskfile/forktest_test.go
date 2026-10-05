@@ -421,14 +421,14 @@ func TestParseForkTestIgnoresHeadingInsideFencedExample(t *testing.T) {
 // comment (delimiters and content) from the body before extractForkSection ever runs, so the
 // hidden line can never be read as the declared subject.
 //
-// The comment sits between `default:` and `caught-by:`, so stripping it also removes the
-// newline that separated them from the newline that separated the comment from what follows,
-// leaving a blank line in their place — the block loses structural completeness as a SAFE side
+// The comment sits between `default:` and `caught-by:`. Since round 7.1 the strip replaces the
+// comment with as many blank lines as it spanned, so the contiguous run ends at `default:` and
+// the block loses `caught-by:`/`ruled-check:` — structural incompleteness is the SAFE side
 // effect (forcing the audited `--force-new --reason` bypass rather than an invisible bypass of
 // the gate itself). Either way, the load-bearing assertion is the same: the hidden text is
 // never read as a declared subject.
 //
-// cor-1688-C14 correction: this row does NOT flip under that mutation — verified by actually
+// cor-1688-C14 correction: this row does NOT flip under the strip-disabled mutation — verified by actually
 // reverting stripHTMLComments to `return body` and re-running this test, which stays GREEN. The
 // comment here sits between `default:` and `caught-by:`, on its OWN lines, so even with the
 // strip disabled the comment's own opening `<!--` line is not itself key-shaped
@@ -481,22 +481,6 @@ func TestParseForkTestContiguityCutOnFirstNonKeyLine(t *testing.T) {
 	}
 }
 
-// TestParseForkTestDirectlyAdjacentKeyShapedLineJoinsTheBlock — documents a residual that is
-// OPEN, NOT settled as advisory (cor-1688-C16 correction: an earlier version of this comment,
-// and the PR body, claimed "both re-reviews flagged this as advisory, not blocking" — that is
-// not accurate). Correctness re-review cor-1688-C11 left a DIFFERENT, adjacent shape (a blank
-// line, then a `Subject:` line) to the security lane's judgement; it did not call THIS shape
-// advisory. Security re-review sec-1688-S1 held rows of exactly this shape as BLOCKING, and
-// offered either tightening contiguity further or a driver ruling as the fix — neither has
-// happened yet. What this test demonstrates is only the MECHANISM: a key-shaped line placed
-// DIRECTLY adjacent to the block, with no blank line breaking contiguity, is part of the same
-// contiguous run — the grammar has no way to tell "the filer's own next line" from "an
-// appended line with no separator" when both are syntactically identical key lines. This
-// fixture's appended `subject:` line is the block's ONLY subject line, so it is read
-// (HasSubject=true); had the block already declared one, a second contiguous `subject:` line
-// would make the count two, and the exactly-one-line rule (forktest.go) refuses to pick
-// either — but whether admitting the FIRST case is itself acceptable is the open question, not
-// settled by this test or by either re-review agreeing it is safe.
 // TestParseForkTestQuotedIntroLineIsMalformedNotAKeyLine — pins forkKeyLineRe's own
 // column-zero, no-decoration requirement in isolation, as distinct from the plain-prose C11
 // case above: a `>`-quoted line directly after the heading, directly followed (no blank line)
@@ -523,6 +507,22 @@ func TestParseForkTestQuotedIntroLineIsMalformedNotAKeyLine(t *testing.T) {
 	}
 }
 
+// TestParseForkTestDirectlyAdjacentKeyShapedLineJoinsTheBlock — documents a residual that is
+// OPEN, NOT settled as advisory (cor-1688-C16 correction: an earlier version of this comment,
+// and the PR body, claimed "both re-reviews flagged this as advisory, not blocking" — that is
+// not accurate). Correctness re-review cor-1688-C11 left a DIFFERENT, adjacent shape (a blank
+// line, then a `Subject:` line) to the security lane's judgement; it did not call THIS shape
+// advisory. Security re-review sec-1688-S1 held rows of exactly this shape as BLOCKING, and
+// offered either tightening contiguity further or a driver ruling as the fix — neither has
+// happened yet. What this test demonstrates is only the MECHANISM: a key-shaped line placed
+// DIRECTLY adjacent to the block, with no blank line breaking contiguity, is part of the same
+// contiguous run — the grammar has no way to tell "the filer's own next line" from "an
+// appended line with no separator" when both are syntactically identical key lines. This
+// fixture's appended `subject:` line is the block's ONLY subject line, so it is read
+// (HasSubject=true); had the block already declared one, a second contiguous `subject:` line
+// would make the count two, and the exactly-one-line rule (forktest.go) refuses to pick
+// either — but whether admitting the FIRST case is itself acceptable is the open question, not
+// settled by this test or by either re-review agreeing it is safe.
 func TestParseForkTestDirectlyAdjacentKeyShapedLineJoinsTheBlock(t *testing.T) {
 	body := validForkTestBlock + "subject: a directly adjacent line with no separating blank line\n"
 	r := parseForkTest(body)
@@ -538,9 +538,9 @@ func TestParseForkTestDirectlyAdjacentKeyShapedLineJoinsTheBlock(t *testing.T) {
 // TestParseForkTestSubjectHiddenInTrailingHTMLCommentDoesNotAdmit — cor-1688-C14/sec-1688-S5:
 // the existing TestParseForkTestSubjectHiddenInHTMLCommentDoesNotAdmit above
 // passes even with stripHTMLComments disabled (mutation: replaced with `return body`), because
-// that fixture's comment sits BETWEEN two real key lines and losing the newline it removed
-// already broke contiguity on its own — a coincidence of THAT shape, not evidence the strip
-// itself does anything. This row places the comment trailing off the block's own LAST key line
+// that fixture's comment opens on a line of its own: with no strip at all, the bare `<!--` line
+// is not key-shaped and ends the contiguous run before the hidden `subject:` line is reached —
+// a property of THAT shape, not evidence the strip itself does anything. This row places the comment trailing off the block's own LAST key line
 // instead, with every other required field already present before it: the comment's own
 // content (`subject: ...`) is itself key-line-shaped, so nothing here breaks contiguity if the
 // strip is skipped — this is the row that actually needs stripHTMLComments to run.
@@ -571,9 +571,11 @@ func TestParseForkTestSubjectHiddenInTrailingHTMLCommentDoesNotAdmit(t *testing.
 // `ruled-check:`/`subject:` directly (and wrongly) contiguous with the block above it, joining
 // fields the rendered issue shows as separated by a visible code block.
 //
-// FAIL-FIRST (mutation: stripFencedBlocks reverted to appending nothing for a fenced line
-// instead of an empty string — i.e. `continue` without first setting `out[idx] = ""`; verified
-// by reverting to that mutation and re-running this test): the raw-vs-stripped backstop
+// FAIL-FIRST (mutation: stripFencedBlocks drops every fence line from its output instead of
+// blanking it — the round-7 deletion behaviour. Round 7.2 correction: an earlier version of this
+// comment named "`continue` without first setting `out[idx] = ""`" as the mutation, but `out`
+// is pre-sized with empty strings, so that edit changes nothing and the test stays green under
+// it; the real deletion mutant was re-run and flips this test): the raw-vs-stripped backstop
 // independently catches the joined SUBJECT (its raw reading, which still sees the un-droppable
 // fence-opener line breaking contiguity, disagrees with the joined stripped reading), so
 // HasSubject stays false either way — but the backstop never touches r.Errors, and the joined
@@ -851,4 +853,104 @@ func mustLocateSection(t *testing.T, body string) string {
 		t.Fatalf("locateForkSection(%q) = found=%v malformed=%q, want found=true malformed=\"\"", body, found, malformed)
 	}
 	return section
+}
+
+// --- round 7.2: isolated pins for the round-7.1 strip guards (sec-1688-S5's "each guard has a
+// negative test that goes red under its own mutation"). The parse-level rows above are
+// deliberately defense-in-depth — the raw-vs-stripped backstop catches most of them on its own —
+// so each guard below is pinned at the function it lives in, with no backstop in the loop.
+
+// TestStripFencedBlocksNestedCloser — the CommonMark closer rule (isForkFenceCloser): a SHORTER
+// run of the same character, or a run of the OTHER fence character, inside an open fence is
+// content, not a closer.
+//
+// FAIL-FIRST (mutation: isForkFenceCloser reduced to `return true`, the round-7 toggle on any
+// delimiter line): the inner delimiter closes the outer fence early, so "still inside" survives
+// the strip and got != want.
+func TestStripFencedBlocksNestedCloser(t *testing.T) {
+	cases := []struct{ name, body, want string }{
+		{"shorter backtick run", "a\n````\n```\nstill inside\n````\nb", "a\n\n\n\n\nb"},
+		{"tilde inside backticks", "a\n```\n~~~\nstill inside\n```\nb", "a\n\n\n\n\nb"},
+		{"closer with info string", "a\n```\n``` go\nstill inside\n```\nb", "a\n\n\n\n\nb"},
+	}
+	for _, c := range cases {
+		if got := stripFencedBlocks(c.body); got != c.want {
+			t.Errorf("%s: stripFencedBlocks(%q) = %q, want %q", c.name, c.body, got, c.want)
+		}
+	}
+}
+
+// TestStripHTMLCommentsKeepsLineCount — a closed comment is replaced by as many blank lines as it
+// spanned, never deleted, so the lines on either side of it can never become adjacent.
+//
+// FAIL-FIRST (mutation: stripHTMLComments' replacement func returns "" instead of one newline
+// per spanned line): got joins "a" directly onto "b" and != want.
+func TestStripHTMLCommentsKeepsLineCount(t *testing.T) {
+	body := "a\n<!--\nsubject: hidden\n-->\nb"
+	want := "a\n\n\n\nb"
+	if got := stripHTMLComments(body); got != want {
+		t.Errorf("stripHTMLComments(%q) = %q, want %q", body, got, want)
+	}
+}
+
+// TestStripHTMLCommentsUnclosedToEOF — an unclosed `<!--` that opens a line hides everything
+// after it in a rendered preview (an HTML block that never ends), so the strip blanks that line
+// and every line after it.
+//
+// FAIL-FIRST (mutation: truncateAtUnclosedComment reduced to `return body`): the unclosed
+// comment is left as text and got != want.
+func TestStripHTMLCommentsUnclosedToEOF(t *testing.T) {
+	body := "a\n<!-- never closed\nsubject: hidden\nb"
+	want := "a\n\n\n"
+	if got := stripHTMLComments(body); got != want {
+		t.Errorf("stripHTMLComments(%q) = %q, want %q", body, got, want)
+	}
+}
+
+// TestParseForkTestUnclosedCommentHidesBlock — the parse-level row for the unclosed-comment
+// guard (sec-1688-S1 item 2): a complete block with a subject, sitting entirely after an
+// unclosed line-start `<!--`, is invisible in the rendered issue, so it must never admit. The
+// backstop does NOT catch this shape on its own — the raw body has one heading and the raw
+// reading finds the same subject — so this row is pinned by the strip alone.
+//
+// FAIL-FIRST (mutation: truncateAtUnclosedComment reduced to `return body`): Found and
+// HasSubject both flip to true.
+func TestParseForkTestUnclosedCommentHidesBlock(t *testing.T) {
+	body := "<!-- an unclosed comment opens here\n" + validForkTestBlock +
+		"subject: fix the docs wording of the --sla-days help text\n"
+	r := parseForkTest(body)
+	if r.Found || r.HasSubject {
+		t.Errorf("Found/HasSubject = %v/%v (Subject = %q), want false/false — a block after an unclosed line-start comment is hidden in the rendered issue", r.Found, r.HasSubject, r.Subject)
+	}
+}
+
+// TestParseForkTestRawMismatchKillsSubject — the parse-level pin for the backstop's second
+// condition (raw reading disagrees with stripped reading). Here the strip itself is what makes
+// a `subject:` line appear at column zero: the closing `-->` sits at the start of the subject
+// line, so the raw line is `-->subject: ...` (not a key line) while the stripped line is
+// `subject: ...`. The raw reading has no subject; the stripped one does; they disagree, so no
+// subject is read.
+//
+// FAIL-FIRST (mutation: the `else if rawSubject, rawHas := subjectFromRawBody(body); ...` arm
+// of parseForkTest's backstop removed): HasSubject flips to true.
+func TestParseForkTestRawMismatchKillsSubject(t *testing.T) {
+	body := validForkTestBlock[:len(validForkTestBlock)-1] + "<!-- a note\n" +
+		"-->subject: fix the docs wording of the --sla-days help text\n"
+	r := parseForkTest(body)
+	if r.HasSubject {
+		t.Errorf("HasSubject = true (Subject = %q), want false — the raw and stripped readings disagree", r.Subject)
+	}
+}
+
+// TestStripFencedBlocksKeepsLineCount — a fenced block is replaced by as many blank lines as it
+// spanned, never deleted, so the lines on either side of it can never become adjacent.
+//
+// FAIL-FIRST (mutation: stripFencedBlocks drops every fence line from its output instead of
+// blanking it — the round-7 deletion behaviour): got joins "a" directly onto "b" and != want.
+func TestStripFencedBlocksKeepsLineCount(t *testing.T) {
+	body := "a\n```\nsubject: hidden\n```\nb"
+	want := "a\n\n\n\nb"
+	if got := stripFencedBlocks(body); got != want {
+		t.Errorf("stripFencedBlocks(%q) = %q, want %q", body, got, want)
+	}
 }

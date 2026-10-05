@@ -27,20 +27,23 @@ import (
 // finding the next shape the marker list had not enumerated (a plain trailing line after one
 // blank line; an HTML
 // comment hidden inside the block itself). The fix is not a seventh marker: it is dropping the
-// whole "scan forward for a boundary marker" design in favour of three rules that need no
-// enumeration —
+// whole "scan forward for a boundary marker" design in favour of three rules that bound the
+// block by its own grammar. Rule 1 still models specific Markdown constructs, so it is the one
+// rule whose accuracy matters shape by shape (see ROUND 7.1 below and the backstop) —
 //
-//  1. Strip every fenced code block and every HTML comment out of the WHOLE body before any
-//     of the rest of this runs (stripFencedBlocks, stripHTMLComments). Nothing inside either
-//     can ever be read as a heading or a key line again, so a quoted example, a quoted heading,
-//     or a subject hidden in a comment between two real key lines all vanish before parsing
-//     starts, rather than needing their own boundary rule.
-//  2. The heading must be followed DIRECTLY by the block — blank lines are fine (the grammar's
-//     own well-formed shape has one), but any other text before the first key line is a
+//  1. Blank every fenced code block and every HTML comment in the WHOLE body before any of the
+//     rest of this runs (stripFencedBlocks, stripHTMLComments). As far as those two functions
+//     follow CommonMark, a quoted example, a quoted heading, or a subject hidden in a comment
+//     is blanked before parsing starts. They model only these two constructs: other things a
+//     renderer or sanitizer may hide (raw HTML elements, for example) are not modelled, and
+//     the round-7 claim that nothing inside a fence or comment could ever be read was false
+//     until round 7.1 fixed the fence closer and the unclosed comment.
+//  2. The heading must be followed DIRECTLY by the block — blank lines are fine (none are
+//     required), but any other text before the first key line is a
 //     malformed block, not a silently-empty one (cor-1688-C11).
 //  3. The block is the CONTIGUOUS run of key lines (forkKeyLineRe) starting there. It ends at
 //     the first line that does not match — including a blank line — and nothing past that line
-//     is EVER read as part of the block, whatever the rest of the body contains. A trailing
+//     of the STRIPPED body is ever read as part of the block. A trailing
 //     `subject:`-shaped line separated from the block by so much as one blank line is not a
 //     boundary marker to special-case; it is simply not contiguous, so it was never a candidate
 //     in the first place.
@@ -712,7 +715,7 @@ func truncateAtUnclosedComment(body string) string {
 //     body any other gate (evidence, marker-claim, one-way) reads.
 //  2. The heading (any level) is found. found is false only when no heading exists at all.
 //  3. The heading must be followed DIRECTLY by the block: any number of blank lines are
-//     tolerated (the grammar's own well-formed shape has one), but the first non-blank line
+//     tolerated (none are required), but the first non-blank line
 //     after the heading must be a key line (forkKeyLineRe) — anything else (prose, an empty
 //     heading with nothing following it) makes malformed non-empty and section empty
 //     (cor-1688-C11: a heading was found, but no block could be located after it).

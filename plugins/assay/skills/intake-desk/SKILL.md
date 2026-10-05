@@ -326,8 +326,10 @@ correctness). A **mutating** response does not converge harmlessly: hence §Clos
    must be followed directly by the block (blank lines are fine, prose is not), the block is
    the contiguous run of key lines that follows (each at column zero, no bullet/quote/indent
    decoration), and it ends at the first line that does not match, blank or not — nothing past
-   that line is ever read as part of it. Exactly one `subject:` line inside that bounded run
-   admits; zero or more than one admits nothing: write ONE `subject:` line yourself, among the
+   that line is ever read as part of it, once fenced code and HTML comments are blanked (how
+   far that strip goes is in the README). Exactly one `subject:` line inside that bounded run
+   is required before the signal test can admit; zero or more than one admits nothing: write
+   ONE `subject:` line yourself, among the
    block's other key lines, naming the one thing being decided (`tools/desk/README.md` has the
    full grammar). Any
    item that is one-way to you stays on the human queue whatever the tool would admit — file it

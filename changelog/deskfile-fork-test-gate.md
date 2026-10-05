@@ -29,104 +29,24 @@
   the `desk-r3-decision v1` marker in any spelling the digest reads, or broader
   (`--force-new` included): only the notice lane writes either. The marker's reader pattern
   is declared once, in `deskkit`.
-
-### Fixed
-- The notice lane's positive reversible-signal test now reads the fork-test block's own
-  `subject:` line alone, never the issue title or body prose (security review sec-1688-S1,
-  round 4): a title routinely carries more than one clause, and a scan of the whole thing
-  admitted on whichever clause happened to carry a reversible needle rather than on what the
-  filing was actually about. `subject:` is optional; its absence never admits.
-- A `lint level`/`lint severity`/`notice or error`/`port-or-drop` example never admits the
-  notice lane on its own any more, named CI check or not (security review sec-1688-S1, round
-  5): each of those is, by construction, always a classification question about some check or
-  job, so a rule that only refused when the subject named the check by a generic noun
-  (check/job/workflow/pipeline, or this codebase's own `<word>-sweep`/`<word> check`
-  compounds) still admitted a check named by its own name (`pin-consistency`, `skillslint`,
-  `forge-surface`, `build-test`, `govulncheck`, `CodeQL`). The generic-noun check remains as a
-  backstop for other reversible needles paired with an explicit check/job mention.
-- The declared `subject:` line is now read only when the fork-test section carries exactly
-  one such line and it is not `>`-quoted (security review sec-1688-S1, round 5): the section
-  runs to the next heading or EOF, so a `>`-quoted line of trailing prose, or a second
-  `subject:` line (an incidental one, or a leftover template placeholder), used to override an
-  honest first subject because the parser kept only the last line seen. Two or more lines, or
-  a lone quoted one, now leave no declared subject — the same fail-closed default as none at
-  all.
-- The fork-test section itself is now BOUNDED (security review sec-1688-S1, round 6): it used
-  to run to the next heading or EOF, so a `subject:`-shaped line anywhere afterward — inside a
-  fenced or indented code block, in ordinary prose, or past a Markdown setext heading, none of
-  which the old scan treated as ending anything — was still read as the declared subject when
-  the block itself declared none. The section now ends at the first heading, fence, or blank
-  line encountered after the block's last recognised grammar key line, never at EOF.
-- A subject pairing a shape-only needle (`lint level`/`lint severity`/`notice or error`/
-  `port-or-drop`/`port or drop`) with an unrelated content-bearing needle (docs wording, a
-  typo, …) now refuses instead of admitting through the content needle (correctness re-review
-  cor-1688-C7, residual; security review sec-1688-S1, round 6): the shape-only needle is a
-  VETO, checked before any content needle is looked for, not merely skipped while scanning for
-  one.
-- Needle matches (the notice lane's admission scan) now respect word boundaries, so `wording`
-  no longer matches inside `rewording`; and a Unicode hyphen/dash look-alike (U+2010, U+2011,
-  U+2012, U+2013, U+2014, U+2212) in the subject is normalised to an ASCII hyphen before the
-  `ciCheckOrJobRe` backstop and the hyphenated needles run, so a check name typed with a
-  "fancy" hyphen still matches (round 6 advisories).
-- **The subject-extraction grammar is now strict and fail-closed (round 7), replacing the
-  round 1-6 shape-by-shape boundary markers with three rules that need no further enumeration**
-  (security review sec-1688-S1, correctness re-review cor-1688-C11/C12; the driver's option-2
-  ruling is unchanged — this is the same ruling, implemented once instead of patched six
-  times): every fenced code block and every HTML comment is stripped from the whole body BEFORE
-  any parsing runs, so nothing inside either — including a `subject:` line hidden inside an
-  HTML comment between two of the block's own real key lines, and a `### Fork test` heading
-  quoted inside an earlier fenced example — can ever be read as a key line or the heading
-  itself; the `### Fork test` heading must be followed DIRECTLY by the block (blank lines are
-  fine, any other text before the first key line is now a MALFORMED block, named as such,
-  rather than a silently empty one); and the block is the CONTIGUOUS run of key lines
-  (`<lowercase-key>: <content>` at column zero, no bullet/quote/indent decoration) starting
-  there, ending at the first line that does not match — blank or not — with nothing past that
-  line ever read as part of the block. This closes, at once: every prior round's trailing-
-  content shape, the plain-trailing-line-after-one-blank-line residual security review
-  5332392502 found still open, the fence-arm gap that had no test able to fail
-  (cor-1688-C12/sec-1688-S5), the intro-prose-before-the-first-key-line case
-  (cor-1688-C11), and a withheld hidden-HTML-comment-subject variant from the private
-  review detail. The dedicated `>`-quote exclusion and per-shape boundary markers
-  (fence/heading/blank-run tracking) are retired: a decorated or indented line was never a key
-  line under the new grammar, so it can neither start nor extend the block.
-- The Unicode hyphen/dash normaliser (round 6) widens to four further look-alikes named in the
-  withheld review detail: U+FF0D FULLWIDTH HYPHEN-MINUS, U+FE63 SMALL HYPHEN-MINUS,
-  U+00AD SOFT HYPHEN (which renders as no visible character at all), and U+2043 HYPHEN BULLET.
-- **Round 7's "closes, at once" claim was not quite true: the strip itself had three further
-  gaps (round 7.1, correctness re-review cor-1688-C15, security re-review sec-1688-S1).** A
-  fence used to close on ANY delimiter line regardless of character, length, or indentation —
-  CommonMark closes one only on the SAME character, a closer at least as long as the opener,
-  and under 4 columns of indentation (a tab counts as 4) — so a nested or mixed fence, or a
-  tab-indented pseudo-fence, could end the strip early or hide a real block a renderer would
-  show as plain text. An unclosed line-start HTML comment used to be left as parser-visible
-  text; a renderer hides it and everything after it to EOF instead. And stripping used to
-  DELETE a fenced or commented line outright rather than blanking it, which could remove the
-  separation between whatever came before it and whatever came after — joining a `subject:`
-  line onto a block it was never part of. All three are fixed: a fence and an unclosed comment
-  are now matched and blanked the way a renderer actually treats them, and a stripped line
-  becomes an empty one, never disappears. A backstop also kills any subject when the RAW,
-  never-stripped body carries more than one `### Fork test`-shaped heading, or when re-deriving
-  the subject from that raw body disagrees with the stripped reading — whatever the strip
-  itself still gets wrong.
-- **The comment-stripping mechanism (round 7) had no test that could fail on its own (round
-  7.1, correctness re-review cor-1688-C14).** Every existing test for it happened to also be
-  covered by a side effect of the shape it used (a blank line the strip's removal left behind,
-  or a capitalised trailing line the subject regexp would not have read anyway), so disabling
-  the strip outright left every test green. A new test places the hidden `subject:` line
-  trailing off the block's own last key line, where nothing else breaks contiguity, and only
-  passes when the strip actually runs. Two existing FAIL-FIRST test comments that described a
-  red-before/green-after sequence which did not actually reproduce (re-verified by reverting to
-  the named mutation and re-running each test) are corrected to describe what they actually
-  pin.
-- Needle matching against the fork-test subject (both the shape-only veto and the
-  content-bearing scan) now collapses runs of whitespace, underscore, dot, slash and hyphen to
-  a single space before comparing (round 7.1, security review sec-1688-S1 advisory), so
-  `lint_level`, `lint-level`, `lint.level` and a doubled space all match the needle `lint level`
-  as written, instead of each spelling needing its own enumerated needle. Any non-ASCII
-  character anywhere in the subject now fails closed before any needle or `ciCheckOrJobRe`
-  check runs, closing the class of Unicode hyphen/dash look-alikes and invisible characters
-  (non-breaking space, zero-width characters, …) beyond the four `normalizeHyphens` widened to
-  by name.
+- The fork-test block is read by a strict, fail-closed grammar (`tools/desk/README.md`):
+  fenced code blocks and HTML comments are blanked first, following CommonMark for those two
+  constructs (a fence closes only on the same character, at least as many repetitions and
+  under 4 columns of indent; an unclosed line-start comment hides everything after it; a
+  blanked line stays as an empty line, so it never joins what came before it to what came
+  after it). The heading must be followed directly by the block, and the block is the
+  contiguous run of column-zero `<lowercase-key>: <content>` lines. Prose between the heading
+  and the first key line is refused as a malformed block, naming that problem. The strip
+  models only fences and comments; a backstop drops the declared subject when the raw body has
+  more than one fork-test heading, or when a reading of the raw body disagrees with the
+  stripped reading. One residual stays open: a `subject:` line placed directly under the
+  block's last line, with no blank line, joins the block.
+- The notice lane reads its reversible signal from the block's own `subject:` line alone,
+  never the title or body prose, and only when the bounded block carries exactly one such
+  line; none or several admit nothing. A shape-only needle (`lint level`, `lint severity`,
+  `notice or error`, `port-or-drop`) never admits and vetoes any content needle beside it.
+  Needles match on word boundaries, with runs of spaces, underscores, dots, slashes and
+  hyphens treated as one space, and any non-ASCII character in the subject fails closed.
 
 ### Changed
 - The R-3 human-only and reversible keyword lists moved from `cmd/deskdigest` into

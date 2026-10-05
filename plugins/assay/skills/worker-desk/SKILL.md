@@ -804,8 +804,10 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   (blank lines are fine, prose is not), the block is the contiguous run of key lines that
   follows (`option:`/`default:`/`caught-by:`/`ruled-check:`/`subject:`, each at column zero with
   no bullet/quote/indent decoration), and it ends at the first line that does not match, blank
-  or not — nothing past that line is ever read as part of it, whatever the rest of the body
-  contains. Exactly one `subject:` line inside that bounded run admits; zero or more than one
+  or not — nothing past that line is ever read as part of it, once fenced code and HTML
+  comments are blanked (how far that strip goes, and its backstop, are in the README). Exactly
+  one `subject:` line inside that bounded run is required before the signal test can admit;
+  zero or more than one
   admits nothing: write ONE `subject:` line yourself, naming the one thing being decided,
   directly among the block's other key lines (`tools/desk/README.md` has the full grammar). The
   tool's keyword check
