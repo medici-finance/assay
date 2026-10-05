@@ -216,7 +216,7 @@ func cmdComms(cell string, args []string) {
 		return
 	}
 	if recovering {
-		launch, err := cellcadence.Acquire(c.commsLaunchDir())
+		launch, err := c.acquireCommsLaunch()
 		if err != nil {
 			die("comms recovery: %v", err)
 		}

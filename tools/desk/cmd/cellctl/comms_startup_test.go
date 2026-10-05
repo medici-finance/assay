@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
+	"github.com/medici-finance/assay/tools/desk/internal/custodytest"
 )
 
 func TestCommsManifestRoundTrip(t *testing.T) {
@@ -54,7 +55,7 @@ func TestCommsCommandQuoting(t *testing.T) {
 func TestCommsStopFailure(t *testing.T) {
 	for _, uncertain := range []bool{false, true} {
 		t.Run(map[bool]string{false: "storage-error", true: "children-uncertain"}[uncertain], func(t *testing.T) {
-			c := &Cell{Name: "example", Dir: t.TempDir()}
+			c := &Cell{Name: "example", Dir: custodytest.PrivateTempDir(t)}
 			l, err := cellcadence.Acquire(c.commsDir())
 			if err != nil {
 				t.Fatal(err)
@@ -115,7 +116,7 @@ func TestCommsOrcaEnvelope(t *testing.T) {
 
 func TestCommsReservation(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	c := &Cell{Name: "example", Dir: t.TempDir()}
+	c := &Cell{Name: "example", Dir: custodytest.PrivateTempDir(t)}
 	l, err := cellcadence.Acquire(c.commsLaunchDir())
 	if err != nil {
 		t.Fatal(err)
@@ -132,5 +133,31 @@ func TestCommsReservation(t *testing.T) {
 	after, _ := os.ReadFile(p)
 	if string(after) != string(before) {
 		t.Fatal("pending reservation changed")
+	}
+}
+
+func TestCommsSurfaceRoundTrip(t *testing.T) {
+	c := &Cell{Name: "example", Dir: custodytest.PrivateTempDir(t)}
+	lease, err := c.acquireCommsLaunch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	f, err := os.OpenFile(filepath.Join(c.commsLaunchDir(), "surface.json"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	for _, surface := range []*commsSurface{
+		{Cockpit: "orca", Handle: "terminal-example", Label: "example-comms", RuntimeID: "runtime-example"},
+		{Cockpit: "tmux", Handle: "@1", Label: "example-comms"},
+	} {
+		if err := c.writeCommsSurface(f, surface); err != nil {
+			t.Fatal(err)
+		}
+		got, err := c.readCommsSurface()
+		if err != nil || got == nil || *got != *surface {
+			t.Fatalf("surface round trip: %+v %v", got, err)
+		}
 	}
 }

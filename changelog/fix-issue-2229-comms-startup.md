@@ -3,3 +3,4 @@
 
 ### Fixed
 - `cellctl set` preserves literal comms manifest paths containing spaces or shell metacharacters.
+- Maintainer follow-up for S-2237-receipt-custody; details retained in internal notes.

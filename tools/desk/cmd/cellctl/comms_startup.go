@@ -57,6 +57,13 @@ func (c *Cell) commsPreflight() (bool, error) {
 			return false, err
 		}
 	}
+	if _, err := os.Lstat(c.commsLaunchDir()); err == nil {
+		if err := c.checkCommsLaunchDir(); err != nil {
+			return false, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
 	owned := false
 	if _, err := os.Lstat(c.commsDir()); err == nil {
 		var err error
@@ -109,7 +116,27 @@ func (c *Cell) commsOwned() (bool, error) {
 	return false, nil
 }
 
+func (c *Cell) checkCommsLaunchDir() error {
+	if err := privateCommsDir(c.commsLaunchDir()); err != nil {
+		return err
+	}
+	return commsLaunchOwner(c.commsLaunchDir())
+}
+
+func (c *Cell) acquireCommsLaunch() (*cellcadence.Lease, error) {
+	if err := os.MkdirAll(c.commsLaunchDir(), 0700); err != nil {
+		return nil, err
+	}
+	if err := c.checkCommsLaunchDir(); err != nil {
+		return nil, err
+	}
+	return cellcadence.Acquire(c.commsLaunchDir())
+}
+
 func (c *Cell) readCommsSurface() (*commsSurface, error) {
+	if err := c.checkCommsLaunchDir(); err != nil {
+		return nil, err
+	}
 	p := filepath.Join(c.commsLaunchDir(), "surface.json")
 	if _, err := os.Lstat(p); errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -133,7 +160,7 @@ func (c *Cell) readCommsSurface() (*commsSurface, error) {
 
 // Called once by up before roles, never by a cadence pass.
 func (c *Cell) startComms(cockpit string) error {
-	launch, err := cellcadence.Acquire(c.commsLaunchDir())
+	launch, err := c.acquireCommsLaunch()
 	if err != nil {
 		return fmt.Errorf("comms startup already in progress: %w", err)
 	}
@@ -163,17 +190,12 @@ func (c *Cell) startComms(cockpit string) error {
 	if err != nil {
 		return err
 	}
-	b, _ := json.Marshal(surface)
-	_, err = f.Write(b)
-	if err := errors.Join(err, f.Close()); err != nil {
-		return err
+	if err := c.writeCommsSurface(f, surface); err != nil {
+		return errors.Join(err, f.Close())
 	}
-	err = c.openCommsSurface(surface)
-	b, _ = json.Marshal(surface)
-	if err := os.WriteFile(p, b, 0600); err != nil {
-		return err
-	}
-	if err != nil {
+	launchErr := c.openCommsSurface(surface)
+	writeErr := c.writeCommsSurface(f, surface)
+	if err := errors.Join(launchErr, writeErr, f.Close()); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(10 * time.Second)
@@ -192,6 +214,37 @@ func (c *Cell) startComms(cockpit string) error {
 	}
 	fmt.Printf("[comms] opened %s-comms in %s\n", c.Name, cockpit)
 	return nil
+}
+
+func (c *Cell) writeCommsSurface(f *os.File, surface *commsSurface) error {
+	if err := c.checkCommsLaunchDir(); err != nil {
+		return err
+	}
+	if err := privateCommsFile(f.Name()); err != nil {
+		return err
+	}
+	opened, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	named, err := os.Lstat(f.Name())
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(opened, named) {
+		return fmt.Errorf("comms launch receipt changed; inspect before retrying")
+	}
+	b, err := json.Marshal(surface)
+	if err != nil {
+		return err
+	}
+	if _, err := f.WriteAt(b, 0); err != nil {
+		return err
+	}
+	if err := f.Truncate(int64(len(b))); err != nil {
+		return err
+	}
+	return f.Sync()
 }
 
 func (c *Cell) openCommsSurface(surface *commsSurface) error {
@@ -255,7 +308,7 @@ func (c *Cell) stopComms() error {
 	if _, err := os.Lstat(c.commsDir()); errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-	launch, err := cellcadence.Acquire(c.commsLaunchDir())
+	launch, err := c.acquireCommsLaunch()
 	if err != nil {
 		return err
 	}
