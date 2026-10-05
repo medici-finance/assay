@@ -65,3 +65,23 @@ func TestOutcomeDraftOpensHold(t *testing.T) {
 		t.Fatalf("merge-holds opened = %v, want exactly [4242] — the just-created outcome-record change", f.holds)
 	}
 }
+
+func TestOutcomeHoldFailIsLoud(t *testing.T) {
+	f, errBuf := setupFake(t)
+	f.defaultBranch = "main"
+	f.holdErr = errors.New("503 the instance is unavailable")
+	line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`
+	recFile := writeRepoFile(t, "record.json", line+"\n")
+
+	code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile})
+	if code == deskkit.ExitOK {
+		t.Fatal("exit = 0 — a merge-hold open failure must never read as a clean outcome-record landing")
+	}
+	if len(f.holds) != 1 || f.holds[0] != 4242 {
+		t.Fatalf("merge-hold attempts = %v, want exactly [4242]", f.holds)
+	}
+	if !strings.Contains(errBuf.String(), "https://forge.example/change/4242") ||
+		!strings.Contains(errBuf.String(), "merge-hold") {
+		t.Fatalf("stderr does not name the change and its missing merge-hold: %q", errBuf.String())
+	}
+}

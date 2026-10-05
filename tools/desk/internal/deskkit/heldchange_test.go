@@ -148,12 +148,11 @@ func draftChangeCallSites(walkRoot, relRoot string) ([]string, error) {
 			if !ok {
 				continue
 			}
+			// Match every selector naming CreateDraftChange, not only call expressions: a method
+			// value (f := fg.CreateDraftChange; f(...)) or a method expression reaches the raw seam
+			// just as a direct call does.
 			ast.Inspect(fd, func(n ast.Node) bool {
-				call, ok := n.(*ast.CallExpr)
-				if !ok {
-					return true
-				}
-				if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "CreateDraftChange" {
+				if sel, ok := n.(*ast.SelectorExpr); ok && sel.Sel.Name == "CreateDraftChange" {
 					sites = append(sites, rel+":"+fd.Name.Name)
 				}
 				return true
@@ -202,8 +201,10 @@ func TestDraftChangeOnlyViaHeld(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fixture scan: %v", err)
 	}
-	if len(planted) != 1 || planted[0] != "planted_change.go:openUnheldChange" {
-		t.Fatalf("positive control: fixture sites = %v, want exactly [planted_change.go:openUnheldChange] — "+
-			"the matcher is not live", planted)
+	sort.Strings(planted)
+	want := []string{"planted_change.go:openUnheldChange", "planted_change.go:openViaMethodValue"}
+	if strings.Join(planted, ",") != strings.Join(want, ",") {
+		t.Fatalf("positive control: fixture sites = %v, want exactly %v — the matcher is not live "+
+			"(both the direct call and the method-value reach must be flagged)", planted, want)
 	}
 }

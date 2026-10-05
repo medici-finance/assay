@@ -16,3 +16,10 @@ type forge interface {
 func openUnheldChange(fg forge) (int, error) {
 	return fg.CreateDraftChange("example-org/tracker", "side-branch")
 }
+
+// openViaMethodValue is the second planted violation: it reaches the raw seam through a method
+// value rather than a direct call, which a call-only matcher would miss.
+func openViaMethodValue(fg forge) (int, error) {
+	create := fg.CreateDraftChange
+	return create("example-org/tracker", "side-branch")
+}
