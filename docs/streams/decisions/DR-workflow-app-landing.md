@@ -97,6 +97,27 @@ once the path is proven.
   same surface the mixed-PR guard's required-check placement lives on above — and is left to the
   wiring brief's human gate to decide, not silently assumed.
 
+## Note — `workflow_dispatch` is not by itself human-initiated
+
+This note records a review finding against the sixth `accepted:` entry. It changes neither that
+entry nor this record's status, which stays `proposed` until a ruling is recorded above.
+
+That entry counts "an explicit `workflow_dispatch`" as a human-initiated invocation. The equation
+does not hold on its own. Any identity holding `actions: write` can fire `workflow_dispatch`,
+including an App such as the release-runner App in the App inventory. And a branch pushed with
+`contents: write` + `workflows: write` already runs that branch's own workflow files on push-type
+triggers, before any human merge. So human-merges does not contain the power to rewrite CI; the
+boundary where the workflow App's credential is minted does.
+
+The human-initiated property therefore has to be enforced at the verb's credential boundary
+(desk-supervision/11), not assumed from the trigger name. Two ways to make it hold:
+
+- an actor check that refuses a dispatch whose initiator is not a human account; or
+- the App's key held in an environment-scoped secret with required human reviewers, so that
+  neither an App-fired dispatch nor a branch-push workflow can reach it.
+
+Which of these, if either, is for the gate of desk-supervision/11 to decide.
+
 ## Open question — if the workflow App turns out unwired or missing
 
 The methodology assumes ONE narrowly-scoped `workflows: write` identity exists. If, on

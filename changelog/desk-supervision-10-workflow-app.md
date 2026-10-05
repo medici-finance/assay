@@ -1,3 +1,7 @@
 ### Added
 - The App inventory in `docs/adopting-assay.md` now records the **workflow App**: the single identity holding `workflows: write`, scoped to exactly `contents: write` + `workflows: write` + `pull_requests: write` + `metadata: read` with zero webhook events, and with `administration`, `actions`, `checks`/`statuses: write`, `members` and secrets/variables withheld. It stands beside the desk-role Apps as a capability, not a desk role or a tier.
-- `docs/streams/desk-supervision/workflow-app-scope.md` states that App's granted and withheld permissions, its duty (author a workflow-only PR, which a human merges), and the invariant that no other App holds `workflows: write`, with the two checks that prove it.
+- `docs/streams/desk-supervision/workflow-app-scope.md` states that App's granted and withheld permissions, its duty (author a workflow-only PR, which a human merges), the invariant that no other App holds `workflows: write`, and the two checks that prove it. Both read an installation's granted set from GitHub endpoints that exist: `GET /app/installations/{installation_id}` under the App's JWT, or the `permissions` object returned when an installation token is minted.
+
+### Fixed
+- Brief desk-supervision/10's Verify rows 5 and 6 no longer call `gh api /installation/permissions`, which GitHub does not serve. They now read the grant, the subscribed events and the installation's repository selection from the endpoints above.
+- `DR-workflow-app-landing` carries a note that an explicit `workflow_dispatch` does not by itself show a human started the run, so the human-initiated property has to be enforced where the workflow App's credential is minted. The record's status is unchanged.
