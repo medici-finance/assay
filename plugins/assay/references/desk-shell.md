@@ -152,7 +152,7 @@ retains only its bounded output tail, receipt and result after handoff.
 The runtime releases/reclaims scratch on ordinary completion or catchable termination;
 restart cleanup requires the execution lease and child-liveness proof. One owner,
 `cellctl scratch`, handles dry-run/apply, budgets and conservative recovery. Git
-worktrees remain `deskwt`'s responsibility. Unmarked legacy or harness-private
+worktrees remain `deskwt`'s responsibility. Unmarked legacy or harness owned
 directories are inventory-only; neither names nor age establish deletion authority.
 See `docs/cellctl-scratch.md` in the toolkit for flags, retention limits and supported
 host paths. Do not add shell deletion hooks to individual roles.

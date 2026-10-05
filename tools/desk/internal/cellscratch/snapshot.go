@@ -42,7 +42,7 @@ func (r *Run) Snapshot(ctx context.Context, source string, maxBytes int64) error
 	for scan.Scan() {
 		fields, path, ok := strings.Cut(scan.Text(), "\t")
 		parts := strings.Fields(fields)
-		if !ok || len(parts) != 4 || !filepath.IsLocal(path) || strings.Contains(path, "\\") || filepath.Base(path) == ".git" {
+		if !ok || len(parts) != 4 || !filepath.IsLocal(path) || strings.Contains(path, "\\") || metadataPath(path) {
 			err = errors.New("unsafe Git snapshot path")
 			break
 		}
@@ -116,7 +116,7 @@ func (r *Run) Snapshot(ctx context.Context, source string, maxBytes int64) error
 			}
 			// Preserve repository symlinks only when their target remains within the snapshot.
 			joined := filepath.Clean(filepath.Join(filepath.Dir(b.path), string(target)))
-			if filepath.IsAbs(string(target)) || !filepath.IsLocal(joined) {
+			if filepath.IsAbs(string(target)) || !filepath.IsLocal(joined) || metadataPath(string(target)) || metadataPath(joined) {
 				err = fmt.Errorf("snapshot symlink escapes: %s", b.path)
 				break
 			}

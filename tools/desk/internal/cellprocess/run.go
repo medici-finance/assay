@@ -48,21 +48,30 @@ func RunInteractive(ctx context.Context, argv, env []string, dir string, stdin *
 
 // RunInteractiveObserved enrolls a child before accepting its completion.
 func RunInteractiveObserved(ctx context.Context, argv, env []string, dir string, stdin *os.File, stdout, stderr io.Writer, started func(int) error) (int, bool, error) {
-	return runObserved(ctx, argv, env, dir, stdout, stderr, func(cmd *exec.Cmd) (processTree, error) {
-		if stdin != nil {
-			cmd.Stdin = stdin
-		}
-		return newInteractiveProcessTree(cmd)
-	}, started)
+	return RunInteractive(observeLaunch(ctx, started), argv, env, dir, stdin, stdout, stderr)
 }
 
-// RunObserved persists child identity for conservative crash recovery.
+// RunObserved goes through Run's public custody boundary. Observation must never
+// create a second route around launch admission or cache ownership.
 func RunObserved(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, started func(int) error) (int, bool, error) {
-	return runObserved(ctx, argv, env, dir, stdout, stderr, newProcessTree, started)
+	return Run(observeLaunch(ctx, started), argv, env, dir, stdout, stderr)
+}
+
+type observerKey struct{}
+
+func observeLaunch(ctx context.Context, started func(int) error) context.Context {
+	if ctx == nil || started == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, observerKey{}, started)
 }
 
 func run(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, setup func(*exec.Cmd) (processTree, error)) (int, bool, error) {
-	return runObserved(ctx, argv, env, dir, stdout, stderr, setup, nil)
+	var started func(int) error
+	if ctx != nil {
+		started, _ = ctx.Value(observerKey{}).(func(int) error)
+	}
+	return runObserved(ctx, argv, env, dir, stdout, stderr, setup, started)
 }
 
 func runObserved(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, setup func(*exec.Cmd) (processTree, error), started func(int) error) (int, bool, error) {

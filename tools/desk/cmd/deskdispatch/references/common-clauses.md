@@ -106,6 +106,6 @@ sharing it has finished, call `cellctl scratch <ASSAY_SCRATCH_CELL> ack --id
 scratch from a delegated worker. Pending evidence and resumable tasks remain protected;
 acknowledgment never overrides live ownership. The runtime alone reclaims disposable data
 and bounds failed-run diagnostics. No role adds a shell deletion hook. Older unmarked or
-harness-private scratch remains inventory-only until its ownership and evidence are proved.
+harness owned scratch remains inventory-only until its ownership and evidence are proved.
 See `docs/cellctl-scratch.md` and the shipped desk-shell reference, "Managed task scratch".
 <!-- common-clauses:end -->

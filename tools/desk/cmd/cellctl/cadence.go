@@ -75,7 +75,7 @@ func (c *Cell) runInteractiveHarness(role string, argv, env []string, wt string)
 			}
 		}
 		childArgs := scratchArgv(harness, argv, childEnv)
-		code, uncertain, err = cellprocess.RunInteractiveObserved(child, childArgs, childEnv, wt, os.Stdin, io.MultiWriter(os.Stdout, scratch.tail), io.MultiWriter(os.Stderr, scratch.tail), scratch.run.Started)
+		code, uncertain, err = cellprocess.RunInteractiveObserved(child, childArgs, childEnv, wt, os.Stdin, interactiveOutput(os.Stdout, scratch.tail), interactiveOutput(os.Stderr, scratch.tail), scratch.run.Started)
 		result := cellcadence.Result{ExitCode: code, Uncertain: uncertain, Err: err}
 		scratch.finish(&result)
 		return result

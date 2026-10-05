@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"golang.org/x/term"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -120,4 +122,15 @@ func (c *Cell) scratchPolicy() (cellscratch.Policy, error) {
 		p.MaxBytes = value
 	}
 	return p, nil
+}
+
+// interactiveOutput preserves terminal descriptors. Wrapping a terminal in an
+// io.Writer makes os/exec create a pipe, changing the interactive program's ABI.
+// Only redirected streams are copied; a bounded marker records absent capture.
+func interactiveOutput(file *os.File, tail io.Writer) io.Writer {
+	if term.IsTerminal(int(file.Fd())) {
+		_, _ = fmt.Fprintln(tail, "interactive terminal stream: output capture unavailable; retain required evidence explicitly")
+		return file
+	}
+	return io.MultiWriter(file, tail)
 }

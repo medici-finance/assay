@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/cellscratch ./cmd/cellctl ./internal/cellprocess -run 'TestScratch|TestObserved' -count=1 -timeout=30s",
+  "test": "go test ./internal/cellscratch ./cmd/cellctl ./internal/cellprocess -run 'TestScratch|TestObserved|TestCacheObserved' -count=1 -timeout=30s",
   "control": {
     "name": "skip successful disposal",
     "file": "internal/cellscratch/store.go",
@@ -108,6 +108,30 @@
       "file": "internal/cellprocess/run.go",
       "old": "startErr = started(cmd.Process.Pid)",
       "new": "_ = started(cmd.Process.Pid)"
+    },
+    {
+      "name": "replace terminal descriptors with pipes",
+      "file": "cmd/cellctl/scratch_launch.go",
+      "old": "if term.IsTerminal(int(file.Fd())) {",
+      "new": "if false && term.IsTerminal(int(file.Fd())) {"
+    },
+    {
+      "name": "bypass literal input traversal",
+      "file": "internal/cellscratch/path.go",
+      "old": "current, err := source.OpenRoot(\".\")",
+      "new": "if path != \"\" { file,err:=source.Open(path); if err!=nil{return nil,nil,err}; info,err:=file.Stat(); return file,info,err }; current, err := source.OpenRoot(\".\")"
+    },
+    {
+      "name": "accept unverified input link count",
+      "file": "internal/cellscratch/path.go",
+      "old": "if err = singleInputLink(file); err != nil {",
+      "new": "if err = singleInputLink(file); false {"
+    },
+    {
+      "name": "plant observed custody bypass",
+      "file": "internal/cellprocess/run.go",
+      "old": "return Run(observeLaunch(ctx, started), argv, env, dir, stdout, stderr)",
+      "new": "return runObserved(ctx, argv, env, dir, stdout, stderr, newProcessTree, started)"
     }
   ]
 }

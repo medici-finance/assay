@@ -29,7 +29,10 @@ An acknowledgment alone never overrides a live execution lease or surviving chil
 
 Successful acknowledged tasks are reclaimed after child-tree cleanup. Failed or
 interrupted acknowledged tasks keep their result record, receipt and the last
-64 KiB of combined stdout/stderr; their disposable workspace is reclaimed. Capture
+64 KiB of captured output; their disposable workspace is reclaimed. Interactive
+terminal descriptors pass through directly to preserve terminal behavior. The
+diagnostic bundle records that terminal output could not be captured; redirected
+streams and non-interactive launches retain their bounded output tail. Capture
 any other required diagnostic file at its canonical destination *before* acknowledgment.
 Failed tasks without a receipt keep their workspace until an operator/desk completes
 that handoff. Mark an inactive run resumable with `ack --resumable`; sweeps always
@@ -57,7 +60,9 @@ A snapshot streams *all tracked blobs* from the resolved Git revision, including
 files marked `export-ignore`; it is not a recursive directory copy. Git metadata,
 credentials in Git configuration, untracked files, and generated working-tree output
 are not implicitly imported. When a test/review requires extra generated data, name
-each regular source-relative file with repeatable `--input <path>`. The combined
+each regular source-relative file with repeatable `--input <path>`. Inputs require
+literal directory components and a single filesystem link; source identities are
+checked through opened directory/file handles. The combined
 snapshot/input byte limit is enforced; exceeding it fails rather than silently
 dropping data. Increase the explicit limit or use source references when appropriate.
 Submodules and escaping repository symlinks require an explicit separate checkout
@@ -115,7 +120,7 @@ delete existing user scratch during installation.
 
 Automatic enrollment covers the house launcher process paths, both interactive
 and cadence. Scrubbed tmux sessions, container/cluster runtimes, external IDE
-sessions, and harness-private roots that ignore inherited temporary-directory
+sessions, and harness owned roots that ignore inherited temporary-directory
 settings require explicit `scratch run` or remain report-only. A nested managed
 task keeps its own lease and receipt; the parent must wait for it before handing
 off its own scratch. All Git checkouts (including clean clones) are conservatively
